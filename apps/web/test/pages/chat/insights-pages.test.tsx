@@ -1231,7 +1231,7 @@ describe("conversation insights pages", () => {
       );
     });
 
-    await userEvent.click(screen.getAllByRole("button", { name: /查看详情/ })[0]);
+    await userEvent.click(screen.getAllByRole("button", { name: "详情" })[0]);
 
     expect(await screen.findByText("洞察详情")).toBeInTheDocument();
     const detailDialog = screen.getByRole("dialog", { name: "洞察详情" });
@@ -1345,7 +1345,7 @@ describe("conversation insights pages", () => {
     renderRoute("/chat/insights");
 
     expect(await screen.findByRole("heading", { level: 1, name: "会话数据总览" })).toBeInTheDocument();
-    await userEvent.click(screen.getAllByRole("button", { name: /查看详情/ })[0]);
+    await userEvent.click(screen.getAllByRole("button", { name: "详情" })[0]);
 
     expect(await screen.findByText("正在加载洞察详情")).toBeInTheDocument();
     detailRequest.reject(new Error("detail failed"));
@@ -1380,7 +1380,7 @@ describe("conversation insights pages", () => {
     renderRoute("/chat/insights");
 
     expect(await screen.findByRole("heading", { level: 1, name: "会话数据总览" })).toBeInTheDocument();
-    await userEvent.click(screen.getAllByRole("button", { name: /查看详情/ })[0]);
+    await userEvent.click(screen.getAllByRole("button", { name: "详情" })[0]);
 
     const conversationRegion = await screen.findByRole("region", { name: "本轮对话" });
     expect(within(conversationRegion).getByText("客户问题")).toBeInTheDocument();
@@ -1396,7 +1396,7 @@ describe("conversation insights pages", () => {
     renderRoute("/chat/insights");
 
     expect(await screen.findByRole("heading", { level: 1, name: "会话数据总览" })).toBeInTheDocument();
-    await userEvent.click(screen.getAllByRole("button", { name: /查看详情/ })[0]);
+    await userEvent.click(screen.getAllByRole("button", { name: "详情" })[0]);
 
     const insightRegion = await screen.findByRole("region", { name: "洞察结论" });
     expect(within(insightRegion).queryByText("客户问题")).not.toBeInTheDocument();
@@ -1413,7 +1413,7 @@ describe("conversation insights pages", () => {
     renderRoute("/chat/insights");
 
     expect(await screen.findByRole("heading", { level: 1, name: "会话数据总览" })).toBeInTheDocument();
-    await userEvent.click(screen.getAllByRole("button", { name: /查看详情/ })[0]);
+    await userEvent.click(screen.getAllByRole("button", { name: "详情" })[0]);
 
     const insightRegion = await screen.findByRole("region", { name: "洞察结论" });
     expect(within(insightRegion).getByRole("heading", { name: "未命名会话" })).toBeInTheDocument();
@@ -1433,7 +1433,7 @@ describe("conversation insights pages", () => {
     renderRoute("/chat/insights");
 
     expect(await screen.findByRole("heading", { level: 1, name: "会话数据总览" })).toBeInTheDocument();
-    await userEvent.click(screen.getAllByRole("button", { name: /查看详情/ })[0]);
+    await userEvent.click(screen.getAllByRole("button", { name: "详情" })[0]);
 
     const insightRegion = await screen.findByRole("region", { name: "洞察结论" });
     expect(within(insightRegion).getByRole("heading", { name: "服务质检" })).toBeInTheDocument();
@@ -1502,7 +1502,7 @@ describe("conversation insights pages", () => {
     renderRoute("/chat/insights");
 
     expect(await screen.findByRole("heading", { level: 1, name: "会话数据总览" })).toBeInTheDocument();
-    const detailButtons = await screen.findAllByRole("button", { name: /查看详情/ });
+    const detailButtons = await screen.findAllByRole("button", { name: "详情" });
     await userEvent.click(detailButtons[0]);
     await userEvent.click(await screen.findByRole("button", { name: "关闭" }));
     await userEvent.click(detailButtons[1]);
@@ -2409,7 +2409,7 @@ describe("conversation insights pages", () => {
     await userEvent.type(screen.getByRole("textbox", { name: "搜索相关会话" }), "物流异常");
     expect(within(relatedSessionsTable).getByText("物流异常待跟进")).toBeInTheDocument();
 
-    await userEvent.click(within(relatedSessionsTable).getByRole("button", { name: "查看详情" }));
+    await userEvent.click(within(relatedSessionsTable).getByRole("button", { name: "详情" }));
 
     expect(await screen.findByText("洞察详情")).toBeInTheDocument();
     expect(screen.getAllByText("未确认物流进展").length).toBeGreaterThan(0);

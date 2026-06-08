@@ -11,6 +11,8 @@ import type {
   InsightConfigDeletedResponse,
   InsightConfigStatus,
   InsightConfigStatusUpdateRequest,
+  InsightCreateActionItemRequest,
+  InsightCreateActionItemResponse,
   InsightDetailResponse,
   InsightEntityDictionaryItem,
   InsightEntityDictionaryMutationRequest,
@@ -343,6 +345,14 @@ export type InsightsRepositoryPort = {
     scope: InsightsUidScope,
     actionItemId: string,
     status: Extract<InsightActionStatus, "done" | "dismissed" | "open">,
+  ): Promise<boolean>;
+  createActionItem(
+    scope: InsightsUidScope,
+    input: InsightCreateActionItemRequest & { createdBySubUserId?: string },
+  ): Promise<InsightCreateActionItemResponse>;
+  validateActionItemTarget(
+    scope: InsightsUidScope,
+    input: Pick<InsightCreateActionItemRequest, "conversationId" | "sessionId">,
   ): Promise<boolean>;
   getSettings(scope: InsightsUidScope): Promise<InsightSettingsResponse>;
   getSettingsSummary(scope: InsightsUidScope): Promise<InsightSettingsSummaryResponse>;
@@ -1113,6 +1123,40 @@ export class InsightsService {
       actionItemId,
       status,
     };
+  }
+
+  async createActionItem(
+    scope: InsightsUidScope,
+    input: InsightCreateActionItemRequest,
+    createdBySubUserId?: string,
+  ): Promise<InsightCreateActionItemResponse> {
+    const title = input.title.trim();
+
+    if (!title) {
+      throw new BadRequestError("INVALID_ACTION_ITEM_TITLE", "待办标题不能为空");
+    }
+
+    const sessionId = input.sessionId?.trim();
+
+    if (!sessionId) {
+      throw new BadRequestError("INVALID_ACTION_ITEM_TARGET", "待办关联会话无效");
+    }
+
+    const targetValid = await this.repository.validateActionItemTarget(scope, {
+      conversationId: input.conversationId,
+      sessionId,
+    });
+
+    if (!targetValid) {
+      throw new BadRequestError("INVALID_ACTION_ITEM_TARGET", "待办关联会话无效");
+    }
+
+    return await this.repository.createActionItem(scope, {
+      ...input,
+      createdBySubUserId,
+      sessionId,
+      title,
+    });
   }
 
   async createRescanJob(

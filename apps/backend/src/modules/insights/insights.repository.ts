@@ -4,6 +4,8 @@ import type {
   InsightActionStatus,
   InsightAnalysisStatus,
   InsightConfigStatus,
+  InsightCreateActionItemRequest,
+  InsightCreateActionItemResponse,
   InsightDetailResponse,
   InsightEntityDictionaryItem,
   InsightEntityDictionaryMutationRequest,
@@ -37,6 +39,7 @@ import {
   type MessageRowQuotePreview,
 } from "../chat/workbench-mappers.js";
 import { uniquePositiveNumbers } from "../../shared/id-utils.js";
+import { BadRequestError } from "../../shared/errors.js";
 import type {
   InsightActionItemPage,
   InsightDetailActionItemRow,
@@ -102,7 +105,7 @@ type ActionItemQueryRow = {
   priority: string;
   resolution_status: string | null;
   session_id: number | string;
-  snapshot_id?: number | string;
+  snapshot_id?: number | string | null;
   title: string;
   total_count?: number | string;
 };
@@ -2168,14 +2171,11 @@ export class InsightsRepository implements InsightsRepositoryPort {
   ) {
     let query = this.db
       .selectFrom("xy_wap_embed_session_action_item as action")
-      .innerJoin("xy_wap_embed_session_insight_snapshot as snapshot", (join) =>
-        join.onRef("snapshot.id", "=", "action.snapshot_id"),
-      )
-      .innerJoin("xy_wap_embed_logical_session as session", (join) =>
-        join.onRef("session.id", "=", "snapshot.session_id"),
-      )
       .leftJoin("xy_wap_embed_session_problem_resolution as problem", (join) =>
-        join.onRef("problem.snapshot_id", "=", "snapshot.id"),
+        join.onRef("problem.snapshot_id", "=", "action.snapshot_id"),
+      )
+      .leftJoin("xy_wap_embed_logical_session as session", (join) =>
+        join.onRef("session.id", "=", "action.session_id"),
       )
       .select([
         "action.id as action_id",
@@ -2185,13 +2185,17 @@ export class InsightsRepository implements InsightsRepositoryPort {
         "action.status as action_status",
         "action.title as title",
         "problem.resolution_status as resolution_status",
-        "session.conversation_id as conversation_id",
-        "session.id as session_id",
-        "snapshot.id as snapshot_id",
+        "action.conversation_id as conversation_id",
+        "action.session_id as session_id",
+        "action.snapshot_id as snapshot_id",
         sql<number>`count(*) over()`.as("total_count"),
       ])
-      .where("action.uid", "=", scope.uid)
-      .where("problem.resolution_status", "in", ["unresolved", "partially_resolved"]);
+      .where("action.uid", "=", scope.uid);
+
+    query = query.where((eb) => eb.or([
+      eb("action.source_type", "=", "manual"),
+      eb("problem.resolution_status", "in", ["unresolved", "partially_resolved"]),
+    ]));
 
     if (filters.status === "processed") {
       query = query.where("action.status", "in", ["done", "dismissed"]);
@@ -2339,7 +2343,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
       actionItems,
     ] = await Promise.all([
       this.listQaFindings(snapshotId),
-      this.listSessionActionItems(snapshotId, current.conversationId, current.sessionId, current.resolutionStatus),
+      this.listSessionActionItems(scope, snapshotId, current.conversationId, current.sessionId, current.resolutionStatus),
     ]);
     await this.hydrateActionItemCustomers(scope, actionItems);
 
@@ -2432,17 +2436,12 @@ export class InsightsRepository implements InsightsRepositoryPort {
   }
 
   private async listSessionActionItems(
+    scope: InsightsUidScope,
     snapshotId: string,
     conversationId: string,
     sessionId: string,
     resolutionStatus: string | null,
   ) {
-    const snapshotNumericId = parsePositiveInteger(snapshotId);
-
-    if (snapshotNumericId == null) {
-      return [];
-    }
-
     const rows = (await this.db
       .selectFrom("xy_wap_embed_session_action_item as action")
       .select([
@@ -2453,7 +2452,8 @@ export class InsightsRepository implements InsightsRepositoryPort {
         "action.title as title",
         "action.snapshot_id as snapshot_id",
       ])
-      .where("action.snapshot_id", "=", snapshotNumericId)
+      .where("action.uid", "=", scope.uid)
+      .where("action.session_id", "=", parsePositiveInteger(sessionId) ?? -1)
       .execute() as Array<Pick<ActionItemQueryRow,
         "action_id" | "action_status" | "action_type" | "priority" | "snapshot_id" | "title"
       >>).map((row) => toActionItemBaseRow({
@@ -2463,8 +2463,9 @@ export class InsightsRepository implements InsightsRepositoryPort {
         session_id: sessionId,
       }));
     const actionItems = mapActionItemRows(rows);
+    const snapshotIds = uniquePositiveNumbers(rows.map((row) => Number(row.snapshot_id)));
 
-    await this.hydrateActionItemEvidence([snapshotNumericId], actionItems);
+    await this.hydrateActionItemEvidence(snapshotIds, actionItems);
 
     return actionItems;
   }
@@ -3053,15 +3054,9 @@ export class InsightsRepository implements InsightsRepositoryPort {
 
     const ownedAction = await this.db
       .selectFrom("xy_wap_embed_session_action_item as action")
-      .innerJoin("xy_wap_embed_session_insight_snapshot as snapshot", (join) =>
-        join.onRef("snapshot.id", "=", "action.snapshot_id"),
-      )
-      .innerJoin("xy_wap_embed_logical_session as session", (join) =>
-        join.onRef("session.id", "=", "snapshot.session_id"),
-      )
       .select(["action.id"])
       .where("action.id", "=", id)
-      .where("session.uid", "=", scope.uid)
+      .where("action.uid", "=", scope.uid)
       .executeTakeFirst();
 
     if (!ownedAction) {
@@ -3079,6 +3074,82 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .executeTakeFirst();
 
     return getAffectedRows(result) !== 0;
+  }
+
+  async validateActionItemTarget(
+    scope: InsightsUidScope,
+    input: Pick<InsightCreateActionItemRequest, "conversationId" | "sessionId">,
+  ): Promise<boolean> {
+    const conversationId = parsePositiveInteger(input.conversationId);
+
+    if (conversationId == null) {
+      return false;
+    }
+
+    const conversation = await this.db
+      .selectFrom("xy_wap_embed_conversation")
+      .select(["id"])
+      .where("id", "=", conversationId)
+      .where("uid", "=", scope.uid)
+      .executeTakeFirst();
+
+    if (!conversation) {
+      return false;
+    }
+
+    const sessionId = parsePositiveInteger(input.sessionId);
+
+    if (sessionId == null) {
+      return false;
+    }
+
+    const session = await this.db
+      .selectFrom("xy_wap_embed_logical_session")
+      .select(["id"])
+      .where("id", "=", sessionId)
+      .where("uid", "=", scope.uid)
+      .where("conversation_id", "=", conversationId)
+      .executeTakeFirst();
+
+    return Boolean(session);
+  }
+
+  async createActionItem(
+    scope: InsightsUidScope,
+    input: InsightCreateActionItemRequest & { createdBySubUserId?: string },
+  ): Promise<InsightCreateActionItemResponse> {
+    const conversationId = parsePositiveInteger(input.conversationId);
+    const sessionId = parsePositiveInteger(input.sessionId);
+
+    if (conversationId == null || sessionId == null) {
+      throw new BadRequestError("INVALID_ACTION_ITEM_TARGET", "待办关联会话无效");
+    }
+
+    const inserted = await this.db
+      .insertInto("xy_wap_embed_session_action_item")
+      .values({
+        action_type: "follow_up",
+        conversation_id: conversationId,
+        created_by_sub_user_id: input.createdBySubUserId == null
+          ? null
+          : parsePositiveInteger(input.createdBySubUserId) ?? null,
+        due_hint: input.dueHint ?? null,
+        priority: input.priority,
+        session_id: sessionId,
+        snapshot_id: null,
+        source_type: "manual",
+        status: "open",
+        title: input.title,
+        uid: scope.uid,
+        updated_by_sub_user_id: input.createdBySubUserId == null
+          ? null
+          : parsePositiveInteger(input.createdBySubUserId) ?? null,
+      })
+      .executeTakeFirstOrThrow() as InsertResult;
+
+    return {
+      actionItemId: String(parseInsertedMySqlId(inserted) ?? ""),
+    };
   }
 
   async createRescanJob(

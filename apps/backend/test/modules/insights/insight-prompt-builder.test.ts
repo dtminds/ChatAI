@@ -161,6 +161,46 @@ describe("insight prompt builder", () => {
     expect(JSON.stringify(prompt)).not.toContain("faqCandidates");
   });
 
+  it("includes recent action items when action item generation is enabled", () => {
+    const prompt = buildInsightSummaryPromptMessages({
+      existingActionItems: [
+        {
+          createdAt: 1_780_244_000_000,
+          priority: "high",
+          status: "open",
+          title: "跟进物流异常",
+        },
+      ],
+      includeActionItems: true,
+      messages: [
+        {
+          aiText: "物流一直没更新",
+          contentStatus: "ready",
+          conversationId: "301",
+          evidenceLabel: "[9001]",
+          includedForAi: true,
+          meaningfulForBoundary: true,
+          messageType: "text",
+          occurredAt: 1_780_244_000_000,
+          senderRole: "customer",
+          sourceMessageId: "9001",
+        },
+      ],
+    });
+    const systemPrompt = prompt[0]?.content ?? "";
+    const payload = JSON.parse(prompt[1]?.content ?? "{}");
+
+    expect(systemPrompt).toContain("existingActionItems");
+    expect(payload.existingActionItems).toEqual([
+      {
+        createdAt: 1_780_244_000_000,
+        priority: "high",
+        status: "open",
+        title: "跟进物流异常",
+      },
+    ]);
+  });
+
   it("instructs the summary step to keep problem evidence as a minimal decision set", () => {
     const prompt = buildInsightSummaryPromptMessages({
       messages: [

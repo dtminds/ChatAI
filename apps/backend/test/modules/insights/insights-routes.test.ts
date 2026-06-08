@@ -73,6 +73,21 @@ describe("insights routes", () => {
       payload: { status: "open" },
       url: "/api/server/insights/action-items/801/status",
     });
+    const createdActionItem = await app.inject({
+      headers: {
+        authorization,
+        "x-workbench-client": "chat-ai-ui",
+      },
+      method: "POST",
+      payload: {
+        conversationId: "301",
+        dueHint: "今天内",
+        priority: "high",
+        sessionId: "501",
+        title: "回访物流状态",
+      },
+      url: "/api/server/insights/action-items",
+    });
     const rescan = await app.inject({
       headers: {
         authorization,
@@ -253,6 +268,13 @@ describe("insights routes", () => {
       },
       success: true,
     });
+    expect(createdActionItem.statusCode).toBe(200);
+    expect(createdActionItem.json()).toMatchObject({
+      data: {
+        actionItemId: "8101",
+      },
+      success: true,
+    });
     expect(rescan.statusCode).toBe(200);
     expect(rescan.json()).toMatchObject({
       data: {
@@ -278,6 +300,15 @@ describe("insights routes", () => {
       success: true,
     });
     expect(db.updatedActionStatus).toMatchObject({ id: 801, status: "open" });
+    expect(db.insertedActionItem).toMatchObject({
+      conversation_id: 301,
+      created_by_sub_user_id: 1,
+      session_id: 501,
+      snapshot_id: null,
+      source_type: "manual",
+      title: "回访物流状态",
+      uid: 9001,
+    });
     expect(db.insertedRescanTask).toMatchObject({
       analysis_scope: "classification",
       uid: 9001,
@@ -332,6 +363,30 @@ describe("insights routes", () => {
       },
       success: false,
     });
+  });
+
+  it("rejects manual action item titles longer than the database column", async () => {
+    const { app, authorization, db } = await createInsightsApp("operator");
+
+    const response = await app.inject({
+      headers: {
+        authorization,
+        "x-workbench-client": "chat-ai-ui",
+      },
+      method: "POST",
+      payload: {
+        conversationId: "301",
+        priority: "high",
+        sessionId: "501",
+        title: "回".repeat(256),
+      },
+      url: "/api/server/insights/action-items",
+    });
+
+    await app.close();
+
+    expect(response.statusCode).toBe(400);
+    expect(db.insertedActionItem).toBeUndefined();
   });
 
   it("allows only admins to read settings", async () => {
@@ -669,6 +724,7 @@ function createInsightsDbMock(options: {
   subUserId?: string;
 } = {}) {
   const state = {
+    insertedActionItem: undefined as Record<string, unknown> | undefined,
     insertedJob: undefined as Record<string, unknown> | undefined,
     insertedRescanTask: undefined as Record<string, unknown> | undefined,
     insightCurrentSelectCount: 0,
@@ -681,6 +737,7 @@ function createInsightsDbMock(options: {
         table !== "xy_wap_embed_insight_job"
         && table !== "xy_wap_embed_insight_rescan_task"
         && table !== "xy_wap_embed_insight_feature_config"
+        && table !== "xy_wap_embed_session_action_item"
       ) {
         throw new Error(`Unexpected insert table: ${table}`);
       }
@@ -689,7 +746,11 @@ function createInsightsDbMock(options: {
         execute: async () => ({}),
         executeTakeFirst: async () => ({}),
         executeTakeFirstOrThrow: async () => ({
-          insertId: table === "xy_wap_embed_insight_rescan_task" ? 9901 : 8802,
+          insertId: table === "xy_wap_embed_insight_rescan_task"
+            ? 9901
+            : table === "xy_wap_embed_session_action_item"
+              ? 8101
+              : 8802,
         }),
         ignore: () => builder,
         onDuplicateKeyUpdate: (values: Record<string, unknown>) => {
@@ -704,6 +765,8 @@ function createInsightsDbMock(options: {
             state.insertedRescanTask = values;
           } else if (table === "xy_wap_embed_insight_feature_config") {
             state.upsertedFeatureConfig = values;
+          } else if (table === "xy_wap_embed_session_action_item") {
+            state.insertedActionItem = values;
           } else {
             state.insertedJob = values;
           }
@@ -937,6 +1000,17 @@ function createInsightsDbMock(options: {
             platform: 5,
             third_external_userid: "customer-1",
             third_userid: "seat-1",
+            uid: 9001,
+          },
+        ]);
+      }
+
+      if (table === "xy_wap_embed_logical_session") {
+        return createBuilder([
+          {
+            conversation_id: 301,
+            id: 501,
+            uid: 9001,
           },
         ]);
       }

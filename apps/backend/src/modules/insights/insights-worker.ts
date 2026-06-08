@@ -1,6 +1,7 @@
 import type { InsightRescanAnalysisScope } from "@chatai/contracts";
 import { buildInsightMessageInput } from "./insight-message-input-builder.js";
 import type {
+  InsightPromptExistingActionItem,
   InsightPreviousSessionContext,
   InsightPromptContext,
 } from "./insight-prompt-builder.js";
@@ -169,6 +170,8 @@ export type ClaimedSyncMessagesJob = {
   uid: number;
 };
 
+export type RecentActionItemForPrompt = InsightPromptExistingActionItem;
+
 export type InsightAnalysisRunInput = {
   analysisScope: InsightRescanAnalysisScope;
   jobId: string;
@@ -268,6 +271,7 @@ export type InsightWorkerAnalysisPolicy = {
 export type InsightSessionAnalyzer = {
   analyzeSession(input: {
     context: InsightPromptContext;
+    existingActionItems?: RecentActionItemForPrompt[];
     job: ClaimedAnalyzeJob;
     messages: AiMessageInput[];
     previousSessionContexts: InsightPreviousSessionContext[];
@@ -320,6 +324,11 @@ export type InsightWorkerRepositoryPort = {
     lookbackHours: number;
     uid: number;
   }): Promise<InsightPreviousSessionContext[]>;
+  listRecentActionItemsForPrompt(input: {
+    conversationId: string;
+    limit: number;
+    uid: number;
+  }): Promise<RecentActionItemForPrompt[]>;
   listClosableOpenSessions(input: {
     activeUids?: Set<number>;
     limit: number;
@@ -1137,9 +1146,14 @@ export class InsightsWorkerService {
           sessionId: job.sessionId,
           uid: job.uid,
         });
+      const actionItemPolicy = await this.resolveActionItemGenerationPolicy({
+        job,
+        modelMessages,
+      });
 
       const analyzerOutput = await this.model.analyzeSession({
         context,
+        existingActionItems: actionItemPolicy.existingActionItems,
         job,
         messages: modelMessages,
         previousOutput,
@@ -1150,7 +1164,9 @@ export class InsightsWorkerService {
       const output = normalizeEvidenceIds(configuredOutput.output, new Set(sourceMessageIds));
       const confidenceAdjustedOutput = applyProblemResolutionConfidencePolicy(policy, output.output);
       const mergedOutput = mergeScopedAnalysisOutput(job.analysisScope, previousOutput, confidenceAdjustedOutput);
-      const policyAdjustedOutput = applyModeOutputPolicy(job.mode, mergedOutput);
+      const policyAdjustedOutput = applyModeOutputPolicy(job.mode, mergedOutput, {
+        suppressActionItems: actionItemPolicy.suppressActionItems,
+      });
       const validationWarnings = [
         ...analysisWarnings,
         ...configuredOutput.validationWarnings,
@@ -1211,6 +1227,44 @@ export class InsightsWorkerService {
         "会话洞察 worker 分析任务失败",
       );
     }
+  }
+
+  private async resolveActionItemGenerationPolicy(input: {
+    job: ClaimedAnalyzeJob;
+    modelMessages: AiMessageInput[];
+  }): Promise<{
+    existingActionItems: RecentActionItemForPrompt[];
+    suppressActionItems: boolean;
+  }> {
+    if (input.job.mode !== "final" || input.job.analysisScope !== "all") {
+      return {
+        existingActionItems: [],
+        suppressActionItems: true,
+      };
+    }
+
+    const conversationId = input.modelMessages
+      .map((message) => message.conversationId)
+      .find((value): value is string => Boolean(value));
+
+    if (!conversationId) {
+      return {
+        existingActionItems: [],
+        suppressActionItems: false,
+      };
+    }
+
+    const recentActionItems = await this.repository.listRecentActionItemsForPrompt({
+      conversationId,
+      limit: 10,
+      uid: input.job.uid,
+    });
+    const openCount = recentActionItems.filter((item) => item.status === "open").length;
+
+    return {
+      existingActionItems: openCount > 5 ? [] : recentActionItems,
+      suppressActionItems: openCount > 5,
+    };
   }
 
 }
@@ -1295,10 +1349,12 @@ function mergeScopedAnalysisOutput(
 function applyModeOutputPolicy(
   mode: ClaimedAnalyzeJob["mode"],
   output: InsightAnalysisOutput,
+  options: { suppressActionItems?: boolean } = {},
 ): InsightAnalysisOutput {
   if (mode === "final") {
     return {
       ...output,
+      actionItems: options.suppressActionItems ? [] : output.actionItems,
       faqCandidates: [],
     };
   }

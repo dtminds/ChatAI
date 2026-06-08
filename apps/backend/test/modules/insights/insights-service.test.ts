@@ -783,6 +783,8 @@ function createRepository(
     })),
     deleteEntityDictionaryItem: vi.fn(async () => true),
     updateActionStatus: vi.fn(async () => true),
+    createActionItem: vi.fn(async () => ({ actionItemId: "8101" })),
+    validateActionItemTarget: vi.fn(async () => true),
     ...overrides,
   };
 }
@@ -1728,6 +1730,80 @@ describe("InsightsService", () => {
       code: "INSIGHT_ACTION_ITEM_NOT_FOUND",
       statusCode: 200,
     });
+  });
+
+  it("creates a manual conversation action item with trimmed title", async () => {
+    const repository = createRepository();
+    const service = new InsightsService(repository);
+
+    await expect(service.createActionItem(scope, {
+      conversationId: "301",
+      dueHint: "今天内",
+      priority: "high",
+      sessionId: "501",
+      title: "  回访物流状态  ",
+    }, "77")).resolves.toEqual({ actionItemId: "8101" });
+
+    expect(repository.createActionItem).toHaveBeenCalledWith(scope, {
+      conversationId: "301",
+      createdBySubUserId: "77",
+      dueHint: "今天内",
+      priority: "high",
+      sessionId: "501",
+      title: "回访物流状态",
+    });
+  });
+
+  it("rejects manual action items when the target conversation or session is outside scope", async () => {
+    const repository = createRepository({
+      validateActionItemTarget: vi.fn(async () => false),
+    });
+    const service = new InsightsService(repository);
+
+    await expect(service.createActionItem(scope, {
+      conversationId: "301",
+      priority: "medium",
+      sessionId: "501",
+      title: "回访物流状态",
+    }, "77")).rejects.toMatchObject({
+      code: "INVALID_ACTION_ITEM_TARGET",
+    });
+
+    expect(repository.validateActionItemTarget).toHaveBeenCalledWith(scope, {
+      conversationId: "301",
+      sessionId: "501",
+    });
+    expect(repository.createActionItem).not.toHaveBeenCalled();
+  });
+
+  it("rejects manual action items without a session id", async () => {
+    const repository = createRepository();
+    const service = new InsightsService(repository);
+
+    await expect(service.createActionItem(scope, {
+      conversationId: "301",
+      priority: "medium",
+      title: "回访物流状态",
+    })).rejects.toMatchObject({
+      code: "INVALID_ACTION_ITEM_TARGET",
+    });
+
+    expect(repository.validateActionItemTarget).not.toHaveBeenCalled();
+    expect(repository.createActionItem).not.toHaveBeenCalled();
+  });
+
+  it("rejects blank manual action item titles", async () => {
+    const repository = createRepository();
+    const service = new InsightsService(repository);
+
+    await expect(service.createActionItem(scope, {
+      conversationId: "301",
+      priority: "medium",
+      title: "   ",
+    })).rejects.toMatchObject({
+      code: "INVALID_ACTION_ITEM_TITLE",
+    });
+    expect(repository.createActionItem).not.toHaveBeenCalled();
   });
 
   it("creates a scoped historical rescan task on each manual trigger", async () => {

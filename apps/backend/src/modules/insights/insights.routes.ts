@@ -7,6 +7,7 @@ import {
   InsightIntentConfigMutationRequestSchema,
   InsightLabelConfigMutationRequestSchema,
   InsightActionStatusSchema,
+  InsightCreateActionItemRequestSchema,
   InsightMessageContextRequestSchema,
   InsightQaRuleConfigMutationRequestSchema,
   InsightSessionizationSettingsUpdateRequestSchema,
@@ -19,6 +20,7 @@ import {
   type InsightIntentConfigMutationRequest,
   type InsightLabelConfigMutationRequest,
   type InsightActionStatus,
+  type InsightCreateActionItemRequest,
   type InsightQaRuleConfigMutationRequest,
   type InsightSessionizationSettingsUpdateRequest,
   type InsightsRescanRequest,
@@ -144,6 +146,7 @@ type QualityQuery = Static<typeof QualityQuerySchema>;
 type SessionParams = Static<typeof SessionParamsSchema>;
 type ActionItemParams = Static<typeof ActionItemParamsSchema>;
 type ActionStatusBody = Static<typeof ActionStatusBodySchema>;
+type CreateActionItemBody = InsightCreateActionItemRequest;
 type ConfigParams = Static<typeof ConfigParamsSchema>;
 type MessageContextQuery = Static<typeof InsightMessageContextRequestSchema>;
 
@@ -308,6 +311,25 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
           await getUidScope(app, request),
           request.params.actionItemId,
           request.body.status,
+        ),
+      );
+    },
+  );
+
+  app.post<{ Body: CreateActionItemBody }>(
+    "/api/server/insights/action-items",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: InsightCreateActionItemRequestSchema,
+      },
+    },
+    async (request) => {
+      return apiSuccess(
+        await createInsightsService(app).createActionItem(
+          await getUidScope(app, request),
+          request.body,
+          request.user?.subUserId,
         ),
       );
     },

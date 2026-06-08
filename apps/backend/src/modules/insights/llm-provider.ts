@@ -133,18 +133,20 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
   private async doAnalyzeSession(
     input: Parameters<InsightSessionAnalyzer["analyzeSession"]>[0],
   ): Promise<InsightAnalysisOutput> {
+    const includeActionItems = shouldGenerateActionItems(input.job);
     const output = this.config.analysisMode !== "single"
       ? await this.doAnalyzeSessionInSteps(input)
       : await this.completeAnalysisStep({
-        maxTokens: this.config.maxTokens,
-        messages: buildInsightPromptMessages({
-          context: input.context,
-          includeActionItems: shouldGenerateActionItems(input.job),
-          messages: input.messages,
-          previousSessionContexts: input.previousSessionContexts,
-        }),
-        model: this.config.model,
-      });
+          maxTokens: this.config.maxTokens,
+          messages: buildInsightPromptMessages({
+            context: input.context,
+            existingActionItems: includeActionItems ? input.existingActionItems : undefined,
+            includeActionItems,
+            messages: input.messages,
+            previousSessionContexts: input.previousSessionContexts,
+          }),
+          model: this.config.model,
+        });
 
     return stripFaqCandidates(output);
   }
@@ -180,11 +182,13 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
       });
     }
 
+    const includeActionItems = shouldGenerateActionItems(input.job);
     const summary = await this.completeAnalysisStep({
       maxTokens: this.config.maxTokens,
       messages: buildInsightSummaryPromptMessages({
         context: input.context,
-        includeActionItems: shouldGenerateActionItems(input.job),
+        existingActionItems: includeActionItems ? input.existingActionItems : undefined,
+        includeActionItems,
         messages: input.messages,
         previousSessionContexts: input.previousSessionContexts,
       }),
@@ -505,14 +509,13 @@ function buildPriorConclusions(output: InsightAnalysisOutput | undefined) {
   const base = output ?? fallback;
 
   return {
-    actionItems: base.actionItems,
     problemResolution: base.problemResolution,
     summary: base.summary,
   };
 }
 
 function shouldGenerateActionItems(job: Parameters<InsightSessionAnalyzer["analyzeSession"]>[0]["job"]) {
-  return job == null || job.mode === "final";
+  return job == null || (job.mode === "final" && job.analysisScope === "all");
 }
 
 function stripFaqCandidates(output: InsightAnalyzerOutput): InsightAnalyzerOutput {

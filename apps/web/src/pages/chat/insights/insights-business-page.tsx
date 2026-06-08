@@ -749,7 +749,7 @@ function RelatedSessionsPanel({
                     size="sm"
                     variant="outline"
                   >
-                    查看详情
+                    详情
                   </Button>
                 </TableCell>
               </TableRow>

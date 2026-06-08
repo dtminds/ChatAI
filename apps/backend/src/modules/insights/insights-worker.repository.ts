@@ -1530,6 +1530,38 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
     }));
   }
 
+  async listRecentActionItemsForPrompt(input: {
+    conversationId: string;
+    limit: number;
+    uid: number;
+  }) {
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_session_action_item")
+      .select([
+        "create_time",
+        "priority",
+        "status",
+        "title",
+      ])
+      .where("uid", "=", input.uid)
+      .where("conversation_id", "=", parsePositiveInteger(input.conversationId) ?? -1)
+      .orderBy("id", "desc")
+      .limit(Math.max(0, Math.min(input.limit, 10)))
+      .execute() as Array<{
+        create_time: Date | string;
+        priority: string;
+        status: string;
+        title: string;
+      }>;
+
+    return rows.map((row) => ({
+      createdAt: new Date(row.create_time).getTime(),
+      priority: normalizePriority(row.priority),
+      status: normalizeActionStatus(row.status),
+      title: row.title,
+    }));
+  }
+
   async startAnalysisRun(input: {
     analysisScope: "all";
     jobId: string;
@@ -1666,6 +1698,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
   async saveAnalysisResult(input: SaveAnalysisResultInput): Promise<string> {
     const sessionId = parsePositiveInteger(input.job.sessionId) ?? -1;
     const conversationIdBySessionId = new Map<string, number>();
+    const conversationId = await this.getSessionConversationId(input.job.sessionId, conversationIdBySessionId);
     const insertedSnapshot = await this.db
       .insertInto("xy_wap_embed_session_insight_snapshot")
       .values({
@@ -1772,16 +1805,34 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       await this.collectEvidenceRows(input, snapshotId, "intent", id, item.evidenceMessageIds, conversationIdBySessionId, evidenceRows);
     }
 
+    const recentActionItemTitles = await this.listRecentActionItemTitleSet({
+      conversationId,
+      limit: 10,
+      uid: input.job.uid,
+    });
+
     for (const item of output.actionItems) {
+      const normalizedTitle = normalizeActionTitle(item.title);
+
+      if (!normalizedTitle || recentActionItemTitles.has(normalizedTitle)) {
+        continue;
+      }
+
       const id = await this.insertAndGetId("xy_wap_embed_session_action_item", {
         action_type: "follow_up",
+        conversation_id: conversationId,
+        created_by_sub_user_id: null,
         due_hint: item.dueHint ?? null,
         priority: item.priority,
+        session_id: sessionId,
         snapshot_id: snapshotId,
+        source_type: "ai",
         status: "open",
         title: item.title,
+        updated_by_sub_user_id: null,
         uid: input.job.uid,
       });
+      recentActionItemTitles.add(normalizedTitle);
       await this.collectEvidenceRows(input, snapshotId, "action_item", id, item.evidenceMessageIds, conversationIdBySessionId, evidenceRows);
     }
 
@@ -1948,6 +1999,43 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
     return parseInsertedMySqlId(inserted) ?? -1;
   }
 
+  private async getSessionConversationId(
+    sessionId: string,
+    conversationIdBySessionId: Map<string, number>,
+  ) {
+    const sessionKey = sessionId;
+    let conversationId = conversationIdBySessionId.get(sessionKey);
+
+    if (conversationId == null) {
+      const session = await this.db
+        .selectFrom("xy_wap_embed_logical_session")
+        .select(["conversation_id"])
+        .where("id", "=", parsePositiveInteger(sessionId) ?? -1)
+        .executeTakeFirst() as { conversation_id: number | string } | undefined;
+      conversationId = parseNumber(session?.conversation_id);
+      conversationIdBySessionId.set(sessionKey, conversationId);
+    }
+
+    return conversationId;
+  }
+
+  private async listRecentActionItemTitleSet(input: {
+    conversationId: number;
+    limit: number;
+    uid: number;
+  }) {
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_session_action_item")
+      .select(["title"])
+      .where("uid", "=", input.uid)
+      .where("conversation_id", "=", input.conversationId)
+      .orderBy("id", "desc")
+      .limit(Math.max(0, Math.min(input.limit, 10)))
+      .execute() as Array<{ title: string }>;
+
+    return new Set(rows.map((row) => normalizeActionTitle(row.title)).filter(Boolean));
+  }
+
   private async collectEvidenceRows(
     input: SaveAnalysisResultInput,
     snapshotId: number,
@@ -1961,18 +2049,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       return;
     }
 
-    const sessionKey = input.job.sessionId;
-    let conversationId = conversationIdBySessionId.get(sessionKey);
-
-    if (conversationId == null) {
-      const session = await this.db
-        .selectFrom("xy_wap_embed_logical_session")
-        .select(["conversation_id"])
-        .where("id", "=", parsePositiveInteger(input.job.sessionId) ?? -1)
-        .executeTakeFirst() as { conversation_id: number | string } | undefined;
-      conversationId = parseNumber(session?.conversation_id);
-      conversationIdBySessionId.set(sessionKey, conversationId);
-    }
+    const conversationId = await this.getSessionConversationId(input.job.sessionId, conversationIdBySessionId);
 
     evidenceRows.push(...evidenceMessageIds.map((evidence) => {
       const messageId = typeof evidence === "string" ? evidence : evidence.messageId;
@@ -2110,6 +2187,20 @@ function normalizeResolutionStatus(
     || value === "unresolved"
     ? value
     : "unknown";
+}
+
+function normalizeActionStatus(value: string): "dismissed" | "done" | "expired" | "open" {
+  return value === "done" || value === "dismissed" || value === "expired" || value === "open"
+    ? value
+    : "open";
+}
+
+function normalizePriority(value: string): "high" | "low" | "medium" {
+  return value === "high" || value === "low" || value === "medium" ? value : "medium";
+}
+
+function normalizeActionTitle(value: string | null | undefined) {
+  return (value ?? "").replace(/\s+/g, "").toLowerCase();
 }
 
 function parsePositiveInteger(value: string) {

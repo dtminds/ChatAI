@@ -3,7 +3,6 @@ import type { ReactNode } from "react";
 import {
   AiIdeaIcon,
   ArrowDown01Icon,
-  ArrowRight01Icon,
   ChartAreaIcon,
   ChartBubbleIcon,
   ConversationIcon,
@@ -772,13 +771,12 @@ function SessionTableCard({
                   </TableCell>
                   <TableCell className="py-4 text-right">
                     <Button
-                      aria-label="查看详情"
-                      className="size-8 rounded-[8px]"
+                      className="h-8 rounded-[8px]"
                       onClick={() => onOpenDetail(row.sessionId)}
-                      size="icon"
-                      variant="ghost"
+                      size="sm"
+                      variant="outline"
                     >
-                      <HugeiconsIcon icon={ArrowRight01Icon} size={16} strokeWidth={2} />
+                      详情
                     </Button>
                   </TableCell>
                 </TableRow>

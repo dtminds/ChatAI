@@ -201,3 +201,37 @@ ALTER TABLE xy_wap_embed_analysis_run
 ALTER TABLE xy_wap_embed_logical_session_message
   ADD KEY idx_session_message_ai_count (session_id, included_for_ai, meaningful_for_boundary, source_message_id);
 ```
+
+- Expanded `xy_wap_embed_session_action_item` so manual todos and AI todos share one session-scoped table. Todos now store the platform conversation, logical session, source type, operator audit fields, and terminal timestamps directly; `session_id` is required because manual todo creation must be anchored to an existing logical session.
+
+Manual migration for existing databases:
+
+```sql
+ALTER TABLE xy_wap_embed_session_action_item
+  ADD COLUMN conversation_id BIGINT UNSIGNED NULL COMMENT '平台会话ID' AFTER uid,
+  MODIFY COLUMN snapshot_id BIGINT UNSIGNED NULL COMMENT 'AI来源洞察快照ID',
+  ADD COLUMN session_id BIGINT UNSIGNED NULL COMMENT '逻辑会话ID' AFTER conversation_id,
+  ADD COLUMN source_type VARCHAR(32) NOT NULL DEFAULT 'ai' COMMENT '来源，ai：AI生成，manual：人工创建' AFTER snapshot_id,
+  ADD COLUMN created_by_sub_user_id BIGINT UNSIGNED NULL COMMENT '创建子账号ID' AFTER source_type,
+  ADD COLUMN updated_by_sub_user_id BIGINT UNSIGNED NULL COMMENT '最后更新子账号ID' AFTER created_by_sub_user_id,
+  ADD COLUMN completed_by_sub_user_id BIGINT UNSIGNED NULL COMMENT '完成人子账号ID' AFTER updated_by_sub_user_id,
+  ADD COLUMN completed_at DATETIME NULL COMMENT '完成时间' AFTER completed_by_sub_user_id,
+  ADD COLUMN dismissed_at DATETIME NULL COMMENT '忽略时间' AFTER completed_at;
+
+UPDATE xy_wap_embed_session_action_item AS action
+INNER JOIN xy_wap_embed_session_insight_snapshot AS snapshot
+  ON snapshot.id = action.snapshot_id
+INNER JOIN xy_wap_embed_logical_session AS session
+  ON session.id = snapshot.session_id
+SET
+  action.conversation_id = session.conversation_id,
+  action.session_id = session.id,
+  action.source_type = 'ai'
+WHERE action.session_id IS NULL;
+
+ALTER TABLE xy_wap_embed_session_action_item
+  MODIFY COLUMN conversation_id BIGINT UNSIGNED NOT NULL COMMENT '平台会话ID',
+  MODIFY COLUMN session_id BIGINT UNSIGNED NOT NULL COMMENT '逻辑会话ID',
+  ADD KEY idx_action_uid_conversation_status (uid, conversation_id, status, id),
+  ADD KEY idx_action_uid_session_status (uid, session_id, status);
+```

@@ -437,6 +437,18 @@ export const InsightDetailActionItemSchema = Type.Object({
   title: Type.String(),
 }, { additionalProperties: false });
 
+export const InsightCreateActionItemRequestSchema = Type.Object({
+  conversationId: Type.String({ minLength: 1 }),
+  dueHint: Type.Optional(Type.String()),
+  priority: InsightPrioritySchema,
+  sessionId: Type.String({ minLength: 1 }),
+  title: Type.String({ maxLength: 255, minLength: 1 }),
+}, { additionalProperties: false });
+
+export const InsightCreateActionItemResponseSchema = Type.Object({
+  actionItemId: Type.String(),
+});
+
 export const InsightDetailResponseSchema = Type.Object({
   actionItems: Type.Array(InsightDetailActionItemSchema),
   analysisStatus: InsightAnalysisStatusSchema,
@@ -706,6 +718,8 @@ export type InsightActionStatus = Static<typeof InsightActionStatusSchema>;
 export type InsightAnalysisStatus = Static<typeof InsightAnalysisStatusSchema>;
 export type InsightRescanAnalysisScope = Static<typeof InsightRescanAnalysisScopeSchema>;
 export type InsightRescanTaskStatus = Static<typeof InsightRescanTaskStatusSchema>;
+export type InsightCreateActionItemRequest = Static<typeof InsightCreateActionItemRequestSchema>;
+export type InsightCreateActionItemResponse = Static<typeof InsightCreateActionItemResponseSchema>;
 export type InsightDetailResponse = Omit<
   Static<typeof InsightDetailResponseSchema>,
   "evidenceMessageRecords"

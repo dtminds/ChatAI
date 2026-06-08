@@ -57,6 +57,13 @@ export type InsightPreviousSessionContext = {
   unresolvedReason?: string;
 };
 
+export type InsightPromptExistingActionItem = {
+  createdAt?: number;
+  priority: "high" | "low" | "medium";
+  status: "dismissed" | "done" | "expired" | "open";
+  title: string;
+};
+
 export type InsightPromptMessage = {
   content: string;
   role: "system" | "user";
@@ -64,11 +71,12 @@ export type InsightPromptMessage = {
 
 export type InsightPriorConclusions = Pick<
   import("./insights-worker.js").InsightAnalysisOutput,
-  "actionItems" | "problemResolution" | "summary"
+  "problemResolution" | "summary"
 >;
 
 export function buildInsightPromptMessages(input: {
   context?: InsightPromptContext;
+  existingActionItems?: InsightPromptExistingActionItem[];
   includeActionItems?: boolean;
   messages: AiMessageInput[];
   previousSessionContexts?: InsightPreviousSessionContext[];
@@ -87,6 +95,7 @@ export function buildInsightPromptMessages(input: {
         context,
         input.previousSessionContexts ?? [],
         {
+          existingActionItems: input.existingActionItems,
           outputContract: buildOutputContract(context, {
             includeActionItems,
           }),
@@ -99,6 +108,7 @@ export function buildInsightPromptMessages(input: {
 
 export function buildInsightSummaryPromptMessages(input: {
   context?: InsightPromptContext;
+  existingActionItems?: InsightPromptExistingActionItem[];
   includeActionItems?: boolean;
   messages: AiMessageInput[];
   previousSessionContexts?: InsightPreviousSessionContext[];
@@ -118,6 +128,7 @@ export function buildInsightSummaryPromptMessages(input: {
         input.previousSessionContexts ?? [],
         {
           outputContract: buildSummaryOutputContract({ includeActionItems }),
+          existingActionItems: input.existingActionItems,
           tenantContext: { intentConfigs: normalizeContext(context).intentConfigs },
         },
       ),
@@ -284,7 +295,7 @@ function buildSummarySystemPrompt(includeActionItems: boolean) {
     "summary.text 必须是 1-3 句纯会话摘要，只概括客户诉求、客服回应和当前状态；不要输出下一步建议、待办、意图标签或未解决判定理由。",
     "problemResolution.problemSummary 才用于描述客户提出的具体问题，可写成一句完整摘要。",
     ...(includeActionItems
-      ? ["actionItems 只输出明确需要人工后续处理的事项；未解决或部分解决不等于一定要生成待办。"]
+      ? ["actionItems 只输出明确需要人工后续处理的事项；未解决或部分解决不等于一定要生成待办；如果与 existingActionItems 语义重复，不要输出。"]
       : ["不要在 summary.text 中输出下一步建议或后续处理事项。"]),
     "判断类结果的 confidence 取 0 到 1 之间的小数；证据不足时降低 confidence，不要强行下结论。",
     "</analysis_rules>",
@@ -345,6 +356,7 @@ function buildUserPrompt(
   context: InsightPromptContext,
   previousSessionContexts: InsightPreviousSessionContext[],
   overrides?: {
+    existingActionItems?: InsightPromptExistingActionItem[];
     outputContract?: Record<string, unknown>;
     priorConclusions?: InsightPriorConclusions;
     tenantContext?: Record<string, unknown>;
@@ -352,6 +364,7 @@ function buildUserPrompt(
 ) {
   const payload = {
     outputContract: overrides?.outputContract ?? buildOutputContract(context),
+    ...(overrides?.existingActionItems ? { existingActionItems: normalizeExistingActionItems(overrides.existingActionItems) } : {}),
     previousSessionContexts: normalizePreviousSessionContexts(previousSessionContexts),
     ...(overrides?.priorConclusions ? { priorConclusions: overrides.priorConclusions } : {}),
     resolutionStatusGuide: {
@@ -375,6 +388,15 @@ function buildUserPrompt(
   };
 
   return JSON.stringify(payload);
+}
+
+function normalizeExistingActionItems(items: InsightPromptExistingActionItem[]) {
+  return items.slice(0, 10).map((item) => ({
+    createdAt: item.createdAt,
+    priority: item.priority,
+    status: item.status,
+    title: truncatePromptText(item.title, PROMPT_LIMITS.name),
+  }));
 }
 
 function buildOutputContract(

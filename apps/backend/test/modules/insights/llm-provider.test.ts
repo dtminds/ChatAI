@@ -560,6 +560,87 @@ describe("LLM provider config", () => {
     expect(JSON.stringify(requestBodies[0]?.messages)).not.toContain("faqCandidates");
   });
 
+  it("does not ask for follow-up outputs during scoped final analysis", async () => {
+    const requestBodies: Array<Record<string, unknown>> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+        const requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        requestBodies.push(requestBody);
+
+        return new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({
+                    qaFindings: [],
+                  }),
+                },
+              },
+            ],
+          }),
+          { headers: { "Content-Type": "application/json" }, status: 200 },
+        );
+      }),
+    );
+    const analyzer = new OpenAiCompatibleInsightAnalyzer({
+      apiKey: "secret",
+      baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+      liteMaxTokens: 1024,
+      liteModel: "ep-lite",
+      maxTokens: 4096,
+      model: "ep-main",
+      providerCode: "volcengine_ark",
+      protocol: "openai-compatible",
+      responseFormat: "json_object",
+    });
+
+    await analyzer.analyzeSession({
+      context: {
+        entityDictionary: [],
+        intentConfigs: [],
+        labelConfigs: [],
+        qaRuleConfigs: [
+          {
+            applicableScene: "售后",
+            description: "",
+            judgmentCriteria: "必须说明处理动作",
+            negativeExamples: [],
+            positiveExamples: [],
+            ruleCode: "after_sales_followup",
+            ruleName: "售后跟进",
+            severity: "high",
+          },
+        ],
+      },
+      job: {
+        analysisScope: "qaFindings",
+        attemptCount: 1,
+        jobId: "job-1",
+        maxAttempts: 3,
+        mode: "final",
+        sessionId: "501",
+        uid: 9001,
+      },
+      messages: [
+        {
+          aiText: "快递一直没更新",
+          contentStatus: "ready",
+          messageType: "text",
+          occurredAt: 1,
+          senderRole: "customer",
+          sourceMessageId: "9001",
+        },
+      ],
+      previousSessionContexts: [],
+    });
+
+    expect(requestBodies).toHaveLength(1);
+    expect(JSON.stringify(requestBodies[0]?.messages)).not.toContain("actionItems");
+    expect(JSON.stringify(requestBodies[0]?.messages)).not.toContain("faqCandidates");
+  });
+
   it("runs only classification for classification scoped reanalysis", async () => {
     const requestBodies: Array<Record<string, unknown>> = [];
     vi.stubGlobal(

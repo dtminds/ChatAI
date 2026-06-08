@@ -1017,14 +1017,22 @@ export interface XyWapEmbedSessionIntent {
 
 export interface XyWapEmbedSessionActionItem {
   action_type: string;
+  completed_at: Date | null;
+  completed_by_sub_user_id: number | null;
+  conversation_id: number;
   create_time: Generated<Date>;
+  created_by_sub_user_id: number | null;
+  dismissed_at: Date | null;
   due_hint: string | null;
   id: Generated<number>;
   priority: string;
-  snapshot_id: number;
+  session_id: number;
+  snapshot_id: number | null;
+  source_type: Generated<string>;
   status: string;
   title: string;
   update_time: Generated<Date>;
+  updated_by_sub_user_id: number | null;
   uid: number;
 }
 

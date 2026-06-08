@@ -90,6 +90,127 @@ describe("InsightsRepository", () => {
     expect(selectedTables).not.toContain("xy_wap_embed_insight_entity_dictionary");
   });
 
+  it("loads recent action items for prompt by conversation", async () => {
+    const builders: SelectBuilderStub[] = [];
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        const builder = createSelectBuilder([
+          {
+            create_time: new Date("2026-06-01T10:00:00Z"),
+            priority: "high",
+            status: "open",
+            title: "跟进物流异常",
+          },
+        ], table);
+        builders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(repository.listRecentActionItemsForPrompt({
+      conversationId: "301",
+      limit: 10,
+      uid: 9001,
+    })).resolves.toEqual([
+      expect.objectContaining({
+        priority: "high",
+        status: "open",
+        title: "跟进物流异常",
+      }),
+    ]);
+
+    expect(builders[0]?.table).toBe("xy_wap_embed_session_action_item");
+    expect(builders[0]?.whereCalls).toContainEqual(["uid", "=", 9001]);
+    expect(builders[0]?.whereCalls).toContainEqual(["conversation_id", "=", 301]);
+    expect(builders[0]?.limitCalls).toEqual([10]);
+  });
+
+  it("deduplicates AI action item titles against the latest ten conversation todos without repeated queries", async () => {
+    const insertedTables: string[] = [];
+    const selectedActionItemBuilders: SelectBuilderStub[] = [];
+    let nextInsertId = 7001;
+    const db = {
+      insertInto: vi.fn((table: string) => {
+        insertedTables.push(table);
+        return createInsertBuilder(async () => ({ insertId: nextInsertId++ }), { table });
+      }),
+      selectFrom: vi.fn((table: string) => {
+        if (table === "xy_wap_embed_logical_session") {
+          return createSelectBuilder([{ conversation_id: 301 }], table);
+        }
+
+        if (table === "xy_wap_embed_session_action_item") {
+          const builder = createSelectBuilder([{ title: "跟进物流异常" }], table);
+          selectedActionItemBuilders.push(builder);
+          return builder;
+        }
+
+        return createSelectBuilder([], table);
+      }),
+      updateTable: vi.fn((table: string) => createUpdateBuilder(async () => ({ numAffectedRows: 1n }), { table })),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await repository.saveAnalysisResult({
+      job: {
+        analysisScope: "all",
+        attemptCount: 1,
+        jobId: "9001",
+        maxAttempts: 3,
+        mode: "final",
+        sessionId: "501",
+        uid: 9001,
+      },
+      output: {
+        actionItems: [
+          {
+            evidenceMessageIds: ["9201"],
+            priority: "high",
+            title: " 跟进 物流 异常 ",
+          },
+          {
+            evidenceMessageIds: ["9202"],
+            priority: "medium",
+            title: "提醒客户补充地址",
+          },
+          {
+            evidenceMessageIds: ["9203"],
+            priority: "medium",
+            title: "提醒 客户 补充 地址",
+          },
+        ],
+        entities: [],
+        faqCandidates: [],
+        intents: [],
+        problemResolution: {
+          confidence: 0.9,
+          evidence: [],
+          evidenceMessageIds: [],
+          problemDetected: true,
+          problemSummary: "物流延迟",
+          resolutionStatus: "unresolved",
+        },
+        qaFindings: [],
+        sentiment: [],
+        summary: {
+          sessionTitle: "查物流",
+          text: "客户咨询物流",
+        },
+        tags: [],
+      },
+      runId: "8001",
+      sourceMessageHighWatermark: "9202",
+      validationWarnings: [],
+    });
+
+    expect(selectedActionItemBuilders).toHaveLength(1);
+    expect(selectedActionItemBuilders[0]?.whereCalls).toContainEqual(["uid", "=", 9001]);
+    expect(selectedActionItemBuilders[0]?.whereCalls).toContainEqual(["conversation_id", "=", 301]);
+    expect(selectedActionItemBuilders[0]?.limitCalls).toEqual([10]);
+    expect(insertedTables.filter((table) => table === "xy_wap_embed_session_action_item")).toHaveLength(1);
+  });
+
   it("loads quality agent stats through grouped SQL", async () => {
     const builders: SelectBuilderStub[] = [];
     const db = {
@@ -514,6 +635,18 @@ describe("InsightsRepository", () => {
             snapshot_id: 501,
             title: "催物流",
           },
+          {
+            action_id: 802,
+            action_status: "open",
+            action_type: "follow_up",
+            conversation_id: 301,
+            created_at: 1_780_243_000_000,
+            priority: "medium",
+            resolution_status: "unresolved",
+            session_id: 202,
+            snapshot_id: 502,
+            title: "其它逻辑会话待办",
+          },
         ],
       ],
       ["xy_wap_embed_conversation", []],
@@ -531,6 +664,10 @@ describe("InsightsRepository", () => {
       {
         actionItemId: "801",
         createdAt: 1_780_244_000_000,
+      },
+      {
+        actionItemId: "802",
+        createdAt: 1_780_243_000_000,
       },
     ]);
 
@@ -636,6 +773,61 @@ describe("InsightsRepository", () => {
 
     expect(builders[0]?.whereCalls).toContainEqual(["action.status", "in", ["done", "dismissed"]]);
     expect(builders[0]?.whereCalls).not.toContainEqual(["action.status", "=", "processed"]);
+  });
+
+  it("filters non-manual action items that do not require human intervention before pagination", async () => {
+    const builders: SelectBuilderStub[] = [];
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        const builder = createSelectBuilder([], table);
+        builders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new InsightsRepository(db as never);
+
+    await repository.listActionItemsPage({ uid: 9001 }, {
+      page: 1,
+      pageSize: 10,
+      status: "open",
+    });
+
+    expect(builders[0]?.whereCalls).toContainEqual(["action.source_type", "=", "manual"]);
+    expect(builders[0]?.whereCalls).toContainEqual([
+      "problem.resolution_status",
+      "in",
+      ["unresolved", "partially_resolved"],
+    ]);
+    expect(builders[0]?.limitCalls).toEqual([10]);
+    expect(builders[0]?.offsetCalls).toEqual([0]);
+  });
+
+  it("validates manual action item targets against current uid and conversation linkage", async () => {
+    const builders: SelectBuilderStub[] = [];
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        const rows = table === "xy_wap_embed_conversation"
+          ? [{ id: 301 }]
+          : [{ id: 501 }];
+        const builder = createSelectBuilder(rows, table);
+        builders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new InsightsRepository(db as never);
+
+    await expect(repository.validateActionItemTarget({ uid: 9001 }, {
+      conversationId: "301",
+      sessionId: "501",
+    })).resolves.toBe(true);
+
+    expect(builders[0]?.table).toBe("xy_wap_embed_conversation");
+    expect(builders[0]?.whereCalls).toContainEqual(["id", "=", 301]);
+    expect(builders[0]?.whereCalls).toContainEqual(["uid", "=", 9001]);
+    expect(builders[1]?.table).toBe("xy_wap_embed_logical_session");
+    expect(builders[1]?.whereCalls).toContainEqual(["id", "=", 501]);
+    expect(builders[1]?.whereCalls).toContainEqual(["uid", "=", 9001]);
+    expect(builders[1]?.whereCalls).toContainEqual(["conversation_id", "=", 301]);
   });
 
   it("scopes business asset facts to sessions matched by the overview filters", async () => {
@@ -853,6 +1045,17 @@ describe("InsightsRepository", () => {
             snapshot_id: 501,
             title: "催物流",
           },
+          {
+            action_id: 802,
+            action_status: "open",
+            action_type: "follow_up",
+            conversation_id: 301,
+            priority: "medium",
+            resolution_status: "unresolved",
+            session_id: 202,
+            snapshot_id: 502,
+            title: "其它逻辑会话待办",
+          },
         ],
       ],
       ["xy_wap_embed_insight_evidence as evidence", [{ action_id: 801, evidence_message_id: 9001, last_customer_message_at: 1_780_244_000_000, reason: "承诺催办" }]],
@@ -872,8 +1075,9 @@ describe("InsightsRepository", () => {
     };
     const repository = new InsightsRepository(db as never);
 
-    await expect(repository.findDetail({ uid: 9001 }, "201")).resolves.toMatchObject({
-      actionItems: [{ actionItemId: "801", evidenceMessageIds: ["9001"] }],
+    const detail = await repository.findDetail({ uid: 9001 }, "201");
+
+    expect(detail).toMatchObject({
       qaFindings: [{
         evidenceMessageIds: ["9001"],
         passed: false,
@@ -882,6 +1086,13 @@ describe("InsightsRepository", () => {
         ruleName: "回复质量",
       }],
     });
+    expect(detail?.actionItems).toEqual(expect.arrayContaining([
+      expect.objectContaining({ actionItemId: "801", evidenceMessageIds: ["9001"] }),
+    ]));
+
+    const actionQuery = builders.find((builder) => builder.table === "xy_wap_embed_session_action_item as action");
+    expect(actionQuery?.whereCalls).toContainEqual(["action.session_id", "=", 201]);
+    expect(actionQuery?.whereCalls).not.toContainEqual(["action.conversation_id", "=", 301]);
 
     const coreQuery = builders[0];
     expect(coreQuery.joins).not.toContain("xy_wap_embed_session_qa_finding as qa");
@@ -927,6 +1138,81 @@ describe("InsightsRepository", () => {
     ).resolves.toBe(false);
 
     expect(updateExecute).not.toHaveBeenCalled();
+  });
+
+  it("inserts manual action items as session todos without snapshot ownership", async () => {
+    let insertedActionItem: Record<string, unknown> | undefined;
+    const db = {
+      insertInto: vi.fn((table: string) =>
+        createInsertBuilder(async () => ({ insertId: 8101 }), {
+          onValues: (values) => {
+            insertedActionItem = values as Record<string, unknown>;
+          },
+          table,
+        }),
+      ),
+    };
+    const repository = new InsightsRepository(db as never);
+
+    await expect(repository.createActionItem({ uid: 9001 }, {
+      conversationId: "301",
+      createdBySubUserId: "77",
+      dueHint: "今天内",
+      priority: "high",
+      sessionId: "501",
+      title: "回访物流状态",
+    })).resolves.toEqual({ actionItemId: "8101" });
+
+    expect(db.insertInto).toHaveBeenCalledWith("xy_wap_embed_session_action_item");
+    expect(insertedActionItem).toEqual(expect.objectContaining({
+      action_type: "follow_up",
+      conversation_id: 301,
+      created_by_sub_user_id: 77,
+      due_hint: "今天内",
+      priority: "high",
+      session_id: 501,
+      snapshot_id: null,
+      source_type: "manual",
+      status: "open",
+      title: "回访物流状态",
+      uid: 9001,
+      updated_by_sub_user_id: 77,
+    }));
+  });
+
+  it("rejects manual action items with invalid conversation ids before insert", async () => {
+    const db = {
+      insertInto: vi.fn(),
+    };
+    const repository = new InsightsRepository(db as never);
+
+    await expect(repository.createActionItem({ uid: 9001 }, {
+      conversationId: "",
+      priority: "high",
+      title: "回访物流状态",
+    })).rejects.toMatchObject({
+      code: "INVALID_ACTION_ITEM_TARGET",
+    });
+
+    expect(db.insertInto).not.toHaveBeenCalled();
+  });
+
+  it("rejects manual action items with invalid session ids before insert", async () => {
+    const db = {
+      insertInto: vi.fn(),
+    };
+    const repository = new InsightsRepository(db as never);
+
+    await expect(repository.createActionItem({ uid: 9001 }, {
+      conversationId: "301",
+      priority: "high",
+      sessionId: "",
+      title: "回访物流状态",
+    })).rejects.toMatchObject({
+      code: "INVALID_ACTION_ITEM_TARGET",
+    });
+
+    expect(db.insertInto).not.toHaveBeenCalled();
   });
 
   it("returns an existing rescan job and task when the idempotency key already exists", async () => {
@@ -2441,6 +2727,13 @@ describe("MysqlInsightWorkerRepository", () => {
       const insert = insertValues.find((entry) => entry.table === table);
       expect(insert?.values).toEqual(expect.objectContaining({ uid: 9001 }));
     }
+    const actionInsert = insertValues.find((entry) => entry.table === "xy_wap_embed_session_action_item");
+    expect(actionInsert?.values).toEqual(expect.objectContaining({
+      conversation_id: 301,
+      session_id: 501,
+      snapshot_id: 7001,
+      source_type: "ai",
+    }));
     expect(evidenceInserts).toHaveLength(1);
     expect(evidenceInserts[0]?.values).toEqual(expect.arrayContaining([
       expect.objectContaining({ dimension_type: "problem_resolution", source_message_id: 9200 }),

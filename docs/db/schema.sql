@@ -332,7 +332,15 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_session_intent (
 CREATE TABLE IF NOT EXISTS xy_wap_embed_session_action_item (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户UID',
-  snapshot_id BIGINT UNSIGNED NOT NULL COMMENT '洞察快照ID',
+  conversation_id BIGINT UNSIGNED NOT NULL COMMENT '平台会话ID',
+  session_id BIGINT UNSIGNED NOT NULL COMMENT '逻辑会话ID',
+  snapshot_id BIGINT UNSIGNED NULL COMMENT 'AI来源洞察快照ID',
+  source_type VARCHAR(32) NOT NULL DEFAULT 'ai' COMMENT '来源，ai：AI生成，manual：人工创建',
+  created_by_sub_user_id BIGINT UNSIGNED NULL COMMENT '创建子账号ID',
+  updated_by_sub_user_id BIGINT UNSIGNED NULL COMMENT '最后更新子账号ID',
+  completed_by_sub_user_id BIGINT UNSIGNED NULL COMMENT '完成人子账号ID',
+  completed_at DATETIME NULL COMMENT '完成时间',
+  dismissed_at DATETIME NULL COMMENT '忽略时间',
   action_type VARCHAR(64) NOT NULL COMMENT '行动项类型，当前固定follow_up：跟进',
   title VARCHAR(255) NOT NULL COMMENT '行动项标题',
   priority VARCHAR(32) NOT NULL COMMENT '优先级，low：低，medium：中，high：高',
@@ -342,6 +350,8 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_session_action_item (
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
   KEY idx_action_snapshot (snapshot_id),
+  KEY idx_action_uid_conversation_status (uid, conversation_id, status, id),
+  KEY idx_action_uid_session_status (uid, session_id, status),
   KEY idx_action_uid_status_id (uid, status, id),
   KEY idx_action_status_priority (status, priority)
 ) COMMENT='逻辑会话待处理行动项表';

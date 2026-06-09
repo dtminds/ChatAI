@@ -1076,14 +1076,6 @@ export interface XyWapEmbedLogicalSession {
    */
   conversation_id: number;
   /**
-   * 会话创建时客户第三方用户ID
-   */
-  third_external_userid: string;
-  /**
-   * 会话创建时客服第三方用户ID
-   */
-  third_userid: string;
-  /**
    * 创建时间
    */
   create_time: Generated<Date>;
@@ -1143,6 +1135,14 @@ export interface XyWapEmbedLogicalSession {
    * 逻辑会话状态，open：进行中，canceled：洞察关闭暂停，closed_pending_analysis：待最终分析，analyzed：已分析
    */
   status: string;
+  /**
+   * 第三方用户ID
+   */
+  third_external_userid: string;
+  /**
+   * 第三方成员ID
+   */
+  third_userid: string;
   /**
    * 租户ID
    */

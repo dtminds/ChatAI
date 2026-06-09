@@ -419,8 +419,12 @@ function ChatWorkbenchContent({
     });
 
   useEffect(() => {
+    if (bootstrapStatus === "ready") {
+      return;
+    }
+
     void initializeWorkbench();
-  }, [initializeWorkbench]);
+  }, [bootstrapStatus, initializeWorkbench]);
 
   useEffect(
     () => {

@@ -3258,10 +3258,7 @@ export function createWorkbenchStore() {
     async initializeWorkbench() {
       const state = get();
 
-      if (
-        state.bootstrapStatus === "loading" ||
-        (state.bootstrapStatus === "ready" && state.accounts.length > 0)
-      ) {
+      if (state.bootstrapStatus === "loading") {
         return;
       }
 

@@ -153,6 +153,25 @@ describe("ChatWorkbenchPage", () => {
     expect(screen.getByRole("button", { name: "发送消息" })).toBeInTheDocument();
   });
 
+  it("does not bootstrap again when the workbench store is already ready", () => {
+    const baseService = createMockWorkbenchService();
+    const getSeats = vi.fn(baseService.getSeats);
+
+    setWorkbenchService({
+      ...baseService,
+      getSeats,
+    });
+    useWorkbenchStore.setState({
+      accounts: [],
+      activeAccountId: "",
+      bootstrapStatus: "ready",
+    });
+
+    renderChatWorkbenchPage();
+
+    expect(getSeats).not.toHaveBeenCalled();
+  });
+
   it("skips empty message slots when finding the first unread customer message", () => {
     const messages = new Array<Message>(2);
     messages[1] = {

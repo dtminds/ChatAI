@@ -119,6 +119,8 @@ export type CreateLogicalSessionInput = {
   config: InsightWorkerSessionizationConfig;
   conversationId: string;
   startedAt: number;
+  thirdExternalUserId: string;
+  thirdUserId: string;
   uid: number;
 };
 
@@ -1055,6 +1057,8 @@ export class InsightsWorkerService {
           config,
           conversationId: conversation.conversationId,
           startedAt: occurredAt,
+          thirdExternalUserId: input.message.thirdExternalId,
+          thirdUserId: input.message.thirdUserId,
           uid: conversation.uid,
         }),
       };
@@ -1106,6 +1110,8 @@ export class InsightsWorkerService {
         config,
         conversationId: conversation.conversationId,
         startedAt: occurredAt,
+        thirdExternalUserId: input.message.thirdExternalId,
+        thirdUserId: input.message.thirdUserId,
         uid: conversation.uid,
       }),
     };

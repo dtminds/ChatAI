@@ -50,6 +50,8 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_logical_session (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
   conversation_id BIGINT UNSIGNED NOT NULL COMMENT '平台会话ID，关联xy_wap_embed_conversation.id',
+  third_userid VARCHAR(128) NOT NULL COMMENT '第三方成员id',
+  third_external_userid VARCHAR(128) NOT NULL COMMENT '第三方用户id',
   started_at BIGINT UNSIGNED NOT NULL COMMENT '逻辑会话开始时间戳',
   ended_at BIGINT UNSIGNED NULL COMMENT '逻辑会话结束时间戳',
   last_message_at BIGINT UNSIGNED NULL COMMENT '最后一条消息时间戳',
@@ -70,6 +72,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_logical_session (
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
   KEY idx_logical_session_uid_conversation_status (uid, conversation_id, status),
+  KEY idx_logical_session_uid_agent_started (uid, third_userid, started_at),
   KEY idx_logical_session_status_next_close (status, next_close_at),
   KEY idx_logical_session_uid_started (uid, started_at)
 ) COMMENT='会话洞察逻辑会话表';

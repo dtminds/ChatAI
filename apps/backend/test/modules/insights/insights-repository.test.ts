@@ -297,6 +297,8 @@ describe("InsightsRepository", () => {
     expect(builders[0]?.groupByCalls.length).toBeGreaterThan(0);
     expect(builders[0]?.selectRawCalls.join("\n")).toContain("seat.third_avatar");
     expect(builders[0]?.selectRawCalls.join("\n")).toContain("seat.third_user_name");
+    expect(builders[0]?.joins).not.toContain("xy_wap_embed_conversation as conversation");
+    expect(builders[0]?.joins).toContain("xy_wap_embed_user_seat as seat");
     expect(builders[0]?.joins).toContain("xy_wap_embed_session_qa_finding as qa");
     expect(builders[0]?.selectRawCalls.join("\n")).not.toContain("seat.avatar");
     expect(builders[0]?.whereCalls).toContainEqual(["session.uid", "=", 9001]);
@@ -313,14 +315,12 @@ describe("InsightsRepository", () => {
         passed_rules: 1,
         session_id: 501,
         snapshot_id: 701,
+        third_external_userid: "external-1",
+        third_userid: "agent-1",
         total_rules: 2,
       },
     ];
     const rowsByTable = new Map<string, unknown[]>([
-      [
-        "xy_wap_embed_conversation",
-        [{ id: 301, third_external_userid: "external-1", third_userid: "agent-1" }],
-      ],
       [
         "xy_wap_embed_session_problem_resolution",
         [{ problem_summary: "客户反馈物流异常", snapshot_id: 701 }],
@@ -416,6 +416,7 @@ describe("InsightsRepository", () => {
     expect(builders[1]?.limitCalls).toContain(10);
     expect(builders[1]?.joins).not.toContain("xy_wap_embed_insight_evidence as evidence");
     expect(builders[1]?.joins).not.toContain("xy_wap_embed_msg_audit_info as message");
+    expect(builders.every((builder) => builder.table !== "xy_wap_embed_conversation")).toBe(true);
     expect(builders[2]?.table).toBe("xy_wap_embed_session_qa_finding");
     expect(builders[2]?.joins).not.toContain("xy_wap_embed_session_insight_current as current");
     expect(builders[2]?.joins).not.toContain("xy_wap_embed_logical_session as session");
@@ -502,9 +503,12 @@ describe("InsightsRepository", () => {
         [
           {
             agent_message_count: 1,
+            agent_name: null,
+            agent_seat_id: null,
             conversation_id: 301,
             current_snapshot_id: 501,
             customer_message_count: 2,
+            customer_name: null,
             ended_at: null,
             generated_at: 1_780_245_000_000,
             last_message_at: 1_780_244_900_000,
@@ -518,11 +522,16 @@ describe("InsightsRepository", () => {
             status: "ready",
             summary_session_title: "查物流",
             summary_text: "已登记",
+            third_external_userid: "external-1",
+            third_userid: "agent-1",
             unresolved_reason: "待仓库反馈",
           },
           {
+            agent_name: null,
+            agent_seat_id: null,
             conversation_id: 302,
             current_snapshot_id: null,
+            customer_name: null,
             ended_at: null,
             generated_at: null,
             last_message_at: 1_780_245_100_000,
@@ -535,6 +544,8 @@ describe("InsightsRepository", () => {
             status: null,
             summary_session_title: null,
             summary_text: null,
+            third_external_userid: "external-2",
+            third_userid: "agent-2",
             unresolved_reason: null,
           },
         ],
@@ -550,7 +561,22 @@ describe("InsightsRepository", () => {
           { evidence_message_id: 9001, last_customer_message_at: 1_780_244_000_000, snapshot_id: 501 },
         ],
       ],
-      ["xy_wap_embed_conversation", []],
+      ["xy_wap_embed_contact", [
+        {
+          avatar: "https://example.com/customer.png",
+          name: "张三",
+          real_name: "",
+          third_external_userid: "external-1",
+        },
+      ]],
+      ["xy_wap_embed_user_seat", [
+        {
+          id: "seat-1",
+          third_avatar: "https://example.com/agent.png",
+          third_user_name: "客服一号",
+          third_userid: "agent-1",
+        },
+      ]],
       ["xy_wap_embed_session_tag", []],
       ["xy_wap_embed_session_entity", []],
       ["xy_wap_embed_session_intent", []],
@@ -597,6 +623,7 @@ describe("InsightsRepository", () => {
     expect(coreQuery.joins).not.toContain("xy_wap_embed_session_action_item as action");
     expect(coreQuery.joins).not.toContain("xy_wap_embed_insight_evidence as evidence");
     expect(coreQuery.joins).not.toContain("xy_wap_embed_msg_audit_info as message");
+    expect(builders.every((builder) => builder.table !== "xy_wap_embed_conversation")).toBe(true);
   });
 
   it("paginates and filters current sessions in SQL before hydration", async () => {
@@ -803,6 +830,7 @@ describe("InsightsRepository", () => {
             resolution_status: "unresolved",
             session_id: 201,
             snapshot_id: 501,
+            third_external_userid: "external-1",
             title: "催物流",
           },
           {
@@ -1178,6 +1206,8 @@ describe("InsightsRepository", () => {
             status: "ready",
             summary_session_title: "查物流",
             summary_text: "已登记",
+            third_external_userid: "external-1",
+            third_userid: "agent-1",
             unresolved_reason: "待仓库反馈",
           },
         ],
@@ -1213,6 +1243,7 @@ describe("InsightsRepository", () => {
             resolution_status: "unresolved",
             session_id: 201,
             snapshot_id: 501,
+            third_external_userid: "external-1",
             title: "催物流",
           },
           {
@@ -1224,12 +1255,20 @@ describe("InsightsRepository", () => {
             resolution_status: "unresolved",
             session_id: 202,
             snapshot_id: 502,
+            third_external_userid: "external-2",
             title: "其它逻辑会话待办",
           },
         ],
       ],
       ["xy_wap_embed_insight_evidence as evidence", [{ action_id: 801, evidence_message_id: 9001, last_customer_message_at: 1_780_244_000_000, reason: "承诺催办" }]],
-      ["xy_wap_embed_conversation", []],
+      ["xy_wap_embed_contact", [
+        {
+          avatar: "https://example.com/customer.png",
+          name: "张三",
+          real_name: "",
+          third_external_userid: "external-1",
+        },
+      ]],
       ["xy_wap_embed_session_sentiment", []],
       ["xy_wap_embed_session_tag", []],
       ["xy_wap_embed_session_entity", []],
@@ -1257,7 +1296,11 @@ describe("InsightsRepository", () => {
       }],
     });
     expect(detail?.actionItems).toEqual(expect.arrayContaining([
-      expect.objectContaining({ actionItemId: "801", evidenceMessageIds: ["9001"] }),
+      expect.objectContaining({
+        actionItemId: "801",
+        customerName: "张三",
+        evidenceMessageIds: ["9001"],
+      }),
     ]));
 
     const actionQuery = builders.find((builder) => builder.table === "xy_wap_embed_session_action_item as action");
@@ -1269,6 +1312,7 @@ describe("InsightsRepository", () => {
     expect(coreQuery.joins).not.toContain("xy_wap_embed_session_action_item as action");
     expect(coreQuery.joins).not.toContain("xy_wap_embed_contact as contact");
     expect(coreQuery.joins).not.toContain("xy_wap_embed_user_seat as seat");
+    expect(builders.every((builder) => builder.table !== "xy_wap_embed_conversation")).toBe(true);
   });
 
   it("loads analyzing session detail without a current snapshot", async () => {
@@ -1279,9 +1323,12 @@ describe("InsightsRepository", () => {
         [
           {
             agent_message_count: 2,
+            agent_name: null,
+            agent_seat_id: null,
             conversation_id: 301,
             current_snapshot_id: null,
             customer_message_count: 1,
+            customer_name: null,
             ended_at: null,
             generated_at: null,
             last_message_at: 1_780_245_500_000,
@@ -1295,13 +1342,11 @@ describe("InsightsRepository", () => {
             status: null,
             summary_session_title: null,
             summary_text: null,
+            third_external_userid: "external-1",
+            third_userid: "agent-1",
             unresolved_reason: null,
           },
         ],
-      ],
-      [
-        "xy_wap_embed_conversation",
-        [{ id: 301, platform: 5, third_external_userid: "external-1", third_userid: "agent-1" }],
       ],
       [
         "xy_wap_embed_contact",
@@ -1354,6 +1399,7 @@ describe("InsightsRepository", () => {
     });
 
     expect(builders[0]?.table).toBe("xy_wap_embed_logical_session as session");
+    expect(builders.every((builder) => builder.table !== "xy_wap_embed_conversation")).toBe(true);
     expect(builders.some((builder) => builder.table === "xy_wap_embed_insight_evidence")).toBe(false);
     expect(builders.some((builder) => builder.table === "xy_wap_embed_session_qa_finding")).toBe(false);
   });
@@ -2807,6 +2853,8 @@ describe("MysqlInsightWorkerRepository", () => {
       },
       conversationId: "301",
       startedAt: 1_780_244_000_000,
+      thirdExternalUserId: "external-1",
+      thirdUserId: "agent-1",
       uid: 9001,
     });
     await repository.appendSessionMessage({
@@ -2825,6 +2873,8 @@ describe("MysqlInsightWorkerRepository", () => {
     expect(insertValues.find((entry) => entry.table === "xy_wap_embed_logical_session")?.values)
       .toMatchObject({
         next_close_at: 1_780_244_000_000 + 120 * 60_000,
+        third_external_userid: "external-1",
+        third_userid: "agent-1",
       });
     expect(updateValues.find((entry) => entry.table === "xy_wap_embed_logical_session")?.values)
       .toHaveProperty("next_close_at");

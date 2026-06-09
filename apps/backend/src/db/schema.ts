@@ -1076,6 +1076,14 @@ export interface XyWapEmbedLogicalSession {
    */
   conversation_id: number;
   /**
+   * 会话创建时客户第三方用户ID
+   */
+  third_external_userid: string;
+  /**
+   * 会话创建时客服第三方用户ID
+   */
+  third_userid: string;
+  /**
    * 创建时间
    */
   create_time: Generated<Date>;

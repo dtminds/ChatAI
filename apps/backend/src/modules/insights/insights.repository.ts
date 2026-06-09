@@ -98,6 +98,8 @@ type CurrentSessionQueryRow = {
   status: string | null;
   summary_session_title: string | null;
   summary_text: string | null;
+  third_external_userid: string;
+  third_userid: string;
   unresolved_reason: string | null;
 };
 
@@ -113,6 +115,7 @@ type ActionItemQueryRow = {
   resolution_status: string | null;
   session_id: number | string;
   snapshot_id?: number | string | null;
+  third_external_userid: string | null;
   title: string;
   total_count?: number | string;
 };
@@ -124,6 +127,8 @@ type QualityResultQueryRow = {
   passed_rules: number | string;
   session_id: number | string;
   snapshot_id: number | string;
+  third_external_userid: string;
+  third_userid: string;
   total_rules: number | string;
 };
 
@@ -137,6 +142,8 @@ type QualityRuleQueryRow = {
 
 type QualityResultListItemWithSnapshot = InsightQualityResultPage["items"][number] & {
   currentSnapshotId: string;
+  thirdExternalUserId: string;
+  thirdUserId: string;
 };
 
 type CurrentSessionCoreQueryRow = Omit<CurrentSessionQueryRow,
@@ -1464,15 +1471,10 @@ export class InsightsRepository implements InsightsRepositoryPort {
     filters: { from?: string; to?: string } = {},
   ): Promise<InsightQualityAgentStatRow[]> {
     let query = buildAnalyzedCurrentSessionLeanBaseQuery(this.db)
-      .leftJoin("xy_wap_embed_conversation as conversation", (join) =>
-        join
-          .onRef("conversation.id", "=", "session.conversation_id")
-          .onRef("conversation.uid", "=", "session.uid"),
-      )
       .leftJoin("xy_wap_embed_user_seat as seat", (join) =>
         join
-          .onRef("seat.uid", "=", "conversation.uid")
-          .onRef("seat.third_userid", "=", "conversation.third_userid"),
+          .onRef("seat.uid", "=", "session.uid")
+          .onRef("seat.third_userid", "=", "session.third_userid"),
       )
       .leftJoin("xy_wap_embed_session_qa_finding as qa", (join) =>
         join.onRef("qa.snapshot_id", "=", "snapshot.id"),
@@ -1566,7 +1568,12 @@ export class InsightsRepository implements InsightsRepositoryPort {
     ]);
 
     return {
-      items: items.map(({ currentSnapshotId: _currentSnapshotId, ...item }) => item),
+      items: items.map(({
+        currentSnapshotId: _currentSnapshotId,
+        thirdExternalUserId: _thirdExternalUserId,
+        thirdUserId: _thirdUserId,
+        ...item
+      }) => item),
       total,
     };
   }
@@ -1717,6 +1724,8 @@ export class InsightsRepository implements InsightsRepositoryPort {
         "session.id as session_id",
         "session.last_message_at as last_message_at",
         "session.started_at as started_at",
+        "session.third_external_userid as third_external_userid",
+        "session.third_userid as third_userid",
         "snapshot.phase as phase",
         "snapshot.create_time as generated_at",
         "snapshot.status as status",
@@ -1738,6 +1747,8 @@ export class InsightsRepository implements InsightsRepositoryPort {
         "session.id",
         "session.last_message_at",
         "session.started_at",
+        "session.third_external_userid",
+        "session.third_userid",
         "snapshot.phase",
         "snapshot.create_time",
         "snapshot.status",
@@ -2190,6 +2201,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
         "action.conversation_id as conversation_id",
         "action.session_id as session_id",
         "action.snapshot_id as snapshot_id",
+        "session.third_external_userid as third_external_userid",
         sql<number>`count(*) over()`.as("total_count"),
       ])
       .where("action.uid", "=", scope.uid);
@@ -2298,6 +2310,8 @@ export class InsightsRepository implements InsightsRepositoryPort {
         "session.last_message_at as last_message_at",
         "session.message_count as message_count",
         "session.started_at as started_at",
+        "session.third_external_userid as third_external_userid",
+        "session.third_userid as third_userid",
         "snapshot.phase as phase",
         "snapshot.create_time as generated_at",
         "snapshot.status as status",
@@ -2348,7 +2362,14 @@ export class InsightsRepository implements InsightsRepositoryPort {
       actionItems,
     ] = await Promise.all([
       this.listQaFindings(snapshotId),
-      this.listSessionActionItems(scope, snapshotId, current.conversationId, current.sessionId, current.resolutionStatus),
+      this.listSessionActionItems(
+        scope,
+        snapshotId,
+        current.conversationId,
+        current.sessionId,
+        current.resolutionStatus,
+        current.thirdExternalUserId,
+      ),
     ]);
     await this.hydrateActionItemCustomers(scope, actionItems);
 
@@ -2460,6 +2481,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
     conversationId: string,
     sessionId: string,
     resolutionStatus: string | null,
+    thirdExternalUserId: string,
   ) {
     const rows = (await this.db
       .selectFrom("xy_wap_embed_session_action_item as action")
@@ -2480,6 +2502,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
         conversation_id: conversationId,
         resolution_status: resolutionStatus,
         session_id: sessionId,
+        third_external_userid: thirdExternalUserId,
       }));
     const actionItems = mapActionItemRows(rows);
     const snapshotIds = uniquePositiveNumbers(rows.map((row) => Number(row.snapshot_id)));
@@ -3254,42 +3277,26 @@ export class InsightsRepository implements InsightsRepositoryPort {
     scope: InsightsUidScope,
     rows: InsightCurrentSessionRow[],
   ) {
-    const conversationIds = uniquePositiveNumbers(
-      rows.map((row) => Number(row.conversationId)),
-    );
-
-    if (conversationIds.length === 0) {
+    if (rows.length === 0) {
       return;
     }
 
-    const conversations = await this.db
-      .selectFrom("xy_wap_embed_conversation")
-      .select(["id", "platform", "third_external_userid", "third_userid"])
-      .where("uid", "=", scope.uid)
-      .where("id", "in", conversationIds)
-      .execute();
-
     const contacts = await this.listContactProfiles(
       scope.uid,
-      uniqueNonEmpty(conversations.map((row) => row.third_external_userid)),
+      uniqueNonEmpty(rows.map((row) => row.thirdExternalUserId)),
     );
     const seats = await this.listSeatProfiles(
       scope.uid,
-      uniqueNonEmpty(conversations.map((row) => row.third_userid)),
-    );
-    const conversationsById = new Map(
-      conversations.map((row) => [String(row.id), row]),
+      uniqueNonEmpty(rows.map((row) => row.thirdUserId)),
     );
 
     for (const row of rows) {
-      const conversation = conversationsById.get(row.conversationId);
-
-      if (!conversation) {
-        continue;
-      }
-
-      const contact = contacts.get(conversation.third_external_userid);
-      const seat = seats.get(conversation.third_userid);
+      const contact = row.thirdExternalUserId
+        ? contacts.get(row.thirdExternalUserId)
+        : undefined;
+      const seat = row.thirdUserId
+        ? seats.get(row.thirdUserId)
+        : undefined;
 
       row.customerAvatarUrl = contact?.avatarUrl ?? row.customerAvatarUrl;
       row.customerName = contact?.name ?? row.customerName;
@@ -3454,32 +3461,18 @@ export class InsightsRepository implements InsightsRepositoryPort {
     scope: InsightsUidScope,
     rows: Array<InsightActionItemRow | InsightDetailActionItemRow>,
   ) {
-    const conversationIds = uniquePositiveNumbers(
-      rows.map((row) => Number(row.conversationId)),
-    );
-
-    if (conversationIds.length === 0) {
+    if (rows.length === 0) {
       return;
     }
 
-    const conversations = await this.db
-      .selectFrom("xy_wap_embed_conversation")
-      .select(["id", "third_external_userid"])
-      .where("uid", "=", scope.uid)
-      .where("id", "in", conversationIds)
-      .execute();
     const contacts = await this.listContactProfiles(
       scope.uid,
-      uniqueNonEmpty(conversations.map((row) => row.third_external_userid)),
-    );
-    const conversationsById = new Map(
-      conversations.map((row) => [String(row.id), row]),
+      uniqueNonEmpty(rows.map((row) => row.thirdExternalUserId)),
     );
 
     for (const row of rows) {
-      const conversation = conversationsById.get(row.conversationId);
-      const contact = conversation
-        ? contacts.get(conversation.third_external_userid)
+      const contact = row.thirdExternalUserId
+        ? contacts.get(row.thirdExternalUserId)
         : undefined;
 
       row.customerAvatarUrl = contact?.avatarUrl ?? row.customerAvatarUrl;
@@ -3514,42 +3507,24 @@ export class InsightsRepository implements InsightsRepositoryPort {
 
   private async hydrateQualityResultActors(
     scope: InsightsUidScope,
-    rows: InsightQualityResultPage["items"],
+    rows: QualityResultListItemWithSnapshot[],
   ) {
-    const conversationIds = uniquePositiveNumbers(
-      rows.map((row) => Number(row.conversationId)),
-    );
-
-    if (conversationIds.length === 0) {
+    if (rows.length === 0) {
       return;
     }
 
-    const conversations = await this.db
-      .selectFrom("xy_wap_embed_conversation")
-      .select(["id", "third_external_userid", "third_userid"])
-      .where("uid", "=", scope.uid)
-      .where("id", "in", conversationIds)
-      .execute();
     const contacts = await this.listContactProfiles(
       scope.uid,
-      uniqueNonEmpty(conversations.map((row) => row.third_external_userid)),
+      uniqueNonEmpty(rows.map((row) => row.thirdExternalUserId)),
     );
     const seats = await this.listSeatProfiles(
       scope.uid,
-      uniqueNonEmpty(conversations.map((row) => row.third_userid)),
-    );
-    const conversationsById = new Map(
-      conversations.map((row) => [String(row.id), row]),
+      uniqueNonEmpty(rows.map((row) => row.thirdUserId)),
     );
 
     for (const row of rows) {
-      const conversation = conversationsById.get(row.conversationId);
-      const contact = conversation
-        ? contacts.get(conversation.third_external_userid)
-        : undefined;
-      const seat = conversation
-        ? seats.get(conversation.third_userid)
-        : undefined;
+      const contact = contacts.get(row.thirdExternalUserId);
+      const seat = seats.get(row.thirdUserId);
 
       row.customerAvatarUrl = contact?.avatarUrl ?? row.customerAvatarUrl;
       row.customerName = contact?.name ?? row.customerName;
@@ -3708,6 +3683,8 @@ function mapCurrentSessionRows(rows: CurrentSessionQueryRow[]): InsightCurrentSe
         startedAt: parseNumber(row.started_at),
         summarySessionTitle: row.summary_session_title ?? "",
         summaryText: row.summary_text ?? "",
+        thirdExternalUserId: row.third_external_userid,
+        thirdUserId: row.third_userid,
         unresolvedReason: row.unresolved_reason,
       };
 
@@ -3820,6 +3797,7 @@ function mapFollowUpActionItemRows(rows: ActionItemQueryRow[]): InsightActionIte
     resolutionStatus: normalizeResolutionStatus(row.resolution_status),
     sessionId: String(row.session_id),
     status: normalizeActionStatus(row.action_status),
+    thirdExternalUserId: row.third_external_userid ?? undefined,
     title: row.title,
   }));
 }
@@ -3868,6 +3846,8 @@ function mapQualityResultRows(
       rules,
       sessionId,
       summary: "",
+      thirdExternalUserId: row.third_external_userid,
+      thirdUserId: row.third_userid,
       totalRules: parseNumber(row.total_rules),
     };
   });
@@ -3890,6 +3870,7 @@ function mapActionItemRows(rows: ActionItemQueryRow[]): InsightDetailActionItemR
         resolutionStatus: normalizeResolutionStatus(row.resolution_status),
         sessionId: String(row.session_id),
         status: normalizeActionStatus(row.action_status),
+        thirdExternalUserId: row.third_external_userid ?? undefined,
         title: row.title,
       };
 
@@ -4494,6 +4475,8 @@ function buildQualityResultSessionQuery(
       "session.conversation_id as conversation_id",
       "session.id as session_id",
       "snapshot.id as snapshot_id",
+      "session.third_external_userid as third_external_userid",
+      "session.third_userid as third_userid",
       sql<number>`count(distinct qa.id)`.as("total_rules"),
       sql<number>`count(distinct case when qa.passed = 1 then qa.id end)`.as("passed_rules"),
       sql<number>`count(distinct case when qa.passed = 0 then qa.id end)`.as("failed_rules"),
@@ -4504,6 +4487,8 @@ function buildQualityResultSessionQuery(
       "session.conversation_id",
       "session.last_message_at",
       "session.started_at",
+      "session.third_external_userid",
+      "session.third_userid",
       "snapshot.id",
     ]);
 }

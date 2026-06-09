@@ -235,3 +235,33 @@ ALTER TABLE xy_wap_embed_session_action_item
   ADD KEY idx_action_uid_conversation_status (uid, conversation_id, status, id),
   ADD KEY idx_action_uid_session_status (uid, session_id, status);
 ```
+
+- Added customer and agent third-party identity snapshots to `xy_wap_embed_logical_session`. New sessions write these fields at creation time so overview, quality, and follow-up queries can hydrate actors without joining `xy_wap_embed_conversation` only to read identity fields.
+
+Manual migration for existing databases:
+
+```sql
+ALTER TABLE xy_wap_embed_logical_session
+  ADD COLUMN third_userid VARCHAR(128) NULL COMMENT '会话创建时客服第三方用户ID' AFTER conversation_id,
+  ADD COLUMN third_external_userid VARCHAR(128) NULL COMMENT '会话创建时客户第三方用户ID' AFTER third_userid;
+
+UPDATE xy_wap_embed_logical_session AS session
+INNER JOIN xy_wap_embed_conversation AS conversation
+  ON conversation.id = session.conversation_id
+  AND conversation.uid = session.uid
+SET
+  session.third_userid = conversation.third_userid,
+  session.third_external_userid = conversation.third_external_userid
+WHERE session.third_userid IS NULL
+  OR session.third_external_userid IS NULL;
+
+SELECT COUNT(*) AS missing_identity_sessions
+FROM xy_wap_embed_logical_session
+WHERE third_userid IS NULL
+   OR third_external_userid IS NULL;
+
+ALTER TABLE xy_wap_embed_logical_session
+  MODIFY COLUMN third_userid VARCHAR(128) NOT NULL COMMENT '会话创建时客服第三方用户ID',
+  MODIFY COLUMN third_external_userid VARCHAR(128) NOT NULL COMMENT '会话创建时客户第三方用户ID',
+  ADD KEY idx_logical_session_uid_agent_started (uid, third_userid, started_at);
+```

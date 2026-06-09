@@ -790,6 +790,8 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         rule_version: input.config.ruleVersion,
         started_at: input.startedAt,
         status: "open",
+        third_external_userid: input.thirdExternalUserId,
+        third_userid: input.thirdUserId,
         uid: input.uid,
       })
       .executeTakeFirstOrThrow() as InsertResult;

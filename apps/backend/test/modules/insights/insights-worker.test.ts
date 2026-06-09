@@ -269,6 +269,8 @@ describe("InsightsWorkerService", () => {
       expect.objectContaining({
         conversationId: "301",
         startedAt: 1_780_244_000_000,
+        thirdExternalUserId: "external-1",
+        thirdUserId: "user-1",
         uid: 9001,
       }),
     );
@@ -706,6 +708,20 @@ describe("InsightsWorkerService", () => {
       sessionId: "501",
     });
     expect(repository.createLogicalSession).toHaveBeenCalledTimes(2);
+    expect(repository.createLogicalSession).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        thirdExternalUserId: "external-1",
+        thirdUserId: "user-1",
+      }),
+    );
+    expect(repository.createLogicalSession).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        thirdExternalUserId: "external-1",
+        thirdUserId: "user-1",
+      }),
+    );
     expect(listUnassignedPreContextMessages).toHaveBeenCalledTimes(2);
     expect(repository.appendSessionMessage).toHaveBeenNthCalledWith(
       1,
@@ -815,6 +831,8 @@ describe("InsightsWorkerService", () => {
     expect(repository.createLogicalSession).toHaveBeenCalledWith(
       expect.objectContaining({
         startedAt: 1_780_244_060_000,
+        thirdExternalUserId: "external-1",
+        thirdUserId: "user-1",
       }),
     );
   });

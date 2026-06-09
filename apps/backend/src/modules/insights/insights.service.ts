@@ -102,15 +102,19 @@ export type InsightCurrentSessionRow = {
   summarySessionTitle: string;
   summaryText: string;
   tags?: NonNullable<InsightOverviewSessionItem["tags"]>;
+  thirdExternalUserId: string;
+  thirdUserId: string;
   unresolvedReason: string | null;
 };
 
 export type InsightActionItemRow = InsightsFollowUpsResponse["items"][number] & {
   resolutionStatus?: InsightResolutionStatus;
+  thirdExternalUserId?: string;
 };
 
 export type InsightDetailActionItemRow = InsightDetailResponse["actionItems"][number] & {
   resolutionStatus?: InsightResolutionStatus;
+  thirdExternalUserId?: string;
 };
 
 export type InsightDetailRow = {
@@ -678,7 +682,7 @@ export class InsightsService {
     }
 
     return {
-      actionItems: detail.actionItems,
+      actionItems: detail.actionItems.map(stripDetailActionItemInternalFields),
       analysisStatus: detail.current.analysisStatus,
       currentSnapshotId: detail.current.currentSnapshotId,
       entities: detail.entities,
@@ -1393,7 +1397,13 @@ function buildQualityOverview(rows: InsightCurrentSessionRow[]): InsightQualityA
 }
 
 function stripActionItemInternalFields(row: InsightActionItemRow): InsightsFollowUpsResponse["items"][number] {
-  const { resolutionStatus: _resolutionStatus, ...item } = row;
+  const { resolutionStatus: _resolutionStatus, thirdExternalUserId: _thirdExternalUserId, ...item } = row;
+
+  return item;
+}
+
+function stripDetailActionItemInternalFields(row: InsightDetailActionItemRow): InsightDetailResponse["actionItems"][number] {
+  const { resolutionStatus: _resolutionStatus, thirdExternalUserId: _thirdExternalUserId, ...item } = row;
 
   return item;
 }

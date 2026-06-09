@@ -449,9 +449,7 @@ function normalizeAnalysisOutput(value: unknown): InsightAnalysisOutput {
     })),
     entities: readArray(record.entities).map((item) => ({
       confidence: readNumber(item, "confidence"),
-      entityId: readString(item, "entityId") || readString(item, "entityName") || "unknown",
       entityName: readString(item, "entityName") || "未知实体",
-      entityType: readString(item, "entityType") || "custom",
       evidenceMessageIds: readStringArray(item, "evidenceMessageIds"),
       sentiment: readOptionalString(item, "sentiment"),
     })),

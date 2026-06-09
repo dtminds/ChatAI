@@ -85,7 +85,7 @@ ALTER TABLE xy_wap_embed_session_tag
   ADD KEY idx_tag_uid_code_snapshot (uid, tag_code, snapshot_id);
 ALTER TABLE xy_wap_embed_session_entity
   MODIFY COLUMN uid BIGINT UNSIGNED NOT NULL COMMENT '租户UID',
-  ADD KEY idx_session_entity_uid_identity (uid, entity_type, entity_id, snapshot_id);
+  ADD KEY idx_session_entity_uid_id_snapshot (uid, entity_id, snapshot_id);
 ALTER TABLE xy_wap_embed_session_intent
   MODIFY COLUMN uid BIGINT UNSIGNED NOT NULL COMMENT '租户UID',
   ADD KEY idx_session_intent_uid_code_snapshot (uid, intent_code, snapshot_id);
@@ -264,4 +264,52 @@ ALTER TABLE xy_wap_embed_logical_session
   MODIFY COLUMN third_userid VARCHAR(128) NOT NULL COMMENT '会话创建时客服第三方用户ID',
   MODIFY COLUMN third_external_userid VARCHAR(128) NOT NULL COMMENT '会话创建时客户第三方用户ID',
   ADD KEY idx_logical_session_uid_agent_started (uid, third_userid, started_at);
+```
+
+## 2026-06-09
+
+- Updated overview-query indexes for current-snapshot reverse lookups:
+  - Replaced `xy_wap_embed_session_insight_current.idx_current_session_snapshot` with `idx_current_snapshot_session`; the existing unique key on `session_id` already covers session-to-current lookups, while overview entity/intent hotspot queries need the reverse current-snapshot-to-session direction.
+  - Overview session entity filtering uses `xy_wap_embed_session_entity.idx_session_entity_uid_id_snapshot (uid, entity_id, snapshot_id)`, so no additional `entity_name` index is needed.
+  - Simplified insight entity configuration: dictionary uses `entity_code` + `entity_name`, recognition results store `entity_id = xy_wap_embed_insight_entity_dictionary.id` plus redundant `entity_name`; `entity_type` and `canonical_name` are removed.
+  - Kept `xy_wap_embed_insight_intent_config.intent_code` and `xy_wap_embed_insight_label_config.label_code` as the stable semantic codes exposed to the LLM.
+  - Removed redundant result-table codes: intent/tag recognition results now store `intent_id`/`tag_id` pointing to config table `id`, plus `intent_label`/`tag_name` display snapshots; overview filters and result indexes use those IDs.
+
+Manual migration for existing databases:
+
+Before running the `xy_wap_embed_session_entity.entity_id` type change on a database with existing insight data, backfill existing string entity values to `xy_wap_embed_insight_entity_dictionary.id` first. MySQL may coerce non-numeric legacy values such as `sku-1` to `0` when `MODIFY COLUMN entity_id BIGINT UNSIGNED` is applied directly.
+
+```sql
+ALTER TABLE xy_wap_embed_session_insight_current
+  DROP KEY idx_current_session_snapshot,
+  ADD KEY idx_current_snapshot_session (current_snapshot_id, session_id);
+
+ALTER TABLE xy_wap_embed_insight_entity_dictionary
+  DROP KEY uk_entity_dictionary_uid_type_name,
+  DROP KEY idx_entity_dictionary_uid_type,
+  DROP COLUMN entity_type,
+  CHANGE COLUMN canonical_name entity_name VARCHAR(255) NOT NULL COMMENT '实体名称',
+  ADD COLUMN entity_code VARCHAR(128) NOT NULL COMMENT '实体编码' AFTER uid,
+  ADD UNIQUE KEY uk_entity_dictionary_uid_code (uid, entity_code),
+  ADD UNIQUE KEY uk_entity_dictionary_uid_name (uid, entity_name);
+
+ALTER TABLE xy_wap_embed_session_entity
+  DROP KEY idx_session_entity_uid_identity,
+  DROP COLUMN entity_type,
+  MODIFY COLUMN entity_id BIGINT UNSIGNED NOT NULL COMMENT '实体词库配置ID',
+  ADD KEY idx_session_entity_uid_id_snapshot (uid, entity_id, snapshot_id);
+
+ALTER TABLE xy_wap_embed_session_tag
+  DROP KEY idx_tag_uid_code_snapshot,
+  DROP COLUMN tag_code,
+  ADD COLUMN tag_id BIGINT UNSIGNED NOT NULL COMMENT '标签配置ID' AFTER snapshot_id,
+  MODIFY COLUMN tag_name VARCHAR(128) NOT NULL COMMENT '标签名称快照',
+  ADD KEY idx_tag_uid_id_snapshot (uid, tag_id, snapshot_id);
+
+ALTER TABLE xy_wap_embed_session_intent
+  DROP KEY idx_session_intent_uid_code_snapshot,
+  DROP COLUMN intent_code,
+  ADD COLUMN intent_id BIGINT UNSIGNED NOT NULL COMMENT '意图配置ID' AFTER snapshot_id,
+  MODIFY COLUMN intent_label VARCHAR(128) NOT NULL COMMENT '意图名称快照',
+  ADD KEY idx_session_intent_uid_id_snapshot (uid, intent_id, snapshot_id);
 ```

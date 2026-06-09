@@ -53,7 +53,6 @@ export const InsightPrioritySchema = Type.Union([
 export const InsightEntityHotspotSchema = Type.Object({
   entityId: Type.String(),
   entityName: Type.String(),
-  entityType: Type.String(),
   mentionCount: Type.Number(),
   negativeCount: Type.Number(),
   sessionCount: Type.Number(),
@@ -61,7 +60,7 @@ export const InsightEntityHotspotSchema = Type.Object({
 
 export const InsightIntentCountSchema = Type.Object({
   count: Type.Number(),
-  intentCode: Type.String(),
+  intentId: Type.String(),
   intentLabel: Type.String(),
 });
 
@@ -113,10 +112,9 @@ export const InsightOverviewSessionItemSchema = Type.Object({
   entities: Type.Optional(Type.Array(Type.Object({
     entityId: Type.String(),
     entityName: Type.String(),
-    entityType: Type.String(),
   }))),
   intents: Type.Optional(Type.Array(Type.Object({
-    intentCode: Type.String(),
+    intentId: Type.String(),
     intentLabel: Type.String(),
   }))),
   lastMessageAt: Type.Optional(Type.Number()),
@@ -126,7 +124,7 @@ export const InsightOverviewSessionItemSchema = Type.Object({
   startedAt: Type.Number(),
   summarySessionTitle: Type.String(),
   tags: Type.Optional(Type.Array(Type.Object({
-    tagCode: Type.String(),
+    tagId: Type.String(),
     tagName: Type.String(),
   }))),
 });
@@ -167,6 +165,17 @@ export const InsightsOverviewResponseSchema = Type.Object({
   unresolvedSessions: Type.Number(),
 });
 
+export const InsightFilterOptionSchema = Type.Object({
+  id: Type.String(),
+  name: Type.String(),
+}, { additionalProperties: false });
+
+export const InsightFilterOptionsResponseSchema = Type.Object({
+  entities: Type.Array(InsightFilterOptionSchema),
+  intents: Type.Array(InsightFilterOptionSchema),
+  tags: Type.Array(InsightFilterOptionSchema),
+}, { additionalProperties: false });
+
 export type InsightOverviewQuery = {
   from?: string;
   to?: string;
@@ -174,15 +183,15 @@ export type InsightOverviewQuery = {
 
 export type InsightOverviewSessionsQuery = {
   analysisStatus?: Static<typeof InsightAnalysisStatusSchema>;
-  entityName?: string;
+  entityId?: string;
   from?: string;
-  intentCode?: string;
+  intentId?: string;
   keyword?: string;
   page?: number;
   pageSize?: number;
   problemScope?: "all" | "problem" | "unresolved";
   resolutionStatus?: Static<typeof InsightResolutionStatusSchema>;
-  tagCode?: string;
+  tagId?: string;
   to?: string;
 };
 
@@ -221,7 +230,7 @@ export const InsightBusinessTrendPointSchema = Type.Object({
 
 export const InsightBusinessIntentTrendPointSchema = Type.Object({
   date: Type.String(),
-  intentCode: Type.String(),
+  intentId: Type.String(),
   intentName: Type.String(),
   sessionCount: Type.Number(),
 });
@@ -371,7 +380,7 @@ export const InsightEvidenceItemSchema = Type.Object({
 export const InsightTagSchema = Type.Object({
   confidence: Type.Number(),
   evidenceMessageIds: Type.Array(Type.String()),
-  tagCode: Type.String(),
+  tagId: Type.String(),
   tagName: Type.String(),
 });
 
@@ -391,7 +400,6 @@ export const InsightSentimentSchema = Type.Object({
 export const InsightDetailEntitySchema = Type.Object({
   entityId: Type.String(),
   entityName: Type.String(),
-  entityType: Type.String(),
   evidenceMessageIds: Type.Array(Type.String()),
   sentiment: Type.Optional(Type.String()),
 });
@@ -399,7 +407,7 @@ export const InsightDetailEntitySchema = Type.Object({
 export const InsightIntentSchema = Type.Object({
   confidence: Type.Number(),
   evidenceMessageIds: Type.Array(Type.String()),
-  intentCode: Type.String(),
+  intentId: Type.String(),
   intentLabel: Type.String(),
 });
 
@@ -606,8 +614,8 @@ export const InsightQaRuleConfigMutationRequestSchema = Type.Object({
 export const InsightEntityDictionaryItemSchema = Type.Object({
   aliases: Type.Array(Type.String()),
   attributes: Type.Optional(Type.Record(Type.String(), Type.Any())),
-  canonicalName: Type.String(),
-  entityType: Type.String(),
+  entityCode: Type.String(),
+  entityName: Type.String(),
   id: Type.String(),
   includeInAggregation: Type.Boolean(),
   status: InsightConfigStatusSchema,
@@ -616,8 +624,8 @@ export const InsightEntityDictionaryItemSchema = Type.Object({
 export const InsightEntityDictionaryMutationRequestSchema = Type.Object({
   aliases: Type.Array(Type.String()),
   attributes: Type.Optional(Type.Record(Type.String(), Type.Any())),
-  canonicalName: Type.String({ minLength: 1 }),
-  entityType: Type.String({ minLength: 1 }),
+  entityCode: Type.String({ minLength: 1 }),
+  entityName: Type.String({ minLength: 1 }),
   includeInAggregation: Type.Boolean(),
   status: InsightConfigActiveStatusSchema,
 });
@@ -749,6 +757,7 @@ export type InsightQaRuleConfigMutationRequest = Static<
 >;
 export type InsightSettingsResponse = Static<typeof InsightSettingsResponseSchema>;
 export type InsightSettingsSummaryResponse = Static<typeof InsightSettingsSummaryResponseSchema>;
+export type InsightFilterOptionsResponse = Static<typeof InsightFilterOptionsResponseSchema>;
 export type InsightSessionizationSettings = Static<typeof InsightSessionizationSettingsSchema>;
 export type InsightSessionizationSettingsUpdateRequest = Static<
   typeof InsightSessionizationSettingsUpdateRequestSchema

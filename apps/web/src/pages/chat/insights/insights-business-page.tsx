@@ -947,15 +947,15 @@ function buildIntentDistributionTrendChart(
   const topIntents = topTopics
     .filter((topic) => topic.dimension === "intent")
     .slice(0, 5);
-  const topIntentCodes = new Set(topIntents.map((topic) => topic.code));
-  const seriesKeyByIntentCode = new Map(
+  const topIntentIds = new Set(topIntents.map((topic) => topic.code));
+  const seriesKeyByIntentId = new Map(
     topIntents.map((topic, index) => [topic.code, `intent_${index}`]),
   );
-  const hasOther = (business?.intentTrend ?? []).some((point) => !topIntentCodes.has(point.intentCode));
+  const hasOther = (business?.intentTrend ?? []).some((point) => !topIntentIds.has(point.intentId));
   const series = [
     ...topIntents.map((topic, index) => ({
       color: getTopicColor(index),
-      key: seriesKeyByIntentCode.get(topic.code) ?? `intent_${index}`,
+      key: seriesKeyByIntentId.get(topic.code) ?? `intent_${index}`,
       name: topic.name,
     })),
     ...(hasOther ? [{ color: "var(--muted-foreground)", key: "other", name: "其他", opacity: 0.22 }] : []),
@@ -970,8 +970,8 @@ function buildIntentDistributionTrendChart(
   );
 
   for (const point of business.intentTrend) {
-    const key = topIntentCodes.has(point.intentCode)
-      ? seriesKeyByIntentCode.get(point.intentCode) ?? "other"
+    const key = topIntentIds.has(point.intentId)
+      ? seriesKeyByIntentId.get(point.intentId) ?? "other"
       : "other";
     const datePoint = pointsByDate.get(point.date) ?? { counts: {}, date: point.date };
     datePoint.counts[key] = (datePoint.counts[key] ?? 0) + point.sessionCount;
@@ -1024,7 +1024,7 @@ function normalizeKeyword(value: string) {
 
 function dimensionText(topic: BusinessTopic) {
   const text: Record<BusinessTopic["dimension"], string> = {
-    entity: topic.type ? entityTypeText(topic.type) : "实体对象",
+    entity: "实体对象",
     intent: "客户意图",
     asset: topic.type ? assetTypeText(topic.type) : "链接文件",
     tag: "业务标签",
@@ -1041,18 +1041,6 @@ function assetTypeText(value: string) {
   };
 
   return text[value] ?? "链接文件";
-}
-
-function entityTypeText(value: string) {
-  const text: Record<string, string> = {
-    activity: "活动",
-    coupon: "优惠",
-    order: "订单",
-    product: "商品",
-    sku: "商品",
-  };
-
-  return text[value] ?? "实体对象";
 }
 
 function sumTopicMentions(topics: BusinessTopic[]) {

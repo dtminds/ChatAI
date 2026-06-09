@@ -18,6 +18,7 @@ import type {
   InsightEntityDictionaryMutationRequest,
   InsightFeatureConfig,
   InsightFeatureConfigUpdateRequest,
+  InsightFilterOptionsResponse,
   InsightIntentConfig,
   InsightIntentConfigMutationRequest,
   InsightLabelConfig,
@@ -154,31 +155,31 @@ export type InsightsQualityFilters = {
 
 export type InsightsOverviewFilters = {
   analysisStatus?: InsightOverviewSessionsQuery["analysisStatus"];
-  entityName?: string;
+  entityId?: string;
   from?: string;
-  intentCode?: string;
+  intentId?: string;
   keyword?: string;
   page?: number;
   pageSize?: number;
   problemScope?: InsightOverviewSessionsQuery["problemScope"];
   resolutionStatus?: InsightOverviewSessionsQuery["resolutionStatus"];
   sessionIds?: string[];
-  tagCode?: string;
+  tagId?: string;
   to?: string;
 };
 
 export type InsightOverviewSessionFilters = {
   analysisStatus?: InsightOverviewSessionsQuery["analysisStatus"];
-  entityName?: string;
+  entityId?: string;
   from?: string;
-  intentCode?: string;
+  intentId?: string;
   keyword?: string;
   page?: number;
   pageSize?: number;
   problemScope?: InsightOverviewSessionsQuery["problemScope"];
   resolutionStatus?: InsightOverviewSessionsQuery["resolutionStatus"];
   sessionIds?: string[];
-  tagCode?: string;
+  tagId?: string;
   to?: string;
 };
 
@@ -216,7 +217,6 @@ export type InsightOverviewAggregateRow = Omit<
 >;
 
 export type InsightBusinessTopicFactRow = {
-  code: string;
   dimension: InsightsBusinessResponse["tagDistribution"][number]["dimension"];
   mentionCount: number;
   name: string;
@@ -224,6 +224,7 @@ export type InsightBusinessTopicFactRow = {
   sessionId: string;
   snapshotId: string;
   startedAt: number;
+  topicId: string;
   type?: string | null;
 };
 
@@ -316,6 +317,7 @@ export type InsightsRepositoryPort = {
   ): Promise<InsightBusinessTopicFactRow[]>;
   listEntityHotspots?(
     scope: InsightsUidScope,
+    filters?: InsightsOverviewFilters,
   ): Promise<InsightsOverviewResponse["entityHotspots"]>;
   hasActiveRescanTask(scope: InsightsUidScope): Promise<boolean>;
   listRescanTasks(
@@ -334,6 +336,7 @@ export type InsightsRepositoryPort = {
   ): Promise<InsightMessageContextResponse>;
   listIntentDistribution?(
     scope: InsightsUidScope,
+    filters?: InsightsOverviewFilters,
   ): Promise<InsightsOverviewResponse["intentDistribution"]>;
   updateActionStatus(
     scope: InsightsUidScope,
@@ -349,6 +352,7 @@ export type InsightsRepositoryPort = {
     input: Pick<InsightCreateActionItemRequest, "conversationId" | "sessionId">,
   ): Promise<boolean>;
   getSettings(scope: InsightsUidScope): Promise<InsightSettingsResponse>;
+  getFilterOptions(scope: InsightsUidScope): Promise<InsightFilterOptionsResponse>;
   getSettingsSummary(scope: InsightsUidScope): Promise<InsightSettingsSummaryResponse>;
   getPolicySettings(scope: InsightsUidScope): Promise<{
     analysisPolicy: InsightAnalysisPolicy;
@@ -477,8 +481,8 @@ export class InsightsService {
     const [aggregate, previousAggregate, entityHotspots, intentDistribution] = await Promise.all([
       this.repository.getOverviewAggregate(scope, aggregateFilters),
       this.repository.getOverviewAggregate(scope, comparisonFilters),
-      this.repository.listEntityHotspots?.(scope) ?? Promise.resolve([]),
-      this.repository.listIntentDistribution?.(scope) ?? Promise.resolve([]),
+      this.repository.listEntityHotspots?.(scope, aggregateFilters) ?? Promise.resolve([]),
+      this.repository.listIntentDistribution?.(scope, aggregateFilters) ?? Promise.resolve([]),
     ]);
 
     return {
@@ -495,8 +499,9 @@ export class InsightsService {
   ): Promise<InsightOverviewSessionsResponse> {
     const normalizedPage = normalizeOverviewPage(filters.page);
     const normalizedPageSize = normalizeOverviewPageSize(filters.pageSize);
+    const boundedFilters = withDefaultOverviewDateRange(filters);
     const normalizedFilters = {
-      ...filters,
+      ...boundedFilters,
       page: normalizedPage,
       pageSize: normalizedPageSize,
     };
@@ -776,6 +781,10 @@ export class InsightsService {
         insightAvailable: isInsightAvailable(scope),
       },
     };
+  }
+
+  async getFilterOptions(scope: InsightsUidScope): Promise<InsightFilterOptionsResponse> {
+    return this.repository.getFilterOptions(scope);
   }
 
   async getSettingsSummary(
@@ -1351,7 +1360,6 @@ function buildOverviewSessions(rows: InsightCurrentSessionRow[]) {
       customerAvatarUrl: row.customerAvatarUrl ?? undefined,
       customerName: row.customerName,
       endedAt: row.endedAt ?? undefined,
-      assets: row.assets ?? [],
       entities: row.entities ?? [],
       intents: row.intents ?? [],
       lastMessageAt: row.lastMessageAt ?? undefined,
@@ -1410,12 +1418,12 @@ function stripDetailActionItemInternalFields(row: InsightDetailActionItemRow): I
 
 type BusinessTopicAccumulator = {
   actionItemSessions: Set<string>;
-  code: string;
   dimension: InsightsBusinessResponse["tagDistribution"][number]["dimension"];
   mentionCount: number;
   name: string;
   negativeSessions: Set<string>;
   sessions: Set<string>;
+  topicId: string;
   type?: string;
   unresolvedSessions: Set<string>;
 };
@@ -1433,15 +1441,15 @@ function buildBusinessTopicCollections(
       continue;
     }
 
-    const key = `${fact.dimension}:${fact.code}:${fact.type ?? ""}`;
+    const key = `${fact.dimension}:${fact.topicId}:${fact.type ?? ""}`;
     const accumulator = accumulators.get(key) ?? {
       actionItemSessions: new Set<string>(),
-      code: fact.code,
       dimension: fact.dimension,
       mentionCount: 0,
       name: fact.name,
       negativeSessions: new Set<string>(),
       sessions: new Set<string>(),
+      topicId: fact.topicId,
       type: fact.type ?? undefined,
       unresolvedSessions: new Set<string>(),
     };
@@ -1494,7 +1502,7 @@ function mapBusinessTopic(
 
   return {
     actionItemsOpen: topic.actionItemSessions.size,
-    code: topic.code,
+    code: topic.topicId,
     dimension: topic.dimension,
     mentionCount: topic.mentionCount,
     name: topic.name,
@@ -1525,7 +1533,7 @@ function businessTopicFactMatchesFilter(
   fact: InsightBusinessTopicFactRow,
   filters: InsightsBusinessRelatedSessionFilters,
 ) {
-  if (fact.dimension !== filters.dimension || fact.code !== filters.topicCode) {
+  if (fact.dimension !== filters.dimension || fact.topicId !== filters.topicCode) {
     return false;
   }
 
@@ -1629,7 +1637,7 @@ function buildBusinessIntentTrend(facts: InsightBusinessTopicFactRow[]) {
     string,
     {
       date: string;
-      intentCode: string;
+      intentId: string;
       intentName: string;
       sessionIds: Set<string>;
     }
@@ -1641,10 +1649,10 @@ function buildBusinessIntentTrend(facts: InsightBusinessTopicFactRow[]) {
     }
 
     const date = formatDateKey(fact.startedAt);
-    const key = `${date}:${fact.code}`;
+    const key = `${date}:${fact.topicId}`;
     const point = trend.get(key) ?? {
       date,
-      intentCode: fact.code,
+      intentId: fact.topicId,
       intentName: fact.name,
       sessionIds: new Set<string>(),
     };
@@ -1657,11 +1665,11 @@ function buildBusinessIntentTrend(facts: InsightBusinessTopicFactRow[]) {
     .sort((left, right) =>
       left.date.localeCompare(right.date) ||
       left.intentName.localeCompare(right.intentName, "zh-CN") ||
-      left.intentCode.localeCompare(right.intentCode),
+      left.intentId.localeCompare(right.intentId),
     )
     .map((point) => ({
       date: point.date,
-      intentCode: point.intentCode,
+      intentId: point.intentId,
       intentName: point.intentName,
       sessionCount: point.sessionIds.size,
     }));

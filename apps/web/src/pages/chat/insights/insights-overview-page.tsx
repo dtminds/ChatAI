@@ -18,7 +18,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import type {
   InsightOverviewSessionsQuery,
   InsightOverviewSessionsResponse,
-  InsightSettingsResponse,
+  InsightFilterOptionsResponse,
   InsightsOverviewResponse,
 } from "@chatai/contracts";
 import {
@@ -65,7 +65,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import { getInsightOverview, getInsightOverviewSessions, getInsightSettings } from "./api/insights-service";
+import { getInsightFilterOptions, getInsightOverview, getInsightOverviewSessions } from "./api/insights-service";
 import { InsightDateRangeFilter } from "./insight-date-range-filter";
 import { AnalysisStatusBadge, ResolutionBadge, ResolutionDiagnosisHeader } from "./insight-badges";
 import { InsightDetailPanel } from "./insight-detail-panel";
@@ -130,7 +130,7 @@ export function InsightsOverviewPage() {
   const [overview, setOverview] = useState<InsightsOverviewResponse>();
   const [overviewError, setOverviewError] = useState(false);
   const [sessionsPage, setSessionsPage] = useState<InsightOverviewSessionsResponse>();
-  const [settings, setSettings] = useState<InsightSettingsResponse>();
+  const [filterOptionsResponse, setFilterOptionsResponse] = useState<InsightFilterOptionsResponse>();
   const [activeMetric, setActiveMetric] = useState<TrendMetric>("logicalSessions");
   const [analysisStatusFilter, setAnalysisStatusFilter] = useState("all");
   const [entityFilter, setEntityFilter] = useState("all");
@@ -163,15 +163,15 @@ export function InsightsOverviewPage() {
   useEffect(() => {
     let isActive = true;
 
-    void getInsightSettings()
+    void getInsightFilterOptions()
       .then((response) => {
         if (isActive) {
-          setSettings(response);
+          setFilterOptionsResponse(response);
         }
       })
       .catch(() => {
         if (isActive) {
-          setSettings(undefined);
+          setFilterOptionsResponse(undefined);
         }
       });
 
@@ -210,15 +210,15 @@ export function InsightsOverviewPage() {
     setIsSessionsLoading(true);
     void getInsightOverviewSessions({
       analysisStatus: normalizeAnalysisStatusFilter(analysisStatusFilter),
-      entityName: entityFilter === "all" ? undefined : entityFilter,
+      entityId: entityFilter === "all" ? undefined : entityFilter,
       from: toBoundaryDate(from, "start"),
-      intentCode: intentFilter === "all" ? undefined : intentFilter,
+      intentId: intentFilter === "all" ? undefined : intentFilter,
       keyword: debouncedKeyword || undefined,
       page,
       pageSize: overviewPageSize,
       problemScope: normalizeProblemScopeFilter(problemFilter),
       resolutionStatus: normalizeResolutionStatusFilter(resolutionFilter),
-      tagCode: tagFilter === "all" ? undefined : tagFilter,
+      tagId: tagFilter === "all" ? undefined : tagFilter,
       to: toBoundaryDate(to, "end"),
     }).then((response) => {
       if (isActive) {
@@ -251,8 +251,8 @@ export function InsightsOverviewPage() {
   const sessions = sessionsPage?.items ?? [];
 
   const filterOptions = useMemo(
-    () => buildSessionFilterOptions(overview, settings),
-    [overview, settings],
+    () => buildSessionFilterOptions(filterOptionsResponse),
+    [filterOptionsResponse],
   );
 
   return (
@@ -1115,32 +1115,28 @@ function PanelTitle({
 }
 
 function buildSessionFilterOptions(
-  _overview: InsightsOverviewResponse | undefined,
-  settings: InsightSettingsResponse | undefined,
+  filterOptions: InsightFilterOptionsResponse | undefined,
 ): SessionFilterOptions {
   return {
     entities: toFilterOptions(
-      settings?.entityDictionary
-        .filter((entity) => entity.status === 1 && entity.includeInAggregation)
+      filterOptions?.entities
         .map((entity) => ({
-          label: entity.canonicalName,
-          value: entity.canonicalName,
+          label: entity.name,
+          value: entity.id,
         })) ?? [],
     ),
     intents: toFilterOptions(
-      settings?.intentConfigs
-        .filter((intent) => intent.status === 1 && intent.includeInStatistics)
+      filterOptions?.intents
         .map((intent) => ({
-          label: intent.intentName,
-          value: intent.intentCode,
+          label: intent.name,
+          value: intent.id,
         })) ?? [],
     ),
     tags: toFilterOptions(
-      settings?.labelConfigs
-        .filter((label) => label.status === 1 && label.includeInStatistics)
+      filterOptions?.tags
         .map((label) => ({
-          label: label.labelName,
-          value: label.labelCode,
+          label: label.name,
+          value: label.id,
         })) ?? [],
     ),
   };

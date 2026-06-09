@@ -510,17 +510,17 @@ export interface XyWapEmbedInsightEntityDictionary {
    */
   attributes_json: Json | null;
   /**
-   * 实体标准名称
-   */
-  canonical_name: string;
-  /**
    * 创建时间
    */
   create_time: Generated<Date>;
   /**
-   * 实体类型
+   * 实体编码
    */
-  entity_type: string;
+  entity_code: string;
+  /**
+   * 实体名称
+   */
+  entity_name: string;
   /**
    * 主键ID
    */
@@ -1425,17 +1425,13 @@ export interface XyWapEmbedSessionEntity {
    */
   create_time: Generated<Date>;
   /**
-   * 实体稳定ID
+   * 实体词库配置ID
    */
-  entity_id: string;
+  entity_id: number;
   /**
    * 实体展示名称
    */
   entity_name: string;
-  /**
-   * 实体类型
-   */
-  entity_type: string;
   /**
    * 主键ID
    */
@@ -1581,9 +1577,9 @@ export interface XyWapEmbedSessionIntent {
    */
   id: Generated<number>;
   /**
-   * 意图编码
+   * 意图配置ID
    */
-  intent_code: string;
+  intent_id: number;
   /**
    * 意图名称
    */
@@ -1815,9 +1811,9 @@ export interface XyWapEmbedSessionTag {
    */
   snapshot_id: number;
   /**
-   * 标签编码
+   * 标签配置ID
    */
-  tag_code: string;
+  tag_id: number;
   /**
    * 标签名称
    */

@@ -82,9 +82,9 @@ const OverviewSessionsQuerySchema = Type.Object({
     Type.Literal("failed"),
     Type.Literal("stale"),
   ])),
-  entityName: Type.Optional(Type.String()),
+  entityId: Type.Optional(Type.String()),
   from: Type.Optional(DateQuerySchema),
-  intentCode: Type.Optional(Type.String()),
+  intentId: Type.Optional(Type.String()),
   keyword: Type.Optional(Type.String()),
   page: Type.Optional(Type.Number()),
   pageSize: Type.Optional(Type.Number()),
@@ -100,7 +100,7 @@ const OverviewSessionsQuerySchema = Type.Object({
     Type.Literal("no_customer_problem"),
     Type.Literal("unknown"),
   ])),
-  tagCode: Type.Optional(Type.String()),
+  tagId: Type.Optional(Type.String()),
   to: Type.Optional(DateQuerySchema),
 });
 
@@ -219,6 +219,20 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
         await createInsightsService(app).getBusinessRelatedSessions(
           await getUidScope(app, request),
           normalizeBusinessRelatedSessionsQuery(request.query),
+        ),
+      );
+    },
+  );
+
+  app.get(
+    "/api/server/insights/filter-options",
+    {
+      preHandler: app.authenticate,
+    },
+    async (request) => {
+      return apiSuccess(
+        await createInsightsService(app).getFilterOptions(
+          await getUidScope(app, request),
         ),
       );
     },
@@ -903,15 +917,15 @@ function normalizeOverviewQuery(query: OverviewQuery): InsightsOverviewFilters {
 function normalizeOverviewSessionsQuery(query: OverviewSessionsQuery): InsightsOverviewFilters {
   return {
     analysisStatus: query.analysisStatus,
-    entityName: query.entityName,
+    entityId: query.entityId,
     from: query.from,
-    intentCode: query.intentCode,
+    intentId: query.intentId,
     keyword: query.keyword,
     page: normalizePositiveQueryNumber(query.page),
     pageSize: normalizePositiveQueryNumber(query.pageSize),
     problemScope: query.problemScope,
     resolutionStatus: query.resolutionStatus,
-    tagCode: query.tagCode,
+    tagId: query.tagId,
     to: query.to,
   };
 }

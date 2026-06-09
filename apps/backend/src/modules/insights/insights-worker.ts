@@ -197,9 +197,8 @@ export type InsightAnalysisOutput = {
   }>;
   entities: Array<{
     confidence: number;
-    entityId: string;
+    entityId?: string;
     entityName: string;
-    entityType: string;
     evidenceMessageIds: string[];
     sentiment?: string;
   }>;
@@ -212,7 +211,8 @@ export type InsightAnalysisOutput = {
   intents: Array<{
     confidence: number;
     evidenceMessageIds: string[];
-    intentCode: string;
+    intentCode?: string;
+    intentId?: string;
     intentLabel: string;
   }>;
   problemResolution: {
@@ -246,7 +246,8 @@ export type InsightAnalysisOutput = {
   tags: Array<{
     confidence: number;
     evidenceMessageIds: string[];
-    tagCode: string;
+    tagCode?: string;
+    tagId?: string;
     tagName: string;
   }>;
 };
@@ -1664,54 +1665,78 @@ function normalizeEvidenceIds(output: InsightAnalysisOutput, validIds: Set<strin
 function filterConfiguredAnalysisOutput(
   output: InsightAnalysisOutput,
   context: InsightPromptContext,
-) {
+): { output: InsightAnalysisOutput; validationWarnings: string[] } {
   const validationWarnings: string[] = [];
-  const intentConfigsByCode = new Map(
-    context.intentConfigs.map((item) => [item.intentCode, item]),
-  );
-  const labelCodes = new Set(context.labelConfigs.map((item) => item.labelCode));
+  const configuredIntents = context.intentConfigs.map((item) => ({
+    aliases: new Set([item.intentCode, item.intentName, ...item.aliases].map(normalizeMatchText)),
+    intentCode: item.intentCode,
+    intentId: item.id,
+    intentName: item.intentName,
+  }));
+  const configuredLabels = context.labelConfigs.map((item) => ({
+    labelCode: item.labelCode,
+    labelId: item.id,
+    labelName: item.labelName,
+    names: new Set([item.labelCode, item.labelName, ...item.positiveExamples].map(normalizeMatchText)),
+  }));
   const qaRuleConfigsByCode = new Map(
     context.qaRuleConfigs.map((item) => [item.ruleCode, item]),
   );
   const configuredEntities = context.entityDictionary.map((item) => ({
-    aliases: new Set([item.canonicalName, ...item.aliases].map(normalizeMatchText)),
-    canonicalName: item.canonicalName,
-    entityType: item.entityType,
+    aliases: new Set([item.entityName, ...item.aliases].map(normalizeMatchText)),
+    entityId: item.id,
+    entityName: item.entityName,
   }));
-  const entities = output.entities.filter((item) => {
-    const matched = configuredEntities.some((entity) => {
-      const entityId = normalizeMatchText(item.entityId);
+  const entities = output.entities.flatMap((item) => {
+    const matched = configuredEntities.find((entity) => {
       const entityName = normalizeMatchText(item.entityName);
 
-      return entity.entityType === item.entityType
-        && (entity.aliases.has(entityId) || entity.aliases.has(entityName));
+      return entity.aliases.has(entityName);
     });
 
     if (!matched) {
-      validationWarnings.push(`entity ${item.entityId} is not configured`);
+      validationWarnings.push(`entity ${item.entityName} is not configured`);
     }
 
-    return matched;
+    return matched
+      ? [{
+        ...item,
+        entityId: String(matched.entityId),
+        entityName: matched.entityName,
+      }]
+      : [];
   });
-  const tags = output.tags.filter((item) => {
-    if (labelCodes.has(item.tagCode)) {
-      return true;
+  const tags = output.tags.flatMap((item) => {
+    const tagCode = normalizeMatchText(item.tagCode ?? item.tagName);
+    const matched = configuredLabels.find((label) => label.names.has(tagCode));
+
+    if (!matched) {
+      validationWarnings.push(`tag ${item.tagCode ?? item.tagName} is not configured`);
     }
 
-    validationWarnings.push(`tag ${item.tagCode} is not configured`);
-    return false;
+    return matched
+      ? [{
+        ...item,
+        tagCode: matched.labelCode,
+        tagId: String(matched.labelId),
+        tagName: matched.labelName,
+      }]
+      : [];
   });
   const intents = output.intents.flatMap((item) => {
-    const config = intentConfigsByCode.get(item.intentCode);
+    const intentCode = normalizeMatchText(item.intentCode ?? item.intentLabel);
+    const config = configuredIntents.find((intent) => intent.aliases.has(intentCode));
 
     if (config) {
       return [{
         ...item,
+        intentCode: config.intentCode,
+        intentId: String(config.intentId),
         intentLabel: config.intentName,
       }];
     }
 
-    validationWarnings.push(`intent ${item.intentCode} is not configured`);
+    validationWarnings.push(`intent ${item.intentCode ?? item.intentLabel} is not configured`);
     return [];
   });
   const qaFindingsByRuleCode = new Map<string, InsightAnalysisOutput["qaFindings"][number]>();

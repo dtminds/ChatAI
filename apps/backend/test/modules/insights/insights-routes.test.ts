@@ -28,7 +28,12 @@ describe("insights routes", () => {
     const overviewSessions = await app.inject({
       headers: { authorization },
       method: "GET",
-      url: "/api/server/insights/overview/sessions?page=2&pageSize=1&keyword=%E7%89%A9%E6%B5%81&resolutionStatus=unresolved&analysisStatus=analyzing&problemScope=unresolved&tagCode=logistics_issue&entityName=%E7%99%BD%E8%89%B2%E7%BE%BD%E7%BB%92%E6%9C%8D&intentCode=logistics_delay",
+      url: "/api/server/insights/overview/sessions?page=2&pageSize=1&keyword=%E7%89%A9%E6%B5%81&resolutionStatus=unresolved&analysisStatus=analyzing&problemScope=unresolved&tagId=21&entityId=41&intentId=31",
+    });
+    const filterOptions = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/insights/filter-options",
     });
     const quality = await app.inject({
       headers: { authorization },
@@ -43,7 +48,7 @@ describe("insights routes", () => {
     const businessRelatedSessions = await app.inject({
       headers: { authorization },
       method: "GET",
-      url: "/api/server/insights/business/related-sessions?dimension=intent&topicCode=logistics_delay&page=1&pageSize=20",
+      url: "/api/server/insights/business/related-sessions?dimension=intent&topicCode=31&page=1&pageSize=20",
     });
     const followUps = await app.inject({
       headers: { authorization },
@@ -145,6 +150,21 @@ describe("insights routes", () => {
       },
       success: true,
     });
+    expect(filterOptions.statusCode).toBe(200);
+    expect(filterOptions.json()).toEqual({
+      data: {
+        entities: [
+          { id: "41", name: "白色羽绒服" },
+        ],
+        intents: [
+          { id: "31", name: "物流异常" },
+        ],
+        tags: [
+          { id: "21", name: "价格敏感" },
+        ],
+      },
+      success: true,
+    });
     expect(quality.statusCode).toBe(200);
     expect(
       db.selectBuilders.some((builder) =>
@@ -173,13 +193,13 @@ describe("insights routes", () => {
     expect(business.json().data).toMatchObject({
       entityHotspots: [
         expect.objectContaining({
-          code: "sku-1",
+          code: "41",
           name: "白色羽绒服",
         }),
       ],
       tagDistribution: [
         expect.objectContaining({
-          code: "logistics_issue",
+          code: "21",
           name: "物流异常",
         }),
       ],
@@ -231,7 +251,7 @@ describe("insights routes", () => {
     expect(detail.json().data.tags).toEqual([
       expect.objectContaining({
         evidenceMessageIds: ["9002"],
-        tagCode: "logistics_issue",
+        tagId: "21",
       }),
     ]);
     expect(detail.json().data.sentiment).toEqual([
@@ -242,13 +262,13 @@ describe("insights routes", () => {
     ]);
     expect(detail.json().data.entities).toEqual([
       expect.objectContaining({
-        entityName: "白色羽绒服",
+        entityId: "41",
         evidenceMessageIds: ["9002"],
       }),
     ]);
     expect(detail.json().data.intents).toEqual([
       expect.objectContaining({
-        intentCode: "logistics_delay",
+        intentId: "31",
         evidenceMessageIds: ["9002"],
       }),
     ]);
@@ -941,7 +961,7 @@ function createInsightsDbMock(options: {
           {
             description: null,
             status: 1,
-            id: 1,
+            id: 21,
             include_in_statistics: 1,
             label_code: "price_sensitive",
             label_name: "价格敏感",
@@ -957,7 +977,7 @@ function createInsightsDbMock(options: {
             aliases_json: JSON.stringify(["查快递"]),
             description: "客户咨询发货、快递或物流异常",
             status: 1,
-            id: 1,
+            id: 31,
             include_in_statistics: 1,
             intent_code: "logistics_delay",
             intent_name: "物流异常",
@@ -990,10 +1010,10 @@ function createInsightsDbMock(options: {
           {
             aliases_json: JSON.stringify(["白鸭绒外套"]),
             attributes_json: null,
-            canonical_name: "白色羽绒服",
+            entity_code: "white-coat",
+            entity_name: "白色羽绒服",
             status: 1,
-            entity_type: "product",
-            id: 1,
+            id: 41,
             include_in_aggregation: 1,
           },
         ]);
@@ -1353,7 +1373,7 @@ function createInsightsDbMock(options: {
             confidence: "0.9100",
             id: 1001,
             snapshot_id: 7001,
-            tag_code: "logistics_issue",
+            tag_id: 21,
             tag_name: "物流异常",
             uid: 9001,
           },
@@ -1363,12 +1383,12 @@ function createInsightsDbMock(options: {
       if (table === "xy_wap_embed_session_tag as tag") {
         return createBuilder([
           {
-            code: "logistics_issue",
             mention_count: 1,
             name: "物流异常",
             session_id: 501,
             snapshot_id: 7001,
             started_at: 1_780_243_200_000,
+            topic_id: 21,
             uid: 9001,
           },
         ]);
@@ -1377,9 +1397,8 @@ function createInsightsDbMock(options: {
       if (table === "xy_wap_embed_session_entity") {
         return createBuilder([
           {
-            entity_id: "sku-1",
+            entity_id: 41,
             entity_name: "白色羽绒服",
-            entity_type: "product",
             id: 1201,
             sentiment: "negative",
             snapshot_id: 7001,
@@ -1391,10 +1410,8 @@ function createInsightsDbMock(options: {
       if (table === "xy_wap_embed_session_entity as entity") {
         return createBuilder([
           {
-            code: "sku-1",
-            entity_id: "sku-1",
+            entity_id: 41,
             entity_name: "白色羽绒服",
-            entity_type: "product",
             mention_count: 2,
             name: "白色羽绒服",
             negative_count: 1,
@@ -1404,6 +1421,7 @@ function createInsightsDbMock(options: {
             session_count: 1,
             snapshot_id: 7001,
             started_at: 1_780_243_200_000,
+            topic_id: 41,
             type: "product",
             uid: 9001,
           },
@@ -1415,7 +1433,7 @@ function createInsightsDbMock(options: {
           {
             confidence: "0.8400",
             id: 1301,
-            intent_code: "logistics_delay",
+            intent_id: 31,
             intent_label: "物流异常",
             snapshot_id: 7001,
             uid: 9001,
@@ -1426,15 +1444,15 @@ function createInsightsDbMock(options: {
       if (table === "xy_wap_embed_session_intent as intent") {
         return createBuilder([
           {
-            code: "logistics_delay",
             count: 1,
-            intent_code: "logistics_delay",
+            intent_id: 31,
             intent_label: "物流异常",
             mention_count: 1,
             name: "物流异常",
             session_id: 501,
             snapshot_id: 7001,
             started_at: 1_780_243_200_000,
+            topic_id: 31,
             uid: 9001,
           },
         ]);

@@ -5,6 +5,7 @@ import {
   InsightAnalysisPolicyUpdateRequestSchema,
   InsightEntityDictionaryMutationRequestSchema,
   InsightDetailResponseSchema,
+  InsightFilterOptionsResponseSchema,
   InsightIntentConfigMutationRequestSchema,
   InsightLabelConfigMutationRequestSchema,
   InsightOverviewSessionsResponseSchema,
@@ -36,7 +37,6 @@ describe("insights DTOs", () => {
           {
             entityId: "entity-1",
             entityName: "白色羽绒服",
-            entityType: "product",
             mentionCount: 12,
             negativeCount: 2,
             sessionCount: 8,
@@ -45,7 +45,7 @@ describe("insights DTOs", () => {
         intentDistribution: [
           {
             count: 10,
-            intentCode: "after_sale.refund",
+            intentId: "31",
             intentLabel: "退款",
           },
         ],
@@ -188,7 +188,7 @@ describe("insights DTOs", () => {
         intentTrend: [
           {
             date: "2026-06-01",
-            intentCode: "after_sale.refund",
+            intentId: "31",
             intentName: "退款",
             sessionCount: 4,
           },
@@ -266,8 +266,16 @@ describe("insights DTOs", () => {
             passed: false,
             passedRules: 2,
             rules: [
-              { passed: false, ruleCode: "reply_quality", ruleName: "回复质量" },
-              { passed: true, ruleCode: "clear_next_step", ruleName: "明确下一步" },
+              {
+                passed: false,
+                ruleCode: "reply_quality",
+                ruleName: "回复质量",
+              },
+              {
+                passed: true,
+                ruleCode: "clear_next_step",
+                ruleName: "明确下一步",
+              },
               { passed: true, ruleCode: "tone", ruleName: "服务语气" },
             ],
             sessionId: "session-1",
@@ -517,8 +525,8 @@ describe("insights DTOs", () => {
         entityDictionary: [
           {
             aliases: ["白鸭绒外套"],
-            canonicalName: "白色羽绒服",
-            entityType: "product",
+            entityCode: "white-coat",
+            entityName: "白色羽绒服",
             id: "1",
             includeInAggregation: true,
             status: 1,
@@ -591,6 +599,31 @@ describe("insights DTOs", () => {
       Value.Check(InsightsRescanRequestSchema, {
         analysisScope: "sentiment",
         from: "2026-06-01T00:00:00.000Z",
+      }),
+    ).toBe(false);
+  });
+
+  it("accepts compact insight filter options", () => {
+    expect(
+      Value.Check(InsightFilterOptionsResponseSchema, {
+        entities: [{ id: "41", name: "白色羽绒服" }],
+        intents: [{ id: "1", name: "产品咨询" }],
+        tags: [{ id: "11", name: "高意向" }],
+      }),
+    ).toBe(true);
+
+    expect(
+      Value.Check(InsightFilterOptionsResponseSchema, {
+        intents: [
+          {
+            code: "product_consult",
+            description: "不应该返回配置详情",
+            id: "1",
+            name: "产品咨询",
+          },
+        ],
+        entities: [],
+        tags: [],
       }),
     ).toBe(false);
   });
@@ -731,8 +764,8 @@ describe("insights DTOs", () => {
       Value.Check(InsightEntityDictionaryMutationRequestSchema, {
         aliases: ["直播间羽绒服"],
         attributes: { brand: "A" },
-        canonicalName: "白色羽绒服",
-        entityType: "product",
+        entityCode: "white-coat",
+        entityName: "白色羽绒服",
         includeInAggregation: true,
         status: 1,
       }),

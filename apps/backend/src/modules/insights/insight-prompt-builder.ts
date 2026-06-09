@@ -2,6 +2,7 @@ import type { AiMessageInput } from "./insights.types.js";
 
 export type InsightPromptLabelConfig = {
   description?: string;
+  id: string;
   includeInStatistics: boolean;
   labelCode: string;
   labelName: string;
@@ -12,6 +13,7 @@ export type InsightPromptLabelConfig = {
 export type InsightPromptIntentConfig = {
   aliases: string[];
   description?: string;
+  id: string;
   includeInStatistics: boolean;
   intentCode: string;
   intentName: string;
@@ -34,8 +36,9 @@ export type InsightPromptQaRuleConfig = {
 export type InsightPromptEntityDictionaryItem = {
   aliases: string[];
   attributes?: Record<string, unknown>;
-  canonicalName: string;
-  entityType: string;
+  entityCode: string;
+  entityName: string;
+  id: string;
   includeInAggregation: boolean;
 };
 
@@ -479,9 +482,7 @@ function buildClassificationOutputContract(context: InsightPromptContext) {
     entities: context.entityDictionary.length > 0 ? [
       {
         confidence: "<number 0-1>",
-        entityId: "<来自 tenantContext.entityDictionary.canonicalName 或 aliases>",
-        entityName: "<来自 tenantContext.entityDictionary.canonicalName>",
-        entityType: "<来自 tenantContext.entityDictionary.entityType>",
+        entityName: "<来自 tenantContext.entityDictionary.entityName>",
         evidenceMessageIds: ["<sourceMessageId>"],
         sentiment: "<positive|neutral|negative|mixed> optional",
       },
@@ -525,12 +526,13 @@ function normalizeContext(context: InsightPromptContext) {
       .sort((left, right) => Number(right.includeInAggregation) - Number(left.includeInAggregation))
       .slice(0, 20)
       .map((item) => ({
-      aliases: item.aliases.slice(0, 8).map((alias) => truncatePromptText(alias, PROMPT_LIMITS.name)),
-      attributes: item.attributes,
-      canonicalName: truncatePromptText(item.canonicalName, PROMPT_LIMITS.name),
-      entityType: truncatePromptText(item.entityType, PROMPT_LIMITS.name),
-      includeInAggregation: item.includeInAggregation,
-    })),
+        aliases: item.aliases.slice(0, 8).map((alias) => truncatePromptText(alias, PROMPT_LIMITS.name)),
+        attributes: item.attributes,
+        entityCode: truncatePromptText(item.entityCode, PROMPT_LIMITS.name),
+        entityName: truncatePromptText(item.entityName, PROMPT_LIMITS.name),
+        id: item.id,
+        includeInAggregation: item.includeInAggregation,
+      })),
     intentConfigs: context.intentConfigs
       .slice()
       .sort((left, right) => left.weight - right.weight)
@@ -538,6 +540,7 @@ function normalizeContext(context: InsightPromptContext) {
       .map((item) => ({
         aliases: item.aliases.slice(0, 8).map((alias) => truncatePromptText(alias, PROMPT_LIMITS.name)),
         description: truncatePromptText(item.description, PROMPT_LIMITS.description),
+        id: item.id,
         includeInStatistics: item.includeInStatistics,
         intentCode: truncatePromptText(item.intentCode, PROMPT_LIMITS.code),
         intentName: truncatePromptText(item.intentName, PROMPT_LIMITS.name),
@@ -549,13 +552,14 @@ function normalizeContext(context: InsightPromptContext) {
       .sort((left, right) => Number(right.includeInStatistics) - Number(left.includeInStatistics))
       .slice(0, 20)
       .map((item) => ({
-      description: truncatePromptText(item.description, PROMPT_LIMITS.description),
-      includeInStatistics: item.includeInStatistics,
-      labelCode: truncatePromptText(item.labelCode, PROMPT_LIMITS.code),
-      labelName: truncatePromptText(item.labelName, PROMPT_LIMITS.name),
-      negativeExamples: item.negativeExamples.slice(0, 5).map((example) => truncatePromptText(example, PROMPT_LIMITS.example)),
-      positiveExamples: item.positiveExamples.slice(0, 5).map((example) => truncatePromptText(example, PROMPT_LIMITS.example)),
-    })),
+        description: truncatePromptText(item.description, PROMPT_LIMITS.description),
+        id: item.id,
+        includeInStatistics: item.includeInStatistics,
+        labelCode: truncatePromptText(item.labelCode, PROMPT_LIMITS.code),
+        labelName: truncatePromptText(item.labelName, PROMPT_LIMITS.name),
+        negativeExamples: item.negativeExamples.slice(0, 5).map((example) => truncatePromptText(example, PROMPT_LIMITS.example)),
+        positiveExamples: item.positiveExamples.slice(0, 5).map((example) => truncatePromptText(example, PROMPT_LIMITS.example)),
+      })),
     qaRuleConfigs: context.qaRuleConfigs
       .slice()
       .sort((left, right) => compareSeverity(left.severity, right.severity))

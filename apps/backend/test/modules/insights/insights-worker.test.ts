@@ -21,7 +21,10 @@ function createRepository(
 
   return {
     appendSessionMessage: vi.fn(async () => undefined),
-    archiveTerminalJobs: vi.fn(async () => ({ archivedJobs: 0, deletedJobs: 0 })),
+    archiveTerminalJobs: vi.fn(async () => ({
+      archivedJobs: 0,
+      deletedJobs: 0,
+    })),
     closeSession: vi.fn(async () => undefined),
     closeDisabledOpenSessions: vi.fn(async () => 0),
     createAnalyzeJob: vi.fn(async () => "job-1"),
@@ -44,7 +47,7 @@ function createRepository(
             startedAt: 1_780_244_000_000,
             status: "open",
           }
-        : undefined
+        : undefined,
     ),
     findSessionBySourceMessage: vi.fn(async () => undefined),
     listSessionsBySourceMessages: vi.fn(async () => []),
@@ -136,7 +139,10 @@ function createRepository(
     reopenSession: vi.fn(async () => true),
     rescheduleUidMaintenanceJob: vi.fn(async () => undefined),
     saveAnalysisResult: vi.fn(async () => "7001"),
-    seedUidMaintenanceJobs: vi.fn(async () => ({ insertedJobs: 0, scannedUids: 0 })),
+    seedUidMaintenanceJobs: vi.fn(async () => ({
+      insertedJobs: 0,
+      scannedUids: 0,
+    })),
     shouldCreateLiveAnalyzeJob: vi.fn(async () => true),
     startAnalysisRun: vi.fn(async () => "run-1"),
     updateRescanTaskAfterAnalysis: vi.fn(async () => undefined),
@@ -302,7 +308,10 @@ describe("InsightsWorkerService", () => {
       error: vi.fn(),
       info: vi.fn(),
     };
-    const service = new InsightsWorkerService(repository, { batchSize: 50, logger });
+    const service = new InsightsWorkerService(repository, {
+      batchSize: 50,
+      logger,
+    });
 
     await service.runOnce();
 
@@ -338,7 +347,10 @@ describe("InsightsWorkerService", () => {
       error: vi.fn(),
       info: vi.fn(),
     };
-    const service = new InsightsWorkerService(repository, { batchSize: 50, logger });
+    const service = new InsightsWorkerService(repository, {
+      batchSize: 50,
+      logger,
+    });
 
     await service.runOnce();
 
@@ -546,7 +558,9 @@ describe("InsightsWorkerService", () => {
     });
     expect(repository.createAnalyzeJob).toHaveBeenCalled();
     expect(repository.closeSession).toHaveBeenCalled();
-    expect(vi.mocked(repository.createAnalyzeJob).mock.invocationCallOrder[0]).toBeLessThan(
+    expect(
+      vi.mocked(repository.createAnalyzeJob).mock.invocationCallOrder[0],
+    ).toBeLessThan(
       vi.mocked(repository.closeSession).mock.invocationCallOrder[0],
     );
     expect(repository.closeSession).toHaveBeenCalledWith({
@@ -630,35 +644,38 @@ describe("InsightsWorkerService", () => {
 
   it("backfills only new unassigned context after an idle session closes in the same conversation", async () => {
     const sessionIds = ["501", "502"];
-    const listUnassignedPreContextMessages = vi.fn(async (input: { occurredBefore: number }) =>
-      input.occurredBefore === 1_780_244_000_000
-        ? [
-            {
-              chatType: 1,
-              content: JSON.stringify({ content: "首轮活动提醒" }),
-              conversationId: "301",
-              fromType: 1,
-              id: "9201",
-              msgtime: 1_780_243_900_000,
-              msgtype: "text",
-              thirdUserId: "user-1",
-            },
-          ]
-        : [
-            {
-              chatType: 1,
-              content: JSON.stringify({ content: "第二轮活动提醒" }),
-              conversationId: "301",
-              fromType: 1,
-              id: "9401",
-              msgtime: 1_780_251_150_000,
-              msgtype: "text",
-              thirdUserId: "user-1",
-            },
-          ]
+    const listUnassignedPreContextMessages = vi.fn(
+      async (input: { occurredBefore: number }) =>
+        input.occurredBefore === 1_780_244_000_000
+          ? [
+              {
+                chatType: 1,
+                content: JSON.stringify({ content: "首轮活动提醒" }),
+                conversationId: "301",
+                fromType: 1,
+                id: "9201",
+                msgtime: 1_780_243_900_000,
+                msgtype: "text",
+                thirdUserId: "user-1",
+              },
+            ]
+          : [
+              {
+                chatType: 1,
+                content: JSON.stringify({ content: "第二轮活动提醒" }),
+                conversationId: "301",
+                fromType: 1,
+                id: "9401",
+                msgtime: 1_780_251_150_000,
+                msgtype: "text",
+                thirdUserId: "user-1",
+              },
+            ],
     );
     const repository = createRepository({
-      createLogicalSession: vi.fn(async () => sessionIds.shift() ?? "unexpected-session"),
+      createLogicalSession: vi.fn(
+        async () => sessionIds.shift() ?? "unexpected-session",
+      ),
       findReusableSession: vi
         .fn()
         .mockResolvedValueOnce(undefined)
@@ -855,12 +872,14 @@ describe("InsightsWorkerService", () => {
 
   it("does not re-slice an already assigned source message during incremental sync", async () => {
     const repository = createRepository({
-      listSessionsBySourceMessages: vi.fn(async () => [{
-        sessionId: "501",
-        sourceMessageId: "9001",
-        status: "open",
-        uid: 9001,
-      }]),
+      listSessionsBySourceMessages: vi.fn(async () => [
+        {
+          sessionId: "501",
+          sourceMessageId: "9001",
+          status: "open",
+          uid: 9001,
+        },
+      ]),
       listIncrementalMessages: vi.fn(async () => [
         {
           chatType: 1,
@@ -898,7 +917,10 @@ describe("InsightsWorkerService", () => {
   it("does not scan incremental messages when no tenant has enabled insights", async () => {
     const repository = createRepository({
       claimNextUidMaintenanceJob: vi.fn(async () => undefined),
-      seedUidMaintenanceJobs: vi.fn(async () => ({ insertedJobs: 0, scannedUids: 0 })),
+      seedUidMaintenanceJobs: vi.fn(async () => ({
+        insertedJobs: 0,
+        scannedUids: 0,
+      })),
     });
     const service = new InsightsWorkerService(repository);
 
@@ -937,7 +959,9 @@ describe("InsightsWorkerService", () => {
     expect(repository.listIncrementalMessages).not.toHaveBeenCalled();
     expect(repository.appendSessionMessage).not.toHaveBeenCalled();
     expect(repository.updateCursor).not.toHaveBeenCalled();
-    expect(repository.deleteUidMaintenanceJob).toHaveBeenCalledWith("maintain-9001");
+    expect(repository.deleteUidMaintenanceJob).toHaveBeenCalledWith(
+      "maintain-9001",
+    );
     expect(repository.rescheduleUidMaintenanceJob).not.toHaveBeenCalled();
   });
 
@@ -1157,7 +1181,8 @@ describe("InsightsWorkerService", () => {
         jobId: "cleanup-job-1",
         uid: 9001,
       })),
-      closeDisabledOpenSessions: vi.fn()
+      closeDisabledOpenSessions: vi
+        .fn()
         .mockResolvedValueOnce(200)
         .mockResolvedValueOnce(25),
       getFeatureConfig: vi.fn(async () => ({
@@ -1182,8 +1207,9 @@ describe("InsightsWorkerService", () => {
       uid: 9001,
     });
     expect(repository.closeDisabledOpenSessions).toHaveBeenCalledTimes(2);
-    expect(repository.markCleanupDisabledInsightsJobSucceeded)
-      .toHaveBeenCalledWith("cleanup-job-1");
+    expect(
+      repository.markCleanupDisabledInsightsJobSucceeded,
+    ).toHaveBeenCalledWith("cleanup-job-1");
   });
 
   it("fails cleanup-disabled-insights jobs when cleanup exceeds the batch safety limit", async () => {
@@ -1211,13 +1237,17 @@ describe("InsightsWorkerService", () => {
 
     await service.runOnce();
 
-    expect(repository.markCleanupDisabledInsightsJobFailed).toHaveBeenCalledWith(
+    expect(
+      repository.markCleanupDisabledInsightsJobFailed,
+    ).toHaveBeenCalledWith(
       "cleanup-job-1",
       expect.objectContaining({
         message: expect.stringContaining("exceeded"),
       }),
     );
-    expect(repository.markCleanupDisabledInsightsJobSucceeded).not.toHaveBeenCalled();
+    expect(
+      repository.markCleanupDisabledInsightsJobSucceeded,
+    ).not.toHaveBeenCalled();
   });
 
   it("skips stale cleanup-disabled-insights jobs after insights are re-enabled", async () => {
@@ -1245,8 +1275,9 @@ describe("InsightsWorkerService", () => {
     await service.runOnce();
 
     expect(repository.closeDisabledOpenSessions).not.toHaveBeenCalled();
-    expect(repository.markCleanupDisabledInsightsJobSucceeded)
-      .toHaveBeenCalledWith("cleanup-job-1");
+    expect(
+      repository.markCleanupDisabledInsightsJobSucceeded,
+    ).toHaveBeenCalledWith("cleanup-job-1");
   });
 
   it("runs one due historical rescan job from the requested time", async () => {
@@ -1314,7 +1345,9 @@ describe("InsightsWorkerService", () => {
       uid: 9001,
     });
     expect(repository.createAnalyzeJob).not.toHaveBeenCalled();
-    expect(repository.markSyncMessagesJobSucceeded).toHaveBeenCalledWith("rescan-job-1");
+    expect(repository.markSyncMessagesJobSucceeded).toHaveBeenCalledWith(
+      "rescan-job-1",
+    );
   });
 
   it("fails historical rescan jobs when the source cursor stops advancing", async () => {
@@ -1422,7 +1455,9 @@ describe("InsightsWorkerService", () => {
       rescanTaskId: "9901",
       totalSessions: 1,
     });
-    expect(repository.markSyncMessagesJobSucceeded).toHaveBeenCalledWith("rescan-job-1");
+    expect(repository.markSyncMessagesJobSucceeded).toHaveBeenCalledWith(
+      "rescan-job-1",
+    );
   });
 
   it("routes open sessions found by historical rescan through live analysis gating", async () => {
@@ -1704,9 +1739,7 @@ describe("InsightsWorkerService", () => {
         entities: [
           {
             confidence: 0.8,
-            entityId: "ai-service",
             entityName: "AI客服系统",
-            entityType: "custom",
             evidenceMessageIds: ["9001"],
           },
         ],
@@ -1793,7 +1826,7 @@ describe("InsightsWorkerService", () => {
       expect.objectContaining({
         validationWarnings: expect.arrayContaining([
           expect.stringContaining("9999"),
-          expect.stringContaining("entity ai-service is not configured"),
+          expect.stringContaining("entity AI客服系统 is not configured"),
           expect.stringContaining("intent free_text_intent is not configured"),
           expect.stringContaining("qa rule undefined_rule is not configured"),
         ]),
@@ -1813,9 +1846,12 @@ describe("InsightsWorkerService", () => {
         }),
       }),
     );
-    const savedInput = vi.mocked(repository.saveAnalysisResult).mock.calls[0]?.[0];
+    const savedInput = vi.mocked(repository.saveAnalysisResult).mock
+      .calls[0]?.[0];
     expect(savedInput?.validationWarnings).not.toEqual(
-      expect.arrayContaining([expect.stringContaining("intent logistics_delay is not configured")]),
+      expect.arrayContaining([
+        expect.stringContaining("intent logistics_delay is not configured"),
+      ]),
     );
     expect(repository.markAnalysisJobSucceeded).toHaveBeenCalledWith("job-1");
   });
@@ -2010,7 +2046,9 @@ describe("InsightsWorkerService", () => {
     });
     const model = {
       analyzeSession: vi.fn(async () => {
-        throw new Error("model should not be called when messages are insufficient");
+        throw new Error(
+          "model should not be called when messages are insufficient",
+        );
       }),
     };
     const service = new InsightsWorkerService(repository, { model });
@@ -2050,7 +2088,9 @@ describe("InsightsWorkerService", () => {
         validationWarnings: [],
       }),
     );
-    expect(repository.markAnalysisRunSucceededWithoutSnapshot).not.toHaveBeenCalled();
+    expect(
+      repository.markAnalysisRunSucceededWithoutSnapshot,
+    ).not.toHaveBeenCalled();
     expect(repository.markAnalysisJobSucceeded).toHaveBeenCalledWith("job-1");
   });
 
@@ -2095,7 +2135,9 @@ describe("InsightsWorkerService", () => {
     });
     const model = {
       analyzeSession: vi.fn(async () => {
-        throw new Error("model should not be called when messages are insufficient");
+        throw new Error(
+          "model should not be called when messages are insufficient",
+        );
       }),
     };
     const service = new InsightsWorkerService(repository, { model });
@@ -2104,7 +2146,9 @@ describe("InsightsWorkerService", () => {
 
     expect(model.analyzeSession).not.toHaveBeenCalled();
     expect(repository.saveAnalysisResult).not.toHaveBeenCalled();
-    expect(repository.markAnalysisRunSucceededWithoutSnapshot).toHaveBeenCalledWith({
+    expect(
+      repository.markAnalysisRunSucceededWithoutSnapshot,
+    ).toHaveBeenCalledWith({
       reason: "AI有效消息数 2 低于最小分析消息数 5",
       runId: "run-1",
     });
@@ -2143,7 +2187,9 @@ describe("InsightsWorkerService", () => {
     });
     const model = {
       analyzeSession: vi.fn(async () => {
-        throw new Error("model should not be called when messages are insufficient");
+        throw new Error(
+          "model should not be called when messages are insufficient",
+        );
       }),
     };
     const service = new InsightsWorkerService(repository, { model });
@@ -2182,9 +2228,8 @@ describe("InsightsWorkerService", () => {
       entities: [
         {
           confidence: 0.8,
-          entityId: "sku-1",
+          entityId: "41",
           entityName: "白色羽绒服",
-          entityType: "product",
           evidenceMessageIds: ["9001"],
         },
       ],
@@ -2275,7 +2320,9 @@ describe("InsightsWorkerService", () => {
     });
     const model = {
       analyzeSession: vi.fn(async () => {
-        throw new Error("model should not be called when messages are insufficient");
+        throw new Error(
+          "model should not be called when messages are insufficient",
+        );
       }),
     };
     const service = new InsightsWorkerService(repository, { model });
@@ -2374,13 +2421,13 @@ describe("InsightsWorkerService", () => {
         ]),
       }),
     );
-    expect(repository.markAnalysisRunSucceededWithoutSnapshot).not.toHaveBeenCalled();
+    expect(
+      repository.markAnalysisRunSucceededWithoutSnapshot,
+    ).not.toHaveBeenCalled();
     expect(repository.saveAnalysisResult).toHaveBeenCalledWith(
       expect.objectContaining({
         output: expect.objectContaining({
-          actionItems: [
-            expect.objectContaining({ title: "跟进物流异常" }),
-          ],
+          actionItems: [expect.objectContaining({ title: "跟进物流异常" })],
           faqCandidates: [],
         }),
       }),
@@ -2689,15 +2736,16 @@ describe("InsightsWorkerService", () => {
         entityDictionary: [
           {
             aliases: ["羽绒服"],
-            canonicalName: "白色羽绒服",
-            entityId: "sku-1",
-            entityType: "product",
+            entityCode: "white-coat",
+            entityName: "白色羽绒服",
+            id: "41",
             includeInAggregation: true,
           },
         ],
         intentConfigs: [],
         labelConfigs: [
           {
+            id: "11",
             includeInStatistics: true,
             labelCode: "logistics",
             labelName: "物流咨询",
@@ -2727,9 +2775,7 @@ describe("InsightsWorkerService", () => {
         entities: [
           {
             confidence: 0.8,
-            entityId: "sku-1",
-            entityName: "白色羽绒服",
-            entityType: "product",
+            entityName: "羽绒服",
             evidenceMessageIds: ["9001"],
           },
         ],
@@ -2776,7 +2822,12 @@ describe("InsightsWorkerService", () => {
       expect.objectContaining({
         output: expect.objectContaining({
           actionItems: [],
-          entities: [expect.objectContaining({ entityId: "sku-1" })],
+          entities: [
+            expect.objectContaining({
+              entityId: "41",
+              entityName: "白色羽绒服",
+            }),
+          ],
           faqCandidates: [],
           problemResolution: previousOutput.problemResolution,
           qaFindings: previousOutput.qaFindings,
@@ -2816,7 +2867,9 @@ describe("InsightsWorkerService", () => {
     const model = {
       analyzeSession: vi.fn(async () => ({
         actionItems: [],
-        analysisWarnings: ["qaFindings analysis failed: LLM request failed: 429 rate limited"],
+        analysisWarnings: [
+          "qaFindings analysis failed: LLM request failed: 429 rate limited",
+        ],
         entities: [],
         faqCandidates: [],
         intents: [],
@@ -3128,7 +3181,9 @@ describe("InsightsWorkerService", () => {
 
     expect(repository.startAnalysisRun).not.toHaveBeenCalled();
     expect(model.analyzeSession).not.toHaveBeenCalled();
-    expect(repository.postponeAnalysisJobForInputReadiness).toHaveBeenCalledWith(
+    expect(
+      repository.postponeAnalysisJobForInputReadiness,
+    ).toHaveBeenCalledWith(
       "job-1",
       expect.objectContaining({
         delayMs: 5 * 60_000,
@@ -3200,7 +3255,9 @@ describe("InsightsWorkerService", () => {
 
     await service.runOnce();
 
-    expect(repository.postponeAnalysisJobForInputReadiness).not.toHaveBeenCalled();
+    expect(
+      repository.postponeAnalysisJobForInputReadiness,
+    ).not.toHaveBeenCalled();
     expect(model.analyzeSession).toHaveBeenCalledWith(
       expect.objectContaining({
         messages: [
@@ -3213,9 +3270,7 @@ describe("InsightsWorkerService", () => {
     );
     expect(repository.saveAnalysisResult).toHaveBeenCalledWith(
       expect.objectContaining({
-        validationWarnings: expect.arrayContaining([
-          "存在未完成语音转写",
-        ]),
+        validationWarnings: expect.arrayContaining(["存在未完成语音转写"]),
       }),
     );
   });

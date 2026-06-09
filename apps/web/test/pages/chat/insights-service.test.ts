@@ -11,6 +11,7 @@ import {
   getInsightBusinessRelatedSessions,
   getInsightDetail,
   getInsightFollowUps,
+  getInsightFilterOptions,
   getInsightMessageContext,
   getInsightOverview,
   getInsightOverviewSessions,
@@ -35,6 +36,7 @@ describe("insights service adapter", () => {
   it("uses public /server insights endpoints for P0 APIs", async () => {
     mock.onGet("/server/insights/overview").reply(200, { data: { totalSessions: 1 }, success: true });
     mock.onGet("/server/insights/overview/sessions").reply(200, { data: { items: [], total: 0 }, success: true });
+    mock.onGet("/server/insights/filter-options").reply(200, { data: { entities: [], intents: [], tags: [] }, success: true });
     mock.onGet("/server/insights/business").reply(200, { data: { totals: {} }, success: true });
     mock.onGet("/server/insights/quality").reply(200, { data: { overview: {} }, success: true });
     mock.onGet("/server/insights/follow-ups").reply(200, { data: { items: [], total: 0 }, success: true });
@@ -60,17 +62,18 @@ describe("insights service adapter", () => {
     });
     await getInsightOverviewSessions({
       analysisStatus: "ready",
-      entityName: "白色羽绒服",
+      entityId: "41",
       from: "2026-06-01",
-      intentCode: "logistics_delay",
+      intentId: "31",
       keyword: "物流",
       page: 2,
       pageSize: 20,
       problemScope: "unresolved",
       resolutionStatus: "unresolved",
-      tagCode: "logistics_issue",
+      tagId: "21",
       to: "2026-06-02",
     });
+    await getInsightFilterOptions();
     await getInsightBusiness({ from: "2026-06-01", to: "2026-06-02" });
     await getInsightQuality();
     await getInsightFollowUps({
@@ -98,46 +101,47 @@ describe("insights service adapter", () => {
     expect(mock.history.get[1]?.url).toBe("/server/insights/overview/sessions");
     expect(mock.history.get[1]?.params).toEqual({
       analysisStatus: "ready",
-      entityName: "白色羽绒服",
+      entityId: "41",
       from: "2026-06-01",
-      intentCode: "logistics_delay",
+      intentId: "31",
       keyword: "物流",
       page: 2,
       pageSize: 20,
       problemScope: "unresolved",
       resolutionStatus: "unresolved",
-      tagCode: "logistics_issue",
+      tagId: "21",
       to: "2026-06-02",
     });
-    expect(mock.history.get[2]?.url).toBe("/server/insights/business");
-    expect(mock.history.get[2]?.params).toEqual({
+    expect(mock.history.get[2]?.url).toBe("/server/insights/filter-options");
+    expect(mock.history.get[3]?.url).toBe("/server/insights/business");
+    expect(mock.history.get[3]?.params).toEqual({
       from: "2026-06-01",
       to: "2026-06-02",
     });
-    expect(mock.history.get[3]?.url).toBe("/server/insights/quality");
-    expect(mock.history.get[4]?.url).toBe("/server/insights/follow-ups");
-    expect(mock.history.get[4]?.params).toEqual({
+    expect(mock.history.get[4]?.url).toBe("/server/insights/quality");
+    expect(mock.history.get[5]?.url).toBe("/server/insights/follow-ups");
+    expect(mock.history.get[5]?.params).toEqual({
       from: "2026-06-01",
       priority: "high",
       status: "open",
       to: "2026-06-02",
     });
-    expect(mock.history.get[5]?.url).toBe("/server/insights/sessions/501");
-    expect(mock.history.get[6]?.url).toBe("/server/insights/messages/context");
-    expect(mock.history.get[6]?.params).toEqual({
+    expect(mock.history.get[6]?.url).toBe("/server/insights/sessions/501");
+    expect(mock.history.get[7]?.url).toBe("/server/insights/messages/context");
+    expect(mock.history.get[7]?.params).toEqual({
       conversationId: "301",
       messageId: "9002",
     });
     expect(mock.history.patch[0]?.url).toBe("/server/insights/action-items/801/status");
     expect(JSON.parse(mock.history.patch[0]?.data ?? "{}")).toEqual({ status: "done" });
-    expect(mock.history.get[7]?.url).toBe("/server/insights/settings");
+    expect(mock.history.get[8]?.url).toBe("/server/insights/settings");
     expect(mock.history.post[0]?.url).toBe("/server/insights/jobs/rescan");
     expect(JSON.parse(mock.history.post[0]?.data ?? "{}")).toEqual({
       analysisScope: "classification",
       from: "2026-06-01T00:00:00.000Z",
       to: "2026-06-02T00:00:00.000Z",
     });
-    expect(mock.history.get[8]?.url).toBe("/server/insights/jobs/rescan?page=1&pageSize=10");
+    expect(mock.history.get[9]?.url).toBe("/server/insights/jobs/rescan?page=1&pageSize=10");
   });
 
   it("uses public /server insights endpoints for settings CRUD", async () => {
@@ -218,9 +222,9 @@ describe("insights service adapter", () => {
     });
     await createInsightEntityDictionaryItem({
       aliases: ["白鸭绒外套"],
-      canonicalName: "白色羽绒服",
+      entityCode: "white-coat",
+      entityName: "白色羽绒服",
       status: 1,
-      entityType: "product",
       includeInAggregation: true,
     });
 
@@ -256,7 +260,7 @@ describe("insights service adapter", () => {
         dimension: "intent",
         page: 1,
         pageSize: 20,
-        topicCode: "logistics_delay",
+        topicCode: "31",
       },
       { signal: relatedSessionsController.signal },
     );
@@ -279,7 +283,7 @@ describe("insights service adapter", () => {
       dimension: "intent",
       page: 1,
       pageSize: 20,
-      topicCode: "logistics_delay",
+      topicCode: "31",
     });
     expect(mock.history.get[2]?.signal).toBe(qualityController.signal);
     expect(mock.history.get[2]?.params).toEqual({

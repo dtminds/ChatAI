@@ -173,73 +173,76 @@ describe("LLM provider config", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
-        const requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        const requestBody = JSON.parse(String(init?.body)) as Record<
+          string,
+          unknown
+        >;
         requestBodies.push(requestBody);
-        const content = requestBodies.length === 1
-          ? {
-              actionItems: [],
-              faqCandidates: [],
-              problemResolution: {
-                confidence: 0.82,
-                evidence: [],
-                evidenceMessageIds: ["9001"],
-                problemDetected: true,
-                problemSummary: "客户反馈物流异常",
-                resolutionStatus: "unresolved",
-              },
-              sentiment: [
-                {
-                  confidence: 0.7,
-                  evidenceMessageIds: ["9001"],
-                  polarity: "negative",
-                  reason: "客户表达不满",
-                },
-              ],
-              summary: {
-                sessionTitle: "查物流",
-                text: "客服承诺处理",
-              },
-            }
-          : requestBodies.length === 2
+        const content =
+          requestBodies.length === 1
             ? {
-                qaFindings: [
+                actionItems: [],
+                faqCandidates: [],
+                problemResolution: {
+                  confidence: 0.82,
+                  evidence: [],
+                  evidenceMessageIds: ["9001"],
+                  problemDetected: true,
+                  problemSummary: "客户反馈物流异常",
+                  resolutionStatus: "unresolved",
+                },
+                sentiment: [
                   {
-                    confidence: 0.9,
-                    evidenceMessageIds: ["9002"],
-                    passed: true,
-                    reason: "客服给出处理动作",
-                    ruleCode: "after_sales_followup",
-                    severity: "high",
+                    confidence: 0.7,
+                    evidenceMessageIds: ["9001"],
+                    polarity: "negative",
+                    reason: "客户表达不满",
                   },
                 ],
+                summary: {
+                  sessionTitle: "查物流",
+                  text: "客服承诺处理",
+                },
               }
-            : {
-                entities: [
-                  {
-                    confidence: 0.8,
-                    entityId: "mask",
-                    entityName: "补水面膜",
-                    entityType: "product",
-                    evidenceMessageIds: ["9001"],
-                  },
-                ],
-                intents: [
-                  {
-                    confidence: 0.84,
-                    evidenceMessageIds: ["9001"],
-                    intentCode: "logistics_delay",
-                    intentLabel: "物流异常",
-                  },
-                ],
-                tags: [
-                  {
-                    confidence: 0.86,
-                    evidenceMessageIds: ["9001"],
-                    tagCode: "logistics",
-                    tagName: "物流咨询",
-                  },
-                ],
-              };
+            : requestBodies.length === 2
+              ? {
+                  qaFindings: [
+                    {
+                      confidence: 0.9,
+                      evidenceMessageIds: ["9002"],
+                      passed: true,
+                      reason: "客服给出处理动作",
+                      ruleCode: "after_sales_followup",
+                      severity: "high",
+                    },
+                  ],
+                }
+              : {
+                  entities: [
+                    {
+                      confidence: 0.8,
+                      entityId: "mask",
+                      entityName: "补水面膜",
+                      evidenceMessageIds: ["9001"],
+                    },
+                  ],
+                  intents: [
+                    {
+                      confidence: 0.84,
+                      evidenceMessageIds: ["9001"],
+                      intentCode: "logistics_delay",
+                      intentLabel: "物流异常",
+                    },
+                  ],
+                  tags: [
+                    {
+                      confidence: 0.86,
+                      evidenceMessageIds: ["9001"],
+                      tagCode: "logistics",
+                      tagName: "物流咨询",
+                    },
+                  ],
+                };
 
         return new Response(
           JSON.stringify({
@@ -266,8 +269,7 @@ describe("LLM provider config", () => {
         entityDictionary: [
           {
             aliases: ["mask"],
-            canonicalName: "补水面膜",
-            entityType: "product",
+            entityName: "补水面膜",
             includeInAggregation: true,
           },
         ],
@@ -323,15 +325,27 @@ describe("LLM provider config", () => {
       previousSessionContexts: [],
     });
 
-    expect(requestBodies.map((body) => body.model)).toEqual(["ep-main", "ep-main", "ep-lite"]);
-    expect(requestBodies.map((body) => body.max_tokens)).toEqual([4096, 4096, 1024]);
-    expect(JSON.stringify(requestBodies[0]?.messages)).not.toContain("faqCandidates");
+    expect(requestBodies.map((body) => body.model)).toEqual([
+      "ep-main",
+      "ep-main",
+      "ep-lite",
+    ]);
+    expect(requestBodies.map((body) => body.max_tokens)).toEqual([
+      4096, 4096, 1024,
+    ]);
+    expect(JSON.stringify(requestBodies[0]?.messages)).not.toContain(
+      "faqCandidates",
+    );
     expect(JSON.stringify(requestBodies[1]?.messages)).toContain("qaFindings");
-    expect(JSON.stringify(requestBodies[2]?.messages)).toContain("priorConclusions");
+    expect(JSON.stringify(requestBodies[2]?.messages)).toContain(
+      "priorConclusions",
+    );
     expect(result).toMatchObject({
       entities: [expect.objectContaining({ entityName: "补水面膜" })],
       intents: [expect.objectContaining({ intentCode: "logistics_delay" })],
-      qaFindings: [expect.objectContaining({ ruleCode: "after_sales_followup" })],
+      qaFindings: [
+        expect.objectContaining({ ruleCode: "after_sales_followup" }),
+      ],
       summary: { sessionTitle: "查物流" },
       tags: [expect.objectContaining({ tagCode: "logistics" })],
     });
@@ -342,52 +356,56 @@ describe("LLM provider config", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
-        const requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        const requestBody = JSON.parse(String(init?.body)) as Record<
+          string,
+          unknown
+        >;
         requestBodies.push(requestBody);
-        const content = requestBodies.length === 1
-          ? {
-              actionItems: [
-                {
-                  dueHint: "今天",
-                  evidenceMessageIds: ["9001"],
-                  priority: "high",
-                  title: "跟进物流",
-                },
-              ],
-              faqCandidates: [
-                {
-                  answerHint: "查询物流异常处理流程",
-                  evidenceMessageIds: ["9001"],
-                  question: "物流不更新怎么办",
-                  status: "candidate",
-                },
-              ],
-              problemResolution: {
-                confidence: 0.8,
-                evidence: [],
-                evidenceMessageIds: ["9001"],
-                problemDetected: true,
-                problemSummary: "客户反馈物流异常",
-                resolutionStatus: "unknown",
-              },
-              sentiment: [],
-              summary: {
-                sessionTitle: "查物流",
-                text: "客服处理中",
-              },
-            }
-          : {
-              entities: [],
-              intents: [
-                {
+        const content =
+          requestBodies.length === 1
+            ? {
+                actionItems: [
+                  {
+                    dueHint: "今天",
+                    evidenceMessageIds: ["9001"],
+                    priority: "high",
+                    title: "跟进物流",
+                  },
+                ],
+                faqCandidates: [
+                  {
+                    answerHint: "查询物流异常处理流程",
+                    evidenceMessageIds: ["9001"],
+                    question: "物流不更新怎么办",
+                    status: "candidate",
+                  },
+                ],
+                problemResolution: {
                   confidence: 0.8,
+                  evidence: [],
                   evidenceMessageIds: ["9001"],
-                  intentCode: "logistics_delay",
-                  intentLabel: "物流异常",
+                  problemDetected: true,
+                  problemSummary: "客户反馈物流异常",
+                  resolutionStatus: "unknown",
                 },
-              ],
-              tags: [],
-            };
+                sentiment: [],
+                summary: {
+                  sessionTitle: "查物流",
+                  text: "客服处理中",
+                },
+              }
+            : {
+                entities: [],
+                intents: [
+                  {
+                    confidence: 0.8,
+                    evidenceMessageIds: ["9001"],
+                    intentCode: "logistics_delay",
+                    intentLabel: "物流异常",
+                  },
+                ],
+                tags: [],
+              };
 
         return new Response(
           JSON.stringify({
@@ -457,14 +475,24 @@ describe("LLM provider config", () => {
     });
 
     expect(requestBodies).toHaveLength(2);
-    expect(requestBodies.map((body) => body.model)).toEqual(["ep-main", "ep-lite"]);
+    expect(requestBodies.map((body) => body.model)).toEqual([
+      "ep-main",
+      "ep-lite",
+    ]);
     expect(JSON.stringify(requestBodies)).not.toContain("qaFindings");
-    const summaryMessages = requestBodies[0]?.messages as Array<{ content: string; role: string }>;
+    const summaryMessages = requestBodies[0]?.messages as Array<{
+      content: string;
+      role: string;
+    }>;
     const summaryPayload = JSON.parse(summaryMessages[1]?.content ?? "{}");
     expect(summaryPayload.outputContract).not.toHaveProperty("actionItems");
     expect(summaryPayload.outputContract).not.toHaveProperty("faqCandidates");
-    expect(JSON.stringify(requestBodies[0]?.messages)).not.toContain("actionItems");
-    expect(JSON.stringify(requestBodies[0]?.messages)).not.toContain("faqCandidates");
+    expect(JSON.stringify(requestBodies[0]?.messages)).not.toContain(
+      "actionItems",
+    );
+    expect(JSON.stringify(requestBodies[0]?.messages)).not.toContain(
+      "faqCandidates",
+    );
     expect(result.actionItems).toEqual([
       expect.objectContaining({ title: "跟进物流" }),
     ]);
@@ -480,27 +508,31 @@ describe("LLM provider config", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
-        const requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        const requestBody = JSON.parse(String(init?.body)) as Record<
+          string,
+          unknown
+        >;
         requestBodies.push(requestBody);
-        const content = requestBodies.length === 1
-          ? {
-              problemResolution: {
-                confidence: 0.8,
-                evidence: [],
-                evidenceMessageIds: ["9001"],
-                problemDetected: true,
-                problemSummary: "客户反馈物流异常",
-                resolutionStatus: "unknown",
-              },
-              sentiment: [],
-              summary: {
-                sessionTitle: "查物流",
-                text: "客服处理中",
-              },
-            }
-          : requestBodies.length === 2
-            ? { qaFindings: [] }
-            : { entities: [], intents: [], tags: [] };
+        const content =
+          requestBodies.length === 1
+            ? {
+                problemResolution: {
+                  confidence: 0.8,
+                  evidence: [],
+                  evidenceMessageIds: ["9001"],
+                  problemDetected: true,
+                  problemSummary: "客户反馈物流异常",
+                  resolutionStatus: "unknown",
+                },
+                sentiment: [],
+                summary: {
+                  sessionTitle: "查物流",
+                  text: "客服处理中",
+                },
+              }
+            : requestBodies.length === 2
+              ? { qaFindings: [] }
+              : { entities: [], intents: [], tags: [] };
 
         return new Response(
           JSON.stringify({
@@ -552,12 +584,19 @@ describe("LLM provider config", () => {
     });
 
     expect(requestBodies).toHaveLength(3);
-    const summaryMessages = requestBodies[0]?.messages as Array<{ content: string; role: string }>;
+    const summaryMessages = requestBodies[0]?.messages as Array<{
+      content: string;
+      role: string;
+    }>;
     const summaryPayload = JSON.parse(summaryMessages[1]?.content ?? "{}");
     expect(summaryPayload.outputContract).not.toHaveProperty("actionItems");
     expect(summaryPayload.outputContract).not.toHaveProperty("faqCandidates");
-    expect(JSON.stringify(requestBodies[0]?.messages)).not.toContain("actionItems");
-    expect(JSON.stringify(requestBodies[0]?.messages)).not.toContain("faqCandidates");
+    expect(JSON.stringify(requestBodies[0]?.messages)).not.toContain(
+      "actionItems",
+    );
+    expect(JSON.stringify(requestBodies[0]?.messages)).not.toContain(
+      "faqCandidates",
+    );
   });
 
   it("does not ask for follow-up outputs during scoped final analysis", async () => {
@@ -565,7 +604,10 @@ describe("LLM provider config", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
-        const requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        const requestBody = JSON.parse(String(init?.body)) as Record<
+          string,
+          unknown
+        >;
         requestBodies.push(requestBody);
 
         return new Response(
@@ -637,8 +679,12 @@ describe("LLM provider config", () => {
     });
 
     expect(requestBodies).toHaveLength(1);
-    expect(JSON.stringify(requestBodies[0]?.messages)).not.toContain("actionItems");
-    expect(JSON.stringify(requestBodies[0]?.messages)).not.toContain("faqCandidates");
+    expect(JSON.stringify(requestBodies[0]?.messages)).not.toContain(
+      "actionItems",
+    );
+    expect(JSON.stringify(requestBodies[0]?.messages)).not.toContain(
+      "faqCandidates",
+    );
   });
 
   it("runs only classification for classification scoped reanalysis", async () => {
@@ -646,7 +692,10 @@ describe("LLM provider config", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
-        const requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        const requestBody = JSON.parse(String(init?.body)) as Record<
+          string,
+          unknown
+        >;
         requestBodies.push(requestBody);
 
         return new Response(
@@ -660,7 +709,6 @@ describe("LLM provider config", () => {
                         confidence: 0.8,
                         entityId: "mask",
                         entityName: "补水面膜",
-                        entityType: "product",
                         evidenceMessageIds: ["9001"],
                       },
                     ],
@@ -725,7 +773,9 @@ describe("LLM provider config", () => {
 
     expect(requestBodies).toHaveLength(1);
     expect(requestBodies[0]?.model).toBe("ep-lite");
-    expect(JSON.stringify(requestBodies[0]?.messages)).toContain("tags, entities, intents");
+    expect(JSON.stringify(requestBodies[0]?.messages)).toContain(
+      "tags, entities, intents",
+    );
     expect(result).toMatchObject({
       entities: [expect.objectContaining({ entityName: "补水面膜" })],
       intents: [],
@@ -739,32 +789,65 @@ describe("LLM provider config", () => {
   it("retries retryable optional classification failures before degrading the dimension", async () => {
     vi.useFakeTimers();
     const requestBodies: Array<Record<string, unknown>> = [];
-    const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
-      const requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
-      requestBodies.push(requestBody);
+    const fetchMock = vi.fn(
+      async (_url: string | URL | Request, init?: RequestInit) => {
+        const requestBody = JSON.parse(String(init?.body)) as Record<
+          string,
+          unknown
+        >;
+        requestBodies.push(requestBody);
 
-      if (requestBodies.length === 1) {
+        if (requestBodies.length === 1) {
+          return new Response(
+            JSON.stringify({
+              choices: [
+                {
+                  message: {
+                    content: JSON.stringify({
+                      actionItems: [],
+                      faqCandidates: [],
+                      problemResolution: {
+                        confidence: 0.8,
+                        evidence: [],
+                        evidenceMessageIds: ["9001"],
+                        problemDetected: true,
+                        problemSummary: "客户反馈物流异常",
+                        resolutionStatus: "unknown",
+                      },
+                      sentiment: [],
+                      summary: {
+                        sessionTitle: "查物流",
+                        text: "客服处理中",
+                      },
+                    }),
+                  },
+                },
+              ],
+            }),
+            { headers: { "Content-Type": "application/json" }, status: 200 },
+          );
+        }
+
+        if (requestBodies.length === 2) {
+          return new Response("rate limited", { status: 429 });
+        }
+
         return new Response(
           JSON.stringify({
             choices: [
               {
                 message: {
                   content: JSON.stringify({
-                    actionItems: [],
-                    faqCandidates: [],
-                    problemResolution: {
-                      confidence: 0.8,
-                      evidence: [],
-                      evidenceMessageIds: ["9001"],
-                      problemDetected: true,
-                      problemSummary: "客户反馈物流异常",
-                      resolutionStatus: "unknown",
-                    },
-                    sentiment: [],
-                    summary: {
-                      sessionTitle: "查物流",
-                      text: "客服处理中",
-                    },
+                    entities: [],
+                    intents: [
+                      {
+                        confidence: 0.8,
+                        evidenceMessageIds: ["9001"],
+                        intentCode: "logistics_delay",
+                        intentLabel: "物流异常",
+                      },
+                    ],
+                    tags: [],
                   }),
                 },
               },
@@ -772,36 +855,8 @@ describe("LLM provider config", () => {
           }),
           { headers: { "Content-Type": "application/json" }, status: 200 },
         );
-      }
-
-      if (requestBodies.length === 2) {
-        return new Response("rate limited", { status: 429 });
-      }
-
-      return new Response(
-        JSON.stringify({
-          choices: [
-            {
-              message: {
-                content: JSON.stringify({
-                  entities: [],
-                  intents: [
-                    {
-                      confidence: 0.8,
-                      evidenceMessageIds: ["9001"],
-                      intentCode: "logistics_delay",
-                      intentLabel: "物流异常",
-                    },
-                  ],
-                  tags: [],
-                }),
-              },
-            },
-          ],
-        }),
-        { headers: { "Content-Type": "application/json" }, status: 200 },
-      );
-    });
+      },
+    );
     vi.stubGlobal("fetch", fetchMock);
     const analyzer = new OpenAiCompatibleInsightAnalyzer({
       apiKey: "secret",
@@ -863,7 +918,11 @@ describe("LLM provider config", () => {
       analysisWarnings: [],
       intents: [expect.objectContaining({ intentCode: "logistics_delay" })],
     });
-    expect(requestBodies.map((body) => body.model)).toEqual(["ep-main", "ep-lite", "ep-lite"]);
+    expect(requestBodies.map((body) => body.model)).toEqual([
+      "ep-main",
+      "ep-lite",
+      "ep-lite",
+    ]);
     vi.useRealTimers();
   });
 
@@ -952,62 +1011,65 @@ describe("LLM provider config", () => {
 
   it("falls back without JSON response format when the model does not support it", async () => {
     const requestBodies: Array<Record<string, unknown>> = [];
-    const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
-      requestBodies.push(JSON.parse(String(init?.body)));
+    const fetchMock = vi.fn(
+      async (_url: string | URL | Request, init?: RequestInit) => {
+        requestBodies.push(JSON.parse(String(init?.body)));
 
-      if (fetchMock.mock.calls.length === 1) {
+        if (fetchMock.mock.calls.length === 1) {
+          return new Response(
+            JSON.stringify({
+              error: {
+                code: "InvalidParameter",
+                message:
+                  "The parameter `response_format.type` specified in the request are not valid: `json_object` is not supported by this model.",
+                param: "response_format.type",
+                type: "BadRequest",
+              },
+            }),
+            {
+              headers: { "Content-Type": "application/json" },
+              status: 400,
+            },
+          );
+        }
+
         return new Response(
           JSON.stringify({
-            error: {
-              code: "InvalidParameter",
-              message: "The parameter `response_format.type` specified in the request are not valid: `json_object` is not supported by this model.",
-              param: "response_format.type",
-              type: "BadRequest",
-            },
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({
+                    actionItems: [],
+                    entities: [],
+                    faqCandidates: [],
+                    intents: [],
+                    problemResolution: {
+                      confidence: 0.8,
+                      evidence: [],
+                      evidenceMessageIds: [],
+                      problemDetected: false,
+                      problemSummary: "",
+                      resolutionStatus: "no_customer_problem",
+                    },
+                    qaFindings: [],
+                    sentiment: [],
+                    summary: {
+                      sessionTitle: "寒暄",
+                      text: "无明确问题",
+                    },
+                    tags: [],
+                  }),
+                },
+              },
+            ],
           }),
           {
             headers: { "Content-Type": "application/json" },
-            status: 400,
+            status: 200,
           },
         );
-      }
-
-      return new Response(
-        JSON.stringify({
-          choices: [
-            {
-              message: {
-                content: JSON.stringify({
-                  actionItems: [],
-                  entities: [],
-                  faqCandidates: [],
-                  intents: [],
-                  problemResolution: {
-                    confidence: 0.8,
-                    evidence: [],
-                    evidenceMessageIds: [],
-                    problemDetected: false,
-                    problemSummary: "",
-                    resolutionStatus: "no_customer_problem",
-                  },
-                  qaFindings: [],
-                  sentiment: [],
-                  summary: {
-                    sessionTitle: "寒暄",
-                    text: "无明确问题",
-                  },
-                  tags: [],
-                }),
-              },
-            },
-          ],
-        }),
-        {
-          headers: { "Content-Type": "application/json" },
-          status: 200,
-        },
-      );
-    });
+      },
+    );
     vi.stubGlobal("fetch", fetchMock);
 
     const analyzer = new OpenAiCompatibleInsightAnalyzer({
@@ -1046,12 +1108,15 @@ describe("LLM provider config", () => {
     vi.useFakeTimers();
     vi.stubGlobal(
       "fetch",
-      vi.fn(async (_url: string | URL | Request, init?: RequestInit) =>
-        new Promise<Response>((_resolve, reject) => {
-          init?.signal?.addEventListener("abort", () => {
-            reject(new DOMException("The operation was aborted.", "AbortError"));
-          });
-        }),
+      vi.fn(
+        async (_url: string | URL | Request, init?: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener("abort", () => {
+              reject(
+                new DOMException("The operation was aborted.", "AbortError"),
+              );
+            });
+          }),
       ),
     );
     const analyzer = new OpenAiCompatibleInsightAnalyzer({
@@ -1082,7 +1147,9 @@ describe("LLM provider config", () => {
       ],
     });
 
-    const expectation = expect(resultPromise).rejects.toThrow("LLM request timed out after 2000ms");
+    const expectation = expect(resultPromise).rejects.toThrow(
+      "LLM request timed out after 2000ms",
+    );
 
     await vi.advanceTimersByTimeAsync(2_000);
     await expectation;
@@ -1100,7 +1167,9 @@ describe("LLM provider config", () => {
         if (calls === 1) {
           return await new Promise<Response>((_resolve, reject) => {
             init?.signal?.addEventListener("abort", () => {
-              reject(new DOMException("The operation was aborted.", "AbortError"));
+              reject(
+                new DOMException("The operation was aborted.", "AbortError"),
+              );
             });
           });
         }
@@ -1180,57 +1249,58 @@ describe("LLM provider config", () => {
   it("parses JSON object even when the model wraps it in a markdown fence", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        new Response(
-          JSON.stringify({
-            choices: [
-              {
-                message: {
-                  content: [
-                    "```json",
-                    JSON.stringify({
-                      actionItems: [],
-                      entities: [],
-                      faqCandidates: [],
-                      intents: [],
-                      problemResolution: {
-                        confidence: 0.8,
-                        evidence: [
-                          {
-                            evidenceRole: "customer_problem",
-                            messageId: "1",
-                            reason: "客户反馈物流异常",
-                          },
-                          {
-                            evidenceRole: "random_role",
-                            messageId: "2",
-                            reason: "模型返回了非法证据角色",
-                          },
-                        ],
-                        evidenceMessageIds: ["1", "2"],
-                        problemDetected: true,
-                        problemSummary: "客户反馈物流异常",
-                        resolutionStatus: "unresolved",
-                      },
-                      qaFindings: [],
-                      sentiment: [],
-                      summary: {
-                        sessionTitle: "查物流",
-                        text: "客服承诺处理",
-                      },
-                      tags: [],
-                    }),
-                    "```",
-                  ].join("\n"),
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              choices: [
+                {
+                  message: {
+                    content: [
+                      "```json",
+                      JSON.stringify({
+                        actionItems: [],
+                        entities: [],
+                        faqCandidates: [],
+                        intents: [],
+                        problemResolution: {
+                          confidence: 0.8,
+                          evidence: [
+                            {
+                              evidenceRole: "customer_problem",
+                              messageId: "1",
+                              reason: "客户反馈物流异常",
+                            },
+                            {
+                              evidenceRole: "random_role",
+                              messageId: "2",
+                              reason: "模型返回了非法证据角色",
+                            },
+                          ],
+                          evidenceMessageIds: ["1", "2"],
+                          problemDetected: true,
+                          problemSummary: "客户反馈物流异常",
+                          resolutionStatus: "unresolved",
+                        },
+                        qaFindings: [],
+                        sentiment: [],
+                        summary: {
+                          sessionTitle: "查物流",
+                          text: "客服承诺处理",
+                        },
+                        tags: [],
+                      }),
+                      "```",
+                    ].join("\n"),
+                  },
                 },
-              },
-            ],
-          }),
-          {
-            headers: { "Content-Type": "application/json" },
-            status: 200,
-          },
-        ),
+              ],
+            }),
+            {
+              headers: { "Content-Type": "application/json" },
+              status: 200,
+            },
+          ),
       ),
     );
 

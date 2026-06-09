@@ -22,9 +22,9 @@ export const DEFAULT_INSIGHT_SETTINGS: InsightSettingsResponse = {
   entityDictionary: [
     {
       aliases: ["白鸭绒外套", "直播间羽绒服"],
-      canonicalName: "白色羽绒服",
+      entityCode: "white-coat",
+      entityName: "白色羽绒服",
       status: 1,
-      entityType: "product",
       id: "1",
       includeInAggregation: true,
     },

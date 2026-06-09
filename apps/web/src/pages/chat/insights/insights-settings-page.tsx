@@ -344,7 +344,7 @@ export function InsightsSettingsPage() {
     }
 
     return tabData.items.filter((item) =>
-      [item.canonicalName, item.entityType, item.aliases.join(" ")].some((value) =>
+      [item.entityCode, item.entityName, item.aliases.join(" ")].some((value) =>
         value.toLowerCase().includes(query),
       ),
     );
@@ -717,7 +717,7 @@ export function InsightsSettingsPage() {
                 onDelete={(item) => setDeleteConfirmState({
                   collection: "entity",
                   id: item.id,
-                  name: item.canonicalName,
+                  name: item.entityName,
                 })}
                 onEdit={(item) => setDialogState({ collection: "entity", item, mode: "edit" })}
                 onQueryChange={setEntityQuery}
@@ -1827,8 +1827,8 @@ function EntityDictionaryTable({
       <Table>
         <TableHeader>
           <TableRow>
+            <TableHead>编码</TableHead>
             <TableHead>实体</TableHead>
-            <TableHead>类型</TableHead>
             <TableHead>别名</TableHead>
             <TableHead>聚合</TableHead>
             <TableHead>状态</TableHead>
@@ -1842,8 +1842,8 @@ function EntityDictionaryTable({
             </TableRow>
           ) : items.map((item) => (
             <TableRow key={item.id}>
-              <TableCell className="font-medium">{item.canonicalName}</TableCell>
-              <TableCell>{entityTypeText(item.entityType)}</TableCell>
+              <TableCell className="font-mono text-xs text-muted-foreground">{item.entityCode}</TableCell>
+              <TableCell className="font-medium">{item.entityName}</TableCell>
               <TableCell className="max-w-[360px] text-muted-foreground">
                 {item.aliases.length > 0 ? item.aliases.join("、") : "无"}
               </TableCell>
@@ -2318,8 +2318,8 @@ function ConfigMutationDialog({
 
           {state.collection === "entity" ? (
             <>
-              <TextField error={errors.canonicalName} form={form} label="实体名称" name="canonicalName" onChange={setValue} required />
-              <TextField error={errors.entityType} form={form} label="实体类型" name="entityType" onChange={setValue} required />
+              <TextField error={errors.entityCode} form={form} label="实体编码" name="entityCode" onChange={setValue} required />
+              <TextField error={errors.entityName} form={form} label="实体名称" name="entityName" onChange={setValue} required />
               <TextareaField className="md:col-span-2" form={form} label="别名" name="aliasesText" onChange={setValue} placeholder="每行一个别名" />
               <SwitchEditorField checked={Number(form.status ?? 1) === 1} label="启用" onChange={(value) => setValue("status", value ? 1 : 0)} />
               <SwitchEditorField checked={Boolean(form.includeInAggregation)} label="纳入聚合" onChange={(value) => setValue("includeInAggregation", value)} />
@@ -2551,12 +2551,12 @@ function buildInitialDialogForm(state: ConfigDialogState): Record<string, unknow
     const item = state.mode === "edit" ? state.item : undefined;
     return {
       description: item?.description ?? "",
-      status: item?.status ?? 1,
       includeInStatistics: item?.includeInStatistics ?? true,
       labelCode: item?.labelCode ?? "",
       labelName: item?.labelName ?? "",
       negativeExamplesText: (item?.negativeExamples ?? []).join("\n"),
       positiveExamplesText: (item?.positiveExamples ?? []).join("\n"),
+      status: item?.status ?? 1,
     };
   }
 
@@ -2593,9 +2593,9 @@ function buildInitialDialogForm(state: ConfigDialogState): Record<string, unknow
   const item = state.mode === "edit" ? state.item : undefined;
   return {
     aliasesText: (item?.aliases ?? []).join("\n"),
-    canonicalName: item?.canonicalName ?? "",
+    entityCode: item?.entityCode ?? "",
+    entityName: item?.entityName ?? "",
     status: item?.status ?? 1,
-    entityType: item?.entityType ?? "",
     includeInAggregation: item?.includeInAggregation ?? true,
   };
 }
@@ -2603,7 +2603,7 @@ function buildInitialDialogForm(state: ConfigDialogState): Record<string, unknow
 function validateDialogForm(collection: MutableCollection, form: Record<string, unknown>): ConfigDialogErrors {
   const errors: ConfigDialogErrors = {};
   const requiredFieldNames: Record<MutableCollection, string[]> = {
-    entity: ["canonicalName", "entityType"],
+    entity: ["entityCode", "entityName"],
     intent: ["intentName", "intentCode", "description"],
     label: ["labelName", "labelCode", "description"],
     qa: ["ruleName", "ruleCode", "judgmentCriteria"],
@@ -2661,9 +2661,9 @@ function normalizeDialogPayload(collection: MutableCollection, form: Record<stri
 
   return {
     aliases: splitLines(form.aliasesText),
-    canonicalName: String(form.canonicalName ?? "").trim(),
+    entityCode: String(form.entityCode ?? "").trim(),
+    entityName: String(form.entityName ?? "").trim(),
     status: Number(form.status ?? 1) === 1 ? 1 : 0,
-    entityType: String(form.entityType ?? "").trim(),
     includeInAggregation: Boolean(form.includeInAggregation),
   };
 }
@@ -2706,16 +2706,6 @@ function collectionText(value: MutableCollection) {
 
 function severityText(value: "high" | "low" | "medium") {
   return value === "high" ? "高" : value === "medium" ? "中" : "低";
-}
-
-function entityTypeText(value: string) {
-  const text: Record<string, string> = {
-    activity: "活动",
-    brand: "品牌",
-    product: "商品",
-  };
-
-  return text[value] ?? value;
 }
 
 function rescanScopeText(value: InsightRescanAnalysisScope) {

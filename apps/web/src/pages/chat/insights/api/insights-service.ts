@@ -13,6 +13,7 @@ import type {
   InsightEntityDictionaryMutationRequest,
   InsightFeatureConfig,
   InsightFeatureConfigUpdateRequest,
+  InsightFilterOptionsResponse,
   InsightIntentConfig,
   InsightIntentConfigMutationRequest,
   InsightLabelConfig,
@@ -62,15 +63,15 @@ export type InsightOverviewQuery = {
 
 export type InsightOverviewSessionsQuery = {
   analysisStatus?: ContractInsightOverviewSessionsQuery["analysisStatus"];
-  entityName?: string;
+  entityId?: string;
   from?: string;
-  intentCode?: string;
+  intentId?: string;
   keyword?: string;
   page?: number;
   pageSize?: number;
   problemScope?: ContractInsightOverviewSessionsQuery["problemScope"];
   resolutionStatus?: ContractInsightOverviewSessionsQuery["resolutionStatus"];
-  tagCode?: string;
+  tagId?: string;
   to?: string;
 };
 
@@ -104,6 +105,14 @@ export async function getInsightOverviewSessions(query: InsightOverviewSessionsQ
     {
       params: compactQuery(query),
     },
+  );
+
+  return response.data;
+}
+
+export async function getInsightFilterOptions() {
+  const response = await http.get<ApiSuccessEnvelope<InsightFilterOptionsResponse>>(
+    "/server/insights/filter-options",
   );
 
   return response.data;

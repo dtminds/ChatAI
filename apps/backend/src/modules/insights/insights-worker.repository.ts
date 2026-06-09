@@ -279,6 +279,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         .selectFrom("xy_wap_embed_insight_label_config")
         .select([
           "description",
+          "id",
           "include_in_statistics",
           "label_code",
           "label_name",
@@ -290,6 +291,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         .orderBy("id", "asc")
         .execute() as Promise<Array<{
           description: string | null;
+          id: number | string;
           include_in_statistics: number | string;
           label_code: string;
           label_name: string;
@@ -302,6 +304,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         .select([
           "aliases_json",
           "description",
+          "id",
           "include_in_statistics",
           "intent_code",
           "intent_name",
@@ -316,6 +319,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         .execute() as Promise<Array<{
           aliases_json: string | null;
           description: string | null;
+          id: number | string;
           include_in_statistics: number | string;
           intent_code: string;
           intent_name: string;
@@ -355,8 +359,9 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         .select([
           "aliases_json",
           "attributes_json",
-          "canonical_name",
-          "entity_type",
+          "entity_code",
+          "entity_name",
+          "id",
           "include_in_aggregation",
         ])
         .where("uid", "=", uid)
@@ -365,8 +370,9 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         .execute() as Promise<Array<{
           aliases_json: string | null;
           attributes_json: string | null;
-          canonical_name: string;
-          entity_type: string;
+          entity_code: string;
+          entity_name: string;
+          id: number | string;
           include_in_aggregation: number | string;
         }>>
         : Promise.resolve([]),
@@ -376,12 +382,14 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       entityDictionary: entityRows.map((row) => ({
         aliases: parseJsonArray(row.aliases_json),
         attributes: parseJsonObject(row.attributes_json),
-        canonicalName: row.canonical_name,
-        entityType: row.entity_type,
+        entityCode: row.entity_code,
+        entityName: row.entity_name,
+        id: String(row.id),
         includeInAggregation: parseNumber(row.include_in_aggregation) === 1,
       })),
       labelConfigs: labelRows.map((row) => ({
         description: optionalString(row.description),
+        id: String(row.id),
         includeInStatistics: parseNumber(row.include_in_statistics) === 1,
         labelCode: row.label_code,
         labelName: row.label_name,
@@ -391,6 +399,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       intentConfigs: intentRows.map((row) => ({
         aliases: parseJsonArray(row.aliases_json),
         description: optionalString(row.description),
+        id: String(row.id),
         includeInStatistics: parseNumber(row.include_in_statistics) === 1,
         intentCode: row.intent_code,
         intentName: row.intent_name,
@@ -1453,7 +1462,6 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         confidence: 1,
         entityId: item.entityId,
         entityName: item.entityName,
-        entityType: item.entityType,
         evidenceMessageIds: item.evidenceMessageIds,
         sentiment: item.sentiment,
       })),
@@ -1859,7 +1867,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       .executeTakeFirstOrThrow() as InsertResult;
     const snapshotId = parseInsertedMySqlId(insertedSnapshot) ?? -1;
     const output = input.output;
-    const snapshotStatus = input.validationWarnings.length > 0 ? "partial" : "ready";
+    const validationWarnings = [...input.validationWarnings];
     const evidenceRows: EvidenceInsertRow[] = [];
 
     await this.db.insertInto("xy_wap_embed_session_summary").values({
@@ -1901,10 +1909,16 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
     }
 
     for (const item of output.tags) {
+      const tagId = parsePositiveInteger(item.tagId ?? "");
+      if (tagId == null) {
+        validationWarnings.push(`tag ${item.tagCode ?? item.tagName} has no configured id`);
+        continue;
+      }
+
       const id = await this.insertAndGetId("xy_wap_embed_session_tag", {
         confidence: item.confidence,
         snapshot_id: snapshotId,
-        tag_code: item.tagCode,
+        tag_id: tagId,
         tag_name: item.tagName,
         uid: input.job.uid,
       });
@@ -1925,11 +1939,16 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
     }
 
     for (const item of output.entities) {
+      const entityId = parsePositiveInteger(item.entityId ?? "");
+      if (entityId == null) {
+        validationWarnings.push(`entity ${item.entityName} has no configured id`);
+        continue;
+      }
+
       const id = await this.insertAndGetId("xy_wap_embed_session_entity", {
         confidence: item.confidence,
-        entity_id: item.entityId,
+        entity_id: entityId,
         entity_name: item.entityName,
-        entity_type: item.entityType,
         sentiment: item.sentiment ?? null,
         snapshot_id: snapshotId,
         uid: input.job.uid,
@@ -1938,9 +1957,15 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
     }
 
     for (const item of output.intents) {
+      const intentId = parsePositiveInteger(item.intentId ?? "");
+      if (intentId == null) {
+        validationWarnings.push(`intent ${item.intentCode ?? item.intentLabel} has no configured id`);
+        continue;
+      }
+
       const id = await this.insertAndGetId("xy_wap_embed_session_intent", {
         confidence: item.confidence,
-        intent_code: item.intentCode,
+        intent_id: intentId,
         intent_label: item.intentLabel,
         snapshot_id: snapshotId,
         uid: input.job.uid,
@@ -1995,7 +2020,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
     await this.db
       .updateTable("xy_wap_embed_session_insight_snapshot")
       .set({
-        status: snapshotStatus,
+        status: validationWarnings.length > 0 ? "partial" : "ready",
         update_time: new Date(),
       })
       .where("id", "=", snapshotId)
@@ -2023,9 +2048,9 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
     await this.db
       .updateTable("xy_wap_embed_analysis_run")
       .set({
-        error_message: input.validationWarnings.length > 0 ? input.validationWarnings.join("; ") : null,
+        error_message: validationWarnings.length > 0 ? validationWarnings.join("; ") : null,
         finished_at: new Date(),
-        status: input.validationWarnings.length > 0 ? "partial" : "succeeded",
+        status: validationWarnings.length > 0 ? "partial" : "succeeded",
         update_time: new Date(),
       })
       .where("id", "=", parsePositiveInteger(input.runId) ?? -1)

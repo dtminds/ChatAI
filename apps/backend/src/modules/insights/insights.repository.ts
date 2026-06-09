@@ -11,6 +11,7 @@ import type {
   InsightEntityDictionaryMutationRequest,
   InsightFeatureConfig,
   InsightFeatureConfigUpdateRequest,
+  InsightFilterOptionsResponse,
   InsightIntentConfig,
   InsightIntentConfigMutationRequest,
   InsightLabelConfig,
@@ -214,11 +215,6 @@ type BusinessSessionAggregateQueryRow = {
   unresolved_sessions: number | string;
 };
 
-type CurrentSessionActionAggregateRow = {
-  action_open_count: number | string;
-  snapshot_id: number | string;
-};
-
 type ProblemEvidenceMessageRow = {
   evidence_message_id: number | string;
   last_customer_message_at: number | string | null;
@@ -254,14 +250,13 @@ type SentimentQueryRow = {
 type TagQueryRow = {
   confidence: number | string | null;
   id: number | string;
-  tag_code: string;
+  tag_id: number | string;
   tag_name: string;
 };
 
 type EntityQueryRow = {
-  entity_id: string;
+  entity_id: number | string;
   entity_name: string;
-  entity_type: string;
   id: number | string;
   sentiment: string | null;
 };
@@ -269,7 +264,7 @@ type EntityQueryRow = {
 type IntentQueryRow = {
   confidence: number | string | null;
   id: number | string;
-  intent_code: string;
+  intent_id: number | string;
   intent_label: string;
 };
 
@@ -281,9 +276,8 @@ type FaqCandidateQueryRow = {
 };
 
 type EntityHotspotQueryRow = {
-  entity_id: string;
+  entity_id: number | string;
   entity_name: string;
-  entity_type: string;
   mention_count: number | string;
   negative_count: number | string;
   session_count: number | string;
@@ -291,7 +285,7 @@ type EntityHotspotQueryRow = {
 
 type IntentDistributionQueryRow = {
   count: number | string;
-  intent_code: string;
+  intent_id: number | string;
   intent_label: string;
 };
 
@@ -305,16 +299,23 @@ type FeatureConfigRow = {
   todo_enabled: number | string;
 };
 
-type BusinessTopicFactQueryRow = {
-  code: string;
+type BaseBusinessTopicFactQueryRow = {
   mention_count: number | string;
   name: string;
-  sentiment: string | null;
   session_id: number | string;
   snapshot_id: number | string;
   started_at: number | string;
-  type: string | null;
+  topic_id: number | string;
 };
+
+type BusinessTagFactQueryRow = BaseBusinessTopicFactQueryRow;
+
+type BusinessEntityFactQueryRow = BaseBusinessTopicFactQueryRow & {
+  sentiment: string | null;
+  type?: string | null;
+};
+
+type BusinessIntentFactQueryRow = BaseBusinessTopicFactQueryRow;
 
 type BusinessSessionScopeRow = {
   session_id: number | string;
@@ -333,19 +334,18 @@ type AssetTopicMessageQueryRow = {
 
 type SessionTagTopicRow = {
   snapshot_id: number | string;
-  tag_code: string;
+  tag_id: number | string;
   tag_name: string;
 };
 
 type SessionEntityTopicRow = {
-  entity_id: string;
+  entity_id: number | string;
   entity_name: string;
-  entity_type: string;
   snapshot_id: number | string;
 };
 
 type SessionIntentTopicRow = {
-  intent_code: string;
+  intent_id: number | string;
   intent_label: string;
   snapshot_id: number | string;
 };
@@ -414,6 +414,51 @@ export class InsightsRepository implements InsightsRepositoryPort {
       labelConfigs,
       qaRuleConfigs,
       sessionization,
+    };
+  }
+
+  async getFilterOptions(scope: InsightsUidScope): Promise<InsightFilterOptionsResponse> {
+    const [entities, intents, tags] = await Promise.all([
+      this.db
+        .selectFrom("xy_wap_embed_insight_entity_dictionary")
+        .select([
+          "id",
+          "entity_name",
+        ])
+        .where("uid", "=", scope.uid)
+        .where("status", "=", 1)
+        .where("include_in_aggregation", "=", 1)
+        .orderBy("id", "desc")
+        .execute(),
+      this.db
+        .selectFrom("xy_wap_embed_insight_intent_config")
+        .select([
+          "id",
+          "intent_name",
+        ])
+        .where("uid", "=", scope.uid)
+        .where("status", "=", 1)
+        .where("include_in_statistics", "=", 1)
+        .orderBy("sort_order", "desc")
+        .orderBy("id", "desc")
+        .execute(),
+      this.db
+        .selectFrom("xy_wap_embed_insight_label_config")
+        .select([
+          "id",
+          "label_name",
+        ])
+        .where("uid", "=", scope.uid)
+        .where("status", "=", 1)
+        .where("include_in_statistics", "=", 1)
+        .orderBy("id", "desc")
+        .execute(),
+    ]);
+
+    return {
+      entities: entities.map(mapEntityFilterOptionRow),
+      intents: intents.map(mapIntentFilterOptionRow),
+      tags: tags.map(mapTagFilterOptionRow),
     };
   }
 
@@ -897,9 +942,9 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .values({
         aliases_json: encodeJson(payload.aliases),
         attributes_json: encodeJson(payload.attributes),
-        canonical_name: payload.canonicalName,
+        entity_code: payload.entityCode,
+        entity_name: payload.entityName,
         status: payload.status,
-        entity_type: payload.entityType,
         include_in_aggregation: payload.includeInAggregation ? 1 : 0,
         uid: scope.uid,
       })
@@ -925,9 +970,9 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .set({
         aliases_json: encodeJson(payload.aliases),
         attributes_json: encodeJson(payload.attributes),
-        canonical_name: payload.canonicalName,
+        entity_code: payload.entityCode,
+        entity_name: payload.entityName,
         status: payload.status,
-        entity_type: payload.entityType,
         include_in_aggregation: payload.includeInAggregation ? 1 : 0,
         update_time: new Date(),
       })
@@ -1303,9 +1348,9 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .select([
         "aliases_json",
         "attributes_json",
-        "canonical_name",
+        "entity_code",
+        "entity_name",
         "status",
-        "entity_type",
         "id",
         "include_in_aggregation",
       ])
@@ -1360,9 +1405,9 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .select([
         "aliases_json",
         "attributes_json",
-        "canonical_name",
+        "entity_code",
+        "entity_name",
         "status",
-        "entity_type",
         "id",
         "include_in_aggregation",
       ])
@@ -1784,19 +1829,6 @@ export class InsightsRepository implements InsightsRepositoryPort {
   ): Promise<InsightOverviewAggregateRow> {
     const totalsQuery = applyCurrentSessionFilters(
       buildCurrentSessionBaseQuery(this.db)
-        .leftJoin((eb) =>
-          eb
-            .selectFrom("xy_wap_embed_session_action_item as aggregate_action")
-            .select([
-              "aggregate_action.snapshot_id as snapshot_id",
-              sql<number>`count(*)`.as("action_open_count"),
-            ])
-            .where("aggregate_action.status", "=", "open")
-            .groupBy("aggregate_action.snapshot_id")
-            .as("action_aggregate"),
-        (join) =>
-          join.onRef("action_aggregate.snapshot_id", "=", "snapshot.id"),
-        )
         .select([
           sql<number>`count(distinct session.id)`.as("logical_sessions"),
           sql<number>`coalesce(sum(session.message_count), 0)`.as("messages"),
@@ -1819,13 +1851,9 @@ export class InsightsRepository implements InsightsRepositoryPort {
               then session.id
             end)
           `.as("problem_sessions"),
-          sql<number>`
-            coalesce(sum(case
-              when problem.resolution_status in ('unresolved', 'partially_resolved')
-              then coalesce(action_aggregate.action_open_count, 0)
-              else 0
-            end), 0)
-          `.as("action_items_open"),
+          // Overview avoids joining action_item on this high-traffic aggregate path;
+          // action-items are served by the dedicated follow-up endpoint.
+          sql<number>`0`.as("action_items_open"),
           sql<number>`
             count(distinct case
               when problem.resolution_status in ('unresolved', 'partially_resolved')
@@ -1938,7 +1966,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
         join.onRef("session.id", "=", "current.session_id"),
       )
       .select([
-        "tag.tag_code as code",
+        "tag.tag_id as topic_id",
         "tag.tag_name as name",
         "session.id as session_id",
         "session.started_at as started_at",
@@ -1946,22 +1974,22 @@ export class InsightsRepository implements InsightsRepositoryPort {
         sql<number>`count(tag.id)`.as("mention_count"),
       ])
       .where("tag.uid", "=", scope.uid)
-      .groupBy(["tag.tag_code", "tag.tag_name", "session.id", "session.started_at", "tag.snapshot_id"])
+      .groupBy(["tag.tag_id", "tag.tag_name", "session.id", "session.started_at", "tag.snapshot_id"])
       .orderBy(sql<number>`count(tag.id)`, "desc")
       .limit(500);
 
     query = applyTopicDateFilters(query, filters);
 
-    const rows = await query.execute() as Array<Omit<BusinessTopicFactQueryRow, "sentiment" | "type">>;
+    const rows = await query.execute() as BusinessTagFactQueryRow[];
 
     return rows.map((row) => ({
-      code: row.code,
       dimension: "tag",
       mentionCount: parseNumber(row.mention_count),
       name: row.name,
       sessionId: String(row.session_id),
       snapshotId: String(row.snapshot_id),
       startedAt: parseNumber(row.started_at),
+      topicId: String(row.topic_id),
     }));
   }
 
@@ -1978,9 +2006,8 @@ export class InsightsRepository implements InsightsRepositoryPort {
         join.onRef("session.id", "=", "current.session_id"),
       )
       .select([
-        "entity.entity_id as code",
+        "entity.entity_id as topic_id",
         "entity.entity_name as name",
-        "entity.entity_type as type",
         "entity.sentiment as sentiment",
         "session.id as session_id",
         "session.started_at as started_at",
@@ -1991,7 +2018,6 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .groupBy([
         "entity.entity_id",
         "entity.entity_name",
-        "entity.entity_type",
         "entity.sentiment",
         "session.id",
         "session.started_at",
@@ -2002,10 +2028,9 @@ export class InsightsRepository implements InsightsRepositoryPort {
 
     query = applyTopicDateFilters(query, filters);
 
-    const rows = await query.execute() as BusinessTopicFactQueryRow[];
+    const rows = await query.execute() as BusinessEntityFactQueryRow[];
 
     return rows.map((row) => ({
-      code: row.code,
       dimension: "entity",
       mentionCount: parseNumber(row.mention_count),
       name: row.name,
@@ -2013,6 +2038,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
       sessionId: String(row.session_id),
       snapshotId: String(row.snapshot_id),
       startedAt: parseNumber(row.started_at),
+      topicId: String(row.topic_id),
       type: row.type,
     }));
   }
@@ -2030,7 +2056,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
         join.onRef("session.id", "=", "current.session_id"),
       )
       .select([
-        "intent.intent_code as code",
+        "intent.intent_id as topic_id",
         "intent.intent_label as name",
         "session.id as session_id",
         "session.started_at as started_at",
@@ -2038,22 +2064,22 @@ export class InsightsRepository implements InsightsRepositoryPort {
         sql<number>`count(intent.id)`.as("mention_count"),
       ])
       .where("intent.uid", "=", scope.uid)
-      .groupBy(["intent.intent_code", "intent.intent_label", "session.id", "session.started_at", "intent.snapshot_id"])
+      .groupBy(["intent.intent_id", "intent.intent_label", "session.id", "session.started_at", "intent.snapshot_id"])
       .orderBy(sql<number>`count(intent.id)`, "desc")
       .limit(500);
 
     query = applyTopicDateFilters(query, filters);
 
-    const rows = await query.execute() as Array<Omit<BusinessTopicFactQueryRow, "sentiment" | "type">>;
+    const rows = await query.execute() as BusinessIntentFactQueryRow[];
 
     return rows.map((row) => ({
-      code: row.code,
       dimension: "intent",
       mentionCount: parseNumber(row.mention_count),
       name: row.name,
       sessionId: String(row.session_id),
       snapshotId: String(row.snapshot_id),
       startedAt: parseNumber(row.started_at),
+      topicId: String(row.topic_id),
     }));
   }
 
@@ -2106,13 +2132,13 @@ export class InsightsRepository implements InsightsRepositoryPort {
 
       const key = `${row.session_id}:${asset.code}:${asset.type}`;
       const current = factsByKey.get(key) ?? {
-        code: asset.code,
         dimension: "asset" as const,
         mentionCount: 0,
         name: asset.name,
         sessionId: String(row.session_id),
         snapshotId: String(row.snapshot_id),
         startedAt: parseNumber(row.started_at),
+        topicId: asset.code,
         type: asset.type,
       };
 
@@ -2230,62 +2256,66 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .execute() as ActionItemQueryRow[]).map(toActionItemBaseRow);
   }
 
-  async listEntityHotspots(scope: InsightsUidScope) {
-    const rows = await this.db
+  async listEntityHotspots(scope: InsightsUidScope, filters: InsightsOverviewFilters = {}) {
+    let query = this.db
       .selectFrom("xy_wap_embed_session_entity as entity")
-      .innerJoin("xy_wap_embed_session_insight_snapshot as snapshot", (join) =>
-        join.onRef("snapshot.id", "=", "entity.snapshot_id"),
+      .innerJoin("xy_wap_embed_session_insight_current as current", (join) =>
+        join.onRef("current.current_snapshot_id", "=", "entity.snapshot_id"),
       )
       .innerJoin("xy_wap_embed_logical_session as session", (join) =>
-        join.onRef("session.id", "=", "snapshot.session_id"),
+        join.onRef("session.id", "=", "current.session_id"),
       )
       .select([
         "entity.entity_id as entity_id",
         "entity.entity_name as entity_name",
-        "entity.entity_type as entity_type",
         sql<number>`count(entity.id)`.as("mention_count"),
         sql<number>`count(case when entity.sentiment = 'negative' then 1 end)`.as("negative_count"),
         sql<number>`count(distinct session.id)`.as("session_count"),
       ])
       .where("entity.uid", "=", scope.uid)
-      .groupBy(["entity.entity_id", "entity.entity_name", "entity.entity_type"])
+      .groupBy(["entity.entity_id", "entity.entity_name"])
       .orderBy(sql<number>`count(entity.id)`, "desc")
-      .limit(10)
-      .execute() as EntityHotspotQueryRow[];
+      .limit(10);
+
+    query = applyTopicDateFilters(query, filters);
+
+    const rows = await query.execute() as EntityHotspotQueryRow[];
 
     return rows.map((row) => ({
-      entityId: row.entity_id,
+      entityId: String(row.entity_id),
       entityName: row.entity_name,
-      entityType: row.entity_type,
       mentionCount: parseNumber(row.mention_count),
       negativeCount: parseNumber(row.negative_count),
       sessionCount: parseNumber(row.session_count),
     }));
   }
 
-  async listIntentDistribution(scope: InsightsUidScope) {
-    const rows = await this.db
+  async listIntentDistribution(scope: InsightsUidScope, filters: InsightsOverviewFilters = {}) {
+    let query = this.db
       .selectFrom("xy_wap_embed_session_intent as intent")
-      .innerJoin("xy_wap_embed_session_insight_snapshot as snapshot", (join) =>
-        join.onRef("snapshot.id", "=", "intent.snapshot_id"),
+      .innerJoin("xy_wap_embed_session_insight_current as current", (join) =>
+        join.onRef("current.current_snapshot_id", "=", "intent.snapshot_id"),
       )
       .innerJoin("xy_wap_embed_logical_session as session", (join) =>
-        join.onRef("session.id", "=", "snapshot.session_id"),
+        join.onRef("session.id", "=", "current.session_id"),
       )
       .select([
         sql<number>`count(*)`.as("count"),
-        "intent.intent_code as intent_code",
+        "intent.intent_id as intent_id",
         "intent.intent_label as intent_label",
       ])
       .where("intent.uid", "=", scope.uid)
-      .groupBy(["intent.intent_code", "intent.intent_label"])
+      .groupBy(["intent.intent_id", "intent.intent_label"])
       .orderBy(sql<number>`count(*)`, "desc")
-      .limit(10)
-      .execute() as IntentDistributionQueryRow[];
+      .limit(10);
+
+    query = applyTopicDateFilters(query, filters);
+
+    const rows = await query.execute() as IntentDistributionQueryRow[];
 
     return rows.map((row) => ({
       count: parseNumber(row.count),
-      intentCode: row.intent_code,
+      intentId: String(row.intent_id),
       intentLabel: row.intent_label,
     }));
   }
@@ -2533,14 +2563,14 @@ export class InsightsRepository implements InsightsRepositoryPort {
   private async listTags(snapshotId: string, evidence: DimensionEvidenceRow[]) {
     const rows = await this.db
       .selectFrom("xy_wap_embed_session_tag")
-      .select(["confidence", "id", "tag_code", "tag_name"])
+      .select(["confidence", "id", "tag_id", "tag_name"])
       .where("snapshot_id", "=", parsePositiveInteger(snapshotId) ?? -1)
       .execute() as TagQueryRow[];
 
     return rows.map((row) => ({
       confidence: parseConfidence(row.confidence),
       evidenceMessageIds: evidenceForDimension(evidence, "tag", row.id),
-      tagCode: row.tag_code,
+      tagId: String(row.tag_id),
       tagName: row.tag_name,
     }));
   }
@@ -2548,14 +2578,13 @@ export class InsightsRepository implements InsightsRepositoryPort {
   private async listEntities(snapshotId: string, evidence: DimensionEvidenceRow[]) {
     const rows = await this.db
       .selectFrom("xy_wap_embed_session_entity")
-      .select(["entity_id", "entity_name", "entity_type", "id", "sentiment"])
+      .select(["entity_id", "entity_name", "id", "sentiment"])
       .where("snapshot_id", "=", parsePositiveInteger(snapshotId) ?? -1)
       .execute() as EntityQueryRow[];
 
     return rows.map((row) => ({
-      entityId: row.entity_id,
+      entityId: String(row.entity_id),
       entityName: row.entity_name,
-      entityType: row.entity_type,
       evidenceMessageIds: evidenceForDimension(evidence, "entity", row.id),
       sentiment: row.sentiment ?? undefined,
     }));
@@ -2564,14 +2593,14 @@ export class InsightsRepository implements InsightsRepositoryPort {
   private async listIntents(snapshotId: string, evidence: DimensionEvidenceRow[]) {
     const rows = await this.db
       .selectFrom("xy_wap_embed_session_intent")
-      .select(["confidence", "id", "intent_code", "intent_label"])
+      .select(["confidence", "id", "intent_id", "intent_label"])
       .where("snapshot_id", "=", parsePositiveInteger(snapshotId) ?? -1)
       .execute() as IntentQueryRow[];
 
     return rows.map((row) => ({
       confidence: parseConfidence(row.confidence),
       evidenceMessageIds: evidenceForDimension(evidence, "intent", row.id),
-      intentCode: row.intent_code,
+      intentId: String(row.intent_id),
       intentLabel: row.intent_label,
     }));
   }
@@ -3315,24 +3344,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
       return;
     }
 
-    const [
-      actions,
-      problemEvidence,
-    ] = await Promise.all([
-      this.db
-        .selectFrom("xy_wap_embed_session_action_item")
-        .select([
-          "snapshot_id",
-          sql<number>`count(*)`.as("action_open_count"),
-        ])
-        .where("snapshot_id", "in", snapshotIds)
-        .where("status", "=", "open")
-        .groupBy(["snapshot_id"])
-        .execute() as Promise<CurrentSessionActionAggregateRow[]>,
-      this.listProblemEvidenceMessages(snapshotIds),
-    ]);
-
-    const actionsBySnapshotId = new Map(actions.map((row) => [String(row.snapshot_id), row]));
+    const problemEvidence = await this.listProblemEvidenceMessages(snapshotIds);
     const problemEvidenceBySnapshotId = groupProblemEvidenceMessages(problemEvidence);
 
     for (const row of rows) {
@@ -3345,10 +3357,10 @@ export class InsightsRepository implements InsightsRepositoryPort {
         continue;
       }
 
-      const action = actionsBySnapshotId.get(snapshotId);
       const evidence = problemEvidenceBySnapshotId.get(snapshotId) ?? [];
 
-      row.actionOpenCount = action ? parseNumber(action.action_open_count) : 0;
+      // Avoid per-page action_item fan-out here; follow-up counts are loaded by the dedicated endpoint.
+      row.actionOpenCount = 0;
       row.problemEvidenceMessageIds = sortNumericStrings(
         evidence.map((item) => String(item.evidence_message_id)),
       );
@@ -3391,61 +3403,36 @@ export class InsightsRepository implements InsightsRepositoryPort {
       tags,
       entities,
       intents,
-      assets,
     ] = await Promise.all([
       this.db
         .selectFrom("xy_wap_embed_session_tag")
-        .select(["snapshot_id", "tag_code", "tag_name"])
+        .select(["snapshot_id", "tag_id", "tag_name"])
         .where("snapshot_id", "in", snapshotIds)
         .execute() as Promise<SessionTagTopicRow[]>,
       this.db
         .selectFrom("xy_wap_embed_session_entity")
-        .select(["entity_id", "entity_name", "entity_type", "snapshot_id"])
+        .select(["entity_id", "entity_name", "snapshot_id"])
         .where("snapshot_id", "in", snapshotIds)
         .execute() as Promise<SessionEntityTopicRow[]>,
       this.db
         .selectFrom("xy_wap_embed_session_intent")
-        .select(["intent_code", "intent_label", "snapshot_id"])
+        .select(["intent_id", "intent_label", "snapshot_id"])
         .where("snapshot_id", "in", snapshotIds)
         .execute() as Promise<SessionIntentTopicRow[]>,
-      this.db
-        .selectFrom("xy_wap_embed_logical_session_message as session_message")
-        .innerJoin("xy_wap_embed_logical_session as session", (join) =>
-          join.onRef("session.id", "=", "session_message.session_id"),
-        )
-        .innerJoin("xy_wap_embed_session_insight_current as current", (join) =>
-          join.onRef("current.session_id", "=", "session.id"),
-        )
-        .innerJoin("xy_wap_embed_msg_audit_info as message", (join) =>
-          join.onRef("message.id", "=", "session_message.source_message_id"),
-        )
-        .select([
-          "message.content as content",
-          "session_message.message_type as message_type",
-          "session.id as session_id",
-          "session.started_at as started_at",
-          "current.current_snapshot_id as snapshot_id",
-          "session_message.source_message_id as source_message_id",
-        ])
-        .where("current.current_snapshot_id", "in", snapshotIds)
-        .where("session_message.message_type", "in", ["link", "miniapp", "file"])
-        .execute() as Promise<SessionAssetTopicRow[]>,
     ]);
 
     const tagsBySnapshotId = groupBySnapshotId(tags, (row) => ({
-      tagCode: row.tag_code,
+      tagId: String(row.tag_id),
       tagName: row.tag_name,
     }));
     const entitiesBySnapshotId = groupBySnapshotId(entities, (row) => ({
-      entityId: row.entity_id,
+      entityId: String(row.entity_id),
       entityName: row.entity_name,
-      entityType: row.entity_type,
     }));
     const intentsBySnapshotId = groupBySnapshotId(intents, (row) => ({
-      intentCode: row.intent_code,
+      intentId: String(row.intent_id),
       intentLabel: row.intent_label,
     }));
-    const assetsBySnapshotId = groupAssetsBySnapshotId(assets);
 
     for (const row of rows) {
       const snapshotId = row.currentSnapshotId;
@@ -3453,7 +3440,6 @@ export class InsightsRepository implements InsightsRepositoryPort {
       row.tags = snapshotId ? tagsBySnapshotId.get(snapshotId) ?? [] : [];
       row.entities = snapshotId ? entitiesBySnapshotId.get(snapshotId) ?? [] : [];
       row.intents = snapshotId ? intentsBySnapshotId.get(snapshotId) ?? [] : [];
-      row.assets = snapshotId ? assetsBySnapshotId.get(snapshotId) ?? [] : [];
     }
   }
 
@@ -3759,31 +3745,6 @@ function groupByActionId<T extends { action_id: number | string }>(rows: T[]) {
   }
 
   return byActionId;
-}
-
-function entityHotspotKey(row: Pick<EntityHotspotQueryRow, "entity_id" | "entity_type">) {
-  return `${row.entity_id}:${row.entity_type}`;
-}
-
-function uniqueEntityHotspotScopes(rows: EntityHotspotQueryRow[]) {
-  const seenKeys = new Set<string>();
-  const scopes: Array<{ entityId: string; entityType: string }> = [];
-
-  for (const row of rows) {
-    const key = entityHotspotKey(row);
-
-    if (seenKeys.has(key)) {
-      continue;
-    }
-
-    seenKeys.add(key);
-    scopes.push({
-      entityId: row.entity_id,
-      entityType: row.entity_type,
-    });
-  }
-
-  return scopes;
 }
 
 function mapFollowUpActionItemRows(rows: ActionItemQueryRow[]): InsightActionItemRow[] {
@@ -4172,9 +4133,9 @@ function mapEntityPayload(
   return {
     aliases: payload.aliases,
     attributes: payload.attributes,
-    canonicalName: payload.canonicalName,
+    entityCode: payload.entityCode,
+    entityName: payload.entityName,
     status: payload.status,
-    entityType: payload.entityType,
     id,
     includeInAggregation: payload.includeInAggregation,
   };
@@ -4257,20 +4218,50 @@ function mapQaRuleRow(row: {
 function mapEntityRow(row: {
   aliases_json: JsonColumnValue;
   attributes_json: JsonColumnValue;
-  canonical_name: string;
+  entity_code: string;
+  entity_name: string;
   status: number;
-  entity_type: string;
   id: number | string;
   include_in_aggregation: number;
 }): InsightEntityDictionaryItem {
   return {
     aliases: parseJsonArray(row.aliases_json),
     attributes: parseJsonObject(row.attributes_json),
-    canonicalName: row.canonical_name,
+    entityCode: row.entity_code,
+    entityName: row.entity_name,
     status: parseConfigStatus(row.status),
-    entityType: row.entity_type,
     id: String(row.id),
     includeInAggregation: row.include_in_aggregation === 1,
+  };
+}
+
+function mapEntityFilterOptionRow(row: {
+  entity_name: string;
+  id: number | string;
+}): InsightFilterOptionsResponse["entities"][number] {
+  return {
+    id: String(row.id),
+    name: row.entity_name,
+  };
+}
+
+function mapIntentFilterOptionRow(row: {
+  id: number | string;
+  intent_name: string;
+}): InsightFilterOptionsResponse["intents"][number] {
+  return {
+    id: String(row.id),
+    name: row.intent_name,
+  };
+}
+
+function mapTagFilterOptionRow(row: {
+  id: number | string;
+  label_name: string;
+}): InsightFilterOptionsResponse["tags"][number] {
+  return {
+    id: String(row.id),
+    name: row.label_name,
   };
 }
 
@@ -4615,31 +4606,31 @@ function applyCurrentSessionFilters<Query>(
     `) as typeof next;
   }
 
-  if (filters.tagCode) {
+  if (filters.tagId) {
     next = next
       .innerJoin("xy_wap_embed_session_tag as tag_filter", (join) =>
         join.onRef("tag_filter.snapshot_id", "=", "snapshot.id"),
       ) as typeof next;
     next = next.where("tag_filter.uid", "=", scope.uid) as typeof next;
-    next = next.where("tag_filter.tag_code", "=", filters.tagCode) as typeof next;
+    next = next.where("tag_filter.tag_id", "=", parsePositiveInteger(filters.tagId) ?? 0) as typeof next;
   }
 
-  if (filters.entityName) {
+  if (filters.entityId) {
     next = next
       .innerJoin("xy_wap_embed_session_entity as entity_filter", (join) =>
         join.onRef("entity_filter.snapshot_id", "=", "snapshot.id"),
       ) as typeof next;
     next = next.where("entity_filter.uid", "=", scope.uid) as typeof next;
-    next = next.where("entity_filter.entity_name", "=", filters.entityName) as typeof next;
+    next = next.where("entity_filter.entity_id", "=", parsePositiveInteger(filters.entityId) ?? 0) as typeof next;
   }
 
-  if (filters.intentCode) {
+  if (filters.intentId) {
     next = next
       .innerJoin("xy_wap_embed_session_intent as intent_filter", (join) =>
         join.onRef("intent_filter.snapshot_id", "=", "snapshot.id"),
       ) as typeof next;
     next = next.where("intent_filter.uid", "=", scope.uid) as typeof next;
-    next = next.where("intent_filter.intent_code", "=", filters.intentCode) as typeof next;
+    next = next.where("intent_filter.intent_id", "=", parsePositiveInteger(filters.intentId) ?? 0) as typeof next;
   }
 
   return next;

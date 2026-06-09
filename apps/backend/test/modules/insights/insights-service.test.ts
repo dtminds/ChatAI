@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { BusinessError, ForbiddenError, NotFoundError } from "../../../src/shared/errors.js";
+import {
+  BusinessError,
+  ForbiddenError,
+  NotFoundError,
+} from "../../../src/shared/errors.js";
 import {
   InsightsService,
   type InsightsRepositoryPort,
@@ -146,7 +150,7 @@ const baseRows = [
 ];
 
 const overviewAggregate = {
-  actionItemsOpen: 1,
+  actionItemsOpen: 0,
   analysis: {
     failed: 0,
     partial: 1,
@@ -229,7 +233,9 @@ const qaFindingAggregate = {
   ruleDistribution: [
     { count: 2, ruleCode: "reply_quality", ruleName: "回复质量" },
   ],
-} satisfies Awaited<NonNullable<InsightsRepositoryPort["getQaFindingAggregate"]>>;
+} satisfies Awaited<
+  NonNullable<InsightsRepositoryPort["getQaFindingAggregate"]>
+>;
 
 const qualityResults = [
   {
@@ -266,7 +272,9 @@ const qualityResults = [
     summary: "客户咨询退款到账时间",
     totalRules: 2,
   },
-] satisfies Awaited<NonNullable<InsightsRepositoryPort["listQualityResults"]>>["items"];
+] satisfies Awaited<
+  NonNullable<InsightsRepositoryPort["listQualityResults"]>
+>["items"];
 
 const qualityAgentStats = [
   {
@@ -289,10 +297,14 @@ const qualityAgentStats = [
     passRate: 1,
     totalSessions: 1,
   },
-] satisfies Awaited<NonNullable<InsightsRepositoryPort["listQualityAgentStats"]>>;
+] satisfies Awaited<
+  NonNullable<InsightsRepositoryPort["listQualityAgentStats"]>
+>;
 
 const businessSessionAggregates = baseRows.map((row) => ({
-  actionItemsOpen: ["partially_resolved", "unresolved"].includes(row.resolutionStatus)
+  actionItemsOpen: ["partially_resolved", "unresolved"].includes(
+    row.resolutionStatus,
+  )
     ? row.actionOpenCount
     : 0,
   analyzedSessions: ["partial", "ready"].includes(row.analysisStatus) ? 1 : 0,
@@ -304,8 +316,14 @@ const businessSessionAggregates = baseRows.map((row) => ({
   }).format(new Date(row.startedAt)),
   sessionId: row.sessionId,
   startedAt: row.startedAt,
-  unresolvedSessions: ["partially_resolved", "unresolved"].includes(row.resolutionStatus) ? 1 : 0,
-})) satisfies Awaited<NonNullable<InsightsRepositoryPort["listBusinessSessionAggregates"]>>;
+  unresolvedSessions: ["partially_resolved", "unresolved"].includes(
+    row.resolutionStatus,
+  )
+    ? 1
+    : 0,
+})) satisfies Awaited<
+  NonNullable<InsightsRepositoryPort["listBusinessSessionAggregates"]>
+>;
 
 function createRepository(
   overrides: Partial<InsightsRepositoryPort> = {},
@@ -334,7 +352,6 @@ function createRepository(
         {
           entityId: "entity-1",
           entityName: "白色羽绒服",
-          entityType: "product",
           evidenceMessageIds: ["9002"],
           sentiment: "negative",
         },
@@ -385,8 +402,7 @@ function createRepository(
     listEntityDictionary: vi.fn(async () => [
       {
         aliases: ["白色羽绒服"],
-        canonicalName: "白色羽绒服",
-        entityType: "product",
+        entityName: "白色羽绒服",
         id: "41",
         includeInAggregation: true,
         status: 1,
@@ -472,25 +488,24 @@ function createRepository(
     ]),
     listBusinessTopicFacts: vi.fn(async () => [
       {
-        code: "logistics_issue",
         dimension: "tag",
         mentionCount: 1,
         name: "物流异常",
         sessionId: "501",
         snapshotId: "7001",
         startedAt: 1_780_243_200_000,
+        topicId: "21",
       },
       {
-        code: "refund",
         dimension: "tag",
         mentionCount: 1,
         name: "退款咨询",
         sessionId: "502",
         snapshotId: "7002",
         startedAt: 1_780_243_000_000,
+        topicId: "22",
       },
       {
-        code: "sku-1",
         dimension: "entity",
         mentionCount: 2,
         name: "白色羽绒服",
@@ -498,34 +513,39 @@ function createRepository(
         sessionId: "501",
         snapshotId: "7001",
         startedAt: 1_780_243_200_000,
-        type: "product",
+        topicId: "41",
       },
       {
-        code: "https://example.com/promo",
         dimension: "asset",
         mentionCount: 2,
         name: "红包活动",
         sessionId: "501",
         snapshotId: "7001",
         startedAt: 1_780_243_200_000,
+        topicId: "https://example.com/promo",
         type: "link",
       },
       {
-        code: "logistics_delay",
         dimension: "intent",
         mentionCount: 1,
         name: "物流异常",
         sessionId: "501",
         snapshotId: "7001",
         startedAt: 1_780_243_200_000,
+        topicId: "31",
       },
     ]),
     getQualityAggregate: vi.fn(async () => qualityAggregate),
     getOverviewAggregate: vi.fn(async (_scope, filters) =>
-      filters.from === "2026-05-02T00:00:00.000+08:00" ? previousOverviewAggregate : overviewAggregate
+      filters.from === "2026-05-02T00:00:00.000+08:00"
+        ? previousOverviewAggregate
+        : overviewAggregate,
     ),
     listQualityResults: vi.fn(async (_scope, filters) => ({
-      items: filters?.passed === false ? qualityResults.filter((item) => !item.passed) : qualityResults,
+      items:
+        filters?.passed === false
+          ? qualityResults.filter((item) => !item.passed)
+          : qualityResults,
       total: filters?.passed === false ? 1 : qualityResults.length,
     })),
     hasActiveRescanTask: vi.fn(async () => false),
@@ -533,9 +553,14 @@ function createRepository(
     listBusinessSessionAggregates: vi.fn(async () => businessSessionAggregates),
     listAllCurrentSessions: vi.fn(async () => baseRows),
     listCurrentSessions: vi.fn(async (_scope, filters) => ({
-      items: filters?.pageSize === 10_000 || filters?.problemScope === "unresolved"
-        ? baseRows.filter((row) => ["partially_resolved", "unresolved"].includes(row.resolutionStatus))
-        : [baseRows[0]],
+      items:
+        filters?.pageSize === 10_000 || filters?.problemScope === "unresolved"
+          ? baseRows.filter((row) =>
+              ["partially_resolved", "unresolved"].includes(
+                row.resolutionStatus,
+              ),
+            )
+          : [baseRows[0]],
       total: baseRows.length,
     })),
     listRescanTasks: vi.fn(async () => ({
@@ -561,9 +586,8 @@ function createRepository(
     })),
     listEntityHotspots: vi.fn(async () => [
       {
-        entityId: "sku-1",
+        entityId: "41",
         entityName: "白色羽绒服",
-        entityType: "product",
         mentionCount: 2,
         negativeCount: 1,
         sessionCount: 1,
@@ -651,9 +675,8 @@ function createRepository(
       entityDictionary: [
         {
           aliases: ["白鸭绒外套"],
-          canonicalName: "白色羽绒服",
+          entityName: "白色羽绒服",
           status: 1,
-          entityType: "product",
           id: "41",
           includeInAggregation: true,
         },
@@ -698,6 +721,11 @@ function createRepository(
         preset: "custom",
       },
     })),
+    getFilterOptions: vi.fn(async () => ({
+      entities: [{ id: "41", name: "白色羽绒服" }],
+      intents: [{ id: "31", name: "物流异常" }],
+      tags: [{ id: "11", name: "价格敏感" }],
+    })),
     getSettingsSummary: vi.fn(async () => ({
       enabledEntityCount: 2,
       enabledIntentCount: 2,
@@ -720,8 +748,14 @@ function createRepository(
     })),
     upsertAnalysisPolicy: vi.fn(async (_scope, payload) => payload),
     upsertSessionizationSettings: vi.fn(async (_scope, payload) => payload),
-    createIntentConfig: vi.fn(async (_scope, payload) => ({ ...payload, id: "90" })),
-    updateIntentConfig: vi.fn(async (_scope, id, payload) => ({ ...payload, id })),
+    createIntentConfig: vi.fn(async (_scope, payload) => ({
+      ...payload,
+      id: "90",
+    })),
+    updateIntentConfig: vi.fn(async (_scope, id, payload) => ({
+      ...payload,
+      id,
+    })),
     updateIntentConfigStatus: vi.fn(async (_scope, id, status) => ({
       status,
       id,
@@ -731,8 +765,14 @@ function createRepository(
       weight: 8,
     })),
     deleteIntentConfig: vi.fn(async () => true),
-    createLabelConfig: vi.fn(async (_scope, payload) => ({ ...payload, id: "91" })),
-    updateLabelConfig: vi.fn(async (_scope, id, payload) => ({ ...payload, id })),
+    createLabelConfig: vi.fn(async (_scope, payload) => ({
+      ...payload,
+      id: "91",
+    })),
+    updateLabelConfig: vi.fn(async (_scope, id, payload) => ({
+      ...payload,
+      id,
+    })),
     updateLabelConfigStatus: vi.fn(async (_scope, id, status) => ({
       status,
       id,
@@ -741,8 +781,14 @@ function createRepository(
       labelName: "价格敏感",
     })),
     deleteLabelConfig: vi.fn(async () => true),
-    createQaRuleConfig: vi.fn(async (_scope, payload) => ({ ...payload, id: "92" })),
-    updateQaRuleConfig: vi.fn(async (_scope, id, payload) => ({ ...payload, id })),
+    createQaRuleConfig: vi.fn(async (_scope, payload) => ({
+      ...payload,
+      id: "92",
+    })),
+    updateQaRuleConfig: vi.fn(async (_scope, id, payload) => ({
+      ...payload,
+      id,
+    })),
     updateQaRuleConfigStatus: vi.fn(async (_scope, id, status) => ({
       status,
       id,
@@ -751,13 +797,18 @@ function createRepository(
       severity: "high",
     })),
     deleteQaRuleConfig: vi.fn(async () => true),
-    createEntityDictionaryItem: vi.fn(async (_scope, payload) => ({ ...payload, id: "94" })),
-    updateEntityDictionaryItem: vi.fn(async (_scope, id, payload) => ({ ...payload, id })),
+    createEntityDictionaryItem: vi.fn(async (_scope, payload) => ({
+      ...payload,
+      id: "94",
+    })),
+    updateEntityDictionaryItem: vi.fn(async (_scope, id, payload) => ({
+      ...payload,
+      id,
+    })),
     updateEntityDictionaryItemStatus: vi.fn(async (_scope, id, status) => ({
       aliases: ["白鸭绒外套"],
-      canonicalName: "白色羽绒服",
+      entityName: "白色羽绒服",
       status,
-      entityType: "product",
       id,
       includeInAggregation: true,
     })),
@@ -783,6 +834,14 @@ describe("InsightsService", () => {
         from: "2026-05-07T00:00:00.000+08:00",
         to: "2026-06-05T23:59:59.999+08:00",
       });
+      expect(repository.listEntityHotspots).toHaveBeenCalledWith(scope, {
+        from: "2026-05-07T00:00:00.000+08:00",
+        to: "2026-06-05T23:59:59.999+08:00",
+      });
+      expect(repository.listIntentDistribution).toHaveBeenCalledWith(scope, {
+        from: "2026-05-07T00:00:00.000+08:00",
+        to: "2026-06-05T23:59:59.999+08:00",
+      });
       expect(repository.listBusinessSessionAggregates).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
@@ -798,7 +857,7 @@ describe("InsightsService", () => {
     });
 
     expect(result).toMatchObject({
-      actionItemsOpen: 1,
+      actionItemsOpen: 0,
       analysis: {
         failed: 0,
         partial: 1,
@@ -912,7 +971,7 @@ describe("InsightsService", () => {
                 messages: 0,
               },
             }
-          : overviewAggregate
+          : overviewAggregate,
       ),
     });
     const service = new InsightsService(repository);
@@ -964,6 +1023,26 @@ describe("InsightsService", () => {
     });
   });
 
+  it("defaults overview session reads to a recent bounded date range", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-05T12:00:00.000Z"));
+    const repository = createRepository();
+    const service = new InsightsService(repository);
+
+    try {
+      await service.getOverviewSessions(scope);
+
+      expect(repository.listCurrentSessions).toHaveBeenCalledWith(scope, {
+        from: "2026-05-07T00:00:00.000+08:00",
+        page: 1,
+        pageSize: 20,
+        to: "2026-06-05T23:59:59.999+08:00",
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("returns analyzing physical sessions in overview sessions", async () => {
     const repository = createRepository({
       listCurrentSessions: vi.fn(async () => ({
@@ -1001,7 +1080,9 @@ describe("InsightsService", () => {
       totalSessions: 4,
       unresolved: 1,
     });
-    expect(result.qualityResults.map((item) => item.sessionId)).toEqual(["501"]);
+    expect(result.qualityResults.map((item) => item.sessionId)).toEqual([
+      "501",
+    ]);
     expect(result.qualityResults[0]).toMatchObject({
       passed: false,
       passedRules: 1,
@@ -1020,16 +1101,22 @@ describe("InsightsService", () => {
       to: undefined,
     });
     expect(repository.listAllCurrentSessions).not.toHaveBeenCalled();
-    expect(repository.listCurrentSessions).not.toHaveBeenCalledWith(scope, expect.objectContaining({
-      problemScope: "unresolved",
-    }));
-    expect(repository.listQualityResults).toHaveBeenCalledWith(scope, expect.objectContaining({
-      from: undefined,
-      page: 1,
-      pageSize: 20,
-      passed: false,
-      to: undefined,
-    }));
+    expect(repository.listCurrentSessions).not.toHaveBeenCalledWith(
+      scope,
+      expect.objectContaining({
+        problemScope: "unresolved",
+      }),
+    );
+    expect(repository.listQualityResults).toHaveBeenCalledWith(
+      scope,
+      expect.objectContaining({
+        from: undefined,
+        page: 1,
+        pageSize: 20,
+        passed: false,
+        to: undefined,
+      }),
+    );
   });
 
   it("merges QA finding aggregate into the quality overview", async () => {
@@ -1115,13 +1202,16 @@ describe("InsightsService", () => {
       to: "2026-06-30",
     });
 
-    expect(repository.listQualityResults).toHaveBeenCalledWith(scope, expect.objectContaining({
-      from: "2026-06-01",
-      page: 1,
-      pageSize: 10,
-      passed: undefined,
-      to: "2026-06-30",
-    }));
+    expect(repository.listQualityResults).toHaveBeenCalledWith(
+      scope,
+      expect.objectContaining({
+        from: "2026-06-01",
+        page: 1,
+        pageSize: 10,
+        passed: undefined,
+        to: "2026-06-30",
+      }),
+    );
   });
 
   it("skips quality result list when requesting the agent quality report", async () => {
@@ -1162,10 +1252,13 @@ describe("InsightsService", () => {
     expect(result.agentStats).toEqual([]);
     expect(result.qualityResults).toHaveLength(2);
     expect(repository.listQualityAgentStats).not.toHaveBeenCalled();
-    expect(repository.listQualityResults).toHaveBeenCalledWith(scope, expect.objectContaining({
-      from: "2026-06-01",
-      to: "2026-06-30",
-    }));
+    expect(repository.listQualityResults).toHaveBeenCalledWith(
+      scope,
+      expect.objectContaining({
+        from: "2026-06-01",
+        to: "2026-06-30",
+      }),
+    );
   });
 
   it("builds business topic analytics from current snapshots", async () => {
@@ -1183,25 +1276,26 @@ describe("InsightsService", () => {
       topicSessions: 2,
       unresolvedSessions: 2,
     });
-    expect(result.tagDistribution).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        code: "logistics_issue",
-        dimension: "tag",
-        name: "物流异常",
-        sessionCount: 1,
-        unresolvedSessions: 1,
-      }),
-      expect.objectContaining({
-        code: "refund",
-        name: "退款咨询",
-      }),
-    ]));
+    expect(result.tagDistribution).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "21",
+          dimension: "tag",
+          name: "物流异常",
+          sessionCount: 1,
+          unresolvedSessions: 1,
+        }),
+        expect.objectContaining({
+          code: "22",
+          name: "退款咨询",
+        }),
+      ]),
+    );
     expect(result.entityHotspots[0]).toMatchObject({
-      code: "sku-1",
+      code: "41",
       mentionCount: 2,
       name: "白色羽绒服",
       negativeSessions: 1,
-      type: "product",
     });
     expect(result.assetHotspots[0]).toMatchObject({
       code: "https://example.com/promo",
@@ -1211,13 +1305,13 @@ describe("InsightsService", () => {
       type: "link",
     });
     expect(result.intentDistribution[0]).toMatchObject({
-      code: "logistics_delay",
+      code: "31",
       name: "物流异常",
     });
     expect(result.intentTrend).toEqual([
       {
         date: "2026-06-01",
-        intentCode: "logistics_delay",
+        intentId: "31",
         intentName: "物流异常",
         sessionCount: 1,
       },
@@ -1245,10 +1339,13 @@ describe("InsightsService", () => {
         unresolvedSessions: 1,
       }),
     ]);
-    expect(repository.listBusinessSessionAggregates).toHaveBeenCalledWith(scope, expect.objectContaining({
-      from: expect.any(String),
-      to: expect.any(String),
-    }));
+    expect(repository.listBusinessSessionAggregates).toHaveBeenCalledWith(
+      scope,
+      expect.objectContaining({
+        from: expect.any(String),
+        to: expect.any(String),
+      }),
+    );
     expect(repository.listAllCurrentSessions).not.toHaveBeenCalled();
     expect(repository.listCurrentSessions).not.toHaveBeenCalled();
   });
@@ -1262,10 +1359,13 @@ describe("InsightsService", () => {
     try {
       await service.getBusiness(scope);
 
-      expect(repository.listBusinessSessionAggregates).toHaveBeenCalledWith(scope, {
-        from: "2026-05-07T00:00:00.000+08:00",
-        to: "2026-06-05T23:59:59.999+08:00",
-      });
+      expect(repository.listBusinessSessionAggregates).toHaveBeenCalledWith(
+        scope,
+        {
+          from: "2026-05-07T00:00:00.000+08:00",
+          to: "2026-06-05T23:59:59.999+08:00",
+        },
+      );
       expect(repository.listBusinessTopicFacts).toHaveBeenCalledWith(scope, {
         from: "2026-05-07T00:00:00.000+08:00",
         to: "2026-06-05T23:59:59.999+08:00",
@@ -1290,7 +1390,7 @@ describe("InsightsService", () => {
       keyword: "物流",
       page: 2,
       pageSize: 1,
-      topicCode: "logistics_delay",
+      topicCode: "31",
       to: "2026-06-30",
     });
 
@@ -1306,10 +1406,13 @@ describe("InsightsService", () => {
       total: 1,
       totalPages: 1,
     });
-    expect(repository.listBusinessTopicFacts).toHaveBeenCalledWith(scope, expect.objectContaining({
-      dimension: "intent",
-      topicCode: "logistics_delay",
-    }));
+    expect(repository.listBusinessTopicFacts).toHaveBeenCalledWith(
+      scope,
+      expect.objectContaining({
+        dimension: "intent",
+        topicCode: "31",
+      }),
+    );
     expect(repository.listCurrentSessions).toHaveBeenCalledWith(scope, {
       from: "2026-06-01",
       keyword: "物流",
@@ -1324,7 +1427,9 @@ describe("InsightsService", () => {
   it("filters follow-up action items by status", async () => {
     const service = new InsightsService(createRepository());
 
-    await expect(service.getFollowUps(scope, { status: "open" })).resolves.toMatchObject({
+    await expect(
+      service.getFollowUps(scope, { status: "open" }),
+    ).resolves.toMatchObject({
       items: [
         {
           actionItemId: "801",
@@ -1512,35 +1617,33 @@ describe("InsightsService", () => {
   });
 
   it("throws not found when session messages are requested outside uid scope", async () => {
-    const service = new InsightsService(createRepository({
-      hasSession: vi.fn(async () => false),
-    }));
+    const service = new InsightsService(
+      createRepository({
+        hasSession: vi.fn(async () => false),
+      }),
+    );
 
-    await expect(service.getSessionMessages(scope, "999")).rejects.toBeInstanceOf(NotFoundError);
+    await expect(
+      service.getSessionMessages(scope, "999"),
+    ).rejects.toBeInstanceOf(NotFoundError);
   });
 
-  it("keeps hydrated overview assets in session responses", async () => {
+  it("omits unused hydrated overview assets from session responses", async () => {
     const service = new InsightsService(createRepository());
 
     const result = await service.getOverviewSessions(scope);
 
-    expect(result.items[0]).toMatchObject({
-      assets: [
-        {
-          assetCode: "link:9002",
-          assetName: "物流详情页",
-          assetType: "link",
-        },
-      ],
-      sessionId: "501",
-    });
+    expect(result.items[0]).toMatchObject({ sessionId: "501" });
+    expect(result.items[0]).not.toHaveProperty("assets");
   });
 
   it("loads a fixed evidence message context window", async () => {
     const repository = createRepository();
     const service = new InsightsService(repository);
 
-    await expect(service.getMessageContext(scope, "301", "9002")).resolves.toMatchObject({
+    await expect(
+      service.getMessageContext(scope, "301", "9002"),
+    ).resolves.toMatchObject({
       contextAfter: 30,
       contextBefore: 30,
       conversationId: "301",
@@ -1551,16 +1654,23 @@ describe("InsightsService", () => {
       ],
     });
 
-    expect(repository.listMessageContext).toHaveBeenCalledWith(scope, "301", "9002", {
-      after: 30,
-      before: 30,
-    });
+    expect(repository.listMessageContext).toHaveBeenCalledWith(
+      scope,
+      "301",
+      "9002",
+      {
+        after: 30,
+        before: 30,
+      },
+    );
   });
 
   it("rejects settings access for non-admin roles at the service boundary", async () => {
     const service = new InsightsService(createRepository());
 
-    await expect(service.getSettings(scope, "operator")).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(service.getSettings(scope, "operator")).rejects.toBeInstanceOf(
+      ForbiddenError,
+    );
     await expect(service.getSettings(scope, "admin")).resolves.toMatchObject({
       intentConfigs: [
         expect.objectContaining({
@@ -1574,10 +1684,24 @@ describe("InsightsService", () => {
     });
   });
 
+  it("returns compact filter options for non-admin insight pages", async () => {
+    const repository = createRepository();
+    const service = new InsightsService(repository);
+
+    await expect(service.getFilterOptions(scope)).resolves.toEqual({
+      entities: [{ id: "41", name: "白色羽绒服" }],
+      intents: [{ id: "31", name: "物流异常" }],
+      tags: [{ id: "11", name: "价格敏感" }],
+    });
+    expect(repository.getFilterOptions).toHaveBeenCalledWith(scope);
+  });
+
   it("returns feature switch state in settings summary", async () => {
     const service = new InsightsService(createRepository());
 
-    await expect(service.getSettingsSummary(scope, "admin")).resolves.toMatchObject({
+    await expect(
+      service.getSettingsSummary(scope, "admin"),
+    ).resolves.toMatchObject({
       entityEnabled: true,
       insightAvailable: true,
       intentEnabled: true,
@@ -1600,13 +1724,16 @@ describe("InsightsService", () => {
         preset: "custom",
       }),
     ).resolves.toMatchObject({ idleTimeoutMinutes: 90 });
-    expect(repository.upsertSessionizationSettings).toHaveBeenCalledWith(scope, {
-      analysisDelayMinutes: 8,
-      hardMaxDurationHours: 36,
-      idleTimeoutMinutes: 90,
-      lateArrivalWindowMinutes: 20,
-      preset: "custom",
-    });
+    expect(repository.upsertSessionizationSettings).toHaveBeenCalledWith(
+      scope,
+      {
+        analysisDelayMinutes: 8,
+        hardMaxDurationHours: 36,
+        idleTimeoutMinutes: 90,
+        lateArrivalWindowMinutes: 20,
+        preset: "custom",
+      },
+    );
 
     await expect(
       service.createIntentConfig(scope, "admin", {
@@ -1626,7 +1753,11 @@ describe("InsightsService", () => {
     await expect(
       service.updateIntentConfigStatus(scope, "admin", "90", { status: 0 }),
     ).resolves.toMatchObject({ status: 0, id: "90" });
-    expect(repository.updateIntentConfigStatus).toHaveBeenCalledWith(scope, "90", 0);
+    expect(repository.updateIntentConfigStatus).toHaveBeenCalledWith(
+      scope,
+      "90",
+      0,
+    );
 
     await expect(
       service.createLabelConfig(scope, "admin", {
@@ -1764,34 +1895,56 @@ describe("InsightsService", () => {
   });
 
   it("throws not found when deleting missing insight config records", async () => {
-    const service = new InsightsService(createRepository({ deleteQaRuleConfig: vi.fn(async () => false) }));
+    const service = new InsightsService(
+      createRepository({ deleteQaRuleConfig: vi.fn(async () => false) }),
+    );
 
-    await expect(service.deleteQaRuleConfig(scope, "admin", "999")).rejects.toBeInstanceOf(NotFoundError);
+    await expect(
+      service.deleteQaRuleConfig(scope, "admin", "999"),
+    ).rejects.toBeInstanceOf(NotFoundError);
   });
 
   it("updates action item status only for supported manual statuses", async () => {
     const repository = createRepository();
     const service = new InsightsService(repository);
 
-    await expect(service.updateActionStatus(scope, "801", "done")).resolves.toMatchObject({
+    await expect(
+      service.updateActionStatus(scope, "801", "done"),
+    ).resolves.toMatchObject({
       actionItemId: "801",
       status: "done",
     });
-    expect(repository.updateActionStatus).toHaveBeenCalledWith(scope, "801", "done");
+    expect(repository.updateActionStatus).toHaveBeenCalledWith(
+      scope,
+      "801",
+      "done",
+    );
 
-    await expect(service.updateActionStatus(scope, "801", "open")).resolves.toMatchObject({
+    await expect(
+      service.updateActionStatus(scope, "801", "open"),
+    ).resolves.toMatchObject({
       actionItemId: "801",
       status: "open",
     });
-    expect(repository.updateActionStatus).toHaveBeenCalledWith(scope, "801", "open");
+    expect(repository.updateActionStatus).toHaveBeenCalledWith(
+      scope,
+      "801",
+      "open",
+    );
   });
 
   it("returns a business error when an action item cannot be updated", async () => {
-    const repository = createRepository({ updateActionStatus: vi.fn(async () => false) });
+    const repository = createRepository({
+      updateActionStatus: vi.fn(async () => false),
+    });
     const service = new InsightsService(repository);
 
-    await expect(service.updateActionStatus(scope, "21", "done")).rejects.toBeInstanceOf(BusinessError);
-    await expect(service.updateActionStatus(scope, "21", "done")).rejects.toMatchObject({
+    await expect(
+      service.updateActionStatus(scope, "21", "done"),
+    ).rejects.toBeInstanceOf(BusinessError);
+    await expect(
+      service.updateActionStatus(scope, "21", "done"),
+    ).rejects.toMatchObject({
       code: "INSIGHT_ACTION_ITEM_NOT_FOUND",
       statusCode: 200,
     });
@@ -1801,13 +1954,19 @@ describe("InsightsService", () => {
     const repository = createRepository();
     const service = new InsightsService(repository);
 
-    await expect(service.createActionItem(scope, {
-      conversationId: "301",
-      dueHint: "今天内",
-      priority: "high",
-      sessionId: "501",
-      title: "  回访物流状态  ",
-    }, "77")).resolves.toEqual({ actionItemId: "8101" });
+    await expect(
+      service.createActionItem(
+        scope,
+        {
+          conversationId: "301",
+          dueHint: "今天内",
+          priority: "high",
+          sessionId: "501",
+          title: "  回访物流状态  ",
+        },
+        "77",
+      ),
+    ).resolves.toEqual({ actionItemId: "8101" });
 
     expect(repository.createActionItem).toHaveBeenCalledWith(scope, {
       conversationId: "301",
@@ -1825,12 +1984,18 @@ describe("InsightsService", () => {
     });
     const service = new InsightsService(repository);
 
-    await expect(service.createActionItem(scope, {
-      conversationId: "301",
-      priority: "medium",
-      sessionId: "501",
-      title: "回访物流状态",
-    }, "77")).rejects.toMatchObject({
+    await expect(
+      service.createActionItem(
+        scope,
+        {
+          conversationId: "301",
+          priority: "medium",
+          sessionId: "501",
+          title: "回访物流状态",
+        },
+        "77",
+      ),
+    ).rejects.toMatchObject({
       code: "INVALID_ACTION_ITEM_TARGET",
     });
 
@@ -1845,11 +2010,13 @@ describe("InsightsService", () => {
     const repository = createRepository();
     const service = new InsightsService(repository);
 
-    await expect(service.createActionItem(scope, {
-      conversationId: "301",
-      priority: "medium",
-      title: "回访物流状态",
-    })).rejects.toMatchObject({
+    await expect(
+      service.createActionItem(scope, {
+        conversationId: "301",
+        priority: "medium",
+        title: "回访物流状态",
+      }),
+    ).rejects.toMatchObject({
       code: "INVALID_ACTION_ITEM_TARGET",
     });
 
@@ -1861,11 +2028,13 @@ describe("InsightsService", () => {
     const repository = createRepository();
     const service = new InsightsService(repository);
 
-    await expect(service.createActionItem(scope, {
-      conversationId: "301",
-      priority: "medium",
-      title: "   ",
-    })).rejects.toMatchObject({
+    await expect(
+      service.createActionItem(scope, {
+        conversationId: "301",
+        priority: "medium",
+        title: "   ",
+      }),
+    ).rejects.toMatchObject({
       code: "INVALID_ACTION_ITEM_TITLE",
     });
     expect(repository.createActionItem).not.toHaveBeenCalled();
@@ -1898,7 +2067,9 @@ describe("InsightsService", () => {
         from: new Date("2026-06-01T00:00:00.000Z"),
         to: new Date("2026-06-02T00:00:00.000Z"),
       },
-      expect.stringMatching(/^rescan:9001:qaFindings:2026-06-01T00:00:00\.000Z:2026-06-02T00:00:00\.000Z:/),
+      expect.stringMatching(
+        /^rescan:9001:qaFindings:2026-06-01T00:00:00\.000Z:2026-06-02T00:00:00\.000Z:/,
+      ),
     );
   });
 
@@ -1945,12 +2116,19 @@ describe("InsightsService", () => {
       ],
       total: 1,
     });
-    expect(repository.listRescanTasks).toHaveBeenCalledWith(scope, { limit: 10, offset: 0 });
+    expect(repository.listRescanTasks).toHaveBeenCalledWith(scope, {
+      limit: 10,
+      offset: 0,
+    });
   });
 
   it("throws not found when a detail session is outside uid scope", async () => {
-    const service = new InsightsService(createRepository({ findDetail: vi.fn(async () => undefined) }));
+    const service = new InsightsService(
+      createRepository({ findDetail: vi.fn(async () => undefined) }),
+    );
 
-    await expect(service.getDetail(scope, "999")).rejects.toBeInstanceOf(NotFoundError);
+    await expect(service.getDetail(scope, "999")).rejects.toBeInstanceOf(
+      NotFoundError,
+    );
   });
 });

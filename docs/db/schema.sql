@@ -229,7 +229,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_session_insight_current (
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
   UNIQUE KEY uk_session_insight_current_session_id (session_id),
-  KEY idx_current_session_snapshot (session_id, current_snapshot_id)
+  KEY idx_current_snapshot_session (current_snapshot_id, session_id)
 ) COMMENT='逻辑会话当前洞察快照指针表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_session_summary (
@@ -260,14 +260,14 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_session_tag (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户UID',
   snapshot_id BIGINT UNSIGNED NOT NULL COMMENT '洞察快照ID',
-  tag_code VARCHAR(128) NOT NULL COMMENT '标签编码',
-  tag_name VARCHAR(128) NOT NULL COMMENT '标签名称',
+  tag_id BIGINT UNSIGNED NOT NULL COMMENT '标签配置ID',
+  tag_name VARCHAR(128) NOT NULL COMMENT '标签名称快照',
   confidence DECIMAL(5,4) NULL COMMENT '置信度',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
   KEY idx_tag_snapshot (snapshot_id),
-  KEY idx_tag_uid_code_snapshot (uid, tag_code, snapshot_id)
+  KEY idx_tag_uid_id_snapshot (uid, tag_id, snapshot_id)
 ) COMMENT='逻辑会话标签结果表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_session_problem_resolution (
@@ -306,8 +306,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_session_entity (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户UID',
   snapshot_id BIGINT UNSIGNED NOT NULL COMMENT '洞察快照ID',
-  entity_id VARCHAR(128) NOT NULL COMMENT '实体稳定ID',
-  entity_type VARCHAR(64) NOT NULL COMMENT '实体类型',
+  entity_id BIGINT UNSIGNED NOT NULL COMMENT '实体词库配置ID',
   entity_name VARCHAR(255) NOT NULL COMMENT '实体展示名称',
   sentiment VARCHAR(32) NULL COMMENT '实体相关情绪，positive：正向，neutral：中性，negative：负向，mixed：混合',
   confidence DECIMAL(5,4) NULL COMMENT '置信度',
@@ -315,21 +314,21 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_session_entity (
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
   KEY idx_session_entity_snapshot (snapshot_id),
-  KEY idx_session_entity_uid_identity (uid, entity_type, entity_id, snapshot_id)
+  KEY idx_session_entity_uid_id_snapshot (uid, entity_id, snapshot_id)
 ) COMMENT='逻辑会话实体结果表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_session_intent (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户UID',
   snapshot_id BIGINT UNSIGNED NOT NULL COMMENT '洞察快照ID',
-  intent_code VARCHAR(128) NOT NULL COMMENT '意图编码',
-  intent_label VARCHAR(128) NOT NULL COMMENT '意图名称',
+  intent_id BIGINT UNSIGNED NOT NULL COMMENT '意图配置ID',
+  intent_label VARCHAR(128) NOT NULL COMMENT '意图名称快照',
   confidence DECIMAL(5,4) NULL COMMENT '置信度',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
   KEY idx_session_intent_snapshot (snapshot_id),
-  KEY idx_session_intent_uid_code_snapshot (uid, intent_code, snapshot_id)
+  KEY idx_session_intent_uid_id_snapshot (uid, intent_id, snapshot_id)
 ) COMMENT='逻辑会话意图结果表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_session_action_item (
@@ -466,8 +465,8 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_qa_rule_config (
 CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_entity_dictionary (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
-  entity_type VARCHAR(64) NOT NULL COMMENT '实体类型',
-  canonical_name VARCHAR(255) NOT NULL COMMENT '实体标准名称',
+  entity_code VARCHAR(128) NOT NULL COMMENT '实体编码',
+  entity_name VARCHAR(255) NOT NULL COMMENT '实体名称',
   aliases_json JSON NULL COMMENT '别名JSON',
   attributes_json JSON NULL COMMENT '属性JSON',
   status TINYINT NOT NULL DEFAULT 1 COMMENT '配置状态，1启用0禁用-1删除',
@@ -475,6 +474,6 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_entity_dictionary (
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
-  UNIQUE KEY uk_entity_dictionary_uid_type_name (uid, entity_type, canonical_name),
-  KEY idx_entity_dictionary_uid_type (uid, entity_type)
+  UNIQUE KEY uk_entity_dictionary_uid_code (uid, entity_code),
+  UNIQUE KEY uk_entity_dictionary_uid_name (uid, entity_name)
 ) COMMENT='会话洞察实体词库配置表';

@@ -19,6 +19,7 @@ import type {
   SaveAnalysisResultInput,
   ShouldCreateLiveAnalyzeJobInput,
   ClaimedSyncMessagesJob,
+  ClaimedUidMaintenanceJob,
   InsightWorkerCursor,
   InsightWorkerMessage,
   InsightWorkerRepositoryPort,
@@ -163,6 +164,7 @@ const LIVE_RUN_WATERMARK_LOOKBACK_LIMIT = 20;
 const PRE_CONTEXT_CANDIDATE_MULTIPLIER = 5;
 const cursorSource = "xy_wap_embed_msg_audit_info";
 const globalCursorUid = 0;
+const uidMaintenanceJobType = "maintain_insight_uid";
 const terminalJobStatuses = ["succeeded", "failed"] as const;
 
 export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort {
@@ -997,6 +999,69 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
     return String(parseInsertedMySqlId(inserted) ?? idempotencyKey);
   }
 
+  async seedUidMaintenanceJobs(input: {
+    limit: number;
+    runAfter: Date;
+  }): Promise<{ insertedJobs: number; scannedUids: number }> {
+    const featureConfigs = await this.listMissingUidMaintenanceConfigs(input.limit);
+    let insertedJobs = 0;
+
+    for (const config of featureConfigs) {
+      const inserted = await this.db
+        .insertInto("xy_wap_embed_insight_job")
+        .values({
+          analysis_scope: "all",
+          idempotency_key: `${uidMaintenanceJobType}:${config.uid}`,
+          job_type: uidMaintenanceJobType,
+          priority: 5,
+          rescan_task_id: null,
+          run_after: input.runAfter,
+          status: "pending",
+          target_id: String(config.uid),
+          target_type: "uid",
+          uid: config.uid,
+        })
+        .ignore()
+        .executeTakeFirst() as InsertResult;
+
+      insertedJobs += getInsertedRows(inserted);
+    }
+
+    return {
+      insertedJobs,
+      scannedUids: featureConfigs.length,
+    };
+  }
+
+  private async listMissingUidMaintenanceConfigs(limit: number) {
+    const boundedLimit = Math.max(1, Math.min(Math.floor(limit), 10_000));
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_insight_feature_config as config")
+      .leftJoin("xy_wap_embed_insight_job as job", (join) =>
+        join
+          .onRef("job.uid", "=", "config.uid")
+          .on("job.target_type", "=", "uid")
+          .on("job.job_type", "=", uidMaintenanceJobType)
+      )
+      .select([
+        "config.entity_enabled as entity_enabled",
+        "config.insight_enabled as insight_enabled",
+        "config.intent_enabled as intent_enabled",
+        "config.label_enabled as label_enabled",
+        "config.last_enable_time as last_enable_time",
+        "config.qa_enabled as qa_enabled",
+        "config.todo_enabled as todo_enabled",
+        "config.uid as uid",
+      ])
+      .where("config.insight_enabled", "=", 1)
+      .where("job.id", "is", null)
+      .orderBy("config.uid", "asc")
+      .limit(boundedLimit)
+      .execute() as WorkerFeatureConfigRow[];
+
+    return rows.map(parseWorkerFeatureConfigRow);
+  }
+
   async updateCursor(cursor: InsightWorkerCursor): Promise<void> {
     await this.db
       .insertInto("xy_wap_embed_insight_sync_cursor")
@@ -1030,7 +1095,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         throw new Error(`Invalid sync_messages target_id: ${row.target_id}`);
       }
 
-      const claimed = await this.markUidJobRunning(trx, row.id);
+      const claimed = await this.markUidJobRunning(trx, row.id, "sync_messages");
 
       if (!claimed) {
         return undefined;
@@ -1062,8 +1127,43 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       : undefined;
   }
 
+  async claimNextUidMaintenanceJob(): Promise<ClaimedUidMaintenanceJob | undefined> {
+    const row = await this.claimNextUidJob({
+      jobType: uidMaintenanceJobType,
+    });
+
+    return row
+      ? {
+          jobId: row.jobId,
+          uid: row.uid,
+        }
+      : undefined;
+  }
+
+  async rescheduleUidMaintenanceJob(
+    jobId: string,
+    input: { runAfter: Date },
+  ): Promise<void> {
+    await this.db
+      .updateTable("xy_wap_embed_insight_job")
+      .set({
+        attempt_count: 0,
+        error_code: null,
+        error_message: null,
+        lease_until: null,
+        locked_by: null,
+        run_after: input.runAfter,
+        status: "pending",
+        update_time: new Date(),
+      })
+      .where("id", "=", parsePositiveInteger(jobId) ?? -1)
+      .where("job_type", "=", uidMaintenanceJobType)
+      .where("status", "=", "running")
+      .executeTakeFirst();
+  }
+
   private async claimNextUidJob(input: {
-    jobType: "cleanup_disabled_insights" | "sync_messages";
+    jobType: "cleanup_disabled_insights" | "sync_messages" | typeof uidMaintenanceJobType;
   }) {
     return this.db.transaction().execute(async (trx) => {
       const row = await this.buildUidJobClaimQuery(trx, input.jobType)
@@ -1073,7 +1173,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         return undefined;
       }
 
-      if (!await this.markUidJobRunning(trx, row.id)) {
+      if (!await this.markUidJobRunning(trx, row.id, input.jobType)) {
         return undefined;
       }
 
@@ -1089,15 +1189,31 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
 
   private buildUidJobClaimQuery(
     trx: Pick<Kysely<Database>, "selectFrom">,
-    jobType: "cleanup_disabled_insights" | "sync_messages",
+    jobType: "cleanup_disabled_insights" | "sync_messages" | typeof uidMaintenanceJobType,
   ) {
-    return trx
+    let query = trx
       .selectFrom("xy_wap_embed_insight_job")
       .select(["analysis_scope", "id", "rescan_task_id", "target_id", "uid"])
-      .where("status", "=", "pending")
       .where("target_type", "=", "uid")
       .where("job_type", "=", jobType)
-      .where("run_after", "<=", new Date())
+      .where("run_after", "<=", new Date());
+
+    if (jobType === uidMaintenanceJobType) {
+      const now = new Date();
+      query = query.where((eb) =>
+        eb.or([
+          eb("status", "=", "pending"),
+          eb.and([
+            eb("status", "=", "running"),
+            eb("lease_until", "<=", now),
+          ]),
+        ])
+      );
+    } else {
+      query = query.where("status", "=", "pending");
+    }
+
+    return query
       .orderBy("priority", "desc")
       .orderBy("id", "asc")
       .forUpdate()
@@ -1107,8 +1223,9 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
   private async markUidJobRunning(
     trx: Pick<Kysely<Database>, "updateTable">,
     jobId: number | string,
+    jobType: "cleanup_disabled_insights" | "sync_messages" | typeof uidMaintenanceJobType,
   ) {
-    const result = await trx
+    let query = trx
       .updateTable("xy_wap_embed_insight_job")
       .set({
         attempt_count: sql<number>`attempt_count + 1`,
@@ -1117,9 +1234,24 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         status: "running",
         update_time: new Date(),
       })
-      .where("id", "=", parseNumber(jobId))
-      .where("status", "=", "pending")
-      .executeTakeFirst();
+      .where("id", "=", parseNumber(jobId));
+
+    if (jobType === uidMaintenanceJobType) {
+      const now = new Date();
+      query = query.where((eb) =>
+        eb.or([
+          eb("status", "=", "pending"),
+          eb.and([
+            eb("status", "=", "running"),
+            eb("lease_until", "<=", now),
+          ]),
+        ])
+      );
+    } else {
+      query = query.where("status", "=", "pending");
+    }
+
+    const result = await query.executeTakeFirst();
 
     return getAffectedRows(result) > 0;
   }
@@ -1956,6 +2088,21 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       status: "failed",
       update_time: new Date(),
     }).where("id", "=", parsePositiveInteger(jobId) ?? -1).executeTakeFirst();
+  }
+
+  async markUidMaintenanceJobFailed(jobId: string, error: unknown): Promise<void> {
+    await this.db.updateTable("xy_wap_embed_insight_job").set({
+      error_code: "UID_MAINTENANCE_FAILED",
+      error_message: formatError(error),
+      lease_until: null,
+      locked_by: null,
+      run_after: new Date(Date.now() + 60_000),
+      status: "pending",
+      update_time: new Date(),
+    })
+      .where("id", "=", parsePositiveInteger(jobId) ?? -1)
+      .where("job_type", "=", uidMaintenanceJobType)
+      .executeTakeFirst();
   }
 
   async markSyncMessagesJobFailed(jobId: string, error: unknown): Promise<void> {

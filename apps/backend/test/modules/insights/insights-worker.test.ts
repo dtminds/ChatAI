@@ -25,6 +25,10 @@ function createRepository(
     closeSession: vi.fn(async () => undefined),
     closeDisabledOpenSessions: vi.fn(async () => 0),
     createAnalyzeJob: vi.fn(async () => "job-1"),
+    claimNextUidMaintenanceJob: vi.fn(async () => ({
+      jobId: "maintain-9001",
+      uid: 9001,
+    })),
     claimNextAnalyzeJob: vi.fn(async () => undefined),
     claimNextSyncMessagesJob: vi.fn(async () => undefined),
     createLogicalSession: vi.fn(async () => {
@@ -64,7 +68,7 @@ function createRepository(
     getCursor: vi.fn(async () => ({ cursorAuditId: 0, cursorMsgtime: 0 })),
     getFeatureConfig: vi.fn(async () => ({
       entityEnabled: true,
-      insightEnabled: false,
+      insightEnabled: true,
       intentEnabled: true,
       labelEnabled: true,
       lastEnableTime: 1_780_243_000_000,
@@ -127,8 +131,11 @@ function createRepository(
     markSyncMessagesJobSucceeded: vi.fn(async () => undefined),
     markCleanupDisabledInsightsJobFailed: vi.fn(async () => undefined),
     markCleanupDisabledInsightsJobSucceeded: vi.fn(async () => undefined),
+    markUidMaintenanceJobFailed: vi.fn(async () => undefined),
     reopenSession: vi.fn(async () => true),
+    rescheduleUidMaintenanceJob: vi.fn(async () => undefined),
     saveAnalysisResult: vi.fn(async () => "7001"),
+    seedUidMaintenanceJobs: vi.fn(async () => ({ insertedJobs: 0, scannedUids: 0 })),
     shouldCreateLiveAnalyzeJob: vi.fn(async () => true),
     startAnalysisRun: vi.fn(async () => "run-1"),
     updateRescanTaskAfterAnalysis: vi.fn(async () => undefined),
@@ -140,8 +147,76 @@ function createRepository(
 }
 
 describe("InsightsWorkerService", () => {
+  it("seeds and runs one claimed uid maintenance job without directly scanning active configs", async () => {
+    const repository = createRepository({
+      claimNextUidMaintenanceJob: vi.fn(async () => ({
+        jobId: "maintain-9001",
+        uid: 9001,
+      })),
+      getActiveFeatureConfigs: vi.fn(async () => []),
+    });
+    const service = new InsightsWorkerService(repository, { batchSize: 50 });
+
+    await service.runOnce();
+
+    expect(repository.seedUidMaintenanceJobs).toHaveBeenCalledWith({
+      limit: 50,
+      runAfter: expect.any(Date),
+    });
+    expect(repository.getActiveFeatureConfigs).not.toHaveBeenCalled();
+    expect(repository.listIncrementalMessages).toHaveBeenCalledWith({
+      cursorAuditId: 0,
+      cursorMsgtime: expect.any(Number),
+      limit: 50,
+      uid: 9001,
+    });
+    expect(repository.listOpenSessionsForLiveAnalysis).toHaveBeenCalledWith({
+      activeUids: new Set([9001]),
+      limit: 50,
+    });
+    expect(repository.listClosableOpenSessions).toHaveBeenCalledWith({
+      activeUids: new Set([9001]),
+      limit: 50,
+      now: expect.any(Number),
+    });
+    expect(repository.rescheduleUidMaintenanceJob).toHaveBeenCalledWith(
+      "maintain-9001",
+      expect.objectContaining({
+        runAfter: expect.any(Date),
+      }),
+    );
+  });
+
+  it("marks uid maintenance jobs failed when incremental maintenance throws", async () => {
+    const repository = createRepository({
+      claimNextUidMaintenanceJob: vi.fn(async () => ({
+        jobId: "maintain-9001",
+        uid: 9001,
+      })),
+      listIncrementalMessages: vi.fn(async () => {
+        throw new Error("platform unavailable");
+      }),
+    });
+    const service = new InsightsWorkerService(repository, { batchSize: 50 });
+
+    await service.runOnce();
+
+    expect(repository.markUidMaintenanceJobFailed).toHaveBeenCalledWith(
+      "maintain-9001",
+      expect.objectContaining({
+        message: "platform unavailable",
+      }),
+    );
+    expect(repository.rescheduleUidMaintenanceJob).not.toHaveBeenCalled();
+  });
+
   it("sessionizes incremental messages and creates a live analysis job", async () => {
-    const repository = createRepository();
+    const repository = createRepository({
+      claimNextUidMaintenanceJob: vi.fn(async () => ({
+        jobId: "maintain-9001",
+        uid: 9001,
+      })),
+    });
     const service = new InsightsWorkerService(repository, { batchSize: 50 });
 
     await service.runOnce();
@@ -724,12 +799,12 @@ describe("InsightsWorkerService", () => {
 
   it("does not re-slice an already assigned source message during incremental sync", async () => {
     const repository = createRepository({
-      findSessionBySourceMessage: vi.fn(async () => ({
+      listSessionsBySourceMessages: vi.fn(async () => [{
         sessionId: "501",
         sourceMessageId: "9001",
         status: "open",
         uid: 9001,
-      })),
+      }]),
       listIncrementalMessages: vi.fn(async () => [
         {
           chatType: 1,
@@ -750,8 +825,8 @@ describe("InsightsWorkerService", () => {
 
     await service.runOnce();
 
-    expect(repository.findSessionBySourceMessage).toHaveBeenCalledWith({
-      sourceMessageId: "9001",
+    expect(repository.listSessionsBySourceMessages).toHaveBeenCalledWith({
+      sourceMessageIds: ["9001"],
       uid: 9001,
     });
     expect(repository.findPlatformConversation).not.toHaveBeenCalled();
@@ -766,14 +841,16 @@ describe("InsightsWorkerService", () => {
 
   it("does not scan incremental messages when no tenant has enabled insights", async () => {
     const repository = createRepository({
-      getActiveFeatureConfigs: vi.fn(async () => []),
+      claimNextUidMaintenanceJob: vi.fn(async () => undefined),
+      seedUidMaintenanceJobs: vi.fn(async () => ({ insertedJobs: 0, scannedUids: 0 })),
     });
     const service = new InsightsWorkerService(repository);
 
     await service.runOnce();
 
-    expect(repository.getActiveFeatureConfigs).toHaveBeenCalledWith({
+    expect(repository.seedUidMaintenanceJobs).toHaveBeenCalledWith({
       limit: 200,
+      runAfter: expect.any(Date),
     });
     expect(repository.findPlatformConversation).not.toHaveBeenCalled();
     expect(repository.appendSessionMessage).not.toHaveBeenCalled();
@@ -782,7 +859,20 @@ describe("InsightsWorkerService", () => {
 
   it("does not scan incremental messages when the tenant has not enabled insights", async () => {
     const repository = createRepository({
-      getActiveFeatureConfigs: vi.fn(async () => []),
+      claimNextUidMaintenanceJob: vi.fn(async () => ({
+        jobId: "maintain-9001",
+        uid: 9001,
+      })),
+      getFeatureConfig: vi.fn(async () => ({
+        entityEnabled: true,
+        insightEnabled: false,
+        intentEnabled: true,
+        labelEnabled: true,
+        lastEnableTime: 1_780_243_000_000,
+        qaEnabled: true,
+        todoEnabled: true,
+        uid: 9001,
+      })),
     });
     const service = new InsightsWorkerService(repository);
 
@@ -946,6 +1036,10 @@ describe("InsightsWorkerService", () => {
 
   it("does not run analysis scheduling or close sessions when insights are disabled", async () => {
     const repository = createRepository({
+      claimNextUidMaintenanceJob: vi.fn(async () => ({
+        jobId: "maintain-9001",
+        uid: 9001,
+      })),
       claimNextAnalyzeJob: vi.fn(async () => ({
         analysisScope: "all",
         attemptCount: 1,
@@ -955,7 +1049,16 @@ describe("InsightsWorkerService", () => {
         sessionId: "501",
         uid: 9001,
       })),
-      getActiveFeatureConfigs: vi.fn(async () => []),
+      getFeatureConfig: vi.fn(async () => ({
+        entityEnabled: true,
+        insightEnabled: false,
+        intentEnabled: true,
+        labelEnabled: true,
+        lastEnableTime: 1_780_243_000_000,
+        qaEnabled: true,
+        todoEnabled: true,
+        uid: 9001,
+      })),
       listClosableOpenSessions: vi.fn(async () => [
         {
           analysisDelayMinutes: 10,
@@ -990,6 +1093,7 @@ describe("InsightsWorkerService", () => {
 
   it("runs cleanup-disabled-insights jobs in batches", async () => {
     const repository = createRepository({
+      claimNextUidMaintenanceJob: vi.fn(async () => undefined),
       claimNextCleanupDisabledInsightsJob: vi.fn(async () => ({
         enableEpoch: 1_780_243_000_000,
         jobId: "cleanup-job-1",
@@ -998,6 +1102,16 @@ describe("InsightsWorkerService", () => {
       closeDisabledOpenSessions: vi.fn()
         .mockResolvedValueOnce(200)
         .mockResolvedValueOnce(25),
+      getFeatureConfig: vi.fn(async () => ({
+        entityEnabled: true,
+        insightEnabled: false,
+        intentEnabled: true,
+        labelEnabled: true,
+        lastEnableTime: 1_780_243_000_000,
+        qaEnabled: true,
+        todoEnabled: true,
+        uid: 9001,
+      })),
       getActiveFeatureConfigs: vi.fn(async () => []),
     });
     const service = new InsightsWorkerService(repository, { batchSize: 200 });
@@ -1016,12 +1130,23 @@ describe("InsightsWorkerService", () => {
 
   it("fails cleanup-disabled-insights jobs when cleanup exceeds the batch safety limit", async () => {
     const repository = createRepository({
+      claimNextUidMaintenanceJob: vi.fn(async () => undefined),
       claimNextCleanupDisabledInsightsJob: vi.fn(async () => ({
         enableEpoch: 1_780_243_000_000,
         jobId: "cleanup-job-1",
         uid: 9001,
       })),
       closeDisabledOpenSessions: vi.fn(async () => 2),
+      getFeatureConfig: vi.fn(async () => ({
+        entityEnabled: true,
+        insightEnabled: false,
+        intentEnabled: true,
+        labelEnabled: true,
+        lastEnableTime: 1_780_243_000_000,
+        qaEnabled: true,
+        todoEnabled: true,
+        uid: 9001,
+      })),
       getActiveFeatureConfigs: vi.fn(async () => []),
     });
     const service = new InsightsWorkerService(repository, { batchSize: 2 });
@@ -1039,6 +1164,7 @@ describe("InsightsWorkerService", () => {
 
   it("skips stale cleanup-disabled-insights jobs after insights are re-enabled", async () => {
     const repository = createRepository({
+      claimNextUidMaintenanceJob: vi.fn(async () => undefined),
       claimNextCleanupDisabledInsightsJob: vi.fn(async () => ({
         enableEpoch: 1_780_243_000_000,
         jobId: "cleanup-job-1",

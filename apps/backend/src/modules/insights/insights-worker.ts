@@ -170,6 +170,11 @@ export type ClaimedSyncMessagesJob = {
   uid: number;
 };
 
+export type ClaimedUidMaintenanceJob = {
+  jobId: string;
+  uid: number;
+};
+
 export type RecentActionItemForPrompt = InsightPromptExistingActionItem;
 
 export type InsightAnalysisRunInput = {
@@ -288,6 +293,7 @@ export type InsightWorkerRepositoryPort = {
   claimNextCleanupDisabledInsightsJob(): Promise<CleanupDisabledInsightsJob | undefined>;
   claimNextAnalyzeJob(): Promise<ClaimedAnalyzeJob | undefined>;
   claimNextSyncMessagesJob(): Promise<ClaimedSyncMessagesJob | undefined>;
+  claimNextUidMaintenanceJob(): Promise<ClaimedUidMaintenanceJob | undefined>;
   closeDisabledOpenSessions(input: {
     endedAt: number;
     limit: number;
@@ -369,6 +375,7 @@ export type InsightWorkerRepositoryPort = {
   markSyncMessagesJobSucceeded(jobId: string): Promise<void>;
   markCleanupDisabledInsightsJobFailed(jobId: string, error: unknown): Promise<void>;
   markCleanupDisabledInsightsJobSucceeded(jobId: string): Promise<void>;
+  markUidMaintenanceJobFailed(jobId: string, error: unknown): Promise<void>;
   postponeAnalysisJobForInputReadiness(
     jobId: string,
     input: { delayMs: number; reason: string },
@@ -377,7 +384,15 @@ export type InsightWorkerRepositoryPort = {
     sessionId: string;
     uid: number;
   }): Promise<boolean>;
+  rescheduleUidMaintenanceJob(
+    jobId: string,
+    input: { runAfter: Date },
+  ): Promise<void>;
   saveAnalysisResult(input: SaveAnalysisResultInput): Promise<string>;
+  seedUidMaintenanceJobs(input: {
+    limit: number;
+    runAfter: Date;
+  }): Promise<{ insertedJobs: number; scannedUids: number }>;
   shouldCreateLiveAnalyzeJob(input: ShouldCreateLiveAnalyzeJobInput): Promise<boolean>;
   startAnalysisRun(input: InsightAnalysisRunInput): Promise<string>;
   updateRescanTaskAfterAnalysis(input: {
@@ -406,10 +421,13 @@ const PREVIOUS_SESSION_CONTEXT_LIMIT = 3;
 const TERMINAL_JOB_ARCHIVE_RETENTION_DAYS = 30;
 const TERMINAL_JOB_ARCHIVE_LIMIT = 5_000;
 const PRE_CONTEXT_MESSAGE_LIMIT = 10;
+const UID_MAINTENANCE_INTERVAL_MS = 10_000;
 
 export class InsightsWorkerService {
   private readonly batchSize: number;
   private readonly model?: InsightSessionAnalyzer;
+  private uidSessionConfigCache?: Map<number, InsightWorkerSessionizationConfig>;
+  private uidFeatureConfigCache?: Map<number, InsightWorkerFeatureConfig>;
 
   constructor(
     private readonly repository: InsightWorkerRepositoryPort,
@@ -433,78 +451,27 @@ export class InsightsWorkerService {
   private readonly startLookbackDays: number;
 
   async runOnce() {
-    await this.runSyncMessagesJob();
-    await this.runCleanupDisabledInsightsJob();
+    this.uidSessionConfigCache = new Map();
+    this.uidFeatureConfigCache = new Map();
 
-    const featureConfigs = await this.repository.getActiveFeatureConfigs({
-      limit: this.batchSize,
-    });
-    let sessionizedMessages = 0;
-    let scannedMessages = 0;
-
-    for (const featureConfig of featureConfigs) {
-      const cursor = await this.repository.getCursor(featureConfig.uid);
-      const start = this.resolveIncrementalStart({
-        cursor,
-        lastEnableTime: featureConfig.lastEnableTime,
-      });
-      const messages = await this.repository.listIncrementalMessages({
-        cursorAuditId: start.cursorAuditId,
-        cursorMsgtime: start.cursorMsgtime,
+    try {
+      await this.repository.seedUidMaintenanceJobs({
         limit: this.batchSize,
-        uid: featureConfig.uid,
+        runAfter: new Date(),
       });
+      await this.runSyncMessagesJob();
+      await this.runCleanupDisabledInsightsJob();
+      await this.runUidMaintenanceJob();
 
-      for (const message of messages) {
-        const existingSession = await this.repository.findSessionBySourceMessage({
-          sourceMessageId: message.id,
-          uid: featureConfig.uid,
-        });
-
-        if (existingSession) {
-          continue;
-        }
-
-        if (await this.sessionizeMessage(message)) {
-          sessionizedMessages += 1;
-        }
+      if (this.model) {
+        await this.runAnalyzeJobs(3);
       }
 
-      const lastMessage = messages.at(-1);
-
-      if (lastMessage) {
-        await this.repository.updateCursor({
-          cursorAuditId: Number(lastMessage.id),
-          cursorMsgtime: lastMessage.msgtime,
-          uid: featureConfig.uid,
-        });
-      }
-
-      scannedMessages += messages.length;
+      await this.archiveTerminalJobs();
+    } finally {
+      this.uidSessionConfigCache = undefined;
+      this.uidFeatureConfigCache = undefined;
     }
-
-    if (scannedMessages > 0) {
-      this.logger?.info(
-        {
-          activeUids: featureConfigs.length,
-          scannedMessages,
-          sessionizedMessages,
-        },
-        "会话洞察 worker 已扫描增量消息",
-      );
-    }
-
-    const activeUids = new Set(featureConfigs.map((config) => config.uid));
-
-    if (this.model) {
-      await this.runAnalyzeJob();
-    }
-
-    if (activeUids.size > 0) {
-      await this.scheduleLiveAnalysisForOpenSessions(activeUids);
-      await this.closeTimedOutOpenSessions(activeUids);
-    }
-    await this.archiveTerminalJobs();
   }
 
   private resolveIncrementalStart(input: {
@@ -568,6 +535,104 @@ export class InsightsWorkerService {
         "会话洞察 worker 已创建未完结会话提前分析任务",
       );
     }
+  }
+
+  private async runUidMaintenanceJob() {
+    const job = await this.repository.claimNextUidMaintenanceJob();
+
+    if (!job) {
+      return;
+    }
+
+    try {
+      const { scannedMessages, sessionizedMessages } = await this.maintainUid(job.uid);
+
+      if (scannedMessages > 0) {
+        this.logger?.info(
+          {
+            activeUids: 1,
+            scannedMessages,
+            sessionizedMessages,
+            uid: job.uid,
+          },
+          "会话洞察 worker 已扫描增量消息",
+        );
+      }
+
+      await this.repository.rescheduleUidMaintenanceJob(job.jobId, {
+        runAfter: new Date(Date.now() + UID_MAINTENANCE_INTERVAL_MS),
+      });
+    } catch (error) {
+      await this.repository.markUidMaintenanceJobFailed(job.jobId, error);
+      this.logger?.error(
+        { err: error, jobId: job.jobId, uid: job.uid },
+        "会话洞察 worker UID 维护任务失败",
+      );
+    }
+  }
+
+  private async maintainUid(uid: number) {
+    const featureConfig = await this.repository.getFeatureConfig(uid);
+    this.uidFeatureConfigCache?.set(featureConfig.uid, featureConfig);
+
+    if (!featureConfig.insightEnabled) {
+      return {
+        scannedMessages: 0,
+        sessionizedMessages: 0,
+      };
+    }
+
+    const cursor = await this.repository.getCursor(uid);
+    const start = this.resolveIncrementalStart({
+      cursor,
+      lastEnableTime: featureConfig.lastEnableTime,
+    });
+    const messages = await this.repository.listIncrementalMessages({
+      cursorAuditId: start.cursorAuditId,
+      cursorMsgtime: start.cursorMsgtime,
+      limit: this.batchSize,
+      uid,
+    });
+
+    const existingSessions = await this.repository.listSessionsBySourceMessages({
+      sourceMessageIds: messages.map((message) => message.id),
+      uid,
+    });
+    const existingByMessageId = new Map(
+      existingSessions
+        .filter((session) => session.sourceMessageId)
+        .map((session) => [session.sourceMessageId, session]),
+    );
+    let sessionizedMessages = 0;
+
+    for (const message of messages) {
+      if (existingByMessageId.has(message.id)) {
+        continue;
+      }
+
+      if (await this.sessionizeMessage(message)) {
+        sessionizedMessages += 1;
+      }
+    }
+
+    const lastMessage = messages.at(-1);
+
+    if (lastMessage) {
+      await this.repository.updateCursor({
+        cursorAuditId: Number(lastMessage.id),
+        cursorMsgtime: lastMessage.msgtime,
+        uid,
+      });
+    }
+
+    const activeUids = new Set([uid]);
+    await this.scheduleLiveAnalysisForOpenSessions(activeUids);
+    await this.closeTimedOutOpenSessions(activeUids);
+
+    return {
+      scannedMessages: messages.length,
+      sessionizedMessages,
+    };
   }
 
   private async runSyncMessagesJob() {
@@ -739,7 +804,11 @@ export class InsightsWorkerService {
     }
 
     try {
-      const featureConfig = await this.repository.getFeatureConfig(job.uid);
+      let featureConfig = this.uidFeatureConfigCache?.get(job.uid);
+      if (!featureConfig) {
+        featureConfig = await this.repository.getFeatureConfig(job.uid);
+        this.uidFeatureConfigCache?.set(job.uid, featureConfig);
+      }
 
       if (
         featureConfig.insightEnabled
@@ -823,7 +892,13 @@ export class InsightsWorkerService {
     }
 
     const input = buildInsightMessageInput(toMessageSourceRow(message, conversation.conversationId));
-    const config = await this.repository.getSessionizationConfig(conversation.uid);
+
+    let config = this.uidSessionConfigCache?.get(conversation.uid);
+    if (!config) {
+      config = await this.repository.getSessionizationConfig(conversation.uid);
+      this.uidSessionConfigCache?.set(conversation.uid, config);
+    }
+
     const openSession = await this.repository.findReusableSession({
       conversationId: conversation.conversationId,
       uid: conversation.uid,
@@ -1018,10 +1093,42 @@ export class InsightsWorkerService {
     };
   }
 
-  private async runAnalyzeJob() {
-    const job = await this.repository.claimNextAnalyzeJob();
+  private async runAnalyzeJobs(concurrency = 3) {
+    if (!this.model) {
+      return;
+    }
 
-    if (!job || !this.model) {
+    const jobs: ClaimedAnalyzeJob[] = [];
+    for (let i = 0; i < concurrency; i++) {
+      const job = await this.repository.claimNextAnalyzeJob();
+      if (!job) break;
+      jobs.push(job);
+    }
+
+    if (jobs.length === 0) return;
+
+    const jobsBySession = new Map<string, ClaimedAnalyzeJob[]>();
+    for (const job of jobs) {
+      let list = jobsBySession.get(job.sessionId);
+      if (!list) {
+        list = [];
+        jobsBySession.set(job.sessionId, list);
+      }
+      list.push(job);
+    }
+
+    await Promise.allSettled(
+      Array.from(jobsBySession.values()).map(async (sessionJobs) => {
+        for (const job of sessionJobs) {
+          await this.processAnalyzeJob(job);
+        }
+      })
+    );
+  }
+
+  private async processAnalyzeJob(job: ClaimedAnalyzeJob) {
+    // 仅作防御性检查以满足 TS 校验，实际外层跑循环前已在 runAnalyzeJobs 中统一拦截
+    if (!this.model) {
       return;
     }
 

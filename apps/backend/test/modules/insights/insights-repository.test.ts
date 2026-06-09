@@ -126,6 +126,57 @@ describe("InsightsRepository", () => {
     expect(builders[0]?.limitCalls).toEqual([10]);
   });
 
+  it("maps parsed json config columns from generated schema types", async () => {
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        if (table === "xy_wap_embed_insight_label_config") {
+          return createSelectBuilder([
+            {
+              description: null,
+              id: 11,
+              include_in_statistics: 1,
+              label_code: "logistics",
+              label_name: "物流咨询",
+              negative_examples_json: ["退款到账"],
+              positive_examples_json: ["快递不更新"],
+              status: 1,
+            },
+          ], table);
+        }
+
+        if (table === "xy_wap_embed_insight_entity_dictionary") {
+          return createSelectBuilder([
+            {
+              aliases_json: ["白鸭绒外套"],
+              attributes_json: { sku: "coat-1" },
+              canonical_name: "白鸭绒外套",
+              entity_type: "product",
+              id: 21,
+              include_in_aggregation: 1,
+              status: 1,
+            },
+          ], table);
+        }
+
+        return createSelectBuilder([], table);
+      }),
+    };
+    const repository = new InsightsRepository(db as never);
+
+    await expect(repository.listLabelConfigs({ uid: 9001 })).resolves.toEqual([
+      expect.objectContaining({
+        labelCode: "logistics",
+        positiveExamples: ["快递不更新"],
+      }),
+    ]);
+    await expect(repository.listEntityDictionary({ uid: 9001 })).resolves.toEqual([
+      expect.objectContaining({
+        aliases: ["白鸭绒外套"],
+        attributes: { sku: "coat-1" },
+      }),
+    ]);
+  });
+
   it("deduplicates AI action item titles against the latest ten conversation todos without repeated queries", async () => {
     const insertedTables: string[] = [];
     const selectedActionItemBuilders: SelectBuilderStub[] = [];
@@ -1903,6 +1954,167 @@ describe("MysqlInsightWorkerRepository", () => {
     expect(builders[0]?.forUpdateCalls).toBe(1);
     expect(builders[0]?.skipLockedCalls).toBe(1);
     expect(updateExecute).toHaveBeenCalled();
+  });
+
+  it("seeds uid maintenance jobs for active insight tenants idempotently", async () => {
+    const builders: SelectBuilderStub[] = [];
+    const insertedValues: Record<string, unknown>[] = [];
+    const db = {
+      insertInto: vi.fn((table: string) =>
+        createInsertBuilder(async () => ({ numInsertedOrUpdatedRows: 1n }), {
+          onValues: (values) => insertedValues.push(values as Record<string, unknown>),
+          table,
+        })
+      ),
+      selectFrom: vi.fn((table: string) => {
+        if (table === "xy_wap_embed_insight_feature_config as config") {
+          const builder = createSelectBuilder([
+            {
+              entity_enabled: 1,
+              insight_enabled: 1,
+              intent_enabled: 1,
+              label_enabled: 1,
+              last_enable_time: 1_780_243_000_000,
+              qa_enabled: 1,
+              todo_enabled: 1,
+              uid: 9001,
+            },
+          ], table);
+          builders.push(builder);
+          return builder;
+        }
+
+        const builder = createSelectBuilder([], table);
+        builders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(repository.seedUidMaintenanceJobs({
+      limit: 20,
+      runAfter: new Date("2026-06-01T00:00:00Z"),
+    })).resolves.toEqual({
+      insertedJobs: 1,
+      scannedUids: 1,
+    });
+
+    expect(insertedValues).toContainEqual(expect.objectContaining({
+      idempotency_key: "maintain_insight_uid:9001",
+      job_type: "maintain_insight_uid",
+      run_after: new Date("2026-06-01T00:00:00Z"),
+      status: "pending",
+      target_id: "9001",
+      target_type: "uid",
+      uid: 9001,
+    }));
+    const seedQuery = builders.find((builder) =>
+      builder.table === "xy_wap_embed_insight_feature_config as config"
+    );
+    expect(seedQuery?.joins).toContain("xy_wap_embed_insight_job as job");
+    expect(seedQuery?.whereCalls).toContainEqual(["job.id", "is", null]);
+  });
+
+  it("claims uid maintenance jobs through the uid job skip-locked path", async () => {
+    const updateExecute = vi.fn(async () => ({ numAffectedRows: 1n }));
+    const builders: SelectBuilderStub[] = [];
+    const db = {
+      transaction: vi.fn(),
+      selectFrom: vi.fn((table: string) => {
+        const builder = createSelectBuilder([
+          {
+            analysis_scope: "all",
+            id: 704,
+            rescan_task_id: null,
+            target_id: "9001",
+            uid: 9001,
+          },
+        ], table);
+        builders.push(builder);
+        return builder;
+      }),
+      updateTable: vi.fn(() => createUpdateBuilder(updateExecute)),
+    };
+    db.transaction.mockReturnValue(createTransactionBuilder(db));
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(repository.claimNextUidMaintenanceJob()).resolves.toEqual({
+      jobId: "704",
+      uid: 9001,
+    });
+
+    expect(builders[0]?.whereCalls).toContainEqual(["target_type", "=", "uid"]);
+    expect(builders[0]?.whereCalls).toContainEqual(["job_type", "=", "maintain_insight_uid"]);
+    expect(builders[0]?.forUpdateCalls).toBe(1);
+    expect(builders[0]?.skipLockedCalls).toBe(1);
+    expect(updateExecute).toHaveBeenCalled();
+  });
+
+  it("claims expired running uid maintenance jobs for pod handoff", async () => {
+    const updateExecute = vi.fn(async () => ({ numAffectedRows: 1n }));
+    const builders: SelectBuilderStub[] = [];
+    const db = {
+      transaction: vi.fn(),
+      selectFrom: vi.fn((table: string) => {
+        const builder = createSelectBuilder([
+          {
+            analysis_scope: "all",
+            id: 705,
+            rescan_task_id: null,
+            target_id: "9002",
+            uid: 9002,
+          },
+        ], table);
+        builders.push(builder);
+        return builder;
+      }),
+      updateTable: vi.fn(() => createUpdateBuilder(updateExecute)),
+    };
+    db.transaction.mockReturnValue(createTransactionBuilder(db));
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(repository.claimNextUidMaintenanceJob()).resolves.toEqual({
+      jobId: "705",
+      uid: 9002,
+    });
+
+    expect(builders[0]?.whereCalls).toContainEqual(["status", "=", "pending"]);
+    expect(builders[0]?.whereCalls).toContainEqual(["status", "=", "running"]);
+    expect(builders[0]?.whereCalls).toContainEqual(["lease_until", "<=", expect.any(Date)]);
+    expect(updateExecute).toHaveBeenCalled();
+  });
+
+  it("reschedules uid maintenance jobs back to pending after a successful pass", async () => {
+    const setCalls: Record<string, unknown>[] = [];
+    const updateBuilders: UpdateBuilderStub[] = [];
+    const db = {
+      updateTable: vi.fn((table: string) => {
+        const builder = createUpdateBuilder(async () => ({ numAffectedRows: 1n }), {
+          onCreate: (created) => updateBuilders.push(created),
+          onSet: (values) => setCalls.push(values),
+          table,
+        });
+        return builder;
+      }),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await repository.rescheduleUidMaintenanceJob("704", {
+      runAfter: new Date("2026-06-01T00:00:10Z"),
+    });
+
+    expect(db.updateTable).toHaveBeenCalledWith("xy_wap_embed_insight_job");
+    expect(setCalls).toContainEqual(expect.objectContaining({
+      attempt_count: 0,
+      error_code: null,
+      error_message: null,
+      lease_until: null,
+      locked_by: null,
+      run_after: new Date("2026-06-01T00:00:10Z"),
+      status: "pending",
+    }));
+    expect(updateBuilders[0]?.whereCalls).toContainEqual(["id", "=", 704]);
+    expect(updateBuilders[0]?.whereCalls).toContainEqual(["job_type", "=", "maintain_insight_uid"]);
   });
 
   it("rejects malformed historical rescan cursors before claiming the job", async () => {

@@ -65,6 +65,15 @@ import {
 import { parseFeatureConfigRow } from "./insights-feature-config-mapper.js";
 import { DEFAULT_INSIGHT_SETTINGS } from "./insights-seeds.js";
 
+type JsonColumnValue =
+  | Array<unknown>
+  | Record<string, unknown>
+  | boolean
+  | number
+  | string
+  | null
+  | undefined;
+
 type CurrentSessionQueryRow = {
   action_id?: number | string | null;
   action_status?: string | null;
@@ -4063,26 +4072,26 @@ function encodeJson(value: unknown) {
   return value == null ? null : JSON.stringify(value);
 }
 
-function parseJsonArray(value: string | null | undefined): string[] {
+function parseJsonArray(value: JsonColumnValue): string[] {
   if (!value) {
     return [];
   }
 
   try {
-    const parsed = JSON.parse(value);
+    const parsed = typeof value === "string" ? JSON.parse(value) : value;
     return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
   } catch {
     return [];
   }
 }
 
-function parseJsonObject(value: string | null | undefined) {
+function parseJsonObject(value: JsonColumnValue) {
   if (!value) {
     return undefined;
   }
 
   try {
-    const parsed = JSON.parse(value);
+    const parsed = typeof value === "string" ? JSON.parse(value) : value;
     return parsed && typeof parsed === "object" && !Array.isArray(parsed)
       ? parsed as Record<string, unknown>
       : undefined;
@@ -4165,8 +4174,8 @@ function mapLabelRow(row: {
   include_in_statistics: number;
   label_code: string;
   label_name: string;
-  negative_examples_json: string | null;
-  positive_examples_json: string | null;
+  negative_examples_json: JsonColumnValue;
+  positive_examples_json: JsonColumnValue;
 }): InsightLabelConfig {
   return {
     description: optionalString(row.description),
@@ -4181,15 +4190,15 @@ function mapLabelRow(row: {
 }
 
 function mapIntentRow(row: {
-  aliases_json: string | null;
+  aliases_json: JsonColumnValue;
   description: string | null;
   status: number;
   id: number | string;
   include_in_statistics: number;
   intent_code: string;
   intent_name: string;
-  negative_examples_json: string | null;
-  positive_examples_json: string | null;
+  negative_examples_json: JsonColumnValue;
+  positive_examples_json: JsonColumnValue;
   sort_order: number | string;
 }): InsightIntentConfig {
   return {
@@ -4212,8 +4221,8 @@ function mapQaRuleRow(row: {
   status: number;
   id: number | string;
   judgment_criteria: string | null;
-  negative_examples_json: string | null;
-  positive_examples_json: string | null;
+  negative_examples_json: JsonColumnValue;
+  positive_examples_json: JsonColumnValue;
   rule_code: string;
   rule_name: string;
   severity: string;
@@ -4233,8 +4242,8 @@ function mapQaRuleRow(row: {
 }
 
 function mapEntityRow(row: {
-  aliases_json: string | null;
-  attributes_json: string | null;
+  aliases_json: JsonColumnValue;
+  attributes_json: JsonColumnValue;
   canonical_name: string;
   status: number;
   entity_type: string;

@@ -3380,6 +3380,11 @@ export function createWorkbenchStore() {
           sidebarItems: bootstrapResult.sidebarItems,
           isPollBaselineFresh: true,
           messageUpdateCursor: undefined,
+          pollState: {
+            ...get().pollState,
+            errorMessage: undefined,
+            status: "idle",
+          },
           seatUpdateCursor: undefined,
           sinceVersion: bootstrapResult.pollBaseline,
         });

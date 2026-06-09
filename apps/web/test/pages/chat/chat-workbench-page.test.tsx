@@ -172,6 +172,25 @@ describe("ChatWorkbenchPage", () => {
     expect(getSeats).not.toHaveBeenCalled();
   });
 
+  it("does not retry bootstrap automatically after initialization errors", () => {
+    const baseService = createMockWorkbenchService();
+    const getSeats = vi.fn(baseService.getSeats);
+
+    setWorkbenchService({
+      ...baseService,
+      getSeats,
+    });
+    useWorkbenchStore.setState({
+      accounts: [],
+      activeAccountId: "",
+      bootstrapStatus: "error",
+    });
+
+    renderChatWorkbenchPage();
+
+    expect(getSeats).not.toHaveBeenCalled();
+  });
+
   it("skips empty message slots when finding the first unread customer message", () => {
     const messages = new Array<Message>(2);
     messages[1] = {

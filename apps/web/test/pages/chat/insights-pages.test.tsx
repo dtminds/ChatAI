@@ -398,6 +398,45 @@ function createMockInsightDetail() {
   };
 }
 
+function createMockAnalyzingInsightDetail() {
+  return {
+    actionItems: [],
+    analysisStatus: "analyzing",
+    currentSnapshotId: undefined,
+    entities: [],
+    evidenceItems: [],
+    faqCandidates: [],
+    intents: [],
+    problemResolution: {
+      confidence: 0,
+      evidenceMessageIds: [],
+      problemDetected: false,
+      problemSummary: "",
+      resolutionStatus: "unknown",
+      unresolvedReason: undefined,
+    },
+    qaFindings: [],
+    sentiment: [],
+    session: {
+      agentAvatarUrl: "https://example.com/agent-4.png",
+      agentName: "客服四号",
+      conversationId: "304",
+      customerAvatarUrl: "https://example.com/customer-4.png",
+      customerName: "孙七",
+      endedAt: undefined,
+      generatedAt: undefined,
+      phase: undefined,
+      sessionId: "504",
+      startedAt: 1_780_245_000_000,
+    },
+    summary: {
+      sessionTitle: "",
+      text: "",
+    },
+    tags: [],
+  };
+}
+
 function createMockInsightSessionMessages() {
   return {
     messages: [
@@ -588,10 +627,27 @@ function installInsightMocks() {
         summarySessionTitle: "",
         tags: [],
       },
+      {
+        agentAvatarUrl: "https://example.com/agent-4.png",
+        agentName: "客服四号",
+        analysisStatus: "analyzing",
+        conversationId: "304",
+        customerAvatarUrl: "https://example.com/customer-4.png",
+        customerName: "孙七",
+        entities: [],
+        intents: [],
+        lastMessageAt: 1_780_245_500_000,
+        problemSummary: "",
+        resolutionStatus: "unknown",
+        sessionId: "504",
+        startedAt: 1_780_245_000_000,
+        summarySessionTitle: "",
+        tags: [],
+      },
     ],
     page: 1,
     pageSize: 20,
-    total: 3,
+    total: 4,
     totalPages: 1,
   });
   serviceMocks.getInsightBusiness.mockResolvedValue({
@@ -1127,6 +1183,9 @@ describe("conversation insights pages", () => {
     expect(screen.queryByText("优先处理队列")).not.toBeInTheDocument();
     expect(screen.queryByText("分析完成率和异常状态")).not.toBeInTheDocument();
     expect(screen.getByRole("img", { name: "张三" })).toBeInTheDocument();
+    expect(screen.getByText("孙七")).toBeInTheDocument();
+    expect(screen.getByText("待分析")).toBeInTheDocument();
+    expect(screen.queryByText("分析中")).not.toBeInTheDocument();
     expect(screen.queryByText("会话 301")).not.toBeInTheDocument();
     expect(document.querySelector("#insightTrendArea stop[offset='100%']")).toHaveAttribute("stop-opacity", "0");
 
@@ -1315,6 +1374,29 @@ describe("conversation insights pages", () => {
     expect(await screen.findByText("正在加载会话")).toBeInTheDocument();
     detailRequest.reject(new Error("detail failed"));
     expect(await screen.findByText("洞察详情加载失败")).toBeInTheDocument();
+  });
+
+  it("opens analyzing physical session detail without a generated snapshot", async () => {
+    serviceMocks.getInsightDetail.mockResolvedValueOnce(createMockAnalyzingInsightDetail());
+    serviceMocks.getInsightSessionMessages.mockResolvedValueOnce(createMockInsightSessionMessages());
+
+    renderRoute("/chat/insights");
+
+    expect(await screen.findByRole("heading", { level: 1, name: "会话数据总览" })).toBeInTheDocument();
+    await userEvent.click(screen.getAllByRole("button", { name: "详情" })[3]);
+
+    const detailDialog = await screen.findByRole("dialog", { name: "洞察详情" });
+    const insightRegion = await screen.findByRole("region", { name: "洞察结论" });
+
+    expect(serviceMocks.getInsightDetail).toHaveBeenCalledWith("504");
+    expect(serviceMocks.getInsightSessionMessages).toHaveBeenCalledWith("504");
+    expect(within(detailDialog).getAllByText("待分析").length).toBeGreaterThan(0);
+    expect(within(detailDialog).queryByText("分析中")).not.toBeInTheDocument();
+    expect(within(detailDialog).queryByText(/生成于/)).not.toBeInTheDocument();
+    expect(within(detailDialog).queryByText("消息不足")).not.toBeInTheDocument();
+    expect(within(insightRegion).getByText("孙七")).toBeInTheDocument();
+    expect(within(insightRegion).getByText("客服四号")).toBeInTheDocument();
+    expect(within(insightRegion).getAllByText("暂无数据")).toHaveLength(3);
   });
 
   it("only badges problem-resolution evidence in the detail conversation panel", async () => {
@@ -1642,10 +1724,10 @@ describe("conversation insights pages", () => {
     expect(screen.getByTestId("quality-page-header")).toHaveClass("sm:items-end");
     expect(serviceMocks.getInsightQuality).toHaveBeenCalledWith(
       expect.objectContaining({
-        from: "2026-05-28",
+        from: "2026-05-28T00:00:00.000+08:00",
         page: 1,
         pageSize: 10,
-        to: "2026-06-03",
+        to: "2026-06-03T23:59:59.999+08:00",
         view: "agent-report",
       }),
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
@@ -1728,6 +1810,8 @@ describe("conversation insights pages", () => {
     });
     expect(serviceMocks.getInsightQuality).toHaveBeenLastCalledWith(
       expect.objectContaining({
+        from: "2026-05-28T00:00:00.000+08:00",
+        to: "2026-06-03T23:59:59.999+08:00",
         view: "quality-results",
       }),
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
@@ -1765,9 +1849,11 @@ describe("conversation insights pages", () => {
     expect(screen.queryByText("2 / 2")).not.toBeInTheDocument();
     expect(serviceMocks.getInsightQuality).toHaveBeenLastCalledWith(
       expect.objectContaining({
+        from: "2026-05-28T00:00:00.000+08:00",
         page: 1,
         pageSize: 10,
         passed: undefined,
+        to: "2026-06-03T23:59:59.999+08:00",
         view: "quality-results",
       }),
       expect.objectContaining({ signal: expect.any(AbortSignal) }),

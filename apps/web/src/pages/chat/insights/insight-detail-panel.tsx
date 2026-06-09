@@ -49,7 +49,7 @@ import { cn } from "@/lib/utils";
 import { adaptMessage } from "@/pages/chat/api/workbench-adapter";
 import { HistoryCompactMessageList } from "@/pages/chat/components/message-history-side-panel";
 import type { Account, CustomerProfile } from "@/pages/chat/chat-types";
-import { ResolutionBadge } from "./insight-badges";
+import { AnalysisStatusBadge, ResolutionBadge } from "./insight-badges";
 import { InsightPerson } from "./insight-person";
 import { formatInsightTime } from "./insights-utils";
 
@@ -259,6 +259,7 @@ function DetailSummarySection({
   onActionStatusChange?: (actionItemId: string, status: DetailActionStatus) => Promise<void>;
 }) {
   const summaryTitle = detail.summary.sessionTitle || "未命名会话";
+  const isAnalyzing = detail.analysisStatus === "analyzing";
   const sessionTime = detail.session.endedAt
     ? `${formatInsightTime(detail.session.startedAt)} 至 ${formatInsightTime(detail.session.endedAt)}`
     : `${formatInsightTime(detail.session.startedAt)} 至 进行中`;
@@ -266,16 +267,20 @@ function DetailSummarySection({
   return (
     <section className="space-y-7">
       <div className="space-y-1">
-        <div className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground/70">
-          <HugeiconsIcon
-            aria-hidden
-            color="currentColor"
-            icon={Timer01Icon}
-            size={14}
-            strokeWidth={1.8}
-          />
-          <span>生成于 {formatInsightTime(detail.session.generatedAt)}</span>
-        </div>
+        {detail.session.generatedAt ? (
+          <div className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground/70">
+            <HugeiconsIcon
+              aria-hidden
+              color="currentColor"
+              icon={Timer01Icon}
+              size={14}
+              strokeWidth={1.8}
+            />
+            <span>生成于 {formatInsightTime(detail.session.generatedAt)}</span>
+          </div>
+        ) : isAnalyzing ? (
+          <AnalysisStatusBadge />
+        ) : null}
         <div className="space-y-1">
           <h2 className="text-[20px] font-semibold leading-8 text-foreground">
             {summaryTitle}
@@ -298,8 +303,14 @@ function DetailSummarySection({
         ) : null}
         <DetailMetaRow label="AI 诊断">
           <span className="inline-flex items-center gap-1.5">
-            <ResolutionBadge status={detail.problemResolution.resolutionStatus} />
-            <DiagnosisReasonInfo reason={detail.problemResolution.unresolvedReason} />
+            {isAnalyzing ? (
+              <AnalysisStatusBadge />
+            ) : (
+              <>
+                <ResolutionBadge status={detail.problemResolution.resolutionStatus} />
+                <DiagnosisReasonInfo reason={detail.problemResolution.unresolvedReason} />
+              </>
+            )}
           </span>
         </DetailMetaRow>
         <DetailMetaRow label="客户">

@@ -34,6 +34,7 @@ import { InsightTablePagination } from "./insight-table-pagination";
 import { InsightsLayout, InsightsPageHeader } from "./insights-layout";
 import {
   getRecentDateRange,
+  toBoundaryDate,
   type InsightDateRange,
 } from "./insights-date-range";
 import {
@@ -75,11 +76,11 @@ export function InsightsQualityPage() {
 
     void getInsightQuality(
       {
-        from: dateRange.from,
+        from: toBoundaryDate(dateRange.from, "start"),
         page: resultPage,
         pageSize: qualityResultPageSize,
         passed: normalizeQualityResultPassedFilter(resultFilter),
-        to: dateRange.to,
+        to: toBoundaryDate(dateRange.to, "end"),
         view: activeView,
       },
       { signal: controller.signal },

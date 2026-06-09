@@ -118,6 +118,31 @@ const baseRows = [
     summaryText: "",
     unresolvedReason: null,
   },
+  {
+    actionOpenCount: 0,
+    agentAvatarUrl: "https://example.com/agent-4.png",
+    agentName: "客服四号",
+    agentSeatId: "seat-4",
+    analysisStatus: "analyzing",
+    conversationId: "305",
+    currentSnapshotId: undefined,
+    generatedAt: undefined,
+    customerAvatarUrl: "https://example.com/customer-5.png",
+    customerName: "孙七",
+    endedAt: null,
+    lastMessageAt: 1_780_245_500_000,
+    lastCustomerMessageAt: 1_780_245_400_000,
+    phase: undefined,
+    problemDetected: false,
+    problemEvidenceMessageIds: [],
+    problemSummary: "",
+    resolutionStatus: "unknown",
+    sessionId: "505",
+    startedAt: 1_780_245_000_000,
+    summarySessionTitle: "",
+    summaryText: "",
+    unresolvedReason: null,
+  },
 ];
 
 const overviewAggregate = {
@@ -920,8 +945,8 @@ describe("InsightsService", () => {
     expect(result).toMatchObject({
       page: 2,
       pageSize: 1,
-      total: 4,
-      totalPages: 4,
+      total: 5,
+      totalPages: 5,
       items: [
         expect.objectContaining({
           customerName: "张三",
@@ -937,6 +962,28 @@ describe("InsightsService", () => {
       resolutionStatus: "unresolved",
       to: "2026-06-30",
     });
+  });
+
+  it("returns analyzing physical sessions in overview sessions", async () => {
+    const repository = createRepository({
+      listCurrentSessions: vi.fn(async () => ({
+        items: [baseRows[4]!],
+        total: 1,
+      })),
+    });
+    const service = new InsightsService(repository);
+
+    const result = await service.getOverviewSessions(scope);
+
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        analysisStatus: "analyzing",
+        problemSummary: undefined,
+        resolutionStatus: "unknown",
+        sessionId: "505",
+        summarySessionTitle: "",
+      }),
+    ]);
   });
 
   it("builds service quality counts and paginated failed QA results", async () => {
@@ -1405,6 +1452,53 @@ describe("InsightsService", () => {
         question: "物流停滞怎么处理",
       }),
     ]);
+  });
+
+  it("returns analyzing physical session detail without snapshot fields", async () => {
+    const repository = createRepository({
+      findDetail: vi.fn(async () => ({
+        actionItems: [],
+        current: baseRows[4]!,
+        entities: [],
+        evidenceItems: [],
+        faqCandidates: [],
+        intents: [],
+        problemEvidenceMessageIds: [],
+        qaFindings: [],
+        sentiment: [],
+        tags: [],
+      })),
+    });
+    const service = new InsightsService(repository);
+
+    const result = await service.getDetail(scope, "505");
+
+    expect(result).toMatchObject({
+      actionItems: [],
+      analysisStatus: "analyzing",
+      currentSnapshotId: undefined,
+      entities: [],
+      evidenceItems: [],
+      problemResolution: {
+        confidence: 0,
+        evidenceMessageIds: [],
+        problemDetected: false,
+        problemSummary: "",
+        resolutionStatus: "unknown",
+        unresolvedReason: undefined,
+      },
+      session: {
+        agentName: "客服四号",
+        customerName: "孙七",
+        generatedAt: undefined,
+        phase: undefined,
+        sessionId: "505",
+      },
+      summary: {
+        sessionTitle: "",
+        text: "",
+      },
+    });
   });
 
   it("returns session messages separately from detail analysis", async () => {

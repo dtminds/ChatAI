@@ -375,6 +375,7 @@ export type InsightWorkerRepositoryPort = {
   markSyncMessagesJobSucceeded(jobId: string): Promise<void>;
   markCleanupDisabledInsightsJobFailed(jobId: string, error: unknown): Promise<void>;
   markCleanupDisabledInsightsJobSucceeded(jobId: string): Promise<void>;
+  deleteUidMaintenanceJob(jobId: string): Promise<void>;
   markUidMaintenanceJobFailed(jobId: string, error: unknown): Promise<void>;
   postponeAnalysisJobForInputReadiness(
     jobId: string,
@@ -422,6 +423,7 @@ const TERMINAL_JOB_ARCHIVE_RETENTION_DAYS = 30;
 const TERMINAL_JOB_ARCHIVE_LIMIT = 5_000;
 const PRE_CONTEXT_MESSAGE_LIMIT = 10;
 const UID_MAINTENANCE_INTERVAL_MS = 10_000;
+const UID_MAINTENANCE_JOBS_PER_TICK = 10;
 
 export class InsightsWorkerService {
   private readonly batchSize: number;
@@ -461,7 +463,7 @@ export class InsightsWorkerService {
       });
       await this.runSyncMessagesJob();
       await this.runCleanupDisabledInsightsJob();
-      await this.runUidMaintenanceJob();
+      await this.runUidMaintenanceJobs();
 
       if (this.model) {
         await this.runAnalyzeJobs(3);
@@ -537,15 +539,29 @@ export class InsightsWorkerService {
     }
   }
 
-  private async runUidMaintenanceJob() {
-    const job = await this.repository.claimNextUidMaintenanceJob();
+  private async runUidMaintenanceJobs(limit = UID_MAINTENANCE_JOBS_PER_TICK) {
+    const claimedJobIds = new Set<string>();
 
-    if (!job) {
-      return;
+    for (let i = 0; i < limit; i += 1) {
+      const job = await this.repository.claimNextUidMaintenanceJob();
+
+      if (!job || claimedJobIds.has(job.jobId)) {
+        break;
+      }
+
+      claimedJobIds.add(job.jobId);
+      await this.runUidMaintenanceJob(job);
     }
+  }
 
+  private async runUidMaintenanceJob(job: ClaimedUidMaintenanceJob) {
     try {
-      const { scannedMessages, sessionizedMessages } = await this.maintainUid(job.uid);
+      const { insightEnabled, scannedMessages, sessionizedMessages } = await this.maintainUid(job.uid);
+
+      if (!insightEnabled) {
+        await this.repository.deleteUidMaintenanceJob(job.jobId);
+        return;
+      }
 
       if (scannedMessages > 0) {
         this.logger?.info(
@@ -577,6 +593,7 @@ export class InsightsWorkerService {
 
     if (!featureConfig.insightEnabled) {
       return {
+        insightEnabled: false,
         scannedMessages: 0,
         sessionizedMessages: 0,
       };
@@ -630,6 +647,7 @@ export class InsightsWorkerService {
     await this.closeTimedOutOpenSessions(activeUids);
 
     return {
+      insightEnabled: true,
       scannedMessages: messages.length,
       sessionizedMessages,
     };

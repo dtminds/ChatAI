@@ -1162,6 +1162,15 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       .executeTakeFirst();
   }
 
+  async deleteUidMaintenanceJob(jobId: string): Promise<void> {
+    await this.db
+      .deleteFrom("xy_wap_embed_insight_job")
+      .where("id", "=", parsePositiveInteger(jobId) ?? -1)
+      .where("job_type", "=", uidMaintenanceJobType)
+      .where("status", "=", "running")
+      .executeTakeFirst();
+  }
+
   private async claimNextUidJob(input: {
     jobType: "cleanup_disabled_insights" | "sync_messages" | typeof uidMaintenanceJobType;
   }) {

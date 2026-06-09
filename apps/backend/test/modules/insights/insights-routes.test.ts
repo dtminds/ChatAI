@@ -28,7 +28,7 @@ describe("insights routes", () => {
     const overviewSessions = await app.inject({
       headers: { authorization },
       method: "GET",
-      url: "/api/server/insights/overview/sessions?page=2&pageSize=1&keyword=%E7%89%A9%E6%B5%81&resolutionStatus=unresolved&analysisStatus=ready&problemScope=unresolved&tagCode=logistics_issue&entityName=%E7%99%BD%E8%89%B2%E7%BE%BD%E7%BB%92%E6%9C%8D&intentCode=logistics_delay",
+      url: "/api/server/insights/overview/sessions?page=2&pageSize=1&keyword=%E7%89%A9%E6%B5%81&resolutionStatus=unresolved&analysisStatus=analyzing&problemScope=unresolved&tagCode=logistics_issue&entityName=%E7%99%BD%E8%89%B2%E7%BE%BD%E7%BB%92%E6%9C%8D&intentCode=logistics_delay",
     });
     const quality = await app.inject({
       headers: { authorization },
@@ -1544,11 +1544,69 @@ function createInsightsDbMock(options: {
       }
 
       if (table === "xy_wap_embed_logical_session as session") {
-        return createBuilder([
-          {
-            id: 501,
-          },
-        ]);
+        return createBuilder((builder) => {
+          const selectedAliases = collectSelectAliases(builder.selectCalls);
+
+          if (selectedAliases.has("date")) {
+            return [{
+              agent_messages: 3,
+              consulting_customers: 1,
+              customer_messages: 5,
+              date: "2026-06-01",
+              logical_sessions: 1,
+              messages: 8,
+            }];
+          }
+
+          if (selectedAliases.has("logical_sessions")) {
+            return [{
+              action_items_open: 1,
+              agent_messages: 3,
+              consulting_customers: 1,
+              customer_messages: 5,
+              failed: 0,
+              logical_sessions: 1,
+              messages: 8,
+              no_customer_problem_sessions: 0,
+              partial: 0,
+              partially_resolved_sessions: 0,
+              problem_sessions: 1,
+              ready: 1,
+              resolved_sessions: 0,
+              stale: 0,
+              unknown_sessions: 0,
+              unresolved_resolution_sessions: 1,
+              unresolved_sessions: 1,
+            }];
+          }
+
+          if (selectedAliases.has("count") && selectedAliases.size === 1) {
+            return [{ count: 1 }];
+          }
+
+          return [
+            {
+              agent_message_count: 3,
+              conversation_id: 301,
+              current_snapshot_id: 7001,
+              customer_message_count: 5,
+              ended_at: 1_780_245_000_000,
+              generated_at: 1_780_245_100_000,
+              last_message_at: 1_780_244_950_000,
+              message_count: 8,
+              phase: "final",
+              problem_detected: 1,
+              problem_summary: "客户反馈物流异常",
+              resolution_status: "unresolved",
+              session_id: 501,
+              started_at: 1_780_243_200_000,
+              status: "ready",
+              summary_session_title: "查物流",
+              summary_text: "客服要求客户等待",
+              unresolved_reason: "售后/物流/退款进度未确认",
+            },
+          ];
+        });
       }
 
       throw new Error(`Unexpected select table: ${table}`);

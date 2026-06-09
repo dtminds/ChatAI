@@ -494,11 +494,11 @@ describe("InsightsRepository", () => {
     const builders: SelectBuilderStub[] = [];
     const rowsByTable = new Map<string, unknown[]>([
       [
-        "xy_wap_embed_session_insight_current as current",
-        [{ count: 1 }],
+        "xy_wap_embed_logical_session as session",
+        [{ count: 2 }],
       ],
       [
-        "xy_wap_embed_session_insight_current as current#2",
+        "xy_wap_embed_logical_session as session#2",
         [
           {
             agent_message_count: 1,
@@ -519,6 +519,23 @@ describe("InsightsRepository", () => {
             summary_session_title: "查物流",
             summary_text: "已登记",
             unresolved_reason: "待仓库反馈",
+          },
+          {
+            conversation_id: 302,
+            current_snapshot_id: null,
+            ended_at: null,
+            generated_at: null,
+            last_message_at: 1_780_245_100_000,
+            phase: null,
+            problem_detected: null,
+            problem_summary: null,
+            resolution_status: null,
+            session_id: 202,
+            started_at: 1_780_245_000_000,
+            status: null,
+            summary_session_title: null,
+            summary_text: null,
+            unresolved_reason: null,
           },
         ],
       ],
@@ -542,7 +559,7 @@ describe("InsightsRepository", () => {
     const db = {
       currentQueryCount: 0,
       selectFrom: vi.fn((table: string) => {
-        const key = table === "xy_wap_embed_session_insight_current as current" && db.currentQueryCount++ > 0
+        const key = table === "xy_wap_embed_logical_session as session" && db.currentQueryCount++ > 0
           ? `${table}#2`
           : table;
         const builder = createSelectBuilder(rowsByTable.get(key) ?? [], table);
@@ -560,11 +577,23 @@ describe("InsightsRepository", () => {
           problemEvidenceMessageIds: ["9001", "9002"],
           sessionId: "201",
         },
+        {
+          analysisStatus: "analyzing",
+          currentSnapshotId: undefined,
+          generatedAt: undefined,
+          problemSummary: "",
+          resolutionStatus: "unknown",
+          sessionId: "202",
+          summarySessionTitle: "",
+        },
       ],
-      total: 1,
+      total: 2,
     });
 
     const coreQuery = builders[1];
+    expect(builders[0]?.table).toBe("xy_wap_embed_logical_session as session");
+    expect(coreQuery.table).toBe("xy_wap_embed_logical_session as session");
+    expect(coreQuery.joins).toContain("xy_wap_embed_session_insight_current as current");
     expect(coreQuery.joins).not.toContain("xy_wap_embed_session_action_item as action");
     expect(coreQuery.joins).not.toContain("xy_wap_embed_insight_evidence as evidence");
     expect(coreQuery.joins).not.toContain("xy_wap_embed_msg_audit_info as message");
@@ -573,13 +602,13 @@ describe("InsightsRepository", () => {
   it("paginates and filters current sessions in SQL before hydration", async () => {
     const builders: SelectBuilderStub[] = [];
     const rowsByTable = new Map<string, unknown[]>([
-      ["xy_wap_embed_session_insight_current as current", [{ count: 12 }]],
-      ["xy_wap_embed_session_insight_current as current#2", []],
+      ["xy_wap_embed_logical_session as session", [{ count: 12 }]],
+      ["xy_wap_embed_logical_session as session#2", []],
     ]);
     let currentQueryCount = 0;
     const db = {
       selectFrom: vi.fn((table: string) => {
-        const key = table === "xy_wap_embed_session_insight_current as current" && currentQueryCount++ > 0
+        const key = table === "xy_wap_embed_logical_session as session" && currentQueryCount++ > 0
           ? `${table}#2`
           : table;
         const builder = createSelectBuilder(rowsByTable.get(key) ?? [], table);
@@ -625,13 +654,35 @@ describe("InsightsRepository", () => {
     expect(countQuery.whereCalls).toContainEqual(["intent_filter.intent_code", "=", "refund"]);
   });
 
+  it("groups analyzing current-session filter so it cannot bypass scoped predicates", async () => {
+    const builders: SelectBuilderStub[] = [];
+    const db = {
+      currentQueryCount: 0,
+      selectFrom: vi.fn((table: string) => {
+        const builder = createSelectBuilder(
+          table === "xy_wap_embed_logical_session as session" && db.currentQueryCount++ === 0
+            ? [{ count: 0 }]
+            : [],
+          table,
+        );
+        builders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new InsightsRepository(db as never);
+
+    await repository.listCurrentSessions({ uid: 9001 }, { analysisStatus: "analyzing" });
+
+    expect(builders[0]?.whereRawCalls).toContain("(current.current_snapshot_id is null or snapshot.id is null)");
+  });
+
   it("skips summary and problem joins for unfiltered current-session counts", async () => {
     const builders: SelectBuilderStub[] = [];
     const db = {
       currentQueryCount: 0,
       selectFrom: vi.fn((table: string) => {
         const builder = createSelectBuilder(
-          table === "xy_wap_embed_session_insight_current as current" && db.currentQueryCount++ === 0
+          table === "xy_wap_embed_logical_session as session" && db.currentQueryCount++ === 0
             ? [{ count: 0 }]
             : [],
           table,
@@ -663,9 +714,77 @@ describe("InsightsRepository", () => {
 
     await repository.listAllCurrentSessions({ uid: 9001 });
 
-    const currentQuery = builders.find((builder) => builder.table === "xy_wap_embed_session_insight_current as current");
+    const currentQuery = builders.find((builder) => builder.table === "xy_wap_embed_logical_session as session");
     expect(currentQuery?.limitCalls).toEqual([5000]);
     expect(currentQuery?.offsetCalls).toEqual([0]);
+  });
+
+  it("counts overview totals from physical logical sessions before snapshots are ready", async () => {
+    const builders: SelectBuilderStub[] = [];
+    let logicalSessionQueryCount = 0;
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        const rows = table === "xy_wap_embed_logical_session as session"
+          ? logicalSessionQueryCount++ === 0
+            ? [
+                {
+                  action_items_open: 1,
+                  agent_messages: 5,
+                  consulting_customers: 2,
+                  customer_messages: 4,
+                  failed: 0,
+                  logical_sessions: 2,
+                  messages: 9,
+                  no_customer_problem_sessions: 0,
+                  partial: 0,
+                  partially_resolved_sessions: 0,
+                  problem_sessions: 1,
+                  ready: 1,
+                  resolved_sessions: 0,
+                  stale: 0,
+                  unknown_sessions: 0,
+                  unresolved_resolution_sessions: 1,
+                  unresolved_sessions: 1,
+                },
+              ]
+            : [
+                {
+                  agent_messages: 5,
+                  consulting_customers: 2,
+                  customer_messages: 4,
+                  date: "2026-06-09",
+                  logical_sessions: 2,
+                  messages: 9,
+                },
+              ]
+          : [];
+        const builder = createSelectBuilder(rows, table);
+        builders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new InsightsRepository(db as never);
+
+    await expect(repository.getOverviewAggregate({ uid: 9001 })).resolves.toMatchObject({
+      analysis: {
+        ready: 1,
+      },
+      totalSessions: 2,
+      totals: {
+        logicalSessions: 2,
+        messages: 9,
+      },
+      trend: [
+        expect.objectContaining({
+          logicalSessions: 2,
+        }),
+      ],
+    });
+
+    expect(builders[0]?.table).toBe("xy_wap_embed_logical_session as session");
+    expect(builders[0]?.joins).toContain("xy_wap_embed_session_insight_current as current");
+    expect(builders[0]?.joins).toContain("action_aggregate");
+    expect(builders[1]?.table).toBe("xy_wap_embed_logical_session as session");
   });
 
   it("loads action-item evidence with a bounded follow-up query", async () => {
@@ -1039,7 +1158,7 @@ describe("InsightsRepository", () => {
     const builders: SelectBuilderStub[] = [];
     const rowsByTable = new Map<string, unknown[]>([
       [
-        "xy_wap_embed_session_insight_current as current",
+        "xy_wap_embed_logical_session as session",
         [
           {
             agent_message_count: 1,
@@ -1150,6 +1269,93 @@ describe("InsightsRepository", () => {
     expect(coreQuery.joins).not.toContain("xy_wap_embed_session_action_item as action");
     expect(coreQuery.joins).not.toContain("xy_wap_embed_contact as contact");
     expect(coreQuery.joins).not.toContain("xy_wap_embed_user_seat as seat");
+  });
+
+  it("loads analyzing session detail without a current snapshot", async () => {
+    const builders: SelectBuilderStub[] = [];
+    const rowsByTable = new Map<string, unknown[]>([
+      [
+        "xy_wap_embed_logical_session as session",
+        [
+          {
+            agent_message_count: 2,
+            conversation_id: 301,
+            current_snapshot_id: null,
+            customer_message_count: 1,
+            ended_at: null,
+            generated_at: null,
+            last_message_at: 1_780_245_500_000,
+            message_count: 3,
+            phase: null,
+            problem_detected: null,
+            problem_summary: null,
+            resolution_status: null,
+            session_id: 201,
+            started_at: 1_780_245_000_000,
+            status: null,
+            summary_session_title: null,
+            summary_text: null,
+            unresolved_reason: null,
+          },
+        ],
+      ],
+      [
+        "xy_wap_embed_conversation",
+        [{ id: 301, platform: 5, third_external_userid: "external-1", third_userid: "agent-1" }],
+      ],
+      [
+        "xy_wap_embed_contact",
+        [{
+          avatar: "https://example.com/customer.png",
+          name: "张三",
+          real_name: "",
+          third_external_userid: "external-1",
+        }],
+      ],
+      [
+        "xy_wap_embed_user_seat",
+        [{
+          id: "seat-1",
+          third_avatar: "https://example.com/agent.png",
+          third_user_name: "客服一号",
+          third_userid: "agent-1",
+        }],
+      ],
+    ]);
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        const builder = createSelectBuilder(rowsByTable.get(table) ?? [], table);
+        builders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new InsightsRepository(db as never);
+
+    await expect(repository.findDetail({ uid: 9001 }, "201")).resolves.toMatchObject({
+      actionItems: [],
+      current: {
+        agentName: "客服一号",
+        analysisStatus: "analyzing",
+        currentSnapshotId: undefined,
+        customerName: "张三",
+        generatedAt: undefined,
+        problemSummary: "",
+        resolutionStatus: "unknown",
+        sessionId: "201",
+        summarySessionTitle: "",
+      },
+      entities: [],
+      evidenceItems: [],
+      faqCandidates: [],
+      intents: [],
+      qaFindings: [],
+      sentiment: [],
+      tags: [],
+    });
+
+    expect(builders[0]?.table).toBe("xy_wap_embed_logical_session as session");
+    expect(builders.some((builder) => builder.table === "xy_wap_embed_insight_evidence")).toBe(false);
+    expect(builders.some((builder) => builder.table === "xy_wap_embed_session_qa_finding")).toBe(false);
   });
 
   it("updates an action item back to open status", async () => {
@@ -2117,6 +2323,25 @@ describe("MysqlInsightWorkerRepository", () => {
     expect(updateBuilders[0]?.whereCalls).toContainEqual(["job_type", "=", "maintain_insight_uid"]);
   });
 
+  it("deletes running uid maintenance jobs when insights are disabled", async () => {
+    const deleteBuilders: ReturnType<typeof createDeleteBuilder>[] = [];
+    const db = {
+      deleteFrom: vi.fn((table: string) => {
+        const builder = createDeleteBuilder(async () => ({ numDeletedRows: 1n }), table);
+        deleteBuilders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await repository.deleteUidMaintenanceJob("704");
+
+    expect(db.deleteFrom).toHaveBeenCalledWith("xy_wap_embed_insight_job");
+    expect(deleteBuilders[0]?.whereCalls).toContainEqual(["id", "=", 704]);
+    expect(deleteBuilders[0]?.whereCalls).toContainEqual(["job_type", "=", "maintain_insight_uid"]);
+    expect(deleteBuilders[0]?.whereCalls).toContainEqual(["status", "=", "running"]);
+  });
+
   it("rejects malformed historical rescan cursors before claiming the job", async () => {
     const updateExecute = vi.fn(async () => ({ numAffectedRows: 1n }));
     const db = {
@@ -3077,6 +3302,7 @@ type UpdateBuilderStub = ReturnType<typeof createUpdateBuilder>;
 
 function createSelectBuilder(rows: unknown[], table = "") {
   const builder = {
+    alias: undefined as string | undefined,
     joins: [] as string[],
     forUpdateCalls: 0,
     groupByCalls: [] as unknown[][],
@@ -3108,7 +3334,21 @@ function createSelectBuilder(rows: unknown[], table = "") {
       builder.joins.push(joinTable);
       return builder;
     },
-    leftJoin: (joinTable: string) => {
+    as: (alias: string) => {
+      builder.alias = alias;
+      return builder;
+    },
+    leftJoin: (joinTable: string | ((eb: {
+      selectFrom: (table: string) => SelectBuilderStub;
+    }) => { alias?: string; table?: string })) => {
+      if (typeof joinTable === "function") {
+        const joined = joinTable({
+          selectFrom: (table: string) => createSelectBuilder([], table),
+        });
+        builder.joins.push(joined.alias ?? joined.table ?? "derived");
+        return builder;
+      }
+
       builder.joins.push(joinTable);
       return builder;
     },
@@ -3139,7 +3379,7 @@ function createSelectBuilder(rows: unknown[], table = "") {
       }
 
       if (args.length === 1) {
-        builder.whereRawCalls.push(String(args[0]));
+        builder.whereRawCalls.push(readRawSql(args[0]));
       }
 
       builder.whereCalls.push(args);
@@ -3149,6 +3389,20 @@ function createSelectBuilder(rows: unknown[], table = "") {
   };
 
   return builder;
+}
+
+function readRawSql(value: unknown) {
+  if (
+    value
+    && typeof value === "object"
+    && "toOperationNode" in value
+    && typeof value.toOperationNode === "function"
+  ) {
+    const node = value.toOperationNode() as { sqlFragments?: readonly string[] };
+    return node.sqlFragments?.join("?") ?? String(value);
+  }
+
+  return String(value);
 }
 
 function createExpressionBuilderStub(builder: { whereCalls: unknown[][] }) {

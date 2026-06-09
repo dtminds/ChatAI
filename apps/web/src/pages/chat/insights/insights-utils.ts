@@ -79,7 +79,7 @@ export function formatResolutionStatus(
 
 export function formatAnalysisStatus(status: InsightAnalysisStatus) {
   const labels = {
-    analyzing: "分析中",
+    analyzing: "待分析",
     failed: "失败",
     partial: "部分完成",
     ready: "已完成",

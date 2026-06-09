@@ -81,21 +81,21 @@ type CurrentSessionQueryRow = {
   action_priority?: string | null;
   action_title?: string | null;
   conversation_id: number | string;
-  current_snapshot_id: number | string;
+  current_snapshot_id: number | string | null;
   ended_at: number | string | null;
   evidence_message_id?: number | string | null;
   evidence_role?: string | null;
-  generated_at: number | string | Date;
+  generated_at: number | string | Date | null;
   last_message_at: number | string | null;
   last_customer_message_at: number | string | null;
-  phase: string;
+  phase: string | null;
   problem_detected: number | string | null;
   problem_confidence?: number | string | null;
   problem_summary: string | null;
   resolution_status: string | null;
   session_id: number | string;
   started_at: number | string;
-  status: string;
+  status: string | null;
   summary_session_title: string | null;
   summary_text: string | null;
   unresolved_reason: string | null;
@@ -1414,7 +1414,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
     scope: InsightsUidScope,
     filters: { from?: string; to?: string } = {},
   ): Promise<InsightQualityAggregateRow> {
-    let query = buildCurrentSessionBaseQuery(this.db)
+    let query = buildAnalyzedCurrentSessionBaseQuery(this.db)
       .select([
         sql<number>`count(distinct session.id)`.as("total_sessions"),
         sql<number>`count(distinct case when snapshot.status in ('ready', 'partial') then session.id end)`.as("analyzed_sessions"),
@@ -1463,7 +1463,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
     scope: InsightsUidScope,
     filters: { from?: string; to?: string } = {},
   ): Promise<InsightQualityAgentStatRow[]> {
-    let query = buildCurrentSessionLeanBaseQuery(this.db)
+    let query = buildAnalyzedCurrentSessionLeanBaseQuery(this.db)
       .leftJoin("xy_wap_embed_conversation as conversation", (join) =>
         join
           .onRef("conversation.id", "=", "session.conversation_id")
@@ -1595,7 +1595,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
     }
 
     const base = applyDateFilters(
-      buildCurrentSessionLeanBaseQuery(this.db)
+      buildAnalyzedCurrentSessionLeanBaseQuery(this.db)
         .where("session.uid", "=", scope.uid)
         .where("snapshot.status", "in", ["ready", "partial"]),
     );
@@ -1613,7 +1613,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
         .executeTakeFirst() as Promise<{ total_analyzed: number; total_qa: number; passed: number } | undefined>,
 
       applyDateFilters(
-        buildCurrentSessionLeanBaseQuery(this.db)
+        buildAnalyzedCurrentSessionLeanBaseQuery(this.db)
           .innerJoin("xy_wap_embed_session_qa_finding as qa", (join) =>
             join.onRef("qa.snapshot_id", "=", "snapshot.id"),
           )
@@ -1652,7 +1652,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
     filters: InsightsOverviewFilters = {},
   ): Promise<InsightBusinessSessionAggregateRow[]> {
     const rows = await applyCurrentSessionFilters(
-      buildCurrentSessionBaseQuery(this.db)
+      buildAnalyzedCurrentSessionBaseQuery(this.db)
         .leftJoin("xy_wap_embed_session_action_item as aggregate_action", (join) =>
           join
             .onRef("aggregate_action.snapshot_id", "=", "snapshot.id")
@@ -1773,16 +1773,24 @@ export class InsightsRepository implements InsightsRepositoryPort {
   ): Promise<InsightOverviewAggregateRow> {
     const totalsQuery = applyCurrentSessionFilters(
       buildCurrentSessionBaseQuery(this.db)
-        .leftJoin("xy_wap_embed_session_action_item as aggregate_action", (join) =>
-          join
-            .onRef("aggregate_action.snapshot_id", "=", "snapshot.id")
-            .on("aggregate_action.status", "=", "open"),
+        .leftJoin((eb) =>
+          eb
+            .selectFrom("xy_wap_embed_session_action_item as aggregate_action")
+            .select([
+              "aggregate_action.snapshot_id as snapshot_id",
+              sql<number>`count(*)`.as("action_open_count"),
+            ])
+            .where("aggregate_action.status", "=", "open")
+            .groupBy("aggregate_action.snapshot_id")
+            .as("action_aggregate"),
+        (join) =>
+          join.onRef("action_aggregate.snapshot_id", "=", "snapshot.id"),
         )
         .select([
           sql<number>`count(distinct session.id)`.as("logical_sessions"),
-          sql<number>`coalesce(sum(distinct session.message_count), 0)`.as("messages"),
-          sql<number>`coalesce(sum(distinct session.customer_message_count), 0)`.as("customer_messages"),
-          sql<number>`coalesce(sum(distinct session.agent_message_count), 0)`.as("agent_messages"),
+          sql<number>`coalesce(sum(session.message_count), 0)`.as("messages"),
+          sql<number>`coalesce(sum(session.customer_message_count), 0)`.as("customer_messages"),
+          sql<number>`coalesce(sum(session.agent_message_count), 0)`.as("agent_messages"),
           sql<number>`count(distinct session.conversation_id)`.as("consulting_customers"),
           sql<number>`count(distinct case when snapshot.status = 'ready' then session.id end)`.as("ready"),
           sql<number>`count(distinct case when snapshot.status = 'partial' then session.id end)`.as("partial"),
@@ -1801,11 +1809,11 @@ export class InsightsRepository implements InsightsRepositoryPort {
             end)
           `.as("problem_sessions"),
           sql<number>`
-            count(distinct case
+            coalesce(sum(case
               when problem.resolution_status in ('unresolved', 'partially_resolved')
-                and aggregate_action.id is not null
-              then aggregate_action.id
-            end)
+              then coalesce(action_aggregate.action_open_count, 0)
+              else 0
+            end), 0)
           `.as("action_items_open"),
           sql<number>`
             count(distinct case
@@ -2274,22 +2282,10 @@ export class InsightsRepository implements InsightsRepositoryPort {
     scope: InsightsUidScope,
     sessionId: string,
   ): Promise<InsightDetailRow | undefined> {
-    const rows = await this.db
-      .selectFrom("xy_wap_embed_session_insight_current as current")
-      .innerJoin("xy_wap_embed_session_insight_snapshot as snapshot", (join) =>
-        join.onRef("snapshot.id", "=", "current.current_snapshot_id"),
-      )
-      .innerJoin("xy_wap_embed_logical_session as session", (join) =>
-        join.onRef("session.id", "=", "current.session_id"),
-      )
-      .leftJoin("xy_wap_embed_session_summary as summary", (join) =>
-        join.onRef("summary.snapshot_id", "=", "snapshot.id"),
-      )
-      .leftJoin("xy_wap_embed_session_problem_resolution as problem", (join) =>
-        join.onRef("problem.snapshot_id", "=", "snapshot.id"),
-      )
+    const rows = await buildCurrentSessionBaseQuery(this.db)
       .select([
         "current.current_snapshot_id as current_snapshot_id",
+        "problem.confidence as problem_confidence",
         "problem.problem_detected as problem_detected",
         "problem.problem_summary as problem_summary",
         "problem.resolution_status as resolution_status",
@@ -2331,6 +2327,21 @@ export class InsightsRepository implements InsightsRepositoryPort {
     await this.hydrateCurrentSessionActors(scope, [current]);
 
     const snapshotId = current.currentSnapshotId;
+    if (!snapshotId) {
+      return {
+        actionItems: [],
+        current,
+        entities: [],
+        evidenceItems: [],
+        faqCandidates: [],
+        intents: [],
+        problemEvidenceMessageIds: [],
+        qaFindings: [],
+        sentiment: [],
+        tags: [],
+      };
+    }
+
     const dimensionEvidence = await this.listDimensionEvidence(scope, current.sessionId, snapshotId);
     const [
       qaFindingRows,
@@ -3318,8 +3329,17 @@ export class InsightsRepository implements InsightsRepositoryPort {
     const problemEvidenceBySnapshotId = groupProblemEvidenceMessages(problemEvidence);
 
     for (const row of rows) {
-      const action = actionsBySnapshotId.get(row.currentSnapshotId);
-      const evidence = problemEvidenceBySnapshotId.get(row.currentSnapshotId) ?? [];
+      const snapshotId = row.currentSnapshotId;
+
+      if (!snapshotId) {
+        row.actionOpenCount = 0;
+        row.problemEvidenceMessageIds = [];
+        row.lastCustomerMessageAt = row.lastCustomerMessageAt ?? null;
+        continue;
+      }
+
+      const action = actionsBySnapshotId.get(snapshotId);
+      const evidence = problemEvidenceBySnapshotId.get(snapshotId) ?? [];
 
       row.actionOpenCount = action ? parseNumber(action.action_open_count) : 0;
       row.problemEvidenceMessageIds = sortNumericStrings(
@@ -3352,8 +3372,8 @@ export class InsightsRepository implements InsightsRepositoryPort {
   }
 
   private async hydrateCurrentSessionTopics(rows: InsightCurrentSessionRow[]) {
-    const snapshotIds = uniquePositiveNumbers(
-      rows.map((row) => Number(row.currentSnapshotId)),
+    const snapshotIds = normalizePositiveIntegers(
+      rows.map((row) => row.currentSnapshotId),
     );
 
     if (snapshotIds.length === 0) {
@@ -3421,10 +3441,12 @@ export class InsightsRepository implements InsightsRepositoryPort {
     const assetsBySnapshotId = groupAssetsBySnapshotId(assets);
 
     for (const row of rows) {
-      row.tags = tagsBySnapshotId.get(row.currentSnapshotId) ?? [];
-      row.entities = entitiesBySnapshotId.get(row.currentSnapshotId) ?? [];
-      row.intents = intentsBySnapshotId.get(row.currentSnapshotId) ?? [];
-      row.assets = assetsBySnapshotId.get(row.currentSnapshotId) ?? [];
+      const snapshotId = row.currentSnapshotId;
+
+      row.tags = snapshotId ? tagsBySnapshotId.get(snapshotId) ?? [] : [];
+      row.entities = snapshotId ? entitiesBySnapshotId.get(snapshotId) ?? [] : [];
+      row.intents = snapshotId ? intentsBySnapshotId.get(snapshotId) ?? [] : [];
+      row.assets = snapshotId ? assetsBySnapshotId.get(snapshotId) ?? [] : [];
     }
   }
 
@@ -3665,17 +3687,19 @@ function mapCurrentSessionRows(rows: CurrentSessionQueryRow[]): InsightCurrentSe
         agentSeatId: normalizeOptionalString(
           readOptionalDetailField<number | string>(row, "agent_seat_id"),
         ),
-        analysisStatus: normalizeAnalysisStatus(row.status),
+        analysisStatus: row.current_snapshot_id == null || row.status == null
+          ? "analyzing"
+          : normalizeAnalysisStatus(row.status),
         conversationId: String(row.conversation_id),
-        currentSnapshotId: String(row.current_snapshot_id),
+        currentSnapshotId: normalizeOptionalId(row.current_snapshot_id),
         customerAvatarUrl: null,
         customerName: readOptionalDetailField<string>(row, "customer_name") ?? "未知客户",
         endedAt: parseNullableNumber(row.ended_at),
-        generatedAt: parseNumber(row.generated_at),
+        generatedAt: parseNullableNumber(row.generated_at) ?? undefined,
         lastMessageAt: parseNullableNumber(row.last_message_at),
         lastCustomerMessageAt: parseNullableNumber(row.last_customer_message_at),
-        phase: row.phase === "final" ? "final" : "live",
-        problemDetected: row.problem_detected === 1,
+        phase: row.phase == null ? undefined : row.phase === "final" ? "final" : "live",
+        problemDetected: parseNullableNumber(row.problem_detected) === 1,
         problemEvidenceMessageIds: [],
         problemResolutionConfidence: parseNullableNumber(row.problem_confidence ?? null) ?? undefined,
         problemSummary: row.problem_summary ?? "",
@@ -3707,6 +3731,14 @@ function readOptionalDetailField<T extends string | number>(
 function normalizeOptionalString(value: number | string | null) {
   if (value == null) {
     return null;
+  }
+
+  return String(value);
+}
+
+function normalizeOptionalId(value: number | string | null) {
+  if (value == null) {
+    return undefined;
   }
 
   return String(value);
@@ -4396,7 +4428,7 @@ function applyTopicDateFilters<Query>(
   return next;
 }
 
-function buildCurrentSessionLeanBaseQuery(db: Kysely<Database>) {
+function buildAnalyzedCurrentSessionLeanBaseQuery(db: Kysely<Database>) {
   return db
     .selectFrom("xy_wap_embed_session_insight_current as current")
     .innerJoin("xy_wap_embed_session_insight_snapshot as snapshot", (join) =>
@@ -4404,6 +4436,27 @@ function buildCurrentSessionLeanBaseQuery(db: Kysely<Database>) {
     )
     .innerJoin("xy_wap_embed_logical_session as session", (join) =>
       join.onRef("session.id", "=", "current.session_id"),
+    );
+}
+
+function buildAnalyzedCurrentSessionBaseQuery(db: Kysely<Database>) {
+  return buildAnalyzedCurrentSessionLeanBaseQuery(db)
+    .leftJoin("xy_wap_embed_session_summary as summary", (join) =>
+      join.onRef("summary.snapshot_id", "=", "snapshot.id"),
+    )
+    .leftJoin("xy_wap_embed_session_problem_resolution as problem", (join) =>
+      join.onRef("problem.snapshot_id", "=", "snapshot.id"),
+    );
+}
+
+function buildCurrentSessionLeanBaseQuery(db: Kysely<Database>) {
+  return db
+    .selectFrom("xy_wap_embed_logical_session as session")
+    .leftJoin("xy_wap_embed_session_insight_current as current", (join) =>
+      join.onRef("current.session_id", "=", "session.id"),
+    )
+    .leftJoin("xy_wap_embed_session_insight_snapshot as snapshot", (join) =>
+      join.onRef("snapshot.id", "=", "current.current_snapshot_id"),
     );
 }
 
@@ -4418,7 +4471,7 @@ function buildCurrentSessionBaseQuery(db: Kysely<Database>) {
 }
 
 function buildQualityResultBaseQuery(db: Kysely<Database>) {
-  return buildCurrentSessionLeanBaseQuery(db)
+  return buildAnalyzedCurrentSessionLeanBaseQuery(db)
     .innerJoin("xy_wap_embed_session_qa_finding as qa", (join) =>
       join.onRef("qa.snapshot_id", "=", "snapshot.id"),
     );
@@ -4544,7 +4597,11 @@ function applyCurrentSessionFilters<Query>(
   }
 
   if (filters.analysisStatus) {
-    next = next.where("snapshot.status", "=", filters.analysisStatus) as typeof next;
+    // "analyzing" only matches logical-session based queries that left-join current/snapshot.
+    // Analyzed-only queries intentionally cannot return sessions without a current snapshot.
+    next = filters.analysisStatus === "analyzing"
+      ? next.where(sql<boolean>`(current.current_snapshot_id is null or snapshot.id is null)`) as typeof next
+      : next.where("snapshot.status", "=", filters.analysisStatus) as typeof next;
   }
 
   if (filters.resolutionStatus) {

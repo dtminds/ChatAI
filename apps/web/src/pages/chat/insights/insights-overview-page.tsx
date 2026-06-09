@@ -67,7 +67,7 @@ import {
 import { cn } from "@/lib/utils";
 import { getInsightOverview, getInsightOverviewSessions, getInsightSettings } from "./api/insights-service";
 import { InsightDateRangeFilter } from "./insight-date-range-filter";
-import { ResolutionBadge, ResolutionDiagnosisHeader } from "./insight-badges";
+import { AnalysisStatusBadge, ResolutionBadge, ResolutionDiagnosisHeader } from "./insight-badges";
 import { InsightDetailPanel } from "./insight-detail-panel";
 import { InsightPerson } from "./insight-person";
 import { InsightTableLoadingRow } from "./insight-table-loading-row";
@@ -119,6 +119,7 @@ const resolutionFilterOptions = [
 
 const analysisStatusFilterOptions = [
   { label: "全部分析", value: "all" },
+  { label: "待分析", value: "analyzing" },
   { label: "已完成", value: "ready" },
   { label: "部分完成", value: "partial" },
   { label: "分析失败", value: "failed" },
@@ -767,7 +768,11 @@ function SessionTableCard({
                     </div>
                   </TableCell>
                   <TableCell className="py-4">
-                    <ResolutionBadge status={row.resolutionStatus} />
+                    {row.analysisStatus === "analyzing" ? (
+                      <AnalysisStatusBadge />
+                    ) : (
+                      <ResolutionBadge status={row.resolutionStatus} />
+                    )}
                   </TableCell>
                   <TableCell className="py-4 text-sm text-muted-foreground">
                     {formatInsightTime(row.startedAt)}
@@ -834,7 +839,7 @@ function useDebouncedValue<T>(value: T, delayMs: number) {
 }
 
 function normalizeAnalysisStatusFilter(value: string): InsightOverviewSessionsQuery["analysisStatus"] | undefined {
-  return value === "ready" || value === "partial" || value === "failed" || value === "stale"
+  return value === "analyzing" || value === "ready" || value === "partial" || value === "failed" || value === "stale"
     ? value
     : undefined;
 }

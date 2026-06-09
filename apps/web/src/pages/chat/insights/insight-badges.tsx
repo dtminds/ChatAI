@@ -4,6 +4,7 @@ import {
   DashedLineCircleIcon,
   InformationCircleIcon,
   Leaf01Icon,
+  Loading03Icon,
   MessageSquareDashedIcon,
   Progress03Icon,
 } from "@hugeicons/core-free-icons";
@@ -16,6 +17,7 @@ import {
 } from "@/components/ui/hover-card";
 import { cn } from "@/lib/utils";
 import {
+  formatAnalysisStatus,
   formatPriority,
   formatResolutionStatus,
   formatSeverity,
@@ -56,6 +58,15 @@ export function StatusBadge({
     <Badge className={cn("bg-muted text-foreground", className)}>
       {children}
     </Badge>
+  );
+}
+
+export function AnalysisStatusBadge() {
+  return (
+    <span className="inline-flex items-center gap-1 text-sm font-semibold text-muted-foreground">
+      <HugeiconsIcon icon={Loading03Icon} size={13} strokeWidth={2} />
+      {formatAnalysisStatus("analyzing")}
+    </span>
   );
 }
 

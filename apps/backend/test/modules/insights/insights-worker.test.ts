@@ -131,6 +131,7 @@ function createRepository(
     markSyncMessagesJobSucceeded: vi.fn(async () => undefined),
     markCleanupDisabledInsightsJobFailed: vi.fn(async () => undefined),
     markCleanupDisabledInsightsJobSucceeded: vi.fn(async () => undefined),
+    deleteUidMaintenanceJob: vi.fn(async () => undefined),
     markUidMaintenanceJobFailed: vi.fn(async () => undefined),
     reopenSession: vi.fn(async () => true),
     rescheduleUidMaintenanceJob: vi.fn(async () => undefined),
@@ -184,6 +185,43 @@ describe("InsightsWorkerService", () => {
       expect.objectContaining({
         runAfter: expect.any(Date),
       }),
+    );
+  });
+
+  it("runs multiple uid maintenance jobs in one worker tick", async () => {
+    const jobs = [
+      { jobId: "maintain-9001", uid: 9001 },
+      { jobId: "maintain-9002", uid: 9002 },
+      undefined,
+    ];
+    const repository = createRepository({
+      claimNextUidMaintenanceJob: vi.fn(async () => jobs.shift()),
+      getFeatureConfig: vi.fn(async (uid: number) => ({
+        entityEnabled: true,
+        insightEnabled: true,
+        intentEnabled: true,
+        labelEnabled: true,
+        lastEnableTime: 1_780_243_000_000,
+        qaEnabled: true,
+        todoEnabled: true,
+        uid,
+      })),
+      listIncrementalMessages: vi.fn(async () => []),
+    });
+    const service = new InsightsWorkerService(repository, { batchSize: 50 });
+
+    await service.runOnce();
+
+    expect(repository.claimNextUidMaintenanceJob).toHaveBeenCalledTimes(3);
+    expect(repository.listIncrementalMessages).toHaveBeenCalledTimes(2);
+    expect(repository.rescheduleUidMaintenanceJob).toHaveBeenCalledTimes(2);
+    expect(repository.rescheduleUidMaintenanceJob).toHaveBeenCalledWith(
+      "maintain-9001",
+      expect.objectContaining({ runAfter: expect.any(Date) }),
+    );
+    expect(repository.rescheduleUidMaintenanceJob).toHaveBeenCalledWith(
+      "maintain-9002",
+      expect.objectContaining({ runAfter: expect.any(Date) }),
     );
   });
 
@@ -881,6 +919,8 @@ describe("InsightsWorkerService", () => {
     expect(repository.listIncrementalMessages).not.toHaveBeenCalled();
     expect(repository.appendSessionMessage).not.toHaveBeenCalled();
     expect(repository.updateCursor).not.toHaveBeenCalled();
+    expect(repository.deleteUidMaintenanceJob).toHaveBeenCalledWith("maintain-9001");
+    expect(repository.rescheduleUidMaintenanceJob).not.toHaveBeenCalled();
   });
 
   it("uses the current lookback window when it is newer than the enable lookback window", async () => {

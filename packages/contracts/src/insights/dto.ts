@@ -340,8 +340,8 @@ export const InsightSessionMetaSchema = Type.Object({
   customerAvatarUrl: Type.Optional(Type.String()),
   customerName: Type.String(),
   endedAt: Type.Optional(Type.Number()),
-  generatedAt: Type.Number(),
-  phase: Type.Union([Type.Literal("live"), Type.Literal("final")]),
+  generatedAt: Type.Optional(Type.Number()),
+  phase: Type.Optional(Type.Union([Type.Literal("live"), Type.Literal("final")])),
   sessionId: Type.String(),
   startedAt: Type.Number(),
 });
@@ -437,7 +437,7 @@ export const InsightCreateActionItemResponseSchema = Type.Object({
 export const InsightDetailResponseSchema = Type.Object({
   actionItems: Type.Array(InsightDetailActionItemSchema),
   analysisStatus: InsightAnalysisStatusSchema,
-  currentSnapshotId: Type.String(),
+  currentSnapshotId: Type.Optional(Type.String()),
   entities: Type.Array(InsightDetailEntitySchema),
   evidenceItems: Type.Array(InsightEvidenceItemSchema),
   faqCandidates: Type.Array(InsightFaqCandidateSchema),

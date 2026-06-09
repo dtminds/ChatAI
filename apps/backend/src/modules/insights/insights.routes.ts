@@ -77,6 +77,7 @@ const QualityQuerySchema = Type.Object({
 const OverviewSessionsQuerySchema = Type.Object({
   analysisStatus: Type.Optional(Type.Union([
     Type.Literal("ready"),
+    Type.Literal("analyzing"),
     Type.Literal("partial"),
     Type.Literal("failed"),
     Type.Literal("stale"),

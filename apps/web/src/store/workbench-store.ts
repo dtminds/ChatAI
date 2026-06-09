@@ -3258,7 +3258,10 @@ export function createWorkbenchStore() {
     async initializeWorkbench() {
       const state = get();
 
-      if (state.bootstrapStatus === "loading") {
+      if (
+        state.bootstrapStatus === "loading" ||
+        (state.bootstrapStatus === "ready" && state.accounts.length > 0)
+      ) {
         return;
       }
 
@@ -3380,6 +3383,11 @@ export function createWorkbenchStore() {
           sidebarItems: bootstrapResult.sidebarItems,
           isPollBaselineFresh: true,
           messageUpdateCursor: undefined,
+          pollState: {
+            ...get().pollState,
+            errorMessage: undefined,
+            status: "idle",
+          },
           seatUpdateCursor: undefined,
           sinceVersion: bootstrapResult.pollBaseline,
         });

@@ -67,4 +67,47 @@ describe("workbench store conversation mode cache", () => {
       seatId: "drc",
     });
   });
+
+  it("resets stale polling status when the workbench initializes again", async () => {
+    const baseService = createMockWorkbenchService();
+    const poll = vi.fn(baseService.poll);
+
+    setWorkbenchService({
+      ...baseService,
+      poll,
+    } satisfies WorkbenchService);
+
+    useWorkbenchStore.setState((state) => ({
+      pollState: {
+        ...state.pollState,
+        status: "polling",
+      },
+    }));
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(poll).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a ready workbench ready when the route initializes again", async () => {
+    const baseService = createMockWorkbenchService();
+    const getSeats = vi.fn(baseService.getSeats);
+
+    setWorkbenchService({
+      ...baseService,
+      getSeats,
+    } satisfies WorkbenchService);
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    expect(useWorkbenchStore.getState().bootstrapStatus).toBe("ready");
+
+    getSeats.mockClear();
+
+    const secondInitialize = useWorkbenchStore.getState().initializeWorkbench();
+
+    expect(useWorkbenchStore.getState().bootstrapStatus).toBe("ready");
+    await secondInitialize;
+    expect(getSeats).not.toHaveBeenCalled();
+  });
 });

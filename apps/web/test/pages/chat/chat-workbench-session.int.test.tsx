@@ -11,21 +11,6 @@ import {
   workbenchHttpMock,
 } from "./workbench-test-utils";
 
-function createDeferred<T = void>() {
-  let resolve!: (value: T | PromiseLike<T>) => void;
-  let reject!: (reason?: unknown) => void;
-  const promise = new Promise<T>((nextResolve, nextReject) => {
-    resolve = nextResolve;
-    reject = nextReject;
-  });
-
-  return {
-    promise,
-    reject,
-    resolve,
-  };
-}
-
 describe("ChatWorkbenchPage session flows", () => {
   beforeEach(() => {
     vi.useRealTimers();
@@ -308,19 +293,14 @@ describe("ChatWorkbenchPage session flows", () => {
     expect(sendMessage).not.toHaveBeenCalled();
   });
 
-  it("keeps the composer available while refreshing existing workbench data", async () => {
+  it("keeps the composer available without refreshing existing workbench data on route mount", async () => {
     const baseService = createMockWorkbenchService();
-    const refreshGate = createDeferred();
     let seatRequestCount = 0;
 
     setWorkbenchService({
       ...baseService,
       async getSeats() {
         seatRequestCount += 1;
-
-        if (seatRequestCount > 1) {
-          await refreshGate.promise;
-        }
 
         return baseService.getSeats();
       },
@@ -330,19 +310,13 @@ describe("ChatWorkbenchPage session flows", () => {
 
     renderChatWorkbenchPage();
 
-    await waitFor(() => {
-      expect(useWorkbenchStore.getState().bootstrapStatus).toBe("loading");
-    });
+    expect(useWorkbenchStore.getState().bootstrapStatus).toBe("ready");
     expect(screen.getByRole("textbox", { name: "请输入消息……" })).not.toHaveAttribute(
       "aria-readonly",
       "true",
     );
     expect(screen.queryByText("当前会话暂不可发送消息")).not.toBeInTheDocument();
-
-    refreshGate.resolve();
-    await waitFor(() => {
-      expect(useWorkbenchStore.getState().bootstrapStatus).toBe("ready");
-    });
+    expect(seatRequestCount).toBe(1);
   });
 
   it("shows scope transition errors in the workbench", async () => {

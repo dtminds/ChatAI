@@ -1672,6 +1672,7 @@ describe("InsightsWorkerService", () => {
         {
           aliases: ["查快递"],
           description: "物流相关诉求",
+          id: "31",
           includeInStatistics: true,
           intentCode: "logistics_delay",
           intentName: "物流异常",
@@ -1683,6 +1684,7 @@ describe("InsightsWorkerService", () => {
       labelConfigs: [
         {
           description: "物流相关咨询",
+          id: "11",
           includeInStatistics: true,
           labelCode: "logistics",
           labelName: "物流咨询",
@@ -1800,7 +1802,14 @@ describe("InsightsWorkerService", () => {
           sessionTitle: "查物流",
           text: "客服承诺催快递",
         },
-        tags: [],
+        tags: [
+          {
+            confidence: 0.86,
+            evidenceMessageIds: ["9001"],
+            tagCode: "logistics",
+            tagName: "模型自由标签",
+          },
+        ],
       })),
     };
     const service = new InsightsWorkerService(repository, { model });
@@ -1836,6 +1845,7 @@ describe("InsightsWorkerService", () => {
             expect.objectContaining({
               evidenceMessageIds: ["9001"],
               intentCode: "logistics_delay",
+              intentId: "31",
               intentLabel: "物流异常",
             }),
           ],
@@ -1843,6 +1853,14 @@ describe("InsightsWorkerService", () => {
             evidenceMessageIds: ["9001"],
           }),
           qaFindings: [],
+          tags: [
+            expect.objectContaining({
+              evidenceMessageIds: ["9001"],
+              tagCode: "logistics",
+              tagId: "11",
+              tagName: "物流咨询",
+            }),
+          ],
         }),
       }),
     );

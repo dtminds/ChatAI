@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import { Link, NavLink } from "react-router-dom";
 import {
-  AiIdeaIcon,
   Analytics02Icon,
   ArrowLeft02Icon,
   ClipboardCheckIcon,
@@ -12,6 +11,8 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+
+const insightLogoUrl = "https://b5.bokr.com.cn/dist/insight-color.svg";
 
 const insightNavItems = [
   {
@@ -63,10 +64,8 @@ export function InsightsLayout({
             </Link>
           </Button>
 
-          <div className="mb-5 flex items-center gap-2 px-2">
-            <div className="flex size-8 items-center justify-center rounded-[8px] bg-primary text-primary-foreground">
-              <HugeiconsIcon icon={AiIdeaIcon} size={16} />
-            </div>
+          <div className="mb-5 flex items-center gap-1.5 px-2">
+            <img alt="" aria-hidden="true" className="size-6 shrink-0" src={insightLogoUrl} />
             <div>
               <div className="text-sm font-semibold">会话洞察</div>
             </div>

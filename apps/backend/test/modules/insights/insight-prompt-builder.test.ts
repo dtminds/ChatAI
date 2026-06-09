@@ -112,7 +112,7 @@ describe("insight prompt builder", () => {
           confidence: "<number 0-1>",
           evidenceMessageIds: ["<sourceMessageId>"],
           passed: "<boolean>",
-          reason: "<string: 判定理由>",
+          reason: "<string: 必须简短，最多 1 句话，40 个中文字符以内，让人一眼能看懂；不要复述规则全文，只说明通过或未通过的关键理由>",
           ruleCode: "<来自 tenantContext.qaRuleConfigs.ruleCode>",
           severity: "<high|medium|low>",
         },

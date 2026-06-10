@@ -19,12 +19,14 @@ import {
   type InsightDateRange,
 } from "./insights-date-range";
 
-const maxDateRangeDays = 31;
+const defaultMaxDateRangeDays = 31;
 
-const presetOptions: Array<{
+type DateRangePresetOption = {
   label: string;
   range: () => InsightDateRange;
-}> = [
+};
+
+const presetOptions: DateRangePresetOption[] = [
   { label: "昨天", range: () => getYesterdayDateRange() },
   { label: "近7天", range: () => getRecentDateRange(7) },
   { label: "近30天", range: () => getDefaultDateRange() },
@@ -39,14 +41,18 @@ type InsightDateRangeFilterProps =
     allowEmpty?: false;
     emptyLabel?: string;
     from: string;
+    maxRangeDays?: number;
     onChange: (range: InsightDateRange) => void;
+    presets?: DateRangePresetOption[];
     to: string;
   }
   | {
     allowEmpty: true;
     emptyLabel?: string;
     from?: string;
+    maxRangeDays?: number;
     onChange: (range: InsightDateRange | undefined) => void;
+    presets?: DateRangePresetOption[];
     to?: string;
   };
 
@@ -55,19 +61,21 @@ export function InsightDateRangeFilter(props: InsightDateRangeFilterProps) {
     allowEmpty = false,
     emptyLabel = "选择时间",
     from,
+    maxRangeDays = defaultMaxDateRangeDays,
     to,
   } = props;
+  const presets = props.presets ?? presetOptions;
   const [isOpen, setIsOpen] = useState(false);
   const [draftRange, setDraftRange] = useState<DateRange>(() => toCalendarRange(toValueRange(from, to)));
   const [draftPresetLabel, setDraftPresetLabel] = useState<string | undefined>(() =>
-    getPresetLabel(toValueRange(from, to)),
+    getPresetLabel(toValueRange(from, to), presets),
   );
   const [selectedPresetLabel, setSelectedPresetLabel] = useState<string | undefined>(() =>
-    getPresetLabel(toValueRange(from, to)),
+    getPresetLabel(toValueRange(from, to), presets),
   );
   const [visibleMonth, setVisibleMonth] = useState(() => getVisibleMonth(toValueRange(from, to)));
   const value = useMemo(() => from && to ? { from, to } : undefined, [from, to]);
-  const label = value ? getActivePresetLabel(value, selectedPresetLabel) ?? "自定义" : emptyLabel;
+  const label = value ? getActivePresetLabel(value, selectedPresetLabel, presets) ?? "自定义" : emptyLabel;
   const rangeText = value ? formatRangeText(value) : "";
 
   useEffect(() => {
@@ -75,12 +83,12 @@ export function InsightDateRangeFilter(props: InsightDateRangeFilterProps) {
       const nextValue = toValueRange(from, to);
 
       setDraftRange(toCalendarRange(nextValue));
-      setDraftPresetLabel(value ? getActivePresetLabel(value, selectedPresetLabel) : undefined);
+      setDraftPresetLabel(value ? getActivePresetLabel(value, selectedPresetLabel, presets) : undefined);
       setVisibleMonth(getVisibleMonth(nextValue));
     }
-  }, [from, isOpen, selectedPresetLabel, to, value]);
+  }, [from, isOpen, presets, selectedPresetLabel, to, value]);
 
-  function selectPreset(option: (typeof presetOptions)[number]) {
+  function selectPreset(option: DateRangePresetOption) {
     const range = option.range();
 
     props.onChange(range);
@@ -96,21 +104,22 @@ export function InsightDateRangeFilter(props: InsightDateRangeFilterProps) {
     }
 
     props.onChange(normalizedRange);
-    setSelectedPresetLabel(draftPresetLabel ?? getPresetLabel(normalizedRange));
+    setSelectedPresetLabel(draftPresetLabel ?? getPresetLabel(normalizedRange, presets));
     setIsOpen(false);
   }
 
-  function resetToRecent30Days() {
-    const range = getDefaultDateRange();
+  function resetDraftRange() {
+    const resetPreset = props.presets?.[0];
+    const range = resetPreset?.range() ?? getDefaultDateRange();
 
     setDraftRange(toCalendarRange(range));
-    setDraftPresetLabel("近30天");
+    setDraftPresetLabel(resetPreset?.label ?? "近30天");
     setVisibleMonth(getVisibleMonth(range));
   }
 
   function clearRange() {
     if (props.allowEmpty !== true) {
-      resetToRecent30Days();
+      resetDraftRange();
       return;
     }
 
@@ -152,7 +161,7 @@ export function InsightDateRangeFilter(props: InsightDateRangeFilterProps) {
       <PopoverContent align="end" className="w-[min(42rem,calc(100vw-2rem))] p-0">
         <div className="grid gap-0 sm:grid-cols-[8.5rem_minmax(0,1fr)]">
           <div className="flex gap-2 border-b p-3 sm:flex-col sm:border-b-0 sm:border-r">
-            {presetOptions.map((option) => {
+            {presets.map((option) => {
               const isActive = isSameDateRange(
                 normalizeCalendarRange(draftRange),
                 option.range(),
@@ -174,7 +183,7 @@ export function InsightDateRangeFilter(props: InsightDateRangeFilterProps) {
           </div>
           <div className="min-w-0 p-3">
             <Calendar
-              disabled={getDisabledDateMatcher(draftRange)}
+              disabled={getDisabledDateMatcher(draftRange, maxRangeDays)}
               month={visibleMonth}
               mode="range"
               numberOfMonths={2}
@@ -194,7 +203,7 @@ export function InsightDateRangeFilter(props: InsightDateRangeFilterProps) {
                 </span>
               </div>
               <div className="flex items-center justify-end gap-2">
-                <Button onClick={allowEmpty ? clearRange : resetToRecent30Days} size="sm" type="button" variant="ghost">
+                <Button onClick={allowEmpty ? clearRange : resetDraftRange} size="sm" type="button" variant="ghost">
                   {allowEmpty ? "清除" : "重置"}
                 </Button>
                 <Button
@@ -261,14 +270,14 @@ function getNextDraftRange(current: DateRange, triggerDate: Date): DateRange {
     : { from: triggerDate, to: current.from };
 }
 
-function getDisabledDateMatcher(range: DateRange) {
+function getDisabledDateMatcher(range: DateRange, maxRangeDays: number) {
   if (!range.from || range.to) {
     return undefined;
   }
 
   const maxSelectableDate = new Date(range.from);
 
-  maxSelectableDate.setDate(range.from.getDate() + maxDateRangeDays - 1);
+  maxSelectableDate.setDate(range.from.getDate() + maxRangeDays - 1);
 
   return [
     { before: range.from },
@@ -284,21 +293,22 @@ function formatRangeText(range: InsightDateRange | undefined) {
   return `${range.from} 至 ${range.to}`;
 }
 
-function getPresetLabel(range: InsightDateRange) {
-  return presetOptions.find((option) => isSameDateRange(range, option.range()))?.label;
+function getPresetLabel(range: InsightDateRange, presets = presetOptions) {
+  return presets.find((option) => isSameDateRange(range, option.range()))?.label;
 }
 
 function getActivePresetLabel(
   range: InsightDateRange,
   label: string | undefined,
+  presets = presetOptions,
 ) {
-  const option = presetOptions.find((preset) => preset.label === label);
+  const option = presets.find((preset) => preset.label === label);
 
   if (option && isSameDateRange(range, option.range())) {
     return option.label;
   }
 
-  return getPresetLabel(range);
+  return getPresetLabel(range, presets);
 }
 
 function isSameDateRange(

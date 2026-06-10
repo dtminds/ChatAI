@@ -291,6 +291,48 @@ const qualityAgentStats = [
   NonNullable<InsightsRepositoryPort["listQualityAgentStats"]>
 >;
 
+const baseBusinessTopicFacts = [
+  {
+    dimension: "tag",
+    mentionCount: 1,
+    name: "物流异常",
+    sessionId: "501",
+    snapshotId: "7001",
+    startedAt: 1_780_243_200_000,
+    topicId: "21",
+  },
+  {
+    dimension: "tag",
+    mentionCount: 1,
+    name: "退款咨询",
+    sessionId: "502",
+    snapshotId: "7002",
+    startedAt: 1_780_243_000_000,
+    topicId: "22",
+  },
+  {
+    dimension: "entity",
+    mentionCount: 2,
+    name: "白色羽绒服",
+    sentiment: "negative",
+    sessionId: "501",
+    snapshotId: "7001",
+    startedAt: 1_780_243_200_000,
+    topicId: "41",
+  },
+  {
+    dimension: "intent",
+    mentionCount: 1,
+    name: "物流异常",
+    sessionId: "501",
+    snapshotId: "7001",
+    startedAt: 1_780_243_200_000,
+    topicId: "31",
+  },
+] satisfies Awaited<
+  NonNullable<InsightsRepositoryPort["listBusinessTopicFacts"]>
+>;
+
 function createRepository(
   overrides: Partial<InsightsRepositoryPort> = {},
 ): InsightsRepositoryPort {
@@ -452,55 +494,11 @@ function createRepository(
         title: "复核消息不足会话",
       },
     ]),
-    listBusinessTopicFacts: vi.fn(async () => [
-      {
-        dimension: "tag",
-        mentionCount: 1,
-        name: "物流异常",
-        sessionId: "501",
-        snapshotId: "7001",
-        startedAt: 1_780_243_200_000,
-        topicId: "21",
-      },
-      {
-        dimension: "tag",
-        mentionCount: 1,
-        name: "退款咨询",
-        sessionId: "502",
-        snapshotId: "7002",
-        startedAt: 1_780_243_000_000,
-        topicId: "22",
-      },
-      {
-        dimension: "entity",
-        mentionCount: 2,
-        name: "白色羽绒服",
-        sentiment: "negative",
-        sessionId: "501",
-        snapshotId: "7001",
-        startedAt: 1_780_243_200_000,
-        topicId: "41",
-      },
-      {
-        dimension: "asset",
-        mentionCount: 2,
-        name: "红包活动",
-        sessionId: "501",
-        snapshotId: "7001",
-        startedAt: 1_780_243_200_000,
-        topicId: "https://example.com/promo",
-        type: "link",
-      },
-      {
-        dimension: "intent",
-        mentionCount: 1,
-        name: "物流异常",
-        sessionId: "501",
-        snapshotId: "7001",
-        startedAt: 1_780_243_200_000,
-        topicId: "31",
-      },
-    ]),
+    listBusinessTopicFacts: vi.fn(async (_scope, filters) =>
+      filters?.dimension
+        ? baseBusinessTopicFacts.filter((fact) => fact.dimension === filters.dimension)
+        : baseBusinessTopicFacts,
+    ),
     getQualityAggregate: vi.fn(async () => qualityAggregate),
     getQaFindingAggregate: vi.fn(async () => qaFindingAggregate),
     getOverviewAggregate: vi.fn(async (_scope, filters) =>
@@ -1195,92 +1193,116 @@ describe("InsightsService", () => {
     );
   });
 
-  it("builds business topic analytics from current snapshots", async () => {
-    const repository = createRepository();
-    const service = new InsightsService(repository);
-    const result = await service.getBusiness(scope);
-
-    expect(result.totals).toMatchObject({
-      assetMentions: 2,
-      entityMentions: 2,
-      intentMentions: 1,
-      tagMentions: 2,
-      topicSessions: 2,
-    });
-    expect(result.tagDistribution).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          code: "21",
-          dimension: "tag",
-          name: "物流异常",
-          sessionCount: 1,
-        }),
-        expect.objectContaining({
-          code: "22",
-          name: "退款咨询",
-        }),
-      ]),
-    );
-    expect(result.entityHotspots[0]).toMatchObject({
-      code: "41",
-      mentionCount: 2,
-      name: "白色羽绒服",
-      negativeSessions: 1,
-    });
-    expect(result.assetHotspots[0]).toMatchObject({
-      code: "https://example.com/promo",
-      dimension: "asset",
-      mentionCount: 2,
-      name: "红包活动",
-      type: "link",
-    });
-    expect(result.intentDistribution[0]).toMatchObject({
-      code: "31",
-      name: "物流异常",
-    });
-    expect(result.intentTrend).toEqual([
-      {
-        date: "2026-06-01",
-        intentId: "31",
-        intentName: "物流异常",
-        sessionCount: 1,
-      },
-    ]);
-    expect(result.trend).toEqual([
-      expect.objectContaining({
-        date: "2026-05-31",
-        tagMentions: 1,
-        topicSessions: 1,
-      }),
-      expect.objectContaining({
-        date: "2026-06-01",
-        entityMentions: 2,
-        intentMentions: 1,
-        tagMentions: 1,
-        negativeSessions: 1,
-        topicSessions: 1,
-      }),
-    ]);
-    expect(repository.listAllCurrentSessions).not.toHaveBeenCalled();
-    expect(repository.listCurrentSessions).not.toHaveBeenCalled();
-  });
-
-  it("defaults business reads to a recent bounded date range", async () => {
+  it("loads only the selected business topic dimension", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-05T12:00:00.000Z"));
-    const repository = createRepository();
-    const service = new InsightsService(repository);
+    const listBusinessTopicFacts = vi.fn(async () => [
+      {
+        dimension: "intent" as const,
+        mentionCount: 3,
+        name: "物流异常",
+        sessionId: "501",
+        snapshotId: "7001",
+        startedAt: 1_780_243_200_000,
+        topicId: "31",
+      },
+    ]);
+    const service = new InsightsService(createRepository({
+      listBusinessTopicFacts,
+    }));
 
     try {
-      await service.getBusiness(scope);
+      const result = await service.getBusinessTopics(scope, {
+        dimension: "intent",
+      });
 
-      expect(repository.listBusinessTopicFacts).toHaveBeenCalledWith(scope, {
+      expect(result.dimension).toBe("intent");
+      expect(result.topics).toEqual([
+        expect.objectContaining({
+          code: "31",
+          dimension: "intent",
+          mentionCount: 3,
+          name: "物流异常",
+        }),
+      ]);
+      expect(result.intentTrend).toEqual([
+        {
+          date: "2026-06-01",
+          intentId: "31",
+          intentName: "物流异常",
+          sessionCount: 1,
+        },
+      ]);
+      expect(listBusinessTopicFacts).toHaveBeenCalledWith(scope, {
+        dimension: "intent",
         from: "2026-05-07T00:00:00.000+08:00",
         to: "2026-06-05T23:59:59.999+08:00",
       });
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("defaults asset business topics to the recent seven days", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-05T12:00:00.000+08:00"));
+    const listBusinessTopicFacts = vi.fn(async () => []);
+    const getBusinessAssetTopicAnalytics = vi.fn(async () => ({
+      topics: [],
+      totals: {
+        mentionCount: 0,
+        topicSessions: 0,
+      },
+      trend: [],
+    }));
+    const service = new InsightsService(createRepository({
+      getBusinessAssetTopicAnalytics,
+      listBusinessTopicFacts,
+    }));
+
+    try {
+      await service.getBusinessTopics(scope, {
+        dimension: "asset",
+      });
+
+      expect(getBusinessAssetTopicAnalytics).toHaveBeenCalledWith(scope, {
+        dimension: "asset",
+        from: "2026-05-30T00:00:00.000+08:00",
+        to: "2026-06-05T23:59:59.999+08:00",
+      });
+      expect(listBusinessTopicFacts).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("limits asset business topic reads to at most seven days", async () => {
+    const listBusinessTopicFacts = vi.fn(async () => []);
+    const getBusinessAssetTopicAnalytics = vi.fn(async () => ({
+      topics: [],
+      totals: {
+        mentionCount: 0,
+        topicSessions: 0,
+      },
+      trend: [],
+    }));
+    const service = new InsightsService(createRepository({
+      getBusinessAssetTopicAnalytics,
+      listBusinessTopicFacts,
+    }));
+
+    await service.getBusinessTopics(scope, {
+      dimension: "asset",
+      from: "2026-06-01",
+      to: "2026-06-30",
+    });
+
+    expect(getBusinessAssetTopicAnalytics).toHaveBeenCalledWith(scope, {
+      dimension: "asset",
+      from: "2026-06-24T00:00:00.000+08:00",
+      to: "2026-06-30T23:59:59.999+08:00",
+    });
+    expect(listBusinessTopicFacts).not.toHaveBeenCalled();
   });
 
   it("paginates business related sessions by selected topic facts", async () => {
@@ -1300,7 +1322,6 @@ describe("InsightsService", () => {
     const result = await service.getBusinessRelatedSessions(scope, {
       dimension: "intent",
       from: "2026-06-01",
-      keyword: "物流",
       page: 2,
       pageSize: 1,
       topicCode: "31",
@@ -1324,7 +1345,6 @@ describe("InsightsService", () => {
       expect.objectContaining({
         dimension: "intent",
         from: "2026-06-01",
-        keyword: "物流",
         page: 2,
         pageSize: 1,
         topicCode: "31",
@@ -1334,6 +1354,59 @@ describe("InsightsService", () => {
     expect(repository.listBusinessTopicFacts).not.toHaveBeenCalled();
     expect(repository.listCurrentSessions).not.toHaveBeenCalled();
     expect(repository.listAllCurrentSessions).not.toHaveBeenCalled();
+  });
+
+  it("limits asset related sessions to the same seven-day asset window", async () => {
+    const listBusinessRelatedSessions = vi.fn(async () => ({
+      items: [],
+      total: 0,
+    }));
+    const service = new InsightsService(createRepository({
+      listBusinessRelatedSessions,
+    } as Partial<InsightsRepositoryPort>));
+
+    await service.getBusinessRelatedSessions(scope, {
+      dimension: "asset",
+      from: "2026-06-01",
+      page: 1,
+      pageSize: 20,
+      topicCode: "701",
+      to: "2026-06-30",
+    });
+
+    expect(listBusinessRelatedSessions).toHaveBeenCalledWith(
+      scope,
+      expect.objectContaining({
+        dimension: "asset",
+        from: "2026-06-24T00:00:00.000+08:00",
+        to: "2026-06-30T23:59:59.999+08:00",
+      }),
+    );
+  });
+
+  it("fails business related sessions when the repository has no focused query", async () => {
+    const listBusinessTopicFacts = vi.fn(async () => baseBusinessTopicFacts);
+    const listCurrentSessions = vi.fn(async () => ({
+      items: [baseRows[0]],
+      total: 1,
+    }));
+    const service = new InsightsService(createRepository({
+      listBusinessRelatedSessions: undefined,
+      listBusinessTopicFacts,
+      listCurrentSessions,
+    } as Partial<InsightsRepositoryPort>));
+
+    await expect(
+      service.getBusinessRelatedSessions(scope, {
+        dimension: "intent",
+        page: 1,
+        pageSize: 20,
+        topicCode: "31",
+      }),
+    ).rejects.toBeInstanceOf(BusinessError);
+
+    expect(listBusinessTopicFacts).not.toHaveBeenCalled();
+    expect(listCurrentSessions).not.toHaveBeenCalled();
   });
 
   it("filters follow-up action items by status", async () => {

@@ -4,14 +4,13 @@ import {
   ChartAreaIcon,
   DatabaseIcon,
   LabelImportantIcon,
-  Search01Icon,
   Target02Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type {
   InsightBusinessRelatedSessionsResponse,
+  InsightBusinessTopicsResponse,
   InsightOverviewSessionsResponse,
-  InsightsBusinessResponse,
 } from "@chatai/contracts";
 import {
   Area,
@@ -29,7 +28,6 @@ import {
   type TooltipProps,
 } from "recharts";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Table,
   TableBody,
@@ -38,23 +36,31 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
-import { getInsightBusiness, getInsightBusinessRelatedSessions } from "./api/insights-service";
+import { getInsightBusinessRelatedSessions, getInsightBusinessTopics } from "./api/insights-service";
 import { InsightDateRangeFilter } from "./insight-date-range-filter";
-import { ResolutionBadge, ResolutionDiagnosisHeader } from "./insight-badges";
 import { InsightDetailPanel } from "./insight-detail-panel";
 import { InsightPerson } from "./insight-person";
 import { InsightTableLoadingRow } from "./insight-table-loading-row";
 import { InsightTablePagination } from "./insight-table-pagination";
-import { getRecentDateRange, toBoundaryDate } from "./insights-date-range";
+import {
+  getPreviousWeekDateRange,
+  getRecentDateRange,
+  getWeekDateRange,
+  getYesterdayDateRange,
+  toBoundaryDate,
+  type InsightDateRange,
+} from "./insights-date-range";
 import { InsightsLayout, InsightsPageHeader } from "./insights-layout";
 import { formatInsightTime } from "./insights-utils";
 import { insightChartColors, insightDimensionColors } from "./insights-chart-palette";
 import { useInsightDetail } from "./use-insight-detail";
 
-type BusinessTopic = InsightsBusinessResponse["tagDistribution"][number];
+type BusinessTopic = InsightBusinessTopicsResponse["topics"][number];
 type BusinessSession = InsightOverviewSessionsResponse["items"][number];
 type BusinessDimension = BusinessTopic["dimension"];
+type BusinessTopicsByDimension = Partial<Record<BusinessDimension, InsightBusinessTopicsResponse>>;
 type BusinessTrendMetric = "assetMentions" | "entityMentions" | "intentMentions" | "tagMentions";
 type IntentTrendSeries = {
   color: string;
@@ -110,38 +116,54 @@ const dimensionConfigs: Array<{
 ];
 
 const businessRelatedSessionsPageSize = 20;
+const assetDateRangePresets: Array<{ label: string; range: () => InsightDateRange }> = [
+  { label: "近7天", range: () => getRecentDateRange(7) },
+  { label: "昨天", range: () => getYesterdayDateRange() },
+  { label: "本周", range: () => getWeekDateRange() },
+  { label: "上周", range: () => getPreviousWeekDateRange() },
+];
 
 export function InsightsBusinessPage() {
   const [activeDimension, setActiveDimension] = useState<BusinessDimension>("intent");
-  const [business, setBusiness] = useState<InsightsBusinessResponse>();
+  const [assetFrom, setAssetFrom] = useState(() => getRecentDateRange(7).from);
+  const [assetTo, setAssetTo] = useState(() => getRecentDateRange(7).to);
+  const [businessTopicsByDimension, setBusinessTopicsByDimension] = useState<BusinessTopicsByDimension>({});
   const [businessError, setBusinessError] = useState(false);
   const [from, setFrom] = useState(() => getRecentDateRange(7).from);
   const [isRelatedSessionsLoading, setIsRelatedSessionsLoading] = useState(false);
   const [relatedSessionsPage, setRelatedSessionsPage] = useState<InsightBusinessRelatedSessionsResponse>();
   const [relatedSessionsPageNumber, setRelatedSessionsPageNumber] = useState(1);
-  const [sessionSearchKeyword, setSessionSearchKeyword] = useState("");
   const [selectedTopic, setSelectedTopic] = useState<BusinessTopic>();
   const [to, setTo] = useState(() => getRecentDateRange(7).to);
   const detail = useInsightDetail();
+  const activeFrom = activeDimension === "asset" ? assetFrom : from;
+  const activeTo = activeDimension === "asset" ? assetTo : to;
 
   useEffect(() => {
     const controller = new AbortController();
     const query = {
-      from: toBoundaryDate(from, "start"),
-      to: toBoundaryDate(to, "end"),
+      dimension: activeDimension,
+      from: toBoundaryDate(activeFrom, "start"),
+      to: toBoundaryDate(activeTo, "end"),
     };
 
     setBusinessError(false);
-    void getInsightBusiness(query, { signal: controller.signal })
-      .then((businessResponse) => {
+    void getInsightBusinessTopics(query, { signal: controller.signal })
+      .then((businessTopicsResponse) => {
         if (!controller.signal.aborted) {
-          setBusiness(businessResponse);
+          setBusinessTopicsByDimension((current) => ({
+            ...current,
+            [activeDimension]: businessTopicsResponse,
+          }));
           setBusinessError(false);
         }
       })
       .catch(() => {
         if (!controller.signal.aborted) {
-          setBusiness(undefined);
+          setBusinessTopicsByDimension((current) => ({
+            ...current,
+            [activeDimension]: undefined,
+          }));
           setBusinessError(true);
         }
       });
@@ -149,24 +171,21 @@ export function InsightsBusinessPage() {
     return () => {
       controller.abort();
     };
-  }, [from, to]);
+  }, [activeDimension, activeFrom, activeTo]);
 
-  const topicsByDimension = useMemo(() => buildTopicsByDimension(business), [business]);
+  const activeBusinessTopics = businessTopicsByDimension[activeDimension];
+  const topicsByDimension = useMemo(
+    () => buildTopicsByDimension(businessTopicsByDimension),
+    [businessTopicsByDimension],
+  );
   const activeTopics = topicsByDimension[activeDimension];
   const topTopics = useMemo(() => activeTopics.slice(0, 10), [activeTopics]);
 
   useEffect(() => {
-    const keywordMatchedTopic = findTopicByKeyword(topTopics, sessionSearchKeyword);
-
-    if (keywordMatchedTopic && !isSameTopic(keywordMatchedTopic, selectedTopic)) {
-      setSelectedTopic(keywordMatchedTopic);
-      return;
-    }
-
     if (selectedTopic && (selectedTopic.dimension !== activeDimension || !topTopics.some((topic) => isSameTopic(topic, selectedTopic)))) {
       setSelectedTopic(undefined);
     }
-  }, [activeDimension, selectedTopic, sessionSearchKeyword, topTopics]);
+  }, [activeDimension, selectedTopic, topTopics]);
 
   const activeTopic = selectedTopic?.dimension === activeDimension
     ? selectedTopic
@@ -174,7 +193,7 @@ export function InsightsBusinessPage() {
 
   useEffect(() => {
     setRelatedSessionsPageNumber(1);
-  }, [activeTopic?.code, activeTopic?.dimension, activeTopic?.type, from, sessionSearchKeyword, to]);
+  }, [activeTopic?.code, activeTopic?.dimension, activeTopic?.type, activeFrom, activeTo]);
 
   useEffect(() => {
     if (!activeTopic) {
@@ -187,13 +206,12 @@ export function InsightsBusinessPage() {
     setIsRelatedSessionsLoading(true);
     void getInsightBusinessRelatedSessions({
       dimension: activeTopic.dimension,
-      from: toBoundaryDate(from, "start"),
-      keyword: sessionSearchKeyword,
+      from: toBoundaryDate(activeFrom, "start"),
       page: relatedSessionsPageNumber,
       pageSize: businessRelatedSessionsPageSize,
       topicCode: activeTopic.code,
       topicType: activeTopic.type,
-      to: toBoundaryDate(to, "end"),
+      to: toBoundaryDate(activeTo, "end"),
     }, { signal: controller.signal })
       .then((response) => {
         if (!controller.signal.aborted) {
@@ -211,7 +229,7 @@ export function InsightsBusinessPage() {
     return () => {
       controller.abort();
     };
-  }, [activeTopic, from, relatedSessionsPageNumber, sessionSearchKeyword, to]);
+  }, [activeTopic, activeFrom, relatedSessionsPageNumber, activeTo]);
 
   return (
     <InsightsLayout title="业务洞察">
@@ -221,14 +239,27 @@ export function InsightsBusinessPage() {
             title="经营洞察"
           />
           <div className="flex flex-wrap items-center gap-2">
-            <InsightDateRangeFilter
-              from={from}
-              onChange={(range) => {
-                setFrom(range.from);
-                setTo(range.to);
-              }}
-              to={to}
-            />
+            {activeDimension === "asset" ? (
+              <InsightDateRangeFilter
+                from={assetFrom}
+                maxRangeDays={7}
+                onChange={(range) => {
+                  setAssetFrom(range.from);
+                  setAssetTo(range.to);
+                }}
+                presets={assetDateRangePresets}
+                to={assetTo}
+              />
+            ) : (
+              <InsightDateRangeFilter
+                from={from}
+                onChange={(range) => {
+                  setFrom(range.from);
+                  setTo(range.to);
+                }}
+                to={to}
+              />
+            )}
           </div>
         </section>
 
@@ -238,27 +269,26 @@ export function InsightsBusinessPage() {
           </div>
         ) : null}
 
-        <DimensionMetricStrip
+        <BusinessDimensionTabs
             activeDimension={activeDimension}
             onChangeDimension={setActiveDimension}
-            topicsByDimension={topicsByDimension}
           />
 
         <div className="grid gap-5 xl:grid-cols-2">
           <TopicDistributionPanel
             activeDimension={activeDimension}
-            from={from}
+            from={activeFrom}
             onSelectTopic={setSelectedTopic}
             selectedTopic={activeTopic}
             topics={topTopics}
-            to={to}
+            to={activeTo}
           />
 
           <BusinessTrendPanel
             activeDimension={activeDimension}
-            business={business}
-            from={from}
-            to={to}
+            business={activeBusinessTopics}
+            from={activeFrom}
+            to={activeTo}
             topTopics={topTopics}
           />
         </div>
@@ -266,10 +296,8 @@ export function InsightsBusinessPage() {
         <RelatedSessionsPanel
           onOpenDetail={(sessionId) => void detail.openDetail(sessionId)}
           onPageChange={setRelatedSessionsPageNumber}
-          onSearchChange={setSessionSearchKeyword}
           isLoading={isRelatedSessionsLoading}
           page={relatedSessionsPage}
-          searchKeyword={sessionSearchKeyword}
           sessions={relatedSessionsPage?.items ?? []}
           topic={activeTopic}
         />
@@ -290,56 +318,36 @@ export function InsightsBusinessPage() {
   );
 }
 
-function DimensionMetricStrip({
+function BusinessDimensionTabs({
   activeDimension,
   onChangeDimension,
-  topicsByDimension,
 }: {
   activeDimension: BusinessDimension;
   onChangeDimension: (value: BusinessDimension) => void;
-  topicsByDimension: Record<BusinessDimension, BusinessTopic[]>;
 }) {
   return (
-    <section className="grid gap-0 overflow-hidden rounded-xl border bg-card sm:grid-cols-2 lg:grid-cols-4">
-      {dimensionConfigs.map((dimension) => {
-        const isActive = activeDimension === dimension.key;
-        const topics = topicsByDimension[dimension.key];
-        const totalMentions = sumTopicMentions(topics);
-        const totalSessions = sumTopicSessions(topics);
-
-        return (
-          <button
-            className={cn(
-              "flex min-h-[124px] min-w-0 gap-3 border-b p-5 text-left transition-colors hover:bg-muted/45 sm:[&:nth-child(odd)]:border-r lg:border-b-0 lg:border-r",
-              isActive && "bg-primary/8 hover:bg-primary/10",
-              dimension.key === "asset" && "lg:border-r-0",
-            )}
-            key={dimension.key}
-            onClick={() => onChangeDimension(dimension.key)}
-            type="button"
-          >
-            <span
-              className="flex size-8 shrink-0 items-center justify-center rounded-[8px] text-white"
-              style={{ backgroundColor: dimension.color }}
+    <Tabs
+      className="gap-4"
+      onValueChange={(value) => onChangeDimension(value as BusinessDimension)}
+      value={activeDimension}
+    >
+      <div className="flex items-center justify-between gap-4 border-b border-divider">
+        <TabsList
+          aria-label="业务洞察维度"
+          className="h-auto min-w-0 flex-1 justify-start gap-8 overflow-x-auto rounded-none bg-transparent p-0 text-muted-foreground"
+        >
+          {dimensionConfigs.map((dimension) => (
+            <TabsTrigger
+              className="min-w-0 whitespace-nowrap rounded-none border-b-2 border-transparent bg-transparent px-0 py-3 text-sm font-medium shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none"
+              key={dimension.key}
+              value={dimension.key}
             >
-              <HugeiconsIcon icon={dimension.icon} size={17} strokeWidth={1.8} />
-            </span>
-            <span className="grid min-w-0 flex-1 gap-3">
-              <span className="grid gap-1">
-                <span className="text-sm font-medium text-muted-foreground">{dimension.title}</span>
-                <span className="text-[28px] font-semibold leading-tight text-foreground">
-                  {formatNumber(totalMentions)}
-                </span>
-              </span>
-              <span className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                <span className="truncate">{dimension.description}</span>
-                <span className="shrink-0 tabular-nums">{formatNumber(totalSessions)} 会话</span>
-              </span>
-            </span>
-          </button>
-        );
-      })}
-    </section>
+              {dimension.title}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </div>
+    </Tabs>
   );
 }
 
@@ -351,7 +359,7 @@ const BusinessTrendPanel = memo(function BusinessTrendPanel({
   topTopics,
 }: {
   activeDimension: BusinessDimension;
-  business: InsightsBusinessResponse | undefined;
+  business: InsightBusinessTopicsResponse | undefined;
   from: string;
   to: string;
   topTopics: BusinessTopic[];
@@ -383,7 +391,7 @@ function DimensionTrendChart({
   dimension,
   topTopics,
 }: {
-  business: InsightsBusinessResponse | undefined;
+  business: InsightBusinessTopicsResponse | undefined;
   dimension: (typeof dimensionConfigs)[number];
   topTopics: BusinessTopic[];
 }) {
@@ -443,7 +451,7 @@ function IntentDistributionTrendChart({
   business,
   topTopics,
 }: {
-  business: InsightsBusinessResponse | undefined;
+  business: InsightBusinessTopicsResponse | undefined;
   topTopics: BusinessTopic[];
 }) {
   const chart = buildIntentDistributionTrendChart(business, topTopics);
@@ -656,18 +664,14 @@ function RelatedSessionsPanel({
   isLoading,
   onOpenDetail,
   onPageChange,
-  onSearchChange,
   page,
-  searchKeyword,
   sessions,
   topic,
 }: {
   isLoading: boolean;
   onOpenDetail: (sessionId: string) => void;
   onPageChange: (page: number) => void;
-  onSearchChange: (value: string) => void;
   page: InsightBusinessRelatedSessionsResponse | undefined;
-  searchKeyword: string;
   sessions: BusinessSession[];
   topic: BusinessTopic | undefined;
 }) {
@@ -687,21 +691,6 @@ function RelatedSessionsPanel({
             {topic?.name ?? "选择一个主题后查看对应会话"}
           </span>
         </div>
-        <div className="relative w-full sm:w-[280px]">
-          <HugeiconsIcon
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-            icon={Search01Icon}
-            size={15}
-            strokeWidth={1.8}
-          />
-          <Input
-            aria-label="搜索相关会话"
-            className="h-9 rounded-[8px] pl-9 text-sm"
-            onChange={(event) => onSearchChange(event.target.value)}
-            placeholder="搜索会话、客户或主题"
-            value={searchKeyword}
-          />
-        </div>
       </div>
       <div className="overflow-x-auto px-4 pb-4">
         <Table aria-label="相关会话">
@@ -710,16 +699,13 @@ function RelatedSessionsPanel({
               <TableHead className="h-11 min-w-[210px]">客户</TableHead>
               <TableHead className="h-11 min-w-[170px]">接待客服</TableHead>
               <TableHead className="h-11 min-w-[280px]">摘要</TableHead>
-              <TableHead className="h-11 min-w-[120px]">
-                <ResolutionDiagnosisHeader />
-              </TableHead>
               <TableHead className="h-11 min-w-[150px]">开始时间</TableHead>
               <TableHead className="h-11 w-[100px] text-right">操作</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <InsightTableLoadingRow cellClassName="py-12 text-center" colSpan={6} />
+              <InsightTableLoadingRow cellClassName="py-12 text-center" colSpan={5} />
             ) : sessions.length > 0 ? sessions.map((session) => (
               <TableRow key={session.sessionId}>
                 <TableCell className="py-4">
@@ -736,11 +722,8 @@ function RelatedSessionsPanel({
                 </TableCell>
                 <TableCell className="max-w-[320px] py-4">
                   <div className="truncate text-sm font-medium text-foreground">
-                    {formatSessionSummaryCell(session.summarySessionTitle, session.problemSummary)}
+                    {formatSessionSummaryCell(session.summarySessionTitle)}
                   </div>
-                </TableCell>
-                <TableCell className="py-4">
-                  <ResolutionBadge status={session.resolutionStatus} />
                 </TableCell>
                 <TableCell className="py-4 text-sm text-muted-foreground">
                   {formatInsightTime(session.startedAt)}
@@ -758,7 +741,7 @@ function RelatedSessionsPanel({
               </TableRow>
             )) : (
               <TableRow>
-                <TableCell className="py-12 text-center text-sm text-muted-foreground" colSpan={6}>
+                <TableCell className="py-12 text-center text-sm text-muted-foreground" colSpan={5}>
                   当前筛选下暂无可追溯会话
                 </TableCell>
               </TableRow>
@@ -778,8 +761,8 @@ function RelatedSessionsPanel({
   );
 }
 
-function formatSessionSummaryCell(summarySessionTitle?: string, problemSummary?: string) {
-  return summarySessionTitle || problemSummary || <span className="text-muted-foreground/50">-</span>;
+function formatSessionSummaryCell(summarySessionTitle?: string) {
+  return summarySessionTitle || <span className="text-muted-foreground/50">-</span>;
 }
 
 function PanelTitle({
@@ -907,12 +890,15 @@ function getDimensionConfig(value: BusinessDimension) {
   return dimensionConfigs.find((item) => item.key === value) ?? dimensionConfigs[0];
 }
 
-function buildTopicsByDimension(business: InsightsBusinessResponse | undefined): Record<BusinessDimension, BusinessTopic[]> {
+function buildTopicsByDimension(
+  businessTopicsByDimension: BusinessTopicsByDimension,
+): Record<BusinessDimension, BusinessTopic[]> {
   return {
-    asset: sortBusinessTopics(business?.assetHotspots ?? []),
-    entity: sortBusinessTopics(business?.entityHotspots ?? []),
-    intent: sortBusinessTopics(business?.intentDistribution ?? []),
-    tag: sortBusinessTopics(business?.tagDistribution ?? []),
+    // Asset topics are already aggregated by the asset-specific API query; this only sorts cached tab data.
+    asset: sortBusinessTopics(businessTopicsByDimension.asset?.topics ?? []),
+    entity: sortBusinessTopics(businessTopicsByDimension.entity?.topics ?? []),
+    intent: sortBusinessTopics(businessTopicsByDimension.intent?.topics ?? []),
+    tag: sortBusinessTopics(businessTopicsByDimension.tag?.topics ?? []),
   };
 }
 
@@ -941,7 +927,7 @@ function getTopicColor(index: number) {
 }
 
 function buildIntentDistributionTrendChart(
-  business: InsightsBusinessResponse | undefined,
+  business: InsightBusinessTopicsResponse | undefined,
   topTopics: BusinessTopic[],
 ): { points: IntentTrendPoint[]; series: IntentTrendSeries[] } {
   const topIntents = topTopics
@@ -999,40 +985,6 @@ function buildIntentDistributionTrendChart(
   return { points, series };
 }
 
-function findTopicByKeyword(topics: BusinessTopic[], keyword: string) {
-  const normalizedKeyword = normalizeKeyword(keyword);
-
-  if (!normalizedKeyword) {
-    return undefined;
-  }
-
-  return topics.find((topic) => topicMatchesKeyword(topic, normalizedKeyword));
-}
-
-function topicMatchesKeyword(topic: BusinessTopic, normalizedKeyword: string) {
-  return [
-    topic.name,
-    topic.code,
-    topic.type ?? "",
-    dimensionText(topic),
-  ].some((value) => normalizeKeyword(value).includes(normalizedKeyword));
-}
-
-function normalizeKeyword(value: string) {
-  return value.trim().toLowerCase();
-}
-
-function dimensionText(topic: BusinessTopic) {
-  const text: Record<BusinessTopic["dimension"], string> = {
-    entity: "实体对象",
-    intent: "客户意图",
-    asset: topic.type ? assetTypeText(topic.type) : "链接文件",
-    tag: "业务标签",
-  };
-
-  return text[topic.dimension];
-}
-
 function assetTypeText(value: string) {
   const text: Record<string, string> = {
     file: "文件",
@@ -1041,14 +993,6 @@ function assetTypeText(value: string) {
   };
 
   return text[value] ?? "链接文件";
-}
-
-function sumTopicMentions(topics: BusinessTopic[]) {
-  return topics.reduce((total, topic) => total + topic.mentionCount, 0);
-}
-
-function sumTopicSessions(topics: BusinessTopic[]) {
-  return topics.reduce((total, topic) => total + topic.sessionCount, 0);
 }
 
 function isSameTopic(

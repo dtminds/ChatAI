@@ -29,7 +29,7 @@ import type {
   InsightSessionizationSettings,
   InsightSessionizationSettingsUpdateRequest,
   InsightBusinessRelatedSessionsResponse,
-  InsightsBusinessResponse,
+  InsightBusinessTopicsResponse,
   InsightsFollowUpsResponse,
   InsightsOverviewResponse,
   InsightsQualityAgentStatsResponse,
@@ -80,11 +80,18 @@ export type InsightOverviewSessionsQuery = {
 
 export type InsightBusinessRelatedSessionsQuery = Pick<
   InsightOverviewSessionsQuery,
-  "from" | "keyword" | "page" | "pageSize" | "to"
+  "from" | "page" | "pageSize" | "to"
 > & {
-  dimension: InsightsBusinessResponse["tagDistribution"][number]["dimension"];
+  dimension: InsightBusinessTopicsResponse["dimension"];
   topicCode: string;
   topicType?: string;
+};
+
+export type InsightBusinessTopicsQuery = Pick<
+  InsightOverviewSessionsQuery,
+  "from" | "to"
+> & {
+  dimension: InsightBusinessTopicsResponse["dimension"];
 };
 
 type InsightRequestOptions = {
@@ -121,12 +128,12 @@ export async function getInsightFilterOptions() {
   return response.data;
 }
 
-export async function getInsightBusiness(
-  query: InsightOverviewSessionsQuery = {},
+export async function getInsightBusinessTopics(
+  query: InsightBusinessTopicsQuery,
   options: InsightRequestOptions = {},
 ) {
-  const response = await http.get<ApiSuccessEnvelope<InsightsBusinessResponse>>(
-    "/server/insights/business",
+  const response = await http.get<ApiSuccessEnvelope<InsightBusinessTopicsResponse>>(
+    "/server/insights/business/topics",
     {
       ...options,
       params: compactQuery(query),

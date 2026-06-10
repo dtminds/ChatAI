@@ -105,7 +105,7 @@ const OverviewSessionsQuerySchema = Type.Object({
 });
 
 const BusinessRelatedSessionsQuerySchema = Type.Intersect([
-  Type.Pick(OverviewSessionsQuerySchema, ["from", "keyword", "page", "pageSize", "to"]),
+  Type.Pick(OverviewSessionsQuerySchema, ["from", "page", "pageSize", "to"]),
   Type.Object({
     dimension: Type.Union([
       Type.Literal("asset"),
@@ -115,6 +115,18 @@ const BusinessRelatedSessionsQuerySchema = Type.Intersect([
     ]),
     topicCode: Type.String({ minLength: 1 }),
     topicType: Type.Optional(Type.String()),
+  }),
+]);
+
+const BusinessTopicsQuerySchema = Type.Intersect([
+  Type.Pick(OverviewSessionsQuerySchema, ["from", "to"]),
+  Type.Object({
+    dimension: Type.Union([
+      Type.Literal("asset"),
+      Type.Literal("entity"),
+      Type.Literal("intent"),
+      Type.Literal("tag"),
+    ]),
   }),
 ]);
 
@@ -143,6 +155,7 @@ type FollowUpsQuery = Static<typeof FollowUpsQuerySchema>;
 type OverviewQuery = Static<typeof OverviewQuerySchema>;
 type OverviewSessionsQuery = Static<typeof OverviewSessionsQuerySchema>;
 type BusinessRelatedSessionsQuery = Static<typeof BusinessRelatedSessionsQuerySchema>;
+type BusinessTopicsQuery = Static<typeof BusinessTopicsQuerySchema>;
 type QualityQuery = Static<typeof QualityQuerySchema>;
 type QualitySummaryQuery = Static<typeof QualitySummaryQuerySchema>;
 type SessionParams = Static<typeof SessionParamsSchema>;
@@ -189,19 +202,19 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
     },
   );
 
-  app.get<{ Querystring: OverviewSessionsQuery }>(
-    "/api/server/insights/business",
+  app.get<{ Querystring: BusinessTopicsQuery }>(
+    "/api/server/insights/business/topics",
     {
       preHandler: app.authenticate,
       schema: {
-        querystring: OverviewSessionsQuerySchema,
+        querystring: BusinessTopicsQuerySchema,
       },
     },
     async (request) => {
       return apiSuccess(
-        await createInsightsService(app).getBusiness(
+        await createInsightsService(app).getBusinessTopics(
           await getUidScope(app, request),
-          normalizeOverviewSessionsQuery(request.query),
+          normalizeBusinessTopicsQuery(request.query),
         ),
       );
     },
@@ -1001,11 +1014,20 @@ function normalizeBusinessRelatedSessionsQuery(
   return {
     dimension: query.dimension,
     from: query.from,
-    keyword: query.keyword,
     page: normalizePositiveQueryNumber(query.page),
     pageSize: normalizePositiveQueryNumber(query.pageSize),
     topicCode: query.topicCode,
     topicType: query.topicType,
+    to: query.to,
+  };
+}
+
+function normalizeBusinessTopicsQuery(
+  query: BusinessTopicsQuery,
+) {
+  return {
+    dimension: query.dimension,
+    from: query.from,
     to: query.to,
   };
 }

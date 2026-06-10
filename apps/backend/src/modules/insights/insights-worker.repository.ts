@@ -725,7 +725,6 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         "link",
         "markdown",
         "mixed",
-        "news",
         "text",
         "voice",
         "weapp",
@@ -809,9 +808,15 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
   }
 
   async appendSessionMessage(input: AppendSessionMessageInput): Promise<void> {
+    const asset = input.asset;
+    const assetId = asset
+      ? await this.upsertInsightAsset({ ...input, asset })
+      : undefined;
     const result = await this.db
       .insertInto("xy_wap_embed_logical_session_message")
       .values({
+        asset_id: assetId,
+        asset_type: input.asset?.type,
         conversation_id: parsePositiveInteger(input.conversationId) ?? -1,
         included_for_ai: input.includedForAi ? 1 : 0,
         meaningful_for_boundary: input.meaningfulForBoundary ? 1 : 0,
@@ -859,6 +864,43 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       .where("id", "=", parsePositiveInteger(input.sessionId) ?? -1)
       .where("uid", "=", input.uid)
       .executeTakeFirst();
+  }
+
+  private async upsertInsightAsset(input: AppendSessionMessageInput & {
+    asset: NonNullable<AppendSessionMessageInput["asset"]>;
+  }) {
+    const inserted = await this.db
+      .insertInto("xy_wap_embed_insight_asset")
+      .values({
+        asset_key: input.asset.key,
+        asset_name: input.asset.name,
+        asset_type: input.asset.type,
+        first_seen_at: input.sourceMessageTime,
+        last_seen_at: input.sourceMessageTime,
+        uid: input.uid,
+      })
+      .onDuplicateKeyUpdate({
+        last_seen_at: input.sourceMessageTime,
+      })
+      .executeTakeFirstOrThrow() as InsertResult;
+
+    const insertedId = parseInsertedMySqlId(inserted);
+
+    if (insertedId != null) {
+      return insertedId;
+    }
+
+    const existingAsset = await this.db
+      .selectFrom("xy_wap_embed_insight_asset")
+      .select("id")
+      .where("uid", "=", input.uid)
+      .where("asset_type", "=", input.asset.type)
+      .where("asset_key", "=", input.asset.key)
+      .executeTakeFirst();
+
+    return existingAsset?.id == null
+      ? undefined
+      : parsePositiveInteger(String(existingAsset.id));
   }
 
   async reopenSession(input: { sessionId: string; uid: number }): Promise<boolean> {

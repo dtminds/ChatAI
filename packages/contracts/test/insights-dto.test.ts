@@ -4,6 +4,8 @@ import {
   InsightActionStatusSchema,
   InsightAnalysisPolicyUpdateRequestSchema,
   InsightBusinessTopicSchema,
+  InsightBusinessTrendPointSchema,
+  InsightBusinessTopicsResponseSchema,
   InsightEntityDictionaryMutationRequestSchema,
   InsightDetailResponseSchema,
   InsightFilterOptionsResponseSchema,
@@ -16,7 +18,6 @@ import {
   InsightSettingsSummaryResponseSchema,
   InsightSessionMessagesResponseSchema,
   InsightSessionizationSettingsUpdateRequestSchema,
-  InsightsBusinessResponseSchema,
   InsightsFollowUpsResponseSchema,
   InsightsOverviewResponseSchema,
   InsightsQualityAgentStatsResponseSchema,
@@ -122,84 +123,45 @@ describe("insights DTOs", () => {
     ).toBe(true);
   });
 
-  it("accepts business topic analytics responses", () => {
+  it("accepts per-dimension business topic responses", () => {
     expect(
-      Value.Check(InsightsBusinessResponseSchema, {
-        assetHotspots: [
+      Value.Check(InsightBusinessTopicsResponseSchema, {
+        dimension: "asset",
+        intentTrend: [],
+        topics: [
           {
-            code: "https://example.com/promo",
+            code: "701",
             dimension: "asset",
             mentionCount: 6,
             name: "红包活动",
-            negativeRate: 0,
-            negativeSessions: 0,
             sessionCount: 5,
             share: 0.25,
             type: "link",
           },
         ],
-        entityHotspots: [
-          {
-            code: "sku-1",
-            dimension: "entity",
-            mentionCount: 12,
-            name: "白色羽绒服",
-            negativeRate: 0.25,
-            negativeSessions: 2,
-            sessionCount: 8,
-            share: 0.4,
-            type: "product",
-          },
-        ],
-        intentDistribution: [
-          {
-            code: "after_sale.refund",
-            dimension: "intent",
-            mentionCount: 10,
-            name: "退款",
-            negativeRate: 0.1,
-            negativeSessions: 1,
-            sessionCount: 10,
-            share: 0.5,
-          },
-        ],
-        intentTrend: [
-          {
-            date: "2026-06-01",
-            intentId: "31",
-            intentName: "退款",
-            sessionCount: 4,
-          },
-        ],
-        tagDistribution: [],
         totals: {
-          assetMentions: 6,
-          entityMentions: 12,
-          intentMentions: 10,
-          negativeSessions: 5,
-          tagMentions: 16,
-          topicSessions: 20,
+          mentionCount: 6,
+          topicSessions: 5,
         },
         trend: [
           {
             assetMentions: 6,
             date: "2026-06-01",
-            entityMentions: 5,
-            intentMentions: 4,
-            negativeSessions: 2,
-            tagMentions: 6,
-            topicSessions: 8,
+            entityMentions: 0,
+            intentMentions: 0,
+            tagMentions: 0,
+            topicSessions: 5,
           },
         ],
       }),
     ).toBe(true);
     expect(InsightBusinessTopicSchema.properties).not.toHaveProperty("actionItemsOpen");
+    expect(InsightBusinessTopicSchema.properties).not.toHaveProperty("negativeRate");
+    expect(InsightBusinessTopicSchema.properties).not.toHaveProperty("negativeSessions");
+    expect(InsightBusinessTopicsResponseSchema.properties.totals.properties).not.toHaveProperty("negativeSessions");
+    expect(InsightBusinessTrendPointSchema.properties).not.toHaveProperty("negativeSessions");
     expect(InsightBusinessTopicSchema.properties).not.toHaveProperty("unresolvedRate");
     expect(InsightBusinessTopicSchema.properties).not.toHaveProperty("unresolvedSessions");
-    expect(InsightsBusinessResponseSchema.properties).not.toHaveProperty("qualityTopics");
-    expect(InsightsBusinessResponseSchema.properties.totals.properties).not.toHaveProperty("actionItemsOpen");
-    expect(InsightsBusinessResponseSchema.properties.totals.properties).not.toHaveProperty("analyzedSessions");
-    expect(InsightsBusinessResponseSchema.properties.totals.properties).not.toHaveProperty("unresolvedSessions");
   });
 
   it("accepts split quality responses with required blocks", () => {

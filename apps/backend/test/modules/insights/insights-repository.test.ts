@@ -1462,40 +1462,43 @@ describe("InsightsRepository", () => {
     ]);
   });
 
-  it("scopes business asset facts to sessions matched by the overview filters", async () => {
+  it("aggregates business asset topics directly from stored asset message references", async () => {
     const builders: SelectBuilderStub[] = [];
-    const rowsByTable = new Map<string, unknown[]>([
-      [
-        "xy_wap_embed_session_insight_current as current",
-        [
-          { session_id: 201, snapshot_id: 501, started_at: 1_780_244_000_000 },
-          { session_id: 202, snapshot_id: 502, started_at: 1_780_245_000_000 },
-        ],
-      ],
-      [
-        "xy_wap_embed_logical_session_message as session_message",
-        [
-          {
-            content: JSON.stringify({
-              title: "产品链接",
-              url: "https://example.test/item",
-            }),
-            message_type: "link",
-            session_id: 201,
-            snapshot_id: 501,
-            source_message_id: 9001,
-            started_at: 1_780_244_000_000,
-          },
-        ],
-      ],
-      ["xy_wap_embed_session_tag as tag", []],
-      ["xy_wap_embed_session_entity as entity", []],
-      ["xy_wap_embed_session_intent as intent", []],
-    ]);
+    let messageQueryCount = 0;
     const db = {
       selectFrom: vi.fn((table: string) => {
+        let rows: unknown[] = [];
+
+        if (table === "xy_wap_embed_logical_session_message as session_message") {
+          messageQueryCount += 1;
+          rows = messageQueryCount === 1
+            ? [
+                {
+                  asset_id: 701,
+                  asset_name: "产品链接",
+                  asset_type: "link",
+                  mention_count: 3,
+                  session_count: 2,
+                },
+              ]
+            : messageQueryCount === 2
+              ? [
+                  {
+                    date: "2026-06-01",
+                    mention_count: 3,
+                    session_count: 2,
+                  },
+                ]
+              : [
+                  {
+                    mention_count: 5,
+                    session_count: 3,
+                  },
+                ];
+        }
+
         const builder = createSelectBuilder(
-          rowsByTable.get(table) ?? [],
+          rows,
           table,
         );
         builders.push(builder);
@@ -1504,105 +1507,201 @@ describe("InsightsRepository", () => {
     };
     const repository = new InsightsRepository(db as never);
 
-    const facts = await repository.listBusinessTopicFacts(
+    const analytics = await repository.getBusinessAssetTopicAnalytics(
       { uid: 9001 },
       { from: "2026-06-01", to: "2026-06-02" },
     );
 
-    expect(facts).toMatchObject([
+    expect(analytics.topics).toEqual([
       {
+        code: "701",
         dimension: "asset",
-        sessionId: "201",
-        snapshotId: "501",
+        mentionCount: 3,
+        name: "产品链接",
+        sessionCount: 2,
+        share: 2 / 3,
+        type: "link",
       },
     ]);
-    const assetQuery = builders.find(
-      (builder) =>
-        builder.table ===
-        "xy_wap_embed_logical_session_message as session_message",
-    );
-    const tagQuery = builders.find(
-      (builder) => builder.table === "xy_wap_embed_session_tag as tag",
-    );
-    const entityQuery = builders.find(
-      (builder) => builder.table === "xy_wap_embed_session_entity as entity",
-    );
-    const intentQuery = builders.find(
-      (builder) => builder.table === "xy_wap_embed_session_intent as intent",
-    );
-    expect(tagQuery?.whereCalls).toContainEqual(["tag.uid", "=", 9001]);
-    expect(tagQuery?.whereCalls).not.toContainEqual(["session.uid", "=", 9001]);
-    expect(entityQuery?.whereCalls).toContainEqual(["entity.uid", "=", 9001]);
-    expect(entityQuery?.whereCalls).not.toContainEqual([
-      "session.uid",
-      "=",
-      9001,
+    expect(analytics.totals).toEqual({
+      mentionCount: 5,
+      topicSessions: 3,
+    });
+    expect(analytics.trend).toEqual([
+      {
+        assetMentions: 3,
+        date: "2026-06-01",
+        entityMentions: 0,
+        intentMentions: 0,
+        tagMentions: 0,
+        topicSessions: 2,
+      },
     ]);
-    expect(intentQuery?.whereCalls).toContainEqual(["intent.uid", "=", 9001]);
-    expect(intentQuery?.whereCalls).not.toContainEqual([
-      "session.uid",
-      "=",
-      9001,
+    const assetQuery = builders[0];
+    expect(assetQuery?.whereCalls).toContainEqual(["session_message.uid", "=", 9001]);
+    expect(assetQuery?.whereCalls).toContainEqual([
+      "session_message.asset_id",
+      "is not",
+      null,
     ]);
     expect(assetQuery?.whereCalls).toContainEqual([
-      "session_message.session_id",
-      "in",
-      [201, 202],
+      "session_message.source_message_time",
+      ">=",
+      1_780_272_000_000,
     ]);
     expect(assetQuery?.whereCalls).toContainEqual([
-      "current.current_snapshot_id",
-      "in",
-      [501, 502],
+      "session_message.source_message_time",
+      "<=",
+      1_780_358_400_000,
     ]);
+    expect(assetQuery?.joins).toContain("xy_wap_embed_insight_asset as asset");
+    expect(assetQuery?.joins).not.toContain("xy_wap_embed_logical_session as session");
+    expect(assetQuery?.joins).not.toContain("xy_wap_embed_session_insight_current as current");
+    expect(assetQuery?.joins).not.toContain("xy_wap_embed_msg_audit_info as message");
+    expect(assetQuery?.groupByCalls.length).toBeGreaterThan(0);
+    expect(assetQuery?.selectRawCalls.join("\n")).toContain("count(session_message.id)");
+    expect(assetQuery?.selectRawCalls.join("\n")).toContain("count(distinct session_message.session_id)");
+    expect(assetQuery?.limitCalls).toEqual([10]);
+    expect(builders[1]?.groupByCalls.length).toBeGreaterThan(0);
+    expect(builders[1]?.selectRawCalls.join("\n")).toContain("+ 28800000");
+    expect(builders[1]?.groupByCalls.map(readRawSql).join("\n")).toContain("+ 28800000");
+    expect(builders[1]?.selectRawCalls.join("\n")).not.toContain("from_unixtime");
+    expect(builders[1]?.groupByCalls.map(readRawSql).join("\n")).not.toContain("from_unixtime");
+    expect(builders[2]?.groupByCalls).toEqual([]);
   });
 
-  it("uses mini-program description as the business asset display name", async () => {
-    const rowsByTable = new Map<string, unknown[]>([
-      [
-        "xy_wap_embed_session_insight_current as current",
-        [{ session_id: 201, snapshot_id: 501, started_at: 1_780_244_000_000 }],
-      ],
-      [
-        "xy_wap_embed_logical_session_message as session_message",
-        [
-          {
-            content: JSON.stringify({
-              appId: "wx21c7506e98a2fe75",
-              description: "生椰拿铁（首创）",
-              pagePath:
-                "pages/subMenu/productDetail/productDetail.html?type=qr&productId=1262&skuCode=SP2077-00195",
-              title: "luckincoffee瑞幸咖啡",
-            }),
-            message_type: "miniapp",
-            session_id: 201,
-            snapshot_id: 501,
-            source_message_id: 9001,
-            started_at: 1_780_244_000_000,
-          },
-        ],
-      ],
-      ["xy_wap_embed_session_tag as tag", []],
-      ["xy_wap_embed_session_entity as entity", []],
-      ["xy_wap_embed_session_intent as intent", []],
-    ]);
+  it("uses stored asset names as the business asset display name", async () => {
+    let messageQueryCount = 0;
     const db = {
-      selectFrom: vi.fn((table: string) =>
-        createSelectBuilder(rowsByTable.get(table) ?? [], table),
-      ),
+      selectFrom: vi.fn((table: string) => {
+        messageQueryCount += 1;
+        const rows = messageQueryCount === 1
+          ? [
+              {
+                asset_id: 702,
+                asset_name: "生椰拿铁（首创）",
+                asset_type: "miniapp",
+                mention_count: 1,
+                session_count: 1,
+              },
+            ]
+          : messageQueryCount === 2
+            ? []
+            : [{ mention_count: 1, session_count: 1 }];
+
+        return createSelectBuilder(rows, table);
+      }),
     };
     const repository = new InsightsRepository(db as never);
 
     await expect(
-      repository.listBusinessTopicFacts({ uid: 9001 }, {}),
-    ).resolves.toEqual([
+      repository.getBusinessAssetTopicAnalytics({ uid: 9001 }, {}),
+    ).resolves.toEqual(
       expect.objectContaining({
-        dimension: "asset",
-        name: "生椰拿铁（首创）",
-        topicId:
-          "wx21c7506e98a2fe75:pages/subMenu/productDetail/productDetail.html",
-        type: "miniapp",
+        topics: [
+          expect.objectContaining({
+            code: "702",
+            dimension: "asset",
+            name: "生椰拿铁（首创）",
+            type: "miniapp",
+          }),
+        ],
       }),
+    );
+  });
+
+  it("keeps asset related session details scoped by matched asset messages instead of session dates", async () => {
+    const builders: SelectBuilderStub[] = [];
+    let assetMessageSelectCount = 0;
+    const db = {
+      selectFrom: vi.fn((table: unknown) => {
+        const tableName = typeof table === "string" ? table : "derived";
+        let rows: unknown[] = [];
+
+        if (tableName === "xy_wap_embed_logical_session_message as session_message") {
+          assetMessageSelectCount += 1;
+          rows = assetMessageSelectCount === 1
+            ? [{ count: 1 }]
+            : [{ session_id: 501 }];
+        }
+
+        if (tableName === "xy_wap_embed_logical_session as session") {
+          rows = [
+            {
+              conversation_id: 301,
+              ended_at: null,
+              last_message_at: 1_780_330_000_000,
+              session_id: 501,
+              started_at: 1_780_000_000_000,
+              summary_session_title: "客户查看报价单",
+              summary_text: "客户查看报价单详情",
+              third_external_userid: "external-1",
+              third_userid: "agent-1",
+            },
+          ];
+        }
+
+        const builder = createSelectBuilder(rows, tableName);
+        builders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new InsightsRepository(db as never);
+
+    await expect(
+      repository.listBusinessRelatedSessions(
+        { uid: 9001 },
+        {
+          dimension: "asset",
+          from: "2026-06-01T00:00:00.000+08:00",
+          page: 1,
+          pageSize: 20,
+          to: "2026-06-02T23:59:59.999+08:00",
+          topicCode: "701",
+        },
+      ),
+    ).resolves.toMatchObject({
+      items: [{ sessionId: "501" }],
+      total: 1,
+    });
+
+    const assetMessageQueries = builders.filter(
+      (builder) =>
+        builder.table === "xy_wap_embed_logical_session_message as session_message",
+    );
+    const assetMessagePageQuery = assetMessageQueries[1];
+    const currentSessionQueries = builders.filter(
+      (builder) => builder.table === "xy_wap_embed_logical_session as session",
+    );
+
+    expect(assetMessageQueries).toHaveLength(2);
+    expect(assetMessagePageQuery?.whereCalls).toContainEqual([
+      "session_message.source_message_time",
+      ">=",
+      1_780_243_200_000,
     ]);
+    expect(assetMessagePageQuery?.orderByCalls).toEqual([["session_message.session_id", "desc"]]);
+    expect(assetMessagePageQuery?.limitCalls).toEqual([20]);
+    expect(assetMessagePageQuery?.offsetCalls).toEqual([0]);
+    expect(assetMessagePageQuery?.limitCalls).not.toContain(1_000);
+    expect(currentSessionQueries).toHaveLength(1);
+    expect(currentSessionQueries[0]?.whereCalls).toContainEqual([
+      "session.id",
+      "in",
+      [501],
+    ]);
+    expect(currentSessionQueries[0]?.orderByCalls).toEqual([["session.id", "desc"]]);
+    expect(currentSessionQueries[0]?.whereCalls).not.toContainEqual([
+      "session.started_at",
+      ">=",
+      1_780_272_000_000,
+    ]);
+    expect(builders.map((builder) => builder.table)).not.toContain(
+      "xy_wap_embed_session_problem_resolution as problem",
+    );
+    expect(builders.map((builder) => builder.table)).not.toContain(
+      "xy_wap_embed_session_insight_current as current",
+    );
   });
 
   it("loads business related sessions through a focused topic query", async () => {
@@ -1615,10 +1714,6 @@ describe("InsightsRepository", () => {
       generated_at: new Date("2026-06-01T12:00:00.000Z"),
       last_message_at: 1_780_246_700_000,
       phase: "final",
-      problem_confidence: "0.9000",
-      problem_detected: 1,
-      problem_summary: "客户反馈物流异常",
-      resolution_status: "unresolved",
       session_id: 501,
       started_at: 1_780_243_200_000,
       status: "ready",
@@ -1626,7 +1721,6 @@ describe("InsightsRepository", () => {
       summary_text: "客户咨询物流异常",
       third_external_userid: "external-1",
       third_userid: "agent-1",
-      unresolved_reason: "仍需跟进",
     };
     const db = {
       selectFrom: vi.fn((table: string) => {
@@ -1646,7 +1740,6 @@ describe("InsightsRepository", () => {
         {
           dimension: "intent",
           from: "2026-06-01T00:00:00.000+08:00",
-          keyword: "物流",
           page: 2,
           pageSize: 20,
           topicCode: "31",
@@ -1656,9 +1749,8 @@ describe("InsightsRepository", () => {
     ).resolves.toMatchObject({
       items: [
         {
-          currentSnapshotId: "7001",
-          problemSummary: "客户反馈物流异常",
           sessionId: "501",
+          summarySessionTitle: "物流异常处理",
         },
       ],
       total: 1,
@@ -1689,6 +1781,9 @@ describe("InsightsRepository", () => {
     ]);
     expect(topicQueries[1]?.limitCalls).toEqual([20]);
     expect(topicQueries[1]?.offsetCalls).toEqual([20]);
+    expect(builders.map((builder) => builder.table)).not.toContain(
+      "xy_wap_embed_session_problem_resolution as problem",
+    );
     expect(builders.map((builder) => builder.table)).not.toContain(
       "xy_wap_embed_session_tag as tag",
     );
@@ -2295,7 +2390,7 @@ describe("InsightsRepository", () => {
     };
     const repository = new InsightsRepository(db as never);
 
-    await repository.listBusinessTopicFacts({ uid: 9001 });
+    await repository.listBusinessTopicFacts({ uid: 9001 }, { dimension: "intent" });
 
     const intentQuery = builders.find(
       (builder) => builder.table === "xy_wap_embed_session_intent as intent",
@@ -2583,7 +2678,7 @@ describe("MysqlInsightWorkerRepository", () => {
     expect(messageQuery?.whereCalls).toContainEqual([
       "message.msgtype",
       "in",
-      ["file", "link", "markdown", "mixed", "news", "text", "voice", "weapp"],
+      ["file", "link", "markdown", "mixed", "text", "voice", "weapp"],
     ]);
     expect(messageQuery?.whereCalls).toContainEqual([
       "message.msgtime",
@@ -4762,6 +4857,155 @@ describe("MysqlInsightWorkerRepository", () => {
     expect(logicalSessionUpdate?.whereCalls).toContainEqual(["id", "=", 501]);
     expect(logicalSessionUpdate?.whereCalls).toContainEqual(["uid", "=", 9001]);
   });
+
+  it("stores asset references when appending asset session messages", async () => {
+    const insertValues: Array<{ table: string; values: Record<string, unknown> }> = [];
+    const duplicateUpdates: Array<{ table: string; values: Record<string, unknown> }> = [];
+    let logicalSessionUpdate: UpdateBuilderStub | undefined;
+    const db = {
+      insertInto: vi.fn((table: string) =>
+        createInsertBuilder(
+          async () => table === "xy_wap_embed_insight_asset"
+            ? { insertId: 701n, numInsertedOrUpdatedRows: 1n }
+            : { insertId: 801n, numInsertedOrUpdatedRows: 1n },
+          {
+            onValues: (values) => insertValues.push({
+              table,
+              values: values as Record<string, unknown>,
+            }),
+            onDuplicateKeyUpdate: (values) => duplicateUpdates.push({
+              table,
+              values,
+            }),
+            table,
+          },
+        ),
+      ),
+      updateTable: vi.fn((table: string) =>
+        createUpdateBuilder(async () => ({ numAffectedRows: 1n }), {
+          onCreate: (builder) => {
+            if (table === "xy_wap_embed_logical_session") {
+              logicalSessionUpdate = builder;
+            }
+          },
+          table,
+        }),
+      ),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await repository.appendSessionMessage({
+      asset: {
+        key: "https://example.test/promo",
+        name: "红包活动",
+        type: "link",
+      },
+      conversationId: "301",
+      includedForAi: true,
+      meaningfulForBoundary: true,
+      messageType: "link",
+      occurredAt: 1_780_244_000_000,
+      senderRole: "customer",
+      sessionId: "501",
+      sourceMessageId: "9001",
+      sourceMessageTime: 1_780_244_000_000,
+      uid: 9001,
+    });
+
+    expect(insertValues).toEqual([
+      expect.objectContaining({
+        table: "xy_wap_embed_insight_asset",
+        values: expect.objectContaining({
+          asset_key: "https://example.test/promo",
+          asset_name: "红包活动",
+          asset_type: "link",
+          last_seen_at: 1_780_244_000_000,
+          uid: 9001,
+        }),
+      }),
+      expect.objectContaining({
+        table: "xy_wap_embed_logical_session_message",
+        values: expect.objectContaining({
+          asset_id: 701,
+          asset_type: "link",
+          message_type: "link",
+          source_message_id: 9001,
+        }),
+      }),
+    ]);
+    expect(duplicateUpdates).toEqual([
+      {
+        table: "xy_wap_embed_insight_asset",
+        values: {
+          last_seen_at: 1_780_244_000_000,
+        },
+      },
+    ]);
+    expect(logicalSessionUpdate?.whereCalls).toContainEqual(["id", "=", 501]);
+  });
+
+  it("loads the existing asset id when duplicate asset upsert does not return an insert id", async () => {
+    const insertValues: Array<{ table: string; values: Record<string, unknown> }> = [];
+    const selectBuilders: SelectBuilderStub[] = [];
+    const db = {
+      insertInto: vi.fn((table: string) =>
+        createInsertBuilder(
+          async () => table === "xy_wap_embed_insight_asset"
+            ? { numInsertedOrUpdatedRows: 2n }
+            : { insertId: 801n, numInsertedOrUpdatedRows: 1n },
+          {
+            onValues: (values) => insertValues.push({
+              table,
+              values: values as Record<string, unknown>,
+            }),
+            table,
+          },
+        ),
+      ),
+      selectFrom: vi.fn((table: string) => {
+        const builder = createSelectBuilder([{ id: 702n }], table);
+        selectBuilders.push(builder);
+        return builder;
+      }),
+      updateTable: vi.fn((table: string) =>
+        createUpdateBuilder(async () => ({ numAffectedRows: 1n }), { table }),
+      ),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await repository.appendSessionMessage({
+      asset: {
+        key: "file-serial-1",
+        name: "报价单.pdf",
+        type: "file",
+      },
+      conversationId: "301",
+      includedForAi: true,
+      meaningfulForBoundary: true,
+      messageType: "file",
+      occurredAt: 1_780_244_000_000,
+      senderRole: "agent",
+      sessionId: "501",
+      sourceMessageId: "9002",
+      sourceMessageTime: 1_780_244_000_000,
+      uid: 9001,
+    });
+
+    expect(selectBuilders[0]?.table).toBe("xy_wap_embed_insight_asset");
+    expect(selectBuilders[0]?.whereCalls).toContainEqual(["uid", "=", 9001]);
+    expect(selectBuilders[0]?.whereCalls).toContainEqual(["asset_type", "=", "file"]);
+    expect(selectBuilders[0]?.whereCalls).toContainEqual(["asset_key", "=", "file-serial-1"]);
+    expect(insertValues).toContainEqual(
+      expect.objectContaining({
+        table: "xy_wap_embed_logical_session_message",
+        values: expect.objectContaining({
+          asset_id: 702,
+          asset_type: "file",
+          source_message_id: 9002,
+        }),
+      }),
+    );
+  });
 });
 
 type SelectBuilderStub = ReturnType<typeof createSelectBuilder>;
@@ -4915,6 +5159,7 @@ function createTransactionBuilder(db: {
 function createInsertBuilder(
   executeTakeFirstOrThrow: () => Promise<unknown>,
   options: {
+    onDuplicateKeyUpdate?: (values: Record<string, unknown>) => void;
     onCreate?: (builder: InsertBuilderStub) => void;
     onValues?: (
       values: Record<string, unknown> | Record<string, unknown>[],
@@ -4941,7 +5186,10 @@ function createInsertBuilder(
       builder.ignoreCalls += 1;
       return builder;
     },
-    onDuplicateKeyUpdate: () => builder,
+    onDuplicateKeyUpdate: (values: Record<string, unknown>) => {
+      options.onDuplicateKeyUpdate?.(values);
+      return builder;
+    },
     values: (values: Record<string, unknown>) => {
       options.onValues?.(values);
       return builder;

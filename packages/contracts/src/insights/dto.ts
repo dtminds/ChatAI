@@ -174,8 +174,6 @@ export const InsightBusinessTopicSchema = Type.Object({
   dimension: InsightBusinessTopicDimensionSchema,
   mentionCount: Type.Number(),
   name: Type.String(),
-  negativeRate: Type.Number(),
-  negativeSessions: Type.Number(),
   sessionCount: Type.Number(),
   share: Type.Number(),
   type: Type.Optional(Type.String()),
@@ -186,7 +184,6 @@ export const InsightBusinessTrendPointSchema = Type.Object({
   date: Type.String(),
   entityMentions: Type.Number(),
   intentMentions: Type.Number(),
-  negativeSessions: Type.Number(),
   tagMentions: Type.Number(),
   topicSessions: Type.Number(),
 });
@@ -198,18 +195,12 @@ export const InsightBusinessIntentTrendPointSchema = Type.Object({
   sessionCount: Type.Number(),
 });
 
-export const InsightsBusinessResponseSchema = Type.Object({
-  assetHotspots: Type.Array(InsightBusinessTopicSchema),
-  entityHotspots: Type.Array(InsightBusinessTopicSchema),
-  intentDistribution: Type.Array(InsightBusinessTopicSchema),
+export const InsightBusinessTopicsResponseSchema = Type.Object({
+  dimension: InsightBusinessTopicDimensionSchema,
   intentTrend: Type.Array(InsightBusinessIntentTrendPointSchema),
-  tagDistribution: Type.Array(InsightBusinessTopicSchema),
+  topics: Type.Array(InsightBusinessTopicSchema),
   totals: Type.Object({
-    assetMentions: Type.Number(),
-    entityMentions: Type.Number(),
-    intentMentions: Type.Number(),
-    negativeSessions: Type.Number(),
-    tagMentions: Type.Number(),
+    mentionCount: Type.Number(),
     topicSessions: Type.Number(),
   }),
   trend: Type.Array(InsightBusinessTrendPointSchema),
@@ -731,7 +722,7 @@ export type InsightsFollowUpsResponse = Static<typeof InsightsFollowUpsResponseS
 export type InsightBusinessRelatedSessionsResponse = Static<
   typeof InsightBusinessRelatedSessionsResponseSchema
 >;
-export type InsightsBusinessResponse = Static<typeof InsightsBusinessResponseSchema>;
+export type InsightBusinessTopicsResponse = Static<typeof InsightBusinessTopicsResponseSchema>;
 export type InsightsOverviewResponse = Static<typeof InsightsOverviewResponseSchema>;
 export type InsightOverviewSessionsResponse = Static<typeof InsightOverviewSessionsResponseSchema>;
 export type InsightsQualityOverviewResponse = Static<typeof InsightsQualityOverviewResponseSchema>;

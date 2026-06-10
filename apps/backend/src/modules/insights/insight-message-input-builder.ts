@@ -124,7 +124,6 @@ function mapInsightMessageType(msgtype: string): InsightMessageType {
     case "file":
       return "file";
     case "link":
-    case "news":
       return "link";
     case "weapp":
       return "miniapp";

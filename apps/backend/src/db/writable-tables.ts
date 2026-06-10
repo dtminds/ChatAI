@@ -11,6 +11,7 @@ export const WRITABLE_TABLES = [
   "xy_wap_embed_user_seat_sub_relation",
   "xy_wap_embed_conversation",
   "xy_wap_embed_insight_analysis_policy",
+  "xy_wap_embed_insight_asset",
   "xy_wap_embed_insight_entity_dictionary",
   "xy_wap_embed_insight_evidence",
   "xy_wap_embed_insight_feature_config",

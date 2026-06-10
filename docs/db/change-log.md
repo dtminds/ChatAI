@@ -347,3 +347,40 @@ WHERE session.qa_status = -1;
 
 ANALYZE TABLE xy_wap_embed_logical_session;
 ```
+
+- Added the first-phase business asset read model for the business-insights asset tab:
+  - Added `xy_wap_embed_insight_asset` as the app-owned asset dictionary for links, miniapp cards, and files.
+  - Added nullable `asset_id` and `asset_type` to `xy_wap_embed_logical_session_message` so asset statistics and related-session drilldowns no longer parse platform messages during reads.
+  - Replaced the old message-type asset index with asset-id based indexes for asset drilldown and bounded time-window asset aggregation.
+
+Manual migration for existing databases:
+
+If a database skipped older insight index migrations, confirm the old keys exist before running the `DROP KEY` clauses.
+
+```sql
+CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_asset (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  asset_type VARCHAR(32) NOT NULL COMMENT '资产类型，link：链接，miniapp：小程序，file：文件',
+  asset_key VARCHAR(512) NOT NULL COMMENT '资产稳定唯一键，链接为规范化URL，小程序为appId+pagePath，文件为fileId/fileUrl/fileName兜底',
+  asset_name VARCHAR(512) NOT NULL COMMENT '资产展示名称',
+  first_seen_at BIGINT UNSIGNED NOT NULL COMMENT '首次出现的平台消息时间戳',
+  last_seen_at BIGINT UNSIGNED NOT NULL COMMENT '最近出现的平台消息时间戳',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_insight_asset_uid_type_key (uid, asset_type, asset_key),
+  KEY idx_insight_asset_uid_last_seen (uid, last_seen_at),
+  KEY idx_insight_asset_uid_type_last_seen (uid, asset_type, last_seen_at)
+) COMMENT='会话洞察资产表';
+
+ALTER TABLE xy_wap_embed_logical_session_message
+  ADD COLUMN asset_id BIGINT UNSIGNED NULL COMMENT '资产ID，关联xy_wap_embed_insight_asset.id；非链接/文件/小程序消息为空' AFTER message_type,
+  ADD COLUMN asset_type VARCHAR(32) NULL COMMENT '资产类型，link：链接，miniapp：小程序，file：文件；非资产消息为空' AFTER asset_id,
+  DROP KEY idx_session_message_asset,
+  DROP KEY idx_session_message_asset_session,
+  DROP KEY idx_session_message_conversation_time,
+  DROP KEY idx_session_message_source,
+  ADD KEY idx_session_message_asset_lookup (uid, asset_id, source_message_time, session_id),
+  ADD KEY idx_session_message_asset_window (uid, source_message_time, asset_id, session_id);
+```

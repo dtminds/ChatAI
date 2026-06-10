@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createNonOverlappingTicker,
   InsightsWorkerService,
+  parseWorkerMessageAsset,
   startInsightsWorker,
   type InsightWorkerRepositoryPort,
 } from "../../../src/modules/insights/insights-worker";
@@ -13,6 +14,56 @@ const defaultConfig = {
   lateArrivalWindowMinutes: 30,
   ruleVersion: "insights-v1",
 };
+
+describe("parseWorkerMessageAsset", () => {
+  it("normalizes link urls without query or hash", () => {
+    expect(
+      parseWorkerMessageAsset({
+        content: JSON.stringify({
+          title: "活动链接",
+          url: "https://example.com/promo?a=1#section",
+        }),
+        msgtype: "link",
+      }),
+    ).toEqual({
+      key: "https://example.com/promo",
+      name: "活动链接",
+      type: "link",
+    });
+  });
+
+  it("normalizes weapp page paths without query or hash", () => {
+    expect(
+      parseWorkerMessageAsset({
+        content: JSON.stringify({
+          appId: "wx-app-1",
+          description: "商品卡片",
+          pagePath: "pages/detail/index?id=123#top",
+        }),
+        msgtype: "weapp",
+      }),
+    ).toEqual({
+      key: "wx-app-1:pages/detail/index",
+      name: "商品卡片",
+      type: "miniapp",
+    });
+  });
+
+  it("falls back to file name when file ids and urls are missing", () => {
+    expect(
+      parseWorkerMessageAsset({
+        content: JSON.stringify({
+          fileName: "报价单.pdf",
+        }),
+        msgtype: "file",
+      }),
+    ).toEqual({
+      key: "报价单.pdf",
+      name: "报价单.pdf",
+      type: "file",
+    });
+  });
+});
 
 function createRepository(
   overrides: Partial<InsightWorkerRepositoryPort> = {},

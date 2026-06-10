@@ -55,10 +55,15 @@ describe("insights routes", () => {
       method: "GET",
       url: "/api/server/insights/quality?from=2026-06-01&to=2026-06-30",
     });
-    const business = await app.inject({
+    const legacyBusiness = await app.inject({
       headers: { authorization },
       method: "GET",
       url: "/api/server/insights/business",
+    });
+    const businessTopics = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/insights/business/topics?dimension=intent&from=2026-06-01&to=2026-06-30",
     });
     const businessRelatedSessions = await app.inject({
       headers: { authorization },
@@ -229,17 +234,13 @@ describe("insights routes", () => {
       totalPages: 1,
     });
     expect(legacyQuality.statusCode).toBe(404);
-    expect(business.statusCode).toBe(200);
-    expect(business.json().data).toMatchObject({
-      entityHotspots: [
+    expect(legacyBusiness.statusCode).toBe(404);
+    expect(businessTopics.statusCode).toBe(200);
+    expect(businessTopics.json().data).toMatchObject({
+      dimension: "intent",
+      topics: [
         expect.objectContaining({
-          code: "41",
-          name: "白色羽绒服",
-        }),
-      ],
-      tagDistribution: [
-        expect.objectContaining({
-          code: "21",
+          code: "31",
           name: "物流异常",
         }),
       ],

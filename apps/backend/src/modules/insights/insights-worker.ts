@@ -1,5 +1,9 @@
 import type { InsightRescanAnalysisScope } from "@chatai/contracts";
-import { buildInsightMessageInput } from "./insight-message-input-builder.js";
+import {
+  buildInsightMessageInput,
+  parseInsightMessageContent,
+  readInsightContentString,
+} from "./insight-message-input-builder.js";
 import type {
   InsightPromptExistingActionItem,
   InsightPreviousSessionContext,
@@ -125,6 +129,11 @@ export type CreateLogicalSessionInput = {
 };
 
 export type AppendSessionMessageInput = {
+  asset?: {
+    key: string;
+    name: string;
+    type: "file" | "link" | "miniapp";
+  };
   conversationId: string;
   includedForAi: boolean;
   meaningfulForBoundary: boolean;
@@ -946,6 +955,7 @@ export class InsightsWorkerService {
     }
 
     await this.repository.appendSessionMessage({
+      asset: parseWorkerMessageAsset(message),
       conversationId: conversation.conversationId,
       includedForAi: input.includedForAi,
       meaningfulForBoundary: input.meaningfulForBoundary,
@@ -1022,6 +1032,7 @@ export class InsightsWorkerService {
       }
 
       await this.repository.appendSessionMessage({
+        asset: parseWorkerMessageAsset(row),
         conversationId: input.conversation.conversationId,
         includedForAi: preContext.includedForAi,
         meaningfulForBoundary: preContext.meaningfulForBoundary,
@@ -1782,6 +1793,102 @@ function filterConfiguredAnalysisOutput(
 
 function normalizeMatchText(value: string) {
   return value.trim().toLowerCase();
+}
+
+export function parseWorkerMessageAsset(
+  message: Pick<InsightWorkerMessage, "content" | "msgtype">,
+): AppendSessionMessageInput["asset"] {
+  const parsed = parseInsightMessageContent(message.content);
+
+  if (message.msgtype === "link") {
+    const rawUrl =
+      readInsightContentString(parsed, "url") ||
+      readInsightContentString(parsed, "href") ||
+      readInsightContentString(parsed, "linkUrl");
+    const normalizedUrl = normalizeAssetUrlWithoutQuery(rawUrl);
+    const title =
+      readInsightContentString(parsed, "title") ||
+      readInsightContentString(parsed, "content") ||
+      readInsightContentString(parsed, "description") ||
+      normalizedUrl ||
+      "未知链接";
+
+    return {
+      key: normalizedUrl || `link:${title}`,
+      name: title,
+      type: "link",
+    };
+  }
+
+  if (message.msgtype === "weapp") {
+    const appId =
+      readInsightContentString(parsed, "appId") ||
+      readInsightContentString(parsed, "appid");
+    const rawPath =
+      readInsightContentString(parsed, "pagePath") ||
+      readInsightContentString(parsed, "pagepath") ||
+      readInsightContentString(parsed, "path");
+    const normalizedPath = normalizeAssetPathWithoutQuery(rawPath);
+    const title =
+      readInsightContentString(parsed, "description") ||
+      readInsightContentString(parsed, "appName") ||
+      readInsightContentString(parsed, "title") ||
+      normalizedPath ||
+      "未知小程序";
+    const key = [appId, normalizedPath].filter(Boolean).join(":");
+
+    return {
+      key: key || `miniapp:${title}`,
+      name: title,
+      type: "miniapp",
+    };
+  }
+
+  if (message.msgtype === "file") {
+    const fileName = readInsightContentString(parsed, "fileName") || "未知文件";
+    const fileUrl =
+      normalizeAssetUrlWithoutQuery(readInsightContentString(parsed, "fileUrl")) ||
+      normalizeAssetUrlWithoutQuery(readInsightContentString(parsed, "url"));
+    const stableId =
+      readInsightContentString(parsed, "fileSerialNo") ||
+      readInsightContentString(parsed, "fileId") ||
+      fileUrl ||
+      fileName;
+
+    return {
+      key: stableId,
+      name: fileName,
+      type: "file",
+    };
+  }
+
+  return undefined;
+}
+
+function normalizeAssetUrlWithoutQuery(value: string) {
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    return "";
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    parsed.search = "";
+    parsed.hash = "";
+
+    return parsed.toString();
+  } catch {
+    return stripAssetQueryAndHash(trimmed);
+  }
+}
+
+function normalizeAssetPathWithoutQuery(value: string) {
+  return stripAssetQueryAndHash(value.trim());
+}
+
+function stripAssetQueryAndHash(value: string) {
+  return value.split("#")[0]?.split("?")[0]?.trim() ?? "";
 }
 
 export function startInsightsWorker(options: {

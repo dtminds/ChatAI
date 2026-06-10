@@ -13,8 +13,8 @@ import { useAuthStore } from "@/store/auth-store";
 
 const serviceMocks = vi.hoisted(() => ({
   createInsightRescanJob: vi.fn(),
-  getInsightBusiness: vi.fn(),
   getInsightBusinessRelatedSessions: vi.fn(),
+  getInsightBusinessTopics: vi.fn(),
   getInsightDetail: vi.fn(),
   getInsightFollowUps: vi.fn(),
   getInsightMessageContext: vi.fn(),
@@ -493,7 +493,6 @@ function installInsightMocks() {
   serviceMocks.getInsightOverview.mockResolvedValue({
     actionItemsOpen: 3,
     analysis: { failed: 1, partial: 2, ready: 18, stale: 1 },
-    negativeSessions: 4,
     problemSessions: 11,
     readySessions: 18,
     resolution: {
@@ -627,105 +626,159 @@ function installInsightMocks() {
     total: 4,
     totalPages: 1,
   });
-  serviceMocks.getInsightBusiness.mockResolvedValue({
-    assetHotspots: [
-      {
-        code: "https://example.com/promo",
-        dimension: "asset",
-        mentionCount: 6,
-        name: "红包活动",
-        negativeRate: 0,
-        negativeSessions: 0,
-        sessionCount: 5,
-        share: 0.25,
-        type: "link",
-      },
-    ],
-    entityHotspots: [
-      {
-        code: "sku-1",
-        dimension: "entity",
-        mentionCount: 12,
-        name: "白色羽绒服",
-        negativeRate: 0.22,
-        negativeSessions: 2,
-        sessionCount: 9,
-        share: 0.45,
-        type: "product",
-      },
-    ],
-    intentDistribution: [
-      {
-        code: "31",
-        dimension: "intent",
+  serviceMocks.getInsightBusinessTopics.mockImplementation(async (query) => {
+    const dimension = query?.dimension ?? "intent";
+
+    if (dimension === "entity") {
+      return {
+        dimension,
+        intentTrend: [],
+        topics: [
+          {
+            code: "sku-1",
+            dimension,
+            mentionCount: 12,
+            name: "白色羽绒服",
+            sessionCount: 9,
+            share: 1,
+            type: "product",
+          },
+        ],
+        totals: {
+          mentionCount: 12,
+          topicSessions: 9,
+        },
+        trend: [
+          {
+            assetMentions: 0,
+            date: "2026-06-01",
+            entityMentions: 12,
+            intentMentions: 0,
+            tagMentions: 0,
+            topicSessions: 9,
+          },
+        ],
+      };
+    }
+
+    if (dimension === "tag") {
+      return {
+        dimension,
+        intentTrend: [],
+        topics: [
+          {
+            code: "11",
+            dimension,
+            mentionCount: 10,
+            name: "物流异常",
+            sessionCount: 8,
+            share: 1,
+          },
+        ],
+        totals: {
+          mentionCount: 10,
+          topicSessions: 8,
+        },
+        trend: [
+          {
+            assetMentions: 0,
+            date: "2026-06-01",
+            entityMentions: 0,
+            intentMentions: 0,
+            tagMentions: 10,
+            topicSessions: 8,
+          },
+        ],
+      };
+    }
+
+    if (dimension === "asset") {
+      return {
+        dimension,
+        intentTrend: [],
+        topics: [
+          {
+            code: "701",
+            dimension,
+            mentionCount: 6,
+            name: "红包活动",
+            sessionCount: 5,
+            share: 1,
+            type: "link",
+          },
+        ],
+        totals: {
+          mentionCount: 6,
+          topicSessions: 5,
+        },
+        trend: [
+          {
+            assetMentions: 6,
+            date: "2026-06-01",
+            entityMentions: 0,
+            intentMentions: 0,
+            tagMentions: 0,
+            topicSessions: 5,
+          },
+        ],
+      };
+    }
+
+    return {
+      dimension,
+      intentTrend: [
+        {
+          date: "2026-06-01",
+          intentId: "31",
+          intentName: "物流异常",
+          sessionCount: 3,
+        },
+        {
+          date: "2026-06-01",
+          intentId: "34",
+          intentName: "价格咨询",
+          sessionCount: 2,
+        },
+        {
+          date: "2026-06-02",
+          intentId: "31",
+          intentName: "物流异常",
+          sessionCount: 5,
+        },
+      ],
+      topics: [
+        {
+          code: "31",
+          dimension,
+          mentionCount: 8,
+          name: "物流异常",
+          sessionCount: 8,
+          share: 0.4,
+        },
+      ],
+      totals: {
         mentionCount: 8,
-        name: "物流异常",
-        negativeRate: 0.25,
-        negativeSessions: 2,
-        sessionCount: 8,
-        share: 0.4,
+        topicSessions: 8,
       },
-    ],
-    intentTrend: [
-      {
-        date: "2026-06-01",
-        intentId: "31",
-        intentName: "物流异常",
-        sessionCount: 3,
-      },
-      {
-        date: "2026-06-01",
-        intentId: "34",
-        intentName: "价格咨询",
-        sessionCount: 2,
-      },
-      {
-        date: "2026-06-02",
-        intentId: "31",
-        intentName: "物流异常",
-        sessionCount: 5,
-      },
-    ],
-    tagDistribution: [
-      {
-        code: "11",
-        dimension: "tag",
-        mentionCount: 10,
-        name: "物流异常",
-        negativeRate: 0.2,
-        negativeSessions: 2,
-        sessionCount: 8,
-        share: 0.4,
-      },
-    ],
-    totals: {
-      assetMentions: 6,
-      entityMentions: 12,
-      intentMentions: 8,
-      negativeSessions: 4,
-      tagMentions: 10,
-      topicSessions: 16,
-    },
-    trend: [
-      {
-        assetMentions: 2,
-        date: "2026-06-01",
-        entityMentions: 5,
-        intentMentions: 3,
-        negativeSessions: 1,
-        tagMentions: 4,
-        topicSessions: 7,
-      },
-      {
-        assetMentions: 4,
-        date: "2026-06-02",
-        entityMentions: 7,
-        intentMentions: 5,
-        negativeSessions: 3,
-        tagMentions: 6,
-        topicSessions: 9,
-      },
-    ],
+      trend: [
+        {
+          assetMentions: 0,
+          date: "2026-06-01",
+          entityMentions: 0,
+          intentMentions: 3,
+          tagMentions: 0,
+          topicSessions: 3,
+        },
+        {
+          assetMentions: 0,
+          date: "2026-06-02",
+          entityMentions: 0,
+          intentMentions: 5,
+          tagMentions: 0,
+          topicSessions: 5,
+        },
+      ],
+    };
   });
   serviceMocks.getInsightBusinessRelatedSessions.mockResolvedValue({
     items: [
@@ -1875,7 +1928,7 @@ describe("conversation insights pages", () => {
     cleanup();
     mockSession("admin");
     installInsightMocks();
-    serviceMocks.getInsightBusiness.mockRejectedValueOnce(
+    serviceMocks.getInsightBusinessTopics.mockRejectedValueOnce(
       new Error("business failed"),
     );
     renderRoute("/chat/insights/business");
@@ -3078,8 +3131,9 @@ describe("conversation insights pages", () => {
     ).toBeInTheDocument();
     expect(screen.queryByLabelText("开始日期")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("结束日期")).not.toBeInTheDocument();
-    expect(serviceMocks.getInsightBusiness).toHaveBeenCalledWith(
+    expect(serviceMocks.getInsightBusinessTopics).toHaveBeenCalledWith(
       {
+        dimension: "intent",
         from: "2026-05-28T00:00:00.000+08:00",
         to: "2026-06-03T23:59:59.999+08:00",
       },
@@ -3161,18 +3215,11 @@ describe("conversation insights pages", () => {
     expect(
       screen.queryByRole("heading", { name: "关注点列表" }),
     ).not.toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: /客户意图/ }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: /业务标签/ }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: /实体对象/ }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: /链接文件/ }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("tablist", { name: "业务洞察维度" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /客户意图/ })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: /业务标签/ })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /实体对象/ })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /链接文件/ })).toBeInTheDocument();
     expect(screen.getAllByText("物流异常").length).toBeGreaterThan(0);
     expect(
       within(businessOverviewPanel).getByText("8 个会话提及"),
@@ -3196,6 +3243,7 @@ describe("conversation insights pages", () => {
     expect(
       within(relatedSessionsTable).queryByText("客户咨询退款到账时间"),
     ).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "搜索相关会话" })).not.toBeInTheDocument();
 
     expect(
       screen.queryByRole("combobox", { name: "来源" }),
@@ -3205,19 +3253,29 @@ describe("conversation insights pages", () => {
     ).not.toBeInTheDocument();
     expect(screen.queryByText("筛选")).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: /实体对象/ }));
+    await userEvent.click(screen.getByRole("tab", { name: /实体对象/ }));
     expect(
       screen.getByRole("heading", { name: "实体对象 Top10" }),
     ).toBeInTheDocument();
     expect(screen.getAllByText("白色羽绒服").length).toBeGreaterThan(0);
 
-    await userEvent.click(screen.getByRole("button", { name: /业务标签/ }));
+    await userEvent.click(screen.getByRole("tab", { name: /业务标签/ }));
     expect(
       screen.getByRole("heading", { name: "业务标签 Top10" }),
     ).toBeInTheDocument();
     expect(screen.getByText("8 个会话 10 次提及")).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: /链接文件/ }));
+    await userEvent.click(screen.getByRole("tab", { name: /链接文件/ }));
+    await waitFor(() => {
+      expect(serviceMocks.getInsightBusinessTopics).toHaveBeenCalledWith(
+        expect.objectContaining({
+          dimension: "asset",
+          from: "2026-05-28T00:00:00.000+08:00",
+          to: "2026-06-03T23:59:59.999+08:00",
+        }),
+        expect.any(Object),
+      );
+    });
     expect(
       screen.getByRole("heading", { name: "链接文件 Top10" }),
     ).toBeInTheDocument();
@@ -3226,11 +3284,51 @@ describe("conversation insights pages", () => {
     expect(
       within(assetTop10List).getByText("H5链接 · 5 个会话 6 次提及"),
     ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(serviceMocks.getInsightBusinessRelatedSessions).toHaveBeenLastCalledWith(
+        expect.not.objectContaining({
+          keyword: expect.anything(),
+        }),
+        expect.any(Object),
+      );
+    });
 
-    await userEvent.type(
-      screen.getByRole("textbox", { name: "搜索相关会话" }),
-      "物流异常",
-    );
+    expect(screen.queryByText("链接文件按消息发生时间统计，单次最多选择 7 天")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /日期范围/ })).toHaveLength(1);
+
+    expect(
+      screen.getByRole("button", {
+        name: /日期范围.*近7天.*2026-05-28.*2026-06-03/,
+      }),
+    ).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /日期范围.*近7天.*2026-05-28.*2026-06-03/ }));
+    await userEvent.click(await screen.findByRole("button", { name: "昨天" }));
+    await waitFor(() => {
+      expect(serviceMocks.getInsightBusinessTopics).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          dimension: "asset",
+          from: "2026-06-02T00:00:00.000+08:00",
+          to: "2026-06-02T23:59:59.999+08:00",
+        }),
+        expect.any(Object),
+      );
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: /日期范围.*昨天.*2026-06-02.*2026-06-02/ }));
+    await userEvent.click(await screen.findByRole("button", { name: "重置" }));
+    await userEvent.click(screen.getByRole("button", { name: "应用" }));
+    await waitFor(() => {
+      expect(serviceMocks.getInsightBusinessTopics).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          dimension: "asset",
+          from: "2026-05-28T00:00:00.000+08:00",
+          to: "2026-06-03T23:59:59.999+08:00",
+        }),
+        expect.any(Object),
+      );
+    });
+
     expect(
       within(relatedSessionsTable).getByText("物流异常待跟进"),
     ).toBeInTheDocument();
@@ -3247,6 +3345,83 @@ describe("conversation insights pages", () => {
       screen.queryByText("未通过：problem_resolution"),
     ).not.toBeInTheDocument();
     expect(screen.queryByText("后续版本接入")).not.toBeInTheDocument();
+  });
+
+  it("loads business topics per selected tab instead of preloading every dimension", async () => {
+    serviceMocks.getInsightBusinessTopics
+      .mockResolvedValueOnce({
+        dimension: "intent",
+        intentTrend: [],
+        topics: [
+          {
+            code: "31",
+            dimension: "intent",
+            mentionCount: 8,
+            name: "物流异常",
+            sessionCount: 8,
+            share: 1,
+          },
+        ],
+        totals: {
+          mentionCount: 8,
+          topicSessions: 8,
+        },
+        trend: [],
+      })
+      .mockResolvedValueOnce({
+        dimension: "tag",
+        intentTrend: [],
+        topics: [
+          {
+            code: "11",
+            dimension: "tag",
+            mentionCount: 10,
+            name: "退款咨询",
+            sessionCount: 6,
+            share: 1,
+          },
+        ],
+        totals: {
+          mentionCount: 10,
+          topicSessions: 6,
+        },
+        trend: [
+          {
+            assetMentions: 0,
+            date: "2026-06-01",
+            entityMentions: 0,
+            intentMentions: 0,
+            tagMentions: 10,
+            topicSessions: 6,
+          },
+        ],
+      });
+
+    renderRoute("/chat/insights/business");
+
+    await waitFor(() => {
+      expect(serviceMocks.getInsightBusinessTopics).toHaveBeenCalledWith(
+        expect.objectContaining({ dimension: "intent" }),
+        expect.any(Object),
+      );
+    });
+    expect(serviceMocks.getInsightBusinessTopics).toHaveBeenCalledTimes(1);
+
+    await userEvent.click(screen.getByRole("tab", { name: /业务标签/ }));
+
+    await waitFor(() => {
+      expect(serviceMocks.getInsightBusinessTopics).toHaveBeenCalledWith(
+        expect.objectContaining({
+          dimension: "tag",
+          from: "2026-05-28T00:00:00.000+08:00",
+          to: "2026-06-03T23:59:59.999+08:00",
+        }),
+        expect.any(Object),
+      );
+    });
+    expect(serviceMocks.getInsightBusinessTopics).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole("heading", { name: "业务标签 Top10" })).toBeInTheDocument();
+    expect(screen.getAllByText("退款咨询").length).toBeGreaterThan(0);
   });
 
   it("refreshes summary after toggling entity status", async () => {
@@ -3476,7 +3651,7 @@ describe("conversation insights pages", () => {
   it("aborts business insight requests when the page unmounts", async () => {
     const businessGate =
       createDeferred<
-        Awaited<ReturnType<typeof serviceMocks.getInsightBusiness>>
+        Awaited<ReturnType<typeof serviceMocks.getInsightBusinessTopics>>
       >();
     const relatedSessionsGate =
       createDeferred<
@@ -3484,7 +3659,7 @@ describe("conversation insights pages", () => {
           ReturnType<typeof serviceMocks.getInsightBusinessRelatedSessions>
         >
       >();
-    serviceMocks.getInsightBusiness.mockReturnValueOnce(businessGate.promise);
+    serviceMocks.getInsightBusinessTopics.mockReturnValueOnce(businessGate.promise);
     serviceMocks.getInsightBusinessRelatedSessions.mockReturnValueOnce(
       relatedSessionsGate.promise,
     );
@@ -3492,11 +3667,12 @@ describe("conversation insights pages", () => {
     renderRoute("/chat/insights/business");
 
     await waitFor(() => {
-      expect(serviceMocks.getInsightBusiness).toHaveBeenCalled();
+      expect(serviceMocks.getInsightBusinessTopics).toHaveBeenCalled();
     });
-    const businessOptions = serviceMocks.getInsightBusiness.mock.calls[0]?.[1];
-    expect(serviceMocks.getInsightBusiness).toHaveBeenCalledWith(
+    const businessOptions = serviceMocks.getInsightBusinessTopics.mock.calls[0]?.[1];
+    expect(serviceMocks.getInsightBusinessTopics).toHaveBeenCalledWith(
       {
+        dimension: "intent",
         from: "2026-05-28T00:00:00.000+08:00",
         to: "2026-06-03T23:59:59.999+08:00",
       },
@@ -3504,28 +3680,20 @@ describe("conversation insights pages", () => {
     );
     expect(businessOptions?.signal?.aborted).toBe(false);
     businessGate.resolve({
-      assetHotspots: [],
-      entityHotspots: [],
-      intentDistribution: [
+      dimension: "intent",
+      intentTrend: [],
+      topics: [
         {
           code: "31",
           dimension: "intent",
           mentionCount: 8,
           name: "物流异常",
-          negativeRate: 0.25,
-          negativeSessions: 2,
           sessionCount: 8,
           share: 0.4,
         },
       ],
-      intentTrend: [],
-      tagDistribution: [],
       totals: {
-        assetMentions: 0,
-        entityMentions: 0,
-        intentMentions: 8,
-        negativeSessions: 2,
-        tagMentions: 0,
+        mentionCount: 8,
         topicSessions: 8,
       },
       trend: [],
@@ -3596,7 +3764,6 @@ describe("conversation insights pages", () => {
       actionItemsOpen: 0,
       analysis: { failed: 0, partial: 0, ready: 0, stale: 0 },
       highRiskSessions: 0,
-      negativeSessions: 0,
       problemSessions: 0,
       readySessions: 0,
       resolution: {

@@ -45,6 +45,7 @@ import type {
   InsightActionItemPage,
   InsightDetailActionItemRow,
   InsightActionItemRow,
+  InsightBusinessAssetTopicAnalytics,
   InsightBusinessTopicFactRow,
   InsightCurrentSessionPage,
   InsightCurrentSessionRow,
@@ -333,13 +334,29 @@ type DynamicSelectQueryBuilder = {
   where(expression: unknown): DynamicSelectQueryBuilder;
 };
 
-type AssetTopicMessageQueryRow = {
+type SessionAssetTopicRow = {
   content: string | null;
   message_type: string;
-  session_id: number | string;
   snapshot_id: number | string;
-  source_message_id: number | string;
-  started_at: number | string;
+};
+
+type BusinessAssetTopicQueryRow = {
+  asset_id: number | string;
+  asset_name: string;
+  asset_type: string;
+  mention_count: number | string;
+  session_count: number | string;
+};
+
+type BusinessAssetTrendQueryRow = {
+  date: string;
+  mention_count: number | string;
+  session_count: number | string;
+};
+
+type BusinessAssetTotalsQueryRow = {
+  mention_count: number | string;
+  session_count: number | string;
 };
 
 type SessionTagTopicRow = {
@@ -359,8 +376,6 @@ type SessionIntentTopicRow = {
   intent_label: string;
   snapshot_id: number | string;
 };
-
-type SessionAssetTopicRow = AssetTopicMessageQueryRow;
 
 type ContactProfile = {
   avatarUrl: string;
@@ -1877,26 +1892,122 @@ export class InsightsRepository implements InsightsRepositoryPort {
 
   async listBusinessTopicFacts(
     scope: InsightsUidScope,
-    filters: InsightsOverviewFilters = {},
+    filters: InsightsOverviewFilters & { dimension?: InsightBusinessTopicFactRow["dimension"] } = {},
   ): Promise<InsightBusinessTopicFactRow[]> {
-    const [
-      tags,
-      entities,
-      intents,
-      assets,
-    ] = await Promise.all([
-      this.listBusinessTagFacts(scope, filters),
-      this.listBusinessEntityFacts(scope, filters),
-      this.listBusinessIntentFacts(scope, filters),
-      this.listBusinessAssetFacts(scope, filters),
-    ]);
+    if (filters.dimension === "tag") {
+      return this.listBusinessTagFacts(scope, filters);
+    }
 
-    return [
-      ...tags,
-      ...entities,
-      ...intents,
-      ...assets,
-    ];
+    if (filters.dimension === "entity") {
+      return this.listBusinessEntityFacts(scope, filters);
+    }
+
+    if (filters.dimension === "intent") {
+      return this.listBusinessIntentFacts(scope, filters);
+    }
+
+    return [];
+  }
+
+  async getBusinessAssetTopicAnalytics(
+    scope: InsightsUidScope,
+    filters: InsightsOverviewFilters,
+  ): Promise<InsightBusinessAssetTopicAnalytics> {
+    let topicQuery = this.db
+      .selectFrom("xy_wap_embed_logical_session_message as session_message")
+      .innerJoin("xy_wap_embed_insight_asset as asset", (join) =>
+        join.onRef("asset.id", "=", "session_message.asset_id"),
+      )
+      .select([
+        "asset.id as asset_id",
+        "asset.asset_name as asset_name",
+        "asset.asset_type as asset_type",
+        sql<number>`count(session_message.id)`.as("mention_count"),
+        sql<number>`count(distinct session_message.session_id)`.as("session_count"),
+      ])
+      .where("session_message.uid", "=", scope.uid)
+      .where("session_message.asset_id", "is not", null)
+      .groupBy([
+        "asset.id",
+        "asset.asset_name",
+        "asset.asset_type",
+      ])
+      .orderBy(sql<number>`count(session_message.id)`, "desc")
+      .orderBy(sql<number>`count(distinct session_message.session_id)`, "desc")
+      .orderBy("asset.id", "asc")
+      .limit(10);
+
+    topicQuery = applyAssetMessageDateFilters(topicQuery, filters);
+
+    // 28800000 = 8h * 3600s * 1000ms; align date buckets to Asia/Shanghai (UTC+8).
+    const assetTrendDateBucket = sql<string>`
+      date_format(
+        from_days(
+          to_days('1970-01-01') + floor((session_message.source_message_time + 28800000) / 86400000)
+        ),
+        '%Y-%m-%d'
+      )
+    `;
+    let trendQuery = this.db
+      .selectFrom("xy_wap_embed_logical_session_message as session_message")
+      .select([
+        assetTrendDateBucket.as("date"),
+        sql<number>`count(session_message.id)`.as("mention_count"),
+        sql<number>`count(distinct session_message.session_id)`.as("session_count"),
+      ])
+      .where("session_message.uid", "=", scope.uid)
+      .where("session_message.asset_id", "is not", null)
+      .groupBy(assetTrendDateBucket)
+      .orderBy("date", "asc");
+
+    trendQuery = applyAssetMessageDateFilters(trendQuery, filters);
+
+    let totalsQuery = this.db
+      .selectFrom("xy_wap_embed_logical_session_message as session_message")
+      .select([
+        sql<number>`count(session_message.id)`.as("mention_count"),
+        sql<number>`count(distinct session_message.session_id)`.as("session_count"),
+      ])
+      .where("session_message.uid", "=", scope.uid)
+      .where("session_message.asset_id", "is not", null);
+
+    totalsQuery = applyAssetMessageDateFilters(totalsQuery, filters);
+
+    const [topicRows, trendRows, totalsRow] = await Promise.all([
+      topicQuery.execute() as Promise<BusinessAssetTopicQueryRow[]>,
+      trendQuery.execute() as Promise<BusinessAssetTrendQueryRow[]>,
+      totalsQuery.executeTakeFirst() as Promise<BusinessAssetTotalsQueryRow | undefined>,
+    ]);
+    const totalTopicSessions = parseNumber(totalsRow?.session_count ?? 0);
+    const topics = topicRows.map((row) => {
+      const sessionCount = parseNumber(row.session_count);
+
+      return {
+        code: String(row.asset_id),
+        dimension: "asset" as const,
+        mentionCount: parseNumber(row.mention_count),
+        name: row.asset_name,
+        sessionCount,
+        share: totalTopicSessions > 0 ? sessionCount / totalTopicSessions : 0,
+        type: row.asset_type,
+      };
+    });
+
+    return {
+      topics,
+      totals: {
+        mentionCount: parseNumber(totalsRow?.mention_count ?? 0),
+        topicSessions: totalTopicSessions,
+      },
+      trend: trendRows.map((row) => ({
+        assetMentions: parseNumber(row.mention_count),
+        date: row.date,
+        entityMentions: 0,
+        intentMentions: 0,
+        tagMentions: 0,
+        topicSessions: parseNumber(row.session_count),
+      })),
+    };
   }
 
   async listBusinessRelatedSessions(
@@ -1922,12 +2033,6 @@ export class InsightsRepository implements InsightsRepositoryPort {
     const total = parseNumber(totalRow?.count ?? 0);
     const rows = (await this.buildBusinessRelatedSessionQuery(scope, filters, topicId)
       .select([
-        "current.current_snapshot_id as current_snapshot_id",
-        "problem.confidence as problem_confidence",
-        "problem.problem_detected as problem_detected",
-        "problem.problem_summary as problem_summary",
-        "problem.resolution_status as resolution_status",
-        "problem.unresolved_reason as unresolved_reason",
         "session.conversation_id as conversation_id",
         "session.ended_at as ended_at",
         "session.id as session_id",
@@ -1935,19 +2040,10 @@ export class InsightsRepository implements InsightsRepositoryPort {
         "session.started_at as started_at",
         "session.third_external_userid as third_external_userid",
         "session.third_userid as third_userid",
-        "snapshot.phase as phase",
-        "snapshot.create_time as generated_at",
-        "snapshot.status as status",
         "summary.session_title as summary_session_title",
         "summary.summary_text as summary_text",
       ])
       .groupBy([
-        "current.current_snapshot_id",
-        "problem.confidence",
-        "problem.problem_detected",
-        "problem.problem_summary",
-        "problem.resolution_status",
-        "problem.unresolved_reason",
         "session.conversation_id",
         "session.ended_at",
         "session.id",
@@ -1955,9 +2051,6 @@ export class InsightsRepository implements InsightsRepositoryPort {
         "session.started_at",
         "session.third_external_userid",
         "session.third_userid",
-        "snapshot.phase",
-        "snapshot.create_time",
-        "snapshot.status",
         "summary.session_title",
         "summary.summary_text",
       ])
@@ -1992,11 +2085,6 @@ export class InsightsRepository implements InsightsRepositoryPort {
         topic.snapshotColumn,
       )
       .innerJoin(
-        "xy_wap_embed_session_insight_snapshot as snapshot",
-        "snapshot.id",
-        "current.current_snapshot_id",
-      )
-      .innerJoin(
         "xy_wap_embed_logical_session as session",
         "session.id",
         "current.session_id",
@@ -2004,30 +2092,13 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .leftJoin(
         "xy_wap_embed_session_summary as summary",
         "summary.snapshot_id",
-        "snapshot.id",
-      )
-      .leftJoin(
-        "xy_wap_embed_session_problem_resolution as problem",
-        "problem.snapshot_id",
-        "snapshot.id",
+        "current.current_snapshot_id",
       )
       .where(topic.uidColumn, "=", scope.uid)
       .where(topic.idColumn, "=", topicId)
       .where("session.uid", "=", scope.uid);
 
     query = applyTopicDateFilters(query, filters);
-
-    const keyword = filters.keyword?.trim();
-    if (keyword) {
-      const pattern = `%${escapeLikePattern(keyword)}%`;
-      query = query.where(sql<boolean>`
-        (
-          problem.problem_summary like ${pattern} escape '\\'
-          or summary.session_title like ${pattern} escape '\\'
-          or summary.summary_text like ${pattern} escape '\\'
-        )
-      `);
-    }
 
     return query;
   }
@@ -2036,28 +2107,100 @@ export class InsightsRepository implements InsightsRepositoryPort {
     scope: InsightsUidScope,
     filters: InsightsBusinessRelatedSessionFilters,
   ): Promise<InsightCurrentSessionPage> {
-    const facts = await this.listBusinessAssetFacts(scope, filters);
+    const assetId = parsePositiveInteger(filters.topicCode);
+
+    if (assetId == null) {
+      return { items: [], total: 0 };
+    }
+
+    const page = filters.page ?? 1;
+    const pageSize = filters.pageSize ?? 20;
+    const offset = (page - 1) * pageSize;
+    let totalQuery = this.db
+      .selectFrom("xy_wap_embed_logical_session_message as session_message")
+      .select(sql<number>`count(distinct session_message.session_id)`.as("count"))
+      .where("session_message.uid", "=", scope.uid)
+      .where("session_message.asset_id", "=", assetId);
+    totalQuery = applyAssetMessageDateFilters(totalQuery, filters);
+    const totalRow = await totalQuery.executeTakeFirst() as CountQueryRow | undefined;
+    const total = parseNumber(totalRow?.count ?? 0);
+
+    if (total === 0) {
+      return { items: [], total: 0 };
+    }
+
+    let pageQuery = this.db
+      .selectFrom("xy_wap_embed_logical_session_message as session_message")
+      .select(["session_message.session_id as session_id"])
+      .where("session_message.uid", "=", scope.uid)
+      .where("session_message.asset_id", "=", assetId)
+      .groupBy(["session_message.session_id"])
+      .orderBy("session_message.session_id", "desc")
+      .limit(pageSize)
+      .offset(offset);
+
+    pageQuery = applyAssetMessageDateFilters(pageQuery, filters);
+
+    const rows = await pageQuery.execute() as Array<{ session_id: number | string }>;
     const sessionIds = Array.from(
       new Set(
-        facts
-          .filter((fact) => businessTopicFactMatchesFilter(fact, filters))
-          .sort((left, right) => right.startedAt - left.startedAt)
-          .map((fact) => fact.sessionId),
+        rows.map((row) => String(row.session_id)),
       ),
     );
 
     if (sessionIds.length === 0) {
-      return { items: [], total: 0 };
+      return { items: [], total };
     }
 
-    return this.listCurrentSessions(scope, {
-      from: filters.from,
-      keyword: filters.keyword,
-      page: filters.page,
-      pageSize: filters.pageSize,
-      sessionIds,
-      to: filters.to,
-    });
+    return {
+      items: await this.listBusinessRelatedSessionDetails(scope, sessionIds),
+      total,
+    };
+  }
+
+  private async listBusinessRelatedSessionDetails(
+    scope: InsightsUidScope,
+    sessionIds: string[],
+  ): Promise<InsightCurrentSessionRow[]> {
+    const numericSessionIds = normalizePositiveIntegers(sessionIds);
+
+    if (numericSessionIds.length === 0) {
+      return [];
+    }
+
+    const query = this.db
+      .selectFrom("xy_wap_embed_logical_session as session")
+      .leftJoin("xy_wap_embed_session_insight_current as current", (join) =>
+        join.onRef("current.session_id", "=", "session.id"),
+      )
+      .leftJoin("xy_wap_embed_session_summary as summary", (join) =>
+        join.onRef("summary.snapshot_id", "=", "current.current_snapshot_id"),
+      )
+      .select([
+        "session.conversation_id as conversation_id",
+        "session.ended_at as ended_at",
+        "session.id as session_id",
+        "session.last_message_at as last_message_at",
+        "session.started_at as started_at",
+        "session.third_external_userid as third_external_userid",
+        "session.third_userid as third_userid",
+        "summary.session_title as summary_session_title",
+        "summary.summary_text as summary_text",
+      ])
+      .where("session.uid", "=", scope.uid)
+      .where("session.id", "in", numericSessionIds);
+
+    const rows = (await query
+      .orderBy("session.id", "desc")
+      .execute() as CurrentSessionCoreQueryRow[]).map((row) => ({
+        ...row,
+        last_customer_message_at: row.last_customer_message_at ?? null,
+    }));
+    const sessionRows = mapCurrentSessionRows(rows);
+
+    await this.hydrateCurrentSessionActors(scope, sessionRows);
+
+    return sessionRows;
   }
 
   private async listBusinessTagFacts(
@@ -2188,72 +2331,6 @@ export class InsightsRepository implements InsightsRepositoryPort {
       startedAt: parseNumber(row.started_at),
       topicId: String(row.topic_id),
     }));
-  }
-
-  private async listBusinessAssetFacts(
-    scope: InsightsUidScope,
-    filters: InsightsOverviewFilters,
-  ): Promise<InsightBusinessTopicFactRow[]> {
-    const sessionScope = await this.listBusinessSessionScope(scope, filters);
-    const sessionIds = normalizePositiveIntegers(sessionScope.map((row) => row.session_id));
-    const snapshotIds = normalizePositiveIntegers(sessionScope.map((row) => row.snapshot_id));
-
-    if (sessionIds.length === 0 || snapshotIds.length === 0) {
-      return [];
-    }
-
-    const rows = await this.db
-      .selectFrom("xy_wap_embed_logical_session_message as session_message")
-      .innerJoin("xy_wap_embed_logical_session as session", (join) =>
-        join.onRef("session.id", "=", "session_message.session_id"),
-      )
-      .innerJoin("xy_wap_embed_session_insight_current as current", (join) =>
-        join.onRef("current.session_id", "=", "session.id"),
-      )
-      .innerJoin("xy_wap_embed_msg_audit_info as message", (join) =>
-        join.onRef("message.id", "=", "session_message.source_message_id"),
-      )
-      .select([
-        "message.content as content",
-        "session_message.message_type as message_type",
-        "session.id as session_id",
-        "session.started_at as started_at",
-        "current.current_snapshot_id as snapshot_id",
-        "session_message.source_message_id as source_message_id",
-      ])
-      .where("session.uid", "=", scope.uid)
-      .where("session_message.session_id", "in", sessionIds)
-      .where("current.current_snapshot_id", "in", snapshotIds)
-      .where("session_message.message_type", "in", ["link", "miniapp", "file"])
-      .orderBy("session_message.source_message_id", "asc")
-      .limit(2_000)
-      .execute() as AssetTopicMessageQueryRow[];
-    const factsByKey = new Map<string, InsightBusinessTopicFactRow>();
-
-    for (const row of rows) {
-      const asset = parseBusinessAssetTopic(row);
-
-      if (!asset) {
-        continue;
-      }
-
-      const key = `${row.session_id}:${asset.code}:${asset.type}`;
-      const current = factsByKey.get(key) ?? {
-        dimension: "asset" as const,
-        mentionCount: 0,
-        name: asset.name,
-        sessionId: String(row.session_id),
-        snapshotId: String(row.snapshot_id),
-        startedAt: parseNumber(row.started_at),
-        topicId: asset.code,
-        type: asset.type,
-      };
-
-      current.mentionCount += 1;
-      factsByKey.set(key, current);
-    }
-
-    return Array.from(factsByKey.values());
   }
 
   private async listBusinessSessionScope(
@@ -4409,6 +4486,27 @@ function applyTopicDateFilters<Query>(
   return next;
 }
 
+function applyAssetMessageDateFilters<Query>(
+  query: Query,
+  filters: InsightsOverviewFilters,
+): Query {
+  let next = query as Query & {
+    where(column: string, operator: string, value: unknown): Query;
+  };
+  const from = parseDateBoundary(filters.from);
+  const to = parseDateBoundary(filters.to);
+
+  if (from != null) {
+    next = next.where("session_message.source_message_time", ">=", from) as typeof next;
+  }
+
+  if (to != null) {
+    next = next.where("session_message.source_message_time", "<=", to) as typeof next;
+  }
+
+  return next;
+}
+
 function applyActionItemDateFilters<Query>(
   query: Query,
   filters: InsightsFollowUpFilters,
@@ -4704,7 +4802,7 @@ function escapeLikePattern(value: string) {
   return value.replace(/[\\%_]/g, (match) => `\\${match}`);
 }
 
-function parseBusinessAssetTopic(row: AssetTopicMessageQueryRow) {
+function parseBusinessAssetTopic(row: SessionAssetTopicRow) {
   const parsed = parseInsightMessageContent(row.content);
 
   if (row.message_type === "link") {

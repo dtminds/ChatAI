@@ -89,6 +89,8 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_logical_session_message (
   sender_role VARCHAR(32) NOT NULL COMMENT '发送方角色，customer：客户，agent：客服，system：系统，bot：机器人，unknown：未知',
   occurred_at BIGINT UNSIGNED NOT NULL COMMENT '消息发生时间戳',
   message_type VARCHAR(64) NOT NULL COMMENT '标准化消息类型，text：文本，voice：语音，file：文件，link：链接，miniapp：小程序，image：图片，system：系统，unsupported：暂不支持',
+  asset_id BIGINT UNSIGNED NULL COMMENT '资产ID，关联xy_wap_embed_insight_asset.id；非链接/文件/小程序消息为空',
+  asset_type VARCHAR(32) NULL COMMENT '资产类型，link：链接，miniapp：小程序，file：文件；非资产消息为空',
   included_for_ai TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '是否进入AI上下文，1是0否',
   meaningful_for_boundary TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '是否参与切片边界判断，1是0否',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
@@ -96,11 +98,26 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_logical_session_message (
   PRIMARY KEY (id),
   UNIQUE KEY uk_session_message_source_uid (uid, source_message_id),
   KEY idx_session_message_order (session_id, source_message_time, source_message_id),
-  KEY idx_session_message_asset (session_id, message_type, source_message_id),
-  KEY idx_session_message_ai_count (session_id, included_for_ai, meaningful_for_boundary, source_message_id),
-  KEY idx_session_message_conversation_time (uid, conversation_id, source_message_time),
-  KEY idx_session_message_source (source_message_id)
+  KEY idx_session_message_asset_lookup (uid, asset_id, source_message_time, session_id),
+  KEY idx_session_message_asset_window (uid, source_message_time, asset_id, session_id),
+  KEY idx_session_message_ai_count (session_id, included_for_ai, meaningful_for_boundary, source_message_id)
 ) COMMENT='逻辑会话消息归属表';
+
+CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_asset (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  asset_type VARCHAR(32) NOT NULL COMMENT '资产类型，link：链接，miniapp：小程序，file：文件',
+  asset_key VARCHAR(512) NOT NULL COMMENT '资产稳定唯一键，链接为规范化URL，小程序为appId+pagePath，文件为fileId/fileUrl/fileName兜底',
+  asset_name VARCHAR(512) NOT NULL COMMENT '资产展示名称',
+  first_seen_at BIGINT UNSIGNED NOT NULL COMMENT '首次出现的平台消息时间戳',
+  last_seen_at BIGINT UNSIGNED NOT NULL COMMENT '最近出现的平台消息时间戳',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_insight_asset_uid_type_key (uid, asset_type, asset_key),
+  KEY idx_insight_asset_uid_last_seen (uid, last_seen_at),
+  KEY idx_insight_asset_uid_type_last_seen (uid, asset_type, last_seen_at)
+) COMMENT='会话洞察资产表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_job (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',

@@ -641,6 +641,45 @@ export interface XyWapEmbedInsightFeatureConfig {
   update_time: Generated<Date>;
 }
 
+export interface XyWapEmbedInsightAsset {
+  /**
+   * 资产稳定唯一键，链接为规范化URL，小程序为appId+pagePath，文件为fileId/fileUrl/fileName兜底
+   */
+  asset_key: string;
+  /**
+   * 资产展示名称
+   */
+  asset_name: string;
+  /**
+   * 资产类型，link：链接，miniapp：小程序，file：文件
+   */
+  asset_type: string;
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date>;
+  /**
+   * 首次出现的平台消息时间戳
+   */
+  first_seen_at: number;
+  /**
+   * 主键ID
+   */
+  id: Generated<number>;
+  /**
+   * 最近出现的平台消息时间戳
+   */
+  last_seen_at: number;
+  /**
+   * 租户ID
+   */
+  uid: number;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date>;
+}
+
 export interface XyWapEmbedInsightIntentConfig {
   /**
    * 别名JSON
@@ -1158,6 +1197,14 @@ export interface XyWapEmbedLogicalSession {
 }
 
 export interface XyWapEmbedLogicalSessionMessage {
+  /**
+   * 资产ID，关联xy_wap_embed_insight_asset.id；非链接/文件/小程序消息为空
+   */
+  asset_id: number | null;
+  /**
+   * 资产类型，link：链接，miniapp：小程序，file：文件；非资产消息为空
+   */
+  asset_type: string | null;
   /**
    * 平台会话ID
    */
@@ -2118,6 +2165,7 @@ export interface DB {
   xy_wap_embed_group_member: XyWapEmbedGroupMember;
   xy_wap_embed_group_seat: XyWapEmbedGroupSeat;
   xy_wap_embed_insight_analysis_policy: XyWapEmbedInsightAnalysisPolicy;
+  xy_wap_embed_insight_asset: XyWapEmbedInsightAsset;
   xy_wap_embed_insight_entity_dictionary: XyWapEmbedInsightEntityDictionary;
   xy_wap_embed_insight_evidence: XyWapEmbedInsightEvidence;
   xy_wap_embed_insight_feature_config: XyWapEmbedInsightFeatureConfig;

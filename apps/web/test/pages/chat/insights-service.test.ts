@@ -7,8 +7,8 @@ import {
   createInsightQaRuleConfig,
   createInsightRescanJob,
   deleteInsightLabelConfig,
-  getInsightBusiness,
   getInsightBusinessRelatedSessions,
+  getInsightBusinessTopics,
   getInsightDetail,
   getInsightFollowUps,
   getInsightFilterOptions,
@@ -39,7 +39,7 @@ describe("insights service adapter", () => {
     mock.onGet("/server/insights/overview").reply(200, { data: { totalSessions: 1 }, success: true });
     mock.onGet("/server/insights/overview/sessions").reply(200, { data: { items: [], total: 0 }, success: true });
     mock.onGet("/server/insights/filter-options").reply(200, { data: { entities: [], intents: [], tags: [] }, success: true });
-    mock.onGet("/server/insights/business").reply(200, { data: { totals: {} }, success: true });
+    mock.onGet("/server/insights/business/topics").reply(200, { data: { dimension: "intent", topics: [], totals: {}, trend: [] }, success: true });
     mock.onGet("/server/insights/quality/overview").reply(200, { data: { overview: {} }, success: true });
     mock.onGet("/server/insights/quality/agent-stats").reply(200, { data: { agentStats: [] }, success: true });
     mock.onGet("/server/insights/quality/results").reply(200, { data: { qualityResults: [], qualityResultsPage: {} }, success: true });
@@ -78,7 +78,7 @@ describe("insights service adapter", () => {
       to: "2026-06-02",
     });
     await getInsightFilterOptions();
-    await getInsightBusiness({ from: "2026-06-01", to: "2026-06-02" });
+    await getInsightBusinessTopics({ dimension: "intent", from: "2026-06-01", to: "2026-06-02" });
     await getInsightQualityOverview({ from: "2026-06-01", to: "2026-06-02" });
     await getInsightQualityAgentStats({ from: "2026-06-01", to: "2026-06-02" });
     await getInsightQualityResults({ from: "2026-06-01", page: 1, pageSize: 10, passed: false, to: "2026-06-02" });
@@ -119,8 +119,9 @@ describe("insights service adapter", () => {
       to: "2026-06-02",
     });
     expect(mock.history.get[2]?.url).toBe("/server/insights/filter-options");
-    expect(mock.history.get[3]?.url).toBe("/server/insights/business");
+    expect(mock.history.get[3]?.url).toBe("/server/insights/business/topics");
     expect(mock.history.get[3]?.params).toEqual({
+      dimension: "intent",
       from: "2026-06-01",
       to: "2026-06-02",
     });
@@ -264,19 +265,19 @@ describe("insights service adapter", () => {
   });
 
   it("passes abort signals to business, quality and follow-up requests", async () => {
-    const businessController = new AbortController();
+    const businessTopicsController = new AbortController();
     const relatedSessionsController = new AbortController();
     const qualityController = new AbortController();
     const followUpsController = new AbortController();
 
-    mock.onGet("/server/insights/business").reply(200, { data: { totals: {} }, success: true });
+    mock.onGet("/server/insights/business/topics").reply(200, { data: { dimension: "intent", topics: [], totals: {}, trend: [] }, success: true });
     mock.onGet("/server/insights/business/related-sessions").reply(200, { data: { items: [], total: 0 }, success: true });
     mock.onGet("/server/insights/quality/results").reply(200, { data: { qualityResults: [], qualityResultsPage: {} }, success: true });
     mock.onGet("/server/insights/follow-ups").reply(200, { data: { items: [], total: 0 }, success: true });
 
-    await getInsightBusiness(
-      { from: "2026-06-01", to: "2026-06-02" },
-      { signal: businessController.signal },
+    await getInsightBusinessTopics(
+      { dimension: "intent", from: "2026-06-01", to: "2026-06-02" },
+      { signal: businessTopicsController.signal },
     );
     await getInsightBusinessRelatedSessions(
       {
@@ -296,8 +297,9 @@ describe("insights service adapter", () => {
       { signal: followUpsController.signal },
     );
 
-    expect(mock.history.get[0]?.signal).toBe(businessController.signal);
+    expect(mock.history.get[0]?.signal).toBe(businessTopicsController.signal);
     expect(mock.history.get[0]?.params).toEqual({
+      dimension: "intent",
       from: "2026-06-01",
       to: "2026-06-02",
     });

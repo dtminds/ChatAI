@@ -856,14 +856,9 @@ function installInsightMocks() {
   ];
   serviceMocks.getInsightQualityOverview.mockResolvedValue({
     overview: {
-      analyzedSessions: 20,
       inspectedSessions: 19,
       inspectionRate: 0.91,
-      noCustomerProblem: 6,
-      partial: 3,
       passRate: 0.43,
-      problemSessions: 14,
-      resolved: 6,
       ruleDistribution: [
         {
           count: 20,
@@ -886,7 +881,6 @@ function installInsightMocks() {
         { count: 1, ruleCode: "privacy", ruleName: "隐私提醒缺失" },
       ],
       totalSessions: 22,
-      unresolved: 5,
     },
   });
   serviceMocks.getInsightQualityAgentStats.mockResolvedValue({
@@ -896,6 +890,7 @@ function installInsightMocks() {
         agentName: "企微小助手1号",
         agentSeatId: "seat-1",
         failedSessions: 3,
+        inspectionRate: 1,
         inspectedSessions: 21,
         passedSessions: 18,
         passRate: 0.8571,
@@ -2295,7 +2290,7 @@ describe("conversation insights pages", () => {
     expect(
       screen.getByRole("img", { name: "企微小助手1号" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("161.54%")).toBeInTheDocument();
+    expect(screen.getByText("100.00%")).toBeInTheDocument();
     expect(screen.getByText("85.71%")).toBeInTheDocument();
     const callsBeforeQualityResults =
       serviceMocks.getInsightQualityResults.mock.calls.length;
@@ -2381,14 +2376,9 @@ describe("conversation insights pages", () => {
   it("keeps quality distribution slots when fewer than ten rules are available", async () => {
     serviceMocks.getInsightQualityOverview.mockResolvedValueOnce({
       overview: {
-        analyzedSessions: 6,
         inspectedSessions: 6,
         inspectionRate: 1,
-        noCustomerProblem: 0,
-        partial: 0,
         passRate: 0.5,
-        problemSessions: 6,
-        resolved: 3,
         ruleDistribution: [
           {
             count: 7,
@@ -2398,7 +2388,6 @@ describe("conversation insights pages", () => {
           { count: 3, ruleCode: "clear_next_step", ruleName: "是否明确下一步" },
         ],
         totalSessions: 6,
-        unresolved: 3,
       },
     });
 
@@ -2447,17 +2436,11 @@ describe("conversation insights pages", () => {
     expect(requestOptions?.signal?.aborted).toBe(true);
     qualityGate.resolve({
       overview: {
-        analyzedSessions: 0,
         inspectedSessions: 0,
         inspectionRate: 0,
-        noCustomerProblem: 0,
-        partial: 0,
         passRate: 0,
-        problemSessions: 0,
-        resolved: 0,
         ruleDistribution: [],
         totalSessions: 0,
-        unresolved: 0,
       },
     });
     await expect(qualityGate.promise).resolves.toBeDefined();

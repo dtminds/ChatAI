@@ -1623,6 +1623,39 @@ function createInsightsDbMock(options: {
       if (table === "xy_wap_embed_logical_session as session") {
         return createBuilder((builder) => {
           const selectedAliases = collectSelectAliases(builder.selectCalls);
+          const selectedText = Array.from(selectedAliases).join("\n");
+
+          if (selectedText.includes("topic.intent_id as topic_id")) {
+            return [
+              {
+                mention_count: 1,
+                name: "物流异常",
+                session_count: 1,
+                topic_id: 31,
+              },
+            ];
+          }
+
+          if (selectedText.includes("topic.intent_id as intent_id")) {
+            return [
+              {
+                date: "2026-06-01",
+                intent_id: 31,
+                intent_name: "物流异常",
+                session_count: 1,
+              },
+            ];
+          }
+
+          if (selectedText.includes("mention_count") && selectedText.includes("session_count")) {
+            return [
+              {
+                date: "2026-06-01",
+                mention_count: 1,
+                session_count: 1,
+              },
+            ];
+          }
 
           if (selectedAliases.has("date")) {
             return [{
@@ -1693,9 +1726,41 @@ function createInsightsDbMock(options: {
       if (table === "xy_wap_embed_session_intent as topic") {
         return createBuilder((builder) => {
           const selectedAliases = collectSelectAliases(builder.selectCalls);
+          const selectedText = Array.from(selectedAliases).join("\n");
 
           if (selectedAliases.has("count") && selectedAliases.size === 1) {
             return [{ count: 1 }];
+          }
+
+          if (selectedText.includes("topic.intent_id as topic_id")) {
+            return [
+              {
+                mention_count: 1,
+                name: "物流异常",
+                session_count: 1,
+                topic_id: 31,
+              },
+            ];
+          }
+
+          if (selectedText.includes("topic.intent_id as intent_id")) {
+            return [
+              {
+                date: "2026-06-01",
+                intent_id: 31,
+                intent_name: "物流异常",
+                session_count: 1,
+              },
+            ];
+          }
+
+          if (selectedText.includes("mention_count") && selectedText.includes("session_count")) {
+            return [
+              {
+                mention_count: 1,
+                session_count: 1,
+              },
+            ];
           }
 
           return [
@@ -1734,6 +1799,10 @@ function createInsightsDbMock(options: {
       const builder = {
         executeTakeFirst: async () => {
           const id = wheres.find(([column]) => column === "id")?.[2] as number | undefined;
+          if (id === 404) {
+            return { numAffectedRows: 0n };
+          }
+
           state.updatedActionStatus = { id, status: String(updateValues.status) };
           state.actionStatus = String(updateValues.status);
           return { numAffectedRows: 1n };

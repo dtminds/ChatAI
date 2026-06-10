@@ -206,17 +206,11 @@ const previousOverviewAggregate = {
 } satisfies Awaited<ReturnType<InsightsRepositoryPort["getOverviewAggregate"]>>;
 
 const qualityAggregate = {
-  analyzedSessions: 3,
   inspectedSessions: 3,
   inspectionRate: 0.75,
-  noCustomerProblem: 1,
-  partial: 1,
   passRate: 0.5,
-  problemSessions: 2,
-  resolved: 0,
   ruleDistribution: [],
   totalSessions: 4,
-  unresolved: 1,
 } satisfies Awaited<NonNullable<InsightsRepositoryPort["getQualityAggregate"]>>;
 
 const qaFindingAggregate = {
@@ -272,6 +266,7 @@ const qualityAgentStats = [
     agentName: "客服一号",
     agentSeatId: "seat-1",
     failedSessions: 1,
+    inspectionRate: 1,
     inspectedSessions: 1,
     passedSessions: 0,
     passRate: 0,
@@ -282,6 +277,7 @@ const qualityAgentStats = [
     agentName: "客服二号",
     agentSeatId: "seat-2",
     failedSessions: 0,
+    inspectionRate: 1,
     inspectedSessions: 1,
     passedSessions: 1,
     passRate: 1,
@@ -291,51 +287,113 @@ const qualityAgentStats = [
   NonNullable<InsightsRepositoryPort["listQualityAgentStats"]>
 >;
 
-const baseBusinessTopicFacts = [
-  {
-    dimension: "tag",
-    mentionCount: 1,
-    name: "物流异常",
-    sessionId: "501",
-    snapshotId: "7001",
-    startedAt: 1_780_243_200_000,
-    topicId: "21",
-  },
-  {
-    dimension: "tag",
-    mentionCount: 1,
-    name: "退款咨询",
-    sessionId: "502",
-    snapshotId: "7002",
-    startedAt: 1_780_243_000_000,
-    topicId: "22",
-  },
-  {
-    dimension: "entity",
-    mentionCount: 2,
-    name: "白色羽绒服",
-    sentiment: "negative",
-    sessionId: "501",
-    snapshotId: "7001",
-    startedAt: 1_780_243_200_000,
-    topicId: "41",
-  },
-  {
-    dimension: "intent",
-    mentionCount: 1,
-    name: "物流异常",
-    sessionId: "501",
-    snapshotId: "7001",
-    startedAt: 1_780_243_200_000,
-    topicId: "31",
-  },
-] satisfies Awaited<
-  NonNullable<InsightsRepositoryPort["listBusinessTopicFacts"]>
->;
+function createBusinessTopicAnalytics(
+  dimension: InsightBusinessTopicsResponse["dimension"],
+): Awaited<NonNullable<InsightsRepositoryPort["getBusinessTopicAnalytics"]>> {
+  const topicByDimension = {
+    asset: {
+      code: "701",
+      dimension: "asset" as const,
+      mentionCount: 3,
+      name: "产品链接",
+      sessionCount: 2,
+      share: 1,
+      type: "link",
+    },
+    entity: {
+      code: "41",
+      dimension: "entity" as const,
+      mentionCount: 2,
+      name: "白色羽绒服",
+      sessionCount: 1,
+      share: 1,
+    },
+    intent: {
+      code: "31",
+      dimension: "intent" as const,
+      mentionCount: 1,
+      name: "物流异常",
+      sessionCount: 1,
+      share: 1,
+    },
+    tag: {
+      code: "21",
+      dimension: "tag" as const,
+      mentionCount: 1,
+      name: "物流异常",
+      sessionCount: 1,
+      share: 1,
+    },
+  };
+
+  return {
+    intentTrend: dimension === "intent"
+      ? [
+          {
+            date: "2026-06-01",
+            intentId: "31",
+            intentName: "物流异常",
+            sessionCount: 1,
+          },
+        ]
+      : [],
+    topics: [topicByDimension[dimension]],
+    totals: {
+      mentionCount: topicByDimension[dimension].mentionCount,
+      topicSessions: topicByDimension[dimension].sessionCount,
+    },
+    trend: [
+      {
+        assetMentions: dimension === "asset" ? topicByDimension[dimension].mentionCount : 0,
+        date: "2026-06-01",
+        entityMentions: dimension === "entity" ? topicByDimension[dimension].mentionCount : 0,
+        intentMentions: dimension === "intent" ? topicByDimension[dimension].mentionCount : 0,
+        tagMentions: dimension === "tag" ? topicByDimension[dimension].mentionCount : 0,
+        topicSessions: topicByDimension[dimension].sessionCount,
+      },
+    ],
+  };
+}
 
 function createRepository(
   overrides: Partial<InsightsRepositoryPort> = {},
 ): InsightsRepositoryPort {
+  const actionItems: InsightActionItemRow[] = [
+    {
+      actionItemId: "801",
+      conversationId: "301",
+      customerAvatarUrl: "https://example.com/customer-1.png",
+      customerName: "张三",
+      createdAt: 1_780_244_800_000,
+      priority: "high",
+      sessionId: "501",
+      status: "open",
+      title: "确认快递状态",
+    },
+    {
+      actionItemId: "802",
+      conversationId: "302",
+      customerAvatarUrl: "https://example.com/customer-2.png",
+      customerName: "李四",
+      createdAt: 1_780_243_800_000,
+      priority: "medium",
+      sessionId: "502",
+      status: "done",
+      title: "沉淀退款到账 FAQ",
+    },
+    {
+      actionItemId: "803",
+      conversationId: "304",
+      customerAvatarUrl: "https://example.com/customer-4.png",
+      customerName: "赵六",
+      createdAt: 1_780_241_300_000,
+      priority: "high",
+      sessionId: "504",
+      status: "open",
+      title: "复核消息不足会话",
+    },
+  ];
+
   return {
     countEnabledConfigs: vi.fn(async () => 0),
     countActiveConfigs: vi.fn(async () => 0),
@@ -456,48 +514,25 @@ function createRepository(
         status: 1,
       },
     ]),
-    listActionItems: vi.fn(async () => [
-      {
-        actionItemId: "801",
-        conversationId: "301",
-        customerAvatarUrl: "https://example.com/customer-1.png",
-        customerName: "张三",
-        createdAt: 1_780_244_800_000,
-        priority: "high",
-        resolutionStatus: "unresolved",
-        sessionId: "501",
-        status: "open",
-        title: "确认快递状态",
-      },
-      {
-        actionItemId: "802",
-        conversationId: "302",
-        customerAvatarUrl: "https://example.com/customer-2.png",
-        customerName: "李四",
-        createdAt: 1_780_243_800_000,
-        priority: "medium",
-        resolutionStatus: "partially_resolved",
-        sessionId: "502",
-        status: "done",
-        title: "沉淀退款到账 FAQ",
-      },
-      {
-        actionItemId: "803",
-        conversationId: "304",
-        customerAvatarUrl: "https://example.com/customer-4.png",
-        customerName: "赵六",
-        createdAt: 1_780_241_300_000,
-        priority: "high",
-        resolutionStatus: "unknown",
-        sessionId: "504",
-        status: "open",
-        title: "复核消息不足会话",
-      },
-    ]),
-    listBusinessTopicFacts: vi.fn(async (_scope, filters) =>
-      filters?.dimension
-        ? baseBusinessTopicFacts.filter((fact) => fact.dimension === filters.dimension)
-        : baseBusinessTopicFacts,
+    listActionItemsPage: vi.fn(async (_scope, filters) => {
+      const page = filters?.page ?? 1;
+      const pageSize = filters?.pageSize ?? 20;
+      const rows = actionItems.filter((item) => {
+        const statusMatches = filters?.status === "processed"
+          ? item.status === "done" || item.status === "dismissed"
+          : !filters?.status || item.status === filters.status;
+        const priorityMatches = !filters?.priority || item.priority === filters.priority;
+
+        return statusMatches && priorityMatches;
+      });
+
+      return {
+        items: rows.slice((page - 1) * pageSize, page * pageSize),
+        total: rows.length,
+      };
+    }),
+    getBusinessTopicAnalytics: vi.fn(async (_scope, filters) =>
+      createBusinessTopicAnalytics(filters.dimension),
     ),
     getQualityAggregate: vi.fn(async () => qualityAggregate),
     getQaFindingAggregate: vi.fn(async () => qaFindingAggregate),
@@ -782,7 +817,7 @@ describe("InsightsService", () => {
         from: "2026-05-07T00:00:00.000+08:00",
         to: "2026-06-05T23:59:59.999+08:00",
       });
-      expect(repository.listBusinessTopicFacts).not.toHaveBeenCalled();
+      expect(repository.getBusinessTopicAnalytics).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }
@@ -1002,19 +1037,13 @@ describe("InsightsService", () => {
     ]);
 
     expect(overviewResult.overview).toMatchObject({
-      analyzedSessions: 3,
       inspectedSessions: 3,
       inspectionRate: 0.75,
-      noCustomerProblem: 1,
-      partial: 1,
       passRate: 0.5,
-      problemSessions: 2,
-      resolved: 0,
       ruleDistribution: [
         { count: 2, ruleCode: "reply_quality", ruleName: "回复质量" },
       ],
       totalSessions: 4,
-      unresolved: 1,
     });
     expect(resultsResult.qualityResults.map((item) => item.sessionId)).toEqual([
       "501",
@@ -1063,7 +1092,6 @@ describe("InsightsService", () => {
     const repository = createRepository({
       getQualityAggregate: vi.fn(async () => ({
         ...qualityAggregate,
-        analyzedSessions: 4,
         inspectedSessions: 2,
         inspectionRate: 0.5,
         passRate: 1,
@@ -1077,7 +1105,6 @@ describe("InsightsService", () => {
     });
 
     expect(result.overview).toMatchObject({
-      analyzedSessions: 4,
       inspectedSessions: 2,
       inspectionRate: 0.5,
       passRate: 1,
@@ -1196,19 +1223,9 @@ describe("InsightsService", () => {
   it("loads only the selected business topic dimension", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-05T12:00:00.000Z"));
-    const listBusinessTopicFacts = vi.fn(async () => [
-      {
-        dimension: "intent" as const,
-        mentionCount: 3,
-        name: "物流异常",
-        sessionId: "501",
-        snapshotId: "7001",
-        startedAt: 1_780_243_200_000,
-        topicId: "31",
-      },
-    ]);
+    const getBusinessTopicAnalytics = vi.fn(async () => createBusinessTopicAnalytics("intent"));
     const service = new InsightsService(createRepository({
-      listBusinessTopicFacts,
+      getBusinessTopicAnalytics,
     }));
 
     try {
@@ -1221,7 +1238,7 @@ describe("InsightsService", () => {
         expect.objectContaining({
           code: "31",
           dimension: "intent",
-          mentionCount: 3,
+          mentionCount: 1,
           name: "物流异常",
         }),
       ]);
@@ -1233,7 +1250,7 @@ describe("InsightsService", () => {
           sessionCount: 1,
         },
       ]);
-      expect(listBusinessTopicFacts).toHaveBeenCalledWith(scope, {
+      expect(getBusinessTopicAnalytics).toHaveBeenCalledWith(scope, {
         dimension: "intent",
         from: "2026-05-07T00:00:00.000+08:00",
         to: "2026-06-05T23:59:59.999+08:00",
@@ -1246,8 +1263,8 @@ describe("InsightsService", () => {
   it("defaults asset business topics to the recent seven days", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-05T12:00:00.000+08:00"));
-    const listBusinessTopicFacts = vi.fn(async () => []);
-    const getBusinessAssetTopicAnalytics = vi.fn(async () => ({
+    const getBusinessTopicAnalytics = vi.fn(async () => ({
+      intentTrend: [],
       topics: [],
       totals: {
         mentionCount: 0,
@@ -1256,8 +1273,7 @@ describe("InsightsService", () => {
       trend: [],
     }));
     const service = new InsightsService(createRepository({
-      getBusinessAssetTopicAnalytics,
-      listBusinessTopicFacts,
+      getBusinessTopicAnalytics,
     }));
 
     try {
@@ -1265,20 +1281,19 @@ describe("InsightsService", () => {
         dimension: "asset",
       });
 
-      expect(getBusinessAssetTopicAnalytics).toHaveBeenCalledWith(scope, {
+      expect(getBusinessTopicAnalytics).toHaveBeenCalledWith(scope, {
         dimension: "asset",
         from: "2026-05-30T00:00:00.000+08:00",
         to: "2026-06-05T23:59:59.999+08:00",
       });
-      expect(listBusinessTopicFacts).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }
   });
 
   it("limits asset business topic reads to at most seven days", async () => {
-    const listBusinessTopicFacts = vi.fn(async () => []);
-    const getBusinessAssetTopicAnalytics = vi.fn(async () => ({
+    const getBusinessTopicAnalytics = vi.fn(async () => ({
+      intentTrend: [],
       topics: [],
       totals: {
         mentionCount: 0,
@@ -1287,8 +1302,7 @@ describe("InsightsService", () => {
       trend: [],
     }));
     const service = new InsightsService(createRepository({
-      getBusinessAssetTopicAnalytics,
-      listBusinessTopicFacts,
+      getBusinessTopicAnalytics,
     }));
 
     await service.getBusinessTopics(scope, {
@@ -1297,15 +1311,14 @@ describe("InsightsService", () => {
       to: "2026-06-30",
     });
 
-    expect(getBusinessAssetTopicAnalytics).toHaveBeenCalledWith(scope, {
+    expect(getBusinessTopicAnalytics).toHaveBeenCalledWith(scope, {
       dimension: "asset",
       from: "2026-06-24T00:00:00.000+08:00",
       to: "2026-06-30T23:59:59.999+08:00",
     });
-    expect(listBusinessTopicFacts).not.toHaveBeenCalled();
   });
 
-  it("paginates business related sessions by selected topic facts", async () => {
+  it("paginates business related sessions with the focused repository query", async () => {
     const listBusinessRelatedSessions = vi.fn(async () => ({
       items: [baseRows[0]],
       total: 1,
@@ -1351,7 +1364,6 @@ describe("InsightsService", () => {
         to: "2026-06-30",
       }),
     );
-    expect(repository.listBusinessTopicFacts).not.toHaveBeenCalled();
     expect(repository.listCurrentSessions).not.toHaveBeenCalled();
     expect(repository.listAllCurrentSessions).not.toHaveBeenCalled();
   });
@@ -1385,14 +1397,12 @@ describe("InsightsService", () => {
   });
 
   it("fails business related sessions when the repository has no focused query", async () => {
-    const listBusinessTopicFacts = vi.fn(async () => baseBusinessTopicFacts);
     const listCurrentSessions = vi.fn(async () => ({
       items: [baseRows[0]],
       total: 1,
     }));
     const service = new InsightsService(createRepository({
       listBusinessRelatedSessions: undefined,
-      listBusinessTopicFacts,
       listCurrentSessions,
     } as Partial<InsightsRepositoryPort>));
 
@@ -1405,7 +1415,6 @@ describe("InsightsService", () => {
       }),
     ).rejects.toBeInstanceOf(BusinessError);
 
-    expect(listBusinessTopicFacts).not.toHaveBeenCalled();
     expect(listCurrentSessions).not.toHaveBeenCalled();
   });
 
@@ -1417,15 +1426,15 @@ describe("InsightsService", () => {
     ).resolves.toMatchObject({
       items: [
         {
-          actionItemId: "803",
-          conversationId: "304",
-          createdAt: 1_780_241_300_000,
-          status: "open",
-        },
-        {
           actionItemId: "801",
           conversationId: "301",
           createdAt: 1_780_244_800_000,
+          status: "open",
+        },
+        {
+          actionItemId: "803",
+          conversationId: "304",
+          createdAt: 1_780_241_300_000,
           status: "open",
         },
       ],
@@ -1435,32 +1444,22 @@ describe("InsightsService", () => {
 
   it("paginates follow-up action items", async () => {
     const repository = createRepository({
-      listActionItems: vi.fn(async () => [
-        {
-          actionItemId: "801",
-          conversationId: "301",
-          customerAvatarUrl: "https://example.com/customer-1.png",
-          customerName: "张三",
-          createdAt: 1_780_244_800_000,
-          priority: "high",
-          resolutionStatus: "unresolved",
-          sessionId: "501",
-          status: "open",
-          title: "确认快递状态",
-        },
-        {
-          actionItemId: "802",
-          conversationId: "302",
-          customerAvatarUrl: "https://example.com/customer-2.png",
-          customerName: "李四",
-          createdAt: 1_780_243_800_000,
-          priority: "medium",
-          resolutionStatus: "partially_resolved",
-          sessionId: "502",
-          status: "open",
-          title: "沉淀退款到账 FAQ",
-        },
-      ]),
+      listActionItemsPage: vi.fn(async () => ({
+        items: [
+          {
+            actionItemId: "801",
+            conversationId: "301",
+            customerAvatarUrl: "https://example.com/customer-1.png",
+            customerName: "张三",
+            createdAt: 1_780_244_800_000,
+            priority: "high",
+            sessionId: "501",
+            status: "open",
+            title: "确认快递状态",
+          },
+        ],
+        total: 2,
+      })),
     });
     const service = new InsightsService(repository);
 
@@ -1481,7 +1480,7 @@ describe("InsightsService", () => {
       total: 2,
       totalPages: 2,
     });
-    expect(repository.listActionItems).toHaveBeenCalledWith(scope, {
+    expect(repository.listActionItemsPage).toHaveBeenCalledWith(scope, {
       page: 2,
       pageSize: 1,
       status: "open",

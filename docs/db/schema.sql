@@ -373,8 +373,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_session_action_item (
   KEY idx_action_snapshot (snapshot_id),
   KEY idx_action_uid_conversation_status (uid, conversation_id, status, id),
   KEY idx_action_uid_session_status (uid, session_id, status),
-  KEY idx_action_uid_status_id (uid, status, id),
-  KEY idx_action_status_priority (status, priority)
+  KEY idx_action_uid_status_id (uid, status, id)
 ) COMMENT='逻辑会话待处理行动项表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_session_faq_candidate (

@@ -12,6 +12,12 @@ describe("database schema document", () => {
 
     expect(actionItemTable).toContain("session_id BIGINT UNSIGNED NOT NULL COMMENT '逻辑会话ID'");
   });
+
+  it("does not keep non-tenant-prefixed action item status priority index", () => {
+    const actionItemTable = extractCreateTable(schemaSql, "xy_wap_embed_session_action_item");
+
+    expect(actionItemTable).not.toContain("idx_action_status_priority");
+  });
 });
 
 function extractCreateTable(sql: string, tableName: string) {

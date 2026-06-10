@@ -193,7 +193,7 @@ export function InsightsBusinessPage() {
 
   useEffect(() => {
     setRelatedSessionsPageNumber(1);
-  }, [activeTopic?.code, activeTopic?.dimension, activeTopic?.type, activeFrom, activeTo]);
+  }, [activeTopic?.code, activeTopic?.dimension, activeFrom, activeTo]);
 
   useEffect(() => {
     if (!activeTopic) {
@@ -210,7 +210,6 @@ export function InsightsBusinessPage() {
       page: relatedSessionsPageNumber,
       pageSize: businessRelatedSessionsPageSize,
       topicCode: activeTopic.code,
-      topicType: activeTopic.type,
       to: toBoundaryDate(activeTo, "end"),
     }, { signal: controller.signal })
       .then((response) => {

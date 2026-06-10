@@ -215,17 +215,11 @@ export const InsightsQualityRuleDistributionSchema = Type.Object({
 });
 
 export const InsightsQualityOverviewSchema = Type.Object({
-  analyzedSessions: Type.Number(),
   inspectedSessions: Type.Number(),
   inspectionRate: Type.Number(),
-  noCustomerProblem: Type.Number(),
-  partial: Type.Number(),
   passRate: Type.Number(),
-  problemSessions: Type.Number(),
-  resolved: Type.Number(),
   ruleDistribution: Type.Array(InsightsQualityRuleDistributionSchema),
   totalSessions: Type.Number(),
-  unresolved: Type.Number(),
 });
 
 export const InsightsQualityAgentStatSchema = Type.Object({
@@ -233,6 +227,7 @@ export const InsightsQualityAgentStatSchema = Type.Object({
   agentName: Type.String(),
   agentSeatId: Type.String(),
   failedSessions: Type.Number(),
+  inspectionRate: Type.Number(),
   inspectedSessions: Type.Number(),
   passedSessions: Type.Number(),
   passRate: Type.Number(),

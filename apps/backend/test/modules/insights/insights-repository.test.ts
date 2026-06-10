@@ -10,13 +10,9 @@ describe("InsightsRepository", () => {
         const builder = createSelectBuilder(
           [
             {
-              analyzed_sessions: 3,
-              no_customer_problem: 1,
-              partial: 1,
-              problem_sessions: 2,
-              resolved: 0,
+              inspected_sessions: 2,
+              passed_sessions: 1,
               total_sessions: 4,
-              unresolved: 1,
             },
           ],
           table,
@@ -30,16 +26,44 @@ describe("InsightsRepository", () => {
     await expect(
       repository.getQualityAggregate({ uid: 9001 }),
     ).resolves.toMatchObject({
-      analyzedSessions: 3,
-      problemSessions: 2,
+      inspectionRate: 0.5,
       totalSessions: 4,
-      unresolved: 1,
     });
 
     expect(builders[0]?.table).toBe(
-      "xy_wap_embed_session_insight_current as current",
+      "xy_wap_embed_logical_session as session",
     );
+    expect(builders[0]?.joins).toContain("xy_wap_embed_session_insight_current as current");
+    expect(builders[0]?.joins).toContain("xy_wap_embed_session_insight_snapshot as snapshot");
+    expect(builders[0]?.joins).not.toContain(
+      "xy_wap_embed_session_problem_resolution as problem",
+    );
+    expect(builders[0]?.selectRawCalls.join("\n")).not.toContain("problem.");
     expect(builders[0]?.whereCalls).toContainEqual(["session.uid", "=", 9001]);
+  });
+
+  it("caps quality inspection rate when inspected sessions exceed total sessions", async () => {
+    const db = {
+      selectFrom: vi.fn((table: string) =>
+        createSelectBuilder(
+          [
+            {
+              inspected_sessions: 3,
+              passed_sessions: 1,
+              total_sessions: 2,
+            },
+          ],
+          table,
+        ),
+      ),
+    };
+    const repository = new InsightsRepository(db as never);
+
+    await expect(
+      repository.getQualityAggregate({ uid: 9001 }),
+    ).resolves.toMatchObject({
+      inspectionRate: 1,
+    });
   });
 
   it("omits disabled feature dimensions from the worker prompt context", async () => {
@@ -353,6 +377,7 @@ describe("InsightsRepository", () => {
       expect.objectContaining({
         agentSeatId: "seat-1",
         failedSessions: 1,
+        inspectionRate: 2 / 3,
         inspectedSessions: 2,
         passedSessions: 1,
         passRate: 0.5,
@@ -361,6 +386,9 @@ describe("InsightsRepository", () => {
     ]);
 
     expect(builders[0]?.groupByCalls.length).toBeGreaterThan(0);
+    expect(builders[0]?.table).toBe("xy_wap_embed_logical_session as session");
+    expect(builders[0]?.joins).toContain("xy_wap_embed_session_insight_current as current");
+    expect(builders[0]?.joins).toContain("xy_wap_embed_session_insight_snapshot as snapshot");
     expect(builders[0]?.selectRawCalls.join("\n")).toContain(
       "seat.third_avatar",
     );
@@ -388,6 +416,7 @@ describe("InsightsRepository", () => {
       {
         current_snapshot_id: 701,
         conversation_id: 301,
+        qa_status: 0,
         session_id: 501,
         started_at: 1_780_243_200_000,
         third_external_userid: "external-1",
@@ -493,6 +522,7 @@ describe("InsightsRepository", () => {
     });
 
     expect(builders[0]?.table).toBe("xy_wap_embed_logical_session as session");
+    expect(builders[0]?.joins).toContain("xy_wap_embed_session_insight_current as current");
     expect(builders[0]?.joins).toContain("xy_wap_embed_session_insight_snapshot as snapshot");
     expect(builders[0]?.joins).not.toContain(
       "xy_wap_embed_session_qa_finding as qa",
@@ -500,6 +530,7 @@ describe("InsightsRepository", () => {
     expect(builders[0]?.whereCalls).toContainEqual(["session.qa_status", "=", 0]);
     expect(builders[0]?.groupByCalls).toEqual([]);
     expect(builders[1]?.table).toBe("xy_wap_embed_logical_session as session");
+    expect(builders[1]?.joins).toContain("xy_wap_embed_session_insight_current as current");
     expect(builders[1]?.joins).toContain("xy_wap_embed_session_insight_snapshot as snapshot");
     expect(builders[1]?.joins).not.toContain(
       "xy_wap_embed_session_qa_finding as qa",
@@ -511,6 +542,8 @@ describe("InsightsRepository", () => {
       "xy_wap_embed_conversation as conversation",
     );
     expect(builders[1]?.joins).not.toContain("xy_wap_embed_user_seat as seat");
+    expect(builders[1]?.selectRawCalls.join("\n")).toContain("current.current_snapshot_id as current_snapshot_id");
+    expect(builders[1]?.selectRawCalls.join("\n")).not.toContain("session.current_snapshot_id as current_snapshot_id");
     expect(builders[1]?.whereCalls).toContainEqual(["session.qa_status", "=", 0]);
     expect(builders[1]?.whereRawCalls).toEqual([]);
     expect(builders[1]?.havingRawCalls).toEqual([]);
@@ -597,6 +630,63 @@ describe("InsightsRepository", () => {
     expect(builders[1]?.whereCalls).toContainEqual(["session.qa_status", "=", 1]);
     expect(builders[1]?.whereRawCalls).toEqual([]);
     expect(builders[1]?.havingRawCalls).toEqual([]);
+  });
+
+  it("uses session qa_status for quality result pass state", async () => {
+    const builders: SelectBuilderStub[] = [];
+    let currentSelectCount = 0;
+    const db = {
+      selectFrom: vi.fn((table: unknown) => {
+        const tableName = typeof table === "string" ? table : "derived";
+        let rows: unknown[] = [];
+
+        if (tableName === "xy_wap_embed_logical_session as session") {
+          currentSelectCount += 1;
+          rows = currentSelectCount === 1
+            ? [{ total_count: 1 }]
+            : [
+                {
+                  current_snapshot_id: 701,
+                  conversation_id: 301,
+                  qa_status: 0,
+                  session_id: 501,
+                  started_at: 1_780_243_200_000,
+                  third_external_userid: "external-1",
+                  third_userid: "agent-1",
+                },
+              ];
+        }
+
+        if (tableName === "xy_wap_embed_session_qa_finding") {
+          rows = [
+            {
+              passed: 1,
+              qa_finding_id: 9001,
+              rule_code: "clear_next_step",
+              rule_name: "明确下一步",
+              snapshot_id: 701,
+            },
+          ];
+        }
+
+        const builder = createSelectBuilder(rows, tableName);
+        builders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new InsightsRepository(db as never);
+
+    await expect(
+      repository.listQualityResults({ uid: 9001 }, { passed: false }),
+    ).resolves.toMatchObject({
+      items: [
+        {
+          passed: false,
+          passedRules: 1,
+          totalRules: 1,
+        },
+      ],
+    });
   });
 
   it("lists only inspected quality sessions when pass filter is omitted", async () => {
@@ -1154,100 +1244,6 @@ describe("InsightsRepository", () => {
     expect(builders[1]?.table).toBe("xy_wap_embed_logical_session as session");
   });
 
-  it("loads action-item evidence with a bounded follow-up query", async () => {
-    const builders: SelectBuilderStub[] = [];
-    const rowsByTable = new Map<string, unknown[]>([
-      [
-        "xy_wap_embed_session_action_item as action",
-        [
-          {
-            action_id: 801,
-            action_status: "open",
-            action_type: "follow_up",
-            conversation_id: 301,
-            created_at: 1_780_244_000_000,
-            priority: "high",
-            resolution_status: "unresolved",
-            session_id: 201,
-            snapshot_id: 501,
-            third_external_userid: "external-1",
-            title: "催物流",
-          },
-          {
-            action_id: 802,
-            action_status: "open",
-            action_type: "follow_up",
-            conversation_id: 301,
-            created_at: 1_780_243_000_000,
-            priority: "medium",
-            resolution_status: "unresolved",
-            session_id: 202,
-            snapshot_id: 502,
-            title: "其它逻辑会话待办",
-          },
-        ],
-      ],
-      ["xy_wap_embed_conversation", []],
-    ]);
-    const db = {
-      selectFrom: vi.fn((table: string) => {
-        const builder = createSelectBuilder(
-          rowsByTable.get(table) ?? [],
-          table,
-        );
-        builders.push(builder);
-        return builder;
-      }),
-    };
-    const repository = new InsightsRepository(db as never);
-
-    await expect(
-      repository.listActionItems({ uid: 9001 }),
-    ).resolves.toMatchObject([
-      {
-        actionItemId: "801",
-        createdAt: 1_780_244_000_000,
-      },
-      {
-        actionItemId: "802",
-        createdAt: 1_780_243_000_000,
-      },
-    ]);
-
-    const mainQuery = builders[0];
-    expect(mainQuery.whereCalls).toContainEqual(["action.uid", "=", 9001]);
-    expect(mainQuery.whereCalls).not.toContainEqual(["session.uid", "=", 9001]);
-    expect(mainQuery.joins).not.toContain(
-      "xy_wap_embed_insight_evidence as evidence",
-    );
-    expect(mainQuery.joins).not.toContain(
-      "xy_wap_embed_msg_audit_info as message",
-    );
-    expect(builders).not.toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          table: "xy_wap_embed_insight_evidence as evidence",
-        }),
-      ]),
-    );
-  });
-
-  it("caps action item rows before evidence hydration", async () => {
-    const builders: SelectBuilderStub[] = [];
-    const db = {
-      selectFrom: vi.fn((table: string) => {
-        const builder = createSelectBuilder([], table);
-        builders.push(builder);
-        return builder;
-      }),
-    };
-    const repository = new InsightsRepository(db as never);
-
-    await repository.listActionItems({ uid: 9001 });
-
-    expect(builders[0]?.limitCalls).toContain(1000);
-  });
-
   it("paginates action items before evidence hydration", async () => {
     const builders: SelectBuilderStub[] = [];
     const rowsByTable = new Map<string, unknown[]>([
@@ -1507,9 +1503,9 @@ describe("InsightsRepository", () => {
     };
     const repository = new InsightsRepository(db as never);
 
-    const analytics = await repository.getBusinessAssetTopicAnalytics(
+    const analytics = await repository.getBusinessTopicAnalytics(
       { uid: 9001 },
-      { from: "2026-06-01", to: "2026-06-02" },
+      { dimension: "asset", from: "2026-06-01", to: "2026-06-02" },
     );
 
     expect(analytics.topics).toEqual([
@@ -1595,7 +1591,7 @@ describe("InsightsRepository", () => {
     const repository = new InsightsRepository(db as never);
 
     await expect(
-      repository.getBusinessAssetTopicAnalytics({ uid: 9001 }, {}),
+      repository.getBusinessTopicAnalytics({ uid: 9001 }, { dimension: "asset" }),
     ).resolves.toEqual(
       expect.objectContaining({
         topics: [
@@ -2091,13 +2087,9 @@ describe("InsightsRepository", () => {
   });
 
   it("updates an action item back to open status", async () => {
-    let selectBuilder: SelectBuilderStub | undefined;
     let updateBuilder: UpdateBuilderStub | undefined;
     const db = {
-      selectFrom: vi.fn(() => {
-        selectBuilder = createSelectBuilder([{ uid: 9001 }]);
-        return selectBuilder;
-      }),
+      selectFrom: vi.fn(),
       updateTable: vi.fn(() => {
         updateBuilder = createUpdateBuilder(async () => ({
           numAffectedRows: 1n,
@@ -2111,15 +2103,16 @@ describe("InsightsRepository", () => {
       repository.updateActionStatus({ uid: 9001 }, "801", "open"),
     ).resolves.toBe(true);
 
-    expect(selectBuilder?.whereCalls).not.toContainEqual([
-      "action.status",
-      "=",
-      "open",
-    ]);
+    expect(db.selectFrom).not.toHaveBeenCalled();
     expect(updateBuilder?.setCalls[0]).toEqual(
-      expect.objectContaining({ status: "open" }),
+      expect.objectContaining({
+        completed_at: null,
+        dismissed_at: null,
+        status: "open",
+      }),
     );
     expect(updateBuilder?.whereCalls).toContainEqual(["id", "=", 801]);
+    expect(updateBuilder?.whereCalls).toContainEqual(["uid", "=", 9001]);
     expect(updateBuilder?.whereCalls).toContainEqual([
       "status",
       "in",
@@ -2132,11 +2125,44 @@ describe("InsightsRepository", () => {
     ]);
   });
 
-  it("does not update an action item outside the current uid scope", async () => {
-    const updateExecute = vi.fn(async () => ({ numAffectedRows: 1n }));
+  it("writes terminal timestamps when completing or dismissing action items", async () => {
+    const setCalls: Array<Record<string, unknown>> = [];
     const db = {
-      selectFrom: vi.fn(() => createSelectBuilder([])),
-      updateTable: vi.fn(() => createUpdateBuilder(updateExecute)),
+      updateTable: vi.fn(() =>
+        createUpdateBuilder(async () => ({ numAffectedRows: 1n }), {
+          onSet: (values) => setCalls.push(values),
+        })
+      ),
+    };
+    const repository = new InsightsRepository(db as never);
+
+    await expect(
+      repository.updateActionStatus({ uid: 9001 }, "801", "done"),
+    ).resolves.toBe(true);
+    await expect(
+      repository.updateActionStatus({ uid: 9001 }, "801", "dismissed"),
+    ).resolves.toBe(true);
+
+    expect(setCalls[0]).toMatchObject({
+      dismissed_at: null,
+      status: "done",
+    });
+    expect(setCalls[0]?.completed_at).toBeInstanceOf(Date);
+    expect(setCalls[1]).toMatchObject({
+      completed_at: null,
+      status: "dismissed",
+    });
+    expect(setCalls[1]?.dismissed_at).toBeInstanceOf(Date);
+  });
+
+  it("does not update an action item outside the current uid scope", async () => {
+    let updateBuilder: UpdateBuilderStub | undefined;
+    const db = {
+      selectFrom: vi.fn(),
+      updateTable: vi.fn(() => {
+        updateBuilder = createUpdateBuilder(async () => ({ numAffectedRows: 0n }));
+        return updateBuilder;
+      }),
     };
     const repository = new InsightsRepository(db as never);
 
@@ -2144,7 +2170,9 @@ describe("InsightsRepository", () => {
       repository.updateActionStatus({ uid: 9001 }, "801", "done"),
     ).resolves.toBe(false);
 
-    expect(updateExecute).not.toHaveBeenCalled();
+    expect(db.selectFrom).not.toHaveBeenCalled();
+    expect(updateBuilder?.whereCalls).toContainEqual(["id", "=", 801]);
+    expect(updateBuilder?.whereCalls).toContainEqual(["uid", "=", 9001]);
   });
 
   it("inserts manual action items as session todos without snapshot ownership", async () => {
@@ -2379,28 +2407,153 @@ describe("InsightsRepository", () => {
     );
   });
 
-  it("builds business intent facts from snapshot labels without joining current configs", async () => {
+  it("aggregates business tag analytics in SQL without fact-row truncation", async () => {
     const builders: SelectBuilderStub[] = [];
     const db = {
       selectFrom: vi.fn((table: string) => {
-        const builder = createSelectBuilder([], table);
+        const rows = builders.length === 0
+          ? [
+              {
+                mention_count: 5,
+                name: "退款咨询",
+                session_count: 3,
+                topic_id: 21,
+              },
+            ]
+          : builders.length === 1
+            ? [
+                {
+                  date: "2026-06-01",
+                  mention_count: 5,
+                  session_count: 3,
+                },
+              ]
+            : [
+                {
+                  mention_count: 8,
+                  session_count: 4,
+                },
+              ];
+        const builder = createSelectBuilder(rows, table);
         builders.push(builder);
         return builder;
       }),
     };
     const repository = new InsightsRepository(db as never);
 
-    await repository.listBusinessTopicFacts({ uid: 9001 }, { dimension: "intent" });
+    const analytics = await repository.getBusinessTopicAnalytics(
+      { uid: 9001 },
+      { dimension: "tag", from: "2026-06-01", to: "2026-06-02" },
+    );
+
+    expect(analytics.topics).toEqual([
+      {
+        code: "21",
+        dimension: "tag",
+        mentionCount: 5,
+        name: "退款咨询",
+        sessionCount: 3,
+        share: 3 / 4,
+        type: undefined,
+      },
+    ]);
+    expect(analytics.totals).toEqual({
+      mentionCount: 8,
+      topicSessions: 4,
+    });
+    expect(analytics.trend).toEqual([
+      {
+        assetMentions: 0,
+        date: "2026-06-01",
+        entityMentions: 0,
+        intentMentions: 0,
+        tagMentions: 5,
+        topicSessions: 3,
+      },
+    ]);
+
+    const topicQuery = builders[0];
+    expect(topicQuery?.table).toBe("xy_wap_embed_logical_session as session");
+    expect(topicQuery?.joins).toContain("xy_wap_embed_session_insight_current as current");
+    expect(topicQuery?.joins).toContain("xy_wap_embed_session_tag as topic");
+    expect(topicQuery?.whereCalls).toContainEqual(["session.uid", "=", 9001]);
+    expect(topicQuery?.whereCalls).toContainEqual(["topic.uid", "=", 9001]);
+    expect(topicQuery?.whereCalls).toContainEqual([
+      "session.started_at",
+      ">=",
+      1_780_272_000_000,
+    ]);
+    expect(topicQuery?.whereCalls).toContainEqual([
+      "session.started_at",
+      "<=",
+      1_780_358_400_000,
+    ]);
+    expect(topicQuery?.selectRawCalls.join("\n")).toContain("count(topic.id)");
+    expect(topicQuery?.selectRawCalls.join("\n")).toContain("count(distinct session.id)");
+    expect(topicQuery?.orderByCalls.map(readRawSql).join("\n")).toContain("count(distinct session.id)");
+    expect(topicQuery?.limitCalls).toEqual([10]);
+    expect(topicQuery?.limitCalls).not.toContain(500);
+  });
+
+  it("aggregates business intent trend in SQL without joining current configs", async () => {
+    const builders: SelectBuilderStub[] = [];
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        const rows = builders.length === 0
+          ? [
+              {
+                mention_count: 4,
+                name: "物流异常",
+                session_count: 2,
+                topic_id: 31,
+              },
+            ]
+          : builders.length === 3
+            ? [
+                {
+                  date: "2026-06-01",
+                  intent_id: 31,
+                  intent_name: "物流异常",
+                  session_count: 2,
+                },
+              ]
+            : [];
+        const builder = createSelectBuilder(rows, table);
+        builders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new InsightsRepository(db as never);
+
+    const analytics = await repository.getBusinessTopicAnalytics(
+      { uid: 9001 },
+      { dimension: "intent" },
+    );
 
     const intentQuery = builders.find(
-      (builder) => builder.table === "xy_wap_embed_session_intent as intent",
+      (builder) => builder.joins.includes("xy_wap_embed_session_intent as topic"),
     );
     expect(intentQuery?.joins).not.toContain(
       "xy_wap_embed_insight_intent_config as intent_config",
     );
     expect(intentQuery?.selectRawCalls.join("\n")).toContain(
-      "intent.intent_label as name",
+      "topic.intent_label as name",
     );
+    expect(intentQuery?.limitCalls).toEqual([20]);
+    const intentTrendQuery = builders[3];
+    expect(intentTrendQuery?.whereCalls).toContainEqual([
+      "topic.intent_id",
+      "in",
+      [31],
+    ]);
+    expect(analytics.intentTrend).toEqual([
+      {
+        date: "2026-06-01",
+        intentId: "31",
+        intentName: "物流异常",
+        sessionCount: 2,
+      },
+    ]);
   });
 
   it("aggregates QA finding names from stored snapshot values", async () => {
@@ -2415,6 +2568,10 @@ describe("InsightsRepository", () => {
     const repository = new InsightsRepository(db as never);
 
     await repository.getQaFindingAggregate({ uid: 9001 });
+
+    expect(builders[0]?.table).toBe("xy_wap_embed_logical_session as session");
+    expect(builders[0]?.joins).toContain("xy_wap_embed_session_insight_current as current");
+    expect(builders[0]?.joins).toContain("xy_wap_embed_session_insight_snapshot as snapshot");
 
     expect(
       builders.some((builder) =>
@@ -5028,6 +5185,7 @@ function createSelectBuilder(rows: unknown[], table = "") {
     whereRawCalls: [] as string[],
     selectRawCalls: [] as string[],
     whereCalls: [] as unknown[][],
+    whereRefCalls: [] as unknown[][],
     $call: (callback: (query: typeof builder) => typeof builder) =>
       callback(builder),
     execute: async () => rows,
@@ -5104,7 +5262,10 @@ function createSelectBuilder(rows: unknown[], table = "") {
       builder.whereCalls.push(args);
       return builder;
     },
-    whereRef: () => builder,
+    whereRef: (...args: unknown[]) => {
+      builder.whereRefCalls.push(args);
+      return builder;
+    },
   };
 
   return builder;

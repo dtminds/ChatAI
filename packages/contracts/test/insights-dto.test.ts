@@ -21,6 +21,7 @@ import {
   InsightsFollowUpsResponseSchema,
   InsightsOverviewResponseSchema,
   InsightsQualityAgentStatsResponseSchema,
+  InsightsQualityOverviewSchema,
   InsightsQualityOverviewResponseSchema,
   InsightsQualityResultsResponseSchema,
   InsightsRescanRequestSchema,
@@ -166,25 +167,20 @@ describe("insights DTOs", () => {
 
   it("accepts split quality responses with required blocks", () => {
     const overview = {
-      analyzedSessions: 9,
       inspectedSessions: 8,
       inspectionRate: 0.8,
-      noCustomerProblem: 2,
-      partial: 1,
       passRate: 0.75,
-      problemSessions: 7,
-      resolved: 5,
       ruleDistribution: [
         { count: 2, ruleCode: "reply_quality", ruleName: "回复质量" },
       ],
       totalSessions: 10,
-      unresolved: 1,
     };
     const agentStats = [
       {
         agentName: "客服一号",
         agentSeatId: "101",
         failedSessions: 2,
+        inspectionRate: 0.75,
         inspectedSessions: 6,
         passedSessions: 4,
         totalSessions: 8,
@@ -225,7 +221,13 @@ describe("insights DTOs", () => {
     };
 
     expect(Value.Check(InsightsQualityOverviewResponseSchema, { overview })).toBe(true);
+    expect(InsightsQualityOverviewSchema.properties).not.toHaveProperty("analyzedSessions");
     expect(Value.Check(InsightsQualityAgentStatsResponseSchema, { agentStats })).toBe(true);
+    expect(
+      Value.Check(InsightsQualityAgentStatsResponseSchema, {
+        agentStats: agentStats.map(({ inspectionRate: _inspectionRate, ...item }) => item),
+      }),
+    ).toBe(false);
     expect(Value.Check(InsightsQualityResultsResponseSchema, { qualityResultsPage, qualityResults })).toBe(true);
   });
 

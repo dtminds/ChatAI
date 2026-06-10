@@ -84,7 +84,6 @@ export type InsightBusinessRelatedSessionsQuery = Pick<
 > & {
   dimension: InsightBusinessTopicsResponse["dimension"];
   topicCode: string;
-  topicType?: string;
 };
 
 export type InsightBusinessTopicsQuery = Pick<

@@ -185,7 +185,6 @@ export type InsightOverviewSessionFilters = {
 export type InsightsBusinessRelatedSessionFilters = Pick<InsightsOverviewFilters, "from" | "page" | "pageSize" | "to"> & {
   dimension: InsightBusinessTopicsResponse["dimension"];
   topicCode: string;
-  topicType?: string;
 };
 
 export type InsightRescanTaskRow = {
@@ -215,21 +214,9 @@ export type InsightOverviewAggregateRow = Omit<
   "comparison" | "sessions"
 >;
 
-export type InsightBusinessTopicFactRow = {
-  dimension: InsightBusinessTopicsResponse["dimension"];
-  mentionCount: number;
-  name: string;
-  sentiment?: string | null;
-  sessionId: string;
-  snapshotId: string;
-  startedAt: number;
-  topicId: string;
-  type?: string | null;
-};
-
-export type InsightBusinessAssetTopicAnalytics = Pick<
+export type InsightBusinessTopicAnalytics = Pick<
   InsightBusinessTopicsResponse,
-  "topics" | "totals" | "trend"
+  "intentTrend" | "topics" | "totals" | "trend"
 >;
 
 export type InsightQualityAggregateRow = InsightsQualityOverviewResponse["overview"];
@@ -261,11 +248,7 @@ export type InsightsRepositoryPort = {
   ): Promise<{ jobId: string; taskId: string }>;
   findDetail(scope: InsightsUidScope, sessionId: string): Promise<InsightDetailRow | undefined>;
   hasSession(scope: InsightsUidScope, sessionId: string): Promise<boolean>;
-  listActionItems(
-    scope: InsightsUidScope,
-    filters?: InsightsFollowUpFilters,
-  ): Promise<InsightActionItemRow[]>;
-  listActionItemsPage?(
+  listActionItemsPage(
     scope: InsightsUidScope,
     filters?: InsightsFollowUpFilters,
   ): Promise<InsightActionItemPage>;
@@ -299,14 +282,10 @@ export type InsightsRepositoryPort = {
     scope: InsightsUidScope,
     filters?: InsightsOverviewFilters,
   ): Promise<InsightOverviewAggregateRow>;
-  listBusinessTopicFacts?(
-    scope: InsightsUidScope,
-    filters?: InsightsBusinessTopicFilters | InsightsOverviewFilters,
-  ): Promise<InsightBusinessTopicFactRow[]>;
-  getBusinessAssetTopicAnalytics?(
+  getBusinessTopicAnalytics?(
     scope: InsightsUidScope,
     filters: InsightsBusinessTopicFilters,
-  ): Promise<InsightBusinessAssetTopicAnalytics>;
+  ): Promise<InsightBusinessTopicAnalytics>;
   listBusinessRelatedSessions?(
     scope: InsightsUidScope,
     filters: InsightsBusinessRelatedSessionFilters,
@@ -426,13 +405,6 @@ export type InsightsRepositoryPort = {
   ): Promise<InsightEntityDictionaryItem | undefined>;
   deleteEntityDictionaryItem(scope: InsightsUidScope, id: string): Promise<boolean>;
 };
-
-const unresolvedStatuses = new Set<InsightResolutionStatus>([
-  "unresolved",
-  "partially_resolved",
-]);
-
-const analyzedStatuses = new Set<InsightAnalysisStatus>(["ready", "partial"]);
 
 const analysisStatuses: InsightAnalysisStatus[] = [
   "ready",
@@ -569,36 +541,19 @@ export class InsightsService {
       ? withAssetBusinessDateRange(filters)
       : withDefaultOverviewDateRange(filters);
 
-    if (filters.dimension === "asset") {
-      const analytics = await this.repository.getBusinessAssetTopicAnalytics?.(scope, boundedFilters) ?? {
-        topics: [],
-        totals: {
-          mentionCount: 0,
-          topicSessions: 0,
-        },
-        trend: [],
-      };
-
-      return {
-        dimension: filters.dimension,
-        intentTrend: [],
-        ...analytics,
-      };
-    }
-
-    const facts = await this.repository.listBusinessTopicFacts?.(scope, boundedFilters) ?? [];
-    const topicCollections = buildBusinessTopicCollections(facts);
-    const topics = getBusinessTopicsByDimension(topicCollections, filters.dimension);
+    const analytics = await this.repository.getBusinessTopicAnalytics?.(scope, boundedFilters) ?? {
+      intentTrend: [],
+      topics: [],
+      totals: {
+        mentionCount: 0,
+        topicSessions: 0,
+      },
+      trend: [],
+    };
 
     return {
       dimension: filters.dimension,
-      intentTrend: filters.dimension === "intent" ? buildBusinessIntentTrend(facts) : [],
-      topics,
-      totals: {
-        mentionCount: sumTopicMentions(topics),
-        topicSessions: new Set(facts.map((fact) => fact.sessionId)).size,
-      },
-      trend: buildBusinessTrend(facts),
+      ...analytics,
     };
   }
 
@@ -640,41 +595,19 @@ export class InsightsService {
   ): Promise<InsightsFollowUpsResponse> {
     const normalizedPage = normalizeOverviewPage(filters.page);
     const normalizedPageSize = normalizeOverviewPageSize(filters.pageSize);
-    const pageResult = await this.repository.listActionItemsPage?.(scope, {
+    const pageResult = await this.repository.listActionItemsPage(scope, {
       ...filters,
       page: normalizedPage,
       pageSize: normalizedPageSize,
     });
 
-    if (pageResult) {
-      return {
-        items: pageResult.items
-          .map(stripActionItemInternalFields),
-        page: normalizedPage,
-        pageSize: normalizedPageSize,
-        total: pageResult.total,
-        totalPages: Math.max(1, Math.ceil(pageResult.total / normalizedPageSize)),
-      };
-    }
-
-    const rows = await this.repository.listActionItems(scope, filters);
-    const filteredItems = rows
-      .filter((row) => matchesActionStatusFilter(row.status, filters.status))
-      .filter((row) => !filters.priority || row.priority === filters.priority)
-      .sort(compareActionItems)
-      .map(stripActionItemInternalFields);
-    const total = filteredItems.length;
-    const items = filteredItems.slice(
-      (normalizedPage - 1) * normalizedPageSize,
-      normalizedPage * normalizedPageSize,
-    );
-
     return {
-      items,
+      items: pageResult.items
+        .map(stripActionItemInternalFields),
       page: normalizedPage,
       pageSize: normalizedPageSize,
-      total,
-      totalPages: Math.max(1, Math.ceil(total / normalizedPageSize)),
+      total: pageResult.total,
+      totalPages: Math.max(1, Math.ceil(pageResult.total / normalizedPageSize)),
     };
   }
 
@@ -1366,35 +1299,13 @@ function buildOverviewSessions(rows: InsightCurrentSessionRow[]) {
     }));
 }
 
-function requiresHumanIntervention(
-  value: InsightCurrentSessionRow | InsightResolutionStatus,
-) {
-  const status = typeof value === "string" ? value : value.resolutionStatus;
-
-  return unresolvedStatuses.has(status);
-}
-
-function isCustomerProblemSession(row: InsightCurrentSessionRow) {
-  return row.problemDetected &&
-    row.resolutionStatus !== "no_customer_problem" &&
-    row.resolutionStatus !== "unknown";
-}
-
 function buildQualityOverview(rows: InsightCurrentSessionRow[]): InsightQualityAggregateRow {
   return {
-    analyzedSessions: rows.filter((row) => analyzedStatuses.has(row.analysisStatus)).length,
     inspectedSessions: 0,
     inspectionRate: 0,
-    noCustomerProblem: rows.filter(
-      (row) => row.resolutionStatus === "no_customer_problem",
-    ).length,
-    partial: rows.filter((row) => row.resolutionStatus === "partially_resolved").length,
     passRate: 0,
-    problemSessions: rows.filter(isCustomerProblemSession).length,
-    resolved: rows.filter((row) => row.resolutionStatus === "resolved").length,
     ruleDistribution: [],
     totalSessions: rows.length,
-    unresolved: rows.filter((row) => row.resolutionStatus === "unresolved").length,
   };
 }
 
@@ -1408,203 +1319,6 @@ function stripDetailActionItemInternalFields(row: InsightDetailActionItemRow): I
   const { resolutionStatus: _resolutionStatus, thirdExternalUserId: _thirdExternalUserId, ...item } = row;
 
   return item;
-}
-
-type BusinessTopicAccumulator = {
-  dimension: InsightBusinessTopicsResponse["topics"][number]["dimension"];
-  mentionCount: number;
-  name: string;
-  sessions: Set<string>;
-  topicId: string;
-  type?: string;
-};
-
-function buildBusinessTopicCollections(facts: InsightBusinessTopicFactRow[]) {
-  const accumulators = new Map<string, BusinessTopicAccumulator>();
-
-  for (const fact of facts) {
-    const key = `${fact.dimension}:${fact.topicId}:${fact.type ?? ""}`;
-    const accumulator = accumulators.get(key) ?? {
-      dimension: fact.dimension,
-      mentionCount: 0,
-      name: fact.name,
-      sessions: new Set<string>(),
-      topicId: fact.topicId,
-      type: fact.type ?? undefined,
-    };
-
-    accumulator.mentionCount += fact.mentionCount;
-    accumulator.sessions.add(fact.sessionId);
-
-    accumulators.set(key, accumulator);
-  }
-
-  const totalTopicSessions = new Set(facts.map((fact) => fact.sessionId)).size;
-  const topics = Array.from(accumulators.values())
-    .map((topic) => mapBusinessTopic(topic, totalTopicSessions))
-    .sort(compareBusinessTopics);
-
-  return {
-    entityHotspots: topics.filter((topic) => topic.dimension === "entity").slice(0, 12),
-    intentDistribution: topics.filter((topic) => topic.dimension === "intent").slice(0, 12),
-    tagDistribution: topics.filter((topic) => topic.dimension === "tag").slice(0, 12),
-  };
-}
-
-function getBusinessTopicsByDimension(
-  collections: ReturnType<typeof buildBusinessTopicCollections>,
-  dimension: InsightBusinessTopicFactRow["dimension"],
-) {
-  if (dimension === "entity") {
-    return collections.entityHotspots;
-  }
-
-  if (dimension === "intent") {
-    return collections.intentDistribution;
-  }
-
-  return collections.tagDistribution;
-}
-
-function mapBusinessTopic(
-  topic: BusinessTopicAccumulator,
-  totalTopicSessions: number,
-): InsightBusinessTopicsResponse["topics"][number] {
-  const sessionCount = topic.sessions.size;
-
-  return {
-    code: topic.topicId,
-    dimension: topic.dimension,
-    mentionCount: topic.mentionCount,
-    name: topic.name,
-    sessionCount,
-    share: totalTopicSessions > 0 ? sessionCount / totalTopicSessions : 0,
-    type: topic.type,
-  };
-}
-
-function compareBusinessTopics(
-  left: InsightBusinessTopicsResponse["topics"][number],
-  right: InsightBusinessTopicsResponse["topics"][number],
-) {
-  return right.sessionCount - left.sessionCount ||
-    right.mentionCount - left.mentionCount ||
-    left.name.localeCompare(right.name, "zh-CN");
-}
-
-function sumTopicMentions(topics: InsightBusinessTopicsResponse["topics"]) {
-  return topics.reduce((total, topic) => total + topic.mentionCount, 0);
-}
-
-function buildBusinessTrend(facts: InsightBusinessTopicFactRow[]) {
-  const trend = new Map<
-    string,
-    InsightBusinessTopicsResponse["trend"][number] & {
-      topicSessionIds: Set<string>;
-    }
-  >();
-
-  for (const fact of facts) {
-    const date = formatDateKey(fact.startedAt);
-    const point = getBusinessTrendPoint(trend, date);
-
-    point.topicSessionIds.add(fact.sessionId);
-
-    if (fact.dimension === "tag") {
-      point.tagMentions += fact.mentionCount;
-    }
-
-    if (fact.dimension === "entity") {
-      point.entityMentions += fact.mentionCount;
-    }
-
-    if (fact.dimension === "intent") {
-      point.intentMentions += fact.mentionCount;
-    }
-
-    if (fact.dimension === "asset") {
-      point.assetMentions += fact.mentionCount;
-    }
-
-  }
-
-  return Array.from(trend.entries())
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([, point]) => ({
-      date: point.date,
-      assetMentions: point.assetMentions,
-      entityMentions: point.entityMentions,
-      intentMentions: point.intentMentions,
-      tagMentions: point.tagMentions,
-      topicSessions: point.topicSessionIds.size,
-    }));
-}
-
-function getBusinessTrendPoint(
-  trend: Map<
-    string,
-    InsightBusinessTopicsResponse["trend"][number] & {
-      topicSessionIds: Set<string>;
-    }
-  >,
-  date: string,
-) {
-  const point = trend.get(date) ?? {
-    assetMentions: 0,
-    date,
-    entityMentions: 0,
-    intentMentions: 0,
-    tagMentions: 0,
-    topicSessions: 0,
-    topicSessionIds: new Set<string>(),
-  };
-
-  trend.set(date, point);
-
-  return point;
-}
-
-function buildBusinessIntentTrend(facts: InsightBusinessTopicFactRow[]) {
-  const trend = new Map<
-    string,
-    {
-      date: string;
-      intentId: string;
-      intentName: string;
-      sessionIds: Set<string>;
-    }
-  >();
-
-  for (const fact of facts) {
-    if (fact.dimension !== "intent") {
-      continue;
-    }
-
-    const date = formatDateKey(fact.startedAt);
-    const key = `${date}:${fact.topicId}`;
-    const point = trend.get(key) ?? {
-      date,
-      intentId: fact.topicId,
-      intentName: fact.name,
-      sessionIds: new Set<string>(),
-    };
-
-    point.sessionIds.add(fact.sessionId);
-    trend.set(key, point);
-  }
-
-  return Array.from(trend.values())
-    .sort((left, right) =>
-      left.date.localeCompare(right.date) ||
-      left.intentName.localeCompare(right.intentName, "zh-CN") ||
-      left.intentId.localeCompare(right.intentId),
-    )
-    .map((point) => ({
-      date: point.date,
-      intentId: point.intentId,
-      intentName: point.intentName,
-      sessionCount: point.sessionIds.size,
-    }));
 }
 
 function formatDateKey(value: number) {
@@ -1732,36 +1446,6 @@ function getDefaultOverviewDateRange() {
     from: formatDateKey(from.getTime()),
     to: formatDateKey(today.getTime()),
   };
-}
-
-function compareActionItems(left: InsightActionItemRow, right: InsightActionItemRow) {
-  return compareNumericIdDesc(left.actionItemId, right.actionItemId);
-}
-
-function matchesActionStatusFilter(
-  status: InsightActionItemRow["status"],
-  filter?: InsightsFollowUpFilters["status"],
-) {
-  if (!filter) {
-    return true;
-  }
-
-  if (filter === "processed") {
-    return status === "done" || status === "dismissed";
-  }
-
-  return status === filter;
-}
-
-function compareNumericIdDesc(left: string, right: string) {
-  const leftId = Number(left);
-  const rightId = Number(right);
-
-  if (Number.isFinite(leftId) && Number.isFinite(rightId)) {
-    return rightId - leftId;
-  }
-
-  return right.localeCompare(left);
 }
 
 function sortWorkbenchMessagesBySeq(rows: WorkbenchMessageDto[]) {

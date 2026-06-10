@@ -214,7 +214,7 @@ export function InsightsQualityPage() {
               data-testid="quality-metric-grid"
             >
               <Stat label="会话数" value={overview?.totalSessions} />
-              <Stat label="质检会话数" value={overview?.inspectedSessions ?? overview?.analyzedSessions} />
+              <Stat label="质检会话数" value={overview?.inspectedSessions} />
               <Stat label="质检覆盖率" value={overview?.inspectionRate} format="percent" />
               <Stat label="质检通过率" value={overview?.passRate} format="percent" />
             </div>
@@ -572,7 +572,7 @@ function AgentReportTable({
                   <TableCell className="px-5 py-4">{row.totalSessions}</TableCell>
                   <TableCell className="px-5 py-4">{row.inspectedSessions}</TableCell>
                   <TableCell className="px-5 py-4">
-                    {formatPercent(row.totalSessions > 0 ? row.inspectedSessions / row.totalSessions : 0)}
+                    {formatPercent(row.inspectionRate)}
                   </TableCell>
                   <TableCell className="px-5 py-4">{row.passedSessions}</TableCell>
                   <TableCell className="px-5 py-4">{row.failedSessions}</TableCell>

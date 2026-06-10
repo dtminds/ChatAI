@@ -114,7 +114,6 @@ const BusinessRelatedSessionsQuerySchema = Type.Intersect([
       Type.Literal("tag"),
     ]),
     topicCode: Type.String({ minLength: 1 }),
-    topicType: Type.Optional(Type.String()),
   }),
 ]);
 
@@ -1017,7 +1016,6 @@ function normalizeBusinessRelatedSessionsQuery(
     page: normalizePositiveQueryNumber(query.page),
     pageSize: normalizePositiveQueryNumber(query.pageSize),
     topicCode: query.topicCode,
-    topicType: query.topicType,
     to: query.to,
   };
 }

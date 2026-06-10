@@ -107,6 +107,7 @@ DROP TABLE IF EXISTS xy_wap_embed_session_risk;
   - `xy_wap_embed_insight_evidence.idx_evidence_session_message`, `idx_evidence_conversation_message`, and `idx_evidence_source_message`, because current evidence reads use snapshot/dimension or uid/session/snapshot lookups.
   - `xy_wap_embed_logical_session.idx_logical_session_status_time`, replaced by `idx_logical_session_status_next_close` for close scans.
   - `xy_wap_embed_session_tag.idx_tag_code`, `xy_wap_embed_session_entity.idx_session_entity_identity`, and `xy_wap_embed_session_intent.idx_session_intent_code`, replaced by uid-prefixed result-table indexes after filter joins were made uid-scoped.
+  - `xy_wap_embed_session_action_item.idx_action_status_priority`, because follow-up and worker action-item queries are tenant-scoped and use uid-prefixed indexes.
 
 Manual migration for existing databases:
 
@@ -118,6 +119,9 @@ ALTER TABLE xy_wap_embed_insight_evidence
   DROP KEY idx_evidence_session_message,
   DROP KEY idx_evidence_conversation_message,
   DROP KEY idx_evidence_source_message;
+
+ALTER TABLE xy_wap_embed_session_action_item
+  DROP KEY idx_action_status_priority;
 
 ALTER TABLE xy_wap_embed_logical_session
   DROP KEY idx_logical_session_status_time;

@@ -1,10 +1,8 @@
 # ChatAI
 
-AI 客服工作台项目。当前仓库已经调整为 pnpm workspace，用一个仓库同时承载前端应用、Node 后端服务和共享接口契约。
+仓库已经调整为 pnpm workspace，用一个仓库同时承载前端应用、Node 后端服务和共享接口契约。
 
 ## 当前范围
-
-现阶段优先把客服工作台的骨架、状态模型、API 接入点和后端替换边界搭稳。核心入口仍然是：
 
 - 前端页面：`/chat`
 - 浏览器 API 前缀：`/api/server/*`
@@ -85,13 +83,7 @@ pnpm dev
 访问：
 
 ```text
-http://chat-dev.bokr.com.cn:8086/chat
-```
-
-如果本机没有绑定域名，先在 hosts 里加：
-
-```text
-127.0.0.1 chat-dev.bokr.com.cn
+http://localhost:8086/chat
 ```
 
 ### 3. 本地前端连测试环境 API
@@ -100,7 +92,7 @@ http://chat-dev.bokr.com.cn:8086/chat
 pnpm dev:test-api
 ```
 
-这个模式下，前端仍然请求同源 `/api/server/*`，Vite dev proxy 会把请求转发到 `https://chat-test.bork.com.cn`。
+这个模式下，前端仍然请求同源 `/api/server/*`，Vite dev proxy 会把请求转发到 `测试环境`。
 
 ## 常用命令
 
@@ -149,7 +141,7 @@ Backend 使用 `kysely-codegen` 从 `apps/backend/.env.local` 的 `DATABASE_URL`
 ```json
 {
   "tables": [
-    "xy_wap_embed_user_relation"
+    "..."
   ]
 }
 ```
@@ -169,7 +161,7 @@ pnpm backend:db:codegen
 如果临时验证某张表，也可以用命令行参数覆盖配置：
 
 ```bash
-pnpm backend:db:codegen -- xy_wap_embed_user_relation
+pnpm backend:db:codegen -- table_name
 ```
 
 ## API 约定
@@ -200,20 +192,9 @@ pnpm backend:db:codegen -- xy_wap_embed_user_relation
 ## 关键文件
 
 - 腾讯云容器部署指南：[docs/deployment/tencent-cloud-containers.md](docs/deployment/tencent-cloud-containers.md)
-- 工作台设计：[docs/superpowers/specs/2026-04-19-chat-workbench-design.md](docs/superpowers/specs/2026-04-19-chat-workbench-design.md)
-- Backend 架构设计：[docs/superpowers/specs/2026-05-08-backend-architecture-design.md](docs/superpowers/specs/2026-05-08-backend-architecture-design.md)
 - Web 请求封装：[apps/web/src/lib/request.ts](apps/web/src/lib/request.ts)
 - Web 工作台服务：[apps/web/src/pages/chat/api/workbench-service.ts](apps/web/src/pages/chat/api/workbench-service.ts)
 - Backend 路由：[apps/backend/src/modules/chat/chat.routes.ts](apps/backend/src/modules/chat/chat.routes.ts)
 - Backend env 加载：[apps/backend/src/config/env.ts](apps/backend/src/config/env.ts)
 - 共享契约：[packages/contracts/src](packages/contracts/src)
 - 协作约定：[AGENTS.md](AGENTS.md)
-
-## 当前实现状态
-
-- Web 已接入 HTTP 服务模式，测试通过显式 service 注入模拟接口，不再通过运行时模式切换。
-- Backend 已提供 `/api/server/*` 工作台接口；配置 `DATABASE_URL` 后从 MySQL 工作台表读取席位、会话和消息，未配置时应判定为不可用。
-- Auth 路由已预留，登录、刷新、退出仍未实现。
-- 会话已读、发送消息、席位接管属于 Java owner 写操作，Node backend 通过 `JAVA_INTERNAL_API_BASE_URL` 配置的内部接口转发。
-- 真实增量事件/cursor 表尚未确认，当前 DB 模式的 `/api/server/poll` 只补拉当前会话的新消息。
-- Redis 不是当前阶段必需依赖。

@@ -67,11 +67,11 @@ const QualityQuerySchema = Type.Object({
   pageSize: Type.Optional(Type.Number()),
   passed: Type.Optional(Type.Boolean()),
   to: Type.Optional(DateQuerySchema),
-  view: Type.Optional(Type.Union([
-    Type.Literal("agent-report"),
-    Type.Literal("all"),
-    Type.Literal("quality-results"),
-  ])),
+});
+
+const QualitySummaryQuerySchema = Type.Object({
+  from: Type.Optional(DateQuerySchema),
+  to: Type.Optional(DateQuerySchema),
 });
 
 const OverviewSessionsQuerySchema = Type.Object({
@@ -144,6 +144,7 @@ type OverviewQuery = Static<typeof OverviewQuerySchema>;
 type OverviewSessionsQuery = Static<typeof OverviewSessionsQuerySchema>;
 type BusinessRelatedSessionsQuery = Static<typeof BusinessRelatedSessionsQuerySchema>;
 type QualityQuery = Static<typeof QualityQuerySchema>;
+type QualitySummaryQuery = Static<typeof QualitySummaryQuerySchema>;
 type SessionParams = Static<typeof SessionParamsSchema>;
 type ActionItemParams = Static<typeof ActionItemParamsSchema>;
 type ActionStatusBody = Static<typeof ActionStatusBodySchema>;
@@ -238,8 +239,44 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
     },
   );
 
+  app.get<{ Querystring: QualitySummaryQuery }>(
+    "/api/server/insights/quality/overview",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        querystring: QualitySummaryQuerySchema,
+      },
+    },
+    async (request) => {
+      return apiSuccess(
+        await createInsightsService(app).getQualityOverview(
+          await getUidScope(app, request),
+          normalizeQualitySummaryQuery(request.query),
+        ),
+      );
+    },
+  );
+
+  app.get<{ Querystring: QualitySummaryQuery }>(
+    "/api/server/insights/quality/agent-stats",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        querystring: QualitySummaryQuerySchema,
+      },
+    },
+    async (request) => {
+      return apiSuccess(
+        await createInsightsService(app).getQualityAgentStats(
+          await getUidScope(app, request),
+          normalizeQualitySummaryQuery(request.query),
+        ),
+      );
+    },
+  );
+
   app.get<{ Querystring: QualityQuery }>(
-    "/api/server/insights/quality",
+    "/api/server/insights/quality/results",
     {
       preHandler: app.authenticate,
       schema: {
@@ -248,7 +285,7 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
     },
     async (request) => {
       return apiSuccess(
-        await createInsightsService(app).getQuality(
+        await createInsightsService(app).getQualityResults(
           await getUidScope(app, request),
           normalizeQualityQuery(request.query),
         ),
@@ -937,7 +974,13 @@ function normalizeQualityQuery(query: QualityQuery) {
     pageSize: normalizePositiveQueryNumber(query.pageSize),
     passed: query.passed,
     to: query.to,
-    view: query.view,
+  };
+}
+
+function normalizeQualitySummaryQuery(query: QualitySummaryQuery) {
+  return {
+    from: query.from,
+    to: query.to,
   };
 }
 

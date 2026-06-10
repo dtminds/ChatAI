@@ -2039,6 +2039,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       .updateTable("xy_wap_embed_logical_session")
       .set({
         current_snapshot_id: snapshotId,
+        ...buildQaStatusUpdate(input.job.analysisScope, output.qaFindings),
         status: input.job.mode === "live" ? "open" : "analyzed",
         update_time: new Date(),
       })
@@ -2458,6 +2459,23 @@ function normalizeAnalysisScope(value: string): InsightRescanAnalysisScope {
   }
 
   return "all";
+}
+
+function buildQaStatusUpdate(
+  analysisScope: InsightRescanAnalysisScope,
+  qaFindings: SaveAnalysisResultInput["output"]["qaFindings"],
+) {
+  if (analysisScope !== "all" && analysisScope !== "qaFindings") {
+    return {};
+  }
+
+  return {
+    qa_status: qaFindings.length === 0
+      ? -1
+      : qaFindings.some((item) => !item.passed)
+        ? 0
+        : 1,
+  };
 }
 
 function normalizeLogicalSessionStatus(value: string): InsightWorkerExistingSession["status"] {

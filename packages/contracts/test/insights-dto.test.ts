@@ -18,7 +18,9 @@ import {
   InsightsBusinessResponseSchema,
   InsightsFollowUpsResponseSchema,
   InsightsOverviewResponseSchema,
-  InsightsQualityResponseSchema,
+  InsightsQualityAgentStatsResponseSchema,
+  InsightsQualityOverviewResponseSchema,
+  InsightsQualityResultsResponseSchema,
   InsightsRescanRequestSchema,
 } from "../src/insights/dto";
 
@@ -222,69 +224,69 @@ describe("insights DTOs", () => {
     ).toBe(true);
   });
 
-  it("requires quality result evidence and pass status", () => {
-    expect(
-      Value.Check(InsightsQualityResponseSchema, {
-        agentStats: [
+  it("accepts split quality responses with required blocks", () => {
+    const overview = {
+      analyzedSessions: 9,
+      inspectedSessions: 8,
+      inspectionRate: 0.8,
+      noCustomerProblem: 2,
+      partial: 1,
+      passRate: 0.75,
+      problemSessions: 7,
+      resolved: 5,
+      ruleDistribution: [
+        { count: 2, ruleCode: "reply_quality", ruleName: "回复质量" },
+      ],
+      totalSessions: 10,
+      unresolved: 1,
+    };
+    const agentStats = [
+      {
+        agentName: "客服一号",
+        agentSeatId: "101",
+        failedSessions: 2,
+        inspectedSessions: 6,
+        passedSessions: 4,
+        totalSessions: 8,
+        passRate: 4 / 6,
+      },
+    ];
+    const qualityResults = [
+      {
+        agentName: "客服一号",
+        conversationId: "301",
+        customerName: "张三",
+        passed: false,
+        passedRules: 2,
+        rules: [
           {
-            agentName: "客服一号",
-            agentSeatId: "101",
-            failedSessions: 2,
-            inspectedSessions: 6,
-            passedSessions: 4,
-            totalSessions: 8,
-            passRate: 4 / 6,
-          },
-        ],
-        overview: {
-          analyzedSessions: 9,
-          inspectedSessions: 8,
-          inspectionRate: 0.8,
-          noCustomerProblem: 2,
-          partial: 1,
-          passRate: 0.75,
-          problemSessions: 7,
-          resolved: 5,
-          ruleDistribution: [
-            { count: 2, ruleCode: "reply_quality", ruleName: "回复质量" },
-          ],
-          totalSessions: 10,
-          unresolved: 1,
-        },
-        qualityResultsPage: {
-          page: 1,
-          pageSize: 10,
-          total: 1,
-          totalPages: 1,
-        },
-        qualityResults: [
-          {
-            agentName: "客服一号",
-            conversationId: "301",
-            customerName: "张三",
-            lastCustomerMessageAt: 1780243200000,
             passed: false,
-            passedRules: 2,
-            rules: [
-              {
-                passed: false,
-                ruleCode: "reply_quality",
-                ruleName: "回复质量",
-              },
-              {
-                passed: true,
-                ruleCode: "clear_next_step",
-                ruleName: "明确下一步",
-              },
-              { passed: true, ruleCode: "tone", ruleName: "服务语气" },
-            ],
-            sessionId: "session-1",
-            summary: "客户咨询退款处理进度，客服未确认后续状态",
-            totalRules: 3,
+            ruleCode: "reply_quality",
+            ruleName: "回复质量",
           },
+          {
+            passed: true,
+            ruleCode: "clear_next_step",
+            ruleName: "明确下一步",
+          },
+          { passed: true, ruleCode: "tone", ruleName: "服务语气" },
         ],
-      }),
-    ).toBe(true);
+        sessionId: "session-1",
+        startedAt: 1780243200000,
+        summary: "客户咨询退款处理进度，客服未确认后续状态",
+        totalRules: 3,
+      },
+    ];
+    const qualityResultsPage = {
+      page: 1,
+      pageSize: 10,
+      total: 1,
+      totalPages: 1,
+    };
+
+    expect(Value.Check(InsightsQualityOverviewResponseSchema, { overview })).toBe(true);
+    expect(Value.Check(InsightsQualityAgentStatsResponseSchema, { agentStats })).toBe(true);
+    expect(Value.Check(InsightsQualityResultsResponseSchema, { qualityResultsPage, qualityResults })).toBe(true);
   });
 
   it("accepts follow-up action statuses and rejects unknown status", () => {

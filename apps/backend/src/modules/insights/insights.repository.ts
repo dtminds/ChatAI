@@ -122,15 +122,12 @@ type ActionItemQueryRow = {
 };
 
 type QualityResultQueryRow = {
+  current_snapshot_id: number | string;
   conversation_id: number | string;
-  failed_rules: number | string;
-  last_customer_message_at: Date | number | string | null;
-  passed_rules: number | string;
   session_id: number | string;
-  snapshot_id: number | string;
+  started_at: number | string;
   third_external_userid: string;
   third_userid: string;
-  total_rules: number | string;
 };
 
 type QualityRuleQueryRow = {
@@ -188,8 +185,10 @@ type OverviewTrendQueryRow = {
 
 type QualityAggregateQueryRow = {
   analyzed_sessions: number | string;
+  inspected_sessions: number | string;
   no_customer_problem: number | string;
   partial: number | string;
+  passed_sessions: number | string;
   problem_sessions: number | string;
   resolved: number | string;
   total_sessions: number | string;
@@ -1477,6 +1476,8 @@ export class InsightsRepository implements InsightsRepositoryPort {
             then session.id
           end)
         `.as("problem_sessions"),
+        sql<number>`count(distinct case when session.qa_status in (0, 1) then session.id end)`.as("inspected_sessions"),
+        sql<number>`count(distinct case when session.qa_status = 1 then session.id end)`.as("passed_sessions"),
         sql<number>`count(distinct case when problem.resolution_status = 'resolved' then session.id end)`.as("resolved"),
         sql<number>`count(distinct case when problem.resolution_status = 'unresolved' then session.id end)`.as("unresolved"),
         sql<number>`count(distinct case when problem.resolution_status = 'partially_resolved' then session.id end)`.as("partial"),
@@ -1496,13 +1497,17 @@ export class InsightsRepository implements InsightsRepositoryPort {
 
     const row = await query.executeTakeFirst() as QualityAggregateQueryRow | undefined;
 
+    const analyzedSessions = parseNumber(row?.analyzed_sessions ?? 0);
+    const inspectedSessions = parseNumber(row?.inspected_sessions ?? 0);
+    const passedSessions = parseNumber(row?.passed_sessions ?? 0);
+
     return {
       analyzedSessions: parseNumber(row?.analyzed_sessions ?? 0),
-      inspectedSessions: 0,
-      inspectionRate: 0,
+      inspectedSessions,
+      inspectionRate: analyzedSessions > 0 ? inspectedSessions / analyzedSessions : 0,
       noCustomerProblem: parseNumber(row?.no_customer_problem ?? 0),
       partial: parseNumber(row?.partial ?? 0),
-      passRate: 0,
+      passRate: inspectedSessions > 0 ? passedSessions / inspectedSessions : 0,
       problemSessions: parseNumber(row?.problem_sessions ?? 0),
       resolved: parseNumber(row?.resolved ?? 0),
       ruleDistribution: [],
@@ -1521,20 +1526,14 @@ export class InsightsRepository implements InsightsRepositoryPort {
           .onRef("seat.uid", "=", "session.uid")
           .onRef("seat.third_userid", "=", "session.third_userid"),
       )
-      .leftJoin("xy_wap_embed_session_qa_finding as qa", (join) =>
-        join.onRef("qa.snapshot_id", "=", "snapshot.id"),
-      )
       .select([
         "seat.third_avatar as agent_avatar_url",
         "seat.third_user_name as agent_name",
         "seat.id as agent_seat_id",
         sql<number>`count(distinct session.id)`.as("total_sessions"),
-        sql<number>`count(distinct case when qa.id is not null then session.id end)`.as("inspected_sessions"),
-        sql<number>`count(distinct case when qa.passed = 0 then session.id end)`.as("failed_sessions"),
-        sql<number>`
-          count(distinct case when qa.id is not null then session.id end)
-          - count(distinct case when qa.passed = 0 then session.id end)
-        `.as("passed_sessions"),
+        sql<number>`count(distinct case when session.qa_status in (0, 1) then session.id end)`.as("inspected_sessions"),
+        sql<number>`count(distinct case when session.qa_status = 0 then session.id end)`.as("failed_sessions"),
+        sql<number>`count(distinct case when session.qa_status = 1 then session.id end)`.as("passed_sessions"),
       ])
       .where("session.uid", "=", scope.uid);
 
@@ -1585,13 +1584,9 @@ export class InsightsRepository implements InsightsRepositoryPort {
       toTs,
       uid: scope.uid,
     };
-    const countRow = await this.db
-      .selectFrom((eb) => buildQualityResultSessionQuery(eb as unknown as Kysely<Database>, baseFilters)
-        .$call((query) => applyQualityResultSessionStatusFilter(query, filters.passed))
-        .as("quality_session"))
-      .select([
-        sql<number>`count(*)`.as("total_count"),
-      ])
+    const countRow = await buildQualityResultBaseSessionQuery(this.db, baseFilters)
+      .$call((query) => applyQualityResultSessionStatusFilter(query, filters.passed))
+      .select(sql<number>`count(*)`.as("total_count"))
       .executeTakeFirst() as { total_count: number | string } | undefined;
     const total = parseNumber(countRow?.total_count ?? 0);
 
@@ -1604,7 +1599,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .execute() as unknown as QualityResultQueryRow[];
 
     const ruleRows = await this.listQualityRules(
-      uniquePositiveNumbers(rows.map((row) => Number(row.snapshot_id))),
+      uniquePositiveNumbers(rows.map((row) => Number(row.current_snapshot_id))),
     );
     const items = mapQualityResultRows(rows, ruleRows);
     await Promise.all([
@@ -1627,9 +1622,6 @@ export class InsightsRepository implements InsightsRepositoryPort {
     scope: InsightsUidScope,
     filters: { from?: string; to?: string } = {},
   ): Promise<{
-    inspectedSessions: number;
-    inspectionRate: number;
-    passRate: number;
     ruleDistribution: Array<{ count: number; ruleCode: string; ruleName: string }>;
   }> {
     const fromTs = parseDateBoundary(filters.from);
@@ -1646,24 +1638,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
       return next;
     }
 
-    const base = applyDateFilters(
-      buildAnalyzedCurrentSessionLeanBaseQuery(this.db)
-        .where("session.uid", "=", scope.uid)
-        .where("snapshot.status", "in", ["ready", "partial"]),
-    );
-
-    const [aggRow, ruleRows] = await Promise.all([
-      base
-        .leftJoin("xy_wap_embed_session_qa_finding as qa", (join) =>
-          join.onRef("qa.snapshot_id", "=", "snapshot.id"),
-        )
-        .select([
-          sql<number>`count(distinct session.id)`.as("total_analyzed"),
-          sql<number>`count(distinct case when qa.id is not null then session.id end)`.as("total_qa"),
-          sql<number>`count(distinct case when qa.id is not null then session.id end) - count(distinct case when qa.passed = 0 then session.id end)`.as("passed"),
-        ])
-        .executeTakeFirst() as Promise<{ total_analyzed: number; total_qa: number; passed: number } | undefined>,
-
+    const ruleRows = await (
       applyDateFilters(
         buildAnalyzedCurrentSessionLeanBaseQuery(this.db)
           .innerJoin("xy_wap_embed_session_qa_finding as qa", (join) =>
@@ -1671,6 +1646,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
           )
           .where("session.uid", "=", scope.uid)
           .where("snapshot.status", "in", ["ready", "partial"])
+          .where("session.qa_status", "=", 0)
           .where("qa.passed", "=", 0),
       )
         .select([
@@ -1680,17 +1656,10 @@ export class InsightsRepository implements InsightsRepositoryPort {
         ])
         .groupBy(["qa.rule_code", "qa.rule_name"])
         .orderBy(sql`count(*)`, "desc")
-        .execute() as Promise<Array<{ rule_code: string; rule_name: string; count: number }>>,
-    ]);
-
-    const totalAnalyzed = parseNumber(aggRow?.total_analyzed ?? 0);
-    const totalQa = parseNumber(aggRow?.total_qa ?? 0);
-    const passed = parseNumber(aggRow?.passed ?? 0);
+        .execute() as Promise<Array<{ rule_code: string; rule_name: string; count: number }>>
+    );
 
     return {
-      inspectedSessions: totalQa,
-      inspectionRate: totalAnalyzed > 0 ? totalQa / totalAnalyzed : 0,
-      passRate: totalQa > 0 ? passed / totalQa : 0,
       ruleDistribution: ruleRows.map((row) => ({
         count: parseNumber(row.count),
         ruleCode: row.rule_code,
@@ -3791,25 +3760,26 @@ function mapQualityResultRows(
 
   return rows.map((row) => {
     const sessionId = String(row.session_id);
-    const rules = Array.from(rulesBySession.get(String(row.snapshot_id))?.values() ?? []);
-    const failedRuleCount = parseNumber(row.failed_rules);
+    const snapshotId = String(row.current_snapshot_id);
+    const rules = Array.from(rulesBySession.get(snapshotId)?.values() ?? []);
+    const failedRuleCount = rules.filter((rule) => !rule.passed).length;
 
     return {
       agentAvatarUrl: undefined,
       agentName: undefined,
       conversationId: String(row.conversation_id),
-      currentSnapshotId: String(row.snapshot_id),
+      currentSnapshotId: snapshotId,
       customerAvatarUrl: undefined,
       customerName: "未知客户",
-      lastCustomerMessageAt: parseNullableNumber(row.last_customer_message_at) ?? undefined,
       passed: failedRuleCount === 0,
-      passedRules: parseNumber(row.passed_rules),
+      passedRules: rules.length - failedRuleCount,
       rules,
       sessionId,
+      startedAt: parseNumber(row.started_at),
       summary: "",
       thirdExternalUserId: row.third_external_userid,
       thirdUserId: row.third_userid,
-      totalRules: parseNumber(row.total_rules),
+      totalRules: rules.length,
     };
   });
 }
@@ -4413,9 +4383,6 @@ function buildAnalyzedCurrentSessionLeanBaseQuery(db: Kysely<Database>) {
 
 function buildAnalyzedCurrentSessionBaseQuery(db: Kysely<Database>) {
   return buildAnalyzedCurrentSessionLeanBaseQuery(db)
-    .leftJoin("xy_wap_embed_session_summary as summary", (join) =>
-      join.onRef("summary.snapshot_id", "=", "snapshot.id"),
-    )
     .leftJoin("xy_wap_embed_session_problem_resolution as problem", (join) =>
       join.onRef("problem.snapshot_id", "=", "snapshot.id"),
     );
@@ -4442,13 +4409,6 @@ function buildCurrentSessionBaseQuery(db: Kysely<Database>) {
     );
 }
 
-function buildQualityResultBaseQuery(db: Kysely<Database>) {
-  return buildAnalyzedCurrentSessionLeanBaseQuery(db)
-    .innerJoin("xy_wap_embed_session_qa_finding as qa", (join) =>
-      join.onRef("qa.snapshot_id", "=", "snapshot.id"),
-    );
-}
-
 function buildQualityResultSessionQuery(
   db: Pick<Kysely<Database>, "selectFrom">,
   filters: {
@@ -4458,30 +4418,34 @@ function buildQualityResultSessionQuery(
     uid: number;
   },
 ) {
-  return applyQualityResultFilters(
-    buildQualityResultBaseQuery(db as Kysely<Database>),
-    filters,
-  )
+  return buildQualityResultBaseSessionQuery(db, filters)
     .select([
+      "session.current_snapshot_id as current_snapshot_id",
       "session.conversation_id as conversation_id",
       "session.id as session_id",
-      "snapshot.id as snapshot_id",
+      "session.started_at as started_at",
       "session.third_external_userid as third_external_userid",
       "session.third_userid as third_userid",
-      sql<number>`count(distinct qa.id)`.as("total_rules"),
-      sql<number>`count(distinct case when qa.passed = 1 then qa.id end)`.as("passed_rules"),
-      sql<number>`count(distinct case when qa.passed = 0 then qa.id end)`.as("failed_rules"),
-      sql<number>`coalesce(session.last_message_at, session.started_at)`.as("last_customer_message_at"),
-    ])
-    .groupBy([
-      "session.id",
-      "session.conversation_id",
-      "session.last_message_at",
-      "session.started_at",
-      "session.third_external_userid",
-      "session.third_userid",
-      "snapshot.id",
     ]);
+}
+
+function buildQualityResultBaseSessionQuery(
+  db: Pick<Kysely<Database>, "selectFrom">,
+  filters: {
+    fromTs: number | null | undefined;
+    passed: boolean | undefined;
+    toTs: number | null | undefined;
+    uid: number;
+  },
+) {
+  return applyQualityResultFilters(
+    (db as Kysely<Database>)
+      .selectFrom("xy_wap_embed_logical_session as session")
+      .innerJoin("xy_wap_embed_session_insight_snapshot as snapshot", (join) =>
+        join.onRef("snapshot.id", "=", "session.current_snapshot_id"),
+      ),
+    filters,
+  );
 }
 
 function applyQualityResultFilters<Query>(
@@ -4514,15 +4478,15 @@ function applyQualityResultSessionStatusFilter<Query>(
   query: Query,
   passed: boolean | undefined,
 ): Query {
-  if (passed == null) {
-    return query;
-  }
-
   const next = query as Query & {
-    having(expression: unknown, operator: string, value: unknown): Query;
+    where(column: string, operator: string, value: unknown): Query;
   };
 
-  return next.having(sql<number>`count(distinct case when qa.passed = 0 then qa.id end)`, passed ? "=" : ">", 0);
+  if (passed == null) {
+    return next.where("session.qa_status", "in", [0, 1]);
+  }
+
+  return next.where("session.qa_status", "=", passed ? 1 : 0);
 }
 
 function needsCurrentSessionHydrationJoins(filters: InsightsOverviewFilters) {

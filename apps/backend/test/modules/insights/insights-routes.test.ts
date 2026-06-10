@@ -35,10 +35,25 @@ describe("insights routes", () => {
       method: "GET",
       url: "/api/server/insights/filter-options",
     });
-    const quality = await app.inject({
+    const qualityOverview = await app.inject({
       headers: { authorization },
       method: "GET",
-      url: "/api/server/insights/quality?from=2026-06-01&to=2026-06-30&page=1&pageSize=1&passed=false",
+      url: "/api/server/insights/quality/overview?from=2026-06-01&to=2026-06-30",
+    });
+    const qualityAgentStats = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/insights/quality/agent-stats?from=2026-06-01&to=2026-06-30",
+    });
+    const qualityResults = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/insights/quality/results?from=2026-06-01&to=2026-06-30&page=1&pageSize=1&passed=false",
+    });
+    const legacyQuality = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/insights/quality?from=2026-06-01&to=2026-06-30",
     });
     const business = await app.inject({
       headers: { authorization },
@@ -165,14 +180,26 @@ describe("insights routes", () => {
       },
       success: true,
     });
-    expect(quality.statusCode).toBe(200);
+    expect(qualityOverview.statusCode).toBe(200);
+    expect(qualityOverview.json().data).toEqual({
+      overview: expect.objectContaining({
+        inspectedSessions: expect.any(Number),
+        ruleDistribution: expect.any(Array),
+      }),
+    });
+    expect(qualityAgentStats.statusCode).toBe(200);
+    expect(qualityAgentStats.json().data).toEqual({
+      agentStats: expect.any(Array),
+    });
+    expect(qualityResults.statusCode).toBe(200);
     expect(
       db.selectBuilders.some((builder) =>
         builder.wheres.some((call) => call[0] === "session.started_at" && call[1] === ">=")
-          && builder.wheres.some((call) => call[0] === "session.started_at" && call[1] === "<="),
+          && builder.wheres.some((call) => call[0] === "session.started_at" && call[1] === "<=")
+          && builder.wheres.some((call) => call[0] === "session.qa_status" && call[1] === "=" && call[2] === 0),
       ),
     ).toBe(true);
-    expect(quality.json().data.qualityResults[0]).toMatchObject({
+    expect(qualityResults.json().data.qualityResults[0]).toMatchObject({
       conversationId: "301",
       passed: false,
       passedRules: 1,
@@ -183,12 +210,20 @@ describe("insights routes", () => {
       sessionId: "501",
       totalRules: 2,
     });
-    expect(quality.json().data.qualityResultsPage).toMatchObject({
+    expect(qualityResults.json().data).not.toHaveProperty("overview");
+    expect(qualityResults.json().data).not.toHaveProperty("agentStats");
+    expect(qualityResults.json().data.qualityResults[0]).toMatchObject({
+      conversationId: "301",
+      passed: false,
+      sessionId: "501",
+    });
+    expect(qualityResults.json().data.qualityResultsPage).toMatchObject({
       page: 1,
       pageSize: 1,
       total: 1,
       totalPages: 1,
     });
+    expect(legacyQuality.statusCode).toBe(404);
     expect(business.statusCode).toBe(200);
     expect(business.json().data).toMatchObject({
       entityHotspots: [
@@ -1115,25 +1150,6 @@ function createInsightsDbMock(options: {
             }];
           }
 
-          if (selectedAliases.has("total_rules")) {
-            return [
-              {
-                agent_avatar_url: "https://example.com/agent-1.png",
-                agent_name: "客服一号",
-                agent_seat_id: "seat-1",
-                conversation_id: 301,
-                customer_summary: "客户反馈物流异常",
-                failed_rules: 1,
-                last_customer_message_at: 1_780_244_100_000,
-                passed_rules: 1,
-                session_id: 501,
-                snapshot_id: 7001,
-                third_external_userid: "customer-1",
-                total_rules: 2,
-              },
-            ];
-          }
-
           if (selectedAliases.has("qa.id as qa_finding_id")) {
             return [
               {
@@ -1163,6 +1179,10 @@ function createInsightsDbMock(options: {
 
           if (selectedAliases.has("count") && selectedAliases.size === 1) {
             return [{ count: 1 }];
+          }
+
+          if (selectedAliases.has("total_count")) {
+            return [{ total_count: 1 }];
           }
 
           return [
@@ -1600,6 +1620,10 @@ function createInsightsDbMock(options: {
 
           if (selectedAliases.has("count") && selectedAliases.size === 1) {
             return [{ count: 1 }];
+          }
+
+          if (selectedAliases.has("total_count")) {
+            return [{ total_count: 1 }];
           }
 
           return [

@@ -15,7 +15,9 @@ import {
   getInsightMessageContext,
   getInsightOverview,
   getInsightOverviewSessions,
-  getInsightQuality,
+  getInsightQualityAgentStats,
+  getInsightQualityOverview,
+  getInsightQualityResults,
   getInsightRescanTasks,
   getInsightSettings,
   updateInsightAnalysisPolicy,
@@ -38,7 +40,9 @@ describe("insights service adapter", () => {
     mock.onGet("/server/insights/overview/sessions").reply(200, { data: { items: [], total: 0 }, success: true });
     mock.onGet("/server/insights/filter-options").reply(200, { data: { entities: [], intents: [], tags: [] }, success: true });
     mock.onGet("/server/insights/business").reply(200, { data: { totals: {} }, success: true });
-    mock.onGet("/server/insights/quality").reply(200, { data: { overview: {} }, success: true });
+    mock.onGet("/server/insights/quality/overview").reply(200, { data: { overview: {} }, success: true });
+    mock.onGet("/server/insights/quality/agent-stats").reply(200, { data: { agentStats: [] }, success: true });
+    mock.onGet("/server/insights/quality/results").reply(200, { data: { qualityResults: [], qualityResultsPage: {} }, success: true });
     mock.onGet("/server/insights/follow-ups").reply(200, { data: { items: [], total: 0 }, success: true });
     mock.onGet("/server/insights/sessions/501").reply(200, { data: { session: {} }, success: true });
     mock.onGet("/server/insights/messages/context").reply(200, { data: { messages: [] }, success: true });
@@ -75,7 +79,9 @@ describe("insights service adapter", () => {
     });
     await getInsightFilterOptions();
     await getInsightBusiness({ from: "2026-06-01", to: "2026-06-02" });
-    await getInsightQuality();
+    await getInsightQualityOverview({ from: "2026-06-01", to: "2026-06-02" });
+    await getInsightQualityAgentStats({ from: "2026-06-01", to: "2026-06-02" });
+    await getInsightQualityResults({ from: "2026-06-01", page: 1, pageSize: 10, passed: false, to: "2026-06-02" });
     await getInsightFollowUps({
       from: "2026-06-01",
       priority: "high",
@@ -118,30 +124,47 @@ describe("insights service adapter", () => {
       from: "2026-06-01",
       to: "2026-06-02",
     });
-    expect(mock.history.get[4]?.url).toBe("/server/insights/quality");
-    expect(mock.history.get[5]?.url).toBe("/server/insights/follow-ups");
+    expect(mock.history.get[4]?.url).toBe("/server/insights/quality/overview");
+    expect(mock.history.get[4]?.params).toEqual({
+      from: "2026-06-01",
+      to: "2026-06-02",
+    });
+    expect(mock.history.get[5]?.url).toBe("/server/insights/quality/agent-stats");
     expect(mock.history.get[5]?.params).toEqual({
+      from: "2026-06-01",
+      to: "2026-06-02",
+    });
+    expect(mock.history.get[6]?.url).toBe("/server/insights/quality/results");
+    expect(mock.history.get[6]?.params).toEqual({
+      from: "2026-06-01",
+      page: 1,
+      pageSize: 10,
+      passed: false,
+      to: "2026-06-02",
+    });
+    expect(mock.history.get[7]?.url).toBe("/server/insights/follow-ups");
+    expect(mock.history.get[7]?.params).toEqual({
       from: "2026-06-01",
       priority: "high",
       status: "open",
       to: "2026-06-02",
     });
-    expect(mock.history.get[6]?.url).toBe("/server/insights/sessions/501");
-    expect(mock.history.get[7]?.url).toBe("/server/insights/messages/context");
-    expect(mock.history.get[7]?.params).toEqual({
+    expect(mock.history.get[8]?.url).toBe("/server/insights/sessions/501");
+    expect(mock.history.get[9]?.url).toBe("/server/insights/messages/context");
+    expect(mock.history.get[9]?.params).toEqual({
       conversationId: "301",
       messageId: "9002",
     });
     expect(mock.history.patch[0]?.url).toBe("/server/insights/action-items/801/status");
     expect(JSON.parse(mock.history.patch[0]?.data ?? "{}")).toEqual({ status: "done" });
-    expect(mock.history.get[8]?.url).toBe("/server/insights/settings");
+    expect(mock.history.get[10]?.url).toBe("/server/insights/settings");
     expect(mock.history.post[0]?.url).toBe("/server/insights/jobs/rescan");
     expect(JSON.parse(mock.history.post[0]?.data ?? "{}")).toEqual({
       analysisScope: "classification",
       from: "2026-06-01T00:00:00.000Z",
       to: "2026-06-02T00:00:00.000Z",
     });
-    expect(mock.history.get[9]?.url).toBe("/server/insights/jobs/rescan?page=1&pageSize=10");
+    expect(mock.history.get[11]?.url).toBe("/server/insights/jobs/rescan?page=1&pageSize=10");
   });
 
   it("uses public /server insights endpoints for settings CRUD", async () => {
@@ -248,7 +271,7 @@ describe("insights service adapter", () => {
 
     mock.onGet("/server/insights/business").reply(200, { data: { totals: {} }, success: true });
     mock.onGet("/server/insights/business/related-sessions").reply(200, { data: { items: [], total: 0 }, success: true });
-    mock.onGet("/server/insights/quality").reply(200, { data: { overview: {} }, success: true });
+    mock.onGet("/server/insights/quality/results").reply(200, { data: { qualityResults: [], qualityResultsPage: {} }, success: true });
     mock.onGet("/server/insights/follow-ups").reply(200, { data: { items: [], total: 0 }, success: true });
 
     await getInsightBusiness(
@@ -264,7 +287,7 @@ describe("insights service adapter", () => {
       },
       { signal: relatedSessionsController.signal },
     );
-    await getInsightQuality(
+    await getInsightQualityResults(
       { page: 1, pageSize: 10 },
       { signal: qualityController.signal },
     );

@@ -36,7 +36,9 @@ import type {
   InsightsBusinessResponse,
   InsightsFollowUpsResponse,
   InsightsOverviewResponse,
-  InsightsQualityResponse,
+  InsightsQualityAgentStatsResponse,
+  InsightsQualityOverviewResponse,
+  InsightsQualityResultsResponse,
   InsightsRescanRequest,
   InsightsRescanResponse,
   WorkbenchMessageDto,
@@ -65,10 +67,7 @@ export type InsightsUidScope = {
   uid: number;
 };
 
-type InsightResolutionStatus =
-  InsightsQualityResponse["overview"] extends never
-    ? never
-    : InsightDetailResponse["problemResolution"]["resolutionStatus"];
+type InsightResolutionStatus = InsightDetailResponse["problemResolution"]["resolutionStatus"];
 
 type InsightSeverity = InsightDetailResponse["qaFindings"][number] extends never
   ? "low" | "medium" | "high"
@@ -150,7 +149,6 @@ export type InsightsQualityFilters = {
   pageSize?: number;
   passed?: boolean;
   to?: string;
-  view?: "agent-report" | "all" | "quality-results";
 };
 
 export type InsightsOverviewFilters = {
@@ -228,11 +226,11 @@ export type InsightBusinessTopicFactRow = {
   type?: string | null;
 };
 
-export type InsightQualityAggregateRow = InsightsQualityResponse["overview"];
+export type InsightQualityAggregateRow = InsightsQualityOverviewResponse["overview"];
 
-export type InsightQualityAgentStatRow = InsightsQualityResponse["agentStats"][number];
+export type InsightQualityAgentStatRow = InsightsQualityAgentStatsResponse["agentStats"][number];
 
-export type InsightQualityResultRow = InsightsQualityResponse["qualityResults"][number];
+export type InsightQualityResultRow = InsightsQualityResultsResponse["qualityResults"][number];
 
 export type InsightQualityResultPage = {
   items: InsightQualityResultRow[];
@@ -298,9 +296,6 @@ export type InsightsRepositoryPort = {
     scope: InsightsUidScope,
     filters?: { from?: string; to?: string },
   ): Promise<{
-    inspectedSessions: number;
-    inspectionRate: number;
-    passRate: number;
     ruleDistribution: Array<{ count: number; ruleCode: string; ruleName: string }>;
   }>;
   listBusinessSessionAggregates?(
@@ -516,43 +511,57 @@ export class InsightsService {
     };
   }
 
-  async getQuality(
+  async getQualityOverview(
     scope: InsightsUidScope,
-    filters: InsightsQualityFilters = {},
-  ): Promise<InsightsQualityResponse> {
-    const normalizedPage = normalizeOverviewPage(filters.page);
-    const normalizedPageSize = normalizeOverviewPageSize(filters.pageSize);
-    const view = filters.view ?? "all";
-    const shouldLoadAgentStats = view === "all" || view === "agent-report";
-    const shouldLoadQualityResults = view === "all" || view === "quality-results";
-    const [overview, qaAggregate, agentStats, qualityResultsPage] = await Promise.all([
-      this.repository.getQualityAggregate?.(scope, { from: filters.from, to: filters.to }),
-      this.repository.getQaFindingAggregate?.(scope, { from: filters.from, to: filters.to }),
-      shouldLoadAgentStats
-        ? this.repository.listQualityAgentStats?.(scope, { from: filters.from, to: filters.to })
-        : Promise.resolve([]),
-      shouldLoadQualityResults && this.repository.listQualityResults
-        ? this.repository.listQualityResults(scope, {
-        from: filters.from,
-        page: normalizedPage,
-        pageSize: normalizedPageSize,
-        passed: filters.passed,
-        to: filters.to,
-      })
-        : Promise.resolve({ items: [], total: 0 }),
+    filters: Pick<InsightsQualityFilters, "from" | "to"> = {},
+  ): Promise<InsightsQualityOverviewResponse> {
+    const boundedFilters = withDefaultOverviewDateRange(filters);
+    const [overview, qaAggregate] = await Promise.all([
+      this.repository.getQualityAggregate?.(scope, { from: boundedFilters.from, to: boundedFilters.to }),
+      this.repository.getQaFindingAggregate?.(scope, { from: boundedFilters.from, to: boundedFilters.to }),
     ]);
-
     const baseOverview = overview ?? buildQualityOverview([]);
 
     return {
-      agentStats: agentStats ?? [],
       overview: {
         ...baseOverview,
-        inspectedSessions: qaAggregate?.inspectedSessions ?? baseOverview.inspectedSessions,
-        inspectionRate: qaAggregate?.inspectionRate ?? baseOverview.inspectionRate,
-        passRate: qaAggregate?.passRate ?? baseOverview.passRate,
         ruleDistribution: qaAggregate?.ruleDistribution ?? baseOverview.ruleDistribution,
       },
+    };
+  }
+
+  async getQualityAgentStats(
+    scope: InsightsUidScope,
+    filters: Pick<InsightsQualityFilters, "from" | "to"> = {},
+  ): Promise<InsightsQualityAgentStatsResponse> {
+    const boundedFilters = withDefaultOverviewDateRange(filters);
+
+    return {
+      agentStats: await this.repository.listQualityAgentStats?.(scope, {
+        from: boundedFilters.from,
+        to: boundedFilters.to,
+      }) ?? [],
+    };
+  }
+
+  async getQualityResults(
+    scope: InsightsUidScope,
+    filters: InsightsQualityFilters = {},
+  ): Promise<InsightsQualityResultsResponse> {
+    const normalizedPage = normalizeOverviewPage(filters.page);
+    const normalizedPageSize = normalizeOverviewPageSize(filters.pageSize);
+    const boundedFilters = withDefaultOverviewDateRange(filters);
+    const qualityResultsPage = await (this.repository.listQualityResults
+      ? this.repository.listQualityResults(scope, {
+        from: boundedFilters.from,
+        page: normalizedPage,
+        pageSize: normalizedPageSize,
+        passed: boundedFilters.passed,
+        to: boundedFilters.to,
+      })
+      : Promise.resolve({ items: [], total: 0 }));
+
+    return {
       qualityResultsPage: {
         page: normalizedPage,
         pageSize: normalizedPageSize,

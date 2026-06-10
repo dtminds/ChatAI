@@ -281,7 +281,17 @@ describe("InsightsRepository", () => {
           problemSummary: "物流延迟",
           resolutionStatus: "unresolved",
         },
-        qaFindings: [],
+        qaFindings: [
+          {
+            confidence: 0.8,
+            evidenceMessageIds: ["9001"],
+            passed: false,
+            reason: "未明确下一步",
+            ruleCode: "clear_next_step",
+            ruleName: "明确下一步",
+            severity: "medium",
+          },
+        ],
         sentiment: [],
         summary: {
           sessionTitle: "查物流",
@@ -361,9 +371,12 @@ describe("InsightsRepository", () => {
       "xy_wap_embed_conversation as conversation",
     );
     expect(builders[0]?.joins).toContain("xy_wap_embed_user_seat as seat");
-    expect(builders[0]?.joins).toContain(
+    expect(builders[0]?.joins).not.toContain(
       "xy_wap_embed_session_qa_finding as qa",
     );
+    expect(builders[0]?.selectRawCalls.join("\n")).toContain("session.qa_status in (0, 1)");
+    expect(builders[0]?.selectRawCalls.join("\n")).toContain("session.qa_status = 0");
+    expect(builders[0]?.selectRawCalls.join("\n")).toContain("session.qa_status = 1");
     expect(builders[0]?.selectRawCalls.join("\n")).not.toContain("seat.avatar");
     expect(builders[0]?.whereCalls).toContainEqual(["session.uid", "=", 9001]);
   });
@@ -373,15 +386,12 @@ describe("InsightsRepository", () => {
     let currentSelectCount = 0;
     const qualitySessionRows = [
       {
+        current_snapshot_id: 701,
         conversation_id: 301,
-        failed_rules: 1,
-        last_customer_message_at: 1_780_244_000_000,
-        passed_rules: 1,
         session_id: 501,
-        snapshot_id: 701,
+        started_at: 1_780_243_200_000,
         third_external_userid: "external-1",
         third_userid: "agent-1",
-        total_rules: 2,
       },
     ];
     const rowsByTable = new Map<string, unknown[]>([
@@ -433,17 +443,14 @@ describe("InsightsRepository", () => {
     ]);
     const db = {
       selectFrom: vi.fn((table: unknown) => {
-        const tableName =
-          typeof table === "string" ? table : "quality_session_count";
+        const tableName = typeof table === "string" ? table : "derived";
         let rows = rowsByTable.get(tableName) ?? [];
 
-        if (tableName === "quality_session_count") {
-          rows = [{ total_count: 1 }];
-        } else if (
-          tableName === "xy_wap_embed_session_insight_current as current"
-        ) {
+        if (tableName === "xy_wap_embed_logical_session as session") {
           currentSelectCount += 1;
-          rows = currentSelectCount === 1 ? qualitySessionRows : [];
+          rows = currentSelectCount === 1
+            ? [{ total_count: 1 }]
+            : qualitySessionRows;
         }
         const builder = createSelectBuilder(rows, tableName);
         builders.push(builder);
@@ -485,7 +492,16 @@ describe("InsightsRepository", () => {
       total: 1,
     });
 
-    expect(builders[1]?.joins).toContain(
+    expect(builders[0]?.table).toBe("xy_wap_embed_logical_session as session");
+    expect(builders[0]?.joins).toContain("xy_wap_embed_session_insight_snapshot as snapshot");
+    expect(builders[0]?.joins).not.toContain(
+      "xy_wap_embed_session_qa_finding as qa",
+    );
+    expect(builders[0]?.whereCalls).toContainEqual(["session.qa_status", "=", 0]);
+    expect(builders[0]?.groupByCalls).toEqual([]);
+    expect(builders[1]?.table).toBe("xy_wap_embed_logical_session as session");
+    expect(builders[1]?.joins).toContain("xy_wap_embed_session_insight_snapshot as snapshot");
+    expect(builders[1]?.joins).not.toContain(
       "xy_wap_embed_session_qa_finding as qa",
     );
     expect(builders[1]?.joins).not.toContain(
@@ -495,10 +511,12 @@ describe("InsightsRepository", () => {
       "xy_wap_embed_conversation as conversation",
     );
     expect(builders[1]?.joins).not.toContain("xy_wap_embed_user_seat as seat");
-    expect(builders[1]?.whereCalls).not.toContainEqual(["qa.passed", "=", 0]);
-    expect(builders[1]?.havingRawCalls.join("\n")).toContain(">");
-    expect(builders[1]?.havingRawCalls.join("\n")).toContain("0");
+    expect(builders[1]?.whereCalls).toContainEqual(["session.qa_status", "=", 0]);
+    expect(builders[1]?.whereRawCalls).toEqual([]);
+    expect(builders[1]?.havingRawCalls).toEqual([]);
+    expect(builders[1]?.groupByCalls).toEqual([]);
     expect(builders[1]?.selectRawCalls.join("\n")).not.toContain("over()");
+    expect(builders[1]?.selectRawCalls.join("\n")).not.toContain("count(");
     expect(builders[1]?.limitCalls).toContain(10);
     expect(builders[1]?.joins).not.toContain(
       "xy_wap_embed_insight_evidence as evidence",
@@ -558,8 +576,7 @@ describe("InsightsRepository", () => {
     const builders: SelectBuilderStub[] = [];
     const db = {
       selectFrom: vi.fn((table: unknown) => {
-        const tableName =
-          typeof table === "string" ? table : "quality_session_count";
+        const tableName = typeof table === "string" ? table : "derived";
         const builder = createSelectBuilder([], tableName);
         builders.push(builder);
         return builder;
@@ -576,8 +593,36 @@ describe("InsightsRepository", () => {
       },
     );
 
-    expect(builders[1]?.havingRawCalls.join("\n")).toContain("=");
-    expect(builders[1]?.havingRawCalls.join("\n")).toContain("0");
+    expect(builders[0]?.whereCalls).toContainEqual(["session.qa_status", "=", 1]);
+    expect(builders[1]?.whereCalls).toContainEqual(["session.qa_status", "=", 1]);
+    expect(builders[1]?.whereRawCalls).toEqual([]);
+    expect(builders[1]?.havingRawCalls).toEqual([]);
+  });
+
+  it("lists only inspected quality sessions when pass filter is omitted", async () => {
+    const builders: SelectBuilderStub[] = [];
+    const db = {
+      selectFrom: vi.fn((table: unknown) => {
+        const tableName = typeof table === "string" ? table : "derived";
+        const builder = createSelectBuilder([], tableName);
+        builders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new InsightsRepository(db as never);
+
+    await repository.listQualityResults(
+      { uid: 9001 },
+      {
+        page: 1,
+        pageSize: 10,
+      },
+    );
+
+    expect(builders[0]?.whereCalls).toContainEqual(["session.qa_status", "in", [0, 1]]);
+    expect(builders[1]?.whereCalls).toContainEqual(["session.qa_status", "in", [0, 1]]);
+    expect(builders[1]?.whereRawCalls).toEqual([]);
+    expect(builders[1]?.havingRawCalls).toEqual([]);
   });
 
   it("loads business session aggregates without hydrating current sessions", async () => {
@@ -2203,30 +2248,47 @@ describe("InsightsRepository", () => {
     ).toBe(true);
   });
 
-  it("returns inspected sessions from QA finding aggregate", async () => {
+  it("keeps QA finding aggregate scoped to failed rule distribution", async () => {
+    const builders: SelectBuilderStub[] = [];
     const db = {
-      selectFrom: vi.fn((table: string) =>
-        createSelectBuilder(
+      selectFrom: vi.fn((table: string) => {
+        const builder = createSelectBuilder(
           [
             {
-              passed: 2,
-              total_analyzed: 4,
-              total_qa: 3,
+              count: 2,
+              rule_code: "reply_quality",
+              rule_name: "回复质量",
             },
           ],
           table,
-        ),
-      ),
+        );
+        builders.push(builder);
+        return builder;
+      }),
     };
     const repository = new InsightsRepository(db as never);
 
     await expect(
       repository.getQaFindingAggregate({ uid: 9001 }),
     ).resolves.toMatchObject({
-      inspectedSessions: 3,
-      inspectionRate: 0.75,
-      passRate: 2 / 3,
+      ruleDistribution: [
+        { count: 2, ruleCode: "reply_quality", ruleName: "回复质量" },
+      ],
     });
+    expect(
+      builders.some((builder) =>
+        builder.whereCalls.some((call) =>
+          call[0] === "session.qa_status" && call[1] === "=" && call[2] === 0,
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      builders.some((builder) =>
+        builder.whereCalls.some((call) =>
+          call[0] === "qa.passed" && call[1] === "=" && call[2] === 0,
+        ),
+      ),
+    ).toBe(true);
   });
 });
 
@@ -3817,7 +3879,17 @@ describe("MysqlInsightWorkerRepository", () => {
           problemSummary: "物流异常",
           resolutionStatus: "unresolved",
         },
-        qaFindings: [],
+        qaFindings: [
+          {
+            confidence: 0.9,
+            evidenceMessageIds: ["9001"],
+            passed: true,
+            reason: "响应及时",
+            ruleCode: "reply_quality",
+            ruleName: "回复质量",
+            severity: "medium",
+          },
+        ],
         sentiment: [
           {
             confidence: 0.7,
@@ -3868,6 +3940,255 @@ describe("MysqlInsightWorkerRepository", () => {
         builder.whereCalls.some((call) => call[0] === "id" && call[2] === 501),
     );
     expect(logicalSessionUpdate?.whereCalls).toContainEqual(["uid", "=", 9001]);
+    expect(operations).toContainEqual(
+      expect.objectContaining({
+        table: "xy_wap_embed_logical_session",
+        type: "update",
+        values: expect.objectContaining({ qa_status: 1 }),
+      }),
+    );
+  });
+
+  it("keeps logical sessions uninspected when published QA findings are empty", async () => {
+    const operations: Array<{
+      table: string;
+      type: "insert" | "update";
+      values?: Record<string, unknown>;
+    }> = [];
+    let nextInsertId = 7001;
+    const db = {
+      insertInto: vi.fn((table: string) =>
+        createInsertBuilder(async () => ({ insertId: nextInsertId++ }), {
+          onValues: (values) =>
+            operations.push({ table, type: "insert", values }),
+          table,
+        }),
+      ),
+      selectFrom: vi.fn((table: string) =>
+        createSelectBuilder(
+          table === "xy_wap_embed_logical_session"
+            ? [{ conversation_id: 301 }]
+            : [],
+          table,
+        ),
+      ),
+      updateTable: vi.fn((table: string) =>
+        createUpdateBuilder(async () => ({ numAffectedRows: 1n }), {
+          onSet: (values) => operations.push({ table, type: "update", values }),
+          table,
+        }),
+      ),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await repository.saveAnalysisResult({
+      job: {
+        analysisScope: "qaFindings",
+        attemptCount: 1,
+        jobId: "job-1",
+        maxAttempts: 3,
+        mode: "final",
+        sessionId: "501",
+        uid: 9001,
+      },
+      output: {
+        actionItems: [],
+        entities: [],
+        faqCandidates: [],
+        intents: [],
+        problemResolution: {
+          confidence: 0,
+          evidence: [],
+          evidenceMessageIds: [],
+          problemDetected: false,
+          problemSummary: "",
+          resolutionStatus: "unknown",
+        },
+        qaFindings: [],
+        sentiment: [],
+        summary: {
+          sessionTitle: "",
+          text: "",
+        },
+        tags: [],
+      },
+      runId: "6001",
+      sourceMessageHighWatermark: "9001",
+      validationWarnings: [],
+    });
+
+    expect(operations).toContainEqual(
+      expect.objectContaining({
+        table: "xy_wap_embed_logical_session",
+        type: "update",
+        values: expect.objectContaining({ qa_status: -1 }),
+      }),
+    );
+  });
+
+  it("marks logical sessions failed when published QA findings include failures", async () => {
+    const operations: Array<{
+      table: string;
+      type: "insert" | "update";
+      values?: Record<string, unknown>;
+    }> = [];
+    let nextInsertId = 7001;
+    const db = {
+      insertInto: vi.fn((table: string) =>
+        createInsertBuilder(async () => ({ insertId: nextInsertId++ }), {
+          onValues: (values) =>
+            operations.push({ table, type: "insert", values }),
+          table,
+        }),
+      ),
+      selectFrom: vi.fn((table: string) =>
+        createSelectBuilder(
+          table === "xy_wap_embed_logical_session"
+            ? [{ conversation_id: 301 }]
+            : [],
+          table,
+        ),
+      ),
+      updateTable: vi.fn((table: string) =>
+        createUpdateBuilder(async () => ({ numAffectedRows: 1n }), {
+          onSet: (values) => operations.push({ table, type: "update", values }),
+          table,
+        }),
+      ),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await repository.saveAnalysisResult({
+      job: {
+        analysisScope: "qaFindings",
+        attemptCount: 1,
+        jobId: "job-1",
+        maxAttempts: 3,
+        mode: "final",
+        sessionId: "501",
+        uid: 9001,
+      },
+      output: {
+        actionItems: [],
+        entities: [],
+        faqCandidates: [],
+        intents: [],
+        problemResolution: {
+          confidence: 0,
+          evidence: [],
+          evidenceMessageIds: [],
+          problemDetected: false,
+          problemSummary: "",
+          resolutionStatus: "unknown",
+        },
+        qaFindings: [
+          {
+            confidence: 0.8,
+            evidenceMessageIds: ["9001"],
+            passed: false,
+            reason: "未明确下一步",
+            ruleCode: "clear_next_step",
+            ruleName: "明确下一步",
+            severity: "medium",
+          },
+        ],
+        sentiment: [],
+        summary: {
+          sessionTitle: "",
+          text: "",
+        },
+        tags: [],
+      },
+      runId: "6001",
+      sourceMessageHighWatermark: "9001",
+      validationWarnings: [],
+    });
+
+    expect(operations).toContainEqual(
+      expect.objectContaining({
+        table: "xy_wap_embed_logical_session",
+        type: "update",
+        values: expect.objectContaining({ qa_status: 0 }),
+      }),
+    );
+  });
+
+  it("does not change qa_status when publishing classification-only results", async () => {
+    const logicalSessionUpdates: Record<string, unknown>[] = [];
+    let nextInsertId = 7001;
+    const db = {
+      insertInto: vi.fn((table: string) =>
+        createInsertBuilder(async () => ({ insertId: nextInsertId++ }), { table }),
+      ),
+      selectFrom: vi.fn((table: string) =>
+        createSelectBuilder(
+          table === "xy_wap_embed_logical_session"
+            ? [{ conversation_id: 301 }]
+            : [],
+          table,
+        ),
+      ),
+      updateTable: vi.fn((table: string) =>
+        createUpdateBuilder(async () => ({ numAffectedRows: 1n }), {
+          onSet: (values) => {
+            if (table === "xy_wap_embed_logical_session") {
+              logicalSessionUpdates.push(values);
+            }
+          },
+          table,
+        }),
+      ),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await repository.saveAnalysisResult({
+      job: {
+        analysisScope: "classification",
+        attemptCount: 1,
+        jobId: "job-1",
+        maxAttempts: 3,
+        mode: "manual_reanalyze",
+        sessionId: "501",
+        uid: 9001,
+      },
+      output: {
+        actionItems: [],
+        entities: [],
+        faqCandidates: [],
+        intents: [],
+        problemResolution: {
+          confidence: 0,
+          evidence: [],
+          evidenceMessageIds: [],
+          problemDetected: false,
+          problemSummary: "",
+          resolutionStatus: "unknown",
+        },
+        qaFindings: [
+          {
+            confidence: 0.8,
+            evidenceMessageIds: ["9001"],
+            passed: false,
+            reason: "未明确下一步",
+            ruleCode: "clear_next_step",
+            ruleName: "明确下一步",
+            severity: "medium",
+          },
+        ],
+        sentiment: [],
+        summary: {
+          sessionTitle: "",
+          text: "",
+        },
+        tags: [],
+      },
+      runId: "6001",
+      sourceMessageHighWatermark: "9001",
+      validationWarnings: [],
+    });
+
+    expect(logicalSessionUpdates).toHaveLength(1);
+    expect(logicalSessionUpdates[0]).not.toHaveProperty("qa_status");
   });
 
   it("does not write invalid classification ids to unsigned result columns", async () => {
@@ -4434,7 +4755,7 @@ function createSelectBuilder(rows: unknown[], table = "") {
       return builder;
     },
     select: (...args: unknown[]) => {
-      builder.selectRawCalls.push(args.map(String).join("\n"));
+      builder.selectRawCalls.push(args.map(readRawSql).join("\n"));
       return builder;
     },
     skipLocked: () => {
@@ -4461,6 +4782,10 @@ function createSelectBuilder(rows: unknown[], table = "") {
 }
 
 function readRawSql(value: unknown) {
+  if (Array.isArray(value)) {
+    return value.map(readRawSql).join(",");
+  }
+
   if (
     value &&
     typeof value === "object" &&
@@ -4470,7 +4795,7 @@ function readRawSql(value: unknown) {
     const node = value.toOperationNode() as {
       sqlFragments?: readonly string[];
     };
-    return node.sqlFragments?.join("?") ?? String(value);
+    return node.sqlFragments?.join("?") ?? JSON.stringify(node);
   }
 
   return String(value);

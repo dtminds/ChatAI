@@ -301,18 +301,24 @@ export const InsightsQualityResultSchema = Type.Object({
   conversationId: Type.String(),
   customerAvatarUrl: Type.Optional(Type.String()),
   customerName: Type.String(),
-  lastCustomerMessageAt: Type.Optional(Type.Number()),
   passed: Type.Boolean(),
   passedRules: Type.Number(),
   rules: Type.Array(InsightsQualityRuleResultSchema),
   sessionId: Type.String(),
+  startedAt: Type.Number(),
   summary: Type.String(),
   totalRules: Type.Number(),
 });
 
-export const InsightsQualityResponseSchema = Type.Object({
-  agentStats: Type.Array(InsightsQualityAgentStatSchema),
+export const InsightsQualityOverviewResponseSchema = Type.Object({
   overview: InsightsQualityOverviewSchema,
+});
+
+export const InsightsQualityAgentStatsResponseSchema = Type.Object({
+  agentStats: Type.Array(InsightsQualityAgentStatSchema),
+});
+
+export const InsightsQualityResultsResponseSchema = Type.Object({
   qualityResultsPage: Type.Object({
     page: Type.Number(),
     pageSize: Type.Number(),
@@ -769,7 +775,9 @@ export type InsightBusinessRelatedSessionsResponse = Static<
 export type InsightsBusinessResponse = Static<typeof InsightsBusinessResponseSchema>;
 export type InsightsOverviewResponse = Static<typeof InsightsOverviewResponseSchema>;
 export type InsightOverviewSessionsResponse = Static<typeof InsightOverviewSessionsResponseSchema>;
-export type InsightsQualityResponse = Static<typeof InsightsQualityResponseSchema>;
+export type InsightsQualityOverviewResponse = Static<typeof InsightsQualityOverviewResponseSchema>;
+export type InsightsQualityAgentStatsResponse = Static<typeof InsightsQualityAgentStatsResponseSchema>;
+export type InsightsQualityResultsResponse = Static<typeof InsightsQualityResultsResponseSchema>;
 export type InsightsRescanRequest = Static<typeof InsightsRescanRequestSchema>;
 export type InsightsRescanResponse = Static<typeof InsightsRescanResponseSchema>;
 export type InsightRescanTask = Static<typeof InsightRescanTaskSchema>;

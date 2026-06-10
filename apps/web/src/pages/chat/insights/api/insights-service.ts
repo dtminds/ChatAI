@@ -32,7 +32,9 @@ import type {
   InsightsBusinessResponse,
   InsightsFollowUpsResponse,
   InsightsOverviewResponse,
-  InsightsQualityResponse,
+  InsightsQualityAgentStatsResponse,
+  InsightsQualityOverviewResponse,
+  InsightsQualityResultsResponse,
   InsightsRescanRequest,
   InsightsRescanResponse,
 } from "@chatai/contracts";
@@ -53,8 +55,9 @@ export type InsightQualityQuery = {
   pageSize?: number;
   passed?: boolean;
   to?: string;
-  view?: "agent-report" | "all" | "quality-results";
 };
+
+export type InsightQualitySummaryQuery = Pick<InsightQualityQuery, "from" | "to">;
 
 export type InsightOverviewQuery = {
   from?: ContractInsightOverviewQuery["from"];
@@ -148,12 +151,42 @@ export async function getInsightBusinessRelatedSessions(
   return response.data;
 }
 
-export async function getInsightQuality(
+export async function getInsightQualityOverview(
+  query: InsightQualitySummaryQuery = {},
+  options: InsightRequestOptions = {},
+) {
+  const response = await http.get<ApiSuccessEnvelope<InsightsQualityOverviewResponse>>(
+    "/server/insights/quality/overview",
+    {
+      ...options,
+      params: compactQuery(query),
+    },
+  );
+
+  return response.data;
+}
+
+export async function getInsightQualityAgentStats(
+  query: InsightQualitySummaryQuery = {},
+  options: InsightRequestOptions = {},
+) {
+  const response = await http.get<ApiSuccessEnvelope<InsightsQualityAgentStatsResponse>>(
+    "/server/insights/quality/agent-stats",
+    {
+      ...options,
+      params: compactQuery(query),
+    },
+  );
+
+  return response.data;
+}
+
+export async function getInsightQualityResults(
   query: InsightQualityQuery = {},
   options: InsightRequestOptions = {},
 ) {
-  const response = await http.get<ApiSuccessEnvelope<InsightsQualityResponse>>(
-    "/server/insights/quality",
+  const response = await http.get<ApiSuccessEnvelope<InsightsQualityResultsResponse>>(
+    "/server/insights/quality/results",
     {
       ...options,
       params: compactQuery(query),

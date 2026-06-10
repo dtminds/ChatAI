@@ -313,3 +313,37 @@ ALTER TABLE xy_wap_embed_session_intent
   MODIFY COLUMN intent_label VARCHAR(128) NOT NULL COMMENT '意图名称快照',
   ADD KEY idx_session_intent_uid_id_snapshot (uid, intent_id, snapshot_id);
 ```
+
+## 2026-06-10
+
+- Added `xy_wap_embed_logical_session.qa_status` as the service-quality read model status: `-1` not inspected, `0` has failed QA findings, `1` all QA findings passed.
+- Added `xy_wap_embed_logical_session.idx_logical_session_uid_qa_status_started` so service-quality result lists can page directly from logical sessions by tenant, QA status, and session start time.
+
+Manual migration for existing databases:
+
+```sql
+ALTER TABLE xy_wap_embed_logical_session
+  ADD COLUMN qa_status TINYINT NOT NULL DEFAULT -1 COMMENT '质检状态，-1未质检，0有未通过，1全部通过' AFTER final_snapshot_id,
+  ADD KEY idx_logical_session_uid_qa_status_started (uid, qa_status, started_at, id);
+```
+
+Backfill existing logical sessions after the column is added:
+
+```sql
+UPDATE xy_wap_embed_logical_session AS session
+JOIN (
+  SELECT
+    snapshot_id,
+    CASE
+      WHEN SUM(CASE WHEN passed = 0 THEN 1 ELSE 0 END) > 0 THEN 0
+      ELSE 1
+    END AS qa_status
+  FROM xy_wap_embed_session_qa_finding
+  GROUP BY snapshot_id
+) AS qa
+  ON qa.snapshot_id = session.current_snapshot_id
+SET session.qa_status = qa.qa_status
+WHERE session.qa_status = -1;
+
+ANALYZE TABLE xy_wap_embed_logical_session;
+```

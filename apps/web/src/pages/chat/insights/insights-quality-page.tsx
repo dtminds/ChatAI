@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import type { InsightsQualityResponse } from "@chatai/contracts";
+import type {
+  InsightsQualityAgentStatsResponse,
+  InsightsQualityOverviewResponse,
+  InsightsQualityResultsResponse,
+} from "@chatai/contracts";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,7 +30,11 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
-import { getInsightQuality } from "./api/insights-service";
+import {
+  getInsightQualityAgentStats,
+  getInsightQualityOverview,
+  getInsightQualityResults,
+} from "./api/insights-service";
 import { InsightDateRangeFilter } from "./insight-date-range-filter";
 import { InsightDetailPanel } from "./insight-detail-panel";
 import { InsightPerson } from "./insight-person";
@@ -60,8 +68,13 @@ const qualityResultFilterItems: Array<{
 ];
 
 export function InsightsQualityPage() {
-  const [quality, setQuality] = useState<InsightsQualityResponse>();
-  const [isLoading, setIsLoading] = useState(true);
+  const [overview, setOverview] = useState<InsightsQualityOverviewResponse["overview"]>();
+  const [agentStats, setAgentStats] = useState<InsightsQualityAgentStatsResponse["agentStats"]>([]);
+  const [qualityResults, setQualityResults] = useState<InsightsQualityResultsResponse["qualityResults"]>([]);
+  const [qualityResultsPage, setQualityResultsPage] = useState<InsightsQualityResultsResponse["qualityResultsPage"]>();
+  const [isOverviewLoading, setIsOverviewLoading] = useState(true);
+  const [isAgentStatsLoading, setIsAgentStatsLoading] = useState(false);
+  const [isQualityResultsLoading, setIsQualityResultsLoading] = useState(false);
   const [activeView, setActiveView] = useState<QualityView>("agent-report");
   const [resultPage, setResultPage] = useState(1);
   const [resultFilter, setResultFilter] =
@@ -71,29 +84,93 @@ export function InsightsQualityPage() {
 
   useEffect(() => {
     const controller = new AbortController();
+    const query = {
+      from: toBoundaryDate(dateRange.from, "start"),
+      to: toBoundaryDate(dateRange.to, "end"),
+    };
 
-    setIsLoading(true);
+    setIsOverviewLoading(true);
 
-    void getInsightQuality(
+    void getInsightQualityOverview(query, { signal: controller.signal })
+      .then(({ overview: nextOverview }) => {
+        if (!controller.signal.aborted) {
+          setOverview(nextOverview);
+          setIsOverviewLoading(false);
+        }
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setIsOverviewLoading(false);
+        }
+      });
+
+    return () => {
+      controller.abort();
+    };
+  }, [dateRange.from, dateRange.to]);
+
+  useEffect(() => {
+    if (activeView !== "agent-report") {
+      return;
+    }
+
+    const controller = new AbortController();
+
+    setIsAgentStatsLoading(true);
+
+    void getInsightQualityAgentStats(
+      {
+        from: toBoundaryDate(dateRange.from, "start"),
+        to: toBoundaryDate(dateRange.to, "end"),
+      },
+      { signal: controller.signal },
+    )
+      .then(({ agentStats: nextAgentStats }) => {
+        if (!controller.signal.aborted) {
+          setAgentStats(nextAgentStats);
+          setIsAgentStatsLoading(false);
+        }
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setIsAgentStatsLoading(false);
+        }
+      });
+
+    return () => {
+      controller.abort();
+    };
+  }, [activeView, dateRange.from, dateRange.to]);
+
+  useEffect(() => {
+    if (activeView !== "quality-results") {
+      return;
+    }
+
+    const controller = new AbortController();
+
+    setIsQualityResultsLoading(true);
+
+    void getInsightQualityResults(
       {
         from: toBoundaryDate(dateRange.from, "start"),
         page: resultPage,
         pageSize: qualityResultPageSize,
         passed: normalizeQualityResultPassedFilter(resultFilter),
         to: toBoundaryDate(dateRange.to, "end"),
-        view: activeView,
       },
       { signal: controller.signal },
     )
       .then((data) => {
         if (!controller.signal.aborted) {
-          setQuality(data);
-          setIsLoading(false);
+          setQualityResults(data.qualityResults);
+          setQualityResultsPage(data.qualityResultsPage);
+          setIsQualityResultsLoading(false);
         }
       })
       .catch(() => {
         if (!controller.signal.aborted) {
-          setIsLoading(false);
+          setIsQualityResultsLoading(false);
         }
       });
 
@@ -102,7 +179,7 @@ export function InsightsQualityPage() {
     };
   }, [activeView, dateRange.from, dateRange.to, resultFilter, resultPage]);
 
-  const overview = quality?.overview;
+  const ruleDistribution = overview?.ruleDistribution ?? [];
 
   return (
     <InsightsLayout title="服务质检">
@@ -144,9 +221,9 @@ export function InsightsQualityPage() {
           </section>
 
           <section aria-label="质检分布" className="min-w-0 rounded-[8px] border bg-background p-5">
-            {(overview?.ruleDistribution?.length ?? 0) > 0 ? (
+            {ruleDistribution.length > 0 ? (
               <QualityRuleDistribution
-                distribution={overview!.ruleDistribution}
+                distribution={ruleDistribution}
                 from={dateRange.from}
                 to={dateRange.to}
               />
@@ -205,14 +282,14 @@ export function InsightsQualityPage() {
 
           {activeView === "quality-results" ? (
             <QualityResultList
-              isLoading={isLoading}
-              items={quality?.qualityResults ?? []}
+              isLoading={isQualityResultsLoading}
+              items={qualityResults}
               onOpenDetail={(sessionId) => void detail.openDetail(sessionId)}
               onPageChange={setResultPage}
-              page={quality?.qualityResultsPage}
+              page={qualityResultsPage}
             />
           ) : (
-            <AgentReportTable isLoading={isLoading} rows={quality?.agentStats ?? []} />
+            <AgentReportTable isLoading={isAgentStatsLoading || isOverviewLoading} rows={agentStats} />
           )}
         </section>
       </div>
@@ -240,10 +317,10 @@ function QualityResultList({
   page,
 }: {
   isLoading: boolean;
-  items: InsightsQualityResponse["qualityResults"];
+  items: InsightsQualityResultsResponse["qualityResults"];
   onPageChange: (page: number) => void;
   onOpenDetail: (sessionId: string) => void;
-  page: InsightsQualityResponse["qualityResultsPage"] | undefined;
+  page: InsightsQualityResultsResponse["qualityResultsPage"] | undefined;
 }) {
   const currentPage = page?.page ?? 1;
   const pageSize = page?.pageSize ?? qualityResultPageSize;
@@ -294,7 +371,7 @@ function QualityResultList({
                   <div className="line-clamp-2 text-sm text-foreground">{summary}</div>
                 </TableCell>
                 <TableCell className="px-5 py-4 text-sm text-muted-foreground">
-                  {formatInsightTime(result.lastCustomerMessageAt)}
+                  {formatInsightTime(result.startedAt)}
                 </TableCell>
                 <TableCell className="px-5 py-4">
                   <QualityResultBadge result={result} />
@@ -340,7 +417,7 @@ function QualityResultList({
 function QualityResultBadge({
   result,
 }: {
-  result: InsightsQualityResponse["qualityResults"][number];
+  result: InsightsQualityResultsResponse["qualityResults"][number];
 }) {
   const [open, setOpen] = useState(false);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -459,7 +536,7 @@ function AgentReportTable({
   rows,
 }: {
   isLoading: boolean;
-  rows: InsightsQualityResponse["agentStats"];
+  rows: InsightsQualityAgentStatsResponse["agentStats"];
 }) {
   return (
     <div>
@@ -602,7 +679,7 @@ function QualityRuleDistribution({
   from,
   to,
 }: {
-  distribution: InsightsQualityResponse["overview"]["ruleDistribution"];
+  distribution: InsightsQualityOverviewResponse["overview"]["ruleDistribution"];
   from: string;
   to: string;
 }) {
@@ -727,7 +804,7 @@ function formatDateRangeSummary(from: string, to: string) {
 }
 
 function buildRuleDistributionData(
-  ruleDistribution: InsightsQualityResponse["overview"]["ruleDistribution"],
+  ruleDistribution: InsightsQualityOverviewResponse["overview"]["ruleDistribution"],
 ) {
   const sorted = [...ruleDistribution].sort((left, right) =>
     right.count - left.count

@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_logical_session (
   analysis_delay_minutes INT UNSIGNED NOT NULL COMMENT '创建时使用的延迟分析时长',
   current_snapshot_id BIGINT UNSIGNED NULL COMMENT '当前生效洞察快照ID',
   final_snapshot_id BIGINT UNSIGNED NULL COMMENT '最终洞察快照ID',
+  qa_status TINYINT NOT NULL DEFAULT -1 COMMENT '质检状态，-1未质检，0有未通过，1全部通过',
   message_count INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '消息总数',
   customer_message_count INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '客户消息数',
   agent_message_count INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '客服消息数',
@@ -74,7 +75,8 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_logical_session (
   KEY idx_logical_session_uid_conversation_status (uid, conversation_id, status),
   KEY idx_logical_session_uid_agent_started (uid, third_userid, started_at),
   KEY idx_logical_session_status_next_close (status, next_close_at),
-  KEY idx_logical_session_uid_started (uid, started_at)
+  KEY idx_logical_session_uid_started (uid, started_at),
+  KEY idx_logical_session_uid_qa_status_started (uid, qa_status, started_at, id)
 ) COMMENT='会话洞察逻辑会话表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_logical_session_message (

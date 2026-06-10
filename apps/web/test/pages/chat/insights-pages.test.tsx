@@ -22,7 +22,9 @@ const serviceMocks = vi.hoisted(() => ({
   getInsightFilterOptions: vi.fn(),
   getInsightOverview: vi.fn(),
   getInsightOverviewSessions: vi.fn(),
-  getInsightQuality: vi.fn(),
+  getInsightQualityAgentStats: vi.fn(),
+  getInsightQualityOverview: vi.fn(),
+  getInsightQualityResults: vi.fn(),
   getInsightRescanTasks: vi.fn(),
   getInsightSettings: vi.fn(),
   getInsightSettingsSummary: vi.fn(),
@@ -825,7 +827,6 @@ function installInsightMocks() {
       conversationId: "301",
       customerAvatarUrl: "https://example.com/customer-1.png",
       customerName: "张三",
-      lastCustomerMessageAt: 1_780_244_100_000,
       passed: false,
       passedRules: 1,
       rules: [
@@ -833,6 +834,7 @@ function installInsightMocks() {
         { passed: true, ruleCode: "clear_next_step", ruleName: "明确下一步" },
       ],
       sessionId: "501",
+      startedAt: 1_780_243_200_000,
       summary: "客户反馈物流异常",
       totalRules: 2,
     },
@@ -842,7 +844,6 @@ function installInsightMocks() {
       conversationId: "302",
       customerAvatarUrl: "https://example.com/customer-2.png",
       customerName: "李四",
-      lastCustomerMessageAt: 1_780_244_500_000,
       passed: true,
       passedRules: 2,
       rules: [
@@ -850,6 +851,7 @@ function installInsightMocks() {
         { passed: true, ruleCode: "clear_next_step", ruleName: "明确下一步" },
       ],
       sessionId: "502",
+      startedAt: 1_780_243_900_000,
       summary: "客户咨询退款到账时间",
       totalRules: 2,
     },
@@ -859,69 +861,73 @@ function installInsightMocks() {
       conversationId: "303",
       customerAvatarUrl: "https://example.com/customer-3.png",
       customerName: "王五",
-      lastCustomerMessageAt: 1_780_244_800_000,
       passed: false,
       passedRules: 0,
       rules: [
         { passed: false, ruleCode: "reply_quality", ruleName: "回复质量" },
       ],
       sessionId: "503",
+      startedAt: 1_780_244_800_000,
       summary: "",
       totalRules: 1,
     },
   ];
-  serviceMocks.getInsightQuality.mockImplementation(async (query = {}) => {
+  serviceMocks.getInsightQualityOverview.mockResolvedValue({
+    overview: {
+      analyzedSessions: 20,
+      inspectedSessions: 19,
+      inspectionRate: 0.91,
+      noCustomerProblem: 6,
+      partial: 3,
+      passRate: 0.43,
+      problemSessions: 14,
+      resolved: 6,
+      ruleDistribution: [
+        {
+          count: 20,
+          ruleCode: "problem_resolution",
+          ruleName: "客户问题是否解决",
+        },
+        {
+          count: 18,
+          ruleCode: "clear_next_step",
+          ruleName: "是否明确下一步",
+        },
+        { count: 16, ruleCode: "tone", ruleName: "服务语气不佳" },
+        { count: 14, ruleCode: "response_speed", ruleName: "响应不及时" },
+        { count: 12, ruleCode: "solution", ruleName: "方案不完整" },
+        { count: 10, ruleCode: "wrong_info", ruleName: "信息错误" },
+        { count: 8, ruleCode: "handoff", ruleName: "转接不规范" },
+        { count: 6, ruleCode: "empathy", ruleName: "缺少安抚" },
+        { count: 4, ruleCode: "closing", ruleName: "结束语缺失" },
+        { count: 3, ruleCode: "upsell", ruleName: "推荐不恰当" },
+        { count: 1, ruleCode: "privacy", ruleName: "隐私提醒缺失" },
+      ],
+      totalSessions: 22,
+      unresolved: 5,
+    },
+  });
+  serviceMocks.getInsightQualityAgentStats.mockResolvedValue({
+    agentStats: [
+      {
+        agentAvatarUrl: "https://example.com/agent-report.png",
+        agentName: "企微小助手1号",
+        agentSeatId: "seat-1",
+        failedSessions: 3,
+        inspectedSessions: 21,
+        passedSessions: 18,
+        passRate: 0.8571,
+        totalSessions: 13,
+      },
+    ],
+  });
+  serviceMocks.getInsightQualityResults.mockImplementation(async (query = {}) => {
     const filteredResults =
       query.passed == null
         ? qualityResults
         : qualityResults.filter((item) => item.passed === query.passed);
 
     return {
-      agentStats: [
-        {
-          agentAvatarUrl: "https://example.com/agent-report.png",
-          agentName: "企微小助手1号",
-          agentSeatId: "seat-1",
-          failedSessions: 3,
-          inspectedSessions: 21,
-          passedSessions: 18,
-          passRate: 0.8571,
-          totalSessions: 13,
-        },
-      ],
-      overview: {
-        analyzedSessions: 20,
-        inspectedSessions: 19,
-        inspectionRate: 0.91,
-        noCustomerProblem: 6,
-        partial: 3,
-        passRate: 0.43,
-        problemSessions: 14,
-        resolved: 6,
-        ruleDistribution: [
-          {
-            count: 20,
-            ruleCode: "problem_resolution",
-            ruleName: "客户问题是否解决",
-          },
-          {
-            count: 18,
-            ruleCode: "clear_next_step",
-            ruleName: "是否明确下一步",
-          },
-          { count: 16, ruleCode: "tone", ruleName: "服务语气不佳" },
-          { count: 14, ruleCode: "response_speed", ruleName: "响应不及时" },
-          { count: 12, ruleCode: "solution", ruleName: "方案不完整" },
-          { count: 10, ruleCode: "wrong_info", ruleName: "信息错误" },
-          { count: 8, ruleCode: "handoff", ruleName: "转接不规范" },
-          { count: 6, ruleCode: "empathy", ruleName: "缺少安抚" },
-          { count: 4, ruleCode: "closing", ruleName: "结束语缺失" },
-          { count: 3, ruleCode: "upsell", ruleName: "推荐不恰当" },
-          { count: 1, ruleCode: "privacy", ruleName: "隐私提醒缺失" },
-        ],
-        totalSessions: 22,
-        unresolved: 5,
-      },
       qualityResults: filteredResults,
       qualityResultsPage: {
         page: query.page ?? 1,
@@ -2173,14 +2179,18 @@ describe("conversation insights pages", () => {
     expect(screen.getByTestId("quality-page-header")).toHaveClass(
       "sm:items-end",
     );
-    expect(serviceMocks.getInsightQuality).toHaveBeenCalledWith(
-      expect.objectContaining({
+    expect(serviceMocks.getInsightQualityOverview).toHaveBeenCalledWith(
+      {
         from: "2026-05-28T00:00:00.000+08:00",
-        page: 1,
-        pageSize: 10,
         to: "2026-06-03T23:59:59.999+08:00",
-        view: "agent-report",
-      }),
+      },
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(serviceMocks.getInsightQualityAgentStats).toHaveBeenCalledWith(
+      {
+        from: "2026-05-28T00:00:00.000+08:00",
+        to: "2026-06-03T23:59:59.999+08:00",
+      },
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
     expect(
@@ -2306,20 +2316,22 @@ describe("conversation insights pages", () => {
     expect(screen.getByText("161.54%")).toBeInTheDocument();
     expect(screen.getByText("85.71%")).toBeInTheDocument();
     const callsBeforeQualityResults =
-      serviceMocks.getInsightQuality.mock.calls.length;
+      serviceMocks.getInsightQualityResults.mock.calls.length;
 
     await userEvent.click(screen.getByRole("tab", { name: "质检结果" }));
 
     await waitFor(() => {
-      expect(serviceMocks.getInsightQuality).toHaveBeenCalledTimes(
+      expect(serviceMocks.getInsightQualityResults).toHaveBeenCalledTimes(
         callsBeforeQualityResults + 1,
       );
     });
-    expect(serviceMocks.getInsightQuality).toHaveBeenLastCalledWith(
+    expect(within(qualityMetrics).getByText("19")).toBeInTheDocument();
+    expect(serviceMocks.getInsightQualityResults).toHaveBeenLastCalledWith(
       expect.objectContaining({
         from: "2026-05-28T00:00:00.000+08:00",
+        page: 1,
+        pageSize: 10,
         to: "2026-06-03T23:59:59.999+08:00",
-        view: "quality-results",
       }),
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
@@ -2372,22 +2384,20 @@ describe("conversation insights pages", () => {
     expect(screen.getByText("客户咨询退款到账时间")).toBeInTheDocument();
     expect(screen.getAllByText("已通过").length).toBeGreaterThan(0);
     expect(screen.queryByText("2 / 2")).not.toBeInTheDocument();
-    expect(serviceMocks.getInsightQuality).toHaveBeenLastCalledWith(
+    expect(serviceMocks.getInsightQualityResults).toHaveBeenLastCalledWith(
       expect.objectContaining({
         from: "2026-05-28T00:00:00.000+08:00",
         page: 1,
         pageSize: 10,
         passed: undefined,
         to: "2026-06-03T23:59:59.999+08:00",
-        view: "quality-results",
       }),
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
   });
 
   it("keeps quality distribution slots when fewer than ten rules are available", async () => {
-    serviceMocks.getInsightQuality.mockResolvedValueOnce({
-      agentStats: [],
+    serviceMocks.getInsightQualityOverview.mockResolvedValueOnce({
       overview: {
         analyzedSessions: 6,
         inspectedSessions: 6,
@@ -2407,13 +2417,6 @@ describe("conversation insights pages", () => {
         ],
         totalSessions: 6,
         unresolved: 3,
-      },
-      qualityResults: [],
-      qualityResultsPage: {
-        page: 1,
-        pageSize: 10,
-        total: 0,
-        totalPages: 1,
       },
     });
 
@@ -2445,23 +2448,22 @@ describe("conversation insights pages", () => {
   it("aborts quality loading when the page unmounts", async () => {
     const qualityGate =
       createDeferred<
-        Awaited<ReturnType<typeof serviceMocks.getInsightQuality>>
+        Awaited<ReturnType<typeof serviceMocks.getInsightQualityOverview>>
       >();
-    serviceMocks.getInsightQuality.mockReturnValueOnce(qualityGate.promise);
+    serviceMocks.getInsightQualityOverview.mockReturnValueOnce(qualityGate.promise);
 
     renderRoute("/chat/insights/quality");
 
     await waitFor(() => {
-      expect(serviceMocks.getInsightQuality).toHaveBeenCalled();
+      expect(serviceMocks.getInsightQualityOverview).toHaveBeenCalled();
     });
-    const requestOptions = serviceMocks.getInsightQuality.mock.calls[0]?.[1];
+    const requestOptions = serviceMocks.getInsightQualityOverview.mock.calls[0]?.[1];
     expect(requestOptions?.signal?.aborted).toBe(false);
 
     cleanup();
 
     expect(requestOptions?.signal?.aborted).toBe(true);
     qualityGate.resolve({
-      agentStats: [],
       overview: {
         analyzedSessions: 0,
         inspectedSessions: 0,
@@ -2474,13 +2476,6 @@ describe("conversation insights pages", () => {
         ruleDistribution: [],
         totalSessions: 0,
         unresolved: 0,
-      },
-      qualityResults: [],
-      qualityResultsPage: {
-        page: 1,
-        pageSize: 10,
-        total: 0,
-        totalPages: 1,
       },
     });
     await expect(qualityGate.promise).resolves.toBeDefined();
@@ -3920,7 +3915,7 @@ describe("conversation insights pages", () => {
     cleanup();
     mockSession("admin");
     installInsightMocks();
-    serviceMocks.getInsightQuality.mockImplementationOnce(
+    serviceMocks.getInsightQualityResults.mockImplementationOnce(
       () => new Promise(() => undefined),
     );
     renderRoute("/chat/insights/quality");
@@ -3928,6 +3923,7 @@ describe("conversation insights pages", () => {
     expect(
       await screen.findByRole("heading", { name: "服务质检" }),
     ).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: "质检结果" }));
     expect(
       screen.getByRole("status", { name: "正在加载会话" }),
     ).toBeInTheDocument();
@@ -3949,31 +3945,9 @@ describe("conversation insights pages", () => {
   });
 
   it("shows a loading row when switching quality result views", async () => {
-    serviceMocks.getInsightQuality
-      .mockResolvedValueOnce({
-        agentStats: [],
-        overview: {
-          analyzedSessions: 0,
-          inspectedSessions: 0,
-          inspectionRate: 0,
-          noCustomerProblem: 0,
-          partial: 0,
-          passRate: 0,
-          problemSessions: 0,
-          resolved: 0,
-          ruleDistribution: [],
-          totalSessions: 0,
-          unresolved: 0,
-        },
-        qualityResults: [],
-        qualityResultsPage: {
-          page: 1,
-          pageSize: 10,
-          total: 0,
-          totalPages: 1,
-        },
-      })
-      .mockImplementationOnce(() => new Promise(() => undefined));
+    serviceMocks.getInsightQualityResults.mockImplementationOnce(
+      () => new Promise(() => undefined),
+    );
 
     renderRoute("/chat/insights/quality");
 

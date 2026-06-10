@@ -214,11 +214,11 @@ const previousOverviewAggregate = {
 
 const qualityAggregate = {
   analyzedSessions: 3,
-  inspectedSessions: 0,
-  inspectionRate: 0,
+  inspectedSessions: 3,
+  inspectionRate: 0.75,
   noCustomerProblem: 1,
   partial: 1,
-  passRate: 0,
+  passRate: 0.5,
   problemSessions: 2,
   resolved: 0,
   ruleDistribution: [],
@@ -227,9 +227,6 @@ const qualityAggregate = {
 } satisfies Awaited<NonNullable<InsightsRepositoryPort["getQualityAggregate"]>>;
 
 const qaFindingAggregate = {
-  inspectedSessions: 3,
-  inspectionRate: 0.75,
-  passRate: 0.5,
   ruleDistribution: [
     { count: 2, ruleCode: "reply_quality", ruleName: "回复质量" },
   ],
@@ -244,7 +241,6 @@ const qualityResults = [
     conversationId: "301",
     customerAvatarUrl: "https://example.com/customer-1.png",
     customerName: "张三",
-    lastCustomerMessageAt: 1_780_244_900_000,
     passed: false,
     passedRules: 1,
     rules: [
@@ -252,6 +248,7 @@ const qualityResults = [
       { passed: true, ruleCode: "clear_next_step", ruleName: "明确下一步" },
     ],
     sessionId: "501",
+    startedAt: 1_780_243_200_000,
     summary: "客户反馈物流异常",
     totalRules: 2,
   },
@@ -261,7 +258,6 @@ const qualityResults = [
     conversationId: "302",
     customerAvatarUrl: "https://example.com/customer-2.png",
     customerName: "李四",
-    lastCustomerMessageAt: 1_780_243_900_000,
     passed: true,
     passedRules: 2,
     rules: [
@@ -269,6 +265,7 @@ const qualityResults = [
       { passed: true, ruleCode: "clear_next_step", ruleName: "明确下一步" },
     ],
     sessionId: "502",
+    startedAt: 1_780_243_000_000,
     summary: "客户咨询退款到账时间",
     totalRules: 2,
   },
@@ -536,6 +533,7 @@ function createRepository(
       },
     ]),
     getQualityAggregate: vi.fn(async () => qualityAggregate),
+    getQaFindingAggregate: vi.fn(async () => qaFindingAggregate),
     getOverviewAggregate: vi.fn(async (_scope, filters) =>
       filters.from === "2026-05-02T00:00:00.000+08:00"
         ? previousOverviewAggregate
@@ -1068,22 +1066,30 @@ describe("InsightsService", () => {
   it("builds service quality counts and paginated failed QA results", async () => {
     const repository = createRepository();
     const service = new InsightsService(repository);
-    const result = await service.getQuality(scope, { passed: false });
+    const [overviewResult, resultsResult] = await Promise.all([
+      service.getQualityOverview(scope),
+      service.getQualityResults(scope, { passed: false }),
+    ]);
 
-    expect(result.overview).toMatchObject({
+    expect(overviewResult.overview).toMatchObject({
       analyzedSessions: 3,
-      inspectedSessions: 0,
+      inspectedSessions: 3,
+      inspectionRate: 0.75,
       noCustomerProblem: 1,
       partial: 1,
+      passRate: 0.5,
       problemSessions: 2,
       resolved: 0,
+      ruleDistribution: [
+        { count: 2, ruleCode: "reply_quality", ruleName: "回复质量" },
+      ],
       totalSessions: 4,
       unresolved: 1,
     });
-    expect(result.qualityResults.map((item) => item.sessionId)).toEqual([
+    expect(resultsResult.qualityResults.map((item) => item.sessionId)).toEqual([
       "501",
     ]);
-    expect(result.qualityResults[0]).toMatchObject({
+    expect(resultsResult.qualityResults[0]).toMatchObject({
       passed: false,
       passedRules: 1,
       rules: [
@@ -1092,14 +1098,18 @@ describe("InsightsService", () => {
       ],
       totalRules: 2,
     });
+    expect(repository.getQaFindingAggregate).toHaveBeenCalledWith(
+      scope,
+      expect.objectContaining({
+        from: expect.stringMatching(/^2026-/),
+        to: expect.stringMatching(/^2026-/),
+      }),
+    );
     expect(repository.getQualityAggregate).toHaveBeenCalledWith(scope, {
-      from: undefined,
-      to: undefined,
+      from: expect.any(String),
+      to: expect.any(String),
     });
-    expect(repository.listQualityAgentStats).toHaveBeenCalledWith(scope, {
-      from: undefined,
-      to: undefined,
-    });
+    expect(repository.listQualityAgentStats).not.toHaveBeenCalled();
     expect(repository.listAllCurrentSessions).not.toHaveBeenCalled();
     expect(repository.listCurrentSessions).not.toHaveBeenCalledWith(
       scope,
@@ -1110,34 +1120,37 @@ describe("InsightsService", () => {
     expect(repository.listQualityResults).toHaveBeenCalledWith(
       scope,
       expect.objectContaining({
-        from: undefined,
+        from: expect.any(String),
         page: 1,
         pageSize: 20,
         passed: false,
-        to: undefined,
+        to: expect.any(String),
       }),
     );
   });
 
-  it("merges QA finding aggregate into the quality overview", async () => {
+  it("merges QA rule distribution into the quality overview", async () => {
     const repository = createRepository({
       getQualityAggregate: vi.fn(async () => ({
         ...qualityAggregate,
         analyzedSessions: 4,
+        inspectedSessions: 2,
+        inspectionRate: 0.5,
+        passRate: 1,
       })),
       getQaFindingAggregate: vi.fn(async () => qaFindingAggregate),
     });
     const service = new InsightsService(repository);
-    const result = await service.getQuality(scope, {
+    const result = await service.getQualityOverview(scope, {
       from: "2026-06-01",
       to: "2026-06-30",
     });
 
     expect(result.overview).toMatchObject({
       analyzedSessions: 4,
-      inspectedSessions: 3,
-      inspectionRate: 0.75,
-      passRate: 0.5,
+      inspectedSessions: 2,
+      inspectionRate: 0.5,
+      passRate: 1,
       ruleDistribution: [
         { count: 2, ruleCode: "reply_quality", ruleName: "回复质量" },
       ],
@@ -1158,7 +1171,7 @@ describe("InsightsService", () => {
     });
     const service = new InsightsService(repository);
 
-    const result = await service.getQuality(scope, {
+    const result = await service.getQualityResults(scope, {
       from: "2026-06-01",
       page: 2,
       passed: false,
@@ -1185,17 +1198,14 @@ describe("InsightsService", () => {
       passed: false,
       to: "2026-06-30",
     });
-    expect(repository.listQualityAgentStats).toHaveBeenCalledWith(scope, {
-      from: "2026-06-01",
-      to: "2026-06-30",
-    });
+    expect(repository.listQualityAgentStats).not.toHaveBeenCalled();
   });
 
   it("does not apply QA result pass filter when requesting all quality results", async () => {
     const repository = createRepository();
     const service = new InsightsService(repository);
 
-    await service.getQuality(scope, {
+    await service.getQualityResults(scope, {
       from: "2026-06-01",
       page: 1,
       pageSize: 10,
@@ -1214,24 +1224,16 @@ describe("InsightsService", () => {
     );
   });
 
-  it("skips quality result list when requesting the agent quality report", async () => {
+  it("loads the agent quality report without quality results", async () => {
     const repository = createRepository();
     const service = new InsightsService(repository);
 
-    const result = await service.getQuality(scope, {
+    const result = await service.getQualityAgentStats(scope, {
       from: "2026-06-01",
       to: "2026-06-30",
-      view: "agent-report",
     });
 
     expect(result.agentStats).toHaveLength(2);
-    expect(result.qualityResults).toEqual([]);
-    expect(result.qualityResultsPage).toMatchObject({
-      page: 1,
-      pageSize: 20,
-      total: 0,
-      totalPages: 1,
-    });
     expect(repository.listQualityAgentStats).toHaveBeenCalledWith(scope, {
       from: "2026-06-01",
       to: "2026-06-30",
@@ -1239,18 +1241,18 @@ describe("InsightsService", () => {
     expect(repository.listQualityResults).not.toHaveBeenCalled();
   });
 
-  it("skips agent quality report when requesting quality results", async () => {
+  it("loads quality results without overview or agent stats", async () => {
     const repository = createRepository();
     const service = new InsightsService(repository);
 
-    const result = await service.getQuality(scope, {
+    const result = await service.getQualityResults(scope, {
       from: "2026-06-01",
       to: "2026-06-30",
-      view: "quality-results",
     });
 
-    expect(result.agentStats).toEqual([]);
     expect(result.qualityResults).toHaveLength(2);
+    expect(repository.getQualityAggregate).not.toHaveBeenCalled();
+    expect(repository.getQaFindingAggregate).not.toHaveBeenCalled();
     expect(repository.listQualityAgentStats).not.toHaveBeenCalled();
     expect(repository.listQualityResults).toHaveBeenCalledWith(
       scope,

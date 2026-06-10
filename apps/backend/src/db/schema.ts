@@ -1096,6 +1096,10 @@ export interface XyWapEmbedLogicalSession {
    */
   final_snapshot_id: number | null;
   /**
+   * 质检状态，-1未质检，0有未通过，1全部通过
+   */
+  qa_status: Generated<number>;
+  /**
    * 创建时使用的最长持续时长
    */
   hard_max_duration_hours: number;

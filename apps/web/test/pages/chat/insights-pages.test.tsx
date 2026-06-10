@@ -2550,6 +2550,62 @@ describe("conversation insights pages", () => {
     });
   });
 
+  it("shows a completed follow-up after switching to processed", async () => {
+    renderRoute("/chat/insights/follow-ups");
+
+    expect(
+      await screen.findByRole("heading", { name: "待处理" }),
+    ).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "处理" }));
+    const actionMenu = await screen.findByRole("menu", { name: "处理待办" });
+    await userEvent.click(
+      within(actionMenu).getByRole("menuitem", { name: "标记完成" }),
+    );
+
+    await waitFor(() => {
+      expect(serviceMocks.updateInsightActionStatus).toHaveBeenCalledWith(
+        "801",
+        "done",
+      );
+    });
+
+    serviceMocks.getInsightFollowUps.mockResolvedValueOnce({
+      items: [
+        {
+          actionItemId: "801",
+          conversationId: "301",
+          createdAt: 1_780_244_000_000,
+          customerAvatarUrl: "https://example.com/customer-1.png",
+          customerName: "张三",
+          priority: "high",
+          sessionId: "501",
+          status: "done",
+          title: "确认快递状态",
+        },
+      ],
+      page: 1,
+      pageSize: 10,
+      total: 1,
+      totalPages: 1,
+    });
+
+    await userEvent.click(screen.getByRole("tab", { name: "已处理" }));
+
+    await waitFor(() => {
+      expect(serviceMocks.getInsightFollowUps).toHaveBeenLastCalledWith(
+        {
+          page: 1,
+          pageSize: 10,
+          status: "processed",
+        },
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
+    });
+    expect(await screen.findByText("确认快递状态")).toBeInTheDocument();
+    expect(screen.getByText("已完成")).toBeInTheDocument();
+  });
+
   it("styles follow-up status badges by action state", async () => {
     serviceMocks.getInsightFollowUps.mockResolvedValueOnce({
       items: [

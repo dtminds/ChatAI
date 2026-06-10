@@ -1434,13 +1434,19 @@ describe("InsightsService", () => {
     ).resolves.toMatchObject({
       items: [
         {
+          actionItemId: "803",
+          conversationId: "304",
+          createdAt: 1_780_241_300_000,
+          status: "open",
+        },
+        {
           actionItemId: "801",
           conversationId: "301",
           createdAt: 1_780_244_800_000,
           status: "open",
         },
       ],
-      total: 1,
+      total: 2,
     });
   });
 
@@ -1496,6 +1502,131 @@ describe("InsightsService", () => {
       page: 2,
       pageSize: 1,
       status: "open",
+    });
+  });
+
+  it("keeps repository-expanded processed follow-up action items", async () => {
+    const repository = createRepository({
+      listActionItemsPage: vi.fn(async () => ({
+        items: [
+          {
+            actionItemId: "802",
+            conversationId: "302",
+            customerName: "李四",
+            createdAt: 1_780_243_800_000,
+            priority: "medium",
+            sessionId: "502",
+            status: "done",
+            title: "已完成事项",
+          },
+          {
+            actionItemId: "803",
+            conversationId: "303",
+            customerName: "王五",
+            createdAt: 1_780_243_700_000,
+            priority: "low",
+            sessionId: "503",
+            status: "dismissed",
+            title: "已忽略事项",
+          },
+        ],
+        total: 2,
+      })),
+    });
+    const service = new InsightsService(repository);
+
+    await expect(
+      service.getFollowUps(scope, {
+        page: 1,
+        pageSize: 10,
+        status: "processed",
+      }),
+    ).resolves.toMatchObject({
+      items: [
+        { actionItemId: "802", status: "done" },
+        { actionItemId: "803", status: "dismissed" },
+      ],
+      total: 2,
+    });
+  });
+
+  it("keeps paginated follow-up action items without resolution status", async () => {
+    const repository = createRepository({
+      listActionItemsPage: vi.fn(async () => ({
+        items: [
+          {
+            actionItemId: "801",
+            conversationId: "301",
+            customerName: "张三",
+            createdAt: 1_780_244_800_000,
+            priority: "high",
+            sessionId: "501",
+            status: "open",
+            title: "确认快递状态",
+          },
+        ],
+        total: 1,
+      })),
+    });
+    const service = new InsightsService(repository);
+
+    await expect(
+      service.getFollowUps(scope, {
+        page: 1,
+        pageSize: 10,
+        status: "open",
+      }),
+    ).resolves.toMatchObject({
+      items: [
+        { actionItemId: "801", status: "open" },
+      ],
+      total: 1,
+    });
+  });
+
+  it("does not re-filter repository-paginated follow-up action items", async () => {
+    const repository = createRepository({
+      listActionItemsPage: vi.fn(async () => ({
+        items: [
+          {
+            actionItemId: "801",
+            conversationId: "301",
+            customerName: "张三",
+            createdAt: 1_780_244_800_000,
+            priority: "high",
+            sessionId: "501",
+            status: "open",
+            title: "确认快递状态",
+          },
+          {
+            actionItemId: "802",
+            conversationId: "302",
+            customerName: "李四",
+            createdAt: 1_780_243_800_000,
+            priority: "medium",
+            sessionId: "502",
+            status: "done",
+            title: "已完成事项",
+          },
+        ],
+        total: 2,
+      })),
+    });
+    const service = new InsightsService(repository);
+
+    await expect(
+      service.getFollowUps(scope, {
+        page: 1,
+        pageSize: 10,
+        priority: "high",
+        status: "open",
+      }),
+    ).resolves.toMatchObject({
+      items: [
+        { actionItemId: "801", status: "open" },
+        { actionItemId: "802", status: "done" },
+      ],
+      total: 2,
     });
   });
 
@@ -1614,14 +1745,15 @@ describe("InsightsService", () => {
     const result = await service.getSessionMessages(scope, "501");
 
     expect(result.messages.map((item) => item.seq)).toEqual([9001, 9002]);
-    expect(repository.hasSession).toHaveBeenCalledWith(scope, "501");
+    expect(repository.hasSession).not.toHaveBeenCalled();
+    expect(repository.listSessionMessageRecords).toHaveBeenCalledWith(scope, "501");
     expect(repository.findDetail).not.toHaveBeenCalled();
   });
 
   it("throws not found when session messages are requested outside uid scope", async () => {
     const service = new InsightsService(
       createRepository({
-        hasSession: vi.fn(async () => false),
+        listSessionMessageRecords: vi.fn(async () => undefined),
       }),
     );
 

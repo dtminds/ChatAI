@@ -118,8 +118,12 @@ type ActionItemQueryRow = {
   snapshot_id?: number | string | null;
   third_external_userid: string | null;
   title: string;
-  total_count?: number | string;
 };
+
+type FollowUpActionItemQueryRow = Omit<
+  ActionItemQueryRow,
+  "evidence_message_id" | "last_customer_message_at" | "resolution_status"
+>;
 
 type QualityResultQueryRow = {
   current_snapshot_id: number | string;
@@ -2159,6 +2163,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
   ): Promise<InsightActionItemPage> {
     const page = filters.page ?? 1;
     const pageSize = filters.pageSize ?? 20;
+    const total = await this.countActionItemRows(scope, filters);
     const rows = await this.listActionItemRows(scope, filters, {
       limit: pageSize,
       offset: (page - 1) * pageSize,
@@ -2168,43 +2173,17 @@ export class InsightsRepository implements InsightsRepositoryPort {
 
     return {
       items: actionItems,
-      total: parseNumber(rows[0]?.total_count ?? 0),
+      total,
     };
   }
 
-  private async listActionItemRows(
+  private buildActionItemListBaseQuery(
     scope: InsightsUidScope,
     filters: InsightsFollowUpFilters,
-    pagination: { limit: number; offset: number },
   ) {
     let query = this.db
       .selectFrom("xy_wap_embed_session_action_item as action")
-      .leftJoin("xy_wap_embed_session_problem_resolution as problem", (join) =>
-        join.onRef("problem.snapshot_id", "=", "action.snapshot_id"),
-      )
-      .leftJoin("xy_wap_embed_logical_session as session", (join) =>
-        join.onRef("session.id", "=", "action.session_id"),
-      )
-      .select([
-        "action.id as action_id",
-        "action.action_type as action_type",
-        "action.create_time as created_at",
-        "action.priority as priority",
-        "action.status as action_status",
-        "action.title as title",
-        "problem.resolution_status as resolution_status",
-        "action.conversation_id as conversation_id",
-        "action.session_id as session_id",
-        "action.snapshot_id as snapshot_id",
-        "session.third_external_userid as third_external_userid",
-        sql<number>`count(*) over()`.as("total_count"),
-      ])
       .where("action.uid", "=", scope.uid);
-
-    query = query.where((eb) => eb.or([
-      eb("action.source_type", "=", "manual"),
-      eb("problem.resolution_status", "in", ["unresolved", "partially_resolved"]),
-    ]));
 
     if (filters.status === "processed") {
       query = query.where("action.status", "in", ["done", "dismissed"]);
@@ -2216,13 +2195,45 @@ export class InsightsRepository implements InsightsRepositoryPort {
       query = query.where("action.priority", "=", filters.priority);
     }
 
-    query = applyTopicDateFilters(query, filters);
+    return applyActionItemDateFilters(query, filters);
+  }
 
-    return (await query
+  private async countActionItemRows(
+    scope: InsightsUidScope,
+    filters: InsightsFollowUpFilters,
+  ) {
+    const row = await this.buildActionItemListBaseQuery(scope, filters)
+      .select(sql<number>`count(*)`.as("total_count"))
+      .executeTakeFirst() as { total_count: number | string } | undefined;
+
+    return parseNumber(row?.total_count ?? 0);
+  }
+
+  private async listActionItemRows(
+    scope: InsightsUidScope,
+    filters: InsightsFollowUpFilters,
+    pagination: { limit: number; offset: number },
+  ) {
+    return (await this.buildActionItemListBaseQuery(scope, filters)
+      .leftJoin("xy_wap_embed_logical_session as session", (join) =>
+        join.onRef("session.id", "=", "action.session_id"),
+      )
+      .select([
+        "action.id as action_id",
+        "action.action_type as action_type",
+        "action.create_time as created_at",
+        "action.priority as priority",
+        "action.status as action_status",
+        "action.title as title",
+        "action.conversation_id as conversation_id",
+        "action.session_id as session_id",
+        "action.snapshot_id as snapshot_id",
+        "session.third_external_userid as third_external_userid",
+      ])
       .orderBy("action.id", "desc")
       .limit(pagination.limit)
       .offset(pagination.offset)
-      .execute() as ActionItemQueryRow[]).map(toActionItemBaseRow);
+      .execute() as FollowUpActionItemQueryRow[]);
   }
 
   async listEntityHotspots(scope: InsightsUidScope, filters: InsightsOverviewFilters = {}) {
@@ -2504,9 +2515,6 @@ export class InsightsRepository implements InsightsRepositoryPort {
         third_external_userid: thirdExternalUserId,
       }));
     const actionItems = mapActionItemRows(rows);
-    const snapshotIds = uniquePositiveNumbers(rows.map((row) => Number(row.snapshot_id)));
-
-    await this.hydrateActionItemEvidence(snapshotIds, actionItems);
 
     return actionItems;
   }
@@ -2592,17 +2600,17 @@ export class InsightsRepository implements InsightsRepositoryPort {
   async listSessionMessageRecords(
     scope: InsightsUidScope,
     sessionId: string,
-  ): Promise<WorkbenchMessageDto[]> {
+  ): Promise<WorkbenchMessageDto[] | undefined> {
     const targetSessionId = parsePositiveInteger(sessionId);
 
     if (targetSessionId == null) {
-      return [];
+      return undefined;
     }
 
     const target = await this.findInsightConversationBySession(scope, targetSessionId);
 
     if (!target) {
-      return [];
+      return undefined;
     }
 
     const rows = await this.buildSessionMessageRowsQuery(target)
@@ -3508,44 +3516,6 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .execute() as unknown as QualityRuleQueryRow[];
   }
 
-  private async hydrateActionItemEvidence(
-    snapshotIds: number[],
-    actionItems: InsightDetailActionItemRow[],
-  ) {
-    if (snapshotIds.length === 0 || actionItems.length === 0) {
-      return;
-    }
-
-    const evidenceRows = await this.listActionItemEvidenceMessages(snapshotIds);
-    const evidenceByActionId = groupByActionId(evidenceRows);
-
-    for (const item of actionItems) {
-      const evidence = evidenceByActionId.get(item.actionItemId) ?? [];
-      item.evidenceMessageIds = sortNumericStrings(
-        evidence.map((row) => String(row.evidence_message_id)),
-      );
-    }
-  }
-
-  private async listActionItemEvidenceMessages(snapshotIds: number[]) {
-    if (snapshotIds.length === 0) {
-      return [];
-    }
-
-    return await this.db
-      .selectFrom("xy_wap_embed_insight_evidence as evidence")
-      .select([
-        "evidence.dimension_record_id as action_id",
-        "evidence.source_message_id as evidence_message_id",
-      ])
-      .where("evidence.snapshot_id", "in", snapshotIds)
-      .where("evidence.dimension_type", "=", "action_item")
-      .execute() as Array<{
-        action_id: number | string;
-        evidence_message_id: number | string;
-      }>;
-  }
-
   private async listContactProfiles(
     uid: number,
     thirdExternalUserIds: string[],
@@ -3716,7 +3686,7 @@ function groupByActionId<T extends { action_id: number | string }>(rows: T[]) {
   return byActionId;
 }
 
-function mapFollowUpActionItemRows(rows: ActionItemQueryRow[]): InsightActionItemRow[] {
+function mapFollowUpActionItemRows(rows: FollowUpActionItemQueryRow[]): InsightActionItemRow[] {
   return rows.map((row) => ({
     actionItemId: String(row.action_id),
     conversationId: String(row.conversation_id),
@@ -3724,7 +3694,6 @@ function mapFollowUpActionItemRows(rows: ActionItemQueryRow[]): InsightActionIte
     customerAvatarUrl: undefined,
     customerName: "未知客户",
     priority: normalizePriority(row.priority),
-    resolutionStatus: normalizeResolutionStatus(row.resolution_status),
     sessionId: String(row.session_id),
     status: normalizeActionStatus(row.action_status),
     thirdExternalUserId: row.third_external_userid ?? undefined,
@@ -4365,6 +4334,27 @@ function applyTopicDateFilters<Query>(
 
   if (to != null) {
     next = next.where("session.started_at", "<=", to) as typeof next;
+  }
+
+  return next;
+}
+
+function applyActionItemDateFilters<Query>(
+  query: Query,
+  filters: InsightsFollowUpFilters,
+): Query {
+  let next = query as Query & {
+    where(column: string, operator: string, value: unknown): Query;
+  };
+  const from = parseDateBoundary(filters.from);
+  const to = parseDateBoundary(filters.to);
+
+  if (from != null) {
+    next = next.where("action.create_time", ">=", from) as typeof next;
+  }
+
+  if (to != null) {
+    next = next.where("action.create_time", "<=", to) as typeof next;
   }
 
   return next;

@@ -108,7 +108,6 @@ export type InsightCurrentSessionRow = {
 };
 
 export type InsightActionItemRow = InsightsFollowUpsResponse["items"][number] & {
-  resolutionStatus?: InsightResolutionStatus;
   thirdExternalUserId?: string;
 };
 
@@ -322,7 +321,7 @@ export type InsightsRepositoryPort = {
   listSessionMessageRecords(
     scope: InsightsUidScope,
     sessionId: string,
-  ): Promise<WorkbenchMessageDto[]>;
+  ): Promise<WorkbenchMessageDto[] | undefined>;
   listMessageContext(
     scope: InsightsUidScope,
     conversationId: string,
@@ -662,22 +661,29 @@ export class InsightsService {
       page: normalizedPage,
       pageSize: normalizedPageSize,
     });
-    const rows = pageResult
-      ? pageResult.items
-      : await this.repository.listActionItems(scope, filters);
+
+    if (pageResult) {
+      return {
+        items: pageResult.items
+          .map(stripActionItemInternalFields),
+        page: normalizedPage,
+        pageSize: normalizedPageSize,
+        total: pageResult.total,
+        totalPages: Math.max(1, Math.ceil(pageResult.total / normalizedPageSize)),
+      };
+    }
+
+    const rows = await this.repository.listActionItems(scope, filters);
     const filteredItems = rows
-      .filter((row) => !row.resolutionStatus || requiresHumanIntervention(row.resolutionStatus))
-      .filter((row) => !filters.status || row.status === filters.status)
+      .filter((row) => matchesActionStatusFilter(row.status, filters.status))
       .filter((row) => !filters.priority || row.priority === filters.priority)
       .sort(compareActionItems)
       .map(stripActionItemInternalFields);
-    const total = pageResult?.total ?? filteredItems.length;
-    const items = pageResult
-      ? filteredItems
-      : filteredItems.slice(
-          (normalizedPage - 1) * normalizedPageSize,
-          normalizedPage * normalizedPageSize,
-        );
+    const total = filteredItems.length;
+    const items = filteredItems.slice(
+      (normalizedPage - 1) * normalizedPageSize,
+      normalizedPage * normalizedPageSize,
+    );
 
     return {
       items,
@@ -737,14 +743,14 @@ export class InsightsService {
     scope: InsightsUidScope,
     sessionId: string,
   ): Promise<InsightSessionMessagesResponse> {
-    if (!await this.repository.hasSession(scope, sessionId)) {
+    const messages = await this.repository.listSessionMessageRecords(scope, sessionId);
+
+    if (!messages) {
       throw new NotFoundError("INSIGHT_SESSION_NOT_FOUND", "洞察会话不存在");
     }
 
     return {
-      messages: sortWorkbenchMessagesBySeq(
-        await this.repository.listSessionMessageRecords(scope, sessionId),
-      ),
+      messages: sortWorkbenchMessagesBySeq(messages),
     };
   }
 
@@ -1414,7 +1420,7 @@ function buildQualityOverview(rows: InsightCurrentSessionRow[]): InsightQualityA
 }
 
 function stripActionItemInternalFields(row: InsightActionItemRow): InsightsFollowUpsResponse["items"][number] {
-  const { resolutionStatus: _resolutionStatus, thirdExternalUserId: _thirdExternalUserId, ...item } = row;
+  const { thirdExternalUserId: _thirdExternalUserId, ...item } = row;
 
   return item;
 }
@@ -1794,6 +1800,21 @@ function getDefaultOverviewDateRange() {
 
 function compareActionItems(left: InsightActionItemRow, right: InsightActionItemRow) {
   return compareNumericIdDesc(left.actionItemId, right.actionItemId);
+}
+
+function matchesActionStatusFilter(
+  status: InsightActionItemRow["status"],
+  filter?: InsightsFollowUpFilters["status"],
+) {
+  if (!filter) {
+    return true;
+  }
+
+  if (filter === "processed") {
+    return status === "done" || status === "dismissed";
+  }
+
+  return status === filter;
 }
 
 function compareNumericIdDesc(left: string, right: string) {

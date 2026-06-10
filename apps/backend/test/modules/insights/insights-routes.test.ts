@@ -89,6 +89,11 @@ describe("insights routes", () => {
       payload: { status: "done" },
       url: "/api/server/insights/action-items/801/status",
     });
+    const processedFollowUps = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/insights/follow-ups?status=processed&page=1&pageSize=10",
+    });
     const reopenedStatus = await app.inject({
       headers: {
         authorization,
@@ -259,8 +264,9 @@ describe("insights routes", () => {
     expect(
       db.selectBuilders.some((builder) =>
         builder.wheres.some((call) => call[0] === "action.priority" && call[1] === "=" && call[2] === "high")
-          && builder.wheres.some((call) => call[0] === "session.started_at" && call[1] === ">=")
-          && builder.wheres.some((call) => call[0] === "session.started_at" && call[1] === "<="),
+          && builder.wheres.some((call) => call[0] === "action.create_time" && call[1] === ">=")
+          && builder.wheres.some((call) => call[0] === "action.create_time" && call[1] === "<=")
+          && !builder.wheres.some((call) => call[0] === "session.started_at"),
       ),
     ).toBe(true);
     expect(followUps.json().data.items).toHaveLength(1);
@@ -318,6 +324,19 @@ describe("insights routes", () => {
       data: {
         actionItemId: "801",
         status: "done",
+      },
+      success: true,
+    });
+    expect(processedFollowUps.statusCode).toBe(200);
+    expect(processedFollowUps.json()).toMatchObject({
+      data: {
+        items: [
+          {
+            actionItemId: "801",
+            status: "done",
+          },
+        ],
+        total: 1,
       },
       success: true,
     });
@@ -789,6 +808,7 @@ function createInsightsDbMock(options: {
     insertedJob: undefined as Record<string, unknown> | undefined,
     insertedRescanTask: undefined as Record<string, unknown> | undefined,
     insightCurrentSelectCount: 0,
+    actionStatus: "open",
     rescanTaskListQueries: [] as Array<{ limit?: unknown; offset?: unknown }>,
     selectBuilders: [] as Array<{ wheres: Array<[string, string, unknown]> }>,
     upsertedFeatureConfig: undefined as Record<string, unknown> | undefined,
@@ -1213,15 +1233,29 @@ function createInsightsDbMock(options: {
       if (table === "xy_wap_embed_session_action_item as action") {
         return createBuilder((builder) => {
           const actionId = builder.wheres.find(([column]) => column === "action.id")?.[2];
+          const actionStatuses = builder.wheres.find(([column, operator]) =>
+            column === "action.status" && operator === "in"
+          )?.[2];
+          const actionStatus = builder.wheres.find(([column, operator]) =>
+            column === "action.status" && operator === "="
+          )?.[2];
 
           if (actionId === 404) {
+            return [];
+          }
+
+          if (Array.isArray(actionStatuses) && !actionStatuses.includes(state.actionStatus)) {
+            return [];
+          }
+
+          if (actionStatus && actionStatus !== state.actionStatus) {
             return [];
           }
 
           return [
           {
             action_id: 801,
-            action_status: "open",
+            action_status: state.actionStatus,
             action_type: "logistics_check",
             conversation_id: 301,
             created_at: 1_780_244_000_000,
@@ -1664,6 +1698,7 @@ function createInsightsDbMock(options: {
         executeTakeFirst: async () => {
           const id = wheres.find(([column]) => column === "id")?.[2] as number | undefined;
           state.updatedActionStatus = { id, status: String(updateValues.status) };
+          state.actionStatus = String(updateValues.status);
           return { numAffectedRows: 1n };
         },
         set: (values: Record<string, unknown>) => {

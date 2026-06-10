@@ -1160,8 +1160,12 @@ describe("InsightsRepository", () => {
     expect(mainQuery.joins).not.toContain(
       "xy_wap_embed_msg_audit_info as message",
     );
-    expect(builders.map((builder) => builder.table)).not.toContain(
-      "xy_wap_embed_insight_evidence as evidence",
+    expect(builders).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          table: "xy_wap_embed_insight_evidence as evidence",
+        }),
+      ]),
     );
   });
 
@@ -1185,7 +1189,15 @@ describe("InsightsRepository", () => {
     const builders: SelectBuilderStub[] = [];
     const rowsByTable = new Map<string, unknown[]>([
       [
-        "xy_wap_embed_session_action_item as action",
+        "xy_wap_embed_session_action_item as action:0",
+        [
+          {
+            total_count: 2,
+          },
+        ],
+      ],
+      [
+        "xy_wap_embed_session_action_item as action:1",
         [
           {
             action_id: 802,
@@ -1194,11 +1206,9 @@ describe("InsightsRepository", () => {
             conversation_id: 302,
             created_at: 1_780_243_900_000,
             priority: "medium",
-            resolution_status: "partially_resolved",
             session_id: 202,
             snapshot_id: 502,
             title: "沉淀退款 FAQ",
-            total_count: 2,
           },
         ],
       ],
@@ -1206,8 +1216,9 @@ describe("InsightsRepository", () => {
     ]);
     const db = {
       selectFrom: vi.fn((table: string) => {
+        const key = `${table}:${builders.filter((builder) => builder.table === table).length}`;
         const builder = createSelectBuilder(
-          rowsByTable.get(table) ?? [],
+          rowsByTable.get(key) ?? rowsByTable.get(table) ?? [],
           table,
         );
         builders.push(builder);
@@ -1237,32 +1248,53 @@ describe("InsightsRepository", () => {
       total: 2,
     });
 
-    expect(builders[0]?.limitCalls).toEqual([1]);
-    expect(builders[0]?.offsetCalls).toEqual([1]);
-    expect(builders[0]?.orderByCalls).toEqual([["action.id", "desc"]]);
-    expect(builders[0]?.whereCalls).toContainEqual(["action.uid", "=", 9001]);
-    expect(builders[0]?.whereCalls).not.toContainEqual([
+    const countQuery = builders[0];
+    const pageQuery = builders[1];
+    expect(countQuery?.joins).not.toContain("xy_wap_embed_logical_session as session");
+    expect(countQuery?.joins).not.toContain(
+      "xy_wap_embed_session_problem_resolution as problem",
+    );
+    expect(countQuery?.selectRawCalls.join("\n")).toContain("count(*)");
+    expect(pageQuery?.joins).toContain("xy_wap_embed_logical_session as session");
+    expect(pageQuery?.joins).not.toContain(
+      "xy_wap_embed_session_problem_resolution as problem",
+    );
+    expect(pageQuery?.selectRawCalls.join("\n")).not.toContain("count(*) over()");
+    expect(pageQuery?.limitCalls).toEqual([1]);
+    expect(pageQuery?.offsetCalls).toEqual([1]);
+    expect(pageQuery?.orderByCalls).toEqual([["action.id", "desc"]]);
+    expect(pageQuery?.whereCalls).toContainEqual(["action.uid", "=", 9001]);
+    expect(pageQuery?.whereCalls).not.toContainEqual([
       "session.uid",
       "=",
       9001,
     ]);
-    expect(builders[0]?.whereCalls).toContainEqual([
+    expect(pageQuery?.whereCalls).toContainEqual([
       "action.status",
       "=",
       "open",
     ]);
-    expect(builders[0]?.whereCalls).toContainEqual([
+    expect(pageQuery?.whereCalls).toContainEqual([
+      "action.create_time",
+      ">=",
+      Date.parse("2026-06-01T00:00:00.000+08:00"),
+    ]);
+    expect(pageQuery?.whereCalls).toContainEqual([
+      "action.create_time",
+      "<=",
+      Date.parse("2026-06-30T23:59:59.999+08:00"),
+    ]);
+    expect(pageQuery?.whereCalls).not.toContainEqual([
       "session.started_at",
       ">=",
       Date.parse("2026-06-01T00:00:00.000+08:00"),
     ]);
-    expect(builders[0]?.whereCalls).toContainEqual([
-      "session.started_at",
-      "<=",
-      Date.parse("2026-06-30T23:59:59.999+08:00"),
-    ]);
-    expect(builders.map((builder) => builder.table)).not.toContain(
-      "xy_wap_embed_insight_evidence as evidence",
+    expect(builders).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          table: "xy_wap_embed_insight_evidence as evidence",
+        }),
+      ]),
     );
   });
 
@@ -1298,7 +1330,7 @@ describe("InsightsRepository", () => {
     ]);
   });
 
-  it("filters non-manual action items that do not require human intervention before pagination", async () => {
+  it("does not join problem resolution when listing action items", async () => {
     const builders: SelectBuilderStub[] = [];
     const db = {
       selectFrom: vi.fn((table: string) => {
@@ -1318,18 +1350,17 @@ describe("InsightsRepository", () => {
       },
     );
 
-    expect(builders[0]?.whereCalls).toContainEqual([
-      "action.source_type",
-      "=",
-      "manual",
-    ]);
-    expect(builders[0]?.whereCalls).toContainEqual([
+    const pageQuery = builders[1];
+    expect(pageQuery?.joins).not.toContain(
+      "xy_wap_embed_session_problem_resolution as problem",
+    );
+    expect(pageQuery?.whereCalls).not.toContainEqual([
       "problem.resolution_status",
       "in",
       ["unresolved", "partially_resolved"],
     ]);
-    expect(builders[0]?.limitCalls).toEqual([10]);
-    expect(builders[0]?.offsetCalls).toEqual([0]);
+    expect(pageQuery?.limitCalls).toEqual([10]);
+    expect(pageQuery?.offsetCalls).toEqual([0]);
   });
 
   it("validates manual action item targets against current uid and conversation linkage", async () => {
@@ -1764,11 +1795,10 @@ describe("InsightsRepository", () => {
         expect.objectContaining({
           actionItemId: "801",
           customerName: "张三",
-          evidenceMessageIds: ["9001"],
+          evidenceMessageIds: [],
         }),
       ]),
     );
-
     const actionQuery = builders.find(
       (builder) =>
         builder.table === "xy_wap_embed_session_action_item as action",

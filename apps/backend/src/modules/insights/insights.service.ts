@@ -72,7 +72,6 @@ type InsightResolutionStatus = InsightDetailResponse["problemResolution"]["resol
 type InsightSeverity = InsightDetailResponse["qaFindings"][number] extends never
   ? "low" | "medium" | "high"
   : "low" | "medium" | "high";
-type InsightOverviewSessionItem = InsightOverviewSessionsResponse["items"][number];
 
 export type InsightCurrentSessionRow = {
   actionOpenCount: number;
@@ -84,11 +83,10 @@ export type InsightCurrentSessionRow = {
   currentSnapshotId?: string;
   customerAvatarUrl: string | null;
   customerName: string;
-  assets?: NonNullable<InsightOverviewSessionItem["assets"]>;
   endedAt: number | null;
-  entities?: NonNullable<InsightOverviewSessionItem["entities"]>;
+  entities?: Array<Pick<InsightDetailResponse["entities"][number], "entityId" | "entityName">>;
   generatedAt?: number;
-  intents?: NonNullable<InsightOverviewSessionItem["intents"]>;
+  intents?: Array<Pick<InsightDetailResponse["intents"][number], "intentId" | "intentLabel">>;
   lastMessageAt: number | null;
   lastCustomerMessageAt: number | null;
   phase?: InsightDetailResponse["session"]["phase"];
@@ -101,7 +99,7 @@ export type InsightCurrentSessionRow = {
   startedAt: number;
   summarySessionTitle: string;
   summaryText: string;
-  tags?: NonNullable<InsightOverviewSessionItem["tags"]>;
+  tags?: Array<Pick<InsightDetailResponse["tags"][number], "tagId" | "tagName">>;
   thirdExternalUserId: string;
   thirdUserId: string;
   unresolvedReason: string | null;
@@ -210,7 +208,7 @@ export type InsightCurrentSessionPage = {
 
 export type InsightOverviewAggregateRow = Omit<
   InsightsOverviewResponse,
-  "comparison" | "entityHotspots" | "intentDistribution" | "sessions"
+  "comparison" | "sessions"
 >;
 
 export type InsightBusinessTopicFactRow = {
@@ -234,15 +232,6 @@ export type InsightQualityResultRow = InsightsQualityResultsResponse["qualityRes
 export type InsightQualityResultPage = {
   items: InsightQualityResultRow[];
   total: number;
-};
-
-export type InsightBusinessSessionAggregateRow = {
-  actionItemsOpen: number;
-  analyzedSessions: number;
-  date: string;
-  sessionId: string;
-  startedAt: number;
-  unresolvedSessions: number;
 };
 
 export type InsightActionItemPage = {
@@ -297,10 +286,6 @@ export type InsightsRepositoryPort = {
   ): Promise<{
     ruleDistribution: Array<{ count: number; ruleCode: string; ruleName: string }>;
   }>;
-  listBusinessSessionAggregates?(
-    scope: InsightsUidScope,
-    filters?: InsightsOverviewFilters,
-  ): Promise<InsightBusinessSessionAggregateRow[]>;
   getOverviewAggregate(
     scope: InsightsUidScope,
     filters?: InsightsOverviewFilters,
@@ -309,10 +294,10 @@ export type InsightsRepositoryPort = {
     scope: InsightsUidScope,
     filters?: InsightsOverviewFilters,
   ): Promise<InsightBusinessTopicFactRow[]>;
-  listEntityHotspots?(
+  listBusinessRelatedSessions?(
     scope: InsightsUidScope,
-    filters?: InsightsOverviewFilters,
-  ): Promise<InsightsOverviewResponse["entityHotspots"]>;
+    filters: InsightsBusinessRelatedSessionFilters,
+  ): Promise<InsightCurrentSessionPage>;
   hasActiveRescanTask(scope: InsightsUidScope): Promise<boolean>;
   listRescanTasks(
     scope: InsightsUidScope,
@@ -328,10 +313,6 @@ export type InsightsRepositoryPort = {
     messageId: string,
     options: { after: number; before: number },
   ): Promise<InsightMessageContextResponse>;
-  listIntentDistribution?(
-    scope: InsightsUidScope,
-    filters?: InsightsOverviewFilters,
-  ): Promise<InsightsOverviewResponse["intentDistribution"]>;
   updateActionStatus(
     scope: InsightsUidScope,
     actionItemId: string,
@@ -472,18 +453,14 @@ export class InsightsService {
       to: boundedFilters.to,
     };
     const comparisonFilters = getPreviousOverviewDateRange(aggregateFilters);
-    const [aggregate, previousAggregate, entityHotspots, intentDistribution] = await Promise.all([
+    const [aggregate, previousAggregate] = await Promise.all([
       this.repository.getOverviewAggregate(scope, aggregateFilters),
       this.repository.getOverviewAggregate(scope, comparisonFilters),
-      this.repository.listEntityHotspots?.(scope, aggregateFilters) ?? Promise.resolve([]),
-      this.repository.listIntentDistribution?.(scope, aggregateFilters) ?? Promise.resolve([]),
     ]);
 
     return {
       ...aggregate,
       comparison: buildOverviewComparison(aggregate.totals, previousAggregate.totals),
-      entityHotspots,
-      intentDistribution,
     };
   }
 
@@ -576,32 +553,24 @@ export class InsightsService {
     filters: InsightsOverviewFilters = {},
   ): Promise<InsightsBusinessResponse> {
     const boundedFilters = withDefaultOverviewDateRange(filters);
-    const [sessionAggregates, facts] = await Promise.all([
-      this.repository.listBusinessSessionAggregates?.(scope, boundedFilters) ?? Promise.resolve([]),
-      this.repository.listBusinessTopicFacts?.(scope, boundedFilters) ?? Promise.resolve([]),
-    ]);
-    const sessionsById = new Map(sessionAggregates.map((row) => [row.sessionId, row]));
-    const topicCollections = buildBusinessTopicCollections(facts, sessionsById);
+    const facts = await this.repository.listBusinessTopicFacts?.(scope, boundedFilters) ?? [];
+    const topicCollections = buildBusinessTopicCollections(facts);
 
     return {
       assetHotspots: topicCollections.assetHotspots,
       entityHotspots: topicCollections.entityHotspots,
       intentDistribution: topicCollections.intentDistribution,
       intentTrend: buildBusinessIntentTrend(facts),
-      qualityTopics: topicCollections.qualityTopics,
       tagDistribution: topicCollections.tagDistribution,
       totals: {
-        actionItemsOpen: sessionAggregates.reduce((total, row) => total + row.actionItemsOpen, 0),
-        analyzedSessions: sessionAggregates.reduce((total, row) => total + row.analyzedSessions, 0),
         assetMentions: sumTopicMentions(topicCollections.assetHotspots),
         entityMentions: sumTopicMentions(topicCollections.entityHotspots),
         intentMentions: sumTopicMentions(topicCollections.intentDistribution),
         negativeSessions: countNegativeBusinessSessions(facts),
         tagMentions: sumTopicMentions(topicCollections.tagDistribution),
         topicSessions: new Set(facts.map((fact) => fact.sessionId)).size,
-        unresolvedSessions: sessionAggregates.reduce((total, row) => total + row.unresolvedSessions, 0),
       },
-      trend: buildBusinessTrend(sessionAggregates, facts),
+      trend: buildBusinessTrend(facts),
     };
   }
 
@@ -612,6 +581,23 @@ export class InsightsService {
     const boundedFilters = withDefaultOverviewDateRange(filters);
     const normalizedPage = normalizeOverviewPage(filters.page);
     const normalizedPageSize = normalizeOverviewPageSize(filters.pageSize);
+
+    if (this.repository.listBusinessRelatedSessions) {
+      const sessions = await this.repository.listBusinessRelatedSessions(scope, {
+        ...boundedFilters,
+        page: normalizedPage,
+        pageSize: normalizedPageSize,
+      });
+
+      return {
+        items: buildOverviewSessions(sessions.items),
+        page: normalizedPage,
+        pageSize: normalizedPageSize,
+        total: sessions.total,
+        totalPages: Math.max(1, Math.ceil(sessions.total / normalizedPageSize)),
+      };
+    }
+
     const facts = await this.repository.listBusinessTopicFacts?.(scope, boundedFilters) ?? [];
     const sessionIds = Array.from(
       new Set(
@@ -1365,9 +1351,7 @@ function raiseConfigNotFound(): never {
 }
 
 function buildOverviewSessions(rows: InsightCurrentSessionRow[]) {
-  return [...rows]
-    .sort((left, right) => right.startedAt - left.startedAt)
-    .map((row) => ({
+  return rows.map((row) => ({
       agentAvatarUrl: row.agentAvatarUrl ?? undefined,
       agentName: row.agentName ?? undefined,
       analysisStatus: row.analysisStatus,
@@ -1375,15 +1359,12 @@ function buildOverviewSessions(rows: InsightCurrentSessionRow[]) {
       customerAvatarUrl: row.customerAvatarUrl ?? undefined,
       customerName: row.customerName,
       endedAt: row.endedAt ?? undefined,
-      entities: row.entities ?? [],
-      intents: row.intents ?? [],
       lastMessageAt: row.lastMessageAt ?? undefined,
       problemSummary: row.problemSummary || undefined,
       resolutionStatus: row.resolutionStatus,
       sessionId: row.sessionId,
       startedAt: row.startedAt,
       summarySessionTitle: row.summarySessionTitle,
-      tags: row.tags ?? [],
     }));
 }
 
@@ -1432,7 +1413,6 @@ function stripDetailActionItemInternalFields(row: InsightDetailActionItemRow): I
 }
 
 type BusinessTopicAccumulator = {
-  actionItemSessions: Set<string>;
   dimension: InsightsBusinessResponse["tagDistribution"][number]["dimension"];
   mentionCount: number;
   name: string;
@@ -1440,25 +1420,14 @@ type BusinessTopicAccumulator = {
   sessions: Set<string>;
   topicId: string;
   type?: string;
-  unresolvedSessions: Set<string>;
 };
 
-function buildBusinessTopicCollections(
-  facts: InsightBusinessTopicFactRow[],
-  sessionsById: Map<string, InsightBusinessSessionAggregateRow>,
-) {
+function buildBusinessTopicCollections(facts: InsightBusinessTopicFactRow[]) {
   const accumulators = new Map<string, BusinessTopicAccumulator>();
 
   for (const fact of facts) {
-    const session = sessionsById.get(fact.sessionId);
-
-    if (!session) {
-      continue;
-    }
-
     const key = `${fact.dimension}:${fact.topicId}:${fact.type ?? ""}`;
     const accumulator = accumulators.get(key) ?? {
-      actionItemSessions: new Set<string>(),
       dimension: fact.dimension,
       mentionCount: 0,
       name: fact.name,
@@ -1466,22 +1435,13 @@ function buildBusinessTopicCollections(
       sessions: new Set<string>(),
       topicId: fact.topicId,
       type: fact.type ?? undefined,
-      unresolvedSessions: new Set<string>(),
     };
 
     accumulator.mentionCount += fact.mentionCount;
-    accumulator.sessions.add(session.sessionId);
-
-    if (session.unresolvedSessions > 0) {
-      accumulator.unresolvedSessions.add(session.sessionId);
-    }
+    accumulator.sessions.add(fact.sessionId);
 
     if (isNegativeTopicFact(fact)) {
-      accumulator.negativeSessions.add(session.sessionId);
-    }
-
-    if (session.actionItemsOpen > 0) {
-      accumulator.actionItemSessions.add(session.sessionId);
+      accumulator.negativeSessions.add(fact.sessionId);
     }
 
     accumulators.set(key, accumulator);
@@ -1496,13 +1456,6 @@ function buildBusinessTopicCollections(
     assetHotspots: topics.filter((topic) => topic.dimension === "asset").slice(0, 12),
     entityHotspots: topics.filter((topic) => topic.dimension === "entity").slice(0, 12),
     intentDistribution: topics.filter((topic) => topic.dimension === "intent").slice(0, 12),
-    qualityTopics: [...topics]
-      .sort((left, right) =>
-        right.unresolvedRate - left.unresolvedRate ||
-        right.unresolvedSessions - left.unresolvedSessions ||
-        right.sessionCount - left.sessionCount
-      )
-      .slice(0, 12),
     tagDistribution: topics.filter((topic) => topic.dimension === "tag").slice(0, 12),
   };
 }
@@ -1512,11 +1465,9 @@ function mapBusinessTopic(
   totalTopicSessions: number,
 ): InsightsBusinessResponse["tagDistribution"][number] {
   const sessionCount = topic.sessions.size;
-  const unresolvedSessions = topic.unresolvedSessions.size;
   const negativeSessions = topic.negativeSessions.size;
 
   return {
-    actionItemsOpen: topic.actionItemSessions.size,
     code: topic.topicId,
     dimension: topic.dimension,
     mentionCount: topic.mentionCount,
@@ -1526,8 +1477,6 @@ function mapBusinessTopic(
     sessionCount,
     share: totalTopicSessions > 0 ? sessionCount / totalTopicSessions : 0,
     type: topic.type,
-    unresolvedRate: sessionCount > 0 ? unresolvedSessions / sessionCount : 0,
-    unresolvedSessions,
   };
 }
 
@@ -1559,10 +1508,7 @@ function sumTopicMentions(topics: InsightsBusinessResponse["tagDistribution"]) {
   return topics.reduce((total, topic) => total + topic.mentionCount, 0);
 }
 
-function buildBusinessTrend(
-  rows: InsightBusinessSessionAggregateRow[],
-  facts: InsightBusinessTopicFactRow[],
-) {
+function buildBusinessTrend(facts: InsightBusinessTopicFactRow[]) {
   const trend = new Map<
     string,
     InsightsBusinessResponse["trend"][number] & {
@@ -1570,13 +1516,6 @@ function buildBusinessTrend(
       topicSessionIds: Set<string>;
     }
   >();
-
-  for (const row of rows) {
-    const date = row.date || formatDateKey(row.startedAt);
-    const point = getBusinessTrendPoint(trend, date);
-
-    point.unresolvedSessions += row.unresolvedSessions;
-  }
 
   for (const fact of facts) {
     const date = formatDateKey(fact.startedAt);
@@ -1615,7 +1554,6 @@ function buildBusinessTrend(
       negativeSessions: point.negativeSessionIds.size,
       tagMentions: point.tagMentions,
       topicSessions: point.topicSessionIds.size,
-      unresolvedSessions: point.unresolvedSessions,
     }));
 }
 
@@ -1639,7 +1577,6 @@ function getBusinessTrendPoint(
     tagMentions: 0,
     topicSessions: 0,
     topicSessionIds: new Set<string>(),
-    unresolvedSessions: 0,
   };
 
   trend.set(date, point);

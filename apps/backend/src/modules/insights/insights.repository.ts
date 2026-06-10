@@ -45,7 +45,6 @@ import type {
   InsightActionItemPage,
   InsightDetailActionItemRow,
   InsightActionItemRow,
-  InsightBusinessSessionAggregateRow,
   InsightBusinessTopicFactRow,
   InsightCurrentSessionPage,
   InsightCurrentSessionRow,
@@ -55,6 +54,7 @@ import type {
   InsightQualityAggregateRow,
   InsightQualityResultPage,
   InsightsFollowUpFilters,
+  InsightsBusinessRelatedSessionFilters,
   InsightsOverviewFilters,
   InsightsRepositoryPort,
   InsightsUidScope,
@@ -209,15 +209,6 @@ type QualityAgentStatQueryRow = {
   total_sessions: number | string;
 };
 
-type BusinessSessionAggregateQueryRow = {
-  action_items_open: number | string;
-  analyzed_sessions: number | string;
-  date: string;
-  session_id: number | string;
-  started_at: number | string;
-  unresolved_sessions: number | string;
-};
-
 type ProblemEvidenceMessageRow = {
   evidence_message_id: number | string;
   last_customer_message_at: number | string | null;
@@ -278,20 +269,6 @@ type FaqCandidateQueryRow = {
   status: string;
 };
 
-type EntityHotspotQueryRow = {
-  entity_id: number | string;
-  entity_name: string;
-  mention_count: number | string;
-  negative_count: number | string;
-  session_count: number | string;
-};
-
-type IntentDistributionQueryRow = {
-  count: number | string;
-  intent_id: number | string;
-  intent_label: string;
-};
-
 type FeatureConfigRow = {
   entity_enabled: number | string;
   insight_enabled: number | string;
@@ -324,6 +301,36 @@ type BusinessSessionScopeRow = {
   session_id: number | string;
   snapshot_id: number | string;
   started_at: number | string;
+};
+
+type BusinessRelatedTopicDefinition = {
+  idColumn: "topic.entity_id" | "topic.intent_id" | "topic.tag_id";
+  snapshotColumn: "topic.snapshot_id";
+  table:
+    | "xy_wap_embed_session_entity as topic"
+    | "xy_wap_embed_session_intent as topic"
+    | "xy_wap_embed_session_tag as topic";
+  uidColumn: "topic.uid";
+};
+
+type CurrentSessionHydrationOptions = {
+  aggregates?: boolean;
+  actors?: boolean;
+  topics?: boolean;
+};
+
+type DynamicSelectQueryBuilder = {
+  execute(): Promise<unknown[]>;
+  executeTakeFirst(): Promise<unknown>;
+  groupBy(columns: string[]): DynamicSelectQueryBuilder;
+  innerJoin(...args: unknown[]): DynamicSelectQueryBuilder;
+  leftJoin(...args: unknown[]): DynamicSelectQueryBuilder;
+  limit(value: number): DynamicSelectQueryBuilder;
+  offset(value: number): DynamicSelectQueryBuilder;
+  orderBy(column: string, direction: "asc" | "desc"): DynamicSelectQueryBuilder;
+  select(selection: unknown): DynamicSelectQueryBuilder;
+  where(column: string, operator: string, value: unknown): DynamicSelectQueryBuilder;
+  where(expression: unknown): DynamicSelectQueryBuilder;
 };
 
 type AssetTopicMessageQueryRow = {
@@ -1447,6 +1454,8 @@ export class InsightsRepository implements InsightsRepositoryPort {
     const sessionRows = await this.listCurrentSessionRows(scope, filters, {
       limit: pageSize,
       offset,
+    }, {
+      actors: true,
     });
 
     return {
@@ -1462,6 +1471,10 @@ export class InsightsRepository implements InsightsRepositoryPort {
     return await this.listCurrentSessionRows(scope, filters, {
       limit: allCurrentSessionsLimit,
       offset: 0,
+    }, {
+      actors: true,
+      aggregates: true,
+      topics: true,
     });
   }
 
@@ -1672,62 +1685,15 @@ export class InsightsRepository implements InsightsRepositoryPort {
     };
   }
 
-  async listBusinessSessionAggregates(
-    scope: InsightsUidScope,
-    filters: InsightsOverviewFilters = {},
-  ): Promise<InsightBusinessSessionAggregateRow[]> {
-    const rows = await applyCurrentSessionFilters(
-      buildAnalyzedCurrentSessionBaseQuery(this.db)
-        .leftJoin("xy_wap_embed_session_action_item as aggregate_action", (join) =>
-          join
-            .onRef("aggregate_action.snapshot_id", "=", "snapshot.id")
-            .on("aggregate_action.status", "=", "open"),
-        )
-        .select([
-          "session.id as session_id",
-          "session.started_at as started_at",
-          sql<string>`date_format(from_unixtime(session.started_at / 1000), '%Y-%m-%d')`.as("date"),
-          sql<number>`case when snapshot.status in ('ready', 'partial') then 1 else 0 end`.as("analyzed_sessions"),
-          sql<number>`
-            case
-              when problem.resolution_status in ('unresolved', 'partially_resolved')
-              then 1
-              else 0
-            end
-          `.as("unresolved_sessions"),
-          sql<number>`
-            case
-              when problem.resolution_status in ('unresolved', 'partially_resolved')
-              then count(distinct aggregate_action.id)
-              else 0
-            end
-          `.as("action_items_open"),
-        ]),
-      scope,
-      filters,
-    )
-      .groupBy([
-        "session.id",
-        "session.started_at",
-        "snapshot.status",
-        "problem.resolution_status",
-      ])
-      .execute() as BusinessSessionAggregateQueryRow[];
-
-    return rows.map((row) => ({
-      actionItemsOpen: parseNumber(row.action_items_open),
-      analyzedSessions: parseNumber(row.analyzed_sessions),
-      date: row.date,
-      sessionId: String(row.session_id),
-      startedAt: parseNumber(row.started_at),
-      unresolvedSessions: parseNumber(row.unresolved_sessions),
-    }));
-  }
-
   private async listCurrentSessionRows(
     scope: InsightsUidScope,
     filters: InsightsOverviewFilters,
     pagination?: { limit: number; offset: number },
+    hydration: CurrentSessionHydrationOptions = {
+      actors: true,
+      aggregates: true,
+      topics: true,
+    },
   ) {
     let query = buildCurrentSessionBaseQuery(this.db)
       .select([
@@ -1756,6 +1722,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
     let groupedQuery = query
       .groupBy([
         "current.current_snapshot_id",
+        "problem.confidence",
         "problem.problem_detected",
         "problem.problem_summary",
         "problem.resolution_status",
@@ -1787,10 +1754,16 @@ export class InsightsRepository implements InsightsRepositoryPort {
     }));
 
     const sessionRows = mapCurrentSessionRows(rows);
-    await this.hydrateCurrentSessionAggregates(sessionRows);
+    if (hydration.aggregates) {
+      await this.hydrateCurrentSessionAggregates(sessionRows);
+    }
     await Promise.all([
-      this.hydrateCurrentSessionActors(scope, sessionRows),
-      this.hydrateCurrentSessionTopics(sessionRows),
+      hydration.actors
+        ? this.hydrateCurrentSessionActors(scope, sessionRows)
+        : Promise.resolve(),
+      hydration.topics
+        ? this.hydrateCurrentSessionTopics(sessionRows)
+        : Promise.resolve(),
     ]);
 
     return sessionRows;
@@ -1924,6 +1897,167 @@ export class InsightsRepository implements InsightsRepositoryPort {
       ...intents,
       ...assets,
     ];
+  }
+
+  async listBusinessRelatedSessions(
+    scope: InsightsUidScope,
+    filters: InsightsBusinessRelatedSessionFilters,
+  ): Promise<InsightCurrentSessionPage> {
+    if (filters.dimension === "asset") {
+      return this.listBusinessAssetRelatedSessions(scope, filters);
+    }
+
+    const topicId = parsePositiveInteger(filters.topicCode);
+
+    if (topicId == null) {
+      return { items: [], total: 0 };
+    }
+
+    const page = filters.page ?? 1;
+    const pageSize = filters.pageSize ?? 20;
+    const offset = (page - 1) * pageSize;
+    const totalRow = await this.buildBusinessRelatedSessionQuery(scope, filters, topicId)
+      .select(sql<number>`count(distinct session.id)`.as("count"))
+      .executeTakeFirst() as CountQueryRow | undefined;
+    const total = parseNumber(totalRow?.count ?? 0);
+    const rows = (await this.buildBusinessRelatedSessionQuery(scope, filters, topicId)
+      .select([
+        "current.current_snapshot_id as current_snapshot_id",
+        "problem.confidence as problem_confidence",
+        "problem.problem_detected as problem_detected",
+        "problem.problem_summary as problem_summary",
+        "problem.resolution_status as resolution_status",
+        "problem.unresolved_reason as unresolved_reason",
+        "session.conversation_id as conversation_id",
+        "session.ended_at as ended_at",
+        "session.id as session_id",
+        "session.last_message_at as last_message_at",
+        "session.started_at as started_at",
+        "session.third_external_userid as third_external_userid",
+        "session.third_userid as third_userid",
+        "snapshot.phase as phase",
+        "snapshot.create_time as generated_at",
+        "snapshot.status as status",
+        "summary.session_title as summary_session_title",
+        "summary.summary_text as summary_text",
+      ])
+      .groupBy([
+        "current.current_snapshot_id",
+        "problem.confidence",
+        "problem.problem_detected",
+        "problem.problem_summary",
+        "problem.resolution_status",
+        "problem.unresolved_reason",
+        "session.conversation_id",
+        "session.ended_at",
+        "session.id",
+        "session.last_message_at",
+        "session.started_at",
+        "session.third_external_userid",
+        "session.third_userid",
+        "snapshot.phase",
+        "snapshot.create_time",
+        "snapshot.status",
+        "summary.session_title",
+        "summary.summary_text",
+      ])
+      .orderBy("session.started_at", "desc")
+      .orderBy("session.id", "desc")
+      .limit(pageSize)
+      .offset(offset)
+      .execute() as CurrentSessionCoreQueryRow[]).map((row) => ({
+        ...row,
+        last_customer_message_at: row.last_customer_message_at ?? null,
+    }));
+    const sessionRows = mapCurrentSessionRows(rows);
+
+    await this.hydrateCurrentSessionActors(scope, sessionRows);
+
+    return {
+      items: sessionRows,
+      total,
+    };
+  }
+
+  private buildBusinessRelatedSessionQuery(
+    scope: InsightsUidScope,
+    filters: InsightsBusinessRelatedSessionFilters,
+    topicId: number,
+  ) {
+    const topic = getBusinessRelatedTopicDefinition(filters.dimension);
+    let query = (this.db.selectFrom(topic.table) as DynamicSelectQueryBuilder)
+      .innerJoin(
+        "xy_wap_embed_session_insight_current as current",
+        "current.current_snapshot_id",
+        topic.snapshotColumn,
+      )
+      .innerJoin(
+        "xy_wap_embed_session_insight_snapshot as snapshot",
+        "snapshot.id",
+        "current.current_snapshot_id",
+      )
+      .innerJoin(
+        "xy_wap_embed_logical_session as session",
+        "session.id",
+        "current.session_id",
+      )
+      .leftJoin(
+        "xy_wap_embed_session_summary as summary",
+        "summary.snapshot_id",
+        "snapshot.id",
+      )
+      .leftJoin(
+        "xy_wap_embed_session_problem_resolution as problem",
+        "problem.snapshot_id",
+        "snapshot.id",
+      )
+      .where(topic.uidColumn, "=", scope.uid)
+      .where(topic.idColumn, "=", topicId)
+      .where("session.uid", "=", scope.uid);
+
+    query = applyTopicDateFilters(query, filters);
+
+    const keyword = filters.keyword?.trim();
+    if (keyword) {
+      const pattern = `%${escapeLikePattern(keyword)}%`;
+      query = query.where(sql<boolean>`
+        (
+          problem.problem_summary like ${pattern} escape '\\'
+          or summary.session_title like ${pattern} escape '\\'
+          or summary.summary_text like ${pattern} escape '\\'
+        )
+      `);
+    }
+
+    return query;
+  }
+
+  private async listBusinessAssetRelatedSessions(
+    scope: InsightsUidScope,
+    filters: InsightsBusinessRelatedSessionFilters,
+  ): Promise<InsightCurrentSessionPage> {
+    const facts = await this.listBusinessAssetFacts(scope, filters);
+    const sessionIds = Array.from(
+      new Set(
+        facts
+          .filter((fact) => businessTopicFactMatchesFilter(fact, filters))
+          .sort((left, right) => right.startedAt - left.startedAt)
+          .map((fact) => fact.sessionId),
+      ),
+    );
+
+    if (sessionIds.length === 0) {
+      return { items: [], total: 0 };
+    }
+
+    return this.listCurrentSessions(scope, {
+      from: filters.from,
+      keyword: filters.keyword,
+      page: filters.page,
+      pageSize: filters.pageSize,
+      sessionIds,
+      to: filters.to,
+    });
   }
 
   private async listBusinessTagFacts(
@@ -2234,70 +2368,6 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .limit(pagination.limit)
       .offset(pagination.offset)
       .execute() as FollowUpActionItemQueryRow[]);
-  }
-
-  async listEntityHotspots(scope: InsightsUidScope, filters: InsightsOverviewFilters = {}) {
-    let query = this.db
-      .selectFrom("xy_wap_embed_session_entity as entity")
-      .innerJoin("xy_wap_embed_session_insight_current as current", (join) =>
-        join.onRef("current.current_snapshot_id", "=", "entity.snapshot_id"),
-      )
-      .innerJoin("xy_wap_embed_logical_session as session", (join) =>
-        join.onRef("session.id", "=", "current.session_id"),
-      )
-      .select([
-        "entity.entity_id as entity_id",
-        "entity.entity_name as entity_name",
-        sql<number>`count(entity.id)`.as("mention_count"),
-        sql<number>`count(case when entity.sentiment = 'negative' then 1 end)`.as("negative_count"),
-        sql<number>`count(distinct session.id)`.as("session_count"),
-      ])
-      .where("entity.uid", "=", scope.uid)
-      .groupBy(["entity.entity_id", "entity.entity_name"])
-      .orderBy(sql<number>`count(entity.id)`, "desc")
-      .limit(10);
-
-    query = applyTopicDateFilters(query, filters);
-
-    const rows = await query.execute() as EntityHotspotQueryRow[];
-
-    return rows.map((row) => ({
-      entityId: String(row.entity_id),
-      entityName: row.entity_name,
-      mentionCount: parseNumber(row.mention_count),
-      negativeCount: parseNumber(row.negative_count),
-      sessionCount: parseNumber(row.session_count),
-    }));
-  }
-
-  async listIntentDistribution(scope: InsightsUidScope, filters: InsightsOverviewFilters = {}) {
-    let query = this.db
-      .selectFrom("xy_wap_embed_session_intent as intent")
-      .innerJoin("xy_wap_embed_session_insight_current as current", (join) =>
-        join.onRef("current.current_snapshot_id", "=", "intent.snapshot_id"),
-      )
-      .innerJoin("xy_wap_embed_logical_session as session", (join) =>
-        join.onRef("session.id", "=", "current.session_id"),
-      )
-      .select([
-        sql<number>`count(*)`.as("count"),
-        "intent.intent_id as intent_id",
-        "intent.intent_label as intent_label",
-      ])
-      .where("intent.uid", "=", scope.uid)
-      .groupBy(["intent.intent_id", "intent.intent_label"])
-      .orderBy(sql<number>`count(*)`, "desc")
-      .limit(10);
-
-    query = applyTopicDateFilters(query, filters);
-
-    const rows = await query.execute() as IntentDistributionQueryRow[];
-
-    return rows.map((row) => ({
-      count: parseNumber(row.count),
-      intentId: String(row.intent_id),
-      intentLabel: row.intent_label,
-    }));
   }
 
   async findDetail(
@@ -4358,6 +4428,46 @@ function applyActionItemDateFilters<Query>(
   }
 
   return next;
+}
+
+function getBusinessRelatedTopicDefinition(
+  dimension: InsightsBusinessRelatedSessionFilters["dimension"],
+): BusinessRelatedTopicDefinition {
+  if (dimension === "entity") {
+    return {
+      idColumn: "topic.entity_id",
+      snapshotColumn: "topic.snapshot_id",
+      table: "xy_wap_embed_session_entity as topic",
+      uidColumn: "topic.uid",
+    };
+  }
+
+  if (dimension === "intent") {
+    return {
+      idColumn: "topic.intent_id",
+      snapshotColumn: "topic.snapshot_id",
+      table: "xy_wap_embed_session_intent as topic",
+      uidColumn: "topic.uid",
+    };
+  }
+
+  return {
+    idColumn: "topic.tag_id",
+    snapshotColumn: "topic.snapshot_id",
+    table: "xy_wap_embed_session_tag as topic",
+    uidColumn: "topic.uid",
+  };
+}
+
+function businessTopicFactMatchesFilter(
+  fact: InsightBusinessTopicFactRow,
+  filters: InsightsBusinessRelatedSessionFilters,
+) {
+  if (fact.dimension !== filters.dimension || fact.topicId !== filters.topicCode) {
+    return false;
+  }
+
+  return filters.topicType == null || fact.type === filters.topicType;
 }
 
 function buildAnalyzedCurrentSessionLeanBaseQuery(db: Kysely<Database>) {

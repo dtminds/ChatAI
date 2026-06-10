@@ -889,19 +889,23 @@ function createInsightsDbMock(options: {
             builder.havingCalls.push(args);
             return builder;
           },
-          innerJoin: (joinTable: string, callback?: (join: ReturnType<typeof createJoinBuilder>) => unknown) => {
-            if (callback) {
+          innerJoin: (joinTable: string, callbackOrLeft?: string | ((join: ReturnType<typeof createJoinBuilder>) => unknown), right?: string) => {
+            if (typeof callbackOrLeft === "function") {
               const joinBuilder = createJoinBuilder();
-              callback(joinBuilder);
+              callbackOrLeft(joinBuilder);
               joins.push({ conditions: joinBuilder.conditions, table: joinTable });
+            } else if (callbackOrLeft && right) {
+              joins.push({ conditions: [[callbackOrLeft, "=", right]], table: joinTable });
             }
             return builder;
           },
-          leftJoin: (joinTable: string, callback?: (join: ReturnType<typeof createJoinBuilder>) => unknown) => {
-            if (callback) {
+          leftJoin: (joinTable: string, callbackOrLeft?: string | ((join: ReturnType<typeof createJoinBuilder>) => unknown), right?: string) => {
+            if (typeof callbackOrLeft === "function") {
               const joinBuilder = createJoinBuilder();
-              callback(joinBuilder);
+              callbackOrLeft(joinBuilder);
               joins.push({ conditions: joinBuilder.conditions, table: joinTable });
+            } else if (callbackOrLeft && right) {
+              joins.push({ conditions: [[callbackOrLeft, "=", right]], table: joinTable });
             }
             return builder;
           },
@@ -1679,6 +1683,38 @@ function createInsightsDbMock(options: {
               status: "ready",
               summary_session_title: "查物流",
               summary_text: "客服要求客户等待",
+              unresolved_reason: "售后/物流/退款进度未确认",
+            },
+          ];
+        });
+      }
+
+      if (table === "xy_wap_embed_session_intent as topic") {
+        return createBuilder((builder) => {
+          const selectedAliases = collectSelectAliases(builder.selectCalls);
+
+          if (selectedAliases.has("count") && selectedAliases.size === 1) {
+            return [{ count: 1 }];
+          }
+
+          return [
+            {
+              conversation_id: 301,
+              current_snapshot_id: 7001,
+              ended_at: 1_780_245_000_000,
+              generated_at: 1_780_245_100_000,
+              last_message_at: 1_780_244_950_000,
+              phase: "final",
+              problem_detected: 1,
+              problem_summary: "客户反馈物流异常",
+              resolution_status: "unresolved",
+              session_id: 501,
+              started_at: 1_780_243_200_000,
+              status: "ready",
+              summary_session_title: "查物流",
+              summary_text: "客服要求客户等待",
+              third_external_userid: "external-1",
+              third_userid: "seat-1",
               unresolved_reason: "售后/物流/退款进度未确认",
             },
           ];

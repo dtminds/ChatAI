@@ -50,20 +50,6 @@ export const InsightPrioritySchema = Type.Union([
   Type.Literal("high"),
 ]);
 
-export const InsightEntityHotspotSchema = Type.Object({
-  entityId: Type.String(),
-  entityName: Type.String(),
-  mentionCount: Type.Number(),
-  negativeCount: Type.Number(),
-  sessionCount: Type.Number(),
-});
-
-export const InsightIntentCountSchema = Type.Object({
-  count: Type.Number(),
-  intentId: Type.String(),
-  intentLabel: Type.String(),
-});
-
 export const InsightOverviewTotalsSchema = Type.Object({
   agentMessages: Type.Number(),
   consultingCustomers: Type.Number(),
@@ -103,30 +89,13 @@ export const InsightOverviewSessionItemSchema = Type.Object({
   conversationId: Type.String(),
   customerAvatarUrl: Type.Optional(Type.String()),
   customerName: Type.String(),
-  assets: Type.Optional(Type.Array(Type.Object({
-    assetCode: Type.String(),
-    assetName: Type.String(),
-    assetType: Type.String(),
-  }))),
   endedAt: Type.Optional(Type.Number()),
-  entities: Type.Optional(Type.Array(Type.Object({
-    entityId: Type.String(),
-    entityName: Type.String(),
-  }))),
-  intents: Type.Optional(Type.Array(Type.Object({
-    intentId: Type.String(),
-    intentLabel: Type.String(),
-  }))),
   lastMessageAt: Type.Optional(Type.Number()),
   problemSummary: Type.Optional(Type.String()),
   resolutionStatus: InsightResolutionStatusSchema,
   sessionId: Type.String(),
   startedAt: Type.Number(),
   summarySessionTitle: Type.String(),
-  tags: Type.Optional(Type.Array(Type.Object({
-    tagId: Type.String(),
-    tagName: Type.String(),
-  }))),
 });
 
 export const InsightOverviewSessionsPageSchema = Type.Object({
@@ -148,8 +117,6 @@ export const InsightsOverviewResponseSchema = Type.Object({
     stale: Type.Number(),
   }),
   comparison: InsightOverviewComparisonSchema,
-  entityHotspots: Type.Array(InsightEntityHotspotSchema),
-  intentDistribution: Type.Array(InsightIntentCountSchema),
   problemSessions: Type.Number(),
   readySessions: Type.Number(),
   resolution: Type.Object({
@@ -203,7 +170,6 @@ export const InsightBusinessTopicDimensionSchema = Type.Union([
 ]);
 
 export const InsightBusinessTopicSchema = Type.Object({
-  actionItemsOpen: Type.Number(),
   code: Type.String(),
   dimension: InsightBusinessTopicDimensionSchema,
   mentionCount: Type.Number(),
@@ -213,8 +179,6 @@ export const InsightBusinessTopicSchema = Type.Object({
   sessionCount: Type.Number(),
   share: Type.Number(),
   type: Type.Optional(Type.String()),
-  unresolvedRate: Type.Number(),
-  unresolvedSessions: Type.Number(),
 });
 
 export const InsightBusinessTrendPointSchema = Type.Object({
@@ -225,7 +189,6 @@ export const InsightBusinessTrendPointSchema = Type.Object({
   negativeSessions: Type.Number(),
   tagMentions: Type.Number(),
   topicSessions: Type.Number(),
-  unresolvedSessions: Type.Number(),
 });
 
 export const InsightBusinessIntentTrendPointSchema = Type.Object({
@@ -240,18 +203,14 @@ export const InsightsBusinessResponseSchema = Type.Object({
   entityHotspots: Type.Array(InsightBusinessTopicSchema),
   intentDistribution: Type.Array(InsightBusinessTopicSchema),
   intentTrend: Type.Array(InsightBusinessIntentTrendPointSchema),
-  qualityTopics: Type.Array(InsightBusinessTopicSchema),
   tagDistribution: Type.Array(InsightBusinessTopicSchema),
   totals: Type.Object({
-    actionItemsOpen: Type.Number(),
-    analyzedSessions: Type.Number(),
     assetMentions: Type.Number(),
     entityMentions: Type.Number(),
     intentMentions: Type.Number(),
     negativeSessions: Type.Number(),
     tagMentions: Type.Number(),
     topicSessions: Type.Number(),
-    unresolvedSessions: Type.Number(),
   }),
   trend: Type.Array(InsightBusinessTrendPointSchema),
 });

@@ -625,46 +625,6 @@ describe("InsightsRepository", () => {
     expect(builders[1]?.havingRawCalls).toEqual([]);
   });
 
-  it("loads business session aggregates without hydrating current sessions", async () => {
-    const builders: SelectBuilderStub[] = [];
-    const db = {
-      selectFrom: vi.fn((table: string) => {
-        const builder = createSelectBuilder(
-          [
-            {
-              action_items_open: 1,
-              analyzed_sessions: 1,
-              date: "2026-06-01",
-              session_id: 501,
-              started_at: 1_780_243_200_000,
-              unresolved_sessions: 1,
-            },
-          ],
-          table,
-        );
-        builders.push(builder);
-        return builder;
-      }),
-    };
-    const repository = new InsightsRepository(db as never);
-
-    await expect(
-      repository.listBusinessSessionAggregates({ uid: 9001 }),
-    ).resolves.toEqual([
-      expect.objectContaining({
-        actionItemsOpen: 1,
-        date: "2026-06-01",
-        sessionId: "501",
-        unresolvedSessions: 1,
-      }),
-    ]);
-
-    expect(builders[0]?.joins).toContain(
-      "xy_wap_embed_session_action_item as aggregate_action",
-    );
-    expect(builders[0]?.whereCalls).toContainEqual(["session.uid", "=", 9001]);
-  });
-
   it("loads current sessions without joining one-to-many insight tables in the core query", async () => {
     const builders: SelectBuilderStub[] = [];
     const rowsByTable = new Map<string, unknown[]>([
@@ -721,21 +681,7 @@ describe("InsightsRepository", () => {
           },
         ],
       ],
-      [
-        "xy_wap_embed_insight_evidence as evidence",
-        [
-          {
-            evidence_message_id: 9002,
-            last_customer_message_at: 1_780_244_100_000,
-            snapshot_id: 501,
-          },
-          {
-            evidence_message_id: 9001,
-            last_customer_message_at: 1_780_244_000_000,
-            snapshot_id: 501,
-          },
-        ],
-      ],
+      ["xy_wap_embed_insight_evidence as evidence", []],
       [
         "xy_wap_embed_contact",
         [
@@ -783,8 +729,8 @@ describe("InsightsRepository", () => {
       items: [
         {
           actionOpenCount: 0,
-          lastCustomerMessageAt: 1_780_244_100_000,
-          problemEvidenceMessageIds: ["9001", "9002"],
+          lastCustomerMessageAt: null,
+          problemEvidenceMessageIds: [],
           sessionId: "201",
         },
         {
@@ -830,6 +776,26 @@ describe("InsightsRepository", () => {
     expect(
       builders.every(
         (builder) => builder.table !== "xy_wap_embed_conversation",
+      ),
+    ).toBe(true);
+    expect(
+      builders.every(
+        (builder) => builder.table !== "xy_wap_embed_insight_evidence as evidence",
+      ),
+    ).toBe(true);
+    expect(
+      builders.every(
+        (builder) => builder.table !== "xy_wap_embed_session_tag",
+      ),
+    ).toBe(true);
+    expect(
+      builders.every(
+        (builder) => builder.table !== "xy_wap_embed_session_entity",
+      ),
+    ).toBe(true);
+    expect(
+      builders.every(
+        (builder) => builder.table !== "xy_wap_embed_session_intent",
       ),
     ).toBe(true);
   });
@@ -1000,22 +966,119 @@ describe("InsightsRepository", () => {
 
   it("bounds all-current-session hydration for aggregate pages", async () => {
     const builders: SelectBuilderStub[] = [];
+    const rowsByTable = new Map<string, unknown[]>([
+      [
+        "xy_wap_embed_logical_session as session",
+        [
+          {
+            conversation_id: 301,
+            current_snapshot_id: 7001,
+            ended_at: 1_780_246_800_000,
+            generated_at: new Date("2026-06-01T12:00:00.000Z"),
+            last_message_at: 1_780_246_700_000,
+            phase: "final",
+            problem_confidence: "0.9000",
+            problem_detected: 1,
+            problem_summary: "客户反馈物流异常",
+            resolution_status: "unresolved",
+            session_id: 501,
+            started_at: 1_780_243_200_000,
+            status: "ready",
+            summary_session_title: "物流异常处理",
+            summary_text: "客户咨询物流异常",
+            third_external_userid: "external-1",
+            third_userid: "agent-1",
+            unresolved_reason: "仍需跟进",
+          },
+        ],
+      ],
+      [
+        "xy_wap_embed_insight_evidence as evidence",
+        [
+          {
+            evidence_message_id: 9001,
+            last_customer_message_at: 1_780_246_600_000,
+            snapshot_id: 7001,
+          },
+        ],
+      ],
+      [
+        "xy_wap_embed_session_tag",
+        [
+          {
+            snapshot_id: 7001,
+            tag_id: 21,
+            tag_name: "物流异常",
+          },
+        ],
+      ],
+      [
+        "xy_wap_embed_session_entity",
+        [
+          {
+            entity_id: 41,
+            entity_name: "白色羽绒服",
+            snapshot_id: 7001,
+          },
+        ],
+      ],
+      [
+        "xy_wap_embed_session_intent",
+        [
+          {
+            intent_id: 31,
+            intent_label: "催物流",
+            snapshot_id: 7001,
+          },
+        ],
+      ],
+    ]);
     const db = {
       selectFrom: vi.fn((table: string) => {
-        const builder = createSelectBuilder([], table);
+        const builder = createSelectBuilder(rowsByTable.get(table) ?? [], table);
         builders.push(builder);
         return builder;
       }),
     };
     const repository = new InsightsRepository(db as never);
 
-    await repository.listAllCurrentSessions({ uid: 9001 });
+    await expect(repository.listAllCurrentSessions({ uid: 9001 })).resolves.toEqual([
+      expect.objectContaining({
+        entities: [
+          {
+            entityId: "41",
+            entityName: "白色羽绒服",
+          },
+        ],
+        intents: [
+          {
+            intentId: "31",
+            intentLabel: "催物流",
+          },
+        ],
+        problemEvidenceMessageIds: ["9001"],
+        tags: [
+          {
+            tagId: "21",
+            tagName: "物流异常",
+          },
+        ],
+      }),
+    ]);
 
     const currentQuery = builders.find(
       (builder) => builder.table === "xy_wap_embed_logical_session as session",
     );
     expect(currentQuery?.limitCalls).toEqual([5000]);
     expect(currentQuery?.offsetCalls).toEqual([0]);
+    expect(builders.map((builder) => builder.table)).toEqual(
+      expect.arrayContaining([
+        "xy_wap_embed_insight_evidence as evidence",
+        "xy_wap_embed_session_tag",
+        "xy_wap_embed_session_entity",
+        "xy_wap_embed_session_intent",
+      ]),
+    );
   });
 
   it("counts overview totals from physical logical sessions before snapshots are ready", async () => {
@@ -1542,116 +1605,108 @@ describe("InsightsRepository", () => {
     ]);
   });
 
-  it("filters entity hotspots to current snapshots and the requested date range", async () => {
+  it("loads business related sessions through a focused topic query", async () => {
     const builders: SelectBuilderStub[] = [];
-    const rowsByTable = new Map<string, unknown[]>([
-      [
-        "xy_wap_embed_session_entity as entity",
-        [
-          {
-            entity_id: 41,
-            entity_name: "羽绒服",
-            mention_count: 3,
-            negative_count: 1,
-            session_count: 2,
-          },
-        ],
+    const topicRow = {
+      count: 1,
+      conversation_id: 301,
+      current_snapshot_id: 7001,
+      ended_at: 1_780_246_800_000,
+      generated_at: new Date("2026-06-01T12:00:00.000Z"),
+      last_message_at: 1_780_246_700_000,
+      phase: "final",
+      problem_confidence: "0.9000",
+      problem_detected: 1,
+      problem_summary: "客户反馈物流异常",
+      resolution_status: "unresolved",
+      session_id: 501,
+      started_at: 1_780_243_200_000,
+      status: "ready",
+      summary_session_title: "物流异常处理",
+      summary_text: "客户咨询物流异常",
+      third_external_userid: "external-1",
+      third_userid: "agent-1",
+      unresolved_reason: "仍需跟进",
+    };
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        const builder = createSelectBuilder(
+          table === "xy_wap_embed_session_intent as topic" ? [topicRow] : [],
+          table,
+        );
+        builders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new InsightsRepository(db as never);
+
+    await expect(
+      repository.listBusinessRelatedSessions(
+        { uid: 9001 },
+        {
+          dimension: "intent",
+          from: "2026-06-01T00:00:00.000+08:00",
+          keyword: "物流",
+          page: 2,
+          pageSize: 20,
+          topicCode: "31",
+          to: "2026-06-30T23:59:59.999+08:00",
+        },
+      ),
+    ).resolves.toMatchObject({
+      items: [
+        {
+          currentSnapshotId: "7001",
+          problemSummary: "客户反馈物流异常",
+          sessionId: "501",
+        },
       ],
-    ]);
-    const db = {
-      selectFrom: vi.fn((table: string) => {
-        const builder = createSelectBuilder(
-          rowsByTable.get(table) ?? [],
-          table,
-        );
-        builders.push(builder);
-        return builder;
-      }),
-    };
-    const repository = new InsightsRepository(db as never);
+      total: 1,
+    });
 
-    await expect(
-      repository.listEntityHotspots(
-        { uid: 9001 },
-        {
-          from: "2026-06-01T00:00:00.000+08:00",
-          to: "2026-06-30T23:59:59.999+08:00",
-        },
-      ),
-    ).resolves.toMatchObject([
-      {
-        entityId: "41",
-      },
-    ]);
-
-    expect(builders[0]?.whereCalls).toContainEqual(["entity.uid", "=", 9001]);
-    expect(builders[0]?.joins).toContain(
-      "xy_wap_embed_session_insight_current as current",
+    const topicQueries = builders.filter(
+      (builder) => builder.table === "xy_wap_embed_session_intent as topic",
     );
-    expect(builders[0]?.joins).toContain(
-      "xy_wap_embed_logical_session as session",
+    expect(topicQueries).toHaveLength(2);
+    for (const query of topicQueries) {
+      expect(query.whereCalls).toContainEqual(["topic.uid", "=", 9001]);
+      expect(query.whereCalls).toContainEqual(["topic.intent_id", "=", 31]);
+      expect(query.whereCalls).toContainEqual(["session.uid", "=", 9001]);
+      expect(query.whereCalls).toContainEqual([
+        "session.started_at",
+        ">=",
+        Date.parse("2026-06-01T00:00:00.000+08:00"),
+      ]);
+      expect(query.whereCalls).toContainEqual([
+        "session.started_at",
+        "<=",
+        Date.parse("2026-06-30T23:59:59.999+08:00"),
+      ]);
+    }
+    expect(topicQueries[1]?.orderByCalls).toEqual([
+      ["session.started_at", "desc"],
+      ["session.id", "desc"],
+    ]);
+    expect(topicQueries[1]?.limitCalls).toEqual([20]);
+    expect(topicQueries[1]?.offsetCalls).toEqual([20]);
+    expect(builders.map((builder) => builder.table)).not.toContain(
+      "xy_wap_embed_session_tag as tag",
     );
-    expect(builders[0]?.whereCalls).toContainEqual([
-      "session.started_at",
-      ">=",
-      Date.parse("2026-06-01T00:00:00.000+08:00"),
-    ]);
-    expect(builders[0]?.whereCalls).toContainEqual([
-      "session.started_at",
-      "<=",
-      Date.parse("2026-06-30T23:59:59.999+08:00"),
-    ]);
-    expect(builders).toHaveLength(1);
-  });
-
-  it("filters intent distribution to current snapshots and the requested date range", async () => {
-    const builders: SelectBuilderStub[] = [];
-    const db = {
-      selectFrom: vi.fn((table: string) => {
-        const builder = createSelectBuilder(
-          table === "xy_wap_embed_session_intent as intent"
-            ? [{ count: 2, intent_id: 31, intent_label: "退款咨询" }]
-            : [],
-          table,
-        );
-        builders.push(builder);
-        return builder;
-      }),
-    };
-    const repository = new InsightsRepository(db as never);
-
-    await expect(
-      repository.listIntentDistribution(
-        { uid: 9001 },
-        {
-          from: "2026-06-01T00:00:00.000+08:00",
-          to: "2026-06-30T23:59:59.999+08:00",
-        },
-      ),
-    ).resolves.toMatchObject([
-      {
-        count: 2,
-        intentId: "31",
-      },
-    ]);
-
-    expect(builders[0]?.whereCalls).toContainEqual(["intent.uid", "=", 9001]);
-    expect(builders[0]?.joins).toContain(
-      "xy_wap_embed_session_insight_current as current",
+    expect(builders.map((builder) => builder.table)).not.toContain(
+      "xy_wap_embed_session_entity as entity",
     );
-    expect(builders[0]?.joins).toContain(
-      "xy_wap_embed_logical_session as session",
+    expect(builders.map((builder) => builder.table)).not.toContain(
+      "xy_wap_embed_insight_evidence as evidence",
     );
-    expect(builders[0]?.whereCalls).toContainEqual([
-      "session.started_at",
-      ">=",
-      Date.parse("2026-06-01T00:00:00.000+08:00"),
-    ]);
-    expect(builders[0]?.whereCalls).toContainEqual([
-      "session.started_at",
-      "<=",
-      Date.parse("2026-06-30T23:59:59.999+08:00"),
-    ]);
+    expect(builders.map((builder) => builder.table)).not.toContain(
+      "xy_wap_embed_session_tag",
+    );
+    expect(builders.map((builder) => builder.table)).not.toContain(
+      "xy_wap_embed_session_entity",
+    );
+    expect(builders.map((builder) => builder.table)).not.toContain(
+      "xy_wap_embed_session_intent",
+    );
   });
 
   it("loads detail qa findings and actions through focused snapshot queries", async () => {

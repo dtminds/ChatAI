@@ -25,13 +25,6 @@ const baseRows = [
     generatedAt: 1_780_245_100_000,
     customerAvatarUrl: "https://example.com/customer-1.png",
     customerName: "张三",
-    assets: [
-      {
-        assetCode: "link:9002",
-        assetName: "物流详情页",
-        assetType: "link",
-      },
-    ],
     endedAt: 1_780_245_000_000,
     lastMessageAt: 1_780_244_950_000,
     lastCustomerMessageAt: 1_780_244_900_000,
@@ -298,30 +291,6 @@ const qualityAgentStats = [
   NonNullable<InsightsRepositoryPort["listQualityAgentStats"]>
 >;
 
-const businessSessionAggregates = baseRows.map((row) => ({
-  actionItemsOpen: ["partially_resolved", "unresolved"].includes(
-    row.resolutionStatus,
-  )
-    ? row.actionOpenCount
-    : 0,
-  analyzedSessions: ["partial", "ready"].includes(row.analysisStatus) ? 1 : 0,
-  date: new Intl.DateTimeFormat("en-CA", {
-    day: "2-digit",
-    month: "2-digit",
-    timeZone: "Asia/Shanghai",
-    year: "numeric",
-  }).format(new Date(row.startedAt)),
-  sessionId: row.sessionId,
-  startedAt: row.startedAt,
-  unresolvedSessions: ["partially_resolved", "unresolved"].includes(
-    row.resolutionStatus,
-  )
-    ? 1
-    : 0,
-})) satisfies Awaited<
-  NonNullable<InsightsRepositoryPort["listBusinessSessionAggregates"]>
->;
-
 function createRepository(
   overrides: Partial<InsightsRepositoryPort> = {},
 ): InsightsRepositoryPort {
@@ -548,7 +517,6 @@ function createRepository(
     })),
     hasActiveRescanTask: vi.fn(async () => false),
     listQualityAgentStats: vi.fn(async () => qualityAgentStats),
-    listBusinessSessionAggregates: vi.fn(async () => businessSessionAggregates),
     listAllCurrentSessions: vi.fn(async () => baseRows),
     listCurrentSessions: vi.fn(async (_scope, filters) => ({
       items:
@@ -582,22 +550,6 @@ function createRepository(
       ],
       total: 1,
     })),
-    listEntityHotspots: vi.fn(async () => [
-      {
-        entityId: "41",
-        entityName: "白色羽绒服",
-        mentionCount: 2,
-        negativeCount: 1,
-        sessionCount: 1,
-      },
-    ]),
-    listIntentDistribution: vi.fn(async () => [
-      {
-        count: 2,
-        intentCode: "logistics_delay",
-        intentLabel: "物流异常",
-      },
-    ]),
     listSessionMessageRecords: vi.fn(async () => [
       {
         content: { text: "帮您催一下快递" },
@@ -832,15 +784,7 @@ describe("InsightsService", () => {
         from: "2026-05-07T00:00:00.000+08:00",
         to: "2026-06-05T23:59:59.999+08:00",
       });
-      expect(repository.listEntityHotspots).toHaveBeenCalledWith(scope, {
-        from: "2026-05-07T00:00:00.000+08:00",
-        to: "2026-06-05T23:59:59.999+08:00",
-      });
-      expect(repository.listIntentDistribution).toHaveBeenCalledWith(scope, {
-        from: "2026-05-07T00:00:00.000+08:00",
-        to: "2026-06-05T23:59:59.999+08:00",
-      });
-      expect(repository.listBusinessSessionAggregates).not.toHaveBeenCalled();
+      expect(repository.listBusinessTopicFacts).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }
@@ -862,18 +806,6 @@ describe("InsightsService", () => {
         ready: 2,
         stale: 1,
       },
-      entityHotspots: [
-        expect.objectContaining({
-          entityName: "白色羽绒服",
-          mentionCount: 2,
-        }),
-      ],
-      intentDistribution: [
-        expect.objectContaining({
-          count: 2,
-          intentCode: "logistics_delay",
-        }),
-      ],
       problemSessions: 2,
       readySessions: 2,
       resolution: {
@@ -1269,14 +1201,11 @@ describe("InsightsService", () => {
     const result = await service.getBusiness(scope);
 
     expect(result.totals).toMatchObject({
-      actionItemsOpen: 1,
-      analyzedSessions: 3,
       assetMentions: 2,
       entityMentions: 2,
       intentMentions: 1,
       tagMentions: 2,
       topicSessions: 2,
-      unresolvedSessions: 2,
     });
     expect(result.tagDistribution).toEqual(
       expect.arrayContaining([
@@ -1285,7 +1214,6 @@ describe("InsightsService", () => {
           dimension: "tag",
           name: "物流异常",
           sessionCount: 1,
-          unresolvedSessions: 1,
         }),
         expect.objectContaining({
           code: "22",
@@ -1318,13 +1246,6 @@ describe("InsightsService", () => {
         sessionCount: 1,
       },
     ]);
-    expect(result.qualityTopics[0]).toEqual(
-      expect.objectContaining({
-        actionItemsOpen: 1,
-        name: "白色羽绒服",
-        unresolvedRate: 1,
-      }),
-    );
     expect(result.trend).toEqual([
       expect.objectContaining({
         date: "2026-05-31",
@@ -1338,16 +1259,8 @@ describe("InsightsService", () => {
         tagMentions: 1,
         negativeSessions: 1,
         topicSessions: 1,
-        unresolvedSessions: 1,
       }),
     ]);
-    expect(repository.listBusinessSessionAggregates).toHaveBeenCalledWith(
-      scope,
-      expect.objectContaining({
-        from: expect.any(String),
-        to: expect.any(String),
-      }),
-    );
     expect(repository.listAllCurrentSessions).not.toHaveBeenCalled();
     expect(repository.listCurrentSessions).not.toHaveBeenCalled();
   });
@@ -1361,13 +1274,6 @@ describe("InsightsService", () => {
     try {
       await service.getBusiness(scope);
 
-      expect(repository.listBusinessSessionAggregates).toHaveBeenCalledWith(
-        scope,
-        {
-          from: "2026-05-07T00:00:00.000+08:00",
-          to: "2026-06-05T23:59:59.999+08:00",
-        },
-      );
       expect(repository.listBusinessTopicFacts).toHaveBeenCalledWith(scope, {
         from: "2026-05-07T00:00:00.000+08:00",
         to: "2026-06-05T23:59:59.999+08:00",
@@ -1378,12 +1284,17 @@ describe("InsightsService", () => {
   });
 
   it("paginates business related sessions by selected topic facts", async () => {
+    const listBusinessRelatedSessions = vi.fn(async () => ({
+      items: [baseRows[0]],
+      total: 1,
+    }));
     const repository = createRepository({
+      listBusinessRelatedSessions,
       listCurrentSessions: vi.fn(async (_scope, filters) => ({
         items: [baseRows[0]],
         total: 1,
       })),
-    });
+    } as Partial<InsightsRepositoryPort>);
     const service = new InsightsService(repository);
 
     const result = await service.getBusinessRelatedSessions(scope, {
@@ -1408,21 +1319,20 @@ describe("InsightsService", () => {
       total: 1,
       totalPages: 1,
     });
-    expect(repository.listBusinessTopicFacts).toHaveBeenCalledWith(
+    expect(listBusinessRelatedSessions).toHaveBeenCalledWith(
       scope,
       expect.objectContaining({
         dimension: "intent",
+        from: "2026-06-01",
+        keyword: "物流",
+        page: 2,
+        pageSize: 1,
         topicCode: "31",
+        to: "2026-06-30",
       }),
     );
-    expect(repository.listCurrentSessions).toHaveBeenCalledWith(scope, {
-      from: "2026-06-01",
-      keyword: "物流",
-      page: 2,
-      pageSize: 1,
-      sessionIds: ["501"],
-      to: "2026-06-30",
-    });
+    expect(repository.listBusinessTopicFacts).not.toHaveBeenCalled();
+    expect(repository.listCurrentSessions).not.toHaveBeenCalled();
     expect(repository.listAllCurrentSessions).not.toHaveBeenCalled();
   });
 

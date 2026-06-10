@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   InsightActionStatusSchema,
   InsightAnalysisPolicyUpdateRequestSchema,
+  InsightBusinessTopicSchema,
   InsightEntityDictionaryMutationRequestSchema,
   InsightDetailResponseSchema,
   InsightFilterOptionsResponseSchema,
@@ -35,22 +36,6 @@ describe("insights DTOs", () => {
           ready: 30,
           stale: 3,
         },
-        entityHotspots: [
-          {
-            entityId: "entity-1",
-            entityName: "白色羽绒服",
-            mentionCount: 12,
-            negativeCount: 2,
-            sessionCount: 8,
-          },
-        ],
-        intentDistribution: [
-          {
-            count: 10,
-            intentId: "31",
-            intentLabel: "退款",
-          },
-        ],
         problemSessions: 20,
         readySessions: 30,
         resolution: {
@@ -142,7 +127,6 @@ describe("insights DTOs", () => {
       Value.Check(InsightsBusinessResponseSchema, {
         assetHotspots: [
           {
-            actionItemsOpen: 0,
             code: "https://example.com/promo",
             dimension: "asset",
             mentionCount: 6,
@@ -152,13 +136,10 @@ describe("insights DTOs", () => {
             sessionCount: 5,
             share: 0.25,
             type: "link",
-            unresolvedRate: 0.2,
-            unresolvedSessions: 1,
           },
         ],
         entityHotspots: [
           {
-            actionItemsOpen: 1,
             code: "sku-1",
             dimension: "entity",
             mentionCount: 12,
@@ -168,13 +149,10 @@ describe("insights DTOs", () => {
             sessionCount: 8,
             share: 0.4,
             type: "product",
-            unresolvedRate: 0.125,
-            unresolvedSessions: 1,
           },
         ],
         intentDistribution: [
           {
-            actionItemsOpen: 0,
             code: "after_sale.refund",
             dimension: "intent",
             mentionCount: 10,
@@ -183,8 +161,6 @@ describe("insights DTOs", () => {
             negativeSessions: 1,
             sessionCount: 10,
             share: 0.5,
-            unresolvedRate: 0.2,
-            unresolvedSessions: 2,
           },
         ],
         intentTrend: [
@@ -195,18 +171,14 @@ describe("insights DTOs", () => {
             sessionCount: 4,
           },
         ],
-        qualityTopics: [],
         tagDistribution: [],
         totals: {
-          actionItemsOpen: 3,
-          analyzedSessions: 30,
           assetMentions: 6,
           entityMentions: 12,
           intentMentions: 10,
           negativeSessions: 5,
           tagMentions: 16,
           topicSessions: 20,
-          unresolvedSessions: 4,
         },
         trend: [
           {
@@ -217,11 +189,17 @@ describe("insights DTOs", () => {
             negativeSessions: 2,
             tagMentions: 6,
             topicSessions: 8,
-            unresolvedSessions: 1,
           },
         ],
       }),
     ).toBe(true);
+    expect(InsightBusinessTopicSchema.properties).not.toHaveProperty("actionItemsOpen");
+    expect(InsightBusinessTopicSchema.properties).not.toHaveProperty("unresolvedRate");
+    expect(InsightBusinessTopicSchema.properties).not.toHaveProperty("unresolvedSessions");
+    expect(InsightsBusinessResponseSchema.properties).not.toHaveProperty("qualityTopics");
+    expect(InsightsBusinessResponseSchema.properties.totals.properties).not.toHaveProperty("actionItemsOpen");
+    expect(InsightsBusinessResponseSchema.properties.totals.properties).not.toHaveProperty("analyzedSessions");
+    expect(InsightsBusinessResponseSchema.properties.totals.properties).not.toHaveProperty("unresolvedSessions");
   });
 
   it("accepts split quality responses with required blocks", () => {

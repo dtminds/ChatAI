@@ -247,7 +247,7 @@ GET /server/insights/search-persons?type=customer|agent&keyword=xxx&limit=10
 
 筛选器的选项（标签列表、实体列表等）有两种方案：
 
-**方案 A**：保持现有方式，从 `overview` 响应的统计数据中获取（totals/trend 等聚合不受分页影响，但 entityHotspots/intentDistribution 等仍在响应中）
+**方案 A**：保持现有方式，从 `overview` 响应的统计数据中获取（totals/trend 等聚合不受分页影响；entityHotspots/intentDistribution 已迁移到业务洞察响应）
 
 **方案 B**：筛选器选项单独接口（推荐，如果选项数据量也大）
 

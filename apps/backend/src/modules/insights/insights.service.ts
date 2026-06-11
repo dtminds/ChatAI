@@ -1441,7 +1441,7 @@ function assertInsightEnableAllowed(
 export function isInsightAvailable(scope: InsightsUidScope) {
   const insightAllowedUids = parseInsightAllowedUids(process.env.INSIGHTS_WORKER_UID_ALLOWLIST);
 
-  return !insightAllowedUids || insightAllowedUids.has(scope.uid);
+  return insightAllowedUids.has(scope.uid);
 }
 
 function parseInsightAllowedUids(value: string | undefined) {
@@ -1450,7 +1450,7 @@ function parseInsightAllowedUids(value: string | undefined) {
     .map((item) => Number(item.trim()))
     .filter((item) => Number.isSafeInteger(item) && item > 0);
 
-  return values.length > 0 ? new Set(values) : undefined;
+  return new Set(values);
 }
 
 function normalizeOverviewPage(value: number | undefined) {

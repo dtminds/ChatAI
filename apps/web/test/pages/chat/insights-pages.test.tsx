@@ -4252,8 +4252,13 @@ describe("conversation insights pages", () => {
     expect(
       await screen.findByRole("dialog", { name: "洞察运行配置" }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("switch", { name: "启用会话洞察" })).toBeDisabled();
+    const insightSwitch = screen.getByRole("switch", { name: "启用会话洞察" });
+    expect(insightSwitch).toBeDisabled();
     expect(screen.getByText("当前账号暂未开通会话洞察")).toBeInTheDocument();
+    await userEvent.hover(insightSwitch);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      "当前账号暂未开通会话洞察",
+    );
   });
 
   it("shows loading states while paginated insight sessions are loading", async () => {

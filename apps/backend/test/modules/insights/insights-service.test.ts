@@ -1826,18 +1826,28 @@ describe("InsightsService", () => {
   });
 
   it("returns feature switch state in settings summary", async () => {
+    const previousInsightUidAllowlist = process.env.INSIGHTS_WORKER_UID_ALLOWLIST;
+    process.env.INSIGHTS_WORKER_UID_ALLOWLIST = "9001";
     const service = new InsightsService(createRepository());
 
-    await expect(
-      service.getSettingsSummary(scope, "admin"),
-    ).resolves.toMatchObject({
-      entityEnabled: true,
-      insightAvailable: true,
-      intentEnabled: true,
-      labelEnabled: true,
-      qaEnabled: true,
-      todoEnabled: false,
-    });
+    try {
+      await expect(
+        service.getSettingsSummary(scope, "admin"),
+      ).resolves.toMatchObject({
+        entityEnabled: true,
+        insightAvailable: true,
+        intentEnabled: true,
+        labelEnabled: true,
+        qaEnabled: true,
+        todoEnabled: false,
+      });
+    } finally {
+      if (previousInsightUidAllowlist === undefined) {
+        delete process.env.INSIGHTS_WORKER_UID_ALLOWLIST;
+      } else {
+        process.env.INSIGHTS_WORKER_UID_ALLOWLIST = previousInsightUidAllowlist;
+      }
+    }
   });
 
   it("persists insight settings mutations for admin roles", async () => {

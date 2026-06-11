@@ -73,6 +73,12 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { isRequestError } from "@/lib/request";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth-store";
@@ -967,6 +973,7 @@ function InsightRunConfigDialog({
               checked={form.insightEnabled}
               description={insightAvailable ? "开启后，系统会自动同步新会话，完成切片并生成洞察" : "当前账号暂未开通会话洞察"}
               disabled={disabled || !insightAvailable}
+              disabledTooltip={!insightAvailable ? "当前账号暂未开通会话洞察" : undefined}
               icon={AiIdeaIcon}
               label="启用会话洞察"
               onCheckedChange={(checked) => setForm((current) => ({ ...current, insightEnabled: checked }))}
@@ -1035,6 +1042,7 @@ function RunSettingRow({
   checked,
   description,
   disabled,
+  disabledTooltip,
   icon,
   label,
   onCheckedChange,
@@ -1042,10 +1050,34 @@ function RunSettingRow({
   checked: boolean;
   description: string;
   disabled: boolean;
+  disabledTooltip?: string;
   icon: typeof Setting07Icon;
   label: string;
   onCheckedChange: (checked: boolean) => void;
 }) {
+  const control = (
+    <Switch
+      aria-label={label}
+      checked={checked}
+      disabled={disabled}
+      onCheckedChange={onCheckedChange}
+    />
+  );
+  const switchControl = disabled && disabledTooltip ? (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex">
+            {control}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="top" sideOffset={6}>
+          {disabledTooltip}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  ) : control;
+
   return (
     <div className="flex items-center gap-4 border-b px-5 py-4 last:border-b-0">
       <span className="flex size-10 shrink-0 items-center justify-center text-muted-foreground">
@@ -1055,12 +1087,7 @@ function RunSettingRow({
         <div className="text-sm font-semibold leading-6 text-foreground">{label}</div>
         <div className="mt-0.5 text-sm leading-6 text-muted-foreground">{description}</div>
       </div>
-      <Switch
-        aria-label={label}
-        checked={checked}
-        disabled={disabled}
-        onCheckedChange={onCheckedChange}
-      />
+      {switchControl}
     </div>
   );
 }

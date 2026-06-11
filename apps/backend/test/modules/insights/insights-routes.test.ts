@@ -573,6 +573,7 @@ describe("insights routes", () => {
   });
 
   it("allows admins to update tenant insight feature switches", async () => {
+    process.env.INSIGHTS_WORKER_UID_ALLOWLIST = "9001";
     const admin = await createInsightsApp("admin");
 
     const response = await admin.app.inject({
@@ -646,6 +647,28 @@ describe("insights routes", () => {
 
   it("marks insight unavailable in settings when the uid is not allowed", async () => {
     process.env.INSIGHTS_WORKER_UID_ALLOWLIST = "9002";
+    const admin = await createInsightsApp("admin");
+
+    const response = await admin.app.inject({
+      headers: { authorization: admin.authorization },
+      method: "GET",
+      url: "/api/server/insights/settings",
+    });
+
+    await admin.app.close();
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      data: {
+        featureConfig: {
+          insightAvailable: false,
+        },
+      },
+      success: true,
+    });
+  });
+
+  it("marks insight unavailable in settings when the uid allowlist is empty", async () => {
     const admin = await createInsightsApp("admin");
 
     const response = await admin.app.inject({

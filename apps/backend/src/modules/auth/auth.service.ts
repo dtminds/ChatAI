@@ -507,7 +507,7 @@ function shouldRejectNegativeSessionCache(
   user: JwtUser,
 ) {
   if (value.subUserId === undefined || value.sessionVersion === undefined) {
-    return true;
+    return false;
   }
 
   return value.subUserId === user.subUserId && value.sessionVersion === user.sessionVersion;

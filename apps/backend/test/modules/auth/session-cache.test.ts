@@ -196,7 +196,7 @@ describe("verifyAccessSession cache", () => {
     );
   });
 
-  it("rejects a negative session cache without querying DB", async () => {
+  it("falls back to DB for legacy negative session cache entries", async () => {
     const cache = createCache({
       "chatai:auth:session:501": JSON.stringify({ valid: false }),
     });
@@ -213,8 +213,13 @@ describe("verifyAccessSession cache", () => {
         sessionVersion: 1,
         subUserId: "101",
       }, cache),
-    ).resolves.toBe(false);
-    expect(db.calls).toEqual([]);
+    ).resolves.toBe(true);
+    expect(db.calls).toEqual(["xy_wap_embed_sub_user_session"]);
+    expect(cache.sadd).toHaveBeenCalledWith(
+      "chatai:auth:session-index:101",
+      ["501"],
+      14 * 24 * 60 * 60,
+    );
   });
 
   it("does not let a stale-version negative cache reject a newer valid session", async () => {

@@ -418,7 +418,12 @@ describe("MysqlWorkbenchService", () => {
       messages: [],
     });
     expect(canAccessSeat).toHaveBeenCalledWith("101", "12");
-    expect(getChatRecordDetail).toHaveBeenCalledWith("88", "parent-chatrecord-msgid");
+    expect(getChatRecordDetail).toHaveBeenCalledWith(
+      9001,
+      5,
+      "88",
+      "parent-chatrecord-msgid",
+    );
   });
 
   it("keeps the latest message page available when history smart reply lookup fails", async () => {

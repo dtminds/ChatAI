@@ -859,6 +859,8 @@ export class WorkbenchRepository {
   }
 
   async getChatRecordDetail(
+    uid: number,
+    platform: number,
     conversationId: string,
     messageId: string,
   ): Promise<WorkbenchChatRecordDetailResponse | undefined> {
@@ -880,6 +882,8 @@ export class WorkbenchRepository {
         "conversation.platform as platform",
         "conversation.uid as uid",
       ])
+      .where("conversation.uid", "=", uid)
+      .where("conversation.platform", "=", platform)
       .where("conversation.id", "=", conversationNumericId)
       .where("conversation.biz_status", "=", 1)
       .executeTakeFirst();

@@ -630,7 +630,12 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     await this.assertSeatAccess(subUserId, conversation.seatId);
 
-    const detail = await this.repository.getChatRecordDetail(conversationId, messageId);
+    const detail = await this.repository.getChatRecordDetail(
+      conversation.uid,
+      conversation.platform,
+      conversationId,
+      messageId,
+    );
 
     if (!detail) {
       throw new NotFoundError("CHAT_RECORD_NOT_FOUND", "聊天记录不存在");

@@ -232,7 +232,7 @@ function createChatRecordDetailDb({
     queries,
     selectFrom(table: string) {
       if (table === "xy_wap_embed_conversation as conversation") {
-        return createQueryBuilder({
+        const query = createQueryBuilder({
           chat_type: 1,
           conversation_external_id: "external-1",
           conversation_group_id: "",
@@ -242,6 +242,12 @@ function createChatRecordDetailDb({
           third_userid: "seat-user-001",
           uid: 9001,
         });
+        queries.push({
+          orderBys: query.orderBys,
+          table,
+          wheres: query.wheres,
+        });
+        return query;
       }
 
       if (table === "xy_wap_embed_msg_audit_info as message") {
@@ -2831,7 +2837,7 @@ describe("WorkbenchRepository", () => {
     const repository = new WorkbenchRepository(db as never);
 
     await expect(
-      repository.getChatRecordDetail("88", "parent-chatrecord-msgid"),
+      repository.getChatRecordDetail(9001, 5, "88", "parent-chatrecord-msgid"),
     ).resolves.toMatchObject({
       messageId: "parent-chatrecord-msgid",
       messages: [
@@ -2847,26 +2853,29 @@ describe("WorkbenchRepository", () => {
       ],
     });
 
-    expect(db.queries[0]?.wheres).toContainEqual([
+    expect(db.queries[0]?.wheres).toContainEqual(["conversation.uid", "=", 9001]);
+    expect(db.queries[0]?.wheres).toContainEqual(["conversation.platform", "=", 5]);
+    expect(db.queries[0]?.wheres).toContainEqual(["conversation.id", "=", 88]);
+    expect(db.queries[1]?.wheres).toContainEqual([
       "message.msgid",
       "=",
       "parent-chatrecord-msgid",
     ]);
-    expect(db.queries[0]?.wheres).toContainEqual(["message.uid", "=", 9001]);
-    expect(db.queries[0]?.wheres).toContainEqual(["message.platform", "=", 5]);
-    expect(db.queries[0]?.wheres).toContainEqual([
+    expect(db.queries[1]?.wheres).toContainEqual(["message.uid", "=", 9001]);
+    expect(db.queries[1]?.wheres).toContainEqual(["message.platform", "=", 5]);
+    expect(db.queries[1]?.wheres).toContainEqual([
       "message.third_external_id",
       "=",
       "external-1",
     ]);
-    expect(db.queries[1]?.wheres).toContainEqual([
+    expect(db.queries[2]?.wheres).toContainEqual([
       "record.msgid",
       "=",
       "parent-chatrecord-msgid",
     ]);
-    expect(db.queries[1]?.wheres).toContainEqual(["record.uid", "=", 9001]);
-    expect(db.queries[1]?.wheres).toContainEqual(["record.platform", "=", 5]);
-    expect(db.queries[1]?.orderBys).toEqual([
+    expect(db.queries[2]?.wheres).toContainEqual(["record.uid", "=", 9001]);
+    expect(db.queries[2]?.wheres).toContainEqual(["record.platform", "=", 5]);
+    expect(db.queries[2]?.orderBys).toEqual([
       ["record.msgtime", "asc"],
       ["record.id", "asc"],
     ]);

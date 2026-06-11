@@ -63,11 +63,14 @@ export function ChatRecordMessageCard({
   const [loading, setLoading] = useState(false);
   const contextRef = useRef({ conversationId, messageId });
   const isMountedRef = useRef(false);
+  const loadDetailRef = useRef<() => Promise<void>>(async () => {});
+  const openRef = useRef(open);
   const requestIdRef = useRef(0);
   const title = normalizeChatRecordTitle(content.msgTitle);
   const lines = normalizeChatRecordLines(content);
 
   contextRef.current = { conversationId, messageId };
+  openRef.current = open;
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -81,8 +84,8 @@ export function ChatRecordMessageCard({
     setDetail(null);
     setError("");
 
-    if (open) {
-      void loadDetail();
+    if (openRef.current) {
+      void loadDetailRef.current();
     }
   }, [conversationId, messageId]);
 
@@ -124,6 +127,8 @@ export function ChatRecordMessageCard({
       setLoading(false);
     }
   }
+
+  loadDetailRef.current = loadDetail;
 
   function canApplyDetailResult(
     requestId: number,

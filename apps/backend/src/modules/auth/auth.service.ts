@@ -440,7 +440,13 @@ type SessionCacheValue =
     };
 
 async function readSessionCache(cache: CachePort | undefined, key: string) {
-  const cached = await cache?.get(key);
+  let cached: string | null | undefined;
+
+  try {
+    cached = await cache?.get(key);
+  } catch {
+    return undefined;
+  }
 
   if (!cached) {
     return undefined;

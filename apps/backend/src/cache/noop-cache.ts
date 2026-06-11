@@ -17,10 +17,6 @@ export class NoopCache implements CachePort {
     return undefined;
   }
 
-  async setSessionWithIndex() {
-    return undefined;
-  }
-
   async smembers() {
     return null;
   }

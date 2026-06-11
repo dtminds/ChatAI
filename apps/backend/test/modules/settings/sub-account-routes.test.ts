@@ -197,7 +197,10 @@ describe("settings sub-account routes", () => {
     expect(response.statusCode).toBe(200);
     expect(db.revokedSessionSubUserIds).toEqual([12]);
     expect(app.cache.smembers).toHaveBeenCalledWith("chatai:auth:session-index:12");
-    expect(app.cache.del).toHaveBeenCalledWith("chatai:auth:session:701");
+    expect(app.cache.del).toHaveBeenCalledWith(
+      "chatai:auth:session:701",
+      "chatai:auth:session:702",
+    );
     expect(app.cache.del).toHaveBeenCalledWith("chatai:auth:session-index:12");
     expect(app.cache.del).toHaveBeenCalledWith("chatai:seat-access:12");
 
@@ -387,7 +390,7 @@ function createCacheMock() {
       }
 
       if (key === "chatai:auth:session-index:12") {
-        return ["701"];
+        return ["701", "702"];
       }
 
       return [];

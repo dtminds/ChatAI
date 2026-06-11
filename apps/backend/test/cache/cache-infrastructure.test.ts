@@ -13,6 +13,7 @@ describe("cache infrastructure", () => {
     await expect(cache.set("key", "value", 60)).resolves.toBeUndefined();
     await expect(cache.sadd("set", ["a"], 60)).resolves.toBeUndefined();
     await expect(cache.del("key", "set")).resolves.toBeUndefined();
+    expect("setSessionWithIndex" in cache).toBe(false);
   });
 
   it("builds cache keys under a shared prefix", () => {

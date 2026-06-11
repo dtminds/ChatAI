@@ -203,6 +203,8 @@ invalidateSubUserSessions(cache, subUserId: string): Promise<void>
 
 Settings 服务在 DB 写成功后同步调失效；Redis 失败只 log，不影响主流程。失效函数要删除 session key 和 session-index key，避免 index 无限增长。
 
+`invalidateSubUserSessions` 依赖 `auth:session-index:{subUserId}` 枚举正向 session key。若 `SMEMBERS` 失败、index 提前过期，或 Redis 在写入 session key 后写 index 失败，批量失效可能无法定位全部正向 key；P0 接受该风险，依赖正向 session cache ≤5min TTL 自动收敛。若后续要把这类场景收紧到即时失效，可在 P0.5/P1 增加 `auth:session-epoch:{subUserId}` 并把 epoch 纳入正向缓存校验。
+
 `createOrReplaceSession` 当前通过 `onDuplicateKeyUpdate` 复用 `sub_user_id` 唯一 session 行，通常是同一个 `sessionId` 的 `session_version` 递增；实现失效时必须删除已有正向 session key，不能假设登录一定产生新的 `sessionId`。
 
 ### 4.5 不在 P0-B 缓存的范围
@@ -333,7 +335,7 @@ createManagedAccountSettingsService(app.db, app.cache)
 | Redis 宕机 | `NoopCache` 降级；不提升为强依赖 |
 | 多实例缓存不一致 | 写时失效广播到同一 Redis |
 | 缓存穿透 | Session 负数缓存；seat-access 空列表也缓存 |
-| Redis 失效失败 | 主流程不回滚；文档和验收明确只提供 TTL 有界陈旧，不承诺即时强一致 |
+| Redis 失效失败或 session-index 不完整 | 主流程不回滚；正向 session cache ≤5min TTL 有界陈旧，不承诺即时强一致 |
 
 ## 8. 验收标准
 

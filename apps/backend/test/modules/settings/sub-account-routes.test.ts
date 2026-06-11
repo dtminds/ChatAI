@@ -197,10 +197,8 @@ describe("settings sub-account routes", () => {
     expect(response.statusCode).toBe(200);
     expect(db.revokedSessionSubUserIds).toEqual([12]);
     expect(app.cache.smembers).toHaveBeenCalledWith("chatai:auth:session-index:12");
-    expect(app.cache.del).toHaveBeenCalledWith(
-      "chatai:auth:session:701",
-      "chatai:auth:session-index:12",
-    );
+    expect(app.cache.del).toHaveBeenCalledWith("chatai:auth:session:701");
+    expect(app.cache.del).toHaveBeenCalledWith("chatai:auth:session-index:12");
     expect(app.cache.del).toHaveBeenCalledWith("chatai:seat-access:12");
 
     await app.close();
@@ -227,10 +225,8 @@ describe("settings sub-account routes", () => {
     });
     expect(db.expiredAccessTokenSubUserIds).toEqual([11]);
     expect(app.cache.smembers).toHaveBeenCalledWith("chatai:auth:session-index:11");
-    expect(app.cache.del).toHaveBeenCalledWith(
-      "chatai:auth:session:601",
-      "chatai:auth:session-index:11",
-    );
+    expect(app.cache.del).toHaveBeenCalledWith("chatai:auth:session:601");
+    expect(app.cache.del).toHaveBeenCalledWith("chatai:auth:session-index:11");
     expect(app.cache.del).toHaveBeenCalledWith("chatai:seat-access:11");
 
     await app.close();

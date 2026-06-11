@@ -11,6 +11,8 @@ type RedisPipeline = {
   set(key: string, value: string, mode: "EX", ttlSeconds: number): RedisPipeline;
 };
 
+type RedisPipelineResult = Array<[Error | null, unknown] | undefined>;
+
 export type RedisCacheClient = {
   del(...keys: string[]): Promise<unknown>;
   get(key: string): Promise<string | null>;
@@ -42,11 +44,11 @@ export class RedisCache implements CachePort {
       return;
     }
 
-    await this.run("sadd", () => {
+    await this.run("sadd", async () => {
       const pipeline = this.client.pipeline();
       pipeline.sadd(key, members);
       pipeline.expire(key, ttlSeconds);
-      return pipeline.exec();
+      return executePipeline(pipeline);
     }, undefined);
   }
 
@@ -66,12 +68,12 @@ export class RedisCache implements CachePort {
     sessionTtlSeconds: number;
     value: string;
   }) {
-    await this.run("set-session-with-index", () => {
+    await this.run("set-session-with-index", async () => {
       const pipeline = this.client.pipeline();
       pipeline.set(input.sessionKey, input.value, "EX", input.sessionTtlSeconds);
       pipeline.sadd(input.indexKey, [input.sessionId]);
       pipeline.expire(input.indexKey, input.indexTtlSeconds);
-      return pipeline.exec();
+      return executePipeline(pipeline);
     }, undefined);
   }
 
@@ -90,4 +92,22 @@ export class RedisCache implements CachePort {
       return fallback;
     }
   }
+}
+
+async function executePipeline(pipeline: RedisPipeline) {
+  const results = await pipeline.exec();
+
+  if (!Array.isArray(results)) {
+    return results;
+  }
+
+  for (const result of results as RedisPipelineResult) {
+    const error = result?.[0];
+
+    if (error) {
+      throw error;
+    }
+  }
+
+  return results;
 }

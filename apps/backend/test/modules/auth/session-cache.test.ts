@@ -282,10 +282,8 @@ describe("loginWithPassword cache invalidation", () => {
       accessToken: "access-token",
     });
     expect(cache.smembers).toHaveBeenCalledWith("chatai:auth:session-index:101");
-    expect(cache.del).toHaveBeenCalledWith(
-      "chatai:auth:session:501",
-      "chatai:auth:session-index:101",
-    );
+    expect(cache.del).toHaveBeenCalledWith("chatai:auth:session:501");
+    expect(cache.del).toHaveBeenCalledWith("chatai:auth:session-index:101");
     expect(cache.set).toHaveBeenCalledWith(
       "chatai:auth:session:501",
       expect.stringContaining("\"sessionVersion\":2"),

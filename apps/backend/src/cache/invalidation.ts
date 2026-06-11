@@ -1,6 +1,8 @@
 import type { CachePort } from "./cache-port.js";
 import { buildCacheKeys } from "./keys.js";
 
+const DELETE_BATCH_SIZE = 1000;
+
 type InvalidationLogger = {
   warn(details: Record<string, unknown>, message: string): void;
 };
@@ -27,8 +29,16 @@ export async function invalidateSubUserSessions(
   const sessionIds = await safelyReadMembers(cache, indexKey, logger);
   const sessionKeys = sessionIds.map((sessionId) => keys.authSession(sessionId));
 
+  for (let i = 0; i < sessionKeys.length; i += DELETE_BATCH_SIZE) {
+    const batch = sessionKeys.slice(i, i + DELETE_BATCH_SIZE);
+    await safelyInvalidate(
+      () => cache?.del(...batch),
+      logger,
+    );
+  }
+
   await safelyInvalidate(
-    () => cache?.del(...sessionKeys, indexKey),
+    () => cache?.del(indexKey),
     logger,
   );
 }

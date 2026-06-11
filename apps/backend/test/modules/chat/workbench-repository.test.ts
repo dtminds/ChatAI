@@ -2823,7 +2823,7 @@ describe("WorkbenchRepository", () => {
           origin_content: null,
           origin_msgtype: "text",
           platform: 5,
-          status: 1,
+          status: 0,
           uid: 9001,
         },
       ],
@@ -2842,6 +2842,7 @@ describe("WorkbenchRepository", () => {
           senderAvatar: "https://cdn.example.com/avatar.png",
           senderName: "范双飞",
           seq: 18,
+          status: "sent",
         },
       ],
     });

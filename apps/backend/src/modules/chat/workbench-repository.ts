@@ -957,7 +957,7 @@ export class WorkbenchRepository {
           seat_id: 0,
           sender_avatar: row.avatar ?? "",
           sender_name: row.name ?? "",
-          status: row.status,
+          status: 1,
           third_external_id: conversation.conversation_external_id,
           third_from_id: row.name ?? "",
           third_group_id: conversation.conversation_group_id,

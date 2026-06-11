@@ -76,7 +76,9 @@ export function ChatRecordMessageCard({
   async function handleOpenChange(nextOpen: boolean) {
     setOpen(nextOpen);
 
-    if (!nextOpen || detail || loading) {
+    const hasLoadedMessages = Boolean(detail?.messages.length);
+
+    if (!nextOpen || hasLoadedMessages || loading) {
       return;
     }
 
@@ -185,8 +187,15 @@ function ChatRecordDialogBody({
 
     if (messages.length === 0) {
       body = (
-        <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-          暂无聊天记录
+        <div className="flex h-full flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
+          <p>暂无聊天记录</p>
+          <button
+            className="rounded-[8px] border border-border px-3 py-1.5 text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onRetry}
+            type="button"
+          >
+            刷新聊天记录
+          </button>
         </div>
       );
     } else {

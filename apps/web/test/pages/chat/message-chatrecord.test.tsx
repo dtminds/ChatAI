@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { ChatMessage, ChatRecordMessageContent } from "@/pages/chat/chat-types";
@@ -87,6 +87,57 @@ describe("ChatRecordMessageCard", () => {
       .not.toBeInTheDocument();
     expect(within(dialog).getByText("群聊")).toBeInTheDocument();
     expect(within(dialog).getByText("该消息类型暂不能展示")).toBeInTheDocument();
+  });
+
+  it("reloads detail when the previous successful response was empty", async () => {
+    const user = userEvent.setup();
+    const loadChatRecordDetail = vi.fn()
+      .mockResolvedValueOnce({
+        messageId: "parent-chatrecord-msgid",
+        messages: [],
+      })
+      .mockResolvedValueOnce({
+        messageId: "parent-chatrecord-msgid",
+        messages: [
+          createTextMessage({
+            id: "chatrecord:parent-chatrecord-msgid:22",
+            text: "后续入库的详情",
+          }),
+        ],
+      });
+
+    render(
+      <ChatRecordMessageCard
+        content={createChatRecordContent()}
+        conversationId="conversation-1"
+        loadChatRecordDetail={loadChatRecordDetail}
+        messageId="parent-chatrecord-msgid"
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "查看聊天记录：缪勇飞和范双飞的聊天记录" }));
+
+    const firstDialog = await screen.findByRole("dialog", {
+      name: "缪勇飞和范双飞的聊天记录",
+    });
+    expect(within(firstDialog).getByText("暂无聊天记录")).toBeInTheDocument();
+    expect(within(firstDialog).getByRole("button", { name: "刷新聊天记录" }))
+      .toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", {
+        name: "缪勇飞和范双飞的聊天记录",
+      })).not.toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "查看聊天记录：缪勇飞和范双飞的聊天记录" }));
+
+    const secondDialog = await screen.findByRole("dialog", {
+      name: "缪勇飞和范双飞的聊天记录",
+    });
+    expect(await within(secondDialog).findByText("后续入库的详情")).toBeInTheDocument();
+    expect(loadChatRecordDetail).toHaveBeenCalledTimes(2);
   });
 });
 

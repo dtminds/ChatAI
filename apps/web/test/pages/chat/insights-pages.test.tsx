@@ -1172,6 +1172,7 @@ describe("conversation insights pages", () => {
     expect(
       await screen.findByRole("heading", { level: 1, name: "会话数据总览" }),
     ).toBeInTheDocument();
+    expect(screen.getByText("会话洞察").parentElement).toHaveTextContent("Beta");
     expect(screen.queryByText(/当前范围内有/)).not.toBeInTheDocument();
     expect(
       screen.getByRole("button", {

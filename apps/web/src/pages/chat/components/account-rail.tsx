@@ -15,6 +15,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import { NavLink, useLocation } from "react-router-dom";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -39,7 +40,7 @@ const railItems = [
   { label: "工作台", icon: DashboardCircleIcon, devOnly: true },
   { label: "聊天", icon: ChatIcon },
   { label: "客户", icon: UserSquareIcon },
-  { label: "洞察", icon: AiIdeaIcon, to: "/chat/insights" },
+  { label: "洞察", icon: AiIdeaIcon, to: "/chat/insights", badge: "Beta" },
   { label: "任务", icon: Notification01Icon, devOnly: true },
 ];
 
@@ -358,7 +359,15 @@ export function AccountRail({
                 size={16}
                 strokeWidth={1.6}
               />
-              <span>{item.label}</span>
+              <span className="min-w-0 truncate">{item.label}</span>
+              {item.badge ? (
+                <Badge
+                  aria-hidden="true"
+                  className="ml-auto h-5 shrink-0 rounded-[5px] px-1.5 py-0 text-[10px] leading-none"
+                >
+                  {item.badge}
+                </Badge>
+              ) : null}
             </>
           );
 

@@ -169,7 +169,10 @@ describe("AccountRail", () => {
       />,
     );
 
-    expect(screen.getByRole("link", { name: "洞察" })).toHaveAttribute("href", "/chat/insights");
+    const insightLink = screen.getByRole("link", { name: "洞察" });
+
+    expect(insightLink).toHaveAttribute("href", "/chat/insights");
+    expect(within(insightLink).getByText("Beta")).toBeInTheDocument();
   });
 
   it("keeps the collapsed insight nav link aligned with button nav items", () => {

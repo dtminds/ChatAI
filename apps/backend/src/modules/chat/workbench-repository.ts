@@ -2720,6 +2720,10 @@ export class WorkbenchRepository {
     try {
       const value = JSON.parse(cached) as Partial<SeatAccessSnapshot>;
 
+      if (!value || typeof value !== "object") {
+        return undefined;
+      }
+
       if (
         value.version === 1 &&
         typeof value.uid === "number" &&

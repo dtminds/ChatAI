@@ -464,6 +464,10 @@ async function readSessionCache(cache: CachePort | undefined, key: string) {
   try {
     const value = JSON.parse(cached) as Partial<SessionCacheValue>;
 
+    if (!value || typeof value !== "object") {
+      return undefined;
+    }
+
     if (value.valid === false) {
       return {
         sessionVersion: typeof value.sessionVersion === "number"

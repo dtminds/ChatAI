@@ -222,6 +222,27 @@ describe("verifyAccessSession cache", () => {
     );
   });
 
+  it("falls back to DB for JSON primitive session cache entries", async () => {
+    const cache = createCache({
+      "chatai:auth:session:501": "null",
+    });
+    const db = createSessionDb({
+      id: 501,
+      session_version: 1,
+      sub_user_id: 101,
+    });
+
+    await expect(
+      verifyAccessSession(db, {
+        roles: ["operator"],
+        sessionId: "501",
+        sessionVersion: 1,
+        subUserId: "101",
+      }, cache),
+    ).resolves.toBe(true);
+    expect(db.calls).toEqual(["xy_wap_embed_sub_user_session"]);
+  });
+
   it("does not let a stale-version negative cache reject a newer valid session", async () => {
     const cache = createCache();
     const staleVersionDb = createSessionDb({

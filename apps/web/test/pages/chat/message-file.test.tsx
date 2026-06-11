@@ -66,6 +66,22 @@ describe("FileMessageCard", () => {
     );
   });
 
+  it("can hide the download action while keeping the file type icon", () => {
+    render(
+      <FileMessageCard
+        content={createFileContent()}
+        showDownloadAction={false}
+      />,
+    );
+
+    expect(screen.getByRole("img", { name: "PDF 文件" }))
+      .toHaveAttribute("src", "https://b5.bokr.com.cn/dist/pdf.png");
+    expect(screen.queryByRole("button", { name: "下载文件：报价单.pdf" }))
+      .not.toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: "文件下载中" }))
+      .not.toBeInTheDocument();
+  });
+
   it("renders a clickable transfer button when the file is not stored in COS", async () => {
     const user = userEvent.setup();
     const handleDownloadClick = vi.fn();

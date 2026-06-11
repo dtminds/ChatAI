@@ -25,6 +25,7 @@ import {
   type WorkbenchHistoryMessagePageDto,
   type WorkbenchHistoryMessageQuery,
   type WorkbenchHistoryMessageScope,
+  type WorkbenchChatRecordDetailResponse,
   type WorkbenchGroupMembersResponse,
   type WorkbenchSubUserDto,
   type WorkbenchMessageDto,
@@ -128,6 +129,10 @@ export type WorkbenchService = {
   getMessagesByIds: (
     input: WorkbenchMessageQueryByIdsRequest,
   ) => Promise<WorkbenchMessageQueryByIdsResponse>;
+  getChatRecordDetail: (input: {
+    conversationId: string;
+    messageId: string;
+  }) => Promise<WorkbenchChatRecordDetailResponse>;
   revokeMessage: (input: {
     conversationId: string;
     messageId: string;
@@ -376,6 +381,12 @@ export function createMockWorkbenchService(): WorkbenchService {
         messages: clone(
           messages.filter((message) => normalizedIds.has(message.messageId)),
         ),
+      };
+    },
+    async getChatRecordDetail(input) {
+      return {
+        messageId: input.messageId,
+        messages: [],
       };
     },
     async revokeMessage(input) {
@@ -936,6 +947,16 @@ export function createHttpWorkbenchService(): WorkbenchService {
         input,
       );
     },
+    getChatRecordDetail(input) {
+      return http.get<WorkbenchChatRecordDetailResponse>(
+        `/server/messages/${encodeURIComponent(input.messageId)}/chat-record`,
+        {
+          params: {
+            conversation_id: input.conversationId,
+          },
+        },
+      );
+    },
     revokeMessage(input) {
       return http.post<WorkbenchRevokeMessageResponse, WorkbenchRevokeMessageRequest>(
         `/server/messages/${input.messageId}/revoke`,
@@ -1425,6 +1446,8 @@ function buildContent(message: Message) {
     case "image":
       return {
         alt: message.content.alt,
+        downloadStatus: message.content.downloadStatus,
+        fileSerialNo: message.content.fileSerialNo,
         height: message.content.height,
         imageUrl: message.content.imageUrl,
         width: message.content.width,
@@ -1512,6 +1535,12 @@ function buildContent(message: Message) {
         quoteMsgId: message.content.quoteMsgId,
         quotedMessage: message.content.quotedMessage,
         text: message.content.text,
+      };
+    case "chatrecord":
+      return {
+        msgContent: message.content.msgContent,
+        msgTitle: message.content.msgTitle,
+        unsupportedDisplayText: message.content.unsupportedDisplayText,
       };
   }
 }

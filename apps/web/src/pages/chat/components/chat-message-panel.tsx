@@ -38,6 +38,7 @@ type ChatMessagePanelProps = {
   ) => void;
   onTranscribeVoice?: (message: ChatMessage) => Promise<string>;
   retryingMessageIds?: ReadonlySet<string>;
+  smartReplyAutoPendingByMessageId?: Record<string, true>;
   smartReplyByMessageId?: Record<string, SmartReplySuggestion>;
   messageViewportRef: RefObject<HTMLDivElement | null>;
 };
@@ -68,6 +69,7 @@ export function ChatMessagePanel({
   onVoicePlaybackReady,
   onTranscribeVoice,
   retryingMessageIds,
+  smartReplyAutoPendingByMessageId,
   smartReplyByMessageId,
   messageViewportRef,
 }: ChatMessagePanelProps) {
@@ -131,6 +133,7 @@ export function ChatMessagePanel({
                   });
                 }}
                 retryingMessageIds={retryingMessageIds}
+                smartReplyAutoPendingByMessageId={smartReplyAutoPendingByMessageId}
                 smartReplyByMessageId={smartReplyByMessageId}
               />
             </div>

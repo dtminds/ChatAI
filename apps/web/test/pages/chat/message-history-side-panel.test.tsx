@@ -2,7 +2,10 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GROUP_MEMBER_TYPE } from "@chatai/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { MessageHistorySidePanel } from "@/pages/chat/components/message-history-side-panel";
+import {
+  HistoryCompactMessageList,
+  MessageHistorySidePanel,
+} from "@/pages/chat/components/message-history-side-panel";
 import type { ChatMessage, Conversation } from "@/pages/chat/chat-types";
 
 describe("MessageHistorySidePanel", () => {
@@ -802,6 +805,25 @@ describe("MessageHistorySidePanel", () => {
     const viewport = within(screen.getByTestId("history-message-viewport"));
     expect(viewport.queryByText("小程序")).not.toBeInTheDocument();
     expect(viewport.queryByText("MP")).not.toBeInTheDocument();
+  });
+
+  it("renders chat record messages in the compact history list", () => {
+    render(
+      <HistoryCompactMessageList
+        messages={[
+          createChatRecordMessage({
+            msgContent: ["范双飞：123", "缪勇飞：123", "缪勇飞：[图片]"],
+            msgTitle: "缪勇飞和范双飞的聊天记录",
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("缪勇飞和范双飞的聊天记录")).toBeInTheDocument();
+    expect(screen.getByText("范双飞：123")).toBeInTheDocument();
+    expect(screen.getByText("缪勇飞：123")).toBeInTheDocument();
+    expect(screen.getByText("缪勇飞：[图片]")).toBeInTheDocument();
+    expect(screen.getByText("聊天记录")).toBeInTheDocument();
   });
 
   it("shows newer file messages before older ones in file tab", () => {
@@ -1804,6 +1826,32 @@ function createQuoteMessage({
       name: author,
     },
     sentAt: "2026-05-19 10:12:00",
+    status: "sent",
+  };
+}
+
+function createChatRecordMessage({
+  msgContent,
+  msgTitle,
+}: {
+  msgContent: string[];
+  msgTitle: string;
+}): ChatMessage {
+  return {
+    author: "客户",
+    content: {
+      msgContent,
+      msgTitle,
+      type: "chatrecord",
+    },
+    conversationId: "conversation-1",
+    id: "chatrecord-message-1",
+    role: "customer",
+    sender: {
+      id: "customer-1",
+      name: "客户",
+    },
+    sentAt: "2026-05-19 10:15:00",
     status: "sent",
   };
 }

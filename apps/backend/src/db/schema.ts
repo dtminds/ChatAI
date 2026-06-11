@@ -1375,6 +1375,70 @@ export interface XyWapEmbedMsgAuditInfoExtend {
   update_time: Generated<Date>;
 }
 
+export interface XyWapEmbedMsgAuditChatRecord {
+  /**
+   * 头像
+   */
+  avatar: Generated<string>;
+  /**
+   * 消息内容（不同的消息类型会不同）
+   */
+  content: string | null;
+  /**
+   * 企业公司简称
+   */
+  corp_short_name: Generated<string>;
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date>;
+  id: Generated<number>;
+  /**
+   * 消息id，消息的唯一标识
+   */
+  msgid: string;
+  /**
+   * 消息发送时间戳，utc时间，ms单位
+   */
+  msgtime: Generated<number>;
+  /**
+   * 消息类型：文本：text； 图片：image；撤回：revoke；同意：agree；不同意：disagree；语音：voice；视频：video；名片：card；位置：location；表情：emotion；文件：file；链接：link；小程序：weapp；会话记录：chatrecord；待办：todo；投票：vote；填表：collect；红包：redpacket；会议邀请：meeting；在线文档：docmsg；MarkDown：markdown；图文：news；日程：calendar；混合：mixed
+   */
+  msgtype: Generated<string>;
+  /**
+   * 昵称
+   */
+  name: Generated<string>;
+  /**
+   * 操作编码
+   */
+  opt_ser_no: string | null;
+  /**
+   * 原始消息内容（清洗之前）
+   */
+  origin_content: string | null;
+  /**
+   * 第三方消息类型
+   */
+  origin_msgtype: string;
+  /**
+   * 接入平台 5、比邻
+   */
+  platform: Generated<number>;
+  /**
+   * 消息状态：0、处理中，1、处理成功
+   */
+  status: Generated<number>;
+  /**
+   * 租户id
+   */
+  uid: number;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date>;
+}
+
 export interface XyWapEmbedSessionActionItem {
   /**
    * 行动项类型，当前固定follow_up：跟进
@@ -2139,6 +2203,7 @@ export interface DB {
   xy_wap_embed_insight_sync_cursor: XyWapEmbedInsightSyncCursor;
   xy_wap_embed_logical_session: XyWapEmbedLogicalSession;
   xy_wap_embed_logical_session_message: XyWapEmbedLogicalSessionMessage;
+  xy_wap_embed_msg_audit_chat_record: XyWapEmbedMsgAuditChatRecord;
   xy_wap_embed_msg_audit_info: XyWapEmbedMsgAuditInfo;
   xy_wap_embed_msg_audit_info_extend: XyWapEmbedMsgAuditInfoExtend;
   xy_wap_embed_session_action_item: XyWapEmbedSessionActionItem;

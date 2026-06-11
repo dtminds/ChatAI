@@ -215,6 +215,66 @@ function createMessagesByIdsDb(
   };
 }
 
+function createChatRecordDetailDb({
+  detailRows,
+  parentRow,
+}: {
+  detailRows: Array<Record<string, unknown>>;
+  parentRow: MessageRow;
+}) {
+  const queries: Array<{
+    orderBys: Array<[string, string | undefined]>;
+    table: string;
+    wheres: Array<[string, string, unknown]>;
+  }> = [];
+
+  return {
+    queries,
+    selectFrom(table: string) {
+      if (table === "xy_wap_embed_conversation as conversation") {
+        const query = createQueryBuilder({
+          chat_type: 1,
+          conversation_external_id: "external-1",
+          conversation_group_id: "",
+          conversation_id: 88,
+          platform: 5,
+          seat_id: 12,
+          third_userid: "seat-user-001",
+          uid: 9001,
+        });
+        queries.push({
+          orderBys: query.orderBys,
+          table,
+          wheres: query.wheres,
+        });
+        return query;
+      }
+
+      if (table === "xy_wap_embed_msg_audit_info as message") {
+        const query = createQueryBuilder(parentRow);
+        queries.push({
+          orderBys: query.orderBys,
+          table,
+          wheres: query.wheres,
+        });
+        return query;
+      }
+
+      if (table === "xy_wap_embed_msg_audit_chat_record as record") {
+        const query = createQueryBuilder(detailRows);
+        queries.push({
+          orderBys: query.orderBys,
+          table,
+          wheres: query.wheres,
+        });
+        return query;
+      }
+
+      throw new Error(`unexpected table ${table}`);
+    },
+  };
+}
+
 function createQueryBuilder(result: unknown) {
   let currentResult = result;
   const aggregateFns: string[] = [];
@@ -2742,6 +2802,83 @@ describe("WorkbenchRepository", () => {
       ],
     });
     expect(db.messageQueries).toHaveLength(2);
+  });
+
+  it("loads chat record details by parent message msgid in the conversation tenant scope", async () => {
+    const db = createChatRecordDetailDb({
+      parentRow: createConversationMessageRow({
+        content: JSON.stringify({
+          msgContent: ["范双飞：123"],
+          msgTitle: "缪勇飞和范双飞的聊天记录",
+        }),
+        id: 830,
+        msgid: "parent-chatrecord-msgid",
+        msgtype: "chatrecord",
+      }),
+      detailRows: [
+        {
+          avatar: "https://cdn.example.com/avatar.png",
+          content: JSON.stringify({ text: "第一条详情" }),
+          corp_short_name: "",
+          id: 18,
+          msgid: "parent-chatrecord-msgid",
+          msgtime: 1_778_840_020_000,
+          msgtype: "text",
+          name: "范双飞",
+          opt_ser_no: null,
+          origin_content: null,
+          origin_msgtype: "text",
+          platform: 5,
+          status: 0,
+          uid: 9001,
+        },
+      ],
+    });
+    const repository = new WorkbenchRepository(db as never);
+
+    await expect(
+      repository.getChatRecordDetail(9001, 5, "88", "parent-chatrecord-msgid"),
+    ).resolves.toMatchObject({
+      messageId: "parent-chatrecord-msgid",
+      messages: [
+        {
+          content: { text: "第一条详情" },
+          contentType: "text",
+          messageId: "chatrecord:parent-chatrecord-msgid:18",
+          senderAvatar: "https://cdn.example.com/avatar.png",
+          senderName: "范双飞",
+          seq: 18,
+          status: "sent",
+        },
+      ],
+    });
+
+    expect(db.queries[0]?.wheres).toContainEqual(["conversation.uid", "=", 9001]);
+    expect(db.queries[0]?.wheres).toContainEqual(["conversation.platform", "=", 5]);
+    expect(db.queries[0]?.wheres).toContainEqual(["conversation.id", "=", 88]);
+    expect(db.queries[1]?.wheres).toContainEqual([
+      "message.msgid",
+      "=",
+      "parent-chatrecord-msgid",
+    ]);
+    expect(db.queries[1]?.wheres).toContainEqual(["message.uid", "=", 9001]);
+    expect(db.queries[1]?.wheres).toContainEqual(["message.platform", "=", 5]);
+    expect(db.queries[1]?.wheres).toContainEqual([
+      "message.third_external_id",
+      "=",
+      "external-1",
+    ]);
+    expect(db.queries[2]?.wheres).toContainEqual([
+      "record.msgid",
+      "=",
+      "parent-chatrecord-msgid",
+    ]);
+    expect(db.queries[2]?.wheres).toContainEqual(["record.uid", "=", 9001]);
+    expect(db.queries[2]?.wheres).toContainEqual(["record.platform", "=", 5]);
+    expect(db.queries[2]?.orderBys).toEqual([
+      ["record.msgtime", "asc"],
+      ["record.id", "asc"],
+    ]);
   });
 
   it("skips changed conversation hydration when the poll change limit is exceeded", async () => {

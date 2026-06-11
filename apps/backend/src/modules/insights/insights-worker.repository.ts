@@ -1747,14 +1747,11 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
     const lookbackFrom = currentStartedAt - input.lookbackHours * 60 * 60_000;
     const rows = await this.db
       .selectFrom("xy_wap_embed_logical_session as previous_session")
-      .innerJoin("xy_wap_embed_session_insight_current as current", (join) =>
-        join.onRef("current.session_id", "=", "previous_session.id"),
-      )
       .innerJoin("xy_wap_embed_session_summary as summary", (join) =>
-        join.onRef("summary.snapshot_id", "=", "current.current_snapshot_id"),
+        join.onRef("summary.snapshot_id", "=", "previous_session.current_snapshot_id"),
       )
       .innerJoin("xy_wap_embed_session_problem_resolution as problem", (join) =>
-        join.onRef("problem.snapshot_id", "=", "current.current_snapshot_id"),
+        join.onRef("problem.snapshot_id", "=", "previous_session.current_snapshot_id"),
       )
       .select([
         "previous_session.id as session_id",
@@ -2133,14 +2130,6 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       .where("status", "=", "building")
       .executeTakeFirst();
 
-    await this.db
-      .insertInto("xy_wap_embed_session_insight_current")
-      .values({
-        current_snapshot_id: snapshotId,
-        session_id: sessionId,
-      })
-      .onDuplicateKeyUpdate({ current_snapshot_id: snapshotId })
-      .executeTakeFirst();
     await this.db
       .updateTable("xy_wap_embed_logical_session")
       .set({

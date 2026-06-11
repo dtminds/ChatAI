@@ -24,7 +24,6 @@
     "xy_wap_embed_insight_rescan_task",
     "xy_wap_embed_analysis_run",
     "xy_wap_embed_session_insight_snapshot",
-    "xy_wap_embed_session_insight_current",
     "xy_wap_embed_session_summary",
     "xy_wap_embed_session_sentiment",
     "xy_wap_embed_session_tag",

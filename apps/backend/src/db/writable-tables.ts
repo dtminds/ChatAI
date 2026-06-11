@@ -27,7 +27,6 @@ export const WRITABLE_TABLES = [
   "xy_wap_embed_session_action_item",
   "xy_wap_embed_session_entity",
   "xy_wap_embed_session_faq_candidate",
-  "xy_wap_embed_session_insight_current",
   "xy_wap_embed_session_insight_snapshot",
   "xy_wap_embed_session_intent",
   "xy_wap_embed_session_problem_resolution",

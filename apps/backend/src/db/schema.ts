@@ -1103,7 +1103,7 @@ export interface XyWapEmbedLogicalSession {
    */
   create_time: Generated<Date>;
   /**
-   * 当前生效洞察快照ID
+   * 当前生效洞察快照ID，关联xy_wap_embed_session_insight_snapshot.id
    */
   current_snapshot_id: number | null;
   /**
@@ -1522,29 +1522,6 @@ export interface XyWapEmbedSessionFaqCandidate {
    * 租户UID
    */
   uid: number;
-  /**
-   * 更新时间
-   */
-  update_time: Generated<Date>;
-}
-
-export interface XyWapEmbedSessionInsightCurrent {
-  /**
-   * 创建时间
-   */
-  create_time: Generated<Date>;
-  /**
-   * 当前生效快照ID
-   */
-  current_snapshot_id: number;
-  /**
-   * 主键ID
-   */
-  id: Generated<number>;
-  /**
-   * 逻辑会话ID
-   */
-  session_id: number;
   /**
    * 更新时间
    */
@@ -2167,7 +2144,6 @@ export interface DB {
   xy_wap_embed_session_action_item: XyWapEmbedSessionActionItem;
   xy_wap_embed_session_entity: XyWapEmbedSessionEntity;
   xy_wap_embed_session_faq_candidate: XyWapEmbedSessionFaqCandidate;
-  xy_wap_embed_session_insight_current: XyWapEmbedSessionInsightCurrent;
   xy_wap_embed_session_insight_snapshot: XyWapEmbedSessionInsightSnapshot;
   xy_wap_embed_session_intent: XyWapEmbedSessionIntent;
   xy_wap_embed_session_problem_resolution: XyWapEmbedSessionProblemResolution;

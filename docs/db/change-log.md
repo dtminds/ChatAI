@@ -413,3 +413,55 @@ ALTER TABLE xy_wap_embed_insight_entity_dictionary
 ALTER TABLE xy_wap_embed_insight_entity_dictionary
   DROP KEY uk_entity_dictionary_uid_name;
 ```
+
+## 2026-06-12
+
+- Removed `xy_wap_embed_session_insight_current`; `xy_wap_embed_logical_session.current_snapshot_id` is the only current insight snapshot pointer.
+- Added `xy_wap_embed_logical_session.idx_logical_session_current_snapshot (current_snapshot_id, id)` for topic-to-session drilldowns that resolve sessions from snapshot-scoped result rows.
+
+Manual migration for existing databases:
+
+Run the read-only checks first and confirm any returned rows are expected before continuing.
+
+```sql
+-- 1. Preflight checks.
+SELECT current.session_id, current.current_snapshot_id
+FROM xy_wap_embed_session_insight_current AS current
+LEFT JOIN xy_wap_embed_logical_session AS session
+  ON session.id = current.session_id
+WHERE session.id IS NULL;
+
+SELECT current.session_id, current.current_snapshot_id
+FROM xy_wap_embed_session_insight_current AS current
+LEFT JOIN xy_wap_embed_session_insight_snapshot AS snapshot
+  ON snapshot.id = current.current_snapshot_id
+WHERE snapshot.id IS NULL;
+
+SELECT session.id AS session_id,
+       session.current_snapshot_id AS session_current_snapshot_id,
+       current.current_snapshot_id AS current_table_snapshot_id
+FROM xy_wap_embed_logical_session AS session
+JOIN xy_wap_embed_session_insight_current AS current
+  ON current.session_id = session.id
+WHERE session.current_snapshot_id IS NOT NULL
+  AND session.current_snapshot_id <> current.current_snapshot_id;
+
+-- 2. Backfill logical_session.current_snapshot_id from the old current table.
+UPDATE xy_wap_embed_logical_session AS session
+JOIN xy_wap_embed_session_insight_current AS current
+  ON current.session_id = session.id
+SET session.current_snapshot_id = current.current_snapshot_id
+WHERE session.current_snapshot_id IS NULL
+   OR session.current_snapshot_id <> current.current_snapshot_id;
+
+-- 3. Add the replacement reverse lookup index.
+ALTER TABLE xy_wap_embed_logical_session
+  ADD KEY idx_logical_session_current_snapshot (current_snapshot_id, id);
+
+-- 4. Deploy backend code that reads logical_session.current_snapshot_id.
+
+-- 5. Drop the old current pointer table after deployment.
+DROP TABLE IF EXISTS xy_wap_embed_session_insight_current;
+
+ANALYZE TABLE xy_wap_embed_logical_session;
+```

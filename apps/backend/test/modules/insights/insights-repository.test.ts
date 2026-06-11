@@ -33,7 +33,7 @@ describe("InsightsRepository", () => {
     expect(builders[0]?.table).toBe(
       "xy_wap_embed_logical_session as session",
     );
-    expect(builders[0]?.joins).toContain("xy_wap_embed_session_insight_current as current");
+    expect(builders[0]?.joins).not.toContain("xy_wap_embed_session_insight_current as current");
     expect(builders[0]?.joins).toContain("xy_wap_embed_session_insight_snapshot as snapshot");
     expect(builders[0]?.joins).not.toContain(
       "xy_wap_embed_session_problem_resolution as problem",
@@ -486,7 +486,7 @@ describe("InsightsRepository", () => {
 
     expect(builders[0]?.groupByCalls.length).toBeGreaterThan(0);
     expect(builders[0]?.table).toBe("xy_wap_embed_logical_session as session");
-    expect(builders[0]?.joins).toContain("xy_wap_embed_session_insight_current as current");
+    expect(builders[0]?.joins).not.toContain("xy_wap_embed_session_insight_current as current");
     expect(builders[0]?.joins).toContain("xy_wap_embed_session_insight_snapshot as snapshot");
     expect(builders[0]?.selectRawCalls.join("\n")).toContain(
       "seat.third_avatar",
@@ -621,7 +621,7 @@ describe("InsightsRepository", () => {
     });
 
     expect(builders[0]?.table).toBe("xy_wap_embed_logical_session as session");
-    expect(builders[0]?.joins).toContain("xy_wap_embed_session_insight_current as current");
+    expect(builders[0]?.joins).not.toContain("xy_wap_embed_session_insight_current as current");
     expect(builders[0]?.joins).toContain("xy_wap_embed_session_insight_snapshot as snapshot");
     expect(builders[0]?.joins).not.toContain(
       "xy_wap_embed_session_qa_finding as qa",
@@ -629,7 +629,7 @@ describe("InsightsRepository", () => {
     expect(builders[0]?.whereCalls).toContainEqual(["session.qa_status", "=", 0]);
     expect(builders[0]?.groupByCalls).toEqual([]);
     expect(builders[1]?.table).toBe("xy_wap_embed_logical_session as session");
-    expect(builders[1]?.joins).toContain("xy_wap_embed_session_insight_current as current");
+    expect(builders[1]?.joins).not.toContain("xy_wap_embed_session_insight_current as current");
     expect(builders[1]?.joins).toContain("xy_wap_embed_session_insight_snapshot as snapshot");
     expect(builders[1]?.joins).not.toContain(
       "xy_wap_embed_session_qa_finding as qa",
@@ -641,8 +641,8 @@ describe("InsightsRepository", () => {
       "xy_wap_embed_conversation as conversation",
     );
     expect(builders[1]?.joins).not.toContain("xy_wap_embed_user_seat as seat");
-    expect(builders[1]?.selectRawCalls.join("\n")).toContain("current.current_snapshot_id as current_snapshot_id");
-    expect(builders[1]?.selectRawCalls.join("\n")).not.toContain("session.current_snapshot_id as current_snapshot_id");
+    expect(builders[1]?.selectRawCalls.join("\n")).toContain("session.current_snapshot_id as current_snapshot_id");
+    expect(builders[1]?.selectRawCalls.join("\n")).not.toContain("current.current_snapshot_id as current_snapshot_id");
     expect(builders[1]?.whereCalls).toContainEqual(["session.qa_status", "=", 0]);
     expect(builders[1]?.whereRawCalls).toEqual([]);
     expect(builders[1]?.havingRawCalls).toEqual([]);
@@ -938,7 +938,7 @@ describe("InsightsRepository", () => {
     const coreQuery = builders[1];
     expect(builders[0]?.table).toBe("xy_wap_embed_logical_session as session");
     expect(coreQuery.table).toBe("xy_wap_embed_logical_session as session");
-    expect(coreQuery.joins).toContain(
+    expect(coreQuery.joins).not.toContain(
       "xy_wap_embed_session_insight_current as current",
     );
     expect(coreQuery.joins).not.toContain(
@@ -1119,7 +1119,7 @@ describe("InsightsRepository", () => {
     );
 
     expect(builders[0]?.whereRawCalls).toContain(
-      "(current.current_snapshot_id is null or snapshot.id is null)",
+      "(session.current_snapshot_id is null or snapshot.id is null)",
     );
   });
 
@@ -1336,7 +1336,7 @@ describe("InsightsRepository", () => {
     });
 
     expect(builders[0]?.table).toBe("xy_wap_embed_logical_session as session");
-    expect(builders[0]?.joins).toContain(
+    expect(builders[0]?.joins).not.toContain(
       "xy_wap_embed_session_insight_current as current",
     );
     expect(builders[0]?.joins).not.toContain("action_aggregate");
@@ -1856,6 +1856,11 @@ describe("InsightsRepository", () => {
     );
     expect(topicQueries).toHaveLength(2);
     for (const query of topicQueries) {
+      expect(query.joinConditions).toContainEqual({
+        left: "session.current_snapshot_id",
+        right: "topic.snapshot_id",
+        table: "xy_wap_embed_logical_session as session",
+      });
       expect(query.whereCalls).toContainEqual(["topic.uid", "=", 9001]);
       expect(query.whereCalls).toContainEqual(["topic.intent_id", "=", 31]);
       expect(query.whereCalls).toContainEqual(["session.uid", "=", 9001]);
@@ -2572,8 +2577,13 @@ describe("InsightsRepository", () => {
 
     const topicQuery = builders[0];
     expect(topicQuery?.table).toBe("xy_wap_embed_logical_session as session");
-    expect(topicQuery?.joins).toContain("xy_wap_embed_session_insight_current as current");
+    expect(topicQuery?.joins).not.toContain("xy_wap_embed_session_insight_current as current");
     expect(topicQuery?.joins).toContain("xy_wap_embed_session_tag as topic");
+    expect(topicQuery?.joinConditions).toContainEqual({
+      left: "topic.snapshot_id",
+      right: "session.current_snapshot_id",
+      table: "xy_wap_embed_session_tag as topic",
+    });
     expect(topicQuery?.whereCalls).toContainEqual(["session.uid", "=", 9001]);
     expect(topicQuery?.whereCalls).toContainEqual(["topic.uid", "=", 9001]);
     expect(topicQuery?.whereCalls).toContainEqual([
@@ -2591,6 +2601,42 @@ describe("InsightsRepository", () => {
     expect(topicQuery?.orderByCalls.map(readRawSql).join("\n")).toContain("count(distinct session.id)");
     expect(topicQuery?.limitCalls).toEqual([10]);
     expect(topicQuery?.limitCalls).not.toContain(500);
+  });
+
+  it("joins business topics through the logical session current snapshot", async () => {
+    const builders: SelectBuilderStub[] = [];
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        const builder = createSelectBuilder(
+          builders.length === 0
+            ? [
+                {
+                  mention_count: 2,
+                  name: "物流异常",
+                  session_count: 1,
+                  topic_id: 31,
+                },
+              ]
+            : [],
+          table,
+        );
+        builders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new InsightsRepository(db as never);
+
+    await repository.getBusinessTopicAnalytics(
+      { uid: 9001 },
+      { dimension: "intent" },
+    );
+
+    expect(builders[0]?.joinConditions).toContainEqual({
+      left: "topic.snapshot_id",
+      right: "session.current_snapshot_id",
+      table: "xy_wap_embed_session_intent as topic",
+    });
+    expect(builders[0]?.joins).not.toContain("xy_wap_embed_session_insight_current as current");
   });
 
   it("aggregates business intent trend in SQL without joining current configs", async () => {
@@ -2668,7 +2714,7 @@ describe("InsightsRepository", () => {
     await repository.getQaFindingAggregate({ uid: 9001 });
 
     expect(builders[0]?.table).toBe("xy_wap_embed_logical_session as session");
-    expect(builders[0]?.joins).toContain("xy_wap_embed_session_insight_current as current");
+    expect(builders[0]?.joins).not.toContain("xy_wap_embed_session_insight_current as current");
     expect(builders[0]?.joins).toContain("xy_wap_embed_session_insight_snapshot as snapshot");
 
     expect(
@@ -3174,7 +3220,7 @@ describe("MysqlInsightWorkerRepository", () => {
       (builder) =>
         builder.table === "xy_wap_embed_logical_session as previous_session",
     );
-    expect(previousQuery?.joins).toContain(
+    expect(previousQuery?.joins).not.toContain(
       "xy_wap_embed_session_insight_current as current",
     );
     expect(previousQuery?.joins).toContain(
@@ -4496,19 +4542,28 @@ describe("MysqlInsightWorkerRepository", () => {
         operation.values?.status === "ready",
     );
     expect(publishIndex).toBeGreaterThan(0);
-    expect(currentIndex).toBeGreaterThan(publishIndex);
+    expect(currentIndex).toBe(-1);
     expect(logicalSessionSelectCount).toBe(1);
     const logicalSessionUpdate = updateBuilders.find(
       (builder) =>
         builder.table === "xy_wap_embed_logical_session" &&
         builder.whereCalls.some((call) => call[0] === "id" && call[2] === 501),
     );
+    const logicalSessionUpdateIndex = operations.findIndex(
+      (operation) =>
+        operation.table === "xy_wap_embed_logical_session" &&
+        operation.type === "update",
+    );
+    expect(logicalSessionUpdateIndex).toBeGreaterThan(publishIndex);
     expect(logicalSessionUpdate?.whereCalls).toContainEqual(["uid", "=", 9001]);
     expect(operations).toContainEqual(
       expect.objectContaining({
         table: "xy_wap_embed_logical_session",
         type: "update",
-        values: expect.objectContaining({ qa_status: 1 }),
+        values: expect.objectContaining({
+          current_snapshot_id: 7001,
+          qa_status: 1,
+        }),
       }),
     );
   });
@@ -5594,6 +5649,7 @@ function createSelectBuilder(rows: unknown[], table = "") {
   const builder = {
     alias: undefined as string | undefined,
     joins: [] as string[],
+    joinConditions: [] as Array<{ left: string; right: string; table: string }>,
     forUpdateCalls: 0,
     groupByCalls: [] as unknown[][],
     havingRawCalls: [] as string[],
@@ -5622,8 +5678,15 @@ function createSelectBuilder(rows: unknown[], table = "") {
       builder.havingRawCalls.push(args.map(String).join("\n"));
       return builder;
     },
-    innerJoin: (joinTable: string) => {
+    innerJoin: (joinTable: string, left?: unknown, right?: unknown) => {
       builder.joins.push(joinTable);
+      if (typeof left === "string" && typeof right === "string") {
+        builder.joinConditions.push({
+          left,
+          right,
+          table: joinTable,
+        });
+      }
       return builder;
     },
     as: (alias: string) => {

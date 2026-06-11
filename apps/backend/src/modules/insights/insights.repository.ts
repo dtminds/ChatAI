@@ -1922,7 +1922,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
   ) {
     let query = buildCurrentSessionBaseQuery(this.db)
       .select([
-        "current.current_snapshot_id as current_snapshot_id",
+        "session.current_snapshot_id as current_snapshot_id",
         "problem.confidence as problem_confidence",
         "problem.problem_detected as problem_detected",
         "problem.problem_summary as problem_summary",
@@ -1947,7 +1947,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
 
     let groupedQuery = query
       .groupBy([
-        "current.current_snapshot_id",
+        "session.current_snapshot_id",
         "problem.confidence",
         "problem.problem_detected",
         "problem.problem_summary",
@@ -2327,14 +2327,12 @@ export class InsightsRepository implements InsightsRepositoryPort {
     scope: InsightsUidScope,
     topic: BusinessTopicDefinition,
   ) {
-    let query = this.db
+    let query = (this.db
       .selectFrom("xy_wap_embed_logical_session as session")
-      .innerJoin("xy_wap_embed_session_insight_current as current", (join) =>
-        join.onRef("current.session_id", "=", "session.id"),
-      ) as DynamicSelectQueryBuilder;
+    ) as DynamicSelectQueryBuilder;
 
     query = query
-      .innerJoin(topic.table, "topic.snapshot_id", "current.current_snapshot_id")
+      .innerJoin(topic.table, "topic.snapshot_id", "session.current_snapshot_id")
       .where("session.uid", "=", scope.uid)
       .where("topic.uid", "=", scope.uid);
 
@@ -2440,19 +2438,14 @@ export class InsightsRepository implements InsightsRepositoryPort {
     const topic = getBusinessRelatedTopicDefinition(filters.dimension);
     let query = (this.db.selectFrom(topic.table) as DynamicSelectQueryBuilder)
       .innerJoin(
-        "xy_wap_embed_session_insight_current as current",
-        "current.current_snapshot_id",
-        topic.snapshotColumn,
-      )
-      .innerJoin(
         "xy_wap_embed_logical_session as session",
-        "session.id",
-        "current.session_id",
+        "session.current_snapshot_id",
+        topic.snapshotColumn,
       )
       .leftJoin(
         "xy_wap_embed_session_summary as summary",
         "summary.snapshot_id",
-        "current.current_snapshot_id",
+        "session.current_snapshot_id",
       )
       .where(topic.uidColumn, "=", scope.uid)
       .where(topic.idColumn, "=", topicId)
@@ -2530,11 +2523,8 @@ export class InsightsRepository implements InsightsRepositoryPort {
 
     const query = this.db
       .selectFrom("xy_wap_embed_logical_session as session")
-      .leftJoin("xy_wap_embed_session_insight_current as current", (join) =>
-        join.onRef("current.session_id", "=", "session.id"),
-      )
       .leftJoin("xy_wap_embed_session_summary as summary", (join) =>
-        join.onRef("summary.snapshot_id", "=", "current.current_snapshot_id"),
+        join.onRef("summary.snapshot_id", "=", "session.current_snapshot_id"),
       )
       .select([
         "session.conversation_id as conversation_id",
@@ -2648,7 +2638,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
   ): Promise<InsightDetailRow | undefined> {
     const rows = await buildCurrentSessionBaseQuery(this.db)
       .select([
-        "current.current_snapshot_id as current_snapshot_id",
+        "session.current_snapshot_id as current_snapshot_id",
         "problem.confidence as problem_confidence",
         "problem.problem_detected as problem_detected",
         "problem.problem_summary as problem_summary",
@@ -4777,11 +4767,8 @@ function getBusinessTopicDefinition(
 function buildAnalyzedCurrentSessionLeanBaseQuery(db: Kysely<Database>) {
   return db
     .selectFrom("xy_wap_embed_logical_session as session")
-    .innerJoin("xy_wap_embed_session_insight_current as current", (join) =>
-      join.onRef("current.session_id", "=", "session.id"),
-    )
     .innerJoin("xy_wap_embed_session_insight_snapshot as snapshot", (join) =>
-      join.onRef("snapshot.id", "=", "current.current_snapshot_id"),
+      join.onRef("snapshot.id", "=", "session.current_snapshot_id"),
     );
 }
 
@@ -4795,11 +4782,8 @@ function buildAnalyzedCurrentSessionBaseQuery(db: Kysely<Database>) {
 function buildCurrentSessionLeanBaseQuery(db: Kysely<Database>) {
   return db
     .selectFrom("xy_wap_embed_logical_session as session")
-    .leftJoin("xy_wap_embed_session_insight_current as current", (join) =>
-      join.onRef("current.session_id", "=", "session.id"),
-    )
     .leftJoin("xy_wap_embed_session_insight_snapshot as snapshot", (join) =>
-      join.onRef("snapshot.id", "=", "current.current_snapshot_id"),
+      join.onRef("snapshot.id", "=", "session.current_snapshot_id"),
     );
 }
 
@@ -4824,7 +4808,7 @@ function buildQualityResultSessionQuery(
 ) {
   return buildQualityResultBaseSessionQuery(db, filters)
     .select([
-      "current.current_snapshot_id as current_snapshot_id",
+      "session.current_snapshot_id as current_snapshot_id",
       "session.conversation_id as conversation_id",
       "session.id as session_id",
       "session.qa_status as qa_status",
@@ -4846,11 +4830,8 @@ function buildQualityResultBaseSessionQuery(
   return applyQualityResultFilters(
     (db as Kysely<Database>)
       .selectFrom("xy_wap_embed_logical_session as session")
-      .innerJoin("xy_wap_embed_session_insight_current as current", (join) =>
-        join.onRef("current.session_id", "=", "session.id"),
-      )
       .innerJoin("xy_wap_embed_session_insight_snapshot as snapshot", (join) =>
-        join.onRef("snapshot.id", "=", "current.current_snapshot_id"),
+        join.onRef("snapshot.id", "=", "session.current_snapshot_id"),
       ),
     filters,
   );
@@ -4945,10 +4926,10 @@ function applyCurrentSessionFilters<Query>(
   }
 
   if (filters.analysisStatus) {
-    // "analyzing" only matches logical-session based queries that left-join current/snapshot.
+    // "analyzing" only matches logical-session based queries that left-join snapshot.
     // Analyzed-only queries intentionally cannot return sessions without a current snapshot.
     next = filters.analysisStatus === "analyzing"
-      ? next.where(sql<boolean>`(current.current_snapshot_id is null or snapshot.id is null)`) as typeof next
+      ? next.where(sql<boolean>`(session.current_snapshot_id is null or snapshot.id is null)`) as typeof next
       : next.where("snapshot.status", "=", filters.analysisStatus) as typeof next;
   }
 

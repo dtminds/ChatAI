@@ -690,10 +690,9 @@ SKU 规格
 当前有效结果：
 
 ```text
-xy_wap_embed_session_insight_current
-- session_id
-- current_snapshot_id
-- updated_at
+xy_wap_embed_logical_session.current_snapshot_id
+- 当前生效快照ID
+- 指向已发布的 ready / partial snapshot
 ```
 
 结果快照：

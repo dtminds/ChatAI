@@ -209,6 +209,7 @@ describe("insights routes", () => {
           && builder.wheres.some((call) => call[0] === "session.qa_status" && call[1] === "=" && call[2] === 0),
       ),
     ).toBe(true);
+    expect(db.unhandledLogicalSessionSelectCount).toBe(0);
     expect(qualityResults.json().data.qualityResults[0]).toMatchObject({
       conversationId: "301",
       passed: false,
@@ -868,7 +869,8 @@ function createInsightsDbMock(options: {
     insertedIntentConfig: undefined as Record<string, unknown> | undefined,
     insertedJob: undefined as Record<string, unknown> | undefined,
     insertedRescanTask: undefined as Record<string, unknown> | undefined,
-    insightCurrentSelectCount: 0,
+    logicalSessionSelectCount: 0,
+    unhandledLogicalSessionSelectCount: 0,
     actionStatus: "open",
     rescanTaskListQueries: [] as Array<{ limit?: unknown; offset?: unknown }>,
     selectBuilders: [] as Array<{ wheres: Array<[string, string, unknown]> }>,
@@ -1214,10 +1216,43 @@ function createInsightsDbMock(options: {
         ]);
       }
 
-      if (table === "xy_wap_embed_session_insight_current as current") {
+      if (table === "xy_wap_embed_logical_session as session") {
         return createBuilder((builder) => {
-          state.insightCurrentSelectCount += 1;
+          state.logicalSessionSelectCount += 1;
           const selectedAliases = collectSelectAliases(builder.selectCalls);
+          const selectedText = Array.from(selectedAliases).join("\n");
+
+          if (selectedText.includes("topic.intent_id as topic_id")) {
+            return [
+              {
+                mention_count: 1,
+                name: "物流异常",
+                session_count: 1,
+                topic_id: 31,
+              },
+            ];
+          }
+
+          if (selectedText.includes("topic.intent_id as intent_id")) {
+            return [
+              {
+                date: "2026-06-01",
+                intent_id: 31,
+                intent_name: "物流异常",
+                session_count: 1,
+              },
+            ];
+          }
+
+          if (selectedText.includes("mention_count") && selectedText.includes("session_count")) {
+            return [
+              {
+                date: "2026-06-01",
+                mention_count: 1,
+                session_count: 1,
+              },
+            ];
+          }
 
           if (selectedAliases.has("logical_sessions")) {
             return [{
@@ -1238,6 +1273,34 @@ function createInsightsDbMock(options: {
               unknown_sessions: 0,
               unresolved_resolution_sessions: 1,
               unresolved_sessions: 1,
+            }];
+          }
+
+          if (
+            selectedAliases.has("total_sessions") &&
+            selectedAliases.has("inspected_sessions") &&
+            selectedAliases.has("passed_sessions")
+          ) {
+            return [{
+              failed_sessions: 0,
+              inspected_sessions: 1,
+              passed_sessions: 1,
+              total_sessions: 1,
+            }];
+          }
+
+          if (
+            selectedAliases.has("session.current_snapshot_id as current_snapshot_id") &&
+            selectedAliases.has("session.qa_status as qa_status")
+          ) {
+            return [{
+              conversation_id: 301,
+              current_snapshot_id: 7001,
+              qa_status: 0,
+              session_id: 501,
+              started_at: 1_780_243_200_000,
+              third_external_userid: "customer-1",
+              third_userid: "seat-1",
             }];
           }
 
@@ -1289,6 +1352,20 @@ function createInsightsDbMock(options: {
             ];
           }
 
+          if (
+            selectedAliases.has("qa.rule_code as rule_code") &&
+            selectedAliases.has("qa.rule_name as rule_name") &&
+            selectedAliases.has("count")
+          ) {
+            return [
+              {
+                count: 1,
+                rule_code: "reply_quality",
+                rule_name: "回复质量",
+              },
+            ];
+          }
+
           if (selectedAliases.has("total_count")) {
             return [{ total_count: 1 }];
           }
@@ -1297,32 +1374,37 @@ function createInsightsDbMock(options: {
             return [{ count: 1 }];
           }
 
-          if (selectedAliases.has("total_count")) {
-            return [{ total_count: 1 }];
+          if (
+            selectedAliases.has("session.conversation_id as conversation_id") &&
+            selectedAliases.has("session.id as session_id") &&
+            selectedAliases.has("summary.session_title as summary_session_title")
+          ) {
+            return [
+              {
+                agent_message_count: 3,
+                conversation_id: 301,
+                current_snapshot_id: 7001,
+                customer_message_count: 5,
+                ended_at: 1_780_245_000_000,
+                generated_at: 1_780_245_100_000,
+                last_message_at: 1_780_244_950_000,
+                message_count: 8,
+                phase: "final",
+                problem_detected: 1,
+                problem_summary: "客户反馈物流异常",
+                resolution_status: "unresolved",
+                session_id: 501,
+                started_at: 1_780_243_200_000,
+                status: "ready",
+                summary_session_title: "查物流",
+                summary_text: "客服要求客户等待",
+                unresolved_reason: "售后/物流/退款进度未确认",
+              },
+            ];
           }
 
-          return [
-            {
-              agent_message_count: 3,
-              conversation_id: 301,
-              current_snapshot_id: 7001,
-              customer_message_count: 5,
-              ended_at: 1_780_245_000_000,
-              generated_at: 1_780_245_100_000,
-              last_message_at: 1_780_244_950_000,
-              message_count: 8,
-              phase: "final",
-              problem_detected: 1,
-              problem_summary: "客户反馈物流异常",
-              resolution_status: "unresolved",
-              session_id: 501,
-              started_at: 1_780_243_200_000,
-              status: "ready",
-              summary_session_title: "查物流",
-              summary_text: "客服要求客户等待",
-              unresolved_reason: "售后/物流/退款进度未确认",
-            },
-          ];
+          state.unhandledLogicalSessionSelectCount += 1;
+          throw new Error(`Unhandled logical session select: ${selectedText}`);
         });
       }
 

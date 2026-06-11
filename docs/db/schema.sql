@@ -63,7 +63,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_logical_session (
   idle_timeout_minutes INT UNSIGNED NOT NULL COMMENT '创建时使用的空闲关闭时长',
   hard_max_duration_hours INT UNSIGNED NOT NULL COMMENT '创建时使用的最长持续时长',
   analysis_delay_minutes INT UNSIGNED NOT NULL COMMENT '创建时使用的延迟分析时长',
-  current_snapshot_id BIGINT UNSIGNED NULL COMMENT '当前生效洞察快照ID',
+  current_snapshot_id BIGINT UNSIGNED NULL COMMENT '当前生效洞察快照ID，关联xy_wap_embed_session_insight_snapshot.id',
   final_snapshot_id BIGINT UNSIGNED NULL COMMENT '最终洞察快照ID',
   qa_status TINYINT NOT NULL DEFAULT -1 COMMENT '质检状态，-1未质检，0有未通过，1全部通过',
   message_count INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '消息总数',
@@ -76,7 +76,8 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_logical_session (
   KEY idx_logical_session_uid_agent_started (uid, third_userid, started_at),
   KEY idx_logical_session_status_next_close (status, next_close_at),
   KEY idx_logical_session_uid_started (uid, started_at),
-  KEY idx_logical_session_uid_qa_status_started (uid, qa_status, started_at, id)
+  KEY idx_logical_session_uid_qa_status_started (uid, qa_status, started_at, id),
+  KEY idx_logical_session_current_snapshot (current_snapshot_id, id)
 ) COMMENT='会话洞察逻辑会话表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_logical_session_message (
@@ -239,17 +240,6 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_session_insight_snapshot (
   PRIMARY KEY (id),
   KEY idx_snapshot_session (session_id, create_time)
 ) COMMENT='逻辑会话洞察快照表';
-
-CREATE TABLE IF NOT EXISTS xy_wap_embed_session_insight_current (
-  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-  session_id BIGINT UNSIGNED NOT NULL COMMENT '逻辑会话ID',
-  current_snapshot_id BIGINT UNSIGNED NOT NULL COMMENT '当前生效快照ID',
-  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  PRIMARY KEY (id),
-  UNIQUE KEY uk_session_insight_current_session_id (session_id),
-  KEY idx_current_snapshot_session (current_snapshot_id, session_id)
-) COMMENT='逻辑会话当前洞察快照指针表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_session_summary (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',

@@ -1,10 +1,10 @@
 import {
-  Loading03Icon,
   PauseIcon,
   PlayIcon,
   SpeechIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { Spinner } from "@/components/ui/spinner";
 import { type ChangeEvent, useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { VoiceMessageContent } from "@/pages/chat/chat-types";
@@ -615,20 +615,17 @@ export function VoiceMessageCard({
         onClick={handleControlClick}
         type="button"
       >
-        <HugeiconsIcon
-          className={cn(playbackState === "preparing" && "animate-spin")}
-          data-playback-icon={isPlaying ? "pause" : "play"}
-          data-testid="voice-playback-icon"
-          icon={
-            playbackState === "preparing"
-              ? Loading03Icon
-              : isPlaying
-                ? PauseIcon
-                : PlayIcon
-          }
-          size={17}
-          strokeWidth={2}
-        />
+        {playbackState === "preparing" ? (
+          <Spinner variant="classic" size={17} className="text-current" />
+        ) : (
+          <HugeiconsIcon
+            data-playback-icon={isPlaying ? "pause" : "play"}
+            data-testid="voice-playback-icon"
+            icon={isPlaying ? PauseIcon : PlayIcon}
+            size={17}
+            strokeWidth={2}
+          />
+        )}
         <span className="sr-only">{statusLabel}</span>
       </button>
 
@@ -703,13 +700,7 @@ export function VoiceMessageCard({
           {transVoiceText ? (
             transVoiceText
           ) : shouldShowTranscriptionLoading ? (
-            <HugeiconsIcon
-              aria-hidden="true"
-              className="animate-spin text-muted-foreground"
-              icon={Loading03Icon}
-              size={16}
-              strokeWidth={2}
-            />
+            <Spinner variant="classic" size={16} className="text-muted-foreground" />
           ) : (
             transcriptionErrorMessage
           )}

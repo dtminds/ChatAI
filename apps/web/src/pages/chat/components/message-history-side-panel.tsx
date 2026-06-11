@@ -5,12 +5,12 @@ import {
   Cancel01Icon,
   ExclamationMarkIcon,
   Download04Icon,
-  Loading03Icon,
   Male02Icon,
   PlayIcon,
   Tick02Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { Spinner } from "@/components/ui/spinner";
 import {
   Avatar,
   AvatarFallback,
@@ -439,12 +439,7 @@ function HistoryMessageViewport({
         ) : null}
         {activeHistoryLoading && !(activeHistory?.messages.length ?? 0) ? (
           <div className="flex min-h-[140px] items-center justify-center text-sm text-muted-foreground">
-            <HugeiconsIcon
-              className="animate-spin"
-              icon={Loading03Icon}
-              size={18}
-              strokeWidth={1.8}
-            />
+            <Spinner variant="classic" size={18} />
           </div>
         ) : (
           <div>{children}</div>
@@ -482,6 +477,9 @@ export function HistoryCompactMessageList({
   onDownloadMessageFile,
   onVoicePlaybackReady,
   onTranscribeVoice,
+  renderMessageSuffix,
+  renderMetaSuffix,
+  textWeight = "medium",
 }: {
   messages: Message[];
   onDownloadMessageFile?: (message: ChatMessage) => void;
@@ -490,6 +488,9 @@ export function HistoryCompactMessageList({
     payload: { playbackUrl: string },
   ) => void;
   onTranscribeVoice?: (message: ChatMessage) => Promise<string>;
+  renderMessageSuffix?: (message: ChatMessage) => ReactNode;
+  renderMetaSuffix?: (message: ChatMessage) => ReactNode;
+  textWeight?: "medium" | "normal";
 }) {
   const chatMessages = messages.filter(isChatMessage);
 
@@ -507,7 +508,10 @@ export function HistoryCompactMessageList({
             data-testid="history-message-meta-row"
           >
             <span
-              className="min-w-0 max-w-[min(18rem,calc(100%_-_7rem))] shrink truncate text-[13px] font-medium leading-5 text-muted-foreground/80"
+              className={cn(
+                "min-w-0 max-w-[min(18rem,calc(100%_-_7rem))] shrink truncate text-[13px] font-medium leading-5 text-muted-foreground/80",
+                message.role === "agent" ? "text-primary/60" : null,
+              )}
               data-testid="history-message-author"
             >
               {getHistoryMessageAuthor(message)}
@@ -519,13 +523,16 @@ export function HistoryCompactMessageList({
               {formatHistoryMessageTime(message.sentAt)}
             </span>
             {message.status === "failed" ? <HistoryCompactDeliveryState /> : null}
+            {renderMetaSuffix?.(message)}
           </div>
           <HistoryCompactMessageContent
             message={message}
             onDownloadMessageFile={onDownloadMessageFile}
             onTranscribeVoice={onTranscribeVoice}
             onVoicePlaybackReady={onVoicePlaybackReady}
+            textWeight={textWeight}
           />
+          {renderMessageSuffix?.(message)}
           {message.isRevoked ? <HistoryCompactRevokedState /> : null}
         </div>
       ))}
@@ -543,6 +550,7 @@ function HistoryCompactMessageContent({
   onDownloadMessageFile,
   onVoicePlaybackReady,
   onTranscribeVoice,
+  textWeight,
 }: {
   message: ChatMessage;
   onDownloadMessageFile?: (message: ChatMessage) => void;
@@ -551,15 +559,16 @@ function HistoryCompactMessageContent({
     payload: { playbackUrl: string },
   ) => void;
   onTranscribeVoice?: (message: ChatMessage) => Promise<string>;
+  textWeight: "medium" | "normal";
 }) {
   if (message.content.type === "text") {
-    return <HistoryCompactText text={message.content.text} />;
+    return <HistoryCompactText text={message.content.text} textWeight={textWeight} />;
   }
 
   if (message.content.type === "quote") {
     return (
       <div className="flex w-full max-w-full min-w-0 flex-col items-start gap-2">
-        <HistoryCompactText text={message.content.text} />
+        <HistoryCompactText text={message.content.text} textWeight={textWeight} />
         <QuoteMessagePreview
           quoteMsgId={message.content.quoteMsgId}
           quotedMessage={message.content.quotedMessage}
@@ -594,10 +603,19 @@ function HistoryCompactDeliveryState() {
   );
 }
 
-function HistoryCompactText({ text }: { text: string }) {
+function HistoryCompactText({
+  text,
+  textWeight,
+}: {
+  text: string;
+  textWeight: "medium" | "normal";
+}) {
   return (
     <div
-      className="w-full max-w-full min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-sm font-medium leading-6 text-foreground"
+      className={cn(
+        "w-full max-w-full min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-sm leading-6 text-foreground",
+        textWeight === "medium" ? "font-medium" : "font-normal",
+      )}
       data-testid="history-message-text"
     >
       <WechatEmojiText text={normalizeHistoryText(text)} />
@@ -641,12 +659,7 @@ function HistoryFileList({
                   className="inline-flex shrink-0 items-center gap-1 text-[12px] font-medium text-muted-foreground"
                   role="status"
                 >
-                  <HugeiconsIcon
-                    className="animate-spin"
-                    icon={Loading03Icon}
-                    size={14}
-                    strokeWidth={1.8}
-                  />
+                  <Spinner variant="classic" size={14} />
                   下载中
                 </span>
               ) : onDownloadMessageFile ? (
@@ -984,12 +997,7 @@ function HistoryMediaTile({
             className="absolute left-1/2 top-1/2 z-1 inline-flex size-10 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-white/85 bg-black/25 text-white shadow-sm backdrop-blur-[1px]"
             role="status"
           >
-            <HugeiconsIcon
-              className="animate-spin"
-              icon={Loading03Icon}
-              size={21}
-              strokeWidth={2.1}
-            />
+            <Spinner variant="classic" size={21} strokeWidth={2.1} className="text-white" />
           </span>
         ) : needsVideoTransfer ? (
           onDownloadMessageFile ? (

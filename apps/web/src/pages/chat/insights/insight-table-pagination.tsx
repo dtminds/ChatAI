@@ -1,0 +1,171 @@
+import {
+  ArrowLeft01Icon,
+  ArrowRight01Icon,
+} from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { useMemo } from "react";
+
+import { Button } from "@/components/ui/button";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+} from "@/components/ui/pagination";
+import { cn } from "@/lib/utils";
+
+export function InsightTablePagination({
+  className,
+  endRow,
+  itemLabel = "条",
+  onPageChange,
+  page,
+  startRow,
+  total,
+  totalPages,
+}: {
+  className?: string;
+  endRow: number;
+  itemLabel?: string;
+  onPageChange: (page: number) => void;
+  page: number;
+  startRow: number;
+  total: number;
+  totalPages: number;
+}) {
+  return (
+    <div className={cn(
+      "flex flex-col gap-3 border-t px-4 py-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between",
+      className,
+    )}>
+      <span className="shrink-0 whitespace-nowrap">
+        显示 {startRow}-{endRow} / 共 {total} {itemLabel}
+      </span>
+      <InsightPagination
+        onPageChange={onPageChange}
+        page={page}
+        totalPages={totalPages}
+      />
+    </div>
+  );
+}
+
+function InsightPagination({
+  onPageChange,
+  page,
+  totalPages,
+}: {
+  onPageChange: (page: number) => void;
+  page: number;
+  totalPages: number;
+}) {
+  const safeTotalPages = Math.max(1, totalPages);
+  const safePage = Math.min(Math.max(1, page), safeTotalPages);
+  const pages = useMemo(() => {
+    const visiblePages = new Set<number>([1, safeTotalPages, safePage]);
+
+    if (safePage > 1) {
+      visiblePages.add(safePage - 1);
+    }
+
+    if (safePage < safeTotalPages) {
+      visiblePages.add(safePage + 1);
+    }
+
+    return Array.from(visiblePages)
+      .filter((value) => value >= 1 && value <= safeTotalPages)
+      .sort((left, right) => left - right);
+  }, [safePage, safeTotalPages]);
+
+  return (
+    <Pagination className="!mx-0 !ml-auto w-auto shrink-0 justify-end">
+      <PaginationContent>
+        <PaginationItem>
+          <Button
+            aria-label="上一页"
+            disabled={safePage <= 1}
+            onClick={() => onPageChange(safePage - 1)}
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
+            <HugeiconsIcon
+              color="currentColor"
+              icon={ArrowLeft01Icon}
+              size={16}
+              strokeWidth={1.8}
+            />
+          </Button>
+        </PaginationItem>
+        {pages.map((value, index) => {
+          const previousPage = pages[index - 1];
+          const hasGap = index > 0 && previousPage !== value - 1;
+
+          return (
+            <FragmentWithGap
+              hasGap={hasGap}
+              isActive={value === safePage}
+              key={value}
+              onClick={() => {
+                if (value !== page) {
+                  onPageChange(value);
+                }
+              }}
+              value={value}
+            />
+          );
+        })}
+        <PaginationItem>
+          <Button
+            aria-label="下一页"
+            disabled={safePage >= safeTotalPages}
+            onClick={() => onPageChange(safePage + 1)}
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
+            <HugeiconsIcon
+              color="currentColor"
+              icon={ArrowRight01Icon}
+              size={16}
+              strokeWidth={1.8}
+            />
+          </Button>
+        </PaginationItem>
+      </PaginationContent>
+    </Pagination>
+  );
+}
+
+function FragmentWithGap({
+  hasGap,
+  isActive,
+  onClick,
+  value,
+}: {
+  hasGap: boolean;
+  isActive: boolean;
+  onClick: () => void;
+  value: number;
+}) {
+  return (
+    <>
+      {hasGap ? (
+        <PaginationItem>
+          <PaginationEllipsis className="text-muted-foreground" />
+        </PaginationItem>
+      ) : null}
+      <PaginationItem>
+        <Button
+          aria-current={isActive ? "page" : undefined}
+          onClick={onClick}
+          size="icon"
+          type="button"
+          variant={isActive ? "outline" : "ghost"}
+        >
+          {value}
+        </Button>
+      </PaginationItem>
+    </>
+  );
+}

@@ -5,9 +5,106 @@
 
 import type { ColumnType } from "kysely";
 
+export type Decimal = ColumnType<string, number | string>;
+
 export type Generated<T> = T extends ColumnType<infer S, infer I, infer U>
   ? ColumnType<S, I | undefined, U>
   : ColumnType<T, T | undefined, T>;
+
+export type Json = ColumnType<JsonValue, string, string>;
+
+export type JsonArray = JsonValue[];
+
+export type JsonObject = {
+  [x: string]: JsonValue | undefined;
+};
+
+export type JsonPrimitive = boolean | number | string | null;
+
+export type JsonValue = JsonArray | JsonObject | JsonPrimitive;
+
+export interface XyWapEmbedAnalysisRun {
+  /**
+   * 分析范围，all：全部，qaFindings：质检，classification：分类
+   */
+  analysis_scope: string;
+  /**
+   * 成本估算
+   */
+  cost_estimate: string | null;
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date>;
+  /**
+   * 错误码
+   */
+  error_code: string | null;
+  /**
+   * 错误信息
+   */
+  error_message: string | null;
+  /**
+   * 完成时间
+   */
+  finished_at: Date | null;
+  /**
+   * 主键ID
+   */
+  id: Generated<number>;
+  /**
+   * 输入token数
+   */
+  input_token_count: number | null;
+  /**
+   * 关联任务ID
+   */
+  job_id: number | null;
+  /**
+   * 分析模式，live：实时分析，final：最终分析，manual_reanalyze：人工重分析
+   */
+  mode: string;
+  /**
+   * 模型名称
+   */
+  model_name: string | null;
+  /**
+   * 输出token数
+   */
+  output_token_count: number | null;
+  /**
+   * 提示词版本
+   */
+  prompt_version: string | null;
+  /**
+   * 模型服务商编码
+   */
+  provider_code: string | null;
+  /**
+   * 原始输出引用
+   */
+  raw_output_ref: string | null;
+  /**
+   * 逻辑会话ID
+   */
+  session_id: number;
+  /**
+   * 输入消息起始ID
+   */
+  source_message_from: number | null;
+  /**
+   * 输入消息结束ID
+   */
+  source_message_to: number | null;
+  /**
+   * 运行状态，running：执行中，succeeded：成功，partial：部分成功，failed：失败
+   */
+  status: string;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date>;
+}
 
 export interface XyWapEmbedBroadcastEvent {
   /**
@@ -197,7 +294,7 @@ export interface XyWapEmbedCustomerBindRelation {
    */
   platform: Generated<number>;
   /**
-   * 该成员对此外部联系人的备注
+   * 该成员对此外部联系人的备注（绑定的情况下是SCRM同步过来的备注，没绑定的情况下是第三方的备注-同third_remark）
    */
   remark: Generated<string | null>;
   /**
@@ -208,6 +305,10 @@ export interface XyWapEmbedCustomerBindRelation {
    * 第三方外部联系人id
    */
   third_external_userid: string;
+  /**
+   * 第三方该成员对此外部联系人的备注
+   */
+  third_remark: Generated<string | null>;
   /**
    * 第三方成员id
    */
@@ -352,6 +453,796 @@ export interface XyWapEmbedGroupSeat {
   update_time: Generated<Date>;
 }
 
+export interface XyWapEmbedInsightAnalysisPolicy {
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date>;
+  /**
+   * 是否启用，1启用0禁用
+   */
+  enabled: Generated<number>;
+  /**
+   * 是否启用最终分析
+   */
+  final_analysis_enabled: Generated<number>;
+  /**
+   * 主键ID
+   */
+  id: Generated<number>;
+  /**
+   * 是否启用实时分析
+   */
+  live_analysis_enabled: Generated<number>;
+  /**
+   * 实时分析最小间隔分钟数
+   */
+  live_min_interval_minutes: number;
+  /**
+   * 触发实时分析的最少新增有效消息数
+   */
+  live_min_new_meaningful_messages: number;
+  /**
+   * 低置信度阈值
+   */
+  low_confidence_threshold: Decimal;
+  /**
+   * 触发模型分析的最少AI有效消息数
+   */
+  min_analysis_messages: Generated<number>;
+  /**
+   * 是否启用规则降级
+   */
+  rule_fallback_enabled: Generated<number>;
+  /**
+   * 租户ID
+   */
+  uid: number;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date>;
+}
+
+export interface XyWapEmbedInsightAsset {
+  /**
+   * 资产稳定唯一键，链接为规范化URL，小程序为appId+pagePath，文件为fileId/fileUrl/fileName兜底
+   */
+  asset_key: string;
+  /**
+   * 资产展示名称
+   */
+  asset_name: string;
+  /**
+   * 资产类型，link：链接，miniapp：小程序，file：文件
+   */
+  asset_type: string;
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date>;
+  /**
+   * 首次出现的平台消息时间戳
+   */
+  first_seen_at: number;
+  /**
+   * 主键ID
+   */
+  id: Generated<number>;
+  /**
+   * 最近出现的平台消息时间戳
+   */
+  last_seen_at: number;
+  /**
+   * 租户ID
+   */
+  uid: number;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date>;
+}
+
+export interface XyWapEmbedInsightEntityDictionary {
+  /**
+   * 别名JSON
+   */
+  aliases_json: Json | null;
+  /**
+   * 属性JSON
+   */
+  attributes_json: Json | null;
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date>;
+  /**
+   * 实体编码
+   */
+  entity_code: string;
+  /**
+   * 实体名称
+   */
+  entity_name: string;
+  /**
+   * 主键ID
+   */
+  id: Generated<number>;
+  /**
+   * 配置状态，1启用0禁用-1删除
+   */
+  status: Generated<number>;
+  /**
+   * 租户ID
+   */
+  uid: number;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date>;
+}
+
+export interface XyWapEmbedInsightEvidence {
+  /**
+   * 平台会话ID
+   */
+  conversation_id: number;
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date>;
+  /**
+   * 结论记录ID
+   */
+  dimension_record_id: number | null;
+  /**
+   * 结论维度类型，problem_resolution：问题解决，sentiment：情绪，tag：标签，qa_finding：质检，entity：实体，intent：意图，action_item：行动项，faq_candidate：FAQ候选
+   */
+  dimension_type: string;
+  /**
+   * 证据角色，primary：主要证据，customer_problem：客户问题，agent_solution：客服方案，closure_signal：闭环信号，unresolved_signal：未解决信号
+   */
+  evidence_role: string;
+  /**
+   * 主键ID
+   */
+  id: Generated<number>;
+  /**
+   * 证据说明
+   */
+  reason: string | null;
+  /**
+   * 逻辑会话ID
+   */
+  session_id: number;
+  /**
+   * 洞察快照ID
+   */
+  snapshot_id: number;
+  /**
+   * 平台消息ID
+   */
+  source_message_id: number;
+  /**
+   * 租户ID
+   */
+  uid: number;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date>;
+}
+
+export interface XyWapEmbedInsightFeatureConfig {
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date>;
+  /**
+   * 是否抽取实体，1启用0停用
+   */
+  entity_enabled: Generated<number>;
+  /**
+   * 主键ID
+   */
+  id: Generated<number>;
+  /**
+   * 是否启用会话洞察总开关，1启用0停用
+   */
+  insight_enabled: Generated<number>;
+  /**
+   * 是否抽取意图，1启用0停用
+   */
+  intent_enabled: Generated<number>;
+  /**
+   * 是否抽取标签，1启用0停用
+   */
+  label_enabled: Generated<number>;
+  /**
+   * 最近一次启用会话洞察的时间戳
+   */
+  last_enable_time: number | null;
+  /**
+   * 是否进行质检，1启用0停用
+   */
+  qa_enabled: Generated<number>;
+  /**
+   * 是否自动创建待办，1启用0停用
+   */
+  todo_enabled: Generated<number>;
+  /**
+   * 租户ID
+   */
+  uid: number;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date>;
+}
+
+export interface XyWapEmbedInsightIntentConfig {
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date>;
+  /**
+   * 意图说明
+   */
+  description: string | null;
+  /**
+   * 主键ID
+   */
+  id: Generated<number>;
+  /**
+   * 意图编码
+   */
+  intent_code: string;
+  /**
+   * 意图名称
+   */
+  intent_name: string;
+  /**
+   * 反例JSON
+   */
+  negative_examples_json: Json | null;
+  /**
+   * 正例JSON
+   */
+  positive_examples_json: Json | null;
+  /**
+   * 权重，1-10
+   */
+  sort_order: Generated<number>;
+  /**
+   * 配置状态，1启用0禁用-1删除
+   */
+  status: Generated<number>;
+  /**
+   * 租户ID
+   */
+  uid: number;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date>;
+}
+
+export interface XyWapEmbedInsightJob {
+  /**
+   * 分析范围，all：全部，qaFindings：质检，classification：分类
+   */
+  analysis_scope: string;
+  /**
+   * 已尝试次数
+   */
+  attempt_count: Generated<number>;
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date>;
+  /**
+   * 错误码
+   */
+  error_code: string | null;
+  /**
+   * 错误信息
+   */
+  error_message: string | null;
+  /**
+   * 主键ID
+   */
+  id: Generated<number>;
+  /**
+   * 幂等键
+   */
+  idempotency_key: string;
+  /**
+   * 任务类型，maintain_insight_uid：维护启用洞察租户，sync_messages：同步消息，analyze_session：分析会话，reanalyze_session：重分析会话，cleanup_disabled_insights：清理已关闭洞察会话
+   */
+  job_type: string;
+  /**
+   * 任务租约到期时间
+   */
+  lease_until: Date | null;
+  /**
+   * 任务锁持有者
+   */
+  locked_by: string | null;
+  /**
+   * 最大尝试次数
+   */
+  max_attempts: Generated<number>;
+  /**
+   * 任务优先级
+   */
+  priority: Generated<number>;
+  /**
+   * 历史重刷任务ID
+   */
+  rescan_task_id: number | null;
+  /**
+   * 最早执行时间
+   */
+  run_after: Generated<Date>;
+  /**
+   * 任务状态，pending：待执行，running：执行中，succeeded：成功，failed：失败
+   */
+  status: string;
+  /**
+   * 任务目标ID
+   */
+  target_id: string;
+  /**
+   * 任务目标类型，uid：租户，logical_session：逻辑会话
+   */
+  target_type: string;
+  /**
+   * 租户ID
+   */
+  uid: number;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date>;
+}
+
+export interface XyWapEmbedInsightJobArchive {
+  /**
+   * 分析范围，all：全部，qaFindings：质检，classification：分类
+   */
+  analysis_scope: string;
+  /**
+   * 归档时间
+   */
+  archived_at: Generated<Date>;
+  /**
+   * 已尝试次数
+   */
+  attempt_count: Generated<number>;
+  /**
+   * 原任务创建时间
+   */
+  create_time: Date;
+  /**
+   * 错误码
+   */
+  error_code: string | null;
+  /**
+   * 错误信息
+   */
+  error_message: string | null;
+  /**
+   * 原任务主键ID
+   */
+  id: number;
+  /**
+   * 幂等键
+   */
+  idempotency_key: string;
+  /**
+   * 任务类型，maintain_insight_uid：维护启用洞察租户，sync_messages：同步消息，analyze_session：分析会话，reanalyze_session：重分析会话，cleanup_disabled_insights：清理已关闭洞察会话
+   */
+  job_type: string;
+  /**
+   * 任务租约到期时间
+   */
+  lease_until: Date | null;
+  /**
+   * 任务锁持有者
+   */
+  locked_by: string | null;
+  /**
+   * 最大尝试次数
+   */
+  max_attempts: Generated<number>;
+  /**
+   * 任务优先级
+   */
+  priority: Generated<number>;
+  /**
+   * 历史重刷任务ID
+   */
+  rescan_task_id: number | null;
+  /**
+   * 最早执行时间
+   */
+  run_after: Generated<Date>;
+  /**
+   * 任务状态，pending：待执行，running：执行中，succeeded：成功，failed：失败
+   */
+  status: string;
+  /**
+   * 任务目标ID
+   */
+  target_id: string;
+  /**
+   * 任务目标类型，uid：租户，logical_session：逻辑会话
+   */
+  target_type: string;
+  /**
+   * 租户ID
+   */
+  uid: number;
+  /**
+   * 原任务更新时间
+   */
+  update_time: Date;
+}
+
+export interface XyWapEmbedInsightLabelConfig {
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date>;
+  /**
+   * 标签说明
+   */
+  description: string | null;
+  /**
+   * 主键ID
+   */
+  id: Generated<number>;
+  /**
+   * 标签编码
+   */
+  label_code: string;
+  /**
+   * 标签名称
+   */
+  label_name: string;
+  /**
+   * 反例JSON
+   */
+  negative_examples_json: Json | null;
+  /**
+   * 正例JSON
+   */
+  positive_examples_json: Json | null;
+  /**
+   * 配置状态，1启用0禁用-1删除
+   */
+  status: Generated<number>;
+  /**
+   * 租户ID
+   */
+  uid: number;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date>;
+}
+
+export interface XyWapEmbedInsightQaRuleConfig {
+  /**
+   * 适用场景
+   */
+  applicable_scene: string | null;
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date>;
+  /**
+   * 规则说明
+   */
+  description: string | null;
+  /**
+   * 主键ID
+   */
+  id: Generated<number>;
+  /**
+   * 判定标准
+   */
+  judgment_criteria: string | null;
+  /**
+   * 反例JSON
+   */
+  negative_examples_json: Json | null;
+  /**
+   * 正例JSON
+   */
+  positive_examples_json: Json | null;
+  /**
+   * 规则编码
+   */
+  rule_code: string;
+  /**
+   * 规则名称
+   */
+  rule_name: string;
+  /**
+   * 严重程度，low：低，medium：中，high：高
+   */
+  severity: string;
+  /**
+   * 配置状态，1启用0禁用-1删除
+   */
+  status: Generated<number>;
+  /**
+   * 租户ID
+   */
+  uid: number;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date>;
+}
+
+export interface XyWapEmbedInsightRescanTask {
+  /**
+   * 重刷范围，all：全部，qaFindings：质检，classification：分类
+   */
+  analysis_scope: string;
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date>;
+  /**
+   * 创建人展示名或ID
+   */
+  created_by: string | null;
+  /**
+   * 错误信息
+   */
+  error_message: string | null;
+  /**
+   * 失败会话数
+   */
+  failed_sessions: Generated<number>;
+  /**
+   * 完成时间
+   */
+  finished_at: Date | null;
+  /**
+   * 重刷起始消息时间戳
+   */
+  from_time: number;
+  /**
+   * 主键ID
+   */
+  id: Generated<number>;
+  /**
+   * 已入队会话数
+   */
+  queued_sessions: Generated<number>;
+  /**
+   * 开始时间
+   */
+  started_at: Date | null;
+  /**
+   * 任务状态，pending：待执行，running：执行中，succeeded：成功，partial：部分成功，failed：失败
+   */
+  status: string;
+  /**
+   * 成功会话数
+   */
+  succeeded_sessions: Generated<number>;
+  /**
+   * 重刷结束消息时间戳
+   */
+  to_time: number | null;
+  /**
+   * 需重刷会话数
+   */
+  total_sessions: Generated<number>;
+  /**
+   * 租户ID
+   */
+  uid: number;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date>;
+}
+
+export interface XyWapEmbedInsightSyncCursor {
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date>;
+  /**
+   * 当前同步到的平台消息ID
+   */
+  cursor_audit_id: Generated<number>;
+  /**
+   * 当前同步到的平台消息时间戳
+   */
+  cursor_msgtime: Generated<number>;
+  /**
+   * 主键ID
+   */
+  id: Generated<number>;
+  /**
+   * 同步源名称
+   */
+  source: string;
+  /**
+   * 租户ID，0表示全局水位
+   */
+  uid: Generated<number>;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date>;
+}
+
+export interface XyWapEmbedLogicalSession {
+  /**
+   * 客服消息数
+   */
+  agent_message_count: Generated<number>;
+  /**
+   * 创建时使用的延迟分析时长
+   */
+  analysis_delay_minutes: number;
+  /**
+   * 逻辑会话关闭原因，idle_timeout：空闲超时，hard_max_duration：达到最长持续时长，insight_disabled：洞察关闭
+   */
+  close_reason: string | null;
+  /**
+   * 平台会话ID，关联xy_wap_embed_conversation.id
+   */
+  conversation_id: number;
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date>;
+  /**
+   * 当前生效洞察快照ID
+   */
+  current_snapshot_id: number | null;
+  /**
+   * 客户消息数
+   */
+  customer_message_count: Generated<number>;
+  /**
+   * 逻辑会话结束时间戳
+   */
+  ended_at: number | null;
+  /**
+   * 创建时使用的最长持续时长
+   */
+  hard_max_duration_hours: number;
+  /**
+   * 主键ID
+   */
+  id: Generated<number>;
+  /**
+   * 创建时使用的空闲关闭时长
+   */
+  idle_timeout_minutes: number;
+  /**
+   * 最后一条有效边界消息时间戳
+   */
+  last_meaningful_message_at: number | null;
+  /**
+   * 最后一条消息时间戳
+   */
+  last_message_at: number | null;
+  /**
+   * 消息总数
+   */
+  message_count: Generated<number>;
+  /**
+   * 下一次可关闭检查时间戳
+   */
+  next_close_at: number | null;
+  /**
+   * 质检状态，-1未质检，0有未通过，1全部通过
+   */
+  qa_status: Generated<number>;
+  /**
+   * 切片规则版本
+   */
+  rule_version: string;
+  /**
+   * 逻辑会话开始时间戳
+   */
+  started_at: number;
+  /**
+   * 逻辑会话状态，open：进行中，canceled：洞察关闭暂停，closed_pending_analysis：待最终分析，analyzed：已分析
+   */
+  status: string;
+  /**
+   * 第三方用户ID
+   */
+  third_external_userid: string;
+  /**
+   * 第三方成员ID
+   */
+  third_userid: string;
+  /**
+   * 租户ID
+   */
+  uid: number;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date>;
+}
+
+export interface XyWapEmbedLogicalSessionMessage {
+  /**
+   * 资产ID，关联xy_wap_embed_insight_asset.id；非链接/文件/小程序消息为空
+   */
+  asset_id: number | null;
+  /**
+   * 资产类型，link：链接，miniapp：小程序，file：文件；非资产消息为空
+   */
+  asset_type: string | null;
+  /**
+   * 平台会话ID
+   */
+  conversation_id: number;
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date>;
+  /**
+   * 主键ID
+   */
+  id: Generated<number>;
+  /**
+   * 是否进入AI上下文，1是0否
+   */
+  included_for_ai: Generated<number>;
+  /**
+   * 是否参与切片边界判断，1是0否
+   */
+  meaningful_for_boundary: Generated<number>;
+  /**
+   * 标准化消息类型，text：文本，voice：语音，file：文件，link：链接，miniapp：小程序，image：图片，system：系统，unsupported：暂不支持
+   */
+  message_type: string;
+  /**
+   * 消息发生时间戳
+   */
+  occurred_at: number;
+  /**
+   * 发送方角色，customer：客户，agent：客服，system：系统，bot：机器人，unknown：未知
+   */
+  sender_role: string;
+  /**
+   * 逻辑会话ID
+   */
+  session_id: number;
+  /**
+   * 平台消息ID，关联xy_wap_embed_msg_audit_info.id
+   */
+  source_message_id: number;
+  /**
+   * 平台消息发送时间戳
+   */
+  source_message_time: number;
+  /**
+   * 租户ID
+   */
+  uid: number;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date>;
+}
+
 export interface XyWapEmbedMsgAuditInfo {
   /**
    * 外部群ID
@@ -476,6 +1367,471 @@ export interface XyWapEmbedMsgAuditInfoExtend {
   platform: Generated<number>;
   /**
    * 租户id
+   */
+  uid: number;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date>;
+}
+
+export interface XyWapEmbedSessionActionItem {
+  /**
+   * 行动项类型，当前固定follow_up：跟进
+   */
+  action_type: string;
+  /**
+   * 完成时间
+   */
+  completed_at: Date | null;
+  /**
+   * 完成人子账号ID
+   */
+  completed_by_sub_user_id: number | null;
+  /**
+   * 平台会话ID
+   */
+  conversation_id: number;
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date>;
+  /**
+   * 创建子账号ID
+   */
+  created_by_sub_user_id: number | null;
+  /**
+   * 忽略时间
+   */
+  dismissed_at: Date | null;
+  /**
+   * 时效提示
+   */
+  due_hint: string | null;
+  /**
+   * 主键ID
+   */
+  id: Generated<number>;
+  /**
+   * 优先级，low：低，medium：中，high：高
+   */
+  priority: string;
+  /**
+   * 逻辑会话ID
+   */
+  session_id: number;
+  /**
+   * AI来源洞察快照ID
+   */
+  snapshot_id: number | null;
+  /**
+   * 来源，ai：AI生成，manual：人工创建
+   */
+  source_type: Generated<string>;
+  /**
+   * 处理状态，open：待处理，done：已完成，dismissed：已忽略，expired：已过期
+   */
+  status: string;
+  /**
+   * 行动项标题
+   */
+  title: string;
+  /**
+   * 租户UID
+   */
+  uid: number;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date>;
+  /**
+   * 最后更新子账号ID
+   */
+  updated_by_sub_user_id: number | null;
+}
+
+export interface XyWapEmbedSessionEntity {
+  /**
+   * 置信度
+   */
+  confidence: Decimal | null;
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date>;
+  /**
+   * 实体词库配置ID
+   */
+  entity_id: number;
+  /**
+   * 实体展示名称
+   */
+  entity_name: string;
+  /**
+   * 主键ID
+   */
+  id: Generated<number>;
+  /**
+   * 实体相关情绪，positive：正向，neutral：中性，negative：负向，mixed：混合
+   */
+  sentiment: string | null;
+  /**
+   * 洞察快照ID
+   */
+  snapshot_id: number;
+  /**
+   * 租户UID
+   */
+  uid: number;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date>;
+}
+
+export interface XyWapEmbedSessionFaqCandidate {
+  /**
+   * 答案建议
+   */
+  answer_hint: string;
+  /**
+   * 置信度
+   */
+  confidence: Decimal | null;
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date>;
+  /**
+   * 主键ID
+   */
+  id: Generated<number>;
+  /**
+   * 候选问题
+   */
+  question: string;
+  /**
+   * 洞察快照ID
+   */
+  snapshot_id: number;
+  /**
+   * 候选状态，当前为candidate：候选
+   */
+  status: string;
+  /**
+   * 租户UID
+   */
+  uid: number;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date>;
+}
+
+export interface XyWapEmbedSessionInsightSnapshot {
+  /**
+   * 分析逻辑版本
+   */
+  analysis_version: string;
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date>;
+  /**
+   * 主键ID
+   */
+  id: Generated<number>;
+  /**
+   * 模型配置ID
+   */
+  model_profile_id: number | null;
+  /**
+   * 分析阶段，live：实时分析，final：最终分析
+   */
+  phase: string;
+  /**
+   * 提示词版本
+   */
+  prompt_version: string;
+  /**
+   * 规则版本
+   */
+  rule_version: string;
+  /**
+   * 逻辑会话ID
+   */
+  session_id: number;
+  /**
+   * 输入消息高水位ID
+   */
+  source_message_high_watermark: number | null;
+  /**
+   * 快照状态，building：构建中，ready：可用，partial：部分可用
+   */
+  status: string;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date>;
+}
+
+export interface XyWapEmbedSessionIntent {
+  /**
+   * 置信度
+   */
+  confidence: Decimal | null;
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date>;
+  /**
+   * 主键ID
+   */
+  id: Generated<number>;
+  /**
+   * 意图配置ID
+   */
+  intent_id: number;
+  /**
+   * 意图名称快照
+   */
+  intent_label: string;
+  /**
+   * 洞察快照ID
+   */
+  snapshot_id: number;
+  /**
+   * 租户UID
+   */
+  uid: number;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date>;
+}
+
+export interface XyWapEmbedSessionizationConfig {
+  /**
+   * 关闭后延迟分析时长，单位分钟
+   */
+  analysis_delay_minutes: number;
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date>;
+  /**
+   * 是否启用，1启用0禁用
+   */
+  enabled: Generated<number>;
+  /**
+   * 逻辑会话最长持续时长，单位小时
+   */
+  hard_max_duration_hours: number;
+  /**
+   * 主键ID
+   */
+  id: Generated<number>;
+  /**
+   * 空闲关闭时长，单位分钟
+   */
+  idle_timeout_minutes: number;
+  /**
+   * 迟到消息窗口，单位分钟
+   */
+  late_arrival_window_minutes: number;
+  /**
+   * 切片预设类型，realtime_service：实时客服，private_domain：私域运营，custom：自定义
+   */
+  preset: string;
+  /**
+   * 切片规则版本
+   */
+  rule_version: string;
+  /**
+   * 租户ID
+   */
+  uid: number;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date>;
+}
+
+export interface XyWapEmbedSessionProblemResolution {
+  /**
+   * 客服动作摘要
+   */
+  agent_action_summary: string | null;
+  /**
+   * 置信度
+   */
+  confidence: Decimal | null;
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date>;
+  /**
+   * 客户最终状态
+   */
+  customer_final_state: string | null;
+  /**
+   * 主键ID
+   */
+  id: Generated<number>;
+  /**
+   * 是否识别到客户问题，1是0否
+   */
+  problem_detected: number;
+  /**
+   * 客户问题摘要
+   */
+  problem_summary: string;
+  /**
+   * 问题解决状态，resolved：已解决，unresolved：未解决，partially_resolved：部分解决，no_customer_problem：无客户问题，unknown：未知
+   */
+  resolution_status: string;
+  /**
+   * 洞察快照ID
+   */
+  snapshot_id: number;
+  /**
+   * 未解决或部分解决原因
+   */
+  unresolved_reason: string | null;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date>;
+}
+
+export interface XyWapEmbedSessionQaFinding {
+  /**
+   * 置信度
+   */
+  confidence: Decimal | null;
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date>;
+  /**
+   * 主键ID
+   */
+  id: Generated<number>;
+  /**
+   * 是否通过，1通过0未通过
+   */
+  passed: number;
+  /**
+   * 判定理由
+   */
+  reason: string;
+  /**
+   * 质检规则编码
+   */
+  rule_code: string;
+  /**
+   * 质检规则名称快照
+   */
+  rule_name: string;
+  /**
+   * 严重程度，low：低，medium：中，high：高
+   */
+  severity: string;
+  /**
+   * 洞察快照ID
+   */
+  snapshot_id: number;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date>;
+}
+
+export interface XyWapEmbedSessionSentiment {
+  /**
+   * 置信度
+   */
+  confidence: Decimal | null;
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date>;
+  /**
+   * 主键ID
+   */
+  id: Generated<number>;
+  /**
+   * 情绪极性，positive：正向，neutral：中性，negative：负向，mixed：混合，unknown：未知
+   */
+  polarity: string;
+  /**
+   * 情绪判断理由
+   */
+  reason: string;
+  /**
+   * 洞察快照ID
+   */
+  snapshot_id: number;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date>;
+}
+
+export interface XyWapEmbedSessionSummary {
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date>;
+  /**
+   * 主键ID
+   */
+  id: Generated<number>;
+  /**
+   * 会话短标题
+   */
+  session_title: string;
+  /**
+   * 洞察快照ID
+   */
+  snapshot_id: number;
+  /**
+   * 会话摘要正文
+   */
+  summary_text: string;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date>;
+}
+
+export interface XyWapEmbedSessionTag {
+  /**
+   * 置信度
+   */
+  confidence: Decimal | null;
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date>;
+  /**
+   * 主键ID
+   */
+  id: Generated<number>;
+  /**
+   * 洞察快照ID
+   */
+  snapshot_id: number;
+  /**
+   * 标签配置ID
+   */
+  tag_id: number;
+  /**
+   * 标签名称快照
+   */
+  tag_name: string;
+  /**
+   * 租户UID
    */
   uid: number;
   /**
@@ -762,14 +2118,40 @@ export interface XyWapEmbedUserSeatSubRelation {
 }
 
 export interface DB {
+  xy_wap_embed_analysis_run: XyWapEmbedAnalysisRun;
   xy_wap_embed_broadcast_event: XyWapEmbedBroadcastEvent;
   xy_wap_embed_contact: XyWapEmbedContact;
   xy_wap_embed_conversation: XyWapEmbedConversation;
   xy_wap_embed_customer_bind_relation: XyWapEmbedCustomerBindRelation;
   xy_wap_embed_group_member: XyWapEmbedGroupMember;
   xy_wap_embed_group_seat: XyWapEmbedGroupSeat;
+  xy_wap_embed_insight_analysis_policy: XyWapEmbedInsightAnalysisPolicy;
+  xy_wap_embed_insight_asset: XyWapEmbedInsightAsset;
+  xy_wap_embed_insight_entity_dictionary: XyWapEmbedInsightEntityDictionary;
+  xy_wap_embed_insight_evidence: XyWapEmbedInsightEvidence;
+  xy_wap_embed_insight_feature_config: XyWapEmbedInsightFeatureConfig;
+  xy_wap_embed_insight_intent_config: XyWapEmbedInsightIntentConfig;
+  xy_wap_embed_insight_job: XyWapEmbedInsightJob;
+  xy_wap_embed_insight_job_archive: XyWapEmbedInsightJobArchive;
+  xy_wap_embed_insight_label_config: XyWapEmbedInsightLabelConfig;
+  xy_wap_embed_insight_qa_rule_config: XyWapEmbedInsightQaRuleConfig;
+  xy_wap_embed_insight_rescan_task: XyWapEmbedInsightRescanTask;
+  xy_wap_embed_insight_sync_cursor: XyWapEmbedInsightSyncCursor;
+  xy_wap_embed_logical_session: XyWapEmbedLogicalSession;
+  xy_wap_embed_logical_session_message: XyWapEmbedLogicalSessionMessage;
   xy_wap_embed_msg_audit_info: XyWapEmbedMsgAuditInfo;
   xy_wap_embed_msg_audit_info_extend: XyWapEmbedMsgAuditInfoExtend;
+  xy_wap_embed_session_action_item: XyWapEmbedSessionActionItem;
+  xy_wap_embed_session_entity: XyWapEmbedSessionEntity;
+  xy_wap_embed_session_faq_candidate: XyWapEmbedSessionFaqCandidate;
+  xy_wap_embed_session_insight_snapshot: XyWapEmbedSessionInsightSnapshot;
+  xy_wap_embed_session_intent: XyWapEmbedSessionIntent;
+  xy_wap_embed_session_problem_resolution: XyWapEmbedSessionProblemResolution;
+  xy_wap_embed_session_qa_finding: XyWapEmbedSessionQaFinding;
+  xy_wap_embed_session_sentiment: XyWapEmbedSessionSentiment;
+  xy_wap_embed_session_summary: XyWapEmbedSessionSummary;
+  xy_wap_embed_session_tag: XyWapEmbedSessionTag;
+  xy_wap_embed_sessionization_config: XyWapEmbedSessionizationConfig;
   xy_wap_embed_sider_bar_config: XyWapEmbedSiderBarConfig;
   xy_wap_embed_sub_user: XyWapEmbedSubUser;
   xy_wap_embed_sub_user_session: XyWapEmbedSubUserSession;

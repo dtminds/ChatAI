@@ -5,11 +5,11 @@ import {
   CancelCircleIcon,
   CheckmarkCircle02Icon,
   InformationCircleIcon,
-  Loading03Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type * as React from "react";
 import { Toaster as Sonner, type ToasterProps } from "sonner";
+import { Spinner } from "@/components/ui/spinner";
 
 const Toaster = ({ ...props }: ToasterProps) => {
   return (
@@ -21,7 +21,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
         info: <ToastIcon icon={InformationCircleIcon} />,
         warning: <ToastIcon icon={AlertCircleIcon} />,
         error: <ToastIcon icon={CancelCircleIcon} />,
-        loading: <ToastIcon className="animate-spin" icon={Loading03Icon} />,
+        loading: <Spinner variant="classic" size={16} />,
       }}
       style={
         {

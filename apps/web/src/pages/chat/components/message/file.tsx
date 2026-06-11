@@ -1,9 +1,9 @@
 import {
   DownloadCircle01Icon,
   Attachment01Icon,
-  Loading03Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import type { FileMessageContent } from "@/pages/chat/chat-types";
 
@@ -106,12 +106,7 @@ export function FileMessageCard({
             className="inline-flex items-center gap-1 font-medium text-muted-foreground"
             role="status"
           >
-            <HugeiconsIcon
-              className="animate-spin"
-              icon={Loading03Icon}
-              size={14}
-              strokeWidth={1.8}
-            />
+            <Spinner variant="classic" size={14} />
             提取中
           </span>
         ) : (

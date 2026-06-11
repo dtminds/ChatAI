@@ -1,6 +1,6 @@
 import { StrictMode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "sonner";
 import { createMockWorkbenchService, setWorkbenchService } from "@/pages/chat/api/workbench-service";
@@ -8,6 +8,7 @@ import { ChatWorkbenchPage } from "@/pages/chat/chat-workbench-page";
 import {
   installChatWorkbenchTestEnvironment,
   renderChatWorkbenchPage,
+  renderWithChatWorkbenchRouter,
   resetChatWorkbenchTestState,
 } from "./workbench-test-utils";
 
@@ -210,7 +211,7 @@ describe("ChatWorkbenchPage download flows", () => {
       },
     });
 
-    render(
+    renderWithChatWorkbenchRouter(
       <StrictMode>
         <ChatWorkbenchPage />
       </StrictMode>,
@@ -392,7 +393,7 @@ describe("ChatWorkbenchPage download flows", () => {
       },
     });
 
-    render(
+    renderWithChatWorkbenchRouter(
       <StrictMode>
         <ChatWorkbenchPage />
       </StrictMode>,

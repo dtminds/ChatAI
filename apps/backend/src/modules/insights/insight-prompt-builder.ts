@@ -73,6 +73,9 @@ export type InsightPriorConclusions = Pick<
   "problemResolution" | "summary"
 >;
 
+type InsightAnalysisOutput = import("./insights-worker.js").InsightAnalysisOutput;
+type InsightLiveGateSkipRecord = import("./insights-worker.js").InsightLiveGateSkipRecord;
+
 export function buildInsightPromptMessages(input: {
   context?: InsightPromptContext;
   existingActionItems?: InsightPromptExistingActionItem[];
@@ -193,6 +196,30 @@ export function buildInsightClassificationPromptMessages(input: {
             labelConfigs: normalizedContext.labelConfigs,
           },
         },
+      ),
+      role: "user",
+    },
+  ];
+}
+
+export function buildInsightLiveGatePromptMessages(input: {
+  context?: InsightPromptContext;
+  messages: AiMessageInput[];
+  previousGateSkip?: InsightLiveGateSkipRecord;
+  previousOutput?: InsightAnalysisOutput;
+  previousSessionContexts?: InsightPreviousSessionContext[];
+}): InsightPromptMessage[] {
+  return [
+    {
+      content: buildLiveGateSystemPrompt(),
+      role: "system",
+    },
+    {
+      content: buildLiveGateUserPrompt(
+        input.messages,
+        input.previousOutput,
+        input.previousGateSkip,
+        input.previousSessionContexts ?? [],
       ),
       role: "user",
     },
@@ -350,6 +377,54 @@ function buildClassificationSystemPrompt() {
     untrustedInputRule,
     "</input_safety>",
   ].join("\n");
+}
+
+function buildLiveGateSystemPrompt() {
+  return [
+    "<role>",
+    "你是未完结会话提前洞察的准入判断器，服务对象是电商/私域客服团队。",
+    "</role>",
+    "<task>",
+    "只判断当前未完结会话相比上一轮洞察是否出现值得生成新过程洞察的实质变化。",
+    "实质变化包括：第一次出现值得管理者提前关注的信息、客户风险升级、客户诉求或业务归因变化、问题处理状态变化、出现影响判断的关键新事实。",
+    "如果新增内容只是重复催问、普通确认、客服继续安抚、或与上一轮判断一致且没有升级，则 shouldAnalyze 必须为 false。",
+    "</task>",
+    "<output_format>",
+    "只输出一个合法 JSON object，不要输出 Markdown、解释文字或代码块。",
+    "必须且只能输出字段：shouldAnalyze, reason, changeType。",
+    "</output_format>",
+    "<input_safety>",
+    untrustedInputRule,
+    "</input_safety>",
+  ].join("\n");
+}
+
+function buildLiveGateUserPrompt(
+  messages: AiMessageInput[],
+  previousOutput: InsightAnalysisOutput | undefined,
+  previousGateSkip: InsightLiveGateSkipRecord | undefined,
+  previousSessionContexts: InsightPreviousSessionContext[],
+) {
+  return JSON.stringify({
+    outputContract: {
+      shouldAnalyze: "<boolean>",
+      reason: "<string: 1 句话说明为什么需要或不需要生成新的过程洞察>",
+      changeType: "<first_live_snapshot|risk_escalated|material_update|business_changed|no_material_change>",
+    },
+    previousGateSkip: previousGateSkip ?? null,
+    previousOutput: normalizePreviousOutputForGate(previousOutput),
+    previousSessionContexts: normalizePreviousSessionContexts(previousSessionContexts),
+    messages: messages
+      .filter((message) => message.includedForAi !== false)
+      .map((message) => ({
+        content: truncatePromptText(message.aiText, PROMPT_LIMITS.messageContent),
+        contentStatus: message.contentStatus,
+        messageType: message.messageType,
+        senderRole: message.senderRole,
+        sourceMessageId: message.sourceMessageId,
+        time: message.occurredAt,
+      })),
+  });
 }
 
 function buildUserPrompt(
@@ -512,6 +587,34 @@ function normalizePreviousSessionContexts(contexts: InsightPreviousSessionContex
     summaryText: context.summaryText,
     unresolvedReason: context.unresolvedReason,
   }));
+}
+
+function normalizePreviousOutputForGate(output: InsightAnalysisOutput | undefined) {
+  if (!output) {
+    return null;
+  }
+
+  return {
+    summary: output.summary,
+    problemResolution: output.problemResolution,
+    sentiment: output.sentiment.map((item) => ({
+      polarity: item.polarity,
+      reason: truncatePromptText(item.reason, PROMPT_LIMITS.description),
+    })),
+    intents: output.intents.map((item) => ({
+      intentCode: item.intentCode ?? item.intentId,
+      intentLabel: item.intentLabel,
+    })),
+    tags: output.tags.map((item) => ({
+      tagCode: item.tagCode ?? item.tagId,
+      tagName: item.tagName,
+    })),
+    entities: output.entities.map((item) => ({
+      entityCode: item.entityCode ?? item.entityId,
+      entityName: item.entityName,
+      sentiment: item.sentiment,
+    })),
+  };
 }
 
 function normalizeContext(context: InsightPromptContext) {

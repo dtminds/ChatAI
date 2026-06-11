@@ -13,6 +13,7 @@ import type {
   CreateAnalyzeJobInput,
   CreateLogicalSessionInput,
   InsightAnalysisOutput,
+  InsightLiveGateSkipRecord,
   InsightWorkerAnalysisPolicy,
   InsightWorkerExistingSession,
   InsightWorkerFeatureConfig,
@@ -1511,7 +1512,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       input.sessionId,
     );
 
-    if (!detail) {
+    if (!detail?.current.currentSnapshotId) {
       return undefined;
     }
 
@@ -1559,7 +1560,49 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         sessionTitle: detail.current.summarySessionTitle,
         text: detail.current.summaryText,
       },
+      sourceMessageHighWatermark: detail.current.sourceMessageHighWatermark,
       tags: detail.tags,
+    };
+  }
+
+  async getLatestLiveGateSkip(input: {
+    afterSourceMessageId?: string | null;
+    sessionId: string;
+    uid: number;
+  }): Promise<InsightLiveGateSkipRecord | undefined> {
+    let query = this.db
+      .selectFrom("xy_wap_embed_analysis_run")
+      .select(["error_message", "source_message_to"])
+      .where("session_id", "=", parsePositiveInteger(input.sessionId) ?? -1)
+      .where("mode", "=", "live")
+      .where("status", "=", "succeeded")
+      .where("error_code", "=", "LIVE_GATE_SKIPPED");
+    const afterSourceMessageId = input.afterSourceMessageId
+      ? parsePositiveInteger(input.afterSourceMessageId)
+      : undefined;
+
+    if (afterSourceMessageId) {
+      query = query.where("source_message_to", ">", afterSourceMessageId) as typeof query;
+    }
+
+    const row = await query
+      .orderBy("id", "desc")
+      .limit(1)
+      .executeTakeFirst() as {
+        error_message: string | null;
+        source_message_to: number | string | null;
+      } | undefined;
+
+    if (!row) {
+      return undefined;
+    }
+
+    return {
+      // LIVE_GATE_SKIPPED is currently only written when the gate rejects a no-change live run.
+      // We do not persist the model's raw changeType separately, so replay it as the skip baseline.
+      changeType: "no_material_change",
+      reason: row.error_message ?? "上一轮检查未发现实质变化",
+      sourceMessageTo: row.source_message_to == null ? null : String(row.source_message_to),
     };
   }
 
@@ -2133,12 +2176,13 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
   }
 
   async markAnalysisRunSucceededWithoutSnapshot(input: {
+    code?: "INSUFFICIENT_MESSAGES" | "LIVE_GATE_SKIPPED";
     reason: string;
     runId: string;
   }): Promise<void> {
-    // Succeeded means the worker handled the run; INSUFFICIENT_MESSAGES classifies the skip reason.
+    // Succeeded means the worker handled the run; error_code classifies why no snapshot was published.
     await this.db.updateTable("xy_wap_embed_analysis_run").set({
-      error_code: "INSUFFICIENT_MESSAGES",
+      error_code: input.code ?? "INSUFFICIENT_MESSAGES",
       error_message: input.reason,
       finished_at: new Date(),
       status: "succeeded",

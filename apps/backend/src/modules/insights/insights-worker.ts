@@ -254,6 +254,7 @@ export type InsightAnalysisOutput = {
     sessionTitle: string;
     text: string;
   };
+  sourceMessageHighWatermark?: string | null;
   tags: Array<{
     confidence: number;
     evidenceMessageIds: string[];
@@ -261,6 +262,24 @@ export type InsightAnalysisOutput = {
     tagId?: string;
     tagName: string;
   }>;
+};
+
+export type InsightLiveAnalysisGateDecision = {
+  changeType:
+    | "business_changed"
+    | "first_live_snapshot"
+    | "material_update"
+    | "no_material_change"
+    | "risk_escalated";
+  reason: string;
+  shouldAnalyze: boolean;
+};
+
+export type InsightLiveGateSkipRecord = Pick<
+  InsightLiveAnalysisGateDecision,
+  "changeType" | "reason"
+> & {
+  sourceMessageTo: string | null;
 };
 
 export type InsightAnalyzerOutput = InsightAnalysisOutput & {
@@ -296,6 +315,14 @@ export type InsightSessionAnalyzer = {
     previousSessionContexts: InsightPreviousSessionContext[];
     previousOutput?: InsightAnalysisOutput;
   }): Promise<InsightAnalyzerOutput>;
+  evaluateLiveAnalysisGate?(input: {
+    context: InsightPromptContext;
+    job: ClaimedAnalyzeJob;
+    messages: AiMessageInput[];
+    previousGateSkip?: InsightLiveGateSkipRecord;
+    previousSessionContexts: InsightPreviousSessionContext[];
+    previousOutput?: InsightAnalysisOutput;
+  }): Promise<InsightLiveAnalysisGateDecision>;
 };
 
 export type InsightWorkerRepositoryPort = {
@@ -377,12 +404,18 @@ export type InsightWorkerRepositoryPort = {
     sessionId: string;
     uid: number;
   }): Promise<InsightAnalysisOutput | undefined>;
+  getLatestLiveGateSkip(input: {
+    afterSourceMessageId?: string | null;
+    sessionId: string;
+    uid: number;
+  }): Promise<InsightLiveGateSkipRecord | undefined>;
   getActiveFeatureConfigs(input: { limit?: number }): Promise<InsightWorkerFeatureConfig[]>;
   markAnalysisJobFailed(jobId: string, error: unknown): Promise<void>;
   markAnalysisJobSucceeded(jobId: string): Promise<void>;
   markAnalysisRunFailed(runId: string, error: unknown): Promise<void>;
   // The run completed successfully, but model analysis was skipped before publishing a snapshot.
   markAnalysisRunSucceededWithoutSnapshot(input: {
+    code?: "INSUFFICIENT_MESSAGES" | "LIVE_GATE_SKIPPED";
     reason: string;
     runId: string;
   }): Promise<void>;
@@ -1249,14 +1282,7 @@ export class InsightsWorkerService {
           });
         }
 
-        await this.repository.markAnalysisJobSucceeded(job.jobId);
-        if (job.rescanTaskId) {
-          await this.repository.updateRescanTaskAfterAnalysis({
-            failedSessions: 0,
-            rescanTaskId: job.rescanTaskId,
-            succeededSessions: 1,
-          });
-        }
+        await this.finishAnalyzeJobSucceeded(job);
         this.logger?.info(
           {
             jobId: job.jobId,
@@ -1283,6 +1309,67 @@ export class InsightsWorkerService {
           sessionId: job.sessionId,
           uid: job.uid,
         });
+      // The live gate is only for full live snapshots; scoped reanalysis already has an explicit target.
+      if (job.mode === "live" && job.analysisScope === "all" && this.model.evaluateLiveAnalysisGate) {
+        const previousOutputForGate = await this.repository.getCurrentAnalysisOutput({
+          sessionId: job.sessionId,
+          uid: job.uid,
+        });
+        const previousGateSkip = await this.repository.getLatestLiveGateSkip({
+          afterSourceMessageId: previousOutputForGate?.sourceMessageHighWatermark,
+          sessionId: job.sessionId,
+          uid: job.uid,
+        });
+        let gateDecision: InsightLiveAnalysisGateDecision;
+
+        try {
+          gateDecision = await this.model.evaluateLiveAnalysisGate({
+            context,
+            job,
+            messages: modelMessages,
+            previousGateSkip,
+            previousOutput: previousOutputForGate,
+            previousSessionContexts,
+          });
+        } catch (error) {
+          this.logger?.error(
+            {
+              err: error,
+              jobId: job.jobId,
+              messageCount: modelMessages.length,
+              sessionId: job.sessionId,
+              uid: job.uid,
+            },
+            "会话洞察 worker 未完结会话 gate 执行失败，按策略跳过完整分析",
+          );
+          gateDecision = {
+            changeType: "no_material_change",
+            reason: `live gate failed: ${formatError(error)}`,
+            shouldAnalyze: false,
+          };
+        }
+
+        if (!gateDecision.shouldAnalyze) {
+          await this.repository.markAnalysisRunSucceededWithoutSnapshot({
+            code: "LIVE_GATE_SKIPPED",
+            reason: gateDecision.reason,
+            runId,
+          });
+          await this.finishAnalyzeJobSucceeded(job);
+          this.logger?.info(
+            {
+              changeType: gateDecision.changeType,
+              jobId: job.jobId,
+              messageCount: modelMessages.length,
+              reason: gateDecision.reason,
+              sessionId: job.sessionId,
+              uid: job.uid,
+            },
+            "会话洞察 worker 跳过未完结会话提前分析，未发现实质变化",
+          );
+          return;
+        }
+      }
       const actionItemPolicy = await this.resolveActionItemGenerationPolicy({
         job,
         modelMessages,
@@ -1319,14 +1406,7 @@ export class InsightsWorkerService {
         sourceMessageHighWatermark: sourceMessageIds.at(-1) ?? null,
         validationWarnings,
       });
-      await this.repository.markAnalysisJobSucceeded(job.jobId);
-      if (job.rescanTaskId) {
-        await this.repository.updateRescanTaskAfterAnalysis({
-          failedSessions: 0,
-          rescanTaskId: job.rescanTaskId,
-          succeededSessions: 1,
-        });
-      }
+      await this.finishAnalyzeJobSucceeded(job);
       this.logger?.info(
         {
           durationMs: Date.now() - startedAt,
@@ -1363,6 +1443,17 @@ export class InsightsWorkerService {
         },
         "会话洞察 worker 分析任务失败",
       );
+    }
+  }
+
+  private async finishAnalyzeJobSucceeded(job: ClaimedAnalyzeJob) {
+    await this.repository.markAnalysisJobSucceeded(job.jobId);
+    if (job.rescanTaskId) {
+      await this.repository.updateRescanTaskAfterAnalysis({
+        failedSessions: 0,
+        rescanTaskId: job.rescanTaskId,
+        succeededSessions: 1,
+      });
     }
   }
 
@@ -1873,6 +1964,10 @@ function normalizeAssetPathWithoutQuery(value: string) {
 
 function stripAssetQueryAndHash(value: string) {
   return value.split("#")[0]?.split("?")[0]?.trim() ?? "";
+}
+
+function formatError(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
 }
 
 export function startInsightsWorker(options: {

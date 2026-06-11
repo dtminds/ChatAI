@@ -161,21 +161,21 @@ type LimitAlertState = {
 
 const analysisFrequencyPresets = [
   {
-    description: "兼顾时效性和成本",
+    description: "兼顾提前发现和 AI 成本",
     label: "标准（推荐）",
     liveMinIntervalMinutes: 15,
     liveMinNewMeaningfulMessages: 20,
     value: "stable",
   },
   {
-    description: "追求更优的时效性，成本略有提升",
+    description: "更快检查客户诉求和风险变化",
     label: "较快",
     liveMinIntervalMinutes: 10,
     liveMinNewMeaningfulMessages: 8,
     value: "standard",
   },
   {
-    description: "更早发现风险和待办，对成本不敏感时开启",
+    description: "更高频检查关键变化，对成本不敏感时开启",
     label: "高频",
     liveMinIntervalMinutes: 5,
     liveMinNewMeaningfulMessages: 4,
@@ -1228,14 +1228,14 @@ function updateSessionizationValue<Key extends keyof Omit<InsightSessionizationS
       <SettingsSection title="未完结会话">
         <BooleanSettingRow
           checked={analysisForm.liveAnalysisEnabled}
-          description="会话未结束时提前生成摘要、待办和业务归因"
-          label="未完结会话提前分析"
+          description="会话未结束时，系统会检查是否出现值得提前关注的客户诉求、风险或处理进展"
+          label="未完结会话提前洞察"
           onChange={(liveAnalysisEnabled) => setAnalysisForm((current) => ({ ...current, liveAnalysisEnabled }))}
         />
         {analysisForm.liveAnalysisEnabled ? (
           <FrequencyPresetRow
-            description="控制未完结会话多久重新分析一次，会消耗更多 AI 分析次数"
-            label="未完结会话分析频率"
+            description="控制系统检查未完结会话变化的敏感程度，越敏感会消耗更多 AI 分析次数"
+            label="未完结会话检查敏感度"
             onChange={updateFrequency}
             value={detectAnalysisFrequencyPreset(analysisForm)}
           />

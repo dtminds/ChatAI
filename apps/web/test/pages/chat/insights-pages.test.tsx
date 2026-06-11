@@ -2908,18 +2908,18 @@ describe("conversation insights pages", () => {
     expect(screen.queryByText("实时客服")).not.toBeInTheDocument();
     expect(screen.queryByText("私域运营")).not.toBeInTheDocument();
     expect(screen.queryByText("自定义")).not.toBeInTheDocument();
-    expect(screen.getByText("未完结会话提前分析")).toBeInTheDocument();
+    expect(screen.getByText("未完结会话提前洞察")).toBeInTheDocument();
     expect(
-      screen.getByText("会话未结束时提前生成摘要、待办和业务归因"),
+      screen.getByText("会话未结束时，系统会检查是否出现值得提前关注的客户诉求、风险或处理进展"),
     ).toBeInTheDocument();
-    expect(screen.getByText("未完结会话分析频率")).toBeInTheDocument();
+    expect(screen.getByText("未完结会话检查敏感度")).toBeInTheDocument();
     expect(
       screen.getByText(
-        "控制未完结会话多久重新分析一次，会消耗更多 AI 分析次数",
+        "控制系统检查未完结会话变化的敏感程度，越敏感会消耗更多 AI 分析次数",
       ),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("combobox", { name: "未完结会话分析频率" }),
+      screen.getByRole("combobox", { name: "未完结会话检查敏感度" }),
     ).toHaveTextContent("标准（推荐）");
     expect(screen.getByText("准入规则")).toBeInTheDocument();
     expect(screen.getByText("有效会话门槛")).toBeInTheDocument();
@@ -2941,7 +2941,7 @@ describe("conversation insights pages", () => {
     expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
 
     await userEvent.click(
-      screen.getByRole("combobox", { name: "未完结会话分析频率" }),
+      screen.getByRole("combobox", { name: "未完结会话检查敏感度" }),
     );
     const frequencyListbox = await screen.findByRole("listbox");
     expect(
@@ -2950,14 +2950,14 @@ describe("conversation insights pages", () => {
     expect(within(frequencyListbox).getByText("较快")).toBeInTheDocument();
     expect(within(frequencyListbox).getByText("高频")).toBeInTheDocument();
     expect(
-      within(frequencyListbox).getByText("兼顾时效性和成本"),
+      within(frequencyListbox).getByText("兼顾提前发现和 AI 成本"),
     ).toBeInTheDocument();
     expect(
-      within(frequencyListbox).getByText("追求更优的时效性，成本略有提升"),
+      within(frequencyListbox).getByText("更快检查客户诉求和风险变化"),
     ).toBeInTheDocument();
     expect(
       within(frequencyListbox).getByText(
-        "更早发现风险和待办，对成本不敏感时开启",
+        "更高频检查关键变化，对成本不敏感时开启",
       ),
     ).toBeInTheDocument();
     await userEvent.keyboard("{Escape}");
@@ -3003,9 +3003,9 @@ describe("conversation insights pages", () => {
     });
 
     await userEvent.click(
-      screen.getByRole("switch", { name: "未完结会话提前分析" }),
+      screen.getByRole("switch", { name: "未完结会话提前洞察" }),
     );
-    expect(screen.queryByText("未完结会话分析频率")).not.toBeInTheDocument();
+    expect(screen.queryByText("未完结会话检查敏感度")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
 
     await userEvent.click(screen.getByRole("tab", { name: "意图配置" }));

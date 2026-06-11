@@ -174,6 +174,7 @@ function createRepository(
     ]),
     listOpenSessionsForLiveAnalysis: vi.fn(async () => []),
     listUnassignedPreContextMessages: vi.fn(async () => []),
+    getLatestLiveGateSkip: vi.fn(async () => undefined),
     listSessionMessagesForAnalysis: vi.fn(async () => []),
     getCurrentAnalysisOutput: vi.fn(async () => undefined),
     markAnalysisJobFailed: vi.fn(async () => undefined),
@@ -1674,7 +1675,8 @@ describe("InsightsWorkerService", () => {
       qaRuleConfigs: [],
     };
     const repository = createRepository({
-      claimNextAnalyzeJob: vi.fn(async () => ({
+      claimNextAnalyzeJob: vi.fn()
+        .mockResolvedValueOnce({
         analysisScope: "all",
         attemptCount: 1,
         jobId: "job-1",
@@ -1682,7 +1684,8 @@ describe("InsightsWorkerService", () => {
         mode: "live",
         sessionId: "501",
         uid: 9001,
-      })),
+      })
+        .mockResolvedValue(undefined),
       getPromptContext: vi.fn(async () => promptContext),
       listIncrementalMessages: vi.fn(async () => []),
       listSessionMessagesForAnalysis: vi.fn(async () => [
@@ -2159,6 +2162,276 @@ describe("InsightsWorkerService", () => {
       repository.markAnalysisRunSucceededWithoutSnapshot,
     ).toHaveBeenCalledWith({
       reason: "AI有效消息数 2 低于最小分析消息数 5",
+      runId: "run-1",
+    });
+    expect(repository.markAnalysisJobSucceeded).toHaveBeenCalledWith("job-1");
+  });
+
+  it("skips live snapshot generation when the live gate finds no material update", async () => {
+    const repository = createRepository({
+      claimNextAnalyzeJob: vi.fn(async () => ({
+        analysisScope: "all",
+        attemptCount: 1,
+        jobId: "job-1",
+        maxAttempts: 3,
+        mode: "live",
+        sessionId: "501",
+        uid: 9001,
+      })),
+      getCurrentAnalysisOutput: vi.fn(async () => ({
+        actionItems: [],
+        entities: [],
+        faqCandidates: [],
+        intents: [
+          {
+            confidence: 0.8,
+            evidenceMessageIds: ["9001"],
+            intentCode: "logistics_delay",
+            intentLabel: "物流异常",
+          },
+        ],
+        problemResolution: {
+          confidence: 0.8,
+          evidence: [],
+          evidenceMessageIds: ["9001"],
+          problemDetected: true,
+          problemSummary: "客户反馈物流未更新",
+          resolutionStatus: "unresolved",
+        },
+        qaFindings: [],
+        sentiment: [
+          {
+            confidence: 0.7,
+            evidenceMessageIds: ["9001"],
+            polarity: "negative",
+            reason: "客户表达着急",
+          },
+        ],
+        summary: {
+          sessionTitle: "物流异常",
+          text: "客户反馈物流未更新，客服表示继续催促。",
+        },
+        sourceMessageHighWatermark: "9005",
+        tags: [],
+      })),
+      getLatestLiveGateSkip: vi.fn(async () => ({
+        changeType: "no_material_change",
+        reason: "上一轮新增消息没有实质变化",
+        sourceMessageTo: "9001",
+      })),
+      listIncrementalMessages: vi.fn(async () => []),
+      listSessionMessagesForAnalysis: vi.fn(async () => [
+        {
+          chatType: 1,
+          content: JSON.stringify({ content: "物流还是没更新" }),
+          conversationId: "301",
+          fromType: 2,
+          id: "9001",
+          msgtime: 1_780_244_000_000,
+          msgtype: "text",
+          thirdUserId: "user-1",
+        },
+        {
+          chatType: 1,
+          content: JSON.stringify({ content: "我们继续帮您催促" }),
+          conversationId: "301",
+          fromType: 1,
+          id: "9002",
+          msgtime: 1_780_244_060_000,
+          msgtype: "text",
+          thirdUserId: "user-1",
+        },
+      ]),
+    });
+    const model = {
+      analyzeSession: vi.fn(async () => {
+        throw new Error("live analysis should be skipped by gate");
+      }),
+      evaluateLiveAnalysisGate: vi.fn(async () => ({
+        changeType: "no_material_change",
+        reason: "新增内容仍围绕同一物流问题，风险和处理状态没有明显变化",
+        shouldAnalyze: false,
+      })),
+    };
+    const service = new InsightsWorkerService(repository, { model });
+
+    await service.runOnce();
+
+    expect(model.evaluateLiveAnalysisGate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        job: expect.objectContaining({ mode: "live" }),
+        messages: expect.arrayContaining([
+          expect.objectContaining({ sourceMessageId: "9001" }),
+        ]),
+        previousOutput: expect.objectContaining({
+          summary: expect.objectContaining({ sessionTitle: "物流异常" }),
+        }),
+        previousGateSkip: {
+          changeType: "no_material_change",
+          reason: "上一轮新增消息没有实质变化",
+          sourceMessageTo: "9001",
+        },
+      }),
+    );
+    expect(repository.getLatestLiveGateSkip).toHaveBeenCalledWith({
+      afterSourceMessageId: "9005",
+      sessionId: "501",
+      uid: 9001,
+    });
+    expect(model.analyzeSession).not.toHaveBeenCalled();
+    expect(repository.saveAnalysisResult).not.toHaveBeenCalled();
+    expect(repository.markAnalysisRunSucceededWithoutSnapshot).toHaveBeenCalledWith({
+      code: "LIVE_GATE_SKIPPED",
+      reason: "新增内容仍围绕同一物流问题，风险和处理状态没有明显变化",
+      runId: "run-1",
+    });
+    expect(repository.markAnalysisJobSucceeded).toHaveBeenCalledWith("job-1");
+  });
+
+  it("continues live analysis when the live gate returns shouldAnalyze true", async () => {
+    const repository = createRepository({
+      claimNextAnalyzeJob: vi.fn()
+        .mockResolvedValueOnce({
+          analysisScope: "all",
+          attemptCount: 1,
+          jobId: "job-1",
+          maxAttempts: 3,
+          mode: "live",
+          sessionId: "501",
+          uid: 9001,
+        })
+        .mockResolvedValue(undefined),
+      getCurrentAnalysisOutput: vi.fn(async () => undefined),
+      listIncrementalMessages: vi.fn(async () => []),
+      listSessionMessagesForAnalysis: vi.fn(async () => [
+        {
+          chatType: 1,
+          content: JSON.stringify({ content: "这个订单怎么还没发货" }),
+          conversationId: "301",
+          fromType: 2,
+          id: "9001",
+          msgtime: 1_780_244_000_000,
+          msgtype: "text",
+          thirdUserId: "user-1",
+        },
+        {
+          chatType: 1,
+          content: JSON.stringify({ content: "我帮您查一下" }),
+          conversationId: "301",
+          fromType: 1,
+          id: "9002",
+          msgtime: 1_780_244_060_000,
+          msgtype: "text",
+          thirdUserId: "user-1",
+        },
+      ]),
+    });
+    const model = {
+      analyzeSession: vi.fn(async () => ({
+        actionItems: [],
+        entities: [],
+        faqCandidates: [],
+        intents: [],
+        problemResolution: {
+          confidence: 0.8,
+          evidence: [],
+          evidenceMessageIds: ["9001"],
+          problemDetected: true,
+          problemSummary: "客户咨询订单发货进度",
+          resolutionStatus: "unresolved",
+        },
+        qaFindings: [],
+        sentiment: [],
+        summary: {
+          sessionTitle: "发货咨询",
+          text: "客户询问订单为何还未发货，客服表示查询。",
+        },
+        tags: [],
+      })),
+      evaluateLiveAnalysisGate: vi.fn(async () => ({
+        changeType: "first_live_snapshot",
+        reason: "首次出现值得提前关注的发货咨询",
+        shouldAnalyze: true,
+      })),
+    };
+    const service = new InsightsWorkerService(repository, { model });
+
+    await service.runOnce();
+
+    expect(model.evaluateLiveAnalysisGate).toHaveBeenCalled();
+    expect(model.analyzeSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        job: expect.objectContaining({ mode: "live" }),
+        messages: expect.arrayContaining([
+          expect.objectContaining({ sourceMessageId: "9001" }),
+        ]),
+      }),
+    );
+    expect(repository.markAnalysisRunSucceededWithoutSnapshot).not.toHaveBeenCalled();
+    expect(repository.saveAnalysisResult).toHaveBeenCalledWith(
+      expect.objectContaining({
+        job: expect.objectContaining({ mode: "live" }),
+        resultKind: "model_analysis",
+      }),
+    );
+  });
+
+  it("treats live gate failures as skipped analysis", async () => {
+    const repository = createRepository({
+      claimNextAnalyzeJob: vi.fn()
+        .mockResolvedValueOnce({
+          analysisScope: "all",
+          attemptCount: 1,
+          jobId: "job-1",
+          maxAttempts: 3,
+          mode: "live",
+          sessionId: "501",
+          uid: 9001,
+        })
+        .mockResolvedValue(undefined),
+      listIncrementalMessages: vi.fn(async () => []),
+      listSessionMessagesForAnalysis: vi.fn(async () => [
+        {
+          chatType: 1,
+          content: JSON.stringify({ content: "物流一直没有更新" }),
+          conversationId: "301",
+          fromType: 2,
+          id: "9001",
+          msgtime: 1_780_244_000_000,
+          msgtype: "text",
+          thirdUserId: "user-1",
+        },
+        {
+          chatType: 1,
+          content: JSON.stringify({ content: "麻烦尽快处理" }),
+          conversationId: "301",
+          fromType: 2,
+          id: "9002",
+          msgtime: 1_780_244_060_000,
+          msgtype: "text",
+          thirdUserId: "user-1",
+        },
+      ]),
+    });
+    const model = {
+      analyzeSession: vi.fn(async () => {
+        throw new Error("live analysis should be skipped when gate fails");
+      }),
+      evaluateLiveAnalysisGate: vi.fn(async () => {
+        throw new Error("gate timeout");
+      }),
+    };
+    const service = new InsightsWorkerService(repository, { model });
+
+    await service.runOnce();
+
+    expect(model.analyzeSession).not.toHaveBeenCalled();
+    expect(repository.saveAnalysisResult).not.toHaveBeenCalled();
+    expect(repository.markAnalysisRunFailed).not.toHaveBeenCalled();
+    expect(repository.markAnalysisJobFailed).not.toHaveBeenCalled();
+    expect(repository.markAnalysisRunSucceededWithoutSnapshot).toHaveBeenCalledWith({
+      code: "LIVE_GATE_SKIPPED",
+      reason: "live gate failed: gate timeout",
       runId: "run-1",
     });
     expect(repository.markAnalysisJobSucceeded).toHaveBeenCalledWith("job-1");

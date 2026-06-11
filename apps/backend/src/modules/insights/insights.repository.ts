@@ -100,6 +100,7 @@ type CurrentSessionQueryRow = {
   status: string | null;
   summary_session_title: string | null;
   summary_text: string | null;
+  source_message_high_watermark?: number | string | null;
   third_external_userid: string;
   third_userid: string;
   unresolved_reason: string | null;
@@ -1936,6 +1937,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
         "session.third_userid as third_userid",
         "snapshot.phase as phase",
         "snapshot.create_time as generated_at",
+        "snapshot.source_message_high_watermark as source_message_high_watermark",
         "snapshot.status as status",
         "summary.session_title as summary_session_title",
         "summary.summary_text as summary_text",
@@ -2664,6 +2666,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
         "session.third_userid as third_userid",
         "snapshot.phase as phase",
         "snapshot.create_time as generated_at",
+        "snapshot.source_message_high_watermark as source_message_high_watermark",
         "snapshot.status as status",
         "summary.session_title as summary_session_title",
         "summary.summary_text as summary_text",
@@ -3938,6 +3941,7 @@ function mapCurrentSessionRows(rows: CurrentSessionQueryRow[]): InsightCurrentSe
         problemSummary: row.problem_summary ?? "",
         resolutionStatus: normalizeResolutionStatus(row.resolution_status),
         sessionId,
+        sourceMessageHighWatermark: normalizeOptionalId(row.source_message_high_watermark ?? null),
         startedAt: parseNumber(row.started_at),
         summarySessionTitle: row.summary_session_title ?? "",
         summaryText: row.summary_text ?? "",

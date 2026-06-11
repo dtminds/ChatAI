@@ -1,7 +1,13 @@
 import { BadRequestError } from "../../shared/errors.js";
-import type { InsightAnalyzerOutput, InsightAnalysisOutput, InsightSessionAnalyzer } from "./insights-worker.js";
+import type {
+  InsightAnalyzerOutput,
+  InsightAnalysisOutput,
+  InsightLiveAnalysisGateDecision,
+  InsightSessionAnalyzer,
+} from "./insights-worker.js";
 import {
   buildInsightClassificationPromptMessages,
+  buildInsightLiveGatePromptMessages,
   buildInsightPromptMessages,
   buildInsightQaPromptMessages,
   buildInsightSummaryPromptMessages,
@@ -39,6 +45,13 @@ const DEFAULT_MAX_TOKENS = 4096;
 const DEFAULT_RETRY_BASE_DELAY_MS = 1_000;
 const DEFAULT_RETRY_MAX_ATTEMPTS = 3;
 const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
+const liveGateChangeTypes = new Set<InsightLiveAnalysisGateDecision["changeType"]>([
+  "business_changed",
+  "first_live_snapshot",
+  "material_update",
+  "no_material_change",
+  "risk_escalated",
+]);
 
 export function createVolcengineArkProviderConfig(
   env: ProviderEnv = process.env,
@@ -113,6 +126,19 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
     input: Parameters<InsightSessionAnalyzer["analyzeSession"]>[0],
   ): Promise<InsightAnalysisOutput> {
     return retryLlmRequest(() => this.doAnalyzeSessionWithResponseFormatFallback(input), this.config.retry);
+  }
+
+  async evaluateLiveAnalysisGate(
+    input: Parameters<NonNullable<InsightSessionAnalyzer["evaluateLiveAnalysisGate"]>>[0],
+  ): Promise<InsightLiveAnalysisGateDecision> {
+    return retryLlmRequest(async () =>
+      normalizeLiveAnalysisGateDecision(
+        await this.completeJsonWithResponseFormatFallback({
+          maxTokens: this.config.liteMaxTokens,
+          messages: buildInsightLiveGatePromptMessages(input),
+          model: this.config.liteModel,
+        }),
+      ), this.config.retry);
   }
 
   private async doAnalyzeSessionWithResponseFormatFallback(
@@ -266,6 +292,23 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
     model: string;
   }) {
     return normalizeAnalysisOutput(await this.completeJson(input));
+  }
+
+  private async completeJsonWithResponseFormatFallback(input: {
+    maxTokens: number;
+    messages: InsightPromptMessage[];
+    model: string;
+  }) {
+    try {
+      return await this.completeJson(input);
+    } catch (error) {
+      if (!this.config.responseFormat || this.responseFormatUnsupported || !isResponseFormatUnsupportedError(error)) {
+        throw error;
+      }
+
+      this.responseFormatUnsupported = true;
+      return this.completeJson(input);
+    }
   }
 
   private async completeJson(input: {
@@ -501,6 +544,28 @@ function normalizeAnalysisOutput(value: unknown): InsightAnalysisOutput {
       tagName: readString(item, "tagName") || "自定义标签",
     })),
   };
+}
+
+function normalizeLiveAnalysisGateDecision(value: unknown): InsightLiveAnalysisGateDecision {
+  const record = isRecord(value) ? value : {};
+  const shouldAnalyze = record.shouldAnalyze === true;
+  const reason = readString(record, "reason")
+    || (shouldAnalyze ? "未完结会话出现值得提前更新的变化" : "未发现足以更新过程洞察的实质变化");
+  const changeType = shouldAnalyze
+    ? readLiveGateChangeType(readString(record, "changeType"))
+    : "no_material_change";
+
+  return {
+    changeType,
+    reason,
+    shouldAnalyze,
+  };
+}
+
+function readLiveGateChangeType(value: string): InsightLiveAnalysisGateDecision["changeType"] {
+  return liveGateChangeTypes.has(value as InsightLiveAnalysisGateDecision["changeType"])
+    ? value as InsightLiveAnalysisGateDecision["changeType"]
+    : "material_update";
 }
 
 function buildPriorConclusions(output: InsightAnalysisOutput | undefined) {

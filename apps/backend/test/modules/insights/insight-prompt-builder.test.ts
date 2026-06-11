@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildInsightClassificationPromptMessages,
+  buildInsightLiveGatePromptMessages,
   buildInsightPromptMessages,
   buildInsightQaPromptMessages,
   buildInsightSummaryPromptMessages,
@@ -183,6 +184,180 @@ describe("insight prompt builder", () => {
     );
     expect(JSON.stringify(prompt)).not.toContain("actionItems");
     expect(JSON.stringify(prompt)).not.toContain("faqCandidates");
+  });
+
+  it("builds a live gate prompt with previous output and a compact decision contract", () => {
+    const prompt = buildInsightLiveGatePromptMessages({
+      messages: [
+        {
+          aiText: "物流还是没有更新",
+          contentStatus: "ready",
+          conversationId: "301",
+          evidenceLabel: "[9002]",
+          includedForAi: true,
+          meaningfulForBoundary: true,
+          messageType: "text",
+          occurredAt: 1_780_244_060_000,
+          senderRole: "customer",
+          sourceMessageId: "9002",
+        },
+      ],
+      previousGateSkip: {
+        changeType: "no_material_change",
+        reason: "上一轮检查没有发现实质变化",
+        sourceMessageTo: "9001",
+      },
+      previousOutput: {
+        actionItems: [],
+        entities: [],
+        faqCandidates: [],
+        intents: [
+          {
+            confidence: 0.82,
+            evidenceMessageIds: ["9001"],
+            intentCode: "logistics_delay",
+            intentLabel: "物流异常",
+          },
+        ],
+        problemResolution: {
+          confidence: 0.8,
+          evidence: [],
+          evidenceMessageIds: ["9001"],
+          problemDetected: true,
+          problemSummary: "客户反馈物流一直没有更新",
+          resolutionStatus: "unresolved",
+          unresolvedReason: "客服暂未给出处理结果",
+        },
+        qaFindings: [],
+        sentiment: [
+          {
+            confidence: 0.7,
+            evidenceMessageIds: ["9001"],
+            polarity: "negative",
+            reason: "客户表达着急",
+          },
+        ],
+        summary: {
+          sessionTitle: "物流异常",
+          text: "客户反馈物流未更新，客服表示继续催促。",
+        },
+        tags: [
+          {
+            confidence: 0.8,
+            evidenceMessageIds: ["9001"],
+            tagCode: "logistics",
+            tagName: "物流咨询",
+          },
+        ],
+      },
+      previousSessionContexts: [],
+    });
+    const systemPrompt = prompt[0]?.content ?? "";
+    const payload = JSON.parse(prompt[1]?.content ?? "{}");
+
+    expect(systemPrompt).toContain("未完结会话提前洞察");
+    expect(systemPrompt).toContain("实质变化");
+    expect(payload.outputContract).toEqual({
+      changeType:
+        "<first_live_snapshot|risk_escalated|material_update|business_changed|no_material_change>",
+      reason: "<string: 1 句话说明为什么需要或不需要生成新的过程洞察>",
+      shouldAnalyze: "<boolean>",
+    });
+    expect(payload.previousOutput.summary.sessionTitle).toBe("物流异常");
+    expect(payload.previousGateSkip).toEqual({
+      changeType: "no_material_change",
+      reason: "上一轮检查没有发现实质变化",
+      sourceMessageTo: "9001",
+    });
+    expect(payload.previousOutput.problemResolution.resolutionStatus).toBe(
+      "unresolved",
+    );
+    expect(payload.previousOutput.intents).toEqual([
+      { intentCode: "logistics_delay", intentLabel: "物流异常" },
+    ]);
+    expect(payload.messages).toEqual([
+      expect.objectContaining({
+        content: "物流还是没有更新",
+        sourceMessageId: "9002",
+      }),
+    ]);
+    expect(JSON.stringify(payload.outputContract)).not.toContain("actionItems");
+    expect(JSON.stringify(payload.outputContract)).not.toContain("qaFindings");
+  });
+
+  it("falls back to ids when previous output loaded from DB has no business codes", () => {
+    const prompt = buildInsightLiveGatePromptMessages({
+      messages: [
+        {
+          aiText: "物流还是没有更新",
+          contentStatus: "ready",
+          conversationId: "301",
+          evidenceLabel: "[9002]",
+          includedForAi: true,
+          meaningfulForBoundary: true,
+          messageType: "text",
+          occurredAt: 1_780_244_060_000,
+          senderRole: "customer",
+          sourceMessageId: "9002",
+        },
+      ],
+      previousOutput: {
+        actionItems: [],
+        entities: [
+          {
+            confidence: 1,
+            entityId: "41",
+            entityName: "补水面膜",
+            evidenceMessageIds: ["9001"],
+          },
+        ],
+        faqCandidates: [],
+        intents: [
+          {
+            confidence: 0.8,
+            evidenceMessageIds: ["9001"],
+            intentId: "31",
+            intentLabel: "物流异常",
+          },
+        ],
+        problemResolution: {
+          confidence: 0.8,
+          evidence: [],
+          evidenceMessageIds: ["9001"],
+          problemDetected: true,
+          problemSummary: "客户反馈物流异常",
+          resolutionStatus: "unresolved",
+        },
+        qaFindings: [],
+        sentiment: [],
+        summary: {
+          sessionTitle: "物流异常",
+          text: "客户反馈物流未更新。",
+        },
+        tags: [
+          {
+            confidence: 0.8,
+            evidenceMessageIds: ["9001"],
+            tagId: "21",
+            tagName: "物流咨询",
+          },
+        ],
+      },
+    });
+    const payload = JSON.parse(prompt[1]?.content ?? "{}");
+
+    expect(payload.previousOutput.intents).toEqual([
+      { intentCode: "31", intentLabel: "物流异常" },
+    ]);
+    expect(payload.previousOutput.tags).toEqual([
+      { tagCode: "21", tagName: "物流咨询" },
+    ]);
+    expect(payload.previousOutput.entities).toEqual([
+      {
+        entityCode: "41",
+        entityName: "补水面膜",
+      },
+    ]);
   });
 
   it("includes recent action items when action item generation is enabled", () => {

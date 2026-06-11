@@ -347,6 +347,192 @@ describe("LLM provider config", () => {
     });
   });
 
+  it("evaluates live analysis gate with lite model and normalized decision output", async () => {
+    let requestBody: Record<string, unknown> | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+        requestBody = JSON.parse(String(init?.body));
+
+        return new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({
+                    changeType: "no_material_change",
+                    reason: "新增内容仍围绕同一物流问题，风险和处理状态没有明显变化",
+                    shouldAnalyze: false,
+                  }),
+                },
+              },
+            ],
+          }),
+          { headers: { "Content-Type": "application/json" }, status: 200 },
+        );
+      }),
+    );
+    const analyzer = new OpenAiCompatibleInsightAnalyzer({
+      apiKey: "secret",
+      baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+      liteMaxTokens: 512,
+      liteModel: "ep-lite",
+      maxTokens: 4096,
+      model: "ep-main",
+      providerCode: "volcengine_ark",
+      protocol: "openai-compatible",
+      responseFormat: "json_object",
+    });
+
+    const decision = await analyzer.evaluateLiveAnalysisGate({
+      context: {
+        entityDictionary: [],
+        intentConfigs: [],
+        labelConfigs: [],
+        qaRuleConfigs: [],
+      },
+      job: {
+        analysisScope: "all",
+        attemptCount: 1,
+        jobId: "job-1",
+        maxAttempts: 3,
+        mode: "live",
+        sessionId: "501",
+        uid: 9001,
+      },
+      messages: [
+        {
+          aiText: "物流还是没动",
+          contentStatus: "ready",
+          messageType: "text",
+          occurredAt: 1,
+          senderRole: "customer",
+          sourceMessageId: "9002",
+        },
+      ],
+      previousGateSkip: {
+        changeType: "no_material_change",
+        reason: "上一轮检查没有发现实质变化",
+        sourceMessageTo: "9001",
+      },
+      previousOutput: {
+        actionItems: [],
+        entities: [],
+        faqCandidates: [],
+        intents: [
+          {
+            confidence: 0.82,
+            evidenceMessageIds: ["9001"],
+            intentCode: "logistics_delay",
+            intentLabel: "物流异常",
+          },
+        ],
+        problemResolution: {
+          confidence: 0.8,
+          evidence: [],
+          evidenceMessageIds: ["9001"],
+          problemDetected: true,
+          problemSummary: "客户反馈物流未更新",
+          resolutionStatus: "unresolved",
+        },
+        qaFindings: [],
+        sentiment: [],
+        summary: {
+          sessionTitle: "物流异常",
+          text: "客户反馈物流未更新，客服表示催促。",
+        },
+        tags: [],
+      },
+      previousSessionContexts: [],
+    });
+
+    expect(decision).toEqual({
+      changeType: "no_material_change",
+      reason: "新增内容仍围绕同一物流问题，风险和处理状态没有明显变化",
+      shouldAnalyze: false,
+    });
+    expect(requestBody).toMatchObject({
+      max_tokens: 512,
+      model: "ep-lite",
+      response_format: { type: "json_object" },
+    });
+    expect(JSON.stringify(requestBody?.messages)).toContain("previousOutput");
+    expect(JSON.stringify(requestBody?.messages)).toContain("previousGateSkip");
+    expect(JSON.stringify(requestBody?.messages)).toContain(
+      "上一轮检查没有发现实质变化",
+    );
+    expect(JSON.stringify(requestBody?.messages)).toContain("物流异常");
+  });
+
+  it("treats malformed live gate decisions without explicit true as skipped", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({
+                    changeType: "risk_escalated",
+                    reason: "模型没有返回 shouldAnalyze",
+                  }),
+                },
+              },
+            ],
+          }),
+          { headers: { "Content-Type": "application/json" }, status: 200 },
+        )
+      ),
+    );
+    const analyzer = new OpenAiCompatibleInsightAnalyzer({
+      apiKey: "secret",
+      baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+      liteMaxTokens: 512,
+      liteModel: "ep-lite",
+      maxTokens: 4096,
+      model: "ep-main",
+      providerCode: "volcengine_ark",
+      protocol: "openai-compatible",
+      responseFormat: "json_object",
+    });
+
+    await expect(
+      analyzer.evaluateLiveAnalysisGate({
+        context: {
+          entityDictionary: [],
+          intentConfigs: [],
+          labelConfigs: [],
+          qaRuleConfigs: [],
+        },
+        job: {
+          analysisScope: "all",
+          attemptCount: 1,
+          jobId: "job-1",
+          maxAttempts: 3,
+          mode: "live",
+          sessionId: "501",
+          uid: 9001,
+        },
+        messages: [
+          {
+            aiText: "物流还是没动",
+            contentStatus: "ready",
+            messageType: "text",
+            occurredAt: 1,
+            senderRole: "customer",
+            sourceMessageId: "9002",
+          },
+        ],
+        previousSessionContexts: [],
+      }),
+    ).resolves.toEqual({
+      changeType: "no_material_change",
+      reason: "模型没有返回 shouldAnalyze",
+      shouldAnalyze: false,
+    });
+  });
+
   it("skips QA in live analysis while still running classification", async () => {
     const requestBodies: Array<Record<string, unknown>> = [];
     vi.stubGlobal(

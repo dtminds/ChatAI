@@ -3930,6 +3930,64 @@ describe("MysqlInsightWorkerRepository", () => {
     ]);
   });
 
+  it("uses live gate skipped runs as the next live analysis watermark", async () => {
+    const skippedRun = {
+      create_time: new Date(Date.now() - 20 * 60_000),
+      error_code: "LIVE_GATE_SKIPPED",
+      id: 6101,
+      source_message_to: 9004,
+    };
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        if (table === "xy_wap_embed_insight_analysis_policy") {
+          return createSelectBuilder(
+            [
+              {
+                live_analysis_enabled: 1,
+                live_min_interval_minutes: 15,
+                live_min_new_meaningful_messages: 4,
+                min_analysis_messages: 2,
+              },
+            ],
+            table,
+          );
+        }
+
+        if (table === "xy_wap_embed_analysis_run") {
+          return createSelectBuilder([skippedRun], table);
+        }
+
+        if (table === "xy_wap_embed_logical_session_message") {
+          return createSelectBuilder([{ count: 3 }], table);
+        }
+
+        return createSelectBuilder([], table);
+      }),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(
+      repository.shouldCreateLiveAnalyzeJob({
+        occurredAt: 1_780_244_000_000,
+        sessionId: "501",
+        uid: 9001,
+      }),
+    ).resolves.toBe(false);
+
+    const messageQuery = (
+      db.selectFrom as ReturnType<typeof vi.fn>
+    ).mock.results
+      .map((result) => result.value as SelectBuilderStub)
+      .find(
+        (builder) => builder.table === "xy_wap_embed_logical_session_message",
+      );
+    expect(messageQuery?.whereCalls).toContainEqual([
+      "source_message_id",
+      ">",
+      9004,
+    ]);
+  });
+
   it("updates rescan task progress and completion state without a follow-up select", async () => {
     const updates: UpdateBuilderStub[] = [];
     const db = {
@@ -4970,6 +5028,125 @@ describe("MysqlInsightWorkerRepository", () => {
       status: "succeeded",
     });
     expect(analysisRunUpdate?.whereCalls).toContainEqual(["id", "=", 6001]);
+  });
+
+  it("marks live gate skipped runs succeeded without publishing a snapshot", async () => {
+    let analysisRunUpdate: UpdateBuilderStub | undefined;
+    const db = {
+      updateTable: vi.fn((table: string) =>
+        createUpdateBuilder(async () => ({ numAffectedRows: 1n }), {
+          onCreate: (builder) => {
+            if (table === "xy_wap_embed_analysis_run") {
+              analysisRunUpdate = builder;
+            }
+          },
+          table,
+        }),
+      ),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await repository.markAnalysisRunSucceededWithoutSnapshot({
+      code: "LIVE_GATE_SKIPPED",
+      reason: "新增内容没有实质变化",
+      runId: "6002",
+    });
+
+    expect(analysisRunUpdate?.setCalls[0]).toMatchObject({
+      error_code: "LIVE_GATE_SKIPPED",
+      error_message: "新增内容没有实质变化",
+      status: "succeeded",
+    });
+    expect(analysisRunUpdate?.whereCalls).toContainEqual(["id", "=", 6002]);
+  });
+
+  it("does not expose an empty current output when the session has no current snapshot", async () => {
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        if (table === "xy_wap_embed_logical_session as session") {
+          return createSelectBuilder(
+            [
+              {
+                agent_message_count: 1,
+                conversation_id: 301,
+                current_snapshot_id: null,
+                customer_message_count: 1,
+                ended_at: null,
+                generated_at: null,
+                last_message_at: 1_780_245_500_000,
+                message_count: 2,
+                phase: null,
+                problem_confidence: null,
+                problem_detected: null,
+                problem_summary: null,
+                resolution_status: null,
+                session_id: 501,
+                started_at: 1_780_245_000_000,
+                status: null,
+                summary_session_title: null,
+                summary_text: null,
+                third_external_userid: "external-1",
+                third_userid: "agent-1",
+                unresolved_reason: null,
+              },
+            ],
+            table,
+          );
+        }
+
+        return createSelectBuilder([], table);
+      }),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(
+      repository.getCurrentAnalysisOutput({
+        sessionId: "501",
+        uid: 9001,
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("loads the latest live gate skip record for the next gate prompt", async () => {
+    let query: SelectBuilderStub | undefined;
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        query = createSelectBuilder(
+          [
+            {
+              error_message: "上一轮检查没有发现实质变化",
+              source_message_to: 9004,
+            },
+          ],
+          table,
+        );
+        return query;
+      }),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(
+      repository.getLatestLiveGateSkip({
+        afterSourceMessageId: "9003",
+        sessionId: "501",
+        uid: 9001,
+      }),
+    ).resolves.toEqual({
+      changeType: "no_material_change",
+      reason: "上一轮检查没有发现实质变化",
+      sourceMessageTo: "9004",
+    });
+    expect(query?.whereCalls).toContainEqual(["session_id", "=", 501]);
+    expect(query?.whereCalls).toContainEqual(["mode", "=", "live"]);
+    expect(query?.whereCalls).toContainEqual(["status", "=", "succeeded"]);
+    expect(query?.whereCalls).toContainEqual([
+      "error_code",
+      "=",
+      "LIVE_GATE_SKIPPED",
+    ]);
+    expect(query?.whereCalls).toContainEqual(["source_message_to", ">", 9003]);
+    expect(query?.orderByCalls).toContainEqual(["id", "desc"]);
+    expect(query?.limitCalls).toContain(1);
   });
 
   it("batches insight evidence rows into one insert after dimension rows are written", async () => {

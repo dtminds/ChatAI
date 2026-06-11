@@ -106,6 +106,7 @@ export type InsightCurrentSessionRow = {
   startedAt: number;
   summarySessionTitle: string;
   summaryText: string;
+  sourceMessageHighWatermark?: string | null;
   tags?: Array<Pick<InsightDetailResponse["tags"][number], "tagId" | "tagName">>;
   thirdExternalUserId: string;
   thirdUserId: string;

@@ -64,7 +64,6 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_logical_session (
   hard_max_duration_hours INT UNSIGNED NOT NULL COMMENT '创建时使用的最长持续时长',
   analysis_delay_minutes INT UNSIGNED NOT NULL COMMENT '创建时使用的延迟分析时长',
   current_snapshot_id BIGINT UNSIGNED NULL COMMENT '当前生效洞察快照ID，关联xy_wap_embed_session_insight_snapshot.id',
-  final_snapshot_id BIGINT UNSIGNED NULL COMMENT '最终洞察快照ID',
   qa_status TINYINT NOT NULL DEFAULT -1 COMMENT '质检状态，-1未质检，0有未通过，1全部通过',
   message_count INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '消息总数',
   customer_message_count INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '客户消息数',

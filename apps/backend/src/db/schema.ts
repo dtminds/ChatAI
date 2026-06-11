@@ -1115,10 +1115,6 @@ export interface XyWapEmbedLogicalSession {
    */
   ended_at: number | null;
   /**
-   * 最终洞察快照ID
-   */
-  final_snapshot_id: number | null;
-  /**
    * 质检状态，-1未质检，0有未通过，1全部通过
    */
   qa_status: Generated<number>;

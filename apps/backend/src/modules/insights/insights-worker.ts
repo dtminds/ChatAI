@@ -393,7 +393,7 @@ export type InsightWorkerRepositoryPort = {
     uid?: number;
   }): Promise<InsightWorkerMessage[]>;
   listOpenSessionsForLiveAnalysis(input: {
-    activeUids?: Set<number>;
+    activeUids: Set<number>;
     limit: number;
   }): Promise<OpenSessionForLiveAnalysis[]>;
   listUnassignedPreContextMessages(input: {

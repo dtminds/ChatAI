@@ -485,7 +485,7 @@ Manual migration for existing databases:
 
 ```sql
 ALTER TABLE xy_wap_embed_logical_session
-  ADD COLUMN qa_status TINYINT NOT NULL DEFAULT -1 COMMENT '质检状态，-1未质检，0有未通过，1全部通过' AFTER final_snapshot_id,
+  ADD COLUMN qa_status TINYINT NOT NULL DEFAULT -1 COMMENT '质检状态，-1未质检，0有未通过，1全部通过' AFTER current_snapshot_id,
   ADD KEY idx_logical_session_uid_qa_status_started (uid, qa_status, started_at, id);
 ```
 
@@ -574,6 +574,7 @@ ALTER TABLE xy_wap_embed_insight_entity_dictionary
 ## 2026-06-12
 
 - Removed `xy_wap_embed_session_insight_current`; `xy_wap_embed_logical_session.current_snapshot_id` is the only current insight snapshot pointer.
+- Removed unused `xy_wap_embed_logical_session.final_snapshot_id`; final analysis snapshots are identified by `xy_wap_embed_session_insight_snapshot.phase = 'final'` and published through `current_snapshot_id`.
 - Added `xy_wap_embed_logical_session.idx_logical_session_current_snapshot (current_snapshot_id, id)` for topic-to-session drilldowns that resolve sessions from snapshot-scoped result rows.
 
 Manual migration for existing databases:
@@ -619,6 +620,10 @@ ALTER TABLE xy_wap_embed_logical_session
 
 -- 5. Drop the old current pointer table after deployment.
 DROP TABLE IF EXISTS xy_wap_embed_session_insight_current;
+
+-- 6. Drop the unused final snapshot pointer.
+ALTER TABLE xy_wap_embed_logical_session
+  DROP COLUMN final_snapshot_id;
 
 ANALYZE TABLE xy_wap_embed_logical_session;
 ```

@@ -629,19 +629,20 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
   }
 
   async listOpenSessionsForLiveAnalysis(input: {
-    activeUids?: Set<number>;
+    activeUids: Set<number>;
     limit: number;
   }) {
-    let query = this.db
+    if (input.activeUids.size === 0) {
+      return [];
+    }
+
+    const query = this.db
       .selectFrom("xy_wap_embed_logical_session")
       .select(["id", "uid"])
       .where("status", "=", "open")
+      .where("uid", "in", Array.from(input.activeUids))
       .orderBy("last_message_at", "asc")
       .limit(input.limit);
-
-    if (input.activeUids && input.activeUids.size > 0) {
-      query = query.where("uid", "in", Array.from(input.activeUids));
-    }
 
     const rows = await query.execute() as Array<{
       id: number | string;

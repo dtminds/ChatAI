@@ -330,7 +330,6 @@ xy_wap_embed_logical_session
 - hard_max_duration_hours
 - analysis_delay_minutes
 - current_snapshot_id nullable
-- final_snapshot_id nullable
 - message_count
 - customer_message_count
 - agent_message_count
@@ -405,7 +404,7 @@ final analysis:
 - 且超过 analysis_delay_minutes
 ```
 
-同一 session 可以多次分析，但业务查询只展示当前有效 snapshot。final analysis 成功后，`final_snapshot_id` 指向最终结果。若后续迟到消息导致结果过期，session 标记为 `stale` 并进入 reanalysis。
+同一 session 可以多次分析，但业务查询只展示当前有效 snapshot。final analysis 成功后发布 `phase=final` 的 snapshot，并更新 `current_snapshot_id` 指向该结果。若后续迟到消息导致结果过期，session 标记为 `stale` 并进入 reanalysis。
 
 长会话超过模型上下文时，在分析层做 context chunk 和 rolling summary，不拆分业务逻辑会话。
 

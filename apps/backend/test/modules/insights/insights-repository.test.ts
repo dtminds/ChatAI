@@ -4367,6 +4367,22 @@ describe("MysqlInsightWorkerRepository", () => {
     expect(builders[0]?.limitCalls).toEqual([100]);
   });
 
+  it("does not scan live-analysis open sessions without active uid scope", async () => {
+    const db = {
+      selectFrom: vi.fn(),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(
+      repository.listOpenSessionsForLiveAnalysis({
+        activeUids: new Set(),
+        limit: 100,
+      }),
+    ).resolves.toEqual([]);
+
+    expect(db.selectFrom).not.toHaveBeenCalled();
+  });
+
   it("loads enabled feature configs in scan batches ordered by oldest cursor update", async () => {
     const builders: SelectBuilderStub[] = [];
     const db = {

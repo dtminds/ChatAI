@@ -18,6 +18,13 @@ describe("database schema document", () => {
 
     expect(actionItemTable).not.toContain("idx_action_status_priority");
   });
+
+  it("keeps current_snapshot_id as the only logical session snapshot pointer", () => {
+    const logicalSessionTable = extractCreateTable(schemaSql, "xy_wap_embed_logical_session");
+
+    expect(logicalSessionTable).toContain("current_snapshot_id BIGINT UNSIGNED NULL");
+    expect(logicalSessionTable).not.toContain("final_snapshot_id");
+  });
 });
 
 function extractCreateTable(sql: string, tableName: string) {

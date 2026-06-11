@@ -389,6 +389,38 @@ describe("MysqlWorkbenchService", () => {
     expect(javaClient.listUserHistoryAnswers).not.toHaveBeenCalled();
   });
 
+  it("loads chat record detail after checking conversation access", async () => {
+    const javaClient = createJavaClient();
+    const canAccessSeat = vi.fn().mockResolvedValue(true);
+    const getChatRecordDetail = vi.fn().mockResolvedValue({
+      messageId: "parent-chatrecord-msgid",
+      messages: [],
+    });
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat,
+        getChatRecordDetail,
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "101",
+          uid: 9001,
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.getChatRecordDetail("101", "88", "parent-chatrecord-msgid"),
+    ).resolves.toEqual({
+      messageId: "parent-chatrecord-msgid",
+      messages: [],
+    });
+    expect(canAccessSeat).toHaveBeenCalledWith("101", "12");
+    expect(getChatRecordDetail).toHaveBeenCalledWith("88", "parent-chatrecord-msgid");
+  });
+
   it("keeps the latest message page available when history smart reply lookup fails", async () => {
     const javaClient = createJavaClient();
     const logger = {

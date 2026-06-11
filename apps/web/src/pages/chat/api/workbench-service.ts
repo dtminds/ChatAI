@@ -25,6 +25,7 @@ import {
   type WorkbenchHistoryMessagePageDto,
   type WorkbenchHistoryMessageQuery,
   type WorkbenchHistoryMessageScope,
+  type WorkbenchChatRecordDetailResponse,
   type WorkbenchGroupMembersResponse,
   type WorkbenchSubUserDto,
   type WorkbenchMessageDto,
@@ -128,6 +129,10 @@ export type WorkbenchService = {
   getMessagesByIds: (
     input: WorkbenchMessageQueryByIdsRequest,
   ) => Promise<WorkbenchMessageQueryByIdsResponse>;
+  getChatRecordDetail: (input: {
+    conversationId: string;
+    messageId: string;
+  }) => Promise<WorkbenchChatRecordDetailResponse>;
   revokeMessage: (input: {
     conversationId: string;
     messageId: string;
@@ -376,6 +381,12 @@ export function createMockWorkbenchService(): WorkbenchService {
         messages: clone(
           messages.filter((message) => normalizedIds.has(message.messageId)),
         ),
+      };
+    },
+    async getChatRecordDetail(input) {
+      return {
+        messageId: input.messageId,
+        messages: [],
       };
     },
     async revokeMessage(input) {
@@ -934,6 +945,16 @@ export function createHttpWorkbenchService(): WorkbenchService {
       return http.post<WorkbenchMessageQueryByIdsResponse, WorkbenchMessageQueryByIdsRequest>(
         "/server/messages/query-by-ids",
         input,
+      );
+    },
+    getChatRecordDetail(input) {
+      return http.get<WorkbenchChatRecordDetailResponse>(
+        `/server/messages/${encodeURIComponent(input.messageId)}/chat-record`,
+        {
+          params: {
+            conversation_id: input.conversationId,
+          },
+        },
       );
     },
     revokeMessage(input) {
@@ -1512,6 +1533,12 @@ function buildContent(message: Message) {
         quoteMsgId: message.content.quoteMsgId,
         quotedMessage: message.content.quotedMessage,
         text: message.content.text,
+      };
+    case "chatrecord":
+      return {
+        msgContent: message.content.msgContent,
+        msgTitle: message.content.msgTitle,
+        unsupportedDisplayText: message.content.unsupportedDisplayText,
       };
   }
 }

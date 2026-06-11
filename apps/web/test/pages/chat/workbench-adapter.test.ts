@@ -650,6 +650,30 @@ describe("adaptMessage", () => {
       },
     });
   });
+
+  it("adapts chat record message card content", () => {
+    expect(
+      adaptMessage(
+        {
+          ...messageDto,
+          content: {
+            msgContent: ["范双飞：123", "缪勇飞：123", "缪勇飞：[图片]"],
+            msgTitle: "缪勇飞和范双飞的聊天记录",
+          },
+          contentType: "chatrecord",
+        },
+        customerProfilesById,
+        accountsById,
+        me,
+      ),
+    ).toMatchObject({
+      content: {
+        msgContent: ["范双飞：123", "缪勇飞：123", "缪勇飞：[图片]"],
+        msgTitle: "缪勇飞和范双飞的聊天记录",
+        type: "chatrecord",
+      },
+    });
+  });
 });
 
 const conversationDto: WorkbenchConversationSummaryDto = {

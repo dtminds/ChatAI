@@ -321,6 +321,8 @@ function mapContentType(msgtype: string): WorkbenchMessageContentType {
       return "sphfeed";
     case "weapp":
       return "mini-program";
+    case "chatrecord":
+      return "chatrecord";
     case "quote":
       return "quote";
     case "revoke":
@@ -347,6 +349,10 @@ function parseMessageContent(
       quotedMessage: quotePreview,
       text: isRecord(parsed) ? readStringField(parsed, "content") : "",
     };
+  }
+
+  if (msgtype === "chatrecord") {
+    return readChatRecordMessageContent(parsed);
   }
 
   if (msgtype === "text") {
@@ -608,6 +614,39 @@ function readRevokeMessageContent(parsed: unknown, rawContent: string | null) {
   };
 }
 
+function readChatRecordMessageContent(parsed: unknown) {
+  if (!isRecord(parsed)) {
+    return buildChatRecordFallbackContent();
+  }
+
+  const msgTitle = readStringField(parsed, "msgTitle").trim();
+  const unsupportedDisplayText = readStringField(parsed, "unsupportedDisplayText").trim();
+  const msgContent = Array.isArray(parsed.msgContent)
+    ? parsed.msgContent.filter((item): item is string => typeof item === "string")
+    : [];
+
+  if (!msgTitle && msgContent.length === 0 && !unsupportedDisplayText) {
+    return buildChatRecordFallbackContent();
+  }
+
+  return {
+    msgContent: msgContent.length > 0
+      ? msgContent
+      : unsupportedDisplayText
+        ? [unsupportedDisplayText]
+        : ["[聊天记录]"],
+    msgTitle: msgTitle || "聊天记录",
+    ...(unsupportedDisplayText ? { unsupportedDisplayText } : {}),
+  };
+}
+
+function buildChatRecordFallbackContent() {
+  return {
+    msgContent: ["[聊天记录]"],
+    msgTitle: "聊天记录",
+  };
+}
+
 export function getQuoteMessageAuditId(row: MessageRow) {
   if (row.msgtype !== "quote") {
     return undefined;
@@ -726,6 +765,8 @@ function reverseMapContentType(contentType: WorkbenchMessageContentType) {
       return "link";
     case "mini-program":
       return "weapp";
+    case "chatrecord":
+      return "chatrecord";
     case "contact-card":
       return "card";
     default:

@@ -240,6 +240,13 @@ export type QuoteMessageContent = {
   quotedMessage?: QuotedMessagePreviewContent;
 };
 
+export type ChatRecordMessageContent = {
+  type: "chatrecord";
+  msgTitle: string;
+  msgContent: string[];
+  unsupportedDisplayText?: string;
+};
+
 export type MessageContent =
   | SystemMessageContent
   | RevokeMessageContent
@@ -255,7 +262,8 @@ export type MessageContent =
   | SphFeedMessageContent
   | SolitaireMessageContent
   | RedPacketMessageContent
-  | QuoteMessageContent;
+  | QuoteMessageContent
+  | ChatRecordMessageContent;
 
 type BaseMessage = {
   id: string;
@@ -298,7 +306,8 @@ export type ChatMessage = BaseMessage & {
     | SphFeedMessageContent
     | SolitaireMessageContent
     | RedPacketMessageContent
-    | QuoteMessageContent;
+    | QuoteMessageContent
+    | ChatRecordMessageContent;
 };
 
 export type Message = SystemMessage | ChatMessage;

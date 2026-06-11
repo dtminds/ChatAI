@@ -365,6 +365,13 @@ function adaptChatMessageContent(
         text: String(content.text ?? ""),
         type: "quote",
       };
+    case "chatrecord":
+      return {
+        msgContent: adaptChatRecordContentLines(content.msgContent),
+        msgTitle: String(content.msgTitle ?? "聊天记录"),
+        type: "chatrecord",
+        unsupportedDisplayText: asOptionalString(content.unsupportedDisplayText),
+      };
     case "text":
     case "system":
     case "revoke":
@@ -416,8 +423,19 @@ function isQuotedPreviewContentType(
     "redpacket",
     "sphfeed",
     "mini-program",
+    "chatrecord",
     "quote",
   ].includes(value);
+}
+
+function adaptChatRecordContentLines(value: unknown) {
+  if (!Array.isArray(value)) {
+    return ["[聊天记录]"];
+  }
+
+  const lines = value.filter((item): item is string => typeof item === "string");
+
+  return lines.length > 0 ? lines : ["[聊天记录]"];
 }
 
 function adaptMessageStatus(status: WorkbenchMessageDto["status"]): MessageStatus {

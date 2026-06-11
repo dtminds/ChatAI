@@ -1,3 +1,4 @@
+export { ChatRecordMessageCard } from "@/pages/chat/components/message/chatrecord";
 export { ContactCardMessageCard } from "@/pages/chat/components/message/contact-card";
 export { FileMessageCard } from "@/pages/chat/components/message/file";
 export {

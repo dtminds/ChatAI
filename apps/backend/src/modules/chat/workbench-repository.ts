@@ -9,6 +9,7 @@ import {
   type WorkbenchHistoryMessageScope,
   type WorkbenchMessageQueryByIdsResponse,
   type WorkbenchMessagePageDto,
+  type WorkbenchChatRecordDetailResponse,
   type WorkbenchMessageUpdateEventDto,
   type WorkbenchSeatDto,
   type WorkbenchCustomerListResponse,
@@ -322,6 +323,17 @@ type CustomerSeatHydrationRow = {
   third_user_name: string | null;
   third_userid: string;
   uid: number | string;
+};
+
+type ChatRecordDetailRow = {
+  avatar: string | null;
+  content: string | null;
+  id: number | string;
+  msgid: string;
+  msgtime: Date | number | string;
+  msgtype: string;
+  name: string | null;
+  status?: number | string | null;
 };
 
 export class WorkbenchRepository {
@@ -844,6 +856,115 @@ export class WorkbenchRepository {
     );
 
     return { messages };
+  }
+
+  async getChatRecordDetail(
+    conversationId: string,
+    messageId: string,
+  ): Promise<WorkbenchChatRecordDetailResponse | undefined> {
+    const conversationNumericId = parseMySqlId(conversationId);
+    const normalizedMessageId = messageId.trim();
+
+    if (conversationNumericId == null || !normalizedMessageId) {
+      return undefined;
+    }
+
+    const conversation = await this.db
+      .selectFrom("xy_wap_embed_conversation as conversation")
+      .select([
+        "conversation.id as conversation_id",
+        "conversation.chat_type as chat_type",
+        "conversation.third_external_userid as conversation_external_id",
+        "conversation.third_group_id as conversation_group_id",
+        "conversation.third_userid as third_userid",
+        "conversation.platform as platform",
+        "conversation.uid as uid",
+      ])
+      .where("conversation.id", "=", conversationNumericId)
+      .where("conversation.biz_status", "=", 1)
+      .executeTakeFirst();
+
+    if (!conversation) {
+      return undefined;
+    }
+
+    let parentQuery = this.db
+      .selectFrom("xy_wap_embed_msg_audit_info as message")
+      .select([
+        "message.id as id",
+        "message.msgid as msgid",
+        "message.msgtype as msgtype",
+      ])
+      .where("message.uid", "=", conversation.uid)
+      .where("message.platform", "=", conversation.platform)
+      .where("message.third_user_id", "=", conversation.third_userid)
+      .where("message.msgid", "=", normalizedMessageId);
+
+    if (conversation.chat_type === CHAT_TYPE_GROUP) {
+      parentQuery = parentQuery.where(
+        "message.third_group_id",
+        "=",
+        conversation.conversation_group_id,
+      );
+    } else {
+      parentQuery = parentQuery.where(
+        "message.third_external_id",
+        "=",
+        conversation.conversation_external_id,
+      );
+    }
+
+    const parentMessage = await parentQuery.executeTakeFirst();
+
+    if (!parentMessage || parentMessage.msgtype !== "chatrecord") {
+      return undefined;
+    }
+
+    const detailRows = await this.db
+      .selectFrom("xy_wap_embed_msg_audit_chat_record as record")
+      .select([
+        "record.id as id",
+        "record.msgid as msgid",
+        "record.name as name",
+        "record.avatar as avatar",
+        "record.content as content",
+        "record.msgtype as msgtype",
+        "record.msgtime as msgtime",
+        "record.status as status",
+      ])
+      .where("record.msgid", "=", normalizedMessageId)
+      .where("record.uid", "=", conversation.uid)
+      .where("record.platform", "=", conversation.platform)
+      .orderBy("record.msgtime", "asc")
+      .orderBy("record.id", "asc")
+      .execute() as ChatRecordDetailRow[];
+
+    return {
+      messageId: normalizedMessageId,
+      messages: detailRows.map((row) =>
+        mapMessageRow({
+          chat_type: conversation.chat_type,
+          content: row.content,
+          conversation_external_id: conversation.conversation_external_id,
+          conversation_group_id: conversation.conversation_group_id,
+          conversation_id: conversation.conversation_id,
+          from_type: 2,
+          id: row.id,
+          msgid: `chatrecord:${normalizedMessageId}:${row.id}`,
+          msgtime: row.msgtime,
+          msgtype: row.msgtype,
+          opt_no: null,
+          seat_id: 0,
+          sender_avatar: row.avatar ?? "",
+          sender_name: row.name ?? "",
+          status: row.status,
+          third_external_id: conversation.conversation_external_id,
+          third_from_id: row.name ?? "",
+          third_group_id: conversation.conversation_group_id,
+          third_user_id: conversation.third_userid,
+        }),
+      ),
+    };
   }
 
   async listSeats(subUserId: string) {

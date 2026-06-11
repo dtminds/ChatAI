@@ -20,12 +20,14 @@ type VideoMessageCardProps = {
   content: VideoMessageContent;
   onDownloadClick?: () => void;
   onPlayClick?: () => void;
+  showDownloadAction?: boolean;
 };
 
 export function VideoMessageCard({
   content,
   onDownloadClick,
   onPlayClick,
+  showDownloadAction = true,
 }: VideoMessageCardProps) {
   const coverImageUrl = content.coverImageUrl?.trim() ?? "";
   const [loadedCoverSize, setLoadedCoverSize] = useState<VideoSize | null>(null);
@@ -86,7 +88,7 @@ export function VideoMessageCard({
       )}
       <div className="absolute inset-0 bg-black/5" />
 
-      {isDownloading ? (
+      {showDownloadAction && isDownloading ? (
         <span
           aria-label="视频下载中"
           className="absolute left-1/2 top-1/2 z-1 inline-flex size-12 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-white/90 bg-black/15 text-white shadow-[0_2px_12px_var(--shadow-medium)] backdrop-blur-[1px]"
@@ -94,7 +96,7 @@ export function VideoMessageCard({
         >
           <Spinner variant="classic" size={24} strokeWidth={2.2} className="text-white" />
         </span>
-      ) : needsTransfer ? (
+      ) : showDownloadAction && needsTransfer ? (
         <button
           aria-label={`下载视频：${content.alt}`}
           className="absolute left-1/2 top-1/2 z-1 inline-flex size-12 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-white/90 bg-black/10 text-white shadow-[0_2px_12px_var(--shadow-medium)] outline-none backdrop-blur-[1px] transition-colors hover:bg-black/20 focus-visible:ring-4 focus-visible:ring-white/35"

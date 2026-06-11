@@ -1824,6 +1824,12 @@ function buildQuotedMessagePreview(
         fallbackText: "[引用消息]",
         title: message.content.text,
       };
+    case "chatrecord":
+      return {
+        ...basePreview,
+        fallbackText: "[聊天记录]",
+        title: message.content.msgTitle,
+      };
   }
 }
 

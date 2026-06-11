@@ -82,6 +82,10 @@ const MessageDownloadParamsSchema = Type.Object({
   messageId: Type.String(),
 });
 
+const MessageChatRecordQuerySchema = Type.Object({
+  conversation_id: Type.String(),
+});
+
 const MessageRevokeBodySchema = Type.Object({
   conversationId: Type.String(),
 });
@@ -180,6 +184,7 @@ const WorkbenchMessageContentTypeSchema = Type.Union([
   Type.Literal("redpacket"),
   Type.Literal("sphfeed"),
   Type.Literal("mini-program"),
+  Type.Literal("chatrecord"),
   Type.Literal("quote"),
 ]);
 
@@ -325,6 +330,7 @@ type MediaUploadCredentialBody = Static<typeof MediaUploadCredentialBodySchema>;
 type VoicePlaybackConfirmBody = Static<typeof VoicePlaybackConfirmBodySchema>;
 type VoiceTranscriptionBody = Static<typeof VoiceTranscriptionBodySchema>;
 type MessageDownloadParams = Static<typeof MessageDownloadParamsSchema>;
+type MessageChatRecordQuery = Static<typeof MessageChatRecordQuerySchema>;
 type MessageRevokeBody = Static<typeof MessageRevokeBodySchema>;
 type MessageDownloadStatusBody = Static<typeof MessageDownloadStatusBodySchema>;
 type MessageQueryByIdsBody = Static<typeof MessageQueryByIdsBodySchema>;
@@ -541,6 +547,26 @@ export async function registerChatRoutes(app: FastifyInstance) {
         getSubUserId(request),
         request.body.conversationId,
         request.body.messageIds,
+      ),
+  );
+
+  app.get<{
+    Params: MessageDownloadParams;
+    Querystring: MessageChatRecordQuery;
+  }>(
+    "/api/server/messages/:messageId/chat-record",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        params: MessageDownloadParamsSchema,
+        querystring: MessageChatRecordQuerySchema,
+      },
+    },
+    async (request) =>
+      getWorkbenchService(app, request).getChatRecordDetail(
+        getSubUserId(request),
+        request.query.conversation_id,
+        request.params.messageId,
       ),
   );
 

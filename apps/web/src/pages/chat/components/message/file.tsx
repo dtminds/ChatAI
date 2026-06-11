@@ -10,6 +10,7 @@ import type { FileMessageContent } from "@/pages/chat/chat-types";
 type FileMessageCardProps = {
   content: FileMessageContent;
   onDownloadClick?: () => void;
+  showDownloadAction?: boolean;
 };
 
 type FileExtensionBadgeProps = {
@@ -74,6 +75,7 @@ const DEFAULT_FILE_TYPE_ICON = {
 export function FileMessageCard({
   content,
   onDownloadClick,
+  showDownloadAction = true,
 }: FileMessageCardProps) {
   const isDownloading = content.downloadStatus === "ing";
 
@@ -100,7 +102,7 @@ export function FileMessageCard({
           <span>{content.sourceLabel ?? "文件"}</span>
         </span>
 
-        {isDownloading ? (
+        {showDownloadAction && isDownloading ? (
           <span
             aria-label="文件下载中"
             className="inline-flex items-center gap-1 font-medium text-muted-foreground"
@@ -109,7 +111,7 @@ export function FileMessageCard({
             <Spinner variant="classic" size={14} />
             提取中
           </span>
-        ) : (
+        ) : showDownloadAction ? (
           <button
             aria-label={`下载文件：${content.fileName}`}
             className="inline-flex items-center gap-1 rounded-[4px] font-medium text-foreground outline-none transition-colors hover:text-primary focus-visible:ring-2 focus-visible:ring-ring/35"
@@ -119,7 +121,7 @@ export function FileMessageCard({
             <HugeiconsIcon icon={DownloadCircle01Icon} size={14} strokeWidth={1.8} />
             下载
           </button>
-        )}
+        ) : null}
       </div>
     </div>
   );

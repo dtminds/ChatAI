@@ -51,6 +51,7 @@ export type WorkbenchMessageContentType =
   | "redpacket"
   | "sphfeed"
   | "mini-program"
+  | "chatrecord"
   | "quote";
 
 export type WorkbenchQuotedMessagePreviewDto = {
@@ -291,6 +292,11 @@ export type WorkbenchMessageQueryByIdsRequest = {
 };
 
 export type WorkbenchMessageQueryByIdsResponse = {
+  messages: WorkbenchMessageDto[];
+};
+
+export type WorkbenchChatRecordDetailResponse = {
+  messageId: string;
   messages: WorkbenchMessageDto[];
 };
 

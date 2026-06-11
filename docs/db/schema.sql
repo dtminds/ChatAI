@@ -398,6 +398,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_evidence (
 CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_analysis_policy (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  enabled TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '是否启用，1启用0禁用',
   live_analysis_enabled TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '是否启用实时分析',
   live_min_new_meaningful_messages INT UNSIGNED NOT NULL COMMENT '触发实时分析的最少新增有效消息数',
   live_min_interval_minutes INT UNSIGNED NOT NULL COMMENT '实时分析最小间隔分钟数',

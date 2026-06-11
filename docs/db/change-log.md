@@ -576,6 +576,7 @@ ALTER TABLE xy_wap_embed_insight_entity_dictionary
 - Removed `xy_wap_embed_session_insight_current`; `xy_wap_embed_logical_session.current_snapshot_id` is the only current insight snapshot pointer.
 - Removed unused `xy_wap_embed_logical_session.final_snapshot_id`; final analysis snapshots are identified by `xy_wap_embed_session_insight_snapshot.phase = 'final'` and published through `current_snapshot_id`.
 - Added `xy_wap_embed_logical_session.idx_logical_session_current_snapshot (current_snapshot_id, id)` for topic-to-session drilldowns that resolve sessions from snapshot-scoped result rows.
+- Added `xy_wap_embed_insight_analysis_policy.enabled`, which is used by API and worker queries to ignore disabled analysis-policy rows.
 
 Manual migration for existing databases:
 
@@ -624,6 +625,9 @@ DROP TABLE IF EXISTS xy_wap_embed_session_insight_current;
 -- 6. Drop the unused final snapshot pointer.
 ALTER TABLE xy_wap_embed_logical_session
   DROP COLUMN final_snapshot_id;
+
+ALTER TABLE xy_wap_embed_insight_analysis_policy
+  ADD COLUMN enabled TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '是否启用，1启用0禁用' AFTER uid;
 
 ANALYZE TABLE xy_wap_embed_logical_session;
 ```

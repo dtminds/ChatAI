@@ -25,6 +25,12 @@ describe("database schema document", () => {
     expect(logicalSessionTable).toContain("current_snapshot_id BIGINT UNSIGNED NULL");
     expect(logicalSessionTable).not.toContain("final_snapshot_id");
   });
+
+  it("keeps analysis policy enabled column used by runtime queries", () => {
+    const analysisPolicyTable = extractCreateTable(schemaSql, "xy_wap_embed_insight_analysis_policy");
+
+    expect(analysisPolicyTable).toMatch(/\n  enabled TINYINT UNSIGNED NOT NULL DEFAULT 1\b/);
+  });
 });
 
 function extractCreateTable(sql: string, tableName: string) {

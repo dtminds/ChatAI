@@ -1,5 +1,7 @@
 import {
   AiScanIcon,
+  ArrowLeft01Icon,
+  ArrowRight01Icon,
   Cancel01Icon,
   Copy01Icon,
 } from "@hugeicons/core-free-icons";
@@ -30,6 +32,7 @@ import {
   MessageMediaFallback,
 } from "@/pages/chat/components/message/media-fallback";
 import { getOptimizedMessageImageUrl } from "@/pages/chat/components/message/url";
+import { useConversationImageGallery } from "@/pages/chat/components/message/conversation-image-gallery-context";
 import {
   recognizeImageText,
   type ImageOcrPhase,
@@ -38,9 +41,11 @@ import {
 
 type ImageMessageCardProps = {
   content: ImageMessageContent;
+  messageId?: string;
 };
 
-export function ImageMessageCard({ content }: ImageMessageCardProps) {
+export function ImageMessageCard({ content, messageId }: ImageMessageCardProps) {
+  const gallery = useConversationImageGallery();
   const mediaSize = getValidImageSize(content);
   const imageUrl = content.imageUrl.trim();
   const isEmotion = content.variant === "emotion";
@@ -51,27 +56,48 @@ export function ImageMessageCard({ content }: ImageMessageCardProps) {
     );
   }
 
+  const triggerClassName =
+    "relative isolate inline-block overflow-hidden rounded-[8px] border border-border/40 bg-muted-foreground/10 p-0 outline-none transition-[border-color,filter] hover:brightness-[0.98] focus-visible:ring-4 focus-visible:ring-ring/25";
+  const triggerStyle = isEmotion ? emotionConstraintStyle : imageConstraintStyle;
+  const thumbnail = (
+    <LoadableMessageImage
+      alt={content.alt}
+      className={
+        isEmotion
+          ? "block h-auto max-h-[120px] w-auto max-w-full object-contain"
+          : "block h-auto max-h-[360px] w-auto max-w-full object-cover"
+      }
+      fallback={<ImageMessageFallback alt={content.alt} />}
+      height={mediaSize?.height}
+      loading="lazy"
+      src={getOptimizedMessageImageUrl(imageUrl)}
+      width={mediaSize?.width}
+    />
+  );
+
+  if (gallery && messageId) {
+    return (
+      <button
+        aria-label={`查看大图：${content.alt}`}
+        className={triggerClassName}
+        onClick={() => gallery.openGallery(messageId)}
+        style={triggerStyle}
+        type="button"
+      >
+        {thumbnail}
+      </button>
+    );
+  }
+
   return (
     <ImagePreviewDialog
       alt={content.alt}
       imageUrl={imageUrl}
       ocrEnabled={!isEmotion}
-      triggerClassName="relative isolate inline-block overflow-hidden rounded-[8px] border border-border/40 bg-muted-foreground/10 p-0 outline-none transition-[border-color,filter] hover:brightness-[0.98] focus-visible:ring-4 focus-visible:ring-ring/25"
-      triggerStyle={isEmotion ? emotionConstraintStyle : imageConstraintStyle}
+      triggerClassName={triggerClassName}
+      triggerStyle={triggerStyle}
     >
-      <LoadableMessageImage
-        alt={content.alt}
-        className={
-          isEmotion
-            ? "block h-auto max-h-[120px] w-auto max-w-full object-contain"
-            : "block h-auto max-h-[360px] w-auto max-w-full object-cover"
-        }
-        fallback={<ImageMessageFallback alt={content.alt} />}
-        height={mediaSize?.height}
-        loading="lazy"
-        src={getOptimizedMessageImageUrl(imageUrl)}
-        width={mediaSize?.width}
-      />
+      {thumbnail}
     </ImagePreviewDialog>
   );
 }
@@ -86,11 +112,22 @@ function ImageMessageFallback({ alt }: { alt: string }) {
   );
 }
 
-type ImagePreviewDialogProps = {
+export type ImageGalleryItem = {
   alt: string;
-  children: ReactNode;
   imageUrl: string;
   ocrEnabled?: boolean;
+};
+
+type ImagePreviewDialogProps = {
+  alt: string;
+  children?: ReactNode;
+  galleryIndex?: number;
+  galleryItems?: ImageGalleryItem[];
+  imageUrl: string;
+  ocrEnabled?: boolean;
+  onGalleryIndexChange?: (index: number) => void;
+  onOpenChange?: (open: boolean) => void;
+  open?: boolean;
   triggerClassName?: string;
   triggerStyle?: CSSProperties;
 };
@@ -98,12 +135,43 @@ type ImagePreviewDialogProps = {
 export function ImagePreviewDialog({
   alt,
   children,
+  galleryIndex = 0,
+  galleryItems,
   imageUrl,
   ocrEnabled = true,
+  onGalleryIndexChange,
+  onOpenChange,
+  open,
   triggerClassName,
   triggerStyle,
 }: ImagePreviewDialogProps) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isControlled = open !== undefined;
+  const isOpen = isControlled ? open : internalOpen;
+  const setIsOpen = (nextOpen: boolean) => {
+    if (isControlled) {
+      onOpenChange?.(nextOpen);
+      return;
+    }
+
+    setInternalOpen(nextOpen);
+  };
+  const gallery = galleryItems && galleryItems.length > 0 ? galleryItems : null;
+  const currentGalleryIndex = gallery
+    ? clampGalleryIndex(galleryIndex, gallery.length)
+    : 0;
+  const activePreview = gallery?.[currentGalleryIndex] ?? {
+    alt,
+    imageUrl,
+    ocrEnabled,
+  };
+  const previewAlt = activePreview.alt;
+  const previewImageUrl = activePreview.imageUrl;
+  const previewOcrEnabled = activePreview.ocrEnabled ?? ocrEnabled;
+  const canShowGalleryNavigation = Boolean(gallery && gallery.length > 1);
+  const canGoPrevious = canShowGalleryNavigation && currentGalleryIndex > 0;
+  const canGoNext =
+    canShowGalleryNavigation && currentGalleryIndex < (gallery?.length ?? 0) - 1;
   const [ocrStatus, setOcrStatus] = useState<"idle" | "loading" | "success" | "error">(
     "idle",
   );
@@ -146,6 +214,52 @@ export function ImagePreviewDialog({
     setOcrError("");
   }, [isOpen]);
 
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    ocrRequestIdRef.current += 1;
+    setOcrStatus("idle");
+    setOcrPhase("loading-model");
+    setActiveOcrRegionId(null);
+    setScrollTargetOcrRegionId(null);
+    setPreviewImageSize(null);
+    setOcrResult(null);
+    setOcrError("");
+  }, [isOpen, previewImageUrl]);
+
+  useEffect(() => {
+    if (!isOpen || !canShowGalleryNavigation) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "ArrowLeft" && canGoPrevious) {
+        event.preventDefault();
+        onGalleryIndexChange?.(currentGalleryIndex - 1);
+      }
+
+      if (event.key === "ArrowRight" && canGoNext) {
+        event.preventDefault();
+        onGalleryIndexChange?.(currentGalleryIndex + 1);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [
+    canGoNext,
+    canGoPrevious,
+    canShowGalleryNavigation,
+    currentGalleryIndex,
+    isOpen,
+    onGalleryIndexChange,
+  ]);
+
   const handleRecognizeText = async () => {
     if (ocrStatus === "loading") {
       return;
@@ -166,8 +280,8 @@ export function ImagePreviewDialog({
       }
 
       const nextResult = await recognizeImageText({
-        alt,
-        imageUrl,
+        alt: previewAlt,
+        imageUrl: previewImageUrl,
         onPhaseChange: (phase) => {
           if (isMountedRef.current && ocrRequestIdRef.current === requestId) {
             setOcrPhase(phase);
@@ -204,14 +318,16 @@ export function ImagePreviewDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger
-        aria-label={`查看大图：${alt}`}
-        className={triggerClassName}
-        style={triggerStyle}
-        type="button"
-      >
-        {children}
-      </DialogTrigger>
+      {children ? (
+        <DialogTrigger
+          aria-label={`查看大图：${alt}`}
+          className={triggerClassName}
+          style={triggerStyle}
+          type="button"
+        >
+          {children}
+        </DialogTrigger>
+      ) : null}
       <DialogPortal>
         {isOpen ? (
           <DialogClose asChild>
@@ -245,34 +361,73 @@ export function ImagePreviewDialog({
           >
             <div className="flex min-w-0 flex-col items-center justify-center gap-3">
               <div
-                className="relative flex min-h-0 items-center justify-center"
+                className="relative flex min-h-0 items-center justify-center gap-3"
                 data-testid="image-preview-image-frame"
                 onClick={(event) => event.stopPropagation()}
               >
-                <img
-                  alt={alt}
-                  className="max-h-[calc(100vh-8.5rem)] max-w-[calc(100vw-2rem)] rounded-[8px] object-contain shadow-[0_18px_60px_var(--shadow-strong)] data-[ocr-panel=open]:max-w-[calc(100vw-25rem)]"
-                  data-ocr-panel={isOcrPanelOpen ? "open" : "closed"}
-                  data-testid="image-preview-full"
-                  onLoad={handlePreviewImageLoad}
-                  ref={previewImageRef}
-                  src={imageUrl}
-                />
-                {ocrResult && previewImageSize ? (
-                  <ImageOcrOverlay
-                    activeRegionId={activeOcrRegionId}
-                    imageSize={previewImageSize}
-                    regions={ocrResult.regions}
-                    scrollToRegion={setScrollTargetOcrRegionId}
-                    setActiveRegionId={setActiveOcrRegionId}
+                {canShowGalleryNavigation ? (
+                  <Button
+                    aria-label="上一张图片"
+                    className="shrink-0 bg-black/35 text-white opacity-100 shadow-[0_10px_30px_var(--shadow-strong)] backdrop-blur hover:bg-black/55 hover:text-white disabled:opacity-40"
+                    data-testid="image-preview-gallery-prev"
+                    disabled={!canGoPrevious}
+                    onClick={() => onGalleryIndexChange?.(currentGalleryIndex - 1)}
+                    size="icon"
+                    type="button"
+                    variant="ghost"
+                  >
+                    <HugeiconsIcon icon={ArrowLeft01Icon} size={18} strokeWidth={2} />
+                  </Button>
+                ) : null}
+                <div className="relative flex min-h-0 items-center justify-center">
+                  <img
+                    alt={previewAlt}
+                    className="max-h-[calc(100vh-8.5rem)] max-w-[calc(100vw-2rem)] rounded-[8px] object-contain shadow-[0_18px_60px_var(--shadow-strong)] data-[ocr-panel=open]:max-w-[calc(100vw-25rem)]"
+                    data-ocr-panel={isOcrPanelOpen ? "open" : "closed"}
+                    data-testid="image-preview-full"
+                    key={previewImageUrl}
+                    onLoad={handlePreviewImageLoad}
+                    ref={previewImageRef}
+                    src={previewImageUrl}
                   />
+                  {ocrResult && previewImageSize ? (
+                    <ImageOcrOverlay
+                      activeRegionId={activeOcrRegionId}
+                      imageSize={previewImageSize}
+                      regions={ocrResult.regions}
+                      scrollToRegion={setScrollTargetOcrRegionId}
+                      setActiveRegionId={setActiveOcrRegionId}
+                    />
+                  ) : null}
+                </div>
+                {canShowGalleryNavigation ? (
+                  <Button
+                    aria-label="下一张图片"
+                    className="shrink-0 bg-black/35 text-white opacity-100 shadow-[0_10px_30px_var(--shadow-strong)] backdrop-blur hover:bg-black/55 hover:text-white disabled:opacity-40"
+                    data-testid="image-preview-gallery-next"
+                    disabled={!canGoNext}
+                    onClick={() => onGalleryIndexChange?.(currentGalleryIndex + 1)}
+                    size="icon"
+                    type="button"
+                    variant="ghost"
+                  >
+                    <HugeiconsIcon icon={ArrowRight01Icon} size={18} strokeWidth={2} />
+                  </Button>
                 ) : null}
               </div>
               <div
-                className="flex h-10 shrink-0 items-center justify-center"
+                className="flex h-10 shrink-0 items-center justify-center gap-3"
                 data-testid="image-preview-action-bar"
               >
-                {ocrEnabled && (ocrStatus === "idle" || ocrStatus === "error") ? (
+                {canShowGalleryNavigation ? (
+                  <span
+                    className="text-xs text-white/80"
+                    data-testid="image-preview-gallery-counter"
+                  >
+                    {currentGalleryIndex + 1} / {gallery?.length ?? 0}
+                  </span>
+                ) : null}
+                {previewOcrEnabled && (ocrStatus === "idle" || ocrStatus === "error") ? (
                   <Button
                     className="border border-white/12 bg-neutral-950/86 text-white shadow-[0_10px_30px_var(--shadow-strong)] backdrop-blur hover:bg-neutral-900 hover:text-white"
                     onClick={(event) => {
@@ -656,6 +811,14 @@ const emotionConstraintStyle = {
   minWidth: "48px",
   width: "fit-content",
 } satisfies CSSProperties;
+
+function clampGalleryIndex(index: number, length: number) {
+  if (length <= 0) {
+    return 0;
+  }
+
+  return Math.min(Math.max(index, 0), length - 1);
+}
 
 function getValidImageSize(content: ImageMessageContent) {
   if (

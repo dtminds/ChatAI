@@ -4,6 +4,10 @@ import { describe, expect, it, vi } from "vitest";
 import { toast } from "sonner";
 import type { ChatMessage, ImageMessageContent } from "@/pages/chat/chat-types";
 import { ImageMessageCard, MessageContentRenderer } from "@/pages/chat/components/message";
+import {
+  collectConversationGalleryImages,
+  ConversationImageGalleryProvider,
+} from "@/pages/chat/components/message/conversation-image-gallery";
 import { recognizeImageText } from "@/pages/chat/lib/image-ocr";
 
 vi.mock("sonner", async (importOriginal) => {
@@ -886,9 +890,177 @@ describe("MessageContentRenderer image messages", () => {
   });
 });
 
-function createImageMessage(content: ImageMessageContent): ChatMessage {
+describe("Conversation image gallery", () => {
+  it("collects image messages in conversation order", () => {
+    expect(
+      collectConversationGalleryImages([
+        createImageMessage({
+          alt: "第一张",
+          height: 900,
+          imageUrl: "https://cdn.example.com/chat/photo-1.jpg",
+          type: "image",
+          width: 1200,
+        }),
+        {
+          id: "msg-text-1",
+          conversationId: "conv-image",
+          role: "customer",
+          author: "客户",
+          sender: {
+            id: "sender-text",
+            name: "客户",
+          },
+          content: {
+            type: "text",
+            text: "文字消息",
+          },
+          sentAt: "2026-04-19 10:12:01",
+          status: "sent",
+        },
+        createImageMessage({
+          alt: "第二张",
+          height: 900,
+          imageUrl: "https://cdn.example.com/chat/photo-2.jpg",
+          type: "image",
+          width: 1200,
+        }, "msg-image-2"),
+      ]),
+    ).toEqual([
+      {
+        alt: "第一张",
+        imageUrl: "https://cdn.example.com/chat/photo-1.jpg",
+        messageId: "msg-image-1",
+        ocrEnabled: true,
+      },
+      {
+        alt: "第二张",
+        imageUrl: "https://cdn.example.com/chat/photo-2.jpg",
+        messageId: "msg-image-2",
+        ocrEnabled: true,
+      },
+    ]);
+  });
+
+  it("lets users browse other conversation images from the preview", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ConversationImageGalleryProvider
+        messages={[
+          createImageMessage({
+            alt: "第一张",
+            height: 900,
+            imageUrl: "https://cdn.example.com/chat/photo-1.jpg",
+            type: "image",
+            width: 1200,
+          }),
+          createImageMessage({
+            alt: "第二张",
+            height: 900,
+            imageUrl: "https://cdn.example.com/chat/photo-2.jpg",
+            type: "image",
+            width: 1200,
+          }, "msg-image-2"),
+        ]}
+      >
+        <MessageContentRenderer
+          isAgent={false}
+          message={createImageMessage({
+            alt: "第一张",
+            height: 900,
+            imageUrl: "https://cdn.example.com/chat/photo-1.jpg",
+            type: "image",
+            width: 1200,
+          })}
+        />
+        <MessageContentRenderer
+          isAgent={false}
+          message={createImageMessage({
+            alt: "第二张",
+            height: 900,
+            imageUrl: "https://cdn.example.com/chat/photo-2.jpg",
+            type: "image",
+            width: 1200,
+          }, "msg-image-2")}
+        />
+      </ConversationImageGalleryProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "查看大图：第一张" }));
+
+    expect(screen.getByTestId("image-preview-full")).toHaveAttribute(
+      "src",
+      "https://cdn.example.com/chat/photo-1.jpg",
+    );
+    expect(screen.getByTestId("image-preview-gallery-counter")).toHaveTextContent("1 / 2");
+
+    await user.click(screen.getByRole("button", { name: "下一张图片" }));
+
+    expect(screen.getByTestId("image-preview-full")).toHaveAttribute(
+      "src",
+      "https://cdn.example.com/chat/photo-2.jpg",
+    );
+    expect(screen.getByTestId("image-preview-gallery-counter")).toHaveTextContent("2 / 2");
+
+    await user.click(screen.getByRole("button", { name: "上一张图片" }));
+
+    expect(screen.getByTestId("image-preview-full")).toHaveAttribute(
+      "src",
+      "https://cdn.example.com/chat/photo-1.jpg",
+    );
+  });
+
+  it("supports keyboard navigation between conversation images", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ConversationImageGalleryProvider
+        messages={[
+          createImageMessage({
+            alt: "第一张",
+            height: 900,
+            imageUrl: "https://cdn.example.com/chat/photo-1.jpg",
+            type: "image",
+            width: 1200,
+          }),
+          createImageMessage({
+            alt: "第二张",
+            height: 900,
+            imageUrl: "https://cdn.example.com/chat/photo-2.jpg",
+            type: "image",
+            width: 1200,
+          }, "msg-image-2"),
+        ]}
+      >
+        <MessageContentRenderer
+          isAgent={false}
+          message={createImageMessage({
+            alt: "第一张",
+            height: 900,
+            imageUrl: "https://cdn.example.com/chat/photo-1.jpg",
+            type: "image",
+            width: 1200,
+          })}
+        />
+      </ConversationImageGalleryProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "查看大图：第一张" }));
+    await user.keyboard("{ArrowRight}");
+
+    expect(screen.getByTestId("image-preview-full")).toHaveAttribute(
+      "src",
+      "https://cdn.example.com/chat/photo-2.jpg",
+    );
+  });
+});
+
+function createImageMessage(
+  content: ImageMessageContent,
+  id = "msg-image-1",
+): ChatMessage {
   return {
-    id: "msg-image-1",
+    id,
     conversationId: "conv-image",
     role: "customer",
     author: "客户",

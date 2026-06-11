@@ -58,6 +58,7 @@ import { MESSAGE_REVOKE_WINDOW_MS } from "@/pages/chat/chat-constants";
 import type { ChatMessage, Message } from "@/pages/chat/chat-types";
 import {
   isSameCalendarDay,
+  formatTextMessageSentAt,
   parseWorkbenchDate,
 } from "@/pages/chat/lib/chat-time";
 
@@ -217,7 +218,7 @@ export function ChatMessageList({
 
   return (
     <ConversationImageGalleryProvider messages={messages}>
-      <div className="space-y-3">
+      <div className="space-y-2">
         {items.map((item) =>
           item.type === "divider" ? (
             <div data-scroll-anchor={item.id} key={item.id}>
@@ -352,12 +353,18 @@ export function MessageRow({
   onTranscribeVoice?: (message: ChatMessage) => Promise<string>;
   smartReply?: SmartReplySuggestion;
 }) {
+  const [isSentAtPreviewVisible, setIsSentAtPreviewVisible] = useState(false);
+
   if (message.role === "system") {
     return <SystemMessageNotice text={message.content.text} />;
   }
 
   const isAgent = message.role === "agent";
   const isGroupConversation = Boolean(message.isGroupConversation);
+  const supportsSentAtPreview = supportsSentAtPreviewMessage(message.content);
+  const formattedSentAt = supportsSentAtPreview
+    ? formatTextMessageSentAt(message.sentAt)
+    : undefined;
   const showSenderName = isGroupConversation && !message.isOwnMessage && !!message.senderDisplayName;
   const inlineDeliveryState = getInlineDeliveryState(message);
   const showSmartReplyCard = shouldShowSmartReplyCard(smartReply);
@@ -382,104 +389,145 @@ export function MessageRow({
 
   return (
     <div
-      className={cn("group/message flex items-start", isAgent ? "justify-end" : "justify-start")}
+      className={cn(
+        "group/message flex items-start",
+        isAgent ? "justify-end" : "justify-start",
+      )}
       data-testid="message-row"
+      onMouseLeave={() => setIsSentAtPreviewVisible(false)}
     >
       <div
         className={cn(
-          "flex min-w-0 max-w-[90%] items-start gap-2",
-          isAgent ? "justify-end" : "justify-start",
+          "flex min-w-0 max-w-[90%] flex-col",
+          isAgent ? "items-end" : "items-start",
         )}
         data-testid="message-row-group"
       >
-        {!isAgent ? messageActions : null}
-
-        <div className={cn("flex min-w-0 flex-col", isAgent ? "items-end" : "items-start")}>
+        {supportsSentAtPreview && formattedSentAt ? (
           <div
             className={cn(
-              "flex min-w-0 w-fit max-w-full items-end gap-2",
-              isAgent ? "flex-row" : "flex-row-reverse",
+              "flex h-4 w-full shrink-0 items-center",
+              isAgent ? "mr-10 justify-end" : "ml-10 justify-start",
             )}
-            data-testid="message-inline-content-row"
+            data-testid="text-message-sent-at-slot"
           >
-            {isAgent && message.content.type !== "quote" ? (
-              <MessageInlineStatusSlot
-                canRetryMessage={canUseMessageActions}
-                isRetryingMessage={isRetryingMessage}
-                message={message}
-                onRetryMessage={onRetryMessage}
-                state={inlineDeliveryState}
-              />
-            ) : null}
+            <p
+              aria-hidden={!isSentAtPreviewVisible}
+              className={cn(
+                "px-1 text-[11px] leading-4 text-muted-foreground/80",
+                !isSentAtPreviewVisible && "invisible",
+              )}
+              data-testid="text-message-sent-at"
+            >
+              {formattedSentAt}
+            </p>
+          </div>
+        ) : null}
+        <div
+          className={cn(
+            "flex min-w-0 w-full items-start gap-2",
+            isAgent ? "justify-end" : "justify-start",
+          )}
+          data-testid="message-row-body"
+        >
+          {!isAgent ? messageActions : null}
+
+          <div className={cn("flex min-w-0 flex-col", isAgent ? "items-end" : "items-start")}>
             <div
               className={cn(
-                "flex min-w-0 w-fit max-w-full flex-col gap-1.5",
-                isAgent ? "items-end" : "items-start",
-                animationClassName,
+                "flex min-w-0 w-fit max-w-full items-end gap-2",
+                isAgent ? "flex-row" : "flex-row-reverse",
               )}
-              data-testid="message-content-stack"
+              data-testid="message-inline-content-row"
             >
-              {showSenderName ? (
-                <p className="px-1 text-[12px] leading-5 text-muted-foreground">
-                  {message.senderDisplayName}
-                </p>
-              ) : null}
-              {message.content.type === "quote" ? (
-                <QuoteMessageContentWithDelivery
+              {isAgent && message.content.type !== "quote" ? (
+                <MessageInlineStatusSlot
                   canRetryMessage={canUseMessageActions}
-                  content={message.content}
-                  inlineDeliveryState={inlineDeliveryState}
                   isRetryingMessage={isRetryingMessage}
-                  isAgent={isAgent}
                   message={message}
-                  onOpenQuotedMessage={onOpenQuotedMessage}
                   onRetryMessage={onRetryMessage}
+                  state={inlineDeliveryState}
                 />
-              ) : (
-                <div className="flex items-center gap-1">
-                  <MessageContentRenderer
+              ) : null}
+              <div
+                className={cn(
+                  "flex min-w-0 w-fit max-w-full flex-col gap-1.5",
+                  isAgent ? "items-end" : "items-start",
+                  animationClassName,
+                )}
+                data-testid="message-content-stack"
+              >
+                {showSenderName ? (
+                  <p className="px-1 text-[12px] leading-5 text-muted-foreground">
+                    {message.senderDisplayName}
+                  </p>
+                ) : null}
+                {message.content.type === "quote" ? (
+                  <QuoteMessageContentWithDelivery
+                    canRetryMessage={canUseMessageActions}
+                    content={message.content}
+                    inlineDeliveryState={inlineDeliveryState}
+                    isRetryingMessage={isRetryingMessage}
                     isAgent={isAgent}
                     message={message}
-                    onDownloadMessageFile={onDownloadMessageFile}
                     onOpenQuotedMessage={onOpenQuotedMessage}
-                    onTranscribeVoice={onTranscribeVoice}
-                    onVoicePlaybackReady={onVoicePlaybackReady}
+                    onRetryMessage={onRetryMessage}
                   />
-                </div>
-              )}
-              {message.isRevoked ? <MessageRevokedState /> : null}
-              {showSmartReplyCard ? (
-                <SmartReplyMessageAnchor
-                  canSendMessage={canUseMessageActions}
-                  conversationId={conversationId}
-                  dismissTargetRef={dismissTargetRef}
-                  message={message}
-                  onDismiss={onDismissSmartReply}
-                  onFillComposer={onFillSmartReplyComposer}
-                  onMakeShorter={onMakeShorterSmartReply}
-                  onRegenerate={(regenerateMessage) => {
-                    onTriggerSmartReply?.(regenerateMessage, { force: true });
-                  }}
-                  suggestion={smartReply}
-                  onSend={onSendSmartReply}
-                />
-              ) : null}
-              {showTimestamp ? (
-                <p className="px-1 text-[11px] leading-4 text-muted-foreground/80">
-                  {message.sentAt}
-                </p>
-              ) : null}
+                ) : (
+                  <div className="flex items-center gap-1">
+                    <MessageContentRenderer
+                      isAgent={isAgent}
+                      message={message}
+                      onDownloadMessageFile={onDownloadMessageFile}
+                      onOpenQuotedMessage={onOpenQuotedMessage}
+                      onSentAtPreviewClick={
+                        formattedSentAt
+                          ? () => setIsSentAtPreviewVisible(true)
+                          : undefined
+                      }
+                      onTranscribeVoice={onTranscribeVoice}
+                      onVoicePlaybackReady={onVoicePlaybackReady}
+                    />
+                  </div>
+                )}
+                {message.isRevoked ? <MessageRevokedState /> : null}
+                {showSmartReplyCard ? (
+                  <SmartReplyMessageAnchor
+                    canSendMessage={canUseMessageActions}
+                    conversationId={conversationId}
+                    dismissTargetRef={dismissTargetRef}
+                    message={message}
+                    onDismiss={onDismissSmartReply}
+                    onFillComposer={onFillSmartReplyComposer}
+                    onMakeShorter={onMakeShorterSmartReply}
+                    onRegenerate={(regenerateMessage) => {
+                      onTriggerSmartReply?.(regenerateMessage, { force: true });
+                    }}
+                    suggestion={smartReply}
+                    onSend={onSendSmartReply}
+                  />
+                ) : null}
+                {showTimestamp ? (
+                  <p className="px-1 text-[11px] leading-4 text-muted-foreground/80">
+                    {message.sentAt}
+                  </p>
+                ) : null}
+              </div>
             </div>
+            {isAgent && !inlineDeliveryState ? (
+              <MessageDeliveryState message={message}/>
+            ) : null}
           </div>
-          {isAgent && !inlineDeliveryState ? (
-            <MessageDeliveryState message={message}/>
-          ) : null}
-        </div>
 
-        {isAgent ? messageActions : null}
+          {isAgent ? messageActions : null}
+        </div>
       </div>
     </div>
   );
+}
+
+function supportsSentAtPreviewMessage(content: ChatMessage["content"]) {
+  return content.type === "text" || content.type === "mini-program";
 }
 
 function getMessageEntranceAnimationClassName(

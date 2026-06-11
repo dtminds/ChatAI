@@ -10,13 +10,21 @@ import {
 
 type MiniAppMessageCardProps = {
   content: MiniProgramMessageContent;
+  onClick?: () => void;
 };
 
-export function MiniAppMessageCard({ content }: MiniAppMessageCardProps) {
+export function MiniAppMessageCard({ content, onClick }: MiniAppMessageCardProps) {
   const coverImageUrl = content.coverImageUrl?.trim();
 
   return (
-    <div className="w-[240px] rounded-[8px] border border-border bg-surface p-2.5 pb-1.5">
+    <div
+      className={cn(
+        "w-[240px] rounded-[8px] border border-border bg-surface p-2.5 pb-1.5",
+        onClick && "cursor-pointer",
+      )}
+      data-testid="mini-program-message-card"
+      onClick={onClick}
+    >
       <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
         <div className="flex size-4 items-center justify-center rounded-full bg-primary/10 text-primary">
           {content.logoUrl ? (

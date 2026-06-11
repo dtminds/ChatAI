@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { MessageRow } from "@/pages/chat/components/message-feed";
 import { TextMessageBubble } from "@/pages/chat/components/message";
@@ -290,6 +291,30 @@ describe("text message bubble layout", () => {
     render(<MessageRow message={createTextMessage("单聊消息")} />);
 
     expect(screen.queryByText("成员甲")).not.toBeInTheDocument();
+  });
+
+  it("shows sent time above a text bubble on click and hides it on mouse leave", async () => {
+    const user = userEvent.setup();
+
+    render(<MessageRow message={createTextMessage("点击查看时间")} />);
+
+    const sentAt = screen.getByTestId("text-message-sent-at");
+
+    expect(sentAt).toHaveClass("invisible");
+    expect(sentAt).toHaveTextContent("5/8 9:54");
+
+    await user.click(screen.getByTestId("text-message-bubble"));
+
+    expect(sentAt).not.toHaveClass("invisible");
+    expect(screen.getByTestId("text-message-sent-at-slot")).toHaveClass("h-4", "mr-10");
+    expect(
+      sentAt.compareDocumentPosition(screen.getByTestId("message-row-body")),
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(screen.getByTestId("message-row-body")).toHaveClass("gap-2");
+
+    await user.unhover(screen.getByTestId("message-row"));
+
+    expect(screen.getByTestId("text-message-sent-at")).toHaveClass("invisible");
   });
 });
 

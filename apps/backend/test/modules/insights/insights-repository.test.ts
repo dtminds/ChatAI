@@ -3341,6 +3341,51 @@ describe("MysqlInsightWorkerRepository", () => {
     expect(builders[0]?.skipLockedCalls).toBe(1);
   });
 
+  it("claims historical rescan sync jobs with the stored upper bound", async () => {
+    const updateExecute = vi.fn(async () => ({ numAffectedRows: 1n }));
+    const builders: SelectBuilderStub[] = [];
+    const db = {
+      transaction: vi.fn(),
+      selectFrom: vi.fn((table: string) => {
+        const builder = createSelectBuilder(
+          [
+            {
+              analysis_scope: "classification",
+              id: 702,
+              rescan_task_id: 9901,
+              rescan_to_time: new Date("2026-06-01T01:00:00.000Z"),
+              target_id: "2026-06-01T00:00:00.000Z",
+              uid: 9001,
+            },
+          ],
+          table,
+        );
+        builders.push(builder);
+        return builder;
+      }),
+      updateTable: vi.fn(() => createUpdateBuilder(updateExecute)),
+    };
+    db.transaction.mockReturnValue(createTransactionBuilder(db));
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(repository.claimNextSyncMessagesJob()).resolves.toEqual({
+      analysisScope: "classification",
+      cursorMsgtime: new Date("2026-06-01T00:00:00.000Z").getTime(),
+      jobId: "702",
+      rescanTaskId: "9901",
+      scanUntilMsgtime: new Date("2026-06-01T01:00:00.000Z").getTime(),
+      uid: 9001,
+    });
+
+    expect(builders[0]?.joins).toContain(
+      "xy_wap_embed_insight_rescan_task as rescan_task",
+    );
+    expect(builders[0]?.selectRawCalls.join("\n")).toContain(
+      "rescan_task.to_time as rescan_to_time",
+    );
+    expect(updateExecute).toHaveBeenCalled();
+  });
+
   it("claims cleanup-disabled-insights jobs for disabled tenant session cleanup", async () => {
     const updateExecute = vi.fn(async () => ({ numAffectedRows: 1n }));
     const builders: SelectBuilderStub[] = [];
@@ -3631,6 +3676,32 @@ describe("MysqlInsightWorkerRepository", () => {
       "Invalid sync_messages target_id",
     );
     expect(updateExecute).not.toHaveBeenCalled();
+  });
+
+  it("filters incremental messages by historical rescan upper bound", async () => {
+    const builders: SelectBuilderStub[] = [];
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        const builder = createSelectBuilder([], table);
+        builders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await repository.listIncrementalMessages({
+      cursorAuditId: 8001,
+      cursorMsgtime: 1_780_000_000_000,
+      limit: 50,
+      scanUntilMsgtime: 1_780_000_030_000,
+      uid: 9001,
+    });
+
+    expect(builders[0]?.whereCalls).toContainEqual([
+      "msgtime",
+      "<=",
+      1_780_000_030_000,
+    ]);
   });
 
   it("checks pending live analysis jobs with exact indexed columns", async () => {
@@ -4785,6 +4856,80 @@ describe("MysqlInsightWorkerRepository", () => {
         tags: [],
       },
       resultKind: "insufficient_messages",
+      runId: "6001",
+      sourceMessageHighWatermark: "9001",
+      validationWarnings: [],
+    });
+
+    expect(snapshotValues[0]).toEqual(
+      expect.objectContaining({
+        phase: "final",
+        status: "building",
+      }),
+    );
+  });
+
+  it("writes model-analysis manual reanalysis snapshots as final", async () => {
+    const snapshotValues: Record<string, unknown>[] = [];
+    let nextInsertId = 7001;
+    const db = {
+      insertInto: vi.fn((table: string) =>
+        createInsertBuilder(async () => ({ insertId: nextInsertId++ }), {
+          onValues: (values) => {
+            if (table === "xy_wap_embed_session_insight_snapshot") {
+              snapshotValues.push(values as Record<string, unknown>);
+            }
+          },
+          table,
+        }),
+      ),
+      selectFrom: vi.fn((table: string) =>
+        createSelectBuilder(
+          table === "xy_wap_embed_logical_session"
+            ? [{ conversation_id: 301 }]
+            : [],
+          table,
+        ),
+      ),
+      updateTable: vi.fn((table: string) =>
+        createUpdateBuilder(async () => ({ numAffectedRows: 1n }), { table }),
+      ),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await repository.saveAnalysisResult({
+      job: {
+        analysisScope: "all",
+        attemptCount: 1,
+        jobId: "job-1",
+        maxAttempts: 3,
+        mode: "manual_reanalyze",
+        sessionId: "501",
+        uid: 9001,
+      },
+      output: {
+        actionItems: [],
+        entities: [],
+        faqCandidates: [],
+        intents: [],
+        problemResolution: {
+          confidence: 0.7,
+          evidence: [],
+          evidenceMessageIds: ["9001"],
+          problemDetected: true,
+          problemSummary: "物流异常",
+          resolutionStatus: "unresolved",
+          unresolvedReason: "还未给出处理方案",
+        },
+        qaFindings: [],
+        sentiment: [],
+        summary: {
+          sessionTitle: "查物流",
+          text: "用户咨询物流异常",
+        },
+        tags: [],
+      },
+      resultKind: "model_analysis",
       runId: "6001",
       sourceMessageHighWatermark: "9001",
       validationWarnings: [],

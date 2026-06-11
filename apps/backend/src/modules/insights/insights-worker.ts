@@ -178,6 +178,7 @@ export type ClaimedSyncMessagesJob = {
   cursorMsgtime: number;
   jobId: string;
   rescanTaskId?: string;
+  scanUntilMsgtime?: number;
   uid: number;
 };
 
@@ -357,6 +358,7 @@ export type InsightWorkerRepositoryPort = {
     cursorAuditId: number;
     cursorMsgtime: number;
     limit: number;
+    scanUntilMsgtime?: number;
     uid?: number;
   }): Promise<InsightWorkerMessage[]>;
   listOpenSessionsForLiveAnalysis(input: {
@@ -702,6 +704,7 @@ export class InsightsWorkerService {
           cursorAuditId,
           cursorMsgtime,
           limit: this.batchSize,
+          scanUntilMsgtime: job.scanUntilMsgtime,
           uid: job.uid,
         });
 
@@ -771,18 +774,9 @@ export class InsightsWorkerService {
       }
 
       let queuedFinalSessions = 0;
-      let queuedLiveSessions = 0;
 
       for (const [sessionId, session] of sessionsToAnalyze) {
         if (session.status === "open") {
-          if (await this.createLiveAnalyzeJobIfNeeded({
-            occurredAt: session.lastMessageAt,
-            sessionId,
-            uid: session.uid,
-          })) {
-            queuedLiveSessions += 1;
-          }
-
           continue;
         }
 
@@ -810,7 +804,6 @@ export class InsightsWorkerService {
       this.logger?.info(
         {
           jobId: job.jobId,
-          liveAnalyzeSessions: queuedLiveSessions,
           reanalyzeSessions: queuedFinalSessions,
           scannedMessages,
           sessionizedMessages,

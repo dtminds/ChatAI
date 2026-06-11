@@ -60,6 +60,7 @@ type UidJobRow = {
   analysis_scope: string;
   id: number | string;
   rescan_task_id: number | string | null;
+  rescan_to_time?: Date | string | null;
   target_id: string;
   uid: number | string;
 };
@@ -435,6 +436,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
     cursorAuditId: number;
     cursorMsgtime: number;
     limit: number;
+    scanUntilMsgtime?: number;
     uid?: number;
   }): Promise<InsightWorkerMessage[]> {
     let query = this.db
@@ -464,6 +466,10 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
 
     if (input.uid != null) {
       query = query.where("uid", "=", input.uid);
+    }
+
+    if (input.scanUntilMsgtime != null) {
+      query = query.where("msgtime", "<=", input.scanUntilMsgtime);
     }
 
     const rows = await query
@@ -1122,18 +1128,44 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
 
   async claimNextSyncMessagesJob(): Promise<ClaimedSyncMessagesJob | undefined> {
     return this.db.transaction().execute(async (trx) => {
-      let query = this.buildUidJobClaimQuery(trx, "sync_messages");
-
-      const row = await query.executeTakeFirst() as UidJobRow | undefined;
+      const row = await trx
+        .selectFrom("xy_wap_embed_insight_job")
+        .leftJoin("xy_wap_embed_insight_rescan_task as rescan_task", (join) =>
+          join.onRef("rescan_task.id", "=", "xy_wap_embed_insight_job.rescan_task_id")
+        )
+        .select([
+          "xy_wap_embed_insight_job.analysis_scope as analysis_scope",
+          "xy_wap_embed_insight_job.id as id",
+          "xy_wap_embed_insight_job.rescan_task_id as rescan_task_id",
+          "xy_wap_embed_insight_job.target_id as target_id",
+          "xy_wap_embed_insight_job.uid as uid",
+          "rescan_task.to_time as rescan_to_time",
+        ])
+        .where("xy_wap_embed_insight_job.target_type", "=", "uid")
+        .where("xy_wap_embed_insight_job.job_type", "=", "sync_messages")
+        .where("xy_wap_embed_insight_job.run_after", "<=", new Date())
+        .where("xy_wap_embed_insight_job.status", "=", "pending")
+        .orderBy("xy_wap_embed_insight_job.priority", "desc")
+        .orderBy("xy_wap_embed_insight_job.id", "asc")
+        .forUpdate()
+        .skipLocked()
+        .executeTakeFirst() as UidJobRow | undefined;
 
       if (!row) {
         return undefined;
       }
 
       const cursorMsgtime = new Date(row.target_id).getTime();
+      const scanUntilMsgtime = row.rescan_to_time == null
+        ? undefined
+        : new Date(row.rescan_to_time).getTime();
 
       if (!Number.isFinite(cursorMsgtime)) {
         throw new Error(`Invalid sync_messages target_id: ${row.target_id}`);
+      }
+
+      if (scanUntilMsgtime != null && !Number.isFinite(scanUntilMsgtime)) {
+        throw new Error(`Invalid sync_messages rescan to_time: ${row.rescan_to_time}`);
       }
 
       const claimed = await this.markUidJobRunning(trx, row.id, "sync_messages");
@@ -1147,6 +1179,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         cursorMsgtime,
         jobId: String(row.id),
         rescanTaskId: row.rescan_task_id == null ? undefined : String(row.rescan_task_id),
+        scanUntilMsgtime,
         uid: parseNumber(row.uid),
       };
     });
@@ -1884,7 +1917,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       .insertInto("xy_wap_embed_session_insight_snapshot")
       .values({
         analysis_version: "insights-v1",
-        phase: input.job.mode === "final" || input.resultKind === "insufficient_messages" ? "final" : "live",
+        phase: input.job.mode === "live" ? "live" : "final",
         prompt_version: "insights-v1",
         rule_version: "insights-v1",
         session_id: sessionId,

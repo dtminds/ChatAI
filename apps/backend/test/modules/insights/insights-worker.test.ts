@@ -1390,12 +1390,13 @@ describe("InsightsWorkerService", () => {
       uid: 9001,
     });
     expect(repository.appendSessionMessage).toHaveBeenCalledTimes(2);
-    expect(repository.shouldCreateLiveAnalyzeJob).toHaveBeenCalledWith({
-      occurredAt: 1_780_000_020_000,
-      sessionId: "501",
-      uid: 9001,
-    });
+    expect(repository.shouldCreateLiveAnalyzeJob).not.toHaveBeenCalled();
     expect(repository.createAnalyzeJob).not.toHaveBeenCalled();
+    expect(repository.updateRescanTaskAfterScan).toHaveBeenCalledWith({
+      queuedSessions: 0,
+      rescanTaskId: "9901",
+      totalSessions: 0,
+    });
     expect(repository.markSyncMessagesJobSucceeded).toHaveBeenCalledWith(
       "rescan-job-1",
     );
@@ -1511,7 +1512,32 @@ describe("InsightsWorkerService", () => {
     );
   });
 
-  it("routes open sessions found by historical rescan through live analysis gating", async () => {
+  it("passes historical rescan upper bound to incremental message scan", async () => {
+    const repository = createRepository({
+      claimNextSyncMessagesJob: vi.fn(async () => ({
+        analysisScope: "classification",
+        cursorMsgtime: 1_780_000_000_000,
+        jobId: "rescan-job-1",
+        rescanTaskId: "9901",
+        scanUntilMsgtime: 1_780_000_030_000,
+        uid: 9001,
+      })),
+      listIncrementalMessages: vi.fn(async () => []),
+    });
+    const service = new InsightsWorkerService(repository, { batchSize: 50 });
+
+    await service.runOnce();
+
+    expect(repository.listIncrementalMessages).toHaveBeenCalledWith({
+      cursorAuditId: 0,
+      cursorMsgtime: 1_780_000_000_000,
+      limit: 50,
+      scanUntilMsgtime: 1_780_000_030_000,
+      uid: 9001,
+    });
+  });
+
+  it("skips open sessions found by historical rescan because live analysis has its own scheduler", async () => {
     const repository = createRepository({
       claimNextSyncMessagesJob: vi.fn(async () => ({
         analysisScope: "classification",
@@ -1555,83 +1581,7 @@ describe("InsightsWorkerService", () => {
 
     await service.runOnce();
 
-    expect(repository.shouldCreateLiveAnalyzeJob).toHaveBeenCalledWith({
-      occurredAt: 1_780_000_010_000,
-      sessionId: "501",
-      uid: 9001,
-    });
-    expect(repository.createAnalyzeJob).toHaveBeenCalledTimes(1);
-    expect(repository.createAnalyzeJob).toHaveBeenCalledWith(
-      expect.objectContaining({
-        analysisScope: "all",
-        jobType: "analyze_session",
-        mode: "live",
-        sessionId: "501",
-        uid: 9001,
-      }),
-    );
-    expect(repository.createAnalyzeJob).not.toHaveBeenCalledWith(
-      expect.objectContaining({
-        jobType: "reanalyze_session",
-        sessionId: "501",
-      }),
-    );
-    expect(repository.updateRescanTaskAfterScan).toHaveBeenCalledWith({
-      queuedSessions: 0,
-      rescanTaskId: "9901",
-      totalSessions: 0,
-    });
-  });
-
-  it("does not create analysis jobs for open sessions found by historical rescan when live gate is not met", async () => {
-    const repository = createRepository({
-      claimNextSyncMessagesJob: vi.fn(async () => ({
-        analysisScope: "classification",
-        cursorMsgtime: 1_780_000_000_000,
-        jobId: "rescan-job-1",
-        rescanTaskId: "9901",
-        uid: 9001,
-      })),
-      listSessionsBySourceMessages: vi.fn(async () => [
-        {
-          sessionId: "501",
-          sourceMessageId: "8001",
-          status: "open",
-          uid: 9001,
-        },
-      ]),
-      listIncrementalMessages: vi.fn(async ({ cursorMsgtime }) => {
-        if (cursorMsgtime === 1_780_000_000_000) {
-          return [
-            {
-              chatType: 1,
-              content: JSON.stringify({ content: "历史消息" }),
-              fromType: 2,
-              id: "8001",
-              msgtime: 1_780_000_010_000,
-              msgtype: "text",
-              platform: 5,
-              uid: 9001,
-              thirdExternalId: "external-1",
-              thirdGroupId: "",
-              thirdUserId: "user-1",
-            },
-          ];
-        }
-
-        return [];
-      }),
-      shouldCreateLiveAnalyzeJob: vi.fn(async () => false),
-    });
-    const service = new InsightsWorkerService(repository, { batchSize: 50 });
-
-    await service.runOnce();
-
-    expect(repository.shouldCreateLiveAnalyzeJob).toHaveBeenCalledWith({
-      occurredAt: 1_780_000_010_000,
-      sessionId: "501",
-      uid: 9001,
-    });
+    expect(repository.shouldCreateLiveAnalyzeJob).not.toHaveBeenCalled();
     expect(repository.createAnalyzeJob).not.toHaveBeenCalled();
     expect(repository.updateRescanTaskAfterScan).toHaveBeenCalledWith({
       queuedSessions: 0,
@@ -1640,7 +1590,7 @@ describe("InsightsWorkerService", () => {
     });
   });
 
-  it("routes messages appended to open sessions during historical rescan through live analysis gating", async () => {
+  it("skips messages appended to open sessions during historical rescan without triggering live analysis", async () => {
     const repository = createRepository({
       claimNextSyncMessagesJob: vi.fn(async () => ({
         analysisScope: "classification",
@@ -1688,27 +1638,8 @@ describe("InsightsWorkerService", () => {
         sourceMessageId: "8001",
       }),
     );
-    expect(repository.shouldCreateLiveAnalyzeJob).toHaveBeenCalledWith({
-      occurredAt: 1_780_000_010_000,
-      sessionId: "501",
-      uid: 9001,
-    });
-    expect(repository.createAnalyzeJob).toHaveBeenCalledTimes(1);
-    expect(repository.createAnalyzeJob).toHaveBeenCalledWith(
-      expect.objectContaining({
-        analysisScope: "all",
-        jobType: "analyze_session",
-        mode: "live",
-        sessionId: "501",
-        uid: 9001,
-      }),
-    );
-    expect(repository.createAnalyzeJob).not.toHaveBeenCalledWith(
-      expect.objectContaining({
-        jobType: "reanalyze_session",
-        sessionId: "501",
-      }),
-    );
+    expect(repository.shouldCreateLiveAnalyzeJob).not.toHaveBeenCalled();
+    expect(repository.createAnalyzeJob).not.toHaveBeenCalled();
     expect(repository.updateRescanTaskAfterScan).toHaveBeenCalledWith({
       queuedSessions: 0,
       rescanTaskId: "9901",

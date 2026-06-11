@@ -1,3 +1,22 @@
+export function formatTextMessageSentAt(value: string, now = new Date()) {
+  const date = parseWorkbenchDate(value);
+
+  if (!date) {
+    return value;
+  }
+
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+  const hour = date.getHours();
+  const minute = date.getMinutes();
+  const datePart =
+    date.getFullYear() === now.getFullYear()
+      ? `${month}/${day}`
+      : `${date.getFullYear()}/${month}/${day}`;
+
+  return `${datePart} ${hour}:${minute}`;
+}
+
 export function formatConversationTimestamp(value: string) {
   const date = parseWorkbenchDate(value);
 

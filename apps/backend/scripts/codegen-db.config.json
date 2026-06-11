@@ -35,6 +35,7 @@
     "xy_wap_embed_session_faq_candidate",
     "xy_wap_embed_insight_evidence",
     "xy_wap_embed_insight_analysis_policy",
+    "xy_wap_embed_insight_asset",
     "xy_wap_embed_insight_label_config",
     "xy_wap_embed_insight_intent_config",
     "xy_wap_embed_insight_qa_rule_config",

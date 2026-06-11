@@ -294,7 +294,7 @@ export interface XyWapEmbedCustomerBindRelation {
    */
   platform: Generated<number>;
   /**
-   * 该成员对此外部联系人的备注
+   * 该成员对此外部联系人的备注（绑定的情况下是SCRM同步过来的备注，没绑定的情况下是第三方的备注-同third_remark）
    */
   remark: Generated<string | null>;
   /**
@@ -305,6 +305,10 @@ export interface XyWapEmbedCustomerBindRelation {
    * 第三方外部联系人id
    */
   third_external_userid: string;
+  /**
+   * 第三方该成员对此外部联系人的备注
+   */
+  third_remark: Generated<string | null>;
   /**
    * 第三方成员id
    */
@@ -500,6 +504,45 @@ export interface XyWapEmbedInsightAnalysisPolicy {
   update_time: Generated<Date>;
 }
 
+export interface XyWapEmbedInsightAsset {
+  /**
+   * 资产稳定唯一键，链接为规范化URL，小程序为appId+pagePath，文件为fileId/fileUrl/fileName兜底
+   */
+  asset_key: string;
+  /**
+   * 资产展示名称
+   */
+  asset_name: string;
+  /**
+   * 资产类型，link：链接，miniapp：小程序，file：文件
+   */
+  asset_type: string;
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date>;
+  /**
+   * 首次出现的平台消息时间戳
+   */
+  first_seen_at: number;
+  /**
+   * 主键ID
+   */
+  id: Generated<number>;
+  /**
+   * 最近出现的平台消息时间戳
+   */
+  last_seen_at: number;
+  /**
+   * 租户ID
+   */
+  uid: number;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date>;
+}
+
 export interface XyWapEmbedInsightEntityDictionary {
   /**
    * 别名JSON
@@ -627,45 +670,6 @@ export interface XyWapEmbedInsightFeatureConfig {
    * 是否自动创建待办，1启用0停用
    */
   todo_enabled: Generated<number>;
-  /**
-   * 租户ID
-   */
-  uid: number;
-  /**
-   * 更新时间
-   */
-  update_time: Generated<Date>;
-}
-
-export interface XyWapEmbedInsightAsset {
-  /**
-   * 资产稳定唯一键，链接为规范化URL，小程序为appId+pagePath，文件为fileId/fileUrl/fileName兜底
-   */
-  asset_key: string;
-  /**
-   * 资产展示名称
-   */
-  asset_name: string;
-  /**
-   * 资产类型，link：链接，miniapp：小程序，file：文件
-   */
-  asset_type: string;
-  /**
-   * 创建时间
-   */
-  create_time: Generated<Date>;
-  /**
-   * 首次出现的平台消息时间戳
-   */
-  first_seen_at: number;
-  /**
-   * 主键ID
-   */
-  id: Generated<number>;
-  /**
-   * 最近出现的平台消息时间戳
-   */
-  last_seen_at: number;
   /**
    * 租户ID
    */
@@ -1074,7 +1078,7 @@ export interface XyWapEmbedInsightSyncCursor {
   /**
    * 租户ID，0表示全局水位
    */
-  uid: number;
+  uid: Generated<number>;
   /**
    * 更新时间
    */
@@ -1103,7 +1107,7 @@ export interface XyWapEmbedLogicalSession {
    */
   create_time: Generated<Date>;
   /**
-   * 当前生效洞察快照ID，关联xy_wap_embed_session_insight_snapshot.id
+   * 当前生效洞察快照ID
    */
   current_snapshot_id: number | null;
   /**
@@ -1114,10 +1118,6 @@ export interface XyWapEmbedLogicalSession {
    * 逻辑会话结束时间戳
    */
   ended_at: number | null;
-  /**
-   * 质检状态，-1未质检，0有未通过，1全部通过
-   */
-  qa_status: Generated<number>;
   /**
    * 创建时使用的最长持续时长
    */
@@ -1146,6 +1146,10 @@ export interface XyWapEmbedLogicalSession {
    * 下一次可关闭检查时间戳
    */
   next_close_at: number | null;
+  /**
+   * 质检状态，-1未质检，0有未通过，1全部通过
+   */
+  qa_status: Generated<number>;
   /**
    * 切片规则版本
    */
@@ -1589,7 +1593,7 @@ export interface XyWapEmbedSessionIntent {
    */
   intent_id: number;
   /**
-   * 意图名称
+   * 意图名称快照
    */
   intent_label: string;
   /**
@@ -1823,7 +1827,7 @@ export interface XyWapEmbedSessionTag {
    */
   tag_id: number;
   /**
-   * 标签名称
+   * 标签名称快照
    */
   tag_name: string;
   /**

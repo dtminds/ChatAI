@@ -388,30 +388,39 @@ async function loadChatRecordDetailFromService(input: {
   };
 }
 
-function normalizeChatRecordTitle(value: string) {
-  return value.trim() || "聊天记录";
+function normalizeChatRecordTitle(value: string | null | undefined) {
+  return value?.trim() || "聊天记录";
 }
 
 function normalizeChatRecordLines(content: ChatRecordMessageContent) {
-  const lines = content.msgContent
-    .filter((line) => line.trim())
+  const rawLines = Array.isArray(content.msgContent) ? content.msgContent : [];
+  const lines = rawLines
+    .filter((line): line is string => typeof line === "string" && line.trim().length > 0)
     .map((line) => line.trim());
 
   if (lines.length > 0) {
     return lines;
   }
 
-  const fallback = content.unsupportedDisplayText?.trim();
+  const fallback = typeof content.unsupportedDisplayText === "string"
+    ? content.unsupportedDisplayText.trim()
+    : "";
 
   return fallback ? [fallback] : [CHAT_RECORD_FALLBACK_TEXT];
 }
 
 function isFallbackChatRecordContent(content: ChatRecordMessageContent) {
+  const rawLines = Array.isArray(content.msgContent) ? content.msgContent : [];
+  const firstLine = typeof rawLines[0] === "string" ? rawLines[0].trim() : "";
+  const unsupportedDisplayText = typeof content.unsupportedDisplayText === "string"
+    ? content.unsupportedDisplayText.trim()
+    : "";
+
   return (
     normalizeChatRecordTitle(content.msgTitle) === "聊天记录" &&
-    content.msgContent.length === 1 &&
-    content.msgContent[0]?.trim() === CHAT_RECORD_FALLBACK_TEXT &&
-    !content.unsupportedDisplayText?.trim()
+    rawLines.length === 1 &&
+    firstLine === CHAT_RECORD_FALLBACK_TEXT &&
+    !unsupportedDisplayText
   );
 }
 

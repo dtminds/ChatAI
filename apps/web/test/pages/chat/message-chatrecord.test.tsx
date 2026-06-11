@@ -40,6 +40,25 @@ describe("ChatRecordMessageCard", () => {
     expect(screen.queryByTestId("chat-record-card")).not.toBeInTheDocument();
   });
 
+  it("ignores malformed runtime values in chat record summaries", () => {
+    render(
+      <ChatRecordMessageCard
+        content={{
+          msgContent: [null, 123, " 范双飞：123 "] as unknown as string[],
+          msgTitle: null as unknown as string,
+          type: "chatrecord",
+        }}
+        conversationId="conversation-1"
+        messageId="parent-chatrecord-msgid"
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "查看聊天记录：聊天记录" }))
+      .toBeInTheDocument();
+    expect(screen.getByText("范双飞：123")).toBeInTheDocument();
+    expect(screen.queryByText("123")).not.toBeInTheDocument();
+  });
+
   it("opens detail dialog and renders detail messages", async () => {
     const user = userEvent.setup();
     const loadChatRecordDetail = vi.fn().mockResolvedValue({

@@ -57,7 +57,15 @@ export const redisPlugin = fp(async (app) => {
 
   app.decorate("cache", cache);
   app.addHook("onClose", async () => {
-    client.disconnect();
+    try {
+      await client.quit();
+    } catch (error) {
+      app.log.warn(
+        { error: error instanceof Error ? error.message : String(error) },
+        "Redis cache graceful shutdown failed; forcing disconnect",
+      );
+      client.disconnect();
+    }
   });
 });
 

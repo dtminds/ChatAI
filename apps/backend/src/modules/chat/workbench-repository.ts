@@ -2705,7 +2705,13 @@ export class WorkbenchRepository {
   }
 
   private async readSeatAccessSnapshot(key: string) {
-    const cached = await this.cache?.get(key);
+    let cached: string | null | undefined;
+
+    try {
+      cached = await this.cache?.get(key);
+    } catch {
+      return undefined;
+    }
 
     if (!cached) {
       return undefined;

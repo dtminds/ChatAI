@@ -840,6 +840,41 @@ describe("WorkbenchRepository", () => {
     expect(cache.get).toHaveBeenCalledWith("chatai:seat-access:11");
   });
 
+  it("falls back to DB when reading the seat-access cache fails", async () => {
+    const cache = createCacheMock();
+    cache.get.mockRejectedValueOnce(new Error("redis unavailable"));
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_user_seat_sub_relation as relation") {
+            return createQueryBuilder([
+              {
+                platform: 5,
+                seat_id: 101,
+                uid: 9001,
+              },
+            ]);
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+      cache,
+    );
+
+    await expect(repository.canAccessSeat("11", "101")).resolves.toBe(true);
+    expect(cache.set).toHaveBeenCalledWith(
+      "chatai:seat-access:11",
+      JSON.stringify({
+        platform: 5,
+        seatIds: ["101"],
+        uid: 9001,
+        version: 1,
+      }),
+      600,
+    );
+  });
+
   it("writes a seat-access snapshot when relation scope misses cache", async () => {
     const cache = createCacheMock();
     const repository = new WorkbenchRepository(

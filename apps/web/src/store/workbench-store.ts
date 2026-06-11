@@ -1242,6 +1242,19 @@ function triggerSmartReplyAutoGeneration(
     .then(() => {
       if (get().activeConversationId !== conversationId) {
         options.clearAutoPreviewTimeout(conversationId, lookupKey);
+        set((currentState) => {
+          const autoPending =
+            currentState.smartReplyAutoPendingMessageKeysByConversationId[
+              conversationId
+            ] ?? {};
+
+          return {
+            smartReplyAutoPendingMessageKeysByConversationId: {
+              ...currentState.smartReplyAutoPendingMessageKeysByConversationId,
+              [conversationId]: omitPendingSmartReplyKey(autoPending, lookupKey),
+            },
+          };
+        });
         return;
       }
 

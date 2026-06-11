@@ -665,6 +665,47 @@ describe("useWorkbenchStore", () => {
     });
   });
 
+  it("clears auto smart reply preview pending when a background conversation auto request completes", async () => {
+    const baseService = createMockWorkbenchService();
+    const autoRequest = createDeferred<{ id: string }>();
+
+    setWorkbenchService({
+      ...baseService,
+      async requestSmartReplyAutoGeneralAnswer() {
+        return autoRequest.promise;
+      },
+      async pollSmartReplies() {
+        return { suggestions: [] };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    expect(
+      useWorkbenchStore.getState().smartReplyAutoPendingMessageKeysByConversationId[
+        "conv-001"
+      ],
+    ).toMatchObject({
+      "9": true,
+    });
+
+    useWorkbenchStore.setState({ activeConversationId: "conv-002" });
+
+    autoRequest.resolve({ id: "88" });
+    await waitForStoreAssertion(() => {
+      expect(
+        useWorkbenchStore.getState().smartReplyAutoPendingMessageKeysByConversationId[
+          "conv-001"
+        ],
+      ).not.toHaveProperty("9");
+    });
+    expect(
+      useWorkbenchStore.getState().smartReplyPendingMessageKeysByConversationId[
+        "conv-001"
+      ],
+    ).not.toHaveProperty("9");
+  });
+
   it("does not automatically create a smart reply task without chat send permission", async () => {
     const baseService = createMockWorkbenchService();
     const observedAutoRequests: Array<{ conversationId: string; msgId: number }> = [];

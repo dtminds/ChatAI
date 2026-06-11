@@ -103,6 +103,13 @@ describe("insight prompt builder", () => {
       "sentiment",
       "summary",
     ]);
+    expect(summaryContract.sentiment).toEqual({
+      confidence: "<number 0-1>",
+      evidenceMessageIds: ["<sourceMessageId>"],
+      polarity: "<positive|neutral|negative|mixed|unknown>",
+      reason: "<string: 情绪判定理由>",
+    });
+    expect(Array.isArray(summaryContract.sentiment)).toBe(false);
     expect(JSON.stringify(summaryPrompt)).not.toContain("faqCandidates");
     expect(summaryPayload.tenantContext).toEqual({
       intentConfigs: [
@@ -272,6 +279,11 @@ describe("insight prompt builder", () => {
     expect(payload.previousOutput.problemResolution.resolutionStatus).toBe(
       "unresolved",
     );
+    expect(payload.previousOutput.sentiment).toEqual({
+      polarity: "negative",
+      reason: "客户表达着急",
+    });
+    expect(Array.isArray(payload.previousOutput.sentiment)).toBe(false);
     expect(payload.previousOutput.intents).toEqual([
       { intentCode: "logistics_delay", intentLabel: "物流异常" },
     ]);

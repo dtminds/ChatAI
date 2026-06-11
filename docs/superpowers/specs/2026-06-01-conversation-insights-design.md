@@ -146,7 +146,7 @@ Node worker 定时扫描平台消息增量。消息事实表使用 `xy_wap_embed
 xy_wap_embed_insight_sync_cursor
 - id
 - source: xy_wap_embed_msg_audit_info
-- uid nullable
+- uid: 租户ID，0 表示全局水位，非 NULL
 - cursor_msgtime
 - cursor_audit_id
 - updated_at

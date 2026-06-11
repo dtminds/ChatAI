@@ -60,8 +60,9 @@ type WorkerFeatureConfigRow = {
 type UidJobRow = {
   analysis_scope: string;
   id: number | string;
+  rescan_from_time?: number | string | null;
   rescan_task_id: number | string | null;
-  rescan_to_time?: Date | string | null;
+  rescan_to_time?: number | string | null;
   target_id: string;
   uid: number | string;
 };
@@ -182,14 +183,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       .where("source", "=", cursorSource);
 
     if (uid === globalCursorUid) {
-      query = query
-        .where((eb) =>
-          eb.or([
-            eb("uid", "=", globalCursorUid),
-            eb("uid", "is", null),
-          ]),
-        )
-        .orderBy("uid", "desc");
+      query = query.where("uid", "=", globalCursorUid);
     } else {
       query = query.where("uid", "=", uid);
     }
@@ -1140,6 +1134,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
           "xy_wap_embed_insight_job.rescan_task_id as rescan_task_id",
           "xy_wap_embed_insight_job.target_id as target_id",
           "xy_wap_embed_insight_job.uid as uid",
+          "rescan_task.from_time as rescan_from_time",
           "rescan_task.to_time as rescan_to_time",
         ])
         .where("xy_wap_embed_insight_job.target_type", "=", "uid")
@@ -1156,16 +1151,22 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         return undefined;
       }
 
-      const cursorMsgtime = new Date(row.target_id).getTime();
+      const cursorMsgtime = row.rescan_task_id == null
+        ? parseNumber(row.target_id)
+        : parseNumber(row.rescan_from_time ?? undefined);
       const scanUntilMsgtime = row.rescan_to_time == null
         ? undefined
-        : new Date(row.rescan_to_time).getTime();
+        : parseNumber(row.rescan_to_time);
 
-      if (!Number.isFinite(cursorMsgtime)) {
+      if (row.rescan_task_id != null && (!Number.isFinite(cursorMsgtime) || cursorMsgtime <= 0)) {
+        throw new Error(`Invalid sync_messages rescan from_time: ${row.rescan_from_time}`);
+      }
+
+      if (row.rescan_task_id == null && (!Number.isFinite(cursorMsgtime) || cursorMsgtime <= 0)) {
         throw new Error(`Invalid sync_messages target_id: ${row.target_id}`);
       }
 
-      if (scanUntilMsgtime != null && !Number.isFinite(scanUntilMsgtime)) {
+      if (scanUntilMsgtime != null && (!Number.isFinite(scanUntilMsgtime) || scanUntilMsgtime <= 0)) {
         throw new Error(`Invalid sync_messages rescan to_time: ${row.rescan_to_time}`);
       }
 
@@ -2001,7 +2002,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       evidenceRows,
     );
 
-    for (const item of output.sentiment) {
+    for (const item of output.sentiment.slice(0, 1)) {
       const id = await this.insertAndGetId("xy_wap_embed_session_sentiment", {
         confidence: item.confidence,
         polarity: item.polarity,

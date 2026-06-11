@@ -3467,9 +3467,9 @@ export class InsightsRepository implements InsightsRepositoryPort {
         .values({
           analysis_scope: input.analysisScope,
           created_by: input.createdBy ?? null,
-          from_time: input.from,
+          from_time: input.from.getTime(),
           status: "pending",
-          to_time: input.to,
+          to_time: input.to.getTime(),
           uid: scope.uid,
         })
         .executeTakeFirstOrThrow() as InsertResult;
@@ -3484,7 +3484,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
           rescan_task_id: taskId,
           run_after: new Date(),
           status: "pending",
-          target_id: input.from.toISOString(),
+          target_id: String(scope.uid),
           target_type: "uid",
           uid: scope.uid,
         })
@@ -3536,13 +3536,13 @@ export class InsightsRepository implements InsightsRepositoryPort {
         created_by: string | null;
         failed_sessions: number | string;
         finished_at: Date | string | null;
-        from_time: Date | string;
+        from_time: number | string;
         id: number | string;
         queued_sessions: number | string;
         started_at: Date | string | null;
         status: string;
         succeeded_sessions: number | string;
-        to_time: Date | string | null;
+        to_time: number | string | null;
         total_sessions: number | string;
         update_time: Date | string;
       }>>;
@@ -3562,13 +3562,13 @@ export class InsightsRepository implements InsightsRepositoryPort {
         createdBy: row.created_by ?? undefined,
         failedSessions: parseNumber(row.failed_sessions),
         finishedAt: toOptionalTimestamp(row.finished_at),
-        from: new Date(row.from_time).toISOString(),
+        from: new Date(parseNumber(row.from_time)).toISOString(),
         queuedSessions: parseNumber(row.queued_sessions),
         startedAt: toOptionalTimestamp(row.started_at),
         status: normalizeRescanTaskStatus(row.status),
         succeededSessions: parseNumber(row.succeeded_sessions),
         taskId: String(row.id),
-        to: row.to_time == null ? undefined : new Date(row.to_time).toISOString(),
+        to: row.to_time == null ? undefined : new Date(parseNumber(row.to_time)).toISOString(),
         totalSessions: parseNumber(row.total_sessions),
         updateTime: toTimestamp(row.update_time),
       })),

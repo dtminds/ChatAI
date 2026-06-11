@@ -191,14 +191,12 @@ describe("LLM provider config", () => {
                   problemSummary: "客户反馈物流异常",
                   resolutionStatus: "unresolved",
                 },
-                sentiment: [
-                  {
-                    confidence: 0.7,
-                    evidenceMessageIds: ["9001"],
-                    polarity: "negative",
-                    reason: "客户表达不满",
-                  },
-                ],
+                sentiment: {
+                  confidence: 0.7,
+                  evidenceMessageIds: ["9001"],
+                  polarity: "negative",
+                  reason: "客户表达不满",
+                },
                 summary: {
                   sessionTitle: "查物流",
                   text: "客服承诺处理",
@@ -342,9 +340,100 @@ describe("LLM provider config", () => {
       qaFindings: [
         expect.objectContaining({ ruleCode: "after_sales_followup" }),
       ],
+      sentiment: [
+        expect.objectContaining({
+          evidenceMessageIds: ["9001"],
+          polarity: "negative",
+          reason: "客户表达不满",
+        }),
+      ],
       summary: { sessionTitle: "查物流" },
       tags: [expect.objectContaining({ tagCode: "logistics" })],
     });
+  });
+
+  it("keeps only one session sentiment when a legacy array response has multiple items", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({
+                    actionItems: [],
+                    entities: [],
+                    faqCandidates: [],
+                    intents: [],
+                    problemResolution: {
+                      confidence: 0.8,
+                      evidence: [],
+                      evidenceMessageIds: ["9001"],
+                      problemDetected: true,
+                      problemSummary: "客户反馈物流异常",
+                      resolutionStatus: "unresolved",
+                    },
+                    qaFindings: [],
+                    sentiment: [
+                      {
+                        confidence: 0.7,
+                        evidenceMessageIds: ["9001"],
+                        polarity: "negative",
+                        reason: "客户表达不满",
+                      },
+                      {
+                        confidence: 0.6,
+                        evidenceMessageIds: ["9002"],
+                        polarity: "neutral",
+                        reason: "客服正常回复",
+                      },
+                    ],
+                    summary: {
+                      sessionTitle: "查物流",
+                      text: "客服承诺处理",
+                    },
+                    tags: [],
+                  }),
+                },
+              },
+            ],
+          }),
+          { headers: { "Content-Type": "application/json" }, status: 200 },
+        ),
+      ),
+    );
+    const analyzer = new OpenAiCompatibleInsightAnalyzer({
+      analysisMode: "single",
+      apiKey: "secret",
+      baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+      maxTokens: 4096,
+      model: "ep-main",
+      providerCode: "volcengine_ark",
+      protocol: "openai-compatible",
+      responseFormat: "json_object",
+    });
+
+    const result = await analyzer.analyzeSession({
+      messages: [
+        {
+          aiText: "快递一直没更新",
+          contentStatus: "ready",
+          messageType: "text",
+          occurredAt: 1,
+          senderRole: "customer",
+          sourceMessageId: "9001",
+        },
+      ],
+    });
+
+    expect(result.sentiment).toEqual([
+      expect.objectContaining({
+        evidenceMessageIds: ["9001"],
+        polarity: "negative",
+        reason: "客户表达不满",
+      }),
+    ]);
   });
 
   it("evaluates live analysis gate with lite model and normalized decision output", async () => {

@@ -503,14 +503,12 @@ function buildSummaryOutputContract(options: { includeActionItems?: boolean } = 
       resolutionStatus: "<resolved|partially_resolved|unresolved|no_customer_problem|unknown>",
       unresolvedReason: "<string optional: 未解决或部分解决时必须说明理由>",
     },
-    sentiment: [
-      {
-        confidence: "<number 0-1>",
-        evidenceMessageIds: ["<sourceMessageId>"],
-        polarity: "<positive|neutral|negative|mixed|unknown>",
-        reason: "<string: 情绪判定理由>",
-      },
-    ],
+    sentiment: {
+      confidence: "<number 0-1>",
+      evidenceMessageIds: ["<sourceMessageId>"],
+      polarity: "<positive|neutral|negative|mixed|unknown>",
+      reason: "<string: 情绪判定理由>",
+    },
     summary: {
       sessionTitle: "<string: 2-12 个汉字会话短标题>",
       text: "<string: 1-3 句纯会话摘要>",
@@ -597,10 +595,12 @@ function normalizePreviousOutputForGate(output: InsightAnalysisOutput | undefine
   return {
     summary: output.summary,
     problemResolution: output.problemResolution,
-    sentiment: output.sentiment.map((item) => ({
-      polarity: item.polarity,
-      reason: truncatePromptText(item.reason, PROMPT_LIMITS.description),
-    })),
+    sentiment: output.sentiment[0]
+      ? {
+        polarity: output.sentiment[0].polarity,
+        reason: truncatePromptText(output.sentiment[0].reason, PROMPT_LIMITS.description),
+      }
+      : null,
     intents: output.intents.map((item) => ({
       intentCode: item.intentCode ?? item.intentId,
       intentLabel: item.intentLabel,

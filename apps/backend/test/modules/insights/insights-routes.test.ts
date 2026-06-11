@@ -393,12 +393,15 @@ describe("insights routes", () => {
     });
     expect(db.insertedRescanTask).toMatchObject({
       analysis_scope: "classification",
+      from_time: 1_780_272_000_000,
+      to_time: 1_780_358_400_000,
       uid: 9001,
     });
     expect(db.insertedJob).toMatchObject({
       analysis_scope: "classification",
       job_type: "sync_messages",
       rescan_task_id: 9901,
+      target_id: "9001",
       uid: 9001,
     });
     expect(db.insertedJob?.idempotency_key).toMatch(/^rescan:9001:classification:2026-06-01T00:00:00\.000Z:2026-06-02T00:00:00\.000Z:/);
@@ -1484,13 +1487,13 @@ function createInsightsDbMock(options: {
             created_by: null,
             failed_sessions: 0,
             finished_at: null,
-            from_time: state.insertedRescanTask.from_time ?? new Date("2026-06-01T00:00:00.000Z"),
+            from_time: state.insertedRescanTask.from_time ?? 1_780_272_000_000,
             id: 9901,
             queued_sessions: 0,
             started_at: null,
             status: "pending",
             succeeded_sessions: 0,
-            to_time: state.insertedRescanTask.to_time ?? new Date("2026-06-02T00:00:00.000Z"),
+            to_time: state.insertedRescanTask.to_time ?? 1_780_358_400_000,
             total_sessions: 0,
             update_time: new Date("2026-06-01T00:00:00.000Z"),
           };

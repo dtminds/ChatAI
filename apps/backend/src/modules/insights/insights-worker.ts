@@ -244,6 +244,7 @@ export type InsightAnalysisOutput = {
     ruleName: string;
     severity: "high" | "low" | "medium";
   }>;
+  // Session-level sentiment is stored as a 0/1 item array for API compatibility.
   sentiment: Array<{
     confidence: number;
     evidenceMessageIds: string[];

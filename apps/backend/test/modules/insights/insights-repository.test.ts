@@ -173,6 +173,37 @@ describe("InsightsRepository", () => {
     expect(builders[0]?.limitCalls).toEqual([10]);
   });
 
+  it("reads the global sync cursor through the non-null uid sentinel", async () => {
+    const builders: SelectBuilderStub[] = [];
+    const db = {
+      selectFrom: vi.fn((table: string) => {
+        const builder = createSelectBuilder(
+          [
+            {
+              cursor_audit_id: 9200,
+              cursor_msgtime: 1_780_300_000_000,
+            },
+          ],
+          table,
+        );
+        builders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await expect(repository.getCursor()).resolves.toEqual({
+      cursorAuditId: 9200,
+      cursorMsgtime: 1_780_300_000_000,
+      uid: 0,
+    });
+
+    expect(builders[0]?.table).toBe("xy_wap_embed_insight_sync_cursor");
+    expect(builders[0]?.whereCalls).toContainEqual(["source", "=", "xy_wap_embed_msg_audit_info"]);
+    expect(builders[0]?.whereCalls).toContainEqual(["uid", "=", 0]);
+    expect(builders[0]?.whereCalls).not.toContainEqual(["uid", "is", null]);
+  });
+
   it("maps parsed json config columns from generated schema types", async () => {
     const db = {
       selectFrom: vi.fn((table: string) => {
@@ -2403,6 +2434,41 @@ describe("InsightsRepository", () => {
     ).resolves.toEqual({ jobId: "8801", taskId: "9901" });
   });
 
+  it("stores historical rescan ranges as message timestamp watermarks", async () => {
+    const insertBuilders: InsertBuilderStub[] = [];
+    const db = {
+      insertInto: vi.fn((table: string) => {
+        const builder = createInsertBuilder(async () => ({
+          insertId: table === "xy_wap_embed_insight_rescan_task" ? 9901 : 8801,
+        }));
+        insertBuilders.push(builder);
+        return builder;
+      }),
+    };
+    const repository = new InsightsRepository(db as never);
+
+    await expect(
+      repository.createRescanJob(
+        { uid: 9001 },
+        {
+          analysisScope: "classification",
+          from: new Date("2026-06-01T00:00:00.000Z"),
+          to: new Date("2026-06-02T00:00:00.000Z"),
+        },
+        "rescan:9001:classification:2026-06-01T00:00:00.000Z",
+      ),
+    ).resolves.toEqual({ jobId: "8801", taskId: "9901" });
+
+    expect(insertBuilders[0]?.valuesCalls[0]).toMatchObject({
+      from_time: 1_780_272_000_000,
+      to_time: 1_780_358_400_000,
+    });
+    expect(insertBuilders[1]?.valuesCalls[0]).toMatchObject({
+      target_id: "9001",
+      target_type: "uid",
+    });
+  });
+
   it("logically deletes label configs by marking status deleted", async () => {
     let updateBuilder: UpdateBuilderStub | undefined;
     const db = {
@@ -3361,13 +3427,13 @@ describe("MysqlInsightWorkerRepository", () => {
       transaction: vi.fn(),
       selectFrom: vi.fn(() => {
         const builder = createSelectBuilder([
-          {
-            analysis_scope: "all",
-            id: 702,
-            rescan_task_id: null,
-            target_id: "2026-06-01T00:00:00.000Z",
-            uid: 9001,
-          },
+            {
+              analysis_scope: "all",
+              id: 702,
+              rescan_task_id: null,
+              target_id: "1780272000000",
+              uid: 9001,
+            },
         ]);
         builders.push(builder);
         return builder;
@@ -3387,7 +3453,7 @@ describe("MysqlInsightWorkerRepository", () => {
     expect(builders[0]?.skipLockedCalls).toBe(1);
   });
 
-  it("claims historical rescan sync jobs with the stored upper bound", async () => {
+  it("claims historical rescan sync jobs from stored message timestamp watermarks", async () => {
     const updateExecute = vi.fn(async () => ({ numAffectedRows: 1n }));
     const builders: SelectBuilderStub[] = [];
     const db = {
@@ -3398,9 +3464,10 @@ describe("MysqlInsightWorkerRepository", () => {
             {
               analysis_scope: "classification",
               id: 702,
+              rescan_from_time: 1_780_272_000_000,
               rescan_task_id: 9901,
-              rescan_to_time: new Date("2026-06-01T01:00:00.000Z"),
-              target_id: "2026-06-01T00:00:00.000Z",
+              rescan_to_time: 1_780_275_600_000,
+              target_id: "9001",
               uid: 9001,
             },
           ],
@@ -3416,15 +3483,18 @@ describe("MysqlInsightWorkerRepository", () => {
 
     await expect(repository.claimNextSyncMessagesJob()).resolves.toEqual({
       analysisScope: "classification",
-      cursorMsgtime: new Date("2026-06-01T00:00:00.000Z").getTime(),
+      cursorMsgtime: 1_780_272_000_000,
       jobId: "702",
       rescanTaskId: "9901",
-      scanUntilMsgtime: new Date("2026-06-01T01:00:00.000Z").getTime(),
+      scanUntilMsgtime: 1_780_275_600_000,
       uid: 9001,
     });
 
     expect(builders[0]?.joins).toContain(
       "xy_wap_embed_insight_rescan_task as rescan_task",
+    );
+    expect(builders[0]?.selectRawCalls.join("\n")).toContain(
+      "rescan_task.from_time as rescan_from_time",
     );
     expect(builders[0]?.selectRawCalls.join("\n")).toContain(
       "rescan_task.to_time as rescan_to_time",
@@ -3698,7 +3768,7 @@ describe("MysqlInsightWorkerRepository", () => {
     ]);
   });
 
-  it("rejects malformed historical rescan cursors before claiming the job", async () => {
+  it("rejects malformed historical rescan watermarks before claiming the job", async () => {
     const updateExecute = vi.fn(async () => ({ numAffectedRows: 1n }));
     const db = {
       transaction: vi.fn(),
@@ -3707,8 +3777,9 @@ describe("MysqlInsightWorkerRepository", () => {
           {
             analysis_scope: "all",
             id: 702,
-            rescan_task_id: null,
-            target_id: "not-a-date",
+            rescan_from_time: "not-a-watermark",
+            rescan_task_id: 9901,
+            target_id: "9001",
             uid: 9001,
           },
         ]),
@@ -3719,7 +3790,7 @@ describe("MysqlInsightWorkerRepository", () => {
     const repository = new MysqlInsightWorkerRepository(db as never);
 
     await expect(repository.claimNextSyncMessagesJob()).rejects.toThrow(
-      "Invalid sync_messages target_id",
+      "Invalid sync_messages rescan from_time",
     );
     expect(updateExecute).not.toHaveBeenCalled();
   });
@@ -4507,6 +4578,12 @@ describe("MysqlInsightWorkerRepository", () => {
             polarity: "negative",
             reason: "客户表达不满",
           },
+          {
+            confidence: 0.6,
+            evidenceMessageIds: ["9002"],
+            polarity: "neutral",
+            reason: "客服正常回复",
+          },
         ],
         summary: {
           sessionTitle: "查物流",
@@ -4532,6 +4609,11 @@ describe("MysqlInsightWorkerRepository", () => {
       type: "insert",
       values: expect.objectContaining({ status: "building" }),
     });
+    expect(
+      operations.filter(
+        (operation) => operation.table === "xy_wap_embed_session_sentiment",
+      ),
+    ).toHaveLength(1);
     const currentIndex = operations.findIndex(
       (operation) => operation.table === "xy_wap_embed_session_insight_current",
     );
@@ -5818,6 +5900,7 @@ function createInsertBuilder(
     execute: async () => [await executeTakeFirstOrThrow()],
     expressionCalls: 0,
     ignoreCalls: 0,
+    valuesCalls: [] as Array<Record<string, unknown> | Record<string, unknown>[]>,
     columns: (columns: string[]) => {
       builder.columnsCalls.push(columns);
       return builder;
@@ -5835,6 +5918,7 @@ function createInsertBuilder(
       return builder;
     },
     values: (values: Record<string, unknown>) => {
+      builder.valuesCalls.push(values);
       options.onValues?.(values);
       return builder;
     },

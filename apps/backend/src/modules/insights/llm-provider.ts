@@ -527,12 +527,7 @@ function normalizeAnalysisOutput(value: unknown): InsightAnalysisOutput {
       ruleName: readString(item, "ruleName"),
       severity: readSeverity(readString(item, "severity")),
     })),
-    sentiment: readArray(record.sentiment).map((item) => ({
-      confidence: readNumber(item, "confidence"),
-      evidenceMessageIds: readStringArray(item, "evidenceMessageIds"),
-      polarity: readPolarity(readString(item, "polarity")),
-      reason: readString(item, "reason"),
-    })),
+    sentiment: readSingleSentiment(record.sentiment),
     summary: {
       sessionTitle: readString(summary, "sessionTitle"),
       text: readString(summary, "text"),
@@ -638,6 +633,23 @@ function readArray(value: unknown) {
   return Array.isArray(value) ? value.filter(isRecord) : [];
 }
 
+function readSingleSentiment(value: unknown) {
+  const item = Array.isArray(value)
+    ? value.find(isRecord)
+    : isRecord(value)
+      ? value
+      : undefined;
+
+  return item
+    ? [{
+      confidence: readNumber(item, "confidence"),
+      evidenceMessageIds: readStringArray(item, "evidenceMessageIds"),
+      polarity: readPolarity(readString(item, "polarity")),
+      reason: readString(item, "reason"),
+    }]
+    : [];
+}
+
 function readString(record: unknown, key: string) {
   return isRecord(record) && typeof record[key] === "string" ? record[key].trim() : "";
 }
@@ -706,7 +718,7 @@ function readEvidenceRole(value: string) {
   return "primary";
 }
 
-function readPolarity(value: string) {
+function readPolarity(value: string): InsightAnalysisOutput["sentiment"][number]["polarity"] {
   if (
     value === "positive" ||
     value === "neutral" ||

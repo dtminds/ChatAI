@@ -1009,9 +1009,9 @@ export interface XyWapEmbedInsightRescanTask {
    */
   finished_at: Date | null;
   /**
-   * 重刷起始时间
+   * 重刷起始消息时间戳
    */
-  from_time: Date;
+  from_time: number;
   /**
    * 主键ID
    */
@@ -1033,9 +1033,9 @@ export interface XyWapEmbedInsightRescanTask {
    */
   succeeded_sessions: Generated<number>;
   /**
-   * 重刷结束时间
+   * 重刷结束消息时间戳
    */
-  to_time: Date | null;
+  to_time: number | null;
   /**
    * 需重刷会话数
    */
@@ -1072,9 +1072,9 @@ export interface XyWapEmbedInsightSyncCursor {
    */
   source: string;
   /**
-   * 租户ID，0表示全局水位；历史NULL全局水位只读兼容
+   * 租户ID，0表示全局水位
    */
-  uid: number | null;
+  uid: number;
   /**
    * 更新时间
    */

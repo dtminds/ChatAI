@@ -139,6 +139,35 @@ ALTER TABLE xy_wap_embed_session_intent
 ## 2026-06-07
 
 - Replaced `xy_wap_embed_session_summary.customer_intent/process_summary/result_summary/follow_up` with `session_title/summary_text`. Runtime code now reads and writes the new summary shape only.
+- Tightened `xy_wap_embed_insight_sync_cursor.uid` to `NOT NULL DEFAULT 0`; `uid = 0` is the global sync cursor sentinel and works with `uk_insight_sync_source_uid` to prevent duplicate global cursors.
+- Changed `xy_wap_embed_insight_rescan_task.from_time/to_time` from `DATETIME` to UTC millisecond message watermarks so historical rescans align directly with `xy_wap_embed_msg_audit_info.msgtime`.
+
+Manual DDL for development databases:
+
+```sql
+ALTER TABLE xy_wap_embed_insight_sync_cursor
+  MODIFY COLUMN uid BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '租户ID，0表示全局水位';
+
+ALTER TABLE xy_wap_embed_insight_rescan_task
+  ADD COLUMN from_time_ms BIGINT UNSIGNED NULL COMMENT '重刷起始消息时间戳' AFTER from_time,
+  ADD COLUMN to_time_ms BIGINT UNSIGNED NULL COMMENT '重刷结束消息时间戳' AFTER to_time;
+
+UPDATE xy_wap_embed_insight_rescan_task
+SET
+  from_time_ms = CAST(UNIX_TIMESTAMP(from_time) * 1000 AS UNSIGNED),
+  to_time_ms = CASE
+    WHEN to_time IS NULL THEN NULL
+    ELSE CAST(UNIX_TIMESTAMP(to_time) * 1000 AS UNSIGNED)
+  END;
+
+ALTER TABLE xy_wap_embed_insight_rescan_task
+  DROP COLUMN from_time,
+  DROP COLUMN to_time;
+
+ALTER TABLE xy_wap_embed_insight_rescan_task
+  CHANGE COLUMN from_time_ms from_time BIGINT UNSIGNED NOT NULL COMMENT '重刷起始消息时间戳' AFTER created_by,
+  CHANGE COLUMN to_time_ms to_time BIGINT UNSIGNED NULL COMMENT '重刷结束消息时间戳' AFTER from_time;
+```
 
 Manual migration for existing databases:
 

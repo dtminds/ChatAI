@@ -216,6 +216,45 @@ describe("verifyAccessSession cache", () => {
     ).resolves.toBe(false);
     expect(db.calls).toEqual([]);
   });
+
+  it("does not let a stale-version negative cache reject a newer valid session", async () => {
+    const cache = createCache();
+    const staleVersionDb = createSessionDb({
+      id: 501,
+      session_version: 2,
+      sub_user_id: 101,
+    });
+
+    await expect(
+      verifyAccessSession(staleVersionDb, {
+        roles: ["operator"],
+        sessionId: "501",
+        sessionVersion: 1,
+        subUserId: "101",
+      }, cache),
+    ).resolves.toBe(false);
+    expect(cache.set).toHaveBeenCalledWith(
+      "chatai:auth:session:501",
+      expect.stringContaining("\"valid\":false"),
+      60,
+    );
+
+    const currentVersionDb = createSessionDb({
+      id: 501,
+      session_version: 2,
+      sub_user_id: 101,
+    });
+
+    await expect(
+      verifyAccessSession(currentVersionDb, {
+        roles: ["operator"],
+        sessionId: "501",
+        sessionVersion: 2,
+        subUserId: "101",
+      }, cache),
+    ).resolves.toBe(true);
+    expect(currentVersionDb.calls).toEqual(["xy_wap_embed_sub_user_session"]);
+  });
 });
 
 describe("revokeSession cache invalidation", () => {

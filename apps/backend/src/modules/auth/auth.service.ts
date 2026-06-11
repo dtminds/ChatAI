@@ -208,7 +208,10 @@ export async function verifyAccessSession(
   const sessionKey = cacheKeys.authSession(user.sessionId);
   const cachedSession = await readSessionCache(cache, sessionKey);
 
-  if (cachedSession?.valid === false) {
+  if (
+    cachedSession?.valid === false &&
+    shouldRejectNegativeSessionCache(cachedSession, user)
+  ) {
     return false;
   }
 
@@ -234,7 +237,11 @@ export async function verifyAccessSession(
   if (!session) {
     await cache?.set(
       sessionKey,
-      JSON.stringify({ valid: false }),
+      JSON.stringify({
+        sessionVersion: user.sessionVersion,
+        subUserId: user.subUserId,
+        valid: false,
+      }),
       NEGATIVE_SESSION_CACHE_TTL_SECONDS,
     );
     return false;
@@ -436,6 +443,8 @@ type SessionCacheValue =
       valid: true;
     }
   | {
+      sessionVersion?: number;
+      subUserId?: string;
       valid: false;
     };
 
@@ -456,7 +465,13 @@ async function readSessionCache(cache: CachePort | undefined, key: string) {
     const value = JSON.parse(cached) as Partial<SessionCacheValue>;
 
     if (value.valid === false) {
-      return { valid: false } satisfies SessionCacheValue;
+      return {
+        sessionVersion: typeof value.sessionVersion === "number"
+          ? value.sessionVersion
+          : undefined,
+        subUserId: typeof value.subUserId === "string" ? value.subUserId : undefined,
+        valid: false,
+      } satisfies SessionCacheValue;
     }
 
     if (
@@ -485,6 +500,17 @@ function isPositiveSessionCache(
   value: SessionCacheValue | undefined,
 ): value is Extract<SessionCacheValue, { valid: true }> {
   return value?.valid === true;
+}
+
+function shouldRejectNegativeSessionCache(
+  value: Extract<SessionCacheValue, { valid: false }>,
+  user: JwtUser,
+) {
+  if (value.subUserId === undefined || value.sessionVersion === undefined) {
+    return true;
+  }
+
+  return value.subUserId === user.subUserId && value.sessionVersion === user.sessionVersion;
 }
 
 function mapAuthSubUser(row: {

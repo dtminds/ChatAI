@@ -235,6 +235,10 @@ export function ImagePreviewDialog({
     }
 
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (isEditableKeyboardTarget(document.activeElement)) {
+        return;
+      }
+
       if (event.key === "ArrowLeft" && canGoPrevious) {
         event.preventDefault();
         onGalleryIndexChange?.(currentGalleryIndex - 1);
@@ -818,6 +822,18 @@ function clampGalleryIndex(index: number, length: number) {
   }
 
   return Math.min(Math.max(index, 0), length - 1);
+}
+
+export function isEditableKeyboardTarget(element: Element | null) {
+  if (!(element instanceof HTMLElement)) {
+    return false;
+  }
+
+  return Boolean(
+    element.closest(
+      "input, textarea, [contenteditable=''], [contenteditable='true']",
+    ),
+  );
 }
 
 function getValidImageSize(content: ImageMessageContent) {

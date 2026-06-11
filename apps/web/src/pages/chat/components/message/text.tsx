@@ -1,3 +1,5 @@
+import type { KeyboardEvent } from "react";
+import { cn } from "@/lib/utils";
 import { getTextBubbleClassName } from "@/pages/chat/components/message/bubble-style";
 import { parseWechatEmojiText } from "@/pages/chat/wechat-emoji";
 
@@ -19,11 +21,33 @@ export function TextMessageBubble({
   onClick,
   text,
 }: TextMessageBubbleProps) {
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (!onClick || (event.key !== "Enter" && event.key !== " ")) {
+      return;
+    }
+
+    event.preventDefault();
+    onClick();
+  };
+
+  const interactiveProps = onClick
+    ? {
+        "aria-label": "查看发送时间",
+        onClick,
+        onKeyDown: handleKeyDown,
+        role: "button" as const,
+        tabIndex: 0,
+      }
+    : {};
+
   return (
     <div
-      className={getTextBubbleClassName(isAgent, isOwnMessage)}
+      className={cn(
+        getTextBubbleClassName(isAgent, isOwnMessage),
+        onClick && "cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring/35",
+      )}
       data-testid="text-message-bubble"
-      onClick={onClick}
+      {...interactiveProps}
     >
       <WechatEmojiText
         className="whitespace-pre-wrap break-words"

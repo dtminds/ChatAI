@@ -75,7 +75,10 @@ import {
   extractComposerMentionState,
   type ComposerSegment,
 } from "@/pages/chat/lib/composer-segments";
-import { hasConversationComposerDraftContent } from "@/pages/chat/lib/conversation-composer-draft";
+import {
+  hasConversationComposerDraftContent,
+  isConversationListedInWorkbench,
+} from "@/pages/chat/lib/conversation-composer-draft";
 import { resolveWorkbenchPermissions } from "@/pages/chat/lib/workbench-permissions";
 import { openMessageDownloadUrl } from "@/pages/chat/lib/message-download";
 import { canUseExpiringUrl } from "@/pages/chat/lib/message-url-expiry";
@@ -629,6 +632,16 @@ function ChatWorkbenchContent({
 
   const persistComposerDraftForConversation = (conversationId: string) => {
     if (!conversationId) {
+      return;
+    }
+
+    const conversationStillExists = isConversationListedInWorkbench(
+      useWorkbenchStore.getState().conversationListsByScope,
+      conversationId,
+    );
+
+    if (!conversationStillExists) {
+      clearComposerDraft(conversationId);
       return;
     }
 

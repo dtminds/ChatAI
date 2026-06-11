@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MessageRow } from "@/pages/chat/components/message-feed";
 import { TextMessageBubble } from "@/pages/chat/components/message";
 import type { ChatMessage } from "@/pages/chat/chat-types";
@@ -291,6 +291,52 @@ describe("text message bubble layout", () => {
     render(<MessageRow message={createTextMessage("单聊消息")} />);
 
     expect(screen.queryByText("成员甲")).not.toBeInTheDocument();
+  });
+
+  it("exposes keyboard and screen reader support for clickable text bubbles", async () => {
+    const user = userEvent.setup();
+    const onClick = vi.fn();
+
+    render(
+      <TextMessageBubble
+        isAgent={false}
+        onClick={onClick}
+        text="点击查看时间"
+      />,
+    );
+
+    const bubble = screen.getByRole("button", { name: "查看发送时间" });
+
+    expect(bubble).toHaveAttribute("tabindex", "0");
+
+    bubble.focus();
+    await user.keyboard("{Enter}");
+    await user.keyboard(" ");
+
+    expect(onClick).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not expose button semantics when the text bubble is not clickable", () => {
+    render(<TextMessageBubble isAgent={false} text="普通消息" />);
+
+    expect(screen.queryByRole("button", { name: "查看发送时间" })).not.toBeInTheDocument();
+    expect(screen.getByTestId("text-message-bubble")).not.toHaveAttribute("tabindex");
+  });
+
+  it("shows sent time above a text bubble when activated by keyboard", async () => {
+    const user = userEvent.setup();
+
+    render(<MessageRow message={createTextMessage("键盘查看时间")} />);
+
+    const sentAt = screen.getByTestId("text-message-sent-at");
+    const bubble = screen.getByRole("button", { name: "查看发送时间" });
+
+    expect(sentAt).toHaveClass("invisible");
+
+    bubble.focus();
+    await user.keyboard("{Enter}");
+
+    expect(sentAt).not.toHaveClass("invisible");
   });
 
   it("shows sent time above a text bubble on click and hides it on mouse leave", async () => {

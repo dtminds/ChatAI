@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { MessageRow } from "@/pages/chat/components/message-feed";
 import { MiniAppMessageCard } from "@/pages/chat/components/message";
 import type { ChatMessage } from "@/pages/chat/chat-types";
@@ -63,6 +63,49 @@ describe("MiniAppMessageCard", () => {
       .toBeInTheDocument();
     expect(screen.queryByRole("img", { name: "预约直播抽秋天的第一杯奶茶" }))
       .not.toBeInTheDocument();
+  });
+
+  it("shows sent time above the card when activated by keyboard", async () => {
+    const user = userEvent.setup();
+
+    render(<MessageRow message={createMiniProgramMessage()} />);
+
+    const sentAt = screen.getByTestId("text-message-sent-at");
+    const card = screen.getByRole("button", { name: "查看发送时间" });
+
+    expect(sentAt).toHaveClass("invisible");
+
+    card.focus();
+    await user.keyboard("{Enter}");
+
+    expect(sentAt).not.toHaveClass("invisible");
+  });
+
+  it("supports keyboard activation for clickable mini program cards", async () => {
+    const user = userEvent.setup();
+    const onClick = vi.fn();
+
+    render(
+      <MiniAppMessageCard
+        content={{
+          appName: "学好惊喜社",
+          sourceLabel: "小程序",
+          title: "预约直播抽秋天的第一杯奶茶",
+          type: "mini-program",
+        }}
+        onClick={onClick}
+      />,
+    );
+
+    const card = screen.getByRole("button", { name: "查看发送时间" });
+
+    expect(card).toHaveAttribute("tabindex", "0");
+
+    card.focus();
+    await user.keyboard("{Enter}");
+    await user.keyboard(" ");
+
+    expect(onClick).toHaveBeenCalledTimes(2);
   });
 
   it("shows sent time above the card on click", async () => {

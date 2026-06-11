@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
@@ -21,25 +22,39 @@ export function collectConversationGalleryImages(
   const items: ConversationGalleryImage[] = [];
 
   for (const message of messages) {
-    if (!isChatMessage(message) || message.content.type !== "image") {
+    if (!isChatMessage(message) || message.isRevoked) {
       continue;
     }
 
-    const imageUrl = message.content.imageUrl.trim();
+    const content = message.content;
+
+    if (content?.type !== "image") {
+      continue;
+    }
+
+    const imageUrl = content.imageUrl?.trim() ?? "";
 
     if (!imageUrl) {
       continue;
     }
 
     items.push({
-      alt: message.content.alt,
+      alt: content.alt ?? "",
       imageUrl,
       messageId: message.id,
-      ocrEnabled: message.content.variant !== "emotion",
+      ocrEnabled: content.variant !== "emotion",
     });
   }
 
   return items;
+}
+
+export function clampConversationGalleryIndex(index: number, length: number) {
+  if (length <= 0) {
+    return 0;
+  }
+
+  return Math.max(0, Math.min(index, length - 1));
 }
 
 export function ConversationImageGalleryProvider({
@@ -55,7 +70,24 @@ export function ConversationImageGalleryProvider({
   );
   const [isOpen, setIsOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
-  const activeItem = galleryItems[activeIndex];
+
+  useEffect(() => {
+    if (galleryItems.length === 0) {
+      setIsOpen(false);
+      setActiveIndex(0);
+      return;
+    }
+
+    setActiveIndex((currentIndex) =>
+      clampConversationGalleryIndex(currentIndex, galleryItems.length),
+    );
+  }, [galleryItems]);
+
+  const safeActiveIndex = clampConversationGalleryIndex(
+    activeIndex,
+    galleryItems.length,
+  );
+  const activeItem = galleryItems[safeActiveIndex];
 
   const openGallery = useCallback(
     (messageId: string) => {
@@ -81,10 +113,10 @@ export function ConversationImageGalleryProvider({
   return (
     <ConversationImageGalleryContext.Provider value={contextValue}>
       {children}
-      {activeItem ? (
+      {isOpen && activeItem ? (
         <ImagePreviewDialog
           alt={activeItem.alt}
-          galleryIndex={activeIndex}
+          galleryIndex={safeActiveIndex}
           galleryItems={galleryItems}
           imageUrl={activeItem.imageUrl}
           ocrEnabled={activeItem.ocrEnabled}

@@ -43,7 +43,13 @@ import type {
   InsightsRescanResponse,
   WorkbenchMessageDto,
 } from "@chatai/contracts";
-import { DEFAULT_INSIGHT_SETTINGS } from "./insights-seeds.js";
+import {
+  SYSTEM_PRESET_ENTITY_DICTIONARY,
+  SYSTEM_PRESET_INTENT_CONFIGS,
+  SYSTEM_PRESET_LABEL_CONFIGS,
+  SYSTEM_PRESET_QA_RULE_CONFIGS,
+  systemPresetCodePrefix,
+} from "./insights-seeds.js";
 import {
   BadRequestError,
   BusinessError,
@@ -58,10 +64,11 @@ type InsightConfigLimitRule = {
   softLimit: number;
 };
 
-type InsightConfigIdentity = {
-  id: string;
-  status: -1 | 0 | 1;
-};
+type InsightConfigIdentity =
+  | InsightEntityDictionaryItem
+  | InsightIntentConfig
+  | InsightLabelConfig
+  | InsightQaRuleConfig;
 
 export type InsightsUidScope = {
   uid: number;
@@ -348,6 +355,11 @@ export type InsightsRepositoryPort = {
     scope: InsightsUidScope,
     payload: InsightIntentConfigMutationRequest,
   ): Promise<InsightIntentConfig>;
+  activatePresetIntentConfig(
+    scope: InsightsUidScope,
+    presetCode: string,
+    preset: InsightIntentConfigMutationRequest,
+  ): Promise<InsightIntentConfig>;
   updateIntentConfig(
     scope: InsightsUidScope,
     id: string,
@@ -362,6 +374,11 @@ export type InsightsRepositoryPort = {
   createLabelConfig(
     scope: InsightsUidScope,
     payload: InsightLabelConfigMutationRequest,
+  ): Promise<InsightLabelConfig>;
+  activatePresetLabelConfig(
+    scope: InsightsUidScope,
+    presetCode: string,
+    preset: InsightLabelConfigMutationRequest,
   ): Promise<InsightLabelConfig>;
   updateLabelConfig(
     scope: InsightsUidScope,
@@ -378,6 +395,11 @@ export type InsightsRepositoryPort = {
     scope: InsightsUidScope,
     payload: InsightQaRuleConfigMutationRequest,
   ): Promise<InsightQaRuleConfig>;
+  activatePresetQaRuleConfig(
+    scope: InsightsUidScope,
+    presetCode: string,
+    preset: InsightQaRuleConfigMutationRequest,
+  ): Promise<InsightQaRuleConfig>;
   updateQaRuleConfig(
     scope: InsightsUidScope,
     id: string,
@@ -392,6 +414,11 @@ export type InsightsRepositoryPort = {
   createEntityDictionaryItem(
     scope: InsightsUidScope,
     payload: InsightEntityDictionaryMutationRequest,
+  ): Promise<InsightEntityDictionaryItem>;
+  activatePresetEntityDictionaryItem(
+    scope: InsightsUidScope,
+    presetCode: string,
+    preset: InsightEntityDictionaryMutationRequest,
   ): Promise<InsightEntityDictionaryItem>;
   updateEntityDictionaryItem(
     scope: InsightsUidScope,
@@ -708,10 +735,30 @@ export class InsightsService {
 
     return {
       ...settings,
+      entityDictionary: mergePresetConfigs(
+        settings.entityDictionary,
+        SYSTEM_PRESET_ENTITY_DICTIONARY,
+        (item) => item.entityCode,
+      ),
       featureConfig: {
         ...settings.featureConfig,
         insightAvailable: isInsightAvailable(scope),
       },
+      intentConfigs: mergePresetConfigs(
+        settings.intentConfigs,
+        SYSTEM_PRESET_INTENT_CONFIGS,
+        (item) => item.intentCode,
+      ),
+      labelConfigs: mergePresetConfigs(
+        settings.labelConfigs,
+        SYSTEM_PRESET_LABEL_CONFIGS,
+        (item) => item.labelCode,
+      ),
+      qaRuleConfigs: mergePresetConfigs(
+        settings.qaRuleConfigs,
+        SYSTEM_PRESET_QA_RULE_CONFIGS,
+        (item) => item.ruleCode,
+      ),
     };
   }
 
@@ -762,7 +809,11 @@ export class InsightsService {
     role: AccountRole | string | undefined,
   ): Promise<InsightIntentConfig[]> {
     assertInsightSettingsAdmin(role);
-    return this.repository.listIntentConfigs(scope);
+    return mergePresetConfigs(
+      await this.repository.listIntentConfigs(scope),
+      SYSTEM_PRESET_INTENT_CONFIGS,
+      (item) => item.intentCode,
+    );
   }
 
   async listLabelConfigs(
@@ -770,7 +821,11 @@ export class InsightsService {
     role: AccountRole | string | undefined,
   ): Promise<InsightLabelConfig[]> {
     assertInsightSettingsAdmin(role);
-    return this.repository.listLabelConfigs(scope);
+    return mergePresetConfigs(
+      await this.repository.listLabelConfigs(scope),
+      SYSTEM_PRESET_LABEL_CONFIGS,
+      (item) => item.labelCode,
+    );
   }
 
   async listQaRuleConfigs(
@@ -778,7 +833,11 @@ export class InsightsService {
     role: AccountRole | string | undefined,
   ): Promise<InsightQaRuleConfig[]> {
     assertInsightSettingsAdmin(role);
-    return this.repository.listQaRuleConfigs(scope);
+    return mergePresetConfigs(
+      await this.repository.listQaRuleConfigs(scope),
+      SYSTEM_PRESET_QA_RULE_CONFIGS,
+      (item) => item.ruleCode,
+    );
   }
 
   async listEntityDictionary(
@@ -786,7 +845,11 @@ export class InsightsService {
     role: AccountRole | string | undefined,
   ): Promise<InsightEntityDictionaryItem[]> {
     assertInsightSettingsAdmin(role);
-    return this.repository.listEntityDictionary(scope);
+    return mergePresetConfigs(
+      await this.repository.listEntityDictionary(scope),
+      SYSTEM_PRESET_ENTITY_DICTIONARY,
+      (item) => item.entityCode,
+    );
   }
 
   async updateSessionizationSettings(
@@ -823,9 +886,32 @@ export class InsightsService {
     payload: InsightIntentConfigMutationRequest,
   ): Promise<InsightIntentConfig> {
     assertInsightSettingsAdmin(role);
+    assertCustomConfigCodeAllowed(payload.intentCode);
     await this.assertConfigTotalAllowed(scope, "intentConfigs");
     await this.assertConfigEnableAllowed(scope, "intentConfigs", payload.status);
     return this.repository.createIntentConfig(scope, payload);
+  }
+
+  async activatePresetIntentConfig(
+    scope: InsightsUidScope,
+    role: AccountRole | string | undefined,
+    presetCode: string,
+  ): Promise<InsightIntentConfig> {
+    assertInsightSettingsAdmin(role);
+    const preset = findPresetOrThrow(
+      SYSTEM_PRESET_INTENT_CONFIGS,
+      presetCode,
+      (item) => item.intentCode,
+    );
+    if (!await this.hasExistingPresetConfig(scope, "intentConfigs", presetCode)) {
+      await this.assertConfigTotalAllowed(scope, "intentConfigs");
+    }
+    await this.assertConfigEnableAllowed(scope, "intentConfigs", 0);
+    return this.repository.activatePresetIntentConfig(
+      scope,
+      presetCode,
+      normalizeIntentPresetMutation(preset),
+    );
   }
 
   async updateIntentConfig(
@@ -835,11 +921,13 @@ export class InsightsService {
     payload: InsightIntentConfigMutationRequest,
   ): Promise<InsightIntentConfig> {
     assertInsightSettingsAdmin(role);
+    const currentConfig = await this.getCurrentConfig(scope, "intentConfigs", id);
+    assertConfigIdentityMutationAllowed(currentConfig, payload.intentCode, payload.intentName);
     await this.assertConfigEnableAllowed(
       scope,
       "intentConfigs",
       payload.status,
-      await this.getCurrentConfig(scope, "intentConfigs", id),
+      currentConfig,
     );
     return await this.repository.updateIntentConfig(scope, id, payload)
       ?? raiseConfigNotFound();
@@ -877,9 +965,32 @@ export class InsightsService {
     payload: InsightLabelConfigMutationRequest,
   ): Promise<InsightLabelConfig> {
     assertInsightSettingsAdmin(role);
+    assertCustomConfigCodeAllowed(payload.labelCode);
     await this.assertConfigTotalAllowed(scope, "labelConfigs");
     await this.assertConfigEnableAllowed(scope, "labelConfigs", payload.status);
     return this.repository.createLabelConfig(scope, payload);
+  }
+
+  async activatePresetLabelConfig(
+    scope: InsightsUidScope,
+    role: AccountRole | string | undefined,
+    presetCode: string,
+  ): Promise<InsightLabelConfig> {
+    assertInsightSettingsAdmin(role);
+    const preset = findPresetOrThrow(
+      SYSTEM_PRESET_LABEL_CONFIGS,
+      presetCode,
+      (item) => item.labelCode,
+    );
+    if (!await this.hasExistingPresetConfig(scope, "labelConfigs", presetCode)) {
+      await this.assertConfigTotalAllowed(scope, "labelConfigs");
+    }
+    await this.assertConfigEnableAllowed(scope, "labelConfigs", 0);
+    return this.repository.activatePresetLabelConfig(
+      scope,
+      presetCode,
+      normalizeLabelPresetMutation(preset),
+    );
   }
 
   async updateLabelConfig(
@@ -889,11 +1000,13 @@ export class InsightsService {
     payload: InsightLabelConfigMutationRequest,
   ): Promise<InsightLabelConfig> {
     assertInsightSettingsAdmin(role);
+    const currentConfig = await this.getCurrentConfig(scope, "labelConfigs", id);
+    assertConfigIdentityMutationAllowed(currentConfig, payload.labelCode, payload.labelName);
     await this.assertConfigEnableAllowed(
       scope,
       "labelConfigs",
       payload.status,
-      await this.getCurrentConfig(scope, "labelConfigs", id),
+      currentConfig,
     );
     return await this.repository.updateLabelConfig(scope, id, payload)
       ?? raiseConfigNotFound();
@@ -931,9 +1044,32 @@ export class InsightsService {
     payload: InsightQaRuleConfigMutationRequest,
   ): Promise<InsightQaRuleConfig> {
     assertInsightSettingsAdmin(role);
+    assertCustomConfigCodeAllowed(payload.ruleCode);
     await this.assertConfigTotalAllowed(scope, "qaRuleConfigs");
     await this.assertConfigEnableAllowed(scope, "qaRuleConfigs", payload.status);
     return this.repository.createQaRuleConfig(scope, payload);
+  }
+
+  async activatePresetQaRuleConfig(
+    scope: InsightsUidScope,
+    role: AccountRole | string | undefined,
+    presetCode: string,
+  ): Promise<InsightQaRuleConfig> {
+    assertInsightSettingsAdmin(role);
+    const preset = findPresetOrThrow(
+      SYSTEM_PRESET_QA_RULE_CONFIGS,
+      presetCode,
+      (item) => item.ruleCode,
+    );
+    if (!await this.hasExistingPresetConfig(scope, "qaRuleConfigs", presetCode)) {
+      await this.assertConfigTotalAllowed(scope, "qaRuleConfigs");
+    }
+    await this.assertConfigEnableAllowed(scope, "qaRuleConfigs", 0);
+    return this.repository.activatePresetQaRuleConfig(
+      scope,
+      presetCode,
+      normalizeQaPresetMutation(preset),
+    );
   }
 
   async updateQaRuleConfig(
@@ -943,11 +1079,13 @@ export class InsightsService {
     payload: InsightQaRuleConfigMutationRequest,
   ): Promise<InsightQaRuleConfig> {
     assertInsightSettingsAdmin(role);
+    const currentConfig = await this.getCurrentConfig(scope, "qaRuleConfigs", id);
+    assertConfigIdentityMutationAllowed(currentConfig, payload.ruleCode, payload.ruleName);
     await this.assertConfigEnableAllowed(
       scope,
       "qaRuleConfigs",
       payload.status,
-      await this.getCurrentConfig(scope, "qaRuleConfigs", id),
+      currentConfig,
     );
     return await this.repository.updateQaRuleConfig(scope, id, payload)
       ?? raiseConfigNotFound();
@@ -985,9 +1123,32 @@ export class InsightsService {
     payload: InsightEntityDictionaryMutationRequest,
   ): Promise<InsightEntityDictionaryItem> {
     assertInsightSettingsAdmin(role);
+    assertCustomConfigCodeAllowed(payload.entityCode);
     await this.assertConfigTotalAllowed(scope, "entityDictionary");
     await this.assertConfigEnableAllowed(scope, "entityDictionary", payload.status);
     return this.repository.createEntityDictionaryItem(scope, payload);
+  }
+
+  async activatePresetEntityDictionaryItem(
+    scope: InsightsUidScope,
+    role: AccountRole | string | undefined,
+    presetCode: string,
+  ): Promise<InsightEntityDictionaryItem> {
+    assertInsightSettingsAdmin(role);
+    const preset = findPresetOrThrow(
+      SYSTEM_PRESET_ENTITY_DICTIONARY,
+      presetCode,
+      (item) => item.entityCode,
+    );
+    if (!await this.hasExistingPresetConfig(scope, "entityDictionary", presetCode)) {
+      await this.assertConfigTotalAllowed(scope, "entityDictionary");
+    }
+    await this.assertConfigEnableAllowed(scope, "entityDictionary", 0);
+    return this.repository.activatePresetEntityDictionaryItem(
+      scope,
+      presetCode,
+      normalizeEntityPresetMutation(preset),
+    );
   }
 
   async updateEntityDictionaryItem(
@@ -997,11 +1158,13 @@ export class InsightsService {
     payload: InsightEntityDictionaryMutationRequest,
   ): Promise<InsightEntityDictionaryItem> {
     assertInsightSettingsAdmin(role);
+    const currentConfig = await this.getCurrentConfig(scope, "entityDictionary", id);
+    assertConfigIdentityMutationAllowed(currentConfig, payload.entityCode, payload.entityName);
     await this.assertConfigEnableAllowed(
       scope,
       "entityDictionary",
       payload.status,
-      await this.getCurrentConfig(scope, "entityDictionary", id),
+      currentConfig,
     );
     return await this.repository.updateEntityDictionaryItem(scope, id, payload)
       ?? raiseConfigNotFound();
@@ -1208,6 +1371,30 @@ export class InsightsService {
         },
       );
     }
+  }
+
+  private async hasExistingPresetConfig(
+    scope: InsightsUidScope,
+    configType: InsightConfigLimitType,
+    presetCode: string,
+  ) {
+    if (configType === "intentConfigs") {
+      return this.repository.listIntentConfigs(scope)
+        .then((items) => items.some((item) => item.intentCode === presetCode));
+    }
+
+    if (configType === "labelConfigs") {
+      return this.repository.listLabelConfigs(scope)
+        .then((items) => items.some((item) => item.labelCode === presetCode));
+    }
+
+    if (configType === "qaRuleConfigs") {
+      return this.repository.listQaRuleConfigs(scope)
+        .then((items) => items.some((item) => item.ruleCode === presetCode));
+    }
+
+    return this.repository.listEntityDictionary(scope)
+      .then((items) => items.some((item) => item.entityCode === presetCode));
   }
 
   private async getCurrentConfig(
@@ -1434,6 +1621,140 @@ function buildOverviewComparisonValue(current: number, previous: number) {
     delta,
     deltaRate: previous > 0 ? delta / previous : current > 0 ? 1 : 0,
     previous,
+  };
+}
+
+function mergePresetConfigs<T>(
+  dbItems: T[],
+  presetItems: T[],
+  getCode: (item: T) => string,
+) {
+  const existingCodes = new Set(dbItems.map(getCode));
+  const inactivePresets = presetItems.filter((item) => !existingCodes.has(getCode(item)));
+
+  return [...dbItems, ...inactivePresets];
+}
+
+function findPresetOrThrow<T>(
+  presets: T[],
+  presetCode: string,
+  getCode: (item: T) => string,
+) {
+  const preset = presets.find((item) => getCode(item) === presetCode);
+
+  if (!preset) {
+    throw new NotFoundError("INSIGHT_PRESET_CONFIG_NOT_FOUND", "预置配置不存在");
+  }
+
+  return preset;
+}
+
+function isSystemPresetCode(code: string) {
+  return code.startsWith(systemPresetCodePrefix);
+}
+
+function assertCustomConfigCodeAllowed(code: string) {
+  if (isSystemPresetCode(code)) {
+    throw new BadRequestError(
+      "INSIGHT_SYSTEM_CODE_RESERVED",
+      "sys_ 开头的编码仅用于系统预设",
+    );
+  }
+}
+
+function assertConfigIdentityMutationAllowed(
+  currentConfig: InsightConfigIdentity | undefined,
+  nextCode: string,
+  nextName: string,
+) {
+  if (!currentConfig) {
+    assertCustomConfigCodeAllowed(nextCode);
+    return;
+  }
+
+  const currentIdentity = getConfigCodeAndName(currentConfig);
+
+  if (!isSystemPresetCode(currentIdentity.code)) {
+    assertCustomConfigCodeAllowed(nextCode);
+    return;
+  }
+
+  if (nextCode !== currentIdentity.code || nextName !== currentIdentity.name) {
+    throw new BadRequestError(
+      "INSIGHT_SYSTEM_CONFIG_IDENTITY_LOCKED",
+      "系统预设配置不允许修改编码和名称",
+    );
+  }
+}
+
+function getConfigCodeAndName(config: InsightConfigIdentity) {
+  if ("intentCode" in config) {
+    return { code: config.intentCode, name: config.intentName };
+  }
+
+  if ("labelCode" in config) {
+    return { code: config.labelCode, name: config.labelName };
+  }
+
+  if ("ruleCode" in config) {
+    return { code: config.ruleCode, name: config.ruleName };
+  }
+
+  return { code: config.entityCode, name: config.entityName };
+}
+
+function normalizeIntentPresetMutation(
+  preset: InsightIntentConfig,
+): InsightIntentConfigMutationRequest {
+  return {
+    description: preset.description,
+    intentCode: preset.intentCode,
+    intentName: preset.intentName,
+    negativeExamples: preset.negativeExamples,
+    positiveExamples: preset.positiveExamples,
+    status: 0,
+    weight: preset.weight,
+  };
+}
+
+function normalizeLabelPresetMutation(
+  preset: InsightLabelConfig,
+): InsightLabelConfigMutationRequest {
+  return {
+    description: preset.description,
+    labelCode: preset.labelCode,
+    labelName: preset.labelName,
+    negativeExamples: preset.negativeExamples,
+    positiveExamples: preset.positiveExamples,
+    status: 0,
+  };
+}
+
+function normalizeQaPresetMutation(
+  preset: InsightQaRuleConfig,
+): InsightQaRuleConfigMutationRequest {
+  return {
+    applicableScene: preset.applicableScene,
+    description: preset.description,
+    judgmentCriteria: preset.judgmentCriteria,
+    negativeExamples: preset.negativeExamples,
+    positiveExamples: preset.positiveExamples,
+    ruleCode: preset.ruleCode,
+    ruleName: preset.ruleName,
+    severity: preset.severity,
+    status: 0,
+  };
+}
+
+function normalizeEntityPresetMutation(
+  preset: InsightEntityDictionaryItem,
+): InsightEntityDictionaryMutationRequest {
+  return {
+    aliases: preset.aliases,
+    attributes: preset.attributes,
+    entityCode: preset.entityCode,
+    entityName: preset.entityName,
+    status: 0,
   };
 }
 

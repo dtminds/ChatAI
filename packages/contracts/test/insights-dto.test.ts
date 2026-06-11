@@ -472,7 +472,6 @@ describe("insights DTOs", () => {
             entityCode: "white-coat",
             entityName: "白色羽绒服",
             id: "1",
-            includeInAggregation: true,
             status: 1,
           },
         ],
@@ -486,10 +485,8 @@ describe("insights DTOs", () => {
         },
         intentConfigs: [
           {
-            aliases: ["退款", "退钱"],
             description: "客户咨询退款、退货退款或退款到账问题",
             id: "1",
-            includeInStatistics: true,
             intentCode: "after_sale.refund",
             intentName: "退款咨询",
             negativeExamples: ["只咨询发货时间"],
@@ -501,7 +498,6 @@ describe("insights DTOs", () => {
         labelConfigs: [
           {
             id: "1",
-            includeInStatistics: true,
             labelCode: "price_sensitive",
             labelName: "价格敏感",
             status: 1,
@@ -670,7 +666,6 @@ describe("insights DTOs", () => {
     expect(
       Value.Check(InsightLabelConfigMutationRequestSchema, {
         description: "客户对价格较敏感",
-        includeInStatistics: true,
         labelCode: "price_sensitive",
         labelName: "价格敏感",
         negativeExamples: ["只问库存"],
@@ -681,9 +676,7 @@ describe("insights DTOs", () => {
 
     expect(
       Value.Check(InsightIntentConfigMutationRequestSchema, {
-        aliases: ["退款", "退钱"],
         description: "客户咨询退款、退货退款或退款到账问题",
-        includeInStatistics: true,
         intentCode: "after_sale.refund",
         intentName: "退款咨询",
         negativeExamples: ["只咨询发货时间"],
@@ -692,6 +685,19 @@ describe("insights DTOs", () => {
         weight: 8,
       }),
     ).toBe(true);
+
+    expect(
+      Value.Check(InsightIntentConfigMutationRequestSchema, {
+        aliases: ["退款", "退钱"],
+        description: "客户咨询退款、退货退款或退款到账问题",
+        intentCode: "after_sale.refund",
+        intentName: "退款咨询",
+        negativeExamples: ["只咨询发货时间"],
+        positiveExamples: ["退款什么时候到账"],
+        status: 1,
+        weight: 8,
+      }),
+    ).toBe(false);
 
     expect(
       Value.Check(InsightQaRuleConfigMutationRequestSchema, {
@@ -710,7 +716,6 @@ describe("insights DTOs", () => {
         attributes: { brand: "A" },
         entityCode: "white-coat",
         entityName: "白色羽绒服",
-        includeInAggregation: true,
         status: 1,
       }),
     ).toBe(true);

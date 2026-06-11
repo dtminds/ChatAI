@@ -294,8 +294,7 @@ ALTER TABLE xy_wap_embed_insight_entity_dictionary
   DROP COLUMN entity_type,
   CHANGE COLUMN canonical_name entity_name VARCHAR(255) NOT NULL COMMENT '实体名称',
   ADD COLUMN entity_code VARCHAR(128) NOT NULL COMMENT '实体编码' AFTER uid,
-  ADD UNIQUE KEY uk_entity_dictionary_uid_code (uid, entity_code),
-  ADD UNIQUE KEY uk_entity_dictionary_uid_name (uid, entity_name);
+  ADD UNIQUE KEY uk_entity_dictionary_uid_code (uid, entity_code);
 
 ALTER TABLE xy_wap_embed_session_entity
   DROP KEY idx_session_entity_uid_identity,
@@ -387,4 +386,30 @@ ALTER TABLE xy_wap_embed_logical_session_message
   DROP KEY idx_session_message_source,
   ADD KEY idx_session_message_asset_lookup (uid, asset_id, source_message_time, session_id),
   ADD KEY idx_session_message_asset_window (uid, source_message_time, asset_id, session_id);
+```
+
+## 2026-06-11
+
+- Removed the separate statistics/aggregation visibility switches from insight intent, label, and entity dictionary configuration. Enabled configurations now participate in model matching and are available as report filter options; disabled configurations are excluded by `status`.
+- Removed `xy_wap_embed_insight_label_config.include_in_statistics`, `xy_wap_embed_insight_intent_config.include_in_statistics`, and `xy_wap_embed_insight_entity_dictionary.include_in_aggregation`.
+- Removed `xy_wap_embed_insight_intent_config.aliases_json`; intent matching and reporting use `intent_code`, and prompt classification boundaries are expressed through description plus positive/negative examples.
+- Removed `xy_wap_embed_insight_entity_dictionary.uk_entity_dictionary_uid_name`; entity matching is based on `entity_code`, and display names are not unique business identifiers.
+
+Manual migration for existing databases:
+
+```sql
+ALTER TABLE xy_wap_embed_insight_label_config
+  DROP COLUMN include_in_statistics;
+
+ALTER TABLE xy_wap_embed_insight_intent_config
+  DROP COLUMN include_in_statistics;
+
+ALTER TABLE xy_wap_embed_insight_intent_config
+  DROP COLUMN aliases_json;
+
+ALTER TABLE xy_wap_embed_insight_entity_dictionary
+  DROP COLUMN include_in_aggregation;
+
+ALTER TABLE xy_wap_embed_insight_entity_dictionary
+  DROP KEY uk_entity_dictionary_uid_name;
 ```

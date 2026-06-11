@@ -494,7 +494,6 @@ export const InsightConfigActiveStatusSchema = Type.Union([
 export const InsightLabelConfigSchema = Type.Object({
   description: Type.Optional(Type.String()),
   id: Type.String(),
-  includeInStatistics: Type.Boolean(),
   labelCode: Type.String(),
   labelName: Type.String(),
   negativeExamples: Type.Optional(Type.Array(Type.String())),
@@ -504,7 +503,6 @@ export const InsightLabelConfigSchema = Type.Object({
 
 export const InsightLabelConfigMutationRequestSchema = Type.Object({
   description: Type.Optional(Type.String()),
-  includeInStatistics: Type.Boolean(),
   labelCode: Type.String({ minLength: 1 }),
   labelName: Type.String({ minLength: 1 }),
   negativeExamples: Type.Optional(Type.Array(Type.String())),
@@ -513,29 +511,25 @@ export const InsightLabelConfigMutationRequestSchema = Type.Object({
 });
 
 export const InsightIntentConfigSchema = Type.Object({
-  aliases: Type.Optional(Type.Array(Type.String())),
   description: Type.Optional(Type.String()),
   id: Type.String(),
-  includeInStatistics: Type.Boolean(),
   intentCode: Type.String(),
   intentName: Type.String(),
   negativeExamples: Type.Optional(Type.Array(Type.String())),
   positiveExamples: Type.Optional(Type.Array(Type.String())),
   status: InsightConfigStatusSchema,
   weight: Type.Number(),
-});
+}, { additionalProperties: false });
 
 export const InsightIntentConfigMutationRequestSchema = Type.Object({
-  aliases: Type.Optional(Type.Array(Type.String())),
   description: Type.Optional(Type.String()),
-  includeInStatistics: Type.Boolean(),
   intentCode: Type.String({ minLength: 1 }),
   intentName: Type.String({ minLength: 1 }),
   negativeExamples: Type.Optional(Type.Array(Type.String())),
   positiveExamples: Type.Optional(Type.Array(Type.String())),
   status: InsightConfigActiveStatusSchema,
   weight: Type.Number(),
-});
+}, { additionalProperties: false });
 
 export const InsightQaRuleConfigSchema = Type.Object({
   applicableScene: Type.Optional(Type.String()),
@@ -568,7 +562,6 @@ export const InsightEntityDictionaryItemSchema = Type.Object({
   entityCode: Type.String(),
   entityName: Type.String(),
   id: Type.String(),
-  includeInAggregation: Type.Boolean(),
   status: InsightConfigStatusSchema,
 });
 
@@ -577,7 +570,6 @@ export const InsightEntityDictionaryMutationRequestSchema = Type.Object({
   attributes: Type.Optional(Type.Record(Type.String(), Type.Any())),
   entityCode: Type.String({ minLength: 1 }),
   entityName: Type.String({ minLength: 1 }),
-  includeInAggregation: Type.Boolean(),
   status: InsightConfigActiveStatusSchema,
 });
 

@@ -3,7 +3,6 @@ import type { AiMessageInput } from "./insights.types.js";
 export type InsightPromptLabelConfig = {
   description?: string;
   id: string;
-  includeInStatistics: boolean;
   labelCode: string;
   labelName: string;
   negativeExamples: string[];
@@ -11,10 +10,8 @@ export type InsightPromptLabelConfig = {
 };
 
 export type InsightPromptIntentConfig = {
-  aliases: string[];
   description?: string;
   id: string;
-  includeInStatistics: boolean;
   intentCode: string;
   intentName: string;
   negativeExamples: string[];
@@ -39,7 +36,6 @@ export type InsightPromptEntityDictionaryItem = {
   entityCode: string;
   entityName: string;
   id: string;
-  includeInAggregation: boolean;
 };
 
 export type InsightPromptContext = {
@@ -346,6 +342,7 @@ function buildClassificationSystemPrompt() {
     "</evidence_rules>",
     "<config_rules>",
     "标签只能从 tenantContext.labelConfigs 中选择；意图只能从 tenantContext.intentConfigs 中选择；实体只能从 tenantContext.entityDictionary 中选择；配置为空时对应字段输出空数组。",
+    "分类结果必须输出配置中的 code：entities 使用 entityCode，intents 使用 intentCode，tags 使用 tagCode；不要用名称、别名或示例值替代 code。",
     "消息里出现但词库未配置的实体不得输出，未配置的意图不得输出到 intents。",
     "priorConclusions 只能帮助理解客户问题和会话结论，不能替代消息证据。",
     "</config_rules>",
@@ -482,7 +479,7 @@ function buildClassificationOutputContract(context: InsightPromptContext) {
     entities: context.entityDictionary.length > 0 ? [
       {
         confidence: "<number 0-1>",
-        entityName: "<来自 tenantContext.entityDictionary.entityName>",
+        entityCode: "<来自 tenantContext.entityDictionary.entityCode>",
         evidenceMessageIds: ["<sourceMessageId>"],
         sentiment: "<positive|neutral|negative|mixed> optional",
       },
@@ -492,7 +489,6 @@ function buildClassificationOutputContract(context: InsightPromptContext) {
         confidence: "<number 0-1>",
         evidenceMessageIds: ["<sourceMessageId>"],
         intentCode: "<来自 tenantContext.intentConfigs.intentCode>",
-        intentLabel: "<来自 tenantContext.intentConfigs.intentName>",
       },
     ] : [],
     tags: context.labelConfigs.length > 0 ? [
@@ -500,7 +496,6 @@ function buildClassificationOutputContract(context: InsightPromptContext) {
         confidence: "<number 0-1>",
         evidenceMessageIds: ["<sourceMessageId>"],
         tagCode: "<来自 tenantContext.labelConfigs.labelCode>",
-        tagName: "<来自 tenantContext.labelConfigs.labelName>",
       },
     ] : [],
   };
@@ -523,7 +518,6 @@ function normalizeContext(context: InsightPromptContext) {
   return {
     entityDictionary: context.entityDictionary
       .slice()
-      .sort((left, right) => Number(right.includeInAggregation) - Number(left.includeInAggregation))
       .slice(0, 20)
       .map((item) => ({
         aliases: item.aliases.slice(0, 8).map((alias) => truncatePromptText(alias, PROMPT_LIMITS.name)),
@@ -531,17 +525,14 @@ function normalizeContext(context: InsightPromptContext) {
         entityCode: truncatePromptText(item.entityCode, PROMPT_LIMITS.name),
         entityName: truncatePromptText(item.entityName, PROMPT_LIMITS.name),
         id: item.id,
-        includeInAggregation: item.includeInAggregation,
       })),
     intentConfigs: context.intentConfigs
       .slice()
       .sort((left, right) => left.weight - right.weight)
       .slice(0, 20)
       .map((item) => ({
-        aliases: item.aliases.slice(0, 8).map((alias) => truncatePromptText(alias, PROMPT_LIMITS.name)),
         description: truncatePromptText(item.description, PROMPT_LIMITS.description),
         id: item.id,
-        includeInStatistics: item.includeInStatistics,
         intentCode: truncatePromptText(item.intentCode, PROMPT_LIMITS.code),
         intentName: truncatePromptText(item.intentName, PROMPT_LIMITS.name),
         negativeExamples: item.negativeExamples.slice(0, 5).map((example) => truncatePromptText(example, PROMPT_LIMITS.example)),
@@ -549,12 +540,10 @@ function normalizeContext(context: InsightPromptContext) {
       })),
     labelConfigs: context.labelConfigs
       .slice()
-      .sort((left, right) => Number(right.includeInStatistics) - Number(left.includeInStatistics))
       .slice(0, 20)
       .map((item) => ({
         description: truncatePromptText(item.description, PROMPT_LIMITS.description),
         id: item.id,
-        includeInStatistics: item.includeInStatistics,
         labelCode: truncatePromptText(item.labelCode, PROMPT_LIMITS.code),
         labelName: truncatePromptText(item.labelName, PROMPT_LIMITS.name),
         negativeExamples: item.negativeExamples.slice(0, 5).map((example) => truncatePromptText(example, PROMPT_LIMITS.example)),

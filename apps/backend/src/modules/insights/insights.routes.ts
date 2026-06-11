@@ -150,6 +150,10 @@ const ConfigParamsSchema = Type.Object({
   configId: Type.String({ minLength: 1 }),
 });
 
+const PresetConfigParamsSchema = Type.Object({
+  presetCode: Type.String({ minLength: 1 }),
+});
+
 type FollowUpsQuery = Static<typeof FollowUpsQuerySchema>;
 type OverviewQuery = Static<typeof OverviewQuerySchema>;
 type OverviewSessionsQuery = Static<typeof OverviewSessionsQuerySchema>;
@@ -162,6 +166,7 @@ type ActionItemParams = Static<typeof ActionItemParamsSchema>;
 type ActionStatusBody = Static<typeof ActionStatusBodySchema>;
 type CreateActionItemBody = InsightCreateActionItemRequest;
 type ConfigParams = Static<typeof ConfigParamsSchema>;
+type PresetConfigParams = Static<typeof PresetConfigParamsSchema>;
 type MessageContextQuery = Static<typeof InsightMessageContextRequestSchema>;
 
 export async function registerInsightsRoutes(app: FastifyInstance) {
@@ -613,6 +618,25 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
     },
   );
 
+  app.post<{ Params: PresetConfigParams }>(
+    "/api/server/insights/settings/intent-configs/presets/:presetCode",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        params: PresetConfigParamsSchema,
+      },
+    },
+    async (request) => {
+      return apiSuccess(
+        await createInsightsService(app).activatePresetIntentConfig(
+          await getUidScope(app, request),
+          getAccountRole(request),
+          request.params.presetCode,
+        ),
+      );
+    },
+  );
+
   app.put<{ Body: InsightIntentConfigMutationRequest; Params: ConfigParams }>(
     "/api/server/insights/settings/intent-configs/:configId",
     {
@@ -688,6 +712,25 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
           await getUidScope(app, request),
           getAccountRole(request),
           request.body,
+        ),
+      );
+    },
+  );
+
+  app.post<{ Params: PresetConfigParams }>(
+    "/api/server/insights/settings/label-configs/presets/:presetCode",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        params: PresetConfigParamsSchema,
+      },
+    },
+    async (request) => {
+      return apiSuccess(
+        await createInsightsService(app).activatePresetLabelConfig(
+          await getUidScope(app, request),
+          getAccountRole(request),
+          request.params.presetCode,
         ),
       );
     },
@@ -773,6 +816,25 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
     },
   );
 
+  app.post<{ Params: PresetConfigParams }>(
+    "/api/server/insights/settings/qa-rule-configs/presets/:presetCode",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        params: PresetConfigParamsSchema,
+      },
+    },
+    async (request) => {
+      return apiSuccess(
+        await createInsightsService(app).activatePresetQaRuleConfig(
+          await getUidScope(app, request),
+          getAccountRole(request),
+          request.params.presetCode,
+        ),
+      );
+    },
+  );
+
   app.put<{ Body: InsightQaRuleConfigMutationRequest; Params: ConfigParams }>(
     "/api/server/insights/settings/qa-rule-configs/:configId",
     {
@@ -848,6 +910,25 @@ export async function registerInsightsRoutes(app: FastifyInstance) {
           await getUidScope(app, request),
           getAccountRole(request),
           request.body,
+        ),
+      );
+    },
+  );
+
+  app.post<{ Params: PresetConfigParams }>(
+    "/api/server/insights/settings/entity-dictionary/presets/:presetCode",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        params: PresetConfigParamsSchema,
+      },
+    },
+    async (request) => {
+      return apiSuccess(
+        await createInsightsService(app).activatePresetEntityDictionaryItem(
+          await getUidScope(app, request),
+          getAccountRole(request),
+          request.params.presetCode,
         ),
       );
     },

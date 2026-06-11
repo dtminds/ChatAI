@@ -206,6 +206,7 @@ export type InsightAnalysisOutput = {
   }>;
   entities: Array<{
     confidence: number;
+    entityCode?: string;
     entityId?: string;
     entityName: string;
     evidenceMessageIds: string[];
@@ -1678,48 +1679,38 @@ function filterConfiguredAnalysisOutput(
   context: InsightPromptContext,
 ): { output: InsightAnalysisOutput; validationWarnings: string[] } {
   const validationWarnings: string[] = [];
-  const configuredIntents = context.intentConfigs.map((item) => ({
-    aliases: new Set([item.intentCode, item.intentName, ...item.aliases].map(normalizeMatchText)),
-    intentCode: item.intentCode,
-    intentId: item.id,
-    intentName: item.intentName,
-  }));
-  const configuredLabels = context.labelConfigs.map((item) => ({
-    labelCode: item.labelCode,
-    labelId: item.id,
-    labelName: item.labelName,
-    names: new Set([item.labelCode, item.labelName, ...item.positiveExamples].map(normalizeMatchText)),
-  }));
+  const intentConfigsByCode = new Map(
+    context.intentConfigs.map((item) => [normalizeMatchText(item.intentCode), item]),
+  );
+  const labelConfigsByCode = new Map(
+    context.labelConfigs.map((item) => [normalizeMatchText(item.labelCode), item]),
+  );
   const qaRuleConfigsByCode = new Map(
     context.qaRuleConfigs.map((item) => [item.ruleCode, item]),
   );
-  const configuredEntities = context.entityDictionary.map((item) => ({
-    aliases: new Set([item.entityName, ...item.aliases].map(normalizeMatchText)),
-    entityId: item.id,
-    entityName: item.entityName,
-  }));
+  const entityDictionaryByCode = new Map(
+    context.entityDictionary.map((item) => [normalizeMatchText(item.entityCode), item]),
+  );
   const entities = output.entities.flatMap((item) => {
-    const matched = configuredEntities.find((entity) => {
-      const entityName = normalizeMatchText(item.entityName);
-
-      return entity.aliases.has(entityName);
-    });
+    const entityCode = normalizeMatchText(item.entityCode ?? "");
+    const matched = entityCode ? entityDictionaryByCode.get(entityCode) : undefined;
 
     if (!matched) {
-      validationWarnings.push(`entity ${item.entityName} is not configured`);
+      validationWarnings.push(`entity ${item.entityCode ?? item.entityName} is not configured`);
     }
 
     return matched
       ? [{
         ...item,
-        entityId: String(matched.entityId),
+        entityCode: matched.entityCode,
+        entityId: String(matched.id),
         entityName: matched.entityName,
       }]
       : [];
   });
   const tags = output.tags.flatMap((item) => {
-    const tagCode = normalizeMatchText(item.tagCode ?? item.tagName);
-    const matched = configuredLabels.find((label) => label.names.has(tagCode));
+    const tagCode = normalizeMatchText(item.tagCode ?? "");
+    const matched = tagCode ? labelConfigsByCode.get(tagCode) : undefined;
 
     if (!matched) {
       validationWarnings.push(`tag ${item.tagCode ?? item.tagName} is not configured`);
@@ -1729,20 +1720,20 @@ function filterConfiguredAnalysisOutput(
       ? [{
         ...item,
         tagCode: matched.labelCode,
-        tagId: String(matched.labelId),
+        tagId: String(matched.id),
         tagName: matched.labelName,
       }]
       : [];
   });
   const intents = output.intents.flatMap((item) => {
-    const intentCode = normalizeMatchText(item.intentCode ?? item.intentLabel);
-    const config = configuredIntents.find((intent) => intent.aliases.has(intentCode));
+    const intentCode = normalizeMatchText(item.intentCode ?? "");
+    const config = intentCode ? intentConfigsByCode.get(intentCode) : undefined;
 
     if (config) {
       return [{
         ...item,
         intentCode: config.intentCode,
-        intentId: String(config.intentId),
+        intentId: String(config.id),
         intentLabel: config.intentName,
       }];
     }

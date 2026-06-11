@@ -12,6 +12,10 @@ import { routerConfig } from "@/router";
 import { useAuthStore } from "@/store/auth-store";
 
 const serviceMocks = vi.hoisted(() => ({
+  activatePresetInsightEntityDictionaryItem: vi.fn(),
+  activatePresetInsightIntentConfig: vi.fn(),
+  activatePresetInsightLabelConfig: vi.fn(),
+  activatePresetInsightQaRuleConfig: vi.fn(),
   createInsightRescanJob: vi.fn(),
   getInsightBusinessRelatedSessions: vi.fn(),
   getInsightBusinessTopics: vi.fn(),
@@ -73,7 +77,6 @@ const mockInsightSettings = {
       entityName: "白色羽绒服",
       status: 1,
       id: "41",
-      includeInAggregation: true,
     },
     {
       aliases: ["雨伞"],
@@ -81,7 +84,6 @@ const mockInsightSettings = {
       entityName: "黑色雨伞",
       status: 1,
       id: "42",
-      includeInAggregation: true,
     },
     {
       aliases: [],
@@ -89,7 +91,6 @@ const mockInsightSettings = {
       entityName: "隐藏实体",
       status: 0,
       id: "43",
-      includeInAggregation: true,
     },
   ],
   featureConfig: {
@@ -103,11 +104,9 @@ const mockInsightSettings = {
   },
   intentConfigs: [
     {
-      aliases: ["查快递"],
       description: "客户咨询物流或发货进度",
       status: 1,
       id: "31",
-      includeInStatistics: true,
       intentCode: "logistics",
       intentName: "查物流",
       negativeExamples: [],
@@ -115,11 +114,9 @@ const mockInsightSettings = {
       weight: 8,
     },
     {
-      aliases: ["AI客服"],
       description: "客户咨询AI客服系统相关信息",
       status: 1,
       id: "32",
-      includeInStatistics: true,
       intentCode: "ai_customer_service_info",
       intentName: "咨询AI客服系统相关信息",
       negativeExamples: [],
@@ -127,10 +124,8 @@ const mockInsightSettings = {
       weight: 6,
     },
     {
-      aliases: [],
       status: 0,
       id: "33",
-      includeInStatistics: true,
       intentCode: "hidden_intent",
       intentName: "隐藏意图",
       weight: 3,
@@ -140,28 +135,24 @@ const mockInsightSettings = {
     {
       status: 1,
       id: "11",
-      includeInStatistics: true,
       labelCode: "refund",
       labelName: "退款咨询",
     },
     {
       status: 1,
       id: "12",
-      includeInStatistics: true,
       labelCode: "price_sensitive",
       labelName: "价格敏感",
     },
     {
       status: 1,
       id: "13",
-      includeInStatistics: true,
       labelCode: "high_intent",
       labelName: "高意向",
     },
     {
       status: 0,
       id: "14",
-      includeInStatistics: true,
       labelCode: "hidden_label",
       labelName: "隐藏标签",
     },
@@ -983,21 +974,21 @@ function installInsightMocks() {
   });
   serviceMocks.getInsightFilterOptions.mockResolvedValue({
     entities: mockInsightSettings.entityDictionary
-      .filter((item) => item.status === 1 && item.includeInAggregation)
+      .filter((item) => item.status === 1)
       .map((item) => ({
         code: item.entityCode,
         id: item.id,
         name: item.entityName,
       })),
     intents: mockInsightSettings.intentConfigs
-      .filter((item) => item.status === 1 && item.includeInStatistics)
+      .filter((item) => item.status === 1)
       .map((item) => ({
         code: item.intentCode,
         id: item.id,
         name: item.intentName,
       })),
     tags: mockInsightSettings.labelConfigs
-      .filter((item) => item.status === 1 && item.includeInStatistics)
+      .filter((item) => item.status === 1)
       .map((item) => ({
         code: item.labelCode,
         id: item.id,
@@ -1094,21 +1085,56 @@ function installInsightMocks() {
   serviceMocks.createInsightLabelConfig.mockResolvedValue({
     status: 1,
     id: "12",
-    includeInStatistics: true,
     labelCode: "high_intent",
     labelName: "高意向",
   });
   serviceMocks.createInsightIntentConfig.mockResolvedValue({
-    aliases: ["报价"],
     description: "客户咨询价格",
     status: 1,
     id: "34",
-    includeInStatistics: true,
     intentCode: "price_consult",
     intentName: "价格咨询",
     negativeExamples: [],
     positiveExamples: ["多少钱"],
     weight: 3,
+  });
+  serviceMocks.activatePresetInsightIntentConfig.mockResolvedValue({
+    description: "客户询问价格、折扣、优惠券、满减等价格相关问题",
+    id: "190",
+    intentCode: "sys_price_consult",
+    intentName: "价格咨询",
+    negativeExamples: [],
+    positiveExamples: ["这个多少钱"],
+    status: 0,
+    weight: 8,
+  });
+  serviceMocks.activatePresetInsightLabelConfig.mockResolvedValue({
+    description: "客户明确表达购买意向",
+    id: "191",
+    labelCode: "sys_high_purchase_intent",
+    labelName: "高购买意向",
+    negativeExamples: [],
+    positiveExamples: [],
+    status: 0,
+  });
+  serviceMocks.activatePresetInsightQaRuleConfig.mockResolvedValue({
+    applicableScene: "全场景",
+    description: "检查客服服务态度是否礼貌、耐心、专业",
+    id: "192",
+    judgmentCriteria: "客服需使用礼貌用语，不得出现反问、讽刺、推诿或不耐烦表达；客户情绪激动时应先安抚再处理问题",
+    negativeExamples: ["你自己看说明啊"],
+    positiveExamples: ["非常抱歉给您带来不便，我来帮您处理"],
+    ruleCode: "sys_service_attitude",
+    ruleName: "服务态度",
+    severity: "medium",
+    status: 0,
+  });
+  serviceMocks.activatePresetInsightEntityDictionaryItem.mockResolvedValue({
+    aliases: ["直播价", "直播专属", "限时秒杀"],
+    entityCode: "sys_live_room_promotion",
+    entityName: "直播间活动",
+    id: "194",
+    status: 0,
   });
   serviceMocks.updateInsightEntityDictionaryItemStatus.mockImplementation(
     async (id: string, payload: { status: 0 | 1 }) => ({
@@ -2993,10 +3019,9 @@ describe("conversation insights pages", () => {
       await screen.findByRole("dialog", { name: "新增意图" }),
     ).toBeInTheDocument();
     await userEvent.type(screen.getByLabelText("意图名称"), "价格咨询");
-    await userEvent.type(screen.getByLabelText("意图编码"), "price_consult");
+    await userEvent.type(screen.getByRole("textbox", { name: "ID" }), "price_consult");
     await userEvent.click(screen.getByRole("combobox", { name: "权重" }));
     await userEvent.click(await screen.findByRole("option", { name: "3" }));
-    await userEvent.type(screen.getByLabelText("别名"), "报价");
     await userEvent.type(
       screen.getByLabelText("判定标准"),
       "客户咨询商品价格或优惠",
@@ -3007,7 +3032,6 @@ describe("conversation insights pages", () => {
     await waitFor(() => {
       expect(serviceMocks.createInsightIntentConfig).toHaveBeenCalledWith(
         expect.objectContaining({
-          aliases: ["报价"],
           description: "客户咨询商品价格或优惠",
           intentCode: "price_consult",
           intentName: "价格咨询",
@@ -3035,7 +3059,7 @@ describe("conversation insights pages", () => {
       await screen.findByRole("dialog", { name: "新增标签" }),
     ).toBeInTheDocument();
     await userEvent.type(screen.getByLabelText("标签名称"), "高意向");
-    await userEvent.type(screen.getByLabelText("标签编码"), "high_intent");
+    await userEvent.type(screen.getByRole("textbox", { name: "ID" }), "high_intent");
     await userEvent.type(
       screen.getByLabelText("判定标准"),
       "客户表达明确购买意向",
@@ -3526,7 +3550,7 @@ describe("conversation insights pages", () => {
       "挽留机会",
     );
     await userEvent.type(
-      within(dialog).getByRole("textbox", { name: "标签编码" }),
+      within(dialog).getByRole("textbox", { name: "ID" }),
       "retention",
     );
     await userEvent.type(
@@ -3551,7 +3575,6 @@ describe("conversation insights pages", () => {
     serviceMocks.createInsightLabelConfig.mockResolvedValueOnce({
       description: "新建标签的说明",
       id: "99",
-      includeInStatistics: true,
       labelCode: "new_label",
       labelName: "新增标签",
       negativeExamples: [],
@@ -3575,7 +3598,7 @@ describe("conversation insights pages", () => {
       "新增标签",
     );
     await userEvent.type(
-      screen.getByRole("textbox", { name: "标签编码" }),
+      screen.getByRole("textbox", { name: "ID" }),
       "new_label",
     );
     await userEvent.type(
@@ -3846,6 +3869,234 @@ describe("conversation insights pages", () => {
     expect(
       serviceMocks.createInsightEntityDictionaryItem,
     ).not.toHaveBeenCalled();
+  });
+
+  it("shows inactive system presets with add-only actions and locks preset identity fields after activation", async () => {
+    serviceMocks.listInsightIntentConfigs.mockResolvedValueOnce([
+      {
+        description: "客户询问价格、折扣、优惠券、满减等价格相关问题",
+        id: "preset:sys_price_consult",
+        intentCode: "sys_price_consult",
+        intentName: "价格咨询",
+        negativeExamples: [],
+        positiveExamples: ["这个多少钱"],
+        status: 0,
+        weight: 8,
+      },
+    ]);
+
+    renderRoute("/chat/insights/settings");
+
+    expect(
+      await screen.findByRole("heading", { name: "洞察配置" }),
+    ).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: "意图配置" }));
+
+    expect(await screen.findByText("价格咨询")).toBeInTheDocument();
+    expect(screen.getByText("sys_price_consult")).toBeInTheDocument();
+    expect(screen.getByText("预置")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "编辑" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "删除" })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "添加预置配置" }));
+
+    await waitFor(() => {
+      expect(serviceMocks.activatePresetInsightIntentConfig).toHaveBeenCalledWith(
+        "sys_price_consult",
+      );
+    });
+    expect(await screen.findByRole("button", { name: "编辑" })).toBeInTheDocument();
+    expect(screen.getByRole("switch")).not.toBeChecked();
+    expect(screen.getByText("预置")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "编辑" }));
+    expect(await screen.findByRole("dialog", { name: "编辑意图" })).toBeInTheDocument();
+    expect(screen.getByLabelText("意图名称")).toBeDisabled();
+    expect(screen.getByRole("textbox", { name: "ID" })).toBeDisabled();
+  });
+
+  it("restores the inactive preset row after deleting an activated system preset", async () => {
+    serviceMocks.listInsightIntentConfigs.mockResolvedValueOnce([
+      {
+        description: "客户询问价格、折扣、优惠券、满减等价格相关问题",
+        id: "preset:sys_price_consult",
+        intentCode: "sys_price_consult",
+        intentName: "价格咨询",
+        negativeExamples: [],
+        positiveExamples: ["这个多少钱"],
+        status: 0,
+        weight: 8,
+      },
+    ]);
+
+    renderRoute("/chat/insights/settings");
+
+    expect(
+      await screen.findByRole("heading", { name: "洞察配置" }),
+    ).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: "意图配置" }));
+
+    await userEvent.click(await screen.findByRole("button", { name: "添加预置配置" }));
+    await waitFor(() => {
+      expect(serviceMocks.activatePresetInsightIntentConfig).toHaveBeenCalledWith(
+        "sys_price_consult",
+      );
+    });
+
+    const activatedRow = await screen.findByRole("row", { name: /价格咨询/ });
+    expect(within(activatedRow).getByRole("button", { name: "编辑" })).toBeInTheDocument();
+    expect(within(activatedRow).getByRole("button", { name: "删除" })).toBeInTheDocument();
+
+    await userEvent.click(within(activatedRow).getByRole("button", { name: "删除" }));
+    await userEvent.click(await screen.findByRole("button", { name: "确认删除" }));
+
+    await waitFor(() => {
+      expect(serviceMocks.deleteInsightIntentConfig).toHaveBeenCalledWith("190");
+    });
+
+    const restoredRow = await screen.findByRole("row", { name: /价格咨询/ });
+    expect(within(restoredRow).getByRole("cell", { name: "-" })).toBeInTheDocument();
+    expect(within(restoredRow).getByRole("button", { name: "添加预置配置" })).toBeInTheDocument();
+    expect(within(restoredRow).queryByRole("button", { name: "编辑" })).not.toBeInTheDocument();
+    expect(within(restoredRow).queryByRole("button", { name: "删除" })).not.toBeInTheDocument();
+  });
+
+  it("restores deleted preset candidates to their original list position", async () => {
+    serviceMocks.listInsightIntentConfigs.mockResolvedValueOnce([
+      {
+        description: "客户询问价格、折扣、优惠券、满减等价格相关问题",
+        id: "preset:sys_price_consult",
+        intentCode: "sys_price_consult",
+        intentName: "价格咨询",
+        negativeExamples: [],
+        positiveExamples: ["这个多少钱"],
+        status: 0,
+        weight: 8,
+      },
+      {
+        description: "客户咨询私域活动、直播活动、满减、赠品等活动信息",
+        id: "preset:sys_campaign_consult",
+        intentCode: "sys_campaign_consult",
+        intentName: "活动咨询",
+        negativeExamples: [],
+        positiveExamples: ["最近有什么活动"],
+        status: 0,
+        weight: 8,
+      },
+      {
+        description: "客户咨询会员权益、积分、优惠券、社群福利等权益信息",
+        id: "preset:sys_benefit_consult",
+        intentCode: "sys_benefit_consult",
+        intentName: "权益咨询",
+        negativeExamples: [],
+        positiveExamples: ["会员有什么权益"],
+        status: 0,
+        weight: 8,
+      },
+    ]);
+    serviceMocks.activatePresetInsightIntentConfig.mockResolvedValueOnce({
+      description: "客户咨询私域活动、直播活动、满减、赠品等活动信息",
+      id: "191",
+      intentCode: "sys_campaign_consult",
+      intentName: "活动咨询",
+      negativeExamples: [],
+      positiveExamples: ["最近有什么活动"],
+      status: 0,
+      weight: 8,
+    });
+
+    renderRoute("/chat/insights/settings");
+
+    expect(
+      await screen.findByRole("heading", { name: "洞察配置" }),
+    ).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: "意图配置" }));
+
+    const campaignCandidateRow = await screen.findByRole("row", { name: /活动咨询/ });
+    await userEvent.click(
+      within(campaignCandidateRow).getByRole("button", { name: "添加预置配置" }),
+    );
+    await waitFor(() => {
+      expect(serviceMocks.activatePresetInsightIntentConfig).toHaveBeenCalledWith(
+        "sys_campaign_consult",
+      );
+    });
+
+    const activatedRow = await screen.findByRole("row", { name: /活动咨询/ });
+    await userEvent.click(within(activatedRow).getByRole("button", { name: "删除" }));
+    await userEvent.click(await screen.findByRole("button", { name: "确认删除" }));
+
+    await waitFor(() => {
+      expect(serviceMocks.deleteInsightIntentConfig).toHaveBeenCalledWith("191");
+    });
+
+    const rows = await screen.findAllByRole("row");
+    const priceRow = rows.find((row) => row.textContent?.includes("价格咨询"));
+    const restoredCampaignRow = rows.find((row) => row.textContent?.includes("活动咨询"));
+    const benefitRow = rows.find((row) => row.textContent?.includes("权益咨询"));
+
+    expect(priceRow).toBeDefined();
+    expect(restoredCampaignRow).toBeDefined();
+    expect(benefitRow).toBeDefined();
+    expect(rows.indexOf(priceRow!)).toBeLessThan(rows.indexOf(restoredCampaignRow!));
+    expect(rows.indexOf(restoredCampaignRow!)).toBeLessThan(rows.indexOf(benefitRow!));
+    expect(
+      within(restoredCampaignRow!).getByRole("button", { name: "添加预置配置" }),
+    ).toBeInTheDocument();
+  });
+
+  it("reloads preset candidates after deleting a system preset that was already active on page load", async () => {
+    serviceMocks.listInsightIntentConfigs
+      .mockResolvedValueOnce([
+        {
+          description: "客户询问价格、折扣、优惠券、满减等价格相关问题",
+          id: "190",
+          intentCode: "sys_price_consult",
+          intentName: "价格咨询",
+          negativeExamples: [],
+          positiveExamples: ["这个多少钱"],
+          status: 1,
+          weight: 8,
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          description: "客户询问价格、折扣、优惠券、满减等价格相关问题",
+          id: "preset:sys_price_consult",
+          intentCode: "sys_price_consult",
+          intentName: "价格咨询",
+          negativeExamples: [],
+          positiveExamples: ["这个多少钱"],
+          status: 0,
+          weight: 8,
+        },
+      ]);
+
+    renderRoute("/chat/insights/settings");
+
+    expect(
+      await screen.findByRole("heading", { name: "洞察配置" }),
+    ).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: "意图配置" }));
+
+    const activeRow = await screen.findByRole("row", { name: /价格咨询/ });
+    expect(within(activeRow).getByRole("button", { name: "删除" })).toBeInTheDocument();
+
+    await userEvent.click(within(activeRow).getByRole("button", { name: "删除" }));
+    await userEvent.click(await screen.findByRole("button", { name: "确认删除" }));
+
+    await waitFor(() => {
+      expect(serviceMocks.deleteInsightIntentConfig).toHaveBeenCalledWith("190");
+    });
+    await waitFor(() => {
+      expect(serviceMocks.listInsightIntentConfigs).toHaveBeenCalledTimes(2);
+    });
+
+    const restoredRow = await screen.findByRole("row", { name: /价格咨询/ });
+    expect(within(restoredRow).getByRole("cell", { name: "-" })).toBeInTheDocument();
+    expect(within(restoredRow).getByRole("button", { name: "添加预置配置" })).toBeInTheDocument();
+    expect(within(restoredRow).queryByRole("button", { name: "编辑" })).not.toBeInTheDocument();
+    expect(within(restoredRow).queryByRole("button", { name: "删除" })).not.toBeInTheDocument();
   });
 
   it("lets admins enable insights and update feature switches from settings", async () => {

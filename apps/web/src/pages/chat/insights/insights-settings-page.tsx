@@ -28,7 +28,7 @@ import type {
   InsightSettingsSummaryResponse,
   InsightSessionizationSettings,
 } from "@chatai/contracts";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -77,6 +77,10 @@ import { isRequestError } from "@/lib/request";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth-store";
 import {
+  activatePresetInsightEntityDictionaryItem,
+  activatePresetInsightIntentConfig,
+  activatePresetInsightLabelConfig,
+  activatePresetInsightQaRuleConfig,
   createInsightEntityDictionaryItem,
   createInsightIntentConfig,
   createInsightLabelConfig,
@@ -111,6 +115,11 @@ import { InsightTablePagination } from "./insight-table-pagination";
 
 type MutableCollection = "entity" | "intent" | "label" | "qa";
 type ConfigDialogErrors = Partial<Record<string, string>>;
+type PresetTemplateCacheEntry = {
+  index: number;
+  item: ConfigItem;
+};
+const systemPresetCodePrefix = "sys_";
 
 type TabData =
   | { tab: "policy"; analysisPolicy: InsightAnalysisPolicy; sessionization: InsightSessionizationSettings }
@@ -140,6 +149,7 @@ type ConfigDialogState =
 type DeleteConfirmState = {
   collection: MutableCollection;
   id: string;
+  item: ConfigItem;
   name: string;
 };
 
@@ -219,6 +229,7 @@ export function InsightsSettingsPage() {
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [tabData, setTabData] = useState<TabData>();
   const [tabLoading, setTabLoading] = useState(false);
+  const presetTemplateByCodeRef = useRef(new Map<string, PresetTemplateCacheEntry>());
   const canAccessSettings = role === "owner" || role === "admin";
 
   async function refreshSummary() {
@@ -267,6 +278,18 @@ export function InsightsSettingsPage() {
   }, [canAccessSettings]);
 
   useEffect(() => {
+    if (!isMutableTabData(tabData)) {
+      return;
+    }
+
+    tabData.items.forEach((item, index) => {
+      if (isPresetCandidate(item)) {
+        presetTemplateByCodeRef.current.set(getConfigItemCode(item), { index, item });
+      }
+    });
+  }, [tabData]);
+
+  useEffect(() => {
     if (!canAccessSettings) {
       return;
     }
@@ -277,42 +300,10 @@ export function InsightsSettingsPage() {
       setTabLoading(true);
 
       try {
-        if (settingsTab === "policy") {
-          const result = await getInsightPolicyAndSessionization();
+        const nextTabData = await loadSettingsTabData(settingsTab);
 
-          if (!ignore) {
-            setTabData({ tab: "policy", ...result });
-          }
-        } else if (settingsTab === "intents") {
-          const items = await listInsightIntentConfigs();
-
-          if (!ignore) {
-            setTabData({ tab: "intents", items });
-          }
-        } else if (settingsTab === "labels") {
-          const items = await listInsightLabelConfigs();
-
-          if (!ignore) {
-            setTabData({ tab: "labels", items });
-          }
-        } else if (settingsTab === "qa") {
-          const items = await listInsightQaRuleConfigs();
-
-          if (!ignore) {
-            setTabData({ tab: "qa", items });
-          }
-        } else if (settingsTab === "entities") {
-          const items = await listInsightEntityDictionary();
-
-          if (!ignore) {
-            setTabData({ tab: "entities", items });
-          }
-        } else if (settingsTab === "rescan") {
-          const result = await getInsightRescanTasks(1, 10);
-
-          if (!ignore) {
-            setTabData({ tab: "rescan", items: result.items, total: result.total, page: 1 });
-          }
+        if (!ignore) {
+          setTabData(nextTabData);
         }
       } catch (error) {
         if (!ignore) {
@@ -431,6 +422,8 @@ export function InsightsSettingsPage() {
     setPendingKey(`delete:${collection}:${id}`);
 
     try {
+      const deletedItem = deleteConfirmState?.id === id ? deleteConfirmState.item : undefined;
+
       if (collection === "label") {
         await deleteInsightLabelConfig(id);
       } else if (collection === "intent") {
@@ -441,11 +434,50 @@ export function InsightsSettingsPage() {
         await deleteInsightEntityDictionaryItem(id);
       }
 
-      updateCurrentTabItems((items) => items.filter((item) => item.id !== id));
+      const shouldReloadPresetCandidate = deletedItem
+        && isSystemConfigItem(deletedItem)
+        && !isPresetCandidate(deletedItem)
+        && !presetTemplateByCodeRef.current.has(getConfigItemCode(deletedItem));
+
+      if (shouldReloadPresetCandidate) {
+        setTabData(await loadSettingsTabData(getSettingsTabForCollection(collection)));
+      } else {
+        updateCurrentTabItems((items) =>
+          restoreDeletedSystemPresetCandidate(items, id, deletedItem, presetTemplateByCodeRef.current)
+        );
+      }
       await refreshSummary();
       toast.success("配置已删除");
     } catch (error) {
       toast.error(getErrorMessage(error));
+    } finally {
+      setPendingKey(undefined);
+    }
+  }
+
+  async function handleActivatePreset(collection: MutableCollection, code: string) {
+    setPendingKey(`preset:${collection}:${code}`);
+
+    try {
+      let next: ConfigItem;
+
+      if (collection === "label") {
+        next = await activatePresetInsightLabelConfig(code);
+      } else if (collection === "intent") {
+        next = await activatePresetInsightIntentConfig(code);
+      } else if (collection === "qa") {
+        next = await activatePresetInsightQaRuleConfig(code);
+      } else {
+        next = await activatePresetInsightEntityDictionaryItem(code);
+      }
+
+      upsertCurrentTabItem(next);
+      await refreshSummary();
+      toast.success("预置配置已添加");
+    } catch (error) {
+      if (!handleLimitError(error)) {
+        toast.error(getErrorMessage(error));
+      }
     } finally {
       setPendingKey(undefined);
     }
@@ -555,10 +587,15 @@ export function InsightsSettingsPage() {
 
   function upsertCurrentTabItem(item: ConfigItem) {
     updateCurrentTabItems((items) => {
-      const exists = items.some((current) => current.id === item.id);
+      const nextCode = getConfigItemCode(item);
+      const exists = items.some((current) =>
+        current.id === item.id || getConfigItemCode(current) === nextCode,
+      );
 
       return exists
-        ? items.map((current) => current.id === item.id ? item : current)
+        ? items.map((current) =>
+          current.id === item.id || getConfigItemCode(current) === nextCode ? item : current
+        )
         : [item, ...items];
     });
   }
@@ -660,9 +697,11 @@ export function InsightsSettingsPage() {
                 onDelete={(item) => setDeleteConfirmState({
                   collection: "intent",
                   id: item.id,
+                  item,
                   name: item.intentName,
                 })}
                 onEdit={(item) => setDialogState({ collection: "intent", item, mode: "edit" })}
+                onPresetActivate={(item) => void handleActivatePreset("intent", item.intentCode)}
                 onToggle={(item) => void handleStatusToggle("intent", item.id, item.status === 1 ? 0 : 1)}
                 pendingKey={pendingKey}
               />
@@ -679,9 +718,11 @@ export function InsightsSettingsPage() {
                 onDelete={(item) => setDeleteConfirmState({
                   collection: "label",
                   id: item.id,
+                  item,
                   name: item.labelName,
                 })}
                 onEdit={(item) => setDialogState({ collection: "label", item, mode: "edit" })}
+                onPresetActivate={(item) => void handleActivatePreset("label", item.labelCode)}
                 onToggle={(item) => void handleStatusToggle("label", item.id, item.status === 1 ? 0 : 1)}
                 pendingKey={pendingKey}
               />
@@ -698,9 +739,11 @@ export function InsightsSettingsPage() {
                 onDelete={(item) => setDeleteConfirmState({
                   collection: "qa",
                   id: item.id,
+                  item,
                   name: item.ruleName,
                 })}
                 onEdit={(item) => setDialogState({ collection: "qa", item, mode: "edit" })}
+                onPresetActivate={(item) => void handleActivatePreset("qa", item.ruleCode)}
                 onToggle={(item) => void handleStatusToggle("qa", item.id, item.status === 1 ? 0 : 1)}
                 pendingKey={pendingKey}
               />
@@ -717,9 +760,11 @@ export function InsightsSettingsPage() {
                 onDelete={(item) => setDeleteConfirmState({
                   collection: "entity",
                   id: item.id,
+                  item,
                   name: item.entityName,
                 })}
                 onEdit={(item) => setDialogState({ collection: "entity", item, mode: "edit" })}
+                onPresetActivate={(item) => void handleActivatePreset("entity", item.entityCode)}
                 onQueryChange={setEntityQuery}
                 onToggle={(item) => void handleStatusToggle("entity", item.id, item.status === 1 ? 0 : 1)}
                 pendingKey={pendingKey}
@@ -1590,6 +1635,7 @@ function LabelConfigTable({
   onCreate,
   onDelete,
   onEdit,
+  onPresetActivate,
   onToggle,
   pendingKey,
 }: {
@@ -1597,6 +1643,7 @@ function LabelConfigTable({
   onCreate: () => void;
   onDelete: (item: InsightLabelConfig) => void;
   onEdit: (item: InsightLabelConfig) => void;
+  onPresetActivate: (item: InsightLabelConfig) => void;
   onToggle: (item: InsightLabelConfig) => void;
   pendingKey?: string;
 }) {
@@ -1609,9 +1656,8 @@ function LabelConfigTable({
       <Table>
         <TableHeader>
           <TableRow>
+            <TableHead>ID</TableHead>
             <TableHead>标签</TableHead>
-            <TableHead>编码</TableHead>
-            <TableHead>统计</TableHead>
             <TableHead>状态</TableHead>
             <TableHead className="text-right">操作</TableHead>
           </TableRow>
@@ -1619,31 +1665,43 @@ function LabelConfigTable({
         <TableBody>
           {items.length === 0 ? (
             <TableRow>
-              <TableCell className="py-8 text-center text-sm text-muted-foreground" colSpan={5}>暂无数据</TableCell>
+              <TableCell className="py-8 text-center text-sm text-muted-foreground" colSpan={4}>暂无数据</TableCell>
             </TableRow>
-          ) : items.map((item) => (
+          ) : items.map((item) => {
+            const presetCandidate = isPresetCandidate(item);
+
+            return (
             <TableRow key={item.id}>
+              <ConfigIdCell code={item.labelCode} item={item} />
               <TableCell>
                 <PrimaryText main={item.labelName} sub={item.description} />
               </TableCell>
-              <TableCell className="font-mono text-xs text-muted-foreground">{item.labelCode}</TableCell>
-              <TableCell>{item.includeInStatistics ? "纳入" : "不纳入"}</TableCell>
               <TableCell>
-                <Switch
-                  checked={item.status === 1}
-                  disabled={pendingKey === `status:label:${item.id}`}
-                  onCheckedChange={() => onToggle(item)}
-                />
+                {presetCandidate ? "-" : (
+                  <Switch
+                    checked={item.status === 1}
+                    disabled={pendingKey === `status:label:${item.id}`}
+                    onCheckedChange={() => onToggle(item)}
+                  />
+                )}
               </TableCell>
               <TableCell className="text-right">
-                <RowActions
-                  disabled={pendingKey === `delete:label:${item.id}`}
-                  onDelete={() => onDelete(item)}
-                  onEdit={() => onEdit(item)}
-                />
+                {presetCandidate ? (
+                  <PresetRowAction
+                    disabled={pendingKey === `preset:label:${item.labelCode}`}
+                    onActivate={() => onPresetActivate(item)}
+                  />
+                ) : (
+                  <RowActions
+                    disabled={pendingKey === `delete:label:${item.id}`}
+                    onDelete={() => onDelete(item)}
+                    onEdit={() => onEdit(item)}
+                  />
+                )}
               </TableCell>
             </TableRow>
-          ))}
+          );
+          })}
         </TableBody>
       </Table>
     </ConfigTableShell>
@@ -1655,6 +1713,7 @@ function IntentConfigTable({
   onCreate,
   onDelete,
   onEdit,
+  onPresetActivate,
   onToggle,
   pendingKey,
 }: {
@@ -1662,6 +1721,7 @@ function IntentConfigTable({
   onCreate: () => void;
   onDelete: (item: InsightIntentConfig) => void;
   onEdit: (item: InsightIntentConfig) => void;
+  onPresetActivate: (item: InsightIntentConfig) => void;
   onToggle: (item: InsightIntentConfig) => void;
   pendingKey?: string;
 }) {
@@ -1674,10 +1734,9 @@ function IntentConfigTable({
       <Table>
         <TableHeader>
           <TableRow>
+            <TableHead>ID</TableHead>
             <TableHead>意图</TableHead>
-            <TableHead>编码</TableHead>
             <TableHead>权重</TableHead>
-            <TableHead>统计</TableHead>
             <TableHead>状态</TableHead>
             <TableHead className="text-right">操作</TableHead>
           </TableRow>
@@ -1685,32 +1744,44 @@ function IntentConfigTable({
         <TableBody>
           {items.length === 0 ? (
             <TableRow>
-              <TableCell className="py-8 text-center text-sm text-muted-foreground" colSpan={6}>暂无数据</TableCell>
+              <TableCell className="py-8 text-center text-sm text-muted-foreground" colSpan={5}>暂无数据</TableCell>
             </TableRow>
-          ) : items.map((item) => (
+          ) : items.map((item) => {
+            const presetCandidate = isPresetCandidate(item);
+
+            return (
             <TableRow key={item.id}>
+              <ConfigIdCell code={item.intentCode} item={item} />
               <TableCell>
                 <PrimaryText main={item.intentName} sub={item.description} />
               </TableCell>
-              <TableCell className="font-mono text-xs text-muted-foreground">{item.intentCode}</TableCell>
               <TableCell>{item.weight}</TableCell>
-              <TableCell>{item.includeInStatistics ? "纳入" : "不纳入"}</TableCell>
               <TableCell>
-                <Switch
-                  checked={item.status === 1}
-                  disabled={pendingKey === `status:intent:${item.id}`}
-                  onCheckedChange={() => onToggle(item)}
-                />
+                {presetCandidate ? "-" : (
+                  <Switch
+                    checked={item.status === 1}
+                    disabled={pendingKey === `status:intent:${item.id}`}
+                    onCheckedChange={() => onToggle(item)}
+                  />
+                )}
               </TableCell>
               <TableCell className="text-right">
-                <RowActions
-                  disabled={pendingKey === `delete:intent:${item.id}`}
-                  onDelete={() => onDelete(item)}
-                  onEdit={() => onEdit(item)}
-                />
+                {presetCandidate ? (
+                  <PresetRowAction
+                    disabled={pendingKey === `preset:intent:${item.intentCode}`}
+                    onActivate={() => onPresetActivate(item)}
+                  />
+                ) : (
+                  <RowActions
+                    disabled={pendingKey === `delete:intent:${item.id}`}
+                    onDelete={() => onDelete(item)}
+                    onEdit={() => onEdit(item)}
+                  />
+                )}
               </TableCell>
             </TableRow>
-          ))}
+          );
+          })}
         </TableBody>
       </Table>
     </ConfigTableShell>
@@ -1722,6 +1793,7 @@ function QaRuleConfigTable({
   onCreate,
   onDelete,
   onEdit,
+  onPresetActivate,
   onToggle,
   pendingKey,
 }: {
@@ -1729,6 +1801,7 @@ function QaRuleConfigTable({
   onCreate: () => void;
   onDelete: (item: InsightQaRuleConfig) => void;
   onEdit: (item: InsightQaRuleConfig) => void;
+  onPresetActivate: (item: InsightQaRuleConfig) => void;
   onToggle: (item: InsightQaRuleConfig) => void;
   pendingKey?: string;
 }) {
@@ -1741,8 +1814,8 @@ function QaRuleConfigTable({
       <Table>
         <TableHeader>
           <TableRow>
+            <TableHead>ID</TableHead>
             <TableHead>规则</TableHead>
-            <TableHead>编码</TableHead>
             <TableHead>严重度</TableHead>
             <TableHead>状态</TableHead>
             <TableHead className="text-right">操作</TableHead>
@@ -1753,29 +1826,42 @@ function QaRuleConfigTable({
             <TableRow>
               <TableCell className="py-8 text-center text-sm text-muted-foreground" colSpan={5}>暂无数据</TableCell>
             </TableRow>
-          ) : items.map((item) => (
+          ) : items.map((item) => {
+            const presetCandidate = isPresetCandidate(item);
+
+            return (
             <TableRow key={item.id}>
+              <ConfigIdCell code={item.ruleCode} item={item} />
               <TableCell>
                 <PrimaryText main={item.ruleName} sub={item.judgmentCriteria ?? item.description} />
               </TableCell>
-              <TableCell className="font-mono text-xs text-muted-foreground">{item.ruleCode}</TableCell>
               <TableCell><SeverityBadge severity={item.severity} /></TableCell>
               <TableCell>
-                <Switch
-                  checked={item.status === 1}
-                  disabled={pendingKey === `status:qa:${item.id}`}
-                  onCheckedChange={() => onToggle(item)}
-                />
+                {presetCandidate ? "-" : (
+                  <Switch
+                    checked={item.status === 1}
+                    disabled={pendingKey === `status:qa:${item.id}`}
+                    onCheckedChange={() => onToggle(item)}
+                  />
+                )}
               </TableCell>
               <TableCell className="text-right">
-                <RowActions
-                  disabled={pendingKey === `delete:qa:${item.id}`}
-                  onDelete={() => onDelete(item)}
-                  onEdit={() => onEdit(item)}
-                />
+                {presetCandidate ? (
+                  <PresetRowAction
+                    disabled={pendingKey === `preset:qa:${item.ruleCode}`}
+                    onActivate={() => onPresetActivate(item)}
+                  />
+                ) : (
+                  <RowActions
+                    disabled={pendingKey === `delete:qa:${item.id}`}
+                    onDelete={() => onDelete(item)}
+                    onEdit={() => onEdit(item)}
+                  />
+                )}
               </TableCell>
             </TableRow>
-          ))}
+          );
+          })}
         </TableBody>
       </Table>
     </ConfigTableShell>
@@ -1787,6 +1873,7 @@ function EntityDictionaryTable({
   onCreate,
   onDelete,
   onEdit,
+  onPresetActivate,
   onQueryChange,
   onToggle,
   pendingKey,
@@ -1796,6 +1883,7 @@ function EntityDictionaryTable({
   onCreate: () => void;
   onDelete: (item: InsightEntityDictionaryItem) => void;
   onEdit: (item: InsightEntityDictionaryItem) => void;
+  onPresetActivate: (item: InsightEntityDictionaryItem) => void;
   onQueryChange: (value: string) => void;
   onToggle: (item: InsightEntityDictionaryItem) => void;
   pendingKey?: string;
@@ -1827,10 +1915,9 @@ function EntityDictionaryTable({
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>编码</TableHead>
+            <TableHead>ID</TableHead>
             <TableHead>实体</TableHead>
             <TableHead>别名</TableHead>
-            <TableHead>聚合</TableHead>
             <TableHead>状态</TableHead>
             <TableHead className="text-right">操作</TableHead>
           </TableRow>
@@ -1838,32 +1925,44 @@ function EntityDictionaryTable({
         <TableBody>
           {items.length === 0 ? (
             <TableRow>
-              <TableCell className="py-8 text-center text-sm text-muted-foreground" colSpan={6}>暂无数据</TableCell>
+              <TableCell className="py-8 text-center text-sm text-muted-foreground" colSpan={5}>暂无数据</TableCell>
             </TableRow>
-          ) : items.map((item) => (
+          ) : items.map((item) => {
+            const presetCandidate = isPresetCandidate(item);
+
+            return (
             <TableRow key={item.id}>
-              <TableCell className="font-mono text-xs text-muted-foreground">{item.entityCode}</TableCell>
+              <ConfigIdCell code={item.entityCode} item={item} />
               <TableCell className="font-medium">{item.entityName}</TableCell>
               <TableCell className="max-w-[360px] text-muted-foreground">
                 {item.aliases.length > 0 ? item.aliases.join("、") : "无"}
               </TableCell>
-              <TableCell>{item.includeInAggregation ? "纳入" : "不纳入"}</TableCell>
               <TableCell>
-                <Switch
-                  checked={item.status === 1}
-                  disabled={pendingKey === `status:entity:${item.id}`}
-                  onCheckedChange={() => onToggle(item)}
-                />
+                {presetCandidate ? "-" : (
+                  <Switch
+                    checked={item.status === 1}
+                    disabled={pendingKey === `status:entity:${item.id}`}
+                    onCheckedChange={() => onToggle(item)}
+                  />
+                )}
               </TableCell>
               <TableCell className="text-right">
-                <RowActions
-                  disabled={pendingKey === `delete:entity:${item.id}`}
-                  onDelete={() => onDelete(item)}
-                  onEdit={() => onEdit(item)}
-                />
+                {presetCandidate ? (
+                  <PresetRowAction
+                    disabled={pendingKey === `preset:entity:${item.entityCode}`}
+                    onActivate={() => onPresetActivate(item)}
+                  />
+                ) : (
+                  <RowActions
+                    disabled={pendingKey === `delete:entity:${item.id}`}
+                    onDelete={() => onDelete(item)}
+                    onEdit={() => onEdit(item)}
+                  />
+                )}
               </TableCell>
             </TableRow>
-          ))}
+          );
+          })}
         </TableBody>
       </Table>
     </ConfigTableShell>
@@ -1918,6 +2017,26 @@ function RowActions({
         <HugeiconsIcon color="currentColor" icon={Delete02Icon} size={16} strokeWidth={1.8} />
       </Button>
     </div>
+  );
+}
+
+function PresetRowAction({
+  disabled,
+  onActivate,
+}: {
+  disabled?: boolean;
+  onActivate: () => void;
+}) {
+  return (
+    <Button
+      aria-label="添加预置配置"
+      disabled={disabled}
+      onClick={onActivate}
+      size="icon"
+      variant="ghost"
+    >
+      <HugeiconsIcon color="currentColor" icon={Add01Icon} size={16} strokeWidth={1.8} />
+    </Button>
   );
 }
 
@@ -2168,6 +2287,7 @@ function ConfigMutationDialog({
         ? "定义客户意图分类，帮助你识别会话的主要诉求类型"
         : "统一业务实体名称，提升热点和主体聚合的准确性";
   const wideConfigDialog = collection === "intent" || collection === "label" || collection === "qa";
+  const identityLocked = state.mode === "edit" && isSystemConfigItem(state.item);
 
   function setValue(key: string, value: unknown) {
     setErrors((current) => {
@@ -2204,8 +2324,8 @@ function ConfigMutationDialog({
           {state.collection === "label" ? (
             <div className="grid gap-5 md:col-span-2 md:grid-cols-2">
               <div className="grid content-start gap-4">
-                <TextField error={errors.labelName} form={form} label="标签名称" name="labelName" onChange={setValue} required />
-                <TextField error={errors.labelCode} form={form} label="标签编码" name="labelCode" onChange={setValue} required />
+                <TextField disabled={identityLocked} error={errors.labelName} form={form} label="标签名称" name="labelName" onChange={setValue} required />
+                <TextField disabled={identityLocked} error={errors.labelCode} form={form} label="ID" labelHint="唯一ID，仅支持英文字母、下划线和横杠" name="labelCode" onChange={setValue} required />
                 <TextareaField
                   error={errors.description}
                   form={form}
@@ -2213,11 +2333,9 @@ function ConfigMutationDialog({
                   name="description"
                   onChange={setValue}
                   required
+                  textareaClassName="min-h-52"
                 />
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <SwitchEditorField checked={Number(form.status ?? 1) === 1} label="启用" onChange={(value) => setValue("status", value ? 1 : 0)} />
-                  <SwitchEditorField checked={Boolean(form.includeInStatistics)} label="纳入统计" onChange={(value) => setValue("includeInStatistics", value)} />
-                </div>
+                <SwitchEditorField checked={Number(form.status ?? 1) === 1} label="启用" onChange={(value) => setValue("status", value ? 1 : 0)} />
               </div>
               <div className="grid content-start gap-4">
                 <TextareaField
@@ -2244,11 +2362,10 @@ function ConfigMutationDialog({
             <div className="grid gap-5 md:col-span-2 md:grid-cols-2">
               <div className="grid content-start gap-4">
                 <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_8rem]">
-                  <TextField error={errors.intentName} form={form} label="意图名称" name="intentName" onChange={setValue} required />
+                  <TextField disabled={identityLocked} error={errors.intentName} form={form} label="意图名称" name="intentName" onChange={setValue} required />
                   <WeightField form={form} onChange={setValue} />
                 </div>
-                <TextField error={errors.intentCode} form={form} label="意图编码" name="intentCode" onChange={setValue} required />
-                <TextareaField form={form} label="别名" name="aliasesText" onChange={setValue} placeholder="每行一个别名" />
+                <TextField disabled={identityLocked} error={errors.intentCode} form={form} label="ID" labelHint="唯一ID，仅支持英文字母、下划线和横杠" name="intentCode" onChange={setValue} required />
                 <TextareaField
                   error={errors.description}
                   form={form}
@@ -2256,11 +2373,9 @@ function ConfigMutationDialog({
                   name="description"
                   onChange={setValue}
                   required
+                  textareaClassName="min-h-52"
                 />
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <SwitchEditorField checked={Number(form.status ?? 1) === 1} label="启用" onChange={(value) => setValue("status", value ? 1 : 0)} />
-                  <SwitchEditorField checked={Boolean(form.includeInStatistics)} label="纳入统计" onChange={(value) => setValue("includeInStatistics", value)} />
-                </div>
+                <SwitchEditorField checked={Number(form.status ?? 1) === 1} label="启用" onChange={(value) => setValue("status", value ? 1 : 0)} />
               </div>
               <div className="grid content-start gap-4">
                 <TextareaField
@@ -2287,10 +2402,10 @@ function ConfigMutationDialog({
             <div className="grid gap-5 md:col-span-2 md:grid-cols-2">
               <div className="grid content-start gap-4">
                 <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_8rem]">
-                  <TextField error={errors.ruleName} form={form} label="规则名称" name="ruleName" onChange={setValue} required />
+                  <TextField disabled={identityLocked} error={errors.ruleName} form={form} label="规则名称" name="ruleName" onChange={setValue} required />
                   <SeverityField form={form} onChange={setValue} />
                 </div>
-                <TextField error={errors.ruleCode} form={form} label="规则编码" name="ruleCode" onChange={setValue} required />
+                <TextField disabled={identityLocked} error={errors.ruleCode} form={form} label="ID" labelHint="唯一ID，仅支持英文字母、下划线和横杠" name="ruleCode" onChange={setValue} required />
                 <TextField form={form} label="适用场景" name="applicableScene" onChange={setValue} />
                 <TextareaField error={errors.judgmentCriteria} form={form} label="判定标准" name="judgmentCriteria" onChange={setValue} required />
                 <SwitchEditorField checked={Number(form.status ?? 1) === 1} label="启用" onChange={(value) => setValue("status", value ? 1 : 0)} />
@@ -2318,11 +2433,10 @@ function ConfigMutationDialog({
 
           {state.collection === "entity" ? (
             <>
-              <TextField error={errors.entityCode} form={form} label="实体编码" name="entityCode" onChange={setValue} required />
-              <TextField error={errors.entityName} form={form} label="实体名称" name="entityName" onChange={setValue} required />
+              <TextField disabled={identityLocked} error={errors.entityName} form={form} label="实体名称" name="entityName" onChange={setValue} required />
+              <TextField disabled={identityLocked} error={errors.entityCode} form={form} label="ID" labelHint="唯一ID，仅支持英文字母、下划线和横杠" name="entityCode" onChange={setValue} required />
               <TextareaField className="md:col-span-2" form={form} label="别名" name="aliasesText" onChange={setValue} placeholder="每行一个别名" />
               <SwitchEditorField checked={Number(form.status ?? 1) === 1} label="启用" onChange={(value) => setValue("status", value ? 1 : 0)} />
-              <SwitchEditorField checked={Boolean(form.includeInAggregation)} label="纳入聚合" onChange={(value) => setValue("includeInAggregation", value)} />
             </>
           ) : null}
         </div>
@@ -2375,6 +2489,7 @@ function Field({
 }
 
 function TextField({
+  disabled,
   error,
   form,
   label,
@@ -2383,6 +2498,7 @@ function TextField({
   onChange,
   required,
 }: {
+  disabled?: boolean;
   error?: string;
   form: Record<string, unknown>;
   label: string;
@@ -2398,6 +2514,7 @@ function TextField({
       <Input
         aria-invalid={error ? true : undefined}
         className={cn(error ? "border-destructive focus-visible:ring-destructive/20" : undefined)}
+        disabled={disabled}
         id={id}
         onChange={(event) => onChange(name, event.target.value)}
         required={required}
@@ -2531,6 +2648,21 @@ function PrimaryText({ main, sub }: { main: string; sub?: string }) {
   );
 }
 
+function ConfigIdCell({ code, item }: { code: string; item: ConfigItem }) {
+  return (
+    <TableCell>
+      <div className="flex items-center gap-2">
+        {isSystemConfigItem(item) ? (
+          <Badge className="shrink-0 rounded-[4px] px-1.5 py-0.5 text-[10px]" variant="outline">
+            预置
+          </Badge>
+        ) : null}
+        <span className="font-mono text-xs text-muted-foreground">{code}</span>
+      </div>
+    </TableCell>
+  );
+}
+
 function SeverityBadge({ severity }: { severity: "high" | "low" | "medium" }) {
   const className =
     severity === "high"
@@ -2551,7 +2683,6 @@ function buildInitialDialogForm(state: ConfigDialogState): Record<string, unknow
     const item = state.mode === "edit" ? state.item : undefined;
     return {
       description: item?.description ?? "",
-      includeInStatistics: item?.includeInStatistics ?? true,
       labelCode: item?.labelCode ?? "",
       labelName: item?.labelName ?? "",
       negativeExamplesText: (item?.negativeExamples ?? []).join("\n"),
@@ -2563,10 +2694,8 @@ function buildInitialDialogForm(state: ConfigDialogState): Record<string, unknow
   if (state.collection === "intent") {
     const item = state.mode === "edit" ? state.item : undefined;
     return {
-      aliasesText: (item?.aliases ?? []).join("\n"),
       description: item?.description ?? "",
       status: item?.status ?? 1,
-      includeInStatistics: item?.includeInStatistics ?? true,
       intentCode: item?.intentCode ?? "",
       intentName: item?.intentName ?? "",
       negativeExamplesText: (item?.negativeExamples ?? []).join("\n"),
@@ -2596,7 +2725,6 @@ function buildInitialDialogForm(state: ConfigDialogState): Record<string, unknow
     entityCode: item?.entityCode ?? "",
     entityName: item?.entityName ?? "",
     status: item?.status ?? 1,
-    includeInAggregation: item?.includeInAggregation ?? true,
   };
 }
 
@@ -2618,12 +2746,104 @@ function validateDialogForm(collection: MutableCollection, form: Record<string, 
   return errors;
 }
 
+function isPresetCandidate(item: ConfigItem) {
+  return item.id.startsWith("preset:");
+}
+
+function isSystemConfigItem(item: ConfigItem) {
+  return getConfigItemCode(item).startsWith(systemPresetCodePrefix);
+}
+
+function restoreDeletedSystemPresetCandidate(
+  items: ConfigItem[],
+  deletedId: string,
+  deletedItem: ConfigItem | undefined,
+  presetTemplateByCode: Map<string, PresetTemplateCacheEntry>,
+) {
+  const nextItems = items.filter((item) => item.id !== deletedId);
+
+  if (!deletedItem || !isSystemConfigItem(deletedItem) || isPresetCandidate(deletedItem)) {
+    return nextItems;
+  }
+
+  const deletedCode = getConfigItemCode(deletedItem);
+  const presetTemplate = presetTemplateByCode.get(deletedCode);
+
+  if (!presetTemplate || nextItems.some((item) => getConfigItemCode(item) === deletedCode)) {
+    return nextItems;
+  }
+
+  const insertIndex = Math.min(presetTemplate.index, nextItems.length);
+
+  return [
+    ...nextItems.slice(0, insertIndex),
+    presetTemplate.item,
+    ...nextItems.slice(insertIndex),
+  ];
+}
+
+async function loadSettingsTabData(tab: string): Promise<TabData> {
+  if (tab === "policy") {
+    return { tab: "policy", ...await getInsightPolicyAndSessionization() };
+  }
+
+  if (tab === "intents") {
+    return { tab: "intents", items: await listInsightIntentConfigs() };
+  }
+
+  if (tab === "labels") {
+    return { tab: "labels", items: await listInsightLabelConfigs() };
+  }
+
+  if (tab === "qa") {
+    return { tab: "qa", items: await listInsightQaRuleConfigs() };
+  }
+
+  if (tab === "entities") {
+    return { tab: "entities", items: await listInsightEntityDictionary() };
+  }
+
+  const result = await getInsightRescanTasks(1, 10);
+  return { tab: "rescan", items: result.items, total: result.total, page: 1 };
+}
+
+function getSettingsTabForCollection(collection: MutableCollection) {
+  if (collection === "intent") {
+    return "intents";
+  }
+
+  if (collection === "label") {
+    return "labels";
+  }
+
+  if (collection === "qa") {
+    return "qa";
+  }
+
+  return "entities";
+}
+
+function getConfigItemCode(item: ConfigItem) {
+  if ("intentCode" in item) {
+    return item.intentCode;
+  }
+
+  if ("labelCode" in item) {
+    return item.labelCode;
+  }
+
+  if ("ruleCode" in item) {
+    return item.ruleCode;
+  }
+
+  return item.entityCode;
+}
+
 function normalizeDialogPayload(collection: MutableCollection, form: Record<string, unknown>) {
   if (collection === "label") {
     return {
       description: trimOptional(form.description),
       status: Number(form.status ?? 1) === 1 ? 1 : 0,
-      includeInStatistics: Boolean(form.includeInStatistics),
       labelCode: String(form.labelCode ?? "").trim(),
       labelName: String(form.labelName ?? "").trim(),
       negativeExamples: splitLines(form.negativeExamplesText),
@@ -2633,10 +2853,8 @@ function normalizeDialogPayload(collection: MutableCollection, form: Record<stri
 
   if (collection === "intent") {
     return {
-      aliases: splitLines(form.aliasesText),
       description: trimOptional(form.description),
       status: Number(form.status ?? 1) === 1 ? 1 : 0,
-      includeInStatistics: Boolean(form.includeInStatistics),
       intentCode: String(form.intentCode ?? "").trim(),
       intentName: String(form.intentName ?? "").trim(),
       negativeExamples: splitLines(form.negativeExamplesText),
@@ -2664,7 +2882,6 @@ function normalizeDialogPayload(collection: MutableCollection, form: Record<stri
     entityCode: String(form.entityCode ?? "").trim(),
     entityName: String(form.entityName ?? "").trim(),
     status: Number(form.status ?? 1) === 1 ? 1 : 0,
-    includeInAggregation: Boolean(form.includeInAggregation),
   };
 }
 

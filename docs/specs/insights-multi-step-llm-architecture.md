@@ -35,9 +35,9 @@ getPromptContext(uid)  →  buildInsightPromptMessages({ context, messages, prev
 ### 配置管理
 
 - QA 规则：`InsightQaRuleConfig`（ruleCode, ruleName, severity, judgmentCriteria, positiveExamples, negativeExamples, applicableScene, enabled）
-- 标签：`InsightLabelConfig`（labelCode, labelName, description, positiveExamples, negativeExamples, includeInStatistics, enabled）
-- 实体：`InsightEntityDictionaryItem`（canonicalName, entityType, aliases, includeInAggregation, enabled）
-- 意图：`InsightIntentConfig`（intentCode, intentName, aliases, positiveExamples, negativeExamples, sortOrder, enabled）
+- 标签：`InsightLabelConfig`（labelCode, labelName, description, positiveExamples, negativeExamples, enabled）
+- 实体：`InsightEntityDictionaryItem`（canonicalName, entityType, aliases, enabled）
+- 意图：`InsightIntentConfig`（intentCode, intentName, description, positiveExamples, negativeExamples, sortOrder, enabled）
 
 ### 前端展示
 

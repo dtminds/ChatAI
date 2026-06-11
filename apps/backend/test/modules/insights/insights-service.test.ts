@@ -470,16 +470,13 @@ function createRepository(
         aliases: ["白色羽绒服"],
         entityName: "白色羽绒服",
         id: "41",
-        includeInAggregation: true,
         status: 1,
       },
     ]),
     listIntentConfigs: vi.fn(async () => [
       {
-        aliases: ["物流"],
         description: "物流相关咨询",
         id: "90",
-        includeInStatistics: true,
         intentCode: "logistics_delay",
         intentName: "物流异常",
         negativeExamples: [],
@@ -492,7 +489,6 @@ function createRepository(
       {
         description: "退款咨询相关标签",
         id: "91",
-        includeInStatistics: true,
         labelCode: "retention",
         labelName: "挽留机会",
         negativeExamples: [],
@@ -661,16 +657,13 @@ function createRepository(
           entityName: "白色羽绒服",
           status: 1,
           id: "41",
-          includeInAggregation: true,
         },
       ],
       intentConfigs: [
         {
-          aliases: ["物流", "查快递"],
           description: "客户咨询发货、快递或物流异常",
           status: 1,
           id: "31",
-          includeInStatistics: true,
           intentCode: "logistics_delay",
           intentName: "物流异常",
           negativeExamples: ["咨询退款到账"],
@@ -682,7 +675,6 @@ function createRepository(
         {
           status: 1,
           id: "11",
-          includeInStatistics: true,
           labelCode: "price_sensitive",
           labelName: "价格敏感",
         },
@@ -735,6 +727,11 @@ function createRepository(
       ...payload,
       id: "90",
     })),
+    activatePresetIntentConfig: vi.fn(async (_scope, presetCode, preset) => ({
+      ...preset,
+      id: "190",
+      intentCode: presetCode,
+    })),
     updateIntentConfig: vi.fn(async (_scope, id, payload) => ({
       ...payload,
       id,
@@ -742,7 +739,6 @@ function createRepository(
     updateIntentConfigStatus: vi.fn(async (_scope, id, status) => ({
       status,
       id,
-      includeInStatistics: true,
       intentCode: "logistics_delay",
       intentName: "物流异常",
       weight: 8,
@@ -752,6 +748,11 @@ function createRepository(
       ...payload,
       id: "91",
     })),
+    activatePresetLabelConfig: vi.fn(async (_scope, presetCode, preset) => ({
+      ...preset,
+      id: "191",
+      labelCode: presetCode,
+    })),
     updateLabelConfig: vi.fn(async (_scope, id, payload) => ({
       ...payload,
       id,
@@ -759,7 +760,6 @@ function createRepository(
     updateLabelConfigStatus: vi.fn(async (_scope, id, status) => ({
       status,
       id,
-      includeInStatistics: true,
       labelCode: "price_sensitive",
       labelName: "价格敏感",
     })),
@@ -767,6 +767,11 @@ function createRepository(
     createQaRuleConfig: vi.fn(async (_scope, payload) => ({
       ...payload,
       id: "92",
+    })),
+    activatePresetQaRuleConfig: vi.fn(async (_scope, presetCode, preset) => ({
+      ...preset,
+      id: "192",
+      ruleCode: presetCode,
     })),
     updateQaRuleConfig: vi.fn(async (_scope, id, payload) => ({
       ...payload,
@@ -784,6 +789,11 @@ function createRepository(
       ...payload,
       id: "94",
     })),
+    activatePresetEntityDictionaryItem: vi.fn(async (_scope, presetCode, preset) => ({
+      ...preset,
+      entityCode: presetCode,
+      id: "194",
+    })),
     updateEntityDictionaryItem: vi.fn(async (_scope, id, payload) => ({
       ...payload,
       id,
@@ -793,7 +803,6 @@ function createRepository(
       entityName: "白色羽绒服",
       status,
       id,
-      includeInAggregation: true,
     })),
     deleteEntityDictionaryItem: vi.fn(async () => true),
     updateActionStatus: vi.fn(async () => true),
@@ -1788,12 +1797,16 @@ describe("InsightsService", () => {
       ForbiddenError,
     );
     await expect(service.getSettings(scope, "admin")).resolves.toMatchObject({
-      intentConfigs: [
+      intentConfigs: expect.arrayContaining([
         expect.objectContaining({
           intentCode: "logistics_delay",
           intentName: "物流异常",
         }),
-      ],
+        expect.objectContaining({
+          id: "preset:sys_price_consult",
+          intentCode: "sys_price_consult",
+        }),
+      ]),
       sessionization: {
         idleTimeoutMinutes: 120,
       },
@@ -1853,10 +1866,8 @@ describe("InsightsService", () => {
 
     await expect(
       service.createIntentConfig(scope, "admin", {
-        aliases: ["物流", "查快递"],
         description: "客户咨询发货、快递或物流异常",
         status: 1,
-        includeInStatistics: true,
         intentCode: "logistics_delay",
         intentName: "物流异常",
         negativeExamples: ["咨询退款到账"],
@@ -1878,12 +1889,169 @@ describe("InsightsService", () => {
     await expect(
       service.createLabelConfig(scope, "admin", {
         status: 1,
-        includeInStatistics: true,
         labelCode: "retention",
         labelName: "挽留机会",
       }),
     ).resolves.toMatchObject({ id: "91", labelCode: "retention" });
     expect(repository.createLabelConfig).toHaveBeenCalled();
+  });
+
+  it("merges system preset candidates into admin config lists by sys code", async () => {
+    const service = new InsightsService(
+      createRepository({
+        listIntentConfigs: vi.fn(async () => [
+          {
+            description: "租户已启用的系统预设",
+            id: "190",
+            intentCode: "sys_price_consult",
+            intentName: "价格咨询",
+            negativeExamples: [],
+            positiveExamples: ["这个多少钱"],
+            status: 1,
+            weight: 8,
+          },
+        ]),
+        listLabelConfigs: vi.fn(async () => []),
+        listQaRuleConfigs: vi.fn(async () => []),
+        listEntityDictionary: vi.fn(async () => []),
+      }),
+    );
+
+    const intentConfigs = await service.listIntentConfigs(scope, "admin");
+    expect(intentConfigs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "190",
+          intentCode: "sys_price_consult",
+          intentName: "价格咨询",
+        }),
+        expect.objectContaining({
+          id: "preset:sys_campaign_consult",
+          intentCode: "sys_campaign_consult",
+          status: 0,
+        }),
+        expect.objectContaining({
+          id: "preset:sys_benefit_consult",
+          intentCode: "sys_benefit_consult",
+          status: 0,
+        }),
+      ]),
+    );
+    expect(intentConfigs.filter((item) => item.intentCode === "sys_price_consult")).toHaveLength(1);
+    await expect(service.listLabelConfigs(scope, "admin")).resolves.toEqual([
+      expect.objectContaining({
+        id: "preset:sys_high_purchase_intent",
+        labelCode: "sys_high_purchase_intent",
+        status: 0,
+      }),
+      expect.objectContaining({
+        id: "preset:sys_price_sensitive",
+        labelCode: "sys_price_sensitive",
+        status: 0,
+      }),
+    ]);
+    await expect(service.listQaRuleConfigs(scope, "admin")).resolves.toContainEqual(
+      expect.objectContaining({
+        id: "preset:sys_service_attitude",
+        ruleCode: "sys_service_attitude",
+        status: 0,
+      }),
+    );
+    await expect(service.listQaRuleConfigs(scope, "admin")).resolves.toContainEqual(
+      expect.objectContaining({
+        id: "preset:sys_follow_up_clear",
+        ruleCode: "sys_follow_up_clear",
+        status: 0,
+      }),
+    );
+    await expect(service.listEntityDictionary(scope, "admin")).resolves.toContainEqual(
+      expect.objectContaining({
+        entityCode: "sys_live_room_promotion",
+        id: "preset:sys_live_room_promotion",
+        status: 0,
+      }),
+    );
+  });
+
+  it("activates system presets by code through dedicated service methods", async () => {
+    const repository = createRepository();
+    const service = new InsightsService(repository);
+
+    await expect(
+      service.activatePresetIntentConfig(scope, "admin", "sys_price_consult"),
+    ).resolves.toMatchObject({
+      id: "190",
+      intentCode: "sys_price_consult",
+      intentName: "价格咨询",
+    });
+    expect(repository.activatePresetIntentConfig).toHaveBeenCalledWith(
+      scope,
+      "sys_price_consult",
+      expect.objectContaining({
+        intentCode: "sys_price_consult",
+        intentName: "价格咨询",
+        status: 0,
+      }),
+    );
+  });
+
+  it("adds system presets disabled by default without consuming enabled limits", async () => {
+    const repository = createRepository({
+      countEnabledConfigs: vi.fn(async (currentScope, configType) => {
+        expect(currentScope).toEqual(scope);
+        expect(configType).toBe("intentConfigs");
+        return 20;
+      }),
+    });
+    const service = new InsightsService(repository);
+
+    await expect(
+      service.activatePresetIntentConfig(scope, "admin", "sys_price_consult"),
+    ).resolves.toMatchObject({
+      intentCode: "sys_price_consult",
+    });
+    expect(repository.activatePresetIntentConfig).toHaveBeenCalledWith(
+      scope,
+      "sys_price_consult",
+      expect.objectContaining({
+        intentCode: "sys_price_consult",
+        status: 0,
+      }),
+    );
+  });
+
+  it("rejects custom config mutations that try to create or rename to sys codes", async () => {
+    const repository = createRepository();
+    const service = new InsightsService(repository);
+
+    await expect(
+      service.createIntentConfig(scope, "admin", {
+        description: "不允许伪造系统预设",
+        intentCode: "sys_custom_intent",
+        intentName: "伪系统意图",
+        negativeExamples: [],
+        positiveExamples: [],
+        status: 1,
+        weight: 5,
+      }),
+    ).rejects.toMatchObject({
+      code: "INSIGHT_SYSTEM_CODE_RESERVED",
+    });
+    expect(repository.createIntentConfig).not.toHaveBeenCalled();
+
+    await expect(
+      service.updateLabelConfig(scope, "admin", "91", {
+        description: "不允许改成系统前缀",
+        labelCode: "sys_custom_label",
+        labelName: "伪系统标签",
+        negativeExamples: [],
+        positiveExamples: [],
+        status: 1,
+      }),
+    ).rejects.toMatchObject({
+      code: "INSIGHT_SYSTEM_CODE_RESERVED",
+    });
+    expect(repository.updateLabelConfig).not.toHaveBeenCalled();
   });
 
   it("rejects config writes that would exceed enabled limits", async () => {
@@ -1894,10 +2062,8 @@ describe("InsightsService", () => {
       }),
       listIntentConfigs: vi.fn(async () => [
         {
-          aliases: ["物流"],
           description: "物流相关咨询",
           id: "90",
-          includeInStatistics: true,
           intentCode: "logistics_delay",
           intentName: "物流异常",
           negativeExamples: [],
@@ -1954,7 +2120,6 @@ describe("InsightsService", () => {
     await expect(
       service.createLabelConfig(scope, "admin", {
         status: 0,
-        includeInStatistics: true,
         labelCode: "retention",
         labelName: "挽留机会",
       }),
@@ -1969,6 +2134,33 @@ describe("InsightsService", () => {
     expect(repository.createLabelConfig).not.toHaveBeenCalled();
   });
 
+  it("does not check total limits when adding a preset that already exists", async () => {
+    const repository = createRepository({
+      countActiveConfigs: vi.fn(async () => 50),
+      listIntentConfigs: vi.fn(async () => [
+        {
+          description: "已存在的系统预设",
+          id: "190",
+          intentCode: "sys_price_consult",
+          intentName: "价格咨询",
+          negativeExamples: [],
+          positiveExamples: ["多少钱"],
+          status: 1,
+          weight: 5,
+        },
+      ]),
+    });
+    const service = new InsightsService(repository);
+
+    await expect(
+      service.activatePresetIntentConfig(scope, "admin", "sys_price_consult"),
+    ).resolves.toMatchObject({
+      intentCode: "sys_price_consult",
+    });
+    expect(repository.countActiveConfigs).not.toHaveBeenCalled();
+    expect(repository.activatePresetIntentConfig).toHaveBeenCalled();
+  });
+
   it("allows updating an already-enabled config without consuming a new slot at the limit", async () => {
     const repository = createRepository({
       countEnabledConfigs: vi.fn(async (currentScope, configType) => {
@@ -1978,9 +2170,7 @@ describe("InsightsService", () => {
       }),
       updateIntentConfig: vi.fn(async (_scope, id, payload) => ({
         id,
-        aliases: payload.aliases ?? [],
         description: payload.description,
-        includeInStatistics: payload.includeInStatistics,
         intentCode: payload.intentCode,
         intentName: payload.intentName,
         negativeExamples: payload.negativeExamples ?? [],
@@ -1993,9 +2183,7 @@ describe("InsightsService", () => {
 
     await expect(
       service.updateIntentConfig(scope, "admin", "90", {
-        aliases: ["物流"],
         description: "重新整理判定标准",
-        includeInStatistics: true,
         intentCode: "logistics_delay",
         intentName: "物流异常",
         negativeExamples: [],

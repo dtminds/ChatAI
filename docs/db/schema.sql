@@ -436,7 +436,6 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_label_config (
   positive_examples_json JSON NULL COMMENT '正例JSON',
   negative_examples_json JSON NULL COMMENT '反例JSON',
   status TINYINT NOT NULL DEFAULT 1 COMMENT '配置状态，1启用0禁用-1删除',
-  include_in_statistics TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '是否纳入统计，1是0否',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
@@ -449,11 +448,9 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_intent_config (
   intent_code VARCHAR(128) NOT NULL COMMENT '意图编码',
   intent_name VARCHAR(128) NOT NULL COMMENT '意图名称',
   description VARCHAR(512) NULL COMMENT '意图说明',
-  aliases_json JSON NULL COMMENT '别名JSON',
   positive_examples_json JSON NULL COMMENT '正例JSON',
   negative_examples_json JSON NULL COMMENT '反例JSON',
   status TINYINT NOT NULL DEFAULT 1 COMMENT '配置状态，1启用0禁用-1删除',
-  include_in_statistics TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '是否纳入统计，1是0否',
   sort_order INT UNSIGNED NOT NULL DEFAULT 5 COMMENT '权重，1-10',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
@@ -488,10 +485,8 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_entity_dictionary (
   aliases_json JSON NULL COMMENT '别名JSON',
   attributes_json JSON NULL COMMENT '属性JSON',
   status TINYINT NOT NULL DEFAULT 1 COMMENT '配置状态，1启用0禁用-1删除',
-  include_in_aggregation TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '是否纳入聚合，1是0否',
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
-  UNIQUE KEY uk_entity_dictionary_uid_code (uid, entity_code),
-  UNIQUE KEY uk_entity_dictionary_uid_name (uid, entity_name)
+  UNIQUE KEY uk_entity_dictionary_uid_code (uid, entity_code)
 ) COMMENT='会话洞察实体词库配置表';

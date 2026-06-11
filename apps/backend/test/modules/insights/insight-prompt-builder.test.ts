@@ -15,14 +15,11 @@ describe("insight prompt builder", () => {
             aliases: ["SKU-001"],
             entityName: "玻尿酸补水面膜",
             id: "41",
-            includeInAggregation: true,
           },
         ],
         intentConfigs: [
           {
-            aliases: ["查快递"],
             id: "31",
-            includeInStatistics: true,
             intentCode: "logistics_delay",
             intentName: "物流异常",
             negativeExamples: [],
@@ -33,7 +30,6 @@ describe("insight prompt builder", () => {
         labelConfigs: [
           {
             id: "11",
-            includeInStatistics: true,
             labelCode: "logistics",
             labelName: "物流咨询",
             negativeExamples: [],
@@ -279,13 +275,10 @@ describe("insight prompt builder", () => {
           aliases: [`entity-${index}`],
           entityName: `实体-${index}`,
           id: String(index + 1),
-          includeInAggregation: index < 5,
         })),
         intentConfigs: Array.from({ length: 25 }, (_, index) => ({
-          aliases: [`intent-${index}`],
           description: `意图-${index}`,
           id: String(index + 1),
-          includeInStatistics: true,
           intentCode: `intent_${index}`,
           intentName: `意图${index}`,
           negativeExamples: [],
@@ -295,7 +288,6 @@ describe("insight prompt builder", () => {
         labelConfigs: Array.from({ length: 25 }, (_, index) => ({
           description: `标签-${index}`,
           id: String(index + 1),
-          includeInStatistics: index < 5,
           labelCode: `label_${index}`,
           labelName: `标签${index}`,
           negativeExamples: [],
@@ -352,15 +344,12 @@ describe("insight prompt builder", () => {
             entityName: "玻尿酸补水面膜",
             entityCode: "mask",
             id: "41",
-            includeInAggregation: true,
           },
         ],
         intentConfigs: [
           {
-            aliases: ["查快递"],
             description: "客户关注发货或快递进度",
             id: "31",
-            includeInStatistics: true,
             intentCode: "logistics_delay",
             intentName: "物流异常",
             negativeExamples: ["询问售后退款"],
@@ -372,7 +361,6 @@ describe("insight prompt builder", () => {
           {
             description: "客户关注发货或快递进度",
             id: "11",
-            includeInStatistics: true,
             labelCode: "logistics",
             labelName: "物流咨询",
             negativeExamples: ["询问售后退款"],
@@ -443,14 +431,11 @@ describe("insight prompt builder", () => {
             aliases: ["补水面膜"],
             entityName: "玻尿酸补水面膜",
             id: "41",
-            includeInAggregation: true,
           },
         ],
         intentConfigs: [
           {
-            aliases: ["查快递"],
             id: "31",
-            includeInStatistics: true,
             intentCode: "logistics_delay",
             intentName: "物流异常",
             negativeExamples: [],
@@ -461,7 +446,6 @@ describe("insight prompt builder", () => {
         labelConfigs: [
           {
             id: "11",
-            includeInStatistics: true,
             labelCode: "logistics",
             labelName: "物流咨询",
             negativeExamples: [],
@@ -495,10 +479,11 @@ describe("insight prompt builder", () => {
     });
     const userPayload = JSON.parse(prompt[1]?.content ?? "{}") as {
       outputContract: {
-        entities: Array<{ confidence: unknown }>;
-        intents: Array<{ intentCode: unknown; intentLabel: unknown }>;
+        entities: Array<{ confidence: unknown; entityCode: unknown }>;
+        intents: Array<{ intentCode: unknown; intentLabel?: unknown }>;
         problemResolution: { confidence: unknown; resolutionStatus: unknown };
         summary: Record<string, unknown>;
+        tags: Array<{ tagCode: unknown; tagName?: unknown }>;
       };
     };
 
@@ -512,12 +497,14 @@ describe("insight prompt builder", () => {
     expect(userPayload.outputContract.entities[0]?.confidence).toBe(
       "<number 0-1>",
     );
+    expect(userPayload.outputContract.entities[0]?.entityCode).toBe(
+      "<来自 tenantContext.entityDictionary.entityCode>",
+    );
     expect(userPayload.outputContract.intents[0]?.intentCode).toBe(
       "<来自 tenantContext.intentConfigs.intentCode>",
     );
-    expect(userPayload.outputContract.intents[0]?.intentLabel).toBe(
-      "<来自 tenantContext.intentConfigs.intentName>",
-    );
+    expect(userPayload.outputContract.intents[0]).not.toHaveProperty("intentLabel");
+    expect(userPayload.outputContract.tags[0]).not.toHaveProperty("tagName");
     expect(JSON.stringify(userPayload.outputContract)).not.toContain(":0.8");
   });
 
@@ -642,15 +629,12 @@ describe("insight prompt builder", () => {
             entityCode: maliciousInstruction,
             entityName: maliciousInstruction,
             id: "41",
-            includeInAggregation: true,
           },
         ],
         intentConfigs: [
           {
-            aliases: [maliciousInstruction],
             description: maliciousInstruction,
             id: "31",
-            includeInStatistics: true,
             intentCode: maliciousInstruction,
             intentName: maliciousInstruction,
             negativeExamples: [maliciousInstruction],
@@ -662,7 +646,6 @@ describe("insight prompt builder", () => {
           {
             description: maliciousInstruction,
             id: "11",
-            includeInStatistics: true,
             labelCode: maliciousInstruction,
             labelName: maliciousInstruction,
             negativeExamples: [maliciousInstruction],
@@ -706,7 +689,6 @@ describe("insight prompt builder", () => {
           id: string;
         }>;
         intentConfigs: Array<{
-          aliases: string[];
           description: string;
           intentCode: string;
           intentName: string;

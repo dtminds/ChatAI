@@ -280,7 +280,6 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         .select([
           "description",
           "id",
-          "include_in_statistics",
           "label_code",
           "label_name",
           "negative_examples_json",
@@ -292,7 +291,6 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         .execute() as Promise<Array<{
           description: string | null;
           id: number | string;
-          include_in_statistics: number | string;
           label_code: string;
           label_name: string;
           negative_examples_json: string | null;
@@ -302,10 +300,8 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       featureConfig.intentEnabled ? this.db
         .selectFrom("xy_wap_embed_insight_intent_config")
         .select([
-          "aliases_json",
           "description",
           "id",
-          "include_in_statistics",
           "intent_code",
           "intent_name",
           "negative_examples_json",
@@ -317,10 +313,8 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         .orderBy("sort_order", "asc")
         .orderBy("id", "asc")
         .execute() as Promise<Array<{
-          aliases_json: string | null;
           description: string | null;
           id: number | string;
-          include_in_statistics: number | string;
           intent_code: string;
           intent_name: string;
           negative_examples_json: string | null;
@@ -362,7 +356,6 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
           "entity_code",
           "entity_name",
           "id",
-          "include_in_aggregation",
         ])
         .where("uid", "=", uid)
         .where("status", "=", 1)
@@ -373,7 +366,6 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
           entity_code: string;
           entity_name: string;
           id: number | string;
-          include_in_aggregation: number | string;
         }>>
         : Promise.resolve([]),
     ]);
@@ -385,22 +377,18 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
         entityCode: row.entity_code,
         entityName: row.entity_name,
         id: String(row.id),
-        includeInAggregation: parseNumber(row.include_in_aggregation) === 1,
       })),
       labelConfigs: labelRows.map((row) => ({
         description: optionalString(row.description),
         id: String(row.id),
-        includeInStatistics: parseNumber(row.include_in_statistics) === 1,
         labelCode: row.label_code,
         labelName: row.label_name,
         negativeExamples: parseJsonArray(row.negative_examples_json),
         positiveExamples: parseJsonArray(row.positive_examples_json),
       })),
       intentConfigs: intentRows.map((row) => ({
-        aliases: parseJsonArray(row.aliases_json),
         description: optionalString(row.description),
         id: String(row.id),
-        includeInStatistics: parseNumber(row.include_in_statistics) === 1,
         intentCode: row.intent_code,
         intentName: row.intent_name,
         negativeExamples: parseJsonArray(row.negative_examples_json),

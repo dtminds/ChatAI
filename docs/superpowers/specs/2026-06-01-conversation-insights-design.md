@@ -537,7 +537,7 @@ evidence_message_ids  # xy_wap_embed_msg_audit_info.id
 reason
 ```
 
-业务实体和意图的展示名不能直接作为聚合主键。模型可给出候选展示名、别名、属性和置信度，系统通过实体归一化逻辑生成稳定 key。
+业务实体的展示名不能直接作为聚合主键。模型可给出候选展示名、别名、属性和置信度，系统通过实体归一化逻辑生成稳定 key；意图识别使用稳定的 intent_code。
 
 模型输入除会话消息外，还应注入租户自定义配置：
 
@@ -591,7 +591,6 @@ xy_wap_embed_insight_label_config
 - positive_examples_json
 - negative_examples_json
 - enabled
-- include_in_statistics
 - created_at
 - updated_at
 ```
@@ -657,7 +656,6 @@ xy_wap_embed_insight_entity_dictionary
 - aliases_json
 - attributes_json
 - enabled
-- include_in_aggregation
 - created_at
 - updated_at
 ```

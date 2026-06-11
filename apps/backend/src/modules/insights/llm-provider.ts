@@ -449,6 +449,7 @@ function normalizeAnalysisOutput(value: unknown): InsightAnalysisOutput {
     })),
     entities: readArray(record.entities).map((item) => ({
       confidence: readNumber(item, "confidence"),
+      entityCode: readString(item, "entityCode"),
       entityName: readString(item, "entityName") || "未知实体",
       evidenceMessageIds: readStringArray(item, "evidenceMessageIds"),
       sentiment: readOptionalString(item, "sentiment"),
@@ -462,7 +463,7 @@ function normalizeAnalysisOutput(value: unknown): InsightAnalysisOutput {
     intents: readArray(record.intents).map((item) => ({
       confidence: readNumber(item, "confidence"),
       evidenceMessageIds: readStringArray(item, "evidenceMessageIds"),
-      intentCode: readString(item, "intentCode") || "custom",
+      intentCode: readOptionalString(item, "intentCode"),
       intentLabel: readString(item, "intentLabel") || "其他",
     })),
     problemResolution: {
@@ -479,7 +480,7 @@ function normalizeAnalysisOutput(value: unknown): InsightAnalysisOutput {
       evidenceMessageIds: readStringArray(item, "evidenceMessageIds"),
       passed: readBoolean(item, "passed"),
       reason: readString(item, "reason"),
-      ruleCode: readString(item, "ruleCode") || "custom",
+      ruleCode: readString(item, "ruleCode"),
       ruleName: readString(item, "ruleName"),
       severity: readSeverity(readString(item, "severity")),
     })),
@@ -496,7 +497,7 @@ function normalizeAnalysisOutput(value: unknown): InsightAnalysisOutput {
     tags: readArray(record.tags).map((item) => ({
       confidence: readNumber(item, "confidence"),
       evidenceMessageIds: readStringArray(item, "evidenceMessageIds"),
-      tagCode: readString(item, "tagCode") || "custom",
+      tagCode: readOptionalString(item, "tagCode"),
       tagName: readString(item, "tagName") || "自定义标签",
     })),
   };

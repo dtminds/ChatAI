@@ -611,6 +611,35 @@ describe("insights routes", () => {
     expect(admin.db.upsertedFeatureConfig?.last_enable_time).toBeGreaterThan(0);
   });
 
+  it("allows admins to activate a system preset intent config", async () => {
+    const admin = await createInsightsApp("admin");
+
+    const response = await admin.app.inject({
+      headers: { authorization: admin.authorization },
+      method: "POST",
+      url: "/api/server/insights/settings/intent-configs/presets/sys_price_consult",
+    });
+
+    await admin.app.close();
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      data: {
+        id: "31",
+        intentCode: "sys_price_consult",
+        intentName: "价格咨询",
+        status: 0,
+      },
+      success: true,
+    });
+    expect(admin.db.insertedIntentConfig).toMatchObject({
+      intent_code: "sys_price_consult",
+      intent_name: "价格咨询",
+      status: 0,
+      uid: 9001,
+    });
+  });
+
   it("marks insight unavailable in settings when the uid is not allowed", async () => {
     process.env.INSIGHTS_WORKER_UID_ALLOWLIST = "9002";
     const admin = await createInsightsApp("admin");
@@ -733,7 +762,7 @@ describe("insights routes", () => {
     expect(admin.db.insertedJob?.idempotency_key).toBe("cleanup_disabled_insights:9001:1780243000000");
   });
 
-  it("returns empty business config lists when the config tables are empty", async () => {
+  it("returns system preset candidates when business config tables are empty", async () => {
     const admin = await createInsightsApp("admin", {
       entityDictionaryRows: [],
       intentConfigRows: [],
@@ -750,12 +779,42 @@ describe("insights routes", () => {
     await admin.app.close();
 
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toMatchObject({
+    const body = response.json();
+    expect(body).toMatchObject({
       data: {
-        entityDictionary: [],
-        intentConfigs: [],
-        labelConfigs: [],
-        qaRuleConfigs: [],
+        entityDictionary: expect.arrayContaining([
+          expect.objectContaining({
+            entityCode: "sys_live_room_promotion",
+            id: "preset:sys_live_room_promotion",
+            status: 0,
+          }),
+        ]),
+        intentConfigs: expect.arrayContaining([
+          expect.objectContaining({
+            id: "preset:sys_price_consult",
+            intentCode: "sys_price_consult",
+            status: 0,
+          }),
+        ]),
+        labelConfigs: expect.arrayContaining([
+          expect.objectContaining({
+            id: "preset:sys_high_purchase_intent",
+            labelCode: "sys_high_purchase_intent",
+            status: 0,
+          }),
+        ]),
+        qaRuleConfigs: expect.arrayContaining([
+          expect.objectContaining({
+            id: "preset:sys_service_attitude",
+            ruleCode: "sys_service_attitude",
+            status: 0,
+          }),
+          expect.objectContaining({
+            id: "preset:sys_follow_up_clear",
+            ruleCode: "sys_follow_up_clear",
+            status: 0,
+          }),
+        ]),
         sessionization: {
           idleTimeoutMinutes: 120,
         },
@@ -806,6 +865,7 @@ function createInsightsDbMock(options: {
 } = {}) {
   const state = {
     insertedActionItem: undefined as Record<string, unknown> | undefined,
+    insertedIntentConfig: undefined as Record<string, unknown> | undefined,
     insertedJob: undefined as Record<string, unknown> | undefined,
     insertedRescanTask: undefined as Record<string, unknown> | undefined,
     insightCurrentSelectCount: 0,
@@ -817,6 +877,7 @@ function createInsightsDbMock(options: {
     insertInto(table: string) {
       if (
         table !== "xy_wap_embed_insight_job"
+        && table !== "xy_wap_embed_insight_intent_config"
         && table !== "xy_wap_embed_insight_rescan_task"
         && table !== "xy_wap_embed_insight_feature_config"
         && table !== "xy_wap_embed_session_action_item"
@@ -832,7 +893,9 @@ function createInsightsDbMock(options: {
             ? 9901
             : table === "xy_wap_embed_session_action_item"
               ? 8101
-              : 8802,
+              : table === "xy_wap_embed_insight_intent_config"
+                ? 31
+                : 8802,
         }),
         ignore: () => builder,
         onDuplicateKeyUpdate: (values: Record<string, unknown>) => {
@@ -845,6 +908,8 @@ function createInsightsDbMock(options: {
         values: (values: Record<string, unknown>) => {
           if (table === "xy_wap_embed_insight_rescan_task") {
             state.insertedRescanTask = values;
+          } else if (table === "xy_wap_embed_insight_intent_config") {
+            state.insertedIntentConfig = values;
           } else if (table === "xy_wap_embed_insight_feature_config") {
             state.upsertedFeatureConfig = values;
           } else if (table === "xy_wap_embed_session_action_item") {
@@ -868,6 +933,25 @@ function createInsightsDbMock(options: {
         selectCalls: unknown[][];
         wheres: Array<[string, string, unknown]>;
       }) => unknown[])) {
+        const resolveRows = () => {
+          const rows = typeof result === "function" ? result(builder) : result;
+
+          return rows.filter((row) => {
+            if (!row || typeof row !== "object") {
+              return true;
+            }
+
+            return wheres.every(([column, operator, value]) => {
+              if (operator !== "=" || !(column in row)) {
+                return true;
+              }
+
+              const actual = (row as Record<string, unknown>)[column];
+
+              return actual === value || String(actual) === String(value);
+            });
+          });
+        };
         const builder = {
           $call: (callback: (query: typeof builder) => typeof builder) => callback(builder),
           groupByCalls: [] as unknown[][],
@@ -877,9 +961,9 @@ function createInsightsDbMock(options: {
           offsetValue: undefined as unknown,
           selectCalls: [] as unknown[][],
           wheres,
-          execute: async () => typeof result === "function" ? result(builder) : result,
+          execute: async () => resolveRows(),
           executeTakeFirst: async () => {
-            const rows = typeof result === "function" ? result(builder) : result;
+            const rows = resolveRows();
             return rows[0];
           },
           groupBy: (...args: unknown[]) => {
@@ -1022,7 +1106,6 @@ function createInsightsDbMock(options: {
             description: null,
             status: 1,
             id: 21,
-            include_in_statistics: 1,
             label_code: "price_sensitive",
             label_name: "价格敏感",
             negative_examples_json: null,
@@ -1032,13 +1115,22 @@ function createInsightsDbMock(options: {
       }
 
       if (table === "xy_wap_embed_insight_intent_config") {
-        return createBuilder(options.intentConfigRows ?? [
+        return createBuilder(state.insertedIntentConfig ? [
           {
-            aliases_json: JSON.stringify(["查快递"]),
+            description: state.insertedIntentConfig.description ?? null,
+            status: state.insertedIntentConfig.status ?? 1,
+            id: 31,
+            intent_code: state.insertedIntentConfig.intent_code,
+            intent_name: state.insertedIntentConfig.intent_name,
+            negative_examples_json: state.insertedIntentConfig.negative_examples_json ?? null,
+            positive_examples_json: state.insertedIntentConfig.positive_examples_json ?? null,
+            sort_order: state.insertedIntentConfig.sort_order ?? 5,
+          },
+        ] : options.intentConfigRows ?? [
+          {
             description: "客户咨询发货、快递或物流异常",
             status: 1,
             id: 31,
-            include_in_statistics: 1,
             intent_code: "logistics_delay",
             intent_name: "物流异常",
             negative_examples_json: JSON.stringify(["咨询退款到账"]),
@@ -1074,7 +1166,6 @@ function createInsightsDbMock(options: {
             entity_name: "白色羽绒服",
             status: 1,
             id: 41,
-            include_in_aggregation: 1,
           },
         ]);
       }

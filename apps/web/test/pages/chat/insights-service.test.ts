@@ -3,6 +3,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import { requestInstance } from "@/lib/request";
 import {
   createInsightEntityDictionaryItem,
+  activatePresetInsightEntityDictionaryItem,
+  activatePresetInsightIntentConfig,
+  activatePresetInsightLabelConfig,
+  activatePresetInsightQaRuleConfig,
   createInsightLabelConfig,
   createInsightQaRuleConfig,
   createInsightRescanJob,
@@ -185,6 +189,22 @@ describe("insights service adapter", () => {
       200,
       { data: { ...JSON.parse(config.data ?? "{}"), id: "11" }, success: true },
     ]);
+    mock.onPost("/server/insights/settings/intent-configs/presets/sys_price_consult").reply(200, {
+      data: { id: "31", intentCode: "sys_price_consult" },
+      success: true,
+    });
+    mock.onPost("/server/insights/settings/label-configs/presets/sys_high_purchase_intent").reply(200, {
+      data: { id: "12", labelCode: "sys_high_purchase_intent" },
+      success: true,
+    });
+    mock.onPost("/server/insights/settings/qa-rule-configs/presets/sys_service_attitude").reply(200, {
+      data: { id: "22", ruleCode: "sys_service_attitude" },
+      success: true,
+    });
+    mock.onPost("/server/insights/settings/entity-dictionary/presets/sys_live_room_promotion").reply(200, {
+      data: { entityCode: "sys_live_room_promotion", id: "42" },
+      success: true,
+    });
     mock.onPut("/server/insights/settings/label-configs/11").reply((config) => [
       200,
       { data: { ...JSON.parse(config.data ?? "{}"), id: "11" }, success: true },
@@ -226,13 +246,15 @@ describe("insights service adapter", () => {
     });
     await createInsightLabelConfig({
       status: 1,
-      includeInStatistics: true,
       labelCode: "price_sensitive",
       labelName: "价格敏感",
     });
+    await activatePresetInsightIntentConfig("sys_price_consult");
+    await activatePresetInsightLabelConfig("sys_high_purchase_intent");
+    await activatePresetInsightQaRuleConfig("sys_service_attitude");
+    await activatePresetInsightEntityDictionaryItem("sys_live_room_promotion");
     await updateInsightLabelConfig("11", {
       status: 1,
-      includeInStatistics: true,
       labelCode: "price_sensitive",
       labelName: "价格敏感",
     });
@@ -249,19 +271,30 @@ describe("insights service adapter", () => {
       entityCode: "white-coat",
       entityName: "白色羽绒服",
       status: 1,
-      includeInAggregation: true,
     });
 
     expect(mock.history.put[0]?.url).toBe("/server/insights/settings/sessionization");
     expect(mock.history.put[1]?.url).toBe("/server/insights/settings/analysis-policy");
     expect(mock.history.put[2]?.url).toBe("/server/insights/settings/feature-config");
     expect(mock.history.post[0]?.url).toBe("/server/insights/settings/label-configs");
+    expect(mock.history.post[1]?.url).toBe(
+      "/server/insights/settings/intent-configs/presets/sys_price_consult",
+    );
+    expect(mock.history.post[2]?.url).toBe(
+      "/server/insights/settings/label-configs/presets/sys_high_purchase_intent",
+    );
+    expect(mock.history.post[3]?.url).toBe(
+      "/server/insights/settings/qa-rule-configs/presets/sys_service_attitude",
+    );
+    expect(mock.history.post[4]?.url).toBe(
+      "/server/insights/settings/entity-dictionary/presets/sys_live_room_promotion",
+    );
     expect(mock.history.put[3]?.url).toBe("/server/insights/settings/label-configs/11");
     expect(mock.history.patch[0]?.url).toBe("/server/insights/settings/label-configs/11/status");
     expect(JSON.parse(mock.history.patch[0]?.data ?? "{}")).toEqual({ status: 0 });
     expect(mock.history.delete[0]?.url).toBe("/server/insights/settings/label-configs/11");
-    expect(mock.history.post[1]?.url).toBe("/server/insights/settings/qa-rule-configs");
-    expect(mock.history.post[2]?.url).toBe("/server/insights/settings/entity-dictionary");
+    expect(mock.history.post[5]?.url).toBe("/server/insights/settings/qa-rule-configs");
+    expect(mock.history.post[6]?.url).toBe("/server/insights/settings/entity-dictionary");
   });
 
   it("passes abort signals to business, quality and follow-up requests", async () => {

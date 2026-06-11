@@ -1721,10 +1721,8 @@ describe("InsightsWorkerService", () => {
       entityDictionary: [],
       intentConfigs: [
         {
-          aliases: ["查快递"],
           description: "物流相关诉求",
           id: "31",
-          includeInStatistics: true,
           intentCode: "logistics_delay",
           intentName: "物流异常",
           negativeExamples: [],
@@ -1736,7 +1734,6 @@ describe("InsightsWorkerService", () => {
         {
           description: "物流相关咨询",
           id: "11",
-          includeInStatistics: true,
           labelCode: "logistics",
           labelName: "物流咨询",
           negativeExamples: [],
@@ -1812,6 +1809,11 @@ describe("InsightsWorkerService", () => {
             intentLabel: "模型自由名称",
           },
           {
+            confidence: 0.72,
+            evidenceMessageIds: ["9001"],
+            intentLabel: "查快递",
+          },
+          {
             confidence: 0.7,
             evidenceMessageIds: ["9001"],
             intentCode: "free_text_intent",
@@ -1860,6 +1862,11 @@ describe("InsightsWorkerService", () => {
             tagCode: "logistics",
             tagName: "模型自由标签",
           },
+          {
+            confidence: 0.7,
+            evidenceMessageIds: ["9001"],
+            tagName: "快递什么时候到",
+          },
         ],
       })),
     };
@@ -1887,7 +1894,9 @@ describe("InsightsWorkerService", () => {
         validationWarnings: expect.arrayContaining([
           expect.stringContaining("9999"),
           expect.stringContaining("entity AI客服系统 is not configured"),
+          expect.stringContaining("intent 查快递 is not configured"),
           expect.stringContaining("intent free_text_intent is not configured"),
+          expect.stringContaining("tag 快递什么时候到 is not configured"),
           expect.stringContaining("qa rule undefined_rule is not configured"),
         ]),
         output: expect.objectContaining({
@@ -2808,14 +2817,12 @@ describe("InsightsWorkerService", () => {
             entityCode: "white-coat",
             entityName: "白色羽绒服",
             id: "41",
-            includeInAggregation: true,
           },
         ],
         intentConfigs: [],
         labelConfigs: [
           {
             id: "11",
-            includeInStatistics: true,
             labelCode: "logistics",
             labelName: "物流咨询",
             negativeExamples: [],
@@ -2844,6 +2851,7 @@ describe("InsightsWorkerService", () => {
         entities: [
           {
             confidence: 0.8,
+            entityCode: "white-coat",
             entityName: "羽绒服",
             evidenceMessageIds: ["9001"],
           },
@@ -2893,6 +2901,7 @@ describe("InsightsWorkerService", () => {
           actionItems: [],
           entities: [
             expect.objectContaining({
+              entityCode: "white-coat",
               entityId: "41",
               entityName: "白色羽绒服",
             }),

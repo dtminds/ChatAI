@@ -367,6 +367,14 @@ export async function createInsightIntentConfig(payload: InsightIntentConfigMuta
   return response.data;
 }
 
+export async function activatePresetInsightIntentConfig(presetCode: string) {
+  const response = await http.post<ApiSuccessEnvelope<InsightIntentConfig>>(
+    `/server/insights/settings/intent-configs/presets/${presetCode}`,
+  );
+
+  return response.data;
+}
+
 export async function updateInsightIntentConfig(
   configId: string,
   payload: InsightIntentConfigMutationRequest,
@@ -404,6 +412,14 @@ export async function createInsightLabelConfig(payload: InsightLabelConfigMutati
     ApiSuccessEnvelope<InsightLabelConfig>,
     InsightLabelConfigMutationRequest
   >("/server/insights/settings/label-configs", payload);
+
+  return response.data;
+}
+
+export async function activatePresetInsightLabelConfig(presetCode: string) {
+  const response = await http.post<ApiSuccessEnvelope<InsightLabelConfig>>(
+    `/server/insights/settings/label-configs/presets/${presetCode}`,
+  );
 
   return response.data;
 }
@@ -449,6 +465,14 @@ export async function createInsightQaRuleConfig(payload: InsightQaRuleConfigMuta
   return response.data;
 }
 
+export async function activatePresetInsightQaRuleConfig(presetCode: string) {
+  const response = await http.post<ApiSuccessEnvelope<InsightQaRuleConfig>>(
+    `/server/insights/settings/qa-rule-configs/presets/${presetCode}`,
+  );
+
+  return response.data;
+}
+
 export async function updateInsightQaRuleConfig(
   configId: string,
   payload: InsightQaRuleConfigMutationRequest,
@@ -488,6 +512,14 @@ export async function createInsightEntityDictionaryItem(
     ApiSuccessEnvelope<InsightEntityDictionaryItem>,
     InsightEntityDictionaryMutationRequest
   >("/server/insights/settings/entity-dictionary", payload);
+
+  return response.data;
+}
+
+export async function activatePresetInsightEntityDictionaryItem(presetCode: string) {
+  const response = await http.post<ApiSuccessEnvelope<InsightEntityDictionaryItem>>(
+    `/server/insights/settings/entity-dictionary/presets/${presetCode}`,
+  );
 
   return response.data;
 }

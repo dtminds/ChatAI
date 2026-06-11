@@ -526,10 +526,6 @@ export interface XyWapEmbedInsightEntityDictionary {
    */
   id: Generated<number>;
   /**
-   * 是否纳入聚合，1是0否
-   */
-  include_in_aggregation: Generated<number>;
-  /**
    * 配置状态，1启用0禁用-1删除
    */
   status: Generated<number>;
@@ -682,10 +678,6 @@ export interface XyWapEmbedInsightAsset {
 
 export interface XyWapEmbedInsightIntentConfig {
   /**
-   * 别名JSON
-   */
-  aliases_json: Json | null;
-  /**
    * 创建时间
    */
   create_time: Generated<Date>;
@@ -697,10 +689,6 @@ export interface XyWapEmbedInsightIntentConfig {
    * 主键ID
    */
   id: Generated<number>;
-  /**
-   * 是否纳入统计，1是0否
-   */
-  include_in_statistics: Generated<number>;
   /**
    * 意图编码
    */
@@ -910,10 +898,6 @@ export interface XyWapEmbedInsightLabelConfig {
    * 主键ID
    */
   id: Generated<number>;
-  /**
-   * 是否纳入统计，1是0否
-   */
-  include_in_statistics: Generated<number>;
   /**
    * 标签编码
    */

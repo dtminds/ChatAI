@@ -95,7 +95,6 @@ describe("InsightsRepository", () => {
             [
               {
                 description: null,
-                include_in_statistics: 1,
                 label_code: "vip",
                 label_name: "高价值客户",
                 negative_examples_json: null,
@@ -183,7 +182,6 @@ describe("InsightsRepository", () => {
               {
                 description: null,
                 id: 11,
-                include_in_statistics: 1,
                 label_code: "logistics",
                 label_name: "物流咨询",
                 negative_examples_json: ["退款到账"],
@@ -204,7 +202,6 @@ describe("InsightsRepository", () => {
                 entity_code: "white-coat",
                 entity_name: "白鸭绒外套",
                 id: 21,
-                include_in_aggregation: 1,
                 status: 1,
               },
             ],
@@ -231,6 +228,108 @@ describe("InsightsRepository", () => {
         attributes: { sku: "coat-1" },
       }),
     ]);
+  });
+
+  it("returns an existing active preset without rewriting it", async () => {
+    const updateTable = vi.fn();
+    const db = {
+      selectFrom: vi.fn((table: string) =>
+        createSelectBuilder(
+          table === "xy_wap_embed_insight_intent_config"
+            ? [
+                {
+                  description: "用户已调整过的说明",
+                  id: 190,
+                  intent_code: "sys_price_consult",
+                  intent_name: "价格咨询",
+                  negative_examples_json: JSON.stringify([]),
+                  positive_examples_json: JSON.stringify(["多少钱"]),
+                  sort_order: 9,
+                  status: 1,
+                },
+              ]
+            : [],
+          table,
+        ),
+      ),
+      updateTable,
+    };
+    const repository = new InsightsRepository(db as never);
+
+    await expect(
+      repository.activatePresetIntentConfig({ uid: 9001 }, "sys_price_consult", {
+        description: "种子模板说明",
+        intentCode: "sys_price_consult",
+        intentName: "价格咨询",
+        negativeExamples: [],
+        positiveExamples: ["价格多少"],
+        status: 0,
+        weight: 1,
+      }),
+    ).resolves.toMatchObject({
+      description: "用户已调整过的说明",
+      id: "190",
+      status: 1,
+      weight: 9,
+    });
+    expect(updateTable).not.toHaveBeenCalled();
+  });
+
+  it("does not fabricate an id when preset insert races with a missing duplicate row", async () => {
+    const duplicateKeyError = Object.assign(new Error("Duplicate entry"), {
+      code: "ER_DUP_ENTRY",
+      errno: 1062,
+    });
+    const db = {
+      insertInto: vi.fn((table: string) =>
+        createInsertBuilder(async () => {
+          if (table === "xy_wap_embed_insight_entity_dictionary") {
+            throw duplicateKeyError;
+          }
+
+          return { insertId: 1 };
+        }, { table }),
+      ),
+      selectFrom: vi.fn((table: string) => createSelectBuilder([], table)),
+    };
+    const repository = new InsightsRepository(db as never);
+
+    await expect(
+      repository.activatePresetEntityDictionaryItem({ uid: 9001 }, "sys_live_room_promotion", {
+        aliases: [],
+        attributes: {},
+        entityCode: "sys_live_room_promotion",
+        entityName: "直播间活动",
+        status: 0,
+      }),
+    ).rejects.toMatchObject({
+      code: "INSIGHT_PRESET_ACTIVATE_CONFLICT",
+    });
+  });
+
+  it("does not fabricate an id when a created config cannot be reloaded", async () => {
+    const db = {
+      insertInto: vi.fn((table: string) =>
+        createInsertBuilder(async () => {
+          expect(table).toBe("xy_wap_embed_insight_label_config");
+          return { insertId: undefined };
+        }, { table }),
+      ),
+      selectFrom: vi.fn((table: string) => createSelectBuilder([], table)),
+    };
+    const repository = new InsightsRepository(db as never);
+
+    await expect(
+      repository.createLabelConfig({ uid: 9001 }, {
+        labelCode: "price_sensitive",
+        labelName: "价格敏感",
+        negativeExamples: [],
+        positiveExamples: [],
+        status: 0,
+      }),
+    ).rejects.toMatchObject({
+      code: "INSIGHT_CONFIG_WRITE_CONFLICT",
+    });
   });
 
   it("deduplicates AI action item titles against the latest ten conversation todos without repeated queries", async () => {
@@ -2307,7 +2406,6 @@ describe("InsightsRepository", () => {
           {
             description: null,
             id: 11,
-            include_in_statistics: 1,
             label_code: "refund",
             label_name: "退款咨询",
             negative_examples_json: null,

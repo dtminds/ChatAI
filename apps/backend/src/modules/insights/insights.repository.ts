@@ -448,7 +448,6 @@ export class InsightsRepository implements InsightsRepositoryPort {
         ])
         .where("uid", "=", scope.uid)
         .where("status", "=", 1)
-        .where("include_in_aggregation", "=", 1)
         .orderBy("id", "desc")
         .execute(),
       this.db
@@ -459,7 +458,6 @@ export class InsightsRepository implements InsightsRepositoryPort {
         ])
         .where("uid", "=", scope.uid)
         .where("status", "=", 1)
-        .where("include_in_statistics", "=", 1)
         .orderBy("sort_order", "desc")
         .orderBy("id", "desc")
         .execute(),
@@ -471,7 +469,6 @@ export class InsightsRepository implements InsightsRepositoryPort {
         ])
         .where("uid", "=", scope.uid)
         .where("status", "=", 1)
-        .where("include_in_statistics", "=", 1)
         .orderBy("id", "desc")
         .execute(),
     ]);
@@ -680,10 +677,8 @@ export class InsightsRepository implements InsightsRepositoryPort {
     const inserted = await this.db
       .insertInto("xy_wap_embed_insight_intent_config")
       .values({
-        aliases_json: encodeJson(payload.aliases),
         description: payload.description ?? null,
         status: payload.status,
-        include_in_statistics: payload.includeInStatistics ? 1 : 0,
         intent_code: payload.intentCode,
         intent_name: payload.intentName,
         negative_examples_json: encodeJson(payload.negativeExamples),
@@ -695,7 +690,15 @@ export class InsightsRepository implements InsightsRepositoryPort {
 
     return await this.getIntentConfigById(scope, String(parseInsertedMySqlId(inserted) ?? ""))
       ?? await this.getIntentConfigByCode(scope, payload.intentCode)
-      ?? mapIntentPayload("0", payload);
+      ?? raiseConfigWriteConflict("intentConfigs", payload.intentCode);
+  }
+
+  async activatePresetIntentConfig(
+    scope: InsightsUidScope,
+    presetCode: string,
+    preset: InsightIntentConfigMutationRequest,
+  ): Promise<InsightIntentConfig> {
+    return this.upsertPresetIntentConfig(scope, presetCode, preset);
   }
 
   async updateIntentConfig(
@@ -709,23 +712,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
       return undefined;
     }
 
-    await this.db
-      .updateTable("xy_wap_embed_insight_intent_config")
-      .set({
-        aliases_json: encodeJson(payload.aliases),
-        description: payload.description ?? null,
-        status: payload.status,
-        include_in_statistics: payload.includeInStatistics ? 1 : 0,
-        intent_code: payload.intentCode,
-        intent_name: payload.intentName,
-        negative_examples_json: encodeJson(payload.negativeExamples),
-        positive_examples_json: encodeJson(payload.positiveExamples),
-        sort_order: payload.weight,
-        update_time: new Date(),
-      })
-      .where("id", "=", numericId)
-      .where("uid", "=", scope.uid)
-      .execute();
+    await this.writeIntentConfig(scope, id, payload);
 
     return this.getIntentConfigById(scope, id);
   }
@@ -777,7 +764,6 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .values({
         description: payload.description ?? null,
         status: payload.status,
-        include_in_statistics: payload.includeInStatistics ? 1 : 0,
         label_code: payload.labelCode,
         label_name: payload.labelName,
         negative_examples_json: encodeJson(payload.negativeExamples),
@@ -788,7 +774,15 @@ export class InsightsRepository implements InsightsRepositoryPort {
 
     return await this.getLabelConfigById(scope, String(parseInsertedMySqlId(inserted) ?? ""))
       ?? await this.getLabelConfigByCode(scope, payload.labelCode)
-      ?? mapLabelPayload("0", payload);
+      ?? raiseConfigWriteConflict("labelConfigs", payload.labelCode);
+  }
+
+  async activatePresetLabelConfig(
+    scope: InsightsUidScope,
+    presetCode: string,
+    preset: InsightLabelConfigMutationRequest,
+  ): Promise<InsightLabelConfig> {
+    return this.upsertPresetLabelConfig(scope, presetCode, preset);
   }
 
   async updateLabelConfig(
@@ -802,21 +796,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
       return undefined;
     }
 
-    await this.db
-      .updateTable("xy_wap_embed_insight_label_config")
-      .set({
-        description: payload.description ?? null,
-        status: payload.status,
-        include_in_statistics: payload.includeInStatistics ? 1 : 0,
-        label_code: payload.labelCode,
-        label_name: payload.labelName,
-        negative_examples_json: encodeJson(payload.negativeExamples),
-        positive_examples_json: encodeJson(payload.positiveExamples),
-        update_time: new Date(),
-      })
-      .where("id", "=", numericId)
-      .where("uid", "=", scope.uid)
-      .execute();
+    await this.writeLabelConfig(scope, id, payload);
 
     return this.getLabelConfigById(scope, id);
   }
@@ -881,7 +861,15 @@ export class InsightsRepository implements InsightsRepositoryPort {
 
     return await this.getQaRuleConfigById(scope, String(parseInsertedMySqlId(inserted) ?? ""))
       ?? await this.getQaRuleConfigByCode(scope, payload.ruleCode)
-      ?? mapQaRulePayload("0", payload);
+      ?? raiseConfigWriteConflict("qaRuleConfigs", payload.ruleCode);
+  }
+
+  async activatePresetQaRuleConfig(
+    scope: InsightsUidScope,
+    presetCode: string,
+    preset: InsightQaRuleConfigMutationRequest,
+  ): Promise<InsightQaRuleConfig> {
+    return this.upsertPresetQaRuleConfig(scope, presetCode, preset);
   }
 
   async updateQaRuleConfig(
@@ -895,23 +883,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
       return undefined;
     }
 
-    await this.db
-      .updateTable("xy_wap_embed_insight_qa_rule_config")
-      .set({
-        applicable_scene: payload.applicableScene ?? null,
-        description: payload.description ?? null,
-        status: payload.status,
-        judgment_criteria: payload.judgmentCriteria ?? null,
-        negative_examples_json: encodeJson(payload.negativeExamples),
-        positive_examples_json: encodeJson(payload.positiveExamples),
-        rule_code: payload.ruleCode,
-        rule_name: payload.ruleName,
-        severity: payload.severity,
-        update_time: new Date(),
-      })
-      .where("id", "=", numericId)
-      .where("uid", "=", scope.uid)
-      .execute();
+    await this.writeQaRuleConfig(scope, id, payload);
 
     return this.getQaRuleConfigById(scope, id);
   }
@@ -966,13 +938,21 @@ export class InsightsRepository implements InsightsRepositoryPort {
         entity_code: payload.entityCode,
         entity_name: payload.entityName,
         status: payload.status,
-        include_in_aggregation: payload.includeInAggregation ? 1 : 0,
         uid: scope.uid,
       })
       .executeTakeFirstOrThrow() as InsertResult;
 
     return await this.getEntityDictionaryItemById(scope, String(parseInsertedMySqlId(inserted) ?? ""))
-      ?? mapEntityPayload("0", payload);
+      ?? await this.getEntityDictionaryItemByCode(scope, payload.entityCode)
+      ?? raiseConfigWriteConflict("entityDictionary", payload.entityCode);
+  }
+
+  async activatePresetEntityDictionaryItem(
+    scope: InsightsUidScope,
+    presetCode: string,
+    preset: InsightEntityDictionaryMutationRequest,
+  ): Promise<InsightEntityDictionaryItem> {
+    return this.upsertPresetEntityDictionaryItem(scope, presetCode, preset);
   }
 
   async updateEntityDictionaryItem(
@@ -986,20 +966,7 @@ export class InsightsRepository implements InsightsRepositoryPort {
       return undefined;
     }
 
-    await this.db
-      .updateTable("xy_wap_embed_insight_entity_dictionary")
-      .set({
-        aliases_json: encodeJson(payload.aliases),
-        attributes_json: encodeJson(payload.attributes),
-        entity_code: payload.entityCode,
-        entity_name: payload.entityName,
-        status: payload.status,
-        include_in_aggregation: payload.includeInAggregation ? 1 : 0,
-        update_time: new Date(),
-      })
-      .where("id", "=", numericId)
-      .where("uid", "=", scope.uid)
-      .execute();
+    await this.writeEntityDictionaryItem(scope, id, payload);
 
     return this.getEntityDictionaryItemById(scope, id);
   }
@@ -1128,11 +1095,9 @@ export class InsightsRepository implements InsightsRepositoryPort {
     const rows = await this.db
       .selectFrom("xy_wap_embed_insight_intent_config")
       .select([
-        "aliases_json",
         "description",
         "status",
         "id",
-        "include_in_statistics",
         "intent_code",
         "intent_name",
         "negative_examples_json",
@@ -1160,11 +1125,9 @@ export class InsightsRepository implements InsightsRepositoryPort {
     const row = await this.db
       .selectFrom("xy_wap_embed_insight_intent_config")
       .select([
-        "aliases_json",
         "description",
         "status",
         "id",
-        "include_in_statistics",
         "intent_code",
         "intent_name",
         "negative_examples_json",
@@ -1182,15 +1145,14 @@ export class InsightsRepository implements InsightsRepositoryPort {
   private async getIntentConfigByCode(
     scope: InsightsUidScope,
     intentCode: string,
+    includeDeleted = false,
   ): Promise<InsightIntentConfig | undefined> {
-    const row = await this.db
+    let query = this.db
       .selectFrom("xy_wap_embed_insight_intent_config")
       .select([
-        "aliases_json",
         "description",
         "status",
         "id",
-        "include_in_statistics",
         "intent_code",
         "intent_name",
         "negative_examples_json",
@@ -1198,9 +1160,14 @@ export class InsightsRepository implements InsightsRepositoryPort {
         "sort_order",
       ])
       .where("uid", "=", scope.uid)
-      .where("intent_code", "=", intentCode)
-      .where("status", "!=", -1)
-      .executeTakeFirst();
+      .where("intent_code", "=", intentCode);
+
+    if (!includeDeleted) {
+      // Kysely changes builder types after conditional where clauses.
+      query = query.where("status", "!=", -1) as typeof query;
+    }
+
+    const row = await query.executeTakeFirst();
 
     return row ? mapIntentRow(row) : undefined;
   }
@@ -1212,7 +1179,6 @@ export class InsightsRepository implements InsightsRepositoryPort {
         "description",
         "status",
         "id",
-        "include_in_statistics",
         "label_code",
         "label_name",
         "negative_examples_json",
@@ -1242,7 +1208,6 @@ export class InsightsRepository implements InsightsRepositoryPort {
         "description",
         "status",
         "id",
-        "include_in_statistics",
         "label_code",
         "label_name",
         "negative_examples_json",
@@ -1259,23 +1224,28 @@ export class InsightsRepository implements InsightsRepositoryPort {
   private async getLabelConfigByCode(
     scope: InsightsUidScope,
     labelCode: string,
+    includeDeleted = false,
   ): Promise<InsightLabelConfig | undefined> {
-    const row = await this.db
+    let query = this.db
       .selectFrom("xy_wap_embed_insight_label_config")
       .select([
         "description",
         "status",
         "id",
-        "include_in_statistics",
         "label_code",
         "label_name",
         "negative_examples_json",
         "positive_examples_json",
       ])
       .where("uid", "=", scope.uid)
-      .where("label_code", "=", labelCode)
-      .where("status", "!=", -1)
-      .executeTakeFirst();
+      .where("label_code", "=", labelCode);
+
+    if (!includeDeleted) {
+      // Kysely changes builder types after conditional where clauses.
+      query = query.where("status", "!=", -1) as typeof query;
+    }
+
+    const row = await query.executeTakeFirst();
 
     return row ? mapLabelRow(row) : undefined;
   }
@@ -1338,8 +1308,9 @@ export class InsightsRepository implements InsightsRepositoryPort {
   private async getQaRuleConfigByCode(
     scope: InsightsUidScope,
     ruleCode: string,
+    includeDeleted = false,
   ): Promise<InsightQaRuleConfig | undefined> {
-    const row = await this.db
+    let query = this.db
       .selectFrom("xy_wap_embed_insight_qa_rule_config")
       .select([
         "applicable_scene",
@@ -1354,9 +1325,14 @@ export class InsightsRepository implements InsightsRepositoryPort {
         "severity",
       ])
       .where("uid", "=", scope.uid)
-      .where("rule_code", "=", ruleCode)
-      .where("status", "!=", -1)
-      .executeTakeFirst();
+      .where("rule_code", "=", ruleCode);
+
+    if (!includeDeleted) {
+      // Kysely changes builder types after conditional where clauses.
+      query = query.where("status", "!=", -1) as typeof query;
+    }
+
+    const row = await query.executeTakeFirst();
 
     return row ? mapQaRuleRow(row) : undefined;
   }
@@ -1373,7 +1349,6 @@ export class InsightsRepository implements InsightsRepositoryPort {
         "entity_name",
         "status",
         "id",
-        "include_in_aggregation",
       ])
       .where("uid", "=", scope.uid)
       .where("status", "!=", -1)
@@ -1381,6 +1356,34 @@ export class InsightsRepository implements InsightsRepositoryPort {
       .execute();
 
     return rows.map(mapEntityRow);
+  }
+
+  private async getEntityDictionaryItemByCode(
+    scope: InsightsUidScope,
+    entityCode: string,
+    includeDeleted = false,
+  ): Promise<InsightEntityDictionaryItem | undefined> {
+    let query = this.db
+      .selectFrom("xy_wap_embed_insight_entity_dictionary")
+      .select([
+        "aliases_json",
+        "attributes_json",
+        "entity_code",
+        "entity_name",
+        "status",
+        "id",
+      ])
+      .where("uid", "=", scope.uid)
+      .where("entity_code", "=", entityCode);
+
+    if (!includeDeleted) {
+      // Kysely changes builder types after conditional where clauses.
+      query = query.where("status", "!=", -1) as typeof query;
+    }
+
+    const row = await query.executeTakeFirst();
+
+    return row ? mapEntityRow(row) : undefined;
   }
 
   async countEnabledConfigs(
@@ -1411,6 +1414,233 @@ export class InsightsRepository implements InsightsRepositoryPort {
     return Number(result?.count ?? 0);
   }
 
+  private async upsertPresetIntentConfig(
+    scope: InsightsUidScope,
+    presetCode: string,
+    preset: InsightIntentConfigMutationRequest,
+  ): Promise<InsightIntentConfig> {
+    const existing = await this.getIntentConfigByCode(scope, presetCode, true);
+
+    if (existing) {
+      if (existing.status !== -1) {
+        return existing;
+      }
+      await this.writeIntentConfig(scope, existing.id, preset, true);
+      return await this.getIntentConfigByCode(scope, presetCode)
+        ?? raisePresetActivateConflict("intentConfigs", presetCode);
+    }
+
+    try {
+      return await this.createIntentConfig(scope, preset);
+    } catch (error) {
+      if (!isDuplicateKeyError(error)) {
+        throw error;
+      }
+
+      return await this.getIntentConfigByCode(scope, presetCode, true)
+        ?? raisePresetActivateConflict("intentConfigs", presetCode);
+    }
+  }
+
+  private async upsertPresetLabelConfig(
+    scope: InsightsUidScope,
+    presetCode: string,
+    preset: InsightLabelConfigMutationRequest,
+  ): Promise<InsightLabelConfig> {
+    const existing = await this.getLabelConfigByCode(scope, presetCode, true);
+
+    if (existing) {
+      if (existing.status !== -1) {
+        return existing;
+      }
+      await this.writeLabelConfig(scope, existing.id, preset, true);
+      return await this.getLabelConfigByCode(scope, presetCode)
+        ?? raisePresetActivateConflict("labelConfigs", presetCode);
+    }
+
+    try {
+      return await this.createLabelConfig(scope, preset);
+    } catch (error) {
+      if (!isDuplicateKeyError(error)) {
+        throw error;
+      }
+
+      return await this.getLabelConfigByCode(scope, presetCode, true)
+        ?? raisePresetActivateConflict("labelConfigs", presetCode);
+    }
+  }
+
+  private async upsertPresetQaRuleConfig(
+    scope: InsightsUidScope,
+    presetCode: string,
+    preset: InsightQaRuleConfigMutationRequest,
+  ): Promise<InsightQaRuleConfig> {
+    const existing = await this.getQaRuleConfigByCode(scope, presetCode, true);
+
+    if (existing) {
+      if (existing.status !== -1) {
+        return existing;
+      }
+      await this.writeQaRuleConfig(scope, existing.id, preset, true);
+      return await this.getQaRuleConfigByCode(scope, presetCode)
+        ?? raisePresetActivateConflict("qaRuleConfigs", presetCode);
+    }
+
+    try {
+      return await this.createQaRuleConfig(scope, preset);
+    } catch (error) {
+      if (!isDuplicateKeyError(error)) {
+        throw error;
+      }
+
+      return await this.getQaRuleConfigByCode(scope, presetCode, true)
+        ?? raisePresetActivateConflict("qaRuleConfigs", presetCode);
+    }
+  }
+
+  private async upsertPresetEntityDictionaryItem(
+    scope: InsightsUidScope,
+    presetCode: string,
+    preset: InsightEntityDictionaryMutationRequest,
+  ): Promise<InsightEntityDictionaryItem> {
+    const existing = await this.getEntityDictionaryItemByCode(scope, presetCode, true);
+
+    if (existing) {
+      if (existing.status !== -1) {
+        return existing;
+      }
+      await this.writeEntityDictionaryItem(scope, existing.id, preset, true);
+      return await this.getEntityDictionaryItemByCode(scope, presetCode)
+        ?? raisePresetActivateConflict("entityDictionary", presetCode);
+    }
+
+    try {
+      return await this.createEntityDictionaryItem(scope, preset);
+    } catch (error) {
+      if (!isDuplicateKeyError(error)) {
+        throw error;
+      }
+
+      return await this.getEntityDictionaryItemByCode(scope, presetCode, true)
+        ?? raisePresetActivateConflict("entityDictionary", presetCode);
+    }
+  }
+
+  private async writeIntentConfig(
+    scope: InsightsUidScope,
+    id: string,
+    payload: InsightIntentConfigMutationRequest,
+    includeDeleted = false,
+  ) {
+    let query = this.db
+      .updateTable("xy_wap_embed_insight_intent_config")
+      .set({
+        description: payload.description ?? null,
+        status: payload.status,
+        intent_code: payload.intentCode,
+        intent_name: payload.intentName,
+        negative_examples_json: encodeJson(payload.negativeExamples),
+        positive_examples_json: encodeJson(payload.positiveExamples),
+        sort_order: payload.weight,
+        update_time: new Date(),
+      })
+      .where("id", "=", parsePositiveInteger(id) ?? -1)
+      .where("uid", "=", scope.uid);
+
+    if (!includeDeleted) {
+      // Kysely changes builder types after conditional where clauses.
+      query = query.where("status", "!=", -1) as typeof query;
+    }
+
+    await query.execute();
+  }
+
+  private async writeLabelConfig(
+    scope: InsightsUidScope,
+    id: string,
+    payload: InsightLabelConfigMutationRequest,
+    includeDeleted = false,
+  ) {
+    let query = this.db
+      .updateTable("xy_wap_embed_insight_label_config")
+      .set({
+        description: payload.description ?? null,
+        status: payload.status,
+        label_code: payload.labelCode,
+        label_name: payload.labelName,
+        negative_examples_json: encodeJson(payload.negativeExamples),
+        positive_examples_json: encodeJson(payload.positiveExamples),
+        update_time: new Date(),
+      })
+      .where("id", "=", parsePositiveInteger(id) ?? -1)
+      .where("uid", "=", scope.uid);
+
+    if (!includeDeleted) {
+      // Kysely changes builder types after conditional where clauses.
+      query = query.where("status", "!=", -1) as typeof query;
+    }
+
+    await query.execute();
+  }
+
+  private async writeQaRuleConfig(
+    scope: InsightsUidScope,
+    id: string,
+    payload: InsightQaRuleConfigMutationRequest,
+    includeDeleted = false,
+  ) {
+    let query = this.db
+      .updateTable("xy_wap_embed_insight_qa_rule_config")
+      .set({
+        applicable_scene: payload.applicableScene ?? null,
+        description: payload.description ?? null,
+        status: payload.status,
+        judgment_criteria: payload.judgmentCriteria ?? null,
+        negative_examples_json: encodeJson(payload.negativeExamples),
+        positive_examples_json: encodeJson(payload.positiveExamples),
+        rule_code: payload.ruleCode,
+        rule_name: payload.ruleName,
+        severity: payload.severity,
+        update_time: new Date(),
+      })
+      .where("id", "=", parsePositiveInteger(id) ?? -1)
+      .where("uid", "=", scope.uid);
+
+    if (!includeDeleted) {
+      // Kysely changes builder types after conditional where clauses.
+      query = query.where("status", "!=", -1) as typeof query;
+    }
+
+    await query.execute();
+  }
+
+  private async writeEntityDictionaryItem(
+    scope: InsightsUidScope,
+    id: string,
+    payload: InsightEntityDictionaryMutationRequest,
+    includeDeleted = false,
+  ) {
+    let query = this.db
+      .updateTable("xy_wap_embed_insight_entity_dictionary")
+      .set({
+        aliases_json: encodeJson(payload.aliases),
+        attributes_json: encodeJson(payload.attributes),
+        entity_code: payload.entityCode,
+        entity_name: payload.entityName,
+        status: payload.status,
+        update_time: new Date(),
+      })
+      .where("id", "=", parsePositiveInteger(id) ?? -1)
+      .where("uid", "=", scope.uid);
+
+    if (!includeDeleted) {
+      // Kysely changes builder types after conditional where clauses.
+      query = query.where("status", "!=", -1) as typeof query;
+    }
+
+    await query.execute();
+  }
+
   private async getEntityDictionaryItemById(
     scope: InsightsUidScope,
     id: string,
@@ -1430,7 +1660,6 @@ export class InsightsRepository implements InsightsRepositoryPort {
         "entity_name",
         "status",
         "id",
-        "include_in_aggregation",
       ])
       .where("uid", "=", scope.uid)
       .where("id", "=", numericId)
@@ -4131,7 +4360,6 @@ function mapLabelPayload(id: string, payload: InsightLabelConfigMutationRequest)
     description: payload.description,
     status: payload.status,
     id,
-    includeInStatistics: payload.includeInStatistics,
     labelCode: payload.labelCode,
     labelName: payload.labelName,
     negativeExamples: payload.negativeExamples,
@@ -4141,11 +4369,9 @@ function mapLabelPayload(id: string, payload: InsightLabelConfigMutationRequest)
 
 function mapIntentPayload(id: string, payload: InsightIntentConfigMutationRequest): InsightIntentConfig {
   return {
-    aliases: payload.aliases,
     description: payload.description,
     status: payload.status,
     id,
-    includeInStatistics: payload.includeInStatistics,
     intentCode: payload.intentCode,
     intentName: payload.intentName,
     negativeExamples: payload.negativeExamples,
@@ -4180,7 +4406,6 @@ function mapEntityPayload(
     entityName: payload.entityName,
     status: payload.status,
     id,
-    includeInAggregation: payload.includeInAggregation,
   };
 }
 
@@ -4188,7 +4413,6 @@ function mapLabelRow(row: {
   description: string | null;
   status: number;
   id: number | string;
-  include_in_statistics: number;
   label_code: string;
   label_name: string;
   negative_examples_json: JsonColumnValue;
@@ -4198,7 +4422,6 @@ function mapLabelRow(row: {
     description: optionalString(row.description),
     status: parseConfigStatus(row.status),
     id: String(row.id),
-    includeInStatistics: row.include_in_statistics === 1,
     labelCode: row.label_code,
     labelName: row.label_name,
     negativeExamples: parseJsonArray(row.negative_examples_json),
@@ -4207,11 +4430,9 @@ function mapLabelRow(row: {
 }
 
 function mapIntentRow(row: {
-  aliases_json: JsonColumnValue;
   description: string | null;
   status: number;
   id: number | string;
-  include_in_statistics: number;
   intent_code: string;
   intent_name: string;
   negative_examples_json: JsonColumnValue;
@@ -4219,11 +4440,9 @@ function mapIntentRow(row: {
   sort_order: number | string;
 }): InsightIntentConfig {
   return {
-    aliases: parseJsonArray(row.aliases_json),
     description: optionalString(row.description),
     status: parseConfigStatus(row.status),
     id: String(row.id),
-    includeInStatistics: row.include_in_statistics === 1,
     intentCode: row.intent_code,
     intentName: row.intent_name,
     negativeExamples: parseJsonArray(row.negative_examples_json),
@@ -4265,7 +4484,6 @@ function mapEntityRow(row: {
   entity_name: string;
   status: number;
   id: number | string;
-  include_in_aggregation: number;
 }): InsightEntityDictionaryItem {
   return {
     aliases: parseJsonArray(row.aliases_json),
@@ -4274,7 +4492,6 @@ function mapEntityRow(row: {
     entityName: row.entity_name,
     status: parseConfigStatus(row.status),
     id: String(row.id),
-    includeInAggregation: row.include_in_aggregation === 1,
   };
 }
 
@@ -4945,6 +5162,28 @@ function isDuplicateKeyError(error: unknown) {
   const value = error as { code?: unknown; errno?: unknown };
 
   return value.code === "ER_DUP_ENTRY" || value.errno === 1062;
+}
+
+function raisePresetActivateConflict(
+  configType: "entityDictionary" | "intentConfigs" | "labelConfigs" | "qaRuleConfigs",
+  presetCode: string,
+): never {
+  throw new BadRequestError(
+    "INSIGHT_PRESET_ACTIVATE_CONFLICT",
+    "预置配置添加失败，请刷新后重试",
+    { configType, presetCode },
+  );
+}
+
+function raiseConfigWriteConflict(
+  configType: "entityDictionary" | "intentConfigs" | "labelConfigs" | "qaRuleConfigs",
+  configCode: string,
+): never {
+  throw new BadRequestError(
+    "INSIGHT_CONFIG_WRITE_CONFLICT",
+    "配置写入后读取失败，请刷新后重试",
+    { configCode, configType },
+  );
 }
 
 function getConfigTableName(

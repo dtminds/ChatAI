@@ -221,8 +221,7 @@ describe("LLM provider config", () => {
                   entities: [
                     {
                       confidence: 0.8,
-                      entityId: "mask",
-                      entityName: "补水面膜",
+                      entityCode: "mask",
                       evidenceMessageIds: ["9001"],
                     },
                   ],
@@ -269,14 +268,12 @@ describe("LLM provider config", () => {
         entityDictionary: [
           {
             aliases: ["mask"],
+            entityCode: "mask",
             entityName: "补水面膜",
-            includeInAggregation: true,
           },
         ],
         intentConfigs: [
           {
-            aliases: ["查快递"],
-            includeInStatistics: true,
             intentCode: "logistics_delay",
             intentName: "物流异常",
             negativeExamples: [],
@@ -286,7 +283,6 @@ describe("LLM provider config", () => {
         ],
         labelConfigs: [
           {
-            includeInStatistics: true,
             labelCode: "logistics",
             labelName: "物流咨询",
             negativeExamples: [],
@@ -341,7 +337,7 @@ describe("LLM provider config", () => {
       "priorConclusions",
     );
     expect(result).toMatchObject({
-      entities: [expect.objectContaining({ entityName: "补水面膜" })],
+      entities: [expect.objectContaining({ entityCode: "mask" })],
       intents: [expect.objectContaining({ intentCode: "logistics_delay" })],
       qaFindings: [
         expect.objectContaining({ ruleCode: "after_sales_followup" }),
@@ -432,8 +428,6 @@ describe("LLM provider config", () => {
         entityDictionary: [],
         intentConfigs: [
           {
-            aliases: ["查快递"],
-            includeInStatistics: true,
             intentCode: "logistics_delay",
             intentName: "物流异常",
             negativeExamples: [],
@@ -707,8 +701,7 @@ describe("LLM provider config", () => {
                     entities: [
                       {
                         confidence: 0.8,
-                        entityId: "mask",
-                        entityName: "补水面膜",
+                        entityCode: "mask",
                         evidenceMessageIds: ["9001"],
                       },
                     ],
@@ -777,7 +770,7 @@ describe("LLM provider config", () => {
       "tags, entities, intents",
     );
     expect(result).toMatchObject({
-      entities: [expect.objectContaining({ entityName: "补水面膜" })],
+      entities: [expect.objectContaining({ entityCode: "mask" })],
       intents: [],
       qaFindings: [],
       tags: [expect.objectContaining({ tagCode: "logistics" })],
@@ -879,8 +872,6 @@ describe("LLM provider config", () => {
         entityDictionary: [],
         intentConfigs: [
           {
-            aliases: ["查快递"],
-            includeInStatistics: true,
             intentCode: "logistics_delay",
             intentName: "物流异常",
             negativeExamples: [],

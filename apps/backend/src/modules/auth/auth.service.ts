@@ -394,26 +394,32 @@ async function writeSessionCache(
   cache: CachePort | undefined,
   cacheKeys: ReturnType<typeof buildCacheKeys>,
   session: {
-    expiresAt: Date;
+    expiresAt: Date | number | string;
     sessionId: string;
     sessionVersion: number;
     subUserId: string;
   },
   ttlSeconds?: number,
 ) {
+  const expiresAtMs = new Date(session.expiresAt).getTime();
+
+  if (!Number.isFinite(expiresAtMs)) {
+    return;
+  }
+
   const resolvedTtlSeconds =
     ttlSeconds ??
     Math.max(
       1,
       Math.min(
         SESSION_CACHE_TTL_SECONDS,
-        Math.floor((session.expiresAt.getTime() - Date.now()) / 1000),
+        Math.floor((expiresAtMs - Date.now()) / 1000),
       ),
     );
   const sessionKey = cacheKeys.authSession(session.sessionId);
   const indexKey = cacheKeys.authSessionIndex(session.subUserId);
   const value = JSON.stringify({
-    expiresAtMs: session.expiresAt.getTime(),
+    expiresAtMs,
     sessionVersion: session.sessionVersion,
     subUserId: session.subUserId,
     valid: true,

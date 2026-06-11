@@ -65,10 +65,13 @@ export async function invalidateSeatAccessBatch(
     new Set(subUserIds.map((subUserId) => keys.seatAccess(subUserId))),
   );
 
-  await safelyInvalidate(
-    () => cache?.del(...uniqueKeys),
-    logger,
-  );
+  for (let i = 0; i < uniqueKeys.length; i += DELETE_BATCH_SIZE) {
+    const batch = uniqueKeys.slice(i, i + DELETE_BATCH_SIZE);
+    await safelyInvalidate(
+      () => cache?.del(...batch),
+      logger,
+    );
+  }
 }
 
 async function safelyReadMembers(

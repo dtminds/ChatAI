@@ -84,7 +84,14 @@ function createSessionDb(row?: {
   } as never;
 }
 
-function createLoginDb(onSessionWrite: (values: Record<string, unknown>) => void) {
+function createLoginDb(
+  onSessionWrite: (values: Record<string, unknown>) => void,
+  sessionOverrides: Partial<{
+    expires_at: Date | number | string;
+    id: number;
+    session_version: number;
+  }> = {},
+) {
   const session = {
     expires_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
     id: 501,
@@ -92,6 +99,7 @@ function createLoginDb(onSessionWrite: (values: Record<string, unknown>) => void
     revoked_at: null,
     session_version: 2,
     sub_user_id: 101,
+    ...sessionOverrides,
   };
 
   return {
@@ -355,5 +363,75 @@ describe("loginWithPassword cache invalidation", () => {
       expect.any(Number),
     );
     expect(sessionWrite).toHaveBeenCalled();
+  });
+
+  it("writes session cache when DB returns session expiry as a string", async () => {
+    const expiresAt = new Date(Date.now() + 60_000).toISOString();
+    const cache = createCache();
+    const app = {
+      cache,
+      cacheKeys: {
+        authSession: (sessionId: string) => `chatai:auth:session:${sessionId}`,
+        authSessionIndex: (subUserId: string) => `chatai:auth:session-index:${subUserId}`,
+      },
+      db: createLoginDb(vi.fn(), { expires_at: expiresAt }),
+      jwt: {
+        sign: vi.fn(() => "access-token"),
+      },
+      log: { warn: vi.fn() },
+    };
+
+    await expect(
+      loginWithPassword(app as never, {
+        account: "agent001",
+        altcha: "mock-altcha",
+        password: "correct-password",
+      }),
+    ).resolves.toMatchObject({
+      accessToken: "access-token",
+    });
+    expect(cache.set).toHaveBeenCalledWith(
+      "chatai:auth:session:501",
+      JSON.stringify({
+        expiresAtMs: new Date(expiresAt).getTime(),
+        sessionVersion: 2,
+        subUserId: "101",
+        valid: true,
+      }),
+      expect.any(Number),
+    );
+    expect(cache.sadd).toHaveBeenCalledWith(
+      "chatai:auth:session-index:101",
+      ["501"],
+      14 * 24 * 60 * 60,
+    );
+  });
+
+  it("skips session cache writes when DB returns an invalid session expiry", async () => {
+    const cache = createCache();
+    const app = {
+      cache,
+      cacheKeys: {
+        authSession: (sessionId: string) => `chatai:auth:session:${sessionId}`,
+        authSessionIndex: (subUserId: string) => `chatai:auth:session-index:${subUserId}`,
+      },
+      db: createLoginDb(vi.fn(), { expires_at: "invalid-date" }),
+      jwt: {
+        sign: vi.fn(() => "access-token"),
+      },
+      log: { warn: vi.fn() },
+    };
+
+    await expect(
+      loginWithPassword(app as never, {
+        account: "agent001",
+        altcha: "mock-altcha",
+        password: "correct-password",
+      }),
+    ).resolves.toMatchObject({
+      accessToken: "access-token",
+    });
+    expect(cache.set).not.toHaveBeenCalled();
+    expect(cache.sadd).not.toHaveBeenCalled();
   });
 });

@@ -575,6 +575,13 @@ describe("WorkbenchRepository", () => {
     const repository = new WorkbenchRepository(
       {
         selectFrom(table: string) {
+          if (table === "xy_wap_embed_sub_user") {
+            return createQueryBuilder({
+              platform: 5,
+              uid: 9001,
+            });
+          }
+
           if (table === "xy_wap_embed_user_seat_sub_relation as relation") {
             const query = createQueryBuilder([
               {
@@ -733,6 +740,13 @@ describe("WorkbenchRepository", () => {
     const repository = new WorkbenchRepository(
       {
         selectFrom(table: string) {
+          if (table === "xy_wap_embed_sub_user") {
+            return createQueryBuilder({
+              platform: 5,
+              uid: 9001,
+            });
+          }
+
           if (table === "xy_wap_embed_user_seat_sub_relation as relation") {
             return createQueryBuilder([
               {
@@ -800,19 +814,34 @@ describe("WorkbenchRepository", () => {
   });
 
   it("checks seat access by joining relation and active seat only", async () => {
-    const queryBuilders: Array<{ joins: string[]; table: string }> = [];
+    const queryBuilders: Array<{
+      joins: string[];
+      table: string;
+      wheres: Array<[string, string, unknown]>;
+    }> = [];
     const repository = new WorkbenchRepository(
       {
         selectFrom(table: string) {
-          const query = createQueryBuilder([
-            {
+          if (table === "xy_wap_embed_sub_user") {
+            return createQueryBuilder({
               platform: 5,
-              seat_id: 101,
               uid: 9001,
-            },
-          ]);
-          queryBuilders.push({ joins: query.joins, table });
-          return query;
+            });
+          }
+
+          if (table === "xy_wap_embed_user_seat_sub_relation as relation") {
+            const query = createQueryBuilder([
+              {
+                platform: 5,
+                seat_id: 101,
+                uid: 9001,
+              },
+            ]);
+            queryBuilders.push({ joins: query.joins, table, wheres: query.wheres });
+            return query;
+          }
+
+          throw new Error(`unexpected table ${table}`);
         },
       } as never,
     );
@@ -820,7 +849,15 @@ describe("WorkbenchRepository", () => {
     await expect(repository.canAccessSeat("11", "101")).resolves.toBe(true);
 
     expect(queryBuilders).toEqual([
-      { joins: ["innerJoin"], table: "xy_wap_embed_user_seat_sub_relation as relation" },
+      {
+        joins: ["innerJoin"],
+        table: "xy_wap_embed_user_seat_sub_relation as relation",
+        wheres: [
+          ["relation.sub_id", "=", 11],
+          ["relation.uid", "=", 9001],
+          ["relation.platform", "=", 5],
+        ],
+      },
     ]);
   });
 
@@ -846,6 +883,13 @@ describe("WorkbenchRepository", () => {
     const repository = new WorkbenchRepository(
       {
         selectFrom(table: string) {
+          if (table === "xy_wap_embed_sub_user") {
+            return createQueryBuilder({
+              platform: 5,
+              uid: 9001,
+            });
+          }
+
           if (table === "xy_wap_embed_user_seat_sub_relation as relation") {
             return createQueryBuilder([
               {
@@ -882,6 +926,13 @@ describe("WorkbenchRepository", () => {
     const repository = new WorkbenchRepository(
       {
         selectFrom(table: string) {
+          if (table === "xy_wap_embed_sub_user") {
+            return createQueryBuilder({
+              platform: 5,
+              uid: 9001,
+            });
+          }
+
           if (table === "xy_wap_embed_user_seat_sub_relation as relation") {
             return createQueryBuilder([
               {
@@ -913,11 +964,19 @@ describe("WorkbenchRepository", () => {
 
   it("writes a seat-access snapshot when relation scope misses cache", async () => {
     const cache = createCacheMock();
+    const relationQueries: Array<ReturnType<typeof createQueryBuilder>> = [];
     const repository = new WorkbenchRepository(
       {
         selectFrom(table: string) {
+          if (table === "xy_wap_embed_sub_user") {
+            return createQueryBuilder({
+              platform: 5,
+              uid: 9001,
+            });
+          }
+
           if (table === "xy_wap_embed_user_seat_sub_relation as relation") {
-            return createQueryBuilder([
+            const query = createQueryBuilder([
               {
                 platform: 5,
                 seat_id: 101,
@@ -929,6 +988,8 @@ describe("WorkbenchRepository", () => {
                 uid: 9001,
               },
             ]);
+            relationQueries.push(query);
+            return query;
           }
 
           throw new Error(`unexpected table ${table}`);
@@ -952,6 +1013,11 @@ describe("WorkbenchRepository", () => {
       }),
       600,
     );
+    expect(relationQueries[0]?.wheres).toEqual([
+      ["relation.sub_id", "=", 11],
+      ["relation.uid", "=", 9001],
+      ["relation.platform", "=", 5],
+    ]);
   });
 
   it("caches empty seat-access snapshots from the sub-user tenant scope", async () => {
@@ -1371,6 +1437,13 @@ describe("WorkbenchRepository", () => {
     const repository = new WorkbenchRepository(
       {
         selectFrom(table: string) {
+          if (table === "xy_wap_embed_sub_user") {
+            return createQueryBuilder({
+              platform: 5,
+              uid: 272,
+            });
+          }
+
           if (table === "xy_wap_embed_user_seat_sub_relation as relation") {
             const query = createQueryBuilder([
               {
@@ -3278,6 +3351,13 @@ describe("WorkbenchRepository", () => {
     const repository = new WorkbenchRepository(
       {
         selectFrom(table: string) {
+          if (table === "xy_wap_embed_sub_user") {
+            return createQueryBuilder({
+              platform: 5,
+              uid: 272,
+            });
+          }
+
           if (table === "xy_wap_embed_user_seat_sub_relation as relation") {
             const query = createQueryBuilder([
               {
@@ -3307,7 +3387,11 @@ describe("WorkbenchRepository", () => {
       uid: 272,
     });
     expect(relationQueries[0]?.joins).toEqual(["innerJoin"]);
-    expect(relationQueries[0]?.wheres).toEqual([["relation.sub_id", "=", 101]]);
+    expect(relationQueries[0]?.wheres).toEqual([
+      ["relation.sub_id", "=", 101],
+      ["relation.uid", "=", 272],
+      ["relation.platform", "=", 5],
+    ]);
     expect(relationQueries[0]?.joinConditions).toEqual([
       {
         conditions: [

@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { invalidateSubUserSessions } from "../../src/cache/invalidation.js";
+import {
+  invalidateSeatAccessBatch,
+  invalidateSubUserSessions,
+} from "../../src/cache/invalidation.js";
 import { buildCacheKeys } from "../../src/cache/keys.js";
 import { NoopCache } from "../../src/cache/noop-cache.js";
 import { RedisCache } from "../../src/cache/redis-cache.js";
@@ -87,5 +90,26 @@ describe("cache infrastructure", () => {
     expect(cache.del.mock.calls[0]?.[0]).toBe("chatai:auth:session:1");
     expect(cache.del.mock.calls[1]).toEqual(["chatai:auth:session:1001"]);
     expect(cache.del.mock.calls[2]).toEqual(["chatai:auth:session-index:101"]);
+  });
+
+  it("chunks seat-access batch invalidation deletes", async () => {
+    const cache = {
+      del: vi.fn(async () => undefined),
+      get: vi.fn(),
+      sadd: vi.fn(),
+      set: vi.fn(),
+      smembers: vi.fn(),
+    };
+
+    await invalidateSeatAccessBatch(
+      cache,
+      buildCacheKeys("chatai:"),
+      Array.from({ length: 1001 }, (_, index) => index + 1),
+    );
+
+    expect(cache.del).toHaveBeenCalledTimes(2);
+    expect(cache.del.mock.calls[0]).toHaveLength(1000);
+    expect(cache.del.mock.calls[0]?.[0]).toBe("chatai:seat-access:1");
+    expect(cache.del.mock.calls[1]).toEqual(["chatai:seat-access:1001"]);
   });
 });

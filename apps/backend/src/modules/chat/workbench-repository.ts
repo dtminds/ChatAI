@@ -2652,6 +2652,12 @@ export class WorkbenchRepository {
       return cached;
     }
 
+    const scope = await this.getSubUserTenantScope(subUserId);
+
+    if (!scope) {
+      return undefined;
+    }
+
     const rows = await this.db
       .selectFrom("xy_wap_embed_user_seat_sub_relation as relation")
       .innerJoin("xy_wap_embed_user_seat as seat", (join) =>
@@ -2663,45 +2669,21 @@ export class WorkbenchRepository {
       )
       .select([
         "relation.user_seat_id as seat_id",
-        "relation.uid as uid",
-        "relation.platform as platform",
       ])
       .where("relation.sub_id", "=", subUserId)
+      .where("relation.uid", "=", scope.uid)
+      .where("relation.platform", "=", scope.platform)
       .execute();
-    const firstRow = rows[0];
-    const snapshot: SeatAccessSnapshot | undefined = firstRow
-      ? {
-          platform: Number(firstRow.platform),
-          seatIds: uniqueIds(rows.map((row) => row.seat_id)),
-          uid: Number(firstRow.uid),
-          version: 1 as const,
-        }
-      : await this.getEmptySeatAccessSnapshot(subUserId);
-
-    if (!snapshot) {
-      return undefined;
-    }
+    const snapshot: SeatAccessSnapshot = {
+      platform: scope.platform,
+      seatIds: uniqueIds(rows.map((row) => row.seat_id)),
+      uid: scope.uid,
+      version: 1,
+    };
 
     await this.cache?.set(cacheKey, JSON.stringify(snapshot), 600);
 
     return snapshot;
-  }
-
-  private async getEmptySeatAccessSnapshot(
-    subUserId: number,
-  ): Promise<SeatAccessSnapshot | undefined> {
-    const scope = await this.getSubUserTenantScope(subUserId);
-
-    if (!scope) {
-      return undefined;
-    }
-
-    return {
-      platform: scope.platform,
-      seatIds: [],
-      uid: scope.uid,
-      version: 1,
-    };
   }
 
   private async readSeatAccessSnapshot(key: string) {

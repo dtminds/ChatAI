@@ -1,4 +1,5 @@
 import { createCommand } from "lexical";
+import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
 import type { WechatEmoji } from "@/pages/chat/wechat-emoji";
 
 export type InsertComposerImagePayload = {
@@ -42,3 +43,11 @@ export const INSERT_COMPOSER_TEXT_COMMAND = createCommand<string>(
 );
 
 export const CLEAR_COMPOSER_COMMAND = createCommand<void>("CLEAR_COMPOSER_COMMAND");
+
+export type RestoreComposerPayload = {
+  segments: ComposerSegment[];
+};
+
+export const RESTORE_COMPOSER_COMMAND = createCommand<RestoreComposerPayload>(
+  "RESTORE_COMPOSER_COMMAND",
+);

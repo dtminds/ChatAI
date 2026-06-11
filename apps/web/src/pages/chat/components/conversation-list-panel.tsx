@@ -27,6 +27,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { ConversationCard } from "@/pages/chat/components/conversation-card";
 import type { ChatMode, Conversation } from "@/pages/chat/chat-types";
+import type { ConversationComposerDraft } from "@/pages/chat/lib/conversation-composer-draft";
 import type {
   WorkbenchSearchContactResultDto,
   WorkbenchSearchGroupResultDto,
@@ -42,6 +43,7 @@ const CHAT_MODES = ["single", "group"] as const satisfies readonly ChatMode[];
 type ConversationListPanelProps = {
   activeConversation?: Conversation;
   activeMode: ChatMode;
+  composerDraftsByConversationId?: Record<string, ConversationComposerDraft>;
   conversations: Conversation[];
   isConversationActionDisabled?: boolean;
   isConversationLoading?: boolean;
@@ -58,6 +60,7 @@ type ConversationListPanelProps = {
 export function ConversationListPanel({
   activeConversation,
   activeMode,
+  composerDraftsByConversationId = {},
   conversations,
   isConversationActionDisabled = false,
   isConversationLoading = false,
@@ -298,6 +301,11 @@ export function ConversationListPanel({
                       ) : null}
                       {modeConversations.map((conversation) => (
                         <ConversationCard
+                          composerDraft={
+                            conversation.id === activeConversation?.id
+                              ? undefined
+                              : composerDraftsByConversationId[conversation.id]
+                          }
                           conversation={conversation}
                           isActionDisabled={isConversationActionDisabled}
                           isActive={conversation.id === activeConversation?.id}

@@ -14,6 +14,7 @@ import {
   $insertComposerMention,
   $insertComposerText,
   $removeComposerTextRange,
+  $restoreComposerFromSegments,
 } from "@/pages/chat/components/composer/lexical-utils";
 import {
   ComposerEmojiNode,
@@ -244,6 +245,60 @@ describe("composer lexical utils", () => {
     expect(normalizeComposerSegments(segments)).toEqual([
       {
         text: "第一行\n第二行",
+        type: "text",
+      },
+    ]);
+  });
+
+  it("restores composer content from saved segments", () => {
+    const editor = createEditor({
+      namespace: "composer-restore-utils-test",
+      nodes: [ComposerEmojiNode, ComposerImageNode, ComposerMentionNode],
+      onError(error) {
+        throw error;
+      },
+    });
+    let restoredSegments: ComposerSegment[] = [];
+    let restoredPlainText = "";
+
+    editor.update(
+      () => {
+        $restoreComposerFromSegments([
+          { text: "你好[打脸]", type: "text" },
+          {
+            alt: "截图",
+            localUrl: "data:image/png;base64,a",
+            type: "image",
+            url: "data:image/png;base64,a",
+          },
+          {
+            mentionMemberIds: ["member-001"],
+            text: "@张三",
+            type: "text",
+          },
+        ]);
+        restoredPlainText = $getComposerPlainText();
+        restoredSegments = $exportComposerSegments();
+      },
+      { discrete: true },
+    );
+
+    expect(restoredPlainText).toContain("你好");
+    expect(restoredPlainText).toContain("@张三");
+    expect(normalizeComposerSegments(restoredSegments)).toEqual([
+      {
+        text: "你好[打脸]",
+        type: "text",
+      },
+      {
+        alt: "截图",
+        localUrl: "data:image/png;base64,a",
+        type: "image",
+        url: "data:image/png;base64,a",
+      },
+      {
+        mentionMemberIds: ["member-001"],
+        text: "@张三",
         type: "text",
       },
     ]);

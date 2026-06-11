@@ -21,7 +21,6 @@ import {
   Dialog,
   DialogClose,
   DialogContent,
-  DialogPortal,
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
@@ -332,123 +331,128 @@ export function ImagePreviewDialog({
           {children}
         </DialogTrigger>
       ) : null}
-      <DialogPortal>
-        {isOpen ? (
-          <DialogClose asChild>
+      <DialogContent
+        aria-describedby={undefined}
+        className="fixed inset-0 z-50 flex h-[100dvh] w-screen max-h-none max-w-none translate-x-0 translate-y-0 items-center justify-center overflow-visible border-0 bg-transparent p-0 shadow-none sm:max-w-none [&>button:last-child]:hidden"
+      >
+        <DialogTitle className="sr-only">图片预览</DialogTitle>
+        <DialogClose asChild>
+          <Button
+            aria-label="关闭图片预览"
+            className="fixed right-4 top-4 z-[61] bg-black/35 text-white opacity-100 shadow-[0_10px_30px_var(--shadow-strong)] backdrop-blur hover:bg-black/55 hover:text-white"
+            data-testid="image-preview-close"
+            onClick={(event) => event.stopPropagation()}
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
+            <HugeiconsIcon icon={Cancel01Icon} size={16} strokeWidth={2} />
+          </Button>
+        </DialogClose>
+        {canShowGalleryNavigation ? (
+          <>
             <Button
-              aria-label="关闭图片预览"
-              className="fixed right-4 top-4 z-[60] bg-black/35 text-white opacity-100 shadow-[0_10px_30px_var(--shadow-strong)] backdrop-blur hover:bg-black/55 hover:text-white"
-              data-testid="image-preview-close"
+              aria-label="上一张图片"
+              className="fixed left-4 top-1/2 z-[60] -translate-y-1/2 bg-black/35 text-white opacity-100 shadow-[0_10px_30px_var(--shadow-strong)] backdrop-blur hover:bg-black/55 hover:text-white disabled:opacity-40"
+              data-testid="image-preview-gallery-prev"
+              disabled={!canGoPrevious}
+              onClick={(event) => {
+                event.stopPropagation();
+                onGalleryIndexChange?.(currentGalleryIndex - 1);
+              }}
               size="icon"
               type="button"
               variant="ghost"
             >
-              <HugeiconsIcon icon={Cancel01Icon} size={16} strokeWidth={2} />
+              <HugeiconsIcon icon={ArrowLeft01Icon} size={18} strokeWidth={2} />
             </Button>
-          </DialogClose>
+            <Button
+              aria-label="下一张图片"
+              className="fixed right-4 top-1/2 z-[60] -translate-y-1/2 bg-black/35 text-white opacity-100 shadow-[0_10px_30px_var(--shadow-strong)] backdrop-blur hover:bg-black/55 hover:text-white disabled:opacity-40"
+              data-testid="image-preview-gallery-next"
+              disabled={!canGoNext}
+              onClick={(event) => {
+                event.stopPropagation();
+                onGalleryIndexChange?.(currentGalleryIndex + 1);
+              }}
+              size="icon"
+              type="button"
+              variant="ghost"
+            >
+              <HugeiconsIcon icon={ArrowRight01Icon} size={18} strokeWidth={2} />
+            </Button>
+          </>
         ) : null}
-      </DialogPortal>
-      <DialogContent
-        aria-describedby={undefined}
-        className="top-[calc(50%+1rem)] max-h-[calc(100vh-4rem)] max-w-[calc(100vw-2rem)] border-0 bg-transparent p-0 shadow-none sm:max-w-[calc(100vw-2rem)] [&>button:last-child]:hidden"
-      >
-        <DialogTitle className="sr-only">图片预览</DialogTitle>
+        {canShowGalleryNavigation ||
+        (previewOcrEnabled && (ocrStatus === "idle" || ocrStatus === "error")) ? (
+          <div
+            className="fixed inset-x-0 bottom-4 z-[60] flex items-center justify-center gap-3 px-4"
+            data-testid="image-preview-action-bar"
+            onClick={(event) => event.stopPropagation()}
+          >
+            {canShowGalleryNavigation ? (
+              <span
+                className="text-xs text-white/80"
+                data-testid="image-preview-gallery-counter"
+              >
+                {currentGalleryIndex + 1} / {gallery?.length ?? 0}
+              </span>
+            ) : null}
+            {previewOcrEnabled && (ocrStatus === "idle" || ocrStatus === "error") ? (
+              <Button
+                className="border border-white/12 bg-neutral-950/86 text-white shadow-[0_10px_30px_var(--shadow-strong)] backdrop-blur hover:bg-neutral-900 hover:text-white"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void handleRecognizeText();
+                }}
+                size="sm"
+                type="button"
+                variant="ghost"
+              >
+                <HugeiconsIcon
+                  icon={AiScanIcon}
+                  size={16}
+                  strokeWidth={2}
+                />
+                提取图片文字
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
         <div
-          className="relative flex max-h-[calc(100vh-4rem)] max-w-[calc(100vw-2rem)] items-center justify-center"
+          className="relative flex h-full w-full items-center justify-center px-4 pb-16 pt-14"
           data-testid="image-preview-backdrop"
           onClick={() => setIsOpen(false)}
         >
           <div
-            className="flex max-h-[calc(100vh-4rem)] max-w-[calc(100vw-2rem)] items-stretch gap-3"
+            className="flex max-h-full max-w-full items-stretch gap-3"
             data-ocr-panel={isOcrPanelOpen ? "open" : "closed"}
             data-testid="image-preview-layout"
           >
-            <div className="flex min-w-0 flex-col items-center justify-center gap-3">
+            <div className="flex min-w-0 flex-col items-center justify-center">
               <div
-                className="relative flex min-h-0 items-center justify-center gap-3"
+                className="relative flex min-h-0 items-center justify-center"
                 data-testid="image-preview-image-frame"
                 onClick={(event) => event.stopPropagation()}
               >
-                {canShowGalleryNavigation ? (
-                  <Button
-                    aria-label="上一张图片"
-                    className="shrink-0 bg-black/35 text-white opacity-100 shadow-[0_10px_30px_var(--shadow-strong)] backdrop-blur hover:bg-black/55 hover:text-white disabled:opacity-40"
-                    data-testid="image-preview-gallery-prev"
-                    disabled={!canGoPrevious}
-                    onClick={() => onGalleryIndexChange?.(currentGalleryIndex - 1)}
-                    size="icon"
-                    type="button"
-                    variant="ghost"
-                  >
-                    <HugeiconsIcon icon={ArrowLeft01Icon} size={18} strokeWidth={2} />
-                  </Button>
-                ) : null}
-                <div className="relative flex min-h-0 items-center justify-center">
-                  <img
-                    alt={previewAlt}
-                    className="max-h-[calc(100vh-8.5rem)] max-w-[calc(100vw-2rem)] rounded-[8px] object-contain shadow-[0_18px_60px_var(--shadow-strong)] data-[ocr-panel=open]:max-w-[calc(100vw-25rem)]"
-                    data-ocr-panel={isOcrPanelOpen ? "open" : "closed"}
-                    data-testid="image-preview-full"
-                    key={previewImageUrl}
-                    onLoad={handlePreviewImageLoad}
-                    ref={previewImageRef}
-                    src={previewImageUrl}
+                <img
+                  alt={previewAlt}
+                  className="max-h-[calc(100dvh-7rem)] max-w-[min(calc(100vw-2rem),calc(100dvh-7rem))] rounded-[8px] object-contain shadow-[0_18px_60px_var(--shadow-strong)] data-[ocr-panel=open]:max-w-[min(calc(100vw-25rem),calc(100dvh-7rem))]"
+                  data-ocr-panel={isOcrPanelOpen ? "open" : "closed"}
+                  data-testid="image-preview-full"
+                  key={previewImageUrl}
+                  onLoad={handlePreviewImageLoad}
+                  ref={previewImageRef}
+                  src={previewImageUrl}
+                />
+                {ocrResult && previewImageSize ? (
+                  <ImageOcrOverlay
+                    activeRegionId={activeOcrRegionId}
+                    imageSize={previewImageSize}
+                    regions={ocrResult.regions}
+                    scrollToRegion={setScrollTargetOcrRegionId}
+                    setActiveRegionId={setActiveOcrRegionId}
                   />
-                  {ocrResult && previewImageSize ? (
-                    <ImageOcrOverlay
-                      activeRegionId={activeOcrRegionId}
-                      imageSize={previewImageSize}
-                      regions={ocrResult.regions}
-                      scrollToRegion={setScrollTargetOcrRegionId}
-                      setActiveRegionId={setActiveOcrRegionId}
-                    />
-                  ) : null}
-                </div>
-                {canShowGalleryNavigation ? (
-                  <Button
-                    aria-label="下一张图片"
-                    className="shrink-0 bg-black/35 text-white opacity-100 shadow-[0_10px_30px_var(--shadow-strong)] backdrop-blur hover:bg-black/55 hover:text-white disabled:opacity-40"
-                    data-testid="image-preview-gallery-next"
-                    disabled={!canGoNext}
-                    onClick={() => onGalleryIndexChange?.(currentGalleryIndex + 1)}
-                    size="icon"
-                    type="button"
-                    variant="ghost"
-                  >
-                    <HugeiconsIcon icon={ArrowRight01Icon} size={18} strokeWidth={2} />
-                  </Button>
-                ) : null}
-              </div>
-              <div
-                className="flex h-10 shrink-0 items-center justify-center gap-3"
-                data-testid="image-preview-action-bar"
-              >
-                {canShowGalleryNavigation ? (
-                  <span
-                    className="text-xs text-white/80"
-                    data-testid="image-preview-gallery-counter"
-                  >
-                    {currentGalleryIndex + 1} / {gallery?.length ?? 0}
-                  </span>
-                ) : null}
-                {previewOcrEnabled && (ocrStatus === "idle" || ocrStatus === "error") ? (
-                  <Button
-                    className="border border-white/12 bg-neutral-950/86 text-white shadow-[0_10px_30px_var(--shadow-strong)] backdrop-blur hover:bg-neutral-900 hover:text-white"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      void handleRecognizeText();
-                    }}
-                    size="sm"
-                    type="button"
-                    variant="ghost"
-                  >
-                    <HugeiconsIcon
-                      icon={AiScanIcon}
-                      size={16}
-                      strokeWidth={2}
-                    />
-                    提取图片文字
-                  </Button>
                 ) : null}
               </div>
             </div>

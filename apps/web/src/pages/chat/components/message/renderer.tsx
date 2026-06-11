@@ -18,7 +18,6 @@ type MessageContentRendererProps = {
   message: ChatMessage;
   onDownloadMessageFile?: (message: ChatMessage) => void;
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
-  onSentAtPreviewClick?: () => void;
   onVoicePlaybackReady?: (
     message: ChatMessage,
     payload: { playbackUrl: string },
@@ -31,7 +30,6 @@ export function MessageContentRenderer({
   message,
   onDownloadMessageFile,
   onOpenQuotedMessage,
-  onSentAtPreviewClick,
   onVoicePlaybackReady,
   onTranscribeVoice,
 }: MessageContentRendererProps) {
@@ -41,7 +39,6 @@ export function MessageContentRenderer({
         <TextMessageBubble
           isAgent={isAgent}
           isOwnMessage={message.isOwnMessage}
-          onClick={onSentAtPreviewClick}
           text={message.content.text}
         />
       );
@@ -75,12 +72,7 @@ export function MessageContentRenderer({
     case "h5":
       return <LinkMessageCard content={message.content} />;
     case "mini-program":
-      return (
-        <MiniAppMessageCard
-          content={message.content}
-          onClick={onSentAtPreviewClick}
-        />
-      );
+      return <MiniAppMessageCard content={message.content} />;
     case "contact-card":
       return <ContactCardMessageCard content={message.content} />;
     case "location":

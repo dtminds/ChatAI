@@ -1,6 +1,6 @@
 import { AiBrowserIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import type { KeyboardEvent, SVGProps } from "react";
+import type { SVGProps } from "react";
 import { cn } from "@/lib/utils";
 import type { MiniProgramMessageContent } from "@/pages/chat/chat-types";
 import {
@@ -10,40 +10,15 @@ import {
 
 type MiniAppMessageCardProps = {
   content: MiniProgramMessageContent;
-  onClick?: () => void;
 };
 
-export function MiniAppMessageCard({ content, onClick }: MiniAppMessageCardProps) {
+export function MiniAppMessageCard({ content }: MiniAppMessageCardProps) {
   const coverImageUrl = content.coverImageUrl?.trim();
-
-  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (!onClick || (event.key !== "Enter" && event.key !== " ")) {
-      return;
-    }
-
-    event.preventDefault();
-    onClick();
-  };
-
-  const interactiveProps = onClick
-    ? {
-        "aria-label": "查看发送时间",
-        onClick,
-        onKeyDown: handleKeyDown,
-        role: "button" as const,
-        tabIndex: 0,
-      }
-    : {};
 
   return (
     <div
-      className={cn(
-        "w-[240px] rounded-[8px] border border-border bg-surface p-2.5 pb-1.5",
-        onClick &&
-          "cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring/35",
-      )}
+      className="w-[240px] rounded-[8px] border border-border bg-surface p-2.5 pb-1.5"
       data-testid="mini-program-message-card"
-      {...interactiveProps}
     >
       <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
         <div className="flex size-4 items-center justify-center rounded-full bg-primary/10 text-primary">

@@ -281,7 +281,7 @@ describe("MessageContentRenderer image messages", () => {
     expect(screen.queryByRole("dialog", { name: "图片预览" })).not.toBeInTheDocument();
   });
 
-  it("closes the full preview when blank space around the OCR action is clicked", async () => {
+  it("does not close the preview when the fixed bottom action bar is clicked", async () => {
     const user = userEvent.setup();
 
     render(
@@ -301,7 +301,7 @@ describe("MessageContentRenderer image messages", () => {
 
     fireEvent.click(screen.getByTestId("image-preview-action-bar"));
 
-    expect(screen.queryByRole("dialog", { name: "图片预览" })).not.toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "图片预览" })).toBeInTheDocument();
   });
 
   it("keeps the full preview open when the image itself is clicked", async () => {
@@ -345,7 +345,7 @@ describe("MessageContentRenderer image messages", () => {
     ).toBeInTheDocument();
   });
 
-  it("places the browser OCR action below the preview image", async () => {
+  it("places the browser OCR action in the fixed bottom action bar", async () => {
     const user = userEvent.setup();
 
     render(

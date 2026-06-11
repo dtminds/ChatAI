@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -61,8 +61,30 @@ export function ChatRecordMessageCard({
   const [detail, setDetail] = useState<ChatRecordDetail | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const contextRef = useRef({ conversationId, messageId });
+  const isMountedRef = useRef(false);
+  const requestIdRef = useRef(0);
   const title = normalizeChatRecordTitle(content.msgTitle);
   const lines = normalizeChatRecordLines(content);
+
+  contextRef.current = { conversationId, messageId };
+
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    setDetail(null);
+    setError("");
+
+    if (open) {
+      void loadDetail();
+    }
+  }, [conversationId, messageId]);
 
   if (isFallbackChatRecordContent(content)) {
     return (
@@ -70,6 +92,48 @@ export function ChatRecordMessageCard({
         isAgent={false}
         text={CHAT_RECORD_FALLBACK_TEXT}
       />
+    );
+  }
+
+  async function loadDetail() {
+    const requestId = requestIdRef.current + 1;
+    const requestContext = { conversationId, messageId };
+    requestIdRef.current = requestId;
+    setLoading(true);
+    setError("");
+
+    try {
+      const nextDetail = await loadChatRecordDetail(requestContext);
+
+      if (!canApplyDetailResult(requestId, requestContext)) {
+        return;
+      }
+
+      setDetail(nextDetail);
+    } catch {
+      if (!canApplyDetailResult(requestId, requestContext)) {
+        return;
+      }
+
+      setError("聊天记录加载失败");
+    } finally {
+      if (!canApplyDetailResult(requestId, requestContext)) {
+        return;
+      }
+
+      setLoading(false);
+    }
+  }
+
+  function canApplyDetailResult(
+    requestId: number,
+    requestContext: { conversationId: string; messageId: string },
+  ) {
+    return (
+      isMountedRef.current &&
+      requestIdRef.current === requestId &&
+      contextRef.current.conversationId === requestContext.conversationId &&
+      contextRef.current.messageId === requestContext.messageId
     );
   }
 
@@ -82,16 +146,11 @@ export function ChatRecordMessageCard({
       return;
     }
 
-    setLoading(true);
-    setError("");
+    await loadDetail();
+  }
 
-    try {
-      setDetail(await loadChatRecordDetail({ conversationId, messageId }));
-    } catch {
-      setError("聊天记录加载失败");
-    } finally {
-      setLoading(false);
-    }
+  async function handleRetry() {
+    await loadDetail();
   }
 
   return (
@@ -135,14 +194,7 @@ export function ChatRecordMessageCard({
             detail={detail}
             error={error}
             loading={loading}
-            onRetry={() => void reloadDetail({
-              conversationId,
-              loadChatRecordDetail,
-              messageId,
-              setDetail,
-              setError,
-              setLoading,
-            })}
+            onRetry={() => void handleRetry()}
           />
         </DialogContent>
       </Dialog>
@@ -321,33 +373,6 @@ function ChatRecordDetailMessageContent({ message }: { message: ChatMessage }) {
           [暂不支持显示该消息]
         </div>
       );
-  }
-}
-
-async function reloadDetail({
-  conversationId,
-  loadChatRecordDetail,
-  messageId,
-  setDetail,
-  setError,
-  setLoading,
-}: {
-  conversationId: string;
-  loadChatRecordDetail: LoadChatRecordDetail;
-  messageId: string;
-  setDetail: (detail: ChatRecordDetail | null) => void;
-  setError: (error: string) => void;
-  setLoading: (loading: boolean) => void;
-}) {
-  setLoading(true);
-  setError("");
-
-  try {
-    setDetail(await loadChatRecordDetail({ conversationId, messageId }));
-  } catch {
-    setError("聊天记录加载失败");
-  } finally {
-    setLoading(false);
   }
 }
 

@@ -139,7 +139,94 @@ describe("ChatRecordMessageCard", () => {
     expect(await within(secondDialog).findByText("后续入库的详情")).toBeInTheDocument();
     expect(loadChatRecordDetail).toHaveBeenCalledTimes(2);
   });
+
+  it("ignores stale detail responses after the message context changes", async () => {
+    const user = userEvent.setup();
+    const initialRequest = createDeferred<{
+      messageId: string;
+      messages: ChatMessage[];
+    }>();
+    const nextContextRequest = createDeferred<{
+      messageId: string;
+      messages: ChatMessage[];
+    }>();
+    const loadChatRecordDetail = vi.fn()
+      .mockReturnValueOnce(initialRequest.promise)
+      .mockReturnValueOnce(nextContextRequest.promise);
+
+    const { rerender } = render(
+      <ChatRecordMessageCard
+        content={createChatRecordContent()}
+        conversationId="conversation-1"
+        loadChatRecordDetail={loadChatRecordDetail}
+        messageId="parent-chatrecord-msgid"
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "查看聊天记录：缪勇飞和范双飞的聊天记录" }));
+
+    rerender(
+      <ChatRecordMessageCard
+        content={createChatRecordContent()}
+        conversationId="conversation-2"
+        loadChatRecordDetail={loadChatRecordDetail}
+        messageId="next-chatrecord-msgid"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(loadChatRecordDetail).toHaveBeenCalledWith({
+        conversationId: "conversation-2",
+        messageId: "next-chatrecord-msgid",
+      });
+    });
+
+    nextContextRequest.resolve({
+      messageId: "next-chatrecord-msgid",
+      messages: [
+        createTextMessage({
+          id: "chatrecord:next-chatrecord-msgid:new",
+          text: "新的详情",
+        }),
+      ],
+    });
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "缪勇飞和范双飞的聊天记录",
+    });
+    expect(await within(dialog).findByText("新的详情")).toBeInTheDocument();
+
+    initialRequest.resolve({
+      messageId: "parent-chatrecord-msgid",
+      messages: [
+        createTextMessage({
+          id: "chatrecord:parent-chatrecord-msgid:old",
+          text: "旧的详情",
+        }),
+      ],
+    });
+
+    await waitFor(() => {
+      expect(within(dialog).queryByText("旧的详情")).not.toBeInTheDocument();
+    });
+    expect(loadChatRecordDetail).toHaveBeenCalledTimes(2);
+  });
 });
+
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((nextResolve, nextReject) => {
+    resolve = nextResolve;
+    reject = nextReject;
+  });
+
+  return {
+    promise,
+    reject,
+    resolve,
+  };
+}
 
 function createChatRecordContent(): ChatRecordMessageContent {
   return {

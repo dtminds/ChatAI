@@ -70,7 +70,7 @@ export const authPlugin = fp(async (app) => {
       throw new UnauthorizedError();
     }
 
-    if (!app.db || !(await verifyAccessSession(app.db, request.user))) {
+    if (!app.db || !(await verifyAccessSession(app.db, request.user, app.cache, app.cacheKeys))) {
       throw new UnauthorizedError();
     }
 

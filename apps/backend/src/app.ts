@@ -9,6 +9,7 @@ import { validateBackendEnv } from "./config/env.js";
 import { authPlugin } from "./plugins/auth.js";
 import { dbPlugin } from "./plugins/db.js";
 import { registerErrorHandler } from "./plugins/error-handler.js";
+import { redisPlugin } from "./plugins/redis.js";
 
 export async function buildApp() {
   validateBackendEnv();
@@ -22,6 +23,7 @@ export async function buildApp() {
 
   await registerErrorHandler(app);
   await app.register(fastifyCookie);
+  await app.register(redisPlugin);
   await app.register(dbPlugin);
   await app.register(authPlugin);
 

@@ -463,6 +463,24 @@ function createQueryBuilder(result: unknown) {
   };
 }
 
+function createCacheMock(initial: Record<string, string> = {}) {
+  const store = new Map(Object.entries(initial));
+
+  return {
+    del: vi.fn(async (...keys: string[]) => {
+      for (const key of keys) {
+        store.delete(key);
+      }
+    }),
+    get: vi.fn(async (key: string) => store.get(key) ?? null),
+    sadd: vi.fn(async () => undefined),
+    set: vi.fn(async (key: string, value: string) => {
+      store.set(key, value);
+    }),
+    smembers: vi.fn(async () => []),
+  };
+}
+
 function createConversationRow(overrides: Partial<Record<string, unknown>> = {}) {
   return {
     chat_type: 1,
@@ -786,7 +804,13 @@ describe("WorkbenchRepository", () => {
     const repository = new WorkbenchRepository(
       {
         selectFrom(table: string) {
-          const query = createQueryBuilder({ can_access: 1 });
+          const query = createQueryBuilder([
+            {
+              platform: 5,
+              seat_id: 101,
+              uid: 9001,
+            },
+          ]);
           queryBuilders.push({ joins: query.joins, table });
           return query;
         },
@@ -798,6 +822,129 @@ describe("WorkbenchRepository", () => {
     expect(queryBuilders).toEqual([
       { joins: ["innerJoin"], table: "xy_wap_embed_user_seat_sub_relation as relation" },
     ]);
+  });
+
+  it("checks seat access from cached seat-access snapshot without querying DB", async () => {
+    const cache = createCacheMock({
+      "chatai:seat-access:11": JSON.stringify({
+        platform: 5,
+        seatIds: ["101", "102"],
+        uid: 9001,
+        version: 1,
+      }),
+    });
+    const repository = new WorkbenchRepository(createFailingDb() as never, cache);
+
+    await expect(repository.canAccessSeat("11", "101")).resolves.toBe(true);
+    await expect(repository.canAccessSeat("11", "103")).resolves.toBe(false);
+    expect(cache.get).toHaveBeenCalledWith("chatai:seat-access:11");
+  });
+
+  it("writes a seat-access snapshot when relation scope misses cache", async () => {
+    const cache = createCacheMock();
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_user_seat_sub_relation as relation") {
+            return createQueryBuilder([
+              {
+                platform: 5,
+                seat_id: 101,
+                uid: 9001,
+              },
+              {
+                platform: 5,
+                seat_id: 102,
+                uid: 9001,
+              },
+            ]);
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+      cache,
+    );
+
+    await expect(repository.getSeatEventScope("11")).resolves.toEqual({
+      platform: 5,
+      seatIds: ["101", "102"],
+      uid: 9001,
+    });
+    expect(cache.set).toHaveBeenCalledWith(
+      "chatai:seat-access:11",
+      JSON.stringify({
+        platform: 5,
+        seatIds: ["101", "102"],
+        uid: 9001,
+        version: 1,
+      }),
+      600,
+    );
+  });
+
+  it("caches empty seat-access snapshots from the sub-user tenant scope", async () => {
+    const cache = createCacheMock();
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_user_seat_sub_relation as relation") {
+            return createQueryBuilder([]);
+          }
+
+          if (table === "xy_wap_embed_sub_user") {
+            return createQueryBuilder({
+              platform: 5,
+              uid: 9001,
+            });
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+      cache,
+    );
+
+    await expect(repository.getSeatEventScope("11")).resolves.toEqual({
+      platform: 5,
+      seatIds: [],
+      uid: 9001,
+    });
+    await expect(repository.canAccessSeat("11", "101")).resolves.toBe(false);
+    expect(cache.set).toHaveBeenCalledWith(
+      "chatai:seat-access:11",
+      JSON.stringify({
+        platform: 5,
+        seatIds: [],
+        uid: 9001,
+        version: 1,
+      }),
+      600,
+    );
+  });
+
+  it("does not cache a seat-access snapshot when sub-user tenant scope is missing", async () => {
+    const cache = createCacheMock();
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_user_seat_sub_relation as relation") {
+            return createQueryBuilder([]);
+          }
+
+          if (table === "xy_wap_embed_sub_user") {
+            return createQueryBuilder([]);
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+      cache,
+    );
+
+    await expect(repository.getSeatEventScope("11")).resolves.toBeUndefined();
+    await expect(repository.canAccessSeat("11", "101")).resolves.toBe(false);
+    expect(cache.set).not.toHaveBeenCalled();
   });
 
   it("lists my customers grouped by contact identity and scoped by visible seats", async () => {

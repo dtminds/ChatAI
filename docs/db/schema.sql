@@ -73,8 +73,9 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_logical_session (
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
   KEY idx_logical_session_uid_conversation_status (uid, conversation_id, status),
-  KEY idx_logical_session_uid_agent_started (uid, third_userid, started_at),
+  KEY idx_logical_session_uid_agent_started (uid, third_userid, started_at, id),
   KEY idx_logical_session_status_next_close (status, next_close_at),
+  KEY idx_logical_session_uid_open_live (uid, status, last_message_at, id),
   KEY idx_logical_session_uid_started (uid, started_at),
   KEY idx_logical_session_uid_qa_status_started (uid, qa_status, started_at, id),
   KEY idx_logical_session_current_snapshot (current_snapshot_id, id)
@@ -115,9 +116,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_asset (
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
-  UNIQUE KEY uk_insight_asset_uid_type_key (uid, asset_type, asset_key),
-  KEY idx_insight_asset_uid_last_seen (uid, last_seen_at),
-  KEY idx_insight_asset_uid_type_last_seen (uid, asset_type, last_seen_at)
+  UNIQUE KEY uk_insight_asset_uid_type_key (uid, asset_type, asset_key)
 ) COMMENT='会话洞察资产表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_job (
@@ -143,6 +142,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_job (
   PRIMARY KEY (id),
   UNIQUE KEY uk_insight_job_idempotency (idempotency_key),
   KEY idx_insight_job_claim (target_type, job_type, status, run_after ASC, priority DESC, id ASC),
+  KEY idx_insight_job_expired_lease (status, lease_until, id),
   KEY idx_insight_job_rescan_task (rescan_task_id),
   KEY idx_insight_job_target (uid, target_type, target_id)
 ) COMMENT='会话洞察异步任务表';
@@ -194,7 +194,6 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_rescan_task (
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
   KEY idx_insight_rescan_task_uid_time (uid, create_time),
-  KEY idx_insight_rescan_task_status (status),
   KEY idx_insight_rescan_task_uid_status (uid, status)
 ) COMMENT='会话洞察历史重刷任务表';
 
@@ -261,8 +260,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_session_sentiment (
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
-  UNIQUE KEY uk_sentiment_snapshot_id (snapshot_id),
-  KEY idx_sentiment_polarity (polarity)
+  UNIQUE KEY uk_sentiment_snapshot_id (snapshot_id)
 ) COMMENT='逻辑会话情绪分析结果表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_session_tag (
@@ -275,7 +273,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_session_tag (
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
-  KEY idx_tag_snapshot (snapshot_id),
+  UNIQUE KEY uk_session_tag_snapshot_tag (snapshot_id, tag_id),
   KEY idx_tag_uid_id_snapshot (uid, tag_id, snapshot_id)
 ) COMMENT='逻辑会话标签结果表';
 
@@ -307,8 +305,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_session_qa_finding (
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
-  KEY idx_qa_snapshot (snapshot_id),
-  KEY idx_qa_rule (rule_code, severity)
+  UNIQUE KEY uk_qa_finding_snapshot_rule (snapshot_id, rule_code)
 ) COMMENT='逻辑会话质检命中结果表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_session_entity (
@@ -322,7 +319,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_session_entity (
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
-  KEY idx_session_entity_snapshot (snapshot_id),
+  UNIQUE KEY uk_session_entity_snapshot_entity (snapshot_id, entity_id),
   KEY idx_session_entity_uid_id_snapshot (uid, entity_id, snapshot_id)
 ) COMMENT='逻辑会话实体结果表';
 
@@ -336,7 +333,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_session_intent (
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
-  KEY idx_session_intent_snapshot (snapshot_id),
+  UNIQUE KEY uk_session_intent_snapshot_intent (snapshot_id, intent_id),
   KEY idx_session_intent_uid_id_snapshot (uid, intent_id, snapshot_id)
 ) COMMENT='逻辑会话意图结果表';
 
@@ -378,8 +375,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_session_faq_candidate (
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
   KEY idx_faq_snapshot (snapshot_id),
-  KEY idx_faq_uid_status_snapshot (uid, status, snapshot_id),
-  KEY idx_faq_status (status)
+  KEY idx_faq_uid_status_snapshot (uid, status, snapshot_id)
 ) COMMENT='FAQ机会候选结果表';
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_evidence (

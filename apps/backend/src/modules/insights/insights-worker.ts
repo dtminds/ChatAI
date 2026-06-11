@@ -332,6 +332,9 @@ export type InsightWorkerRepositoryPort = {
     before: Date;
     limit: number;
   }): Promise<{ archivedJobs: number; deletedJobs: number }>;
+  reclaimExpiredRunningJobs?(input: {
+    now: Date;
+  }): Promise<number>;
   claimNextCleanupDisabledInsightsJob(): Promise<CleanupDisabledInsightsJob | undefined>;
   claimNextAnalyzeJob(): Promise<ClaimedAnalyzeJob | undefined>;
   claimNextSyncMessagesJob(): Promise<ClaimedSyncMessagesJob | undefined>;
@@ -509,6 +512,9 @@ export class InsightsWorkerService {
       await this.repository.seedUidMaintenanceJobs({
         limit: this.batchSize,
         runAfter: new Date(),
+      });
+      await this.repository.reclaimExpiredRunningJobs?.({
+        now: new Date(),
       });
       await this.runSyncMessagesJob();
       await this.runCleanupDisabledInsightsJob();

@@ -1011,6 +1011,43 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
     return getAffectedRows(result);
   }
 
+  async reclaimExpiredRunningJobs(input: { now: Date }): Promise<number> {
+    await this.db
+      .updateTable("xy_wap_embed_analysis_run")
+      .set({
+        error_code: "LEASE_EXPIRED",
+        error_message: "Analysis job lease expired before completion",
+        finished_at: input.now,
+        status: "failed",
+        update_time: input.now,
+      })
+      .where("status", "=", "running")
+      .where(sql<boolean>`
+        exists (
+          select 1
+          from xy_wap_embed_insight_job
+          where xy_wap_embed_insight_job.id = xy_wap_embed_analysis_run.job_id
+            and xy_wap_embed_insight_job.status = 'running'
+            and xy_wap_embed_insight_job.lease_until <= ${input.now}
+        )
+      `)
+      .execute();
+
+    const result = await this.db
+      .updateTable("xy_wap_embed_insight_job")
+      .set({
+        lease_until: null,
+        locked_by: null,
+        status: "pending",
+        update_time: input.now,
+      })
+      .where("status", "=", "running")
+      .where("lease_until", "<=", input.now)
+      .execute();
+
+    return getAffectedRows(result);
+  }
+
   async createAnalyzeJob(input: CreateAnalyzeJobInput): Promise<string> {
     const idempotencyKey = [
       input.jobType,
@@ -1283,20 +1320,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       .where("job_type", "=", jobType)
       .where("run_after", "<=", new Date());
 
-    if (jobType === uidMaintenanceJobType) {
-      const now = new Date();
-      query = query.where((eb) =>
-        eb.or([
-          eb("status", "=", "pending"),
-          eb.and([
-            eb("status", "=", "running"),
-            eb("lease_until", "<=", now),
-          ]),
-        ])
-      );
-    } else {
-      query = query.where("status", "=", "pending");
-    }
+    query = query.where("status", "=", "pending");
 
     return query
       .orderBy("priority", "desc")
@@ -1321,20 +1345,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       })
       .where("id", "=", parseNumber(jobId));
 
-    if (jobType === uidMaintenanceJobType) {
-      const now = new Date();
-      query = query.where((eb) =>
-        eb.or([
-          eb("status", "=", "pending"),
-          eb.and([
-            eb("status", "=", "running"),
-            eb("lease_until", "<=", now),
-          ]),
-        ])
-      );
-    } else {
-      query = query.where("status", "=", "pending");
-    }
+    query = query.where("status", "=", "pending");
 
     const result = await query.executeTakeFirst();
 
@@ -1357,15 +1368,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
           "target_id",
           "uid",
         ])
-        .where((eb) =>
-          eb.or([
-            eb("status", "=", "pending"),
-            eb.and([
-              eb("status", "=", "running"),
-              eb("lease_until", "<=", now),
-            ]),
-          ]),
-        )
+        .where("status", "=", "pending")
         .where("target_type", "=", "logical_session")
         .where("job_type", "in", ["analyze_session", "reanalyze_session"])
         .where("run_after", "<=", now);
@@ -1391,15 +1394,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
           update_time: new Date(),
         })
         .where("id", "=", parseNumber(selectedRow.id))
-        .where((eb) =>
-          eb.or([
-            eb("status", "=", "pending"),
-            eb.and([
-              eb("status", "=", "running"),
-              eb("lease_until", "<=", now),
-            ]),
-          ]),
-        )
+        .where("status", "=", "pending")
         .executeTakeFirst();
 
       if (getAffectedRows(result) === 0) {
@@ -1411,10 +1406,6 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
 
     if (!row) {
       return undefined;
-    }
-
-    if (parseNumber(row.attempt_count) > 0) {
-      await this.markExpiredAnalysisRunsFailed(String(row.id));
     }
 
     return {
@@ -1672,19 +1663,6 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       .where(sql<boolean>`status = 'running'`)
       .where(sql<boolean>`total_sessions > 0`)
       .where(sql<boolean>`succeeded_sessions + failed_sessions >= total_sessions`)
-      .executeTakeFirst();
-  }
-
-  private async markExpiredAnalysisRunsFailed(jobId: string) {
-    await this.db.updateTable("xy_wap_embed_analysis_run").set({
-      error_code: "LEASE_EXPIRED",
-      error_message: "Analysis job lease expired before completion",
-      finished_at: new Date(),
-      status: "failed",
-      update_time: new Date(),
-    })
-      .where("job_id", "=", parsePositiveInteger(jobId) ?? -1)
-      .where("status", "=", "running")
       .executeTakeFirst();
   }
 
@@ -2012,7 +1990,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       await this.collectEvidenceRows(input, snapshotId, "sentiment", id, item.evidenceMessageIds, conversationIdBySessionId, evidenceRows);
     }
 
-    for (const item of output.tags) {
+    for (const item of uniqueBy(output.tags, (item) => item.tagId ?? "")) {
       const tagId = parsePositiveInteger(item.tagId ?? "");
       if (tagId == null) {
         validationWarnings.push(`tag ${item.tagCode ?? item.tagName} has no configured id`);
@@ -2029,7 +2007,8 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       await this.collectEvidenceRows(input, snapshotId, "tag", id, item.evidenceMessageIds, conversationIdBySessionId, evidenceRows);
     }
 
-    for (const item of output.qaFindings) {
+    const qaFindings = uniqueBy(output.qaFindings, (item) => item.ruleCode);
+    for (const item of qaFindings) {
       const id = await this.insertAndGetId("xy_wap_embed_session_qa_finding", {
         confidence: item.confidence,
         passed: item.passed ? 1 : 0,
@@ -2042,7 +2021,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       await this.collectEvidenceRows(input, snapshotId, "qa_finding", id, item.evidenceMessageIds, conversationIdBySessionId, evidenceRows);
     }
 
-    for (const item of output.entities) {
+    for (const item of uniqueBy(output.entities, (item) => item.entityId ?? "")) {
       const entityId = parsePositiveInteger(item.entityId ?? "");
       if (entityId == null) {
         validationWarnings.push(`entity ${item.entityName} has no configured id`);
@@ -2060,7 +2039,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       await this.collectEvidenceRows(input, snapshotId, "entity", id, item.evidenceMessageIds, conversationIdBySessionId, evidenceRows);
     }
 
-    for (const item of output.intents) {
+    for (const item of uniqueBy(output.intents, (item) => item.intentId ?? "")) {
       const intentId = parsePositiveInteger(item.intentId ?? "");
       if (intentId == null) {
         validationWarnings.push(`intent ${item.intentCode ?? item.intentLabel} has no configured id`);
@@ -2135,7 +2114,7 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       .updateTable("xy_wap_embed_logical_session")
       .set({
         current_snapshot_id: snapshotId,
-        ...buildQaStatusUpdate(input.job.analysisScope, output.qaFindings),
+        ...buildQaStatusUpdate(input.job.analysisScope, qaFindings),
         status: input.job.mode === "live" ? "open" : "analyzed",
         update_time: new Date(),
       })
@@ -2384,6 +2363,29 @@ function dedupeEvidenceRows(rows: EvidenceInsertRow[]) {
   }
 
   return Array.from(uniqueRows.values());
+}
+
+function uniqueBy<T>(items: T[], getKey: (item: T) => string) {
+  const uniqueItems: T[] = [];
+  const seenKeys = new Set<string>();
+
+  for (const item of items) {
+    const key = getKey(item);
+
+    if (!key) {
+      uniqueItems.push(item);
+      continue;
+    }
+
+    if (seenKeys.has(key)) {
+      continue;
+    }
+
+    seenKeys.add(key);
+    uniqueItems.push(item);
+  }
+
+  return uniqueItems;
 }
 
 function parseNumber(value: Date | number | string | undefined) {

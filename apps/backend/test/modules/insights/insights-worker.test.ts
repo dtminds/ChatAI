@@ -76,6 +76,7 @@ function createRepository(
       archivedJobs: 0,
       deletedJobs: 0,
     })),
+    reclaimExpiredRunningJobs: vi.fn(async () => 0),
     closeSession: vi.fn(async () => undefined),
     closeDisabledOpenSessions: vi.fn(async () => 0),
     createAnalyzeJob: vi.fn(async () => "job-1"),
@@ -221,6 +222,9 @@ describe("InsightsWorkerService", () => {
     expect(repository.seedUidMaintenanceJobs).toHaveBeenCalledWith({
       limit: 50,
       runAfter: expect.any(Date),
+    });
+    expect(repository.reclaimExpiredRunningJobs).toHaveBeenCalledWith({
+      now: expect.any(Date),
     });
     expect(repository.getActiveFeatureConfigs).not.toHaveBeenCalled();
     expect(repository.listIncrementalMessages).toHaveBeenCalledWith({

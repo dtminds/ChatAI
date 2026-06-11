@@ -2,6 +2,136 @@
 
 Manual database changes for the backend should be recorded here.
 
+## 2026-06-11
+
+- Added tenant-scoped logical-session indexes for live-analysis scans, disabled-insight close updates, and future agent-scoped session paging.
+- Moved expired insight-job lease takeover out of claim queries; added `idx_insight_job_expired_lease` for the lease reclaim update.
+- Added snapshot-level uniqueness for tag, entity, intent, and QA finding result rows so duplicate LLM outputs cannot create repeated dimensions.
+- Removed low-value or now-covered secondary indexes from insight asset, result, and rescan tables.
+
+Manual migration for existing databases:
+
+```sql
+ALTER TABLE xy_wap_embed_logical_session
+  DROP KEY idx_logical_session_uid_agent_started,
+  ADD KEY idx_logical_session_uid_agent_started (uid, third_userid, started_at, id),
+  ADD KEY idx_logical_session_uid_open_live (uid, status, last_message_at, id);
+
+ALTER TABLE xy_wap_embed_insight_job
+  ADD KEY idx_insight_job_expired_lease (status, lease_until, id);
+
+ALTER TABLE xy_wap_embed_insight_asset
+  DROP KEY idx_insight_asset_uid_last_seen,
+  DROP KEY idx_insight_asset_uid_type_last_seen;
+
+CREATE TEMPORARY TABLE tmp_insight_duplicate_dimension_rows AS
+SELECT 'tag' AS dimension_type, duplicate_row.id AS duplicate_id, keep_row.keep_id
+FROM xy_wap_embed_session_tag AS duplicate_row
+INNER JOIN (
+  SELECT snapshot_id, tag_id, MIN(id) AS keep_id
+  FROM xy_wap_embed_session_tag
+  GROUP BY snapshot_id, tag_id
+  HAVING COUNT(*) > 1
+) AS keep_row
+  ON keep_row.snapshot_id = duplicate_row.snapshot_id
+  AND keep_row.tag_id = duplicate_row.tag_id
+  AND keep_row.keep_id <> duplicate_row.id
+UNION ALL
+SELECT 'entity' AS dimension_type, duplicate_row.id AS duplicate_id, keep_row.keep_id
+FROM xy_wap_embed_session_entity AS duplicate_row
+INNER JOIN (
+  SELECT snapshot_id, entity_id, MIN(id) AS keep_id
+  FROM xy_wap_embed_session_entity
+  GROUP BY snapshot_id, entity_id
+  HAVING COUNT(*) > 1
+) AS keep_row
+  ON keep_row.snapshot_id = duplicate_row.snapshot_id
+  AND keep_row.entity_id = duplicate_row.entity_id
+  AND keep_row.keep_id <> duplicate_row.id
+UNION ALL
+SELECT 'intent' AS dimension_type, duplicate_row.id AS duplicate_id, keep_row.keep_id
+FROM xy_wap_embed_session_intent AS duplicate_row
+INNER JOIN (
+  SELECT snapshot_id, intent_id, MIN(id) AS keep_id
+  FROM xy_wap_embed_session_intent
+  GROUP BY snapshot_id, intent_id
+  HAVING COUNT(*) > 1
+) AS keep_row
+  ON keep_row.snapshot_id = duplicate_row.snapshot_id
+  AND keep_row.intent_id = duplicate_row.intent_id
+  AND keep_row.keep_id <> duplicate_row.id
+UNION ALL
+SELECT 'qa_finding' AS dimension_type, duplicate_row.id AS duplicate_id, keep_row.keep_id
+FROM xy_wap_embed_session_qa_finding AS duplicate_row
+INNER JOIN (
+  SELECT snapshot_id, rule_code, MIN(id) AS keep_id
+  FROM xy_wap_embed_session_qa_finding
+  GROUP BY snapshot_id, rule_code
+  HAVING COUNT(*) > 1
+) AS keep_row
+  ON keep_row.snapshot_id = duplicate_row.snapshot_id
+  AND keep_row.rule_code = duplicate_row.rule_code
+  AND keep_row.keep_id <> duplicate_row.id;
+
+UPDATE xy_wap_embed_insight_evidence AS evidence
+INNER JOIN tmp_insight_duplicate_dimension_rows AS duplicate_row
+  ON duplicate_row.dimension_type = evidence.dimension_type
+  AND duplicate_row.duplicate_id = evidence.dimension_record_id
+SET evidence.dimension_record_id = duplicate_row.keep_id;
+
+DELETE duplicate_row
+FROM xy_wap_embed_session_tag AS duplicate_row
+INNER JOIN tmp_insight_duplicate_dimension_rows AS duplicate_map
+  ON duplicate_map.dimension_type = 'tag'
+  AND duplicate_map.duplicate_id = duplicate_row.id;
+
+DELETE duplicate_row
+FROM xy_wap_embed_session_entity AS duplicate_row
+INNER JOIN tmp_insight_duplicate_dimension_rows AS duplicate_map
+  ON duplicate_map.dimension_type = 'entity'
+  AND duplicate_map.duplicate_id = duplicate_row.id;
+
+DELETE duplicate_row
+FROM xy_wap_embed_session_intent AS duplicate_row
+INNER JOIN tmp_insight_duplicate_dimension_rows AS duplicate_map
+  ON duplicate_map.dimension_type = 'intent'
+  AND duplicate_map.duplicate_id = duplicate_row.id;
+
+DELETE duplicate_row
+FROM xy_wap_embed_session_qa_finding AS duplicate_row
+INNER JOIN tmp_insight_duplicate_dimension_rows AS duplicate_map
+  ON duplicate_map.dimension_type = 'qa_finding'
+  AND duplicate_map.duplicate_id = duplicate_row.id;
+
+DROP TEMPORARY TABLE tmp_insight_duplicate_dimension_rows;
+
+ALTER TABLE xy_wap_embed_session_tag
+  DROP KEY idx_tag_snapshot,
+  ADD UNIQUE KEY uk_session_tag_snapshot_tag (snapshot_id, tag_id);
+
+ALTER TABLE xy_wap_embed_session_entity
+  DROP KEY idx_session_entity_snapshot,
+  ADD UNIQUE KEY uk_session_entity_snapshot_entity (snapshot_id, entity_id);
+
+ALTER TABLE xy_wap_embed_session_intent
+  DROP KEY idx_session_intent_snapshot,
+  ADD UNIQUE KEY uk_session_intent_snapshot_intent (snapshot_id, intent_id);
+
+ALTER TABLE xy_wap_embed_session_qa_finding
+  DROP KEY idx_qa_snapshot,
+  DROP KEY idx_qa_rule,
+  ADD UNIQUE KEY uk_qa_finding_snapshot_rule (snapshot_id, rule_code);
+
+ALTER TABLE xy_wap_embed_session_sentiment
+  DROP KEY idx_sentiment_polarity;
+
+ALTER TABLE xy_wap_embed_session_faq_candidate
+  DROP KEY idx_faq_status;
+
+ALTER TABLE xy_wap_embed_insight_rescan_task
+  DROP KEY idx_insight_rescan_task_status;
+```
+
 ## 2026-06-01
 
 - Added `xy_wap_embed_*` insight application tables for logical sessions, insight jobs, analysis runs, snapshots, quality/problem resolution, action items, evidence, seed-backed settings, and model provider/profile configuration.
@@ -401,9 +531,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_asset (
   create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
-  UNIQUE KEY uk_insight_asset_uid_type_key (uid, asset_type, asset_key),
-  KEY idx_insight_asset_uid_last_seen (uid, last_seen_at),
-  KEY idx_insight_asset_uid_type_last_seen (uid, asset_type, last_seen_at)
+  UNIQUE KEY uk_insight_asset_uid_type_key (uid, asset_type, asset_key)
 ) COMMENT='会话洞察资产表';
 
 ALTER TABLE xy_wap_embed_logical_session_message

@@ -3364,10 +3364,11 @@ describe("MysqlInsightWorkerRepository", () => {
     expect(builders[0]?.skipLockedCalls).toBe(1);
   });
 
-  it("claims an expired running analysis job for retry", async () => {
+  it("claims only pending analysis jobs after expired leases are reclaimed", async () => {
     const updateExecute = vi.fn(async () => ({ numAffectedRows: 1n }));
     const builders: SelectBuilderStub[] = [];
     const updateTables: string[] = [];
+    const updateBuilders: UpdateBuilderStub[] = [];
     const db = {
       transaction: vi.fn(),
       selectFrom: vi.fn((table: string) => {
@@ -3392,7 +3393,10 @@ describe("MysqlInsightWorkerRepository", () => {
       }),
       updateTable: vi.fn((table: string) => {
         updateTables.push(table);
-        return createUpdateBuilder(updateExecute);
+        return createUpdateBuilder(updateExecute, {
+          onCreate: (builder) => updateBuilders.push(builder),
+          table,
+        });
       }),
     };
     db.transaction.mockReturnValue(createTransactionBuilder(db));
@@ -3409,15 +3413,16 @@ describe("MysqlInsightWorkerRepository", () => {
     });
 
     expect(builders[0]?.whereCalls).toContainEqual(["status", "=", "pending"]);
-    expect(builders[0]?.whereCalls).toContainEqual(["status", "=", "running"]);
-    expect(builders[0]?.whereCalls).toContainEqual([
+    expect(builders[0]?.whereCalls).not.toContainEqual(["status", "=", "running"]);
+    expect(builders[0]?.whereCalls).not.toContainEqual([
       "lease_until",
       "<=",
       expect.any(Date),
     ]);
     expect(builders[0]?.forUpdateCalls).toBe(1);
     expect(builders[0]?.skipLockedCalls).toBe(1);
-    expect(updateTables).toContain("xy_wap_embed_analysis_run");
+    expect(updateTables).not.toContain("xy_wap_embed_analysis_run");
+    expect(updateBuilders).toHaveLength(1);
     expect(updateExecute).toHaveBeenCalled();
   });
 
@@ -3655,7 +3660,7 @@ describe("MysqlInsightWorkerRepository", () => {
     expect(updateExecute).toHaveBeenCalled();
   });
 
-  it("claims expired running uid maintenance jobs for pod handoff", async () => {
+  it("claims only pending uid maintenance jobs after expired leases are reclaimed", async () => {
     const updateExecute = vi.fn(async () => ({ numAffectedRows: 1n }));
     const builders: SelectBuilderStub[] = [];
     const db = {
@@ -3687,13 +3692,53 @@ describe("MysqlInsightWorkerRepository", () => {
     });
 
     expect(builders[0]?.whereCalls).toContainEqual(["status", "=", "pending"]);
-    expect(builders[0]?.whereCalls).toContainEqual(["status", "=", "running"]);
-    expect(builders[0]?.whereCalls).toContainEqual([
+    expect(builders[0]?.whereCalls).not.toContainEqual(["status", "=", "running"]);
+    expect(builders[0]?.whereCalls).not.toContainEqual([
       "lease_until",
       "<=",
       expect.any(Date),
     ]);
     expect(updateExecute).toHaveBeenCalled();
+  });
+
+  it("reclaims expired running jobs back to pending before claim queries", async () => {
+    const updateBuilders: UpdateBuilderStub[] = [];
+    const setCalls: Record<string, unknown>[] = [];
+    const db = {
+      updateTable: vi.fn((table: string) =>
+        createUpdateBuilder(async () => ({ numAffectedRows: 4n }), {
+          onCreate: (builder) => updateBuilders.push(builder),
+          onSet: (values) => setCalls.push(values),
+          table,
+        }),
+      ),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+    const now = new Date("2026-06-11T08:00:00Z");
+
+    await expect(repository.reclaimExpiredRunningJobs({ now })).resolves.toBe(4);
+
+    expect(db.updateTable).toHaveBeenCalledWith("xy_wap_embed_insight_job");
+    expect(db.updateTable).toHaveBeenCalledWith("xy_wap_embed_analysis_run");
+    const jobUpdate = updateBuilders.find((builder) => builder.table === "xy_wap_embed_insight_job");
+    const runUpdate = updateBuilders.find((builder) => builder.table === "xy_wap_embed_analysis_run");
+    expect(jobUpdate?.whereCalls).toContainEqual(["status", "=", "running"]);
+    expect(jobUpdate?.whereCalls).toContainEqual(["lease_until", "<=", now]);
+    expect(setCalls[0]).toMatchObject({
+      error_code: "LEASE_EXPIRED",
+      error_message: "Analysis job lease expired before completion",
+      finished_at: now,
+      status: "failed",
+      update_time: now,
+    });
+    expect(runUpdate?.whereCalls).toContainEqual(["status", "=", "running"]);
+    expect(runUpdate?.whereRawCalls.join("\n")).toContain("exists");
+    expect(setCalls[1]).toMatchObject({
+      lease_until: null,
+      locked_by: null,
+      status: "pending",
+      update_time: now,
+    });
   });
 
   it("reschedules uid maintenance jobs back to pending after a successful pass", async () => {
@@ -4725,6 +4770,139 @@ describe("MysqlInsightWorkerRepository", () => {
         values: expect.objectContaining({ qa_status: -1 }),
       }),
     );
+  });
+
+  it("deduplicates repeated dimension records within one analysis snapshot", async () => {
+    const insertedValues: Array<{ table: string; values: Record<string, unknown> }> = [];
+    const db = {
+      insertInto: vi.fn((table: string) =>
+        createInsertBuilder(async () => ({ insertId: 7001 }), {
+          onValues: (values) => {
+            insertedValues.push({
+              table,
+              values: values as Record<string, unknown>,
+            });
+          },
+          table,
+        })
+      ),
+      selectFrom: vi.fn((table: string) => {
+        if (table === "xy_wap_embed_logical_session") {
+          return createSelectBuilder([{ conversation_id: 301 }], table);
+        }
+
+        return createSelectBuilder([], table);
+      }),
+      updateTable: vi.fn(() =>
+        createUpdateBuilder(async () => ({ numAffectedRows: 1n })),
+      ),
+    };
+    const repository = new MysqlInsightWorkerRepository(db as never);
+
+    await repository.saveAnalysisResult({
+      job: {
+        analysisScope: "all",
+        attemptCount: 1,
+        jobId: "job-1",
+        maxAttempts: 3,
+        mode: "final",
+        sessionId: "501",
+        uid: 9001,
+      },
+      output: {
+        actionItems: [],
+        entities: [
+          {
+            confidence: 0.8,
+            entityId: "41",
+            entityName: "退款",
+            evidenceMessageIds: ["9001"],
+            sentiment: "negative",
+          },
+          {
+            confidence: 0.6,
+            entityId: "41",
+            entityName: "退款",
+            evidenceMessageIds: ["9002"],
+            sentiment: "negative",
+          },
+        ],
+        faqCandidates: [],
+        intents: [
+          {
+            confidence: 0.7,
+            evidenceMessageIds: ["9001"],
+            intentCode: "refund",
+            intentId: "31",
+            intentLabel: "退款咨询",
+          },
+          {
+            confidence: 0.5,
+            evidenceMessageIds: ["9002"],
+            intentCode: "refund",
+            intentId: "31",
+            intentLabel: "退款咨询",
+          },
+        ],
+        problemResolution: {
+          confidence: 0.8,
+          evidence: [],
+          evidenceMessageIds: ["9001"],
+          problemDetected: true,
+          problemSummary: "客户咨询退款",
+          resolutionStatus: "unresolved",
+        },
+        qaFindings: [
+          {
+            confidence: 0.9,
+            evidenceMessageIds: ["9001"],
+            passed: false,
+            reason: "未说明退款时效",
+            ruleCode: "refund_sla",
+            ruleName: "退款时效说明",
+            severity: "high",
+          },
+          {
+            confidence: 0.4,
+            evidenceMessageIds: ["9002"],
+            passed: false,
+            reason: "重复输出",
+            ruleCode: "refund_sla",
+            ruleName: "退款时效说明",
+            severity: "high",
+          },
+        ],
+        sentiment: [],
+        summary: {
+          sessionTitle: "退款咨询",
+          text: "客户咨询退款时效",
+        },
+        tags: [
+          {
+            confidence: 0.8,
+            evidenceMessageIds: ["9001"],
+            tagCode: "refund",
+            tagId: "21",
+            tagName: "退款",
+          },
+          {
+            confidence: 0.5,
+            evidenceMessageIds: ["9002"],
+            tagCode: "refund",
+            tagId: "21",
+            tagName: "退款",
+          },
+        ],
+      },
+      runId: "6001",
+      sourceMessageHighWatermark: "9002",
+      validationWarnings: [],
+    });
+
+    expect(insertedValues.filter((entry) => entry.table === "xy_wap_embed_session_tag")).toHaveLength(1);
+    expect(insertedValues.filter((entry) => entry.table === "xy_wap_embed_session_entity")).toHaveLength(1);
+    expect(insertedValues.filter((entry) => entry.table === "xy_wap_embed_session_intent")).toHaveLength(1);
+    expect(insertedValues.filter((entry) => entry.table === "xy_wap_embed_session_qa_finding")).toHaveLength(1);
   });
 
   it("marks logical sessions failed when published QA findings include failures", async () => {
@@ -5979,7 +6157,7 @@ function createUpdateBuilder(
     },
     where: (...args: unknown[]) => {
       if (args.length === 1) {
-        builder.whereRawCalls.push(String(args[0]));
+        builder.whereRawCalls.push(readRawSql(args[0]));
       }
       builder.whereCalls.push(args);
       return builder;

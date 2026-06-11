@@ -837,9 +837,8 @@ describe("ChatWorkbenchPage composer flows", () => {
     });
   });
 
-  it("shows a dialog before switching conversations when the composer has unsent text", async () => {
+  it("saves composer draft when switching conversations without a confirmation dialog", async () => {
     const user = userEvent.setup();
-    const confirmSpy = vi.spyOn(window, "confirm");
 
     renderChatWorkbenchPage();
 
@@ -847,36 +846,41 @@ describe("ChatWorkbenchPage composer flows", () => {
     await pasteIntoComposer(user, composer, "未发送内容");
     await user.click(screen.getByRole("button", { name: /睿白鸽/ }));
 
-    expect(await screen.findByRole("alertdialog", { name: "切换会话？" }))
-      .toBeInTheDocument();
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-002");
+    });
     expect(
-      screen.getByText("切换后，输入框中的未发送内容会被清空。"),
-    ).toBeInTheDocument();
-    expect(confirmSpy).not.toHaveBeenCalled();
-    expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-001");
-    expect(composer).toHaveTextContent("未发送内容");
-
-    confirmSpy.mockRestore();
+      screen.queryByRole("alertdialog", { name: "切换会话？" }),
+    ).not.toBeInTheDocument();
+    expect(composer).toHaveTextContent("");
+    expect(
+      useWorkbenchStore.getState().composerDraftsByConversationId["conv-001"]?.draft,
+    ).toBe("未发送内容");
+    const conv001Card = screen.getByRole("button", { name: /丹阳草莓/ });
+    expect(
+      within(conv001Card).getByTestId("conversation-preview"),
+    ).toHaveTextContent("[草稿]未发送内容");
   });
 
-  it("clears composer content after confirming a conversation switch", async () => {
+  it("restores saved composer draft when switching back to the conversation", async () => {
     const user = userEvent.setup();
-    const confirmSpy = vi.spyOn(window, "confirm");
 
     renderChatWorkbenchPage();
 
     const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
-    await pasteIntoComposer(user, composer, "切换后清空");
+    await pasteIntoComposer(user, composer, "切换后恢复");
     await user.click(screen.getByRole("button", { name: /睿白鸽/ }));
-    await user.click(await screen.findByRole("button", { name: "确认切换" }));
 
     await waitFor(() => {
       expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-002");
     });
-    expect(composer).toHaveTextContent("");
-    expect(confirmSpy).not.toHaveBeenCalled();
 
-    confirmSpy.mockRestore();
+    await user.click(screen.getByRole("button", { name: /丹阳草莓/ }));
+
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-001");
+    });
+    expect(composer).toHaveTextContent("切换后恢复");
   });
 
   it("does not restore composer focus after switching conversations while sending", async () => {
@@ -902,7 +906,6 @@ describe("ChatWorkbenchPage composer flows", () => {
     });
 
     await user.click(screen.getByRole("button", { name: /睿白鸽/ }));
-    await user.click(await screen.findByRole("button", { name: "确认切换" }));
     await waitFor(() => {
       expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-002");
     });
@@ -926,7 +929,7 @@ describe("ChatWorkbenchPage composer flows", () => {
     expect(composer).not.toHaveFocus();
   });
 
-  it("shows a dialog before switching conversations when a quote is selected", async () => {
+  it("saves quoted composer draft when switching conversations", async () => {
     const user = userEvent.setup();
 
     renderChatWorkbenchPage();
@@ -940,9 +943,15 @@ describe("ChatWorkbenchPage composer flows", () => {
     await user.click(screen.getByRole("menuitem", { name: "引用" }));
     await user.click(screen.getByRole("button", { name: /睿白鸽/ }));
 
-    expect(await screen.findByRole("alertdialog", { name: "切换会话？" }))
-      .toBeInTheDocument();
-    expect(screen.getByTestId("composer-quote-preview")).toBeInTheDocument();
-    expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-001");
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-002");
+    });
+    expect(
+      screen.queryByRole("alertdialog", { name: "切换会话？" }),
+    ).not.toBeInTheDocument();
+    expect(
+      useWorkbenchStore.getState().composerDraftsByConversationId["conv-001"]
+        ?.quotedMessage,
+    ).toBeTruthy();
   });
 });

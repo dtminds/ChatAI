@@ -1050,12 +1050,15 @@ export function SmartReplyTriggerIcon({
 export function SmartReplyInlineProcessingHint({ label }: { label: string }) {
   return (
     <div
-      className="ml-[16px] flex shrink-0 items-center gap-1 text-muted-foreground"
+      className="flex shrink-0 items-center text-muted-foreground"
       data-testid="smart-reply-inline-processing"
       role="status"
     >
-      <Spinner variant="classic" size={14} />
-      <p className="text-[12px] leading-4">{label}</p>
+      <p className="text-[13px] leading-5">
+        <ShinyText duration={1.15} shimmerWidth={44}>
+          {label}
+        </ShinyText>
+      </p>
     </div>
   );
 }

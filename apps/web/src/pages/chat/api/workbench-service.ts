@@ -1446,6 +1446,8 @@ function buildContent(message: Message) {
     case "image":
       return {
         alt: message.content.alt,
+        downloadStatus: message.content.downloadStatus,
+        fileSerialNo: message.content.fileSerialNo,
         height: message.content.height,
         imageUrl: message.content.imageUrl,
         width: message.content.width,

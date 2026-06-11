@@ -195,6 +195,7 @@ function ChatWorkbenchContent({
     me,
     messagePaginationByConversationId,
     messagesByConversationId,
+    smartReplyAutoPendingMessageKeysByConversationId,
     smartReplyByMessageIdByConversationId,
     smartReplyHiddenMessageKeysByConversationId,
     pollState,
@@ -1350,6 +1351,13 @@ function ChatWorkbenchContent({
                   hasMoreHistory={hasMoreHistory}
                   historyLoadLabel={historyLoadLabel}
                   messages={activeMessages}
+                  smartReplyAutoPendingByMessageId={
+                    activeConversationId
+                      ? smartReplyAutoPendingMessageKeysByConversationId[
+                          activeConversationId
+                        ]
+                      : undefined
+                  }
                   smartReplyByMessageId={activeSmartReplyByMessageId}
                   messageViewportRef={messageViewportRef}
                   quotedMessage={quotedMessage}

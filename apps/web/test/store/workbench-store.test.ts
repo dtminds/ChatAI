@@ -39,6 +39,22 @@ function createDeferred<T = void>() {
   };
 }
 
+async function waitForStoreAssertion(assertion: () => void) {
+  let lastError: unknown;
+
+  for (let index = 0; index < 20; index += 1) {
+    try {
+      assertion();
+      return;
+    } catch (error) {
+      lastError = error;
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    }
+  }
+
+  throw lastError;
+}
+
 function getSeedMessageIdAt(conversationId: string, index: number) {
   return seedMessages[conversationId]?.[index]?.id;
 }
@@ -599,13 +615,14 @@ describe("useWorkbenchStore", () => {
   it("automatically creates a smart reply task for the latest customer message without a recommendation", async () => {
     const baseService = createMockWorkbenchService();
     const observedAutoRequests: Array<{ conversationId: string; msgId: number }> = [];
+    const autoRequest = createDeferred<{ id: string }>();
 
     setWorkbenchService({
       ...baseService,
       async requestSmartReplyAutoGeneralAnswer(request) {
         observedAutoRequests.push(request);
 
-        return { id: "88" };
+        return autoRequest.promise;
       },
       async pollSmartReplies() {
         return { suggestions: [] };
@@ -621,9 +638,30 @@ describe("useWorkbenchStore", () => {
       },
     ]);
     expect(
-      useWorkbenchStore.getState().smartReplyPendingMessageKeysByConversationId["conv-001"],
+      useWorkbenchStore.getState().smartReplyAutoPendingMessageKeysByConversationId[
+        "conv-001"
+      ],
     ).toMatchObject({
       "9": true,
+    });
+    expect(
+      useWorkbenchStore.getState().smartReplyPendingMessageKeysByConversationId["conv-001"],
+    ).not.toHaveProperty("9");
+
+    autoRequest.resolve({ id: "88" });
+    await waitForStoreAssertion(() => {
+      expect(
+        useWorkbenchStore.getState().smartReplyAutoPendingMessageKeysByConversationId[
+          "conv-001"
+        ],
+      ).not.toHaveProperty("9");
+      expect(
+        useWorkbenchStore.getState().smartReplyPendingMessageKeysByConversationId[
+          "conv-001"
+        ],
+      ).toMatchObject({
+        "9": true,
+      });
     });
   });
 
@@ -751,7 +789,135 @@ describe("useWorkbenchStore", () => {
     ]);
   });
 
-  it("keeps skipped smart reply auto-generation as a dismissible local suggestion for incomplete content", async () => {
+  it("waits for a customer image download to finish before auto-generating smart reply", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedAutoRequests: Array<{ conversationId: string; msgId: number }> = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          messages: [
+            ...page.messages,
+            {
+              content: {
+                alt: "产品图片",
+                downloadStatus: "ing",
+                imageUrl: "https://b5.bokr.com.cn/chat-images/product.png",
+              },
+              contentType: "image",
+              conversationId: "conv-001",
+              createdAt: 1_778_400_011_000,
+              customerId: "cust-001",
+              messageId: "img-11",
+              seatId: "drc",
+              senderType: "customer",
+              seq: 11,
+              status: "sent",
+            },
+          ],
+        };
+      },
+      async requestSmartReplyAutoGeneralAnswer(request) {
+        observedAutoRequests.push(request);
+
+        return { id: "88" };
+      },
+      async pollSmartReplies() {
+        return { suggestions: [] };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+
+    expect(observedAutoRequests).toEqual([]);
+
+    useWorkbenchStore.getState().updateMessageDownloadContent("conv-001", "img-11", {
+      downloadStatus: "finished",
+    });
+
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+
+    expect(observedAutoRequests).toEqual([
+      {
+        conversationId: "conv-001",
+        msgId: 11,
+      },
+    ]);
+  });
+
+  it("does not auto-generate smart reply for a polled customer image before its url is ready", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedAutoRequests: Array<{ conversationId: string; msgId: number }> = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        const response = await baseService.poll(request);
+
+        if (request.activeConversationId !== "conv-001") {
+          return response;
+        }
+
+        return {
+          ...response,
+          activeConversationMessages: [
+            {
+              content: {
+                alt: "图片",
+                downloadStatus: "ing",
+                imageUrl: "",
+              },
+              contentType: "image",
+              conversationId: "conv-001",
+              createdAt: 1_778_400_011_000,
+              customerId: "cust-001",
+              messageId: "img-11",
+              seatId: "drc",
+              senderType: "customer",
+              seq: 11,
+              status: "sent",
+            },
+          ],
+        };
+      },
+      async requestSmartReplyAutoGeneralAnswer(request) {
+        observedAutoRequests.push(request);
+
+        return { id: "88" };
+      },
+      async pollSmartReplies() {
+        return { suggestions: [] };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    observedAutoRequests.length = 0;
+
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(observedAutoRequests).toEqual([]);
+    expect(
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].find(
+        (message) => message.id === "img-11",
+      )?.content,
+    ).toMatchObject({
+      downloadStatus: "ing",
+      imageUrl: "",
+      type: "image",
+    });
+  });
+
+  it("shows the skipped smart reply card after auto preview detects incomplete content", async () => {
     vi.setSystemTime(new Date("2026-05-29T12:00:00+08:00"));
     const baseService = createMockWorkbenchService();
     const observedAutoRequests: Array<{ conversationId: string; msgId: number }> = [];
@@ -801,6 +967,11 @@ describe("useWorkbenchStore", () => {
       useWorkbenchStore.getState().smartReplyPendingMessageKeysByConversationId["conv-001"],
     ).not.toHaveProperty("9");
     expect(
+      useWorkbenchStore.getState().smartReplyAutoPendingMessageKeysByConversationId[
+        "conv-001"
+      ],
+    ).not.toHaveProperty("9");
+    expect(
       useWorkbenchStore.getState().smartReplyHiddenMessageKeysByConversationId[
         "conv-001"
       ],
@@ -824,8 +995,6 @@ describe("useWorkbenchStore", () => {
       },
     ]);
 
-    useWorkbenchStore.getState().dismissSmartReply(skippedMessage!);
-
     expect(
       useWorkbenchStore.getState().smartReplyByMessageIdByConversationId["conv-001"]?.[
         "9"
@@ -838,9 +1007,7 @@ describe("useWorkbenchStore", () => {
       useWorkbenchStore.getState().smartReplyHiddenMessageKeysByConversationId[
         "conv-001"
       ],
-    ).toMatchObject({
-      "9": true,
-    });
+    ).not.toHaveProperty("9");
 
     await useWorkbenchStore
       .getState()
@@ -1719,9 +1886,10 @@ describe("useWorkbenchStore", () => {
     });
 
     await useWorkbenchStore.getState().initializeWorkbench();
-
-    vi.advanceTimersByTime(30_000);
     await Promise.resolve();
+    await Promise.resolve();
+
+    await vi.advanceTimersByTimeAsync(30_000);
 
     const suggestion =
       useWorkbenchStore.getState().smartReplyByMessageIdByConversationId["conv-001"]?.[
@@ -1735,6 +1903,54 @@ describe("useWorkbenchStore", () => {
     });
     expect(
       useWorkbenchStore.getState().smartReplyPendingMessageKeysByConversationId["conv-001"],
+    ).not.toHaveProperty("9");
+
+    vi.useRealTimers();
+  });
+
+  it("marks auto smart reply preview failed when auto request never returns", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-29T12:00:00+08:00"));
+    const baseService = createMockWorkbenchService();
+    const autoRequest = createDeferred<{ id: string }>();
+
+    setWorkbenchService({
+      ...baseService,
+      async requestSmartReplyAutoGeneralAnswer() {
+        return autoRequest.promise;
+      },
+      async pollSmartReplies() {
+        return { suggestions: [] };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    expect(
+      useWorkbenchStore.getState().smartReplyAutoPendingMessageKeysByConversationId[
+        "conv-001"
+      ],
+    ).toMatchObject({
+      "9": true,
+    });
+
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    const state = useWorkbenchStore.getState();
+    const suggestion = state.smartReplyByMessageIdByConversationId["conv-001"]?.[
+      "9"
+    ];
+
+    expect(suggestion).toMatchObject({
+      failReason: "智能回复生成超时，请稍后重试",
+      generateStatus: 3,
+      pollComplete: true,
+    });
+    expect(
+      state.smartReplyAutoPendingMessageKeysByConversationId["conv-001"],
+    ).not.toHaveProperty("9");
+    expect(
+      state.smartReplyPendingMessageKeysByConversationId["conv-001"],
     ).not.toHaveProperty("9");
 
     vi.useRealTimers();

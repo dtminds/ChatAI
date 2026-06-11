@@ -377,11 +377,17 @@ function parseMessageContent(
 
   switch (msgtype) {
     case "image":
-    case "emotion":
+    case "emotion": {
+      const downloadStatus = readDownloadStatus(parsed);
+      const fileSerialNo = readStringField(parsed, "fileSerialNo");
+
       return {
         alt: "图片",
+        ...(downloadStatus ? { downloadStatus } : {}),
+        ...(fileSerialNo ? { fileSerialNo } : {}),
         imageUrl: normalizeMediaAssetUrl(readStringField(parsed, "fileUrl")),
       };
+    }
     case "voice":
       return {
         audioUrl: normalizeMediaAssetUrl(readStringField(parsed, "fileUrl")),

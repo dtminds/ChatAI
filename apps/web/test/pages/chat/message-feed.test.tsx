@@ -342,6 +342,28 @@ describe("message feed row actions", () => {
     expect(screen.getByTestId("smart-reply-card")).toBeInTheDocument();
   });
 
+  it("shows a compact inline spinner instead of a card while auto smart reply is being previewed", () => {
+    render(
+      <MessageRow
+        isSmartReplyAutoPending
+        message={{
+          content: { text: "客户想了解产品", type: "text" },
+          conversationId: "conv-1",
+          id: "msg-customer-1",
+          role: "customer",
+          sender: { id: "cus-1", name: "客户甲" },
+          sentAt: "2026-05-25T10:00:00+08:00",
+          seq: 12,
+          status: "sent",
+        } as ChatMessage}
+      />,
+    );
+
+    expect(screen.getByTestId("smart-reply-inline-processing")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("正在生成话术推荐");
+    expect(screen.queryByTestId("smart-reply-card")).not.toBeInTheDocument();
+  });
+
   it("dismisses the smart reply card so the avatar recommendation action can be used again", async () => {
     const user = userEvent.setup();
     const onDismissSmartReply = vi.fn();

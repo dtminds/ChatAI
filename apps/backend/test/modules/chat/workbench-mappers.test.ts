@@ -575,6 +575,27 @@ describe("workbench MySQL mappers", () => {
     });
   });
 
+  it("maps image transfer metadata from audit message content", () => {
+    expect(
+      mapMessageRow(messageRow({
+        content: JSON.stringify({
+          downloadStatus: "ing",
+          fileSerialNo: "serial-image-001",
+          fileUrl: "",
+        }),
+        msgtype: "image",
+      })),
+    ).toMatchObject({
+      content: {
+        alt: "图片",
+        downloadStatus: "ing",
+        fileSerialNo: "serial-image-001",
+        imageUrl: "",
+      },
+      contentType: "image",
+    });
+  });
+
   it("maps video transfer metadata from audit message content", () => {
     expect(
       mapMessageRow(messageRow({

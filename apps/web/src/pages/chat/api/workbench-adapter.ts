@@ -143,7 +143,10 @@ export function adaptMessage(
   const isAgent = dto.senderType === "agent";
   const customer = customerProfilesById[dto.customerId];
   const account = accountsById[dto.seatId];
-  const content = adaptChatMessageContent(dto.contentType, dto.content);
+  const content = adaptChatMessageContent(
+    dto.contentType,
+    mergeTopLevelDownloadMetadata(dto),
+  );
   const isOwnMessage = isGroupConversation
     ? dto.thirdFromId === dto.thirdUserId
     : isAgent;
@@ -265,6 +268,8 @@ function adaptChatMessageContent(
     case "emotion":
       return {
         alt: String(content.alt ?? ""),
+        downloadStatus: asDownloadStatus(content.downloadStatus),
+        fileSerialNo: asOptionalString(content.fileSerialNo),
         height: asOptionalNumber(content.height),
         imageUrl: String(content.imageUrl ?? ""),
         type: "image",
@@ -381,6 +386,36 @@ function adaptChatMessageContent(
         type: "text",
       };
   }
+}
+
+function mergeTopLevelDownloadMetadata(
+  dto: WorkbenchMessageDto,
+): Record<string, unknown> {
+  const topLevelMetadata = dto as WorkbenchMessageDto & {
+    downloadStatus?: unknown;
+    fileSerialNo?: unknown;
+    fileUrl?: unknown;
+    fileUrlExpireTime?: unknown;
+  };
+  const content = { ...dto.content };
+
+  if (content.downloadStatus === undefined) {
+    content.downloadStatus = topLevelMetadata.downloadStatus;
+  }
+
+  if (content.fileSerialNo === undefined) {
+    content.fileSerialNo = topLevelMetadata.fileSerialNo;
+  }
+
+  if (content.fileUrl === undefined) {
+    content.fileUrl = topLevelMetadata.fileUrl;
+  }
+
+  if (content.fileUrlExpireTime === undefined) {
+    content.fileUrlExpireTime = topLevelMetadata.fileUrlExpireTime;
+  }
+
+  return content;
 }
 
 function adaptQuotedMessagePreview(value: unknown): QuotedMessagePreviewContent | undefined {

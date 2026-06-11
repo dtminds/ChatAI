@@ -121,6 +121,8 @@ export type ImageMessageContent = {
   type: "image";
   imageUrl: string;
   alt: string;
+  downloadStatus?: MessageFileDownloadStatus;
+  fileSerialNo?: string;
   variant?: "image" | "emotion";
   width?: number;
   height?: number;

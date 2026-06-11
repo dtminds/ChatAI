@@ -3,7 +3,10 @@ import {
   adaptConversation,
   adaptMessage,
 } from "@/pages/chat/api/workbench-adapter";
-import type { WorkbenchConversationSummaryDto } from "@chatai/contracts";
+import type {
+  WorkbenchConversationSummaryDto,
+  WorkbenchMessageDto,
+} from "@chatai/contracts";
 import type { Account, CustomerProfile, EmployeeProfile } from "@/pages/chat/chat-types";
 
 describe("workbench adapter", () => {
@@ -385,6 +388,56 @@ describe("adaptMessage", () => {
       },
       id: "message-1",
       seq: 1,
+    });
+  });
+
+  it("adapts image download status", () => {
+    expect(
+      adaptMessage(
+        {
+          ...messageDto,
+          content: {
+            alt: "图片",
+            downloadStatus: "ing",
+            imageUrl: "https://b5.bokr.com.cn/chat-images/photo.png",
+          },
+          contentType: "image",
+        },
+        customerProfilesById,
+        accountsById,
+        me,
+      ),
+    ).toMatchObject({
+      content: {
+        downloadStatus: "ing",
+        imageUrl: "https://b5.bokr.com.cn/chat-images/photo.png",
+        type: "image",
+      },
+    });
+  });
+
+  it("adapts top-level image download status", () => {
+    expect(
+      adaptMessage(
+        {
+          ...messageDto,
+          content: {
+            alt: "图片",
+            imageUrl: "",
+          },
+          contentType: "image",
+          downloadStatus: "ing",
+        } as WorkbenchMessageDto,
+        customerProfilesById,
+        accountsById,
+        me,
+      ),
+    ).toMatchObject({
+      content: {
+        downloadStatus: "ing",
+        imageUrl: "",
+        type: "image",
+      },
     });
   });
 

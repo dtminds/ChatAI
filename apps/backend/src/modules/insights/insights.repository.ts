@@ -517,8 +517,8 @@ export class InsightsRepository implements InsightsRepositoryPort {
 
     return {
       enabledIntentCount: Number(enabledIntentResult?.count ?? 0),
-      intentLimit: 20,
-      intentSoftLimit: 15,
+      intentLimit: 15,
+      intentSoftLimit: 12,
       enabledLabelCount: Number(enabledLabelResult?.count ?? 0),
       labelLimit: 20,
       labelSoftLimit: 15,
@@ -4735,7 +4735,7 @@ function getBusinessSnapshotTopicLimit(
   dimension: BusinessTopicDefinition["dimension"],
 ): number {
   if (dimension === "intent") {
-    return 20;
+    return 15;
   }
 
   return 10;

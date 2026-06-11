@@ -597,8 +597,8 @@ describe("insights DTOs", () => {
     expect(
       Value.Check(InsightSettingsSummaryResponseSchema, {
         enabledIntentCount: 2,
-        intentLimit: 20,
-        intentSoftLimit: 15,
+        intentLimit: 15,
+        intentSoftLimit: 12,
         enabledLabelCount: 3,
         labelLimit: 20,
         labelSoftLimit: 15,

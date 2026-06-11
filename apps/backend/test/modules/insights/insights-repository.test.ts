@@ -2637,7 +2637,7 @@ describe("InsightsRepository", () => {
     expect(intentQuery?.selectRawCalls.join("\n")).toContain(
       "topic.intent_label as name",
     );
-    expect(intentQuery?.limitCalls).toEqual([20]);
+    expect(intentQuery?.limitCalls).toEqual([15]);
     const intentTrendQuery = builders[3];
     expect(intentTrendQuery?.whereCalls).toContainEqual([
       "topic.intent_id",

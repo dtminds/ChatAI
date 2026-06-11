@@ -1000,8 +1000,8 @@ function installInsightMocks() {
     enabledIntentCount: mockInsightSettings.intentConfigs.filter(
       (item) => item.status === 1,
     ).length,
-    intentLimit: 20,
-    intentSoftLimit: 15,
+    intentLimit: 15,
+    intentSoftLimit: 12,
     enabledLabelCount: mockInsightSettings.labelConfigs.filter(
       (item) => item.status === 1,
     ).length,
@@ -3464,7 +3464,7 @@ describe("conversation insights pages", () => {
     expect(cards.map((card) => card.textContent)).toEqual([
       "总开关未开启",
       "智能创建待办已开启",
-      "智能意图识别已开启（2 / 20）",
+      "智能意图识别已开启（2 / 15）",
       "智能质检已开启（1 / 10）",
       "智能标签已开启（3 / 20）",
       "智能实体识别已开启（2 / 20）",
@@ -4142,8 +4142,8 @@ describe("conversation insights pages", () => {
       enabledIntentCount: mockInsightSettings.intentConfigs.filter(
         (item) => item.status === 1,
       ).length,
-      intentLimit: 20,
-      intentSoftLimit: 15,
+      intentLimit: 15,
+      intentSoftLimit: 12,
       enabledLabelCount: mockInsightSettings.labelConfigs.filter(
         (item) => item.status === 1,
       ).length,
@@ -4212,8 +4212,8 @@ describe("conversation insights pages", () => {
       enabledIntentCount: mockInsightSettings.intentConfigs.filter(
         (item) => item.status === 1,
       ).length,
-      intentLimit: 20,
-      intentSoftLimit: 15,
+      intentLimit: 15,
+      intentSoftLimit: 12,
       enabledLabelCount: mockInsightSettings.labelConfigs.filter(
         (item) => item.status === 1,
       ).length,

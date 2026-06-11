@@ -446,7 +446,7 @@ const maxOverviewPageSize = 100;
 const defaultOverviewRangeDays = 30;
 const insightConfigLimitRules: Record<InsightConfigLimitType, InsightConfigLimitRule> = {
   entityDictionary: { hardLimit: 20, softLimit: 15 },
-  intentConfigs: { hardLimit: 20, softLimit: 15 },
+  intentConfigs: { hardLimit: 15, softLimit: 12 },
   labelConfigs: { hardLimit: 20, softLimit: 15 },
   qaRuleConfigs: { hardLimit: 10, softLimit: 8 },
 };

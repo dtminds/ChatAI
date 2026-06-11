@@ -711,8 +711,8 @@ function createRepository(
       entitySoftLimit: 15,
       insightEnabled: false,
       intentEnabled: true,
-      intentLimit: 20,
-      intentSoftLimit: 15,
+      intentLimit: 15,
+      intentSoftLimit: 12,
       labelEnabled: true,
       labelLimit: 20,
       labelSoftLimit: 15,
@@ -2102,7 +2102,7 @@ describe("InsightsService", () => {
       details: {
         configType: "intentConfigs",
         currentEnabled: 20,
-        limit: 20,
+        limit: 15,
       },
     });
   });

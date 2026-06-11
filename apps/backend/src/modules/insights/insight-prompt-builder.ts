@@ -529,7 +529,7 @@ function normalizeContext(context: InsightPromptContext) {
     intentConfigs: context.intentConfigs
       .slice()
       .sort((left, right) => left.weight - right.weight)
-      .slice(0, 20)
+      .slice(0, 15)
       .map((item) => ({
         description: truncatePromptText(item.description, PROMPT_LIMITS.description),
         id: item.id,

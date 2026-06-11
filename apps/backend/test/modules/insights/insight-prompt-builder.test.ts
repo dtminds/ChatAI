@@ -325,7 +325,7 @@ describe("insight prompt builder", () => {
     });
 
     const payload = JSON.parse(prompt[1]?.content ?? "{}");
-    expect(payload.tenantContext.intentConfigs).toHaveLength(20);
+    expect(payload.tenantContext.intentConfigs).toHaveLength(15);
     expect(payload.tenantContext.labelConfigs).toHaveLength(20);
     expect(payload.tenantContext.qaRuleConfigs).toHaveLength(10);
     expect(payload.tenantContext.entityDictionary).toHaveLength(20);

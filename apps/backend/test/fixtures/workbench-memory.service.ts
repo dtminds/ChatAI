@@ -56,6 +56,7 @@ import type {
   type WorkbenchMaterialCollectionCreateRequest,
   type WorkbenchMaterialCollectionCreateResponse,
   type WorkbenchMaterialCollectionGroupCreateRequest,
+  type WorkbenchMaterialCollectionGroupCreateResponse,
   type WorkbenchMaterialCollectionGroupDto,
   type WorkbenchMaterialCollectionGroupUpdateRequest,
   type WorkbenchMaterialCollectionItemDto,
@@ -173,6 +174,16 @@ export function createMemoryWorkbenchService() {
       _subUserId: string,
       request: WorkbenchMaterialCollectionCreateRequest,
     ): WorkbenchMaterialCollectionCreateResponse {
+      if (
+        request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION &&
+        (request.groupId === undefined || request.groupId === 0 || request.groupId === "0")
+      ) {
+        return {
+          success: false,
+          errorMsg: "请选择分组",
+        };
+      }
+
       const item = buildMemoryMaterialItem(state, request);
       state.materialItems = [
         item,
@@ -213,18 +224,19 @@ export function createMemoryWorkbenchService() {
     createMaterialGroup(
       _subUserId: string,
       request: WorkbenchMaterialCollectionGroupCreateRequest,
-    ): WorkbenchMaterialCollectionOkResponse {
+    ): WorkbenchMaterialCollectionGroupCreateResponse {
       if (request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION) {
         throw new BadRequestError("MATERIAL_GROUP_UNSUPPORTED", "表情不支持自定义分组");
       }
 
-      state.materialGroups.unshift({
+      const group = {
         bizType: request.bizType,
         id: String(state.nextId++),
         sort: Date.now(),
         title: request.title,
-      });
-      return { ok: true };
+      };
+      state.materialGroups.unshift(group);
+      return clone(group);
     },
     renameMaterialGroup(
       _subUserId: string,
@@ -999,7 +1011,7 @@ function buildMemoryMaterialItem(
   const groupId =
     request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION
       ? 0
-      : (request.groupId ?? 0);
+      : String(request.groupId);
 
   return {
     bizType: request.bizType,

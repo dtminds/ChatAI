@@ -3082,22 +3082,8 @@ describe("MysqlWorkbenchService", () => {
     nowSpy.mockRestore();
   });
 
-  it("material: stores h5 content in the default group when collecting without a group", async () => {
-    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_779_700_002_000);
-    const repository = createMaterialRepository({
-      createMaterialCollection: vi.fn().mockResolvedValue("182"),
-      findMaterialMessage: vi.fn().mockResolvedValue({
-        content: JSON.stringify({
-          coverUrl: "https://hd-smp-test.iyouke.com/static/image/default-redpacket.png",
-          desc: "恭喜发财，大吉大利",
-          href: "https://m-scrm-test.dtminds.com/h5/pages/redpacketSend/index",
-          title: "红包来啦",
-        }),
-        msgid: "1025657",
-        msgtype: "link",
-        uid: 9001,
-      }),
-    });
+  it("material: requires a real group before collecting tenant materials", async () => {
+    const repository = createMaterialRepository();
     const service = new MysqlWorkbenchService(repository, createJavaClient());
 
     await expect(
@@ -3105,25 +3091,33 @@ describe("MysqlWorkbenchService", () => {
         bizType: MATERIAL_COLLECTION_BIZ_TYPE.H5,
         messageId: "1025657",
       }),
-    ).resolves.toEqual({ success: true });
-
-    expect(repository.createMaterialCollection).toHaveBeenCalledWith({
-      bizType: MATERIAL_COLLECTION_BIZ_TYPE.H5,
-      content: JSON.stringify({
-        coverUrl: "https://hd-smp-test.iyouke.com/static/image/default-redpacket.png",
-        desc: "恭喜发财，大吉大利",
-        href: "https://m-scrm-test.dtminds.com/h5/pages/redpacketSend/index",
-        title: "红包来啦",
-      }),
-      groupId: 0,
-      msgid: "1025657",
-      opSubUserId: "101",
-      sort: 1_779_700_002_000,
-      subUid: 0,
-      title: "红包来啦",
-      uid: 9001,
+    ).resolves.toEqual({
+      success: false,
+      errorMsg: "请选择分组",
     });
-    nowSpy.mockRestore();
+    await expect(
+      service.collectMaterial("101", {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.H5,
+        groupId: 0,
+        messageId: "1025657",
+      }),
+    ).resolves.toEqual({
+      success: false,
+      errorMsg: "请选择分组",
+    });
+    await expect(
+      service.collectMaterial("101", {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.H5,
+        groupId: "0",
+        messageId: "1025657",
+      }),
+    ).resolves.toEqual({
+      success: false,
+      errorMsg: "请选择分组",
+    });
+
+    expect(repository.findMaterialMessage).not.toHaveBeenCalled();
+    expect(repository.createMaterialCollection).not.toHaveBeenCalled();
   });
 
   it("material: returns failure result when create does not insert", async () => {
@@ -3147,6 +3141,7 @@ describe("MysqlWorkbenchService", () => {
     await expect(
       service.collectMaterial("101", {
         bizType: MATERIAL_COLLECTION_BIZ_TYPE.H5,
+        groupId: "9",
         messageId: "1025657",
       }),
     ).resolves.toEqual({
@@ -3181,6 +3176,7 @@ describe("MysqlWorkbenchService", () => {
     await expect(
       service.collectMaterial("101", {
         bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+        groupId: "9",
         messageId: "msg-file-1",
       }),
     ).resolves.toEqual({
@@ -3256,6 +3252,35 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
+  it("material: creates material group and returns the created group", async () => {
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_779_700_004_000);
+    const repository = createMaterialRepository({
+      createMaterialGroup: vi.fn().mockResolvedValue("88"),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.createMaterialGroup("101", {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+        title: " 常用文件 ",
+      }),
+    ).resolves.toEqual({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+      id: "88",
+      sort: 1_779_700_004_000,
+      title: "常用文件",
+    });
+
+    expect(repository.createMaterialGroup).toHaveBeenCalledWith({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+      sort: 1_779_700_004_000,
+      subUid: 101,
+      title: "常用文件",
+      uid: 9001,
+    });
+    nowSpy.mockRestore();
+  });
+
   it("material: rejects unsupported and mismatched message types", async () => {
     const unsupportedRepository = createMaterialRepository({
       findMaterialMessage: vi.fn().mockResolvedValue({
@@ -3273,6 +3298,7 @@ describe("MysqlWorkbenchService", () => {
     await expect(
       unsupportedService.collectMaterial("101", {
         bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+        groupId: "9",
         messageId: "msg-text-1",
       }),
     ).rejects.toMatchObject({
@@ -3297,6 +3323,7 @@ describe("MysqlWorkbenchService", () => {
     await expect(
       mismatchedService.collectMaterial("101", {
         bizType: MATERIAL_COLLECTION_BIZ_TYPE.H5,
+        groupId: "9",
         messageId: "msg-file-1",
       }),
     ).rejects.toMatchObject({

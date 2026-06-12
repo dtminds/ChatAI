@@ -81,6 +81,7 @@ import {
   type WorkbenchMaterialCollectionCreateRequest,
   type WorkbenchMaterialCollectionCreateResponse,
   type WorkbenchMaterialCollectionGroupCreateRequest,
+  type WorkbenchMaterialCollectionGroupCreateResponse,
   type WorkbenchMaterialCollectionGroupUpdateRequest,
   type WorkbenchMaterialCollectionGroupDto,
   type WorkbenchMaterialCollectionItemDto,
@@ -229,7 +230,7 @@ export type WorkbenchService = {
   ) => Promise<WorkbenchMaterialCollectionOkResponse>;
   createMaterialGroup: (
     request: WorkbenchMaterialCollectionGroupCreateRequest,
-  ) => Promise<WorkbenchMaterialCollectionOkResponse>;
+  ) => Promise<WorkbenchMaterialCollectionGroupCreateResponse>;
   renameMaterialGroup: (
     groupId: string,
     bizType: WorkbenchMaterialCollectionGroupCreateRequest["bizType"],
@@ -376,6 +377,16 @@ export function createMockWorkbenchService(): WorkbenchService {
       };
     },
     async collectMaterial(request) {
+      if (
+        request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION &&
+        (request.groupId === undefined || request.groupId === 0 || request.groupId === "0")
+      ) {
+        return {
+          success: false,
+          errorMsg: "请选择分组",
+        };
+      }
+
       const existing = state.materialItems.find(
         (item) =>
           item.bizType === request.bizType &&
@@ -423,16 +434,14 @@ export function createMockWorkbenchService(): WorkbenchService {
       return { ok: true };
     },
     async createMaterialGroup(request) {
-      state.materialGroups = [
-        {
-          bizType: request.bizType,
-          id: `material-group-${state.nextId++}`,
-          sort: Date.now(),
-          title: request.title,
-        },
-        ...state.materialGroups,
-      ];
-      return { ok: true };
+      const group = {
+        bizType: request.bizType,
+        id: `material-group-${state.nextId++}`,
+        sort: Date.now(),
+        title: request.title,
+      };
+      state.materialGroups = [group, ...state.materialGroups];
+      return clone(group);
     },
     async renameMaterialGroup(groupId, bizType, request) {
       state.materialGroups = state.materialGroups.map((group) =>
@@ -1096,7 +1105,7 @@ export function createHttpWorkbenchService(): WorkbenchService {
     },
     createMaterialGroup(request) {
       return http.post<
-        WorkbenchMaterialCollectionOkResponse,
+        WorkbenchMaterialCollectionGroupCreateResponse,
         WorkbenchMaterialCollectionGroupCreateRequest
       >("/server/material-collections/groups", request);
     },
@@ -1711,7 +1720,7 @@ function buildMaterialItemFromMessage(
   const groupId =
     bizType === MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION
       ? 0
-      : (request.groupId ?? 0);
+      : String(request.groupId);
 
   return {
     bizType,
@@ -1733,7 +1742,7 @@ function buildFallbackMaterialItem(
   const groupId =
     request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION
       ? 0
-      : (request.groupId ?? 0);
+      : String(request.groupId);
 
   return {
     bizType: request.bizType,

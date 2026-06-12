@@ -765,7 +765,7 @@ function ChatWorkbenchContent({
   );
 
   const handleSubmitMaterialCollection = useCallback(
-    async (groupId: string | 0) => {
+    async (groupId: string) => {
       if (!pendingMaterialCollection) {
         return;
       }
@@ -802,6 +802,43 @@ function ChatWorkbenchContent({
       }
     },
     [pendingMaterialCollection, refreshMaterialList],
+  );
+
+  const handleCreatePendingMaterialGroup = useCallback(
+    async (title: string) => {
+      if (!pendingMaterialCollection) {
+        return undefined;
+      }
+
+      setIsCollectingMaterial(true);
+
+      try {
+        const group = await getWorkbenchService().createMaterialGroup({
+          bizType: pendingMaterialCollection.bizType,
+          title,
+        });
+
+        if (!isMountedRef.current) {
+          return undefined;
+        }
+
+        setMaterialCollectionGroups((currentGroups) => [
+          group,
+          ...currentGroups.filter((currentGroup) => currentGroup.id !== group.id),
+        ]);
+        return group;
+      } catch (error) {
+        if (isMountedRef.current) {
+          toast.warning(getMaterialErrorMessage(error, "新建分组失败"));
+        }
+        return undefined;
+      } finally {
+        if (isMountedRef.current) {
+          setIsCollectingMaterial(false);
+        }
+      }
+    },
+    [pendingMaterialCollection],
   );
 
   const handleOpenMaterialLibrary = useCallback(
@@ -952,7 +989,7 @@ function ChatWorkbenchContent({
   );
 
   const handleMoveMaterial = useCallback(
-    (item: WorkbenchMaterialCollectionItemDto, groupId: string | 0) => {
+    (item: WorkbenchMaterialCollectionItemDto, groupId: string) => {
       void runMaterialLibraryMutation(
         () =>
           getWorkbenchService().moveMaterialCollection(item.id, {
@@ -2024,6 +2061,7 @@ function ChatWorkbenchContent({
         bizType={pendingMaterialCollection?.bizType ?? MATERIAL_COLLECTION_BIZ_TYPE.FILE}
         groups={materialCollectionGroups}
         isSaving={isCollectingMaterial}
+        onCreateGroup={handleCreatePendingMaterialGroup}
         onOpenChange={(open) => {
           if (!open) {
             setPendingMaterialCollection(null);

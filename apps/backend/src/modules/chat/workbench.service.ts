@@ -65,6 +65,7 @@ import type {
   WorkbenchMaterialCollectionCreateRequest,
   WorkbenchMaterialCollectionCreateResponse,
   WorkbenchMaterialCollectionGroupCreateRequest,
+  WorkbenchMaterialCollectionGroupCreateResponse,
   WorkbenchMaterialCollectionGroupUpdateRequest,
   WorkbenchMaterialCollectionListRequest,
   WorkbenchMaterialCollectionListResponse,
@@ -392,7 +393,9 @@ export type WorkbenchService = {
   createMaterialGroup(
     subUserId: string,
     request: WorkbenchMaterialCollectionGroupCreateRequest,
-  ): Promise<WorkbenchMaterialCollectionOkResponse> | WorkbenchMaterialCollectionOkResponse;
+  ):
+    | Promise<WorkbenchMaterialCollectionGroupCreateResponse>
+    | WorkbenchMaterialCollectionGroupCreateResponse;
   renameMaterialGroup(
     subUserId: string,
     groupId: string,
@@ -1828,6 +1831,18 @@ export class MysqlWorkbenchService implements WorkbenchService {
       throw new BadRequestError("UNSUPPORTED_MATERIAL_MESSAGE", "当前消息不支持收藏");
     }
 
+    const groupId =
+      bizType === MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION
+        ? 0
+        : readEnterpriseMaterialGroupId(request.groupId);
+
+    if (groupId === undefined) {
+      return {
+        success: false,
+        errorMsg: "请选择分组",
+      };
+    }
+
     const message = await this.repository.findMaterialMessage({
       msgid: request.messageId,
       uid: me.uid,
@@ -1837,8 +1852,6 @@ export class MysqlWorkbenchService implements WorkbenchService {
       throw new BadRequestError("UNSUPPORTED_MATERIAL_MESSAGE", "当前消息不支持收藏");
     }
 
-    const groupId =
-      bizType === MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION ? 0 : (request.groupId ?? 0);
     const subUid =
       bizType === MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION ? subUserNumericId : 0;
     const sort = Date.now();
@@ -1933,9 +1946,14 @@ export class MysqlWorkbenchService implements WorkbenchService {
     request: WorkbenchMaterialCollectionMoveRequest,
   ): Promise<WorkbenchMaterialCollectionOkResponse> {
     const me = await this.getMaterialActor(subUserId);
+    const groupId = readEnterpriseMaterialGroupId(request.groupId);
+
+    if (groupId === undefined) {
+      throw new BadRequestError("MATERIAL_GROUP_REQUIRED", "请选择分组");
+    }
 
     await this.repository.moveMaterialCollection({
-      groupId: request.groupId,
+      groupId,
       id: collectionId,
       sort: Date.now(),
       uid: me.uid,
@@ -1947,20 +1965,31 @@ export class MysqlWorkbenchService implements WorkbenchService {
   async createMaterialGroup(
     subUserId: string,
     request: WorkbenchMaterialCollectionGroupCreateRequest,
-  ): Promise<WorkbenchMaterialCollectionOkResponse> {
+  ): Promise<WorkbenchMaterialCollectionGroupCreateResponse> {
     const me = await this.getMaterialActor(subUserId);
     const subUserNumericId = parseMaterialSubUserId(subUserId);
     const bizType = parseMaterialGroupBizType(request.bizType);
+    const sort = Date.now();
+    const title = request.title.trim();
 
-    await this.repository.createMaterialGroup({
+    const groupId = await this.repository.createMaterialGroup({
       bizType,
-      sort: Date.now(),
+      sort,
       subUid: subUserNumericId,
-      title: request.title,
+      title,
       uid: me.uid,
     });
 
-    return { ok: true };
+    if (!groupId) {
+      throw new BadGatewayError("MATERIAL_GROUP_CREATE_FAILED", "新建分组失败");
+    }
+
+    return {
+      bizType,
+      id: groupId,
+      sort,
+      title,
+    };
   }
 
   async renameMaterialGroup(
@@ -2235,6 +2264,19 @@ function parseMaterialGroupBizType(value: number): Exclude<MaterialCollectionBiz
   }
 
   return bizType;
+}
+
+function readEnterpriseMaterialGroupId(groupId: string | 0 | undefined) {
+  if (
+    groupId === undefined ||
+    groupId === 0 ||
+    groupId === "0" ||
+    !String(groupId).trim()
+  ) {
+    return undefined;
+  }
+
+  return String(groupId);
 }
 
 function parseMaterialSubUserId(subUserId: string) {

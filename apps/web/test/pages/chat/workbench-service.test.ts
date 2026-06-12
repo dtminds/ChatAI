@@ -211,4 +211,31 @@ describe("createWorkbenchService", () => {
       },
     });
   });
+
+  it("creates material groups and returns the group payload", async () => {
+    const service = createHttpWorkbenchService();
+    mock.onPost("/server/material-collections/groups").reply((config) => [
+      200,
+      {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+        id: "group-created",
+        sort: 1_781_244_000_000,
+        title: "售后文件",
+        receivedBody: JSON.parse(String(config.data)),
+      },
+    ]);
+
+    await expect(
+      service.createMaterialGroup({
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+        title: "售后文件",
+      }),
+    ).resolves.toMatchObject({
+      id: "group-created",
+      receivedBody: {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+        title: "售后文件",
+      },
+    });
+  });
 });

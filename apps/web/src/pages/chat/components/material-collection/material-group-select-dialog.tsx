@@ -8,6 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -21,26 +22,58 @@ type MaterialGroupSelectDialogProps = {
   bizType: WorkbenchMaterialCollectionGroupCreateRequest["bizType"];
   groups: MaterialCollectionGroup[];
   isSaving?: boolean;
+  onCreateGroup: (title: string) => Promise<MaterialCollectionGroup | undefined>;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (groupId: string | 0) => void;
+  onSubmit: (groupId: string) => void;
   open: boolean;
 };
+
+const CREATE_GROUP_VALUE = "__create__";
 
 export function MaterialGroupSelectDialog({
   bizType,
   groups,
   isSaving = false,
+  onCreateGroup,
   onOpenChange,
   onSubmit,
   open,
 }: MaterialGroupSelectDialogProps) {
-  const [selectedGroupId, setSelectedGroupId] = useState("0");
+  const [selectedGroupId, setSelectedGroupId] = useState("");
+  const [newGroupTitle, setNewGroupTitle] = useState("");
+  const [isCreatingGroup, setIsCreatingGroup] = useState(false);
 
   useEffect(() => {
     if (open) {
-      setSelectedGroupId("0");
+      setSelectedGroupId("");
+      setNewGroupTitle("");
+      setIsCreatingGroup(false);
     }
   }, [open]);
+
+  const isCreatingMode = selectedGroupId === CREATE_GROUP_VALUE;
+  const canSubmit = Boolean(selectedGroupId) && !isCreatingMode && !isSaving && !isCreatingGroup;
+
+  async function handleCreateGroup() {
+    const title = newGroupTitle.trim();
+
+    if (!title) {
+      return;
+    }
+
+    setIsCreatingGroup(true);
+
+    try {
+      const group = await onCreateGroup(title);
+
+      if (group) {
+        setSelectedGroupId(group.id);
+        setNewGroupTitle("");
+      }
+    } finally {
+      setIsCreatingGroup(false);
+    }
+  }
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
@@ -50,7 +83,7 @@ export function MaterialGroupSelectDialog({
         </DialogHeader>
 
         <Select
-          disabled={isSaving}
+          disabled={isSaving || isCreatingGroup}
           onValueChange={setSelectedGroupId}
           value={selectedGroupId}
         >
@@ -61,14 +94,41 @@ export function MaterialGroupSelectDialog({
             <SelectValue placeholder="选择分组" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="0">默认分组</SelectItem>
             {groups.map((group) => (
               <SelectItem key={group.id} value={group.id}>
                 {group.title}
               </SelectItem>
             ))}
+            <SelectItem value={CREATE_GROUP_VALUE}>新建分组</SelectItem>
           </SelectContent>
         </Select>
+
+        {isCreatingMode ? (
+          <div className="flex gap-2">
+            <Input
+              aria-label="分组名称"
+              disabled={isSaving || isCreatingGroup}
+              onChange={(event) => setNewGroupTitle(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  void handleCreateGroup();
+                }
+              }}
+              placeholder="分组名称"
+              value={newGroupTitle}
+            />
+            <Button
+              disabled={isSaving || isCreatingGroup || !newGroupTitle.trim()}
+              onClick={() => {
+                void handleCreateGroup();
+              }}
+              type="button"
+              variant="outline"
+            >
+              新建
+            </Button>
+          </div>
+        ) : null}
 
         <DialogFooter>
           <Button
@@ -80,8 +140,8 @@ export function MaterialGroupSelectDialog({
             取消
           </Button>
           <Button
-            disabled={isSaving}
-            onClick={() => onSubmit(selectedGroupId === "0" ? 0 : selectedGroupId)}
+            disabled={!canSubmit}
+            onClick={() => onSubmit(selectedGroupId)}
             type="button"
           >
             收录

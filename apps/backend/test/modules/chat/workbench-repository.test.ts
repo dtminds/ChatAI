@@ -648,7 +648,7 @@ describe("WorkbenchRepository", () => {
     });
   });
 
-  it("lists material collections through mapper and supports default group filtering", async () => {
+  it("lists material collections through mapper and supports group filtering", async () => {
     const db = createMaterialDb({
       xy_wap_embed_material_collection: [
         {
@@ -656,7 +656,7 @@ describe("WorkbenchRepository", () => {
           biz_type: 2,
           content: JSON.stringify({ fileName: "报价.pdf", size: 20 }),
           create_time: 1_777_000_000_000,
-          group_id: 0,
+          group_id: 9,
           id: 66,
           msgid: "msg-file-66",
           op_sub_uid: 88,
@@ -672,7 +672,7 @@ describe("WorkbenchRepository", () => {
 
     const items = await repository.listMaterialCollections({
       bizType: 2,
-      groupId: 0,
+      groupId: "9",
       subUserId: "88",
       uid: 9001,
     });
@@ -682,7 +682,7 @@ describe("WorkbenchRepository", () => {
         bizType: 2,
         content: { fileName: "报价.pdf" },
         contentType: "file",
-        groupId: 0,
+        groupId: "9",
         id: "66",
         messageId: "msg-file-66",
         sort: 40,
@@ -700,7 +700,7 @@ describe("WorkbenchRepository", () => {
         ["biz_type", "=", 2],
         ["biz_status", "=", 1],
         ["sub_uid", "in", [0, 88]],
-        ["group_id", "=", 0],
+        ["group_id", "=", 9],
       ],
     });
   });
@@ -853,45 +853,13 @@ describe("WorkbenchRepository", () => {
     ]);
   });
 
-  it("creates material collection in the default group when group id is string zero", async () => {
-    const db = createMaterialDb();
-    const repository = new WorkbenchRepository(db as never);
-
-    const insertedId = await repository.createMaterialCollection({
-      bizType: 4,
-      content: JSON.stringify({ title: "红包来啦" }),
-      groupId: "0",
-      msgid: "1025657",
-      opSubUserId: "88",
-      sort: 40,
-      subUid: 0,
-      title: "红包来啦",
-      uid: 9001,
-    });
-
-    expect(insertedId).toBe("1801");
-    expect(db.inserts).toEqual([
-      {
-        table: "xy_wap_embed_material_collection",
-        values: expect.objectContaining({
-          biz_type: 4,
-          group_id: 0,
-          msgid: "1025657",
-          op_sub_uid: 88,
-          sub_uid: 0,
-          uid: 9001,
-        }),
-      },
-    ]);
-  });
-
   it("soft deletes, tops, and moves material collection rows", async () => {
     const db = createMaterialDb();
     const repository = new WorkbenchRepository(db as never);
 
     await repository.deleteMaterialCollection({ id: "66", uid: 9001 });
     await repository.topMaterialCollection({ id: "66", sort: 90, uid: 9001 });
-    await repository.moveMaterialCollection({ groupId: 0, id: "66", sort: 12, uid: 9001 });
+    await repository.moveMaterialCollection({ groupId: "9", id: "66", sort: 12, uid: 9001 });
 
     expect(db.updates).toEqual([
       {
@@ -914,7 +882,7 @@ describe("WorkbenchRepository", () => {
       },
       {
         table: "xy_wap_embed_material_collection",
-        values: { group_id: 0, sort: 12 },
+        values: { group_id: 9, sort: 12 },
         wheres: [
           ["id", "=", 66],
           ["uid", "=", 9001],
@@ -961,7 +929,7 @@ describe("WorkbenchRepository", () => {
     const db = createMaterialDb();
     const repository = new WorkbenchRepository(db as never);
 
-    await repository.createMaterialGroup({
+    const groupId = await repository.createMaterialGroup({
       bizType: 2,
       sort: 80,
       subUid: 88,
@@ -977,6 +945,7 @@ describe("WorkbenchRepository", () => {
     await repository.topMaterialGroup({ bizType: 2, groupId: "9", sort: 200, uid: 9001 });
     await repository.deleteMaterialGroup({ bizType: 2, groupId: "9", uid: 9001 });
 
+    expect(groupId).toBe("1801");
     expect(db.inserts).toEqual([
       {
         table: "xy_wap_embed_material_collection_group",

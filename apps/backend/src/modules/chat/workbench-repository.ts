@@ -628,7 +628,7 @@ export class WorkbenchRepository {
     title: string;
     uid: number;
   }) {
-    await this.db
+    const result = (await this.db
       .insertInto("xy_wap_embed_material_collection_group")
       .values({
         biz_status: BIZ_STATUS_ACTIVE,
@@ -638,7 +638,10 @@ export class WorkbenchRepository {
         title: input.title,
         uid: input.uid,
       })
-      .execute();
+      .executeTakeFirstOrThrow()) as InsertResult;
+
+    const insertedId = parseInsertedMySqlId(result);
+    return insertedId == null ? undefined : String(insertedId);
   }
 
   async renameMaterialGroup(input: { bizType: number; groupId: string; title: string; uid: number }) {

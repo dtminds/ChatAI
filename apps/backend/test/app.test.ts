@@ -1229,6 +1229,51 @@ describe("backend app", () => {
     await app.close();
   });
 
+  it("material: rejects tenant collection without a real group", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        bizType: 2,
+        messageId: "msg-004",
+      },
+      url: "/api/server/material-collections",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      success: false,
+      errorMsg: "请选择分组",
+    });
+
+    await app.close();
+  });
+
+  it("material: creates groups and returns the created group", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        bizType: 2,
+        title: "售后文件",
+      },
+      url: "/api/server/material-collections/groups",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      bizType: 2,
+      id: expect.any(String),
+      title: "售后文件",
+    });
+
+    await app.close();
+  });
+
   it("material: rejects viewer mutations", async () => {
     const { app, authorization } = await createAuthenticatedAppWithRole("viewer");
 

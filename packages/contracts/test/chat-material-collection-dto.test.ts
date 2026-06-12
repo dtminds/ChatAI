@@ -6,6 +6,7 @@ import {
   type WorkbenchMaterialCollectionCreateRequest,
   type WorkbenchMaterialCollectionCreateResponse,
   type WorkbenchMaterialCollectionGroupCreateRequest,
+  type WorkbenchMaterialCollectionGroupCreateResponse,
   type WorkbenchMaterialCollectionGroupDto,
   type WorkbenchMaterialCollectionGroupUpdateRequest,
   type WorkbenchMaterialCollectionItemDto,
@@ -111,18 +112,18 @@ describe("chat material collection DTOs", () => {
   it("accepts list create group move and ok request/response contracts", () => {
     const listRequest: WorkbenchMaterialCollectionListRequest = {
       bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
-      groupId: 0,
+      groupId: "group-1",
+    };
+
+    const fileGroup: WorkbenchMaterialCollectionGroupDto = {
+      id: "group-1",
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+      title: "常用文件",
+      sort: 1,
     };
 
     const listResponse: WorkbenchMaterialCollectionListResponse = {
-      groups: [
-        {
-          id: "group-1",
-          bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
-          title: "常用文件",
-          sort: 1,
-        },
-      ],
+      groups: [fileGroup],
       items: [
         {
           id: "collection-1",
@@ -154,13 +155,19 @@ describe("chat material collection DTOs", () => {
       bizType: MATERIAL_COLLECTION_BIZ_TYPE.H5,
       title: "活动链接",
     };
+    const groupCreateResponse: WorkbenchMaterialCollectionGroupCreateResponse = {
+      id: "group-h5",
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.H5,
+      title: "活动链接",
+      sort: 2,
+    };
 
     const groupUpdateRequest: WorkbenchMaterialCollectionGroupUpdateRequest = {
       title: "新活动链接",
     };
 
     const moveRequest: WorkbenchMaterialCollectionMoveRequest = {
-      groupId: 0,
+      groupId: "group-h5",
     };
 
     const okResponse: WorkbenchMaterialCollectionOkResponse = {
@@ -172,8 +179,9 @@ describe("chat material collection DTOs", () => {
     expect(createRequest.messageId).toBe("msgid-1002");
     expect(createResponse.duplicated).toBe(true);
     expect(groupCreateRequest.bizType).toBe(4);
+    expect(groupCreateResponse.id).toBe("group-h5");
     expect(groupUpdateRequest.title).toBe("新活动链接");
-    expect(moveRequest.groupId).toBe(0);
+    expect(moveRequest.groupId).toBe("group-h5");
     expect(okResponse.ok).toBe(true);
 
     expectTypeOf(groupCreateRequest.bizType).toEqualTypeOf<2 | 3 | 4>();

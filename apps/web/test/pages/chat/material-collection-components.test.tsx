@@ -23,6 +23,7 @@ describe("material collection components", () => {
         bizType={MATERIAL_COLLECTION_BIZ_TYPE.FILE}
         groups={[createGroup({ id: "group-file", title: "常用文件" })]}
         isSaving={false}
+        onCreateGroup={async () => undefined}
         onOpenChange={() => undefined}
         onSubmit={handleSubmit}
         open
@@ -31,13 +32,46 @@ describe("material collection components", () => {
 
     expect(screen.getByRole("dialog", { name: "收录文件" })).toBeInTheDocument();
     expect(screen.queryByText("默认分组不会新建分组记录")).not.toBeInTheDocument();
+    expect(screen.queryByText("默认分组")).not.toBeInTheDocument();
     expect(screen.queryByRole("radio")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "收录" })).toBeDisabled();
 
     await user.click(screen.getByRole("combobox", { name: "选择分组" }));
     await user.click(await screen.findByRole("option", { name: "常用文件" }));
     await user.click(screen.getByRole("button", { name: "收录" }));
 
     expect(handleSubmit).toHaveBeenCalledWith("group-file");
+  });
+
+  it("creates a material group from the collection group select", async () => {
+    const user = userEvent.setup();
+    const handleCreateGroup = vi.fn(async (title: string) =>
+      createGroup({ id: "group-new", title }),
+    );
+    const handleSubmit = vi.fn();
+
+    render(
+      <MaterialGroupSelectDialog
+        bizType={MATERIAL_COLLECTION_BIZ_TYPE.FILE}
+        groups={[]}
+        isSaving={false}
+        onCreateGroup={handleCreateGroup}
+        onOpenChange={() => undefined}
+        onSubmit={handleSubmit}
+        open
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "收录" })).toBeDisabled();
+
+    await user.click(screen.getByRole("combobox", { name: "选择分组" }));
+    await user.click(await screen.findByRole("option", { name: "新建分组" }));
+    await user.type(screen.getByRole("textbox", { name: "分组名称" }), "售后文件");
+    await user.click(screen.getByRole("button", { name: "新建" }));
+    await user.click(screen.getByRole("button", { name: "收录" }));
+
+    expect(handleCreateGroup).toHaveBeenCalledWith("售后文件");
+    expect(handleSubmit).toHaveBeenCalledWith("group-new");
   });
 
   it("renders collected material with existing message card components", () => {
@@ -74,7 +108,7 @@ describe("material collection components", () => {
             title: "红包来啦",
           },
           contentType: "h5",
-          groupId: 0,
+          groupId: "group-h5",
           title: "红包来啦",
         })}
         onSelect={() => undefined}
@@ -121,7 +155,11 @@ describe("material collection components", () => {
     await user.click(screen.getByRole("button", { name: /选择素材 报价单\.pdf/ }));
     expect(handleSelect).toHaveBeenCalledWith(item);
 
+    expect(screen.queryByText("所有分组")).not.toBeInTheDocument();
+    expect(screen.queryByText("默认分组")).not.toBeInTheDocument();
+
     await user.click(screen.getByRole("button", { name: "管理" }));
+    expect(screen.queryByRole("button", { name: "移至默认" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "置顶 报价单.pdf" }));
     await user.click(screen.getByRole("button", { name: "删除 报价单.pdf" }));
 

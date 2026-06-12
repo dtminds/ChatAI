@@ -1626,4 +1626,58 @@ describe("ChatWorkbenchPage", () => {
     expect(workbenchToastSuccessMock).toHaveBeenCalledWith("已收录");
   });
 
+  it("creates a material group before collecting file messages", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const collectMaterial = vi.fn(baseService.collectMaterial);
+    const createMaterialGroup = vi.fn(async () => ({
+      bizType: 2 as const,
+      id: "group-created",
+      sort: 1_781_244_000_000,
+      title: "售后文件",
+    }));
+    const listMaterialCollections = vi.fn(async (request) => {
+      const response = await baseService.listMaterialCollections(request);
+      return {
+        ...response,
+        groups: [],
+      };
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      collectMaterial,
+      createMaterialGroup,
+      listMaterialCollections,
+    });
+
+    renderChatWorkbenchPage();
+
+    const targetMessage = await screen.findByText("求未 AI 智能营销系统.pdf");
+    const targetRow = targetMessage.closest('[data-testid="message-row"]');
+    expect(targetRow).not.toBeNull();
+
+    await user.click(
+      within(targetRow as HTMLElement).getByRole("button", { name: "消息操作" }),
+    );
+    await user.click(screen.getByRole("menuitem", { name: "收录内容" }));
+    await user.click(await screen.findByRole("combobox", { name: "选择分组" }));
+    await user.click(await screen.findByRole("option", { name: "新建分组" }));
+    await user.type(screen.getByRole("textbox", { name: "分组名称" }), "售后文件");
+    await user.click(screen.getByRole("button", { name: "新建" }));
+    await user.click(screen.getByRole("button", { name: "收录" }));
+
+    expect(createMaterialGroup).toHaveBeenCalledWith({
+      bizType: 2,
+      title: "售后文件",
+    });
+    await waitFor(() => {
+      expect(collectMaterial).toHaveBeenCalledWith({
+        bizType: 2,
+        groupId: "group-created",
+        messageId: "msg-004",
+      });
+    });
+  });
+
 });

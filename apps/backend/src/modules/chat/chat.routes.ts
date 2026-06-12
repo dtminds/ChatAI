@@ -355,7 +355,7 @@ const MaterialCollectionParamsSchema = Type.Object({
 });
 
 const MaterialCollectionMoveBodySchema = Type.Object({
-  groupId: Type.Union([Type.String(), Type.Literal(0)]),
+  groupId: Type.String({ minLength: 1 }),
 });
 
 const MaterialCollectionGroupCreateBodySchema = Type.Object({

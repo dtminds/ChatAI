@@ -64,6 +64,8 @@ export type WorkbenchMaterialCollectionGroupBizType = Exclude<
   MaterialCollectionBizType,
   1
 >;
+export type WorkbenchEnterpriseMaterialCollectionBizType =
+  WorkbenchMaterialCollectionGroupBizType;
 
 export type WorkbenchMaterialCollectionGroupDto = {
   id: string;
@@ -116,12 +118,15 @@ export type WorkbenchMaterialCollectionGroupCreateRequest = {
   title: string;
 };
 
+export type WorkbenchMaterialCollectionGroupCreateResponse =
+  WorkbenchMaterialCollectionGroupDto;
+
 export type WorkbenchMaterialCollectionGroupUpdateRequest = {
   title: string;
 };
 
 export type WorkbenchMaterialCollectionMoveRequest = {
-  groupId: string | 0;
+  groupId: string;
 };
 
 export type WorkbenchMaterialCollectionOkResponse = {

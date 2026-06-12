@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Add01Icon,
   Delete02Icon,
@@ -33,7 +33,7 @@ type MaterialLibraryDialogProps = {
   onCreateGroup: (title: string) => void;
   onDeleteGroup: (group: MaterialCollectionGroup) => void;
   onDeleteMaterial: (item: MaterialCollectionItem) => void;
-  onMoveMaterial: (item: MaterialCollectionItem, groupId: string | 0) => void;
+  onMoveMaterial: (item: MaterialCollectionItem, groupId: string) => void;
   onOpenChange: (open: boolean) => void;
   onRenameGroup: (group: MaterialCollectionGroup, title: string) => void;
   onSelectMaterial: (item: MaterialCollectionItem) => void;
@@ -58,16 +58,29 @@ export function MaterialLibraryDialog({
   onTopMaterial,
   open,
 }: MaterialLibraryDialogProps) {
-  const [activeGroupId, setActiveGroupId] = useState<string | 0 | "all">("all");
+  const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
   const [mode, setMode] = useState<MaterialCollectionMode>("browse");
   const [newGroupTitle, setNewGroupTitle] = useState("");
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    if (groups.length === 0) {
+      setActiveGroupId(null);
+      return;
+    }
+
+    if (!activeGroupId || !groups.some((group) => group.id === activeGroupId)) {
+      setActiveGroupId(groups[0]?.id ?? null);
+    }
+  }, [activeGroupId, groups, open]);
 
   const visibleItems = useMemo(
     () =>
       items.filter(
-        (item) =>
-          activeGroupId === "all" ||
-          item.groupId === activeGroupId,
+        (item) => activeGroupId !== null && item.groupId === activeGroupId,
       ),
     [activeGroupId, items],
   );
@@ -93,17 +106,7 @@ export function MaterialLibraryDialog({
 
         <div className="grid min-h-[28rem] grid-cols-[13rem_minmax(0,1fr)]">
           <aside className="border-r border-divider bg-surface-muted/55 p-3">
-            <GroupButton
-              active={activeGroupId === "all"}
-              label="所有分组"
-              onClick={() => setActiveGroupId("all")}
-            />
-            <GroupButton
-              active={activeGroupId === 0}
-              label="默认分组"
-              onClick={() => setActiveGroupId(0)}
-            />
-            <div className="mt-2 space-y-1">
+            <div className="space-y-1">
               {groups.map((group) => (
                 <GroupButton
                   active={activeGroupId === group.id}
@@ -144,13 +147,7 @@ export function MaterialLibraryDialog({
             <div className="flex items-center justify-between border-b border-divider px-4 py-3">
               <div className="flex min-w-0 items-center gap-2 text-sm font-medium">
                 <HugeiconsIcon icon={Folder01Icon} size={16} strokeWidth={1.8} />
-                <span className="truncate">
-                  {activeGroupId === "all"
-                    ? "所有分组"
-                    : activeGroupId === 0
-                      ? "默认分组"
-                      : activeGroup?.title}
-                </span>
+                <span className="truncate">{activeGroup?.title ?? "暂无分组"}</span>
               </div>
 
               <div className="flex items-center gap-1.5">
@@ -272,19 +269,10 @@ function MoveMaterialBar({
 }: {
   groups: MaterialCollectionGroup[];
   item: MaterialCollectionItem;
-  onMove: (item: MaterialCollectionItem, groupId: string | 0) => void;
+  onMove: (item: MaterialCollectionItem, groupId: string) => void;
 }) {
   return (
     <div className="mt-1 flex flex-wrap justify-end gap-1 px-1">
-      <Button
-        className="h-7 px-2 text-[12px]"
-        disabled={item.groupId === 0}
-        onClick={() => onMove(item, 0)}
-        type="button"
-        variant="ghost"
-      >
-        移至默认
-      </Button>
       {groups.map((group) => (
         <Button
           className="h-7 px-2 text-[12px]"

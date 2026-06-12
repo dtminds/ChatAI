@@ -4,6 +4,7 @@ import {
   ArrowTurnBackwardIcon,
   Bug02Icon,
   ExclamationMarkIcon,
+  Folder01Icon,
   Male02Icon,
   MoreHorizontalIcon,
   QuoteUpSquareIcon,
@@ -72,6 +73,7 @@ type ChatMessageListProps = {
   messages: Message[];
   showTimeDividers?: boolean;
   showTimestamps?: boolean;
+  onCollectMaterial?: (message: ChatMessage) => void;
   onDownloadMessageFile?: (message: ChatMessage) => void;
   onMentionMessage?: (message: ChatMessage) => void;
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
@@ -115,6 +117,7 @@ export function ChatMessageList({
   showTimeDividers = true,
   showTimestamps = false,
   onDownloadMessageFile,
+  onCollectMaterial,
   onMentionMessage,
   onOpenQuotedMessage,
   onQuoteMessage,
@@ -246,6 +249,7 @@ export function ChatMessageList({
                 }
                 showTimestamp={showTimestamps}
                 onDownloadMessageFile={onDownloadMessageFile}
+                onCollectMaterial={onCollectMaterial}
                 onMentionMessage={onMentionMessage}
                 onOpenQuotedMessage={onOpenQuotedMessage}
                 onQuoteMessage={onQuoteMessage}
@@ -325,6 +329,7 @@ export function MessageRow({
   showTimestamp = false,
   shouldAnimate = false,
   onDownloadMessageFile,
+  onCollectMaterial,
   onMentionMessage,
   onOpenQuotedMessage,
   onQuoteMessage,
@@ -349,6 +354,7 @@ export function MessageRow({
   shouldAnimate?: boolean;
   showTimestamp?: boolean;
   onDownloadMessageFile?: (message: ChatMessage) => void;
+  onCollectMaterial?: (message: ChatMessage) => void;
   onMentionMessage?: (message: ChatMessage) => void;
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
   onQuoteMessage?: (message: ChatMessage) => void;
@@ -424,6 +430,7 @@ export function MessageRow({
       canUseMessageActions={canUseMessageActions}
       triggerRef={dismissTargetRef}
       onMentionMessage={onMentionMessage}
+      onCollectMaterial={onCollectMaterial}
       onQuoteMessage={onQuoteMessage}
       onRevokeMessage={onRevokeMessage}
       onTriggerSmartReply={onTriggerSmartReply}
@@ -636,6 +643,7 @@ function MessageActionAvatar({
   canUseMessageActions,
   triggerRef,
   onMentionMessage,
+  onCollectMaterial,
   onQuoteMessage,
   onRevokeMessage,
   onTriggerSmartReply,
@@ -645,6 +653,7 @@ function MessageActionAvatar({
   canUseMessageActions: boolean;
   triggerRef?: RefObject<HTMLButtonElement | null>;
   onMentionMessage?: (message: ChatMessage) => void;
+  onCollectMaterial?: (message: ChatMessage) => void;
   onQuoteMessage?: (message: ChatMessage) => void;
   onRevokeMessage?: (message: ChatMessage) => void;
   onTriggerSmartReply?: (
@@ -666,6 +675,8 @@ function MessageActionAvatar({
     canUseMessageActions &&
     !message.isRevoked &&
     message.content.type !== "contact-card";
+  const canCollectMessage = Boolean(onCollectMaterial) && canCollectMaterial(message);
+  const canSelectCollectMessage = canUseMessageActions && !message.isRevoked;
   const canRevokeMessage =
     canUseMessageActions &&
     Boolean(onRevokeMessage) &&
@@ -759,6 +770,27 @@ function MessageActionAvatar({
                   strokeWidth={2}
                 />
                 引用
+              </DropdownMenuItem>
+            ) : null}
+            {canCollectMessage ? (
+              <DropdownMenuItem
+                disabled={!canSelectCollectMessage}
+                onSelect={(event) => {
+                  if (!canSelectCollectMessage) {
+                    event.preventDefault();
+                    return;
+                  }
+
+                  onCollectMaterial?.(message);
+                }}
+              >
+                <HugeiconsIcon
+                  aria-hidden="true"
+                  icon={Folder01Icon}
+                  size={15}
+                  strokeWidth={2}
+                />
+                收录内容
               </DropdownMenuItem>
             ) : null}
             {canRevokeMessage ? (
@@ -1018,6 +1050,18 @@ function canShowRevokeMessageAction(message: ChatMessage, now = Date.now()) {
   const sentAt = parseWorkbenchDate(message.sentAt);
 
   return sentAt != null && now - sentAt.getTime() < MESSAGE_REVOKE_WINDOW_MS;
+}
+
+export function canCollectMaterial(message: ChatMessage) {
+  if (message.content.type === "image") {
+    return message.content.variant === "emotion";
+  }
+
+  return (
+    message.content.type === "file" ||
+    message.content.type === "mini-program" ||
+    message.content.type === "h5"
+  );
 }
 
 export function MessageAvatar({ message }: { message: ChatMessage }) {

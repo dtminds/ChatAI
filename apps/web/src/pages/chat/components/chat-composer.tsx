@@ -3,11 +3,14 @@ import {
   ArrowUp02Icon,
   Cancel01Icon,
   ChatDelayIcon,
+  FileEmpty01Icon,
   Folder01Icon,
   Image01Icon,
+  Link04Icon,
   SmileIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import type { WorkbenchMaterialCollectionItemDto } from "@chatai/contracts";
 import { Spinner } from "@/components/ui/spinner";
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
 import { ContentEditable } from "@lexical/react/LexicalContentEditable";
@@ -40,6 +43,7 @@ import {
 } from "@/pages/chat/components/composer/lexical-nodes";
 import { ComposerRuntimePlugin } from "@/pages/chat/components/composer/lexical-plugins";
 import { QuoteMessagePreview } from "@/pages/chat/components/message/quote";
+import { MiniProgramMark } from "@/pages/chat/components/message/miniapp";
 import {
   $insertComposerMention,
   $insertComposerText,
@@ -58,6 +62,7 @@ import type { GroupMember, QuotedMessagePreviewContent } from "@/pages/chat/chat
 
 type ChatComposerProps = {
   canSendMessage: boolean;
+  collectedExpressions?: WorkbenchMaterialCollectionItemDto[];
   draft: string;
   hasActiveFileUpload: boolean;
   groupMembers: GroupMember[];
@@ -72,7 +77,9 @@ type ChatComposerProps = {
   onEmojiPickerOpenChange: (isOpen: boolean) => void;
   onEnterBehaviorChange: (behavior: InputEnterBehavior) => void;
   onFileSelect: (files: FileList | File[] | null) => void;
+  onOpenMaterialLibrary: (bizType: 2 | 3 | 4) => void;
   onOpenHistory: () => void;
+  onSelectCollectedExpression?: (item: WorkbenchMaterialCollectionItemDto) => void;
   onSegmentsChange: (segments: ComposerSegment[]) => void;
   onSendDraft: (segments: ComposerSegment[]) => void;
   placeholder: string;
@@ -99,6 +106,7 @@ function createComposerImageClientId() {
 
 export function ChatComposer({
   canSendMessage,
+  collectedExpressions = [],
   draft,
   hasActiveFileUpload,
   groupMembers,
@@ -113,7 +121,9 @@ export function ChatComposer({
   onEmojiPickerOpenChange,
   onEnterBehaviorChange,
   onFileSelect,
+  onOpenMaterialLibrary,
   onOpenHistory,
+  onSelectCollectedExpression,
   onSegmentsChange,
   onSendDraft,
   placeholder,
@@ -420,7 +430,11 @@ export function ChatComposer({
 
             {isEmojiPickerOpen ? (
               <div className="absolute bottom-full left-[-24px] z-30 mb-3">
-                <WechatEmojiPicker onSelect={handleEmojiSelect} />
+                <WechatEmojiPicker
+                  collectedExpressions={collectedExpressions}
+                  onSelect={handleEmojiSelect}
+                  onSelectCollectedExpression={onSelectCollectedExpression}
+                />
               </div>
             ) : null}
           </div>
@@ -471,6 +485,39 @@ export function ChatComposer({
             ref={fileInputRef}
             type="file"
           />
+          <Button
+            aria-label="收藏小程序"
+            className={composerActionButtonClass}
+            disabled={isSending || !canSendMessage}
+            onClick={() => onOpenMaterialLibrary(3)}
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
+            <MiniProgramMark className="size-[18px]" />
+          </Button>
+          <Button
+            aria-label="收藏H5"
+            className={composerActionButtonClass}
+            disabled={isSending || !canSendMessage}
+            onClick={() => onOpenMaterialLibrary(4)}
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
+            <HugeiconsIcon icon={Link04Icon} size={18} strokeWidth={1.8} />
+          </Button>
+          <Button
+            aria-label="收藏文件"
+            className={composerActionButtonClass}
+            disabled={isSending || !canSendMessage}
+            onClick={() => onOpenMaterialLibrary(2)}
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
+            <HugeiconsIcon icon={FileEmpty01Icon} size={18} strokeWidth={1.8} />
+          </Button>
           <Button
             aria-label="历史记录"
             aria-pressed={isHistoryPanelOpen}

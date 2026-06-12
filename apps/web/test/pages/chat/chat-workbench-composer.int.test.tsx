@@ -18,6 +18,7 @@ vi.mock("sonner", async (importOriginal) => {
     ...actual,
     toast: {
       ...actual.toast,
+      success: vi.fn(),
       warning: vi.fn(),
     },
   };
@@ -509,6 +510,97 @@ describe("ChatWorkbenchPage composer flows", () => {
       role: "agent",
       status: "accepted",
     });
+  });
+
+  it("shows collected expressions in the WeChat emoji picker and alerts when selected", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => undefined);
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      async listMaterialCollections(request) {
+        if (request.bizType !== 1) {
+          return baseService.listMaterialCollections(request);
+        }
+
+        return {
+          groups: [],
+          items: [
+            {
+              bizType: 1,
+              content: {
+                alt: "贴贴表情",
+                imageUrl: "https://example.com/expression.gif",
+              },
+              contentType: "emotion",
+              groupId: 0,
+              id: "material-expression-001",
+              messageId: "msg-expression-001",
+              sort: 1_781_244_000_000,
+              title: "贴贴表情",
+            },
+          ],
+        };
+      },
+      sendMessage,
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getByRole("button", { name: "微信表情" }));
+
+    expect(await screen.findByText("收藏的表情")).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: "发送收藏表情 贴贴表情" }),
+    );
+
+    expect(alertSpy).toHaveBeenCalledWith("后续接入发送接口");
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["收藏文件", "收藏文件"],
+    ["收藏小程序", "收藏小程序"],
+    ["收藏H5", "收藏H5"],
+  ])("opens the %s material library from the composer", async (buttonName, dialogName) => {
+    const user = userEvent.setup();
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getByRole("button", { name: buttonName }));
+
+    expect(
+      await screen.findByRole("dialog", { name: dialogName }),
+    ).toBeInTheDocument();
+  });
+
+  it("alerts instead of sending when a collected file material is selected", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => undefined);
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getByRole("button", { name: "收藏文件" }));
+    await user.click(
+      await screen.findByRole("button", {
+        name: "选择素材 求未 AI 智能营销系统.pdf",
+      }),
+    );
+
+    expect(alertSpy).toHaveBeenCalledWith("后续接入发送接口");
+    expect(sendMessage).not.toHaveBeenCalled();
   });
 
   it("rejects unsupported selected files with a toast", async () => {

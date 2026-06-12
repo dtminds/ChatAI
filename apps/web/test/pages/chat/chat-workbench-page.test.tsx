@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMockWorkbenchService, setWorkbenchService } from "@/pages/chat/api/workbench-service";
 import { getFirstUnreadCustomerMessageId } from "@/pages/chat/hooks/use-visible-unread-conversation-read";
@@ -10,6 +10,7 @@ import {
   installChatWorkbenchTestEnvironment,
   renderChatWorkbenchPage,
   resetChatWorkbenchTestState,
+  workbenchToastSuccessMock,
   workbenchToastWarningMock,
 } from "./workbench-test-utils";
 
@@ -1533,6 +1534,95 @@ describe("ChatWorkbenchPage", () => {
         screen.queryByRole("complementary", { name: "聊天记录" }),
       ).not.toBeInTheDocument();
     });
+  });
+
+  it("collects expression messages directly from the message action menu", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const collectMaterial = vi.fn(baseService.collectMaterial);
+
+    setWorkbenchService({
+      ...baseService,
+      collectMaterial,
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          messages: [
+            {
+              ...page.messages[0],
+              content: {
+                alt: "收藏表情",
+                imageUrl: "https://example.com/emotion.gif",
+              },
+              contentType: "emotion",
+              messageId: "msg-emotion-collect-001",
+            },
+          ],
+        };
+      },
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("img", { name: "收藏表情" });
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "收录内容" }));
+
+    await waitFor(() => {
+      expect(collectMaterial).toHaveBeenCalledWith({
+        bizType: 1,
+        groupId: 0,
+        messageId: "msg-emotion-collect-001",
+      });
+    });
+    expect(workbenchToastSuccessMock).toHaveBeenCalledWith("已收录");
+  });
+
+  it("collects file messages after choosing a material group", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const collectMaterial = vi.fn(baseService.collectMaterial);
+    const listMaterialCollections = vi.fn(baseService.listMaterialCollections);
+
+    setWorkbenchService({
+      ...baseService,
+      collectMaterial,
+      listMaterialCollections,
+    });
+
+    renderChatWorkbenchPage();
+
+    const targetMessage = await screen.findByText("求未 AI 智能营销系统.pdf");
+    const targetRow = targetMessage.closest('[data-testid="message-row"]');
+    expect(targetRow).not.toBeNull();
+
+    await user.click(
+      within(targetRow as HTMLElement).getByRole("button", { name: "消息操作" }),
+    );
+    await user.click(screen.getByRole("menuitem", { name: "收录内容" }));
+
+    expect(await screen.findByRole("dialog", { name: "选择分组" })).toBeInTheDocument();
+    expect(listMaterialCollections).toHaveBeenCalledWith({ bizType: 2 });
+    await user.click(screen.getByLabelText("常用文件"));
+    await user.click(screen.getByRole("button", { name: "收录" }));
+
+    await waitFor(() => {
+      expect(collectMaterial).toHaveBeenCalledWith({
+        bizType: 2,
+        groupId: "mock-material-group-file",
+        messageId: "msg-004",
+      });
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "选择分组" })).not.toBeInTheDocument();
+    });
+    expect(workbenchToastSuccessMock).toHaveBeenCalledWith("已收录");
   });
 
 });

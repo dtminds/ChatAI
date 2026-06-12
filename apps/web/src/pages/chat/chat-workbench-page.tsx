@@ -32,6 +32,12 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
+import {
+  MATERIAL_COLLECTION_BIZ_TYPE,
+  type MaterialCollectionBizType,
+  type WorkbenchMaterialCollectionGroupDto,
+  type WorkbenchMaterialCollectionItemDto,
+} from "@chatai/contracts";
 import { notifyAuthSessionChanged } from "@/pages/auth/auth-tokens";
 import { logout } from "@/pages/auth/auth-service";
 import { useAuthStore } from "@/store/auth-store";
@@ -40,6 +46,10 @@ import { ChatPanel } from "@/pages/chat/components/chat-panel";
 import { ConversationListPanel } from "@/pages/chat/components/conversation-list-panel";
 import { CustomerPage } from "@/pages/chat/customer-page";
 import type { InputEnterBehavior } from "@/pages/chat/components/input-enter-behavior";
+import {
+  MaterialGroupSelectDialog,
+  MaterialLibraryDialog,
+} from "@/pages/chat/components/material-collection";
 import {
   CLEAR_COMPOSER_COMMAND,
   INSERT_COMPOSER_MENTION_COMMAND,
@@ -67,6 +77,7 @@ import type {
 import { uploadWorkbenchFile } from "@/pages/chat/api/media-upload-service";
 import { getVisibleConversations } from "@/pages/chat/api/workbench-gateway";
 import { downloadMessageFile } from "@/pages/chat/api/workbench-gateway";
+import { getWorkbenchService } from "@/pages/chat/api/workbench-service";
 import {
   isComposerFileSizeAllowed,
   isSupportedComposerFile,
@@ -96,6 +107,11 @@ type MentionRetryDialogState = {
   groupMemberId: string;
   refreshedOnce: boolean;
 };
+
+type ComposerMaterialBizType =
+  | typeof MATERIAL_COLLECTION_BIZ_TYPE.FILE
+  | typeof MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM
+  | typeof MATERIAL_COLLECTION_BIZ_TYPE.H5;
 
 function getInitialAccountRailCollapsed() {
   try {
@@ -259,6 +275,26 @@ function ChatWorkbenchContent({
     useState<QuotedMessagePreviewContent | null>(null);
   const [mentionRetryDialogState, setMentionRetryDialogState] =
     useState<MentionRetryDialogState | null>(null);
+  const [pendingMaterialCollection, setPendingMaterialCollection] = useState<{
+    bizType: ComposerMaterialBizType;
+    messageId: string;
+  } | null>(null);
+  const [materialCollectionGroups, setMaterialCollectionGroups] = useState<
+    WorkbenchMaterialCollectionGroupDto[]
+  >([]);
+  const [isCollectingMaterial, setIsCollectingMaterial] = useState(false);
+  const [collectedExpressions, setCollectedExpressions] = useState<
+    WorkbenchMaterialCollectionItemDto[]
+  >([]);
+  const [activeMaterialLibraryBizType, setActiveMaterialLibraryBizType] =
+    useState<ComposerMaterialBizType | null>(null);
+  const [materialLibraryGroups, setMaterialLibraryGroups] = useState<
+    WorkbenchMaterialCollectionGroupDto[]
+  >([]);
+  const [materialLibraryItems, setMaterialLibraryItems] = useState<
+    WorkbenchMaterialCollectionItemDto[]
+  >([]);
+  const [isMaterialLibraryBusy, setIsMaterialLibraryBusy] = useState(false);
   const [isRefreshingMentionTarget, setIsRefreshingMentionTarget] =
     useState(false);
   const [isAccountRailCollapsed, setIsAccountRailCollapsed] = useState(
@@ -587,6 +623,298 @@ function ChatWorkbenchContent({
       toast.warning(result.errorMessage || "撤回失败，请稍后重试");
     },
     [canSendMessage, revokeMessage],
+  );
+
+  const refreshCollectedExpressions = useCallback(async () => {
+    try {
+      const response = await getWorkbenchService().listMaterialCollections({
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION,
+      });
+
+      if (isMountedRef.current) {
+        setCollectedExpressions(response.items);
+      }
+    } catch (error) {
+      if (isMountedRef.current) {
+        toast.warning(getMaterialErrorMessage(error, "收藏表情加载失败"));
+      }
+    }
+  }, []);
+
+  const loadMaterialLibrary = useCallback(
+    async (bizType: ComposerMaterialBizType) => {
+      setIsMaterialLibraryBusy(true);
+
+      try {
+        const response = await getWorkbenchService().listMaterialCollections({
+          bizType,
+        });
+
+        if (!isMountedRef.current) {
+          return;
+        }
+
+        setMaterialLibraryGroups(response.groups);
+        setMaterialLibraryItems(response.items);
+      } catch (error) {
+        if (isMountedRef.current) {
+          toast.warning(getMaterialErrorMessage(error, "素材加载失败"));
+        }
+      } finally {
+        if (isMountedRef.current) {
+          setIsMaterialLibraryBusy(false);
+        }
+      }
+    },
+    [],
+  );
+
+  const refreshMaterialList = useCallback(
+    async (bizType: MaterialCollectionBizType) => {
+      if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION) {
+        await refreshCollectedExpressions();
+        return;
+      }
+
+      if (activeMaterialLibraryBizType === bizType) {
+        await loadMaterialLibrary(bizType);
+      }
+    },
+    [
+      activeMaterialLibraryBizType,
+      loadMaterialLibrary,
+      refreshCollectedExpressions,
+    ],
+  );
+
+  useEffect(() => {
+    if (bootstrapStatus !== "ready") {
+      return;
+    }
+
+    void refreshCollectedExpressions();
+  }, [bootstrapStatus, refreshCollectedExpressions]);
+
+  const handleCollectMaterial = useCallback(
+    async (message: ChatMessage) => {
+      const bizType = getMaterialBizTypeForMessage(message);
+
+      if (!bizType) {
+        return;
+      }
+
+      const messageId = message.remoteMessageId ?? message.id;
+
+      if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION) {
+        setIsCollectingMaterial(true);
+
+        try {
+          await getWorkbenchService().collectMaterial({
+            bizType,
+            groupId: 0,
+            messageId,
+          });
+
+          if (!isMountedRef.current) {
+            return;
+          }
+
+          toast.success("已收录");
+          void refreshMaterialList(bizType);
+        } catch (error) {
+          if (isMountedRef.current) {
+            toast.warning(getMaterialErrorMessage(error, "收录失败，请稍后重试"));
+          }
+        } finally {
+          if (isMountedRef.current) {
+            setIsCollectingMaterial(false);
+          }
+        }
+        return;
+      }
+
+      setIsCollectingMaterial(true);
+
+      try {
+        const response = await getWorkbenchService().listMaterialCollections({
+          bizType,
+        });
+
+        if (!isMountedRef.current) {
+          return;
+        }
+
+        setMaterialCollectionGroups(response.groups);
+        setPendingMaterialCollection({ bizType, messageId });
+      } catch (error) {
+        if (isMountedRef.current) {
+          toast.warning(getMaterialErrorMessage(error, "分组加载失败"));
+        }
+      } finally {
+        if (isMountedRef.current) {
+          setIsCollectingMaterial(false);
+        }
+      }
+    },
+    [refreshMaterialList],
+  );
+
+  const handleSubmitMaterialCollection = useCallback(
+    async (groupId: string | 0) => {
+      if (!pendingMaterialCollection) {
+        return;
+      }
+
+      setIsCollectingMaterial(true);
+
+      try {
+        await getWorkbenchService().collectMaterial({
+          bizType: pendingMaterialCollection.bizType,
+          groupId,
+          messageId: pendingMaterialCollection.messageId,
+        });
+
+        if (!isMountedRef.current) {
+          return;
+        }
+
+        toast.success("已收录");
+        setPendingMaterialCollection(null);
+        void refreshMaterialList(pendingMaterialCollection.bizType);
+      } catch (error) {
+        if (isMountedRef.current) {
+          toast.warning(getMaterialErrorMessage(error, "收录失败，请稍后重试"));
+        }
+      } finally {
+        if (isMountedRef.current) {
+          setIsCollectingMaterial(false);
+        }
+      }
+    },
+    [pendingMaterialCollection, refreshMaterialList],
+  );
+
+  const handleOpenMaterialLibrary = useCallback(
+    (bizType: ComposerMaterialBizType) => {
+      setActiveMaterialLibraryBizType(bizType);
+      setMaterialLibraryGroups([]);
+      setMaterialLibraryItems([]);
+      void loadMaterialLibrary(bizType);
+    },
+    [loadMaterialLibrary],
+  );
+
+  const handleSelectMaterial = useCallback(() => {
+    window.alert("后续接入发送接口");
+  }, []);
+
+  const runMaterialLibraryMutation = useCallback(
+    async (
+      action: (bizType: ComposerMaterialBizType) => Promise<unknown>,
+      fallbackMessage: string,
+    ) => {
+      const bizType = activeMaterialLibraryBizType;
+
+      if (!bizType) {
+        return;
+      }
+
+      setIsMaterialLibraryBusy(true);
+
+      try {
+        await action(bizType);
+        await loadMaterialLibrary(bizType);
+      } catch (error) {
+        if (isMountedRef.current) {
+          toast.warning(getMaterialErrorMessage(error, fallbackMessage));
+        }
+      } finally {
+        if (isMountedRef.current) {
+          setIsMaterialLibraryBusy(false);
+        }
+      }
+    },
+    [activeMaterialLibraryBizType, loadMaterialLibrary],
+  );
+
+  const handleCreateMaterialGroup = useCallback(
+    (title: string) => {
+      void runMaterialLibraryMutation(
+        (bizType) =>
+          getWorkbenchService().createMaterialGroup({
+            bizType,
+            title,
+          }),
+        "新建分组失败",
+      );
+    },
+    [runMaterialLibraryMutation],
+  );
+
+  const handleRenameMaterialGroup = useCallback(
+    (group: WorkbenchMaterialCollectionGroupDto, title: string) => {
+      void runMaterialLibraryMutation(
+        (bizType) =>
+          getWorkbenchService().renameMaterialGroup(group.id, bizType, {
+            title,
+          }),
+        "重命名分组失败",
+      );
+    },
+    [runMaterialLibraryMutation],
+  );
+
+  const handleTopMaterialGroup = useCallback(
+    (group: WorkbenchMaterialCollectionGroupDto) => {
+      void runMaterialLibraryMutation(
+        (bizType) => getWorkbenchService().topMaterialGroup(group.id, bizType),
+        "置顶分组失败",
+      );
+    },
+    [runMaterialLibraryMutation],
+  );
+
+  const handleDeleteMaterialGroup = useCallback(
+    (group: WorkbenchMaterialCollectionGroupDto) => {
+      void runMaterialLibraryMutation(
+        (bizType) => getWorkbenchService().deleteMaterialGroup(group.id, bizType),
+        "删除分组失败",
+      );
+    },
+    [runMaterialLibraryMutation],
+  );
+
+  const handleDeleteMaterial = useCallback(
+    (item: WorkbenchMaterialCollectionItemDto) => {
+      void runMaterialLibraryMutation(
+        () => getWorkbenchService().deleteMaterialCollection(item.id),
+        "删除素材失败",
+      );
+    },
+    [runMaterialLibraryMutation],
+  );
+
+  const handleTopMaterial = useCallback(
+    (item: WorkbenchMaterialCollectionItemDto) => {
+      void runMaterialLibraryMutation(
+        () => getWorkbenchService().topMaterialCollection(item.id),
+        "置顶素材失败",
+      );
+    },
+    [runMaterialLibraryMutation],
+  );
+
+  const handleMoveMaterial = useCallback(
+    (item: WorkbenchMaterialCollectionItemDto, groupId: string | 0) => {
+      void runMaterialLibraryMutation(
+        () =>
+          getWorkbenchService().moveMaterialCollection(item.id, {
+            groupId,
+          }),
+        "移动素材失败",
+      );
+    },
+    [runMaterialLibraryMutation],
   );
 
   useEffect(() => {
@@ -1401,6 +1729,7 @@ function ChatWorkbenchContent({
                   isSendingDraft={isSendingDraft}
                   isResizingCustomerPanel={isResizingCustomerPanel}
                   fileUploadQueue={fileUploadQueue}
+                  collectedExpressions={collectedExpressions}
                   hasMoreHistory={hasMoreHistory}
                   historyLoadLabel={historyLoadLabel}
                   messages={activeMessages}
@@ -1419,6 +1748,7 @@ function ChatWorkbenchContent({
                   onComposerSegmentsChange={handleComposerSegmentsChange}
                   onCancelFileUpload={handleCancelFileUpload}
                   onClearQuotedMessage={() => setQuotedMessage(null)}
+                  onCollectMaterial={handleCollectMaterial}
                   onDownloadMessageFile={handleDownloadMessageFile}
                   onTranscribeVoice={handleTranscribeVoice}
                   onVoicePlaybackReady={handleVoicePlaybackReady}
@@ -1426,6 +1756,7 @@ function ChatWorkbenchContent({
                   onEmojiPickerOpenChange={setIsEmojiPickerOpen}
                   onEnterBehaviorChange={setInputEnterBehavior}
                   onFileSelect={handleFileSelect}
+                  onOpenMaterialLibrary={handleOpenMaterialLibrary}
                   onOpenHistory={() => {
                     if (isHistoryPanelOpen) {
                       closeHistoryPanel();
@@ -1476,6 +1807,7 @@ function ChatWorkbenchContent({
                   onMentionMessage={handleMentionMessage}
                   onOpenQuotedMessage={handleOpenQuotedMessage}
                   onQuoteMessage={handleQuoteMessage}
+                  onSelectCollectedExpression={handleSelectMaterial}
                   onSendSmartReply={handleSendSmartReply}
                   onFillSmartReplyComposer={handleFillSmartReplyComposer}
                   onDismissSmartReply={handleDismissSmartReply}
@@ -1639,6 +1971,41 @@ function ChatWorkbenchContent({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <MaterialGroupSelectDialog
+        groups={materialCollectionGroups}
+        isSaving={isCollectingMaterial}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingMaterialCollection(null);
+          }
+        }}
+        onSubmit={(groupId) => {
+          void handleSubmitMaterialCollection(groupId);
+        }}
+        open={pendingMaterialCollection !== null}
+      />
+      <MaterialLibraryDialog
+        bizType={activeMaterialLibraryBizType ?? MATERIAL_COLLECTION_BIZ_TYPE.FILE}
+        groups={materialLibraryGroups}
+        isBusy={isMaterialLibraryBusy}
+        items={materialLibraryItems}
+        onCreateGroup={handleCreateMaterialGroup}
+        onDeleteGroup={handleDeleteMaterialGroup}
+        onDeleteMaterial={handleDeleteMaterial}
+        onMoveMaterial={handleMoveMaterial}
+        onOpenChange={(open) => {
+          if (!open) {
+            setActiveMaterialLibraryBizType(null);
+            setMaterialLibraryGroups([]);
+            setMaterialLibraryItems([]);
+          }
+        }}
+        onRenameGroup={handleRenameMaterialGroup}
+        onSelectMaterial={handleSelectMaterial}
+        onTopGroup={handleTopMaterialGroup}
+        onTopMaterial={handleTopMaterial}
+        open={activeMaterialLibraryBizType !== null}
+      />
     </div>
   );
 }
@@ -1865,6 +2232,38 @@ function buildQuotedMessagePreview(
         title: message.content.msgTitle,
       };
   }
+}
+
+function getMaterialBizTypeForMessage(
+  message: ChatMessage,
+): MaterialCollectionBizType | undefined {
+  if (message.content.type === "image") {
+    return message.content.variant === "emotion"
+      ? MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION
+      : undefined;
+  }
+
+  if (message.content.type === "file") {
+    return MATERIAL_COLLECTION_BIZ_TYPE.FILE;
+  }
+
+  if (message.content.type === "mini-program") {
+    return MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM;
+  }
+
+  if (message.content.type === "h5") {
+    return MATERIAL_COLLECTION_BIZ_TYPE.H5;
+  }
+
+  return undefined;
+}
+
+function getMaterialErrorMessage(error: unknown, fallback: string) {
+  if (isErrorWithMessage(error) && error.message.trim()) {
+    return error.message;
+  }
+
+  return fallback;
 }
 
 function getSendErrorCode(error: unknown) {

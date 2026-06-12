@@ -20,7 +20,10 @@ import type {
   Message,
   QuotedMessagePreviewContent,
 } from "@/pages/chat/chat-types";
-import type { SettingsSidebarItem } from "@chatai/contracts";
+import type {
+  SettingsSidebarItem,
+  WorkbenchMaterialCollectionItemDto,
+} from "@chatai/contracts";
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
 import type { SmartReplySendPayload } from "@/pages/chat/api/smart-reply-adapter";
 import type { SmartReplySuggestion } from "@/pages/chat/components/smart-reply-card";
@@ -75,6 +78,10 @@ type ChatPanelProps = {
   onEmojiPickerOpenChange: (isOpen: boolean) => void;
   onEnterBehaviorChange: (behavior: InputEnterBehavior) => void;
   onCancelFileUpload: (uploadId: string) => void;
+  collectedExpressions?: WorkbenchMaterialCollectionItemDto[];
+  onCollectMaterial?: (message: ChatMessage) => void;
+  onOpenMaterialLibrary?: (bizType: 2 | 3 | 4) => void;
+  onSelectCollectedExpression?: (item: WorkbenchMaterialCollectionItemDto) => void;
   onDownloadMessageFile?: (message: ChatMessage) => void;
   onFileSelect: (files: FileList | File[] | null) => void;
   onOpenHistory: () => void;
@@ -151,6 +158,10 @@ export function ChatPanel({
   onEmojiPickerOpenChange,
   onEnterBehaviorChange,
   onCancelFileUpload,
+  collectedExpressions,
+  onCollectMaterial,
+  onOpenMaterialLibrary,
+  onSelectCollectedExpression,
   onDownloadMessageFile,
   onFileSelect,
   onOpenHistory,
@@ -222,6 +233,7 @@ export function ChatPanel({
                 smartReplyAutoPendingByMessageId={smartReplyAutoPendingByMessageId}
                 smartReplyByMessageId={smartReplyByMessageId}
                 messageViewportRef={messageViewportRef}
+                onCollectMaterial={onCollectMaterial}
                 onDownloadMessageFile={onDownloadMessageFile}
                 onMentionMessage={onMentionMessage}
                 onLoadOlderMessages={onLoadOlderMessages}
@@ -278,12 +290,15 @@ export function ChatPanel({
                     isEmojiPickerOpen={isEmojiPickerOpen}
                     isSending={isSendingDraft}
                     isHistoryPanelOpen={isHistoryPanelOpen}
+                    collectedExpressions={collectedExpressions}
                     onClearQuotedMessage={onClearQuotedMessage}
                     onDraftChange={onDraftChange}
                     onEmojiPickerOpenChange={onEmojiPickerOpenChange}
                     onEnterBehaviorChange={onEnterBehaviorChange}
                     onFileSelect={onFileSelect}
+                    onOpenMaterialLibrary={onOpenMaterialLibrary ?? noop}
                     onOpenHistory={onOpenHistory}
+                    onSelectCollectedExpression={onSelectCollectedExpression}
                     onSegmentsChange={onComposerSegmentsChange}
                     onSendDraft={onSendDraft}
                     placeholder={composerPlaceholder}
@@ -411,3 +426,5 @@ function FileUploadQueueBar({
     </div>
   );
 }
+
+function noop() {}

@@ -16,6 +16,7 @@ type ChatMessagePanelProps = {
   isConversationLoading: boolean;
   conversationId: string;
   messages: Message[];
+  onCollectMaterial?: (message: ChatMessage) => void;
   onDownloadMessageFile?: (message: ChatMessage) => void;
   onMentionMessage?: (message: ChatMessage) => void;
   onLoadOlderMessages: () => void;
@@ -53,6 +54,7 @@ export function ChatMessagePanel({
   isConversationLoading,
   conversationId,
   messages,
+  onCollectMaterial,
   onDownloadMessageFile,
   onMentionMessage,
   onLoadOlderMessages,
@@ -115,6 +117,7 @@ export function ChatMessagePanel({
                 canUseMessageActions={canUseMessageActions}
                 conversationId={conversationId}
                 messages={messages}
+                onCollectMaterial={onCollectMaterial}
                 onDownloadMessageFile={onDownloadMessageFile}
                 onMentionMessage={onMentionMessage}
                 onOpenQuotedMessage={onOpenQuotedMessage}

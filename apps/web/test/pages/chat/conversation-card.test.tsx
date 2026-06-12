@@ -20,6 +20,28 @@ const conversation: Conversation = {
 };
 
 describe("ConversationCard", () => {
+  it("shows draft preview for saved composer drafts", () => {
+    render(
+      <ConversationCard
+        composerDraft={{
+          draft: "还没发出去",
+          quotedMessage: null,
+          segments: [{ text: "还没发出去", type: "text" }],
+        }}
+        conversation={conversation}
+        isActive={false}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId("conversation-preview")).toHaveTextContent(
+      "[草稿]还没发出去",
+    );
+    expect(screen.getByTestId("conversation-draft-prefix")).toHaveClass(
+      "text-destructive",
+    );
+  });
+
   it("keeps showing unread badges for active conversations until unread reaches zero", () => {
     render(
       <ConversationCard

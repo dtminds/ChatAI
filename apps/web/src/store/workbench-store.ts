@@ -40,6 +40,10 @@ import {
 } from "@/pages/chat/lib/composer-segments";
 import { sortConversations } from "@/pages/chat/lib/conversation-order";
 import { parseWorkbenchDate } from "@/pages/chat/lib/chat-time";
+import {
+  buildConversationComposerDraft,
+  type ConversationComposerDraft,
+} from "@/pages/chat/lib/conversation-composer-draft";
 import { notifyPulledCustomerMessage } from "@/pages/chat/lib/new-message-title-alert";
 import { canUseWorkbenchConversationActions } from "@/pages/chat/lib/workbench-permissions";
 import { seedCustomerProfiles } from "@/pages/chat/mock-data";
@@ -301,6 +305,12 @@ type WorkbenchState = {
   ) => Promise<void>;
   conversationOpenError?: string;
   dismissConversationOpenError: () => void;
+  composerDraftsByConversationId: Record<string, ConversationComposerDraft>;
+  saveComposerDraft: (
+    conversationId: string,
+    draft: ConversationComposerDraft,
+  ) => void;
+  clearComposerDraft: (conversationId: string) => void;
 };
 
 type WorkbenchStore = WorkbenchState;
@@ -371,6 +381,8 @@ function createInitialState(): Omit<
   | "triggerSearch"
   | "selectOrCreateAndSelectConversation"
   | "dismissConversationOpenError"
+  | "saveComposerDraft"
+  | "clearComposerDraft"
 > {
   return {
     accounts: [],
@@ -427,6 +439,7 @@ function createInitialState(): Omit<
     searchResults: null,
     isSearchLoading: false,
     conversationOpenError: undefined,
+    composerDraftsByConversationId: {},
   };
 }
 
@@ -2861,6 +2874,34 @@ export function createWorkbenchStore() {
       dismissConversationOpenError() {
         set({ conversationOpenError: undefined });
       },
+      saveComposerDraft(conversationId, draft) {
+        if (!conversationId) {
+          return;
+        }
+
+        set((currentState) => ({
+          composerDraftsByConversationId: {
+            ...currentState.composerDraftsByConversationId,
+            [conversationId]: buildConversationComposerDraft(draft),
+          },
+        }));
+      },
+      clearComposerDraft(conversationId) {
+        if (!conversationId) {
+          return;
+        }
+
+        set((currentState) => {
+          if (!currentState.composerDraftsByConversationId[conversationId]) {
+            return currentState;
+          }
+
+          const { [conversationId]: _removed, ...composerDraftsByConversationId } =
+            currentState.composerDraftsByConversationId;
+
+          return { composerDraftsByConversationId };
+        });
+      },
       dismissSmartReply(message) {
         const state = get();
         const conversationId = message.conversationId;
@@ -3300,30 +3341,38 @@ export function createWorkbenchStore() {
           : currentState.activeMode;
         const requestId = shouldSwitchActive ? issueScopeRequestId() : latestScopeRequestId;
 
-        set((latestState) => ({
-          ...clearConversationResourceState(latestState, [conversationId]),
-          accounts: latestState.accounts.map((item) =>
-            item.id === account.id
-              ? {
-                  ...item,
-                  unreadCount: Math.max(
-                    0,
-                    (item.unreadCount ?? 0) - conversation.unread,
-                  ),
-                }
-              : item,
-          ),
-          activeConversationId: nextActiveConversationId,
-          activeMessageSeq: shouldSwitchActive ? 0 : latestState.activeMessageSeq,
-          activeMode: nextActiveMode,
-          conversationListsByScope: {
-            ...latestState.conversationListsByScope,
-            [account.id]: (latestState.conversationListsByScope[account.id] ?? []).filter(
-              (item) => item.id !== conversationId,
+        set((latestState) => {
+          const {
+            [conversationId]: _removedDraft,
+            ...composerDraftsByConversationId
+          } = latestState.composerDraftsByConversationId;
+
+          return {
+            ...clearConversationResourceState(latestState, [conversationId]),
+            accounts: latestState.accounts.map((item) =>
+              item.id === account.id
+                ? {
+                    ...item,
+                    unreadCount: Math.max(
+                      0,
+                      (item.unreadCount ?? 0) - conversation.unread,
+                    ),
+                  }
+                : item,
             ),
-          },
-          readReceiptError: undefined,
-        }));
+            activeConversationId: nextActiveConversationId,
+            activeMessageSeq: shouldSwitchActive ? 0 : latestState.activeMessageSeq,
+            activeMode: nextActiveMode,
+            composerDraftsByConversationId,
+            conversationListsByScope: {
+              ...latestState.conversationListsByScope,
+              [account.id]: (latestState.conversationListsByScope[account.id] ?? []).filter(
+                (item) => item.id !== conversationId,
+              ),
+            },
+            readReceiptError: undefined,
+          };
+        });
 
         if (shouldSwitchActive) {
           await loadConversationAfterDelete(nextActiveConversationId, requestId);

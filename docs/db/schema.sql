@@ -492,6 +492,7 @@ CREATE TABLE `xy_wap_embed_material_collection` (
   `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '插入时间',
   `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_material_collection_msg_scope` (`uid`,`biz_type`,`sub_uid`,`msgid`),
   KEY `idx_uid_bizStatus_subUid_bizType_groupId` (`uid`,`biz_status`,`sub_uid`,`biz_type`,`group_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='chatAI-素材收藏表';
 

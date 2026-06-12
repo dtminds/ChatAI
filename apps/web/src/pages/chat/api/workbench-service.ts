@@ -387,6 +387,18 @@ export function createMockWorkbenchService(): WorkbenchService {
         };
       }
 
+      if (
+        request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION &&
+        !state.materialGroups.some(
+          (group) => group.id === request.groupId && group.bizType === request.bizType,
+        )
+      ) {
+        return {
+          success: false,
+          errorMsg: "请选择有效分组",
+        };
+      }
+
       const existing = state.materialItems.find(
         (item) =>
           item.bizType === request.bizType &&

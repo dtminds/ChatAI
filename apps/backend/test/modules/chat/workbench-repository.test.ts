@@ -370,6 +370,12 @@ function createQueryBuilder(result: unknown) {
       };
     },
     eb: buildExpression,
+    ref(column: string) {
+      return {
+        type: "ref",
+        column,
+      };
+    },
   });
 
   return {
@@ -486,8 +492,14 @@ function createCacheMock(initial: Record<string, string> = {}) {
 
 function createMaterialDb(results: Partial<Record<string, unknown>> = {}) {
   const selects: Array<{
+    joinConditions: Array<{
+      conditions: Array<[string, string, unknown]>;
+      table: string;
+      type: string;
+    }>;
     orderBys: Array<[string, string | undefined]>;
     table: string;
+    whereExpressions: unknown[];
     wheres: Array<[string, string, unknown]>;
   }> = [];
   const inserts: Array<{
@@ -524,8 +536,10 @@ function createMaterialDb(results: Partial<Record<string, unknown>> = {}) {
     selectFrom(table: string) {
       const query = createQueryBuilder(results[table] ?? []);
       selects.push({
+        joinConditions: query.joinConditions,
         orderBys: query.orderBys,
         table,
+        whereExpressions: query.whereExpressions,
         wheres: query.wheres,
       });
       return query;
@@ -600,17 +614,9 @@ function createConversationMessageRow(overrides: Partial<Record<string, unknown>
 }
 
 describe("WorkbenchRepository", () => {
-  it("lists material groups scoped by tenant, business type, visibility, and sort order", async () => {
+  it("lists material groups scoped by tenant, business type, shared visibility, and sort order", async () => {
     const db = createMaterialDb({
       xy_wap_embed_material_collection_group: [
-        {
-          biz_type: 2,
-          id: 12,
-          sort: 30,
-          sub_uid: 88,
-          title: "我的文件",
-          uid: 9001,
-        },
         {
           biz_type: 2,
           id: 8,
@@ -630,7 +636,6 @@ describe("WorkbenchRepository", () => {
     });
 
     expect(groups).toEqual([
-      { bizType: 2, id: "12", sort: 30, title: "我的文件" },
       { bizType: 2, id: "8", sort: 10, title: "共享文件" },
     ]);
     expect(db.selects[0]).toMatchObject({
@@ -643,7 +648,7 @@ describe("WorkbenchRepository", () => {
         ["uid", "=", 9001],
         ["biz_type", "=", 2],
         ["biz_status", "=", 1],
-        ["sub_uid", "in", [0, 88]],
+        ["sub_uid", "in", [0]],
       ],
     });
   });
@@ -661,7 +666,7 @@ describe("WorkbenchRepository", () => {
           msgid: "msg-file-66",
           op_sub_uid: 88,
           sort: 40,
-          sub_uid: 88,
+          sub_uid: 0,
           title: "报价文件",
           uid: 9001,
           update_time: 1_777_000_005_000,
@@ -699,10 +704,54 @@ describe("WorkbenchRepository", () => {
         ["uid", "=", 9001],
         ["biz_type", "=", 2],
         ["biz_status", "=", 1],
-        ["sub_uid", "in", [0, 88]],
+        ["sub_uid", "in", [0]],
         ["group_id", "=", 9],
       ],
     });
+  });
+
+  it("lists expression collections scoped to the current sub user", async () => {
+    const db = createMaterialDb({
+      xy_wap_embed_material_collection: [
+        {
+          biz_status: 1,
+          biz_type: 1,
+          content: JSON.stringify({ md5: "emotion-md5" }),
+          create_time: 1_777_000_000_000,
+          group_id: 0,
+          id: 68,
+          msgid: "msg-emotion-68",
+          op_sub_uid: 88,
+          sort: 50,
+          sub_uid: 88,
+          title: "表情",
+          uid: 9001,
+          update_time: 1_777_000_005_000,
+        },
+      ],
+    });
+    const repository = new WorkbenchRepository(db as never);
+
+    const items = await repository.listMaterialCollections({
+      bizType: 1,
+      subUserId: "88",
+      uid: 9001,
+    });
+
+    expect(items).toMatchObject([
+      {
+        bizType: 1,
+        id: "68",
+        messageId: "msg-emotion-68",
+        title: "表情",
+      },
+    ]);
+    expect(db.selects[0].wheres).toEqual([
+      ["uid", "=", 9001],
+      ["biz_type", "=", 1],
+      ["biz_status", "=", 1],
+      ["sub_uid", "in", [88]],
+    ]);
   });
 
   it("finds material message from the read-only platform message table by msgid and uid", async () => {
@@ -713,6 +762,7 @@ describe("WorkbenchRepository", () => {
         msgid: "msg-mini-1",
         msgtime: 1_777_000_000_000,
         msgtype: "weapp",
+        seat_id: 12,
         uid: 9001,
       },
     });
@@ -727,15 +777,28 @@ describe("WorkbenchRepository", () => {
       content: JSON.stringify({ title: "小程序卡片" }),
       msgid: "msg-mini-1",
       msgtype: "weapp",
+      seatId: "12",
       uid: 9001,
     });
     expect(db.selects[0]).toMatchObject({
       table: "xy_wap_embed_msg_audit_info as message",
+      joinConditions: [
+        {
+          table: "xy_wap_embed_conversation as conversation",
+          type: "innerJoin",
+        },
+        {
+          table: "xy_wap_embed_user_seat as seat",
+          type: "innerJoin",
+        },
+      ],
       wheres: [
         ["message.msgid", "=", "msg-mini-1"],
         ["message.uid", "=", 9001],
+        ["seat.biz_status", "=", 1],
       ],
     });
+    expect(db.selects[0].whereExpressions).toHaveLength(1);
     expect(db.inserts).toHaveLength(0);
     expect(db.updates).toHaveLength(0);
   });
@@ -853,13 +916,59 @@ describe("WorkbenchRepository", () => {
     ]);
   });
 
+  it("returns duplicate marker when material collection insert hits unique key", async () => {
+    const duplicateKeyError = Object.assign(new Error("Duplicate entry"), {
+      code: "ER_DUP_ENTRY",
+      errno: 1062,
+    });
+    const db = createMaterialDb();
+    db.inserts.length = 0;
+    const repository = new WorkbenchRepository({
+      ...db,
+      insertInto(table: string) {
+        const insert = { table, values: undefined as unknown };
+        db.inserts.push(insert);
+
+        return {
+          values(values: unknown) {
+            insert.values = values;
+            return this;
+          },
+          async executeTakeFirstOrThrow() {
+            throw duplicateKeyError;
+          },
+        };
+      },
+    } as never);
+
+    await expect(
+      repository.createMaterialCollection({
+        bizType: 2,
+        content: null,
+        groupId: "9",
+        msgid: "msg-file-66",
+        opSubUserId: "88",
+        sort: 40,
+        subUid: 0,
+        title: "报价文件",
+        uid: 9001,
+      }),
+    ).resolves.toBe("DUPLICATE");
+  });
+
   it("soft deletes, tops, and moves material collection rows", async () => {
     const db = createMaterialDb();
     const repository = new WorkbenchRepository(db as never);
 
-    await repository.deleteMaterialCollection({ id: "66", uid: 9001 });
-    await repository.topMaterialCollection({ id: "66", sort: 90, uid: 9001 });
-    await repository.moveMaterialCollection({ groupId: "9", id: "66", sort: 12, uid: 9001 });
+    await repository.deleteMaterialCollection({ id: "66", subUid: 101, uid: 9001 });
+    await repository.topMaterialCollection({ id: "66", sort: 90, subUid: 101, uid: 9001 });
+    await repository.moveMaterialCollection({
+      groupId: "9",
+      id: "66",
+      sort: 12,
+      subUid: 101,
+      uid: 9001,
+    });
 
     expect(db.updates).toEqual([
       {
@@ -868,6 +977,7 @@ describe("WorkbenchRepository", () => {
         wheres: [
           ["id", "=", 66],
           ["uid", "=", 9001],
+          ["sub_uid", "=", 101],
           ["biz_status", "=", 1],
         ],
       },
@@ -877,6 +987,7 @@ describe("WorkbenchRepository", () => {
         wheres: [
           ["id", "=", 66],
           ["uid", "=", 9001],
+          ["sub_uid", "=", 101],
           ["biz_status", "=", 1],
         ],
       },
@@ -886,10 +997,65 @@ describe("WorkbenchRepository", () => {
         wheres: [
           ["id", "=", 66],
           ["uid", "=", 9001],
+          ["sub_uid", "=", 101],
           ["biz_status", "=", 1],
         ],
       },
     ]);
+  });
+
+  it("looks up material collection operation scope", async () => {
+    const db = createMaterialDb({
+      xy_wap_embed_material_collection: {
+        biz_type: 1,
+        sub_uid: 101,
+      },
+    });
+    const repository = new WorkbenchRepository(db as never);
+
+    await expect(
+      repository.findMaterialCollectionScope({ id: "66", uid: 9001 }),
+    ).resolves.toEqual({
+      bizType: 1,
+      subUid: 101,
+    });
+
+    expect(db.selects[0]).toMatchObject({
+      table: "xy_wap_embed_material_collection",
+      wheres: [
+        ["id", "=", 66],
+        ["uid", "=", 9001],
+        ["biz_status", "=", 1],
+      ],
+    });
+  });
+
+  it("checks active enterprise material group existence", async () => {
+    const db = createMaterialDb({
+      xy_wap_embed_material_collection_group: {
+        id: 9,
+      },
+    });
+    const repository = new WorkbenchRepository(db as never);
+
+    await expect(
+      repository.hasActiveMaterialGroup({
+        bizType: 4,
+        groupId: "9",
+        uid: 9001,
+      }),
+    ).resolves.toBe(true);
+
+    expect(db.selects[0]).toMatchObject({
+      table: "xy_wap_embed_material_collection_group",
+      wheres: [
+        ["id", "=", 9],
+        ["uid", "=", 9001],
+        ["biz_type", "=", 4],
+        ["biz_status", "=", 1],
+        ["sub_uid", "=", 0],
+      ],
+    });
   });
 
   it("restores material collection rows for duplicate recovery", async () => {
@@ -967,6 +1133,7 @@ describe("WorkbenchRepository", () => {
           ["id", "=", 9],
           ["uid", "=", 9001],
           ["biz_type", "=", 2],
+          ["sub_uid", "=", 0],
           ["biz_status", "=", 1],
         ],
       },
@@ -977,6 +1144,7 @@ describe("WorkbenchRepository", () => {
           ["id", "=", 9],
           ["uid", "=", 9001],
           ["biz_type", "=", 2],
+          ["sub_uid", "=", 0],
           ["biz_status", "=", 1],
         ],
       },
@@ -987,6 +1155,7 @@ describe("WorkbenchRepository", () => {
           ["id", "=", 9],
           ["uid", "=", 9001],
           ["biz_type", "=", 2],
+          ["sub_uid", "=", 0],
           ["biz_status", "=", 1],
         ],
       },
@@ -1010,8 +1179,20 @@ describe("WorkbenchRepository", () => {
       }),
     ).resolves.toBeUndefined();
     await expect(
-      repository.topMaterialCollection({ id: "bad", sort: 90, uid: 9001 }),
+      repository.topMaterialCollection({
+        id: "bad",
+        sort: 90,
+        subUid: 88,
+        uid: 9001,
+      }),
     ).resolves.toBeUndefined();
+    await expect(
+      repository.hasActiveMaterialGroup({
+        bizType: 2,
+        groupId: "bad",
+        uid: 9001,
+      }),
+    ).resolves.toBe(false);
   });
 
   it("does not send NaN to MySQL when subUserId is invalid", async () => {

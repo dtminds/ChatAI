@@ -366,6 +366,7 @@ export type MaterialMessageLookup = {
   msgid: string;
   msgtime?: Date | number | string | null;
   msgtype: string;
+  seatId: string;
   uid: number;
 };
 
@@ -373,6 +374,11 @@ export type MaterialCollectionLookup = {
   bizStatus: number;
   id: string;
   item: WorkbenchMaterialCollectionItemDto;
+};
+
+export type MaterialCollectionScope = {
+  bizType: number;
+  subUid: number;
 };
 
 type InsertResult = {
@@ -398,7 +404,7 @@ export class WorkbenchRepository {
       .where("uid", "=", input.uid)
       .where("biz_type", "=", input.bizType)
       .where("biz_status", "=", BIZ_STATUS_ACTIVE)
-      .where("sub_uid", "in", getMaterialVisibleSubUids(input.subUserId))
+      .where("sub_uid", "in", getMaterialVisibleSubUids(input.bizType, input.subUserId))
       .orderBy("sort", "desc")
       .orderBy("id", "desc")
       .execute();
@@ -428,7 +434,7 @@ export class WorkbenchRepository {
       .where("uid", "=", input.uid)
       .where("biz_type", "=", input.bizType)
       .where("biz_status", "=", BIZ_STATUS_ACTIVE)
-      .where("sub_uid", "in", getMaterialVisibleSubUids(input.subUserId));
+      .where("sub_uid", "in", getMaterialVisibleSubUids(input.bizType, input.subUserId));
 
     if (input.groupId !== undefined) {
       query = query.where("group_id", "=", input.groupId === 0 ? 0 : groupNumericId!);
@@ -449,8 +455,21 @@ export class WorkbenchRepository {
       return undefined;
     }
 
-    return this.db
+    const row = await this.db
       .selectFrom("xy_wap_embed_msg_audit_info as message")
+      .innerJoin("xy_wap_embed_conversation as conversation", (join) =>
+        join
+          .onRef("conversation.uid", "=", "message.uid")
+          .onRef("conversation.platform", "=", "message.platform")
+          .onRef("conversation.chat_type", "=", "message.chat_type")
+          .onRef("conversation.third_userid", "=", "message.third_user_id"),
+      )
+      .innerJoin("xy_wap_embed_user_seat as seat", (join) =>
+        join
+          .onRef("seat.third_userid", "=", "conversation.third_userid")
+          .onRef("seat.uid", "=", "conversation.uid")
+          .onRef("seat.platform", "=", "conversation.platform"),
+      )
       .select([
         "message.id as id",
         "message.content as content",
@@ -458,10 +477,46 @@ export class WorkbenchRepository {
         "message.msgtime as msgtime",
         "message.msgtype as msgtype",
         "message.uid as uid",
+        "seat.id as seat_id",
       ])
       .where("message.msgid", "=", msgid)
       .where("message.uid", "=", input.uid)
+      .where("seat.biz_status", "=", BIZ_STATUS_ACTIVE)
+      .where((expressionBuilder) =>
+        expressionBuilder.or([
+          expressionBuilder.and([
+            expressionBuilder("message.chat_type", "=", CHAT_TYPE_SINGLE),
+            expressionBuilder(
+              "conversation.third_external_userid",
+              "=",
+              expressionBuilder.ref("message.third_external_id"),
+            ),
+          ]),
+          expressionBuilder.and([
+            expressionBuilder("message.chat_type", "=", CHAT_TYPE_GROUP),
+            expressionBuilder(
+              "conversation.third_group_id",
+              "=",
+              expressionBuilder.ref("message.third_group_id"),
+            ),
+          ]),
+        ]),
+      )
       .executeTakeFirst();
+
+    if (!row) {
+      return undefined;
+    }
+
+    return {
+      content: row.content,
+      id: row.id,
+      msgid: row.msgid,
+      msgtime: row.msgtime,
+      msgtype: row.msgtype,
+      seatId: String(row.seat_id),
+      uid: row.uid,
+    };
   }
 
   async findMaterialCollectionByMessage(input: {
@@ -498,6 +553,34 @@ export class WorkbenchRepository {
     };
   }
 
+  async findMaterialCollectionScope(input: {
+    id: string;
+    uid: number;
+  }): Promise<MaterialCollectionScope | undefined> {
+    const collectionNumericId = parseMySqlId(input.id);
+
+    if (collectionNumericId == null) {
+      return undefined;
+    }
+
+    const row = await this.db
+      .selectFrom("xy_wap_embed_material_collection")
+      .select(["biz_type", "sub_uid"])
+      .where("id", "=", collectionNumericId)
+      .where("uid", "=", input.uid)
+      .where("biz_status", "=", BIZ_STATUS_ACTIVE)
+      .executeTakeFirst();
+
+    if (!row) {
+      return undefined;
+    }
+
+    return {
+      bizType: toSafeNumber(row.biz_type),
+      subUid: toSafeNumber(row.sub_uid),
+    };
+  }
+
   async isMaterialGroupEmpty(input: {
     bizType: number;
     groupId: string;
@@ -521,6 +604,30 @@ export class WorkbenchRepository {
     return !row;
   }
 
+  async hasActiveMaterialGroup(input: {
+    bizType: number;
+    groupId: string;
+    uid: number;
+  }) {
+    const groupNumericId = parseMySqlId(input.groupId);
+
+    if (groupNumericId == null) {
+      return false;
+    }
+
+    const row = await this.db
+      .selectFrom("xy_wap_embed_material_collection_group")
+      .select(["id"])
+      .where("id", "=", groupNumericId)
+      .where("uid", "=", input.uid)
+      .where("biz_type", "=", input.bizType)
+      .where("biz_status", "=", BIZ_STATUS_ACTIVE)
+      .where("sub_uid", "=", 0)
+      .executeTakeFirst();
+
+    return !!row;
+  }
+
   async createMaterialCollection(input: {
     bizType: number;
     content: string | null;
@@ -539,21 +646,31 @@ export class WorkbenchRepository {
       return;
     }
 
-    const result = (await this.db
-      .insertInto("xy_wap_embed_material_collection")
-      .values({
-        biz_status: BIZ_STATUS_ACTIVE,
-        biz_type: input.bizType,
-        content: input.content,
-        group_id: groupNumericId,
-        msgid: input.msgid,
-        op_sub_uid: opSubUserNumericId,
-        sort: input.sort,
-        sub_uid: input.subUid,
-        title: input.title,
-        uid: input.uid,
-      })
-      .executeTakeFirstOrThrow()) as InsertResult;
+    let result: InsertResult;
+
+    try {
+      result = (await this.db
+        .insertInto("xy_wap_embed_material_collection")
+        .values({
+          biz_status: BIZ_STATUS_ACTIVE,
+          biz_type: input.bizType,
+          content: input.content,
+          group_id: groupNumericId,
+          msgid: input.msgid,
+          op_sub_uid: opSubUserNumericId,
+          sort: input.sort,
+          sub_uid: input.subUid,
+          title: input.title,
+          uid: input.uid,
+        })
+        .executeTakeFirstOrThrow()) as InsertResult;
+    } catch (error) {
+      if (isDuplicateKeyError(error)) {
+        return "DUPLICATE";
+      }
+
+      throw error;
+    }
 
     const insertedId = parseInsertedMySqlId(result);
     return insertedId == null ? undefined : String(insertedId);
@@ -591,14 +708,14 @@ export class WorkbenchRepository {
       .execute();
   }
 
-  async deleteMaterialCollection(input: { id: string; uid: number }) {
-    await this.updateActiveMaterialCollection(input.id, input.uid, {
+  async deleteMaterialCollection(input: { id: string; subUid: number; uid: number }) {
+    await this.updateActiveMaterialCollection(input.id, input.uid, input.subUid, {
       biz_status: BIZ_STATUS_HIDDEN,
     });
   }
 
-  async topMaterialCollection(input: { id: string; sort: number; uid: number }) {
-    await this.updateActiveMaterialCollection(input.id, input.uid, {
+  async topMaterialCollection(input: { id: string; sort: number; subUid: number; uid: number }) {
+    await this.updateActiveMaterialCollection(input.id, input.uid, input.subUid, {
       sort: input.sort,
     });
   }
@@ -607,6 +724,7 @@ export class WorkbenchRepository {
     groupId: string | 0;
     id: string;
     sort: number;
+    subUid: number;
     uid: number;
   }) {
     const groupNumericId = parseMaterialGroupId(input.groupId);
@@ -615,7 +733,7 @@ export class WorkbenchRepository {
       return;
     }
 
-    await this.updateActiveMaterialCollection(input.id, input.uid, {
+    await this.updateActiveMaterialCollection(input.id, input.uid, input.subUid, {
       group_id: groupNumericId,
       sort: input.sort,
     });
@@ -665,6 +783,7 @@ export class WorkbenchRepository {
   private async updateActiveMaterialCollection(
     id: string,
     uid: number,
+    subUid: number,
     values: Record<string, unknown>,
   ) {
     const collectionNumericId = parseMySqlId(id);
@@ -678,6 +797,7 @@ export class WorkbenchRepository {
       .set(values)
       .where("id", "=", collectionNumericId)
       .where("uid", "=", uid)
+      .where("sub_uid", "=", subUid)
       .where("biz_status", "=", BIZ_STATUS_ACTIVE)
       .execute();
   }
@@ -700,6 +820,7 @@ export class WorkbenchRepository {
       .where("id", "=", groupNumericId)
       .where("uid", "=", uid)
       .where("biz_type", "=", bizType)
+      .where("sub_uid", "=", 0)
       .where("biz_status", "=", BIZ_STATUS_ACTIVE)
       .execute();
   }
@@ -3829,10 +3950,14 @@ export function parseMySqlId(value: string) {
   return numeric;
 }
 
-function getMaterialVisibleSubUids(subUserId: string) {
+function getMaterialVisibleSubUids(bizType: number, subUserId: string) {
+  if (bizType !== MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION) {
+    return [0];
+  }
+
   const subUserNumericId = parseMySqlId(subUserId);
 
-  return subUserNumericId == null ? [0] : [0, subUserNumericId];
+  return subUserNumericId == null ? [] : [subUserNumericId];
 }
 
 function mapMaterialCollectionGroupRow(
@@ -4332,4 +4457,14 @@ function sortGroupMembers(left: WorkbenchGroupMemberDto, right: WorkbenchGroupMe
 
 function getGroupMemberRank(type: WorkbenchGroupMemberDto["type"]) {
   return GROUP_MEMBER_SORT_RANK[type];
+}
+
+function isDuplicateKeyError(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const value = error as { code?: unknown; errno?: unknown };
+
+  return value.code === "ER_DUP_ENTRY" || value.errno === 1062;
 }

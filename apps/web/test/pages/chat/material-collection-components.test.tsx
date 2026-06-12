@@ -110,7 +110,7 @@ describe("material collection components", () => {
       .not.toHaveClass("h-32");
   });
 
-  it("renders h5 materials from raw message content fields", () => {
+  it("renders h5 materials from raw message content fields without nested links", () => {
     render(
       <MaterialCard
         item={createItem({
@@ -131,10 +131,7 @@ describe("material collection components", () => {
 
     expect(screen.getByText("红包来啦")).toBeInTheDocument();
     expect(screen.getByText("恭喜发财，大吉大利")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /红包来啦/ })).toHaveAttribute(
-      "href",
-      "https://m-scrm-test.dtminds.com/h5/pages/redpacketSend/index",
-    );
+    expect(screen.queryByRole("link", { name: /红包来啦/ })).not.toBeInTheDocument();
     expect(screen.getByRole("img", { name: "红包来啦" })).toHaveAttribute(
       "src",
       "https://hd-smp-test.iyouke.com/static/image/default-redpacket.png",
@@ -232,26 +229,39 @@ describe("material collection components", () => {
     expect(screen.queryByRole("button", { name: "管理" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "打开 报价单.pdf 操作菜单" }))
       .not.toBeInTheDocument();
-    fireEvent.contextMenu(screen.getByRole("button", { name: "选择素材 报价单.pdf" }), {
+    const materialButton = screen.getByRole("button", { name: "选择素材 报价单.pdf" });
+    vi.spyOn(materialButton, "getBoundingClientRect").mockReturnValue({
+      bottom: 280,
+      height: 120,
+      left: 40,
+      right: 360,
+      top: 160,
+      width: 320,
+      x: 40,
+      y: 160,
+      toJSON: () => ({}),
+    });
+
+    fireEvent.contextMenu(materialButton, {
       clientX: 120,
-      clientY: 160,
+      clientY: 220,
     });
     let contextMenu = await screen.findByRole("menu");
     expect(contextMenu).toHaveStyle({
-      left: "120px",
-      top: "160px",
+      left: "80px",
+      top: "60px",
     });
     await user.click(within(contextMenu).getByRole("menuitem", { name: "移到最前" }));
-    fireEvent.contextMenu(screen.getByRole("button", { name: "选择素材 报价单.pdf" }), {
+    fireEvent.contextMenu(materialButton, {
       clientX: 120,
-      clientY: 160,
+      clientY: 220,
     });
     contextMenu = await screen.findByRole("menu");
     await user.click(within(contextMenu).getByRole("menuitem", { name: "移动分组" }));
     await user.click(within(contextMenu).getByRole("menuitem", { name: "目标分组" }));
-    fireEvent.contextMenu(screen.getByRole("button", { name: "选择素材 报价单.pdf" }), {
+    fireEvent.contextMenu(materialButton, {
       clientX: 120,
-      clientY: 160,
+      clientY: 220,
     });
     contextMenu = await screen.findByRole("menu");
     await user.click(within(contextMenu).getByRole("menuitem", { name: "删除" }));

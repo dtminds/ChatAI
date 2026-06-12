@@ -346,29 +346,29 @@ const MaterialCollectionsQuerySchema = Type.Object({
 
 const MaterialCollectionCreateBodySchema = Type.Object({
   bizType: MaterialBizTypeSchema,
-  groupId: Type.Optional(Type.Union([Type.String(), Type.Literal(0)])),
-  messageId: Type.String({ minLength: 1 }),
+  groupId: Type.Optional(Type.Union([Type.String({ maxLength: 64 }), Type.Literal(0)])),
+  messageId: Type.String({ maxLength: 64, minLength: 1 }),
 });
 
 const MaterialCollectionParamsSchema = Type.Object({
-  collectionId: Type.String(),
+  collectionId: Type.String({ maxLength: 64, minLength: 1 }),
 });
 
 const MaterialCollectionMoveBodySchema = Type.Object({
-  groupId: Type.String({ minLength: 1 }),
+  groupId: Type.String({ maxLength: 64, minLength: 1 }),
 });
 
 const MaterialCollectionGroupCreateBodySchema = Type.Object({
   bizType: MaterialGroupBizTypeSchema,
-  title: Type.String({ minLength: 1 }),
+  title: Type.String({ maxLength: 100, minLength: 1 }),
 });
 
 const MaterialCollectionGroupUpdateBodySchema = Type.Object({
-  title: Type.String({ minLength: 1 }),
+  title: Type.String({ maxLength: 100, minLength: 1 }),
 });
 
 const MaterialCollectionGroupParamsSchema = Type.Object({
-  groupId: Type.String(),
+  groupId: Type.String({ maxLength: 64, minLength: 1 }),
 });
 
 const MaterialCollectionGroupQuerySchema = Type.Object({

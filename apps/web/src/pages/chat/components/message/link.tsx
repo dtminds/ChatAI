@@ -9,9 +9,14 @@ import { getSafeMessageUrl } from "@/pages/chat/components/message/url";
 type LinkMessageCardProps = {
   className?: string;
   content: H5CardMessageContent;
+  disableLink?: boolean;
 };
 
-export function LinkMessageCard({ className, content }: LinkMessageCardProps) {
+export function LinkMessageCard({
+  className,
+  content,
+  disableLink = false,
+}: LinkMessageCardProps) {
   const safeUrl = getSafeMessageUrl(content.url);
   const previewImageUrl = content.previewImageUrl?.trim();
   const card = (
@@ -44,7 +49,7 @@ export function LinkMessageCard({ className, content }: LinkMessageCardProps) {
     </div>
   );
 
-  if (safeUrl) {
+  if (safeUrl && !disableLink) {
     return (
       <a
         className={cn(

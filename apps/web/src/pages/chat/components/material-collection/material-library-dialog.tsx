@@ -8,7 +8,10 @@ import {
   PinIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import type { WorkbenchMaterialCollectionGroupCreateRequest } from "@chatai/contracts";
+import {
+  MATERIAL_COLLECTION_BIZ_TYPE,
+  type WorkbenchMaterialCollectionGroupCreateRequest,
+} from "@chatai/contracts";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -295,11 +298,11 @@ function GroupButton({
 function getBizTypeLabel(
   bizType: WorkbenchMaterialCollectionGroupCreateRequest["bizType"],
 ) {
-  if (bizType === 2) {
+  if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.FILE) {
     return "收录的文件";
   }
 
-  if (bizType === 3) {
+  if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM) {
     return "收录的小程序";
   }
 
@@ -309,7 +312,7 @@ function getBizTypeLabel(
 function getLibraryDialogStyle(
   bizType: WorkbenchMaterialCollectionGroupCreateRequest["bizType"],
 ) {
-  if (bizType === 3) {
+  if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM) {
     return {
       maxWidth: "calc(100vw - 2rem)",
       width: "76rem",

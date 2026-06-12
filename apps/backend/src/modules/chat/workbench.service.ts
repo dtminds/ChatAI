@@ -102,6 +102,7 @@ import { SMART_REPLY_MAKE_SHORTER_TEMPLATE_ID } from "./ai-helper-mappers.js";
 import { normalizeSmartReplyMsgIds } from "./smart-reply-mappers.js";
 import {
   decodeConversationListCursor,
+  type MaterialCollectionScope,
   parseMySqlId,
   type WorkbenchRepository,
 } from "./workbench-repository.js";
@@ -122,6 +123,7 @@ const PLAYABLE_VOICE_HEAD_TIMEOUT_MS = 8000;
 const MESSAGE_REVOKE_WINDOW_MS = 180 * 1000;
 const MESSAGE_REVOKE_CLOCK_SKEW_TOLERANCE_MS = 5 * 1000;
 const SMART_REPLY_MESSAGE_PAGE_CANDIDATE_LIMIT = 5;
+const MATERIAL_COLLECTION_TITLE_MAX_LENGTH = 100;
 
 type SmartReplyMessagePageMetadata = {
   smartReplyEnabled?: boolean;
@@ -1831,15 +1833,31 @@ export class MysqlWorkbenchService implements WorkbenchService {
       throw new BadRequestError("UNSUPPORTED_MATERIAL_MESSAGE", "当前消息不支持收藏");
     }
 
-    const groupId =
+    const enterpriseGroupId =
       bizType === MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION
-        ? 0
+        ? undefined
         : readEnterpriseMaterialGroupId(request.groupId);
+    const groupId =
+      bizType === MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION ? 0 : enterpriseGroupId;
 
     if (groupId === undefined) {
       return {
         success: false,
         errorMsg: "请选择分组",
+      };
+    }
+
+    if (
+      enterpriseGroupId &&
+      !(await this.repository.hasActiveMaterialGroup({
+        bizType,
+        groupId: enterpriseGroupId,
+        uid: me.uid,
+      }))
+    ) {
+      return {
+        success: false,
+        errorMsg: "请选择有效分组",
       };
     }
 
@@ -1851,6 +1869,8 @@ export class MysqlWorkbenchService implements WorkbenchService {
     if (!message || !isMaterialMessageTypeMatched(bizType, message.msgtype)) {
       throw new BadRequestError("UNSUPPORTED_MATERIAL_MESSAGE", "当前消息不支持收藏");
     }
+
+    await this.assertSeatAccess(subUserId, message.seatId);
 
     const subUid =
       bizType === MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION ? subUserNumericId : 0;
@@ -1899,6 +1919,13 @@ export class MysqlWorkbenchService implements WorkbenchService {
       uid: me.uid,
     });
 
+    if (collectionId === "DUPLICATE") {
+      return {
+        success: true,
+        duplicated: true,
+      };
+    }
+
     if (!collectionId) {
       return {
         success: false,
@@ -1916,9 +1943,15 @@ export class MysqlWorkbenchService implements WorkbenchService {
     collectionId: string,
   ): Promise<WorkbenchMaterialCollectionOkResponse> {
     const me = await this.getMaterialActor(subUserId);
+    const scope = await this.getOperableMaterialCollectionScope(
+      me.uid,
+      collectionId,
+      subUserId,
+    );
 
     await this.repository.deleteMaterialCollection({
       id: collectionId,
+      subUid: scope.subUid,
       uid: me.uid,
     });
 
@@ -1930,10 +1963,16 @@ export class MysqlWorkbenchService implements WorkbenchService {
     collectionId: string,
   ): Promise<WorkbenchMaterialCollectionOkResponse> {
     const me = await this.getMaterialActor(subUserId);
+    const scope = await this.getOperableMaterialCollectionScope(
+      me.uid,
+      collectionId,
+      subUserId,
+    );
 
     await this.repository.topMaterialCollection({
       id: collectionId,
       sort: Date.now(),
+      subUid: scope.subUid,
       uid: me.uid,
     });
 
@@ -1952,10 +1991,31 @@ export class MysqlWorkbenchService implements WorkbenchService {
       throw new BadRequestError("MATERIAL_GROUP_REQUIRED", "请选择分组");
     }
 
+    const scope = await this.getOperableMaterialCollectionScope(
+      me.uid,
+      collectionId,
+      subUserId,
+    );
+
+    if (scope.bizType === MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION) {
+      throw new BadRequestError("MATERIAL_GROUP_UNSUPPORTED", "表情不支持移动分组");
+    }
+
+    if (
+      !(await this.repository.hasActiveMaterialGroup({
+        bizType: scope.bizType,
+        groupId,
+        uid: me.uid,
+      }))
+    ) {
+      throw new BadRequestError("MATERIAL_GROUP_NOT_FOUND", "分组不存在");
+    }
+
     await this.repository.moveMaterialCollection({
       groupId,
       id: collectionId,
       sort: Date.now(),
+      subUid: scope.subUid,
       uid: me.uid,
     });
 
@@ -1967,7 +2027,6 @@ export class MysqlWorkbenchService implements WorkbenchService {
     request: WorkbenchMaterialCollectionGroupCreateRequest,
   ): Promise<WorkbenchMaterialCollectionGroupCreateResponse> {
     const me = await this.getMaterialActor(subUserId);
-    const subUserNumericId = parseMaterialSubUserId(subUserId);
     const bizType = parseMaterialGroupBizType(request.bizType);
     const sort = Date.now();
     const title = request.title.trim();
@@ -1975,7 +2034,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
     const groupId = await this.repository.createMaterialGroup({
       bizType,
       sort,
-      subUid: subUserNumericId,
+      subUid: 0,
       title,
       uid: me.uid,
     });
@@ -2114,6 +2173,37 @@ export class MysqlWorkbenchService implements WorkbenchService {
     return {
       uid: me.uid,
     };
+  }
+
+  private async getOperableMaterialCollectionScope(
+    uid: number,
+    collectionId: string,
+    subUserId: string,
+  ): Promise<MaterialCollectionScope> {
+    const scope = await this.repository.findMaterialCollectionScope({
+      id: collectionId,
+      uid,
+    });
+
+    if (!scope) {
+      throw new NotFoundError("MATERIAL_COLLECTION_NOT_FOUND", "素材不存在");
+    }
+
+    if (scope.bizType === MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION) {
+      const subUserNumericId = parseMaterialSubUserId(subUserId);
+
+      if (scope.subUid !== subUserNumericId) {
+        throw new NotFoundError("MATERIAL_COLLECTION_NOT_FOUND", "素材不存在");
+      }
+
+      return scope;
+    }
+
+    if (scope.subUid !== 0) {
+      throw new NotFoundError("MATERIAL_COLLECTION_NOT_FOUND", "素材不存在");
+    }
+
+    return scope;
   }
 
   async search(
@@ -2319,18 +2409,22 @@ function readMaterialTitle(
   const content = parseMaterialContentRecord(rawContent);
 
   if (contentType === "file") {
-    return readMaterialString(content, "fileName") || messageId;
+    return truncateMaterialTitle(readMaterialString(content, "fileName") || messageId);
   }
 
   if (contentType === "mini-program") {
-    return (
+    return truncateMaterialTitle(
       readMaterialString(content, "description") ||
-      readMaterialString(content, "title") ||
-      messageId
+        readMaterialString(content, "title") ||
+        messageId,
     );
   }
 
-  return readMaterialString(content, "title") || messageId;
+  return truncateMaterialTitle(readMaterialString(content, "title") || messageId);
+}
+
+function truncateMaterialTitle(title: string) {
+  return title.slice(0, MATERIAL_COLLECTION_TITLE_MAX_LENGTH);
 }
 
 function parseMaterialContentRecord(rawContent: string | null) {

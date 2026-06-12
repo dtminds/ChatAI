@@ -277,6 +277,7 @@ function ChatWorkbenchContent({
     useState<MentionRetryDialogState | null>(null);
   const [pendingMaterialCollection, setPendingMaterialCollection] = useState<{
     bizType: ComposerMaterialBizType;
+    conversationId: string;
     messageId: string;
   } | null>(null);
   const [materialCollectionGroups, setMaterialCollectionGroups] = useState<
@@ -750,7 +751,11 @@ function ChatWorkbenchContent({
         }
 
         setMaterialCollectionGroups(response.groups);
-        setPendingMaterialCollection({ bizType, messageId });
+        setPendingMaterialCollection({
+          bizType,
+          conversationId: message.conversationId,
+          messageId,
+        });
       } catch (error) {
         if (isMountedRef.current) {
           toast.warning(getMaterialErrorMessage(error, "分组加载失败"));
@@ -767,6 +772,12 @@ function ChatWorkbenchContent({
   const handleSubmitMaterialCollection = useCallback(
     async (groupId: string) => {
       if (!pendingMaterialCollection) {
+        return;
+      }
+
+      if (pendingMaterialCollection.conversationId !== activeConversationIdRef.current) {
+        setPendingMaterialCollection(null);
+        setMaterialCollectionGroups([]);
         return;
       }
 
@@ -807,6 +818,12 @@ function ChatWorkbenchContent({
   const handleCreatePendingMaterialGroup = useCallback(
     async (title: string) => {
       if (!pendingMaterialCollection) {
+        return undefined;
+      }
+
+      if (pendingMaterialCollection.conversationId !== activeConversationIdRef.current) {
+        setPendingMaterialCollection(null);
+        setMaterialCollectionGroups([]);
         return undefined;
       }
 
@@ -894,15 +911,10 @@ function ChatWorkbenchContent({
 
   const runMaterialLibraryMutation = useCallback(
     async (
+      bizType: ComposerMaterialBizType,
       action: (bizType: ComposerMaterialBizType) => Promise<unknown>,
       fallbackMessage: string,
     ) => {
-      const bizType = activeMaterialLibraryBizType;
-
-      if (!bizType) {
-        return;
-      }
-
       setIsMaterialLibraryBusy(true);
 
       try {
@@ -918,12 +930,17 @@ function ChatWorkbenchContent({
         }
       }
     },
-    [activeMaterialLibraryBizType, loadMaterialLibrary],
+    [loadMaterialLibrary],
   );
 
   const handleCreateMaterialGroup = useCallback(
     (title: string) => {
+      if (!activeMaterialLibraryBizType) {
+        return;
+      }
+
       void runMaterialLibraryMutation(
+        activeMaterialLibraryBizType,
         (bizType) =>
           getWorkbenchService().createMaterialGroup({
             bizType,
@@ -932,12 +949,19 @@ function ChatWorkbenchContent({
         "新建分组失败",
       );
     },
-    [runMaterialLibraryMutation],
+    [activeMaterialLibraryBizType, runMaterialLibraryMutation],
   );
 
   const handleRenameMaterialGroup = useCallback(
     (group: WorkbenchMaterialCollectionGroupDto, title: string) => {
+      const bizType = toComposerMaterialBizType(group.bizType);
+
+      if (!bizType) {
+        return;
+      }
+
       void runMaterialLibraryMutation(
+        bizType,
         (bizType) =>
           getWorkbenchService().renameMaterialGroup(group.id, bizType, {
             title,
@@ -950,7 +974,14 @@ function ChatWorkbenchContent({
 
   const handleTopMaterialGroup = useCallback(
     (group: WorkbenchMaterialCollectionGroupDto) => {
+      const bizType = toComposerMaterialBizType(group.bizType);
+
+      if (!bizType) {
+        return;
+      }
+
       void runMaterialLibraryMutation(
+        bizType,
         (bizType) => getWorkbenchService().topMaterialGroup(group.id, bizType),
         "置顶分组失败",
       );
@@ -960,7 +991,14 @@ function ChatWorkbenchContent({
 
   const handleDeleteMaterialGroup = useCallback(
     (group: WorkbenchMaterialCollectionGroupDto) => {
+      const bizType = toComposerMaterialBizType(group.bizType);
+
+      if (!bizType) {
+        return;
+      }
+
       void runMaterialLibraryMutation(
+        bizType,
         (bizType) => getWorkbenchService().deleteMaterialGroup(group.id, bizType),
         "删除分组失败",
       );
@@ -971,6 +1009,7 @@ function ChatWorkbenchContent({
   const handleDeleteMaterial = useCallback(
     (item: WorkbenchMaterialCollectionItemDto) => {
       void runMaterialLibraryMutation(
+        item.bizType as ComposerMaterialBizType,
         () => getWorkbenchService().deleteMaterialCollection(item.id),
         "删除素材失败",
       );
@@ -981,6 +1020,7 @@ function ChatWorkbenchContent({
   const handleTopMaterial = useCallback(
     (item: WorkbenchMaterialCollectionItemDto) => {
       void runMaterialLibraryMutation(
+        item.bizType as ComposerMaterialBizType,
         () => getWorkbenchService().topMaterialCollection(item.id),
         "置顶素材失败",
       );
@@ -991,6 +1031,7 @@ function ChatWorkbenchContent({
   const handleMoveMaterial = useCallback(
     (item: WorkbenchMaterialCollectionItemDto, groupId: string) => {
       void runMaterialLibraryMutation(
+        item.bizType as ComposerMaterialBizType,
         () =>
           getWorkbenchService().moveMaterialCollection(item.id, {
             groupId,
@@ -1003,6 +1044,9 @@ function ChatWorkbenchContent({
 
   useEffect(() => {
     setIsEmojiPickerOpen(false);
+    setPendingMaterialCollection(null);
+    setMaterialCollectionGroups([]);
+    setIsCollectingMaterial(false);
   }, [activeConversation?.id]);
 
   useEffect(() => {
@@ -2341,6 +2385,20 @@ function getMaterialBizTypeForMessage(
 
   if (message.content.type === "h5") {
     return MATERIAL_COLLECTION_BIZ_TYPE.H5;
+  }
+
+  return undefined;
+}
+
+function toComposerMaterialBizType(
+  bizType: MaterialCollectionBizType,
+): ComposerMaterialBizType | undefined {
+  if (
+    bizType === MATERIAL_COLLECTION_BIZ_TYPE.FILE ||
+    bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM ||
+    bizType === MATERIAL_COLLECTION_BIZ_TYPE.H5
+  ) {
+    return bizType;
   }
 
   return undefined;

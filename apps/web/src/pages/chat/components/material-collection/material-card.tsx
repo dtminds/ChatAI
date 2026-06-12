@@ -84,7 +84,7 @@ export function MaterialCard({
 
   const contextMenuNode = contextMenu ? (
     <div
-      className="fixed z-50 min-w-[7.5rem] rounded-[10px] border border-border bg-popover p-1 text-popover-foreground shadow-[0_10px_28px_var(--shadow-soft)]"
+      className="absolute z-50 min-w-[7.5rem] rounded-[10px] border border-border bg-popover p-1 text-popover-foreground shadow-[0_10px_28px_var(--shadow-soft)]"
       ref={menuRef}
       role="menu"
       style={{ left: contextMenu.x, top: contextMenu.y }}
@@ -163,12 +163,10 @@ export function MaterialCard({
         onContextMenu={(event) => {
           event.preventDefault();
           event.stopPropagation();
-          const dialogRect = event.currentTarget
-            .closest('[role="dialog"]')
-            ?.getBoundingClientRect();
+          const cardRect = event.currentTarget.getBoundingClientRect();
           setContextMenu({
-            x: dialogRect ? event.clientX - dialogRect.left : event.clientX,
-            y: dialogRect ? event.clientY - dialogRect.top : event.clientY,
+            x: event.clientX - cardRect.left,
+            y: event.clientY - cardRect.top,
           });
         }}
         type="button"
@@ -210,7 +208,13 @@ function MaterialCardContent({ item }: { item: MaterialCollectionItem }) {
     );
   }
 
-  return <LinkMessageCard className="w-full" content={toH5Content(item)} />;
+  return (
+    <LinkMessageCard
+      className="w-full"
+      content={toH5Content(item)}
+      disableLink
+    />
+  );
 }
 
 function toExpressionContent(item: MaterialCollectionItem): ImageMessageContent {

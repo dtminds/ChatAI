@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
-import type { WorkbenchMaterialCollectionGroupCreateRequest } from "@chatai/contracts";
+import {
+  MATERIAL_COLLECTION_BIZ_TYPE,
+  type WorkbenchMaterialCollectionGroupCreateRequest,
+} from "@chatai/contracts";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -141,11 +144,11 @@ export function MaterialGroupSelectDialog({
 function getCollectTitle(
   bizType: WorkbenchMaterialCollectionGroupCreateRequest["bizType"],
 ) {
-  if (bizType === 2) {
+  if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.FILE) {
     return "收录文件";
   }
 
-  if (bizType === 3) {
+  if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM) {
     return "收录小程序";
   }
 

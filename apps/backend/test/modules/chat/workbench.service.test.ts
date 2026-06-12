@@ -3020,6 +3020,7 @@ describe("MysqlWorkbenchService", () => {
         content: JSON.stringify({ md5: "emotion-md5" }),
         msgid: "msg-emotion-1",
         msgtype: "emotion",
+        seatId: "12",
         uid: 9001,
       }),
     });
@@ -3055,6 +3056,7 @@ describe("MysqlWorkbenchService", () => {
         content: JSON.stringify({ fileName: "报价.pdf" }),
         msgid: "msg-file-1",
         msgtype: "file",
+        seatId: "12",
         uid: 9001,
       }),
     });
@@ -3080,6 +3082,32 @@ describe("MysqlWorkbenchService", () => {
       uid: 9001,
     });
     nowSpy.mockRestore();
+  });
+
+  it("material: trims generated material title to database limit", async () => {
+    const longFileName = `${"超".repeat(120)}.pdf`;
+    const repository = createMaterialRepository({
+      findMaterialMessage: vi.fn().mockResolvedValue({
+        content: JSON.stringify({ fileName: longFileName }),
+        msgid: "msg-file-1",
+        msgtype: "file",
+        seatId: "12",
+        uid: 9001,
+      }),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await service.collectMaterial("101", {
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+      groupId: "9",
+      messageId: "msg-file-1",
+    });
+
+    expect(repository.createMaterialCollection).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: longFileName.slice(0, 100),
+      }),
+    );
   });
 
   it("material: requires a real group before collecting tenant materials", async () => {
@@ -3120,6 +3148,32 @@ describe("MysqlWorkbenchService", () => {
     expect(repository.createMaterialCollection).not.toHaveBeenCalled();
   });
 
+  it("material: rejects invalid selected group before collecting tenant materials", async () => {
+    const repository = createMaterialRepository({
+      hasActiveMaterialGroup: vi.fn().mockResolvedValue(false),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.collectMaterial("101", {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.H5,
+        groupId: "9",
+        messageId: "1025657",
+      }),
+    ).resolves.toEqual({
+      success: false,
+      errorMsg: "请选择有效分组",
+    });
+
+    expect(repository.hasActiveMaterialGroup).toHaveBeenCalledWith({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.H5,
+      groupId: "9",
+      uid: 9001,
+    });
+    expect(repository.findMaterialMessage).not.toHaveBeenCalled();
+    expect(repository.createMaterialCollection).not.toHaveBeenCalled();
+  });
+
   it("material: returns failure result when create does not insert", async () => {
     const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_779_700_003_000);
     const repository = createMaterialRepository({
@@ -3133,6 +3187,7 @@ describe("MysqlWorkbenchService", () => {
         }),
         msgid: "1025657",
         msgtype: "link",
+        seatId: "12",
         uid: 9001,
       }),
     });
@@ -3152,6 +3207,59 @@ describe("MysqlWorkbenchService", () => {
     nowSpy.mockRestore();
   });
 
+  it("material: rejects collecting messages from inaccessible seats", async () => {
+    const repository = createMaterialRepository({
+      canAccessSeat: vi.fn().mockResolvedValue(false),
+      findMaterialMessage: vi.fn().mockResolvedValue({
+        content: JSON.stringify({ fileName: "报价.pdf" }),
+        msgid: "msg-file-1",
+        msgtype: "file",
+        seatId: "12",
+        uid: 9001,
+      }),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.collectMaterial("101", {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+        groupId: "9",
+        messageId: "msg-file-1",
+      }),
+    ).rejects.toMatchObject({
+      code: "SEAT_NOT_FOUND",
+      statusCode: 404,
+    });
+
+    expect(repository.canAccessSeat).toHaveBeenCalledWith("101", "12");
+    expect(repository.createMaterialCollection).not.toHaveBeenCalled();
+  });
+
+  it("material: returns duplicate when concurrent insert hits unique key", async () => {
+    const repository = createMaterialRepository({
+      createMaterialCollection: vi.fn().mockResolvedValue("DUPLICATE"),
+      findMaterialMessage: vi.fn().mockResolvedValue({
+        content: JSON.stringify({ fileName: "报价.pdf" }),
+        msgid: "msg-file-1",
+        msgtype: "file",
+        seatId: "12",
+        uid: 9001,
+      }),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.collectMaterial("101", {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+        groupId: "9",
+        messageId: "msg-file-1",
+      }),
+    ).resolves.toEqual({
+      success: true,
+      duplicated: true,
+    });
+  });
+
   it("material: returns active duplicate without inserting", async () => {
     const existingItem = createMaterialItem({
       id: "77",
@@ -3168,6 +3276,7 @@ describe("MysqlWorkbenchService", () => {
         content: JSON.stringify({ fileName: "报价.pdf" }),
         msgid: "msg-file-1",
         msgtype: "file",
+        seatId: "12",
         uid: 9001,
       }),
     });
@@ -3206,6 +3315,7 @@ describe("MysqlWorkbenchService", () => {
         content: JSON.stringify({ fileName: "新报价.pdf" }),
         msgid: "msg-file-1",
         msgtype: "file",
+        seatId: "12",
         uid: 9001,
       }),
     });
@@ -3274,8 +3384,120 @@ describe("MysqlWorkbenchService", () => {
     expect(repository.createMaterialGroup).toHaveBeenCalledWith({
       bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
       sort: 1_779_700_004_000,
-      subUid: 101,
+      subUid: 0,
       title: "常用文件",
+      uid: 9001,
+    });
+    nowSpy.mockRestore();
+  });
+
+  it("material: mutates tenant materials with shared sub user scope", async () => {
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_779_700_005_000);
+    const repository = createMaterialRepository({
+      findMaterialCollectionScope: vi.fn().mockResolvedValue({
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+        subUid: 0,
+      }),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(service.deleteMaterialCollection("101", "66")).resolves.toEqual({
+      ok: true,
+    });
+    await expect(service.topMaterialCollection("101", "66")).resolves.toEqual({
+      ok: true,
+    });
+    await expect(
+      service.moveMaterialCollection("101", "66", { groupId: "9" }),
+    ).resolves.toEqual({ ok: true });
+
+    expect(repository.deleteMaterialCollection).toHaveBeenCalledWith({
+      id: "66",
+      subUid: 0,
+      uid: 9001,
+    });
+    expect(repository.topMaterialCollection).toHaveBeenCalledWith({
+      id: "66",
+      sort: 1_779_700_005_000,
+      subUid: 0,
+      uid: 9001,
+    });
+    expect(repository.moveMaterialCollection).toHaveBeenCalledWith({
+      groupId: "9",
+      id: "66",
+      sort: 1_779_700_005_000,
+      subUid: 0,
+      uid: 9001,
+    });
+    nowSpy.mockRestore();
+  });
+
+  it("material: rejects another sub user's expression collection operation", async () => {
+    const repository = createMaterialRepository({
+      findMaterialCollectionScope: vi.fn().mockResolvedValue({
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION,
+        subUid: 202,
+      }),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(service.deleteMaterialCollection("101", "66")).rejects.toMatchObject({
+      code: "MATERIAL_COLLECTION_NOT_FOUND",
+      statusCode: 404,
+    });
+
+    expect(repository.deleteMaterialCollection).not.toHaveBeenCalled();
+  });
+
+  it("material: validates target group when moving tenant materials", async () => {
+    const repository = createMaterialRepository({
+      findMaterialCollectionScope: vi.fn().mockResolvedValue({
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.H5,
+        subUid: 0,
+      }),
+      hasActiveMaterialGroup: vi.fn().mockResolvedValue(false),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.moveMaterialCollection("101", "66", { groupId: "9" }),
+    ).rejects.toMatchObject({
+      code: "MATERIAL_GROUP_NOT_FOUND",
+      statusCode: 400,
+    });
+
+    expect(repository.hasActiveMaterialGroup).toHaveBeenCalledWith({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.H5,
+      groupId: "9",
+      uid: 9001,
+    });
+    expect(repository.moveMaterialCollection).not.toHaveBeenCalled();
+  });
+
+  it("material: renames and tops material groups", async () => {
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_779_700_006_000);
+    const repository = createMaterialRepository();
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.renameMaterialGroup("101", "9", MATERIAL_COLLECTION_BIZ_TYPE.FILE, {
+        title: "新分组",
+      }),
+    ).resolves.toEqual({ ok: true });
+    await expect(
+      service.topMaterialGroup("101", "9", MATERIAL_COLLECTION_BIZ_TYPE.FILE),
+    ).resolves.toEqual({ ok: true });
+
+    expect(repository.renameMaterialGroup).toHaveBeenCalledWith({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+      groupId: "9",
+      title: "新分组",
+      uid: 9001,
+    });
+    expect(repository.topMaterialGroup).toHaveBeenCalledWith({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+      groupId: "9",
+      sort: 1_779_700_006_000,
       uid: 9001,
     });
     nowSpy.mockRestore();
@@ -3287,6 +3509,7 @@ describe("MysqlWorkbenchService", () => {
         content: JSON.stringify({ text: "普通文本" }),
         msgid: "msg-text-1",
         msgtype: "text",
+        seatId: "12",
         uid: 9001,
       }),
     });
@@ -3312,6 +3535,7 @@ describe("MysqlWorkbenchService", () => {
         content: JSON.stringify({ fileName: "报价.pdf" }),
         msgid: "msg-file-1",
         msgtype: "file",
+        seatId: "12",
         uid: 9001,
       }),
     });
@@ -3355,8 +3579,13 @@ function createMaterialRepository(overrides: Partial<WorkbenchRepository> = {}) 
   return {
     createMaterialCollection: vi.fn().mockResolvedValue("66"),
     createMaterialGroup: vi.fn().mockResolvedValue(undefined),
+    canAccessSeat: vi.fn().mockResolvedValue(true),
     deleteMaterialCollection: vi.fn().mockResolvedValue(undefined),
     deleteMaterialGroup: vi.fn().mockResolvedValue(undefined),
+    findMaterialCollectionScope: vi.fn().mockResolvedValue({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+      subUid: 0,
+    }),
     findMaterialCollectionByMessage: vi.fn().mockResolvedValue(undefined),
     findMaterialMessage: vi.fn().mockResolvedValue(undefined),
     getSubUser: vi.fn().mockResolvedValue({
@@ -3365,6 +3594,7 @@ function createMaterialRepository(overrides: Partial<WorkbenchRepository> = {}) 
       subUserId: "101",
       uid: 9001,
     }),
+    hasActiveMaterialGroup: vi.fn().mockResolvedValue(true),
     isMaterialGroupEmpty: vi.fn().mockResolvedValue(true),
     listMaterialCollections: vi.fn().mockResolvedValue([]),
     listMaterialGroups: vi.fn().mockResolvedValue([]),

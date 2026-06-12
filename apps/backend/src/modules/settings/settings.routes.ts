@@ -45,7 +45,7 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
     preHandler: app.authenticate,
   }, async (request) => {
     return apiSuccess(
-      await createManagedAccountSettingsService(app.db).list(getSubUserId(request)),
+      await createManagedAccountSettingsService(app.db, app.cache, app.cacheKeys).list(getSubUserId(request)),
     );
   });
 
@@ -64,7 +64,7 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
     async (request) => {
       assertSettingsManage(request);
       return apiSuccess(
-        await createManagedAccountSettingsService(app.db).updateSubAccounts(
+        await createManagedAccountSettingsService(app.db, app.cache, app.cacheKeys).updateSubAccounts(
           getSubUserId(request),
           request.params.managedAccountId,
           request.body,
@@ -77,7 +77,7 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
     preHandler: app.authenticate,
   }, async (request) => {
     return apiSuccess(
-      await createSubAccountSettingsService(app.db).list(getSubUserId(request)),
+      await createSubAccountSettingsService(app.db, app.cache, app.cacheKeys).list(getSubUserId(request)),
     );
   });
 
@@ -207,7 +207,7 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
     async (request) => {
       assertSettingsManage(request);
       return apiSuccess(
-        await createSubAccountSettingsService(app.db).create(
+        await createSubAccountSettingsService(app.db, app.cache, app.cacheKeys).create(
           getSubUserId(request),
           request.body,
         ),
@@ -230,7 +230,7 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
     async (request) => {
       assertSettingsManage(request);
       return apiSuccess(
-        await createSubAccountSettingsService(app.db).update(
+        await createSubAccountSettingsService(app.db, app.cache, app.cacheKeys).update(
           getSubUserId(request),
           request.params.subAccountId,
           request.body,
@@ -254,7 +254,7 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
     async (request) => {
       assertSettingsManage(request);
       return apiSuccess(
-        await createSubAccountSettingsService(app.db).updateStatus(
+        await createSubAccountSettingsService(app.db, app.cache, app.cacheKeys).updateStatus(
           getSubUserId(request),
           request.params.subAccountId,
           request.body.status,
@@ -274,7 +274,7 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
     async (request) => {
       assertSettingsManage(request);
       return apiSuccess(
-        await createSubAccountSettingsService(app.db).remove(
+        await createSubAccountSettingsService(app.db, app.cache, app.cacheKeys).remove(
           getSubUserId(request),
           request.params.subAccountId,
         ),

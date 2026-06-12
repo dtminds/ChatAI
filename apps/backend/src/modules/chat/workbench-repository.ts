@@ -23,6 +23,8 @@ import {
   type WorkbenchConversationSummaryDto,
 } from "@chatai/contracts";
 import type { Kysely } from "kysely";
+import type { CachePort } from "../../cache/cache-port.js";
+import { buildCacheKeys } from "../../cache/keys.js";
 import type { Database } from "../../db/schema.js";
 import { BadRequestError } from "../../shared/errors.js";
 import {
@@ -191,6 +193,13 @@ type TenantScope = {
   uid: number;
 };
 
+type SeatAccessSnapshot = {
+  platform: number;
+  seatIds: string[];
+  uid: number;
+  version: 1;
+};
+
 type SeatConversationAggregateRow = {
   last_msgtime: Date | number | string | null;
   platform: number;
@@ -337,7 +346,11 @@ type ChatRecordDetailRow = {
 };
 
 export class WorkbenchRepository {
-  constructor(private readonly db: Kysely<Database>) {}
+  constructor(
+    private readonly db: Kysely<Database>,
+    private readonly cache?: CachePort,
+    private readonly cacheKeys: ReturnType<typeof buildCacheKeys> = buildCacheKeys("chatai:"),
+  ) {}
 
   /**
    * 按子账号租户与平台关联 `xy_wap_embed_user_relation`，取涂色侧栏 AES 密钥与 IV。
@@ -692,33 +705,16 @@ export class WorkbenchRepository {
       return undefined;
     }
 
-    const rows = await this.db
-      .selectFrom("xy_wap_embed_user_seat_sub_relation as relation")
-      .innerJoin("xy_wap_embed_user_seat as seat", (join) =>
-        join
-          .onRef("seat.id", "=", "relation.user_seat_id")
-          .onRef("seat.uid", "=", "relation.uid")
-          .onRef("seat.platform", "=", "relation.platform")
-          .on("seat.biz_status", "=", 1),
-      )
-      .select([
-        "relation.user_seat_id as seat_id",
-        "relation.uid as uid",
-        "relation.platform as platform",
-      ])
-      .where("relation.sub_id", "=", subUserNumericId)
-      .execute();
+    const snapshot = await this.getSeatAccessSnapshot(subUserNumericId);
 
-    const firstRow = rows[0];
-
-    if (!firstRow) {
+    if (!snapshot) {
       return undefined;
     }
 
     return {
-      platform: firstRow.platform,
-      seatIds: uniqueIds(rows.map((row) => row.seat_id)),
-      uid: firstRow.uid,
+      platform: snapshot.platform,
+      seatIds: snapshot.seatIds,
+      uid: snapshot.uid,
     };
   }
 
@@ -1700,21 +1696,9 @@ export class WorkbenchRepository {
       return false;
     }
 
-    const access = await this.db
-      .selectFrom("xy_wap_embed_user_seat_sub_relation as relation")
-      .innerJoin("xy_wap_embed_user_seat as seat", (join) =>
-        join
-          .onRef("seat.id", "=", "relation.user_seat_id")
-          .onRef("seat.uid", "=", "relation.uid")
-          .onRef("seat.platform", "=", "relation.platform"),
-      )
-      .select("relation.id")
-      .where("relation.sub_id", "=", subUserNumericId)
-      .where("relation.user_seat_id", "=", seatNumericId)
-      .where("seat.biz_status", "=", 1)
-      .executeTakeFirst();
+    const snapshot = await this.getSeatAccessSnapshot(subUserNumericId);
 
-    return Boolean(access);
+    return snapshot?.seatIds.includes(String(seatNumericId)) ?? false;
   }
 
   async listConversations(
@@ -2658,6 +2642,91 @@ export class WorkbenchRepository {
       .where("id", "=", subUserId)
       .where("status", "=", 1)
       .executeTakeFirst() as Promise<TenantScope | undefined>;
+  }
+
+  private async getSeatAccessSnapshot(subUserId: number): Promise<SeatAccessSnapshot | undefined> {
+    const cacheKey = this.cacheKeys.seatAccess(subUserId);
+    const cached = await this.readSeatAccessSnapshot(cacheKey);
+
+    if (cached) {
+      return cached;
+    }
+
+    const scope = await this.getSubUserTenantScope(subUserId);
+
+    if (!scope) {
+      return undefined;
+    }
+
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_user_seat_sub_relation as relation")
+      .innerJoin("xy_wap_embed_user_seat as seat", (join) =>
+        join
+          .onRef("seat.id", "=", "relation.user_seat_id")
+          .onRef("seat.uid", "=", "relation.uid")
+          .onRef("seat.platform", "=", "relation.platform")
+          .on("seat.biz_status", "=", 1),
+      )
+      .select([
+        "relation.user_seat_id as seat_id",
+      ])
+      .where("relation.sub_id", "=", subUserId)
+      .where("relation.uid", "=", scope.uid)
+      .where("relation.platform", "=", scope.platform)
+      .execute();
+    const snapshot: SeatAccessSnapshot = {
+      platform: scope.platform,
+      seatIds: uniqueIds(rows.map((row) => row.seat_id)),
+      uid: scope.uid,
+      version: 1,
+    };
+
+    await this.cache?.set(cacheKey, JSON.stringify(snapshot), 600);
+
+    return snapshot;
+  }
+
+  private async readSeatAccessSnapshot(key: string) {
+    let cached: string | null | undefined;
+
+    try {
+      cached = await this.cache?.get(key);
+    } catch {
+      return undefined;
+    }
+
+    if (!cached) {
+      return undefined;
+    }
+
+    try {
+      const value = JSON.parse(cached) as Partial<SeatAccessSnapshot>;
+
+      if (!value || typeof value !== "object") {
+        return undefined;
+      }
+
+      if (
+        value.version === 1 &&
+        typeof value.uid === "number" &&
+        Number.isFinite(value.uid) &&
+        typeof value.platform === "number" &&
+        Number.isFinite(value.platform) &&
+        Array.isArray(value.seatIds) &&
+        value.seatIds.every((seatId) => typeof seatId === "string")
+      ) {
+        return {
+          platform: value.platform,
+          seatIds: value.seatIds,
+          uid: value.uid,
+          version: 1,
+        } satisfies SeatAccessSnapshot;
+      }
+    } catch {
+      return undefined;
+    }
+
+    return undefined;
   }
 
   private async getSeatConversationAggregateRows(

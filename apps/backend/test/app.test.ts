@@ -1177,6 +1177,27 @@ describe("backend app", () => {
     await app.close();
   });
 
+  it("falls back to the DB when the session cache read fails", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+    app.cache.get = vi.fn(async () => {
+      throw new Error("redis unavailable");
+    });
+
+    const me = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/me",
+    });
+
+    expect(me.statusCode).toBe(200);
+    expect(me.json()).toEqual({
+      displayName: "林洒",
+      subUserId: "sub-user-001",
+    });
+
+    await app.close();
+  });
+
   it("rejects invalid chat route parameters", async () => {
     const { app, authorization } = await createAuthenticatedApp();
 

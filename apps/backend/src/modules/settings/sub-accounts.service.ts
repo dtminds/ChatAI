@@ -11,6 +11,12 @@ import {
   settingsSubAccountPasswordMessage,
 } from "@chatai/contracts";
 import type { Kysely } from "kysely";
+import type { CachePort } from "../../cache/cache-port.js";
+import {
+  invalidateSeatAccess,
+  invalidateSubUserSessions,
+} from "../../cache/invalidation.js";
+import { buildCacheKeys } from "../../cache/keys.js";
 import type { Database } from "../../db/schema.js";
 import { BadRequestError, NotFoundError } from "../../shared/errors.js";
 import { uniquePositiveNumbers } from "../../shared/id-utils.js";
@@ -62,7 +68,11 @@ const dbSubAccountType = {
 } as const;
 
 export class SubAccountSettingsService {
-  constructor(private readonly db: Kysely<Database>) {}
+  constructor(
+    private readonly db: Kysely<Database>,
+    private readonly cache?: CachePort,
+    private readonly cacheKeys: ReturnType<typeof buildCacheKeys> = buildCacheKeys("chatai:"),
+  ) {}
 
   async list(currentSubUserId: string): Promise<SettingsSubAccountsResponse> {
     const scope = await this.getTenantScope(currentSubUserId);
@@ -125,6 +135,7 @@ export class SubAccountSettingsService {
     );
 
     await this.replaceSeatRelations(scope, subAccountId, seatIds);
+    await this.invalidateSeatAccess(subAccountId);
 
     return this.getSubAccountOrThrow(scope, subAccountId);
   }
@@ -204,6 +215,7 @@ export class SubAccountSettingsService {
 
     const seatIds = await this.normalizeSeatIds(scope, payload.seatIds);
     await this.replaceSeatRelations(scope, numericSubAccountId, seatIds);
+    await this.invalidateSeatAccess(numericSubAccountId);
 
     return this.getSubAccountOrThrow(scope, numericSubAccountId);
   }
@@ -236,6 +248,7 @@ export class SubAccountSettingsService {
     if (status === "disabled") {
       await this.revokeActiveSessions(numericSubAccountId);
     }
+    await this.invalidateSeatAccess(numericSubAccountId);
 
     return this.getSubAccountOrThrow(scope, numericSubAccountId);
   }
@@ -277,6 +290,7 @@ export class SubAccountSettingsService {
       .execute();
 
     await this.revokeActiveSessions(numericSubAccountId);
+    await this.invalidateSeatAccess(numericSubAccountId);
 
     return { deleted: true };
   }
@@ -412,6 +426,7 @@ export class SubAccountSettingsService {
       .where("sub_user_id", "=", subAccountId)
       .where("revoked_at", "is", null)
       .execute();
+    await this.invalidateSubUserSessions(subAccountId);
   }
 
   private async expireAccessTokens(subAccountId: number) {
@@ -424,6 +439,7 @@ export class SubAccountSettingsService {
       .where("sub_user_id", "=", subAccountId)
       .where("revoked_at", "is", null)
       .execute();
+    await this.invalidateSubUserSessions(subAccountId);
   }
 
   private async normalizeSeatIds(scope: TenantScope, rawSeatIds: string[]) {
@@ -445,6 +461,14 @@ export class SubAccountSettingsService {
     }
 
     return uniqueSeatIds;
+  }
+
+  private invalidateSubUserSessions(subAccountId: number) {
+    return invalidateSubUserSessions(this.cache, this.cacheKeys, subAccountId);
+  }
+
+  private invalidateSeatAccess(subAccountId: number) {
+    return invalidateSeatAccess(this.cache, this.cacheKeys, subAccountId);
   }
 
   private async replaceSeatRelations(
@@ -516,8 +540,12 @@ export class SubAccountSettingsService {
   }
 }
 
-export function createSubAccountSettingsService(db: Kysely<Database>) {
-  return new SubAccountSettingsService(db);
+export function createSubAccountSettingsService(
+  db: Kysely<Database>,
+  cache?: CachePort,
+  cacheKeys?: ReturnType<typeof buildCacheKeys>,
+) {
+  return new SubAccountSettingsService(db, cache, cacheKeys);
 }
 
 function mapSubAccount(

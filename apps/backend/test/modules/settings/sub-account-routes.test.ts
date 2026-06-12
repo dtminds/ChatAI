@@ -174,6 +174,7 @@ describe("settings sub-account routes", () => {
         user_seat_id: 102,
       },
     ]);
+    expect(app.cache.del).toHaveBeenCalledWith("chatai:seat-access:12");
     expect(hashSpy).not.toHaveBeenCalled();
 
     await app.close();
@@ -195,6 +196,13 @@ describe("settings sub-account routes", () => {
 
     expect(response.statusCode).toBe(200);
     expect(db.revokedSessionSubUserIds).toEqual([12]);
+    expect(app.cache.smembers).toHaveBeenCalledWith("chatai:auth:session-index:12");
+    expect(app.cache.del).toHaveBeenCalledWith(
+      "chatai:auth:session:701",
+      "chatai:auth:session:702",
+    );
+    expect(app.cache.del).toHaveBeenCalledWith("chatai:auth:session-index:12");
+    expect(app.cache.del).toHaveBeenCalledWith("chatai:seat-access:12");
 
     await app.close();
   });
@@ -219,6 +227,10 @@ describe("settings sub-account routes", () => {
       role: "viewer",
     });
     expect(db.expiredAccessTokenSubUserIds).toEqual([11]);
+    expect(app.cache.smembers).toHaveBeenCalledWith("chatai:auth:session-index:11");
+    expect(app.cache.del).toHaveBeenCalledWith("chatai:auth:session:601");
+    expect(app.cache.del).toHaveBeenCalledWith("chatai:auth:session-index:11");
+    expect(app.cache.del).toHaveBeenCalledWith("chatai:seat-access:11");
 
     await app.close();
   });
@@ -357,11 +369,32 @@ async function createSettingsApp() {
   const db = createSettingsDbMock();
 
   app.db = db as never;
+  app.cache = createCacheMock() as never;
 
   return {
     app,
     authorization: `Bearer ${token}`,
     db,
+  };
+}
+
+function createCacheMock() {
+  return {
+    del: vi.fn(async () => undefined),
+    get: vi.fn(async () => null),
+    sadd: vi.fn(async () => undefined),
+    set: vi.fn(async () => undefined),
+    smembers: vi.fn(async (key: string) => {
+      if (key === "chatai:auth:session-index:11") {
+        return ["601"];
+      }
+
+      if (key === "chatai:auth:session-index:12") {
+        return ["701", "702"];
+      }
+
+      return [];
+    }),
   };
 }
 

@@ -23,7 +23,11 @@ export const EnvSchema = Type.Object({
   LOG_LEVEL: Type.Optional(Type.String()),
   NODE_ENV: Type.Optional(Type.String()),
   PORT: Type.Optional(Type.String()),
+  REDIS_COMMAND_TIMEOUT_MS: Type.Optional(Type.String()),
+  REDIS_CONNECT_TIMEOUT_MS: Type.Optional(Type.String()),
   REDIS_ENABLED: Type.Optional(Type.String()),
+  REDIS_KEY_PREFIX: Type.Optional(Type.String()),
+  REDIS_URL: Type.Optional(Type.String()),
   VOLCENGINE_ARK_API_KEY: Type.Optional(Type.String()),
   VOLCENGINE_ARK_BASE_URL: Type.Optional(Type.String()),
   VOLCENGINE_ARK_LITE_MAX_TOKENS: Type.Optional(Type.String()),
@@ -125,5 +129,9 @@ export function validateBackendEnv(env: NodeJS.ProcessEnv = process.env) {
     throw new Error(
       `Missing required environment variables${environmentLabel}: ${missingVariables.join(", ")}`,
     );
+  }
+
+  if (env.REDIS_ENABLED === "true" && !env.REDIS_URL) {
+    throw new Error("Missing required environment variables for Redis: REDIS_URL");
   }
 }

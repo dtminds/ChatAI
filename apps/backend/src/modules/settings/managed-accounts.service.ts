@@ -5,6 +5,9 @@ import type {
   SettingsManagedAccountSubAccountsUpdateRequest,
 } from "@chatai/contracts";
 import type { Kysely } from "kysely";
+import type { CachePort } from "../../cache/cache-port.js";
+import { invalidateSeatAccessBatch } from "../../cache/invalidation.js";
+import { buildCacheKeys } from "../../cache/keys.js";
 import type { Database } from "../../db/schema.js";
 import { BadRequestError, NotFoundError } from "../../shared/errors.js";
 import { uniquePositiveNumbers } from "../../shared/id-utils.js";
@@ -57,7 +60,11 @@ const dbSubAccountType = {
 } as const;
 
 export class ManagedAccountSettingsService {
-  constructor(private readonly db: Kysely<Database>) {}
+  constructor(
+    private readonly db: Kysely<Database>,
+    private readonly cache?: CachePort,
+    private readonly cacheKeys: ReturnType<typeof buildCacheKeys> = buildCacheKeys("chatai:"),
+  ) {}
 
   async list(currentSubUserId: string): Promise<SettingsManagedAccountsResponse> {
     const scope = await this.getTenantScope(currentSubUserId);
@@ -96,8 +103,17 @@ export class ManagedAccountSettingsService {
     }
 
     await this.assertManagedAccountInScope(scope, numericManagedAccountId);
+    const oldSubAccountIds = uniquePositiveNumbers(
+      (await this.listRelationLinkRows(scope, numericManagedAccountId))
+        .map((relation) => relation.sub_id),
+    );
     const subAccountIds = await this.normalizeSubAccountIds(scope, payload.subAccountIds);
     await this.replaceSubAccountRelations(scope, numericManagedAccountId, subAccountIds);
+    await invalidateSeatAccessBatch(
+      this.cache,
+      this.cacheKeys,
+      [...oldSubAccountIds, ...subAccountIds],
+    );
 
     return this.getManagedAccountOrThrow(scope, numericManagedAccountId);
   }
@@ -289,8 +305,12 @@ export class ManagedAccountSettingsService {
   }
 }
 
-export function createManagedAccountSettingsService(db: Kysely<Database>) {
-  return new ManagedAccountSettingsService(db);
+export function createManagedAccountSettingsService(
+  db: Kysely<Database>,
+  cache?: CachePort,
+  cacheKeys?: ReturnType<typeof buildCacheKeys>,
+) {
+  return new ManagedAccountSettingsService(db, cache, cacheKeys);
 }
 
 function groupRelationsBySeatId(relations: RelationRow[]) {

@@ -920,7 +920,7 @@ describe("message sent time preview", () => {
       });
 
       expect(sentAt).not.toHaveClass("invisible");
-      expect(sentAt).toHaveTextContent("5/8 9:54");
+      expect(sentAt).toHaveTextContent("5/8 09:54");
     } finally {
       vi.useRealTimers();
     }

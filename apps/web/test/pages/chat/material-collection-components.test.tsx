@@ -1,5 +1,6 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { fireEvent } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { MATERIAL_COLLECTION_BIZ_TYPE } from "@chatai/contracts";
 import {
@@ -66,6 +67,7 @@ describe("material collection components", () => {
 
     await user.click(screen.getByRole("combobox", { name: "选择分组" }));
     await user.click(await screen.findByRole("option", { name: "新建分组" }));
+    expect(screen.getByRole("dialog", { name: "新建分组" })).toBeInTheDocument();
     await user.type(screen.getByRole("textbox", { name: "分组名称" }), "售后文件");
     await user.click(screen.getByRole("button", { name: "新建" }));
     await user.click(screen.getByRole("button", { name: "收录" }));
@@ -76,24 +78,36 @@ describe("material collection components", () => {
 
   it("renders collected material with existing message card components", () => {
     render(
-      <MaterialCard
-        item={createItem({
-          content: {
-            extension: "pdf",
-            fileName: "报价单.pdf",
-            fileSizeLabel: "2 KB",
-            sourceLabel: "文件",
-          },
-          contentType: "file",
-          title: "报价单.pdf",
-        })}
-        onSelect={() => undefined}
-      />,
+      <div className="w-80">
+        <MaterialCard
+          item={createItem({
+            content: {
+              extension: "pdf",
+              fileName: "报价单.pdf",
+              fileSizeLabel: "2 KB",
+              sourceLabel: "文件",
+            },
+            contentType: "file",
+            title: "报价单.pdf",
+          })}
+          onSelect={() => undefined}
+        />
+      </div>,
     );
 
     expect(screen.getByText("报价单.pdf")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "下载文件：报价单.pdf" }))
       .not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "选择素材 报价单.pdf" }).parentElement)
+      .toHaveClass("w-full");
+    expect(screen.getByRole("button", { name: "选择素材 报价单.pdf" }))
+      .toHaveClass("w-full");
+    expect(screen.getByRole("button", { name: "选择素材 报价单.pdf" }).parentElement)
+      .not.toHaveClass("hover:border-border");
+    expect(screen.getByTestId("file-message-card"))
+      .toHaveClass("w-full");
+    expect(screen.getByTestId("file-message-card"))
+      .not.toHaveClass("h-32");
   });
 
   it("renders h5 materials from raw message content fields", () => {
@@ -130,41 +144,198 @@ describe("material collection components", () => {
   it("selects material and exposes management actions in library dialog", async () => {
     const user = userEvent.setup();
     const handleSelect = vi.fn();
+    const handleCreateGroup = vi.fn();
     const handleDelete = vi.fn();
+    const handleDeleteGroup = vi.fn();
+    const handleMove = vi.fn();
+    const handleRenameGroup = vi.fn();
     const handleTop = vi.fn();
+    const handleTopGroup = vi.fn();
     const item = createItem({ id: "material-file-1", title: "报价单.pdf" });
+    const promptSpy = vi.spyOn(window, "prompt");
 
     render(
       <MaterialLibraryDialog
         bizType={MATERIAL_COLLECTION_BIZ_TYPE.FILE}
-        groups={[createGroup({ id: "group-file", title: "常用文件" })]}
+        groups={[
+          createGroup({ id: "group-file", title: "常用文件" }),
+          createGroup({ id: "group-target", title: "目标分组" }),
+        ]}
         items={[item]}
-        onCreateGroup={() => undefined}
-        onDeleteGroup={() => undefined}
+        onCreateGroup={handleCreateGroup}
+        onDeleteGroup={handleDeleteGroup}
         onDeleteMaterial={handleDelete}
-        onMoveMaterial={() => undefined}
+        onMoveMaterial={handleMove}
         onOpenChange={() => undefined}
-        onRenameGroup={() => undefined}
+        onRenameGroup={handleRenameGroup}
         onSelectMaterial={handleSelect}
-        onTopGroup={() => undefined}
+        onTopGroup={handleTopGroup}
         onTopMaterial={handleTop}
         open
       />,
     );
+
+    expect(screen.getByRole("dialog", { name: "收录的文件" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "收录的文件" }))
+      .toHaveStyle({
+        maxWidth: "calc(100vw - 2rem)",
+        width: "60.5rem",
+      });
+    expect(screen.getAllByText("收录的文件", { selector: "div" })).toHaveLength(1);
+    expect(screen.getAllByText("常用文件")).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "常用文件" }))
+      .toHaveClass("text-left");
+    expect(screen.getByLabelText("收录内容列表"))
+      .toHaveClass(
+        "grid",
+        "items-start",
+        "gap-6",
+      );
+    expect(screen.getByLabelText("收录内容列表"))
+      .toHaveStyle({
+        gridTemplateColumns: "repeat(2, 20rem)",
+        width: "41.5rem",
+      });
+    expect(screen.getByRole("button", { name: "关闭" }))
+      .toHaveClass("right-0", "-top-10", "bg-transparent", "text-white", "focus:ring-0");
+    expect(screen.queryByRole("textbox", { name: "新建分组名称" }))
+      .not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /选择素材 报价单\.pdf/ }));
     expect(handleSelect).toHaveBeenCalledWith(item);
 
     expect(screen.queryByText("所有分组")).not.toBeInTheDocument();
     expect(screen.queryByText("默认分组")).not.toBeInTheDocument();
+    expect(screen.queryByText("暂无分组")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("置顶分组 常用文件")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("重命名分组 常用文件")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("删除分组 常用文件")).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "管理" }));
-    expect(screen.queryByRole("button", { name: "移至默认" })).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "置顶 报价单.pdf" }));
-    await user.click(screen.getByRole("button", { name: "删除 报价单.pdf" }));
+    await user.click(screen.getByRole("button", { name: "新建分组" }));
+    expect(screen.getByRole("dialog", { name: "新建分组" })).toBeInTheDocument();
+    await user.type(screen.getByRole("textbox", { name: "分组名称" }), "新增分组");
+    await user.click(screen.getByRole("button", { name: "新建" }));
+    expect(handleCreateGroup).toHaveBeenCalledWith("新增分组");
+
+    await user.click(screen.getByRole("button", { name: "打开 常用文件 操作菜单" }));
+    await user.click(await screen.findByRole("menuitem", { name: "移到最前" }));
+    await user.click(screen.getByRole("button", { name: "打开 常用文件 操作菜单" }));
+    await user.click(await screen.findByRole("menuitem", { name: "编辑" }));
+    expect(screen.getByRole("dialog", { name: "编辑分组" })).toBeInTheDocument();
+    const groupNameInput = screen.getByRole("textbox", { name: "分组名称" });
+    await user.clear(groupNameInput);
+    await user.type(groupNameInput, "改名文件");
+    await user.click(screen.getByRole("button", { name: "保存" }));
+    await user.click(screen.getByRole("button", { name: "打开 常用文件 操作菜单" }));
+    await user.click(await screen.findByRole("menuitem", { name: "删除" }));
+
+    expect(screen.queryByRole("button", { name: "管理" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "打开 报价单.pdf 操作菜单" }))
+      .not.toBeInTheDocument();
+    fireEvent.contextMenu(screen.getByRole("button", { name: "选择素材 报价单.pdf" }), {
+      clientX: 120,
+      clientY: 160,
+    });
+    let contextMenu = await screen.findByRole("menu");
+    expect(contextMenu).toHaveStyle({
+      left: "120px",
+      top: "160px",
+    });
+    await user.click(within(contextMenu).getByRole("menuitem", { name: "移到最前" }));
+    fireEvent.contextMenu(screen.getByRole("button", { name: "选择素材 报价单.pdf" }), {
+      clientX: 120,
+      clientY: 160,
+    });
+    contextMenu = await screen.findByRole("menu");
+    await user.click(within(contextMenu).getByRole("menuitem", { name: "移动分组" }));
+    await user.click(within(contextMenu).getByRole("menuitem", { name: "目标分组" }));
+    fireEvent.contextMenu(screen.getByRole("button", { name: "选择素材 报价单.pdf" }), {
+      clientX: 120,
+      clientY: 160,
+    });
+    contextMenu = await screen.findByRole("menu");
+    await user.click(within(contextMenu).getByRole("menuitem", { name: "删除" }));
 
     expect(handleTop).toHaveBeenCalledWith(item);
+    expect(handleMove).toHaveBeenCalledWith(item, "group-target");
     expect(handleDelete).toHaveBeenCalledWith(item);
+    expect(handleTopGroup).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "group-file" }),
+    );
+    expect(handleRenameGroup).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "group-file" }),
+      "改名文件",
+    );
+    expect(handleDeleteGroup).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "group-file" }),
+    );
+    expect(promptSpy).not.toHaveBeenCalled();
+  });
+
+  it("renders empty group state in material library dialog", () => {
+    render(
+      <MaterialLibraryDialog
+        bizType={MATERIAL_COLLECTION_BIZ_TYPE.FILE}
+        groups={[]}
+        items={[]}
+        onCreateGroup={() => undefined}
+        onDeleteGroup={() => undefined}
+        onDeleteMaterial={() => undefined}
+        onMoveMaterial={() => undefined}
+        onOpenChange={() => undefined}
+        onRenameGroup={() => undefined}
+        onSelectMaterial={() => undefined}
+        onTopGroup={() => undefined}
+        onTopMaterial={() => undefined}
+        open
+      />,
+    );
+
+    expect(screen.getByText("暂无分组")).toBeInTheDocument();
+  });
+
+  it("uses mini-program library width for three collected mini-program cards", () => {
+    render(
+      <MaterialLibraryDialog
+        bizType={MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM}
+        groups={[createGroup({ id: "group-mini", title: "常用小程序" })]}
+        items={[
+          createItem({
+            bizType: MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM,
+            content: {
+              appName: "麦当劳",
+              sourceLabel: "小程序",
+              title: "麦当劳自助点餐",
+            },
+            contentType: "mini-program",
+            groupId: "group-mini",
+            id: "mini-1",
+            title: "麦当劳自助点餐",
+          }),
+        ]}
+        onCreateGroup={() => undefined}
+        onDeleteGroup={() => undefined}
+        onDeleteMaterial={() => undefined}
+        onMoveMaterial={() => undefined}
+        onOpenChange={() => undefined}
+        onRenameGroup={() => undefined}
+        onSelectMaterial={() => undefined}
+        onTopGroup={() => undefined}
+        onTopMaterial={() => undefined}
+        open
+      />,
+    );
+
+    expect(screen.getByRole("dialog", { name: "收录的小程序" }))
+      .toHaveStyle({
+        maxWidth: "calc(100vw - 2rem)",
+        width: "76rem",
+      });
+    expect(screen.getByLabelText("收录内容列表"))
+      .toHaveStyle({
+        gridTemplateColumns: "repeat(3, 18rem)",
+        width: "57rem",
+      });
   });
 
   it("renders collected expression section", async () => {

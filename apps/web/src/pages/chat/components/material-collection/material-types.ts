@@ -5,4 +5,3 @@ import type {
 
 export type MaterialCollectionGroup = WorkbenchMaterialCollectionGroupDto;
 export type MaterialCollectionItem = WorkbenchMaterialCollectionItemDto;
-export type MaterialCollectionMode = "browse" | "manage";

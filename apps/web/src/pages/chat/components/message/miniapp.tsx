@@ -9,15 +9,19 @@ import {
 } from "@/pages/chat/components/message/media-fallback";
 
 type MiniAppMessageCardProps = {
+  className?: string;
   content: MiniProgramMessageContent;
 };
 
-export function MiniAppMessageCard({ content }: MiniAppMessageCardProps) {
+export function MiniAppMessageCard({ className, content }: MiniAppMessageCardProps) {
   const coverImageUrl = content.coverImageUrl?.trim();
 
   return (
     <div
-      className="w-[240px] rounded-[8px] border border-border bg-surface p-2.5 pb-1.5"
+      className={cn(
+        "w-[240px] rounded-[8px] border border-border bg-surface p-2.5 pb-1.5",
+        className,
+      )}
       data-testid="mini-program-message-card"
     >
       <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground">

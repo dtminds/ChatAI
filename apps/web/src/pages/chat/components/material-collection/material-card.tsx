@@ -1,9 +1,14 @@
 import {
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import {
   Delete02Icon,
+  FolderTransferIcon,
   PinIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { FileMessageCard } from "@/pages/chat/components/message/file";
 import { ImageMessageCard } from "@/pages/chat/components/message/image";
@@ -17,71 +22,161 @@ import type {
 } from "@/pages/chat/chat-types";
 import type {
   MaterialCollectionItem,
-  MaterialCollectionMode,
+  MaterialCollectionGroup,
 } from "@/pages/chat/components/material-collection/material-types";
 
 type MaterialCardProps = {
   className?: string;
+  groups?: MaterialCollectionGroup[];
   item: MaterialCollectionItem;
-  mode?: MaterialCollectionMode;
   onDelete?: (item: MaterialCollectionItem) => void;
+  onMove?: (item: MaterialCollectionItem, groupId: string) => void;
   onSelect?: (item: MaterialCollectionItem) => void;
   onTop?: (item: MaterialCollectionItem) => void;
 };
 
 export function MaterialCard({
   className,
+  groups = [],
   item,
-  mode = "browse",
   onDelete,
+  onMove,
   onSelect,
   onTop,
 }: MaterialCardProps) {
-  const isManageMode = mode === "manage";
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const [isMoveGroupOpen, setIsMoveGroupOpen] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(
+    null,
+  );
+  const targetGroups = groups.filter((group) => group.id !== item.groupId);
+
+  useEffect(() => {
+    if (!contextMenu) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+
+      if (target && menuRef.current?.contains(target)) {
+        return;
+      }
+
+      setContextMenu(null);
+      setIsMoveGroupOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setContextMenu(null);
+        setIsMoveGroupOpen(false);
+      }
+    };
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [contextMenu]);
+
+  const contextMenuNode = contextMenu ? (
+    <div
+      className="fixed z-50 min-w-[7.5rem] rounded-[10px] border border-border bg-popover p-1 text-popover-foreground shadow-[0_10px_28px_var(--shadow-soft)]"
+      ref={menuRef}
+      role="menu"
+      style={{ left: contextMenu.x, top: contextMenu.y }}
+    >
+      <button
+        className="flex h-8 w-full items-center gap-2 rounded-[8px] px-2.5 text-left text-[13px] outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground disabled:pointer-events-none disabled:opacity-45"
+        disabled={!onTop}
+        onClick={() => {
+          onTop?.(item);
+          setContextMenu(null);
+          setIsMoveGroupOpen(false);
+        }}
+        role="menuitem"
+        type="button"
+      >
+        <HugeiconsIcon icon={PinIcon} size={16} strokeWidth={1.8} />
+        移到最前
+      </button>
+      <button
+        className="flex h-8 w-full items-center gap-2 rounded-[8px] px-2.5 text-left text-[13px] outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground disabled:pointer-events-none disabled:opacity-45"
+        disabled={targetGroups.length === 0}
+        onClick={() => {
+          setIsMoveGroupOpen((current) => !current);
+        }}
+        role="menuitem"
+        type="button"
+      >
+        <HugeiconsIcon icon={FolderTransferIcon} size={16} strokeWidth={1.8} />
+        移动分组
+      </button>
+      {isMoveGroupOpen
+        ? targetGroups.map((group) => (
+            <button
+              className="flex h-8 w-full items-center rounded-[8px] px-8 text-left text-[13px] outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground"
+              key={group.id}
+              onClick={() => {
+                onMove?.(item, group.id);
+                setContextMenu(null);
+                setIsMoveGroupOpen(false);
+              }}
+              role="menuitem"
+              type="button"
+            >
+              {group.title}
+            </button>
+          ))
+        : null}
+      <button
+        className="flex h-8 w-full items-center gap-2 rounded-[8px] px-2.5 text-left text-[13px] text-destructive outline-none transition-colors hover:bg-destructive/10 focus:bg-destructive/10 disabled:pointer-events-none disabled:opacity-45"
+        disabled={!onDelete}
+        onClick={() => {
+          onDelete?.(item);
+          setContextMenu(null);
+          setIsMoveGroupOpen(false);
+        }}
+        role="menuitem"
+        type="button"
+      >
+        <HugeiconsIcon icon={Delete02Icon} size={16} strokeWidth={1.8} />
+        删除
+      </button>
+    </div>
+  ) : null;
 
   return (
     <div
       className={cn(
-        "group/material relative rounded-[10px] border border-transparent p-1 transition-colors hover:border-border hover:bg-surface-muted",
+        "group/material relative block w-full max-w-full align-top overflow-visible",
         className,
       )}
     >
       <button
         aria-label={`选择素材 ${item.title}`}
-        className="block w-full rounded-[8px] text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
-        disabled={isManageMode}
+        className="block w-full max-w-full rounded-[8px] text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
         onClick={() => onSelect?.(item)}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          const dialogRect = event.currentTarget
+            .closest('[role="dialog"]')
+            ?.getBoundingClientRect();
+          setContextMenu({
+            x: dialogRect ? event.clientX - dialogRect.left : event.clientX,
+            y: dialogRect ? event.clientY - dialogRect.top : event.clientY,
+          });
+        }}
         type="button"
       >
         <MaterialCardContent item={item} />
       </button>
 
-      {isManageMode ? (
-        <div className="mt-2 flex items-center justify-end gap-1">
-          <Button
-            aria-label={`置顶 ${item.title}`}
-            className="h-7 gap-1 px-2 text-[12px]"
-            onClick={() => onTop?.(item)}
-            size="sm"
-            type="button"
-            variant="ghost"
-          >
-            <HugeiconsIcon icon={PinIcon} size={14} strokeWidth={1.8} />
-            置顶
-          </Button>
-          <Button
-            aria-label={`删除 ${item.title}`}
-            className="h-7 gap-1 px-2 text-[12px] text-destructive hover:text-destructive"
-            onClick={() => onDelete?.(item)}
-            size="sm"
-            type="button"
-            variant="ghost"
-          >
-            <HugeiconsIcon icon={Delete02Icon} size={14} strokeWidth={1.8} />
-            删除
-          </Button>
-        </div>
-      ) : null}
+      {contextMenuNode}
     </div>
   );
 }
@@ -99,6 +194,7 @@ function MaterialCardContent({ item }: { item: MaterialCollectionItem }) {
   if (item.contentType === "file") {
     return (
       <FileMessageCard
+        className="w-full"
         content={toFileContent(item)}
         showDownloadAction={false}
       />
@@ -106,10 +202,15 @@ function MaterialCardContent({ item }: { item: MaterialCollectionItem }) {
   }
 
   if (item.contentType === "mini-program") {
-    return <MiniAppMessageCard content={toMiniProgramContent(item)} />;
+    return (
+      <MiniAppMessageCard
+        className="w-full"
+        content={toMiniProgramContent(item)}
+      />
+    );
   }
 
-  return <LinkMessageCard content={toH5Content(item)} />;
+  return <LinkMessageCard className="w-full" content={toH5Content(item)} />;
 }
 
 function toExpressionContent(item: MaterialCollectionItem): ImageMessageContent {

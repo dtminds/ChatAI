@@ -1,7 +1,6 @@
 export type {
   MaterialCollectionGroup,
   MaterialCollectionItem,
-  MaterialCollectionMode,
 } from "@/pages/chat/components/material-collection/material-types";
 export { MaterialCard } from "@/pages/chat/components/material-collection/material-card";
 export { MaterialExpressionSection } from "@/pages/chat/components/material-collection/material-expression-section";

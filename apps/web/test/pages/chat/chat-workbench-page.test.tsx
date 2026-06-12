@@ -1663,6 +1663,7 @@ describe("ChatWorkbenchPage", () => {
     await user.click(screen.getByRole("menuitem", { name: "收录内容" }));
     await user.click(await screen.findByRole("combobox", { name: "选择分组" }));
     await user.click(await screen.findByRole("option", { name: "新建分组" }));
+    expect(screen.getByRole("dialog", { name: "新建分组" })).toBeInTheDocument();
     await user.type(screen.getByRole("textbox", { name: "分组名称" }), "售后文件");
     await user.click(screen.getByRole("button", { name: "新建" }));
     await user.click(screen.getByRole("button", { name: "收录" }));

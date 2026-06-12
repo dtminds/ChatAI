@@ -4,11 +4,11 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -16,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { MaterialGroupFormDialog } from "@/pages/chat/components/material-collection/material-group-form-dialog";
 import type { MaterialCollectionGroup } from "@/pages/chat/components/material-collection/material-types";
 
 type MaterialGroupSelectDialogProps = {
@@ -40,27 +41,20 @@ export function MaterialGroupSelectDialog({
   open,
 }: MaterialGroupSelectDialogProps) {
   const [selectedGroupId, setSelectedGroupId] = useState("");
-  const [newGroupTitle, setNewGroupTitle] = useState("");
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isCreatingGroup, setIsCreatingGroup] = useState(false);
 
   useEffect(() => {
     if (open) {
       setSelectedGroupId("");
-      setNewGroupTitle("");
+      setIsCreateDialogOpen(false);
       setIsCreatingGroup(false);
     }
   }, [open]);
 
-  const isCreatingMode = selectedGroupId === CREATE_GROUP_VALUE;
-  const canSubmit = Boolean(selectedGroupId) && !isCreatingMode && !isSaving && !isCreatingGroup;
+  const canSubmit = Boolean(selectedGroupId) && !isSaving && !isCreatingGroup;
 
-  async function handleCreateGroup() {
-    const title = newGroupTitle.trim();
-
-    if (!title) {
-      return;
-    }
-
+  async function handleCreateGroup(title: string) {
     setIsCreatingGroup(true);
 
     try {
@@ -68,7 +62,7 @@ export function MaterialGroupSelectDialog({
 
       if (group) {
         setSelectedGroupId(group.id);
-        setNewGroupTitle("");
+        setIsCreateDialogOpen(false);
       }
     } finally {
       setIsCreatingGroup(false);
@@ -80,11 +74,21 @@ export function MaterialGroupSelectDialog({
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>{getCollectTitle(bizType)}</DialogTitle>
+          <DialogDescription className="sr-only">
+            选择收录内容所属分组
+          </DialogDescription>
         </DialogHeader>
 
         <Select
           disabled={isSaving || isCreatingGroup}
-          onValueChange={setSelectedGroupId}
+          onValueChange={(value) => {
+            if (value === CREATE_GROUP_VALUE) {
+              setIsCreateDialogOpen(true);
+              return;
+            }
+
+            setSelectedGroupId(value);
+          }}
           value={selectedGroupId}
         >
           <SelectTrigger
@@ -102,33 +106,6 @@ export function MaterialGroupSelectDialog({
             <SelectItem value={CREATE_GROUP_VALUE}>新建分组</SelectItem>
           </SelectContent>
         </Select>
-
-        {isCreatingMode ? (
-          <div className="flex gap-2">
-            <Input
-              aria-label="分组名称"
-              disabled={isSaving || isCreatingGroup}
-              onChange={(event) => setNewGroupTitle(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  void handleCreateGroup();
-                }
-              }}
-              placeholder="分组名称"
-              value={newGroupTitle}
-            />
-            <Button
-              disabled={isSaving || isCreatingGroup || !newGroupTitle.trim()}
-              onClick={() => {
-                void handleCreateGroup();
-              }}
-              type="button"
-              variant="outline"
-            >
-              新建
-            </Button>
-          </div>
-        ) : null}
 
         <DialogFooter>
           <Button
@@ -148,6 +125,15 @@ export function MaterialGroupSelectDialog({
           </Button>
         </DialogFooter>
       </DialogContent>
+      <MaterialGroupFormDialog
+        isSubmitting={isCreatingGroup}
+        mode="create"
+        onOpenChange={setIsCreateDialogOpen}
+        onSubmit={(title) => {
+          void handleCreateGroup(title);
+        }}
+        open={isCreateDialogOpen}
+      />
     </Dialog>
   );
 }

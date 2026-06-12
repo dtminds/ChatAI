@@ -4,6 +4,7 @@ import {
   Delete02Icon,
   Edit02Icon,
   Folder01Icon,
+  MoreHorizontalIcon,
   PinIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -12,17 +13,22 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
+  DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { MaterialCard } from "@/pages/chat/components/material-collection/material-card";
+import { MaterialGroupFormDialog } from "@/pages/chat/components/material-collection/material-group-form-dialog";
 import type {
   MaterialCollectionGroup,
   MaterialCollectionItem,
-  MaterialCollectionMode,
 } from "@/pages/chat/components/material-collection/material-types";
 
 type MaterialLibraryDialogProps = {
@@ -59,8 +65,12 @@ export function MaterialLibraryDialog({
   open,
 }: MaterialLibraryDialogProps) {
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
-  const [mode, setMode] = useState<MaterialCollectionMode>("browse");
-  const [newGroupTitle, setNewGroupTitle] = useState("");
+  const [groupDialogState, setGroupDialogState] = useState<
+    | { mode: "create" }
+    | { group: MaterialCollectionGroup; mode: "edit" }
+    | null
+  >(null);
+  const libraryTitle = getBizTypeLabel(bizType);
 
   useEffect(() => {
     if (!open) {
@@ -84,155 +94,121 @@ export function MaterialLibraryDialog({
       ),
     [activeGroupId, items],
   );
-  const activeGroup = groups.find((group) => group.id === activeGroupId);
 
-  function handleCreateGroup() {
-    const title = newGroupTitle.trim();
-
-    if (!title) {
-      return;
+  function handleSubmitGroupTitle(title: string) {
+    if (groupDialogState?.mode === "edit") {
+      onRenameGroup(groupDialogState.group, title);
+    } else {
+      onCreateGroup(title);
     }
 
-    onCreateGroup(title);
-    setNewGroupTitle("");
+    setGroupDialogState(null);
   }
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogContent className="max-h-[min(42rem,calc(100vh-3rem))] max-w-[min(56rem,calc(100vw-2rem))] gap-0 overflow-hidden p-0">
-        <DialogHeader className="border-b border-divider px-5 py-4">
-          <DialogTitle>{getBizTypeLabel(bizType)}</DialogTitle>
-        </DialogHeader>
+      <DialogContent
+        className="max-h-[min(44rem,calc(100vh-3rem))] max-w-none gap-0 overflow-visible p-0"
+        closeButtonClassName="right-0 -top-10 bg-transparent text-white opacity-100 shadow-none hover:bg-transparent hover:text-white focus:ring-0 data-[state=open]:bg-transparent data-[state=open]:text-white"
+        style={getLibraryDialogStyle(bizType)}
+      >
+        <DialogTitle className="sr-only">{libraryTitle}</DialogTitle>
+        <DialogDescription className="sr-only">
+          从分组中选择已收录内容
+        </DialogDescription>
 
-        <div className="grid min-h-[28rem] grid-cols-[13rem_minmax(0,1fr)]">
-          <aside className="border-r border-divider bg-surface-muted/55 p-3">
-            <div className="space-y-1">
-              {groups.map((group) => (
-                <GroupButton
-                  active={activeGroupId === group.id}
-                  key={group.id}
-                  label={group.title}
-                  onClick={() => setActiveGroupId(group.id)}
-                />
-              ))}
+        <div className="grid min-h-[34rem] grid-cols-[15rem_minmax(0,1fr)] overflow-hidden rounded-xl bg-sidebar">
+          <aside className="flex min-h-0 flex-col px-4 py-5 text-sidebar-foreground">
+            <div className="mb-5 px-2">
+              <div className="truncate text-sm font-semibold leading-6 text-foreground">
+                {libraryTitle}
+              </div>
             </div>
 
-            <div className="mt-4 flex gap-1.5">
-              <Input
-                aria-label="新建分组名称"
-                className="h-8 rounded-[8px] px-2.5 text-[13px]"
-                onChange={(event) => setNewGroupTitle(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    handleCreateGroup();
-                  }
-                }}
-                placeholder="新建分组"
-                value={newGroupTitle}
-              />
+            <ScrollArea className="min-h-0 flex-1">
+              {groups.length > 0 ? (
+                <div className="space-y-1 pb-3">
+                  {groups.map((group) => (
+                    <GroupButton
+                      active={activeGroupId === group.id}
+                      disabled={isBusy}
+                      group={group}
+                      key={group.id}
+                      onDelete={onDeleteGroup}
+                      onClick={() => setActiveGroupId(group.id)}
+                      onEdit={(groupToEdit) =>
+                        setGroupDialogState({ group: groupToEdit, mode: "edit" })}
+                      onTop={onTopGroup}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="px-2 py-2 text-[13px] text-muted-foreground">
+                  暂无分组
+                </div>
+              )}
+            </ScrollArea>
+
+            <div className="pt-3">
               <Button
                 aria-label="新建分组"
-                className="size-8 shrink-0 p-0"
-                disabled={isBusy || !newGroupTitle.trim()}
-                onClick={handleCreateGroup}
+                className="h-9 w-full justify-start gap-2 rounded-[8px] px-3 text-[14px] font-normal text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                disabled={isBusy}
+                onClick={() => setGroupDialogState({ mode: "create" })}
                 type="button"
-                variant="outline"
+                variant="ghost"
               >
                 <HugeiconsIcon icon={Add01Icon} size={15} strokeWidth={1.8} />
+                新建分组
               </Button>
             </div>
           </aside>
 
-          <section className="min-w-0 bg-background">
-            <div className="flex items-center justify-between border-b border-divider px-4 py-3">
-              <div className="flex min-w-0 items-center gap-2 text-sm font-medium">
-                <HugeiconsIcon icon={Folder01Icon} size={16} strokeWidth={1.8} />
-                <span className="truncate">{activeGroup?.title ?? "暂无分组"}</span>
-              </div>
-
-              <div className="flex items-center gap-1.5">
-                {activeGroup ? (
-                  <>
-                    <Button
-                      aria-label={`置顶分组 ${activeGroup.title}`}
-                      className="size-8 p-0"
-                      disabled={isBusy}
-                      onClick={() => onTopGroup(activeGroup)}
-                      type="button"
-                      variant="ghost"
-                    >
-                      <HugeiconsIcon icon={PinIcon} size={15} strokeWidth={1.8} />
-                    </Button>
-                    <Button
-                      aria-label={`重命名分组 ${activeGroup.title}`}
-                      className="size-8 p-0"
-                      disabled={isBusy}
-                      onClick={() => {
-                        const title = window.prompt("分组名称", activeGroup.title)?.trim();
-
-                        if (title) {
-                          onRenameGroup(activeGroup, title);
-                        }
-                      }}
-                      type="button"
-                      variant="ghost"
-                    >
-                      <HugeiconsIcon icon={Edit02Icon} size={15} strokeWidth={1.8} />
-                    </Button>
-                    <Button
-                      aria-label={`删除分组 ${activeGroup.title}`}
-                      className="size-8 p-0 text-destructive hover:text-destructive"
-                      disabled={isBusy}
-                      onClick={() => onDeleteGroup(activeGroup)}
-                      type="button"
-                      variant="ghost"
-                    >
-                      <HugeiconsIcon icon={Delete02Icon} size={15} strokeWidth={1.8} />
-                    </Button>
-                  </>
-                ) : null}
-                <Button
-                  aria-pressed={mode === "manage"}
-                  className="h-8 px-3 text-[13px]"
-                  onClick={() => setMode(mode === "manage" ? "browse" : "manage")}
-                  type="button"
-                  variant={mode === "manage" ? "secondary" : "outline"}
-                >
-                  {mode === "manage" ? "完成" : "管理"}
-                </Button>
-              </div>
-            </div>
-
-            <ScrollArea className="h-[30rem]">
+          <section className="flex min-h-0 min-w-0 flex-col rounded-[14px_0_0_14px] bg-background shadow">
+            <ScrollArea className="min-h-0 flex-1">
               {visibleItems.length > 0 ? (
-                <div className="grid grid-cols-1 gap-2 p-3 xl:grid-cols-2">
-                  {visibleItems.map((item) => (
-                    <div key={item.id}>
-                      <MaterialCard
-                        item={item}
-                        mode={mode}
-                        onDelete={onDeleteMaterial}
-                        onSelect={onSelectMaterial}
-                        onTop={onTopMaterial}
-                      />
-                      {mode === "manage" ? (
-                        <MoveMaterialBar
+                <div className="mx-auto p-8" style={getLibraryBodyStyle(bizType)}>
+                  <div
+                    aria-label="收录内容列表"
+                    className="grid items-start gap-6"
+                    style={getLibraryGridStyle(bizType)}
+                  >
+                    {visibleItems.map((item) => (
+                      <div className="max-w-full" key={item.id}>
+                        <MaterialCard
                           groups={groups}
                           item={item}
+                          onDelete={onDeleteMaterial}
                           onMove={onMoveMaterial}
+                          onSelect={onSelectMaterial}
+                          onTop={onTopMaterial}
                         />
-                      ) : null}
-                    </div>
-                  ))}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ) : (
-                <div className="flex h-[24rem] items-center justify-center text-sm text-muted-foreground">
+                <div className="flex min-h-[28rem] items-center justify-center text-sm text-muted-foreground">
                   暂无数据
                 </div>
               )}
             </ScrollArea>
           </section>
         </div>
+        <MaterialGroupFormDialog
+          initialTitle={
+            groupDialogState?.mode === "edit" ? groupDialogState.group.title : ""
+          }
+          isSubmitting={isBusy}
+          mode={groupDialogState?.mode ?? "create"}
+          onOpenChange={(open) => {
+            if (!open) {
+              setGroupDialogState(null);
+            }
+          }}
+          onSubmit={handleSubmitGroupTitle}
+          open={groupDialogState !== null}
+        />
       </DialogContent>
     </Dialog>
   );
@@ -240,51 +216,78 @@ export function MaterialLibraryDialog({
 
 function GroupButton({
   active,
-  label,
+  disabled,
+  group,
+  onDelete,
   onClick,
+  onEdit,
+  onTop,
 }: {
   active: boolean;
-  label: string;
+  disabled: boolean;
+  group: MaterialCollectionGroup;
+  onDelete: (group: MaterialCollectionGroup) => void;
   onClick: () => void;
+  onEdit: (group: MaterialCollectionGroup) => void;
+  onTop: (group: MaterialCollectionGroup) => void;
 }) {
   return (
-    <button
+    <div
       className={cn(
-        "flex h-8 w-full items-center gap-2 rounded-[8px] px-2.5 text-left text-[13px] outline-none transition-colors hover:bg-surface focus-visible:ring-2 focus-visible:ring-ring/25",
-        active ? "bg-surface text-foreground shadow-xs" : "text-muted-foreground",
+        "group flex h-9 w-full items-center gap-1 rounded-[8px] px-1 text-left text-[14px] outline-none transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-within:bg-sidebar-accent focus-within:text-sidebar-accent-foreground",
+        active
+          ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+          : "text-sidebar-foreground",
       )}
-      onClick={onClick}
-      type="button"
     >
-      <HugeiconsIcon icon={Folder01Icon} size={15} strokeWidth={1.8} />
-      <span className="min-w-0 flex-1 truncate">{label}</span>
-    </button>
-  );
-}
-
-function MoveMaterialBar({
-  groups,
-  item,
-  onMove,
-}: {
-  groups: MaterialCollectionGroup[];
-  item: MaterialCollectionItem;
-  onMove: (item: MaterialCollectionItem, groupId: string) => void;
-}) {
-  return (
-    <div className="mt-1 flex flex-wrap justify-end gap-1 px-1">
-      {groups.map((group) => (
-        <Button
-          className="h-7 px-2 text-[12px]"
-          disabled={item.groupId === group.id}
-          key={group.id}
-          onClick={() => onMove(item, group.id)}
-          type="button"
-          variant="ghost"
-        >
-          移至{group.title}
-        </Button>
-      ))}
+      <button
+        className="flex h-8 min-w-0 flex-1 items-center justify-start gap-2 rounded-[7px] px-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/25"
+        onClick={onClick}
+        type="button"
+      >
+        <HugeiconsIcon
+          className="shrink-0"
+          icon={Folder01Icon}
+          size={15}
+          strokeWidth={1.8}
+        />
+        <span className="min-w-0 flex-1 truncate text-left">{group.title}</span>
+      </button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            aria-label={`打开 ${group.title} 操作菜单`}
+            className="size-8 shrink-0 rounded-[8px] p-0 opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100"
+            disabled={disabled}
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
+            <HugeiconsIcon
+              icon={MoreHorizontalIcon}
+              size={16}
+              strokeWidth={1.8}
+            />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="min-w-[116px]">
+          <DropdownMenuItem onSelect={() => onTop(group)}>
+            <HugeiconsIcon icon={PinIcon} size={15} strokeWidth={1.8} />
+            移到最前
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => onEdit(group)}>
+            <HugeiconsIcon icon={Edit02Icon} size={15} strokeWidth={1.8} />
+            编辑
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className="text-destructive data-[highlighted]:text-destructive"
+            onSelect={() => onDelete(group)}
+          >
+            <HugeiconsIcon icon={Delete02Icon} size={15} strokeWidth={1.8} />
+            删除
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }
@@ -301,4 +304,50 @@ function getBizTypeLabel(
   }
 
   return "收录的H5";
+}
+
+function getLibraryDialogStyle(
+  bizType: WorkbenchMaterialCollectionGroupCreateRequest["bizType"],
+) {
+  if (bizType === 3) {
+    return {
+      maxWidth: "calc(100vw - 2rem)",
+      width: "76rem",
+    };
+  }
+
+  return {
+    maxWidth: "calc(100vw - 2rem)",
+    width: "60.5rem",
+  };
+}
+
+function getLibraryGridStyle(
+  bizType: WorkbenchMaterialCollectionGroupCreateRequest["bizType"],
+) {
+  if (bizType === 3) {
+    return {
+      gridTemplateColumns: "repeat(3, 18rem)",
+      width: "57rem",
+    };
+  }
+
+  return {
+    gridTemplateColumns: "repeat(2, 20rem)",
+    width: "41.5rem",
+  };
+}
+
+function getLibraryBodyStyle(
+  bizType: WorkbenchMaterialCollectionGroupCreateRequest["bizType"],
+) {
+  if (bizType === 3) {
+    return {
+      width: "61rem",
+    };
+  }
+
+  return {
+    width: "45.5rem",
+  };
 }

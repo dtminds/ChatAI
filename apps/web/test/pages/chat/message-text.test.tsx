@@ -302,7 +302,7 @@ describe("text message bubble layout", () => {
       const row = screen.getByTestId("message-row");
 
       expect(sentAt).toHaveClass("invisible");
-      expect(sentAt).toHaveTextContent("5/8 9:54");
+      expect(sentAt).toHaveTextContent("5/8 09:54");
 
       fireEvent.mouseEnter(row);
       act(() => {

@@ -516,6 +516,9 @@ function createMaterialDb(results: Partial<Record<string, unknown>> = {}) {
         execute() {
           return Promise.resolve([]);
         },
+        executeTakeFirstOrThrow() {
+          return Promise.resolve({ insertId: 1801 });
+        },
       };
     },
     selectFrom(table: string) {
@@ -818,7 +821,7 @@ describe("WorkbenchRepository", () => {
     const db = createMaterialDb();
     const repository = new WorkbenchRepository(db as never);
 
-    await repository.createMaterialCollection({
+    const insertedId = await repository.createMaterialCollection({
       bizType: 2,
       content: JSON.stringify({ fileName: "报价.pdf" }),
       groupId: "9",
@@ -830,6 +833,7 @@ describe("WorkbenchRepository", () => {
       uid: 9001,
     });
 
+    expect(insertedId).toBe("1801");
     expect(db.inserts).toEqual([
       {
         table: "xy_wap_embed_material_collection",

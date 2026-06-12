@@ -375,6 +375,11 @@ export type MaterialCollectionLookup = {
   item: WorkbenchMaterialCollectionItemDto;
 };
 
+type InsertResult = {
+  id?: bigint | number | string | null;
+  insertId?: bigint | number | string | null;
+};
+
 export class WorkbenchRepository {
   constructor(
     private readonly db: Kysely<Database>,
@@ -534,7 +539,7 @@ export class WorkbenchRepository {
       return;
     }
 
-    await this.db
+    const result = (await this.db
       .insertInto("xy_wap_embed_material_collection")
       .values({
         biz_status: BIZ_STATUS_ACTIVE,
@@ -548,7 +553,10 @@ export class WorkbenchRepository {
         title: input.title,
         uid: input.uid,
       })
-      .execute();
+      .executeTakeFirstOrThrow()) as InsertResult;
+
+    const insertedId = parseInsertedMySqlId(result);
+    return insertedId == null ? undefined : String(insertedId);
   }
 
   async restoreMaterialCollection(input: {
@@ -3849,6 +3857,22 @@ function toMaterialCollectionBizType(value: number): MaterialCollectionBizType {
 
 function parseMaterialGroupId(groupId: string | 0) {
   return groupId === 0 ? 0 : parseMySqlId(groupId);
+}
+
+function parseInsertedMySqlId(result: InsertResult) {
+  const value = result.insertId ?? result.id;
+
+  if (typeof value === "bigint") {
+    return value > 0n && value <= BigInt(Number.MAX_SAFE_INTEGER)
+      ? Number(value)
+      : undefined;
+  }
+
+  if (typeof value === "number") {
+    return Number.isSafeInteger(value) && value > 0 ? value : undefined;
+  }
+
+  return typeof value === "string" ? parseMySqlId(value) : undefined;
 }
 
 function toSafeNumber(value: number | string | null | undefined) {

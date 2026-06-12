@@ -17,12 +17,17 @@ import type {
   WorkbenchSmartReplyTextModerationRequest,
   WorkbenchVoicePlaybackConfirmRequest,
   WorkbenchVoiceTranscriptionRequest,
+  WorkbenchMaterialCollectionCreateRequest,
+  WorkbenchMaterialCollectionGroupCreateRequest,
+  WorkbenchMaterialCollectionGroupUpdateRequest,
+  WorkbenchMaterialCollectionListRequest,
+  WorkbenchMaterialCollectionMoveRequest,
 } from "@chatai/contracts";
 import { Type, type Static } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { WorkbenchService } from "./workbench.service.js";
 import { checkPlayableVoiceAsset } from "./media-proxy.service.js";
-import { ForbiddenError } from "../../shared/errors.js";
+import { BadRequestError, ForbiddenError } from "../../shared/errors.js";
 import { withRequestId } from "../../shared/logger.js";
 
 const NumericStringSchema = Type.String({ pattern: "^[0-9]+$" });
@@ -321,6 +326,55 @@ const GetOrCreateConversationBodySchema = Type.Object({
   thirdGroupId: Type.Optional(Type.String()),
 });
 
+const MaterialBizTypeSchema = Type.Union([
+  Type.Literal(1),
+  Type.Literal(2),
+  Type.Literal(3),
+  Type.Literal(4),
+]);
+
+const MaterialGroupBizTypeSchema = Type.Union([
+  Type.Literal(2),
+  Type.Literal(3),
+  Type.Literal(4),
+]);
+
+const MaterialCollectionsQuerySchema = Type.Object({
+  biz_type: NumericStringSchema,
+  group_id: Type.Optional(NumericStringSchema),
+});
+
+const MaterialCollectionCreateBodySchema = Type.Object({
+  bizType: MaterialBizTypeSchema,
+  groupId: Type.Optional(Type.Union([Type.String(), Type.Literal(0)])),
+  messageId: Type.String({ minLength: 1 }),
+});
+
+const MaterialCollectionParamsSchema = Type.Object({
+  collectionId: Type.String(),
+});
+
+const MaterialCollectionMoveBodySchema = Type.Object({
+  groupId: Type.Union([Type.String(), Type.Literal(0)]),
+});
+
+const MaterialCollectionGroupCreateBodySchema = Type.Object({
+  bizType: MaterialGroupBizTypeSchema,
+  title: Type.String({ minLength: 1 }),
+});
+
+const MaterialCollectionGroupUpdateBodySchema = Type.Object({
+  title: Type.String({ minLength: 1 }),
+});
+
+const MaterialCollectionGroupParamsSchema = Type.Object({
+  groupId: Type.String(),
+});
+
+const MaterialCollectionGroupQuerySchema = Type.Object({
+  biz_type: NumericStringSchema,
+});
+
 type ConversationListQuery = Static<typeof ConversationListQuerySchema>;
 type ConversationParams = Static<typeof ConversationParamsSchema>;
 type ConversationMessagesQuery = Static<typeof ConversationMessagesQuerySchema>;
@@ -345,6 +399,18 @@ type CustomerRelationConversationsQuery = Static<
 type SidebarIframeParamsBody = Static<typeof SidebarIframeParamsBodySchema>;
 type SearchQuery = Static<typeof SearchQuerySchema>;
 type GetOrCreateConversationBody = Static<typeof GetOrCreateConversationBodySchema>;
+type MaterialCollectionsQuery = Static<typeof MaterialCollectionsQuerySchema>;
+type MaterialCollectionCreateBody = Static<typeof MaterialCollectionCreateBodySchema>;
+type MaterialCollectionParams = Static<typeof MaterialCollectionParamsSchema>;
+type MaterialCollectionMoveBody = Static<typeof MaterialCollectionMoveBodySchema>;
+type MaterialCollectionGroupCreateBody = Static<
+  typeof MaterialCollectionGroupCreateBodySchema
+>;
+type MaterialCollectionGroupUpdateBody = Static<
+  typeof MaterialCollectionGroupUpdateBodySchema
+>;
+type MaterialCollectionGroupParams = Static<typeof MaterialCollectionGroupParamsSchema>;
+type MaterialCollectionGroupQuery = Static<typeof MaterialCollectionGroupQuerySchema>;
 
 
 export async function registerChatRoutes(app: FastifyInstance) {
@@ -695,6 +761,183 @@ export async function registerChatRoutes(app: FastifyInstance) {
         getSubUserId(request),
         request.params.conversationId,
       ),
+  );
+
+  app.get<{ Querystring: MaterialCollectionsQuery }>(
+    "/api/server/material-collections",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        querystring: MaterialCollectionsQuerySchema,
+      },
+    },
+    async (request) =>
+      getWorkbenchService(app, request).listMaterialCollections(
+        getSubUserId(request),
+        {
+          bizType: parseMaterialBizTypeQuery(request.query.biz_type),
+          groupId: parseMaterialGroupIdQuery(request.query.group_id),
+        } satisfies WorkbenchMaterialCollectionListRequest,
+      ),
+  );
+
+  app.post<{ Body: MaterialCollectionCreateBody }>(
+    "/api/server/material-collections",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: MaterialCollectionCreateBodySchema,
+      },
+    },
+    async (request) => {
+      assertChatWriteAccess(request);
+      return getWorkbenchService(app, request).collectMaterial(
+        getSubUserId(request),
+        request.body satisfies WorkbenchMaterialCollectionCreateRequest,
+      );
+    },
+  );
+
+  app.delete<{ Params: MaterialCollectionParams }>(
+    "/api/server/material-collections/:collectionId",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        params: MaterialCollectionParamsSchema,
+      },
+    },
+    async (request) => {
+      assertChatWriteAccess(request);
+      return getWorkbenchService(app, request).deleteMaterialCollection(
+        getSubUserId(request),
+        request.params.collectionId,
+      );
+    },
+  );
+
+  app.post<{ Params: MaterialCollectionParams }>(
+    "/api/server/material-collections/:collectionId/top",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        params: MaterialCollectionParamsSchema,
+      },
+    },
+    async (request) => {
+      assertChatWriteAccess(request);
+      return getWorkbenchService(app, request).topMaterialCollection(
+        getSubUserId(request),
+        request.params.collectionId,
+      );
+    },
+  );
+
+  app.post<{
+    Body: MaterialCollectionMoveBody;
+    Params: MaterialCollectionParams;
+  }>(
+    "/api/server/material-collections/:collectionId/move",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: MaterialCollectionMoveBodySchema,
+        params: MaterialCollectionParamsSchema,
+      },
+    },
+    async (request) => {
+      assertChatWriteAccess(request);
+      return getWorkbenchService(app, request).moveMaterialCollection(
+        getSubUserId(request),
+        request.params.collectionId,
+        request.body satisfies WorkbenchMaterialCollectionMoveRequest,
+      );
+    },
+  );
+
+  app.post<{ Body: MaterialCollectionGroupCreateBody }>(
+    "/api/server/material-collections/groups",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: MaterialCollectionGroupCreateBodySchema,
+      },
+    },
+    async (request) => {
+      assertChatWriteAccess(request);
+      return getWorkbenchService(app, request).createMaterialGroup(
+        getSubUserId(request),
+        request.body satisfies WorkbenchMaterialCollectionGroupCreateRequest,
+      );
+    },
+  );
+
+  app.patch<{
+    Body: MaterialCollectionGroupUpdateBody;
+    Params: MaterialCollectionGroupParams;
+    Querystring: MaterialCollectionGroupQuery;
+  }>(
+    "/api/server/material-collections/groups/:groupId",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: MaterialCollectionGroupUpdateBodySchema,
+        params: MaterialCollectionGroupParamsSchema,
+        querystring: MaterialCollectionGroupQuerySchema,
+      },
+    },
+    async (request) => {
+      assertChatWriteAccess(request);
+      return getWorkbenchService(app, request).renameMaterialGroup(
+        getSubUserId(request),
+        request.params.groupId,
+        parseMaterialBizTypeQuery(request.query.biz_type),
+        request.body satisfies WorkbenchMaterialCollectionGroupUpdateRequest,
+      );
+    },
+  );
+
+  app.delete<{
+    Params: MaterialCollectionGroupParams;
+    Querystring: MaterialCollectionGroupQuery;
+  }>(
+    "/api/server/material-collections/groups/:groupId",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        params: MaterialCollectionGroupParamsSchema,
+        querystring: MaterialCollectionGroupQuerySchema,
+      },
+    },
+    async (request) => {
+      assertChatWriteAccess(request);
+      return getWorkbenchService(app, request).deleteMaterialGroup(
+        getSubUserId(request),
+        request.params.groupId,
+        parseMaterialBizTypeQuery(request.query.biz_type),
+      );
+    },
+  );
+
+  app.post<{
+    Params: MaterialCollectionGroupParams;
+    Querystring: MaterialCollectionGroupQuery;
+  }>(
+    "/api/server/material-collections/groups/:groupId/top",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        params: MaterialCollectionGroupParamsSchema,
+        querystring: MaterialCollectionGroupQuerySchema,
+      },
+    },
+    async (request) => {
+      assertChatWriteAccess(request);
+      return getWorkbenchService(app, request).topMaterialGroup(
+        getSubUserId(request),
+        request.params.groupId,
+        parseMaterialBizTypeQuery(request.query.biz_type),
+      );
+    },
   );
 
   app.get<{ Querystring: PollQuery }>(
@@ -1048,6 +1291,30 @@ function parseOptionalInteger(value: string | undefined) {
   const parsed = Number.parseInt(value, 10);
 
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function parseRequiredInteger(value: string) {
+  const parsed = Number.parseInt(value, 10);
+
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function parseMaterialBizTypeQuery(value: string): 1 | 2 | 3 | 4 {
+  const parsed = parseRequiredInteger(value);
+
+  if (parsed === 1 || parsed === 2 || parsed === 3 || parsed === 4) {
+    return parsed;
+  }
+
+  throw new BadRequestError("INVALID_MATERIAL_BIZ_TYPE", "素材类型无效");
+}
+
+function parseMaterialGroupIdQuery(value: string | undefined) {
+  if (value == null) {
+    return undefined;
+  }
+
+  return value === "0" ? 0 : value;
 }
 
 function parseSeatIdsQuery(value: string | undefined) {

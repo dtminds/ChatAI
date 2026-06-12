@@ -1177,6 +1177,130 @@ describe("backend app", () => {
     await app.close();
   });
 
+  it("material: lists material collections from backend state", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/material-collections?biz_type=2",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      groups: [
+        {
+          bizType: 2,
+          id: "material-group-file-1",
+          title: "文件分组",
+        },
+      ],
+      items: [
+        {
+          bizType: 2,
+          contentType: "file",
+          groupId: "material-group-file-1",
+          messageId: "msg-004",
+        },
+      ],
+    });
+
+    await app.close();
+  });
+
+  it("material: accepts expression collection for operator", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        bizType: 1,
+        messageId: "msg-002",
+      },
+      url: "/api/server/material-collections",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      item: {
+        bizType: 1,
+        contentType: "emotion",
+        groupId: 0,
+        messageId: "msg-002",
+      },
+    });
+
+    await app.close();
+  });
+
+  it("material: rejects viewer mutations", async () => {
+    const { app, authorization } = await createAuthenticatedAppWithRole("viewer");
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        bizType: 2,
+        messageId: "msg-004",
+      },
+      url: "/api/server/material-collections",
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toEqual({
+      error: {
+        code: "FORBIDDEN",
+        message: "无权限访问",
+      },
+      success: false,
+    });
+
+    await app.close();
+  });
+
+  it("material: deleting non-empty group returns business error", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "DELETE",
+      url: "/api/server/material-collections/groups/material-group-file-1?biz_type=2",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({
+      error: {
+        code: "MATERIAL_GROUP_NOT_EMPTY",
+        message: "请先移走或删除分组内素材",
+      },
+      success: false,
+    });
+
+    await app.close();
+  });
+
+  it("material: rejects invalid collection business type", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/material-collections?biz_type=9",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({
+      error: {
+        code: "INVALID_MATERIAL_BIZ_TYPE",
+        message: "素材类型无效",
+      },
+      success: false,
+    });
+
+    await app.close();
+  });
+
   it("falls back to the DB when the session cache read fails", async () => {
     const { app, authorization } = await createAuthenticatedApp();
     app.cache.get = vi.fn(async () => {

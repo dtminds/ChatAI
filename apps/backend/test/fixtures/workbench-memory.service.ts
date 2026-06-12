@@ -53,8 +53,19 @@ import type {
   WorkbenchVoicePlaybackConfirmResponse,
   WorkbenchVoiceTranscriptionRequest,
   WorkbenchVoiceTranscriptionResponse,
+  type WorkbenchMaterialCollectionCreateRequest,
+  type WorkbenchMaterialCollectionCreateResponse,
+  type WorkbenchMaterialCollectionGroupCreateRequest,
+  type WorkbenchMaterialCollectionGroupDto,
+  type WorkbenchMaterialCollectionGroupUpdateRequest,
+  type WorkbenchMaterialCollectionItemDto,
+  type WorkbenchMaterialCollectionListRequest,
+  type WorkbenchMaterialCollectionListResponse,
+  type WorkbenchMaterialCollectionMoveRequest,
+  type WorkbenchMaterialCollectionOkResponse,
 } from "@chatai/contracts";
-import { NotFoundError } from "../../src/shared/errors.js";
+import { MATERIAL_COLLECTION_BIZ_TYPE } from "@chatai/contracts";
+import { BadRequestError, NotFoundError } from "../../src/shared/errors.js";
 
 type WorkbenchEvent =
   | {
@@ -79,6 +90,8 @@ type MemoryWorkbenchState = {
   groupMembersByConversationId: Record<string, WorkbenchGroupMembersResponse>;
   subUser: WorkbenchSubUserDto;
   events: WorkbenchEvent[];
+  materialGroups: WorkbenchMaterialCollectionGroupDto[];
+  materialItems: WorkbenchMaterialCollectionItemDto[];
   messagesByConversationId: Record<string, WorkbenchMessageDto[]>;
   nextId: number;
   version: number;
@@ -138,6 +151,120 @@ export function createMemoryWorkbenchService() {
     },
     getMe(_subUserId: string) {
       return clone(state.subUser);
+    },
+    listMaterialCollections(
+      _subUserId: string,
+      request: WorkbenchMaterialCollectionListRequest,
+    ): WorkbenchMaterialCollectionListResponse {
+      return {
+        groups: clone(
+          state.materialGroups.filter((group) => group.bizType === request.bizType),
+        ),
+        items: clone(
+          state.materialItems.filter(
+            (item) =>
+              item.bizType === request.bizType &&
+              (request.groupId === undefined || item.groupId === request.groupId),
+          ),
+        ),
+      };
+    },
+    collectMaterial(
+      _subUserId: string,
+      request: WorkbenchMaterialCollectionCreateRequest,
+    ): WorkbenchMaterialCollectionCreateResponse {
+      const item = buildMemoryMaterialItem(state, request);
+      state.materialItems = [
+        item,
+        ...state.materialItems.filter((existing) => existing.messageId !== request.messageId),
+      ];
+
+      return { item };
+    },
+    deleteMaterialCollection(
+      _subUserId: string,
+      collectionId: string,
+    ): WorkbenchMaterialCollectionOkResponse {
+      state.materialItems = state.materialItems.filter((item) => item.id !== collectionId);
+      return { ok: true };
+    },
+    topMaterialCollection(
+      _subUserId: string,
+      collectionId: string,
+    ): WorkbenchMaterialCollectionOkResponse {
+      const sort = Date.now();
+      state.materialItems = state.materialItems.map((item) =>
+        item.id === collectionId ? { ...item, sort } : item,
+      );
+      return { ok: true };
+    },
+    moveMaterialCollection(
+      _subUserId: string,
+      collectionId: string,
+      request: WorkbenchMaterialCollectionMoveRequest,
+    ): WorkbenchMaterialCollectionOkResponse {
+      state.materialItems = state.materialItems.map((item) =>
+        item.id === collectionId
+          ? { ...item, groupId: request.groupId, sort: Date.now() }
+          : item,
+      );
+      return { ok: true };
+    },
+    createMaterialGroup(
+      _subUserId: string,
+      request: WorkbenchMaterialCollectionGroupCreateRequest,
+    ): WorkbenchMaterialCollectionOkResponse {
+      if (request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION) {
+        throw new BadRequestError("MATERIAL_GROUP_UNSUPPORTED", "表情不支持自定义分组");
+      }
+
+      state.materialGroups.unshift({
+        bizType: request.bizType,
+        id: String(state.nextId++),
+        sort: Date.now(),
+        title: request.title,
+      });
+      return { ok: true };
+    },
+    renameMaterialGroup(
+      _subUserId: string,
+      groupId: string,
+      _bizType: number,
+      request: WorkbenchMaterialCollectionGroupUpdateRequest,
+    ): WorkbenchMaterialCollectionOkResponse {
+      state.materialGroups = state.materialGroups.map((group) =>
+        group.id === groupId ? { ...group, title: request.title } : group,
+      );
+      return { ok: true };
+    },
+    topMaterialGroup(
+      _subUserId: string,
+      groupId: string,
+      _bizType: number,
+    ): WorkbenchMaterialCollectionOkResponse {
+      state.materialGroups = state.materialGroups.map((group) =>
+        group.id === groupId ? { ...group, sort: Date.now() } : group,
+      );
+      return { ok: true };
+    },
+    deleteMaterialGroup(
+      _subUserId: string,
+      groupId: string,
+      bizType: number,
+    ): WorkbenchMaterialCollectionOkResponse {
+      if (
+        state.materialItems.some(
+          (item) => item.bizType === bizType && item.groupId === groupId,
+        )
+      ) {
+        throw new BadRequestError(
+          "MATERIAL_GROUP_NOT_EMPTY",
+          "请先移走或删除分组内素材",
+        );
+      }
+
+      state.materialGroups = state.materialGroups.filter((group) => group.id !== groupId);
+      return { ok: true };
     },
     async getSidebarIframeParams(_subUserId: string, _input: WorkbenchSidebarIframeParamsRequest) {
       throw new NotFoundError(
@@ -708,6 +835,26 @@ function buildInitialState(): MemoryWorkbenchState {
       subUserId: CURRENT_SUB_USER_ID,
     },
     events: [],
+    materialGroups: [
+      {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+        id: "material-group-file-1",
+        sort: 100,
+        title: "文件分组",
+      },
+    ],
+    materialItems: [
+      {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+        content: { fileName: "求未 AI 智能营销系统.pdf" },
+        contentType: "file",
+        groupId: "material-group-file-1",
+        id: "material-item-file-1",
+        messageId: "msg-004",
+        sort: 100,
+        title: "求未 AI 智能营销系统.pdf",
+      },
+    ],
     messagesByConversationId: {
       "conv-001": [
         message("msg-002", "conv-001", "drc", "cust-001", "customer", "mini-program", { appName: "学好惊喜社", title: "预约直播抽秋天的第一杯奶茶", coverImageUrl: imagePlaceholder("mini-program"), sourceLabel: "小程序" }, "2026-04-11 15:32:40", 1, "sent"),
@@ -827,6 +974,69 @@ function message(
     seq,
     status,
   };
+}
+
+function buildMemoryMaterialItem(
+  state: MemoryWorkbenchState,
+  request: WorkbenchMaterialCollectionCreateRequest,
+): WorkbenchMaterialCollectionItemDto {
+  const message = Object.values(state.messagesByConversationId)
+    .flat()
+    .find((item) => item.messageId === request.messageId);
+
+  if (!message) {
+    throw new NotFoundError("MATERIAL_MESSAGE_NOT_FOUND", "消息不存在");
+  }
+
+  const contentType =
+    request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION
+      ? "emotion"
+      : request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM
+        ? "mini-program"
+        : request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.H5
+          ? "h5"
+          : "file";
+  const groupId =
+    request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION
+      ? 0
+      : (request.groupId ?? 0);
+
+  return {
+    bizType: request.bizType,
+    content: message.content,
+    contentType,
+    groupId,
+    id: `material-item-${state.nextId++}`,
+    messageId: request.messageId,
+    sort: Date.now(),
+    title: readMemoryMaterialTitle(message.content, contentType, request.messageId),
+  };
+}
+
+function readMemoryMaterialTitle(
+  content: unknown,
+  contentType: WorkbenchMaterialCollectionItemDto["contentType"],
+  messageId: string,
+) {
+  if (contentType === "emotion") {
+    return "表情";
+  }
+
+  if (!content || typeof content !== "object") {
+    return messageId;
+  }
+
+  const record = content as Record<string, unknown>;
+  return (
+    readString(record.fileName) ||
+    readString(record.description) ||
+    readString(record.title) ||
+    messageId
+  );
+}
+
+function readString(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
 }
 
 function imagePlaceholder(label: string) {

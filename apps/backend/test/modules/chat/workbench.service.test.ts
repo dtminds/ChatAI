@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  MATERIAL_COLLECTION_BIZ_TYPE,
+  type WorkbenchMaterialCollectionItemDto,
+} from "@chatai/contracts";
+import {
   JAVA_INTERNAL_API_USER_MESSAGE,
   WORKBENCH_INTERNAL_API_FAILED_CODE,
 } from "../../../src/modules/chat/workbench-java-client.js";
@@ -3008,7 +3012,306 @@ describe("MysqlWorkbenchService", () => {
     });
     expect(javaClient.sendSmartHeartbeat).not.toHaveBeenCalled();
   });
+
+  it("material: collects expression with current sub user scope", async () => {
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_779_700_000_000);
+    const repository = createMaterialRepository({
+      findMaterialMessage: vi.fn().mockResolvedValue({
+        content: JSON.stringify({ md5: "emotion-md5" }),
+        msgid: "msg-emotion-1",
+        msgtype: "emotion",
+        uid: 9001,
+      }),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.collectMaterial("101", {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION,
+        groupId: "9",
+        messageId: "msg-emotion-1",
+      }),
+    ).resolves.toMatchObject({
+      item: {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION,
+        contentType: "emotion",
+        groupId: 0,
+        messageId: "msg-emotion-1",
+        title: "表情",
+      },
+    });
+
+    expect(repository.createMaterialCollection).toHaveBeenCalledWith({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION,
+      content: JSON.stringify({ md5: "emotion-md5" }),
+      groupId: 0,
+      msgid: "msg-emotion-1",
+      opSubUserId: "101",
+      sort: 1_779_700_000_000,
+      subUid: 101,
+      title: "表情",
+      uid: 9001,
+    });
+    nowSpy.mockRestore();
+  });
+
+  it("material: collects file with tenant scope and selected group", async () => {
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_779_700_001_000);
+    const repository = createMaterialRepository({
+      createMaterialCollection: vi.fn().mockResolvedValue("181"),
+      findMaterialMessage: vi.fn().mockResolvedValue({
+        content: JSON.stringify({ fileName: "报价.pdf" }),
+        msgid: "msg-file-1",
+        msgtype: "file",
+        uid: 9001,
+      }),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.collectMaterial("101", {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+        groupId: "9",
+        messageId: "msg-file-1",
+      }),
+    ).resolves.toMatchObject({
+      item: {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+        contentType: "file",
+        groupId: "9",
+        id: "181",
+        messageId: "msg-file-1",
+        title: "报价.pdf",
+      },
+    });
+
+    expect(repository.createMaterialCollection).toHaveBeenCalledWith({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+      content: JSON.stringify({ fileName: "报价.pdf" }),
+      groupId: "9",
+      msgid: "msg-file-1",
+      opSubUserId: "101",
+      sort: 1_779_700_001_000,
+      subUid: 0,
+      title: "报价.pdf",
+      uid: 9001,
+    });
+    nowSpy.mockRestore();
+  });
+
+  it("material: returns active duplicate without inserting", async () => {
+    const existingItem = createMaterialItem({
+      id: "77",
+      messageId: "msg-file-1",
+      title: "已收藏文件",
+    });
+    const repository = createMaterialRepository({
+      findMaterialCollectionByMessage: vi.fn().mockResolvedValue({
+        bizStatus: 1,
+        id: "77",
+        item: existingItem,
+      }),
+      findMaterialMessage: vi.fn().mockResolvedValue({
+        content: JSON.stringify({ fileName: "报价.pdf" }),
+        msgid: "msg-file-1",
+        msgtype: "file",
+        uid: 9001,
+      }),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.collectMaterial("101", {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+        messageId: "msg-file-1",
+      }),
+    ).resolves.toEqual({
+      duplicated: true,
+      item: existingItem,
+    });
+
+    expect(repository.createMaterialCollection).not.toHaveBeenCalled();
+    expect(repository.restoreMaterialCollection).not.toHaveBeenCalled();
+  });
+
+  it("material: restores deleted duplicate with refreshed fields", async () => {
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_779_700_002_000);
+    const existingItem = createMaterialItem({
+      groupId: "3",
+      id: "77",
+      messageId: "msg-file-1",
+      title: "旧文件",
+    });
+    const repository = createMaterialRepository({
+      findMaterialCollectionByMessage: vi.fn().mockResolvedValue({
+        bizStatus: 0,
+        id: "77",
+        item: existingItem,
+      }),
+      findMaterialMessage: vi.fn().mockResolvedValue({
+        content: JSON.stringify({ fileName: "新报价.pdf" }),
+        msgid: "msg-file-1",
+        msgtype: "file",
+        uid: 9001,
+      }),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.collectMaterial("101", {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+        groupId: "9",
+        messageId: "msg-file-1",
+      }),
+    ).resolves.toMatchObject({
+      duplicated: true,
+      item: {
+        groupId: "9",
+        id: "77",
+        messageId: "msg-file-1",
+        title: "新报价.pdf",
+      },
+    });
+
+    expect(repository.restoreMaterialCollection).toHaveBeenCalledWith({
+      content: JSON.stringify({ fileName: "新报价.pdf" }),
+      groupId: "9",
+      id: "77",
+      opSubUserId: "101",
+      sort: 1_779_700_002_000,
+      title: "新报价.pdf",
+      uid: 9001,
+    });
+    expect(repository.createMaterialCollection).not.toHaveBeenCalled();
+    nowSpy.mockRestore();
+  });
+
+  it("material: rejects expression group creation", async () => {
+    const service = new MysqlWorkbenchService(
+      createMaterialRepository(),
+      createJavaClient(),
+    );
+
+    await expect(
+      service.createMaterialGroup("101", {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION as never,
+        title: "表情分组",
+      }),
+    ).rejects.toMatchObject({
+      code: "MATERIAL_GROUP_UNSUPPORTED",
+      statusCode: 400,
+    });
+  });
+
+  it("material: rejects unsupported and mismatched message types", async () => {
+    const unsupportedRepository = createMaterialRepository({
+      findMaterialMessage: vi.fn().mockResolvedValue({
+        content: JSON.stringify({ text: "普通文本" }),
+        msgid: "msg-text-1",
+        msgtype: "text",
+        uid: 9001,
+      }),
+    });
+    const unsupportedService = new MysqlWorkbenchService(
+      unsupportedRepository,
+      createJavaClient(),
+    );
+
+    await expect(
+      unsupportedService.collectMaterial("101", {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+        messageId: "msg-text-1",
+      }),
+    ).rejects.toMatchObject({
+      code: "UNSUPPORTED_MATERIAL_MESSAGE",
+      statusCode: 400,
+    });
+    expect(unsupportedRepository.createMaterialCollection).not.toHaveBeenCalled();
+
+    const mismatchedRepository = createMaterialRepository({
+      findMaterialMessage: vi.fn().mockResolvedValue({
+        content: JSON.stringify({ fileName: "报价.pdf" }),
+        msgid: "msg-file-1",
+        msgtype: "file",
+        uid: 9001,
+      }),
+    });
+    const mismatchedService = new MysqlWorkbenchService(
+      mismatchedRepository,
+      createJavaClient(),
+    );
+
+    await expect(
+      mismatchedService.collectMaterial("101", {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.H5,
+        messageId: "msg-file-1",
+      }),
+    ).rejects.toMatchObject({
+      code: "UNSUPPORTED_MATERIAL_MESSAGE",
+      statusCode: 400,
+    });
+    expect(mismatchedRepository.createMaterialCollection).not.toHaveBeenCalled();
+  });
+
+  it("material: rejects non-empty group deletion", async () => {
+    const repository = createMaterialRepository({
+      isMaterialGroupEmpty: vi.fn().mockResolvedValue(false),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.deleteMaterialGroup("101", "9", MATERIAL_COLLECTION_BIZ_TYPE.FILE),
+    ).rejects.toMatchObject({
+      code: "MATERIAL_GROUP_NOT_EMPTY",
+      message: "请先移走或删除分组内素材",
+      statusCode: 400,
+    });
+
+    expect(repository.deleteMaterialGroup).not.toHaveBeenCalled();
+  });
 });
+
+function createMaterialRepository(overrides: Partial<WorkbenchRepository> = {}) {
+  return {
+    createMaterialCollection: vi.fn().mockResolvedValue(undefined),
+    createMaterialGroup: vi.fn().mockResolvedValue(undefined),
+    deleteMaterialCollection: vi.fn().mockResolvedValue(undefined),
+    deleteMaterialGroup: vi.fn().mockResolvedValue(undefined),
+    findMaterialCollectionByMessage: vi.fn().mockResolvedValue(undefined),
+    findMaterialMessage: vi.fn().mockResolvedValue(undefined),
+    getSubUser: vi.fn().mockResolvedValue({
+      displayName: "客服一号",
+      platform: 5,
+      subUserId: "101",
+      uid: 9001,
+    }),
+    isMaterialGroupEmpty: vi.fn().mockResolvedValue(true),
+    listMaterialCollections: vi.fn().mockResolvedValue([]),
+    listMaterialGroups: vi.fn().mockResolvedValue([]),
+    moveMaterialCollection: vi.fn().mockResolvedValue(undefined),
+    renameMaterialGroup: vi.fn().mockResolvedValue(undefined),
+    restoreMaterialCollection: vi.fn().mockResolvedValue(undefined),
+    topMaterialCollection: vi.fn().mockResolvedValue(undefined),
+    topMaterialGroup: vi.fn().mockResolvedValue(undefined),
+    ...overrides,
+  } as unknown as WorkbenchRepository;
+}
+
+function createMaterialItem(
+  overrides: Partial<WorkbenchMaterialCollectionItemDto> = {},
+): WorkbenchMaterialCollectionItemDto {
+  return {
+    bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+    content: { fileName: "报价.pdf" },
+    contentType: "file",
+    groupId: 0,
+    id: "66",
+    messageId: "msg-file-1",
+    sort: 100,
+    title: "报价.pdf",
+    ...overrides,
+  };
+}
 
 function createMessageDto(input: {
   senderType: "agent" | "customer" | "system";

@@ -476,3 +476,36 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_entity_dictionary (
   PRIMARY KEY (id),
   UNIQUE KEY uk_entity_dictionary_uid_code (uid, entity_code)
 ) COMMENT='会话洞察实体词库配置表';
+
+CREATE TABLE `xy_wap_embed_material_collection` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT 'id',
+  `uid` bigint unsigned NOT NULL COMMENT '租户id',
+  `sub_uid` bigint unsigned NOT NULL DEFAULT '0' COMMENT '控制可见性，0：全员可见，其他：对应子账号可见，xy_wap_embed_sub_user.id',
+  `biz_type` tinyint NOT NULL DEFAULT '1' COMMENT '业务类型',
+  `group_id` bigint unsigned NOT NULL DEFAULT '0' COMMENT '分组ID，xy_wap_embed_material_collection_group.id',
+  `title` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '标题',
+  `content` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci COMMENT '内容',
+  `msgid` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '消息ID，第三方消息ID',
+  `biz_status` tinyint NOT NULL DEFAULT '1' COMMENT '状态，0：已删除，1：正常',
+  `op_sub_uid` bigint unsigned NOT NULL COMMENT '收藏人ID，xy_wap_embed_sub_user.id',
+  `sort` bigint unsigned NOT NULL DEFAULT '0' COMMENT '排序值',
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '插入时间',
+  `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_uid_bizStatus_subUid_bizType_groupId` (`uid`,`biz_status`,`sub_uid`,`biz_type`,`group_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='chatAI-素材收藏表';
+
+CREATE TABLE `xy_wap_embed_material_collection_group` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT 'id',
+  `uid` bigint unsigned NOT NULL COMMENT '租户id',
+  `sub_uid` bigint unsigned NOT NULL DEFAULT '0' COMMENT '控制可见性，0：全员可见，其他：对应子账号可见，xy_wap_embed_sub_user.id',
+  `biz_type` tinyint NOT NULL DEFAULT '1' COMMENT '业务类型',
+  `title` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '标题',
+  `desc` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '描述',
+  `biz_status` tinyint NOT NULL DEFAULT '1' COMMENT '状态，0：已删除，1：正常',
+  `sort` bigint unsigned NOT NULL DEFAULT '0' COMMENT '排序值',
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '插入时间',
+  `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_uid_bizStatus_subUid_bizType` (`uid`,`biz_status`,`sub_uid`,`biz_type`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='chatAI-素材收藏分组表';

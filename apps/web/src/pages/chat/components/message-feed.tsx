@@ -408,7 +408,7 @@ export function MessageRow({
   const formattedSentAt = showTimestamp ? "" : formatTextMessageSentAt(message.sentAt);
   const showSenderName = isGroupConversation && !message.isOwnMessage && !!message.senderDisplayName;
   const showSentAtAfterSenderName =
-    isGroupConversation && !isAgent && showSenderName && Boolean(formattedSentAt);
+    !isAgent && showSenderName && Boolean(formattedSentAt);
   const showSentAtHoverSlot = Boolean(formattedSentAt) && !showSentAtAfterSenderName;
   const inlineDeliveryState = getInlineDeliveryState(message);
   const showSmartReplyCard = shouldShowSmartReplyCard(smartReply);

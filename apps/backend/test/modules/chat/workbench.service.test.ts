@@ -3099,6 +3099,128 @@ describe("MysqlWorkbenchService", () => {
     nowSpy.mockRestore();
   });
 
+  it("material: returns normalized h5 content and default group when collecting without a group", async () => {
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_779_700_002_000);
+    const repository = createMaterialRepository({
+      createMaterialCollection: vi.fn().mockResolvedValue("182"),
+      findMaterialMessage: vi.fn().mockResolvedValue({
+        content: JSON.stringify({
+          coverUrl: "https://hd-smp-test.iyouke.com/static/image/default-redpacket.png",
+          desc: "恭喜发财，大吉大利",
+          href: "https://m-scrm-test.dtminds.com/h5/pages/redpacketSend/index",
+          title: "红包来啦",
+        }),
+        msgid: "1025657",
+        msgtype: "link",
+        uid: 9001,
+      }),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.collectMaterial("101", {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.H5,
+        messageId: "1025657",
+      }),
+    ).resolves.toMatchObject({
+      item: {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.H5,
+        content: {
+          description: "恭喜发财，大吉大利",
+          previewImageUrl: "https://hd-smp-test.iyouke.com/static/image/default-redpacket.png",
+          sourceLabel: "链接",
+          title: "红包来啦",
+          url: "https://m-scrm-test.dtminds.com/h5/pages/redpacketSend/index",
+        },
+        contentType: "h5",
+        groupId: 0,
+        id: "182",
+        messageId: "1025657",
+        sort: 1_779_700_002_000,
+        title: "红包来啦",
+      },
+    });
+
+    expect(repository.createMaterialCollection).toHaveBeenCalledWith({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.H5,
+      content: JSON.stringify({
+        coverUrl: "https://hd-smp-test.iyouke.com/static/image/default-redpacket.png",
+        desc: "恭喜发财，大吉大利",
+        href: "https://m-scrm-test.dtminds.com/h5/pages/redpacketSend/index",
+        title: "红包来啦",
+      }),
+      groupId: 0,
+      msgid: "1025657",
+      opSubUserId: "101",
+      sort: 1_779_700_002_000,
+      subUid: 0,
+      title: "红包来啦",
+      uid: 9001,
+    });
+    nowSpy.mockRestore();
+  });
+
+  it("material: returns the created collection lookup when insert result has no id", async () => {
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_779_700_003_000);
+    const createdItem = createMaterialItem({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.H5,
+      content: {
+        description: "恭喜发财，大吉大利",
+        previewImageUrl: "https://hd-smp-test.iyouke.com/static/image/default-redpacket.png",
+        sourceLabel: "链接",
+        title: "红包来啦",
+        url: "https://m-scrm-test.dtminds.com/h5/pages/redpacketSend/index",
+      },
+      contentType: "h5",
+      groupId: 0,
+      id: "188",
+      messageId: "1025657",
+      sort: 1_779_700_003_000,
+      title: "红包来啦",
+    });
+    const findMaterialCollectionByMessage = vi.fn()
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce({
+        bizStatus: 1,
+        id: "188",
+        item: createdItem,
+      });
+    const repository = createMaterialRepository({
+      createMaterialCollection: vi.fn().mockResolvedValue(undefined),
+      findMaterialCollectionByMessage,
+      findMaterialMessage: vi.fn().mockResolvedValue({
+        content: JSON.stringify({
+          coverUrl: "https://hd-smp-test.iyouke.com/static/image/default-redpacket.png",
+          desc: "恭喜发财，大吉大利",
+          href: "https://m-scrm-test.dtminds.com/h5/pages/redpacketSend/index",
+          title: "红包来啦",
+        }),
+        msgid: "1025657",
+        msgtype: "link",
+        uid: 9001,
+      }),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.collectMaterial("101", {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.H5,
+        messageId: "1025657",
+      }),
+    ).resolves.toEqual({
+      item: createdItem,
+    });
+
+    expect(findMaterialCollectionByMessage).toHaveBeenCalledTimes(2);
+    expect(findMaterialCollectionByMessage).toHaveBeenNthCalledWith(2, {
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.H5,
+      msgid: "1025657",
+      subUid: 0,
+      uid: 9001,
+    });
+    nowSpy.mockRestore();
+  });
+
   it("material: returns active duplicate without inserting", async () => {
     const existingItem = createMaterialItem({
       id: "77",

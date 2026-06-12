@@ -512,7 +512,7 @@ describe("ChatWorkbenchPage composer flows", () => {
     });
   });
 
-  it("shows collected expressions in the WeChat emoji picker and alerts when selected", async () => {
+  it("switches to collected expressions from the WeChat emoji picker footer and alerts when selected", async () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();
     const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => undefined);
@@ -552,9 +552,16 @@ describe("ChatWorkbenchPage composer flows", () => {
     await screen.findByRole("textbox", { name: "请输入消息……" });
     await user.click(screen.getByRole("button", { name: "微信表情" }));
 
-    expect(await screen.findByText("收藏的表情")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "微笑" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "发送收藏表情 贴贴表情" }),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: "自定义表情" }));
+
+    expect(screen.queryByRole("button", { name: "微笑" })).not.toBeInTheDocument();
     await user.click(
-      screen.getByRole("button", { name: "发送收藏表情 贴贴表情" }),
+      await screen.findByRole("button", { name: "发送收藏表情 贴贴表情" }),
     );
 
     expect(alertSpy).toHaveBeenCalledWith("后续接入发送接口");

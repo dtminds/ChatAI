@@ -56,6 +56,37 @@ describe("material collection components", () => {
       .not.toBeInTheDocument();
   });
 
+  it("renders h5 materials from raw message content fields", () => {
+    render(
+      <MaterialCard
+        item={createItem({
+          bizType: MATERIAL_COLLECTION_BIZ_TYPE.H5,
+          content: {
+            coverUrl: "https://hd-smp-test.iyouke.com/static/image/default-redpacket.png",
+            desc: "恭喜发财，大吉大利",
+            href: "https://m-scrm-test.dtminds.com/h5/pages/redpacketSend/index",
+            title: "红包来啦",
+          },
+          contentType: "h5",
+          groupId: 0,
+          title: "红包来啦",
+        })}
+        onSelect={() => undefined}
+      />,
+    );
+
+    expect(screen.getByText("红包来啦")).toBeInTheDocument();
+    expect(screen.getByText("恭喜发财，大吉大利")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /红包来啦/ })).toHaveAttribute(
+      "href",
+      "https://m-scrm-test.dtminds.com/h5/pages/redpacketSend/index",
+    );
+    expect(screen.getByRole("img", { name: "红包来啦" })).toHaveAttribute(
+      "src",
+      "https://hd-smp-test.iyouke.com/static/image/default-redpacket.png",
+    );
+  });
+
   it("selects material and exposes management actions in library dialog", async () => {
     const user = userEvent.setup();
     const handleSelect = vi.fn();

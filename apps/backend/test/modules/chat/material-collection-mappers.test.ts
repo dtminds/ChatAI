@@ -115,6 +115,14 @@ describe("material collection mappers", () => {
     });
   });
 
+  it("normalizes string default group id to numeric zero", () => {
+    expect(
+      mapMaterialCollectionItem(materialRow({
+        group_id: "0" as never,
+      })).groupId,
+    ).toBe(0);
+  });
+
   it("throws when a material row has an unsupported biz type", () => {
     expect(() =>
       mapMaterialCollectionItem(materialRow({

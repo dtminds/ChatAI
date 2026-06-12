@@ -143,10 +143,15 @@ function toFileContent(item: MaterialCollectionItem): FileMessageContent {
 
 function toMiniProgramContent(item: MaterialCollectionItem): MiniProgramMessageContent {
   return {
-    appName: readString(item.content.appName) || "小程序",
+    appName:
+      readString(item.content.appName) ||
+      readString(item.content.description) ||
+      "小程序",
     coverImageUrl:
       readString(item.content.coverImageUrl) ||
       readString(item.content.imageUrl) ||
+      readString(item.content.fileUrl) ||
+      readString(item.content.coverUrl) ||
       undefined,
     logoUrl: readString(item.content.logoUrl) || undefined,
     sourceLabel: readString(item.content.sourceLabel) || "小程序",
@@ -157,15 +162,21 @@ function toMiniProgramContent(item: MaterialCollectionItem): MiniProgramMessageC
 
 function toH5Content(item: MaterialCollectionItem): H5CardMessageContent {
   return {
-    description: readString(item.content.description),
+    description:
+      readString(item.content.description) ||
+      readString(item.content.desc),
     previewImageUrl:
       readString(item.content.previewImageUrl) ||
       readString(item.content.imageUrl) ||
+      readString(item.content.coverUrl) ||
       undefined,
     sourceLabel: readString(item.content.sourceLabel) || "链接",
     title: readString(item.content.title) || item.title || "链接",
     type: "h5",
-    url: readString(item.content.url) || undefined,
+    url:
+      readString(item.content.url) ||
+      readString(item.content.href) ||
+      undefined,
   };
 }
 

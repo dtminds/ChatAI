@@ -107,13 +107,15 @@ function getMsgTypeForBizType(bizType: MaterialCollectionBizType) {
   }
 }
 
-function toMaterialBizType(value: number): MaterialCollectionBizType {
-  switch (value) {
+function toMaterialBizType(value: number | string): MaterialCollectionBizType {
+  const numericValue = Number(value);
+
+  switch (numericValue) {
     case MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION:
     case MATERIAL_COLLECTION_BIZ_TYPE.FILE:
     case MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM:
     case MATERIAL_COLLECTION_BIZ_TYPE.H5:
-      return value;
+      return numericValue;
     default:
       throw new Error(`Unsupported material collection biz type: ${value}`);
   }
@@ -143,8 +145,8 @@ function resolveTitle(
   );
 }
 
-function toGroupId(value: number) {
-  return value === 0 ? 0 : String(value);
+function toGroupId(value: number | string) {
+  return Number(value) === 0 ? 0 : String(value);
 }
 
 function toOptionalTimestamp(value: Date | number | string | null | undefined) {

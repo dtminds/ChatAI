@@ -450,8 +450,8 @@ export function MessageRow({
             <p
               aria-hidden={!isSentAtPreviewVisible}
               className={cn(
-                "px-1 text-[11px] leading-4 text-muted-foreground/80",
-                !isSentAtPreviewVisible && "invisible",
+                "px-1 text-[11px] leading-4 text-muted-foreground/80 transition-opacity duration-200",
+                isSentAtPreviewVisible ? "opacity-100" : "opacity-0 pointer-events-none",
               )}
               data-testid="text-message-sent-at"
             >

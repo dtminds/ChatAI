@@ -1,5 +1,7 @@
 import {
   GROUP_MEMBER_TYPE,
+  MATERIAL_COLLECTION_BIZ_TYPE,
+  type MaterialCollectionBizType,
   type WorkbenchGroupMemberDto,
   type WorkbenchGroupMembersResponse,
   type WorkbenchConversationCursorDto,
@@ -17,6 +19,8 @@ import {
   type WorkbenchCustomerSeatRelationDto,
   type WorkbenchCustomerRelationConversationDto,
   type WorkbenchCustomerSummaryDto,
+  type WorkbenchMaterialCollectionGroupDto,
+  type WorkbenchMaterialCollectionItemDto,
   type WorkbenchSearchContactResultDto,
   type WorkbenchSearchGroupResultDto,
   type WorkbenchSearchResponseDto,
@@ -54,6 +58,10 @@ import {
   comparePositiveIdValues,
   uniquePositiveNumbers,
 } from "../../shared/id-utils.js";
+import {
+  mapMaterialCollectionItem,
+  type MaterialCollectionRow,
+} from "./material-collection-mappers.js";
 const BIZ_STATUS_HIDDEN = 0;
 const BIZ_STATUS_ACTIVE = 1;
 const CHAT_TYPE_SINGLE = 1;
@@ -345,12 +353,345 @@ type ChatRecordDetailRow = {
   status?: number | string | null;
 };
 
+type MaterialCollectionGroupRow = {
+  biz_type: number;
+  id: number | string;
+  sort: number | string | null;
+  title: string;
+};
+
+export type MaterialMessageLookup = {
+  content: string | null;
+  id: number | string;
+  msgid: string;
+  msgtime?: Date | number | string | null;
+  msgtype: string;
+  uid: number;
+};
+
+export type MaterialCollectionLookup = {
+  bizStatus: number;
+  id: string;
+  item: WorkbenchMaterialCollectionItemDto;
+};
+
 export class WorkbenchRepository {
   constructor(
     private readonly db: Kysely<Database>,
     private readonly cache?: CachePort,
     private readonly cacheKeys: ReturnType<typeof buildCacheKeys> = buildCacheKeys("chatai:"),
   ) {}
+
+  async listMaterialGroups(input: {
+    bizType: number;
+    subUserId: string;
+    uid: number;
+  }): Promise<WorkbenchMaterialCollectionGroupDto[]> {
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_material_collection_group")
+      .select(["id", "biz_type", "title", "sort"])
+      .where("uid", "=", input.uid)
+      .where("biz_type", "=", input.bizType)
+      .where("biz_status", "=", BIZ_STATUS_ACTIVE)
+      .where("sub_uid", "in", getMaterialVisibleSubUids(input.subUserId))
+      .orderBy("sort", "desc")
+      .orderBy("id", "desc")
+      .execute();
+
+    return rows.map(mapMaterialCollectionGroupRow);
+  }
+
+  async listMaterialCollections(input: {
+    bizType: number;
+    groupId?: string | 0;
+    subUserId: string;
+    uid: number;
+  }): Promise<WorkbenchMaterialCollectionItemDto[]> {
+    let groupNumericId: number | undefined;
+
+    if (input.groupId !== undefined && input.groupId !== 0) {
+      groupNumericId = parseMySqlId(input.groupId);
+
+      if (groupNumericId == null) {
+        return [];
+      }
+    }
+
+    let query = this.db
+      .selectFrom("xy_wap_embed_material_collection")
+      .selectAll()
+      .where("uid", "=", input.uid)
+      .where("biz_type", "=", input.bizType)
+      .where("biz_status", "=", BIZ_STATUS_ACTIVE)
+      .where("sub_uid", "in", getMaterialVisibleSubUids(input.subUserId));
+
+    if (input.groupId !== undefined) {
+      query = query.where("group_id", "=", input.groupId === 0 ? 0 : groupNumericId!);
+    }
+
+    const rows = await query.orderBy("sort", "desc").orderBy("id", "desc").execute();
+
+    return rows.map((row) => mapMaterialCollectionItem(row as MaterialCollectionRow));
+  }
+
+  async findMaterialMessage(input: {
+    msgid: string;
+    uid: number;
+  }): Promise<MaterialMessageLookup | undefined> {
+    const msgid = input.msgid.trim();
+
+    if (!msgid) {
+      return undefined;
+    }
+
+    return this.db
+      .selectFrom("xy_wap_embed_msg_audit_info as message")
+      .select([
+        "message.id as id",
+        "message.content as content",
+        "message.msgid as msgid",
+        "message.msgtime as msgtime",
+        "message.msgtype as msgtype",
+        "message.uid as uid",
+      ])
+      .where("message.msgid", "=", msgid)
+      .where("message.uid", "=", input.uid)
+      .executeTakeFirst();
+  }
+
+  async findMaterialCollectionByMessage(input: {
+    bizType: number;
+    msgid: string;
+    subUid: number;
+    uid: number;
+  }): Promise<MaterialCollectionLookup | undefined> {
+    const msgid = input.msgid.trim();
+
+    if (!msgid) {
+      return undefined;
+    }
+
+    const row = await this.db
+      .selectFrom("xy_wap_embed_material_collection")
+      .selectAll()
+      .where("uid", "=", input.uid)
+      .where("biz_type", "=", input.bizType)
+      .where("sub_uid", "=", input.subUid)
+      .where("msgid", "=", msgid)
+      .executeTakeFirst();
+
+    if (!row) {
+      return undefined;
+    }
+
+    const materialRow = row as MaterialCollectionRow;
+
+    return {
+      bizStatus: toSafeNumber(materialRow.biz_status),
+      id: String(materialRow.id),
+      item: mapMaterialCollectionItem(materialRow),
+    };
+  }
+
+  async isMaterialGroupEmpty(input: {
+    bizType: number;
+    groupId: string;
+    uid: number;
+  }) {
+    const groupNumericId = parseMySqlId(input.groupId);
+
+    if (groupNumericId == null) {
+      return true;
+    }
+
+    const row = await this.db
+      .selectFrom("xy_wap_embed_material_collection")
+      .select(["id"])
+      .where("uid", "=", input.uid)
+      .where("biz_type", "=", input.bizType)
+      .where("group_id", "=", groupNumericId)
+      .where("biz_status", "=", BIZ_STATUS_ACTIVE)
+      .executeTakeFirst();
+
+    return !row;
+  }
+
+  async createMaterialCollection(input: {
+    bizType: number;
+    content: string | null;
+    groupId: string | 0;
+    msgid: string;
+    opSubUserId: string;
+    sort: number;
+    subUid: number;
+    title: string;
+    uid: number;
+  }) {
+    const groupNumericId = parseMaterialGroupId(input.groupId);
+    const opSubUserNumericId = parseMySqlId(input.opSubUserId);
+
+    if (groupNumericId == null || opSubUserNumericId == null) {
+      return;
+    }
+
+    await this.db
+      .insertInto("xy_wap_embed_material_collection")
+      .values({
+        biz_status: BIZ_STATUS_ACTIVE,
+        biz_type: input.bizType,
+        content: input.content,
+        group_id: groupNumericId,
+        msgid: input.msgid,
+        op_sub_uid: opSubUserNumericId,
+        sort: input.sort,
+        sub_uid: input.subUid,
+        title: input.title,
+        uid: input.uid,
+      })
+      .execute();
+  }
+
+  async restoreMaterialCollection(input: {
+    content: string | null;
+    groupId: string | 0;
+    id: string;
+    opSubUserId: string;
+    sort: number;
+    title: string;
+    uid: number;
+  }) {
+    const collectionNumericId = parseMySqlId(input.id);
+    const groupNumericId = parseMaterialGroupId(input.groupId);
+    const opSubUserNumericId = parseMySqlId(input.opSubUserId);
+
+    if (collectionNumericId == null || groupNumericId == null || opSubUserNumericId == null) {
+      return;
+    }
+
+    await this.db
+      .updateTable("xy_wap_embed_material_collection")
+      .set({
+        biz_status: BIZ_STATUS_ACTIVE,
+        content: input.content,
+        group_id: groupNumericId,
+        op_sub_uid: opSubUserNumericId,
+        sort: input.sort,
+        title: input.title,
+      })
+      .where("id", "=", collectionNumericId)
+      .where("uid", "=", input.uid)
+      .execute();
+  }
+
+  async deleteMaterialCollection(input: { id: string; uid: number }) {
+    await this.updateActiveMaterialCollection(input.id, input.uid, {
+      biz_status: BIZ_STATUS_HIDDEN,
+    });
+  }
+
+  async topMaterialCollection(input: { id: string; sort: number; uid: number }) {
+    await this.updateActiveMaterialCollection(input.id, input.uid, {
+      sort: input.sort,
+    });
+  }
+
+  async moveMaterialCollection(input: {
+    groupId: string | 0;
+    id: string;
+    sort: number;
+    uid: number;
+  }) {
+    const groupNumericId = parseMaterialGroupId(input.groupId);
+
+    if (groupNumericId == null) {
+      return;
+    }
+
+    await this.updateActiveMaterialCollection(input.id, input.uid, {
+      group_id: groupNumericId,
+      sort: input.sort,
+    });
+  }
+
+  async createMaterialGroup(input: {
+    bizType: number;
+    sort: number;
+    subUid: number;
+    title: string;
+    uid: number;
+  }) {
+    await this.db
+      .insertInto("xy_wap_embed_material_collection_group")
+      .values({
+        biz_status: BIZ_STATUS_ACTIVE,
+        biz_type: input.bizType,
+        sort: input.sort,
+        sub_uid: input.subUid,
+        title: input.title,
+        uid: input.uid,
+      })
+      .execute();
+  }
+
+  async renameMaterialGroup(input: { bizType: number; groupId: string; title: string; uid: number }) {
+    await this.updateActiveMaterialGroup(input.groupId, input.uid, input.bizType, {
+      title: input.title,
+    });
+  }
+
+  async topMaterialGroup(input: { bizType: number; groupId: string; sort: number; uid: number }) {
+    await this.updateActiveMaterialGroup(input.groupId, input.uid, input.bizType, {
+      sort: input.sort,
+    });
+  }
+
+  async deleteMaterialGroup(input: { bizType: number; groupId: string; uid: number }) {
+    await this.updateActiveMaterialGroup(input.groupId, input.uid, input.bizType, {
+      biz_status: BIZ_STATUS_HIDDEN,
+    });
+  }
+
+  private async updateActiveMaterialCollection(
+    id: string,
+    uid: number,
+    values: Record<string, unknown>,
+  ) {
+    const collectionNumericId = parseMySqlId(id);
+
+    if (collectionNumericId == null) {
+      return;
+    }
+
+    await this.db
+      .updateTable("xy_wap_embed_material_collection")
+      .set(values)
+      .where("id", "=", collectionNumericId)
+      .where("uid", "=", uid)
+      .where("biz_status", "=", BIZ_STATUS_ACTIVE)
+      .execute();
+  }
+
+  private async updateActiveMaterialGroup(
+    groupId: string,
+    uid: number,
+    bizType: number,
+    values: Record<string, unknown>,
+  ) {
+    const groupNumericId = parseMySqlId(groupId);
+
+    if (groupNumericId == null) {
+      return;
+    }
+
+    await this.db
+      .updateTable("xy_wap_embed_material_collection_group")
+      .set(values)
+      .where("id", "=", groupNumericId)
+      .where("uid", "=", uid)
+      .where("biz_type", "=", bizType)
+      .where("biz_status", "=", BIZ_STATUS_ACTIVE)
+      .execute();
+  }
 
   /**
    * 按子账号租户与平台关联 `xy_wap_embed_user_relation`，取涂色侧栏 AES 密钥与 IV。
@@ -3475,6 +3816,45 @@ export function parseMySqlId(value: string) {
   }
 
   return numeric;
+}
+
+function getMaterialVisibleSubUids(subUserId: string) {
+  const subUserNumericId = parseMySqlId(subUserId);
+
+  return subUserNumericId == null ? [0] : [0, subUserNumericId];
+}
+
+function mapMaterialCollectionGroupRow(
+  row: MaterialCollectionGroupRow,
+): WorkbenchMaterialCollectionGroupDto {
+  return {
+    bizType: toMaterialCollectionBizType(row.biz_type),
+    id: String(row.id),
+    sort: toSafeNumber(row.sort),
+    title: row.title,
+  };
+}
+
+function toMaterialCollectionBizType(value: number): MaterialCollectionBizType {
+  switch (value) {
+    case MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION:
+    case MATERIAL_COLLECTION_BIZ_TYPE.FILE:
+    case MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM:
+    case MATERIAL_COLLECTION_BIZ_TYPE.H5:
+      return value;
+    default:
+      throw new Error(`Unsupported material collection biz type: ${value}`);
+  }
+}
+
+function parseMaterialGroupId(groupId: string | 0) {
+  return groupId === 0 ? 0 : parseMySqlId(groupId);
+}
+
+function toSafeNumber(value: number | string | null | undefined) {
+  const numericValue = Number(value ?? 0);
+
+  return Number.isFinite(numericValue) ? numericValue : 0;
 }
 
 function normalizeConversationListLimit(value: number | undefined) {

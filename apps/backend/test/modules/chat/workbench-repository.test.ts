@@ -853,6 +853,38 @@ describe("WorkbenchRepository", () => {
     ]);
   });
 
+  it("creates material collection in the default group when group id is string zero", async () => {
+    const db = createMaterialDb();
+    const repository = new WorkbenchRepository(db as never);
+
+    const insertedId = await repository.createMaterialCollection({
+      bizType: 4,
+      content: JSON.stringify({ title: "红包来啦" }),
+      groupId: "0",
+      msgid: "1025657",
+      opSubUserId: "88",
+      sort: 40,
+      subUid: 0,
+      title: "红包来啦",
+      uid: 9001,
+    });
+
+    expect(insertedId).toBe("1801");
+    expect(db.inserts).toEqual([
+      {
+        table: "xy_wap_embed_material_collection",
+        values: expect.objectContaining({
+          biz_type: 4,
+          group_id: 0,
+          msgid: "1025657",
+          op_sub_uid: 88,
+          sub_uid: 0,
+          uid: 9001,
+        }),
+      },
+    ]);
+  });
+
   it("soft deletes, tops, and moves material collection rows", async () => {
     const db = createMaterialDb();
     const repository = new WorkbenchRepository(db as never);

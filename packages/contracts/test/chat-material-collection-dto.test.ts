@@ -146,18 +146,7 @@ describe("chat material collection DTOs", () => {
     };
 
     const createResponse: WorkbenchMaterialCollectionCreateResponse = {
-      item: {
-        id: "collection-2",
-        bizType: MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM,
-        groupId: "group-2",
-        title: "小程序",
-        sort: 2,
-        messageId: "msgid-1002",
-        contentType: "mini-program",
-        content: {
-          appid: "wx-appid",
-        },
-      },
+      success: true,
       duplicated: true,
     };
 

@@ -179,7 +179,7 @@ export function createMemoryWorkbenchService() {
         ...state.materialItems.filter((existing) => existing.messageId !== request.messageId),
       ];
 
-      return { item };
+      return { success: true };
     },
     deleteMaterialCollection(
       _subUserId: string,

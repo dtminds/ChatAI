@@ -192,7 +192,7 @@ describe("createWorkbenchService", () => {
     mock.onPost("/server/material-collections").reply((config) => [
       200,
       {
-        item: { id: "1" },
+        success: true,
         receivedBody: JSON.parse(String(config.data)),
       },
     ]);

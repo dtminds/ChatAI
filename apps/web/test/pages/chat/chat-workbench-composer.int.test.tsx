@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "sonner";
+import { MATERIAL_COLLECTION_BIZ_TYPE } from "@chatai/contracts";
 import { createMockWorkbenchService, setWorkbenchService } from "@/pages/chat/api/workbench-service";
 import { useWorkbenchStore } from "@/store/workbench-store";
 import {
@@ -566,6 +567,71 @@ describe("ChatWorkbenchPage composer flows", () => {
 
     expect(alertSpy).toHaveBeenCalledWith("后续接入发送接口");
     expect(sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("manages collected expressions from the custom emoji context menu", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const topMaterialCollection = vi.fn().mockResolvedValue({ ok: true });
+    const deleteMaterialCollection = vi.fn().mockResolvedValue({ ok: true });
+    const listMaterialCollections = vi.fn(async (request) => {
+      if (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION) {
+        return baseService.listMaterialCollections(request);
+      }
+
+      return {
+        groups: [],
+        items: [
+          {
+            bizType: MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION,
+            content: {
+              alt: "贴贴表情",
+              imageUrl: "https://example.com/expression.gif",
+            },
+            contentType: "emotion" as const,
+            groupId: 0 as const,
+            id: "material-expression-001",
+            messageId: "msg-expression-001",
+            sort: 1_781_244_000_000,
+            title: "贴贴表情",
+          },
+        ],
+      };
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      deleteMaterialCollection,
+      listMaterialCollections,
+      topMaterialCollection,
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getByRole("button", { name: "微信表情" }));
+    await user.click(screen.getByRole("tab", { name: "自定义表情" }));
+
+    const expressionButton = await screen.findByRole("button", {
+      name: "发送收藏表情 贴贴表情",
+    });
+
+    fireEvent.contextMenu(expressionButton);
+    await user.click(await screen.findByRole("menuitem", { name: "移到最前" }));
+
+    await waitFor(() => {
+      expect(topMaterialCollection).toHaveBeenCalledWith("material-expression-001");
+    });
+
+    fireEvent.contextMenu(expressionButton);
+    await user.click(await screen.findByRole("menuitem", { name: "删除" }));
+
+    await waitFor(() => {
+      expect(deleteMaterialCollection).toHaveBeenCalledWith("material-expression-001");
+    });
+    expect(listMaterialCollections).toHaveBeenCalledWith({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION,
+    });
   });
 
   it.each([

@@ -1222,13 +1222,8 @@ describe("backend app", () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toMatchObject({
-      item: {
-        bizType: 1,
-        contentType: "emotion",
-        groupId: 0,
-        messageId: "msg-002",
-      },
+    expect(response.json()).toEqual({
+      success: true,
     });
 
     await app.close();

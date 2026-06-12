@@ -137,7 +137,9 @@ function isApiErrorEnvelope(value: unknown): value is ApiErrorEnvelope {
     return false;
   }
 
-  return (value as ApiErrorEnvelope).success === false;
+  const envelope = value as ApiErrorEnvelope;
+
+  return envelope.success === false && envelope.error !== undefined;
 }
 
 async function refreshAuth() {

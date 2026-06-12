@@ -71,7 +71,6 @@ import type {
   WorkbenchMaterialCollectionMoveRequest,
   WorkbenchMaterialCollectionOkResponse,
   WorkbenchMaterialCollectionContentType,
-  WorkbenchMaterialCollectionItemDto,
 } from "@chatai/contracts";
 import { CHAT_TYPE, MATERIAL_COLLECTION_BIZ_TYPE } from "@chatai/contracts";
 import {
@@ -107,8 +106,6 @@ import {
 } from "./workbench-repository.js";
 import {
   getMaterialContentTypeForBizType,
-  mapMaterialCollectionItem,
-  type MaterialCollectionRow,
 } from "./material-collection-mappers.js";
 import {
   getPlayableMediaHost,
@@ -1855,8 +1852,8 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     if (duplicate?.bizStatus === 1) {
       return {
+        success: true,
         duplicated: true,
-        item: duplicate.item,
       };
     }
 
@@ -1872,18 +1869,8 @@ export class MysqlWorkbenchService implements WorkbenchService {
       });
 
       return {
+        success: true,
         duplicated: true,
-        item: buildMaterialCollectionItem({
-          bizType,
-          content: message.content,
-          createdAt: sort,
-          groupId,
-          id: duplicate.id,
-          messageId: request.messageId,
-          sort,
-          title,
-          updatedAt: sort,
-        }),
       };
     }
 
@@ -1900,32 +1887,14 @@ export class MysqlWorkbenchService implements WorkbenchService {
     });
 
     if (!collectionId) {
-      const created = await this.repository.findMaterialCollectionByMessage({
-        bizType,
-        msgid: request.messageId,
-        subUid,
-        uid: me.uid,
-      });
-
-      if (created) {
-        return {
-          item: created.item,
-        };
-      }
+      return {
+        success: false,
+        errorMsg: "素材收录失败，请稍后重试",
+      };
     }
 
     return {
-      item: buildMaterialCollectionItem({
-        bizType,
-        content: message.content,
-        createdAt: sort,
-        groupId,
-        id: collectionId ?? "",
-        messageId: request.messageId,
-        sort,
-        title,
-        updatedAt: sort,
-      }),
+      success: true,
     };
   }
 
@@ -2320,34 +2289,6 @@ function readMaterialTitle(
   }
 
   return readMaterialString(content, "title") || messageId;
-}
-
-function buildMaterialCollectionItem(input: {
-  bizType: MaterialCollectionBizType;
-  content: string | null;
-  createdAt: number;
-  groupId: string | 0;
-  id: string;
-  messageId: string;
-  sort: number;
-  title: string;
-  updatedAt: number;
-}): WorkbenchMaterialCollectionItemDto {
-  return mapMaterialCollectionItem({
-    biz_status: 1,
-    biz_type: input.bizType,
-    content: input.content,
-    create_time: input.createdAt as unknown as Date,
-    group_id: input.groupId,
-    id: input.id as never,
-    msgid: input.messageId,
-    op_sub_uid: 0,
-    sort: input.sort,
-    sub_uid: 0,
-    title: input.title,
-    uid: 0,
-    update_time: input.updatedAt as unknown as Date,
-  } as MaterialCollectionRow);
 }
 
 function parseMaterialContentRecord(rawContent: string | null) {

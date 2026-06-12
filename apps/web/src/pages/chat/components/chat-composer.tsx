@@ -6,7 +6,7 @@ import {
   FileEmpty01Icon,
   Folder01Icon,
   Image01Icon,
-  Link04Icon,
+  CopyLinkIcon,
   SmileIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -73,6 +73,7 @@ type ChatComposerProps = {
   isSending: boolean;
   isHistoryPanelOpen: boolean;
   onClearQuotedMessage: () => void;
+  onDeleteCollectedExpression?: (item: WorkbenchMaterialCollectionItemDto) => void;
   onDraftChange: (draft: string) => void;
   onEmojiPickerOpenChange: (isOpen: boolean) => void;
   onEnterBehaviorChange: (behavior: InputEnterBehavior) => void;
@@ -82,6 +83,7 @@ type ChatComposerProps = {
   onSelectCollectedExpression?: (item: WorkbenchMaterialCollectionItemDto) => void;
   onSegmentsChange: (segments: ComposerSegment[]) => void;
   onSendDraft: (segments: ComposerSegment[]) => void;
+  onTopCollectedExpression?: (item: WorkbenchMaterialCollectionItemDto) => void;
   placeholder: string;
   quotedMessage: QuotedMessagePreviewContent | null;
   composerRef: RefObject<LexicalEditor | null>;
@@ -117,6 +119,7 @@ export function ChatComposer({
   isSending,
   isHistoryPanelOpen,
   onClearQuotedMessage,
+  onDeleteCollectedExpression,
   onDraftChange,
   onEmojiPickerOpenChange,
   onEnterBehaviorChange,
@@ -126,6 +129,7 @@ export function ChatComposer({
   onSelectCollectedExpression,
   onSegmentsChange,
   onSendDraft,
+  onTopCollectedExpression,
   placeholder,
   quotedMessage,
   composerRef,
@@ -432,8 +436,10 @@ export function ChatComposer({
               <div className="absolute bottom-full left-[-24px] z-30 mb-3">
                 <WechatEmojiPicker
                   collectedExpressions={collectedExpressions}
+                  onDeleteCollectedExpression={onDeleteCollectedExpression}
                   onSelect={handleEmojiSelect}
                   onSelectCollectedExpression={onSelectCollectedExpression}
+                  onTopCollectedExpression={onTopCollectedExpression}
                 />
               </div>
             ) : null}
@@ -494,7 +500,7 @@ export function ChatComposer({
             type="button"
             variant="ghost"
           >
-            <MiniProgramMark className="size-[18px]" />
+            <MiniProgramMark className="size-5.75" />
           </Button>
           <Button
             aria-label="收藏H5"
@@ -505,7 +511,7 @@ export function ChatComposer({
             type="button"
             variant="ghost"
           >
-            <HugeiconsIcon icon={Link04Icon} size={18} strokeWidth={1.8} />
+            <HugeiconsIcon icon={CopyLinkIcon} size={18} strokeWidth={1.8} />
           </Button>
           <Button
             aria-label="收藏文件"

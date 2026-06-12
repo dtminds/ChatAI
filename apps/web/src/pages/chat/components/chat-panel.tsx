@@ -80,8 +80,10 @@ type ChatPanelProps = {
   onCancelFileUpload: (uploadId: string) => void;
   collectedExpressions?: WorkbenchMaterialCollectionItemDto[];
   onCollectMaterial?: (message: ChatMessage) => void;
+  onDeleteCollectedExpression?: (item: WorkbenchMaterialCollectionItemDto) => void;
   onOpenMaterialLibrary?: (bizType: 2 | 3 | 4) => void;
   onSelectCollectedExpression?: (item: WorkbenchMaterialCollectionItemDto) => void;
+  onTopCollectedExpression?: (item: WorkbenchMaterialCollectionItemDto) => void;
   onDownloadMessageFile?: (message: ChatMessage) => void;
   onFileSelect: (files: FileList | File[] | null) => void;
   onOpenHistory: () => void;
@@ -160,8 +162,10 @@ export function ChatPanel({
   onCancelFileUpload,
   collectedExpressions,
   onCollectMaterial,
+  onDeleteCollectedExpression,
   onOpenMaterialLibrary,
   onSelectCollectedExpression,
+  onTopCollectedExpression,
   onDownloadMessageFile,
   onFileSelect,
   onOpenHistory,
@@ -292,6 +296,7 @@ export function ChatPanel({
                     isHistoryPanelOpen={isHistoryPanelOpen}
                     collectedExpressions={collectedExpressions}
                     onClearQuotedMessage={onClearQuotedMessage}
+                    onDeleteCollectedExpression={onDeleteCollectedExpression}
                     onDraftChange={onDraftChange}
                     onEmojiPickerOpenChange={onEmojiPickerOpenChange}
                     onEnterBehaviorChange={onEnterBehaviorChange}
@@ -301,6 +306,7 @@ export function ChatPanel({
                     onSelectCollectedExpression={onSelectCollectedExpression}
                     onSegmentsChange={onComposerSegmentsChange}
                     onSendDraft={onSendDraft}
+                    onTopCollectedExpression={onTopCollectedExpression}
                     placeholder={composerPlaceholder}
                     quotedMessage={quotedMessage}
                     composerRef={composerRef}

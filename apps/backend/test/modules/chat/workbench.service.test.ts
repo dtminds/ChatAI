@@ -3031,15 +3031,7 @@ describe("MysqlWorkbenchService", () => {
         groupId: "9",
         messageId: "msg-emotion-1",
       }),
-    ).resolves.toMatchObject({
-      item: {
-        bizType: MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION,
-        contentType: "emotion",
-        groupId: 0,
-        messageId: "msg-emotion-1",
-        title: "表情",
-      },
-    });
+    ).resolves.toEqual({ success: true });
 
     expect(repository.createMaterialCollection).toHaveBeenCalledWith({
       bizType: MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION,
@@ -3074,16 +3066,7 @@ describe("MysqlWorkbenchService", () => {
         groupId: "9",
         messageId: "msg-file-1",
       }),
-    ).resolves.toMatchObject({
-      item: {
-        bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
-        contentType: "file",
-        groupId: "9",
-        id: "181",
-        messageId: "msg-file-1",
-        title: "报价.pdf",
-      },
-    });
+    ).resolves.toEqual({ success: true });
 
     expect(repository.createMaterialCollection).toHaveBeenCalledWith({
       bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
@@ -3099,7 +3082,7 @@ describe("MysqlWorkbenchService", () => {
     nowSpy.mockRestore();
   });
 
-  it("material: returns normalized h5 content and default group when collecting without a group", async () => {
+  it("material: stores h5 content in the default group when collecting without a group", async () => {
     const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_779_700_002_000);
     const repository = createMaterialRepository({
       createMaterialCollection: vi.fn().mockResolvedValue("182"),
@@ -3122,24 +3105,7 @@ describe("MysqlWorkbenchService", () => {
         bizType: MATERIAL_COLLECTION_BIZ_TYPE.H5,
         messageId: "1025657",
       }),
-    ).resolves.toMatchObject({
-      item: {
-        bizType: MATERIAL_COLLECTION_BIZ_TYPE.H5,
-        content: {
-          description: "恭喜发财，大吉大利",
-          previewImageUrl: "https://hd-smp-test.iyouke.com/static/image/default-redpacket.png",
-          sourceLabel: "链接",
-          title: "红包来啦",
-          url: "https://m-scrm-test.dtminds.com/h5/pages/redpacketSend/index",
-        },
-        contentType: "h5",
-        groupId: 0,
-        id: "182",
-        messageId: "1025657",
-        sort: 1_779_700_002_000,
-        title: "红包来啦",
-      },
-    });
+    ).resolves.toEqual({ success: true });
 
     expect(repository.createMaterialCollection).toHaveBeenCalledWith({
       bizType: MATERIAL_COLLECTION_BIZ_TYPE.H5,
@@ -3160,34 +3126,10 @@ describe("MysqlWorkbenchService", () => {
     nowSpy.mockRestore();
   });
 
-  it("material: returns the created collection lookup when insert result has no id", async () => {
+  it("material: returns failure result when create does not insert", async () => {
     const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_779_700_003_000);
-    const createdItem = createMaterialItem({
-      bizType: MATERIAL_COLLECTION_BIZ_TYPE.H5,
-      content: {
-        description: "恭喜发财，大吉大利",
-        previewImageUrl: "https://hd-smp-test.iyouke.com/static/image/default-redpacket.png",
-        sourceLabel: "链接",
-        title: "红包来啦",
-        url: "https://m-scrm-test.dtminds.com/h5/pages/redpacketSend/index",
-      },
-      contentType: "h5",
-      groupId: 0,
-      id: "188",
-      messageId: "1025657",
-      sort: 1_779_700_003_000,
-      title: "红包来啦",
-    });
-    const findMaterialCollectionByMessage = vi.fn()
-      .mockResolvedValueOnce(undefined)
-      .mockResolvedValueOnce({
-        bizStatus: 1,
-        id: "188",
-        item: createdItem,
-      });
     const repository = createMaterialRepository({
       createMaterialCollection: vi.fn().mockResolvedValue(undefined),
-      findMaterialCollectionByMessage,
       findMaterialMessage: vi.fn().mockResolvedValue({
         content: JSON.stringify({
           coverUrl: "https://hd-smp-test.iyouke.com/static/image/default-redpacket.png",
@@ -3208,16 +3150,10 @@ describe("MysqlWorkbenchService", () => {
         messageId: "1025657",
       }),
     ).resolves.toEqual({
-      item: createdItem,
+      success: false,
+      errorMsg: "素材收录失败，请稍后重试",
     });
 
-    expect(findMaterialCollectionByMessage).toHaveBeenCalledTimes(2);
-    expect(findMaterialCollectionByMessage).toHaveBeenNthCalledWith(2, {
-      bizType: MATERIAL_COLLECTION_BIZ_TYPE.H5,
-      msgid: "1025657",
-      subUid: 0,
-      uid: 9001,
-    });
     nowSpy.mockRestore();
   });
 
@@ -3248,8 +3184,8 @@ describe("MysqlWorkbenchService", () => {
         messageId: "msg-file-1",
       }),
     ).resolves.toEqual({
+      success: true,
       duplicated: true,
-      item: existingItem,
     });
 
     expect(repository.createMaterialCollection).not.toHaveBeenCalled();
@@ -3285,14 +3221,9 @@ describe("MysqlWorkbenchService", () => {
         groupId: "9",
         messageId: "msg-file-1",
       }),
-    ).resolves.toMatchObject({
+    ).resolves.toEqual({
+      success: true,
       duplicated: true,
-      item: {
-        groupId: "9",
-        id: "77",
-        messageId: "msg-file-1",
-        title: "新报价.pdf",
-      },
     });
 
     expect(repository.restoreMaterialCollection).toHaveBeenCalledWith({
@@ -3395,7 +3326,7 @@ describe("MysqlWorkbenchService", () => {
 
 function createMaterialRepository(overrides: Partial<WorkbenchRepository> = {}) {
   return {
-    createMaterialCollection: vi.fn().mockResolvedValue(undefined),
+    createMaterialCollection: vi.fn().mockResolvedValue("66"),
     createMaterialGroup: vi.fn().mockResolvedValue(undefined),
     deleteMaterialCollection: vi.fn().mockResolvedValue(undefined),
     deleteMaterialGroup: vi.fn().mockResolvedValue(undefined),

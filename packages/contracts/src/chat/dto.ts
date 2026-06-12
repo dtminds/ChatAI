@@ -101,10 +101,15 @@ export type WorkbenchMaterialCollectionCreateRequest = {
   groupId?: string | 0;
 };
 
-export type WorkbenchMaterialCollectionCreateResponse = {
-  item: WorkbenchMaterialCollectionItemDto;
-  duplicated?: boolean;
-};
+export type WorkbenchMaterialCollectionCreateResponse =
+  | {
+      success: true;
+      duplicated?: boolean;
+    }
+  | {
+      success: false;
+      errorMsg: string;
+    };
 
 export type WorkbenchMaterialCollectionGroupCreateRequest = {
   bizType: WorkbenchMaterialCollectionGroupBizType;

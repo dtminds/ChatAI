@@ -20,6 +20,7 @@ describe("material collection components", () => {
 
     render(
       <MaterialGroupSelectDialog
+        bizType={MATERIAL_COLLECTION_BIZ_TYPE.FILE}
         groups={[createGroup({ id: "group-file", title: "常用文件" })]}
         isSaving={false}
         onOpenChange={() => undefined}
@@ -28,7 +29,12 @@ describe("material collection components", () => {
       />,
     );
 
-    await user.click(screen.getByRole("radio", { name: "常用文件" }));
+    expect(screen.getByRole("dialog", { name: "收录文件" })).toBeInTheDocument();
+    expect(screen.queryByText("默认分组不会新建分组记录")).not.toBeInTheDocument();
+    expect(screen.queryByRole("radio")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("combobox", { name: "选择分组" }));
+    await user.click(await screen.findByRole("option", { name: "常用文件" }));
     await user.click(screen.getByRole("button", { name: "收录" }));
 
     expect(handleSubmit).toHaveBeenCalledWith("group-file");

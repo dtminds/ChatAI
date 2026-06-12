@@ -1,4 +1,5 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { MATERIAL_COLLECTION_BIZ_TYPE } from "@chatai/contracts";
 import { MaterialExpressionSection } from "@/pages/chat/components/material-collection";
@@ -23,6 +24,43 @@ describe("MaterialExpressionSection", () => {
     );
     expect(button).not.toHaveAttribute("title");
     expect(image.className).not.toContain("group-hover:scale-105");
+  });
+
+  it("opens a right-click menu for collected expression management", async () => {
+    const user = userEvent.setup();
+    const item = createExpressionItem();
+    const handleSelect = vi.fn();
+    const handleTop = vi.fn();
+    const handleDelete = vi.fn();
+
+    render(
+      <MaterialExpressionSection
+        items={[item]}
+        onDelete={handleDelete}
+        onSelect={handleSelect}
+        onTop={handleTop}
+      />,
+    );
+
+    const button = screen.getByRole("button", {
+      name: "发送收藏表情 表情",
+    });
+
+    fireEvent.contextMenu(button, {
+      clientX: 24,
+      clientY: 32,
+    });
+
+    expect(handleSelect).not.toHaveBeenCalled();
+    await user.click(await screen.findByRole("menuitem", { name: "移到最前" }));
+    expect(handleTop).toHaveBeenCalledWith(item);
+
+    fireEvent.contextMenu(button, {
+      clientX: 24,
+      clientY: 32,
+    });
+    await user.click(await screen.findByRole("menuitem", { name: "删除" }));
+    expect(handleDelete).toHaveBeenCalledWith(item);
   });
 });
 

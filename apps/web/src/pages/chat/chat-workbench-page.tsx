@@ -709,13 +709,18 @@ function ChatWorkbenchContent({
         setIsCollectingMaterial(true);
 
         try {
-          await getWorkbenchService().collectMaterial({
+          const response = await getWorkbenchService().collectMaterial({
             bizType,
             groupId: 0,
             messageId,
           });
 
           if (!isMountedRef.current) {
+            return;
+          }
+
+          if (!response.success) {
+            toast.warning(response.errorMsg || "收录失败，请稍后重试");
             return;
           }
 
@@ -768,13 +773,18 @@ function ChatWorkbenchContent({
       setIsCollectingMaterial(true);
 
       try {
-        await getWorkbenchService().collectMaterial({
+        const response = await getWorkbenchService().collectMaterial({
           bizType: pendingMaterialCollection.bizType,
           groupId,
           messageId: pendingMaterialCollection.messageId,
         });
 
         if (!isMountedRef.current) {
+          return;
+        }
+
+        if (!response.success) {
+          toast.warning(response.errorMsg || "收录失败，请稍后重试");
           return;
         }
 
@@ -807,6 +817,43 @@ function ChatWorkbenchContent({
   const handleSelectMaterial = useCallback(() => {
     window.alert("后续接入发送接口");
   }, []);
+
+  const runCollectedExpressionMutation = useCallback(
+    async (
+      action: () => Promise<unknown>,
+      fallbackMessage: string,
+    ) => {
+      try {
+        await action();
+        await refreshCollectedExpressions();
+      } catch (error) {
+        if (isMountedRef.current) {
+          toast.warning(getMaterialErrorMessage(error, fallbackMessage));
+        }
+      }
+    },
+    [refreshCollectedExpressions],
+  );
+
+  const handleTopCollectedExpression = useCallback(
+    (item: WorkbenchMaterialCollectionItemDto) => {
+      void runCollectedExpressionMutation(
+        () => getWorkbenchService().topMaterialCollection(item.id),
+        "置顶素材失败",
+      );
+    },
+    [runCollectedExpressionMutation],
+  );
+
+  const handleDeleteCollectedExpression = useCallback(
+    (item: WorkbenchMaterialCollectionItemDto) => {
+      void runCollectedExpressionMutation(
+        () => getWorkbenchService().deleteMaterialCollection(item.id),
+        "删除素材失败",
+      );
+    },
+    [runCollectedExpressionMutation],
+  );
 
   const runMaterialLibraryMutation = useCallback(
     async (
@@ -1749,6 +1796,7 @@ function ChatWorkbenchContent({
                   onCancelFileUpload={handleCancelFileUpload}
                   onClearQuotedMessage={() => setQuotedMessage(null)}
                   onCollectMaterial={handleCollectMaterial}
+                  onDeleteCollectedExpression={handleDeleteCollectedExpression}
                   onDownloadMessageFile={handleDownloadMessageFile}
                   onTranscribeVoice={handleTranscribeVoice}
                   onVoicePlaybackReady={handleVoicePlaybackReady}
@@ -1808,6 +1856,7 @@ function ChatWorkbenchContent({
                   onOpenQuotedMessage={handleOpenQuotedMessage}
                   onQuoteMessage={handleQuoteMessage}
                   onSelectCollectedExpression={handleSelectMaterial}
+                  onTopCollectedExpression={handleTopCollectedExpression}
                   onSendSmartReply={handleSendSmartReply}
                   onFillSmartReplyComposer={handleFillSmartReplyComposer}
                   onDismissSmartReply={handleDismissSmartReply}
@@ -1972,6 +2021,7 @@ function ChatWorkbenchContent({
         </DialogContent>
       </Dialog>
       <MaterialGroupSelectDialog
+        bizType={pendingMaterialCollection?.bizType ?? MATERIAL_COLLECTION_BIZ_TYPE.FILE}
         groups={materialCollectionGroups}
         isSaving={isCollectingMaterial}
         onOpenChange={(open) => {

@@ -384,8 +384,8 @@ export function createMockWorkbenchService(): WorkbenchService {
 
       if (existing) {
         return {
+          success: true,
           duplicated: true,
-          item: clone(existing),
         };
       }
 
@@ -399,7 +399,7 @@ export function createMockWorkbenchService(): WorkbenchService {
       state.materialItems = [item, ...state.materialItems];
 
       return {
-        item: clone(item),
+        success: true,
       };
     },
     async deleteMaterialCollection(collectionId) {

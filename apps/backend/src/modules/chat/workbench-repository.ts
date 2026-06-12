@@ -3856,7 +3856,7 @@ function toMaterialCollectionBizType(value: number): MaterialCollectionBizType {
 }
 
 function parseMaterialGroupId(groupId: string | 0) {
-  return groupId === 0 ? 0 : parseMySqlId(groupId);
+  return groupId === 0 || groupId === "0" ? 0 : parseMySqlId(groupId);
 }
 
 function parseInsertedMySqlId(result: InsertResult) {

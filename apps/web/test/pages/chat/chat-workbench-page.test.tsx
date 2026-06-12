@@ -1607,9 +1607,10 @@ describe("ChatWorkbenchPage", () => {
     );
     await user.click(screen.getByRole("menuitem", { name: "收录内容" }));
 
-    expect(await screen.findByRole("dialog", { name: "选择分组" })).toBeInTheDocument();
+    expect(await screen.findByRole("dialog", { name: "收录文件" })).toBeInTheDocument();
     expect(listMaterialCollections).toHaveBeenCalledWith({ bizType: 2 });
-    await user.click(screen.getByLabelText("常用文件"));
+    await user.click(screen.getByRole("combobox", { name: "选择分组" }));
+    await user.click(await screen.findByRole("option", { name: "常用文件" }));
     await user.click(screen.getByRole("button", { name: "收录" }));
 
     await waitFor(() => {
@@ -1620,7 +1621,7 @@ describe("ChatWorkbenchPage", () => {
       });
     });
     await waitFor(() => {
-      expect(screen.queryByRole("dialog", { name: "选择分组" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("dialog", { name: "收录文件" })).not.toBeInTheDocument();
     });
     expect(workbenchToastSuccessMock).toHaveBeenCalledWith("已收录");
   });

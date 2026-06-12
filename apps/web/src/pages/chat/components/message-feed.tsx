@@ -407,6 +407,9 @@ export function MessageRow({
   const isGroupConversation = Boolean(message.isGroupConversation);
   const formattedSentAt = showTimestamp ? "" : formatTextMessageSentAt(message.sentAt);
   const showSenderName = isGroupConversation && !message.isOwnMessage && !!message.senderDisplayName;
+  const showSentAtAfterSenderName =
+    isGroupConversation && !isAgent && showSenderName && Boolean(formattedSentAt);
+  const showSentAtHoverSlot = Boolean(formattedSentAt) && !showSentAtAfterSenderName;
   const inlineDeliveryState = getInlineDeliveryState(message);
   const showSmartReplyCard = shouldShowSmartReplyCard(smartReply);
   const showSmartReplyInlineProcessing = isSmartReplyAutoPending && !showSmartReplyCard;
@@ -448,7 +451,7 @@ export function MessageRow({
         )}
         data-testid="message-row-group"
       >
-        {formattedSentAt ? (
+        {showSentAtHoverSlot ? (
           <div
             className={cn(
               "flex h-4 w-full shrink-0 items-center",
@@ -503,9 +506,23 @@ export function MessageRow({
                 data-testid="message-content-stack"
               >
                 {showSenderName ? (
-                  <p className="px-1 text-[12px] leading-5 text-muted-foreground">
-                    {message.senderDisplayName}
-                  </p>
+                  <div className="flex items-center gap-1 px-1">
+                    <p className="text-[12px] leading-5 text-muted-foreground">
+                      {message.senderDisplayName}
+                    </p>
+                    {showSentAtAfterSenderName ? (
+                      <p
+                        aria-hidden={!isSentAtPreviewVisible}
+                        className={cn(
+                          "text-[11px] leading-4 text-muted-foreground/80 transition-opacity duration-200",
+                          isSentAtPreviewVisible ? "opacity-100" : "opacity-0 pointer-events-none",
+                        )}
+                        data-testid="text-message-sent-at"
+                      >
+                        {formattedSentAt}
+                      </p>
+                    ) : null}
+                  </div>
                 ) : null}
                 {message.content.type === "quote" ? (
                   <QuoteMessageContentWithDelivery

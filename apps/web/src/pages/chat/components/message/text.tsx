@@ -12,7 +12,11 @@ type TextMessageBubbleProps = {
   text: string;
 };
 
-export function TextMessageBubble({ isAgent, isOwnMessage, text }: TextMessageBubbleProps) {
+export function TextMessageBubble({
+  isAgent,
+  isOwnMessage,
+  text,
+}: TextMessageBubbleProps) {
   return (
     <div
       className={getTextBubbleClassName(isAgent, isOwnMessage)}

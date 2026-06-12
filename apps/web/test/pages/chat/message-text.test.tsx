@@ -1,6 +1,6 @@
-import { render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it } from "vitest";
-import { MessageRow } from "@/pages/chat/components/message-feed";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { MessageRow, MESSAGE_SENT_AT_HOVER_DELAY_MS } from "@/pages/chat/components/message-feed";
 import { TextMessageBubble } from "@/pages/chat/components/message";
 import type { ChatMessage } from "@/pages/chat/chat-types";
 import {
@@ -290,6 +290,41 @@ describe("text message bubble layout", () => {
     render(<MessageRow message={createTextMessage("单聊消息")} />);
 
     expect(screen.queryByText("成员甲")).not.toBeInTheDocument();
+  });
+
+  it("shows sent time above a text bubble after hovering the message row", () => {
+    vi.useFakeTimers();
+
+    try {
+      render(<MessageRow message={createTextMessage("hover查看时间")} />);
+
+      const sentAt = screen.getByTestId("text-message-sent-at");
+      const row = screen.getByTestId("message-row");
+
+      expect(sentAt).toHaveClass("opacity-0");
+      expect(sentAt).toHaveTextContent("5/8 09:54");
+
+      fireEvent.mouseEnter(row);
+      act(() => {
+        vi.advanceTimersByTime(MESSAGE_SENT_AT_HOVER_DELAY_MS - 1);
+      });
+      expect(sentAt).toHaveClass("opacity-0");
+
+      act(() => {
+        vi.advanceTimersByTime(1);
+      });
+      expect(sentAt).toHaveClass("opacity-100");
+      expect(screen.getByTestId("text-message-sent-at-slot")).toHaveClass("h-4", "mr-10");
+      expect(
+        sentAt.compareDocumentPosition(screen.getByTestId("message-row-body")),
+      ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+      expect(screen.getByTestId("message-row-body")).toHaveClass("gap-2");
+
+      fireEvent.mouseLeave(row);
+      expect(sentAt).toHaveClass("opacity-0");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

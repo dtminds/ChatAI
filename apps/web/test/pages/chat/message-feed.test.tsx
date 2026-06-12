@@ -1,8 +1,13 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "sonner";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ChatMessageList, MessageRow, getMessageFeedItemKey } from "@/pages/chat/components/message-feed";
+import {
+  ChatMessageList,
+  MessageRow,
+  MESSAGE_SENT_AT_HOVER_DELAY_MS,
+  getMessageFeedItemKey,
+} from "@/pages/chat/components/message-feed";
 import type { ChatMessage } from "@/pages/chat/chat-types";
 
 vi.mock("sonner", async (importOriginal) => {
@@ -887,6 +892,55 @@ describe("message feed row actions", () => {
     expect(onVoicePlaybackReady).toHaveBeenCalledWith(message, {
       playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/voice.wav",
     });
+  });
+});
+
+describe("message sent time preview", () => {
+  it("shows sent time after hovering any message type", () => {
+    vi.useFakeTimers();
+
+    try {
+      render(
+        <MessageRow
+          message={{
+            ...createTextMessage("图片"),
+            content: {
+              alt: "图片",
+              imageUrl: "https://example.com/image.png",
+              type: "image",
+            },
+            role: "customer",
+          }}
+        />,
+      );
+
+      const sentAt = screen.getByTestId("text-message-sent-at");
+      const row = screen.getByTestId("message-row");
+
+      expect(sentAt).toHaveClass("opacity-0");
+
+      fireEvent.mouseEnter(row);
+      act(() => {
+        vi.advanceTimersByTime(MESSAGE_SENT_AT_HOVER_DELAY_MS);
+      });
+
+      expect(sentAt).toHaveClass("opacity-100");
+      expect(sentAt).toHaveTextContent("5/8 09:54");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not reserve hover sent-time slot when inline timestamp is enabled", () => {
+    render(
+      <MessageRow
+        message={createTextMessage("已有底部时间")}
+        showTimestamp
+      />,
+    );
+
+    expect(screen.queryByTestId("text-message-sent-at-slot")).not.toBeInTheDocument();
+    expect(screen.getByText("2026-05-08 09:54:00")).toBeInTheDocument();
   });
 });
 

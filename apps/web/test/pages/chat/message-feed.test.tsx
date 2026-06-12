@@ -930,6 +930,18 @@ describe("message sent time preview", () => {
       vi.useRealTimers();
     }
   });
+
+  it("does not reserve hover sent-time slot when inline timestamp is enabled", () => {
+    render(
+      <MessageRow
+        message={createTextMessage("已有底部时间")}
+        showTimestamp
+      />,
+    );
+
+    expect(screen.queryByTestId("text-message-sent-at-slot")).not.toBeInTheDocument();
+    expect(screen.getByText("2026-05-08 09:54:00")).toBeInTheDocument();
+  });
 });
 
 type AudioMockInstance = {

@@ -373,7 +373,7 @@ export function MessageRow({
   const sentAtHoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearSentAtHoverTimer = () => {
-    if (sentAtHoverTimerRef.current) {
+    if (sentAtHoverTimerRef.current !== null) {
       clearTimeout(sentAtHoverTimerRef.current);
       sentAtHoverTimerRef.current = null;
     }
@@ -391,7 +391,13 @@ export function MessageRow({
     setIsSentAtPreviewVisible(false);
   };
 
-  useEffect(() => clearSentAtHoverTimer, []);
+  useEffect(() => {
+    return () => {
+      if (sentAtHoverTimerRef.current !== null) {
+        clearTimeout(sentAtHoverTimerRef.current);
+      }
+    };
+  }, []);
 
   if (message.role === "system") {
     return <SystemMessageNotice text={message.content.text} />;
@@ -399,7 +405,7 @@ export function MessageRow({
 
   const isAgent = message.role === "agent";
   const isGroupConversation = Boolean(message.isGroupConversation);
-  const formattedSentAt = formatTextMessageSentAt(message.sentAt);
+  const formattedSentAt = showTimestamp ? "" : formatTextMessageSentAt(message.sentAt);
   const showSenderName = isGroupConversation && !message.isOwnMessage && !!message.senderDisplayName;
   const inlineDeliveryState = getInlineDeliveryState(message);
   const showSmartReplyCard = shouldShowSmartReplyCard(smartReply);

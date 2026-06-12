@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "sonner";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -865,6 +865,43 @@ describe("message feed row actions", () => {
     expect(onVoicePlaybackReady).toHaveBeenCalledWith(message, {
       playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/voice.wav",
     });
+  });
+});
+
+describe("message sent time preview", () => {
+  it("shows sent time after hovering any message type", () => {
+    vi.useFakeTimers();
+
+    try {
+      render(
+        <MessageRow
+          message={{
+            ...createTextMessage("图片"),
+            content: {
+              alt: "图片",
+              imageUrl: "https://example.com/image.png",
+              type: "image",
+            },
+            role: "customer",
+          }}
+        />,
+      );
+
+      const sentAt = screen.getByTestId("text-message-sent-at");
+      const row = screen.getByTestId("message-row");
+
+      expect(sentAt).toHaveClass("invisible");
+
+      fireEvent.mouseEnter(row);
+      act(() => {
+        vi.advanceTimersByTime(400);
+      });
+
+      expect(sentAt).not.toHaveClass("invisible");
+      expect(sentAt).toHaveTextContent("5/8 9:54");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

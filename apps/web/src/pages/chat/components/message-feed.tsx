@@ -63,6 +63,7 @@ import {
 } from "@/pages/chat/lib/chat-time";
 
 const TIMESTAMP_BREAK_MS = 5 * 60 * 1000;
+export const MESSAGE_SENT_AT_HOVER_DELAY_MS = 400;
 
 type ChatMessageListProps = {
   canUseMessageActions?: boolean;
@@ -354,6 +355,28 @@ export function MessageRow({
   smartReply?: SmartReplySuggestion;
 }) {
   const [isSentAtPreviewVisible, setIsSentAtPreviewVisible] = useState(false);
+  const sentAtHoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearSentAtHoverTimer = () => {
+    if (sentAtHoverTimerRef.current) {
+      clearTimeout(sentAtHoverTimerRef.current);
+      sentAtHoverTimerRef.current = null;
+    }
+  };
+
+  const handleSentAtPreviewMouseEnter = () => {
+    clearSentAtHoverTimer();
+    sentAtHoverTimerRef.current = setTimeout(() => {
+      setIsSentAtPreviewVisible(true);
+    }, MESSAGE_SENT_AT_HOVER_DELAY_MS);
+  };
+
+  const handleSentAtPreviewMouseLeave = () => {
+    clearSentAtHoverTimer();
+    setIsSentAtPreviewVisible(false);
+  };
+
+  useEffect(() => clearSentAtHoverTimer, []);
 
   if (message.role === "system") {
     return <SystemMessageNotice text={message.content.text} />;
@@ -361,10 +384,7 @@ export function MessageRow({
 
   const isAgent = message.role === "agent";
   const isGroupConversation = Boolean(message.isGroupConversation);
-  const supportsSentAtPreview = supportsSentAtPreviewMessage(message.content);
-  const formattedSentAt = supportsSentAtPreview
-    ? formatTextMessageSentAt(message.sentAt)
-    : undefined;
+  const formattedSentAt = formatTextMessageSentAt(message.sentAt);
   const showSenderName = isGroupConversation && !message.isOwnMessage && !!message.senderDisplayName;
   const inlineDeliveryState = getInlineDeliveryState(message);
   const showSmartReplyCard = shouldShowSmartReplyCard(smartReply);
@@ -394,7 +414,8 @@ export function MessageRow({
         isAgent ? "justify-end" : "justify-start",
       )}
       data-testid="message-row"
-      onMouseLeave={() => setIsSentAtPreviewVisible(false)}
+      onMouseEnter={handleSentAtPreviewMouseEnter}
+      onMouseLeave={handleSentAtPreviewMouseLeave}
     >
       <div
         className={cn(
@@ -403,7 +424,7 @@ export function MessageRow({
         )}
         data-testid="message-row-group"
       >
-        {supportsSentAtPreview && formattedSentAt ? (
+        {formattedSentAt ? (
           <div
             className={cn(
               "flex h-4 w-full shrink-0 items-center",
@@ -480,11 +501,6 @@ export function MessageRow({
                       message={message}
                       onDownloadMessageFile={onDownloadMessageFile}
                       onOpenQuotedMessage={onOpenQuotedMessage}
-                      onSentAtPreviewClick={
-                        formattedSentAt
-                          ? () => setIsSentAtPreviewVisible(true)
-                          : undefined
-                      }
                       onTranscribeVoice={onTranscribeVoice}
                       onVoicePlaybackReady={onVoicePlaybackReady}
                     />
@@ -524,10 +540,6 @@ export function MessageRow({
       </div>
     </div>
   );
-}
-
-function supportsSentAtPreviewMessage(content: ChatMessage["content"]) {
-  return content.type === "text" || content.type === "mini-program";
 }
 
 function getMessageEntranceAnimationClassName(

@@ -1,7 +1,6 @@
-import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it } from "vitest";
-import { MessageRow } from "@/pages/chat/components/message-feed";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { MessageRow, MESSAGE_SENT_AT_HOVER_DELAY_MS } from "@/pages/chat/components/message-feed";
 import { TextMessageBubble } from "@/pages/chat/components/message";
 import type { ChatMessage } from "@/pages/chat/chat-types";
 import {
@@ -293,28 +292,39 @@ describe("text message bubble layout", () => {
     expect(screen.queryByText("成员甲")).not.toBeInTheDocument();
   });
 
-  it("shows sent time above a text bubble on click and hides it on mouse leave", async () => {
-    const user = userEvent.setup();
+  it("shows sent time above a text bubble after hovering the message row", () => {
+    vi.useFakeTimers();
 
-    render(<MessageRow message={createTextMessage("点击查看时间")} />);
+    try {
+      render(<MessageRow message={createTextMessage("hover查看时间")} />);
 
-    const sentAt = screen.getByTestId("text-message-sent-at");
+      const sentAt = screen.getByTestId("text-message-sent-at");
+      const row = screen.getByTestId("message-row");
 
-    expect(sentAt).toHaveClass("invisible");
-    expect(sentAt).toHaveTextContent("5/8 9:54");
+      expect(sentAt).toHaveClass("invisible");
+      expect(sentAt).toHaveTextContent("5/8 9:54");
 
-    await user.click(screen.getByTestId("text-message-bubble"));
+      fireEvent.mouseEnter(row);
+      act(() => {
+        vi.advanceTimersByTime(MESSAGE_SENT_AT_HOVER_DELAY_MS - 1);
+      });
+      expect(sentAt).toHaveClass("invisible");
 
-    expect(sentAt).not.toHaveClass("invisible");
-    expect(screen.getByTestId("text-message-sent-at-slot")).toHaveClass("h-4", "mr-10");
-    expect(
-      sentAt.compareDocumentPosition(screen.getByTestId("message-row-body")),
-    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    expect(screen.getByTestId("message-row-body")).toHaveClass("gap-2");
+      act(() => {
+        vi.advanceTimersByTime(1);
+      });
+      expect(sentAt).not.toHaveClass("invisible");
+      expect(screen.getByTestId("text-message-sent-at-slot")).toHaveClass("h-4", "mr-10");
+      expect(
+        sentAt.compareDocumentPosition(screen.getByTestId("message-row-body")),
+      ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+      expect(screen.getByTestId("message-row-body")).toHaveClass("gap-2");
 
-    await user.unhover(screen.getByTestId("message-row"));
-
-    expect(screen.getByTestId("text-message-sent-at")).toHaveClass("invisible");
+      fireEvent.mouseLeave(row);
+      expect(sentAt).toHaveClass("invisible");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

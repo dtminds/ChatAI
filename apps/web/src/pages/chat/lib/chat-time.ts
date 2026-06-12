@@ -8,7 +8,7 @@ export function formatTextMessageSentAt(value: string, now = new Date()) {
   const month = date.getMonth() + 1;
   const day = date.getDate();
   const hour = date.getHours();
-  const minute = date.getMinutes();
+  const minute = String(date.getMinutes()).padStart(2, "0");
   const datePart =
     date.getFullYear() === now.getFullYear()
       ? `${month}/${day}`

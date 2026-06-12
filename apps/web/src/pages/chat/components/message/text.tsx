@@ -9,21 +9,18 @@ type WechatEmojiTextProps = {
 type TextMessageBubbleProps = {
   isAgent: boolean;
   isOwnMessage?: boolean;
-  onClick?: () => void;
   text: string;
 };
 
 export function TextMessageBubble({
   isAgent,
   isOwnMessage,
-  onClick,
   text,
 }: TextMessageBubbleProps) {
   return (
     <div
       className={getTextBubbleClassName(isAgent, isOwnMessage)}
       data-testid="text-message-bubble"
-      onClick={onClick}
     >
       <WechatEmojiText
         className="whitespace-pre-wrap break-words"

@@ -14,8 +14,10 @@ type RedisPipeline = {
 type RedisPipelineResult = Array<[Error | null, unknown] | undefined>;
 
 export type RedisCacheClient = {
+  call(command: "AUTH", ...args: string[]): Promise<unknown>;
   del(...keys: string[]): Promise<unknown>;
   get(key: string): Promise<string | null>;
+  ping(): Promise<string>;
   pipeline(): RedisPipeline;
   set(key: string, value: string, mode: "EX", ttlSeconds: number): Promise<unknown>;
   smembers(key: string): Promise<string[]>;

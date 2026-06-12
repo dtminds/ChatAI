@@ -3,7 +3,7 @@
 - 日期：2026-06-11
 - 状态：Draft
 - 适用范围：`apps/backend` 鉴权与工作台席位权限
-- 前置背景：项目当前未引入 Redis；`REDIS_ENABLED=false` 为各环境默认配置，Redis 不是强依赖
+- 前置背景：项目当前未引入 Redis；`REDIS_ENABLED=false` 为各环境默认配置；只有显式启用 Redis 的环境才把 Redis 作为启动前置依赖
 
 ## 1. 背景
 
@@ -33,7 +33,7 @@
 - Insights 配置与看板聚合缓存
 - Altcha 分布式防重放、Insight Worker 分布式锁
 - 前端改动、`packages/contracts` 变更、新公开 API
-- 将 Redis 提升为启动强依赖
+- 将 `REDIS_ENABLED=false` 的环境提升为 Redis 强依赖
 - 为 Redis 不可用场景提供强一致失效保证；P0 只保证 Redis 正常时主动失效、Redis 失败时按短 TTL 有界陈旧
 
 ## 3. P0-A：Redis 基础设施
@@ -53,9 +53,10 @@ REDIS_COMMAND_TIMEOUT_MS=500
 **开关语义：**
 
 - `REDIS_ENABLED=false`：使用 `NoopCache`，行为与今天完全一致（每次打 DB）
-- `REDIS_ENABLED=true` 但连接失败：启动时 `warn`；运行时 miss 回退 DB，不阻断服务
+- `REDIS_ENABLED=true`：启动时必须完成 `connect`、必要的认证校验和 `PING`；任一步失败则 backend 启动失败，避免配置错误静默发布
+- 运行期 Redis 命令失败：记 `warn`，按 cache miss 回退 DB，不阻断业务请求
 
-`validateBackendEnv` 不把 Redis 列为必填；仅当 `REDIS_ENABLED=true` 且缺少 `REDIS_URL` 时在启动时报错。
+`validateBackendEnv` 不把 Redis 列为全环境必填；仅当 `REDIS_ENABLED=true` 时要求 `REDIS_URL` 存在，插件启动阶段再校验 Redis 实际可用。
 
 ### 3.2 Redis 客户端选型
 
@@ -65,7 +66,7 @@ P0 选用 `ioredis`：
 - 后续 P1 若需要分布式锁或更复杂 key 失效，也能复用同一客户端。
 - 不使用 `redis` 官方客户端的主要原因是 P0 更需要显式重连/离线队列控制，避免 Redis 异常时拖慢业务请求。
 
-客户端配置必须符合“Redis 不阻断服务”：
+客户端配置必须符合“未启用不影响服务、启用时启动强校验、运行期命令不阻断业务”：
 
 ```ts
 new Redis(redisUrl, {
@@ -77,7 +78,7 @@ new Redis(redisUrl, {
 });
 ```
 
-每个 `RedisCache` 方法再包一层超时与异常吞吐：超时或异常只记 `warn/debug` 并按 miss 处理，不向业务抛出。
+插件启动阶段必须先完成连接、认证配置校验和 `PING`；失败直接阻止 backend 启动。每个 `RedisCache` 方法再包一层超时与异常吞吐：启动后单条命令超时或异常只记 `warn/debug` 并按 miss 处理，不向业务抛出。
 
 ### 3.3 目录与插件
 
@@ -120,7 +121,7 @@ redisPlugin → dbPlugin → authPlugin → routes
 | 日志 | Redis 连接失败、命令超时、JSON 解析失败记 `warn`；hit/miss 如需记录只能 `debug`，避免高频日志 |
 | 指标（可选） | `cache_hit_total{layer}` / `cache_miss_total{layer}` |
 | 超时 | 单次 Redis 操作超过 `REDIS_COMMAND_TIMEOUT_MS` 视为 miss，回退 DB |
-| 健康检查 | `/readyz` 可选增加 `redis: { ok, enabled }`；Redis 不可用不影响 ready（与 DB 不同） |
+| 健康检查 | `/readyz` 可选增加 `redis: { ok, enabled }`；`REDIS_ENABLED=true` 的实例启动时已经完成 Redis 可用性校验 |
 
 ### 3.5 测试策略
 
@@ -332,7 +333,7 @@ createManagedAccountSettingsService(app.db, app.cache)
 |------|------|
 | Session 撤销后 JWT 仍短期有效 | 短 TTL（≤5min）+ logout 主动 `DEL` + `session_version` 校验 |
 | 席位权限变更后旧缓存授权 | 写路径失效 + 10min TTL；Settings 变更频率极低 |
-| Redis 宕机 | `NoopCache` 降级；不提升为强依赖 |
+| Redis 宕机 | `REDIS_ENABLED=false` 用 `NoopCache`；`REDIS_ENABLED=true` 时启动阶段不可用则启动失败，启动后运行期命令失败按 miss 回源 |
 | 多实例缓存不一致 | 写时失效广播到同一 Redis |
 | 缓存穿透 | Session 负数缓存；seat-access 空列表也缓存 |
 | Redis 失效失败或 session-index 不完整 | 主流程不回滚；正向 session cache ≤5min TTL 有界陈旧，不承诺即时强一致 |
@@ -342,6 +343,7 @@ createManagedAccountSettingsService(app.db, app.cache)
 ### 8.1 功能
 
 - [ ] `REDIS_ENABLED=false`：全量现有测试通过，无行为变化
+- [ ] `REDIS_ENABLED=true` 但 Redis 连接、认证或 `PING` 失败：backend 启动失败
 - [ ] `REDIS_ENABLED=true` 且 Redis 正常：登录 → 调工作台 → 登出 → 旧 token 返回 401，并验证没有继续命中旧正向 session cache
 - [ ] `REDIS_ENABLED=true` 但 Redis 命令超时/异常：受保护接口回源 DB，服务不 5xx，不出现长时间挂起
 - [ ] 改密、改角色、禁用/删除子账号后，按 `subUserId` 批量清理 session key 和 session-index key

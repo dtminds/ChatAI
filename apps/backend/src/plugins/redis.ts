@@ -48,11 +48,11 @@ export const redisPlugin = fp(async (app) => {
 
   try {
     await client.connect();
+    await verifyRedisAuthentication(client, redisUrl);
+    await client.ping();
   } catch (error) {
-    app.log.warn(
-      { error: error instanceof Error ? error.message : String(error) },
-      "Redis cache connect failed; continuing with runtime fallback",
-    );
+    client.disconnect();
+    throw new Error("Redis cache startup check failed", { cause: error });
   }
 
   app.decorate("cache", cache);
@@ -73,4 +73,32 @@ function readPositiveInteger(value: string | undefined, fallback: number) {
   const parsed = Number.parseInt(value ?? "", 10);
 
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+async function verifyRedisAuthentication(
+  client: Redis,
+  redisUrl: string,
+) {
+  const credentials = readRedisCredentials(redisUrl);
+
+  if (!credentials) {
+    return;
+  }
+
+  await client.call("AUTH", ...credentials);
+}
+
+function readRedisCredentials(redisUrl: string) {
+  const { password, username } = new URL(redisUrl);
+
+  if (!username && !password) {
+    return null;
+  }
+
+  const decodedUsername = decodeURIComponent(username);
+  const decodedPassword = decodeURIComponent(password);
+
+  return decodedUsername
+    ? [decodedUsername, decodedPassword]
+    : [decodedPassword];
 }

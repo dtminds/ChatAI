@@ -2,9 +2,11 @@ import Fastify from "fastify";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const redisClient = vi.hoisted(() => ({
+  call: vi.fn(async () => "OK"),
   connect: vi.fn(async () => undefined),
   disconnect: vi.fn(),
   on: vi.fn(),
+  ping: vi.fn(async () => "PONG"),
   quit: vi.fn(async () => undefined),
 }));
 
@@ -51,6 +53,55 @@ describe("redisPlugin", () => {
     await app.close();
 
     expect(redisClient.quit).toHaveBeenCalledTimes(1);
+    expect(redisClient.disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails startup when Redis is enabled but connect fails", async () => {
+    redisClient.connect.mockRejectedValueOnce(new Error("connect failed"));
+    const { redisPlugin } = await import("../../src/plugins/redis.js");
+    const app = Fastify({ logger: false });
+
+    app.register(redisPlugin);
+    await expect(app.ready()).rejects.toThrow(
+      "Redis cache startup check failed",
+    );
+    expect(redisClient.disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails startup when Redis is enabled but ping fails", async () => {
+    redisClient.ping.mockRejectedValueOnce(new Error("ping failed"));
+    const { redisPlugin } = await import("../../src/plugins/redis.js");
+    const app = Fastify({ logger: false });
+
+    app.register(redisPlugin);
+    await expect(app.ready()).rejects.toThrow(
+      "Redis cache startup check failed",
+    );
+    expect(redisClient.disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it("validates supplied Redis credentials during startup", async () => {
+    process.env.REDIS_URL = "redis://:secret@localhost:6379/0";
+    const { redisPlugin } = await import("../../src/plugins/redis.js");
+    const app = Fastify({ logger: false });
+
+    await app.register(redisPlugin);
+    await app.close();
+
+    expect(redisClient.call).toHaveBeenCalledWith("AUTH", "secret");
+    expect(redisClient.ping).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails startup when supplied Redis credentials are rejected", async () => {
+    process.env.REDIS_URL = "redis://:secret@localhost:6379/0";
+    redisClient.call.mockRejectedValueOnce(new Error("ERR AUTH failed"));
+    const { redisPlugin } = await import("../../src/plugins/redis.js");
+    const app = Fastify({ logger: false });
+
+    app.register(redisPlugin);
+    await expect(app.ready()).rejects.toThrow(
+      "Redis cache startup check failed",
+    );
     expect(redisClient.disconnect).toHaveBeenCalledTimes(1);
   });
 });

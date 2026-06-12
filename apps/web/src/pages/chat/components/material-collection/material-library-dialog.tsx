@@ -293,12 +293,12 @@ function getBizTypeLabel(
   bizType: WorkbenchMaterialCollectionGroupCreateRequest["bizType"],
 ) {
   if (bizType === 2) {
-    return "收藏文件";
+    return "收录的文件";
   }
 
   if (bizType === 3) {
-    return "收藏小程序";
+    return "收录的小程序";
   }
 
-  return "收藏H5";
+  return "收录的H5";
 }

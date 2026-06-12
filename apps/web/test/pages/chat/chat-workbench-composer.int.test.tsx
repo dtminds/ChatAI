@@ -635,9 +635,9 @@ describe("ChatWorkbenchPage composer flows", () => {
   });
 
   it.each([
-    ["收藏文件", "收藏文件"],
-    ["收藏小程序", "收藏小程序"],
-    ["收藏H5", "收藏H5"],
+    ["收藏文件", "收录的文件"],
+    ["收藏小程序", "收录的小程序"],
+    ["收藏H5", "收录的H5"],
   ])("opens the %s material library from the composer", async (buttonName, dialogName) => {
     const user = userEvent.setup();
 

@@ -2,6 +2,14 @@
 
 仓库已经调整为 pnpm workspace，用一个仓库同时承载前端应用、Node 后端服务和共享接口契约。
 
+## License
+
+This repository is publicly visible for review purposes only and is not open source.
+
+Copyright (c) 2026 dtminds. All rights reserved.
+
+See [LICENSE](LICENSE) for the full terms.
+
 ## 当前范围
 
 - 前端页面：`/chat`

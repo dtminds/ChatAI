@@ -102,6 +102,8 @@ export type MessageHydrationSources = {
 };
 
 const UNSUPPORTED_MESSAGE_DISPLAY_TEXT = "[暂不支持显示该消息]";
+const UNSUPPORTED_CHAT_RECORD_DISPLAY_TEXT = "[暂不支持展示该聊天记录]";
+const CHAT_RECORD_LOADING_WINDOW_MS = 15_000;
 
 export function mapSeatRow(row: SeatRow): WorkbenchSeatDto {
   const seatName = row.third_user_name || "未命名席位";
@@ -184,8 +186,8 @@ export function mapMessageRow(
       : row.conversation_external_id || row.third_external_id || buildMissingCustomerId(row);
 
   return {
-    content: parseMessageContent(row.msgtype, row.content, quotePreview),
-    contentType: mapContentType(row.msgtype),
+    content: parseMessageContent(row, quotePreview),
+    contentType: mapMessageContentType(row),
     conversationId: String(row.conversation_id),
     createdAt: toOptionalTimestamp(row.msgtime),
     customerId,
@@ -336,11 +338,30 @@ function mapContentType(msgtype: string): WorkbenchMessageContentType {
   }
 }
 
-function parseMessageContent(
-  msgtype: string,
-  rawContent: string | null,
-  quotePreview?: MessageRowQuotePreview,
-) {
+function mapMessageContentType(row: MessageRow) {
+  if (isExpiredEmptyChatRecord(row)) {
+    return "text";
+  }
+
+  return mapContentType(row.msgtype);
+}
+
+function parseMessageContent(row: MessageRow, quotePreview?: MessageRowQuotePreview) {
+  const msgtype = row.msgtype;
+  const rawContent = row.content;
+
+  if (isExpiredEmptyChatRecord(row)) {
+    return { text: UNSUPPORTED_CHAT_RECORD_DISPLAY_TEXT };
+  }
+
+  if (isLoadingEmptyChatRecord(row)) {
+    return {
+      msgContent: ["数据加载中"],
+      msgTitle: "聊天记录",
+      viewState: "loading",
+    };
+  }
+
   const parsed = parseContent(rawContent);
 
   if (msgtype === "quote") {
@@ -651,6 +672,24 @@ function buildChatRecordFallbackContent() {
     msgContent: ["[聊天记录]"],
     msgTitle: "聊天记录",
   };
+}
+
+function isLoadingEmptyChatRecord(row: MessageRow) {
+  return isEmptyChatRecord(row) && isWithinChatRecordLoadingWindow(row.msgtime);
+}
+
+function isExpiredEmptyChatRecord(row: MessageRow) {
+  return isEmptyChatRecord(row) && !isWithinChatRecordLoadingWindow(row.msgtime);
+}
+
+function isEmptyChatRecord(row: MessageRow) {
+  return row.msgtype === "chatrecord" && row.content == null;
+}
+
+function isWithinChatRecordLoadingWindow(msgtime: MessageRow["msgtime"]) {
+  const sentAt = toOptionalTimestamp(msgtime);
+
+  return sentAt != null && Date.now() - sentAt <= CHAT_RECORD_LOADING_WINDOW_MS;
 }
 
 export function getQuoteMessageAuditId(row: MessageRow) {

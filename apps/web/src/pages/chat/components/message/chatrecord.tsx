@@ -66,6 +66,7 @@ export function ChatRecordMessageCard({
   const loadDetailRef = useRef<() => Promise<void>>(async () => {});
   const openRef = useRef(open);
   const requestIdRef = useRef(0);
+  const isLoadingContent = content.viewState === "loading";
   const title = normalizeChatRecordTitle(content.msgTitle);
   const lines = normalizeChatRecordLines(content);
 
@@ -147,7 +148,7 @@ export function ChatRecordMessageCard({
 
     const hasLoadedMessages = Boolean(detail?.messages.length);
 
-    if (!nextOpen || hasLoadedMessages || loading) {
+    if (!nextOpen || isLoadingContent || hasLoadedMessages || loading) {
       return;
     }
 
@@ -161,9 +162,10 @@ export function ChatRecordMessageCard({
   return (
     <>
       <button
-        aria-label={`查看聊天记录：${title}`}
-        className="block w-[min(19rem,calc(100vw-7rem))] rounded-[8px] border border-border bg-surface p-3 text-left outline-none transition-colors hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-ring"
+        aria-label={isLoadingContent ? `聊天记录加载中：${title}` : `查看聊天记录：${title}`}
+        className="block w-[min(19rem,calc(100vw-7rem))] rounded-[8px] border border-border bg-surface p-3 text-left outline-none transition-colors hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:hover:bg-surface"
         data-testid="chat-record-card"
+        disabled={isLoadingContent}
         onClick={() => void handleOpenChange(true)}
         type="button"
       >

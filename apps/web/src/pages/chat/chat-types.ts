@@ -247,6 +247,7 @@ export type ChatRecordMessageContent = {
   msgTitle: string;
   msgContent: string[];
   unsupportedDisplayText?: string;
+  viewState?: "loading";
 };
 
 export type MessageContent =

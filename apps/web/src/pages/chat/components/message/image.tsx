@@ -856,7 +856,7 @@ export function isEditableKeyboardTarget(element: Element | null) {
 
   return Boolean(
     element.closest(
-      "input, textarea, [contenteditable=''], [contenteditable='true']",
+      "input, textarea, [contenteditable]:not([contenteditable='false'])",
     ),
   );
 }

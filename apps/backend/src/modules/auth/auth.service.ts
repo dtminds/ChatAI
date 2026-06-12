@@ -135,16 +135,14 @@ export async function getCurrentSession(
   app: FastifyInstance,
   user: JwtUser,
 ): Promise<AuthLoginResponse["subUser"]> {
-  const subUserId = Number(user.subUserId);
-
-  if (!Number.isSafeInteger(subUserId)) {
+  if (!user.subUserId) {
     throw new UnauthorizedError();
   }
 
   const subUser = await app.db
     .selectFrom("xy_wap_embed_sub_user")
     .select(["id", "name", "role", "type", "uid"])
-    .where("id", "=", subUserId)
+    .where("id", "=", user.subUserId as never)
     .where("status", "=", 1)
     .executeTakeFirst();
 
@@ -162,7 +160,7 @@ export async function revokeSession(app: FastifyInstance, user: JwtUser) {
       revoked_at: new Date(),
     })
     .where("id", "=", Number(user.sessionId))
-    .where("sub_user_id", "=", Number(user.subUserId))
+    .where("sub_user_id", "=", user.subUserId as never)
     .where("session_version", "=", user.sessionVersion)
     .where("revoked_at", "is", null)
     .execute();
@@ -175,11 +173,10 @@ export async function verifyAccessSession(
   user: JwtUser,
 ): Promise<boolean> {
   const sessionId = Number(user.sessionId);
-  const subUserId = Number(user.subUserId);
 
   if (
     !Number.isSafeInteger(sessionId) ||
-    !Number.isSafeInteger(subUserId) ||
+    !user.subUserId ||
     !Number.isSafeInteger(user.sessionVersion)
   ) {
     return false;
@@ -189,7 +186,7 @@ export async function verifyAccessSession(
     .selectFrom("xy_wap_embed_sub_user_session")
     .select(["id"])
     .where("id", "=", sessionId)
-    .where("sub_user_id", "=", subUserId)
+    .where("sub_user_id", "=", user.subUserId as never)
     .where("session_version", "=", user.sessionVersion)
     .where("revoked_at", "is", null)
     .where("expires_at", ">", new Date())

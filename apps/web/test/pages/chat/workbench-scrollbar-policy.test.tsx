@@ -1,8 +1,9 @@
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 import { ChatWorkbenchPage } from "@/pages/chat/chat-workbench-page";
 import {
   installChatWorkbenchTestEnvironment,
+  renderWithChatWorkbenchRouter,
   resetChatWorkbenchTestState,
 } from "./workbench-test-utils";
 
@@ -13,7 +14,7 @@ describe("workbench scrollbar policy", () => {
   });
 
   it("keeps the conversation list on the default behavior and shows the message scrollbar only while scrolling", async () => {
-    render(<ChatWorkbenchPage />);
+    renderWithChatWorkbenchRouter(<ChatWorkbenchPage />);
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
 
@@ -28,7 +29,7 @@ describe("workbench scrollbar policy", () => {
   });
 
   it("keeps the chat workbench as a horizontal desktop layout below phone widths", async () => {
-    render(<ChatWorkbenchPage />);
+    renderWithChatWorkbenchRouter(<ChatWorkbenchPage />);
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
 

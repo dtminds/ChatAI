@@ -195,6 +195,7 @@ function ChatWorkbenchContent({
     me,
     messagePaginationByConversationId,
     messagesByConversationId,
+    smartReplyAutoPendingMessageKeysByConversationId,
     smartReplyByMessageIdByConversationId,
     smartReplyHiddenMessageKeysByConversationId,
     pollState,
@@ -419,8 +420,12 @@ function ChatWorkbenchContent({
     });
 
   useEffect(() => {
+    if (bootstrapStatus !== "idle") {
+      return;
+    }
+
     void initializeWorkbench();
-  }, [initializeWorkbench]);
+  }, [bootstrapStatus, initializeWorkbench]);
 
   useEffect(
     () => {
@@ -1346,6 +1351,13 @@ function ChatWorkbenchContent({
                   hasMoreHistory={hasMoreHistory}
                   historyLoadLabel={historyLoadLabel}
                   messages={activeMessages}
+                  smartReplyAutoPendingByMessageId={
+                    activeConversationId
+                      ? smartReplyAutoPendingMessageKeysByConversationId[
+                          activeConversationId
+                        ]
+                      : undefined
+                  }
                   smartReplyByMessageId={activeSmartReplyByMessageId}
                   messageViewportRef={messageViewportRef}
                   quotedMessage={quotedMessage}
@@ -1819,6 +1831,12 @@ function buildQuotedMessagePreview(
         ...basePreview,
         fallbackText: "[引用消息]",
         title: message.content.text,
+      };
+    case "chatrecord":
+      return {
+        ...basePreview,
+        fallbackText: "[聊天记录]",
+        title: message.content.msgTitle,
       };
   }
 }

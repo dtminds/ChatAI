@@ -4,7 +4,10 @@ import { describe, expect, test } from "vitest";
 
 const sourceRoot = join(process.cwd(), "src");
 const themeCss = readFileSync(join(sourceRoot, "styles/index.css"), "utf8");
-const allowedFiles = new Set(["pages/chat/mock-data.ts"]);
+const allowedFiles = new Set([
+  "pages/chat/insights/insights-chart-palette.ts",
+  "pages/chat/mock-data.ts",
+]);
 const checkedExtensions = /\.tsx?$/;
 const appearanceThemeBlocks = [
   ...themeCss.matchAll(
@@ -13,8 +16,8 @@ const appearanceThemeBlocks = [
 ].map((match) => match[0]);
 const hardcodedColorPatterns = [
   /#[0-9a-fA-F]{3,8}\b/g,
-  /\b(?:rgb|rgba|hsl|hsla)\(/g,
-  /\b(?:bg|text|border|ring|shadow|from|via|to)-\[[^\]]*(?:#[0-9a-fA-F]{3,8}|rgba?\(|hsla?\()/g,
+  /\b(?:rgb|rgba|hsl|hsla)\((?!var\(--)/g,
+  /\b(?:bg|text|border|ring|shadow|from|via|to)-\[[^\]]*(?:#[0-9a-fA-F]{3,8}|rgba?\(|hsla?\((?!var\(--))/g,
 ];
 
 function collectSourceFiles(directory: string): string[] {

@@ -10,12 +10,21 @@ import {
 
 const ENV_KEYS = [
   "DATABASE_URL",
+  "INSIGHTS_WORKER_BATCH_SIZE",
+  "INSIGHTS_WORKER_ENABLED",
+  "INSIGHTS_WORKER_INTERVAL_MS",
+  "INSIGHTS_WORKER_MODEL_ENABLED",
+  "INSIGHTS_WORKER_START_LOOKBACK_DAYS",
+  "INSIGHTS_WORKER_UID_ALLOWLIST",
   "JAVA_INTERNAL_API_BASE_URL",
   "JWT_DEV_SECRET",
   "JWT_PRIVATE_KEY",
   "JWT_PUBLIC_KEY",
   "NODE_ENV",
   "PORT",
+  "VOLCENGINE_ARK_API_KEY",
+  "VOLCENGINE_ARK_BASE_URL",
+  "VOLCENGINE_ARK_MODEL",
 ] as const;
 
 function clearEnv() {
@@ -92,6 +101,25 @@ describe("backend env config", () => {
     loadBackendEnv({ rootDir, mode: "test" });
 
     expect(getPort()).toBe(3101);
+  });
+
+  it("loads optional Volcengine Ark provider variables from backend local env", () => {
+    const rootDir = createEnvDir();
+    const appDir = createEnvDir();
+    writeFileSync(
+      join(appDir, ".env.local"),
+      [
+        "VOLCENGINE_ARK_API_KEY=secret-value",
+        "VOLCENGINE_ARK_BASE_URL=https://ark.cn-beijing.volces.com/api/v3",
+        "VOLCENGINE_ARK_MODEL=ep-20260601000000-test",
+      ].join("\n"),
+    );
+
+    loadBackendEnv({ appDir, rootDir, mode: "development" });
+
+    expect(process.env.VOLCENGINE_ARK_API_KEY).toBe("secret-value");
+    expect(process.env.VOLCENGINE_ARK_BASE_URL).toBe("https://ark.cn-beijing.volces.com/api/v3");
+    expect(process.env.VOLCENGINE_ARK_MODEL).toBe("ep-20260601000000-test");
   });
 
   it("rejects malformed backend ports", () => {

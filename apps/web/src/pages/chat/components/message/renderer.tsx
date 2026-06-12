@@ -1,4 +1,5 @@
 import type { ChatMessage } from "@/pages/chat/chat-types";
+import { ChatRecordMessageCard } from "@/pages/chat/components/message/chatrecord";
 import { ContactCardMessageCard } from "@/pages/chat/components/message/contact-card";
 import { FileMessageCard } from "@/pages/chat/components/message/file";
 import { ImageMessageCard } from "@/pages/chat/components/message/image";
@@ -96,6 +97,14 @@ export function MessageContentRenderer({
           isAgent={isAgent}
           isOwnMessage={message.isOwnMessage}
           onOpenQuotedMessage={onOpenQuotedMessage}
+        />
+      );
+    case "chatrecord":
+      return (
+        <ChatRecordMessageCard
+          content={message.content}
+          conversationId={message.conversationId}
+          messageId={message.id}
         />
       );
   }

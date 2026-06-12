@@ -16,6 +16,7 @@ import {
 } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import { ShinyText } from "@/components/ui/shiny-text";
 import {
   Dialog,
@@ -48,6 +49,12 @@ export function ImageMessageCard({ content, messageId }: ImageMessageCardProps) 
   const mediaSize = getValidImageSize(content);
   const imageUrl = content.imageUrl.trim();
   const isEmotion = content.variant === "emotion";
+
+  if (content.downloadStatus === "ing") {
+    return (
+      <ImageMessageLoading />
+    );
+  }
 
   if (!imageUrl) {
     return (
@@ -98,6 +105,20 @@ export function ImageMessageCard({ content, messageId }: ImageMessageCardProps) 
     >
       {thumbnail}
     </ImagePreviewDialog>
+  );
+}
+
+function ImageMessageLoading() {
+  return (
+    <div
+      aria-label="图片加载中"
+      className="inline-flex h-[120px] w-[120px] flex-col items-center justify-center gap-2 rounded-[8px] border border-border/40 bg-muted-foreground/5 text-muted-foreground"
+      data-testid="image-message-loading"
+      role="status"
+    >
+      <Spinner size={22} strokeWidth={2.2} />
+      <span className="text-xs">图片加载中</span>
+    </div>
   );
 }
 

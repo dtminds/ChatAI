@@ -980,6 +980,11 @@ describe("SmartReplyCard", () => {
 
     expect(screen.getByTestId("smart-reply-inline-processing")).toBeInTheDocument();
     expect(screen.getByRole("status")).toHaveTextContent("正在处理图片消息...");
+    expect(screen.getByText("正在处理图片消息...")).toHaveAttribute(
+      "data-slot",
+      "shiny-text",
+    );
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
   });
 
   it("shows generating text while smart reply is thinking", () => {

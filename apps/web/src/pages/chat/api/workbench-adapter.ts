@@ -143,7 +143,10 @@ export function adaptMessage(
   const isAgent = dto.senderType === "agent";
   const customer = customerProfilesById[dto.customerId];
   const account = accountsById[dto.seatId];
-  const content = adaptChatMessageContent(dto.contentType, dto.content);
+  const content = adaptChatMessageContent(
+    dto.contentType,
+    mergeTopLevelDownloadMetadata(dto),
+  );
   const isOwnMessage = isGroupConversation
     ? dto.thirdFromId === dto.thirdUserId
     : isAgent;
@@ -265,6 +268,8 @@ function adaptChatMessageContent(
     case "emotion":
       return {
         alt: String(content.alt ?? ""),
+        downloadStatus: asDownloadStatus(content.downloadStatus),
+        fileSerialNo: asOptionalString(content.fileSerialNo),
         height: asOptionalNumber(content.height),
         imageUrl: String(content.imageUrl ?? ""),
         type: "image",
@@ -365,6 +370,13 @@ function adaptChatMessageContent(
         text: String(content.text ?? ""),
         type: "quote",
       };
+    case "chatrecord":
+      return {
+        msgContent: adaptChatRecordContentLines(content.msgContent),
+        msgTitle: String(content.msgTitle ?? "聊天记录"),
+        type: "chatrecord",
+        unsupportedDisplayText: asOptionalString(content.unsupportedDisplayText),
+      };
     case "text":
     case "system":
     case "revoke":
@@ -374,6 +386,36 @@ function adaptChatMessageContent(
         type: "text",
       };
   }
+}
+
+function mergeTopLevelDownloadMetadata(
+  dto: WorkbenchMessageDto,
+): Record<string, unknown> {
+  const topLevelMetadata = dto as WorkbenchMessageDto & {
+    downloadStatus?: unknown;
+    fileSerialNo?: unknown;
+    fileUrl?: unknown;
+    fileUrlExpireTime?: unknown;
+  };
+  const content = { ...dto.content };
+
+  if (content.downloadStatus === undefined) {
+    content.downloadStatus = topLevelMetadata.downloadStatus;
+  }
+
+  if (content.fileSerialNo === undefined) {
+    content.fileSerialNo = topLevelMetadata.fileSerialNo;
+  }
+
+  if (content.fileUrl === undefined) {
+    content.fileUrl = topLevelMetadata.fileUrl;
+  }
+
+  if (content.fileUrlExpireTime === undefined) {
+    content.fileUrlExpireTime = topLevelMetadata.fileUrlExpireTime;
+  }
+
+  return content;
 }
 
 function adaptQuotedMessagePreview(value: unknown): QuotedMessagePreviewContent | undefined {
@@ -416,8 +458,19 @@ function isQuotedPreviewContentType(
     "redpacket",
     "sphfeed",
     "mini-program",
+    "chatrecord",
     "quote",
   ].includes(value);
+}
+
+function adaptChatRecordContentLines(value: unknown) {
+  if (!Array.isArray(value)) {
+    return ["[聊天记录]"];
+  }
+
+  const lines = value.filter((item): item is string => typeof item === "string");
+
+  return lines.length > 0 ? lines : ["[聊天记录]"];
 }
 
 function adaptMessageStatus(status: WorkbenchMessageDto["status"]): MessageStatus {

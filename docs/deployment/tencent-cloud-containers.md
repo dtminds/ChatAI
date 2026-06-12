@@ -67,6 +67,7 @@ pnpm backend:build
 ```text
 deploy/web.Dockerfile
 deploy/backend.Dockerfile
+deploy/backend-worker.Dockerfile
 deploy/nginx.conf
 ```
 
@@ -75,6 +76,7 @@ deploy/nginx.conf
 ```bash
 docker build -f deploy/web.Dockerfile -t ccr.ccs.tencentyun.com/<tcr-namespace>/chatai-web:<tag> .
 docker build -f deploy/backend.Dockerfile -t ccr.ccs.tencentyun.com/<tcr-namespace>/chatai-backend:<tag> .
+docker build -f deploy/backend-worker.Dockerfile -t ccr.ccs.tencentyun.com/<tcr-namespace>/chatai-backend-worker:<tag> .
 ```
 
 推送到 TCR：
@@ -82,6 +84,7 @@ docker build -f deploy/backend.Dockerfile -t ccr.ccs.tencentyun.com/<tcr-namespa
 ```bash
 docker push ccr.ccs.tencentyun.com/<tcr-namespace>/chatai-web:<tag>
 docker push ccr.ccs.tencentyun.com/<tcr-namespace>/chatai-backend:<tag>
+docker push ccr.ccs.tencentyun.com/<tcr-namespace>/chatai-backend-worker:<tag>
 ```
 
 `<tag>` 建议使用 Git commit SHA，例如 `20260512-abcdef0`，不要只使用 `latest` 发布生产。
@@ -90,6 +93,7 @@ docker push ccr.ccs.tencentyun.com/<tcr-namespace>/chatai-backend:<tag>
 
 - `deploy/web.Dockerfile`：使用 `node:24-alpine` 构建 web，执行根脚本 `pnpm build`，再把 `apps/web/dist` 复制到 `nginx:alpine` 镜像。
 - `deploy/backend.Dockerfile`：使用 `node:24-alpine` 构建 backend，执行根脚本 `pnpm backend:build`，运行阶段只安装生产依赖并用 `node apps/backend/dist/server.js` 启动。
+- `deploy/backend-worker.Dockerfile`：使用同一套 backend 构建产物，运行阶段只安装生产依赖并用 `node apps/backend/dist/worker.js` 启动。worker 不监听 HTTP 端口，不配置 Docker `HEALTHCHECK`。
 - `deploy/nginx.conf`：承载 web 静态资源，非 `/api/*` 请求回退到 `index.html`，`/api/*` 返回 404 作为兜底，实际发布时应由 Ingress 路由到 backend。
 
 注意事项：
@@ -145,6 +149,42 @@ GET /readyz
 ```
 
 `/healthz` 只表示进程存活。`/readyz` 会检查数据库 schema，适合作为就绪检查。未配置数据库时 backend 会在启动阶段失败，不会进入可服务状态。
+
+## Backend Worker 容器要求
+
+会话洞察 worker 作为独立进程部署，不和 API server 混在同一个容器内启动。第一阶段建议只部署 1 个副本。
+
+worker 不监听 HTTP 端口，不要复用 API 的 `/healthz` 或 `/readyz` 探针。简单上线时可以只配置一个进程级 `exec` liveness：
+
+```yaml
+livenessProbe:
+  exec:
+    command:
+      - sh
+      - -c
+      - "test -r /proc/1/cmdline && grep -q 'worker.js' /proc/1/cmdline"
+  initialDelaySeconds: 30
+  periodSeconds: 30
+  timeoutSeconds: 2
+  failureThreshold: 3
+```
+
+worker 不接收线上流量，通常不需要配置 readiness probe。后续如需判断 tick 是否持续运行，可以在 worker 内增加 heartbeat 文件后再改成基于 heartbeat 的 liveness。
+
+worker 必要环境变量：
+
+```text
+NODE_ENV=production
+DATABASE_URL=mysql://<user>:<password>@<host>:3306/<database>
+LOG_LEVEL=info
+INSIGHTS_WORKER_ENABLED=true
+INSIGHTS_WORKER_MODEL_ENABLED=false
+INSIGHTS_WORKER_INTERVAL_MS=3000
+INSIGHTS_WORKER_BATCH_SIZE=200
+INSIGHTS_WORKER_START_LOOKBACK_DAYS=3
+```
+
+如需启用模型分析，再配置火山方舟相关变量并将 `INSIGHTS_WORKER_MODEL_ENABLED` 改为 `true`。
 
 ## Backend 环境变量
 

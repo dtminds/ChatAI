@@ -137,15 +137,38 @@ describe("smart-reply-adapter", () => {
         ...baseMessage,
         content: {
           alt: "产品照片",
+          imageUrl: "",
           type: "image",
         } as ChatMessage["content"],
       }),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       isSmartReplyEligibleMessage({
         ...baseMessage,
         content: {
           alt: "",
+          downloadStatus: "ing",
+          imageUrl: "https://example.com/product.png",
+          type: "image",
+        },
+      }),
+    ).toBe(false);
+    expect(
+      isSmartReplyEligibleMessage({
+        ...baseMessage,
+        content: {
+          alt: "图片",
+          imageUrl: "",
+          type: "image",
+        },
+      }),
+    ).toBe(false);
+    expect(
+      isSmartReplyEligibleMessage({
+        ...baseMessage,
+        content: {
+          alt: "",
+          downloadStatus: "finished",
           imageUrl: "https://example.com/product.png",
           type: "image",
         },
@@ -460,6 +483,21 @@ describe("smart-reply-adapter", () => {
           ...customerMessage,
           content: {
             alt: "产品图",
+            downloadStatus: "ing",
+            imageUrl: "https://example.com/image.png",
+            type: "image",
+          },
+        },
+        undefined,
+      ),
+    ).toBe(false);
+    expect(
+      shouldShowSmartReplyTriggerIcon(
+        {
+          ...customerMessage,
+          content: {
+            alt: "产品图",
+            downloadStatus: "finished",
             imageUrl: "https://example.com/image.png",
             type: "image",
           },

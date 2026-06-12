@@ -509,7 +509,7 @@ export function HistoryCompactMessageList({
           >
             <span
               className={cn(
-                "min-w-0 max-w-[min(18rem,calc(100%_-_7rem))] shrink truncate text-[13px] font-medium leading-5 text-muted-foreground/80",
+                "min-w-0 max-w-[min(18rem,calc(100%_-_7rem))] shrink truncate text-[13px] leading-5 text-muted-foreground/70",
                 message.role === "agent" ? "text-primary/60" : null,
               )}
               data-testid="history-message-author"

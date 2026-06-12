@@ -40,6 +40,33 @@ describe("ChatRecordMessageCard", () => {
     expect(screen.queryByTestId("chat-record-card")).not.toBeInTheDocument();
   });
 
+  it("renders loading chat record cards without opening detail", async () => {
+    const user = userEvent.setup();
+    const loadChatRecordDetail = vi.fn();
+
+    render(
+      <ChatRecordMessageCard
+        content={{
+          msgContent: ["数据加载中"],
+          msgTitle: "聊天记录",
+          type: "chatrecord",
+          viewState: "loading",
+        }}
+        conversationId="conversation-1"
+        loadChatRecordDetail={loadChatRecordDetail}
+        messageId="parent-chatrecord-msgid"
+      />,
+    );
+
+    expect(screen.getByTestId("chat-record-card")).toBeInTheDocument();
+    expect(screen.getByText("数据加载中")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "聊天记录加载中：聊天记录" }));
+
+    expect(loadChatRecordDetail).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
   it("ignores malformed runtime values in chat record summaries", () => {
     render(
       <ChatRecordMessageCard

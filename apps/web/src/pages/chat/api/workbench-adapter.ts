@@ -376,6 +376,7 @@ function adaptChatMessageContent(
         msgTitle: String(content.msgTitle ?? "聊天记录"),
         type: "chatrecord",
         unsupportedDisplayText: asOptionalString(content.unsupportedDisplayText),
+        viewState: content.viewState === "loading" ? "loading" : undefined,
       };
     case "text":
     case "system":

@@ -362,6 +362,52 @@ describe("workbench MySQL mappers", () => {
     });
   });
 
+  it("keeps a recent empty chat record as loading content", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(1_778_240_214_000));
+
+    try {
+      expect(
+        mapMessageRow(messageRow({
+          content: null,
+          msgtime: 1_778_240_200_000,
+          msgtype: "chatrecord",
+        })),
+      ).toMatchObject({
+        content: {
+          msgContent: ["数据加载中"],
+          msgTitle: "聊天记录",
+          viewState: "loading",
+        },
+        contentType: "chatrecord",
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("downgrades an expired empty chat record to unsupported text", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(1_778_240_216_000));
+
+    try {
+      expect(
+        mapMessageRow(messageRow({
+          content: null,
+          msgtime: 1_778_240_200_000,
+          msgtype: "chatrecord",
+        })),
+      ).toMatchObject({
+        content: {
+          text: "[暂不支持展示该聊天记录]",
+        },
+        contentType: "text",
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("preserves long numeric text message content as raw text", () => {
     expect(
       mapMessageRow(messageRow({

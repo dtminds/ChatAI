@@ -1,6 +1,7 @@
 {
   "name": "@chatai/contracts",
   "private": true,
+  "license": "UNLICENSED",
   "version": "0.1.0",
   "type": "module",
   "engines": {

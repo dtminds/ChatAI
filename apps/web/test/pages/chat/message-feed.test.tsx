@@ -2,7 +2,12 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { toast } from "sonner";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ChatMessageList, MessageRow, getMessageFeedItemKey } from "@/pages/chat/components/message-feed";
+import {
+  ChatMessageList,
+  MessageRow,
+  MESSAGE_SENT_AT_HOVER_DELAY_MS,
+  getMessageFeedItemKey,
+} from "@/pages/chat/components/message-feed";
 import type { ChatMessage } from "@/pages/chat/chat-types";
 
 vi.mock("sonner", async (importOriginal) => {
@@ -916,7 +921,7 @@ describe("message sent time preview", () => {
 
       fireEvent.mouseEnter(row);
       act(() => {
-        vi.advanceTimersByTime(400);
+        vi.advanceTimersByTime(MESSAGE_SENT_AT_HOVER_DELAY_MS);
       });
 
       expect(sentAt).toHaveClass("opacity-100");

@@ -76,14 +76,14 @@ describe("MiniAppMessageCard", () => {
       const sentAt = screen.getByTestId("text-message-sent-at");
       const row = screen.getByTestId("message-row");
 
-      expect(sentAt).toHaveClass("invisible");
+      expect(sentAt).toHaveClass("opacity-0");
 
       fireEvent.mouseEnter(row);
       act(() => {
         vi.advanceTimersByTime(MESSAGE_SENT_AT_HOVER_DELAY_MS);
       });
 
-      expect(sentAt).not.toHaveClass("invisible");
+      expect(sentAt).toHaveClass("opacity-100");
       expect(sentAt).toHaveTextContent("6/11 13:22");
       expect(screen.getByTestId("text-message-sent-at-slot")).toHaveClass("ml-10");
     } finally {

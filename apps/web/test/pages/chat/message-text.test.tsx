@@ -301,19 +301,19 @@ describe("text message bubble layout", () => {
       const sentAt = screen.getByTestId("text-message-sent-at");
       const row = screen.getByTestId("message-row");
 
-      expect(sentAt).toHaveClass("invisible");
+      expect(sentAt).toHaveClass("opacity-0");
       expect(sentAt).toHaveTextContent("5/8 09:54");
 
       fireEvent.mouseEnter(row);
       act(() => {
         vi.advanceTimersByTime(MESSAGE_SENT_AT_HOVER_DELAY_MS - 1);
       });
-      expect(sentAt).toHaveClass("invisible");
+      expect(sentAt).toHaveClass("opacity-0");
 
       act(() => {
         vi.advanceTimersByTime(1);
       });
-      expect(sentAt).not.toHaveClass("invisible");
+      expect(sentAt).toHaveClass("opacity-100");
       expect(screen.getByTestId("text-message-sent-at-slot")).toHaveClass("h-4", "mr-10");
       expect(
         sentAt.compareDocumentPosition(screen.getByTestId("message-row-body")),
@@ -321,7 +321,7 @@ describe("text message bubble layout", () => {
       expect(screen.getByTestId("message-row-body")).toHaveClass("gap-2");
 
       fireEvent.mouseLeave(row);
-      expect(sentAt).toHaveClass("invisible");
+      expect(sentAt).toHaveClass("opacity-0");
     } finally {
       vi.useRealTimers();
     }

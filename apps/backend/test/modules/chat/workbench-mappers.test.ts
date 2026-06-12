@@ -362,6 +362,52 @@ describe("workbench MySQL mappers", () => {
     });
   });
 
+  it("keeps a recent empty chat record as loading content", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(1_778_240_214_000));
+
+    try {
+      expect(
+        mapMessageRow(messageRow({
+          content: null,
+          msgtime: 1_778_240_200_000,
+          msgtype: "chatrecord",
+        })),
+      ).toMatchObject({
+        content: {
+          msgContent: ["数据加载中"],
+          msgTitle: "聊天记录",
+          viewState: "loading",
+        },
+        contentType: "chatrecord",
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("downgrades an expired empty chat record to unsupported text", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(1_778_240_216_000));
+
+    try {
+      expect(
+        mapMessageRow(messageRow({
+          content: null,
+          msgtime: 1_778_240_200_000,
+          msgtype: "chatrecord",
+        })),
+      ).toMatchObject({
+        content: {
+          text: "[暂不支持展示该聊天记录]",
+        },
+        contentType: "text",
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("preserves long numeric text message content as raw text", () => {
     expect(
       mapMessageRow(messageRow({
@@ -516,6 +562,39 @@ describe("workbench MySQL mappers", () => {
     });
   });
 
+  it("maps chat record messages to normalized card content", () => {
+    expect(
+      mapMessageRow(messageRow({
+        content: JSON.stringify({
+          msgContent: ["范双飞：123", "缪勇飞：123", "缪勇飞：[图片]"],
+          msgTitle: "缪勇飞和范双飞的聊天记录",
+        }),
+        msgtype: "chatrecord",
+      })),
+    ).toMatchObject({
+      content: {
+        msgContent: ["范双飞：123", "缪勇飞：123", "缪勇飞：[图片]"],
+        msgTitle: "缪勇飞和范双飞的聊天记录",
+      },
+      contentType: "chatrecord",
+    });
+  });
+
+  it("falls back malformed chat record content to a chat record placeholder", () => {
+    expect(
+      mapMessageRow(messageRow({
+        content: "not-json",
+        msgtype: "chatrecord",
+      })),
+    ).toMatchObject({
+      content: {
+        msgContent: ["[聊天记录]"],
+        msgTitle: "聊天记录",
+      },
+      contentType: "chatrecord",
+    });
+  });
+
   it("maps file transfer metadata from audit message content", () => {
     expect(
       mapMessageRow(messageRow({
@@ -539,6 +618,27 @@ describe("workbench MySQL mappers", () => {
         fileUrl: "https://b5.bokr.com.cn/chat-files/quote.pdf",
       },
       contentType: "file",
+    });
+  });
+
+  it("maps image transfer metadata from audit message content", () => {
+    expect(
+      mapMessageRow(messageRow({
+        content: JSON.stringify({
+          downloadStatus: "ing",
+          fileSerialNo: "serial-image-001",
+          fileUrl: "",
+        }),
+        msgtype: "image",
+      })),
+    ).toMatchObject({
+      content: {
+        alt: "图片",
+        downloadStatus: "ing",
+        fileSerialNo: "serial-image-001",
+        imageUrl: "",
+      },
+      contentType: "image",
     });
   });
 

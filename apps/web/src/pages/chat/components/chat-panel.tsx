@@ -108,6 +108,7 @@ type ChatPanelProps = {
   ) => void;
   onTranscribeVoice?: (message: ChatMessage) => Promise<string>;
   retryingMessageIds?: ReadonlySet<string>;
+  smartReplyAutoPendingByMessageId?: Record<string, true>;
   smartReplyByMessageId?: Record<string, SmartReplySuggestion>;
   onSendDraft: (segments: ComposerSegment[]) => void;
   onDismissScopeTransitionError: () => void;
@@ -176,6 +177,7 @@ export function ChatPanel({
   onTriggerSmartReply,
   onVoicePlaybackReady,
   retryingMessageIds,
+  smartReplyAutoPendingByMessageId,
   smartReplyByMessageId,
   onSendDraft,
   onTranscribeVoice,
@@ -217,6 +219,7 @@ export function ChatPanel({
                 isConversationLoading={isConversationLoading}
                 conversationId={activeConversation.id}
                 messages={messages}
+                smartReplyAutoPendingByMessageId={smartReplyAutoPendingByMessageId}
                 smartReplyByMessageId={smartReplyByMessageId}
                 messageViewportRef={messageViewportRef}
                 onDownloadMessageFile={onDownloadMessageFile}

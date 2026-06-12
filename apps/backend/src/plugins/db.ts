@@ -25,7 +25,7 @@ export const dbPlugin = fp(async (app) => {
   }
 
   const db = createDatabase(databaseUrl);
-  const repository = new WorkbenchRepository(db);
+  const repository = new WorkbenchRepository(db, app.cache, app.cacheKeys);
   const createService = (logger: AppLogger = app.log) =>
     new MysqlWorkbenchService(
       repository,

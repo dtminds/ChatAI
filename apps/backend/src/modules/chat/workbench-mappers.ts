@@ -102,6 +102,8 @@ export type MessageHydrationSources = {
 };
 
 const UNSUPPORTED_MESSAGE_DISPLAY_TEXT = "[暂不支持显示该消息]";
+const UNSUPPORTED_CHAT_RECORD_DISPLAY_TEXT = "[暂不支持展示该聊天记录]";
+const CHAT_RECORD_LOADING_WINDOW_MS = 15_000;
 
 export function mapSeatRow(row: SeatRow): WorkbenchSeatDto {
   const seatName = row.third_user_name || "未命名席位";
@@ -184,8 +186,8 @@ export function mapMessageRow(
       : row.conversation_external_id || row.third_external_id || buildMissingCustomerId(row);
 
   return {
-    content: parseMessageContent(row.msgtype, row.content, quotePreview),
-    contentType: mapContentType(row.msgtype),
+    content: parseMessageContent(row, quotePreview),
+    contentType: mapMessageContentType(row),
     conversationId: String(row.conversation_id),
     createdAt: toOptionalTimestamp(row.msgtime),
     customerId,
@@ -321,6 +323,8 @@ function mapContentType(msgtype: string): WorkbenchMessageContentType {
       return "sphfeed";
     case "weapp":
       return "mini-program";
+    case "chatrecord":
+      return "chatrecord";
     case "quote":
       return "quote";
     case "revoke":
@@ -334,11 +338,30 @@ function mapContentType(msgtype: string): WorkbenchMessageContentType {
   }
 }
 
-function parseMessageContent(
-  msgtype: string,
-  rawContent: string | null,
-  quotePreview?: MessageRowQuotePreview,
-) {
+function mapMessageContentType(row: MessageRow) {
+  if (isExpiredEmptyChatRecord(row)) {
+    return "text";
+  }
+
+  return mapContentType(row.msgtype);
+}
+
+function parseMessageContent(row: MessageRow, quotePreview?: MessageRowQuotePreview) {
+  const msgtype = row.msgtype;
+  const rawContent = row.content;
+
+  if (isExpiredEmptyChatRecord(row)) {
+    return { text: UNSUPPORTED_CHAT_RECORD_DISPLAY_TEXT };
+  }
+
+  if (isLoadingEmptyChatRecord(row)) {
+    return {
+      msgContent: ["数据加载中"],
+      msgTitle: "聊天记录",
+      viewState: "loading",
+    };
+  }
+
   const parsed = parseContent(rawContent);
 
   if (msgtype === "quote") {
@@ -347,6 +370,10 @@ function parseMessageContent(
       quotedMessage: quotePreview,
       text: isRecord(parsed) ? readStringField(parsed, "content") : "",
     };
+  }
+
+  if (msgtype === "chatrecord") {
+    return readChatRecordMessageContent(parsed);
   }
 
   if (msgtype === "text") {
@@ -371,11 +398,17 @@ function parseMessageContent(
 
   switch (msgtype) {
     case "image":
-    case "emotion":
+    case "emotion": {
+      const downloadStatus = readDownloadStatus(parsed);
+      const fileSerialNo = readStringField(parsed, "fileSerialNo");
+
       return {
         alt: "图片",
+        ...(downloadStatus ? { downloadStatus } : {}),
+        ...(fileSerialNo ? { fileSerialNo } : {}),
         imageUrl: normalizeMediaAssetUrl(readStringField(parsed, "fileUrl")),
       };
+    }
     case "voice":
       return {
         audioUrl: normalizeMediaAssetUrl(readStringField(parsed, "fileUrl")),
@@ -608,6 +641,57 @@ function readRevokeMessageContent(parsed: unknown, rawContent: string | null) {
   };
 }
 
+function readChatRecordMessageContent(parsed: unknown) {
+  if (!isRecord(parsed)) {
+    return buildChatRecordFallbackContent();
+  }
+
+  const msgTitle = readStringField(parsed, "msgTitle").trim();
+  const unsupportedDisplayText = readStringField(parsed, "unsupportedDisplayText").trim();
+  const msgContent = Array.isArray(parsed.msgContent)
+    ? parsed.msgContent.filter((item): item is string => typeof item === "string")
+    : [];
+
+  if (!msgTitle && msgContent.length === 0 && !unsupportedDisplayText) {
+    return buildChatRecordFallbackContent();
+  }
+
+  return {
+    msgContent: msgContent.length > 0
+      ? msgContent
+      : unsupportedDisplayText
+        ? [unsupportedDisplayText]
+        : ["[聊天记录]"],
+    msgTitle: msgTitle || "聊天记录",
+    ...(unsupportedDisplayText ? { unsupportedDisplayText } : {}),
+  };
+}
+
+function buildChatRecordFallbackContent() {
+  return {
+    msgContent: ["[聊天记录]"],
+    msgTitle: "聊天记录",
+  };
+}
+
+function isLoadingEmptyChatRecord(row: MessageRow) {
+  return isEmptyChatRecord(row) && isWithinChatRecordLoadingWindow(row.msgtime);
+}
+
+function isExpiredEmptyChatRecord(row: MessageRow) {
+  return isEmptyChatRecord(row) && !isWithinChatRecordLoadingWindow(row.msgtime);
+}
+
+function isEmptyChatRecord(row: MessageRow) {
+  return row.msgtype === "chatrecord" && row.content == null;
+}
+
+function isWithinChatRecordLoadingWindow(msgtime: MessageRow["msgtime"]) {
+  const sentAt = toOptionalTimestamp(msgtime);
+
+  return sentAt != null && Date.now() - sentAt <= CHAT_RECORD_LOADING_WINDOW_MS;
+}
+
 export function getQuoteMessageAuditId(row: MessageRow) {
   if (row.msgtype !== "quote") {
     return undefined;
@@ -726,6 +810,8 @@ function reverseMapContentType(contentType: WorkbenchMessageContentType) {
       return "link";
     case "mini-program":
       return "weapp";
+    case "chatrecord":
+      return "chatrecord";
     case "contact-card":
       return "card";
     default:

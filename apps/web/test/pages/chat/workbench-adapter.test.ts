@@ -3,7 +3,10 @@ import {
   adaptConversation,
   adaptMessage,
 } from "@/pages/chat/api/workbench-adapter";
-import type { WorkbenchConversationSummaryDto } from "@chatai/contracts";
+import type {
+  WorkbenchConversationSummaryDto,
+  WorkbenchMessageDto,
+} from "@chatai/contracts";
 import type { Account, CustomerProfile, EmployeeProfile } from "@/pages/chat/chat-types";
 
 describe("workbench adapter", () => {
@@ -388,6 +391,56 @@ describe("adaptMessage", () => {
     });
   });
 
+  it("adapts image download status", () => {
+    expect(
+      adaptMessage(
+        {
+          ...messageDto,
+          content: {
+            alt: "图片",
+            downloadStatus: "ing",
+            imageUrl: "https://b5.bokr.com.cn/chat-images/photo.png",
+          },
+          contentType: "image",
+        },
+        customerProfilesById,
+        accountsById,
+        me,
+      ),
+    ).toMatchObject({
+      content: {
+        downloadStatus: "ing",
+        imageUrl: "https://b5.bokr.com.cn/chat-images/photo.png",
+        type: "image",
+      },
+    });
+  });
+
+  it("adapts top-level image download status", () => {
+    expect(
+      adaptMessage(
+        {
+          ...messageDto,
+          content: {
+            alt: "图片",
+            imageUrl: "",
+          },
+          contentType: "image",
+          downloadStatus: "ing",
+        } as WorkbenchMessageDto,
+        customerProfilesById,
+        accountsById,
+        me,
+      ),
+    ).toMatchObject({
+      content: {
+        downloadStatus: "ing",
+        imageUrl: "",
+        type: "image",
+      },
+    });
+  });
+
   it("adapts video transfer metadata", () => {
     expect(
       adaptMessage(
@@ -647,6 +700,30 @@ describe("adaptMessage", () => {
         },
         text: "这是什么活动",
         type: "quote",
+      },
+    });
+  });
+
+  it("adapts chat record message card content", () => {
+    expect(
+      adaptMessage(
+        {
+          ...messageDto,
+          content: {
+            msgContent: ["范双飞：123", "缪勇飞：123", "缪勇飞：[图片]"],
+            msgTitle: "缪勇飞和范双飞的聊天记录",
+          },
+          contentType: "chatrecord",
+        },
+        customerProfilesById,
+        accountsById,
+        me,
+      ),
+    ).toMatchObject({
+      content: {
+        msgContent: ["范双飞：123", "缪勇飞：123", "缪勇飞：[图片]"],
+        msgTitle: "缪勇飞和范双飞的聊天记录",
+        type: "chatrecord",
       },
     });
   });

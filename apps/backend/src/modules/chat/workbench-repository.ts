@@ -9,6 +9,7 @@ import {
   type WorkbenchHistoryMessageScope,
   type WorkbenchMessageQueryByIdsResponse,
   type WorkbenchMessagePageDto,
+  type WorkbenchChatRecordDetailResponse,
   type WorkbenchMessageUpdateEventDto,
   type WorkbenchSeatDto,
   type WorkbenchCustomerListResponse,
@@ -22,6 +23,8 @@ import {
   type WorkbenchConversationSummaryDto,
 } from "@chatai/contracts";
 import type { Kysely } from "kysely";
+import type { CachePort } from "../../cache/cache-port.js";
+import { buildCacheKeys } from "../../cache/keys.js";
 import type { Database } from "../../db/schema.js";
 import { BadRequestError } from "../../shared/errors.js";
 import {
@@ -190,6 +193,13 @@ type TenantScope = {
   uid: number;
 };
 
+type SeatAccessSnapshot = {
+  platform: number;
+  seatIds: string[];
+  uid: number;
+  version: 1;
+};
+
 type SeatConversationAggregateRow = {
   last_msgtime: Date | number | string | null;
   platform: number;
@@ -324,8 +334,23 @@ type CustomerSeatHydrationRow = {
   uid: number | string;
 };
 
+type ChatRecordDetailRow = {
+  avatar: string | null;
+  content: string | null;
+  id: number | string;
+  msgid: string;
+  msgtime: Date | number | string;
+  msgtype: string;
+  name: string | null;
+  status?: number | string | null;
+};
+
 export class WorkbenchRepository {
-  constructor(private readonly db: Kysely<Database>) {}
+  constructor(
+    private readonly db: Kysely<Database>,
+    private readonly cache?: CachePort,
+    private readonly cacheKeys: ReturnType<typeof buildCacheKeys> = buildCacheKeys("chatai:"),
+  ) {}
 
   /**
    * 按子账号租户与平台关联 `xy_wap_embed_user_relation`，取涂色侧栏 AES 密钥与 IV。
@@ -680,33 +705,16 @@ export class WorkbenchRepository {
       return undefined;
     }
 
-    const rows = await this.db
-      .selectFrom("xy_wap_embed_user_seat_sub_relation as relation")
-      .innerJoin("xy_wap_embed_user_seat as seat", (join) =>
-        join
-          .onRef("seat.id", "=", "relation.user_seat_id")
-          .onRef("seat.uid", "=", "relation.uid")
-          .onRef("seat.platform", "=", "relation.platform")
-          .on("seat.biz_status", "=", 1),
-      )
-      .select([
-        "relation.user_seat_id as seat_id",
-        "relation.uid as uid",
-        "relation.platform as platform",
-      ])
-      .where("relation.sub_id", "=", subUserNumericId)
-      .execute();
+    const snapshot = await this.getSeatAccessSnapshot(subUserNumericId);
 
-    const firstRow = rows[0];
-
-    if (!firstRow) {
+    if (!snapshot) {
       return undefined;
     }
 
     return {
-      platform: firstRow.platform,
-      seatIds: uniqueIds(rows.map((row) => row.seat_id)),
-      uid: firstRow.uid,
+      platform: snapshot.platform,
+      seatIds: snapshot.seatIds,
+      uid: snapshot.uid,
     };
   }
 
@@ -844,6 +852,119 @@ export class WorkbenchRepository {
     );
 
     return { messages };
+  }
+
+  async getChatRecordDetail(
+    uid: number,
+    platform: number,
+    conversationId: string,
+    messageId: string,
+  ): Promise<WorkbenchChatRecordDetailResponse | undefined> {
+    const conversationNumericId = parseMySqlId(conversationId);
+    const normalizedMessageId = messageId.trim();
+
+    if (conversationNumericId == null || !normalizedMessageId) {
+      return undefined;
+    }
+
+    const conversation = await this.db
+      .selectFrom("xy_wap_embed_conversation as conversation")
+      .select([
+        "conversation.id as conversation_id",
+        "conversation.chat_type as chat_type",
+        "conversation.third_external_userid as conversation_external_id",
+        "conversation.third_group_id as conversation_group_id",
+        "conversation.third_userid as third_userid",
+        "conversation.platform as platform",
+        "conversation.uid as uid",
+      ])
+      .where("conversation.uid", "=", uid)
+      .where("conversation.platform", "=", platform)
+      .where("conversation.id", "=", conversationNumericId)
+      .where("conversation.biz_status", "=", 1)
+      .executeTakeFirst();
+
+    if (!conversation) {
+      return undefined;
+    }
+
+    let parentQuery = this.db
+      .selectFrom("xy_wap_embed_msg_audit_info as message")
+      .select([
+        "message.id as id",
+        "message.msgid as msgid",
+        "message.msgtype as msgtype",
+      ])
+      .where("message.uid", "=", conversation.uid)
+      .where("message.platform", "=", conversation.platform)
+      .where("message.third_user_id", "=", conversation.third_userid)
+      .where("message.msgid", "=", normalizedMessageId);
+
+    if (conversation.chat_type === CHAT_TYPE_GROUP) {
+      parentQuery = parentQuery.where(
+        "message.third_group_id",
+        "=",
+        conversation.conversation_group_id,
+      );
+    } else {
+      parentQuery = parentQuery.where(
+        "message.third_external_id",
+        "=",
+        conversation.conversation_external_id,
+      );
+    }
+
+    const parentMessage = await parentQuery.executeTakeFirst();
+
+    if (!parentMessage || parentMessage.msgtype !== "chatrecord") {
+      return undefined;
+    }
+
+    const detailRows = await this.db
+      .selectFrom("xy_wap_embed_msg_audit_chat_record as record")
+      .select([
+        "record.id as id",
+        "record.msgid as msgid",
+        "record.name as name",
+        "record.avatar as avatar",
+        "record.content as content",
+        "record.msgtype as msgtype",
+        "record.msgtime as msgtime",
+        "record.status as status",
+      ])
+      .where("record.msgid", "=", normalizedMessageId)
+      .where("record.uid", "=", conversation.uid)
+      .where("record.platform", "=", conversation.platform)
+      .orderBy("record.msgtime", "asc")
+      .orderBy("record.id", "asc")
+      .execute() as ChatRecordDetailRow[];
+
+    return {
+      messageId: normalizedMessageId,
+      messages: detailRows.map((row) =>
+        mapMessageRow({
+          chat_type: conversation.chat_type,
+          content: row.content,
+          conversation_external_id: conversation.conversation_external_id,
+          conversation_group_id: conversation.conversation_group_id,
+          conversation_id: conversation.conversation_id,
+          from_type: 2,
+          id: row.id,
+          msgid: `chatrecord:${normalizedMessageId}:${row.id}`,
+          msgtime: row.msgtime,
+          msgtype: row.msgtype,
+          opt_no: null,
+          seat_id: 0,
+          sender_avatar: row.avatar ?? "",
+          sender_name: row.name ?? "",
+          status: 1,
+          third_external_id: conversation.conversation_external_id,
+          third_from_id: row.name ?? "",
+          third_group_id: conversation.conversation_group_id,
+          third_user_id: conversation.third_userid,
+        }),
+      ),
+    };
   }
 
   async listSeats(subUserId: string) {
@@ -1575,21 +1696,9 @@ export class WorkbenchRepository {
       return false;
     }
 
-    const access = await this.db
-      .selectFrom("xy_wap_embed_user_seat_sub_relation as relation")
-      .innerJoin("xy_wap_embed_user_seat as seat", (join) =>
-        join
-          .onRef("seat.id", "=", "relation.user_seat_id")
-          .onRef("seat.uid", "=", "relation.uid")
-          .onRef("seat.platform", "=", "relation.platform"),
-      )
-      .select("relation.id")
-      .where("relation.sub_id", "=", subUserNumericId)
-      .where("relation.user_seat_id", "=", seatNumericId)
-      .where("seat.biz_status", "=", 1)
-      .executeTakeFirst();
+    const snapshot = await this.getSeatAccessSnapshot(subUserNumericId);
 
-    return Boolean(access);
+    return snapshot?.seatIds.includes(String(seatNumericId)) ?? false;
   }
 
   async listConversations(
@@ -2533,6 +2642,91 @@ export class WorkbenchRepository {
       .where("id", "=", subUserId)
       .where("status", "=", 1)
       .executeTakeFirst() as Promise<TenantScope | undefined>;
+  }
+
+  private async getSeatAccessSnapshot(subUserId: number): Promise<SeatAccessSnapshot | undefined> {
+    const cacheKey = this.cacheKeys.seatAccess(subUserId);
+    const cached = await this.readSeatAccessSnapshot(cacheKey);
+
+    if (cached) {
+      return cached;
+    }
+
+    const scope = await this.getSubUserTenantScope(subUserId);
+
+    if (!scope) {
+      return undefined;
+    }
+
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_user_seat_sub_relation as relation")
+      .innerJoin("xy_wap_embed_user_seat as seat", (join) =>
+        join
+          .onRef("seat.id", "=", "relation.user_seat_id")
+          .onRef("seat.uid", "=", "relation.uid")
+          .onRef("seat.platform", "=", "relation.platform")
+          .on("seat.biz_status", "=", 1),
+      )
+      .select([
+        "relation.user_seat_id as seat_id",
+      ])
+      .where("relation.sub_id", "=", subUserId)
+      .where("relation.uid", "=", scope.uid)
+      .where("relation.platform", "=", scope.platform)
+      .execute();
+    const snapshot: SeatAccessSnapshot = {
+      platform: scope.platform,
+      seatIds: uniqueIds(rows.map((row) => row.seat_id)),
+      uid: scope.uid,
+      version: 1,
+    };
+
+    await this.cache?.set(cacheKey, JSON.stringify(snapshot), 600);
+
+    return snapshot;
+  }
+
+  private async readSeatAccessSnapshot(key: string) {
+    let cached: string | null | undefined;
+
+    try {
+      cached = await this.cache?.get(key);
+    } catch {
+      return undefined;
+    }
+
+    if (!cached) {
+      return undefined;
+    }
+
+    try {
+      const value = JSON.parse(cached) as Partial<SeatAccessSnapshot>;
+
+      if (!value || typeof value !== "object") {
+        return undefined;
+      }
+
+      if (
+        value.version === 1 &&
+        typeof value.uid === "number" &&
+        Number.isFinite(value.uid) &&
+        typeof value.platform === "number" &&
+        Number.isFinite(value.platform) &&
+        Array.isArray(value.seatIds) &&
+        value.seatIds.every((seatId) => typeof seatId === "string")
+      ) {
+        return {
+          platform: value.platform,
+          seatIds: value.seatIds,
+          uid: value.uid,
+          version: 1,
+        } satisfies SeatAccessSnapshot;
+      }
+    } catch {
+      return undefined;
+    }
+
+    return undefined;
   }
 
   private async getSeatConversationAggregateRows(

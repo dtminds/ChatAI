@@ -150,9 +150,14 @@ export function isSmartReplyEligibleMessage(message: ChatMessage) {
     case "voice":
       return Boolean(message.content.transVoiceText?.trim());
     case "image":
-      return Boolean(
-        message.content.imageUrl?.trim() || message.content.alt?.trim(),
-      );
+      if (
+        message.content.downloadStatus !== undefined &&
+        message.content.downloadStatus !== "finished"
+      ) {
+        return false;
+      }
+
+      return Boolean(message.content.imageUrl?.trim());
     default:
       return true;
   }

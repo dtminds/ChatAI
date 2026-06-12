@@ -67,6 +67,7 @@ pnpm backend:build
 ```text
 deploy/web.Dockerfile
 deploy/backend.Dockerfile
+deploy/backend-worker.Dockerfile
 deploy/nginx.conf
 ```
 
@@ -75,6 +76,7 @@ deploy/nginx.conf
 ```bash
 docker build -f deploy/web.Dockerfile -t ccr.ccs.tencentyun.com/<tcr-namespace>/chatai-web:<tag> .
 docker build -f deploy/backend.Dockerfile -t ccr.ccs.tencentyun.com/<tcr-namespace>/chatai-backend:<tag> .
+docker build -f deploy/backend-worker.Dockerfile -t ccr.ccs.tencentyun.com/<tcr-namespace>/chatai-backend-worker:<tag> .
 ```
 
 推送到 TCR：
@@ -82,6 +84,7 @@ docker build -f deploy/backend.Dockerfile -t ccr.ccs.tencentyun.com/<tcr-namespa
 ```bash
 docker push ccr.ccs.tencentyun.com/<tcr-namespace>/chatai-web:<tag>
 docker push ccr.ccs.tencentyun.com/<tcr-namespace>/chatai-backend:<tag>
+docker push ccr.ccs.tencentyun.com/<tcr-namespace>/chatai-backend-worker:<tag>
 ```
 
 `<tag>` 建议使用 Git commit SHA，例如 `20260512-abcdef0`，不要只使用 `latest` 发布生产。
@@ -90,6 +93,7 @@ docker push ccr.ccs.tencentyun.com/<tcr-namespace>/chatai-backend:<tag>
 
 - `deploy/web.Dockerfile`：使用 `node:24-alpine` 构建 web，执行根脚本 `pnpm build`，再把 `apps/web/dist` 复制到 `nginx:alpine` 镜像。
 - `deploy/backend.Dockerfile`：使用 `node:24-alpine` 构建 backend，执行根脚本 `pnpm backend:build`，运行阶段只安装生产依赖并用 `node apps/backend/dist/server.js` 启动。
+- `deploy/backend-worker.Dockerfile`：使用同一套 backend 构建产物，运行阶段只安装生产依赖并用 `node apps/backend/dist/worker.js` 启动。worker 不监听 HTTP 端口，不配置 Docker `HEALTHCHECK`。
 - `deploy/nginx.conf`：承载 web 静态资源，非 `/api/*` 请求回退到 `index.html`，`/api/*` 返回 404 作为兜底，实际发布时应由 Ingress 路由到 backend。
 
 注意事项：
@@ -146,6 +150,42 @@ GET /readyz
 
 `/healthz` 只表示进程存活。`/readyz` 会检查数据库 schema，适合作为就绪检查。未配置数据库时 backend 会在启动阶段失败，不会进入可服务状态。
 
+## Backend Worker 容器要求
+
+会话洞察 worker 作为独立进程部署，不和 API server 混在同一个容器内启动。第一阶段建议只部署 1 个副本。
+
+worker 不监听 HTTP 端口，不要复用 API 的 `/healthz` 或 `/readyz` 探针。简单上线时可以只配置一个进程级 `exec` liveness：
+
+```yaml
+livenessProbe:
+  exec:
+    command:
+      - sh
+      - -c
+      - "test -r /proc/1/cmdline && grep -q 'worker.js' /proc/1/cmdline"
+  initialDelaySeconds: 30
+  periodSeconds: 30
+  timeoutSeconds: 2
+  failureThreshold: 3
+```
+
+worker 不接收线上流量，通常不需要配置 readiness probe。后续如需判断 tick 是否持续运行，可以在 worker 内增加 heartbeat 文件后再改成基于 heartbeat 的 liveness。
+
+worker 必要环境变量：
+
+```text
+NODE_ENV=production
+DATABASE_URL=mysql://<user>:<password>@<host>:3306/<database>
+LOG_LEVEL=info
+INSIGHTS_WORKER_ENABLED=true
+INSIGHTS_WORKER_MODEL_ENABLED=false
+INSIGHTS_WORKER_INTERVAL_MS=3000
+INSIGHTS_WORKER_BATCH_SIZE=200
+INSIGHTS_WORKER_START_LOOKBACK_DAYS=3
+```
+
+如需启用模型分析，再配置火山方舟相关变量并将 `INSIGHTS_WORKER_MODEL_ENABLED` 改为 `true`。
+
 ## Backend 环境变量
 
 非敏感配置建议放 ConfigMap：
@@ -157,7 +197,10 @@ JWT_AUDIENCE=chatai-web
 JWT_ISSUER=chatai-server
 AUTH_COOKIE_SECURE=true
 LOG_LEVEL=info
-REDIS_ENABLED=false
+REDIS_ENABLED=true
+REDIS_KEY_PREFIX=chatai:<env>:
+REDIS_CONNECT_TIMEOUT_MS=3000
+REDIS_COMMAND_TIMEOUT_MS=500
 JAVA_INTERNAL_API_TIMEOUT_MS=8000
 JAVA_INTERNAL_API_STREAM_IDLE_TIMEOUT_MS=60000
 MEDIA_PROXY_TIMEOUT_MS=8000
@@ -172,6 +215,7 @@ JWT_PUBLIC_KEY=<public-key>
 ALTCHA_HMAC_SECRET=<random-secret>
 JAVA_INTERNAL_API_BASE_URL=<java-internal-api-base-url>
 JAVA_INTERNAL_API_TOKEN=<java-internal-api-token>
+REDIS_URL=redis://:<redis-password>@<redis-host>:<redis-port>/<redis-database>
 ```
 
 注意事项：
@@ -195,7 +239,11 @@ openssl rsa -pubout -in jwt-private.pem -out jwt-public.pem
 - `JAVA_INTERNAL_API_STREAM_IDLE_TIMEOUT_MS` 用于 Java 流式 AI 接口的读流空闲超时，默认可按 60000ms 配置。
 - `JAVA_INTERNAL_API_BASE_URL` 只应配置在 backend 所在环境，不要放进 web 的 `VITE_*` 构建变量。
 - 开发环境默认值写在根目录 `.env.development`，测试和生产环境分别通过部署配置覆盖。
-- `REDIS_ENABLED=false` 是当前阶段可接受配置，Redis 不是必需依赖。
+- `REDIS_ENABLED=false` 时 backend 使用 `NoopCache`，不连接 Redis；`REDIS_ENABLED=true` 时必须配置 `REDIS_URL`，并且启动阶段会校验 Redis 连接、认证和 `PING`，失败则拒绝启动。
+- `REDIS_URL` 示例：无密码 `redis://<host>:6379/0`；密码认证 `redis://:<password>@<host>:6379/0`；ACL 用户名和密码 `redis://<user>:<password>@<host>:6379/0`；若 Redis 端口要求 TLS，使用 `rediss://...`。
+- `REDIS_URL` 末尾的路径是 Redis 逻辑库编号，例如 `/4` 等价于连接后执行 `SELECT 4`。测试和生产环境应使用运维分配的 database 编号，不要默认写入 `/0`。
+- `REDIS_KEY_PREFIX` 用于多环境 key 隔离，建议测试环境配置 `chatai:test:`，生产环境配置 `chatai:prod:`；多个开发者共享同一个 Redis 时可使用 `chatai:<name>:dev:`。前缀结尾保留冒号，避免 key 混淆。
+- `REDIS_CONNECT_TIMEOUT_MS` 是启动/建连超时，`REDIS_COMMAND_TIMEOUT_MS` 是单条命令超时。首发建议使用 `3000/500`；同 VPC 且观察稳定后可收紧到 `2000/200`。不要把 command timeout 配到秒级以上，Redis 运行期命令失败会按 cache miss 回源 DB。
 
 ## Backend 日志和 CLS 接入
 

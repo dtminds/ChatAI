@@ -1,5 +1,6 @@
 import { startTransition, type PointerEvent as ReactPointerEvent } from "react";
 import {
+  AiIdeaIcon,
   ChatIcon,
   ChartBreakoutCircleIcon,
   LayoutAlignLeftIcon,
@@ -12,7 +13,9 @@ import {
   UserSquareIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { NavLink, useLocation } from "react-router-dom";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -37,12 +40,24 @@ const railItems = [
   { label: "工作台", icon: DashboardCircleIcon, devOnly: true },
   { label: "聊天", icon: ChatIcon },
   { label: "客户", icon: UserSquareIcon },
+  { label: "洞察", icon: AiIdeaIcon, to: "/chat/insights", badge: "Beta" },
   { label: "任务", icon: Notification01Icon, devOnly: true },
 ];
 
 const visibleRailItems = import.meta.env.DEV
   ? railItems
   : railItems.filter((item) => !item.devOnly);
+
+const collapsedNavItemClassName =
+  "inline-flex size-9 items-center justify-center rounded-[8px] text-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/25 [&_svg]:shrink-0";
+
+function isRouteItemActive(pathname: string, to?: string) {
+  if (!to) {
+    return false;
+  }
+
+  return pathname === to || pathname.startsWith(`${to}/`);
+}
 
 type AccountRailProps = {
   accounts: Account[];
@@ -96,6 +111,7 @@ export function AccountRail({
   onTakeOverAccount,
   takeoverStatusByAccountId = {},
 }: AccountRailProps) {
+  const location = useLocation();
   const signedInName = currentEmployee?.displayName.trim() || "未登录";
   const signedInAvatarFallback = getFirstGrapheme(signedInName);
   const toggleLabel = isCollapsed ? "展开侧栏" : "折叠侧栏";
@@ -191,27 +207,45 @@ export function AccountRail({
           >
             {visibleRailItems.map((item) => {
               const isActive = item.label === activeNavItem;
+              const isRouteActive = isRouteItemActive(location.pathname, item.to);
+              const itemContent = (
+                <HugeiconsIcon
+                  color="currentColor"
+                  icon={item.icon}
+                  size={18}
+                  strokeWidth={1.6}
+                />
+              );
 
               return (
                 <Tooltip key={item.label}>
                   <TooltipTrigger asChild>
-                    <button
-                      aria-label={item.label}
-                      className={cn(
-                        "flex size-9 items-center justify-center rounded-[8px] text-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/25",
-                        isActive &&
-                          "bg-sidebar-accent font-medium text-sidebar-accent-foreground",
-                      )}
-                      onClick={() => onNavItemSelect?.(item.label)}
-                      type="button"
-                    >
-                      <HugeiconsIcon
-                        color="currentColor"
-                        icon={item.icon}
-                        size={18}
-                        strokeWidth={1.6}
-                      />
-                    </button>
+                    {item.to ? (
+                      <NavLink
+                        aria-label={item.label}
+                        className={cn(
+                          collapsedNavItemClassName,
+                          (isActive || isRouteActive) &&
+                            "bg-sidebar-accent font-medium text-sidebar-accent-foreground",
+                        )}
+                        to={item.to}
+                      >
+                        {itemContent}
+                      </NavLink>
+                    ) : (
+                      <button
+                        aria-label={item.label}
+                        className={cn(
+                          collapsedNavItemClassName,
+                          isActive &&
+                            "bg-sidebar-accent font-medium text-sidebar-accent-foreground",
+                        )}
+                        onClick={() => onNavItemSelect?.(item.label)}
+                        type="button"
+                      >
+                        {itemContent}
+                      </button>
+                    )}
                   </TooltipTrigger>
                   <TooltipContent side="right" sideOffset={8}>
                     {item.label}
@@ -317,8 +351,42 @@ export function AccountRail({
       <div className="flex flex-col gap-1 px-1">
         {visibleRailItems.map((item) => {
           const isActive = item.label === activeNavItem;
+          const itemContent = (
+            <>
+              <HugeiconsIcon
+                color="currentColor"
+                icon={item.icon}
+                size={16}
+                strokeWidth={1.6}
+              />
+              <span className="min-w-0 truncate">{item.label}</span>
+              {item.badge ? (
+                <Badge
+                  aria-hidden="true"
+                  className="ml-auto h-5 shrink-0 rounded-[5px] px-1.5 py-0 text-[10px] leading-none"
+                >
+                  {item.badge}
+                </Badge>
+              ) : null}
+            </>
+          );
 
-          return (
+          return item.to ? (
+            <NavLink
+              className={({ isActive: isRouteActive }) =>
+                cn(
+                  "flex h-8.5 w-full items-center gap-2 rounded-[8px] px-3 text-[14px] text-foreground transition-colors",
+                  isActive || isRouteActive
+                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                    : "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                )
+              }
+              key={item.label}
+              to={item.to}
+            >
+              {itemContent}
+            </NavLink>
+          ) : (
             <button
               className={cn(
                 "flex h-8.5 w-full items-center gap-2 rounded-[8px] px-3 text-[14px] text-foreground transition-colors",
@@ -330,13 +398,7 @@ export function AccountRail({
               onClick={() => onNavItemSelect?.(item.label)}
               type="button"
             >
-              <HugeiconsIcon
-                color="currentColor"
-                icon={item.icon}
-                size={16}
-                strokeWidth={1.6}
-              />
-              <span>{item.label}</span>
+              {itemContent}
             </button>
           );
         })}

@@ -9,12 +9,12 @@ import {
 import {
   AiChat02Icon,
   InputCursorTextIcon,
-  Loading03Icon,
   MessageNotification01Icon,
   MoreHorizontalIcon,
   Cancel01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
 import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
 import {
@@ -1050,17 +1050,15 @@ export function SmartReplyTriggerIcon({
 export function SmartReplyInlineProcessingHint({ label }: { label: string }) {
   return (
     <div
-      className="ml-[16px] flex shrink-0 items-center gap-1 text-muted-foreground"
+      className="flex shrink-0 items-center text-muted-foreground"
       data-testid="smart-reply-inline-processing"
       role="status"
     >
-      <HugeiconsIcon
-        color="currentColor"
-        icon={Loading03Icon}
-        size={14}
-        strokeWidth={2}
-      />
-      <p className="text-[12px] leading-4">{label}</p>
+      <p className="text-[13px] leading-5">
+        <ShinyText duration={1.15} shimmerWidth={44}>
+          {label}
+        </ShinyText>
+      </p>
     </div>
   );
 }
@@ -1331,13 +1329,7 @@ function SmartReplyActions({
           variant="ghost"
         >
           {isSending ? (
-            <HugeiconsIcon
-              aria-hidden="true"
-              className="animate-spin"
-              icon={Loading03Icon}
-              size={12}
-              strokeWidth={2}
-            />
+            <Spinner variant="classic" size={12} className="text-current" />
           ) : null}
           {isSending ? null : "发送"}
         </Button>

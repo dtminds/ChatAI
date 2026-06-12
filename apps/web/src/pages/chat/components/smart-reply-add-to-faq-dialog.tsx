@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { Add01Icon, Loading03Icon } from "@hugeicons/core-free-icons";
+import { Add01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { Spinner } from "@/components/ui/spinner";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -385,12 +386,7 @@ function FaqSelectField({
         >
           {isLoading ? (
             <span className="flex items-center gap-1.5 text-muted-foreground">
-              <HugeiconsIcon
-                className="animate-spin"
-                icon={Loading03Icon}
-                size={14}
-                strokeWidth={2}
-              />
+              <Spinner variant="classic" size={14} />
               {loadingLabel}
             </span>
           ) : (

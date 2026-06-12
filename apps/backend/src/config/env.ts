@@ -9,6 +9,12 @@ export const EnvSchema = Type.Object({
   JAVA_INTERNAL_API_BASE_URL: Type.Optional(Type.String()),
   JAVA_INTERNAL_API_TOKEN: Type.Optional(Type.String()),
   DATABASE_URL: Type.Optional(Type.String()),
+  INSIGHTS_WORKER_BATCH_SIZE: Type.Optional(Type.String()),
+  INSIGHTS_WORKER_ENABLED: Type.Optional(Type.String()),
+  INSIGHTS_WORKER_INTERVAL_MS: Type.Optional(Type.String()),
+  INSIGHTS_WORKER_MODEL_ENABLED: Type.Optional(Type.String()),
+  INSIGHTS_WORKER_START_LOOKBACK_DAYS: Type.Optional(Type.String()),
+  INSIGHTS_WORKER_UID_ALLOWLIST: Type.Optional(Type.String()),
   JWT_AUDIENCE: Type.Optional(Type.String()),
   JWT_DEV_SECRET: Type.Optional(Type.String()),
   JWT_ISSUER: Type.Optional(Type.String()),
@@ -17,7 +23,17 @@ export const EnvSchema = Type.Object({
   LOG_LEVEL: Type.Optional(Type.String()),
   NODE_ENV: Type.Optional(Type.String()),
   PORT: Type.Optional(Type.String()),
+  REDIS_COMMAND_TIMEOUT_MS: Type.Optional(Type.String()),
+  REDIS_CONNECT_TIMEOUT_MS: Type.Optional(Type.String()),
   REDIS_ENABLED: Type.Optional(Type.String()),
+  REDIS_KEY_PREFIX: Type.Optional(Type.String()),
+  REDIS_URL: Type.Optional(Type.String()),
+  VOLCENGINE_ARK_API_KEY: Type.Optional(Type.String()),
+  VOLCENGINE_ARK_BASE_URL: Type.Optional(Type.String()),
+  VOLCENGINE_ARK_LITE_MAX_TOKENS: Type.Optional(Type.String()),
+  VOLCENGINE_ARK_LITE_MODEL: Type.Optional(Type.String()),
+  VOLCENGINE_ARK_MAX_TOKENS: Type.Optional(Type.String()),
+  VOLCENGINE_ARK_MODEL: Type.Optional(Type.String()),
 });
 
 export type Env = Static<typeof EnvSchema>;
@@ -113,5 +129,9 @@ export function validateBackendEnv(env: NodeJS.ProcessEnv = process.env) {
     throw new Error(
       `Missing required environment variables${environmentLabel}: ${missingVariables.join(", ")}`,
     );
+  }
+
+  if (env.REDIS_ENABLED === "true" && !env.REDIS_URL) {
+    throw new Error("Missing required environment variables for Redis: REDIS_URL");
   }
 }

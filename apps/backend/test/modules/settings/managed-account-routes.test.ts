@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { buildMockedApp } from "../../helpers/build-mocked-app";
 
 describe("settings managed-account routes", () => {
@@ -104,6 +104,11 @@ describe("settings managed-account routes", () => {
     expect(db.joinCalls).toEqual([]);
     expect(db.subAccountValidationWheres).toContainEqual(["sub_user.id", "in", [12]]);
     expect(db.deletedRelationSeatIds).toEqual([101]);
+    expect(app.cache.del).toHaveBeenCalledWith(
+      "chatai:seat-access:1",
+      "chatai:seat-access:11",
+      "chatai:seat-access:12",
+    );
     expect(db.insertedRelations).toEqual([
       {
         platform: 5,
@@ -141,11 +146,22 @@ async function createSettingsApp() {
   const db = createSettingsDbMock();
 
   app.db = db as never;
+  app.cache = createCacheMock() as never;
 
   return {
     app,
     authorization: `Bearer ${token}`,
     db,
+  };
+}
+
+function createCacheMock() {
+  return {
+    del: vi.fn(async () => undefined),
+    get: vi.fn(async () => null),
+    sadd: vi.fn(async () => undefined),
+    set: vi.fn(async () => undefined),
+    smembers: vi.fn(async () => []),
   };
 }
 

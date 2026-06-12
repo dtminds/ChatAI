@@ -100,6 +100,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import { Slider } from "@/components/ui/slider";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -470,6 +471,28 @@ export function UiComponentDemoPage() {
                   <Skeleton className="h-4 w-2/3" />
                   <Skeleton className="h-4 w-full" />
                   <Skeleton className="h-4 w-5/6" />
+                </div>
+              </div>
+
+              <div className="rounded-[10px] border border-border p-4">
+                <h3 className="text-sm font-semibold text-foreground">加载指示器 (Spinner)</h3>
+                <div className="mt-4 flex flex-wrap items-center gap-6">
+                  <div className="flex flex-col gap-2">
+                    <span className="text-xs text-muted-foreground">双轨道 (默认)</span>
+                    <div className="flex items-center gap-3">
+                      <Spinner size={14} />
+                      <Spinner size={20} className="text-primary" />
+                      <Spinner size={28} className="text-success" />
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <span className="text-xs text-muted-foreground">经典 3/4 弧</span>
+                    <div className="flex items-center gap-3">
+                      <Spinner variant="classic" size={14} />
+                      <Spinner variant="classic" size={20} className="text-primary" />
+                      <Spinner variant="classic" size={28} className="text-success" />
+                    </div>
+                  </div>
                 </div>
               </div>
 

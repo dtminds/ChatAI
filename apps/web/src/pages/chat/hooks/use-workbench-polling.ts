@@ -190,7 +190,7 @@ export function useWorkbenchPolling({
 
         await runPollCycle();
 
-        if (!cancelled) {
+        if (!cancelled && pauseReasonRef.current == null) {
           scheduleNextPoll();
         }
       }, baseInterval + jitter);
@@ -222,7 +222,7 @@ export function useWorkbenchPolling({
 
       await runPollCycle();
 
-      if (!cancelled) {
+      if (!cancelled && pauseReasonRef.current == null) {
         scheduleNextPoll();
       }
     };
@@ -251,8 +251,10 @@ export function useWorkbenchPolling({
 
     if (document.visibilityState === "hidden") {
       scheduleIdleTimer();
+      scheduleNextPoll();
+    } else {
+      void pollNowAndReschedule();
     }
-    scheduleNextPoll();
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {

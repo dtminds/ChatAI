@@ -1,6 +1,7 @@
 {
   "name": "@chatai/backend",
   "private": true,
+  "license": "UNLICENSED",
   "version": "0.1.0",
   "type": "module",
   "engines": {
@@ -11,6 +12,8 @@
     "db:codegen": "node scripts/codegen-db-schema.mjs",
     "dev": "pnpm --filter @chatai/contracts build && NODE_ENV=development tsx watch src/server.ts",
     "start": "node dist/server.js",
+    "worker": "node dist/worker.js",
+    "worker:dev": "pnpm --filter @chatai/contracts build && NODE_ENV=development tsx watch src/worker.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "pnpm --filter @chatai/contracts build && tsc --noEmit"
@@ -25,6 +28,7 @@
     "argon2": "^0.44.0",
     "fastify": "^5.6.2",
     "fastify-plugin": "^5.1.0",
+    "ioredis": "^5.11.1",
     "kysely": "^0.29.0",
     "mysql2": "^3.15.3"
   },

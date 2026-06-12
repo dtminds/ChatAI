@@ -8,6 +8,12 @@ import type {
 import { createHash, randomBytes } from "node:crypto";
 import type { Kysely } from "kysely";
 import type { FastifyInstance } from "fastify";
+import type { CachePort } from "../../cache/cache-port.js";
+import {
+  invalidateSession,
+  invalidateSubUserSessions,
+} from "../../cache/invalidation.js";
+import { buildCacheKeys } from "../../cache/keys.js";
 import type { Database } from "../../db/schema.js";
 import { AppError, UnauthorizedError } from "../../shared/errors.js";
 import { verifyAltchaPayload } from "./altcha.service.js";
@@ -22,6 +28,8 @@ const ACCESS_TOKEN_EXPIRES_IN_SECONDS = 20 * 60;
 const REFRESH_TOKEN_EXPIRES_IN_DAYS = 14;
 export const REFRESH_TOKEN_EXPIRES_IN_SECONDS =
   REFRESH_TOKEN_EXPIRES_IN_DAYS * 24 * 60 * 60;
+const SESSION_CACHE_TTL_SECONDS = 5 * 60;
+const NEGATIVE_SESSION_CACHE_TTL_SECONDS = 60;
 
 type SubUserCredentialRow = {
   id: number;
@@ -87,6 +95,17 @@ export async function loginWithPassword(
     userAgent: metadata.userAgent,
   });
   const subUserId = String(subUser.id);
+  await invalidateSubUserSessions(app.cache, app.cacheKeys, subUserId, app.log);
+  await writeSessionCache(
+    app.cache,
+    app.cacheKeys,
+    {
+      expiresAt: session.expiresAt,
+      sessionId: String(session.id),
+      sessionVersion: session.sessionVersion,
+      subUserId,
+    },
+  );
   const accountRole = deriveAccountRole(subUser);
   const accessToken = signAccessToken(app, subUserId, session, accountRole);
 
@@ -135,16 +154,14 @@ export async function getCurrentSession(
   app: FastifyInstance,
   user: JwtUser,
 ): Promise<AuthLoginResponse["subUser"]> {
-  const subUserId = Number(user.subUserId);
-
-  if (!Number.isSafeInteger(subUserId)) {
+  if (!user.subUserId) {
     throw new UnauthorizedError();
   }
 
   const subUser = await app.db
     .selectFrom("xy_wap_embed_sub_user")
     .select(["id", "name", "role", "type", "uid"])
-    .where("id", "=", subUserId)
+    .where("id", "=", user.subUserId as never)
     .where("status", "=", 1)
     .executeTakeFirst();
 
@@ -162,10 +179,12 @@ export async function revokeSession(app: FastifyInstance, user: JwtUser) {
       revoked_at: new Date(),
     })
     .where("id", "=", Number(user.sessionId))
-    .where("sub_user_id", "=", Number(user.subUserId))
+    .where("sub_user_id", "=", user.subUserId as never)
     .where("session_version", "=", user.sessionVersion)
     .where("revoked_at", "is", null)
     .execute();
+
+  await invalidateSession(app.cache, app.cacheKeys, user.sessionId, app.log);
 
   return { revoked: true };
 }
@@ -173,29 +192,81 @@ export async function revokeSession(app: FastifyInstance, user: JwtUser) {
 export async function verifyAccessSession(
   db: Kysely<Database>,
   user: JwtUser,
+  cache?: CachePort,
+  cacheKeys: ReturnType<typeof buildCacheKeys> = buildCacheKeys("chatai:"),
 ): Promise<boolean> {
   const sessionId = Number(user.sessionId);
-  const subUserId = Number(user.subUserId);
 
   if (
     !Number.isSafeInteger(sessionId) ||
-    !Number.isSafeInteger(subUserId) ||
+    !user.subUserId ||
     !Number.isSafeInteger(user.sessionVersion)
   ) {
     return false;
   }
 
+  const sessionKey = cacheKeys.authSession(user.sessionId);
+  const cachedSession = await readSessionCache(cache, sessionKey);
+
+  if (
+    cachedSession?.valid === false &&
+    shouldRejectNegativeSessionCache(cachedSession, user)
+  ) {
+    return false;
+  }
+
+  if (
+    isPositiveSessionCache(cachedSession) &&
+    cachedSession.subUserId === user.subUserId &&
+    cachedSession.sessionVersion === user.sessionVersion &&
+    cachedSession.expiresAtMs > Date.now()
+  ) {
+    return true;
+  }
+
   const session = await db
     .selectFrom("xy_wap_embed_sub_user_session")
-    .select(["id"])
+    .select(["id", "expires_at"])
     .where("id", "=", sessionId)
-    .where("sub_user_id", "=", subUserId)
+    .where("sub_user_id", "=", user.subUserId as never)
     .where("session_version", "=", user.sessionVersion)
     .where("revoked_at", "is", null)
     .where("expires_at", ">", new Date())
     .executeTakeFirst();
 
-  return Boolean(session);
+  if (!session) {
+    await cache?.set(
+      sessionKey,
+      JSON.stringify({
+        sessionVersion: user.sessionVersion,
+        subUserId: user.subUserId,
+        valid: false,
+      }),
+      NEGATIVE_SESSION_CACHE_TTL_SECONDS,
+    );
+    return false;
+  }
+
+  const ttlSeconds = Math.max(
+    1,
+    Math.min(
+      SESSION_CACHE_TTL_SECONDS,
+      Math.floor((new Date(session.expires_at).getTime() - Date.now()) / 1000),
+    ),
+  );
+  await writeSessionCache(
+    cache,
+    cacheKeys,
+    {
+      expiresAt: new Date(session.expires_at),
+      sessionId: user.sessionId,
+      sessionVersion: user.sessionVersion,
+      subUserId: user.subUserId,
+    },
+    ttlSeconds,
+  );
+
+  return true;
 }
 
 async function findActiveSubUserCredential(
@@ -258,13 +329,14 @@ async function createOrReplaceSession(
 
   const session = await db
     .selectFrom("xy_wap_embed_sub_user_session")
-    .select(["id", "session_version"])
+    .select(["id", "session_version", "expires_at"])
     .where("sub_user_id", "=", subUserId)
     .orderBy("id", "desc")
     .executeTakeFirstOrThrow();
 
   return {
     id: session.id,
+    expiresAt: session.expires_at,
     refreshToken,
     sessionVersion: session.session_version,
   };
@@ -316,6 +388,139 @@ function signAccessToken(
     sessionVersion: session.sessionVersion,
     subUserId,
   });
+}
+
+async function writeSessionCache(
+  cache: CachePort | undefined,
+  cacheKeys: ReturnType<typeof buildCacheKeys>,
+  session: {
+    expiresAt: Date | number | string;
+    sessionId: string;
+    sessionVersion: number;
+    subUserId: string;
+  },
+  ttlSeconds?: number,
+) {
+  const expiresAtMs = new Date(session.expiresAt).getTime();
+
+  if (!Number.isFinite(expiresAtMs)) {
+    return;
+  }
+
+  const resolvedTtlSeconds =
+    ttlSeconds ??
+    Math.max(
+      1,
+      Math.min(
+        SESSION_CACHE_TTL_SECONDS,
+        Math.floor((expiresAtMs - Date.now()) / 1000),
+      ),
+    );
+  const sessionKey = cacheKeys.authSession(session.sessionId);
+  const indexKey = cacheKeys.authSessionIndex(session.subUserId);
+  const value = JSON.stringify({
+    expiresAtMs,
+    sessionVersion: session.sessionVersion,
+    subUserId: session.subUserId,
+    valid: true,
+  });
+
+  if (cache?.setSessionWithIndex) {
+    await cache.setSessionWithIndex({
+      indexKey,
+      indexTtlSeconds: REFRESH_TOKEN_EXPIRES_IN_SECONDS,
+      sessionId: session.sessionId,
+      sessionKey,
+      sessionTtlSeconds: resolvedTtlSeconds,
+      value,
+    });
+    return;
+  }
+
+  await cache?.set(sessionKey, value, resolvedTtlSeconds);
+  await cache?.sadd(indexKey, [session.sessionId], REFRESH_TOKEN_EXPIRES_IN_SECONDS);
+}
+
+type SessionCacheValue =
+  | {
+      expiresAtMs: number;
+      sessionVersion: number;
+      subUserId: string;
+      valid: true;
+    }
+  | {
+      sessionVersion?: number;
+      subUserId?: string;
+      valid: false;
+    };
+
+async function readSessionCache(cache: CachePort | undefined, key: string) {
+  let cached: string | null | undefined;
+
+  try {
+    cached = await cache?.get(key);
+  } catch {
+    return undefined;
+  }
+
+  if (!cached) {
+    return undefined;
+  }
+
+  try {
+    const value = JSON.parse(cached) as Partial<SessionCacheValue>;
+
+    if (!value || typeof value !== "object") {
+      return undefined;
+    }
+
+    if (value.valid === false) {
+      return {
+        sessionVersion: typeof value.sessionVersion === "number"
+          ? value.sessionVersion
+          : undefined,
+        subUserId: typeof value.subUserId === "string" ? value.subUserId : undefined,
+        valid: false,
+      } satisfies SessionCacheValue;
+    }
+
+    if (
+      value.valid === true &&
+      typeof value.subUserId === "string" &&
+      typeof value.sessionVersion === "number" &&
+      Number.isSafeInteger(value.sessionVersion) &&
+      typeof value.expiresAtMs === "number" &&
+      Number.isFinite(value.expiresAtMs)
+    ) {
+      return {
+        expiresAtMs: value.expiresAtMs,
+        sessionVersion: value.sessionVersion,
+        subUserId: value.subUserId,
+        valid: true,
+      } satisfies SessionCacheValue;
+    }
+  } catch {
+    return undefined;
+  }
+
+  return undefined;
+}
+
+function isPositiveSessionCache(
+  value: SessionCacheValue | undefined,
+): value is Extract<SessionCacheValue, { valid: true }> {
+  return value?.valid === true;
+}
+
+function shouldRejectNegativeSessionCache(
+  value: Extract<SessionCacheValue, { valid: false }>,
+  user: JwtUser,
+) {
+  if (value.subUserId === undefined || value.sessionVersion === undefined) {
+    return false;
+  }
+
+  return value.subUserId === user.subUserId && value.sessionVersion === user.sessionVersion;
 }
 
 function mapAuthSubUser(row: {

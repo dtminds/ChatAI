@@ -175,8 +175,11 @@ export function SettingsPagination({
               <PaginationItem>
                 <Button
                   aria-current={value === page ? "page" : undefined}
-                  disabled={value === page}
-                  onClick={() => onPageChange(value)}
+                  onClick={() => {
+                    if (value !== page) {
+                      onPageChange(value);
+                    }
+                  }}
                   size="icon"
                   type="button"
                   variant={value === page ? "outline" : "ghost"}

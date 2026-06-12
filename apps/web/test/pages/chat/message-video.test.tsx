@@ -135,6 +135,33 @@ describe("MessageContentRenderer video messages", () => {
       .not.toBeInTheDocument();
   });
 
+  it("can hide the download action for videos that need transfer", () => {
+    render(
+      <VideoMessageCard
+        content={{
+          ...createVideoContent({
+            alt: "聊天记录视频",
+            durationLabel: "1:01",
+            height: 360,
+            width: 640,
+          }),
+          downloadStatus: undefined,
+          fileSerialNo: "serial-video-001",
+          videoUrl: "",
+        }}
+        showDownloadAction={false}
+      />,
+    );
+
+    expect(screen.getByRole("img", { name: "聊天记录视频" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "下载视频：聊天记录视频" }))
+      .not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "播放视频：聊天记录视频" }))
+      .not.toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: "视频下载中" }))
+      .not.toBeInTheDocument();
+  });
+
   it("renders initial server-side in-progress videos as downloading", () => {
     render(
       <VideoMessageCard
@@ -252,8 +279,7 @@ describe("MessageContentRenderer video messages", () => {
     expect(openSpy).toHaveBeenCalledWith("/videos/demo.mp4", "_blank", "noopener,noreferrer");
   });
 
-  it("does not open unsafe video URLs", async () => {
-    const user = userEvent.setup();
+  it("does not render a play control for unsafe video URLs", () => {
     const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
 
     render(
@@ -270,7 +296,8 @@ describe("MessageContentRenderer video messages", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "播放视频：舞台活动视频封面" }));
+    expect(screen.queryByRole("button", { name: "播放视频：舞台活动视频封面" }))
+      .not.toBeInTheDocument();
 
     expect(openSpy).not.toHaveBeenCalled();
   });

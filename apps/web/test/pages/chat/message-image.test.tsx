@@ -224,6 +224,7 @@ describe("MessageContentRenderer image messages", () => {
       <ImageMessageCard
         content={createImageContent({
           alt: "空图片",
+          downloadStatus: "failed",
           height: 900,
           imageUrl: "",
           width: 1200,
@@ -233,6 +234,25 @@ describe("MessageContentRenderer image messages", () => {
 
     expect(screen.getByRole("img", { name: "图片不可用：空图片" })).toBeInTheDocument();
     expect(screen.queryByRole("img", { name: "空图片" })).not.toBeInTheDocument();
+  });
+
+  it("renders a loading state while an image is downloading", () => {
+    render(
+      <ImageMessageCard
+        content={createImageContent({
+          alt: "下载中的图片",
+          downloadStatus: "ing",
+          height: 900,
+          imageUrl: "",
+          width: 1200,
+        })}
+      />,
+    );
+
+    expect(screen.getByRole("status", { name: "图片加载中" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("img", { name: "图片不可用：下载中的图片" }),
+    ).not.toBeInTheDocument();
   });
 
   it("renders an image-not-found fallback when the thumbnail fails to load", () => {
@@ -1269,11 +1289,13 @@ function createImageMessage(
 
 function createImageContent({
   alt,
+  downloadStatus,
   height,
   imageUrl,
   width,
 }: {
   alt: string;
+  downloadStatus?: ImageMessageContent["downloadStatus"];
   height: number;
   imageUrl: string;
   width: number;
@@ -1281,6 +1303,7 @@ function createImageContent({
   return {
     type: "image",
     alt,
+    downloadStatus,
     height,
     imageUrl,
     width,

@@ -4,13 +4,13 @@ import {
   ArrowTurnBackwardIcon,
   Bug02Icon,
   ExclamationMarkIcon,
-  Loading03Icon,
   Male02Icon,
   MoreHorizontalIcon,
   QuoteUpSquareIcon,
   UserIdVerificationIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { Spinner } from "@/components/ui/spinner";
 import {
   type RefObject,
   useEffect,
@@ -51,6 +51,7 @@ import {
   type SmartReplySendPayload,
 } from "@/pages/chat/api/smart-reply-adapter";
 import {
+  SmartReplyInlineProcessingHint,
   SmartReplyMessageAnchor,
   type SmartReplySuggestion,
 } from "@/pages/chat/components/smart-reply-card";
@@ -91,6 +92,7 @@ type ChatMessageListProps = {
   ) => void;
   onTranscribeVoice?: (message: ChatMessage) => Promise<string>;
   retryingMessageIds?: ReadonlySet<string>;
+  smartReplyAutoPendingByMessageId?: Record<string, true>;
   smartReplyByMessageId?: Record<string, SmartReplySuggestion>;
 };
 
@@ -126,6 +128,7 @@ export function ChatMessageList({
   onVoicePlaybackReady,
   onTranscribeVoice,
   retryingMessageIds,
+  smartReplyAutoPendingByMessageId,
   smartReplyByMessageId,
 }: ChatMessageListProps) {
   const items = useMemo(
@@ -253,6 +256,13 @@ export function ChatMessageList({
                 onTranscribeVoice={onTranscribeVoice}
                 onVoicePlaybackReady={onVoicePlaybackReady}
                 isRetryingMessage={retryingMessageIds?.has(item.message.id) ?? false}
+                isSmartReplyAutoPending={
+                  Boolean(
+                    smartReplyAutoPendingByMessageId?.[
+                      getSmartReplyLookupKey(item.message)
+                    ],
+                  )
+                }
                 smartReply={smartReplyByMessageId?.[getSmartReplyLookupKey(item.message)]}
               />
             </div>
@@ -325,12 +335,14 @@ export function MessageRow({
   onVoicePlaybackReady,
   onTranscribeVoice,
   isRetryingMessage = false,
+  isSmartReplyAutoPending = false,
   smartReply,
 }: {
   conversationId?: string;
   message: Message;
   canUseMessageActions?: boolean;
   isRetryingMessage?: boolean;
+  isSmartReplyAutoPending?: boolean;
   shouldAnimate?: boolean;
   showTimestamp?: boolean;
   onDownloadMessageFile?: (message: ChatMessage) => void;
@@ -388,7 +400,10 @@ export function MessageRow({
   const showSenderName = isGroupConversation && !message.isOwnMessage && !!message.senderDisplayName;
   const inlineDeliveryState = getInlineDeliveryState(message);
   const showSmartReplyCard = shouldShowSmartReplyCard(smartReply);
-  const showSmartReplyTriggerIcon = shouldShowSmartReplyTriggerIcon(message, smartReply);
+  const showSmartReplyInlineProcessing = isSmartReplyAutoPending && !showSmartReplyCard;
+  const showSmartReplyTriggerIcon =
+    !showSmartReplyInlineProcessing &&
+    shouldShowSmartReplyTriggerIcon(message, smartReply);
   const animationClassName = getMessageEntranceAnimationClassName(
     isAgent ? "right" : "left",
     shouldAnimate,
@@ -522,6 +537,9 @@ export function MessageRow({
                     suggestion={smartReply}
                     onSend={onSendSmartReply}
                   />
+                ) : null}
+                {showSmartReplyInlineProcessing ? (
+                  <SmartReplyInlineProcessingHint label="正在生成话术推荐" />
                 ) : null}
                 {showTimestamp ? (
                   <p className="px-1 text-[11px] leading-4 text-muted-foreground/80">
@@ -884,12 +902,15 @@ function MessageInlineStatusSlot({
           title={isRetryingMessage ? "正在重试发送" : "重试发送"}
           type="button"
         >
-          <HugeiconsIcon
-            className={cn(isRetryingMessage && "animate-spin")}
-            icon={isRetryingMessage ? Loading03Icon : ExclamationMarkIcon}
-            size={10}
-            strokeWidth={2.4}
-          />
+          {isRetryingMessage ? (
+            <Spinner variant="classic" size={10} strokeWidth={2.4} className="text-current" />
+          ) : (
+            <HugeiconsIcon
+              icon={ExclamationMarkIcon}
+              size={10}
+              strokeWidth={2.4}
+            />
+          )}
         </button>
       </div>
     );

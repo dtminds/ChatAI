@@ -95,6 +95,20 @@ describe("useWorkbenchPolling", () => {
     expect(WORKBENCH_POLL_IDLE_TIMEOUT_MS).toBe(30 * 60 * 1000);
   });
 
+  it("polls immediately when the visible workbench becomes ready", async () => {
+    vi.useFakeTimers();
+    setVisibilityState("visible");
+    const pollWorkbench = vi.fn().mockResolvedValue(undefined);
+
+    render(<PollingHarness pollWorkbench={pollWorkbench} />);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(pollWorkbench).toHaveBeenCalledTimes(1);
+  });
+
   it("restores the normal poll cadence when the document becomes visible again", async () => {
     vi.useFakeTimers();
     setVisibilityState("hidden");
@@ -138,6 +152,7 @@ describe("useWorkbenchPolling", () => {
         pollWorkbench={pollWorkbench}
       />,
     );
+    pollWorkbench.mockClear();
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(WORKBENCH_POLL_HIDDEN_INTERVAL_MS - 1);
@@ -185,6 +200,7 @@ describe("useWorkbenchPolling", () => {
         pollWorkbench={pollWorkbench}
       />,
     );
+    pollWorkbench.mockClear();
 
     await act(async () => {
       window.dispatchEvent(
@@ -214,6 +230,7 @@ describe("useWorkbenchPolling", () => {
     const pollWorkbench = vi.fn().mockResolvedValue(undefined);
 
     render(<PausingPollingHarness pollWorkbench={pollWorkbench} />);
+    pollWorkbench.mockClear();
 
     await act(async () => {
       window.dispatchEvent(
@@ -249,6 +266,7 @@ describe("useWorkbenchPolling", () => {
         pollWorkbench={pollWorkbench}
       />,
     );
+    pollWorkbench.mockClear();
 
     window.localStorage.setItem(
       "chatai.workbench.pollOwner",
@@ -273,6 +291,36 @@ describe("useWorkbenchPolling", () => {
     expect(pollWorkbench).not.toHaveBeenCalled();
   });
 
+  it("reclaims a stale same-tab polling lease when returning to chat", async () => {
+    vi.useFakeTimers();
+    const firstPollWorkbench = vi.fn().mockResolvedValue(undefined);
+    const secondPollWorkbench = vi.fn().mockResolvedValue(undefined);
+    const onPollingPaused = vi.fn();
+
+    const { unmount } = render(
+      <PollingHarness pollWorkbench={firstPollWorkbench} />,
+    );
+
+    expect(window.localStorage.getItem("chatai.workbench.pollOwner")).not.toBeNull();
+
+    unmount();
+
+    render(
+      <PollingHarness
+        onPollingPaused={onPollingPaused}
+        pollWorkbench={secondPollWorkbench}
+      />,
+    );
+    secondPollWorkbench.mockClear();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+
+    expect(onPollingPaused).not.toHaveBeenCalled();
+    expect(secondPollWorkbench).toHaveBeenCalledTimes(1);
+  });
+
   it("does not pause immediately when the tab becomes hidden", async () => {
     vi.useFakeTimers();
     setVisibilityState("visible");
@@ -285,6 +333,7 @@ describe("useWorkbenchPolling", () => {
         pollWorkbench={pollWorkbench}
       />,
     );
+    pollWorkbench.mockClear();
 
     setVisibilityState("hidden");
     await act(async () => {

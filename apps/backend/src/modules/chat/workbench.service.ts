@@ -8,6 +8,7 @@ import type {
   WorkbenchGroupMembersResponse,
   WorkbenchHistoryMessagePageDto,
   WorkbenchHistoryMessageQuery,
+  WorkbenchChatRecordDetailResponse,
   WorkbenchMessageDto,
   WorkbenchMessageFileDownloadResponse,
   WorkbenchMessageFileDownloadStatusResponse,
@@ -179,6 +180,11 @@ export type WorkbenchService = {
     conversationId: string,
     messageIds: string[],
   ): Promise<WorkbenchMessageQueryByIdsResponse> | WorkbenchMessageQueryByIdsResponse;
+  getChatRecordDetail(
+    subUserId: string,
+    conversationId: string,
+    messageId: string,
+  ): Promise<WorkbenchChatRecordDetailResponse> | WorkbenchChatRecordDetailResponse;
   getHistoryMessages(
     subUserId: string,
     conversationId: string,
@@ -609,6 +615,33 @@ export class MysqlWorkbenchService implements WorkbenchService {
     await this.assertSeatAccess(subUserId, conversation.seatId);
 
     return this.repository.listMessagesByIds(conversationId, messageIds);
+  }
+
+  async getChatRecordDetail(
+    subUserId: string,
+    conversationId: string,
+    messageId: string,
+  ) {
+    const conversation = await this.repository.getConversationLookup(conversationId);
+
+    if (!conversation) {
+      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+    }
+
+    await this.assertSeatAccess(subUserId, conversation.seatId);
+
+    const detail = await this.repository.getChatRecordDetail(
+      conversation.uid,
+      conversation.platform,
+      conversationId,
+      messageId,
+    );
+
+    if (!detail) {
+      throw new NotFoundError("CHAT_RECORD_NOT_FOUND", "聊天记录不存在");
+    }
+
+    return detail;
   }
 
   async getHistoryMessages(

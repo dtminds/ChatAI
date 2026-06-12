@@ -287,7 +287,7 @@ function ChatRecordDetailMessage({ message }: { message: ChatMessage }) {
   return (
     <div className="flex min-w-0 flex-col items-start gap-1.5">
       <div className="flex max-w-full items-center gap-2 text-[13px] leading-5 text-muted-foreground">
-        <span className="min-w-0 truncate font-medium">{message.author}</span>
+        <span className="min-w-0 truncate text-muted-foreground/70">{message.author}</span>
         <span className="shrink-0 text-xs text-muted-foreground/70">
           {message.sentAt}
         </span>
@@ -340,7 +340,7 @@ function ChatRecordDetailMessageContent({ message }: { message: ChatMessage }) {
   switch (message.content.type) {
     case "text":
       return (
-        <div className="w-full max-w-full min-w-0 whitespace-pre-wrap break-words text-sm leading-6 text-foreground">
+        <div className="w-full max-w-full min-w-0 whitespace-pre-wrap break-words text-sm leading-5 text-foreground">
           <WechatEmojiText text={message.content.text} />
         </div>
       );

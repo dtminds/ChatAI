@@ -4,6 +4,16 @@ import { describe, expect, it, vi } from "vitest";
 import { toast } from "sonner";
 import type { ChatMessage, ImageMessageContent } from "@/pages/chat/chat-types";
 import { ImageMessageCard, MessageContentRenderer } from "@/pages/chat/components/message";
+import { isEditableKeyboardTarget, ImagePreviewDialog } from "@/pages/chat/components/message/image";
+import {
+  buildGalleryWindow,
+  ConversationImageGalleryProvider,
+  GALLERY_RADIUS,
+} from "@/pages/chat/components/message/conversation-image-gallery";
+import {
+  getPreviewMessageImageUrl,
+  getOptimizedMessageImageUrl,
+} from "@/pages/chat/components/message/url";
 import { recognizeImageText } from "@/pages/chat/lib/image-ocr";
 
 vi.mock("sonner", async (importOriginal) => {
@@ -78,7 +88,7 @@ describe("MessageContentRenderer image messages", () => {
     expect(screen.queryByRole("dialog", { name: "图片预览" })).not.toBeInTheDocument();
   });
 
-  it("uses the optimized b5 image URL for thumbnails while previewing the original image", async () => {
+  it("uses optimized b5 image URLs for thumbnails and preview", async () => {
     const user = userEvent.setup();
     const imageUrl =
       "https://b5.bokr.com.cn/s5/20260511/272/fa4ccebe1fa94d60997824dd1a22656b.jpg";
@@ -101,7 +111,57 @@ describe("MessageContentRenderer image messages", () => {
 
     await user.click(screen.getByRole("button", { name: "查看大图：客户发来的表情图片" }));
 
-    expect(screen.getByTestId("image-preview-full")).toHaveAttribute("src", imageUrl);
+    expect(screen.getByTestId("image-preview-full")).toHaveAttribute(
+      "src",
+      `${imageUrl}!w1100.webp`,
+    );
+  });
+
+  it("uses the preview-sized b5 image URL for OCR", async () => {
+    const user = userEvent.setup();
+    const imageUrl =
+      "https://b5.bokr.com.cn/s5/20260511/272/fa4ccebe1fa94d60997824dd1a22656b.jpg";
+
+    vi.mocked(recognizeImageText).mockResolvedValue({
+      text: "识别结果",
+      regions: [],
+    });
+
+    render(
+      <ImageMessageCard
+        content={createImageContent({
+          alt: "待识别图片",
+          height: 900,
+          imageUrl,
+          width: 1200,
+        })}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "查看大图：待识别图片" }));
+    await user.click(screen.getByRole("button", { name: "提取图片文字" }));
+
+    expect(recognizeImageText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        imageUrl: `${imageUrl}!w1100.webp`,
+      }),
+    );
+
+    expect(await screen.findByTestId("image-preview-ocr-panel")).toBeInTheDocument();
+  });
+
+  it("builds b5 preview and thumbnail URLs from either variant suffix", () => {
+    const imageUrl =
+      "https://b5.bokr.com.cn/s5/20260511/272/fa4ccebe1fa94d60997824dd1a22656b.jpg";
+
+    expect(getOptimizedMessageImageUrl(imageUrl)).toBe(`${imageUrl}!w480.webp`);
+    expect(getPreviewMessageImageUrl(imageUrl)).toBe(`${imageUrl}!w1100.webp`);
+    expect(getPreviewMessageImageUrl(`${imageUrl}!w480.webp`)).toBe(
+      `${imageUrl}!w1100.webp`,
+    );
+    expect(getOptimizedMessageImageUrl(`${imageUrl}!w1100.webp`)).toBe(
+      `${imageUrl}!w480.webp`,
+    );
   });
 
   it("uses the natural image ratio when dimensions are missing", () => {
@@ -295,7 +355,7 @@ describe("MessageContentRenderer image messages", () => {
     expect(screen.queryByRole("dialog", { name: "图片预览" })).not.toBeInTheDocument();
   });
 
-  it("closes the full preview when blank space around the OCR action is clicked", async () => {
+  it("does not close the preview when the fixed bottom action bar is clicked", async () => {
     const user = userEvent.setup();
 
     render(
@@ -315,7 +375,7 @@ describe("MessageContentRenderer image messages", () => {
 
     fireEvent.click(screen.getByTestId("image-preview-action-bar"));
 
-    expect(screen.queryByRole("dialog", { name: "图片预览" })).not.toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "图片预览" })).toBeInTheDocument();
   });
 
   it("keeps the full preview open when the image itself is clicked", async () => {
@@ -359,7 +419,7 @@ describe("MessageContentRenderer image messages", () => {
     ).toBeInTheDocument();
   });
 
-  it("places the browser OCR action below the preview image", async () => {
+  it("places the browser OCR action in the fixed bottom action bar", async () => {
     const user = userEvent.setup();
 
     render(
@@ -906,9 +966,466 @@ describe("MessageContentRenderer image messages", () => {
   });
 });
 
-function createImageMessage(content: ImageMessageContent): ChatMessage {
+describe("Conversation image gallery", () => {
+  it("builds a gallery window around the anchor image in conversation order", () => {
+    expect(
+      buildGalleryWindow(
+        [
+          createImageMessage({
+            alt: "第一张",
+            height: 900,
+            imageUrl: "https://cdn.example.com/chat/photo-1.jpg",
+            type: "image",
+            width: 1200,
+          }),
+          {
+            id: "msg-text-1",
+            conversationId: "conv-image",
+            role: "customer",
+            author: "客户",
+            sender: {
+              id: "sender-text",
+              name: "客户",
+            },
+            content: {
+              type: "text",
+              text: "文字消息",
+            },
+            sentAt: "2026-04-19 10:12:01",
+            status: "sent",
+          },
+          createImageMessage({
+            alt: "第二张",
+            height: 900,
+            imageUrl: "https://cdn.example.com/chat/photo-2.jpg",
+            type: "image",
+            width: 1200,
+          }, "msg-image-2"),
+        ],
+        "msg-image-2",
+      ),
+    ).toEqual({
+      activeMessageId: "msg-image-2",
+      items: [
+        {
+          alt: "第一张",
+          imageUrl: "https://cdn.example.com/chat/photo-1.jpg",
+          messageId: "msg-image-1",
+          ocrEnabled: true,
+        },
+        {
+          alt: "第二张",
+          imageUrl: "https://cdn.example.com/chat/photo-2.jpg",
+          messageId: "msg-image-2",
+          ocrEnabled: true,
+        },
+      ],
+    });
+  });
+
+  it("includes revoked image messages and safely skips messages with missing content", () => {
+    expect(
+      buildGalleryWindow(
+        [
+          createImageMessage({
+            alt: "保留",
+            height: 900,
+            imageUrl: "https://cdn.example.com/chat/photo-1.jpg",
+            type: "image",
+            width: 1200,
+          }),
+          {
+            ...createImageMessage(
+              {
+                alt: "已撤回",
+                height: 900,
+                imageUrl: "https://cdn.example.com/chat/revoked.jpg",
+                type: "image",
+                width: 1200,
+              },
+              "msg-image-revoked",
+            ),
+            isRevoked: true,
+          },
+          {
+            ...createImageMessage(
+              {
+                alt: "缺失内容",
+                height: 900,
+                imageUrl: "https://cdn.example.com/chat/missing-content.jpg",
+                type: "image",
+                width: 1200,
+              },
+              "msg-image-missing-content",
+            ),
+            content: undefined as unknown as ImageMessageContent,
+          },
+        ],
+        "msg-image-revoked",
+      ),
+    ).toEqual({
+      activeMessageId: "msg-image-revoked",
+      items: [
+        {
+          alt: "保留",
+          imageUrl: "https://cdn.example.com/chat/photo-1.jpg",
+          messageId: "msg-image-1",
+          ocrEnabled: true,
+        },
+        {
+          alt: "已撤回",
+          imageUrl: "https://cdn.example.com/chat/revoked.jpg",
+          messageId: "msg-image-revoked",
+          ocrEnabled: true,
+        },
+      ],
+    });
+  });
+
+  it("limits the gallery window to the configured radius", () => {
+    const messages = Array.from({ length: GALLERY_RADIUS * 2 + 3 }, (_, index) =>
+      createImageMessage(
+        {
+          alt: `图片${index + 1}`,
+          height: 900,
+          imageUrl: `https://cdn.example.com/chat/photo-${index + 1}.jpg`,
+          type: "image",
+          width: 1200,
+        },
+        `msg-image-${index + 1}`,
+      ),
+    );
+    const anchorId = `msg-image-${GALLERY_RADIUS + 2}`;
+    const session = buildGalleryWindow(messages, anchorId, GALLERY_RADIUS);
+
+    expect(session?.items).toHaveLength(GALLERY_RADIUS * 2 + 1);
+    expect(session?.activeMessageId).toBe(anchorId);
+    expect(session?.items[GALLERY_RADIUS]?.messageId).toBe(anchorId);
+  });
+
+  it("lets users browse other conversation images from the preview", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ConversationImageGalleryProvider
+        conversationId="conv-image"
+        messages={[
+          createImageMessage({
+            alt: "第一张",
+            height: 900,
+            imageUrl: "https://cdn.example.com/chat/photo-1.jpg",
+            type: "image",
+            width: 1200,
+          }),
+          createImageMessage({
+            alt: "第二张",
+            height: 900,
+            imageUrl: "https://cdn.example.com/chat/photo-2.jpg",
+            type: "image",
+            width: 1200,
+          }, "msg-image-2"),
+        ]}
+      >
+        <MessageContentRenderer
+          isAgent={false}
+          message={createImageMessage({
+            alt: "第一张",
+            height: 900,
+            imageUrl: "https://cdn.example.com/chat/photo-1.jpg",
+            type: "image",
+            width: 1200,
+          })}
+        />
+        <MessageContentRenderer
+          isAgent={false}
+          message={createImageMessage({
+            alt: "第二张",
+            height: 900,
+            imageUrl: "https://cdn.example.com/chat/photo-2.jpg",
+            type: "image",
+            width: 1200,
+          }, "msg-image-2")}
+        />
+      </ConversationImageGalleryProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "查看大图：第一张" }));
+
+    expect(screen.getByTestId("image-preview-full")).toHaveAttribute(
+      "src",
+      "https://cdn.example.com/chat/photo-1.jpg",
+    );
+    expect(screen.getByTestId("image-preview-gallery-counter")).toHaveTextContent("1 / 2");
+
+    await user.click(screen.getByRole("button", { name: "下一张图片" }));
+
+    expect(screen.getByTestId("image-preview-full")).toHaveAttribute(
+      "src",
+      "https://cdn.example.com/chat/photo-2.jpg",
+    );
+    expect(screen.getByTestId("image-preview-gallery-counter")).toHaveTextContent("2 / 2");
+
+    await user.click(screen.getByRole("button", { name: "上一张图片" }));
+
+    expect(screen.getByTestId("image-preview-full")).toHaveAttribute(
+      "src",
+      "https://cdn.example.com/chat/photo-1.jpg",
+    );
+  });
+
+  it("supports keyboard navigation between conversation images", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ConversationImageGalleryProvider
+        conversationId="conv-image"
+        messages={[
+          createImageMessage({
+            alt: "第一张",
+            height: 900,
+            imageUrl: "https://cdn.example.com/chat/photo-1.jpg",
+            type: "image",
+            width: 1200,
+          }),
+          createImageMessage({
+            alt: "第二张",
+            height: 900,
+            imageUrl: "https://cdn.example.com/chat/photo-2.jpg",
+            type: "image",
+            width: 1200,
+          }, "msg-image-2"),
+        ]}
+      >
+        <MessageContentRenderer
+          isAgent={false}
+          message={createImageMessage({
+            alt: "第一张",
+            height: 900,
+            imageUrl: "https://cdn.example.com/chat/photo-1.jpg",
+            type: "image",
+            width: 1200,
+          })}
+        />
+      </ConversationImageGalleryProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "查看大图：第一张" }));
+    await user.keyboard("{ArrowRight}");
+
+    expect(screen.getByTestId("image-preview-full")).toHaveAttribute(
+      "src",
+      "https://cdn.example.com/chat/photo-2.jpg",
+    );
+  });
+
+  it("does not navigate the gallery when arrow keys are pressed in editable fields", () => {
+    const onGalleryIndexChange = vi.fn();
+
+    render(
+      <ImagePreviewDialog
+        alt="第一张"
+        galleryIndex={0}
+        galleryItems={[
+          {
+            alt: "第一张",
+            imageUrl: "https://cdn.example.com/chat/photo-1.jpg",
+          },
+          {
+            alt: "第二张",
+            imageUrl: "https://cdn.example.com/chat/photo-2.jpg",
+          },
+        ]}
+        imageUrl="https://cdn.example.com/chat/photo-1.jpg"
+        onGalleryIndexChange={onGalleryIndexChange}
+        open
+      />,
+    );
+
+    const textarea = document.createElement("textarea");
+    document.body.appendChild(textarea);
+    const activeElementSpy = vi
+      .spyOn(document, "activeElement", "get")
+      .mockReturnValue(textarea);
+
+    fireEvent.keyDown(window, { key: "ArrowRight" });
+
+    expect(onGalleryIndexChange).not.toHaveBeenCalled();
+
+    activeElementSpy.mockRestore();
+    document.body.removeChild(textarea);
+  });
+
+  it("detects editable keyboard targets", () => {
+    const textarea = document.createElement("textarea");
+    const input = document.createElement("input");
+    const editable = document.createElement("div");
+    editable.setAttribute("contenteditable", "true");
+    const child = document.createElement("span");
+    editable.appendChild(child);
+    child.textContent = "abc";
+
+    expect(isEditableKeyboardTarget(textarea)).toBe(true);
+    expect(isEditableKeyboardTarget(input)).toBe(true);
+    expect(isEditableKeyboardTarget(child)).toBe(true);
+    expect(isEditableKeyboardTarget(document.createElement("button"))).toBe(false);
+  });
+
+  it("keeps the frozen gallery session while messages change", async () => {
+    const user = userEvent.setup();
+    const twoImages = [
+      createImageMessage({
+        alt: "第一张",
+        height: 900,
+        imageUrl: "https://cdn.example.com/chat/photo-1.jpg",
+        type: "image",
+        width: 1200,
+      }),
+      createImageMessage(
+        {
+          alt: "第二张",
+          height: 900,
+          imageUrl: "https://cdn.example.com/chat/photo-2.jpg",
+          type: "image",
+          width: 1200,
+        },
+        "msg-image-2",
+      ),
+    ];
+    const oneImage = [twoImages[0]];
+
+    const { rerender } = render(
+      <ConversationImageGalleryProvider conversationId="conv-image" messages={twoImages}>
+        <MessageContentRenderer
+          isAgent={false}
+          message={twoImages[1]}
+        />
+      </ConversationImageGalleryProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "查看大图：第二张" }));
+    expect(screen.getByRole("dialog", { name: "图片预览" })).toBeInTheDocument();
+    expect(screen.getByTestId("image-preview-gallery-counter")).toHaveTextContent("2 / 2");
+
+    rerender(
+      <ConversationImageGalleryProvider conversationId="conv-image" messages={oneImage}>
+        <MessageContentRenderer
+          isAgent={false}
+          message={oneImage[0]}
+        />
+      </ConversationImageGalleryProvider>,
+    );
+
+    expect(screen.getByRole("dialog", { name: "图片预览" })).toBeInTheDocument();
+    expect(screen.getByTestId("image-preview-full")).toHaveAttribute(
+      "src",
+      "https://cdn.example.com/chat/photo-2.jpg",
+    );
+    expect(screen.getByTestId("image-preview-gallery-counter")).toHaveTextContent("2 / 2");
+  });
+
+  it("closes the preview when the conversation changes", async () => {
+    const user = userEvent.setup();
+    const conversationAImage = createImageMessage({
+      alt: "会话A图片",
+      height: 900,
+      imageUrl: "https://cdn.example.com/chat/photo-a.jpg",
+      type: "image",
+      width: 1200,
+    });
+    const conversationBImage = createImageMessage(
+      {
+        alt: "会话B图片",
+        height: 900,
+        imageUrl: "https://cdn.example.com/chat/photo-b.jpg",
+        type: "image",
+        width: 1200,
+      },
+      "msg-image-b",
+    );
+
+    const { rerender } = render(
+      <ConversationImageGalleryProvider
+        conversationId="conv-a"
+        messages={[conversationAImage]}
+      >
+        <MessageContentRenderer
+          isAgent={false}
+          message={conversationAImage}
+        />
+      </ConversationImageGalleryProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "查看大图：会话A图片" }));
+    expect(screen.getByRole("dialog", { name: "图片预览" })).toBeInTheDocument();
+    expect(screen.getByTestId("image-preview-full")).toHaveAttribute(
+      "src",
+      "https://cdn.example.com/chat/photo-a.jpg",
+    );
+
+    rerender(
+      <ConversationImageGalleryProvider
+        conversationId="conv-b"
+        messages={[conversationBImage]}
+      >
+        <MessageContentRenderer
+          isAgent={false}
+          message={conversationBImage}
+        />
+      </ConversationImageGalleryProvider>,
+    );
+
+    expect(screen.queryByRole("dialog", { name: "图片预览" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the preview open when the active image becomes revoked", async () => {
+    const user = userEvent.setup();
+    const image = createImageMessage({
+      alt: "可撤回图片",
+      height: 900,
+      imageUrl: "https://cdn.example.com/chat/photo-1.jpg",
+      type: "image",
+      width: 1200,
+    });
+
+    const { rerender } = render(
+      <ConversationImageGalleryProvider conversationId="conv-image" messages={[image]}>
+        <MessageContentRenderer
+          isAgent={false}
+          message={image}
+        />
+      </ConversationImageGalleryProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "查看大图：可撤回图片" }));
+    expect(screen.getByRole("dialog", { name: "图片预览" })).toBeInTheDocument();
+
+    rerender(
+      <ConversationImageGalleryProvider
+        conversationId="conv-image"
+        messages={[{ ...image, isRevoked: true }]}
+      >
+        <MessageContentRenderer
+          isAgent={false}
+          message={{ ...image, isRevoked: true }}
+        />
+      </ConversationImageGalleryProvider>,
+    );
+
+    expect(screen.getByRole("dialog", { name: "图片预览" })).toBeInTheDocument();
+    expect(screen.getByTestId("image-preview-full")).toHaveAttribute(
+      "src",
+      "https://cdn.example.com/chat/photo-1.jpg",
+    );
+    expect(screen.queryByTestId("image-preview-gallery-counter")).not.toBeInTheDocument();
+  });
+});
+
+function createImageMessage(
+  content: ImageMessageContent,
+  id = "msg-image-1",
+): ChatMessage {
   return {
-    id: "msg-image-1",
+    id,
     conversationId: "conv-image",
     role: "customer",
     author: "客户",

@@ -41,6 +41,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { MessageContentRenderer } from "@/pages/chat/components/message";
+import { ConversationImageGalleryProvider } from "@/pages/chat/components/message/conversation-image-gallery";
 import { QuoteMessagePreview } from "@/pages/chat/components/message/quote";
 import { TextMessageBubble } from "@/pages/chat/components/message/text";
 import {
@@ -218,53 +219,58 @@ export function ChatMessageList({
   }, []);
 
   return (
-    <div className="space-y-3">
-      {items.map((item) =>
-        item.type === "divider" ? (
-          <div data-scroll-anchor={item.id} key={item.id}>
-            <MessageTimeDivider label={item.label} />
-          </div>
-        ) : (
-          <div
-            data-message-id={item.message.id}
-            data-scroll-anchor={item.message.id}
-            key={getMessageFeedItemKey(item.message)}
-          >
-            <MessageRow
-              conversationId={conversationId}
-              message={item.message}
-              canUseMessageActions={canUseMessageActions}
-              shouldAnimate={
-                shouldAnimateMessageByKey.get(getMessageFeedItemKey(item.message)) ?? false
-              }
-              showTimestamp={showTimestamps}
-              onDownloadMessageFile={onDownloadMessageFile}
-              onMentionMessage={onMentionMessage}
-              onOpenQuotedMessage={onOpenQuotedMessage}
-              onQuoteMessage={onQuoteMessage}
-              onRevokeMessage={onRevokeMessage}
-              onRetryMessage={onRetryMessage}
-              onSendSmartReply={onSendSmartReply}
-              onFillSmartReplyComposer={onFillSmartReplyComposer}
-              onDismissSmartReply={onDismissSmartReply}
-              onMakeShorterSmartReply={onMakeShorterSmartReply}
-              onTriggerSmartReply={onTriggerSmartReply}
-              onTranscribeVoice={onTranscribeVoice}
-              onVoicePlaybackReady={onVoicePlaybackReady}
-              isRetryingMessage={retryingMessageIds?.has(item.message.id) ?? false}
-              isSmartReplyAutoPending={
-                Boolean(
-                  smartReplyAutoPendingByMessageId?.[
-                    getSmartReplyLookupKey(item.message)
-                  ],
-                )
-              }
-              smartReply={smartReplyByMessageId?.[getSmartReplyLookupKey(item.message)]}
-            />
-          </div>
-        ),
-      )}
-    </div>
+    <ConversationImageGalleryProvider
+      conversationId={conversationId}
+      messages={messages}
+    >
+      <div className="space-y-3">
+        {items.map((item) =>
+          item.type === "divider" ? (
+            <div data-scroll-anchor={item.id} key={item.id}>
+              <MessageTimeDivider label={item.label} />
+            </div>
+          ) : (
+            <div
+              data-message-id={item.message.id}
+              data-scroll-anchor={item.message.id}
+              key={getMessageFeedItemKey(item.message)}
+            >
+              <MessageRow
+                conversationId={conversationId}
+                message={item.message}
+                canUseMessageActions={canUseMessageActions}
+                shouldAnimate={
+                  shouldAnimateMessageByKey.get(getMessageFeedItemKey(item.message)) ?? false
+                }
+                showTimestamp={showTimestamps}
+                onDownloadMessageFile={onDownloadMessageFile}
+                onMentionMessage={onMentionMessage}
+                onOpenQuotedMessage={onOpenQuotedMessage}
+                onQuoteMessage={onQuoteMessage}
+                onRevokeMessage={onRevokeMessage}
+                onRetryMessage={onRetryMessage}
+                onSendSmartReply={onSendSmartReply}
+                onFillSmartReplyComposer={onFillSmartReplyComposer}
+                onDismissSmartReply={onDismissSmartReply}
+                onMakeShorterSmartReply={onMakeShorterSmartReply}
+                onTriggerSmartReply={onTriggerSmartReply}
+                onTranscribeVoice={onTranscribeVoice}
+                onVoicePlaybackReady={onVoicePlaybackReady}
+                isRetryingMessage={retryingMessageIds?.has(item.message.id) ?? false}
+                isSmartReplyAutoPending={
+                  Boolean(
+                    smartReplyAutoPendingByMessageId?.[
+                      getSmartReplyLookupKey(item.message)
+                    ],
+                  )
+                }
+                smartReply={smartReplyByMessageId?.[getSmartReplyLookupKey(item.message)]}
+              />
+            </div>
+          ),
+        )}
+      </div>
+    </ConversationImageGalleryProvider>
   );
 }
 

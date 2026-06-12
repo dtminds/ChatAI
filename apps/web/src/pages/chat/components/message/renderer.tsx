@@ -55,7 +55,7 @@ export function MessageContentRenderer({
         />
       );
     case "image":
-      return <ImageMessageCard content={message.content} />;
+      return <ImageMessageCard content={message.content} messageId={message.id} />;
     case "video":
       return (
         <VideoMessageCard

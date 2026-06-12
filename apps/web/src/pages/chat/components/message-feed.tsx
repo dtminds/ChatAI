@@ -219,7 +219,10 @@ export function ChatMessageList({
   }, []);
 
   return (
-    <ConversationImageGalleryProvider messages={messages}>
+    <ConversationImageGalleryProvider
+      conversationId={conversationId}
+      messages={messages}
+    >
       <div className="space-y-3">
         {items.map((item) =>
           item.type === "divider" ? (

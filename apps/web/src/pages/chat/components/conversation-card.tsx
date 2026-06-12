@@ -20,8 +20,14 @@ import {
 import { cn } from "@/lib/utils";
 import type { Conversation } from "@/pages/chat/chat-types";
 import { formatConversationTimestamp } from "@/pages/chat/lib/chat-time";
+import {
+  getConversationComposerDraftPreviewParts,
+  hasConversationComposerDraftContent,
+  type ConversationComposerDraft,
+} from "@/pages/chat/lib/conversation-composer-draft";
 
 export function ConversationCard({
+  composerDraft,
   conversation,
   isActionDisabled = false,
   isActive,
@@ -32,6 +38,7 @@ export function ConversationCard({
   onUnpin,
   onSelect,
 }: {
+  composerDraft?: ConversationComposerDraft;
   conversation: Conversation;
   isActionDisabled?: boolean;
   isActive: boolean;
@@ -43,6 +50,10 @@ export function ConversationCard({
   onSelect: () => void;
 }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const draftPreviewParts =
+    composerDraft && hasConversationComposerDraftContent(composerDraft)
+      ? getConversationComposerDraftPreviewParts(composerDraft)
+      : null;
   const conversationMenuItems = [
     {
       label: conversation.isPinned ? "取消置顶" : "置顶",
@@ -116,14 +127,28 @@ export function ConversationCard({
           <div className="mt-1 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
             <p
               className={cn(
-                "truncate text-[12px]",
+                "flex min-w-0 items-center gap-0 truncate text-[12px]",
                 isActive
                   ? "text-conversation-active-muted-foreground"
                   : "text-muted-foreground",
               )}
               data-testid="conversation-preview"
             >
-              {conversation.preview}
+              {draftPreviewParts ? (
+                <>
+                  <span
+                    className="shrink-0 text-destructive"
+                    data-testid="conversation-draft-prefix"
+                  >
+                    {draftPreviewParts.prefix}
+                  </span>
+                  {draftPreviewParts.body ? (
+                    <span className="truncate">{draftPreviewParts.body}</span>
+                  ) : null}
+                </>
+              ) : (
+                conversation.preview
+              )}
             </p>
             <span
               className={cn(

@@ -14,7 +14,7 @@ import {
   type PointType,
   type TextNode,
 } from "lexical";
-import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
+import type { ComposerSegment, ComposerTextSegment } from "@/pages/chat/lib/composer-segments";
 import {
   $createComposerEmojiNode,
   $createComposerImageNode,
@@ -140,6 +140,87 @@ export function $clearComposer() {
   root.clear();
   root.append($createParagraphNode());
   root.selectStart();
+}
+
+export function $restoreComposerFromSegments(segments: ComposerSegment[]) {
+  $clearComposer();
+
+  for (const segment of segments) {
+    if (segment.type === "image") {
+      const src = segment.url ?? segment.localUrl ?? "";
+
+      if (!src) {
+        continue;
+      }
+
+      $insertComposerImage({
+        alt: segment.alt,
+        clientId: segment.clientId,
+        fileId: segment.fileId,
+        height: segment.height,
+        localUrl: segment.localUrl,
+        src,
+        width: segment.width,
+      });
+      continue;
+    }
+
+    if (segment.type === "file") {
+      continue;
+    }
+
+    $appendComposerTextSegment(segment);
+  }
+
+  $getRoot().selectEnd();
+}
+
+function $appendComposerTextSegment(segment: ComposerTextSegment) {
+  if (segment.mentionAll) {
+    $insertComposerMention({
+      displayName: "所有人",
+      isAll: true,
+      memberId: "__all__",
+    });
+    appendTrailingComposerText(segment.text, "所有人");
+    return;
+  }
+
+  const mentionMemberId = segment.mentionMemberIds?.[0];
+
+  if (mentionMemberId) {
+    const displayName = segment.text.replace(/^@/, "").trim() || "成员";
+
+    $insertComposerMention({
+      displayName,
+      isAll: false,
+      memberId: mentionMemberId,
+    });
+    appendTrailingComposerText(segment.text, displayName);
+    return;
+  }
+
+  if (segment.text === "\n") {
+    $getRoot().append($createParagraphNode());
+    return;
+  }
+
+  if (segment.text) {
+    $insertComposerText(segment.text);
+  }
+}
+
+function appendTrailingComposerText(text: string, mentionLabel: string) {
+  const normalizedLabel = mentionLabel.trim();
+  const mentionPrefix = normalizedLabel ? `@${normalizedLabel}` : "";
+  const trailingText =
+    mentionPrefix && text.startsWith(mentionPrefix)
+      ? text.slice(mentionPrefix.length).trimStart()
+      : text.replace(/^@\S+/, "").trimStart();
+
+  if (trailingText) {
+    $insertComposerText(trailingText);
+  }
 }
 
 export function $removeComposerTextRange(start: number, end: number) {

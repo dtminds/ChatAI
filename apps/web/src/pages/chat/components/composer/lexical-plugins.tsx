@@ -30,6 +30,7 @@ import {
   INSERT_COMPOSER_IMAGE_COMMAND,
   INSERT_COMPOSER_MENTION_COMMAND,
   INSERT_COMPOSER_TEXT_COMMAND,
+  RESTORE_COMPOSER_COMMAND,
   UPDATE_COMPOSER_IMAGE_COMMAND,
 } from "@/pages/chat/components/composer/lexical-commands";
 import {
@@ -42,6 +43,7 @@ import {
   $insertComposerMention,
   $insertComposerText,
   $removeComposerTextRange,
+  $restoreComposerFromSegments,
   $updateComposerImage,
 } from "@/pages/chat/components/composer/lexical-utils";
 import { toWechatEmojiToken } from "@/pages/chat/wechat-emoji";
@@ -165,6 +167,19 @@ export function ComposerRuntimePlugin({
       () => {
         editor.update(() => {
           $clearComposer();
+        });
+        return true;
+      },
+      COMMAND_PRIORITY_LOW,
+    );
+  }, [editor]);
+
+  useEffect(() => {
+    return editor.registerCommand(
+      RESTORE_COMPOSER_COMMAND,
+      (payload) => {
+        editor.update(() => {
+          $restoreComposerFromSegments(payload.segments);
         });
         return true;
       },

@@ -31,7 +31,10 @@ import {
   LoadableMessageImage,
   MessageMediaFallback,
 } from "@/pages/chat/components/message/media-fallback";
-import { getOptimizedMessageImageUrl } from "@/pages/chat/components/message/url";
+import {
+  getOptimizedMessageImageUrl,
+  getPreviewMessageImageUrl,
+} from "@/pages/chat/components/message/url";
 import { useConversationImageGallery } from "@/pages/chat/components/message/conversation-image-gallery-context";
 import {
   recognizeImageText,
@@ -187,6 +190,7 @@ export function ImagePreviewDialog({
   };
   const previewAlt = activePreview.alt;
   const previewImageUrl = activePreview.imageUrl;
+  const previewDisplayUrl = getPreviewMessageImageUrl(previewImageUrl);
   const previewOcrEnabled = activePreview.ocrEnabled ?? ocrEnabled;
   const canShowGalleryNavigation = Boolean(gallery && gallery.length > 1);
   const canGoPrevious = canShowGalleryNavigation && currentGalleryIndex > 0;
@@ -305,7 +309,7 @@ export function ImagePreviewDialog({
 
       const nextResult = await recognizeImageText({
         alt: previewAlt,
-        imageUrl: previewImageUrl,
+        imageUrl: previewDisplayUrl,
         onPhaseChange: (phase) => {
           if (isMountedRef.current && ocrRequestIdRef.current === requestId) {
             setOcrPhase(phase);
@@ -461,10 +465,10 @@ export function ImagePreviewDialog({
                   className="max-h-[calc(100dvh-7rem)] max-w-[min(calc(100vw-2rem),calc(100dvh-7rem))] rounded-[8px] object-contain shadow-[0_18px_60px_var(--shadow-strong)] data-[ocr-panel=open]:max-w-[min(calc(100vw-25rem),calc(100dvh-7rem))]"
                   data-ocr-panel={isOcrPanelOpen ? "open" : "closed"}
                   data-testid="image-preview-full"
-                  key={previewImageUrl}
+                  key={previewDisplayUrl}
                   onLoad={handlePreviewImageLoad}
                   ref={previewImageRef}
-                  src={previewImageUrl}
+                  src={previewDisplayUrl}
                 />
                 {ocrResult && previewImageSize ? (
                   <ImageOcrOverlay
@@ -856,7 +860,7 @@ export function isEditableKeyboardTarget(element: Element | null) {
 
   return Boolean(
     element.closest(
-      "input, textarea, [contenteditable=''], [contenteditable='true']",
+      "input, textarea, [contenteditable]:not([contenteditable='false'])",
     ),
   );
 }

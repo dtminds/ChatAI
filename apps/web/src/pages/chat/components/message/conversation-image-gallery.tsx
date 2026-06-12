@@ -12,96 +12,143 @@ import {
   type ImageGalleryItem,
 } from "@/pages/chat/components/message/image";
 
+export const GALLERY_RADIUS = 20;
+
 export type ConversationGalleryImage = ImageGalleryItem & {
   messageId: string;
 };
 
-export function collectConversationGalleryImages(
-  messages: Message[],
-): ConversationGalleryImage[] {
-  const items: ConversationGalleryImage[] = [];
+export type GallerySession = {
+  activeMessageId: string;
+  items: ConversationGalleryImage[];
+};
 
-  for (const message of messages) {
-    if (!isChatMessage(message) || message.isRevoked) {
-      continue;
-    }
-
-    const content = message.content;
-
-    if (content?.type !== "image") {
-      continue;
-    }
-
-    const imageUrl = content.imageUrl?.trim() ?? "";
-
-    if (!imageUrl) {
-      continue;
-    }
-
-    items.push({
-      alt: content.alt ?? "",
-      imageUrl,
-      messageId: message.id,
-      ocrEnabled: content.variant !== "emotion",
-    });
+export function toGalleryImage(message: Message): ConversationGalleryImage | null {
+  if (!isChatMessage(message)) {
+    return null;
   }
 
-  return items;
+  const content = message.content;
+
+  if (content?.type !== "image") {
+    return null;
+  }
+
+  const imageUrl = content.imageUrl?.trim() ?? "";
+
+  if (!imageUrl) {
+    return null;
+  }
+
+  return {
+    alt: content.alt ?? "",
+    imageUrl,
+    messageId: message.id,
+    ocrEnabled: content.variant !== "emotion",
+  };
 }
 
-export function clampConversationGalleryIndex(index: number, length: number) {
-  if (length <= 0) {
-    return 0;
+export function buildGalleryWindow(
+  messages: Message[],
+  anchorMessageId: string,
+  radius = GALLERY_RADIUS,
+): GallerySession | null {
+  const anchorIndex = messages.findIndex((message) => message.id === anchorMessageId);
+
+  if (anchorIndex < 0) {
+    return null;
   }
 
-  return Math.max(0, Math.min(index, length - 1));
+  const anchor = toGalleryImage(messages[anchorIndex]);
+
+  if (!anchor) {
+    return null;
+  }
+
+  const before: ConversationGalleryImage[] = [];
+
+  for (let index = anchorIndex - 1; index >= 0 && before.length < radius; index -= 1) {
+    const item = toGalleryImage(messages[index]);
+
+    if (item) {
+      before.unshift(item);
+    }
+  }
+
+  const after: ConversationGalleryImage[] = [];
+
+  for (
+    let index = anchorIndex + 1;
+    index < messages.length && after.length < radius;
+    index += 1
+  ) {
+    const item = toGalleryImage(messages[index]);
+
+    if (item) {
+      after.push(item);
+    }
+  }
+
+  return {
+    activeMessageId: anchorMessageId,
+    items: [...before, anchor, ...after],
+  };
+}
+
+export function resolveGallerySessionIndex(session: GallerySession) {
+  return session.items.findIndex((item) => item.messageId === session.activeMessageId);
 }
 
 export function ConversationImageGalleryProvider({
   children,
+  conversationId,
   messages,
 }: {
   children: ReactNode;
+  conversationId: string;
   messages: Message[];
 }) {
-  const galleryItems = useMemo(
-    () => collectConversationGalleryImages(messages),
-    [messages],
-  );
-  const [isOpen, setIsOpen] = useState(false);
-  const [activeIndex, setActiveIndex] = useState(0);
+  const [session, setSession] = useState<GallerySession | null>(null);
 
   useEffect(() => {
-    if (galleryItems.length === 0) {
-      setIsOpen(false);
-      setActiveIndex(0);
-      return;
-    }
-
-    setActiveIndex((currentIndex) =>
-      clampConversationGalleryIndex(currentIndex, galleryItems.length),
-    );
-  }, [galleryItems]);
-
-  const safeActiveIndex = clampConversationGalleryIndex(
-    activeIndex,
-    galleryItems.length,
-  );
-  const activeItem = galleryItems[safeActiveIndex];
+    setSession(null);
+  }, [conversationId]);
 
   const openGallery = useCallback(
     (messageId: string) => {
-      const index = galleryItems.findIndex((item) => item.messageId === messageId);
+      const nextSession = buildGalleryWindow(messages, messageId, GALLERY_RADIUS);
 
-      if (index < 0) {
+      if (!nextSession) {
         return;
       }
 
-      setActiveIndex(index);
-      setIsOpen(true);
+      setSession(nextSession);
     },
-    [galleryItems],
+    [messages],
   );
+
+  const closeGallery = useCallback(() => {
+    setSession(null);
+  }, []);
+
+  const handleGalleryIndexChange = useCallback((index: number) => {
+    setSession((currentSession) => {
+      if (!currentSession) {
+        return currentSession;
+      }
+
+      const item = currentSession.items[index];
+
+      if (!item) {
+        return currentSession;
+      }
+
+      return {
+        ...currentSession,
+        activeMessageId: item.messageId,
+      };
+    });
+  }, []);
 
   const contextValue = useMemo(
     () => ({
@@ -110,19 +157,26 @@ export function ConversationImageGalleryProvider({
     [openGallery],
   );
 
+  const activeIndex = session ? resolveGallerySessionIndex(session) : -1;
+  const activeItem = activeIndex >= 0 ? session?.items[activeIndex] : null;
+
   return (
     <ConversationImageGalleryContext.Provider value={contextValue}>
       {children}
-      {isOpen && activeItem ? (
+      {session && activeItem ? (
         <ImagePreviewDialog
           alt={activeItem.alt}
-          galleryIndex={safeActiveIndex}
-          galleryItems={galleryItems}
+          galleryIndex={activeIndex}
+          galleryItems={session.items}
           imageUrl={activeItem.imageUrl}
           ocrEnabled={activeItem.ocrEnabled}
-          onGalleryIndexChange={setActiveIndex}
-          onOpenChange={setIsOpen}
-          open={isOpen}
+          onGalleryIndexChange={handleGalleryIndexChange}
+          onOpenChange={(open) => {
+            if (!open) {
+              closeGallery();
+            }
+          }}
+          open
         />
       ) : null}
     </ConversationImageGalleryContext.Provider>

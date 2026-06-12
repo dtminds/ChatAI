@@ -221,8 +221,11 @@ export function ChatMessageList({
   }, []);
 
   return (
-    <ConversationImageGalleryProvider messages={messages}>
-      <div className="space-y-2">
+    <ConversationImageGalleryProvider
+      conversationId={conversationId}
+      messages={messages}
+    >
+      <div className="space-y-3">
         {items.map((item) =>
           item.type === "divider" ? (
             <div data-scroll-anchor={item.id} key={item.id}>

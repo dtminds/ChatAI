@@ -25,7 +25,6 @@ import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
 import {
   AlertDialog,
   AlertDialogAction,
-  AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
@@ -44,6 +43,7 @@ import type { InputEnterBehavior } from "@/pages/chat/components/input-enter-beh
 import {
   CLEAR_COMPOSER_COMMAND,
   INSERT_COMPOSER_MENTION_COMMAND,
+  RESTORE_COMPOSER_COMMAND,
   UPDATE_COMPOSER_IMAGE_COMMAND,
 } from "@/pages/chat/components/composer/lexical-commands";
 import { useAccountRailResize } from "@/pages/chat/hooks/use-account-rail-resize";
@@ -75,6 +75,10 @@ import {
   extractComposerMentionState,
   type ComposerSegment,
 } from "@/pages/chat/lib/composer-segments";
+import {
+  hasConversationComposerDraftContent,
+  isConversationListedInWorkbench,
+} from "@/pages/chat/lib/conversation-composer-draft";
 import { resolveWorkbenchPermissions } from "@/pages/chat/lib/workbench-permissions";
 import { openMessageDownloadUrl } from "@/pages/chat/lib/message-download";
 import { canUseExpiringUrl } from "@/pages/chat/lib/message-url-expiry";
@@ -85,16 +89,6 @@ import {
 } from "@/pages/chat/lib/panel-width";
 
 const ACCOUNT_RAIL_COLLAPSED_STORAGE_KEY = "chatai.accountRailCollapsed";
-
-type PendingComposerDiscardSwitch =
-  | {
-      conversationId: string;
-      type: "conversation";
-    }
-  | {
-      mode: ChatMode;
-      type: "mode";
-    };
 
 type MentionRetryDialogState = {
   conversationId: string;
@@ -208,10 +202,13 @@ function ChatWorkbenchContent({
     revokeMessageError,
     pinConversation,
     retryFailedMessage,
+    saveComposerDraft,
     setChatSendPermission,
     clearRevokeMessageError,
     closeHistoryPanel,
     clearActiveConversation,
+    clearComposerDraft,
+    composerDraftsByConversationId,
     loadHistoryMessages,
     openHistoryPanel,
     setHistoryPanelDay,
@@ -260,8 +257,6 @@ function ChatWorkbenchContent({
   );
   const [quotedMessage, setQuotedMessage] =
     useState<QuotedMessagePreviewContent | null>(null);
-  const [pendingComposerDiscardSwitch, setPendingComposerDiscardSwitch] =
-    useState<PendingComposerDiscardSwitch | null>(null);
   const [mentionRetryDialogState, setMentionRetryDialogState] =
     useState<MentionRetryDialogState | null>(null);
   const [isRefreshingMentionTarget, setIsRefreshingMentionTarget] =
@@ -280,6 +275,15 @@ function ChatWorkbenchContent({
   const shouldRestoreComposerFocusRef = useRef(false);
   const isMountedRef = useRef(true);
   const activeConversationIdRef = useRef<string | undefined>(activeConversationId);
+  const composerDraftHydratedConversationIdRef = useRef<string | undefined>(
+    undefined,
+  );
+  const draftRef = useRef(draft);
+  const composerSegmentsRef = useRef(composerSegments);
+  const quotedMessageRef = useRef(quotedMessage);
+  draftRef.current = draft;
+  composerSegmentsRef.current = composerSegments;
+  quotedMessageRef.current = quotedMessage;
   const fileUploadQueueRef = useRef<typeof fileUploadQueue>([]);
   const fileUploadAbortControllersRef = useRef(
     new Map<string, AbortController>(),
@@ -450,9 +454,6 @@ function ChatWorkbenchContent({
 
   useEffect(() => {
     if (activeView !== "chat") {
-      if (activeConversationId) {
-        clearActiveConversation();
-      }
       return;
     }
 
@@ -462,7 +463,6 @@ function ChatWorkbenchContent({
   }, [
     activeConversationId,
     activeView,
-    clearActiveConversation,
     firstVisibleConversationId,
     setActiveConversation,
   ]);
@@ -630,7 +630,39 @@ function ChatWorkbenchContent({
   //     activeConversation?.mode === "single",
   // });
 
-  const clearComposer = (options?: { keepQuote?: boolean }) => {
+  const hasUnsentComposerContent = () =>
+    draftRef.current.trim().length > 0 ||
+    composerSegmentsRef.current.length > 0 ||
+    quotedMessageRef.current !== null;
+
+  const persistComposerDraftForConversation = (conversationId: string) => {
+    if (!conversationId) {
+      return;
+    }
+
+    const conversationStillExists = isConversationListedInWorkbench(
+      useWorkbenchStore.getState().conversationListsByScope,
+      conversationId,
+    );
+
+    if (!conversationStillExists) {
+      clearComposerDraft(conversationId);
+      return;
+    }
+
+    if (!hasUnsentComposerContent()) {
+      clearComposerDraft(conversationId);
+      return;
+    }
+
+    saveComposerDraft(conversationId, {
+      draft: draftRef.current,
+      quotedMessage: quotedMessageRef.current,
+      segments: composerSegmentsRef.current,
+    });
+  };
+
+  const resetComposerUI = (options?: { keepQuote?: boolean }) => {
     composerRef.current?.dispatchCommand(CLEAR_COMPOSER_COMMAND, undefined);
     setDraft("");
     setComposerSegments([]);
@@ -638,6 +670,72 @@ function ChatWorkbenchContent({
       setQuotedMessage(null);
     }
   };
+
+  const restoreComposerDraftForConversation = (conversationId: string) => {
+    const savedDraft = composerDraftsByConversationId[conversationId];
+
+    if (!savedDraft || !hasConversationComposerDraftContent(savedDraft)) {
+      resetComposerUI();
+      return;
+    }
+
+    setDraft(savedDraft.draft);
+    setComposerSegments(savedDraft.segments);
+    setQuotedMessage(savedDraft.quotedMessage);
+    composerRef.current?.dispatchCommand(RESTORE_COMPOSER_COMMAND, {
+      segments: savedDraft.segments,
+    });
+  };
+
+  const clearComposer = (options?: { keepQuote?: boolean }) => {
+    resetComposerUI(options);
+
+    if (activeConversationIdRef.current) {
+      clearComposerDraft(activeConversationIdRef.current);
+    }
+  };
+
+  useEffect(() => {
+    if (activeView !== "chat") {
+      const previousConversationId = composerDraftHydratedConversationIdRef.current;
+
+      if (previousConversationId) {
+        persistComposerDraftForConversation(previousConversationId);
+      }
+
+      composerDraftHydratedConversationIdRef.current = undefined;
+
+      if (activeConversationId) {
+        clearActiveConversation();
+      }
+
+      return;
+    }
+
+    const previousConversationId = composerDraftHydratedConversationIdRef.current;
+
+    if (previousConversationId === activeConversationId) {
+      return;
+    }
+
+    if (previousConversationId) {
+      persistComposerDraftForConversation(previousConversationId);
+    }
+
+    composerDraftHydratedConversationIdRef.current = activeConversationId;
+
+    if (!activeConversationId) {
+      resetComposerUI();
+      return;
+    }
+
+    restoreComposerDraftForConversation(activeConversationId);
+  }, [
+    activeConversationId,
+    activeView,
+    clearActiveConversation,
+    composerDraftsByConversationId,
+  ]);
 
   const scrollMessageViewportToBottom = useCallback(() => {
     const scroll = () => {
@@ -999,11 +1097,6 @@ function ChatWorkbenchContent({
     setComposerSegments(nextSegments);
   };
 
-  const hasUnsentComposerContent = () =>
-    draft.trim().length > 0 ||
-    composerSegments.length > 0 ||
-    quotedMessage !== null;
-
   const handleSelectConversation = async (conversationId: string) => {
     if (conversationId === activeConversationId) {
       return;
@@ -1014,15 +1107,6 @@ function ChatWorkbenchContent({
       return;
     }
 
-    if (hasUnsentComposerContent()) {
-      setPendingComposerDiscardSwitch({
-        conversationId,
-        type: "conversation",
-      });
-      return;
-    }
-
-    clearComposer();
     await setActiveConversation(conversationId);
   };
 
@@ -1036,39 +1120,7 @@ function ChatWorkbenchContent({
       return;
     }
 
-    if (hasUnsentComposerContent()) {
-      setPendingComposerDiscardSwitch({
-        mode,
-        type: "mode",
-      });
-      return;
-    }
-
-    clearComposer();
     await setActiveMode(mode);
-  };
-
-  const cancelPendingComposerDiscardSwitch = () => {
-    setPendingComposerDiscardSwitch(null);
-    composerRef.current?.focus();
-  };
-
-  const confirmPendingComposerDiscardSwitch = async () => {
-    const pendingSwitch = pendingComposerDiscardSwitch;
-
-    if (!pendingSwitch) {
-      return;
-    }
-
-    setPendingComposerDiscardSwitch(null);
-    clearComposer();
-
-    if (pendingSwitch.type === "conversation") {
-      await setActiveConversation(pendingSwitch.conversationId);
-      return;
-    }
-
-    await setActiveMode(pendingSwitch.mode);
   };
 
   const handleOpenQuotedMessage = (quoteMsgId: string) => {
@@ -1315,6 +1367,7 @@ function ChatWorkbenchContent({
                 <ConversationListPanel
                   activeConversation={activeConversation}
                   activeMode={activeMode}
+                  composerDraftsByConversationId={composerDraftsByConversationId}
                   conversations={visibleSearchableConversations}
                   isConversationActionDisabled={isConversationActionDisabled}
                   isConversationLoading={isConversationLoading}
@@ -1538,33 +1591,6 @@ function ChatWorkbenchContent({
           </div>
           <AlertDialogFooter>
             <AlertDialogAction variant="destructive">知道了</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-      <AlertDialog
-        open={pendingComposerDiscardSwitch !== null}
-        onOpenChange={(open) => {
-          if (!open) {
-            cancelPendingComposerDiscardSwitch();
-          }
-        }}
-      >
-        <AlertDialogContent size="sm">
-          <AlertDialogHeader>
-            <AlertDialogTitle>切换会话？</AlertDialogTitle>
-            <AlertDialogDescription>
-              切换后，输入框中的未发送内容会被清空。
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>继续编辑</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                void confirmPendingComposerDiscardSwitch();
-              }}
-            >
-              确认切换
-            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

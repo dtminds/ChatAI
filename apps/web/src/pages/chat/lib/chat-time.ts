@@ -1,4 +1,8 @@
 export function formatTextMessageSentAt(value: string, now = new Date()) {
+  if (!value || typeof value !== "string") {
+    return "";
+  }
+
   const date = parseWorkbenchDate(value);
 
   if (!date) {
@@ -7,7 +11,7 @@ export function formatTextMessageSentAt(value: string, now = new Date()) {
 
   const month = date.getMonth() + 1;
   const day = date.getDate();
-  const hour = date.getHours();
+  const hour = String(date.getHours()).padStart(2, "0");
   const minute = String(date.getMinutes()).padStart(2, "0");
   const datePart =
     date.getFullYear() === now.getFullYear()

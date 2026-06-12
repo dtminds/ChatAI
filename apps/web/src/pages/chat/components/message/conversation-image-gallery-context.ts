@@ -4,7 +4,7 @@ type ConversationImageGalleryContextValue = {
   openGallery: (messageId: string) => void;
 };
 
-export const ConversationImageGalleryContext =
+export const ConversationImageGalleryContext = 
   createContext<ConversationImageGalleryContextValue | null>(null);
 
 export function useConversationImageGallery() {

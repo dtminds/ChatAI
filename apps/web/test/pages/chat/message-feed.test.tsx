@@ -912,14 +912,14 @@ describe("message sent time preview", () => {
       const sentAt = screen.getByTestId("text-message-sent-at");
       const row = screen.getByTestId("message-row");
 
-      expect(sentAt).toHaveClass("invisible");
+      expect(sentAt).toHaveClass("opacity-0");
 
       fireEvent.mouseEnter(row);
       act(() => {
         vi.advanceTimersByTime(400);
       });
 
-      expect(sentAt).not.toHaveClass("invisible");
+      expect(sentAt).toHaveClass("opacity-100");
       expect(sentAt).toHaveTextContent("5/8 09:54");
     } finally {
       vi.useRealTimers();

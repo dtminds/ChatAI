@@ -4,6 +4,7 @@ import {
   LoginStatusSchema,
   TakeoverStatusSchema,
   type ConversationCustodyMode,
+  type MaterialCollectionBizType,
 } from "./enums.js";
 
 export const ChatSeatSchema = Type.Object({
@@ -53,6 +54,74 @@ export type WorkbenchMessageContentType =
   | "mini-program"
   | "chatrecord"
   | "quote";
+
+export type WorkbenchMaterialCollectionContentType = Extract<
+  WorkbenchMessageContentType,
+  "emotion" | "file" | "h5" | "mini-program"
+>;
+
+export type WorkbenchMaterialCollectionGroupBizType = Exclude<
+  MaterialCollectionBizType,
+  1
+>;
+
+export type WorkbenchMaterialCollectionGroupDto = {
+  id: string;
+  bizType: MaterialCollectionBizType;
+  title: string;
+  sort: number;
+};
+
+export type WorkbenchMaterialCollectionItemDto = {
+  id: string;
+  bizType: MaterialCollectionBizType;
+  groupId: string | 0;
+  title: string;
+  sort: number;
+  messageId: string;
+  contentType: WorkbenchMaterialCollectionContentType;
+  content: Record<string, unknown>;
+  createdAt?: number;
+  updatedAt?: number;
+};
+
+export type WorkbenchMaterialCollectionListRequest = {
+  bizType: MaterialCollectionBizType;
+  groupId?: string | 0;
+};
+
+export type WorkbenchMaterialCollectionListResponse = {
+  groups: WorkbenchMaterialCollectionGroupDto[];
+  items: WorkbenchMaterialCollectionItemDto[];
+};
+
+export type WorkbenchMaterialCollectionCreateRequest = {
+  bizType: MaterialCollectionBizType;
+  messageId: string;
+  groupId?: string | 0;
+};
+
+export type WorkbenchMaterialCollectionCreateResponse = {
+  item: WorkbenchMaterialCollectionItemDto;
+  duplicated?: boolean;
+};
+
+export type WorkbenchMaterialCollectionGroupCreateRequest = {
+  bizType: WorkbenchMaterialCollectionGroupBizType;
+  title: string;
+};
+
+export type WorkbenchMaterialCollectionGroupUpdateRequest = {
+  title: string;
+};
+
+export type WorkbenchMaterialCollectionMoveRequest = {
+  groupId: string | 0;
+};
+
+export type WorkbenchMaterialCollectionOkResponse = {
+  ok: true;
+};
 
 export type WorkbenchQuotedMessagePreviewDto = {
   contentType: WorkbenchMessageContentType;

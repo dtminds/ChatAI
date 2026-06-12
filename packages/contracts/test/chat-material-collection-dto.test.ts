@@ -1,0 +1,192 @@
+import { TypeCompiler } from "@sinclair/typebox/compiler";
+import { describe, expect, expectTypeOf, it } from "vitest";
+import {
+  MATERIAL_COLLECTION_BIZ_TYPE,
+  MaterialCollectionBizTypeSchema,
+  type WorkbenchMaterialCollectionCreateRequest,
+  type WorkbenchMaterialCollectionCreateResponse,
+  type WorkbenchMaterialCollectionGroupCreateRequest,
+  type WorkbenchMaterialCollectionGroupDto,
+  type WorkbenchMaterialCollectionGroupUpdateRequest,
+  type WorkbenchMaterialCollectionItemDto,
+  type WorkbenchMaterialCollectionListRequest,
+  type WorkbenchMaterialCollectionListResponse,
+  type WorkbenchMaterialCollectionMoveRequest,
+  type WorkbenchMaterialCollectionOkResponse,
+} from "../src/index";
+
+describe("chat material collection DTOs", () => {
+  it("exposes shared material collection biz type values", () => {
+    expect(MATERIAL_COLLECTION_BIZ_TYPE).toEqual({
+      EXPRESSION: 1,
+      FILE: 2,
+      MINI_PROGRAM: 3,
+      H5: 4,
+    });
+
+    const compiler = TypeCompiler.Compile(MaterialCollectionBizTypeSchema);
+
+    expect(compiler.Check(MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION)).toBe(true);
+    expect(compiler.Check(MATERIAL_COLLECTION_BIZ_TYPE.FILE)).toBe(true);
+    expect(compiler.Check(MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM)).toBe(true);
+    expect(compiler.Check(MATERIAL_COLLECTION_BIZ_TYPE.H5)).toBe(true);
+    expect(compiler.Check(0)).toBe(false);
+    expect(compiler.Check("1")).toBe(false);
+  });
+
+  it("accepts representative list item and group DTO assignments", () => {
+    const defaultGroupItem: WorkbenchMaterialCollectionItemDto = {
+      id: "collection-1",
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION,
+      groupId: 0,
+      title: "表情",
+      sort: 10,
+      messageId: "msgid-1001",
+      contentType: "emotion",
+      content: {
+        md5: "emotion-md5",
+        url: "https://example.com/emotion.gif",
+      },
+      createdAt: 1_781_187_200_000,
+    };
+
+    const customGroup: WorkbenchMaterialCollectionGroupDto = {
+      id: "group-1",
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+      title: "常用文件",
+      sort: 20,
+    };
+
+    const customGroupItem: WorkbenchMaterialCollectionItemDto = {
+      id: "collection-2",
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+      groupId: customGroup.id,
+      title: "报价单.pdf",
+      sort: 30,
+      messageId: "msgid-1002",
+      contentType: "file",
+      content: {
+        fileName: "报价单.pdf",
+        fileSize: 1024,
+      },
+      updatedAt: 1_781_187_300_000,
+    };
+
+    const h5Item: WorkbenchMaterialCollectionItemDto = {
+      id: "collection-3",
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.H5,
+      groupId: "group-h5",
+      title: "活动页",
+      sort: 40,
+      messageId: "msgid-1003",
+      contentType: "h5",
+      content: {
+        title: "活动页",
+        url: "https://example.com/activity",
+      },
+    };
+
+    const miniProgramItem: WorkbenchMaterialCollectionItemDto = {
+      id: "collection-4",
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM,
+      groupId: "group-mini-program",
+      title: "小程序",
+      sort: 50,
+      messageId: "msgid-1004",
+      contentType: "mini-program",
+      content: {
+        appid: "wx-appid",
+        path: "/pages/index",
+      },
+    };
+
+    expect(defaultGroupItem.groupId).toBe(0);
+    expect(customGroupItem.messageId).toBe("msgid-1002");
+    expect([h5Item.contentType, miniProgramItem.contentType]).toEqual([
+      "h5",
+      "mini-program",
+    ]);
+  });
+
+  it("accepts list create group move and ok request/response contracts", () => {
+    const listRequest: WorkbenchMaterialCollectionListRequest = {
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+      groupId: 0,
+    };
+
+    const listResponse: WorkbenchMaterialCollectionListResponse = {
+      groups: [
+        {
+          id: "group-1",
+          bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+          title: "常用文件",
+          sort: 1,
+        },
+      ],
+      items: [
+        {
+          id: "collection-1",
+          bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+          groupId: "group-1",
+          title: "报价单.pdf",
+          sort: 1,
+          messageId: "msgid-1001",
+          contentType: "file",
+          content: {
+            fileName: "报价单.pdf",
+          },
+        },
+      ],
+    };
+
+    const createRequest: WorkbenchMaterialCollectionCreateRequest = {
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM,
+      messageId: "msgid-1002",
+      groupId: "group-2",
+    };
+
+    const createResponse: WorkbenchMaterialCollectionCreateResponse = {
+      item: {
+        id: "collection-2",
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM,
+        groupId: "group-2",
+        title: "小程序",
+        sort: 2,
+        messageId: "msgid-1002",
+        contentType: "mini-program",
+        content: {
+          appid: "wx-appid",
+        },
+      },
+      duplicated: true,
+    };
+
+    const groupCreateRequest: WorkbenchMaterialCollectionGroupCreateRequest = {
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.H5,
+      title: "活动链接",
+    };
+
+    const groupUpdateRequest: WorkbenchMaterialCollectionGroupUpdateRequest = {
+      title: "新活动链接",
+    };
+
+    const moveRequest: WorkbenchMaterialCollectionMoveRequest = {
+      groupId: 0,
+    };
+
+    const okResponse: WorkbenchMaterialCollectionOkResponse = {
+      ok: true,
+    };
+
+    expect(listRequest.bizType).toBe(2);
+    expect(listResponse.groups).toHaveLength(1);
+    expect(createRequest.messageId).toBe("msgid-1002");
+    expect(createResponse.duplicated).toBe(true);
+    expect(groupCreateRequest.bizType).toBe(4);
+    expect(groupUpdateRequest.title).toBe("新活动链接");
+    expect(moveRequest.groupId).toBe(0);
+    expect(okResponse.ok).toBe(true);
+
+    expectTypeOf(groupCreateRequest.bizType).toEqualTypeOf<2 | 3 | 4>();
+  });
+});

@@ -147,7 +147,8 @@ describe("material collection components", () => {
 
     await user.click(screen.getByRole("button", { name: "发送收藏表情 表情" }));
 
-    expect(screen.getByText("收藏的表情")).toBeInTheDocument();
+    expect(screen.queryByText("收藏的表情")).not.toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "表情" })).toHaveClass("size-18");
     expect(handleSelect).toHaveBeenCalledWith(item);
   });
 });

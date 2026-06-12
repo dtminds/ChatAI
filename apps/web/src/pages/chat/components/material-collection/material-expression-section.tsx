@@ -14,11 +14,8 @@ export function MaterialExpressionSection({
   }
 
   return (
-    <section className="border-b border-divider px-4 py-3">
-      <div className="mb-2 text-[13px] font-medium text-foreground">
-        收藏的表情
-      </div>
-      <div className="grid grid-cols-7 gap-1.5 sm:grid-cols-9 md:grid-cols-11 lg:grid-cols-13">
+    <section className="p-5">
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(4.5rem,1fr))] gap-x-6 gap-y-5">
         {items.map((item) => {
           const imageUrl =
             readString(item.content.imageUrl) ||
@@ -28,7 +25,7 @@ export function MaterialExpressionSection({
           return (
             <button
               aria-label={`发送收藏表情 ${item.title}`}
-              className="group flex aspect-square items-center justify-center rounded-[14px] transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+              className="group flex aspect-square items-center justify-center rounded-[8px] transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
               key={item.id}
               onClick={() => onSelect(item)}
               title={item.title}
@@ -37,13 +34,15 @@ export function MaterialExpressionSection({
               {imageUrl ? (
                 <img
                   alt={item.title}
-                  className="size-7 object-contain transition-transform group-hover:scale-105"
+                  className="size-18 object-contain transition-transform group-hover:scale-105"
                   draggable={false}
                   loading="lazy"
                   src={imageUrl}
                 />
               ) : (
-                <span className="text-[12px] text-muted-foreground">表情</span>
+                <span className="flex size-18 items-center justify-center rounded-[8px] bg-surface-muted text-[12px] text-muted-foreground">
+                  表情
+                </span>
               )}
             </button>
           );

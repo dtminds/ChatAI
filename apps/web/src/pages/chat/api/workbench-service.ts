@@ -76,6 +76,18 @@ import {
   type WorkbenchUploadCredentialResponse,
   type WorkbenchSearchResponseDto,
   type WorkbenchGetOrCreateConversationRequestDto,
+  MATERIAL_COLLECTION_BIZ_TYPE,
+  type MaterialCollectionBizType,
+  type WorkbenchMaterialCollectionCreateRequest,
+  type WorkbenchMaterialCollectionCreateResponse,
+  type WorkbenchMaterialCollectionGroupCreateRequest,
+  type WorkbenchMaterialCollectionGroupUpdateRequest,
+  type WorkbenchMaterialCollectionGroupDto,
+  type WorkbenchMaterialCollectionItemDto,
+  type WorkbenchMaterialCollectionListRequest,
+  type WorkbenchMaterialCollectionListResponse,
+  type WorkbenchMaterialCollectionMoveRequest,
+  type WorkbenchMaterialCollectionOkResponse,
 } from "@chatai/contracts";
 import type {
   ChatMode,
@@ -199,6 +211,38 @@ export type WorkbenchService = {
   unpinConversation: (conversationId: string) => Promise<WorkbenchConversationUnpinResponse>;
   search: (seatId: string, keyword: string) => Promise<WorkbenchSearchResponseDto>;
   getOrCreateConversation: (payload: WorkbenchGetOrCreateConversationRequestDto) => Promise<WorkbenchConversationSummaryDto>;
+  listMaterialCollections: (
+    request: WorkbenchMaterialCollectionListRequest,
+  ) => Promise<WorkbenchMaterialCollectionListResponse>;
+  collectMaterial: (
+    request: WorkbenchMaterialCollectionCreateRequest,
+  ) => Promise<WorkbenchMaterialCollectionCreateResponse>;
+  deleteMaterialCollection: (
+    collectionId: string,
+  ) => Promise<WorkbenchMaterialCollectionOkResponse>;
+  topMaterialCollection: (
+    collectionId: string,
+  ) => Promise<WorkbenchMaterialCollectionOkResponse>;
+  moveMaterialCollection: (
+    collectionId: string,
+    request: WorkbenchMaterialCollectionMoveRequest,
+  ) => Promise<WorkbenchMaterialCollectionOkResponse>;
+  createMaterialGroup: (
+    request: WorkbenchMaterialCollectionGroupCreateRequest,
+  ) => Promise<WorkbenchMaterialCollectionOkResponse>;
+  renameMaterialGroup: (
+    groupId: string,
+    bizType: WorkbenchMaterialCollectionGroupCreateRequest["bizType"],
+    request: WorkbenchMaterialCollectionGroupUpdateRequest,
+  ) => Promise<WorkbenchMaterialCollectionOkResponse>;
+  topMaterialGroup: (
+    groupId: string,
+    bizType: WorkbenchMaterialCollectionGroupCreateRequest["bizType"],
+  ) => Promise<WorkbenchMaterialCollectionOkResponse>;
+  deleteMaterialGroup: (
+    groupId: string,
+    bizType: WorkbenchMaterialCollectionGroupCreateRequest["bizType"],
+  ) => Promise<WorkbenchMaterialCollectionOkResponse>;
 };
 
 export type WorkbenchServiceMode = "mock" | "http";
@@ -231,6 +275,8 @@ type MockState = {
   subUser: WorkbenchSubUserDto;
   events: WorkbenchEvent[];
   groupMembersByConversationId: Record<string, WorkbenchGroupMembersResponse["items"]>;
+  materialGroups: WorkbenchMaterialCollectionGroupDto[];
+  materialItems: WorkbenchMaterialCollectionItemDto[];
   messagesByConversationId: Record<string, WorkbenchMessageDto[]>;
   nextId: number;
   version: number;
@@ -307,6 +353,115 @@ export function createMockWorkbenchService(): WorkbenchService {
     },
     async getCustomerRelationConversations() {
       return { items: [] };
+    },
+    async listMaterialCollections(request) {
+      return {
+        groups:
+          request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION
+            ? []
+            : clone(
+                state.materialGroups.filter(
+                  (group) => group.bizType === request.bizType,
+                ),
+              ),
+        items: clone(
+          state.materialItems
+            .filter(
+              (item) =>
+                item.bizType === request.bizType &&
+                (request.groupId === undefined || item.groupId === request.groupId),
+            )
+            .sort(sortMaterialItems),
+        ),
+      };
+    },
+    async collectMaterial(request) {
+      const existing = state.materialItems.find(
+        (item) =>
+          item.bizType === request.bizType &&
+          item.messageId === request.messageId,
+      );
+
+      if (existing) {
+        return {
+          duplicated: true,
+          item: clone(existing),
+        };
+      }
+
+      const sourceMessage = Object.values(state.messagesByConversationId)
+        .flat()
+        .find((message) => message.messageId === request.messageId);
+
+      const item = sourceMessage
+        ? buildMaterialItemFromMessage(state, sourceMessage, request)
+        : buildFallbackMaterialItem(state, request);
+      state.materialItems = [item, ...state.materialItems];
+
+      return {
+        item: clone(item),
+      };
+    },
+    async deleteMaterialCollection(collectionId) {
+      state.materialItems = state.materialItems.filter((item) => item.id !== collectionId);
+      return { ok: true };
+    },
+    async topMaterialCollection(collectionId) {
+      const sort = Date.now();
+      state.materialItems = state.materialItems.map((item) =>
+        item.id === collectionId ? { ...item, sort } : item,
+      );
+      return { ok: true };
+    },
+    async moveMaterialCollection(collectionId, request) {
+      const sort = Date.now();
+      state.materialItems = state.materialItems.map((item) =>
+        item.id === collectionId
+          ? { ...item, groupId: request.groupId, sort }
+          : item,
+      );
+      return { ok: true };
+    },
+    async createMaterialGroup(request) {
+      state.materialGroups = [
+        {
+          bizType: request.bizType,
+          id: `material-group-${state.nextId++}`,
+          sort: Date.now(),
+          title: request.title,
+        },
+        ...state.materialGroups,
+      ];
+      return { ok: true };
+    },
+    async renameMaterialGroup(groupId, bizType, request) {
+      state.materialGroups = state.materialGroups.map((group) =>
+        group.id === groupId && group.bizType === bizType
+          ? { ...group, title: request.title }
+          : group,
+      );
+      return { ok: true };
+    },
+    async topMaterialGroup(groupId, bizType) {
+      const sort = Date.now();
+      state.materialGroups = state.materialGroups.map((group) =>
+        group.id === groupId && group.bizType === bizType ? { ...group, sort } : group,
+      );
+      return { ok: true };
+    },
+    async deleteMaterialGroup(groupId, bizType) {
+      if (
+        state.materialItems.some(
+          (item) => item.bizType === bizType && item.groupId === groupId,
+        )
+      ) {
+        throw new Error("请先移走或删除分组内素材");
+      }
+
+      state.materialGroups = state.materialGroups.filter(
+        (group) => !(group.id === groupId && group.bizType === bizType),
+      );
+      return { ok: true };
     },
     async getSidebarIframeParams() {
       return null;
@@ -906,6 +1061,76 @@ export function createHttpWorkbenchService(): WorkbenchService {
         },
       );
     },
+    listMaterialCollections(request) {
+      return http.get<WorkbenchMaterialCollectionListResponse>(
+        "/server/material-collections",
+        {
+          params: {
+            biz_type: request.bizType,
+            group_id: request.groupId,
+          },
+        },
+      );
+    },
+    collectMaterial(request) {
+      return http.post<
+        WorkbenchMaterialCollectionCreateResponse,
+        WorkbenchMaterialCollectionCreateRequest
+      >("/server/material-collections", request);
+    },
+    deleteMaterialCollection(collectionId) {
+      return http.delete<WorkbenchMaterialCollectionOkResponse>(
+        `/server/material-collections/${collectionId}`,
+      );
+    },
+    topMaterialCollection(collectionId) {
+      return http.post<WorkbenchMaterialCollectionOkResponse>(
+        `/server/material-collections/${collectionId}/top`,
+      );
+    },
+    moveMaterialCollection(collectionId, request) {
+      return http.post<
+        WorkbenchMaterialCollectionOkResponse,
+        WorkbenchMaterialCollectionMoveRequest
+      >(`/server/material-collections/${collectionId}/move`, request);
+    },
+    createMaterialGroup(request) {
+      return http.post<
+        WorkbenchMaterialCollectionOkResponse,
+        WorkbenchMaterialCollectionGroupCreateRequest
+      >("/server/material-collections/groups", request);
+    },
+    renameMaterialGroup(groupId, bizType, request) {
+      return http.patch<
+        WorkbenchMaterialCollectionOkResponse,
+        WorkbenchMaterialCollectionGroupUpdateRequest
+      >(`/server/material-collections/groups/${groupId}`, request, {
+        params: {
+          biz_type: bizType,
+        },
+      });
+    },
+    topMaterialGroup(groupId, bizType) {
+      return http.post<WorkbenchMaterialCollectionOkResponse>(
+        `/server/material-collections/groups/${groupId}/top`,
+        undefined,
+        {
+          params: {
+            biz_type: bizType,
+          },
+        },
+      );
+    },
+    deleteMaterialGroup(groupId, bizType) {
+      return http.delete<WorkbenchMaterialCollectionOkResponse>(
+        `/server/material-collections/groups/${groupId}`,
+        {
+          params: {
+            biz_type: bizType,
+          },
+        },
+      );
+    },
     getSidebarIframeParams(input) {
       return fetchWorkbenchSidebarIframeParams(input);
     },
@@ -1380,10 +1605,61 @@ function buildInitialState(): MockState {
     },
     events: [],
     groupMembersByConversationId,
+    materialGroups: [
+      {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+        id: "mock-material-group-file",
+        sort: 200,
+        title: "常用文件",
+      },
+      {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM,
+        id: "mock-material-group-mini-program",
+        sort: 200,
+        title: "常用小程序",
+      },
+      {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.H5,
+        id: "mock-material-group-h5",
+        sort: 200,
+        title: "常用链接",
+      },
+    ],
+    materialItems: buildInitialMaterialItems(messagesByConversationId),
     messagesByConversationId,
     nextId: 1,
     version: INITIAL_VERSION,
   };
+}
+
+function buildInitialMaterialItems(
+  messagesByConversationId: Record<string, WorkbenchMessageDto[]>,
+): WorkbenchMaterialCollectionItemDto[] {
+  return Object.values(messagesByConversationId)
+    .flat()
+    .flatMap((message) => {
+      const bizType = getMaterialBizTypeForContentType(message.contentType);
+
+      if (!bizType) {
+        return [];
+      }
+
+      const groupId = getMockMaterialGroupId(bizType);
+
+      return [
+        {
+          bizType,
+          content: getMaterialContentRecord(message),
+          contentType: getMaterialContentType(bizType),
+          groupId,
+          id: `mock-material-${message.messageId}`,
+          messageId: message.messageId,
+          sort: (message.createdAt ?? 0) + bizType,
+          title: getMaterialTitle(message),
+        },
+      ];
+    })
+    .sort(sortMaterialItems);
 }
 
 function buildMessageDto({
@@ -1423,6 +1699,131 @@ function buildMessageDto({
       ? `third-user-${seatId}`
       : undefined,
   };
+}
+
+function buildMaterialItemFromMessage(
+  state: MockState,
+  message: WorkbenchMessageDto,
+  request: WorkbenchMaterialCollectionCreateRequest,
+): WorkbenchMaterialCollectionItemDto {
+  const bizType = request.bizType;
+  const contentType = getMaterialContentType(bizType);
+  const groupId =
+    bizType === MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION
+      ? 0
+      : (request.groupId ?? 0);
+
+  return {
+    bizType,
+    content: getMaterialContentRecord(message),
+    contentType,
+    groupId,
+    id: `mock-material-${state.nextId++}`,
+    messageId: request.messageId,
+    sort: Date.now(),
+    title: getMaterialTitle(message),
+  };
+}
+
+function buildFallbackMaterialItem(
+  state: MockState,
+  request: WorkbenchMaterialCollectionCreateRequest,
+): WorkbenchMaterialCollectionItemDto {
+  const contentType = getMaterialContentType(request.bizType);
+  const groupId =
+    request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION
+      ? 0
+      : (request.groupId ?? 0);
+
+  return {
+    bizType: request.bizType,
+    content: {},
+    contentType,
+    groupId,
+    id: `mock-material-${state.nextId++}`,
+    messageId: request.messageId,
+    sort: Date.now(),
+    title: request.messageId,
+  };
+}
+
+function getMaterialBizTypeForContentType(
+  contentType: WorkbenchMessageDto["contentType"],
+): MaterialCollectionBizType | undefined {
+  switch (contentType) {
+    case "emotion":
+      return MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION;
+    case "file":
+      return MATERIAL_COLLECTION_BIZ_TYPE.FILE;
+    case "mini-program":
+      return MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM;
+    case "h5":
+      return MATERIAL_COLLECTION_BIZ_TYPE.H5;
+    default:
+      return undefined;
+  }
+}
+
+function getMaterialContentType(
+  bizType: MaterialCollectionBizType,
+): WorkbenchMaterialCollectionItemDto["contentType"] {
+  switch (bizType) {
+    case MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION:
+      return "emotion";
+    case MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM:
+      return "mini-program";
+    case MATERIAL_COLLECTION_BIZ_TYPE.H5:
+      return "h5";
+    case MATERIAL_COLLECTION_BIZ_TYPE.FILE:
+      return "file";
+  }
+}
+
+function getMockMaterialGroupId(bizType: MaterialCollectionBizType): string | 0 {
+  switch (bizType) {
+    case MATERIAL_COLLECTION_BIZ_TYPE.FILE:
+      return "mock-material-group-file";
+    case MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM:
+      return "mock-material-group-mini-program";
+    case MATERIAL_COLLECTION_BIZ_TYPE.H5:
+      return "mock-material-group-h5";
+    case MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION:
+      return 0;
+  }
+}
+
+function getMaterialContentRecord(message: WorkbenchMessageDto) {
+  return isRecord(message.content) ? message.content : {};
+}
+
+function getMaterialTitle(message: WorkbenchMessageDto) {
+  const content = getMaterialContentRecord(message);
+
+  if (message.contentType === "emotion") {
+    return "表情";
+  }
+
+  return (
+    readString(content.fileName) ||
+    readString(content.title) ||
+    readString(content.appName) ||
+    message.messageId
+  );
+}
+
+function sortMaterialItems(
+  left: WorkbenchMaterialCollectionItemDto,
+  right: WorkbenchMaterialCollectionItemDto,
+) {
+  return right.sort - left.sort || right.id.localeCompare(left.id, "zh-Hans-CN");
+}
+
+function readString(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function buildContent(message: Message) {

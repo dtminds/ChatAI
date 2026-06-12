@@ -1,5 +1,6 @@
 import MockAdapter from "axios-mock-adapter";
 import { afterEach, describe, expect, it } from "vitest";
+import { MATERIAL_COLLECTION_BIZ_TYPE } from "@chatai/contracts";
 import { requestInstance } from "@/lib/request";
 import { createHttpWorkbenchService, createWorkbenchService } from "@/pages/chat/api/workbench-service";
 
@@ -158,6 +159,55 @@ describe("createWorkbenchService", () => {
       ],
       receivedParams: {
         third_userids: "seat-user-12",
+      },
+    });
+  });
+
+  it("lists material collections with biz type and group params", async () => {
+    const service = createHttpWorkbenchService();
+    mock.onGet("/server/material-collections").reply((config) => [
+      200,
+      {
+        groups: [],
+        items: [],
+        receivedParams: config.params,
+      },
+    ]);
+
+    await expect(
+      service.listMaterialCollections({
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+        groupId: "9",
+      }),
+    ).resolves.toMatchObject({
+      receivedParams: {
+        biz_type: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+        group_id: "9",
+      },
+    });
+  });
+
+  it("collects material messages", async () => {
+    const service = createHttpWorkbenchService();
+    mock.onPost("/server/material-collections").reply((config) => [
+      200,
+      {
+        item: { id: "1" },
+        receivedBody: JSON.parse(String(config.data)),
+      },
+    ]);
+
+    await expect(
+      service.collectMaterial({
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+        groupId: "9",
+        messageId: "msg-file-001",
+      }),
+    ).resolves.toMatchObject({
+      receivedBody: {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+        groupId: "9",
+        messageId: "msg-file-001",
       },
     });
   });

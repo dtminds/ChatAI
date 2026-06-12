@@ -65,7 +65,7 @@ describe("color token policy", () => {
 
   test("keeps the modern minimal baseline for default theme tokens", () => {
     expect(themeCss).toContain("--background: oklch(1 0 0);");
-    expect(themeCss).toContain("--foreground: oklch(0.32 0 0);");
+    expect(themeCss).toContain("--foreground: oklch(0.2 0 0);");
     expect(themeCss).toContain("--neutral-strong: oklch(0.18 0 0);");
     expect(themeCss).toContain("--neutral-strong-foreground: oklch(1 0 0);");
     expect(themeCss).toContain("--card: oklch(1 0 0);");

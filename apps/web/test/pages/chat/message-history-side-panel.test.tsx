@@ -441,21 +441,32 @@ describe("MessageHistorySidePanel", () => {
     );
 
     const historyItems = screen.getAllByTestId("history-message-item");
-    const compactText = screen.getAllByTestId("history-message-text")[0];
+    const authors = screen.getAllByTestId("history-message-author");
+    const times = screen.getAllByTestId("history-message-time");
+    const compactTexts = screen.getAllByTestId("history-message-text");
 
     expect(historyItems).toHaveLength(2);
-    expect(historyItems[0]).toHaveClass("w-full", "max-w-full", "min-w-0", "items-start");
-    expect(historyItems[0]).not.toHaveClass("justify-end", "justify-start");
+    expect(authors).toHaveLength(2);
+    expect(times).toHaveLength(2);
+    expect(compactTexts).toHaveLength(2);
+
+    expect(authors[0]).toHaveTextContent("余圆圆");
+    expect(authors[1]).toHaveTextContent("郁佳杰");
+    expect(times[0]).toHaveTextContent("3/9 10:30");
+    expect(times[1]).toHaveTextContent("2025/12/31 09:08");
+
     expect(screen.queryByRole("button", { name: "消息操作" })).not.toBeInTheDocument();
     expect(screen.queryByTestId("message-row")).not.toBeInTheDocument();
     expect(screen.queryByTestId("text-message-bubble")).not.toBeInTheDocument();
-    expect(screen.getByText("余圆圆")).toHaveClass("text-[13px]", "text-muted-foreground/80");
-    expect(screen.getByText("3/9 10:30")).toHaveClass("text-xs", "text-muted-foreground/70");
-    expect(screen.getByText("2025/12/31 09:08")).toHaveClass("text-xs", "text-muted-foreground/70");
     expect(screen.queryByText("10:30:45")).not.toBeInTheDocument();
-    expect(compactText).toHaveTextContent("老郁，我下午三点去「茶甜甜」这个客户这里拜访");
-    expect(compactText).toHaveClass("w-full", "max-w-full", "min-w-0", "break-words", "text-sm");
-    expect(compactText).not.toHaveClass("w-max", "max-w-none", "whitespace-nowrap");
+
+    expect(compactTexts[0]).toHaveTextContent("老郁，我下午三点去「茶甜甜」这个客户这里拜访");
+    expect(compactTexts[1]).toHaveTextContent("OK");
+
+    for (const item of historyItems) {
+      expect(within(item).getByTestId("history-message-meta-row")).toBeInTheDocument();
+      expect(within(item).getByTestId("history-message-text")).toBeInTheDocument();
+    }
   });
 
   it("keeps long non-breaking history text inside the panel width", () => {

@@ -1,4 +1,7 @@
-import type { QuotedMessagePreviewContent } from "@/pages/chat/chat-types";
+import type {
+  Conversation,
+  QuotedMessagePreviewContent,
+} from "@/pages/chat/chat-types";
 import {
   getComposerSegmentsPreview,
   normalizeComposerSegments,
@@ -21,6 +24,19 @@ export function buildConversationComposerDraft(input: {
     quotedMessage: input.quotedMessage,
     segments: normalizeComposerSegments(input.segments),
   };
+}
+
+export function isConversationListedInWorkbench(
+  conversationListsByScope: Record<string, Conversation[]>,
+  conversationId: string,
+) {
+  if (!conversationId) {
+    return false;
+  }
+
+  return Object.values(conversationListsByScope).some((conversations) =>
+    conversations.some((conversation) => conversation.id === conversationId),
+  );
 }
 
 export function hasConversationComposerDraftContent(

@@ -929,6 +929,24 @@ describe("ChatWorkbenchPage composer flows", () => {
     expect(composer).not.toHaveFocus();
   });
 
+  it("does not persist composer draft for a conversation that was deleted during switch", async () => {
+    const user = userEvent.setup();
+
+    renderChatWorkbenchPage();
+
+    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
+    await pasteIntoComposer(user, composer, "删除后不应保存");
+
+    await useWorkbenchStore.getState().deleteConversation("conv-001");
+
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-002");
+    });
+    expect(
+      useWorkbenchStore.getState().composerDraftsByConversationId["conv-001"],
+    ).toBeUndefined();
+  });
+
   it("saves quoted composer draft when switching conversations", async () => {
     const user = userEvent.setup();
 

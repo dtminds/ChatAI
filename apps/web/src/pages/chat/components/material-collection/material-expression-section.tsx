@@ -14,8 +14,8 @@ export function MaterialExpressionSection({
   }
 
   return (
-    <section className="p-5">
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(4.5rem,1fr))] gap-x-6 gap-y-5">
+    <section className="p-4">
+      <div className="grid grid-cols-[repeat(auto-fill,5rem)] gap-3">
         {items.map((item) => {
           const imageUrl =
             readString(item.content.imageUrl) ||
@@ -28,13 +28,12 @@ export function MaterialExpressionSection({
               className="group flex aspect-square items-center justify-center rounded-[8px] transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
               key={item.id}
               onClick={() => onSelect(item)}
-              title={item.title}
               type="button"
             >
               {imageUrl ? (
                 <img
                   alt={item.title}
-                  className="size-18 object-contain transition-transform group-hover:scale-105"
+                  className="size-18 object-contain"
                   draggable={false}
                   loading="lazy"
                   src={imageUrl}

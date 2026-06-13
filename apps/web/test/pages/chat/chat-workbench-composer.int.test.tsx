@@ -841,14 +841,63 @@ describe("ChatWorkbenchPage composer flows", () => {
     expect(screen.getByText("小程序分组")).toBeInTheDocument();
   });
 
-  it("alerts instead of sending when a collected file material is selected", async () => {
+  it("sends a collected file material as a file segment", async () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();
     const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => undefined);
     const sendMessage = vi.fn(baseService.sendMessage);
+    const listMaterialGroups = vi.fn(async (request) => {
+      if (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.FILE) {
+        return baseService.listMaterialGroups(request);
+      }
+
+      return {
+        groups: [
+          {
+            bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+            id: "group-file",
+            sort: 100,
+            title: "文件分组",
+          },
+        ],
+      };
+    });
+    const listMaterialCollections = vi.fn(async (request) => {
+      if (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.FILE) {
+        return baseService.listMaterialCollections(request);
+      }
+
+      return {
+        items: [
+          {
+            bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+            content: {
+              extension: "pdf",
+              fileName: "报价单.pdf",
+              fileSizeLabel: "128 KB",
+              fileUrl: "https://example.com/files/quote.pdf",
+            },
+            contentType: "file" as const,
+            groupId: "group-file",
+            id: "material-file-001",
+            messageId: "msg-file-001",
+            sort: 1,
+            title: "报价单.pdf",
+          },
+        ],
+        pagination: {
+          hasMore: false,
+          page: request.page ?? 1,
+          pageSize: 100,
+          total: 1,
+        },
+      };
+    });
 
     setWorkbenchService({
       ...baseService,
+      listMaterialCollections,
+      listMaterialGroups,
       sendMessage,
     });
 
@@ -858,13 +907,38 @@ describe("ChatWorkbenchPage composer flows", () => {
     await user.click(screen.getByRole("button", { name: "收藏文件" }));
     await user.click(
       await screen.findByRole("radio", {
-        name: "选择 求未 AI 智能营销系统.pdf",
+        name: "选择 报价单.pdf",
       }),
     );
     await user.click(screen.getByRole("button", { name: "发送" }));
 
-    expect(alertSpy).toHaveBeenCalledWith("后续接入发送接口");
-    expect(sendMessage).not.toHaveBeenCalled();
+    expect(alertSpy).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          conversationId: "conv-001",
+          seatId: "drc",
+          segment: {
+            extension: "pdf",
+            fileName: "报价单.pdf",
+            fileSizeLabel: "128 KB",
+            type: "file",
+            url: "https://example.com/files/quote.pdf",
+          },
+        }),
+      );
+    });
+    await expectLatestConversationMessage("conv-001", {
+      content: {
+        extension: "pdf",
+        fileName: "报价单.pdf",
+        fileSizeLabel: "128 KB",
+        sourceLabel: "文件",
+        type: "file",
+      },
+      role: "agent",
+      status: "accepted",
+    });
   });
 
   it("sends a collected H5 material as an h5 segment", async () => {

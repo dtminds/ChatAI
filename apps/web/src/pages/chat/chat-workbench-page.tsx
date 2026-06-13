@@ -79,6 +79,7 @@ import { getVisibleConversations } from "@/pages/chat/api/workbench-gateway";
 import { downloadMessageFile } from "@/pages/chat/api/workbench-gateway";
 import { getWorkbenchService } from "@/pages/chat/api/workbench-service";
 import {
+  getFileExtension,
   isComposerFileSizeAllowed,
   isSupportedComposerFile,
 } from "@/pages/chat/lib/composer-file-files";
@@ -1624,19 +1625,24 @@ function ChatWorkbenchContent({
 
   const handleSelectMaterial = useCallback(
     async (item: WorkbenchMaterialCollectionItemDto) => {
-      if (item.contentType !== "h5") {
+      const materialSegment = buildComposerSegmentFromMaterial(item);
+
+      if (!materialSegment) {
+        if (item.contentType === "file") {
+          toast.warning("文件素材内容不完整");
+          return;
+        }
+
+        if (item.contentType === "h5") {
+          toast.warning("H5链接素材内容不完整");
+          return;
+        }
+
         window.alert("后续接入发送接口");
         return;
       }
 
-      const h5Segment = buildH5ComposerSegment(item);
-
-      if (!h5Segment) {
-        toast.warning("H5链接素材内容不完整");
-        return;
-      }
-
-      const result = await sendAgentMessageSegments([h5Segment]);
+      const result = await sendAgentMessageSegments([materialSegment]);
 
       if (!isMountedRef.current) {
         return;
@@ -2921,6 +2927,43 @@ function buildH5ComposerSegment(
     title,
     type: "h5",
   };
+}
+
+function buildFileComposerSegment(
+  item: WorkbenchMaterialCollectionItemDto,
+): ComposerSegment | undefined {
+  const fileName = readMaterialContentString(item.content.fileName) || item.title;
+  const fileUrl = readMaterialContentString(item.content.fileUrl);
+
+  if (!fileName || !fileUrl) {
+    return undefined;
+  }
+
+  const extension =
+    readMaterialContentString(item.content.extension) || getFileExtension(fileName);
+  const fileSizeLabel = readMaterialContentString(item.content.fileSizeLabel);
+
+  return {
+    extension,
+    fileName,
+    ...(fileSizeLabel ? { fileSizeLabel } : {}),
+    type: "file",
+    url: fileUrl,
+  };
+}
+
+function buildComposerSegmentFromMaterial(
+  item: WorkbenchMaterialCollectionItemDto,
+): ComposerSegment | undefined {
+  if (item.contentType === "file") {
+    return buildFileComposerSegment(item);
+  }
+
+  if (item.contentType === "h5") {
+    return buildH5ComposerSegment(item);
+  }
+
+  return undefined;
 }
 
 function readMaterialContentString(value: unknown) {

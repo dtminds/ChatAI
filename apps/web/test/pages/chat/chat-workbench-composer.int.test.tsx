@@ -527,7 +527,6 @@ describe("ChatWorkbenchPage composer flows", () => {
         }
 
         return {
-          groups: [],
           items: [
             {
               bizType: 1,
@@ -543,6 +542,12 @@ describe("ChatWorkbenchPage composer flows", () => {
               title: "贴贴表情",
             },
           ],
+          pagination: {
+            hasMore: false,
+            page: 1,
+            pageSize: 100,
+            total: 1,
+          },
         };
       },
       sendMessage,
@@ -580,7 +585,6 @@ describe("ChatWorkbenchPage composer flows", () => {
       }
 
       return {
-        groups: [],
         items: [
           {
             bizType: MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION,
@@ -596,6 +600,12 @@ describe("ChatWorkbenchPage composer flows", () => {
             title: "贴贴表情",
           },
         ],
+        pagination: {
+          hasMore: false,
+          page: 1,
+          pageSize: 100,
+          total: 1,
+        },
       };
     });
 
@@ -631,6 +641,9 @@ describe("ChatWorkbenchPage composer flows", () => {
     });
     expect(listMaterialCollections).toHaveBeenCalledWith({
       bizType: MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION,
+      groupId: 0,
+      page: 1,
+      pageSize: 100,
     });
   });
 
@@ -654,10 +667,10 @@ describe("ChatWorkbenchPage composer flows", () => {
   it("keeps the latest material library request when switching material types quickly", async () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();
-    const fileRequest = createDeferred<Awaited<ReturnType<typeof baseService.listMaterialCollections>>>();
+    const fileRequest = createDeferred<Awaited<ReturnType<typeof baseService.listMaterialGroups>>>();
     const miniProgramRequest =
-      createDeferred<Awaited<ReturnType<typeof baseService.listMaterialCollections>>>();
-    const listMaterialCollections = vi.fn((request) => {
+      createDeferred<Awaited<ReturnType<typeof baseService.listMaterialGroups>>>();
+    const listMaterialGroups = vi.fn((request) => {
       if (request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.FILE) {
         return fileRequest.promise;
       }
@@ -666,12 +679,42 @@ describe("ChatWorkbenchPage composer flows", () => {
         return miniProgramRequest.promise;
       }
 
+      return baseService.listMaterialGroups(request);
+    });
+    const listMaterialCollections = vi.fn((request) => {
+      if (request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM) {
+        return Promise.resolve({
+          items: [
+            {
+              bizType: MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM,
+              content: {
+                appName: "企微助手",
+                title: "小程序",
+              },
+              contentType: "mini-program" as const,
+              groupId: "group-mini",
+              id: "material-mini-001",
+              messageId: "msg-mini-001",
+              sort: 1,
+              title: "企微助手",
+            },
+          ],
+          pagination: {
+            hasMore: false,
+            page: 1,
+            pageSize: 100,
+            total: 1,
+          },
+        });
+      }
+
       return baseService.listMaterialCollections(request);
     });
 
     setWorkbenchService({
       ...baseService,
       listMaterialCollections,
+      listMaterialGroups,
     });
 
     renderChatWorkbenchPage();
@@ -690,21 +733,6 @@ describe("ChatWorkbenchPage composer flows", () => {
           title: "小程序分组",
         },
       ],
-      items: [
-        {
-          bizType: MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM,
-          content: {
-            appName: "企微助手",
-            title: "小程序",
-          },
-          contentType: "mini-program",
-          groupId: "group-mini",
-          id: "material-mini-001",
-          messageId: "msg-mini-001",
-          sort: 1,
-          title: "企微助手",
-        },
-      ],
     });
 
     expect(
@@ -719,20 +747,6 @@ describe("ChatWorkbenchPage composer flows", () => {
           id: "group-file",
           sort: 1,
           title: "文件分组",
-        },
-      ],
-      items: [
-        {
-          bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
-          content: {
-            fileName: "旧文件.pdf",
-          },
-          contentType: "file",
-          groupId: "group-file",
-          id: "material-file-001",
-          messageId: "msg-file-001",
-          sort: 1,
-          title: "旧文件.pdf",
         },
       ],
     });

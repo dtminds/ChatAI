@@ -82,6 +82,8 @@ import {
   type WorkbenchMaterialCollectionCreateResponse,
   type WorkbenchMaterialCollectionGroupCreateRequest,
   type WorkbenchMaterialCollectionGroupCreateResponse,
+  type WorkbenchMaterialCollectionGroupListRequest,
+  type WorkbenchMaterialCollectionGroupListResponse,
   type WorkbenchMaterialCollectionGroupUpdateRequest,
   type WorkbenchMaterialCollectionGroupDto,
   type WorkbenchMaterialCollectionItemDto,
@@ -215,6 +217,9 @@ export type WorkbenchService = {
   listMaterialCollections: (
     request: WorkbenchMaterialCollectionListRequest,
   ) => Promise<WorkbenchMaterialCollectionListResponse>;
+  listMaterialGroups: (
+    request: WorkbenchMaterialCollectionGroupListRequest,
+  ) => Promise<WorkbenchMaterialCollectionGroupListResponse>;
   collectMaterial: (
     request: WorkbenchMaterialCollectionCreateRequest,
   ) => Promise<WorkbenchMaterialCollectionCreateResponse>;
@@ -356,23 +361,32 @@ export function createMockWorkbenchService(): WorkbenchService {
       return { items: [] };
     },
     async listMaterialCollections(request) {
+      const page = request.page ?? 1;
+      const pageSize = request.pageSize ?? 100;
+      const matchingItems = state.materialItems
+        .filter(
+          (item) =>
+            item.bizType === request.bizType &&
+            item.groupId === request.groupId,
+        )
+        .sort(sortMaterialItems);
+
       return {
-        groups:
-          request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION
-            ? []
-            : clone(
-                state.materialGroups.filter(
-                  (group) => group.bizType === request.bizType,
-                ),
-              ),
-        items: clone(
-          state.materialItems
-            .filter(
-              (item) =>
-                item.bizType === request.bizType &&
-                (request.groupId === undefined || item.groupId === request.groupId),
-            )
-            .sort(sortMaterialItems),
+        items: clone(matchingItems.slice((page - 1) * pageSize, page * pageSize)),
+        pagination: {
+          hasMore: page * pageSize < matchingItems.length,
+          page,
+          pageSize,
+          total: matchingItems.length,
+        },
+      };
+    },
+    async listMaterialGroups(request) {
+      return {
+        groups: clone(
+          state.materialGroups.filter(
+            (group) => group.bizType === request.bizType,
+          ),
         ),
       };
     },
@@ -1084,11 +1098,23 @@ export function createHttpWorkbenchService(): WorkbenchService {
     },
     listMaterialCollections(request) {
       return http.get<WorkbenchMaterialCollectionListResponse>(
-        "/server/material-collections",
+        "/server/material/collections",
         {
           params: {
             biz_type: request.bizType,
             group_id: request.groupId,
+            page: request.page,
+            page_size: request.pageSize,
+          },
+        },
+      );
+    },
+    listMaterialGroups(request) {
+      return http.get<WorkbenchMaterialCollectionGroupListResponse>(
+        "/server/material/group",
+        {
+          params: {
+            biz_type: request.bizType,
           },
         },
       );

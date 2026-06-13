@@ -19,6 +19,7 @@ import type {
   WorkbenchVoiceTranscriptionRequest,
   WorkbenchMaterialCollectionCreateRequest,
   WorkbenchMaterialCollectionGroupCreateRequest,
+  WorkbenchMaterialCollectionGroupListRequest,
   WorkbenchMaterialCollectionGroupUpdateRequest,
   WorkbenchMaterialCollectionListRequest,
   WorkbenchMaterialCollectionMoveRequest,
@@ -341,7 +342,13 @@ const MaterialGroupBizTypeSchema = Type.Union([
 
 const MaterialCollectionsQuerySchema = Type.Object({
   biz_type: NumericStringSchema,
-  group_id: Type.Optional(NumericStringSchema),
+  group_id: Type.Optional(Type.String({ maxLength: 64, minLength: 1 })),
+  page: Type.Optional(NumericStringSchema),
+  page_size: Type.Optional(NumericStringSchema),
+});
+
+const MaterialGroupsQuerySchema = Type.Object({
+  biz_type: NumericStringSchema,
 });
 
 const MaterialCollectionCreateBodySchema = Type.Object({
@@ -400,6 +407,7 @@ type SidebarIframeParamsBody = Static<typeof SidebarIframeParamsBodySchema>;
 type SearchQuery = Static<typeof SearchQuerySchema>;
 type GetOrCreateConversationBody = Static<typeof GetOrCreateConversationBodySchema>;
 type MaterialCollectionsQuery = Static<typeof MaterialCollectionsQuerySchema>;
+type MaterialGroupsQuery = Static<typeof MaterialGroupsQuerySchema>;
 type MaterialCollectionCreateBody = Static<typeof MaterialCollectionCreateBodySchema>;
 type MaterialCollectionParams = Static<typeof MaterialCollectionParamsSchema>;
 type MaterialCollectionMoveBody = Static<typeof MaterialCollectionMoveBodySchema>;
@@ -763,8 +771,25 @@ export async function registerChatRoutes(app: FastifyInstance) {
       ),
   );
 
+  app.get<{ Querystring: MaterialGroupsQuery }>(
+    "/api/server/material/group",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        querystring: MaterialGroupsQuerySchema,
+      },
+    },
+    async (request) =>
+      getWorkbenchService(app, request).listMaterialGroups(
+        getSubUserId(request),
+        {
+          bizType: parseMaterialGroupBizTypeQuery(request.query.biz_type),
+        } satisfies WorkbenchMaterialCollectionGroupListRequest,
+      ),
+  );
+
   app.get<{ Querystring: MaterialCollectionsQuery }>(
-    "/api/server/material-collections",
+    "/api/server/material/collections",
     {
       preHandler: app.authenticate,
       schema: {
@@ -777,6 +802,11 @@ export async function registerChatRoutes(app: FastifyInstance) {
         {
           bizType: parseMaterialBizTypeQuery(request.query.biz_type),
           groupId: parseMaterialGroupIdQuery(request.query.group_id),
+          page: parsePositiveIntegerQuery(request.query.page) ?? 1,
+          pageSize: Math.min(
+            parsePositiveIntegerQuery(request.query.page_size) ?? 100,
+            100,
+          ),
         } satisfies WorkbenchMaterialCollectionListRequest,
       ),
   );
@@ -1309,12 +1339,32 @@ function parseMaterialBizTypeQuery(value: string): 1 | 2 | 3 | 4 {
   throw new BadRequestError("INVALID_MATERIAL_BIZ_TYPE", "素材类型无效");
 }
 
+function parseMaterialGroupBizTypeQuery(value: string): 2 | 3 | 4 {
+  const parsed = parseRequiredInteger(value);
+
+  if (parsed === 2 || parsed === 3 || parsed === 4) {
+    return parsed;
+  }
+
+  throw new BadRequestError("INVALID_MATERIAL_BIZ_TYPE", "素材类型无效");
+}
+
 function parseMaterialGroupIdQuery(value: string | undefined) {
   if (value == null) {
     return undefined;
   }
 
   return value === "0" ? 0 : value;
+}
+
+function parsePositiveIntegerQuery(value: string | undefined) {
+  if (value == null) {
+    return undefined;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
 function parseSeatIdsQuery(value: string | undefined) {

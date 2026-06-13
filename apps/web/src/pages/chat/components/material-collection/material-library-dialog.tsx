@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import {
   Add01Icon,
   Delete02Icon,
@@ -26,6 +26,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { MaterialCard } from "@/pages/chat/components/material-collection/material-card";
 import { MaterialGroupFormDialog } from "@/pages/chat/components/material-collection/material-group-form-dialog";
@@ -35,16 +36,23 @@ import type {
 } from "@/pages/chat/components/material-collection/material-types";
 
 type MaterialLibraryDialogProps = {
+  activeGroupId: string | null;
   bizType: WorkbenchMaterialCollectionGroupCreateRequest["bizType"];
   groups: MaterialCollectionGroup[];
+  hasMoreItems?: boolean;
   isBusy?: boolean;
+  isGroupsLoading?: boolean;
+  isItemsLoading?: boolean;
+  isLoadingMoreItems?: boolean;
   items: MaterialCollectionItem[];
   onCreateGroup: (title: string) => void;
   onDeleteGroup: (group: MaterialCollectionGroup) => void;
   onDeleteMaterial: (item: MaterialCollectionItem) => void;
+  onLoadMoreItems?: () => void;
   onMoveMaterial: (item: MaterialCollectionItem, groupId: string) => void;
   onOpenChange: (open: boolean) => void;
   onRenameGroup: (group: MaterialCollectionGroup, title: string) => void;
+  onSelectGroup: (groupId: string) => void;
   onSelectMaterial: (item: MaterialCollectionItem) => void;
   onTopGroup: (group: MaterialCollectionGroup) => void;
   onTopMaterial: (item: MaterialCollectionItem) => void;
@@ -52,51 +60,34 @@ type MaterialLibraryDialogProps = {
 };
 
 export function MaterialLibraryDialog({
+  activeGroupId,
   bizType,
   groups,
+  hasMoreItems = false,
   isBusy = false,
+  isGroupsLoading = false,
+  isItemsLoading = false,
+  isLoadingMoreItems = false,
   items,
   onCreateGroup,
   onDeleteGroup,
   onDeleteMaterial,
+  onLoadMoreItems,
   onMoveMaterial,
   onOpenChange,
   onRenameGroup,
+  onSelectGroup,
   onSelectMaterial,
   onTopGroup,
   onTopMaterial,
   open,
 }: MaterialLibraryDialogProps) {
-  const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
   const [groupDialogState, setGroupDialogState] = useState<
     | { mode: "create" }
     | { group: MaterialCollectionGroup; mode: "edit" }
     | null
   >(null);
   const libraryTitle = getBizTypeLabel(bizType);
-
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-
-    if (groups.length === 0) {
-      setActiveGroupId(null);
-      return;
-    }
-
-    if (!activeGroupId || !groups.some((group) => group.id === activeGroupId)) {
-      setActiveGroupId(groups[0]?.id ?? null);
-    }
-  }, [activeGroupId, groups, open]);
-
-  const visibleItems = useMemo(
-    () =>
-      items.filter(
-        (item) => activeGroupId !== null && item.groupId === activeGroupId,
-      ),
-    [activeGroupId, items],
-  );
 
   function handleSubmitGroupTitle(title: string) {
     if (groupDialogState?.mode === "edit") {
@@ -119,7 +110,7 @@ export function MaterialLibraryDialog({
         <DialogDescription className="sr-only">
           从分组中选择已收录内容
         </DialogDescription>
-        {visibleItems.length > 0 ? (
+        {items.length > 0 ? (
           <p className="pointer-events-none absolute -top-9 left-1/2 -translate-x-1/2 whitespace-nowrap text-[13px] leading-5 text-white/90">
             点击素材发送，右键菜单可调整排序或删除素材
           </p>
@@ -134,7 +125,9 @@ export function MaterialLibraryDialog({
             </div>
 
             <ScrollArea className="min-h-0 flex-1">
-              {groups.length > 0 ? (
+              {isGroupsLoading ? (
+                <LoadingState label="正在加载分组" />
+              ) : groups.length > 0 ? (
                 <div className="space-y-1 pb-3">
                   {groups.map((group) => (
                     <GroupButton
@@ -143,7 +136,7 @@ export function MaterialLibraryDialog({
                       group={group}
                       key={group.id}
                       onDelete={onDeleteGroup}
-                      onClick={() => setActiveGroupId(group.id)}
+                      onClick={() => onSelectGroup(group.id)}
                       onEdit={(groupToEdit) =>
                         setGroupDialogState({ group: groupToEdit, mode: "edit" })}
                       onTop={onTopGroup}
@@ -174,14 +167,16 @@ export function MaterialLibraryDialog({
 
           <section className="flex min-h-0 min-w-0 flex-col rounded-[14px_0_0_14px] bg-background shadow">
             <ScrollArea className="min-h-0 flex-1">
-              {visibleItems.length > 0 ? (
+              {isItemsLoading ? (
+                <LoadingState label="正在加载素材" />
+              ) : items.length > 0 ? (
                 <div className="mx-auto p-8" style={getLibraryBodyStyle(bizType)}>
                   <div
                     aria-label="收录内容列表"
                     className="grid items-start gap-4"
                     style={getLibraryGridStyle(bizType)}
                   >
-                    {visibleItems.map((item) => (
+                    {items.map((item) => (
                       <div className="max-w-full" key={item.id}>
                         <MaterialCard
                           className={
@@ -199,6 +194,22 @@ export function MaterialLibraryDialog({
                       </div>
                     ))}
                   </div>
+                  {hasMoreItems ? (
+                    <div className="mt-5 flex justify-center">
+                      <Button
+                        className="h-8 gap-2 px-3 text-[13px]"
+                        disabled={isBusy || isLoadingMoreItems}
+                        onClick={onLoadMoreItems}
+                        type="button"
+                        variant="ghost"
+                      >
+                        {isLoadingMoreItems ? (
+                          <Spinner className="text-current" size={14} />
+                        ) : null}
+                        加载更多
+                      </Button>
+                    </div>
+                  ) : null}
                 </div>
               ) : (
                 <div className="flex min-h-[28rem] items-center justify-center text-sm text-muted-foreground">
@@ -301,6 +312,18 @@ function GroupButton({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+    </div>
+  );
+}
+
+function LoadingState({ label }: { label: string }) {
+  return (
+    <div
+      className="flex min-h-[12rem] items-center justify-center gap-2 text-[13px] text-muted-foreground"
+      role="status"
+    >
+      <Spinner size={16} />
+      {label}
     </div>
   );
 }

@@ -58,6 +58,8 @@ import type {
   type WorkbenchMaterialCollectionGroupCreateRequest,
   type WorkbenchMaterialCollectionGroupCreateResponse,
   type WorkbenchMaterialCollectionGroupDto,
+  type WorkbenchMaterialCollectionGroupListRequest,
+  type WorkbenchMaterialCollectionGroupListResponse,
   type WorkbenchMaterialCollectionGroupUpdateRequest,
   type WorkbenchMaterialCollectionItemDto,
   type WorkbenchMaterialCollectionListRequest,
@@ -157,16 +159,40 @@ export function createMemoryWorkbenchService() {
       _subUserId: string,
       request: WorkbenchMaterialCollectionListRequest,
     ): WorkbenchMaterialCollectionListResponse {
+      if (
+        request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION &&
+        request.groupId == null
+      ) {
+        throw new BadRequestError("MATERIAL_GROUP_REQUIRED", "请选择分组");
+      }
+
+      const page = request.page ?? 1;
+      const pageSize = request.pageSize ?? 100;
+      const matchingItems = state.materialItems.filter(
+        (item) =>
+          item.bizType === request.bizType &&
+          item.groupId === request.groupId,
+      );
+
+      return {
+        items: clone(
+          matchingItems.slice((page - 1) * pageSize, page * pageSize),
+        ),
+        pagination: {
+          hasMore: page * pageSize < matchingItems.length,
+          page,
+          pageSize,
+          total: matchingItems.length,
+        },
+      };
+    },
+    listMaterialGroups(
+      _subUserId: string,
+      request: WorkbenchMaterialCollectionGroupListRequest,
+    ): WorkbenchMaterialCollectionGroupListResponse {
       return {
         groups: clone(
           state.materialGroups.filter((group) => group.bizType === request.bizType),
-        ),
-        items: clone(
-          state.materialItems.filter(
-            (item) =>
-              item.bizType === request.bizType &&
-              (request.groupId === undefined || item.groupId === request.groupId),
-          ),
         ),
       };
     },

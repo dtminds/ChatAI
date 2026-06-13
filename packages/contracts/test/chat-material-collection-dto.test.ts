@@ -8,6 +8,8 @@ import {
   type WorkbenchMaterialCollectionGroupCreateRequest,
   type WorkbenchMaterialCollectionGroupCreateResponse,
   type WorkbenchMaterialCollectionGroupDto,
+  type WorkbenchMaterialCollectionGroupListRequest,
+  type WorkbenchMaterialCollectionGroupListResponse,
   type WorkbenchMaterialCollectionGroupUpdateRequest,
   type WorkbenchMaterialCollectionItemDto,
   type WorkbenchMaterialCollectionListRequest,
@@ -113,6 +115,8 @@ describe("chat material collection DTOs", () => {
     const listRequest: WorkbenchMaterialCollectionListRequest = {
       bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
       groupId: "group-1",
+      page: 1,
+      pageSize: 100,
     };
 
     const fileGroup: WorkbenchMaterialCollectionGroupDto = {
@@ -123,7 +127,6 @@ describe("chat material collection DTOs", () => {
     };
 
     const listResponse: WorkbenchMaterialCollectionListResponse = {
-      groups: [fileGroup],
       items: [
         {
           id: "collection-1",
@@ -138,6 +141,20 @@ describe("chat material collection DTOs", () => {
           },
         },
       ],
+      pagination: {
+        hasMore: false,
+        page: 1,
+        pageSize: 100,
+        total: 1,
+      },
+    };
+
+    const groupListRequest: WorkbenchMaterialCollectionGroupListRequest = {
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+    };
+
+    const groupListResponse: WorkbenchMaterialCollectionGroupListResponse = {
+      groups: [fileGroup],
     };
 
     const createRequest: WorkbenchMaterialCollectionCreateRequest = {
@@ -175,7 +192,9 @@ describe("chat material collection DTOs", () => {
     };
 
     expect(listRequest.bizType).toBe(2);
-    expect(listResponse.groups).toHaveLength(1);
+    expect(listResponse.pagination.pageSize).toBe(100);
+    expect(groupListRequest.bizType).toBe(2);
+    expect(groupListResponse.groups).toHaveLength(1);
     expect(createRequest.messageId).toBe("msgid-1002");
     expect(createResponse.duplicated).toBe(true);
     expect(groupCreateRequest.bizType).toBe(4);

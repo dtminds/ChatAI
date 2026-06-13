@@ -1588,12 +1588,12 @@ describe("ChatWorkbenchPage", () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();
     const collectMaterial = vi.fn(baseService.collectMaterial);
-    const listMaterialCollections = vi.fn(baseService.listMaterialCollections);
+    const listMaterialGroups = vi.fn(baseService.listMaterialGroups);
 
     setWorkbenchService({
       ...baseService,
       collectMaterial,
-      listMaterialCollections,
+      listMaterialGroups,
     });
 
     renderChatWorkbenchPage();
@@ -1608,7 +1608,7 @@ describe("ChatWorkbenchPage", () => {
     await user.click(screen.getByRole("menuitem", { name: "收录内容" }));
 
     expect(await screen.findByRole("dialog", { name: "收录文件" })).toBeInTheDocument();
-    expect(listMaterialCollections).toHaveBeenCalledWith({ bizType: 2 });
+    expect(listMaterialGroups).toHaveBeenCalledWith({ bizType: 2 });
     await user.click(screen.getByRole("combobox", { name: "选择分组" }));
     await user.click(await screen.findByRole("option", { name: "常用文件" }));
     await user.click(screen.getByRole("button", { name: "收录" }));
@@ -1636,8 +1636,8 @@ describe("ChatWorkbenchPage", () => {
       sort: 1_781_244_000_000,
       title: "售后文件",
     }));
-    const listMaterialCollections = vi.fn(async (request) => {
-      const response = await baseService.listMaterialCollections(request);
+    const listMaterialGroups = vi.fn(async (request) => {
+      const response = await baseService.listMaterialGroups(request);
       return {
         ...response,
         groups: [],
@@ -1648,7 +1648,7 @@ describe("ChatWorkbenchPage", () => {
       ...baseService,
       collectMaterial,
       createMaterialGroup,
-      listMaterialCollections,
+      listMaterialGroups,
     });
 
     renderChatWorkbenchPage();

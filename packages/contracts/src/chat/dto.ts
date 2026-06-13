@@ -90,11 +90,26 @@ export type WorkbenchMaterialCollectionItemDto = {
 export type WorkbenchMaterialCollectionListRequest = {
   bizType: MaterialCollectionBizType;
   groupId?: string | 0;
+  page?: number;
+  pageSize?: number;
 };
 
 export type WorkbenchMaterialCollectionListResponse = {
-  groups: WorkbenchMaterialCollectionGroupDto[];
   items: WorkbenchMaterialCollectionItemDto[];
+  pagination: {
+    hasMore: boolean;
+    page: number;
+    pageSize: number;
+    total: number;
+  };
+};
+
+export type WorkbenchMaterialCollectionGroupListRequest = {
+  bizType: WorkbenchMaterialCollectionGroupBizType;
+};
+
+export type WorkbenchMaterialCollectionGroupListResponse = {
+  groups: WorkbenchMaterialCollectionGroupDto[];
 };
 
 export type WorkbenchMaterialCollectionCreateRequest = {

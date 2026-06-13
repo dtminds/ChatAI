@@ -181,6 +181,7 @@ describe("material collection components", () => {
 
     render(
       <MaterialLibraryDialog
+        activeGroupId="group-file"
         bizType={MATERIAL_COLLECTION_BIZ_TYPE.FILE}
         groups={[
           createGroup({ id: "group-file", title: "常用文件" }),
@@ -193,6 +194,7 @@ describe("material collection components", () => {
         onMoveMaterial={handleMove}
         onOpenChange={() => undefined}
         onRenameGroup={handleRenameGroup}
+        onSelectGroup={() => undefined}
         onSelectMaterial={handleSelect}
         onTopGroup={handleTopGroup}
         onTopMaterial={handleTop}
@@ -304,6 +306,7 @@ describe("material collection components", () => {
   it("renders empty group state in material library dialog", () => {
     render(
       <MaterialLibraryDialog
+        activeGroupId={null}
         bizType={MATERIAL_COLLECTION_BIZ_TYPE.FILE}
         groups={[]}
         items={[]}
@@ -313,6 +316,7 @@ describe("material collection components", () => {
         onMoveMaterial={() => undefined}
         onOpenChange={() => undefined}
         onRenameGroup={() => undefined}
+        onSelectGroup={() => undefined}
         onSelectMaterial={() => undefined}
         onTopGroup={() => undefined}
         onTopMaterial={() => undefined}
@@ -326,6 +330,7 @@ describe("material collection components", () => {
   it("uses mini-program library width for four collected mini-program cards", () => {
     render(
       <MaterialLibraryDialog
+        activeGroupId="group-mini"
         bizType={MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM}
         groups={[createGroup({ id: "group-mini", title: "常用小程序" })]}
         items={[
@@ -348,6 +353,7 @@ describe("material collection components", () => {
         onMoveMaterial={() => undefined}
         onOpenChange={() => undefined}
         onRenameGroup={() => undefined}
+        onSelectGroup={() => undefined}
         onSelectMaterial={() => undefined}
         onTopGroup={() => undefined}
         onTopMaterial={() => undefined}

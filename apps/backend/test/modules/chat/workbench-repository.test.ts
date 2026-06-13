@@ -281,6 +281,7 @@ function createQueryBuilder(result: unknown) {
   const groupBys: string[] = [];
   const wheres: Array<[string, string, unknown]> = [];
   const limits: number[] = [];
+  const offsets: number[] = [];
   const orderBys: Array<[string, string | undefined]> = [];
   const whereExpressions: unknown[] = [];
   const joins: string[] = [];
@@ -314,6 +315,18 @@ function createQueryBuilder(result: unknown) {
       };
     },
     fn: {
+      countAll() {
+        aggregateFns.push("countAll");
+
+        return {
+          as(alias: string) {
+            const count = Array.isArray(currentResult) ? currentResult.length : 0;
+
+            currentResult = [{ [alias]: count }];
+            return undefined;
+          },
+        };
+      },
       coalesce() {
         return {
           as() {
@@ -384,6 +397,7 @@ function createQueryBuilder(result: unknown) {
     joins,
     joinConditions,
     limits,
+    offsets,
     orderBys,
     whereExpressions,
     wheres,
@@ -435,6 +449,10 @@ function createQueryBuilder(result: unknown) {
     },
     limit(limit: number) {
       limits.push(limit);
+      return this;
+    },
+    offset(offset: number) {
+      offsets.push(offset);
       return this;
     },
     orderBy(column: string, direction?: string) {
@@ -675,14 +693,16 @@ describe("WorkbenchRepository", () => {
     });
     const repository = new WorkbenchRepository(db as never);
 
-    const items = await repository.listMaterialCollections({
+    const result = await repository.listMaterialCollections({
       bizType: 2,
       groupId: "9",
+      limit: 100,
+      offset: 0,
       subUserId: "88",
       uid: 9001,
     });
 
-    expect(items).toMatchObject([
+    expect(result.items).toMatchObject([
       {
         bizType: 2,
         content: { fileName: "报价.pdf" },
@@ -694,6 +714,7 @@ describe("WorkbenchRepository", () => {
         title: "报价文件",
       },
     ]);
+    expect(result.total).toBe(1);
     expect(db.selects[0]).toMatchObject({
       orderBys: [
         ["sort", "desc"],
@@ -732,14 +753,16 @@ describe("WorkbenchRepository", () => {
     });
     const repository = new WorkbenchRepository(db as never);
 
-    const items = await repository.listMaterialCollections({
+    const result = await repository.listMaterialCollections({
       bizType: 1,
       groupId: "0",
+      limit: 100,
+      offset: 0,
       subUserId: "88",
       uid: 9001,
     });
 
-    expect(items).toMatchObject([
+    expect(result.items).toMatchObject([
       {
         bizType: 1,
         groupId: 0,
@@ -779,13 +802,16 @@ describe("WorkbenchRepository", () => {
     });
     const repository = new WorkbenchRepository(db as never);
 
-    const items = await repository.listMaterialCollections({
+    const result = await repository.listMaterialCollections({
       bizType: 1,
+      groupId: 0,
+      limit: 100,
+      offset: 0,
       subUserId: "88",
       uid: 9001,
     });
 
-    expect(items).toMatchObject([
+    expect(result.items).toMatchObject([
       {
         bizType: 1,
         id: "68",
@@ -798,6 +824,7 @@ describe("WorkbenchRepository", () => {
       ["biz_type", "=", 1],
       ["biz_status", "=", 1],
       ["sub_uid", "in", [88]],
+      ["group_id", "=", 0],
     ]);
   });
 

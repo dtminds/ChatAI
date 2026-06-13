@@ -163,26 +163,51 @@ describe("createWorkbenchService", () => {
     });
   });
 
-  it("lists material collections with biz type and group params", async () => {
+  it("lists material groups and paginated collections with explicit params", async () => {
     const service = createHttpWorkbenchService();
-    mock.onGet("/server/material-collections").reply((config) => [
+    mock.onGet("/server/material/group").reply((config) => [
       200,
       {
         groups: [],
+        receivedParams: config.params,
+      },
+    ]);
+    mock.onGet("/server/material/collections").reply((config) => [
+      200,
+      {
         items: [],
+        pagination: {
+          hasMore: false,
+          page: 1,
+          pageSize: 100,
+          total: 0,
+        },
         receivedParams: config.params,
       },
     ]);
 
     await expect(
+      service.listMaterialGroups({
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+      }),
+    ).resolves.toMatchObject({
+      receivedParams: {
+        biz_type: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+      },
+    });
+    await expect(
       service.listMaterialCollections({
         bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
         groupId: "9",
+        page: 1,
+        pageSize: 100,
       }),
     ).resolves.toMatchObject({
       receivedParams: {
         biz_type: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
         group_id: "9",
+        page: 1,
+        page_size: 100,
       },
     });
   });

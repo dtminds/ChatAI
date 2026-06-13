@@ -66,6 +66,8 @@ import type {
   WorkbenchMaterialCollectionCreateResponse,
   WorkbenchMaterialCollectionGroupCreateRequest,
   WorkbenchMaterialCollectionGroupCreateResponse,
+  WorkbenchMaterialCollectionGroupListRequest,
+  WorkbenchMaterialCollectionGroupListResponse,
   WorkbenchMaterialCollectionGroupUpdateRequest,
   WorkbenchMaterialCollectionListRequest,
   WorkbenchMaterialCollectionListResponse,
@@ -374,6 +376,12 @@ export type WorkbenchService = {
   ):
     | Promise<WorkbenchMaterialCollectionListResponse>
     | WorkbenchMaterialCollectionListResponse;
+  listMaterialGroups(
+    subUserId: string,
+    request: WorkbenchMaterialCollectionGroupListRequest,
+  ):
+    | Promise<WorkbenchMaterialCollectionGroupListResponse>
+    | WorkbenchMaterialCollectionGroupListResponse;
   collectMaterial(
     subUserId: string,
     request: WorkbenchMaterialCollectionCreateRequest,
@@ -1802,19 +1810,48 @@ export class MysqlWorkbenchService implements WorkbenchService {
   ): Promise<WorkbenchMaterialCollectionListResponse> {
     const me = await this.getMaterialActor(subUserId);
     const bizType = parseMaterialBizType(request.bizType);
+    const groupId =
+      bizType === MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION
+        ? 0
+        : request.groupId;
+
+    if (bizType !== MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION && groupId == null) {
+      throw new BadRequestError("MATERIAL_GROUP_REQUIRED", "请选择分组");
+    }
+
+    const requiredGroupId = groupId ?? 0;
+    const page = normalizeMaterialPage(request.page);
+    const pageSize = normalizeMaterialPageSize(request.pageSize);
+    const result = await this.repository.listMaterialCollections({
+      bizType,
+      groupId: requiredGroupId,
+      limit: pageSize,
+      offset: (page - 1) * pageSize,
+      subUserId,
+      uid: me.uid,
+    });
 
     return {
-      groups:
-        bizType === MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION
-          ? []
-          : await this.repository.listMaterialGroups({
-              bizType,
-              subUserId,
-              uid: me.uid,
-            }),
-      items: await this.repository.listMaterialCollections({
+      items: result.items,
+      pagination: {
+        hasMore: page * pageSize < result.total,
+        page,
+        pageSize,
+        total: result.total,
+      },
+    };
+  }
+
+  async listMaterialGroups(
+    subUserId: string,
+    request: WorkbenchMaterialCollectionGroupListRequest,
+  ): Promise<WorkbenchMaterialCollectionGroupListResponse> {
+    const me = await this.getMaterialActor(subUserId);
+    const bizType = parseMaterialGroupBizType(request.bizType);
+
+    return {
+      groups: await this.repository.listMaterialGroups({
         bizType,
-        groupId: request.groupId,
         subUserId,
         uid: me.uid,
       }),
@@ -2353,6 +2390,18 @@ function parseMaterialGroupBizType(value: number): Exclude<MaterialCollectionBiz
   }
 
   return bizType;
+}
+
+function normalizeMaterialPage(value: number | undefined) {
+  return Number.isSafeInteger(value) && value != null && value > 0 ? value : 1;
+}
+
+function normalizeMaterialPageSize(value: number | undefined) {
+  if (!Number.isSafeInteger(value) || value == null || value <= 0) {
+    return 100;
+  }
+
+  return Math.min(value, 100);
 }
 
 function readEnterpriseMaterialGroupId(groupId: string | 0 | undefined) {

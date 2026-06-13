@@ -295,7 +295,18 @@ function ChatWorkbenchContent({
   const [materialLibraryItems, setMaterialLibraryItems] = useState<
     WorkbenchMaterialCollectionItemDto[]
   >([]);
+  const [activeMaterialLibraryGroupId, setActiveMaterialLibraryGroupId] =
+    useState<string | null>(null);
+  const [materialLibraryPage, setMaterialLibraryPage] = useState(1);
+  const [hasMoreMaterialLibraryItems, setHasMoreMaterialLibraryItems] =
+    useState(false);
   const [isMaterialLibraryBusy, setIsMaterialLibraryBusy] = useState(false);
+  const [isMaterialLibraryGroupsLoading, setIsMaterialLibraryGroupsLoading] =
+    useState(false);
+  const [isMaterialLibraryItemsLoading, setIsMaterialLibraryItemsLoading] =
+    useState(false);
+  const [isMaterialLibraryLoadingMore, setIsMaterialLibraryLoadingMore] =
+    useState(false);
   const [isRefreshingMentionTarget, setIsRefreshingMentionTarget] =
     useState(false);
   const [isAccountRailCollapsed, setIsAccountRailCollapsed] = useState(
@@ -631,6 +642,9 @@ function ChatWorkbenchContent({
     try {
       const response = await getWorkbenchService().listMaterialCollections({
         bizType: MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION,
+        groupId: 0,
+        page: 1,
+        pageSize: 100,
       });
 
       if (isMountedRef.current) {
@@ -649,9 +663,17 @@ function ChatWorkbenchContent({
 
       materialLibraryRequestSeqRef.current = requestSeq;
       setIsMaterialLibraryBusy(true);
+      setIsMaterialLibraryGroupsLoading(true);
+      setIsMaterialLibraryItemsLoading(false);
+      setIsMaterialLibraryLoadingMore(false);
+      setActiveMaterialLibraryGroupId(null);
+      setMaterialLibraryGroups([]);
+      setMaterialLibraryItems([]);
+      setMaterialLibraryPage(1);
+      setHasMoreMaterialLibraryItems(false);
 
       try {
-        const response = await getWorkbenchService().listMaterialCollections({
+        const groupsResponse = await getWorkbenchService().listMaterialGroups({
           bizType,
         });
 
@@ -662,8 +684,35 @@ function ChatWorkbenchContent({
           return;
         }
 
-        setMaterialLibraryGroups(response.groups);
-        setMaterialLibraryItems(response.items);
+        setMaterialLibraryGroups(groupsResponse.groups);
+        const firstGroupId = groupsResponse.groups[0]?.id ?? null;
+
+        setActiveMaterialLibraryGroupId(firstGroupId);
+        setIsMaterialLibraryGroupsLoading(false);
+
+        if (!firstGroupId) {
+          setMaterialLibraryItems([]);
+          return;
+        }
+
+        setIsMaterialLibraryItemsLoading(true);
+        const collectionsResponse = await getWorkbenchService().listMaterialCollections({
+          bizType,
+          groupId: firstGroupId,
+          page: 1,
+          pageSize: 100,
+        });
+
+        if (
+          !isMountedRef.current ||
+          materialLibraryRequestSeqRef.current !== requestSeq
+        ) {
+          return;
+        }
+
+        setMaterialLibraryItems(collectionsResponse.items);
+        setMaterialLibraryPage(collectionsResponse.pagination.page);
+        setHasMoreMaterialLibraryItems(collectionsResponse.pagination.hasMore);
       } catch (error) {
         if (
           isMountedRef.current &&
@@ -677,6 +726,9 @@ function ChatWorkbenchContent({
           materialLibraryRequestSeqRef.current === requestSeq
         ) {
           setIsMaterialLibraryBusy(false);
+          setIsMaterialLibraryGroupsLoading(false);
+          setIsMaterialLibraryItemsLoading(false);
+          setIsMaterialLibraryLoadingMore(false);
         }
       }
     },
@@ -755,7 +807,7 @@ function ChatWorkbenchContent({
       setIsCollectingMaterial(true);
 
       try {
-        const response = await getWorkbenchService().listMaterialCollections({
+        const response = await getWorkbenchService().listMaterialGroups({
           bizType,
         });
 
@@ -880,6 +932,122 @@ function ChatWorkbenchContent({
     },
     [loadMaterialLibrary],
   );
+
+  const handleSelectMaterialLibraryGroup = useCallback(
+    async (groupId: string) => {
+      if (!activeMaterialLibraryBizType) {
+        return;
+      }
+
+      const requestSeq = materialLibraryRequestSeqRef.current + 1;
+
+      materialLibraryRequestSeqRef.current = requestSeq;
+      setActiveMaterialLibraryGroupId(groupId);
+      setMaterialLibraryItems([]);
+      setMaterialLibraryPage(1);
+      setHasMoreMaterialLibraryItems(false);
+      setIsMaterialLibraryBusy(true);
+      setIsMaterialLibraryItemsLoading(true);
+      setIsMaterialLibraryLoadingMore(false);
+
+      try {
+        const response = await getWorkbenchService().listMaterialCollections({
+          bizType: activeMaterialLibraryBizType,
+          groupId,
+          page: 1,
+          pageSize: 100,
+        });
+
+        if (
+          !isMountedRef.current ||
+          materialLibraryRequestSeqRef.current !== requestSeq
+        ) {
+          return;
+        }
+
+        setMaterialLibraryItems(response.items);
+        setMaterialLibraryPage(response.pagination.page);
+        setHasMoreMaterialLibraryItems(response.pagination.hasMore);
+      } catch (error) {
+        if (
+          isMountedRef.current &&
+          materialLibraryRequestSeqRef.current === requestSeq
+        ) {
+          toast.warning(getMaterialErrorMessage(error, "素材加载失败"));
+        }
+      } finally {
+        if (
+          isMountedRef.current &&
+          materialLibraryRequestSeqRef.current === requestSeq
+        ) {
+          setIsMaterialLibraryBusy(false);
+          setIsMaterialLibraryItemsLoading(false);
+        }
+      }
+    },
+    [activeMaterialLibraryBizType],
+  );
+
+  const handleLoadMoreMaterialLibraryItems = useCallback(async () => {
+    if (
+      !activeMaterialLibraryBizType ||
+      !activeMaterialLibraryGroupId ||
+      isMaterialLibraryLoadingMore ||
+      !hasMoreMaterialLibraryItems
+    ) {
+      return;
+    }
+
+    const requestSeq = materialLibraryRequestSeqRef.current;
+    const nextPage = materialLibraryPage + 1;
+
+    setIsMaterialLibraryBusy(true);
+    setIsMaterialLibraryLoadingMore(true);
+
+    try {
+      const response = await getWorkbenchService().listMaterialCollections({
+        bizType: activeMaterialLibraryBizType,
+        groupId: activeMaterialLibraryGroupId,
+        page: nextPage,
+        pageSize: 100,
+      });
+
+      if (
+        !isMountedRef.current ||
+        materialLibraryRequestSeqRef.current !== requestSeq
+      ) {
+        return;
+      }
+
+      setMaterialLibraryItems((currentItems) => [
+        ...currentItems,
+        ...response.items,
+      ]);
+      setMaterialLibraryPage(response.pagination.page);
+      setHasMoreMaterialLibraryItems(response.pagination.hasMore);
+    } catch (error) {
+      if (
+        isMountedRef.current &&
+        materialLibraryRequestSeqRef.current === requestSeq
+      ) {
+        toast.warning(getMaterialErrorMessage(error, "素材加载失败"));
+      }
+    } finally {
+      if (
+        isMountedRef.current &&
+        materialLibraryRequestSeqRef.current === requestSeq
+      ) {
+        setIsMaterialLibraryBusy(false);
+        setIsMaterialLibraryLoadingMore(false);
+      }
+    }
+  }, [
+    activeMaterialLibraryBizType,
+    activeMaterialLibraryGroupId,
+    hasMoreMaterialLibraryItems,
+    isMaterialLibraryLoadingMore,
+    materialLibraryPage,
+  ]);
 
   const handleSelectMaterial = useCallback(() => {
     window.alert("后续接入发送接口");
@@ -2130,23 +2298,40 @@ function ChatWorkbenchContent({
         open={pendingMaterialCollection !== null}
       />
       <MaterialLibraryDialog
+        activeGroupId={activeMaterialLibraryGroupId}
         bizType={activeMaterialLibraryBizType ?? MATERIAL_COLLECTION_BIZ_TYPE.FILE}
         groups={materialLibraryGroups}
+        hasMoreItems={hasMoreMaterialLibraryItems}
         isBusy={isMaterialLibraryBusy}
+        isGroupsLoading={isMaterialLibraryGroupsLoading}
+        isItemsLoading={isMaterialLibraryItemsLoading}
+        isLoadingMoreItems={isMaterialLibraryLoadingMore}
         items={materialLibraryItems}
         onCreateGroup={handleCreateMaterialGroup}
         onDeleteGroup={handleDeleteMaterialGroup}
         onDeleteMaterial={handleDeleteMaterial}
+        onLoadMoreItems={() => {
+          void handleLoadMoreMaterialLibraryItems();
+        }}
         onMoveMaterial={handleMoveMaterial}
         onOpenChange={(open) => {
           if (!open) {
             materialLibraryRequestSeqRef.current += 1;
             setActiveMaterialLibraryBizType(null);
+            setActiveMaterialLibraryGroupId(null);
             setMaterialLibraryGroups([]);
             setMaterialLibraryItems([]);
+            setMaterialLibraryPage(1);
+            setHasMoreMaterialLibraryItems(false);
+            setIsMaterialLibraryGroupsLoading(false);
+            setIsMaterialLibraryItemsLoading(false);
+            setIsMaterialLibraryLoadingMore(false);
           }
         }}
         onRenameGroup={handleRenameMaterialGroup}
+        onSelectGroup={(groupId) => {
+          void handleSelectMaterialLibraryGroup(groupId);
+        }}
         onSelectMaterial={handleSelectMaterial}
         onTopGroup={handleTopMaterialGroup}
         onTopMaterial={handleTopMaterial}

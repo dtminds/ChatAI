@@ -413,35 +413,45 @@ export class WorkbenchRepository {
 
   async listMaterialCollections(input: {
     bizType: number;
-    groupId?: string | 0;
+    groupId: string | 0;
+    limit: number;
+    offset: number;
     subUserId: string;
     uid: number;
-  }): Promise<WorkbenchMaterialCollectionItemDto[]> {
-    let groupNumericId: number | undefined;
+  }): Promise<{ items: WorkbenchMaterialCollectionItemDto[]; total: number }> {
+    const groupNumericId = parseMaterialGroupId(input.groupId);
 
-    if (input.groupId !== undefined) {
-      groupNumericId = parseMaterialGroupId(input.groupId);
-
-      if (groupNumericId == null) {
-        return [];
-      }
+    if (groupNumericId == null) {
+      return {
+        items: [],
+        total: 0,
+      };
     }
 
-    let query = this.db
+    const baseQuery = this.db
       .selectFrom("xy_wap_embed_material_collection")
-      .selectAll()
       .where("uid", "=", input.uid)
       .where("biz_type", "=", input.bizType)
       .where("biz_status", "=", BIZ_STATUS_ACTIVE)
-      .where("sub_uid", "in", getMaterialVisibleSubUids(input.bizType, input.subUserId));
+      .where("sub_uid", "in", getMaterialVisibleSubUids(input.bizType, input.subUserId))
+      .where("group_id", "=", groupNumericId);
+    const [rows, totalRow] = await Promise.all([
+      baseQuery
+        .selectAll()
+        .orderBy("sort", "desc")
+        .orderBy("id", "desc")
+        .limit(input.limit)
+        .offset(input.offset)
+        .execute(),
+      baseQuery
+        .select((eb) => eb.fn.countAll().as("count"))
+        .executeTakeFirst() as Promise<{ count: number | string | bigint } | undefined>,
+    ]);
 
-    if (input.groupId !== undefined) {
-      query = query.where("group_id", "=", groupNumericId!);
-    }
-
-    const rows = await query.orderBy("sort", "desc").orderBy("id", "desc").execute();
-
-    return rows.map((row) => mapMaterialCollectionItem(row as MaterialCollectionRow));
+    return {
+      items: rows.map((row) => mapMaterialCollectionItem(row as MaterialCollectionRow)),
+      total: Number(totalRow?.count ?? 0),
+    };
   }
 
   async findMaterialMessage(input: {

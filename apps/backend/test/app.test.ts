@@ -1177,17 +1177,17 @@ describe("backend app", () => {
     await app.close();
   });
 
-  it("material: lists material collections from backend state", async () => {
+  it("material: lists material groups and paginated collections from backend state", async () => {
     const { app, authorization } = await createAuthenticatedApp();
 
-    const response = await app.inject({
+    const groupsResponse = await app.inject({
       headers: { authorization },
       method: "GET",
-      url: "/api/server/material-collections?biz_type=2",
+      url: "/api/server/material/group?biz_type=2",
     });
 
-    expect(response.statusCode).toBe(200);
-    expect(response.json()).toMatchObject({
+    expect(groupsResponse.statusCode).toBe(200);
+    expect(groupsResponse.json()).toMatchObject({
       groups: [
         {
           bizType: 2,
@@ -1195,6 +1195,16 @@ describe("backend app", () => {
           title: "文件分组",
         },
       ],
+    });
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/material/collections?biz_type=2&group_id=material-group-file-1&page=1&page_size=100",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
       items: [
         {
           bizType: 2,
@@ -1203,6 +1213,33 @@ describe("backend app", () => {
           messageId: "msg-004",
         },
       ],
+      pagination: {
+        hasMore: false,
+        page: 1,
+        pageSize: 100,
+        total: 1,
+      },
+    });
+
+    await app.close();
+  });
+
+  it("material: rejects enterprise collection page without group id", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/material/collections?biz_type=2&page=1&page_size=100",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({
+      error: {
+        code: "MATERIAL_GROUP_REQUIRED",
+        message: "请选择分组",
+      },
+      success: false,
     });
 
     await app.close();
@@ -1326,7 +1363,7 @@ describe("backend app", () => {
     const response = await app.inject({
       headers: { authorization },
       method: "GET",
-      url: "/api/server/material-collections?biz_type=9",
+      url: "/api/server/material/collections?biz_type=9&group_id=0",
     });
 
     expect(response.statusCode).toBe(400);

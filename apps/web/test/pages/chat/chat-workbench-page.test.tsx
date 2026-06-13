@@ -1614,11 +1614,14 @@ describe("ChatWorkbenchPage", () => {
     await user.click(screen.getByRole("button", { name: "收录" }));
 
     await waitFor(() => {
-      expect(collectMaterial).toHaveBeenCalledWith({
-        bizType: 2,
-        groupId: "mock-material-group-file",
-        messageId: "msg-004",
-      });
+      expect(collectMaterial).toHaveBeenCalledWith(
+        expect.objectContaining({
+          bizType: 2,
+          fileName: "求未 AI 智能营销系统.pdf",
+          groupId: "mock-material-group-file",
+          messageId: "msg-004",
+        }),
+      );
     });
     await waitFor(() => {
       expect(screen.queryByRole("dialog", { name: "收录文件" })).not.toBeInTheDocument();
@@ -1673,11 +1676,14 @@ describe("ChatWorkbenchPage", () => {
       title: "售后文件",
     });
     await waitFor(() => {
-      expect(collectMaterial).toHaveBeenCalledWith({
-        bizType: 2,
-        groupId: "group-created",
-        messageId: "msg-004",
-      });
+      expect(collectMaterial).toHaveBeenCalledWith(
+        expect.objectContaining({
+          bizType: 2,
+          fileName: "求未 AI 智能营销系统.pdf",
+          groupId: "group-created",
+          messageId: "msg-004",
+        }),
+      );
     });
   });
 

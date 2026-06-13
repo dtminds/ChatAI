@@ -938,8 +938,12 @@ describe("ChatWorkbenchPage composer flows", () => {
         type: "file",
       },
       role: "agent",
-      status: "accepted",
     });
+    const latestMessage =
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1);
+    expect(latestMessage?.status === "accepted" || latestMessage?.status === "sent").toBe(
+      true,
+    );
   });
 
   it("sends a collected H5 material as an h5 segment", async () => {

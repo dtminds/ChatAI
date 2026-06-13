@@ -62,7 +62,12 @@ export function MaterialGroupFormDialog({
         </DialogHeader>
 
         <div className="space-y-2 py-2">
-          <Label htmlFor={inputId}>分组名称</Label>
+          <div className="flex items-center justify-between gap-3">
+            <Label htmlFor={inputId}>分组名称</Label>
+            <span className="text-xs text-muted-foreground">
+              {title.length}/{MATERIAL_GROUP_TITLE_MAX_LENGTH}
+            </span>
+          </div>
           <Input
             aria-label="分组名称"
             autoFocus

@@ -734,6 +734,7 @@ describe("ChatWorkbenchPage composer flows", () => {
   it.each([
     ["收藏文件", "收录的文件"],
     ["收藏小程序", "收录的小程序"],
+    ["收藏视频号", "收录的视频号"],
     ["收藏H5", "收录的H5"],
   ])("opens the %s material library from the composer", async (buttonName, dialogName) => {
     const user = userEvent.setup();
@@ -1128,6 +1129,78 @@ describe("ChatWorkbenchPage composer flows", () => {
       role: "agent",
       status: "accepted",
     });
+  });
+
+  it("alerts when sending a collected sphfeed material", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => undefined);
+    const sendMessage = vi.fn(baseService.sendMessage);
+    const listMaterialGroups = vi.fn(async (request) => {
+      if (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED) {
+        return baseService.listMaterialGroups(request);
+      }
+
+      return {
+        groups: [
+          {
+            bizType: MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED,
+            id: "group-sphfeed",
+            sort: 100,
+            title: "视频号分组",
+          },
+        ],
+      };
+    });
+    const listMaterialCollections = vi.fn(async (request) => {
+      if (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED) {
+        return baseService.listMaterialCollections(request);
+      }
+
+      return {
+        items: [
+          {
+            bizType: MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED,
+            content: {
+              description: "杭州高架惊现鸵鸟飞奔",
+              imageUrl: "https://finder.video.qq.com/cover.jpg",
+              sourceLabel: "视频号",
+              title: "都市快报",
+              url: "https://channels.weixin.qq.com/web/pages/feed?eid=export",
+            },
+            contentType: "sphfeed" as const,
+            groupId: "group-sphfeed",
+            id: "material-sphfeed-001",
+            messageId: "msg-sphfeed-001",
+            sort: 1,
+            title: "都市快报",
+          },
+        ],
+        pagination: {
+          hasMore: false,
+          page: request.page ?? 1,
+          pageSize: 100,
+          total: 1,
+        },
+      };
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      listMaterialCollections,
+      listMaterialGroups,
+      sendMessage,
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getByRole("button", { name: "收藏视频号" }));
+    await user.click(await screen.findByRole("button", { name: /选择素材 都市快报/ }));
+    await user.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(sendMessage).not.toHaveBeenCalled();
+    expect(alertSpy).toHaveBeenCalledWith("后续接入发送接口");
   });
 
   it("keeps the selected material group after managing an item", async () => {

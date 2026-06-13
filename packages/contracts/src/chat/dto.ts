@@ -57,7 +57,7 @@ export type WorkbenchMessageContentType =
 
 export type WorkbenchMaterialCollectionContentType = Extract<
   WorkbenchMessageContentType,
-  "emotion" | "file" | "h5" | "mini-program"
+  "emotion" | "file" | "h5" | "mini-program" | "sphfeed"
 >;
 
 export type WorkbenchMaterialCollectionGroupBizType = Exclude<

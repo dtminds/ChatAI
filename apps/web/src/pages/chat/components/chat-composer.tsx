@@ -65,6 +65,7 @@ import {
 import { ComposerRuntimePlugin } from "@/pages/chat/components/composer/lexical-plugins";
 import { QuoteMessagePreview } from "@/pages/chat/components/message/quote";
 import { MiniProgramMark } from "@/pages/chat/components/message/miniapp";
+import { SphFeedMark } from "@/pages/chat/components/message/sphfeed";
 import {
   $insertComposerMention,
   $insertComposerText,
@@ -103,7 +104,7 @@ type ChatComposerProps = {
   onFileSelect: (files: FileList | File[] | null) => void;
   onLoadMoreCollectedExpressions?: () => void;
   onOpenCollectedExpressions?: () => void;
-  onOpenMaterialLibrary: (bizType: 2 | 3 | 4) => void;
+  onOpenMaterialLibrary: (bizType: 2 | 3 | 4 | 5) => void;
   onOpenHistory: () => void;
   onSelectCollectedExpression?: (item: WorkbenchMaterialCollectionItemDto) => void;
   onSegmentsChange: (segments: ComposerSegment[]) => void;
@@ -464,7 +465,7 @@ export function ChatComposer({
                   type="button"
                   variant="ghost"
                 >
-                  <HugeiconsIcon icon={SmileIcon} size={18} strokeWidth={1.8} />
+                  <HugeiconsIcon icon={SmileIcon} size={18} strokeWidth={2} />
                 </Button>
               </ComposerActionTooltip>
 
@@ -501,7 +502,7 @@ export function ChatComposer({
                 type="button"
                 variant="ghost"
               >
-                <HugeiconsIcon icon={Image01Icon} size={18} strokeWidth={1.8} />
+                <HugeiconsIcon icon={Image01Icon} size={18} strokeWidth={2} />
               </Button>
             </ComposerActionTooltip>
             <input
@@ -530,7 +531,23 @@ export function ChatComposer({
                 type="button"
                 variant="ghost"
               >
-                <MiniProgramMark className="size-5.75" />
+                <MiniProgramMark className="size-6.5" />
+              </Button>
+            </ComposerActionTooltip>
+            <ComposerActionTooltip
+              disabled={isSending || !canSendMessage}
+              label="视频号"
+            >
+              <Button
+                aria-label="收藏视频号"
+                className={composerActionButtonClass}
+                disabled={isSending || !canSendMessage}
+                onClick={() => onOpenMaterialLibrary(5)}
+                size="icon"
+                type="button"
+                variant="ghost"
+              >
+                <SphFeedMark className="size-5.25" />
               </Button>
             </ComposerActionTooltip>
             <ComposerActionTooltip
@@ -546,7 +563,7 @@ export function ChatComposer({
                 type="button"
                 variant="ghost"
               >
-                <HugeiconsIcon icon={CopyLinkIcon} size={18} strokeWidth={1.8} />
+                <HugeiconsIcon icon={CopyLinkIcon} size={18} strokeWidth={2} />
               </Button>
             </ComposerActionTooltip>
             <ComposerFileSplitButton
@@ -581,7 +598,7 @@ export function ChatComposer({
                 type="button"
                 variant="ghost"
               >
-                <HugeiconsIcon icon={ChatDelayIcon} size={18} strokeWidth={1.8} />
+                <HugeiconsIcon icon={ChatDelayIcon} size={18} strokeWidth={2} />
               </Button>
             </ComposerActionTooltip>
           </div>
@@ -786,7 +803,7 @@ function ComposerFileSplitButton({
           onClick={onOpenCollectedFiles}
           type="button"
         >
-          <HugeiconsIcon icon={Folder01Icon} size={18} strokeWidth={1.8} />
+          <HugeiconsIcon icon={Folder01Icon} size={18} strokeWidth={2} />
         </button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

@@ -57,6 +57,7 @@ type MaterialLibraryDialogProps = {
   isGroupsLoading?: boolean;
   isItemsLoading?: boolean;
   isLoadingMoreItems?: boolean;
+  isSending?: boolean;
   items: MaterialCollectionItem[];
   onCreateGroup: (title: string) => void;
   onDeleteGroup: (group: MaterialCollectionGroup) => void;
@@ -85,6 +86,7 @@ export function MaterialLibraryDialog({
   isGroupsLoading = false,
   isItemsLoading = false,
   isLoadingMoreItems = false,
+  isSending = false,
   items,
   onCreateGroup,
   onDeleteGroup,
@@ -227,6 +229,7 @@ export function MaterialLibraryDialog({
                   hasMoreItems={hasMoreItems}
                   isBusy={isBusy}
                   isLoadingMoreItems={isLoadingMoreItems}
+                  isSending={isSending}
                   items={items}
                   onCancel={() => onOpenChange(false)}
                   onDelete={onDeleteMaterial}
@@ -243,6 +246,7 @@ export function MaterialLibraryDialog({
                   hasMoreItems={hasMoreItems}
                   isBusy={isBusy}
                   isLoadingMoreItems={isLoadingMoreItems}
+                  isSending={isSending}
                   items={items}
                   onCancel={() => onOpenChange(false)}
                   onDeleteMaterial={onDeleteMaterial}
@@ -399,13 +403,20 @@ function getBizTypeLabel(
     return "收录的小程序";
   }
 
+  if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED) {
+    return "收录的视频号";
+  }
+
   return "收录的H5";
 }
 
 function getLibraryDialogStyle(
   bizType: WorkbenchMaterialCollectionGroupCreateRequest["bizType"],
 ) {
-  if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM) {
+  if (
+    bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM ||
+    bizType === MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED
+  ) {
     return {
       maxWidth: "calc(100vw - 2rem)",
       width: "74.5rem",

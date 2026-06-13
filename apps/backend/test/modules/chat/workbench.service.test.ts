@@ -3233,6 +3233,41 @@ describe("MysqlWorkbenchService", () => {
     expect(repository.createMaterialCollection).not.toHaveBeenCalled();
   });
 
+  it("material: collects sphfeed messages into tenant materials", async () => {
+    const repository = createMaterialRepository({
+      createMaterialCollection: vi.fn().mockResolvedValue("182"),
+      findMaterialMessage: vi.fn().mockResolvedValue({
+        content: JSON.stringify({
+          description: "杭州高架惊现鸵鸟飞奔",
+          imageUrl: "https://finder.video.qq.com/cover.jpg",
+          linkUrl: "https://channels.weixin.qq.com/web/pages/feed?eid=export",
+          title: "都市快报",
+        }),
+        msgid: "msg-sphfeed-001",
+        msgtype: "sphfeed",
+        uid: 9001,
+      }),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.collectMaterial("101", {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED,
+        groupId: "9",
+        messageId: "msg-sphfeed-001",
+      }),
+    ).resolves.toEqual({ success: true });
+
+    expect(repository.createMaterialCollection).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED,
+        msgid: "msg-sphfeed-001",
+        title: "都市快报",
+        uid: 9001,
+      }),
+    );
+  });
+
   it("material: rejects invalid selected group before collecting tenant materials", async () => {
     const repository = createMaterialRepository({
       hasActiveMaterialGroup: vi.fn().mockResolvedValue(false),

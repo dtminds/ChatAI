@@ -24,6 +24,9 @@ describe("material collection mappers", () => {
     expect(getMaterialBizTypeForMessageContentType("h5")).toBe(
       MATERIAL_COLLECTION_BIZ_TYPE.H5,
     );
+    expect(getMaterialBizTypeForMessageContentType("sphfeed")).toBe(
+      MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED,
+    );
     expect(
       getMaterialBizTypeForMessageContentType("text" as WorkbenchMessageContentType),
     ).toBeUndefined();
@@ -42,6 +45,9 @@ describe("material collection mappers", () => {
     expect(getMaterialContentTypeForBizType(MATERIAL_COLLECTION_BIZ_TYPE.H5)).toBe(
       "h5",
     );
+    expect(
+      getMaterialContentTypeForBizType(MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED),
+    ).toBe("sphfeed");
   });
 
   it("maps a file material row to a normalized item dto", () => {
@@ -168,6 +174,36 @@ describe("material collection mappers", () => {
       contentType: "mini-program",
       messageId: "msg-mini-program-001",
       title: "企微助手",
+    });
+  });
+
+  it("normalizes sphfeed style content as sphfeed", () => {
+    expect(
+      mapMaterialCollectionItem(materialRow({
+        biz_type: MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED,
+        content: JSON.stringify({
+          description: "杭州高架惊现鸵鸟飞奔",
+          imageUrl: "https://finder.video.qq.com/cover.jpg",
+          linkUrl: "https://channels.weixin.qq.com/web/pages/feed?eid=export",
+          title: "都市快报",
+        }),
+        group_id: 12,
+        msgid: "msg-sphfeed-001",
+        title: "",
+      })),
+    ).toMatchObject({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED,
+      content: {
+        description: "杭州高架惊现鸵鸟飞奔",
+        imageUrl: "https://finder.video.qq.com/cover.jpg",
+        sourceLabel: "视频号",
+        title: "都市快报",
+        url: "https://channels.weixin.qq.com/web/pages/feed?eid=export",
+      },
+      contentType: "sphfeed",
+      groupId: "12",
+      messageId: "msg-sphfeed-001",
+      title: "都市快报",
     });
   });
 });

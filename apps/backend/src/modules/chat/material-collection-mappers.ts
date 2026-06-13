@@ -23,6 +23,8 @@ export function getMaterialContentTypeForBizType(
       return "mini-program";
     case MATERIAL_COLLECTION_BIZ_TYPE.H5:
       return "h5";
+    case MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED:
+      return "sphfeed";
     default:
       return undefined;
   }
@@ -40,6 +42,8 @@ export function getMaterialBizTypeForMessageContentType(
       return MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM;
     case "h5":
       return MATERIAL_COLLECTION_BIZ_TYPE.H5;
+    case "sphfeed":
+      return MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED;
     default:
       return undefined;
   }
@@ -101,6 +105,8 @@ function getMsgTypeForBizType(bizType: MaterialCollectionBizType) {
       return "weapp";
     case MATERIAL_COLLECTION_BIZ_TYPE.H5:
       return "link";
+    case MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED:
+      return "sphfeed";
     case MATERIAL_COLLECTION_BIZ_TYPE.FILE:
     default:
       return "file";
@@ -115,6 +121,7 @@ function toMaterialBizType(value: number | string): MaterialCollectionBizType {
     case MATERIAL_COLLECTION_BIZ_TYPE.FILE:
     case MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM:
     case MATERIAL_COLLECTION_BIZ_TYPE.H5:
+    case MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED:
       return numericValue;
     default:
       throw new Error(`Unsupported material collection biz type: ${value}`);

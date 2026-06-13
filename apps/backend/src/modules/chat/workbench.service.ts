@@ -2469,6 +2469,7 @@ function parseMaterialBizType(value: number): MaterialCollectionBizType {
     case MATERIAL_COLLECTION_BIZ_TYPE.FILE:
     case MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM:
     case MATERIAL_COLLECTION_BIZ_TYPE.H5:
+    case MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED:
       return value;
     default:
       throw new BadRequestError("INVALID_MATERIAL_BIZ_TYPE", "素材类型无效");
@@ -2546,6 +2547,8 @@ function isMaterialMessageTypeMatched(
       return msgtype === "weapp";
     case MATERIAL_COLLECTION_BIZ_TYPE.H5:
       return msgtype === "link";
+    case MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED:
+      return msgtype === "sphfeed";
     default:
       return false;
   }

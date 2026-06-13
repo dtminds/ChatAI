@@ -118,7 +118,8 @@ type MentionRetryDialogState = {
 type ComposerMaterialBizType =
   | typeof MATERIAL_COLLECTION_BIZ_TYPE.FILE
   | typeof MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM
-  | typeof MATERIAL_COLLECTION_BIZ_TYPE.H5;
+  | typeof MATERIAL_COLLECTION_BIZ_TYPE.H5
+  | typeof MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED;
 
 function getInitialAccountRailCollapsed() {
   try {
@@ -314,6 +315,7 @@ function ChatWorkbenchContent({
   const [hasMoreMaterialLibraryItems, setHasMoreMaterialLibraryItems] =
     useState(false);
   const [isMaterialLibraryBusy, setIsMaterialLibraryBusy] = useState(false);
+  const [isMaterialLibrarySending, setIsMaterialLibrarySending] = useState(false);
   const [isMaterialLibraryGroupsLoading, setIsMaterialLibraryGroupsLoading] =
     useState(false);
   const [isMaterialLibraryItemsLoading, setIsMaterialLibraryItemsLoading] =
@@ -1690,34 +1692,41 @@ function ChatWorkbenchContent({
         return;
       }
 
-      const result = await sendAgentMessageSegments([materialSegment]);
+      setIsMaterialLibrarySending(true);
+      try {
+        const result = await sendAgentMessageSegments([materialSegment]);
 
-      if (!isMountedRef.current) {
-        return;
+        if (!isMountedRef.current) {
+          return;
+        }
+
+        if (!result.ok) {
+          setSendFailureDialog(
+            getSendFailureDialogCopy(
+              result.reason,
+              result.errorCode,
+              result.errorMessage,
+            ),
+          );
+          return;
+        }
+
+        setActiveMaterialLibraryBizType(null);
+        setActiveMaterialLibraryGroupId(null);
+        setMaterialLibraryGroups([]);
+        setMaterialLibraryItems([]);
+        setMaterialLibraryPage(1);
+        setHasMoreMaterialLibraryItems(false);
+        setIsMaterialLibraryGroupsLoading(false);
+        setIsMaterialLibraryItemsLoading(false);
+        setIsMaterialLibraryLoadingMore(false);
+        scrollMessageViewportToBottom();
+        void requestActiveConversationRead();
+      } finally {
+        if (isMountedRef.current) {
+          setIsMaterialLibrarySending(false);
+        }
       }
-
-      if (!result.ok) {
-        setSendFailureDialog(
-          getSendFailureDialogCopy(
-            result.reason,
-            result.errorCode,
-            result.errorMessage,
-          ),
-        );
-        return;
-      }
-
-      setActiveMaterialLibraryBizType(null);
-      setActiveMaterialLibraryGroupId(null);
-      setMaterialLibraryGroups([]);
-      setMaterialLibraryItems([]);
-      setMaterialLibraryPage(1);
-      setHasMoreMaterialLibraryItems(false);
-      setIsMaterialLibraryGroupsLoading(false);
-      setIsMaterialLibraryItemsLoading(false);
-      setIsMaterialLibraryLoadingMore(false);
-      scrollMessageViewportToBottom();
-      void requestActiveConversationRead();
     },
     [
       isMountedRef,
@@ -2652,6 +2661,7 @@ function ChatWorkbenchContent({
         isGroupsLoading={isMaterialLibraryGroupsLoading}
         isItemsLoading={isMaterialLibraryItemsLoading}
         isLoadingMoreItems={isMaterialLibraryLoadingMore}
+        isSending={isMaterialLibrarySending}
         items={materialLibraryItems}
         onCreateGroup={handleCreateMaterialGroup}
         onDeleteGroup={handleDeleteMaterialGroup}
@@ -2673,6 +2683,7 @@ function ChatWorkbenchContent({
             setIsMaterialLibraryGroupsLoading(false);
             setIsMaterialLibraryItemsLoading(false);
             setIsMaterialLibraryLoadingMore(false);
+            setIsMaterialLibrarySending(false);
           }
         }}
         onRenameGroup={handleRenameMaterialGroup}
@@ -2967,6 +2978,10 @@ function getMaterialBizTypeForMessage(
     return MATERIAL_COLLECTION_BIZ_TYPE.H5;
   }
 
+  if (message.content.type === "sphfeed") {
+    return MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED;
+  }
+
   return undefined;
 }
 
@@ -2976,7 +2991,8 @@ function toComposerMaterialBizType(
   if (
     bizType === MATERIAL_COLLECTION_BIZ_TYPE.FILE ||
     bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM ||
-    bizType === MATERIAL_COLLECTION_BIZ_TYPE.H5
+    bizType === MATERIAL_COLLECTION_BIZ_TYPE.H5 ||
+    bizType === MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED
   ) {
     return bizType;
   }

@@ -26,6 +26,7 @@ describe("chat material collection DTOs", () => {
       FILE: 2,
       MINI_PROGRAM: 3,
       H5: 4,
+      SPHFEED: 5,
     });
     expect(MATERIAL_COLLECTION_GROUP_MAX_COUNT).toBe(20);
 
@@ -35,6 +36,7 @@ describe("chat material collection DTOs", () => {
     expect(compiler.Check(MATERIAL_COLLECTION_BIZ_TYPE.FILE)).toBe(true);
     expect(compiler.Check(MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM)).toBe(true);
     expect(compiler.Check(MATERIAL_COLLECTION_BIZ_TYPE.H5)).toBe(true);
+    expect(compiler.Check(MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED)).toBe(true);
     expect(compiler.Check(0)).toBe(false);
     expect(compiler.Check("1")).toBe(false);
   });
@@ -205,6 +207,6 @@ describe("chat material collection DTOs", () => {
     expect(moveRequest.groupId).toBe("group-h5");
     expect(okResponse.ok).toBe(true);
 
-    expectTypeOf(groupCreateRequest.bizType).toEqualTypeOf<2 | 3 | 4>();
+    expectTypeOf(groupCreateRequest.bizType).toEqualTypeOf<2 | 3 | 4 | 5>();
   });
 });

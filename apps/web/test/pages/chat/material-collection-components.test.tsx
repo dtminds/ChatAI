@@ -624,6 +624,43 @@ describe("material collection components", () => {
     expect(handleSelect).toHaveBeenCalledWith(item);
   });
 
+  it("shows spinner and disables send button while sending material", async () => {
+    const user = userEvent.setup();
+    const item = createItem({
+      id: "material-file-1",
+      title: "报价单.pdf",
+    });
+
+    render(
+      <MaterialLibraryDialog
+        activeGroupId="group-file"
+        bizType={MATERIAL_COLLECTION_BIZ_TYPE.FILE}
+        groups={[createGroup({ id: "group-file", title: "常用文件" })]}
+        isSending
+        items={[item]}
+        onCreateGroup={() => undefined}
+        onDeleteGroup={() => undefined}
+        onDeleteMaterial={() => undefined}
+        onEditMaterial={() => undefined}
+        onMoveMaterial={() => undefined}
+        onOpenChange={() => undefined}
+        onRenameGroup={() => undefined}
+        onSelectGroup={() => undefined}
+        onSelectMaterial={() => undefined}
+        onTopGroup={() => undefined}
+        onTopMaterial={() => undefined}
+        open
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "选择 报价单.pdf" }));
+
+    const sendButton = screen.getByRole("button", { name: "发送" });
+    expect(sendButton).toBeDisabled();
+    expect(sendButton).toHaveAttribute("aria-busy", "true");
+    expect(sendButton.querySelector('[data-slot="spinner"]')).toBeInTheDocument();
+  });
+
   it("uses mini-program library width for four collected mini-program cards", () => {
     render(
       <MaterialLibraryDialog

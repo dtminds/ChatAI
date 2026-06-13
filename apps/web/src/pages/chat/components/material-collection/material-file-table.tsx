@@ -28,6 +28,7 @@ type MaterialFileTableProps = {
   hasMoreItems: boolean;
   isBusy: boolean;
   isLoadingMoreItems: boolean;
+  isSending?: boolean;
   items: MaterialCollectionItem[];
   onCancel: () => void;
   onDelete: (item: MaterialCollectionItem) => void;
@@ -43,6 +44,7 @@ export function MaterialFileTable({
   hasMoreItems,
   isBusy,
   isLoadingMoreItems,
+  isSending = false,
   items,
   onCancel,
   onDelete,
@@ -211,6 +213,7 @@ export function MaterialFileTable({
       <MaterialLibraryFooter
         canSend={selectedItem != null}
         isBusy={isBusy}
+        isSending={isSending}
         onCancel={onCancel}
         onSend={() => {
           if (selectedItem) {

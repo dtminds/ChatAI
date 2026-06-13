@@ -1741,6 +1741,12 @@ function buildInitialState(): MockState {
         sort: 200,
         title: "常用链接",
       },
+      {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED,
+        id: "mock-material-group-sphfeed",
+        sort: 200,
+        title: "常用视频号",
+      },
     ],
     materialItems: buildInitialMaterialItems(messagesByConversationId),
     messagesByConversationId,
@@ -1876,6 +1882,8 @@ function getMaterialBizTypeForContentType(
       return MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM;
     case "h5":
       return MATERIAL_COLLECTION_BIZ_TYPE.H5;
+    case "sphfeed":
+      return MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED;
     default:
       return undefined;
   }
@@ -1891,6 +1899,8 @@ function getMaterialContentType(
       return "mini-program";
     case MATERIAL_COLLECTION_BIZ_TYPE.H5:
       return "h5";
+    case MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED:
+      return "sphfeed";
     case MATERIAL_COLLECTION_BIZ_TYPE.FILE:
       return "file";
   }
@@ -1904,6 +1914,8 @@ function getMockMaterialGroupId(bizType: MaterialCollectionBizType): string | 0 
       return "mock-material-group-mini-program";
     case MATERIAL_COLLECTION_BIZ_TYPE.H5:
       return "mock-material-group-h5";
+    case MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED:
+      return "mock-material-group-sphfeed";
     case MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION:
       return 0;
   }

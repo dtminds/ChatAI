@@ -19,6 +19,7 @@ type MaterialCardGridProps = {
   hasMoreItems: boolean;
   isBusy: boolean;
   isLoadingMoreItems: boolean;
+  isSending?: boolean;
   items: MaterialCollectionItem[];
   onCancel: () => void;
   onDeleteMaterial: (item: MaterialCollectionItem) => void;
@@ -35,6 +36,7 @@ export function MaterialCardGrid({
   hasMoreItems,
   isBusy,
   isLoadingMoreItems,
+  isSending = false,
   items,
   onCancel,
   onDeleteMaterial,
@@ -64,9 +66,7 @@ export function MaterialCardGrid({
               <div className="max-w-full" key={item.id}>
                 <MaterialCard
                   className={
-                    bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM
-                      ? "w-[210px]"
-                      : undefined
+                    isCardLibraryBizType(bizType) ? getCardLibraryItemClassName(bizType) : undefined
                   }
                   groups={groups}
                   item={item}
@@ -103,6 +103,7 @@ export function MaterialCardGrid({
       <MaterialLibraryFooter
         canSend={selectedItem != null}
         isBusy={isBusy}
+        isSending={isSending}
         onCancel={onCancel}
         onSend={() => {
           if (selectedItem) {
@@ -114,10 +115,29 @@ export function MaterialCardGrid({
   );
 }
 
+function isCardLibraryBizType(
+  bizType: WorkbenchMaterialCollectionGroupCreateRequest["bizType"],
+) {
+  return (
+    bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM ||
+    bizType === MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED
+  );
+}
+
+function getCardLibraryItemClassName(
+  bizType: WorkbenchMaterialCollectionGroupCreateRequest["bizType"],
+) {
+  if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED) {
+    return "w-[217px]";
+  }
+
+  return "w-[210px]";
+}
+
 function getLibraryBodyStyle(
   bizType: WorkbenchMaterialCollectionGroupCreateRequest["bizType"],
 ) {
-  if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM) {
+  if (isCardLibraryBizType(bizType)) {
     return {
       maxWidth: "100%",
       width: "59.5rem",
@@ -133,7 +153,7 @@ function getLibraryBodyStyle(
 function getLibraryGridStyle(
   bizType: WorkbenchMaterialCollectionGroupCreateRequest["bizType"],
 ) {
-  if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM) {
+  if (isCardLibraryBizType(bizType)) {
     return {
       gap: "16px",
       gridTemplateColumns: "repeat(4, 210px)",

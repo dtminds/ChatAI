@@ -4010,6 +4010,7 @@ function toMaterialCollectionBizType(value: number): MaterialCollectionBizType {
     case MATERIAL_COLLECTION_BIZ_TYPE.FILE:
     case MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM:
     case MATERIAL_COLLECTION_BIZ_TYPE.H5:
+    case MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED:
       return value;
     default:
       throw new Error(`Unsupported material collection biz type: ${value}`);

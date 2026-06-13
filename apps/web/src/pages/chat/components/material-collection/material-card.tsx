@@ -8,6 +8,7 @@ import { FileMessageCard } from "@/pages/chat/components/message/file";
 import { ImageMessageCard } from "@/pages/chat/components/message/image";
 import { LinkMessageCard } from "@/pages/chat/components/message/link";
 import { MiniAppMessageCard } from "@/pages/chat/components/message/miniapp";
+import { SphFeedMessageCard } from "@/pages/chat/components/message/sphfeed";
 import { MaterialActionsMenu } from "@/pages/chat/components/material-collection/material-actions-menu";
 import { MaterialSelectionIndicator } from "@/pages/chat/components/material-collection/material-selection-indicator";
 import type {
@@ -15,6 +16,7 @@ import type {
   H5CardMessageContent,
   ImageMessageContent,
   MiniProgramMessageContent,
+  SphFeedMessageContent,
 } from "@/pages/chat/chat-types";
 import type {
   MaterialCollectionItem,
@@ -135,6 +137,15 @@ function MaterialCardContent({ item }: { item: MaterialCollectionItem }) {
     );
   }
 
+  if (item.contentType === "sphfeed") {
+    return (
+      <SphFeedMessageCard
+        content={toSphFeedContent(item)}
+        disableLink
+      />
+    );
+  }
+
   return (
     <LinkMessageCard
       className="w-full"
@@ -189,6 +200,17 @@ function toMiniProgramContent(item: MaterialCollectionItem): MiniProgramMessageC
     sourceLabel: readString(item.content.sourceLabel) || "小程序",
     title: readString(item.content.title) || item.title || "小程序",
     type: "mini-program",
+  };
+}
+
+function toSphFeedContent(item: MaterialCollectionItem): SphFeedMessageContent {
+  return {
+    description: readString(item.content.description),
+    imageUrl: readString(item.content.imageUrl) || undefined,
+    sourceLabel: readString(item.content.sourceLabel) || "视频号",
+    title: readString(item.content.title) || item.title || "视频号",
+    type: "sphfeed",
+    url: readString(item.content.url) || undefined,
   };
 }
 

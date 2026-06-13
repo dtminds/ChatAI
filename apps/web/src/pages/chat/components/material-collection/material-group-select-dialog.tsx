@@ -253,5 +253,9 @@ function getCollectTitle(
     return "收录小程序";
   }
 
+  if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED) {
+    return "收录视频号";
+  }
+
   return "收录链接";
 }

@@ -124,6 +124,7 @@ const MESSAGE_REVOKE_WINDOW_MS = 180 * 1000;
 const MESSAGE_REVOKE_CLOCK_SKEW_TOLERANCE_MS = 5 * 1000;
 const SMART_REPLY_MESSAGE_PAGE_CANDIDATE_LIMIT = 5;
 const MATERIAL_COLLECTION_TITLE_MAX_LENGTH = 100;
+const MATERIAL_COLLECTION_GROUP_TITLE_MAX_LENGTH = 10;
 
 type SmartReplyMessagePageMetadata = {
   smartReplyEnabled?: boolean;
@@ -2027,7 +2028,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
     const me = await this.getMaterialActor(subUserId);
     const bizType = parseMaterialGroupBizType(request.bizType);
     const sort = Date.now();
-    const title = request.title.trim();
+    const title = normalizeMaterialGroupTitle(request.title);
 
     const groupId = await this.repository.createMaterialGroup({
       bizType,
@@ -2061,7 +2062,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
     await this.repository.renameMaterialGroup({
       bizType,
       groupId,
-      title: request.title,
+      title: normalizeMaterialGroupTitle(request.title),
       uid: me.uid,
     });
 
@@ -2365,6 +2366,19 @@ function readEnterpriseMaterialGroupId(groupId: string | 0 | undefined) {
   }
 
   return String(groupId);
+}
+
+function normalizeMaterialGroupTitle(title: string) {
+  const normalizedTitle = title.trim();
+
+  if (normalizedTitle.length > MATERIAL_COLLECTION_GROUP_TITLE_MAX_LENGTH) {
+    throw new BadRequestError(
+      "MATERIAL_GROUP_TITLE_TOO_LONG",
+      "分组名称不能超过10个字",
+    );
+  }
+
+  return normalizedTitle;
 }
 
 function parseMaterialSubUserId(subUserId: string) {

@@ -3386,6 +3386,33 @@ describe("MysqlWorkbenchService", () => {
     nowSpy.mockRestore();
   });
 
+  it("material: rejects material group names over 10 characters", async () => {
+    const repository = createMaterialRepository();
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.createMaterialGroup("101", {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+        title: "一二三四五六七八九十甲",
+      }),
+    ).rejects.toMatchObject({
+      code: "MATERIAL_GROUP_TITLE_TOO_LONG",
+      statusCode: 400,
+    });
+
+    await expect(
+      service.renameMaterialGroup("101", "9", MATERIAL_COLLECTION_BIZ_TYPE.FILE, {
+        title: "一二三四五六七八九十甲",
+      }),
+    ).rejects.toMatchObject({
+      code: "MATERIAL_GROUP_TITLE_TOO_LONG",
+      statusCode: 400,
+    });
+
+    expect(repository.createMaterialGroup).not.toHaveBeenCalled();
+    expect(repository.renameMaterialGroup).not.toHaveBeenCalled();
+  });
+
   it("material: mutates tenant materials with shared sub user scope", async () => {
     const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_779_700_005_000);
     const repository = createMaterialRepository({

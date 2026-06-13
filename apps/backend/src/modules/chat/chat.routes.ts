@@ -360,11 +360,11 @@ const MaterialCollectionMoveBodySchema = Type.Object({
 
 const MaterialCollectionGroupCreateBodySchema = Type.Object({
   bizType: MaterialGroupBizTypeSchema,
-  title: Type.String({ maxLength: 100, minLength: 1 }),
+  title: Type.String({ maxLength: 10, minLength: 1 }),
 });
 
 const MaterialCollectionGroupUpdateBodySchema = Type.Object({
-  title: Type.String({ maxLength: 100, minLength: 1 }),
+  title: Type.String({ maxLength: 10, minLength: 1 }),
 });
 
 const MaterialCollectionGroupParamsSchema = Type.Object({

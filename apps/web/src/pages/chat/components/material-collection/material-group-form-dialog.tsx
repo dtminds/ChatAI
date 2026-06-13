@@ -20,6 +20,8 @@ type MaterialGroupFormDialogProps = {
   open: boolean;
 };
 
+const MATERIAL_GROUP_TITLE_MAX_LENGTH = 10;
+
 export function MaterialGroupFormDialog({
   initialTitle = "",
   isSubmitting = false,
@@ -66,6 +68,7 @@ export function MaterialGroupFormDialog({
             autoFocus
             disabled={isSubmitting}
             id={inputId}
+            maxLength={MATERIAL_GROUP_TITLE_MAX_LENGTH}
             onChange={(event) => setTitle(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === "Enter") {

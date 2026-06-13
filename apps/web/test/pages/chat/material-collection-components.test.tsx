@@ -76,6 +76,32 @@ describe("material collection components", () => {
     expect(handleSubmit).toHaveBeenCalledWith("group-new");
   });
 
+  it("limits material group names to 10 characters", async () => {
+    const user = userEvent.setup();
+    const handleCreateGroup = vi.fn(async (title: string) =>
+      createGroup({ id: "group-new", title }),
+    );
+
+    render(
+      <MaterialGroupSelectDialog
+        bizType={MATERIAL_COLLECTION_BIZ_TYPE.FILE}
+        groups={[]}
+        isSaving={false}
+        onCreateGroup={handleCreateGroup}
+        onOpenChange={() => undefined}
+        onSubmit={() => undefined}
+        open
+      />,
+    );
+
+    await user.click(screen.getByRole("combobox", { name: "选择分组" }));
+    await user.click(await screen.findByRole("option", { name: "新建分组" }));
+    await user.type(screen.getByRole("textbox", { name: "分组名称" }), "一二三四五六七八九十甲");
+    await user.click(screen.getByRole("button", { name: "新建" }));
+
+    expect(handleCreateGroup).toHaveBeenCalledWith("一二三四五六七八九十");
+  });
+
   it("renders collected material with existing message card components", () => {
     render(
       <div className="w-80">

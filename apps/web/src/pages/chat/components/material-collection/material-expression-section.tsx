@@ -4,18 +4,26 @@ import {
   PinIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import type { MaterialCollectionItem } from "@/pages/chat/components/material-collection/material-types";
 
 type MaterialExpressionSectionProps = {
+  hasMore?: boolean;
+  isLoadingMore?: boolean;
   items: MaterialCollectionItem[];
   onDelete?: (item: MaterialCollectionItem) => void;
+  onLoadMore?: () => void;
   onSelect: (item: MaterialCollectionItem) => void;
   onTop?: (item: MaterialCollectionItem) => void;
 };
 
 export function MaterialExpressionSection({
+  hasMore = false,
+  isLoadingMore = false,
   items,
   onDelete,
+  onLoadMore,
   onSelect,
   onTop,
 }: MaterialExpressionSectionProps) {
@@ -102,6 +110,23 @@ export function MaterialExpressionSection({
           );
         })}
       </div>
+
+      {hasMore ? (
+        <div className="mt-4 flex justify-center">
+          <Button
+            className="h-8 gap-2 px-3 text-[13px]"
+            disabled={isLoadingMore}
+            onClick={onLoadMore}
+            type="button"
+            variant="ghost"
+          >
+            {isLoadingMore ? (
+              <Spinner className="text-current" size={14} />
+            ) : null}
+            加载更多
+          </Button>
+        </div>
+      ) : null}
 
       {contextMenu ? (
         <div

@@ -79,8 +79,11 @@ type ChatPanelProps = {
   onEnterBehaviorChange: (behavior: InputEnterBehavior) => void;
   onCancelFileUpload: (uploadId: string) => void;
   collectedExpressions?: WorkbenchMaterialCollectionItemDto[];
+  hasMoreCollectedExpressions?: boolean;
+  isCollectedExpressionLoadingMore?: boolean;
   onCollectMaterial?: (message: ChatMessage) => void;
   onDeleteCollectedExpression?: (item: WorkbenchMaterialCollectionItemDto) => void;
+  onLoadMoreCollectedExpressions?: () => void;
   onOpenMaterialLibrary?: (bizType: 2 | 3 | 4) => void;
   onSelectCollectedExpression?: (item: WorkbenchMaterialCollectionItemDto) => void;
   onTopCollectedExpression?: (item: WorkbenchMaterialCollectionItemDto) => void;
@@ -161,8 +164,11 @@ export function ChatPanel({
   onEnterBehaviorChange,
   onCancelFileUpload,
   collectedExpressions,
+  hasMoreCollectedExpressions,
+  isCollectedExpressionLoadingMore,
   onCollectMaterial,
   onDeleteCollectedExpression,
+  onLoadMoreCollectedExpressions,
   onOpenMaterialLibrary,
   onSelectCollectedExpression,
   onTopCollectedExpression,
@@ -295,12 +301,19 @@ export function ChatPanel({
                     isSending={isSendingDraft}
                     isHistoryPanelOpen={isHistoryPanelOpen}
                     collectedExpressions={collectedExpressions}
+                    hasMoreCollectedExpressions={hasMoreCollectedExpressions}
+                    isCollectedExpressionLoadingMore={
+                      isCollectedExpressionLoadingMore
+                    }
                     onClearQuotedMessage={onClearQuotedMessage}
                     onDeleteCollectedExpression={onDeleteCollectedExpression}
                     onDraftChange={onDraftChange}
                     onEmojiPickerOpenChange={onEmojiPickerOpenChange}
                     onEnterBehaviorChange={onEnterBehaviorChange}
                     onFileSelect={onFileSelect}
+                    onLoadMoreCollectedExpressions={
+                      onLoadMoreCollectedExpressions
+                    }
                     onOpenMaterialLibrary={onOpenMaterialLibrary ?? noop}
                     onOpenHistory={onOpenHistory}
                     onSelectCollectedExpression={onSelectCollectedExpression}

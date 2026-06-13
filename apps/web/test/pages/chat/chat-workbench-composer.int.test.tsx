@@ -647,6 +647,68 @@ describe("ChatWorkbenchPage composer flows", () => {
     });
   });
 
+  it("loads more collected expressions from the custom emoji panel", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const listMaterialCollections = vi.fn(async (request) => {
+      if (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION) {
+        return baseService.listMaterialCollections(request);
+      }
+
+      const page = request.page ?? 1;
+
+      return {
+        items: [
+          {
+            bizType: MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION,
+            content: {
+              alt: `贴贴表情${page}`,
+              imageUrl: `https://example.com/expression-${page}.gif`,
+            },
+            contentType: "emotion" as const,
+            groupId: 0 as const,
+            id: `material-expression-00${page}`,
+            messageId: `msg-expression-00${page}`,
+            sort: 1_781_244_000_000 - page,
+            title: `贴贴表情${page}`,
+          },
+        ],
+        pagination: {
+          hasMore: page === 1,
+          page,
+          pageSize: 100,
+          total: 2,
+        },
+      };
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      listMaterialCollections,
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getByRole("button", { name: "微信表情" }));
+    await user.click(screen.getByRole("tab", { name: "自定义表情" }));
+
+    expect(
+      await screen.findByRole("button", { name: "发送收藏表情 贴贴表情1" }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "加载更多" }));
+
+    expect(
+      await screen.findByRole("button", { name: "发送收藏表情 贴贴表情2" }),
+    ).toBeInTheDocument();
+    expect(listMaterialCollections).toHaveBeenCalledWith({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION,
+      groupId: 0,
+      page: 2,
+      pageSize: 100,
+    });
+  });
+
   it.each([
     ["收藏文件", "收录的文件"],
     ["收藏小程序", "收录的小程序"],
@@ -780,6 +842,101 @@ describe("ChatWorkbenchPage composer flows", () => {
 
     expect(alertSpy).toHaveBeenCalledWith("后续接入发送接口");
     expect(sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("keeps the selected material group after managing an item", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const deleteMaterialCollection = vi.fn().mockResolvedValue({ ok: true });
+    const listMaterialGroups = vi.fn(async (request) => {
+      if (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.FILE) {
+        return baseService.listMaterialGroups(request);
+      }
+
+      return {
+        groups: [
+          {
+            bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+            id: "group-first",
+            sort: 300,
+            title: "第一分组",
+          },
+          {
+            bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+            id: "group-second",
+            sort: 200,
+            title: "第二分组",
+          },
+        ],
+      };
+    });
+    const listMaterialCollections = vi.fn(async (request) => {
+      if (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.FILE) {
+        return baseService.listMaterialCollections(request);
+      }
+
+      return {
+        items:
+          request.groupId === "group-second"
+            ? [
+                {
+                  bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+                  content: {
+                    extension: "pdf",
+                    fileName: "第二分组文件.pdf",
+                    fileSizeLabel: "2 KB",
+                    sourceLabel: "文件",
+                  },
+                  contentType: "file" as const,
+                  groupId: "group-second",
+                  id: "material-file-second",
+                  messageId: "msg-file-second",
+                  sort: 1,
+                  title: "第二分组文件.pdf",
+                },
+              ]
+            : [],
+        pagination: {
+          hasMore: false,
+          page: request.page ?? 1,
+          pageSize: 100,
+          total: request.groupId === "group-second" ? 1 : 0,
+        },
+      };
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      deleteMaterialCollection,
+      listMaterialCollections,
+      listMaterialGroups,
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getByRole("button", { name: "收藏文件" }));
+    await user.click(await screen.findByRole("button", { name: "第二分组" }));
+
+    const materialButton = await screen.findByRole("button", {
+      name: "选择素材 第二分组文件.pdf",
+    });
+
+    fireEvent.contextMenu(materialButton);
+    await user.click(await screen.findByRole("menuitem", { name: "删除" }));
+
+    await waitFor(() => {
+      expect(deleteMaterialCollection).toHaveBeenCalledWith("material-file-second");
+    });
+    expect(
+      screen.getByRole("button", { name: "选择素材 第二分组文件.pdf" }),
+    ).toBeInTheDocument();
+    expect(listMaterialCollections).toHaveBeenLastCalledWith({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+      groupId: "group-second",
+      page: 1,
+      pageSize: 100,
+    });
   });
 
   it("rejects unsupported selected files with a toast", async () => {

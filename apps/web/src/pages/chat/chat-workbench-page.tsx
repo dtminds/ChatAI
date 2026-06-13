@@ -287,6 +287,11 @@ function ChatWorkbenchContent({
   const [collectedExpressions, setCollectedExpressions] = useState<
     WorkbenchMaterialCollectionItemDto[]
   >([]);
+  const [collectedExpressionPage, setCollectedExpressionPage] = useState(1);
+  const [hasMoreCollectedExpressions, setHasMoreCollectedExpressions] =
+    useState(false);
+  const [isCollectedExpressionLoadingMore, setIsCollectedExpressionLoadingMore] =
+    useState(false);
   const [activeMaterialLibraryBizType, setActiveMaterialLibraryBizType] =
     useState<ComposerMaterialBizType | null>(null);
   const [materialLibraryGroups, setMaterialLibraryGroups] = useState<
@@ -649,6 +654,8 @@ function ChatWorkbenchContent({
 
       if (isMountedRef.current) {
         setCollectedExpressions(response.items);
+        setCollectedExpressionPage(response.pagination.page);
+        setHasMoreCollectedExpressions(response.pagination.hasMore);
       }
     } catch (error) {
       if (isMountedRef.current) {
@@ -656,6 +663,90 @@ function ChatWorkbenchContent({
       }
     }
   }, []);
+
+  const handleLoadMoreCollectedExpressions = useCallback(async () => {
+    if (isCollectedExpressionLoadingMore || !hasMoreCollectedExpressions) {
+      return;
+    }
+
+    const nextPage = collectedExpressionPage + 1;
+
+    setIsCollectedExpressionLoadingMore(true);
+
+    try {
+      const response = await getWorkbenchService().listMaterialCollections({
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION,
+        groupId: 0,
+        page: nextPage,
+        pageSize: 100,
+      });
+
+      if (!isMountedRef.current) {
+        return;
+      }
+
+      setCollectedExpressions((currentItems) => [
+        ...currentItems,
+        ...response.items,
+      ]);
+      setCollectedExpressionPage(response.pagination.page);
+      setHasMoreCollectedExpressions(response.pagination.hasMore);
+    } catch (error) {
+      if (isMountedRef.current) {
+        toast.warning(getMaterialErrorMessage(error, "收藏表情加载失败"));
+      }
+    } finally {
+      if (isMountedRef.current) {
+        setIsCollectedExpressionLoadingMore(false);
+      }
+    }
+  }, [
+    collectedExpressionPage,
+    hasMoreCollectedExpressions,
+    isCollectedExpressionLoadingMore,
+  ]);
+
+  const loadMaterialLibraryItems = useCallback(
+    async ({
+      bizType,
+      groupId,
+      mode,
+      page,
+      requestSeq,
+    }: {
+      bizType: ComposerMaterialBizType;
+      groupId: string;
+      mode: "append" | "replace";
+      page: number;
+      requestSeq: number;
+    }) => {
+      const response = await getWorkbenchService().listMaterialCollections({
+        bizType,
+        groupId,
+        page,
+        pageSize: 100,
+      });
+
+      if (
+        !isMountedRef.current ||
+        materialLibraryRequestSeqRef.current !== requestSeq
+      ) {
+        return;
+      }
+
+      if (mode === "append") {
+        setMaterialLibraryItems((currentItems) => [
+          ...currentItems,
+          ...response.items,
+        ]);
+      } else {
+        setMaterialLibraryItems(response.items);
+      }
+      setMaterialLibraryPage(response.pagination.page);
+      setHasMoreMaterialLibraryItems(response.pagination.hasMore);
+    },
+    [],
+  );
 
   const loadMaterialLibrary = useCallback(
     async (bizType: ComposerMaterialBizType) => {
@@ -696,23 +787,13 @@ function ChatWorkbenchContent({
         }
 
         setIsMaterialLibraryItemsLoading(true);
-        const collectionsResponse = await getWorkbenchService().listMaterialCollections({
+        await loadMaterialLibraryItems({
           bizType,
           groupId: firstGroupId,
+          mode: "replace",
           page: 1,
-          pageSize: 100,
+          requestSeq,
         });
-
-        if (
-          !isMountedRef.current ||
-          materialLibraryRequestSeqRef.current !== requestSeq
-        ) {
-          return;
-        }
-
-        setMaterialLibraryItems(collectionsResponse.items);
-        setMaterialLibraryPage(collectionsResponse.pagination.page);
-        setHasMoreMaterialLibraryItems(collectionsResponse.pagination.hasMore);
       } catch (error) {
         if (
           isMountedRef.current &&
@@ -732,7 +813,76 @@ function ChatWorkbenchContent({
         }
       }
     },
-    [],
+    [loadMaterialLibraryItems],
+  );
+
+  const refreshCurrentMaterialLibrary = useCallback(
+    async (bizType: ComposerMaterialBizType) => {
+      const requestSeq = materialLibraryRequestSeqRef.current + 1;
+
+      materialLibraryRequestSeqRef.current = requestSeq;
+      setIsMaterialLibraryBusy(true);
+      setIsMaterialLibraryGroupsLoading(true);
+      setIsMaterialLibraryItemsLoading(false);
+      setIsMaterialLibraryLoadingMore(false);
+
+      try {
+        const groupsResponse = await getWorkbenchService().listMaterialGroups({
+          bizType,
+        });
+
+        if (
+          !isMountedRef.current ||
+          materialLibraryRequestSeqRef.current !== requestSeq
+        ) {
+          return;
+        }
+
+        const currentGroupId = activeMaterialLibraryGroupId;
+        const nextGroupId =
+          groupsResponse.groups.find((group) => group.id === currentGroupId)?.id ??
+          groupsResponse.groups[0]?.id ??
+          null;
+
+        setMaterialLibraryGroups(groupsResponse.groups);
+        setActiveMaterialLibraryGroupId(nextGroupId);
+        setIsMaterialLibraryGroupsLoading(false);
+        setMaterialLibraryItems([]);
+        setMaterialLibraryPage(1);
+        setHasMoreMaterialLibraryItems(false);
+
+        if (!nextGroupId) {
+          return;
+        }
+
+        setIsMaterialLibraryItemsLoading(true);
+        await loadMaterialLibraryItems({
+          bizType,
+          groupId: nextGroupId,
+          mode: "replace",
+          page: 1,
+          requestSeq,
+        });
+      } catch (error) {
+        if (
+          isMountedRef.current &&
+          materialLibraryRequestSeqRef.current === requestSeq
+        ) {
+          toast.warning(getMaterialErrorMessage(error, "素材加载失败"));
+        }
+      } finally {
+        if (
+          isMountedRef.current &&
+          materialLibraryRequestSeqRef.current === requestSeq
+        ) {
+          setIsMaterialLibraryBusy(false);
+          setIsMaterialLibraryGroupsLoading(false);
+          setIsMaterialLibraryItemsLoading(false);
+          setIsMaterialLibraryLoadingMore(false);
+        }
+      }
+    },
+    [activeMaterialLibraryGroupId, loadMaterialLibraryItems],
   );
 
   const refreshMaterialList = useCallback(
@@ -743,13 +893,13 @@ function ChatWorkbenchContent({
       }
 
       if (activeMaterialLibraryBizType === bizType) {
-        await loadMaterialLibrary(bizType);
+        await refreshCurrentMaterialLibrary(bizType);
       }
     },
     [
       activeMaterialLibraryBizType,
-      loadMaterialLibrary,
       refreshCollectedExpressions,
+      refreshCurrentMaterialLibrary,
     ],
   );
 
@@ -951,23 +1101,13 @@ function ChatWorkbenchContent({
       setIsMaterialLibraryLoadingMore(false);
 
       try {
-        const response = await getWorkbenchService().listMaterialCollections({
+        await loadMaterialLibraryItems({
           bizType: activeMaterialLibraryBizType,
           groupId,
+          mode: "replace",
           page: 1,
-          pageSize: 100,
+          requestSeq,
         });
-
-        if (
-          !isMountedRef.current ||
-          materialLibraryRequestSeqRef.current !== requestSeq
-        ) {
-          return;
-        }
-
-        setMaterialLibraryItems(response.items);
-        setMaterialLibraryPage(response.pagination.page);
-        setHasMoreMaterialLibraryItems(response.pagination.hasMore);
       } catch (error) {
         if (
           isMountedRef.current &&
@@ -985,7 +1125,7 @@ function ChatWorkbenchContent({
         }
       }
     },
-    [activeMaterialLibraryBizType],
+    [activeMaterialLibraryBizType, loadMaterialLibraryItems],
   );
 
   const handleLoadMoreMaterialLibraryItems = useCallback(async () => {
@@ -1005,26 +1145,13 @@ function ChatWorkbenchContent({
     setIsMaterialLibraryLoadingMore(true);
 
     try {
-      const response = await getWorkbenchService().listMaterialCollections({
+      await loadMaterialLibraryItems({
         bizType: activeMaterialLibraryBizType,
         groupId: activeMaterialLibraryGroupId,
+        mode: "append",
         page: nextPage,
-        pageSize: 100,
+        requestSeq,
       });
-
-      if (
-        !isMountedRef.current ||
-        materialLibraryRequestSeqRef.current !== requestSeq
-      ) {
-        return;
-      }
-
-      setMaterialLibraryItems((currentItems) => [
-        ...currentItems,
-        ...response.items,
-      ]);
-      setMaterialLibraryPage(response.pagination.page);
-      setHasMoreMaterialLibraryItems(response.pagination.hasMore);
     } catch (error) {
       if (
         isMountedRef.current &&
@@ -1046,6 +1173,7 @@ function ChatWorkbenchContent({
     activeMaterialLibraryGroupId,
     hasMoreMaterialLibraryItems,
     isMaterialLibraryLoadingMore,
+    loadMaterialLibraryItems,
     materialLibraryPage,
   ]);
 
@@ -1100,7 +1228,7 @@ function ChatWorkbenchContent({
 
       try {
         await action(bizType);
-        await loadMaterialLibrary(bizType);
+        await refreshCurrentMaterialLibrary(bizType);
       } catch (error) {
         if (isMountedRef.current) {
           toast.warning(getMaterialErrorMessage(error, fallbackMessage));
@@ -1111,7 +1239,7 @@ function ChatWorkbenchContent({
         }
       }
     },
-    [loadMaterialLibrary],
+    [refreshCurrentMaterialLibrary],
   );
 
   const handleCreateMaterialGroup = useCallback(
@@ -2039,8 +2167,12 @@ function ChatWorkbenchContent({
                   isResizingCustomerPanel={isResizingCustomerPanel}
                   fileUploadQueue={fileUploadQueue}
                   collectedExpressions={collectedExpressions}
+                  hasMoreCollectedExpressions={hasMoreCollectedExpressions}
                   hasMoreHistory={hasMoreHistory}
                   historyLoadLabel={historyLoadLabel}
+                  isCollectedExpressionLoadingMore={
+                    isCollectedExpressionLoadingMore
+                  }
                   messages={activeMessages}
                   smartReplyAutoPendingByMessageId={
                     activeConversationId
@@ -2109,6 +2241,9 @@ function ChatWorkbenchContent({
                   }}
                   onHistorySetSenderId={(senderId) => {
                     void setHistoryPanelSenderId(senderId);
+                  }}
+                  onLoadMoreCollectedExpressions={() => {
+                    void handleLoadMoreCollectedExpressions();
                   }}
                   onRefreshGroupMembers={() => {
                     void loadActiveGroupMembers({ force: true });

@@ -64,12 +64,14 @@ type ChatComposerProps = {
   canSendMessage: boolean;
   collectedExpressions?: WorkbenchMaterialCollectionItemDto[];
   draft: string;
+  hasMoreCollectedExpressions?: boolean;
   hasActiveFileUpload: boolean;
   groupMembers: GroupMember[];
   currentSeatThirdUserId?: string;
   inputEnterBehavior: InputEnterBehavior;
   isGroupConversation: boolean;
   isEmojiPickerOpen: boolean;
+  isCollectedExpressionLoadingMore?: boolean;
   isSending: boolean;
   isHistoryPanelOpen: boolean;
   onClearQuotedMessage: () => void;
@@ -78,6 +80,7 @@ type ChatComposerProps = {
   onEmojiPickerOpenChange: (isOpen: boolean) => void;
   onEnterBehaviorChange: (behavior: InputEnterBehavior) => void;
   onFileSelect: (files: FileList | File[] | null) => void;
+  onLoadMoreCollectedExpressions?: () => void;
   onOpenMaterialLibrary: (bizType: 2 | 3 | 4) => void;
   onOpenHistory: () => void;
   onSelectCollectedExpression?: (item: WorkbenchMaterialCollectionItemDto) => void;
@@ -110,12 +113,14 @@ export function ChatComposer({
   canSendMessage,
   collectedExpressions = [],
   draft,
+  hasMoreCollectedExpressions,
   hasActiveFileUpload,
   groupMembers,
   currentSeatThirdUserId,
   inputEnterBehavior,
   isGroupConversation,
   isEmojiPickerOpen,
+  isCollectedExpressionLoadingMore,
   isSending,
   isHistoryPanelOpen,
   onClearQuotedMessage,
@@ -124,6 +129,7 @@ export function ChatComposer({
   onEmojiPickerOpenChange,
   onEnterBehaviorChange,
   onFileSelect,
+  onLoadMoreCollectedExpressions,
   onOpenMaterialLibrary,
   onOpenHistory,
   onSelectCollectedExpression,
@@ -436,7 +442,14 @@ export function ChatComposer({
               <div className="absolute bottom-full left-[-24px] z-30 mb-3">
                 <WechatEmojiPicker
                   collectedExpressions={collectedExpressions}
+                  hasMoreCollectedExpressions={hasMoreCollectedExpressions}
+                  isCollectedExpressionLoadingMore={
+                    isCollectedExpressionLoadingMore
+                  }
                   onDeleteCollectedExpression={onDeleteCollectedExpression}
+                  onLoadMoreCollectedExpressions={
+                    onLoadMoreCollectedExpressions
+                  }
                   onSelect={handleEmojiSelect}
                   onSelectCollectedExpression={onSelectCollectedExpression}
                   onTopCollectedExpression={onTopCollectedExpression}

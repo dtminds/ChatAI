@@ -20,7 +20,10 @@ import { MaterialExpressionSection } from "@/pages/chat/components/material-coll
 
 type WechatEmojiPickerProps = {
   collectedExpressions?: WorkbenchMaterialCollectionItemDto[];
+  hasMoreCollectedExpressions?: boolean;
+  isCollectedExpressionLoadingMore?: boolean;
   onDeleteCollectedExpression?: (item: WorkbenchMaterialCollectionItemDto) => void;
+  onLoadMoreCollectedExpressions?: () => void;
   onSelect: (name: WechatEmojiName) => void;
   onSelectCollectedExpression?: (item: WorkbenchMaterialCollectionItemDto) => void;
   onTopCollectedExpression?: (item: WorkbenchMaterialCollectionItemDto) => void;
@@ -28,7 +31,10 @@ type WechatEmojiPickerProps = {
 
 export function WechatEmojiPicker({
   collectedExpressions = [],
+  hasMoreCollectedExpressions = false,
+  isCollectedExpressionLoadingMore = false,
   onDeleteCollectedExpression,
+  onLoadMoreCollectedExpressions,
   onSelect,
   onSelectCollectedExpression,
   onTopCollectedExpression,
@@ -70,8 +76,11 @@ export function WechatEmojiPicker({
         <TabsContent className="mt-0" value="custom">
           <ScrollArea className="h-[23rem] bg-popover">
             <MaterialExpressionSection
+              hasMore={hasMoreCollectedExpressions}
+              isLoadingMore={isCollectedExpressionLoadingMore}
               items={collectedExpressions}
               onDelete={onDeleteCollectedExpression}
+              onLoadMore={onLoadMoreCollectedExpressions}
               onSelect={(item) => onSelectCollectedExpression?.(item)}
               onTop={onTopCollectedExpression}
             />

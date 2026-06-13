@@ -2,6 +2,7 @@ import { TypeCompiler } from "@sinclair/typebox/compiler";
 import { describe, expect, expectTypeOf, it } from "vitest";
 import {
   MATERIAL_COLLECTION_BIZ_TYPE,
+  MATERIAL_COLLECTION_GROUP_MAX_COUNT,
   MaterialCollectionBizTypeSchema,
   type WorkbenchMaterialCollectionCreateRequest,
   type WorkbenchMaterialCollectionCreateResponse,
@@ -26,6 +27,7 @@ describe("chat material collection DTOs", () => {
       MINI_PROGRAM: 3,
       H5: 4,
     });
+    expect(MATERIAL_COLLECTION_GROUP_MAX_COUNT).toBe(20);
 
     const compiler = TypeCompiler.Compile(MaterialCollectionBizTypeSchema);
 

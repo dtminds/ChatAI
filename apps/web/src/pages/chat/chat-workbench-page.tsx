@@ -323,6 +323,10 @@ function ChatWorkbenchContent({
   const messageViewportRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<LexicalEditor | null>(null);
   const materialLibraryRequestSeqRef = useRef(0);
+  const activeMaterialLibraryBizTypeRef = useRef<
+    ComposerMaterialBizType | null
+  >(null);
+  const activeMaterialLibraryGroupIdRef = useRef<string | null>(null);
   const mentionRetryDialogStateRef =
     useRef<MentionRetryDialogState | null>(null);
   const isSendingDraftRef = useRef(false);
@@ -505,6 +509,14 @@ function ChatWorkbenchContent({
   useEffect(() => {
     activeConversationIdRef.current = activeConversationId;
   }, [activeConversationId]);
+
+  useEffect(() => {
+    activeMaterialLibraryBizTypeRef.current = activeMaterialLibraryBizType;
+  }, [activeMaterialLibraryBizType]);
+
+  useEffect(() => {
+    activeMaterialLibraryGroupIdRef.current = activeMaterialLibraryGroupId;
+  }, [activeMaterialLibraryGroupId]);
 
   useEffect(() => {
     if (activeView !== "chat") {
@@ -816,15 +828,67 @@ function ChatWorkbenchContent({
     [loadMaterialLibraryItems],
   );
 
-  const refreshCurrentMaterialLibrary = useCallback(
+  const reloadActiveMaterialLibraryItems = useCallback(
     async (bizType: ComposerMaterialBizType) => {
+      if (activeMaterialLibraryBizTypeRef.current !== bizType) {
+        return;
+      }
+
+      const groupId = activeMaterialLibraryGroupIdRef.current;
+
+      if (!groupId) {
+        return;
+      }
+
+      const requestSeq = materialLibraryRequestSeqRef.current + 1;
+
+      materialLibraryRequestSeqRef.current = requestSeq;
+      setIsMaterialLibraryBusy(true);
+      setIsMaterialLibraryItemsLoading(true);
+      setIsMaterialLibraryLoadingMore(false);
+      setMaterialLibraryItems([]);
+      setMaterialLibraryPage(1);
+      setHasMoreMaterialLibraryItems(false);
+
+      try {
+        await loadMaterialLibraryItems({
+          bizType,
+          groupId,
+          mode: "replace",
+          page: 1,
+          requestSeq,
+        });
+      } catch (error) {
+        if (
+          isMountedRef.current &&
+          materialLibraryRequestSeqRef.current === requestSeq
+        ) {
+          toast.warning(getMaterialErrorMessage(error, "素材加载失败"));
+        }
+      } finally {
+        if (
+          isMountedRef.current &&
+          materialLibraryRequestSeqRef.current === requestSeq
+        ) {
+          setIsMaterialLibraryBusy(false);
+          setIsMaterialLibraryItemsLoading(false);
+          setIsMaterialLibraryLoadingMore(false);
+        }
+      }
+    },
+    [loadMaterialLibraryItems],
+  );
+
+  const reloadMaterialLibraryGroups = useCallback(
+    async (
+      bizType: ComposerMaterialBizType,
+      options?: { reloadItemsIfActiveGroupRemoved?: boolean },
+    ) => {
       const requestSeq = materialLibraryRequestSeqRef.current + 1;
 
       materialLibraryRequestSeqRef.current = requestSeq;
       setIsMaterialLibraryBusy(true);
       setIsMaterialLibraryGroupsLoading(true);
-      setIsMaterialLibraryItemsLoading(false);
-      setIsMaterialLibraryLoadingMore(false);
 
       try {
         const groupsResponse = await getWorkbenchService().listMaterialGroups({
@@ -838,31 +902,44 @@ function ChatWorkbenchContent({
           return;
         }
 
-        const currentGroupId = activeMaterialLibraryGroupId;
+        const currentGroupId = activeMaterialLibraryGroupIdRef.current;
+        const activeGroupStillExists = currentGroupId
+          ? groupsResponse.groups.some((group) => group.id === currentGroupId)
+          : false;
         const nextGroupId =
           groupsResponse.groups.find((group) => group.id === currentGroupId)?.id ??
           groupsResponse.groups[0]?.id ??
           null;
 
         setMaterialLibraryGroups(groupsResponse.groups);
-        setActiveMaterialLibraryGroupId(nextGroupId);
-        setIsMaterialLibraryGroupsLoading(false);
-        setMaterialLibraryItems([]);
-        setMaterialLibraryPage(1);
-        setHasMoreMaterialLibraryItems(false);
 
-        if (!nextGroupId) {
-          return;
+        const shouldReloadItemsBecauseActiveGroupRemoved =
+          options?.reloadItemsIfActiveGroupRemoved &&
+          currentGroupId !== null &&
+          !activeGroupStillExists;
+        const shouldActivateInitialGroup =
+          currentGroupId === null && nextGroupId !== null;
+
+        if (
+          shouldReloadItemsBecauseActiveGroupRemoved ||
+          shouldActivateInitialGroup
+        ) {
+          setActiveMaterialLibraryGroupId(nextGroupId);
+          setMaterialLibraryItems([]);
+          setMaterialLibraryPage(1);
+          setHasMoreMaterialLibraryItems(false);
+
+          if (nextGroupId) {
+            setIsMaterialLibraryItemsLoading(true);
+            await loadMaterialLibraryItems({
+              bizType,
+              groupId: nextGroupId,
+              mode: "replace",
+              page: 1,
+              requestSeq,
+            });
+          }
         }
-
-        setIsMaterialLibraryItemsLoading(true);
-        await loadMaterialLibraryItems({
-          bizType,
-          groupId: nextGroupId,
-          mode: "replace",
-          page: 1,
-          requestSeq,
-        });
       } catch (error) {
         if (
           isMountedRef.current &&
@@ -882,28 +959,40 @@ function ChatWorkbenchContent({
         }
       }
     },
-    [activeMaterialLibraryGroupId, loadMaterialLibraryItems],
+    [loadMaterialLibraryItems],
   );
 
   const refreshMaterialList = useCallback(
-    async (bizType: MaterialCollectionBizType) => {
+    async (
+      bizType: MaterialCollectionBizType,
+      options?: { groupId?: string },
+    ) => {
       if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION) {
         await refreshCollectedExpressions();
         return;
       }
 
-      if (activeMaterialLibraryBizType === bizType) {
-        await refreshCurrentMaterialLibrary(bizType);
+      if (activeMaterialLibraryBizTypeRef.current !== bizType) {
+        return;
       }
+
+      const targetGroupId = options?.groupId;
+
+      if (
+        targetGroupId &&
+        targetGroupId !== activeMaterialLibraryGroupIdRef.current
+      ) {
+        return;
+      }
+
+      await reloadActiveMaterialLibraryItems(
+        bizType as ComposerMaterialBizType,
+      );
     },
-    [
-      activeMaterialLibraryBizType,
-      refreshCollectedExpressions,
-      refreshCurrentMaterialLibrary,
-    ],
+    [refreshCollectedExpressions, reloadActiveMaterialLibraryItems],
   );
 
-  useEffect(() => {
+  const handleOpenCollectedExpressions = useCallback(() => {
     if (bootstrapStatus !== "ready") {
       return;
     }
@@ -1016,7 +1105,7 @@ function ChatWorkbenchContent({
 
         toast.success("已收录");
         setPendingMaterialCollection(null);
-        void refreshMaterialList(pendingMaterialCollection.bizType);
+        void refreshMaterialList(pendingMaterialCollection.bizType, { groupId });
       } catch (error) {
         if (isMountedRef.current) {
           toast.warning(getMaterialErrorMessage(error, "收录失败，请稍后重试"));
@@ -1218,17 +1307,32 @@ function ChatWorkbenchContent({
     [runCollectedExpressionMutation],
   );
 
+  type MaterialLibraryMutationRefresh =
+    | "items"
+    | "groups"
+    | "groups-and-items-if-active-removed";
+
   const runMaterialLibraryMutation = useCallback(
     async (
       bizType: ComposerMaterialBizType,
       action: (bizType: ComposerMaterialBizType) => Promise<unknown>,
       fallbackMessage: string,
+      refresh: MaterialLibraryMutationRefresh = "items",
     ) => {
       setIsMaterialLibraryBusy(true);
 
       try {
         await action(bizType);
-        await refreshCurrentMaterialLibrary(bizType);
+
+        if (refresh === "items") {
+          await reloadActiveMaterialLibraryItems(bizType);
+        } else if (refresh === "groups") {
+          await reloadMaterialLibraryGroups(bizType);
+        } else {
+          await reloadMaterialLibraryGroups(bizType, {
+            reloadItemsIfActiveGroupRemoved: true,
+          });
+        }
       } catch (error) {
         if (isMountedRef.current) {
           toast.warning(getMaterialErrorMessage(error, fallbackMessage));
@@ -1239,7 +1343,7 @@ function ChatWorkbenchContent({
         }
       }
     },
-    [refreshCurrentMaterialLibrary],
+    [reloadActiveMaterialLibraryItems, reloadMaterialLibraryGroups],
   );
 
   const handleCreateMaterialGroup = useCallback(
@@ -1256,6 +1360,7 @@ function ChatWorkbenchContent({
             title,
           }),
         "新建分组失败",
+        "groups",
       );
     },
     [activeMaterialLibraryBizType, runMaterialLibraryMutation],
@@ -1276,6 +1381,7 @@ function ChatWorkbenchContent({
             title,
           }),
         "重命名分组失败",
+        "groups",
       );
     },
     [runMaterialLibraryMutation],
@@ -1293,6 +1399,7 @@ function ChatWorkbenchContent({
         bizType,
         (bizType) => getWorkbenchService().topMaterialGroup(group.id, bizType),
         "置顶分组失败",
+        "groups",
       );
     },
     [runMaterialLibraryMutation],
@@ -1310,6 +1417,7 @@ function ChatWorkbenchContent({
         bizType,
         (bizType) => getWorkbenchService().deleteMaterialGroup(group.id, bizType),
         "删除分组失败",
+        "groups-and-items-if-active-removed",
       );
     },
     [runMaterialLibraryMutation],
@@ -2245,6 +2353,7 @@ function ChatWorkbenchContent({
                   onLoadMoreCollectedExpressions={() => {
                     void handleLoadMoreCollectedExpressions();
                   }}
+                  onOpenCollectedExpressions={handleOpenCollectedExpressions}
                   onRefreshGroupMembers={() => {
                     void loadActiveGroupMembers({ force: true });
                   }}

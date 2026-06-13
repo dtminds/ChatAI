@@ -411,6 +411,23 @@ export class WorkbenchRepository {
     return rows.map(mapMaterialCollectionGroupRow);
   }
 
+  async countMaterialGroups(input: {
+    bizType: number;
+    subUserId: string;
+    uid: number;
+  }): Promise<number> {
+    const result = await this.db
+      .selectFrom("xy_wap_embed_material_collection_group")
+      .select((eb) => eb.fn.countAll<number>().as("count"))
+      .where("uid", "=", input.uid)
+      .where("biz_type", "=", input.bizType)
+      .where("biz_status", "=", BIZ_STATUS_ACTIVE)
+      .where("sub_uid", "in", getMaterialVisibleSubUids(input.bizType, input.subUserId))
+      .executeTakeFirst();
+
+    return Number(result?.count ?? 0);
+  }
+
   async listMaterialCollections(input: {
     bizType: number;
     groupId: string | 0;

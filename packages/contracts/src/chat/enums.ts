@@ -40,6 +40,8 @@ export const MATERIAL_COLLECTION_BIZ_TYPE = {
   H5: 4,
 } as const;
 
+export const MATERIAL_COLLECTION_GROUP_MAX_COUNT = 20;
+
 export const MaterialCollectionBizTypeSchema = Type.Union([
   Type.Literal(MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION),
   Type.Literal(MATERIAL_COLLECTION_BIZ_TYPE.FILE),

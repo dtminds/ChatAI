@@ -75,7 +75,7 @@ import type {
   WorkbenchMaterialCollectionOkResponse,
   WorkbenchMaterialCollectionContentType,
 } from "@chatai/contracts";
-import { CHAT_TYPE, MATERIAL_COLLECTION_BIZ_TYPE } from "@chatai/contracts";
+import { CHAT_TYPE, MATERIAL_COLLECTION_BIZ_TYPE, MATERIAL_COLLECTION_GROUP_MAX_COUNT } from "@chatai/contracts";
 import {
   BadGatewayError,
   BadRequestError,
@@ -2066,6 +2066,18 @@ export class MysqlWorkbenchService implements WorkbenchService {
     const bizType = parseMaterialGroupBizType(request.bizType);
     const sort = Date.now();
     const title = normalizeMaterialGroupTitle(request.title);
+    const groupCount = await this.repository.countMaterialGroups({
+      bizType,
+      subUserId,
+      uid: me.uid,
+    });
+
+    if (groupCount >= MATERIAL_COLLECTION_GROUP_MAX_COUNT) {
+      throw new BadRequestError(
+        "MATERIAL_GROUP_LIMIT_REACHED",
+        "分组数量已达上限",
+      );
+    }
 
     const groupId = await this.repository.createMaterialGroup({
       bizType,

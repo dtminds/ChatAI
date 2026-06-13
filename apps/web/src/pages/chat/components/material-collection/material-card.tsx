@@ -10,6 +10,22 @@ import {
   PinIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { FileMessageCard } from "@/pages/chat/components/message/file";
 import { ImageMessageCard } from "@/pages/chat/components/message/image";
@@ -46,7 +62,7 @@ export function MaterialCard({
   onTop,
 }: MaterialCardProps) {
   const menuRef = useRef<HTMLDivElement | null>(null);
-  const [isMoveGroupOpen, setIsMoveGroupOpen] = useState(false);
+  const [isMoveDialogOpen, setIsMoveDialogOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(
     null,
   );
@@ -65,12 +81,10 @@ export function MaterialCard({
       }
 
       setContextMenu(null);
-      setIsMoveGroupOpen(false);
     };
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setContextMenu(null);
-        setIsMoveGroupOpen(false);
       }
     };
 
@@ -96,7 +110,6 @@ export function MaterialCard({
         onClick={() => {
           onTop?.(item);
           setContextMenu(null);
-          setIsMoveGroupOpen(false);
         }}
         role="menuitem"
         type="button"
@@ -108,7 +121,8 @@ export function MaterialCard({
         className="flex h-8 w-full items-center gap-2 rounded-[8px] px-2.5 text-left text-[13px] outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground disabled:pointer-events-none disabled:opacity-45"
         disabled={targetGroups.length === 0}
         onClick={() => {
-          setIsMoveGroupOpen((current) => !current);
+          setContextMenu(null);
+          setIsMoveDialogOpen(true);
         }}
         role="menuitem"
         type="button"
@@ -116,30 +130,12 @@ export function MaterialCard({
         <HugeiconsIcon icon={FolderTransferIcon} size={16} strokeWidth={1.8} />
         移动分组
       </button>
-      {isMoveGroupOpen
-        ? targetGroups.map((group) => (
-            <button
-              className="flex h-8 w-full items-center rounded-[8px] px-8 text-left text-[13px] outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground"
-              key={group.id}
-              onClick={() => {
-                onMove?.(item, group.id);
-                setContextMenu(null);
-                setIsMoveGroupOpen(false);
-              }}
-              role="menuitem"
-              type="button"
-            >
-              {group.title}
-            </button>
-          ))
-        : null}
       <button
         className="flex h-8 w-full items-center gap-2 rounded-[8px] px-2.5 text-left text-[13px] text-destructive outline-none transition-colors hover:bg-destructive/10 focus:bg-destructive/10 disabled:pointer-events-none disabled:opacity-45"
         disabled={!onDelete}
         onClick={() => {
           onDelete?.(item);
           setContextMenu(null);
-          setIsMoveGroupOpen(false);
         }}
         role="menuitem"
         type="button"
@@ -176,7 +172,88 @@ export function MaterialCard({
       </button>
 
       {contextMenuNode}
+      <MaterialMoveGroupDialog
+        groups={targetGroups}
+        item={item}
+        onMove={(groupId) => onMove?.(item, groupId)}
+        onOpenChange={setIsMoveDialogOpen}
+        open={isMoveDialogOpen}
+      />
     </div>
+  );
+}
+
+function MaterialMoveGroupDialog({
+  groups,
+  item,
+  onMove,
+  onOpenChange,
+  open,
+}: {
+  groups: MaterialCollectionGroup[];
+  item: MaterialCollectionItem;
+  onMove: (groupId: string) => void;
+  onOpenChange: (open: boolean) => void;
+  open: boolean;
+}) {
+  const [selectedGroupId, setSelectedGroupId] = useState("");
+
+  useEffect(() => {
+    if (open) {
+      setSelectedGroupId("");
+    }
+  }, [open]);
+
+  return (
+    <Dialog onOpenChange={onOpenChange} open={open}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>移动分组</DialogTitle>
+          <DialogDescription>
+            {item.title}
+          </DialogDescription>
+        </DialogHeader>
+
+        <Select
+          onValueChange={setSelectedGroupId}
+          value={selectedGroupId}
+        >
+          <SelectTrigger
+            aria-label="选择目标分组"
+            className="w-full"
+          >
+            <SelectValue placeholder="选择目标分组" />
+          </SelectTrigger>
+          <SelectContent>
+            {groups.map((group) => (
+              <SelectItem key={group.id} value={group.id}>
+                {group.title}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <DialogFooter>
+          <Button
+            onClick={() => onOpenChange(false)}
+            type="button"
+            variant="outline"
+          >
+            取消
+          </Button>
+          <Button
+            disabled={!selectedGroupId}
+            onClick={() => {
+              onMove(selectedGroupId);
+              onOpenChange(false);
+            }}
+            type="button"
+          >
+            确定
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

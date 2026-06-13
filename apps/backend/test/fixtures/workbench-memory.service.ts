@@ -67,7 +67,7 @@ import type {
   type WorkbenchMaterialCollectionMoveRequest,
   type WorkbenchMaterialCollectionOkResponse,
 } from "@chatai/contracts";
-import { MATERIAL_COLLECTION_BIZ_TYPE } from "@chatai/contracts";
+import { MATERIAL_COLLECTION_BIZ_TYPE, MATERIAL_COLLECTION_GROUP_MAX_COUNT } from "@chatai/contracts";
 import { BadRequestError, NotFoundError } from "../../src/shared/errors.js";
 
 type WorkbenchEvent =
@@ -253,6 +253,14 @@ export function createMemoryWorkbenchService() {
     ): WorkbenchMaterialCollectionGroupCreateResponse {
       if (request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION) {
         throw new BadRequestError("MATERIAL_GROUP_UNSUPPORTED", "表情不支持自定义分组");
+      }
+
+      const existingGroupCount = state.materialGroups.filter(
+        (group) => group.bizType === request.bizType,
+      ).length;
+
+      if (existingGroupCount >= MATERIAL_COLLECTION_GROUP_MAX_COUNT) {
+        throw new BadRequestError("MATERIAL_GROUP_LIMIT_REACHED", "分组数量已达上限");
       }
 
       const group = {

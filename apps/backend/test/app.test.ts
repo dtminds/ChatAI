@@ -1183,7 +1183,7 @@ describe("backend app", () => {
     const groupsResponse = await app.inject({
       headers: { authorization },
       method: "GET",
-      url: "/api/server/material/group?biz_type=2",
+      url: "/api/server/material-collections/groups?biz_type=2",
     });
 
     expect(groupsResponse.statusCode).toBe(200);
@@ -1200,7 +1200,7 @@ describe("backend app", () => {
     const response = await app.inject({
       headers: { authorization },
       method: "GET",
-      url: "/api/server/material/collections?biz_type=2&group_id=material-group-file-1&page=1&page_size=100",
+      url: "/api/server/material-collections/materials?biz_type=2&group_id=material-group-file-1&page=1&page_size=100",
     });
 
     expect(response.statusCode).toBe(200);
@@ -1230,7 +1230,7 @@ describe("backend app", () => {
     const response = await app.inject({
       headers: { authorization },
       method: "GET",
-      url: "/api/server/material/collections?biz_type=2&page=1&page_size=100",
+      url: "/api/server/material-collections/materials?biz_type=2&page=1&page_size=100",
     });
 
     expect(response.statusCode).toBe(400);
@@ -1363,7 +1363,7 @@ describe("backend app", () => {
     const response = await app.inject({
       headers: { authorization },
       method: "GET",
-      url: "/api/server/material/collections?biz_type=9&group_id=0",
+      url: "/api/server/material-collections/materials?biz_type=9&group_id=0",
     });
 
     expect(response.statusCode).toBe(400);

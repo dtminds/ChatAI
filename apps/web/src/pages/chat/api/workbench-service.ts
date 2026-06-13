@@ -1098,7 +1098,7 @@ export function createHttpWorkbenchService(): WorkbenchService {
     },
     listMaterialCollections(request) {
       return http.get<WorkbenchMaterialCollectionListResponse>(
-        "/server/material/collections",
+        "/server/material-collections/materials",
         {
           params: {
             biz_type: request.bizType,
@@ -1111,7 +1111,7 @@ export function createHttpWorkbenchService(): WorkbenchService {
     },
     listMaterialGroups(request) {
       return http.get<WorkbenchMaterialCollectionGroupListResponse>(
-        "/server/material/group",
+        "/server/material-collections/groups",
         {
           params: {
             biz_type: request.bizType,

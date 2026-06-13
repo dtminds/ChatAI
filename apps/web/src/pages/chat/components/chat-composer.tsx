@@ -81,6 +81,7 @@ type ChatComposerProps = {
   onEnterBehaviorChange: (behavior: InputEnterBehavior) => void;
   onFileSelect: (files: FileList | File[] | null) => void;
   onLoadMoreCollectedExpressions?: () => void;
+  onOpenCollectedExpressions?: () => void;
   onOpenMaterialLibrary: (bizType: 2 | 3 | 4) => void;
   onOpenHistory: () => void;
   onSelectCollectedExpression?: (item: WorkbenchMaterialCollectionItemDto) => void;
@@ -130,6 +131,7 @@ export function ChatComposer({
   onEnterBehaviorChange,
   onFileSelect,
   onLoadMoreCollectedExpressions,
+  onOpenCollectedExpressions,
   onOpenMaterialLibrary,
   onOpenHistory,
   onSelectCollectedExpression,
@@ -450,6 +452,7 @@ export function ChatComposer({
                   onLoadMoreCollectedExpressions={
                     onLoadMoreCollectedExpressions
                   }
+                  onOpenCollectedExpressions={onOpenCollectedExpressions}
                   onSelect={handleEmojiSelect}
                   onSelectCollectedExpression={onSelectCollectedExpression}
                   onTopCollectedExpression={onTopCollectedExpression}

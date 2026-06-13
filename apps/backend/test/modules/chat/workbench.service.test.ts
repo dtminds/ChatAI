@@ -3357,6 +3357,26 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
+  it("material: rejects material group creation when limit is reached", async () => {
+    const repository = createMaterialRepository({
+      countMaterialGroups: vi.fn().mockResolvedValue(20),
+      createMaterialGroup: vi.fn().mockResolvedValue("88"),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.createMaterialGroup("101", {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+        title: "常用文件",
+      }),
+    ).rejects.toMatchObject({
+      code: "MATERIAL_GROUP_LIMIT_REACHED",
+      statusCode: 400,
+    });
+
+    expect(repository.createMaterialGroup).not.toHaveBeenCalled();
+  });
+
   it("material: creates material group and returns the created group", async () => {
     const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_779_700_004_000);
     const repository = createMaterialRepository({
@@ -3600,6 +3620,7 @@ function createMaterialRepository(overrides: Partial<WorkbenchRepository> = {}) 
     createMaterialCollection: vi.fn().mockResolvedValue("66"),
     createMaterialGroup: vi.fn().mockResolvedValue(undefined),
     canAccessSeat: vi.fn().mockResolvedValue(true),
+    countMaterialGroups: vi.fn().mockResolvedValue(0),
     deleteMaterialCollection: vi.fn().mockResolvedValue(undefined),
     deleteMaterialGroup: vi.fn().mockResolvedValue(undefined),
     findMaterialCollectionScope: vi.fn().mockResolvedValue({

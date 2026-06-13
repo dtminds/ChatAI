@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/select";
 import { MaterialGroupFormDialog } from "@/pages/chat/components/material-collection/material-group-form-dialog";
 import type { MaterialCollectionGroup } from "@/pages/chat/components/material-collection/material-types";
+import { isMaterialCollectionGroupLimitReached } from "@/pages/chat/components/material-collection/material-types";
 
 type MaterialGroupSelectDialogProps = {
   bizType: WorkbenchMaterialCollectionGroupCreateRequest["bizType"];
@@ -56,6 +57,7 @@ export function MaterialGroupSelectDialog({
   }, [open]);
 
   const canSubmit = Boolean(selectedGroupId) && !isSaving && !isCreatingGroup;
+  const canCreateGroup = !isMaterialCollectionGroupLimitReached(groups.length);
 
   async function handleCreateGroup(title: string) {
     setIsCreatingGroup(true);
@@ -106,7 +108,9 @@ export function MaterialGroupSelectDialog({
                 {group.title}
               </SelectItem>
             ))}
-            <SelectItem value={CREATE_GROUP_VALUE}>新建分组</SelectItem>
+            {canCreateGroup ? (
+              <SelectItem value={CREATE_GROUP_VALUE}>新建分组</SelectItem>
+            ) : null}
           </SelectContent>
         </Select>
 

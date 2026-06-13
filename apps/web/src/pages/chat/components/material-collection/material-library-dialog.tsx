@@ -27,6 +27,12 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Spinner } from "@/components/ui/spinner";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { MaterialCard } from "@/pages/chat/components/material-collection/material-card";
 import { MaterialGroupFormDialog } from "@/pages/chat/components/material-collection/material-group-form-dialog";
@@ -34,6 +40,7 @@ import type {
   MaterialCollectionGroup,
   MaterialCollectionItem,
 } from "@/pages/chat/components/material-collection/material-types";
+import { isMaterialCollectionGroupLimitReached } from "@/pages/chat/components/material-collection/material-types";
 
 type MaterialLibraryDialogProps = {
   activeGroupId: string | null;
@@ -88,6 +95,7 @@ export function MaterialLibraryDialog({
     | null
   >(null);
   const libraryTitle = getBizTypeLabel(bizType);
+  const isGroupLimitReached = isMaterialCollectionGroupLimitReached(groups.length);
 
   function handleSubmitGroupTitle(title: string) {
     if (groupDialogState?.mode === "edit") {
@@ -102,7 +110,7 @@ export function MaterialLibraryDialog({
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogContent
-        className="max-h-[min(44rem,calc(100vh-3rem))] max-w-none gap-0 overflow-visible p-0"
+        className="h-[min(44rem,calc(100vh-3rem))] max-h-[calc(100vh-3rem)] max-w-none gap-0 overflow-visible p-0"
         closeButtonClassName="right-0 -top-10 bg-transparent text-white opacity-100 shadow-none hover:bg-transparent hover:text-white focus:ring-0 data-[state=open]:bg-transparent data-[state=open]:text-white"
         style={getLibraryDialogStyle(bizType)}
       >
@@ -116,19 +124,23 @@ export function MaterialLibraryDialog({
           </p>
         ) : null}
 
-        <div className="grid min-h-[34rem] grid-cols-[15rem_minmax(0,1fr)] overflow-hidden rounded-xl bg-sidebar">
-          <aside className="flex min-h-0 flex-col px-4 py-5 text-sidebar-foreground">
-            <div className="mb-5 px-2">
+        <div className="grid h-full min-h-0 grid-cols-[15rem_minmax(0,1fr)] overflow-hidden rounded-xl bg-sidebar">
+          <aside className="flex h-full min-h-0 flex-col py-5 text-sidebar-foreground">
+            <div className="mb-5 px-6">
               <div className="truncate text-sm font-semibold leading-6 text-foreground">
                 {libraryTitle}
               </div>
             </div>
 
-            <ScrollArea className="min-h-0 flex-1">
+            <ScrollArea
+              aria-label="素材分组列表"
+              className="h-full min-h-0 flex-1"
+              role="region"
+            >
               {isGroupsLoading ? (
                 <LoadingState label="正在加载分组" />
               ) : groups.length > 0 ? (
-                <div className="space-y-1 pb-3">
+                <div className="space-y-1 px-4 pb-3">
                   {groups.map((group) => (
                     <GroupButton
                       active={activeGroupId === group.id}
@@ -144,29 +156,57 @@ export function MaterialLibraryDialog({
                   ))}
                 </div>
               ) : (
-                <div className="px-2 py-2 text-[13px] text-muted-foreground">
+                <div className="px-6 py-2 text-[13px] text-muted-foreground">
                   暂无分组
                 </div>
               )}
             </ScrollArea>
 
-            <div className="pt-3">
-              <Button
-                aria-label="新建分组"
-                className="h-9 w-full justify-start gap-2 rounded-[8px] px-3 text-[14px] font-normal text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                disabled={isBusy}
-                onClick={() => setGroupDialogState({ mode: "create" })}
-                type="button"
-                variant="ghost"
-              >
-                <HugeiconsIcon icon={Add01Icon} size={15} strokeWidth={1.8} />
-                新建分组
-              </Button>
+            <div className="px-4 pt-3">
+              {isGroupLimitReached ? (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="inline-flex w-full">
+                        <Button
+                          aria-label="新建分组"
+                          className="h-9 w-full justify-start gap-2 rounded-[8px] px-3 text-[14px] font-normal text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                          disabled
+                          type="button"
+                          variant="ghost"
+                        >
+                          <HugeiconsIcon icon={Add01Icon} size={15} strokeWidth={1.8} />
+                          新建分组
+                        </Button>
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" sideOffset={6}>
+                      分组数量已达上限
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              ) : (
+                <Button
+                  aria-label="新建分组"
+                  className="h-9 w-full justify-start gap-2 rounded-[8px] px-3 text-[14px] font-normal text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                  disabled={isBusy}
+                  onClick={() => setGroupDialogState({ mode: "create" })}
+                  type="button"
+                  variant="ghost"
+                >
+                  <HugeiconsIcon icon={Add01Icon} size={15} strokeWidth={1.8} />
+                  新建分组
+                </Button>
+              )}
             </div>
           </aside>
 
-          <section className="flex min-h-0 min-w-0 flex-col rounded-[14px_0_0_14px] bg-background shadow">
-            <ScrollArea className="min-h-0 flex-1">
+          <section className="flex h-full min-h-0 min-w-0 flex-col rounded-[14px_0_0_14px] bg-background shadow">
+            <ScrollArea
+              aria-label="素材内容列表"
+              className="h-full min-h-0 flex-1"
+              role="region"
+            >
               {isItemsLoading ? (
                 <LoadingState label="正在加载素材" />
               ) : items.length > 0 ? (

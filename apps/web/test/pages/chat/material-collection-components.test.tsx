@@ -2,7 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { fireEvent } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { MATERIAL_COLLECTION_BIZ_TYPE } from "@chatai/contracts";
+import { MATERIAL_COLLECTION_BIZ_TYPE, MATERIAL_COLLECTION_GROUP_MAX_COUNT } from "@chatai/contracts";
 import {
   MaterialCard,
   MaterialExpressionSection,
@@ -102,6 +102,55 @@ describe("material collection components", () => {
     await user.click(screen.getByRole("button", { name: "新建" }));
 
     expect(handleCreateGroup).toHaveBeenCalledWith("一二三四五六七八九十");
+  });
+
+  it("hides create-group option in collect dialog when group limit is reached", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <MaterialGroupSelectDialog
+        bizType={MATERIAL_COLLECTION_BIZ_TYPE.FILE}
+        groups={Array.from({ length: MATERIAL_COLLECTION_GROUP_MAX_COUNT }, (_, index) =>
+          createGroup({ id: `group-${index}`, title: `分组${index + 1}` }),
+        )}
+        isSaving={false}
+        onCreateGroup={async () => undefined}
+        onOpenChange={() => undefined}
+        onSubmit={() => undefined}
+        open
+      />,
+    );
+
+    await user.click(screen.getByRole("combobox", { name: "选择分组" }));
+
+    expect(screen.queryByRole("option", { name: "新建分组" })).not.toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "分组1" })).toBeInTheDocument();
+  });
+
+  it("disables create-group button in material library when group limit is reached", () => {
+    render(
+      <MaterialLibraryDialog
+        activeGroupId="group-1"
+        bizType={MATERIAL_COLLECTION_BIZ_TYPE.FILE}
+        groups={Array.from({ length: MATERIAL_COLLECTION_GROUP_MAX_COUNT }, (_, index) =>
+          createGroup({ id: `group-${index}`, title: `分组${index + 1}` }),
+        )}
+        items={[]}
+        onCreateGroup={() => undefined}
+        onDeleteGroup={() => undefined}
+        onDeleteMaterial={() => undefined}
+        onMoveMaterial={() => undefined}
+        onOpenChange={() => undefined}
+        onRenameGroup={() => undefined}
+        onSelectGroup={() => undefined}
+        onSelectMaterial={() => undefined}
+        onTopGroup={() => undefined}
+        onTopMaterial={() => undefined}
+        open
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "新建分组" })).toBeDisabled();
   });
 
   it("renders collected material with existing message card components", () => {
@@ -279,7 +328,13 @@ describe("material collection components", () => {
     });
     contextMenu = await screen.findByRole("menu");
     await user.click(within(contextMenu).getByRole("menuitem", { name: "移动分组" }));
-    await user.click(within(contextMenu).getByRole("menuitem", { name: "目标分组" }));
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    const moveDialog = await screen.findByRole("dialog", { name: "移动分组" });
+    expect(within(moveDialog).getByText("报价单.pdf")).toBeInTheDocument();
+    await user.click(within(moveDialog).getByRole("combobox", { name: "选择目标分组" }));
+    await user.click(await screen.findByRole("option", { name: "目标分组" }));
+    expect(handleMove).not.toHaveBeenCalled();
+    await user.click(within(moveDialog).getByRole("button", { name: "确定" }));
     fireEvent.contextMenu(materialButton, {
       clientX: 120,
       clientY: 220,
@@ -325,6 +380,57 @@ describe("material collection components", () => {
     );
 
     expect(screen.getByText("暂无分组")).toBeInTheDocument();
+  });
+
+  it("constrains material library content to scroll inside the dialog", () => {
+    render(
+      <MaterialLibraryDialog
+        activeGroupId="group-1"
+        bizType={MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM}
+        groups={Array.from({ length: 20 }, (_, index) =>
+          createGroup({ id: `group-${index + 1}`, title: `Test${index + 1}` }),
+        )}
+        items={Array.from({ length: 20 }, (_, index) =>
+          createItem({
+            bizType: MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM,
+            content: {
+              appName: "麦当劳",
+              sourceLabel: "小程序",
+              title: `小程序${index + 1}`,
+            },
+            contentType: "mini-program",
+            groupId: "group-1",
+            id: `mini-${index + 1}`,
+            title: `小程序${index + 1}`,
+          }),
+        )}
+        onCreateGroup={() => undefined}
+        onDeleteGroup={() => undefined}
+        onDeleteMaterial={() => undefined}
+        onMoveMaterial={() => undefined}
+        onOpenChange={() => undefined}
+        onRenameGroup={() => undefined}
+        onSelectGroup={() => undefined}
+        onSelectMaterial={() => undefined}
+        onTopGroup={() => undefined}
+        onTopMaterial={() => undefined}
+        open
+      />,
+    );
+
+    expect(screen.getByRole("dialog", { name: "收录的小程序" }))
+      .toHaveClass(
+        "h-[min(44rem,calc(100vh-3rem))]",
+        "max-h-[calc(100vh-3rem)]",
+      );
+    expect(screen.getByRole("region", { name: "素材分组列表" }))
+      .toHaveClass("h-full", "min-h-0");
+    expect(screen.getByRole("region", { name: "素材分组列表" }))
+      .not.toHaveClass("px-4");
+    expect(screen.getByRole("button", { name: "Test1" }).closest(".space-y-1"))
+      .toHaveClass("px-4");
+    expect(screen.getByRole("region", { name: "素材内容列表" }))
+      .toHaveClass("h-full", "min-h-0");
   });
 
   it("uses mini-program library width for four collected mini-program cards", () => {

@@ -84,6 +84,7 @@ type ChatPanelProps = {
   onCollectMaterial?: (message: ChatMessage) => void;
   onDeleteCollectedExpression?: (item: WorkbenchMaterialCollectionItemDto) => void;
   onLoadMoreCollectedExpressions?: () => void;
+  onOpenCollectedExpressions?: () => void;
   onOpenMaterialLibrary?: (bizType: 2 | 3 | 4) => void;
   onSelectCollectedExpression?: (item: WorkbenchMaterialCollectionItemDto) => void;
   onTopCollectedExpression?: (item: WorkbenchMaterialCollectionItemDto) => void;
@@ -169,6 +170,7 @@ export function ChatPanel({
   onCollectMaterial,
   onDeleteCollectedExpression,
   onLoadMoreCollectedExpressions,
+  onOpenCollectedExpressions,
   onOpenMaterialLibrary,
   onSelectCollectedExpression,
   onTopCollectedExpression,
@@ -314,6 +316,7 @@ export function ChatPanel({
                     onLoadMoreCollectedExpressions={
                       onLoadMoreCollectedExpressions
                     }
+                    onOpenCollectedExpressions={onOpenCollectedExpressions}
                     onOpenMaterialLibrary={onOpenMaterialLibrary ?? noop}
                     onOpenHistory={onOpenHistory}
                     onSelectCollectedExpression={onSelectCollectedExpression}

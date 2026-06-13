@@ -24,6 +24,7 @@ type WechatEmojiPickerProps = {
   isCollectedExpressionLoadingMore?: boolean;
   onDeleteCollectedExpression?: (item: WorkbenchMaterialCollectionItemDto) => void;
   onLoadMoreCollectedExpressions?: () => void;
+  onOpenCollectedExpressions?: () => void;
   onSelect: (name: WechatEmojiName) => void;
   onSelectCollectedExpression?: (item: WorkbenchMaterialCollectionItemDto) => void;
   onTopCollectedExpression?: (item: WorkbenchMaterialCollectionItemDto) => void;
@@ -35,6 +36,7 @@ export function WechatEmojiPicker({
   isCollectedExpressionLoadingMore = false,
   onDeleteCollectedExpression,
   onLoadMoreCollectedExpressions,
+  onOpenCollectedExpressions,
   onSelect,
   onSelectCollectedExpression,
   onTopCollectedExpression,
@@ -45,7 +47,13 @@ export function WechatEmojiPicker({
     <div className="w-[min(42rem,calc(100vw-3.5rem))] overflow-hidden rounded-[20px] border border-border bg-popover shadow-[0_28px_80px_-36px_var(--shadow-strong)]">
       <Tabs
         className="gap-0"
-        onValueChange={setActiveTab}
+        onValueChange={(value) => {
+          setActiveTab(value);
+
+          if (value === "custom") {
+            onOpenCollectedExpressions?.();
+          }
+        }}
         value={activeTab}
       >
         <TabsContent className="mt-0" value="wechat">

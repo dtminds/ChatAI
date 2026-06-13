@@ -165,14 +165,14 @@ describe("createWorkbenchService", () => {
 
   it("lists material groups and paginated collections with explicit params", async () => {
     const service = createHttpWorkbenchService();
-    mock.onGet("/server/material/group").reply((config) => [
+    mock.onGet("/server/material-collections/groups").reply((config) => [
       200,
       {
         groups: [],
         receivedParams: config.params,
       },
     ]);
-    mock.onGet("/server/material/collections").reply((config) => [
+    mock.onGet("/server/material-collections/materials").reply((config) => [
       200,
       {
         items: [],

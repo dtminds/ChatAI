@@ -772,7 +772,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
   );
 
   app.get<{ Querystring: MaterialGroupsQuery }>(
-    "/api/server/material/group",
+    "/api/server/material-collections/groups",
     {
       preHandler: app.authenticate,
       schema: {
@@ -789,7 +789,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
   );
 
   app.get<{ Querystring: MaterialCollectionsQuery }>(
-    "/api/server/material/collections",
+    "/api/server/material-collections/materials",
     {
       preHandler: app.authenticate,
       schema: {

@@ -123,6 +123,18 @@ describe("material collection mappers", () => {
     ).toBe(0);
   });
 
+  it("maps ISO timestamp strings from database rows", () => {
+    expect(
+      mapMaterialCollectionItem(materialRow({
+        create_time: "2026-06-10T08:00:00.000Z" as never,
+        update_time: "2026-06-11T08:00:00.000Z" as never,
+      })),
+    ).toMatchObject({
+      createdAt: 1781078400000,
+      updatedAt: 1781164800000,
+    });
+  });
+
   it("throws when a material row has an unsupported biz type", () => {
     expect(() =>
       mapMaterialCollectionItem(materialRow({

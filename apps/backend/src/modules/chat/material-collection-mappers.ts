@@ -164,7 +164,13 @@ function toOptionalTimestamp(value: Date | number | string | null | undefined) {
 
   const numericValue = Number(value);
 
-  return Number.isFinite(numericValue) ? numericValue : undefined;
+  if (Number.isFinite(numericValue)) {
+    return numericValue;
+  }
+
+  const parsedTime = Date.parse(value);
+
+  return Number.isFinite(parsedTime) ? parsedTime : undefined;
 }
 
 function toNumber(value: number | string | null | undefined) {

@@ -3,6 +3,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 import {
   Delete02Icon,
   FolderTransferIcon,
@@ -82,12 +83,12 @@ export function MaterialCard({
     };
   }, [contextMenu]);
 
-  const contextMenuNode = contextMenu ? (
+  const contextMenuNode = contextMenu ? createPortal(
     <div
-      className="absolute z-50 min-w-[7.5rem] rounded-[10px] border border-border bg-popover p-1 text-popover-foreground shadow-[0_10px_28px_var(--shadow-soft)]"
+      className="fixed z-50 min-w-[7.5rem] rounded-[10px] border border-border bg-popover p-1 text-popover-foreground shadow-[0_10px_28px_var(--shadow-soft)] pointer-events-auto"
       ref={menuRef}
       role="menu"
-      style={{ left: contextMenu.x, top: contextMenu.y }}
+      style={{ left: contextMenu.x, pointerEvents: "auto", top: contextMenu.y }}
     >
       <button
         className="flex h-8 w-full items-center gap-2 rounded-[8px] px-2.5 text-left text-[13px] outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground disabled:pointer-events-none disabled:opacity-45"
@@ -146,7 +147,8 @@ export function MaterialCard({
         <HugeiconsIcon icon={Delete02Icon} size={16} strokeWidth={1.8} />
         删除
       </button>
-    </div>
+    </div>,
+    document.body,
   ) : null;
 
   return (
@@ -163,10 +165,9 @@ export function MaterialCard({
         onContextMenu={(event) => {
           event.preventDefault();
           event.stopPropagation();
-          const cardRect = event.currentTarget.getBoundingClientRect();
           setContextMenu({
-            x: event.clientX - cardRect.left,
-            y: event.clientY - cardRect.top,
+            x: event.clientX,
+            y: event.clientY,
           });
         }}
         type="button"

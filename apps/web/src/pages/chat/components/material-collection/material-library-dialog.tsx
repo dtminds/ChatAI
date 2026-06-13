@@ -328,7 +328,7 @@ function getLibraryDialogStyle(
 function getLibraryGridStyle(
   bizType: WorkbenchMaterialCollectionGroupCreateRequest["bizType"],
 ) {
-  if (bizType === 3) {
+  if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM) {
     return {
       gridTemplateColumns: "repeat(3, 18rem)",
       width: "57rem",
@@ -344,7 +344,7 @@ function getLibraryGridStyle(
 function getLibraryBodyStyle(
   bizType: WorkbenchMaterialCollectionGroupCreateRequest["bizType"],
 ) {
-  if (bizType === 3) {
+  if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM) {
     return {
       width: "61rem",
     };

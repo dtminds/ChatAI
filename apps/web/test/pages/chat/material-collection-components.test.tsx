@@ -230,17 +230,6 @@ describe("material collection components", () => {
     expect(screen.queryByRole("button", { name: "打开 报价单.pdf 操作菜单" }))
       .not.toBeInTheDocument();
     const materialButton = screen.getByRole("button", { name: "选择素材 报价单.pdf" });
-    vi.spyOn(materialButton, "getBoundingClientRect").mockReturnValue({
-      bottom: 280,
-      height: 120,
-      left: 40,
-      right: 360,
-      top: 160,
-      width: 320,
-      x: 40,
-      y: 160,
-      toJSON: () => ({}),
-    });
 
     fireEvent.contextMenu(materialButton, {
       clientX: 120,
@@ -248,8 +237,8 @@ describe("material collection components", () => {
     });
     let contextMenu = await screen.findByRole("menu");
     expect(contextMenu).toHaveStyle({
-      left: "80px",
-      top: "60px",
+      left: "120px",
+      top: "220px",
     });
     await user.click(within(contextMenu).getByRole("menuitem", { name: "移到最前" }));
     fireEvent.contextMenu(materialButton, {

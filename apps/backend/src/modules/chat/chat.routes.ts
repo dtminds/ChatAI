@@ -258,6 +258,13 @@ const SendMessageBodySchema = Type.Object({
         type: Type.Literal("file"),
         url: Type.Optional(Type.String()),
       }),
+      Type.Object({
+        coverUrl: Type.Optional(Type.String()),
+        desc: Type.Optional(Type.String()),
+        href: Type.String(),
+        title: Type.String(),
+        type: Type.Literal("h5"),
+      }),
     ]),
   ),
   segments: Type.Optional(
@@ -284,6 +291,13 @@ const SendMessageBodySchema = Type.Object({
           fileSizeLabel: Type.Optional(Type.String()),
           type: Type.Literal("file"),
           url: Type.Optional(Type.String()),
+        }),
+        Type.Object({
+          coverUrl: Type.Optional(Type.String()),
+          desc: Type.Optional(Type.String()),
+          href: Type.String(),
+          title: Type.String(),
+          type: Type.Literal("h5"),
         }),
       ]),
     ),

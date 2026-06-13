@@ -857,13 +857,109 @@ describe("ChatWorkbenchPage composer flows", () => {
     await screen.findByRole("textbox", { name: "请输入消息……" });
     await user.click(screen.getByRole("button", { name: "收藏文件" }));
     await user.click(
-      await screen.findByRole("button", {
-        name: "选择素材 求未 AI 智能营销系统.pdf",
+      await screen.findByRole("radio", {
+        name: "选择 求未 AI 智能营销系统.pdf",
       }),
     );
+    await user.click(screen.getByRole("button", { name: "发送" }));
 
     expect(alertSpy).toHaveBeenCalledWith("后续接入发送接口");
     expect(sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("sends a collected H5 material as an h5 segment", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => undefined);
+    const sendMessage = vi.fn(baseService.sendMessage);
+    const listMaterialGroups = vi.fn(async (request) => {
+      if (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.H5) {
+        return baseService.listMaterialGroups(request);
+      }
+
+      return {
+        groups: [
+          {
+            bizType: MATERIAL_COLLECTION_BIZ_TYPE.H5,
+            id: "group-h5",
+            sort: 100,
+            title: "H5分组",
+          },
+        ],
+      };
+    });
+    const listMaterialCollections = vi.fn(async (request) => {
+      if (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.H5) {
+        return baseService.listMaterialCollections(request);
+      }
+
+      return {
+        items: [
+          {
+            bizType: MATERIAL_COLLECTION_BIZ_TYPE.H5,
+            content: {
+              coverUrl: "https://example.com/redpacket.png",
+              desc: "恭喜发财，大吉大利",
+              href: "https://example.com/redpacket",
+              title: "红包来啦",
+            },
+            contentType: "h5" as const,
+            groupId: "group-h5",
+            id: "material-h5-001",
+            messageId: "msg-h5-001",
+            sort: 1,
+            title: "红包来啦",
+          },
+        ],
+        pagination: {
+          hasMore: false,
+          page: request.page ?? 1,
+          pageSize: 100,
+          total: 1,
+        },
+      };
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      listMaterialCollections,
+      listMaterialGroups,
+      sendMessage,
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getByRole("button", { name: "收藏H5" }));
+    await user.click(await screen.findByRole("button", { name: /选择素材 红包来啦/ }));
+
+    expect(alertSpy).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          conversationId: "conv-001",
+          seatId: "drc",
+          segment: {
+            coverUrl: "https://example.com/redpacket.png",
+            desc: "恭喜发财，大吉大利",
+            href: "https://example.com/redpacket",
+            title: "红包来啦",
+            type: "h5",
+          },
+        }),
+      );
+    });
+    await expectLatestConversationMessage("conv-001", {
+      content: {
+        description: "恭喜发财，大吉大利",
+        previewImageUrl: "https://example.com/redpacket.png",
+        title: "红包来啦",
+        type: "h5",
+        url: "https://example.com/redpacket",
+      },
+      role: "agent",
+      status: "accepted",
+    });
   });
 
   it("keeps the selected material group after managing an item", async () => {
@@ -940,21 +1036,21 @@ describe("ChatWorkbenchPage composer flows", () => {
     await user.click(screen.getByRole("button", { name: "收藏文件" }));
     await user.click(await screen.findByRole("button", { name: "第二分组" }));
 
-    const materialButton = await screen.findByRole("button", {
-      name: "选择素材 第二分组文件.pdf",
+    const materialRow = await screen.findByRole("row", {
+      name: /第二分组文件\.pdf/,
     });
     const listMaterialGroupsCallsAfterOpen = listMaterialGroups.mock.calls.length;
     const listMaterialCollectionsCallsAfterSelect =
       listMaterialCollections.mock.calls.length;
 
-    fireEvent.contextMenu(materialButton);
+    fireEvent.contextMenu(materialRow);
     await user.click(await screen.findByRole("menuitem", { name: "删除" }));
 
     await waitFor(() => {
       expect(deleteMaterialCollection).toHaveBeenCalledWith("material-file-second");
     });
     expect(
-      screen.getByRole("button", { name: "选择素材 第二分组文件.pdf" }),
+      screen.getByRole("row", { name: /第二分组文件\.pdf/ }),
     ).toBeInTheDocument();
     expect(listMaterialGroups.mock.calls.length).toBe(
       listMaterialGroupsCallsAfterOpen,
@@ -1043,8 +1139,8 @@ describe("ChatWorkbenchPage composer flows", () => {
     await screen.findByRole("textbox", { name: "请输入消息……" });
     await user.click(screen.getByRole("button", { name: "收藏文件" }));
     await user.click(await screen.findByRole("button", { name: "第二分组" }));
-    await screen.findByRole("button", {
-      name: "选择素材 第二分组文件.pdf",
+    await screen.findByRole("row", {
+      name: /第二分组文件\.pdf/,
     });
 
     const listMaterialGroupsCallsAfterOpen = listMaterialGroups.mock.calls.length;
@@ -1069,7 +1165,7 @@ describe("ChatWorkbenchPage composer flows", () => {
       listMaterialCollectionsCallsAfterSelect,
     );
     expect(
-      screen.getByRole("button", { name: "选择素材 第二分组文件.pdf" }),
+      screen.getByRole("row", { name: /第二分组文件\.pdf/ }),
     ).toBeInTheDocument();
   });
 

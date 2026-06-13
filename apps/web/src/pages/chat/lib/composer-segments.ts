@@ -26,10 +26,19 @@ export type ComposerFileSegment = {
   url?: string;
 };
 
+export type ComposerH5Segment = {
+  type: "h5";
+  coverUrl?: string;
+  desc?: string;
+  href: string;
+  title: string;
+};
+
 export type ComposerSegment =
   | ComposerTextSegment
   | ComposerImageSegment
-  | ComposerFileSegment;
+  | ComposerFileSegment
+  | ComposerH5Segment;
 
 export function normalizeComposerSegments(
   segments: ComposerSegment[],
@@ -87,6 +96,10 @@ export function getComposerSegmentsPreview(segments: ComposerSegment[]) {
 
   if (normalizedSegments.some((segment) => segment.type === "image")) {
     return "[图片]";
+  }
+
+  if (normalizedSegments.some((segment) => segment.type === "h5")) {
+    return "[链接]";
   }
 
   return normalizedSegments.some((segment) => segment.type === "file")

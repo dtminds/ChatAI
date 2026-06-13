@@ -225,7 +225,12 @@ describe("material collection components", () => {
     const handleRenameGroup = vi.fn();
     const handleTop = vi.fn();
     const handleTopGroup = vi.fn();
-    const item = createItem({ id: "material-file-1", title: "报价单.pdf" });
+    const handleLoadMore = vi.fn();
+    const item = createItem({
+      createdAt: 1_736_873_600_000,
+      id: "material-file-1",
+      title: "报价单.pdf",
+    });
     const promptSpy = vi.spyOn(window, "prompt");
 
     render(
@@ -237,9 +242,11 @@ describe("material collection components", () => {
           createGroup({ id: "group-target", title: "目标分组" }),
         ]}
         items={[item]}
+        hasMoreItems
         onCreateGroup={handleCreateGroup}
         onDeleteGroup={handleDeleteGroup}
         onDeleteMaterial={handleDelete}
+        onLoadMoreItems={handleLoadMore}
         onMoveMaterial={handleMove}
         onOpenChange={() => undefined}
         onRenameGroup={handleRenameGroup}
@@ -259,28 +266,30 @@ describe("material collection components", () => {
       });
     expect(screen.getAllByText("收录的文件", { selector: "div" })).toHaveLength(1);
     expect(screen.getAllByText("常用文件")).toHaveLength(1);
-    expect(screen.getByText("点击素材发送，右键菜单可调整排序或删除素材"))
+    expect(screen.getByText("选择文件后发送，右键菜单可调整排序或删除素材"))
       .toHaveClass("absolute", "-top-9", "text-white/90");
     expect(screen.getByRole("button", { name: "常用文件" }))
       .toHaveClass("text-left");
-    expect(screen.getByLabelText("收录内容列表"))
-      .toHaveClass(
-        "grid",
-        "items-start",
-        "gap-4",
-      );
-    expect(screen.getByLabelText("收录内容列表"))
-      .toHaveStyle({
-        gridTemplateColumns: "repeat(2, 20rem)",
-        width: "41rem",
-      });
+    expect(screen.getByRole("table", { name: "收录文件列表" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "名称" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "收录时间" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "文件大小" })).toBeInTheDocument();
+    expect(screen.getByText("报价单.pdf")).toHaveAttribute("title", "报价单.pdf");
+    expect(screen.getByText("2025年1月15日")).toBeInTheDocument();
+    expect(screen.getByText("2 KB")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "关闭" }))
       .toHaveClass("right-0", "-top-10", "bg-transparent", "text-white", "focus:ring-0");
     expect(screen.queryByRole("textbox", { name: "新建分组名称" }))
       .not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /选择素材 报价单\.pdf/ }));
+    await user.click(screen.getByRole("radio", { name: "选择 报价单.pdf" }));
+    expect(handleSelect).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "发送" })).not.toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "发送" }));
     expect(handleSelect).toHaveBeenCalledWith(item);
+    await user.click(screen.getByRole("button", { name: "加载更多" }));
+    expect(handleLoadMore).toHaveBeenCalledTimes(1);
 
     expect(screen.queryByText("所有分组")).not.toBeInTheDocument();
     expect(screen.queryByText("默认分组")).not.toBeInTheDocument();
@@ -310,9 +319,9 @@ describe("material collection components", () => {
     expect(screen.queryByRole("button", { name: "管理" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "打开 报价单.pdf 操作菜单" }))
       .not.toBeInTheDocument();
-    const materialButton = screen.getByRole("button", { name: "选择素材 报价单.pdf" });
+    const materialRow = screen.getByRole("row", { name: /报价单\.pdf/ });
 
-    fireEvent.contextMenu(materialButton, {
+    fireEvent.contextMenu(materialRow, {
       clientX: 120,
       clientY: 220,
     });
@@ -322,7 +331,7 @@ describe("material collection components", () => {
       top: "220px",
     });
     await user.click(within(contextMenu).getByRole("menuitem", { name: "移到最前" }));
-    fireEvent.contextMenu(materialButton, {
+    fireEvent.contextMenu(materialRow, {
       clientX: 120,
       clientY: 220,
     });
@@ -335,7 +344,7 @@ describe("material collection components", () => {
     await user.click(await screen.findByRole("option", { name: "目标分组" }));
     expect(handleMove).not.toHaveBeenCalled();
     await user.click(within(moveDialog).getByRole("button", { name: "确定" }));
-    fireEvent.contextMenu(materialButton, {
+    fireEvent.contextMenu(materialRow, {
       clientX: 120,
       clientY: 220,
     });

@@ -2792,6 +2792,61 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
+  it("maps an h5 link send to the Java send-message payload", async () => {
+    const javaClient = createJavaClient();
+    vi.mocked(javaClient.sendMessage).mockResolvedValue({
+      clientMessageId: "local-h5-001",
+      messageId: "opt-h5-001",
+      optNo: "opt-h5-001",
+      status: "accepted",
+    });
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "101",
+          thirdExternalUserId: "external-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await service.sendMessage("101", {
+      clientMessageId: "local-h5-001",
+      conversationId: "88",
+      seatId: "12",
+      segment: {
+        coverUrl: "https://example.com/cover.png",
+        desc: "恭喜发财，大吉大利",
+        href: "https://example.com/redpacket",
+        title: "红包来啦",
+        type: "h5",
+      },
+    });
+
+    expect(javaClient.sendMessage).toHaveBeenCalledWith({
+      clientMessageId: "local-h5-001",
+      msgData: {
+        coverUrl: "https://example.com/cover.png",
+        desc: "恭喜发财，大吉大利",
+        href: "https://example.com/redpacket",
+        msgtype: "link",
+        title: "红包来啦",
+      },
+      platform: 5,
+      sendType: 1,
+      source: 1,
+      thirdExternalUserid: "external-001",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
+  });
+
   it("ignores quote payload for file sends", async () => {
     const javaClient = createJavaClient();
     const getQuoteContentBase64 = vi.fn().mockResolvedValue("base64-quote-content");

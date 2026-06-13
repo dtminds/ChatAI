@@ -2337,6 +2337,16 @@ function buildPayloadSegmentContent(
     };
   }
 
+  if (segment.type === "h5") {
+    return {
+      description: segment.desc ?? "",
+      previewImageUrl: segment.coverUrl,
+      sourceLabel: "链接",
+      title: segment.title,
+      url: segment.href,
+    };
+  }
+
   return {
     text: segment.text,
   };

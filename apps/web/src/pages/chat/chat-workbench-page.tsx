@@ -1266,10 +1266,6 @@ function ChatWorkbenchContent({
     materialLibraryPage,
   ]);
 
-  const handleSelectMaterial = useCallback(() => {
-    window.alert("后续接入发送接口");
-  }, []);
-
   const runCollectedExpressionMutation = useCallback(
     async (
       action: () => Promise<unknown>,
@@ -1625,6 +1621,57 @@ function ChatWorkbenchContent({
       window.requestAnimationFrame(scroll);
     });
   }, []);
+
+  const handleSelectMaterial = useCallback(
+    async (item: WorkbenchMaterialCollectionItemDto) => {
+      if (item.contentType !== "h5") {
+        window.alert("后续接入发送接口");
+        return;
+      }
+
+      const h5Segment = buildH5ComposerSegment(item);
+
+      if (!h5Segment) {
+        toast.warning("H5链接素材内容不完整");
+        return;
+      }
+
+      const result = await sendAgentMessageSegments([h5Segment]);
+
+      if (!isMountedRef.current) {
+        return;
+      }
+
+      if (!result.ok) {
+        setSendFailureDialog(
+          getSendFailureDialogCopy(
+            result.reason,
+            result.errorCode,
+            result.errorMessage,
+          ),
+        );
+        return;
+      }
+
+      setActiveMaterialLibraryBizType(null);
+      setActiveMaterialLibraryGroupId(null);
+      setMaterialLibraryGroups([]);
+      setMaterialLibraryItems([]);
+      setMaterialLibraryPage(1);
+      setHasMoreMaterialLibraryItems(false);
+      setIsMaterialLibraryGroupsLoading(false);
+      setIsMaterialLibraryItemsLoading(false);
+      setIsMaterialLibraryLoadingMore(false);
+      scrollMessageViewportToBottom();
+      void requestActiveConversationRead();
+    },
+    [
+      isMountedRef,
+      requestActiveConversationRead,
+      scrollMessageViewportToBottom,
+      sendAgentMessageSegments,
+    ],
+  );
 
   const handleSmartReplySendFailure = useCallback(
     ({
@@ -2845,6 +2892,39 @@ function toComposerMaterialBizType(
   }
 
   return undefined;
+}
+
+function buildH5ComposerSegment(
+  item: WorkbenchMaterialCollectionItemDto,
+): ComposerSegment | undefined {
+  const title = readMaterialContentString(item.content.title) || item.title;
+  const href =
+    readMaterialContentString(item.content.href) ||
+    readMaterialContentString(item.content.url);
+
+  if (!title || !href) {
+    return undefined;
+  }
+
+  const desc =
+    readMaterialContentString(item.content.desc) ||
+    readMaterialContentString(item.content.description);
+  const coverUrl =
+    readMaterialContentString(item.content.coverUrl) ||
+    readMaterialContentString(item.content.previewImageUrl) ||
+    readMaterialContentString(item.content.imageUrl);
+
+  return {
+    ...(coverUrl ? { coverUrl } : {}),
+    ...(desc ? { desc } : {}),
+    href,
+    title,
+    type: "h5",
+  };
+}
+
+function readMaterialContentString(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
 }
 
 function getMaterialErrorMessage(error: unknown, fallback: string) {

@@ -12,8 +12,8 @@ import {
   ArrowUp02Icon,
   Cancel01Icon,
   ChatDelayIcon,
-  FileEmpty01Icon,
   Folder01Icon,
+  FolderFavouriteIcon,
   Image01Icon,
   CopyLinkIcon,
   SmileIcon,
@@ -818,7 +818,7 @@ function ComposerFileSplitButton({
               disabled={!canOpenCollectedFiles}
               onSelect={onOpenCollectedFiles}
             >
-              <HugeiconsIcon icon={FileEmpty01Icon} size={16} strokeWidth={1.8} />
+              <HugeiconsIcon icon={FolderFavouriteIcon} size={16} strokeWidth={1.8} />
               收录的文件
             </DropdownMenuItem>
           </DropdownMenuContent>

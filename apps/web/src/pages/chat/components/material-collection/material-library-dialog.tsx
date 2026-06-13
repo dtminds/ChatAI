@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { MaterialCard } from "@/pages/chat/components/material-collection/material-card";
+import { MaterialFileTable } from "@/pages/chat/components/material-collection/material-file-table";
 import { MaterialGroupFormDialog } from "@/pages/chat/components/material-collection/material-group-form-dialog";
 import type {
   MaterialCollectionGroup,
@@ -96,6 +97,7 @@ export function MaterialLibraryDialog({
   >(null);
   const libraryTitle = getBizTypeLabel(bizType);
   const isGroupLimitReached = isMaterialCollectionGroupLimitReached(groups.length);
+  const isFileLibrary = bizType === MATERIAL_COLLECTION_BIZ_TYPE.FILE;
 
   function handleSubmitGroupTitle(title: string) {
     if (groupDialogState?.mode === "edit") {
@@ -120,7 +122,9 @@ export function MaterialLibraryDialog({
         </DialogDescription>
         {items.length > 0 ? (
           <p className="pointer-events-none absolute -top-9 left-1/2 -translate-x-1/2 whitespace-nowrap text-[13px] leading-5 text-white/90">
-            点击素材发送，右键菜单可调整排序或删除素材
+            {isFileLibrary
+              ? "选择文件后发送，右键菜单可调整排序或删除素材"
+              : "点击素材发送，右键菜单可调整排序或删除素材"}
           </p>
         ) : null}
 
@@ -202,61 +206,49 @@ export function MaterialLibraryDialog({
           </aside>
 
           <section className="flex h-full min-h-0 min-w-0 flex-col rounded-[14px_0_0_14px] bg-background shadow">
-            <ScrollArea
-              aria-label="素材内容列表"
-              className="h-full min-h-0 flex-1"
-              role="region"
-            >
-              {isItemsLoading ? (
-                <LoadingState label="正在加载素材" />
-              ) : items.length > 0 ? (
-                <div className="mx-auto p-8" style={getLibraryBodyStyle(bizType)}>
-                  <div
-                    aria-label="收录内容列表"
-                    className="grid items-start gap-4"
-                    style={getLibraryGridStyle(bizType)}
-                  >
-                    {items.map((item) => (
-                      <div className="max-w-full" key={item.id}>
-                        <MaterialCard
-                          className={
-                            bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM
-                              ? "w-[210px]"
-                              : undefined
-                          }
-                          groups={groups}
-                          item={item}
-                          onDelete={onDeleteMaterial}
-                          onMove={onMoveMaterial}
-                          onSelect={onSelectMaterial}
-                          onTop={onTopMaterial}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                  {hasMoreItems ? (
-                    <div className="mt-5 flex justify-center">
-                      <Button
-                        className="h-8 gap-2 px-3 text-[13px]"
-                        disabled={isBusy || isLoadingMoreItems}
-                        onClick={onLoadMoreItems}
-                        type="button"
-                        variant="ghost"
-                      >
-                        {isLoadingMoreItems ? (
-                          <Spinner className="text-current" size={14} />
-                        ) : null}
-                        加载更多
-                      </Button>
-                    </div>
-                  ) : null}
-                </div>
+            {isItemsLoading ? (
+              <LoadingState label="正在加载素材" />
+            ) : items.length > 0 ? (
+              isFileLibrary ? (
+                <MaterialFileTable
+                  groups={groups}
+                  hasMoreItems={hasMoreItems}
+                  isBusy={isBusy}
+                  isLoadingMoreItems={isLoadingMoreItems}
+                  items={items}
+                  onCancel={() => onOpenChange(false)}
+                  onDelete={onDeleteMaterial}
+                  onLoadMoreItems={onLoadMoreItems}
+                  onMove={onMoveMaterial}
+                  onSelect={onSelectMaterial}
+                  onTop={onTopMaterial}
+                />
               ) : (
-                <div className="flex min-h-[28rem] items-center justify-center text-sm text-muted-foreground">
-                  暂无数据
-                </div>
-              )}
-            </ScrollArea>
+                <ScrollArea
+                  aria-label="素材内容列表"
+                  className="h-full min-h-0 flex-1"
+                  role="region"
+                >
+                  <MaterialCardGrid
+                    bizType={bizType}
+                    groups={groups}
+                    hasMoreItems={hasMoreItems}
+                    isBusy={isBusy}
+                    isLoadingMoreItems={isLoadingMoreItems}
+                    items={items}
+                    onDeleteMaterial={onDeleteMaterial}
+                    onLoadMoreItems={onLoadMoreItems}
+                    onMoveMaterial={onMoveMaterial}
+                    onSelectMaterial={onSelectMaterial}
+                    onTopMaterial={onTopMaterial}
+                  />
+                </ScrollArea>
+              )
+            ) : (
+              <div className="flex min-h-[28rem] items-center justify-center text-sm text-muted-foreground">
+                暂无数据
+              </div>
+            )}
           </section>
         </div>
         <MaterialGroupFormDialog
@@ -352,6 +344,76 @@ function GroupButton({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+    </div>
+  );
+}
+
+function MaterialCardGrid({
+  bizType,
+  groups,
+  hasMoreItems,
+  isBusy,
+  isLoadingMoreItems,
+  items,
+  onDeleteMaterial,
+  onLoadMoreItems,
+  onMoveMaterial,
+  onSelectMaterial,
+  onTopMaterial,
+}: {
+  bizType: WorkbenchMaterialCollectionGroupCreateRequest["bizType"];
+  groups: MaterialCollectionGroup[];
+  hasMoreItems: boolean;
+  isBusy: boolean;
+  isLoadingMoreItems: boolean;
+  items: MaterialCollectionItem[];
+  onDeleteMaterial: (item: MaterialCollectionItem) => void;
+  onLoadMoreItems?: () => void;
+  onMoveMaterial: (item: MaterialCollectionItem, groupId: string) => void;
+  onSelectMaterial: (item: MaterialCollectionItem) => void;
+  onTopMaterial: (item: MaterialCollectionItem) => void;
+}) {
+  return (
+    <div className="mx-auto p-8" style={getLibraryBodyStyle(bizType)}>
+      <div
+        aria-label="收录内容列表"
+        className="grid items-start gap-4"
+        style={getLibraryGridStyle(bizType)}
+      >
+        {items.map((item) => (
+          <div className="max-w-full" key={item.id}>
+            <MaterialCard
+              className={
+                bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM
+                  ? "w-[210px]"
+                  : undefined
+              }
+              groups={groups}
+              item={item}
+              onDelete={onDeleteMaterial}
+              onMove={onMoveMaterial}
+              onSelect={onSelectMaterial}
+              onTop={onTopMaterial}
+            />
+          </div>
+        ))}
+      </div>
+      {hasMoreItems ? (
+        <div className="mt-5 flex justify-center">
+          <Button
+            className="h-8 gap-2 px-3 text-[13px]"
+            disabled={isBusy || isLoadingMoreItems}
+            onClick={onLoadMoreItems}
+            type="button"
+            variant="ghost"
+          >
+            {isLoadingMoreItems ? (
+              <Spinner className="text-current" size={14} />
+            ) : null}
+            加载更多
+          </Button>
+        </div>
+      ) : null}
     </div>
   );
 }

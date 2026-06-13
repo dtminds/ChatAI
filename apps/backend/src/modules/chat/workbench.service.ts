@@ -2707,6 +2707,29 @@ function buildJavaSendMessageData(
     };
   }
 
+  if (segment.type === "h5") {
+    const title = segment.title.trim();
+    const href = segment.href.trim();
+    const desc = segment.desc?.trim();
+    const coverUrl = segment.coverUrl?.trim();
+
+    if (!title) {
+      throw new BadRequestError("INVALID_H5_MESSAGE", "H5链接消息缺少标题");
+    }
+
+    if (!href) {
+      throw new BadRequestError("INVALID_H5_MESSAGE", "H5链接消息缺少跳转地址");
+    }
+
+    return {
+      ...(coverUrl ? { coverUrl } : {}),
+      ...(desc ? { desc } : {}),
+      href,
+      msgtype: "link",
+      title,
+    };
+  }
+
   const quoteMsgId = payload.quote?.quoteMsgId
     ? parseMySqlId(payload.quote.quoteMsgId)
     : undefined;

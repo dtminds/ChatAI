@@ -631,10 +631,19 @@ export type WorkbenchOutgoingMessageFileSegment = {
   url?: string;
 };
 
+export type WorkbenchOutgoingMessageH5Segment = {
+  type: "h5";
+  coverUrl?: string;
+  desc?: string;
+  href: string;
+  title: string;
+};
+
 export type WorkbenchOutgoingMessageSegment =
   | WorkbenchOutgoingMessageTextSegment
   | WorkbenchOutgoingMessageImageSegment
-  | WorkbenchOutgoingMessageFileSegment;
+  | WorkbenchOutgoingMessageFileSegment
+  | WorkbenchOutgoingMessageH5Segment;
 
 export type WorkbenchSendMessagePayload = {
   seatId: string;

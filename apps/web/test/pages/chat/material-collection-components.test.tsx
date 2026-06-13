@@ -384,7 +384,9 @@ describe("material collection components", () => {
     expect(screen.getByRole("columnheader", { name: "收录时间" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "文件大小" })).toBeInTheDocument();
     expect(screen.getByText("报价单.pdf")).toHaveAttribute("title", "报价单.pdf");
-    expect(screen.getByText("2025年1月15日")).toBeInTheDocument();
+    expect(
+      screen.getByText(formatMaterialCollectionDate(item.createdAt!)),
+    ).toBeInTheDocument();
     expect(screen.getByText("2 KB")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "关闭" }))
@@ -674,6 +676,80 @@ describe("material collection components", () => {
       .toHaveClass("line-clamp-1");
   });
 
+  it("renders sphfeed materials with the sphfeed card", () => {
+    render(
+      <MaterialCard
+        item={createItem({
+          bizType: MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED,
+          content: {
+            description: "杭州高架惊现鸵鸟飞奔",
+            imageUrl: "https://finder.video.qq.com/cover.jpg",
+            sourceLabel: "视频号",
+            title: "都市快报",
+            url: "https://channels.weixin.qq.com/web/pages/feed?eid=export",
+          },
+          contentType: "sphfeed",
+          groupId: "group-sphfeed",
+          title: "都市快报",
+        })}
+        onSelect={() => undefined}
+      />,
+    );
+
+    expect(screen.getByText("都市快报")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "都市快报" })).toHaveAttribute(
+      "src",
+      "https://finder.video.qq.com/cover.jpg",
+    );
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  it("uses sphfeed library width for collected sphfeed cards", () => {
+    render(
+      <MaterialLibraryDialog
+        activeGroupId="group-sphfeed"
+        bizType={MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED}
+        groups={[createGroup({ id: "group-sphfeed", title: "常用视频号" })]}
+        items={[
+          createItem({
+            bizType: MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED,
+            content: {
+              description: "杭州高架惊现鸵鸟飞奔",
+              imageUrl: "https://finder.video.qq.com/cover.jpg",
+              sourceLabel: "视频号",
+              title: "都市快报",
+              url: "https://channels.weixin.qq.com/web/pages/feed?eid=export",
+            },
+            contentType: "sphfeed",
+            groupId: "group-sphfeed",
+            id: "sphfeed-1",
+            title: "都市快报",
+          }),
+        ]}
+        onCreateGroup={() => undefined}
+        onDeleteGroup={() => undefined}
+        onDeleteMaterial={() => undefined}
+        onEditMaterial={() => undefined}
+        onMoveMaterial={() => undefined}
+        onOpenChange={() => undefined}
+        onRenameGroup={() => undefined}
+        onSelectGroup={() => undefined}
+        onSelectMaterial={() => undefined}
+        onTopGroup={() => undefined}
+        onTopMaterial={() => undefined}
+        open
+      />,
+    );
+
+    expect(screen.getByRole("dialog", { name: "收录的视频号" }))
+      .toHaveStyle({
+        maxWidth: "calc(100vw - 2rem)",
+        width: "74.5rem",
+      });
+    expect(screen.getByRole("button", { name: "选择素材 都市快报" }).parentElement)
+      .toHaveClass("w-[217px]");
+  });
+
   it("renders collected expression section", async () => {
     const user = userEvent.setup();
     const handleSelect = vi.fn();
@@ -735,4 +811,10 @@ function createItem(
     title: "报价单.pdf",
     ...overrides,
   };
+}
+
+function formatMaterialCollectionDate(timestamp: number) {
+  const date = new Date(timestamp);
+
+  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
 }

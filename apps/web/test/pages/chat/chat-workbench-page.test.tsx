@@ -1572,7 +1572,7 @@ describe("ChatWorkbenchPage", () => {
 
     await screen.findByRole("img", { name: "收藏表情" });
     await user.click(screen.getByRole("button", { name: "消息操作" }));
-    await user.click(screen.getByRole("menuitem", { name: "收录内容" }));
+    await user.click(screen.getByRole("menuitem", { name: "收录" }));
 
     await waitFor(() => {
       expect(collectMaterial).toHaveBeenCalledWith({
@@ -1605,7 +1605,7 @@ describe("ChatWorkbenchPage", () => {
     await user.click(
       within(targetRow as HTMLElement).getByRole("button", { name: "消息操作" }),
     );
-    await user.click(screen.getByRole("menuitem", { name: "收录内容" }));
+    await user.click(screen.getByRole("menuitem", { name: "收录" }));
 
     expect(await screen.findByRole("dialog", { name: "收录文件" })).toBeInTheDocument();
     expect(listMaterialGroups).toHaveBeenCalledWith({ bizType: 2 });
@@ -1660,7 +1660,7 @@ describe("ChatWorkbenchPage", () => {
     await user.click(
       within(targetRow as HTMLElement).getByRole("button", { name: "消息操作" }),
     );
-    await user.click(screen.getByRole("menuitem", { name: "收录内容" }));
+    await user.click(screen.getByRole("menuitem", { name: "收录" }));
     await user.click(await screen.findByRole("combobox", { name: "选择分组" }));
     await user.click(await screen.findByRole("option", { name: "新建分组" }));
     expect(screen.getByRole("dialog", { name: "新建分组" })).toBeInTheDocument();

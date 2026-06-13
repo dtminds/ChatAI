@@ -232,7 +232,7 @@ describe("message feed row actions", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "消息操作" }));
-    await user.click(screen.getByRole("menuitem", { name: "收录内容" }));
+    await user.click(screen.getByRole("menuitem", { name: "收录" }));
 
     expect(onCollectMaterial).toHaveBeenCalledWith(message);
   });
@@ -276,7 +276,7 @@ describe("message feed row actions", () => {
 
     await user.click(screen.getByRole("button", { name: "消息操作" }));
 
-    expect(screen.queryByRole("menuitem", { name: "收录内容" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "收录" })).not.toBeInTheDocument();
   });
 
   it("keeps collection action visible but disabled when actions are locked", async () => {
@@ -302,10 +302,10 @@ describe("message feed row actions", () => {
 
     await user.click(screen.getByRole("button", { name: "消息操作" }));
 
-    expect(screen.getByRole("menuitem", { name: "收录内容" })).toHaveAttribute(
+    expect(screen.getByRole("menuitem", { name: "收录" })).toHaveAttribute(
       "data-disabled",
     );
-    await user.click(screen.getByRole("menuitem", { name: "收录内容" }));
+    await user.click(screen.getByRole("menuitem", { name: "收录" }));
 
     expect(onCollectMaterial).not.toHaveBeenCalled();
   });

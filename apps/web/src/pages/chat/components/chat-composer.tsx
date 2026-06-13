@@ -517,24 +517,6 @@ export function ChatComposer({
               ref={imageInputRef}
               type="file"
             />
-            <ComposerFileSplitButton
-              canOpenCollectedFiles={canOpenCollectedFiles}
-              canSelectLocalFile={canSelectFile}
-              onOpenCollectedFiles={() => onOpenMaterialLibrary(2)}
-              onSelectLocalFile={() => fileInputRef.current?.click()}
-            />
-            <input
-              accept={COMPOSER_FILE_ACCEPT}
-              aria-label="选择文件"
-              className="sr-only"
-              disabled={!canSelectFile}
-              onChange={(event) => {
-                onFileSelect(event.currentTarget.files);
-                event.currentTarget.value = "";
-              }}
-              ref={fileInputRef}
-              type="file"
-            />
             <ComposerActionTooltip
               disabled={isSending || !canSendMessage}
               label="小程序"
@@ -567,6 +549,24 @@ export function ChatComposer({
                 <HugeiconsIcon icon={CopyLinkIcon} size={18} strokeWidth={1.8} />
               </Button>
             </ComposerActionTooltip>
+            <ComposerFileSplitButton
+              canOpenCollectedFiles={canOpenCollectedFiles}
+              canSelectLocalFile={canSelectFile}
+              onOpenCollectedFiles={() => onOpenMaterialLibrary(2)}
+              onSelectLocalFile={() => fileInputRef.current?.click()}
+            />
+            <input
+              accept={COMPOSER_FILE_ACCEPT}
+              aria-label="选择文件"
+              className="sr-only"
+              disabled={!canSelectFile}
+              onChange={(event) => {
+                onFileSelect(event.currentTarget.files);
+                event.currentTarget.value = "";
+              }}
+              ref={fileInputRef}
+              type="file"
+            />
             <ComposerActionTooltip label="聊天记录">
               <Button
                 aria-label="历史记录"

@@ -3,8 +3,8 @@ import {
   AiChat02Icon,
   ArrowTurnBackwardIcon,
   Bug02Icon,
+  ChatFavouriteIcon,
   ExclamationMarkIcon,
-  Folder01Icon,
   Male02Icon,
   MoreHorizontalIcon,
   QuoteUpSquareIcon,
@@ -786,11 +786,11 @@ function MessageActionAvatar({
               >
                 <HugeiconsIcon
                   aria-hidden="true"
-                  icon={Folder01Icon}
+                  icon={ChatFavouriteIcon}
                   size={15}
                   strokeWidth={2}
                 />
-                收录内容
+                收录
               </DropdownMenuItem>
             ) : null}
             {canRevokeMessage ? (

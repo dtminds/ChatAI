@@ -205,6 +205,7 @@ function MaterialCardContent({ item }: { item: MaterialCollectionItem }) {
       <MiniAppMessageCard
         className="w-full"
         content={toMiniProgramContent(item)}
+        titleLines={1}
       />
     );
   }

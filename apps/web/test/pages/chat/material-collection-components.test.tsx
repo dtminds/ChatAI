@@ -360,9 +360,13 @@ describe("material collection components", () => {
       });
     expect(screen.getByLabelText("收录内容列表"))
       .toHaveStyle({
-        gridTemplateColumns: "repeat(3, 18rem)",
-        width: "57rem",
+        gridTemplateColumns: "repeat(3, 210px)",
+        width: "678px",
       });
+    expect(screen.getByRole("button", { name: "选择素材 麦当劳自助点餐" }).parentElement)
+      .toHaveClass("w-[210px]");
+    expect(screen.getByText("麦当劳自助点餐"))
+      .toHaveClass("line-clamp-1");
   });
 
   it("renders collected expression section", async () => {

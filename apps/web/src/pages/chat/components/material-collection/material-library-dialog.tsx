@@ -179,6 +179,11 @@ export function MaterialLibraryDialog({
                     {visibleItems.map((item) => (
                       <div className="max-w-full" key={item.id}>
                         <MaterialCard
+                          className={
+                            bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM
+                              ? "w-[210px]"
+                              : undefined
+                          }
                           groups={groups}
                           item={item}
                           onDelete={onDeleteMaterial}
@@ -330,9 +335,9 @@ function getLibraryGridStyle(
 ) {
   if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM) {
     return {
-      gridTemplateColumns: "repeat(3, 18rem)",
+      gridTemplateColumns: "repeat(3, 210px)",
       maxWidth: "100%",
-      width: "57rem",
+      width: "678px",
     };
   }
 

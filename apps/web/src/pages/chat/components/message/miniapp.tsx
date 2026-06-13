@@ -11,9 +11,14 @@ import {
 type MiniAppMessageCardProps = {
   className?: string;
   content: MiniProgramMessageContent;
+  titleLines?: 1 | 2;
 };
 
-export function MiniAppMessageCard({ className, content }: MiniAppMessageCardProps) {
+export function MiniAppMessageCard({
+  className,
+  content,
+  titleLines = 2,
+}: MiniAppMessageCardProps) {
   const coverImageUrl = content.coverImageUrl?.trim();
 
   return (
@@ -24,7 +29,7 @@ export function MiniAppMessageCard({ className, content }: MiniAppMessageCardPro
       )}
       data-testid="mini-program-message-card"
     >
-      <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
+      <div className="flex min-w-0 items-center gap-1.5 text-[12px] text-muted-foreground">
         <div className="flex size-4 items-center justify-center rounded-full bg-primary/10 text-primary">
           {content.logoUrl ? (
             <img
@@ -37,11 +42,21 @@ export function MiniAppMessageCard({ className, content }: MiniAppMessageCardPro
             <HugeiconsIcon icon={AiBrowserIcon} size={14} strokeWidth={1.9} />
           )}
         </div>
-        <span className="font-medium">{content.appName}</span>
+        <span
+          className="min-w-0 truncate font-medium"
+          data-testid="mini-program-app-name"
+        >
+          {content.appName}
+        </span>
       </div>
 
       <div className="mt-2.5">
-        <p className="line-clamp-2 text-[14px] font-medium leading-5 text-foreground">
+        <p
+          className={cn(
+            "text-[14px] font-medium leading-5 text-foreground",
+            titleLines === 1 ? "line-clamp-1" : "line-clamp-2",
+          )}
+        >
           {content.title}
         </p>
       </div>

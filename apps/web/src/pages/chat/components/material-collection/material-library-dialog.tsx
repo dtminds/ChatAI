@@ -119,6 +119,11 @@ export function MaterialLibraryDialog({
         <DialogDescription className="sr-only">
           从分组中选择已收录内容
         </DialogDescription>
+        {visibleItems.length > 0 ? (
+          <p className="pointer-events-none absolute -top-9 left-1/2 -translate-x-1/2 whitespace-nowrap text-[13px] leading-5 text-white/90">
+            点击素材发送，右键菜单可调整排序或删除素材
+          </p>
+        ) : null}
 
         <div className="grid min-h-[34rem] grid-cols-[15rem_minmax(0,1fr)] overflow-hidden rounded-xl bg-sidebar">
           <aside className="flex min-h-0 flex-col px-4 py-5 text-sidebar-foreground">

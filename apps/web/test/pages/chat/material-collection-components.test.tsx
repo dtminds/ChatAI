@@ -208,6 +208,8 @@ describe("material collection components", () => {
       });
     expect(screen.getAllByText("收录的文件", { selector: "div" })).toHaveLength(1);
     expect(screen.getAllByText("常用文件")).toHaveLength(1);
+    expect(screen.getByText("点击素材发送，右键菜单可调整排序或删除素材"))
+      .toHaveClass("absolute", "-top-9", "text-white/90");
     expect(screen.getByRole("button", { name: "常用文件" }))
       .toHaveClass("text-left");
     expect(screen.getByLabelText("收录内容列表"))

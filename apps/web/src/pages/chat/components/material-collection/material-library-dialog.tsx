@@ -331,12 +331,14 @@ function getLibraryGridStyle(
   if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM) {
     return {
       gridTemplateColumns: "repeat(3, 18rem)",
+      maxWidth: "100%",
       width: "57rem",
     };
   }
 
   return {
     gridTemplateColumns: "repeat(2, 20rem)",
+    maxWidth: "100%",
     width: "41.5rem",
   };
 }
@@ -346,11 +348,13 @@ function getLibraryBodyStyle(
 ) {
   if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM) {
     return {
+      maxWidth: "100%",
       width: "61rem",
     };
   }
 
   return {
+    maxWidth: "100%",
     width: "45.5rem",
   };
 }

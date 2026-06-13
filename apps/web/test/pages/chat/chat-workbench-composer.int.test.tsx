@@ -651,6 +651,98 @@ describe("ChatWorkbenchPage composer flows", () => {
     ).toBeInTheDocument();
   });
 
+  it("keeps the latest material library request when switching material types quickly", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const fileRequest = createDeferred<Awaited<ReturnType<typeof baseService.listMaterialCollections>>>();
+    const miniProgramRequest =
+      createDeferred<Awaited<ReturnType<typeof baseService.listMaterialCollections>>>();
+    const listMaterialCollections = vi.fn((request) => {
+      if (request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.FILE) {
+        return fileRequest.promise;
+      }
+
+      if (request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM) {
+        return miniProgramRequest.promise;
+      }
+
+      return baseService.listMaterialCollections(request);
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      listMaterialCollections,
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getByRole("button", { name: "收藏文件" }));
+    await user.click(screen.getByRole("button", { name: "关闭" }));
+    await user.click(screen.getByRole("button", { name: "收藏小程序" }));
+
+    miniProgramRequest.resolve({
+      groups: [
+        {
+          bizType: MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM,
+          id: "group-mini",
+          sort: 1,
+          title: "小程序分组",
+        },
+      ],
+      items: [
+        {
+          bizType: MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM,
+          content: {
+            appName: "企微助手",
+            title: "小程序",
+          },
+          contentType: "mini-program",
+          groupId: "group-mini",
+          id: "material-mini-001",
+          messageId: "msg-mini-001",
+          sort: 1,
+          title: "企微助手",
+        },
+      ],
+    });
+
+    expect(
+      await screen.findByRole("dialog", { name: "收录的小程序" }),
+    ).toBeInTheDocument();
+    expect(await screen.findByText("小程序分组")).toBeInTheDocument();
+
+    fileRequest.resolve({
+      groups: [
+        {
+          bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+          id: "group-file",
+          sort: 1,
+          title: "文件分组",
+        },
+      ],
+      items: [
+        {
+          bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+          content: {
+            fileName: "旧文件.pdf",
+          },
+          contentType: "file",
+          groupId: "group-file",
+          id: "material-file-001",
+          messageId: "msg-file-001",
+          sort: 1,
+          title: "旧文件.pdf",
+        },
+      ],
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText("文件分组")).not.toBeInTheDocument();
+    });
+    expect(screen.getByText("小程序分组")).toBeInTheDocument();
+  });
+
   it("alerts instead of sending when a collected file material is selected", async () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();

@@ -306,6 +306,7 @@ function ChatWorkbenchContent({
   const workbenchBodyRef = useRef<HTMLDivElement | null>(null);
   const messageViewportRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<LexicalEditor | null>(null);
+  const materialLibraryRequestSeqRef = useRef(0);
   const mentionRetryDialogStateRef =
     useRef<MentionRetryDialogState | null>(null);
   const isSendingDraftRef = useRef(false);
@@ -644,6 +645,9 @@ function ChatWorkbenchContent({
 
   const loadMaterialLibrary = useCallback(
     async (bizType: ComposerMaterialBizType) => {
+      const requestSeq = materialLibraryRequestSeqRef.current + 1;
+
+      materialLibraryRequestSeqRef.current = requestSeq;
       setIsMaterialLibraryBusy(true);
 
       try {
@@ -651,18 +655,27 @@ function ChatWorkbenchContent({
           bizType,
         });
 
-        if (!isMountedRef.current) {
+        if (
+          !isMountedRef.current ||
+          materialLibraryRequestSeqRef.current !== requestSeq
+        ) {
           return;
         }
 
         setMaterialLibraryGroups(response.groups);
         setMaterialLibraryItems(response.items);
       } catch (error) {
-        if (isMountedRef.current) {
+        if (
+          isMountedRef.current &&
+          materialLibraryRequestSeqRef.current === requestSeq
+        ) {
           toast.warning(getMaterialErrorMessage(error, "素材加载失败"));
         }
       } finally {
-        if (isMountedRef.current) {
+        if (
+          isMountedRef.current &&
+          materialLibraryRequestSeqRef.current === requestSeq
+        ) {
           setIsMaterialLibraryBusy(false);
         }
       }
@@ -2127,6 +2140,7 @@ function ChatWorkbenchContent({
         onMoveMaterial={handleMoveMaterial}
         onOpenChange={(open) => {
           if (!open) {
+            materialLibraryRequestSeqRef.current += 1;
             setActiveMaterialLibraryBizType(null);
             setMaterialLibraryGroups([]);
             setMaterialLibraryItems([]);

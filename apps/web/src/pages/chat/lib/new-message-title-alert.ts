@@ -18,12 +18,16 @@ export function notifyPulledCustomerMessage() {
     return;
   }
 
-  if (isAlerting) {
-    return;
+  if (flashTimer) {
+    window.clearInterval(flashTimer);
+    flashTimer = undefined;
   }
 
-  isAlerting = true;
-  bindResetListeners();
+  if (!isAlerting) {
+    isAlerting = true;
+    bindResetListeners();
+  }
+
   document.title = WORKBENCH_NEW_MESSAGE_TITLE;
   isShowingNewMessageTitle = true;
 

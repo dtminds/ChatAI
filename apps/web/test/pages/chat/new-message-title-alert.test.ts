@@ -53,6 +53,26 @@ describe("new message title alert", () => {
     expect(document.title).toBe(WORKBENCH_DEFAULT_TITLE);
   });
 
+  it("refreshes the flash cycle when another message arrives while alerting", () => {
+    setDocumentVisibility("hidden");
+    setDocumentFocus(false);
+
+    notifyPulledCustomerMessage();
+
+    vi.advanceTimersByTime(1000);
+    expect(document.title).toBe(WORKBENCH_EMPTY_MESSAGE_TITLE);
+
+    notifyPulledCustomerMessage();
+
+    expect(document.title).toBe(WORKBENCH_NEW_MESSAGE_TITLE);
+
+    vi.advanceTimersByTime(1000);
+    expect(document.title).toBe(WORKBENCH_EMPTY_MESSAGE_TITLE);
+
+    vi.advanceTimersByTime(1000);
+    expect(document.title).toBe(WORKBENCH_NEW_MESSAGE_TITLE);
+  });
+
   it("does not flash when the current tab is visible and focused", () => {
     notifyPulledCustomerMessage();
 

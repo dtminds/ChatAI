@@ -1,10 +1,15 @@
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import {
+  readMaterialDescription,
+  readMaterialLinkUrl,
+} from "@chatai/contracts";
 import { FileMessageCard } from "@/pages/chat/components/message/file";
 import { ImageMessageCard } from "@/pages/chat/components/message/image";
 import { LinkMessageCard } from "@/pages/chat/components/message/link";
 import { MiniAppMessageCard } from "@/pages/chat/components/message/miniapp";
 import { MaterialActionsMenu } from "@/pages/chat/components/material-collection/material-actions-menu";
+import { MaterialSelectionIndicator } from "@/pages/chat/components/material-collection/material-selection-indicator";
 import type {
   FileMessageContent,
   H5CardMessageContent,
@@ -21,9 +26,13 @@ type MaterialCardProps = {
   groups?: MaterialCollectionGroup[];
   item: MaterialCollectionItem;
   onDelete?: (item: MaterialCollectionItem) => void;
+  onEdit?: (item: MaterialCollectionItem) => void;
   onMove?: (item: MaterialCollectionItem, groupId: string) => void;
   onSelect?: (item: MaterialCollectionItem) => void;
+  onToggleSelect?: () => void;
   onTop?: (item: MaterialCollectionItem) => void;
+  selected?: boolean;
+  selectionMode?: "immediate" | "toggle";
 };
 
 export function MaterialCard({
@@ -31,13 +40,18 @@ export function MaterialCard({
   groups = [],
   item,
   onDelete,
+  onEdit,
   onMove,
   onSelect,
+  onToggleSelect,
   onTop,
+  selected = false,
+  selectionMode = "immediate",
 }: MaterialCardProps) {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(
     null,
   );
+  const isToggleMode = selectionMode === "toggle";
 
   return (
     <div
@@ -48,8 +62,16 @@ export function MaterialCard({
     >
       <button
         aria-label={`选择素材 ${item.title}`}
-        className="block w-full max-w-full rounded-[8px] text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
-        onClick={() => onSelect?.(item)}
+        aria-pressed={isToggleMode ? selected : undefined}
+        className="relative block w-full max-w-full rounded-[8px] text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+        onClick={() => {
+          if (isToggleMode) {
+            onToggleSelect?.();
+            return;
+          }
+
+          onSelect?.(item);
+        }}
         onContextMenu={(event) => {
           event.preventDefault();
           event.stopPropagation();
@@ -60,6 +82,12 @@ export function MaterialCard({
         }}
         type="button"
       >
+        {isToggleMode && selected ? (
+          <MaterialSelectionIndicator
+            className="absolute right-2 top-2 z-10 pointer-events-none"
+            selected
+          />
+        ) : null}
         <MaterialCardContent item={item} />
       </button>
 
@@ -67,6 +95,7 @@ export function MaterialCard({
         groups={groups}
         item={item}
         onDelete={onDelete}
+        onEdit={onEdit}
         onMove={onMove}
         onOpenChange={setContextMenu}
         onTop={onTop}
@@ -164,10 +193,10 @@ function toMiniProgramContent(item: MaterialCollectionItem): MiniProgramMessageC
 }
 
 function toH5Content(item: MaterialCollectionItem): H5CardMessageContent {
+  const contentRecord = isRecord(item.content) ? item.content : {};
+
   return {
-    description:
-      readString(item.content.description) ||
-      readString(item.content.desc),
+    description: readMaterialDescription(contentRecord),
     previewImageUrl:
       readString(item.content.previewImageUrl) ||
       readString(item.content.imageUrl) ||
@@ -176,11 +205,12 @@ function toH5Content(item: MaterialCollectionItem): H5CardMessageContent {
     sourceLabel: readString(item.content.sourceLabel) || "链接",
     title: readString(item.content.title) || item.title || "链接",
     type: "h5",
-    url:
-      readString(item.content.url) ||
-      readString(item.content.href) ||
-      undefined,
+    url: readMaterialLinkUrl(contentRecord) || undefined,
   };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function readString(value: unknown) {

@@ -1,8 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import { FileEmpty01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@/components/ui/button";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -16,10 +15,13 @@ import {
 import { cn } from "@/lib/utils";
 import { FileExtensionBadge } from "@/pages/chat/components/message/file";
 import { MaterialActionsMenu } from "@/pages/chat/components/material-collection/material-actions-menu";
+import { MaterialLibraryFooter } from "@/pages/chat/components/material-collection/material-library-footer";
+import { MaterialSelectionIndicator } from "@/pages/chat/components/material-collection/material-selection-indicator";
 import type {
   MaterialCollectionGroup,
   MaterialCollectionItem,
 } from "@/pages/chat/components/material-collection/material-types";
+import { useNullableMaterialSelection } from "@/pages/chat/components/material-collection/use-nullable-material-selection";
 
 type MaterialFileTableProps = {
   groups: MaterialCollectionGroup[];
@@ -29,6 +31,7 @@ type MaterialFileTableProps = {
   items: MaterialCollectionItem[];
   onCancel: () => void;
   onDelete: (item: MaterialCollectionItem) => void;
+  onEdit?: (item: MaterialCollectionItem) => void;
   onLoadMoreItems?: () => void;
   onMove: (item: MaterialCollectionItem, groupId: string) => void;
   onSelect: (item: MaterialCollectionItem) => void;
@@ -43,26 +46,18 @@ export function MaterialFileTable({
   items,
   onCancel,
   onDelete,
+  onEdit,
   onLoadMoreItems,
   onMove,
   onSelect,
   onTop,
 }: MaterialFileTableProps) {
-  const [selectedItemId, setSelectedItemId] = useState("");
+  const { selectedItem, selectedItemId, toggleItemSelection } =
+    useNullableMaterialSelection(items);
   const [contextMenuState, setContextMenuState] = useState<{
     item: MaterialCollectionItem;
     position: { x: number; y: number } | null;
   } | null>(null);
-  const selectedItem = useMemo(
-    () => items.find((item) => item.id === selectedItemId),
-    [items, selectedItemId],
-  );
-
-  useEffect(() => {
-    if (selectedItemId && !items.some((item) => item.id === selectedItemId)) {
-      setSelectedItemId("");
-    }
-  }, [items, selectedItemId]);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -72,127 +67,128 @@ export function MaterialFileTable({
         role="region"
       >
         <div className="px-6 pb-5 pt-5">
-          <RadioGroup
-            aria-label="选择收录文件"
-            className="block"
-            onValueChange={setSelectedItemId}
-            value={selectedItemId}
+          <Table
+            aria-label="收录文件列表"
+            className="table-fixed border-separate border-spacing-y-1"
           >
-            <Table
-              aria-label="收录文件列表"
-              className="table-fixed border-separate border-spacing-y-1"
-            >
-              <colgroup>
-                <col className="w-14" />
-                <col />
-                <col className="w-40" />
-                <col className="w-32" />
-              </colgroup>
-              <TableHeader className="sticky top-0 z-10 bg-background">
-                <TableRow className="hover:bg-transparent">
-                  <TableHead className="w-14 px-4">
-                    <span className="sr-only">选择</span>
-                  </TableHead>
-                  <TableHead className="px-0 pr-6 text-[14px] font-medium text-muted-foreground">
-                    名称
-                  </TableHead>
-                  <TableHead className="px-4 text-[14px] font-medium text-muted-foreground">
-                    收录时间
-                  </TableHead>
-                  <TableHead className="px-4 text-right text-[14px] font-medium text-muted-foreground">
-                    文件大小
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {items.map((item) => {
-                  const file = getFileTableContent(item);
-                  const selected = selectedItemId === item.id;
+            <colgroup>
+              <col className="w-14" />
+              <col />
+              <col className="w-40" />
+              <col className="w-32" />
+            </colgroup>
+            <TableHeader className="sticky top-0 z-10 bg-background">
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="w-14 px-4">
+                  <span className="sr-only">选择</span>
+                </TableHead>
+                <TableHead className="px-0 pr-6 text-[14px] font-medium text-muted-foreground">
+                  名称
+                </TableHead>
+                <TableHead className="px-4 text-[14px] font-medium text-muted-foreground">
+                  收录时间
+                </TableHead>
+                <TableHead className="px-4 text-right text-[14px] font-medium text-muted-foreground">
+                  文件大小
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {items.map((item) => {
+                const file = getFileTableContent(item);
+                const selected = selectedItemId === item.id;
 
-                  return (
-                    <TableRow
-                      aria-label={item.title}
+                return (
+                  <TableRow
+                    aria-label={item.title}
+                    aria-selected={selected}
+                    className={cn(
+                      "group cursor-pointer border-b-0 hover:bg-transparent data-[state=selected]:bg-transparent",
+                    )}
+                    data-state={selected ? "selected" : undefined}
+                    key={item.id}
+                    onClick={() => toggleItemSelection(item.id)}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      setContextMenuState({
+                        item,
+                        position: {
+                          x: event.clientX,
+                          y: event.clientY,
+                        },
+                      });
+                    }}
+                  >
+                    <TableCell
                       className={cn(
-                        "group cursor-pointer border-b-0 hover:bg-transparent data-[state=selected]:bg-transparent",
+                        "h-14 w-14 rounded-l-[10px] px-4 py-1.5 transition-colors group-hover:bg-accent/50",
+                        selected && "bg-accent/50",
                       )}
-                      data-state={selected ? "selected" : undefined}
-                      key={item.id}
-                      onClick={() => setSelectedItemId(item.id)}
-                      onContextMenu={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        setContextMenuState({
-                          item,
-                          position: {
-                            x: event.clientX,
-                            y: event.clientY,
-                          },
-                        });
-                      }}
                     >
-                      <TableCell
-                        className={cn(
-                          "h-14 w-14 rounded-l-[10px] px-4 py-1.5 transition-colors group-hover:bg-accent/50",
-                          selected && "bg-accent/50",
-                        )}
+                      <button
+                        aria-label={`选择 ${file.fileName}`}
+                        aria-pressed={selected}
+                        className="inline-flex size-4 items-center justify-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          toggleItemSelection(item.id);
+                        }}
+                        type="button"
                       >
-                        <RadioGroupItem
-                          aria-label={`选择 ${file.fileName}`}
-                          onClick={(event) => event.stopPropagation()}
-                          value={item.id}
-                        />
-                      </TableCell>
-                      <TableCell
-                        className={cn(
-                          "min-w-0 overflow-hidden px-0 py-1.5 pr-6 transition-colors group-hover:bg-accent/50",
-                          selected && "bg-accent/50",
-                        )}
-                      >
-                        <div className="flex min-w-0 items-center gap-3">
-                          {file.extension ? (
-                            <FileExtensionBadge
-                              className="size-8"
-                              extension={file.extension}
+                        <MaterialSelectionIndicator selected={selected} size="sm" />
+                      </button>
+                    </TableCell>
+                    <TableCell
+                      className={cn(
+                        "min-w-0 overflow-hidden px-0 py-1.5 pr-6 transition-colors group-hover:bg-accent/50",
+                        selected && "bg-accent/50",
+                      )}
+                    >
+                      <div className="flex min-w-0 items-center gap-3">
+                        {file.extension ? (
+                          <FileExtensionBadge
+                            className="size-8"
+                            extension={file.extension}
+                          />
+                        ) : (
+                          <span className="flex size-8 shrink-0 items-center justify-center rounded-[6px] bg-muted text-muted-foreground">
+                            <HugeiconsIcon
+                              icon={FileEmpty01Icon}
+                              size={18}
+                              strokeWidth={1.8}
                             />
-                          ) : (
-                            <span className="flex size-8 shrink-0 items-center justify-center rounded-[6px] bg-muted text-muted-foreground">
-                              <HugeiconsIcon
-                                icon={FileEmpty01Icon}
-                                size={18}
-                                strokeWidth={1.8}
-                              />
-                            </span>
-                          )}
-                          <span
-                            className="min-w-0 truncate text-[14px] font-medium text-foreground"
-                            title={file.fileName}
-                          >
-                            {file.fileName}
                           </span>
-                        </div>
-                      </TableCell>
-                      <TableCell
-                        className={cn(
-                          "whitespace-nowrap px-4 py-1.5 text-[13px] text-muted-foreground transition-colors group-hover:bg-accent/50",
-                          selected && "bg-accent/50",
                         )}
-                      >
-                        {formatMaterialDate(item.createdAt)}
-                      </TableCell>
-                      <TableCell
-                        className={cn(
-                          "whitespace-nowrap rounded-r-[10px] px-4 py-1.5 text-right text-[13px] text-muted-foreground transition-colors group-hover:bg-accent/50",
-                          selected && "bg-accent/50",
-                        )}
-                      >
-                        {file.fileSizeLabel || "-"}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </RadioGroup>
+                        <span
+                          className="min-w-0 truncate text-[14px] font-medium text-foreground"
+                          title={file.fileName}
+                        >
+                          {file.fileName}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell
+                      className={cn(
+                        "whitespace-nowrap px-4 py-1.5 text-[13px] text-muted-foreground transition-colors group-hover:bg-accent/50",
+                        selected && "bg-accent/50",
+                      )}
+                    >
+                      {formatMaterialDate(item.createdAt)}
+                    </TableCell>
+                    <TableCell
+                      className={cn(
+                        "whitespace-nowrap rounded-r-[10px] px-4 py-1.5 text-right text-[13px] text-muted-foreground transition-colors group-hover:bg-accent/50",
+                        selected && "bg-accent/50",
+                      )}
+                    >
+                      {file.fileSizeLabel || "-"}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
           {hasMoreItems ? (
             <div className="mt-3 flex justify-center">
               <Button
@@ -212,35 +208,23 @@ export function MaterialFileTable({
         </div>
       </ScrollArea>
 
-      <div className="flex shrink-0 justify-end gap-3 border-t border-divider px-8 py-4">
-        <Button
-          className="min-w-28"
-          disabled={isBusy}
-          onClick={onCancel}
-          type="button"
-          variant="outline"
-        >
-          取消
-        </Button>
-        <Button
-          className="min-w-28"
-          disabled={isBusy || !selectedItem}
-          onClick={() => {
-            if (selectedItem) {
-              onSelect(selectedItem);
-            }
-          }}
-          type="button"
-        >
-          发送
-        </Button>
-      </div>
+      <MaterialLibraryFooter
+        canSend={selectedItem != null}
+        isBusy={isBusy}
+        onCancel={onCancel}
+        onSend={() => {
+          if (selectedItem) {
+            onSelect(selectedItem);
+          }
+        }}
+      />
 
       {contextMenuState ? (
         <MaterialActionsMenu
           groups={groups}
           item={contextMenuState.item}
           onDelete={onDelete}
+          onEdit={onEdit}
           onMove={onMove}
           onOpenChange={(position) => {
             setContextMenuState(

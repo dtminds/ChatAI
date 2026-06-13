@@ -3107,7 +3107,10 @@ describe("MysqlWorkbenchService", () => {
     const repository = createMaterialRepository({
       createMaterialCollection: vi.fn().mockResolvedValue("181"),
       findMaterialMessage: vi.fn().mockResolvedValue({
-        content: JSON.stringify({ fileName: "报价.pdf" }),
+        content: JSON.stringify({
+          fileName: "报价.pdf",
+          fileUrl: "https://cdn.example.com/quote.pdf",
+        }),
         msgid: "msg-file-1",
         msgtype: "file",
         uid: 9001,
@@ -3125,7 +3128,10 @@ describe("MysqlWorkbenchService", () => {
 
     expect(repository.createMaterialCollection).toHaveBeenCalledWith({
       bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
-      content: JSON.stringify({ fileName: "报价.pdf" }),
+      content: JSON.stringify({
+        fileName: "报价.pdf",
+        fileUrl: "https://cdn.example.com/quote.pdf",
+      }),
       groupId: "9",
       msgid: "msg-file-1",
       opSubUserId: "101",
@@ -3137,11 +3143,10 @@ describe("MysqlWorkbenchService", () => {
     nowSpy.mockRestore();
   });
 
-  it("material: trims generated material title to database limit", async () => {
-    const longFileName = `${"超".repeat(120)}.pdf`;
+  it("material: rejects file collect when file url is missing", async () => {
     const repository = createMaterialRepository({
       findMaterialMessage: vi.fn().mockResolvedValue({
-        content: JSON.stringify({ fileName: longFileName }),
+        content: JSON.stringify({ fileName: "报价.pdf" }),
         msgid: "msg-file-1",
         msgtype: "file",
         uid: 9001,
@@ -3149,17 +3154,45 @@ describe("MysqlWorkbenchService", () => {
     });
     const service = new MysqlWorkbenchService(repository, createJavaClient());
 
-    await service.collectMaterial("101", {
-      bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
-      groupId: "9",
-      messageId: "msg-file-1",
+    await expect(
+      service.collectMaterial("101", {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+        groupId: "9",
+        messageId: "msg-file-1",
+      }),
+    ).resolves.toEqual({
+      success: false,
+      errorMsg: "文件缺少下载地址，无法收录",
+    });
+  });
+
+  it("material: rejects generated material title over collection limit", async () => {
+    const longFileName = `${"超".repeat(40)}.pdf`;
+    const repository = createMaterialRepository({
+      findMaterialMessage: vi.fn().mockResolvedValue({
+        content: JSON.stringify({
+          fileName: longFileName,
+          fileUrl: "https://cdn.example.com/long.pdf",
+        }),
+        msgid: "msg-file-1",
+        msgtype: "file",
+        uid: 9001,
+      }),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.collectMaterial("101", {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+        groupId: "9",
+        messageId: "msg-file-1",
+      }),
+    ).resolves.toEqual({
+      success: false,
+      errorMsg: "文件名称不能超过 32 个字符",
     });
 
-    expect(repository.createMaterialCollection).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: longFileName.slice(0, 100),
-      }),
-    );
+    expect(repository.createMaterialCollection).not.toHaveBeenCalled();
   });
 
   it("material: requires a real group before collecting tenant materials", async () => {
@@ -3263,7 +3296,10 @@ describe("MysqlWorkbenchService", () => {
       canAccessSeat: vi.fn().mockResolvedValue(false),
       createMaterialCollection: vi.fn().mockResolvedValue("181"),
       findMaterialMessage: vi.fn().mockResolvedValue({
-        content: JSON.stringify({ fileName: "报价.pdf" }),
+        content: JSON.stringify({
+          fileName: "报价.pdf",
+          fileUrl: "https://cdn.example.com/quote.pdf",
+        }),
         msgid: "msg-file-1",
         msgtype: "file",
         uid: 9001,
@@ -3292,7 +3328,10 @@ describe("MysqlWorkbenchService", () => {
     const repository = createMaterialRepository({
       createMaterialCollection: vi.fn().mockResolvedValue("DUPLICATE"),
       findMaterialMessage: vi.fn().mockResolvedValue({
-        content: JSON.stringify({ fileName: "报价.pdf" }),
+        content: JSON.stringify({
+          fileName: "报价.pdf",
+          fileUrl: "https://cdn.example.com/quote.pdf",
+        }),
         msgid: "msg-file-1",
         msgtype: "file",
         uid: 9001,
@@ -3325,7 +3364,10 @@ describe("MysqlWorkbenchService", () => {
         item: existingItem,
       }),
       findMaterialMessage: vi.fn().mockResolvedValue({
-        content: JSON.stringify({ fileName: "报价.pdf" }),
+        content: JSON.stringify({
+          fileName: "报价.pdf",
+          fileUrl: "https://cdn.example.com/quote.pdf",
+        }),
         msgid: "msg-file-1",
         msgtype: "file",
         uid: 9001,
@@ -3363,7 +3405,10 @@ describe("MysqlWorkbenchService", () => {
         item: existingItem,
       }),
       findMaterialMessage: vi.fn().mockResolvedValue({
-        content: JSON.stringify({ fileName: "新报价.pdf" }),
+        content: JSON.stringify({
+          fileName: "新报价.pdf",
+          fileUrl: "https://cdn.example.com/new-quote.pdf",
+        }),
         msgid: "msg-file-1",
         msgtype: "file",
         uid: 9001,
@@ -3383,7 +3428,10 @@ describe("MysqlWorkbenchService", () => {
     });
 
     expect(repository.restoreMaterialCollection).toHaveBeenCalledWith({
-      content: JSON.stringify({ fileName: "新报价.pdf" }),
+      content: JSON.stringify({
+        fileName: "新报价.pdf",
+        fileUrl: "https://cdn.example.com/new-quote.pdf",
+      }),
       groupId: "9",
       id: "77",
       opSubUserId: "101",
@@ -3527,6 +3575,80 @@ describe("MysqlWorkbenchService", () => {
       uid: 9001,
     });
     nowSpy.mockRestore();
+  });
+
+  it("material: updates file and h5 collection content/title when edited", async () => {
+    const fileRepository = createMaterialRepository({
+      findMaterialCollectionRecord: vi.fn().mockResolvedValue({
+        content: JSON.stringify({
+          fileName: "报价.pdf",
+          fileUrl: "https://cdn.example.com/a.pdf",
+        }),
+        id: "66",
+      }),
+      findMaterialCollectionScope: vi.fn().mockResolvedValue({
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+        subUid: 0,
+      }),
+    });
+    const fileService = new MysqlWorkbenchService(fileRepository, createJavaClient());
+
+    await expect(
+      fileService.updateMaterialCollection("101", "66", {
+        fileName: "新报价.pdf",
+      }),
+    ).resolves.toEqual({ ok: true });
+
+    expect(fileRepository.findMaterialCollectionRecord).toHaveBeenCalledWith({
+      id: "66",
+      subUid: 0,
+      uid: 9001,
+    });
+    expect(fileRepository.updateMaterialCollectionContent).toHaveBeenCalledWith({
+      content: JSON.stringify({
+        fileName: "新报价.pdf",
+        fileUrl: "https://cdn.example.com/a.pdf",
+      }),
+      id: "66",
+      subUid: 0,
+      title: "新报价.pdf",
+      uid: 9001,
+    });
+
+    const h5Repository = createMaterialRepository({
+      findMaterialCollectionRecord: vi.fn().mockResolvedValue({
+        content: JSON.stringify({
+          description: "旧描述",
+          href: "https://example.com/page",
+          title: "旧标题",
+        }),
+        id: "77",
+      }),
+      findMaterialCollectionScope: vi.fn().mockResolvedValue({
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.H5,
+        subUid: 0,
+      }),
+    });
+    const h5Service = new MysqlWorkbenchService(h5Repository, createJavaClient());
+
+    await expect(
+      h5Service.updateMaterialCollection("101", "77", {
+        description: "新描述",
+        title: "新标题",
+      }),
+    ).resolves.toEqual({ ok: true });
+
+    expect(h5Repository.updateMaterialCollectionContent).toHaveBeenCalledWith({
+      content: JSON.stringify({
+        description: "新描述",
+        href: "https://example.com/page",
+        title: "新标题",
+      }),
+      id: "77",
+      subUid: 0,
+      title: "新标题",
+      uid: 9001,
+    });
   });
 
   it("material: rejects another sub user's expression collection operation", async () => {
@@ -3683,6 +3805,13 @@ function createMaterialRepository(overrides: Partial<WorkbenchRepository> = {}) 
       subUid: 0,
     }),
     findMaterialCollectionByMessage: vi.fn().mockResolvedValue(undefined),
+    findMaterialCollectionRecord: vi.fn().mockResolvedValue({
+      content: JSON.stringify({
+        fileName: "报价.pdf",
+        fileUrl: "https://cdn.example.com/a.pdf",
+      }),
+      id: "66",
+    }),
     findMaterialMessage: vi.fn().mockResolvedValue(undefined),
     getSubUser: vi.fn().mockResolvedValue({
       displayName: "客服一号",
@@ -3699,6 +3828,7 @@ function createMaterialRepository(overrides: Partial<WorkbenchRepository> = {}) 
     restoreMaterialCollection: vi.fn().mockResolvedValue(undefined),
     topMaterialCollection: vi.fn().mockResolvedValue(undefined),
     topMaterialGroup: vi.fn().mockResolvedValue(undefined),
+    updateMaterialCollectionContent: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   } as unknown as WorkbenchRepository;
 }

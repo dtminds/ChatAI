@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -32,12 +32,14 @@ export function MaterialGroupFormDialog({
 }: MaterialGroupFormDialogProps) {
   const inputId = useId();
   const [title, setTitle] = useState("");
+  const initialTitleRef = useRef(initialTitle);
+  initialTitleRef.current = initialTitle;
 
   useEffect(() => {
     if (open) {
-      setTitle(initialTitle);
+      setTitle(initialTitleRef.current);
     }
-  }, [initialTitle, open]);
+  }, [open]);
 
   const normalizedTitle = title.trim();
   const dialogTitle = mode === "edit" ? "编辑分组" : "新建分组";

@@ -9,12 +9,49 @@ import {
   MaterialGroupSelectDialog,
   MaterialLibraryDialog,
 } from "@/pages/chat/components/material-collection";
+import { MaterialItemFormDialog } from "@/pages/chat/components/material-collection/material-item-form-dialog";
 import type {
   WorkbenchMaterialCollectionGroupDto,
   WorkbenchMaterialCollectionItemDto,
 } from "@chatai/contracts";
 
 describe("material collection components", () => {
+  it("keeps edited file name while parent re-renders during edit dialog", async () => {
+    const user = userEvent.setup();
+    const initialValues = {
+      description: "",
+      fileExtension: "pdf",
+      fileName: "报价单.pdf",
+      title: "",
+    };
+
+    const { rerender } = render(
+      <MaterialItemFormDialog
+        bizType={MATERIAL_COLLECTION_BIZ_TYPE.FILE}
+        initialValues={initialValues}
+        onOpenChange={() => undefined}
+        onSubmit={() => undefined}
+        open
+      />,
+    );
+
+    const fileNameInput = screen.getByRole("textbox", { name: "文件名称" });
+    await user.clear(fileNameInput);
+    await user.type(fileNameInput, "新名称");
+
+    rerender(
+      <MaterialItemFormDialog
+        bizType={MATERIAL_COLLECTION_BIZ_TYPE.FILE}
+        initialValues={{ ...initialValues }}
+        onOpenChange={() => undefined}
+        onSubmit={() => undefined}
+        open
+      />,
+    );
+
+    expect(screen.getByRole("textbox", { name: "文件名称" })).toHaveValue("新名称");
+  });
+
   it("submits the selected material group", async () => {
     const user = userEvent.setup();
     const handleSubmit = vi.fn();
@@ -37,11 +74,15 @@ describe("material collection components", () => {
     expect(screen.queryByRole("radio")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "收录" })).toBeDisabled();
 
+    await user.type(screen.getByRole("textbox", { name: "文件名称" }), "报价单.pdf");
     await user.click(screen.getByRole("combobox", { name: "选择分组" }));
     await user.click(await screen.findByRole("option", { name: "常用文件" }));
     await user.click(screen.getByRole("button", { name: "收录" }));
 
-    expect(handleSubmit).toHaveBeenCalledWith("group-file");
+    expect(handleSubmit).toHaveBeenCalledWith({
+      fileName: "报价单.pdf",
+      groupId: "group-file",
+    });
   });
 
   it("creates a material group from the collection group select", async () => {
@@ -70,10 +111,14 @@ describe("material collection components", () => {
     expect(screen.getByRole("dialog", { name: "新建分组" })).toBeInTheDocument();
     await user.type(screen.getByRole("textbox", { name: "分组名称" }), "售后文件");
     await user.click(screen.getByRole("button", { name: "新建" }));
+    await user.type(screen.getByRole("textbox", { name: "文件名称" }), "售后文件.pdf");
     await user.click(screen.getByRole("button", { name: "收录" }));
 
     expect(handleCreateGroup).toHaveBeenCalledWith("售后文件");
-    expect(handleSubmit).toHaveBeenCalledWith("group-new");
+    expect(handleSubmit).toHaveBeenCalledWith({
+      fileName: "售后文件.pdf",
+      groupId: "group-new",
+    });
   });
 
   it("limits material group names to 10 characters", async () => {
@@ -102,6 +147,44 @@ describe("material collection components", () => {
     await user.click(screen.getByRole("button", { name: "新建" }));
 
     expect(handleCreateGroup).toHaveBeenCalledWith("一二三四五六七八九十");
+  });
+
+  it("locks file extension while editing the collected file name", async () => {
+    const user = userEvent.setup();
+    const handleSubmit = vi.fn();
+
+    render(
+      <MaterialGroupSelectDialog
+        bizType={MATERIAL_COLLECTION_BIZ_TYPE.FILE}
+        groups={[createGroup({ id: "group-file", title: "常用文件" })]}
+        initialValues={{
+          description: "",
+          fileExtension: "pdf",
+          fileName: "报价单.pdf",
+          title: "",
+        }}
+        isSaving={false}
+        onCreateGroup={async () => undefined}
+        onOpenChange={() => undefined}
+        onSubmit={handleSubmit}
+        open
+      />,
+    );
+
+    const fileNameInput = screen.getByRole("textbox", { name: "文件名称" });
+    expect(fileNameInput).toHaveValue("报价单");
+    expect(screen.getByLabelText("文件后缀 .pdf")).toBeInTheDocument();
+
+    await user.clear(fileNameInput);
+    await user.type(fileNameInput, "售后方案");
+    await user.click(screen.getByRole("combobox", { name: "选择分组" }));
+    await user.click(await screen.findByRole("option", { name: "常用文件" }));
+    await user.click(screen.getByRole("button", { name: "收录" }));
+
+    expect(handleSubmit).toHaveBeenCalledWith({
+      fileName: "售后方案.pdf",
+      groupId: "group-file",
+    });
   });
 
   it("hides create-group option in collect dialog when group limit is reached", async () => {
@@ -139,6 +222,7 @@ describe("material collection components", () => {
         onCreateGroup={() => undefined}
         onDeleteGroup={() => undefined}
         onDeleteMaterial={() => undefined}
+        onEditMaterial={() => undefined}
         onMoveMaterial={() => undefined}
         onOpenChange={() => undefined}
         onRenameGroup={() => undefined}
@@ -215,6 +299,29 @@ describe("material collection components", () => {
     );
   });
 
+  it("renders h5 materials stored with legacy linkUrl field", () => {
+    render(
+      <MaterialCard
+        item={createItem({
+          bizType: MATERIAL_COLLECTION_BIZ_TYPE.H5,
+          content: {
+            description: "活动说明",
+            linkUrl: "https://example.com/legacy-page",
+            title: "活动页",
+          },
+          contentType: "h5",
+          groupId: "group-h5",
+          title: "活动页",
+        })}
+        onSelect={() => undefined}
+      />,
+    );
+
+    expect(screen.getByText("活动页")).toBeInTheDocument();
+    expect(screen.getByText("活动说明")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "选择素材 活动页" })).toBeInTheDocument();
+  });
+
   it("selects material and exposes management actions in library dialog", async () => {
     const user = userEvent.setup();
     const handleSelect = vi.fn();
@@ -222,6 +329,7 @@ describe("material collection components", () => {
     const handleDelete = vi.fn();
     const handleDeleteGroup = vi.fn();
     const handleMove = vi.fn();
+    const handleEdit = vi.fn();
     const handleRenameGroup = vi.fn();
     const handleTop = vi.fn();
     const handleTopGroup = vi.fn();
@@ -246,6 +354,7 @@ describe("material collection components", () => {
         onCreateGroup={handleCreateGroup}
         onDeleteGroup={handleDeleteGroup}
         onDeleteMaterial={handleDelete}
+        onEditMaterial={handleEdit}
         onLoadMoreItems={handleLoadMore}
         onMoveMaterial={handleMove}
         onOpenChange={() => undefined}
@@ -283,9 +392,12 @@ describe("material collection components", () => {
     expect(screen.queryByRole("textbox", { name: "新建分组名称" }))
       .not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("radio", { name: "选择 报价单.pdf" }));
+    await user.click(screen.getByRole("button", { name: "选择 报价单.pdf" }));
     expect(handleSelect).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "发送" })).not.toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "选择 报价单.pdf" }));
+    expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "选择 报价单.pdf" }));
     await user.click(screen.getByRole("button", { name: "发送" }));
     expect(handleSelect).toHaveBeenCalledWith(item);
     await user.click(screen.getByRole("button", { name: "加载更多" }));
@@ -336,6 +448,18 @@ describe("material collection components", () => {
       clientY: 220,
     });
     contextMenu = await screen.findByRole("menu");
+    await user.click(within(contextMenu).getByRole("menuitem", { name: "编辑" }));
+    expect(screen.getByRole("dialog", { name: "编辑文件" })).toBeInTheDocument();
+    const fileNameInput = screen.getByRole("textbox", { name: "文件名称" });
+    await user.clear(fileNameInput);
+    await user.type(fileNameInput, "新报价单");
+    expect(screen.getByLabelText("文件后缀 .pdf")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "保存" }));
+    fireEvent.contextMenu(materialRow, {
+      clientX: 120,
+      clientY: 220,
+    });
+    contextMenu = await screen.findByRole("menu");
     await user.click(within(contextMenu).getByRole("menuitem", { name: "移动分组" }));
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
     const moveDialog = await screen.findByRole("dialog", { name: "移动分组" });
@@ -352,6 +476,12 @@ describe("material collection components", () => {
     await user.click(within(contextMenu).getByRole("menuitem", { name: "删除" }));
 
     expect(handleTop).toHaveBeenCalledWith(item);
+    expect(handleEdit).toHaveBeenCalledWith(item, {
+      description: "",
+      fileExtension: "pdf",
+      fileName: "新报价单.pdf",
+      title: "",
+    });
     expect(handleMove).toHaveBeenCalledWith(item, "group-target");
     expect(handleDelete).toHaveBeenCalledWith(item);
     expect(handleTopGroup).toHaveBeenCalledWith(
@@ -377,6 +507,7 @@ describe("material collection components", () => {
         onCreateGroup={() => undefined}
         onDeleteGroup={() => undefined}
         onDeleteMaterial={() => undefined}
+        onEditMaterial={() => undefined}
         onMoveMaterial={() => undefined}
         onOpenChange={() => undefined}
         onRenameGroup={() => undefined}
@@ -416,6 +547,7 @@ describe("material collection components", () => {
         onCreateGroup={() => undefined}
         onDeleteGroup={() => undefined}
         onDeleteMaterial={() => undefined}
+        onEditMaterial={() => undefined}
         onMoveMaterial={() => undefined}
         onOpenChange={() => undefined}
         onRenameGroup={() => undefined}
@@ -442,6 +574,54 @@ describe("material collection components", () => {
       .toHaveClass("h-full", "min-h-0");
   });
 
+  it("selects mini-program material from library footer send action", async () => {
+    const user = userEvent.setup();
+    const handleSelect = vi.fn();
+    const item = createItem({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM,
+      content: {
+        appName: "麦当劳",
+        sourceLabel: "小程序",
+        title: "麦当劳自助点餐",
+      },
+      contentType: "mini-program",
+      groupId: "group-mini",
+      id: "mini-1",
+      title: "麦当劳自助点餐",
+    });
+
+    render(
+      <MaterialLibraryDialog
+        activeGroupId="group-mini"
+        bizType={MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM}
+        groups={[createGroup({ id: "group-mini", title: "常用小程序" })]}
+        items={[item]}
+        onCreateGroup={() => undefined}
+        onDeleteGroup={() => undefined}
+        onDeleteMaterial={() => undefined}
+        onEditMaterial={() => undefined}
+        onMoveMaterial={() => undefined}
+        onOpenChange={() => undefined}
+        onRenameGroup={() => undefined}
+        onSelectGroup={() => undefined}
+        onSelectMaterial={handleSelect}
+        onTopGroup={() => undefined}
+        onTopMaterial={() => undefined}
+        open
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "选择素材 麦当劳自助点餐" }));
+    expect(handleSelect).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "发送" })).not.toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "选择素材 麦当劳自助点餐" }));
+    expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "选择素材 麦当劳自助点餐" }));
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    expect(handleSelect).toHaveBeenCalledWith(item);
+  });
+
   it("uses mini-program library width for four collected mini-program cards", () => {
     render(
       <MaterialLibraryDialog
@@ -465,6 +645,7 @@ describe("material collection components", () => {
         onCreateGroup={() => undefined}
         onDeleteGroup={() => undefined}
         onDeleteMaterial={() => undefined}
+        onEditMaterial={() => undefined}
         onMoveMaterial={() => undefined}
         onOpenChange={() => undefined}
         onRenameGroup={() => undefined}

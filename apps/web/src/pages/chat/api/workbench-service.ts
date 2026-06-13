@@ -91,6 +91,13 @@ import {
   type WorkbenchMaterialCollectionListResponse,
   type WorkbenchMaterialCollectionMoveRequest,
   type WorkbenchMaterialCollectionOkResponse,
+  type WorkbenchMaterialCollectionUpdateRequest,
+  buildMaterialFileContentJson,
+  buildMaterialH5ContentJson,
+  patchMaterialFileContentJson,
+  patchMaterialH5ContentJson,
+  resolveMaterialFileCollectFields,
+  resolveMaterialH5CollectFields,
 } from "@chatai/contracts";
 import type {
   ChatMode,
@@ -232,6 +239,10 @@ export type WorkbenchService = {
   moveMaterialCollection: (
     collectionId: string,
     request: WorkbenchMaterialCollectionMoveRequest,
+  ) => Promise<WorkbenchMaterialCollectionOkResponse>;
+  updateMaterialCollection: (
+    collectionId: string,
+    request: WorkbenchMaterialCollectionUpdateRequest,
   ) => Promise<WorkbenchMaterialCollectionOkResponse>;
   createMaterialGroup: (
     request: WorkbenchMaterialCollectionGroupCreateRequest,
@@ -430,8 +441,21 @@ export function createMockWorkbenchService(): WorkbenchService {
         .flat()
         .find((message) => message.messageId === request.messageId);
 
+      const normalized = resolveMockMaterialCollect(sourceMessage, request);
+
+      if ("errorMsg" in normalized) {
+        return {
+          success: false,
+          errorMsg: normalized.errorMsg,
+        };
+      }
+
       const item = sourceMessage
-        ? buildMaterialItemFromMessage(state, sourceMessage, request)
+        ? {
+            ...buildMaterialItemFromMessage(state, sourceMessage, request),
+            content: normalized.content,
+            title: normalized.title,
+          }
         : buildFallbackMaterialItem(state, request);
       state.materialItems = [item, ...state.materialItems];
 
@@ -457,6 +481,46 @@ export function createMockWorkbenchService(): WorkbenchService {
           ? { ...item, groupId: request.groupId, sort }
           : item,
       );
+      return { ok: true };
+    },
+    async updateMaterialCollection(collectionId, request) {
+      const item = state.materialItems.find(
+        (materialItem) => materialItem.id === collectionId,
+      );
+
+      if (!item) {
+        throw new Error("MATERIAL_COLLECTION_NOT_FOUND");
+      }
+
+      const rawContent = JSON.stringify(getMaterialContentRecordFromItem(item));
+      const patchResult =
+        item.bizType === MATERIAL_COLLECTION_BIZ_TYPE.FILE
+          ? patchMaterialFileContentJson(rawContent, request.fileName ?? "")
+          : item.bizType === MATERIAL_COLLECTION_BIZ_TYPE.H5
+            ? patchMaterialH5ContentJson(rawContent, {
+                description: request.description,
+                title: request.title ?? "",
+              })
+            : null;
+
+      if (!patchResult) {
+        return { ok: true };
+      }
+
+      if ("errorMsg" in patchResult) {
+        throw new Error(patchResult.errorMsg);
+      }
+
+      state.materialItems = state.materialItems.map((materialItem) =>
+        materialItem.id === collectionId
+          ? {
+              ...materialItem,
+              content: JSON.parse(patchResult.content) as WorkbenchMaterialCollectionItemDto["content"],
+              title: patchResult.title,
+            }
+          : materialItem,
+      );
+
       return { ok: true };
     },
     async createMaterialGroup(request) {
@@ -1140,6 +1204,12 @@ export function createHttpWorkbenchService(): WorkbenchService {
         WorkbenchMaterialCollectionOkResponse,
         WorkbenchMaterialCollectionMoveRequest
       >(`/server/material-collections/${collectionId}/move`, request);
+    },
+    updateMaterialCollection(collectionId, request) {
+      return http.patch<
+        WorkbenchMaterialCollectionOkResponse,
+        WorkbenchMaterialCollectionUpdateRequest
+      >(`/server/material-collections/${collectionId}`, request);
     },
     createMaterialGroup(request) {
       return http.post<
@@ -1841,6 +1911,59 @@ function getMockMaterialGroupId(bizType: MaterialCollectionBizType): string | 0 
 
 function getMaterialContentRecord(message: WorkbenchMessageDto) {
   return isRecord(message.content) ? message.content : {};
+}
+
+function getMaterialContentRecordFromItem(item: WorkbenchMaterialCollectionItemDto) {
+  return isRecord(item.content) ? item.content : {};
+}
+
+function resolveMockMaterialCollect(
+  message: WorkbenchMessageDto | undefined,
+  request: WorkbenchMaterialCollectionCreateRequest,
+):
+  | { content: WorkbenchMaterialCollectionItemDto["content"]; title: string }
+  | { errorMsg: string } {
+  const rawContent = message ? JSON.stringify(getMaterialContentRecord(message)) : "{}";
+
+  if (request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.FILE) {
+    const resolved = resolveMaterialFileCollectFields(rawContent, {
+      fileName: request.fileName,
+    });
+
+    if ("errorMsg" in resolved) {
+      return resolved;
+    }
+
+    return {
+      content: JSON.parse(
+        buildMaterialFileContentJson(rawContent, resolved),
+      ) as WorkbenchMaterialCollectionItemDto["content"],
+      title: resolved.fileName,
+    };
+  }
+
+  if (request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.H5) {
+    const resolved = resolveMaterialH5CollectFields(rawContent, {
+      description: request.description,
+      title: request.title,
+    });
+
+    if ("errorMsg" in resolved) {
+      return resolved;
+    }
+
+    return {
+      content: JSON.parse(
+        buildMaterialH5ContentJson(rawContent, resolved),
+      ) as WorkbenchMaterialCollectionItemDto["content"],
+      title: resolved.title,
+    };
+  }
+
+  return {
+    content: message ? getMaterialContentRecord(message) : {},
+    title: message ? getMaterialTitle(message) : request.messageId,
+  };
 }
 
 function getMaterialTitle(message: WorkbenchMessageDto) {

@@ -906,7 +906,7 @@ describe("ChatWorkbenchPage composer flows", () => {
     await screen.findByRole("textbox", { name: "请输入消息……" });
     await user.click(screen.getByRole("button", { name: "收藏文件" }));
     await user.click(
-      await screen.findByRole("radio", {
+      await screen.findByRole("button", {
         name: "选择 报价单.pdf",
       }),
     );
@@ -1006,6 +1006,7 @@ describe("ChatWorkbenchPage composer flows", () => {
     await screen.findByRole("textbox", { name: "请输入消息……" });
     await user.click(screen.getByRole("button", { name: "收藏H5" }));
     await user.click(await screen.findByRole("button", { name: /选择素材 红包来啦/ }));
+    await user.click(screen.getByRole("button", { name: "发送" }));
 
     expect(alertSpy).not.toHaveBeenCalled();
     await waitFor(() => {
@@ -1030,6 +1031,99 @@ describe("ChatWorkbenchPage composer flows", () => {
         title: "红包来啦",
         type: "h5",
         url: "https://example.com/redpacket",
+      },
+      role: "agent",
+      status: "accepted",
+    });
+  });
+
+  it("sends a collected H5 material stored with legacy linkUrl field", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => undefined);
+    const sendMessage = vi.fn(baseService.sendMessage);
+    const listMaterialGroups = vi.fn(async (request) => {
+      if (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.H5) {
+        return baseService.listMaterialGroups(request);
+      }
+
+      return {
+        groups: [
+          {
+            bizType: MATERIAL_COLLECTION_BIZ_TYPE.H5,
+            id: "group-h5",
+            sort: 100,
+            title: "H5分组",
+          },
+        ],
+      };
+    });
+    const listMaterialCollections = vi.fn(async (request) => {
+      if (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.H5) {
+        return baseService.listMaterialCollections(request);
+      }
+
+      return {
+        items: [
+          {
+            bizType: MATERIAL_COLLECTION_BIZ_TYPE.H5,
+            content: {
+              description: "活动说明",
+              linkUrl: "https://example.com/legacy-page",
+              title: "活动页",
+            },
+            contentType: "h5" as const,
+            groupId: "group-h5",
+            id: "material-h5-link-url",
+            messageId: "msg-h5-link-url",
+            sort: 1,
+            title: "活动页",
+          },
+        ],
+        pagination: {
+          hasMore: false,
+          page: request.page ?? 1,
+          pageSize: 100,
+          total: 1,
+        },
+      };
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      listMaterialCollections,
+      listMaterialGroups,
+      sendMessage,
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getByRole("button", { name: "收藏H5" }));
+    await user.click(await screen.findByRole("button", { name: /选择素材 活动页/ }));
+    await user.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(alertSpy).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          conversationId: "conv-001",
+          seatId: "drc",
+          segment: {
+            desc: "活动说明",
+            href: "https://example.com/legacy-page",
+            title: "活动页",
+            type: "h5",
+          },
+        }),
+      );
+    });
+    await expectLatestConversationMessage("conv-001", {
+      content: {
+        description: "活动说明",
+        title: "活动页",
+        type: "h5",
+        url: "https://example.com/legacy-page",
       },
       role: "agent",
       status: "accepted",

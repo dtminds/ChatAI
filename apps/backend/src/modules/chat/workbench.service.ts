@@ -74,8 +74,21 @@ import type {
   WorkbenchMaterialCollectionMoveRequest,
   WorkbenchMaterialCollectionOkResponse,
   WorkbenchMaterialCollectionContentType,
+  WorkbenchMaterialCollectionUpdateRequest,
 } from "@chatai/contracts";
-import { CHAT_TYPE, MATERIAL_COLLECTION_BIZ_TYPE, MATERIAL_COLLECTION_GROUP_MAX_COUNT } from "@chatai/contracts";
+import {
+  CHAT_TYPE,
+  MATERIAL_COLLECTION_BIZ_TYPE,
+  MATERIAL_COLLECTION_GROUP_MAX_COUNT,
+  MATERIAL_COLLECTION_TITLE_MAX_LENGTH,
+  buildMaterialFileContentJson,
+  buildMaterialH5ContentJson,
+  canEditMaterialCollectionItem,
+  patchMaterialFileContentJson,
+  patchMaterialH5ContentJson,
+  resolveMaterialFileCollectFields,
+  resolveMaterialH5CollectFields,
+} from "@chatai/contracts";
 import {
   BadGatewayError,
   BadRequestError,
@@ -125,7 +138,6 @@ const PLAYABLE_VOICE_HEAD_TIMEOUT_MS = 8000;
 const MESSAGE_REVOKE_WINDOW_MS = 180 * 1000;
 const MESSAGE_REVOKE_CLOCK_SKEW_TOLERANCE_MS = 5 * 1000;
 const SMART_REPLY_MESSAGE_PAGE_CANDIDATE_LIMIT = 5;
-const MATERIAL_COLLECTION_TITLE_MAX_LENGTH = 100;
 const MATERIAL_COLLECTION_GROUP_TITLE_MAX_LENGTH = 10;
 
 type SmartReplyMessagePageMetadata = {
@@ -400,6 +412,11 @@ export type WorkbenchService = {
     subUserId: string,
     collectionId: string,
     request: WorkbenchMaterialCollectionMoveRequest,
+  ): Promise<WorkbenchMaterialCollectionOkResponse> | WorkbenchMaterialCollectionOkResponse;
+  updateMaterialCollection(
+    subUserId: string,
+    collectionId: string,
+    request: WorkbenchMaterialCollectionUpdateRequest,
   ): Promise<WorkbenchMaterialCollectionOkResponse> | WorkbenchMaterialCollectionOkResponse;
   createMaterialGroup(
     subUserId: string,
@@ -1911,7 +1928,22 @@ export class MysqlWorkbenchService implements WorkbenchService {
     const subUid =
       bizType === MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION ? subUserNumericId : 0;
     const sort = Date.now();
-    const title = readMaterialTitle(message.content, contentType, request.messageId);
+    const normalizedMaterial = normalizeMaterialCollectionPayload(
+      bizType,
+      message.content,
+      request,
+      request.messageId,
+      contentType,
+    );
+
+    if ("errorMsg" in normalizedMaterial) {
+      return {
+        success: false,
+        errorMsg: normalizedMaterial.errorMsg,
+      };
+    }
+
+    const { content: normalizedContent, title } = normalizedMaterial;
     const duplicate = await this.repository.findMaterialCollectionByMessage({
       bizType,
       msgid: request.messageId,
@@ -1928,7 +1960,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     if (duplicate) {
       await this.repository.restoreMaterialCollection({
-        content: message.content,
+        content: normalizedContent,
         groupId,
         id: duplicate.id,
         opSubUserId: subUserId,
@@ -1945,7 +1977,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     const collectionId = await this.repository.createMaterialCollection({
       bizType,
-      content: message.content,
+      content: normalizedContent,
       groupId,
       msgid: request.messageId,
       opSubUserId: subUserId,
@@ -1972,6 +2004,55 @@ export class MysqlWorkbenchService implements WorkbenchService {
     return {
       success: true,
     };
+  }
+
+  async updateMaterialCollection(
+    subUserId: string,
+    collectionId: string,
+    request: WorkbenchMaterialCollectionUpdateRequest,
+  ): Promise<WorkbenchMaterialCollectionOkResponse> {
+    const me = await this.getMaterialActor(subUserId);
+    const scope = await this.getOperableMaterialCollectionScope(
+      me.uid,
+      collectionId,
+      subUserId,
+    );
+
+    if (!canEditMaterialCollectionItem(scope.bizType)) {
+      throw new BadRequestError("MATERIAL_COLLECTION_NOT_EDITABLE", "当前素材不支持编辑");
+    }
+
+    const record = await this.repository.findMaterialCollectionRecord({
+      id: collectionId,
+      subUid: scope.subUid,
+      uid: me.uid,
+    });
+
+    if (!record) {
+      throw new NotFoundError("MATERIAL_COLLECTION_NOT_FOUND", "素材不存在");
+    }
+
+    const patchResult =
+      scope.bizType === MATERIAL_COLLECTION_BIZ_TYPE.FILE
+        ? patchMaterialFileContentJson(record.content, request.fileName ?? "")
+        : patchMaterialH5ContentJson(record.content, {
+            description: request.description,
+            title: request.title ?? "",
+          });
+
+    if ("errorMsg" in patchResult) {
+      throw new BadRequestError("MATERIAL_COLLECTION_INVALID", patchResult.errorMsg);
+    }
+
+    await this.repository.updateMaterialCollectionContent({
+      content: patchResult.content,
+      id: collectionId,
+      subUid: scope.subUid,
+      title: patchResult.title,
+      uid: me.uid,
+    });
+
+    return { ok: true };
   }
 
   async deleteMaterialCollection(
@@ -2468,6 +2549,53 @@ function isMaterialMessageTypeMatched(
     default:
       return false;
   }
+}
+
+function normalizeMaterialCollectionPayload(
+  bizType: MaterialCollectionBizType,
+  rawContent: string | null,
+  overrides: Pick<
+    WorkbenchMaterialCollectionCreateRequest,
+    "description" | "fileName" | "title"
+  >,
+  messageId: string,
+  contentType: WorkbenchMaterialCollectionContentType,
+): { content: string; title: string } | { errorMsg: string } {
+  if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.FILE) {
+    const resolved = resolveMaterialFileCollectFields(rawContent, {
+      fileName: overrides.fileName,
+    });
+
+    if ("errorMsg" in resolved) {
+      return resolved;
+    }
+
+    return {
+      content: buildMaterialFileContentJson(rawContent, resolved),
+      title: resolved.fileName,
+    };
+  }
+
+  if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.H5) {
+    const resolved = resolveMaterialH5CollectFields(rawContent, {
+      description: overrides.description,
+      title: overrides.title,
+    });
+
+    if ("errorMsg" in resolved) {
+      return resolved;
+    }
+
+    return {
+      content: buildMaterialH5ContentJson(rawContent, resolved),
+      title: resolved.title,
+    };
+  }
+
+  return {
+    content: rawContent ?? "",
+    title: readMaterialTitle(rawContent, contentType, messageId),
+  };
 }
 
 function readMaterialTitle(

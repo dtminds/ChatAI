@@ -34,6 +34,9 @@ import {
 import { cn } from "@/lib/utils";
 import {
   MATERIAL_COLLECTION_BIZ_TYPE,
+  readMaterialDescription,
+  readMaterialLinkUrl,
+  validateMaterialCollectionSubmitFields,
   type MaterialCollectionBizType,
   type WorkbenchMaterialCollectionGroupDto,
   type WorkbenchMaterialCollectionItemDto,
@@ -50,6 +53,9 @@ import {
   MaterialGroupSelectDialog,
   MaterialLibraryDialog,
 } from "@/pages/chat/components/material-collection";
+import type { MaterialCollectSubmitPayload } from "@/pages/chat/components/material-collection/material-group-select-dialog";
+import type { MaterialContentFormValues } from "@/pages/chat/components/material-collection/material-content-form-fields";
+import { resolveMaterialFileExtension } from "@/pages/chat/components/material-collection/material-file-name";
 import {
   CLEAR_COMPOSER_COMMAND,
   INSERT_COMPOSER_MENTION_COMMAND,
@@ -279,6 +285,7 @@ function ChatWorkbenchContent({
   const [pendingMaterialCollection, setPendingMaterialCollection] = useState<{
     bizType: ComposerMaterialBizType;
     conversationId: string;
+    formValues: MaterialContentFormValues;
     messageId: string;
   } | null>(null);
   const [materialCollectionGroups, setMaterialCollectionGroups] = useState<
@@ -1059,6 +1066,7 @@ function ChatWorkbenchContent({
         setPendingMaterialCollection({
           bizType,
           conversationId: message.conversationId,
+          formValues: getCollectFormValuesFromMessage(message),
           messageId,
         });
       } catch (error) {
@@ -1075,7 +1083,7 @@ function ChatWorkbenchContent({
   );
 
   const handleSubmitMaterialCollection = useCallback(
-    async (groupId: string) => {
+    async (payload: MaterialCollectSubmitPayload) => {
       if (!pendingMaterialCollection) {
         return;
       }
@@ -1091,8 +1099,11 @@ function ChatWorkbenchContent({
       try {
         const response = await getWorkbenchService().collectMaterial({
           bizType: pendingMaterialCollection.bizType,
-          groupId,
+          description: payload.description,
+          fileName: payload.fileName,
+          groupId: payload.groupId,
           messageId: pendingMaterialCollection.messageId,
+          title: payload.title,
         });
 
         if (!isMountedRef.current) {
@@ -1106,7 +1117,9 @@ function ChatWorkbenchContent({
 
         toast.success("已收录");
         setPendingMaterialCollection(null);
-        void refreshMaterialList(pendingMaterialCollection.bizType, { groupId });
+        void refreshMaterialList(pendingMaterialCollection.bizType, {
+          groupId: payload.groupId,
+        });
       } catch (error) {
         if (isMountedRef.current) {
           toast.warning(getMaterialErrorMessage(error, "收录失败，请稍后重试"));
@@ -1451,6 +1464,41 @@ function ChatWorkbenchContent({
             groupId,
           }),
         "移动素材失败",
+      );
+    },
+    [runMaterialLibraryMutation],
+  );
+
+  const handleEditMaterial = useCallback(
+    (
+      item: WorkbenchMaterialCollectionItemDto,
+      values: MaterialContentFormValues,
+    ) => {
+      const validated = validateMaterialCollectionSubmitFields({
+        description:
+          item.bizType === MATERIAL_COLLECTION_BIZ_TYPE.H5
+            ? values.description
+            : undefined,
+        fileName:
+          item.bizType === MATERIAL_COLLECTION_BIZ_TYPE.FILE
+            ? values.fileName
+            : undefined,
+        title:
+          item.bizType === MATERIAL_COLLECTION_BIZ_TYPE.H5
+            ? values.title
+            : undefined,
+      });
+
+      if ("errorMsg" in validated) {
+        toast.warning(validated.errorMsg);
+        return;
+      }
+
+      void runMaterialLibraryMutation(
+        item.bizType as ComposerMaterialBizType,
+        () =>
+          getWorkbenchService().updateMaterialCollection(item.id, validated),
+        "编辑素材失败",
       );
     },
     [runMaterialLibraryMutation],
@@ -2582,6 +2630,7 @@ function ChatWorkbenchContent({
       <MaterialGroupSelectDialog
         bizType={pendingMaterialCollection?.bizType ?? MATERIAL_COLLECTION_BIZ_TYPE.FILE}
         groups={materialCollectionGroups}
+        initialValues={pendingMaterialCollection?.formValues}
         isSaving={isCollectingMaterial}
         onCreateGroup={handleCreatePendingMaterialGroup}
         onOpenChange={(open) => {
@@ -2589,8 +2638,8 @@ function ChatWorkbenchContent({
             setPendingMaterialCollection(null);
           }
         }}
-        onSubmit={(groupId) => {
-          void handleSubmitMaterialCollection(groupId);
+        onSubmit={(payload) => {
+          void handleSubmitMaterialCollection(payload);
         }}
         open={pendingMaterialCollection !== null}
       />
@@ -2607,6 +2656,7 @@ function ChatWorkbenchContent({
         onCreateGroup={handleCreateMaterialGroup}
         onDeleteGroup={handleDeleteMaterialGroup}
         onDeleteMaterial={handleDeleteMaterial}
+        onEditMaterial={handleEditMaterial}
         onLoadMoreItems={() => {
           void handleLoadMoreMaterialLibraryItems();
         }}
@@ -2862,6 +2912,40 @@ function buildQuotedMessagePreview(
   }
 }
 
+function getCollectFormValuesFromMessage(
+  message: ChatMessage,
+): MaterialContentFormValues {
+  if (message.content.type === "file") {
+    const fileName = message.content.fileName.trim();
+
+    return {
+      description: "",
+      fileExtension: resolveMaterialFileExtension(
+        fileName,
+        message.content.extension,
+      ),
+      fileName,
+      title: "",
+    };
+  }
+
+  if (message.content.type === "h5") {
+    return {
+      description: message.content.description.trim(),
+      fileExtension: "",
+      fileName: "",
+      title: message.content.title.trim(),
+    };
+  }
+
+  return {
+    description: "",
+    fileExtension: "",
+    fileName: "",
+    title: "",
+  };
+}
+
 function getMaterialBizTypeForMessage(
   message: ChatMessage,
 ): MaterialCollectionBizType | undefined {
@@ -2903,18 +2987,15 @@ function toComposerMaterialBizType(
 function buildH5ComposerSegment(
   item: WorkbenchMaterialCollectionItemDto,
 ): ComposerSegment | undefined {
+  const contentRecord = isMaterialContentRecord(item.content);
   const title = readMaterialContentString(item.content.title) || item.title;
-  const href =
-    readMaterialContentString(item.content.href) ||
-    readMaterialContentString(item.content.url);
+  const href = readMaterialLinkUrl(contentRecord);
 
   if (!title || !href) {
     return undefined;
   }
 
-  const desc =
-    readMaterialContentString(item.content.desc) ||
-    readMaterialContentString(item.content.description);
+  const desc = readMaterialDescription(contentRecord);
   const coverUrl =
     readMaterialContentString(item.content.coverUrl) ||
     readMaterialContentString(item.content.previewImageUrl) ||
@@ -2927,6 +3008,14 @@ function buildH5ComposerSegment(
     title,
     type: "h5",
   };
+}
+
+function isMaterialContentRecord(
+  content: WorkbenchMaterialCollectionItemDto["content"],
+): Record<string, unknown> {
+  return typeof content === "object" && content !== null && !Array.isArray(content)
+    ? (content as Record<string, unknown>)
+    : {};
 }
 
 function buildFileComposerSegment(

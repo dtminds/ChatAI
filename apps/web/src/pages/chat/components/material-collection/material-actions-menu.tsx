@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   Delete02Icon,
+  Edit02Icon,
   FolderTransferIcon,
   PinIcon,
 } from "@hugeicons/core-free-icons";
@@ -26,6 +27,7 @@ import type {
   MaterialCollectionGroup,
   MaterialCollectionItem,
 } from "@/pages/chat/components/material-collection/material-types";
+import { canEditMaterialItem } from "@/pages/chat/components/material-collection/material-types";
 
 type MaterialContextMenuPosition = {
   x: number;
@@ -36,6 +38,7 @@ type MaterialActionsMenuProps = {
   groups: MaterialCollectionGroup[];
   item: MaterialCollectionItem;
   onDelete?: (item: MaterialCollectionItem) => void;
+  onEdit?: (item: MaterialCollectionItem) => void;
   onMove?: (item: MaterialCollectionItem, groupId: string) => void;
   onOpenChange: (position: MaterialContextMenuPosition | null) => void;
   onTop?: (item: MaterialCollectionItem) => void;
@@ -46,6 +49,7 @@ export function MaterialActionsMenu({
   groups,
   item,
   onDelete,
+  onEdit,
   onMove,
   onOpenChange,
   onTop,
@@ -54,6 +58,7 @@ export function MaterialActionsMenu({
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [isMoveDialogOpen, setIsMoveDialogOpen] = useState(false);
   const targetGroups = groups.filter((group) => group.id !== item.groupId);
+  const canEdit = canEditMaterialItem(item);
 
   useEffect(() => {
     if (!position) {
@@ -120,6 +125,21 @@ export function MaterialActionsMenu({
                 <HugeiconsIcon icon={FolderTransferIcon} size={16} strokeWidth={1.8} />
                 移动分组
               </button>
+              {canEdit ? (
+                <button
+                  className="flex h-8 w-full items-center gap-2 rounded-[8px] px-2.5 text-left text-[13px] outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground disabled:pointer-events-none disabled:opacity-45"
+                  disabled={!onEdit}
+                  onClick={() => {
+                    onEdit?.(item);
+                    onOpenChange(null);
+                  }}
+                  role="menuitem"
+                  type="button"
+                >
+                  <HugeiconsIcon icon={Edit02Icon} size={16} strokeWidth={1.8} />
+                  编辑
+                </button>
+              ) : null}
               <button
                 className="flex h-8 w-full items-center gap-2 rounded-[8px] px-2.5 text-left text-[13px] text-destructive outline-none transition-colors hover:bg-destructive/10 focus:bg-destructive/10 disabled:pointer-events-none disabled:opacity-45"
                 disabled={!onDelete}

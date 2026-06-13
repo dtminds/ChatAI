@@ -571,6 +571,49 @@ export class WorkbenchRepository {
     };
   }
 
+  async findMaterialCollectionRecord(input: {
+    id: string;
+    subUid: number;
+    uid: number;
+  }): Promise<{ content: string; id: string } | undefined> {
+    const collectionNumericId = parseMySqlId(input.id);
+
+    if (collectionNumericId == null) {
+      return undefined;
+    }
+
+    const row = await this.db
+      .selectFrom("xy_wap_embed_material_collection")
+      .select(["content", "id"])
+      .where("id", "=", collectionNumericId)
+      .where("uid", "=", input.uid)
+      .where("sub_uid", "=", input.subUid)
+      .where("biz_status", "=", BIZ_STATUS_ACTIVE)
+      .executeTakeFirst();
+
+    if (!row) {
+      return undefined;
+    }
+
+    return {
+      content: typeof row.content === "string" ? row.content : "",
+      id: String(row.id),
+    };
+  }
+
+  async updateMaterialCollectionContent(input: {
+    content: string;
+    id: string;
+    subUid: number;
+    title: string;
+    uid: number;
+  }) {
+    await this.updateActiveMaterialCollection(input.id, input.uid, input.subUid, {
+      content: input.content,
+      title: input.title,
+    });
+  }
+
   async isMaterialGroupEmpty(input: {
     bizType: number;
     groupId: string;

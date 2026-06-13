@@ -23,6 +23,7 @@ import type {
   WorkbenchMaterialCollectionGroupUpdateRequest,
   WorkbenchMaterialCollectionListRequest,
   WorkbenchMaterialCollectionMoveRequest,
+  WorkbenchMaterialCollectionUpdateRequest,
 } from "@chatai/contracts";
 import { Type, type Static } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
@@ -367,8 +368,17 @@ const MaterialGroupsQuerySchema = Type.Object({
 
 const MaterialCollectionCreateBodySchema = Type.Object({
   bizType: MaterialBizTypeSchema,
+  description: Type.Optional(Type.String()),
+  fileName: Type.Optional(Type.String()),
   groupId: Type.Optional(Type.Union([Type.String({ maxLength: 64 }), Type.Literal(0)])),
   messageId: Type.String({ maxLength: 64, minLength: 1 }),
+  title: Type.Optional(Type.String()),
+});
+
+const MaterialCollectionUpdateBodySchema = Type.Object({
+  description: Type.Optional(Type.String()),
+  fileName: Type.Optional(Type.String()),
+  title: Type.Optional(Type.String()),
 });
 
 const MaterialCollectionParamsSchema = Type.Object({
@@ -423,6 +433,7 @@ type GetOrCreateConversationBody = Static<typeof GetOrCreateConversationBodySche
 type MaterialCollectionsQuery = Static<typeof MaterialCollectionsQuerySchema>;
 type MaterialGroupsQuery = Static<typeof MaterialGroupsQuerySchema>;
 type MaterialCollectionCreateBody = Static<typeof MaterialCollectionCreateBodySchema>;
+type MaterialCollectionUpdateBody = Static<typeof MaterialCollectionUpdateBodySchema>;
 type MaterialCollectionParams = Static<typeof MaterialCollectionParamsSchema>;
 type MaterialCollectionMoveBody = Static<typeof MaterialCollectionMoveBodySchema>;
 type MaterialCollectionGroupCreateBody = Static<
@@ -855,6 +866,28 @@ export async function registerChatRoutes(app: FastifyInstance) {
       return getWorkbenchService(app, request).deleteMaterialCollection(
         getSubUserId(request),
         request.params.collectionId,
+      );
+    },
+  );
+
+  app.patch<{
+    Body: MaterialCollectionUpdateBody;
+    Params: MaterialCollectionParams;
+  }>(
+    "/api/server/material-collections/:collectionId",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: MaterialCollectionUpdateBodySchema,
+        params: MaterialCollectionParamsSchema,
+      },
+    },
+    async (request) => {
+      assertChatWriteAccess(request);
+      return getWorkbenchService(app, request).updateMaterialCollection(
+        getSubUserId(request),
+        request.params.collectionId,
+        request.body satisfies WorkbenchMaterialCollectionUpdateRequest,
       );
     },
   );

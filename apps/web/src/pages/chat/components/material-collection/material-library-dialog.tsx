@@ -34,14 +34,19 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { MaterialCard } from "@/pages/chat/components/material-collection/material-card";
+import { MaterialCardGrid } from "@/pages/chat/components/material-collection/material-card-grid";
 import { MaterialFileTable } from "@/pages/chat/components/material-collection/material-file-table";
 import { MaterialGroupFormDialog } from "@/pages/chat/components/material-collection/material-group-form-dialog";
 import type {
   MaterialCollectionGroup,
   MaterialCollectionItem,
 } from "@/pages/chat/components/material-collection/material-types";
-import { isMaterialCollectionGroupLimitReached } from "@/pages/chat/components/material-collection/material-types";
+import {
+  getMaterialContentFormValues,
+  isMaterialCollectionGroupLimitReached,
+} from "@/pages/chat/components/material-collection/material-types";
+import { MaterialItemFormDialog } from "@/pages/chat/components/material-collection/material-item-form-dialog";
+import type { MaterialContentFormValues } from "@/pages/chat/components/material-collection/material-content-form-fields";
 
 type MaterialLibraryDialogProps = {
   activeGroupId: string | null;
@@ -56,6 +61,10 @@ type MaterialLibraryDialogProps = {
   onCreateGroup: (title: string) => void;
   onDeleteGroup: (group: MaterialCollectionGroup) => void;
   onDeleteMaterial: (item: MaterialCollectionItem) => void;
+  onEditMaterial: (
+    item: MaterialCollectionItem,
+    values: MaterialContentFormValues,
+  ) => void;
   onLoadMoreItems?: () => void;
   onMoveMaterial: (item: MaterialCollectionItem, groupId: string) => void;
   onOpenChange: (open: boolean) => void;
@@ -80,6 +89,7 @@ export function MaterialLibraryDialog({
   onCreateGroup,
   onDeleteGroup,
   onDeleteMaterial,
+  onEditMaterial,
   onLoadMoreItems,
   onMoveMaterial,
   onOpenChange,
@@ -95,6 +105,8 @@ export function MaterialLibraryDialog({
     | { group: MaterialCollectionGroup; mode: "edit" }
     | null
   >(null);
+  const [editingMaterialItem, setEditingMaterialItem] =
+    useState<MaterialCollectionItem | null>(null);
   const libraryTitle = getBizTypeLabel(bizType);
   const isGroupLimitReached = isMaterialCollectionGroupLimitReached(groups.length);
   const isFileLibrary = bizType === MATERIAL_COLLECTION_BIZ_TYPE.FILE;
@@ -124,7 +136,7 @@ export function MaterialLibraryDialog({
           <p className="pointer-events-none absolute -top-9 left-1/2 -translate-x-1/2 whitespace-nowrap text-[13px] leading-5 text-white/90">
             {isFileLibrary
               ? "选择文件后发送，右键菜单可调整排序或删除素材"
-              : "点击素材发送，右键菜单可调整排序或删除素材"}
+              : "选择素材后发送，右键菜单可调整排序或删除素材"}
           </p>
         ) : null}
 
@@ -218,31 +230,28 @@ export function MaterialLibraryDialog({
                   items={items}
                   onCancel={() => onOpenChange(false)}
                   onDelete={onDeleteMaterial}
+                  onEdit={setEditingMaterialItem}
                   onLoadMoreItems={onLoadMoreItems}
                   onMove={onMoveMaterial}
                   onSelect={onSelectMaterial}
                   onTop={onTopMaterial}
                 />
               ) : (
-                <ScrollArea
-                  aria-label="素材内容列表"
-                  className="h-full min-h-0 flex-1"
-                  role="region"
-                >
-                  <MaterialCardGrid
-                    bizType={bizType}
-                    groups={groups}
-                    hasMoreItems={hasMoreItems}
-                    isBusy={isBusy}
-                    isLoadingMoreItems={isLoadingMoreItems}
-                    items={items}
-                    onDeleteMaterial={onDeleteMaterial}
-                    onLoadMoreItems={onLoadMoreItems}
-                    onMoveMaterial={onMoveMaterial}
-                    onSelectMaterial={onSelectMaterial}
-                    onTopMaterial={onTopMaterial}
-                  />
-                </ScrollArea>
+                <MaterialCardGrid
+                  bizType={bizType}
+                  groups={groups}
+                  hasMoreItems={hasMoreItems}
+                  isBusy={isBusy}
+                  isLoadingMoreItems={isLoadingMoreItems}
+                  items={items}
+                  onCancel={() => onOpenChange(false)}
+                  onDeleteMaterial={onDeleteMaterial}
+                  onEditMaterial={setEditingMaterialItem}
+                  onLoadMoreItems={onLoadMoreItems}
+                  onMoveMaterial={onMoveMaterial}
+                  onSendMaterial={onSelectMaterial}
+                  onTopMaterial={onTopMaterial}
+                />
               )
             ) : (
               <div className="flex min-h-[28rem] items-center justify-center text-sm text-muted-foreground">
@@ -265,6 +274,25 @@ export function MaterialLibraryDialog({
           onSubmit={handleSubmitGroupTitle}
           open={groupDialogState !== null}
         />
+        {editingMaterialItem ? (
+          <MaterialItemFormDialog
+            bizType={
+              editingMaterialItem.bizType as WorkbenchMaterialCollectionGroupCreateRequest["bizType"]
+            }
+            initialValues={getMaterialContentFormValues(editingMaterialItem)}
+            isSubmitting={isBusy}
+            onOpenChange={(nextOpen) => {
+              if (!nextOpen) {
+                setEditingMaterialItem(null);
+              }
+            }}
+            onSubmit={(values) => {
+              onEditMaterial(editingMaterialItem, values);
+              setEditingMaterialItem(null);
+            }}
+            open
+          />
+        ) : null}
       </DialogContent>
     </Dialog>
   );
@@ -348,76 +376,6 @@ function GroupButton({
   );
 }
 
-function MaterialCardGrid({
-  bizType,
-  groups,
-  hasMoreItems,
-  isBusy,
-  isLoadingMoreItems,
-  items,
-  onDeleteMaterial,
-  onLoadMoreItems,
-  onMoveMaterial,
-  onSelectMaterial,
-  onTopMaterial,
-}: {
-  bizType: WorkbenchMaterialCollectionGroupCreateRequest["bizType"];
-  groups: MaterialCollectionGroup[];
-  hasMoreItems: boolean;
-  isBusy: boolean;
-  isLoadingMoreItems: boolean;
-  items: MaterialCollectionItem[];
-  onDeleteMaterial: (item: MaterialCollectionItem) => void;
-  onLoadMoreItems?: () => void;
-  onMoveMaterial: (item: MaterialCollectionItem, groupId: string) => void;
-  onSelectMaterial: (item: MaterialCollectionItem) => void;
-  onTopMaterial: (item: MaterialCollectionItem) => void;
-}) {
-  return (
-    <div className="mx-auto p-8" style={getLibraryBodyStyle(bizType)}>
-      <div
-        aria-label="收录内容列表"
-        className="grid items-start gap-4"
-        style={getLibraryGridStyle(bizType)}
-      >
-        {items.map((item) => (
-          <div className="max-w-full" key={item.id}>
-            <MaterialCard
-              className={
-                bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM
-                  ? "w-[210px]"
-                  : undefined
-              }
-              groups={groups}
-              item={item}
-              onDelete={onDeleteMaterial}
-              onMove={onMoveMaterial}
-              onSelect={onSelectMaterial}
-              onTop={onTopMaterial}
-            />
-          </div>
-        ))}
-      </div>
-      {hasMoreItems ? (
-        <div className="mt-5 flex justify-center">
-          <Button
-            className="h-8 gap-2 px-3 text-[13px]"
-            disabled={isBusy || isLoadingMoreItems}
-            onClick={onLoadMoreItems}
-            type="button"
-            variant="ghost"
-          >
-            {isLoadingMoreItems ? (
-              <Spinner className="text-current" size={14} />
-            ) : null}
-            加载更多
-          </Button>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 function LoadingState({ label }: { label: string }) {
   return (
     <div
@@ -457,40 +415,5 @@ function getLibraryDialogStyle(
   return {
     maxWidth: "calc(100vw - 2rem)",
     width: "60rem",
-  };
-}
-
-function getLibraryGridStyle(
-  bizType: WorkbenchMaterialCollectionGroupCreateRequest["bizType"],
-) {
-  if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM) {
-    return {
-      gap: "16px",
-      gridTemplateColumns: "repeat(4, 210px)",
-      maxWidth: "100%",
-      width: "888px",
-    };
-  }
-
-  return {
-    gridTemplateColumns: "repeat(2, 20rem)",
-    maxWidth: "100%",
-    width: "41rem",
-  };
-}
-
-function getLibraryBodyStyle(
-  bizType: WorkbenchMaterialCollectionGroupCreateRequest["bizType"],
-) {
-  if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM) {
-    return {
-      maxWidth: "100%",
-      width: "59.5rem",
-    };
-  }
-
-  return {
-    maxWidth: "100%",
-    width: "45rem",
   };
 }

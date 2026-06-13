@@ -114,8 +114,11 @@ export type WorkbenchMaterialCollectionGroupListResponse = {
 
 export type WorkbenchMaterialCollectionCreateRequest = {
   bizType: MaterialCollectionBizType;
-  messageId: string;
+  description?: string;
+  fileName?: string;
   groupId?: string | 0;
+  messageId: string;
+  title?: string;
 };
 
 export type WorkbenchMaterialCollectionCreateResponse =
@@ -142,6 +145,12 @@ export type WorkbenchMaterialCollectionGroupUpdateRequest = {
 
 export type WorkbenchMaterialCollectionMoveRequest = {
   groupId: string;
+};
+
+export type WorkbenchMaterialCollectionUpdateRequest = {
+  description?: string;
+  fileName?: string;
+  title?: string;
 };
 
 export type WorkbenchMaterialCollectionOkResponse = {

@@ -94,6 +94,7 @@ import {
   BadRequestError,
   ForbiddenError,
   AppError,
+  InternalServerError,
   NotFoundError,
   UnauthorizedError,
 } from "../../shared/errors.js";
@@ -2169,7 +2170,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
     });
 
     if (!groupId) {
-      throw new BadGatewayError("MATERIAL_GROUP_CREATE_FAILED", "新建分组失败");
+      throw new InternalServerError("MATERIAL_GROUP_CREATE_FAILED", "新建分组失败");
     }
 
     return {
@@ -2513,6 +2514,13 @@ function readEnterpriseMaterialGroupId(groupId: string | 0 | undefined) {
 
 function normalizeMaterialGroupTitle(title: string) {
   const normalizedTitle = title.trim();
+
+  if (!normalizedTitle) {
+    throw new BadRequestError(
+      "MATERIAL_GROUP_TITLE_REQUIRED",
+      "分组名称不能为空",
+    );
+  }
 
   if (normalizedTitle.length > MATERIAL_COLLECTION_GROUP_TITLE_MAX_LENGTH) {
     throw new BadRequestError(

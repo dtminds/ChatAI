@@ -1224,7 +1224,7 @@ describe("WorkbenchRepository", () => {
     ]);
   });
 
-  it("does not write material collection when ids are invalid", async () => {
+  it("rejects material collection creation when ids are invalid", async () => {
     const repository = new WorkbenchRepository(createFailingDb() as never);
 
     await expect(
@@ -1239,7 +1239,15 @@ describe("WorkbenchRepository", () => {
         title: "报价文件",
         uid: 9001,
       }),
-    ).resolves.toBeUndefined();
+    ).rejects.toMatchObject({
+      code: "INVALID_MATERIAL_COLLECTION_INPUT",
+      statusCode: 400,
+    });
+  });
+
+  it("does not write material collection updates when ids are invalid", async () => {
+    const repository = new WorkbenchRepository(createFailingDb() as never);
+
     await expect(
       repository.topMaterialCollection({
         id: "bad",

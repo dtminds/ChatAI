@@ -3544,6 +3544,23 @@ describe("MysqlWorkbenchService", () => {
     nowSpy.mockRestore();
   });
 
+  it("material: returns internal error when material group creation has no id", async () => {
+    const repository = createMaterialRepository({
+      createMaterialGroup: vi.fn().mockResolvedValue(undefined),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.createMaterialGroup("101", {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+        title: "常用文件",
+      }),
+    ).rejects.toMatchObject({
+      code: "MATERIAL_GROUP_CREATE_FAILED",
+      statusCode: 500,
+    });
+  });
+
   it("material: rejects material group names over 10 characters", async () => {
     const repository = createMaterialRepository();
     const service = new MysqlWorkbenchService(repository, createJavaClient());
@@ -3564,6 +3581,33 @@ describe("MysqlWorkbenchService", () => {
       }),
     ).rejects.toMatchObject({
       code: "MATERIAL_GROUP_TITLE_TOO_LONG",
+      statusCode: 400,
+    });
+
+    expect(repository.createMaterialGroup).not.toHaveBeenCalled();
+    expect(repository.renameMaterialGroup).not.toHaveBeenCalled();
+  });
+
+  it("material: rejects blank material group names after trimming", async () => {
+    const repository = createMaterialRepository();
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.createMaterialGroup("101", {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+        title: "   ",
+      }),
+    ).rejects.toMatchObject({
+      code: "MATERIAL_GROUP_TITLE_REQUIRED",
+      statusCode: 400,
+    });
+
+    await expect(
+      service.renameMaterialGroup("101", "9", MATERIAL_COLLECTION_BIZ_TYPE.FILE, {
+        title: "   ",
+      }),
+    ).rejects.toMatchObject({
+      code: "MATERIAL_GROUP_TITLE_REQUIRED",
       statusCode: 400,
     });
 

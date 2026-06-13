@@ -676,7 +676,10 @@ export class WorkbenchRepository {
     const opSubUserNumericId = parseMySqlId(input.opSubUserId);
 
     if (groupNumericId == null || opSubUserNumericId == null) {
-      return;
+      throw new BadRequestError(
+        "INVALID_MATERIAL_COLLECTION_INPUT",
+        "素材收录参数无效",
+      );
     }
 
     let result: InsertResult;

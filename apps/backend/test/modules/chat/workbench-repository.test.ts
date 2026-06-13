@@ -710,6 +710,53 @@ describe("WorkbenchRepository", () => {
     });
   });
 
+  it("lists material collections with string default group id", async () => {
+    const db = createMaterialDb({
+      xy_wap_embed_material_collection: [
+        {
+          biz_status: 1,
+          biz_type: 1,
+          content: JSON.stringify({ md5: "emotion-md5" }),
+          create_time: 1_777_000_000_000,
+          group_id: 0,
+          id: 68,
+          msgid: "msg-emotion-68",
+          op_sub_uid: 88,
+          sort: 50,
+          sub_uid: 88,
+          title: "表情",
+          uid: 9001,
+          update_time: 1_777_000_005_000,
+        },
+      ],
+    });
+    const repository = new WorkbenchRepository(db as never);
+
+    const items = await repository.listMaterialCollections({
+      bizType: 1,
+      groupId: "0",
+      subUserId: "88",
+      uid: 9001,
+    });
+
+    expect(items).toMatchObject([
+      {
+        bizType: 1,
+        groupId: 0,
+        id: "68",
+        messageId: "msg-emotion-68",
+        title: "表情",
+      },
+    ]);
+    expect(db.selects[0].wheres).toEqual([
+      ["uid", "=", 9001],
+      ["biz_type", "=", 1],
+      ["biz_status", "=", 1],
+      ["sub_uid", "in", [88]],
+      ["group_id", "=", 0],
+    ]);
+  });
+
   it("lists expression collections scoped to the current sub user", async () => {
     const db = createMaterialDb({
       xy_wap_embed_material_collection: [
@@ -762,7 +809,6 @@ describe("WorkbenchRepository", () => {
         msgid: "msg-mini-1",
         msgtime: 1_777_000_000_000,
         msgtype: "weapp",
-        seat_id: 12,
         uid: 9001,
       },
     });
@@ -777,28 +823,17 @@ describe("WorkbenchRepository", () => {
       content: JSON.stringify({ title: "小程序卡片" }),
       msgid: "msg-mini-1",
       msgtype: "weapp",
-      seatId: "12",
       uid: 9001,
     });
     expect(db.selects[0]).toMatchObject({
       table: "xy_wap_embed_msg_audit_info as message",
-      joinConditions: [
-        {
-          table: "xy_wap_embed_conversation as conversation",
-          type: "innerJoin",
-        },
-        {
-          table: "xy_wap_embed_user_seat as seat",
-          type: "innerJoin",
-        },
-      ],
+      joinConditions: [],
       wheres: [
         ["message.msgid", "=", "msg-mini-1"],
         ["message.uid", "=", 9001],
-        ["seat.biz_status", "=", 1],
       ],
     });
-    expect(db.selects[0].whereExpressions).toHaveLength(1);
+    expect(db.selects[0].whereExpressions).toHaveLength(0);
     expect(db.inserts).toHaveLength(0);
     expect(db.updates).toHaveLength(0);
   });

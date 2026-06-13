@@ -366,7 +366,6 @@ export type MaterialMessageLookup = {
   msgid: string;
   msgtime?: Date | number | string | null;
   msgtype: string;
-  seatId: string;
   uid: number;
 };
 
@@ -420,8 +419,8 @@ export class WorkbenchRepository {
   }): Promise<WorkbenchMaterialCollectionItemDto[]> {
     let groupNumericId: number | undefined;
 
-    if (input.groupId !== undefined && input.groupId !== 0) {
-      groupNumericId = parseMySqlId(input.groupId);
+    if (input.groupId !== undefined) {
+      groupNumericId = parseMaterialGroupId(input.groupId);
 
       if (groupNumericId == null) {
         return [];
@@ -437,7 +436,7 @@ export class WorkbenchRepository {
       .where("sub_uid", "in", getMaterialVisibleSubUids(input.bizType, input.subUserId));
 
     if (input.groupId !== undefined) {
-      query = query.where("group_id", "=", input.groupId === 0 ? 0 : groupNumericId!);
+      query = query.where("group_id", "=", groupNumericId!);
     }
 
     const rows = await query.orderBy("sort", "desc").orderBy("id", "desc").execute();
@@ -457,19 +456,6 @@ export class WorkbenchRepository {
 
     const row = await this.db
       .selectFrom("xy_wap_embed_msg_audit_info as message")
-      .innerJoin("xy_wap_embed_conversation as conversation", (join) =>
-        join
-          .onRef("conversation.uid", "=", "message.uid")
-          .onRef("conversation.platform", "=", "message.platform")
-          .onRef("conversation.chat_type", "=", "message.chat_type")
-          .onRef("conversation.third_userid", "=", "message.third_user_id"),
-      )
-      .innerJoin("xy_wap_embed_user_seat as seat", (join) =>
-        join
-          .onRef("seat.third_userid", "=", "conversation.third_userid")
-          .onRef("seat.uid", "=", "conversation.uid")
-          .onRef("seat.platform", "=", "conversation.platform"),
-      )
       .select([
         "message.id as id",
         "message.content as content",
@@ -477,31 +463,9 @@ export class WorkbenchRepository {
         "message.msgtime as msgtime",
         "message.msgtype as msgtype",
         "message.uid as uid",
-        "seat.id as seat_id",
       ])
       .where("message.msgid", "=", msgid)
       .where("message.uid", "=", input.uid)
-      .where("seat.biz_status", "=", BIZ_STATUS_ACTIVE)
-      .where((expressionBuilder) =>
-        expressionBuilder.or([
-          expressionBuilder.and([
-            expressionBuilder("message.chat_type", "=", CHAT_TYPE_SINGLE),
-            expressionBuilder(
-              "conversation.third_external_userid",
-              "=",
-              expressionBuilder.ref("message.third_external_id"),
-            ),
-          ]),
-          expressionBuilder.and([
-            expressionBuilder("message.chat_type", "=", CHAT_TYPE_GROUP),
-            expressionBuilder(
-              "conversation.third_group_id",
-              "=",
-              expressionBuilder.ref("message.third_group_id"),
-            ),
-          ]),
-        ]),
-      )
       .executeTakeFirst();
 
     if (!row) {
@@ -514,7 +478,6 @@ export class WorkbenchRepository {
       msgid: row.msgid,
       msgtime: row.msgtime,
       msgtype: row.msgtype,
-      seatId: String(row.seat_id),
       uid: row.uid,
     };
   }

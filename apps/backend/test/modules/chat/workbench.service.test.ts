@@ -3020,7 +3020,6 @@ describe("MysqlWorkbenchService", () => {
         content: JSON.stringify({ md5: "emotion-md5" }),
         msgid: "msg-emotion-1",
         msgtype: "emotion",
-        seatId: "12",
         uid: 9001,
       }),
     });
@@ -3056,7 +3055,6 @@ describe("MysqlWorkbenchService", () => {
         content: JSON.stringify({ fileName: "报价.pdf" }),
         msgid: "msg-file-1",
         msgtype: "file",
-        seatId: "12",
         uid: 9001,
       }),
     });
@@ -3091,7 +3089,6 @@ describe("MysqlWorkbenchService", () => {
         content: JSON.stringify({ fileName: longFileName }),
         msgid: "msg-file-1",
         msgtype: "file",
-        seatId: "12",
         uid: 9001,
       }),
     });
@@ -3187,7 +3184,6 @@ describe("MysqlWorkbenchService", () => {
         }),
         msgid: "1025657",
         msgtype: "link",
-        seatId: "12",
         uid: 9001,
       }),
     });
@@ -3207,14 +3203,14 @@ describe("MysqlWorkbenchService", () => {
     nowSpy.mockRestore();
   });
 
-  it("material: rejects collecting messages from inaccessible seats", async () => {
+  it("material: collects tenant messages without seat access checks", async () => {
     const repository = createMaterialRepository({
       canAccessSeat: vi.fn().mockResolvedValue(false),
+      createMaterialCollection: vi.fn().mockResolvedValue("181"),
       findMaterialMessage: vi.fn().mockResolvedValue({
         content: JSON.stringify({ fileName: "报价.pdf" }),
         msgid: "msg-file-1",
         msgtype: "file",
-        seatId: "12",
         uid: 9001,
       }),
     });
@@ -3226,13 +3222,15 @@ describe("MysqlWorkbenchService", () => {
         groupId: "9",
         messageId: "msg-file-1",
       }),
-    ).rejects.toMatchObject({
-      code: "SEAT_NOT_FOUND",
-      statusCode: 404,
-    });
+    ).resolves.toEqual({ success: true });
 
-    expect(repository.canAccessSeat).toHaveBeenCalledWith("101", "12");
-    expect(repository.createMaterialCollection).not.toHaveBeenCalled();
+    expect(repository.canAccessSeat).not.toHaveBeenCalled();
+    expect(repository.createMaterialCollection).toHaveBeenCalledWith(
+      expect.objectContaining({
+        msgid: "msg-file-1",
+        uid: 9001,
+      }),
+    );
   });
 
   it("material: returns duplicate when concurrent insert hits unique key", async () => {
@@ -3242,7 +3240,6 @@ describe("MysqlWorkbenchService", () => {
         content: JSON.stringify({ fileName: "报价.pdf" }),
         msgid: "msg-file-1",
         msgtype: "file",
-        seatId: "12",
         uid: 9001,
       }),
     });
@@ -3276,7 +3273,6 @@ describe("MysqlWorkbenchService", () => {
         content: JSON.stringify({ fileName: "报价.pdf" }),
         msgid: "msg-file-1",
         msgtype: "file",
-        seatId: "12",
         uid: 9001,
       }),
     });
@@ -3315,7 +3311,6 @@ describe("MysqlWorkbenchService", () => {
         content: JSON.stringify({ fileName: "新报价.pdf" }),
         msgid: "msg-file-1",
         msgtype: "file",
-        seatId: "12",
         uid: 9001,
       }),
     });
@@ -3509,7 +3504,6 @@ describe("MysqlWorkbenchService", () => {
         content: JSON.stringify({ text: "普通文本" }),
         msgid: "msg-text-1",
         msgtype: "text",
-        seatId: "12",
         uid: 9001,
       }),
     });
@@ -3535,7 +3529,6 @@ describe("MysqlWorkbenchService", () => {
         content: JSON.stringify({ fileName: "报价.pdf" }),
         msgid: "msg-file-1",
         msgtype: "file",
-        seatId: "12",
         uid: 9001,
       }),
     });

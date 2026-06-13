@@ -173,7 +173,7 @@ export function MaterialLibraryDialog({
                 <div className="mx-auto p-8" style={getLibraryBodyStyle(bizType)}>
                   <div
                     aria-label="收录内容列表"
-                    className="grid items-start gap-6"
+                    className="grid items-start gap-4"
                     style={getLibraryGridStyle(bizType)}
                   >
                     {visibleItems.map((item) => (
@@ -320,13 +320,13 @@ function getLibraryDialogStyle(
   if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM) {
     return {
       maxWidth: "calc(100vw - 2rem)",
-      width: "76rem",
+      width: "74.5rem",
     };
   }
 
   return {
     maxWidth: "calc(100vw - 2rem)",
-    width: "60.5rem",
+    width: "60rem",
   };
 }
 
@@ -335,16 +335,17 @@ function getLibraryGridStyle(
 ) {
   if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM) {
     return {
-      gridTemplateColumns: "repeat(3, 210px)",
+      gap: "16px",
+      gridTemplateColumns: "repeat(4, 210px)",
       maxWidth: "100%",
-      width: "678px",
+      width: "888px",
     };
   }
 
   return {
     gridTemplateColumns: "repeat(2, 20rem)",
     maxWidth: "100%",
-    width: "41.5rem",
+    width: "41rem",
   };
 }
 
@@ -354,12 +355,12 @@ function getLibraryBodyStyle(
   if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM) {
     return {
       maxWidth: "100%",
-      width: "61rem",
+      width: "59.5rem",
     };
   }
 
   return {
     maxWidth: "100%",
-    width: "45.5rem",
+    width: "45rem",
   };
 }

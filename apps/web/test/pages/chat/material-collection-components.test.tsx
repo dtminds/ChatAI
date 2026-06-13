@@ -204,7 +204,7 @@ describe("material collection components", () => {
     expect(screen.getByRole("dialog", { name: "收录的文件" }))
       .toHaveStyle({
         maxWidth: "calc(100vw - 2rem)",
-        width: "60.5rem",
+        width: "60rem",
       });
     expect(screen.getAllByText("收录的文件", { selector: "div" })).toHaveLength(1);
     expect(screen.getAllByText("常用文件")).toHaveLength(1);
@@ -214,12 +214,12 @@ describe("material collection components", () => {
       .toHaveClass(
         "grid",
         "items-start",
-        "gap-6",
+        "gap-4",
       );
     expect(screen.getByLabelText("收录内容列表"))
       .toHaveStyle({
         gridTemplateColumns: "repeat(2, 20rem)",
-        width: "41.5rem",
+        width: "41rem",
       });
     expect(screen.getByRole("button", { name: "关闭" }))
       .toHaveClass("right-0", "-top-10", "bg-transparent", "text-white", "focus:ring-0");
@@ -321,7 +321,7 @@ describe("material collection components", () => {
     expect(screen.getByText("暂无分组")).toBeInTheDocument();
   });
 
-  it("uses mini-program library width for three collected mini-program cards", () => {
+  it("uses mini-program library width for four collected mini-program cards", () => {
     render(
       <MaterialLibraryDialog
         bizType={MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM}
@@ -356,12 +356,13 @@ describe("material collection components", () => {
     expect(screen.getByRole("dialog", { name: "收录的小程序" }))
       .toHaveStyle({
         maxWidth: "calc(100vw - 2rem)",
-        width: "76rem",
+        width: "74.5rem",
       });
     expect(screen.getByLabelText("收录内容列表"))
       .toHaveStyle({
-        gridTemplateColumns: "repeat(3, 210px)",
-        width: "678px",
+        gap: "16px",
+        gridTemplateColumns: "repeat(4, 210px)",
+        width: "888px",
       });
     expect(screen.getByRole("button", { name: "选择素材 麦当劳自助点餐" }).parentElement)
       .toHaveClass("w-[210px]");

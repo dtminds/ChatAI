@@ -753,6 +753,11 @@ export function useMaterialCollection({
     ) => {
       try {
         await action();
+
+        if (!isMountedRef.current) {
+          return;
+        }
+
         await refreshCollectedExpressions();
       } catch (error) {
         if (isMountedRef.current) {
@@ -794,6 +799,10 @@ export function useMaterialCollection({
 
       try {
         await action(bizType);
+
+        if (!isMountedRef.current) {
+          return;
+        }
 
         if (refresh === "items") {
           await reloadActiveMaterialLibraryItems(bizType);

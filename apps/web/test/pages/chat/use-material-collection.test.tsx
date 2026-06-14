@@ -296,6 +296,96 @@ describe("useMaterialCollection", () => {
     expect(toast.warning).toHaveBeenCalledWith("文件素材内容不完整");
   });
 
+  it("does not refresh collected expressions after expression mutation resolves when unmounted", async () => {
+    const baseService = createMockWorkbenchService();
+    const isMountedRef = { current: true };
+    const topGate = createDeferred<{ ok: true }>();
+    const listMaterialCollections = vi.fn(baseService.listMaterialCollections);
+
+    setWorkbenchService({
+      ...baseService,
+      listMaterialCollections,
+      topMaterialCollection: vi.fn(() => topGate.promise),
+    });
+
+    const { result } = renderHook(() =>
+      useMaterialCollection(
+        createDefaultOptions({
+          isMountedRef,
+        }),
+      ),
+    );
+
+    act(() => {
+      result.current.handleTopCollectedExpression(
+        createFileMaterialItem({
+          bizType: 1,
+          contentType: "emotion",
+          groupId: "0",
+          id: "material-expression",
+        }),
+      );
+    });
+
+    isMountedRef.current = false;
+
+    await act(async () => {
+      topGate.resolve({ ok: true });
+      await topGate.promise;
+    });
+
+    expect(listMaterialCollections).not.toHaveBeenCalled();
+  });
+
+  it("does not refresh material library after material mutation resolves when unmounted", async () => {
+    const baseService = createMockWorkbenchService();
+    const isMountedRef = { current: true };
+    const topGate = createDeferred<{ ok: true }>();
+    const listMaterialCollections = vi.fn(baseService.listMaterialCollections);
+
+    setWorkbenchService({
+      ...baseService,
+      listMaterialCollections,
+      topMaterialCollection: vi.fn(() => topGate.promise),
+    });
+
+    const { result } = renderHook(() =>
+      useMaterialCollection(
+        createDefaultOptions({
+          isMountedRef,
+        }),
+      ),
+    );
+
+    act(() => {
+      result.current.handleOpenMaterialLibrary(2);
+    });
+
+    await waitFor(() => {
+      expect(result.current.activeMaterialLibraryGroupId).toBe(
+        "mock-material-group-file",
+      );
+    });
+    listMaterialCollections.mockClear();
+
+    act(() => {
+      result.current.handleTopMaterial(
+        createFileMaterialItem({
+          groupId: "mock-material-group-file",
+        }),
+      );
+    });
+
+    isMountedRef.current = false;
+
+    await act(async () => {
+      topGate.resolve({ ok: true });
+      await topGate.promise;
+    });
+
+    expect(listMaterialCollections).not.toHaveBeenCalled();
+  });
+
   it("ignores stale material library group responses when opening another biz type", async () => {
     const baseService = createMockWorkbenchService();
     const fileGroupsGate = createDeferred<{

@@ -287,7 +287,12 @@ export function ChatComposer({
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target as Node | null;
 
-      if (!target || emojiPickerRef.current?.contains(target)) {
+      if (
+        !target ||
+        emojiPickerRef.current?.contains(target) ||
+        (target instanceof Element &&
+          target.closest('[data-emoji-picker-portal="true"]'))
+      ) {
         return;
       }
 

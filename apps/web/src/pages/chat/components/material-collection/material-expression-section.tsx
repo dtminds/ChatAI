@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Delete02Icon,
   PinIcon,
@@ -128,41 +129,45 @@ export function MaterialExpressionSection({
         </div>
       ) : null}
 
-      {contextMenu ? (
-        <div
-          className="fixed z-50 min-w-[7.5rem] rounded-[10px] border border-border bg-popover p-1 text-popover-foreground shadow-[0_10px_28px_var(--shadow-soft)]"
-          ref={menuRef}
-          role="menu"
-          style={{ left: contextMenu.x, top: contextMenu.y }}
-        >
-          <button
-            className="flex h-8 w-full items-center gap-2 rounded-[8px] px-2.5 text-left text-[13px] outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground disabled:pointer-events-none disabled:opacity-45"
-            disabled={!onTop}
-            onClick={() => {
-              onTop?.(contextMenu.item);
-              setContextMenu(null);
-            }}
-            role="menuitem"
-            type="button"
-          >
-            <HugeiconsIcon icon={PinIcon} size={16} strokeWidth={1.8} />
-            移到最前
-          </button>
-          <button
-            className="flex h-8 w-full items-center gap-2 rounded-[8px] px-2.5 text-left text-[13px] text-destructive outline-none transition-colors hover:bg-destructive/10 focus:bg-destructive/10 disabled:pointer-events-none disabled:opacity-45"
-            disabled={!onDelete}
-            onClick={() => {
-              onDelete?.(contextMenu.item);
-              setContextMenu(null);
-            }}
-            role="menuitem"
-            type="button"
-          >
-            <HugeiconsIcon icon={Delete02Icon} size={16} strokeWidth={1.8} />
-            删除
-          </button>
-        </div>
-      ) : null}
+      {contextMenu
+        ? createPortal(
+            <div
+              className="fixed z-50 min-w-[7.5rem] rounded-[10px] border border-border bg-popover p-1 text-popover-foreground shadow-[0_10px_28px_var(--shadow-soft)]"
+              data-emoji-picker-portal="true"
+              ref={menuRef}
+              role="menu"
+              style={{ left: contextMenu.x, top: contextMenu.y }}
+            >
+              <button
+                className="flex h-8 w-full items-center gap-2 rounded-[8px] px-2.5 text-left text-[13px] outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground disabled:pointer-events-none disabled:opacity-45"
+                disabled={!onTop}
+                onClick={() => {
+                  onTop?.(contextMenu.item);
+                  setContextMenu(null);
+                }}
+                role="menuitem"
+                type="button"
+              >
+                <HugeiconsIcon icon={PinIcon} size={16} strokeWidth={1.8} />
+                移到最前
+              </button>
+              <button
+                className="flex h-8 w-full items-center gap-2 rounded-[8px] px-2.5 text-left text-[13px] text-destructive outline-none transition-colors hover:bg-destructive/10 focus:bg-destructive/10 disabled:pointer-events-none disabled:opacity-45"
+                disabled={!onDelete}
+                onClick={() => {
+                  onDelete?.(contextMenu.item);
+                  setContextMenu(null);
+                }}
+                role="menuitem"
+                type="button"
+              >
+                <HugeiconsIcon icon={Delete02Icon} size={16} strokeWidth={1.8} />
+                删除
+              </button>
+            </div>,
+            document.body,
+          )
+        : null}
     </section>
   );
 }

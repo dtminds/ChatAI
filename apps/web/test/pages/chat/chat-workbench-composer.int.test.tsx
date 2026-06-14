@@ -1038,7 +1038,6 @@ describe("ChatWorkbenchPage composer flows", () => {
         url: "https://example.com/redpacket",
       },
       role: "agent",
-      status: "accepted",
     });
   });
 
@@ -1131,7 +1130,6 @@ describe("ChatWorkbenchPage composer flows", () => {
         url: "https://example.com/legacy-page",
       },
       role: "agent",
-      status: "accepted",
     });
   });
 

@@ -472,6 +472,35 @@ describe("adaptMessage", () => {
     });
   });
 
+  it("adapts top-level video download status", () => {
+    expect(
+      adaptMessage(
+        {
+          ...messageDto,
+          content: {
+            alt: "待转存视频",
+            coverImageUrl: "",
+            durationLabel: "",
+            videoUrl: "",
+          },
+          contentType: "video",
+          downloadStatus: "ing",
+          fileSerialNo: "serial-video-001",
+        } as WorkbenchMessageDto,
+        customerProfilesById,
+        accountsById,
+        me,
+      ),
+    ).toMatchObject({
+      content: {
+        downloadStatus: "ing",
+        fileSerialNo: "serial-video-001",
+        type: "video",
+        videoUrl: "",
+      },
+    });
+  });
+
   it("adapts contact card message content", () => {
     expect(
       adaptMessage(

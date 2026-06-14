@@ -180,6 +180,10 @@ describe("MessageContentRenderer video messages", () => {
     );
 
     expect(screen.getByRole("status", { name: "视频下载中" })).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: "服务端转存中视频" }))
+      .not.toBeInTheDocument();
+    expect(screen.queryByTestId("video-cover-fallback"))
+      .not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "下载视频：服务端转存中视频" }))
       .not.toBeInTheDocument();
   });
@@ -438,7 +442,7 @@ describe("MessageContentRenderer video messages", () => {
 
     expect(screen.getByRole("img", { name: "视频封面不可用：加载失败视频封面" }))
       .toBeInTheDocument();
-    expect(screen.getByTestId("video-cover-fallback")).toHaveClass("h-[120px]", "w-[120px]");
+    expect(screen.getByTestId("video-cover-fallback")).toHaveClass("h-full", "w-full");
     expect(screen.queryByRole("img", { name: "加载失败视频封面" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "播放视频：加载失败视频封面" })).toBeInTheDocument();
     expect(screen.getByText("1:01")).toBeInTheDocument();

@@ -68,7 +68,7 @@ describe("workbench store conversation mode cache", () => {
     });
   });
 
-  it("resets stale polling status when the workbench initializes again", async () => {
+  it("resets stale polling errors when the workbench initializes again", async () => {
     const baseService = createMockWorkbenchService();
     const poll = vi.fn(baseService.poll);
 
@@ -80,7 +80,8 @@ describe("workbench store conversation mode cache", () => {
     useWorkbenchStore.setState((state) => ({
       pollState: {
         ...state.pollState,
-        status: "polling",
+        errorMessage: "轮询失败",
+        status: "error",
       },
     }));
 
@@ -88,6 +89,7 @@ describe("workbench store conversation mode cache", () => {
     await useWorkbenchStore.getState().pollWorkbench();
 
     expect(poll).toHaveBeenCalledTimes(1);
+    expect(useWorkbenchStore.getState().pollState.status).toBe("idle");
   });
 
 });

@@ -136,11 +136,10 @@ type MessagePaginationState = {
 };
 
 type PollState = {
-  status: "idle" | "polling" | "error";
+  status: "idle" | "error";
   intervalMs: number;
   jitterMs: number;
   errorMessage?: string;
-  lastSuccessAt?: number;
 };
 
 type HistoryPanelMode = "all" | "file" | "media" | "h5" | "mini-program";
@@ -2158,6 +2157,7 @@ export function createWorkbenchStore() {
   let latestScopeRequestId = 0;
   let latestTakeoverRequestId = 0;
   let latestGroupMembersRequestId = 0;
+  let isPollWorkbenchRunning = false;
   let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   const pendingVoicePlaybackConfirmKeys = new Set<string>();
   const smartReplyPollTimersByConversationId = new Map<string, ReturnType<typeof setTimeout>>();
@@ -3776,18 +3776,12 @@ export function createWorkbenchStore() {
       if (
         state.bootstrapStatus !== "ready" ||
         !state.activeAccountId ||
-        state.pollState.status === "polling"
+        isPollWorkbenchRunning
       ) {
         return;
       }
 
-      set((currentState) => ({
-        pollState: {
-          ...currentState.pollState,
-          errorMessage: undefined,
-          status: "polling",
-        },
-      }));
+      isPollWorkbenchRunning = true;
 
       try {
         const activeConversationId = state.activeConversationId || undefined;
@@ -3855,33 +3849,39 @@ export function createWorkbenchStore() {
             currentState.sinceVersion !== response.request.sinceVersion;
 
           if (isStaleScope) {
-            return {
-              pollState: {
-                ...currentState.pollState,
-                status: "idle",
-              },
-            };
+            return currentState;
           }
 
-          const nextAccounts = currentState.accounts.map((account) => {
-            const change = response.accountChanges.find(
-              (item) => item.accountId === account.id,
+          const accountChangesById = new Map(
+            response.accountChanges.map((change) => [change.accountId, change]),
+          );
+          const hasAccountChanges =
+            accountChangesById.size > 0 &&
+            currentState.accounts.some((account) =>
+              accountChangesById.has(account.id),
             );
+          const nextAccounts = hasAccountChanges
+            ? currentState.accounts.map((account) => {
+                const change = accountChangesById.get(account.id);
 
-            if (!change) {
-              return account;
-            }
+                if (!change) {
+                  return account;
+                }
 
-            return {
-              ...account,
-              lastMessageTime: change.lastMessageTime,
-              ...(Object.prototype.hasOwnProperty.call(change, "hostSubUserId")
-                ? { takenOverEmployeeId: change.hostSubUserId ?? undefined }
-                : {}),
-              unreadCount: change.unreadCount,
-            };
-          });
-          const nextConversationLists = { ...currentState.conversationListsByScope };
+                return {
+                  ...account,
+                  lastMessageTime: change.lastMessageTime,
+                  ...(Object.prototype.hasOwnProperty.call(change, "hostSubUserId")
+                    ? { takenOverEmployeeId: change.hostSubUserId ?? undefined }
+                    : {}),
+                  unreadCount: change.unreadCount,
+                };
+              })
+            : currentState.accounts;
+          const hasConversationChanges = response.conversationChanges.length > 0;
+          const nextConversationLists = hasConversationChanges
+            ? { ...currentState.conversationListsByScope }
+            : currentState.conversationListsByScope;
           const removedConversationIds: string[] = [];
 
           for (const change of response.conversationChanges) {
@@ -3912,21 +3912,36 @@ export function createWorkbenchStore() {
                 { preservePending: true },
               )
             : currentState;
-          const nextMessagesByConversationId = {
-            ...clearedResourceState.messagesByConversationId,
-          };
-          const nextSmartReplyPendingMessageKeysByConversationId = {
-            ...clearedResourceState.smartReplyPendingMessageKeysByConversationId,
-          };
-          const nextSmartReplyByMessageIdByConversationId = {
-            ...clearedResourceState.smartReplyByMessageIdByConversationId,
-          };
-          const nextSmartReplyHiddenMessageKeysByConversationId = {
-            ...clearedResourceState.smartReplyHiddenMessageKeysByConversationId,
-          };
+          const hasActiveConversationMessages =
+            response.activeConversationMessages.length > 0 &&
+            Boolean(polledConversationId);
+          const hasRefreshedMessageEntries = Object.values(
+            refreshedMessagesByConversationId,
+          ).some((messages) => messages.length > 0);
+          const shouldPatchMessageState =
+            hasActiveConversationMessages ||
+            hasRefreshedMessageEntries ||
+            removedConversationIds.length > 0;
+          const nextMessagesByConversationId = shouldPatchMessageState
+            ? { ...clearedResourceState.messagesByConversationId }
+            : clearedResourceState.messagesByConversationId;
+          const shouldPatchSmartReplyState =
+            hasActiveConversationMessages || removedConversationIds.length > 0;
+          const nextSmartReplyPendingMessageKeysByConversationId =
+            shouldPatchSmartReplyState
+              ? { ...clearedResourceState.smartReplyPendingMessageKeysByConversationId }
+              : clearedResourceState.smartReplyPendingMessageKeysByConversationId;
+          const nextSmartReplyByMessageIdByConversationId =
+            shouldPatchSmartReplyState
+              ? { ...clearedResourceState.smartReplyByMessageIdByConversationId }
+              : clearedResourceState.smartReplyByMessageIdByConversationId;
+          const nextSmartReplyHiddenMessageKeysByConversationId =
+            shouldPatchSmartReplyState
+              ? { ...clearedResourceState.smartReplyHiddenMessageKeysByConversationId }
+              : clearedResourceState.smartReplyHiddenMessageKeysByConversationId;
 
           if (
-            response.activeConversationMessages.length > 0 &&
+            hasActiveConversationMessages &&
             polledConversationId
           ) {
             const currentMessages =
@@ -3979,9 +3994,8 @@ export function createWorkbenchStore() {
             );
           }
 
-          const nextHistoryPanelByConversationId = {
-            ...clearedResourceState.historyPanelByConversationId,
-          };
+          let nextHistoryPanelByConversationId =
+            clearedResourceState.historyPanelByConversationId;
 
           for (const [conversationId, refreshedMessages] of Object.entries(
             refreshedMessagesByConversationId,
@@ -3996,6 +4010,14 @@ export function createWorkbenchStore() {
               continue;
             }
 
+            if (
+              nextHistoryPanelByConversationId ===
+              clearedResourceState.historyPanelByConversationId
+            ) {
+              nextHistoryPanelByConversationId = {
+                ...clearedResourceState.historyPanelByConversationId,
+              };
+            }
             nextHistoryPanelByConversationId[conversationId] = {
               ...historyPanel,
               messages: patchExistingMessageList(
@@ -4011,10 +4033,27 @@ export function createWorkbenchStore() {
           ];
           clearResolvedRevokePendingTimeouts(serverMessages);
 
-          const pendingMessages = currentState.pendingMessages.filter(
-            (pendingMessage) =>
-              !serverMessages.some((message) => isSameMessage(pendingMessage, message)),
-          );
+          const filteredPendingMessages = serverMessages.length
+            ? currentState.pendingMessages.filter(
+                (pendingMessage) =>
+                  !serverMessages.some((message) =>
+                    isSameMessage(pendingMessage, message),
+                  ),
+              )
+            : currentState.pendingMessages;
+          const pendingMessages =
+            filteredPendingMessages.length === currentState.pendingMessages.length
+              ? currentState.pendingMessages
+              : filteredPendingMessages;
+          const nextPollState =
+            currentState.pollState.status !== "idle" ||
+            currentState.pollState.errorMessage != null
+              ? {
+                  ...currentState.pollState,
+                  errorMessage: undefined,
+                  status: "idle" as const,
+                }
+              : currentState.pollState;
 
           return {
             accounts: nextAccounts,
@@ -4045,11 +4084,7 @@ export function createWorkbenchStore() {
               nextSmartReplyHiddenMessageKeysByConversationId,
             smartReplyPendingMessageKeysByConversationId:
               nextSmartReplyPendingMessageKeysByConversationId,
-            pollState: {
-              ...currentState.pollState,
-              lastSuccessAt: Date.now(),
-              status: "idle",
-            },
+            pollState: nextPollState,
             messageUpdateCursor:
               response.nextMessageUpdateCursor ?? currentState.messageUpdateCursor,
             seatUpdateCursor:
@@ -4168,7 +4203,6 @@ export function createWorkbenchStore() {
                 pollState: {
                   ...currentState.pollState,
                   errorMessage: undefined,
-                  lastSuccessAt: Date.now(),
                   status: "idle",
                 },
               };
@@ -4212,6 +4246,8 @@ export function createWorkbenchStore() {
             status: "error",
           },
         }));
+      } finally {
+        isPollWorkbenchRunning = false;
       }
     },
     async sendAgentMessageSegments(segments, options) {

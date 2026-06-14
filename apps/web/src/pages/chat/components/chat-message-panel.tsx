@@ -1,10 +1,18 @@
-import { startTransition, type ReactNode, type RefObject } from "react";
+import {
+  startTransition,
+  useMemo,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { cn } from "@/lib/utils";
 import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
 import { ChatMessageList } from "@/pages/chat/components/message-feed";
 import type { SmartReplySendPayload } from "@/pages/chat/api/smart-reply-adapter";
 import type { SmartReplySuggestion } from "@/pages/chat/components/smart-reply-card";
 import type { ChatMessage, Message } from "@/pages/chat/chat-types";
+import type { ChatMode } from "@/pages/chat/chat-types";
+import { useWorkbenchStore } from "@/store/workbench-store";
+import { useShallow } from "zustand/react/shallow";
 
 type ChatMessagePanelProps = {
   activeHistoryStatus: "idle" | "loading" | "error";
@@ -16,6 +24,7 @@ type ChatMessagePanelProps = {
   historyLoadLabel?: string;
   isConversationLoading: boolean;
   conversationId: string;
+  conversationMode: ChatMode;
   messages: Message[];
   onCollectMaterial?: (message: ChatMessage) => void;
   onDownloadMessageFile?: (message: ChatMessage) => void;
@@ -40,8 +49,6 @@ type ChatMessagePanelProps = {
   ) => void;
   onTranscribeVoice?: (message: ChatMessage) => Promise<string>;
   retryingMessageIds?: ReadonlySet<string>;
-  smartReplyAutoPendingByMessageId?: Record<string, true>;
-  smartReplyByMessageId?: Record<string, SmartReplySuggestion>;
   messageViewportRef: RefObject<HTMLDivElement | null>;
 };
 
@@ -55,6 +62,7 @@ export function ChatMessagePanel({
   historyLoadLabel,
   isConversationLoading,
   conversationId,
+  conversationMode,
   messages,
   onCollectMaterial,
   onDownloadMessageFile,
@@ -73,10 +81,40 @@ export function ChatMessagePanel({
   onVoicePlaybackReady,
   onTranscribeVoice,
   retryingMessageIds,
-  smartReplyAutoPendingByMessageId,
-  smartReplyByMessageId,
   messageViewportRef,
 }: ChatMessagePanelProps) {
+  const {
+    smartReplyAutoPendingByMessageId,
+    smartReplyHiddenMessageKeys,
+    smartReplySuggestionsByMessageId,
+  } = useWorkbenchStore(
+    useShallow((state) => ({
+      smartReplyAutoPendingByMessageId:
+        state.smartReplyAutoPendingMessageKeysByConversationId[conversationId],
+      smartReplyHiddenMessageKeys:
+        state.smartReplyHiddenMessageKeysByConversationId[conversationId],
+      smartReplySuggestionsByMessageId:
+        state.smartReplyByMessageIdByConversationId[conversationId],
+    })),
+  );
+  const smartReplyByMessageId = useMemo(() => {
+    if (conversationMode !== "single" || !smartReplySuggestionsByMessageId) {
+      return {};
+    }
+
+    const hidden = smartReplyHiddenMessageKeys ?? {};
+
+    return Object.fromEntries(
+      Object.entries(smartReplySuggestionsByMessageId).filter(
+        ([lookupKey]) => !hidden[lookupKey],
+      ),
+    );
+  }, [
+    conversationMode,
+    smartReplyHiddenMessageKeys,
+    smartReplySuggestionsByMessageId,
+  ]) satisfies Record<string, SmartReplySuggestion>;
+
   return (
     <section className="relative min-h-0 flex-1 bg-surface">
       <div

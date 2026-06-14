@@ -26,7 +26,6 @@ import type {
 } from "@chatai/contracts";
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
 import type { SmartReplySendPayload } from "@/pages/chat/api/smart-reply-adapter";
-import type { SmartReplySuggestion } from "@/pages/chat/components/smart-reply-card";
 
 type ChatPanelProps = {
   accountName?: string;
@@ -122,8 +121,6 @@ type ChatPanelProps = {
   ) => void;
   onTranscribeVoice?: (message: ChatMessage) => Promise<string>;
   retryingMessageIds?: ReadonlySet<string>;
-  smartReplyAutoPendingByMessageId?: Record<string, true>;
-  smartReplyByMessageId?: Record<string, SmartReplySuggestion>;
   onSendDraft: (segments: ComposerSegment[]) => void;
   onDismissScopeTransitionError: () => void;
   scopeTransitionError?: string;
@@ -202,8 +199,6 @@ export function ChatPanel({
   onTriggerSmartReply,
   onVoicePlaybackReady,
   retryingMessageIds,
-  smartReplyAutoPendingByMessageId,
-  smartReplyByMessageId,
   onSendDraft,
   onTranscribeVoice,
   onDismissScopeTransitionError,
@@ -244,9 +239,8 @@ export function ChatPanel({
                 historyLoadLabel={historyLoadLabel}
                 isConversationLoading={isConversationLoading}
                 conversationId={activeConversation.id}
+                conversationMode={activeConversation.mode}
                 messages={messages}
-                smartReplyAutoPendingByMessageId={smartReplyAutoPendingByMessageId}
-                smartReplyByMessageId={smartReplyByMessageId}
                 messageViewportRef={messageViewportRef}
                 onCollectMaterial={onCollectMaterial}
                 onDownloadMessageFile={onDownloadMessageFile}

@@ -2704,6 +2704,247 @@ describe("useWorkbenchStore", () => {
     });
   });
 
+  it("sends per-segment member mention payloads when media splits composer text", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+    vi.mocked(resolveImageSegmentsForSend).mockResolvedValue([
+      {
+        text: "@$$ 文字",
+        type: "text",
+      },
+      {
+        alt: "截图",
+        fileId: "chat-images/conv-001/a.png",
+        type: "image",
+        url: "https://mock-bucket.cos.ap-guangzhou.myqcloud.com/chat-images/conv-001/a.png",
+      },
+      {
+        text: "@$$",
+        type: "text",
+      },
+    ]);
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentMessageSegments(
+      [
+        {
+          mentionMemberIds: ["member-001"],
+          text: "@小林",
+          type: "text",
+        },
+        {
+          text: " 文字",
+          type: "text",
+        },
+        {
+          alt: "截图",
+          localUrl: "data:image/png;base64,aaa",
+          type: "image",
+        },
+        {
+          mentionMemberIds: ["member-002"],
+          text: "@小陈",
+          type: "text",
+        },
+      ],
+      {
+        mention: {
+          location: "any",
+          memberIds: ["member-001", "member-002"],
+        },
+      },
+    );
+
+    expect(sendMessage).toHaveBeenCalledTimes(3);
+    expect(sendMessage).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        mention: {
+          location: "any",
+          memberIds: ["member-001"],
+        },
+        segment: {
+          text: "@$$ 文字",
+          type: "text",
+        },
+      }),
+    );
+    expect(sendMessage).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        mention: undefined,
+        segment: expect.objectContaining({
+          type: "image",
+        }),
+      }),
+    );
+    expect(sendMessage).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        mention: {
+          location: "any",
+          memberIds: ["member-002"],
+        },
+        segment: {
+          text: "@$$",
+          type: "text",
+        },
+      }),
+    );
+  });
+
+  it("keeps mention-all segment text intact and ignores member mentions in the same segment", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentMessageSegments(
+      [
+        {
+          mentionAll: true,
+          text: "@所有人",
+          type: "text",
+        },
+        {
+          text: " ",
+          type: "text",
+        },
+        {
+          mentionMemberIds: ["member-001"],
+          text: "@小林",
+          type: "text",
+        },
+        {
+          text: " 看一下",
+          type: "text",
+        },
+      ],
+      {
+        mention: {
+          all: true,
+          location: "start",
+          memberIds: ["member-001"],
+        },
+      },
+    );
+
+    expect(sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mention: {
+          all: true,
+          location: "start",
+          memberIds: [],
+        },
+        segment: {
+          text: "@所有人 @小林 看一下",
+          type: "text",
+        },
+      }),
+    );
+  });
+
+  it("handles mention-all and member mentions independently across media-split segments", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+    vi.mocked(resolveImageSegmentsForSend).mockResolvedValue([
+      {
+        text: "@所有人",
+        type: "text",
+      },
+      {
+        alt: "截图",
+        fileId: "chat-images/conv-001/a.png",
+        type: "image",
+        url: "https://mock-bucket.cos.ap-guangzhou.myqcloud.com/chat-images/conv-001/a.png",
+      },
+      {
+        text: "@$$",
+        type: "text",
+      },
+    ]);
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentMessageSegments(
+      [
+        {
+          mentionAll: true,
+          text: "@所有人",
+          type: "text",
+        },
+        {
+          alt: "截图",
+          localUrl: "data:image/png;base64,aaa",
+          type: "image",
+        },
+        {
+          mentionMemberIds: ["member-001"],
+          text: "@小林",
+          type: "text",
+        },
+      ],
+      {
+        mention: {
+          all: true,
+          location: "start",
+          memberIds: ["member-001"],
+        },
+      },
+    );
+
+    expect(sendMessage).toHaveBeenCalledTimes(3);
+    expect(sendMessage).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        mention: {
+          all: true,
+          location: "start",
+          memberIds: [],
+        },
+        segment: {
+          text: "@所有人",
+          type: "text",
+        },
+      }),
+    );
+    expect(sendMessage).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        mention: undefined,
+        segment: expect.objectContaining({
+          type: "image",
+        }),
+      }),
+    );
+    expect(sendMessage).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        mention: {
+          location: "any",
+          memberIds: ["member-001"],
+        },
+        segment: {
+          text: "@$$",
+          type: "text",
+        },
+      }),
+    );
+  });
+
   it("resolves image segments before sending them to the message API", async () => {
     const baseService = createMockWorkbenchService();
     const sendMessage = vi.fn(baseService.sendMessage);

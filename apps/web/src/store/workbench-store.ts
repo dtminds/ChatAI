@@ -34,6 +34,7 @@ import {
 import type { WorkbenchConversationPage } from "@/pages/chat/api/workbench-gateway";
 import {
   getComposerSegmentsPreview,
+  JAVA_MENTION_PLACEHOLDER,
   normalizeComposerSegments,
   type ComposerSegment,
   type ComposerTextSegment,
@@ -4235,7 +4236,7 @@ export function createWorkbenchStore() {
         },
       }));
 
-      const sendableSegments = stripComposerMentionMetadata(normalizedSegments);
+      const sendableSegments = buildSendableComposerSegments(segments);
       let segmentsForSend = sendableSegments;
 
       try {
@@ -4267,20 +4268,31 @@ export function createWorkbenchStore() {
         };
       }
 
+      if (import.meta.env.DEV && segmentsForSend.length !== normalizedSegments.length) {
+        console.warn(
+          "Composer segment count mismatch before sending",
+          segmentsForSend.length,
+          normalizedSegments.length,
+        );
+      }
+
       try {
-        let hasSentMention = false;
         let hasSentQuote = false;
         for (let index = 0; index < segmentsForSend.length; index += 1) {
           const segmentForSend = segmentsForSend[index];
+          // Sendable and normalized segments share media boundaries, so indexes identify the same outbound message.
           const originalSegment = normalizedSegments[index] ?? segmentForSend;
+          const optimisticSegment =
+            segmentForSend.type === "text" && originalSegment.type === "text"
+              ? originalSegment
+              : segmentForSend;
           const segmentClientMessageId = buildSegmentClientMessageId(clientMessageId, index);
-          const mentionForSegment: SendMentionPayload =
-            !hasSentMention && segmentForSend.type === "text"
-              ? options?.mention
+          const mentionForSegment =
+            segmentForSend.type === "text" && originalSegment.type === "text"
+              ? buildMentionPayloadForSegment(originalSegment, options?.mention)
               : undefined;
           const quoteForSegment: SendQuotePayload =
             !hasSentQuote && segmentForSend.type === "text" ? options?.quote : undefined;
-          hasSentMention = hasSentMention || Boolean(mentionForSegment);
           hasSentQuote = hasSentQuote || Boolean(quoteForSegment);
           const response = await sendTextMessage({
             clientMessageId: segmentClientMessageId,
@@ -4297,7 +4309,7 @@ export function createWorkbenchStore() {
             isOwnMessage: true,
             isNew: true,
             clientMessageId: segmentClientMessageId,
-            content: buildOptimisticMessageContent(segmentForSend, quoteForSegment),
+            content: buildOptimisticMessageContent(optimisticSegment, quoteForSegment),
             conversationId: activeConversationId,
             id: segmentClientMessageId,
             optNo: response.optNo ?? response.messageId,
@@ -5746,17 +5758,79 @@ export function createWorkbenchStore() {
   });
 }
 
-function stripComposerMentionMetadata(segments: ComposerSegment[]): ComposerSegment[] {
-  return segments.map((segment) => {
-    if (segment.type !== "text") {
-      return segment;
+function buildMentionPayloadForSegment(
+  segment: ComposerTextSegment,
+  mention?: SendMentionPayload,
+): SendMentionPayload {
+  if (!mention) {
+    return undefined;
+  }
+
+  if (segment.mentionAll) {
+    // @所有人 owns the whole text segment; member mentions in the same segment are sent as plain text.
+    return {
+      all: true,
+      location: "start",
+      memberIds: [],
+    };
+  }
+
+  const memberIds = segment.mentionMemberIds?.filter(Boolean) ?? [];
+
+  if (memberIds.length === 0) {
+    return undefined;
+  }
+
+  return {
+    location: "any",
+    memberIds,
+  };
+}
+
+function buildSendableComposerSegments(segments: ComposerSegment[]): ComposerSegment[] {
+  const sendableSegments: ComposerSegment[] = [];
+  let textSegmentsBuffer: ComposerTextSegment[] = [];
+
+  const flushTextSegmentsBuffer = () => {
+    if (textSegmentsBuffer.length === 0) {
+      return;
     }
 
-    return {
-      text: segment.text,
-      type: "text",
-    } satisfies ComposerTextSegment;
-  });
+    const hasMentionAll = textSegmentsBuffer.some((segment) => segment.mentionAll);
+    const text = textSegmentsBuffer
+      .map((segment) => {
+        if (hasMentionAll || (segment.mentionMemberIds?.length ?? 0) === 0) {
+          return segment.text;
+        }
+
+        return JAVA_MENTION_PLACEHOLDER;
+      })
+      .join("")
+      .trim();
+
+    if (text) {
+      sendableSegments.push({
+        text,
+        type: "text",
+      });
+    }
+
+    textSegmentsBuffer = [];
+  };
+
+  for (const segment of segments) {
+    if (segment.type === "text") {
+      textSegmentsBuffer.push(segment);
+      continue;
+    }
+
+    flushTextSegmentsBuffer();
+    sendableSegments.push(segment);
+  }
+
+  flushTextSegmentsBuffer();
+
+  return sendableSegments;
 }
 
 function isDownloadableMessage(message: Message): message is ChatMessage {

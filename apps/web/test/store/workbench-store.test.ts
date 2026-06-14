@@ -4,6 +4,7 @@ import {
   setWorkbenchService,
 } from "@/pages/chat/api/workbench-service";
 import { resolveImageSegmentsForSend } from "@/pages/chat/api/media-upload-service";
+import { JAVA_MENTION_PLACEHOLDER } from "@/pages/chat/lib/composer-segments";
 import { seedMessages } from "@/pages/chat/mock-data";
 import {
   createWorkbenchStore,
@@ -2627,6 +2628,321 @@ describe("useWorkbenchStore", () => {
     expect(state.pendingMessages).toHaveLength(3);
     expect(state.conversationListsByScope[state.activeAccountId][0].preview).toBe(
       "第二段[强]",
+    );
+  });
+
+  it("sends member mention text as ordered Java placeholder tokens", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentMessageSegments(
+      [
+        {
+          text: "hello ",
+          type: "text",
+        },
+        {
+          mentionMemberIds: ["member-001"],
+          text: "@小林",
+          type: "text",
+        },
+        {
+          text: " world ",
+          type: "text",
+        },
+        {
+          mentionMemberIds: ["member-001"],
+          text: "@小林",
+          type: "text",
+        },
+        {
+          text: " ",
+          type: "text",
+        },
+        {
+          mentionMemberIds: ["member-002"],
+          text: "@小陈",
+          type: "text",
+        },
+        {
+          text: " 看一下",
+          type: "text",
+        },
+      ],
+      {
+        mention: {
+          location: "any",
+          memberIds: ["member-001", "member-001", "member-002"],
+        },
+      },
+    );
+
+    expect(sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mention: {
+          location: "any",
+          memberIds: ["member-001", "member-001", "member-002"],
+        },
+        segment: {
+          text: `hello ${JAVA_MENTION_PLACEHOLDER} world ${JAVA_MENTION_PLACEHOLDER} ${JAVA_MENTION_PLACEHOLDER} 看一下`,
+          type: "text",
+        },
+      }),
+    );
+    expect(
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1),
+    ).toMatchObject({
+      content: {
+        text: "hello @小林 world @小林 @小陈 看一下",
+        type: "text",
+      },
+    });
+  });
+
+  it("sends per-segment member mention payloads when media splits composer text", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+    vi.mocked(resolveImageSegmentsForSend).mockResolvedValue([
+      {
+        text: `${JAVA_MENTION_PLACEHOLDER} 文字`,
+        type: "text",
+      },
+      {
+        alt: "截图",
+        fileId: "chat-images/conv-001/a.png",
+        type: "image",
+        url: "https://mock-bucket.cos.ap-guangzhou.myqcloud.com/chat-images/conv-001/a.png",
+      },
+      {
+        text: JAVA_MENTION_PLACEHOLDER,
+        type: "text",
+      },
+    ]);
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentMessageSegments(
+      [
+        {
+          mentionMemberIds: ["member-001"],
+          text: "@小林",
+          type: "text",
+        },
+        {
+          text: " 文字",
+          type: "text",
+        },
+        {
+          alt: "截图",
+          localUrl: "data:image/png;base64,aaa",
+          type: "image",
+        },
+        {
+          mentionMemberIds: ["member-002"],
+          text: "@小陈",
+          type: "text",
+        },
+      ],
+      {
+        mention: {
+          location: "any",
+          memberIds: ["member-001", "member-002"],
+        },
+      },
+    );
+
+    expect(sendMessage).toHaveBeenCalledTimes(3);
+    expect(sendMessage).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        mention: {
+          location: "any",
+          memberIds: ["member-001"],
+        },
+        segment: {
+          text: `${JAVA_MENTION_PLACEHOLDER} 文字`,
+          type: "text",
+        },
+      }),
+    );
+    expect(sendMessage).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        mention: undefined,
+        segment: expect.objectContaining({
+          type: "image",
+        }),
+      }),
+    );
+    expect(sendMessage).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        mention: {
+          location: "any",
+          memberIds: ["member-002"],
+        },
+        segment: {
+          text: JAVA_MENTION_PLACEHOLDER,
+          type: "text",
+        },
+      }),
+    );
+  });
+
+  it("keeps mention-all segment text intact and ignores member mentions in the same segment", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentMessageSegments(
+      [
+        {
+          mentionAll: true,
+          text: "@所有人",
+          type: "text",
+        },
+        {
+          text: " ",
+          type: "text",
+        },
+        {
+          mentionMemberIds: ["member-001"],
+          text: "@小林",
+          type: "text",
+        },
+        {
+          text: " 看一下",
+          type: "text",
+        },
+      ],
+      {
+        mention: {
+          all: true,
+          location: "start",
+          memberIds: ["member-001"],
+        },
+      },
+    );
+
+    expect(sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mention: {
+          all: true,
+          location: "start",
+          memberIds: [],
+        },
+        segment: {
+          text: "@所有人 @小林 看一下",
+          type: "text",
+        },
+      }),
+    );
+  });
+
+  it("handles mention-all and member mentions independently across media-split segments", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+    vi.mocked(resolveImageSegmentsForSend).mockResolvedValue([
+      {
+        text: "@所有人",
+        type: "text",
+      },
+      {
+        alt: "截图",
+        fileId: "chat-images/conv-001/a.png",
+        type: "image",
+        url: "https://mock-bucket.cos.ap-guangzhou.myqcloud.com/chat-images/conv-001/a.png",
+      },
+      {
+        text: JAVA_MENTION_PLACEHOLDER,
+        type: "text",
+      },
+    ]);
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentMessageSegments(
+      [
+        {
+          mentionAll: true,
+          text: "@所有人",
+          type: "text",
+        },
+        {
+          alt: "截图",
+          localUrl: "data:image/png;base64,aaa",
+          type: "image",
+        },
+        {
+          mentionMemberIds: ["member-001"],
+          text: "@小林",
+          type: "text",
+        },
+      ],
+      {
+        mention: {
+          all: true,
+          location: "start",
+          memberIds: ["member-001"],
+        },
+      },
+    );
+
+    expect(sendMessage).toHaveBeenCalledTimes(3);
+    expect(sendMessage).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        mention: {
+          all: true,
+          location: "start",
+          memberIds: [],
+        },
+        segment: {
+          text: "@所有人",
+          type: "text",
+        },
+      }),
+    );
+    expect(sendMessage).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        mention: undefined,
+        segment: expect.objectContaining({
+          type: "image",
+        }),
+      }),
+    );
+    expect(sendMessage).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        mention: {
+          location: "any",
+          memberIds: ["member-001"],
+        },
+        segment: {
+          text: JAVA_MENTION_PLACEHOLDER,
+          type: "text",
+        },
+      }),
     );
   });
 

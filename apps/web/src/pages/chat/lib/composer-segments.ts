@@ -1,3 +1,5 @@
+export const JAVA_MENTION_PLACEHOLDER = "@$$";
+
 export type ComposerTextSegment = {
   type: "text";
   text: string;
@@ -46,7 +48,7 @@ export function normalizeComposerSegments(
       normalizedSegments.push({
         ...(mentionAllBuffer ? { mentionAll: true } : {}),
         ...(mentionMemberIdsBuffer.length > 0
-          ? { mentionMemberIds: Array.from(new Set(mentionMemberIdsBuffer)) }
+          ? { mentionMemberIds: mentionMemberIdsBuffer }
           : {}),
         text: normalizedText,
         type: "text",
@@ -96,7 +98,7 @@ export function getComposerSegmentsPreview(segments: ComposerSegment[]) {
 
 export function extractComposerMentionState(segments: ComposerSegment[]) {
   const normalizedSegments = normalizeComposerSegments(segments);
-  const memberIds = new Set<string>();
+  const memberIds: string[] = [];
   let mentionAll = false;
 
   for (const segment of normalizedSegments) {
@@ -106,7 +108,7 @@ export function extractComposerMentionState(segments: ComposerSegment[]) {
 
     for (const memberId of segment.mentionMemberIds ?? []) {
       if (memberId) {
-        memberIds.add(memberId);
+        memberIds.push(memberId);
       }
     }
 
@@ -114,7 +116,7 @@ export function extractComposerMentionState(segments: ComposerSegment[]) {
   }
 
   return {
-    memberIds: Array.from(memberIds),
+    memberIds,
     mentionAll,
   };
 }

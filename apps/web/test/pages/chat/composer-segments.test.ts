@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  extractComposerMentionState,
+  JAVA_MENTION_PLACEHOLDER,
   normalizeComposerSegments,
   type ComposerSegment,
 } from "@/pages/chat/lib/composer-segments";
@@ -66,5 +68,37 @@ describe("composer segments", () => {
         text: "你好[微笑]",
       },
     ]);
+  });
+
+  it("keeps repeated mention member ids in text order", () => {
+    const segments: ComposerSegment[] = [
+      {
+        mentionMemberIds: ["member-001"],
+        text: JAVA_MENTION_PLACEHOLDER,
+        type: "text",
+      },
+      {
+        mentionMemberIds: ["member-001"],
+        text: ` ${JAVA_MENTION_PLACEHOLDER}`,
+        type: "text",
+      },
+      {
+        mentionMemberIds: ["member-002"],
+        text: ` ${JAVA_MENTION_PLACEHOLDER}`,
+        type: "text",
+      },
+    ];
+
+    expect(normalizeComposerSegments(segments)).toEqual([
+      {
+        mentionMemberIds: ["member-001", "member-001", "member-002"],
+        text: `${JAVA_MENTION_PLACEHOLDER} ${JAVA_MENTION_PLACEHOLDER} ${JAVA_MENTION_PLACEHOLDER}`,
+        type: "text",
+      },
+    ]);
+    expect(extractComposerMentionState(segments)).toEqual({
+      memberIds: ["member-001", "member-001", "member-002"],
+      mentionAll: false,
+    });
   });
 });

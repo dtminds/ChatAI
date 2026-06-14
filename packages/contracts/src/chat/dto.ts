@@ -551,7 +551,7 @@ export type WorkbenchSendMessagePayload = {
   content?: string;
   mention?: {
     all?: boolean;
-    location: "start" | "end";
+    location: "start" | "end" | "any";
     memberIds: string[];
   };
   quote?: {

@@ -43,6 +43,7 @@ import { QuoteMessagePreview } from "@/pages/chat/components/message/quote";
 import {
   $insertComposerMention,
   $insertComposerText,
+  $exportComposerSegments,
   $removeComposerTextRange,
 } from "@/pages/chat/components/composer/lexical-utils";
 import { WechatEmojiPicker } from "@/pages/chat/components/wechat-emoji-picker";
@@ -387,7 +388,11 @@ export function ChatComposer({
       return;
     }
 
-    onSendDraft(segments);
+    let exportedSegments: ComposerSegment[] = [];
+    composerRef.current?.getEditorState().read(() => {
+      exportedSegments = $exportComposerSegments();
+    });
+    onSendDraft(exportedSegments);
   };
 
   const handleSegmentsChange = useCallback(

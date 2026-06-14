@@ -3,6 +3,7 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "sonner";
 import { createMockWorkbenchService, setWorkbenchService } from "@/pages/chat/api/workbench-service";
+import { JAVA_MENTION_PLACEHOLDER } from "@/pages/chat/lib/composer-segments";
 import { useWorkbenchStore } from "@/store/workbench-store";
 import {
   installChatWorkbenchTestEnvironment,
@@ -36,6 +37,10 @@ function createDeferred<T = void>() {
     reject,
     resolve,
   };
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 async function pasteIntoComposer(
@@ -350,7 +355,9 @@ describe("ChatWorkbenchPage composer flows", () => {
     if (sentPayload?.segment?.type !== "text") {
       throw new Error("Expected a text segment payload");
     }
-    expect(sentPayload.segment.text).toMatch(/^hello @\$\$\s+world @\$\$$/);
+    expect(sentPayload.segment.text).toMatch(
+      new RegExp(`^hello ${escapeRegExp(JAVA_MENTION_PLACEHOLDER)}\\s+world ${escapeRegExp(JAVA_MENTION_PLACEHOLDER)}$`),
+    );
   });
 
   it("inserts a selected mention at a middle caret position", async () => {

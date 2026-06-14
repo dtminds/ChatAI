@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   extractComposerMentionState,
+  JAVA_MENTION_PLACEHOLDER,
   normalizeComposerSegments,
   type ComposerSegment,
 } from "@/pages/chat/lib/composer-segments";
@@ -73,17 +74,17 @@ describe("composer segments", () => {
     const segments: ComposerSegment[] = [
       {
         mentionMemberIds: ["member-001"],
-        text: "@$$",
+        text: JAVA_MENTION_PLACEHOLDER,
         type: "text",
       },
       {
         mentionMemberIds: ["member-001"],
-        text: " @$$",
+        text: ` ${JAVA_MENTION_PLACEHOLDER}`,
         type: "text",
       },
       {
         mentionMemberIds: ["member-002"],
-        text: " @$$",
+        text: ` ${JAVA_MENTION_PLACEHOLDER}`,
         type: "text",
       },
     ];
@@ -91,7 +92,7 @@ describe("composer segments", () => {
     expect(normalizeComposerSegments(segments)).toEqual([
       {
         mentionMemberIds: ["member-001", "member-001", "member-002"],
-        text: "@$$ @$$ @$$",
+        text: `${JAVA_MENTION_PLACEHOLDER} ${JAVA_MENTION_PLACEHOLDER} ${JAVA_MENTION_PLACEHOLDER}`,
         type: "text",
       },
     ]);

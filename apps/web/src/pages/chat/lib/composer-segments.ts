@@ -1,3 +1,5 @@
+export const JAVA_MENTION_PLACEHOLDER = "@$$";
+
 export type ComposerTextSegment = {
   type: "text";
   text: string;

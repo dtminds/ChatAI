@@ -4,6 +4,7 @@ import {
   setWorkbenchService,
 } from "@/pages/chat/api/workbench-service";
 import { resolveImageSegmentsForSend } from "@/pages/chat/api/media-upload-service";
+import { JAVA_MENTION_PLACEHOLDER } from "@/pages/chat/lib/composer-segments";
 import { seedMessages } from "@/pages/chat/mock-data";
 import {
   createWorkbenchStore,
@@ -2689,7 +2690,7 @@ describe("useWorkbenchStore", () => {
           memberIds: ["member-001", "member-001", "member-002"],
         },
         segment: {
-          text: "hello @$$ world @$$ @$$ 看一下",
+          text: `hello ${JAVA_MENTION_PLACEHOLDER} world ${JAVA_MENTION_PLACEHOLDER} ${JAVA_MENTION_PLACEHOLDER} 看一下`,
           type: "text",
         },
       }),
@@ -2714,7 +2715,7 @@ describe("useWorkbenchStore", () => {
     });
     vi.mocked(resolveImageSegmentsForSend).mockResolvedValue([
       {
-        text: "@$$ 文字",
+        text: `${JAVA_MENTION_PLACEHOLDER} 文字`,
         type: "text",
       },
       {
@@ -2724,7 +2725,7 @@ describe("useWorkbenchStore", () => {
         url: "https://mock-bucket.cos.ap-guangzhou.myqcloud.com/chat-images/conv-001/a.png",
       },
       {
-        text: "@$$",
+        text: JAVA_MENTION_PLACEHOLDER,
         type: "text",
       },
     ]);
@@ -2769,7 +2770,7 @@ describe("useWorkbenchStore", () => {
           memberIds: ["member-001"],
         },
         segment: {
-          text: "@$$ 文字",
+          text: `${JAVA_MENTION_PLACEHOLDER} 文字`,
           type: "text",
         },
       }),
@@ -2791,7 +2792,7 @@ describe("useWorkbenchStore", () => {
           memberIds: ["member-002"],
         },
         segment: {
-          text: "@$$",
+          text: JAVA_MENTION_PLACEHOLDER,
           type: "text",
         },
       }),
@@ -2873,7 +2874,7 @@ describe("useWorkbenchStore", () => {
         url: "https://mock-bucket.cos.ap-guangzhou.myqcloud.com/chat-images/conv-001/a.png",
       },
       {
-        text: "@$$",
+        text: JAVA_MENTION_PLACEHOLDER,
         type: "text",
       },
     ]);
@@ -2938,7 +2939,7 @@ describe("useWorkbenchStore", () => {
           memberIds: ["member-001"],
         },
         segment: {
-          text: "@$$",
+          text: JAVA_MENTION_PLACEHOLDER,
           type: "text",
         },
       }),

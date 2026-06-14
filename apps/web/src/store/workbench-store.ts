@@ -34,6 +34,7 @@ import {
 import type { WorkbenchConversationPage } from "@/pages/chat/api/workbench-gateway";
 import {
   getComposerSegmentsPreview,
+  JAVA_MENTION_PLACEHOLDER,
   normalizeComposerSegments,
   type ComposerSegment,
   type ComposerTextSegment,
@@ -4267,10 +4268,19 @@ export function createWorkbenchStore() {
         };
       }
 
+      if (import.meta.env.DEV && segmentsForSend.length !== normalizedSegments.length) {
+        console.warn(
+          "Composer segment count mismatch before sending",
+          segmentsForSend.length,
+          normalizedSegments.length,
+        );
+      }
+
       try {
         let hasSentQuote = false;
         for (let index = 0; index < segmentsForSend.length; index += 1) {
           const segmentForSend = segmentsForSend[index];
+          // Sendable and normalized segments share media boundaries, so indexes identify the same outbound message.
           const originalSegment = normalizedSegments[index] ?? segmentForSend;
           const optimisticSegment =
             segmentForSend.type === "text" && originalSegment.type === "text"
@@ -5757,6 +5767,7 @@ function buildMentionPayloadForSegment(
   }
 
   if (segment.mentionAll) {
+    // @所有人 owns the whole text segment; member mentions in the same segment are sent as plain text.
     return {
       all: true,
       location: "start",
@@ -5792,7 +5803,7 @@ function buildSendableComposerSegments(segments: ComposerSegment[]): ComposerSeg
           return segment.text;
         }
 
-        return "@$$";
+        return JAVA_MENTION_PLACEHOLDER;
       })
       .join("")
       .trim();

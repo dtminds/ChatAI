@@ -33,7 +33,55 @@ describe("ChatWorkbenchPage render scope", () => {
     chatPanelRenderMock.mockClear();
   });
 
-  it("does not re-render the page shell when smart reply state changes", async () => {
+  it.each([
+    [
+      "suggestion state",
+      () => {
+        useWorkbenchStore.setState((state) => ({
+          smartReplyByMessageIdByConversationId: {
+            ...state.smartReplyByMessageIdByConversationId,
+            "conv-001": {
+              "1": {
+                assistantName: "智能助手",
+                content: "推荐回复",
+                pollComplete: true,
+                status: "ready",
+              },
+            },
+          },
+        }));
+      },
+    ],
+    [
+      "hidden state",
+      () => {
+        useWorkbenchStore.setState((state) => ({
+          smartReplyHiddenMessageKeysByConversationId: {
+            ...state.smartReplyHiddenMessageKeysByConversationId,
+            "conv-001": {
+              "1": true,
+            },
+          },
+        }));
+      },
+    ],
+    [
+      "auto pending state",
+      () => {
+        useWorkbenchStore.setState((state) => ({
+          smartReplyAutoPendingMessageKeysByConversationId: {
+            ...state.smartReplyAutoPendingMessageKeysByConversationId,
+            "conv-001": {
+              "1": true,
+            },
+          },
+        }));
+      },
+    ],
+  ])("does not re-render the page shell when smart reply %s changes", async (
+    _label,
+    updateSmartReplyState,
+  ) => {
     renderChatWorkbenchPage();
 
     await screen.findByTestId("mock-chat-panel");
@@ -41,19 +89,7 @@ describe("ChatWorkbenchPage render scope", () => {
     chatPanelRenderMock.mockClear();
 
     act(() => {
-      useWorkbenchStore.setState((state) => ({
-        smartReplyByMessageIdByConversationId: {
-          ...state.smartReplyByMessageIdByConversationId,
-          "conv-001": {
-            "1": {
-              assistantName: "智能助手",
-              content: "推荐回复",
-              pollComplete: true,
-              status: "ready",
-            },
-          },
-        },
-      }));
+      updateSmartReplyState();
     });
 
     expect(chatPanelRenderMock).not.toHaveBeenCalled();

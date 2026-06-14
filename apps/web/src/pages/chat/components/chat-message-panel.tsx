@@ -12,6 +12,7 @@ import type { SmartReplySuggestion } from "@/pages/chat/components/smart-reply-c
 import type { ChatMessage, Message } from "@/pages/chat/chat-types";
 import type { ChatMode } from "@/pages/chat/chat-types";
 import { useWorkbenchStore } from "@/store/workbench-store";
+import { useShallow } from "zustand/react/shallow";
 
 type ChatMessagePanelProps = {
   activeHistoryStatus: "idle" | "loading" | "error";
@@ -82,15 +83,19 @@ export function ChatMessagePanel({
   retryingMessageIds,
   messageViewportRef,
 }: ChatMessagePanelProps) {
-  const smartReplyAutoPendingByMessageId = useWorkbenchStore(
-    (state) =>
-      state.smartReplyAutoPendingMessageKeysByConversationId[conversationId],
-  );
-  const smartReplySuggestionsByMessageId = useWorkbenchStore(
-    (state) => state.smartReplyByMessageIdByConversationId[conversationId],
-  );
-  const smartReplyHiddenMessageKeys = useWorkbenchStore(
-    (state) => state.smartReplyHiddenMessageKeysByConversationId[conversationId],
+  const {
+    smartReplyAutoPendingByMessageId,
+    smartReplyHiddenMessageKeys,
+    smartReplySuggestionsByMessageId,
+  } = useWorkbenchStore(
+    useShallow((state) => ({
+      smartReplyAutoPendingByMessageId:
+        state.smartReplyAutoPendingMessageKeysByConversationId[conversationId],
+      smartReplyHiddenMessageKeys:
+        state.smartReplyHiddenMessageKeysByConversationId[conversationId],
+      smartReplySuggestionsByMessageId:
+        state.smartReplyByMessageIdByConversationId[conversationId],
+    })),
   );
   const smartReplyByMessageId = useMemo(() => {
     if (conversationMode !== "single" || !smartReplySuggestionsByMessageId) {

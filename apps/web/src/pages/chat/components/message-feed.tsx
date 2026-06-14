@@ -68,6 +68,7 @@ const TIMESTAMP_BREAK_MS = 5 * 60 * 1000;
 export const MESSAGE_SENT_AT_HOVER_DELAY_MS = 400;
 
 type ChatMessageListProps = {
+  canCollectMaterialActions?: boolean;
   canUseMessageActions?: boolean;
   conversationId: string;
   messages: Message[];
@@ -111,6 +112,7 @@ type FeedItem =
     };
 
 export function ChatMessageList({
+  canCollectMaterialActions = true,
   canUseMessageActions = true,
   conversationId,
   messages,
@@ -243,6 +245,7 @@ export function ChatMessageList({
               <MessageRow
                 conversationId={conversationId}
                 message={item.message}
+                canCollectMaterialActions={canCollectMaterialActions}
                 canUseMessageActions={canUseMessageActions}
                 shouldAnimate={
                   shouldAnimateMessageByKey.get(getMessageFeedItemKey(item.message)) ?? false
@@ -325,6 +328,7 @@ function SystemMessageNotice({ text }: { text: string }) {
 export function MessageRow({
   conversationId,
   message,
+  canCollectMaterialActions = true,
   canUseMessageActions = true,
   showTimestamp = false,
   shouldAnimate = false,
@@ -349,6 +353,7 @@ export function MessageRow({
   conversationId?: string;
   message: Message;
   canUseMessageActions?: boolean;
+  canCollectMaterialActions?: boolean;
   isRetryingMessage?: boolean;
   isSmartReplyAutoPending?: boolean;
   shouldAnimate?: boolean;
@@ -427,6 +432,7 @@ export function MessageRow({
   const messageActions = (
     <MessageActionAvatar
       message={message}
+      canCollectMaterialActions={canCollectMaterialActions}
       canUseMessageActions={canUseMessageActions}
       triggerRef={dismissTargetRef}
       onMentionMessage={onMentionMessage}
@@ -640,6 +646,7 @@ function QuoteMessageContentWithDelivery({
 
 function MessageActionAvatar({
   message,
+  canCollectMaterialActions,
   canUseMessageActions,
   triggerRef,
   onMentionMessage,
@@ -650,6 +657,7 @@ function MessageActionAvatar({
   showSmartReplyRecommendation,
 }: {
   message: ChatMessage;
+  canCollectMaterialActions: boolean;
   canUseMessageActions: boolean;
   triggerRef?: RefObject<HTMLButtonElement | null>;
   onMentionMessage?: (message: ChatMessage) => void;
@@ -676,7 +684,7 @@ function MessageActionAvatar({
     !message.isRevoked &&
     message.content.type !== "contact-card";
   const canCollectMessage = Boolean(onCollectMaterial) && canCollectMaterial(message);
-  const canSelectCollectMessage = canUseMessageActions && !message.isRevoked;
+  const canSelectCollectMessage = canCollectMaterialActions && !message.isRevoked;
   const canRevokeMessage =
     canUseMessageActions &&
     Boolean(onRevokeMessage) &&

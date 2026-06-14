@@ -33,6 +33,7 @@ type ChatPanelProps = {
   accountAvatarUrl?: string;
   activeConversation?: Conversation;
   activeHistoryStatus: "idle" | "loading" | "error";
+  canCollectMaterialActions?: boolean;
   canSendMessage: boolean;
   composerPlaceholder: string;
   customer?: CustomerProfile;
@@ -138,6 +139,7 @@ export function ChatPanel({
   accountAvatarUrl,
   activeConversation,
   activeHistoryStatus,
+  canCollectMaterialActions = true,
   canSendMessage,
   composerPlaceholder,
   customer,
@@ -235,6 +237,7 @@ export function ChatPanel({
                     />
                   ) : null
                 }
+                canCollectMaterialActions={canCollectMaterialActions}
                 canUseMessageActions={canSendMessage}
                 hasBottomOverlay={hasActiveFileUpload}
                 hasMoreHistory={hasMoreHistory}

@@ -443,6 +443,7 @@ function ChatWorkbenchContent({
     isConversationActionDisabled,
     sidebarIframeSendStatus,
   } = workbenchPermissions;
+  const canCollectMaterialActions = Boolean(subUser && subUser.role !== "viewer");
   const sidebarIframeTos: "0" | "1" = isAccountTakenOverByCurrentUser ? "1" : "0";
   const firstUnreadMessageId = useMemo(
     () =>
@@ -2369,6 +2370,7 @@ function ChatWorkbenchContent({
                   accountAvatarUrl={activeAccount?.avatarUrl}
                   activeConversation={activeConversation}
                   activeHistoryStatus={activeHistoryStatus}
+                  canCollectMaterialActions={canCollectMaterialActions}
                   canSendMessage={canSendMessage}
                   composerPlaceholder={composerPlaceholder}
                   customer={activeCustomer}

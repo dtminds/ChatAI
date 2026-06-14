@@ -9,6 +9,7 @@ import type { ChatMessage, Message } from "@/pages/chat/chat-types";
 type ChatMessagePanelProps = {
   activeHistoryStatus: "idle" | "loading" | "error";
   bottomOverlay?: ReactNode;
+  canCollectMaterialActions?: boolean;
   canUseMessageActions?: boolean;
   hasBottomOverlay?: boolean;
   hasMoreHistory: boolean;
@@ -47,6 +48,7 @@ type ChatMessagePanelProps = {
 export function ChatMessagePanel({
   activeHistoryStatus,
   bottomOverlay,
+  canCollectMaterialActions = true,
   canUseMessageActions = true,
   hasBottomOverlay = false,
   hasMoreHistory,
@@ -114,6 +116,7 @@ export function ChatMessagePanel({
                 </div>
               ) : null}
               <ChatMessageList
+                canCollectMaterialActions={canCollectMaterialActions}
                 canUseMessageActions={canUseMessageActions}
                 conversationId={conversationId}
                 messages={messages}

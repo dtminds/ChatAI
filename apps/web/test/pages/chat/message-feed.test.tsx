@@ -279,7 +279,7 @@ describe("message feed row actions", () => {
     expect(screen.queryByRole("menuitem", { name: "收录" })).not.toBeInTheDocument();
   });
 
-  it("keeps collection action visible but disabled when actions are locked", async () => {
+  it("allows collection when message send actions are locked", async () => {
     const user = userEvent.setup();
     const onCollectMaterial = vi.fn();
     const message = {
@@ -295,6 +295,33 @@ describe("message feed row actions", () => {
     render(
       <MessageRow
         canUseMessageActions={false}
+        message={message}
+        onCollectMaterial={onCollectMaterial}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "收录" }));
+
+    expect(onCollectMaterial).toHaveBeenCalledWith(message);
+  });
+
+  it("keeps collection action disabled for readonly users", async () => {
+    const user = userEvent.setup();
+    const onCollectMaterial = vi.fn();
+    const message = {
+      ...createTextMessage("文件"),
+      content: {
+        extension: "pdf",
+        fileName: "报价单.pdf",
+        type: "file" as const,
+      },
+      role: "customer" as const,
+    } satisfies ChatMessage;
+
+    render(
+      <MessageRow
+        canCollectMaterialActions={false}
         message={message}
         onCollectMaterial={onCollectMaterial}
       />,

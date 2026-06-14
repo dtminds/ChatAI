@@ -188,7 +188,7 @@ importers:
         version: 1.2.9(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       altcha:
         specifier: ^3.0.8
-        version: 3.0.11
+        version: 3.1.0
       axios:
         specifier: ^1.9.0
         version: 1.17.0
@@ -2243,8 +2243,8 @@ packages:
       hono:
         optional: true
 
-  altcha@3.0.11:
-    resolution: {integrity: sha512-DFhLDJIL37UfRdgYliSBSpCaYySVztOL8Z5V5KuxmaVa5JUgIapvoUiQrIFbn38cPtZBs5j3izMtglpcZFWCMA==}
+  altcha@3.1.0:
+    resolution: {integrity: sha512-rzz+F1xGG55X1LWylHZyabf9V4+5qAZeqd0+mo+8HdFsCqPC4YfUyjQ7lcbW/GVXy1XSnKsPMFkBuhmTymZuWw==}
 
   ansi-regex@5.0.1:
     resolution: {integrity: sha512-quJQXlTSUGL2LH9SUXo8VwsY4soanhgo6LNSm84E1LBcE8s3O0wpdiRzyR9z/ZZJMlMWv37qOOb9pdJlMUEKFQ==}
@@ -5615,7 +5615,7 @@ snapshots:
       '@fastify/cookie': 11.0.2
       fastify: 5.8.5
 
-  altcha@3.0.11:
+  altcha@3.1.0:
     dependencies:
       hash-wasm: 4.12.0
 

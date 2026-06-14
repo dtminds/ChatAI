@@ -49,6 +49,27 @@ describe("ChatMessagePanel smart reply state", () => {
     useWorkbenchStore.setState(useWorkbenchStore.getInitialState(), true);
   });
 
+  it("shows visible smart replies for the current single conversation", () => {
+    useWorkbenchStore.setState((state) => ({
+      smartReplyByMessageIdByConversationId: {
+        ...state.smartReplyByMessageIdByConversationId,
+        "conv-001": {
+          "1": {
+            assistantName: "智能助手",
+            content: "可展示的话术",
+            pollComplete: true,
+            status: "ready",
+          },
+        },
+      },
+    }));
+
+    renderPanel();
+
+    expect(screen.getByTestId("smart-reply-card")).toBeInTheDocument();
+    expect(screen.getByText("可展示的话术")).toBeInTheDocument();
+  });
+
   it("hides smart replies marked hidden for the current conversation", () => {
     useWorkbenchStore.setState((state) => ({
       smartReplyByMessageIdByConversationId: {

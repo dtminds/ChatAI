@@ -114,6 +114,14 @@ describe("ChatWorkbenchPage render scope", () => {
 
     await screen.findByTestId("mock-chat-panel");
     await waitFor(() => expect(chatPanelRenderMock).toHaveBeenCalled());
+    act(() => {
+      useWorkbenchStore.setState((state) => ({
+        smartReplyEnabledByConversationId: {
+          ...state.smartReplyEnabledByConversationId,
+          "conv-001": false,
+        },
+      }));
+    });
     chatPanelRenderMock.mockClear();
 
     await act(async () => {

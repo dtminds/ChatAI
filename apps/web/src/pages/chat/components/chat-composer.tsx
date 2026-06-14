@@ -388,9 +388,11 @@ export function ChatComposer({
       return;
     }
 
+    let exportedSegments: ComposerSegment[] = [];
     composerRef.current?.getEditorState().read(() => {
-      onSendDraft($exportComposerSegments());
+      exportedSegments = $exportComposerSegments();
     });
+    onSendDraft(exportedSegments);
   };
 
   const handleSegmentsChange = useCallback(

@@ -506,7 +506,7 @@ export function MessageRow({
                 data-testid="message-content-stack"
               >
                 {showSenderName ? (
-                  <div className="flex items-center gap-1 px-1">
+                  <div className="flex items-center gap-1.5 px-1">
                     <p className="text-[12px] leading-5 text-muted-foreground">
                       {message.senderDisplayName}
                     </p>

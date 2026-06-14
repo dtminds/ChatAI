@@ -364,6 +364,54 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
+  it("treats missing page smart reply raw message types as unsupported", async () => {
+    const javaClient = createJavaClient();
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "101",
+          thirdExternalUserId: "external-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+        }),
+        listMessages: vi.fn().mockResolvedValue({
+          filteredCount: 0,
+          hasMore: false,
+          messages: [
+            {
+              ...createMessageDto({ senderType: "customer", seq: 1 }),
+              rawMsgtype: undefined as unknown as string,
+            },
+            createMessageDto({ rawMsgtype: " text ", senderType: "customer", seq: 2 }),
+          ],
+          scannedCount: 2,
+          smartReplyEnabled: true,
+          smartReplyScope: {
+            chatType: 1,
+            thirdExternalId: "external-001",
+            thirdUserId: "seat-user-001",
+            uid: 9001,
+          },
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await service.getMessages("101", "88", { limit: 10 });
+
+    expect(javaClient.listUserHistoryAnswers).toHaveBeenCalledWith({
+      chatType: 1,
+      msgIds: [2],
+      thirdExternalId: "external-001",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
+  });
+
   it("does not load smart replies for historical pages", async () => {
     const javaClient = createJavaClient();
     const service = new MysqlWorkbenchService(

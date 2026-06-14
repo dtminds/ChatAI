@@ -136,7 +136,9 @@ function collectSmartReplyMessagePageCandidateIds(messages: WorkbenchMessageDto[
       continue;
     }
 
-    if (!SMART_REPLY_TRIGGER_RAW_MSGTYPES.has(message.rawMsgtype.trim())) {
+    const rawMsgtype = message.rawMsgtype?.trim();
+
+    if (!rawMsgtype || !SMART_REPLY_TRIGGER_RAW_MSGTYPES.has(rawMsgtype)) {
       continue;
     }
 

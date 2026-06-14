@@ -452,6 +452,21 @@ describe("workbench MySQL mappers", () => {
     });
   });
 
+  it("normalizes missing raw message types to an empty string", () => {
+    expect(
+      mapMessageRow(messageRow({
+        content: null,
+        msgtype: null as unknown as string,
+      })),
+    ).toMatchObject({
+      content: {
+        text: "[暂不支持显示该消息]",
+      },
+      contentType: "text",
+      rawMsgtype: "",
+    });
+  });
+
   it("maps failed audit message status from database rows", () => {
     expect(
       mapMessageRow(messageRow({

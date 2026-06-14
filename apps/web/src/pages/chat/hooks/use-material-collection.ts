@@ -115,17 +115,9 @@ export function useMaterialCollection({
     resolvedActiveConversationId,
   );
 
-  useEffect(() => {
-    activeMaterialLibraryBizTypeRef.current = activeMaterialLibraryBizType;
-  }, [activeMaterialLibraryBizType]);
-
-  useEffect(() => {
-    activeMaterialLibraryGroupIdRef.current = activeMaterialLibraryGroupId;
-  }, [activeMaterialLibraryGroupId]);
-
-  useEffect(() => {
-    resolvedActiveConversationIdRef.current = resolvedActiveConversationId;
-  }, [resolvedActiveConversationId]);
+  activeMaterialLibraryBizTypeRef.current = activeMaterialLibraryBizType;
+  activeMaterialLibraryGroupIdRef.current = activeMaterialLibraryGroupId;
+  resolvedActiveConversationIdRef.current = resolvedActiveConversationId;
 
   const refreshCollectedExpressions = useCallback(async () => {
     try {
@@ -1202,7 +1194,7 @@ function buildH5ComposerSegment(
   item: WorkbenchMaterialCollectionItemDto,
 ): ComposerSegment | undefined {
   const contentRecord = isMaterialContentRecord(item.content);
-  const title = readMaterialContentString(item.content.title) || item.title;
+  const title = readMaterialContentString(contentRecord.title) || item.title;
   const href = readMaterialLinkUrl(contentRecord);
 
   if (!title || !href) {
@@ -1211,9 +1203,9 @@ function buildH5ComposerSegment(
 
   const desc = readMaterialDescription(contentRecord);
   const coverUrl =
-    readMaterialContentString(item.content.coverUrl) ||
-    readMaterialContentString(item.content.previewImageUrl) ||
-    readMaterialContentString(item.content.imageUrl);
+    readMaterialContentString(contentRecord.coverUrl) ||
+    readMaterialContentString(contentRecord.previewImageUrl) ||
+    readMaterialContentString(contentRecord.imageUrl);
 
   return {
     ...(coverUrl ? { coverUrl } : {}),
@@ -1235,16 +1227,17 @@ function isMaterialContentRecord(
 function buildFileComposerSegment(
   item: WorkbenchMaterialCollectionItemDto,
 ): ComposerSegment | undefined {
-  const fileName = readMaterialContentString(item.content.fileName) || item.title;
-  const fileUrl = readMaterialContentString(item.content.fileUrl);
+  const contentRecord = isMaterialContentRecord(item.content);
+  const fileName = readMaterialContentString(contentRecord.fileName) || item.title;
+  const fileUrl = readMaterialContentString(contentRecord.fileUrl);
 
   if (!fileName || !fileUrl) {
     return undefined;
   }
 
   const extension =
-    readMaterialContentString(item.content.extension) || getFileExtension(fileName);
-  const fileSizeLabel = readMaterialContentString(item.content.fileSizeLabel);
+    readMaterialContentString(contentRecord.extension) || getFileExtension(fileName);
+  const fileSizeLabel = readMaterialContentString(contentRecord.fileSizeLabel);
 
   return {
     extension,

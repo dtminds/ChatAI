@@ -1,4 +1,5 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
+import { toast } from "sonner";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useMaterialCollection } from "@/pages/chat/hooks/use-material-collection";
 import type { ChatMessage } from "@/pages/chat/chat-types";
@@ -8,6 +9,19 @@ import {
   resetWorkbenchService,
   setWorkbenchService,
 } from "@/pages/chat/api/workbench-service";
+
+vi.mock("sonner", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("sonner")>();
+
+  return {
+    ...actual,
+    toast: {
+      ...actual.toast,
+      success: vi.fn(),
+      warning: vi.fn(),
+    },
+  };
+});
 
 type MaterialCollectionOptions = Parameters<typeof useMaterialCollection>[0];
 
@@ -257,6 +271,29 @@ describe("useMaterialCollection", () => {
       reason: "send",
     });
     expect(onSent).not.toHaveBeenCalled();
+  });
+
+  it("shows an incomplete content warning when file material content is invalid", async () => {
+    const sendAgentMessageSegments = vi.fn(async () => ({ ok: true as const }));
+
+    const { result } = renderHook(() =>
+      useMaterialCollection(
+        createDefaultOptions({
+          sendAgentMessageSegments,
+        }),
+      ),
+    );
+
+    await act(async () => {
+      await result.current.handleSelectMaterial(
+        createFileMaterialItem({
+          content: null as unknown as WorkbenchMaterialCollectionItemDto["content"],
+        }),
+      );
+    });
+
+    expect(sendAgentMessageSegments).not.toHaveBeenCalled();
+    expect(toast.warning).toHaveBeenCalledWith("文件素材内容不完整");
   });
 
   it("ignores stale material library group responses when opening another biz type", async () => {

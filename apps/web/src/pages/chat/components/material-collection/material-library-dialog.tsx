@@ -123,10 +123,19 @@ export function MaterialLibraryDialog({
     setGroupDialogState(null);
   }
 
+  function handleOpenChange(nextOpen: boolean) {
+    if (!nextOpen && isSending) {
+      return;
+    }
+
+    onOpenChange(nextOpen);
+  }
+
   return (
-    <Dialog onOpenChange={onOpenChange} open={open}>
+    <Dialog onOpenChange={handleOpenChange} open={open}>
       <DialogContent
         className="h-[min(44rem,calc(100vh-3rem))] max-h-[calc(100vh-3rem)] max-w-none gap-0 overflow-visible p-0"
+        closeButtonDisabled={isSending}
         closeButtonClassName="right-0 -top-10 bg-transparent text-white opacity-100 shadow-none hover:bg-transparent hover:text-white focus:ring-0 data-[state=open]:bg-transparent data-[state=open]:text-white"
         style={getLibraryDialogStyle(bizType)}
       >

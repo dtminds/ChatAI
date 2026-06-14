@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  extractComposerMentionState,
   normalizeComposerSegments,
   type ComposerSegment,
 } from "@/pages/chat/lib/composer-segments";
@@ -66,5 +67,37 @@ describe("composer segments", () => {
         text: "你好[微笑]",
       },
     ]);
+  });
+
+  it("keeps repeated mention member ids in text order", () => {
+    const segments: ComposerSegment[] = [
+      {
+        mentionMemberIds: ["member-001"],
+        text: "@$$",
+        type: "text",
+      },
+      {
+        mentionMemberIds: ["member-001"],
+        text: " @$$",
+        type: "text",
+      },
+      {
+        mentionMemberIds: ["member-002"],
+        text: " @$$",
+        type: "text",
+      },
+    ];
+
+    expect(normalizeComposerSegments(segments)).toEqual([
+      {
+        mentionMemberIds: ["member-001", "member-001", "member-002"],
+        text: "@$$ @$$ @$$",
+        type: "text",
+      },
+    ]);
+    expect(extractComposerMentionState(segments)).toEqual({
+      memberIds: ["member-001", "member-001", "member-002"],
+      mentionAll: false,
+    });
   });
 });

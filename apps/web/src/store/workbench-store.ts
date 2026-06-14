@@ -4235,7 +4235,7 @@ export function createWorkbenchStore() {
         },
       }));
 
-      const sendableSegments = stripComposerMentionMetadata(normalizedSegments);
+      const sendableSegments = buildSendableComposerSegments(segments);
       let segmentsForSend = sendableSegments;
 
       try {
@@ -4273,6 +4273,10 @@ export function createWorkbenchStore() {
         for (let index = 0; index < segmentsForSend.length; index += 1) {
           const segmentForSend = segmentsForSend[index];
           const originalSegment = normalizedSegments[index] ?? segmentForSend;
+          const optimisticSegment =
+            segmentForSend.type === "text" && originalSegment.type === "text"
+              ? originalSegment
+              : segmentForSend;
           const segmentClientMessageId = buildSegmentClientMessageId(clientMessageId, index);
           const mentionForSegment: SendMentionPayload =
             !hasSentMention && segmentForSend.type === "text"
@@ -4297,7 +4301,7 @@ export function createWorkbenchStore() {
             isOwnMessage: true,
             isNew: true,
             clientMessageId: segmentClientMessageId,
-            content: buildOptimisticMessageContent(segmentForSend, quoteForSegment),
+            content: buildOptimisticMessageContent(optimisticSegment, quoteForSegment),
             conversationId: activeConversationId,
             id: segmentClientMessageId,
             optNo: response.optNo ?? response.messageId,
@@ -5746,17 +5750,20 @@ export function createWorkbenchStore() {
   });
 }
 
-function stripComposerMentionMetadata(segments: ComposerSegment[]): ComposerSegment[] {
-  return segments.map((segment) => {
+function buildSendableComposerSegments(segments: ComposerSegment[]): ComposerSegment[] {
+  return normalizeComposerSegments(segments.map((segment) => {
     if (segment.type !== "text") {
       return segment;
     }
 
     return {
-      text: segment.text,
+      text:
+        !segment.mentionAll && (segment.mentionMemberIds?.length ?? 0) > 0
+          ? "@$$"
+          : segment.text,
       type: "text",
     } satisfies ComposerTextSegment;
-  });
+  }));
 }
 
 function isDownloadableMessage(message: Message): message is ChatMessage {

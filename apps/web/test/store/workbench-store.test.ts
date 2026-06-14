@@ -2630,6 +2630,80 @@ describe("useWorkbenchStore", () => {
     );
   });
 
+  it("sends member mention text as ordered Java placeholder tokens", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentMessageSegments(
+      [
+        {
+          text: "hello ",
+          type: "text",
+        },
+        {
+          mentionMemberIds: ["member-001"],
+          text: "@小林",
+          type: "text",
+        },
+        {
+          text: " world ",
+          type: "text",
+        },
+        {
+          mentionMemberIds: ["member-001"],
+          text: "@小林",
+          type: "text",
+        },
+        {
+          text: " ",
+          type: "text",
+        },
+        {
+          mentionMemberIds: ["member-002"],
+          text: "@小陈",
+          type: "text",
+        },
+        {
+          text: " 看一下",
+          type: "text",
+        },
+      ],
+      {
+        mention: {
+          location: "any",
+          memberIds: ["member-001", "member-001", "member-002"],
+        },
+      },
+    );
+
+    expect(sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mention: {
+          location: "any",
+          memberIds: ["member-001", "member-001", "member-002"],
+        },
+        segment: {
+          text: "hello @$$ world @$$ @$$ 看一下",
+          type: "text",
+        },
+      }),
+    );
+    expect(
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1),
+    ).toMatchObject({
+      content: {
+        text: "hello @小林 world @小林 @小陈 看一下",
+        type: "text",
+      },
+    });
+  });
+
   it("resolves image segments before sending them to the message API", async () => {
     const baseService = createMockWorkbenchService();
     const sendMessage = vi.fn(baseService.sendMessage);

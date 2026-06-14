@@ -17,8 +17,8 @@ importers:
         specifier: ^11.0.2
         version: 11.0.2
       '@fastify/env':
-        specifier: ^6.0.0
-        version: 6.0.0
+        specifier: ^7.0.0
+        version: 7.0.0
       '@fastify/jwt':
         specifier: ^10.0.0
         version: 10.1.0
@@ -1026,8 +1026,8 @@ packages:
   '@fastify/cookie@11.0.2':
     resolution: {integrity: sha512-GWdwdGlgJxyvNv+QcKiGNevSspMQXncjMZ1J8IvuDQk0jvkzgWWZFNC2En3s+nHndZBGV8IbLwOI/sxCZw/mzA==}
 
-  '@fastify/env@6.0.0':
-    resolution: {integrity: sha512-b7FoRMdwZMF6vdhq0OHdj+xX6ggyeUq7rx+CZXnsAAgVhFbVQ7GZXb9pEzLaF3/tG8U489ZMD+Qh0RPKuNb5sQ==}
+  '@fastify/env@7.0.0':
+    resolution: {integrity: sha512-uXoxDzQ9FR/J6XXmcFndAksHM+hAxGXf/v6L4x9iLmK/04Tp/ZceV1oBxsJJo4bNaSu7WHhJqIQReIfz0Ul+tg==}
 
   '@fastify/error@4.2.0':
     resolution: {integrity: sha512-RSo3sVDXfHskiBZKBPRgnQTtIqpi/7zhJOEmAxCiBcM7d0uwdGdxLlsCaLzGs8v8NnxIRlfG0N51p5yFaOentQ==}
@@ -4362,7 +4362,7 @@ snapshots:
       cookie: 1.1.1
       fastify-plugin: 5.1.0
 
-  '@fastify/env@6.0.0':
+  '@fastify/env@7.0.0':
     dependencies:
       env-schema: 7.0.0
       fastify-plugin: 5.1.0

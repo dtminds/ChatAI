@@ -7,7 +7,6 @@ import {
 } from "@/pages/chat/components/composer/lexical-commands";
 import { useSmartReplyState } from "@/pages/chat/hooks/use-smart-reply-state";
 import type { ChatMessage, Conversation } from "@/pages/chat/chat-types";
-import type { SmartReplySuggestion } from "@/pages/chat/components/smart-reply-card";
 import type { SmartReplySendPayload } from "@/pages/chat/api/smart-reply-adapter";
 
 type SmartReplyStateOptions = Parameters<typeof useSmartReplyState>[0];
@@ -27,12 +26,6 @@ const singleConversation = {
   updatedAt: "刚刚",
 } satisfies Conversation;
 
-const groupConversation = {
-  ...singleConversation,
-  id: "conv-group",
-  mode: "group",
-} satisfies Conversation;
-
 const customerMessage = {
   author: "客户",
   content: {
@@ -50,15 +43,6 @@ const customerMessage = {
   seq: 1,
   status: "sent",
 } satisfies ChatMessage;
-
-function createSuggestion(content: string): SmartReplySuggestion {
-  return {
-    assistantName: "智能助手",
-    content,
-    pollComplete: true,
-    status: "ready",
-  };
-}
 
 function createSendPayload(content = "推荐话术"): SmartReplySendPayload {
   return {
@@ -114,8 +98,6 @@ function createDefaultHookOptions(
     requestSmartReplyGeneralAnswer: vi.fn(),
     requestSmartReplyMakeShorter: vi.fn(),
     sendSmartReply: vi.fn(),
-    smartReplyByMessageIdByConversationId: {},
-    smartReplyHiddenMessageKeysByConversationId: {},
     ...overrides,
   };
 }
@@ -123,53 +105,6 @@ function createDefaultHookOptions(
 describe("useSmartReplyState", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-  });
-
-  it("exposes only visible smart replies for the active single conversation", () => {
-    const visibleSuggestion = createSuggestion("展示的话术");
-    const hiddenSuggestion = createSuggestion("隐藏的话术");
-
-    const { result } = renderHook(() =>
-      useSmartReplyState(
-        createDefaultHookOptions({
-          smartReplyByMessageIdByConversationId: {
-            "conv-001": {
-              "1": visibleSuggestion,
-              "2": hiddenSuggestion,
-            },
-            "conv-other": {
-              "3": createSuggestion("其他会话"),
-            },
-          },
-          smartReplyHiddenMessageKeysByConversationId: {
-            "conv-001": {
-              "2": true,
-            },
-          },
-        }),
-      ),
-    );
-
-    expect(result.current.activeSmartReplyByMessageId).toEqual({
-      "1": visibleSuggestion,
-    });
-  });
-
-  it("does not expose smart replies for group conversations", () => {
-    const { result } = renderHook(() =>
-      useSmartReplyState(
-        createDefaultHookOptions({
-          activeConversation: groupConversation,
-          smartReplyByMessageIdByConversationId: {
-            "conv-group": {
-              "1": createSuggestion("群聊不展示"),
-            },
-          },
-        }),
-      ),
-    );
-
-    expect(result.current.activeSmartReplyByMessageId).toEqual({});
   });
 
   it("fills the composer through Lexical commands without sending", () => {

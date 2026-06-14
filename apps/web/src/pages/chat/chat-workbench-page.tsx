@@ -198,9 +198,6 @@ function ChatWorkbenchContent({
     me,
     messagePaginationByConversationId,
     messagesByConversationId,
-    smartReplyAutoPendingMessageKeysByConversationId,
-    smartReplyByMessageIdByConversationId,
-    smartReplyHiddenMessageKeysByConversationId,
     pollIntervalMs,
     pollJitterMs,
     pollWorkbench,
@@ -310,12 +307,6 @@ function ChatWorkbenchContent({
       setHistoryPanelScope: state.setHistoryPanelScope,
       setHistoryPanelSenderId: state.setHistoryPanelSenderId,
       sidebarItems: state.sidebarItems,
-      smartReplyAutoPendingMessageKeysByConversationId:
-        state.smartReplyAutoPendingMessageKeysByConversationId,
-      smartReplyByMessageIdByConversationId:
-        state.smartReplyByMessageIdByConversationId,
-      smartReplyHiddenMessageKeysByConversationId:
-        state.smartReplyHiddenMessageKeysByConversationId,
       takeOverAccount: state.takeOverAccount,
       takeoverStatusByAccountId: state.takeoverStatusByAccountId,
       transcribeVoiceMessage: state.transcribeVoiceMessage,
@@ -914,7 +905,6 @@ function ChatWorkbenchContent({
   });
 
   const {
-    activeSmartReplyByMessageId,
     handleDismissSmartReply,
     handleFillSmartReplyComposer,
     handleMakeShorterSmartReply,
@@ -934,8 +924,6 @@ function ChatWorkbenchContent({
     requestSmartReplyGeneralAnswer,
     requestSmartReplyMakeShorter,
     sendSmartReply,
-    smartReplyByMessageIdByConversationId,
-    smartReplyHiddenMessageKeysByConversationId,
   });
 
   const handleSendDraft = async (segments: ComposerSegment[]) => {
@@ -1553,14 +1541,6 @@ function ChatWorkbenchContent({
                     isCollectedExpressionLoadingMore
                   }
                   messages={activeMessages}
-                  smartReplyAutoPendingByMessageId={
-                    activeConversationId
-                      ? smartReplyAutoPendingMessageKeysByConversationId[
-                          activeConversationId
-                        ]
-                      : undefined
-                  }
-                  smartReplyByMessageId={activeSmartReplyByMessageId}
                   messageViewportRef={messageViewportRef}
                   quotedMessage={quotedMessage}
                   sidebarItems={sidebarItems}

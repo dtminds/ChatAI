@@ -136,11 +136,10 @@ type MessagePaginationState = {
 };
 
 type PollState = {
-  status: "idle" | "polling" | "error";
+  status: "idle" | "error";
   intervalMs: number;
   jitterMs: number;
   errorMessage?: string;
-  lastSuccessAt?: number;
 };
 
 type HistoryPanelMode = "all" | "file" | "media" | "h5" | "mini-program";
@@ -4196,7 +4195,6 @@ export function createWorkbenchStore() {
                 pollState: {
                   ...currentState.pollState,
                   errorMessage: undefined,
-                  lastSuccessAt: Date.now(),
                   status: "idle",
                 },
               };

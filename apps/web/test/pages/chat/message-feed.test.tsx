@@ -949,6 +949,47 @@ describe("message sent time preview", () => {
     expect(screen.queryByTestId("text-message-sent-at-slot")).not.toBeInTheDocument();
     expect(screen.getByText("2026-05-08 09:54:00")).toBeInTheDocument();
   });
+
+  it("shows hover sent time after the sender name in group customer messages", () => {
+    vi.useFakeTimers();
+
+    try {
+      render(
+        <MessageRow
+          message={{
+            ...createTextMessage("群消息"),
+            isGroupConversation: true,
+            isOwnMessage: false,
+            role: "customer",
+            sender: {
+              groupMemberId: "member-001",
+              id: "member-001",
+              name: "成员甲",
+            },
+            senderDisplayName: "成员甲",
+          }}
+        />,
+      );
+
+      expect(screen.queryByTestId("text-message-sent-at-slot")).not.toBeInTheDocument();
+      expect(screen.getByText("成员甲")).toBeInTheDocument();
+
+      const sentAt = screen.getByTestId("text-message-sent-at");
+      const row = screen.getByTestId("message-row");
+
+      expect(sentAt).toHaveClass("opacity-0");
+
+      fireEvent.mouseEnter(row);
+      act(() => {
+        vi.advanceTimersByTime(MESSAGE_SENT_AT_HOVER_DELAY_MS);
+      });
+
+      expect(sentAt).toHaveClass("opacity-100");
+      expect(sentAt).toHaveTextContent("5/8 09:54");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 type AudioMockInstance = {

@@ -1,5 +1,9 @@
 import { act, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  createMockWorkbenchService,
+  setWorkbenchService,
+} from "@/pages/chat/api/workbench-service";
 import { useWorkbenchStore } from "@/store/workbench-store";
 import {
   installChatWorkbenchTestEnvironment,
@@ -50,6 +54,34 @@ describe("ChatWorkbenchPage render scope", () => {
           },
         },
       }));
+    });
+
+    expect(chatPanelRenderMock).not.toHaveBeenCalled();
+  });
+
+  it("does not re-render the page shell when poll has no business changes", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        return {
+          activeConversationMessages: [],
+          conversationChanges: [],
+          nextVersion: request.sinceVersion + 1,
+          seatChanges: [],
+        };
+      },
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByTestId("mock-chat-panel");
+    await waitFor(() => expect(chatPanelRenderMock).toHaveBeenCalled());
+    chatPanelRenderMock.mockClear();
+
+    await act(async () => {
+      await useWorkbenchStore.getState().pollWorkbench();
     });
 
     expect(chatPanelRenderMock).not.toHaveBeenCalled();

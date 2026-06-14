@@ -661,6 +661,38 @@ describe("material collection components", () => {
     expect(sendButton.querySelector('[data-slot="spinner"]')).toBeInTheDocument();
   });
 
+  it("keeps the material library open while sending material", async () => {
+    const user = userEvent.setup();
+    const handleOpenChange = vi.fn();
+
+    render(
+      <MaterialLibraryDialog
+        activeGroupId="group-file"
+        bizType={MATERIAL_COLLECTION_BIZ_TYPE.FILE}
+        groups={[createGroup({ id: "group-file", title: "常用文件" })]}
+        isSending
+        items={[createItem({ id: "material-file-1", title: "报价单.pdf" })]}
+        onCreateGroup={() => undefined}
+        onDeleteGroup={() => undefined}
+        onDeleteMaterial={() => undefined}
+        onEditMaterial={() => undefined}
+        onMoveMaterial={() => undefined}
+        onOpenChange={handleOpenChange}
+        onRenameGroup={() => undefined}
+        onSelectGroup={() => undefined}
+        onSelectMaterial={() => undefined}
+        onTopGroup={() => undefined}
+        onTopMaterial={() => undefined}
+        open
+      />,
+    );
+
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("button", { name: "关闭" }));
+
+    expect(handleOpenChange).not.toHaveBeenCalled();
+  });
+
   it("uses mini-program library width for four collected mini-program cards", () => {
     render(
       <MaterialLibraryDialog

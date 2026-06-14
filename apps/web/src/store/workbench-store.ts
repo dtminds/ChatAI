@@ -3855,7 +3855,11 @@ export function createWorkbenchStore() {
           const accountChangesById = new Map(
             response.accountChanges.map((change) => [change.accountId, change]),
           );
-          const hasAccountChanges = accountChangesById.size > 0;
+          const hasAccountChanges =
+            accountChangesById.size > 0 &&
+            currentState.accounts.some((account) =>
+              accountChangesById.has(account.id),
+            );
           const nextAccounts = hasAccountChanges
             ? currentState.accounts.map((account) => {
                 const change = accountChangesById.get(account.id);
@@ -4029,7 +4033,7 @@ export function createWorkbenchStore() {
           ];
           clearResolvedRevokePendingTimeouts(serverMessages);
 
-          const pendingMessages = serverMessages.length
+          const filteredPendingMessages = serverMessages.length
             ? currentState.pendingMessages.filter(
                 (pendingMessage) =>
                   !serverMessages.some((message) =>
@@ -4037,6 +4041,10 @@ export function createWorkbenchStore() {
                   ),
               )
             : currentState.pendingMessages;
+          const pendingMessages =
+            filteredPendingMessages.length === currentState.pendingMessages.length
+              ? currentState.pendingMessages
+              : filteredPendingMessages;
           const nextPollState =
             currentState.pollState.status !== "idle" ||
             currentState.pollState.errorMessage != null

@@ -2446,6 +2446,86 @@ describe("useWorkbenchStore", () => {
     expect(afterPoll.isPollBaselineFresh).toBe(false);
   });
 
+  it("preserves accounts reference when poll account changes do not target loaded accounts", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        return {
+          activeConversationMessages: [],
+          conversationChanges: [],
+          nextVersion: request.sinceVersion + 1,
+          seatChanges: [
+            {
+              accountId: "missing-seat",
+              seatId: "missing-seat",
+              unreadCount: 3,
+            },
+          ],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.getState().clearActiveConversation();
+
+    const beforePoll = useWorkbenchStore.getState();
+    const accountsBeforePoll = beforePoll.accounts;
+
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(useWorkbenchStore.getState().accounts).toBe(accountsBeforePoll);
+  });
+
+  it("preserves pending messages reference when poll messages do not resolve pending items", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        return {
+          activeConversationMessages: [
+            createSmartReplyTextMessageDto({
+              id: "remote-unrelated-message",
+              seq: 999,
+              text: "服务端新消息",
+            }),
+          ],
+          conversationChanges: [],
+          nextVersion: request.sinceVersion + 1,
+          seatChanges: [],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      pendingMessages: [
+        ...state.pendingMessages,
+        {
+          author: "客服一号",
+          clientMessageId: "client-pending-001",
+          content: { text: "本地待发送消息", type: "text" },
+          conversationId: "conv-001",
+          id: "pending-001",
+          role: "agent",
+          sender: { id: "agent-001", name: "客服一号" },
+          sentAt: "2026-05-25T10:00:00+08:00",
+          status: "sending",
+        } satisfies ChatMessage,
+      ],
+    }));
+
+    const pendingBeforePoll = useWorkbenchStore.getState().pendingMessages;
+
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(useWorkbenchStore.getState().pendingMessages).toBe(
+      pendingBeforePoll,
+    );
+  });
+
   it("omits active conversation parameters from poll when no conversation is bound", async () => {
     const baseService = createMockWorkbenchService();
     const observedPollRequests: Parameters<typeof baseService.poll>[0][] = [];

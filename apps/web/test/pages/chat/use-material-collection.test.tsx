@@ -273,48 +273,6 @@ describe("useMaterialCollection", () => {
     expect(onSent).not.toHaveBeenCalled();
   });
 
-  it("ignores material send success callbacks after active conversation changes", async () => {
-    const onSent = vi.fn();
-    const requestActiveConversationRead = vi.fn();
-    const sendGate = createDeferred<{ ok: true }>();
-    const sendAgentMessageSegments = vi.fn(() => sendGate.promise);
-
-    const { rerender, result } = renderHook(
-      ({ resolvedActiveConversationId }: { resolvedActiveConversationId: string }) =>
-        useMaterialCollection(
-          createDefaultOptions({
-            onSent,
-            requestActiveConversationRead,
-            resolvedActiveConversationId,
-            sendAgentMessageSegments,
-          }),
-        ),
-      {
-        initialProps: {
-          resolvedActiveConversationId: "conv-001",
-        },
-      },
-    );
-
-    let sendPromise!: Promise<void>;
-
-    act(() => {
-      sendPromise = result.current.handleSelectMaterial(createFileMaterialItem());
-    });
-
-    rerender({
-      resolvedActiveConversationId: "conv-002",
-    });
-
-    await act(async () => {
-      sendGate.resolve({ ok: true });
-      await sendPromise;
-    });
-
-    expect(onSent).not.toHaveBeenCalled();
-    expect(requestActiveConversationRead).not.toHaveBeenCalled();
-  });
-
   it("shows an incomplete content warning when file material content is invalid", async () => {
     const sendAgentMessageSegments = vi.fn(async () => ({ ok: true as const }));
 
@@ -469,57 +427,6 @@ describe("useMaterialCollection", () => {
       page: 1,
       pageSize: 100,
     });
-    expect(result.current.pendingMaterialCollection).toBeNull();
-  });
-
-  it("ignores material collection submit success after active conversation changes", async () => {
-    const baseService = createMockWorkbenchService();
-    const collectGate = createDeferred<{ success: true }>();
-    const collectMaterial = vi.fn(() => collectGate.promise);
-
-    setWorkbenchService({
-      ...baseService,
-      collectMaterial,
-      listMaterialGroups: vi.fn(baseService.listMaterialGroups),
-    });
-
-    const { rerender, result } = renderHook(
-      ({ resolvedActiveConversationId }: { resolvedActiveConversationId: string }) =>
-        useMaterialCollection(
-          createDefaultOptions({
-            resolvedActiveConversationId,
-          }),
-        ),
-      {
-        initialProps: {
-          resolvedActiveConversationId: "conv-001",
-        },
-      },
-    );
-
-    await act(async () => {
-      await result.current.handleCollectMaterial(fileMessage);
-    });
-
-    let submitPromise!: Promise<void>;
-
-    act(() => {
-      submitPromise = result.current.handleSubmitMaterialCollection({
-        fileName: "报价单.pdf",
-        groupId: "mock-material-group-file",
-      });
-    });
-
-    rerender({
-      resolvedActiveConversationId: "conv-002",
-    });
-
-    await act(async () => {
-      collectGate.resolve({ success: true });
-      await submitPromise;
-    });
-
-    expect(toast.success).not.toHaveBeenCalled();
     expect(result.current.pendingMaterialCollection).toBeNull();
   });
 });

@@ -4,9 +4,18 @@ import { describe, expect, test } from "vitest";
 
 const sourceRoot = join(process.cwd(), "src");
 const themeCss = readFileSync(join(sourceRoot, "styles/index.css"), "utf8");
-const allowedFiles = new Set([
+type SourcePolicy = {
+  allowedFiles?: ReadonlySet<string>;
+  name: string;
+  patterns: RegExp[];
+};
+
+const colorAllowedFiles = new Set([
   "pages/chat/insights/insights-chart-palette.ts",
   "pages/chat/mock-data.ts",
+]);
+const businessFetchAllowedFiles = new Set([
+  "pages/chat/api/media-upload-service.ts",
 ]);
 const checkedExtensions = /\.tsx?$/;
 const appearanceThemeBlocks = [
@@ -19,6 +28,30 @@ const hardcodedColorPatterns = [
   /\b(?:rgb|rgba|hsl|hsla)\((?!var\(--)/g,
   /\b(?:bg|text|border|ring|shadow|from|via|to)-\[[^\]]*(?:#[0-9a-fA-F]{3,8}|rgba?\(|hsla?\((?!var\(--))/g,
 ];
+const sourcePolicies = [
+  {
+    allowedFiles: colorAllowedFiles,
+    name: "hardcoded colors",
+    patterns: hardcodedColorPatterns,
+  },
+  {
+    name: "non-Hugeicons icon imports",
+    patterns: [/\bfrom\s+["'](?:lucide-react|@lucide\/react)["']/g],
+  },
+  {
+    name: "absolute /api/server frontend URLs",
+    patterns: [/["'`]\/api\/server(?:\/|\b)/g],
+  },
+  {
+    name: "hardcoded API hosts",
+    patterns: [/\bhttps?:\/\/[^"'`\s]+\/api(?:\/|\b)/g],
+  },
+  {
+    allowedFiles: businessFetchAllowedFiles,
+    name: "business fetch calls",
+    patterns: [/\bfetch\s*\(/g],
+  },
+] satisfies SourcePolicy[];
 
 function collectSourceFiles(directory: string): string[] {
   return readdirSync(directory).flatMap((entry) => {
@@ -33,11 +66,11 @@ function collectSourceFiles(directory: string): string[] {
   });
 }
 
-function collectColorViolations() {
+function collectPolicyViolations(policy: SourcePolicy) {
   return collectSourceFiles(sourceRoot).flatMap((filePath) => {
     const relativePath = relative(sourceRoot, filePath);
 
-    if (allowedFiles.has(relativePath)) {
+    if (policy.allowedFiles?.has(relativePath)) {
       return [];
     }
 
@@ -45,13 +78,18 @@ function collectColorViolations() {
     const lines = content.split("\n");
 
     return lines.flatMap((line, index) => {
-      const matches = hardcodedColorPatterns.flatMap((pattern) => [
+      if (line.trim().startsWith("*") || line.trim().startsWith("//")) {
+        return [];
+      }
+
+      const matches = policy.patterns.flatMap((pattern) => [
         ...line.matchAll(pattern),
       ]);
 
       return matches.map((match) => ({
         line: index + 1,
         match: match[0],
+        policy: policy.name,
         path: relativePath,
       }));
     });
@@ -60,7 +98,18 @@ function collectColorViolations() {
 
 describe("color token policy", () => {
   test("keeps component UI colors out of TypeScript source", () => {
-    expect(collectColorViolations()).toEqual([]);
+    expect(collectPolicyViolations(sourcePolicies[0])).toEqual([]);
+  });
+
+  test("keeps AI coding guardrails out of TypeScript source", () => {
+    expect(sourcePolicies.map((policy) => policy.name)).toEqual([
+      "hardcoded colors",
+      "non-Hugeicons icon imports",
+      "absolute /api/server frontend URLs",
+      "hardcoded API hosts",
+      "business fetch calls",
+    ]);
+    expect(sourcePolicies.flatMap(collectPolicyViolations)).toEqual([]);
   });
 
   test("keeps the modern minimal baseline for default theme tokens", () => {

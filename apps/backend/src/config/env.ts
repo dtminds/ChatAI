@@ -71,6 +71,8 @@ export function loadBackendEnv(options: LoadBackendEnvOptions = {}) {
   const initialKeys = new Set(Object.keys(process.env));
   const fileValues: Record<string, string> = {};
 
+  // Load shared repo env first, then backend-local private env files. Existing
+  // process.env values still win so deployment secrets cannot be overwritten.
   for (const envFile of [
     ...getEnvFiles(mode).map((file) => resolve(rootDir, file)),
     resolve(appDir, ".env.local"),

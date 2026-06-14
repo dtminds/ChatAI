@@ -8,6 +8,8 @@ import { ACCESS_TOKEN_COOKIE_NAME, readAuthCookie } from "../modules/auth/auth-c
 
 const mutatingMethods = new Set(["DELETE", "PATCH", "POST", "PUT"]);
 const expectedWorkbenchClient = "chat-ai-ui";
+// Local/test fallback only. Deployed environments must configure JWT key envs.
+const INSECURE_LOCAL_JWT_SECRET_FALLBACK = "dev-only-change-me";
 
 declare module "@fastify/jwt" {
   interface FastifyJWT {
@@ -37,7 +39,7 @@ function getJwtSecret() {
     throw new Error("JWT keys must be configured in production mode.");
   }
 
-  return process.env.JWT_DEV_SECRET ?? "dev-only-change-me";
+  return process.env.JWT_DEV_SECRET ?? INSECURE_LOCAL_JWT_SECRET_FALLBACK;
 }
 
 export const authPlugin = fp(async (app) => {

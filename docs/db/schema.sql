@@ -1,6 +1,8 @@
 -- Schema snapshot for the ChatAI backend.
 -- The team currently applies database changes manually in the shared test DB.
 -- Keep this file synchronized after schema changes.
+-- Only document Node-owned writable tables from apps/backend/src/db/writable-tables.ts.
+-- Platform-owned xy_wap_embed_* tables outside that whitelist remain read-only here.
 
 CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_sync_cursor (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',

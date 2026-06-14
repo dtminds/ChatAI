@@ -1,6 +1,9 @@
 # Database Change Log
 
 Manual database changes for the backend should be recorded here.
+Before adding DDL or manual data fixes, check `apps/backend/src/db/writable-tables.ts`.
+`xy_wap_embed_*` tables outside that whitelist are platform-owned and must not
+be repaired with direct INSERT/UPDATE/ALTER entries in this file.
 
 ## 2026-06-11
 

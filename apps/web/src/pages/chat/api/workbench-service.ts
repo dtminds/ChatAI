@@ -77,12 +77,16 @@ import {
   type WorkbenchSearchResponseDto,
   type WorkbenchGetOrCreateConversationRequestDto,
 } from "@chatai/contracts";
+
 import type {
   ChatMode,
   FileMessageContent,
   Message,
   VideoMessageContent,
 } from "@/pages/chat/chat-types";
+
+const SERVER_API_PREFIX = "/server" as const;
+const serverApiPath = (path: `/${string}`) => `${SERVER_API_PREFIX}${path}` as const;
 
 export type WorkbenchConversationListOptions = {
   cursor?: string;
@@ -858,15 +862,15 @@ export function createMockWorkbenchService(): WorkbenchService {
 export function createHttpWorkbenchService(): WorkbenchService {
   return {
     getSeats() {
-      return http.get<WorkbenchSeatDto[]>("/server/seats");
+      return http.get<WorkbenchSeatDto[]>(serverApiPath("/seats"));
     },
     deleteConversation(conversationId) {
       return http.post<WorkbenchConversationDeleteResponse>(
-        `/server/conversations/${conversationId}/delete`,
+        serverApiPath(`/conversations/${conversationId}/delete`),
       );
     },
     getConversations(seatId, options) {
-      return http.get<WorkbenchConversationListResponse>("/server/conversations", {
+      return http.get<WorkbenchConversationListResponse>(serverApiPath("/conversations"), {
         params: {
           cursor: options?.cursor,
           limit: options?.limit,
@@ -876,10 +880,10 @@ export function createHttpWorkbenchService(): WorkbenchService {
       });
     },
     getMe() {
-      return http.get<WorkbenchSubUserDto>("/server/me");
+      return http.get<WorkbenchSubUserDto>(serverApiPath("/me"));
     },
     getCustomers(options) {
-      return http.get<WorkbenchCustomerListResponse>("/server/customers", {
+      return http.get<WorkbenchCustomerListResponse>(serverApiPath("/customers"), {
         params: {
           cursor: options.cursor,
           keyword: options.keyword,
@@ -894,12 +898,12 @@ export function createHttpWorkbenchService(): WorkbenchService {
     },
     getCustomerLastConversation(thirdExternalUserId) {
       return http.get<WorkbenchCustomerLastConversationResponse>(
-        `/server/customers/${encodeURIComponent(thirdExternalUserId)}/last-conversation`,
+        serverApiPath(`/customers/${encodeURIComponent(thirdExternalUserId)}/last-conversation`),
       );
     },
     getCustomerRelationConversations(thirdExternalUserId, thirdUserIds) {
       return http.get<WorkbenchCustomerRelationConversationsResponse>(
-        `/server/customers/${encodeURIComponent(thirdExternalUserId)}/relation-conversations`,
+        serverApiPath(`/customers/${encodeURIComponent(thirdExternalUserId)}/relation-conversations`),
         {
           params: {
             third_userids: thirdUserIds.join(","),
@@ -912,7 +916,7 @@ export function createHttpWorkbenchService(): WorkbenchService {
     },
     getHistoryMessages(conversationId, options) {
       return http.get<WorkbenchHistoryMessagePageDto>(
-        `/server/conversations/${conversationId}/history-messages`,
+        serverApiPath(`/conversations/${conversationId}/history-messages`),
         {
           params: {
             cursor: options?.cursor,
@@ -926,14 +930,14 @@ export function createHttpWorkbenchService(): WorkbenchService {
     },
     async getSidebarItems() {
       const response = await http.get<ApiSuccessEnvelope<SettingsSidebarItemsResponse>>(
-        "/server/settings/sidebar-items",
+        serverApiPath("/settings/sidebar-items"),
       );
 
       return response.data;
     },
     getMessages(conversationId, options) {
       return http.get<WorkbenchMessagePageDto>(
-        `/server/conversations/${conversationId}/messages`,
+        serverApiPath(`/conversations/${conversationId}/messages`),
         {
           params: {
             before_seq: options?.beforeSeq,
@@ -944,13 +948,13 @@ export function createHttpWorkbenchService(): WorkbenchService {
     },
     getMessagesByIds(input) {
       return http.post<WorkbenchMessageQueryByIdsResponse, WorkbenchMessageQueryByIdsRequest>(
-        "/server/messages/query-by-ids",
+        serverApiPath("/messages/query-by-ids"),
         input,
       );
     },
     getChatRecordDetail(input) {
       return http.get<WorkbenchChatRecordDetailResponse>(
-        `/server/messages/${encodeURIComponent(input.messageId)}/chat-record`,
+        serverApiPath(`/messages/${encodeURIComponent(input.messageId)}/chat-record`),
         {
           params: {
             conversation_id: input.conversationId,
@@ -960,7 +964,7 @@ export function createHttpWorkbenchService(): WorkbenchService {
     },
     revokeMessage(input) {
       return http.post<WorkbenchRevokeMessageResponse, WorkbenchRevokeMessageRequest>(
-        `/server/messages/${input.messageId}/revoke`,
+        serverApiPath(`/messages/${input.messageId}/revoke`),
         {
           conversationId: input.conversationId,
         },
@@ -970,7 +974,7 @@ export function createHttpWorkbenchService(): WorkbenchService {
       return http.post<
         WorkbenchMessageFileDownloadResponse,
         { conversationId: string; messageSeq: number }
-      >(`/server/messages/${input.messageId}/download`, {
+      >(serverApiPath(`/messages/${input.messageId}/download`), {
         conversationId: input.conversationId,
         messageSeq: input.messageSeq,
       });
@@ -979,7 +983,7 @@ export function createHttpWorkbenchService(): WorkbenchService {
       return http.post<
         WorkbenchMessageFileDownloadStatusResponse | undefined,
         { conversationId: string; messageSeq: number }
-      >("/server/messages/download-status", {
+      >(serverApiPath("/messages/download-status"), {
         conversationId: input.conversationId,
         messageSeq: input.messageSeq,
       });
@@ -988,45 +992,45 @@ export function createHttpWorkbenchService(): WorkbenchService {
       return http.post<
         WorkbenchVoicePlaybackConfirmResponse,
         WorkbenchVoicePlaybackConfirmRequest
-      >("/server/media/voice-playback-confirmed", input);
+      >(serverApiPath("/media/voice-playback-confirmed"), input);
     },
     transcribeVoiceMessage(input) {
       return http.post<
         WorkbenchVoiceTranscriptionResponse,
         WorkbenchVoiceTranscriptionRequest
-      >("/server/media/voice-transcription", input);
+      >(serverApiPath("/media/voice-transcription"), input);
     },
     getGroupMembers(conversationId) {
       return http.get<WorkbenchGroupMembersResponse>(
-        `/server/conversations/${conversationId}/group-members`,
+        serverApiPath(`/conversations/${conversationId}/group-members`),
       );
     },
     getUploadCredential(conversationId) {
       return http.post<
         WorkbenchUploadCredentialResponse,
         { conversationId: string }
-      >("/server/media/upload-credential", {
+      >(serverApiPath("/media/upload-credential"), {
         conversationId,
       });
     },
     markConversationRead(conversationId) {
       return http.post<WorkbenchConversationReadResponse>(
-        `/server/conversations/${conversationId}/read`,
+        serverApiPath(`/conversations/${conversationId}/read`),
       );
     },
     markConversationUnread(conversationId) {
       return http.post<WorkbenchConversationUnreadResponse>(
-        `/server/conversations/${conversationId}/unread`,
+        serverApiPath(`/conversations/${conversationId}/unread`),
       );
     },
     pinConversation(conversationId) {
       return http.post<WorkbenchConversationPinResponse>(
-        `/server/conversations/${conversationId}/pin`,
+        serverApiPath(`/conversations/${conversationId}/pin`),
       );
     },
     poll(request) {
       const activeConversationId = request.activeConversationId || undefined;
-      return http.get<WorkbenchPollResponse>("/server/poll", {
+      return http.get<WorkbenchPollResponse>(serverApiPath("/poll"), {
         params: {
           active_conversation_id: activeConversationId,
           active_message_seq:
@@ -1043,7 +1047,7 @@ export function createHttpWorkbenchService(): WorkbenchService {
     },
     pollSmartReplies(request) {
       return http.post<WorkbenchSmartReplyPollResponse, WorkbenchSmartReplyPollRequest>(
-        "/server/smart-reply/poll",
+        serverApiPath("/smart-reply/poll"),
         request,
       );
     },
@@ -1051,92 +1055,92 @@ export function createHttpWorkbenchService(): WorkbenchService {
       return http.post<
         WorkbenchSmartReplyGeneralAnswerResponse,
         WorkbenchSmartReplyGeneralAnswerRequest
-      >("/server/smart-reply/general-answer", request);
+      >(serverApiPath("/smart-reply/general-answer"), request);
     },
     requestSmartReplyAutoGeneralAnswer(request) {
       return http.post<
         WorkbenchSmartReplyAutoGeneralAnswerResponse,
         WorkbenchSmartReplyAutoGeneralAnswerRequest
-      >("/server/smart-reply/auto-general-answer", request);
+      >(serverApiPath("/smart-reply/auto-general-answer"), request);
     },
     requestSmartReplyMakeShorter(request) {
       return http.post<
         WorkbenchSmartReplyMakeShorterResponse,
         WorkbenchSmartReplyMakeShorterRequest
-      >("/server/smart-reply/make-shorter", request);
+      >(serverApiPath("/smart-reply/make-shorter"), request);
     },
     sendSmartReplyAnswer(request) {
       return http.post<
         WorkbenchSmartReplySendAnswerResponse,
         WorkbenchSmartReplySendAnswerRequest
-      >("/server/smart-reply/send-answer", request);
+      >(serverApiPath("/smart-reply/send-answer"), request);
     },
     listSmartReplyAttachments(request) {
       return http.post<
         WorkbenchSmartReplyAttachmentsResponse,
         WorkbenchSmartReplyAttachmentsRequest
-      >("/server/smart-reply/attachments", request);
+      >(serverApiPath("/smart-reply/attachments"), request);
     },
     checkSmartReplyTextModeration(request) {
       return http.post<
         WorkbenchSmartReplyTextModerationResponse,
         WorkbenchSmartReplyTextModerationRequest
-      >("/server/smart-reply/text-moderation", request);
+      >(serverApiPath("/smart-reply/text-moderation"), request);
     },
     listKnowledgePage(request) {
       return http.post<WorkbenchKnowledgePageResponse, WorkbenchKnowledgePageRequest>(
-        "/server/smart-reply/knowledge-page",
+        serverApiPath("/smart-reply/knowledge-page"),
         request,
       );
     },
     getKnowledgeConfig(request) {
       return http.post<WorkbenchKnowledgeConfigResponse, WorkbenchKnowledgeConfigRequest>(
-        "/server/smart-reply/knowledge-config",
+        serverApiPath("/smart-reply/knowledge-config"),
         request,
       );
     },
     listKnowledgeDocPage(request) {
       return http.post<WorkbenchKnowledgeDocPageResponse, WorkbenchKnowledgeDocPageRequest>(
-        "/server/smart-reply/knowledge-doc-page",
+        serverApiPath("/smart-reply/knowledge-doc-page"),
         request,
       );
     },
     addSmartReplyKnowledgeFaq(request) {
       return http.post<WorkbenchKnowledgeFaqAddResponse, WorkbenchKnowledgeFaqAddRequest>(
-        "/server/smart-reply/knowledge-faq/add",
+        serverApiPath("/smart-reply/knowledge-faq/add"),
         request,
       );
     },
     sendSmartHeartbeat(request) {
       return http.post<WorkbenchSmartHeartbeatResponse, WorkbenchSmartHeartbeatRequest>(
-        "/server/conversations/smart-heartbeat",
+        serverApiPath("/conversations/smart-heartbeat"),
         request,
       );
     },
     sendMessage(payload) {
       return http.post<WorkbenchSendMessageResponse, WorkbenchSendMessagePayload>(
-        "/server/messages/send",
+        serverApiPath("/messages/send"),
         payload,
       );
     },
     takeOverSeat(seatId) {
       return http.post<WorkbenchTakeOverSeatResponse>(
-        `/server/seats/${seatId}/take-over`,
+        serverApiPath(`/seats/${seatId}/take-over`),
       );
     },
     unpinConversation(conversationId) {
       return http.post<WorkbenchConversationUnpinResponse>(
-        `/server/conversations/${conversationId}/unpin`,
+        serverApiPath(`/conversations/${conversationId}/unpin`),
       );
     },
     search(seatId, keyword) {
-      return http.get<WorkbenchSearchResponseDto>("/server/search", {
+      return http.get<WorkbenchSearchResponseDto>(serverApiPath("/search"), {
         params: { seatId, keyword },
       });
     },
     getOrCreateConversation(payload) {
       return http.post<WorkbenchConversationSummaryDto>(
-        "/server/conversations/get-or-create",
+        serverApiPath("/conversations/get-or-create"),
         payload,
       );
     },

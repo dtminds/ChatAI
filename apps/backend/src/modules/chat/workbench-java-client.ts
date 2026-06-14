@@ -717,6 +717,8 @@ function buildJavaSendMessageBody(input: JavaSendMessageInput) {
   };
 }
 
+// Keep Java internal calls behind this client so token handling, request ids,
+// timeouts, and error mapping stay consistent across backend services.
 async function postJava<T>(
   baseUrl: string | undefined,
   token: string | undefined,

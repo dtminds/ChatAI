@@ -54,8 +54,9 @@ chatai-prod
 pnpm install
 pnpm typecheck
 pnpm test
-pnpm build
+pnpm contracts:build
 pnpm backend:build
+pnpm web:build
 ```
 
 当前仓库要求 Node.js 24 LTS 和 pnpm 10。
@@ -91,7 +92,7 @@ docker push ccr.ccs.tencentyun.com/<tcr-namespace>/chatai-backend-worker:<tag>
 
 当前构建文件的职责：
 
-- `deploy/web.Dockerfile`：使用 `node:24-alpine` 构建 web，执行根脚本 `pnpm build`，再把 `apps/web/dist` 复制到 `nginx:alpine` 镜像。
+- `deploy/web.Dockerfile`：使用 `node:24-alpine` 构建 web，执行根脚本 `pnpm build`。根脚本 `build` 是 web-only 兼容别名；本地/CI 显式验证优先使用 `pnpm web:build`。
 - `deploy/backend.Dockerfile`：使用 `node:24-alpine` 构建 backend，执行根脚本 `pnpm backend:build`，运行阶段只安装生产依赖并用 `node apps/backend/dist/server.js` 启动。
 - `deploy/backend-worker.Dockerfile`：使用同一套 backend 构建产物，运行阶段只安装生产依赖并用 `node apps/backend/dist/worker.js` 启动。worker 不监听 HTTP 端口，不配置 Docker `HEALTHCHECK`。
 - `deploy/nginx.conf`：承载 web 静态资源，非 `/api/*` 请求回退到 `index.html`，`/api/*` 返回 404 作为兜底，实际发布时应由 Ingress 路由到 backend。

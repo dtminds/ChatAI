@@ -37,7 +37,7 @@
     "dotenv": "^17.4.2",
     "kysely-codegen": "^0.20.0",
     "tsx": "^4.21.0",
-    "typescript": "^5.8.0",
+    "typescript": "^6.0.0",
     "vitest": "^4.1.5"
   }
 }

@@ -194,6 +194,7 @@ export function mapMessageRow(
     isRevoked: toNumber(row.revoke_status ?? null) === 1 ? true : undefined,
     messageId: row.msgid,
     optNo: row.opt_no || undefined,
+    rawMsgtype: row.msgtype,
     seatId: String(row.seat_id),
     senderAvatar: row.sender_avatar ?? "",
     senderName: row.sender_name,

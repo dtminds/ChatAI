@@ -1459,6 +1459,7 @@ function createVoiceDto(): WorkbenchMessageDto {
     createdAt: 1778219705000,
     customerId: "customer-voice",
     messageId: "msg-voice",
+    rawMsgtype: "voice",
     seatId: "seat-voice",
     senderType: "customer",
     seq: 1,

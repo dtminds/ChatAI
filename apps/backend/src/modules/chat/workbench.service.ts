@@ -108,6 +108,7 @@ const PLAYABLE_VOICE_HEAD_TIMEOUT_MS = 8000;
 const MESSAGE_REVOKE_WINDOW_MS = 180 * 1000;
 const MESSAGE_REVOKE_CLOCK_SKEW_TOLERANCE_MS = 5 * 1000;
 const SMART_REPLY_MESSAGE_PAGE_CANDIDATE_LIMIT = 5;
+const SMART_REPLY_TRIGGER_RAW_MSGTYPES = new Set(["text", "image", "voice"]);
 
 type SmartReplyMessagePageMetadata = {
   smartReplyEnabled?: boolean;
@@ -132,6 +133,10 @@ function collectSmartReplyMessagePageCandidateIds(messages: WorkbenchMessageDto[
     const message = messages[index];
 
     if (message?.senderType !== "customer") {
+      continue;
+    }
+
+    if (!SMART_REPLY_TRIGGER_RAW_MSGTYPES.has(message.rawMsgtype.trim())) {
       continue;
     }
 

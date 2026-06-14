@@ -315,6 +315,55 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
+  it("loads page smart replies only for raw message types that can trigger recommendations", async () => {
+    const javaClient = createJavaClient();
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "101",
+          thirdExternalUserId: "external-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+        }),
+        listMessages: vi.fn().mockResolvedValue({
+          filteredCount: 0,
+          hasMore: false,
+          messages: [
+            createMessageDto({ rawMsgtype: "text", senderType: "customer", seq: 1 }),
+            createMessageDto({ rawMsgtype: "emotion", senderType: "customer", seq: 2 }),
+            createMessageDto({ rawMsgtype: "quote", senderType: "customer", seq: 3 }),
+            createMessageDto({ rawMsgtype: "file", senderType: "customer", seq: 4 }),
+            createMessageDto({ rawMsgtype: "image", senderType: "customer", seq: 5 }),
+            createMessageDto({ rawMsgtype: "voice", senderType: "customer", seq: 6 }),
+          ],
+          scannedCount: 6,
+          smartReplyEnabled: true,
+          smartReplyScope: {
+            chatType: 1,
+            thirdExternalId: "external-001",
+            thirdUserId: "seat-user-001",
+            uid: 9001,
+          },
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await service.getMessages("101", "88", { limit: 10 });
+
+    expect(javaClient.listUserHistoryAnswers).toHaveBeenCalledWith({
+      chatType: 1,
+      msgIds: [1, 5, 6],
+      thirdExternalId: "external-001",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
+  });
+
   it("does not load smart replies for historical pages", async () => {
     const javaClient = createJavaClient();
     const service = new MysqlWorkbenchService(
@@ -3011,6 +3060,7 @@ describe("MysqlWorkbenchService", () => {
 });
 
 function createMessageDto(input: {
+  rawMsgtype?: string;
   senderType: "agent" | "customer" | "system";
   seq: number;
 }) {
@@ -3022,6 +3072,7 @@ function createMessageDto(input: {
     conversationId: "88",
     customerId: "external-001",
     messageId: `msg-${input.seq}`,
+    rawMsgtype: input.rawMsgtype ?? "text",
     seatId: "12",
     senderType: input.senderType,
     seq: input.seq,

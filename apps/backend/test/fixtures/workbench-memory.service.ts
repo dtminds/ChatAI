@@ -566,6 +566,7 @@ export function createMemoryWorkbenchService() {
           failReason: outcome.reason,
           messageId,
           optNo: messageId,
+          rawMsgtype: quoteForSegment ? "quote" : segment.type,
           senderType: "agent" as const,
           seq: nextSeq,
           status: outcome.status,
@@ -823,10 +824,24 @@ function message(
     createdAt: toTimestamp(createdAt),
     customerId,
     messageId,
+    rawMsgtype: getMemoryRawMsgtype(contentType),
     senderType,
     seq,
     status,
   };
+}
+
+function getMemoryRawMsgtype(contentType: WorkbenchMessageDto["contentType"]) {
+  switch (contentType) {
+    case "h5":
+      return "link";
+    case "mini-program":
+      return "weapp";
+    case "contact-card":
+      return "card";
+    default:
+      return contentType;
+  }
 }
 
 function imagePlaceholder(label: string) {
@@ -961,6 +976,7 @@ function revokeMessage(
     createdAt: Date.now(),
     customerId: targetMessage.customerId,
     messageId: `revoke-${targetMessage.messageId}`,
+    rawMsgtype: "revoke",
     seatId: targetMessage.seatId,
     senderType: "system" as const,
     seq: getNextMessageSeq(state, conversationId),

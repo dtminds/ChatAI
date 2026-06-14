@@ -1911,6 +1911,17 @@ function buildOptimisticMessageContent(
     };
   }
 
+  if (segment.type === "h5") {
+    return {
+      description: segment.desc ?? "",
+      previewImageUrl: segment.coverUrl,
+      sourceLabel: "链接",
+      title: segment.title,
+      type: "h5",
+      url: segment.href,
+    };
+  }
+
   return {
     text: segment.text,
     type: "text",

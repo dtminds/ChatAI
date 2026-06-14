@@ -20,7 +20,10 @@ import type {
   Message,
   QuotedMessagePreviewContent,
 } from "@/pages/chat/chat-types";
-import type { SettingsSidebarItem } from "@chatai/contracts";
+import type {
+  SettingsSidebarItem,
+  WorkbenchMaterialCollectionItemDto,
+} from "@chatai/contracts";
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
 import type { SmartReplySendPayload } from "@/pages/chat/api/smart-reply-adapter";
 import type { SmartReplySuggestion } from "@/pages/chat/components/smart-reply-card";
@@ -30,6 +33,7 @@ type ChatPanelProps = {
   accountAvatarUrl?: string;
   activeConversation?: Conversation;
   activeHistoryStatus: "idle" | "loading" | "error";
+  canCollectMaterialActions?: boolean;
   canSendMessage: boolean;
   composerPlaceholder: string;
   customer?: CustomerProfile;
@@ -75,6 +79,16 @@ type ChatPanelProps = {
   onEmojiPickerOpenChange: (isOpen: boolean) => void;
   onEnterBehaviorChange: (behavior: InputEnterBehavior) => void;
   onCancelFileUpload: (uploadId: string) => void;
+  collectedExpressions?: WorkbenchMaterialCollectionItemDto[];
+  hasMoreCollectedExpressions?: boolean;
+  isCollectedExpressionLoadingMore?: boolean;
+  onCollectMaterial?: (message: ChatMessage) => void;
+  onDeleteCollectedExpression?: (item: WorkbenchMaterialCollectionItemDto) => void;
+  onLoadMoreCollectedExpressions?: () => void;
+  onOpenCollectedExpressions?: () => void;
+  onOpenMaterialLibrary?: (bizType: 2 | 3 | 4 | 5) => void;
+  onSelectCollectedExpression?: (item: WorkbenchMaterialCollectionItemDto) => void;
+  onTopCollectedExpression?: (item: WorkbenchMaterialCollectionItemDto) => void;
   onDownloadMessageFile?: (message: ChatMessage) => void;
   onFileSelect: (files: FileList | File[] | null) => void;
   onOpenHistory: () => void;
@@ -125,6 +139,7 @@ export function ChatPanel({
   accountAvatarUrl,
   activeConversation,
   activeHistoryStatus,
+  canCollectMaterialActions = true,
   canSendMessage,
   composerPlaceholder,
   customer,
@@ -151,6 +166,16 @@ export function ChatPanel({
   onEmojiPickerOpenChange,
   onEnterBehaviorChange,
   onCancelFileUpload,
+  collectedExpressions,
+  hasMoreCollectedExpressions,
+  isCollectedExpressionLoadingMore,
+  onCollectMaterial,
+  onDeleteCollectedExpression,
+  onLoadMoreCollectedExpressions,
+  onOpenCollectedExpressions,
+  onOpenMaterialLibrary,
+  onSelectCollectedExpression,
+  onTopCollectedExpression,
   onDownloadMessageFile,
   onFileSelect,
   onOpenHistory,
@@ -212,6 +237,7 @@ export function ChatPanel({
                     />
                   ) : null
                 }
+                canCollectMaterialActions={canCollectMaterialActions}
                 canUseMessageActions={canSendMessage}
                 hasBottomOverlay={hasActiveFileUpload}
                 hasMoreHistory={hasMoreHistory}
@@ -222,6 +248,7 @@ export function ChatPanel({
                 smartReplyAutoPendingByMessageId={smartReplyAutoPendingByMessageId}
                 smartReplyByMessageId={smartReplyByMessageId}
                 messageViewportRef={messageViewportRef}
+                onCollectMaterial={onCollectMaterial}
                 onDownloadMessageFile={onDownloadMessageFile}
                 onMentionMessage={onMentionMessage}
                 onLoadOlderMessages={onLoadOlderMessages}
@@ -278,14 +305,27 @@ export function ChatPanel({
                     isEmojiPickerOpen={isEmojiPickerOpen}
                     isSending={isSendingDraft}
                     isHistoryPanelOpen={isHistoryPanelOpen}
+                    collectedExpressions={collectedExpressions}
+                    hasMoreCollectedExpressions={hasMoreCollectedExpressions}
+                    isCollectedExpressionLoadingMore={
+                      isCollectedExpressionLoadingMore
+                    }
                     onClearQuotedMessage={onClearQuotedMessage}
+                    onDeleteCollectedExpression={onDeleteCollectedExpression}
                     onDraftChange={onDraftChange}
                     onEmojiPickerOpenChange={onEmojiPickerOpenChange}
                     onEnterBehaviorChange={onEnterBehaviorChange}
                     onFileSelect={onFileSelect}
+                    onLoadMoreCollectedExpressions={
+                      onLoadMoreCollectedExpressions
+                    }
+                    onOpenCollectedExpressions={onOpenCollectedExpressions}
+                    onOpenMaterialLibrary={onOpenMaterialLibrary ?? noop}
                     onOpenHistory={onOpenHistory}
+                    onSelectCollectedExpression={onSelectCollectedExpression}
                     onSegmentsChange={onComposerSegmentsChange}
                     onSendDraft={onSendDraft}
+                    onTopCollectedExpression={onTopCollectedExpression}
                     placeholder={composerPlaceholder}
                     quotedMessage={quotedMessage}
                     composerRef={composerRef}
@@ -411,3 +451,5 @@ function FileUploadQueueBar({
     </div>
   );
 }
+
+function noop() {}

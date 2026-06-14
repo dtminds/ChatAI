@@ -1,13 +1,17 @@
 import { apiError } from "@chatai/contracts";
 import type { FastifyError, FastifyInstance } from "fastify";
 import { AppError } from "../shared/errors.js";
+import { formatValidationErrorMessage } from "../shared/format-validation-error.js";
 
 export async function registerErrorHandler(app: FastifyInstance) {
   app.setErrorHandler((error: FastifyError, request, reply) => {
     if (error.validation) {
+      const message = formatValidationErrorMessage(error);
+
       request.log.warn(
         {
           error: error.message,
+          message,
           requestId: request.id,
           url: request.url,
         },
@@ -16,7 +20,7 @@ export async function registerErrorHandler(app: FastifyInstance) {
 
       return reply
         .code(400)
-        .send(apiError("BAD_REQUEST", error.message, { validation: error.validation }));
+        .send(apiError("BAD_REQUEST", message, { validation: error.validation }));
     }
 
     if (error instanceof AppError) {

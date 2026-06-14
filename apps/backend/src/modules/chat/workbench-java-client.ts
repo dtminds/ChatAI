@@ -97,6 +97,13 @@ export type JavaSendMessageData =
       fileUrl: string;
       msgtype: "file";
     }
+  | {
+      coverUrl?: string;
+      desc?: string;
+      href: string;
+      msgtype: "link";
+      title: string;
+    }
   | ({
       msgtype: "quote";
       quoteMsgId: number;

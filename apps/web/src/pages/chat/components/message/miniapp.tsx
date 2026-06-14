@@ -9,18 +9,27 @@ import {
 } from "@/pages/chat/components/message/media-fallback";
 
 type MiniAppMessageCardProps = {
+  className?: string;
   content: MiniProgramMessageContent;
+  titleLines?: 1 | 2;
 };
 
-export function MiniAppMessageCard({ content }: MiniAppMessageCardProps) {
+export function MiniAppMessageCard({
+  className,
+  content,
+  titleLines = 2,
+}: MiniAppMessageCardProps) {
   const coverImageUrl = content.coverImageUrl?.trim();
 
   return (
     <div
-      className="w-[240px] rounded-[8px] border border-border bg-surface p-2.5 pb-1.5"
+      className={cn(
+        "w-[240px] rounded-[8px] border border-border bg-surface p-2.5 pb-1.5",
+        className,
+      )}
       data-testid="mini-program-message-card"
     >
-      <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
+      <div className="flex min-w-0 items-center gap-1.5 text-[12px] text-muted-foreground">
         <div className="flex size-4 items-center justify-center rounded-full bg-primary/10 text-primary">
           {content.logoUrl ? (
             <img
@@ -33,11 +42,21 @@ export function MiniAppMessageCard({ content }: MiniAppMessageCardProps) {
             <HugeiconsIcon icon={AiBrowserIcon} size={14} strokeWidth={1.9} />
           )}
         </div>
-        <span className="font-medium">{content.appName}</span>
+        <span
+          className="min-w-0 truncate font-medium"
+          data-testid="mini-program-app-name"
+        >
+          {content.appName}
+        </span>
       </div>
 
       <div className="mt-2.5">
-        <p className="line-clamp-2 text-[14px] font-medium leading-5 text-foreground">
+        <p
+          className={cn(
+            "text-[14px] font-medium leading-5 text-foreground",
+            titleLines === 1 ? "line-clamp-1" : "line-clamp-2",
+          )}
+        >
           {content.title}
         </p>
       </div>

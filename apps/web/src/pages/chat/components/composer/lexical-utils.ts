@@ -165,7 +165,7 @@ export function $restoreComposerFromSegments(segments: ComposerSegment[]) {
       continue;
     }
 
-    if (segment.type === "file") {
+    if (segment.type !== "text") {
       continue;
     }
 

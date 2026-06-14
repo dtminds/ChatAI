@@ -798,6 +798,63 @@ describe("createWorkbenchJavaClient", () => {
     );
   });
 
+  it("posts h5 link msgData to the Java send-message API", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: { optNo: "opt-link-001" },
+          error: 0,
+          errorMsg: "",
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    await createWorkbenchJavaClient().sendMessage({
+      clientMessageId: "local-link-001",
+      msgData: {
+        coverUrl: "https://example.com/cover.png",
+        desc: "恭喜发财，大吉大利",
+        href: "https://example.com/redpacket",
+        msgtype: "link",
+        title: "红包来啦",
+      },
+      platform: 5,
+      sendType: 1,
+      source: 1,
+      thirdExternalUserid: "external-001",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/wap-embed/conversation/send-message",
+      expect.objectContaining({
+        body: JSON.stringify({
+          msgData: {
+            coverUrl: "https://example.com/cover.png",
+            desc: "恭喜发财，大吉大利",
+            href: "https://example.com/redpacket",
+            msgtype: "link",
+            title: "红包来啦",
+          },
+          platform: 5,
+          sendType: 1,
+          source: 1,
+          thirdExternalUserid: "external-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
   it("requests user history answer list with conversation scope fields", async () => {
     process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(

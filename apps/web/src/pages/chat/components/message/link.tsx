@@ -1,4 +1,5 @@
 import type { H5CardMessageContent } from "@/pages/chat/chat-types";
+import { cn } from "@/lib/utils";
 import {
   LoadableMessageImage,
   MessageMediaFallback,
@@ -6,10 +7,16 @@ import {
 import { getSafeMessageUrl } from "@/pages/chat/components/message/url";
 
 type LinkMessageCardProps = {
+  className?: string;
   content: H5CardMessageContent;
+  disableLink?: boolean;
 };
 
-export function LinkMessageCard({ content }: LinkMessageCardProps) {
+export function LinkMessageCard({
+  className,
+  content,
+  disableLink = false,
+}: LinkMessageCardProps) {
   const safeUrl = getSafeMessageUrl(content.url);
   const previewImageUrl = content.previewImageUrl?.trim();
   const card = (
@@ -42,10 +49,13 @@ export function LinkMessageCard({ content }: LinkMessageCardProps) {
     </div>
   );
 
-  if (safeUrl) {
+  if (safeUrl && !disableLink) {
     return (
       <a
-        className="block w-[min(19rem,calc(100vw-7rem))] rounded-[8px] border border-border bg-surface p-3 outline-none transition-colors hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-ring"
+        className={cn(
+          "block w-[min(19rem,calc(100vw-7rem))] rounded-[8px] border border-border bg-surface p-3 outline-none transition-colors hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-ring",
+          className,
+        )}
         href={safeUrl}
         rel="noopener noreferrer"
         target="_blank"
@@ -56,7 +66,12 @@ export function LinkMessageCard({ content }: LinkMessageCardProps) {
   }
 
   return (
-    <div className="w-[min(19rem,calc(100vw-7rem))] rounded-[8px] border border-border bg-surface p-3">
+    <div
+      className={cn(
+        "w-[min(19rem,calc(100vw-7rem))] rounded-[8px] border border-border bg-surface p-3",
+        className,
+      )}
+    >
       {card}
     </div>
   );

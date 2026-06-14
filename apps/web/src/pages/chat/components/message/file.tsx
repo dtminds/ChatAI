@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import type { FileMessageContent } from "@/pages/chat/chat-types";
 
 type FileMessageCardProps = {
+  className?: string;
   content: FileMessageContent;
   onDownloadClick?: () => void;
   showDownloadAction?: boolean;
@@ -73,6 +74,7 @@ const DEFAULT_FILE_TYPE_ICON = {
 };
 
 export function FileMessageCard({
+  className,
   content,
   onDownloadClick,
   showDownloadAction = true,
@@ -80,17 +82,18 @@ export function FileMessageCard({
   const isDownloading = content.downloadStatus === "ing";
 
   return (
-    <div className="w-[min(19rem,calc(100vw-7rem))] rounded-[8px] border border-border bg-surface p-3 pb-2">
+    <div
+      className={cn(
+        "flex w-[min(19rem,calc(100vw-7rem))] flex-col rounded-[8px] border border-border bg-surface p-3 pb-2",
+        className,
+      )}
+      data-testid="file-message-card"
+    >
       <div className="grid grid-cols-[minmax(0,1fr)_48px] items-center gap-2.5">
         <div className="min-w-0">
-          <p className="line-clamp-2 text-[14px] font-semibold leading-5 text-foreground">
+          <p className="line-clamp-2 min-h-10 text-[14px] font-semibold leading-5 text-foreground">
             {content.fileName}
           </p>
-          {content.fileSizeLabel ? (
-            <p className="mt-1.5 text-[13px] text-muted-foreground">
-              {content.fileSizeLabel}
-            </p>
-          ) : null}
         </div>
 
         <FileExtensionBadge extension={content.extension} />
@@ -100,6 +103,9 @@ export function FileMessageCard({
         <span className="inline-flex items-center gap-1.5">
           <HugeiconsIcon icon={Attachment01Icon} size={14} strokeWidth={1.8} />
           <span>{content.sourceLabel ?? "文件"}</span>
+          {content.fileSizeLabel ? (
+            <span>{content.fileSizeLabel}</span>
+          ) : null}
         </span>
 
         {showDownloadAction && isDownloading ? (

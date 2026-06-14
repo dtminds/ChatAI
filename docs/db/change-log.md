@@ -4,6 +4,7 @@ Manual database changes for the backend should be recorded here.
 
 ## 2026-06-11
 
+- Added `uk_material_collection_msg_scope` to prevent concurrent duplicate material collection rows for the same tenant, material type, visibility scope, and message.
 - Added tenant-scoped logical-session indexes for live-analysis scans, disabled-insight close updates, and future agent-scoped session paging.
 - Moved expired insight-job lease takeover out of claim queries; added `idx_insight_job_expired_lease` for the lease reclaim update.
 - Added snapshot-level uniqueness for tag, entity, intent, and QA finding result rows so duplicate LLM outputs cannot create repeated dimensions.
@@ -12,6 +13,9 @@ Manual database changes for the backend should be recorded here.
 Manual migration for existing databases:
 
 ```sql
+ALTER TABLE xy_wap_embed_material_collection
+  ADD UNIQUE KEY uk_material_collection_msg_scope (uid, biz_type, sub_uid, msgid);
+
 ALTER TABLE xy_wap_embed_logical_session
   DROP KEY idx_logical_session_uid_agent_started,
   ADD KEY idx_logical_session_uid_agent_started (uid, third_userid, started_at, id),

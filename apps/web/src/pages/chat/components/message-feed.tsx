@@ -3,6 +3,7 @@ import {
   AiChat02Icon,
   ArrowTurnBackwardIcon,
   Bug02Icon,
+  ChatFavouriteIcon,
   ExclamationMarkIcon,
   Male02Icon,
   MoreHorizontalIcon,
@@ -67,11 +68,13 @@ const TIMESTAMP_BREAK_MS = 5 * 60 * 1000;
 export const MESSAGE_SENT_AT_HOVER_DELAY_MS = 400;
 
 type ChatMessageListProps = {
+  canCollectMaterialActions?: boolean;
   canUseMessageActions?: boolean;
   conversationId: string;
   messages: Message[];
   showTimeDividers?: boolean;
   showTimestamps?: boolean;
+  onCollectMaterial?: (message: ChatMessage) => void;
   onDownloadMessageFile?: (message: ChatMessage) => void;
   onMentionMessage?: (message: ChatMessage) => void;
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
@@ -109,12 +112,14 @@ type FeedItem =
     };
 
 export function ChatMessageList({
+  canCollectMaterialActions = true,
   canUseMessageActions = true,
   conversationId,
   messages,
   showTimeDividers = true,
   showTimestamps = false,
   onDownloadMessageFile,
+  onCollectMaterial,
   onMentionMessage,
   onOpenQuotedMessage,
   onQuoteMessage,
@@ -240,12 +245,14 @@ export function ChatMessageList({
               <MessageRow
                 conversationId={conversationId}
                 message={item.message}
+                canCollectMaterialActions={canCollectMaterialActions}
                 canUseMessageActions={canUseMessageActions}
                 shouldAnimate={
                   shouldAnimateMessageByKey.get(getMessageFeedItemKey(item.message)) ?? false
                 }
                 showTimestamp={showTimestamps}
                 onDownloadMessageFile={onDownloadMessageFile}
+                onCollectMaterial={onCollectMaterial}
                 onMentionMessage={onMentionMessage}
                 onOpenQuotedMessage={onOpenQuotedMessage}
                 onQuoteMessage={onQuoteMessage}
@@ -321,10 +328,12 @@ function SystemMessageNotice({ text }: { text: string }) {
 export function MessageRow({
   conversationId,
   message,
+  canCollectMaterialActions = true,
   canUseMessageActions = true,
   showTimestamp = false,
   shouldAnimate = false,
   onDownloadMessageFile,
+  onCollectMaterial,
   onMentionMessage,
   onOpenQuotedMessage,
   onQuoteMessage,
@@ -344,11 +353,13 @@ export function MessageRow({
   conversationId?: string;
   message: Message;
   canUseMessageActions?: boolean;
+  canCollectMaterialActions?: boolean;
   isRetryingMessage?: boolean;
   isSmartReplyAutoPending?: boolean;
   shouldAnimate?: boolean;
   showTimestamp?: boolean;
   onDownloadMessageFile?: (message: ChatMessage) => void;
+  onCollectMaterial?: (message: ChatMessage) => void;
   onMentionMessage?: (message: ChatMessage) => void;
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
   onQuoteMessage?: (message: ChatMessage) => void;
@@ -424,9 +435,11 @@ export function MessageRow({
   const messageActions = (
     <MessageActionAvatar
       message={message}
+      canCollectMaterialActions={canCollectMaterialActions}
       canUseMessageActions={canUseMessageActions}
       triggerRef={dismissTargetRef}
       onMentionMessage={onMentionMessage}
+      onCollectMaterial={onCollectMaterial}
       onQuoteMessage={onQuoteMessage}
       onRevokeMessage={onRevokeMessage}
       onTriggerSmartReply={onTriggerSmartReply}
@@ -650,18 +663,22 @@ function QuoteMessageContentWithDelivery({
 
 function MessageActionAvatar({
   message,
+  canCollectMaterialActions,
   canUseMessageActions,
   triggerRef,
   onMentionMessage,
+  onCollectMaterial,
   onQuoteMessage,
   onRevokeMessage,
   onTriggerSmartReply,
   showSmartReplyRecommendation,
 }: {
   message: ChatMessage;
+  canCollectMaterialActions: boolean;
   canUseMessageActions: boolean;
   triggerRef?: RefObject<HTMLButtonElement | null>;
   onMentionMessage?: (message: ChatMessage) => void;
+  onCollectMaterial?: (message: ChatMessage) => void;
   onQuoteMessage?: (message: ChatMessage) => void;
   onRevokeMessage?: (message: ChatMessage) => void;
   onTriggerSmartReply?: (
@@ -683,6 +700,8 @@ function MessageActionAvatar({
     canUseMessageActions &&
     !message.isRevoked &&
     message.content.type !== "contact-card";
+  const canCollectMessage = Boolean(onCollectMaterial) && canCollectMaterial(message);
+  const canSelectCollectMessage = canCollectMaterialActions && !message.isRevoked;
   const canRevokeMessage =
     canUseMessageActions &&
     Boolean(onRevokeMessage) &&
@@ -776,6 +795,27 @@ function MessageActionAvatar({
                   strokeWidth={2}
                 />
                 引用
+              </DropdownMenuItem>
+            ) : null}
+            {canCollectMessage ? (
+              <DropdownMenuItem
+                disabled={!canSelectCollectMessage}
+                onSelect={(event) => {
+                  if (!canSelectCollectMessage) {
+                    event.preventDefault();
+                    return;
+                  }
+
+                  onCollectMaterial?.(message);
+                }}
+              >
+                <HugeiconsIcon
+                  aria-hidden="true"
+                  icon={ChatFavouriteIcon}
+                  size={15}
+                  strokeWidth={2}
+                />
+                收录
               </DropdownMenuItem>
             ) : null}
             {canRevokeMessage ? (
@@ -1035,6 +1075,19 @@ function canShowRevokeMessageAction(message: ChatMessage, now = Date.now()) {
   const sentAt = parseWorkbenchDate(message.sentAt);
 
   return sentAt != null && now - sentAt.getTime() < MESSAGE_REVOKE_WINDOW_MS;
+}
+
+export function canCollectMaterial(message: ChatMessage) {
+  if (message.content.type === "image") {
+    return message.content.variant === "emotion";
+  }
+
+  return (
+    message.content.type === "file" ||
+    message.content.type === "mini-program" ||
+    message.content.type === "h5" ||
+    message.content.type === "sphfeed"
+  );
 }
 
 export function MessageAvatar({ message }: { message: ChatMessage }) {

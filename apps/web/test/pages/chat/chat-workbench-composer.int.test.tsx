@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { toast } from "sonner";
+import { MATERIAL_COLLECTION_BIZ_TYPE } from "@chatai/contracts";
 import { createMockWorkbenchService, setWorkbenchService } from "@/pages/chat/api/workbench-service";
 import { useWorkbenchStore } from "@/store/workbench-store";
 import {
@@ -9,19 +9,8 @@ import {
   mediaUploadMocks,
   renderChatWorkbenchPage,
   resetChatWorkbenchTestState,
+  workbenchToastWarningMock,
 } from "./workbench-test-utils";
-
-vi.mock("sonner", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("sonner")>();
-
-  return {
-    ...actual,
-    toast: {
-      ...actual.toast,
-      warning: vi.fn(),
-    },
-  };
-});
 
 function createDeferred<T = void>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
@@ -511,6 +500,1064 @@ describe("ChatWorkbenchPage composer flows", () => {
     });
   });
 
+  it("switches to collected expressions from the WeChat emoji picker footer and shows the send preview notice when selected", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const listMaterialCollections = vi.fn(async (request) => {
+      if (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION) {
+        return baseService.listMaterialCollections(request);
+      }
+
+      return {
+        items: [
+          {
+            bizType: MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION,
+            content: {
+              alt: "贴贴表情",
+              imageUrl: "https://example.com/expression.gif",
+            },
+            contentType: "emotion" as const,
+            groupId: 0 as const,
+            id: "material-expression-001",
+            messageId: "msg-expression-001",
+            sort: 1_781_244_000_000,
+            title: "贴贴表情",
+          },
+        ],
+        pagination: {
+          hasMore: false,
+          page: 1,
+          pageSize: 100,
+          total: 1,
+        },
+      };
+    });
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      listMaterialCollections,
+      sendMessage,
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    expect(listMaterialCollections).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "微信表情" }));
+
+    expect(await screen.findByRole("button", { name: "微笑" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "发送收藏表情 贴贴表情" }),
+    ).not.toBeInTheDocument();
+    expect(listMaterialCollections).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("tab", { name: "自定义表情" }));
+
+    expect(screen.queryByRole("button", { name: "微笑" })).not.toBeInTheDocument();
+    expect(listMaterialCollections).toHaveBeenCalledWith({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION,
+      groupId: 0,
+      page: 1,
+      pageSize: 100,
+    });
+    expect(listMaterialCollections).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole("tab", { name: "微信表情" }));
+    await user.click(screen.getByRole("tab", { name: "自定义表情" }));
+
+    expect(listMaterialCollections).toHaveBeenCalledTimes(2);
+    expect(listMaterialCollections).toHaveBeenLastCalledWith({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION,
+      groupId: 0,
+      page: 1,
+      pageSize: 100,
+    });
+    await user.click(
+      await screen.findByRole("button", { name: "发送收藏表情 贴贴表情" }),
+    );
+
+    await waitFor(() => {
+      expect(workbenchToastWarningMock).toHaveBeenCalledWith(
+        "自定义表情发送功能内测中，即将开放",
+      );
+    });
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("manages collected expressions from the custom emoji context menu", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const topMaterialCollection = vi.fn().mockResolvedValue({ ok: true });
+    const deleteMaterialCollection = vi.fn().mockResolvedValue({ ok: true });
+    const listMaterialCollections = vi.fn(async (request) => {
+      if (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION) {
+        return baseService.listMaterialCollections(request);
+      }
+
+      return {
+        items: [
+          {
+            bizType: MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION,
+            content: {
+              alt: "贴贴表情",
+              imageUrl: "https://example.com/expression.gif",
+            },
+            contentType: "emotion" as const,
+            groupId: 0 as const,
+            id: "material-expression-001",
+            messageId: "msg-expression-001",
+            sort: 1_781_244_000_000,
+            title: "贴贴表情",
+          },
+        ],
+        pagination: {
+          hasMore: false,
+          page: 1,
+          pageSize: 100,
+          total: 1,
+        },
+      };
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      deleteMaterialCollection,
+      listMaterialCollections,
+      topMaterialCollection,
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getByRole("button", { name: "微信表情" }));
+    await user.click(screen.getByRole("tab", { name: "自定义表情" }));
+
+    const expressionButton = await screen.findByRole("button", {
+      name: "发送收藏表情 贴贴表情",
+    });
+
+    fireEvent.contextMenu(expressionButton);
+    await user.click(await screen.findByRole("menuitem", { name: "移到最前" }));
+
+    await waitFor(() => {
+      expect(topMaterialCollection).toHaveBeenCalledWith("material-expression-001");
+    });
+
+    fireEvent.contextMenu(expressionButton);
+    await user.click(await screen.findByRole("menuitem", { name: "删除" }));
+
+    await waitFor(() => {
+      expect(deleteMaterialCollection).toHaveBeenCalledWith("material-expression-001");
+    });
+    expect(listMaterialCollections).toHaveBeenCalledWith({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION,
+      groupId: 0,
+      page: 1,
+      pageSize: 100,
+    });
+  });
+
+  it("loads more collected expressions from the custom emoji panel", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const listMaterialCollections = vi.fn(async (request) => {
+      if (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION) {
+        return baseService.listMaterialCollections(request);
+      }
+
+      const page = request.page ?? 1;
+
+      return {
+        items: [
+          {
+            bizType: MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION,
+            content: {
+              alt: `贴贴表情${page}`,
+              imageUrl: `https://example.com/expression-${page}.gif`,
+            },
+            contentType: "emotion" as const,
+            groupId: 0 as const,
+            id: `material-expression-00${page}`,
+            messageId: `msg-expression-00${page}`,
+            sort: 1_781_244_000_000 - page,
+            title: `贴贴表情${page}`,
+          },
+        ],
+        pagination: {
+          hasMore: page === 1,
+          page,
+          pageSize: 100,
+          total: 2,
+        },
+      };
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      listMaterialCollections,
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getByRole("button", { name: "微信表情" }));
+    await user.click(screen.getByRole("tab", { name: "自定义表情" }));
+
+    expect(
+      await screen.findByRole("button", { name: "发送收藏表情 贴贴表情1" }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "加载更多" }));
+
+    expect(
+      await screen.findByRole("button", { name: "发送收藏表情 贴贴表情2" }),
+    ).toBeInTheDocument();
+    expect(listMaterialCollections).toHaveBeenCalledWith({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION,
+      groupId: 0,
+      page: 2,
+      pageSize: 100,
+    });
+  });
+
+  it.each([
+    ["收藏文件", "收录的文件"],
+    ["收藏小程序", "收录的小程序"],
+    ["收藏视频号", "收录的视频号"],
+    ["收藏H5", "收录的H5"],
+  ])("opens the %s material library from the composer", async (buttonName, dialogName) => {
+    const user = userEvent.setup();
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getByRole("button", { name: buttonName }));
+
+    expect(
+      await screen.findByRole("dialog", { name: dialogName }),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the latest material library request when switching material types quickly", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const fileRequest = createDeferred<Awaited<ReturnType<typeof baseService.listMaterialGroups>>>();
+    const miniProgramRequest =
+      createDeferred<Awaited<ReturnType<typeof baseService.listMaterialGroups>>>();
+    const listMaterialGroups = vi.fn((request) => {
+      if (request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.FILE) {
+        return fileRequest.promise;
+      }
+
+      if (request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM) {
+        return miniProgramRequest.promise;
+      }
+
+      return baseService.listMaterialGroups(request);
+    });
+    const listMaterialCollections = vi.fn((request) => {
+      if (request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM) {
+        return Promise.resolve({
+          items: [
+            {
+              bizType: MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM,
+              content: {
+                appName: "企微助手",
+                title: "小程序",
+              },
+              contentType: "mini-program" as const,
+              groupId: "group-mini",
+              id: "material-mini-001",
+              messageId: "msg-mini-001",
+              sort: 1,
+              title: "企微助手",
+            },
+          ],
+          pagination: {
+            hasMore: false,
+            page: 1,
+            pageSize: 100,
+            total: 1,
+          },
+        });
+      }
+
+      return baseService.listMaterialCollections(request);
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      listMaterialCollections,
+      listMaterialGroups,
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getByRole("button", { name: "收藏文件" }));
+    await user.click(screen.getByRole("button", { name: "关闭" }));
+    await user.click(screen.getByRole("button", { name: "收藏小程序" }));
+
+    miniProgramRequest.resolve({
+      groups: [
+        {
+          bizType: MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM,
+          id: "group-mini",
+          sort: 1,
+          title: "小程序分组",
+        },
+      ],
+    });
+
+    expect(
+      await screen.findByRole("dialog", { name: "收录的小程序" }),
+    ).toBeInTheDocument();
+    expect(await screen.findByText("小程序分组")).toBeInTheDocument();
+
+    fileRequest.resolve({
+      groups: [
+        {
+          bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+          id: "group-file",
+          sort: 1,
+          title: "文件分组",
+        },
+      ],
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText("文件分组")).not.toBeInTheDocument();
+    });
+    expect(screen.getByText("小程序分组")).toBeInTheDocument();
+  });
+
+  it("shows the send preview notice when sending a collected mini-program material", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+    const listMaterialGroups = vi.fn(async (request) => {
+      if (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM) {
+        return baseService.listMaterialGroups(request);
+      }
+
+      return {
+        groups: [
+          {
+            bizType: MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM,
+            id: "group-mini",
+            sort: 100,
+            title: "小程序分组",
+          },
+        ],
+      };
+    });
+    const listMaterialCollections = vi.fn(async (request) => {
+      if (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM) {
+        return baseService.listMaterialCollections(request);
+      }
+
+      return {
+        items: [
+          {
+            bizType: MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM,
+            content: {
+              appName: "企微助手",
+              title: "客户跟进小程序",
+            },
+            contentType: "mini-program" as const,
+            groupId: "group-mini",
+            id: "material-mini-001",
+            messageId: "msg-mini-001",
+            sort: 1,
+            title: "客户跟进小程序",
+          },
+        ],
+        pagination: {
+          hasMore: false,
+          page: request.page ?? 1,
+          pageSize: 100,
+          total: 1,
+        },
+      };
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      listMaterialCollections,
+      listMaterialGroups,
+      sendMessage,
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getByRole("button", { name: "收藏小程序" }));
+    await user.click(
+      await screen.findByRole("button", { name: /选择素材 客户跟进小程序/ }),
+    );
+    await user.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(sendMessage).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(workbenchToastWarningMock).toHaveBeenCalledWith(
+        "小程序发送功能内测中，即将开放",
+      );
+    });
+  });
+
+  it("sends a collected file material as a file segment", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+    const listMaterialGroups = vi.fn(async (request) => {
+      if (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.FILE) {
+        return baseService.listMaterialGroups(request);
+      }
+
+      return {
+        groups: [
+          {
+            bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+            id: "group-file",
+            sort: 100,
+            title: "文件分组",
+          },
+        ],
+      };
+    });
+    const listMaterialCollections = vi.fn(async (request) => {
+      if (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.FILE) {
+        return baseService.listMaterialCollections(request);
+      }
+
+      return {
+        items: [
+          {
+            bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+            content: {
+              extension: "pdf",
+              fileName: "报价单.pdf",
+              fileSizeLabel: "128 KB",
+              fileUrl: "https://example.com/files/quote.pdf",
+            },
+            contentType: "file" as const,
+            groupId: "group-file",
+            id: "material-file-001",
+            messageId: "msg-file-001",
+            sort: 1,
+            title: "报价单.pdf",
+          },
+        ],
+        pagination: {
+          hasMore: false,
+          page: request.page ?? 1,
+          pageSize: 100,
+          total: 1,
+        },
+      };
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      listMaterialCollections,
+      listMaterialGroups,
+      sendMessage,
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getByRole("button", { name: "收藏文件" }));
+    await user.click(
+      await screen.findByRole("button", {
+        name: "选择 报价单.pdf",
+      }),
+    );
+    await user.click(screen.getByRole("button", { name: "发送" }));
+
+    await waitFor(() => {
+      expect(sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          conversationId: "conv-001",
+          seatId: "drc",
+          segment: {
+            extension: "pdf",
+            fileName: "报价单.pdf",
+            fileSizeLabel: "128 KB",
+            type: "file",
+            url: "https://example.com/files/quote.pdf",
+          },
+        }),
+      );
+    });
+    await expectLatestConversationMessage("conv-001", {
+      content: {
+        extension: "pdf",
+        fileName: "报价单.pdf",
+        fileSizeLabel: "128 KB",
+        sourceLabel: "文件",
+        type: "file",
+      },
+      role: "agent",
+    });
+    const latestMessage =
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1);
+    expect(latestMessage?.status === "accepted" || latestMessage?.status === "sent").toBe(
+      true,
+    );
+  });
+
+  it("sends a collected H5 material as an h5 segment", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+    const listMaterialGroups = vi.fn(async (request) => {
+      if (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.H5) {
+        return baseService.listMaterialGroups(request);
+      }
+
+      return {
+        groups: [
+          {
+            bizType: MATERIAL_COLLECTION_BIZ_TYPE.H5,
+            id: "group-h5",
+            sort: 100,
+            title: "H5分组",
+          },
+        ],
+      };
+    });
+    const listMaterialCollections = vi.fn(async (request) => {
+      if (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.H5) {
+        return baseService.listMaterialCollections(request);
+      }
+
+      return {
+        items: [
+          {
+            bizType: MATERIAL_COLLECTION_BIZ_TYPE.H5,
+            content: {
+              coverUrl: "https://example.com/redpacket.png",
+              desc: "恭喜发财，大吉大利",
+              href: "https://example.com/redpacket",
+              title: "红包来啦",
+            },
+            contentType: "h5" as const,
+            groupId: "group-h5",
+            id: "material-h5-001",
+            messageId: "msg-h5-001",
+            sort: 1,
+            title: "红包来啦",
+          },
+        ],
+        pagination: {
+          hasMore: false,
+          page: request.page ?? 1,
+          pageSize: 100,
+          total: 1,
+        },
+      };
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      listMaterialCollections,
+      listMaterialGroups,
+      sendMessage,
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getByRole("button", { name: "收藏H5" }));
+    await user.click(await screen.findByRole("button", { name: /选择素材 红包来啦/ }));
+    await user.click(screen.getByRole("button", { name: "发送" }));
+
+    await waitFor(() => {
+      expect(sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          conversationId: "conv-001",
+          seatId: "drc",
+          segment: {
+            coverUrl: "https://example.com/redpacket.png",
+            desc: "恭喜发财，大吉大利",
+            href: "https://example.com/redpacket",
+            title: "红包来啦",
+            type: "h5",
+          },
+        }),
+      );
+    });
+    await expectLatestConversationMessage("conv-001", {
+      content: {
+        description: "恭喜发财，大吉大利",
+        previewImageUrl: "https://example.com/redpacket.png",
+        title: "红包来啦",
+        type: "h5",
+        url: "https://example.com/redpacket",
+      },
+      role: "agent",
+    });
+  });
+
+  it("sends a collected H5 material stored with legacy linkUrl field", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+    const listMaterialGroups = vi.fn(async (request) => {
+      if (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.H5) {
+        return baseService.listMaterialGroups(request);
+      }
+
+      return {
+        groups: [
+          {
+            bizType: MATERIAL_COLLECTION_BIZ_TYPE.H5,
+            id: "group-h5",
+            sort: 100,
+            title: "H5分组",
+          },
+        ],
+      };
+    });
+    const listMaterialCollections = vi.fn(async (request) => {
+      if (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.H5) {
+        return baseService.listMaterialCollections(request);
+      }
+
+      return {
+        items: [
+          {
+            bizType: MATERIAL_COLLECTION_BIZ_TYPE.H5,
+            content: {
+              description: "活动说明",
+              linkUrl: "https://example.com/legacy-page",
+              title: "活动页",
+            },
+            contentType: "h5" as const,
+            groupId: "group-h5",
+            id: "material-h5-link-url",
+            messageId: "msg-h5-link-url",
+            sort: 1,
+            title: "活动页",
+          },
+        ],
+        pagination: {
+          hasMore: false,
+          page: request.page ?? 1,
+          pageSize: 100,
+          total: 1,
+        },
+      };
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      listMaterialCollections,
+      listMaterialGroups,
+      sendMessage,
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getByRole("button", { name: "收藏H5" }));
+    await user.click(await screen.findByRole("button", { name: /选择素材 活动页/ }));
+    await user.click(screen.getByRole("button", { name: "发送" }));
+
+    await waitFor(() => {
+      expect(sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          conversationId: "conv-001",
+          seatId: "drc",
+          segment: {
+            desc: "活动说明",
+            href: "https://example.com/legacy-page",
+            title: "活动页",
+            type: "h5",
+          },
+        }),
+      );
+    });
+    await expectLatestConversationMessage("conv-001", {
+      content: {
+        description: "活动说明",
+        title: "活动页",
+        type: "h5",
+        url: "https://example.com/legacy-page",
+      },
+      role: "agent",
+    });
+  });
+
+  it("shows the send preview notice when sending a collected sphfeed material", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+    const listMaterialGroups = vi.fn(async (request) => {
+      if (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED) {
+        return baseService.listMaterialGroups(request);
+      }
+
+      return {
+        groups: [
+          {
+            bizType: MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED,
+            id: "group-sphfeed",
+            sort: 100,
+            title: "视频号分组",
+          },
+        ],
+      };
+    });
+    const listMaterialCollections = vi.fn(async (request) => {
+      if (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED) {
+        return baseService.listMaterialCollections(request);
+      }
+
+      return {
+        items: [
+          {
+            bizType: MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED,
+            content: {
+              description: "杭州高架惊现鸵鸟飞奔",
+              imageUrl: "https://finder.video.qq.com/cover.jpg",
+              sourceLabel: "视频号",
+              title: "都市快报",
+              url: "https://channels.weixin.qq.com/web/pages/feed?eid=export",
+            },
+            contentType: "sphfeed" as const,
+            groupId: "group-sphfeed",
+            id: "material-sphfeed-001",
+            messageId: "msg-sphfeed-001",
+            sort: 1,
+            title: "都市快报",
+          },
+        ],
+        pagination: {
+          hasMore: false,
+          page: request.page ?? 1,
+          pageSize: 100,
+          total: 1,
+        },
+      };
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      listMaterialCollections,
+      listMaterialGroups,
+      sendMessage,
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getByRole("button", { name: "收藏视频号" }));
+    await user.click(await screen.findByRole("button", { name: /选择素材 都市快报/ }));
+    await user.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(sendMessage).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(workbenchToastWarningMock).toHaveBeenCalledWith(
+        "视频号发送功能内测中，即将开放",
+      );
+    });
+  });
+
+  it("keeps the selected material group after managing an item", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const deleteMaterialCollection = vi.fn().mockResolvedValue({ ok: true });
+    const listMaterialGroups = vi.fn(async (request) => {
+      if (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.FILE) {
+        return baseService.listMaterialGroups(request);
+      }
+
+      return {
+        groups: [
+          {
+            bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+            id: "group-first",
+            sort: 300,
+            title: "第一分组",
+          },
+          {
+            bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+            id: "group-second",
+            sort: 200,
+            title: "第二分组",
+          },
+        ],
+      };
+    });
+    const listMaterialCollections = vi.fn(async (request) => {
+      if (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.FILE) {
+        return baseService.listMaterialCollections(request);
+      }
+
+      return {
+        items:
+          request.groupId === "group-second"
+            ? [
+                {
+                  bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+                  content: {
+                    extension: "pdf",
+                    fileName: "第二分组文件.pdf",
+                    fileSizeLabel: "2 KB",
+                    sourceLabel: "文件",
+                  },
+                  contentType: "file" as const,
+                  groupId: "group-second",
+                  id: "material-file-second",
+                  messageId: "msg-file-second",
+                  sort: 1,
+                  title: "第二分组文件.pdf",
+                },
+              ]
+            : [],
+        pagination: {
+          hasMore: false,
+          page: request.page ?? 1,
+          pageSize: 100,
+          total: request.groupId === "group-second" ? 1 : 0,
+        },
+      };
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      deleteMaterialCollection,
+      listMaterialCollections,
+      listMaterialGroups,
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getByRole("button", { name: "收藏文件" }));
+    await user.click(await screen.findByRole("button", { name: "第二分组" }));
+
+    const materialRow = await screen.findByRole("row", {
+      name: /第二分组文件\.pdf/,
+    });
+    const listMaterialGroupsCallsAfterOpen = listMaterialGroups.mock.calls.length;
+    const listMaterialCollectionsCallsAfterSelect =
+      listMaterialCollections.mock.calls.length;
+
+    fireEvent.contextMenu(materialRow);
+    await user.click(await screen.findByRole("menuitem", { name: "删除" }));
+
+    await waitFor(() => {
+      expect(deleteMaterialCollection).toHaveBeenCalledWith("material-file-second");
+    });
+    expect(
+      screen.getByRole("row", { name: /第二分组文件\.pdf/ }),
+    ).toBeInTheDocument();
+    expect(listMaterialGroups.mock.calls.length).toBe(
+      listMaterialGroupsCallsAfterOpen,
+    );
+    expect(listMaterialCollections.mock.calls.length).toBe(
+      listMaterialCollectionsCallsAfterSelect + 1,
+    );
+    expect(listMaterialCollections).toHaveBeenLastCalledWith({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+      groupId: "group-second",
+      page: 1,
+      pageSize: 100,
+    });
+  });
+
+  it("reloads only material groups after topping a group", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const topMaterialGroup = vi.fn().mockResolvedValue({ ok: true });
+    const listMaterialGroups = vi.fn(async (request) => {
+      if (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.FILE) {
+        return baseService.listMaterialGroups(request);
+      }
+
+      return {
+        groups: [
+          {
+            bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+            id: "group-first",
+            sort: 300,
+            title: "第一分组",
+          },
+          {
+            bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+            id: "group-second",
+            sort: 400,
+            title: "第二分组",
+          },
+        ],
+      };
+    });
+    const listMaterialCollections = vi.fn(async (request) => {
+      if (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.FILE) {
+        return baseService.listMaterialCollections(request);
+      }
+
+      return {
+        items:
+          request.groupId === "group-second"
+            ? [
+                {
+                  bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+                  content: {
+                    extension: "pdf",
+                    fileName: "第二分组文件.pdf",
+                    fileSizeLabel: "2 KB",
+                    sourceLabel: "文件",
+                  },
+                  contentType: "file" as const,
+                  groupId: "group-second",
+                  id: "material-file-second",
+                  messageId: "msg-file-second",
+                  sort: 1,
+                  title: "第二分组文件.pdf",
+                },
+              ]
+            : [],
+        pagination: {
+          hasMore: false,
+          page: request.page ?? 1,
+          pageSize: 100,
+          total: request.groupId === "group-second" ? 1 : 0,
+        },
+      };
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      listMaterialCollections,
+      listMaterialGroups,
+      topMaterialGroup,
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getByRole("button", { name: "收藏文件" }));
+    await user.click(await screen.findByRole("button", { name: "第二分组" }));
+    await screen.findByRole("row", {
+      name: /第二分组文件\.pdf/,
+    });
+
+    const listMaterialGroupsCallsAfterOpen = listMaterialGroups.mock.calls.length;
+    const listMaterialCollectionsCallsAfterSelect =
+      listMaterialCollections.mock.calls.length;
+
+    await user.click(
+      screen.getByRole("button", { name: "打开 第二分组 操作菜单" }),
+    );
+    await user.click(await screen.findByRole("menuitem", { name: "移到最前" }));
+
+    await waitFor(() => {
+      expect(topMaterialGroup).toHaveBeenCalledWith(
+        "group-second",
+        MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+      );
+    });
+    expect(listMaterialGroups.mock.calls.length).toBe(
+      listMaterialGroupsCallsAfterOpen + 1,
+    );
+    expect(listMaterialCollections.mock.calls.length).toBe(
+      listMaterialCollectionsCallsAfterSelect,
+    );
+    expect(
+      screen.getByRole("row", { name: /第二分组文件\.pdf/ }),
+    ).toBeInTheDocument();
+  });
+
+  it("selects the first group and loads items after creating from an empty library", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    let listMaterialGroupsCallCount = 0;
+    const createMaterialGroup = vi.fn(async () => ({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+      id: "group-first",
+      sort: 400,
+      title: "第一分组",
+    }));
+    const listMaterialGroups = vi.fn(async (request) => {
+      if (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.FILE) {
+        return baseService.listMaterialGroups(request);
+      }
+
+      listMaterialGroupsCallCount += 1;
+
+      if (listMaterialGroupsCallCount === 1) {
+        return { groups: [] };
+      }
+
+      return {
+        groups: [
+          {
+            bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+            id: "group-first",
+            sort: 400,
+            title: "第一分组",
+          },
+        ],
+      };
+    });
+    const listMaterialCollections = vi.fn(async (request) => {
+      if (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.FILE) {
+        return baseService.listMaterialCollections(request);
+      }
+
+      return {
+        items: [],
+        pagination: {
+          hasMore: false,
+          page: 1,
+          pageSize: 100,
+          total: 0,
+        },
+      };
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      createMaterialGroup,
+      listMaterialCollections,
+      listMaterialGroups,
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getByRole("button", { name: "收藏文件" }));
+    expect(await screen.findByText("暂无分组")).toBeInTheDocument();
+    expect(listMaterialCollections).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "新建分组" }));
+    await user.type(screen.getByRole("textbox", { name: "分组名称" }), "第一分组");
+    await user.click(screen.getByRole("button", { name: "新建" }));
+
+    await waitFor(() => {
+      expect(createMaterialGroup).toHaveBeenCalledWith({
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+        title: "第一分组",
+      });
+    });
+    expect(screen.queryByText("暂无分组")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "第一分组" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(listMaterialCollections).toHaveBeenCalledWith({
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+        groupId: "group-first",
+        page: 1,
+        pageSize: 100,
+      });
+    });
+    expect(await screen.findByText("暂无数据")).toBeInTheDocument();
+  });
+
   it("rejects unsupported selected files with a toast", async () => {
     const unsupportedFile = new File(["file-bytes"], "archive.zip", {
       type: "application/zip",
@@ -553,7 +1600,7 @@ describe("ChatWorkbenchPage composer flows", () => {
       }),
     ).toBeInTheDocument();
     expect(screen.getByText("请选择不超过 10 MB 的文件")).toBeInTheDocument();
-    expect(vi.mocked(toast.warning)).not.toHaveBeenCalledWith("文件大小不能超过 10 MB");
+    expect(workbenchToastWarningMock).not.toHaveBeenCalledWith("文件大小不能超过 10 MB");
   });
 
   it("blocks conversation switching while a file is uploading", async () => {

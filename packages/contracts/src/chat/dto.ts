@@ -4,6 +4,7 @@ import {
   LoginStatusSchema,
   TakeoverStatusSchema,
   type ConversationCustodyMode,
+  type MaterialCollectionBizType,
 } from "./enums.js";
 
 export const ChatSeatSchema = Type.Object({
@@ -53,6 +54,108 @@ export type WorkbenchMessageContentType =
   | "mini-program"
   | "chatrecord"
   | "quote";
+
+export type WorkbenchMaterialCollectionContentType = Extract<
+  WorkbenchMessageContentType,
+  "emotion" | "file" | "h5" | "mini-program" | "sphfeed"
+>;
+
+export type WorkbenchMaterialCollectionGroupBizType = Exclude<
+  MaterialCollectionBizType,
+  1
+>;
+export type WorkbenchEnterpriseMaterialCollectionBizType =
+  WorkbenchMaterialCollectionGroupBizType;
+
+export type WorkbenchMaterialCollectionGroupDto = {
+  id: string;
+  bizType: MaterialCollectionBizType;
+  title: string;
+  sort: number;
+};
+
+export type WorkbenchMaterialCollectionItemDto = {
+  id: string;
+  bizType: MaterialCollectionBizType;
+  groupId: string | 0;
+  title: string;
+  sort: number;
+  messageId: string;
+  contentType: WorkbenchMaterialCollectionContentType;
+  content: Record<string, unknown>;
+  createdAt?: number;
+  updatedAt?: number;
+};
+
+export type WorkbenchMaterialCollectionListRequest = {
+  bizType: MaterialCollectionBizType;
+  groupId?: string | 0;
+  page?: number;
+  pageSize?: number;
+};
+
+export type WorkbenchMaterialCollectionListResponse = {
+  items: WorkbenchMaterialCollectionItemDto[];
+  pagination: {
+    hasMore: boolean;
+    page: number;
+    pageSize: number;
+    total: number;
+  };
+};
+
+export type WorkbenchMaterialCollectionGroupListRequest = {
+  bizType: WorkbenchMaterialCollectionGroupBizType;
+};
+
+export type WorkbenchMaterialCollectionGroupListResponse = {
+  groups: WorkbenchMaterialCollectionGroupDto[];
+};
+
+export type WorkbenchMaterialCollectionCreateRequest = {
+  bizType: MaterialCollectionBizType;
+  description?: string;
+  fileName?: string;
+  groupId?: string | 0;
+  messageId: string;
+  title?: string;
+};
+
+export type WorkbenchMaterialCollectionCreateResponse =
+  | {
+      success: true;
+      duplicated?: boolean;
+    }
+  | {
+      success: false;
+      errorMsg: string;
+    };
+
+export type WorkbenchMaterialCollectionGroupCreateRequest = {
+  bizType: WorkbenchMaterialCollectionGroupBizType;
+  title: string;
+};
+
+export type WorkbenchMaterialCollectionGroupCreateResponse =
+  WorkbenchMaterialCollectionGroupDto;
+
+export type WorkbenchMaterialCollectionGroupUpdateRequest = {
+  title: string;
+};
+
+export type WorkbenchMaterialCollectionMoveRequest = {
+  groupId: string;
+};
+
+export type WorkbenchMaterialCollectionUpdateRequest = {
+  description?: string;
+  fileName?: string;
+  title?: string;
+};
+
+export type WorkbenchMaterialCollectionOkResponse = {
+  ok: true;
+};
 
 export type WorkbenchQuotedMessagePreviewDto = {
   contentType: WorkbenchMessageContentType;
@@ -538,10 +641,19 @@ export type WorkbenchOutgoingMessageFileSegment = {
   url?: string;
 };
 
+export type WorkbenchOutgoingMessageH5Segment = {
+  type: "h5";
+  coverUrl?: string;
+  desc?: string;
+  href: string;
+  title: string;
+};
+
 export type WorkbenchOutgoingMessageSegment =
   | WorkbenchOutgoingMessageTextSegment
   | WorkbenchOutgoingMessageImageSegment
-  | WorkbenchOutgoingMessageFileSegment;
+  | WorkbenchOutgoingMessageFileSegment
+  | WorkbenchOutgoingMessageH5Segment;
 
 export type WorkbenchSendMessagePayload = {
   seatId: string;

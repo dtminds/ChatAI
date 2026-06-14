@@ -60,7 +60,7 @@ export type MessageRow = {
   id: number | string;
   msgid: string;
   msgtime: Date | number | string;
-  msgtype: string;
+  msgtype: string | null | undefined;
   opt_no: string | null;
   revoke_status?: number | string | null;
   seat_id: number | string;
@@ -194,6 +194,7 @@ export function mapMessageRow(
     isRevoked: toNumber(row.revoke_status ?? null) === 1 ? true : undefined,
     messageId: row.msgid,
     optNo: row.opt_no || undefined,
+    rawMsgtype: row.msgtype ?? "",
     seatId: String(row.seat_id),
     senderAvatar: row.sender_avatar ?? "",
     senderName: row.sender_name,
@@ -297,7 +298,7 @@ function mapSenderType(row: MessageRow): WorkbenchMessageDto["senderType"] {
   }
 }
 
-function mapContentType(msgtype: string): WorkbenchMessageContentType {
+function mapContentType(msgtype: string | null | undefined): WorkbenchMessageContentType {
   switch (msgtype) {
     case "image":
       return "image";
@@ -554,7 +555,10 @@ function buildDerivedVoicePlaybackUrl(rawUrl: string) {
   return url.toString();
 }
 
-function formatMessagePreview(msgtype: string | null, rawContent: string | null) {
+function formatMessagePreview(
+  msgtype: string | null | undefined,
+  rawContent: string | null,
+) {
   if (msgtype == null && !rawContent) {
     return "";
   }

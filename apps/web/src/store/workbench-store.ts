@@ -64,6 +64,7 @@ import {
   createSentSmartReplySuggestion,
   createTriggeredSmartReplySuggestion,
   getSmartReplyLookupKey,
+  hasSmartReplyTriggerRawMsgtype,
   isSmartReplyGenerationFailed,
   isSmartReplyKnowledgeMiss,
   isSmartReplyPollComplete,
@@ -859,7 +860,20 @@ function omitSmartReplyHiddenKey(
 }
 
 function getPageSmartReplies(page: WorkbenchConversationPage) {
-  return page.smartReplyEnabled === false ? {} : page.smartReplies;
+  if (page.smartReplyEnabled === false) {
+    return {};
+  }
+
+  const eligibleMessageKeys = new Set(
+    page.messages
+      .filter(
+        (message): message is ChatMessage =>
+          message.role !== "system" && hasSmartReplyTriggerRawMsgtype(message),
+      )
+      .map((message) => getSmartReplyLookupKey(message)),
+  );
+
+  return filterSmartReplyRecordByKeys(page.smartReplies, eligibleMessageKeys);
 }
 
 function getSmartReplyTimerKey(conversationId: string, lookupKey: string) {

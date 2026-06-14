@@ -736,6 +736,7 @@ export function createMockWorkbenchService(): WorkbenchService {
           customerId: conversation.customerId,
           failReason: outcome.reason,
           messageId,
+          rawMsgtype: quoteForSegment ? "quote" : segment.type,
           senderType: "agent" as const,
           seq: nextSeq,
           status: outcome.status,
@@ -1408,6 +1409,7 @@ function buildMessageDto({
     failReason: message.failReason,
     isRevoked: message.isRevoked,
     messageId: message.remoteMessageId ?? message.id,
+    rawMsgtype: getMockRawMsgtype(message.content.type),
     senderAvatar: message.role === "system" ? undefined : message.sender.avatarUrl,
     senderName: message.role === "system" ? undefined : message.sender.name,
     senderType: message.role,
@@ -1813,6 +1815,7 @@ function revokeMessage(
     createdAt: Date.now(),
     customerId: originalMessage.customerId,
     messageId: `revoke-${originalMessage.messageId}`,
+    rawMsgtype: "revoke",
     seatId: originalMessage.seatId,
     senderType: "system" as const,
     seq: getNextMessageSeq(state, conversationId),
@@ -1991,6 +1994,19 @@ function stripUndefinedFields<T extends Record<string, unknown>>(value: T) {
   return Object.fromEntries(
     Object.entries(value).filter(([, fieldValue]) => fieldValue !== undefined),
   ) as Partial<T>;
+}
+
+function getMockRawMsgtype(contentType: Message["content"]["type"]) {
+  switch (contentType) {
+    case "h5":
+      return "link";
+    case "mini-program":
+      return "weapp";
+    case "contact-card":
+      return "card";
+    default:
+      return contentType;
+  }
 }
 
 function isFileDownloadContent(

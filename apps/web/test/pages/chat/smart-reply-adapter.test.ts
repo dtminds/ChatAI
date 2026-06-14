@@ -84,6 +84,7 @@ describe("smart-reply-adapter", () => {
       collectQuestionImgs({
         content: { imageUrl: "https://example.com/image.png", alt: "图片", type: "image" },
         id: "msg-image",
+        rawMsgtype: "image",
         role: "customer",
       } as ChatMessage),
     ).toEqual(["https://example.com/image.png"]);
@@ -91,6 +92,19 @@ describe("smart-reply-adapter", () => {
       collectQuestionImgs({
         content: { text: "文本", type: "text" },
         id: "msg-text",
+        role: "customer",
+      } as ChatMessage),
+    ).toEqual([]);
+    expect(
+      collectQuestionImgs({
+        content: {
+          alt: "表情",
+          imageUrl: "https://example.com/emotion.gif",
+          type: "image",
+          variant: "emotion",
+        },
+        id: "msg-emotion",
+        rawMsgtype: "emotion",
         role: "customer",
       } as ChatMessage),
     ).toEqual([]);
@@ -110,6 +124,7 @@ describe("smart-reply-adapter", () => {
           transVoiceText: "",
           type: "voice",
         },
+        rawMsgtype: "voice",
       }),
     ).toBe(false);
     expect(
@@ -120,6 +135,7 @@ describe("smart-reply-adapter", () => {
           transVoiceText: " 转写后的问题 ",
           type: "voice",
         },
+        rawMsgtype: "voice",
       }),
     ).toBe(true);
     expect(
@@ -130,6 +146,7 @@ describe("smart-reply-adapter", () => {
           imageUrl: "",
           type: "image",
         },
+        rawMsgtype: "image",
       }),
     ).toBe(false);
     expect(
@@ -140,6 +157,7 @@ describe("smart-reply-adapter", () => {
           imageUrl: "",
           type: "image",
         } as ChatMessage["content"],
+        rawMsgtype: "image",
       }),
     ).toBe(false);
     expect(
@@ -151,6 +169,7 @@ describe("smart-reply-adapter", () => {
           imageUrl: "https://example.com/product.png",
           type: "image",
         },
+        rawMsgtype: "image",
       }),
     ).toBe(false);
     expect(
@@ -161,6 +180,7 @@ describe("smart-reply-adapter", () => {
           imageUrl: "",
           type: "image",
         },
+        rawMsgtype: "image",
       }),
     ).toBe(false);
     expect(
@@ -172,6 +192,48 @@ describe("smart-reply-adapter", () => {
           imageUrl: "https://example.com/product.png",
           type: "image",
         },
+        rawMsgtype: "image",
+      }),
+    ).toBe(true);
+    expect(
+      isSmartReplyEligibleMessage({
+        ...baseMessage,
+        content: {
+          alt: "表情",
+          imageUrl: "https://example.com/emotion.gif",
+          type: "image",
+          variant: "emotion",
+        },
+        rawMsgtype: "emotion",
+      }),
+    ).toBe(false);
+    expect(
+      isSmartReplyEligibleMessage({
+        ...baseMessage,
+        content: {
+          text: "缺少原始消息类型",
+          type: "text",
+        },
+      }),
+    ).toBe(false);
+    expect(
+      isSmartReplyEligibleMessage({
+        ...baseMessage,
+        content: {
+          text: "[新消息]",
+          type: "text",
+        },
+        rawMsgtype: "unsupported-msgtype",
+      }),
+    ).toBe(false);
+    expect(
+      isSmartReplyEligibleMessage({
+        ...baseMessage,
+        content: {
+          text: "客户的问题",
+          type: "text",
+        },
+        rawMsgtype: "text",
       }),
     ).toBe(true);
   });
@@ -253,6 +315,7 @@ describe("smart-reply-adapter", () => {
           {
             content: { text: "旧消息", type: "text" },
             id: "msg-1",
+            rawMsgtype: "text",
             role: "customer",
             sender: { id: "cus-1", name: "客户" },
             sentAt: "2026-05-25T10:00:00+08:00",
@@ -263,6 +326,7 @@ describe("smart-reply-adapter", () => {
           {
             content: { text: "新消息", type: "text" },
             id: "msg-2",
+            rawMsgtype: "text",
             role: "customer",
             sender: { id: "cus-1", name: "客户" },
             sentAt: "2026-05-25T10:01:00+08:00",
@@ -277,6 +341,7 @@ describe("smart-reply-adapter", () => {
     const previousMessages = Array.from({ length: 150_000 }, (_, index) => ({
       content: { text: `旧消息 ${index + 1}`, type: "text" as const },
       id: `msg-${index + 1}`,
+      rawMsgtype: "text",
       role: "customer" as const,
       sender: { id: "cus-1", name: "客户" },
       sentAt: "2026-05-25T10:00:00+08:00",
@@ -288,6 +353,7 @@ describe("smart-reply-adapter", () => {
         {
           content: { text: "新消息", type: "text" },
           id: "msg-new",
+          rawMsgtype: "text",
           role: "customer",
           sender: { id: "cus-1", name: "客户" },
           sentAt: "2026-05-25T10:01:00+08:00",
@@ -304,6 +370,7 @@ describe("smart-reply-adapter", () => {
           {
             content: { text: "旧消息", type: "text" },
             id: "msg-100",
+            rawMsgtype: "text",
             role: "customer",
             sender: { id: "cus-1", name: "客户" },
             sentAt: "2026-05-25T10:00:00+08:00",
@@ -320,6 +387,7 @@ describe("smart-reply-adapter", () => {
           {
             content: { text: "历史补齐消息", type: "text" },
             id: "msg-90",
+            rawMsgtype: "text",
             role: "customer",
             sender: { id: "cus-1", name: "客户" },
             sentAt: "2026-05-25T09:59:00+08:00",
@@ -328,6 +396,7 @@ describe("smart-reply-adapter", () => {
           {
             content: { text: "新消息", type: "text" },
             id: "msg-101",
+            rawMsgtype: "text",
             role: "customer",
             sender: { id: "cus-1", name: "客户" },
             sentAt: "2026-05-25T10:01:00+08:00",
@@ -345,6 +414,7 @@ describe("smart-reply-adapter", () => {
           {
             content: { text: "首屏消息", type: "text" },
             id: "msg-1",
+            rawMsgtype: "text",
             role: "customer",
             sender: { id: "cus-1", name: "客户" },
             sentAt: "2026-05-25T10:00:00+08:00",
@@ -360,6 +430,7 @@ describe("smart-reply-adapter", () => {
       {
         content: { text: "已回复的问题", type: "text" },
         id: "msg-old-customer",
+        rawMsgtype: "text",
         role: "customer",
         sender: { id: "cus-1", name: "客户" },
         sentAt: "2026-05-25T10:00:00+08:00",
@@ -376,6 +447,7 @@ describe("smart-reply-adapter", () => {
       ...Array.from({ length: 6 }, (_, index) => ({
         content: { text: `未回复问题 ${index + 1}`, type: "text" as const },
         id: `msg-new-${index + 1}`,
+        rawMsgtype: "text",
         role: "customer" as const,
         sender: { id: "cus-1", name: "客户" },
         sentAt: `2026-05-25T10:0${index + 2}:00+08:00`,
@@ -398,6 +470,7 @@ describe("smart-reply-adapter", () => {
         {
           content: { text: "客户问题", type: "text" },
           id: "msg-customer",
+          rawMsgtype: "text",
           role: "customer",
           sender: { id: "cus-1", name: "客户" },
           sentAt: "2026-05-25T10:00:00+08:00",
@@ -422,6 +495,7 @@ describe("smart-reply-adapter", () => {
           {
             content: { text: "旧消息", type: "text" },
             id: "msg-1",
+            rawMsgtype: "text",
             role: "customer",
             sender: { id: "cus-1", name: "客户" },
             sentAt: "2026-05-25T10:00:00+08:00",
@@ -432,6 +506,7 @@ describe("smart-reply-adapter", () => {
           {
             content: { text: "新问题", type: "text" },
             id: "msg-2",
+            rawMsgtype: "text",
             role: "customer",
             sender: { id: "cus-1", name: "客户" },
             sentAt: "2026-05-25T10:01:00+08:00",
@@ -454,6 +529,7 @@ describe("smart-reply-adapter", () => {
     const customerMessage = {
       content: { text: "客户消息", type: "text" },
       id: "msg-1",
+      rawMsgtype: "text",
       role: "customer",
     } as ChatMessage;
 
@@ -487,6 +563,7 @@ describe("smart-reply-adapter", () => {
             imageUrl: "https://example.com/image.png",
             type: "image",
           },
+          rawMsgtype: "image",
         },
         undefined,
       ),
@@ -501,6 +578,7 @@ describe("smart-reply-adapter", () => {
             imageUrl: "https://example.com/image.png",
             type: "image",
           },
+          rawMsgtype: "image",
         },
         undefined,
       ),
@@ -937,6 +1015,7 @@ describe("smart-reply-adapter", () => {
           {
             content: { text: "待推荐 1", type: "text" },
             id: "msg-1",
+            rawMsgtype: "text",
             role: "customer",
             sender: { id: "cus-1", name: "客户" },
             sentAt: "2026-05-25T10:01:00+08:00",
@@ -945,6 +1024,7 @@ describe("smart-reply-adapter", () => {
           {
             content: { text: "待推荐 2", type: "text" },
             id: "msg-2",
+            rawMsgtype: "text",
             role: "customer",
             sender: { id: "cus-1", name: "客户" },
             sentAt: "2026-05-25T10:02:00+08:00",
@@ -953,6 +1033,7 @@ describe("smart-reply-adapter", () => {
           {
             content: { text: "未加入 pending", type: "text" },
             id: "msg-3",
+            rawMsgtype: "text",
             role: "customer",
             sender: { id: "cus-1", name: "客户" },
             sentAt: "2026-05-25T10:03:00+08:00",
@@ -983,6 +1064,7 @@ describe("smart-reply-adapter", () => {
           {
             content: { text: "已被回复的问题", type: "text" },
             id: "msg-1",
+            rawMsgtype: "text",
             role: "customer",
             sender: { id: "cus-1", name: "客户" },
             sentAt: "2026-05-25T10:01:00+08:00",

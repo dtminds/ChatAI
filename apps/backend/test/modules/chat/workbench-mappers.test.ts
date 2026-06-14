@@ -350,6 +350,7 @@ describe("workbench MySQL mappers", () => {
       customerId: "external-1",
       messageId: "remote-msg-101",
       optNo: "opt-001",
+      rawMsgtype: "text",
       seatId: "12",
       senderAvatar: "",
       senderName: undefined,
@@ -447,6 +448,22 @@ describe("workbench MySQL mappers", () => {
         text: "[暂不支持显示该消息]",
       },
       contentType: "text",
+      rawMsgtype: "",
+    });
+  });
+
+  it("normalizes missing raw message types to an empty string", () => {
+    expect(
+      mapMessageRow(messageRow({
+        content: null,
+        msgtype: null as unknown as string,
+      })),
+    ).toMatchObject({
+      content: {
+        text: "[暂不支持显示该消息]",
+      },
+      contentType: "text",
+      rawMsgtype: "",
     });
   });
 

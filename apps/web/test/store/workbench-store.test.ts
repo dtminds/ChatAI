@@ -92,6 +92,7 @@ function createHistoryMessageDto(
     createdAt: 1_778_400_000_000 + seq * 1_000,
     customerId: "cust-001",
     messageId: id,
+    rawMsgtype: "text",
     seatId: "drc",
     senderType: seq % 2 === 0 ? "agent" : "customer",
     seq,
@@ -125,6 +126,7 @@ function createDownloadFileMessageDto({
     createdAt: 1_778_400_000_000 + seq * 1_000,
     customerId: "cust-001",
     messageId: id,
+    rawMsgtype: "file",
     seatId: "drc",
     senderType: "customer",
     seq,
@@ -154,6 +156,7 @@ function createSmartReplyTextMessageDto({
     createdAt: 1_778_400_000_000 + seq * 1_000,
     customerId: "cust-001",
     messageId: id,
+    rawMsgtype: "text",
     seatId: "drc",
     senderType,
     seq,
@@ -184,6 +187,7 @@ function createSmartReplyVoiceMessageDto({
     createdAt: 1_778_400_000_000 + seq * 1_000,
     customerId: "cust-001",
     messageId: id,
+    rawMsgtype: "voice",
     seatId: "drc",
     senderType: "customer",
     seq,
@@ -438,6 +442,63 @@ describe("useWorkbenchStore", () => {
         pollComplete: true,
       },
     });
+  });
+
+  it("drops page smart replies for messages whose raw type cannot trigger recommendations", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          messages: [
+            {
+              content: {
+                alt: "表情",
+                imageUrl: "https://cdn.example.com/emotion.gif",
+              },
+              contentType: "emotion",
+              conversationId: "conv-001",
+              createdAt: 1_778_400_010_000,
+              customerId: "cust-001",
+              messageId: "msg-emotion-10",
+              rawMsgtype: "emotion",
+              seatId: "drc",
+              senderType: "customer",
+              seq: 10,
+              status: "sent",
+            },
+          ],
+          smartReplies: [
+            {
+              assistantName: "智能助手",
+              content: "不应该展示",
+              messageId: "10",
+              pollComplete: true,
+              status: "ready",
+            },
+          ],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    expect(
+      useWorkbenchStore.getState().smartReplyByMessageIdByConversationId["conv-001"],
+    ).toEqual({});
+    expect(
+      useWorkbenchStore.getState().smartReplyPendingMessageKeysByConversationId[
+        "conv-001"
+      ],
+    ).toEqual({});
   });
 
   it("keeps but hides page smart replies for messages already followed by an agent reply", async () => {
@@ -858,6 +919,7 @@ describe("useWorkbenchStore", () => {
               createdAt: 1_778_400_011_000,
               customerId: "cust-001",
               messageId: "img-11",
+              rawMsgtype: "image",
               seatId: "drc",
               senderType: "customer",
               seq: 11,
@@ -922,6 +984,7 @@ describe("useWorkbenchStore", () => {
               createdAt: 1_778_400_011_000,
               customerId: "cust-001",
               messageId: "img-11",
+              rawMsgtype: "image",
               seatId: "drc",
               senderType: "customer",
               seq: 11,
@@ -3654,6 +3717,7 @@ describe("useWorkbenchStore", () => {
                 createdAt: 1_778_840_010_000,
                 customerId: "cust-001",
                 messageId: "829",
+                rawMsgtype: "text",
                 seatId: "drc",
                 senderType: "customer",
                 seq: 829,
@@ -4100,6 +4164,7 @@ describe("useWorkbenchStore", () => {
                 createdAt: 1_778_410_200_000,
                 customerId: "cust-001",
                 messageId: "999999",
+                rawMsgtype: "text",
                 seatId: "drc",
                 senderAvatar: "",
                 senderName: "幽灵消息",
@@ -4255,6 +4320,7 @@ describe("useWorkbenchStore", () => {
               createdAt: Date.now() - index,
               customerId: "cust-001",
               messageId: `revoke-older-message-${index}`,
+              rawMsgtype: "revoke",
               seatId: "drc",
               senderType: "system" as const,
               seq: beforeSeq - index - 1,
@@ -5502,6 +5568,7 @@ describe("useWorkbenchStore", () => {
                 createdAt: 1_778_999_000_000,
                 customerId: hydratedConversation.customerId,
                 messageId: "msg-search-001",
+                rawMsgtype: "text",
                 seatId: hydratedConversation.seatId,
                 senderType: "customer",
                 seq: 1,

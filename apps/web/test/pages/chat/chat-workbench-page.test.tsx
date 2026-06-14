@@ -132,6 +132,7 @@ function createSmartReplyTextMessageDto({
     createdAt: 1_778_400_000_000 + seq * 1_000,
     customerId: "cust-001",
     messageId: id,
+    rawMsgtype: "text",
     seatId: "drc",
     senderType,
     seq,

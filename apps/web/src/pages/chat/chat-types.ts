@@ -278,6 +278,7 @@ type BaseMessage = {
   clientMessageId?: string;
   isNew?: boolean;
   optNo?: string;
+  rawMsgtype?: string;
   remoteMessageId?: string;
   seq?: number;
   failReason?: string;

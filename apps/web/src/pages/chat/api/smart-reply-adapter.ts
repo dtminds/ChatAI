@@ -19,11 +19,7 @@ export const SMART_REPLY_CONTENT_INCOMPLETE_SKIP_MESSAGE = "content_incomplete_s
 export const SMART_REPLY_CONTENT_INCOMPLETE_SKIP_HINT =
   "这条消息信息不足，已跳过话术推荐";
 
-const SMART_REPLY_TRIGGER_CONTENT_TYPES = new Set<MessageContent["type"]>([
-  "text",
-  "image",
-  "voice",
-]);
+const SMART_REPLY_TRIGGER_RAW_MSGTYPES = new Set(["text", "image", "voice"]);
 
 /** 语音/图片消息先展示媒体处理文案，再切到生成话术的提示 */
 export const SMART_REPLY_MEDIA_PROCESSING_HINT_MS = 2000;
@@ -35,6 +31,22 @@ export const SMART_REPLY_POLL_INTERVAL_MS = 1000;
 export const SMART_REPLY_BUSY_TIMEOUT_MS = 30000;
 
 export const SMART_REPLY_INITIAL_CANDIDATE_LIMIT = 5;
+
+function isSmartReplyQuestionImageContent(
+  content: MessageContent,
+): content is Extract<MessageContent, { type: "image" }> {
+  return content.type === "image" && content.variant !== "emotion";
+}
+
+export function hasSmartReplyTriggerRawMsgtype(message: Pick<ChatMessage, "rawMsgtype">) {
+  const rawMsgtype = message.rawMsgtype?.trim();
+
+  return rawMsgtype ? SMART_REPLY_TRIGGER_RAW_MSGTYPES.has(rawMsgtype) : false;
+}
+
+function hasSmartReplyImageRawMsgtype(message: ChatMessage) {
+  return message.rawMsgtype?.trim() === "image";
+}
 
 export function getSmartReplyProcessingLabel(
   contentType: MessageContent["type"],
@@ -68,7 +80,11 @@ export function resolveSmartReplyProcessingLabel(
 }
 
 export function collectQuestionImgs(message: ChatMessage) {
-  if (message.content.type === "image" && message.content.imageUrl.trim()) {
+  if (
+    hasSmartReplyImageRawMsgtype(message) &&
+    isSmartReplyQuestionImageContent(message.content) &&
+    message.content.imageUrl.trim()
+  ) {
     return [message.content.imageUrl.trim()];
   }
 
@@ -140,16 +156,31 @@ export function isSmartReplyEligibleMessage(message: ChatMessage) {
     message.role !== "customer" ||
     message.isOwnMessage ||
     message.isRevoked ||
-    message.isGroupConversation ||
-    !SMART_REPLY_TRIGGER_CONTENT_TYPES.has(message.content.type)
+    message.isGroupConversation
   ) {
     return false;
   }
 
-  switch (message.content.type) {
+  if (!hasSmartReplyTriggerRawMsgtype(message)) {
+    return false;
+  }
+
+  switch (message.rawMsgtype?.trim()) {
     case "voice":
+      if (message.content.type !== "voice") {
+        return false;
+      }
+
       return Boolean(message.content.transVoiceText?.trim());
     case "image":
+      if (message.content.type !== "image") {
+        return false;
+      }
+
+      if (!isSmartReplyQuestionImageContent(message.content)) {
+        return false;
+      }
+
       if (
         message.content.downloadStatus !== undefined &&
         message.content.downloadStatus !== "finished"
@@ -158,8 +189,10 @@ export function isSmartReplyEligibleMessage(message: ChatMessage) {
       }
 
       return Boolean(message.content.imageUrl?.trim());
+    case "text":
+      return message.content.type === "text";
     default:
-      return true;
+      return false;
   }
 }
 

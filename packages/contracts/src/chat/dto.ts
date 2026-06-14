@@ -218,6 +218,7 @@ export type WorkbenchMessageBaseDto = {
   senderAvatar?: string;
   senderType: "customer" | "agent" | "system";
   contentType: WorkbenchMessageContentType;
+  rawMsgtype: string;
   status: WorkbenchMessageStatus;
   content: Record<string, unknown>;
   createdAt?: number;

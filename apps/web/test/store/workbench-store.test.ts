@@ -2363,6 +2363,89 @@ describe("useWorkbenchStore", () => {
     expect(useWorkbenchStore.getState().isPollBaselineFresh).toBe(false);
   });
 
+  it("preserves business state references when poll has no business changes", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        return {
+          activeConversationMessages: [],
+          conversationChanges: [],
+          nextVersion: request.sinceVersion + 1,
+          seatChanges: [],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.getState().clearActiveConversation();
+
+    const beforePoll = useWorkbenchStore.getState();
+    const references = {
+      accounts: beforePoll.accounts,
+      conversationListsByScope: beforePoll.conversationListsByScope,
+      groupMembersByConversationId: beforePoll.groupMembersByConversationId,
+      groupMembersLoadingByConversationId:
+        beforePoll.groupMembersLoadingByConversationId,
+      hasMoreHistoryByConversationId: beforePoll.hasMoreHistoryByConversationId,
+      historyPanelByConversationId: beforePoll.historyPanelByConversationId,
+      historyStatusByConversationId: beforePoll.historyStatusByConversationId,
+      messagePaginationByConversationId:
+        beforePoll.messagePaginationByConversationId,
+      messagesByConversationId: beforePoll.messagesByConversationId,
+      pendingMessages: beforePoll.pendingMessages,
+      smartReplyByMessageIdByConversationId:
+        beforePoll.smartReplyByMessageIdByConversationId,
+      smartReplyHiddenMessageKeysByConversationId:
+        beforePoll.smartReplyHiddenMessageKeysByConversationId,
+      smartReplyPendingMessageKeysByConversationId:
+        beforePoll.smartReplyPendingMessageKeysByConversationId,
+    };
+
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    const afterPoll = useWorkbenchStore.getState();
+
+    expect(afterPoll.accounts).toBe(references.accounts);
+    expect(afterPoll.conversationListsByScope).toBe(
+      references.conversationListsByScope,
+    );
+    expect(afterPoll.groupMembersByConversationId).toBe(
+      references.groupMembersByConversationId,
+    );
+    expect(afterPoll.groupMembersLoadingByConversationId).toBe(
+      references.groupMembersLoadingByConversationId,
+    );
+    expect(afterPoll.hasMoreHistoryByConversationId).toBe(
+      references.hasMoreHistoryByConversationId,
+    );
+    expect(afterPoll.historyPanelByConversationId).toBe(
+      references.historyPanelByConversationId,
+    );
+    expect(afterPoll.historyStatusByConversationId).toBe(
+      references.historyStatusByConversationId,
+    );
+    expect(afterPoll.messagePaginationByConversationId).toBe(
+      references.messagePaginationByConversationId,
+    );
+    expect(afterPoll.messagesByConversationId).toBe(
+      references.messagesByConversationId,
+    );
+    expect(afterPoll.pendingMessages).toBe(references.pendingMessages);
+    expect(afterPoll.smartReplyByMessageIdByConversationId).toBe(
+      references.smartReplyByMessageIdByConversationId,
+    );
+    expect(afterPoll.smartReplyHiddenMessageKeysByConversationId).toBe(
+      references.smartReplyHiddenMessageKeysByConversationId,
+    );
+    expect(afterPoll.smartReplyPendingMessageKeysByConversationId).toBe(
+      references.smartReplyPendingMessageKeysByConversationId,
+    );
+    expect(afterPoll.sinceVersion).toBe(beforePoll.sinceVersion + 1);
+    expect(afterPoll.isPollBaselineFresh).toBe(false);
+  });
+
   it("omits active conversation parameters from poll when no conversation is bound", async () => {
     const baseService = createMockWorkbenchService();
     const observedPollRequests: Parameters<typeof baseService.poll>[0][] = [];

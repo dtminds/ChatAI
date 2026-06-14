@@ -12,6 +12,7 @@ import { AlertCircleIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { useShallow } from "zustand/react/shallow";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -200,7 +201,8 @@ function ChatWorkbenchContent({
     smartReplyAutoPendingMessageKeysByConversationId,
     smartReplyByMessageIdByConversationId,
     smartReplyHiddenMessageKeysByConversationId,
-    pollState,
+    pollIntervalMs,
+    pollJitterMs,
     pollWorkbench,
     dismissSmartReply,
     requestSmartReplyGeneralAnswer,
@@ -236,7 +238,91 @@ function ChatWorkbenchContent({
     updateMessageDownloadContent,
     confirmVoicePlaybackReady,
     transcribeVoiceMessage,
-  } = useWorkbenchStore();
+  } = useWorkbenchStore(
+    useShallow((state) => ({
+      accounts: state.accounts,
+      activeAccountId: state.activeAccountId,
+      activeConversationId: state.activeConversationId,
+      activeMode: state.activeMode,
+      bootstrapError: state.bootstrapError,
+      bootstrapStatus: state.bootstrapStatus,
+      clearActiveConversation: state.clearActiveConversation,
+      clearComposerDraft: state.clearComposerDraft,
+      clearRevokeMessageError: state.clearRevokeMessageError,
+      closeHistoryPanel: state.closeHistoryPanel,
+      composerDraftsByConversationId: state.composerDraftsByConversationId,
+      confirmVoicePlaybackReady: state.confirmVoicePlaybackReady,
+      conversationListsByScope: state.conversationListsByScope,
+      customerProfilesById: state.customerProfilesById,
+      deleteConversation: state.deleteConversation,
+      dismissReadReceiptError: state.dismissReadReceiptError,
+      dismissScopeTransitionError: state.dismissScopeTransitionError,
+      dismissSmartReply: state.dismissSmartReply,
+      groupMembersByConversationId: state.groupMembersByConversationId,
+      groupMembersLoadingByConversationId:
+        state.groupMembersLoadingByConversationId,
+      hasMoreHistoryByConversationId: state.hasMoreHistoryByConversationId,
+      historyPanelByConversationId: state.historyPanelByConversationId,
+      historyPanelErrorByConversationId:
+        state.historyPanelErrorByConversationId,
+      historyPanelFiltersByConversationId:
+        state.historyPanelFiltersByConversationId,
+      historyPanelLoadingByConversationId:
+        state.historyPanelLoadingByConversationId,
+      historyPanelOpenConversationId: state.historyPanelOpenConversationId,
+      historyPanelScrollModeByConversationId:
+        state.historyPanelScrollModeByConversationId,
+      historyStatusByConversationId: state.historyStatusByConversationId,
+      initializeWorkbench: state.initializeWorkbench,
+      isConversationLoading: state.isConversationLoading,
+      loadActiveGroupMembers: state.loadActiveGroupMembers,
+      loadHistoryMessages: state.loadHistoryMessages,
+      loadOlderMessages: state.loadOlderMessages,
+      markConversationRead: state.markConversationRead,
+      markConversationUnread: state.markConversationUnread,
+      me: state.me,
+      messagePaginationByConversationId:
+        state.messagePaginationByConversationId,
+      messagesByConversationId: state.messagesByConversationId,
+      openHistoryPanel: state.openHistoryPanel,
+      pinConversation: state.pinConversation,
+      pollIntervalMs: state.pollState.intervalMs,
+      pollJitterMs: state.pollState.jitterMs,
+      pollWorkbench: state.pollWorkbench,
+      readReceiptError: state.readReceiptError,
+      refreshSeatSummaries: state.refreshSeatSummaries,
+      requestSmartReplyGeneralAnswer: state.requestSmartReplyGeneralAnswer,
+      requestSmartReplyMakeShorter: state.requestSmartReplyMakeShorter,
+      retryFailedMessage: state.retryFailedMessage,
+      revokeMessage: state.revokeMessage,
+      revokeMessageError: state.revokeMessageError,
+      saveComposerDraft: state.saveComposerDraft,
+      scopeTransitionError: state.scopeTransitionError,
+      selectOrCreateAndSelectConversation:
+        state.selectOrCreateAndSelectConversation,
+      sendAgentMessageSegments: state.sendAgentMessageSegments,
+      sendSmartReply: state.sendSmartReply,
+      setActiveAccount: state.setActiveAccount,
+      setActiveConversation: state.setActiveConversation,
+      setActiveMode: state.setActiveMode,
+      setChatSendPermission: state.setChatSendPermission,
+      setHistoryPanelDay: state.setHistoryPanelDay,
+      setHistoryPanelScope: state.setHistoryPanelScope,
+      setHistoryPanelSenderId: state.setHistoryPanelSenderId,
+      sidebarItems: state.sidebarItems,
+      smartReplyAutoPendingMessageKeysByConversationId:
+        state.smartReplyAutoPendingMessageKeysByConversationId,
+      smartReplyByMessageIdByConversationId:
+        state.smartReplyByMessageIdByConversationId,
+      smartReplyHiddenMessageKeysByConversationId:
+        state.smartReplyHiddenMessageKeysByConversationId,
+      takeOverAccount: state.takeOverAccount,
+      takeoverStatusByAccountId: state.takeoverStatusByAccountId,
+      transcribeVoiceMessage: state.transcribeVoiceMessage,
+      unpinConversation: state.unpinConversation,
+      updateMessageDownloadContent: state.updateMessageDownloadContent,
+    })),
+  );
   const subUser = useAuthStore((state) => state.subUser);
 
   const [draft, setDraft] = useState("");
@@ -623,8 +709,8 @@ function ChatWorkbenchContent({
     activeAccountId,
     bootstrapStatus,
     currentUserId: me?.id,
-    intervalMs: pollState.intervalMs,
-    jitterMs: pollState.jitterMs,
+    intervalMs: pollIntervalMs,
+    jitterMs: pollJitterMs,
     onPollingPaused: handlePollingPaused,
     refreshSeatSummaries,
     pollWorkbench,

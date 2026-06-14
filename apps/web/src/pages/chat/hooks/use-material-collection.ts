@@ -531,7 +531,10 @@ export function useMaterialCollection({
           messageId,
         });
       } catch (error) {
-        if (isMountedRef.current) {
+        if (
+          isMountedRef.current &&
+          message.conversationId === resolvedActiveConversationIdRef.current
+        ) {
           toast.warning(getMaterialErrorMessage(error, "分组加载失败"));
         }
       } finally {
@@ -558,6 +561,7 @@ export function useMaterialCollection({
       }
 
       setIsCollectingMaterial(true);
+      const collectionConversationId = pendingMaterialCollection.conversationId;
 
       try {
         const response = await getWorkbenchService().collectMaterial({
@@ -569,7 +573,10 @@ export function useMaterialCollection({
           title: payload.title,
         });
 
-        if (!isMountedRef.current) {
+        if (
+          !isMountedRef.current ||
+          collectionConversationId !== resolvedActiveConversationIdRef.current
+        ) {
           return;
         }
 
@@ -584,7 +591,10 @@ export function useMaterialCollection({
           groupId: payload.groupId,
         });
       } catch (error) {
-        if (isMountedRef.current) {
+        if (
+          isMountedRef.current &&
+          collectionConversationId === resolvedActiveConversationIdRef.current
+        ) {
           toast.warning(getMaterialErrorMessage(error, "收录失败，请稍后重试"));
         }
       } finally {
@@ -611,6 +621,7 @@ export function useMaterialCollection({
       }
 
       setIsCollectingMaterial(true);
+      const collectionConversationId = pendingMaterialCollection.conversationId;
 
       try {
         const group = await getWorkbenchService().createMaterialGroup({
@@ -618,7 +629,10 @@ export function useMaterialCollection({
           title,
         });
 
-        if (!isMountedRef.current) {
+        if (
+          !isMountedRef.current ||
+          collectionConversationId !== resolvedActiveConversationIdRef.current
+        ) {
           return undefined;
         }
 
@@ -628,7 +642,10 @@ export function useMaterialCollection({
         ]);
         return group;
       } catch (error) {
-        if (isMountedRef.current) {
+        if (
+          isMountedRef.current &&
+          collectionConversationId === resolvedActiveConversationIdRef.current
+        ) {
           toast.warning(getMaterialErrorMessage(error, "新建分组失败"));
         }
         return undefined;
@@ -1032,11 +1049,16 @@ export function useMaterialCollection({
         return;
       }
 
+      const sendingConversationId = resolvedActiveConversationIdRef.current;
+
       setIsMaterialLibrarySending(true);
       try {
         const result = await sendAgentMessageSegments([materialSegment]);
 
-        if (!isMountedRef.current) {
+        if (
+          !isMountedRef.current ||
+          sendingConversationId !== resolvedActiveConversationIdRef.current
+        ) {
           return;
         }
 

@@ -1688,7 +1688,7 @@ function ChatWorkbenchContent({
           return;
         }
 
-        window.alert("后续接入发送接口");
+        toast.warning(getMaterialSendUnavailableMessage(item.contentType));
         return;
       }
 
@@ -3069,6 +3069,24 @@ function buildComposerSegmentFromMaterial(
   }
 
   return undefined;
+}
+
+function getMaterialSendUnavailableMessage(
+  contentType: WorkbenchMaterialCollectionItemDto["contentType"],
+) {
+  if (contentType === "emotion") {
+    return "自定义表情发送功能内测中，即将开放";
+  }
+
+  if (contentType === "mini-program") {
+    return "小程序发送功能内测中，即将开放";
+  }
+
+  if (contentType === "sphfeed") {
+    return "视频号发送功能内测中，即将开放";
+  }
+
+  return "发送功能内测中，即将开放";
 }
 
 function readMaterialContentString(value: unknown) {

@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { toast } from "sonner";
 import { MATERIAL_COLLECTION_BIZ_TYPE } from "@chatai/contracts";
 import { createMockWorkbenchService, setWorkbenchService } from "@/pages/chat/api/workbench-service";
 import { useWorkbenchStore } from "@/store/workbench-store";
@@ -10,20 +9,8 @@ import {
   mediaUploadMocks,
   renderChatWorkbenchPage,
   resetChatWorkbenchTestState,
+  workbenchToastWarningMock,
 } from "./workbench-test-utils";
-
-vi.mock("sonner", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("sonner")>();
-
-  return {
-    ...actual,
-    toast: {
-      ...actual.toast,
-      success: vi.fn(),
-      warning: vi.fn(),
-    },
-  };
-});
 
 function createDeferred<T = void>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
@@ -513,10 +500,9 @@ describe("ChatWorkbenchPage composer flows", () => {
     });
   });
 
-  it("switches to collected expressions from the WeChat emoji picker footer and alerts when selected", async () => {
+  it("switches to collected expressions from the WeChat emoji picker footer and shows the send preview notice when selected", async () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();
-    const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => undefined);
     const listMaterialCollections = vi.fn(async (request) => {
       if (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION) {
         return baseService.listMaterialCollections(request);
@@ -592,7 +578,11 @@ describe("ChatWorkbenchPage composer flows", () => {
       await screen.findByRole("button", { name: "发送收藏表情 贴贴表情" }),
     );
 
-    expect(alertSpy).toHaveBeenCalledWith("后续接入发送接口");
+    await waitFor(() => {
+      expect(workbenchToastWarningMock).toHaveBeenCalledWith(
+        "自定义表情发送功能内测中，即将开放",
+      );
+    });
     expect(sendMessage).not.toHaveBeenCalled();
   });
 
@@ -842,10 +832,83 @@ describe("ChatWorkbenchPage composer flows", () => {
     expect(screen.getByText("小程序分组")).toBeInTheDocument();
   });
 
+  it("shows the send preview notice when sending a collected mini-program material", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+    const listMaterialGroups = vi.fn(async (request) => {
+      if (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM) {
+        return baseService.listMaterialGroups(request);
+      }
+
+      return {
+        groups: [
+          {
+            bizType: MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM,
+            id: "group-mini",
+            sort: 100,
+            title: "小程序分组",
+          },
+        ],
+      };
+    });
+    const listMaterialCollections = vi.fn(async (request) => {
+      if (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM) {
+        return baseService.listMaterialCollections(request);
+      }
+
+      return {
+        items: [
+          {
+            bizType: MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM,
+            content: {
+              appName: "企微助手",
+              title: "客户跟进小程序",
+            },
+            contentType: "mini-program" as const,
+            groupId: "group-mini",
+            id: "material-mini-001",
+            messageId: "msg-mini-001",
+            sort: 1,
+            title: "客户跟进小程序",
+          },
+        ],
+        pagination: {
+          hasMore: false,
+          page: request.page ?? 1,
+          pageSize: 100,
+          total: 1,
+        },
+      };
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      listMaterialCollections,
+      listMaterialGroups,
+      sendMessage,
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getByRole("button", { name: "收藏小程序" }));
+    await user.click(
+      await screen.findByRole("button", { name: /选择素材 客户跟进小程序/ }),
+    );
+    await user.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(sendMessage).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(workbenchToastWarningMock).toHaveBeenCalledWith(
+        "小程序发送功能内测中，即将开放",
+      );
+    });
+  });
+
   it("sends a collected file material as a file segment", async () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();
-    const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => undefined);
     const sendMessage = vi.fn(baseService.sendMessage);
     const listMaterialGroups = vi.fn(async (request) => {
       if (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.FILE) {
@@ -913,7 +976,6 @@ describe("ChatWorkbenchPage composer flows", () => {
     );
     await user.click(screen.getByRole("button", { name: "发送" }));
 
-    expect(alertSpy).not.toHaveBeenCalled();
     await waitFor(() => {
       expect(sendMessage).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -949,7 +1011,6 @@ describe("ChatWorkbenchPage composer flows", () => {
   it("sends a collected H5 material as an h5 segment", async () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();
-    const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => undefined);
     const sendMessage = vi.fn(baseService.sendMessage);
     const listMaterialGroups = vi.fn(async (request) => {
       if (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.H5) {
@@ -1013,7 +1074,6 @@ describe("ChatWorkbenchPage composer flows", () => {
     await user.click(await screen.findByRole("button", { name: /选择素材 红包来啦/ }));
     await user.click(screen.getByRole("button", { name: "发送" }));
 
-    expect(alertSpy).not.toHaveBeenCalled();
     await waitFor(() => {
       expect(sendMessage).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1044,7 +1104,6 @@ describe("ChatWorkbenchPage composer flows", () => {
   it("sends a collected H5 material stored with legacy linkUrl field", async () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();
-    const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => undefined);
     const sendMessage = vi.fn(baseService.sendMessage);
     const listMaterialGroups = vi.fn(async (request) => {
       if (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.H5) {
@@ -1107,7 +1166,6 @@ describe("ChatWorkbenchPage composer flows", () => {
     await user.click(await screen.findByRole("button", { name: /选择素材 活动页/ }));
     await user.click(screen.getByRole("button", { name: "发送" }));
 
-    expect(alertSpy).not.toHaveBeenCalled();
     await waitFor(() => {
       expect(sendMessage).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1133,10 +1191,9 @@ describe("ChatWorkbenchPage composer flows", () => {
     });
   });
 
-  it("alerts when sending a collected sphfeed material", async () => {
+  it("shows the send preview notice when sending a collected sphfeed material", async () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();
-    const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => undefined);
     const sendMessage = vi.fn(baseService.sendMessage);
     const listMaterialGroups = vi.fn(async (request) => {
       if (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED) {
@@ -1202,7 +1259,11 @@ describe("ChatWorkbenchPage composer flows", () => {
     await user.click(screen.getByRole("button", { name: "发送" }));
 
     expect(sendMessage).not.toHaveBeenCalled();
-    expect(alertSpy).toHaveBeenCalledWith("后续接入发送接口");
+    await waitFor(() => {
+      expect(workbenchToastWarningMock).toHaveBeenCalledWith(
+        "视频号发送功能内测中，即将开放",
+      );
+    });
   });
 
   it("keeps the selected material group after managing an item", async () => {
@@ -1539,7 +1600,7 @@ describe("ChatWorkbenchPage composer flows", () => {
       }),
     ).toBeInTheDocument();
     expect(screen.getByText("请选择不超过 10 MB 的文件")).toBeInTheDocument();
-    expect(vi.mocked(toast.warning)).not.toHaveBeenCalledWith("文件大小不能超过 10 MB");
+    expect(workbenchToastWarningMock).not.toHaveBeenCalledWith("文件大小不能超过 10 MB");
   });
 
   it("blocks conversation switching while a file is uploading", async () => {

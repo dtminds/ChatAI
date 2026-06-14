@@ -27,7 +27,7 @@
     "altcha-lib": "^2.0.3",
     "argon2": "^0.44.0",
     "fastify": "^5.6.2",
-    "fastify-plugin": "^5.1.0",
+    "fastify-plugin": "^6.0.0",
     "ioredis": "^5.11.1",
     "kysely": "^0.29.0",
     "mysql2": "^3.15.3"

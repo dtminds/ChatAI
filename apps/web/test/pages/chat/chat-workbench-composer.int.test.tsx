@@ -514,7 +514,7 @@ describe("ChatWorkbenchPage composer flows", () => {
             bizType: MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION,
             content: {
               alt: "贴贴表情",
-              imageUrl: "https://example.com/expression.gif",
+              fileUrl: "https://example.com/expression.gif",
             },
             contentType: "emotion" as const,
             groupId: 0 as const,
@@ -638,7 +638,7 @@ describe("ChatWorkbenchPage composer flows", () => {
             bizType: MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION,
             content: {
               alt: "贴贴表情",
-              imageUrl: "https://example.com/expression.gif",
+              fileUrl: "https://example.com/expression.gif",
             },
             contentType: "emotion" as const,
             groupId: 0 as const,
@@ -711,7 +711,7 @@ describe("ChatWorkbenchPage composer flows", () => {
             bizType: MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION,
             content: {
               alt: `贴贴表情${page}`,
-              imageUrl: `https://example.com/expression-${page}.gif`,
+              fileUrl: `https://example.com/expression-${page}.gif`,
             },
             contentType: "emotion" as const,
             groupId: 0 as const,

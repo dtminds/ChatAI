@@ -159,10 +159,7 @@ function toExpressionContent(item: MaterialCollectionItem): ImageMessageContent 
   return {
     alt: readString(item.content.alt) || item.title || "表情",
     height: readNumber(item.content.height),
-    imageUrl:
-      readString(item.content.imageUrl) ||
-      readString(item.content.url) ||
-      readString(item.content.fileUrl),
+    imageUrl: readString(item.content.fileUrl),
     type: "image",
     variant: "emotion",
     width: readNumber(item.content.width),

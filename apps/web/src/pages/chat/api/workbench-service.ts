@@ -983,7 +983,7 @@ export function createMockWorkbenchService(): WorkbenchService {
         return {
           seatId: payload.seatId,
           clientMessageId: buildSegmentClientMessageId(payload.clientMessageId, index),
-          content: buildPayloadSegmentContent(segment, quoteForSegment),
+          content: buildPayloadSegmentContent(state, segment, quoteForSegment),
           contentType: quoteForSegment
             ? "quote"
             : getPayloadSegmentContentType(segment),
@@ -2446,6 +2446,7 @@ function getPayloadSegments(payload: WorkbenchSendMessagePayload) {
 }
 
 function buildPayloadSegmentContent(
+  state: MockState,
   segment: ReturnType<typeof getPayloadSegments>[number],
   quote?: WorkbenchSendMessagePayload["quote"],
 ) {
@@ -2468,46 +2469,78 @@ function buildPayloadSegmentContent(
   }
 
   if (segment.type === "emotion") {
+    const materialContent = getMockMaterialContentRecord(state, segment.materialCollectionId);
+    const fileUrl = readString(materialContent.fileUrl);
+
     return {
       alt: "自定义表情",
-      imageUrl: "mock://material-expression",
-      variant: "emotion",
+      fileUrl: fileUrl ?? "mock://material-expression",
     };
   }
 
   if (segment.type === "file") {
+    const materialContent = segment.materialCollectionId
+      ? getMockMaterialContentRecord(state, segment.materialCollectionId)
+      : {};
+    const fileName = readString(materialContent.fileName) ?? segment.fileName;
+    const fileUrl = readString(materialContent.fileUrl) ?? segment.url;
+
     return {
-      extension: segment.extension,
-      fileName: segment.fileName,
-      fileSizeLabel: segment.fileSizeLabel ?? "",
-      fileUrl: segment.url,
+      extension: readString(materialContent.extension) ?? segment.extension,
+      fileName,
+      fileSizeLabel: readString(materialContent.fileSizeLabel) ?? segment.fileSizeLabel ?? "",
+      fileUrl,
       sourceLabel: "文件",
     };
   }
 
   if (segment.type === "h5") {
+    const materialContent = segment.materialCollectionId
+      ? getMockMaterialContentRecord(state, segment.materialCollectionId)
+      : {};
+
     return {
-      description: segment.desc ?? "",
-      previewImageUrl: segment.coverUrl,
+      description:
+        readString(materialContent.description) ??
+        readString(materialContent.desc) ??
+        segment.desc ??
+        "",
+      previewImageUrl:
+        readString(materialContent.previewImageUrl) ??
+        readString(materialContent.coverUrl) ??
+        segment.coverUrl,
       sourceLabel: "链接",
-      title: segment.title,
-      url: segment.href,
+      title: readString(materialContent.title) ?? segment.title,
+      url:
+        readString(materialContent.url) ??
+        readString(materialContent.href) ??
+        segment.href,
     };
   }
 
   if (segment.type === "weapp") {
+    const materialContent = getMockMaterialContentRecord(state, segment.materialCollectionId);
+
     return {
-      appName: "小程序",
-      sourceLabel: "小程序",
-      title: "小程序",
+      appName: readString(materialContent.appName) ?? "小程序",
+      coverImageUrl:
+        readString(materialContent.coverImageUrl) ??
+        readString(materialContent.imageUrl),
+      logoUrl: readString(materialContent.logoUrl),
+      sourceLabel: readString(materialContent.sourceLabel) ?? "小程序",
+      title: readString(materialContent.title) ?? "小程序",
     };
   }
 
   if (segment.type === "sphfeed") {
+    const materialContent = getMockMaterialContentRecord(state, segment.materialCollectionId);
+
     return {
-      description: "",
-      sourceLabel: "视频号",
-      title: "视频号",
+      description: readString(materialContent.description) ?? "",
+      imageUrl: readString(materialContent.imageUrl),
+      sourceLabel: readString(materialContent.sourceLabel) ?? "视频号",
+      title: readString(materialContent.title) ?? "视频号",
+      url: readString(materialContent.url),
     };
   }
 
@@ -2520,6 +2553,12 @@ function buildPayloadSegmentContent(
   return {
     text: "",
   };
+}
+
+function getMockMaterialContentRecord(state: MockState, materialCollectionId: string) {
+  const item = state.materialItems.find((materialItem) => materialItem.id === materialCollectionId);
+
+  return item ? getMaterialContentRecordFromItem(item) : {};
 }
 
 function getPayloadSegmentContentType(

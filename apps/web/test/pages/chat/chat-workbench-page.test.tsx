@@ -1559,7 +1559,7 @@ describe("ChatWorkbenchPage", () => {
               ...page.messages[0],
               content: {
                 alt: "收藏表情",
-                imageUrl: "https://example.com/emotion.gif",
+                fileUrl: "https://example.com/emotion.gif",
               },
               contentType: "emotion",
               messageId: "msg-emotion-collect-001",

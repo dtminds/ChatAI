@@ -696,7 +696,7 @@ describe("adaptMessage", () => {
           ...messageDto,
           content: {
             alt: "表情",
-            imageUrl: "https://cdn.example.com/emotion.gif",
+            fileUrl: "https://cdn.example.com/emotion.gif",
           },
           contentType: "emotion",
           rawMsgtype: "emotion",

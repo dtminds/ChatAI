@@ -138,7 +138,7 @@ function createExpressionMaterialItem(
   return {
     bizType: 1,
     content: {
-      imageUrl: "https://example.com/expression.gif",
+      fileUrl: "https://example.com/expression.gif",
     },
     contentType: "emotion",
     groupId: 0,
@@ -365,6 +365,31 @@ describe("useMaterialCollection", () => {
         type: "emotion",
       },
     ]);
+  });
+
+  it("rejects collected expression material without fileUrl", async () => {
+    const sendAgentMessageSegments = vi.fn(async () => ({ ok: true as const }));
+
+    const { result } = renderHook(() =>
+      useMaterialCollection(
+        createDefaultOptions({
+          sendAgentMessageSegments,
+        }),
+      ),
+    );
+
+    await act(async () => {
+      await result.current.handleSelectMaterial(
+        createExpressionMaterialItem({
+          content: {
+            url: "https://example.com/legacy-expression.gif",
+          },
+        }),
+      );
+    });
+
+    expect(sendAgentMessageSegments).not.toHaveBeenCalled();
+    expect(toast.warning).toHaveBeenCalledWith("表情素材数据异常");
   });
 
   it("calls send failure callback when material send fails", async () => {

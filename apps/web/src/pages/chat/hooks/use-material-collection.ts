@@ -1242,10 +1242,7 @@ function buildExpressionComposerSegment(
 ): ComposerSegment | undefined {
   const materialCollectionId = item.id.trim();
   const contentRecord = isMaterialContentRecord(item.content);
-  const imageUrl =
-    readMaterialContentString(contentRecord.imageUrl) ||
-    readMaterialContentString(contentRecord.thumbUrl) ||
-    readMaterialContentString(contentRecord.fileUrl);
+  const imageUrl = readMaterialContentString(contentRecord.fileUrl);
 
   if (!materialCollectionId || !imageUrl) {
     return undefined;

@@ -462,7 +462,7 @@ describe("useWorkbenchStore", () => {
             {
               content: {
                 alt: "表情",
-                imageUrl: "https://cdn.example.com/emotion.gif",
+                fileUrl: "https://cdn.example.com/emotion.gif",
               },
               contentType: "emotion",
               conversationId: "conv-001",

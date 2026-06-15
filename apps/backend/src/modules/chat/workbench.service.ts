@@ -3036,9 +3036,9 @@ function buildForwardJavaSendMessageData(
   msgtype: "sphfeed" | "weapp",
   msgid: string,
 ): JavaSendMessageData {
-  const transMsgid = parseMySqlId(msgid);
+  const transMsgid = msgid.trim();
 
-  if (transMsgid == null) {
+  if (!transMsgid) {
     throw new BadRequestError("INVALID_TRANS_MESSAGE_ID", "转发消息 ID 无效");
   }
 

@@ -3079,6 +3079,45 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
+  it("rejects expression material sends when the stored file url is missing", async () => {
+    const javaClient = createJavaClient();
+    const repository = {
+      canAccessSeat: vi.fn().mockResolvedValue(true),
+      findMaterialCollectionForForward: vi.fn().mockResolvedValue({
+        content: JSON.stringify({
+          url: "https://example.com/legacy-expression.gif",
+        }),
+        msgid: "msg-expression-001",
+      }),
+      getConversationLookup: vi.fn().mockResolvedValue({
+        id: "88",
+        platform: 5,
+        seatId: "12",
+        seatHostSubUserId: "101",
+        thirdExternalUserId: "external-001",
+        thirdUserId: "seat-user-001",
+        uid: 9001,
+      }),
+    } as unknown as WorkbenchRepository;
+    const service = new MysqlWorkbenchService(repository, javaClient);
+
+    await expect(
+      service.sendMessage("101", {
+        clientMessageId: "local-emotion-invalid",
+        conversationId: "88",
+        seatId: "12",
+        segment: {
+          materialCollectionId: "65",
+          type: "emotion",
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "INVALID_EMOTION_MESSAGE",
+      statusCode: 400,
+    });
+    expect(javaClient.sendMessage).not.toHaveBeenCalled();
+  });
+
   it("maps a mini-program forward send to the Java send-message payload", async () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.sendMessage).mockResolvedValue({
@@ -3090,7 +3129,7 @@ describe("MysqlWorkbenchService", () => {
     const repository = {
       canAccessSeat: vi.fn().mockResolvedValue(true),
       findMaterialCollectionForForward: vi.fn().mockResolvedValue({
-        msgid: "1025657",
+        msgid: "msg-mini-001",
       }),
       getConversationLookup: vi.fn().mockResolvedValue({
         id: "88",
@@ -3126,7 +3165,7 @@ describe("MysqlWorkbenchService", () => {
       clientMessageId: "local-weapp-001",
       msgData: {
         msgtype: "weapp",
-        transMsgid: 1025657,
+        transMsgid: "msg-mini-001",
       },
       platform: 5,
       sendType: 1,
@@ -3148,7 +3187,7 @@ describe("MysqlWorkbenchService", () => {
     const repository = {
       canAccessSeat: vi.fn().mockResolvedValue(true),
       findMaterialCollectionForForward: vi.fn().mockResolvedValue({
-        msgid: "1025658",
+        msgid: "msg-sphfeed-001",
       }),
       getConversationLookup: vi.fn().mockResolvedValue({
         id: "88",
@@ -3184,7 +3223,7 @@ describe("MysqlWorkbenchService", () => {
       clientMessageId: "local-sphfeed-001",
       msgData: {
         msgtype: "sphfeed",
-        transMsgid: 1025658,
+        transMsgid: "msg-sphfeed-001",
       },
       platform: 5,
       sendType: 2,
@@ -3231,13 +3270,13 @@ describe("MysqlWorkbenchService", () => {
     expect(javaClient.sendMessage).not.toHaveBeenCalled();
   });
 
-  it("rejects forward sends when the stored source message id is invalid", async () => {
+  it("rejects forward sends when the stored source message id is blank", async () => {
     const javaClient = createJavaClient();
     const service = new MysqlWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         findMaterialCollectionForForward: vi.fn().mockResolvedValue({
-          msgid: "msg-mini-001",
+          msgid: "   ",
         }),
         getConversationLookup: vi.fn().mockResolvedValue({
           id: "88",

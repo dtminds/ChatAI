@@ -74,10 +74,7 @@ export function MaterialExpressionSection({
     <section className="p-4">
       <div className="grid grid-cols-[repeat(auto-fill,5rem)] gap-3">
         {items.map((item) => {
-          const imageUrl =
-            readString(item.content.imageUrl) ||
-            readString(item.content.url) ||
-            readString(item.content.fileUrl);
+          const imageUrl = readString(item.content.fileUrl);
           const isSending = sendingItemId === item.id;
 
           return (

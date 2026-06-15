@@ -110,11 +110,11 @@ export type JavaSendMessageData =
     }
   | {
       msgtype: "weapp";
-      transMsgid: number;
+      transMsgid: string;
     }
   | {
       msgtype: "sphfeed";
-      transMsgid: number;
+      transMsgid: string;
     }
   | ({
       msgtype: "quote";

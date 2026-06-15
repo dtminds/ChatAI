@@ -121,6 +121,27 @@ describe("material collection mappers", () => {
     });
   });
 
+  it("keeps normalized expression file url for material rendering and sending", () => {
+    expect(
+      mapMaterialCollectionItem(materialRow({
+        biz_type: MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION,
+        content: JSON.stringify({
+          fileUrl: "media/emotion.gif",
+        }),
+        msgid: "msg-expression-001",
+        title: "贴贴表情",
+      })),
+    ).toMatchObject({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION,
+      content: {
+        fileUrl: "https://b5.bokr.com.cn/media/emotion.gif",
+      },
+      contentType: "emotion",
+      messageId: "msg-expression-001",
+      title: "贴贴表情",
+    });
+  });
+
   it("normalizes string default group id to numeric zero", () => {
     expect(
       mapMaterialCollectionItem(materialRow({

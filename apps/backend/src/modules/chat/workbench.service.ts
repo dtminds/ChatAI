@@ -141,6 +141,7 @@ const MESSAGE_REVOKE_CLOCK_SKEW_TOLERANCE_MS = 5 * 1000;
 const SMART_REPLY_MESSAGE_PAGE_CANDIDATE_LIMIT = 5;
 const SMART_REPLY_TRIGGER_RAW_MSGTYPES = new Set(["text", "image", "voice"]);
 const MATERIAL_COLLECTION_GROUP_TITLE_MAX_LENGTH = 10;
+const DEFAULT_H5_COVER_URL = "https://b5.bokr.com.cn/dist/default-cover.png";
 
 type SmartReplyMessagePageMetadata = {
   smartReplyEnabled?: boolean;
@@ -1669,7 +1670,12 @@ export class MysqlWorkbenchService implements WorkbenchService {
     const response = await this.javaClient.sendMessage({
       clientMessageId: payload.clientMessageId,
       ...(failMsgId != null ? { failMsgId } : {}),
-      msgData: buildJavaSendMessageData(payload, segment),
+      msgData: await this.buildJavaSendMessageData(
+        conversation.uid,
+        subUserId,
+        payload,
+        segment,
+      ),
       platform: conversation.platform,
       sendType: conversation.thirdGroupId ? JAVA_SEND_TYPE.GROUP : JAVA_SEND_TYPE.SINGLE,
       source: JAVA_MESSAGE_SOURCE.WORKBENCH,
@@ -1699,6 +1705,64 @@ export class MysqlWorkbenchService implements WorkbenchService {
     );
 
     return response;
+  }
+
+  private async buildJavaSendMessageData(
+    uid: number,
+    subUserId: string,
+    payload: WorkbenchSendMessagePayload,
+    segment: WorkbenchOutgoingMessageSegment,
+  ): Promise<JavaSendMessageData> {
+    if (
+      segment.type === "emotion" ||
+      (segment.type === "file" && segment.materialCollectionId) ||
+      (segment.type === "h5" && segment.materialCollectionId) ||
+      segment.type === "weapp" ||
+      segment.type === "sphfeed"
+    ) {
+      const materialCollectionId = segment.materialCollectionId;
+
+      if (!materialCollectionId) {
+        throw new BadRequestError("INVALID_MATERIAL_COLLECTION", "素材数据异常");
+      }
+
+      const bizType =
+        segment.type === "emotion"
+          ? MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION
+          : segment.type === "file"
+          ? MATERIAL_COLLECTION_BIZ_TYPE.FILE
+          : segment.type === "h5"
+          ? MATERIAL_COLLECTION_BIZ_TYPE.H5
+          : segment.type === "weapp"
+          ? MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM
+          : MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED;
+      const collection = await this.repository.findMaterialCollectionForForward({
+        bizType,
+        id: materialCollectionId,
+        ...(segment.type === "emotion" ? { subUserId } : {}),
+        uid,
+      });
+
+      if (!collection) {
+        throw new NotFoundError("MATERIAL_COLLECTION_NOT_FOUND", "素材不存在");
+      }
+
+      if (segment.type === "emotion") {
+        return buildEmotionJavaSendMessageData(collection.content);
+      }
+
+      if (segment.type === "file") {
+        return buildFileJavaSendMessageData(collection.content);
+      }
+
+      if (segment.type === "h5") {
+        return buildH5JavaSendMessageData(collection.content);
+      }
+
+      return buildForwardJavaSendMessageData(segment.type, collection.msgid);
+    }
+
+    return buildJavaSendMessageData(payload, segment);
   }
 
   async revokeMessage(
@@ -2819,7 +2883,10 @@ function getSingleSendSegment(
 
 function buildJavaSendMessageData(
   payload: WorkbenchSendMessagePayload,
-  segment: WorkbenchOutgoingMessageSegment,
+  segment: Exclude<
+    WorkbenchOutgoingMessageSegment,
+    { type: "emotion" } | { type: "sphfeed" } | { type: "weapp" }
+  >,
 ): JavaSendMessageData {
   if (segment.type === "image") {
     const imageUrl = segment.url?.trim() || segment.localUrl?.trim();
@@ -2835,7 +2902,7 @@ function buildJavaSendMessageData(
   }
 
   if (segment.type === "file") {
-    const fileName = segment.fileName.trim();
+    const fileName = segment.fileName?.trim() ?? "";
     const fileUrl = segment.url?.trim();
 
     if (!fileName) {
@@ -2854,8 +2921,8 @@ function buildJavaSendMessageData(
   }
 
   if (segment.type === "h5") {
-    const title = segment.title.trim();
-    const href = segment.href.trim();
+    const title = segment.title?.trim() ?? "";
+    const href = segment.href?.trim() ?? "";
     const desc = segment.desc?.trim();
     const coverUrl = segment.coverUrl?.trim();
 
@@ -2868,7 +2935,7 @@ function buildJavaSendMessageData(
     }
 
     return {
-      ...(coverUrl ? { coverUrl } : {}),
+      coverUrl: coverUrl || DEFAULT_H5_COVER_URL,
       ...(desc ? { desc } : {}),
       href,
       msgtype: "link",
@@ -2905,6 +2972,80 @@ function buildJavaSendMessageData(
   }
 
   return message;
+}
+
+function buildEmotionJavaSendMessageData(content: string): JavaSendMessageData {
+  const record = parseMaterialContentRecord(content);
+  const fileUrl = readMaterialString(record, "fileUrl");
+
+  if (!fileUrl) {
+    throw new BadRequestError("INVALID_EMOTION_MESSAGE", "表情素材数据异常");
+  }
+
+  return {
+    fileUrl,
+    msgtype: "emotion",
+  };
+}
+
+function buildFileJavaSendMessageData(content: string): JavaSendMessageData {
+  const record = parseMaterialContentRecord(content);
+  const fileName = readMaterialString(record, "fileName");
+  const fileUrl = readMaterialString(record, "fileUrl");
+
+  if (!fileName || !fileUrl) {
+    throw new BadRequestError("INVALID_FILE_MESSAGE", "文件素材数据异常");
+  }
+
+  return {
+    fileName,
+    fileUrl,
+    msgtype: "file",
+  };
+}
+
+function buildH5JavaSendMessageData(content: string): JavaSendMessageData {
+  const record = parseMaterialContentRecord(content);
+  const title = readMaterialString(record, "title");
+  const href =
+    readMaterialString(record, "href") ||
+    readMaterialString(record, "url") ||
+    readMaterialString(record, "linkUrl");
+  const desc =
+    readMaterialString(record, "desc") ||
+    readMaterialString(record, "description");
+  const coverUrl =
+    readMaterialString(record, "coverUrl") ||
+    readMaterialString(record, "previewImageUrl") ||
+    readMaterialString(record, "imageUrl");
+
+  if (!title || !href) {
+    throw new BadRequestError("INVALID_H5_MESSAGE", "H5链接素材数据异常");
+  }
+
+  return {
+    coverUrl: coverUrl || DEFAULT_H5_COVER_URL,
+    ...(desc ? { desc } : {}),
+    href,
+    msgtype: "link",
+    title,
+  };
+}
+
+function buildForwardJavaSendMessageData(
+  msgtype: "sphfeed" | "weapp",
+  msgid: string,
+): JavaSendMessageData {
+  const transMsgid = msgid.trim();
+
+  if (!transMsgid) {
+    throw new BadRequestError("INVALID_TRANS_MESSAGE_ID", "转发消息 ID 无效");
+  }
+
+  return {
+    msgtype,
+    transMsgid,
+  };
 }
 
 function getRetryFailMsgId(payload: WorkbenchSendMessagePayload) {

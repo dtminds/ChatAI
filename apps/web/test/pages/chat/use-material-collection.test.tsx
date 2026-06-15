@@ -95,6 +95,61 @@ function createFileMaterialItem(
   };
 }
 
+function createMiniProgramMaterialItem(
+  overrides: Partial<WorkbenchMaterialCollectionItemDto> = {},
+): WorkbenchMaterialCollectionItemDto {
+  return {
+    bizType: 3,
+    content: {
+      appName: "企微助手",
+      title: "客户跟进小程序",
+    },
+    contentType: "mini-program",
+    groupId: "group-mini",
+    id: "material-mini",
+    messageId: "1025657",
+    sort: 1_781_244_000_000,
+    title: "客户跟进小程序",
+    ...overrides,
+  };
+}
+
+function createSphfeedMaterialItem(
+  overrides: Partial<WorkbenchMaterialCollectionItemDto> = {},
+): WorkbenchMaterialCollectionItemDto {
+  return {
+    bizType: 5,
+    content: {
+      title: "都市快报",
+    },
+    contentType: "sphfeed",
+    groupId: "group-sphfeed",
+    id: "material-sphfeed",
+    messageId: "1025658",
+    sort: 1_781_244_000_000,
+    title: "都市快报",
+    ...overrides,
+  };
+}
+
+function createExpressionMaterialItem(
+  overrides: Partial<WorkbenchMaterialCollectionItemDto> = {},
+): WorkbenchMaterialCollectionItemDto {
+  return {
+    bizType: 1,
+    content: {
+      fileUrl: "https://example.com/expression.gif",
+    },
+    contentType: "emotion",
+    groupId: 0,
+    id: "material-expression",
+    messageId: "msg-expression-001",
+    sort: 1_781_244_000_000,
+    title: "贴贴表情",
+    ...overrides,
+  };
+}
+
 describe("useMaterialCollection", () => {
   afterEach(() => {
     resetWorkbenchService();
@@ -232,6 +287,7 @@ describe("useMaterialCollection", () => {
       {
         extension: "pdf",
         fileName: "报价单.pdf",
+        materialCollectionId: "material-file",
         type: "file",
         url: "https://example.com/files/quote.pdf",
       },
@@ -239,6 +295,101 @@ describe("useMaterialCollection", () => {
     expect(onSent).toHaveBeenCalledTimes(1);
     expect(requestActiveConversationRead).toHaveBeenCalledTimes(1);
     expect(result.current.activeMaterialLibraryBizType).toBeNull();
+  });
+
+  it("sends a collected mini-program material by forwarding its source message", async () => {
+    const sendAgentMessageSegments = vi.fn(async () => ({ ok: true as const }));
+
+    const { result } = renderHook(() =>
+      useMaterialCollection(
+        createDefaultOptions({
+          sendAgentMessageSegments,
+        }),
+      ),
+    );
+
+    await act(async () => {
+      await result.current.handleSelectMaterial(createMiniProgramMaterialItem());
+    });
+
+    expect(sendAgentMessageSegments).toHaveBeenCalledWith([
+      expect.objectContaining({
+        materialCollectionId: "material-mini",
+        type: "weapp",
+      }),
+    ]);
+  });
+
+  it("sends a collected sphfeed material by forwarding its source message", async () => {
+    const sendAgentMessageSegments = vi.fn(async () => ({ ok: true as const }));
+
+    const { result } = renderHook(() =>
+      useMaterialCollection(
+        createDefaultOptions({
+          sendAgentMessageSegments,
+        }),
+      ),
+    );
+
+    await act(async () => {
+      await result.current.handleSelectMaterial(createSphfeedMaterialItem());
+    });
+
+    expect(sendAgentMessageSegments).toHaveBeenCalledWith([
+      expect.objectContaining({
+        materialCollectionId: "material-sphfeed",
+        type: "sphfeed",
+      }),
+    ]);
+  });
+
+  it("sends a collected expression material as an emotion segment", async () => {
+    const sendAgentMessageSegments = vi.fn(async () => ({ ok: true as const }));
+
+    const { result } = renderHook(() =>
+      useMaterialCollection(
+        createDefaultOptions({
+          sendAgentMessageSegments,
+        }),
+      ),
+    );
+
+    await act(async () => {
+      await result.current.handleSelectMaterial(createExpressionMaterialItem());
+    });
+
+    expect(sendAgentMessageSegments).toHaveBeenCalledWith([
+      {
+        imageUrl: "https://example.com/expression.gif",
+        materialCollectionId: "material-expression",
+        type: "emotion",
+      },
+    ]);
+  });
+
+  it("rejects collected expression material without fileUrl", async () => {
+    const sendAgentMessageSegments = vi.fn(async () => ({ ok: true as const }));
+
+    const { result } = renderHook(() =>
+      useMaterialCollection(
+        createDefaultOptions({
+          sendAgentMessageSegments,
+        }),
+      ),
+    );
+
+    await act(async () => {
+      await result.current.handleSelectMaterial(
+        createExpressionMaterialItem({
+          content: {
+            url: "https://example.com/legacy-expression.gif",
+          },
+        }),
+      );
+    });
+
+    expect(sendAgentMessageSegments).not.toHaveBeenCalled();
+    expect(toast.warning).toHaveBeenCalledWith("表情素材数据异常");
   });
 
   it("calls send failure callback when material send fails", async () => {
@@ -293,7 +444,7 @@ describe("useMaterialCollection", () => {
     });
 
     expect(sendAgentMessageSegments).not.toHaveBeenCalled();
-    expect(toast.warning).toHaveBeenCalledWith("文件素材内容不完整");
+    expect(toast.warning).toHaveBeenCalledWith("文件素材数据异常");
   });
 
   it("does not refresh collected expressions after expression mutation resolves when unmounted", async () => {

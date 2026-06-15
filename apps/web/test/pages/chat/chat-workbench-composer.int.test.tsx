@@ -74,6 +74,34 @@ async function expectLatestConversationMessage(
   });
 }
 
+async function expectSentConversationMessage(
+  conversationId: string,
+  sendMessage: ReturnType<typeof vi.fn>,
+  expectedMessage: object,
+) {
+  let sentMessage:
+    | NonNullable<
+        ReturnType<typeof useWorkbenchStore.getState>["messagesByConversationId"][string]
+      >[number]
+    | undefined;
+
+  await waitFor(async () => {
+    const sendResult = await sendMessage.mock.results[0]?.value;
+    const messageId = sendResult?.messageId;
+
+    expect(messageId).toBeTruthy();
+    sentMessage = useWorkbenchStore
+      .getState()
+      .messagesByConversationId[conversationId]
+      .find((message) => message.remoteMessageId === messageId);
+    expect(
+      sentMessage,
+    ).toMatchObject(expectedMessage);
+  });
+
+  return sentMessage;
+}
+
 describe("ChatWorkbenchPage composer flows", () => {
   beforeEach(() => {
     vi.useRealTimers();
@@ -500,7 +528,7 @@ describe("ChatWorkbenchPage composer flows", () => {
     });
   });
 
-  it("switches to collected expressions from the WeChat emoji picker footer and shows the send preview notice when selected", async () => {
+  it("switches to collected expressions from the WeChat emoji picker footer and sends the selected expression", async () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();
     const listMaterialCollections = vi.fn(async (request) => {
@@ -514,7 +542,7 @@ describe("ChatWorkbenchPage composer flows", () => {
             bizType: MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION,
             content: {
               alt: "贴贴表情",
-              imageUrl: "https://example.com/expression.gif",
+              fileUrl: "https://example.com/expression.gif",
             },
             contentType: "emotion" as const,
             groupId: 0 as const,
@@ -532,7 +560,8 @@ describe("ChatWorkbenchPage composer flows", () => {
         },
       };
     });
-    const sendMessage = vi.fn(baseService.sendMessage);
+    const sendGate = createDeferred<Awaited<ReturnType<typeof baseService.sendMessage>>>();
+    const sendMessage = vi.fn(() => sendGate.promise);
 
     setWorkbenchService({
       ...baseService,
@@ -574,16 +603,51 @@ describe("ChatWorkbenchPage composer flows", () => {
       page: 1,
       pageSize: 100,
     });
-    await user.click(
-      await screen.findByRole("button", { name: "发送收藏表情 贴贴表情" }),
-    );
+    const expressionButton = await screen.findByRole("button", {
+      name: "发送收藏表情 贴贴表情",
+    });
+    await user.click(expressionButton);
 
     await waitFor(() => {
-      expect(workbenchToastWarningMock).toHaveBeenCalledWith(
-        "自定义表情发送功能内测中，即将开放",
+      expect(sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          conversationId: "conv-001",
+          seatId: "drc",
+          segment: {
+            materialCollectionId: "material-expression-001",
+            type: "emotion",
+          },
+        }),
       );
     });
-    expect(sendMessage).not.toHaveBeenCalled();
+    expect(expressionButton).toBeDisabled();
+    expect(
+      within(expressionButton).getByRole("status", { name: "发送中" }),
+    ).toBeInTheDocument();
+
+    sendGate.resolve({
+      clientMessageId: "local-expression-001",
+      messageId: "msg-expression-sent-001",
+      status: "accepted",
+    });
+
+    expect(workbenchToastWarningMock).not.toHaveBeenCalledWith(
+      "自定义表情发送功能内测中，即将开放",
+    );
+    await expectLatestConversationMessage("conv-001", {
+      content: {
+        imageUrl: "https://example.com/expression.gif",
+        type: "image",
+        variant: "emotion",
+      },
+      role: "agent",
+      status: "accepted",
+    });
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("button", { name: "发送收藏表情 贴贴表情" }),
+      ).not.toBeInTheDocument();
+    });
   });
 
   it("manages collected expressions from the custom emoji context menu", async () => {
@@ -602,7 +666,7 @@ describe("ChatWorkbenchPage composer flows", () => {
             bizType: MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION,
             content: {
               alt: "贴贴表情",
-              imageUrl: "https://example.com/expression.gif",
+              fileUrl: "https://example.com/expression.gif",
             },
             contentType: "emotion" as const,
             groupId: 0 as const,
@@ -675,7 +739,7 @@ describe("ChatWorkbenchPage composer flows", () => {
             bizType: MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION,
             content: {
               alt: `贴贴表情${page}`,
-              imageUrl: `https://example.com/expression-${page}.gif`,
+              fileUrl: `https://example.com/expression-${page}.gif`,
             },
             contentType: "emotion" as const,
             groupId: 0 as const,
@@ -832,7 +896,7 @@ describe("ChatWorkbenchPage composer flows", () => {
     expect(screen.getByText("小程序分组")).toBeInTheDocument();
   });
 
-  it("shows the send preview notice when sending a collected mini-program material", async () => {
+  it("sends a collected mini-program material as a source-message forward", async () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();
     const sendMessage = vi.fn(baseService.sendMessage);
@@ -898,11 +962,27 @@ describe("ChatWorkbenchPage composer flows", () => {
     );
     await user.click(screen.getByRole("button", { name: "发送" }));
 
-    expect(sendMessage).not.toHaveBeenCalled();
     await waitFor(() => {
-      expect(workbenchToastWarningMock).toHaveBeenCalledWith(
-        "小程序发送功能内测中，即将开放",
+      expect(sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          conversationId: "conv-001",
+          seatId: "drc",
+          segment: expect.objectContaining({
+            materialCollectionId: "material-mini-001",
+            type: "weapp",
+          }),
+        }),
       );
+    });
+    expect(sendMessage.mock.calls[0]?.[0].segment).not.toHaveProperty("href");
+    expect(sendMessage.mock.calls[0]?.[0].segment).not.toHaveProperty("url");
+    await expectSentConversationMessage("conv-001", sendMessage, {
+      content: {
+        appName: "企微助手",
+        title: "客户跟进小程序",
+        type: "mini-program",
+      },
+      role: "agent",
     });
   });
 
@@ -982,16 +1062,15 @@ describe("ChatWorkbenchPage composer flows", () => {
           conversationId: "conv-001",
           seatId: "drc",
           segment: {
-            extension: "pdf",
-            fileName: "报价单.pdf",
-            fileSizeLabel: "128 KB",
+            materialCollectionId: "material-file-001",
             type: "file",
-            url: "https://example.com/files/quote.pdf",
           },
         }),
       );
     });
-    await expectLatestConversationMessage("conv-001", {
+    expect(sendMessage.mock.calls[0]?.[0].segment).not.toHaveProperty("href");
+    expect(sendMessage.mock.calls[0]?.[0].segment).not.toHaveProperty("url");
+    const sentMessage = await expectSentConversationMessage("conv-001", sendMessage, {
       content: {
         extension: "pdf",
         fileName: "报价单.pdf",
@@ -1001,11 +1080,7 @@ describe("ChatWorkbenchPage composer flows", () => {
       },
       role: "agent",
     });
-    const latestMessage =
-      useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1);
-    expect(latestMessage?.status === "accepted" || latestMessage?.status === "sent").toBe(
-      true,
-    );
+    expect(sentMessage?.status === "accepted" || sentMessage?.status === "sent").toBe(true);
   });
 
   it("sends a collected H5 material as an h5 segment", async () => {
@@ -1080,16 +1155,13 @@ describe("ChatWorkbenchPage composer flows", () => {
           conversationId: "conv-001",
           seatId: "drc",
           segment: {
-            coverUrl: "https://example.com/redpacket.png",
-            desc: "恭喜发财，大吉大利",
-            href: "https://example.com/redpacket",
-            title: "红包来啦",
+            materialCollectionId: "material-h5-001",
             type: "h5",
           },
         }),
       );
     });
-    await expectLatestConversationMessage("conv-001", {
+    await expectSentConversationMessage("conv-001", sendMessage, {
       content: {
         description: "恭喜发财，大吉大利",
         previewImageUrl: "https://example.com/redpacket.png",
@@ -1172,15 +1244,13 @@ describe("ChatWorkbenchPage composer flows", () => {
           conversationId: "conv-001",
           seatId: "drc",
           segment: {
-            desc: "活动说明",
-            href: "https://example.com/legacy-page",
-            title: "活动页",
+            materialCollectionId: "material-h5-link-url",
             type: "h5",
           },
         }),
       );
     });
-    await expectLatestConversationMessage("conv-001", {
+    await expectSentConversationMessage("conv-001", sendMessage, {
       content: {
         description: "活动说明",
         title: "活动页",
@@ -1191,7 +1261,7 @@ describe("ChatWorkbenchPage composer flows", () => {
     });
   });
 
-  it("shows the send preview notice when sending a collected sphfeed material", async () => {
+  it("sends a collected sphfeed material as a source-message forward", async () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();
     const sendMessage = vi.fn(baseService.sendMessage);
@@ -1258,11 +1328,24 @@ describe("ChatWorkbenchPage composer flows", () => {
     await user.click(await screen.findByRole("button", { name: /选择素材 都市快报/ }));
     await user.click(screen.getByRole("button", { name: "发送" }));
 
-    expect(sendMessage).not.toHaveBeenCalled();
     await waitFor(() => {
-      expect(workbenchToastWarningMock).toHaveBeenCalledWith(
-        "视频号发送功能内测中，即将开放",
+      expect(sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          conversationId: "conv-001",
+          seatId: "drc",
+          segment: expect.objectContaining({
+            materialCollectionId: "material-sphfeed-001",
+            type: "sphfeed",
+          }),
+        }),
       );
+    });
+    await expectSentConversationMessage("conv-001", sendMessage, {
+      content: {
+        title: "都市快报",
+        type: "sphfeed",
+      },
+      role: "agent",
     });
   });
 

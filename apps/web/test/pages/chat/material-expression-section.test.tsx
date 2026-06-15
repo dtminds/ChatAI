@@ -62,6 +62,24 @@ describe("MaterialExpressionSection", () => {
     await user.click(await screen.findByRole("menuitem", { name: "删除" }));
     expect(handleDelete).toHaveBeenCalledWith(item);
   });
+
+  it("does not render expression images when fileUrl is missing", () => {
+    render(
+      <MaterialExpressionSection
+        items={[
+          createExpressionItem({
+            content: {
+              alt: "表情",
+              url: "https://cdn.example.com/legacy-emotion.gif",
+            },
+          }),
+        ]}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole("img", { name: "表情" })).not.toBeInTheDocument();
+  });
 });
 
 function createExpressionItem(
@@ -71,7 +89,7 @@ function createExpressionItem(
     bizType: MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION,
     content: {
       alt: "表情",
-      imageUrl: "https://cdn.example.com/emotion.gif",
+      fileUrl: "https://cdn.example.com/emotion.gif",
     },
     contentType: "emotion",
     groupId: 0,

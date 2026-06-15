@@ -16,11 +16,18 @@ export type ComposerImageSegment = {
   width?: number;
 };
 
+export type ComposerEmotionSegment = {
+  type: "emotion";
+  materialCollectionId: string;
+  imageUrl: string;
+};
+
 export type ComposerFileSegment = {
   type: "file";
   extension: string;
   fileId?: string;
   fileName: string;
+  materialCollectionId?: string;
   fileSize?: number;
   fileSizeLabel?: string;
   url?: string;
@@ -30,15 +37,39 @@ export type ComposerH5Segment = {
   type: "h5";
   coverUrl?: string;
   desc?: string;
-  href: string;
+  href?: string;
+  materialCollectionId?: string;
   title: string;
+};
+
+export type ComposerMiniProgramSegment = {
+  type: "weapp";
+  materialCollectionId: string;
+  appName?: string;
+  coverImageUrl?: string;
+  logoUrl?: string;
+  sourceLabel?: string;
+  title?: string;
+};
+
+export type ComposerSphfeedSegment = {
+  type: "sphfeed";
+  materialCollectionId: string;
+  description?: string;
+  imageUrl?: string;
+  sourceLabel?: string;
+  title?: string;
+  url?: string;
 };
 
 export type ComposerSegment =
   | ComposerTextSegment
   | ComposerImageSegment
+  | ComposerEmotionSegment
   | ComposerFileSegment
-  | ComposerH5Segment;
+  | ComposerH5Segment
+  | ComposerMiniProgramSegment
+  | ComposerSphfeedSegment;
 
 export function normalizeComposerSegments(
   segments: ComposerSegment[],
@@ -98,8 +129,20 @@ export function getComposerSegmentsPreview(segments: ComposerSegment[]) {
     return "[图片]";
   }
 
+  if (normalizedSegments.some((segment) => segment.type === "emotion")) {
+    return "[表情]";
+  }
+
   if (normalizedSegments.some((segment) => segment.type === "h5")) {
     return "[链接]";
+  }
+
+  if (normalizedSegments.some((segment) => segment.type === "weapp")) {
+    return "[小程序]";
+  }
+
+  if (normalizedSegments.some((segment) => segment.type === "sphfeed")) {
+    return "[视频号]";
   }
 
   return normalizedSegments.some((segment) => segment.type === "file")

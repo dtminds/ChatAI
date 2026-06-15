@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { MATERIAL_COLLECTION_BIZ_TYPE } from "@chatai/contracts";
 import type { MessageRow } from "../../../src/modules/chat/workbench-mappers.js";
 import {
   decodeConversationListCursor,
@@ -907,6 +908,75 @@ describe("WorkbenchRepository", () => {
       ["sub_uid", "=", 88],
       ["msgid", "=", "msg-file-77"],
     ]);
+  });
+
+  it("looks up active enterprise material collection msgid for forward sends", async () => {
+    const db = createMaterialDb({
+      xy_wap_embed_material_collection: {
+        content: JSON.stringify({ title: "客户跟进小程序" }),
+        msgid: "1025657",
+      },
+    });
+    const repository = new WorkbenchRepository(db as never);
+
+    await expect(
+      repository.findMaterialCollectionForForward({
+        bizType: 3,
+        id: "66",
+        uid: 9001,
+      }),
+    ).resolves.toEqual({
+      content: JSON.stringify({ title: "客户跟进小程序" }),
+      msgid: "1025657",
+    });
+
+    expect(db.selects[0]).toMatchObject({
+      table: "xy_wap_embed_material_collection",
+      wheres: [
+        ["id", "=", 66],
+        ["uid", "=", 9001],
+        ["biz_type", "=", 3],
+        ["sub_uid", "=", 0],
+        ["biz_status", "=", 1],
+      ],
+    });
+  });
+
+  it("looks up active expression material collection in current sub-user scope", async () => {
+    const db = createMaterialDb({
+      xy_wap_embed_material_collection: {
+        content: JSON.stringify({
+          fileUrl: "https://example.com/expression.gif",
+        }),
+        msgid: "msg-expression-001",
+      },
+    });
+    const repository = new WorkbenchRepository(db as never);
+
+    await expect(
+      repository.findMaterialCollectionForForward({
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION,
+        id: "65",
+        subUserId: "101",
+        uid: 9001,
+      }),
+    ).resolves.toEqual({
+      content: JSON.stringify({
+        fileUrl: "https://example.com/expression.gif",
+      }),
+      msgid: "msg-expression-001",
+    });
+
+    expect(db.selects[0]).toMatchObject({
+      table: "xy_wap_embed_material_collection",
+      wheres: [
+        ["id", "=", 65],
+        ["uid", "=", 9001],
+        ["biz_type", "=", MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION],
+        ["sub_uid", "=", 101],
+        ["biz_status", "=", 1],
+      ],
+    });
   });
 
   it("returns false when material group has active collections", async () => {

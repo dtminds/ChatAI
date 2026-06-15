@@ -93,6 +93,10 @@ export type JavaSendMessageData =
       msgtype: "image";
     }
   | {
+      fileUrl: string;
+      msgtype: "emotion";
+    }
+  | {
       fileName: string;
       fileUrl: string;
       msgtype: "file";
@@ -103,6 +107,14 @@ export type JavaSendMessageData =
       href: string;
       msgtype: "link";
       title: string;
+    }
+  | {
+      msgtype: "weapp";
+      transMsgid: string;
+    }
+  | {
+      msgtype: "sphfeed";
+      transMsgid: string;
     }
   | ({
       msgtype: "quote";

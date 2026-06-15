@@ -983,14 +983,16 @@ export function createMockWorkbenchService(): WorkbenchService {
         return {
           seatId: payload.seatId,
           clientMessageId: buildSegmentClientMessageId(payload.clientMessageId, index),
-          content: buildPayloadSegmentContent(segment, quoteForSegment),
-          contentType: quoteForSegment ? "quote" : segment.type,
+          content: buildPayloadSegmentContent(state, segment, quoteForSegment),
+          contentType: quoteForSegment
+            ? "quote"
+            : getPayloadSegmentContentType(segment),
           conversationId: payload.conversationId,
           createdAt: now + index,
           customerId: conversation.customerId,
           failReason: outcome.reason,
           messageId,
-          rawMsgtype: quoteForSegment ? "quote" : segment.type,
+          rawMsgtype: quoteForSegment ? "quote" : getPayloadSegmentRawMsgtype(segment),
           senderType: "agent" as const,
           seq: nextSeq,
           status: outcome.status,
@@ -2444,6 +2446,7 @@ function getPayloadSegments(payload: WorkbenchSendMessagePayload) {
 }
 
 function buildPayloadSegmentContent(
+  state: MockState,
   segment: ReturnType<typeof getPayloadSegments>[number],
   quote?: WorkbenchSendMessagePayload["quote"],
 ) {
@@ -2465,29 +2468,117 @@ function buildPayloadSegmentContent(
     };
   }
 
-  if (segment.type === "file") {
+  if (segment.type === "emotion") {
+    const materialContent = getMockMaterialContentRecord(state, segment.materialCollectionId);
+    const fileUrl = readString(materialContent.fileUrl);
+
     return {
-      extension: segment.extension,
-      fileName: segment.fileName,
-      fileSizeLabel: segment.fileSizeLabel ?? "",
-      fileUrl: segment.url,
+      alt: "自定义表情",
+      fileUrl: fileUrl ?? "mock://material-expression",
+    };
+  }
+
+  if (segment.type === "file") {
+    const materialContent = segment.materialCollectionId
+      ? getMockMaterialContentRecord(state, segment.materialCollectionId)
+      : {};
+    const fileName = readString(materialContent.fileName) ?? segment.fileName;
+    const fileUrl = readString(materialContent.fileUrl) ?? segment.url;
+
+    return {
+      extension: readString(materialContent.extension) ?? segment.extension,
+      fileName,
+      fileSizeLabel: readString(materialContent.fileSizeLabel) ?? segment.fileSizeLabel ?? "",
+      fileUrl,
       sourceLabel: "文件",
     };
   }
 
   if (segment.type === "h5") {
+    const materialContent = segment.materialCollectionId
+      ? getMockMaterialContentRecord(state, segment.materialCollectionId)
+      : {};
+
     return {
-      description: segment.desc ?? "",
-      previewImageUrl: segment.coverUrl,
+      description:
+        readString(materialContent.description) ??
+        readString(materialContent.desc) ??
+        segment.desc ??
+        "",
+      previewImageUrl:
+        readString(materialContent.previewImageUrl) ??
+        readString(materialContent.coverUrl) ??
+        segment.coverUrl,
       sourceLabel: "链接",
-      title: segment.title,
-      url: segment.href,
+      title: readString(materialContent.title) ?? segment.title,
+      url:
+        readString(materialContent.url) ??
+        readString(materialContent.href) ??
+        segment.href,
+    };
+  }
+
+  if (segment.type === "weapp") {
+    const materialContent = getMockMaterialContentRecord(state, segment.materialCollectionId);
+
+    return {
+      appName: readString(materialContent.appName) ?? "小程序",
+      coverImageUrl:
+        readString(materialContent.coverImageUrl) ??
+        readString(materialContent.imageUrl),
+      logoUrl: readString(materialContent.logoUrl),
+      sourceLabel: readString(materialContent.sourceLabel) ?? "小程序",
+      title: readString(materialContent.title) ?? "小程序",
+    };
+  }
+
+  if (segment.type === "sphfeed") {
+    const materialContent = getMockMaterialContentRecord(state, segment.materialCollectionId);
+
+    return {
+      description: readString(materialContent.description) ?? "",
+      imageUrl: readString(materialContent.imageUrl),
+      sourceLabel: readString(materialContent.sourceLabel) ?? "视频号",
+      title: readString(materialContent.title) ?? "视频号",
+      url: readString(materialContent.url),
+    };
+  }
+
+  if (segment.type === "text") {
+    return {
+      text: segment.text,
     };
   }
 
   return {
-    text: segment.text,
+    text: "",
   };
+}
+
+function getMockMaterialContentRecord(state: MockState, materialCollectionId: string) {
+  const item = state.materialItems.find((materialItem) => materialItem.id === materialCollectionId);
+
+  return item ? getMaterialContentRecordFromItem(item) : {};
+}
+
+function getPayloadSegmentContentType(
+  segment: ReturnType<typeof getPayloadSegments>[number],
+): WorkbenchMessageDto["contentType"] {
+  if (segment.type === "emotion") {
+    return "image";
+  }
+
+  if (segment.type === "weapp") {
+    return "mini-program";
+  }
+
+  return segment.type;
+}
+
+function getPayloadSegmentRawMsgtype(
+  segment: ReturnType<typeof getPayloadSegments>[number],
+) {
+  return segment.type;
 }
 
 function findMessageByIdOrSeq(
@@ -2619,7 +2710,23 @@ function getPayloadPreview(segments: ReturnType<typeof getPayloadSegments>) {
     return "[图片]";
   }
 
-  return segments.some((segment) => segment.type === "file") ? "[文件]" : "";
+  if (segments.some((segment) => segment.type === "emotion")) {
+    return "[表情]";
+  }
+
+  if (segments.some((segment) => segment.type === "file")) {
+    return "[文件]";
+  }
+
+  if (segments.some((segment) => segment.type === "h5")) {
+    return "[链接]";
+  }
+
+  if (segments.some((segment) => segment.type === "weapp")) {
+    return "[小程序]";
+  }
+
+  return segments.some((segment) => segment.type === "sphfeed") ? "[视频号]" : "";
 }
 
 function buildSegmentClientMessageId(clientMessageId: string, index: number) {

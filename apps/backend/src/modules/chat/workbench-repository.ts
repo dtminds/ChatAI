@@ -380,6 +380,11 @@ export type MaterialCollectionScope = {
   subUid: number;
 };
 
+export type MaterialCollectionForwardLookup = {
+  content: string;
+  msgid: string;
+};
+
 type InsertResult = {
   id?: bigint | number | string | null;
   insertId?: bigint | number | string | null;
@@ -598,6 +603,47 @@ export class WorkbenchRepository {
     return {
       content: typeof row.content === "string" ? row.content : "",
       id: String(row.id),
+    };
+  }
+
+  async findMaterialCollectionForForward(input: {
+    bizType: number;
+    id: string;
+    subUserId?: string;
+    uid: number;
+  }): Promise<MaterialCollectionForwardLookup | undefined> {
+    const collectionNumericId = parseMySqlId(input.id);
+
+    if (collectionNumericId == null) {
+      return undefined;
+    }
+
+    const subUid =
+      input.bizType === MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION
+        ? parseMySqlId(input.subUserId ?? "")
+        : 0;
+
+    if (subUid == null) {
+      return undefined;
+    }
+
+    const row = await this.db
+      .selectFrom("xy_wap_embed_material_collection")
+      .select(["content", "msgid"])
+      .where("id", "=", collectionNumericId)
+      .where("uid", "=", input.uid)
+      .where("biz_type", "=", input.bizType)
+      .where("sub_uid", "=", subUid)
+      .where("biz_status", "=", BIZ_STATUS_ACTIVE)
+      .executeTakeFirst();
+
+    if (!row) {
+      return undefined;
+    }
+
+    return {
+      content: typeof row.content === "string" ? row.content : "",
+      msgid: row.msgid,
     };
   }
 

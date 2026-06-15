@@ -55,7 +55,10 @@ export function mapMaterialCollectionItem(
   const bizType = toMaterialBizType(row.biz_type);
   const mappedMessage = mapMessageRow(buildMessageRow(row, bizType));
   const contentType = getMaterialContentTypeForBizType(bizType) ?? "file";
-  const content = isRecord(mappedMessage.content) ? mappedMessage.content : {};
+  const content = normalizeMaterialContent(
+    isRecord(mappedMessage.content) ? mappedMessage.content : {},
+    contentType,
+  );
   const messageId = row.msgid;
 
   return {
@@ -150,6 +153,24 @@ function resolveTitle(
     readString(content, "appName") ||
     messageId
   );
+}
+
+function normalizeMaterialContent(
+  content: Record<string, unknown>,
+  contentType: WorkbenchMaterialCollectionContentType,
+) {
+  if (contentType !== "emotion") {
+    return content;
+  }
+
+  const fileUrl = readString(content, "fileUrl");
+
+  return fileUrl
+    ? {
+        ...content,
+        fileUrl,
+      }
+    : content;
 }
 
 function toGroupId(value: number | string) {

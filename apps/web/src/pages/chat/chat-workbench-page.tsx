@@ -869,6 +869,7 @@ function ChatWorkbenchContent({
     isMaterialLibraryItemsLoading,
     isMaterialLibraryLoadingMore,
     isMaterialLibrarySending,
+    sendingMaterialId,
     materialCollectionGroups,
     materialLibraryGroups,
     materialLibraryItems,
@@ -898,7 +899,10 @@ function ChatWorkbenchContent({
     bootstrapStatus,
     isMountedRef,
     onSendFailure: handleSmartReplySendFailure,
-    onSent: scrollMessageViewportToBottom,
+    onSent: () => {
+      setIsEmojiPickerOpen(false);
+      scrollMessageViewportToBottom();
+    },
     requestActiveConversationRead,
     resolvedActiveConversationId: activeConversation?.id,
     sendAgentMessageSegments,
@@ -1540,6 +1544,7 @@ function ChatWorkbenchContent({
                   isCollectedExpressionLoadingMore={
                     isCollectedExpressionLoadingMore
                   }
+                  sendingCollectedExpressionId={sendingMaterialId}
                   messages={activeMessages}
                   messageViewportRef={messageViewportRef}
                   quotedMessage={quotedMessage}

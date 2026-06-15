@@ -22,6 +22,7 @@ type WechatEmojiPickerProps = {
   collectedExpressions?: WorkbenchMaterialCollectionItemDto[];
   hasMoreCollectedExpressions?: boolean;
   isCollectedExpressionLoadingMore?: boolean;
+  sendingCollectedExpressionId?: string | null;
   onDeleteCollectedExpression?: (item: WorkbenchMaterialCollectionItemDto) => void;
   onLoadMoreCollectedExpressions?: () => void;
   onOpenCollectedExpressions?: () => void;
@@ -34,6 +35,7 @@ export function WechatEmojiPicker({
   collectedExpressions = [],
   hasMoreCollectedExpressions = false,
   isCollectedExpressionLoadingMore = false,
+  sendingCollectedExpressionId,
   onDeleteCollectedExpression,
   onLoadMoreCollectedExpressions,
   onOpenCollectedExpressions,
@@ -90,6 +92,7 @@ export function WechatEmojiPicker({
               onDelete={onDeleteCollectedExpression}
               onLoadMore={onLoadMoreCollectedExpressions}
               onSelect={(item) => onSelectCollectedExpression?.(item)}
+              sendingItemId={sendingCollectedExpressionId}
               onTop={onTopCollectedExpression}
             />
           </ScrollArea>

@@ -2834,7 +2834,7 @@ describe("MysqlWorkbenchService", () => {
     );
   });
 
-  it("maps a file send to the Java send-message payload", async () => {
+  it("maps a collected file material send to the Java file payload", async () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.sendMessage).mockResolvedValue({
       clientMessageId: "local-file-001",
@@ -2842,19 +2842,27 @@ describe("MysqlWorkbenchService", () => {
       optNo: "opt-file-001",
       status: "accepted",
     });
-    const service = new MysqlWorkbenchService(
-      {
-        canAccessSeat: vi.fn().mockResolvedValue(true),
-        getConversationLookup: vi.fn().mockResolvedValue({
-          id: "88",
-          platform: 5,
-          seatId: "12",
-          seatHostSubUserId: "101",
-          thirdExternalUserId: "external-001",
-          thirdUserId: "seat-user-001",
-          uid: 9001,
+    const repository = {
+      canAccessSeat: vi.fn().mockResolvedValue(true),
+      findMaterialCollectionForForward: vi.fn().mockResolvedValue({
+        content: JSON.stringify({
+          fileName: "报价单.pdf",
+          fileUrl: "https://b5.bokr.com.cn/chat-files/quote.pdf",
         }),
-      } as unknown as WorkbenchRepository,
+        msgid: "msg-file-001",
+      }),
+      getConversationLookup: vi.fn().mockResolvedValue({
+        id: "88",
+        platform: 5,
+        seatId: "12",
+        seatHostSubUserId: "101",
+        thirdExternalUserId: "external-001",
+        thirdUserId: "seat-user-001",
+        uid: 9001,
+      }),
+    } as unknown as WorkbenchRepository;
+    const service = new MysqlWorkbenchService(
+      repository,
       javaClient,
     );
 
@@ -2863,16 +2871,16 @@ describe("MysqlWorkbenchService", () => {
       conversationId: "88",
       seatId: "12",
       segment: {
-        extension: "pdf",
-        fileId: "chat-files/quote.pdf",
-        fileName: "报价单.pdf",
-        fileSize: 6389760,
-        fileSizeLabel: "6.09 MB",
+        materialCollectionId: "66",
         type: "file",
-        url: "https://b5.bokr.com.cn/chat-files/quote.pdf",
       },
     });
 
+    expect(repository.findMaterialCollectionForForward).toHaveBeenCalledWith({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+      id: "66",
+      uid: 9001,
+    });
     expect(javaClient.sendMessage).toHaveBeenCalledWith({
       clientMessageId: "local-file-001",
       msgData: {
@@ -2889,12 +2897,78 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
-  it("maps an h5 link send to the Java send-message payload", async () => {
+  it("maps a collected H5 material send to the Java link payload", async () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.sendMessage).mockResolvedValue({
       clientMessageId: "local-h5-001",
       messageId: "opt-h5-001",
       optNo: "opt-h5-001",
+      status: "accepted",
+    });
+    const repository = {
+      canAccessSeat: vi.fn().mockResolvedValue(true),
+      findMaterialCollectionForForward: vi.fn().mockResolvedValue({
+        content: JSON.stringify({
+          desc: "恭喜发财，大吉大利",
+          href: "https://example.com/redpacket",
+          title: "红包来啦",
+        }),
+        msgid: "msg-h5-001",
+      }),
+      getConversationLookup: vi.fn().mockResolvedValue({
+        id: "88",
+        platform: 5,
+        seatId: "12",
+        seatHostSubUserId: "101",
+        thirdExternalUserId: "external-001",
+        thirdUserId: "seat-user-001",
+        uid: 9001,
+      }),
+    } as unknown as WorkbenchRepository;
+    const service = new MysqlWorkbenchService(
+      repository,
+      javaClient,
+    );
+
+    await service.sendMessage("101", {
+      clientMessageId: "local-h5-001",
+      conversationId: "88",
+      seatId: "12",
+      segment: {
+        materialCollectionId: "77",
+        type: "h5",
+      },
+    });
+
+    expect(repository.findMaterialCollectionForForward).toHaveBeenCalledWith({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.H5,
+      id: "77",
+      uid: 9001,
+    });
+    expect(javaClient.sendMessage).toHaveBeenCalledWith({
+      clientMessageId: "local-h5-001",
+      msgData: {
+        coverUrl: "https://b5.bokr.com.cn/dist/default-cover.png",
+        desc: "恭喜发财，大吉大利",
+        href: "https://example.com/redpacket",
+        msgtype: "link",
+        title: "红包来啦",
+      },
+      platform: 5,
+      sendType: 1,
+      source: 1,
+      thirdExternalUserid: "external-001",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
+  });
+
+  it("uses the default cover when direct H5 link send has no cover", async () => {
+    const javaClient = createJavaClient();
+    vi.mocked(javaClient.sendMessage).mockResolvedValue({
+      clientMessageId: "local-h5-default-cover-001",
+      messageId: "opt-h5-default-cover-001",
+      optNo: "opt-h5-default-cover-001",
       status: "accepted",
     });
     const service = new MysqlWorkbenchService(
@@ -2914,11 +2988,10 @@ describe("MysqlWorkbenchService", () => {
     );
 
     await service.sendMessage("101", {
-      clientMessageId: "local-h5-001",
+      clientMessageId: "local-h5-default-cover-001",
       conversationId: "88",
       seatId: "12",
       segment: {
-        coverUrl: "https://example.com/cover.png",
         desc: "恭喜发财，大吉大利",
         href: "https://example.com/redpacket",
         title: "红包来啦",
@@ -2927,9 +3000,9 @@ describe("MysqlWorkbenchService", () => {
     });
 
     expect(javaClient.sendMessage).toHaveBeenCalledWith({
-      clientMessageId: "local-h5-001",
+      clientMessageId: "local-h5-default-cover-001",
       msgData: {
-        coverUrl: "https://example.com/cover.png",
+        coverUrl: "https://b5.bokr.com.cn/dist/default-cover.png",
         desc: "恭喜发财，大吉大利",
         href: "https://example.com/redpacket",
         msgtype: "link",
@@ -2942,6 +3015,297 @@ describe("MysqlWorkbenchService", () => {
       thirdUserId: "seat-user-001",
       uid: 9001,
     });
+  });
+
+  it("maps an expression material send to the Java emotion payload", async () => {
+    const javaClient = createJavaClient();
+    vi.mocked(javaClient.sendMessage).mockResolvedValue({
+      clientMessageId: "local-emotion-001",
+      messageId: "opt-emotion-001",
+      optNo: "opt-emotion-001",
+      status: "accepted",
+    });
+    const repository = {
+      canAccessSeat: vi.fn().mockResolvedValue(true),
+      findMaterialCollectionForForward: vi.fn().mockResolvedValue({
+        content: JSON.stringify({
+          fileUrl: "https://example.com/expression.gif",
+        }),
+        msgid: "msg-expression-001",
+      }),
+      getConversationLookup: vi.fn().mockResolvedValue({
+        id: "88",
+        platform: 5,
+        seatId: "12",
+        seatHostSubUserId: "101",
+        thirdExternalUserId: "external-001",
+        thirdUserId: "seat-user-001",
+        uid: 9001,
+      }),
+    } as unknown as WorkbenchRepository;
+    const service = new MysqlWorkbenchService(
+      repository,
+      javaClient,
+    );
+
+    await service.sendMessage("101", {
+      clientMessageId: "local-emotion-001",
+      conversationId: "88",
+      seatId: "12",
+      segment: {
+        materialCollectionId: "65",
+        type: "emotion",
+      },
+    });
+
+    expect(repository.findMaterialCollectionForForward).toHaveBeenCalledWith({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION,
+      id: "65",
+      subUserId: "101",
+      uid: 9001,
+    });
+    expect(javaClient.sendMessage).toHaveBeenCalledWith({
+      clientMessageId: "local-emotion-001",
+      msgData: {
+        fileUrl: "https://example.com/expression.gif",
+        msgtype: "emotion",
+      },
+      platform: 5,
+      sendType: 1,
+      source: 1,
+      thirdExternalUserid: "external-001",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
+  });
+
+  it("rejects expression material sends when the stored file url is missing", async () => {
+    const javaClient = createJavaClient();
+    const repository = {
+      canAccessSeat: vi.fn().mockResolvedValue(true),
+      findMaterialCollectionForForward: vi.fn().mockResolvedValue({
+        content: JSON.stringify({
+          url: "https://example.com/legacy-expression.gif",
+        }),
+        msgid: "msg-expression-001",
+      }),
+      getConversationLookup: vi.fn().mockResolvedValue({
+        id: "88",
+        platform: 5,
+        seatId: "12",
+        seatHostSubUserId: "101",
+        thirdExternalUserId: "external-001",
+        thirdUserId: "seat-user-001",
+        uid: 9001,
+      }),
+    } as unknown as WorkbenchRepository;
+    const service = new MysqlWorkbenchService(repository, javaClient);
+
+    await expect(
+      service.sendMessage("101", {
+        clientMessageId: "local-emotion-invalid",
+        conversationId: "88",
+        seatId: "12",
+        segment: {
+          materialCollectionId: "65",
+          type: "emotion",
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "INVALID_EMOTION_MESSAGE",
+      statusCode: 400,
+    });
+    expect(javaClient.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("maps a mini-program forward send to the Java send-message payload", async () => {
+    const javaClient = createJavaClient();
+    vi.mocked(javaClient.sendMessage).mockResolvedValue({
+      clientMessageId: "local-weapp-001",
+      messageId: "opt-weapp-001",
+      optNo: "opt-weapp-001",
+      status: "accepted",
+    });
+    const repository = {
+      canAccessSeat: vi.fn().mockResolvedValue(true),
+      findMaterialCollectionForForward: vi.fn().mockResolvedValue({
+        msgid: "msg-mini-001",
+      }),
+      getConversationLookup: vi.fn().mockResolvedValue({
+        id: "88",
+        platform: 5,
+        seatId: "12",
+        seatHostSubUserId: "101",
+        thirdExternalUserId: "external-001",
+        thirdUserId: "seat-user-001",
+        uid: 9001,
+      }),
+    } as unknown as WorkbenchRepository;
+    const service = new MysqlWorkbenchService(
+      repository,
+      javaClient,
+    );
+
+    await service.sendMessage("101", {
+      clientMessageId: "local-weapp-001",
+      conversationId: "88",
+      seatId: "12",
+      segment: {
+        materialCollectionId: "66",
+        type: "weapp",
+      },
+    });
+
+    expect(repository.findMaterialCollectionForForward).toHaveBeenCalledWith({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM,
+      id: "66",
+      uid: 9001,
+    });
+    expect(javaClient.sendMessage).toHaveBeenCalledWith({
+      clientMessageId: "local-weapp-001",
+      msgData: {
+        msgtype: "weapp",
+        transMsgid: "msg-mini-001",
+      },
+      platform: 5,
+      sendType: 1,
+      source: 1,
+      thirdExternalUserid: "external-001",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
+  });
+
+  it("maps a sphfeed forward send to the Java send-message payload", async () => {
+    const javaClient = createJavaClient();
+    vi.mocked(javaClient.sendMessage).mockResolvedValue({
+      clientMessageId: "local-sphfeed-001",
+      messageId: "opt-sphfeed-001",
+      optNo: "opt-sphfeed-001",
+      status: "accepted",
+    });
+    const repository = {
+      canAccessSeat: vi.fn().mockResolvedValue(true),
+      findMaterialCollectionForForward: vi.fn().mockResolvedValue({
+        msgid: "msg-sphfeed-001",
+      }),
+      getConversationLookup: vi.fn().mockResolvedValue({
+        id: "88",
+        platform: 5,
+        seatId: "12",
+        seatHostSubUserId: "101",
+        thirdGroupId: "group-001",
+        thirdUserId: "seat-user-001",
+        uid: 9001,
+      }),
+    } as unknown as WorkbenchRepository;
+    const service = new MysqlWorkbenchService(
+      repository,
+      javaClient,
+    );
+
+    await service.sendMessage("101", {
+      clientMessageId: "local-sphfeed-001",
+      conversationId: "88",
+      seatId: "12",
+      segment: {
+        materialCollectionId: "77",
+        type: "sphfeed",
+      },
+    });
+
+    expect(repository.findMaterialCollectionForForward).toHaveBeenCalledWith({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED,
+      id: "77",
+      uid: 9001,
+    });
+    expect(javaClient.sendMessage).toHaveBeenCalledWith({
+      clientMessageId: "local-sphfeed-001",
+      msgData: {
+        msgtype: "sphfeed",
+        transMsgid: "msg-sphfeed-001",
+      },
+      platform: 5,
+      sendType: 2,
+      source: 1,
+      thirdGroupId: "group-001",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
+  });
+
+  it("rejects forward sends when the material collection is not visible", async () => {
+    const javaClient = createJavaClient();
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        findMaterialCollectionForForward: vi.fn().mockResolvedValue(undefined),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "101",
+          thirdExternalUserId: "external-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.sendMessage("101", {
+        clientMessageId: "local-weapp-invalid",
+        conversationId: "88",
+        seatId: "12",
+        segment: {
+          materialCollectionId: "66",
+          type: "weapp",
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "MATERIAL_COLLECTION_NOT_FOUND",
+      statusCode: 404,
+    });
+    expect(javaClient.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("rejects forward sends when the stored source message id is blank", async () => {
+    const javaClient = createJavaClient();
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        findMaterialCollectionForForward: vi.fn().mockResolvedValue({
+          msgid: "   ",
+        }),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "101",
+          thirdExternalUserId: "external-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.sendMessage("101", {
+        clientMessageId: "local-weapp-invalid",
+        conversationId: "88",
+        seatId: "12",
+        segment: {
+          materialCollectionId: "66",
+          type: "weapp",
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "INVALID_TRANS_MESSAGE_ID",
+      statusCode: 400,
+    });
+    expect(javaClient.sendMessage).not.toHaveBeenCalled();
   });
 
   it("ignores quote payload for file sends", async () => {
@@ -3987,6 +4351,10 @@ function createMaterialRepository(overrides: Partial<WorkbenchRepository> = {}) 
         fileUrl: "https://cdn.example.com/a.pdf",
       }),
       id: "66",
+    }),
+    findMaterialCollectionForForward: vi.fn().mockResolvedValue({
+      content: JSON.stringify({ title: "客户跟进小程序" }),
+      msgid: "1025657",
     }),
     findMaterialMessage: vi.fn().mockResolvedValue(undefined),
     getSubUser: vi.fn().mockResolvedValue({

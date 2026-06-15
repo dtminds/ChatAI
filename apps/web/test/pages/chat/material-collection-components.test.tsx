@@ -826,7 +826,7 @@ describe("material collection components", () => {
       bizType: MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION,
       content: {
         alt: "表情",
-        imageUrl: "https://cdn.example.com/emotion.gif",
+        fileUrl: "https://cdn.example.com/emotion.gif",
       },
       contentType: "emotion",
       groupId: 0,

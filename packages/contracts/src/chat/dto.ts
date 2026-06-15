@@ -631,11 +631,17 @@ export type WorkbenchOutgoingMessageImageSegment = {
   width?: number;
 };
 
+export type WorkbenchOutgoingMessageEmotionSegment = {
+  type: "emotion";
+  materialCollectionId: string;
+};
+
 export type WorkbenchOutgoingMessageFileSegment = {
   type: "file";
-  extension: string;
+  extension?: string;
   fileId?: string;
-  fileName: string;
+  fileName?: string;
+  materialCollectionId?: string;
   fileSize?: number;
   fileSizeLabel?: string;
   url?: string;
@@ -645,15 +651,29 @@ export type WorkbenchOutgoingMessageH5Segment = {
   type: "h5";
   coverUrl?: string;
   desc?: string;
-  href: string;
-  title: string;
+  href?: string;
+  materialCollectionId?: string;
+  title?: string;
+};
+
+export type WorkbenchOutgoingMessageMiniProgramSegment = {
+  type: "weapp";
+  materialCollectionId: string;
+};
+
+export type WorkbenchOutgoingMessageSphfeedSegment = {
+  type: "sphfeed";
+  materialCollectionId: string;
 };
 
 export type WorkbenchOutgoingMessageSegment =
   | WorkbenchOutgoingMessageTextSegment
   | WorkbenchOutgoingMessageImageSegment
+  | WorkbenchOutgoingMessageEmotionSegment
   | WorkbenchOutgoingMessageFileSegment
-  | WorkbenchOutgoingMessageH5Segment;
+  | WorkbenchOutgoingMessageH5Segment
+  | WorkbenchOutgoingMessageMiniProgramSegment
+  | WorkbenchOutgoingMessageSphfeedSegment;
 
 export type WorkbenchSendMessagePayload = {
   seatId: string;

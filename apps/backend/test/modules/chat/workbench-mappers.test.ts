@@ -1115,8 +1115,8 @@ describe("workbench MySQL mappers", () => {
       })),
     ).toMatchObject({
       content: {
-        alt: "图片",
-        imageUrl: "https://wework.qpic.cn/wwpic3az/wwwx_eed91b8068b6ed56888938eca8bc3751/0",
+        alt: "表情",
+        fileUrl: "https://wework.qpic.cn/wwpic3az/wwwx_eed91b8068b6ed56888938eca8bc3751/0",
       },
       contentType: "emotion",
     });

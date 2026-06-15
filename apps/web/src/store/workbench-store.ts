@@ -1900,6 +1900,15 @@ function buildOptimisticMessageContent(
     };
   }
 
+  if (segment.type === "emotion") {
+    return {
+      alt: "自定义表情",
+      imageUrl: segment.imageUrl,
+      type: "image",
+      variant: "emotion",
+    };
+  }
+
   if (segment.type === "file") {
     return {
       extension: segment.extension,
@@ -1921,8 +1930,37 @@ function buildOptimisticMessageContent(
     };
   }
 
+  if (segment.type === "weapp") {
+    return {
+      appName: segment.appName ?? "小程序",
+      coverImageUrl: segment.coverImageUrl,
+      logoUrl: segment.logoUrl,
+      sourceLabel: segment.sourceLabel ?? "小程序",
+      title: segment.title ?? "小程序",
+      type: "mini-program",
+    };
+  }
+
+  if (segment.type === "sphfeed") {
+    return {
+      description: segment.description ?? "",
+      imageUrl: segment.imageUrl,
+      sourceLabel: segment.sourceLabel ?? "视频号",
+      title: segment.title ?? "视频号",
+      type: "sphfeed",
+      url: segment.url,
+    };
+  }
+
+  if (segment.type === "text") {
+    return {
+      text: segment.text,
+      type: "text",
+    };
+  }
+
   return {
-    text: segment.text,
+    text: "",
     type: "text",
   };
 }
@@ -4334,6 +4372,7 @@ export function createWorkbenchStore() {
         for (let index = 0; index < segmentsForSend.length; index += 1) {
           const segmentForSend = segmentsForSend[index];
           const originalSegment = normalizedSegments[index] ?? segmentForSend;
+          const payloadSegment = toWorkbenchSendSegment(segmentForSend);
           const segmentClientMessageId = buildSegmentClientMessageId(clientMessageId, index);
           const mentionForSegment: SendMentionPayload =
             !hasSentMention && segmentForSend.type === "text"
@@ -4350,7 +4389,7 @@ export function createWorkbenchStore() {
             mention: mentionForSegment,
             quote: quoteForSegment,
             seatId: activeAccountId,
-            segment: segmentForSend,
+            segment: payloadSegment,
           });
           const optimisticMessage = {
             author: account ? `${account.name}-${account.operator}` : me.displayName,
@@ -4358,7 +4397,7 @@ export function createWorkbenchStore() {
             isOwnMessage: true,
             isNew: true,
             clientMessageId: segmentClientMessageId,
-            content: buildOptimisticMessageContent(segmentForSend, quoteForSegment),
+            content: buildOptimisticMessageContent(originalSegment, quoteForSegment),
             conversationId: activeConversationId,
             id: segmentClientMessageId,
             optNo: response.optNo ?? response.messageId,
@@ -5818,6 +5857,47 @@ function stripComposerMentionMetadata(segments: ComposerSegment[]): ComposerSegm
       type: "text",
     } satisfies ComposerTextSegment;
   });
+}
+
+function toWorkbenchSendSegment(
+  segment: ComposerSegment,
+): WorkbenchSendMessagePayload["segment"] {
+  if (segment.type === "file" && segment.materialCollectionId) {
+    return {
+      materialCollectionId: segment.materialCollectionId,
+      type: "file",
+    };
+  }
+
+  if (segment.type === "h5" && segment.materialCollectionId) {
+    return {
+      materialCollectionId: segment.materialCollectionId,
+      type: "h5",
+    };
+  }
+
+  if (segment.type === "emotion") {
+    return {
+      materialCollectionId: segment.materialCollectionId,
+      type: "emotion",
+    };
+  }
+
+  if (segment.type === "weapp") {
+    return {
+      materialCollectionId: segment.materialCollectionId,
+      type: "weapp",
+    };
+  }
+
+  if (segment.type === "sphfeed") {
+    return {
+      materialCollectionId: segment.materialCollectionId,
+      type: "sphfeed",
+    };
+  }
+
+  return segment;
 }
 
 function isDownloadableMessage(message: Message): message is ChatMessage {

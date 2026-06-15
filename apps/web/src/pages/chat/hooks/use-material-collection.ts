@@ -100,6 +100,7 @@ export function useMaterialCollection({
     useState(false);
   const [isMaterialLibraryBusy, setIsMaterialLibraryBusy] = useState(false);
   const [isMaterialLibrarySending, setIsMaterialLibrarySending] = useState(false);
+  const [sendingMaterialId, setSendingMaterialId] = useState<string | null>(null);
   const [isMaterialLibraryGroupsLoading, setIsMaterialLibraryGroupsLoading] =
     useState(false);
   const [isMaterialLibraryItemsLoading, setIsMaterialLibraryItemsLoading] =
@@ -1020,6 +1021,7 @@ export function useMaterialCollection({
     setIsMaterialLibraryItemsLoading(false);
     setIsMaterialLibraryLoadingMore(false);
     setIsMaterialLibrarySending(false);
+    setSendingMaterialId(null);
   }, []);
 
   const handleSelectMaterial = useCallback(
@@ -1028,12 +1030,17 @@ export function useMaterialCollection({
 
       if (!materialSegment) {
         if (item.contentType === "file") {
-          toast.warning("文件素材内容不完整");
+          toast.warning("文件素材数据异常");
           return;
         }
 
         if (item.contentType === "h5") {
-          toast.warning("H5链接素材内容不完整");
+          toast.warning("H5链接素材数据异常");
+          return;
+        }
+
+        if (item.contentType === "emotion") {
+          toast.warning("表情素材数据异常");
           return;
         }
 
@@ -1042,6 +1049,7 @@ export function useMaterialCollection({
       }
 
       setIsMaterialLibrarySending(true);
+      setSendingMaterialId(item.id);
       try {
         const result = await sendAgentMessageSegments([materialSegment]);
 
@@ -1064,6 +1072,7 @@ export function useMaterialCollection({
       } finally {
         if (isMountedRef.current) {
           setIsMaterialLibrarySending(false);
+          setSendingMaterialId(null);
         }
       }
     },
@@ -1094,6 +1103,7 @@ export function useMaterialCollection({
     isMaterialLibraryItemsLoading,
     isMaterialLibraryLoadingMore,
     isMaterialLibrarySending,
+    sendingMaterialId,
     materialCollectionGroups,
     materialLibraryGroups,
     materialLibraryItems,
@@ -1202,11 +1212,12 @@ function toComposerMaterialBizType(
 function buildH5ComposerSegment(
   item: WorkbenchMaterialCollectionItemDto,
 ): ComposerSegment | undefined {
+  const materialCollectionId = item.id.trim();
   const contentRecord = isMaterialContentRecord(item.content);
   const title = readMaterialContentString(contentRecord.title) || item.title;
   const href = readMaterialLinkUrl(contentRecord);
 
-  if (!title || !href) {
+  if (!materialCollectionId || !title || !href) {
     return undefined;
   }
 
@@ -1220,8 +1231,27 @@ function buildH5ComposerSegment(
     ...(coverUrl ? { coverUrl } : {}),
     ...(desc ? { desc } : {}),
     href,
+    materialCollectionId,
     title,
     type: "h5",
+  };
+}
+
+function buildExpressionComposerSegment(
+  item: WorkbenchMaterialCollectionItemDto,
+): ComposerSegment | undefined {
+  const materialCollectionId = item.id.trim();
+  const contentRecord = isMaterialContentRecord(item.content);
+  const imageUrl = readMaterialContentString(contentRecord.fileUrl);
+
+  if (!materialCollectionId || !imageUrl) {
+    return undefined;
+  }
+
+  return {
+    imageUrl,
+    materialCollectionId,
+    type: "emotion",
   };
 }
 
@@ -1236,11 +1266,12 @@ function isMaterialContentRecord(
 function buildFileComposerSegment(
   item: WorkbenchMaterialCollectionItemDto,
 ): ComposerSegment | undefined {
+  const materialCollectionId = item.id.trim();
   const contentRecord = isMaterialContentRecord(item.content);
   const fileName = readMaterialContentString(contentRecord.fileName) || item.title;
   const fileUrl = readMaterialContentString(contentRecord.fileUrl);
 
-  if (!fileName || !fileUrl) {
+  if (!materialCollectionId || !fileName || !fileUrl) {
     return undefined;
   }
 
@@ -1252,14 +1283,82 @@ function buildFileComposerSegment(
     extension,
     fileName,
     ...(fileSizeLabel ? { fileSizeLabel } : {}),
+    materialCollectionId,
     type: "file",
     url: fileUrl,
+  };
+}
+
+function buildMiniProgramComposerSegment(
+  item: WorkbenchMaterialCollectionItemDto,
+): ComposerSegment | undefined {
+  const materialCollectionId = item.id.trim();
+
+  if (!materialCollectionId) {
+    return undefined;
+  }
+
+  const contentRecord = isMaterialContentRecord(item.content);
+  const appName =
+    readMaterialContentString(contentRecord.appName) ||
+    readMaterialContentString(contentRecord.description) ||
+    "小程序";
+  const title =
+    readMaterialContentString(contentRecord.title) || item.title || "小程序";
+  const coverImageUrl =
+    readMaterialContentString(contentRecord.coverImageUrl) ||
+    readMaterialContentString(contentRecord.imageUrl) ||
+    readMaterialContentString(contentRecord.fileUrl) ||
+    readMaterialContentString(contentRecord.coverUrl);
+  const logoUrl = readMaterialContentString(contentRecord.logoUrl);
+  const sourceLabel = readMaterialContentString(contentRecord.sourceLabel);
+
+  return {
+    appName,
+    ...(coverImageUrl ? { coverImageUrl } : {}),
+    ...(logoUrl ? { logoUrl } : {}),
+    ...(sourceLabel ? { sourceLabel } : {}),
+    materialCollectionId,
+    title,
+    type: "weapp",
+  };
+}
+
+function buildSphfeedComposerSegment(
+  item: WorkbenchMaterialCollectionItemDto,
+): ComposerSegment | undefined {
+  const materialCollectionId = item.id.trim();
+
+  if (!materialCollectionId) {
+    return undefined;
+  }
+
+  const contentRecord = isMaterialContentRecord(item.content);
+  const description = readMaterialContentString(contentRecord.description);
+  const imageUrl = readMaterialContentString(contentRecord.imageUrl);
+  const sourceLabel = readMaterialContentString(contentRecord.sourceLabel);
+  const title =
+    readMaterialContentString(contentRecord.title) || item.title || "视频号";
+  const url = readMaterialContentString(contentRecord.url);
+
+  return {
+    ...(description ? { description } : {}),
+    ...(imageUrl ? { imageUrl } : {}),
+    materialCollectionId,
+    ...(sourceLabel ? { sourceLabel } : {}),
+    title,
+    type: "sphfeed",
+    ...(url ? { url } : {}),
   };
 }
 
 function buildComposerSegmentFromMaterial(
   item: WorkbenchMaterialCollectionItemDto,
 ): ComposerSegment | undefined {
+  if (item.contentType === "emotion") {
+    return buildExpressionComposerSegment(item);
+  }
+
   if (item.contentType === "file") {
     return buildFileComposerSegment(item);
   }
@@ -1268,24 +1367,20 @@ function buildComposerSegmentFromMaterial(
     return buildH5ComposerSegment(item);
   }
 
+  if (item.contentType === "mini-program") {
+    return buildMiniProgramComposerSegment(item);
+  }
+
+  if (item.contentType === "sphfeed") {
+    return buildSphfeedComposerSegment(item);
+  }
+
   return undefined;
 }
 
 function getMaterialSendUnavailableMessage(
   contentType: WorkbenchMaterialCollectionItemDto["contentType"],
 ) {
-  if (contentType === "emotion") {
-    return "自定义表情发送功能内测中，即将开放";
-  }
-
-  if (contentType === "mini-program") {
-    return "小程序发送功能内测中，即将开放";
-  }
-
-  if (contentType === "sphfeed") {
-    return "视频号发送功能内测中，即将开放";
-  }
-
   return "发送功能内测中，即将开放";
 }
 

@@ -190,7 +190,7 @@ describe("composer lexical utils", () => {
     ]);
   });
 
-  it("exports mention tokens with member ids", () => {
+  it("exports member mentions with ordered member ids", () => {
     const editor = createEditor({
       namespace: "composer-mention-utils-test",
       nodes: [ComposerEmojiNode, ComposerImageNode, ComposerMentionNode],
@@ -202,10 +202,20 @@ describe("composer lexical utils", () => {
 
     editor.update(
       () => {
-        $insertComposerText("请 ");
+        $insertComposerText("hello ");
         $insertComposerMention({
           displayName: "小林",
           memberId: "member-001",
+        });
+        $insertComposerText(" world ");
+        $insertComposerMention({
+          displayName: "小林",
+          memberId: "member-001",
+        });
+        $insertComposerText(" ");
+        $insertComposerMention({
+          displayName: "小陈",
+          memberId: "member-002",
         });
         $insertComposerText(" 看一下");
         segments = $exportComposerSegments();
@@ -215,8 +225,8 @@ describe("composer lexical utils", () => {
 
     expect(normalizeComposerSegments(segments)).toEqual([
       {
-        mentionMemberIds: ["member-001"],
-        text: "请 @小林 看一下",
+        mentionMemberIds: ["member-001", "member-001", "member-002"],
+        text: "hello @小林 world @小林 @小陈 看一下",
         type: "text",
       },
     ]);

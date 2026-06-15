@@ -2121,9 +2121,11 @@ function buildJavaSendMessageData(
     message.isHit = 1;
   } else if (mentionMemberIds.length > 0) {
     message.atLocation =
-      payload.mention?.location === "end"
-        ? JAVA_MENTION_LOCATION.END
-        : JAVA_MENTION_LOCATION.START;
+      payload.mention?.location === "any"
+        ? JAVA_MENTION_LOCATION.ANY
+        : payload.mention?.location === "end"
+          ? JAVA_MENTION_LOCATION.END
+          : JAVA_MENTION_LOCATION.START;
     message.atWxSerialNos = mentionMemberIds;
     message.isHit = JAVA_MENTION_HIT_TYPE.MEMBER;
   }

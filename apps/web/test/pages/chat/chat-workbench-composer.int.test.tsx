@@ -3,6 +3,7 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "sonner";
 import { createMockWorkbenchService, setWorkbenchService } from "@/pages/chat/api/workbench-service";
+import { JAVA_MENTION_PLACEHOLDER } from "@/pages/chat/lib/composer-segments";
 import { useWorkbenchStore } from "@/store/workbench-store";
 import {
   installChatWorkbenchTestEnvironment,
@@ -36,6 +37,10 @@ function createDeferred<T = void>() {
     reject,
     resolve,
   };
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 async function pasteIntoComposer(
@@ -305,6 +310,54 @@ describe("ChatWorkbenchPage composer flows", () => {
     await user.click(within(listbox).getByRole("option", { name: "所有人（6人）" }));
 
     expect(composer).toHaveTextContent("请 @所有人");
+  });
+
+  it("sends selected member mentions with any-position placeholders", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+
+    renderChatWorkbenchPage();
+
+    await user.click(await screen.findByRole("tab", { name: "群聊" }));
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-004");
+    });
+
+    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
+    await pasteIntoComposer(user, composer, "hello @");
+    let listbox = await screen.findByRole("listbox", { name: "选择群成员" });
+    await user.click(within(listbox).getByRole("option", { name: "小林" }));
+    await user.keyboard("world @");
+    listbox = await screen.findByRole("listbox", { name: "选择群成员" });
+    await user.click(within(listbox).getByRole("option", { name: "缪勇飞 群昵称111" }));
+    await user.click(screen.getByRole("button", { name: "发送消息" }));
+
+    await waitFor(() => {
+      expect(sendMessage).toHaveBeenCalledTimes(1);
+    });
+    const sentPayload = sendMessage.mock.calls[0]?.[0];
+    expect(sentPayload).toMatchObject({
+      mention: {
+        location: "any",
+        memberIds: ["member-001", "member-006"],
+      },
+      segment: {
+        type: "text",
+      },
+    });
+    expect(sentPayload?.segment).toMatchObject({ type: "text" });
+    if (sentPayload?.segment?.type !== "text") {
+      throw new Error("Expected a text segment payload");
+    }
+    expect(sentPayload.segment.text).toMatch(
+      new RegExp(`^hello ${escapeRegExp(JAVA_MENTION_PLACEHOLDER)}\\s+world ${escapeRegExp(JAVA_MENTION_PLACEHOLDER)}$`),
+    );
   });
 
   it("inserts a selected mention at a middle caret position", async () => {

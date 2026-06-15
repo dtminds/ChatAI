@@ -94,6 +94,7 @@ type ChatComposerProps = {
   isGroupConversation: boolean;
   isEmojiPickerOpen: boolean;
   isCollectedExpressionLoadingMore?: boolean;
+  sendingCollectedExpressionId?: string | null;
   isSending: boolean;
   isHistoryPanelOpen: boolean;
   onClearQuotedMessage: () => void;
@@ -144,6 +145,7 @@ export function ChatComposer({
   isGroupConversation,
   isEmojiPickerOpen,
   isCollectedExpressionLoadingMore,
+  sendingCollectedExpressionId,
   isSending,
   isHistoryPanelOpen,
   onClearQuotedMessage,
@@ -482,6 +484,7 @@ export function ChatComposer({
                     isCollectedExpressionLoadingMore={
                       isCollectedExpressionLoadingMore
                     }
+                    sendingCollectedExpressionId={sendingCollectedExpressionId}
                     onDeleteCollectedExpression={onDeleteCollectedExpression}
                     onLoadMoreCollectedExpressions={
                       onLoadMoreCollectedExpressions

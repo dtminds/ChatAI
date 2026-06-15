@@ -81,6 +81,7 @@ type ChatPanelProps = {
   collectedExpressions?: WorkbenchMaterialCollectionItemDto[];
   hasMoreCollectedExpressions?: boolean;
   isCollectedExpressionLoadingMore?: boolean;
+  sendingCollectedExpressionId?: string | null;
   onCollectMaterial?: (message: ChatMessage) => void;
   onDeleteCollectedExpression?: (item: WorkbenchMaterialCollectionItemDto) => void;
   onLoadMoreCollectedExpressions?: () => void;
@@ -166,6 +167,7 @@ export function ChatPanel({
   collectedExpressions,
   hasMoreCollectedExpressions,
   isCollectedExpressionLoadingMore,
+  sendingCollectedExpressionId,
   onCollectMaterial,
   onDeleteCollectedExpression,
   onLoadMoreCollectedExpressions,
@@ -304,6 +306,7 @@ export function ChatPanel({
                     isCollectedExpressionLoadingMore={
                       isCollectedExpressionLoadingMore
                     }
+                    sendingCollectedExpressionId={sendingCollectedExpressionId}
                     onClearQuotedMessage={onClearQuotedMessage}
                     onDeleteCollectedExpression={onDeleteCollectedExpression}
                     onDraftChange={onDraftChange}

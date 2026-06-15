@@ -532,7 +532,8 @@ describe("ChatWorkbenchPage composer flows", () => {
         },
       };
     });
-    const sendMessage = vi.fn(baseService.sendMessage);
+    const sendGate = createDeferred<Awaited<ReturnType<typeof baseService.sendMessage>>>();
+    const sendMessage = vi.fn(() => sendGate.promise);
 
     setWorkbenchService({
       ...baseService,
@@ -574,9 +575,10 @@ describe("ChatWorkbenchPage composer flows", () => {
       page: 1,
       pageSize: 100,
     });
-    await user.click(
-      await screen.findByRole("button", { name: "发送收藏表情 贴贴表情" }),
-    );
+    const expressionButton = await screen.findByRole("button", {
+      name: "发送收藏表情 贴贴表情",
+    });
+    await user.click(expressionButton);
 
     await waitFor(() => {
       expect(sendMessage).toHaveBeenCalledWith(
@@ -590,6 +592,17 @@ describe("ChatWorkbenchPage composer flows", () => {
         }),
       );
     });
+    expect(expressionButton).toBeDisabled();
+    expect(
+      within(expressionButton).getByRole("status", { name: "发送中" }),
+    ).toBeInTheDocument();
+
+    sendGate.resolve({
+      clientMessageId: "local-expression-001",
+      messageId: "msg-expression-sent-001",
+      status: "accepted",
+    });
+
     expect(workbenchToastWarningMock).not.toHaveBeenCalledWith(
       "自定义表情发送功能内测中，即将开放",
     );
@@ -601,6 +614,11 @@ describe("ChatWorkbenchPage composer flows", () => {
       },
       role: "agent",
       status: "accepted",
+    });
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("button", { name: "发送收藏表情 贴贴表情" }),
+      ).not.toBeInTheDocument();
     });
   });
 

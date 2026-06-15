@@ -100,6 +100,7 @@ export function useMaterialCollection({
     useState(false);
   const [isMaterialLibraryBusy, setIsMaterialLibraryBusy] = useState(false);
   const [isMaterialLibrarySending, setIsMaterialLibrarySending] = useState(false);
+  const [sendingMaterialId, setSendingMaterialId] = useState<string | null>(null);
   const [isMaterialLibraryGroupsLoading, setIsMaterialLibraryGroupsLoading] =
     useState(false);
   const [isMaterialLibraryItemsLoading, setIsMaterialLibraryItemsLoading] =
@@ -1020,6 +1021,7 @@ export function useMaterialCollection({
     setIsMaterialLibraryItemsLoading(false);
     setIsMaterialLibraryLoadingMore(false);
     setIsMaterialLibrarySending(false);
+    setSendingMaterialId(null);
   }, []);
 
   const handleSelectMaterial = useCallback(
@@ -1047,6 +1049,7 @@ export function useMaterialCollection({
       }
 
       setIsMaterialLibrarySending(true);
+      setSendingMaterialId(item.id);
       try {
         const result = await sendAgentMessageSegments([materialSegment]);
 
@@ -1069,6 +1072,7 @@ export function useMaterialCollection({
       } finally {
         if (isMountedRef.current) {
           setIsMaterialLibrarySending(false);
+          setSendingMaterialId(null);
         }
       }
     },
@@ -1099,6 +1103,7 @@ export function useMaterialCollection({
     isMaterialLibraryItemsLoading,
     isMaterialLibraryLoadingMore,
     isMaterialLibrarySending,
+    sendingMaterialId,
     materialCollectionGroups,
     materialLibraryGroups,
     materialLibraryItems,

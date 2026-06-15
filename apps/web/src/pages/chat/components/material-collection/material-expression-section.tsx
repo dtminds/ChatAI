@@ -16,6 +16,7 @@ type MaterialExpressionSectionProps = {
   onDelete?: (item: MaterialCollectionItem) => void;
   onLoadMore?: () => void;
   onSelect: (item: MaterialCollectionItem) => void;
+  sendingItemId?: string | null;
   onTop?: (item: MaterialCollectionItem) => void;
 };
 
@@ -26,6 +27,7 @@ export function MaterialExpressionSection({
   onDelete,
   onLoadMore,
   onSelect,
+  sendingItemId,
   onTop,
 }: MaterialExpressionSectionProps) {
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -76,11 +78,13 @@ export function MaterialExpressionSection({
             readString(item.content.imageUrl) ||
             readString(item.content.url) ||
             readString(item.content.fileUrl);
+          const isSending = sendingItemId === item.id;
 
           return (
             <button
               aria-label={`发送收藏表情 ${item.title}`}
-              className="group flex aspect-square items-center justify-center rounded-[8px] transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+              className="group relative flex aspect-square items-center justify-center rounded-[8px] transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-70"
+              disabled={Boolean(sendingItemId)}
               key={item.id}
               onClick={() => onSelect(item)}
               onContextMenu={(event) => {
@@ -107,6 +111,15 @@ export function MaterialExpressionSection({
                   表情
                 </span>
               )}
+              {isSending ? (
+                <span
+                  aria-label="发送中"
+                  className="absolute inset-0 flex items-center justify-center rounded-[8px] bg-background/70"
+                  role="status"
+                >
+                  <Spinner className="text-primary" size={18} />
+                </span>
+              ) : null}
             </button>
           );
         })}

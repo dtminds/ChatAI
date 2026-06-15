@@ -260,6 +260,17 @@ describe("message feed row actions", () => {
         type: "contact-card" as const,
       },
     ],
+    [
+      "视频号",
+      {
+        description: "视频号内容",
+        imageUrl: "https://example.com/sphfeed.jpg",
+        sourceLabel: "视频号",
+        title: "视频号标题",
+        type: "sphfeed" as const,
+        url: "https://channels.weixin.qq.com/web/pages/feed?eid=export",
+      },
+    ],
   ])("does not show collection action for %s messages", async (_label, content) => {
     const user = userEvent.setup();
 

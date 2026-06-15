@@ -65,7 +65,6 @@ import {
 import { ComposerRuntimePlugin } from "@/pages/chat/components/composer/lexical-plugins";
 import { QuoteMessagePreview } from "@/pages/chat/components/message/quote";
 import { MiniProgramMark } from "@/pages/chat/components/message/miniapp";
-import { SphFeedMark } from "@/pages/chat/components/message/sphfeed";
 import {
   $insertComposerMention,
   $insertComposerText,
@@ -540,22 +539,6 @@ export function ChatComposer({
                 variant="ghost"
               >
                 <MiniProgramMark className="size-6.5" />
-              </Button>
-            </ComposerActionTooltip>
-            <ComposerActionTooltip
-              disabled={isSending || !canSendMessage}
-              label="视频号"
-            >
-              <Button
-                aria-label="收藏视频号"
-                className={composerActionButtonClass}
-                disabled={isSending || !canSendMessage}
-                onClick={() => onOpenMaterialLibrary(5)}
-                size="icon"
-                type="button"
-                variant="ghost"
-              >
-                <SphFeedMark className="size-5.25" />
               </Button>
             </ComposerActionTooltip>
             <ComposerActionTooltip

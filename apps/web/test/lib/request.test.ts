@@ -116,6 +116,23 @@ describe("request", () => {
     );
   });
 
+  it("returns business result payloads that use success false with errorMsg", async () => {
+    mock.onPost("/server/material-collections").reply(200, {
+      success: false,
+      errorMsg: "素材收录失败，请稍后重试",
+    });
+
+    await expect(
+      request<{ success: false; errorMsg: string }>({
+        method: "POST",
+        url: "/server/material-collections",
+      }),
+    ).resolves.toEqual({
+      success: false,
+      errorMsg: "素材收录失败，请稍后重试",
+    });
+  });
+
   it("preserves the original stack when normalizing thrown errors", async () => {
     const originalError = new TypeError("请求参数无效");
     const originalStack = "TypeError: 请求参数无效\n    at request interceptor";

@@ -82,6 +82,45 @@ describe("FileMessageCard", () => {
       .not.toBeInTheDocument();
   });
 
+  it("keeps file size in the bottom metadata row when download is shown", () => {
+    render(
+      <FileMessageCard
+        content={createFileContent()}
+      />,
+    );
+
+    const card = screen.getByTestId("file-message-card");
+    const metadataRow = screen.getByText("文件").closest("div");
+
+    expect(metadataRow).toContainElement(screen.getByText("2 KB"));
+    expect(card.firstElementChild).not.toContainElement(screen.getByText("2 KB"));
+  });
+
+  it("reserves two title lines so file size does not change card height", () => {
+    render(
+      <FileMessageCard
+        content={createFileContent()}
+      />,
+    );
+
+    expect(screen.getByText("报价单.pdf")).toHaveClass("min-h-10", "line-clamp-2");
+  });
+
+  it("keeps file size in the bottom metadata row when download is hidden", () => {
+    render(
+      <FileMessageCard
+        content={createFileContent()}
+        showDownloadAction={false}
+      />,
+    );
+
+    const card = screen.getByTestId("file-message-card");
+    const metadataRow = screen.getByText("文件").closest("div");
+
+    expect(metadataRow).toContainElement(screen.getByText("2 KB"));
+    expect(card.firstElementChild).not.toContainElement(screen.getByText("2 KB"));
+  });
+
   it("renders a clickable transfer button when the file is not stored in COS", async () => {
     const user = userEvent.setup();
     const handleDownloadClick = vi.fn();

@@ -12,6 +12,7 @@ import { AlertCircleIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { useShallow } from "zustand/react/shallow";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -32,6 +33,9 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
+import {
+  MATERIAL_COLLECTION_BIZ_TYPE,
+} from "@chatai/contracts";
 import { notifyAuthSessionChanged } from "@/pages/auth/auth-tokens";
 import { logout } from "@/pages/auth/auth-service";
 import { useAuthStore } from "@/store/auth-store";
@@ -40,6 +44,10 @@ import { ChatPanel } from "@/pages/chat/components/chat-panel";
 import { ConversationListPanel } from "@/pages/chat/components/conversation-list-panel";
 import { CustomerPage } from "@/pages/chat/customer-page";
 import type { InputEnterBehavior } from "@/pages/chat/components/input-enter-behavior";
+import {
+  MaterialGroupSelectDialog,
+  MaterialLibraryDialog,
+} from "@/pages/chat/components/material-collection";
 import {
   CLEAR_COMPOSER_COMMAND,
   INSERT_COMPOSER_MENTION_COMMAND,
@@ -55,6 +63,7 @@ import {
 } from "@/pages/chat/hooks/use-visible-unread-conversation-read";
 import { useConversationRevealTimer } from "@/pages/chat/hooks/use-conversation-reveal-timer";
 import { useSmartReplyState } from "@/pages/chat/hooks/use-smart-reply-state";
+import { useMaterialCollection } from "@/pages/chat/hooks/use-material-collection";
 import { useWorkbenchPolling } from "@/pages/chat/hooks/use-workbench-polling";
 import type { PollingPauseReason } from "@/pages/chat/hooks/use-workbench-polling";
 import { useWorkbenchStore } from "@/store/workbench-store";
@@ -189,10 +198,8 @@ function ChatWorkbenchContent({
     me,
     messagePaginationByConversationId,
     messagesByConversationId,
-    smartReplyAutoPendingMessageKeysByConversationId,
-    smartReplyByMessageIdByConversationId,
-    smartReplyHiddenMessageKeysByConversationId,
-    pollState,
+    pollIntervalMs,
+    pollJitterMs,
     pollWorkbench,
     dismissSmartReply,
     requestSmartReplyGeneralAnswer,
@@ -228,7 +235,85 @@ function ChatWorkbenchContent({
     updateMessageDownloadContent,
     confirmVoicePlaybackReady,
     transcribeVoiceMessage,
-  } = useWorkbenchStore();
+  } = useWorkbenchStore(
+    useShallow((state) => ({
+      accounts: state.accounts,
+      activeAccountId: state.activeAccountId,
+      activeConversationId: state.activeConversationId,
+      activeMode: state.activeMode,
+      bootstrapError: state.bootstrapError,
+      bootstrapStatus: state.bootstrapStatus,
+      clearActiveConversation: state.clearActiveConversation,
+      clearComposerDraft: state.clearComposerDraft,
+      clearRevokeMessageError: state.clearRevokeMessageError,
+      closeHistoryPanel: state.closeHistoryPanel,
+      composerDraftsByConversationId: state.composerDraftsByConversationId,
+      confirmVoicePlaybackReady: state.confirmVoicePlaybackReady,
+      conversationListsByScope: state.conversationListsByScope,
+      customerProfilesById: state.customerProfilesById,
+      deleteConversation: state.deleteConversation,
+      dismissReadReceiptError: state.dismissReadReceiptError,
+      dismissScopeTransitionError: state.dismissScopeTransitionError,
+      dismissSmartReply: state.dismissSmartReply,
+      groupMembersByConversationId: state.groupMembersByConversationId,
+      groupMembersLoadingByConversationId:
+        state.groupMembersLoadingByConversationId,
+      hasMoreHistoryByConversationId: state.hasMoreHistoryByConversationId,
+      historyPanelByConversationId: state.historyPanelByConversationId,
+      historyPanelErrorByConversationId:
+        state.historyPanelErrorByConversationId,
+      historyPanelFiltersByConversationId:
+        state.historyPanelFiltersByConversationId,
+      historyPanelLoadingByConversationId:
+        state.historyPanelLoadingByConversationId,
+      historyPanelOpenConversationId: state.historyPanelOpenConversationId,
+      historyPanelScrollModeByConversationId:
+        state.historyPanelScrollModeByConversationId,
+      historyStatusByConversationId: state.historyStatusByConversationId,
+      initializeWorkbench: state.initializeWorkbench,
+      isConversationLoading: state.isConversationLoading,
+      loadActiveGroupMembers: state.loadActiveGroupMembers,
+      loadHistoryMessages: state.loadHistoryMessages,
+      loadOlderMessages: state.loadOlderMessages,
+      markConversationRead: state.markConversationRead,
+      markConversationUnread: state.markConversationUnread,
+      me: state.me,
+      messagePaginationByConversationId:
+        state.messagePaginationByConversationId,
+      messagesByConversationId: state.messagesByConversationId,
+      openHistoryPanel: state.openHistoryPanel,
+      pinConversation: state.pinConversation,
+      pollIntervalMs: state.pollState.intervalMs,
+      pollJitterMs: state.pollState.jitterMs,
+      pollWorkbench: state.pollWorkbench,
+      readReceiptError: state.readReceiptError,
+      refreshSeatSummaries: state.refreshSeatSummaries,
+      requestSmartReplyGeneralAnswer: state.requestSmartReplyGeneralAnswer,
+      requestSmartReplyMakeShorter: state.requestSmartReplyMakeShorter,
+      retryFailedMessage: state.retryFailedMessage,
+      revokeMessage: state.revokeMessage,
+      revokeMessageError: state.revokeMessageError,
+      saveComposerDraft: state.saveComposerDraft,
+      scopeTransitionError: state.scopeTransitionError,
+      selectOrCreateAndSelectConversation:
+        state.selectOrCreateAndSelectConversation,
+      sendAgentMessageSegments: state.sendAgentMessageSegments,
+      sendSmartReply: state.sendSmartReply,
+      setActiveAccount: state.setActiveAccount,
+      setActiveConversation: state.setActiveConversation,
+      setActiveMode: state.setActiveMode,
+      setChatSendPermission: state.setChatSendPermission,
+      setHistoryPanelDay: state.setHistoryPanelDay,
+      setHistoryPanelScope: state.setHistoryPanelScope,
+      setHistoryPanelSenderId: state.setHistoryPanelSenderId,
+      sidebarItems: state.sidebarItems,
+      takeOverAccount: state.takeOverAccount,
+      takeoverStatusByAccountId: state.takeoverStatusByAccountId,
+      transcribeVoiceMessage: state.transcribeVoiceMessage,
+      unpinConversation: state.unpinConversation,
+      updateMessageDownloadContent: state.updateMessageDownloadContent,
+    })),
+  );
   const subUser = useAuthStore((state) => state.subUser);
 
   const [draft, setDraft] = useState("");
@@ -375,6 +460,7 @@ function ChatWorkbenchContent({
     isConversationActionDisabled,
     sidebarIframeSendStatus,
   } = workbenchPermissions;
+  const canCollectMaterialActions = Boolean(subUser && subUser.role !== "viewer");
   const sidebarIframeTos: "0" | "1" = isAccountTakenOverByCurrentUser ? "1" : "0";
   const firstUnreadMessageId = useMemo(
     () =>
@@ -614,8 +700,8 @@ function ChatWorkbenchContent({
     activeAccountId,
     bootstrapStatus,
     currentUserId: me?.id,
-    intervalMs: pollState.intervalMs,
-    jitterMs: pollState.jitterMs,
+    intervalMs: pollIntervalMs,
+    jitterMs: pollJitterMs,
     onPollingPaused: handlePollingPaused,
     refreshSeatSummaries,
     pollWorkbench,
@@ -771,7 +857,58 @@ function ChatWorkbenchContent({
   );
 
   const {
-    activeSmartReplyByMessageId,
+    activeMaterialLibraryBizType,
+    activeMaterialLibraryGroupId,
+    collectedExpressions,
+    hasMoreCollectedExpressions,
+    hasMoreMaterialLibraryItems,
+    isCollectedExpressionLoadingMore,
+    isCollectingMaterial,
+    isMaterialLibraryBusy,
+    isMaterialLibraryGroupsLoading,
+    isMaterialLibraryItemsLoading,
+    isMaterialLibraryLoadingMore,
+    isMaterialLibrarySending,
+    sendingMaterialId,
+    materialCollectionGroups,
+    materialLibraryGroups,
+    materialLibraryItems,
+    pendingMaterialCollection,
+    handleCollectMaterial,
+    handleCreateMaterialGroup,
+    handleCreatePendingMaterialGroup,
+    handleDeleteCollectedExpression,
+    handleDeleteMaterial,
+    handleDeleteMaterialGroup,
+    handleEditMaterial,
+    handleLoadMoreCollectedExpressions,
+    handleLoadMoreMaterialLibraryItems,
+    handleMoveMaterial,
+    handleOpenCollectedExpressions,
+    handleOpenMaterialLibrary,
+    handleRenameMaterialGroup,
+    handleSelectMaterial,
+    handleSelectMaterialLibraryGroup,
+    handleSubmitMaterialCollection,
+    handleTopCollectedExpression,
+    handleTopMaterial,
+    handleTopMaterialGroup,
+    resetMaterialLibrary,
+    resetPendingCollection,
+  } = useMaterialCollection({
+    bootstrapStatus,
+    isMountedRef,
+    onSendFailure: handleSmartReplySendFailure,
+    onSent: () => {
+      setIsEmojiPickerOpen(false);
+      scrollMessageViewportToBottom();
+    },
+    requestActiveConversationRead,
+    resolvedActiveConversationId: activeConversation?.id,
+    sendAgentMessageSegments,
+  });
+
+  const {
     handleDismissSmartReply,
     handleFillSmartReplyComposer,
     handleMakeShorterSmartReply,
@@ -791,8 +928,6 @@ function ChatWorkbenchContent({
     requestSmartReplyGeneralAnswer,
     requestSmartReplyMakeShorter,
     sendSmartReply,
-    smartReplyByMessageIdByConversationId,
-    smartReplyHiddenMessageKeysByConversationId,
   });
 
   const handleSendDraft = async (segments: ComposerSegment[]) => {
@@ -1386,6 +1521,7 @@ function ChatWorkbenchContent({
                   accountAvatarUrl={activeAccount?.avatarUrl}
                   activeConversation={activeConversation}
                   activeHistoryStatus={activeHistoryStatus}
+                  canCollectMaterialActions={canCollectMaterialActions}
                   canSendMessage={canSendMessage}
                   composerPlaceholder={composerPlaceholder}
                   customer={activeCustomer}
@@ -1401,17 +1537,15 @@ function ChatWorkbenchContent({
                   isSendingDraft={isSendingDraft}
                   isResizingCustomerPanel={isResizingCustomerPanel}
                   fileUploadQueue={fileUploadQueue}
+                  collectedExpressions={collectedExpressions}
+                  hasMoreCollectedExpressions={hasMoreCollectedExpressions}
                   hasMoreHistory={hasMoreHistory}
                   historyLoadLabel={historyLoadLabel}
-                  messages={activeMessages}
-                  smartReplyAutoPendingByMessageId={
-                    activeConversationId
-                      ? smartReplyAutoPendingMessageKeysByConversationId[
-                          activeConversationId
-                        ]
-                      : undefined
+                  isCollectedExpressionLoadingMore={
+                    isCollectedExpressionLoadingMore
                   }
-                  smartReplyByMessageId={activeSmartReplyByMessageId}
+                  sendingCollectedExpressionId={sendingMaterialId}
+                  messages={activeMessages}
                   messageViewportRef={messageViewportRef}
                   quotedMessage={quotedMessage}
                   sidebarItems={sidebarItems}
@@ -1419,6 +1553,8 @@ function ChatWorkbenchContent({
                   onComposerSegmentsChange={handleComposerSegmentsChange}
                   onCancelFileUpload={handleCancelFileUpload}
                   onClearQuotedMessage={() => setQuotedMessage(null)}
+                  onCollectMaterial={handleCollectMaterial}
+                  onDeleteCollectedExpression={handleDeleteCollectedExpression}
                   onDownloadMessageFile={handleDownloadMessageFile}
                   onTranscribeVoice={handleTranscribeVoice}
                   onVoicePlaybackReady={handleVoicePlaybackReady}
@@ -1426,6 +1562,7 @@ function ChatWorkbenchContent({
                   onEmojiPickerOpenChange={setIsEmojiPickerOpen}
                   onEnterBehaviorChange={setInputEnterBehavior}
                   onFileSelect={handleFileSelect}
+                  onOpenMaterialLibrary={handleOpenMaterialLibrary}
                   onOpenHistory={() => {
                     if (isHistoryPanelOpen) {
                       closeHistoryPanel();
@@ -1469,6 +1606,10 @@ function ChatWorkbenchContent({
                   onHistorySetSenderId={(senderId) => {
                     void setHistoryPanelSenderId(senderId);
                   }}
+                  onLoadMoreCollectedExpressions={() => {
+                    void handleLoadMoreCollectedExpressions();
+                  }}
+                  onOpenCollectedExpressions={handleOpenCollectedExpressions}
                   onRefreshGroupMembers={() => {
                     void loadActiveGroupMembers({ force: true });
                   }}
@@ -1476,6 +1617,8 @@ function ChatWorkbenchContent({
                   onMentionMessage={handleMentionMessage}
                   onOpenQuotedMessage={handleOpenQuotedMessage}
                   onQuoteMessage={handleQuoteMessage}
+                  onSelectCollectedExpression={handleSelectMaterial}
+                  onTopCollectedExpression={handleTopCollectedExpression}
                   onSendSmartReply={handleSendSmartReply}
                   onFillSmartReplyComposer={handleFillSmartReplyComposer}
                   onDismissSmartReply={handleDismissSmartReply}
@@ -1639,6 +1782,55 @@ function ChatWorkbenchContent({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <MaterialGroupSelectDialog
+        bizType={pendingMaterialCollection?.bizType ?? MATERIAL_COLLECTION_BIZ_TYPE.FILE}
+        groups={materialCollectionGroups}
+        initialValues={pendingMaterialCollection?.formValues}
+        isSaving={isCollectingMaterial}
+        onCreateGroup={handleCreatePendingMaterialGroup}
+        onOpenChange={(open) => {
+          if (!open) {
+            resetPendingCollection();
+          }
+        }}
+        onSubmit={(payload) => {
+          void handleSubmitMaterialCollection(payload);
+        }}
+        open={pendingMaterialCollection !== null}
+      />
+      <MaterialLibraryDialog
+        activeGroupId={activeMaterialLibraryGroupId}
+        bizType={activeMaterialLibraryBizType ?? MATERIAL_COLLECTION_BIZ_TYPE.FILE}
+        groups={materialLibraryGroups}
+        hasMoreItems={hasMoreMaterialLibraryItems}
+        isBusy={isMaterialLibraryBusy}
+        isGroupsLoading={isMaterialLibraryGroupsLoading}
+        isItemsLoading={isMaterialLibraryItemsLoading}
+        isLoadingMoreItems={isMaterialLibraryLoadingMore}
+        isSending={isMaterialLibrarySending}
+        items={materialLibraryItems}
+        onCreateGroup={handleCreateMaterialGroup}
+        onDeleteGroup={handleDeleteMaterialGroup}
+        onDeleteMaterial={handleDeleteMaterial}
+        onEditMaterial={handleEditMaterial}
+        onLoadMoreItems={() => {
+          void handleLoadMoreMaterialLibraryItems();
+        }}
+        onMoveMaterial={handleMoveMaterial}
+        onOpenChange={(open) => {
+          if (!open) {
+            resetMaterialLibrary();
+          }
+        }}
+        onRenameGroup={handleRenameMaterialGroup}
+        onSelectGroup={(groupId) => {
+          void handleSelectMaterialLibraryGroup(groupId);
+        }}
+        onSelectMaterial={handleSelectMaterial}
+        onTopGroup={handleTopMaterialGroup}
+        onTopMaterial={handleTopMaterial}
+        open={activeMaterialLibraryBizType !== null}
+      />
     </div>
   );
 }

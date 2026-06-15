@@ -4,13 +4,17 @@ import { getSafeMessageUrl } from "@/pages/chat/components/message/url";
 
 type SphFeedMessageCardProps = {
   content: SphFeedMessageContent;
+  disableLink?: boolean;
 };
 
-export function SphFeedMessageCard({ content }: SphFeedMessageCardProps) {
+export function SphFeedMessageCard({
+  content,
+  disableLink = false,
+}: SphFeedMessageCardProps) {
   const safeUrl = getSafeMessageUrl(content.url);
   const card = <SphFeedCardBody content={content} />;
 
-  if (!safeUrl) {
+  if (!safeUrl || disableLink) {
     return (
       <div
         className="overflow-hidden rounded-[8px] border border-border bg-surface"

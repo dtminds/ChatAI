@@ -46,6 +46,12 @@ export class ForbiddenError extends AppError {
   }
 }
 
+export class InternalServerError extends AppError {
+  constructor(code: string, message: string, details?: Record<string, unknown>) {
+    super(code, message, 500, details);
+  }
+}
+
 export class BadGatewayError extends AppError {
   constructor(code: string, message: string, details?: Record<string, unknown>) {
     super(code, message, 502, details);

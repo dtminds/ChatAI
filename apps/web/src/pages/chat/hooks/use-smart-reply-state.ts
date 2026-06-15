@@ -1,11 +1,10 @@
-import { useCallback, useMemo, useRef, type RefObject } from "react";
+import { useCallback, useRef, type RefObject } from "react";
 import type { LexicalEditor } from "lexical";
 import {
   CLEAR_COMPOSER_COMMAND,
   INSERT_COMPOSER_TEXT_COMMAND,
 } from "@/pages/chat/components/composer/lexical-commands";
 import type { SmartReplySendPayload } from "@/pages/chat/api/smart-reply-adapter";
-import type { SmartReplySuggestion } from "@/pages/chat/components/smart-reply-card";
 import type { ChatMessage, Conversation } from "@/pages/chat/chat-types";
 
 type SendSmartReplyResult =
@@ -44,14 +43,6 @@ type UseSmartReplyStateOptions = {
     message: ChatMessage,
     payload: SmartReplySendPayload,
   ) => Promise<SendSmartReplyResult>;
-  smartReplyByMessageIdByConversationId: Record<
-    string,
-    Record<string, SmartReplySuggestion>
-  >;
-  smartReplyHiddenMessageKeysByConversationId: Record<
-    string,
-    Record<string, true>
-  >;
 };
 
 export function useSmartReplyState({
@@ -68,11 +59,8 @@ export function useSmartReplyState({
   requestSmartReplyGeneralAnswer,
   requestSmartReplyMakeShorter,
   sendSmartReply,
-  smartReplyByMessageIdByConversationId,
-  smartReplyHiddenMessageKeysByConversationId,
 }: UseSmartReplyStateOptions) {
   const activeConversationId = activeConversation?.id;
-  const activeConversationMode = activeConversation?.mode;
   const activeSendTokenRef = useRef<symbol | null>(null);
   const activeConversationVersionRef = useRef(0);
   const prevConversationIdRef = useRef(activeConversationId);
@@ -81,27 +69,6 @@ export function useSmartReplyState({
     prevConversationIdRef.current = activeConversationId;
     activeConversationVersionRef.current += 1;
   }
-
-  const suggestions = activeConversationId
-    ? smartReplyByMessageIdByConversationId[activeConversationId]
-    : undefined;
-  const hidden = activeConversationId
-    ? smartReplyHiddenMessageKeysByConversationId[activeConversationId]
-    : undefined;
-
-  const activeSmartReplyByMessageId = useMemo(() => {
-    if (!activeConversationId || activeConversationMode !== "single" || !suggestions) {
-      return {};
-    }
-
-    const activeHidden = hidden ?? {};
-
-    return Object.fromEntries(
-      Object.entries(suggestions).filter(
-        ([lookupKey]) => !activeHidden[lookupKey],
-      ),
-    );
-  }, [activeConversationId, activeConversationMode, suggestions, hidden]);
 
   const handleSendSmartReply = useCallback(
     async (message: ChatMessage, payload: SmartReplySendPayload) => {
@@ -200,7 +167,6 @@ export function useSmartReplyState({
   );
 
   return {
-    activeSmartReplyByMessageId,
     handleDismissSmartReply,
     handleFillSmartReplyComposer,
     handleMakeShorterSmartReply,

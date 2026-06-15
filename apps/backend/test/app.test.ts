@@ -1177,6 +1177,207 @@ describe("backend app", () => {
     await app.close();
   });
 
+  it("material: lists material groups and paginated collections from backend state", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+
+    const groupsResponse = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/material-collections/groups?biz_type=2",
+    });
+
+    expect(groupsResponse.statusCode).toBe(200);
+    expect(groupsResponse.json()).toMatchObject({
+      groups: [
+        {
+          bizType: 2,
+          id: "material-group-file-1",
+          title: "文件分组",
+        },
+      ],
+    });
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/material-collections/materials?biz_type=2&group_id=material-group-file-1&page=1&page_size=100",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      items: [
+        {
+          bizType: 2,
+          contentType: "file",
+          groupId: "material-group-file-1",
+          messageId: "msg-004",
+        },
+      ],
+      pagination: {
+        hasMore: false,
+        page: 1,
+        pageSize: 100,
+        total: 1,
+      },
+    });
+
+    await app.close();
+  });
+
+  it("material: rejects enterprise collection page without group id", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/material-collections/materials?biz_type=2&page=1&page_size=100",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({
+      error: {
+        code: "MATERIAL_GROUP_REQUIRED",
+        message: "请选择分组",
+      },
+      success: false,
+    });
+
+    await app.close();
+  });
+
+  it("material: accepts expression collection for operator", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        bizType: 1,
+        messageId: "msg-002",
+      },
+      url: "/api/server/material-collections",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      success: true,
+    });
+
+    await app.close();
+  });
+
+  it("material: rejects tenant collection without a real group", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        bizType: 2,
+        messageId: "msg-004",
+      },
+      url: "/api/server/material-collections",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      success: false,
+      errorMsg: "请选择分组",
+    });
+
+    await app.close();
+  });
+
+  it("material: creates groups and returns the created group", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        bizType: 2,
+        title: "售后文件",
+      },
+      url: "/api/server/material-collections/groups",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      bizType: 2,
+      id: expect.any(String),
+      title: "售后文件",
+    });
+
+    await app.close();
+  });
+
+  it("material: rejects viewer mutations", async () => {
+    const { app, authorization } = await createAuthenticatedAppWithRole("viewer");
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        bizType: 2,
+        messageId: "msg-004",
+      },
+      url: "/api/server/material-collections",
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toEqual({
+      error: {
+        code: "FORBIDDEN",
+        message: "无权限访问",
+      },
+      success: false,
+    });
+
+    await app.close();
+  });
+
+  it("material: deleting non-empty group returns business error", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "DELETE",
+      url: "/api/server/material-collections/groups/material-group-file-1?biz_type=2",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({
+      error: {
+        code: "MATERIAL_GROUP_NOT_EMPTY",
+        message: "请先移走或删除分组内素材",
+      },
+      success: false,
+    });
+
+    await app.close();
+  });
+
+  it("material: rejects invalid collection business type", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/material-collections/materials?biz_type=9&group_id=0",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({
+      error: {
+        code: "INVALID_MATERIAL_BIZ_TYPE",
+        message: "素材类型无效",
+      },
+      success: false,
+    });
+
+    await app.close();
+  });
+
   it("falls back to the DB when the session cache read fails", async () => {
     const { app, authorization } = await createAuthenticatedApp();
     app.cache.get = vi.fn(async () => {

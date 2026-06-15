@@ -398,8 +398,7 @@ function parseMessageContent(row: MessageRow, quotePreview?: MessageRowQuotePrev
   }
 
   switch (msgtype) {
-    case "image":
-    case "emotion": {
+    case "image": {
       const downloadStatus = readDownloadStatus(parsed);
       const fileSerialNo = readStringField(parsed, "fileSerialNo");
 
@@ -408,6 +407,14 @@ function parseMessageContent(row: MessageRow, quotePreview?: MessageRowQuotePrev
         ...(downloadStatus ? { downloadStatus } : {}),
         ...(fileSerialNo ? { fileSerialNo } : {}),
         imageUrl: normalizeMediaAssetUrl(readStringField(parsed, "fileUrl")),
+      };
+    }
+    case "emotion": {
+      const fileUrl = normalizeMediaAssetUrl(readStringField(parsed, "fileUrl"));
+
+      return {
+        alt: "表情",
+        fileUrl,
       };
     }
     case "voice":
@@ -725,10 +732,15 @@ export function buildQuotedMessagePreview(row: MessageRow): MessageRowQuotePrevi
         text: String(mapped.content.text ?? ""),
       };
     case "image":
-    case "emotion":
       return {
         contentType: mapped.contentType,
         imageUrl: readRecordString(mapped.content, "imageUrl"),
+        senderName,
+      };
+    case "emotion":
+      return {
+        contentType: mapped.contentType,
+        imageUrl: readRecordString(mapped.content, "fileUrl"),
         senderName,
       };
     default: {

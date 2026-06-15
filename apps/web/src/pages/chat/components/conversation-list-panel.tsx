@@ -6,6 +6,7 @@ import {
   Search01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { useShallow } from "zustand/react/shallow";
 import { Spinner } from "@/components/ui/spinner";
 import {
   AlertDialog,
@@ -81,7 +82,18 @@ export function ConversationListPanel({
     selectOrCreateAndSelectConversation,
     conversationOpenError,
     dismissConversationOpenError,
-  } = useWorkbenchStore();
+  } = useWorkbenchStore(
+    useShallow((state) => ({
+      conversationOpenError: state.conversationOpenError,
+      dismissConversationOpenError: state.dismissConversationOpenError,
+      isSearchLoading: state.isSearchLoading,
+      searchKeyword: state.searchKeyword,
+      searchResults: state.searchResults,
+      selectOrCreateAndSelectConversation:
+        state.selectOrCreateAndSelectConversation,
+      setSearchKeyword: state.setSearchKeyword,
+    })),
+  );
   const [expandedSearchSection, setExpandedSearchSection] = useState<ChatMode | null>(
     null,
   );

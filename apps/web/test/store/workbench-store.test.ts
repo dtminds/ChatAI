@@ -462,7 +462,7 @@ describe("useWorkbenchStore", () => {
             {
               content: {
                 alt: "表情",
-                imageUrl: "https://cdn.example.com/emotion.gif",
+                fileUrl: "https://cdn.example.com/emotion.gif",
               },
               contentType: "emotion",
               conversationId: "conv-001",
@@ -2363,6 +2363,169 @@ describe("useWorkbenchStore", () => {
     expect(useWorkbenchStore.getState().isPollBaselineFresh).toBe(false);
   });
 
+  it("preserves business state references when poll has no business changes", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        return {
+          activeConversationMessages: [],
+          conversationChanges: [],
+          nextVersion: request.sinceVersion + 1,
+          seatChanges: [],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.getState().clearActiveConversation();
+
+    const beforePoll = useWorkbenchStore.getState();
+    const references = {
+      accounts: beforePoll.accounts,
+      conversationListsByScope: beforePoll.conversationListsByScope,
+      groupMembersByConversationId: beforePoll.groupMembersByConversationId,
+      groupMembersLoadingByConversationId:
+        beforePoll.groupMembersLoadingByConversationId,
+      hasMoreHistoryByConversationId: beforePoll.hasMoreHistoryByConversationId,
+      historyPanelByConversationId: beforePoll.historyPanelByConversationId,
+      historyStatusByConversationId: beforePoll.historyStatusByConversationId,
+      messagePaginationByConversationId:
+        beforePoll.messagePaginationByConversationId,
+      messagesByConversationId: beforePoll.messagesByConversationId,
+      pendingMessages: beforePoll.pendingMessages,
+      smartReplyByMessageIdByConversationId:
+        beforePoll.smartReplyByMessageIdByConversationId,
+      smartReplyHiddenMessageKeysByConversationId:
+        beforePoll.smartReplyHiddenMessageKeysByConversationId,
+      smartReplyPendingMessageKeysByConversationId:
+        beforePoll.smartReplyPendingMessageKeysByConversationId,
+    };
+
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    const afterPoll = useWorkbenchStore.getState();
+
+    expect(afterPoll.accounts).toBe(references.accounts);
+    expect(afterPoll.conversationListsByScope).toBe(
+      references.conversationListsByScope,
+    );
+    expect(afterPoll.groupMembersByConversationId).toBe(
+      references.groupMembersByConversationId,
+    );
+    expect(afterPoll.groupMembersLoadingByConversationId).toBe(
+      references.groupMembersLoadingByConversationId,
+    );
+    expect(afterPoll.hasMoreHistoryByConversationId).toBe(
+      references.hasMoreHistoryByConversationId,
+    );
+    expect(afterPoll.historyPanelByConversationId).toBe(
+      references.historyPanelByConversationId,
+    );
+    expect(afterPoll.historyStatusByConversationId).toBe(
+      references.historyStatusByConversationId,
+    );
+    expect(afterPoll.messagePaginationByConversationId).toBe(
+      references.messagePaginationByConversationId,
+    );
+    expect(afterPoll.messagesByConversationId).toBe(
+      references.messagesByConversationId,
+    );
+    expect(afterPoll.pendingMessages).toBe(references.pendingMessages);
+    expect(afterPoll.smartReplyByMessageIdByConversationId).toBe(
+      references.smartReplyByMessageIdByConversationId,
+    );
+    expect(afterPoll.smartReplyHiddenMessageKeysByConversationId).toBe(
+      references.smartReplyHiddenMessageKeysByConversationId,
+    );
+    expect(afterPoll.smartReplyPendingMessageKeysByConversationId).toBe(
+      references.smartReplyPendingMessageKeysByConversationId,
+    );
+    expect(afterPoll.sinceVersion).toBe(beforePoll.sinceVersion + 1);
+    expect(afterPoll.isPollBaselineFresh).toBe(false);
+  });
+
+  it("preserves accounts reference when poll account changes do not target loaded accounts", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        return {
+          activeConversationMessages: [],
+          conversationChanges: [],
+          nextVersion: request.sinceVersion + 1,
+          seatChanges: [
+            {
+              accountId: "missing-seat",
+              seatId: "missing-seat",
+              unreadCount: 3,
+            },
+          ],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.getState().clearActiveConversation();
+
+    const beforePoll = useWorkbenchStore.getState();
+    const accountsBeforePoll = beforePoll.accounts;
+
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(useWorkbenchStore.getState().accounts).toBe(accountsBeforePoll);
+  });
+
+  it("preserves pending messages reference when poll messages do not resolve pending items", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        return {
+          activeConversationMessages: [
+            createSmartReplyTextMessageDto({
+              id: "remote-unrelated-message",
+              seq: 999,
+              text: "服务端新消息",
+            }),
+          ],
+          conversationChanges: [],
+          nextVersion: request.sinceVersion + 1,
+          seatChanges: [],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      pendingMessages: [
+        ...state.pendingMessages,
+        {
+          author: "客服一号",
+          clientMessageId: "client-pending-001",
+          content: { text: "本地待发送消息", type: "text" },
+          conversationId: "conv-001",
+          id: "pending-001",
+          role: "agent",
+          sender: { id: "agent-001", name: "客服一号" },
+          sentAt: "2026-05-25T10:00:00+08:00",
+          status: "sending",
+        } satisfies ChatMessage,
+      ],
+    }));
+
+    const pendingBeforePoll = useWorkbenchStore.getState().pendingMessages;
+
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(useWorkbenchStore.getState().pendingMessages).toBe(
+      pendingBeforePoll,
+    );
+  });
+
   it("omits active conversation parameters from poll when no conversation is bound", async () => {
     const baseService = createMockWorkbenchService();
     const observedPollRequests: Parameters<typeof baseService.poll>[0][] = [];
@@ -3003,6 +3166,142 @@ describe("useWorkbenchStore", () => {
         },
       }),
     );
+  });
+
+  it("sends collected material API payloads by collection id only while keeping optimistic display content", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentMessageSegments([
+      {
+        imageUrl: "https://cdn.example.com/expression.gif",
+        materialCollectionId: "material-expression-001",
+        type: "emotion",
+      },
+      {
+        extension: "pdf",
+        fileName: "报价单.pdf",
+        fileSizeLabel: "2 KB",
+        materialCollectionId: "material-file-001",
+        type: "file",
+        url: "https://cdn.example.com/quote.pdf",
+      },
+      {
+        coverUrl: "https://cdn.example.com/link-cover.png",
+        desc: "活动说明",
+        href: "https://example.com/activity",
+        materialCollectionId: "material-h5-001",
+        title: "活动链接",
+        type: "h5",
+      },
+      {
+        appName: "客户助手",
+        coverImageUrl: "https://cdn.example.com/weapp-cover.png",
+        materialCollectionId: "material-weapp-001",
+        title: "小程序标题",
+        type: "weapp",
+      },
+      {
+        description: "视频号简介",
+        imageUrl: "https://cdn.example.com/sphfeed-cover.png",
+        materialCollectionId: "material-sphfeed-001",
+        title: "视频号标题",
+        type: "sphfeed",
+        url: "https://channels.example.com/feed",
+      },
+    ]);
+
+    expect(sendMessage).toHaveBeenCalledTimes(5);
+    expect(sendMessage).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        segment: {
+          materialCollectionId: "material-expression-001",
+          type: "emotion",
+        },
+      }),
+    );
+    expect(sendMessage).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        segment: {
+          materialCollectionId: "material-file-001",
+          type: "file",
+        },
+      }),
+    );
+    expect(sendMessage).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        segment: {
+          materialCollectionId: "material-h5-001",
+          type: "h5",
+        },
+      }),
+    );
+    expect(sendMessage).toHaveBeenNthCalledWith(
+      4,
+      expect.objectContaining({
+        segment: {
+          materialCollectionId: "material-weapp-001",
+          type: "weapp",
+        },
+      }),
+    );
+    expect(sendMessage).toHaveBeenNthCalledWith(
+      5,
+      expect.objectContaining({
+        segment: {
+          materialCollectionId: "material-sphfeed-001",
+          type: "sphfeed",
+        },
+      }),
+    );
+
+    const latestMessages =
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].slice(-5);
+
+    expect(latestMessages).toMatchObject([
+      {
+        content: {
+          imageUrl: "https://cdn.example.com/expression.gif",
+          type: "image",
+          variant: "emotion",
+        },
+      },
+      {
+        content: {
+          fileName: "报价单.pdf",
+          type: "file",
+        },
+      },
+      {
+        content: {
+          title: "活动链接",
+          type: "h5",
+          url: "https://example.com/activity",
+        },
+      },
+      {
+        content: {
+          title: "小程序标题",
+          type: "mini-program",
+        },
+      },
+      {
+        content: {
+          title: "视频号标题",
+          type: "sphfeed",
+          url: "https://channels.example.com/feed",
+        },
+      },
+    ]);
   });
 
   it("does not send messages from an inactive conversation", async () => {

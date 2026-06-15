@@ -93,9 +93,28 @@ export type JavaSendMessageData =
       msgtype: "image";
     }
   | {
+      fileUrl: string;
+      msgtype: "emotion";
+    }
+  | {
       fileName: string;
       fileUrl: string;
       msgtype: "file";
+    }
+  | {
+      coverUrl?: string;
+      desc?: string;
+      href: string;
+      msgtype: "link";
+      title: string;
+    }
+  | {
+      msgtype: "weapp";
+      transMsgid: string;
+    }
+  | {
+      msgtype: "sphfeed";
+      transMsgid: string;
     }
   | ({
       msgtype: "quote";

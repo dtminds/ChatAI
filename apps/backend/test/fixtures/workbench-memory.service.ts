@@ -53,8 +53,22 @@ import type {
   WorkbenchVoicePlaybackConfirmResponse,
   WorkbenchVoiceTranscriptionRequest,
   WorkbenchVoiceTranscriptionResponse,
+  type WorkbenchMaterialCollectionCreateRequest,
+  type WorkbenchMaterialCollectionCreateResponse,
+  type WorkbenchMaterialCollectionGroupCreateRequest,
+  type WorkbenchMaterialCollectionGroupCreateResponse,
+  type WorkbenchMaterialCollectionGroupDto,
+  type WorkbenchMaterialCollectionGroupListRequest,
+  type WorkbenchMaterialCollectionGroupListResponse,
+  type WorkbenchMaterialCollectionGroupUpdateRequest,
+  type WorkbenchMaterialCollectionItemDto,
+  type WorkbenchMaterialCollectionListRequest,
+  type WorkbenchMaterialCollectionListResponse,
+  type WorkbenchMaterialCollectionMoveRequest,
+  type WorkbenchMaterialCollectionOkResponse,
 } from "@chatai/contracts";
-import { NotFoundError } from "../../src/shared/errors.js";
+import { MATERIAL_COLLECTION_BIZ_TYPE, MATERIAL_COLLECTION_GROUP_MAX_COUNT } from "@chatai/contracts";
+import { BadRequestError, NotFoundError } from "../../src/shared/errors.js";
 
 type WorkbenchEvent =
   | {
@@ -79,6 +93,8 @@ type MemoryWorkbenchState = {
   groupMembersByConversationId: Record<string, WorkbenchGroupMembersResponse>;
   subUser: WorkbenchSubUserDto;
   events: WorkbenchEvent[];
+  materialGroups: WorkbenchMaterialCollectionGroupDto[];
+  materialItems: WorkbenchMaterialCollectionItemDto[];
   messagesByConversationId: Record<string, WorkbenchMessageDto[]>;
   nextId: number;
   version: number;
@@ -138,6 +154,163 @@ export function createMemoryWorkbenchService() {
     },
     getMe(_subUserId: string) {
       return clone(state.subUser);
+    },
+    listMaterialCollections(
+      _subUserId: string,
+      request: WorkbenchMaterialCollectionListRequest,
+    ): WorkbenchMaterialCollectionListResponse {
+      if (
+        request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION &&
+        request.groupId == null
+      ) {
+        throw new BadRequestError("MATERIAL_GROUP_REQUIRED", "请选择分组");
+      }
+
+      const page = request.page ?? 1;
+      const pageSize = request.pageSize ?? 100;
+      const matchingItems = state.materialItems.filter(
+        (item) =>
+          item.bizType === request.bizType &&
+          item.groupId === request.groupId,
+      );
+
+      return {
+        items: clone(
+          matchingItems.slice((page - 1) * pageSize, page * pageSize),
+        ),
+        pagination: {
+          hasMore: page * pageSize < matchingItems.length,
+          page,
+          pageSize,
+          total: matchingItems.length,
+        },
+      };
+    },
+    listMaterialGroups(
+      _subUserId: string,
+      request: WorkbenchMaterialCollectionGroupListRequest,
+    ): WorkbenchMaterialCollectionGroupListResponse {
+      return {
+        groups: clone(
+          state.materialGroups.filter((group) => group.bizType === request.bizType),
+        ),
+      };
+    },
+    collectMaterial(
+      _subUserId: string,
+      request: WorkbenchMaterialCollectionCreateRequest,
+    ): WorkbenchMaterialCollectionCreateResponse {
+      if (
+        request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION &&
+        (request.groupId === undefined || request.groupId === 0 || request.groupId === "0")
+      ) {
+        return {
+          success: false,
+          errorMsg: "请选择分组",
+        };
+      }
+
+      const item = buildMemoryMaterialItem(state, request);
+      state.materialItems = [
+        item,
+        ...state.materialItems.filter((existing) => existing.messageId !== request.messageId),
+      ];
+
+      return { success: true };
+    },
+    deleteMaterialCollection(
+      _subUserId: string,
+      collectionId: string,
+    ): WorkbenchMaterialCollectionOkResponse {
+      state.materialItems = state.materialItems.filter((item) => item.id !== collectionId);
+      return { ok: true };
+    },
+    topMaterialCollection(
+      _subUserId: string,
+      collectionId: string,
+    ): WorkbenchMaterialCollectionOkResponse {
+      const sort = Date.now();
+      state.materialItems = state.materialItems.map((item) =>
+        item.id === collectionId ? { ...item, sort } : item,
+      );
+      return { ok: true };
+    },
+    moveMaterialCollection(
+      _subUserId: string,
+      collectionId: string,
+      request: WorkbenchMaterialCollectionMoveRequest,
+    ): WorkbenchMaterialCollectionOkResponse {
+      state.materialItems = state.materialItems.map((item) =>
+        item.id === collectionId
+          ? { ...item, groupId: request.groupId, sort: Date.now() }
+          : item,
+      );
+      return { ok: true };
+    },
+    createMaterialGroup(
+      _subUserId: string,
+      request: WorkbenchMaterialCollectionGroupCreateRequest,
+    ): WorkbenchMaterialCollectionGroupCreateResponse {
+      if (request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION) {
+        throw new BadRequestError("MATERIAL_GROUP_UNSUPPORTED", "表情不支持自定义分组");
+      }
+
+      const existingGroupCount = state.materialGroups.filter(
+        (group) => group.bizType === request.bizType,
+      ).length;
+
+      if (existingGroupCount >= MATERIAL_COLLECTION_GROUP_MAX_COUNT) {
+        throw new BadRequestError("MATERIAL_GROUP_LIMIT_REACHED", "分组数量已达上限");
+      }
+
+      const group = {
+        bizType: request.bizType,
+        id: String(state.nextId++),
+        sort: Date.now(),
+        title: request.title,
+      };
+      state.materialGroups.unshift(group);
+      return clone(group);
+    },
+    renameMaterialGroup(
+      _subUserId: string,
+      groupId: string,
+      _bizType: number,
+      request: WorkbenchMaterialCollectionGroupUpdateRequest,
+    ): WorkbenchMaterialCollectionOkResponse {
+      state.materialGroups = state.materialGroups.map((group) =>
+        group.id === groupId ? { ...group, title: request.title } : group,
+      );
+      return { ok: true };
+    },
+    topMaterialGroup(
+      _subUserId: string,
+      groupId: string,
+      _bizType: number,
+    ): WorkbenchMaterialCollectionOkResponse {
+      state.materialGroups = state.materialGroups.map((group) =>
+        group.id === groupId ? { ...group, sort: Date.now() } : group,
+      );
+      return { ok: true };
+    },
+    deleteMaterialGroup(
+      _subUserId: string,
+      groupId: string,
+      bizType: number,
+    ): WorkbenchMaterialCollectionOkResponse {
+      if (
+        state.materialItems.some(
+          (item) => item.bizType === bizType && item.groupId === groupId,
+        )
+      ) {
+        throw new BadRequestError(
+          "MATERIAL_GROUP_NOT_EMPTY",
+          "请先移走或删除分组内素材",
+        );
+      }
+
+      state.materialGroups = state.materialGroups.filter((group) => group.id !== groupId);
+      return { ok: true };
     },
     async getSidebarIframeParams(_subUserId: string, _input: WorkbenchSidebarIframeParamsRequest) {
       throw new NotFoundError(
@@ -709,6 +882,26 @@ function buildInitialState(): MemoryWorkbenchState {
       subUserId: CURRENT_SUB_USER_ID,
     },
     events: [],
+    materialGroups: [
+      {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+        id: "material-group-file-1",
+        sort: 100,
+        title: "文件分组",
+      },
+    ],
+    materialItems: [
+      {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+        content: { fileName: "求未 AI 智能营销系统.pdf" },
+        contentType: "file",
+        groupId: "material-group-file-1",
+        id: "material-item-file-1",
+        messageId: "msg-004",
+        sort: 100,
+        title: "求未 AI 智能营销系统.pdf",
+      },
+    ],
     messagesByConversationId: {
       "conv-001": [
         message("msg-002", "conv-001", "drc", "cust-001", "customer", "mini-program", { appName: "学好惊喜社", title: "预约直播抽秋天的第一杯奶茶", coverImageUrl: imagePlaceholder("mini-program"), sourceLabel: "小程序" }, "2026-04-11 15:32:40", 1, "sent"),
@@ -842,6 +1035,69 @@ function getMemoryRawMsgtype(contentType: WorkbenchMessageDto["contentType"]) {
     default:
       return contentType;
   }
+}
+
+function buildMemoryMaterialItem(
+  state: MemoryWorkbenchState,
+  request: WorkbenchMaterialCollectionCreateRequest,
+): WorkbenchMaterialCollectionItemDto {
+  const message = Object.values(state.messagesByConversationId)
+    .flat()
+    .find((item) => item.messageId === request.messageId);
+
+  if (!message) {
+    throw new NotFoundError("MATERIAL_MESSAGE_NOT_FOUND", "消息不存在");
+  }
+
+  const contentType =
+    request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION
+      ? "emotion"
+      : request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM
+        ? "mini-program"
+        : request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.H5
+          ? "h5"
+          : "file";
+  const groupId =
+    request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION
+      ? 0
+      : String(request.groupId);
+
+  return {
+    bizType: request.bizType,
+    content: message.content,
+    contentType,
+    groupId,
+    id: `material-item-${state.nextId++}`,
+    messageId: request.messageId,
+    sort: Date.now(),
+    title: readMemoryMaterialTitle(message.content, contentType, request.messageId),
+  };
+}
+
+function readMemoryMaterialTitle(
+  content: unknown,
+  contentType: WorkbenchMaterialCollectionItemDto["contentType"],
+  messageId: string,
+) {
+  if (contentType === "emotion") {
+    return "表情";
+  }
+
+  if (!content || typeof content !== "object") {
+    return messageId;
+  }
+
+  const record = content as Record<string, unknown>;
+  return (
+    readString(record.fileName) ||
+    readString(record.description) ||
+    readString(record.title) ||
+    messageId
+  );
+}
+
+function readString(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
 }
 
 function imagePlaceholder(label: string) {

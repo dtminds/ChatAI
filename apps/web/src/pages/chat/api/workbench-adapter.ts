@@ -274,7 +274,10 @@ function adaptChatMessageContent(
         downloadStatus: asDownloadStatus(content.downloadStatus),
         fileSerialNo: asOptionalString(content.fileSerialNo),
         height: asOptionalNumber(content.height),
-        imageUrl: String(content.imageUrl ?? ""),
+        imageUrl:
+          contentType === "emotion"
+            ? String(content.fileUrl ?? "")
+            : String(content.imageUrl ?? ""),
         type: "image",
         variant: contentType,
         width: asOptionalNumber(content.width),

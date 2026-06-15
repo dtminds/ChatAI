@@ -33,6 +33,27 @@ export const CHAT_TYPE = {
   GROUP: 2,
 } as const;
 
+export const MATERIAL_COLLECTION_BIZ_TYPE = {
+  EXPRESSION: 1,
+  FILE: 2,
+  MINI_PROGRAM: 3,
+  H5: 4,
+  SPHFEED: 5,
+} as const;
+
+export const MATERIAL_COLLECTION_GROUP_MAX_COUNT = 20;
+
+export const MaterialCollectionBizTypeSchema = Type.Union([
+  Type.Literal(MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION),
+  Type.Literal(MATERIAL_COLLECTION_BIZ_TYPE.FILE),
+  Type.Literal(MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM),
+  Type.Literal(MATERIAL_COLLECTION_BIZ_TYPE.H5),
+  Type.Literal(MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED),
+]);
+
 export type LoginStatus = Static<typeof LoginStatusSchema>;
 export type TakeoverStatus = Static<typeof TakeoverStatusSchema>;
 export type ConversationCustodyMode = Static<typeof ConversationCustodyModeSchema>;
+export type MaterialCollectionBizType = Static<
+  typeof MaterialCollectionBizTypeSchema
+>;

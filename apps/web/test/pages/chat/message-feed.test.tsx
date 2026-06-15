@@ -181,6 +181,173 @@ describe("message feed row actions", () => {
     expect(onQuoteMessage).not.toHaveBeenCalled();
   });
 
+  it.each([
+    [
+      "表情",
+      {
+        alt: "表情",
+        imageUrl: "https://example.com/emotion.gif",
+        type: "image" as const,
+        variant: "emotion" as const,
+      },
+    ],
+    [
+      "文件",
+      {
+        extension: "pdf",
+        fileName: "报价单.pdf",
+        type: "file" as const,
+      },
+    ],
+    [
+      "小程序",
+      {
+        appName: "学好惊喜社",
+        title: "预约直播",
+        type: "mini-program" as const,
+      },
+    ],
+    [
+      "H5",
+      {
+        description: "活动说明",
+        title: "活动页",
+        type: "h5" as const,
+      },
+    ],
+  ])("shows collection action for %s messages", async (_label, content) => {
+    const user = userEvent.setup();
+    const onCollectMaterial = vi.fn();
+    const message = {
+      ...createTextMessage("可收录"),
+      content,
+      role: "customer" as const,
+    } satisfies ChatMessage;
+
+    render(
+      <MessageRow
+        message={message}
+        onCollectMaterial={onCollectMaterial}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "收录" }));
+
+    expect(onCollectMaterial).toHaveBeenCalledWith(message);
+  });
+
+  it.each([
+    [
+      "文本",
+      {
+        text: "普通文本",
+        type: "text" as const,
+      },
+    ],
+    [
+      "普通图片",
+      {
+        alt: "图片",
+        imageUrl: "https://example.com/image.png",
+        type: "image" as const,
+      },
+    ],
+    [
+      "名片",
+      {
+        name: "客户甲",
+        type: "contact-card" as const,
+      },
+    ],
+    [
+      "视频号",
+      {
+        description: "视频号内容",
+        imageUrl: "https://example.com/sphfeed.jpg",
+        sourceLabel: "视频号",
+        title: "视频号标题",
+        type: "sphfeed" as const,
+        url: "https://channels.weixin.qq.com/web/pages/feed?eid=export",
+      },
+    ],
+  ])("does not show collection action for %s messages", async (_label, content) => {
+    const user = userEvent.setup();
+
+    render(
+      <MessageRow
+        message={{
+          ...createTextMessage("不可收录"),
+          content,
+          role: "customer",
+        } as ChatMessage}
+        onCollectMaterial={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+
+    expect(screen.queryByRole("menuitem", { name: "收录" })).not.toBeInTheDocument();
+  });
+
+  it("allows collection when message send actions are locked", async () => {
+    const user = userEvent.setup();
+    const onCollectMaterial = vi.fn();
+    const message = {
+      ...createTextMessage("文件"),
+      content: {
+        extension: "pdf",
+        fileName: "报价单.pdf",
+        type: "file" as const,
+      },
+      role: "customer" as const,
+    } satisfies ChatMessage;
+
+    render(
+      <MessageRow
+        canUseMessageActions={false}
+        message={message}
+        onCollectMaterial={onCollectMaterial}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "收录" }));
+
+    expect(onCollectMaterial).toHaveBeenCalledWith(message);
+  });
+
+  it("keeps collection action disabled for readonly users", async () => {
+    const user = userEvent.setup();
+    const onCollectMaterial = vi.fn();
+    const message = {
+      ...createTextMessage("文件"),
+      content: {
+        extension: "pdf",
+        fileName: "报价单.pdf",
+        type: "file" as const,
+      },
+      role: "customer" as const,
+    } satisfies ChatMessage;
+
+    render(
+      <MessageRow
+        canCollectMaterialActions={false}
+        message={message}
+        onCollectMaterial={onCollectMaterial}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+
+    expect(screen.getByRole("menuitem", { name: "收录" })).toHaveAttribute(
+      "data-disabled",
+    );
+    await user.click(screen.getByRole("menuitem", { name: "收录" }));
+
+    expect(onCollectMaterial).not.toHaveBeenCalled();
+  });
+
   it("disables the quote action for revoked messages", async () => {
     const user = userEvent.setup();
     const onQuoteMessage = vi.fn();

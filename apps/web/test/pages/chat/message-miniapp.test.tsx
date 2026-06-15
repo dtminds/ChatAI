@@ -25,6 +25,25 @@ describe("MiniAppMessageCard", () => {
     );
   });
 
+  it("truncates app name and supports single-line title mode", () => {
+    render(
+      <MiniAppMessageCard
+        content={{
+          appName: "这是一个很长很长的小程序名称",
+          sourceLabel: "小程序",
+          title: "这是一个很长很长的小程序卡片标题",
+          type: "mini-program",
+        }}
+        titleLines={1}
+      />,
+    );
+
+    expect(screen.getByTestId("mini-program-app-name"))
+      .toHaveClass("truncate");
+    expect(screen.getByText("这是一个很长很长的小程序卡片标题"))
+      .toHaveClass("line-clamp-1");
+  });
+
   it("uses an image-not-found fallback when the cover image URL is empty", () => {
     render(
       <MiniAppMessageCard

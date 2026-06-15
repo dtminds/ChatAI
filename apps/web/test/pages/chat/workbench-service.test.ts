@@ -1,5 +1,6 @@
 import MockAdapter from "axios-mock-adapter";
 import { afterEach, describe, expect, it } from "vitest";
+import { MATERIAL_COLLECTION_BIZ_TYPE } from "@chatai/contracts";
 import { requestInstance } from "@/lib/request";
 import { createHttpWorkbenchService, createWorkbenchService } from "@/pages/chat/api/workbench-service";
 
@@ -158,6 +159,107 @@ describe("createWorkbenchService", () => {
       ],
       receivedParams: {
         third_userids: "seat-user-12",
+      },
+    });
+  });
+
+  it("lists material groups and paginated collections with explicit params", async () => {
+    const service = createHttpWorkbenchService();
+    mock.onGet("/server/material-collections/groups").reply((config) => [
+      200,
+      {
+        groups: [],
+        receivedParams: config.params,
+      },
+    ]);
+    mock.onGet("/server/material-collections/materials").reply((config) => [
+      200,
+      {
+        items: [],
+        pagination: {
+          hasMore: false,
+          page: 1,
+          pageSize: 100,
+          total: 0,
+        },
+        receivedParams: config.params,
+      },
+    ]);
+
+    await expect(
+      service.listMaterialGroups({
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+      }),
+    ).resolves.toMatchObject({
+      receivedParams: {
+        biz_type: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+      },
+    });
+    await expect(
+      service.listMaterialCollections({
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+        groupId: "9",
+        page: 1,
+        pageSize: 100,
+      }),
+    ).resolves.toMatchObject({
+      receivedParams: {
+        biz_type: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+        group_id: "9",
+        page: 1,
+        page_size: 100,
+      },
+    });
+  });
+
+  it("collects material messages", async () => {
+    const service = createHttpWorkbenchService();
+    mock.onPost("/server/material-collections").reply((config) => [
+      200,
+      {
+        success: true,
+        receivedBody: JSON.parse(String(config.data)),
+      },
+    ]);
+
+    await expect(
+      service.collectMaterial({
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+        groupId: "9",
+        messageId: "msg-file-001",
+      }),
+    ).resolves.toMatchObject({
+      receivedBody: {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+        groupId: "9",
+        messageId: "msg-file-001",
+      },
+    });
+  });
+
+  it("creates material groups and returns the group payload", async () => {
+    const service = createHttpWorkbenchService();
+    mock.onPost("/server/material-collections/groups").reply((config) => [
+      200,
+      {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+        id: "group-created",
+        sort: 1_781_244_000_000,
+        title: "售后文件",
+        receivedBody: JSON.parse(String(config.data)),
+      },
+    ]);
+
+    await expect(
+      service.createMaterialGroup({
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+        title: "售后文件",
+      }),
+    ).resolves.toMatchObject({
+      id: "group-created",
+      receivedBody: {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+        title: "售后文件",
       },
     });
   });

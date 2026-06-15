@@ -1669,7 +1669,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
     const response = await this.javaClient.sendMessage({
       clientMessageId: payload.clientMessageId,
       ...(failMsgId != null ? { failMsgId } : {}),
-      msgData: buildJavaSendMessageData(payload, segment),
+      msgData: await this.buildJavaSendMessageData(conversation.uid, payload, segment),
       platform: conversation.platform,
       sendType: conversation.thirdGroupId ? JAVA_SEND_TYPE.GROUP : JAVA_SEND_TYPE.SINGLE,
       source: JAVA_MESSAGE_SOURCE.WORKBENCH,
@@ -1699,6 +1699,32 @@ export class MysqlWorkbenchService implements WorkbenchService {
     );
 
     return response;
+  }
+
+  private async buildJavaSendMessageData(
+    uid: number,
+    payload: WorkbenchSendMessagePayload,
+    segment: WorkbenchOutgoingMessageSegment,
+  ): Promise<JavaSendMessageData> {
+    if (segment.type === "weapp" || segment.type === "sphfeed") {
+      const bizType =
+        segment.type === "weapp"
+          ? MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM
+          : MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED;
+      const collection = await this.repository.findMaterialCollectionForForward({
+        bizType,
+        id: segment.materialCollectionId,
+        uid,
+      });
+
+      if (!collection) {
+        throw new NotFoundError("MATERIAL_COLLECTION_NOT_FOUND", "素材不存在");
+      }
+
+      return buildForwardJavaSendMessageData(segment.type, collection.msgid);
+    }
+
+    return buildJavaSendMessageData(payload, segment);
   }
 
   async revokeMessage(
@@ -2819,7 +2845,10 @@ function getSingleSendSegment(
 
 function buildJavaSendMessageData(
   payload: WorkbenchSendMessagePayload,
-  segment: WorkbenchOutgoingMessageSegment,
+  segment: Exclude<
+    WorkbenchOutgoingMessageSegment,
+    { type: "sphfeed" } | { type: "weapp" }
+  >,
 ): JavaSendMessageData {
   if (segment.type === "image") {
     const imageUrl = segment.url?.trim() || segment.localUrl?.trim();
@@ -2905,6 +2934,22 @@ function buildJavaSendMessageData(
   }
 
   return message;
+}
+
+function buildForwardJavaSendMessageData(
+  msgtype: "sphfeed" | "weapp",
+  msgid: string,
+): JavaSendMessageData {
+  const transMsgid = parseMySqlId(msgid);
+
+  if (transMsgid == null) {
+    throw new BadRequestError("INVALID_TRANS_MESSAGE_ID", "转发消息 ID 无效");
+  }
+
+  return {
+    msgtype,
+    transMsgid,
+  };
 }
 
 function getRetryFailMsgId(payload: WorkbenchSendMessagePayload) {

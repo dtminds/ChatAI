@@ -95,6 +95,43 @@ function createFileMaterialItem(
   };
 }
 
+function createMiniProgramMaterialItem(
+  overrides: Partial<WorkbenchMaterialCollectionItemDto> = {},
+): WorkbenchMaterialCollectionItemDto {
+  return {
+    bizType: 3,
+    content: {
+      appName: "企微助手",
+      title: "客户跟进小程序",
+    },
+    contentType: "mini-program",
+    groupId: "group-mini",
+    id: "material-mini",
+    messageId: "1025657",
+    sort: 1_781_244_000_000,
+    title: "客户跟进小程序",
+    ...overrides,
+  };
+}
+
+function createSphfeedMaterialItem(
+  overrides: Partial<WorkbenchMaterialCollectionItemDto> = {},
+): WorkbenchMaterialCollectionItemDto {
+  return {
+    bizType: 5,
+    content: {
+      title: "都市快报",
+    },
+    contentType: "sphfeed",
+    groupId: "group-sphfeed",
+    id: "material-sphfeed",
+    messageId: "1025658",
+    sort: 1_781_244_000_000,
+    title: "都市快报",
+    ...overrides,
+  };
+}
+
 describe("useMaterialCollection", () => {
   afterEach(() => {
     resetWorkbenchService();
@@ -239,6 +276,52 @@ describe("useMaterialCollection", () => {
     expect(onSent).toHaveBeenCalledTimes(1);
     expect(requestActiveConversationRead).toHaveBeenCalledTimes(1);
     expect(result.current.activeMaterialLibraryBizType).toBeNull();
+  });
+
+  it("sends a collected mini-program material by forwarding its source message", async () => {
+    const sendAgentMessageSegments = vi.fn(async () => ({ ok: true as const }));
+
+    const { result } = renderHook(() =>
+      useMaterialCollection(
+        createDefaultOptions({
+          sendAgentMessageSegments,
+        }),
+      ),
+    );
+
+    await act(async () => {
+      await result.current.handleSelectMaterial(createMiniProgramMaterialItem());
+    });
+
+    expect(sendAgentMessageSegments).toHaveBeenCalledWith([
+      expect.objectContaining({
+        materialCollectionId: "material-mini",
+        type: "weapp",
+      }),
+    ]);
+  });
+
+  it("sends a collected sphfeed material by forwarding its source message", async () => {
+    const sendAgentMessageSegments = vi.fn(async () => ({ ok: true as const }));
+
+    const { result } = renderHook(() =>
+      useMaterialCollection(
+        createDefaultOptions({
+          sendAgentMessageSegments,
+        }),
+      ),
+    );
+
+    await act(async () => {
+      await result.current.handleSelectMaterial(createSphfeedMaterialItem());
+    });
+
+    expect(sendAgentMessageSegments).toHaveBeenCalledWith([
+      expect.objectContaining({
+        materialCollectionId: "material-sphfeed",
+        type: "sphfeed",
+      }),
+    ]);
   });
 
   it("calls send failure callback when material send fails", async () => {

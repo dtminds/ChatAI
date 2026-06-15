@@ -1257,6 +1257,69 @@ function buildFileComposerSegment(
   };
 }
 
+function buildMiniProgramComposerSegment(
+  item: WorkbenchMaterialCollectionItemDto,
+): ComposerSegment | undefined {
+  const materialCollectionId = item.id.trim();
+
+  if (!materialCollectionId) {
+    return undefined;
+  }
+
+  const contentRecord = isMaterialContentRecord(item.content);
+  const appName =
+    readMaterialContentString(contentRecord.appName) ||
+    readMaterialContentString(contentRecord.description) ||
+    "小程序";
+  const title =
+    readMaterialContentString(contentRecord.title) || item.title || "小程序";
+  const coverImageUrl =
+    readMaterialContentString(contentRecord.coverImageUrl) ||
+    readMaterialContentString(contentRecord.imageUrl) ||
+    readMaterialContentString(contentRecord.fileUrl) ||
+    readMaterialContentString(contentRecord.coverUrl);
+  const logoUrl = readMaterialContentString(contentRecord.logoUrl);
+  const sourceLabel = readMaterialContentString(contentRecord.sourceLabel);
+
+  return {
+    appName,
+    ...(coverImageUrl ? { coverImageUrl } : {}),
+    ...(logoUrl ? { logoUrl } : {}),
+    ...(sourceLabel ? { sourceLabel } : {}),
+    materialCollectionId,
+    title,
+    type: "weapp",
+  };
+}
+
+function buildSphfeedComposerSegment(
+  item: WorkbenchMaterialCollectionItemDto,
+): ComposerSegment | undefined {
+  const materialCollectionId = item.id.trim();
+
+  if (!materialCollectionId) {
+    return undefined;
+  }
+
+  const contentRecord = isMaterialContentRecord(item.content);
+  const description = readMaterialContentString(contentRecord.description);
+  const imageUrl = readMaterialContentString(contentRecord.imageUrl);
+  const sourceLabel = readMaterialContentString(contentRecord.sourceLabel);
+  const title =
+    readMaterialContentString(contentRecord.title) || item.title || "视频号";
+  const url = readMaterialContentString(contentRecord.url);
+
+  return {
+    ...(description ? { description } : {}),
+    ...(imageUrl ? { imageUrl } : {}),
+    materialCollectionId,
+    ...(sourceLabel ? { sourceLabel } : {}),
+    title,
+    type: "sphfeed",
+    ...(url ? { url } : {}),
+  };
+}
+
 function buildComposerSegmentFromMaterial(
   item: WorkbenchMaterialCollectionItemDto,
 ): ComposerSegment | undefined {
@@ -1268,6 +1331,14 @@ function buildComposerSegmentFromMaterial(
     return buildH5ComposerSegment(item);
   }
 
+  if (item.contentType === "mini-program") {
+    return buildMiniProgramComposerSegment(item);
+  }
+
+  if (item.contentType === "sphfeed") {
+    return buildSphfeedComposerSegment(item);
+  }
+
   return undefined;
 }
 
@@ -1276,14 +1347,6 @@ function getMaterialSendUnavailableMessage(
 ) {
   if (contentType === "emotion") {
     return "自定义表情发送功能内测中，即将开放";
-  }
-
-  if (contentType === "mini-program") {
-    return "小程序发送功能内测中，即将开放";
-  }
-
-  if (contentType === "sphfeed") {
-    return "视频号发送功能内测中，即将开放";
   }
 
   return "发送功能内测中，即将开放";

@@ -832,7 +832,7 @@ describe("ChatWorkbenchPage composer flows", () => {
     expect(screen.getByText("小程序分组")).toBeInTheDocument();
   });
 
-  it("shows the send preview notice when sending a collected mini-program material", async () => {
+  it("sends a collected mini-program material as a source-message forward", async () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();
     const sendMessage = vi.fn(baseService.sendMessage);
@@ -898,11 +898,25 @@ describe("ChatWorkbenchPage composer flows", () => {
     );
     await user.click(screen.getByRole("button", { name: "发送" }));
 
-    expect(sendMessage).not.toHaveBeenCalled();
     await waitFor(() => {
-      expect(workbenchToastWarningMock).toHaveBeenCalledWith(
-        "小程序发送功能内测中，即将开放",
+      expect(sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          conversationId: "conv-001",
+          seatId: "drc",
+          segment: expect.objectContaining({
+            materialCollectionId: "material-mini-001",
+            type: "weapp",
+          }),
+        }),
       );
+    });
+    await expectLatestConversationMessage("conv-001", {
+      content: {
+        appName: "企微助手",
+        title: "客户跟进小程序",
+        type: "mini-program",
+      },
+      role: "agent",
     });
   });
 
@@ -1191,7 +1205,7 @@ describe("ChatWorkbenchPage composer flows", () => {
     });
   });
 
-  it("shows the send preview notice when sending a collected sphfeed material", async () => {
+  it("sends a collected sphfeed material as a source-message forward", async () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();
     const sendMessage = vi.fn(baseService.sendMessage);
@@ -1258,11 +1272,24 @@ describe("ChatWorkbenchPage composer flows", () => {
     await user.click(await screen.findByRole("button", { name: /选择素材 都市快报/ }));
     await user.click(screen.getByRole("button", { name: "发送" }));
 
-    expect(sendMessage).not.toHaveBeenCalled();
     await waitFor(() => {
-      expect(workbenchToastWarningMock).toHaveBeenCalledWith(
-        "视频号发送功能内测中，即将开放",
+      expect(sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          conversationId: "conv-001",
+          seatId: "drc",
+          segment: expect.objectContaining({
+            materialCollectionId: "material-sphfeed-001",
+            type: "sphfeed",
+          }),
+        }),
       );
+    });
+    await expectLatestConversationMessage("conv-001", {
+      content: {
+        title: "都市快报",
+        type: "sphfeed",
+      },
+      role: "agent",
     });
   });
 

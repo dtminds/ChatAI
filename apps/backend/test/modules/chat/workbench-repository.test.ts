@@ -909,6 +909,36 @@ describe("WorkbenchRepository", () => {
     ]);
   });
 
+  it("looks up active enterprise material collection msgid for forward sends", async () => {
+    const db = createMaterialDb({
+      xy_wap_embed_material_collection: {
+        msgid: "1025657",
+      },
+    });
+    const repository = new WorkbenchRepository(db as never);
+
+    await expect(
+      repository.findMaterialCollectionForForward({
+        bizType: 3,
+        id: "66",
+        uid: 9001,
+      }),
+    ).resolves.toEqual({
+      msgid: "1025657",
+    });
+
+    expect(db.selects[0]).toMatchObject({
+      table: "xy_wap_embed_material_collection",
+      wheres: [
+        ["id", "=", 66],
+        ["uid", "=", 9001],
+        ["biz_type", "=", 3],
+        ["sub_uid", "=", 0],
+        ["biz_status", "=", 1],
+      ],
+    });
+  });
+
   it("returns false when material group has active collections", async () => {
     const db = createMaterialDb({
       xy_wap_embed_material_collection: { id: 66 },

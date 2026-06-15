@@ -104,6 +104,14 @@ export type JavaSendMessageData =
       msgtype: "link";
       title: string;
     }
+  | {
+      msgtype: "weapp";
+      transMsgid: number;
+    }
+  | {
+      msgtype: "sphfeed";
+      transMsgid: number;
+    }
   | ({
       msgtype: "quote";
       quoteMsgId: number;

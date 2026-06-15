@@ -34,11 +34,33 @@ export type ComposerH5Segment = {
   title: string;
 };
 
+export type ComposerMiniProgramSegment = {
+  type: "weapp";
+  materialCollectionId: string;
+  appName?: string;
+  coverImageUrl?: string;
+  logoUrl?: string;
+  sourceLabel?: string;
+  title?: string;
+};
+
+export type ComposerSphfeedSegment = {
+  type: "sphfeed";
+  materialCollectionId: string;
+  description?: string;
+  imageUrl?: string;
+  sourceLabel?: string;
+  title?: string;
+  url?: string;
+};
+
 export type ComposerSegment =
   | ComposerTextSegment
   | ComposerImageSegment
   | ComposerFileSegment
-  | ComposerH5Segment;
+  | ComposerH5Segment
+  | ComposerMiniProgramSegment
+  | ComposerSphfeedSegment;
 
 export function normalizeComposerSegments(
   segments: ComposerSegment[],
@@ -100,6 +122,14 @@ export function getComposerSegmentsPreview(segments: ComposerSegment[]) {
 
   if (normalizedSegments.some((segment) => segment.type === "h5")) {
     return "[链接]";
+  }
+
+  if (normalizedSegments.some((segment) => segment.type === "weapp")) {
+    return "[小程序]";
+  }
+
+  if (normalizedSegments.some((segment) => segment.type === "sphfeed")) {
+    return "[视频号]";
   }
 
   return normalizedSegments.some((segment) => segment.type === "file")

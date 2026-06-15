@@ -1921,8 +1921,37 @@ function buildOptimisticMessageContent(
     };
   }
 
+  if (segment.type === "weapp") {
+    return {
+      appName: segment.appName ?? "小程序",
+      coverImageUrl: segment.coverImageUrl,
+      logoUrl: segment.logoUrl,
+      sourceLabel: segment.sourceLabel ?? "小程序",
+      title: segment.title ?? "小程序",
+      type: "mini-program",
+    };
+  }
+
+  if (segment.type === "sphfeed") {
+    return {
+      description: segment.description ?? "",
+      imageUrl: segment.imageUrl,
+      sourceLabel: segment.sourceLabel ?? "视频号",
+      title: segment.title ?? "视频号",
+      type: "sphfeed",
+      url: segment.url,
+    };
+  }
+
+  if (segment.type === "text") {
+    return {
+      text: segment.text,
+      type: "text",
+    };
+  }
+
   return {
-    text: segment.text,
+    text: "",
     type: "text",
   };
 }

@@ -649,11 +649,33 @@ export type WorkbenchOutgoingMessageH5Segment = {
   title: string;
 };
 
+export type WorkbenchOutgoingMessageMiniProgramSegment = {
+  type: "weapp";
+  materialCollectionId: string;
+  appName?: string;
+  coverImageUrl?: string;
+  logoUrl?: string;
+  sourceLabel?: string;
+  title?: string;
+};
+
+export type WorkbenchOutgoingMessageSphfeedSegment = {
+  type: "sphfeed";
+  materialCollectionId: string;
+  description?: string;
+  imageUrl?: string;
+  sourceLabel?: string;
+  title?: string;
+  url?: string;
+};
+
 export type WorkbenchOutgoingMessageSegment =
   | WorkbenchOutgoingMessageTextSegment
   | WorkbenchOutgoingMessageImageSegment
   | WorkbenchOutgoingMessageFileSegment
-  | WorkbenchOutgoingMessageH5Segment;
+  | WorkbenchOutgoingMessageH5Segment
+  | WorkbenchOutgoingMessageMiniProgramSegment
+  | WorkbenchOutgoingMessageSphfeedSegment;
 
 export type WorkbenchSendMessagePayload = {
   seatId: string;

@@ -984,13 +984,15 @@ export function createMockWorkbenchService(): WorkbenchService {
           seatId: payload.seatId,
           clientMessageId: buildSegmentClientMessageId(payload.clientMessageId, index),
           content: buildPayloadSegmentContent(segment, quoteForSegment),
-          contentType: quoteForSegment ? "quote" : segment.type,
+          contentType: quoteForSegment
+            ? "quote"
+            : getPayloadSegmentContentType(segment),
           conversationId: payload.conversationId,
           createdAt: now + index,
           customerId: conversation.customerId,
           failReason: outcome.reason,
           messageId,
-          rawMsgtype: quoteForSegment ? "quote" : segment.type,
+          rawMsgtype: quoteForSegment ? "quote" : getPayloadSegmentRawMsgtype(segment),
           senderType: "agent" as const,
           seq: nextSeq,
           status: outcome.status,
@@ -2485,9 +2487,51 @@ function buildPayloadSegmentContent(
     };
   }
 
+  if (segment.type === "weapp") {
+    return {
+      appName: segment.appName ?? "小程序",
+      coverImageUrl: segment.coverImageUrl,
+      logoUrl: segment.logoUrl,
+      sourceLabel: segment.sourceLabel ?? "小程序",
+      title: segment.title ?? "小程序",
+    };
+  }
+
+  if (segment.type === "sphfeed") {
+    return {
+      description: segment.description ?? "",
+      imageUrl: segment.imageUrl,
+      sourceLabel: segment.sourceLabel ?? "视频号",
+      title: segment.title ?? "视频号",
+      url: segment.url,
+    };
+  }
+
+  if (segment.type === "text") {
+    return {
+      text: segment.text,
+    };
+  }
+
   return {
-    text: segment.text,
+    text: "",
   };
+}
+
+function getPayloadSegmentContentType(
+  segment: ReturnType<typeof getPayloadSegments>[number],
+): WorkbenchMessageDto["contentType"] {
+  if (segment.type === "weapp") {
+    return "mini-program";
+  }
+
+  return segment.type;
+}
+
+function getPayloadSegmentRawMsgtype(
+  segment: ReturnType<typeof getPayloadSegments>[number],
+) {
+  return segment.type;
 }
 
 function findMessageByIdOrSeq(
@@ -2619,7 +2663,19 @@ function getPayloadPreview(segments: ReturnType<typeof getPayloadSegments>) {
     return "[图片]";
   }
 
-  return segments.some((segment) => segment.type === "file") ? "[文件]" : "";
+  if (segments.some((segment) => segment.type === "file")) {
+    return "[文件]";
+  }
+
+  if (segments.some((segment) => segment.type === "h5")) {
+    return "[链接]";
+  }
+
+  if (segments.some((segment) => segment.type === "weapp")) {
+    return "[小程序]";
+  }
+
+  return segments.some((segment) => segment.type === "sphfeed") ? "[视频号]" : "";
 }
 
 function buildSegmentClientMessageId(clientMessageId: string, index: number) {

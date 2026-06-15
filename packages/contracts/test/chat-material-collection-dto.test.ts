@@ -51,8 +51,8 @@ describe("chat material collection DTOs", () => {
       messageId: "msgid-1001",
       contentType: "emotion",
       content: {
+        fileUrl: "https://example.com/emotion.gif",
         md5: "emotion-md5",
-        url: "https://example.com/emotion.gif",
       },
       createdAt: 1_781_187_200_000,
     };

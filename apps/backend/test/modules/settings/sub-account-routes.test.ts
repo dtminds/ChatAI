@@ -251,6 +251,7 @@ describe("settings sub-account routes", () => {
       "in",
       [101],
     ]);
+    expect(db.seatListWheres).not.toContainEqual(["biz_status", "=", 1]);
 
     await app.close();
   });

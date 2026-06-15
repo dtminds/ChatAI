@@ -154,7 +154,6 @@ export class ManagedAccountSettingsService {
       ])
       .where("seat.uid", "=", scope.uid)
       .where("seat.platform", "=", scope.platform)
-      .where("seat.biz_status", "=", 1)
       .orderBy("seat.id", "desc")
       .execute() as Promise<ManagedAccountRow[]>;
   }
@@ -206,7 +205,6 @@ export class ManagedAccountSettingsService {
       .where("seat.id", "=", managedAccountId)
       .where("seat.uid", "=", scope.uid)
       .where("seat.platform", "=", scope.platform)
-      .where("seat.biz_status", "=", 1)
       .executeTakeFirst();
 
     if (!managedAccount) {
@@ -280,7 +278,6 @@ export class ManagedAccountSettingsService {
         .where("seat.id", "=", managedAccountId)
         .where("seat.uid", "=", scope.uid)
         .where("seat.platform", "=", scope.platform)
-        .where("seat.biz_status", "=", 1)
         .executeTakeFirst() as Promise<ManagedAccountRow | undefined>,
       this.listRelationLinkRows(scope, managedAccountId),
     ]);

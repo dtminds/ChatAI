@@ -1478,7 +1478,7 @@ describe("WorkbenchRepository", () => {
     ]);
     expect(queries[0]?.query.wheres).toContainEqual(["relation.uid", "=", 9001]);
     expect(queries[0]?.query.wheres).toContainEqual(["relation.platform", "=", 5]);
-    expect(queries[0]?.query.wheres).toContainEqual(["seat.biz_status", "=", 1]);
+    expect(queries[0]?.query.wheres).not.toContainEqual(["seat.biz_status", "=", 1]);
     expect(queries[0]?.query.joins).not.toContain("leftJoin");
     expect(queries[1]?.query.joins).toEqual([]);
     expect(queries[1]?.query.wheres).toContainEqual(["uid", "=", 9001]);
@@ -1620,7 +1620,7 @@ describe("WorkbenchRepository", () => {
     ]);
   });
 
-  it("checks seat access by joining relation and active seat only", async () => {
+  it("checks seat access by joining relation and seat without filtering seat status", async () => {
     const queryBuilders: Array<{
       joins: string[];
       table: string;
@@ -2044,7 +2044,7 @@ describe("WorkbenchRepository", () => {
       type: "innerJoin",
     });
     expect(accessibleSeatQuery?.wheres).toContainEqual(["relation.sub_id", "=", 101]);
-    expect(accessibleSeatQuery?.wheres).toContainEqual(["seat.biz_status", "=", 1]);
+    expect(accessibleSeatQuery?.wheres).not.toContainEqual(["seat.biz_status", "=", 1]);
     expect(bindQuery?.joins).toEqual([]);
     expect(bindQuery?.wheres).toContainEqual(["bind.uid", "=", 9001]);
     expect(bindQuery?.wheres).toContainEqual(["bind.platform", "=", 5]);
@@ -2832,7 +2832,7 @@ describe("WorkbenchRepository", () => {
     ]);
     expect(seatQueryBuilders).toHaveLength(1);
     expect(seatQueryBuilders[0]?.wheres).toContainEqual(["seat.id", "in", ["13", "12"]]);
-    expect(seatQueryBuilders[0]?.wheres).toContainEqual(["seat.biz_status", "=", 1]);
+    expect(seatQueryBuilders[0]?.wheres).not.toContainEqual(["seat.biz_status", "=", 1]);
   });
 
   it("filters and limits conversation lists by requested chat mode", async () => {
@@ -4205,7 +4205,6 @@ describe("WorkbenchRepository", () => {
           ["seat.id", "=", "relation.user_seat_id"],
           ["seat.uid", "=", "relation.uid"],
           ["seat.platform", "=", "relation.platform"],
-          ["seat.biz_status", "=", 1],
         ],
         table: "xy_wap_embed_user_seat as seat",
         type: "innerJoin",

@@ -5862,6 +5862,20 @@ function stripComposerMentionMetadata(segments: ComposerSegment[]): ComposerSegm
 function toWorkbenchSendSegment(
   segment: ComposerSegment,
 ): WorkbenchSendMessagePayload["segment"] {
+  if (segment.type === "file" && segment.materialCollectionId) {
+    return {
+      materialCollectionId: segment.materialCollectionId,
+      type: "file",
+    };
+  }
+
+  if (segment.type === "h5" && segment.materialCollectionId) {
+    return {
+      materialCollectionId: segment.materialCollectionId,
+      type: "h5",
+    };
+  }
+
   if (segment.type === "emotion") {
     return {
       materialCollectionId: segment.materialCollectionId,

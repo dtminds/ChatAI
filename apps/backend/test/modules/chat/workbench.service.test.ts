@@ -2834,7 +2834,7 @@ describe("MysqlWorkbenchService", () => {
     );
   });
 
-  it("maps a file send to the Java send-message payload", async () => {
+  it("maps a collected file material send to the Java file payload", async () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.sendMessage).mockResolvedValue({
       clientMessageId: "local-file-001",
@@ -2842,19 +2842,27 @@ describe("MysqlWorkbenchService", () => {
       optNo: "opt-file-001",
       status: "accepted",
     });
-    const service = new MysqlWorkbenchService(
-      {
-        canAccessSeat: vi.fn().mockResolvedValue(true),
-        getConversationLookup: vi.fn().mockResolvedValue({
-          id: "88",
-          platform: 5,
-          seatId: "12",
-          seatHostSubUserId: "101",
-          thirdExternalUserId: "external-001",
-          thirdUserId: "seat-user-001",
-          uid: 9001,
+    const repository = {
+      canAccessSeat: vi.fn().mockResolvedValue(true),
+      findMaterialCollectionForForward: vi.fn().mockResolvedValue({
+        content: JSON.stringify({
+          fileName: "报价单.pdf",
+          fileUrl: "https://b5.bokr.com.cn/chat-files/quote.pdf",
         }),
-      } as unknown as WorkbenchRepository,
+        msgid: "msg-file-001",
+      }),
+      getConversationLookup: vi.fn().mockResolvedValue({
+        id: "88",
+        platform: 5,
+        seatId: "12",
+        seatHostSubUserId: "101",
+        thirdExternalUserId: "external-001",
+        thirdUserId: "seat-user-001",
+        uid: 9001,
+      }),
+    } as unknown as WorkbenchRepository;
+    const service = new MysqlWorkbenchService(
+      repository,
       javaClient,
     );
 
@@ -2863,16 +2871,16 @@ describe("MysqlWorkbenchService", () => {
       conversationId: "88",
       seatId: "12",
       segment: {
-        extension: "pdf",
-        fileId: "chat-files/quote.pdf",
-        fileName: "报价单.pdf",
-        fileSize: 6389760,
-        fileSizeLabel: "6.09 MB",
+        materialCollectionId: "66",
         type: "file",
-        url: "https://b5.bokr.com.cn/chat-files/quote.pdf",
       },
     });
 
+    expect(repository.findMaterialCollectionForForward).toHaveBeenCalledWith({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+      id: "66",
+      uid: 9001,
+    });
     expect(javaClient.sendMessage).toHaveBeenCalledWith({
       clientMessageId: "local-file-001",
       msgData: {
@@ -2889,12 +2897,78 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
-  it("maps an h5 link send to the Java send-message payload", async () => {
+  it("maps a collected H5 material send to the Java link payload", async () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.sendMessage).mockResolvedValue({
       clientMessageId: "local-h5-001",
       messageId: "opt-h5-001",
       optNo: "opt-h5-001",
+      status: "accepted",
+    });
+    const repository = {
+      canAccessSeat: vi.fn().mockResolvedValue(true),
+      findMaterialCollectionForForward: vi.fn().mockResolvedValue({
+        content: JSON.stringify({
+          desc: "恭喜发财，大吉大利",
+          href: "https://example.com/redpacket",
+          title: "红包来啦",
+        }),
+        msgid: "msg-h5-001",
+      }),
+      getConversationLookup: vi.fn().mockResolvedValue({
+        id: "88",
+        platform: 5,
+        seatId: "12",
+        seatHostSubUserId: "101",
+        thirdExternalUserId: "external-001",
+        thirdUserId: "seat-user-001",
+        uid: 9001,
+      }),
+    } as unknown as WorkbenchRepository;
+    const service = new MysqlWorkbenchService(
+      repository,
+      javaClient,
+    );
+
+    await service.sendMessage("101", {
+      clientMessageId: "local-h5-001",
+      conversationId: "88",
+      seatId: "12",
+      segment: {
+        materialCollectionId: "77",
+        type: "h5",
+      },
+    });
+
+    expect(repository.findMaterialCollectionForForward).toHaveBeenCalledWith({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.H5,
+      id: "77",
+      uid: 9001,
+    });
+    expect(javaClient.sendMessage).toHaveBeenCalledWith({
+      clientMessageId: "local-h5-001",
+      msgData: {
+        coverUrl: "https://b5.bokr.com.cn/dist/default-cover.png",
+        desc: "恭喜发财，大吉大利",
+        href: "https://example.com/redpacket",
+        msgtype: "link",
+        title: "红包来啦",
+      },
+      platform: 5,
+      sendType: 1,
+      source: 1,
+      thirdExternalUserid: "external-001",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
+  });
+
+  it("uses the default cover when direct H5 link send has no cover", async () => {
+    const javaClient = createJavaClient();
+    vi.mocked(javaClient.sendMessage).mockResolvedValue({
+      clientMessageId: "local-h5-default-cover-001",
+      messageId: "opt-h5-default-cover-001",
+      optNo: "opt-h5-default-cover-001",
       status: "accepted",
     });
     const service = new MysqlWorkbenchService(
@@ -2914,11 +2988,10 @@ describe("MysqlWorkbenchService", () => {
     );
 
     await service.sendMessage("101", {
-      clientMessageId: "local-h5-001",
+      clientMessageId: "local-h5-default-cover-001",
       conversationId: "88",
       seatId: "12",
       segment: {
-        coverUrl: "https://example.com/cover.png",
         desc: "恭喜发财，大吉大利",
         href: "https://example.com/redpacket",
         title: "红包来啦",
@@ -2927,9 +3000,9 @@ describe("MysqlWorkbenchService", () => {
     });
 
     expect(javaClient.sendMessage).toHaveBeenCalledWith({
-      clientMessageId: "local-h5-001",
+      clientMessageId: "local-h5-default-cover-001",
       msgData: {
-        coverUrl: "https://example.com/cover.png",
+        coverUrl: "https://b5.bokr.com.cn/dist/default-cover.png",
         desc: "恭喜发财，大吉大利",
         href: "https://example.com/redpacket",
         msgtype: "link",

@@ -1212,11 +1212,12 @@ function toComposerMaterialBizType(
 function buildH5ComposerSegment(
   item: WorkbenchMaterialCollectionItemDto,
 ): ComposerSegment | undefined {
+  const materialCollectionId = item.id.trim();
   const contentRecord = isMaterialContentRecord(item.content);
   const title = readMaterialContentString(contentRecord.title) || item.title;
   const href = readMaterialLinkUrl(contentRecord);
 
-  if (!title || !href) {
+  if (!materialCollectionId || !title || !href) {
     return undefined;
   }
 
@@ -1230,6 +1231,7 @@ function buildH5ComposerSegment(
     ...(coverUrl ? { coverUrl } : {}),
     ...(desc ? { desc } : {}),
     href,
+    materialCollectionId,
     title,
     type: "h5",
   };
@@ -1267,11 +1269,12 @@ function isMaterialContentRecord(
 function buildFileComposerSegment(
   item: WorkbenchMaterialCollectionItemDto,
 ): ComposerSegment | undefined {
+  const materialCollectionId = item.id.trim();
   const contentRecord = isMaterialContentRecord(item.content);
   const fileName = readMaterialContentString(contentRecord.fileName) || item.title;
   const fileUrl = readMaterialContentString(contentRecord.fileUrl);
 
-  if (!fileName || !fileUrl) {
+  if (!materialCollectionId || !fileName || !fileUrl) {
     return undefined;
   }
 
@@ -1283,6 +1286,7 @@ function buildFileComposerSegment(
     extension,
     fileName,
     ...(fileSizeLabel ? { fileSizeLabel } : {}),
+    materialCollectionId,
     type: "file",
     url: fileUrl,
   };

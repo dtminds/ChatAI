@@ -255,9 +255,10 @@ const SendMessageBodySchema = Type.Object({
         type: Type.Literal("emotion"),
       }),
       Type.Object({
-        extension: Type.String(),
+        extension: Type.Optional(Type.String()),
         fileId: Type.Optional(Type.String()),
-        fileName: Type.String(),
+        fileName: Type.Optional(Type.String()),
+        materialCollectionId: Type.Optional(Type.String()),
         fileSize: Type.Optional(Type.Number()),
         fileSizeLabel: Type.Optional(Type.String()),
         type: Type.Literal("file"),
@@ -266,8 +267,9 @@ const SendMessageBodySchema = Type.Object({
       Type.Object({
         coverUrl: Type.Optional(Type.String()),
         desc: Type.Optional(Type.String()),
-        href: Type.String(),
-        title: Type.String(),
+        href: Type.Optional(Type.String()),
+        materialCollectionId: Type.Optional(Type.String()),
+        title: Type.Optional(Type.String()),
         type: Type.Literal("h5"),
       }),
       Type.Object({
@@ -311,9 +313,10 @@ const SendMessageBodySchema = Type.Object({
           type: Type.Literal("emotion"),
         }),
         Type.Object({
-          extension: Type.String(),
+          extension: Type.Optional(Type.String()),
           fileId: Type.Optional(Type.String()),
-          fileName: Type.String(),
+          fileName: Type.Optional(Type.String()),
+          materialCollectionId: Type.Optional(Type.String()),
           fileSize: Type.Optional(Type.Number()),
           fileSizeLabel: Type.Optional(Type.String()),
           type: Type.Literal("file"),
@@ -322,8 +325,9 @@ const SendMessageBodySchema = Type.Object({
         Type.Object({
           coverUrl: Type.Optional(Type.String()),
           desc: Type.Optional(Type.String()),
-          href: Type.String(),
-          title: Type.String(),
+          href: Type.Optional(Type.String()),
+          materialCollectionId: Type.Optional(Type.String()),
+          title: Type.Optional(Type.String()),
           type: Type.Literal("h5"),
         }),
         Type.Object({

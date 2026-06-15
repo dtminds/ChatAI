@@ -287,6 +287,7 @@ describe("useMaterialCollection", () => {
       {
         extension: "pdf",
         fileName: "报价单.pdf",
+        materialCollectionId: "material-file",
         type: "file",
         url: "https://example.com/files/quote.pdf",
       },

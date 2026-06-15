@@ -638,9 +638,10 @@ export type WorkbenchOutgoingMessageEmotionSegment = {
 
 export type WorkbenchOutgoingMessageFileSegment = {
   type: "file";
-  extension: string;
+  extension?: string;
   fileId?: string;
-  fileName: string;
+  fileName?: string;
+  materialCollectionId?: string;
   fileSize?: number;
   fileSizeLabel?: string;
   url?: string;
@@ -650,8 +651,9 @@ export type WorkbenchOutgoingMessageH5Segment = {
   type: "h5";
   coverUrl?: string;
   desc?: string;
-  href: string;
-  title: string;
+  href?: string;
+  materialCollectionId?: string;
+  title?: string;
 };
 
 export type WorkbenchOutgoingMessageMiniProgramSegment = {

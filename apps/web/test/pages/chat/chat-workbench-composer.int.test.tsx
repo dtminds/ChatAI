@@ -946,6 +946,8 @@ describe("ChatWorkbenchPage composer flows", () => {
         }),
       );
     });
+    expect(sendMessage.mock.calls[0]?.[0].segment).not.toHaveProperty("href");
+    expect(sendMessage.mock.calls[0]?.[0].segment).not.toHaveProperty("url");
     await expectLatestConversationMessage("conv-001", {
       content: {
         appName: "企微助手",
@@ -1032,15 +1034,14 @@ describe("ChatWorkbenchPage composer flows", () => {
           conversationId: "conv-001",
           seatId: "drc",
           segment: {
-            extension: "pdf",
-            fileName: "报价单.pdf",
-            fileSizeLabel: "128 KB",
+            materialCollectionId: "material-file-001",
             type: "file",
-            url: "https://example.com/files/quote.pdf",
           },
         }),
       );
     });
+    expect(sendMessage.mock.calls[0]?.[0].segment).not.toHaveProperty("href");
+    expect(sendMessage.mock.calls[0]?.[0].segment).not.toHaveProperty("url");
     await expectLatestConversationMessage("conv-001", {
       content: {
         extension: "pdf",
@@ -1130,10 +1131,7 @@ describe("ChatWorkbenchPage composer flows", () => {
           conversationId: "conv-001",
           seatId: "drc",
           segment: {
-            coverUrl: "https://example.com/redpacket.png",
-            desc: "恭喜发财，大吉大利",
-            href: "https://example.com/redpacket",
-            title: "红包来啦",
+            materialCollectionId: "material-h5-001",
             type: "h5",
           },
         }),
@@ -1222,9 +1220,7 @@ describe("ChatWorkbenchPage composer flows", () => {
           conversationId: "conv-001",
           seatId: "drc",
           segment: {
-            desc: "活动说明",
-            href: "https://example.com/legacy-page",
-            title: "活动页",
+            materialCollectionId: "material-h5-link-url",
             type: "h5",
           },
         }),

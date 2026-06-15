@@ -27,6 +27,7 @@ export type ComposerFileSegment = {
   extension: string;
   fileId?: string;
   fileName: string;
+  materialCollectionId?: string;
   fileSize?: number;
   fileSizeLabel?: string;
   url?: string;
@@ -36,7 +37,8 @@ export type ComposerH5Segment = {
   type: "h5";
   coverUrl?: string;
   desc?: string;
-  href: string;
+  href?: string;
+  materialCollectionId?: string;
   title: string;
 };
 

@@ -342,8 +342,7 @@ export class SubAccountSettingsService {
       .selectFrom("xy_wap_embed_user_seat")
       .select(["third_avatar as avatarUrl", "id", "third_user_name"])
       .where("uid", "=", scope.uid)
-      .where("platform", "=", scope.platform)
-      .where("biz_status", "=", 1);
+      .where("platform", "=", scope.platform);
 
     if (seatIds !== undefined) {
       query = query.where("id", "in", seatIds);

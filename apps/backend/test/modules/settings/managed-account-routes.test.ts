@@ -13,6 +13,7 @@ describe("settings managed-account routes", () => {
 
     expect(response.statusCode).toBe(200);
     expect(db.joinCalls).toEqual([]);
+    expect(db.managedAccountSeatWheres).not.toContainEqual(["seat.biz_status", "=", 1]);
     expect(response.json()).toEqual({
       data: {
         managedAccounts: [
@@ -102,6 +103,7 @@ describe("settings managed-account routes", () => {
 
     expect(response.statusCode).toBe(200);
     expect(db.joinCalls).toEqual([]);
+    expect(db.managedAccountSeatWheres).not.toContainEqual(["seat.biz_status", "=", 1]);
     expect(db.subAccountValidationWheres).toContainEqual(["sub_user.id", "in", [12]]);
     expect(db.deletedRelationSeatIds).toEqual([101]);
     expect(app.cache.del).toHaveBeenCalledWith(
@@ -239,12 +241,14 @@ function createSettingsDbMock() {
     deletedRelationSeatIds: [] as number[],
     insertedRelations: [] as Array<Record<string, unknown>>,
     joinCalls: [] as Array<{ method: string; table: unknown }>,
+    managedAccountSeatWheres: [] as Array<[string, string, unknown]>,
     subAccountValidationWheres: [] as Array<[string, string, unknown]>,
     selectFrom(table: string) {
       const wheres: Array<[string, string, unknown]> = [];
       const builder = {
         execute: async () => {
           if (table === "xy_wap_embed_user_seat as seat") {
+            state.managedAccountSeatWheres = wheres;
             return seats
               .filter((seat) => {
                 const id = wheres.find(([column]) => column === "seat.id")?.[2];

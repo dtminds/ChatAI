@@ -2470,7 +2470,7 @@ function buildPayloadSegmentContent(
   if (segment.type === "emotion") {
     return {
       alt: "自定义表情",
-      imageUrl: `mock://material-expression/${segment.materialCollectionId}`,
+      imageUrl: "mock://material-expression",
       variant: "emotion",
     };
   }
@@ -2497,21 +2497,17 @@ function buildPayloadSegmentContent(
 
   if (segment.type === "weapp") {
     return {
-      appName: segment.appName ?? "小程序",
-      coverImageUrl: segment.coverImageUrl,
-      logoUrl: segment.logoUrl,
-      sourceLabel: segment.sourceLabel ?? "小程序",
-      title: segment.title ?? "小程序",
+      appName: "小程序",
+      sourceLabel: "小程序",
+      title: "小程序",
     };
   }
 
   if (segment.type === "sphfeed") {
     return {
-      description: segment.description ?? "",
-      imageUrl: segment.imageUrl,
-      sourceLabel: segment.sourceLabel ?? "视频号",
-      title: segment.title ?? "视频号",
-      url: segment.url,
+      description: "",
+      sourceLabel: "视频号",
+      title: "视频号",
     };
   }
 

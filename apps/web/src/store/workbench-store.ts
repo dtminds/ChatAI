@@ -5883,6 +5883,20 @@ function toWorkbenchSendSegment(
     };
   }
 
+  if (segment.type === "weapp") {
+    return {
+      materialCollectionId: segment.materialCollectionId,
+      type: "weapp",
+    };
+  }
+
+  if (segment.type === "sphfeed") {
+    return {
+      materialCollectionId: segment.materialCollectionId,
+      type: "sphfeed",
+    };
+  }
+
   return segment;
 }
 

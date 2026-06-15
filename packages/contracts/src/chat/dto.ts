@@ -659,21 +659,11 @@ export type WorkbenchOutgoingMessageH5Segment = {
 export type WorkbenchOutgoingMessageMiniProgramSegment = {
   type: "weapp";
   materialCollectionId: string;
-  appName?: string;
-  coverImageUrl?: string;
-  logoUrl?: string;
-  sourceLabel?: string;
-  title?: string;
 };
 
 export type WorkbenchOutgoingMessageSphfeedSegment = {
   type: "sphfeed";
   materialCollectionId: string;
-  description?: string;
-  imageUrl?: string;
-  sourceLabel?: string;
-  title?: string;
-  url?: string;
 };
 
 export type WorkbenchOutgoingMessageSegment =

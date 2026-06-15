@@ -15,7 +15,7 @@ import {
   Folder01Icon,
   FolderFavouriteIcon,
   Image01Icon,
-  CopyLinkIcon,
+  Link01Icon,
   SmileIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -571,7 +571,7 @@ export function ChatComposer({
                 type="button"
                 variant="ghost"
               >
-                <HugeiconsIcon icon={CopyLinkIcon} size={18} strokeWidth={2} />
+                <HugeiconsIcon icon={Link01Icon} size={18} strokeWidth={2} />
               </Button>
             </ComposerActionTooltip>
             <ComposerFileSplitButton

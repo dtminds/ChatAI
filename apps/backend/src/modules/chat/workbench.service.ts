@@ -130,6 +130,7 @@ import {
   isPlayableVoicePathname,
   toPlayableVoicePathname,
 } from "./media-config.js";
+import { normalizeMediaAssetUrl } from "./workbench-content-utils.js";
 
 const POLL_CONVERSATION_CHANGE_LIMIT = 500;
 const POLL_LAST_MESSAGE_OVERLAP_MS = 1;
@@ -2999,7 +3000,7 @@ function buildFileJavaSendMessageData(content: string): JavaSendMessageData {
 
   return {
     fileName,
-    fileUrl,
+    fileUrl: normalizeMediaAssetUrl(fileUrl),
     msgtype: "file",
   };
 }

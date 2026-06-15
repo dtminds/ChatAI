@@ -2847,7 +2847,7 @@ describe("MysqlWorkbenchService", () => {
       findMaterialCollectionForForward: vi.fn().mockResolvedValue({
         content: JSON.stringify({
           fileName: "报价单.pdf",
-          fileUrl: "https://b5.bokr.com.cn/chat-files/quote.pdf",
+          fileUrl: "chat-files/quote.pdf",
         }),
         msgid: "msg-file-001",
       }),

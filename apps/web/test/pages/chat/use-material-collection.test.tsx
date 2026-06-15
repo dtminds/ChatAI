@@ -320,7 +320,7 @@ describe("useMaterialCollection", () => {
     ]);
   });
 
-  it("sends a collected sphfeed material by forwarding its source message", async () => {
+  it("blocks collected sphfeed material sends with an unavailable message", async () => {
     const sendAgentMessageSegments = vi.fn(async () => ({ ok: true as const }));
 
     const { result } = renderHook(() =>
@@ -335,12 +335,8 @@ describe("useMaterialCollection", () => {
       await result.current.handleSelectMaterial(createSphfeedMaterialItem());
     });
 
-    expect(sendAgentMessageSegments).toHaveBeenCalledWith([
-      expect.objectContaining({
-        materialCollectionId: "material-sphfeed",
-        type: "sphfeed",
-      }),
-    ]);
+    expect(sendAgentMessageSegments).not.toHaveBeenCalled();
+    expect(toast.warning).toHaveBeenCalledWith("视频号发送功能暂未开放");
   });
 
   it("sends a collected expression material as an emotion segment", async () => {

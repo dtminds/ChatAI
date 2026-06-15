@@ -1261,7 +1261,7 @@ describe("ChatWorkbenchPage composer flows", () => {
     });
   });
 
-  it("sends a collected sphfeed material as a source-message forward", async () => {
+  it("blocks collected sphfeed material sends with an unavailable toast", async () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();
     const sendMessage = vi.fn(baseService.sendMessage);
@@ -1328,25 +1328,8 @@ describe("ChatWorkbenchPage composer flows", () => {
     await user.click(await screen.findByRole("button", { name: /选择素材 都市快报/ }));
     await user.click(screen.getByRole("button", { name: "发送" }));
 
-    await waitFor(() => {
-      expect(sendMessage).toHaveBeenCalledWith(
-        expect.objectContaining({
-          conversationId: "conv-001",
-          seatId: "drc",
-          segment: expect.objectContaining({
-            materialCollectionId: "material-sphfeed-001",
-            type: "sphfeed",
-          }),
-        }),
-      );
-    });
-    await expectSentConversationMessage("conv-001", sendMessage, {
-      content: {
-        title: "都市快报",
-        type: "sphfeed",
-      },
-      role: "agent",
-    });
+    expect(sendMessage).not.toHaveBeenCalled();
+    expect(workbenchToastWarningMock).toHaveBeenCalledWith("视频号发送功能暂未开放");
   });
 
   it("keeps the selected material group after managing an item", async () => {

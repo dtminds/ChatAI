@@ -1026,6 +1026,11 @@ export function useMaterialCollection({
 
   const handleSelectMaterial = useCallback(
     async (item: WorkbenchMaterialCollectionItemDto) => {
+      if (item.contentType === "sphfeed") {
+        toast.warning("视频号发送功能暂未开放");
+        return;
+      }
+
       const materialSegment = buildComposerSegmentFromMaterial(item);
 
       if (!materialSegment) {

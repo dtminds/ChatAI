@@ -74,6 +74,34 @@ async function expectLatestConversationMessage(
   });
 }
 
+async function expectSentConversationMessage(
+  conversationId: string,
+  sendMessage: ReturnType<typeof vi.fn>,
+  expectedMessage: object,
+) {
+  let sentMessage:
+    | NonNullable<
+        ReturnType<typeof useWorkbenchStore.getState>["messagesByConversationId"][string]
+      >[number]
+    | undefined;
+
+  await waitFor(async () => {
+    const sendResult = await sendMessage.mock.results[0]?.value;
+    const messageId = sendResult?.messageId;
+
+    expect(messageId).toBeTruthy();
+    sentMessage = useWorkbenchStore
+      .getState()
+      .messagesByConversationId[conversationId]
+      .find((message) => message.remoteMessageId === messageId);
+    expect(
+      sentMessage,
+    ).toMatchObject(expectedMessage);
+  });
+
+  return sentMessage;
+}
+
 describe("ChatWorkbenchPage composer flows", () => {
   beforeEach(() => {
     vi.useRealTimers();
@@ -948,7 +976,7 @@ describe("ChatWorkbenchPage composer flows", () => {
     });
     expect(sendMessage.mock.calls[0]?.[0].segment).not.toHaveProperty("href");
     expect(sendMessage.mock.calls[0]?.[0].segment).not.toHaveProperty("url");
-    await expectLatestConversationMessage("conv-001", {
+    await expectSentConversationMessage("conv-001", sendMessage, {
       content: {
         appName: "企微助手",
         title: "客户跟进小程序",
@@ -1042,7 +1070,7 @@ describe("ChatWorkbenchPage composer flows", () => {
     });
     expect(sendMessage.mock.calls[0]?.[0].segment).not.toHaveProperty("href");
     expect(sendMessage.mock.calls[0]?.[0].segment).not.toHaveProperty("url");
-    await expectLatestConversationMessage("conv-001", {
+    const sentMessage = await expectSentConversationMessage("conv-001", sendMessage, {
       content: {
         extension: "pdf",
         fileName: "报价单.pdf",
@@ -1052,11 +1080,7 @@ describe("ChatWorkbenchPage composer flows", () => {
       },
       role: "agent",
     });
-    const latestMessage =
-      useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1);
-    expect(latestMessage?.status === "accepted" || latestMessage?.status === "sent").toBe(
-      true,
-    );
+    expect(sentMessage?.status === "accepted" || sentMessage?.status === "sent").toBe(true);
   });
 
   it("sends a collected H5 material as an h5 segment", async () => {
@@ -1137,7 +1161,7 @@ describe("ChatWorkbenchPage composer flows", () => {
         }),
       );
     });
-    await expectLatestConversationMessage("conv-001", {
+    await expectSentConversationMessage("conv-001", sendMessage, {
       content: {
         description: "恭喜发财，大吉大利",
         previewImageUrl: "https://example.com/redpacket.png",
@@ -1226,7 +1250,7 @@ describe("ChatWorkbenchPage composer flows", () => {
         }),
       );
     });
-    await expectLatestConversationMessage("conv-001", {
+    await expectSentConversationMessage("conv-001", sendMessage, {
       content: {
         description: "活动说明",
         title: "活动页",
@@ -1316,7 +1340,7 @@ describe("ChatWorkbenchPage composer flows", () => {
         }),
       );
     });
-    await expectLatestConversationMessage("conv-001", {
+    await expectSentConversationMessage("conv-001", sendMessage, {
       content: {
         title: "都市快报",
         type: "sphfeed",

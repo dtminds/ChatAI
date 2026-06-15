@@ -1028,12 +1028,17 @@ export function useMaterialCollection({
 
       if (!materialSegment) {
         if (item.contentType === "file") {
-          toast.warning("文件素材内容不完整");
+          toast.warning("文件素材数据异常");
           return;
         }
 
         if (item.contentType === "h5") {
-          toast.warning("H5链接素材内容不完整");
+          toast.warning("H5链接素材数据异常");
+          return;
+        }
+
+        if (item.contentType === "emotion") {
+          toast.warning("表情素材数据异常");
           return;
         }
 
@@ -1225,6 +1230,27 @@ function buildH5ComposerSegment(
   };
 }
 
+function buildExpressionComposerSegment(
+  item: WorkbenchMaterialCollectionItemDto,
+): ComposerSegment | undefined {
+  const materialCollectionId = item.id.trim();
+  const contentRecord = isMaterialContentRecord(item.content);
+  const imageUrl =
+    readMaterialContentString(contentRecord.imageUrl) ||
+    readMaterialContentString(contentRecord.thumbUrl) ||
+    readMaterialContentString(contentRecord.fileUrl);
+
+  if (!materialCollectionId || !imageUrl) {
+    return undefined;
+  }
+
+  return {
+    imageUrl,
+    materialCollectionId,
+    type: "emotion",
+  };
+}
+
 function isMaterialContentRecord(
   content: WorkbenchMaterialCollectionItemDto["content"],
 ): Record<string, unknown> {
@@ -1323,6 +1349,10 @@ function buildSphfeedComposerSegment(
 function buildComposerSegmentFromMaterial(
   item: WorkbenchMaterialCollectionItemDto,
 ): ComposerSegment | undefined {
+  if (item.contentType === "emotion") {
+    return buildExpressionComposerSegment(item);
+  }
+
   if (item.contentType === "file") {
     return buildFileComposerSegment(item);
   }
@@ -1345,10 +1375,6 @@ function buildComposerSegmentFromMaterial(
 function getMaterialSendUnavailableMessage(
   contentType: WorkbenchMaterialCollectionItemDto["contentType"],
 ) {
-  if (contentType === "emotion") {
-    return "自定义表情发送功能内测中，即将开放";
-  }
-
   return "发送功能内测中，即将开放";
 }
 

@@ -16,6 +16,12 @@ export type ComposerImageSegment = {
   width?: number;
 };
 
+export type ComposerEmotionSegment = {
+  type: "emotion";
+  materialCollectionId: string;
+  imageUrl: string;
+};
+
 export type ComposerFileSegment = {
   type: "file";
   extension: string;
@@ -57,6 +63,7 @@ export type ComposerSphfeedSegment = {
 export type ComposerSegment =
   | ComposerTextSegment
   | ComposerImageSegment
+  | ComposerEmotionSegment
   | ComposerFileSegment
   | ComposerH5Segment
   | ComposerMiniProgramSegment
@@ -118,6 +125,10 @@ export function getComposerSegmentsPreview(segments: ComposerSegment[]) {
 
   if (normalizedSegments.some((segment) => segment.type === "image")) {
     return "[图片]";
+  }
+
+  if (normalizedSegments.some((segment) => segment.type === "emotion")) {
+    return "[表情]";
   }
 
   if (normalizedSegments.some((segment) => segment.type === "h5")) {

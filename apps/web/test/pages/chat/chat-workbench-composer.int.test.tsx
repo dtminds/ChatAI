@@ -500,7 +500,7 @@ describe("ChatWorkbenchPage composer flows", () => {
     });
   });
 
-  it("switches to collected expressions from the WeChat emoji picker footer and shows the send preview notice when selected", async () => {
+  it("switches to collected expressions from the WeChat emoji picker footer and sends the selected expression", async () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();
     const listMaterialCollections = vi.fn(async (request) => {
@@ -579,11 +579,29 @@ describe("ChatWorkbenchPage composer flows", () => {
     );
 
     await waitFor(() => {
-      expect(workbenchToastWarningMock).toHaveBeenCalledWith(
-        "自定义表情发送功能内测中，即将开放",
+      expect(sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          conversationId: "conv-001",
+          seatId: "drc",
+          segment: {
+            materialCollectionId: "material-expression-001",
+            type: "emotion",
+          },
+        }),
       );
     });
-    expect(sendMessage).not.toHaveBeenCalled();
+    expect(workbenchToastWarningMock).not.toHaveBeenCalledWith(
+      "自定义表情发送功能内测中，即将开放",
+    );
+    await expectLatestConversationMessage("conv-001", {
+      content: {
+        imageUrl: "https://example.com/expression.gif",
+        type: "image",
+        variant: "emotion",
+      },
+      role: "agent",
+      status: "accepted",
+    });
   });
 
   it("manages collected expressions from the custom emoji context menu", async () => {

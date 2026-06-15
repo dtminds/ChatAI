@@ -2467,6 +2467,14 @@ function buildPayloadSegmentContent(
     };
   }
 
+  if (segment.type === "emotion") {
+    return {
+      alt: "自定义表情",
+      imageUrl: `mock://material-expression/${segment.materialCollectionId}`,
+      variant: "emotion",
+    };
+  }
+
   if (segment.type === "file") {
     return {
       extension: segment.extension,
@@ -2521,6 +2529,10 @@ function buildPayloadSegmentContent(
 function getPayloadSegmentContentType(
   segment: ReturnType<typeof getPayloadSegments>[number],
 ): WorkbenchMessageDto["contentType"] {
+  if (segment.type === "emotion") {
+    return "image";
+  }
+
   if (segment.type === "weapp") {
     return "mini-program";
   }
@@ -2661,6 +2673,10 @@ function getPayloadPreview(segments: ReturnType<typeof getPayloadSegments>) {
 
   if (segments.some((segment) => segment.type === "image")) {
     return "[图片]";
+  }
+
+  if (segments.some((segment) => segment.type === "emotion")) {
+    return "[表情]";
   }
 
   if (segments.some((segment) => segment.type === "file")) {

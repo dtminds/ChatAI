@@ -381,6 +381,7 @@ export type MaterialCollectionScope = {
 };
 
 export type MaterialCollectionForwardLookup = {
+  content: string;
   msgid: string;
 };
 
@@ -608,6 +609,7 @@ export class WorkbenchRepository {
   async findMaterialCollectionForForward(input: {
     bizType: number;
     id: string;
+    subUserId?: string;
     uid: number;
   }): Promise<MaterialCollectionForwardLookup | undefined> {
     const collectionNumericId = parseMySqlId(input.id);
@@ -616,13 +618,22 @@ export class WorkbenchRepository {
       return undefined;
     }
 
+    const subUid =
+      input.bizType === MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION
+        ? parseMySqlId(input.subUserId ?? "")
+        : 0;
+
+    if (subUid == null) {
+      return undefined;
+    }
+
     const row = await this.db
       .selectFrom("xy_wap_embed_material_collection")
-      .select(["msgid"])
+      .select(["content", "msgid"])
       .where("id", "=", collectionNumericId)
       .where("uid", "=", input.uid)
       .where("biz_type", "=", input.bizType)
-      .where("sub_uid", "=", 0)
+      .where("sub_uid", "=", subUid)
       .where("biz_status", "=", BIZ_STATUS_ACTIVE)
       .executeTakeFirst();
 
@@ -631,6 +642,7 @@ export class WorkbenchRepository {
     }
 
     return {
+      content: typeof row.content === "string" ? row.content : "",
       msgid: row.msgid,
     };
   }

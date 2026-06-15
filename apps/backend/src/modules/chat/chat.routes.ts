@@ -251,6 +251,10 @@ const SendMessageBodySchema = Type.Object({
         width: Type.Optional(Type.Number()),
       }),
       Type.Object({
+        materialCollectionId: Type.String(),
+        type: Type.Literal("emotion"),
+      }),
+      Type.Object({
         extension: Type.String(),
         fileId: Type.Optional(Type.String()),
         fileName: Type.String(),
@@ -301,6 +305,10 @@ const SendMessageBodySchema = Type.Object({
           type: Type.Literal("image"),
           url: Type.Optional(Type.String()),
           width: Type.Optional(Type.Number()),
+        }),
+        Type.Object({
+          materialCollectionId: Type.String(),
+          type: Type.Literal("emotion"),
         }),
         Type.Object({
           extension: Type.String(),

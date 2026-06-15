@@ -1669,7 +1669,12 @@ export class MysqlWorkbenchService implements WorkbenchService {
     const response = await this.javaClient.sendMessage({
       clientMessageId: payload.clientMessageId,
       ...(failMsgId != null ? { failMsgId } : {}),
-      msgData: await this.buildJavaSendMessageData(conversation.uid, payload, segment),
+      msgData: await this.buildJavaSendMessageData(
+        conversation.uid,
+        subUserId,
+        payload,
+        segment,
+      ),
       platform: conversation.platform,
       sendType: conversation.thirdGroupId ? JAVA_SEND_TYPE.GROUP : JAVA_SEND_TYPE.SINGLE,
       source: JAVA_MESSAGE_SOURCE.WORKBENCH,
@@ -1703,22 +1708,34 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
   private async buildJavaSendMessageData(
     uid: number,
+    subUserId: string,
     payload: WorkbenchSendMessagePayload,
     segment: WorkbenchOutgoingMessageSegment,
   ): Promise<JavaSendMessageData> {
-    if (segment.type === "weapp" || segment.type === "sphfeed") {
+    if (
+      segment.type === "emotion" ||
+      segment.type === "weapp" ||
+      segment.type === "sphfeed"
+    ) {
       const bizType =
-        segment.type === "weapp"
+        segment.type === "emotion"
+          ? MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION
+          : segment.type === "weapp"
           ? MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM
           : MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED;
       const collection = await this.repository.findMaterialCollectionForForward({
         bizType,
         id: segment.materialCollectionId,
+        ...(segment.type === "emotion" ? { subUserId } : {}),
         uid,
       });
 
       if (!collection) {
         throw new NotFoundError("MATERIAL_COLLECTION_NOT_FOUND", "素材不存在");
+      }
+
+      if (segment.type === "emotion") {
+        return buildEmotionJavaSendMessageData(collection.content);
       }
 
       return buildForwardJavaSendMessageData(segment.type, collection.msgid);
@@ -2847,7 +2864,7 @@ function buildJavaSendMessageData(
   payload: WorkbenchSendMessagePayload,
   segment: Exclude<
     WorkbenchOutgoingMessageSegment,
-    { type: "sphfeed" } | { type: "weapp" }
+    { type: "emotion" } | { type: "sphfeed" } | { type: "weapp" }
   >,
 ): JavaSendMessageData {
   if (segment.type === "image") {
@@ -2934,6 +2951,20 @@ function buildJavaSendMessageData(
   }
 
   return message;
+}
+
+function buildEmotionJavaSendMessageData(content: string): JavaSendMessageData {
+  const record = parseMaterialContentRecord(content);
+  const fileUrl = readMaterialString(record, "fileUrl");
+
+  if (!fileUrl) {
+    throw new BadRequestError("INVALID_EMOTION_MESSAGE", "表情素材数据异常");
+  }
+
+  return {
+    fileUrl,
+    msgtype: "emotion",
+  };
 }
 
 function buildForwardJavaSendMessageData(

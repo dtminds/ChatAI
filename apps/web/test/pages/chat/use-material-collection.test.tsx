@@ -132,6 +132,24 @@ function createSphfeedMaterialItem(
   };
 }
 
+function createExpressionMaterialItem(
+  overrides: Partial<WorkbenchMaterialCollectionItemDto> = {},
+): WorkbenchMaterialCollectionItemDto {
+  return {
+    bizType: 1,
+    content: {
+      imageUrl: "https://example.com/expression.gif",
+    },
+    contentType: "emotion",
+    groupId: 0,
+    id: "material-expression",
+    messageId: "msg-expression-001",
+    sort: 1_781_244_000_000,
+    title: "贴贴表情",
+    ...overrides,
+  };
+}
+
 describe("useMaterialCollection", () => {
   afterEach(() => {
     resetWorkbenchService();
@@ -324,6 +342,30 @@ describe("useMaterialCollection", () => {
     ]);
   });
 
+  it("sends a collected expression material as an emotion segment", async () => {
+    const sendAgentMessageSegments = vi.fn(async () => ({ ok: true as const }));
+
+    const { result } = renderHook(() =>
+      useMaterialCollection(
+        createDefaultOptions({
+          sendAgentMessageSegments,
+        }),
+      ),
+    );
+
+    await act(async () => {
+      await result.current.handleSelectMaterial(createExpressionMaterialItem());
+    });
+
+    expect(sendAgentMessageSegments).toHaveBeenCalledWith([
+      {
+        imageUrl: "https://example.com/expression.gif",
+        materialCollectionId: "material-expression",
+        type: "emotion",
+      },
+    ]);
+  });
+
   it("calls send failure callback when material send fails", async () => {
     const onSendFailure = vi.fn();
     const onSent = vi.fn();
@@ -376,7 +418,7 @@ describe("useMaterialCollection", () => {
     });
 
     expect(sendAgentMessageSegments).not.toHaveBeenCalled();
-    expect(toast.warning).toHaveBeenCalledWith("文件素材内容不完整");
+    expect(toast.warning).toHaveBeenCalledWith("文件素材数据异常");
   });
 
   it("does not refresh collected expressions after expression mutation resolves when unmounted", async () => {

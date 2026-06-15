@@ -1900,6 +1900,15 @@ function buildOptimisticMessageContent(
     };
   }
 
+  if (segment.type === "emotion") {
+    return {
+      alt: "自定义表情",
+      imageUrl: segment.imageUrl,
+      type: "image",
+      variant: "emotion",
+    };
+  }
+
   if (segment.type === "file") {
     return {
       extension: segment.extension,
@@ -4363,6 +4372,7 @@ export function createWorkbenchStore() {
         for (let index = 0; index < segmentsForSend.length; index += 1) {
           const segmentForSend = segmentsForSend[index];
           const originalSegment = normalizedSegments[index] ?? segmentForSend;
+          const payloadSegment = toWorkbenchSendSegment(segmentForSend);
           const segmentClientMessageId = buildSegmentClientMessageId(clientMessageId, index);
           const mentionForSegment: SendMentionPayload =
             !hasSentMention && segmentForSend.type === "text"
@@ -4379,7 +4389,7 @@ export function createWorkbenchStore() {
             mention: mentionForSegment,
             quote: quoteForSegment,
             seatId: activeAccountId,
-            segment: segmentForSend,
+            segment: payloadSegment,
           });
           const optimisticMessage = {
             author: account ? `${account.name}-${account.operator}` : me.displayName,
@@ -4387,7 +4397,7 @@ export function createWorkbenchStore() {
             isOwnMessage: true,
             isNew: true,
             clientMessageId: segmentClientMessageId,
-            content: buildOptimisticMessageContent(segmentForSend, quoteForSegment),
+            content: buildOptimisticMessageContent(originalSegment, quoteForSegment),
             conversationId: activeConversationId,
             id: segmentClientMessageId,
             optNo: response.optNo ?? response.messageId,
@@ -5847,6 +5857,19 @@ function stripComposerMentionMetadata(segments: ComposerSegment[]): ComposerSegm
       type: "text",
     } satisfies ComposerTextSegment;
   });
+}
+
+function toWorkbenchSendSegment(
+  segment: ComposerSegment,
+): WorkbenchSendMessagePayload["segment"] {
+  if (segment.type === "emotion") {
+    return {
+      materialCollectionId: segment.materialCollectionId,
+      type: "emotion",
+    };
+  }
+
+  return segment;
 }
 
 function isDownloadableMessage(message: Message): message is ChatMessage {

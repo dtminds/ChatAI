@@ -631,6 +631,11 @@ export type WorkbenchOutgoingMessageImageSegment = {
   width?: number;
 };
 
+export type WorkbenchOutgoingMessageEmotionSegment = {
+  type: "emotion";
+  materialCollectionId: string;
+};
+
 export type WorkbenchOutgoingMessageFileSegment = {
   type: "file";
   extension: string;
@@ -672,6 +677,7 @@ export type WorkbenchOutgoingMessageSphfeedSegment = {
 export type WorkbenchOutgoingMessageSegment =
   | WorkbenchOutgoingMessageTextSegment
   | WorkbenchOutgoingMessageImageSegment
+  | WorkbenchOutgoingMessageEmotionSegment
   | WorkbenchOutgoingMessageFileSegment
   | WorkbenchOutgoingMessageH5Segment
   | WorkbenchOutgoingMessageMiniProgramSegment

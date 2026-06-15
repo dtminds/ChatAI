@@ -93,6 +93,10 @@ export type JavaSendMessageData =
       msgtype: "image";
     }
   | {
+      fileUrl: string;
+      msgtype: "emotion";
+    }
+  | {
       fileName: string;
       fileUrl: string;
       msgtype: "file";

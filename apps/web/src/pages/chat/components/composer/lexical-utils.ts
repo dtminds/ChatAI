@@ -387,10 +387,20 @@ export function $removeComposerTextRange(start: number, end: number) {
 
 export function $exportComposerSegments() {
   const segments: ComposerSegment[] = [];
+  const rootChildren = $getRoot().getChildren();
 
-  for (const child of $getRoot().getChildren()) {
+  rootChildren.forEach((child, index) => {
     collectSegmentsFromNode(child, segments);
-  }
+
+    const nextChild = rootChildren[index + 1];
+
+    if (shouldExportParagraphBreak(child, nextChild)) {
+      segments.push({
+        text: "\n",
+        type: "text",
+      });
+    }
+  });
 
   return segments;
 }
@@ -489,6 +499,28 @@ function collectSegmentsFromNode(node: LexicalNode, segments: ComposerSegment[])
       collectSegmentsFromNode(child, segments);
     });
   }
+}
+
+function shouldExportParagraphBreak(
+  currentNode: LexicalNode,
+  nextNode: LexicalNode | undefined,
+) {
+  return (
+    isTextParagraphNode(currentNode) &&
+    isTextParagraphNode(nextNode) &&
+    !hasComposerLiteAttachmentChild(currentNode) &&
+    !hasComposerLiteAttachmentChild(nextNode)
+  );
+}
+
+function isTextParagraphNode(node: LexicalNode | undefined): node is ElementNode {
+  return $isElementNode(node) && node.getType() === "paragraph";
+}
+
+function hasComposerLiteAttachmentChild(node: ElementNode) {
+  return node
+    .getChildren()
+    .some((child) => $isComposerLiteAttachmentNode(child));
 }
 
 function isLiteAttachmentSegment(

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   $createLineBreakNode,
+  $createParagraphNode,
+  $createTextNode,
   $getSelection,
   $getRoot,
   $insertNodes,
@@ -221,6 +223,40 @@ describe("composer lexical utils", () => {
         $insertComposerText("第一行");
         $insertNodes([$createLineBreakNode()]);
         $insertComposerText("第二行");
+        segments = $exportComposerSegments();
+      },
+      { discrete: true },
+    );
+
+    expect(normalizeComposerSegments(segments)).toEqual([
+      {
+        text: "第一行\n第二行",
+        type: "text",
+      },
+    ]);
+  });
+
+  it("exports user-entered paragraph breaks as newline text", () => {
+    const editor = createEditor({
+      namespace: "composer-text-paragraph-break-export-test",
+      nodes: [ComposerEmojiNode, ComposerImageNode, ComposerLiteAttachmentNode, ComposerMentionNode],
+      onError(error) {
+        throw error;
+      },
+    });
+    let segments: ComposerSegment[] = [];
+
+    editor.update(
+      () => {
+        const root = $getRoot();
+        const firstParagraph = $createParagraphNode();
+        const secondParagraph = $createParagraphNode();
+
+        root.clear();
+        firstParagraph.append($createTextNode("第一行"));
+        secondParagraph.append($createTextNode("第二行"));
+        root.append(firstParagraph, secondParagraph);
+
         segments = $exportComposerSegments();
       },
       { discrete: true },

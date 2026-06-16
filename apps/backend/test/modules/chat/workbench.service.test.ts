@@ -5089,6 +5089,44 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
+  it("quick reply: rejects moving a category when the target first-level category would exceed the reply limit", async () => {
+    const repository = createMaterialRepository({
+      countChildQuickReplyCategories: vi.fn().mockResolvedValue(12),
+      countQuickRepliesInCategory: vi.fn().mockResolvedValue(300),
+      countQuickRepliesUnderTopCategory: vi.fn().mockResolvedValue(4_800),
+      findQuickReplyCategoryScope: vi
+        .fn()
+        .mockResolvedValueOnce({ parentId: "10" })
+        .mockResolvedValueOnce({ parentId: 0 }),
+      moveQuickReplyCategory: vi.fn().mockResolvedValue(true),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.moveQuickReplyCategory("101", "11", QUICK_REPLY_SCOPE_TYPE.ENTERPRISE, {
+        parentId: "20",
+      }),
+    ).rejects.toMatchObject({
+      code: "QUICK_REPLY_TOP_CATEGORY_ITEM_LIMIT_EXCEEDED",
+      message: "一级分类下话术最多5000条",
+      statusCode: 400,
+    });
+
+    expect(repository.countQuickRepliesUnderTopCategory).toHaveBeenCalledWith({
+      categoryId: "20",
+      scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+      subUserId: "101",
+      uid: 9001,
+    });
+    expect(repository.countQuickRepliesInCategory).toHaveBeenCalledWith({
+      categoryId: "11",
+      scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+      subUserId: "101",
+      uid: 9001,
+    });
+    expect(repository.moveQuickReplyCategory).not.toHaveBeenCalled();
+  });
+
   it("quick reply: rejects moving a category to a full first-level category", async () => {
     const repository = createMaterialRepository({
       countChildQuickReplyCategories: vi.fn().mockResolvedValue(50),

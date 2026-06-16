@@ -2777,6 +2777,31 @@ export class MysqlWorkbenchService implements WorkbenchService {
       );
     }
 
+    const [targetQuickReplyCount, sourceQuickReplyCount] = await Promise.all([
+      this.repository.countQuickRepliesUnderTopCategory({
+        categoryId: parentId,
+        scopeType,
+        subUserId,
+        uid: me.uid,
+      }),
+      this.repository.countQuickRepliesInCategory({
+        categoryId,
+        scopeType,
+        subUserId,
+        uid: me.uid,
+      }),
+    ]);
+
+    if (
+      targetQuickReplyCount + sourceQuickReplyCount >
+      QUICK_REPLY_TOP_CATEGORY_ITEM_LIMIT
+    ) {
+      throw new BadRequestError(
+        "QUICK_REPLY_TOP_CATEGORY_ITEM_LIMIT_EXCEEDED",
+        "一级分类下话术最多5000条",
+      );
+    }
+
     const updated = await this.repository.moveQuickReplyCategory({
       categoryId,
       parentId,

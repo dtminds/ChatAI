@@ -1392,13 +1392,13 @@ describe("backend app", () => {
     });
     expect(createCategory.statusCode).toBe(200);
 
-    const categories = await app.inject({
+    const topCategories = await app.inject({
       headers: { authorization },
       method: "GET",
       url: "/api/server/quick-replies/categories?scope_type=1",
     });
-    expect(categories.statusCode).toBe(200);
-    expect(categories.json()).toMatchObject({
+    expect(topCategories.statusCode).toBe(200);
+    expect(topCategories.json()).toMatchObject({
       categories: [
         {
           scopeType: 1,
@@ -1406,6 +1406,26 @@ describe("backend app", () => {
         },
       ],
     });
+
+    const topCategoryId = topCategories.json().categories[0].id;
+    const createChildCategory = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        parentId: topCategoryId,
+        scopeType: 1,
+        title: "报价",
+      },
+      url: "/api/server/quick-replies/categories",
+    });
+    expect(createChildCategory.statusCode).toBe(200);
+
+    const categories = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: `/api/server/quick-replies/category-content?scope_type=1&parent_category_id=${topCategoryId}`,
+    });
+    expect(categories.statusCode).toBe(200);
 
     const categoryId = categories.json().categories[0].id;
     const createReply = await app.inject({

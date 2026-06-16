@@ -1156,7 +1156,6 @@ describe("WorkbenchRepository", () => {
     expect(db.selects[1]).toMatchObject({
       limits: [10_001],
       orderBys: [
-        ["category_id", "asc"],
         ["sort", "desc"],
         ["id", "desc"],
       ],

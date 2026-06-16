@@ -1064,7 +1064,6 @@ export class WorkbenchRepository {
       .where("scope_type", "=", input.scopeType)
       .where("sub_uid", "=", subUid)
       .where("category_id", "in", categoryIds)
-      .orderBy("category_id", "asc")
       .orderBy("sort", "desc")
       .orderBy("id", "desc")
       .limit(input.quickReplyLimit + 1)

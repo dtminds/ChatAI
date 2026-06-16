@@ -455,6 +455,41 @@ describe("QuickReplyPanel", () => {
     expect(screen.getByRole("button", { name: "致歉" })).toHaveTextContent("致歉");
   });
 
+  it("preserves manual secondary category collapse after content refresh", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <QuickReplyPanel
+        {...createPanelProps()}
+        activeCategoryId="cat-2"
+        quickRepliesByCategoryId={{
+          "cat-2": [quickReply],
+        }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "报价" }));
+    expect(screen.queryByText("您好，这是报价信息")).not.toBeInTheDocument();
+
+    rerender(
+      <QuickReplyPanel
+        {...createPanelProps({
+          categories: [...categories],
+        })}
+        activeCategoryId="cat-2"
+        quickRepliesByCategoryId={{
+          "cat-2": [
+            {
+              ...quickReply,
+              contentText: "刷新后的报价话术",
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.queryByText("刷新后的报价话术")).not.toBeInTheDocument();
+  });
+
   it("creates quick replies from the secondary category context menu", async () => {
     const user = userEvent.setup();
     const onCreateQuickReply = vi.fn();

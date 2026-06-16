@@ -102,6 +102,8 @@ export function QuickReplyPanel({
         ? new Set([activeCategoryId])
         : new Set(),
   );
+  const previousTopCategoryIdRef = useRef<string | null>(null);
+  const previousChildCategoryIdsRef = useRef<Set<string>>(new Set());
   const childCategories = useMemo(
     () =>
       activeTopCategory
@@ -139,12 +141,47 @@ export function QuickReplyPanel({
     ? new Set(visibleChildCategories.map((category) => category.id))
     : manualExpandedCategoryIds;
   useEffect(() => {
-    if (!activeTopCategory || childCategories.length === 0) {
-      setManualExpandedCategoryIds(new Set());
-      return;
-    }
+    const activeTopCategoryId = activeTopCategory?.id ?? null;
+    const previousTopCategoryId = previousTopCategoryIdRef.current;
+    const previousChildCategoryIds = previousChildCategoryIdsRef.current;
+    const childCategoryIds = new Set(childCategories.map((category) => category.id));
+    const topCategoryChanged = activeTopCategoryId !== previousTopCategoryId;
 
-    setManualExpandedCategoryIds(new Set(childCategories.map((category) => category.id)));
+    previousTopCategoryIdRef.current = activeTopCategoryId;
+    previousChildCategoryIdsRef.current = childCategoryIds;
+
+    setManualExpandedCategoryIds((current) => {
+      if (!activeTopCategoryId || childCategoryIds.size === 0) {
+        return current.size === 0 ? current : new Set();
+      }
+
+      if (topCategoryChanged) {
+        return childCategoryIds;
+      }
+
+      const next = new Set<string>();
+
+      for (const categoryId of current) {
+        if (childCategoryIds.has(categoryId)) {
+          next.add(categoryId);
+        }
+      }
+
+      for (const categoryId of childCategoryIds) {
+        if (!previousChildCategoryIds.has(categoryId)) {
+          next.add(categoryId);
+        }
+      }
+
+      if (
+        next.size === current.size &&
+        [...next].every((categoryId) => current.has(categoryId))
+      ) {
+        return current;
+      }
+
+      return next;
+    });
   }, [activeTopCategory?.id, childCategories]);
 
   const handleSelectTopCategory = (category: WorkbenchQuickReplyCategoryDto) => {

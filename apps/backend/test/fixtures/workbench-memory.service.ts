@@ -539,6 +539,7 @@ export function createMemoryWorkbenchService() {
       validateMemoryQuickReplyPayload(request);
       const now = Date.now();
       const categoryId = request.categoryId ?? 0;
+      assertMemoryQuickReplyChildCategory(categoryId, request.scopeType, state.quickReplyCategories);
 
       state.quickReplies = [
         ...state.quickReplies,
@@ -568,13 +569,15 @@ export function createMemoryWorkbenchService() {
     ): WorkbenchQuickReplyOkResponse {
       validateMemoryQuickReplyPayload(request);
       const now = Date.now();
+      const categoryId = request.categoryId ?? 0;
+      assertMemoryQuickReplyChildCategory(categoryId, request.scopeType, state.quickReplyCategories);
 
       state.quickReplies = state.quickReplies.map((reply) =>
         reply.id === quickReplyId && reply.scopeType === request.scopeType
           ? {
               ...reply,
               attachments: normalizeQuickReplyAttachments(request.attachments ?? []),
-              categoryId: request.categoryId ?? 0,
+              categoryId,
               contentText: request.contentText?.trim() ?? "",
               labelColor: request.labelColor?.trim() ?? "",
               labelText: request.labelText?.trim() ?? "",
@@ -1883,6 +1886,28 @@ function validateMemoryQuickReplyPayload(
 
   if (!validation.ok) {
     throw new BadRequestError("INVALID_QUICK_REPLY_CONTENT", validation.errorMsg);
+  }
+}
+
+function assertMemoryQuickReplyChildCategory(
+  categoryId: string | 0,
+  scopeType: WorkbenchQuickReplyDto["scopeType"],
+  categories: WorkbenchQuickReplyCategoryDto[],
+) {
+  if (categoryId === 0) {
+    throw new BadRequestError("QUICK_REPLY_CHILD_CATEGORY_REQUIRED", "请选择二级分类");
+  }
+
+  const category = categories.find(
+    (item) => item.id === categoryId && item.scopeType === scopeType,
+  );
+
+  if (!category) {
+    throw new BadRequestError("QUICK_REPLY_CATEGORY_NOT_FOUND", "分类不存在");
+  }
+
+  if (category.parentId === 0) {
+    throw new BadRequestError("QUICK_REPLY_CHILD_CATEGORY_REQUIRED", "请选择二级分类");
   }
 }
 

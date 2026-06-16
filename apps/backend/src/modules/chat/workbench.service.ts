@@ -161,7 +161,7 @@ const SMART_REPLY_MESSAGE_PAGE_CANDIDATE_LIMIT = 5;
 const SMART_REPLY_TRIGGER_RAW_MSGTYPES = new Set(["text", "image", "voice"]);
 const MATERIAL_COLLECTION_GROUP_TITLE_MAX_LENGTH = 10;
 const DEFAULT_H5_COVER_URL = "https://b5.bokr.com.cn/dist/default-cover.png";
-const QUICK_REPLY_CATEGORY_TITLE_MAX_LENGTH = 20;
+const QUICK_REPLY_CATEGORY_TITLE_MAX_LENGTH = 10;
 const QUICK_REPLY_LABEL_TEXT_MAX_LENGTH = 10;
 const QUICK_REPLY_LABEL_COLORS = new Set([
   "",
@@ -3538,7 +3538,7 @@ function normalizeQuickReplyCategoryTitle(title: string) {
   if (normalizedTitle.length > QUICK_REPLY_CATEGORY_TITLE_MAX_LENGTH) {
     throw new BadRequestError(
       "QUICK_REPLY_CATEGORY_TITLE_TOO_LONG",
-      "分类名称不能超过20个字",
+      "分类名称不能超过10个字",
     );
   }
 

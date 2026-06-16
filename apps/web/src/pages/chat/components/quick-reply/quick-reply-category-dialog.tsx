@@ -10,6 +10,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 
+const QUICK_REPLY_CATEGORY_TITLE_MAX_LENGTH = 10;
+
 type QuickReplyCategoryDialogProps = {
   initialTitle?: string;
   open: boolean;
@@ -43,8 +45,8 @@ export function QuickReplyCategoryDialog({
       return;
     }
 
-    if (normalizedTitle.length > 20) {
-      setError("分类名称不能超过20字");
+    if (normalizedTitle.length > QUICK_REPLY_CATEGORY_TITLE_MAX_LENGTH) {
+      setError("分类名称不能超过10字");
       return;
     }
 
@@ -71,9 +73,9 @@ export function QuickReplyCategoryDialog({
         </DialogHeader>
         <div className="space-y-2">
           <Input
-            maxLength={20}
+            maxLength={QUICK_REPLY_CATEGORY_TITLE_MAX_LENGTH}
             onChange={(event) => setTitle(event.target.value)}
-            placeholder="请输入分类名称，20字以内"
+            placeholder="请输入分类名称，10字以内"
             value={title}
           />
           {error ? <p className="text-sm text-destructive">{error}</p> : null}

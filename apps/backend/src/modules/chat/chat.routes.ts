@@ -472,11 +472,11 @@ const QuickReplyCategoriesQuerySchema = Type.Object({
 const QuickReplyCategoryCreateBodySchema = Type.Object({
   parentId: Type.Optional(Type.Union([Type.String({ maxLength: 64 }), Type.Literal(0)])),
   scopeType: QuickReplyScopeTypeSchema,
-  title: Type.String({ maxLength: 20, minLength: 1 }),
+  title: Type.String({ maxLength: 10, minLength: 1 }),
 });
 
 const QuickReplyCategoryUpdateBodySchema = Type.Object({
-  title: Type.String({ maxLength: 20, minLength: 1 }),
+  title: Type.String({ maxLength: 10, minLength: 1 }),
 });
 
 const QuickReplyCategoryMoveBodySchema = Type.Object({

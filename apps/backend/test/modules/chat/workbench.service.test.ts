@@ -4860,6 +4860,41 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
+  it("quick reply: rejects category titles longer than ten characters", async () => {
+    const repository = createMaterialRepository();
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.createQuickReplyCategory("101", {
+        parentId: 0,
+        scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+        title: "一二三四五六七八九十甲",
+      }),
+    ).rejects.toMatchObject({
+      code: "QUICK_REPLY_CATEGORY_TITLE_TOO_LONG",
+      message: "分类名称不能超过10个字",
+      statusCode: 400,
+    });
+
+    await expect(
+      service.renameQuickReplyCategory(
+        "101",
+        "11",
+        QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+        {
+          title: "一二三四五六七八九十甲",
+        },
+      ),
+    ).rejects.toMatchObject({
+      code: "QUICK_REPLY_CATEGORY_TITLE_TOO_LONG",
+      message: "分类名称不能超过10个字",
+      statusCode: 400,
+    });
+
+    expect(repository.createQuickReplyCategory).not.toHaveBeenCalled();
+    expect(repository.renameQuickReplyCategory).not.toHaveBeenCalled();
+  });
+
   it("quick reply: rejects creating more than fifty first-level categories", async () => {
     const repository = createMaterialRepository({
       countChildQuickReplyCategories: vi.fn().mockResolvedValue(50),

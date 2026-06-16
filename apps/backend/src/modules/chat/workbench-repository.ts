@@ -2001,7 +2001,6 @@ export class WorkbenchRepository {
           .as("group_seat_id"),
       ])
       .where("conversation.id", "=", conversationNumericId)
-      .where("seat.biz_status", "=", 1)
       .where("conversation.biz_status", "=", 1)
       .executeTakeFirst();
 
@@ -2240,7 +2239,6 @@ export class WorkbenchRepository {
       .where("relation.sub_id", "=", subUserNumericId)
       .where("relation.uid", "=", scope.uid)
       .where("relation.platform", "=", scope.platform)
-      .where("seat.biz_status", "=", 1)
       .execute() as SeatBaseRow[];
 
     if (!seats.length) {
@@ -2524,8 +2522,7 @@ export class WorkbenchRepository {
         "seat.third_avatar as third_avatar",
         "seat.third_user_name as third_user_name",
       ])
-      .where("relation.sub_id", "=", subUserId)
-      .where("seat.biz_status", "=", BIZ_STATUS_ACTIVE);
+      .where("relation.sub_id", "=", subUserId);
 
     if (seatIds && seatIds.length > 0) {
       seatQuery = seatQuery.where(
@@ -2847,7 +2844,6 @@ export class WorkbenchRepository {
         "host_sub_id",
       ])
       .where("id", "=", seatNumericId)
-      .where("biz_status", "=", 1)
       .executeTakeFirst() as SeatBaseRow | undefined;
 
     if (!seat) {
@@ -2892,7 +2888,6 @@ export class WorkbenchRepository {
         expressionBuilder.fn.max("conversation.last_msgtime").as("last_message_time"),
       ])
       .where("seat.id", "in", normalizedSeatIds)
-      .where("seat.biz_status", "=", BIZ_STATUS_ACTIVE)
       .groupBy([
         "seat.id",
         "seat.third_userid",
@@ -3189,8 +3184,7 @@ export class WorkbenchRepository {
           .where("unread_conversation.biz_status", "=", BIZ_STATUS_ACTIVE)
           .as("seat_unread_count"),
       ])
-      .where("conversation.id", "=", conversationNumericId)
-      .where("seat.biz_status", "=", BIZ_STATUS_ACTIVE);
+      .where("conversation.id", "=", conversationNumericId);
 
     if (options.activeOnly) {
       query = query.where("conversation.biz_status", "=", BIZ_STATUS_ACTIVE);
@@ -3253,8 +3247,7 @@ export class WorkbenchRepository {
           .select("third_userid")
           .where("id", "=", seatNumericId)
           .where("uid", "=", input.uid)
-          .where("platform", "=", input.platform)
-          .where("biz_status", "=", BIZ_STATUS_ACTIVE),
+          .where("platform", "=", input.platform),
       )
       .executeTakeFirst();
 
@@ -3624,7 +3617,6 @@ export class WorkbenchRepository {
       ])
       .where("conversation.id", "=", conversationNumericId)
       .where("conversation.biz_status", "=", BIZ_STATUS_ACTIVE)
-      .where("seat.biz_status", "=", BIZ_STATUS_ACTIVE)
       .executeTakeFirst();
 
     if (!conversation) {
@@ -3870,7 +3862,6 @@ export class WorkbenchRepository {
       .selectFrom("xy_wap_embed_user_seat")
       .select(["id", "uid", "platform", "third_userid"])
       .where("id", "=", seatId)
-      .where("biz_status", "=", 1)
       .executeTakeFirst();
   }
 
@@ -3903,8 +3894,7 @@ export class WorkbenchRepository {
         join
           .onRef("seat.id", "=", "relation.user_seat_id")
           .onRef("seat.uid", "=", "relation.uid")
-          .onRef("seat.platform", "=", "relation.platform")
-          .on("seat.biz_status", "=", 1),
+          .onRef("seat.platform", "=", "relation.platform"),
       )
       .select([
         "relation.user_seat_id as seat_id",
@@ -4201,7 +4191,6 @@ export class WorkbenchRepository {
             .where("uid", "=", uid)
             .where("platform", "=", platform)
             .where("third_userid", "in", seatThirdUserIds)
-            .where("biz_status", "=", 1)
             .execute()
         : [],
       contactThirdExternalIds.length
@@ -4361,7 +4350,6 @@ export class WorkbenchRepository {
       .where("uid", "=", uid)
       .where("platform", "=", platform)
       .where("third_userid", "=", seatThirdUserId)
-      .where("biz_status", "=", 1)
       .executeTakeFirst();
 
     if (!seat) {

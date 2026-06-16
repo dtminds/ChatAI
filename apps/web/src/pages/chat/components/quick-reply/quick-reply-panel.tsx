@@ -109,7 +109,7 @@ export function QuickReplyPanel({
         : [],
     [activeTopCategory, categories],
   );
-  const normalizedKeyword = keyword.trim();
+  const normalizedKeyword = keyword.trim().toLowerCase();
   const filteredQuickRepliesByCategoryId = useMemo(() => {
     if (!normalizedKeyword) {
       return quickRepliesByCategoryId ?? {};
@@ -1068,7 +1068,7 @@ function quickReplyMatchesKeyword(
     }),
   ];
 
-  return haystacks.some((value) => value.includes(normalizedKeyword));
+  return haystacks.some((value) => value.toLowerCase().includes(normalizedKeyword));
 }
 
 function readQuickReplyContentString(value: unknown) {

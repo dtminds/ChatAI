@@ -281,6 +281,7 @@ async function resolveAttachmentsForSubmit(
 
       resolved.push({
         content: {
+          alt: attachment.content.alt || segment.alt || attachment.localFile.name || "图片",
           fileUrl: segment.url,
         },
         type: "image",

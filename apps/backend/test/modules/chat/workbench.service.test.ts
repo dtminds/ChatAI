@@ -4851,6 +4851,45 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
+  it("quick reply: clamps append sort at zero for unsigned sort columns", async () => {
+    const repository = createMaterialRepository({
+      createQuickReply: vi.fn().mockResolvedValue("501"),
+      createQuickReplyCategory: vi.fn().mockResolvedValue("301"),
+      findQuickReplyCategorySortBoundary: vi.fn().mockResolvedValue(0),
+      findQuickReplySortBoundary: vi.fn().mockResolvedValue(0),
+      hasActiveQuickReplyCategory: vi.fn().mockResolvedValue(true),
+      isChildQuickReplyCategory: vi.fn().mockResolvedValue(true),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.createQuickReplyCategory("101", {
+        parentId: 0,
+        scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+        title: "售后",
+      }),
+    ).resolves.toEqual({ ok: true });
+    await expect(
+      service.createQuickReply("101", {
+        attachments: [],
+        categoryId: "11",
+        contentText: "您好",
+        scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+      }),
+    ).resolves.toEqual({ ok: true });
+
+    expect(repository.createQuickReplyCategory).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sort: 0,
+      }),
+    );
+    expect(repository.createQuickReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sort: 0,
+      }),
+    );
+  });
+
   it("quick reply: moves categories and replies before or after their sibling group", async () => {
     const repository = createMaterialRepository({
       bottomQuickReply: vi.fn().mockResolvedValue(true),

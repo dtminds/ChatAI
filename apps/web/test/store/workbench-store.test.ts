@@ -3385,6 +3385,32 @@ describe("useWorkbenchStore", () => {
         }),
       }),
     );
+
+    const latestMessages =
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].slice(-3);
+
+    expect(latestMessages).toMatchObject([
+      {
+        content: {
+          fileName: "报价单.pdf",
+          type: "file",
+        },
+      },
+      {
+        content: {
+          title: "活动链接",
+          type: "h5",
+          url: "https://example.com/activity",
+        },
+      },
+      {
+        content: {
+          appName: "客户助手",
+          title: "小程序标题",
+          type: "mini-program",
+        },
+      },
+    ]);
   });
 
   it("does not send messages from an inactive conversation", async () => {

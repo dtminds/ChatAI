@@ -182,9 +182,26 @@ export function $restoreComposerFromSegments(segments: ComposerSegment[]) {
     appendComposerSegmentToParagraph(currentParagraph, segment);
   }
 
-  appendCurrentParagraph();
-  root.append(currentParagraph);
-  currentParagraph.selectStart();
+  if (!currentParagraph.isEmpty()) {
+    root.append(currentParagraph);
+    currentParagraph.selectEnd();
+    return;
+  }
+
+  const lastChild = root.getLastChild();
+
+  if ($isElementNode(lastChild) && hasComposerLiteAttachmentChild(lastChild)) {
+    root.append(currentParagraph);
+    currentParagraph.selectStart();
+    return;
+  }
+
+  if ($isElementNode(lastChild)) {
+    lastChild.selectEnd();
+  } else {
+    root.append(currentParagraph);
+    currentParagraph.selectStart();
+  }
 }
 
 function appendComposerSegmentToParagraph(

@@ -573,6 +573,37 @@ describe("QuickReplyPanel", () => {
     expect(screen.getByText("退款重拍话术")).toBeInTheDocument();
   });
 
+  it("matches quick reply attachment names case-insensitively", () => {
+    render(
+      <QuickReplyPanel
+        {...createPanelProps()}
+        keyword="pdf"
+        quickRepliesByCategoryId={{
+          "cat-2": [
+            {
+              ...quickReply,
+              attachments: [
+                {
+                  content: {
+                    fileName: "报价单.PDF",
+                    fileUrl: "https://cdn.example.com/quote.pdf",
+                  },
+                  materialCollectionId: "material-file-1",
+                  msgid: "msg-file-1",
+                  type: "file",
+                },
+              ],
+              contentText: "",
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "报价" })).toBeInTheDocument();
+    expect(screen.getByText("文件")).toBeInTheDocument();
+  });
+
   it("restores manual secondary category expansion after search is cleared", async () => {
     const user = userEvent.setup();
     const { rerender } = render(
@@ -925,6 +956,7 @@ describe("QuickReplyPanel", () => {
         attachments: [
           {
             content: {
+              alt: "reply.png",
               fileUrl: "https://b5.bokr.com.cn/chat-images/quick-reply/reply.png",
             },
             type: "image",

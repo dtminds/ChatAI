@@ -3002,13 +3002,13 @@ function buildPayloadSegmentContent(
     const materialContent = segment.materialCollectionId && !segment.msgid
       ? getMockMaterialContentRecord(state, segment.materialCollectionId)
       : {};
-    const fileName = readString(materialContent.fileName) ?? segment.fileName;
-    const fileUrl = readString(materialContent.fileUrl) ?? segment.url;
+    const fileName = readString(materialContent.fileName) || segment.fileName;
+    const fileUrl = readString(materialContent.fileUrl) || segment.url;
 
     return {
-      extension: readString(materialContent.extension) ?? segment.extension,
+      extension: readString(materialContent.extension) || segment.extension,
       fileName,
-      fileSizeLabel: readString(materialContent.fileSizeLabel) ?? segment.fileSizeLabel ?? "",
+      fileSizeLabel: readString(materialContent.fileSizeLabel) || segment.fileSizeLabel || "",
       fileUrl,
       sourceLabel: "文件",
     };
@@ -3021,19 +3021,19 @@ function buildPayloadSegmentContent(
 
     return {
       description:
-        readString(materialContent.description) ??
-        readString(materialContent.desc) ??
-        segment.desc ??
+        readString(materialContent.description) ||
+        readString(materialContent.desc) ||
+        segment.desc ||
         "",
       previewImageUrl:
-        readString(materialContent.previewImageUrl) ??
-        readString(materialContent.coverUrl) ??
+        readString(materialContent.previewImageUrl) ||
+        readString(materialContent.coverUrl) ||
         segment.coverUrl,
       sourceLabel: "链接",
-      title: readString(materialContent.title) ?? segment.title,
+      title: readString(materialContent.title) || segment.title,
       url:
-        readString(materialContent.url) ??
-        readString(materialContent.href) ??
+        readString(materialContent.url) ||
+        readString(materialContent.href) ||
         segment.href,
     };
   }
@@ -3044,14 +3044,14 @@ function buildPayloadSegmentContent(
       : getMockMaterialContentRecord(state, segment.materialCollectionId);
 
     return {
-      appName: readString(materialContent.appName) ?? segment.appName ?? "小程序",
+      appName: readString(materialContent.appName) || segment.appName || "小程序",
       coverImageUrl:
-        readString(materialContent.coverImageUrl) ??
-        readString(materialContent.imageUrl) ??
+        readString(materialContent.coverImageUrl) ||
+        readString(materialContent.imageUrl) ||
         segment.coverImageUrl,
-      logoUrl: readString(materialContent.logoUrl) ?? segment.logoUrl,
-      sourceLabel: readString(materialContent.sourceLabel) ?? segment.sourceLabel ?? "小程序",
-      title: readString(materialContent.title) ?? segment.title ?? "小程序",
+      logoUrl: readString(materialContent.logoUrl) || segment.logoUrl,
+      sourceLabel: readString(materialContent.sourceLabel) || segment.sourceLabel || "小程序",
+      title: readString(materialContent.title) || segment.title || "小程序",
     };
   }
 
@@ -3061,11 +3061,11 @@ function buildPayloadSegmentContent(
       : getMockMaterialContentRecord(state, segment.materialCollectionId);
 
     return {
-      description: readString(materialContent.description) ?? segment.description ?? "",
-      imageUrl: readString(materialContent.imageUrl) ?? segment.imageUrl,
-      sourceLabel: readString(materialContent.sourceLabel) ?? segment.sourceLabel ?? "视频号",
-      title: readString(materialContent.title) ?? segment.title ?? "视频号",
-      url: readString(materialContent.url) ?? segment.url,
+      description: readString(materialContent.description) || segment.description || "",
+      imageUrl: readString(materialContent.imageUrl) || segment.imageUrl,
+      sourceLabel: readString(materialContent.sourceLabel) || segment.sourceLabel || "视频号",
+      title: readString(materialContent.title) || segment.title || "视频号",
+      url: readString(materialContent.url) || segment.url,
     };
   }
 

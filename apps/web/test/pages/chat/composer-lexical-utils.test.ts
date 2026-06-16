@@ -168,6 +168,39 @@ describe("composer lexical utils", () => {
     ]);
   });
 
+  it("does not append an empty paragraph after restored text", () => {
+    const editor = createEditor({
+      namespace: "composer-text-restore-trailing-paragraph-test",
+      nodes: [ComposerEmojiNode, ComposerImageNode, ComposerLiteAttachmentNode, ComposerMentionNode],
+      onError(error) {
+        throw error;
+      },
+    });
+    let rootChildSummaries: string[] = [];
+
+    editor.update(
+      () => {
+        $restoreComposerFromSegments([
+          {
+            text: "您好",
+            type: "text",
+          },
+        ]);
+
+        rootChildSummaries = $getRoot().getChildren().map((child) => {
+          if (!$isElementNode(child)) {
+            return child.getType();
+          }
+
+          return child.getChildren().map((node) => node.getType()).join(",");
+        });
+      },
+      { discrete: true },
+    );
+
+    expect(rootChildSummaries).toEqual(["text"]);
+  });
+
   it("does not export paragraph boundaries around lite attachments as newline text", () => {
     const editor = createEditor({
       namespace: "composer-lite-attachment-paragraph-export-test",

@@ -3077,7 +3077,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
       boundary: "min",
     });
 
-    return minSort == null ? QUICK_REPLY_SORT_BASE : minSort - 1;
+    return minSort == null ? QUICK_REPLY_SORT_BASE : Math.max(0, minSort - 1);
   }
 
   private async getQuickReplyCategoryPrependSort(input: {
@@ -3134,7 +3134,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
       boundary: "min",
     });
 
-    return minSort == null ? QUICK_REPLY_SORT_BASE : minSort - 1;
+    return minSort == null ? QUICK_REPLY_SORT_BASE : Math.max(0, minSort - 1);
   }
 
   private async getQuickReplyPrependSort(input: {

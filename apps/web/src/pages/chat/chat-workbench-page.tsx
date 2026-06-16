@@ -1930,6 +1930,15 @@ function ChatWorkbenchContent({
             ? quickReplyCategoryFormState.category.title
             : ""
         }
+        variant={
+          quickReplyCategoryFormState?.mode === "edit"
+            ? quickReplyCategoryFormState.category.parentId === 0
+              ? "category"
+              : "group"
+            : quickReplyCategoryFormState?.parentId === 0
+              ? "category"
+              : "group"
+        }
         onOpenChange={(open) => {
           if (!open) {
             setQuickReplyCategoryFormState(null);

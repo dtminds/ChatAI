@@ -177,7 +177,7 @@ describe("QuickReplyPanel", () => {
     ).not.toBeInTheDocument();
 
     fireEvent.contextMenu(screen.getByRole("button", { name: "售前" }));
-    await user.click(screen.getByRole("menuitem", { name: "新建子分类" }));
+    await user.click(screen.getByRole("menuitem", { name: "添加话术分组" }));
 
     expect(onCreateCategory).toHaveBeenCalledWith("cat-1");
   });

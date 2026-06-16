@@ -343,7 +343,13 @@ export function QuickReplyPanel({
                 </div>
               ) : !activeTopCategory ? (
                 <div className="py-10 text-center text-[13px] text-muted-foreground">
-                  请先新建一级分类
+                  <img
+                    alt=""
+                    aria-hidden="true"
+                    className="h-48 w-48 mx-auto opacity-45"
+                    src="https://b5.bokr.com.cn/dist/reply-empty.png!w480.webp"
+                  />
+                  添加分类，如售前、售后、物流等
                 </div>
               ) : isLoading && childCategories.length === 0 ? (
                 <div
@@ -356,7 +362,13 @@ export function QuickReplyPanel({
               ) : childCategories.length === 0 ? (
                 <div className="space-y-3 rounded-[8px] bg-muted/40 px-4 py-8 text-center">
                   <div className="text-[13px] text-muted-foreground">
-                    暂无二级分类
+                    <img
+                      alt=""
+                      aria-hidden="true"
+                      className="h-48 w-48 mx-auto opacity-45"
+                      src="https://b5.bokr.com.cn/dist/reply-empty.png!w480.webp"
+                    />
+                    添加一个话术分组，即可开始创建话术
                   </div>
                   <Button
                     disabled={isMutating}
@@ -371,7 +383,7 @@ export function QuickReplyPanel({
                       size={14}
                       strokeWidth={1.8}
                     />
-                    新建二级分类
+                    创建话术分组
                   </Button>
                 </div>
               ) : (
@@ -725,7 +737,7 @@ function CategoryContextMenu({
           type="button"
         >
           <HugeiconsIcon icon={Add01Icon} size={16} strokeWidth={1.8} />
-          新建子分类
+          添加话术分组
         </button>
       ) : null}
       <SortSubmenu

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   MATERIAL_COLLECTION_BIZ_TYPE,
+  QUICK_REPLY_SCOPE_TYPE,
   type WorkbenchMaterialCollectionItemDto,
 } from "@chatai/contracts";
 import {
@@ -2897,6 +2898,59 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
+  it("sends quick reply file snapshots from inline fields when msgid is present", async () => {
+    const javaClient = createJavaClient();
+    vi.mocked(javaClient.sendMessage).mockResolvedValue({
+      clientMessageId: "local-file-quick-reply-001",
+      messageId: "opt-file-quick-reply-001",
+      optNo: "opt-file-quick-reply-001",
+      status: "accepted",
+    });
+    const repository = {
+      canAccessSeat: vi.fn().mockResolvedValue(true),
+      findMaterialCollectionForForward: vi.fn(),
+      getConversationLookup: vi.fn().mockResolvedValue({
+        id: "88",
+        platform: 5,
+        seatId: "12",
+        seatHostSubUserId: "101",
+        thirdExternalUserId: "external-001",
+        thirdUserId: "seat-user-001",
+        uid: 9001,
+      }),
+    } as unknown as WorkbenchRepository;
+    const service = new MysqlWorkbenchService(repository, javaClient);
+
+    await service.sendMessage("101", {
+      clientMessageId: "local-file-quick-reply-001",
+      conversationId: "88",
+      seatId: "12",
+      segment: {
+        fileName: "快捷话术报价单.pdf",
+        materialCollectionId: "66",
+        msgid: "msg-file-quick-reply-001",
+        type: "file",
+        url: "https://b5.bokr.com.cn/chat-files/quick-reply-quote.pdf",
+      },
+    });
+
+    expect(repository.findMaterialCollectionForForward).not.toHaveBeenCalled();
+    expect(javaClient.sendMessage).toHaveBeenCalledWith({
+      clientMessageId: "local-file-quick-reply-001",
+      msgData: {
+        fileName: "快捷话术报价单.pdf",
+        fileUrl: "https://b5.bokr.com.cn/chat-files/quick-reply-quote.pdf",
+        msgtype: "file",
+      },
+      platform: 5,
+      sendType: 1,
+      source: 1,
+      thirdExternalUserid: "external-001",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
+  });
+
   it("maps a collected H5 material send to the Java link payload", async () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.sendMessage).mockResolvedValue({
@@ -2953,6 +3007,63 @@ describe("MysqlWorkbenchService", () => {
         href: "https://example.com/redpacket",
         msgtype: "link",
         title: "红包来啦",
+      },
+      platform: 5,
+      sendType: 1,
+      source: 1,
+      thirdExternalUserid: "external-001",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
+  });
+
+  it("sends quick reply H5 snapshots from inline fields when msgid is present", async () => {
+    const javaClient = createJavaClient();
+    vi.mocked(javaClient.sendMessage).mockResolvedValue({
+      clientMessageId: "local-h5-quick-reply-001",
+      messageId: "opt-h5-quick-reply-001",
+      optNo: "opt-h5-quick-reply-001",
+      status: "accepted",
+    });
+    const repository = {
+      canAccessSeat: vi.fn().mockResolvedValue(true),
+      findMaterialCollectionForForward: vi.fn(),
+      getConversationLookup: vi.fn().mockResolvedValue({
+        id: "88",
+        platform: 5,
+        seatId: "12",
+        seatHostSubUserId: "101",
+        thirdExternalUserId: "external-001",
+        thirdUserId: "seat-user-001",
+        uid: 9001,
+      }),
+    } as unknown as WorkbenchRepository;
+    const service = new MysqlWorkbenchService(repository, javaClient);
+
+    await service.sendMessage("101", {
+      clientMessageId: "local-h5-quick-reply-001",
+      conversationId: "88",
+      seatId: "12",
+      segment: {
+        coverUrl: "https://b5.bokr.com.cn/dist/quick-reply-cover.png",
+        desc: "快捷话术说明",
+        href: "https://example.com/quick-reply",
+        materialCollectionId: "77",
+        msgid: "msg-h5-quick-reply-001",
+        title: "快捷话术链接",
+        type: "h5",
+      },
+    });
+
+    expect(repository.findMaterialCollectionForForward).not.toHaveBeenCalled();
+    expect(javaClient.sendMessage).toHaveBeenCalledWith({
+      clientMessageId: "local-h5-quick-reply-001",
+      msgData: {
+        coverUrl: "https://b5.bokr.com.cn/dist/quick-reply-cover.png",
+        desc: "快捷话术说明",
+        href: "https://example.com/quick-reply",
+        msgtype: "link",
+        title: "快捷话术链接",
       },
       platform: 5,
       sendType: 1,
@@ -3176,14 +3287,58 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
-  it("maps a sphfeed forward send to the Java send-message payload", async () => {
+  it("forwards quick reply mini-program snapshots by msgid without material lookup", async () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.sendMessage).mockResolvedValue({
-      clientMessageId: "local-sphfeed-001",
-      messageId: "opt-sphfeed-001",
-      optNo: "opt-sphfeed-001",
+      clientMessageId: "local-weapp-quick-reply-001",
+      messageId: "opt-weapp-quick-reply-001",
+      optNo: "opt-weapp-quick-reply-001",
       status: "accepted",
     });
+    const repository = {
+      canAccessSeat: vi.fn().mockResolvedValue(true),
+      findMaterialCollectionForForward: vi.fn(),
+      getConversationLookup: vi.fn().mockResolvedValue({
+        id: "88",
+        platform: 5,
+        seatId: "12",
+        seatHostSubUserId: "101",
+        thirdExternalUserId: "external-001",
+        thirdUserId: "seat-user-001",
+        uid: 9001,
+      }),
+    } as unknown as WorkbenchRepository;
+    const service = new MysqlWorkbenchService(repository, javaClient);
+
+    await service.sendMessage("101", {
+      clientMessageId: "local-weapp-quick-reply-001",
+      conversationId: "88",
+      seatId: "12",
+      segment: {
+        materialCollectionId: "66",
+        msgid: "msg-mini-quick-reply-001",
+        type: "weapp",
+      },
+    });
+
+    expect(repository.findMaterialCollectionForForward).not.toHaveBeenCalled();
+    expect(javaClient.sendMessage).toHaveBeenCalledWith({
+      clientMessageId: "local-weapp-quick-reply-001",
+      msgData: {
+        msgtype: "weapp",
+        transMsgid: "msg-mini-quick-reply-001",
+      },
+      platform: 5,
+      sendType: 1,
+      source: 1,
+      thirdExternalUserid: "external-001",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
+  });
+
+  it("rejects collected sphfeed sends while sphfeed sending is unavailable", async () => {
+    const javaClient = createJavaClient();
     const repository = {
       canAccessSeat: vi.fn().mockResolvedValue(true),
       findMaterialCollectionForForward: vi.fn().mockResolvedValue({
@@ -3204,34 +3359,62 @@ describe("MysqlWorkbenchService", () => {
       javaClient,
     );
 
-    await service.sendMessage("101", {
-      clientMessageId: "local-sphfeed-001",
-      conversationId: "88",
-      seatId: "12",
-      segment: {
-        materialCollectionId: "77",
-        type: "sphfeed",
-      },
+    await expect(
+      service.sendMessage("101", {
+        clientMessageId: "local-sphfeed-001",
+        conversationId: "88",
+        seatId: "12",
+        segment: {
+          materialCollectionId: "77",
+          type: "sphfeed",
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "SPHFEED_UNAVAILABLE",
+      message: "视频号发送功能暂未开放",
+      statusCode: 400,
     });
 
-    expect(repository.findMaterialCollectionForForward).toHaveBeenCalledWith({
-      bizType: MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED,
-      id: "77",
-      uid: 9001,
+    expect(repository.findMaterialCollectionForForward).not.toHaveBeenCalled();
+    expect(javaClient.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("rejects quick reply sphfeed snapshots while sphfeed sending is unavailable", async () => {
+    const javaClient = createJavaClient();
+    const repository = {
+      canAccessSeat: vi.fn().mockResolvedValue(true),
+      findMaterialCollectionForForward: vi.fn(),
+      getConversationLookup: vi.fn().mockResolvedValue({
+        id: "88",
+        platform: 5,
+        seatId: "12",
+        seatHostSubUserId: "101",
+        thirdGroupId: "group-001",
+        thirdUserId: "seat-user-001",
+        uid: 9001,
+      }),
+    } as unknown as WorkbenchRepository;
+    const service = new MysqlWorkbenchService(repository, javaClient);
+
+    await expect(
+      service.sendMessage("101", {
+        clientMessageId: "local-sphfeed-quick-reply-001",
+        conversationId: "88",
+        seatId: "12",
+        segment: {
+          materialCollectionId: "77",
+          msgid: "msg-sphfeed-quick-reply-001",
+          type: "sphfeed",
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "SPHFEED_UNAVAILABLE",
+      message: "视频号发送功能暂未开放",
+      statusCode: 400,
     });
-    expect(javaClient.sendMessage).toHaveBeenCalledWith({
-      clientMessageId: "local-sphfeed-001",
-      msgData: {
-        msgtype: "sphfeed",
-        transMsgid: "msg-sphfeed-001",
-      },
-      platform: 5,
-      sendType: 2,
-      source: 1,
-      thirdGroupId: "group-001",
-      thirdUserId: "seat-user-001",
-      uid: 9001,
-    });
+
+    expect(repository.findMaterialCollectionForForward).not.toHaveBeenCalled();
+    expect(javaClient.sendMessage).not.toHaveBeenCalled();
   });
 
   it("rejects forward sends when the material collection is not visible", async () => {
@@ -4330,16 +4513,540 @@ describe("MysqlWorkbenchService", () => {
 
     expect(repository.deleteMaterialGroup).not.toHaveBeenCalled();
   });
+
+  it("quick reply: rejects saving an empty quick reply", async () => {
+    const repository = createMaterialRepository();
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.createQuickReply("101", {
+        attachments: [],
+        contentText: " ",
+        scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+      }),
+    ).rejects.toMatchObject({
+      code: "INVALID_QUICK_REPLY",
+      message: "请填写话术内容或添加附件",
+    });
+
+    expect(repository.createQuickReply).not.toHaveBeenCalled();
+  });
+
+  it("quick reply: rejects unsupported attachments instead of silently dropping them", async () => {
+    const repository = createMaterialRepository();
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.createQuickReply("101", {
+        attachments: [
+          {
+            content: {
+              fileUrl: "https://example.com/video.mp4",
+            },
+            type: "video",
+          },
+        ],
+        contentText: "请查看附件",
+        scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+      }),
+    ).rejects.toMatchObject({
+      code: "INVALID_QUICK_REPLY",
+      message: "附件类型不支持",
+    });
+
+    expect(repository.createQuickReply).not.toHaveBeenCalled();
+  });
+
+  it("quick reply: lists personal replies in the current sub user scope", async () => {
+    const repository = createMaterialRepository({
+      listQuickReplies: vi.fn().mockResolvedValue({
+        items: [],
+        total: 0,
+      }),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.listQuickReplies("101", {
+        page: 1,
+        pageSize: 50,
+        scopeType: QUICK_REPLY_SCOPE_TYPE.PERSONAL,
+      }),
+    ).resolves.toEqual({
+      items: [],
+      pagination: {
+        hasMore: false,
+        page: 1,
+        pageSize: 50,
+        total: 0,
+      },
+    });
+
+    expect(repository.listQuickReplies).toHaveBeenCalledWith({
+      categoryId: undefined,
+      keyword: undefined,
+      page: 1,
+      pageSize: 50,
+      scopeType: QUICK_REPLY_SCOPE_TYPE.PERSONAL,
+      subUserId: "101",
+      uid: 9001,
+    });
+  });
+
+  it("quick reply: allows API page size up to one hundred", async () => {
+    const repository = createMaterialRepository({
+      listQuickReplies: vi.fn().mockResolvedValue({
+        items: [],
+        total: 0,
+      }),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await service.listQuickReplies("101", {
+      page: 1,
+      pageSize: 100,
+      scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+    });
+
+    expect(repository.listQuickReplies).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pageSize: 100,
+      }),
+    );
+  });
+
+  it("quick reply: groups first-level category content by second-level category", async () => {
+    const repository = createMaterialRepository({
+      listQuickReplyCategoryContent: vi.fn().mockResolvedValue({
+        categories: [
+          {
+            id: "11",
+            parentId: "10",
+            scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+            sort: 100,
+            title: "报价",
+          },
+          {
+            id: "12",
+            parentId: "10",
+            scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+            sort: 90,
+            title: "致歉",
+          },
+        ],
+        quickReplies: [
+          {
+            attachments: [],
+            categoryId: "11",
+            contentText: "报价话术",
+            id: "21",
+            labelColor: "",
+            labelText: "",
+            scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+            sort: 100,
+          },
+          {
+            attachments: [],
+            categoryId: "12",
+            contentText: "致歉话术",
+            id: "22",
+            labelColor: "",
+            labelText: "",
+            scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+            sort: 90,
+          },
+        ],
+        truncated: {
+          categories: false,
+          quickReplies: false,
+        },
+      }),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.listQuickReplyCategoryContent("101", {
+        parentCategoryId: "10",
+        scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+      }),
+    ).resolves.toEqual({
+      categories: [
+        expect.objectContaining({ id: "11", title: "报价" }),
+        expect.objectContaining({ id: "12", title: "致歉" }),
+      ],
+      limits: {
+        categories: 500,
+        quickReplies: 10_000,
+      },
+      quickRepliesByCategoryId: {
+        "11": [expect.objectContaining({ contentText: "报价话术" })],
+        "12": [expect.objectContaining({ contentText: "致歉话术" })],
+      },
+      truncated: {
+        categories: false,
+        quickReplies: false,
+      },
+    });
+    expect(repository.listQuickReplyCategoryContent).toHaveBeenCalledWith({
+      categoryLimit: 500,
+      parentCategoryId: "10",
+      quickReplyLimit: 10_000,
+      scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+      subUserId: "101",
+      uid: 9001,
+    });
+  });
+
+  it("quick reply: creates valid replies at the end of their category", async () => {
+    const repository = createMaterialRepository({
+      createQuickReply: vi.fn().mockResolvedValue("501"),
+      findQuickReplySortBoundary: vi.fn().mockResolvedValue(80),
+      hasActiveQuickReplyCategory: vi.fn().mockResolvedValue(true),
+      isChildQuickReplyCategory: vi.fn().mockResolvedValue(true),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.createQuickReply("101", {
+        attachments: [
+          {
+            content: {
+              fileName: "报价单.pdf",
+              fileUrl: "https://example.com/file.pdf",
+            },
+            materialCollectionId: "8",
+            msgid: "1025656",
+            type: "file",
+          },
+        ],
+        categoryId: "11",
+        contentText: " 您好 ",
+        labelColor: "purple",
+        labelText: " 售前 ",
+        scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+      }),
+    ).resolves.toEqual({ ok: true });
+
+    expect(repository.hasActiveQuickReplyCategory).toHaveBeenCalledWith({
+      categoryId: "11",
+      scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+      subUserId: "101",
+      uid: 9001,
+    });
+    expect(repository.isChildQuickReplyCategory).toHaveBeenCalledWith({
+      categoryId: "11",
+      scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+      subUserId: "101",
+      uid: 9001,
+    });
+    expect(repository.createQuickReply).toHaveBeenCalledWith({
+      attachments: [
+        {
+          content: {
+            fileName: "报价单.pdf",
+            fileUrl: "https://example.com/file.pdf",
+          },
+          materialCollectionId: "8",
+          msgid: "1025656",
+          type: "file",
+        },
+      ],
+      categoryId: "11",
+      contentText: "您好",
+      labelColor: "purple",
+      labelText: "售前",
+      opSubUserId: "101",
+      scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+      sort: 79,
+      subUserId: "101",
+      uid: 9001,
+    });
+  });
+
+  it("quick reply: rejects saving replies without a second-level category", async () => {
+    const repository = createMaterialRepository();
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.createQuickReply("101", {
+        categoryId: 0,
+        contentText: "您好",
+        scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+      }),
+    ).rejects.toMatchObject({
+      code: "QUICK_REPLY_CHILD_CATEGORY_REQUIRED",
+      message: "请选择二级分类",
+      statusCode: 400,
+    });
+
+    expect(repository.hasActiveQuickReplyCategory).not.toHaveBeenCalled();
+    expect(repository.isChildQuickReplyCategory).not.toHaveBeenCalled();
+    expect(repository.createQuickReply).not.toHaveBeenCalled();
+  });
+
+  it("quick reply: rejects saving replies under a first-level category", async () => {
+    const repository = createMaterialRepository({
+      hasActiveQuickReplyCategory: vi.fn().mockResolvedValue(true),
+      isChildQuickReplyCategory: vi.fn().mockResolvedValue(false),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.updateQuickReply("101", "21", {
+        categoryId: "10",
+        contentText: "您好",
+        scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+      }),
+    ).rejects.toMatchObject({
+      code: "QUICK_REPLY_CHILD_CATEGORY_REQUIRED",
+      message: "请选择二级分类",
+      statusCode: 400,
+    });
+
+    expect(repository.hasActiveQuickReplyCategory).toHaveBeenCalledWith({
+      categoryId: "10",
+      scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+      subUserId: "101",
+      uid: 9001,
+    });
+    expect(repository.isChildQuickReplyCategory).toHaveBeenCalledWith({
+      categoryId: "10",
+      scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+      subUserId: "101",
+      uid: 9001,
+    });
+    expect(repository.updateQuickReply).not.toHaveBeenCalled();
+  });
+
+  it("quick reply: creates categories at the end of their sibling group", async () => {
+    const repository = createMaterialRepository({
+      createQuickReplyCategory: vi.fn().mockResolvedValue("301"),
+      findQuickReplyCategorySortBoundary: vi.fn().mockResolvedValue(60),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.createQuickReplyCategory("101", {
+        parentId: 0,
+        scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+        title: "售后",
+      }),
+    ).resolves.toEqual({ ok: true });
+
+    expect(repository.findQuickReplyCategorySortBoundary).toHaveBeenCalledWith({
+      boundary: "min",
+      parentId: 0,
+      scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+      subUserId: "101",
+      uid: 9001,
+    });
+    expect(repository.createQuickReplyCategory).toHaveBeenCalledWith({
+      opSubUserId: "101",
+      parentId: 0,
+      scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+      sort: 59,
+      subUserId: "101",
+      title: "售后",
+      uid: 9001,
+    });
+  });
+
+  it("quick reply: moves categories and replies before or after their sibling group", async () => {
+    const repository = createMaterialRepository({
+      bottomQuickReply: vi.fn().mockResolvedValue(true),
+      bottomQuickReplyCategory: vi.fn().mockResolvedValue(true),
+      findQuickReplyCategorySortBoundary: vi
+        .fn()
+        .mockResolvedValueOnce(120)
+        .mockResolvedValueOnce(80),
+      findQuickReplySortBoundary: vi
+        .fn()
+        .mockResolvedValueOnce(220)
+        .mockResolvedValueOnce(180),
+      topQuickReply: vi.fn().mockResolvedValue(true),
+      topQuickReplyCategory: vi.fn().mockResolvedValue(true),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.topQuickReplyCategory("101", "11", QUICK_REPLY_SCOPE_TYPE.PERSONAL),
+    ).resolves.toEqual({ ok: true });
+    await expect(
+      service.topQuickReply("101", "21", QUICK_REPLY_SCOPE_TYPE.PERSONAL),
+    ).resolves.toEqual({ ok: true });
+    await expect(
+      service.bottomQuickReplyCategory("101", "11", QUICK_REPLY_SCOPE_TYPE.PERSONAL),
+    ).resolves.toEqual({ ok: true });
+    await expect(
+      service.bottomQuickReply("101", "21", QUICK_REPLY_SCOPE_TYPE.PERSONAL),
+    ).resolves.toEqual({ ok: true });
+
+    expect(repository.topQuickReplyCategory).toHaveBeenCalledWith({
+      categoryId: "11",
+      scopeType: QUICK_REPLY_SCOPE_TYPE.PERSONAL,
+      sort: 121,
+      subUserId: "101",
+      uid: 9001,
+    });
+    expect(repository.topQuickReply).toHaveBeenCalledWith({
+      quickReplyId: "21",
+      scopeType: QUICK_REPLY_SCOPE_TYPE.PERSONAL,
+      sort: 221,
+      subUserId: "101",
+      uid: 9001,
+    });
+    expect(repository.bottomQuickReplyCategory).toHaveBeenCalledWith({
+      categoryId: "11",
+      scopeType: QUICK_REPLY_SCOPE_TYPE.PERSONAL,
+      sort: 79,
+      subUserId: "101",
+      uid: 9001,
+    });
+    expect(repository.bottomQuickReply).toHaveBeenCalledWith({
+      quickReplyId: "21",
+      scopeType: QUICK_REPLY_SCOPE_TYPE.PERSONAL,
+      sort: 179,
+      subUserId: "101",
+      uid: 9001,
+    });
+  });
+
+  it("quick reply: rejects creating a third-level category", async () => {
+    const repository = createMaterialRepository({
+      hasActiveQuickReplyCategory: vi.fn().mockResolvedValue(true),
+      isChildQuickReplyCategory: vi.fn().mockResolvedValue(true),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.createQuickReplyCategory("101", {
+        parentId: "12",
+        scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+        title: "三级分类",
+      }),
+    ).rejects.toMatchObject({
+      code: "QUICK_REPLY_CATEGORY_DEPTH_UNSUPPORTED",
+      message: "最多支持二级分类",
+    });
+
+    expect(repository.createQuickReplyCategory).not.toHaveBeenCalled();
+  });
+
+  it("quick reply: rejects deleting a category that has child categories", async () => {
+    const repository = createMaterialRepository({
+      countChildQuickReplyCategories: vi.fn().mockResolvedValue(1),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.deleteQuickReplyCategory("101", "11", QUICK_REPLY_SCOPE_TYPE.ENTERPRISE),
+    ).rejects.toMatchObject({
+      code: "QUICK_REPLY_CATEGORY_HAS_CHILDREN",
+      message: "请先删除子分类",
+    });
+
+    expect(repository.countQuickRepliesInCategory).not.toHaveBeenCalled();
+    expect(repository.deleteQuickReplyCategory).not.toHaveBeenCalled();
+  });
+
+  it("quick reply: rejects deleting a non-empty category", async () => {
+    const repository = createMaterialRepository({
+      countChildQuickReplyCategories: vi.fn().mockResolvedValue(0),
+      countQuickRepliesInCategory: vi.fn().mockResolvedValue(1),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.deleteQuickReplyCategory("101", "11", QUICK_REPLY_SCOPE_TYPE.ENTERPRISE),
+    ).rejects.toMatchObject({
+      code: "QUICK_REPLY_CATEGORY_NOT_EMPTY",
+      message: "请先删除分类下的话术",
+    });
+
+    expect(repository.deleteQuickReplyCategory).not.toHaveBeenCalled();
+  });
+
+  it("quick reply: renames categories in the requested scope", async () => {
+    const repository = createMaterialRepository();
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.renameQuickReplyCategory(
+        "101",
+        "11",
+        QUICK_REPLY_SCOPE_TYPE.PERSONAL,
+        {
+          title: "新分类",
+        },
+      ),
+    ).resolves.toEqual({ ok: true });
+
+    expect(repository.renameQuickReplyCategory).toHaveBeenCalledWith({
+      categoryId: "11",
+      scopeType: QUICK_REPLY_SCOPE_TYPE.PERSONAL,
+      subUserId: "101",
+      title: "新分类",
+      uid: 9001,
+    });
+  });
+
+  it("quick reply: rejects category updates when the category is not found", async () => {
+    const repository = createMaterialRepository({
+      renameQuickReplyCategory: vi.fn().mockResolvedValue(false),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.renameQuickReplyCategory(
+        "101",
+        "11",
+        QUICK_REPLY_SCOPE_TYPE.PERSONAL,
+        {
+          title: "新分类",
+        },
+      ),
+    ).rejects.toMatchObject({
+      code: "QUICK_REPLY_CATEGORY_NOT_FOUND",
+      statusCode: 404,
+    });
+  });
+
+  it("quick reply: rejects reply updates when the quick reply is not found", async () => {
+    const repository = createMaterialRepository({
+      isChildQuickReplyCategory: vi.fn().mockResolvedValue(true),
+      updateQuickReply: vi.fn().mockResolvedValue(false),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.updateQuickReply("101", "21", {
+        categoryId: "11",
+        contentText: "您好",
+        scopeType: QUICK_REPLY_SCOPE_TYPE.PERSONAL,
+      }),
+    ).rejects.toMatchObject({
+      code: "QUICK_REPLY_NOT_FOUND",
+      statusCode: 404,
+    });
+  });
 });
 
 function createMaterialRepository(overrides: Partial<WorkbenchRepository> = {}) {
   return {
+    bottomQuickReply: vi.fn().mockResolvedValue(true),
+    bottomQuickReplyCategory: vi.fn().mockResolvedValue(true),
+    countChildQuickReplyCategories: vi.fn().mockResolvedValue(0),
     createMaterialCollection: vi.fn().mockResolvedValue("66"),
     createMaterialGroup: vi.fn().mockResolvedValue(undefined),
+    createQuickReply: vi.fn().mockResolvedValue("501"),
+    createQuickReplyCategory: vi.fn().mockResolvedValue("301"),
     canAccessSeat: vi.fn().mockResolvedValue(true),
     countMaterialGroups: vi.fn().mockResolvedValue(0),
+    countQuickRepliesInCategory: vi.fn().mockResolvedValue(0),
     deleteMaterialCollection: vi.fn().mockResolvedValue(undefined),
     deleteMaterialGroup: vi.fn().mockResolvedValue(undefined),
+    deleteQuickReply: vi.fn().mockResolvedValue(true),
+    deleteQuickReplyCategory: vi.fn().mockResolvedValue(true),
     findMaterialCollectionScope: vi.fn().mockResolvedValue({
       bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
       subUid: 0,
@@ -4357,6 +5064,10 @@ function createMaterialRepository(overrides: Partial<WorkbenchRepository> = {}) 
       msgid: "1025657",
     }),
     findMaterialMessage: vi.fn().mockResolvedValue(undefined),
+    findQuickReplyCategoryScope: vi.fn().mockResolvedValue({ parentId: 0 }),
+    findQuickReplyCategorySortBoundary: vi.fn().mockResolvedValue(undefined),
+    findQuickReplyScope: vi.fn().mockResolvedValue({ categoryId: "11" }),
+    findQuickReplySortBoundary: vi.fn().mockResolvedValue(undefined),
     getSubUser: vi.fn().mockResolvedValue({
       displayName: "客服一号",
       platform: 5,
@@ -4364,15 +5075,23 @@ function createMaterialRepository(overrides: Partial<WorkbenchRepository> = {}) 
       uid: 9001,
     }),
     hasActiveMaterialGroup: vi.fn().mockResolvedValue(true),
+    hasActiveQuickReplyCategory: vi.fn().mockResolvedValue(true),
+    isChildQuickReplyCategory: vi.fn().mockResolvedValue(false),
     isMaterialGroupEmpty: vi.fn().mockResolvedValue(true),
     listMaterialCollections: vi.fn().mockResolvedValue([]),
     listMaterialGroups: vi.fn().mockResolvedValue([]),
+    listQuickReplies: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+    listQuickReplyCategories: vi.fn().mockResolvedValue([]),
     moveMaterialCollection: vi.fn().mockResolvedValue(undefined),
     renameMaterialGroup: vi.fn().mockResolvedValue(undefined),
+    renameQuickReplyCategory: vi.fn().mockResolvedValue(true),
     restoreMaterialCollection: vi.fn().mockResolvedValue(undefined),
     topMaterialCollection: vi.fn().mockResolvedValue(undefined),
     topMaterialGroup: vi.fn().mockResolvedValue(undefined),
+    topQuickReply: vi.fn().mockResolvedValue(true),
+    topQuickReplyCategory: vi.fn().mockResolvedValue(true),
     updateMaterialCollectionContent: vi.fn().mockResolvedValue(undefined),
+    updateQuickReply: vi.fn().mockResolvedValue(true),
     ...overrides,
   } as unknown as WorkbenchRepository;
 }

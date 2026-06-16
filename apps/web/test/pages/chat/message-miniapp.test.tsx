@@ -8,7 +8,7 @@ import { MiniAppMessageCard } from "@/pages/chat/components/message";
 import type { ChatMessage } from "@/pages/chat/chat-types";
 
 describe("MiniAppMessageCard", () => {
-  it("uses the official mini program mark color", () => {
+  it("uses the official mini program mark color and normalized glyph scale", () => {
     render(
       <MiniAppMessageCard
         content={{
@@ -21,8 +21,18 @@ describe("MiniAppMessageCard", () => {
     );
 
     expect(screen.getByTestId("mini-program-mark")).toHaveClass(
+      "size-3.5",
       "text-mini-program-brand",
     );
+    expect(screen.getByTestId("mini-program-mark")).toHaveAttribute(
+      "viewBox",
+      "0 0 1024 1024",
+    );
+    expect(screen.getByTestId("mini-program-mark").querySelector("g"))
+      .toHaveAttribute(
+        "transform",
+        "translate(512 512) scale(1.5) translate(-512 -512)",
+      );
   });
 
   it("truncates app name and supports single-line title mode", () => {

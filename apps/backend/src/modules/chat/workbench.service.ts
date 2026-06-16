@@ -75,19 +75,35 @@ import type {
   WorkbenchMaterialCollectionOkResponse,
   WorkbenchMaterialCollectionContentType,
   WorkbenchMaterialCollectionUpdateRequest,
+  QuickReplyScopeType,
+  WorkbenchQuickReplyCategoryCreateRequest,
+  WorkbenchQuickReplyCategoryContentRequest,
+  WorkbenchQuickReplyCategoryContentResponse,
+  WorkbenchQuickReplyCategoryListRequest,
+  WorkbenchQuickReplyCategoryListResponse,
+  WorkbenchQuickReplyCategoryUpdateRequest,
+  WorkbenchQuickReplyCreateRequest,
+  WorkbenchQuickReplyDto,
+  WorkbenchQuickReplyListRequest,
+  WorkbenchQuickReplyListResponse,
+  WorkbenchQuickReplyOkResponse,
+  WorkbenchQuickReplyUpdateRequest,
 } from "@chatai/contracts";
 import {
   CHAT_TYPE,
   MATERIAL_COLLECTION_BIZ_TYPE,
   MATERIAL_COLLECTION_GROUP_MAX_COUNT,
   MATERIAL_COLLECTION_TITLE_MAX_LENGTH,
+  QUICK_REPLY_SCOPE_TYPE,
   buildMaterialFileContentJson,
   buildMaterialH5ContentJson,
   canEditMaterialCollectionItem,
+  normalizeQuickReplyAttachments,
   patchMaterialFileContentJson,
   patchMaterialH5ContentJson,
   resolveMaterialFileCollectFields,
   resolveMaterialH5CollectFields,
+  validateQuickReplyPayload,
 } from "@chatai/contracts";
 import {
   BadGatewayError,
@@ -142,6 +158,23 @@ const SMART_REPLY_MESSAGE_PAGE_CANDIDATE_LIMIT = 5;
 const SMART_REPLY_TRIGGER_RAW_MSGTYPES = new Set(["text", "image", "voice"]);
 const MATERIAL_COLLECTION_GROUP_TITLE_MAX_LENGTH = 10;
 const DEFAULT_H5_COVER_URL = "https://b5.bokr.com.cn/dist/default-cover.png";
+const QUICK_REPLY_CATEGORY_TITLE_MAX_LENGTH = 20;
+const QUICK_REPLY_LABEL_TEXT_MAX_LENGTH = 10;
+const QUICK_REPLY_LABEL_COLORS = new Set([
+  "",
+  "orange",
+  "green",
+  "blue",
+  "pink",
+  "purple",
+  "rose",
+  "teal",
+  "brown",
+  "slate",
+]);
+const QUICK_REPLY_CHILD_CATEGORY_CONTENT_LIMIT = 500;
+const QUICK_REPLY_CATEGORY_CONTENT_ITEM_LIMIT = 10_000;
+const QUICK_REPLY_SORT_BASE = 1_000_000_000;
 
 type SmartReplyMessagePageMetadata = {
   smartReplyEnabled?: boolean;
@@ -449,6 +482,71 @@ export type WorkbenchService = {
     groupId: string,
     bizType: number,
   ): Promise<WorkbenchMaterialCollectionOkResponse> | WorkbenchMaterialCollectionOkResponse;
+  listQuickReplyCategories(
+    subUserId: string,
+    request: WorkbenchQuickReplyCategoryListRequest,
+  ):
+    | Promise<WorkbenchQuickReplyCategoryListResponse>
+    | WorkbenchQuickReplyCategoryListResponse;
+  listQuickReplyCategoryContent(
+    subUserId: string,
+    request: WorkbenchQuickReplyCategoryContentRequest,
+  ):
+    | Promise<WorkbenchQuickReplyCategoryContentResponse>
+    | WorkbenchQuickReplyCategoryContentResponse;
+  createQuickReplyCategory(
+    subUserId: string,
+    request: WorkbenchQuickReplyCategoryCreateRequest,
+  ): Promise<WorkbenchQuickReplyOkResponse> | WorkbenchQuickReplyOkResponse;
+  renameQuickReplyCategory(
+    subUserId: string,
+    categoryId: string,
+    scopeType: number,
+    request: WorkbenchQuickReplyCategoryUpdateRequest,
+  ): Promise<WorkbenchQuickReplyOkResponse> | WorkbenchQuickReplyOkResponse;
+  topQuickReplyCategory(
+    subUserId: string,
+    categoryId: string,
+    scopeType: number,
+  ): Promise<WorkbenchQuickReplyOkResponse> | WorkbenchQuickReplyOkResponse;
+  bottomQuickReplyCategory(
+    subUserId: string,
+    categoryId: string,
+    scopeType: number,
+  ): Promise<WorkbenchQuickReplyOkResponse> | WorkbenchQuickReplyOkResponse;
+  deleteQuickReplyCategory(
+    subUserId: string,
+    categoryId: string,
+    scopeType: number,
+  ): Promise<WorkbenchQuickReplyOkResponse> | WorkbenchQuickReplyOkResponse;
+  listQuickReplies(
+    subUserId: string,
+    request: WorkbenchQuickReplyListRequest,
+  ): Promise<WorkbenchQuickReplyListResponse> | WorkbenchQuickReplyListResponse;
+  createQuickReply(
+    subUserId: string,
+    request: WorkbenchQuickReplyCreateRequest,
+  ): Promise<WorkbenchQuickReplyOkResponse> | WorkbenchQuickReplyOkResponse;
+  updateQuickReply(
+    subUserId: string,
+    quickReplyId: string,
+    request: WorkbenchQuickReplyUpdateRequest,
+  ): Promise<WorkbenchQuickReplyOkResponse> | WorkbenchQuickReplyOkResponse;
+  topQuickReply(
+    subUserId: string,
+    quickReplyId: string,
+    scopeType: number,
+  ): Promise<WorkbenchQuickReplyOkResponse> | WorkbenchQuickReplyOkResponse;
+  bottomQuickReply(
+    subUserId: string,
+    quickReplyId: string,
+    scopeType: number,
+  ): Promise<WorkbenchQuickReplyOkResponse> | WorkbenchQuickReplyOkResponse;
+  deleteQuickReply(
+    subUserId: string,
+    quickReplyId: string,
+    scopeType: number,
+  ): Promise<WorkbenchQuickReplyOkResponse> | WorkbenchQuickReplyOkResponse;
 };
 
 export class MysqlWorkbenchService implements WorkbenchService {
@@ -1713,12 +1811,28 @@ export class MysqlWorkbenchService implements WorkbenchService {
     payload: WorkbenchSendMessagePayload,
     segment: WorkbenchOutgoingMessageSegment,
   ): Promise<JavaSendMessageData> {
+    if (segment.type === "sphfeed") {
+      throw new BadRequestError("SPHFEED_UNAVAILABLE", "视频号发送功能暂未开放");
+    }
+
+    if (
+      (segment.type === "file" ||
+        segment.type === "h5" ||
+        segment.type === "weapp") &&
+      segment.msgid
+    ) {
+      if (segment.type === "weapp") {
+        return buildForwardJavaSendMessageData(segment.type, segment.msgid);
+      }
+
+      return buildJavaSendMessageData(payload, segment);
+    }
+
     if (
       segment.type === "emotion" ||
       (segment.type === "file" && segment.materialCollectionId) ||
       (segment.type === "h5" && segment.materialCollectionId) ||
-      segment.type === "weapp" ||
-      segment.type === "sphfeed"
+      segment.type === "weapp"
     ) {
       const materialCollectionId = segment.materialCollectionId;
 
@@ -1733,9 +1847,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
           ? MATERIAL_COLLECTION_BIZ_TYPE.FILE
           : segment.type === "h5"
           ? MATERIAL_COLLECTION_BIZ_TYPE.H5
-          : segment.type === "weapp"
-          ? MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM
-          : MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED;
+          : MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM;
       const collection = await this.repository.findMaterialCollectionForForward({
         bizType,
         id: materialCollectionId,
@@ -2318,6 +2430,408 @@ export class MysqlWorkbenchService implements WorkbenchService {
     return { ok: true };
   }
 
+  async listQuickReplyCategories(
+    subUserId: string,
+    request: WorkbenchQuickReplyCategoryListRequest,
+  ): Promise<WorkbenchQuickReplyCategoryListResponse> {
+    const me = await this.getMaterialActor(subUserId);
+    const scopeType = parseQuickReplyScopeType(request.scopeType);
+
+    return {
+      categories: await this.repository.listQuickReplyCategories({
+        scopeType,
+        subUserId,
+        uid: me.uid,
+      }),
+    };
+  }
+
+  async listQuickReplyCategoryContent(
+    subUserId: string,
+    request: WorkbenchQuickReplyCategoryContentRequest,
+  ): Promise<WorkbenchQuickReplyCategoryContentResponse> {
+    const me = await this.getMaterialActor(subUserId);
+    const scopeType = parseQuickReplyScopeType(request.scopeType);
+    const result = await this.repository.listQuickReplyCategoryContent({
+      categoryLimit: QUICK_REPLY_CHILD_CATEGORY_CONTENT_LIMIT,
+      parentCategoryId: request.parentCategoryId,
+      quickReplyLimit: QUICK_REPLY_CATEGORY_CONTENT_ITEM_LIMIT,
+      scopeType,
+      subUserId,
+      uid: me.uid,
+    });
+    const quickRepliesByCategoryId: Record<string, WorkbenchQuickReplyDto[]> = {};
+
+    for (const category of result.categories) {
+      quickRepliesByCategoryId[category.id] = [];
+    }
+
+    for (const quickReply of result.quickReplies) {
+      if (typeof quickReply.categoryId !== "string") {
+        continue;
+      }
+
+      quickRepliesByCategoryId[quickReply.categoryId] ??= [];
+      quickRepliesByCategoryId[quickReply.categoryId]?.push(quickReply);
+    }
+
+    return {
+      categories: result.categories,
+      limits: {
+        categories: QUICK_REPLY_CHILD_CATEGORY_CONTENT_LIMIT,
+        quickReplies: QUICK_REPLY_CATEGORY_CONTENT_ITEM_LIMIT,
+      },
+      quickRepliesByCategoryId,
+      truncated: result.truncated,
+    };
+  }
+
+  async createQuickReplyCategory(
+    subUserId: string,
+    request: WorkbenchQuickReplyCategoryCreateRequest,
+  ): Promise<WorkbenchQuickReplyOkResponse> {
+    const me = await this.getMaterialActor(subUserId);
+    const scopeType = parseQuickReplyScopeType(request.scopeType);
+    const parentId = normalizeQuickReplyCategoryId(request.parentId ?? 0);
+
+    if (parentId !== 0) {
+      const parentExists = await this.repository.hasActiveQuickReplyCategory({
+        categoryId: parentId,
+        scopeType,
+        subUserId,
+        uid: me.uid,
+      });
+
+      if (!parentExists) {
+        throw new BadRequestError("QUICK_REPLY_CATEGORY_NOT_FOUND", "分类不存在");
+      }
+
+      const parentIsChild = await this.repository.isChildQuickReplyCategory({
+        categoryId: parentId,
+        scopeType,
+        subUserId,
+        uid: me.uid,
+      });
+
+      if (parentIsChild) {
+        throw new BadRequestError(
+          "QUICK_REPLY_CATEGORY_DEPTH_UNSUPPORTED",
+          "最多支持二级分类",
+        );
+      }
+
+      const childCount = await this.repository.countChildQuickReplyCategories({
+        categoryId: parentId,
+        scopeType,
+        subUserId,
+        uid: me.uid,
+      });
+
+      if (childCount >= QUICK_REPLY_CHILD_CATEGORY_CONTENT_LIMIT) {
+        throw new BadRequestError(
+          "QUICK_REPLY_CHILD_CATEGORY_LIMIT_EXCEEDED",
+          "二级分类最多500个",
+        );
+      }
+    }
+
+    await this.repository.createQuickReplyCategory({
+      opSubUserId: subUserId,
+      parentId,
+      scopeType,
+      sort: await this.getQuickReplyCategoryAppendSort({
+        parentId,
+        scopeType,
+        subUserId,
+        uid: me.uid,
+      }),
+      subUserId,
+      title: normalizeQuickReplyCategoryTitle(request.title),
+      uid: me.uid,
+    });
+
+    return { ok: true };
+  }
+
+  async renameQuickReplyCategory(
+    subUserId: string,
+    categoryId: string,
+    scopeTypeValue: number,
+    request: WorkbenchQuickReplyCategoryUpdateRequest,
+  ): Promise<WorkbenchQuickReplyOkResponse> {
+    const me = await this.getMaterialActor(subUserId);
+
+    const updated = await this.repository.renameQuickReplyCategory({
+      categoryId,
+      scopeType: parseQuickReplyScopeType(scopeTypeValue),
+      subUserId,
+      title: normalizeQuickReplyCategoryTitle(request.title),
+      uid: me.uid,
+    });
+
+    if (!updated) {
+      throw new NotFoundError("QUICK_REPLY_CATEGORY_NOT_FOUND", "分类不存在");
+    }
+
+    return { ok: true };
+  }
+
+  async topQuickReplyCategory(
+    subUserId: string,
+    categoryId: string,
+    scopeTypeValue: number,
+  ): Promise<WorkbenchQuickReplyOkResponse> {
+    const me = await this.getMaterialActor(subUserId);
+    const scopeType = parseQuickReplyScopeType(scopeTypeValue);
+
+    const updated = await this.repository.topQuickReplyCategory({
+      categoryId,
+      scopeType,
+      sort: await this.getQuickReplyCategoryPrependSort({
+        categoryId,
+        scopeType,
+        subUserId,
+        uid: me.uid,
+      }),
+      subUserId,
+      uid: me.uid,
+    });
+
+    if (!updated) {
+      throw new NotFoundError("QUICK_REPLY_CATEGORY_NOT_FOUND", "分类不存在");
+    }
+
+    return { ok: true };
+  }
+
+  async bottomQuickReplyCategory(
+    subUserId: string,
+    categoryId: string,
+    scopeTypeValue: number,
+  ): Promise<WorkbenchQuickReplyOkResponse> {
+    const me = await this.getMaterialActor(subUserId);
+    const scopeType = parseQuickReplyScopeType(scopeTypeValue);
+
+    const updated = await this.repository.bottomQuickReplyCategory({
+      categoryId,
+      scopeType,
+      sort: await this.getQuickReplyCategoryAppendSortForExisting({
+        categoryId,
+        scopeType,
+        subUserId,
+        uid: me.uid,
+      }),
+      subUserId,
+      uid: me.uid,
+    });
+
+    if (!updated) {
+      throw new NotFoundError("QUICK_REPLY_CATEGORY_NOT_FOUND", "分类不存在");
+    }
+
+    return { ok: true };
+  }
+
+  async deleteQuickReplyCategory(
+    subUserId: string,
+    categoryId: string,
+    scopeTypeValue: number,
+  ): Promise<WorkbenchQuickReplyOkResponse> {
+    const me = await this.getMaterialActor(subUserId);
+    const scopeType = parseQuickReplyScopeType(scopeTypeValue);
+    const childCount = await this.repository.countChildQuickReplyCategories({
+      categoryId,
+      scopeType,
+      subUserId,
+      uid: me.uid,
+    });
+
+    if (childCount > 0) {
+      throw new BadRequestError(
+        "QUICK_REPLY_CATEGORY_HAS_CHILDREN",
+        "请先删除子分类",
+      );
+    }
+
+    const replyCount = await this.repository.countQuickRepliesInCategory({
+      categoryId,
+      scopeType,
+      subUserId,
+      uid: me.uid,
+    });
+
+    if (replyCount > 0) {
+      throw new BadRequestError(
+        "QUICK_REPLY_CATEGORY_NOT_EMPTY",
+        "请先删除分类下的话术",
+      );
+    }
+
+    const updated = await this.repository.deleteQuickReplyCategory({
+      categoryId,
+      scopeType,
+      subUserId,
+      uid: me.uid,
+    });
+
+    if (!updated) {
+      throw new NotFoundError("QUICK_REPLY_CATEGORY_NOT_FOUND", "分类不存在");
+    }
+
+    return { ok: true };
+  }
+
+  async listQuickReplies(
+    subUserId: string,
+    request: WorkbenchQuickReplyListRequest,
+  ): Promise<WorkbenchQuickReplyListResponse> {
+    const me = await this.getMaterialActor(subUserId);
+    const scopeType = parseQuickReplyScopeType(request.scopeType);
+    const page = normalizeMaterialPage(request.page);
+    const pageSize = normalizeMaterialPageSize(request.pageSize ?? 50);
+    const result = await this.repository.listQuickReplies({
+      categoryId: request.categoryId,
+      keyword: request.keyword,
+      page,
+      pageSize,
+      scopeType,
+      subUserId,
+      uid: me.uid,
+    });
+
+    return {
+      items: result.items,
+      pagination: {
+        hasMore: page * pageSize < result.total,
+        page,
+        pageSize,
+        total: result.total,
+      },
+    };
+  }
+
+  async createQuickReply(
+    subUserId: string,
+    request: WorkbenchQuickReplyCreateRequest,
+  ): Promise<WorkbenchQuickReplyOkResponse> {
+    const me = await this.getMaterialActor(subUserId);
+    const values = await this.normalizeQuickReplyWriteRequest(me.uid, subUserId, request);
+
+    await this.repository.createQuickReply({
+      ...values,
+      opSubUserId: subUserId,
+      sort: await this.getQuickReplyAppendSort({
+        categoryId: values.categoryId,
+        scopeType: values.scopeType,
+        subUserId,
+        uid: me.uid,
+      }),
+      subUserId,
+      uid: me.uid,
+    });
+
+    return { ok: true };
+  }
+
+  async updateQuickReply(
+    subUserId: string,
+    quickReplyId: string,
+    request: WorkbenchQuickReplyUpdateRequest,
+  ): Promise<WorkbenchQuickReplyOkResponse> {
+    const me = await this.getMaterialActor(subUserId);
+    const values = await this.normalizeQuickReplyWriteRequest(me.uid, subUserId, request);
+
+    const updated = await this.repository.updateQuickReply({
+      ...values,
+      quickReplyId,
+      subUserId,
+      uid: me.uid,
+    });
+
+    if (!updated) {
+      throw new NotFoundError("QUICK_REPLY_NOT_FOUND", "话术不存在");
+    }
+
+    return { ok: true };
+  }
+
+  async topQuickReply(
+    subUserId: string,
+    quickReplyId: string,
+    scopeTypeValue: number,
+  ): Promise<WorkbenchQuickReplyOkResponse> {
+    const me = await this.getMaterialActor(subUserId);
+    const scopeType = parseQuickReplyScopeType(scopeTypeValue);
+
+    const updated = await this.repository.topQuickReply({
+      quickReplyId,
+      scopeType,
+      sort: await this.getQuickReplyPrependSort({
+        quickReplyId,
+        scopeType,
+        subUserId,
+        uid: me.uid,
+      }),
+      subUserId,
+      uid: me.uid,
+    });
+
+    if (!updated) {
+      throw new NotFoundError("QUICK_REPLY_NOT_FOUND", "话术不存在");
+    }
+
+    return { ok: true };
+  }
+
+  async bottomQuickReply(
+    subUserId: string,
+    quickReplyId: string,
+    scopeTypeValue: number,
+  ): Promise<WorkbenchQuickReplyOkResponse> {
+    const me = await this.getMaterialActor(subUserId);
+    const scopeType = parseQuickReplyScopeType(scopeTypeValue);
+
+    const updated = await this.repository.bottomQuickReply({
+      quickReplyId,
+      scopeType,
+      sort: await this.getQuickReplyAppendSortForExisting({
+        quickReplyId,
+        scopeType,
+        subUserId,
+        uid: me.uid,
+      }),
+      subUserId,
+      uid: me.uid,
+    });
+
+    if (!updated) {
+      throw new NotFoundError("QUICK_REPLY_NOT_FOUND", "话术不存在");
+    }
+
+    return { ok: true };
+  }
+
+  async deleteQuickReply(
+    subUserId: string,
+    quickReplyId: string,
+    scopeTypeValue: number,
+  ): Promise<WorkbenchQuickReplyOkResponse> {
+    const me = await this.getMaterialActor(subUserId);
+
+    const updated = await this.repository.deleteQuickReply({
+      quickReplyId,
+      scopeType: parseQuickReplyScopeType(scopeTypeValue),
+      subUserId,
+      uid: me.uid,
+    });
+
+    if (!updated) {
+      throw new NotFoundError("QUICK_REPLY_NOT_FOUND", "话术不存在");
+    }
+
+    return { ok: true };
+  }
+
   private async assertSeatAccess(subUserId: string, seatId: string) {
     const canAccess = await this.repository.canAccessSeat(subUserId, seatId);
 
@@ -2407,6 +2921,67 @@ export class MysqlWorkbenchService implements WorkbenchService {
     return scope;
   }
 
+  private async normalizeQuickReplyWriteRequest(
+    uid: number,
+    subUserId: string,
+    request: WorkbenchQuickReplyCreateRequest | WorkbenchQuickReplyUpdateRequest,
+  ) {
+    const scopeType = parseQuickReplyScopeType(request.scopeType);
+    const categoryId = normalizeQuickReplyCategoryId(request.categoryId ?? 0);
+    const contentText = (request.contentText ?? "").trim();
+    const validation = validateQuickReplyPayload({
+      attachments: request.attachments ?? [],
+      contentText,
+    });
+
+    if (!validation.ok) {
+      throw new BadRequestError("INVALID_QUICK_REPLY", validation.errorMsg);
+    }
+
+    const attachments = normalizeQuickReplyAttachments(request.attachments ?? []);
+
+    if (categoryId === 0) {
+      throw new BadRequestError(
+        "QUICK_REPLY_CHILD_CATEGORY_REQUIRED",
+        "请选择二级分类",
+      );
+    }
+
+    const categoryExists = await this.repository.hasActiveQuickReplyCategory({
+      categoryId,
+      scopeType,
+      subUserId,
+      uid,
+    });
+
+    if (!categoryExists) {
+      throw new BadRequestError("QUICK_REPLY_CATEGORY_NOT_FOUND", "分类不存在");
+    }
+
+    const categoryIsChild = await this.repository.isChildQuickReplyCategory({
+        categoryId,
+        scopeType,
+        subUserId,
+        uid,
+    });
+
+    if (!categoryIsChild) {
+      throw new BadRequestError(
+        "QUICK_REPLY_CHILD_CATEGORY_REQUIRED",
+        "请选择二级分类",
+      );
+    }
+
+    return {
+      attachments,
+      categoryId,
+      contentText,
+      labelColor: normalizeQuickReplyLabelColor(request.labelColor ?? ""),
+      labelText: normalizeQuickReplyLabelText(request.labelText ?? ""),
+      scopeType,
+    };
+  }
+
   async search(
     subUserId: string,
     seatId: string,
@@ -2489,6 +3064,120 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     return hydrated;
   }
+
+  private async getQuickReplyCategoryAppendSort(input: {
+    parentId: string | 0;
+    scopeType: QuickReplyScopeType;
+    subUserId: string;
+    uid: number;
+  }) {
+    const minSort = await this.repository.findQuickReplyCategorySortBoundary({
+      ...input,
+      boundary: "min",
+    });
+
+    return minSort == null ? QUICK_REPLY_SORT_BASE : minSort - 1;
+  }
+
+  private async getQuickReplyCategoryPrependSort(input: {
+    categoryId: string;
+    scopeType: QuickReplyScopeType;
+    subUserId: string;
+    uid: number;
+  }) {
+    const categoryScope = await this.repository.findQuickReplyCategoryScope(input);
+
+    if (!categoryScope) {
+      return QUICK_REPLY_SORT_BASE;
+    }
+
+    const maxSort = await this.repository.findQuickReplyCategorySortBoundary({
+      boundary: "max",
+      parentId: categoryScope.parentId,
+      scopeType: input.scopeType,
+      subUserId: input.subUserId,
+      uid: input.uid,
+    });
+
+    return maxSort == null ? QUICK_REPLY_SORT_BASE : maxSort + 1;
+  }
+
+  private async getQuickReplyCategoryAppendSortForExisting(input: {
+    categoryId: string;
+    scopeType: QuickReplyScopeType;
+    subUserId: string;
+    uid: number;
+  }) {
+    const categoryScope = await this.repository.findQuickReplyCategoryScope(input);
+
+    if (!categoryScope) {
+      return QUICK_REPLY_SORT_BASE;
+    }
+
+    return this.getQuickReplyCategoryAppendSort({
+      parentId: categoryScope.parentId,
+      scopeType: input.scopeType,
+      subUserId: input.subUserId,
+      uid: input.uid,
+    });
+  }
+
+  private async getQuickReplyAppendSort(input: {
+    categoryId: string | 0;
+    scopeType: QuickReplyScopeType;
+    subUserId: string;
+    uid: number;
+  }) {
+    const minSort = await this.repository.findQuickReplySortBoundary({
+      ...input,
+      boundary: "min",
+    });
+
+    return minSort == null ? QUICK_REPLY_SORT_BASE : minSort - 1;
+  }
+
+  private async getQuickReplyPrependSort(input: {
+    quickReplyId: string;
+    scopeType: QuickReplyScopeType;
+    subUserId: string;
+    uid: number;
+  }) {
+    const quickReplyScope = await this.repository.findQuickReplyScope(input);
+
+    if (!quickReplyScope) {
+      return QUICK_REPLY_SORT_BASE;
+    }
+
+    const maxSort = await this.repository.findQuickReplySortBoundary({
+      boundary: "max",
+      categoryId: quickReplyScope.categoryId,
+      scopeType: input.scopeType,
+      subUserId: input.subUserId,
+      uid: input.uid,
+    });
+
+    return maxSort == null ? QUICK_REPLY_SORT_BASE : maxSort + 1;
+  }
+
+  private async getQuickReplyAppendSortForExisting(input: {
+    quickReplyId: string;
+    scopeType: QuickReplyScopeType;
+    subUserId: string;
+    uid: number;
+  }) {
+    const quickReplyScope = await this.repository.findQuickReplyScope(input);
+
+    if (!quickReplyScope) {
+      return QUICK_REPLY_SORT_BASE;
+    }
+
+    return this.getQuickReplyAppendSort({
+      categoryId: quickReplyScope.categoryId,
+      scopeType: input.scopeType,
+      subUserId: input.subUserId,
+      uid: input.uid,
+    });
+  }
 }
 
 function getNextEventCursor(
@@ -2568,6 +3257,74 @@ function normalizeMaterialPageSize(value: number | undefined) {
   }
 
   return Math.min(value, 100);
+}
+
+function parseQuickReplyScopeType(value: number): QuickReplyScopeType {
+  switch (value) {
+    case QUICK_REPLY_SCOPE_TYPE.ENTERPRISE:
+    case QUICK_REPLY_SCOPE_TYPE.PERSONAL:
+      return value;
+    default:
+      throw new BadRequestError("INVALID_QUICK_REPLY_SCOPE_TYPE", "话术范围无效");
+  }
+}
+
+function normalizeQuickReplyCategoryId(categoryId: string | 0 | undefined): string | 0 {
+  if (categoryId === undefined || categoryId === 0 || categoryId === "0") {
+    return 0;
+  }
+
+  if (!String(categoryId).trim()) {
+    return 0;
+  }
+
+  return String(categoryId);
+}
+
+function normalizeQuickReplyCategoryTitle(title: string) {
+  const normalizedTitle = title.trim();
+
+  if (!normalizedTitle) {
+    throw new BadRequestError(
+      "QUICK_REPLY_CATEGORY_TITLE_REQUIRED",
+      "分类名称不能为空",
+    );
+  }
+
+  if (normalizedTitle.length > QUICK_REPLY_CATEGORY_TITLE_MAX_LENGTH) {
+    throw new BadRequestError(
+      "QUICK_REPLY_CATEGORY_TITLE_TOO_LONG",
+      "分类名称不能超过20个字",
+    );
+  }
+
+  return normalizedTitle;
+}
+
+function normalizeQuickReplyLabelText(labelText: string) {
+  const normalizedLabelText = labelText.trim();
+
+  if (normalizedLabelText.length > QUICK_REPLY_LABEL_TEXT_MAX_LENGTH) {
+    throw new BadRequestError(
+      "QUICK_REPLY_LABEL_TEXT_TOO_LONG",
+      "短标题不能超过10个字",
+    );
+  }
+
+  return normalizedLabelText;
+}
+
+function normalizeQuickReplyLabelColor(labelColor: string) {
+  const normalizedLabelColor = labelColor.trim();
+
+  if (!QUICK_REPLY_LABEL_COLORS.has(normalizedLabelColor)) {
+    throw new BadRequestError(
+      "QUICK_REPLY_LABEL_COLOR_INVALID",
+      "短标题颜色无效",
+    );
+  }
+
+  return normalizedLabelColor;
 }
 
 function readEnterpriseMaterialGroupId(groupId: string | 0 | undefined) {

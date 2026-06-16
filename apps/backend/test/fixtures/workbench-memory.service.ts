@@ -66,8 +66,26 @@ import type {
   type WorkbenchMaterialCollectionListResponse,
   type WorkbenchMaterialCollectionMoveRequest,
   type WorkbenchMaterialCollectionOkResponse,
+  type WorkbenchQuickReplyCategoryCreateRequest,
+  type WorkbenchQuickReplyCategoryContentRequest,
+  type WorkbenchQuickReplyCategoryContentResponse,
+  type WorkbenchQuickReplyCategoryDto,
+  type WorkbenchQuickReplyCategoryListRequest,
+  type WorkbenchQuickReplyCategoryListResponse,
+  type WorkbenchQuickReplyCategoryUpdateRequest,
+  type WorkbenchQuickReplyCreateRequest,
+  type WorkbenchQuickReplyDto,
+  type WorkbenchQuickReplyListRequest,
+  type WorkbenchQuickReplyListResponse,
+  type WorkbenchQuickReplyOkResponse,
+  type WorkbenchQuickReplyUpdateRequest,
 } from "@chatai/contracts";
-import { MATERIAL_COLLECTION_BIZ_TYPE, MATERIAL_COLLECTION_GROUP_MAX_COUNT } from "@chatai/contracts";
+import {
+  MATERIAL_COLLECTION_BIZ_TYPE,
+  MATERIAL_COLLECTION_GROUP_MAX_COUNT,
+  normalizeQuickReplyAttachments,
+  validateQuickReplyPayload,
+} from "@chatai/contracts";
 import { BadRequestError, NotFoundError } from "../../src/shared/errors.js";
 
 type WorkbenchEvent =
@@ -97,6 +115,8 @@ type MemoryWorkbenchState = {
   materialItems: WorkbenchMaterialCollectionItemDto[];
   messagesByConversationId: Record<string, WorkbenchMessageDto[]>;
   nextId: number;
+  quickReplyCategories: WorkbenchQuickReplyCategoryDto[];
+  quickReplies: WorkbenchQuickReplyDto[];
   version: number;
 };
 
@@ -310,6 +330,308 @@ export function createMemoryWorkbenchService() {
       }
 
       state.materialGroups = state.materialGroups.filter((group) => group.id !== groupId);
+      return { ok: true };
+    },
+    listQuickReplyCategories(
+      _subUserId: string,
+      request: WorkbenchQuickReplyCategoryListRequest,
+    ): WorkbenchQuickReplyCategoryListResponse {
+      return {
+        categories: clone(
+          state.quickReplyCategories
+            .filter((category) => category.scopeType === request.scopeType)
+            .sort(sortQuickReplyEntries),
+        ),
+      };
+    },
+    createQuickReplyCategory(
+      _subUserId: string,
+      request: WorkbenchQuickReplyCategoryCreateRequest,
+    ): WorkbenchQuickReplyOkResponse {
+      const parentId = request.parentId ?? 0;
+      const category = {
+        id: `quick-reply-category-${state.nextId++}`,
+        parentId,
+        scopeType: request.scopeType,
+        sort: getAppendQuickReplyCategorySort(
+          state.quickReplyCategories,
+          request.scopeType,
+          parentId,
+        ),
+        title: request.title.trim(),
+      };
+      state.quickReplyCategories = [...state.quickReplyCategories, category];
+      return { ok: true };
+    },
+    renameQuickReplyCategory(
+      _subUserId: string,
+      categoryId: string,
+      scopeType: number,
+      request: WorkbenchQuickReplyCategoryUpdateRequest,
+    ): WorkbenchQuickReplyOkResponse {
+      state.quickReplyCategories = state.quickReplyCategories.map((category) =>
+        category.id === categoryId && category.scopeType === scopeType
+          ? { ...category, title: request.title.trim() }
+          : category,
+      );
+      return { ok: true };
+    },
+    topQuickReplyCategory(
+      _subUserId: string,
+      categoryId: string,
+      scopeType: number,
+    ): WorkbenchQuickReplyOkResponse {
+      const category = state.quickReplyCategories.find(
+        (item) => item.id === categoryId && item.scopeType === scopeType,
+      );
+      const sort = getPrependQuickReplyCategorySort(
+        state.quickReplyCategories,
+        scopeType,
+        category?.parentId ?? 0,
+      );
+      state.quickReplyCategories = state.quickReplyCategories.map((category) =>
+        category.id === categoryId && category.scopeType === scopeType
+          ? { ...category, sort }
+          : category,
+      );
+      return { ok: true };
+    },
+    bottomQuickReplyCategory(
+      _subUserId: string,
+      categoryId: string,
+      scopeType: number,
+    ): WorkbenchQuickReplyOkResponse {
+      const category = state.quickReplyCategories.find(
+        (item) => item.id === categoryId && item.scopeType === scopeType,
+      );
+      const sort = getAppendQuickReplyCategorySort(
+        state.quickReplyCategories,
+        scopeType,
+        category?.parentId ?? 0,
+      );
+      state.quickReplyCategories = state.quickReplyCategories.map((category) =>
+        category.id === categoryId && category.scopeType === scopeType
+          ? { ...category, sort }
+          : category,
+      );
+      return { ok: true };
+    },
+    deleteQuickReplyCategory(
+      _subUserId: string,
+      categoryId: string,
+      scopeType: number,
+    ): WorkbenchQuickReplyOkResponse {
+      if (
+        state.quickReplyCategories.some(
+          (category) =>
+            category.scopeType === scopeType && category.parentId === categoryId,
+        )
+      ) {
+        throw new BadRequestError("QUICK_REPLY_CATEGORY_HAS_CHILDREN", "请先删除子分类");
+      }
+
+      if (
+        state.quickReplies.some(
+          (reply) =>
+            reply.scopeType === scopeType && reply.categoryId === categoryId,
+        )
+      ) {
+        throw new BadRequestError("QUICK_REPLY_CATEGORY_NOT_EMPTY", "请先删除分类下的话术");
+      }
+
+      state.quickReplyCategories = state.quickReplyCategories.filter(
+        (category) => !(category.id === categoryId && category.scopeType === scopeType),
+      );
+      return { ok: true };
+    },
+    listQuickReplyCategoryContent(
+      _subUserId: string,
+      request: WorkbenchQuickReplyCategoryContentRequest,
+    ): WorkbenchQuickReplyCategoryContentResponse {
+      const categories = state.quickReplyCategories
+        .filter(
+          (category) =>
+            category.scopeType === request.scopeType &&
+            category.parentId === request.parentCategoryId,
+        )
+        .sort(sortQuickReplyEntries)
+        .slice(0, 500);
+      const categoryIds = new Set(categories.map((category) => category.id));
+      const quickReplies = state.quickReplies
+        .filter(
+          (reply) =>
+            reply.scopeType === request.scopeType &&
+            typeof reply.categoryId === "string" &&
+            categoryIds.has(reply.categoryId),
+        )
+        .sort(sortQuickReplyEntries)
+        .slice(0, 10_000);
+      const quickRepliesByCategoryId: Record<string, WorkbenchQuickReplyDto[]> = {};
+
+      for (const category of categories) {
+        quickRepliesByCategoryId[category.id] = [];
+      }
+
+      for (const quickReply of quickReplies) {
+        if (typeof quickReply.categoryId === "string") {
+          quickRepliesByCategoryId[quickReply.categoryId] ??= [];
+          quickRepliesByCategoryId[quickReply.categoryId]?.push(clone(quickReply));
+        }
+      }
+
+      return {
+        categories: clone(categories),
+        limits: {
+          categories: 500,
+          quickReplies: 10_000,
+        },
+        quickRepliesByCategoryId,
+        truncated: {
+          categories:
+            state.quickReplyCategories.filter(
+              (category) =>
+                category.scopeType === request.scopeType &&
+                category.parentId === request.parentCategoryId,
+            ).length > 500,
+          quickReplies:
+            state.quickReplies.filter(
+              (reply) =>
+                reply.scopeType === request.scopeType &&
+                typeof reply.categoryId === "string" &&
+                categoryIds.has(reply.categoryId),
+            ).length > 10_000,
+        },
+      };
+    },
+    listQuickReplies(
+      _subUserId: string,
+      request: WorkbenchQuickReplyListRequest,
+    ): WorkbenchQuickReplyListResponse {
+      const page = request.page ?? 1;
+      const pageSize = request.pageSize ?? 50;
+      const keyword = request.keyword?.trim();
+      const matchingItems = state.quickReplies
+        .filter(
+          (reply) =>
+            reply.scopeType === request.scopeType &&
+            (request.categoryId === undefined ||
+              reply.categoryId === request.categoryId) &&
+            (!keyword ||
+              reply.contentText.includes(keyword) ||
+              reply.labelText.includes(keyword)),
+        )
+        .sort(sortQuickReplyEntries);
+
+      return {
+        items: clone(matchingItems.slice((page - 1) * pageSize, page * pageSize)),
+        pagination: {
+          hasMore: page * pageSize < matchingItems.length,
+          page,
+          pageSize,
+          total: matchingItems.length,
+        },
+      };
+    },
+    createQuickReply(
+      _subUserId: string,
+      request: WorkbenchQuickReplyCreateRequest,
+    ): WorkbenchQuickReplyOkResponse {
+      validateMemoryQuickReplyPayload(request);
+      const now = Date.now();
+      const categoryId = request.categoryId ?? 0;
+
+      state.quickReplies = [
+        ...state.quickReplies,
+        {
+          attachments: normalizeQuickReplyAttachments(request.attachments ?? []),
+          categoryId,
+          contentText: request.contentText?.trim() ?? "",
+          createdAt: now,
+          id: `quick-reply-${state.nextId++}`,
+          labelColor: request.labelColor?.trim() ?? "",
+          labelText: request.labelText?.trim() ?? "",
+          scopeType: request.scopeType,
+          sort: getAppendQuickReplySort(
+            state.quickReplies,
+            request.scopeType,
+            categoryId,
+          ),
+          updatedAt: now,
+        },
+      ];
+      return { ok: true };
+    },
+    updateQuickReply(
+      _subUserId: string,
+      quickReplyId: string,
+      request: WorkbenchQuickReplyUpdateRequest,
+    ): WorkbenchQuickReplyOkResponse {
+      validateMemoryQuickReplyPayload(request);
+      const now = Date.now();
+
+      state.quickReplies = state.quickReplies.map((reply) =>
+        reply.id === quickReplyId && reply.scopeType === request.scopeType
+          ? {
+              ...reply,
+              attachments: normalizeQuickReplyAttachments(request.attachments ?? []),
+              categoryId: request.categoryId ?? 0,
+              contentText: request.contentText?.trim() ?? "",
+              labelColor: request.labelColor?.trim() ?? "",
+              labelText: request.labelText?.trim() ?? "",
+              updatedAt: now,
+            }
+          : reply,
+      );
+      return { ok: true };
+    },
+    topQuickReply(
+      _subUserId: string,
+      quickReplyId: string,
+      scopeType: number,
+    ): WorkbenchQuickReplyOkResponse {
+      const quickReply = state.quickReplies.find(
+        (reply) => reply.id === quickReplyId && reply.scopeType === scopeType,
+      );
+      const sort = getPrependQuickReplySort(
+        state.quickReplies,
+        scopeType,
+        quickReply?.categoryId ?? 0,
+      );
+      state.quickReplies = state.quickReplies.map((reply) =>
+        reply.id === quickReplyId && reply.scopeType === scopeType
+          ? { ...reply, sort }
+          : reply,
+      );
+      return { ok: true };
+    },
+    bottomQuickReply(
+      _subUserId: string,
+      quickReplyId: string,
+      scopeType: number,
+    ): WorkbenchQuickReplyOkResponse {
+      const quickReply = state.quickReplies.find(
+        (reply) => reply.id === quickReplyId && reply.scopeType === scopeType,
+      );
+      const sort = getAppendQuickReplySort(
+        state.quickReplies,
+        scopeType,
+        quickReply?.categoryId ?? 0,
+      );
+      state.quickReplies = state.quickReplies.map((reply) =>
+        reply.id === quickReplyId && reply.scopeType === scopeType
+          ? { ...reply, sort }
+          : reply,
+      );
+      return { ok: true };
+    },
+    deleteQuickReply(
+      _subUserId: string,
+      quickReplyId: string,
+      scopeType: number,
+    ): WorkbenchQuickReplyOkResponse {
+      state.quickReplies = state.quickReplies.filter(
+        (reply) => !(reply.id === quickReplyId && reply.scopeType === scopeType),
+      );
       return { ok: true };
     },
     async getSidebarIframeParams(_subUserId: string, _input: WorkbenchSidebarIframeParamsRequest) {
@@ -938,6 +1260,8 @@ function buildInitialState(): MemoryWorkbenchState {
       ],
     },
     nextId: 1,
+    quickReplyCategories: [],
+    quickReplies: [],
     version: INITIAL_VERSION,
   };
 }
@@ -1492,6 +1816,74 @@ function collapseLatest<T>(items: T[], getKey: (item: T) => string) {
   }
 
   return [...latestByKey.values()];
+}
+
+function sortQuickReplyEntries<T extends { id: string; sort: number }>(
+  left: T,
+  right: T,
+) {
+  return right.sort - left.sort || left.id.localeCompare(right.id);
+}
+
+function getAppendQuickReplyCategorySort(
+  categories: WorkbenchQuickReplyCategoryDto[],
+  scopeType: WorkbenchQuickReplyCategoryDto["scopeType"],
+  parentId: WorkbenchQuickReplyCategoryDto["parentId"],
+) {
+  const siblingSorts = categories
+    .filter((category) => category.scopeType === scopeType && category.parentId === parentId)
+    .map((category) => category.sort);
+
+  return siblingSorts.length ? Math.min(...siblingSorts) - 1 : Date.now();
+}
+
+function getPrependQuickReplyCategorySort(
+  categories: WorkbenchQuickReplyCategoryDto[],
+  scopeType: WorkbenchQuickReplyCategoryDto["scopeType"],
+  parentId: WorkbenchQuickReplyCategoryDto["parentId"],
+) {
+  const siblingSorts = categories
+    .filter((category) => category.scopeType === scopeType && category.parentId === parentId)
+    .map((category) => category.sort);
+
+  return siblingSorts.length ? Math.max(...siblingSorts) + 1 : Date.now();
+}
+
+function getAppendQuickReplySort(
+  quickReplies: WorkbenchQuickReplyDto[],
+  scopeType: WorkbenchQuickReplyDto["scopeType"],
+  categoryId: WorkbenchQuickReplyDto["categoryId"],
+) {
+  const siblingSorts = quickReplies
+    .filter((reply) => reply.scopeType === scopeType && reply.categoryId === categoryId)
+    .map((reply) => reply.sort);
+
+  return siblingSorts.length ? Math.min(...siblingSorts) - 1 : Date.now();
+}
+
+function getPrependQuickReplySort(
+  quickReplies: WorkbenchQuickReplyDto[],
+  scopeType: WorkbenchQuickReplyDto["scopeType"],
+  categoryId: WorkbenchQuickReplyDto["categoryId"],
+) {
+  const siblingSorts = quickReplies
+    .filter((reply) => reply.scopeType === scopeType && reply.categoryId === categoryId)
+    .map((reply) => reply.sort);
+
+  return siblingSorts.length ? Math.max(...siblingSorts) + 1 : Date.now();
+}
+
+function validateMemoryQuickReplyPayload(
+  request: WorkbenchQuickReplyCreateRequest | WorkbenchQuickReplyUpdateRequest,
+) {
+  const validation = validateQuickReplyPayload({
+    attachments: request.attachments ?? [],
+    contentText: request.contentText ?? "",
+  });
+
+  if (!validation.ok) {
+    throw new BadRequestError("INVALID_QUICK_REPLY_CONTENT", validation.errorMsg);
+  }
 }
 
 function clone<T>(value: T): T {

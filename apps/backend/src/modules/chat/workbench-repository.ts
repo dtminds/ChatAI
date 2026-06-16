@@ -1,7 +1,9 @@
 import {
   GROUP_MEMBER_TYPE,
   MATERIAL_COLLECTION_BIZ_TYPE,
+  QUICK_REPLY_SCOPE_TYPE,
   type MaterialCollectionBizType,
+  type QuickReplyScopeType,
   type WorkbenchGroupMemberDto,
   type WorkbenchGroupMembersResponse,
   type WorkbenchConversationCursorDto,
@@ -21,10 +23,14 @@ import {
   type WorkbenchCustomerSummaryDto,
   type WorkbenchMaterialCollectionGroupDto,
   type WorkbenchMaterialCollectionItemDto,
+  type WorkbenchQuickReplyCategoryDto,
+  type WorkbenchQuickReplyDto,
   type WorkbenchSearchContactResultDto,
   type WorkbenchSearchGroupResultDto,
   type WorkbenchSearchResponseDto,
   type WorkbenchConversationSummaryDto,
+  normalizeQuickReplyAttachments,
+  type WorkbenchQuickReplyAttachment,
 } from "@chatai/contracts";
 import type { Kysely } from "kysely";
 import type { CachePort } from "../../cache/cache-port.js";
@@ -385,9 +391,37 @@ export type MaterialCollectionForwardLookup = {
   msgid: string;
 };
 
+type QuickReplyCategoryRow = {
+  id: number | bigint | string;
+  parent_id: number | bigint | string;
+  scope_type: number;
+  sort: number | bigint | string;
+  title: string;
+};
+
+type QuickReplyRow = {
+  attachments: string | WorkbenchQuickReplyAttachment[] | null;
+  category_id: number | bigint | string;
+  content_text: string | null;
+  create_time?: Date | string | number | null;
+  id: number | bigint | string;
+  label_color: string;
+  label_text: string;
+  scope_type: number;
+  sort: number | bigint | string;
+  update_time?: Date | string | number | null;
+};
+
 type InsertResult = {
   id?: bigint | number | string | null;
   insertId?: bigint | number | string | null;
+};
+
+type UpdateResult = {
+  affectedRows?: bigint | number;
+  numAffectedRows?: bigint | number;
+  numChangedRows?: bigint | number;
+  numUpdatedRows?: bigint | number;
 };
 
 export class WorkbenchRepository {
@@ -862,6 +896,598 @@ export class WorkbenchRepository {
     });
   }
 
+  async listQuickReplyCategories(input: {
+    scopeType: QuickReplyScopeType;
+    subUserId: string;
+    uid: number;
+  }): Promise<WorkbenchQuickReplyCategoryDto[]> {
+    const subUid = getQuickReplySubUid(input.scopeType, input.subUserId);
+
+    if (subUid == null) {
+      return [];
+    }
+
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_quick_reply_category")
+      .select(["id", "parent_id", "scope_type", "sort", "title"])
+      .where("uid", "=", input.uid)
+      .where("biz_status", "=", BIZ_STATUS_ACTIVE)
+      .where("scope_type", "=", input.scopeType)
+      .where("sub_uid", "=", subUid)
+      .orderBy("sort", "desc")
+      .orderBy("id", "desc")
+      .execute();
+
+    return rows.map((row) => mapQuickReplyCategoryRow(row as QuickReplyCategoryRow));
+  }
+
+  async listQuickReplies(input: {
+    categoryId?: string | 0;
+    keyword?: string;
+    page: number;
+    pageSize: number;
+    scopeType: QuickReplyScopeType;
+    subUserId: string;
+    uid: number;
+  }): Promise<{ items: WorkbenchQuickReplyDto[]; total: number }> {
+    const subUid = getQuickReplySubUid(input.scopeType, input.subUserId);
+
+    if (subUid == null) {
+      return {
+        items: [],
+        total: 0,
+      };
+    }
+
+    let listQuery = this.db
+      .selectFrom("xy_wap_embed_quick_reply")
+      .selectAll()
+      .where("uid", "=", input.uid)
+      .where("biz_status", "=", BIZ_STATUS_ACTIVE)
+      .where("scope_type", "=", input.scopeType)
+      .where("sub_uid", "=", subUid);
+    let countQuery = this.db
+      .selectFrom("xy_wap_embed_quick_reply")
+      .select((eb) => eb.fn.countAll().as("count"))
+      .where("uid", "=", input.uid)
+      .where("biz_status", "=", BIZ_STATUS_ACTIVE)
+      .where("scope_type", "=", input.scopeType)
+      .where("sub_uid", "=", subUid);
+
+    if (input.categoryId !== undefined) {
+      const categoryId = parseQuickReplyId(input.categoryId);
+
+      if (categoryId == null) {
+        return {
+          items: [],
+          total: 0,
+        };
+      }
+
+      listQuery = listQuery.where("category_id", "=", categoryId);
+      countQuery = countQuery.where("category_id", "=", categoryId);
+    }
+
+    if (input.keyword?.trim()) {
+      const keyword = `%${input.keyword.trim()}%`;
+
+      listQuery = listQuery.where((eb) =>
+        eb.or([
+          eb("content_text", "like", keyword),
+          eb("label_text", "like", keyword),
+        ]),
+      );
+      countQuery = countQuery.where((eb) =>
+        eb.or([
+          eb("content_text", "like", keyword),
+          eb("label_text", "like", keyword),
+        ]),
+      );
+    }
+
+    const [rows, totalRow] = await Promise.all([
+      listQuery
+        .orderBy("sort", "desc")
+        .orderBy("id", "desc")
+        .limit(input.pageSize)
+        .offset((input.page - 1) * input.pageSize)
+        .execute(),
+      countQuery.executeTakeFirst() as Promise<
+        { count: number | string | bigint } | undefined
+      >,
+    ]);
+
+    return {
+      items: rows.map((row) => mapQuickReplyRow(row as QuickReplyRow)),
+      total: Number(totalRow?.count ?? 0),
+    };
+  }
+
+  async listQuickReplyCategoryContent(input: {
+    categoryLimit: number;
+    parentCategoryId: string;
+    quickReplyLimit: number;
+    scopeType: QuickReplyScopeType;
+    subUserId: string;
+    uid: number;
+  }): Promise<{
+    categories: WorkbenchQuickReplyCategoryDto[];
+    quickReplies: WorkbenchQuickReplyDto[];
+    truncated: { categories: boolean; quickReplies: boolean };
+  }> {
+    const parentCategoryId = parseMySqlId(input.parentCategoryId);
+    const subUid = getQuickReplySubUid(input.scopeType, input.subUserId);
+
+    if (parentCategoryId == null || subUid == null) {
+      return {
+        categories: [],
+        quickReplies: [],
+        truncated: { categories: false, quickReplies: false },
+      };
+    }
+
+    const categoryRows = await this.db
+      .selectFrom("xy_wap_embed_quick_reply_category")
+      .select(["id", "parent_id", "scope_type", "sort", "title"])
+      .where("uid", "=", input.uid)
+      .where("biz_status", "=", BIZ_STATUS_ACTIVE)
+      .where("scope_type", "=", input.scopeType)
+      .where("sub_uid", "=", subUid)
+      .where("parent_id", "=", parentCategoryId)
+      .orderBy("sort", "desc")
+      .orderBy("id", "desc")
+      .limit(input.categoryLimit + 1)
+      .execute();
+    const categories = categoryRows
+      .slice(0, input.categoryLimit)
+      .map((row) => mapQuickReplyCategoryRow(row as QuickReplyCategoryRow));
+    const categoryIds = categories
+      .map((category) => parseMySqlId(category.id))
+      .filter((id): id is number => id != null);
+
+    if (categoryIds.length === 0) {
+      return {
+        categories,
+        quickReplies: [],
+        truncated: {
+          categories: categoryRows.length > input.categoryLimit,
+          quickReplies: false,
+        },
+      };
+    }
+
+    const quickReplyRows = await this.db
+      .selectFrom("xy_wap_embed_quick_reply")
+      .selectAll()
+      .where("uid", "=", input.uid)
+      .where("biz_status", "=", BIZ_STATUS_ACTIVE)
+      .where("scope_type", "=", input.scopeType)
+      .where("sub_uid", "=", subUid)
+      .where("category_id", "in", categoryIds)
+      .orderBy("category_id", "asc")
+      .orderBy("sort", "desc")
+      .orderBy("id", "desc")
+      .limit(input.quickReplyLimit + 1)
+      .execute();
+
+    return {
+      categories,
+      quickReplies: quickReplyRows
+        .slice(0, input.quickReplyLimit)
+        .map((row) => mapQuickReplyRow(row as QuickReplyRow)),
+      truncated: {
+        categories: categoryRows.length > input.categoryLimit,
+        quickReplies: quickReplyRows.length > input.quickReplyLimit,
+      },
+    };
+  }
+
+  async createQuickReplyCategory(input: {
+    opSubUserId: string;
+    parentId: string | 0;
+    scopeType: QuickReplyScopeType;
+    sort: number;
+    subUserId: string;
+    title: string;
+    uid: number;
+  }) {
+    const opSubUid = parseMySqlId(input.opSubUserId);
+    const parentId = parseQuickReplyId(input.parentId);
+    const subUid = getQuickReplySubUid(input.scopeType, input.subUserId);
+
+    if (opSubUid == null || parentId == null || subUid == null) {
+      throw new BadRequestError("INVALID_QUICK_REPLY_INPUT", "快捷话术参数无效");
+    }
+
+    const result = (await this.db
+      .insertInto("xy_wap_embed_quick_reply_category")
+      .values({
+        biz_status: BIZ_STATUS_ACTIVE,
+        op_sub_uid: opSubUid,
+        parent_id: parentId,
+        scope_type: input.scopeType,
+        sort: input.sort,
+        sub_uid: subUid,
+        title: input.title,
+        uid: input.uid,
+      })
+      .executeTakeFirstOrThrow()) as InsertResult;
+
+    const insertedId = parseInsertedMySqlId(result);
+    return insertedId == null ? undefined : String(insertedId);
+  }
+
+  async createQuickReply(input: {
+    attachments: WorkbenchQuickReplyAttachment[];
+    categoryId: string | 0;
+    contentText: string;
+    labelColor: string;
+    labelText: string;
+    opSubUserId: string;
+    scopeType: QuickReplyScopeType;
+    sort: number;
+    subUserId: string;
+    uid: number;
+  }) {
+    const categoryId = parseQuickReplyId(input.categoryId);
+    const opSubUid = parseMySqlId(input.opSubUserId);
+    const subUid = getQuickReplySubUid(input.scopeType, input.subUserId);
+
+    if (categoryId == null || opSubUid == null || subUid == null) {
+      throw new BadRequestError("INVALID_QUICK_REPLY_INPUT", "快捷话术参数无效");
+    }
+
+    const result = (await this.db
+      .insertInto("xy_wap_embed_quick_reply")
+      .values({
+        attachments: JSON.stringify(input.attachments),
+        biz_status: BIZ_STATUS_ACTIVE,
+        category_id: categoryId,
+        content_text: input.contentText,
+        label_color: input.labelColor,
+        label_text: input.labelText,
+        op_sub_uid: opSubUid,
+        scope_type: input.scopeType,
+        sort: input.sort,
+        sub_uid: subUid,
+        uid: input.uid,
+      })
+      .executeTakeFirstOrThrow()) as InsertResult;
+
+    const insertedId = parseInsertedMySqlId(result);
+    return insertedId == null ? undefined : String(insertedId);
+  }
+
+  async findQuickReplyCategoryScope(input: {
+    categoryId: string;
+    scopeType: QuickReplyScopeType;
+    subUserId: string;
+    uid: number;
+  }): Promise<{ parentId: string | 0 } | undefined> {
+    const categoryId = parseMySqlId(input.categoryId);
+    const subUid = getQuickReplySubUid(input.scopeType, input.subUserId);
+
+    if (categoryId == null || subUid == null) {
+      return undefined;
+    }
+
+    const row = await this.db
+      .selectFrom("xy_wap_embed_quick_reply_category")
+      .select(["parent_id"])
+      .where("id", "=", categoryId)
+      .where("uid", "=", input.uid)
+      .where("biz_status", "=", BIZ_STATUS_ACTIVE)
+      .where("scope_type", "=", input.scopeType)
+      .where("sub_uid", "=", subUid)
+      .executeTakeFirst();
+
+    if (!row) {
+      return undefined;
+    }
+
+    const parentId = toSafeNumber(String(row.parent_id));
+    return {
+      parentId: parentId === 0 ? 0 : String(row.parent_id),
+    };
+  }
+
+  async findQuickReplyScope(input: {
+    quickReplyId: string;
+    scopeType: QuickReplyScopeType;
+    subUserId: string;
+    uid: number;
+  }): Promise<{ categoryId: string | 0 } | undefined> {
+    const quickReplyId = parseMySqlId(input.quickReplyId);
+    const subUid = getQuickReplySubUid(input.scopeType, input.subUserId);
+
+    if (quickReplyId == null || subUid == null) {
+      return undefined;
+    }
+
+    const row = await this.db
+      .selectFrom("xy_wap_embed_quick_reply")
+      .select(["category_id"])
+      .where("id", "=", quickReplyId)
+      .where("uid", "=", input.uid)
+      .where("biz_status", "=", BIZ_STATUS_ACTIVE)
+      .where("scope_type", "=", input.scopeType)
+      .where("sub_uid", "=", subUid)
+      .executeTakeFirst();
+
+    if (!row) {
+      return undefined;
+    }
+
+    const categoryId = toSafeNumber(String(row.category_id));
+    return {
+      categoryId: categoryId === 0 ? 0 : String(row.category_id),
+    };
+  }
+
+  async findQuickReplyCategorySortBoundary(input: {
+    boundary: "max" | "min";
+    parentId: string | 0;
+    scopeType: QuickReplyScopeType;
+    subUserId: string;
+    uid: number;
+  }): Promise<number | undefined> {
+    const parentId = parseQuickReplyId(input.parentId);
+    const subUid = getQuickReplySubUid(input.scopeType, input.subUserId);
+
+    if (parentId == null || subUid == null) {
+      return undefined;
+    }
+
+    const row = await this.db
+      .selectFrom("xy_wap_embed_quick_reply_category")
+      .select(["sort"])
+      .where("uid", "=", input.uid)
+      .where("biz_status", "=", BIZ_STATUS_ACTIVE)
+      .where("scope_type", "=", input.scopeType)
+      .where("sub_uid", "=", subUid)
+      .where("parent_id", "=", parentId)
+      .orderBy("sort", input.boundary === "max" ? "desc" : "asc")
+      .limit(1)
+      .executeTakeFirst();
+
+    return row ? toSafeNumber(String(row.sort)) : undefined;
+  }
+
+  async findQuickReplySortBoundary(input: {
+    boundary: "max" | "min";
+    categoryId: string | 0;
+    scopeType: QuickReplyScopeType;
+    subUserId: string;
+    uid: number;
+  }): Promise<number | undefined> {
+    const categoryId = parseQuickReplyId(input.categoryId);
+    const subUid = getQuickReplySubUid(input.scopeType, input.subUserId);
+
+    if (categoryId == null || subUid == null) {
+      return undefined;
+    }
+
+    const row = await this.db
+      .selectFrom("xy_wap_embed_quick_reply")
+      .select(["sort"])
+      .where("uid", "=", input.uid)
+      .where("biz_status", "=", BIZ_STATUS_ACTIVE)
+      .where("scope_type", "=", input.scopeType)
+      .where("sub_uid", "=", subUid)
+      .where("category_id", "=", categoryId)
+      .orderBy("sort", input.boundary === "max" ? "desc" : "asc")
+      .limit(1)
+      .executeTakeFirst();
+
+    return row ? toSafeNumber(String(row.sort)) : undefined;
+  }
+
+  async hasActiveQuickReplyCategory(input: {
+    categoryId: string;
+    scopeType: QuickReplyScopeType;
+    subUserId: string;
+    uid: number;
+  }) {
+    const categoryId = parseMySqlId(input.categoryId);
+    const subUid = getQuickReplySubUid(input.scopeType, input.subUserId);
+
+    if (categoryId == null || subUid == null) {
+      return false;
+    }
+
+    const row = await this.db
+      .selectFrom("xy_wap_embed_quick_reply_category")
+      .select(["id"])
+      .where("id", "=", categoryId)
+      .where("uid", "=", input.uid)
+      .where("biz_status", "=", BIZ_STATUS_ACTIVE)
+      .where("scope_type", "=", input.scopeType)
+      .where("sub_uid", "=", subUid)
+      .executeTakeFirst();
+
+    return !!row;
+  }
+
+  async isChildQuickReplyCategory(input: {
+    categoryId: string;
+    scopeType: QuickReplyScopeType;
+    subUserId: string;
+    uid: number;
+  }) {
+    const categoryId = parseMySqlId(input.categoryId);
+    const subUid = getQuickReplySubUid(input.scopeType, input.subUserId);
+
+    if (categoryId == null || subUid == null) {
+      return false;
+    }
+
+    const row = await this.db
+      .selectFrom("xy_wap_embed_quick_reply_category")
+      .select(["parent_id"])
+      .where("id", "=", categoryId)
+      .where("uid", "=", input.uid)
+      .where("biz_status", "=", BIZ_STATUS_ACTIVE)
+      .where("scope_type", "=", input.scopeType)
+      .where("sub_uid", "=", subUid)
+      .executeTakeFirst();
+
+    return Number(row?.parent_id ?? 0) !== 0;
+  }
+
+  async countChildQuickReplyCategories(input: {
+    categoryId: string;
+    scopeType: QuickReplyScopeType;
+    subUserId: string;
+    uid: number;
+  }) {
+    const categoryId = parseMySqlId(input.categoryId);
+    const subUid = getQuickReplySubUid(input.scopeType, input.subUserId);
+
+    if (categoryId == null || subUid == null) {
+      return 0;
+    }
+
+    const row = await this.db
+      .selectFrom("xy_wap_embed_quick_reply_category")
+      .select((eb) => eb.fn.countAll<number>().as("count"))
+      .where("uid", "=", input.uid)
+      .where("biz_status", "=", BIZ_STATUS_ACTIVE)
+      .where("scope_type", "=", input.scopeType)
+      .where("sub_uid", "=", subUid)
+      .where("parent_id", "=", categoryId)
+      .executeTakeFirst();
+
+    return Number(row?.count ?? 0);
+  }
+
+  async countQuickRepliesInCategory(input: {
+    categoryId: string;
+    scopeType: QuickReplyScopeType;
+    subUserId: string;
+    uid: number;
+  }) {
+    const categoryId = parseMySqlId(input.categoryId);
+    const subUid = getQuickReplySubUid(input.scopeType, input.subUserId);
+
+    if (categoryId == null || subUid == null) {
+      return 0;
+    }
+
+    const row = await this.db
+      .selectFrom("xy_wap_embed_quick_reply")
+      .select((eb) => eb.fn.countAll<number>().as("count"))
+      .where("uid", "=", input.uid)
+      .where("biz_status", "=", BIZ_STATUS_ACTIVE)
+      .where("scope_type", "=", input.scopeType)
+      .where("sub_uid", "=", subUid)
+      .where("category_id", "=", categoryId)
+      .executeTakeFirst();
+
+    return Number(row?.count ?? 0);
+  }
+
+  async updateQuickReply(input: {
+    attachments: WorkbenchQuickReplyAttachment[];
+    categoryId: string | 0;
+    contentText: string;
+    labelColor: string;
+    labelText: string;
+    quickReplyId: string;
+    scopeType: QuickReplyScopeType;
+    subUserId: string;
+    uid: number;
+  }) {
+    return this.updateActiveQuickReply(input.quickReplyId, input, {
+      attachments: JSON.stringify(input.attachments),
+      category_id: parseQuickReplyId(input.categoryId),
+      content_text: input.contentText,
+      label_color: input.labelColor,
+      label_text: input.labelText,
+    });
+  }
+
+  async topQuickReply(input: {
+    quickReplyId: string;
+    scopeType: QuickReplyScopeType;
+    sort: number;
+    subUserId: string;
+    uid: number;
+  }) {
+    return this.updateActiveQuickReply(input.quickReplyId, input, {
+      sort: input.sort,
+    });
+  }
+
+  async bottomQuickReply(input: {
+    quickReplyId: string;
+    scopeType: QuickReplyScopeType;
+    sort: number;
+    subUserId: string;
+    uid: number;
+  }) {
+    return this.updateActiveQuickReply(input.quickReplyId, input, {
+      sort: input.sort,
+    });
+  }
+
+  async deleteQuickReply(input: {
+    quickReplyId: string;
+    scopeType: QuickReplyScopeType;
+    subUserId: string;
+    uid: number;
+  }) {
+    return this.updateActiveQuickReply(input.quickReplyId, input, {
+      biz_status: BIZ_STATUS_HIDDEN,
+    });
+  }
+
+  async renameQuickReplyCategory(input: {
+    categoryId: string;
+    scopeType: QuickReplyScopeType;
+    subUserId: string;
+    title: string;
+    uid: number;
+  }) {
+    return this.updateActiveQuickReplyCategory(input.categoryId, input, {
+      title: input.title,
+    });
+  }
+
+  async topQuickReplyCategory(input: {
+    categoryId: string;
+    scopeType: QuickReplyScopeType;
+    sort: number;
+    subUserId: string;
+    uid: number;
+  }) {
+    return this.updateActiveQuickReplyCategory(input.categoryId, input, {
+      sort: input.sort,
+    });
+  }
+
+  async bottomQuickReplyCategory(input: {
+    categoryId: string;
+    scopeType: QuickReplyScopeType;
+    sort: number;
+    subUserId: string;
+    uid: number;
+  }) {
+    return this.updateActiveQuickReplyCategory(input.categoryId, input, {
+      sort: input.sort,
+    });
+  }
+
+  async deleteQuickReplyCategory(input: {
+    categoryId: string;
+    scopeType: QuickReplyScopeType;
+    subUserId: string;
+    uid: number;
+  }) {
+    return this.updateActiveQuickReplyCategory(input.categoryId, input, {
+      biz_status: BIZ_STATUS_HIDDEN,
+    });
+  }
+
   private async updateActiveMaterialCollection(
     id: string,
     uid: number,
@@ -905,6 +1531,64 @@ export class WorkbenchRepository {
       .where("sub_uid", "=", 0)
       .where("biz_status", "=", BIZ_STATUS_ACTIVE)
       .execute();
+  }
+
+  private async updateActiveQuickReply(
+    quickReplyId: string,
+    scope: {
+      scopeType: QuickReplyScopeType;
+      subUserId: string;
+      uid: number;
+    },
+    values: Record<string, unknown>,
+  ) {
+    const quickReplyNumericId = parseMySqlId(quickReplyId);
+    const subUid = getQuickReplySubUid(scope.scopeType, scope.subUserId);
+
+    if (quickReplyNumericId == null || subUid == null) {
+      return false;
+    }
+
+    const result = (await this.db
+      .updateTable("xy_wap_embed_quick_reply")
+      .set(values)
+      .where("id", "=", quickReplyNumericId)
+      .where("uid", "=", scope.uid)
+      .where("scope_type", "=", scope.scopeType)
+      .where("sub_uid", "=", subUid)
+      .where("biz_status", "=", BIZ_STATUS_ACTIVE)
+      .execute()) as UpdateResult[];
+
+    return getAffectedRows(result) > 0;
+  }
+
+  private async updateActiveQuickReplyCategory(
+    categoryId: string,
+    scope: {
+      scopeType: QuickReplyScopeType;
+      subUserId: string;
+      uid: number;
+    },
+    values: Record<string, unknown>,
+  ) {
+    const categoryNumericId = parseMySqlId(categoryId);
+    const subUid = getQuickReplySubUid(scope.scopeType, scope.subUserId);
+
+    if (categoryNumericId == null || subUid == null) {
+      return false;
+    }
+
+    const result = (await this.db
+      .updateTable("xy_wap_embed_quick_reply_category")
+      .set(values)
+      .where("id", "=", categoryNumericId)
+      .where("uid", "=", scope.uid)
+      .where("scope_type", "=", scope.scopeType)
+      .where("sub_uid", "=", subUid)
+      .where("biz_status", "=", BIZ_STATUS_ACTIVE)
+      .execute()) as UpdateResult[];
+
+    return getAffectedRows(result) > 0;
   }
 
   /**
@@ -4042,6 +4726,18 @@ function getMaterialVisibleSubUids(bizType: number, subUserId: string) {
   return subUserNumericId == null ? [] : [subUserNumericId];
 }
 
+function getQuickReplySubUid(scopeType: QuickReplyScopeType, subUserId: string) {
+  if (scopeType === QUICK_REPLY_SCOPE_TYPE.ENTERPRISE) {
+    return 0;
+  }
+
+  if (scopeType !== QUICK_REPLY_SCOPE_TYPE.PERSONAL) {
+    return undefined;
+  }
+
+  return parseMySqlId(subUserId);
+}
+
 function mapMaterialCollectionGroupRow(
   row: MaterialCollectionGroupRow,
 ): WorkbenchMaterialCollectionGroupDto {
@@ -4070,6 +4766,62 @@ function parseMaterialGroupId(groupId: string | 0) {
   return groupId === 0 || groupId === "0" ? 0 : parseMySqlId(groupId);
 }
 
+function parseQuickReplyId(id: string | 0) {
+  return id === 0 || id === "0" ? 0 : parseMySqlId(id);
+}
+
+function mapQuickReplyCategoryRow(
+  row: QuickReplyCategoryRow,
+): WorkbenchQuickReplyCategoryDto {
+  const parentId = toSafeNumber(String(row.parent_id));
+
+  return {
+    id: String(row.id),
+    parentId: parentId === 0 ? 0 : String(row.parent_id),
+    scopeType: row.scope_type as QuickReplyScopeType,
+    sort: toSafeNumber(String(row.sort)),
+    title: row.title,
+  };
+}
+
+function mapQuickReplyRow(row: QuickReplyRow): WorkbenchQuickReplyDto {
+  const categoryId = toSafeNumber(String(row.category_id));
+
+  return {
+    attachments: normalizeQuickReplyAttachments(parseQuickReplyAttachments(row.attachments)),
+    categoryId: categoryId === 0 ? 0 : String(row.category_id),
+    contentText: row.content_text ?? "",
+    createdAt: toTimestamp(row.create_time),
+    id: String(row.id),
+    labelColor: row.label_color,
+    labelText: row.label_text,
+    scopeType: row.scope_type as QuickReplyScopeType,
+    sort: toSafeNumber(String(row.sort)),
+    updatedAt: toTimestamp(row.update_time),
+  };
+}
+
+function parseQuickReplyAttachments(value: QuickReplyRow["attachments"]) {
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  if (!value) {
+    return [];
+  }
+
+  if (typeof value !== "string") {
+    return [];
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 function parseInsertedMySqlId(result: InsertResult) {
   const value = result.insertId ?? result.id;
 
@@ -4084,6 +4836,28 @@ function parseInsertedMySqlId(result: InsertResult) {
   }
 
   return typeof value === "string" ? parseMySqlId(value) : undefined;
+}
+
+function getAffectedRows(result: UpdateResult | UpdateResult[] | undefined): number {
+  if (Array.isArray(result)) {
+    return result.reduce((sum, item) => sum + getAffectedRows(item), 0);
+  }
+
+  if (!result || typeof result !== "object") {
+    return 0;
+  }
+
+  const affectedRows =
+    result.numAffectedRows ??
+    result.numUpdatedRows ??
+    result.numChangedRows ??
+    result.affectedRows;
+
+  if (typeof affectedRows === "bigint") {
+    return Number(affectedRows);
+  }
+
+  return affectedRows ?? 0;
 }
 
 function toSafeNumber(value: number | string | null | undefined) {

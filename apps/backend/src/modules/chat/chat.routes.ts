@@ -24,6 +24,13 @@ import type {
   WorkbenchMaterialCollectionListRequest,
   WorkbenchMaterialCollectionMoveRequest,
   WorkbenchMaterialCollectionUpdateRequest,
+  WorkbenchQuickReplyCategoryCreateRequest,
+  WorkbenchQuickReplyCategoryContentRequest,
+  WorkbenchQuickReplyCategoryListRequest,
+  WorkbenchQuickReplyCategoryUpdateRequest,
+  WorkbenchQuickReplyCreateRequest,
+  WorkbenchQuickReplyListRequest,
+  WorkbenchQuickReplyUpdateRequest,
 } from "@chatai/contracts";
 import { Type, type Static } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
@@ -259,6 +266,7 @@ const SendMessageBodySchema = Type.Object({
         fileId: Type.Optional(Type.String()),
         fileName: Type.Optional(Type.String()),
         materialCollectionId: Type.Optional(Type.String()),
+        msgid: Type.Optional(Type.String()),
         fileSize: Type.Optional(Type.Number()),
         fileSizeLabel: Type.Optional(Type.String()),
         type: Type.Literal("file"),
@@ -269,15 +277,18 @@ const SendMessageBodySchema = Type.Object({
         desc: Type.Optional(Type.String()),
         href: Type.Optional(Type.String()),
         materialCollectionId: Type.Optional(Type.String()),
+        msgid: Type.Optional(Type.String()),
         title: Type.Optional(Type.String()),
         type: Type.Literal("h5"),
       }),
       Type.Object({
         materialCollectionId: Type.String(),
+        msgid: Type.Optional(Type.String()),
         type: Type.Literal("weapp"),
       }),
       Type.Object({
         materialCollectionId: Type.String(),
+        msgid: Type.Optional(Type.String()),
         type: Type.Literal("sphfeed"),
       }),
     ]),
@@ -307,6 +318,7 @@ const SendMessageBodySchema = Type.Object({
           fileId: Type.Optional(Type.String()),
           fileName: Type.Optional(Type.String()),
           materialCollectionId: Type.Optional(Type.String()),
+          msgid: Type.Optional(Type.String()),
           fileSize: Type.Optional(Type.Number()),
           fileSizeLabel: Type.Optional(Type.String()),
           type: Type.Literal("file"),
@@ -317,16 +329,29 @@ const SendMessageBodySchema = Type.Object({
           desc: Type.Optional(Type.String()),
           href: Type.Optional(Type.String()),
           materialCollectionId: Type.Optional(Type.String()),
+          msgid: Type.Optional(Type.String()),
           title: Type.Optional(Type.String()),
           type: Type.Literal("h5"),
         }),
         Type.Object({
+          appName: Type.Optional(Type.String()),
+          coverImageUrl: Type.Optional(Type.String()),
+          logoUrl: Type.Optional(Type.String()),
           materialCollectionId: Type.String(),
+          msgid: Type.Optional(Type.String()),
+          sourceLabel: Type.Optional(Type.String()),
+          title: Type.Optional(Type.String()),
           type: Type.Literal("weapp"),
         }),
         Type.Object({
+          description: Type.Optional(Type.String()),
+          imageUrl: Type.Optional(Type.String()),
           materialCollectionId: Type.String(),
+          msgid: Type.Optional(Type.String()),
+          sourceLabel: Type.Optional(Type.String()),
+          title: Type.Optional(Type.String()),
           type: Type.Literal("sphfeed"),
+          url: Type.Optional(Type.String()),
         }),
       ]),
     ),
@@ -436,6 +461,69 @@ const MaterialCollectionGroupQuerySchema = Type.Object({
   biz_type: NumericStringSchema,
 });
 
+const QuickReplyScopeTypeSchema = Type.Union([Type.Literal(1), Type.Literal(2)]);
+
+const QuickReplyCategoriesQuerySchema = Type.Object({
+  scope_type: NumericStringSchema,
+});
+
+const QuickReplyCategoryCreateBodySchema = Type.Object({
+  parentId: Type.Optional(Type.Union([Type.String({ maxLength: 64 }), Type.Literal(0)])),
+  scopeType: QuickReplyScopeTypeSchema,
+  title: Type.String({ maxLength: 20, minLength: 1 }),
+});
+
+const QuickReplyCategoryUpdateBodySchema = Type.Object({
+  title: Type.String({ maxLength: 20, minLength: 1 }),
+});
+
+const QuickReplyCategoryParamsSchema = Type.Object({
+  categoryId: Type.String({ maxLength: 64, minLength: 1 }),
+});
+
+const QuickRepliesQuerySchema = Type.Object({
+  category_id: Type.Optional(Type.String({ maxLength: 64 })),
+  keyword: Type.Optional(Type.String({ maxLength: 100 })),
+  page: Type.Optional(NumericStringSchema),
+  page_size: Type.Optional(NumericStringSchema),
+  scope_type: NumericStringSchema,
+});
+
+const QuickReplyCategoryContentQuerySchema = Type.Object({
+  parent_category_id: Type.String({ maxLength: 64, minLength: 1 }),
+  scope_type: NumericStringSchema,
+});
+
+const QuickReplyBodySchema = Type.Object({
+  attachments: Type.Optional(Type.Array(Type.Any(), { maxItems: 5 })),
+  categoryId: Type.Optional(Type.Union([Type.String({ maxLength: 64 }), Type.Literal(0)])),
+  contentText: Type.Optional(Type.String({ maxLength: 1000 })),
+  labelColor: Type.Optional(
+    Type.Union([
+      Type.Literal(""),
+      Type.Literal("orange"),
+      Type.Literal("green"),
+      Type.Literal("blue"),
+      Type.Literal("pink"),
+      Type.Literal("purple"),
+      Type.Literal("rose"),
+      Type.Literal("teal"),
+      Type.Literal("brown"),
+      Type.Literal("slate"),
+    ]),
+  ),
+  labelText: Type.Optional(Type.String({ maxLength: 10 })),
+  scopeType: QuickReplyScopeTypeSchema,
+});
+
+const QuickReplyParamsSchema = Type.Object({
+  quickReplyId: Type.String({ maxLength: 64, minLength: 1 }),
+});
+
+const QuickReplyScopeQuerySchema = Type.Object({
+  scope_type: NumericStringSchema,
+});
+
 type ConversationListQuery = Static<typeof ConversationListQuerySchema>;
 type ConversationParams = Static<typeof ConversationParamsSchema>;
 type ConversationMessagesQuery = Static<typeof ConversationMessagesQuerySchema>;
@@ -473,6 +561,17 @@ type MaterialCollectionGroupUpdateBody = Static<
   typeof MaterialCollectionGroupUpdateBodySchema
 >;
 type MaterialCollectionGroupParams = Static<typeof MaterialCollectionGroupParamsSchema>;
+type QuickReplyCategoriesQuery = Static<typeof QuickReplyCategoriesQuerySchema>;
+type QuickReplyCategoryCreateBody = Static<typeof QuickReplyCategoryCreateBodySchema>;
+type QuickReplyCategoryUpdateBody = Static<typeof QuickReplyCategoryUpdateBodySchema>;
+type QuickReplyCategoryParams = Static<typeof QuickReplyCategoryParamsSchema>;
+type QuickReplyCategoryContentQuery = Static<
+  typeof QuickReplyCategoryContentQuerySchema
+>;
+type QuickRepliesQuery = Static<typeof QuickRepliesQuerySchema>;
+type QuickReplyBody = Static<typeof QuickReplyBodySchema>;
+type QuickReplyParams = Static<typeof QuickReplyParamsSchema>;
+type QuickReplyScopeQuery = Static<typeof QuickReplyScopeQuerySchema>;
 type MaterialCollectionGroupQuery = Static<typeof MaterialCollectionGroupQuerySchema>;
 
 
@@ -1047,6 +1146,278 @@ export async function registerChatRoutes(app: FastifyInstance) {
     },
   );
 
+  app.get<{ Querystring: QuickReplyCategoriesQuery }>(
+    "/api/server/quick-replies/categories",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        querystring: QuickReplyCategoriesQuerySchema,
+      },
+    },
+    async (request) =>
+      getWorkbenchService(app, request).listQuickReplyCategories(
+        getSubUserId(request),
+        {
+          scopeType: parseQuickReplyScopeTypeQuery(request.query.scope_type),
+        } satisfies WorkbenchQuickReplyCategoryListRequest,
+      ),
+  );
+
+  app.post<{ Body: QuickReplyCategoryCreateBody }>(
+    "/api/server/quick-replies/categories",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: QuickReplyCategoryCreateBodySchema,
+      },
+    },
+    async (request) => {
+      assertChatWriteAccess(request);
+      return getWorkbenchService(app, request).createQuickReplyCategory(
+        getSubUserId(request),
+        request.body satisfies WorkbenchQuickReplyCategoryCreateRequest,
+      );
+    },
+  );
+
+  app.patch<{
+    Body: QuickReplyCategoryUpdateBody;
+    Params: QuickReplyCategoryParams;
+    Querystring: QuickReplyScopeQuery;
+  }>(
+    "/api/server/quick-replies/categories/:categoryId",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: QuickReplyCategoryUpdateBodySchema,
+        params: QuickReplyCategoryParamsSchema,
+        querystring: QuickReplyScopeQuerySchema,
+      },
+    },
+    async (request) => {
+      assertChatWriteAccess(request);
+      return getWorkbenchService(app, request).renameQuickReplyCategory(
+        getSubUserId(request),
+        request.params.categoryId,
+        parseQuickReplyScopeTypeQuery(request.query.scope_type),
+        request.body satisfies WorkbenchQuickReplyCategoryUpdateRequest,
+      );
+    },
+  );
+
+  app.delete<{
+    Params: QuickReplyCategoryParams;
+    Querystring: QuickReplyScopeQuery;
+  }>(
+    "/api/server/quick-replies/categories/:categoryId",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        params: QuickReplyCategoryParamsSchema,
+        querystring: QuickReplyScopeQuerySchema,
+      },
+    },
+    async (request) => {
+      assertChatWriteAccess(request);
+      return getWorkbenchService(app, request).deleteQuickReplyCategory(
+        getSubUserId(request),
+        request.params.categoryId,
+        parseQuickReplyScopeTypeQuery(request.query.scope_type),
+      );
+    },
+  );
+
+  app.post<{
+    Params: QuickReplyCategoryParams;
+    Querystring: QuickReplyScopeQuery;
+  }>(
+    "/api/server/quick-replies/categories/:categoryId/top",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        params: QuickReplyCategoryParamsSchema,
+        querystring: QuickReplyScopeQuerySchema,
+      },
+    },
+    async (request) => {
+      assertChatWriteAccess(request);
+      return getWorkbenchService(app, request).topQuickReplyCategory(
+        getSubUserId(request),
+        request.params.categoryId,
+        parseQuickReplyScopeTypeQuery(request.query.scope_type),
+      );
+    },
+  );
+
+  app.post<{
+    Params: QuickReplyCategoryParams;
+    Querystring: QuickReplyScopeQuery;
+  }>(
+    "/api/server/quick-replies/categories/:categoryId/bottom",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        params: QuickReplyCategoryParamsSchema,
+        querystring: QuickReplyScopeQuerySchema,
+      },
+    },
+    async (request) => {
+      assertChatWriteAccess(request);
+      return getWorkbenchService(app, request).bottomQuickReplyCategory(
+        getSubUserId(request),
+        request.params.categoryId,
+        parseQuickReplyScopeTypeQuery(request.query.scope_type),
+      );
+    },
+  );
+
+  app.get<{ Querystring: QuickReplyCategoryContentQuery }>(
+    "/api/server/quick-replies/category-content",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        querystring: QuickReplyCategoryContentQuerySchema,
+      },
+    },
+    async (request) =>
+      getWorkbenchService(app, request).listQuickReplyCategoryContent(
+        getSubUserId(request),
+        {
+          parentCategoryId: request.query.parent_category_id,
+          scopeType: parseQuickReplyScopeTypeQuery(request.query.scope_type),
+        } satisfies WorkbenchQuickReplyCategoryContentRequest,
+      ),
+  );
+
+  app.get<{ Querystring: QuickRepliesQuery }>(
+    "/api/server/quick-replies",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        querystring: QuickRepliesQuerySchema,
+      },
+    },
+    async (request) =>
+      getWorkbenchService(app, request).listQuickReplies(
+        getSubUserId(request),
+        {
+          categoryId: request.query.category_id,
+          keyword: request.query.keyword,
+          page: parsePositiveIntegerQuery(request.query.page) ?? 1,
+          pageSize: Math.min(
+            parsePositiveIntegerQuery(request.query.page_size) ?? 50,
+            100,
+          ),
+          scopeType: parseQuickReplyScopeTypeQuery(request.query.scope_type),
+        } satisfies WorkbenchQuickReplyListRequest,
+      ),
+  );
+
+  app.post<{ Body: QuickReplyBody }>(
+    "/api/server/quick-replies",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: QuickReplyBodySchema,
+      },
+    },
+    async (request) => {
+      assertChatWriteAccess(request);
+      return getWorkbenchService(app, request).createQuickReply(
+        getSubUserId(request),
+        request.body satisfies WorkbenchQuickReplyCreateRequest,
+      );
+    },
+  );
+
+  app.patch<{
+    Body: QuickReplyBody;
+    Params: QuickReplyParams;
+  }>(
+    "/api/server/quick-replies/:quickReplyId",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: QuickReplyBodySchema,
+        params: QuickReplyParamsSchema,
+      },
+    },
+    async (request) => {
+      assertChatWriteAccess(request);
+      return getWorkbenchService(app, request).updateQuickReply(
+        getSubUserId(request),
+        request.params.quickReplyId,
+        request.body satisfies WorkbenchQuickReplyUpdateRequest,
+      );
+    },
+  );
+
+  app.delete<{
+    Params: QuickReplyParams;
+    Querystring: QuickReplyScopeQuery;
+  }>(
+    "/api/server/quick-replies/:quickReplyId",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        params: QuickReplyParamsSchema,
+        querystring: QuickReplyScopeQuerySchema,
+      },
+    },
+    async (request) => {
+      assertChatWriteAccess(request);
+      return getWorkbenchService(app, request).deleteQuickReply(
+        getSubUserId(request),
+        request.params.quickReplyId,
+        parseQuickReplyScopeTypeQuery(request.query.scope_type),
+      );
+    },
+  );
+
+  app.post<{
+    Params: QuickReplyParams;
+    Querystring: QuickReplyScopeQuery;
+  }>(
+    "/api/server/quick-replies/:quickReplyId/top",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        params: QuickReplyParamsSchema,
+        querystring: QuickReplyScopeQuerySchema,
+      },
+    },
+    async (request) => {
+      assertChatWriteAccess(request);
+      return getWorkbenchService(app, request).topQuickReply(
+        getSubUserId(request),
+        request.params.quickReplyId,
+        parseQuickReplyScopeTypeQuery(request.query.scope_type),
+      );
+    },
+  );
+
+  app.post<{
+    Params: QuickReplyParams;
+    Querystring: QuickReplyScopeQuery;
+  }>(
+    "/api/server/quick-replies/:quickReplyId/bottom",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        params: QuickReplyParamsSchema,
+        querystring: QuickReplyScopeQuerySchema,
+      },
+    },
+    async (request) => {
+      assertChatWriteAccess(request);
+      return getWorkbenchService(app, request).bottomQuickReply(
+        getSubUserId(request),
+        request.params.quickReplyId,
+        parseQuickReplyScopeTypeQuery(request.query.scope_type),
+      );
+    },
+  );
+
   app.get<{ Querystring: PollQuery }>(
     "/api/server/poll",
     {
@@ -1432,6 +1803,16 @@ function parseMaterialGroupIdQuery(value: string | undefined) {
   }
 
   return value === "0" ? 0 : value;
+}
+
+function parseQuickReplyScopeTypeQuery(value: string): 1 | 2 {
+  const parsed = parseRequiredInteger(value);
+
+  if (parsed === 1 || parsed === 2) {
+    return parsed;
+  }
+
+  throw new BadRequestError("INVALID_QUICK_REPLY_SCOPE_TYPE", "话术范围无效");
 }
 
 function parsePositiveIntegerQuery(value: string | undefined) {

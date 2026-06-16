@@ -47,6 +47,14 @@ const mediaUploadMocks = vi.hoisted(() => ({
       url: `https://b5.bokr.com.cn/chat-files/conv-001/${file.name}`,
     }),
   ),
+  uploadWorkbenchImageFile: vi.fn(
+    async (_conversationId: string, file: File) => ({
+      alt: file.name || "图片",
+      fileId: `chat-images/conv-001/${file.name}`,
+      type: "image",
+      url: `https://b5.bokr.com.cn/chat-images/conv-001/${file.name}`,
+    }),
+  ),
 }));
 
 vi.mock("sonner", async (importOriginal) => {
@@ -106,6 +114,14 @@ export function resetChatWorkbenchTestState() {
       fileSizeLabel: `${file.size} B`,
       type: "file",
       url: `https://b5.bokr.com.cn/chat-files/conv-001/${file.name}`,
+    }),
+  );
+  vi.mocked(mediaUploadMocks.uploadWorkbenchImageFile).mockImplementation(
+    async (_conversationId, file) => ({
+      alt: file.name || "图片",
+      fileId: `chat-images/conv-001/${file.name}`,
+      type: "image",
+      url: `https://b5.bokr.com.cn/chat-images/conv-001/${file.name}`,
     }),
   );
   workbenchToastSuccessMock.mockClear();

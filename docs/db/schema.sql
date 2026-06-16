@@ -510,3 +510,39 @@ CREATE TABLE `xy_wap_embed_material_collection_group` (
   PRIMARY KEY (`id`),
   KEY `idx_uid_bizStatus_subUid_bizType` (`uid`,`biz_status`,`sub_uid`,`biz_type`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='chatAI-素材收藏分组表';
+
+CREATE TABLE `xy_wap_embed_quick_reply_category` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT 'id',
+  `uid` bigint unsigned NOT NULL COMMENT '租户id',
+  `scope_type` tinyint NOT NULL DEFAULT '1' COMMENT '话术范围：1企业话术，2个人话术',
+  `sub_uid` bigint unsigned NOT NULL DEFAULT '0' COMMENT '控制可见性，0：全员可见，其他：对应子账号可见，xy_wap_embed_sub_user.id',
+  `parent_id` bigint unsigned NOT NULL DEFAULT '0' COMMENT '父分类ID，0表示一级分类',
+  `title` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '分类名称',
+  `biz_status` tinyint NOT NULL DEFAULT '1' COMMENT '状态，0：已删除，1：正常',
+  `op_sub_uid` bigint unsigned NOT NULL DEFAULT '0' COMMENT '操作人ID，xy_wap_embed_sub_user.id',
+  `sort` bigint unsigned NOT NULL DEFAULT '0' COMMENT '排序值',
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '插入时间',
+  `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_quick_reply_category_scope` (`uid`,`biz_status`,`scope_type`,`sub_uid`,`parent_id`,`sort`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='chatAI-快捷话术分类表';
+
+CREATE TABLE `xy_wap_embed_quick_reply` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT 'id',
+  `uid` bigint unsigned NOT NULL COMMENT '租户id',
+  `scope_type` tinyint NOT NULL DEFAULT '1' COMMENT '话术范围：1企业话术，2个人话术',
+  `sub_uid` bigint unsigned NOT NULL DEFAULT '0' COMMENT '控制可见性，0：全员可见，其他：对应子账号可见，xy_wap_embed_sub_user.id',
+  `category_id` bigint unsigned NOT NULL DEFAULT '0' COMMENT '分类ID，0表示未分类',
+  `content_text` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci COMMENT '主文本',
+  `attachments` json DEFAULT NULL COMMENT '附件JSON，最多5个',
+  `label_text` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '徽标文字',
+  `label_color` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '徽标颜色key',
+  `biz_status` tinyint NOT NULL DEFAULT '1' COMMENT '状态，0：已删除，1：正常',
+  `op_sub_uid` bigint unsigned NOT NULL DEFAULT '0' COMMENT '操作人ID，xy_wap_embed_sub_user.id',
+  `sort` bigint unsigned NOT NULL DEFAULT '0' COMMENT '排序值',
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '插入时间',
+  `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_quick_reply_scope_category` (`uid`,`biz_status`,`scope_type`,`sub_uid`,`category_id`,`sort`),
+  KEY `idx_quick_reply_scope_update` (`uid`,`biz_status`,`scope_type`,`sub_uid`,`update_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='chatAI-快捷话术表';

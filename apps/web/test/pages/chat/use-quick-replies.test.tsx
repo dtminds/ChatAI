@@ -58,7 +58,7 @@ describe("useQuickReplies", () => {
         },
       ],
       limits: {
-        categories: 500,
+        categories: 50,
         quickReplies: 10_000,
       },
       quickRepliesByCategoryId: {
@@ -180,7 +180,7 @@ describe("useQuickReplies", () => {
     const listQuickReplyCategoryContent = vi.fn().mockResolvedValue({
       categories: [],
       limits: {
-        categories: 500,
+        categories: 50,
         quickReplies: 10_000,
       },
       quickRepliesByCategoryId: {},
@@ -234,7 +234,7 @@ describe("useQuickReplies", () => {
     const listQuickReplyCategoryContent = vi.fn().mockResolvedValue({
       categories: [],
       limits: {
-        categories: 500,
+        categories: 50,
         quickReplies: 10_000,
       },
       quickRepliesByCategoryId: {},
@@ -294,7 +294,7 @@ describe("useQuickReplies", () => {
     const listQuickReplyCategoryContent = vi.fn().mockResolvedValue({
       categories: [],
       limits: {
-        categories: 500,
+        categories: 50,
         quickReplies: 10_000,
       },
       quickRepliesByCategoryId: {},
@@ -372,6 +372,74 @@ describe("useQuickReplies", () => {
       expect.objectContaining({
         categoryId: 0,
       }),
+    );
+  });
+
+  it("moves secondary categories and quick replies through the workbench service", async () => {
+    const baseService = createMockWorkbenchService();
+    const moveQuickReplyCategory = vi.fn().mockResolvedValue({ ok: true });
+    const moveQuickReply = vi.fn().mockResolvedValue({ ok: true });
+
+    setWorkbenchService({
+      ...baseService,
+      listQuickReplyCategories: vi.fn().mockResolvedValue({
+        categories: [
+          {
+            id: "cat-1",
+            parentId: 0,
+            scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+            sort: 100,
+            title: "售前",
+          },
+        ],
+      }),
+      moveQuickReply,
+      moveQuickReplyCategory,
+    });
+
+    const { result } = renderHook(() => useQuickReplies());
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.moveCategory(
+        {
+          id: "cat-2",
+          parentId: "cat-1",
+          scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+          sort: 90,
+          title: "报价",
+        },
+        "cat-4",
+      );
+    });
+    await act(async () => {
+      await result.current.moveQuickReply(
+        {
+          attachments: [],
+          categoryId: "cat-2",
+          contentText: "您好",
+          id: "reply-1",
+          labelColor: "",
+          labelText: "",
+          scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+          sort: 100,
+        },
+        "cat-3",
+      );
+    });
+
+    expect(moveQuickReplyCategory).toHaveBeenCalledWith(
+      "cat-2",
+      QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+      { parentId: "cat-4" },
+    );
+    expect(moveQuickReply).toHaveBeenCalledWith(
+      "reply-1",
+      QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+      { categoryId: "cat-3" },
     );
   });
 });

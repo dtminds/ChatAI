@@ -5,13 +5,21 @@ import {
   CopyPlusIcon,
   Delete01Icon,
   Edit03Icon,
+  MoveToIcon,
   Search01Icon,
   SortByDown01Icon,
   SortByUp01Icon,
   Sorting05Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { createPortal } from "react-dom";
 import {
   QUICK_REPLY_SCOPE_TYPE,
@@ -27,6 +35,11 @@ import { cn } from "@/lib/utils";
 import { getQuickReplyTitleColor } from "@/pages/chat/components/quick-reply/quick-reply-title-palette";
 
 const CONTEXT_MENU_VIEWPORT_PADDING = 8;
+
+type QuickReplyMoveTarget = {
+  id: string;
+  title: string;
+};
 
 type QuickReplyPanelProps = {
   activeCategoryId: string | 0 | null;
@@ -49,6 +62,14 @@ type QuickReplyPanelProps = {
   onEditCategory: (category: WorkbenchQuickReplyCategoryDto) => void;
   onEditQuickReply: (quickReply: WorkbenchQuickReplyDto) => void;
   onKeywordChange: (keyword: string) => void;
+  onMoveCategory: (
+    category: WorkbenchQuickReplyCategoryDto,
+    parentId: string,
+  ) => void;
+  onMoveQuickReply: (
+    quickReply: WorkbenchQuickReplyDto,
+    categoryId: string,
+  ) => void;
   onScopeTypeChange: (scopeType: QuickReplyScopeType) => void;
   onSelectQuickReply: (quickReply: WorkbenchQuickReplyDto) => void;
   onTopCategoryChange: (categoryId: string | null) => void;
@@ -77,6 +98,8 @@ export function QuickReplyPanel({
   onEditCategory,
   onEditQuickReply,
   onKeywordChange,
+  onMoveCategory,
+  onMoveQuickReply,
   onScopeTypeChange,
   onSelectQuickReply,
   onTopCategoryChange,
@@ -369,6 +392,8 @@ export function QuickReplyPanel({
                     onDeleteQuickReply={onDeleteQuickReply}
                     onEditCategory={onEditCategory}
                     onEditQuickReply={onEditQuickReply}
+                    onMoveCategory={onMoveCategory}
+                    onMoveQuickReply={onMoveQuickReply}
                     onCreateQuickReply={onCreateQuickReply}
                     onSelectQuickReply={onSelectQuickReply}
                     onTopCategory={onTopCategory}
@@ -459,6 +484,8 @@ function SecondaryCategorySection({
   onDeleteQuickReply,
   onEditCategory,
   onEditQuickReply,
+  onMoveCategory,
+  onMoveQuickReply,
   onSelectQuickReply,
   onTopCategory,
   onTopQuickReply,
@@ -478,6 +505,14 @@ function SecondaryCategorySection({
   onDeleteQuickReply: (quickReply: WorkbenchQuickReplyDto) => void;
   onEditCategory: (category: WorkbenchQuickReplyCategoryDto) => void;
   onEditQuickReply: (quickReply: WorkbenchQuickReplyDto) => void;
+  onMoveCategory: (
+    category: WorkbenchQuickReplyCategoryDto,
+    parentId: string,
+  ) => void;
+  onMoveQuickReply: (
+    quickReply: WorkbenchQuickReplyDto,
+    categoryId: string,
+  ) => void;
   onSelectQuickReply: (quickReply: WorkbenchQuickReplyDto) => void;
   onTopCategory: (category: WorkbenchQuickReplyCategoryDto) => void;
   onTopQuickReply: (quickReply: WorkbenchQuickReplyDto) => void;
@@ -528,9 +563,12 @@ function SecondaryCategorySection({
               index={index}
               key={quickReply.id}
               quickReply={quickReply}
+              category={category}
+              categories={categories}
               onCopy={onCopyQuickReply}
               onDelete={onDeleteQuickReply}
               onEdit={onEditQuickReply}
+              onMove={onMoveQuickReply}
               onSelect={onSelectQuickReply}
               onBottom={onBottomQuickReply}
               onTop={onTopQuickReply}
@@ -547,6 +585,8 @@ function SecondaryCategorySection({
         }}
         onDeleteCategory={onDeleteCategory}
         onEditCategory={onEditCategory}
+        moveTargets={getCategoryMoveTargets(category, categories)}
+        onMoveCategory={onMoveCategory}
         onBottomCategory={onBottomCategory}
         onTopCategory={onTopCategory}
         position={contextMenu}
@@ -588,6 +628,8 @@ function CategoryContextMenu({
   onCreateQuickReply,
   onDeleteCategory,
   onEditCategory,
+  moveTargets,
+  onMoveCategory,
   onTopCategory,
   position,
 }: {
@@ -598,12 +640,17 @@ function CategoryContextMenu({
   onCreateQuickReply?: (categoryId: string) => void;
   onDeleteCategory: (category: WorkbenchQuickReplyCategoryDto) => void;
   onEditCategory: (category: WorkbenchQuickReplyCategoryDto) => void;
+  moveTargets?: QuickReplyMoveTarget[];
+  onMoveCategory?: (
+    category: WorkbenchQuickReplyCategoryDto,
+    parentId: string,
+  ) => void;
   onTopCategory: (category: WorkbenchQuickReplyCategoryDto) => void;
   position: { x: number; y: number } | null;
 }) {
   const menuRef = useRef<HTMLDivElement | null>(null);
   const menuPosition = useClampedMenuPosition(position, menuRef);
-  const [openSubmenu, setOpenSubmenu] = useState<"sort" | null>(null);
+  const [openSubmenu, setOpenSubmenu] = useState<"move" | "sort" | null>(null);
 
   useEffect(() => {
     if (!position) {
@@ -688,6 +735,16 @@ function CategoryContextMenu({
         onOpen={() => setOpenSubmenu("sort")}
         onTop={() => onTopCategory(category)}
       />
+      {onMoveCategory && moveTargets && moveTargets.length > 0 ? (
+        <MoveSubmenu
+          ariaLabel="移动分类"
+          isOpen={openSubmenu === "move"}
+          onClose={onClose}
+          onOpen={() => setOpenSubmenu("move")}
+          onSelect={(targetId) => onMoveCategory(category, targetId)}
+          targets={moveTargets}
+        />
+      ) : null}
       <div className="my-1 h-px bg-border" role="separator" />
       <button
         className="flex h-8 w-full items-center gap-2 rounded-[8px] px-2.5 text-left text-[13px] outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground"
@@ -735,6 +792,100 @@ function SortSubmenu({
   onOpen: () => void;
   onTop: () => void;
 }) {
+  return (
+    <NestedSubmenuShell
+      icon={Sorting05Icon}
+      isOpen={isOpen}
+      label="排序"
+      onOpen={onOpen}
+    >
+      <button
+        className="flex h-8 w-full items-center gap-2 rounded-[8px] px-2.5 text-left text-[13px] outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground"
+        onClick={() => {
+          onTop();
+          onClose();
+        }}
+        role="menuitem"
+        type="button"
+      >
+        <HugeiconsIcon icon={SortByUp01Icon} size={16} strokeWidth={1.8} />
+        移到最前
+      </button>
+      <button
+        className="flex h-8 w-full items-center gap-2 rounded-[8px] px-2.5 text-left text-[13px] outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground"
+        onClick={() => {
+          onBottom();
+          onClose();
+        }}
+        role="menuitem"
+        type="button"
+      >
+        <HugeiconsIcon icon={SortByDown01Icon} size={16} strokeWidth={1.8} />
+        移到最后
+      </button>
+    </NestedSubmenuShell>
+  );
+}
+
+function MoveSubmenu({
+  ariaLabel,
+  isOpen,
+  onClose,
+  onOpen,
+  onSelect,
+  targets,
+}: {
+  ariaLabel: string;
+  isOpen: boolean;
+  onClose: () => void;
+  onOpen: () => void;
+  onSelect: (targetId: string) => void;
+  targets: QuickReplyMoveTarget[];
+}) {
+  return (
+    <NestedSubmenuShell
+      ariaLabel={ariaLabel}
+      icon={MoveToIcon}
+      isOpen={isOpen}
+      label="移动"
+      onOpen={onOpen}
+      scrollable
+    >
+      {targets.map((target) => (
+        <button
+          className="flex h-8 w-full items-center gap-2 rounded-[8px] px-2.5 text-left text-[13px] outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground"
+          key={target.id}
+          onClick={() => {
+            onSelect(target.id);
+            onClose();
+          }}
+          role="menuitem"
+          type="button"
+        >
+          <span className="block min-w-0 flex-1 truncate">{target.title}</span>
+        </button>
+      ))}
+    </NestedSubmenuShell>
+  );
+}
+
+function NestedSubmenuShell({
+  ariaLabel,
+  children,
+  icon,
+  isOpen,
+  label,
+  onOpen,
+  scrollable = false,
+}: {
+  ariaLabel?: string;
+  children: ReactNode;
+  icon: typeof Sorting05Icon;
+  isOpen: boolean;
+  label: string;
+  onOpen: () => void;
+  scrollable?: boolean;
+}) {
   const [side, setSide] = useState<"left" | "right">("right");
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const submenuRef = useRef<HTMLDivElement | null>(null);
@@ -775,8 +926,8 @@ function SortSubmenu({
         role="menuitem"
         type="button"
       >
-        <HugeiconsIcon icon={Sorting05Icon} size={16} strokeWidth={1.8} />
-        <span className="min-w-0 flex-1">排序</span>
+        <HugeiconsIcon icon={icon} size={16} strokeWidth={1.8} />
+        <span className="min-w-0 flex-1">{label}</span>
         <HugeiconsIcon icon={ArrowRight01Icon} size={14} strokeWidth={1.8} />
       </button>
       {isOpen ? (
@@ -790,31 +941,17 @@ function SortSubmenu({
           data-side={side}
           ref={submenuRef}
           role="menu"
+          aria-label={ariaLabel}
+          style={
+            scrollable
+              ? {
+                  maxHeight: "240px",
+                  overflowY: "auto",
+                }
+              : undefined
+          }
         >
-          <button
-            className="flex h-8 w-full items-center gap-2 rounded-[8px] px-2.5 text-left text-[13px] outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground"
-            onClick={() => {
-              onTop();
-              onClose();
-            }}
-            role="menuitem"
-            type="button"
-          >
-            <HugeiconsIcon icon={SortByUp01Icon} size={16} strokeWidth={1.8} />
-            移到最前
-          </button>
-          <button
-            className="flex h-8 w-full items-center gap-2 rounded-[8px] px-2.5 text-left text-[13px] outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground"
-            onClick={() => {
-              onBottom();
-              onClose();
-            }}
-            role="menuitem"
-            type="button"
-          >
-            <HugeiconsIcon icon={SortByDown01Icon} size={16} strokeWidth={1.8} />
-            移到最后
-          </button>
+          {children}
         </div>
       ) : null}
     </div>
@@ -822,25 +959,32 @@ function SortSubmenu({
 }
 
 function QuickReplyRow({
+  category,
+  categories,
   index,
   quickReply,
   onBottom,
   onCopy,
   onDelete,
   onEdit,
+  onMove,
   onSelect,
   onTop,
 }: {
+  category: WorkbenchQuickReplyCategoryDto;
+  categories: WorkbenchQuickReplyCategoryDto[];
   index: number;
   quickReply: WorkbenchQuickReplyDto;
   onBottom: (quickReply: WorkbenchQuickReplyDto) => void;
   onCopy: (quickReply: WorkbenchQuickReplyDto) => void;
   onDelete: (quickReply: WorkbenchQuickReplyDto) => void;
   onEdit: (quickReply: WorkbenchQuickReplyDto) => void;
+  onMove: (quickReply: WorkbenchQuickReplyDto, categoryId: string) => void;
   onSelect: (quickReply: WorkbenchQuickReplyDto) => void;
   onTop: (quickReply: WorkbenchQuickReplyDto) => void;
 }) {
   const summary = getQuickReplySummary(quickReply);
+  const moveTargets = getQuickReplyMoveTargets(quickReply, category, categories);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(
     null,
   );
@@ -884,7 +1028,9 @@ function QuickReplyRow({
         onEdit={() => onEdit(quickReply)}
         onCopy={() => onCopy(quickReply)}
         onBottom={() => onBottom(quickReply)}
+        onMove={(categoryId) => onMove(quickReply, categoryId)}
         onTop={() => onTop(quickReply)}
+        moveTargets={moveTargets}
         position={contextMenu}
       />
     </div>
@@ -897,7 +1043,9 @@ function QuickReplyContextMenu({
   onCopy,
   onDelete,
   onEdit,
+  onMove,
   onTop,
+  moveTargets,
   position,
 }: {
   onClose: () => void;
@@ -905,12 +1053,14 @@ function QuickReplyContextMenu({
   onCopy: () => void;
   onDelete: () => void;
   onEdit: () => void;
+  onMove: (categoryId: string) => void;
   onTop: () => void;
+  moveTargets: QuickReplyMoveTarget[];
   position: { x: number; y: number } | null;
 }) {
   const menuRef = useRef<HTMLDivElement | null>(null);
   const menuPosition = useClampedMenuPosition(position, menuRef);
-  const [openSubmenu, setOpenSubmenu] = useState<"sort" | null>(null);
+  const [openSubmenu, setOpenSubmenu] = useState<"move" | "sort" | null>(null);
 
   useEffect(() => {
     if (!position) {
@@ -991,6 +1141,16 @@ function QuickReplyContextMenu({
         onOpen={() => setOpenSubmenu("sort")}
         onTop={onTop}
       />
+      {moveTargets.length > 0 ? (
+        <MoveSubmenu
+          ariaLabel="移动话术"
+          isOpen={openSubmenu === "move"}
+          onClose={onClose}
+          onOpen={() => setOpenSubmenu("move")}
+          onSelect={onMove}
+          targets={moveTargets}
+        />
+      ) : null}
       <div className="my-1 h-px bg-border" role="separator" />
       <button
         className="flex h-8 w-full items-center gap-2 rounded-[8px] px-2.5 text-left text-[13px] text-destructive outline-none transition-colors hover:bg-destructive/10 focus:bg-destructive/10"
@@ -1106,6 +1266,49 @@ function quickReplyMatchesKeyword(
   ];
 
   return haystacks.some((value) => value.toLowerCase().includes(normalizedKeyword));
+}
+
+function getCategoryMoveTargets(
+  category: WorkbenchQuickReplyCategoryDto,
+  categories: WorkbenchQuickReplyCategoryDto[],
+): QuickReplyMoveTarget[] {
+  if (category.parentId === 0) {
+    return [];
+  }
+
+  return categories
+    .filter(
+      (target) =>
+        target.scopeType === category.scopeType &&
+        target.parentId === 0 &&
+        target.id !== category.parentId,
+    )
+    .map((target) => ({
+      id: target.id,
+      title: target.title,
+    }));
+}
+
+function getQuickReplyMoveTargets(
+  quickReply: WorkbenchQuickReplyDto,
+  category: WorkbenchQuickReplyCategoryDto,
+  categories: WorkbenchQuickReplyCategoryDto[],
+): QuickReplyMoveTarget[] {
+  if (category.parentId === 0 || quickReply.categoryId !== category.id) {
+    return [];
+  }
+
+  return categories
+    .filter(
+      (target) =>
+        target.scopeType === quickReply.scopeType &&
+        target.parentId === category.parentId &&
+        target.id !== category.id,
+    )
+    .map((target) => ({
+      id: target.id,
+      title: target.title,
+    }));
 }
 
 function readQuickReplyContentString(value: unknown) {

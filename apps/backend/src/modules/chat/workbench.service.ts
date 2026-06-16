@@ -81,11 +81,13 @@ import type {
   WorkbenchQuickReplyCategoryContentResponse,
   WorkbenchQuickReplyCategoryListRequest,
   WorkbenchQuickReplyCategoryListResponse,
+  WorkbenchQuickReplyCategoryMoveRequest,
   WorkbenchQuickReplyCategoryUpdateRequest,
   WorkbenchQuickReplyCreateRequest,
   WorkbenchQuickReplyDto,
   WorkbenchQuickReplyListRequest,
   WorkbenchQuickReplyListResponse,
+  WorkbenchQuickReplyMoveRequest,
   WorkbenchQuickReplyOkResponse,
   WorkbenchQuickReplyUpdateRequest,
 } from "@chatai/contracts";
@@ -173,7 +175,9 @@ const QUICK_REPLY_LABEL_COLORS = new Set([
   "brown",
   "slate",
 ]);
-const QUICK_REPLY_CHILD_CATEGORY_CONTENT_LIMIT = 500;
+const QUICK_REPLY_TOP_CATEGORY_LIMIT = 50;
+const QUICK_REPLY_CHILD_CATEGORY_LIMIT = 50;
+const QUICK_REPLY_TOP_CATEGORY_ITEM_LIMIT = 5_000;
 const QUICK_REPLY_CATEGORY_CONTENT_ITEM_LIMIT = 10_000;
 const QUICK_REPLY_SORT_BASE = 1_000_000_000;
 
@@ -520,6 +524,12 @@ export type WorkbenchService = {
     categoryId: string,
     scopeType: number,
   ): Promise<WorkbenchQuickReplyOkResponse> | WorkbenchQuickReplyOkResponse;
+  moveQuickReplyCategory(
+    subUserId: string,
+    categoryId: string,
+    scopeType: number,
+    request: WorkbenchQuickReplyCategoryMoveRequest,
+  ): Promise<WorkbenchQuickReplyOkResponse> | WorkbenchQuickReplyOkResponse;
   listQuickReplies(
     subUserId: string,
     request: WorkbenchQuickReplyListRequest,
@@ -547,6 +557,12 @@ export type WorkbenchService = {
     subUserId: string,
     quickReplyId: string,
     scopeType: number,
+  ): Promise<WorkbenchQuickReplyOkResponse> | WorkbenchQuickReplyOkResponse;
+  moveQuickReply(
+    subUserId: string,
+    quickReplyId: string,
+    scopeType: number,
+    request: WorkbenchQuickReplyMoveRequest,
   ): Promise<WorkbenchQuickReplyOkResponse> | WorkbenchQuickReplyOkResponse;
 };
 
@@ -2454,7 +2470,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
     const me = await this.getMaterialActor(subUserId);
     const scopeType = parseQuickReplyScopeType(request.scopeType);
     const result = await this.repository.listQuickReplyCategoryContent({
-      categoryLimit: QUICK_REPLY_CHILD_CATEGORY_CONTENT_LIMIT,
+      categoryLimit: QUICK_REPLY_CHILD_CATEGORY_LIMIT,
       parentCategoryId: request.parentCategoryId,
       quickReplyLimit: QUICK_REPLY_CATEGORY_CONTENT_ITEM_LIMIT,
       scopeType,
@@ -2479,7 +2495,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
     return {
       categories: result.categories,
       limits: {
-        categories: QUICK_REPLY_CHILD_CATEGORY_CONTENT_LIMIT,
+        categories: QUICK_REPLY_CHILD_CATEGORY_LIMIT,
         quickReplies: QUICK_REPLY_CATEGORY_CONTENT_ITEM_LIMIT,
       },
       quickRepliesByCategoryId,
@@ -2528,10 +2544,24 @@ export class MysqlWorkbenchService implements WorkbenchService {
         uid: me.uid,
       });
 
-      if (childCount >= QUICK_REPLY_CHILD_CATEGORY_CONTENT_LIMIT) {
+      if (childCount >= QUICK_REPLY_CHILD_CATEGORY_LIMIT) {
         throw new BadRequestError(
           "QUICK_REPLY_CHILD_CATEGORY_LIMIT_EXCEEDED",
-          "二级分类最多500个",
+          "二级分类最多50个",
+        );
+      }
+    } else {
+      const topCategoryCount = await this.repository.countChildQuickReplyCategories({
+        categoryId: "0",
+        scopeType,
+        subUserId,
+        uid: me.uid,
+      });
+
+      if (topCategoryCount >= QUICK_REPLY_TOP_CATEGORY_LIMIT) {
+        throw new BadRequestError(
+          "QUICK_REPLY_TOP_CATEGORY_LIMIT_EXCEEDED",
+          "一级分类最多50个",
         );
       }
     }
@@ -2682,6 +2712,92 @@ export class MysqlWorkbenchService implements WorkbenchService {
     return { ok: true };
   }
 
+  async moveQuickReplyCategory(
+    subUserId: string,
+    categoryId: string,
+    scopeTypeValue: number,
+    request: WorkbenchQuickReplyCategoryMoveRequest,
+  ): Promise<WorkbenchQuickReplyOkResponse> {
+    const me = await this.getMaterialActor(subUserId);
+    const scopeType = parseQuickReplyScopeType(scopeTypeValue);
+    const parentId = normalizeQuickReplyCategoryId(request.parentId);
+
+    if (parentId === 0) {
+      throw new BadRequestError("QUICK_REPLY_CATEGORY_MOVE_INVALID", "请选择一级分类");
+    }
+
+    const sourceScope = await this.repository.findQuickReplyCategoryScope({
+      categoryId,
+      scopeType,
+      subUserId,
+      uid: me.uid,
+    });
+
+    if (!sourceScope) {
+      throw new NotFoundError("QUICK_REPLY_CATEGORY_NOT_FOUND", "分类不存在");
+    }
+
+    if (sourceScope.parentId === 0) {
+      throw new BadRequestError(
+        "QUICK_REPLY_CATEGORY_MOVE_INVALID",
+        "一级分类暂不支持移动",
+      );
+    }
+
+    if (sourceScope.parentId === parentId) {
+      return { ok: true };
+    }
+
+    const targetScope = await this.repository.findQuickReplyCategoryScope({
+      categoryId: parentId,
+      scopeType,
+      subUserId,
+      uid: me.uid,
+    });
+
+    if (!targetScope) {
+      throw new BadRequestError("QUICK_REPLY_CATEGORY_NOT_FOUND", "分类不存在");
+    }
+
+    if (targetScope.parentId !== 0) {
+      throw new BadRequestError("QUICK_REPLY_CATEGORY_MOVE_INVALID", "请选择一级分类");
+    }
+
+    const childCount = await this.repository.countChildQuickReplyCategories({
+      categoryId: parentId,
+      scopeType,
+      subUserId,
+      uid: me.uid,
+    });
+
+    if (childCount >= QUICK_REPLY_CHILD_CATEGORY_LIMIT) {
+      throw new BadRequestError(
+        "QUICK_REPLY_CHILD_CATEGORY_LIMIT_EXCEEDED",
+        "二级分类最多50个",
+      );
+    }
+
+    const updated = await this.repository.moveQuickReplyCategory({
+      categoryId,
+      parentId,
+      scopeType,
+      sort: await this.getQuickReplyCategoryAppendSort({
+        parentId,
+        scopeType,
+        subUserId,
+        uid: me.uid,
+      }),
+      subUserId,
+      uid: me.uid,
+    });
+
+    if (!updated) {
+      throw new NotFoundError("QUICK_REPLY_CATEGORY_NOT_FOUND", "分类不存在");
+    }
+
+    return { ok: true };
+  }
+
   async listQuickReplies(
     subUserId: string,
     request: WorkbenchQuickReplyListRequest,
@@ -2717,6 +2833,12 @@ export class MysqlWorkbenchService implements WorkbenchService {
   ): Promise<WorkbenchQuickReplyOkResponse> {
     const me = await this.getMaterialActor(subUserId);
     const values = await this.normalizeQuickReplyWriteRequest(me.uid, subUserId, request);
+    await this.assertQuickReplyTopCategoryItemLimit({
+      categoryId: values.categoryId,
+      scopeType: values.scopeType,
+      subUserId,
+      uid: me.uid,
+    });
 
     await this.repository.createQuickReply({
       ...values,
@@ -2730,6 +2852,97 @@ export class MysqlWorkbenchService implements WorkbenchService {
       subUserId,
       uid: me.uid,
     });
+
+    return { ok: true };
+  }
+
+  async moveQuickReply(
+    subUserId: string,
+    quickReplyId: string,
+    scopeTypeValue: number,
+    request: WorkbenchQuickReplyMoveRequest,
+  ): Promise<WorkbenchQuickReplyOkResponse> {
+    const me = await this.getMaterialActor(subUserId);
+    const scopeType = parseQuickReplyScopeType(scopeTypeValue);
+    const targetCategoryId = normalizeQuickReplyCategoryId(request.categoryId);
+
+    if (targetCategoryId === 0) {
+      throw new BadRequestError(
+        "QUICK_REPLY_CHILD_CATEGORY_REQUIRED",
+        "请选择二级分类",
+      );
+    }
+
+    const quickReplyScope = await this.repository.findQuickReplyScope({
+      quickReplyId,
+      scopeType,
+      subUserId,
+      uid: me.uid,
+    });
+
+    if (!quickReplyScope) {
+      throw new NotFoundError("QUICK_REPLY_NOT_FOUND", "话术不存在");
+    }
+
+    if (quickReplyScope.categoryId === targetCategoryId) {
+      return { ok: true };
+    }
+
+    if (quickReplyScope.categoryId === 0) {
+      throw new BadRequestError(
+        "QUICK_REPLY_CHILD_CATEGORY_REQUIRED",
+        "请选择二级分类",
+      );
+    }
+
+    const sourceCategoryScope = await this.repository.findQuickReplyCategoryScope({
+      categoryId: quickReplyScope.categoryId,
+      scopeType,
+      subUserId,
+      uid: me.uid,
+    });
+    const targetCategoryScope = await this.repository.findQuickReplyCategoryScope({
+      categoryId: targetCategoryId,
+      scopeType,
+      subUserId,
+      uid: me.uid,
+    });
+
+    if (!sourceCategoryScope || !targetCategoryScope) {
+      throw new BadRequestError("QUICK_REPLY_CATEGORY_NOT_FOUND", "分类不存在");
+    }
+
+    if (sourceCategoryScope.parentId === 0 || targetCategoryScope.parentId === 0) {
+      throw new BadRequestError(
+        "QUICK_REPLY_CHILD_CATEGORY_REQUIRED",
+        "请选择二级分类",
+      );
+    }
+
+    if (sourceCategoryScope.parentId !== targetCategoryScope.parentId) {
+      throw new BadRequestError(
+        "QUICK_REPLY_MOVE_SCOPE_INVALID",
+        "只能移动到当前一级分类下",
+      );
+    }
+
+    const updated = await this.repository.moveQuickReply({
+      categoryId: targetCategoryId,
+      quickReplyId,
+      scopeType,
+      sort: await this.getQuickReplyAppendSort({
+        categoryId: targetCategoryId,
+        scopeType,
+        subUserId,
+        uid: me.uid,
+      }),
+      subUserId,
+      uid: me.uid,
+    });
+
+    if (!updated) {
+      throw new NotFoundError("QUICK_REPLY_NOT_FOUND", "话术不存在");
+    }
 
     return { ok: true };
   }
@@ -2981,6 +3194,36 @@ export class MysqlWorkbenchService implements WorkbenchService {
       labelText: normalizeQuickReplyLabelText(request.labelText ?? ""),
       scopeType,
     };
+  }
+
+  private async assertQuickReplyTopCategoryItemLimit(input: {
+    categoryId: string;
+    scopeType: QuickReplyScopeType;
+    subUserId: string;
+    uid: number;
+  }) {
+    const categoryScope = await this.repository.findQuickReplyCategoryScope(input);
+
+    if (!categoryScope || categoryScope.parentId === 0) {
+      throw new BadRequestError(
+        "QUICK_REPLY_CHILD_CATEGORY_REQUIRED",
+        "请选择二级分类",
+      );
+    }
+
+    const count = await this.repository.countQuickRepliesUnderTopCategory({
+      categoryId: categoryScope.parentId,
+      scopeType: input.scopeType,
+      subUserId: input.subUserId,
+      uid: input.uid,
+    });
+
+    if (count >= QUICK_REPLY_TOP_CATEGORY_ITEM_LIMIT) {
+      throw new BadRequestError(
+        "QUICK_REPLY_TOP_CATEGORY_ITEM_LIMIT_EXCEEDED",
+        "一级分类下话术最多5000条",
+      );
+    }
   }
 
   async search(

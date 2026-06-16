@@ -4675,7 +4675,7 @@ describe("MysqlWorkbenchService", () => {
         expect.objectContaining({ id: "12", title: "致歉" }),
       ],
       limits: {
-        categories: 500,
+        categories: 50,
         quickReplies: 10_000,
       },
       quickRepliesByCategoryId: {
@@ -4688,7 +4688,7 @@ describe("MysqlWorkbenchService", () => {
       },
     });
     expect(repository.listQuickReplyCategoryContent).toHaveBeenCalledWith({
-      categoryLimit: 500,
+      categoryLimit: 50,
       parentCategoryId: "10",
       quickReplyLimit: 10_000,
       scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
@@ -4699,7 +4699,9 @@ describe("MysqlWorkbenchService", () => {
 
   it("quick reply: creates valid replies at the end of their category", async () => {
     const repository = createMaterialRepository({
+      countQuickRepliesUnderTopCategory: vi.fn().mockResolvedValue(120),
       createQuickReply: vi.fn().mockResolvedValue("501"),
+      findQuickReplyCategoryScope: vi.fn().mockResolvedValue({ parentId: "10" }),
       findQuickReplySortBoundary: vi.fn().mockResolvedValue(80),
       hasActiveQuickReplyCategory: vi.fn().mockResolvedValue(true),
       isChildQuickReplyCategory: vi.fn().mockResolvedValue(true),
@@ -4735,6 +4737,12 @@ describe("MysqlWorkbenchService", () => {
     });
     expect(repository.isChildQuickReplyCategory).toHaveBeenCalledWith({
       categoryId: "11",
+      scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+      subUserId: "101",
+      uid: 9001,
+    });
+    expect(repository.countQuickRepliesUnderTopCategory).toHaveBeenCalledWith({
+      categoryId: "10",
       scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
       subUserId: "101",
       uid: 9001,
@@ -4820,6 +4828,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("quick reply: creates categories at the end of their sibling group", async () => {
     const repository = createMaterialRepository({
+      countChildQuickReplyCategories: vi.fn().mockResolvedValue(12),
       createQuickReplyCategory: vi.fn().mockResolvedValue("301"),
       findQuickReplyCategorySortBoundary: vi.fn().mockResolvedValue(60),
     });
@@ -4851,10 +4860,59 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
+  it("quick reply: rejects creating more than fifty first-level categories", async () => {
+    const repository = createMaterialRepository({
+      countChildQuickReplyCategories: vi.fn().mockResolvedValue(50),
+      createQuickReplyCategory: vi.fn().mockResolvedValue("301"),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.createQuickReplyCategory("101", {
+        parentId: 0,
+        scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+        title: "售后",
+      }),
+    ).rejects.toMatchObject({
+      code: "QUICK_REPLY_TOP_CATEGORY_LIMIT_EXCEEDED",
+      message: "一级分类最多50个",
+      statusCode: 400,
+    });
+
+    expect(repository.createQuickReplyCategory).not.toHaveBeenCalled();
+  });
+
+  it("quick reply: rejects creating more than five thousand replies under a first-level category", async () => {
+    const repository = createMaterialRepository({
+      countQuickRepliesUnderTopCategory: vi.fn().mockResolvedValue(5_000),
+      createQuickReply: vi.fn().mockResolvedValue("501"),
+      findQuickReplyCategoryScope: vi.fn().mockResolvedValue({ parentId: "10" }),
+      hasActiveQuickReplyCategory: vi.fn().mockResolvedValue(true),
+      isChildQuickReplyCategory: vi.fn().mockResolvedValue(true),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.createQuickReply("101", {
+        categoryId: "11",
+        contentText: "您好",
+        scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+      }),
+    ).rejects.toMatchObject({
+      code: "QUICK_REPLY_TOP_CATEGORY_ITEM_LIMIT_EXCEEDED",
+      message: "一级分类下话术最多5000条",
+      statusCode: 400,
+    });
+
+    expect(repository.createQuickReply).not.toHaveBeenCalled();
+  });
+
   it("quick reply: clamps append sort at zero for unsigned sort columns", async () => {
     const repository = createMaterialRepository({
+      countQuickRepliesUnderTopCategory: vi.fn().mockResolvedValue(120),
       createQuickReply: vi.fn().mockResolvedValue("501"),
       createQuickReplyCategory: vi.fn().mockResolvedValue("301"),
+      findQuickReplyCategoryScope: vi.fn().mockResolvedValue({ parentId: "10" }),
       findQuickReplyCategorySortBoundary: vi.fn().mockResolvedValue(0),
       findQuickReplySortBoundary: vi.fn().mockResolvedValue(0),
       hasActiveQuickReplyCategory: vi.fn().mockResolvedValue(true),
@@ -4948,6 +5006,146 @@ describe("MysqlWorkbenchService", () => {
       subUserId: "101",
       uid: 9001,
     });
+  });
+
+  it("quick reply: moves a second-level category to another first-level category", async () => {
+    const repository = createMaterialRepository({
+      countChildQuickReplyCategories: vi.fn().mockResolvedValue(12),
+      findQuickReplyCategoryScope: vi
+        .fn()
+        .mockResolvedValueOnce({ parentId: "10" })
+        .mockResolvedValueOnce({ parentId: 0 }),
+      findQuickReplyCategorySortBoundary: vi.fn().mockResolvedValue(80),
+      moveQuickReplyCategory: vi.fn().mockResolvedValue(true),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.moveQuickReplyCategory("101", "11", QUICK_REPLY_SCOPE_TYPE.ENTERPRISE, {
+        parentId: "20",
+      }),
+    ).resolves.toEqual({ ok: true });
+
+    expect(repository.findQuickReplyCategoryScope).toHaveBeenCalledWith({
+      categoryId: "11",
+      scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+      subUserId: "101",
+      uid: 9001,
+    });
+    expect(repository.findQuickReplyCategoryScope).toHaveBeenCalledWith({
+      categoryId: "20",
+      scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+      subUserId: "101",
+      uid: 9001,
+    });
+    expect(repository.countChildQuickReplyCategories).toHaveBeenCalledWith({
+      categoryId: "20",
+      scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+      subUserId: "101",
+      uid: 9001,
+    });
+    expect(repository.moveQuickReplyCategory).toHaveBeenCalledWith({
+      categoryId: "11",
+      parentId: "20",
+      scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+      sort: 79,
+      subUserId: "101",
+      uid: 9001,
+    });
+  });
+
+  it("quick reply: rejects moving a category to a full first-level category", async () => {
+    const repository = createMaterialRepository({
+      countChildQuickReplyCategories: vi.fn().mockResolvedValue(50),
+      findQuickReplyCategoryScope: vi
+        .fn()
+        .mockResolvedValueOnce({ parentId: "10" })
+        .mockResolvedValueOnce({ parentId: 0 }),
+      moveQuickReplyCategory: vi.fn().mockResolvedValue(true),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.moveQuickReplyCategory("101", "11", QUICK_REPLY_SCOPE_TYPE.ENTERPRISE, {
+        parentId: "20",
+      }),
+    ).rejects.toMatchObject({
+      code: "QUICK_REPLY_CHILD_CATEGORY_LIMIT_EXCEEDED",
+      message: "二级分类最多50个",
+      statusCode: 400,
+    });
+
+    expect(repository.moveQuickReplyCategory).not.toHaveBeenCalled();
+  });
+
+  it("quick reply: moves a reply to another second-level category under the same first-level category", async () => {
+    const repository = createMaterialRepository({
+      findQuickReplyCategoryScope: vi
+        .fn()
+        .mockResolvedValueOnce({ parentId: "10" })
+        .mockResolvedValueOnce({ parentId: "10" }),
+      findQuickReplyScope: vi.fn().mockResolvedValue({ categoryId: "11" }),
+      findQuickReplySortBoundary: vi.fn().mockResolvedValue(180),
+      moveQuickReply: vi.fn().mockResolvedValue(true),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.moveQuickReply("101", "21", QUICK_REPLY_SCOPE_TYPE.ENTERPRISE, {
+        categoryId: "12",
+      }),
+    ).resolves.toEqual({ ok: true });
+
+    expect(repository.findQuickReplyScope).toHaveBeenCalledWith({
+      quickReplyId: "21",
+      scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+      subUserId: "101",
+      uid: 9001,
+    });
+    expect(repository.findQuickReplyCategoryScope).toHaveBeenCalledWith({
+      categoryId: "11",
+      scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+      subUserId: "101",
+      uid: 9001,
+    });
+    expect(repository.findQuickReplyCategoryScope).toHaveBeenCalledWith({
+      categoryId: "12",
+      scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+      subUserId: "101",
+      uid: 9001,
+    });
+    expect(repository.moveQuickReply).toHaveBeenCalledWith({
+      categoryId: "12",
+      quickReplyId: "21",
+      scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+      sort: 179,
+      subUserId: "101",
+      uid: 9001,
+    });
+  });
+
+  it("quick reply: rejects moving a reply across first-level categories", async () => {
+    const repository = createMaterialRepository({
+      findQuickReplyCategoryScope: vi
+        .fn()
+        .mockResolvedValueOnce({ parentId: "10" })
+        .mockResolvedValueOnce({ parentId: "20" }),
+      findQuickReplyScope: vi.fn().mockResolvedValue({ categoryId: "11" }),
+      moveQuickReply: vi.fn().mockResolvedValue(true),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.moveQuickReply("101", "21", QUICK_REPLY_SCOPE_TYPE.ENTERPRISE, {
+        categoryId: "12",
+      }),
+    ).rejects.toMatchObject({
+      code: "QUICK_REPLY_MOVE_SCOPE_INVALID",
+      message: "只能移动到当前一级分类下",
+      statusCode: 400,
+    });
+
+    expect(repository.moveQuickReply).not.toHaveBeenCalled();
   });
 
   it("quick reply: rejects creating a third-level category", async () => {
@@ -5075,6 +5273,7 @@ function createMaterialRepository(overrides: Partial<WorkbenchRepository> = {}) 
     bottomQuickReply: vi.fn().mockResolvedValue(true),
     bottomQuickReplyCategory: vi.fn().mockResolvedValue(true),
     countChildQuickReplyCategories: vi.fn().mockResolvedValue(0),
+    countQuickRepliesUnderTopCategory: vi.fn().mockResolvedValue(0),
     createMaterialCollection: vi.fn().mockResolvedValue("66"),
     createMaterialGroup: vi.fn().mockResolvedValue(undefined),
     createQuickReply: vi.fn().mockResolvedValue("501"),
@@ -5122,6 +5321,8 @@ function createMaterialRepository(overrides: Partial<WorkbenchRepository> = {}) 
     listQuickReplies: vi.fn().mockResolvedValue({ items: [], total: 0 }),
     listQuickReplyCategories: vi.fn().mockResolvedValue([]),
     moveMaterialCollection: vi.fn().mockResolvedValue(undefined),
+    moveQuickReply: vi.fn().mockResolvedValue(true),
+    moveQuickReplyCategory: vi.fn().mockResolvedValue(true),
     renameMaterialGroup: vi.fn().mockResolvedValue(undefined),
     renameQuickReplyCategory: vi.fn().mockResolvedValue(true),
     restoreMaterialCollection: vi.fn().mockResolvedValue(undefined),

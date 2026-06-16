@@ -145,7 +145,7 @@ function installQuickReplyService(quickReplies: WorkbenchQuickReplyDto[]) {
         const response: WorkbenchQuickReplyCategoryContentResponse = {
           categories: [],
           limits: {
-            categories: 500,
+            categories: 50,
             quickReplies: 10_000,
           },
           quickRepliesByCategoryId: {},
@@ -169,7 +169,7 @@ function installQuickReplyService(quickReplies: WorkbenchQuickReplyDto[]) {
           },
         ],
         limits: {
-          categories: 500,
+          categories: 50,
           quickReplies: 10_000,
         },
         quickRepliesByCategoryId: {

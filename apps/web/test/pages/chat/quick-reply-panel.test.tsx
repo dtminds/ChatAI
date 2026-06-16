@@ -38,6 +38,20 @@ const categories: WorkbenchQuickReplyCategoryDto[] = [
     sort: 80,
     title: "致歉",
   },
+  {
+    id: "cat-4",
+    parentId: 0,
+    scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+    sort: 70,
+    title: "售后",
+  },
+  {
+    id: "cat-5",
+    parentId: "cat-4",
+    scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+    sort: 60,
+    title: "物流",
+  },
 ];
 
 const quickReply: WorkbenchQuickReplyDto = {
@@ -509,6 +523,58 @@ describe("QuickReplyPanel", () => {
     await user.click(screen.getByRole("menuitem", { name: "新建话术" }));
 
     expect(onCreateQuickReply).toHaveBeenCalledOnce();
+  });
+
+  it("moves secondary categories from a scrollable submenu", async () => {
+    const user = userEvent.setup();
+    const onMoveCategory = vi.fn();
+
+    render(
+      <QuickReplyPanel
+        {...createPanelProps()}
+        onMoveCategory={onMoveCategory}
+      />,
+    );
+
+    await user.pointer({
+      keys: "[MouseRight]",
+      target: screen.getByRole("button", { name: "报价" }),
+    });
+    await user.hover(screen.getByRole("menuitem", { name: "移动" }));
+
+    const submenu = screen.getByRole("menu", { name: "移动分类" });
+    expect(submenu).toHaveStyle({ maxHeight: "240px", overflowY: "auto" });
+    expect(screen.queryByRole("menuitem", { name: "售前" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("menuitem", { name: "售后" }));
+
+    expect(onMoveCategory).toHaveBeenCalledWith(categories[1], "cat-4");
+  });
+
+  it("moves quick replies only to secondary categories under the current top category", async () => {
+    const user = userEvent.setup();
+    const onMoveQuickReply = vi.fn();
+
+    render(
+      <QuickReplyPanel
+        {...createPanelProps()}
+        activeCategoryId="cat-2"
+        quickRepliesByCategoryId={{ "cat-2": [quickReply] }}
+        onMoveQuickReply={onMoveQuickReply}
+      />,
+    );
+
+    await user.pointer({
+      keys: "[MouseRight]",
+      target: screen.getByText("您好，这是报价信息"),
+    });
+    await user.hover(screen.getByRole("menuitem", { name: "移动" }));
+
+    const submenu = screen.getByRole("menu", { name: "移动话术" });
+    expect(submenu).toHaveStyle({ maxHeight: "240px", overflowY: "auto" });
+    expect(screen.queryByRole("menuitem", { name: "物流" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("menuitem", { name: "致歉" }));
+
+    expect(onMoveQuickReply).toHaveBeenCalledWith(quickReply, "cat-3");
   });
 
   it("opens the secondary category context menu from the whole header row", async () => {
@@ -1121,6 +1187,8 @@ function createPanelProps(
     onEditQuickReply: vi.fn(),
     onCopyQuickReply: vi.fn(),
     onKeywordChange: vi.fn(),
+    onMoveCategory: vi.fn(),
+    onMoveQuickReply: vi.fn(),
     onScopeTypeChange: vi.fn(),
     onSelectQuickReply: vi.fn(),
     onTopCategoryChange: vi.fn(),

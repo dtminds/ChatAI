@@ -72,11 +72,13 @@ import type {
   type WorkbenchQuickReplyCategoryDto,
   type WorkbenchQuickReplyCategoryListRequest,
   type WorkbenchQuickReplyCategoryListResponse,
+  type WorkbenchQuickReplyCategoryMoveRequest,
   type WorkbenchQuickReplyCategoryUpdateRequest,
   type WorkbenchQuickReplyCreateRequest,
   type WorkbenchQuickReplyDto,
   type WorkbenchQuickReplyListRequest,
   type WorkbenchQuickReplyListResponse,
+  type WorkbenchQuickReplyMoveRequest,
   type WorkbenchQuickReplyOkResponse,
   type WorkbenchQuickReplyUpdateRequest,
 } from "@chatai/contracts";
@@ -444,6 +446,53 @@ export function createMemoryWorkbenchService() {
       );
       return { ok: true };
     },
+    moveQuickReplyCategory(
+      _subUserId: string,
+      categoryId: string,
+      scopeType: number,
+      request: WorkbenchQuickReplyCategoryMoveRequest,
+    ): WorkbenchQuickReplyOkResponse {
+      const category = state.quickReplyCategories.find(
+        (item) => item.id === categoryId && item.scopeType === scopeType,
+      );
+      const targetParent = state.quickReplyCategories.find(
+        (item) => item.id === request.parentId && item.scopeType === scopeType,
+      );
+
+      if (!category || !targetParent) {
+        throw new NotFoundError("QUICK_REPLY_CATEGORY_NOT_FOUND", "分类不存在");
+      }
+
+      if (category.parentId === 0) {
+        throw new BadRequestError(
+          "QUICK_REPLY_CATEGORY_MOVE_INVALID",
+          "一级分类暂不支持移动",
+        );
+      }
+
+      if (targetParent.parentId !== 0) {
+        throw new BadRequestError("QUICK_REPLY_CATEGORY_MOVE_INVALID", "请选择一级分类");
+      }
+
+      if (category.parentId === request.parentId) {
+        return { ok: true };
+      }
+
+      state.quickReplyCategories = state.quickReplyCategories.map((item) =>
+        item.id === categoryId && item.scopeType === scopeType
+          ? {
+              ...item,
+              parentId: request.parentId,
+              sort: getAppendQuickReplyCategorySort(
+                state.quickReplyCategories,
+                scopeType,
+                request.parentId,
+              ),
+            }
+          : item,
+      );
+      return { ok: true };
+    },
     listQuickReplyCategoryContent(
       _subUserId: string,
       request: WorkbenchQuickReplyCategoryContentRequest,
@@ -455,7 +504,7 @@ export function createMemoryWorkbenchService() {
             category.parentId === request.parentCategoryId,
         )
         .sort(sortQuickReplyEntries)
-        .slice(0, 500);
+        .slice(0, 50);
       const categoryIds = new Set(categories.map((category) => category.id));
       const quickReplies = state.quickReplies
         .filter(
@@ -482,7 +531,7 @@ export function createMemoryWorkbenchService() {
       return {
         categories: clone(categories),
         limits: {
-          categories: 500,
+          categories: 50,
           quickReplies: 10_000,
         },
         quickRepliesByCategoryId,
@@ -492,7 +541,7 @@ export function createMemoryWorkbenchService() {
               (category) =>
                 category.scopeType === request.scopeType &&
                 category.parentId === request.parentCategoryId,
-            ).length > 500,
+            ).length > 50,
           quickReplies:
             state.quickReplies.filter(
               (reply) =>
@@ -634,6 +683,59 @@ export function createMemoryWorkbenchService() {
     ): WorkbenchQuickReplyOkResponse {
       state.quickReplies = state.quickReplies.filter(
         (reply) => !(reply.id === quickReplyId && reply.scopeType === scopeType),
+      );
+      return { ok: true };
+    },
+    moveQuickReply(
+      _subUserId: string,
+      quickReplyId: string,
+      scopeType: number,
+      request: WorkbenchQuickReplyMoveRequest,
+    ): WorkbenchQuickReplyOkResponse {
+      const quickReply = state.quickReplies.find(
+        (reply) => reply.id === quickReplyId && reply.scopeType === scopeType,
+      );
+
+      if (!quickReply) {
+        throw new NotFoundError("QUICK_REPLY_NOT_FOUND", "话术不存在");
+      }
+
+      if (quickReply.categoryId === request.categoryId) {
+        return { ok: true };
+      }
+
+      const sourceCategory = state.quickReplyCategories.find(
+        (category) =>
+          category.id === quickReply.categoryId && category.scopeType === scopeType,
+      );
+      const targetCategory = state.quickReplyCategories.find(
+        (category) =>
+          category.id === request.categoryId && category.scopeType === scopeType,
+      );
+
+      if (!sourceCategory || !targetCategory) {
+        throw new NotFoundError("QUICK_REPLY_CATEGORY_NOT_FOUND", "分类不存在");
+      }
+
+      if (sourceCategory.parentId !== targetCategory.parentId) {
+        throw new BadRequestError(
+          "QUICK_REPLY_MOVE_SCOPE_INVALID",
+          "只能移动到当前一级分类下",
+        );
+      }
+
+      state.quickReplies = state.quickReplies.map((reply) =>
+        reply.id === quickReplyId && reply.scopeType === scopeType
+          ? {
+              ...reply,
+              categoryId: request.categoryId,
+              sort: getAppendQuickReplySort(
+                state.quickReplies,
+                scopeType,
+                request.categoryId,
+              ),
+            }
+          : reply,
       );
       return { ok: true };
     },

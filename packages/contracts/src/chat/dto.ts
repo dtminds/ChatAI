@@ -948,6 +948,10 @@ export type WorkbenchQuickReplyCategoryUpdateRequest = {
   title: string;
 };
 
+export type WorkbenchQuickReplyCategoryMoveRequest = {
+  parentId: string;
+};
+
 export type WorkbenchQuickReplyListRequest = {
   scopeType: QuickReplyScopeType;
   categoryId?: string | 0;
@@ -994,6 +998,10 @@ export type WorkbenchQuickReplyCreateRequest = {
 };
 
 export type WorkbenchQuickReplyUpdateRequest = WorkbenchQuickReplyCreateRequest;
+
+export type WorkbenchQuickReplyMoveRequest = {
+  categoryId: string;
+};
 
 export type WorkbenchQuickReplyOkResponse = {
   ok: true;

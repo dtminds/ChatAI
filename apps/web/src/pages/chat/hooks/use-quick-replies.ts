@@ -185,6 +185,18 @@ export function useQuickReplies(options?: { enabled?: boolean }) {
     [runMutation],
   );
 
+  const moveCategory = useCallback(
+    (category: WorkbenchQuickReplyCategoryDto, parentId: string) =>
+      runMutation(async () => {
+        await getWorkbenchService().moveQuickReplyCategory(
+          category.id,
+          category.scopeType,
+          { parentId },
+        );
+      }),
+    [runMutation],
+  );
+
   const deleteCategory = useCallback(
     (category: WorkbenchQuickReplyCategoryDto) =>
       runMutation(
@@ -259,6 +271,18 @@ export function useQuickReplies(options?: { enabled?: boolean }) {
     [runMutation],
   );
 
+  const moveQuickReply = useCallback(
+    (quickReply: WorkbenchQuickReplyDto, categoryId: string) =>
+      runMutation(async () => {
+        await getWorkbenchService().moveQuickReply(
+          quickReply.id,
+          quickReply.scopeType,
+          { categoryId },
+        );
+      }),
+    [runMutation],
+  );
+
   const deleteQuickReply = useCallback(
     (quickReply: WorkbenchQuickReplyDto) =>
       runMutation(
@@ -305,6 +329,8 @@ export function useQuickReplies(options?: { enabled?: boolean }) {
       isLoading,
       isMutating,
       keyword: keywordInput,
+      moveCategory,
+      moveQuickReply,
       quickReplies,
       quickRepliesByCategoryId,
       reload: loadQuickReplies,
@@ -332,6 +358,8 @@ export function useQuickReplies(options?: { enabled?: boolean }) {
       isMutating,
       keywordInput,
       loadQuickReplies,
+      moveCategory,
+      moveQuickReply,
       quickReplies,
       quickRepliesByCategoryId,
       setActiveScopeType,

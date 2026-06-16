@@ -27,9 +27,11 @@ import type {
   WorkbenchQuickReplyCategoryCreateRequest,
   WorkbenchQuickReplyCategoryContentRequest,
   WorkbenchQuickReplyCategoryListRequest,
+  WorkbenchQuickReplyCategoryMoveRequest,
   WorkbenchQuickReplyCategoryUpdateRequest,
   WorkbenchQuickReplyCreateRequest,
   WorkbenchQuickReplyListRequest,
+  WorkbenchQuickReplyMoveRequest,
   WorkbenchQuickReplyUpdateRequest,
 } from "@chatai/contracts";
 import { Type, type Static } from "@sinclair/typebox";
@@ -477,6 +479,10 @@ const QuickReplyCategoryUpdateBodySchema = Type.Object({
   title: Type.String({ maxLength: 20, minLength: 1 }),
 });
 
+const QuickReplyCategoryMoveBodySchema = Type.Object({
+  parentId: Type.String({ maxLength: 64, minLength: 1 }),
+});
+
 const QuickReplyCategoryParamsSchema = Type.Object({
   categoryId: Type.String({ maxLength: 64, minLength: 1 }),
 });
@@ -514,6 +520,10 @@ const QuickReplyBodySchema = Type.Object({
   ),
   labelText: Type.Optional(Type.String({ maxLength: 10 })),
   scopeType: QuickReplyScopeTypeSchema,
+});
+
+const QuickReplyMoveBodySchema = Type.Object({
+  categoryId: Type.String({ maxLength: 64, minLength: 1 }),
 });
 
 const QuickReplyParamsSchema = Type.Object({
@@ -564,12 +574,14 @@ type MaterialCollectionGroupParams = Static<typeof MaterialCollectionGroupParams
 type QuickReplyCategoriesQuery = Static<typeof QuickReplyCategoriesQuerySchema>;
 type QuickReplyCategoryCreateBody = Static<typeof QuickReplyCategoryCreateBodySchema>;
 type QuickReplyCategoryUpdateBody = Static<typeof QuickReplyCategoryUpdateBodySchema>;
+type QuickReplyCategoryMoveBody = Static<typeof QuickReplyCategoryMoveBodySchema>;
 type QuickReplyCategoryParams = Static<typeof QuickReplyCategoryParamsSchema>;
 type QuickReplyCategoryContentQuery = Static<
   typeof QuickReplyCategoryContentQuerySchema
 >;
 type QuickRepliesQuery = Static<typeof QuickRepliesQuerySchema>;
 type QuickReplyBody = Static<typeof QuickReplyBodySchema>;
+type QuickReplyMoveBody = Static<typeof QuickReplyMoveBodySchema>;
 type QuickReplyParams = Static<typeof QuickReplyParamsSchema>;
 type QuickReplyScopeQuery = Static<typeof QuickReplyScopeQuerySchema>;
 type MaterialCollectionGroupQuery = Static<typeof MaterialCollectionGroupQuerySchema>;
@@ -1271,6 +1283,31 @@ export async function registerChatRoutes(app: FastifyInstance) {
     },
   );
 
+  app.post<{
+    Body: QuickReplyCategoryMoveBody;
+    Params: QuickReplyCategoryParams;
+    Querystring: QuickReplyScopeQuery;
+  }>(
+    "/api/server/quick-replies/categories/:categoryId/move",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: QuickReplyCategoryMoveBodySchema,
+        params: QuickReplyCategoryParamsSchema,
+        querystring: QuickReplyScopeQuerySchema,
+      },
+    },
+    async (request) => {
+      assertChatWriteAccess(request);
+      return getWorkbenchService(app, request).moveQuickReplyCategory(
+        getSubUserId(request),
+        request.params.categoryId,
+        parseQuickReplyScopeTypeQuery(request.query.scope_type),
+        request.body satisfies WorkbenchQuickReplyCategoryMoveRequest,
+      );
+    },
+  );
+
   app.get<{ Querystring: QuickReplyCategoryContentQuery }>(
     "/api/server/quick-replies/category-content",
     {
@@ -1414,6 +1451,31 @@ export async function registerChatRoutes(app: FastifyInstance) {
         getSubUserId(request),
         request.params.quickReplyId,
         parseQuickReplyScopeTypeQuery(request.query.scope_type),
+      );
+    },
+  );
+
+  app.post<{
+    Body: QuickReplyMoveBody;
+    Params: QuickReplyParams;
+    Querystring: QuickReplyScopeQuery;
+  }>(
+    "/api/server/quick-replies/:quickReplyId/move",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: QuickReplyMoveBodySchema,
+        params: QuickReplyParamsSchema,
+        querystring: QuickReplyScopeQuerySchema,
+      },
+    },
+    async (request) => {
+      assertChatWriteAccess(request);
+      return getWorkbenchService(app, request).moveQuickReply(
+        getSubUserId(request),
+        request.params.quickReplyId,
+        parseQuickReplyScopeTypeQuery(request.query.scope_type),
+        request.body satisfies WorkbenchQuickReplyMoveRequest,
       );
     },
   );

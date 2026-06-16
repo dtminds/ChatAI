@@ -1117,7 +1117,7 @@ describe("WorkbenchRepository", () => {
 
     await expect(
       repository.listQuickReplyCategoryContent({
-        categoryLimit: 500,
+        categoryLimit: 50,
         parentCategoryId: "10",
         quickReplyLimit: 10_000,
         scopeType: 1,
@@ -1139,7 +1139,7 @@ describe("WorkbenchRepository", () => {
       },
     });
     expect(db.selects[0]).toMatchObject({
-      limits: [501],
+      limits: [51],
       orderBys: [
         ["sort", "desc"],
         ["id", "desc"],
@@ -1430,6 +1430,59 @@ describe("WorkbenchRepository", () => {
       {
         table: "xy_wap_embed_quick_reply",
         values: { biz_status: 0 },
+        wheres: [
+          ["id", "=", 21],
+          ["uid", "=", 10001],
+          ["scope_type", "=", 2],
+          ["sub_uid", "=", 9],
+          ["biz_status", "=", 1],
+        ],
+      },
+    ]);
+  });
+
+  it("moves quick reply categories and replies only in the requested scope", async () => {
+    const db = createMaterialDb();
+    const repository = new WorkbenchRepository(db as never);
+
+    await repository.moveQuickReplyCategory({
+      categoryId: "11",
+      parentId: "20",
+      scopeType: 2,
+      sort: 80,
+      subUserId: "9",
+      uid: 10001,
+    });
+    await repository.moveQuickReply({
+      categoryId: "12",
+      quickReplyId: "21",
+      scopeType: 2,
+      sort: 70,
+      subUserId: "9",
+      uid: 10001,
+    });
+
+    expect(db.updates).toEqual([
+      {
+        table: "xy_wap_embed_quick_reply_category",
+        values: {
+          parent_id: 20,
+          sort: 80,
+        },
+        wheres: [
+          ["id", "=", 11],
+          ["uid", "=", 10001],
+          ["scope_type", "=", 2],
+          ["sub_uid", "=", 9],
+          ["biz_status", "=", 1],
+        ],
+      },
+      {
+        table: "xy_wap_embed_quick_reply",
+        values: {
+          category_id: 12,
+          sort: 70,
+        },
         wheres: [
           ["id", "=", 21],
           ["uid", "=", 10001],

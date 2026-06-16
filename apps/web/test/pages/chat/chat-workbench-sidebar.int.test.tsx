@@ -212,7 +212,7 @@ describe("ChatWorkbenchPage sidebar flows", () => {
           },
         ],
         limits: {
-          categories: 500,
+          categories: 50,
           quickReplies: 10_000,
         },
         quickRepliesByCategoryId: {

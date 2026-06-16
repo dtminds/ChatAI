@@ -1326,6 +1326,8 @@ function ChatWorkbenchContent({
         setQuickReplyFormState({ mode: "edit", quickReply })
       }
       onKeywordChange={quickReplies.setKeyword}
+      onMoveCategory={quickReplies.moveCategory}
+      onMoveQuickReply={quickReplies.moveQuickReply}
       onScopeTypeChange={quickReplies.setActiveScopeType}
       onSelectQuickReply={handleSelectQuickReply}
       onTopCategoryChange={quickReplies.setActiveTopCategoryId}

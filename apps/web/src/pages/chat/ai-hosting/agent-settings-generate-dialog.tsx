@@ -62,7 +62,13 @@ export function AgentSettingsGenerateDialog({
   const [progress, setProgress] = useState<number>(agentGenerateProgressSteps[0].progress);
   const [progressLabel, setProgressLabel] = useState<string>(agentGenerateProgressSteps[0].label);
   const generatingFormRef = useRef(form);
+  const onCompleteRef = useRef(onComplete);
+  const onOpenChangeRef = useRef(onOpenChange);
 
+  useEffect(() => {
+    onCompleteRef.current = onComplete;
+    onOpenChangeRef.current = onOpenChange;
+  }, [onComplete, onOpenChange]);
   function resetDialogState() {
     setForm(defaultAgentGenerateForm);
     setPhase("form");

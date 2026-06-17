@@ -2,9 +2,11 @@ import { StarsIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useId, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
-
-const agentGenerateGradient =
-  "linear-gradient(90deg, #267FF0 0%, #8E33FA 55%, #C840D4 100%)";
+import {
+  aiHostingGenerateButtonBackground,
+  aiHostingGenerateColors,
+  aiHostingGenerateGradient,
+} from "./ai-hosting-palette";
 
 type AgentGenerateGradientButtonProps = {
   children: ReactNode;
@@ -28,18 +30,18 @@ export function AgentGenerateGradientButton({
       )}
       disabled={disabled}
       style={{
-        background: `linear-gradient(#fff, #fff) padding-box, ${agentGenerateGradient} border-box`,
-        "--gradient-stroke": `url(#${gradientId})`,
-      } as any}
+        background: aiHostingGenerateButtonBackground,
+        ["--gradient-stroke" as string]: `url(#${gradientId})`,
+      }}
       type={type}
       {...props}
     >
       <svg aria-hidden className="pointer-events-none absolute h-0 w-0">
         <defs>
           <linearGradient id={gradientId} x1="0%" x2="100%" y1="0%" y2="0%">
-            <stop offset="0%" stopColor="#267FF0" />
-            <stop offset="55%" stopColor="#8E33FA" />
-            <stop offset="100%" stopColor="#C840D4" />
+            <stop offset="0%" stopColor={aiHostingGenerateColors.gradientStart} />
+            <stop offset="55%" stopColor={aiHostingGenerateColors.gradientMid} />
+            <stop offset="100%" stopColor={aiHostingGenerateColors.gradientEnd} />
           </linearGradient>
         </defs>
       </svg>
@@ -52,7 +54,7 @@ export function AgentGenerateGradientButton({
       />
       <span
         className="bg-clip-text text-transparent"
-        style={{ backgroundImage: agentGenerateGradient }}
+        style={{ backgroundImage: aiHostingGenerateGradient }}
       >
         {children}
       </span>

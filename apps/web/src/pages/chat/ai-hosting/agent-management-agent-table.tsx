@@ -58,9 +58,10 @@ export function AgentTable({ agents }: { agents: AgentRecord[] }) {
   );
 }
 
-function KnowledgeBaseTags({ knowledgeBases }: { knowledgeBases: string[] }) {
-  const visibleTags = knowledgeBases.slice(0, visibleKnowledgeBaseCount);
-  const hiddenCount = knowledgeBases.length - visibleTags.length;
+function KnowledgeBaseTags({ knowledgeBases = [] }: { knowledgeBases?: string[] }) {
+  const safeKnowledgeBases = knowledgeBases ?? [];
+  const visibleTags = safeKnowledgeBases.slice(0, visibleKnowledgeBaseCount);
+  const hiddenCount = safeKnowledgeBases.length - visibleTags.length;
 
   return (
     <div className="flex flex-wrap items-center gap-2">

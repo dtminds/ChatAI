@@ -1,4 +1,4 @@
-import paddleOcrBundleUrl from "@paddlejs-models/ocr/lib/index.js?url";
+import type { OcrResult, PaddleOCR } from "@paddleocr/paddleocr-js";
 
 export type ImageOcrPoint = readonly [number, number];
 
@@ -21,135 +21,49 @@ export type RecognizeImageTextInput = {
 
 export type ImageOcrPhase = "loading-model" | "recognizing";
 
-type PaddleOcrModule = {
-  init: () => Promise<void>;
-  recognize: (
-    image: HTMLImageElement,
-    option?: {
-      canvas?: HTMLCanvasElement;
-      style?: {
-        fillStyle?: string;
-        lineWidth?: number;
-        strokeStyle?: string;
-      };
-    },
-  ) => Promise<PaddleOcrRawResult | null | undefined>;
-};
+type PaddleOcrInstance = Awaited<ReturnType<typeof PaddleOCR.create>>;
 
-type PaddleOcrRawResult = {
-  points?: unknown;
-  text?: unknown;
-};
+const ocrCreateOptions = {
+  lang: "ch",
+  ocrVersion: "PP-OCRv6",
+  worker: true,
+} as const;
 
-let ocrModulePromise: Promise<PaddleOcrModule> | null = null;
-let ocrInitPromise: Promise<void> | null = null;
+let ocrPromise: Promise<PaddleOcrInstance> | null = null;
+let paddleOcrModulePromise: Promise<typeof import("@paddleocr/paddleocr-js")> | null =
+  null;
 
 export async function recognizeImageText(
   input: RecognizeImageTextInput,
 ): Promise<ImageOcrResult> {
   input.onPhaseChange?.("loading-model");
-  const ocr = await getInitializedOcr();
+  const ocr = await getOcr();
   input.onPhaseChange?.("recognizing");
   const image = await loadImageForOcr(input);
-  const rawResult = await ocr.recognize(image);
+  const rawResult = await ocr.predict(image);
 
   return normalizeOcrResult(rawResult);
 }
 
-async function getInitializedOcr() {
-  const ocr = await loadOcrModule();
+async function getOcr() {
+  ocrPromise ??= loadPaddleOcrModule()
+    .then(({ PaddleOCR }) => PaddleOCR.create(ocrCreateOptions))
+    .catch((error: unknown) => {
+      ocrPromise = null;
+      throw error;
+    });
 
-  ocrInitPromise ??= ocr.init().catch((error: unknown) => {
-    ocrInitPromise = null;
+  return ocrPromise;
+}
+
+async function loadPaddleOcrModule() {
+  paddleOcrModulePromise ??= import("@paddleocr/paddleocr-js").catch((error: unknown) => {
+    paddleOcrModulePromise = null;
+    ocrPromise = null;
     throw error;
   });
-  await ocrInitPromise;
 
-  return ocr;
-}
-
-async function loadOcrModule() {
-  ocrModulePromise ??= loadPaddleOcrScript().catch((error: unknown) => {
-    ocrModulePromise = null;
-    throw error;
-  });
-
-  return ocrModulePromise;
-}
-
-function loadPaddleOcrScript() {
-  return new Promise<PaddleOcrModule>((resolve, reject) => {
-    const existingOcr = getWindowPaddleOcr();
-
-    if (existingOcr) {
-      resolve(existingOcr);
-      return;
-    }
-
-    const existingScript = document.querySelector<HTMLScriptElement>(
-      "script[data-paddlejs-ocr]",
-    );
-
-    if (existingScript) {
-      const handleLoad = () => {
-        cleanupExistingScriptListeners();
-        const ocr = getWindowPaddleOcr();
-
-        if (ocr) {
-          resolve(ocr);
-          return;
-        }
-
-        existingScript.remove();
-        reject(new Error("Paddle.js OCR 加载失败"));
-      };
-      const handleError = () => {
-        cleanupExistingScriptListeners();
-        existingScript.remove();
-        reject(new Error("Paddle.js OCR 加载失败"));
-      };
-      const cleanupExistingScriptListeners = () => {
-        existingScript.removeEventListener("load", handleLoad);
-        existingScript.removeEventListener("error", handleError);
-      };
-
-      existingScript.addEventListener("load", handleLoad);
-      existingScript.addEventListener("error", handleError);
-      return;
-    }
-
-    const script = document.createElement("script");
-
-    script.async = true;
-    script.dataset.paddlejsOcr = "true";
-    script.src = paddleOcrBundleUrl;
-    script.onload = () => {
-      const ocr = getWindowPaddleOcr();
-
-      if (ocr) {
-        resolve(ocr);
-        return;
-      }
-
-      script.remove();
-      reject(new Error("Paddle.js OCR 加载失败"));
-    };
-    script.onerror = () => {
-      script.remove();
-      reject(new Error("Paddle.js OCR 加载失败"));
-    };
-    document.head.appendChild(script);
-  });
-}
-
-function getWindowPaddleOcr() {
-  const paddlejs = (window as Window & {
-    paddlejs?: {
-      ocr?: PaddleOcrModule;
-    };
-  }).paddlejs;
-
-  return paddlejs?.ocr ?? null;
+  return paddleOcrModulePromise;
 }
 
 function loadImageForOcr(input: RecognizeImageTextInput) {
@@ -167,26 +81,22 @@ function loadImageForOcr(input: RecognizeImageTextInput) {
 }
 
 function normalizeOcrResult(
-  rawResult: PaddleOcrRawResult | null | undefined,
+  rawResult: OcrResult[] | null | undefined,
 ): ImageOcrResult {
-  if (!rawResult) {
+  const items = rawResult?.[0]?.items ?? [];
+
+  if (items.length === 0) {
     return {
       regions: [],
       text: "",
     };
   }
 
-  const rawTexts = Array.isArray(rawResult.text)
-    ? rawResult.text
-    : typeof rawResult.text === "string"
-      ? [rawResult.text]
-      : [];
-  const rawPoints = Array.isArray(rawResult.points) ? rawResult.points : [];
-  const regions = rawTexts
-    .map((text, index) => ({
+  const regions = items
+    .map((item, index) => ({
       id: `ocr-region-${index + 1}`,
-      points: normalizePoints(rawPoints[index]),
-      text: String(text).trim(),
+      points: normalizePoints(item.poly),
+      text: item.text.trim(),
     }))
     .filter((region) => region.text.length > 0);
 

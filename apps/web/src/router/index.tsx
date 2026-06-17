@@ -3,6 +3,7 @@ import { RootLayout } from "@/app/root-layout";
 import { LoginPage } from "@/pages/auth/login-page";
 import { ChatWorkbenchRoutePage } from "@/pages/chat/chat-workbench-page";
 import { AgentManagementPage } from "@/pages/chat/ai-hosting/agent-management-page";
+import { AgentSettingsPage } from "@/pages/chat/ai-hosting/agent-settings-page";
 import { KnowledgeBasePage } from "@/pages/chat/ai-hosting/knowledge-base-page";
 import { InsightsBusinessPage } from "@/pages/chat/insights/insights-business-page";
 import { InsightsFollowUpsPage } from "@/pages/chat/insights/insights-follow-ups-page";
@@ -71,6 +72,10 @@ export const routerConfig = [
       {
         path: "chat/ai-hosting/agents",
         element: <AgentManagementPage />,
+      },
+      {
+        path: "chat/ai-hosting/agents/new",
+        element: <AgentSettingsPage />,
       },
       {
         path: "chat/ai-hosting/knowledge",

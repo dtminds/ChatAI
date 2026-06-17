@@ -125,7 +125,8 @@ describe("AI hosting pages", () => {
 
     const descriptionInput = screen.getByLabelText("条件逻辑描述");
 
-    await user.type(descriptionInput, "111 ");
+    await user.click(descriptionInput);
+    await user.paste("111 ");
     await user.click(screen.getByRole("button", { name: "添加关联知识库" }));
     await user.click(screen.getByRole("button", { name: "美妆知识大全" }));
 
@@ -134,7 +135,8 @@ describe("AI hosting pages", () => {
     expect(conditionalLogicGroup).toHaveTextContent("111");
     expect(conditionalLogicGroup).toHaveTextContent("美妆知识大全");
 
-    await user.type(descriptionInput, "xxx 333 ");
+    await user.click(descriptionInput);
+    await user.paste("xxx 333 ");
     await user.click(screen.getByRole("button", { name: "添加关联知识库" }));
     await user.click(screen.getByRole("button", { name: "彩妆精选" }));
 

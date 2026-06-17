@@ -28,12 +28,22 @@ type LocalPaddleOcrCreateOptions = PaddleOcrCreateOptions;
 const ortWasmBaseUrl =
   import.meta.env.VITE_OCR_ORT_WASM_BASE_URL?.trim() ||
   "https://b5.bokr.com.cn/dist/ocr/onnxruntime-web/1.26.0/";
+const paddleOcrModelBaseUrl =
+  import.meta.env.VITE_OCR_PADDLE_MODEL_BASE_URL?.trim() ||
+  "https://b5.bokr.com.cn/dist/ocr/paddleocr-js/0.4.2/";
+const paddleOcrModelBasePath = ensureTrailingSlash(paddleOcrModelBaseUrl);
 
 const ocrCreateOptions: LocalPaddleOcrCreateOptions = {
   ortOptions: {
     wasmPaths: ensureTrailingSlash(ortWasmBaseUrl),
   },
+  textDetectionModelAsset: {
+    url: `${paddleOcrModelBasePath}PP-OCRv6_tiny_det_onnx_infer.tar`,
+  },
   textDetectionModelName: "PP-OCRv6_tiny_det",
+  textRecognitionModelAsset: {
+    url: `${paddleOcrModelBasePath}PP-OCRv6_tiny_rec_onnx_infer.tar`,
+  },
   textRecognitionModelName: "PP-OCRv6_tiny_rec",
   worker: true,
 };

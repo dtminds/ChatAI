@@ -2,6 +2,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { recognizeImageText } from "@/pages/chat/lib/image-ocr";
 
 const ortWasmBaseUrl = "https://b5.bokr.com.cn/dist/ocr/onnxruntime-web/1.26.0/";
+const paddleOcrModelBaseUrl = "https://b5.bokr.com.cn/dist/ocr/paddleocr-js/0.4.2/";
+const paddleOcrModelCreateOptions = {
+  textDetectionModelAsset: {
+    url: `${paddleOcrModelBaseUrl}PP-OCRv6_tiny_det_onnx_infer.tar`,
+  },
+  textDetectionModelName: "PP-OCRv6_tiny_det",
+  textRecognitionModelAsset: {
+    url: `${paddleOcrModelBaseUrl}PP-OCRv6_tiny_rec_onnx_infer.tar`,
+  },
+  textRecognitionModelName: "PP-OCRv6_tiny_rec",
+};
 
 const { create, predict } = vi.hoisted(() => {
   const predict = vi.fn();
@@ -97,8 +108,7 @@ describe("recognizeImageText", () => {
       ortOptions: {
         wasmPaths: ortWasmBaseUrl,
       },
-      textDetectionModelName: "PP-OCRv6_tiny_det",
-      textRecognitionModelName: "PP-OCRv6_tiny_rec",
+      ...paddleOcrModelCreateOptions,
       worker: true,
     });
     expect(predict).toHaveBeenCalledTimes(2);
@@ -222,16 +232,14 @@ describe("recognizeImageText", () => {
       ortOptions: {
         wasmPaths: ortWasmBaseUrl,
       },
-      textDetectionModelName: "PP-OCRv6_tiny_det",
-      textRecognitionModelName: "PP-OCRv6_tiny_rec",
+      ...paddleOcrModelCreateOptions,
       worker: true,
     });
     expect(create).toHaveBeenNthCalledWith(2, {
       ortOptions: {
         wasmPaths: ortWasmBaseUrl,
       },
-      textDetectionModelName: "PP-OCRv6_tiny_det",
-      textRecognitionModelName: "PP-OCRv6_tiny_rec",
+      ...paddleOcrModelCreateOptions,
       worker: false,
     });
   });

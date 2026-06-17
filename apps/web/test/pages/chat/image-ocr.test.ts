@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { recognizeImageText } from "@/pages/chat/lib/image-ocr";
 
+const ortWasmBaseUrl = "https://b5.bokr.com.cn/dist/ocr/onnxruntime-web/1.26.0/";
+
 const { create, predict } = vi.hoisted(() => {
   const predict = vi.fn();
   const create = vi.fn(async () => ({
@@ -93,10 +95,7 @@ describe("recognizeImageText", () => {
     expect(create).toHaveBeenCalledTimes(1);
     expect(create).toHaveBeenCalledWith({
       ortOptions: {
-        wasmPaths: {
-          mjs: expect.stringContaining("ort-wasm-simd-threaded.jsep.mjs"),
-          wasm: expect.stringContaining("ort-wasm-simd-threaded.jsep.wasm"),
-        },
+        wasmPaths: ortWasmBaseUrl,
       },
       textDetectionModelName: "PP-OCRv6_tiny_det",
       textRecognitionModelName: "PP-OCRv6_tiny_rec",
@@ -221,10 +220,7 @@ describe("recognizeImageText", () => {
     });
     expect(create).toHaveBeenNthCalledWith(1, {
       ortOptions: {
-        wasmPaths: {
-          mjs: expect.stringContaining("ort-wasm-simd-threaded.jsep.mjs"),
-          wasm: expect.stringContaining("ort-wasm-simd-threaded.jsep.wasm"),
-        },
+        wasmPaths: ortWasmBaseUrl,
       },
       textDetectionModelName: "PP-OCRv6_tiny_det",
       textRecognitionModelName: "PP-OCRv6_tiny_rec",
@@ -232,10 +228,7 @@ describe("recognizeImageText", () => {
     });
     expect(create).toHaveBeenNthCalledWith(2, {
       ortOptions: {
-        wasmPaths: {
-          mjs: expect.stringContaining("ort-wasm-simd-threaded.jsep.mjs"),
-          wasm: expect.stringContaining("ort-wasm-simd-threaded.jsep.wasm"),
-        },
+        wasmPaths: ortWasmBaseUrl,
       },
       textDetectionModelName: "PP-OCRv6_tiny_det",
       textRecognitionModelName: "PP-OCRv6_tiny_rec",

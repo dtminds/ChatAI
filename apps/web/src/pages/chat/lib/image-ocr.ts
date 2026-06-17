@@ -1,6 +1,4 @@
 import type { OcrResult, PaddleOCR } from "@paddleocr/paddleocr-js";
-import ortWasmJsepModuleUrl from "onnxruntime-web/ort-wasm-simd-threaded.jsep.mjs?url";
-import ortWasmJsepUrl from "onnxruntime-web/ort-wasm-simd-threaded.jsep.wasm?url";
 
 export type ImageOcrPoint = readonly [number, number];
 
@@ -25,21 +23,15 @@ export type ImageOcrPhase = "loading-model" | "recognizing";
 
 type PaddleOcrInstance = Awaited<ReturnType<typeof PaddleOCR.create>>;
 type PaddleOcrCreateOptions = NonNullable<Parameters<typeof PaddleOCR.create>[0]>;
-type LocalPaddleOcrCreateOptions = Omit<PaddleOcrCreateOptions, "ortOptions"> & {
-  ortOptions: {
-    wasmPaths: {
-      mjs: string;
-      wasm: string;
-    };
-  };
-};
+type LocalPaddleOcrCreateOptions = PaddleOcrCreateOptions;
+
+const ortWasmBaseUrl =
+  import.meta.env.VITE_OCR_ORT_WASM_BASE_URL?.trim() ||
+  "https://b5.bokr.com.cn/dist/ocr/onnxruntime-web/1.26.0/";
 
 const ocrCreateOptions: LocalPaddleOcrCreateOptions = {
   ortOptions: {
-    wasmPaths: {
-      mjs: ortWasmJsepModuleUrl,
-      wasm: ortWasmJsepUrl,
-    },
+    wasmPaths: ensureTrailingSlash(ortWasmBaseUrl),
   },
   textDetectionModelName: "PP-OCRv6_tiny_det",
   textRecognitionModelName: "PP-OCRv6_tiny_rec",
@@ -70,13 +62,13 @@ async function getOcr() {
   ocrPromise ??= loadPaddleOcrModule()
     .then(async ({ PaddleOCR }) => {
       try {
-        return await PaddleOCR.create(toPaddleOcrCreateOptions(ocrCreateOptions));
+        return await PaddleOCR.create(ocrCreateOptions);
       } catch (error) {
         if (!isWorkerInitializationError(error)) {
           throw error;
         }
 
-        return PaddleOCR.create(toPaddleOcrCreateOptions(fallbackOcrCreateOptions));
+        return PaddleOCR.create(fallbackOcrCreateOptions);
       }
     })
     .catch((error: unknown) => {
@@ -97,16 +89,16 @@ async function loadPaddleOcrModule() {
   return paddleOcrModulePromise;
 }
 
-function toPaddleOcrCreateOptions(options: LocalPaddleOcrCreateOptions) {
-  return options as unknown as PaddleOcrCreateOptions;
-}
-
 function isWorkerInitializationError(error: unknown) {
   if (!(error instanceof Error)) {
     return false;
   }
 
   return /worker/i.test(error.message);
+}
+
+function ensureTrailingSlash(value: string) {
+  return value.endsWith("/") ? value : `${value}/`;
 }
 
 function loadImageForOcr(input: RecognizeImageTextInput) {

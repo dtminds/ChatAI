@@ -44,7 +44,7 @@ export function AgentGenerateGradientButton({
         </defs>
       </svg>
       <HugeiconsIcon
-        className={`shrink-0 [&_path]:stroke-[url(#${gradientId})] [&_svg]:stroke-[url(#${gradientId})]`}
+        className="shrink-0 [&_path]:stroke-[var(--gradient-stroke)] [&_svg]:stroke-[var(--gradient-stroke)]"
         icon={StarsIcon}
         size={16}
         stroke={`url(#${gradientId})`}

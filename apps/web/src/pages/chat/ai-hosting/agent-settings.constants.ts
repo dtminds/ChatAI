@@ -84,15 +84,21 @@ export const agentSettingsFieldHints = {
   transferToHumanConditions: "设置 Agent 必须转交人工客服的场景，例如知识未命中、AI 不确定、客户情绪负面、退款投诉、客户要求真人等",
 } as const;
 
-export const agentPreviewSeedMessages = [
+export type AgentPreviewMessage = {
+  id: string;
+  role: "customer" | "agent";
+  content: string;
+};
+
+export const agentPreviewSeedMessages: AgentPreviewMessage[] = [
   {
     id: "preview-user-1",
-    role: "customer" as const,
+    role: "customer",
     content: "我想了解下晨间护肤",
   },
   {
     id: "preview-agent-1",
-    role: "agent" as const,
+    role: "agent",
     content: "你好，请问有什么可以帮您？",
   },
 ];

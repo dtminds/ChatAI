@@ -94,6 +94,12 @@ describe("recognizeImageText", () => {
     expect(create).toHaveBeenCalledWith({
       lang: "ch",
       ocrVersion: "PP-OCRv6",
+      ortOptions: {
+        wasmPaths: {
+          mjs: expect.stringContaining("ort-wasm-simd-threaded.jsep.mjs"),
+          wasm: expect.stringContaining("ort-wasm-simd-threaded.jsep.wasm"),
+        },
+      },
       worker: true,
     });
     expect(predict).toHaveBeenCalledTimes(2);
@@ -216,11 +222,23 @@ describe("recognizeImageText", () => {
     expect(create).toHaveBeenNthCalledWith(1, {
       lang: "ch",
       ocrVersion: "PP-OCRv6",
+      ortOptions: {
+        wasmPaths: {
+          mjs: expect.stringContaining("ort-wasm-simd-threaded.jsep.mjs"),
+          wasm: expect.stringContaining("ort-wasm-simd-threaded.jsep.wasm"),
+        },
+      },
       worker: true,
     });
     expect(create).toHaveBeenNthCalledWith(2, {
       lang: "ch",
       ocrVersion: "PP-OCRv6",
+      ortOptions: {
+        wasmPaths: {
+          mjs: expect.stringContaining("ort-wasm-simd-threaded.jsep.mjs"),
+          wasm: expect.stringContaining("ort-wasm-simd-threaded.jsep.wasm"),
+        },
+      },
       worker: false,
     });
   });

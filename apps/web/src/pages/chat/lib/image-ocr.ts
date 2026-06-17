@@ -1,4 +1,6 @@
 import type { OcrResult, PaddleOCR } from "@paddleocr/paddleocr-js";
+import ortWasmJsepModuleUrl from "onnxruntime-web/ort-wasm-simd-threaded.jsep.mjs?url";
+import ortWasmJsepUrl from "onnxruntime-web/ort-wasm-simd-threaded.jsep.wasm?url";
 
 export type ImageOcrPoint = readonly [number, number];
 
@@ -22,16 +24,31 @@ export type RecognizeImageTextInput = {
 export type ImageOcrPhase = "loading-model" | "recognizing";
 
 type PaddleOcrInstance = Awaited<ReturnType<typeof PaddleOCR.create>>;
+type PaddleOcrCreateOptions = NonNullable<Parameters<typeof PaddleOCR.create>[0]>;
+type LocalPaddleOcrCreateOptions = Omit<PaddleOcrCreateOptions, "ortOptions"> & {
+  ortOptions: {
+    wasmPaths: {
+      mjs: string;
+      wasm: string;
+    };
+  };
+};
 
-const ocrCreateOptions = {
+const ocrCreateOptions: LocalPaddleOcrCreateOptions = {
   lang: "ch",
   ocrVersion: "PP-OCRv6",
+  ortOptions: {
+    wasmPaths: {
+      mjs: ortWasmJsepModuleUrl,
+      wasm: ortWasmJsepUrl,
+    },
+  },
   worker: true,
-} as const;
+};
 const fallbackOcrCreateOptions = {
   ...ocrCreateOptions,
   worker: false,
-} as const;
+} satisfies LocalPaddleOcrCreateOptions;
 
 let ocrPromise: Promise<PaddleOcrInstance> | null = null;
 let paddleOcrModulePromise: Promise<typeof import("@paddleocr/paddleocr-js")> | null =
@@ -53,13 +70,13 @@ async function getOcr() {
   ocrPromise ??= loadPaddleOcrModule()
     .then(async ({ PaddleOCR }) => {
       try {
-        return await PaddleOCR.create(ocrCreateOptions);
+        return await PaddleOCR.create(toPaddleOcrCreateOptions(ocrCreateOptions));
       } catch (error) {
         if (!isWorkerInitializationError(error)) {
           throw error;
         }
 
-        return PaddleOCR.create(fallbackOcrCreateOptions);
+        return PaddleOCR.create(toPaddleOcrCreateOptions(fallbackOcrCreateOptions));
       }
     })
     .catch((error: unknown) => {
@@ -78,6 +95,10 @@ async function loadPaddleOcrModule() {
   });
 
   return paddleOcrModulePromise;
+}
+
+function toPaddleOcrCreateOptions(options: LocalPaddleOcrCreateOptions) {
+  return options as unknown as PaddleOcrCreateOptions;
 }
 
 function isWorkerInitializationError(error: unknown) {

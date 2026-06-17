@@ -57,6 +57,7 @@
     "cos-js-sdk-v5": "^1.10.1",
     "date-fns": "^4.1.0",
     "lexical": "^0.45.0",
+    "onnxruntime-web": "1.26.0",
     "react": "^19.0.0",
     "react-day-picker": "^9.14.0",
     "react-dom": "^19.0.0",

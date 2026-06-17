@@ -29,7 +29,8 @@ export function AgentGenerateGradientButton({
       disabled={disabled}
       style={{
         background: `linear-gradient(#fff, #fff) padding-box, ${agentGenerateGradient} border-box`,
-      }}
+        "--gradient-stroke": `url(#${gradientId})`,
+      } as any}
       type={type}
       {...props}
     >

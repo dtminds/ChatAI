@@ -69,12 +69,12 @@ export function AgentSettingsGenerateDialog({
     onCompleteRef.current = onComplete;
     onOpenChangeRef.current = onOpenChange;
   }, [onComplete, onOpenChange]);
-  function resetDialogState() {
+  const resetDialogState = useCallback(() => {
     setForm(defaultAgentGenerateForm);
     setPhase("form");
     setProgress(agentGenerateProgressSteps[0].progress);
     setProgressLabel(agentGenerateProgressSteps[0].label);
-  }
+  }, []);
 
   function handleOpenChange(nextOpen: boolean) {
     if (!nextOpen && phase === "generating") {

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AgentGenerateGradientButton } from "./agent-generate-gradient-button";
 import { Button } from "@/components/ui/button";
 import {

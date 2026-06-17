@@ -24,7 +24,7 @@ export function AgentManagementPage() {
       return agents;
     }
 
-    return agents.filter((agent) => agent.name.toLowerCase().includes(normalizedQuery));
+    return agents.filter((agent) => agent.name?.toLowerCase().includes(normalizedQuery));
   }, [agentSearchQuery, agents]);
 
   return (

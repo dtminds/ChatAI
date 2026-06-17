@@ -563,8 +563,16 @@ describe("MessageContentRenderer image messages", () => {
     const resultCard = resultText.closest("[data-testid='image-preview-ocr-result']");
 
     expect(panel).toHaveClass("w-[22rem]", "max-w-[22rem]", "min-w-0");
+    expect(panel.parentElement).toHaveClass("min-w-0", "max-w-[22rem]", "overflow-hidden");
+    expect(panel.querySelector("[data-slot='scroll-area-viewport']")?.parentElement)
+      .toHaveClass(
+        "[&_[data-slot=scroll-area-viewport]>div]:!block",
+        "[&_[data-slot=scroll-area-viewport]>div]:w-full",
+        "[&_[data-slot=scroll-area-viewport]>div]:min-w-0",
+        "[&_[data-slot=scroll-area-viewport]>div]:max-w-full",
+      );
     expect(resultCard).toHaveClass("w-full", "max-w-full", "min-w-0");
-    expect(resultText).toHaveClass("[overflow-wrap:anywhere]");
+    expect(resultText).toHaveClass("w-full", "max-w-full", "min-w-0", "break-all");
   });
 
   it("scrolls the matching OCR text block into view when an overlay region is clicked", async () => {

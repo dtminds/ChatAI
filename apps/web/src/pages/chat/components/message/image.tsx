@@ -482,7 +482,10 @@ export function ImagePreviewDialog({
               </div>
             </div>
             {isOcrPanelOpen ? (
-              <div onClick={(event) => event.stopPropagation()}>
+              <div
+                className="min-w-0 max-w-[22rem] overflow-hidden"
+                onClick={(event) => event.stopPropagation()}
+              >
                 <ImageOcrPanel
                   activeRegionId={activeOcrRegionId}
                   error={ocrError}
@@ -597,7 +600,7 @@ function ImageOcrPanel({
         ) : null}
       </div>
       <ScrollArea
-        className="min-h-0 min-w-0 max-w-full flex-1 overflow-hidden"
+        className="min-h-0 min-w-0 max-w-full flex-1 overflow-hidden [&_[data-slot=scroll-area-viewport]>div]:!block [&_[data-slot=scroll-area-viewport]>div]:w-full [&_[data-slot=scroll-area-viewport]>div]:min-w-0 [&_[data-slot=scroll-area-viewport]>div]:max-w-full"
         viewportProps={{ className: "min-w-0 max-w-full overflow-x-hidden" }}
       >
         <div className="w-full min-w-0 max-w-full space-y-2.5 overflow-hidden p-4">
@@ -641,7 +644,7 @@ function ImageOcrPanel({
               >
                 <HugeiconsIcon icon={Copy01Icon} size={13} strokeWidth={2} />
               </Button>
-              <p className="min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere] leading-6">
+              <p className="w-full min-w-0 max-w-full whitespace-pre-wrap break-words break-all [overflow-wrap:anywhere] leading-6">
                 {region.text}
               </p>
             </div>

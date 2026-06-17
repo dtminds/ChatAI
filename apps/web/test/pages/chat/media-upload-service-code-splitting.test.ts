@@ -82,6 +82,34 @@ describe("media upload service code splitting", () => {
     expect(cosConstructorMock).not.toHaveBeenCalled();
     expect(cosUploadFileMock).not.toHaveBeenCalled();
   });
+
+  it("classifies plain-object COS SDK chunk load failures before uploading", async () => {
+    vi.doMock("cos-js-sdk-v5", () => {
+      cosModuleLoadMock();
+      throw {
+        message: "Failed to fetch dynamically imported module",
+      };
+    });
+    const credential = createUploadCredential({
+      allowPerfixs: ["chat-files/"],
+    });
+    const { uploadWorkbenchFile } = await import(
+      "@/pages/chat/api/media-upload-service"
+    );
+    const file = new File(["file-bytes"], "报价单.pdf", {
+      type: "application/pdf",
+    });
+
+    getUploadCredentialMock.mockResolvedValue(credential);
+
+    await expect(uploadWorkbenchFile("conv-001", file)).rejects.toMatchObject({
+      code: MEDIA_UPLOAD_SDK_LOAD_FAILED_CODE,
+      message: "上传组件加载失败，请刷新页面后重试",
+    });
+    expect(cosModuleLoadMock).toHaveBeenCalledTimes(1);
+    expect(cosConstructorMock).not.toHaveBeenCalled();
+    expect(cosUploadFileMock).not.toHaveBeenCalled();
+  });
 });
 
 function mockCosSdkLoadSuccess() {

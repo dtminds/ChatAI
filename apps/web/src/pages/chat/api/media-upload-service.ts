@@ -267,15 +267,19 @@ function isDynamicImportFailure(error: unknown) {
 }
 
 function collectErrorMessages(error: unknown): string[] {
-  if (!(error instanceof Error)) {
+  if (typeof error === "string") {
+    return [error];
+  }
+
+  if (!error || typeof error !== "object" || !("message" in error)) {
     return [];
   }
 
-  const messages = [error.message];
-  const cause = error.cause;
+  const message = (error as { message: unknown }).message;
+  const messages = typeof message === "string" ? [message] : [];
 
-  if (cause instanceof Error) {
-    messages.push(...collectErrorMessages(cause));
+  if ("cause" in error) {
+    messages.push(...collectErrorMessages(error.cause));
   }
 
   return messages;

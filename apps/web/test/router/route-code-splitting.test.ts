@@ -22,6 +22,7 @@ describe("route code splitting", () => {
   afterEach(() => {
     vi.resetModules();
     vi.doUnmock("@/pages/auth/login-page");
+    vi.restoreAllMocks();
   });
 
   it("loads route page modules through dynamic imports", async () => {
@@ -65,5 +66,35 @@ describe("route code splitting", () => {
       await screen.findByRole("alert", { name: "页面加载失败" }),
     ).toBeInTheDocument();
     expect(screen.getByText("请刷新页面后重试")).toBeInTheDocument();
+  });
+
+  it("logs lazy page chunk failures for observability", async () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    const chunkError = new Error("Failed to fetch dynamically imported module");
+    vi.doMock("@/pages/auth/login-page", () => Promise.reject(chunkError));
+
+    const { routerConfig } = await import("@/router");
+    const router = createMemoryRouter(routerConfig, {
+      initialEntries: ["/login"],
+    });
+
+    render(createElement(RouterProvider, { router }));
+
+    await screen.findByRole("alert", { name: "页面加载失败" });
+    const routeErrorCalls = consoleErrorSpy.mock.calls.filter(
+      ([message]) => message === "Route error captured:",
+    );
+    expect(routeErrorCalls).toHaveLength(1);
+    const loggedError = routeErrorCalls[0]?.[1];
+    const loggedMessages = [
+      loggedError instanceof Error ? loggedError.message : "",
+      loggedError instanceof Error && loggedError.cause instanceof Error
+        ? loggedError.cause.message
+        : "",
+    ];
+
+    expect(loggedMessages).toContain(chunkError.message);
   });
 });

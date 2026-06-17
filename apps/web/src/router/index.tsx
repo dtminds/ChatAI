@@ -1,5 +1,5 @@
-import { Suspense, lazy, type ReactNode } from "react";
-import { Navigate, createBrowserRouter } from "react-router-dom";
+import { Suspense, lazy, useEffect, type ReactNode } from "react";
+import { Navigate, createBrowserRouter, useRouteError } from "react-router-dom";
 import { RootLayout } from "@/app/root-layout";
 import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
 
@@ -59,6 +59,12 @@ function withRouteSuspense(element: ReactNode) {
 }
 
 function RouteErrorFallback() {
+  const error = useRouteError();
+
+  useEffect(() => {
+    console.error("Route error captured:", error);
+  }, [error]);
+
   return (
     <main className="flex min-h-svh items-center justify-center bg-background px-6 text-foreground">
       <div

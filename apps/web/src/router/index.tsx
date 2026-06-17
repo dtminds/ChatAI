@@ -2,6 +2,8 @@ import { Navigate, createBrowserRouter } from "react-router-dom";
 import { RootLayout } from "@/app/root-layout";
 import { LoginPage } from "@/pages/auth/login-page";
 import { ChatWorkbenchRoutePage } from "@/pages/chat/chat-workbench-page";
+import { AgentManagementPage } from "@/pages/chat/ai-hosting/agent-management-page";
+import { KnowledgeBasePage } from "@/pages/chat/ai-hosting/knowledge-base-page";
 import { InsightsBusinessPage } from "@/pages/chat/insights/insights-business-page";
 import { InsightsFollowUpsPage } from "@/pages/chat/insights/insights-follow-ups-page";
 import { InsightsOverviewPage } from "@/pages/chat/insights/insights-overview-page";
@@ -61,6 +63,18 @@ export const routerConfig = [
       {
         path: "chat/insights/settings",
         element: <InsightsSettingsPage />,
+      },
+      {
+        path: "chat/ai-hosting",
+        element: <Navigate replace to="/chat/ai-hosting/agents" />,
+      },
+      {
+        path: "chat/ai-hosting/agents",
+        element: <AgentManagementPage />,
+      },
+      {
+        path: "chat/ai-hosting/knowledge",
+        element: <KnowledgeBasePage />,
       },
     ],
   },

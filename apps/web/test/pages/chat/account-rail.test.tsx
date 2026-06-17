@@ -175,6 +175,22 @@ describe("AccountRail", () => {
     expect(within(insightLink).getByText("Beta")).toBeInTheDocument();
   });
 
+  it("links the AI hosting nav item to the agent management entry", () => {
+    render(
+      <AccountRail
+        accounts={accounts}
+        activeAccountId="account-1"
+        currentEmployee={currentEmployee}
+        onSelectAccount={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("link", { name: "AI托管" })).toHaveAttribute(
+      "href",
+      "/chat/ai-hosting",
+    );
+  });
+
   it("keeps the collapsed insight nav link aligned with button nav items", () => {
     render(
       <AccountRail

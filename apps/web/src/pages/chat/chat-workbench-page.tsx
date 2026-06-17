@@ -35,6 +35,8 @@ import {
 import { cn } from "@/lib/utils";
 import {
   MATERIAL_COLLECTION_BIZ_TYPE,
+  type WorkbenchQuickReplyCategoryDto,
+  type WorkbenchQuickReplyDto,
 } from "@chatai/contracts";
 import { notifyAuthSessionChanged } from "@/pages/auth/auth-tokens";
 import { logout } from "@/pages/auth/auth-service";
@@ -64,6 +66,7 @@ import {
 import { useConversationRevealTimer } from "@/pages/chat/hooks/use-conversation-reveal-timer";
 import { useSmartReplyState } from "@/pages/chat/hooks/use-smart-reply-state";
 import { useMaterialCollection } from "@/pages/chat/hooks/use-material-collection";
+import { useQuickReplies } from "@/pages/chat/hooks/use-quick-replies";
 import { useWorkbenchPolling } from "@/pages/chat/hooks/use-workbench-polling";
 import type { PollingPauseReason } from "@/pages/chat/hooks/use-workbench-polling";
 import { useWorkbenchStore } from "@/store/workbench-store";
@@ -88,6 +91,11 @@ import {
   hasConversationComposerDraftContent,
   isConversationListedInWorkbench,
 } from "@/pages/chat/lib/conversation-composer-draft";
+import { QuickReplyCategoryDialog } from "@/pages/chat/components/quick-reply/quick-reply-category-dialog";
+import { QuickReplyFormDialog } from "@/pages/chat/components/quick-reply/quick-reply-form-dialog";
+import { QuickReplyPanel } from "@/pages/chat/components/quick-reply/quick-reply-panel";
+import { buildQuickReplyComposerSegments } from "@/pages/chat/lib/quick-reply-segments";
+import type { QuickReplyFormValues } from "@/pages/chat/hooks/use-quick-replies";
 import { resolveWorkbenchPermissions } from "@/pages/chat/lib/workbench-permissions";
 import { openMessageDownloadUrl } from "@/pages/chat/lib/message-download";
 import { canUseExpiringUrl } from "@/pages/chat/lib/message-url-expiry";
@@ -325,6 +333,23 @@ function ChatWorkbenchContent({
     description?: string;
     title: string;
   } | null>(null);
+  const [quickReplyFormState, setQuickReplyFormState] = useState<
+    | { defaultCategoryId: string | 0; mode: "create" }
+    | { mode: "copy"; quickReply: WorkbenchQuickReplyDto }
+    | { mode: "edit"; quickReply: WorkbenchQuickReplyDto }
+    | null
+  >(null);
+  const [quickReplyCategoryFormState, setQuickReplyCategoryFormState] =
+    useState<
+      | { mode: "create"; parentId: string | 0 }
+      | { category: WorkbenchQuickReplyCategoryDto; mode: "edit" }
+      | null
+    >(null);
+  const [isQuickReplyPanelActive, setIsQuickReplyPanelActive] = useState(false);
+  const quickReplyInitialValues = useMemo(
+    () => getQuickReplyInitialValues(quickReplyFormState),
+    [quickReplyFormState],
+  );
   const [pollingPauseReason, setPollingPauseReason] =
     useState<PollingPauseReason | null>(null);
   const handlePollingPaused = useCallback((reason: PollingPauseReason) => {
@@ -907,6 +932,9 @@ function ChatWorkbenchContent({
     resolvedActiveConversationId: activeConversation?.id,
     sendAgentMessageSegments,
   });
+  const quickReplies = useQuickReplies({
+    enabled: activeView === "chat" && Boolean(activeConversation) && isQuickReplyPanelActive,
+  });
 
   const {
     handleDismissSmartReply,
@@ -1231,6 +1259,85 @@ function ChatWorkbenchContent({
   const handleComposerSegmentsChange = (nextSegments: ComposerSegment[]) => {
     setComposerSegments(nextSegments);
   };
+
+  const handleSelectQuickReply = (quickReply: WorkbenchQuickReplyDto) => {
+    if (!canSendMessage) {
+      toast.warning("当前无法发送消息");
+      return;
+    }
+
+    const { invalidAttachmentCount, segments } =
+      buildQuickReplyComposerSegments(quickReply);
+
+    if (invalidAttachmentCount > 0) {
+      toast.warning("该话术附件数据异常，无法发送");
+      return;
+    }
+
+    if (segments.length === 0) {
+      toast.warning("话术数据异常");
+      return;
+    }
+
+    const nextDraft =
+      segments.find((segment) => segment.type === "text")?.text ?? "";
+
+    setDraft(nextDraft);
+    setComposerSegments(segments);
+    setQuotedMessage(null);
+    composerRef.current?.dispatchCommand(RESTORE_COMPOSER_COMMAND, {
+      segments,
+    });
+    composerRef.current?.focus();
+  };
+
+  const quickReplyPanel = (
+    <QuickReplyPanel
+      activeCategoryId={quickReplies.activeCategoryId}
+      activeScopeType={quickReplies.activeScopeType}
+      activeTopCategoryId={quickReplies.activeTopCategoryId}
+      categories={quickReplies.categories}
+      isLoading={quickReplies.isLoading}
+      isMutating={quickReplies.isMutating}
+      keyword={quickReplies.keyword}
+      quickReplies={quickReplies.quickReplies}
+      quickRepliesByCategoryId={quickReplies.quickRepliesByCategoryId}
+      onCategoryChange={quickReplies.setActiveCategoryId}
+      onCreateCategory={(parentId) =>
+        setQuickReplyCategoryFormState({ mode: "create", parentId })
+      }
+      onCreateQuickReply={(categoryId) => {
+        setQuickReplyFormState({
+          defaultCategoryId: categoryId,
+          mode: "create",
+        });
+      }}
+      onCopyQuickReply={(quickReply) =>
+        setQuickReplyFormState({ mode: "copy", quickReply })
+      }
+      onBottomCategory={quickReplies.bottomCategory}
+      onBottomQuickReply={quickReplies.bottomQuickReply}
+      onDeleteCategory={quickReplies.deleteCategory}
+      onDeleteQuickReply={quickReplies.deleteQuickReply}
+      onEditCategory={(category) =>
+        setQuickReplyCategoryFormState({ category, mode: "edit" })
+      }
+      onEditQuickReply={(quickReply) =>
+        setQuickReplyFormState({ mode: "edit", quickReply })
+      }
+      onImportQuickReplies={quickReplies.importQuickReplies}
+      onKeywordChange={quickReplies.setKeyword}
+      onMoveCategory={quickReplies.moveCategory}
+      onMoveQuickReply={quickReplies.moveQuickReply}
+      onScopeTypeChange={quickReplies.setActiveScopeType}
+      onSelectQuickReply={handleSelectQuickReply}
+      onSortCategories={quickReplies.sortCategories}
+      onSortQuickReplies={quickReplies.sortQuickReplies}
+      onTopCategoryChange={quickReplies.setActiveTopCategoryId}
+      onTopCategory={quickReplies.topCategory}
+      onTopQuickReply={quickReplies.topQuickReply}
+    />
+  );
 
   const handleSelectConversation = async (conversationId: string) => {
     if (conversationId === activeConversationId) {
@@ -1629,6 +1736,8 @@ function ChatWorkbenchContent({
                   onRetryMessage={handleRetryFailedMessage}
                   retryingMessageIds={retryingMessageIds}
                   onSendDraft={handleSendDraft}
+                  onQuickReplyActiveChange={setIsQuickReplyPanelActive}
+                  quickReplyPanel={quickReplyPanel}
                   onDismissScopeTransitionError={() => {
                     setFileUploadTransitionError(undefined);
                     dismissScopeTransitionError();
@@ -1797,6 +1906,56 @@ function ChatWorkbenchContent({
           void handleSubmitMaterialCollection(payload);
         }}
         open={pendingMaterialCollection !== null}
+      />
+      <QuickReplyFormDialog
+        categories={quickReplies.categories}
+        conversationId={activeConversation?.id}
+        initialValues={quickReplyInitialValues}
+        mode={quickReplyFormState?.mode === "edit" ? "edit" : "create"}
+        onOpenChange={(open) => {
+          if (!open) {
+            setQuickReplyFormState(null);
+          }
+        }}
+        onSubmit={(values) => {
+          return handleSubmitQuickReplyForm(
+            quickReplyFormState,
+            values,
+            quickReplies.createQuickReply,
+            quickReplies.updateQuickReply,
+          );
+        }}
+        open={quickReplyFormState !== null}
+      />
+      <QuickReplyCategoryDialog
+        initialTitle={
+          quickReplyCategoryFormState?.mode === "edit"
+            ? quickReplyCategoryFormState.category.title
+            : ""
+        }
+        variant={
+          quickReplyCategoryFormState?.mode === "edit"
+            ? quickReplyCategoryFormState.category.parentId === 0
+              ? "category"
+              : "group"
+            : quickReplyCategoryFormState?.parentId === 0
+              ? "category"
+              : "group"
+        }
+        onOpenChange={(open) => {
+          if (!open) {
+            setQuickReplyCategoryFormState(null);
+          }
+        }}
+        onSubmit={(title) => {
+          return handleSubmitQuickReplyCategoryForm(
+            quickReplyCategoryFormState,
+            title,
+            quickReplies.createCategory,
+            quickReplies.updateCategory,
+          );
+        }}
+        open={quickReplyCategoryFormState !== null}
       />
       <MaterialLibraryDialog
         activeGroupId={activeMaterialLibraryGroupId}
@@ -2057,6 +2216,92 @@ function buildQuotedMessagePreview(
         title: message.content.msgTitle,
       };
   }
+}
+
+function getQuickReplyInitialValues(
+  state:
+    | { defaultCategoryId: string | 0; mode: "create" }
+    | { mode: "copy"; quickReply: WorkbenchQuickReplyDto }
+    | { mode: "edit"; quickReply: WorkbenchQuickReplyDto }
+    | null,
+): QuickReplyFormValues | undefined {
+  if (!state) {
+    return undefined;
+  }
+
+  if (state.mode === "create") {
+    return {
+      attachments: [],
+      categoryId: state.defaultCategoryId,
+      contentText: "",
+      labelColor: "",
+      labelText: "",
+    };
+  }
+
+  if (state.mode === "copy") {
+    return {
+      attachments: [...state.quickReply.attachments],
+      categoryId: state.quickReply.categoryId,
+      contentText: state.quickReply.contentText,
+      labelColor: state.quickReply.labelColor,
+      labelText: state.quickReply.labelText,
+    };
+  }
+
+  return {
+    attachments: state.quickReply.attachments,
+    categoryId: state.quickReply.categoryId,
+    contentText: state.quickReply.contentText,
+    labelColor: state.quickReply.labelColor,
+    labelText: state.quickReply.labelText,
+  };
+}
+
+async function handleSubmitQuickReplyForm(
+  state:
+    | { defaultCategoryId: string | 0; mode: "create" }
+    | { mode: "copy"; quickReply: WorkbenchQuickReplyDto }
+    | { mode: "edit"; quickReply: WorkbenchQuickReplyDto }
+    | null,
+  values: QuickReplyFormValues,
+  createQuickReply: (values: QuickReplyFormValues) => Promise<void>,
+  updateQuickReply: (
+    quickReplyId: string,
+    values: QuickReplyFormValues,
+    scopeType?: WorkbenchQuickReplyDto["scopeType"],
+  ) => Promise<void>,
+) {
+  if (state?.mode === "edit") {
+    await updateQuickReply(state.quickReply.id, values, state.quickReply.scopeType);
+    return;
+  }
+
+  await createQuickReply(values);
+}
+
+async function handleSubmitQuickReplyCategoryForm(
+  state:
+    | { mode: "create"; parentId: string | 0 }
+    | { category: WorkbenchQuickReplyCategoryDto; mode: "edit" }
+    | null,
+  title: string,
+  createCategory: (input: { parentId: string | 0; title: string }) => Promise<void>,
+  updateCategory: (
+    categoryId: string,
+    title: string,
+    scopeType?: WorkbenchQuickReplyCategoryDto["scopeType"],
+  ) => Promise<void>,
+) {
+  if (state?.mode === "edit") {
+    await updateCategory(state.category.id, title, state.category.scopeType);
+    return;
+  }
+
+  await createCategory({
+    parentId: state?.mode === "create" ? state.parentId : 0,
+    title,
+  });
 }
 
 function getSendErrorCode(error: unknown) {

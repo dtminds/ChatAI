@@ -1,8 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MATERIAL_COLLECTION_BIZ_TYPE } from "@chatai/contracts";
+import {
+  MATERIAL_COLLECTION_BIZ_TYPE,
+  QUICK_REPLY_SCOPE_TYPE,
+  type WorkbenchQuickReplyCategoryContentResponse,
+  type WorkbenchQuickReplyDto,
+} from "@chatai/contracts";
 import { createMockWorkbenchService, setWorkbenchService } from "@/pages/chat/api/workbench-service";
+import { useAuthStore } from "@/store/auth-store";
 import { useWorkbenchStore } from "@/store/workbench-store";
 import {
   installChatWorkbenchTestEnvironment,
@@ -102,6 +108,95 @@ async function expectSentConversationMessage(
   return sentMessage;
 }
 
+function installQuickReplyService(quickReplies: WorkbenchQuickReplyDto[]) {
+  const baseService = createMockWorkbenchService();
+
+  setWorkbenchService({
+    ...baseService,
+    async listQuickReplyCategories(request) {
+      if (request.scopeType !== QUICK_REPLY_SCOPE_TYPE.ENTERPRISE) {
+        return { categories: [] };
+      }
+
+      return {
+        categories: [
+          {
+            id: "quick-reply-category-1",
+            parentId: 0,
+            scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+            sort: 100,
+            title: "售前",
+          },
+          {
+            id: "quick-reply-category-2",
+            parentId: "quick-reply-category-1",
+            scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+            sort: 90,
+            title: "活动",
+          },
+        ],
+      };
+    },
+    async listQuickReplyCategoryContent(request) {
+      if (
+        request.scopeType !== QUICK_REPLY_SCOPE_TYPE.ENTERPRISE ||
+        request.parentCategoryId !== "quick-reply-category-1"
+      ) {
+        const response: WorkbenchQuickReplyCategoryContentResponse = {
+          categories: [],
+          limits: {
+            categories: 50,
+            quickReplies: 10_000,
+          },
+          quickRepliesByCategoryId: {},
+          truncated: {
+            categories: false,
+            quickReplies: false,
+          },
+        };
+
+        return response;
+      }
+
+      const response: WorkbenchQuickReplyCategoryContentResponse = {
+        categories: [
+          {
+            id: "quick-reply-category-2",
+            parentId: "quick-reply-category-1",
+            scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+            sort: 90,
+            title: "活动",
+          },
+        ],
+        limits: {
+          categories: 50,
+          quickReplies: 10_000,
+        },
+        quickRepliesByCategoryId: {
+          "quick-reply-category-2": quickReplies,
+        },
+        truncated: {
+          categories: false,
+          quickReplies: false,
+        },
+      };
+
+      return response;
+    },
+    async listQuickReplies(request) {
+      return {
+        items: [],
+        pagination: {
+          hasMore: false,
+          page: request.page ?? 1,
+          pageSize: request.pageSize ?? 50,
+          total: 0,
+        },
+      };
+    },
+  });
+}
+
 describe("ChatWorkbenchPage composer flows", () => {
   beforeEach(() => {
     vi.useRealTimers();
@@ -134,6 +229,110 @@ describe("ChatWorkbenchPage composer flows", () => {
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
     expect(screen.getByRole("button", { name: "发送消息" })).toBeInTheDocument();
+  });
+
+  it("fills composer from a quick reply with text and an H5 attachment", async () => {
+    const user = userEvent.setup();
+    installQuickReplyService([
+      {
+        attachments: [
+          {
+            content: {
+              desc: "活动说明",
+              href: "https://example.com/activity",
+              title: "活动链接",
+            },
+            materialCollectionId: "material-h5-quick-reply",
+            msgid: "msg-h5-quick-reply",
+            type: "h5",
+          },
+        ],
+        categoryId: "quick-reply-category-2",
+        contentText: "您好，这是活动信息",
+        id: "quick-reply-1",
+        labelColor: "orange",
+        labelText: "活动",
+        scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+        sort: 100,
+      },
+    ]);
+
+    renderChatWorkbenchPage();
+
+    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(await screen.findByRole("tab", { name: "快捷话术" }));
+    await user.click(await screen.findByText("您好，这是活动信息"));
+
+    expect(composer).toHaveTextContent("您好，这是活动信息");
+    expect(screen.getByText("活动链接")).toBeInTheDocument();
+  });
+
+  it("does not fill composer when a quick reply attachment is invalid", async () => {
+    const user = userEvent.setup();
+
+    installQuickReplyService([
+      {
+        attachments: [
+          {
+            content: {},
+            type: "image",
+          },
+        ],
+        categoryId: "quick-reply-category-2",
+        contentText: "只有文本",
+        id: "quick-reply-invalid-attachment",
+        labelColor: "",
+        labelText: "",
+        scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+        sort: 100,
+      },
+    ]);
+
+    renderChatWorkbenchPage();
+
+    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(await screen.findByRole("tab", { name: "快捷话术" }));
+    await user.click(await screen.findByText("只有文本"));
+
+    expect(workbenchToastWarningMock).toHaveBeenCalledWith(
+      "该话术附件数据异常，无法发送",
+    );
+    expect(composer).not.toHaveTextContent("只有文本");
+  });
+
+  it("shows feedback when selecting a quick reply while messages cannot be sent", async () => {
+    const user = userEvent.setup();
+
+    useAuthStore.getState().setSession({
+      accountType: "sub",
+      displayName: "客服（只读）",
+      permissions: ["chat.access"],
+      role: "viewer",
+      subUserId: "sub-user-001",
+      uid: 1,
+    });
+    installQuickReplyService([
+      {
+        attachments: [],
+        categoryId: "quick-reply-category-2",
+        contentText: "只读用户话术",
+        id: "quick-reply-readonly",
+        labelColor: "",
+        labelText: "",
+        scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+        sort: 100,
+      },
+    ]);
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", {
+      name: "当前账号无发送权限，暂时无法发送消息",
+    });
+    await user.click(await screen.findByRole("tab", { name: "快捷话术" }));
+    await user.click(await screen.findByText("只读用户话术"));
+
+    expect(workbenchToastWarningMock).toHaveBeenCalledWith("当前无法发送消息");
   });
 
   it("sends a selected quote with the composed text", async () => {
@@ -907,56 +1106,9 @@ describe("ChatWorkbenchPage composer flows", () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();
     const sendMessage = vi.fn(baseService.sendMessage);
-    const listMaterialGroups = vi.fn(async (request) => {
-      if (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM) {
-        return baseService.listMaterialGroups(request);
-      }
-
-      return {
-        groups: [
-          {
-            bizType: MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM,
-            id: "group-mini",
-            sort: 100,
-            title: "小程序分组",
-          },
-        ],
-      };
-    });
-    const listMaterialCollections = vi.fn(async (request) => {
-      if (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM) {
-        return baseService.listMaterialCollections(request);
-      }
-
-      return {
-        items: [
-          {
-            bizType: MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM,
-            content: {
-              appName: "企微助手",
-              title: "客户跟进小程序",
-            },
-            contentType: "mini-program" as const,
-            groupId: "group-mini",
-            id: "material-mini-001",
-            messageId: "msg-mini-001",
-            sort: 1,
-            title: "客户跟进小程序",
-          },
-        ],
-        pagination: {
-          hasMore: false,
-          page: request.page ?? 1,
-          pageSize: 100,
-          total: 1,
-        },
-      };
-    });
 
     setWorkbenchService({
       ...baseService,
-      listMaterialCollections,
-      listMaterialGroups,
       sendMessage,
     });
 
@@ -965,7 +1117,9 @@ describe("ChatWorkbenchPage composer flows", () => {
     await screen.findByRole("textbox", { name: "请输入消息……" });
     await user.click(screen.getByRole("button", { name: "收藏小程序" }));
     await user.click(
-      await screen.findByRole("button", { name: /选择素材 客户跟进小程序/ }),
+      await screen.findByRole("button", {
+        name: /选择素材 预约直播抽秋天的第一杯奶茶/,
+      }),
     );
     await user.click(screen.getByRole("button", { name: "发送" }));
 
@@ -975,7 +1129,7 @@ describe("ChatWorkbenchPage composer flows", () => {
           conversationId: "conv-001",
           seatId: "drc",
           segment: expect.objectContaining({
-            materialCollectionId: "material-mini-001",
+            materialCollectionId: "mock-material-msg-002",
             type: "weapp",
           }),
         }),
@@ -985,8 +1139,8 @@ describe("ChatWorkbenchPage composer flows", () => {
     expect(sendMessage.mock.calls[0]?.[0].segment).not.toHaveProperty("url");
     await expectSentConversationMessage("conv-001", sendMessage, {
       content: {
-        appName: "企微助手",
-        title: "客户跟进小程序",
+        appName: "学好惊喜社",
+        title: "预约直播抽秋天的第一杯奶茶",
         type: "mini-program",
       },
       role: "agent",

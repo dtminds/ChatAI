@@ -3203,6 +3203,13 @@ describe("WorkbenchRepository", () => {
             });
           }
 
+          if (table === "xy_wap_embed_customer_bind_relation") {
+            return createQueryBuilder({
+              remark: "客户备注",
+              third_external_userid: "external-001",
+            });
+          }
+
           throw new Error(`unexpected table ${table}`);
         },
       } as never,
@@ -3218,11 +3225,13 @@ describe("WorkbenchRepository", () => {
       "xy_wap_embed_conversation as conversation",
       "xy_wap_embed_msg_audit_info",
       "xy_wap_embed_contact",
+      "xy_wap_embed_customer_bind_relation",
     ]);
     expect(page.items[0]).toMatchObject({
       conversationId: "88",
       customerAvatar: "https://example.com/avatar.png",
-      customerName: "客户名",
+      customerName: "客户备注",
+      contactOriginalName: "微信昵称：客户名",
       lastMessage: "hello",
     });
   });
@@ -3294,7 +3303,7 @@ describe("WorkbenchRepository", () => {
     });
   });
 
-  it("uses contact name for single chat display without customer bind relation", async () => {
+  it("falls back to contact name when bind remark is missing", async () => {
     const observedTables: string[] = [];
     const repository = new WorkbenchRepository(
       {
@@ -3329,6 +3338,10 @@ describe("WorkbenchRepository", () => {
             });
           }
 
+          if (table === "xy_wap_embed_customer_bind_relation") {
+            return createQueryBuilder([]);
+          }
+
           if (
             table === "xy_wap_embed_msg_audit_info" ||
             table === "xy_wap_embed_group_seat"
@@ -3346,70 +3359,12 @@ describe("WorkbenchRepository", () => {
       mode: "single",
     });
 
-    expect(observedTables).not.toContain("xy_wap_embed_customer_bind_relation");
+    expect(observedTables).toContain("xy_wap_embed_customer_bind_relation");
     expect(page.items[0]).toMatchObject({
       bizStatus: 1,
       conversationId: "88",
       customerName: "客户名",
-    });
-  });
-
-  it("always marks private conversations as active without customer bind relation", async () => {
-    const observedTables: string[] = [];
-    const repository = new WorkbenchRepository(
-      {
-        selectFrom(table: string) {
-          observedTables.push(table);
-
-          if (table === "xy_wap_embed_user_seat") {
-            return createQueryBuilder({
-              id: 12,
-              platform: 5,
-              third_userid: "seat-user-001",
-              uid: 9001,
-            });
-          }
-
-          if (table === "xy_wap_embed_conversation as conversation") {
-            return createQueryBuilder([
-              createConversationRow({
-                id: 88,
-                third_external_userid: "external-001",
-              }),
-            ]);
-          }
-
-          if (table === "xy_wap_embed_contact") {
-            return createQueryBuilder({
-              avatar: "https://example.com/avatar.png",
-              biz_status: 1,
-              name: "客户名",
-              real_name: "客户实名",
-              third_external_userid: "external-001",
-            });
-          }
-
-          if (
-            table === "xy_wap_embed_msg_audit_info" ||
-            table === "xy_wap_embed_group_seat"
-          ) {
-            return createQueryBuilder([]);
-          }
-
-          throw new Error(`unexpected table ${table}`);
-        },
-      } as never,
-    );
-
-    const page = await repository.listConversations("12", {
-      limit: 30,
-      mode: "single",
-    });
-
-    expect(observedTables).not.toContain("xy_wap_embed_customer_bind_relation");
-    expect(page.items[0]).toMatchObject({
-      bizStatus: 1,
-      conversationId: "88",
+      contactOriginalName: undefined,
     });
   });
 
@@ -3492,10 +3447,12 @@ describe("WorkbenchRepository", () => {
       expect.objectContaining({
         conversationId: "88",
         customerName: "客户名一",
+        contactOriginalName: undefined,
       }),
       expect.objectContaining({
         conversationId: "89",
         customerName: "未知客户",
+        contactOriginalName: undefined,
       }),
     ]);
   });

@@ -101,6 +101,7 @@ export type MessageHydrationSources = {
   >;
 };
 
+const WECHAT_NICKNAME_SUBTITLE_PREFIX = "微信昵称：";
 const UNSUPPORTED_MESSAGE_DISPLAY_TEXT = "[暂不支持显示该消息]";
 const UNSUPPORTED_CHAT_RECORD_DISPLAY_TEXT = "[暂不支持展示该聊天记录]";
 const CHAT_RECORD_LOADING_WINDOW_MS = 15_000;
@@ -140,11 +141,18 @@ export function mapConversationRow(
     mode === "group" && groupRemark && groupName && groupRemark !== groupName
       ? groupName
       : undefined;
-  const contactOriginalNameTrimmed = row.contact_original_name?.trim();
-  const contactOriginalName =
-    mode !== "group" && contactOriginalNameTrimmed && customerName !== contactOriginalNameTrimmed
-      ? contactOriginalNameTrimmed
+  const contactWechatNickname = row.contact_original_name?.trim();
+  const contactOriginalNameSubtitle =
+    mode !== "group" && contactWechatNickname
+      ? `${WECHAT_NICKNAME_SUBTITLE_PREFIX}${contactWechatNickname}`
       : undefined;
+  const shouldHideContactOriginalName =
+    !contactOriginalNameSubtitle ||
+    contactOriginalNameSubtitle === customerName ||
+    contactWechatNickname === customerName;
+  const contactOriginalName = shouldHideContactOriginalName
+    ? undefined
+    : contactOriginalNameSubtitle;
   const customerAvatar =
     mode === "group" ? row.group_avatar ?? "" : row.customer_avatar ?? "";
 

@@ -3,6 +3,8 @@ node_modules
 .worktrees
 artifacts/
 dist
+apps/web/.tmp
+apps/web/dist-ocr-runtime
 .vite
 .DS_Store
 *.tsbuildinfo

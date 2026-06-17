@@ -91,6 +91,19 @@ describe("vite config env", () => {
     });
   });
 
+  it("loads PaddleOCR runtime from the versioned CDN module in production builds", () => {
+    const config = createViteConfig("production");
+    const rollupOptions = config.build?.rollupOptions;
+
+    expect(rollupOptions?.external).toContain("@paddleocr/paddleocr-js");
+    expect(rollupOptions?.output).toMatchObject({
+      paths: {
+        "@paddleocr/paddleocr-js":
+          "https://b5.bokr.com.cn/dist/ocr/paddleocr-js/0.4.2/index.mjs",
+      },
+    });
+  });
+
   it("rejects malformed dev server ports", () => {
     expect(() =>
       getViteDevServerConfig({ VITE_DEV_SERVER_PORT: "8086abc" }),

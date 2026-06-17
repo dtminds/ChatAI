@@ -31,6 +31,12 @@ const ortWasmBaseUrl =
 const paddleOcrModelBaseUrl =
   import.meta.env.VITE_OCR_PADDLE_MODEL_BASE_URL?.trim() ||
   "https://b5.bokr.com.cn/dist/ocr/paddleocr-js/0.4.2/";
+const paddleOcrModuleUrl =
+  import.meta.env.VITE_OCR_PADDLE_MODULE_URL?.trim() ||
+  "https://b5.bokr.com.cn/dist/ocr/paddleocr-js/0.4.2/index.mjs";
+const paddleOcrWorkerUrl =
+  import.meta.env.VITE_OCR_PADDLE_WORKER_URL?.trim() ||
+  new URL("assets/worker-entry-C9UNuyOJ.js", paddleOcrModuleUrl).href;
 const paddleOcrModelBasePath = ensureTrailingSlash(paddleOcrModelBaseUrl);
 
 const ocrCreateOptions: LocalPaddleOcrCreateOptions = {
@@ -45,7 +51,9 @@ const ocrCreateOptions: LocalPaddleOcrCreateOptions = {
     url: `${paddleOcrModelBasePath}PP-OCRv6_tiny_rec_onnx_infer.tar`,
   },
   textRecognitionModelName: "PP-OCRv6_tiny_rec",
-  worker: true,
+  worker: {
+    createWorker: createPaddleOcrWorker,
+  },
 };
 const fallbackOcrCreateOptions = {
   ...ocrCreateOptions,
@@ -107,6 +115,18 @@ function isWorkerInitializationError(error: unknown) {
 
 function ensureTrailingSlash(value: string) {
   return value.endsWith("/") ? value : `${value}/`;
+}
+
+function createPaddleOcrWorker() {
+  const workerModule = new Blob([`import ${JSON.stringify(paddleOcrWorkerUrl)};\n`], {
+    type: "text/javascript",
+  });
+  const workerUrl = URL.createObjectURL(workerModule);
+  const worker = new Worker(workerUrl, { type: "module" });
+
+  URL.revokeObjectURL(workerUrl);
+
+  return worker;
 }
 
 function loadImageForOcr(input: RecognizeImageTextInput) {

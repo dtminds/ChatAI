@@ -3,6 +3,8 @@ import { recognizeImageText } from "@/pages/chat/lib/image-ocr";
 
 const ortWasmBaseUrl = "https://b5.bokr.com.cn/dist/ocr/onnxruntime-web/1.26.0/";
 const paddleOcrModelBaseUrl = "https://b5.bokr.com.cn/dist/ocr/paddleocr-js/0.4.2/";
+const paddleOcrWorkerUrl =
+  "https://b5.bokr.com.cn/dist/ocr/paddleocr-js/0.4.2/assets/worker-entry-C9UNuyOJ.js";
 const paddleOcrModelCreateOptions = {
   textDetectionModelAsset: {
     url: `${paddleOcrModelBaseUrl}PP-OCRv6_tiny_det_onnx_infer.tar`,
@@ -12,6 +14,12 @@ const paddleOcrModelCreateOptions = {
     url: `${paddleOcrModelBaseUrl}PP-OCRv6_tiny_rec_onnx_infer.tar`,
   },
   textRecognitionModelName: "PP-OCRv6_tiny_rec",
+};
+
+type CreateWorkerOptions = {
+  worker?: boolean | {
+    createWorker?: () => Worker;
+  };
 };
 
 const { create, predict } = vi.hoisted(() => {
@@ -26,11 +34,27 @@ const { create, predict } = vi.hoisted(() => {
   };
 });
 
+const { createObjectUrlMock, revokeObjectUrlMock } = vi.hoisted(() => ({
+  createObjectUrlMock: vi.fn(() => "blob:https://chat.example.com/ocr-worker"),
+  revokeObjectUrlMock: vi.fn(),
+}));
+
 vi.mock("@paddleocr/paddleocr-js", () => ({
   PaddleOCR: {
     create,
   },
 }));
+
+const WorkerMock = vi.fn(function WorkerMock(
+  this: Worker,
+  url: string | URL,
+  options?: WorkerOptions,
+) {
+  Object.assign(this, {
+    options,
+    url: String(url),
+  });
+});
 
 class ImageMock {
   alt = "";
@@ -54,8 +78,20 @@ const createdImages: ImageMock[] = [];
 describe("recognizeImageText", () => {
   beforeEach(() => {
     create.mockClear();
+    WorkerMock.mockClear();
+    createObjectUrlMock.mockClear();
+    revokeObjectUrlMock.mockClear();
     predict.mockReset();
     createdImages.length = 0;
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: createObjectUrlMock,
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: revokeObjectUrlMock,
+    });
+    vi.stubGlobal("Worker", WorkerMock);
     vi.stubGlobal("Image", class extends ImageMock {
       constructor() {
         super();
@@ -109,7 +145,24 @@ describe("recognizeImageText", () => {
         wasmPaths: ortWasmBaseUrl,
       },
       ...paddleOcrModelCreateOptions,
-      worker: true,
+      worker: {
+        createWorker: expect.any(Function),
+      },
+    });
+    const createOptions = (create.mock.calls as unknown as Array<[CreateWorkerOptions]>)[0]?.[0];
+    const createWorker =
+      typeof createOptions?.worker === "object"
+        ? createOptions.worker.createWorker
+        : undefined;
+    expect(createWorker).toEqual(expect.any(Function));
+    createWorker?.();
+    const workerBootstrap = (createObjectUrlMock.mock.calls as unknown as Array<[Blob]>)[0]?.[0];
+    expect(workerBootstrap).toBeInstanceOf(Blob);
+    await expect(workerBootstrap.text()).resolves.toBe(
+      `import ${JSON.stringify(paddleOcrWorkerUrl)};\n`,
+    );
+    expect(WorkerMock).toHaveBeenCalledWith("blob:https://chat.example.com/ocr-worker", {
+      type: "module",
     });
     expect(predict).toHaveBeenCalledTimes(2);
     expect(createdImages).toHaveLength(2);
@@ -233,7 +286,9 @@ describe("recognizeImageText", () => {
         wasmPaths: ortWasmBaseUrl,
       },
       ...paddleOcrModelCreateOptions,
-      worker: true,
+      worker: {
+        createWorker: expect.any(Function),
+      },
     });
     expect(create).toHaveBeenNthCalledWith(2, {
       ortOptions: {

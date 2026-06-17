@@ -77,6 +77,87 @@ describe("workbench MySQL mappers", () => {
     expect(conversation.verified).toBe(false);
   });
 
+  it("maps single chat original name as wechat nickname subtitle", () => {
+    expect(
+      mapConversationRow({
+        chat_type: 1,
+        create_time: null,
+        customer_avatar: "",
+        customer_name: "客户备注",
+        contact_original_name: "微信原始名",
+        group_avatar: "",
+        group_name: "",
+        id: 88,
+        last_message_content: null,
+        last_message_type: null,
+        last_msgtime: null,
+        pinned_time: 0,
+        seat_id: 12,
+        third_external_userid: "external-1",
+        third_group_id: "",
+        third_userid: "third-user-1",
+        unread_cnt: 0,
+      }),
+    ).toMatchObject({
+      customerName: "客户备注",
+      contactOriginalName: "微信昵称：微信原始名",
+    });
+  });
+
+  it("hides wechat nickname subtitle when remark matches contact name", () => {
+    expect(
+      mapConversationRow({
+        chat_type: 1,
+        create_time: null,
+        customer_avatar: "",
+        customer_name: "潘二抽",
+        contact_original_name: "潘二抽",
+        group_avatar: "",
+        group_name: "",
+        id: 88,
+        last_message_content: null,
+        last_message_type: null,
+        last_msgtime: null,
+        pinned_time: 0,
+        seat_id: 12,
+        third_external_userid: "external-1",
+        third_group_id: "",
+        third_userid: "third-user-1",
+        unread_cnt: 0,
+      }),
+    ).toMatchObject({
+      customerName: "潘二抽",
+      contactOriginalName: undefined,
+    });
+  });
+
+  it("hides wechat nickname subtitle when it matches the primary display name", () => {
+    expect(
+      mapConversationRow({
+        chat_type: 1,
+        create_time: null,
+        customer_avatar: "",
+        customer_name: "微信昵称：张三",
+        contact_original_name: "张三",
+        group_avatar: "",
+        group_name: "",
+        id: 88,
+        last_message_content: null,
+        last_message_type: null,
+        last_msgtime: null,
+        pinned_time: 0,
+        seat_id: 12,
+        third_external_userid: "external-1",
+        third_group_id: "",
+        third_userid: "third-user-1",
+        unread_cnt: 0,
+      }),
+    ).toMatchObject({
+      customerName: "微信昵称：张三",
+      contactOriginalName: undefined,
+    });
+  });
+
   it("defaults conversation biz status to hidden when metadata is missing", () => {
     const conversation = mapConversationRow({
       chat_type: 1,

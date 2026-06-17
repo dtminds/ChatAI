@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { createElement } from "react";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -66,6 +66,34 @@ describe("route code splitting", () => {
       await screen.findByRole("alert", { name: "页面加载失败" }),
     ).toBeInTheDocument();
     expect(screen.getByText("请刷新页面后重试")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "刷新页面" }),
+    ).toBeInTheDocument();
+  });
+
+  it("reloads the page when the route error refresh button is clicked", async () => {
+    const reloadMock = vi.fn();
+    const locationSpy = vi
+      .spyOn(window, "location", "get")
+      .mockReturnValue({
+        ...window.location,
+        reload: reloadMock,
+      });
+    vi.doMock("@/pages/auth/login-page", () =>
+      Promise.reject(new Error("Failed to fetch dynamically imported module")),
+    );
+
+    const { routerConfig } = await import("@/router");
+    const router = createMemoryRouter(routerConfig, {
+      initialEntries: ["/login"],
+    });
+
+    render(createElement(RouterProvider, { router }));
+
+    fireEvent.click(await screen.findByRole("button", { name: "刷新页面" }));
+
+    expect(reloadMock).toHaveBeenCalledTimes(1);
+    locationSpy.mockRestore();
   });
 
   it("logs lazy page chunk failures for observability", async () => {

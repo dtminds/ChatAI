@@ -271,12 +271,18 @@ function collectErrorMessages(error: unknown): string[] {
     return [error];
   }
 
-  if (!error || typeof error !== "object" || !("message" in error)) {
+  if (!error || typeof error !== "object") {
     return [];
   }
 
-  const message = (error as { message: unknown }).message;
-  const messages = typeof message === "string" ? [message] : [];
+  const messages: string[] = [];
+  const message = "message" in error
+    ? (error as { message: unknown }).message
+    : undefined;
+
+  if (typeof message === "string") {
+    messages.push(message);
+  }
 
   if ("cause" in error) {
     messages.push(...collectErrorMessages(error.cause));

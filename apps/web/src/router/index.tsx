@@ -1,6 +1,7 @@
 import { Suspense, lazy, useEffect, type ReactNode } from "react";
 import { Navigate, createBrowserRouter, useRouteError } from "react-router-dom";
 import { RootLayout } from "@/app/root-layout";
+import { Button } from "@/components/ui/button";
 import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
 
 const LoginPage = lazy(() =>
@@ -74,6 +75,15 @@ function RouteErrorFallback() {
       >
         <h1 className="text-base font-medium text-foreground">页面加载失败</h1>
         <p className="mt-2 text-sm text-muted-foreground">请刷新页面后重试</p>
+        <Button
+          className="mt-4"
+          onClick={() => {
+            window.location.reload();
+          }}
+          type="button"
+        >
+          刷新页面
+        </Button>
       </div>
     </main>
   );

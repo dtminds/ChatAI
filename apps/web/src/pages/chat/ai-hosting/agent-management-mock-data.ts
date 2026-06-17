@@ -79,3 +79,49 @@ export const mockAgents: AgentRecord[] = [
     knowledgeBases: ["彩妆精选"],
   },
 ];
+
+export type ApplicationScopeAccount = {
+  associatedAgentId: string | null;
+  autoHostingEnabled: boolean;
+  id: string;
+  name: string;
+  scriptRecommendationEnabled: boolean;
+};
+
+const applicationScopeAgentLabels: Record<string, string> = {
+  "agent-skincare": "护肤",
+  "agent-makeup": "彩妆",
+  "agent-after-sales": "售后",
+};
+
+export function resolveApplicationScopeAgentLabel(agentId: string | null) {
+  if (!agentId) {
+    return "-";
+  }
+
+  return applicationScopeAgentLabels[agentId] ?? mockAgents.find((agent) => agent.id === agentId)?.name ?? "-";
+}
+
+export const mockApplicationScopeAccounts: ApplicationScopeAccount[] = [
+  {
+    id: "wecom-account-1",
+    name: "小助理1",
+    associatedAgentId: null,
+    autoHostingEnabled: false,
+    scriptRecommendationEnabled: false,
+  },
+  {
+    id: "wecom-account-2",
+    name: "小助理2",
+    associatedAgentId: "agent-skincare",
+    autoHostingEnabled: true,
+    scriptRecommendationEnabled: true,
+  },
+  {
+    id: "wecom-account-3",
+    name: "小助理3",
+    associatedAgentId: "agent-makeup",
+    autoHostingEnabled: true,
+    scriptRecommendationEnabled: true,
+  },
+];

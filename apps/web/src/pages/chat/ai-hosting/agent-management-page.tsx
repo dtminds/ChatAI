@@ -1,16 +1,18 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Add01Icon, Book04Icon, Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ApplicationScopePanel } from "./agent-management-application-scope";
 import { AgentTable } from "./agent-management-agent-table";
 import { mockAgentMetricsByPeriod, mockAgents, type AgentStatsPeriod } from "./agent-management-mock-data";
 import { AgentOverviewSection } from "./agent-management-overview";
 import { AiHostingLayout, AiHostingPageHeader } from "./ai-hosting-layout";
 
 export function AgentManagementPage() {
+  const navigate = useNavigate();
   const [statsPeriod, setStatsPeriod] = useState<AgentStatsPeriod>("today");
   const [agents] = useState(mockAgents);
   const [agentSearchQuery, setAgentSearchQuery] = useState("");
@@ -26,6 +28,10 @@ export function AgentManagementPage() {
 
     return agents.filter((agent) => agent.name.toLowerCase().includes(normalizedQuery));
   }, [agentSearchQuery, agents]);
+
+  function handleGoToAddAgent() {
+    navigate("/chat/ai-hosting/agents/new");
+  }
 
   return (
     <AiHostingLayout title="Agent管理">
@@ -84,7 +90,7 @@ export function AgentManagementPage() {
           </TabsContent>
 
           <TabsContent className="mt-4 space-y-4" value="scope">
-            <p className="text-sm text-muted-foreground">功能建设中</p>
+            <ApplicationScopePanel agents={agents} onGoToAddAgent={handleGoToAddAgent} />
           </TabsContent>
         </Tabs>
       </div>

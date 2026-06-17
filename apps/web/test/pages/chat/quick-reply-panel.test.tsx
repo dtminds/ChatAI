@@ -1653,6 +1653,32 @@ describe("QuickReplyPanel", () => {
     );
   });
 
+  it("disables adding sphfeed attachments from the quick reply form", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <QuickReplyFormDialog
+        categories={categories}
+        initialValues={createQuickReplyInitialValues()}
+        onOpenChange={vi.fn()}
+        onSubmit={vi.fn()}
+        open
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "添加附件" }));
+
+    const sphfeedMenuItem = screen.getByRole("menuitem", { name: "视频号" });
+
+    expect(sphfeedMenuItem).toHaveAttribute("aria-disabled", "true");
+
+    await user.click(sphfeedMenuItem);
+
+    expect(
+      screen.queryByRole("dialog", { name: "收录的视频号" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("previews attachment content from the form dialog", async () => {
     const user = userEvent.setup();
 

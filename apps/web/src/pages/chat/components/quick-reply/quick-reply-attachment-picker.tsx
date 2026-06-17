@@ -162,13 +162,7 @@ export function QuickReplyAttachmentPicker({
                         <MiniProgramMark className="!size-3.5" />
                         小程序
                       </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() =>
-                          setActivePickerBizType(
-                            MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED,
-                          )
-                        }
-                      >
+                      <DropdownMenuItem disabled>
                         <SphFeedMark className="size-4" />
                         视频号
                       </DropdownMenuItem>

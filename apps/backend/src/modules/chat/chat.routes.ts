@@ -38,6 +38,10 @@ import type {
   WorkbenchQuickReplySortRequest,
   WorkbenchQuickReplyUpdateRequest,
 } from "@chatai/contracts";
+import {
+  QUICK_REPLY_CATEGORY_CONTENT_ITEM_LIMIT,
+  QUICK_REPLY_CHILD_CATEGORY_LIMIT,
+} from "@chatai/contracts";
 import { Type, type Static } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { WorkbenchService } from "./workbench.service.js";
@@ -498,7 +502,9 @@ const QuickReplyCategoryMoveBodySchema = Type.Object({
 });
 
 const QuickReplyCategorySortBodySchema = Type.Object({
-  categoryIds: Type.Array(Type.String({ maxLength: 64, minLength: 1 })),
+  categoryIds: Type.Array(Type.String({ maxLength: 64, minLength: 1 }), {
+    maxItems: QUICK_REPLY_CHILD_CATEGORY_LIMIT,
+  }),
   parentId: Type.String({ maxLength: 64, minLength: 1 }),
   scopeType: QuickReplyScopeTypeSchema,
 });
@@ -561,7 +567,9 @@ const QuickReplyMoveBodySchema = Type.Object({
 
 const QuickReplySortBodySchema = Type.Object({
   categoryId: Type.String({ maxLength: 64, minLength: 1 }),
-  quickReplyIds: Type.Array(Type.String({ maxLength: 64, minLength: 1 })),
+  quickReplyIds: Type.Array(Type.String({ maxLength: 64, minLength: 1 }), {
+    maxItems: QUICK_REPLY_CATEGORY_CONTENT_ITEM_LIMIT,
+  }),
   scopeType: QuickReplyScopeTypeSchema,
 });
 

@@ -727,6 +727,32 @@ describe("ChatWorkbenchPage composer flows", () => {
     });
   });
 
+  it("shows a specific fallback when the upload SDK chunk cannot load", async () => {
+    const file = new File(["file-bytes"], "报价单.pdf", {
+      type: "application/pdf",
+    });
+    vi.mocked(mediaUploadMocks.uploadWorkbenchFile).mockRejectedValue({
+      code: "MEDIA_UPLOAD_SDK_LOAD_FAILED",
+      message: "上传组件加载失败，请刷新页面后重试",
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    fireEvent.change(screen.getByLabelText("选择文件"), {
+      target: {
+        files: [file],
+      },
+    });
+
+    expect(
+      await screen.findByRole("alertdialog", {
+        name: "上传组件加载失败，请刷新页面后重试",
+      }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("文件上传失败，请稍后重试")).not.toBeInTheDocument();
+  });
+
   it("switches to collected expressions from the WeChat emoji picker footer and sends the selected expression", async () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();

@@ -1,9 +1,13 @@
-import COS from "cos-js-sdk-v5";
+import type COS from "cos-js-sdk-v5";
 import { getUploadCredential } from "@/pages/chat/api/workbench-gateway";
 import {
   formatFileSize,
   getSupportedFileExtension,
 } from "@/pages/chat/lib/composer-file-files";
+import {
+  MEDIA_UPLOAD_SDK_LOAD_FAILED_CODE,
+  MEDIA_UPLOAD_SDK_LOAD_FAILED_MESSAGE,
+} from "@/pages/chat/api/media-upload-errors";
 import type {
   ComposerImageSegment,
   ComposerFileSegment,
@@ -16,6 +20,12 @@ const DEFAULT_FILE_UPLOAD_PREFIX = "chat-files/";
 const DEFAULT_FALLBACK_EXTENSION = "bin";
 const MEDIA_ASSET_BASE_URL = "https://b5.bokr.com.cn";
 const UPLOAD_SLICE_SIZE = 1024 * 1024;
+
+type CosConstructor = typeof COS;
+type CosClient = InstanceType<CosConstructor>;
+type CosModule = Awaited<ReturnType<typeof importCosModule>>;
+
+let cosConstructorPromise: Promise<CosConstructor> | null = null;
 
 export async function resolveImageSegmentsForSend(
   conversationId: string,
@@ -34,7 +44,7 @@ export async function resolveImageSegmentsForSend(
   }
 
   const credential = await getUploadCredential(conversationId);
-  const cos = createCosClient(credential);
+  const cos = await createCosClient(credential);
   const uploads = new Map<ComposerSegment, ComposerSegment>();
 
   await Promise.all(localImageSegments.map(async (segment) => {
@@ -88,7 +98,7 @@ export async function uploadWorkbenchFile(
   } = {},
 ): Promise<ComposerFileSegment> {
   const credential = await getUploadCredential(conversationId);
-  const cos = createCosClient(credential);
+  const cos = await createCosClient(credential);
   const extension = getSupportedFileExtension(file) || DEFAULT_FALLBACK_EXTENSION;
   const key = buildFileObjectKey({
     credential,
@@ -115,10 +125,10 @@ export async function uploadWorkbenchFile(
       Key: key,
       Region: credential.region,
       SliceSize: UPLOAD_SLICE_SIZE,
-      onProgress(progressData) {
+      onProgress(progressData: COS.ProgressInfo) {
         options.onProgress?.(Math.round((progressData.percent ?? 0) * 100));
       },
-      onTaskReady(nextTaskId) {
+      onTaskReady(nextTaskId: COS.TaskId) {
         taskId = nextTaskId;
         if (options.signal?.aborted) {
           cos.cancelTask(nextTaskId);
@@ -151,7 +161,7 @@ export async function uploadWorkbenchImageFile(
   file: File,
 ): Promise<ComposerImageSegment> {
   const credential = await getUploadCredential(conversationId);
-  const cos = createCosClient(credential);
+  const cos = await createCosClient(credential);
   const key = buildObjectKey({
     credential,
     extension: getImageExtension(file.type),
@@ -190,7 +200,11 @@ function isLocalPreviewUrl(url: string) {
   return url.startsWith("data:") || url.startsWith("blob:");
 }
 
-function createCosClient(credential: WorkbenchUploadCredentialResponse) {
+async function createCosClient(
+  credential: WorkbenchUploadCredentialResponse,
+): Promise<CosClient> {
+  const COS = await loadCosConstructor();
+
   return new COS({
     ExpiredTime: credential.expiredTime,
     SecretId: credential.credentials.tmpSecretId,
@@ -199,6 +213,82 @@ function createCosClient(credential: WorkbenchUploadCredentialResponse) {
       credential.credentials.sessionToken || credential.credentials.token,
     StartTime: credential.startTime,
   });
+}
+
+async function loadCosConstructor() {
+  cosConstructorPromise ??= importCosModule()
+    .then((module) => getCosConstructor(module))
+    .catch((error: unknown) => {
+      cosConstructorPromise = null;
+      if (isDynamicImportFailure(error)) {
+        throw new MediaUploadSdkLoadError(error);
+      }
+
+      throw error;
+    });
+
+  return cosConstructorPromise;
+}
+
+function importCosModule() {
+  return import("cos-js-sdk-v5");
+}
+
+function getCosConstructor(module: CosModule): CosConstructor {
+  return (
+    "default" in module && module.default ? module.default : module
+  ) as CosConstructor;
+}
+
+class MediaUploadSdkLoadError extends Error {
+  readonly code = MEDIA_UPLOAD_SDK_LOAD_FAILED_CODE;
+
+  constructor(cause: unknown) {
+    super(MEDIA_UPLOAD_SDK_LOAD_FAILED_MESSAGE);
+    this.name = "MediaUploadSdkLoadError";
+    this.cause = cause;
+  }
+}
+
+function isDynamicImportFailure(error: unknown) {
+  const messages = collectErrorMessages(error);
+
+  return messages.some((message) => {
+    const normalized = message.toLowerCase();
+
+    return (
+      normalized.includes("failed to fetch dynamically imported module") ||
+      normalized.includes("error loading dynamically imported module") ||
+      normalized.includes("importing a module script failed") ||
+      normalized.includes("loading chunk") ||
+      normalized.includes("chunkloaderror")
+    );
+  });
+}
+
+function collectErrorMessages(error: unknown): string[] {
+  if (typeof error === "string") {
+    return [error];
+  }
+
+  if (!error || typeof error !== "object") {
+    return [];
+  }
+
+  const messages: string[] = [];
+  const message = "message" in error
+    ? (error as { message: unknown }).message
+    : undefined;
+
+  if (typeof message === "string") {
+    messages.push(message);
+  }
+
+  if ("cause" in error) {
+    messages.push(...collectErrorMessages(error.cause));
+  }
+
+  return messages;
 }
 
 async function dataUrlToBlob(dataUrl: string) {

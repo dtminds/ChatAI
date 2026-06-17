@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   cleanup,
   render,
@@ -1177,6 +1177,16 @@ async function applyDateRangePreset(
 }
 
 describe("conversation insights pages", () => {
+  beforeAll(async () => {
+    await Promise.all([
+      import("@/pages/chat/insights/insights-overview-page"),
+      import("@/pages/chat/insights/insights-quality-page"),
+      import("@/pages/chat/insights/insights-follow-ups-page"),
+      import("@/pages/chat/insights/insights-business-page"),
+      import("@/pages/chat/insights/insights-settings-page"),
+    ]);
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useFakeTimers({ toFake: ["Date"] });

@@ -1331,6 +1331,8 @@ function ChatWorkbenchContent({
       onMoveQuickReply={quickReplies.moveQuickReply}
       onScopeTypeChange={quickReplies.setActiveScopeType}
       onSelectQuickReply={handleSelectQuickReply}
+      onSortCategories={quickReplies.sortCategories}
+      onSortQuickReplies={quickReplies.sortQuickReplies}
       onTopCategoryChange={quickReplies.setActiveTopCategoryId}
       onTopCategory={quickReplies.topCategory}
       onTopQuickReply={quickReplies.topQuickReply}

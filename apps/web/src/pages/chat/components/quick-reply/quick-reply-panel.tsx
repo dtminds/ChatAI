@@ -5,9 +5,11 @@ import {
   Cancel01Icon,
   CopyPlusIcon,
   Delete01Icon,
+  DragDropVerticalIcon,
   Edit03Icon,
   Knowledge02Icon,
   MoreVerticalIcon,
+  Move02Icon,
   MoveToIcon,
   Search01Icon,
   SortByDown01Icon,
@@ -45,11 +47,20 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Spinner } from "@/components/ui/spinner";
+import {
+  Sortable,
+  SortableContent,
+  SortableItem,
+  SortableItemHandle,
+} from "@/components/ui/sortable";
 import { cn } from "@/lib/utils";
 import {
   QuickReplyImportDialog,
@@ -58,6 +69,8 @@ import {
 import { getQuickReplyTitleColor } from "@/pages/chat/components/quick-reply/quick-reply-title-palette";
 
 const CONTEXT_MENU_VIEWPORT_PADDING = 8;
+
+type QuickReplySortMode = "category" | "reply" | null;
 
 type QuickReplyMoveTarget = {
   id: string;
@@ -96,6 +109,14 @@ type QuickReplyPanelProps = {
   ) => void;
   onScopeTypeChange: (scopeType: QuickReplyScopeType) => void;
   onSelectQuickReply: (quickReply: WorkbenchQuickReplyDto) => void;
+  onSortCategories: (input: {
+    categoryIds: string[];
+    parentId: string;
+  }) => Promise<void> | void;
+  onSortQuickReplies: (input: {
+    categoryId: string;
+    quickReplyIds: string[];
+  }) => Promise<void> | void;
   onTopCategoryChange: (categoryId: string | null) => void;
   onTopCategory: (category: WorkbenchQuickReplyCategoryDto) => void;
   onTopQuickReply: (quickReply: WorkbenchQuickReplyDto) => void;
@@ -127,6 +148,8 @@ export function QuickReplyPanel({
   onMoveQuickReply,
   onScopeTypeChange,
   onSelectQuickReply,
+  onSortCategories,
+  onSortQuickReplies,
   onTopCategoryChange,
   onTopCategory,
   onTopQuickReply,
@@ -154,6 +177,13 @@ export function QuickReplyPanel({
   const previousChildCategoryIdsRef = useRef<Set<string>>(new Set());
   const quickReplyViewportRef = useRef<HTMLDivElement | null>(null);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [sortMode, setSortMode] = useState<QuickReplySortMode>(null);
+  const [sortCategoryOrder, setSortCategoryOrder] = useState<
+    WorkbenchQuickReplyCategoryDto[]
+  >([]);
+  const [sortQuickRepliesByCategoryId, setSortQuickRepliesByCategoryId] =
+    useState<Record<string, WorkbenchQuickReplyDto[]>>({});
+  const [isSortSaving, setIsSortSaving] = useState(false);
   const childCategories = useMemo(
     () =>
       activeTopCategory
@@ -190,6 +220,22 @@ export function QuickReplyPanel({
   const expandedCategoryIds = normalizedKeyword
     ? new Set(visibleChildCategories.map((category) => category.id))
     : manualExpandedCategoryIds;
+  const displayChildCategories =
+    sortMode === "category"
+      ? sortCategoryOrder
+      : sortMode === "reply"
+        ? childCategories
+        : visibleChildCategories;
+  const displayExpandedCategoryIds =
+    sortMode === "reply"
+      ? new Set(displayChildCategories.map((category) => category.id))
+      : sortMode === "category"
+        ? new Set<string>()
+        : expandedCategoryIds;
+  const displayQuickRepliesByCategoryId =
+    sortMode === "reply"
+      ? sortQuickRepliesByCategoryId
+      : filteredQuickRepliesByCategoryId;
   useEffect(() => {
     const activeTopCategoryId = activeTopCategory?.id ?? null;
     const previousTopCategoryId = previousTopCategoryIdRef.current;
@@ -259,90 +305,218 @@ export function QuickReplyPanel({
       return new Set([...current, categoryId]);
     });
   };
+  const handleEnterSortMode = (mode: Exclude<QuickReplySortMode, null>) => {
+    if (keyword.trim()) {
+      onKeywordChange("");
+    }
+
+    setSortMode(mode);
+    setSortCategoryOrder(childCategories);
+    setSortQuickRepliesByCategoryId(
+      Object.fromEntries(
+        childCategories.map((category) => [
+          category.id,
+          [...(quickRepliesByCategoryId?.[category.id] ?? [])],
+        ]),
+      ),
+    );
+  };
+  const handleCancelSortMode = () => {
+    setSortMode(null);
+    setSortCategoryOrder([]);
+    setSortQuickRepliesByCategoryId({});
+  };
+  const handleSaveSortMode = async () => {
+    if (!sortMode || !activeTopCategory) {
+      return;
+    }
+
+    setIsSortSaving(true);
+
+    try {
+      if (sortMode === "category") {
+        const currentIds = childCategories.map((category) => category.id);
+        const nextIds = sortCategoryOrder.map((category) => category.id);
+
+        if (currentIds.join("\u0000") !== nextIds.join("\u0000")) {
+          await onSortCategories({
+            categoryIds: nextIds,
+            parentId: activeTopCategory.id,
+          });
+        }
+      } else {
+        const changedCategoryIds = childCategories
+          .map((category) => category.id)
+          .filter((categoryId) => {
+            const currentIds = (quickRepliesByCategoryId?.[categoryId] ?? []).map(
+              (reply) => reply.id,
+            );
+            const nextIds = (sortQuickRepliesByCategoryId[categoryId] ?? [])
+              .map((reply) => reply.id);
+
+            return currentIds.join("\u0000") !== nextIds.join("\u0000");
+          });
+
+        for (const categoryId of changedCategoryIds) {
+          await onSortQuickReplies({
+            categoryId,
+            quickReplyIds:
+              sortQuickRepliesByCategoryId[categoryId]?.map((reply) => reply.id) ?? [],
+          });
+        }
+      }
+
+      handleCancelSortMode();
+    } finally {
+      setIsSortSaving(false);
+    }
+  };
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-background">
       <div className="border-b border-divider px-2.5 py-2.5">
-        <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-2">
-          <div className="grid min-w-0 grid-cols-2 rounded-[8px] bg-secondary p-0.5">
-            <ScopeButton
-              active={activeScopeType === QUICK_REPLY_SCOPE_TYPE.ENTERPRISE}
-              onClick={() => onScopeTypeChange(QUICK_REPLY_SCOPE_TYPE.ENTERPRISE)}
+        {sortMode ? (
+          <div className="flex h-9 items-center gap-2">
+            <div className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground">
+              {sortMode === "category"
+                ? "已进入话术分组排序模式"
+                : "已进入话术排序模式"}
+            </div>
+            <Button
+              className="h-8 px-3"
+              disabled={isSortSaving}
+              onClick={handleCancelSortMode}
+              size="sm"
+              type="button"
+              variant="ghost"
             >
-              企业
-            </ScopeButton>
-            <ScopeButton
-              active={activeScopeType === QUICK_REPLY_SCOPE_TYPE.PERSONAL}
-              onClick={() => onScopeTypeChange(QUICK_REPLY_SCOPE_TYPE.PERSONAL)}
+              取消
+            </Button>
+            <Button
+              className="h-8 w-14 px-0"
+              disabled={isSortSaving}
+              onClick={() => void handleSaveSortMode()}
+              size="sm"
+              type="button"
             >
-              个人
-            </ScopeButton>
+              {isSortSaving ? (
+                <Spinner
+                  aria-label="保存中"
+                  className="text-primary-foreground"
+                  size={14}
+                />
+              ) : (
+                "保存"
+              )}
+            </Button>
           </div>
-          <div className="relative min-w-0">
-            <HugeiconsIcon
-              aria-hidden="true"
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-              color="currentColor"
-              icon={Search01Icon}
-              size={16}
-              strokeWidth={1.8}
-            />
-            <Input
-              className="h-9 rounded-xl border border-transparent bg-surface-muted pl-10 pr-9 text-sm shadow-none transition-colors focus-visible:border-input focus-visible:bg-background focus-visible:ring-2 focus-visible:ring-ring/12"
-              onChange={(event) => onKeywordChange(event.target.value)}
-              placeholder="搜索话术"
-              value={keyword}
-            />
-            {keyword ? (
-              <Button
-                aria-label="清空搜索"
-                className="absolute right-1.5 top-1/2 size-7 -translate-y-1/2 rounded-md p-0 text-muted-foreground hover:bg-transparent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/20"
-                onClick={() => onKeywordChange("")}
-                size="icon"
-                type="button"
-                variant="ghost"
+        ) : (
+          <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-2">
+            <div className="grid min-w-0 grid-cols-2 rounded-[8px] bg-secondary p-0.5">
+              <ScopeButton
+                active={activeScopeType === QUICK_REPLY_SCOPE_TYPE.ENTERPRISE}
+                onClick={() => onScopeTypeChange(QUICK_REPLY_SCOPE_TYPE.ENTERPRISE)}
               >
-                <HugeiconsIcon
-                  color="currentColor"
-                  icon={Cancel01Icon}
-                  size={16}
-                  strokeWidth={1.8}
-                />
-              </Button>
-            ) : null}
+                企业
+              </ScopeButton>
+              <ScopeButton
+                active={activeScopeType === QUICK_REPLY_SCOPE_TYPE.PERSONAL}
+                onClick={() => onScopeTypeChange(QUICK_REPLY_SCOPE_TYPE.PERSONAL)}
+              >
+                个人
+              </ScopeButton>
+            </div>
+            <div className="relative min-w-0">
+              <HugeiconsIcon
+                aria-hidden="true"
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                color="currentColor"
+                icon={Search01Icon}
+                size={16}
+                strokeWidth={1.8}
+              />
+              <Input
+                className="h-9 rounded-xl border border-transparent bg-surface-muted pl-10 pr-9 text-sm shadow-none transition-colors focus-visible:border-input focus-visible:bg-background focus-visible:ring-2 focus-visible:ring-ring/12"
+                onChange={(event) => onKeywordChange(event.target.value)}
+                placeholder="搜索话术"
+                value={keyword}
+              />
+              {keyword ? (
+                <Button
+                  aria-label="清空搜索"
+                  className="absolute right-1.5 top-1/2 size-7 -translate-y-1/2 rounded-md p-0 text-muted-foreground hover:bg-transparent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/20"
+                  onClick={() => onKeywordChange("")}
+                  size="icon"
+                  type="button"
+                  variant="ghost"
+                >
+                  <HugeiconsIcon
+                    color="currentColor"
+                    icon={Cancel01Icon}
+                    size={16}
+                    strokeWidth={1.8}
+                  />
+                </Button>
+              ) : null}
+            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  aria-label="更多操作"
+                  className="size-8 shrink-0 rounded-[6px] p-0"
+                  disabled={isMutating}
+                  size="icon"
+                  title="更多操作"
+                  type="button"
+                  variant="outline"
+                >
+                  <HugeiconsIcon
+                    aria-hidden="true"
+                    icon={MoreVerticalIcon}
+                    size={16}
+                    strokeWidth={1.8}
+                  />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-[136px]">
+                <DropdownMenuItem onSelect={() => setImportDialogOpen(true)}>
+                  <HugeiconsIcon
+                    aria-hidden="true"
+                    icon={Knowledge02Icon}
+                    size={16}
+                    strokeWidth={1.8}
+                  />
+                  导入话术
+                </DropdownMenuItem>
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>
+                    <HugeiconsIcon
+                      aria-hidden="true"
+                      icon={Move02Icon}
+                      size={16}
+                      strokeWidth={1.8}
+                    />
+                    拖拽排序
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent className="min-w-[136px]">
+                    <DropdownMenuItem
+                      disabled={!activeTopCategory || childCategories.length === 0}
+                      onSelect={() => handleEnterSortMode("category")}
+                    >
+                      话术分组排序
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      disabled={!activeTopCategory || childCategories.length === 0}
+                      onSelect={() => handleEnterSortMode("reply")}
+                    >
+                      话术排序
+                    </DropdownMenuItem>
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                aria-label="更多操作"
-                className="size-8 shrink-0 rounded-[6px] p-0"
-                disabled={isMutating}
-                size="icon"
-                title="更多操作"
-                type="button"
-                variant="outline"
-              >
-                <HugeiconsIcon
-                  aria-hidden="true"
-                  icon={MoreVerticalIcon}
-                  size={16}
-                  strokeWidth={1.8}
-                />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="min-w-[128px]">
-              <DropdownMenuItem onSelect={() => setImportDialogOpen(true)}>
-                <HugeiconsIcon
-                  aria-hidden="true"
-                  icon={Knowledge02Icon}
-                  size={16}
-                  strokeWidth={1.8}
-                />
-                导入话术
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+        )}
       </div>
       <QuickReplyImportDialog
         onImport={onImportQuickReplies}
@@ -377,6 +551,7 @@ export function QuickReplyPanel({
                   <TopCategoryTab
                     active={activeTopCategory?.id === category.id}
                     category={category}
+                    disabled={sortMode !== null}
                     key={category.id}
                     onBottomCategory={onBottomCategory}
                     onCreateCategory={onCreateCategory}
@@ -391,7 +566,7 @@ export function QuickReplyPanel({
                 <Button
                   aria-label="新增一级分类"
                   className="size-7 shrink-0 rounded-[3px] bg-primary/55 p-0 text-primary-foreground shadow-none hover:bg-primary/65"
-                  disabled={isMutating}
+                  disabled={isMutating || sortMode !== null}
                   onClick={() => onCreateCategory(0)}
                   size="icon"
                   type="button"
@@ -469,15 +644,54 @@ export function QuickReplyPanel({
                     创建话术分组
                   </Button>
                 </div>
+              ) : sortMode === "category" ? (
+                <Sortable
+                  flatCursor
+                  getItemValue={(category) => category.id}
+                  onValueChange={setSortCategoryOrder}
+                  value={sortCategoryOrder}
+                >
+                  <SortableContent className="w-full max-w-full">
+                    {sortCategoryOrder.map((category) => (
+                      <SortableItem key={category.id} value={category.id}>
+                        <SecondaryCategorySection
+                          active={false}
+                          categories={categories}
+                          category={category}
+                          isLoading={isLoading}
+                          quickReplies={[]}
+                          scrollViewportRef={quickReplyViewportRef}
+                          sortMode="category"
+                          onBottomCategory={onBottomCategory}
+                          onBottomQuickReply={onBottomQuickReply}
+                          onCategoryEnsureOpen={handleEnsureChildCategoryOpen}
+                          onCategoryToggle={handleToggleChildCategory}
+                          onCopyQuickReply={onCopyQuickReply}
+                          onCreateQuickReply={onCreateQuickReply}
+                          onDeleteCategory={onDeleteCategory}
+                          onDeleteQuickReply={onDeleteQuickReply}
+                          onEditCategory={onEditCategory}
+                          onEditQuickReply={onEditQuickReply}
+                          onMoveCategory={onMoveCategory}
+                          onMoveQuickReply={onMoveQuickReply}
+                          onSelectQuickReply={onSelectQuickReply}
+                          onTopCategory={onTopCategory}
+                          onTopQuickReply={onTopQuickReply}
+                        />
+                      </SortableItem>
+                    ))}
+                  </SortableContent>
+                </Sortable>
               ) : (
-                visibleChildCategories.map((category) => (
+                displayChildCategories.map((category) => (
                   <SecondaryCategorySection
-                    active={expandedCategoryIds.has(category.id)}
+                    active={displayExpandedCategoryIds.has(category.id)}
                     categories={categories}
                     category={category}
                     isLoading={isLoading}
                     key={category.id}
-                    quickReplies={filteredQuickRepliesByCategoryId[category.id] ?? []}
+                    quickReplies={displayQuickRepliesByCategoryId[category.id] ?? []}
+                    sortMode={sortMode}
                     onCategoryEnsureOpen={handleEnsureChildCategoryOpen}
                     onCategoryToggle={handleToggleChildCategory}
                     scrollViewportRef={quickReplyViewportRef}
@@ -492,6 +706,12 @@ export function QuickReplyPanel({
                     onMoveQuickReply={onMoveQuickReply}
                     onCreateQuickReply={onCreateQuickReply}
                     onSelectQuickReply={onSelectQuickReply}
+                    onSortQuickRepliesChange={(items) =>
+                      setSortQuickRepliesByCategoryId((current) => ({
+                        ...current,
+                        [category.id]: items,
+                      }))
+                    }
                     onTopCategory={onTopCategory}
                     onTopQuickReply={onTopQuickReply}
                   />
@@ -508,6 +728,7 @@ export function QuickReplyPanel({
 function TopCategoryTab({
   active,
   category,
+  disabled = false,
   onBottomCategory,
   onCreateCategory,
   onDeleteCategory,
@@ -517,6 +738,7 @@ function TopCategoryTab({
 }: {
   active: boolean;
   category: WorkbenchQuickReplyCategoryDto;
+  disabled?: boolean;
   onBottomCategory: (category: WorkbenchQuickReplyCategoryDto) => void;
   onCreateCategory: (parentId: string | 0) => void;
   onDeleteCategory: (category: WorkbenchQuickReplyCategoryDto) => void;
@@ -539,6 +761,10 @@ function TopCategoryTab({
         )}
         onClick={onSelect}
         onContextMenu={(event) => {
+          if (disabled) {
+            return;
+          }
+
           event.preventDefault();
           event.stopPropagation();
           setContextMenu({
@@ -546,6 +772,7 @@ function TopCategoryTab({
             y: event.clientY,
           });
         }}
+        disabled={disabled}
         type="button"
       >
         {category.title}
@@ -584,8 +811,10 @@ function SecondaryCategorySection({
   onMoveCategory,
   onMoveQuickReply,
   onSelectQuickReply,
+  onSortQuickRepliesChange,
   onTopCategory,
   onTopQuickReply,
+  sortMode,
 }: {
   active: boolean;
   categories: WorkbenchQuickReplyCategoryDto[];
@@ -612,8 +841,10 @@ function SecondaryCategorySection({
     categoryId: string,
   ) => void;
   onSelectQuickReply: (quickReply: WorkbenchQuickReplyDto) => void;
+  onSortQuickRepliesChange?: (quickReplies: WorkbenchQuickReplyDto[]) => void;
   onTopCategory: (category: WorkbenchQuickReplyCategoryDto) => void;
   onTopQuickReply: (quickReply: WorkbenchQuickReplyDto) => void;
+  sortMode?: QuickReplySortMode;
 }) {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(
     null,
@@ -646,6 +877,10 @@ function SecondaryCategorySection({
     };
   }, [scrollViewportRef]);
 
+  const isSortMode = sortMode !== null && sortMode !== undefined;
+  const isCategorySortMode = sortMode === "category";
+  const isReplySortMode = sortMode === "reply";
+
   return (
     <div className="w-full max-w-full">
       <div
@@ -665,18 +900,41 @@ function SecondaryCategorySection({
           position: "sticky",
           top: 0,
         }}
-        onContextMenu={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          setContextMenu({
-            x: event.clientX,
-            y: event.clientY,
-          });
-        }}
+        onContextMenu={
+          isSortMode
+            ? undefined
+            : (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                setContextMenu({
+                  x: event.clientX,
+                  y: event.clientY,
+                });
+              }
+        }
       >
+        {isCategorySortMode ? (
+          <SortableItemHandle
+            aria-label={`拖拽${category.title}`}
+            className="flex size-7 shrink-0 cursor-move items-center justify-center rounded-[6px] text-primary hover:cursor-move data-dragging:cursor-move"
+          >
+            <HugeiconsIcon
+              aria-hidden="true"
+              icon={DragDropVerticalIcon}
+              size={15}
+              strokeWidth={1.8}
+            />
+          </SortableItemHandle>
+        ) : null}
         <button
+          aria-disabled={isSortMode}
           className="flex min-w-0 flex-1 items-center gap-2 text-left"
-          onClick={() => onCategoryToggle(category.id)}
+          onClick={() => {
+            if (isSortMode) {
+              return;
+            }
+            onCategoryToggle(category.id);
+          }}
           type="button"
         >
           <HugeiconsIcon
@@ -696,39 +954,71 @@ function SecondaryCategorySection({
       </div>
       {active && quickReplies.length > 0 ? (
         <div className="w-full max-w-full space-y-0.5 border-t border-divider py-1">
-          {quickReplies.map((quickReply, index) => (
-            <QuickReplyRow
-              index={index}
-              key={quickReply.id}
-              quickReply={quickReply}
-              category={category}
-              categories={categories}
-              onCopy={onCopyQuickReply}
-              onDelete={onDeleteQuickReply}
-              onEdit={onEditQuickReply}
-              onMove={onMoveQuickReply}
-              onSelect={onSelectQuickReply}
-              onBottom={onBottomQuickReply}
-              onTop={onTopQuickReply}
-            />
-          ))}
+          {isReplySortMode ? (
+            <Sortable
+              flatCursor
+              getItemValue={(quickReply) => quickReply.id}
+              onValueChange={(items) => onSortQuickRepliesChange?.(items)}
+              value={quickReplies}
+            >
+              <SortableContent className="w-full max-w-full space-y-0.5">
+                {quickReplies.map((quickReply, index) => (
+                  <SortableItem key={quickReply.id} value={quickReply.id}>
+                    <QuickReplyRow
+                      categories={categories}
+                      category={category}
+                      index={index}
+                      quickReply={quickReply}
+                      sortMode="reply"
+                      onBottom={onBottomQuickReply}
+                      onCopy={onCopyQuickReply}
+                      onDelete={onDeleteQuickReply}
+                      onEdit={onEditQuickReply}
+                      onMove={onMoveQuickReply}
+                      onSelect={onSelectQuickReply}
+                      onTop={onTopQuickReply}
+                    />
+                  </SortableItem>
+                ))}
+              </SortableContent>
+            </Sortable>
+          ) : (
+            quickReplies.map((quickReply, index) => (
+              <QuickReplyRow
+                index={index}
+                key={quickReply.id}
+                quickReply={quickReply}
+                category={category}
+                categories={categories}
+                onCopy={onCopyQuickReply}
+                onDelete={onDeleteQuickReply}
+                onEdit={onEditQuickReply}
+                onMove={onMoveQuickReply}
+                onSelect={onSelectQuickReply}
+                onBottom={onBottomQuickReply}
+                onTop={onTopQuickReply}
+              />
+            ))
+          )}
         </div>
       ) : null}
-      <CategoryContextMenu
-        category={category}
-        onClose={() => setContextMenu(null)}
-        onCreateQuickReply={(categoryId) => {
-          onCategoryEnsureOpen(categoryId);
-          onCreateQuickReply(categoryId);
-        }}
-        onDeleteCategory={onDeleteCategory}
-        onEditCategory={onEditCategory}
-        moveTargets={getCategoryMoveTargets(category, categories)}
-        onMoveCategory={onMoveCategory}
-        onBottomCategory={onBottomCategory}
-        onTopCategory={onTopCategory}
-        position={contextMenu}
-      />
+      {!isSortMode ? (
+        <CategoryContextMenu
+          category={category}
+          onClose={() => setContextMenu(null)}
+          onCreateQuickReply={(categoryId) => {
+            onCategoryEnsureOpen(categoryId);
+            onCreateQuickReply(categoryId);
+          }}
+          onDeleteCategory={onDeleteCategory}
+          onEditCategory={onEditCategory}
+          moveTargets={getCategoryMoveTargets(category, categories)}
+          onMoveCategory={onMoveCategory}
+          onBottomCategory={onBottomCategory}
+          onTopCategory={onTopCategory}
+          position={contextMenu}
+        />
+      ) : null}
     </div>
   );
 }
@@ -1101,6 +1391,7 @@ function QuickReplyRow({
   categories,
   index,
   quickReply,
+  sortMode,
   onBottom,
   onCopy,
   onDelete,
@@ -1113,6 +1404,7 @@ function QuickReplyRow({
   categories: WorkbenchQuickReplyCategoryDto[];
   index: number;
   quickReply: WorkbenchQuickReplyDto;
+  sortMode?: QuickReplySortMode;
   onBottom: (quickReply: WorkbenchQuickReplyDto) => void;
   onCopy: (quickReply: WorkbenchQuickReplyDto) => void;
   onDelete: (quickReply: WorkbenchQuickReplyDto) => void;
@@ -1127,23 +1419,47 @@ function QuickReplyRow({
     null,
   );
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const isSortMode = sortMode !== null && sortMode !== undefined;
 
   return (
     <>
       <div
         className="group flex h-[26px] w-full max-w-full items-center gap-1 overflow-hidden px-1.5 transition-colors hover:bg-accent/45"
-        onContextMenu={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          setContextMenu({
-            x: event.clientX,
-            y: event.clientY,
-          });
-        }}
+        onContextMenu={
+          isSortMode
+            ? undefined
+            : (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                setContextMenu({
+                  x: event.clientX,
+                  y: event.clientY,
+                });
+              }
+        }
       >
+        {isSortMode ? (
+          <SortableItemHandle
+            aria-label={`拖拽话术${index + 1}`}
+            className="flex size-6 shrink-0 cursor-move items-center justify-center rounded-[6px] text-muted-foreground hover:cursor-move data-dragging:cursor-move"
+          >
+            <HugeiconsIcon
+              aria-hidden="true"
+              icon={DragDropVerticalIcon}
+              size={14}
+              strokeWidth={1.8}
+            />
+          </SortableItemHandle>
+        ) : null}
         <button
+          aria-disabled={isSortMode}
           className="flex w-0 min-w-0 flex-1 items-center gap-1 overflow-hidden text-left"
-          onClick={() => onSelect(quickReply)}
+          onClick={() => {
+            if (isSortMode) {
+              return;
+            }
+            onSelect(quickReply);
+          }}
           type="button"
         >
           <span className="shrink-0 tabular-nums text-[13px] leading-none text-foreground">
@@ -1162,17 +1478,19 @@ function QuickReplyRow({
             {summary}
           </span>
         </button>
-        <QuickReplyContextMenu
-          onClose={() => setContextMenu(null)}
-          onDelete={() => setDeleteConfirmOpen(true)}
-          onEdit={() => onEdit(quickReply)}
-          onCopy={() => onCopy(quickReply)}
-          onBottom={() => onBottom(quickReply)}
-          onMove={(categoryId) => onMove(quickReply, categoryId)}
-          onTop={() => onTop(quickReply)}
-          moveTargets={moveTargets}
-          position={contextMenu}
-        />
+        {!isSortMode ? (
+          <QuickReplyContextMenu
+            onClose={() => setContextMenu(null)}
+            onDelete={() => setDeleteConfirmOpen(true)}
+            onEdit={() => onEdit(quickReply)}
+            onCopy={() => onCopy(quickReply)}
+            onBottom={() => onBottom(quickReply)}
+            onMove={(categoryId) => onMove(quickReply, categoryId)}
+            onTop={() => onTop(quickReply)}
+            moveTargets={moveTargets}
+            position={contextMenu}
+          />
+        ) : null}
       </div>
       <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
         <AlertDialogContent size="sm">

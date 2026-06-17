@@ -88,6 +88,7 @@ import type {
   WorkbenchQuickReplyCategoryListRequest,
   WorkbenchQuickReplyCategoryListResponse,
   WorkbenchQuickReplyCategoryMoveRequest,
+  WorkbenchQuickReplyCategorySortRequest,
   WorkbenchQuickReplyCategoryUpdateRequest,
   WorkbenchQuickReplyCreateRequest,
   WorkbenchQuickReplyDto,
@@ -96,6 +97,7 @@ import type {
   WorkbenchQuickReplyListResponse,
   WorkbenchQuickReplyMoveRequest,
   WorkbenchQuickReplyOkResponse,
+  WorkbenchQuickReplySortRequest,
   WorkbenchQuickReplyUpdateRequest,
 } from "@chatai/contracts";
 import {
@@ -550,6 +552,10 @@ export type WorkbenchService = {
     scopeType: number,
     request: WorkbenchQuickReplyCategoryMoveRequest,
   ): Promise<WorkbenchQuickReplyOkResponse> | WorkbenchQuickReplyOkResponse;
+  sortQuickReplyCategories(
+    subUserId: string,
+    request: WorkbenchQuickReplyCategorySortRequest,
+  ): Promise<WorkbenchQuickReplyOkResponse> | WorkbenchQuickReplyOkResponse;
   listQuickReplies(
     subUserId: string,
     request: WorkbenchQuickReplyListRequest,
@@ -587,6 +593,10 @@ export type WorkbenchService = {
     quickReplyId: string,
     scopeType: number,
     request: WorkbenchQuickReplyMoveRequest,
+  ): Promise<WorkbenchQuickReplyOkResponse> | WorkbenchQuickReplyOkResponse;
+  sortQuickReplies(
+    subUserId: string,
+    request: WorkbenchQuickReplySortRequest,
   ): Promise<WorkbenchQuickReplyOkResponse> | WorkbenchQuickReplyOkResponse;
 };
 
@@ -2969,6 +2979,84 @@ export class MysqlWorkbenchService implements WorkbenchService {
     return { ok: true };
   }
 
+  async sortQuickReplyCategories(
+    subUserId: string,
+    request: WorkbenchQuickReplyCategorySortRequest,
+  ): Promise<WorkbenchQuickReplyOkResponse> {
+    const me = await this.getMaterialActor(subUserId);
+    const scopeType = parseQuickReplyScopeType(request.scopeType);
+    const parentId = normalizeQuickReplyCategoryId(request.parentId);
+
+    if (parentId === 0) {
+      throw new BadRequestError("QUICK_REPLY_CATEGORY_SORT_INVALID", "请选择一级分类");
+    }
+
+    const parentScope = await this.repository.findQuickReplyCategoryScope({
+      categoryId: parentId,
+      scopeType,
+      subUserId,
+      uid: me.uid,
+    });
+
+    if (!parentScope) {
+      throw new BadRequestError("QUICK_REPLY_CATEGORY_NOT_FOUND", "分类不存在");
+    }
+
+    if (parentScope.parentId !== 0) {
+      throw new BadRequestError("QUICK_REPLY_CATEGORY_SORT_INVALID", "请选择一级分类");
+    }
+
+    const currentItems = await this.repository.listActiveQuickReplyCategorySortItems({
+      parentId,
+      scopeType,
+      subUserId,
+      uid: me.uid,
+    });
+    const currentIds = currentItems.map((item) => item.id);
+
+    if (!hasSameOrderedScopeIds(currentIds, request.categoryIds)) {
+      throw new BadRequestError(
+        "QUICK_REPLY_SORT_SCOPE_CHANGED",
+        "排序数据已变化，请刷新后重试",
+      );
+    }
+
+    if (hasSameExactOrder(currentIds, request.categoryIds)) {
+      return { ok: true };
+    }
+
+    const currentSortById = new Map(
+      currentItems.map((item) => [item.id, item.sort]),
+    );
+    const items = buildSortRewriteItems(request.categoryIds)
+      .map((item) => ({
+        categoryId: item.id,
+        sort: item.sort,
+      }))
+      .filter((item) => currentSortById.get(item.categoryId) !== item.sort);
+
+    if (items.length === 0) {
+      return { ok: true };
+    }
+
+    const updated = await this.repository.sortQuickReplyCategories({
+      items,
+      parentId,
+      scopeType,
+      subUserId,
+      uid: me.uid,
+    });
+
+    if (!updated) {
+      throw new BadRequestError(
+        "QUICK_REPLY_SORT_SCOPE_CHANGED",
+        "排序数据已变化，请刷新后重试",
+      );
+    }
+
+    return { ok: true };
+  }
+
   async listQuickReplies(
     subUserId: string,
     request: WorkbenchQuickReplyListRequest,
@@ -3244,6 +3332,84 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     if (!updated) {
       throw new NotFoundError("QUICK_REPLY_NOT_FOUND", "话术不存在");
+    }
+
+    return { ok: true };
+  }
+
+  async sortQuickReplies(
+    subUserId: string,
+    request: WorkbenchQuickReplySortRequest,
+  ): Promise<WorkbenchQuickReplyOkResponse> {
+    const me = await this.getMaterialActor(subUserId);
+    const scopeType = parseQuickReplyScopeType(request.scopeType);
+    const categoryId = normalizeQuickReplyCategoryId(request.categoryId);
+
+    if (categoryId === 0) {
+      throw new BadRequestError("QUICK_REPLY_SORT_INVALID", "请选择二级分类");
+    }
+
+    const categoryScope = await this.repository.findQuickReplyCategoryScope({
+      categoryId,
+      scopeType,
+      subUserId,
+      uid: me.uid,
+    });
+
+    if (!categoryScope) {
+      throw new BadRequestError("QUICK_REPLY_CATEGORY_NOT_FOUND", "分类不存在");
+    }
+
+    if (categoryScope.parentId === 0) {
+      throw new BadRequestError("QUICK_REPLY_SORT_INVALID", "请选择二级分类");
+    }
+
+    const currentItems = await this.repository.listActiveQuickReplySortItems({
+      categoryId,
+      scopeType,
+      subUserId,
+      uid: me.uid,
+    });
+    const currentIds = currentItems.map((item) => item.id);
+
+    if (!hasSameOrderedScopeIds(currentIds, request.quickReplyIds)) {
+      throw new BadRequestError(
+        "QUICK_REPLY_SORT_SCOPE_CHANGED",
+        "排序数据已变化，请刷新后重试",
+      );
+    }
+
+    if (hasSameExactOrder(currentIds, request.quickReplyIds)) {
+      return { ok: true };
+    }
+
+    const currentSortById = new Map(
+      currentItems.map((item) => [item.id, item.sort]),
+    );
+    const items = buildSortRewriteItems(request.quickReplyIds)
+      .map((item) => ({
+        quickReplyId: item.id,
+        sort: item.sort,
+      }))
+      .filter((item) => currentSortById.get(item.quickReplyId) !== item.sort);
+
+    if (items.length === 0) {
+      return { ok: true };
+    }
+
+    const updated = await this.repository.sortQuickReplies({
+      categoryId,
+      items,
+      scopeType,
+      subUserId,
+      uid: me.uid,
+    });
+
+    if (!updated) {
+      throw new BadRequestError(
+        "QUICK_REPLY_SORT_SCOPE_CHANGED",
+        "排序数据已变化，请刷新后重试",
+      );
     }
 
     return { ok: true };
@@ -4585,6 +4751,34 @@ function buildEmotionJavaSendMessageData(content: string): JavaSendMessageData {
     fileUrl,
     msgtype: "emotion",
   };
+}
+
+function buildSortRewriteItems(ids: string[]) {
+  return ids.map((id, index) => ({
+    id,
+    sort: (ids.length - index) * 1000,
+  }));
+}
+
+function hasSameOrderedScopeIds(currentIds: string[], submittedIds: string[]) {
+  if (currentIds.length !== submittedIds.length) {
+    return false;
+  }
+
+  const submittedSet = new Set(submittedIds);
+
+  if (submittedSet.size !== submittedIds.length) {
+    return false;
+  }
+
+  return currentIds.every((id) => submittedSet.has(id));
+}
+
+function hasSameExactOrder(currentIds: string[], submittedIds: string[]) {
+  return (
+    currentIds.length === submittedIds.length &&
+    currentIds.every((id, index) => id === submittedIds[index])
+  );
 }
 
 function buildFileJavaSendMessageData(content: string): JavaSendMessageData {

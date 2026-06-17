@@ -170,7 +170,12 @@ export function QuickReplyImportDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-[640px]">
+      <DialogContent
+        className="max-h-[min(86vh,640px)] max-w-[640px] overflow-hidden"
+        closeButtonVisible={false}
+        onEscapeKeyDown={(event) => event.preventDefault()}
+        onInteractOutside={(event) => event.preventDefault()}
+      >
         <DialogHeader>
           <DialogTitle>导入话术</DialogTitle>
           <DialogDescription className="sr-only">
@@ -178,7 +183,7 @@ export function QuickReplyImportDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-5">
+        <div className="min-h-0 space-y-5 pr-1">
           <input
             ref={inputRef}
             accept=".xlsx"
@@ -269,7 +274,11 @@ export function QuickReplyImportDialog({
                     <div className="space-y-2 rounded-[6px] border border-destructive/20 bg-destructive/[0.04] px-3 py-2 text-destructive">
                       <div>{importFailure.summary}</div>
                       {importFailure.errors.length > 0 ? (
-                        <ScrollArea className="max-h-36 rounded-[6px] border bg-background p-2 text-foreground">
+                        <ScrollArea
+                          aria-label="导入失败原因"
+                          className="h-[min(240px,32vh)] rounded-[6px] border bg-background p-2 text-foreground"
+                          type="always"
+                        >
                           {importFailure.errors.map((error, index) => (
                             <div key={`${error.rowNumber}-${index}`}>
                               {error.rowNumber > 0
@@ -283,7 +292,11 @@ export function QuickReplyImportDialog({
                   ) : null}
                 </>
               ) : (
-                <ScrollArea className="max-h-36 rounded-[6px] border bg-background p-2">
+                <ScrollArea
+                  aria-label="文件校验失败原因"
+                  className="h-[min(240px,32vh)] rounded-[6px] border bg-background p-2"
+                  type="always"
+                >
                   {precheck.errors.map((error, index) => (
                     <div key={`${error.rowNumber}-${index}`}>
                       第 {error.rowNumber} 行：{error.message}

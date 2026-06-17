@@ -157,6 +157,71 @@ describe("useQuickReplies", () => {
     expect(toast.warning).toHaveBeenCalledWith("保存失败");
   });
 
+  it("sorts quick reply categories and replies through the service", async () => {
+    const baseService = createMockWorkbenchService();
+    const sortQuickReplyCategories = vi.fn().mockResolvedValue({ ok: true });
+    const sortQuickReplies = vi.fn().mockResolvedValue({ ok: true });
+    const listQuickReplyCategories = vi.fn().mockResolvedValue({
+      categories: [
+        {
+          id: "cat-1",
+          parentId: 0,
+          scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+          sort: 100,
+          title: "售前",
+        },
+      ],
+    });
+    const listQuickReplyCategoryContent = vi.fn().mockResolvedValue({
+      categories: [],
+      limits: {
+        categories: 50,
+        quickReplies: 10_000,
+      },
+      quickRepliesByCategoryId: {},
+      truncated: {
+        categories: false,
+        quickReplies: false,
+      },
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      listQuickReplyCategories,
+      listQuickReplyCategoryContent,
+      sortQuickReplyCategories,
+      sortQuickReplies,
+    });
+
+    const { result } = renderHook(() => useQuickReplies());
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.sortCategories({
+        categoryIds: ["cat-3", "cat-2"],
+        parentId: "cat-1",
+      });
+      await result.current.sortQuickReplies({
+        categoryId: "cat-2",
+        quickReplyIds: ["reply-2", "reply-1"],
+      });
+    });
+
+    expect(sortQuickReplyCategories).toHaveBeenCalledWith({
+      categoryIds: ["cat-3", "cat-2"],
+      parentId: "cat-1",
+      scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+    });
+    expect(sortQuickReplies).toHaveBeenCalledWith({
+      categoryId: "cat-2",
+      quickReplyIds: ["reply-2", "reply-1"],
+      scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+    });
+  });
+
   it("reloads category content when the active top category changes", async () => {
     const baseService = createMockWorkbenchService();
     const listQuickReplyCategories = vi.fn().mockResolvedValue({

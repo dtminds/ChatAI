@@ -3712,6 +3712,139 @@ describe("MysqlWorkbenchService", () => {
     expect(javaClient.sendSmartHeartbeat).not.toHaveBeenCalled();
   });
 
+  it("quick reply: updates changed child category sort rows by submitted order", async () => {
+    const repository = createMaterialRepository({
+      findQuickReplyCategoryScope: vi.fn().mockResolvedValue({ parentId: 0 }),
+      listActiveQuickReplyCategorySortItems: vi.fn().mockResolvedValue([
+        { id: "21", sort: 3000 },
+        { id: "22", sort: 1000 },
+        { id: "23", sort: 2000 },
+      ]),
+      sortQuickReplyCategories: vi.fn().mockResolvedValue(true),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.sortQuickReplyCategories("101", {
+        categoryIds: ["23", "21", "22"],
+        parentId: "10",
+        scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+      }),
+    ).resolves.toEqual({ ok: true });
+
+    expect(repository.sortQuickReplyCategories).toHaveBeenCalledWith({
+      items: [
+        { categoryId: "23", sort: 3000 },
+        { categoryId: "21", sort: 2000 },
+      ],
+      parentId: "10",
+      scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+      subUserId: "101",
+      uid: 9001,
+    });
+  });
+
+  it("quick reply: rejects category sort when submitted ids do not match current scope", async () => {
+    const repository = createMaterialRepository({
+      findQuickReplyCategoryScope: vi.fn().mockResolvedValue({ parentId: 0 }),
+      listActiveQuickReplyCategorySortItems: vi
+        .fn()
+        .mockResolvedValue([{ id: "21", sort: 2000 }, { id: "22", sort: 1000 }]),
+      sortQuickReplyCategories: vi.fn().mockResolvedValue(true),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.sortQuickReplyCategories("101", {
+        categoryIds: ["21", "23"],
+        parentId: "10",
+        scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+      }),
+    ).rejects.toMatchObject({
+      code: "QUICK_REPLY_SORT_SCOPE_CHANGED",
+      statusCode: 400,
+    });
+    expect(repository.sortQuickReplyCategories).not.toHaveBeenCalled();
+  });
+
+  it("quick reply: skips category sort update when order is unchanged", async () => {
+    const repository = createMaterialRepository({
+      findQuickReplyCategoryScope: vi.fn().mockResolvedValue({ parentId: 0 }),
+      listActiveQuickReplyCategorySortItems: vi.fn().mockResolvedValue([
+        { id: "21", sort: 3000 },
+        { id: "22", sort: 2000 },
+        { id: "23", sort: 1000 },
+      ]),
+      sortQuickReplyCategories: vi.fn().mockResolvedValue(true),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.sortQuickReplyCategories("101", {
+        categoryIds: ["21", "22", "23"],
+        parentId: "10",
+        scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+      }),
+    ).resolves.toEqual({ ok: true });
+
+    expect(repository.sortQuickReplyCategories).not.toHaveBeenCalled();
+  });
+
+  it("quick reply: updates changed reply sort rows by submitted order", async () => {
+    const repository = createMaterialRepository({
+      findQuickReplyCategoryScope: vi.fn().mockResolvedValue({ parentId: "10" }),
+      listActiveQuickReplySortItems: vi.fn().mockResolvedValue([
+        { id: "31", sort: 3000 },
+        { id: "32", sort: 1000 },
+        { id: "33", sort: 2000 },
+      ]),
+      sortQuickReplies: vi.fn().mockResolvedValue(true),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.sortQuickReplies("101", {
+        categoryId: "21",
+        quickReplyIds: ["33", "31", "32"],
+        scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+      }),
+    ).resolves.toEqual({ ok: true });
+
+    expect(repository.sortQuickReplies).toHaveBeenCalledWith({
+      categoryId: "21",
+      items: [
+        { quickReplyId: "33", sort: 3000 },
+        { quickReplyId: "31", sort: 2000 },
+      ],
+      scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+      subUserId: "101",
+      uid: 9001,
+    });
+  });
+
+  it("quick reply: skips reply sort update when order is unchanged", async () => {
+    const repository = createMaterialRepository({
+      findQuickReplyCategoryScope: vi.fn().mockResolvedValue({ parentId: "10" }),
+      listActiveQuickReplySortItems: vi.fn().mockResolvedValue([
+        { id: "31", sort: 3000 },
+        { id: "32", sort: 2000 },
+        { id: "33", sort: 1000 },
+      ]),
+      sortQuickReplies: vi.fn().mockResolvedValue(true),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.sortQuickReplies("101", {
+        categoryId: "21",
+        quickReplyIds: ["31", "32", "33"],
+        scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+      }),
+    ).resolves.toEqual({ ok: true });
+
+    expect(repository.sortQuickReplies).not.toHaveBeenCalled();
+  });
+
   it("material: collects expression with current sub user scope", async () => {
     const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_779_700_000_000);
     const repository = createMaterialRepository({
@@ -5761,6 +5894,8 @@ function createMaterialRepository(overrides: Partial<WorkbenchRepository> = {}) 
     hasActiveQuickReplyCategory: vi.fn().mockResolvedValue(true),
     isChildQuickReplyCategory: vi.fn().mockResolvedValue(false),
     isMaterialGroupEmpty: vi.fn().mockResolvedValue(true),
+    listActiveQuickReplyCategorySortItems: vi.fn().mockResolvedValue([]),
+    listActiveQuickReplySortItems: vi.fn().mockResolvedValue([]),
     listMaterialCollections: vi.fn().mockResolvedValue([]),
     listMaterialGroups: vi.fn().mockResolvedValue([]),
     listQuickReplies: vi.fn().mockResolvedValue({ items: [], total: 0 }),

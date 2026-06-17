@@ -128,7 +128,7 @@ describe("QuickReplyPanel", () => {
     expect(
       screen.getByRole("button", { name: "下载模板" }),
     ).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: "关闭" })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: "关闭" })).toHaveLength(1);
     expect(screen.getByText("导入说明：")).toBeInTheDocument();
     expect(screen.getByText("请按照模板中要求的字段导入")).toBeInTheDocument();
     expect(
@@ -174,6 +174,37 @@ describe("QuickReplyPanel", () => {
     expect(
       screen.queryByRole("button", { name: "开始导入" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("renders precheck errors in a constrained scroll region", async () => {
+    const user = userEvent.setup();
+    vi.mocked(readSheet).mockResolvedValue([
+      [...QUICK_REPLY_IMPORT_HEADERS],
+      ...Array.from({ length: 20 }, (_, index) => [
+        "售前",
+        "报价",
+        `标题${index}`,
+        "",
+      ]),
+    ] as unknown as Awaited<ReturnType<typeof readSheet>>);
+
+    render(<QuickReplyPanel {...createPanelProps()} />);
+
+    await user.click(screen.getByRole("button", { name: "更多操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "导入话术" }));
+    await user.upload(
+      document.querySelector('input[type="file"]') as HTMLInputElement,
+      new File(["xlsx"], "quick-replies.xlsx", {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      }),
+    );
+
+    const errorList = await screen.findByLabelText("文件校验失败原因");
+
+    expect(errorList).toBeInTheDocument();
+    expect(errorList).toHaveClass("h-[min(240px,32vh)]");
+    expect(screen.getByText("第 2 行：话术内容不能为空")).toBeInTheDocument();
+    expect(screen.getByText("第 21 行：话术内容不能为空")).toBeInTheDocument();
   });
 
   it("shows import progress inside the precheck result panel", async () => {
@@ -323,7 +354,7 @@ describe("QuickReplyPanel", () => {
     expect(screen.queryByText("新建二级")).not.toBeInTheDocument();
     expect(screen.queryByText("确认后将导入 1 条话术")).not.toBeInTheDocument();
     expect(screen.queryByText("确认导入 1 条话术？")).not.toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: "关闭" })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: "关闭" })).toHaveLength(1);
     expect(screen.getByRole("button", { name: "开始导入" })).toBeInTheDocument();
 
     await user.click(await screen.findByRole("button", { name: "开始导入" }));
@@ -342,7 +373,7 @@ describe("QuickReplyPanel", () => {
       screen.queryByRole("button", { name: "确定" }),
     ).not.toBeInTheDocument();
 
-    await user.click(screen.getAllByRole("button", { name: "关闭" }).at(-1)!);
+    await user.click(screen.getByRole("button", { name: "关闭" }));
 
     expect(
       screen.queryByRole("dialog", { name: "导入话术" }),
@@ -393,7 +424,7 @@ describe("QuickReplyPanel", () => {
 
     expect(await screen.findByText("文件校验通过")).toBeInTheDocument();
 
-    await user.click(screen.getAllByRole("button", { name: "关闭" })[0]);
+    await user.click(screen.getByRole("button", { name: "关闭" }));
     await user.click(screen.getByRole("button", { name: "更多操作" }));
     await user.click(screen.getByRole("menuitem", { name: "导入话术" }));
 
@@ -402,6 +433,22 @@ describe("QuickReplyPanel", () => {
     expect(
       screen.queryByRole("button", { name: "开始导入" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("does not close the import dialog from the overlay", async () => {
+    const user = userEvent.setup();
+    render(<QuickReplyPanel {...createPanelProps()} />);
+
+    await user.click(screen.getByRole("button", { name: "更多操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "导入话术" }));
+
+    expect(screen.getAllByRole("button", { name: "关闭" })).toHaveLength(1);
+
+    fireEvent.pointerDown(document.body);
+    fireEvent.pointerUp(document.body);
+    fireEvent.click(document.body);
+
+    expect(screen.getByRole("dialog", { name: "导入话术" })).toBeInTheDocument();
   });
 
   it("shows quick replies as compact rows", () => {
@@ -465,6 +512,200 @@ describe("QuickReplyPanel", () => {
     await user.click(screen.getByRole("menuitem", { name: "移到最后" }));
 
     expect(onBottomQuickReply).toHaveBeenCalledWith(quickReply);
+  });
+
+  it("enters category sort mode and skips saving when order is unchanged", async () => {
+    const user = userEvent.setup();
+    const onSortCategories = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <QuickReplyPanel
+        {...createPanelProps({
+          onSortCategories,
+        })}
+        activeCategoryId="cat-2"
+        quickRepliesByCategoryId={{ "cat-2": [quickReply] }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "更多操作" }));
+    await user.hover(screen.getByRole("menuitem", { name: "拖拽排序" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "话术分组排序" }));
+
+    expect(screen.getByText("已进入话术分组排序模式")).toBeInTheDocument();
+    expect(screen.queryByText("您好，这是报价信息")).not.toBeInTheDocument();
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: "报价" }));
+    expect(screen.queryByRole("menuitem", { name: "新建话术" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    expect(onSortCategories).not.toHaveBeenCalled();
+    expect(screen.queryByText("已进入话术分组排序模式")).not.toBeInTheDocument();
+  });
+
+  it("disables top category changes while sorting", async () => {
+    const user = userEvent.setup();
+    const onCreateCategory = vi.fn();
+    const onTopCategoryChange = vi.fn();
+
+    render(
+      <QuickReplyPanel
+        {...createPanelProps({
+          onCreateCategory,
+          onTopCategoryChange,
+        })}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "更多操作" }));
+    await user.hover(screen.getByRole("menuitem", { name: "拖拽排序" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "话术分组排序" }));
+
+    await user.click(screen.getByRole("button", { name: "售后" }));
+    await user.click(screen.getByRole("button", { name: "新增一级分类" }));
+    fireEvent.contextMenu(screen.getByRole("button", { name: "售前" }));
+
+    expect(onTopCategoryChange).not.toHaveBeenCalled();
+    expect(onCreateCategory).not.toHaveBeenCalled();
+    expect(screen.queryByRole("menuitem", { name: "添加话术分组" })).not.toBeInTheDocument();
+  });
+
+  it("enters quick reply sort mode and skips saving when order is unchanged", async () => {
+    const user = userEvent.setup();
+    const onSortQuickReplies = vi.fn().mockResolvedValue(undefined);
+    const secondReply = {
+      ...quickReply,
+      contentText: "第二条报价话术",
+      id: "reply-2",
+      sort: 90,
+    };
+
+    render(
+      <QuickReplyPanel
+        {...createPanelProps({
+          onSortQuickReplies,
+        })}
+        activeCategoryId="cat-2"
+        quickRepliesByCategoryId={{ "cat-2": [quickReply, secondReply] }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "更多操作" }));
+    await user.hover(screen.getByRole("menuitem", { name: "拖拽排序" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "话术排序" }));
+
+    expect(screen.getByText("已进入话术排序模式")).toBeInTheDocument();
+    expect(screen.getByText("您好，这是报价信息")).toBeInTheDocument();
+    expect(screen.getByText("第二条报价话术")).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "复制话术" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    expect(onSortQuickReplies).not.toHaveBeenCalled();
+    expect(screen.queryByText("已进入话术排序模式")).not.toBeInTheDocument();
+  });
+
+  it("keeps sort rows out of native disabled state while blocking normal actions", async () => {
+    const user = userEvent.setup();
+    const onSelectQuickReply = vi.fn();
+
+    render(
+      <QuickReplyPanel
+        {...createPanelProps({
+          onSelectQuickReply,
+        })}
+        activeCategoryId="cat-2"
+        quickRepliesByCategoryId={{ "cat-2": [quickReply] }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "更多操作" }));
+    await user.hover(screen.getByRole("menuitem", { name: "拖拽排序" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "话术排序" }));
+
+    const categoryButton = screen.getByRole("button", { name: "报价" });
+    const quickReplyButton = screen.getByRole("button", {
+      name: /01\.报价您好，这是报价信息/,
+    });
+
+    expect(categoryButton).toHaveAttribute("aria-disabled", "true");
+    expect(quickReplyButton).toHaveAttribute("aria-disabled", "true");
+    expect(categoryButton).not.toBeDisabled();
+    expect(quickReplyButton).not.toBeDisabled();
+    expect(categoryButton).not.toHaveClass("cursor-move");
+    expect(quickReplyButton).not.toHaveClass("cursor-move");
+
+    await user.click(categoryButton);
+    await user.click(quickReplyButton);
+
+    expect(onSelectQuickReply).not.toHaveBeenCalled();
+    expect(screen.getByText("您好，这是报价信息")).toBeInTheDocument();
+  });
+
+  it("exits quick reply sort mode without saving when order is unchanged", async () => {
+    const user = userEvent.setup();
+    const onSortQuickReplies = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <QuickReplyPanel
+        {...createPanelProps({
+          onSortQuickReplies,
+        })}
+        activeCategoryId="cat-2"
+        quickRepliesByCategoryId={{ "cat-2": [quickReply] }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "更多操作" }));
+    await user.hover(screen.getByRole("menuitem", { name: "拖拽排序" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "话术排序" }));
+
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    expect(onSortQuickReplies).not.toHaveBeenCalled();
+    expect(screen.queryByText("已进入话术排序模式")).not.toBeInTheDocument();
+  });
+
+  it("clears keyword and shows full reply sort scope when entering sort mode", async () => {
+    const user = userEvent.setup();
+    const onKeywordChange = vi.fn();
+    const onSortQuickReplies = vi.fn().mockResolvedValue(undefined);
+    const secondReply = {
+      ...quickReply,
+      categoryId: "cat-3",
+      contentText: "致歉说明",
+      id: "reply-2",
+      labelText: "致歉",
+      sort: 90,
+    };
+
+    render(
+      <QuickReplyPanel
+        {...createPanelProps({
+          keyword: "报价",
+          onKeywordChange,
+          onSortQuickReplies,
+        })}
+        activeCategoryId="cat-2"
+        quickRepliesByCategoryId={{
+          "cat-2": [quickReply],
+          "cat-3": [secondReply],
+        }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "更多操作" }));
+    await user.hover(screen.getByRole("menuitem", { name: "拖拽排序" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "话术排序" }));
+
+    expect(onKeywordChange).toHaveBeenCalledWith("");
+    expect(screen.getByText("致歉说明")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    expect(onSortQuickReplies).not.toHaveBeenCalled();
+    expect(screen.queryByText("已进入话术排序模式")).not.toBeInTheDocument();
   });
 
   it("confirms before deleting a quick reply", async () => {
@@ -1658,6 +1899,8 @@ function createPanelProps(
     onMoveQuickReply: vi.fn(),
     onScopeTypeChange: vi.fn(),
     onSelectQuickReply: vi.fn(),
+    onSortCategories: vi.fn(),
+    onSortQuickReplies: vi.fn(),
     onTopCategoryChange: vi.fn(),
     onTopCategory: vi.fn(),
     onTopQuickReply: vi.fn(),

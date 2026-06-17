@@ -30,10 +30,12 @@ import type {
   WorkbenchQuickReplyCategoryContentRequest,
   WorkbenchQuickReplyCategoryListRequest,
   WorkbenchQuickReplyCategoryMoveRequest,
+  WorkbenchQuickReplyCategorySortRequest,
   WorkbenchQuickReplyCategoryUpdateRequest,
   WorkbenchQuickReplyCreateRequest,
   WorkbenchQuickReplyListRequest,
   WorkbenchQuickReplyMoveRequest,
+  WorkbenchQuickReplySortRequest,
   WorkbenchQuickReplyUpdateRequest,
 } from "@chatai/contracts";
 import { Type, type Static } from "@sinclair/typebox";
@@ -495,6 +497,12 @@ const QuickReplyCategoryMoveBodySchema = Type.Object({
   parentId: Type.String({ maxLength: 64, minLength: 1 }),
 });
 
+const QuickReplyCategorySortBodySchema = Type.Object({
+  categoryIds: Type.Array(Type.String({ maxLength: 64, minLength: 1 })),
+  parentId: Type.String({ maxLength: 64, minLength: 1 }),
+  scopeType: QuickReplyScopeTypeSchema,
+});
+
 const QuickReplyCategoryParamsSchema = Type.Object({
   categoryId: Type.String({ maxLength: 64, minLength: 1 }),
 });
@@ -551,6 +559,12 @@ const QuickReplyMoveBodySchema = Type.Object({
   categoryId: Type.String({ maxLength: 64, minLength: 1 }),
 });
 
+const QuickReplySortBodySchema = Type.Object({
+  categoryId: Type.String({ maxLength: 64, minLength: 1 }),
+  quickReplyIds: Type.Array(Type.String({ maxLength: 64, minLength: 1 })),
+  scopeType: QuickReplyScopeTypeSchema,
+});
+
 const QuickReplyParamsSchema = Type.Object({
   quickReplyId: Type.String({ maxLength: 64, minLength: 1 }),
 });
@@ -601,6 +615,7 @@ type QuickReplyCategoryCreateBody = Static<typeof QuickReplyCategoryCreateBodySc
 type QuickReplyCategoryEnsureBody = Static<typeof QuickReplyCategoryEnsureBodySchema>;
 type QuickReplyCategoryUpdateBody = Static<typeof QuickReplyCategoryUpdateBodySchema>;
 type QuickReplyCategoryMoveBody = Static<typeof QuickReplyCategoryMoveBodySchema>;
+type QuickReplyCategorySortBody = Static<typeof QuickReplyCategorySortBodySchema>;
 type QuickReplyCategoryParams = Static<typeof QuickReplyCategoryParamsSchema>;
 type QuickReplyCategoryContentQuery = Static<
   typeof QuickReplyCategoryContentQuerySchema
@@ -609,6 +624,7 @@ type QuickRepliesQuery = Static<typeof QuickRepliesQuerySchema>;
 type QuickReplyBody = Static<typeof QuickReplyBodySchema>;
 type QuickReplyBatchCreateBody = Static<typeof QuickReplyBatchCreateBodySchema>;
 type QuickReplyMoveBody = Static<typeof QuickReplyMoveBodySchema>;
+type QuickReplySortBody = Static<typeof QuickReplySortBodySchema>;
 type QuickReplyParams = Static<typeof QuickReplyParamsSchema>;
 type QuickReplyScopeQuery = Static<typeof QuickReplyScopeQuerySchema>;
 type MaterialCollectionGroupQuery = Static<typeof MaterialCollectionGroupQuerySchema>;
@@ -1236,6 +1252,23 @@ export async function registerChatRoutes(app: FastifyInstance) {
     },
   );
 
+  app.post<{ Body: QuickReplyCategorySortBody }>(
+    "/api/server/quick-replies/categories/sort",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: QuickReplyCategorySortBodySchema,
+      },
+    },
+    async (request) => {
+      assertChatWriteAccess(request);
+      return getWorkbenchService(app, request).sortQuickReplyCategories(
+        getSubUserId(request),
+        request.body satisfies WorkbenchQuickReplyCategorySortRequest,
+      );
+    },
+  );
+
   app.patch<{
     Body: QuickReplyCategoryUpdateBody;
     Params: QuickReplyCategoryParams;
@@ -1424,6 +1457,23 @@ export async function registerChatRoutes(app: FastifyInstance) {
       return getWorkbenchService(app, request).batchCreateQuickReplies(
         getSubUserId(request),
         request.body satisfies WorkbenchQuickReplyBatchCreateRequest,
+      );
+    },
+  );
+
+  app.post<{ Body: QuickReplySortBody }>(
+    "/api/server/quick-replies/sort",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: QuickReplySortBodySchema,
+      },
+    },
+    async (request) => {
+      assertChatWriteAccess(request);
+      return getWorkbenchService(app, request).sortQuickReplies(
+        getSubUserId(request),
+        request.body satisfies WorkbenchQuickReplySortRequest,
       );
     },
   );

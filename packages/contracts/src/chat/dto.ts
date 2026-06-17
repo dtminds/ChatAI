@@ -1011,6 +1011,12 @@ export type WorkbenchQuickReplyCategoryMoveRequest = {
   parentId: string;
 };
 
+export type WorkbenchQuickReplyCategorySortRequest = {
+  scopeType: QuickReplyScopeType;
+  parentId: string;
+  categoryIds: string[];
+};
+
 export type WorkbenchQuickReplyListRequest = {
   scopeType: QuickReplyScopeType;
   categoryId?: string | 0;
@@ -1060,6 +1066,12 @@ export type WorkbenchQuickReplyUpdateRequest = WorkbenchQuickReplyCreateRequest;
 
 export type WorkbenchQuickReplyMoveRequest = {
   categoryId: string;
+};
+
+export type WorkbenchQuickReplySortRequest = {
+  scopeType: QuickReplyScopeType;
+  categoryId: string;
+  quickReplyIds: string[];
 };
 
 export type WorkbenchQuickReplyOkResponse = {

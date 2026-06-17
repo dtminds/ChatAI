@@ -147,7 +147,7 @@ function AgentMetricCarousel({ metrics }: { metrics: AgentMetric[] }) {
 
       <div
         className="flex gap-4 overflow-x-auto scroll-smooth pb-1 scrollbar-none [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
-        onScroll={updateScrollState}
+        onScroll={handleScroll}
         ref={scrollRef}
       >
         {metrics.map((metric) => (

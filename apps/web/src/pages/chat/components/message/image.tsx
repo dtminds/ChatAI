@@ -610,7 +610,7 @@ function ImageOcrPanel({
           ) : null}
           {regions.map((region, index) => (
             <div
-              className="group/ocr-result relative rounded-[8px] border border-white/10 bg-white/7 px-3 py-4 text-sm text-white/90 transition-colors hover:border-amber-200/55 hover:bg-amber-300/10 data-[active=true]:border-amber-200/80 data-[active=true]:bg-amber-300/16 data-[active=true]:text-white"
+              className="group/ocr-result relative min-w-0 overflow-hidden rounded-[8px] border border-white/10 bg-white/7 px-3 py-4 text-sm text-white/90 transition-colors hover:border-amber-200/55 hover:bg-amber-300/10 data-[active=true]:border-amber-200/80 data-[active=true]:bg-amber-300/16 data-[active=true]:text-white"
               data-active={activeRegionId === region.id}
               key={region.id}
               onMouseEnter={() => setActiveRegionId(region.id)}
@@ -637,7 +637,9 @@ function ImageOcrPanel({
               >
                 <HugeiconsIcon icon={Copy01Icon} size={13} strokeWidth={2} />
               </Button>
-              <p className="whitespace-pre-wrap break-words leading-6">{region.text}</p>
+              <p className="min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere] leading-6">
+                {region.text}
+              </p>
             </div>
           ))}
         </div>

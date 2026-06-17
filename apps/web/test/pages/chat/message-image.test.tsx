@@ -530,6 +530,39 @@ describe("MessageContentRenderer image messages", () => {
     expect(screen.getAllByTestId("image-preview-ocr-region")).toHaveLength(2);
   });
 
+  it("wraps long OCR text tokens inside the result panel", async () => {
+    const user = userEvent.setup();
+    const longPath = "/Users/admin/workspace/AI/ChatAI/apps/web/src/store/workbench-store.ts";
+    vi.mocked(recognizeImageText).mockResolvedValue({
+      text: longPath,
+      regions: [
+        {
+          id: "ocr-region-1",
+          points: [],
+          text: longPath,
+        },
+      ],
+    });
+
+    render(
+      <ImageMessageCard
+        content={createImageContent({
+          alt: "长英文路径图片",
+          height: 292,
+          imageUrl: "https://cdn.example.com/chat/path-photo.jpg",
+          width: 668,
+        })}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "查看大图：长英文路径图片" }));
+    await user.click(screen.getByRole("button", { name: "提取图片文字" }));
+
+    const resultText = await screen.findByText(longPath);
+
+    expect(resultText).toHaveClass("[overflow-wrap:anywhere]");
+  });
+
   it("scrolls the matching OCR text block into view when an overlay region is clicked", async () => {
     const user = userEvent.setup();
     const scrollIntoView = vi.fn();

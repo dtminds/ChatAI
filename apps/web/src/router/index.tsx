@@ -1,13 +1,61 @@
+import { Suspense, lazy, type ReactNode } from "react";
 import { Navigate, createBrowserRouter } from "react-router-dom";
 import { RootLayout } from "@/app/root-layout";
-import { LoginPage } from "@/pages/auth/login-page";
-import { ChatWorkbenchRoutePage } from "@/pages/chat/chat-workbench-page";
-import { InsightsBusinessPage } from "@/pages/chat/insights/insights-business-page";
-import { InsightsFollowUpsPage } from "@/pages/chat/insights/insights-follow-ups-page";
-import { InsightsOverviewPage } from "@/pages/chat/insights/insights-overview-page";
-import { InsightsQualityPage } from "@/pages/chat/insights/insights-quality-page";
-import { InsightsSettingsPage } from "@/pages/chat/insights/insights-settings-page";
-import { ChatSettingsPage } from "@/pages/chat/settings/chat-settings-page";
+
+const LoginPage = lazy(() =>
+  import("@/pages/auth/login-page").then(({ LoginPage }) => ({
+    default: LoginPage,
+  })),
+);
+const ChatWorkbenchRoutePage = lazy(() =>
+  import("@/pages/chat/chat-workbench-page").then(({ ChatWorkbenchRoutePage }) => ({
+    default: ChatWorkbenchRoutePage,
+  })),
+);
+const ChatSettingsPage = lazy(() =>
+  import("@/pages/chat/settings/chat-settings-page").then(({ ChatSettingsPage }) => ({
+    default: ChatSettingsPage,
+  })),
+);
+const InsightsOverviewPage = lazy(() =>
+  import("@/pages/chat/insights/insights-overview-page").then(
+    ({ InsightsOverviewPage }) => ({
+      default: InsightsOverviewPage,
+    }),
+  ),
+);
+const InsightsQualityPage = lazy(() =>
+  import("@/pages/chat/insights/insights-quality-page").then(
+    ({ InsightsQualityPage }) => ({
+      default: InsightsQualityPage,
+    }),
+  ),
+);
+const InsightsFollowUpsPage = lazy(() =>
+  import("@/pages/chat/insights/insights-follow-ups-page").then(
+    ({ InsightsFollowUpsPage }) => ({
+      default: InsightsFollowUpsPage,
+    }),
+  ),
+);
+const InsightsBusinessPage = lazy(() =>
+  import("@/pages/chat/insights/insights-business-page").then(
+    ({ InsightsBusinessPage }) => ({
+      default: InsightsBusinessPage,
+    }),
+  ),
+);
+const InsightsSettingsPage = lazy(() =>
+  import("@/pages/chat/insights/insights-settings-page").then(
+    ({ InsightsSettingsPage }) => ({
+      default: InsightsSettingsPage,
+    }),
+  ),
+);
+
+function withRouteSuspense(element: ReactNode) {
+  return <Suspense fallback={null}>{element}</Suspense>;
+}
 
 export const routerConfig = [
   {
@@ -20,39 +68,39 @@ export const routerConfig = [
       },
       {
         path: "login",
-        element: <LoginPage />,
+        element: withRouteSuspense(<LoginPage />),
       },
       {
         path: "chat",
-        element: <ChatWorkbenchRoutePage />,
+        element: withRouteSuspense(<ChatWorkbenchRoutePage />),
       },
       {
         path: "chat/customers",
-        element: <ChatWorkbenchRoutePage />,
+        element: withRouteSuspense(<ChatWorkbenchRoutePage />),
       },
       {
         path: "chat/settings",
-        element: <ChatSettingsPage />,
+        element: withRouteSuspense(<ChatSettingsPage />),
       },
       {
         path: "chat/settings/:sectionId",
-        element: <ChatSettingsPage />,
+        element: withRouteSuspense(<ChatSettingsPage />),
       },
       {
         path: "chat/insights",
-        element: <InsightsOverviewPage />,
+        element: withRouteSuspense(<InsightsOverviewPage />),
       },
       {
         path: "chat/insights/quality",
-        element: <InsightsQualityPage />,
+        element: withRouteSuspense(<InsightsQualityPage />),
       },
       {
         path: "chat/insights/follow-ups",
-        element: <InsightsFollowUpsPage />,
+        element: withRouteSuspense(<InsightsFollowUpsPage />),
       },
       {
         path: "chat/insights/business",
-        element: <InsightsBusinessPage />,
+        element: withRouteSuspense(<InsightsBusinessPage />),
       },
       {
         path: "chat/insights/records",
@@ -60,7 +108,7 @@ export const routerConfig = [
       },
       {
         path: "chat/insights/settings",
-        element: <InsightsSettingsPage />,
+        element: withRouteSuspense(<InsightsSettingsPage />),
       },
     ],
   },

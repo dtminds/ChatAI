@@ -176,6 +176,28 @@ describe("QuickReplyPanel", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("accepts uppercase xlsx file extensions", async () => {
+    const user = userEvent.setup();
+    vi.mocked(readSheet).mockResolvedValue([
+      [...QUICK_REPLY_IMPORT_HEADERS],
+      ["售前", "报价", "欢迎", "您好"],
+    ] as unknown as Awaited<ReturnType<typeof readSheet>>);
+
+    render(<QuickReplyPanel {...createPanelProps()} />);
+
+    await user.click(screen.getByRole("button", { name: "更多操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "导入话术" }));
+    await user.upload(
+      document.querySelector('input[type="file"]') as HTMLInputElement,
+      new File(["xlsx"], "quick-replies.XLSX", {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      }),
+    );
+
+    expect(await screen.findByText("文件校验通过")).toBeInTheDocument();
+    expect(screen.queryByText("第 0 行：仅支持 .xlsx 文件")).not.toBeInTheDocument();
+  });
+
   it("renders precheck errors in a constrained scroll region", async () => {
     const user = userEvent.setup();
     vi.mocked(readSheet).mockResolvedValue([
@@ -1014,9 +1036,37 @@ describe("QuickReplyPanel", () => {
     );
 
     expect(screen.queryByText("暂无一级分类")).not.toBeInTheDocument();
+    const manualLink = screen.getByRole("link", { name: "查看使用手册" });
+
+    expect(manualLink).toHaveAttribute(
+      "href",
+      "https://b5.bokr.com.cn/dist/manual/quickreply.png",
+    );
+    expect(manualLink).toHaveAttribute("target", "_blank");
     await user.click(screen.getByRole("button", { name: "添加分类" }));
 
     expect(onCreateCategory).toHaveBeenCalledWith(0);
+  });
+
+  it("shows a manual link in the empty secondary category state", () => {
+    render(
+      <QuickReplyPanel
+        {...createPanelProps({
+          categories: [categories[0]],
+        })}
+      />,
+    );
+
+    const manualLink = screen.getByRole("link", { name: "查看使用手册" });
+
+    expect(
+      screen.getByText("添加一个话术分组，即可开始创建话术"),
+    ).toBeInTheDocument();
+    expect(manualLink).toHaveAttribute(
+      "href",
+      "https://b5.bokr.com.cn/dist/manual/quickreply.png",
+    );
+    expect(manualLink).toHaveAttribute("target", "_blank");
   });
 
   it("uses top categories and secondary sections instead of all or uncategorized entries", async () => {
@@ -1088,6 +1138,52 @@ describe("QuickReplyPanel", () => {
     );
 
     expect(screen.queryByText("刷新后的报价话术")).not.toBeInTheDocument();
+  });
+
+  it("expands the active secondary category when the active category changes externally", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <QuickReplyPanel
+        {...createPanelProps()}
+        activeCategoryId="cat-2"
+        quickRepliesByCategoryId={{
+          "cat-2": [quickReply],
+          "cat-3": [
+            {
+              ...quickReply,
+              categoryId: "cat-3",
+              contentText: "致歉话术",
+              id: "reply-2",
+              labelText: "致歉",
+            },
+          ],
+        }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "致歉" }));
+    expect(screen.queryByText("致歉话术")).not.toBeInTheDocument();
+
+    rerender(
+      <QuickReplyPanel
+        {...createPanelProps()}
+        activeCategoryId="cat-3"
+        quickRepliesByCategoryId={{
+          "cat-2": [quickReply],
+          "cat-3": [
+            {
+              ...quickReply,
+              categoryId: "cat-3",
+              contentText: "致歉话术",
+              id: "reply-2",
+              labelText: "致歉",
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByText("致歉话术")).toBeInTheDocument();
   });
 
   it("creates quick replies from the secondary category context menu", async () => {

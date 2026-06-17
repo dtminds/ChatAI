@@ -524,7 +524,7 @@ CREATE TABLE `xy_wap_embed_quick_reply_category` (
   `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '插入时间',
   `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (`id`),
-  KEY `idx_quick_reply_category_scope` (`uid`,`biz_status`,`scope_type`,`sub_uid`,`parent_id`,`sort`)
+  KEY `idx_quick_reply_category_parent_sort` (`uid`,`sub_uid`,`parent_id`,`biz_status`,`sort`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='chatAI-快捷话术分类表';
 
 CREATE TABLE `xy_wap_embed_quick_reply` (
@@ -543,6 +543,5 @@ CREATE TABLE `xy_wap_embed_quick_reply` (
   `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '插入时间',
   `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (`id`),
-  KEY `idx_quick_reply_scope_category` (`uid`,`biz_status`,`scope_type`,`sub_uid`,`category_id`,`sort`),
-  KEY `idx_quick_reply_scope_update` (`uid`,`biz_status`,`scope_type`,`sub_uid`,`update_time`)
+  KEY `idx_quick_reply_category_sort` (`uid`,`sub_uid`,`category_id`,`biz_status`,`sort`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='chatAI-快捷话术表';

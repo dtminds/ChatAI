@@ -40,6 +40,7 @@ describe("quick reply import", () => {
     const link = appendChild.mock.calls[0]?.[0] as HTMLAnchorElement;
     expect(link.href).toBe(QUICK_REPLY_IMPORT_TEMPLATE_URL);
     expect(link.download).toBe("快捷话术导入模板.xlsx");
+    expect(link.target).toBe("_blank");
   });
 
   it("parses strict template rows and reports summary", () => {
@@ -58,6 +59,17 @@ describe("quick reply import", () => {
       distinctSecondaryCategoryCount: 1,
       errorCount: 0,
     });
+  });
+
+  it("trims template header cells before validation", () => {
+    const result = buildQuickReplyImportPrecheckFromRows(
+      [
+        QUICK_REPLY_IMPORT_HEADERS.map((header) => ` ${header} `),
+        ["售前", "开场", "欢迎", "您好"],
+      ],
+    );
+
+    expect(result.ok).toBe(true);
   });
 
   it("reports distinct categories from the file", () => {

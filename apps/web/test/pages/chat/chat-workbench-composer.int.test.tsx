@@ -1106,56 +1106,9 @@ describe("ChatWorkbenchPage composer flows", () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();
     const sendMessage = vi.fn(baseService.sendMessage);
-    const listMaterialGroups = vi.fn(async (request) => {
-      if (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM) {
-        return baseService.listMaterialGroups(request);
-      }
-
-      return {
-        groups: [
-          {
-            bizType: MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM,
-            id: "group-mini",
-            sort: 100,
-            title: "小程序分组",
-          },
-        ],
-      };
-    });
-    const listMaterialCollections = vi.fn(async (request) => {
-      if (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM) {
-        return baseService.listMaterialCollections(request);
-      }
-
-      return {
-        items: [
-          {
-            bizType: MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM,
-            content: {
-              appName: "企微助手",
-              title: "客户跟进小程序",
-            },
-            contentType: "mini-program" as const,
-            groupId: "group-mini",
-            id: "material-mini-001",
-            messageId: "msg-mini-001",
-            sort: 1,
-            title: "客户跟进小程序",
-          },
-        ],
-        pagination: {
-          hasMore: false,
-          page: request.page ?? 1,
-          pageSize: 100,
-          total: 1,
-        },
-      };
-    });
 
     setWorkbenchService({
       ...baseService,
-      listMaterialCollections,
-      listMaterialGroups,
       sendMessage,
     });
 
@@ -1164,7 +1117,9 @@ describe("ChatWorkbenchPage composer flows", () => {
     await screen.findByRole("textbox", { name: "请输入消息……" });
     await user.click(screen.getByRole("button", { name: "收藏小程序" }));
     await user.click(
-      await screen.findByRole("button", { name: /选择素材 客户跟进小程序/ }),
+      await screen.findByRole("button", {
+        name: /选择素材 预约直播抽秋天的第一杯奶茶/,
+      }),
     );
     await user.click(screen.getByRole("button", { name: "发送" }));
 
@@ -1174,7 +1129,7 @@ describe("ChatWorkbenchPage composer flows", () => {
           conversationId: "conv-001",
           seatId: "drc",
           segment: expect.objectContaining({
-            materialCollectionId: "material-mini-001",
+            materialCollectionId: "mock-material-msg-002",
             type: "weapp",
           }),
         }),
@@ -1184,8 +1139,8 @@ describe("ChatWorkbenchPage composer flows", () => {
     expect(sendMessage.mock.calls[0]?.[0].segment).not.toHaveProperty("url");
     await expectSentConversationMessage("conv-001", sendMessage, {
       content: {
-        appName: "企微助手",
-        title: "客户跟进小程序",
+        appName: "学好惊喜社",
+        title: "预约直播抽秋天的第一杯奶茶",
         type: "mini-program",
       },
       role: "agent",

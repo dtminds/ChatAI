@@ -59,6 +59,7 @@ export function downloadQuickReplyImportTemplate() {
 
   link.href = QUICK_REPLY_IMPORT_TEMPLATE_URL;
   link.download = QUICK_REPLY_IMPORT_TEMPLATE_FILE_NAME;
+  link.target = "_blank";
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
@@ -68,7 +69,7 @@ export function buildQuickReplyImportPrecheckFromRows(
   rows: readonly unknown[][],
 ): QuickReplyImportPrecheck {
   const errors: Array<{ message: string; rowNumber: number }> = [];
-  const header = rows[0] ?? [];
+  const header = (rows[0] ?? []).map((cell) => String(cell ?? "").trim());
 
   if (
     header.length !== QUICK_REPLY_IMPORT_HEADERS.length ||

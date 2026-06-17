@@ -19,6 +19,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -69,6 +70,8 @@ import {
 import { getQuickReplyTitleColor } from "@/pages/chat/components/quick-reply/quick-reply-title-palette";
 
 const CONTEXT_MENU_VIEWPORT_PADDING = 8;
+const QUICK_REPLY_MANUAL_URL =
+  "https://b5.bokr.com.cn/dist/manual/quickreply.png";
 
 type QuickReplySortMode = "category" | "reply" | null;
 
@@ -236,6 +239,19 @@ export function QuickReplyPanel({
     sortMode === "reply"
       ? sortQuickRepliesByCategoryId
       : filteredQuickRepliesByCategoryId;
+  useEffect(() => {
+    if (typeof activeCategoryId !== "string") {
+      return;
+    }
+
+    setManualExpandedCategoryIds((current) => {
+      if (current.has(activeCategoryId)) {
+        return current;
+      }
+
+      return new Set([...current, activeCategoryId]);
+    });
+  }, [activeCategoryId]);
   useEffect(() => {
     const activeTopCategoryId = activeTopCategory?.id ?? null;
     const previousTopCategoryId = previousTopCategoryIdRef.current;
@@ -600,14 +616,15 @@ export function QuickReplyPanel({
                   <Spinner aria-hidden="true" size={20} />
                 </div>
               ) : !activeTopCategory ? (
-                <div className="py-10 text-center text-[13px] text-muted-foreground">
+                <div className="flex flex-col items-center py-10 text-center text-[13px] text-muted-foreground">
                   <img
                     alt=""
                     aria-hidden="true"
                     className="h-48 w-48 mx-auto opacity-45"
                     src="https://b5.bokr.com.cn/dist/reply-empty.png!w480.webp"
                   />
-                  添加分类，如售前、售后、物流等
+                  <div>添加分类，如售前、售后、物流等</div>
+                  <QuickReplyManualLink />
                 </div>
               ) : isLoading && childCategories.length === 0 ? (
                 <div
@@ -618,17 +635,18 @@ export function QuickReplyPanel({
                   <Spinner aria-hidden="true" size={20} />
                 </div>
               ) : childCategories.length === 0 ? (
-                <div className="space-y-3 rounded-[8px] bg-muted/40 px-4 py-8 text-center">
+                <div className="flex flex-col items-center rounded-[8px] px-4 py-8 text-center">
+                  <img
+                    alt=""
+                    aria-hidden="true"
+                    className="h-48 w-48 mx-auto opacity-45"
+                    src="https://b5.bokr.com.cn/dist/reply-empty.png!w480.webp"
+                  />
                   <div className="text-[13px] text-muted-foreground">
-                    <img
-                      alt=""
-                      aria-hidden="true"
-                      className="h-48 w-48 mx-auto opacity-45"
-                      src="https://b5.bokr.com.cn/dist/reply-empty.png!w480.webp"
-                    />
                     添加一个话术分组，即可开始创建话术
                   </div>
                   <Button
+                    className="mt-3"
                     disabled={isMutating}
                     onClick={() => onCreateCategory(activeTopCategory.id)}
                     size="sm"
@@ -643,6 +661,7 @@ export function QuickReplyPanel({
                     />
                     创建话术分组
                   </Button>
+                  <QuickReplyManualLink />
                 </div>
               ) : sortMode === "category" ? (
                 <Sortable
@@ -722,6 +741,19 @@ export function QuickReplyPanel({
         </section>
       </div>
     </div>
+  );
+}
+
+function QuickReplyManualLink() {
+  return (
+    <a
+      className="mt-4 inline-block text-[13px] font-medium text-primary hover:text-primary/85"
+      href={QUICK_REPLY_MANUAL_URL}
+      rel="noopener noreferrer"
+      target="_blank"
+    >
+      查看使用手册
+    </a>
   );
 }
 
@@ -1318,7 +1350,7 @@ function NestedSubmenuShell({
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const submenuRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!isOpen) {
       return;
     }

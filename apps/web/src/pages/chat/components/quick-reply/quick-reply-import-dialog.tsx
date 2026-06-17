@@ -98,7 +98,7 @@ export function QuickReplyImportDialog({
     setSelectedFileName(file.name);
 
     try {
-      if (!file.name.endsWith(".xlsx")) {
+      if (!file.name.toLowerCase().endsWith(".xlsx")) {
         setPrecheck({
           errors: [{ message: "仅支持 .xlsx 文件", rowNumber: 0 }],
           ok: false,

@@ -5,6 +5,7 @@ import {
   getSupportedFileExtension,
 } from "@/pages/chat/lib/composer-file-files";
 import type {
+  ComposerImageSegment,
   ComposerFileSegment,
   ComposerSegment,
 } from "@/pages/chat/lib/composer-segments";
@@ -141,6 +142,34 @@ export async function uploadWorkbenchFile(
     fileSize: file.size,
     fileSizeLabel: formatFileSize(file.size),
     type: "file",
+    url: buildObjectUrl(key),
+  };
+}
+
+export async function uploadWorkbenchImageFile(
+  conversationId: string,
+  file: File,
+): Promise<ComposerImageSegment> {
+  const credential = await getUploadCredential(conversationId);
+  const cos = createCosClient(credential);
+  const key = buildObjectKey({
+    credential,
+    extension: getImageExtension(file.type),
+  });
+
+  await cos.uploadFile({
+    Body: file,
+    Bucket: credential.bucket,
+    ContentType: file.type || undefined,
+    Key: key,
+    Region: credential.region,
+    SliceSize: UPLOAD_SLICE_SIZE,
+  });
+
+  return {
+    alt: file.name || "图片",
+    fileId: key,
+    type: "image",
     url: buildObjectUrl(key),
   };
 }

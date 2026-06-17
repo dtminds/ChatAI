@@ -4295,6 +4295,15 @@ export function createWorkbenchStore() {
         return { didConsumeQuote: false, ok: true };
       }
 
+      if (normalizedSegments.some((segment) => segment.type === "sphfeed")) {
+        return {
+          errorCode: "SPHFEED_UNAVAILABLE",
+          errorMessage: "视频号发送功能暂未开放",
+          reason: "unavailable",
+          ok: false,
+        };
+      }
+
       const state = get();
       const { activeAccountId, activeConversationId, me } = state;
 
@@ -5862,6 +5871,16 @@ function stripComposerMentionMetadata(segments: ComposerSegment[]): ComposerSegm
 function toWorkbenchSendSegment(
   segment: ComposerSegment,
 ): WorkbenchSendMessagePayload["segment"] {
+  if (
+    (segment.type === "file" ||
+      segment.type === "h5" ||
+      segment.type === "weapp" ||
+      segment.type === "sphfeed") &&
+    segment.msgid
+  ) {
+    return segment;
+  }
+
   if (segment.type === "file" && segment.materialCollectionId) {
     return {
       materialCollectionId: segment.materialCollectionId,

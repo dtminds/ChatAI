@@ -83,14 +83,14 @@ describe("ChatHeader", () => {
       <ChatHeader
         activeConversation={{
           ...conversation,
-          contactOriginalName: "客户原始昵称",
+          contactOriginalName: "微信昵称：客户原始昵称",
           customerName: "客户备注",
         }}
       />,
     );
 
     expect(screen.getByText("客户备注")).toBeInTheDocument();
-    expect(screen.getByText("客户原始昵称")).toBeInTheDocument();
+    expect(screen.getByText("微信昵称：客户原始昵称")).toBeInTheDocument();
   });
 
   it("does not read browser storage or media queries while rendering", () => {

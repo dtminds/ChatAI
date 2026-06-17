@@ -1,4 +1,8 @@
-import type { PointerEvent as ReactPointerEvent, RefObject } from "react";
+import type {
+  PointerEvent as ReactPointerEvent,
+  ReactNode,
+  RefObject,
+} from "react";
 import { Cancel01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { LexicalEditor } from "lexical";
@@ -124,6 +128,8 @@ type ChatPanelProps = {
   retryingMessageIds?: ReadonlySet<string>;
   onSendDraft: (segments: ComposerSegment[]) => void;
   onDismissScopeTransitionError: () => void;
+  onQuickReplyActiveChange?: (isActive: boolean) => void;
+  quickReplyPanel?: ReactNode;
   scopeTransitionError?: string;
   sidebarItems: SettingsSidebarItem[];
   fileUploadQueue: FileUploadQueueItem[];
@@ -204,6 +210,8 @@ export function ChatPanel({
   onSendDraft,
   onTranscribeVoice,
   onDismissScopeTransitionError,
+  onQuickReplyActiveChange,
+  quickReplyPanel,
   scopeTransitionError,
   sidebarItems,
   fileUploadQueue,
@@ -356,7 +364,9 @@ export function ChatPanel({
                   isResizing={isResizingCustomerPanel}
                   onRefreshGroupMembers={onRefreshGroupMembers}
                   onResizeStart={onCustomerPanelResizeStart}
+                  onQuickReplyActiveChange={onQuickReplyActiveChange}
                   panelWidth={customerPanelWidth}
+                  quickReplyPanel={quickReplyPanel}
                   sidebarItems={sidebarItems}
                 />
               </div>

@@ -516,6 +516,8 @@ function createMaterialDb(results: Partial<Record<string, unknown>> = {}) {
       table: string;
       type: string;
     }>;
+    limits: number[];
+    offsets: number[];
     orderBys: Array<[string, string | undefined]>;
     table: string;
     whereExpressions: unknown[];
@@ -556,6 +558,8 @@ function createMaterialDb(results: Partial<Record<string, unknown>> = {}) {
       const query = createQueryBuilder(results[table] ?? []);
       selects.push({
         joinConditions: query.joinConditions,
+        limits: query.limits,
+        offsets: query.offsets,
         orderBys: query.orderBys,
         table,
         whereExpressions: query.whereExpressions,
@@ -826,6 +830,750 @@ describe("WorkbenchRepository", () => {
       ["biz_status", "=", 1],
       ["sub_uid", "in", [88]],
       ["group_id", "=", 0],
+    ]);
+  });
+
+  it("lists enterprise quick reply categories by shared scope", async () => {
+    const db = createMaterialDb({
+      xy_wap_embed_quick_reply_category: [
+        {
+          biz_status: 1,
+          create_time: new Date("2026-06-15T00:00:00Z"),
+          id: 11,
+          op_sub_uid: 9,
+          parent_id: 0,
+          scope_type: 1,
+          sort: 100,
+          sub_uid: 0,
+          title: "售前",
+          uid: 10001,
+          update_time: new Date("2026-06-15T00:00:00Z"),
+        },
+      ],
+    });
+    const repository = new WorkbenchRepository(db as never);
+
+    const categories = await repository.listQuickReplyCategories({
+      scopeType: 1,
+      subUserId: "9",
+      uid: 10001,
+    });
+
+    expect(categories).toEqual([
+      {
+        id: "11",
+        parentId: 0,
+        scopeType: 1,
+        sort: 100,
+        title: "售前",
+      },
+    ]);
+    expect(db.selects[0]).toMatchObject({
+      orderBys: [
+        ["sort", "desc"],
+        ["id", "desc"],
+      ],
+      table: "xy_wap_embed_quick_reply_category",
+      wheres: [
+        ["uid", "=", 10001],
+        ["biz_status", "=", 1],
+        ["scope_type", "=", 1],
+        ["sub_uid", "=", 0],
+      ],
+    });
+  });
+
+  it("lists personal quick reply categories by current sub user scope", async () => {
+    const db = createMaterialDb({
+      xy_wap_embed_quick_reply_category: [
+        {
+          id: 12,
+          parent_id: 11,
+          scope_type: 2,
+          sort: "90",
+          title: "致歉",
+        },
+      ],
+    });
+    const repository = new WorkbenchRepository(db as never);
+
+    const categories = await repository.listQuickReplyCategories({
+      scopeType: 2,
+      subUserId: "9",
+      uid: 10001,
+    });
+
+    expect(categories).toEqual([
+      {
+        id: "12",
+        parentId: "11",
+        scopeType: 2,
+        sort: 90,
+        title: "致歉",
+      },
+    ]);
+    expect(db.selects[0].wheres).toEqual([
+      ["uid", "=", 10001],
+      ["biz_status", "=", 1],
+      ["scope_type", "=", 2],
+      ["sub_uid", "=", 9],
+    ]);
+  });
+
+  it("detects child quick reply categories in the requested scope", async () => {
+    const db = createMaterialDb({
+      xy_wap_embed_quick_reply_category: [
+        {
+          id: 12,
+          parent_id: 11,
+        },
+      ],
+    });
+    const repository = new WorkbenchRepository(db as never);
+
+    await expect(
+      repository.isChildQuickReplyCategory({
+        categoryId: "12",
+        scopeType: 2,
+        subUserId: "9",
+        uid: 10001,
+      }),
+    ).resolves.toBe(true);
+
+    expect(db.selects[0]).toMatchObject({
+      table: "xy_wap_embed_quick_reply_category",
+      wheres: [
+        ["id", "=", 12],
+        ["uid", "=", 10001],
+        ["biz_status", "=", 1],
+        ["scope_type", "=", 2],
+        ["sub_uid", "=", 9],
+      ],
+    });
+  });
+
+  it("lists quick replies with pagination and normalized attachments", async () => {
+    const db = createMaterialDb({
+      xy_wap_embed_quick_reply: [
+        {
+          attachments: JSON.stringify([
+            {
+              content: { href: "https://example.com", title: "活动" },
+              materialCollectionId: "8",
+              msgid: "1025656",
+              type: "h5",
+            },
+          ]),
+          biz_status: 1,
+          category_id: 11,
+          content_text: "您好",
+          create_time: new Date("2026-06-15T00:00:00Z"),
+          id: 21,
+          label_color: "orange",
+          label_text: "售前",
+          op_sub_uid: 9,
+          scope_type: 1,
+          sort: 100,
+          sub_uid: 0,
+          uid: 10001,
+          update_time: new Date("2026-06-15T00:00:01Z"),
+        },
+      ],
+    });
+    const repository = new WorkbenchRepository(db as never);
+
+    const result = await repository.listQuickReplies({
+      categoryId: "11",
+      page: 1,
+      pageSize: 50,
+      scopeType: 1,
+      subUserId: "9",
+      uid: 10001,
+    });
+
+    expect(result).toEqual({
+      items: [
+        {
+          attachments: [
+            {
+              content: { href: "https://example.com", title: "活动" },
+              materialCollectionId: "8",
+              msgid: "1025656",
+              type: "h5",
+            },
+          ],
+          categoryId: "11",
+          contentText: "您好",
+          createdAt: new Date("2026-06-15T00:00:00Z").getTime(),
+          id: "21",
+          labelColor: "orange",
+          labelText: "售前",
+          scopeType: 1,
+          sort: 100,
+          updatedAt: new Date("2026-06-15T00:00:01Z").getTime(),
+        },
+      ],
+      total: 1,
+    });
+    expect(db.selects[0]).toMatchObject({
+      orderBys: [
+        ["sort", "desc"],
+        ["id", "desc"],
+      ],
+      table: "xy_wap_embed_quick_reply",
+      wheres: [
+        ["uid", "=", 10001],
+        ["biz_status", "=", 1],
+        ["scope_type", "=", 1],
+        ["sub_uid", "=", 0],
+        ["category_id", "=", 11],
+      ],
+    });
+    expect(db.selects[0].whereExpressions).toEqual([]);
+    expect(db.selects[0]).toMatchObject({
+      limits: [50],
+      offsets: [0],
+    });
+  });
+
+  it("adds keyword filters to quick reply list and count queries", async () => {
+    const db = createMaterialDb({
+      xy_wap_embed_quick_reply: [],
+    });
+    const repository = new WorkbenchRepository(db as never);
+
+    await repository.listQuickReplies({
+      keyword: "退款",
+      page: 2,
+      pageSize: 20,
+      scopeType: 2,
+      subUserId: "9",
+      uid: 10001,
+    });
+
+    expect(db.selects).toHaveLength(2);
+    expect(db.selects[0].whereExpressions).toContainEqual({
+      type: "or",
+      expressions: [
+        { column: "content_text", operator: "like", value: "%退款%" },
+        { column: "label_text", operator: "like", value: "%退款%" },
+      ],
+    });
+    expect(db.selects[1].whereExpressions).toContainEqual({
+      type: "or",
+      expressions: [
+        { column: "content_text", operator: "like", value: "%退款%" },
+        { column: "label_text", operator: "like", value: "%退款%" },
+      ],
+    });
+    expect(db.selects[0]).toMatchObject({
+      limits: [20],
+      offsets: [20],
+    });
+  });
+
+  it("lists quick reply category content with child and reply limits", async () => {
+    const db = createMaterialDb({
+      xy_wap_embed_quick_reply_category: [
+        {
+          id: 11,
+          parent_id: 10,
+          scope_type: 1,
+          sort: 100,
+          title: "报价",
+        },
+        {
+          id: 12,
+          parent_id: 10,
+          scope_type: 1,
+          sort: 90,
+          title: "致歉",
+        },
+      ],
+      xy_wap_embed_quick_reply: [
+        {
+          attachments: JSON.stringify([]),
+          category_id: 11,
+          content_text: "报价话术",
+          id: 21,
+          label_color: "",
+          label_text: "",
+          scope_type: 1,
+          sort: 100,
+        },
+        {
+          attachments: JSON.stringify([]),
+          category_id: 12,
+          content_text: "致歉话术",
+          id: 22,
+          label_color: "",
+          label_text: "",
+          scope_type: 1,
+          sort: 90,
+        },
+      ],
+    });
+    const repository = new WorkbenchRepository(db as never);
+
+    await expect(
+      repository.listQuickReplyCategoryContent({
+        categoryLimit: 50,
+        parentCategoryId: "10",
+        quickReplyLimit: 10_000,
+        scopeType: 1,
+        subUserId: "9",
+        uid: 10001,
+      }),
+    ).resolves.toMatchObject({
+      categories: [
+        expect.objectContaining({ id: "11", title: "报价" }),
+        expect.objectContaining({ id: "12", title: "致歉" }),
+      ],
+      quickReplies: [
+        expect.objectContaining({ categoryId: "11", contentText: "报价话术" }),
+        expect.objectContaining({ categoryId: "12", contentText: "致歉话术" }),
+      ],
+      truncated: {
+        categories: false,
+        quickReplies: false,
+      },
+    });
+    expect(db.selects[0]).toMatchObject({
+      limits: [51],
+      orderBys: [
+        ["sort", "desc"],
+        ["id", "desc"],
+      ],
+      table: "xy_wap_embed_quick_reply_category",
+      wheres: [
+        ["uid", "=", 10001],
+        ["biz_status", "=", 1],
+        ["scope_type", "=", 1],
+        ["sub_uid", "=", 0],
+        ["parent_id", "=", 10],
+      ],
+    });
+    expect(db.selects[1]).toMatchObject({
+      limits: [10_001],
+      orderBys: [
+        ["sort", "desc"],
+        ["id", "desc"],
+      ],
+      table: "xy_wap_embed_quick_reply",
+      wheres: [
+        ["uid", "=", 10001],
+        ["biz_status", "=", 1],
+        ["scope_type", "=", 1],
+        ["sub_uid", "=", 0],
+        ["category_id", "in", [11, 12]],
+      ],
+    });
+  });
+
+  it("creates quick reply categories and replies in the requested scope", async () => {
+    const db = createMaterialDb();
+    const repository = new WorkbenchRepository(db as never);
+
+    await expect(
+      repository.createQuickReplyCategory({
+        opSubUserId: "9",
+        parentId: 0,
+        scopeType: 1,
+        sort: 100,
+        subUserId: "9",
+        title: "售前",
+        uid: 10001,
+      }),
+    ).resolves.toBe("1801");
+
+    await expect(
+      repository.createQuickReply({
+        attachments: [
+          {
+            content: { fileName: "报价单.pdf", fileUrl: "https://example.com/file.pdf" },
+            materialCollectionId: "8",
+            msgid: "1025656",
+            type: "file",
+          },
+        ],
+        categoryId: "11",
+        contentText: "您好",
+        labelColor: "orange",
+        labelText: "售前",
+        opSubUserId: "9",
+        scopeType: 2,
+        sort: 90,
+        subUserId: "9",
+        uid: 10001,
+      }),
+    ).resolves.toBe("1801");
+
+    expect(db.inserts).toEqual([
+      {
+        table: "xy_wap_embed_quick_reply_category",
+        values: {
+          biz_status: 1,
+          op_sub_uid: 9,
+          parent_id: 0,
+          scope_type: 1,
+          sort: 100,
+          sub_uid: 0,
+          title: "售前",
+          uid: 10001,
+        },
+      },
+      {
+        table: "xy_wap_embed_quick_reply",
+        values: {
+          attachments: JSON.stringify([
+            {
+              content: {
+                fileName: "报价单.pdf",
+                fileUrl: "https://example.com/file.pdf",
+              },
+              materialCollectionId: "8",
+              msgid: "1025656",
+              type: "file",
+            },
+          ]),
+          biz_status: 1,
+          category_id: 11,
+          content_text: "您好",
+          label_color: "orange",
+          label_text: "售前",
+          op_sub_uid: 9,
+          scope_type: 2,
+          sort: 90,
+          sub_uid: 9,
+          uid: 10001,
+        },
+      },
+    ]);
+  });
+
+  it("batch creates quick replies with one insert statement", async () => {
+    const db = createMaterialDb();
+    const repository = new WorkbenchRepository(db as never);
+
+    await expect(
+      repository.batchCreateQuickReplies({
+        items: [
+          {
+            attachments: [],
+            categoryId: "11",
+            contentText: "您好",
+            labelColor: "orange",
+            labelText: "售前",
+            sort: 90,
+          },
+          {
+            attachments: [
+              {
+                content: { fileName: "报价单.pdf", fileUrl: "https://example.com/file.pdf" },
+                materialCollectionId: "8",
+                msgid: "1025656",
+                type: "file",
+              },
+            ],
+            categoryId: "12",
+            contentText: "报价见附件",
+            labelColor: "",
+            labelText: "",
+            sort: 89,
+          },
+        ],
+        opSubUserId: "9",
+        scopeType: 2,
+        subUserId: "9",
+        uid: 10001,
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(db.inserts).toEqual([
+      {
+        table: "xy_wap_embed_quick_reply",
+        values: [
+          {
+            attachments: "[]",
+            biz_status: 1,
+            category_id: 11,
+            content_text: "您好",
+            label_color: "orange",
+            label_text: "售前",
+            op_sub_uid: 9,
+            scope_type: 2,
+            sort: 90,
+            sub_uid: 9,
+            uid: 10001,
+          },
+          {
+            attachments: JSON.stringify([
+              {
+                content: {
+                  fileName: "报价单.pdf",
+                  fileUrl: "https://example.com/file.pdf",
+                },
+                materialCollectionId: "8",
+                msgid: "1025656",
+                type: "file",
+              },
+            ]),
+            biz_status: 1,
+            category_id: 12,
+            content_text: "报价见附件",
+            label_color: "",
+            label_text: "",
+            op_sub_uid: 9,
+            scope_type: 2,
+            sort: 89,
+            sub_uid: 9,
+            uid: 10001,
+          },
+        ],
+      },
+    ]);
+  });
+
+  it("updates quick reply categories only in the requested scope", async () => {
+    const db = createMaterialDb();
+    const repository = new WorkbenchRepository(db as never);
+
+    await repository.renameQuickReplyCategory({
+      categoryId: "11",
+      scopeType: 2,
+      subUserId: "9",
+      title: "新分类",
+      uid: 10001,
+    });
+    await repository.topQuickReplyCategory({
+      categoryId: "11",
+      scopeType: 2,
+      sort: 200,
+      subUserId: "9",
+      uid: 10001,
+    });
+    await repository.bottomQuickReplyCategory({
+      categoryId: "11",
+      scopeType: 2,
+      sort: 100,
+      subUserId: "9",
+      uid: 10001,
+    });
+    await repository.deleteQuickReplyCategory({
+      categoryId: "11",
+      scopeType: 2,
+      subUserId: "9",
+      uid: 10001,
+    });
+
+    expect(db.updates).toEqual([
+      {
+        table: "xy_wap_embed_quick_reply_category",
+        values: { title: "新分类" },
+        wheres: [
+          ["id", "=", 11],
+          ["uid", "=", 10001],
+          ["scope_type", "=", 2],
+          ["sub_uid", "=", 9],
+          ["biz_status", "=", 1],
+        ],
+      },
+      {
+        table: "xy_wap_embed_quick_reply_category",
+        values: { sort: 200 },
+        wheres: [
+          ["id", "=", 11],
+          ["uid", "=", 10001],
+          ["scope_type", "=", 2],
+          ["sub_uid", "=", 9],
+          ["biz_status", "=", 1],
+        ],
+      },
+      {
+        table: "xy_wap_embed_quick_reply_category",
+        values: { sort: 100 },
+        wheres: [
+          ["id", "=", 11],
+          ["uid", "=", 10001],
+          ["scope_type", "=", 2],
+          ["sub_uid", "=", 9],
+          ["biz_status", "=", 1],
+        ],
+      },
+      {
+        table: "xy_wap_embed_quick_reply_category",
+        values: { biz_status: 0 },
+        wheres: [
+          ["id", "=", 11],
+          ["uid", "=", 10001],
+          ["scope_type", "=", 2],
+          ["sub_uid", "=", 9],
+          ["biz_status", "=", 1],
+        ],
+      },
+    ]);
+  });
+
+  it("updates quick replies only in the requested scope", async () => {
+    const db = createMaterialDb();
+    const repository = new WorkbenchRepository(db as never);
+
+    await repository.updateQuickReply({
+      attachments: [
+        {
+          content: {
+            fileName: "新报价单.pdf",
+            fileUrl: "https://example.com/new-file.pdf",
+          },
+          materialCollectionId: "8",
+          msgid: "1025656",
+          type: "file",
+        },
+      ],
+      categoryId: "12",
+      contentText: "新话术",
+      labelColor: "blue",
+      labelText: "报价",
+      quickReplyId: "21",
+      scopeType: 2,
+      subUserId: "9",
+      uid: 10001,
+    });
+    await repository.topQuickReply({
+      quickReplyId: "21",
+      scopeType: 2,
+      sort: 200,
+      subUserId: "9",
+      uid: 10001,
+    });
+    await repository.bottomQuickReply({
+      quickReplyId: "21",
+      scopeType: 2,
+      sort: 100,
+      subUserId: "9",
+      uid: 10001,
+    });
+    await repository.deleteQuickReply({
+      quickReplyId: "21",
+      scopeType: 2,
+      subUserId: "9",
+      uid: 10001,
+    });
+
+    expect(db.updates).toEqual([
+      {
+        table: "xy_wap_embed_quick_reply",
+        values: {
+          attachments: JSON.stringify([
+            {
+              content: {
+                fileName: "新报价单.pdf",
+                fileUrl: "https://example.com/new-file.pdf",
+              },
+              materialCollectionId: "8",
+              msgid: "1025656",
+              type: "file",
+            },
+          ]),
+          category_id: 12,
+          content_text: "新话术",
+          label_color: "blue",
+          label_text: "报价",
+        },
+        wheres: [
+          ["id", "=", 21],
+          ["uid", "=", 10001],
+          ["scope_type", "=", 2],
+          ["sub_uid", "=", 9],
+          ["biz_status", "=", 1],
+        ],
+      },
+      {
+        table: "xy_wap_embed_quick_reply",
+        values: { sort: 200 },
+        wheres: [
+          ["id", "=", 21],
+          ["uid", "=", 10001],
+          ["scope_type", "=", 2],
+          ["sub_uid", "=", 9],
+          ["biz_status", "=", 1],
+        ],
+      },
+      {
+        table: "xy_wap_embed_quick_reply",
+        values: { sort: 100 },
+        wheres: [
+          ["id", "=", 21],
+          ["uid", "=", 10001],
+          ["scope_type", "=", 2],
+          ["sub_uid", "=", 9],
+          ["biz_status", "=", 1],
+        ],
+      },
+      {
+        table: "xy_wap_embed_quick_reply",
+        values: { biz_status: 0 },
+        wheres: [
+          ["id", "=", 21],
+          ["uid", "=", 10001],
+          ["scope_type", "=", 2],
+          ["sub_uid", "=", 9],
+          ["biz_status", "=", 1],
+        ],
+      },
+    ]);
+  });
+
+  it("moves quick reply categories and replies only in the requested scope", async () => {
+    const db = createMaterialDb();
+    const repository = new WorkbenchRepository(db as never);
+
+    await repository.moveQuickReplyCategory({
+      categoryId: "11",
+      parentId: "20",
+      scopeType: 2,
+      sort: 80,
+      subUserId: "9",
+      uid: 10001,
+    });
+    await repository.moveQuickReply({
+      categoryId: "12",
+      quickReplyId: "21",
+      scopeType: 2,
+      sort: 70,
+      subUserId: "9",
+      uid: 10001,
+    });
+
+    expect(db.updates).toEqual([
+      {
+        table: "xy_wap_embed_quick_reply_category",
+        values: {
+          parent_id: 20,
+          sort: 80,
+        },
+        wheres: [
+          ["id", "=", 11],
+          ["uid", "=", 10001],
+          ["scope_type", "=", 2],
+          ["sub_uid", "=", 9],
+          ["biz_status", "=", 1],
+        ],
+      },
+      {
+        table: "xy_wap_embed_quick_reply",
+        values: {
+          category_id: 12,
+          sort: 70,
+        },
+        wheres: [
+          ["id", "=", 21],
+          ["uid", "=", 10001],
+          ["scope_type", "=", 2],
+          ["sub_uid", "=", 9],
+          ["biz_status", "=", 1],
+        ],
+      },
     ]);
   });
 
@@ -3203,6 +3951,13 @@ describe("WorkbenchRepository", () => {
             });
           }
 
+          if (table === "xy_wap_embed_customer_bind_relation") {
+            return createQueryBuilder({
+              remark: "客户备注",
+              third_external_userid: "external-001",
+            });
+          }
+
           throw new Error(`unexpected table ${table}`);
         },
       } as never,
@@ -3218,11 +3973,13 @@ describe("WorkbenchRepository", () => {
       "xy_wap_embed_conversation as conversation",
       "xy_wap_embed_msg_audit_info",
       "xy_wap_embed_contact",
+      "xy_wap_embed_customer_bind_relation",
     ]);
     expect(page.items[0]).toMatchObject({
       conversationId: "88",
       customerAvatar: "https://example.com/avatar.png",
-      customerName: "客户名",
+      customerName: "客户备注",
+      contactOriginalName: "微信昵称：客户名",
       lastMessage: "hello",
     });
   });
@@ -3294,7 +4051,7 @@ describe("WorkbenchRepository", () => {
     });
   });
 
-  it("uses contact name for single chat display without customer bind relation", async () => {
+  it("falls back to contact name when bind remark is missing", async () => {
     const observedTables: string[] = [];
     const repository = new WorkbenchRepository(
       {
@@ -3329,6 +4086,10 @@ describe("WorkbenchRepository", () => {
             });
           }
 
+          if (table === "xy_wap_embed_customer_bind_relation") {
+            return createQueryBuilder([]);
+          }
+
           if (
             table === "xy_wap_embed_msg_audit_info" ||
             table === "xy_wap_embed_group_seat"
@@ -3346,70 +4107,12 @@ describe("WorkbenchRepository", () => {
       mode: "single",
     });
 
-    expect(observedTables).not.toContain("xy_wap_embed_customer_bind_relation");
+    expect(observedTables).toContain("xy_wap_embed_customer_bind_relation");
     expect(page.items[0]).toMatchObject({
       bizStatus: 1,
       conversationId: "88",
       customerName: "客户名",
-    });
-  });
-
-  it("always marks private conversations as active without customer bind relation", async () => {
-    const observedTables: string[] = [];
-    const repository = new WorkbenchRepository(
-      {
-        selectFrom(table: string) {
-          observedTables.push(table);
-
-          if (table === "xy_wap_embed_user_seat") {
-            return createQueryBuilder({
-              id: 12,
-              platform: 5,
-              third_userid: "seat-user-001",
-              uid: 9001,
-            });
-          }
-
-          if (table === "xy_wap_embed_conversation as conversation") {
-            return createQueryBuilder([
-              createConversationRow({
-                id: 88,
-                third_external_userid: "external-001",
-              }),
-            ]);
-          }
-
-          if (table === "xy_wap_embed_contact") {
-            return createQueryBuilder({
-              avatar: "https://example.com/avatar.png",
-              biz_status: 1,
-              name: "客户名",
-              real_name: "客户实名",
-              third_external_userid: "external-001",
-            });
-          }
-
-          if (
-            table === "xy_wap_embed_msg_audit_info" ||
-            table === "xy_wap_embed_group_seat"
-          ) {
-            return createQueryBuilder([]);
-          }
-
-          throw new Error(`unexpected table ${table}`);
-        },
-      } as never,
-    );
-
-    const page = await repository.listConversations("12", {
-      limit: 30,
-      mode: "single",
-    });
-
-    expect(observedTables).not.toContain("xy_wap_embed_customer_bind_relation");
-    expect(page.items[0]).toMatchObject({
-      bizStatus: 1,
-      conversationId: "88",
+      contactOriginalName: undefined,
     });
   });
 
@@ -3492,10 +4195,12 @@ describe("WorkbenchRepository", () => {
       expect.objectContaining({
         conversationId: "88",
         customerName: "客户名一",
+        contactOriginalName: undefined,
       }),
       expect.objectContaining({
         conversationId: "89",
         customerName: "未知客户",
+        contactOriginalName: undefined,
       }),
     ]);
   });

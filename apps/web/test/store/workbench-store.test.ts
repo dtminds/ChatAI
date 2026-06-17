@@ -3207,17 +3207,9 @@ describe("useWorkbenchStore", () => {
         title: "小程序标题",
         type: "weapp",
       },
-      {
-        description: "视频号简介",
-        imageUrl: "https://cdn.example.com/sphfeed-cover.png",
-        materialCollectionId: "material-sphfeed-001",
-        title: "视频号标题",
-        type: "sphfeed",
-        url: "https://channels.example.com/feed",
-      },
     ]);
 
-    expect(sendMessage).toHaveBeenCalledTimes(5);
+    expect(sendMessage).toHaveBeenCalledTimes(4);
     expect(sendMessage).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
@@ -3254,18 +3246,8 @@ describe("useWorkbenchStore", () => {
         },
       }),
     );
-    expect(sendMessage).toHaveBeenNthCalledWith(
-      5,
-      expect.objectContaining({
-        segment: {
-          materialCollectionId: "material-sphfeed-001",
-          type: "sphfeed",
-        },
-      }),
-    );
-
     const latestMessages =
-      useWorkbenchStore.getState().messagesByConversationId["conv-001"].slice(-5);
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].slice(-4);
 
     expect(latestMessages).toMatchObject([
       {
@@ -3294,11 +3276,138 @@ describe("useWorkbenchStore", () => {
           type: "mini-program",
         },
       },
+    ]);
+  });
+
+  it("blocks sphfeed composer sends before calling the send API", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    const result = await useWorkbenchStore.getState().sendAgentMessageSegments([
+      {
+        description: "视频号简介",
+        imageUrl: "https://cdn.example.com/sphfeed-cover.png",
+        materialCollectionId: "material-sphfeed-001",
+        msgid: "msg-sphfeed-001",
+        title: "视频号标题",
+        type: "sphfeed",
+        url: "https://channels.example.com/feed",
+      },
+    ]);
+
+    expect(result).toEqual({
+      errorCode: "SPHFEED_UNAVAILABLE",
+      errorMessage: "视频号发送功能暂未开放",
+      reason: "unavailable",
+      ok: false,
+    });
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("keeps quick reply snapshot fields when a material segment has msgid", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentMessageSegments([
+      {
+        extension: "pdf",
+        fileName: "报价单.pdf",
+        fileSizeLabel: "2 KB",
+        materialCollectionId: "material-file-001",
+        msgid: "msg-file-001",
+        type: "file",
+        url: "https://cdn.example.com/quote.pdf",
+      },
+      {
+        coverUrl: "https://cdn.example.com/link-cover.png",
+        desc: "活动说明",
+        href: "https://example.com/activity",
+        materialCollectionId: "material-h5-001",
+        msgid: "msg-h5-001",
+        title: "活动链接",
+        type: "h5",
+      },
+      {
+        appName: "客户助手",
+        coverImageUrl: "https://cdn.example.com/weapp-cover.png",
+        materialCollectionId: "material-weapp-001",
+        msgid: "msg-weapp-001",
+        title: "小程序标题",
+        type: "weapp",
+      },
+    ]);
+
+    expect(sendMessage).toHaveBeenCalledTimes(3);
+    expect(sendMessage).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        segment: expect.objectContaining({
+          fileName: "报价单.pdf",
+          materialCollectionId: "material-file-001",
+          msgid: "msg-file-001",
+          type: "file",
+          url: "https://cdn.example.com/quote.pdf",
+        }),
+      }),
+    );
+    expect(sendMessage).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        segment: expect.objectContaining({
+          desc: "活动说明",
+          href: "https://example.com/activity",
+          materialCollectionId: "material-h5-001",
+          msgid: "msg-h5-001",
+          title: "活动链接",
+          type: "h5",
+        }),
+      }),
+    );
+    expect(sendMessage).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        segment: expect.objectContaining({
+          materialCollectionId: "material-weapp-001",
+          msgid: "msg-weapp-001",
+          type: "weapp",
+        }),
+      }),
+    );
+
+    const latestMessages =
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].slice(-3);
+
+    expect(latestMessages).toMatchObject([
       {
         content: {
-          title: "视频号标题",
-          type: "sphfeed",
-          url: "https://channels.example.com/feed",
+          fileName: "报价单.pdf",
+          type: "file",
+        },
+      },
+      {
+        content: {
+          title: "活动链接",
+          type: "h5",
+          url: "https://example.com/activity",
+        },
+      },
+      {
+        content: {
+          appName: "客户助手",
+          title: "小程序标题",
+          type: "mini-program",
         },
       },
     ]);

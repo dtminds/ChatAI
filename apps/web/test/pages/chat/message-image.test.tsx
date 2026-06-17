@@ -558,8 +558,12 @@ describe("MessageContentRenderer image messages", () => {
     await user.click(screen.getByRole("button", { name: "查看大图：长英文路径图片" }));
     await user.click(screen.getByRole("button", { name: "提取图片文字" }));
 
+    const panel = await screen.findByTestId("image-preview-ocr-panel");
     const resultText = await screen.findByText(longPath);
+    const resultCard = resultText.closest("[data-testid='image-preview-ocr-result']");
 
+    expect(panel).toHaveClass("w-[22rem]", "max-w-[22rem]", "min-w-0");
+    expect(resultCard).toHaveClass("w-full", "max-w-full", "min-w-0");
     expect(resultText).toHaveClass("[overflow-wrap:anywhere]");
   });
 

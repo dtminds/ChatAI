@@ -281,6 +281,7 @@ describe("resolveImageSegmentsForSend", () => {
     ).resolves.toEqual(segments);
     expect(getUploadCredential).not.toHaveBeenCalled();
     expect(cosUploadFileMock).not.toHaveBeenCalled();
+    expect(cosConstructorMock).not.toHaveBeenCalled();
   });
 
   it("uploads a selected file to COS and returns a sendable file segment", async () => {

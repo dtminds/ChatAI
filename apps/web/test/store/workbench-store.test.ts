@@ -3485,6 +3485,37 @@ describe("useWorkbenchStore", () => {
     expect(state.pendingMessages).toHaveLength(0);
   });
 
+  it("returns a specific image upload error when the upload SDK chunk cannot load", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+    vi.mocked(resolveImageSegmentsForSend).mockRejectedValue({
+      code: "MEDIA_UPLOAD_SDK_LOAD_FAILED",
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    const result = await useWorkbenchStore.getState().sendAgentMessageSegments([
+      {
+        alt: "截图",
+        localUrl: "data:image/png;base64,aaa",
+        type: "image",
+      },
+    ]);
+
+    expect(result).toEqual({
+      errorCode: "MEDIA_UPLOAD_SDK_LOAD_FAILED",
+      errorMessage: "上传组件加载失败，请刷新页面后重试",
+      reason: "image-upload",
+      ok: false,
+    });
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
+
   it("does not create optimistic messages when the send API fails", async () => {
     const baseService = createMockWorkbenchService();
     const sendMessage = vi.fn(async () => {

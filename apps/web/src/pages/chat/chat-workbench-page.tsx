@@ -76,6 +76,10 @@ import type {
   FileUploadQueueItem,
   QuotedMessagePreviewContent,
 } from "@/pages/chat/chat-types";
+import {
+  MEDIA_UPLOAD_SDK_LOAD_FAILED_CODE,
+  MEDIA_UPLOAD_SDK_LOAD_FAILED_MESSAGE,
+} from "@/pages/chat/api/media-upload-errors";
 import { uploadWorkbenchFile } from "@/pages/chat/api/media-upload-service";
 import { getVisibleConversations } from "@/pages/chat/api/workbench-gateway";
 import { downloadMessageFile } from "@/pages/chat/api/workbench-gateway";
@@ -2000,6 +2004,16 @@ function getSendFailureDialogCopy(
   errorMessage?: string,
 ) {
   const description = resolveSendFailureDescription(reason, errorCode, errorMessage);
+
+  if (
+    (reason === "file-upload" || reason === "image-upload") &&
+    errorCode === MEDIA_UPLOAD_SDK_LOAD_FAILED_CODE
+  ) {
+    return {
+      title: MEDIA_UPLOAD_SDK_LOAD_FAILED_MESSAGE,
+      description: undefined,
+    };
+  }
 
   if (reason === "file-upload") {
     return {

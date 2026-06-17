@@ -1,6 +1,7 @@
 import { Suspense, lazy, type ReactNode } from "react";
 import { Navigate, createBrowserRouter } from "react-router-dom";
 import { RootLayout } from "@/app/root-layout";
+import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
 
 const LoginPage = lazy(() =>
   import("@/pages/auth/login-page").then(({ LoginPage }) => ({
@@ -54,13 +55,45 @@ const InsightsSettingsPage = lazy(() =>
 );
 
 function withRouteSuspense(element: ReactNode) {
-  return <Suspense fallback={null}>{element}</Suspense>;
+  return <Suspense fallback={<RouteLoadingFallback />}>{element}</Suspense>;
+}
+
+function RouteErrorFallback() {
+  return (
+    <main className="flex min-h-svh items-center justify-center bg-background px-6 text-foreground">
+      <div
+        aria-label="页面加载失败"
+        className="max-w-sm text-center"
+        role="alert"
+      >
+        <h1 className="text-base font-medium text-foreground">页面加载失败</h1>
+        <p className="mt-2 text-sm text-muted-foreground">请刷新页面后重试</p>
+      </div>
+    </main>
+  );
+}
+
+function RouteLoadingFallback() {
+  return (
+    <main className="flex min-h-svh items-center justify-center bg-background text-foreground">
+      <div className="inline-flex items-center gap-3 text-sm text-muted-foreground">
+        <DotMatrixLoader
+          ariaLabel="正在加载页面"
+          className="text-muted-foreground"
+          dotSize={3}
+          size={22}
+        />
+        <span>正在加载页面</span>
+      </div>
+    </main>
+  );
 }
 
 export const routerConfig = [
   {
     path: "/",
     element: <RootLayout />,
+    errorElement: <RouteErrorFallback />,
     children: [
       {
         index: true,

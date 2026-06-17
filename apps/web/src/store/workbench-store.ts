@@ -1,5 +1,8 @@
 import { create } from "zustand";
-import { resolveImageSegmentsForSend } from "@/pages/chat/api/media-upload-service";
+import {
+  resolveImageSegmentsForSend,
+} from "@/pages/chat/api/media-upload-service";
+import { MEDIA_UPLOAD_SDK_LOAD_FAILED_CODE } from "@/pages/chat/api/media-upload-errors";
 import { formatConversationPreview, formatWorkbenchTimestamp, adaptConversation } from "@/pages/chat/api/workbench-adapter";
 import { getWorkbenchService } from "@/pages/chat/api/workbench-service";
 import {
@@ -4369,7 +4372,10 @@ export function createWorkbenchStore() {
 
         return {
           errorCode: getRequestErrorCode(error),
-          errorMessage: getRequestErrorMessage(error, "图片上传失败"),
+          errorMessage: getRequestErrorMessage(
+            error,
+            getMediaUploadFallbackMessage(error, "图片上传失败"),
+          ),
           reason: "image-upload",
           ok: false,
         };
@@ -6003,6 +6009,12 @@ function getRequestErrorMessage(error: unknown, fallback: string) {
   }
 
   return fallback;
+}
+
+function getMediaUploadFallbackMessage(error: unknown, fallback: string) {
+  return getRequestErrorCode(error) === MEDIA_UPLOAD_SDK_LOAD_FAILED_CODE
+    ? "上传组件加载失败，请刷新页面后重试"
+    : fallback;
 }
 
 function getRequestApiErrorMessage(error: unknown) {

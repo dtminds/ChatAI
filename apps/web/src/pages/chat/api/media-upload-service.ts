@@ -4,6 +4,10 @@ import {
   formatFileSize,
   getSupportedFileExtension,
 } from "@/pages/chat/lib/composer-file-files";
+import {
+  MEDIA_UPLOAD_SDK_LOAD_FAILED_CODE,
+  MEDIA_UPLOAD_SDK_LOAD_FAILED_MESSAGE,
+} from "@/pages/chat/api/media-upload-errors";
 import type {
   ComposerImageSegment,
   ComposerFileSegment,
@@ -216,6 +220,10 @@ async function loadCosConstructor() {
     .then((module) => getCosConstructor(module))
     .catch((error: unknown) => {
       cosConstructorPromise = null;
+      if (isDynamicImportFailure(error)) {
+        throw new MediaUploadSdkLoadError(error);
+      }
+
       throw error;
     });
 
@@ -230,6 +238,47 @@ function getCosConstructor(module: CosModule): CosConstructor {
   return (
     "default" in module && module.default ? module.default : module
   ) as CosConstructor;
+}
+
+class MediaUploadSdkLoadError extends Error {
+  readonly code = MEDIA_UPLOAD_SDK_LOAD_FAILED_CODE;
+
+  constructor(cause: unknown) {
+    super(MEDIA_UPLOAD_SDK_LOAD_FAILED_MESSAGE);
+    this.name = "MediaUploadSdkLoadError";
+    this.cause = cause;
+  }
+}
+
+function isDynamicImportFailure(error: unknown) {
+  const messages = collectErrorMessages(error);
+
+  return messages.some((message) => {
+    const normalized = message.toLowerCase();
+
+    return (
+      normalized.includes("failed to fetch dynamically imported module") ||
+      normalized.includes("error loading dynamically imported module") ||
+      normalized.includes("importing a module script failed") ||
+      normalized.includes("loading chunk") ||
+      normalized.includes("chunkloaderror")
+    );
+  });
+}
+
+function collectErrorMessages(error: unknown): string[] {
+  if (!(error instanceof Error)) {
+    return [];
+  }
+
+  const messages = [error.message];
+  const cause = error.cause;
+
+  if (cause instanceof Error) {
+    messages.push(...collectErrorMessages(cause));
+  }
+
+  return messages;
 }
 
 async function dataUrlToBlob(dataUrl: string) {

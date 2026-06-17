@@ -235,4 +235,57 @@ describe("recognizeImageText", () => {
       worker: false,
     });
   });
+
+  it("falls back to main-thread OCR when worker initialization throws a string", async () => {
+    vi.resetModules();
+    create
+      .mockRejectedValueOnce("OCR worker failed.")
+      .mockResolvedValueOnce({
+        predict: vi.fn(async () => [
+          {
+            items: [{ poly: [], score: 0.99, text: "字符串错误回退成功" }],
+          },
+        ]),
+      });
+    const { recognizeImageText: recognizeFreshImageText } = await import(
+      "@/pages/chat/lib/image-ocr"
+    );
+
+    await expect(
+      recognizeFreshImageText({
+        alt: "worker 字符串错误图片",
+        imageUrl: "https://cdn.example.com/worker-string-error.jpg",
+      }),
+    ).resolves.toMatchObject({
+      text: "字符串错误回退成功",
+    });
+    expect(create).toHaveBeenCalledTimes(2);
+  });
+
+  it("normalizes nullable OCR text items to empty text instead of throwing", async () => {
+    predict.mockResolvedValue([
+      {
+        items: [
+          { poly: [], score: 0.99, text: null },
+          { poly: [], score: 0.98, text: " 可用文字 " },
+        ],
+      },
+    ]);
+
+    await expect(
+      recognizeImageText({
+        alt: "异常文本图片",
+        imageUrl: "https://cdn.example.com/nullable-text.jpg",
+      }),
+    ).resolves.toEqual({
+      regions: [
+        {
+          id: "ocr-region-2",
+          points: [],
+          text: "可用文字",
+        },
+      ],
+      text: "可用文字",
+    });
+  });
 });

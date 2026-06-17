@@ -572,7 +572,8 @@ describe("MessageContentRenderer image messages", () => {
         "[&_[data-slot=scroll-area-viewport]>div]:max-w-full",
       );
     expect(resultCard).toHaveClass("w-full", "max-w-full", "min-w-0");
-    expect(resultText).toHaveClass("w-full", "max-w-full", "min-w-0", "break-all");
+    expect(resultText).toHaveClass("w-full", "max-w-full", "min-w-0");
+    expect(resultText).not.toHaveClass("break-all");
   });
 
   it("scrolls the matching OCR text block into view when an overlay region is clicked", async () => {

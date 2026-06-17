@@ -90,11 +90,9 @@ async function loadPaddleOcrModule() {
 }
 
 function isWorkerInitializationError(error: unknown) {
-  if (!(error instanceof Error)) {
-    return false;
-  }
+  const message = error instanceof Error ? error.message : String(error);
 
-  return /worker/i.test(error.message);
+  return /worker/i.test(message);
 }
 
 function ensureTrailingSlash(value: string) {
@@ -131,7 +129,7 @@ function normalizeOcrResult(
     .map((item, index) => ({
       id: `ocr-region-${index + 1}`,
       points: normalizePoints(item.poly),
-      text: item.text.trim(),
+      text: String(item.text ?? "").trim(),
     }))
     .filter((region) => region.text.length > 0);
 

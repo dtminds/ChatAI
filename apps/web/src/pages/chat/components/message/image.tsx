@@ -644,7 +644,7 @@ function ImageOcrPanel({
               >
                 <HugeiconsIcon icon={Copy01Icon} size={13} strokeWidth={2} />
               </Button>
-              <p className="w-full min-w-0 max-w-full whitespace-pre-wrap break-words break-all [overflow-wrap:anywhere] leading-6">
+              <p className="w-full min-w-0 max-w-full whitespace-pre-wrap break-words [overflow-wrap:anywhere] leading-6">
                 {region.text}
               </p>
             </div>

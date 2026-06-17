@@ -1,12 +1,23 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
+import { useMemo, useRef, useState } from "react";
 import { Add01Icon, Book04Icon, Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { LexicalComposer } from "@lexical/react/LexicalComposer";
+import { ContentEditable } from "@lexical/react/LexicalContentEditable";
+import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
+import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin";
+import type { LexicalEditor } from "lexical";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
+import { INSERT_CONDITIONAL_LOGIC_KNOWLEDGE_BASE_COMMAND } from "./agent-conditional-logic-lexical-commands";
+import { KnowledgeBaseChipNode } from "./agent-conditional-logic-lexical-nodes";
+import { ConditionalLogicRuntimePlugin } from "./agent-conditional-logic-lexical-plugins";
+import {
+  isConditionalLogicEmpty,
+  normalizeConditionalLogicSegments,
+} from "./agent-conditional-logic-lexical-utils";
 import {
   mockKnowledgeBaseOptions,
   type ConditionalLogicSegment,
@@ -22,8 +33,7 @@ export function AgentConditionalLogicField({
 }) {
   const [open, setOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const editorRef = useRef<HTMLDivElement>(null);
-  const savedSelectionRef = useRef<Range | null>(null);
+  const editorRef = useRef<LexicalEditor | null>(null);
 
   const normalizedSegments = useMemo(
     () => normalizeConditionalLogicSegments(segments),
@@ -44,77 +54,30 @@ export function AgentConditionalLogicField({
     );
   }, [searchQuery]);
 
-  useEffect(() => {
-    const editor = editorRef.current;
+  const editorConfig = useMemo(
+    () => ({
+      namespace: "AgentConditionalLogicField",
+      nodes: [KnowledgeBaseChipNode],
+      onError(error: Error) {
+        throw error;
+      },
+      theme: {
+        paragraph: "m-0",
+      },
+    }),
+    [],
+  );
 
-    if (!editor) {
-      return;
-    }
-
-    const currentSegments = parseEditorContent(editor);
-
-    if (segmentsEqual(currentSegments, normalizedSegments)) {
-      return;
-    }
-
-    renderSegmentsToEditor(editor, normalizedSegments);
-  }, [normalizedSegments]);
-
-  function saveSelection() {
-    const editor = editorRef.current;
-    const selection = window.getSelection();
-
-    if (!editor || !selection || selection.rangeCount === 0) {
-      return;
-    }
-
-    const range = selection.getRangeAt(0);
-
-    if (editor.contains(range.commonAncestorContainer)) {
-      savedSelectionRef.current = range.cloneRange();
-    }
-  }
-
-  function handleInput() {
-    const editor = editorRef.current;
-
-    if (!editor) {
-      return;
-    }
-
-    onChange(parseEditorContent(editor));
+  function registerEditor(editor: LexicalEditor | null) {
+    editorRef.current = editor;
   }
 
   function insertKnowledgeBase(knowledgeBaseId: string) {
-    const editor = editorRef.current;
-
-    if (!editor) {
-      return;
-    }
-
-    const range = getInsertionRange(editor, savedSelectionRef.current);
-    const chip = createKnowledgeBaseChipElement(knowledgeBaseId);
-
-    editor.focus();
-
-    const selection = window.getSelection();
-    selection?.removeAllRanges();
-    selection?.addRange(range);
-
-    range.deleteContents();
-    range.insertNode(chip);
-
-    const caretAnchor = document.createTextNode("\u200b");
-    chip.after(caretAnchor);
-
-    const caretRange = document.createRange();
-    caretRange.setStart(caretAnchor, caretAnchor.length);
-    caretRange.collapse(true);
-    selection?.removeAllRanges();
-    selection?.addRange(caretRange);
-    savedSelectionRef.current = caretRange.cloneRange();
-
-    handleInput();
+    editorRef.current?.dispatchCommand(
+      INSERT_CONDITIONAL_LOGIC_KNOWLEDGE_BASE_COMMAND,
+      knowledgeBaseId,
+    );
+    editorRef.current?.focus();
     setOpen(false);
     setSearchQuery("");
   }
@@ -129,10 +92,6 @@ export function AgentConditionalLogicField({
         <span className="absolute left-0 top-0 z-10">
           <Popover
             onOpenChange={(nextOpen) => {
-              if (nextOpen) {
-                saveSelection();
-              }
-
               setOpen(nextOpen);
 
               if (!nextOpen) {
@@ -147,7 +106,6 @@ export function AgentConditionalLogicField({
                 className="size-7 rounded-full border border-[#E5E5E5] bg-background text-muted-foreground hover:bg-muted/40"
                 onMouseDown={(event) => {
                   event.preventDefault();
-                  saveSelection();
                 }}
                 size="icon"
                 type="button"
@@ -197,43 +155,36 @@ export function AgentConditionalLogicField({
           </Popover>
         </span>
 
-        {isEmpty ? (
-          <span
-            aria-hidden
-            className="pointer-events-none absolute left-0 top-8 text-muted-foreground"
-          >
-            请输入条件逻辑描述
-          </span>
-        ) : null}
-
-        <div
-          ref={editorRef}
-          aria-label="条件逻辑描述"
-          aria-multiline="true"
-          className="min-h-24 w-full whitespace-pre-wrap break-words pt-8 outline-none"
-          contentEditable
-          onInput={handleInput}
-          onKeyUp={saveSelection}
-          onMouseUp={saveSelection}
-          role="textbox"
-          suppressContentEditableWarning
-        />
+        <LexicalComposer initialConfig={editorConfig}>
+          <PlainTextPlugin
+            contentEditable={
+              <ContentEditable
+                aria-label="条件逻辑描述"
+                aria-multiline="true"
+                className="min-h-24 w-full whitespace-pre-wrap break-words pt-8 outline-none"
+                role="textbox"
+              />
+            }
+            ErrorBoundary={LexicalErrorBoundary}
+            placeholder={
+              isEmpty ? (
+                <div
+                  aria-hidden
+                  className="pointer-events-none absolute left-0 top-8 text-muted-foreground"
+                >
+                  请输入条件逻辑描述
+                </div>
+              ) : null
+            }
+          />
+          <ConditionalLogicRuntimePlugin
+            onChange={onChange}
+            registerEditor={registerEditor}
+            segments={normalizedSegments}
+          />
+        </LexicalComposer>
       </div>
     </div>
-  );
-}
-
-function KnowledgeBaseTag({ name }: { name: string }) {
-  return (
-    <span className="mx-px inline-flex h-7 max-w-full items-center gap-1 rounded-[6px] border border-[#E5E5E5] bg-background px-1.5 align-middle text-xs text-foreground">
-      <HugeiconsIcon
-        className="text-muted-foreground"
-        icon={Book04Icon}
-        size={14}
-        strokeWidth={1.8}
-      />
-      <span>{name}</span>
-    </span>
   );
 }
 
@@ -265,165 +216,4 @@ function KnowledgeBaseOptionRow({
       <span className="min-w-0 flex-1 truncate">{knowledgeBase.name}</span>
     </button>
   );
-}
-
-function getInsertionRange(editor: HTMLDivElement, savedRange: Range | null) {
-  if (savedRange && editor.contains(savedRange.startContainer)) {
-    return savedRange.cloneRange();
-  }
-
-  const range = document.createRange();
-
-  if (editor.childNodes.length === 0) {
-    range.setStart(editor, 0);
-    range.collapse(true);
-    return range;
-  }
-
-  range.selectNodeContents(editor);
-  range.collapse(false);
-
-  return range;
-}
-
-function createKnowledgeBaseChipElement(knowledgeBaseId: string) {
-  const knowledgeBase = mockKnowledgeBaseOptions.find((option) => option.id === knowledgeBaseId);
-  const container = document.createElement("span");
-  container.innerHTML = renderToStaticMarkup(
-    <KnowledgeBaseTag name={knowledgeBase?.name ?? ""} />,
-  );
-
-  const chip = container.firstElementChild;
-
-  if (!(chip instanceof HTMLElement)) {
-    throw new Error("Failed to create knowledge base chip element");
-  }
-
-  chip.contentEditable = "false";
-  chip.dataset.kbId = knowledgeBaseId;
-
-  return chip;
-}
-
-function renderSegmentsToEditor(
-  editor: HTMLDivElement,
-  segments: ConditionalLogicSegment[],
-) {
-  editor.innerHTML = "";
-
-  for (const segment of segments) {
-    if (segment.type === "knowledgeBase") {
-      editor.appendChild(createKnowledgeBaseChipElement(segment.id));
-      continue;
-    }
-
-    if (segment.value.length > 0) {
-      editor.appendChild(document.createTextNode(segment.value));
-    }
-  }
-}
-
-function parseEditorContent(root: HTMLElement): ConditionalLogicSegment[] {
-  const segments: ConditionalLogicSegment[] = [];
-
-  function appendText(value: string) {
-    const normalizedValue = value.replace(/\u200b/g, "");
-
-    if (!normalizedValue) {
-      return;
-    }
-
-    const lastSegment = segments[segments.length - 1];
-
-    if (lastSegment?.type === "text") {
-      lastSegment.value += normalizedValue;
-      return;
-    }
-
-    segments.push({ type: "text", value: normalizedValue });
-  }
-
-  function walk(node: Node) {
-    if (node.nodeType === Node.TEXT_NODE) {
-      appendText(node.textContent ?? "");
-      return;
-    }
-
-    if (!(node instanceof HTMLElement)) {
-      return;
-    }
-
-    const knowledgeBaseId = node.dataset.kbId;
-
-    if (knowledgeBaseId) {
-      segments.push({ type: "knowledgeBase", id: knowledgeBaseId });
-      return;
-    }
-
-    if (node.tagName === "BR") {
-      return;
-    }
-
-    node.childNodes.forEach(walk);
-  }
-
-  root.childNodes.forEach(walk);
-
-  return normalizeConditionalLogicSegments(segments);
-}
-
-function segmentsEqual(
-  left: ConditionalLogicSegment[],
-  right: ConditionalLogicSegment[],
-) {
-  return JSON.stringify(left) === JSON.stringify(right);
-}
-
-function isConditionalLogicEmpty(segments: ConditionalLogicSegment[]) {
-  return !segments.some(
-    (segment) =>
-      segment.type === "knowledgeBase" ||
-      (segment.type === "text" && segment.value.replace(/\u200b/g, "").length > 0),
-  );
-}
-
-function normalizeConditionalLogicSegments(
-  segments: ConditionalLogicSegment[],
-): ConditionalLogicSegment[] {
-  if (segments.length === 0) {
-    return [{ type: "text", value: "" }];
-  }
-
-  const merged: ConditionalLogicSegment[] = [];
-
-  for (const segment of segments) {
-    if (segment.type === "knowledgeBase") {
-      merged.push(segment);
-      continue;
-    }
-
-    const lastSegment = merged[merged.length - 1];
-
-    if (lastSegment?.type === "text") {
-      merged[merged.length - 1] = {
-        type: "text",
-        value: `${lastSegment.value}${segment.value}`,
-      };
-      continue;
-    }
-
-    merged.push({ type: "text", value: segment.value });
-  }
-
-  if (merged.length === 0 || merged[0]?.type !== "text") {
-    merged.unshift({ type: "text", value: "" });
-  }
-
-  const lastSegment = merged[merged.length - 1];
-
-  if (lastSegment?.type !== "text") {
-    merged.push({ type: "text", value: "" });
-  }
-
-  return merged;
 }

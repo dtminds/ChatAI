@@ -4860,6 +4860,185 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
+  it("quick reply import: creates missing categories and reuses existing categories", async () => {
+    const repository = createMaterialRepository({
+      createQuickReplyCategory: vi
+        .fn()
+        .mockResolvedValueOnce("12")
+        .mockResolvedValueOnce("20")
+        .mockResolvedValueOnce("21"),
+      findQuickReplyCategorySortBoundary: vi
+        .fn()
+        .mockResolvedValueOnce(90)
+        .mockResolvedValueOnce(80)
+        .mockResolvedValueOnce(70),
+      listQuickReplyCategories: vi.fn().mockResolvedValue([
+        {
+          id: "10",
+          parentId: 0,
+          scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+          sort: 100,
+          title: "售前",
+        },
+        {
+          id: "11",
+          parentId: "10",
+          scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+          sort: 100,
+          title: "报价",
+        },
+      ]),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.ensureQuickReplyCategories("101", {
+        categories: [
+          { children: ["报价", " 跟进 ", "报价"], title: " 售前 " },
+          { children: ["致歉"], title: " 售后 " },
+        ],
+        scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+      }),
+    ).resolves.toEqual({
+      categories: [
+        {
+          children: [
+            { id: "11", title: "报价" },
+            { id: "12", title: "跟进" },
+          ],
+          id: "10",
+          title: "售前",
+        },
+        {
+          children: [{ id: "21", title: "致歉" }],
+          id: "20",
+          title: "售后",
+        },
+      ],
+      ok: true,
+      summary: {
+        createdPrimaryCategoryCount: 1,
+        createdSecondaryCategoryCount: 2,
+      },
+    });
+    expect(repository.createQuickReplyCategory).toHaveBeenCalledWith(
+      expect.objectContaining({
+        parentId: "10",
+        title: "跟进",
+      }),
+    );
+    expect(repository.createQuickReplyCategory).toHaveBeenCalledWith(
+      expect.objectContaining({
+        parentId: 0,
+        title: "售后",
+      }),
+    );
+    expect(repository.createQuickReplyCategory).toHaveBeenCalledWith(
+      expect.objectContaining({
+        parentId: "20",
+        title: "致歉",
+      }),
+    );
+  });
+
+  it("quick reply import: returns validation errors for invalid category titles", async () => {
+    const repository = createMaterialRepository();
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.ensureQuickReplyCategories("101", {
+        categories: [
+          {
+            children: ["报价"],
+            title: "一二三四五六七八九十甲",
+          },
+        ],
+        scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+      }),
+    ).resolves.toEqual({
+      errorMsg: "导入数据有误",
+      errors: [
+        {
+          message: "一级分类名称不能超过10个字",
+          rowNumber: 1,
+        },
+      ],
+      ok: false,
+    });
+    expect(repository.createQuickReplyCategory).not.toHaveBeenCalled();
+  });
+
+  it("quick reply import: rejects creating the fifty-first top-level category", async () => {
+    const repository = createMaterialRepository({
+      listQuickReplyCategories: vi.fn().mockResolvedValue(
+        Array.from({ length: 50 }, (_, index) => ({
+          id: String(100 + index),
+          parentId: 0,
+          scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+          sort: 100 - index,
+          title: `分类${index}`,
+        })),
+      ),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.ensureQuickReplyCategories("101", {
+        categories: [{ children: ["二级"], title: "新增分类" }],
+        scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+      }),
+    ).resolves.toEqual({
+      errorMsg: "导入数据有误",
+      errors: [
+        {
+          message: "一级分类最多50个",
+          rowNumber: 1,
+        },
+      ],
+      ok: false,
+    });
+    expect(repository.createQuickReplyCategory).not.toHaveBeenCalled();
+  });
+
+  it("quick reply import: rejects creating the fifty-first child category", async () => {
+    const repository = createMaterialRepository({
+      listQuickReplyCategories: vi.fn().mockResolvedValue([
+        {
+          id: "10",
+          parentId: 0,
+          scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+          sort: 100,
+          title: "售前",
+        },
+        ...Array.from({ length: 50 }, (_, index) => ({
+          id: String(100 + index),
+          parentId: "10",
+          scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+          sort: 100 - index,
+          title: `二级${index}`,
+        })),
+      ]),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.ensureQuickReplyCategories("101", {
+        categories: [{ children: ["新增二级"], title: "售前" }],
+        scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+      }),
+    ).resolves.toEqual({
+      errorMsg: "导入数据有误",
+      errors: [
+        {
+          message: "二级分类最多50个",
+          rowNumber: 1,
+        },
+      ],
+      ok: false,
+    });
+    expect(repository.createQuickReplyCategory).not.toHaveBeenCalled();
+  });
+
   it("quick reply: rejects category titles longer than ten characters", async () => {
     const repository = createMaterialRepository();
     const service = new MysqlWorkbenchService(repository, createJavaClient());
@@ -4939,6 +5118,198 @@ describe("MysqlWorkbenchService", () => {
       statusCode: 400,
     });
 
+    expect(repository.createQuickReply).not.toHaveBeenCalled();
+  });
+
+  it("quick reply import: rejects batches that exceed the top-level reply limit", async () => {
+    const repository = createMaterialRepository({
+      countQuickRepliesUnderTopCategory: vi.fn().mockResolvedValue(4_999),
+      findQuickReplyCategoryScope: vi.fn().mockResolvedValue({ parentId: "10" }),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.batchCreateQuickReplies("101", {
+        items: [
+          {
+            categoryId: "11",
+            contentText: "第一条",
+            labelColor: "",
+            labelText: "",
+            rowNumber: 2,
+          },
+          {
+            categoryId: "12",
+            contentText: "第二条",
+            labelColor: "",
+            labelText: "",
+            rowNumber: 3,
+          },
+        ],
+        scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+      }),
+    ).resolves.toEqual({
+      errorMsg: "导入数据有误",
+      errors: [
+        {
+          message: "一级分类下话术最多5000条",
+          rowNumber: 2,
+        },
+        {
+          message: "一级分类下话术最多5000条",
+          rowNumber: 3,
+        },
+      ],
+      ok: false,
+    });
+    expect(repository.countQuickRepliesUnderTopCategory).toHaveBeenCalledWith({
+      categoryId: "10",
+      scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+      subUserId: "101",
+      uid: 9001,
+    });
+    expect(repository.createQuickReply).not.toHaveBeenCalled();
+  });
+
+  it("quick reply import: batch creates valid items in row order", async () => {
+    const repository = createMaterialRepository({
+      batchCreateQuickReplies: vi.fn().mockResolvedValue(undefined),
+      findQuickReplyCategoryScope: vi
+        .fn()
+        .mockResolvedValueOnce({ parentId: "10" })
+        .mockResolvedValueOnce({ parentId: "10" }),
+      findQuickReplySortBoundary: vi
+        .fn()
+        .mockResolvedValueOnce(80)
+        .mockResolvedValueOnce(120),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.batchCreateQuickReplies("101", {
+        items: [
+          {
+            categoryId: "11",
+            contentText: " 第一条 ",
+            labelColor: " purple ",
+            labelText: " 售前 ",
+            rowNumber: 2,
+          },
+          {
+            categoryId: "11",
+            contentText: "第二条",
+            labelColor: "",
+            labelText: "",
+            rowNumber: 3,
+          },
+          {
+            categoryId: "12",
+            contentText: "第三条",
+            labelColor: "teal",
+            labelText: "跟进",
+            rowNumber: 4,
+          },
+        ],
+        scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      summary: {
+        createdQuickReplyCount: 3,
+      },
+    });
+    expect(repository.createQuickReply).not.toHaveBeenCalled();
+    expect(repository.batchCreateQuickReplies).toHaveBeenCalledOnce();
+    expect(repository.batchCreateQuickReplies).toHaveBeenCalledWith({
+      items: [
+        {
+          attachments: [],
+          categoryId: "11",
+          contentText: "第一条",
+          labelColor: "purple",
+          labelText: "售前",
+          sort: 79,
+        },
+        {
+          attachments: [],
+          categoryId: "11",
+          contentText: "第二条",
+          labelColor: "",
+          labelText: "",
+          sort: 78,
+        },
+        {
+          attachments: [],
+          categoryId: "12",
+          contentText: "第三条",
+          labelColor: "teal",
+          labelText: "跟进",
+          sort: 119,
+        },
+      ],
+      opSubUserId: "101",
+      scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+      subUserId: "101",
+      uid: 9001,
+    });
+  });
+
+  it("quick reply import: returns validation errors for invalid rows and does not write", async () => {
+    const repository = createMaterialRepository({
+      findQuickReplyCategoryScope: vi.fn().mockResolvedValue({ parentId: "10" }),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.batchCreateQuickReplies("101", {
+        items: [
+          {
+            categoryId: "11",
+            contentText: " ",
+            labelColor: "cyan",
+            labelText: "一二三四五六七八九十甲",
+            rowNumber: 5,
+          },
+        ],
+        scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+      }),
+    ).resolves.toEqual({
+      errorMsg: "导入数据有误",
+      errors: [
+        { message: "短标题不能超过10个字", rowNumber: 5 },
+        { message: "短标题颜色无效", rowNumber: 5 },
+        { message: "话术内容不能为空", rowNumber: 5 },
+      ],
+      ok: false,
+    });
+    expect(repository.createQuickReply).not.toHaveBeenCalled();
+  });
+
+  it("quick reply import: rejects batch create requests over one hundred items", async () => {
+    const repository = createMaterialRepository();
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.batchCreateQuickReplies("101", {
+        items: Array.from({ length: 101 }, (_, index) => ({
+          categoryId: "11",
+          contentText: `话术${index}`,
+          labelColor: "",
+          labelText: "",
+          rowNumber: index + 1,
+        })),
+        scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+      }),
+    ).resolves.toEqual({
+      errorMsg: "导入数据有误",
+      errors: [
+        {
+          message: "单次最多导入100条话术",
+          rowNumber: 0,
+        },
+      ],
+      ok: false,
+    });
     expect(repository.createQuickReply).not.toHaveBeenCalled();
   });
 
@@ -5252,7 +5623,7 @@ describe("MysqlWorkbenchService", () => {
       service.deleteQuickReplyCategory("101", "11", QUICK_REPLY_SCOPE_TYPE.ENTERPRISE),
     ).rejects.toMatchObject({
       code: "QUICK_REPLY_CATEGORY_HAS_CHILDREN",
-      message: "请先删除子分类",
+      message: "请先删除话术分组",
     });
 
     expect(repository.countQuickRepliesInCategory).not.toHaveBeenCalled();
@@ -5270,7 +5641,7 @@ describe("MysqlWorkbenchService", () => {
       service.deleteQuickReplyCategory("101", "11", QUICK_REPLY_SCOPE_TYPE.ENTERPRISE),
     ).rejects.toMatchObject({
       code: "QUICK_REPLY_CATEGORY_NOT_EMPTY",
-      message: "请先删除分类下的话术",
+      message: "请先删除分组下的话术",
     });
 
     expect(repository.deleteQuickReplyCategory).not.toHaveBeenCalled();
@@ -5349,6 +5720,7 @@ function createMaterialRepository(overrides: Partial<WorkbenchRepository> = {}) 
     countQuickRepliesUnderTopCategory: vi.fn().mockResolvedValue(0),
     createMaterialCollection: vi.fn().mockResolvedValue("66"),
     createMaterialGroup: vi.fn().mockResolvedValue(undefined),
+    batchCreateQuickReplies: vi.fn().mockResolvedValue(undefined),
     createQuickReply: vi.fn().mockResolvedValue("501"),
     createQuickReplyCategory: vi.fn().mockResolvedValue("301"),
     canAccessSeat: vi.fn().mockResolvedValue(true),

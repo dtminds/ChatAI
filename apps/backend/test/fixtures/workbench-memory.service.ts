@@ -67,9 +67,14 @@ import type {
   type WorkbenchMaterialCollectionMoveRequest,
   type WorkbenchMaterialCollectionOkResponse,
   type WorkbenchQuickReplyCategoryCreateRequest,
+  type WorkbenchQuickReplyBatchCreateRequest,
+  type WorkbenchQuickReplyBatchCreateResponse,
   type WorkbenchQuickReplyCategoryContentRequest,
   type WorkbenchQuickReplyCategoryContentResponse,
   type WorkbenchQuickReplyCategoryDto,
+  type WorkbenchQuickReplyCategoryEnsureRequest,
+  type WorkbenchQuickReplyCategoryEnsureResponse,
+  type WorkbenchQuickReplyImportRowError,
   type WorkbenchQuickReplyCategoryListRequest,
   type WorkbenchQuickReplyCategoryListResponse,
   type WorkbenchQuickReplyCategoryMoveRequest,
@@ -85,10 +90,20 @@ import type {
 import {
   MATERIAL_COLLECTION_BIZ_TYPE,
   MATERIAL_COLLECTION_GROUP_MAX_COUNT,
+  QUICK_REPLY_BATCH_CREATE_LIMIT,
+  QUICK_REPLY_CATEGORY_TITLE_MAX_LENGTH,
+  QUICK_REPLY_CONTENT_TEXT_MAX_LENGTH,
+  QUICK_REPLY_IMPORT_PRIMARY_CATEGORY_LIMIT,
+  QUICK_REPLY_IMPORT_SECONDARY_CATEGORY_LIMIT,
+  QUICK_REPLY_LABEL_TEXT_MAX_LENGTH,
+  isQuickReplyLabelColor,
   normalizeQuickReplyAttachments,
   validateQuickReplyPayload,
 } from "@chatai/contracts";
 import { BadRequestError, NotFoundError } from "../../src/shared/errors.js";
+
+const QUICK_REPLY_TOP_CATEGORY_LIMIT = 50;
+const QUICK_REPLY_CHILD_CATEGORY_LIMIT = 50;
 
 type WorkbenchEvent =
   | {
@@ -346,6 +361,109 @@ export function createMemoryWorkbenchService() {
         ),
       };
     },
+    ensureQuickReplyCategories(
+      _subUserId: string,
+      request: WorkbenchQuickReplyCategoryEnsureRequest,
+    ): WorkbenchQuickReplyCategoryEnsureResponse {
+      const normalized = normalizeMemoryQuickReplyCategoryEnsureRequest(
+        request.categories,
+      );
+
+      if (!normalized.ok) {
+        return buildMemoryQuickReplyImportFailure(normalized.errors);
+      }
+
+      const limitErrors = validateMemoryQuickReplyCategoryEnsureLimits({
+        categories: normalized.categories,
+        scopeType: request.scopeType,
+        stateCategories: state.quickReplyCategories,
+      });
+
+      if (limitErrors.length > 0) {
+        return buildMemoryQuickReplyImportFailure(limitErrors);
+      }
+
+      const categories = [];
+      let createdPrimaryCategoryCount = 0;
+      let createdSecondaryCategoryCount = 0;
+
+      for (const requestedCategory of normalized.categories) {
+        let primaryCategory = state.quickReplyCategories.find(
+          (category) =>
+            category.scopeType === request.scopeType &&
+            category.parentId === 0 &&
+            category.title === requestedCategory.title,
+        );
+
+        if (!primaryCategory) {
+          primaryCategory = {
+            id: `quick-reply-category-${state.nextId++}`,
+            parentId: 0,
+            scopeType: request.scopeType,
+            sort: getAppendQuickReplyCategorySort(
+              state.quickReplyCategories,
+              request.scopeType,
+              0,
+            ),
+            title: requestedCategory.title,
+          };
+          state.quickReplyCategories = [
+            ...state.quickReplyCategories,
+            primaryCategory,
+          ];
+          createdPrimaryCategoryCount += 1;
+        }
+
+        const children = [];
+        for (const requestedChild of requestedCategory.children) {
+          let childCategory = state.quickReplyCategories.find(
+            (category) =>
+              category.scopeType === request.scopeType &&
+              category.parentId === primaryCategory.id &&
+              category.title === requestedChild,
+          );
+
+          if (!childCategory) {
+            childCategory = {
+              id: `quick-reply-category-${state.nextId++}`,
+              parentId: primaryCategory.id,
+              scopeType: request.scopeType,
+              sort: getAppendQuickReplyCategorySort(
+                state.quickReplyCategories,
+                request.scopeType,
+                primaryCategory.id,
+              ),
+              title: requestedChild,
+            };
+            state.quickReplyCategories = [
+              ...state.quickReplyCategories,
+              childCategory,
+            ];
+            createdSecondaryCategoryCount += 1;
+          }
+
+          children.push({
+            id: childCategory.id,
+            title: childCategory.title,
+          });
+        }
+
+        categories.push({
+          children,
+          id: primaryCategory.id,
+          title: primaryCategory.title,
+        });
+      }
+
+      return {
+        categories,
+        ok: true,
+        summary: {
+          createdPrimaryCategoryCount,
+          createdSecondaryCategoryCount,
+        },
+      };
+    },
     createQuickReplyCategory(
       _subUserId: string,
       request: WorkbenchQuickReplyCategoryCreateRequest,
@@ -429,7 +547,7 @@ export function createMemoryWorkbenchService() {
             category.scopeType === scopeType && category.parentId === categoryId,
         )
       ) {
-        throw new BadRequestError("QUICK_REPLY_CATEGORY_HAS_CHILDREN", "请先删除子分类");
+        throw new BadRequestError("QUICK_REPLY_CATEGORY_HAS_CHILDREN", "请先删除话术分组");
       }
 
       if (
@@ -438,7 +556,7 @@ export function createMemoryWorkbenchService() {
             reply.scopeType === scopeType && reply.categoryId === categoryId,
         )
       ) {
-        throw new BadRequestError("QUICK_REPLY_CATEGORY_NOT_EMPTY", "请先删除分类下的话术");
+        throw new BadRequestError("QUICK_REPLY_CATEGORY_NOT_EMPTY", "请先删除分组下的话术");
       }
 
       state.quickReplyCategories = state.quickReplyCategories.filter(
@@ -610,6 +728,67 @@ export function createMemoryWorkbenchService() {
         },
       ];
       return { ok: true };
+    },
+    batchCreateQuickReplies(
+      _subUserId: string,
+      request: WorkbenchQuickReplyBatchCreateRequest,
+    ): WorkbenchQuickReplyBatchCreateResponse {
+      const normalized = normalizeMemoryQuickReplyBatchCreateRequest(request.items);
+
+      if (!normalized.ok) {
+        return buildMemoryQuickReplyImportFailure(normalized.errors);
+      }
+
+      const categoryErrors: WorkbenchQuickReplyImportRowError[] = [];
+
+      for (const item of normalized.items) {
+        const category = state.quickReplyCategories.find(
+          (candidate) =>
+            candidate.id === item.categoryId &&
+            candidate.scopeType === request.scopeType,
+        );
+
+        if (!category || category.parentId === 0) {
+          categoryErrors.push({
+            message: "请选择二级分类",
+            rowNumber: item.rowNumber,
+          });
+        }
+      }
+
+      if (categoryErrors.length > 0) {
+        return buildMemoryQuickReplyImportFailure(categoryErrors);
+      }
+
+      const now = Date.now();
+      for (const item of normalized.items) {
+        state.quickReplies = [
+          ...state.quickReplies,
+          {
+            attachments: [],
+            categoryId: item.categoryId,
+            contentText: item.contentText,
+            createdAt: now,
+            id: `quick-reply-${state.nextId++}`,
+            labelColor: item.labelColor,
+            labelText: item.labelText,
+            scopeType: request.scopeType,
+            sort: getAppendQuickReplySort(
+              state.quickReplies,
+              request.scopeType,
+              item.categoryId,
+            ),
+            updatedAt: now,
+          },
+        ];
+      }
+
+      return {
+        ok: true,
+        summary: {
+          createdQuickReplyCount: normalized.items.length,
+        },
+      };
     },
     updateQuickReply(
       _subUserId: string,
@@ -1976,6 +2155,258 @@ function getPrependQuickReplySort(
     .map((reply) => reply.sort);
 
   return siblingSorts.length ? Math.max(...siblingSorts) + 1 : Date.now();
+}
+
+function buildMemoryQuickReplyImportFailure(
+  errors: WorkbenchQuickReplyImportRowError[],
+) {
+  return {
+    errorMsg: "导入数据有误",
+    errors,
+    ok: false as const,
+  };
+}
+
+function normalizeMemoryQuickReplyCategoryEnsureRequest(
+  categories: WorkbenchQuickReplyCategoryEnsureRequest["categories"],
+):
+  | {
+      categories: Array<{ children: string[]; title: string }>;
+      ok: true;
+    }
+  | { errors: WorkbenchQuickReplyImportRowError[]; ok: false } {
+  if (!Array.isArray(categories) || categories.length === 0) {
+    return {
+      errors: [{ message: "分类不能为空", rowNumber: 0 }],
+      ok: false,
+    };
+  }
+
+  const errors: WorkbenchQuickReplyImportRowError[] = [];
+  const byTitle = new Map<string, { children: string[]; title: string }>();
+
+  categories.forEach((category, index) => {
+    const rowNumber = index + 1;
+    const title = category.title.trim();
+
+    if (!title) {
+      errors.push({ message: "一级分类名称不能为空", rowNumber });
+      return;
+    }
+
+    if (title.length > QUICK_REPLY_CATEGORY_TITLE_MAX_LENGTH) {
+      errors.push({
+        message: "一级分类名称不能超过10个字",
+        rowNumber,
+      });
+    }
+
+    const normalizedChildren: string[] = [];
+    for (const child of category.children) {
+      const childTitle = child.trim();
+
+      if (!childTitle) {
+        errors.push({ message: "二级分类名称不能为空", rowNumber });
+        continue;
+      }
+
+      if (childTitle.length > QUICK_REPLY_CATEGORY_TITLE_MAX_LENGTH) {
+        errors.push({
+          message: "二级分类名称不能超过10个字",
+          rowNumber,
+        });
+        continue;
+      }
+
+      if (!normalizedChildren.includes(childTitle)) {
+        normalizedChildren.push(childTitle);
+      }
+    }
+
+    const existing = byTitle.get(title);
+    if (existing) {
+      for (const childTitle of normalizedChildren) {
+        if (!existing.children.includes(childTitle)) {
+          existing.children.push(childTitle);
+        }
+      }
+    } else {
+      byTitle.set(title, { children: normalizedChildren, title });
+    }
+  });
+
+  const normalizedCategories = [...byTitle.values()];
+  const secondaryCategoryCount = normalizedCategories.reduce(
+    (count, category) => count + category.children.length,
+    0,
+  );
+
+  if (normalizedCategories.length > QUICK_REPLY_IMPORT_PRIMARY_CATEGORY_LIMIT) {
+    errors.push({ message: "一级分类最多导入100个", rowNumber: 0 });
+  }
+
+  if (secondaryCategoryCount > QUICK_REPLY_IMPORT_SECONDARY_CATEGORY_LIMIT) {
+    errors.push({ message: "二级分类最多导入500个", rowNumber: 0 });
+  }
+
+  if (errors.length > 0) {
+    return { errors, ok: false };
+  }
+
+  return { categories: normalizedCategories, ok: true };
+}
+
+function validateMemoryQuickReplyCategoryEnsureLimits(input: {
+  categories: Array<{ children: string[]; title: string }>;
+  scopeType: WorkbenchQuickReplyCategoryEnsureRequest["scopeType"];
+  stateCategories: WorkbenchQuickReplyCategoryDto[];
+}) {
+  const errors: WorkbenchQuickReplyImportRowError[] = [];
+  let primaryCategoryCount = input.stateCategories.filter(
+    (category) => category.scopeType === input.scopeType && category.parentId === 0,
+  ).length;
+  const childCountByPrimaryTitle = new Map<string, number>();
+
+  for (const primaryCategory of input.stateCategories) {
+    if (
+      primaryCategory.scopeType !== input.scopeType ||
+      primaryCategory.parentId !== 0
+    ) {
+      continue;
+    }
+
+    childCountByPrimaryTitle.set(
+      primaryCategory.title,
+      input.stateCategories.filter(
+        (category) =>
+          category.scopeType === input.scopeType &&
+          category.parentId === primaryCategory.id,
+      ).length,
+    );
+  }
+
+  for (const [index, category] of input.categories.entries()) {
+    const rowNumber = index + 1;
+    const existingPrimary = input.stateCategories.find(
+      (stateCategory) =>
+        stateCategory.scopeType === input.scopeType &&
+        stateCategory.parentId === 0 &&
+        stateCategory.title === category.title,
+    );
+
+    if (!existingPrimary) {
+      primaryCategoryCount += 1;
+
+      if (primaryCategoryCount > QUICK_REPLY_TOP_CATEGORY_LIMIT) {
+        errors.push({ message: "一级分类最多50个", rowNumber });
+      }
+    }
+
+    const existingChildTitles = new Set(
+      existingPrimary
+        ? input.stateCategories
+            .filter(
+              (stateCategory) =>
+                stateCategory.scopeType === input.scopeType &&
+                stateCategory.parentId === existingPrimary.id,
+            )
+            .map((stateCategory) => stateCategory.title)
+        : [],
+    );
+    const pendingChildCount = childCountByPrimaryTitle.get(category.title) ?? 0;
+    const missingChildCount = category.children.filter(
+      (childTitle) => !existingChildTitles.has(childTitle),
+    ).length;
+    const nextChildCount = pendingChildCount + missingChildCount;
+
+    if (nextChildCount > QUICK_REPLY_CHILD_CATEGORY_LIMIT) {
+      errors.push({ message: "二级分类最多50个", rowNumber });
+    }
+
+    childCountByPrimaryTitle.set(category.title, nextChildCount);
+  }
+
+  return errors;
+}
+
+function normalizeMemoryQuickReplyBatchCreateRequest(
+  items: WorkbenchQuickReplyBatchCreateRequest["items"],
+):
+  | {
+      items: Array<{
+        categoryId: string;
+        contentText: string;
+        labelColor: string;
+        labelText: string;
+        rowNumber: number;
+      }>;
+      ok: true;
+    }
+  | { errors: WorkbenchQuickReplyImportRowError[]; ok: false } {
+  if (!Array.isArray(items) || items.length === 0) {
+    return {
+      errors: [{ message: "请填写话术", rowNumber: 0 }],
+      ok: false,
+    };
+  }
+
+  if (items.length > QUICK_REPLY_BATCH_CREATE_LIMIT) {
+    return {
+      errors: [{ message: "单次最多导入100条话术", rowNumber: 0 }],
+      ok: false,
+    };
+  }
+
+  const errors: WorkbenchQuickReplyImportRowError[] = [];
+  const normalizedItems: Array<{
+    categoryId: string;
+    contentText: string;
+    labelColor: string;
+    labelText: string;
+    rowNumber: number;
+  }> = [];
+
+  for (const [index, item] of items.entries()) {
+    const rowNumber = Number.isSafeInteger(item.rowNumber)
+      ? item.rowNumber
+      : index + 1;
+    const categoryId = item.categoryId.trim();
+    const contentText = item.contentText.trim();
+    const labelColor = item.labelColor.trim();
+    const labelText = item.labelText.trim();
+
+    if (!categoryId) {
+      errors.push({ message: "请选择二级分类", rowNumber });
+    }
+
+    if (labelText.length > QUICK_REPLY_LABEL_TEXT_MAX_LENGTH) {
+      errors.push({ message: "短标题不能超过10个字", rowNumber });
+    }
+
+    if (!isQuickReplyLabelColor(labelColor)) {
+      errors.push({ message: "短标题颜色无效", rowNumber });
+    }
+
+    if (!contentText) {
+      errors.push({ message: "话术内容不能为空", rowNumber });
+    } else if (contentText.length > QUICK_REPLY_CONTENT_TEXT_MAX_LENGTH) {
+      errors.push({ message: "话术内容不能超过1000个字", rowNumber });
+    }
+
+    normalizedItems.push({
+      categoryId,
+      contentText,
+      labelColor,
+      labelText,
+      rowNumber,
+    });
+  }
+
+  if (errors.length > 0) {
+    return { errors, ok: false };
+  }
+
+  return { items: normalizedItems, ok: true };
 }
 
 function validateMemoryQuickReplyPayload(

@@ -25,6 +25,8 @@ import type {
   WorkbenchMaterialCollectionMoveRequest,
   WorkbenchMaterialCollectionUpdateRequest,
   WorkbenchQuickReplyCategoryCreateRequest,
+  WorkbenchQuickReplyBatchCreateRequest,
+  WorkbenchQuickReplyCategoryEnsureRequest,
   WorkbenchQuickReplyCategoryContentRequest,
   WorkbenchQuickReplyCategoryListRequest,
   WorkbenchQuickReplyCategoryMoveRequest,
@@ -475,6 +477,16 @@ const QuickReplyCategoryCreateBodySchema = Type.Object({
   title: Type.String({ maxLength: 10, minLength: 1 }),
 });
 
+const QuickReplyCategoryEnsureBodySchema = Type.Object({
+  categories: Type.Array(
+    Type.Object({
+      children: Type.Array(Type.String()),
+      title: Type.String(),
+    }),
+  ),
+  scopeType: QuickReplyScopeTypeSchema,
+});
+
 const QuickReplyCategoryUpdateBodySchema = Type.Object({
   title: Type.String({ maxLength: 10, minLength: 1 }),
 });
@@ -519,6 +531,19 @@ const QuickReplyBodySchema = Type.Object({
     ]),
   ),
   labelText: Type.Optional(Type.String({ maxLength: 10 })),
+  scopeType: QuickReplyScopeTypeSchema,
+});
+
+const QuickReplyBatchCreateBodySchema = Type.Object({
+  items: Type.Array(
+    Type.Object({
+      categoryId: Type.String(),
+      contentText: Type.String(),
+      labelColor: Type.String(),
+      labelText: Type.String(),
+      rowNumber: Type.Integer({ minimum: 1 }),
+    }),
+  ),
   scopeType: QuickReplyScopeTypeSchema,
 });
 
@@ -573,6 +598,7 @@ type MaterialCollectionGroupUpdateBody = Static<
 type MaterialCollectionGroupParams = Static<typeof MaterialCollectionGroupParamsSchema>;
 type QuickReplyCategoriesQuery = Static<typeof QuickReplyCategoriesQuerySchema>;
 type QuickReplyCategoryCreateBody = Static<typeof QuickReplyCategoryCreateBodySchema>;
+type QuickReplyCategoryEnsureBody = Static<typeof QuickReplyCategoryEnsureBodySchema>;
 type QuickReplyCategoryUpdateBody = Static<typeof QuickReplyCategoryUpdateBodySchema>;
 type QuickReplyCategoryMoveBody = Static<typeof QuickReplyCategoryMoveBodySchema>;
 type QuickReplyCategoryParams = Static<typeof QuickReplyCategoryParamsSchema>;
@@ -581,6 +607,7 @@ type QuickReplyCategoryContentQuery = Static<
 >;
 type QuickRepliesQuery = Static<typeof QuickRepliesQuerySchema>;
 type QuickReplyBody = Static<typeof QuickReplyBodySchema>;
+type QuickReplyBatchCreateBody = Static<typeof QuickReplyBatchCreateBodySchema>;
 type QuickReplyMoveBody = Static<typeof QuickReplyMoveBodySchema>;
 type QuickReplyParams = Static<typeof QuickReplyParamsSchema>;
 type QuickReplyScopeQuery = Static<typeof QuickReplyScopeQuerySchema>;
@@ -1192,6 +1219,23 @@ export async function registerChatRoutes(app: FastifyInstance) {
     },
   );
 
+  app.post<{ Body: QuickReplyCategoryEnsureBody }>(
+    "/api/server/quick-replies/categories/ensure",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: QuickReplyCategoryEnsureBodySchema,
+      },
+    },
+    async (request) => {
+      assertChatWriteAccess(request);
+      return getWorkbenchService(app, request).ensureQuickReplyCategories(
+        getSubUserId(request),
+        request.body satisfies WorkbenchQuickReplyCategoryEnsureRequest,
+      );
+    },
+  );
+
   app.patch<{
     Body: QuickReplyCategoryUpdateBody;
     Params: QuickReplyCategoryParams;
@@ -1363,6 +1407,23 @@ export async function registerChatRoutes(app: FastifyInstance) {
       return getWorkbenchService(app, request).createQuickReply(
         getSubUserId(request),
         request.body satisfies WorkbenchQuickReplyCreateRequest,
+      );
+    },
+  );
+
+  app.post<{ Body: QuickReplyBatchCreateBody }>(
+    "/api/server/quick-replies/batch",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: QuickReplyBatchCreateBodySchema,
+      },
+    },
+    async (request) => {
+      assertChatWriteAccess(request);
+      return getWorkbenchService(app, request).batchCreateQuickReplies(
+        getSubUserId(request),
+        request.body satisfies WorkbenchQuickReplyBatchCreateRequest,
       );
     },
   );

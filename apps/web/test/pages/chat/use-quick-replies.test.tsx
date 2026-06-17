@@ -442,6 +442,205 @@ describe("useQuickReplies", () => {
       { categoryId: "cat-3" },
     );
   });
+
+  it("imports quick replies by ensuring categories then posting 100-item batches", async () => {
+    const baseService = createMockWorkbenchService();
+    const ensureQuickReplyCategories = vi.fn().mockResolvedValue({
+      categories: [
+        {
+          children: [{ id: "11", title: "开场" }],
+          id: "10",
+          title: "售前",
+        },
+      ],
+      ok: true,
+      summary: {
+        createdPrimaryCategoryCount: 1,
+        createdSecondaryCategoryCount: 1,
+      },
+    });
+    const batchCreateQuickReplies = vi.fn((request: { items: unknown[] }) =>
+      Promise.resolve({
+        ok: true,
+        summary: { createdQuickReplyCount: request.items.length },
+      } as const),
+    );
+    const listQuickReplyCategories = vi.fn().mockResolvedValue({ categories: [] });
+    const listQuickReplyCategoryContent = vi.fn().mockResolvedValue({
+      categories: [],
+      limits: {
+        categories: 50,
+        quickReplies: 10_000,
+      },
+      quickRepliesByCategoryId: {},
+      truncated: {
+        categories: false,
+        quickReplies: false,
+      },
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      batchCreateQuickReplies,
+      ensureQuickReplyCategories,
+      listQuickReplyCategories,
+      listQuickReplyCategoryContent,
+    });
+
+    const { result } = renderHook(() => useQuickReplies());
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    const rows = Array.from({ length: 101 }, (_, index) => ({
+      contentText: `话术${index}`,
+      labelText: "开场",
+      primaryCategory: "售前",
+      rowNumber: index + 2,
+      secondaryCategory: "开场",
+    }));
+
+    await act(async () => {
+      const response = await result.current.importQuickReplies(rows);
+      expect(response).toEqual({ importedCount: 101, ok: true });
+    });
+
+    expect(ensureQuickReplyCategories).toHaveBeenCalledOnce();
+    expect(batchCreateQuickReplies).toHaveBeenCalledTimes(2);
+    expect(batchCreateQuickReplies.mock.calls[0]?.[0].items).toHaveLength(100);
+    expect(batchCreateQuickReplies.mock.calls[1]?.[0].items).toHaveLength(1);
+    expect(listQuickReplyCategories).toHaveBeenCalledTimes(2);
+  });
+
+  it("reloads quick replies when a later import batch fails", async () => {
+    const baseService = createMockWorkbenchService();
+    const ensureQuickReplyCategories = vi.fn().mockResolvedValue({
+      categories: [
+        {
+          children: [{ id: "11", title: "开场" }],
+          id: "10",
+          title: "售前",
+        },
+      ],
+      ok: true,
+      summary: {
+        createdPrimaryCategoryCount: 1,
+        createdSecondaryCategoryCount: 1,
+      },
+    });
+    const batchCreateQuickReplies = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        summary: { createdQuickReplyCount: 100 },
+      })
+      .mockResolvedValueOnce({
+        errorMsg: "导入数据有误",
+        errors: [{ message: "请选择二级分类", rowNumber: 102 }],
+        importedCount: 0,
+        ok: false,
+      });
+    const listQuickReplyCategories = vi.fn().mockResolvedValue({ categories: [] });
+    const listQuickReplyCategoryContent = vi.fn().mockResolvedValue({
+      categories: [],
+      limits: {
+        categories: 50,
+        quickReplies: 10_000,
+      },
+      quickRepliesByCategoryId: {},
+      truncated: {
+        categories: false,
+        quickReplies: false,
+      },
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      batchCreateQuickReplies,
+      ensureQuickReplyCategories,
+      listQuickReplyCategories,
+      listQuickReplyCategoryContent,
+    });
+
+    const { result } = renderHook(() => useQuickReplies());
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    const rows = Array.from({ length: 101 }, (_, index) => ({
+      contentText: `话术${index}`,
+      labelText: "开场",
+      primaryCategory: "售前",
+      rowNumber: index + 2,
+      secondaryCategory: "开场",
+    }));
+
+    await act(async () => {
+      const response = await result.current.importQuickReplies(rows);
+      expect(response).toEqual({
+        errorMsg: "导入数据有误",
+        errors: [{ message: "请选择二级分类", rowNumber: 102 }],
+        importedCount: 100,
+        ok: false,
+      });
+    });
+
+    expect(listQuickReplyCategories).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns an import failure when category ensure throws", async () => {
+    const baseService = createMockWorkbenchService();
+    const ensureQuickReplyCategories = vi
+      .fn()
+      .mockRejectedValue(new Error("network failed"));
+    const listQuickReplyCategories = vi.fn().mockResolvedValue({ categories: [] });
+    const listQuickReplyCategoryContent = vi.fn().mockResolvedValue({
+      categories: [],
+      limits: {
+        categories: 50,
+        quickReplies: 10_000,
+      },
+      quickRepliesByCategoryId: {},
+      truncated: {
+        categories: false,
+        quickReplies: false,
+      },
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      ensureQuickReplyCategories,
+      listQuickReplyCategories,
+      listQuickReplyCategoryContent,
+    });
+
+    const { result } = renderHook(() => useQuickReplies());
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    await act(async () => {
+      const response = await result.current.importQuickReplies([
+        {
+          contentText: "您好",
+          labelText: "开场",
+          primaryCategory: "售前",
+          rowNumber: 2,
+          secondaryCategory: "开场",
+        },
+      ]);
+
+      expect(response).toEqual({
+        errorMsg: "网络异常，请重试",
+        errors: [],
+        importedCount: 0,
+        ok: false,
+      });
+    });
+  });
 });
 
 function createDeferred<T = void>() {

@@ -1251,6 +1251,89 @@ describe("WorkbenchRepository", () => {
     ]);
   });
 
+  it("batch creates quick replies with one insert statement", async () => {
+    const db = createMaterialDb();
+    const repository = new WorkbenchRepository(db as never);
+
+    await expect(
+      repository.batchCreateQuickReplies({
+        items: [
+          {
+            attachments: [],
+            categoryId: "11",
+            contentText: "您好",
+            labelColor: "orange",
+            labelText: "售前",
+            sort: 90,
+          },
+          {
+            attachments: [
+              {
+                content: { fileName: "报价单.pdf", fileUrl: "https://example.com/file.pdf" },
+                materialCollectionId: "8",
+                msgid: "1025656",
+                type: "file",
+              },
+            ],
+            categoryId: "12",
+            contentText: "报价见附件",
+            labelColor: "",
+            labelText: "",
+            sort: 89,
+          },
+        ],
+        opSubUserId: "9",
+        scopeType: 2,
+        subUserId: "9",
+        uid: 10001,
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(db.inserts).toEqual([
+      {
+        table: "xy_wap_embed_quick_reply",
+        values: [
+          {
+            attachments: "[]",
+            biz_status: 1,
+            category_id: 11,
+            content_text: "您好",
+            label_color: "orange",
+            label_text: "售前",
+            op_sub_uid: 9,
+            scope_type: 2,
+            sort: 90,
+            sub_uid: 9,
+            uid: 10001,
+          },
+          {
+            attachments: JSON.stringify([
+              {
+                content: {
+                  fileName: "报价单.pdf",
+                  fileUrl: "https://example.com/file.pdf",
+                },
+                materialCollectionId: "8",
+                msgid: "1025656",
+                type: "file",
+              },
+            ]),
+            biz_status: 1,
+            category_id: 12,
+            content_text: "报价见附件",
+            label_color: "",
+            label_text: "",
+            op_sub_uid: 9,
+            scope_type: 2,
+            sort: 89,
+            sub_uid: 9,
+            uid: 10001,
+          },
+        ],
+      },
+    ]);
+  });
+
   it("updates quick reply categories only in the requested scope", async () => {
     const db = createMaterialDb();
     const repository = new WorkbenchRepository(db as never);

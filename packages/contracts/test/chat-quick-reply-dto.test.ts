@@ -1,8 +1,18 @@
 import { describe, expect, it } from "vitest";
 import {
   QUICK_REPLY_ATTACHMENT_MAX_COUNT,
+  QUICK_REPLY_BATCH_CREATE_LIMIT,
+  QUICK_REPLY_CATEGORY_TITLE_MAX_LENGTH,
+  QUICK_REPLY_CONTENT_TEXT_MAX_LENGTH,
+  QUICK_REPLY_IMPORT_MAX_ROWS,
+  QUICK_REPLY_IMPORT_PRIMARY_CATEGORY_LIMIT,
+  QUICK_REPLY_IMPORT_SECONDARY_CATEGORY_LIMIT,
+  QUICK_REPLY_LABEL_COLOR_VALUES,
+  QUICK_REPLY_LABEL_TEXT_MAX_LENGTH,
+  isQuickReplyLabelColor,
   normalizeQuickReplyAttachments,
   validateQuickReplyPayload,
+  type WorkbenchQuickReplyCategoryEnsureResponse,
   type WorkbenchQuickReplyAttachment,
 } from "../src/index.js";
 
@@ -145,5 +155,48 @@ describe("quick reply contracts", () => {
       errorMsg: "文件附件数据异常",
       ok: false,
     });
+  });
+
+  it("exports quick reply import limits and label color values", () => {
+    expect(QUICK_REPLY_CATEGORY_TITLE_MAX_LENGTH).toBe(10);
+    expect(QUICK_REPLY_LABEL_TEXT_MAX_LENGTH).toBe(10);
+    expect(QUICK_REPLY_CONTENT_TEXT_MAX_LENGTH).toBe(1000);
+    expect(QUICK_REPLY_IMPORT_MAX_ROWS).toBe(1000);
+    expect(QUICK_REPLY_BATCH_CREATE_LIMIT).toBe(100);
+    expect(QUICK_REPLY_IMPORT_PRIMARY_CATEGORY_LIMIT).toBe(100);
+    expect(QUICK_REPLY_IMPORT_SECONDARY_CATEGORY_LIMIT).toBe(500);
+    expect(QUICK_REPLY_LABEL_COLOR_VALUES).toEqual([
+      "",
+      "orange",
+      "green",
+      "blue",
+      "pink",
+      "purple",
+      "rose",
+      "teal",
+      "brown",
+      "slate",
+    ]);
+    expect(isQuickReplyLabelColor("teal")).toBe(true);
+    expect(isQuickReplyLabelColor("cyan")).toBe(false);
+  });
+
+  it("uses ok true for quick reply category ensure success responses", () => {
+    const response: WorkbenchQuickReplyCategoryEnsureResponse = {
+      categories: [
+        {
+          children: [{ id: "secondary-1", title: "二级分类" }],
+          id: "primary-1",
+          title: "一级分类",
+        },
+      ],
+      ok: true,
+      summary: {
+        createdPrimaryCategoryCount: 1,
+        createdSecondaryCategoryCount: 1,
+      },
+    };
+
+    expect(response.ok).toBe(true);
   });
 });

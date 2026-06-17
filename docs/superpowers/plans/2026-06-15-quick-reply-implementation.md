@@ -893,7 +893,7 @@ it("lists personal quick replies in the current sub user scope", async () => {
 
     await expect(service.deleteQuickReplyCategory("9", "11")).rejects.toMatchObject({
       code: "QUICK_REPLY_CATEGORY_HAS_CHILDREN",
-      message: "请先删除子分类",
+      message: "请先删除话术分组",
     });
   });
 
@@ -904,7 +904,7 @@ it("lists personal quick replies in the current sub user scope", async () => {
 
   await expect(service.deleteQuickReplyCategory("9", "11")).rejects.toMatchObject({
     code: "QUICK_REPLY_CATEGORY_NOT_EMPTY",
-    message: "请先移走或删除分类下的话术",
+    message: "请先移走或删除分组下的话术",
   });
 });
 ```

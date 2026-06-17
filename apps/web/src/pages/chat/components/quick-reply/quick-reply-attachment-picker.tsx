@@ -26,6 +26,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { QuickReplyAttachmentPreview } from "@/pages/chat/components/quick-reply/quick-reply-attachment-preview";
 import {
   QuickReplyMaterialPickerDialog,
@@ -87,69 +93,96 @@ export function QuickReplyAttachmentPicker({
           </span>
         </div>
         <div className="flex items-center">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                aria-label="添加附件"
-                className="size-7"
-                disabled={!canAddMore}
-                size="icon"
-                type="button"
-                variant="outline"
-              >
-                <HugeiconsIcon
-                  aria-hidden="true"
-                  icon={Add01Icon}
-                  size={15}
-                  strokeWidth={1.8}
-                />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem
-                onSelect={() => {
-                  imageInputRef.current?.click();
-                }}
-              >
-                <HugeiconsIcon icon={Image01Icon} size={14} strokeWidth={1.8} />
-                图片
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() =>
-                  setActivePickerBizType(MATERIAL_COLLECTION_BIZ_TYPE.FILE)
-                }
-              >
-                <HugeiconsIcon icon={File01Icon} size={14} strokeWidth={1.8} />
-                文件
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() =>
-                  setActivePickerBizType(MATERIAL_COLLECTION_BIZ_TYPE.H5)
-                }
-              >
-                <HugeiconsIcon icon={Link01Icon} size={14} strokeWidth={1.8} />
-                H5
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() =>
-                  setActivePickerBizType(
-                    MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM,
-                  )
-                }
-              >
-                <MiniProgramMark className="!size-3.5" />
-                小程序
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() =>
-                  setActivePickerBizType(MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED)
-                }
-              >
-                <SphFeedMark className="size-4" />
-                视频号
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        aria-label="添加附件"
+                        className="size-7"
+                        disabled={!canAddMore}
+                        size="icon"
+                        type="button"
+                        variant="outline"
+                      >
+                        <HugeiconsIcon
+                          aria-hidden="true"
+                          icon={Add01Icon}
+                          size={15}
+                          strokeWidth={1.8}
+                        />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        onSelect={() => {
+                          imageInputRef.current?.click();
+                        }}
+                      >
+                        <HugeiconsIcon
+                          icon={Image01Icon}
+                          size={14}
+                          strokeWidth={1.8}
+                        />
+                        图片
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() =>
+                          setActivePickerBizType(MATERIAL_COLLECTION_BIZ_TYPE.FILE)
+                        }
+                      >
+                        <HugeiconsIcon
+                          icon={File01Icon}
+                          size={14}
+                          strokeWidth={1.8}
+                        />
+                        文件
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() =>
+                          setActivePickerBizType(MATERIAL_COLLECTION_BIZ_TYPE.H5)
+                        }
+                      >
+                        <HugeiconsIcon
+                          icon={Link01Icon}
+                          size={14}
+                          strokeWidth={1.8}
+                        />
+                        H5
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() =>
+                          setActivePickerBizType(
+                            MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM,
+                          )
+                        }
+                      >
+                        <MiniProgramMark className="!size-3.5" />
+                        小程序
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() =>
+                          setActivePickerBizType(
+                            MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED,
+                          )
+                        }
+                      >
+                        <SphFeedMark className="size-4" />
+                        视频号
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </span>
+              </TooltipTrigger>
+              {!canAddMore ? (
+                <TooltipContent side="top" sideOffset={6}>
+                  附件已达数量上限
+                </TooltipContent>
+              ) : null}
+            </Tooltip>
+          </TooltipProvider>
           <input
             accept="image/*"
             aria-label="上传图片"

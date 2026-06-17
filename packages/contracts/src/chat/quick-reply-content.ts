@@ -1,4 +1,33 @@
+export const QUICK_REPLY_CATEGORY_TITLE_MAX_LENGTH = 10;
+export const QUICK_REPLY_LABEL_TEXT_MAX_LENGTH = 10;
+export const QUICK_REPLY_CONTENT_TEXT_MAX_LENGTH = 1000;
+export const QUICK_REPLY_IMPORT_MAX_ROWS = 1000;
+export const QUICK_REPLY_BATCH_CREATE_LIMIT = 100;
+export const QUICK_REPLY_IMPORT_PRIMARY_CATEGORY_LIMIT = 100;
+export const QUICK_REPLY_IMPORT_SECONDARY_CATEGORY_LIMIT = 500;
 export const QUICK_REPLY_ATTACHMENT_MAX_COUNT = 5;
+
+export const QUICK_REPLY_LABEL_COLOR_VALUES = [
+  "",
+  "orange",
+  "green",
+  "blue",
+  "pink",
+  "purple",
+  "rose",
+  "teal",
+  "brown",
+  "slate",
+] as const;
+
+export type QuickReplyLabelColor =
+  (typeof QUICK_REPLY_LABEL_COLOR_VALUES)[number];
+
+export function isQuickReplyLabelColor(
+  value: string,
+): value is QuickReplyLabelColor {
+  return QUICK_REPLY_LABEL_COLOR_VALUES.includes(value as QuickReplyLabelColor);
+}
 
 export const QUICK_REPLY_SCOPE_TYPE = {
   ENTERPRISE: 1,
@@ -80,7 +109,7 @@ export function validateQuickReplyPayload(input: {
     return { ok: false, errorMsg: "请填写话术内容或添加附件" };
   }
 
-  if (contentText.length > 1000) {
+  if (contentText.length > QUICK_REPLY_CONTENT_TEXT_MAX_LENGTH) {
     return { ok: false, errorMsg: "话术内容不能超过1000字" };
   }
 

@@ -412,6 +412,15 @@ type QuickReplyRow = {
   update_time?: Date | string | number | null;
 };
 
+type QuickReplyCreateRowInput = {
+  attachments: WorkbenchQuickReplyAttachment[];
+  categoryId: string | 0;
+  contentText: string;
+  labelColor: string;
+  labelText: string;
+  sort: number;
+};
+
 type InsertResult = {
   id?: bigint | number | string | null;
   insertId?: bigint | number | string | null;
@@ -1155,6 +1164,49 @@ export class WorkbenchRepository {
 
     const insertedId = parseInsertedMySqlId(result);
     return insertedId == null ? undefined : String(insertedId);
+  }
+
+  async batchCreateQuickReplies(input: {
+    items: QuickReplyCreateRowInput[];
+    opSubUserId: string;
+    scopeType: QuickReplyScopeType;
+    subUserId: string;
+    uid: number;
+  }) {
+    if (input.items.length === 0) {
+      return;
+    }
+
+    const opSubUid = parseMySqlId(input.opSubUserId);
+    const subUid = getQuickReplySubUid(input.scopeType, input.subUserId);
+
+    if (opSubUid == null || subUid == null) {
+      throw new BadRequestError("INVALID_QUICK_REPLY_INPUT", "快捷话术参数无效");
+    }
+
+    const values = input.items.map((item) => {
+      const categoryId = parseQuickReplyId(item.categoryId);
+
+      if (categoryId == null) {
+        throw new BadRequestError("INVALID_QUICK_REPLY_INPUT", "快捷话术参数无效");
+      }
+
+      return {
+        attachments: JSON.stringify(item.attachments),
+        biz_status: BIZ_STATUS_ACTIVE,
+        category_id: categoryId,
+        content_text: item.contentText,
+        label_color: item.labelColor,
+        label_text: item.labelText,
+        op_sub_uid: opSubUid,
+        scope_type: input.scopeType,
+        sort: item.sort,
+        sub_uid: subUid,
+        uid: input.uid,
+      };
+    });
+
+    await this.db.insertInto("xy_wap_embed_quick_reply").values(values).execute();
   }
 
   async findQuickReplyCategoryScope(input: {

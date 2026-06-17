@@ -1649,6 +1649,105 @@ describe("backend app", () => {
     await app.close();
   });
 
+  it("quick reply import: ensures categories and batch creates replies through public routes", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+
+    const ensure = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        categories: [
+          {
+            children: ["接待"],
+            title: "售前",
+          },
+        ],
+        scopeType: 1,
+      },
+      url: "/api/server/quick-replies/categories/ensure",
+    });
+    expect(ensure.statusCode).toBe(200);
+    expect(ensure.json()).toMatchObject({
+      ok: true,
+      summary: {
+        createdPrimaryCategoryCount: 1,
+        createdSecondaryCategoryCount: 1,
+      },
+    });
+
+    const childCategoryId = ensure.json().categories[0].children[0].id;
+    const batch = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        items: [
+          {
+            categoryId: childCategoryId,
+            contentText: "您好，有什么可以帮您",
+            labelColor: "orange",
+            labelText: "开场",
+            rowNumber: 2,
+          },
+        ],
+        scopeType: 1,
+      },
+      url: "/api/server/quick-replies/batch",
+    });
+
+    expect(batch.statusCode).toBe(200);
+    expect(batch.json()).toEqual({
+      ok: true,
+      summary: { createdQuickReplyCount: 1 },
+    });
+
+    const replies = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: `/api/server/quick-replies?scope_type=1&category_id=${childCategoryId}`,
+    });
+    expect(replies.statusCode).toBe(200);
+    expect(replies.json()).toMatchObject({
+      items: [
+        {
+          categoryId: childCategoryId,
+          contentText: "您好，有什么可以帮您",
+          labelColor: "orange",
+          labelText: "开场",
+        },
+      ],
+    });
+
+    await app.close();
+  });
+
+  it("quick reply import: returns ok false for business validation failures", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        categories: [
+          {
+            children: ["接待"],
+            title: "超过十个字的一级分类名",
+          },
+        ],
+        scopeType: 1,
+      },
+      url: "/api/server/quick-replies/categories/ensure",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      errorMsg: "导入数据有误",
+      errors: [{ message: "一级分类名称不能超过10个字", rowNumber: 1 }],
+      ok: false,
+    });
+
+    await app.close();
+  });
+
   it("quick reply: rejects viewer mutations through public routes", async () => {
     const { app, authorization } = await createAuthenticatedAppWithRole("viewer");
 
@@ -1670,6 +1769,42 @@ describe("backend app", () => {
       },
       success: false,
     });
+
+    await app.close();
+  });
+
+  it("quick reply import: rejects viewer mutations through public routes", async () => {
+    const { app, authorization } = await createAuthenticatedAppWithRole("viewer");
+
+    const ensure = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        categories: [{ children: ["接待"], title: "售前" }],
+        scopeType: 1,
+      },
+      url: "/api/server/quick-replies/categories/ensure",
+    });
+    expect(ensure.statusCode).toBe(403);
+
+    const batch = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        items: [
+          {
+            categoryId: "quick-reply-category-1",
+            contentText: "您好",
+            labelColor: "",
+            labelText: "",
+            rowNumber: 2,
+          },
+        ],
+        scopeType: 1,
+      },
+      url: "/api/server/quick-replies/batch",
+    });
+    expect(batch.statusCode).toBe(403);
 
     await app.close();
   });

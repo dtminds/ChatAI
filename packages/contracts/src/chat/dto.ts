@@ -944,6 +944,65 @@ export type WorkbenchQuickReplyCategoryCreateRequest = {
   title: string;
 };
 
+export type WorkbenchQuickReplyImportRowError = {
+  rowNumber: number;
+  message: string;
+};
+
+export type WorkbenchQuickReplyCategoryEnsureRequest = {
+  scopeType: QuickReplyScopeType;
+  categories: Array<{
+    title: string;
+    children: string[];
+  }>;
+};
+
+export type WorkbenchQuickReplyCategoryEnsureSuccessResponse = {
+  ok: true;
+  categories: Array<{
+    id: string;
+    title: string;
+    children: Array<{
+      id: string;
+      title: string;
+    }>;
+  }>;
+  summary: {
+    createdPrimaryCategoryCount: number;
+    createdSecondaryCategoryCount: number;
+  };
+};
+
+export type WorkbenchQuickReplyImportFailureResponse = {
+  ok: false;
+  errorMsg: string;
+  errors?: WorkbenchQuickReplyImportRowError[];
+};
+
+export type WorkbenchQuickReplyCategoryEnsureResponse =
+  | WorkbenchQuickReplyCategoryEnsureSuccessResponse
+  | WorkbenchQuickReplyImportFailureResponse;
+
+export type WorkbenchQuickReplyBatchCreateRequest = {
+  scopeType: QuickReplyScopeType;
+  items: Array<{
+    rowNumber: number;
+    categoryId: string;
+    labelText: string;
+    labelColor: string;
+    contentText: string;
+  }>;
+};
+
+export type WorkbenchQuickReplyBatchCreateResponse =
+  | {
+      ok: true;
+      summary: {
+        createdQuickReplyCount: number;
+      };
+    }
+  | WorkbenchQuickReplyImportFailureResponse;
+
 export type WorkbenchQuickReplyCategoryUpdateRequest = {
   title: string;
 };

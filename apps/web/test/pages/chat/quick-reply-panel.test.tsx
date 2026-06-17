@@ -1,6 +1,7 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { readSheet } from "read-excel-file/browser";
 import {
   MATERIAL_COLLECTION_BIZ_TYPE,
   QUICK_REPLY_SCOPE_TYPE,
@@ -15,6 +16,11 @@ import {
 } from "@/pages/chat/api/workbench-service";
 import { QuickReplyFormDialog } from "@/pages/chat/components/quick-reply/quick-reply-form-dialog";
 import { QuickReplyPanel } from "@/pages/chat/components/quick-reply/quick-reply-panel";
+import { QUICK_REPLY_IMPORT_HEADERS } from "@/pages/chat/components/quick-reply/quick-reply-import";
+
+vi.mock("read-excel-file/browser", () => ({
+  readSheet: vi.fn().mockRejectedValue(new Error("invalid zip data")),
+}));
 
 const categories: WorkbenchQuickReplyCategoryDto[] = [
   {
@@ -78,6 +84,8 @@ const quickReply: WorkbenchQuickReplyDto = {
 describe("QuickReplyPanel", () => {
   afterEach(() => {
     resetWorkbenchService();
+    vi.mocked(readSheet).mockReset();
+    vi.mocked(readSheet).mockRejectedValue(new Error("invalid zip data"));
   });
 
   it("selects a quick reply from the list", async () => {
@@ -96,6 +104,304 @@ describe("QuickReplyPanel", () => {
     await user.click(screen.getByText("您好，这是报价信息"));
 
     expect(onSelectQuickReply).toHaveBeenCalledWith(quickReply);
+  });
+
+  it("opens the quick reply import dialog from the toolbar", async () => {
+    const user = userEvent.setup();
+    render(<QuickReplyPanel {...createPanelProps()} />);
+
+    await user.click(screen.getByRole("button", { name: "更多操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "导入话术" }));
+
+    expect(screen.getByRole("dialog", { name: "导入话术" })).toBeInTheDocument();
+  });
+
+  it("shows an import template download action in the import dialog", async () => {
+    const user = userEvent.setup();
+    render(<QuickReplyPanel {...createPanelProps()} />);
+
+    await user.click(screen.getByRole("button", { name: "更多操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "导入话术" }));
+
+    expect(screen.getByText("上传文件：")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "上传文件" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "下载模板" }),
+    ).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "关闭" })).toHaveLength(2);
+    expect(screen.getByText("导入说明：")).toBeInTheDocument();
+    expect(screen.getByText("请按照模板中要求的字段导入")).toBeInTheDocument();
+    expect(
+      screen.getByText("模板中要求必填的字段请务必填写完整，否则导入后无法使用"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("单次最多导入1000条话术，超过请拆分成多个文件分批导入"),
+    ).toBeInTheDocument();
+  });
+
+  it("disables import submit when precheck has errors", async () => {
+    const user = userEvent.setup();
+    render(<QuickReplyPanel {...createPanelProps()} />);
+
+    await user.click(screen.getByRole("button", { name: "更多操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "导入话术" }));
+
+    expect(screen.queryByText("请选择 .xlsx 文件")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "开始导入" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows a precheck error when the selected xlsx cannot be parsed", async () => {
+    const user = userEvent.setup();
+    render(<QuickReplyPanel {...createPanelProps()} />);
+
+    await user.click(screen.getByRole("button", { name: "更多操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "导入话术" }));
+    await user.upload(
+      document.querySelector('input[type="file"]') as HTMLInputElement,
+      new File(["not a zip"], "bad.xlsx", {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      }),
+    );
+
+    expect(
+      await screen.findByText("第 0 行：文件解析失败，请确认文件为标准 .xlsx"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "重新选择" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "开始导入" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows import progress inside the precheck result panel", async () => {
+    const user = userEvent.setup();
+    const importGate = createDeferred<{ importedCount: number; ok: true }>();
+    const onImportQuickReplies = vi.fn(async (_, onProgress) => {
+      onProgress({ importedCount: 0, progress: 35, totalCount: 1 });
+      return importGate.promise;
+    });
+    vi.mocked(readSheet).mockResolvedValue([
+      [...QUICK_REPLY_IMPORT_HEADERS],
+      ["售前", "报价", "欢迎", "您好"],
+    ] as unknown as Awaited<ReturnType<typeof readSheet>>);
+
+    render(<QuickReplyPanel {...createPanelProps({ onImportQuickReplies })} />);
+
+    await user.click(screen.getByRole("button", { name: "更多操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "导入话术" }));
+    await user.upload(
+      document.querySelector('input[type="file"]') as HTMLInputElement,
+      new File(["xlsx"], "quick-replies.xlsx", {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      }),
+    );
+
+    expect(await screen.findByText("文件校验通过")).toBeInTheDocument();
+    expect(screen.queryByText("上传文件：")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "下载模板" }),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "开始导入" }));
+
+    const resultPanel = screen.getByRole("region", { name: "文件校验结果" });
+    expect(within(resultPanel).getByText("正在导入 35%")).toBeInTheDocument();
+
+    importGate.resolve({ importedCount: 1, ok: true });
+    expect(await screen.findByText("导入完成")).toBeInTheDocument();
+  });
+
+  it("treats import failure as a terminal dialog state", async () => {
+    const user = userEvent.setup();
+    const onImportQuickReplies = vi.fn(async () => ({
+      errorMsg: "导入数据有误",
+      errors: [{ message: "请选择二级分类", rowNumber: 102 }],
+      importedCount: 100,
+      ok: false as const,
+    }));
+    vi.mocked(readSheet).mockResolvedValue([
+      [...QUICK_REPLY_IMPORT_HEADERS],
+      ["售前", "报价", "欢迎", "您好"],
+    ] as unknown as Awaited<ReturnType<typeof readSheet>>);
+
+    render(<QuickReplyPanel {...createPanelProps({ onImportQuickReplies })} />);
+
+    await user.click(screen.getByRole("button", { name: "更多操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "导入话术" }));
+    await user.upload(
+      document.querySelector('input[type="file"]') as HTMLInputElement,
+      new File(["xlsx"], "quick-replies.xlsx", {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      }),
+    );
+
+    await user.click(await screen.findByRole("button", { name: "开始导入" }));
+
+    expect(
+      await screen.findByText("导入中断，已成功导入 100 条，请检查后重试"),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText("第 102 行：请选择二级分类"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "开始导入" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "重新选择" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows backend errors when category ensure fails", async () => {
+    const user = userEvent.setup();
+    const onImportQuickReplies = vi.fn(async () => ({
+      errorMsg: "一级分类数量已达上限",
+      errors: [{ message: "一级分类数量已达上限", rowNumber: 0 }],
+      importedCount: 0,
+      ok: false as const,
+    }));
+    vi.mocked(readSheet).mockResolvedValue([
+      [...QUICK_REPLY_IMPORT_HEADERS],
+      ["售前", "报价", "欢迎", "您好"],
+    ] as unknown as Awaited<ReturnType<typeof readSheet>>);
+
+    render(<QuickReplyPanel {...createPanelProps({ onImportQuickReplies })} />);
+
+    await user.click(screen.getByRole("button", { name: "更多操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "导入话术" }));
+    await user.upload(
+      document.querySelector('input[type="file"]') as HTMLInputElement,
+      new File(["xlsx"], "quick-replies.xlsx", {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      }),
+    );
+
+    await user.click(await screen.findByRole("button", { name: "开始导入" }));
+
+    expect(
+      await screen.findByText("一级分类数量已达上限"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("导入中断，已成功导入 0 条，请检查后重试"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "开始导入" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows a success page after successful import", async () => {
+    const user = userEvent.setup();
+    const onImportQuickReplies = vi.fn(async () => ({
+      importedCount: 1,
+      ok: true as const,
+    }));
+    vi.mocked(readSheet).mockResolvedValue([
+      [...QUICK_REPLY_IMPORT_HEADERS],
+      ["售前", "报价", "欢迎", "您好"],
+    ] as unknown as Awaited<ReturnType<typeof readSheet>>);
+
+    render(<QuickReplyPanel {...createPanelProps({ onImportQuickReplies })} />);
+
+    await user.click(screen.getByRole("button", { name: "更多操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "导入话术" }));
+    await user.upload(
+      document.querySelector('input[type="file"]') as HTMLInputElement,
+      new File(["xlsx"], "quick-replies.xlsx", {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      }),
+    );
+
+    expect(await screen.findByText("已选择 quick-replies.xlsx")).toBeInTheDocument();
+    expect(screen.getByText("文件校验通过")).toBeInTheDocument();
+    expect(screen.getByText("分类")).toBeInTheDocument();
+    expect(screen.getByText("话术分组")).toBeInTheDocument();
+    expect(screen.queryByText("新建分类")).not.toBeInTheDocument();
+    expect(screen.queryByText("新建话术分组")).not.toBeInTheDocument();
+    expect(screen.queryByText("新建一级")).not.toBeInTheDocument();
+    expect(screen.queryByText("新建二级")).not.toBeInTheDocument();
+    expect(screen.queryByText("确认后将导入 1 条话术")).not.toBeInTheDocument();
+    expect(screen.queryByText("确认导入 1 条话术？")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "关闭" })).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "开始导入" })).toBeInTheDocument();
+
+    await user.click(await screen.findByRole("button", { name: "开始导入" }));
+
+    expect(await screen.findByText("导入完成")).toBeInTheDocument();
+    expect(screen.getByText("共导入 1 条话术")).toBeInTheDocument();
+    expect(screen.queryByText("上传文件：")).not.toBeInTheDocument();
+    expect(screen.queryByText("文件校验通过")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "上传文件" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "开始导入" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "确定" }),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getAllByRole("button", { name: "关闭" }).at(-1)!);
+
+    expect(
+      screen.queryByRole("dialog", { name: "导入话术" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows distinct category counts from the selected file", async () => {
+    const user = userEvent.setup();
+    vi.mocked(readSheet).mockResolvedValue([
+      [...QUICK_REPLY_IMPORT_HEADERS],
+      ["售前", "报价", "欢迎", "您好"],
+      ["售后", "物流", "发货", "您的订单会尽快安排发出"],
+    ] as unknown as Awaited<ReturnType<typeof readSheet>>);
+
+    render(<QuickReplyPanel {...createPanelProps()} />);
+
+    await user.click(screen.getByRole("button", { name: "更多操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "导入话术" }));
+    await user.upload(
+      document.querySelector('input[type="file"]') as HTMLInputElement,
+      new File(["xlsx"], "quick-replies.xlsx", {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      }),
+    );
+
+    expect(await screen.findByText("文件校验通过")).toBeInTheDocument();
+    expect(screen.getByText("分类").nextSibling).toHaveTextContent("2 个");
+    expect(screen.getByText("话术分组").nextSibling).toHaveTextContent("2 个");
+  });
+
+  it("resets selected import state after closing and reopening the dialog", async () => {
+    const user = userEvent.setup();
+    vi.mocked(readSheet).mockResolvedValue([
+      [...QUICK_REPLY_IMPORT_HEADERS],
+      ["售前", "报价", "欢迎", "您好"],
+    ] as unknown as Awaited<ReturnType<typeof readSheet>>);
+
+    render(<QuickReplyPanel {...createPanelProps()} />);
+
+    await user.click(screen.getByRole("button", { name: "更多操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "导入话术" }));
+    await user.upload(
+      document.querySelector('input[type="file"]') as HTMLInputElement,
+      new File(["xlsx"], "quick-replies.xlsx", {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      }),
+    );
+
+    expect(await screen.findByText("文件校验通过")).toBeInTheDocument();
+
+    await user.click(screen.getAllByRole("button", { name: "关闭" })[0]);
+    await user.click(screen.getByRole("button", { name: "更多操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "导入话术" }));
+
+    expect(screen.queryByText("文件校验通过")).not.toBeInTheDocument();
+    expect(screen.queryByText("已选择 quick-replies.xlsx")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "开始导入" }),
+    ).not.toBeInTheDocument();
   });
 
   it("shows quick replies as compact rows", () => {
@@ -159,6 +465,45 @@ describe("QuickReplyPanel", () => {
     await user.click(screen.getByRole("menuitem", { name: "移到最后" }));
 
     expect(onBottomQuickReply).toHaveBeenCalledWith(quickReply);
+  });
+
+  it("confirms before deleting a quick reply", async () => {
+    const user = userEvent.setup();
+    const onDeleteQuickReply = vi.fn();
+
+    render(
+      <QuickReplyPanel
+        {...createPanelProps()}
+        activeCategoryId="cat-2"
+        quickReplies={[quickReply]}
+        quickRepliesByCategoryId={{ "cat-2": [quickReply] }}
+        onDeleteQuickReply={onDeleteQuickReply}
+      />,
+    );
+
+    await user.pointer({
+      keys: "[MouseRight]",
+      target: screen.getByText("您好，这是报价信息"),
+    });
+    await user.click(screen.getByRole("menuitem", { name: "删除" }));
+
+    expect(onDeleteQuickReply).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("alertdialog", { name: "确认删除话术" }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "取消" }));
+
+    expect(onDeleteQuickReply).not.toHaveBeenCalled();
+
+    await user.pointer({
+      keys: "[MouseRight]",
+      target: screen.getByText("您好，这是报价信息"),
+    });
+    await user.click(screen.getByRole("menuitem", { name: "删除" }));
+    await user.click(screen.getByRole("button", { name: "确认删除" }));
+
+    expect(onDeleteQuickReply).toHaveBeenCalledWith(quickReply);
   });
 
   it("opens child category creation from the top-level category context menu", async () => {
@@ -598,6 +943,94 @@ describe("QuickReplyPanel", () => {
     expect(onCreateQuickReply).toHaveBeenCalledOnce();
   });
 
+  it("keeps secondary category headers sticky while scrolling quick replies", () => {
+    render(<QuickReplyPanel {...createPanelProps()} activeCategoryId="cat-2" />);
+
+    expect(screen.getByRole("group", { name: "报价分类行" })).toHaveStyle({
+      position: "sticky",
+      top: "0px",
+    });
+    expect(screen.getByRole("group", { name: "报价分类行" })).toHaveAttribute(
+      "data-stuck",
+      "false",
+    );
+  });
+
+  it("marks a secondary category header as stuck only after it reaches the top", async () => {
+    const rectSpy = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockImplementation(function getBoundingClientRectMock(
+        this: HTMLElement,
+      ) {
+        if (this.getAttribute("data-slot") === "scroll-area-viewport") {
+          return {
+            bottom: 600,
+            height: 400,
+            left: 0,
+            right: 320,
+            top: 200,
+            width: 320,
+            x: 0,
+            y: 200,
+            toJSON: () => ({}),
+          };
+        }
+
+        if (this.getAttribute("aria-label") === "报价分类行") {
+          return {
+            bottom: 236,
+            height: 36,
+            left: 0,
+            right: 320,
+            top: 200,
+            width: 320,
+            x: 0,
+            y: 200,
+            toJSON: () => ({}),
+          };
+        }
+
+        return {
+          bottom: 0,
+          height: 0,
+          left: 0,
+          right: 0,
+          top: 0,
+          width: 0,
+          x: 0,
+          y: 0,
+          toJSON: () => ({}),
+        };
+      });
+
+    try {
+      render(<QuickReplyPanel {...createPanelProps()} activeCategoryId="cat-2" />);
+
+      const viewport = document.querySelector(
+        '[data-slot="scroll-area-viewport"]',
+      );
+
+      if (!viewport) {
+        throw new Error("missing quick reply scroll viewport");
+      }
+
+      Object.defineProperty(viewport, "scrollTop", {
+        configurable: true,
+        value: 48,
+      });
+      fireEvent.scroll(viewport);
+
+      await waitFor(() => {
+        expect(screen.getByRole("group", { name: "报价分类行" })).toHaveAttribute(
+          "data-stuck",
+          "true",
+        );
+      });
+    } finally {
+      rectSpy.mockRestore();
+    }
+  });
+
   it("does not render an empty placeholder when an expanded secondary category has no replies", () => {
     render(<QuickReplyPanel {...createPanelProps()} activeCategoryId="cat-2" />);
 
@@ -1013,6 +1446,39 @@ describe("QuickReplyPanel", () => {
     expect(screen.getByText("查看本期活动规则")).toBeInTheDocument();
   });
 
+  it("shows a tooltip when attachment count reaches the limit", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <QuickReplyFormDialog
+        categories={categories}
+        initialValues={{
+          ...createQuickReplyInitialValues(),
+          attachments: Array.from({ length: 5 }, (_, index) => ({
+            content: {
+              alt: `图片${index + 1}.png`,
+              fileUrl: `https://cdn.example.com/reply-${index + 1}.png`,
+            },
+            type: "image" as const,
+          })),
+        }}
+        onOpenChange={vi.fn()}
+        onSubmit={vi.fn()}
+        open
+      />,
+    );
+
+    const addButton = screen.getByRole("button", { name: "添加附件" });
+
+    expect(addButton).toBeDisabled();
+
+    await user.hover(addButton);
+
+    expect(
+      await screen.findByRole("tooltip", { name: "附件已达数量上限" }),
+    ).toBeInTheDocument();
+  });
+
   it("defers image attachment upload until saving the quick reply", async () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn();
@@ -1185,6 +1651,7 @@ function createPanelProps(
     onDeleteQuickReply: vi.fn(),
     onEditCategory: vi.fn(),
     onEditQuickReply: vi.fn(),
+    onImportQuickReplies: vi.fn(),
     onCopyQuickReply: vi.fn(),
     onKeywordChange: vi.fn(),
     onMoveCategory: vi.fn(),

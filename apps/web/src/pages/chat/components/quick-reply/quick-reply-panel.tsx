@@ -2,9 +2,12 @@ import {
   Add01Icon,
   ArrowDown01Icon,
   ArrowRight01Icon,
+  Cancel01Icon,
   CopyPlusIcon,
   Delete01Icon,
   Edit03Icon,
+  Knowledge02Icon,
+  MoreVerticalIcon,
   MoveToIcon,
   Search01Icon,
   SortByDown01Icon,
@@ -27,11 +30,31 @@ import {
   type WorkbenchQuickReplyCategoryDto,
   type WorkbenchQuickReplyDto,
 } from "@chatai/contracts";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
+import {
+  QuickReplyImportDialog,
+  type QuickReplyImportDialogProps,
+} from "@/pages/chat/components/quick-reply/quick-reply-import-dialog";
 import { getQuickReplyTitleColor } from "@/pages/chat/components/quick-reply/quick-reply-title-palette";
 
 const CONTEXT_MENU_VIEWPORT_PADDING = 8;
@@ -61,6 +84,7 @@ type QuickReplyPanelProps = {
   onDeleteQuickReply: (quickReply: WorkbenchQuickReplyDto) => void;
   onEditCategory: (category: WorkbenchQuickReplyCategoryDto) => void;
   onEditQuickReply: (quickReply: WorkbenchQuickReplyDto) => void;
+  onImportQuickReplies: QuickReplyImportDialogProps["onImport"];
   onKeywordChange: (keyword: string) => void;
   onMoveCategory: (
     category: WorkbenchQuickReplyCategoryDto,
@@ -97,6 +121,7 @@ export function QuickReplyPanel({
   onDeleteQuickReply,
   onEditCategory,
   onEditQuickReply,
+  onImportQuickReplies,
   onKeywordChange,
   onMoveCategory,
   onMoveQuickReply,
@@ -127,6 +152,8 @@ export function QuickReplyPanel({
   );
   const previousTopCategoryIdRef = useRef<string | null>(null);
   const previousChildCategoryIdsRef = useRef<Set<string>>(new Set());
+  const quickReplyViewportRef = useRef<HTMLDivElement | null>(null);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
   const childCategories = useMemo(
     () =>
       activeTopCategory
@@ -236,7 +263,7 @@ export function QuickReplyPanel({
   return (
     <div className="flex h-full min-h-0 flex-col bg-background">
       <div className="border-b border-divider px-2.5 py-2.5">
-        <div className="grid grid-cols-2 items-center gap-2">
+        <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-2">
           <div className="grid min-w-0 grid-cols-2 rounded-[8px] bg-secondary p-0.5">
             <ScopeButton
               active={activeScopeType === QUICK_REPLY_SCOPE_TYPE.ENTERPRISE}
@@ -255,19 +282,74 @@ export function QuickReplyPanel({
             <HugeiconsIcon
               aria-hidden="true"
               className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+              color="currentColor"
               icon={Search01Icon}
-              size={15}
+              size={16}
               strokeWidth={1.8}
             />
             <Input
-              className="h-8 pl-8 text-[13px]"
+              className="h-9 rounded-xl border border-transparent bg-surface-muted pl-10 pr-9 text-sm shadow-none transition-colors focus-visible:border-input focus-visible:bg-background focus-visible:ring-2 focus-visible:ring-ring/12"
               onChange={(event) => onKeywordChange(event.target.value)}
               placeholder="搜索话术"
               value={keyword}
             />
+            {keyword ? (
+              <Button
+                aria-label="清空搜索"
+                className="absolute right-1.5 top-1/2 size-7 -translate-y-1/2 rounded-md p-0 text-muted-foreground hover:bg-transparent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/20"
+                onClick={() => onKeywordChange("")}
+                size="icon"
+                type="button"
+                variant="ghost"
+              >
+                <HugeiconsIcon
+                  color="currentColor"
+                  icon={Cancel01Icon}
+                  size={16}
+                  strokeWidth={1.8}
+                />
+              </Button>
+            ) : null}
           </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                aria-label="更多操作"
+                className="size-8 shrink-0 rounded-[6px] p-0"
+                disabled={isMutating}
+                size="icon"
+                title="更多操作"
+                type="button"
+                variant="outline"
+              >
+                <HugeiconsIcon
+                  aria-hidden="true"
+                  icon={MoreVerticalIcon}
+                  size={16}
+                  strokeWidth={1.8}
+                />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-[128px]">
+              <DropdownMenuItem onSelect={() => setImportDialogOpen(true)}>
+                <HugeiconsIcon
+                  aria-hidden="true"
+                  icon={Knowledge02Icon}
+                  size={16}
+                  strokeWidth={1.8}
+                />
+                导入话术
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
+      <QuickReplyImportDialog
+        onImport={onImportQuickReplies}
+        onOpenChange={setImportDialogOpen}
+        open={importDialogOpen}
+        scopeType={activeScopeType}
+      />
 
       <div className="flex min-h-0 flex-1 flex-col">
         {!(isLoading && topCategories.length === 0) ? (
@@ -331,8 +413,9 @@ export function QuickReplyPanel({
           <ScrollArea
             className="min-h-0 flex-1"
             viewportProps={{ className: "max-w-full overflow-x-hidden" }}
+            viewportRef={quickReplyViewportRef}
           >
-            <div className="w-full max-w-full overflow-hidden">
+            <div className="w-full max-w-full">
               {isLoading && topCategories.length === 0 ? (
                 <div
                   aria-label="正在加载话术"
@@ -397,6 +480,7 @@ export function QuickReplyPanel({
                     quickReplies={filteredQuickRepliesByCategoryId[category.id] ?? []}
                     onCategoryEnsureOpen={handleEnsureChildCategoryOpen}
                     onCategoryToggle={handleToggleChildCategory}
+                    scrollViewportRef={quickReplyViewportRef}
                     onBottomCategory={onBottomCategory}
                     onBottomQuickReply={onBottomQuickReply}
                     onCopyQuickReply={onCopyQuickReply}
@@ -488,6 +572,7 @@ function SecondaryCategorySection({
   quickReplies,
   onCategoryEnsureOpen,
   onCategoryToggle,
+  scrollViewportRef,
   onBottomCategory,
   onBottomQuickReply,
   onCopyQuickReply,
@@ -509,6 +594,7 @@ function SecondaryCategorySection({
   quickReplies: WorkbenchQuickReplyDto[];
   onCategoryEnsureOpen: (categoryId: string) => void;
   onCategoryToggle: (categoryId: string) => void;
+  scrollViewportRef: RefObject<HTMLDivElement | null>;
   onBottomCategory: (category: WorkbenchQuickReplyCategoryDto) => void;
   onBottomQuickReply: (quickReply: WorkbenchQuickReplyDto) => void;
   onCopyQuickReply: (quickReply: WorkbenchQuickReplyDto) => void;
@@ -532,16 +618,53 @@ function SecondaryCategorySection({
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(
     null,
   );
+  const headerRef = useRef<HTMLDivElement | null>(null);
+  const [isStuck, setIsStuck] = useState(false);
+
+  useEffect(() => {
+    const viewport = scrollViewportRef.current;
+    const header = headerRef.current;
+
+    if (!viewport || !header) {
+      return;
+    }
+
+    const updateStuckState = () => {
+      const viewportTop = viewport.getBoundingClientRect().top;
+      const headerTop = header.getBoundingClientRect().top;
+
+      setIsStuck(viewport.scrollTop > 0 && headerTop <= viewportTop);
+    };
+
+    updateStuckState();
+    viewport.addEventListener("scroll", updateStuckState, { passive: true });
+    window.addEventListener("resize", updateStuckState);
+
+    return () => {
+      viewport.removeEventListener("scroll", updateStuckState);
+      window.removeEventListener("resize", updateStuckState);
+    };
+  }, [scrollViewportRef]);
 
   return (
-    <div className="w-full max-w-full overflow-hidden">
+    <div className="w-full max-w-full">
       <div
         aria-label={`${category.title}分类行`}
         className={cn(
-          "group flex h-9 items-center gap-2 border-b border-background px-2.5 transition-colors hover:bg-primary/10",
-          active ? "bg-primary/10" : "bg-primary/8",
+          "group z-10 flex h-9 items-center gap-2 px-2.5",
+          isStuck
+            ? "bg-primary text-primary-foreground"
+            : active
+              ? "bg-primary/10 text-foreground"
+              : "bg-primary/8 text-foreground",
         )}
+        data-stuck={isStuck}
+        ref={headerRef}
         role="group"
+        style={{
+          position: "sticky",
+          top: 0,
+        }}
         onContextMenu={(event) => {
           event.preventDefault();
           event.stopPropagation();
@@ -558,18 +681,21 @@ function SecondaryCategorySection({
         >
           <HugeiconsIcon
             aria-hidden="true"
-            className="shrink-0 text-primary"
+            className={cn(
+              "shrink-0",
+              isStuck ? "text-primary-foreground" : "text-primary",
+            )}
             icon={active ? ArrowDown01Icon : ArrowRight01Icon}
             size={13}
             strokeWidth={1.8}
           />
-          <span className="min-w-0 truncate text-[13px] font-medium leading-none text-foreground">
+          <span className="min-w-0 truncate text-[13px] font-medium leading-none">
             {category.title}
           </span>
         </button>
       </div>
       {active && quickReplies.length > 0 ? (
-        <div className="w-full max-w-full space-y-0.5 overflow-hidden border-t border-divider py-1">
+        <div className="w-full max-w-full space-y-0.5 border-t border-divider py-1">
           {quickReplies.map((quickReply, index) => (
             <QuickReplyRow
               index={index}
@@ -1000,52 +1126,74 @@ function QuickReplyRow({
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(
     null,
   );
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   return (
-    <div
-      className="group flex h-[26px] w-full max-w-full items-center gap-1 overflow-hidden px-1.5 transition-colors hover:bg-accent/45"
-      onContextMenu={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        setContextMenu({
-          x: event.clientX,
-          y: event.clientY,
-        });
-      }}
-    >
-      <button
-        className="flex w-0 min-w-0 flex-1 items-center gap-1 overflow-hidden text-left"
-        onClick={() => onSelect(quickReply)}
-        type="button"
+    <>
+      <div
+        className="group flex h-[26px] w-full max-w-full items-center gap-1 overflow-hidden px-1.5 transition-colors hover:bg-accent/45"
+        onContextMenu={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          setContextMenu({
+            x: event.clientX,
+            y: event.clientY,
+          });
+        }}
       >
-        <span className="shrink-0 tabular-nums text-[13px] leading-none text-foreground">
-          {String(index + 1).padStart(2, "0")}.
-        </span>
-        {quickReply.labelText ? (
-          <QuickReplyTitleBadge
-            color={quickReply.labelColor}
-            text={quickReply.labelText}
-          />
-        ) : null}
-        <span
-          className="block min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-[13px] leading-none text-foreground"
-          title={summary}
+        <button
+          className="flex w-0 min-w-0 flex-1 items-center gap-1 overflow-hidden text-left"
+          onClick={() => onSelect(quickReply)}
+          type="button"
         >
-          {summary}
-        </span>
-      </button>
-      <QuickReplyContextMenu
-        onClose={() => setContextMenu(null)}
-        onDelete={() => onDelete(quickReply)}
-        onEdit={() => onEdit(quickReply)}
-        onCopy={() => onCopy(quickReply)}
-        onBottom={() => onBottom(quickReply)}
-        onMove={(categoryId) => onMove(quickReply, categoryId)}
-        onTop={() => onTop(quickReply)}
-        moveTargets={moveTargets}
-        position={contextMenu}
-      />
-    </div>
+          <span className="shrink-0 tabular-nums text-[13px] leading-none text-foreground">
+            {String(index + 1).padStart(2, "0")}.
+          </span>
+          {quickReply.labelText ? (
+            <QuickReplyTitleBadge
+              color={quickReply.labelColor}
+              text={quickReply.labelText}
+            />
+          ) : null}
+          <span
+            className="block min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-[13px] leading-none text-foreground"
+            title={summary}
+          >
+            {summary}
+          </span>
+        </button>
+        <QuickReplyContextMenu
+          onClose={() => setContextMenu(null)}
+          onDelete={() => setDeleteConfirmOpen(true)}
+          onEdit={() => onEdit(quickReply)}
+          onCopy={() => onCopy(quickReply)}
+          onBottom={() => onBottom(quickReply)}
+          onMove={(categoryId) => onMove(quickReply, categoryId)}
+          onTop={() => onTop(quickReply)}
+          moveTargets={moveTargets}
+          position={contextMenu}
+        />
+      </div>
+      <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认删除话术</AlertDialogTitle>
+            <AlertDialogDescription>
+              该话术会从当前分组移除，删除后不可恢复
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => onDelete(quickReply)}
+              variant="destructive"
+            >
+              确认删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
 
@@ -1357,7 +1505,7 @@ function QuickReplyTitleBadge({
 
   return (
     <span
-      className="inline-flex h-5 max-w-20 shrink-0 items-center truncate rounded-[2px] border px-1 text-[12px] font-medium leading-none"
+      className="inline-flex h-5 shrink-0 items-center truncate rounded-[2px] border px-1 text-[12px] font-medium leading-none"
       style={{
         backgroundColor: paletteColor.backgroundColor,
         borderColor: paletteColor.borderColor,

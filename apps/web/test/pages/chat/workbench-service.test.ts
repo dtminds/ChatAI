@@ -333,6 +333,42 @@ describe("createWorkbenchService", () => {
     });
   });
 
+  it("posts quick reply import ensure and batch requests", async () => {
+    const service = createHttpWorkbenchService();
+
+    mock.onPost("/server/quick-replies/categories/ensure").reply(200, {
+      categories: [],
+      ok: true,
+      summary: {
+        createdPrimaryCategoryCount: 0,
+        createdSecondaryCategoryCount: 0,
+      },
+    });
+    mock.onPost("/server/quick-replies/batch").reply(200, {
+      ok: true,
+      summary: { createdQuickReplyCount: 1 },
+    });
+
+    await service.ensureQuickReplyCategories({ categories: [], scopeType: 1 });
+    await service.batchCreateQuickReplies({
+      items: [
+        {
+          categoryId: "11",
+          contentText: "您好",
+          labelColor: "",
+          labelText: "",
+          rowNumber: 2,
+        },
+      ],
+      scopeType: 1,
+    });
+
+    expect(mock.history.post.map((request) => request.url)).toEqual([
+      "/server/quick-replies/categories/ensure",
+      "/server/quick-replies/batch",
+    ]);
+  });
+
   it("collects material messages", async () => {
     const service = createHttpWorkbenchService();
     mock.onPost("/server/material-collections").reply((config) => [
@@ -410,7 +446,7 @@ describe("createWorkbenchService", () => {
         parentCategory.id,
         QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
       ),
-    ).rejects.toThrow("请先删除子分类");
+    ).rejects.toThrow("请先删除话术分组");
 
     const childCategory = (
       await service.listQuickReplyCategories({
@@ -432,7 +468,7 @@ describe("createWorkbenchService", () => {
         childCategory?.id ?? "",
       QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
     ),
-  ).rejects.toThrow("请先删除分类下的话术");
+  ).rejects.toThrow("请先删除分组下的话术");
   });
 
   it("keeps mock quick reply payload validation aligned with backend constraints", async () => {

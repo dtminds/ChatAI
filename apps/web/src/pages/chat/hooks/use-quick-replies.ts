@@ -10,6 +10,12 @@ import {
 } from "@chatai/contracts";
 import { toast } from "sonner";
 import { getWorkbenchService } from "@/pages/chat/api/workbench-service";
+import {
+  buildQuickReplyBatchItems,
+  buildQuickReplyCategoryEnsureRequest,
+  chunkQuickReplyImportItems,
+  type QuickReplyImportParsedRow,
+} from "@/pages/chat/components/quick-reply/quick-reply-import";
 
 export type QuickReplyFormValues = {
   attachments: WorkbenchQuickReplyAttachment[];
@@ -297,6 +303,82 @@ export function useQuickReplies(options?: { enabled?: boolean }) {
     [runMutation],
   );
 
+  const importQuickReplies = useCallback(
+    async (
+      rows: QuickReplyImportParsedRow[],
+      onProgress?: (input: {
+        importedCount: number;
+        progress: number;
+        totalCount: number;
+      }) => void,
+    ) => {
+      setIsMutating(true);
+
+      try {
+        const ensureResponse =
+          await getWorkbenchService().ensureQuickReplyCategories(
+            buildQuickReplyCategoryEnsureRequest(activeScopeType, rows),
+          );
+
+        if (!ensureResponse.ok) {
+          return {
+            errorMsg: ensureResponse.errorMsg,
+            errors: ensureResponse.errors ?? [],
+            importedCount: 0,
+            ok: false as const,
+          };
+        }
+
+        const items = buildQuickReplyBatchItems(rows, ensureResponse);
+        const chunks = chunkQuickReplyImportItems(items);
+        let importedCount = 0;
+
+        onProgress?.({
+          importedCount,
+          progress: 10,
+          totalCount: items.length,
+        });
+
+        for (const chunk of chunks) {
+          const response = await getWorkbenchService().batchCreateQuickReplies({
+            items: chunk,
+            scopeType: activeScopeType,
+          });
+
+          if (!response.ok) {
+            await loadQuickReplies();
+            return {
+              errorMsg: response.errorMsg,
+              errors: response.errors ?? [],
+              importedCount,
+              ok: false as const,
+            };
+          }
+
+          importedCount += response.summary.createdQuickReplyCount;
+          onProgress?.({
+            importedCount,
+            progress: 10 + Math.floor((importedCount / items.length) * 90),
+            totalCount: items.length,
+          });
+        }
+
+        await loadQuickReplies();
+        return { importedCount, ok: true as const };
+      } catch {
+        return {
+          errorMsg: "网络异常，请重试",
+          errors: [],
+          importedCount: 0,
+          ok: false as const,
+        };
+      } finally {
+        setIsMutating(false);
+      }
+    },
+    [activeScopeType, loadQuickReplies],
+  );
+
   const setActiveScopeType = useCallback((scopeType: QuickReplyScopeType) => {
     setActiveScopeTypeState(scopeType);
     setActiveCategoryIdState(null);
@@ -328,6 +410,7 @@ export function useQuickReplies(options?: { enabled?: boolean }) {
       deleteQuickReply,
       isLoading,
       isMutating,
+      importQuickReplies,
       keyword: keywordInput,
       moveCategory,
       moveQuickReply,
@@ -356,6 +439,7 @@ export function useQuickReplies(options?: { enabled?: boolean }) {
       deleteQuickReply,
       isLoading,
       isMutating,
+      importQuickReplies,
       keywordInput,
       loadQuickReplies,
       moveCategory,

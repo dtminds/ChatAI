@@ -124,7 +124,11 @@ function resolveComposerPlaceholder({
   bootstrapStatus: WorkbenchBootstrapStatus;
   canUseChatSend: boolean;
 }) {
-  if (activeConversation?.custodyMode === "full") {
+  const isActivelyHosted =
+    activeConversation?.custodyMode === "full" &&
+    activeConversation.custodyHostingStatus !== "exited";
+
+  if (isActivelyHosted) {
     return "AI正在托管中...";
   }
 

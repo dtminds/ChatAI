@@ -39,7 +39,7 @@ export const mockKnowledgeBaseOptions: KnowledgeBaseOption[] = [
 export const agentNameMaxLength = 16;
 
 export const agentModelOptions = [
-  { label: "默认分组", value: "default-group" },
+  { label: "默认模型", value: "default-model" },
   { label: "Doubao-2.0-lite", value: "doubao-2.0-lite" },
 ] as const;
 

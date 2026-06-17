@@ -1,8 +1,25 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { recognizeImageText } from "@/pages/chat/lib/image-ocr";
 
-const init = vi.fn(async () => undefined);
-const recognize = vi.fn();
+const ortWasmBaseUrl = "https://b5.bokr.com.cn/dist/ocr/onnxruntime-web/1.26.0/";
+
+const { create, predict } = vi.hoisted(() => {
+  const predict = vi.fn();
+  const create = vi.fn(async () => ({
+    predict,
+  }));
+
+  return {
+    create,
+    predict,
+  };
+});
+
+vi.mock("@paddleocr/paddleocr-js", () => ({
+  PaddleOCR: {
+    create,
+  },
+}));
 
 class ImageMock {
   alt = "";
@@ -25,20 +42,8 @@ const createdImages: ImageMock[] = [];
 
 describe("recognizeImageText", () => {
   beforeEach(() => {
-    init.mockClear();
-    recognize.mockReset();
-    document.head.querySelectorAll("script[data-paddlejs-ocr]").forEach((script) => {
-      script.remove();
-    });
-    Object.defineProperty(window, "paddlejs", {
-      configurable: true,
-      value: {
-        ocr: {
-          init,
-          recognize,
-        },
-      },
-    });
+    create.mockClear();
+    predict.mockReset();
     createdImages.length = 0;
     vi.stubGlobal("Image", class extends ImageMock {
       constructor() {
@@ -48,26 +53,35 @@ describe("recognizeImageText", () => {
     });
   });
 
-  it("loads Paddle.js OCR lazily, normalizes text regions, and reuses initialization", async () => {
-    recognize
-      .mockResolvedValueOnce({
-        points: [
-          [
-            [10, 20],
-            [150, 20],
-            [150, 44],
-            [10, 44],
+  it("loads PaddleOCR.js lazily with PP-OCRv6 tiny models, normalizes text regions, and reuses initialization", async () => {
+    predict
+      .mockResolvedValueOnce([
+        {
+          items: [
+            {
+              poly: [
+                [10, 20],
+                [150, 20],
+                [150, 44],
+                [10, 44],
+              ],
+              score: 0.99,
+              text: " 订单号 12345 ",
+            },
+            {
+              poly: [
+                [10, 56],
+                [180, 56],
+                [180, 82],
+                [10, 82],
+              ],
+              score: 0.98,
+              text: "收货地址 上海市",
+            },
           ],
-          [
-            [10, 56],
-            [180, 56],
-            [180, 82],
-            [10, 82],
-          ],
-        ],
-        text: [" 订单号 12345 ", "收货地址 上海市"],
-      })
-      .mockResolvedValueOnce({ points: [], text: ["第二张"] });
+        },
+      ])
+      .mockResolvedValueOnce([{ items: [{ poly: [], score: 0.95, text: "第二张" }] }]);
 
     const result = await recognizeImageText({
       alt: "订单截图",
@@ -78,10 +92,19 @@ describe("recognizeImageText", () => {
       imageUrl: "https://cdn.example.com/second.jpg",
     });
 
-    expect(init).toHaveBeenCalledTimes(1);
-    expect(recognize).toHaveBeenCalledTimes(2);
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(create).toHaveBeenCalledWith({
+      ortOptions: {
+        wasmPaths: ortWasmBaseUrl,
+      },
+      textDetectionModelName: "PP-OCRv6_tiny_det",
+      textRecognitionModelName: "PP-OCRv6_tiny_rec",
+      worker: true,
+    });
+    expect(predict).toHaveBeenCalledTimes(2);
     expect(createdImages).toHaveLength(2);
     expect(createdImages.every((image) => image.crossOrigin === "anonymous")).toBe(true);
+    expect(predict.mock.calls[0]?.[0]).toBe(createdImages[0]);
     expect(result).toEqual({
       regions: [
         {
@@ -111,7 +134,7 @@ describe("recognizeImageText", () => {
   });
 
   it("normalizes falsy OCR results to an empty result", async () => {
-    recognize.mockResolvedValue(null);
+    predict.mockResolvedValue(null);
 
     await expect(
       recognizeImageText({
@@ -124,64 +147,35 @@ describe("recognizeImageText", () => {
     });
   });
 
-  it("removes failed Paddle.js OCR script elements so retries can load a fresh script", async () => {
+  it("resets failed PaddleOCR.js initialization so retries can create a fresh instance", async () => {
     vi.resetModules();
-    Object.defineProperty(window, "paddlejs", {
-      configurable: true,
-      value: undefined,
-    });
-    vi.stubGlobal("Image", class extends ImageMock {
-      constructor() {
-        super();
-        createdImages.push(this);
-      }
-    });
+    create.mockRejectedValueOnce(new Error("model load failed"));
+
     const { recognizeImageText: recognizeFreshImageText } = await import(
       "@/pages/chat/lib/image-ocr"
     );
-    const firstRecognition = recognizeFreshImageText({
-      alt: "首次失败图片",
-      imageUrl: "https://cdn.example.com/first.jpg",
-    });
-    const failedScript = document.querySelector<HTMLScriptElement>(
-      "script[data-paddlejs-ocr]",
-    );
 
-    expect(failedScript).toBeInTheDocument();
+    await expect(
+      recognizeFreshImageText({
+        alt: "首次失败图片",
+        imageUrl: "https://cdn.example.com/first.jpg",
+      }),
+    ).rejects.toThrow("model load failed");
 
-    failedScript?.dispatchEvent(new Event("error"));
-
-    await expect(firstRecognition).rejects.toThrow("Paddle.js OCR 加载失败");
-    expect(
-      document.querySelector("script[data-paddlejs-ocr]"),
-    ).not.toBeInTheDocument();
-
-    const secondRecognition = recognizeFreshImageText({
-      alt: "重试图片",
-      imageUrl: "https://cdn.example.com/retry.jpg",
-    });
-    const retryScript = document.querySelector<HTMLScriptElement>(
-      "script[data-paddlejs-ocr]",
-    );
-
-    expect(retryScript).toBeInTheDocument();
-    expect(retryScript).not.toBe(failedScript);
-
-    Object.defineProperty(window, "paddlejs", {
-      configurable: true,
-      value: {
-        ocr: {
-          init,
-          recognize: vi.fn(async () => ({
-            points: [],
-            text: ["重试成功"],
-          })),
+    create.mockResolvedValueOnce({
+      predict: vi.fn(async () => [
+        {
+          items: [{ poly: [], score: 0.99, text: "重试成功" }],
         },
-      },
+      ]),
     });
-    retryScript?.dispatchEvent(new Event("load"));
 
-    await expect(secondRecognition).resolves.toEqual({
+    await expect(
+      recognizeFreshImageText({
+        alt: "重试图片",
+        imageUrl: "https://cdn.example.com/retry.jpg",
+      }),
+    ).resolves.toEqual({
       regions: [
         {
           id: "ocr-region-1",
@@ -191,69 +185,107 @@ describe("recognizeImageText", () => {
       ],
       text: "重试成功",
     });
+    expect(create).toHaveBeenCalledTimes(2);
   });
 
-  it("cleans up paired listeners when an existing Paddle.js OCR script finishes loading", async () => {
+  it("falls back to main-thread OCR when worker initialization fails", async () => {
     vi.resetModules();
-    Object.defineProperty(window, "paddlejs", {
-      configurable: true,
-      value: undefined,
-    });
-    const existingScript = document.createElement("script");
-    const addEventListenerSpy = vi.spyOn(existingScript, "addEventListener");
-    const removeEventListenerSpy = vi.spyOn(existingScript, "removeEventListener");
-
-    existingScript.dataset.paddlejsOcr = "true";
-    document.head.appendChild(existingScript);
-
+    create
+      .mockRejectedValueOnce(new Error("OCR worker failed."))
+      .mockResolvedValueOnce({
+        predict: vi.fn(async () => [
+          {
+            items: [{ poly: [], score: 0.99, text: "主线程识别成功" }],
+          },
+        ]),
+      });
     const { recognizeImageText: recognizeFreshImageText } = await import(
       "@/pages/chat/lib/image-ocr"
     );
-    const recognition = recognizeFreshImageText({
-      alt: "已有脚本图片",
-      imageUrl: "https://cdn.example.com/existing.jpg",
-    });
 
-    expect(addEventListenerSpy).toHaveBeenCalledWith(
-      "load",
-      expect.any(Function),
-    );
-    expect(addEventListenerSpy).toHaveBeenCalledWith(
-      "error",
-      expect.any(Function),
-    );
-
-    Object.defineProperty(window, "paddlejs", {
-      configurable: true,
-      value: {
-        ocr: {
-          init,
-          recognize: vi.fn(async () => ({
-            points: [],
-            text: ["已有脚本加载成功"],
-          })),
-        },
-      },
-    });
-    existingScript.dispatchEvent(new Event("load"));
-
-    await expect(recognition).resolves.toEqual({
+    await expect(
+      recognizeFreshImageText({
+        alt: "worker 失败图片",
+        imageUrl: "https://cdn.example.com/worker-failed.jpg",
+      }),
+    ).resolves.toEqual({
       regions: [
         {
           id: "ocr-region-1",
           points: [],
-          text: "已有脚本加载成功",
+          text: "主线程识别成功",
         },
       ],
-      text: "已有脚本加载成功",
+      text: "主线程识别成功",
     });
-    expect(removeEventListenerSpy).toHaveBeenCalledWith(
-      "load",
-      expect.any(Function),
+    expect(create).toHaveBeenNthCalledWith(1, {
+      ortOptions: {
+        wasmPaths: ortWasmBaseUrl,
+      },
+      textDetectionModelName: "PP-OCRv6_tiny_det",
+      textRecognitionModelName: "PP-OCRv6_tiny_rec",
+      worker: true,
+    });
+    expect(create).toHaveBeenNthCalledWith(2, {
+      ortOptions: {
+        wasmPaths: ortWasmBaseUrl,
+      },
+      textDetectionModelName: "PP-OCRv6_tiny_det",
+      textRecognitionModelName: "PP-OCRv6_tiny_rec",
+      worker: false,
+    });
+  });
+
+  it("falls back to main-thread OCR when worker initialization throws a string", async () => {
+    vi.resetModules();
+    create
+      .mockRejectedValueOnce("OCR worker failed.")
+      .mockResolvedValueOnce({
+        predict: vi.fn(async () => [
+          {
+            items: [{ poly: [], score: 0.99, text: "字符串错误回退成功" }],
+          },
+        ]),
+      });
+    const { recognizeImageText: recognizeFreshImageText } = await import(
+      "@/pages/chat/lib/image-ocr"
     );
-    expect(removeEventListenerSpy).toHaveBeenCalledWith(
-      "error",
-      expect.any(Function),
-    );
+
+    await expect(
+      recognizeFreshImageText({
+        alt: "worker 字符串错误图片",
+        imageUrl: "https://cdn.example.com/worker-string-error.jpg",
+      }),
+    ).resolves.toMatchObject({
+      text: "字符串错误回退成功",
+    });
+    expect(create).toHaveBeenCalledTimes(2);
+  });
+
+  it("normalizes nullable OCR text items to empty text instead of throwing", async () => {
+    predict.mockResolvedValue([
+      {
+        items: [
+          { poly: [], score: 0.99, text: null },
+          { poly: [], score: 0.98, text: " 可用文字 " },
+        ],
+      },
+    ]);
+
+    await expect(
+      recognizeImageText({
+        alt: "异常文本图片",
+        imageUrl: "https://cdn.example.com/nullable-text.jpg",
+      }),
+    ).resolves.toEqual({
+      regions: [
+        {
+          id: "ocr-region-2",
+          points: [],
+          text: "可用文字",
+        },
+      ],
+      text: "可用文字",
+    });
   });
 });

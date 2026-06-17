@@ -1,4 +1,4 @@
-import paddleOcrBundleUrl from "@paddlejs-models/ocr/lib/index.js?url";
+import type { OcrResult, PaddleOCR } from "@paddleocr/paddleocr-js";
 
 export type ImageOcrPoint = readonly [number, number];
 
@@ -21,135 +21,82 @@ export type RecognizeImageTextInput = {
 
 export type ImageOcrPhase = "loading-model" | "recognizing";
 
-type PaddleOcrModule = {
-  init: () => Promise<void>;
-  recognize: (
-    image: HTMLImageElement,
-    option?: {
-      canvas?: HTMLCanvasElement;
-      style?: {
-        fillStyle?: string;
-        lineWidth?: number;
-        strokeStyle?: string;
-      };
-    },
-  ) => Promise<PaddleOcrRawResult | null | undefined>;
-};
+type PaddleOcrInstance = Awaited<ReturnType<typeof PaddleOCR.create>>;
+type PaddleOcrCreateOptions = NonNullable<Parameters<typeof PaddleOCR.create>[0]>;
+type LocalPaddleOcrCreateOptions = PaddleOcrCreateOptions;
 
-type PaddleOcrRawResult = {
-  points?: unknown;
-  text?: unknown;
-};
+const ortWasmBaseUrl =
+  import.meta.env.VITE_OCR_ORT_WASM_BASE_URL?.trim() ||
+  "https://b5.bokr.com.cn/dist/ocr/onnxruntime-web/1.26.0/";
 
-let ocrModulePromise: Promise<PaddleOcrModule> | null = null;
-let ocrInitPromise: Promise<void> | null = null;
+const ocrCreateOptions: LocalPaddleOcrCreateOptions = {
+  ortOptions: {
+    wasmPaths: ensureTrailingSlash(ortWasmBaseUrl),
+  },
+  textDetectionModelName: "PP-OCRv6_tiny_det",
+  textRecognitionModelName: "PP-OCRv6_tiny_rec",
+  worker: true,
+};
+const fallbackOcrCreateOptions = {
+  ...ocrCreateOptions,
+  worker: false,
+} satisfies LocalPaddleOcrCreateOptions;
+
+let ocrPromise: Promise<PaddleOcrInstance> | null = null;
+let paddleOcrModulePromise: Promise<typeof import("@paddleocr/paddleocr-js")> | null =
+  null;
 
 export async function recognizeImageText(
   input: RecognizeImageTextInput,
 ): Promise<ImageOcrResult> {
   input.onPhaseChange?.("loading-model");
-  const ocr = await getInitializedOcr();
+  const ocr = await getOcr();
   input.onPhaseChange?.("recognizing");
   const image = await loadImageForOcr(input);
-  const rawResult = await ocr.recognize(image);
+  const rawResult = await ocr.predict(image);
 
   return normalizeOcrResult(rawResult);
 }
 
-async function getInitializedOcr() {
-  const ocr = await loadOcrModule();
-
-  ocrInitPromise ??= ocr.init().catch((error: unknown) => {
-    ocrInitPromise = null;
-    throw error;
-  });
-  await ocrInitPromise;
-
-  return ocr;
-}
-
-async function loadOcrModule() {
-  ocrModulePromise ??= loadPaddleOcrScript().catch((error: unknown) => {
-    ocrModulePromise = null;
-    throw error;
-  });
-
-  return ocrModulePromise;
-}
-
-function loadPaddleOcrScript() {
-  return new Promise<PaddleOcrModule>((resolve, reject) => {
-    const existingOcr = getWindowPaddleOcr();
-
-    if (existingOcr) {
-      resolve(existingOcr);
-      return;
-    }
-
-    const existingScript = document.querySelector<HTMLScriptElement>(
-      "script[data-paddlejs-ocr]",
-    );
-
-    if (existingScript) {
-      const handleLoad = () => {
-        cleanupExistingScriptListeners();
-        const ocr = getWindowPaddleOcr();
-
-        if (ocr) {
-          resolve(ocr);
-          return;
+async function getOcr() {
+  ocrPromise ??= loadPaddleOcrModule()
+    .then(async ({ PaddleOCR }) => {
+      try {
+        return await PaddleOCR.create(ocrCreateOptions);
+      } catch (error) {
+        if (!isWorkerInitializationError(error)) {
+          throw error;
         }
 
-        existingScript.remove();
-        reject(new Error("Paddle.js OCR 加载失败"));
-      };
-      const handleError = () => {
-        cleanupExistingScriptListeners();
-        existingScript.remove();
-        reject(new Error("Paddle.js OCR 加载失败"));
-      };
-      const cleanupExistingScriptListeners = () => {
-        existingScript.removeEventListener("load", handleLoad);
-        existingScript.removeEventListener("error", handleError);
-      };
-
-      existingScript.addEventListener("load", handleLoad);
-      existingScript.addEventListener("error", handleError);
-      return;
-    }
-
-    const script = document.createElement("script");
-
-    script.async = true;
-    script.dataset.paddlejsOcr = "true";
-    script.src = paddleOcrBundleUrl;
-    script.onload = () => {
-      const ocr = getWindowPaddleOcr();
-
-      if (ocr) {
-        resolve(ocr);
-        return;
+        return PaddleOCR.create(fallbackOcrCreateOptions);
       }
+    })
+    .catch((error: unknown) => {
+      ocrPromise = null;
+      throw error;
+    });
 
-      script.remove();
-      reject(new Error("Paddle.js OCR 加载失败"));
-    };
-    script.onerror = () => {
-      script.remove();
-      reject(new Error("Paddle.js OCR 加载失败"));
-    };
-    document.head.appendChild(script);
-  });
+  return ocrPromise;
 }
 
-function getWindowPaddleOcr() {
-  const paddlejs = (window as Window & {
-    paddlejs?: {
-      ocr?: PaddleOcrModule;
-    };
-  }).paddlejs;
+async function loadPaddleOcrModule() {
+  paddleOcrModulePromise ??= import("@paddleocr/paddleocr-js").catch((error: unknown) => {
+    paddleOcrModulePromise = null;
+    ocrPromise = null;
+    throw error;
+  });
 
-  return paddlejs?.ocr ?? null;
+  return paddleOcrModulePromise;
+}
+
+function isWorkerInitializationError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+
+  return /worker/i.test(message);
+}
+
+function ensureTrailingSlash(value: string) {
+  return value.endsWith("/") ? value : `${value}/`;
 }
 
 function loadImageForOcr(input: RecognizeImageTextInput) {
@@ -167,26 +114,22 @@ function loadImageForOcr(input: RecognizeImageTextInput) {
 }
 
 function normalizeOcrResult(
-  rawResult: PaddleOcrRawResult | null | undefined,
+  rawResult: OcrResult[] | null | undefined,
 ): ImageOcrResult {
-  if (!rawResult) {
+  const items = rawResult?.[0]?.items ?? [];
+
+  if (items.length === 0) {
     return {
       regions: [],
       text: "",
     };
   }
 
-  const rawTexts = Array.isArray(rawResult.text)
-    ? rawResult.text
-    : typeof rawResult.text === "string"
-      ? [rawResult.text]
-      : [];
-  const rawPoints = Array.isArray(rawResult.points) ? rawResult.points : [];
-  const regions = rawTexts
-    .map((text, index) => ({
+  const regions = items
+    .map((item, index) => ({
       id: `ocr-region-${index + 1}`,
-      points: normalizePoints(rawPoints[index]),
-      text: String(text).trim(),
+      points: normalizePoints(item.poly),
+      text: String(item.text ?? "").trim(),
     }))
     .filter((region) => region.text.length > 0);
 

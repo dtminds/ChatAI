@@ -26,6 +26,9 @@ COPY packages/contracts/ ./packages/contracts/
 # 构建 web
 RUN pnpm build
 
+# 删除 OCR 已改由 CDN 加载的本地 ORT WASM 产物，减小 web 镜像体积
+RUN find apps/web/dist/assets -type f -name 'ort-wasm-simd-threaded.jsep-*.wasm' -delete
+
 # 运行阶段
 FROM nginx:alpine
 

@@ -182,4 +182,46 @@ describe("recognizeImageText", () => {
     });
     expect(create).toHaveBeenCalledTimes(2);
   });
+
+  it("falls back to main-thread OCR when worker initialization fails", async () => {
+    vi.resetModules();
+    create
+      .mockRejectedValueOnce(new Error("OCR worker failed."))
+      .mockResolvedValueOnce({
+        predict: vi.fn(async () => [
+          {
+            items: [{ poly: [], score: 0.99, text: "主线程识别成功" }],
+          },
+        ]),
+      });
+    const { recognizeImageText: recognizeFreshImageText } = await import(
+      "@/pages/chat/lib/image-ocr"
+    );
+
+    await expect(
+      recognizeFreshImageText({
+        alt: "worker 失败图片",
+        imageUrl: "https://cdn.example.com/worker-failed.jpg",
+      }),
+    ).resolves.toEqual({
+      regions: [
+        {
+          id: "ocr-region-1",
+          points: [],
+          text: "主线程识别成功",
+        },
+      ],
+      text: "主线程识别成功",
+    });
+    expect(create).toHaveBeenNthCalledWith(1, {
+      lang: "ch",
+      ocrVersion: "PP-OCRv6",
+      worker: true,
+    });
+    expect(create).toHaveBeenNthCalledWith(2, {
+      lang: "ch",
+      ocrVersion: "PP-OCRv6",
+      worker: false,
+    });
+  });
 });

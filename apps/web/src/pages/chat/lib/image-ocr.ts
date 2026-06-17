@@ -28,6 +28,10 @@ const ocrCreateOptions = {
   ocrVersion: "PP-OCRv6",
   worker: true,
 } as const;
+const fallbackOcrCreateOptions = {
+  ...ocrCreateOptions,
+  worker: false,
+} as const;
 
 let ocrPromise: Promise<PaddleOcrInstance> | null = null;
 let paddleOcrModulePromise: Promise<typeof import("@paddleocr/paddleocr-js")> | null =
@@ -47,7 +51,17 @@ export async function recognizeImageText(
 
 async function getOcr() {
   ocrPromise ??= loadPaddleOcrModule()
-    .then(({ PaddleOCR }) => PaddleOCR.create(ocrCreateOptions))
+    .then(async ({ PaddleOCR }) => {
+      try {
+        return await PaddleOCR.create(ocrCreateOptions);
+      } catch (error) {
+        if (!isWorkerInitializationError(error)) {
+          throw error;
+        }
+
+        return PaddleOCR.create(fallbackOcrCreateOptions);
+      }
+    })
     .catch((error: unknown) => {
       ocrPromise = null;
       throw error;
@@ -64,6 +78,14 @@ async function loadPaddleOcrModule() {
   });
 
   return paddleOcrModulePromise;
+}
+
+function isWorkerInitializationError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return /worker/i.test(error.message);
 }
 
 function loadImageForOcr(input: RecognizeImageTextInput) {

@@ -35,14 +35,14 @@ type LocalPaddleOcrCreateOptions = Omit<PaddleOcrCreateOptions, "ortOptions"> & 
 };
 
 const ocrCreateOptions: LocalPaddleOcrCreateOptions = {
-  lang: "ch",
-  ocrVersion: "PP-OCRv6",
   ortOptions: {
     wasmPaths: {
       mjs: ortWasmJsepModuleUrl,
       wasm: ortWasmJsepUrl,
     },
   },
+  textDetectionModelName: "PP-OCRv6_tiny_det",
+  textRecognitionModelName: "PP-OCRv6_tiny_rec",
   worker: true,
 };
 const fallbackOcrCreateOptions = {

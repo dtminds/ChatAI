@@ -51,7 +51,7 @@ describe("recognizeImageText", () => {
     });
   });
 
-  it("loads PaddleOCR.js lazily with PP-OCRv6, normalizes text regions, and reuses initialization", async () => {
+  it("loads PaddleOCR.js lazily with PP-OCRv6 tiny models, normalizes text regions, and reuses initialization", async () => {
     predict
       .mockResolvedValueOnce([
         {
@@ -92,14 +92,14 @@ describe("recognizeImageText", () => {
 
     expect(create).toHaveBeenCalledTimes(1);
     expect(create).toHaveBeenCalledWith({
-      lang: "ch",
-      ocrVersion: "PP-OCRv6",
       ortOptions: {
         wasmPaths: {
           mjs: expect.stringContaining("ort-wasm-simd-threaded.jsep.mjs"),
           wasm: expect.stringContaining("ort-wasm-simd-threaded.jsep.wasm"),
         },
       },
+      textDetectionModelName: "PP-OCRv6_tiny_det",
+      textRecognitionModelName: "PP-OCRv6_tiny_rec",
       worker: true,
     });
     expect(predict).toHaveBeenCalledTimes(2);
@@ -220,25 +220,25 @@ describe("recognizeImageText", () => {
       text: "主线程识别成功",
     });
     expect(create).toHaveBeenNthCalledWith(1, {
-      lang: "ch",
-      ocrVersion: "PP-OCRv6",
       ortOptions: {
         wasmPaths: {
           mjs: expect.stringContaining("ort-wasm-simd-threaded.jsep.mjs"),
           wasm: expect.stringContaining("ort-wasm-simd-threaded.jsep.wasm"),
         },
       },
+      textDetectionModelName: "PP-OCRv6_tiny_det",
+      textRecognitionModelName: "PP-OCRv6_tiny_rec",
       worker: true,
     });
     expect(create).toHaveBeenNthCalledWith(2, {
-      lang: "ch",
-      ocrVersion: "PP-OCRv6",
       ortOptions: {
         wasmPaths: {
           mjs: expect.stringContaining("ort-wasm-simd-threaded.jsep.mjs"),
           wasm: expect.stringContaining("ort-wasm-simd-threaded.jsep.wasm"),
         },
       },
+      textDetectionModelName: "PP-OCRv6_tiny_det",
+      textRecognitionModelName: "PP-OCRv6_tiny_rec",
       worker: false,
     });
   });

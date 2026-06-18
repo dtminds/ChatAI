@@ -15,7 +15,7 @@ const visibleKnowledgeBaseCount = 2;
 
 export function AgentTable({ agents }: { agents: AgentRecord[] }) {
   return (
-    <section className="overflow-hidden rounded-[10px] border border-border bg-background">
+    <section className="overflow-hidden">
       <Table aria-label="Agent列表">
         <TableHeader>
           <TableRow>

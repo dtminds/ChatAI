@@ -1,63 +1,54 @@
-import { StarsIcon } from "@hugeicons/core-free-icons";
+import { AiMagicIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useId, type ButtonHTMLAttributes, type ReactNode } from "react";
+import { type ComponentProps, type ReactNode } from "react";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import {
-  aiHostingGenerateButtonBackground,
-  aiHostingGenerateColors,
-  aiHostingGenerateGradient,
-} from "./ai-hosting-palette";
 
 type AgentGenerateGradientButtonProps = {
   children: ReactNode;
   className?: string;
-} & ButtonHTMLAttributes<HTMLButtonElement>;
+} & ComponentProps<typeof Button>;
+
+const agentGenerateGradient =
+  "linear-gradient(90deg, var(--primary) 0%, color-mix(in oklch, var(--primary) 76%, var(--foreground)) 55%, color-mix(in oklch, var(--primary) 64%, var(--destructive)) 100%)";
+
+const agentGenerateButtonBackground =
+  `linear-gradient(var(--background), var(--background)) padding-box, ${agentGenerateGradient} border-box`;
 
 export function AgentGenerateGradientButton({
   children,
   className,
-  disabled,
   type = "button",
+  variant = "outline",
   ...props
 }: AgentGenerateGradientButtonProps) {
-  const gradientId = `agent-generate-gradient-${useId().replace(/:/g, "")}`;
-
   return (
-    <button
+    <Button
       className={cn(
-        "inline-flex h-10 items-center justify-center gap-1.5 rounded-[10px] border border-transparent px-4 text-sm font-normal transition-opacity disabled:pointer-events-none disabled:opacity-50",
+        "border-transparent font-medium text-foreground hover:bg-background hover:text-primary",
         className,
       )}
-      disabled={disabled}
+      data-agent-generate-gradient-button="true"
       style={{
-        background: aiHostingGenerateButtonBackground,
-        ["--gradient-stroke" as string]: `url(#${gradientId})`,
+        background: agentGenerateButtonBackground,
+        ["--agent-generate-gradient" as string]: agentGenerateGradient,
       }}
       type={type}
+      variant={variant}
       {...props}
     >
-      <svg aria-hidden className="pointer-events-none absolute h-0 w-0">
-        <defs>
-          <linearGradient id={gradientId} x1="0%" x2="100%" y1="0%" y2="0%">
-            <stop offset="0%" stopColor={aiHostingGenerateColors.gradientStart} />
-            <stop offset="55%" stopColor={aiHostingGenerateColors.gradientMid} />
-            <stop offset="100%" stopColor={aiHostingGenerateColors.gradientEnd} />
-          </linearGradient>
-        </defs>
-      </svg>
       <HugeiconsIcon
-        className="shrink-0 [&_path]:stroke-[var(--gradient-stroke)] [&_svg]:stroke-[var(--gradient-stroke)]"
-        icon={StarsIcon}
+        className="shrink-0 text-primary"
+        icon={AiMagicIcon}
         size={16}
-        stroke={`url(#${gradientId})`}
         strokeWidth={1.8}
       />
       <span
         className="bg-clip-text text-transparent"
-        style={{ backgroundImage: aiHostingGenerateGradient }}
+        style={{ backgroundImage: "var(--agent-generate-gradient)" }}
       >
         {children}
       </span>
-    </button>
+    </Button>
   );
 }

@@ -23,7 +23,6 @@ import {
   type ConditionalLogicSegment,
   type KnowledgeBaseOption,
 } from "./agent-settings.constants";
-import { aiHostingSurfaceColors } from "./ai-hosting-palette";
 
 export function AgentConditionalLogicField({
   onChange,
@@ -86,9 +85,8 @@ export function AgentConditionalLogicField({
   return (
     <div
       aria-label="条件逻辑"
-      className="rounded-[8px] border bg-background px-3 py-2.5"
+      className="rounded-[8px] border border-border bg-background px-3 py-2.5"
       role="group"
-      style={{ borderColor: aiHostingSurfaceColors.border }}
     >
       <div className="relative min-h-24 text-sm leading-7 text-foreground">
         <span className="absolute left-0 top-0 z-10">
@@ -105,12 +103,11 @@ export function AgentConditionalLogicField({
             <PopoverTrigger asChild>
               <Button
                 aria-label="添加关联知识库"
-                className="size-7 rounded-full border bg-background text-muted-foreground hover:bg-muted/40"
+                className="size-7 rounded-full border border-border bg-background text-muted-foreground hover:bg-muted/40"
                 onMouseDown={(event) => {
                   event.preventDefault();
                 }}
                 size="icon"
-                style={{ borderColor: aiHostingSurfaceColors.border }}
                 type="button"
                 variant="ghost"
               >

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  AiChat02Icon,
   ArrowLeft01Icon,
   ArrowRight01Icon,
   HeadsetIcon,
@@ -22,28 +23,22 @@ const metricVisuals: Record<
   AgentMetricKey,
   {
     icon: typeof Message01Icon;
-    iconClassName: string;
   }
 > = {
   totalSessions: {
     icon: MessageMultiple02Icon,
-    iconClassName: "bg-orange-500/10 text-orange-500",
   },
   aiIndependentSessions: {
     icon: RoboticIcon,
-    iconClassName: "bg-violet-500/10 text-violet-500",
   },
   totalMessages: {
     icon: Message01Icon,
-    iconClassName: "bg-pink-500/10 text-pink-500",
   },
   aiMessages: {
-    icon: RoboticIcon,
-    iconClassName: "bg-sky-500/10 text-sky-500",
+    icon: AiChat02Icon,
   },
   humanMessages: {
     icon: HeadsetIcon,
-    iconClassName: "bg-blue-500/10 text-blue-500",
   },
 };
 
@@ -178,12 +173,7 @@ function AgentMetricCard({ metric }: { metric: AgentMetric }) {
   return (
     <article className="min-w-[240px] flex-1 rounded-[12px] border bg-card p-5 shadow-xs">
       <div className="flex items-start gap-3">
-        <span
-          className={cn(
-            "flex size-9 shrink-0 items-center justify-center rounded-[10px]",
-            visual.iconClassName,
-          )}
-        >
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-[10px] border bg-background text-muted-foreground">
           <HugeiconsIcon icon={visual.icon} size={18} strokeWidth={1.8} />
         </span>
         <div className="min-w-0 flex-1">

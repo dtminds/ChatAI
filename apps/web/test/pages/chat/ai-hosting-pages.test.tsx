@@ -165,7 +165,10 @@ describe("AI hosting pages", () => {
 
     expect(await screen.findByRole("heading", { level: 1, name: "Agent设置" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "保存" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "智能生成" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "智能生成" })).toHaveAttribute(
+      "data-agent-generate-gradient-button",
+      "true",
+    );
     expect(screen.getByRole("button", { name: "发布正式版" })).toBeInTheDocument();
     expect(screen.getByText("基本设置")).toBeInTheDocument();
     expect(screen.getByText("回复基调")).toBeInTheDocument();
@@ -217,6 +220,10 @@ describe("AI hosting pages", () => {
     expect(screen.getByLabelText("行业")).toBeInTheDocument();
     expect(screen.getByLabelText("请问您为客户提供哪些服务/商品?")).toBeInTheDocument();
     expect(screen.getByLabelText("您希望AI扮演什么样的角色?")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "开始生成" })).toHaveAttribute(
+      "data-agent-generate-gradient-button",
+      "true",
+    );
     expect(screen.getByRole("button", { name: "开始生成" })).toBeDisabled();
   });
 

@@ -73,7 +73,11 @@ export function ApplicationScopePanel({
     () => new Set(filteredAccounts.map((account) => account.id)),
     [filteredAccounts],
   );
-  const selectedFilteredCount = selectedAccountIds.filter((id) => filteredAccountIdSet.has(id)).length;
+  const visibleSelectedAccountIds = useMemo(
+    () => selectedAccountIds.filter((id) => filteredAccountIdSet.has(id)),
+    [selectedAccountIds, filteredAccountIdSet],
+  );
+  const selectedFilteredCount = visibleSelectedAccountIds.length;
   const allFilteredSelected =
     filteredAccounts.length > 0 && selectedFilteredCount === filteredAccounts.length;
   const headerCheckboxState: boolean | "indeterminate" =

@@ -9,6 +9,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { type AgentRecord } from "./agent-management-mock-data";
+import { AgentModelBadge } from "./agent-model-badge";
 
 const visibleKnowledgeBaseCount = 2;
 
@@ -35,7 +36,9 @@ export function AgentTable({ agents }: { agents: AgentRecord[] }) {
             agents.map((agent) => (
               <TableRow key={agent.id}>
                 <TableCell className="px-5 py-4 font-medium text-foreground">{agent.name}</TableCell>
-                <TableCell className="px-5 py-4 text-muted-foreground">{agent.model}</TableCell>
+                <TableCell className="px-5 py-4 text-muted-foreground">
+                  <AgentModelBadge model={agent.model} />
+                </TableCell>
                 <TableCell className="px-5 py-4">
                   <KnowledgeBaseTags knowledgeBases={agent.knowledgeBases} />
                 </TableCell>

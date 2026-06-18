@@ -34,7 +34,7 @@ export function AgentManagementPage() {
   }
 
   return (
-    <AiHostingLayout title="Agent管理">
+    <AiHostingLayout title="Agent 管理">
       <div className="space-y-6">
         <AiHostingPageHeader
           actions={
@@ -43,8 +43,8 @@ export function AgentManagementPage() {
               <span>帮助手册</span>
             </Button>
           }
-          description="用自然语言描述并管理Agent的人设、语气、条件逻辑等"
-          title="Agent管理"
+          description="创建和管理负责客户接待的智能体"
+          title="Agent 管理"
         />
 
         <AgentOverviewSection metrics={metrics} onPeriodChange={setStatsPeriod} period={statsPeriod} />
@@ -70,10 +70,10 @@ export function AgentManagementPage() {
                   strokeWidth={1.8}
                 />
                 <Input
-                  aria-label="搜索Agent名称"
+                  aria-label="搜索 Agent 名称"
                   className="h-10 rounded-[8px] pl-9"
                   onChange={(event) => setAgentSearchQuery(event.target.value)}
-                  placeholder="搜索Agent名称"
+                  placeholder="搜索 Agent 名称"
                   value={agentSearchQuery}
                 />
               </div>
@@ -81,7 +81,7 @@ export function AgentManagementPage() {
               <Button asChild className="h-10 px-4" type="button">
                 <Link to="/chat/ai-hosting/agents/new">
                   <HugeiconsIcon color="currentColor" icon={Add01Icon} size={17} strokeWidth={1.8} />
-                  <span>添加Agent</span>
+                  <span>添加 Agent</span>
                 </Link>
               </Button>
             </section>

@@ -3,7 +3,7 @@ import { Link, NavLink } from "react-router-dom";
 import {
   AiGenerativeIcon,
   ArrowLeft02Icon,
-  Book04Icon,
+  AiBookIcon,
   RoboticIcon,
   ArtificialIntelligence08Icon,
 } from "@hugeicons/core-free-icons";
@@ -14,11 +14,11 @@ import { cn } from "@/lib/utils";
 const aiHostingNavItems = [
   {
     icon: RoboticIcon,
-    label: "Agent管理",
+    label: "Agent 管理",
     to: "/chat/ai-hosting/agents",
   },
   {
-    icon: Book04Icon,
+    icon: AiBookIcon,
     label: "知识库",
     to: "/chat/ai-hosting/knowledge",
   },
@@ -54,11 +54,11 @@ export function AiHostingLayout({
               <HugeiconsIcon icon={ArtificialIntelligence08Icon} size={16} strokeWidth={1.8} />
             </div>
             <div className="min-w-0">
-              <div className="text-sm font-semibold">AI托管</div>
+              <div className="text-sm font-semibold">智能体</div>
             </div>
           </div>
 
-          <nav aria-label="AI托管导航" className="space-y-1">
+          <nav aria-label="智能体导航" className="space-y-1">
             {aiHostingNavItems.map((item) => (
               <NavLink
                 className={({ isActive }) =>

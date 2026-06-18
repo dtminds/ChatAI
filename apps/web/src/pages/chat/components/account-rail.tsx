@@ -11,7 +11,7 @@ import {
   Settings03Icon,
   Notification01Icon,
   UserSquareIcon,
-  SparklesIcon,
+  AiChat02Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { NavLink, useLocation } from "react-router-dom";
@@ -42,7 +42,7 @@ const railItems = [
   { label: "聊天", icon: ChatIcon },
   { label: "客户", icon: UserSquareIcon },
   { label: "洞察", icon: AiIdeaIcon, to: "/chat/insights", badge: "Beta" },
-  { label: "AI托管", icon: SparklesIcon, to: "/chat/ai-hosting" },
+  { label: "智能体", icon: AiChat02Icon, to: "/chat/ai-hosting" },
   { label: "任务", icon: Notification01Icon, devOnly: true },
 ];
 

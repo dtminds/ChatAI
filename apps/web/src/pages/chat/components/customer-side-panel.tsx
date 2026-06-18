@@ -54,7 +54,7 @@ function buildSidebarIframeParamsScopeKey(input: {
 type CustomerSidePanelProps = {
   accountName?: string;
   conversationMode?: ChatMode;
-  /** 当前席位 ID，用于服务端签发侧栏 iframe 涂色参数 */
+  /** 当前席位 ID，用于服务端签发侧栏 iframe 参数 */
   sidebarIframeSeatId?: string;
   /** 当前会话 ID，用于服务端按库表解析三方 ID 并签发参数 */
   sidebarIframeConversationId?: string;

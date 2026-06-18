@@ -1,4 +1,8 @@
 import type { OcrResult, PaddleOCR } from "@paddleocr/paddleocr-js";
+import {
+  resolveOcrRuntimeUrls,
+  resolvePaddleWorkerUrlFromModule,
+} from "@/pages/chat/lib/ocr-runtime-manifest";
 
 export type ImageOcrPoint = readonly [number, number];
 
@@ -25,27 +29,31 @@ type PaddleOcrInstance = Awaited<ReturnType<typeof PaddleOCR.create>>;
 type PaddleOcrCreateOptions = NonNullable<Parameters<typeof PaddleOCR.create>[0]>;
 type LocalPaddleOcrCreateOptions = PaddleOcrCreateOptions;
 
-const ortWasmBaseUrl =
-  import.meta.env.VITE_OCR_ORT_WASM_BASE_URL?.trim() ||
-  "https://b5.bokr.com.cn/dist/ocr/onnxruntime-web/1.26.0/";
-const paddleOcrModelBaseUrl =
-  import.meta.env.VITE_OCR_PADDLE_MODEL_BASE_URL?.trim() ||
-  "https://b5.bokr.com.cn/dist/ocr/paddleocr-js/0.4.2/";
-const paddleOcrModelBasePath = ensureTrailingSlash(paddleOcrModelBaseUrl);
+const ocrRuntimeUrls = resolveOcrRuntimeUrls(
+  {
+    ortWasmBaseUrl: import.meta.env.VITE_OCR_ORT_WASM_BASE_URL,
+    paddleModelBaseUrl: import.meta.env.VITE_OCR_PADDLE_MODEL_BASE_URL,
+    paddleModuleUrl: import.meta.env.VITE_OCR_PADDLE_MODULE_URL,
+    paddleWorkerUrl: import.meta.env.VITE_OCR_PADDLE_WORKER_URL,
+  },
+  { importMetaUrl: import.meta.url },
+);
 
 const ocrCreateOptions: LocalPaddleOcrCreateOptions = {
   ortOptions: {
-    wasmPaths: ensureTrailingSlash(ortWasmBaseUrl),
+    wasmPaths: ocrRuntimeUrls.ortWasmBaseUrl,
   },
   textDetectionModelAsset: {
-    url: `${paddleOcrModelBasePath}PP-OCRv6_tiny_det_onnx_infer.tar`,
+    url: ocrRuntimeUrls.modelUrls.det,
   },
-  textDetectionModelName: "PP-OCRv6_tiny_det",
+  textDetectionModelName: ocrRuntimeUrls.modelNames.det,
   textRecognitionModelAsset: {
-    url: `${paddleOcrModelBasePath}PP-OCRv6_tiny_rec_onnx_infer.tar`,
+    url: ocrRuntimeUrls.modelUrls.rec,
   },
-  textRecognitionModelName: "PP-OCRv6_tiny_rec",
-  worker: true,
+  textRecognitionModelName: ocrRuntimeUrls.modelNames.rec,
+  worker: {
+    createWorker: createPaddleOcrWorker,
+  },
 };
 const fallbackOcrCreateOptions = {
   ...ocrCreateOptions,
@@ -90,13 +98,35 @@ async function getOcr() {
 }
 
 async function loadPaddleOcrModule() {
-  paddleOcrModulePromise ??= import("@paddleocr/paddleocr-js").catch((error: unknown) => {
-    paddleOcrModulePromise = null;
-    ocrPromise = null;
-    throw error;
-  });
+  const moduleSpecifier = resolvePaddleOcrModuleSpecifier(import.meta.env.MODE);
+
+  paddleOcrModulePromise ??= import(/* @vite-ignore */ moduleSpecifier).catch(
+    (error: unknown) => {
+      paddleOcrModulePromise = null;
+      ocrPromise = null;
+      throw error;
+    },
+  );
 
   return paddleOcrModulePromise;
+}
+
+export function resolvePaddleOcrModuleSpecifier(mode: string | undefined) {
+  return mode === "test" ? "@paddleocr/paddleocr-js" : ocrRuntimeUrls.paddleModuleUrl;
+}
+
+export function resolvePaddleOcrWorkerUrl(
+  workerUrl: string | undefined,
+  moduleUrl: string,
+  importMetaUrl: string,
+) {
+  const configuredWorkerUrl = workerUrl?.trim();
+
+  if (configuredWorkerUrl) {
+    return configuredWorkerUrl;
+  }
+
+  return resolvePaddleWorkerUrlFromModule(moduleUrl, importMetaUrl);
 }
 
 function isWorkerInitializationError(error: unknown) {
@@ -105,8 +135,19 @@ function isWorkerInitializationError(error: unknown) {
   return /worker/i.test(message);
 }
 
-function ensureTrailingSlash(value: string) {
-  return value.endsWith("/") ? value : `${value}/`;
+function createPaddleOcrWorker() {
+  const workerModule = new Blob(
+    [`import ${JSON.stringify(ocrRuntimeUrls.paddleWorkerUrl)};\n`],
+    {
+      type: "text/javascript",
+    },
+  );
+  const workerUrl = URL.createObjectURL(workerModule);
+  const worker = new Worker(workerUrl, { type: "module" });
+
+  setTimeout(() => URL.revokeObjectURL(workerUrl), 0);
+
+  return worker;
 }
 
 function loadImageForOcr(input: RecognizeImageTextInput) {

@@ -1,17 +1,27 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { recognizeImageText } from "@/pages/chat/lib/image-ocr";
+import {
+  recognizeImageText,
+  resolvePaddleOcrWorkerUrl,
+  resolvePaddleOcrModuleSpecifier,
+} from "@/pages/chat/lib/image-ocr";
+import { getDefaultOcrCdnUrls, OCR_RUNTIME_MANIFEST } from "@/pages/chat/lib/ocr-runtime-manifest";
 
-const ortWasmBaseUrl = "https://b5.bokr.com.cn/dist/ocr/onnxruntime-web/1.26.0/";
-const paddleOcrModelBaseUrl = "https://b5.bokr.com.cn/dist/ocr/paddleocr-js/0.4.2/";
+const ocrCdnUrls = getDefaultOcrCdnUrls();
 const paddleOcrModelCreateOptions = {
   textDetectionModelAsset: {
-    url: `${paddleOcrModelBaseUrl}PP-OCRv6_tiny_det_onnx_infer.tar`,
+    url: ocrCdnUrls.modelUrls.det,
   },
-  textDetectionModelName: "PP-OCRv6_tiny_det",
+  textDetectionModelName: ocrCdnUrls.modelNames.det,
   textRecognitionModelAsset: {
-    url: `${paddleOcrModelBaseUrl}PP-OCRv6_tiny_rec_onnx_infer.tar`,
+    url: ocrCdnUrls.modelUrls.rec,
   },
-  textRecognitionModelName: "PP-OCRv6_tiny_rec",
+  textRecognitionModelName: ocrCdnUrls.modelNames.rec,
+};
+
+type CreateWorkerOptions = {
+  worker?: boolean | {
+    createWorker?: () => Worker;
+  };
 };
 
 const { create, predict } = vi.hoisted(() => {
@@ -26,11 +36,27 @@ const { create, predict } = vi.hoisted(() => {
   };
 });
 
+const { createObjectUrlMock, revokeObjectUrlMock } = vi.hoisted(() => ({
+  createObjectUrlMock: vi.fn(() => "blob:https://chat.example.com/ocr-worker"),
+  revokeObjectUrlMock: vi.fn(),
+}));
+
 vi.mock("@paddleocr/paddleocr-js", () => ({
   PaddleOCR: {
     create,
   },
 }));
+
+const WorkerMock = vi.fn(function WorkerMock(
+  this: Worker,
+  url: string | URL,
+  options?: WorkerOptions,
+) {
+  Object.assign(this, {
+    options,
+    url: String(url),
+  });
+});
 
 class ImageMock {
   alt = "";
@@ -53,9 +79,22 @@ const createdImages: ImageMock[] = [];
 
 describe("recognizeImageText", () => {
   beforeEach(() => {
+    vi.useRealTimers();
     create.mockClear();
+    WorkerMock.mockClear();
+    createObjectUrlMock.mockClear();
+    revokeObjectUrlMock.mockClear();
     predict.mockReset();
     createdImages.length = 0;
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: createObjectUrlMock,
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: revokeObjectUrlMock,
+    });
+    vi.stubGlobal("Worker", WorkerMock);
     vi.stubGlobal("Image", class extends ImageMock {
       constructor() {
         super();
@@ -106,10 +145,27 @@ describe("recognizeImageText", () => {
     expect(create).toHaveBeenCalledTimes(1);
     expect(create).toHaveBeenCalledWith({
       ortOptions: {
-        wasmPaths: ortWasmBaseUrl,
+        wasmPaths: ocrCdnUrls.ortWasmBaseUrl,
       },
       ...paddleOcrModelCreateOptions,
-      worker: true,
+      worker: {
+        createWorker: expect.any(Function),
+      },
+    });
+    const createOptions = (create.mock.calls as unknown as Array<[CreateWorkerOptions]>)[0]?.[0];
+    const createWorker =
+      typeof createOptions?.worker === "object"
+        ? createOptions.worker.createWorker
+        : undefined;
+    expect(createWorker).toEqual(expect.any(Function));
+    createWorker?.();
+    const workerBootstrap = (createObjectUrlMock.mock.calls as unknown as Array<[Blob]>)[0]?.[0];
+    expect(workerBootstrap).toBeInstanceOf(Blob);
+    await expect(workerBootstrap.text()).resolves.toBe(
+      `import ${JSON.stringify(ocrCdnUrls.paddleWorkerUrl)};\n`,
+    );
+    expect(WorkerMock).toHaveBeenCalledWith("blob:https://chat.example.com/ocr-worker", {
+      type: "module",
     });
     expect(predict).toHaveBeenCalledTimes(2);
     expect(createdImages).toHaveLength(2);
@@ -141,6 +197,63 @@ describe("recognizeImageText", () => {
       text: "订单号 12345\n收货地址 上海市",
     });
     expect(nextResult.text).toBe("第二张");
+  });
+
+  it("revokes the worker blob URL after worker creation can start", () => {
+    vi.useFakeTimers();
+    vi.resetModules();
+    predict.mockResolvedValue([]);
+
+    return import("@/pages/chat/lib/image-ocr").then(
+      async ({ recognizeImageText: recognizeFreshImageText }) => {
+        try {
+          await recognizeFreshImageText({
+            alt: "worker 图片",
+            imageUrl: "https://cdn.example.com/worker.jpg",
+          });
+
+          const createOptions = (create.mock.calls as unknown as Array<
+            [CreateWorkerOptions]
+          >)[0]?.[0];
+          const createWorker =
+            typeof createOptions?.worker === "object"
+              ? createOptions.worker.createWorker
+              : undefined;
+
+          createWorker?.();
+
+          expect(revokeObjectUrlMock).not.toHaveBeenCalled();
+
+          vi.runOnlyPendingTimers();
+
+          expect(revokeObjectUrlMock).toHaveBeenCalledWith(
+            "blob:https://chat.example.com/ocr-worker",
+          );
+        } finally {
+          vi.useRealTimers();
+        }
+      },
+    );
+  });
+
+  it("uses the CDN module outside Vitest and keeps a mockable package import in tests", () => {
+    expect(resolvePaddleOcrModuleSpecifier("development")).toBe(
+      ocrCdnUrls.paddleModuleUrl,
+    );
+    expect(resolvePaddleOcrModuleSpecifier("production")).toBe(
+      ocrCdnUrls.paddleModuleUrl,
+    );
+    expect(resolvePaddleOcrModuleSpecifier("test")).toBe("@paddleocr/paddleocr-js");
+  });
+
+  it("resolves the default worker URL from relative module URLs", () => {
+    const moduleUrl = "/dist/ocr/paddleocr-js/0.4.2/index.mjs";
+    const importMetaUrl = "https://chat.example.com/assets/chat-workbench-page.js";
+
+    expect(resolvePaddleOcrWorkerUrl("", moduleUrl, importMetaUrl)).toBe(
+      new URL(OCR_RUNTIME_MANIFEST.paddleWorkerFile, new URL(moduleUrl, importMetaUrl))
+        .href,
+    );
   });
 
   it("normalizes falsy OCR results to an empty result", async () => {
@@ -230,14 +343,16 @@ describe("recognizeImageText", () => {
     });
     expect(create).toHaveBeenNthCalledWith(1, {
       ortOptions: {
-        wasmPaths: ortWasmBaseUrl,
+        wasmPaths: ocrCdnUrls.ortWasmBaseUrl,
       },
       ...paddleOcrModelCreateOptions,
-      worker: true,
+      worker: {
+        createWorker: expect.any(Function),
+      },
     });
     expect(create).toHaveBeenNthCalledWith(2, {
       ortOptions: {
-        wasmPaths: ortWasmBaseUrl,
+        wasmPaths: ocrCdnUrls.ortWasmBaseUrl,
       },
       ...paddleOcrModelCreateOptions,
       worker: false,

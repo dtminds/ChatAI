@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 // @vitest-environment node
 
+import { getDefaultOcrCdnUrls } from "../src/pages/chat/lib/ocr-runtime-manifest";
 import {
   buildDevProxyConfig,
   createViteConfig,
@@ -88,6 +89,18 @@ describe("vite config env", () => {
         __dirname,
         "../../../packages/contracts/src/index.ts",
       ),
+    });
+  });
+
+  it("loads PaddleOCR runtime from the versioned CDN module in production builds", () => {
+    const config = createViteConfig("production");
+    const rollupOptions = config.build?.rollupOptions;
+
+    expect(rollupOptions?.external).toContain("@paddleocr/paddleocr-js");
+    expect(rollupOptions?.output).toMatchObject({
+      paths: {
+        "@paddleocr/paddleocr-js": getDefaultOcrCdnUrls().paddleModuleUrl,
+      },
     });
   });
 

@@ -251,7 +251,7 @@ export type WorkbenchService = {
     subUserId: string,
     conversationId: string,
   ): Promise<WorkbenchConversationDeleteResponse> | WorkbenchConversationDeleteResponse;
-  /** 按席位与会话在服务端签发侧栏 iframe 涂色参数（不含 secret/iv） */
+  /** 按席位与会话在服务端签发侧栏 iframe 参数（不含 secret/iv） */
   getSidebarIframeParams(
     subUserId: string,
     input: WorkbenchSidebarIframeParamsRequest,

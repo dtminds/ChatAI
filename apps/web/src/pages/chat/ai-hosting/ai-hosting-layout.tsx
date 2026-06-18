@@ -5,11 +5,12 @@ import {
   ArrowLeft02Icon,
   AiBookIcon,
   RoboticIcon,
-  ArtificialIntelligence08Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+
+const agentLogoUrl = "https://b5.bokr.com.cn/dist/agent-color.svg";
 
 const aiHostingNavItems = [
   {
@@ -47,12 +48,7 @@ export function AiHostingLayout({
           </Button>
 
           <div className="mb-5 flex items-center gap-1.5 px-2">
-            <div
-              aria-hidden="true"
-              className="flex size-6 shrink-0 items-center justify-center rounded-[6px] bg-primary/10 text-primary"
-            >
-              <HugeiconsIcon icon={ArtificialIntelligence08Icon} size={16} strokeWidth={1.8} />
-            </div>
+            <img alt="" aria-hidden="true" className="size-6 shrink-0" src={agentLogoUrl} />
             <div className="min-w-0">
               <div className="text-sm font-semibold">智能体</div>
             </div>

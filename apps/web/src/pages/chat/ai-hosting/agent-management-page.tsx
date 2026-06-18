@@ -50,11 +50,11 @@ export function AgentManagementPage() {
         <AgentOverviewSection metrics={metrics} onPeriodChange={setStatsPeriod} period={statsPeriod} />
 
         <Tabs onValueChange={setActiveTab} value={activeTab}>
-          <TabsList aria-label="Agent列表视图" className="w-fit">
-            <TabsTrigger className="min-w-0 px-4" value="my-agents">
+          <TabsList aria-label="Agent列表视图" className="h-10 w-fit rounded-[8px] bg-muted p-1">
+            <TabsTrigger className="h-8 min-w-24 rounded-[6px] px-4 py-0 text-sm" value="my-agents">
               我的Agent
             </TabsTrigger>
-            <TabsTrigger className="min-w-0 px-4" value="scope">
+            <TabsTrigger className="h-8 min-w-24 rounded-[6px] px-4 py-0 text-sm" value="scope">
               应用范围
             </TabsTrigger>
           </TabsList>

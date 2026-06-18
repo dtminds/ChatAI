@@ -10,8 +10,8 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { AgentConditionalLogicField } from "./agent-conditional-logic-field";
-import { AgentSettingsDraftBanner } from "./agent-settings-draft-banner";
 import { AgentGenerateGradientButton } from "./agent-generate-gradient-button";
+import { AgentSettingsDraftBanner } from "./agent-settings-draft-banner";
 import { AgentSettingsGenerateDialog } from "./agent-settings-generate-dialog";
 import { AgentSettingsPublishDialog } from "./agent-settings-publish-dialog";
 import { AgentSettingsRestoreDialog } from "./agent-settings-restore-dialog";
@@ -43,13 +43,7 @@ import {
 } from "./agent-settings.constants";
 import { AgentModelBadge } from "./agent-model-badge";
 import { AiHostingLayout } from "./ai-hosting-layout";
-import {
-  aiHostingPreviewCustomerAvatarColors,
-  aiHostingPreviewHeaderGradient,
-  aiHostingPreviewMessageColors,
-  aiHostingSettingsModuleSurface,
-  aiHostingSurfaceColors,
-} from "./ai-hosting-palette";
+import { aiHostingSettingsModuleSurface } from "./ai-hosting-palette";
 
 type PreviewMessage = {
   content: string;
@@ -57,12 +51,10 @@ type PreviewMessage = {
   role: "agent" | "customer";
 };
 
-const agentSettingsModuleSurfaceClassName = "rounded-[12px] border shadow-xs";
+const agentSettingsModuleSurfaceClassName = "rounded-[12px] border border-border bg-card shadow-xs";
 
 const agentSettingsModuleSurfaceStyle = {
   background: aiHostingSettingsModuleSurface.background,
-  borderColor: aiHostingSettingsModuleSurface.border,
-  boxShadow: aiHostingSettingsModuleSurface.shadow,
 } as const;
 
 export function AgentSettingsPage() {
@@ -239,6 +231,7 @@ export function AgentSettingsPage() {
             >
               <Textarea
                 aria-label="角色描述"
+                className="bg-background"
                 onChange={(event) => updateForm("roleDescription", event.target.value)}
                 placeholder="请输入角色描述"
                 value={form.roleDescription}
@@ -251,6 +244,7 @@ export function AgentSettingsPage() {
             >
               <Textarea
                 aria-label="沟通风格"
+                className="bg-background"
                 onChange={(event) => updateForm("communicationStyle", event.target.value)}
                 placeholder="请输入沟通风格描述"
                 value={form.communicationStyle}
@@ -273,6 +267,7 @@ export function AgentSettingsPage() {
             >
               <Textarea
                 aria-label="转人工条件"
+                className="bg-background"
                 onChange={(event) => updateForm("transferToHumanConditions", event.target.value)}
                 placeholder="请输入转人工条件"
                 value={form.transferToHumanConditions}
@@ -303,7 +298,10 @@ function AgentSettingsSection({
   title: string;
 }) {
   return (
-    <section className={cn(agentSettingsModuleSurfaceClassName, "p-5")} style={agentSettingsModuleSurfaceStyle}>
+    <section
+      className={cn(agentSettingsModuleSurfaceClassName, "p-5")}
+      style={agentSettingsModuleSurfaceStyle}
+    >
       <div className="mb-4 space-y-1">
         <h2 className="text-base font-semibold text-foreground">{title}</h2>
         {description ? <p className="text-sm text-muted-foreground">{description}</p> : null}
@@ -329,7 +327,10 @@ function CollapsibleAgentSettingsSection({
 
   return (
     <Collapsible onOpenChange={setOpen} open={open}>
-      <section className={cn(agentSettingsModuleSurfaceClassName, "p-5")} style={agentSettingsModuleSurfaceStyle}>
+      <section
+        className={cn(agentSettingsModuleSurfaceClassName, "p-5")}
+        style={agentSettingsModuleSurfaceStyle}
+      >
         <CollapsibleTrigger asChild>
           <button
             aria-controls={sectionId}
@@ -421,17 +422,14 @@ function AgentPreviewPanel({
         )}
         style={agentSettingsModuleSurfaceStyle}
       >
-        <header
-          className="flex items-center justify-between gap-3 px-4 py-3"
-          style={{ backgroundImage: aiHostingPreviewHeaderGradient }}
-        >
+        <header className="flex items-center justify-between gap-3 border-b border-border bg-muted/40 px-4 py-3">
           <div className="flex min-w-0 items-center gap-2">
-            <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-[8px] bg-background/80 text-primary shadow-xs">
+            <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-[8px] bg-background text-primary shadow-xs">
               <HugeiconsIcon icon={AiChat02Icon} size={16} strokeWidth={1.8} />
             </span>
             <h2 className="truncate text-base font-semibold text-foreground">{title}</h2>
           </div>
-          <span className="shrink-0 rounded-[6px] bg-background/70 px-2 py-1 text-xs text-muted-foreground">
+          <span className="shrink-0 rounded-[6px] bg-background px-2 py-1 text-xs text-muted-foreground">
             模拟测试
           </span>
         </header>
@@ -444,10 +442,7 @@ function AgentPreviewPanel({
           </div>
 
           <div className="p-4 pt-0">
-            <div
-              className="rounded-[8px] border bg-background px-3 py-2.5"
-              style={{ borderColor: aiHostingSurfaceColors.border }}
-            >
+            <div className="rounded-[8px] border border-border bg-background px-3 py-2.5">
               <Button
                 aria-label="上传图片"
                 className="mb-1 size-7 rounded-[6px] p-0 text-muted-foreground hover:bg-muted/40"
@@ -483,10 +478,7 @@ function PreviewMessageRow({ message }: { message: PreviewMessage }) {
   return (
     <div className={cn("flex items-start gap-2", isAgent ? "justify-start" : "justify-end")}>
       {isAgent ? <PreviewAgentAvatar /> : null}
-      <div
-        className="max-w-[78%] rounded-[12px] px-3 py-2 text-sm leading-6 text-foreground"
-        style={{ backgroundColor: aiHostingPreviewMessageColors.bubbleBackground }}
-      >
+      <div className="max-w-[78%] rounded-[12px] bg-muted px-3 py-2 text-sm leading-6 text-foreground">
         {message.content}
       </div>
       {!isAgent ? <PreviewCustomerAvatar /> : null}
@@ -507,13 +499,7 @@ function PreviewAgentAvatar() {
 function PreviewCustomerAvatar() {
   return (
     <Avatar className="size-9 shrink-0 rounded-[8px]">
-      <AvatarFallback
-        className="rounded-[8px] text-sm"
-        style={{
-          backgroundColor: aiHostingPreviewCustomerAvatarColors.background,
-          color: aiHostingPreviewCustomerAvatarColors.text,
-        }}
-      >
+      <AvatarFallback className="rounded-[8px] bg-secondary text-sm text-secondary-foreground">
         客
       </AvatarFallback>
     </Avatar>

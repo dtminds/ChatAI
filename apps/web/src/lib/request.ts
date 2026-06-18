@@ -55,6 +55,11 @@ export class RequestNormalizedError extends Error {
   }
 }
 
+/**
+ * Browser API calls default to same-origin `/api`. Business adapters should pass
+ * relative `/server/*` URLs through this module instead of raw `fetch`, full API
+ * hosts, or duplicated `/api/server/*` paths.
+ */
 export const requestInstance = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL ?? "/api",
   timeout: 15000,

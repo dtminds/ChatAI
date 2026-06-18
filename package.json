@@ -16,6 +16,7 @@
     "backend:test": "pnpm --filter @chatai/backend test",
     "backend:typecheck": "pnpm --filter @chatai/backend typecheck",
     "build": "pnpm --filter @chatai/web build",
+    "web:build": "pnpm --filter @chatai/web build",
     "contracts:build": "pnpm --filter @chatai/contracts build",
     "contracts:test": "pnpm --filter @chatai/contracts test",
     "contracts:typecheck": "pnpm --filter @chatai/contracts typecheck",

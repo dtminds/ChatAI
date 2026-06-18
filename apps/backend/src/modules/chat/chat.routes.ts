@@ -49,6 +49,8 @@ import { checkPlayableVoiceAsset } from "./media-proxy.service.js";
 import { BadRequestError, ForbiddenError } from "../../shared/errors.js";
 import { withRequestId } from "../../shared/logger.js";
 
+const CHAT_PUBLIC_API_PREFIX = "/api/server" as const;
+const chatPublicRoute = (path: `/${string}`) => `${CHAT_PUBLIC_API_PREFIX}${path}`;
 const NumericStringSchema = Type.String({ pattern: "^[0-9]+$" });
 
 const ConversationListQuerySchema = Type.Object({
@@ -639,12 +641,12 @@ type MaterialCollectionGroupQuery = Static<typeof MaterialCollectionGroupQuerySc
 
 
 export async function registerChatRoutes(app: FastifyInstance) {
-  app.get("/api/server/me", { preHandler: app.authenticate }, async (request) =>
+  app.get(chatPublicRoute("/me"), { preHandler: app.authenticate }, async (request) =>
     getWorkbenchService(app, request).getMe(getSubUserId(request)),
   );
 
   app.post<{ Body: SidebarIframeParamsBody }>(
-    "/api/server/sidebar-iframe-params",
+    chatPublicRoute("/sidebar-iframe-params"),
     {
       preHandler: app.authenticate,
       schema: {
@@ -658,12 +660,12 @@ export async function registerChatRoutes(app: FastifyInstance) {
       ),
   );
 
-  app.get("/api/server/seats", { preHandler: app.authenticate }, async (request) =>
+  app.get(chatPublicRoute("/seats"), { preHandler: app.authenticate }, async (request) =>
     getWorkbenchService(app, request).getSeats(getSubUserId(request)),
   );
 
   app.get<{ Querystring: CustomersQuery }>(
-    "/api/server/customers",
+    chatPublicRoute("/customers"),
     {
       preHandler: app.authenticate,
       schema: {
@@ -681,7 +683,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
   );
 
   app.get<{ Params: CustomerParams }>(
-    "/api/server/customers/:thirdExternalUserId/last-conversation",
+    chatPublicRoute("/customers/:thirdExternalUserId/last-conversation"),
     {
       preHandler: app.authenticate,
       schema: {
@@ -699,7 +701,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
     Params: CustomerParams;
     Querystring: CustomerRelationConversationsQuery;
   }>(
-    "/api/server/customers/:thirdExternalUserId/relation-conversations",
+    chatPublicRoute("/customers/:thirdExternalUserId/relation-conversations"),
     {
       preHandler: app.authenticate,
       schema: {
@@ -716,7 +718,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
   );
 
   app.get<{ Querystring: PlayableVoiceQuery }>(
-    "/api/server/media/playable-voice",
+    chatPublicRoute("/media/playable-voice"),
     {
       preHandler: app.authenticate,
       schema: {
@@ -730,7 +732,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
   );
 
   app.post<{ Body: MediaUploadCredentialBody }>(
-    "/api/server/media/upload-credential",
+    chatPublicRoute("/media/upload-credential"),
     {
       preHandler: app.authenticate,
       schema: {
@@ -747,7 +749,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
   );
 
   app.post<{ Body: VoicePlaybackConfirmBody }>(
-    "/api/server/media/voice-playback-confirmed",
+    chatPublicRoute("/media/voice-playback-confirmed"),
     {
       preHandler: app.authenticate,
       schema: {
@@ -764,7 +766,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
   );
 
   app.post<{ Body: VoiceTranscriptionBody }>(
-    "/api/server/media/voice-transcription",
+    chatPublicRoute("/media/voice-transcription"),
     {
       preHandler: app.authenticate,
       schema: {
@@ -781,7 +783,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
   );
 
   app.get<{ Querystring: ConversationListQuery }>(
-    "/api/server/conversations",
+    chatPublicRoute("/conversations"),
     {
       preHandler: app.authenticate,
       schema: {
@@ -805,7 +807,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
     Params: ConversationParams;
     Querystring: ConversationMessagesQuery;
   }>(
-    "/api/server/conversations/:conversationId/messages",
+    chatPublicRoute("/conversations/:conversationId/messages"),
     {
       preHandler: app.authenticate,
       schema: {
@@ -826,7 +828,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
   );
 
   app.post<{ Body: MessageQueryByIdsBody }>(
-    "/api/server/messages/query-by-ids",
+    chatPublicRoute("/messages/query-by-ids"),
     {
       preHandler: app.authenticate,
       schema: {
@@ -845,7 +847,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
     Params: MessageDownloadParams;
     Querystring: MessageChatRecordQuery;
   }>(
-    "/api/server/messages/:messageId/chat-record",
+    chatPublicRoute("/messages/:messageId/chat-record"),
     {
       preHandler: app.authenticate,
       schema: {
@@ -865,7 +867,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
     Params: ConversationParams;
     Querystring: HistoryMessagesQuery;
   }>(
-    "/api/server/conversations/:conversationId/history-messages",
+    chatPublicRoute("/conversations/:conversationId/history-messages"),
     {
       preHandler: app.authenticate,
       schema: {
@@ -889,7 +891,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
   );
 
   app.post<{ Params: ConversationParams }>(
-    "/api/server/conversations/:conversationId/read",
+    chatPublicRoute("/conversations/:conversationId/read"),
     {
       preHandler: app.authenticate,
       schema: {
@@ -906,7 +908,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
   );
 
   app.post<{ Params: ConversationParams }>(
-    "/api/server/conversations/:conversationId/unread",
+    chatPublicRoute("/conversations/:conversationId/unread"),
     {
       preHandler: app.authenticate,
       schema: {
@@ -923,7 +925,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
   );
 
   app.post<{ Params: ConversationParams }>(
-    "/api/server/conversations/:conversationId/pin",
+    chatPublicRoute("/conversations/:conversationId/pin"),
     {
       preHandler: app.authenticate,
       schema: {
@@ -940,7 +942,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
   );
 
   app.post<{ Params: ConversationParams }>(
-    "/api/server/conversations/:conversationId/unpin",
+    chatPublicRoute("/conversations/:conversationId/unpin"),
     {
       preHandler: app.authenticate,
       schema: {
@@ -957,7 +959,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
   );
 
   app.post<{ Params: ConversationParams }>(
-    "/api/server/conversations/:conversationId/delete",
+    chatPublicRoute("/conversations/:conversationId/delete"),
     {
       preHandler: app.authenticate,
       schema: {
@@ -974,7 +976,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
   );
 
   app.get<{ Params: ConversationParams }>(
-    "/api/server/conversations/:conversationId/group-members",
+    chatPublicRoute("/conversations/:conversationId/group-members"),
     {
       preHandler: app.authenticate,
       schema: {
@@ -1600,7 +1602,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
   );
 
   app.get<{ Querystring: PollQuery }>(
-    "/api/server/poll",
+    chatPublicRoute("/poll"),
     {
       preHandler: app.authenticate,
       schema: {
@@ -1623,7 +1625,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
   );
 
   app.post<{ Body: Static<typeof SmartReplyPollBodySchema> }>(
-    "/api/server/smart-reply/poll",
+    chatPublicRoute("/smart-reply/poll"),
     {
       preHandler: app.authenticate,
       schema: {
@@ -1638,7 +1640,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
   );
 
   app.post<{ Body: Static<typeof SmartReplyGeneralAnswerBodySchema> }>(
-    "/api/server/smart-reply/general-answer",
+    chatPublicRoute("/smart-reply/general-answer"),
     {
       preHandler: app.authenticate,
       schema: {
@@ -1653,7 +1655,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
   );
 
   app.post<{ Body: Static<typeof SmartReplyAutoGeneralAnswerBodySchema> }>(
-    "/api/server/smart-reply/auto-general-answer",
+    chatPublicRoute("/smart-reply/auto-general-answer"),
     {
       preHandler: app.authenticate,
       schema: {
@@ -1668,7 +1670,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
   );
 
   app.post<{ Body: Static<typeof SmartReplyMakeShorterBodySchema> }>(
-    "/api/server/smart-reply/make-shorter",
+    chatPublicRoute("/smart-reply/make-shorter"),
     {
       preHandler: app.authenticate,
       schema: {
@@ -1683,7 +1685,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
   );
 
   app.post<{ Body: Static<typeof SmartReplySendAnswerBodySchema> }>(
-    "/api/server/smart-reply/send-answer",
+    chatPublicRoute("/smart-reply/send-answer"),
     {
       preHandler: app.authenticate,
       schema: {
@@ -1700,7 +1702,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
   );
 
   app.post<{ Body: Static<typeof SmartReplyAttachmentsBodySchema> }>(
-    "/api/server/smart-reply/attachments",
+    chatPublicRoute("/smart-reply/attachments"),
     {
       preHandler: app.authenticate,
       schema: {
@@ -1715,7 +1717,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
   );
 
   app.post<{ Body: Static<typeof SmartReplyTextModerationBodySchema> }>(
-    "/api/server/smart-reply/text-moderation",
+    chatPublicRoute("/smart-reply/text-moderation"),
     {
       preHandler: app.authenticate,
       schema: {
@@ -1730,7 +1732,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
   );
 
   app.post<{ Body: Static<typeof SmartReplyKnowledgePageBodySchema> }>(
-    "/api/server/smart-reply/knowledge-page",
+    chatPublicRoute("/smart-reply/knowledge-page"),
     {
       preHandler: app.authenticate,
       schema: {
@@ -1745,7 +1747,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
   );
 
   app.post<{ Body: Static<typeof SmartReplyKnowledgeConfigBodySchema> }>(
-    "/api/server/smart-reply/knowledge-config",
+    chatPublicRoute("/smart-reply/knowledge-config"),
     {
       preHandler: app.authenticate,
       schema: {
@@ -1760,7 +1762,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
   );
 
   app.post<{ Body: Static<typeof SmartReplyKnowledgeDocPageBodySchema> }>(
-    "/api/server/smart-reply/knowledge-doc-page",
+    chatPublicRoute("/smart-reply/knowledge-doc-page"),
     {
       preHandler: app.authenticate,
       schema: {
@@ -1775,7 +1777,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
   );
 
   app.post<{ Body: Static<typeof SmartReplyKnowledgeFaqAddBodySchema> }>(
-    "/api/server/smart-reply/knowledge-faq/add",
+    chatPublicRoute("/smart-reply/knowledge-faq/add"),
     {
       preHandler: app.authenticate,
       schema: {
@@ -1792,7 +1794,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
   );
 
   app.post<{ Body: Static<typeof SmartHeartbeatBodySchema> }>(
-    "/api/server/conversations/smart-heartbeat",
+    chatPublicRoute("/conversations/smart-heartbeat"),
     {
       preHandler: app.authenticate,
       schema: {
@@ -1809,7 +1811,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
   );
 
   app.post<{ Body: SendMessageBody }>(
-    "/api/server/messages/send",
+    chatPublicRoute("/messages/send"),
     {
       preHandler: app.authenticate,
       schema: {
@@ -1829,7 +1831,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
     Body: MessageDownloadStatusBody;
     Params: MessageDownloadParams;
   }>(
-    "/api/server/messages/:messageId/download",
+    chatPublicRoute("/messages/:messageId/download"),
     {
       preHandler: app.authenticate,
       schema: {
@@ -1850,7 +1852,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
     Body: MessageRevokeBody;
     Params: MessageDownloadParams;
   }>(
-    "/api/server/messages/:messageId/revoke",
+    chatPublicRoute("/messages/:messageId/revoke"),
     {
       preHandler: app.authenticate,
       schema: {
@@ -1869,7 +1871,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
   );
 
   app.post<{ Body: MessageDownloadStatusBody }>(
-    "/api/server/messages/download-status",
+    chatPublicRoute("/messages/download-status"),
     {
       preHandler: app.authenticate,
       schema: {
@@ -1887,7 +1889,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
   );
 
   app.post<{ Params: SeatParams }>(
-    "/api/server/seats/:seatId/take-over",
+    chatPublicRoute("/seats/:seatId/take-over"),
     {
       preHandler: app.authenticate,
       schema: {
@@ -1904,7 +1906,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
   );
 
   app.get<{ Querystring: SearchQuery }>(
-    "/api/server/search",
+    chatPublicRoute("/search"),
     {
       preHandler: app.authenticate,
       schema: {
@@ -1921,7 +1923,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
   );
 
   app.post<{ Body: GetOrCreateConversationBody }>(
-    "/api/server/conversations/get-or-create",
+    chatPublicRoute("/conversations/get-or-create"),
     {
       preHandler: app.authenticate,
       schema: {

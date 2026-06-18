@@ -26,6 +26,11 @@ const AgentManagementPage = lazy(() =>
     }),
   ),
 );
+const AgentSettingsPage = lazy(() =>
+  import("@/pages/chat/ai-hosting/agent-settings-page").then(({ AgentSettingsPage }) => ({
+    default: AgentSettingsPage,
+  })),
+);
 const KnowledgeBasePage = lazy(() =>
   import("@/pages/chat/ai-hosting/knowledge-base-page").then(
     ({ KnowledgeBasePage }) => ({
@@ -180,6 +185,10 @@ export const routerConfig = [
       {
         path: "chat/ai-hosting/agents",
         element: withRouteSuspense(<AgentManagementPage />),
+      },
+      {
+        path: "chat/ai-hosting/agents/new",
+        element: withRouteSuspense(<AgentSettingsPage />),
       },
       {
         path: "chat/ai-hosting/knowledge",

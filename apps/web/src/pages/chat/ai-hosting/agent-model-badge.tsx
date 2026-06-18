@@ -1,6 +1,6 @@
 import { AiBrain01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { cn } from "@/lib/utils";
 import { resolveAgentModelIcon } from "./agent-model-icons";
@@ -15,6 +15,11 @@ export function AgentModelBadge({ className, label, model }: AgentModelBadgeProp
   const iconConfig = resolveAgentModelIcon(model);
   const displayLabel = label ?? iconConfig.label;
   const [imageFailed, setImageFailed] = useState(false);
+
+  useEffect(() => {
+    setImageFailed(false);
+  }, [model]);
+
   const shouldUseImage = Boolean(iconConfig.iconUrl && !imageFailed);
 
   return (

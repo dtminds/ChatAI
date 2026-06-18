@@ -98,13 +98,21 @@ async function getOcr() {
 }
 
 async function loadPaddleOcrModule() {
-  paddleOcrModulePromise ??= import("@paddleocr/paddleocr-js").catch((error: unknown) => {
-    paddleOcrModulePromise = null;
-    ocrPromise = null;
-    throw error;
-  });
+  const moduleSpecifier = resolvePaddleOcrModuleSpecifier(import.meta.env.MODE);
+
+  paddleOcrModulePromise ??= import(/* @vite-ignore */ moduleSpecifier).catch(
+    (error: unknown) => {
+      paddleOcrModulePromise = null;
+      ocrPromise = null;
+      throw error;
+    },
+  );
 
   return paddleOcrModulePromise;
+}
+
+export function resolvePaddleOcrModuleSpecifier(mode: string | undefined) {
+  return mode === "test" ? "@paddleocr/paddleocr-js" : paddleOcrModuleUrl;
 }
 
 function isWorkerInitializationError(error: unknown) {

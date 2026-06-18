@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { recognizeImageText } from "@/pages/chat/lib/image-ocr";
+import {
+  recognizeImageText,
+  resolvePaddleOcrModuleSpecifier,
+} from "@/pages/chat/lib/image-ocr";
 
 const ortWasmBaseUrl = "https://b5.bokr.com.cn/dist/ocr/onnxruntime-web/1.26.0/";
 const paddleOcrModelBaseUrl = "https://b5.bokr.com.cn/dist/ocr/paddleocr-js/0.4.2/";
@@ -194,6 +197,16 @@ describe("recognizeImageText", () => {
       text: "订单号 12345\n收货地址 上海市",
     });
     expect(nextResult.text).toBe("第二张");
+  });
+
+  it("uses the CDN module outside Vitest and keeps a mockable package import in tests", () => {
+    expect(resolvePaddleOcrModuleSpecifier("development")).toBe(
+      "https://b5.bokr.com.cn/dist/ocr/paddleocr-js/0.4.2/index.mjs",
+    );
+    expect(resolvePaddleOcrModuleSpecifier("production")).toBe(
+      "https://b5.bokr.com.cn/dist/ocr/paddleocr-js/0.4.2/index.mjs",
+    );
+    expect(resolvePaddleOcrModuleSpecifier("test")).toBe("@paddleocr/paddleocr-js");
   });
 
   it("normalizes falsy OCR results to an empty result", async () => {

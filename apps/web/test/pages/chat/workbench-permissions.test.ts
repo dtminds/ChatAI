@@ -45,6 +45,22 @@ describe("resolveWorkbenchPermissions", () => {
     });
   });
 
+  it("blocks sending and shows hosting placeholder for full custody conversations", () => {
+    const permissions = resolveWorkbenchPermissions({
+      account: createAccount({ takenOverEmployeeId: me.id }),
+      activeConversation: createConversation({ custodyMode: "full" }),
+      bootstrapStatus: "ready",
+      me,
+      subUser: operator,
+    });
+
+    expect(permissions).toMatchObject({
+      canSendMessage: false,
+      canUseConversationActions: true,
+      composerPlaceholder: "AI正在托管中...",
+    });
+  });
+
   it("maps sidebar iframe send status from workbench state", () => {
     expect(
       resolveWorkbenchPermissions({

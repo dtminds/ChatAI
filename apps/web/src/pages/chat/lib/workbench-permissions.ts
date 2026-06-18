@@ -61,7 +61,8 @@ export function resolveWorkbenchPermissions({
   const canSendMessage =
     canUseConversationActions &&
     !!activeConversation &&
-    !isConversationBizInactive;
+    !isConversationBizInactive &&
+    activeConversation.custodyMode !== "full";
 
   return {
     canSendMessage,
@@ -123,6 +124,14 @@ function resolveComposerPlaceholder({
   bootstrapStatus: WorkbenchBootstrapStatus;
   canUseChatSend: boolean;
 }) {
+  const isActivelyHosted =
+    activeConversation?.custodyMode === "full" &&
+    activeConversation.custodyHostingStatus !== "exited";
+
+  if (isActivelyHosted) {
+    return "AI正在托管中...";
+  }
+
   if (canSendMessage) {
     return "请输入消息……";
   }

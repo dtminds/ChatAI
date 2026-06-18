@@ -84,7 +84,7 @@ export function QuickReplyAttachmentPicker({
   };
 
   return (
-    <div className="space-y-2">
+    <div className="w-full min-w-0 space-y-2">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium text-foreground">附件</span>
@@ -191,9 +191,9 @@ export function QuickReplyAttachmentPicker({
           />
         </div>
       </div>
-      <div className="min-h-[136px]">
+      <div className="w-full min-w-0 overflow-hidden min-h-[136px]">
         {attachments.length > 0 ? (
-          <div className="space-y-2">
+          <div className="w-full min-w-0 space-y-2">
             {attachments.map((attachment, index) => (
               <AttachmentRow
                 attachment={attachment}
@@ -245,16 +245,19 @@ function AttachmentRow({
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
   return (
-    <div className="flex min-h-10 items-center gap-2 rounded-[8px] border border-border bg-surface px-3 py-2">
+    <div className="flex min-h-10 w-full min-w-0 max-w-full items-center gap-2 overflow-hidden rounded-[8px] border border-border bg-surface px-3 py-2">
       {getAttachmentTypeIcon(attachment.type)}
-      <span className="min-w-0 flex-1 truncate text-sm text-foreground">
+      <span
+        className="block min-w-0 flex-1 truncate text-sm text-foreground"
+        title={title}
+      >
         {title}
       </span>
       <HoverCard open={isPreviewOpen}>
         <HoverCardTrigger asChild>
           <Button
             aria-label={`预览附件 ${title}`}
-            className="size-7 text-muted-foreground hover:text-foreground"
+            className="size-7 shrink-0 text-muted-foreground hover:text-foreground"
             onBlur={() => setIsPreviewOpen(false)}
             onFocus={() => setIsPreviewOpen(true)}
             onMouseEnter={() => setIsPreviewOpen(true)}
@@ -282,7 +285,7 @@ function AttachmentRow({
       </HoverCard>
       <Button
         aria-label={`删除附件 ${title}`}
-        className="size-7"
+        className="size-7 shrink-0"
         onClick={onDelete}
         size="icon"
         type="button"

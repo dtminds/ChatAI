@@ -149,12 +149,12 @@ export function QuickReplyFormDialog({
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogContent className="sm:max-w-2xl">
-        <DialogHeader>
+      <DialogContent className="max-w-[calc(100vw-2rem)] min-w-0 overflow-hidden sm:max-w-[42rem] [&>*]:min-w-0">
+        <DialogHeader className="min-w-0">
           <DialogTitle>{mode === "edit" ? "编辑话术" : "新建话术"}</DialogTitle>
         </DialogHeader>
-        <div className="space-y-4">
-          <div className="space-y-2">
+        <div className="min-w-0 space-y-4 overflow-hidden">
+          <div className="min-w-0 space-y-2">
             <div className="flex items-center justify-between gap-3">
               <label className="text-sm font-medium text-foreground">
                 短标题<span className="text-muted-foreground">（选填）</span>
@@ -200,7 +200,7 @@ export function QuickReplyFormDialog({
             />
           </div>
 
-          <div className="space-y-2">
+          <div className="min-w-0 space-y-2">
             <div className="flex items-center justify-between gap-3">
               <label className="text-sm font-medium text-foreground">内容</label>
               <span className="text-xs text-muted-foreground">

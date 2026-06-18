@@ -1809,6 +1809,36 @@ describe("QuickReplyPanel", () => {
     expect(screen.getByText("查看本期活动规则")).toBeInTheDocument();
   });
 
+  it("keeps the full long attachment title available in the form dialog", () => {
+    const longTitle =
+      "1-1210已提 不退改)洞门永存! 一加入! 悍在脚上🌊十色洞洞鞋🌴可以穿三个季度的拖孩 全国实拍 芭蕾亲子款 小明星 小特林 贝雅红 云朵 鲸鱼款 鞋花单拍也包邮";
+
+    render(
+      <QuickReplyFormDialog
+        categories={categories}
+        initialValues={{
+          ...createQuickReplyInitialValues(),
+          attachments: [
+            {
+              content: {
+                title: longTitle,
+                url: "https://example.com/activity",
+              },
+              materialCollectionId: "material-h5-long",
+              msgid: "msg-h5-long",
+              type: "h5",
+            },
+          ],
+        }}
+        onOpenChange={vi.fn()}
+        onSubmit={vi.fn()}
+        open
+      />,
+    );
+
+    expect(screen.getByTitle(longTitle)).toHaveTextContent(longTitle);
+  });
+
   it("shows a tooltip when attachment count reaches the limit", async () => {
     const user = userEvent.setup();
 

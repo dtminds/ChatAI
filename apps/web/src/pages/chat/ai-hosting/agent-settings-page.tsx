@@ -41,6 +41,7 @@ import {
   type AgentSettingsForm,
   type AgentToneStyle,
 } from "./agent-settings.constants";
+import { AgentModelBadge } from "./agent-model-badge";
 import { AiHostingLayout } from "./ai-hosting-layout";
 import {
   aiHostingPreviewCustomerAvatarColors,
@@ -72,6 +73,7 @@ export function AgentSettingsPage() {
   const [publishDialogOpen, setPublishDialogOpen] = useState(false);
   const [generateDialogOpen, setGenerateDialogOpen] = useState(false);
   const hasUnpublishedDraft = true;
+  const selectedModel = agentModelOptions.find((option) => option.value === form.model);
 
   const previewTitle = form.name.trim() || "美妆小助手";
 
@@ -186,12 +188,18 @@ export function AgentSettingsPage() {
                     value={form.model}
                   >
                     <SelectTrigger className="w-full" id="agent-settings-model">
-                      <SelectValue placeholder="请选择大模型" />
+                      {selectedModel ? (
+                        <div className="min-w-0" data-agent-model-trigger-value>
+                          <AgentModelBadge label={selectedModel.label} model={selectedModel.value} />
+                        </div>
+                      ) : (
+                        <SelectValue placeholder="请选择大模型" />
+                      )}
                     </SelectTrigger>
                     <SelectContent>
                       {agentModelOptions.map((option) => (
                         <SelectItem key={option.value} value={option.value}>
-                          {option.label}
+                          <AgentModelBadge label={option.label} model={option.value} />
                         </SelectItem>
                       ))}
                     </SelectContent>

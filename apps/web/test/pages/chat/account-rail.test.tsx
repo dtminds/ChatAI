@@ -185,7 +185,7 @@ describe("AccountRail", () => {
       />,
     );
 
-    expect(screen.getByRole("link", { name: "AI托管" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "智能体" })).toHaveAttribute(
       "href",
       "/chat/ai-hosting",
     );

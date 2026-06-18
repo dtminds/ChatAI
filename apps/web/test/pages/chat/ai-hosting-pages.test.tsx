@@ -25,12 +25,12 @@ describe("AI hosting pages", () => {
   it("renders the agent management page", async () => {
     renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
 
-    expect(await screen.findByRole("heading", { level: 1, name: "Agent管理" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: "Agent 管理" })).toBeInTheDocument();
     expect(
-      screen.getByText("用自然语言描述并管理Agent的人设、语气、条件逻辑等"),
+      screen.getByText("创建和管理负责客户接待的智能体"),
     ).toBeInTheDocument();
-    expect(screen.getByRole("navigation", { name: "AI托管导航" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Agent管理" })).toHaveAttribute(
+    expect(screen.getByRole("navigation", { name: "智能体导航" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Agent 管理" })).toHaveAttribute(
       "href",
       "/chat/ai-hosting/agents",
     );
@@ -47,6 +47,13 @@ describe("AI hosting pages", () => {
     expect(screen.getByRole("table", { name: "Agent列表" })).toBeInTheDocument();
     expect(screen.getByRole("cell", { name: "护肤小助理" })).toBeInTheDocument();
     expect(screen.getByRole("cell", { name: "售后小助理" })).toBeInTheDocument();
+    const doubaoIcons = screen.getAllByTitle("模型图标：Doubao-2.0-lite");
+
+    expect(doubaoIcons).toHaveLength(3);
+    expect(doubaoIcons[0].querySelector("img")).toHaveAttribute(
+      "src",
+      "https://b5.bokr.com.cn/dist/llm/doubao-color.svg",
+    );
     expect(screen.getByRole("link", { name: "添加Agent" })).toHaveAttribute(
       "href",
       "/chat/ai-hosting/agents/new",
@@ -58,9 +65,9 @@ describe("AI hosting pages", () => {
 
     renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
 
-    await screen.findByRole("heading", { level: 1, name: "Agent管理" });
+    await screen.findByRole("heading", { level: 1, name: "Agent 管理" });
 
-    await user.type(screen.getByRole("textbox", { name: "搜索Agent名称" }), "售后");
+    await user.type(screen.getByRole("textbox", { name: "搜索 Agent 名称" }), "售后");
 
     expect(screen.getByRole("cell", { name: "售后小助理" })).toBeInTheDocument();
     expect(screen.queryByRole("cell", { name: "护肤小助理" })).not.toBeInTheDocument();
@@ -79,8 +86,33 @@ describe("AI hosting pages", () => {
     expect(screen.getByText("沟通风格")).toBeInTheDocument();
     expect(screen.getByText("条件逻辑")).toBeInTheDocument();
     expect(screen.getByText("转人工条件")).toBeInTheDocument();
+    expect(screen.getByTitle("模型图标：默认模型")).toBeInTheDocument();
     expect(screen.getByLabelText("Agent 模拟测试")).toBeInTheDocument();
     expect(screen.getByText("我想了解下晨间护肤")).toBeInTheDocument();
+  });
+
+  it("keeps the selected model icon and label in one trigger row", async () => {
+    renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
+
+    await screen.findByRole("heading", { level: 1, name: "Agent设置" });
+
+    const trigger = screen.getByRole("combobox", { name: "大模型" });
+
+    expect(trigger.querySelector("[data-agent-model-trigger-value]")).toBeInTheDocument();
+  });
+
+  it("renders model icons in the model selector options", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
+
+    await screen.findByRole("heading", { level: 1, name: "Agent设置" });
+    await user.click(screen.getByRole("combobox", { name: "大模型" }));
+
+    expect(screen.getAllByTitle("模型图标：默认模型")).toHaveLength(2);
+    expect(screen.getByTitle("模型图标：Doubao-2.0-lite")).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "默认模型" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Doubao-2.0-lite" })).toBeInTheDocument();
   });
 
   it("opens generate dialog from the generate button", async () => {

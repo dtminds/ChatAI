@@ -154,8 +154,8 @@ export function ApplicationScopePanel({
 
         <Button
           className="h-10 px-4"
-          disabled={selectedAccountIds.length === 0}
-          onClick={() => openSettingsDialog(selectedAccountIds)}
+          disabled={visibleSelectedAccountIds.length === 0}
+          onClick={() => openSettingsDialog(visibleSelectedAccountIds)}
           type="button"
           variant="outline"
         >

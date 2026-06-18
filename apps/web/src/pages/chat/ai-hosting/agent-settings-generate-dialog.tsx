@@ -1,5 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AgentGenerateGradientButton } from "./agent-generate-gradient-button";
+import {
+  aiHostingGenerateDialogGlow,
+  aiHostingSurfaceColors,
+} from "./ai-hosting-palette";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -62,13 +66,19 @@ export function AgentSettingsGenerateDialog({
   const [progress, setProgress] = useState<number>(agentGenerateProgressSteps[0].progress);
   const [progressLabel, setProgressLabel] = useState<string>(agentGenerateProgressSteps[0].label);
   const generatingFormRef = useRef(form);
+  const onCompleteRef = useRef(onComplete);
+  const onOpenChangeRef = useRef(onOpenChange);
 
-  function resetDialogState() {
+  useEffect(() => {
+    onCompleteRef.current = onComplete;
+    onOpenChangeRef.current = onOpenChange;
+  }, [onComplete, onOpenChange]);
+  const resetDialogState = useCallback(() => {
     setForm(defaultAgentGenerateForm);
     setPhase("form");
     setProgress(agentGenerateProgressSteps[0].progress);
     setProgressLabel(agentGenerateProgressSteps[0].label);
-  }
+  }, []);
 
   function handleOpenChange(nextOpen: boolean) {
     if (!nextOpen && phase === "generating") {
@@ -137,15 +147,17 @@ export function AgentSettingsGenerateDialog({
     <Dialog onOpenChange={handleOpenChange} open={open}>
       <DialogContent
         aria-describedby="agent-settings-generate-description"
-        className="gap-0 overflow-hidden rounded-[12px] border border-[#E5E5E5] p-0 sm:max-w-[520px]"
+        className="gap-0 overflow-hidden rounded-[12px] border p-0 sm:max-w-[520px]"
         closeButtonClassName="text-muted-foreground hover:text-foreground"
         closeButtonDisabled={isGenerating}
         onOpenAutoFocus={(event) => event.preventDefault()}
+        style={{ borderColor: aiHostingSurfaceColors.border }}
       >
         <div className="relative overflow-hidden">
           <div
             aria-hidden
-            className="pointer-events-none absolute -right-10 -top-10 size-44 rounded-full bg-[radial-gradient(circle,rgba(255,214,165,0.55)_0%,rgba(232,196,255,0.45)_38%,rgba(186,230,253,0.25)_62%,transparent_78%)] blur-2xl"
+            className="pointer-events-none absolute -right-10 -top-10 size-44 rounded-full blur-2xl"
+            style={{ backgroundImage: aiHostingGenerateDialogGlow }}
           />
 
           <DialogHeader className="relative space-y-2 px-6 pb-0 pt-6 text-left">
@@ -229,7 +241,10 @@ export function AgentSettingsGenerateDialog({
           </div>
 
           {isGenerating ? (
-            <div className="absolute inset-x-6 top-[calc(50%-12px)] z-10 rounded-[12px] border border-[#E5E5E5] bg-background/95 p-5 shadow-lg backdrop-blur-sm">
+            <div
+              className="absolute inset-x-6 top-[calc(50%-12px)] z-10 rounded-[12px] border bg-background/95 p-5 shadow-lg backdrop-blur-sm"
+              style={{ borderColor: aiHostingSurfaceColors.border }}
+            >
               <div className="mb-3 flex items-center justify-between text-sm">
                 <span className="font-medium text-foreground">生成进度</span>
                 <span className="text-muted-foreground">{progress}%</span>

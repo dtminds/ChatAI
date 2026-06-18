@@ -42,6 +42,13 @@ import {
   type AgentToneStyle,
 } from "./agent-settings.constants";
 import { AiHostingLayout } from "./ai-hosting-layout";
+import {
+  aiHostingPreviewCustomerAvatarColors,
+  aiHostingPreviewHeaderGradient,
+  aiHostingPreviewMessageColors,
+  aiHostingSettingsModuleSurface,
+  aiHostingSurfaceColors,
+} from "./ai-hosting-palette";
 
 type PreviewMessage = {
   content: string;
@@ -49,8 +56,13 @@ type PreviewMessage = {
   role: "agent" | "customer";
 };
 
-const agentSettingsModuleSurfaceClassName =
-  "rounded-[12px] border border-[#E5E5E5] bg-[linear-gradient(180deg,#FFF9FD_0%,#FFFFFF_24px)] shadow-[0px_1px_2px_0px_rgba(0,0,0,0.05)]";
+const agentSettingsModuleSurfaceClassName = "rounded-[12px] border shadow-xs";
+
+const agentSettingsModuleSurfaceStyle = {
+  background: aiHostingSettingsModuleSurface.background,
+  borderColor: aiHostingSettingsModuleSurface.border,
+  boxShadow: aiHostingSettingsModuleSurface.shadow,
+} as const;
 
 export function AgentSettingsPage() {
   const [form, setForm] = useState<AgentSettingsForm>(defaultAgentSettingsForm);
@@ -283,7 +295,7 @@ function AgentSettingsSection({
   title: string;
 }) {
   return (
-    <section className={cn(agentSettingsModuleSurfaceClassName, "p-5")}>
+    <section className={cn(agentSettingsModuleSurfaceClassName, "p-5")} style={agentSettingsModuleSurfaceStyle}>
       <div className="mb-4 space-y-1">
         <h2 className="text-base font-semibold text-foreground">{title}</h2>
         {description ? <p className="text-sm text-muted-foreground">{description}</p> : null}
@@ -309,7 +321,7 @@ function CollapsibleAgentSettingsSection({
 
   return (
     <Collapsible onOpenChange={setOpen} open={open}>
-      <section className={cn(agentSettingsModuleSurfaceClassName, "p-5")}>
+      <section className={cn(agentSettingsModuleSurfaceClassName, "p-5")} style={agentSettingsModuleSurfaceStyle}>
         <CollapsibleTrigger asChild>
           <button
             aria-controls={sectionId}
@@ -399,8 +411,12 @@ function AgentPreviewPanel({
           agentSettingsModuleSurfaceClassName,
           "flex h-[640px] flex-col overflow-hidden",
         )}
+        style={agentSettingsModuleSurfaceStyle}
       >
-        <header className="flex items-center justify-between gap-3 bg-[linear-gradient(90deg,#FFF8E7_0%,#F8F0FF_52%,#EAF3FF_100%)] px-4 py-3">
+        <header
+          className="flex items-center justify-between gap-3 px-4 py-3"
+          style={{ backgroundImage: aiHostingPreviewHeaderGradient }}
+        >
           <div className="flex min-w-0 items-center gap-2">
             <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-[8px] bg-background/80 text-primary shadow-xs">
               <HugeiconsIcon icon={AiChat02Icon} size={16} strokeWidth={1.8} />
@@ -420,7 +436,10 @@ function AgentPreviewPanel({
           </div>
 
           <div className="p-4 pt-0">
-            <div className="rounded-[8px] border border-[#E5E5E5] bg-background px-3 py-2.5">
+            <div
+              className="rounded-[8px] border bg-background px-3 py-2.5"
+              style={{ borderColor: aiHostingSurfaceColors.border }}
+            >
               <Button
                 aria-label="上传图片"
                 className="mb-1 size-7 rounded-[6px] p-0 text-muted-foreground hover:bg-muted/40"
@@ -457,10 +476,8 @@ function PreviewMessageRow({ message }: { message: PreviewMessage }) {
     <div className={cn("flex items-start gap-2", isAgent ? "justify-start" : "justify-end")}>
       {isAgent ? <PreviewAgentAvatar /> : null}
       <div
-        className={cn(
-          "max-w-[78%] rounded-[12px] px-3 py-2 text-sm leading-6 text-foreground",
-          "bg-[#F3F4F6]",
-        )}
+        className="max-w-[78%] rounded-[12px] px-3 py-2 text-sm leading-6 text-foreground"
+        style={{ backgroundColor: aiHostingPreviewMessageColors.bubbleBackground }}
       >
         {message.content}
       </div>
@@ -482,7 +499,13 @@ function PreviewAgentAvatar() {
 function PreviewCustomerAvatar() {
   return (
     <Avatar className="size-9 shrink-0 rounded-[8px]">
-      <AvatarFallback className="rounded-[8px] bg-[#FDE68A] text-sm text-[#92400E]">
+      <AvatarFallback
+        className="rounded-[8px] text-sm"
+        style={{
+          backgroundColor: aiHostingPreviewCustomerAvatarColors.background,
+          color: aiHostingPreviewCustomerAvatarColors.text,
+        }}
+      >
         客
       </AvatarFallback>
     </Avatar>

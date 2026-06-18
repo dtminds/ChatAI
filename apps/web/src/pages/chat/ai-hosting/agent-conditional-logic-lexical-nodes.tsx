@@ -11,6 +11,7 @@ import {
   type Spread,
 } from "lexical";
 import { mockKnowledgeBaseOptions } from "./agent-settings.constants";
+import { aiHostingSurfaceColors } from "./ai-hosting-palette";
 
 export type SerializedKnowledgeBaseChipNode = Spread<
   {
@@ -94,7 +95,10 @@ export function resolveKnowledgeBaseName(knowledgeBaseId: string) {
 
 function KnowledgeBaseChipLabel({ name }: { name: string }) {
   return (
-    <span className="mx-px inline-flex h-7 max-w-full items-center gap-1 rounded-[6px] border border-[#E5E5E5] bg-background px-1.5 align-middle text-xs text-foreground">
+    <span
+      className="mx-px inline-flex h-7 max-w-full items-center gap-1 rounded-[6px] border bg-background px-1.5 align-middle text-xs text-foreground"
+      style={{ borderColor: aiHostingSurfaceColors.border }}
+    >
       <HugeiconsIcon
         className="text-muted-foreground"
         icon={Book04Icon}

@@ -54,7 +54,7 @@ describe("AI hosting pages", () => {
       "src",
       "https://b5.bokr.com.cn/dist/llm/doubao-color.svg",
     );
-    expect(screen.getByRole("link", { name: "添加Agent" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "添加 Agent" })).toHaveAttribute(
       "href",
       "/chat/ai-hosting/agents/new",
     );
@@ -78,7 +78,7 @@ describe("AI hosting pages", () => {
 
     renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
 
-    await screen.findByRole("heading", { level: 1, name: "Agent管理" });
+    await screen.findByRole("heading", { level: 1, name: "Agent 管理" });
     await user.click(screen.getByRole("tab", { name: "应用范围" }));
 
     expect(screen.getByRole("textbox", { name: "搜索企微账号" })).toBeInTheDocument();
@@ -97,7 +97,7 @@ describe("AI hosting pages", () => {
 
     renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
 
-    await screen.findByRole("heading", { level: 1, name: "Agent管理" });
+    await screen.findByRole("heading", { level: 1, name: "Agent 管理" });
     await user.click(screen.getByRole("tab", { name: "应用范围" }));
     await user.type(screen.getByRole("textbox", { name: "搜索企微账号" }), "小助理2");
 
@@ -111,7 +111,7 @@ describe("AI hosting pages", () => {
 
     renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
 
-    await screen.findByRole("heading", { level: 1, name: "Agent管理" });
+    await screen.findByRole("heading", { level: 1, name: "Agent 管理" });
     await user.click(screen.getByRole("tab", { name: "应用范围" }));
     await user.click(screen.getAllByRole("button", { name: "设置" })[0]);
 
@@ -130,7 +130,7 @@ describe("AI hosting pages", () => {
 
     renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
 
-    await screen.findByRole("heading", { level: 1, name: "Agent管理" });
+    await screen.findByRole("heading", { level: 1, name: "Agent 管理" });
     await user.click(screen.getByRole("tab", { name: "应用范围" }));
     await user.click(screen.getByRole("checkbox", { name: "选择小助理2" }));
     await user.click(screen.getByRole("checkbox", { name: "选择小助理3" }));
@@ -148,7 +148,7 @@ describe("AI hosting pages", () => {
 
     renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
 
-    await screen.findByRole("heading", { level: 1, name: "Agent管理" });
+    await screen.findByRole("heading", { level: 1, name: "Agent 管理" });
     await user.click(screen.getByRole("tab", { name: "应用范围" }));
     await user.click(screen.getAllByRole("button", { name: "设置" })[0]);
     await user.click(screen.getByRole("switch", { name: "全自动托管权限" }));

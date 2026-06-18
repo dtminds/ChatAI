@@ -81,7 +81,7 @@ export function AgentManagementPage() {
               <Button asChild className="h-10 px-4" type="button">
                 <Link to="/chat/ai-hosting/agents/new">
                   <HugeiconsIcon color="currentColor" icon={Add01Icon} size={17} strokeWidth={1.8} />
-                  <span>添加Agent</span>
+                  <span>添加 Agent</span>
                 </Link>
               </Button>
             </section>

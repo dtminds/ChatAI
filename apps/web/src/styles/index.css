@@ -1130,6 +1130,26 @@ html.dark[data-appearance-theme="nature"] {
   }
 }
 
+@keyframes chat-custody-border-flow {
+  0% {
+    background-position: 0% 50%;
+  }
+
+  100% {
+    background-position: 200% 50%;
+  }
+}
+
+.chat-custody-status-bar-border {
+  animation: chat-custody-border-flow 3s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-custody-status-bar-border {
+    animation: none;
+  }
+}
+
 @keyframes shiny-text-sweep {
   0% {
     background-position: calc(-1 * var(--shiny-text-shimmer-width)) center, 0 0;

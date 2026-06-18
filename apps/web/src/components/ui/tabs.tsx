@@ -31,7 +31,7 @@ export function TabsTrigger({
   return (
     <TabsPrimitive.Trigger
       className={cn(
-        "inline-flex min-w-20 items-center justify-center rounded-xl px-3 py-2 text-sm font-medium transition-all outline-none focus-visible:ring-4 focus-visible:ring-ring/20 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm",
+        "inline-flex min-w-20 items-center justify-center rounded-xl px-3 py-2 text-sm font-medium transition-all outline-none hover:text-foreground focus-visible:ring-4 focus-visible:ring-ring/20 data-[state=active]:bg-[var(--tabs-trigger-active-bg)] data-[state=active]:text-foreground data-[state=active]:shadow-[var(--tabs-trigger-active-shadow)]",
         className,
       )}
       {...props}

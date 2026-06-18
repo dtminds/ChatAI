@@ -62,6 +62,7 @@ import {
   SortableItem,
   SortableItemHandle,
 } from "@/components/ui/sortable";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import {
   QuickReplyImportDialog,
@@ -72,8 +73,14 @@ import { getQuickReplyTitleColor } from "@/pages/chat/components/quick-reply/qui
 const CONTEXT_MENU_VIEWPORT_PADDING = 8;
 const QUICK_REPLY_MANUAL_URL =
   "https://b5.bokr.com.cn/dist/manual/quickreply.png";
+const QUICK_REPLY_SCOPE_TAB_VALUES = {
+  enterprise: "enterprise",
+  personal: "personal",
+} as const;
 
 type QuickReplySortMode = "category" | "reply" | null;
+type QuickReplyScopeTabValue =
+  (typeof QUICK_REPLY_SCOPE_TAB_VALUES)[keyof typeof QUICK_REPLY_SCOPE_TAB_VALUES];
 
 type QuickReplyMoveTarget = {
   id: string;
@@ -428,20 +435,32 @@ export function QuickReplyPanel({
           </div>
         ) : (
           <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-2">
-            <div className="grid min-w-0 grid-cols-2 rounded-[8px] bg-secondary p-0.5">
-              <ScopeButton
-                active={activeScopeType === QUICK_REPLY_SCOPE_TYPE.ENTERPRISE}
-                onClick={() => onScopeTypeChange(QUICK_REPLY_SCOPE_TYPE.ENTERPRISE)}
-              >
-                企业
-              </ScopeButton>
-              <ScopeButton
-                active={activeScopeType === QUICK_REPLY_SCOPE_TYPE.PERSONAL}
-                onClick={() => onScopeTypeChange(QUICK_REPLY_SCOPE_TYPE.PERSONAL)}
-              >
-                个人
-              </ScopeButton>
-            </div>
+            <Tabs
+              className="min-w-0"
+              onValueChange={(value) => {
+                onScopeTypeChange(
+                  value === QUICK_REPLY_SCOPE_TAB_VALUES.personal
+                    ? QUICK_REPLY_SCOPE_TYPE.PERSONAL
+                    : QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+                );
+              }}
+              value={getQuickReplyScopeTabValue(activeScopeType)}
+            >
+              <TabsList className="grid h-9 min-w-0 grid-cols-2 rounded-[10px] p-1">
+                <TabsTrigger
+                  className="h-7 min-w-0 rounded-[8px] px-3 py-1 text-[13px]"
+                  value={QUICK_REPLY_SCOPE_TAB_VALUES.enterprise}
+                >
+                  企业
+                </TabsTrigger>
+                <TabsTrigger
+                  className="h-7 min-w-0 rounded-[8px] px-3 py-1 text-[13px]"
+                  value={QUICK_REPLY_SCOPE_TAB_VALUES.personal}
+                >
+                  个人
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
             <div className="relative min-w-0">
               <HugeiconsIcon
                 aria-hidden="true"
@@ -479,7 +498,7 @@ export function QuickReplyPanel({
               <DropdownMenuTrigger asChild>
                 <Button
                   aria-label="更多操作"
-                  className="size-8 shrink-0 rounded-[6px] p-0"
+                  className="size-9 shrink-0 rounded-[10px] p-0"
                   disabled={isMutating}
                   size="icon"
                   title="更多操作"
@@ -755,6 +774,14 @@ function QuickReplyManualLink() {
       查看使用手册
     </a>
   );
+}
+
+function getQuickReplyScopeTabValue(
+  scopeType: QuickReplyScopeType,
+): QuickReplyScopeTabValue {
+  return scopeType === QUICK_REPLY_SCOPE_TYPE.PERSONAL
+    ? QUICK_REPLY_SCOPE_TAB_VALUES.personal
+    : QUICK_REPLY_SCOPE_TAB_VALUES.enterprise;
 }
 
 function TopCategoryTab({
@@ -1052,31 +1079,6 @@ function SecondaryCategorySection({
         />
       ) : null}
     </div>
-  );
-}
-
-function ScopeButton({
-  active,
-  children,
-  onClick,
-}: {
-  active: boolean;
-  children: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      className={cn(
-        "h-7 rounded-[7px] text-[13px] font-medium transition-colors",
-        active
-          ? "bg-background text-foreground shadow-xs"
-          : "text-muted-foreground hover:text-foreground",
-      )}
-      onClick={onClick}
-      type="button"
-    >
-      {children}
-    </button>
   );
 }
 

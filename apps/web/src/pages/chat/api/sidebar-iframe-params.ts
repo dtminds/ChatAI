@@ -6,7 +6,7 @@ export type FetchWorkbenchSidebarIframeParamsInput = {
   seatId: string;
 };
 
-/** 服务端按席位与会话签发的侧栏 iframe 涂色参数；未配置密钥时返回 `null` */
+/** 服务端按席位与会话签发的侧栏 iframe 参数；未配置密钥时返回 `null` */
 export async function fetchWorkbenchSidebarIframeParams(
   input: FetchWorkbenchSidebarIframeParamsInput,
 ): Promise<WorkbenchSidebarIframeParamsDto | null> {

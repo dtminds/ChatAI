@@ -4,20 +4,18 @@ import {
   resolvePaddleOcrWorkerUrl,
   resolvePaddleOcrModuleSpecifier,
 } from "@/pages/chat/lib/image-ocr";
+import { getDefaultOcrCdnUrls, OCR_RUNTIME_MANIFEST } from "@/pages/chat/lib/ocr-runtime-manifest";
 
-const ortWasmBaseUrl = "https://b5.bokr.com.cn/dist/ocr/onnxruntime-web/1.26.0/";
-const paddleOcrModelBaseUrl = "https://b5.bokr.com.cn/dist/ocr/paddleocr-js/0.4.2/";
-const paddleOcrWorkerUrl =
-  "https://b5.bokr.com.cn/dist/ocr/paddleocr-js/0.4.2/assets/worker-entry-C9UNuyOJ.js";
+const ocrCdnUrls = getDefaultOcrCdnUrls();
 const paddleOcrModelCreateOptions = {
   textDetectionModelAsset: {
-    url: `${paddleOcrModelBaseUrl}PP-OCRv6_tiny_det_onnx_infer.tar`,
+    url: ocrCdnUrls.modelUrls.det,
   },
-  textDetectionModelName: "PP-OCRv6_tiny_det",
+  textDetectionModelName: ocrCdnUrls.modelNames.det,
   textRecognitionModelAsset: {
-    url: `${paddleOcrModelBaseUrl}PP-OCRv6_tiny_rec_onnx_infer.tar`,
+    url: ocrCdnUrls.modelUrls.rec,
   },
-  textRecognitionModelName: "PP-OCRv6_tiny_rec",
+  textRecognitionModelName: ocrCdnUrls.modelNames.rec,
 };
 
 type CreateWorkerOptions = {
@@ -147,7 +145,7 @@ describe("recognizeImageText", () => {
     expect(create).toHaveBeenCalledTimes(1);
     expect(create).toHaveBeenCalledWith({
       ortOptions: {
-        wasmPaths: ortWasmBaseUrl,
+        wasmPaths: ocrCdnUrls.ortWasmBaseUrl,
       },
       ...paddleOcrModelCreateOptions,
       worker: {
@@ -164,7 +162,7 @@ describe("recognizeImageText", () => {
     const workerBootstrap = (createObjectUrlMock.mock.calls as unknown as Array<[Blob]>)[0]?.[0];
     expect(workerBootstrap).toBeInstanceOf(Blob);
     await expect(workerBootstrap.text()).resolves.toBe(
-      `import ${JSON.stringify(paddleOcrWorkerUrl)};\n`,
+      `import ${JSON.stringify(ocrCdnUrls.paddleWorkerUrl)};\n`,
     );
     expect(WorkerMock).toHaveBeenCalledWith("blob:https://chat.example.com/ocr-worker", {
       type: "module",
@@ -240,23 +238,21 @@ describe("recognizeImageText", () => {
 
   it("uses the CDN module outside Vitest and keeps a mockable package import in tests", () => {
     expect(resolvePaddleOcrModuleSpecifier("development")).toBe(
-      "https://b5.bokr.com.cn/dist/ocr/paddleocr-js/0.4.2/index.mjs",
+      ocrCdnUrls.paddleModuleUrl,
     );
     expect(resolvePaddleOcrModuleSpecifier("production")).toBe(
-      "https://b5.bokr.com.cn/dist/ocr/paddleocr-js/0.4.2/index.mjs",
+      ocrCdnUrls.paddleModuleUrl,
     );
     expect(resolvePaddleOcrModuleSpecifier("test")).toBe("@paddleocr/paddleocr-js");
   });
 
   it("resolves the default worker URL from relative module URLs", () => {
-    expect(
-      resolvePaddleOcrWorkerUrl(
-        "",
-        "/dist/ocr/paddleocr-js/0.4.2/index.mjs",
-        "https://chat.example.com/assets/chat-workbench-page.js",
-      ),
-    ).toBe(
-      "https://chat.example.com/dist/ocr/paddleocr-js/0.4.2/assets/worker-entry-C9UNuyOJ.js",
+    const moduleUrl = "/dist/ocr/paddleocr-js/0.4.2/index.mjs";
+    const importMetaUrl = "https://chat.example.com/assets/chat-workbench-page.js";
+
+    expect(resolvePaddleOcrWorkerUrl("", moduleUrl, importMetaUrl)).toBe(
+      new URL(OCR_RUNTIME_MANIFEST.paddleWorkerFile, new URL(moduleUrl, importMetaUrl))
+        .href,
     );
   });
 
@@ -347,7 +343,7 @@ describe("recognizeImageText", () => {
     });
     expect(create).toHaveBeenNthCalledWith(1, {
       ortOptions: {
-        wasmPaths: ortWasmBaseUrl,
+        wasmPaths: ocrCdnUrls.ortWasmBaseUrl,
       },
       ...paddleOcrModelCreateOptions,
       worker: {
@@ -356,7 +352,7 @@ describe("recognizeImageText", () => {
     });
     expect(create).toHaveBeenNthCalledWith(2, {
       ortOptions: {
-        wasmPaths: ortWasmBaseUrl,
+        wasmPaths: ocrCdnUrls.ortWasmBaseUrl,
       },
       ...paddleOcrModelCreateOptions,
       worker: false,

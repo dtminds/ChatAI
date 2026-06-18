@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 // @vitest-environment node
 
+import { getDefaultOcrCdnUrls } from "../src/pages/chat/lib/ocr-runtime-manifest";
 import {
   buildDevProxyConfig,
   createViteConfig,
@@ -98,8 +99,7 @@ describe("vite config env", () => {
     expect(rollupOptions?.external).toContain("@paddleocr/paddleocr-js");
     expect(rollupOptions?.output).toMatchObject({
       paths: {
-        "@paddleocr/paddleocr-js":
-          "https://b5.bokr.com.cn/dist/ocr/paddleocr-js/0.4.2/index.mjs",
+        "@paddleocr/paddleocr-js": getDefaultOcrCdnUrls().paddleModuleUrl,
       },
     });
   });

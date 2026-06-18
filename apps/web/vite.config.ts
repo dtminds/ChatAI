@@ -8,12 +8,11 @@ import {
   type ServerOptions,
   type UserConfig,
 } from "vite";
+import { resolveOcrRuntimeUrls } from "./src/pages/chat/lib/ocr-runtime-manifest";
 
 type ViteDevEnv = Record<string, string | undefined>;
 
 const paddleOcrPackageName = "@paddleocr/paddleocr-js";
-const defaultPaddleOcrModuleUrl =
-  "https://b5.bokr.com.cn/dist/ocr/paddleocr-js/0.4.2/index.mjs";
 
 export function getRepoRoot() {
   return path.resolve(__dirname, "../..");
@@ -71,8 +70,12 @@ export function getViteDevServerConfig(
 export function createViteConfig(mode = "development"): UserConfig {
   const repoRoot = getRepoRoot();
   const env = readEnv({}, mode, repoRoot);
-  const paddleOcrModuleUrl =
-    env.VITE_OCR_PADDLE_MODULE_URL?.trim() || defaultPaddleOcrModuleUrl;
+  const paddleOcrModuleUrl = resolveOcrRuntimeUrls({
+    paddleModuleUrl: env.VITE_OCR_PADDLE_MODULE_URL,
+    paddleWorkerUrl: env.VITE_OCR_PADDLE_WORKER_URL,
+    paddleModelBaseUrl: env.VITE_OCR_PADDLE_MODEL_BASE_URL,
+    ortWasmBaseUrl: env.VITE_OCR_ORT_WASM_BASE_URL,
+  }).paddleModuleUrl;
 
   return {
     build: {

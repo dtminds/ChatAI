@@ -1341,6 +1341,112 @@ export interface XyWapEmbedMaterialCollectionGroup {
   update_time: Generated<Date>;
 }
 
+export interface XyWapEmbedQuickReply {
+  /**
+   * 附件JSON，最多5个
+   */
+  attachments: Json | null;
+  /**
+   * 状态，0：已删除，1：正常
+   */
+  biz_status: Generated<number>;
+  /**
+   * 分类ID，0表示未分类
+   */
+  category_id: Generated<number>;
+  /**
+   * 主文本
+   */
+  content_text: string | null;
+  /**
+   * 插入时间
+   */
+  create_time: Generated<Date>;
+  /**
+   * id
+   */
+  id: Generated<number>;
+  /**
+   * 徽标颜色key
+   */
+  label_color: Generated<string>;
+  /**
+   * 徽标文字
+   */
+  label_text: Generated<string>;
+  /**
+   * 操作人ID，xy_wap_embed_sub_user.id
+   */
+  op_sub_uid: Generated<number>;
+  /**
+   * 话术范围：1企业话术，2个人话术
+   */
+  scope_type: Generated<number>;
+  /**
+   * 排序值
+   */
+  sort: Generated<number>;
+  /**
+   * 控制可见性，0：全员可见，其他：对应子账号可见，xy_wap_embed_sub_user.id
+   */
+  sub_uid: Generated<number>;
+  /**
+   * 租户id
+   */
+  uid: number;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date>;
+}
+
+export interface XyWapEmbedQuickReplyCategory {
+  /**
+   * 状态，0：已删除，1：正常
+   */
+  biz_status: Generated<number>;
+  /**
+   * 插入时间
+   */
+  create_time: Generated<Date>;
+  /**
+   * id
+   */
+  id: Generated<number>;
+  /**
+   * 操作人ID，xy_wap_embed_sub_user.id
+   */
+  op_sub_uid: Generated<number>;
+  /**
+   * 父分类ID，0表示一级分类
+   */
+  parent_id: Generated<number>;
+  /**
+   * 话术范围：1企业话术，2个人话术
+   */
+  scope_type: Generated<number>;
+  /**
+   * 排序值
+   */
+  sort: Generated<number>;
+  /**
+   * 控制可见性，0：全员可见，其他：对应子账号可见，xy_wap_embed_sub_user.id
+   */
+  sub_uid: Generated<number>;
+  /**
+   * 分类名称
+   */
+  title: Generated<string>;
+  /**
+   * 租户id
+   */
+  uid: number;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date>;
+}
+
 export interface XyWapEmbedMsgAuditChatRecord {
   /**
    * 头像
@@ -2306,6 +2412,8 @@ export interface DB {
   xy_wap_embed_msg_audit_chat_record: XyWapEmbedMsgAuditChatRecord;
   xy_wap_embed_msg_audit_info: XyWapEmbedMsgAuditInfo;
   xy_wap_embed_msg_audit_info_extend: XyWapEmbedMsgAuditInfoExtend;
+  xy_wap_embed_quick_reply: XyWapEmbedQuickReply;
+  xy_wap_embed_quick_reply_category: XyWapEmbedQuickReplyCategory;
   xy_wap_embed_session_action_item: XyWapEmbedSessionActionItem;
   xy_wap_embed_session_entity: XyWapEmbedSessionEntity;
   xy_wap_embed_session_faq_candidate: XyWapEmbedSessionFaqCandidate;

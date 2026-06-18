@@ -107,7 +107,7 @@ describe("auth routes", () => {
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/login");
     });
-    expect(screen.getByText("登录页占位")).toBeInTheDocument();
+    expect(await screen.findByText("登录页占位")).toBeInTheDocument();
 
     await router.navigate("/chat");
 

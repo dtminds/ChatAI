@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   $createLineBreakNode,
+  $createParagraphNode,
+  $createTextNode,
   $getSelection,
+  $getRoot,
   $insertNodes,
+  $isElementNode,
   $isRangeSelection,
   $isTextNode,
   createEditor,
@@ -19,6 +23,7 @@ import {
 import {
   ComposerEmojiNode,
   ComposerImageNode,
+  ComposerLiteAttachmentNode,
   ComposerMentionNode,
 } from "@/pages/chat/components/composer/lexical-nodes";
 import {
@@ -30,7 +35,7 @@ describe("composer lexical utils", () => {
   it("removes mention trigger text without dropping images or shifting past emoji tokens", () => {
     const editor = createEditor({
       namespace: "composer-lexical-utils-test",
-      nodes: [ComposerEmojiNode, ComposerImageNode, ComposerMentionNode],
+      nodes: [ComposerEmojiNode, ComposerImageNode, ComposerLiteAttachmentNode, ComposerMentionNode],
       onError(error) {
         throw error;
       },
@@ -72,10 +77,291 @@ describe("composer lexical utils", () => {
     ]);
   });
 
+  it("restores and exports lite attachments in document order", () => {
+    const editor = createEditor({
+      namespace: "composer-lite-attachment-utils-test",
+      nodes: [ComposerEmojiNode, ComposerImageNode, ComposerLiteAttachmentNode, ComposerMentionNode],
+      onError(error) {
+        throw error;
+      },
+    });
+    const sourceSegments: ComposerSegment[] = [
+      { text: "开头", type: "text" },
+      {
+        extension: "pdf",
+        fileName: "报价单.pdf",
+        materialCollectionId: "material-file-1",
+        msgid: "msg-file-1",
+        type: "file",
+        url: "https://cdn.example.com/quote.pdf",
+      },
+      { text: "中间", type: "text" },
+      {
+        href: "https://example.com/activity",
+        materialCollectionId: "material-h5-1",
+        msgid: "msg-h5-1",
+        title: "活动链接",
+        type: "h5",
+      },
+      {
+        materialCollectionId: "material-weapp-1",
+        msgid: "msg-weapp-1",
+        title: "小程序",
+        type: "weapp",
+      },
+    ];
+    let restoredSegments: ComposerSegment[] = [];
+
+    editor.update(
+      () => {
+        $restoreComposerFromSegments(sourceSegments);
+        restoredSegments = $exportComposerSegments();
+      },
+      { discrete: true },
+    );
+
+    expect(normalizeComposerSegments(restoredSegments)).toEqual(sourceSegments);
+  });
+
+  it("restores lite attachments into standalone paragraphs", () => {
+    const editor = createEditor({
+      namespace: "composer-lite-attachment-paragraph-test",
+      nodes: [ComposerEmojiNode, ComposerImageNode, ComposerLiteAttachmentNode, ComposerMentionNode],
+      onError(error) {
+        throw error;
+      },
+    });
+    const sourceSegments: ComposerSegment[] = [
+      { text: "开头", type: "text" },
+      {
+        extension: "pdf",
+        fileName: "报价单.pdf",
+        materialCollectionId: "material-file-1",
+        msgid: "msg-file-1",
+        type: "file",
+        url: "https://cdn.example.com/quote.pdf",
+      },
+    ];
+    let rootChildSummaries: string[] = [];
+
+    editor.update(
+      () => {
+        $restoreComposerFromSegments(sourceSegments);
+
+        rootChildSummaries = $getRoot().getChildren().map((child) => {
+          if (!$isElementNode(child)) {
+            return child.getType();
+          }
+
+          const childTypes = child.getChildren().map((node) => node.getType());
+
+          return childTypes.join(",");
+        });
+      },
+      { discrete: true },
+    );
+
+    expect(rootChildSummaries).toEqual([
+      "text",
+      "composer-lite-attachment",
+      "",
+    ]);
+  });
+
+  it("does not append an empty paragraph after restored text", () => {
+    const editor = createEditor({
+      namespace: "composer-text-restore-trailing-paragraph-test",
+      nodes: [ComposerEmojiNode, ComposerImageNode, ComposerLiteAttachmentNode, ComposerMentionNode],
+      onError(error) {
+        throw error;
+      },
+    });
+    let rootChildSummaries: string[] = [];
+
+    editor.update(
+      () => {
+        $restoreComposerFromSegments([
+          {
+            text: "您好",
+            type: "text",
+          },
+        ]);
+
+        rootChildSummaries = $getRoot().getChildren().map((child) => {
+          if (!$isElementNode(child)) {
+            return child.getType();
+          }
+
+          return child.getChildren().map((node) => node.getType()).join(",");
+        });
+      },
+      { discrete: true },
+    );
+
+    expect(rootChildSummaries).toEqual(["text"]);
+  });
+
+  it("does not export paragraph boundaries around lite attachments as newline text", () => {
+    const editor = createEditor({
+      namespace: "composer-lite-attachment-paragraph-export-test",
+      nodes: [ComposerEmojiNode, ComposerImageNode, ComposerLiteAttachmentNode, ComposerMentionNode],
+      onError(error) {
+        throw error;
+      },
+    });
+    const sourceSegments: ComposerSegment[] = [
+      { text: "开头", type: "text" },
+      {
+        extension: "pdf",
+        fileName: "报价单.pdf",
+        materialCollectionId: "material-file-1",
+        msgid: "msg-file-1",
+        type: "file",
+        url: "https://cdn.example.com/quote.pdf",
+      },
+      { text: "中间", type: "text" },
+      {
+        href: "https://example.com/activity",
+        materialCollectionId: "material-h5-1",
+        msgid: "msg-h5-1",
+        title: "活动链接",
+        type: "h5",
+      },
+    ];
+    let restoredSegments: ComposerSegment[] = [];
+
+    editor.update(
+      () => {
+        $restoreComposerFromSegments(sourceSegments);
+        restoredSegments = $exportComposerSegments();
+      },
+      { discrete: true },
+    );
+
+    expect(normalizeComposerSegments(restoredSegments)).toEqual(sourceSegments);
+  });
+
+  it("keeps user-entered line breaks inside a text paragraph when exporting", () => {
+    const editor = createEditor({
+      namespace: "composer-text-paragraph-line-break-export-test",
+      nodes: [ComposerEmojiNode, ComposerImageNode, ComposerLiteAttachmentNode, ComposerMentionNode],
+      onError(error) {
+        throw error;
+      },
+    });
+    let segments: ComposerSegment[] = [];
+
+    editor.update(
+      () => {
+        $insertComposerText("第一行");
+        $insertNodes([$createLineBreakNode()]);
+        $insertComposerText("第二行");
+        segments = $exportComposerSegments();
+      },
+      { discrete: true },
+    );
+
+    expect(normalizeComposerSegments(segments)).toEqual([
+      {
+        text: "第一行\n第二行",
+        type: "text",
+      },
+    ]);
+  });
+
+  it("exports user-entered paragraph breaks as newline text", () => {
+    const editor = createEditor({
+      namespace: "composer-text-paragraph-break-export-test",
+      nodes: [ComposerEmojiNode, ComposerImageNode, ComposerLiteAttachmentNode, ComposerMentionNode],
+      onError(error) {
+        throw error;
+      },
+    });
+    let segments: ComposerSegment[] = [];
+
+    editor.update(
+      () => {
+        const root = $getRoot();
+        const firstParagraph = $createParagraphNode();
+        const secondParagraph = $createParagraphNode();
+
+        root.clear();
+        firstParagraph.append($createTextNode("第一行"));
+        secondParagraph.append($createTextNode("第二行"));
+        root.append(firstParagraph, secondParagraph);
+
+        segments = $exportComposerSegments();
+      },
+      { discrete: true },
+    );
+
+    expect(normalizeComposerSegments(segments)).toEqual([
+      {
+        text: "第一行\n第二行",
+        type: "text",
+      },
+    ]);
+  });
+
+  it("restores explicit text line breaks without turning paragraph boundaries into content", () => {
+    const editor = createEditor({
+      namespace: "composer-text-line-break-restore-test",
+      nodes: [ComposerEmojiNode, ComposerImageNode, ComposerLiteAttachmentNode, ComposerMentionNode],
+      onError(error) {
+        throw error;
+      },
+    });
+    let restoredSegments: ComposerSegment[] = [];
+
+    editor.update(
+      () => {
+        $restoreComposerFromSegments([
+          {
+            text: "第一行\n第二行",
+            type: "text",
+          },
+          {
+            extension: "pdf",
+            fileName: "报价单.pdf",
+            materialCollectionId: "material-file-1",
+            msgid: "msg-file-1",
+            type: "file",
+            url: "https://cdn.example.com/quote.pdf",
+          },
+          {
+            text: "第三行",
+            type: "text",
+          },
+        ]);
+        restoredSegments = $exportComposerSegments();
+      },
+      { discrete: true },
+    );
+
+    expect(normalizeComposerSegments(restoredSegments)).toEqual([
+      {
+        text: "第一行\n第二行",
+        type: "text",
+      },
+      {
+        extension: "pdf",
+        fileName: "报价单.pdf",
+        materialCollectionId: "material-file-1",
+        msgid: "msg-file-1",
+        type: "file",
+        url: "https://cdn.example.com/quote.pdf",
+      },
+      {
+        text: "第三行",
+        type: "text",
+      },
+    ]);
+  });
+
   it("keeps the caret in a real text position after inserting an image", () => {
     const editor = createEditor({
       namespace: "composer-image-caret-utils-test",
-      nodes: [ComposerEmojiNode, ComposerImageNode, ComposerMentionNode],
+      nodes: [ComposerEmojiNode, ComposerImageNode, ComposerLiteAttachmentNode, ComposerMentionNode],
       onError(error) {
         throw error;
       },
@@ -111,7 +397,7 @@ describe("composer lexical utils", () => {
   it("does not export spacer text between consecutive images", () => {
     const editor = createEditor({
       namespace: "composer-consecutive-images-test",
-      nodes: [ComposerEmojiNode, ComposerImageNode, ComposerMentionNode],
+      nodes: [ComposerEmojiNode, ComposerImageNode, ComposerLiteAttachmentNode, ComposerMentionNode],
       onError(error) {
         throw error;
       },
@@ -150,7 +436,7 @@ describe("composer lexical utils", () => {
   it("exports text after an inline image without forcing a line break", () => {
     const editor = createEditor({
       namespace: "composer-inline-image-text-test",
-      nodes: [ComposerEmojiNode, ComposerImageNode, ComposerMentionNode],
+      nodes: [ComposerEmojiNode, ComposerImageNode, ComposerLiteAttachmentNode, ComposerMentionNode],
       onError(error) {
         throw error;
       },
@@ -193,7 +479,7 @@ describe("composer lexical utils", () => {
   it("exports mention tokens with member ids", () => {
     const editor = createEditor({
       namespace: "composer-mention-utils-test",
-      nodes: [ComposerEmojiNode, ComposerImageNode, ComposerMentionNode],
+      nodes: [ComposerEmojiNode, ComposerImageNode, ComposerLiteAttachmentNode, ComposerMentionNode],
       onError(error) {
         throw error;
       },
@@ -225,7 +511,7 @@ describe("composer lexical utils", () => {
   it("exports a single line break as one newline character", () => {
     const editor = createEditor({
       namespace: "composer-line-break-utils-test",
-      nodes: [ComposerEmojiNode, ComposerImageNode, ComposerMentionNode],
+      nodes: [ComposerEmojiNode, ComposerImageNode, ComposerLiteAttachmentNode, ComposerMentionNode],
       onError(error) {
         throw error;
       },
@@ -253,7 +539,7 @@ describe("composer lexical utils", () => {
   it("restores composer content from saved segments", () => {
     const editor = createEditor({
       namespace: "composer-restore-utils-test",
-      nodes: [ComposerEmojiNode, ComposerImageNode, ComposerMentionNode],
+      nodes: [ComposerEmojiNode, ComposerImageNode, ComposerLiteAttachmentNode, ComposerMentionNode],
       onError(error) {
         throw error;
       },

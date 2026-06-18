@@ -28,6 +28,7 @@ export type ComposerFileSegment = {
   fileId?: string;
   fileName: string;
   materialCollectionId?: string;
+  msgid?: string;
   fileSize?: number;
   fileSizeLabel?: string;
   url?: string;
@@ -39,12 +40,14 @@ export type ComposerH5Segment = {
   desc?: string;
   href?: string;
   materialCollectionId?: string;
+  msgid?: string;
   title: string;
 };
 
 export type ComposerMiniProgramSegment = {
   type: "weapp";
   materialCollectionId: string;
+  msgid?: string;
   appName?: string;
   coverImageUrl?: string;
   logoUrl?: string;
@@ -55,6 +58,7 @@ export type ComposerMiniProgramSegment = {
 export type ComposerSphfeedSegment = {
   type: "sphfeed";
   materialCollectionId: string;
+  msgid?: string;
   description?: string;
   imageUrl?: string;
   sourceLabel?: string;

@@ -482,7 +482,10 @@ export function ImagePreviewDialog({
               </div>
             </div>
             {isOcrPanelOpen ? (
-              <div onClick={(event) => event.stopPropagation()}>
+              <div
+                className="min-w-0 max-w-[22rem] overflow-hidden"
+                onClick={(event) => event.stopPropagation()}
+              >
                 <ImageOcrPanel
                   activeRegionId={activeOcrRegionId}
                   error={ocrError}
@@ -563,7 +566,7 @@ function ImageOcrPanel({
 
   return (
     <aside
-      className="flex h-[calc(100vh-8.5rem)] w-[22rem] shrink-0 flex-col rounded-[8px] border border-white/12 bg-neutral-950/88 text-white shadow-[0_18px_60px_var(--shadow-strong)] backdrop-blur-md"
+      className="flex h-[calc(100vh-8.5rem)] w-[22rem] max-w-[22rem] min-w-0 shrink-0 flex-col overflow-hidden rounded-[8px] border border-white/12 bg-neutral-950/88 text-white shadow-[0_18px_60px_var(--shadow-strong)] backdrop-blur-md"
       data-testid="image-preview-ocr-panel"
     >
       <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
@@ -596,8 +599,11 @@ function ImageOcrPanel({
           </Button>
         ) : null}
       </div>
-      <ScrollArea className="min-h-0 flex-1">
-        <div className="space-y-2.5 p-4">
+      <ScrollArea
+        className="min-h-0 min-w-0 max-w-full flex-1 overflow-hidden [&_[data-slot=scroll-area-viewport]>div]:!block [&_[data-slot=scroll-area-viewport]>div]:w-full [&_[data-slot=scroll-area-viewport]>div]:min-w-0 [&_[data-slot=scroll-area-viewport]>div]:max-w-full"
+        viewportProps={{ className: "min-w-0 max-w-full overflow-x-hidden" }}
+      >
+        <div className="w-full min-w-0 max-w-full space-y-2.5 overflow-hidden p-4">
           {!isLoading && error ? (
             <div className="rounded-[8px] border border-red-300/35 bg-red-500/14 px-3 py-3 text-sm text-red-100">
               {error}
@@ -610,8 +616,9 @@ function ImageOcrPanel({
           ) : null}
           {regions.map((region, index) => (
             <div
-              className="group/ocr-result relative rounded-[8px] border border-white/10 bg-white/7 px-3 py-4 text-sm text-white/90 transition-colors hover:border-amber-200/55 hover:bg-amber-300/10 data-[active=true]:border-amber-200/80 data-[active=true]:bg-amber-300/16 data-[active=true]:text-white"
+              className="group/ocr-result relative w-full min-w-0 max-w-full overflow-hidden rounded-[8px] border border-white/10 bg-white/7 px-3 py-4 text-sm text-white/90 transition-colors hover:border-amber-200/55 hover:bg-amber-300/10 data-[active=true]:border-amber-200/80 data-[active=true]:bg-amber-300/16 data-[active=true]:text-white"
               data-active={activeRegionId === region.id}
+              data-testid="image-preview-ocr-result"
               key={region.id}
               onMouseEnter={() => setActiveRegionId(region.id)}
               onMouseLeave={() => setActiveRegionId(null)}
@@ -637,7 +644,9 @@ function ImageOcrPanel({
               >
                 <HugeiconsIcon icon={Copy01Icon} size={13} strokeWidth={2} />
               </Button>
-              <p className="whitespace-pre-wrap break-words leading-6">{region.text}</p>
+              <p className="w-full min-w-0 max-w-full whitespace-pre-wrap break-words [overflow-wrap:anywhere] leading-6">
+                {region.text}
+              </p>
             </div>
           ))}
         </div>

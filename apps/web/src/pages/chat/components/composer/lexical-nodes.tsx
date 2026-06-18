@@ -15,6 +15,24 @@ import {
   type SerializedTextNode,
   type Spread,
 } from "lexical";
+import type {
+  ComposerFileSegment,
+  ComposerH5Segment,
+  ComposerMiniProgramSegment,
+  ComposerSphfeedSegment,
+} from "@/pages/chat/lib/composer-segments";
+import type {
+  FileMessageContent,
+  H5CardMessageContent,
+  MiniProgramMessageContent,
+  SphFeedMessageContent,
+} from "@/pages/chat/chat-types";
+import {
+  FileMessageCard,
+  LinkMessageCard,
+  MiniAppMessageCard,
+  SphFeedMessageCard,
+} from "@/pages/chat/components/message";
 
 export type SerializedComposerEmojiNode = Spread<
   {
@@ -34,6 +52,19 @@ export type SerializedComposerImageNode = Spread<
     localUrl?: string;
     src: string;
     width?: number;
+  },
+  SerializedLexicalNode
+>;
+
+export type ComposerLiteAttachmentSegment =
+  | ComposerFileSegment
+  | ComposerH5Segment
+  | ComposerMiniProgramSegment
+  | ComposerSphfeedSegment;
+
+export type SerializedComposerLiteAttachmentNode = Spread<
+  {
+    segment: ComposerLiteAttachmentSegment;
   },
   SerializedLexicalNode
 >;
@@ -272,6 +303,67 @@ export class ComposerImageNode extends DecoratorNode<ReactNode> {
   }
 }
 
+export class ComposerLiteAttachmentNode extends DecoratorNode<ReactNode> {
+  __segment: ComposerLiteAttachmentSegment;
+
+  static getType() {
+    return "composer-lite-attachment";
+  }
+
+  static clone(node: ComposerLiteAttachmentNode) {
+    return new ComposerLiteAttachmentNode(node.__segment, node.__key);
+  }
+
+  static importJSON(serializedNode: SerializedComposerLiteAttachmentNode) {
+    return $createComposerLiteAttachmentNode(serializedNode.segment);
+  }
+
+  constructor(segment: ComposerLiteAttachmentSegment, key?: NodeKey) {
+    super(key);
+    this.__segment = segment;
+  }
+
+  createDOM() {
+    const span = document.createElement("span");
+    span.className = "my-1 block w-fit max-w-full align-bottom";
+    span.dataset.composerAttachmentLayout = "standalone-line";
+    return span;
+  }
+
+  updateDOM() {
+    return false;
+  }
+
+  decorate() {
+    return (
+      <ComposerLiteAttachmentPreview
+        nodeKey={this.__key}
+        segment={this.__segment}
+      />
+    );
+  }
+
+  exportJSON(): SerializedComposerLiteAttachmentNode {
+    return {
+      segment: this.__segment,
+      type: ComposerLiteAttachmentNode.getType(),
+      version: 1,
+    };
+  }
+
+  getSegment() {
+    return this.__segment;
+  }
+
+  getTextContent() {
+    return "";
+  }
+
+  isInline(): true {
+    return true;
+  }
+}
+
 export class ComposerMentionNode extends TextNode {
   __displayName: string;
   __isAll: boolean;
@@ -397,6 +489,18 @@ export function $isComposerImageNode(
   return node instanceof ComposerImageNode;
 }
 
+export function $createComposerLiteAttachmentNode(
+  segment: ComposerLiteAttachmentSegment,
+) {
+  return $applyNodeReplacement(new ComposerLiteAttachmentNode(segment));
+}
+
+export function $isComposerLiteAttachmentNode(
+  node: LexicalNode | null | undefined,
+): node is ComposerLiteAttachmentNode {
+  return node instanceof ComposerLiteAttachmentNode;
+}
+
 export function $createComposerMentionNode(input: {
   displayName: string;
   isAll?: boolean;
@@ -484,4 +588,172 @@ function ComposerImagePreview({
       </button>
     </span>
   );
+}
+
+function ComposerLiteAttachmentPreview({
+  nodeKey,
+  segment,
+}: {
+  nodeKey: NodeKey;
+  segment: ComposerLiteAttachmentSegment;
+}) {
+  const [editor] = useLexicalComposerContext();
+  const isEditable = useLexicalEditable();
+  const title = getLiteAttachmentTitle(segment);
+  const label = getLiteAttachmentLabel(segment);
+
+  const removeAttachment = () => {
+    if (!isEditable) {
+      return;
+    }
+
+    editor.update(() => {
+      const node = $getNodeByKey(nodeKey);
+
+      if ($isComposerLiteAttachmentNode(node)) {
+        node.remove();
+      }
+    });
+    editor.focus();
+  };
+
+  return (
+    <span className="group/composer-attachment relative inline-block max-w-full align-bottom">
+      <ComposerLiteAttachmentCard segment={segment} />
+      <button
+        aria-label={`移除${label} ${title}`}
+        className="absolute right-1.5 top-1.5 inline-flex size-[22px] items-center justify-center rounded-full bg-black/55 text-white opacity-0 shadow-sm transition-[background-color,opacity] hover:bg-black/70 group-hover/composer-attachment:opacity-100 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-white/50 disabled:pointer-events-none disabled:opacity-50"
+        disabled={!isEditable}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          removeAttachment();
+        }}
+        onMouseDown={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+        }}
+        type="button"
+      >
+        <HugeiconsIcon icon={Cancel01Icon} size={14} strokeWidth={2} />
+      </button>
+    </span>
+  );
+}
+
+function ComposerLiteAttachmentCard({
+  segment,
+}: {
+  segment: ComposerLiteAttachmentSegment;
+}) {
+  if (segment.type === "file") {
+    return (
+      <FileMessageCard
+        className="pointer-events-none"
+        content={toFileMessageContent(segment)}
+        showDownloadAction={false}
+      />
+    );
+  }
+
+  if (segment.type === "h5") {
+    return (
+      <LinkMessageCard
+        className="pointer-events-none"
+        content={toH5MessageContent(segment)}
+        disableLink
+      />
+    );
+  }
+
+  if (segment.type === "weapp") {
+    return (
+      <MiniAppMessageCard
+        className="pointer-events-none"
+        content={toMiniProgramMessageContent(segment)}
+        titleLines={1}
+      />
+    );
+  }
+
+  return (
+    <span className="pointer-events-none inline-block">
+      <SphFeedMessageCard
+        content={toSphFeedMessageContent(segment)}
+        disableLink
+      />
+    </span>
+  );
+}
+
+function getLiteAttachmentTitle(segment: ComposerLiteAttachmentSegment) {
+  if (segment.type === "file") {
+    return segment.fileName || "文件";
+  }
+
+  return segment.title || getLiteAttachmentLabel(segment);
+}
+
+function getLiteAttachmentLabel(segment: ComposerLiteAttachmentSegment) {
+  if (segment.type === "file") {
+    return "文件";
+  }
+
+  if (segment.type === "h5") {
+    return "链接";
+  }
+
+  if (segment.type === "weapp") {
+    return "小程序";
+  }
+
+  return "视频号";
+}
+
+function toFileMessageContent(segment: ComposerFileSegment): FileMessageContent {
+  return {
+    extension: segment.extension,
+    fileName: segment.fileName || "文件",
+    fileSizeLabel: segment.fileSizeLabel,
+    fileUrl: segment.url,
+    sourceLabel: "文件",
+    type: "file",
+  };
+}
+
+function toH5MessageContent(segment: ComposerH5Segment): H5CardMessageContent {
+  return {
+    description: segment.desc ?? "",
+    previewImageUrl: segment.coverUrl,
+    sourceLabel: "链接",
+    title: segment.title || "链接",
+    type: "h5",
+    url: segment.href,
+  };
+}
+
+function toMiniProgramMessageContent(
+  segment: ComposerMiniProgramSegment,
+): MiniProgramMessageContent {
+  return {
+    appName: segment.appName ?? "小程序",
+    coverImageUrl: segment.coverImageUrl,
+    logoUrl: segment.logoUrl,
+    sourceLabel: segment.sourceLabel ?? "小程序",
+    title: segment.title ?? "小程序",
+    type: "mini-program",
+  };
+}
+
+function toSphFeedMessageContent(
+  segment: ComposerSphfeedSegment,
+): SphFeedMessageContent {
+  return {
+    description: segment.description ?? "",
+    imageUrl: segment.imageUrl,
+    sourceLabel: segment.sourceLabel ?? "视频号",
+    title: segment.title ?? "视频号",
+    type: "sphfeed",
+    url: segment.url,
+  };
 }

@@ -1,21 +1,134 @@
-import { Navigate, createBrowserRouter } from "react-router-dom";
+import { Suspense, lazy, useEffect, type ReactNode } from "react";
+import { Navigate, createBrowserRouter, useRouteError } from "react-router-dom";
 import { RootLayout } from "@/app/root-layout";
-import { LoginPage } from "@/pages/auth/login-page";
-import { ChatWorkbenchRoutePage } from "@/pages/chat/chat-workbench-page";
-import { AgentManagementPage } from "@/pages/chat/ai-hosting/agent-management-page";
-import { AgentSettingsPage } from "@/pages/chat/ai-hosting/agent-settings-page";
-import { KnowledgeBasePage } from "@/pages/chat/ai-hosting/knowledge-base-page";
-import { InsightsBusinessPage } from "@/pages/chat/insights/insights-business-page";
-import { InsightsFollowUpsPage } from "@/pages/chat/insights/insights-follow-ups-page";
-import { InsightsOverviewPage } from "@/pages/chat/insights/insights-overview-page";
-import { InsightsQualityPage } from "@/pages/chat/insights/insights-quality-page";
-import { InsightsSettingsPage } from "@/pages/chat/insights/insights-settings-page";
-import { ChatSettingsPage } from "@/pages/chat/settings/chat-settings-page";
+import { Button } from "@/components/ui/button";
+import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
+
+const LoginPage = lazy(() =>
+  import("@/pages/auth/login-page").then(({ LoginPage }) => ({
+    default: LoginPage,
+  })),
+);
+const ChatWorkbenchRoutePage = lazy(() =>
+  import("@/pages/chat/chat-workbench-page").then(({ ChatWorkbenchRoutePage }) => ({
+    default: ChatWorkbenchRoutePage,
+  })),
+);
+const ChatSettingsPage = lazy(() =>
+  import("@/pages/chat/settings/chat-settings-page").then(({ ChatSettingsPage }) => ({
+    default: ChatSettingsPage,
+  })),
+);
+const AgentManagementPage = lazy(() =>
+  import("@/pages/chat/ai-hosting/agent-management-page").then(
+    ({ AgentManagementPage }) => ({
+      default: AgentManagementPage,
+    }),
+  ),
+);
+const AgentSettingsPage = lazy(() =>
+  import("@/pages/chat/ai-hosting/agent-settings-page").then(({ AgentSettingsPage }) => ({
+    default: AgentSettingsPage,
+  })),
+);
+const KnowledgeBasePage = lazy(() =>
+  import("@/pages/chat/ai-hosting/knowledge-base-page").then(
+    ({ KnowledgeBasePage }) => ({
+      default: KnowledgeBasePage,
+    }),
+  ),
+);
+const InsightsOverviewPage = lazy(() =>
+  import("@/pages/chat/insights/insights-overview-page").then(
+    ({ InsightsOverviewPage }) => ({
+      default: InsightsOverviewPage,
+    }),
+  ),
+);
+const InsightsQualityPage = lazy(() =>
+  import("@/pages/chat/insights/insights-quality-page").then(
+    ({ InsightsQualityPage }) => ({
+      default: InsightsQualityPage,
+    }),
+  ),
+);
+const InsightsFollowUpsPage = lazy(() =>
+  import("@/pages/chat/insights/insights-follow-ups-page").then(
+    ({ InsightsFollowUpsPage }) => ({
+      default: InsightsFollowUpsPage,
+    }),
+  ),
+);
+const InsightsBusinessPage = lazy(() =>
+  import("@/pages/chat/insights/insights-business-page").then(
+    ({ InsightsBusinessPage }) => ({
+      default: InsightsBusinessPage,
+    }),
+  ),
+);
+const InsightsSettingsPage = lazy(() =>
+  import("@/pages/chat/insights/insights-settings-page").then(
+    ({ InsightsSettingsPage }) => ({
+      default: InsightsSettingsPage,
+    }),
+  ),
+);
+
+function withRouteSuspense(element: ReactNode) {
+  return <Suspense fallback={<RouteLoadingFallback />}>{element}</Suspense>;
+}
+
+function RouteErrorFallback() {
+  const error = useRouteError();
+
+  useEffect(() => {
+    console.error("Route error captured:", error);
+  }, [error]);
+
+  return (
+    <main className="flex min-h-svh items-center justify-center bg-background px-6 text-foreground">
+      <div
+        aria-label="页面加载失败"
+        className="max-w-sm text-center"
+        role="alert"
+      >
+        <h1 className="text-base font-medium text-foreground">页面加载失败</h1>
+        <p className="mt-2 text-sm text-muted-foreground">请刷新页面后重试</p>
+        <Button
+          className="mt-4"
+          onClick={() => {
+            window.location.reload();
+          }}
+          type="button"
+        >
+          刷新页面
+        </Button>
+      </div>
+    </main>
+  );
+}
+
+function RouteLoadingFallback() {
+  return (
+    <main className="flex min-h-svh items-center justify-center bg-background text-foreground">
+      <div className="inline-flex items-center gap-3 text-sm text-muted-foreground">
+        <DotMatrixLoader
+          ariaLabel="正在加载页面"
+          className="text-muted-foreground"
+          dotSize={3}
+          size={22}
+        />
+        <span>正在加载页面</span>
+      </div>
+    </main>
+  );
+}
 
 export const routerConfig = [
   {
     path: "/",
     element: <RootLayout />,
+    errorElement: <RouteErrorFallback />,
     children: [
       {
         index: true,
@@ -23,39 +136,39 @@ export const routerConfig = [
       },
       {
         path: "login",
-        element: <LoginPage />,
+        element: withRouteSuspense(<LoginPage />),
       },
       {
         path: "chat",
-        element: <ChatWorkbenchRoutePage />,
+        element: withRouteSuspense(<ChatWorkbenchRoutePage />),
       },
       {
         path: "chat/customers",
-        element: <ChatWorkbenchRoutePage />,
+        element: withRouteSuspense(<ChatWorkbenchRoutePage />),
       },
       {
         path: "chat/settings",
-        element: <ChatSettingsPage />,
+        element: withRouteSuspense(<ChatSettingsPage />),
       },
       {
         path: "chat/settings/:sectionId",
-        element: <ChatSettingsPage />,
+        element: withRouteSuspense(<ChatSettingsPage />),
       },
       {
         path: "chat/insights",
-        element: <InsightsOverviewPage />,
+        element: withRouteSuspense(<InsightsOverviewPage />),
       },
       {
         path: "chat/insights/quality",
-        element: <InsightsQualityPage />,
+        element: withRouteSuspense(<InsightsQualityPage />),
       },
       {
         path: "chat/insights/follow-ups",
-        element: <InsightsFollowUpsPage />,
+        element: withRouteSuspense(<InsightsFollowUpsPage />),
       },
       {
         path: "chat/insights/business",
-        element: <InsightsBusinessPage />,
+        element: withRouteSuspense(<InsightsBusinessPage />),
       },
       {
         path: "chat/insights/records",
@@ -63,7 +176,7 @@ export const routerConfig = [
       },
       {
         path: "chat/insights/settings",
-        element: <InsightsSettingsPage />,
+        element: withRouteSuspense(<InsightsSettingsPage />),
       },
       {
         path: "chat/ai-hosting",
@@ -71,15 +184,15 @@ export const routerConfig = [
       },
       {
         path: "chat/ai-hosting/agents",
-        element: <AgentManagementPage />,
+        element: withRouteSuspense(<AgentManagementPage />),
       },
       {
         path: "chat/ai-hosting/agents/new",
-        element: <AgentSettingsPage />,
+        element: withRouteSuspense(<AgentSettingsPage />),
       },
       {
         path: "chat/ai-hosting/knowledge",
-        element: <KnowledgeBasePage />,
+        element: withRouteSuspense(<KnowledgeBasePage />),
       },
     ],
   },

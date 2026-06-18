@@ -6,6 +6,10 @@ import {
   type ConversationCustodyMode,
   type MaterialCollectionBizType,
 } from "./enums.js";
+import type {
+  QuickReplyScopeType,
+  WorkbenchQuickReplyAttachment,
+} from "./quick-reply-content.js";
 
 export const ChatSeatSchema = Type.Object({
   displayName: Type.String(),
@@ -642,6 +646,7 @@ export type WorkbenchOutgoingMessageFileSegment = {
   fileId?: string;
   fileName?: string;
   materialCollectionId?: string;
+  msgid?: string;
   fileSize?: number;
   fileSizeLabel?: string;
   url?: string;
@@ -653,17 +658,30 @@ export type WorkbenchOutgoingMessageH5Segment = {
   desc?: string;
   href?: string;
   materialCollectionId?: string;
+  msgid?: string;
   title?: string;
 };
 
 export type WorkbenchOutgoingMessageMiniProgramSegment = {
   type: "weapp";
   materialCollectionId: string;
+  msgid?: string;
+  appName?: string;
+  coverImageUrl?: string;
+  logoUrl?: string;
+  sourceLabel?: string;
+  title?: string;
 };
 
 export type WorkbenchOutgoingMessageSphfeedSegment = {
   type: "sphfeed";
   materialCollectionId: string;
+  msgid?: string;
+  description?: string;
+  imageUrl?: string;
+  sourceLabel?: string;
+  title?: string;
+  url?: string;
 };
 
 export type WorkbenchOutgoingMessageSegment =
@@ -889,4 +907,173 @@ export type WorkbenchGetOrCreateConversationRequestDto = {
   chatType: number;
   thirdExternalUserId?: string;
   thirdGroupId?: string;
+};
+
+export type WorkbenchQuickReplyCategoryDto = {
+  id: string;
+  parentId: string | 0;
+  scopeType: QuickReplyScopeType;
+  title: string;
+  sort: number;
+};
+
+export type WorkbenchQuickReplyDto = {
+  id: string;
+  scopeType: QuickReplyScopeType;
+  categoryId: string | 0;
+  contentText: string;
+  attachments: WorkbenchQuickReplyAttachment[];
+  labelText: string;
+  labelColor: string;
+  sort: number;
+  createdAt?: number;
+  updatedAt?: number;
+};
+
+export type WorkbenchQuickReplyCategoryListRequest = {
+  scopeType: QuickReplyScopeType;
+};
+
+export type WorkbenchQuickReplyCategoryListResponse = {
+  categories: WorkbenchQuickReplyCategoryDto[];
+};
+
+export type WorkbenchQuickReplyCategoryCreateRequest = {
+  scopeType: QuickReplyScopeType;
+  parentId?: string | 0;
+  title: string;
+};
+
+export type WorkbenchQuickReplyImportRowError = {
+  rowNumber: number;
+  message: string;
+};
+
+export type WorkbenchQuickReplyCategoryEnsureRequest = {
+  scopeType: QuickReplyScopeType;
+  categories: Array<{
+    title: string;
+    children: string[];
+  }>;
+};
+
+export type WorkbenchQuickReplyCategoryEnsureSuccessResponse = {
+  ok: true;
+  categories: Array<{
+    id: string;
+    title: string;
+    children: Array<{
+      id: string;
+      title: string;
+    }>;
+  }>;
+  summary: {
+    createdPrimaryCategoryCount: number;
+    createdSecondaryCategoryCount: number;
+  };
+};
+
+export type WorkbenchQuickReplyImportFailureResponse = {
+  ok: false;
+  errorMsg: string;
+  errors?: WorkbenchQuickReplyImportRowError[];
+};
+
+export type WorkbenchQuickReplyCategoryEnsureResponse =
+  | WorkbenchQuickReplyCategoryEnsureSuccessResponse
+  | WorkbenchQuickReplyImportFailureResponse;
+
+export type WorkbenchQuickReplyBatchCreateRequest = {
+  scopeType: QuickReplyScopeType;
+  items: Array<{
+    rowNumber: number;
+    categoryId: string;
+    labelText: string;
+    labelColor: string;
+    contentText: string;
+  }>;
+};
+
+export type WorkbenchQuickReplyBatchCreateResponse =
+  | {
+      ok: true;
+      summary: {
+        createdQuickReplyCount: number;
+      };
+    }
+  | WorkbenchQuickReplyImportFailureResponse;
+
+export type WorkbenchQuickReplyCategoryUpdateRequest = {
+  title: string;
+};
+
+export type WorkbenchQuickReplyCategoryMoveRequest = {
+  parentId: string;
+};
+
+export type WorkbenchQuickReplyCategorySortRequest = {
+  scopeType: QuickReplyScopeType;
+  parentId: string;
+  categoryIds: string[];
+};
+
+export type WorkbenchQuickReplyListRequest = {
+  scopeType: QuickReplyScopeType;
+  categoryId?: string | 0;
+  keyword?: string;
+  page?: number;
+  pageSize?: number;
+};
+
+export type WorkbenchQuickReplyListResponse = {
+  items: WorkbenchQuickReplyDto[];
+  pagination: {
+    hasMore: boolean;
+    page: number;
+    pageSize: number;
+    total: number;
+  };
+};
+
+export type WorkbenchQuickReplyCategoryContentRequest = {
+  scopeType: QuickReplyScopeType;
+  parentCategoryId: string;
+};
+
+export type WorkbenchQuickReplyCategoryContentResponse = {
+  categories: WorkbenchQuickReplyCategoryDto[];
+  quickRepliesByCategoryId: Record<string, WorkbenchQuickReplyDto[]>;
+  limits: {
+    categories: number;
+    quickReplies: number;
+  };
+  truncated: {
+    categories: boolean;
+    quickReplies: boolean;
+  };
+};
+
+export type WorkbenchQuickReplyCreateRequest = {
+  scopeType: QuickReplyScopeType;
+  categoryId?: string | 0;
+  contentText?: string;
+  attachments?: WorkbenchQuickReplyAttachment[];
+  labelText?: string;
+  labelColor?: string;
+};
+
+export type WorkbenchQuickReplyUpdateRequest = WorkbenchQuickReplyCreateRequest;
+
+export type WorkbenchQuickReplyMoveRequest = {
+  categoryId: string;
+};
+
+export type WorkbenchQuickReplySortRequest = {
+  scopeType: QuickReplyScopeType;
+  categoryId: string;
+  quickReplyIds: string[];
+};
+
+export type WorkbenchQuickReplyOkResponse = {
+  ok: true;
 };

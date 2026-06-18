@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { SettingsSidebarBindType } from "@chatai/contracts";
+import {
+  QUICK_REPLY_SCOPE_TYPE,
+  type SettingsSidebarBindType,
+} from "@chatai/contracts";
 import { createMockWorkbenchService, setWorkbenchService } from "@/pages/chat/api/workbench-service";
 import {
   installChatWorkbenchTestEnvironment,
@@ -171,5 +174,67 @@ describe("ChatWorkbenchPage sidebar flows", () => {
     await waitFor(() => {
       expect(within(sidePanel).queryByTestId("dot-matrix-loader")).not.toBeInTheDocument();
     });
+  });
+
+  it("keeps quick reply form open when saving fails", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      createQuickReply: vi.fn().mockRejectedValue(new Error("保存失败")),
+      listQuickReplyCategories: vi.fn().mockResolvedValue({
+        categories: [
+          {
+            id: "quick-reply-category-1",
+            parentId: 0,
+            scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+            sort: 100,
+            title: "售前",
+          },
+          {
+            id: "quick-reply-category-2",
+            parentId: "quick-reply-category-1",
+            scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+            sort: 90,
+            title: "报价",
+          },
+        ],
+      }),
+      listQuickReplyCategoryContent: vi.fn().mockResolvedValue({
+        categories: [
+          {
+            id: "quick-reply-category-2",
+            parentId: "quick-reply-category-1",
+            scopeType: QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
+            sort: 90,
+            title: "报价",
+          },
+        ],
+        limits: {
+          categories: 50,
+          quickReplies: 10_000,
+        },
+        quickRepliesByCategoryId: {
+          "quick-reply-category-2": [],
+        },
+        truncated: {
+          categories: false,
+          quickReplies: false,
+        },
+      }),
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(await screen.findByRole("tab", { name: "快捷话术" }));
+    fireEvent.contextMenu(await screen.findByRole("button", { name: "报价" }));
+    await user.click(await screen.findByRole("menuitem", { name: "新建话术" }));
+    await user.type(screen.getByPlaceholderText("请输入话术内容"), "您好");
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    expect(await screen.findByText("保存失败")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("请输入话术内容")).toHaveValue("您好");
   });
 });

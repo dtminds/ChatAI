@@ -66,9 +66,44 @@ import type {
   type WorkbenchMaterialCollectionListResponse,
   type WorkbenchMaterialCollectionMoveRequest,
   type WorkbenchMaterialCollectionOkResponse,
+  type WorkbenchQuickReplyCategoryCreateRequest,
+  type WorkbenchQuickReplyBatchCreateRequest,
+  type WorkbenchQuickReplyBatchCreateResponse,
+  type WorkbenchQuickReplyCategoryContentRequest,
+  type WorkbenchQuickReplyCategoryContentResponse,
+  type WorkbenchQuickReplyCategoryDto,
+  type WorkbenchQuickReplyCategoryEnsureRequest,
+  type WorkbenchQuickReplyCategoryEnsureResponse,
+  type WorkbenchQuickReplyImportRowError,
+  type WorkbenchQuickReplyCategoryListRequest,
+  type WorkbenchQuickReplyCategoryListResponse,
+  type WorkbenchQuickReplyCategoryMoveRequest,
+  type WorkbenchQuickReplyCategoryUpdateRequest,
+  type WorkbenchQuickReplyCreateRequest,
+  type WorkbenchQuickReplyDto,
+  type WorkbenchQuickReplyListRequest,
+  type WorkbenchQuickReplyListResponse,
+  type WorkbenchQuickReplyMoveRequest,
+  type WorkbenchQuickReplyOkResponse,
+  type WorkbenchQuickReplyUpdateRequest,
 } from "@chatai/contracts";
-import { MATERIAL_COLLECTION_BIZ_TYPE, MATERIAL_COLLECTION_GROUP_MAX_COUNT } from "@chatai/contracts";
+import {
+  MATERIAL_COLLECTION_BIZ_TYPE,
+  MATERIAL_COLLECTION_GROUP_MAX_COUNT,
+  QUICK_REPLY_BATCH_CREATE_LIMIT,
+  QUICK_REPLY_CATEGORY_TITLE_MAX_LENGTH,
+  QUICK_REPLY_CONTENT_TEXT_MAX_LENGTH,
+  QUICK_REPLY_IMPORT_PRIMARY_CATEGORY_LIMIT,
+  QUICK_REPLY_IMPORT_SECONDARY_CATEGORY_LIMIT,
+  QUICK_REPLY_LABEL_TEXT_MAX_LENGTH,
+  isQuickReplyLabelColor,
+  normalizeQuickReplyAttachments,
+  validateQuickReplyPayload,
+} from "@chatai/contracts";
 import { BadRequestError, NotFoundError } from "../../src/shared/errors.js";
+
+const QUICK_REPLY_TOP_CATEGORY_LIMIT = 50;
+const QUICK_REPLY_CHILD_CATEGORY_LIMIT = 50;
 
 type WorkbenchEvent =
   | {
@@ -97,6 +132,8 @@ type MemoryWorkbenchState = {
   materialItems: WorkbenchMaterialCollectionItemDto[];
   messagesByConversationId: Record<string, WorkbenchMessageDto[]>;
   nextId: number;
+  quickReplyCategories: WorkbenchQuickReplyCategoryDto[];
+  quickReplies: WorkbenchQuickReplyDto[];
   version: number;
 };
 
@@ -310,6 +347,575 @@ export function createMemoryWorkbenchService() {
       }
 
       state.materialGroups = state.materialGroups.filter((group) => group.id !== groupId);
+      return { ok: true };
+    },
+    listQuickReplyCategories(
+      _subUserId: string,
+      request: WorkbenchQuickReplyCategoryListRequest,
+    ): WorkbenchQuickReplyCategoryListResponse {
+      return {
+        categories: clone(
+          state.quickReplyCategories
+            .filter((category) => category.scopeType === request.scopeType)
+            .sort(sortQuickReplyEntries),
+        ),
+      };
+    },
+    ensureQuickReplyCategories(
+      _subUserId: string,
+      request: WorkbenchQuickReplyCategoryEnsureRequest,
+    ): WorkbenchQuickReplyCategoryEnsureResponse {
+      const normalized = normalizeMemoryQuickReplyCategoryEnsureRequest(
+        request.categories,
+      );
+
+      if (!normalized.ok) {
+        return buildMemoryQuickReplyImportFailure(normalized.errors);
+      }
+
+      const limitErrors = validateMemoryQuickReplyCategoryEnsureLimits({
+        categories: normalized.categories,
+        scopeType: request.scopeType,
+        stateCategories: state.quickReplyCategories,
+      });
+
+      if (limitErrors.length > 0) {
+        return buildMemoryQuickReplyImportFailure(limitErrors);
+      }
+
+      const categories = [];
+      let createdPrimaryCategoryCount = 0;
+      let createdSecondaryCategoryCount = 0;
+
+      for (const requestedCategory of normalized.categories) {
+        let primaryCategory = state.quickReplyCategories.find(
+          (category) =>
+            category.scopeType === request.scopeType &&
+            category.parentId === 0 &&
+            category.title === requestedCategory.title,
+        );
+
+        if (!primaryCategory) {
+          primaryCategory = {
+            id: `quick-reply-category-${state.nextId++}`,
+            parentId: 0,
+            scopeType: request.scopeType,
+            sort: getAppendQuickReplyCategorySort(
+              state.quickReplyCategories,
+              request.scopeType,
+              0,
+            ),
+            title: requestedCategory.title,
+          };
+          state.quickReplyCategories = [
+            ...state.quickReplyCategories,
+            primaryCategory,
+          ];
+          createdPrimaryCategoryCount += 1;
+        }
+
+        const children = [];
+        for (const requestedChild of requestedCategory.children) {
+          let childCategory = state.quickReplyCategories.find(
+            (category) =>
+              category.scopeType === request.scopeType &&
+              category.parentId === primaryCategory.id &&
+              category.title === requestedChild,
+          );
+
+          if (!childCategory) {
+            childCategory = {
+              id: `quick-reply-category-${state.nextId++}`,
+              parentId: primaryCategory.id,
+              scopeType: request.scopeType,
+              sort: getAppendQuickReplyCategorySort(
+                state.quickReplyCategories,
+                request.scopeType,
+                primaryCategory.id,
+              ),
+              title: requestedChild,
+            };
+            state.quickReplyCategories = [
+              ...state.quickReplyCategories,
+              childCategory,
+            ];
+            createdSecondaryCategoryCount += 1;
+          }
+
+          children.push({
+            id: childCategory.id,
+            title: childCategory.title,
+          });
+        }
+
+        categories.push({
+          children,
+          id: primaryCategory.id,
+          title: primaryCategory.title,
+        });
+      }
+
+      return {
+        categories,
+        ok: true,
+        summary: {
+          createdPrimaryCategoryCount,
+          createdSecondaryCategoryCount,
+        },
+      };
+    },
+    createQuickReplyCategory(
+      _subUserId: string,
+      request: WorkbenchQuickReplyCategoryCreateRequest,
+    ): WorkbenchQuickReplyOkResponse {
+      const parentId = request.parentId ?? 0;
+      const category = {
+        id: `quick-reply-category-${state.nextId++}`,
+        parentId,
+        scopeType: request.scopeType,
+        sort: getAppendQuickReplyCategorySort(
+          state.quickReplyCategories,
+          request.scopeType,
+          parentId,
+        ),
+        title: request.title.trim(),
+      };
+      state.quickReplyCategories = [...state.quickReplyCategories, category];
+      return { ok: true };
+    },
+    renameQuickReplyCategory(
+      _subUserId: string,
+      categoryId: string,
+      scopeType: number,
+      request: WorkbenchQuickReplyCategoryUpdateRequest,
+    ): WorkbenchQuickReplyOkResponse {
+      state.quickReplyCategories = state.quickReplyCategories.map((category) =>
+        category.id === categoryId && category.scopeType === scopeType
+          ? { ...category, title: request.title.trim() }
+          : category,
+      );
+      return { ok: true };
+    },
+    topQuickReplyCategory(
+      _subUserId: string,
+      categoryId: string,
+      scopeType: number,
+    ): WorkbenchQuickReplyOkResponse {
+      const category = state.quickReplyCategories.find(
+        (item) => item.id === categoryId && item.scopeType === scopeType,
+      );
+      const sort = getPrependQuickReplyCategorySort(
+        state.quickReplyCategories,
+        scopeType,
+        category?.parentId ?? 0,
+      );
+      state.quickReplyCategories = state.quickReplyCategories.map((category) =>
+        category.id === categoryId && category.scopeType === scopeType
+          ? { ...category, sort }
+          : category,
+      );
+      return { ok: true };
+    },
+    bottomQuickReplyCategory(
+      _subUserId: string,
+      categoryId: string,
+      scopeType: number,
+    ): WorkbenchQuickReplyOkResponse {
+      const category = state.quickReplyCategories.find(
+        (item) => item.id === categoryId && item.scopeType === scopeType,
+      );
+      const sort = getAppendQuickReplyCategorySort(
+        state.quickReplyCategories,
+        scopeType,
+        category?.parentId ?? 0,
+      );
+      state.quickReplyCategories = state.quickReplyCategories.map((category) =>
+        category.id === categoryId && category.scopeType === scopeType
+          ? { ...category, sort }
+          : category,
+      );
+      return { ok: true };
+    },
+    deleteQuickReplyCategory(
+      _subUserId: string,
+      categoryId: string,
+      scopeType: number,
+    ): WorkbenchQuickReplyOkResponse {
+      if (
+        state.quickReplyCategories.some(
+          (category) =>
+            category.scopeType === scopeType && category.parentId === categoryId,
+        )
+      ) {
+        throw new BadRequestError("QUICK_REPLY_CATEGORY_HAS_CHILDREN", "请先删除话术分组");
+      }
+
+      if (
+        state.quickReplies.some(
+          (reply) =>
+            reply.scopeType === scopeType && reply.categoryId === categoryId,
+        )
+      ) {
+        throw new BadRequestError("QUICK_REPLY_CATEGORY_NOT_EMPTY", "请先删除分组下的话术");
+      }
+
+      state.quickReplyCategories = state.quickReplyCategories.filter(
+        (category) => !(category.id === categoryId && category.scopeType === scopeType),
+      );
+      return { ok: true };
+    },
+    moveQuickReplyCategory(
+      _subUserId: string,
+      categoryId: string,
+      scopeType: number,
+      request: WorkbenchQuickReplyCategoryMoveRequest,
+    ): WorkbenchQuickReplyOkResponse {
+      const category = state.quickReplyCategories.find(
+        (item) => item.id === categoryId && item.scopeType === scopeType,
+      );
+      const targetParent = state.quickReplyCategories.find(
+        (item) => item.id === request.parentId && item.scopeType === scopeType,
+      );
+
+      if (!category || !targetParent) {
+        throw new NotFoundError("QUICK_REPLY_CATEGORY_NOT_FOUND", "分类不存在");
+      }
+
+      if (category.parentId === 0) {
+        throw new BadRequestError(
+          "QUICK_REPLY_CATEGORY_MOVE_INVALID",
+          "一级分类暂不支持移动",
+        );
+      }
+
+      if (targetParent.parentId !== 0) {
+        throw new BadRequestError("QUICK_REPLY_CATEGORY_MOVE_INVALID", "请选择一级分类");
+      }
+
+      if (category.parentId === request.parentId) {
+        return { ok: true };
+      }
+
+      state.quickReplyCategories = state.quickReplyCategories.map((item) =>
+        item.id === categoryId && item.scopeType === scopeType
+          ? {
+              ...item,
+              parentId: request.parentId,
+              sort: getAppendQuickReplyCategorySort(
+                state.quickReplyCategories,
+                scopeType,
+                request.parentId,
+              ),
+            }
+          : item,
+      );
+      return { ok: true };
+    },
+    listQuickReplyCategoryContent(
+      _subUserId: string,
+      request: WorkbenchQuickReplyCategoryContentRequest,
+    ): WorkbenchQuickReplyCategoryContentResponse {
+      const categories = state.quickReplyCategories
+        .filter(
+          (category) =>
+            category.scopeType === request.scopeType &&
+            category.parentId === request.parentCategoryId,
+        )
+        .sort(sortQuickReplyEntries)
+        .slice(0, 50);
+      const categoryIds = new Set(categories.map((category) => category.id));
+      const quickReplies = state.quickReplies
+        .filter(
+          (reply) =>
+            reply.scopeType === request.scopeType &&
+            typeof reply.categoryId === "string" &&
+            categoryIds.has(reply.categoryId),
+        )
+        .sort(sortQuickReplyEntries)
+        .slice(0, 10_000);
+      const quickRepliesByCategoryId: Record<string, WorkbenchQuickReplyDto[]> = {};
+
+      for (const category of categories) {
+        quickRepliesByCategoryId[category.id] = [];
+      }
+
+      for (const quickReply of quickReplies) {
+        if (typeof quickReply.categoryId === "string") {
+          quickRepliesByCategoryId[quickReply.categoryId] ??= [];
+          quickRepliesByCategoryId[quickReply.categoryId]?.push(clone(quickReply));
+        }
+      }
+
+      return {
+        categories: clone(categories),
+        limits: {
+          categories: 50,
+          quickReplies: 10_000,
+        },
+        quickRepliesByCategoryId,
+        truncated: {
+          categories:
+            state.quickReplyCategories.filter(
+              (category) =>
+                category.scopeType === request.scopeType &&
+                category.parentId === request.parentCategoryId,
+            ).length > 50,
+          quickReplies:
+            state.quickReplies.filter(
+              (reply) =>
+                reply.scopeType === request.scopeType &&
+                typeof reply.categoryId === "string" &&
+                categoryIds.has(reply.categoryId),
+            ).length > 10_000,
+        },
+      };
+    },
+    listQuickReplies(
+      _subUserId: string,
+      request: WorkbenchQuickReplyListRequest,
+    ): WorkbenchQuickReplyListResponse {
+      const page = request.page ?? 1;
+      const pageSize = request.pageSize ?? 50;
+      const keyword = request.keyword?.trim();
+      const matchingItems = state.quickReplies
+        .filter(
+          (reply) =>
+            reply.scopeType === request.scopeType &&
+            (request.categoryId === undefined ||
+              reply.categoryId === request.categoryId) &&
+            (!keyword ||
+              reply.contentText.includes(keyword) ||
+              reply.labelText.includes(keyword)),
+        )
+        .sort(sortQuickReplyEntries);
+
+      return {
+        items: clone(matchingItems.slice((page - 1) * pageSize, page * pageSize)),
+        pagination: {
+          hasMore: page * pageSize < matchingItems.length,
+          page,
+          pageSize,
+          total: matchingItems.length,
+        },
+      };
+    },
+    createQuickReply(
+      _subUserId: string,
+      request: WorkbenchQuickReplyCreateRequest,
+    ): WorkbenchQuickReplyOkResponse {
+      validateMemoryQuickReplyPayload(request);
+      const now = Date.now();
+      const categoryId = request.categoryId ?? 0;
+      assertMemoryQuickReplyChildCategory(categoryId, request.scopeType, state.quickReplyCategories);
+
+      state.quickReplies = [
+        ...state.quickReplies,
+        {
+          attachments: normalizeQuickReplyAttachments(request.attachments ?? []),
+          categoryId,
+          contentText: request.contentText?.trim() ?? "",
+          createdAt: now,
+          id: `quick-reply-${state.nextId++}`,
+          labelColor: request.labelColor?.trim() ?? "",
+          labelText: request.labelText?.trim() ?? "",
+          scopeType: request.scopeType,
+          sort: getAppendQuickReplySort(
+            state.quickReplies,
+            request.scopeType,
+            categoryId,
+          ),
+          updatedAt: now,
+        },
+      ];
+      return { ok: true };
+    },
+    batchCreateQuickReplies(
+      _subUserId: string,
+      request: WorkbenchQuickReplyBatchCreateRequest,
+    ): WorkbenchQuickReplyBatchCreateResponse {
+      const normalized = normalizeMemoryQuickReplyBatchCreateRequest(request.items);
+
+      if (!normalized.ok) {
+        return buildMemoryQuickReplyImportFailure(normalized.errors);
+      }
+
+      const categoryErrors: WorkbenchQuickReplyImportRowError[] = [];
+
+      for (const item of normalized.items) {
+        const category = state.quickReplyCategories.find(
+          (candidate) =>
+            candidate.id === item.categoryId &&
+            candidate.scopeType === request.scopeType,
+        );
+
+        if (!category || category.parentId === 0) {
+          categoryErrors.push({
+            message: "请选择二级分类",
+            rowNumber: item.rowNumber,
+          });
+        }
+      }
+
+      if (categoryErrors.length > 0) {
+        return buildMemoryQuickReplyImportFailure(categoryErrors);
+      }
+
+      const now = Date.now();
+      for (const item of normalized.items) {
+        state.quickReplies = [
+          ...state.quickReplies,
+          {
+            attachments: [],
+            categoryId: item.categoryId,
+            contentText: item.contentText,
+            createdAt: now,
+            id: `quick-reply-${state.nextId++}`,
+            labelColor: item.labelColor,
+            labelText: item.labelText,
+            scopeType: request.scopeType,
+            sort: getAppendQuickReplySort(
+              state.quickReplies,
+              request.scopeType,
+              item.categoryId,
+            ),
+            updatedAt: now,
+          },
+        ];
+      }
+
+      return {
+        ok: true,
+        summary: {
+          createdQuickReplyCount: normalized.items.length,
+        },
+      };
+    },
+    updateQuickReply(
+      _subUserId: string,
+      quickReplyId: string,
+      request: WorkbenchQuickReplyUpdateRequest,
+    ): WorkbenchQuickReplyOkResponse {
+      validateMemoryQuickReplyPayload(request);
+      const now = Date.now();
+      const categoryId = request.categoryId ?? 0;
+      assertMemoryQuickReplyChildCategory(categoryId, request.scopeType, state.quickReplyCategories);
+
+      state.quickReplies = state.quickReplies.map((reply) =>
+        reply.id === quickReplyId && reply.scopeType === request.scopeType
+          ? {
+              ...reply,
+              attachments: normalizeQuickReplyAttachments(request.attachments ?? []),
+              categoryId,
+              contentText: request.contentText?.trim() ?? "",
+              labelColor: request.labelColor?.trim() ?? "",
+              labelText: request.labelText?.trim() ?? "",
+              updatedAt: now,
+            }
+          : reply,
+      );
+      return { ok: true };
+    },
+    topQuickReply(
+      _subUserId: string,
+      quickReplyId: string,
+      scopeType: number,
+    ): WorkbenchQuickReplyOkResponse {
+      const quickReply = state.quickReplies.find(
+        (reply) => reply.id === quickReplyId && reply.scopeType === scopeType,
+      );
+      const sort = getPrependQuickReplySort(
+        state.quickReplies,
+        scopeType,
+        quickReply?.categoryId ?? 0,
+      );
+      state.quickReplies = state.quickReplies.map((reply) =>
+        reply.id === quickReplyId && reply.scopeType === scopeType
+          ? { ...reply, sort }
+          : reply,
+      );
+      return { ok: true };
+    },
+    bottomQuickReply(
+      _subUserId: string,
+      quickReplyId: string,
+      scopeType: number,
+    ): WorkbenchQuickReplyOkResponse {
+      const quickReply = state.quickReplies.find(
+        (reply) => reply.id === quickReplyId && reply.scopeType === scopeType,
+      );
+      const sort = getAppendQuickReplySort(
+        state.quickReplies,
+        scopeType,
+        quickReply?.categoryId ?? 0,
+      );
+      state.quickReplies = state.quickReplies.map((reply) =>
+        reply.id === quickReplyId && reply.scopeType === scopeType
+          ? { ...reply, sort }
+          : reply,
+      );
+      return { ok: true };
+    },
+    deleteQuickReply(
+      _subUserId: string,
+      quickReplyId: string,
+      scopeType: number,
+    ): WorkbenchQuickReplyOkResponse {
+      state.quickReplies = state.quickReplies.filter(
+        (reply) => !(reply.id === quickReplyId && reply.scopeType === scopeType),
+      );
+      return { ok: true };
+    },
+    moveQuickReply(
+      _subUserId: string,
+      quickReplyId: string,
+      scopeType: number,
+      request: WorkbenchQuickReplyMoveRequest,
+    ): WorkbenchQuickReplyOkResponse {
+      const quickReply = state.quickReplies.find(
+        (reply) => reply.id === quickReplyId && reply.scopeType === scopeType,
+      );
+
+      if (!quickReply) {
+        throw new NotFoundError("QUICK_REPLY_NOT_FOUND", "话术不存在");
+      }
+
+      if (quickReply.categoryId === request.categoryId) {
+        return { ok: true };
+      }
+
+      const sourceCategory = state.quickReplyCategories.find(
+        (category) =>
+          category.id === quickReply.categoryId && category.scopeType === scopeType,
+      );
+      const targetCategory = state.quickReplyCategories.find(
+        (category) =>
+          category.id === request.categoryId && category.scopeType === scopeType,
+      );
+
+      if (!sourceCategory || !targetCategory) {
+        throw new NotFoundError("QUICK_REPLY_CATEGORY_NOT_FOUND", "分类不存在");
+      }
+
+      if (sourceCategory.parentId !== targetCategory.parentId) {
+        throw new BadRequestError(
+          "QUICK_REPLY_MOVE_SCOPE_INVALID",
+          "只能移动到当前一级分类下",
+        );
+      }
+
+      state.quickReplies = state.quickReplies.map((reply) =>
+        reply.id === quickReplyId && reply.scopeType === scopeType
+          ? {
+              ...reply,
+              categoryId: request.categoryId,
+              sort: getAppendQuickReplySort(
+                state.quickReplies,
+                scopeType,
+                request.categoryId,
+              ),
+            }
+          : reply,
+      );
       return { ok: true };
     },
     async getSidebarIframeParams(_subUserId: string, _input: WorkbenchSidebarIframeParamsRequest) {
@@ -938,6 +1544,8 @@ function buildInitialState(): MemoryWorkbenchState {
       ],
     },
     nextId: 1,
+    quickReplyCategories: [],
+    quickReplies: [],
     version: INITIAL_VERSION,
   };
 }
@@ -1492,6 +2100,348 @@ function collapseLatest<T>(items: T[], getKey: (item: T) => string) {
   }
 
   return [...latestByKey.values()];
+}
+
+function sortQuickReplyEntries<T extends { id: string; sort: number }>(
+  left: T,
+  right: T,
+) {
+  return right.sort - left.sort || left.id.localeCompare(right.id);
+}
+
+function getAppendQuickReplyCategorySort(
+  categories: WorkbenchQuickReplyCategoryDto[],
+  scopeType: WorkbenchQuickReplyCategoryDto["scopeType"],
+  parentId: WorkbenchQuickReplyCategoryDto["parentId"],
+) {
+  const siblingSorts = categories
+    .filter((category) => category.scopeType === scopeType && category.parentId === parentId)
+    .map((category) => category.sort);
+
+  return siblingSorts.length ? Math.min(...siblingSorts) - 1 : Date.now();
+}
+
+function getPrependQuickReplyCategorySort(
+  categories: WorkbenchQuickReplyCategoryDto[],
+  scopeType: WorkbenchQuickReplyCategoryDto["scopeType"],
+  parentId: WorkbenchQuickReplyCategoryDto["parentId"],
+) {
+  const siblingSorts = categories
+    .filter((category) => category.scopeType === scopeType && category.parentId === parentId)
+    .map((category) => category.sort);
+
+  return siblingSorts.length ? Math.max(...siblingSorts) + 1 : Date.now();
+}
+
+function getAppendQuickReplySort(
+  quickReplies: WorkbenchQuickReplyDto[],
+  scopeType: WorkbenchQuickReplyDto["scopeType"],
+  categoryId: WorkbenchQuickReplyDto["categoryId"],
+) {
+  const siblingSorts = quickReplies
+    .filter((reply) => reply.scopeType === scopeType && reply.categoryId === categoryId)
+    .map((reply) => reply.sort);
+
+  return siblingSorts.length ? Math.min(...siblingSorts) - 1 : Date.now();
+}
+
+function getPrependQuickReplySort(
+  quickReplies: WorkbenchQuickReplyDto[],
+  scopeType: WorkbenchQuickReplyDto["scopeType"],
+  categoryId: WorkbenchQuickReplyDto["categoryId"],
+) {
+  const siblingSorts = quickReplies
+    .filter((reply) => reply.scopeType === scopeType && reply.categoryId === categoryId)
+    .map((reply) => reply.sort);
+
+  return siblingSorts.length ? Math.max(...siblingSorts) + 1 : Date.now();
+}
+
+function buildMemoryQuickReplyImportFailure(
+  errors: WorkbenchQuickReplyImportRowError[],
+) {
+  return {
+    errorMsg: "导入数据有误",
+    errors,
+    ok: false as const,
+  };
+}
+
+function normalizeMemoryQuickReplyCategoryEnsureRequest(
+  categories: WorkbenchQuickReplyCategoryEnsureRequest["categories"],
+):
+  | {
+      categories: Array<{ children: string[]; title: string }>;
+      ok: true;
+    }
+  | { errors: WorkbenchQuickReplyImportRowError[]; ok: false } {
+  if (!Array.isArray(categories) || categories.length === 0) {
+    return {
+      errors: [{ message: "分类不能为空", rowNumber: 0 }],
+      ok: false,
+    };
+  }
+
+  const errors: WorkbenchQuickReplyImportRowError[] = [];
+  const byTitle = new Map<string, { children: string[]; title: string }>();
+
+  categories.forEach((category, index) => {
+    const rowNumber = index + 1;
+    const title = category.title.trim();
+
+    if (!title) {
+      errors.push({ message: "一级分类名称不能为空", rowNumber });
+      return;
+    }
+
+    if (title.length > QUICK_REPLY_CATEGORY_TITLE_MAX_LENGTH) {
+      errors.push({
+        message: "一级分类名称不能超过10个字",
+        rowNumber,
+      });
+    }
+
+    const normalizedChildren: string[] = [];
+    for (const child of category.children) {
+      const childTitle = child.trim();
+
+      if (!childTitle) {
+        errors.push({ message: "二级分类名称不能为空", rowNumber });
+        continue;
+      }
+
+      if (childTitle.length > QUICK_REPLY_CATEGORY_TITLE_MAX_LENGTH) {
+        errors.push({
+          message: "二级分类名称不能超过10个字",
+          rowNumber,
+        });
+        continue;
+      }
+
+      if (!normalizedChildren.includes(childTitle)) {
+        normalizedChildren.push(childTitle);
+      }
+    }
+
+    const existing = byTitle.get(title);
+    if (existing) {
+      for (const childTitle of normalizedChildren) {
+        if (!existing.children.includes(childTitle)) {
+          existing.children.push(childTitle);
+        }
+      }
+    } else {
+      byTitle.set(title, { children: normalizedChildren, title });
+    }
+  });
+
+  const normalizedCategories = [...byTitle.values()];
+  const secondaryCategoryCount = normalizedCategories.reduce(
+    (count, category) => count + category.children.length,
+    0,
+  );
+
+  if (normalizedCategories.length > QUICK_REPLY_IMPORT_PRIMARY_CATEGORY_LIMIT) {
+    errors.push({ message: "一级分类最多导入100个", rowNumber: 0 });
+  }
+
+  if (secondaryCategoryCount > QUICK_REPLY_IMPORT_SECONDARY_CATEGORY_LIMIT) {
+    errors.push({ message: "二级分类最多导入500个", rowNumber: 0 });
+  }
+
+  if (errors.length > 0) {
+    return { errors, ok: false };
+  }
+
+  return { categories: normalizedCategories, ok: true };
+}
+
+function validateMemoryQuickReplyCategoryEnsureLimits(input: {
+  categories: Array<{ children: string[]; title: string }>;
+  scopeType: WorkbenchQuickReplyCategoryEnsureRequest["scopeType"];
+  stateCategories: WorkbenchQuickReplyCategoryDto[];
+}) {
+  const errors: WorkbenchQuickReplyImportRowError[] = [];
+  let primaryCategoryCount = input.stateCategories.filter(
+    (category) => category.scopeType === input.scopeType && category.parentId === 0,
+  ).length;
+  const childCountByPrimaryTitle = new Map<string, number>();
+
+  for (const primaryCategory of input.stateCategories) {
+    if (
+      primaryCategory.scopeType !== input.scopeType ||
+      primaryCategory.parentId !== 0
+    ) {
+      continue;
+    }
+
+    childCountByPrimaryTitle.set(
+      primaryCategory.title,
+      input.stateCategories.filter(
+        (category) =>
+          category.scopeType === input.scopeType &&
+          category.parentId === primaryCategory.id,
+      ).length,
+    );
+  }
+
+  for (const [index, category] of input.categories.entries()) {
+    const rowNumber = index + 1;
+    const existingPrimary = input.stateCategories.find(
+      (stateCategory) =>
+        stateCategory.scopeType === input.scopeType &&
+        stateCategory.parentId === 0 &&
+        stateCategory.title === category.title,
+    );
+
+    if (!existingPrimary) {
+      primaryCategoryCount += 1;
+
+      if (primaryCategoryCount > QUICK_REPLY_TOP_CATEGORY_LIMIT) {
+        errors.push({ message: "一级分类最多50个", rowNumber });
+      }
+    }
+
+    const existingChildTitles = new Set(
+      existingPrimary
+        ? input.stateCategories
+            .filter(
+              (stateCategory) =>
+                stateCategory.scopeType === input.scopeType &&
+                stateCategory.parentId === existingPrimary.id,
+            )
+            .map((stateCategory) => stateCategory.title)
+        : [],
+    );
+    const pendingChildCount = childCountByPrimaryTitle.get(category.title) ?? 0;
+    const missingChildCount = category.children.filter(
+      (childTitle) => !existingChildTitles.has(childTitle),
+    ).length;
+    const nextChildCount = pendingChildCount + missingChildCount;
+
+    if (nextChildCount > QUICK_REPLY_CHILD_CATEGORY_LIMIT) {
+      errors.push({ message: "二级分类最多50个", rowNumber });
+    }
+
+    childCountByPrimaryTitle.set(category.title, nextChildCount);
+  }
+
+  return errors;
+}
+
+function normalizeMemoryQuickReplyBatchCreateRequest(
+  items: WorkbenchQuickReplyBatchCreateRequest["items"],
+):
+  | {
+      items: Array<{
+        categoryId: string;
+        contentText: string;
+        labelColor: string;
+        labelText: string;
+        rowNumber: number;
+      }>;
+      ok: true;
+    }
+  | { errors: WorkbenchQuickReplyImportRowError[]; ok: false } {
+  if (!Array.isArray(items) || items.length === 0) {
+    return {
+      errors: [{ message: "请填写话术", rowNumber: 0 }],
+      ok: false,
+    };
+  }
+
+  if (items.length > QUICK_REPLY_BATCH_CREATE_LIMIT) {
+    return {
+      errors: [{ message: "单次最多导入100条话术", rowNumber: 0 }],
+      ok: false,
+    };
+  }
+
+  const errors: WorkbenchQuickReplyImportRowError[] = [];
+  const normalizedItems: Array<{
+    categoryId: string;
+    contentText: string;
+    labelColor: string;
+    labelText: string;
+    rowNumber: number;
+  }> = [];
+
+  for (const [index, item] of items.entries()) {
+    const rowNumber = Number.isSafeInteger(item.rowNumber)
+      ? item.rowNumber
+      : index + 1;
+    const categoryId = item.categoryId.trim();
+    const contentText = item.contentText.trim();
+    const labelColor = item.labelColor.trim();
+    const labelText = item.labelText.trim();
+
+    if (!categoryId) {
+      errors.push({ message: "请选择二级分类", rowNumber });
+    }
+
+    if (labelText.length > QUICK_REPLY_LABEL_TEXT_MAX_LENGTH) {
+      errors.push({ message: "短标题不能超过10个字", rowNumber });
+    }
+
+    if (!isQuickReplyLabelColor(labelColor)) {
+      errors.push({ message: "短标题颜色无效", rowNumber });
+    }
+
+    if (!contentText) {
+      errors.push({ message: "话术内容不能为空", rowNumber });
+    } else if (contentText.length > QUICK_REPLY_CONTENT_TEXT_MAX_LENGTH) {
+      errors.push({ message: "话术内容不能超过1000个字", rowNumber });
+    }
+
+    normalizedItems.push({
+      categoryId,
+      contentText,
+      labelColor,
+      labelText,
+      rowNumber,
+    });
+  }
+
+  if (errors.length > 0) {
+    return { errors, ok: false };
+  }
+
+  return { items: normalizedItems, ok: true };
+}
+
+function validateMemoryQuickReplyPayload(
+  request: WorkbenchQuickReplyCreateRequest | WorkbenchQuickReplyUpdateRequest,
+) {
+  const validation = validateQuickReplyPayload({
+    attachments: request.attachments ?? [],
+    contentText: request.contentText ?? "",
+  });
+
+  if (!validation.ok) {
+    throw new BadRequestError("INVALID_QUICK_REPLY_CONTENT", validation.errorMsg);
+  }
+}
+
+function assertMemoryQuickReplyChildCategory(
+  categoryId: string | 0,
+  scopeType: WorkbenchQuickReplyDto["scopeType"],
+  categories: WorkbenchQuickReplyCategoryDto[],
+) {
+  if (categoryId === 0) {
+    throw new BadRequestError("QUICK_REPLY_CHILD_CATEGORY_REQUIRED", "请选择二级分类");
+  }
+
+  const category = categories.find(
+    (item) => item.id === categoryId && item.scopeType === scopeType,
+  );
+
+  if (!category) {
+    throw new BadRequestError("QUICK_REPLY_CATEGORY_NOT_FOUND", "分类不存在");
+  }
+
+  if (category.parentId === 0) {
+    throw new BadRequestError("QUICK_REPLY_CHILD_CATEGORY_REQUIRED", "请选择二级分类");
+  }
 }
 
 function clone<T>(value: T): T {

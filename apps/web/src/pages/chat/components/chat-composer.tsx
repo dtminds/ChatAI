@@ -60,6 +60,7 @@ import {
 import {
   ComposerEmojiNode,
   ComposerImageNode,
+  ComposerLiteAttachmentNode,
   ComposerMentionNode,
 } from "@/pages/chat/components/composer/lexical-nodes";
 import { ComposerRuntimePlugin } from "@/pages/chat/components/composer/lexical-plugins";
@@ -176,7 +177,7 @@ export function ChatComposer({
   const editorConfig = useMemo(
     () => ({
       namespace: "ChatComposer",
-      nodes: [ComposerEmojiNode, ComposerImageNode, ComposerMentionNode],
+      nodes: [ComposerEmojiNode, ComposerImageNode, ComposerLiteAttachmentNode, ComposerMentionNode],
       onError(error: Error) {
         throw error;
       },
@@ -538,7 +539,7 @@ export function ChatComposer({
                 type="button"
                 variant="ghost"
               >
-                <MiniProgramMark className="size-6.5" />
+                <MiniProgramMark className="size-4.5" />
               </Button>
             </ComposerActionTooltip>
             <ComposerActionTooltip

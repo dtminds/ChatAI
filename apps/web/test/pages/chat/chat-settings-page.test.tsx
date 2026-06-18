@@ -1,5 +1,5 @@
 import MockAdapter from "axios-mock-adapter";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
@@ -75,6 +75,13 @@ function mockAuthenticatedSession(role = "admin") {
 }
 
 describe("Chat settings pages", () => {
+  beforeAll(async () => {
+    await Promise.all([
+      import("@/pages/chat/chat-workbench-page"),
+      import("@/pages/chat/settings/chat-settings-page"),
+    ]);
+  });
+
   beforeEach(() => {
     vi.mocked(toast.error).mockClear();
     vi.mocked(toast.success).mockClear();
@@ -328,9 +335,11 @@ describe("Chat settings pages", () => {
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/chat/settings");
     });
-    expect(screen.getByRole("navigation", { name: "设置菜单" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("navigation", { name: "设置菜单" }),
+    ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "德仁堂 接管中" })).not.toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "托管账号" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "托管账号" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("link", { name: "返回应用" }));
 

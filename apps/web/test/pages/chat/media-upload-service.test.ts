@@ -254,6 +254,7 @@ describe("resolveImageSegmentsForSend", () => {
     ]);
     expect(getUploadCredential).not.toHaveBeenCalled();
     expect(cosUploadFileMock).not.toHaveBeenCalled();
+    expect(cosConstructorMock).not.toHaveBeenCalled();
   });
 
   it("does not re-upload image segments that already have remote URLs", async () => {
@@ -280,6 +281,7 @@ describe("resolveImageSegmentsForSend", () => {
     ).resolves.toEqual(segments);
     expect(getUploadCredential).not.toHaveBeenCalled();
     expect(cosUploadFileMock).not.toHaveBeenCalled();
+    expect(cosConstructorMock).not.toHaveBeenCalled();
   });
 
   it("uploads a selected file to COS and returns a sendable file segment", async () => {

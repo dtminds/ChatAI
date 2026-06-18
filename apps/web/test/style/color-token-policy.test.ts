@@ -9,6 +9,7 @@ const allowedFiles = new Set([
   "pages/chat/lib/chat-custody-palette.ts",
   "pages/chat/insights/insights-chart-palette.ts",
   "pages/chat/mock-data.ts",
+  "pages/chat/components/quick-reply/quick-reply-title-palette.ts",
 ]);
 const checkedExtensions = /\.tsx?$/;
 const appearanceThemeBlocks = [

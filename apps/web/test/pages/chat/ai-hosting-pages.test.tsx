@@ -66,6 +66,93 @@ describe("AI hosting pages", () => {
     expect(screen.queryByRole("cell", { name: "护肤小助理" })).not.toBeInTheDocument();
   });
 
+  it("renders the application scope tab", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
+
+    await screen.findByRole("heading", { level: 1, name: "Agent管理" });
+    await user.click(screen.getByRole("tab", { name: "应用范围" }));
+
+    expect(screen.getByRole("textbox", { name: "搜索企微账号" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "批量设置" })).toBeDisabled();
+    expect(screen.getByRole("table", { name: "应用范围列表" })).toBeInTheDocument();
+    expect(screen.getByText("小助理1")).toBeInTheDocument();
+    expect(screen.getByText("小助理2")).toBeInTheDocument();
+    expect(screen.getByText("小助理3")).toBeInTheDocument();
+    expect(screen.getAllByText("启用")).toHaveLength(4);
+    expect(screen.getAllByText("关闭")).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: "设置" })).toHaveLength(3);
+  });
+
+  it("filters application scope accounts by search query", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
+
+    await screen.findByRole("heading", { level: 1, name: "Agent管理" });
+    await user.click(screen.getByRole("tab", { name: "应用范围" }));
+    await user.type(screen.getByRole("textbox", { name: "搜索企微账号" }), "小助理2");
+
+    expect(screen.getByText("小助理2")).toBeInTheDocument();
+    expect(screen.queryByText("小助理1")).not.toBeInTheDocument();
+    expect(screen.queryByText("小助理3")).not.toBeInTheDocument();
+  });
+
+  it("opens the batch settings dialog from row settings", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
+
+    await screen.findByRole("heading", { level: 1, name: "Agent管理" });
+    await user.click(screen.getByRole("tab", { name: "应用范围" }));
+    await user.click(screen.getAllByRole("button", { name: "设置" })[0]);
+
+    const dialog = screen.getByRole("dialog", { name: "批量设置" });
+
+    expect(dialog).toBeInTheDocument();
+    expect(dialog).toHaveTextContent("已选企微账号");
+    expect(dialog).toHaveTextContent("小助理1");
+    expect(dialog).toHaveTextContent("全自动托管权限");
+    expect(dialog).toHaveTextContent("话术推荐");
+    expect(screen.getByRole("button", { name: "保存设置" })).toBeInTheDocument();
+  });
+
+  it("opens the batch settings dialog from batch action", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
+
+    await screen.findByRole("heading", { level: 1, name: "Agent管理" });
+    await user.click(screen.getByRole("tab", { name: "应用范围" }));
+    await user.click(screen.getByRole("checkbox", { name: "选择小助理2" }));
+    await user.click(screen.getByRole("checkbox", { name: "选择小助理3" }));
+    await user.click(screen.getByRole("button", { name: "批量设置" }));
+
+    const dialog = screen.getByRole("dialog", { name: "批量设置" });
+
+    expect(dialog).toBeInTheDocument();
+    expect(dialog).toHaveTextContent("小助理2");
+    expect(dialog).toHaveTextContent("小助理3");
+  });
+
+  it("saves application scope settings from the dialog", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
+
+    await screen.findByRole("heading", { level: 1, name: "Agent管理" });
+    await user.click(screen.getByRole("tab", { name: "应用范围" }));
+    await user.click(screen.getAllByRole("button", { name: "设置" })[0]);
+    await user.click(screen.getByRole("switch", { name: "全自动托管权限" }));
+    await user.click(screen.getByRole("switch", { name: "话术推荐" }));
+    await user.click(screen.getByRole("button", { name: "保存设置" }));
+
+    expect(screen.queryByRole("dialog", { name: "批量设置" })).not.toBeInTheDocument();
+    expect(screen.getAllByText("启用")).toHaveLength(6);
+    expect(screen.queryAllByText("关闭")).toHaveLength(0);
+  });
+
   it("navigates to agent settings page from add agent link", async () => {
     renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
 

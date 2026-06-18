@@ -326,10 +326,11 @@ describe("AI hosting pages", () => {
     expect(screen.getByLabelText("角色描述")).toBeInTheDocument();
   });
 
-  it("renders the knowledge base placeholder", async () => {
+  it("renders the knowledge base page", async () => {
     renderWithRoute("/chat/ai-hosting/knowledge", <KnowledgeBasePage />);
 
     expect(await screen.findByRole("heading", { level: 1, name: "知识库" })).toBeInTheDocument();
-    expect(screen.getByText("功能建设中")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "创建知识点" })).toBeInTheDocument();
+    expect(screen.getByText("产品知识")).toBeInTheDocument();
   });
 });

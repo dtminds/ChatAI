@@ -129,17 +129,13 @@ Access-Control-Allow-Origin: *
 
 建议开启长期缓存。文件位于版本化目录下，升级时发布到新目录，不覆盖旧目录。PaddleOCR module 和 worker 都是跨域 ESM 加载，必须具备 CORS 响应头。
 
-## Web 镜像清理
+## Web 镜像验证
 
 `@paddleocr/paddleocr-js` 已在 Vite build 中外置到 CDN module URL，正常情况下 web 构建产物不会再包含 PaddleOCR runtime、worker 或 ORT WASM 大文件。
 
-`deploy/web.Dockerfile` 在 `pnpm build` 后仍保留 ORT JSEP WASM 清理：
+`deploy/web.Dockerfile` 不再清理 OCR WASM 产物。如果构建产物中重新出现 OCR runtime、worker 或 ORT WASM 大文件，应先修复 Vite 外置或动态加载配置，不要在镜像构建阶段兜底删除。
 
-```bash
-find apps/web/dist/assets -type f -name 'ort-wasm-simd-threaded.jsep-*.wasm' -delete
-```
-
-该步骤用于兜底减小 web 镜像体积。OCR runtime、worker、模型和 ORT 资源都应从 CDN 加载；如果 CDN 文件不可访问，OCR 初始化会失败，因此发布前必须完成 CDN 验证。
+OCR runtime、worker、模型和 ORT 资源都应从 CDN 加载；如果 CDN 文件不可访问，OCR 初始化会失败，因此发布前必须完成 CDN 验证。
 
 ## 升级规则
 
@@ -172,7 +168,7 @@ curl -I https://b5.bokr.com.cn/dist/ocr/onnxruntime-web/1.26.0/ort-wasm-simd-thr
 再运行相关测试：
 
 ```bash
-pnpm --filter @chatai/web test pages/chat/image-ocr.test.ts
+pnpm --filter @chatai/web test test/pages/chat/image-ocr.test.ts
 pnpm --filter @chatai/web build
 ```
 

@@ -9,6 +9,7 @@ on:
     branches:
       - main
       - dev
+      - "feat/**"
       - "feature/**"
   workflow_dispatch:
 

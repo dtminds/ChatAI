@@ -5,6 +5,7 @@ import type { LexicalEditor } from "lexical";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { ChatComposer } from "@/pages/chat/components/chat-composer";
+import { ChatCustodyStatusBar } from "@/pages/chat/components/chat-custody-status-bar";
 import { ChatHeader } from "@/pages/chat/components/chat-header";
 import { ChatMessagePanel } from "@/pages/chat/components/chat-message-panel";
 import { CustomerSidePanel } from "@/pages/chat/components/customer-side-panel";
@@ -25,6 +26,7 @@ import type {
   WorkbenchMaterialCollectionItemDto,
 } from "@chatai/contracts";
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
+import { resolveCustodyHostingStatus } from "@/pages/chat/lib/chat-custody-status";
 import type { SmartReplySendPayload } from "@/pages/chat/api/smart-reply-adapter";
 
 type ChatPanelProps = {
@@ -78,6 +80,8 @@ type ChatPanelProps = {
   onEmojiPickerOpenChange: (isOpen: boolean) => void;
   onEnterBehaviorChange: (behavior: InputEnterBehavior) => void;
   onCancelFileUpload: (uploadId: string) => void;
+  onCancelCustody?: () => void;
+  onEnableCustody?: () => void;
   collectedExpressions?: WorkbenchMaterialCollectionItemDto[];
   hasMoreCollectedExpressions?: boolean;
   isCollectedExpressionLoadingMore?: boolean;
@@ -164,6 +168,8 @@ export function ChatPanel({
   onEmojiPickerOpenChange,
   onEnterBehaviorChange,
   onCancelFileUpload,
+  onCancelCustody,
+  onEnableCustody,
   collectedExpressions,
   hasMoreCollectedExpressions,
   isCollectedExpressionLoadingMore,
@@ -211,6 +217,7 @@ export function ChatPanel({
   composerRef,
   workbenchBodyRef,
 }: ChatPanelProps) {
+  const custodyHostingStatus = resolveCustodyHostingStatus(activeConversation);
   const hasActiveFileUpload = fileUploadQueue.length > 0;
   const hasActiveConversation = activeConversation !== undefined;
 
@@ -289,7 +296,20 @@ export function ChatPanel({
                   </div>
                 ) : null}
 
-                <div className="bg-surface px-4 py-3">
+                <div className="relative overflow-visible bg-surface pb-3">
+                  {custodyHostingStatus ? (
+                    <div
+                      className="-mt-5 mb-2"
+                      data-testid="chat-custody-status-bar-anchor"
+                    >
+                      <ChatCustodyStatusBar
+                        onCancel={onCancelCustody}
+                        onEnable={onEnableCustody}
+                        status={custodyHostingStatus}
+                      />
+                    </div>
+                  ) : null}
+                  <div className={cn("px-4", custodyHostingStatus ? undefined : "pt-3")}>
                   <ChatComposer
                     canSendMessage={canSendMessage}
                     draft={draft}
@@ -327,6 +347,7 @@ export function ChatPanel({
                     quotedMessage={quotedMessage}
                     composerRef={composerRef}
                   />
+                  </div>
                 </div>
               </div>
             </div>

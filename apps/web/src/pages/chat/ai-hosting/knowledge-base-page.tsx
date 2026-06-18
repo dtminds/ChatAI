@@ -39,27 +39,35 @@ const MOCK_KNOWLEDGE_BASES: KnowledgeBaseItem[] = [
   {
     id: "kb-1",
     name: "华为产品知识",
-    description: "华为产品知识",
+    description: "华为各系列产品规格、功能与常见问题",
     lastUpdatedAt: "2025-06-20 22:02:22",
     createdAt: "2025-06-19 22:02:22",
   },
   {
     id: "kb-2",
     name: "售后问题解答",
-    description: "售后问题解答",
+    description: "退换货、维修、保修流程与话术",
     lastUpdatedAt: "2025-06-20 22:02:22",
     createdAt: "2025-06-19 22:02:22",
   },
   {
     id: "kb-3",
     name: "续费话术指引",
-    description: "续费话术指引",
+    description: "不同场景下的续费引导话术与案例",
     lastUpdatedAt: "2025-06-19 22:02:22",
     createdAt: "2025-06-19 22:02:22",
   },
 ];
 
 const PAGE_SIZE = 10;
+
+function getLocalTimeString(): string {
+  const now = new Date();
+  return new Date(now.getTime() - now.getTimezoneOffset() * 60000)
+    .toISOString()
+    .replace("T", " ")
+    .slice(0, 19);
+}
 
 export function KnowledgeBasePage() {
   const [items, setItems] = useState<KnowledgeBaseItem[]>(MOCK_KNOWLEDGE_BASES);
@@ -80,7 +88,11 @@ export function KnowledgeBasePage() {
       return items;
     }
 
-    return items.filter((item) => item.name.toLowerCase().includes(normalized));
+    return items.filter(
+      (item) =>
+        item.name.toLowerCase().includes(normalized) ||
+        item.description.toLowerCase().includes(normalized),
+    );
   }, [items, searchQuery]);
 
   const totalPages = Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE));
@@ -110,13 +122,13 @@ export function KnowledgeBasePage() {
 
     setCreateSubmitting(true);
 
-    // 模拟创建（不调用接口）
+    const nowStr = getLocalTimeString();
     const newItem: KnowledgeBaseItem = {
       id: `kb-${Date.now()}`,
       name,
-      description: createForm.description,
-      lastUpdatedAt: new Date().toISOString().replace("T", " ").slice(0, 19),
-      createdAt: new Date().toISOString().replace("T", " ").slice(0, 19),
+      description: createForm.description.trim(),
+      lastUpdatedAt: nowStr,
+      createdAt: nowStr,
     };
 
     setItems((prev) => [newItem, ...prev]);
@@ -124,11 +136,6 @@ export function KnowledgeBasePage() {
     setCreateDialogOpen(false);
     resetCreateForm();
     setCurrentPage(1);
-  }
-
-  function handleManage(item: KnowledgeBaseItem) {
-    // 占位：后续接入详情/编辑页
-    // eslint-disable-next-line no-alert
   }
 
   return (
@@ -141,26 +148,24 @@ export function KnowledgeBasePage() {
 
         <section className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="relative w-full max-w-[280px]">
-                <HugeiconsIcon
-                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-                  color="currentColor"
-                  icon={Search01Icon}
-                  size={17}
-                  strokeWidth={1.8}
-                />
-                <Input
-                  aria-label="搜索知识库"
-                  className="h-10 rounded-[8px] pl-9"
-                  onChange={(event) => {
-                    setSearchQuery(event.target.value);
-                    setCurrentPage(1);
-                  }}
-                  placeholder="搜索知识库"
-                  value={searchQuery}
-                />
-              </div>
+            <div className="relative w-full max-w-[280px]">
+              <HugeiconsIcon
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                color="currentColor"
+                icon={Search01Icon}
+                size={17}
+                strokeWidth={1.8}
+              />
+              <Input
+                aria-label="搜索知识库"
+                className="h-10 rounded-[8px] pl-9"
+                onChange={(event) => {
+                  setSearchQuery(event.target.value);
+                  setCurrentPage(1);
+                }}
+                placeholder="搜索知识库"
+                value={searchQuery}
+              />
             </div>
 
             <Button className="h-10 px-4" onClick={handleOpenCreateDialog} type="button">
@@ -173,31 +178,35 @@ export function KnowledgeBasePage() {
             <table className="w-full table-fixed text-sm">
               <thead>
                 <tr className="border-b bg-muted/40 text-left text-muted-foreground">
-                  <th className="w-[28%] px-4 py-3 font-medium">知识库名称</th>
-                  <th className="w-[16%] px-4 py-3 font-medium">知识库描述</th>
+                  <th className="w-[22%] px-4 py-3 font-medium">知识库名称</th>
+                  <th className="w-[38%] px-4 py-3 font-medium">描述</th>
                   <th className="w-[20%] px-4 py-3 font-medium">最近更新时间</th>
                   <th className="w-[20%] px-4 py-3 font-medium">创建时间</th>
-                  <th className="w-[16%] px-4 py-3 text-right font-medium">操作</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
                 {pagedItems.length > 0 ? (
                   pagedItems.map((item) => (
                     <tr className="hover:bg-muted/30" key={item.id}>
-                      <td className="px-4 py-3 font-medium text-foreground">{item.name}</td>
-                      <td className="px-4 py-3 text-muted-foreground">{item.description}</td>
+                      <td
+                        className="truncate px-4 py-3 font-medium text-foreground"
+                        title={item.name}
+                      >
+                        {item.name}
+                      </td>
+                      <td
+                        className="truncate px-4 py-3 text-muted-foreground"
+                        title={item.description}
+                      >
+                        {item.description || "-"}
+                      </td>
                       <td className="px-4 py-3 text-muted-foreground">{item.lastUpdatedAt}</td>
                       <td className="px-4 py-3 text-muted-foreground">{item.createdAt}</td>
-                      <td className="px-4 py-3 text-right">
-                        <Button className="text-primary" onClick={() => handleManage(item)} type="button" variant="link">
-                          管理
-                        </Button>
-                      </td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td className="px-4 py-10 text-center text-muted-foreground" colSpan={5}>
+                    <td className="px-4 py-10 text-center text-muted-foreground" colSpan={4}>
                       暂无知识库数据
                     </td>
                   </tr>
@@ -249,7 +258,13 @@ export function KnowledgeBasePage() {
         </section>
       </div>
 
-      <Dialog onOpenChange={setCreateDialogOpen} open={createDialogOpen}>
+      <Dialog
+        onOpenChange={(open) => {
+          if (!open && createSubmitting) return;
+          setCreateDialogOpen(open);
+        }}
+        open={createDialogOpen}
+      >
         <DialogContent className="max-w-[420px]">
           <DialogHeader>
             <DialogTitle>创建知识点</DialogTitle>
@@ -271,7 +286,7 @@ export function KnowledgeBasePage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="kb-desc">知识点描述</Label>
+              <Label htmlFor="kb-desc">描述</Label>
               <Textarea
                 className="min-h-[120px] resize-y"
                 id="kb-desc"

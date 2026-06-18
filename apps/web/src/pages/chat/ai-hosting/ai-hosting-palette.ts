@@ -24,3 +24,21 @@ export const aiHostingGenerateButtonBackground =
 
 export const aiHostingGenerateDialogGlow =
   "radial-gradient(circle,rgba(255,214,165,0.55) 0%,rgba(232,196,255,0.45) 38%,rgba(186,230,253,0.25) 62%,transparent 78%)";
+
+export const aiHostingSettingsModuleSurface = {
+  background: "linear-gradient(180deg,#FFF9FD_0%,#FFFFFF_24px)",
+  border: aiHostingSurfaceColors.border,
+  shadow: "0px 1px 2px 0px rgba(0,0,0,0.05)",
+} as const;
+
+export const aiHostingPreviewHeaderGradient =
+  "linear-gradient(90deg,#FFF8E7_0%,#F8F0FF_52%,#EAF3FF_100%)";
+
+export const aiHostingPreviewMessageColors = {
+  bubbleBackground: "#F3F4F6",
+} as const;
+
+export const aiHostingPreviewCustomerAvatarColors = {
+  background: "#FDE68A",
+  text: "#92400E",
+} as const;

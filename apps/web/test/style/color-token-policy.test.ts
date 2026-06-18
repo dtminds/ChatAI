@@ -6,6 +6,7 @@ const sourceRoot = join(process.cwd(), "src");
 const themeCss = readFileSync(join(sourceRoot, "styles/index.css"), "utf8");
 const allowedFiles = new Set([
   "pages/chat/ai-hosting/ai-hosting-palette.ts",
+  "pages/chat/lib/chat-custody-palette.ts",
   "pages/chat/insights/insights-chart-palette.ts",
   "pages/chat/mock-data.ts",
 ]);

@@ -83,4 +83,34 @@ describe("conversation composer draft", () => {
       ),
     ).toBe("[草稿][引用消息]");
   });
+
+  it("preserves lite attachment segments in draft content and preview", () => {
+    const draft = buildConversationComposerDraft({
+      draft: "",
+      quotedMessage: null,
+      segments: [
+        {
+          desc: "活动说明",
+          href: "https://example.com/activity",
+          materialCollectionId: "material-h5-001",
+          msgid: "msg-h5-001",
+          title: "活动链接",
+          type: "h5",
+        },
+      ],
+    });
+
+    expect(hasConversationComposerDraftContent(draft)).toBe(true);
+    expect(draft.segments).toEqual([
+      {
+        desc: "活动说明",
+        href: "https://example.com/activity",
+        materialCollectionId: "material-h5-001",
+        msgid: "msg-h5-001",
+        title: "活动链接",
+        type: "h5",
+      },
+    ]);
+    expect(getConversationComposerDraftPreview(draft)).toBe("[草稿][链接]");
+  });
 });

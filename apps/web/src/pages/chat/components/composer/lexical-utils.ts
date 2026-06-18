@@ -1,5 +1,6 @@
 import {
   $createParagraphNode,
+  $createLineBreakNode,
   $createTextNode,
   $getSelection,
   $getRoot,
@@ -18,9 +19,11 @@ import type { ComposerSegment, ComposerTextSegment } from "@/pages/chat/lib/comp
 import {
   $createComposerEmojiNode,
   $createComposerImageNode,
+  $createComposerLiteAttachmentNode,
   $createComposerMentionNode,
   $isComposerEmojiNode,
   $isComposerImageNode,
+  $isComposerLiteAttachmentNode,
   $isComposerMentionNode,
 } from "@/pages/chat/components/composer/lexical-nodes";
 import {
@@ -111,6 +114,17 @@ export function $insertComposerImage(input: {
   insertionPoint.select(COMPOSER_TEXT_ANCHOR.length, COMPOSER_TEXT_ANCHOR.length);
 }
 
+export function $insertComposerLiteAttachment(
+  segment: Extract<ComposerSegment, { type: "file" | "h5" | "weapp" | "sphfeed" }>,
+) {
+  const paragraph = $createParagraphNode();
+  paragraph.append($createComposerLiteAttachmentNode(segment));
+  const trailingParagraph = $createParagraphNode();
+
+  $insertNodes([paragraph, trailingParagraph]);
+  trailingParagraph.selectStart();
+}
+
 export function $updateComposerImage(input: {
   clientId?: string;
   fileId?: string;
@@ -143,17 +157,66 @@ export function $clearComposer() {
 }
 
 export function $restoreComposerFromSegments(segments: ComposerSegment[]) {
-  $clearComposer();
+  const root = $getRoot();
+  let currentParagraph = $createParagraphNode();
+
+  root.clear();
+
+  const appendCurrentParagraph = () => {
+    if (!currentParagraph.isEmpty()) {
+      root.append(currentParagraph);
+      currentParagraph = $createParagraphNode();
+    }
+  };
 
   for (const segment of segments) {
-    if (segment.type === "image") {
-      const src = segment.url ?? segment.localUrl ?? "";
+    if (isLiteAttachmentSegment(segment)) {
+      appendCurrentParagraph();
 
-      if (!src) {
-        continue;
-      }
+      const attachmentParagraph = $createParagraphNode();
+      attachmentParagraph.append($createComposerLiteAttachmentNode(segment));
+      root.append(attachmentParagraph);
+      continue;
+    }
 
-      $insertComposerImage({
+    appendComposerSegmentToParagraph(currentParagraph, segment);
+  }
+
+  if (!currentParagraph.isEmpty()) {
+    root.append(currentParagraph);
+    currentParagraph.selectEnd();
+    return;
+  }
+
+  const lastChild = root.getLastChild();
+
+  if ($isElementNode(lastChild) && hasComposerLiteAttachmentChild(lastChild)) {
+    root.append(currentParagraph);
+    currentParagraph.selectStart();
+    return;
+  }
+
+  if ($isElementNode(lastChild)) {
+    lastChild.selectEnd();
+  } else {
+    root.append(currentParagraph);
+    currentParagraph.selectStart();
+  }
+}
+
+function appendComposerSegmentToParagraph(
+  paragraph: ElementNode,
+  segment: ComposerSegment,
+) {
+  if (segment.type === "image") {
+    const src = segment.url ?? segment.localUrl ?? "";
+
+    if (!src) {
+      return;
+    }
+
+    paragraph.append(
+      $createComposerImageNode({
         alt: segment.alt,
         clientId: segment.clientId,
         fileId: segment.fileId,
@@ -161,28 +224,31 @@ export function $restoreComposerFromSegments(segments: ComposerSegment[]) {
         localUrl: segment.localUrl,
         src,
         width: segment.width,
-      });
-      continue;
-    }
-
-    if (segment.type !== "text") {
-      continue;
-    }
-
-    $appendComposerTextSegment(segment);
+      }),
+    );
+    return;
   }
 
-  $getRoot().selectEnd();
+  if (segment.type !== "text") {
+    return;
+  }
+
+  appendComposerTextSegmentToParagraph(paragraph, segment);
 }
 
-function $appendComposerTextSegment(segment: ComposerTextSegment) {
+function appendComposerTextSegmentToParagraph(
+  paragraph: ElementNode,
+  segment: ComposerTextSegment,
+) {
   if (segment.mentionAll) {
-    $insertComposerMention({
-      displayName: "所有人",
-      isAll: true,
-      memberId: "__all__",
-    });
-    appendTrailingComposerText(segment.text, "所有人");
+    paragraph.append(
+      $createComposerMentionNode({
+        displayName: "所有人",
+        isAll: true,
+        memberId: "__all__",
+      }),
+    );
+    appendTrailingComposerTextToParagraph(paragraph, segment.text, "所有人");
     return;
   }
 
@@ -191,26 +257,60 @@ function $appendComposerTextSegment(segment: ComposerTextSegment) {
   if (mentionMemberId) {
     const displayName = segment.text.replace(/^@/, "").trim() || "成员";
 
-    $insertComposerMention({
-      displayName,
-      isAll: false,
-      memberId: mentionMemberId,
-    });
-    appendTrailingComposerText(segment.text, displayName);
-    return;
-  }
-
-  if (segment.text === "\n") {
-    $getRoot().append($createParagraphNode());
+    paragraph.append(
+      $createComposerMentionNode({
+        displayName,
+        isAll: false,
+        memberId: mentionMemberId,
+      }),
+    );
+    appendTrailingComposerTextToParagraph(paragraph, segment.text, displayName);
     return;
   }
 
   if (segment.text) {
-    $insertComposerText(segment.text);
+    appendComposerTextWithLineBreaksToParagraph(paragraph, segment.text);
   }
 }
 
-function appendTrailingComposerText(text: string, mentionLabel: string) {
+function appendComposerTextWithLineBreaksToParagraph(
+  paragraph: ElementNode,
+  text: string,
+) {
+  const parts = text.split("\n");
+
+  parts.forEach((part, index) => {
+    if (index > 0) {
+      paragraph.append($createLineBreakNode());
+    }
+
+    if (part) {
+      appendComposerTextToParagraph(paragraph, part);
+    }
+  });
+}
+
+function appendComposerTextToParagraph(paragraph: ElementNode, text: string) {
+  const nodes = parseWechatEmojiText(text).map((segment) => {
+    if (segment.type === "emoji") {
+      return $createComposerEmojiNode(
+        toWechatEmojiToken(segment.value.name),
+        segment.value.name,
+        segment.value.path,
+      );
+    }
+
+    return $createTextNode(segment.value);
+  });
+
+  paragraph.append(...nodes);
+}
+
+function appendTrailingComposerTextToParagraph(
+  paragraph: ElementNode,
+  text: string,
+  mentionLabel: string,
+) {
   const normalizedLabel = mentionLabel.trim();
   const mentionPrefix = normalizedLabel ? `@${normalizedLabel}` : "";
   const trailingText =
@@ -219,7 +319,7 @@ function appendTrailingComposerText(text: string, mentionLabel: string) {
       : text.replace(/^@\S+/, "").trimStart();
 
   if (trailingText) {
-    $insertComposerText(trailingText);
+    appendComposerTextToParagraph(paragraph, trailingText);
   }
 }
 
@@ -304,10 +404,20 @@ export function $removeComposerTextRange(start: number, end: number) {
 
 export function $exportComposerSegments() {
   const segments: ComposerSegment[] = [];
+  const rootChildren = $getRoot().getChildren();
 
-  for (const child of $getRoot().getChildren()) {
+  rootChildren.forEach((child, index) => {
     collectSegmentsFromNode(child, segments);
-  }
+
+    const nextChild = rootChildren[index + 1];
+
+    if (shouldExportParagraphBreak(child, nextChild)) {
+      segments.push({
+        text: "\n",
+        type: "text",
+      });
+    }
+  });
 
   return segments;
 }
@@ -393,6 +503,11 @@ function collectSegmentsFromNode(node: LexicalNode, segments: ComposerSegment[])
     return;
   }
 
+  if ($isComposerLiteAttachmentNode(node)) {
+    segments.push(node.getSegment());
+    return;
+  }
+
   if ($isElementNode(node) || $isRootNode(node)) {
     const elementNode = node as ElementNode;
     const children = elementNode.getChildren();
@@ -400,14 +515,40 @@ function collectSegmentsFromNode(node: LexicalNode, segments: ComposerSegment[])
     children.forEach((child) => {
       collectSegmentsFromNode(child, segments);
     });
-
-    if (!$isRootNode(node)) {
-      segments.push({
-        text: "\n",
-        type: "text",
-      });
-    }
   }
+}
+
+function shouldExportParagraphBreak(
+  currentNode: LexicalNode,
+  nextNode: LexicalNode | undefined,
+) {
+  return (
+    isTextParagraphNode(currentNode) &&
+    isTextParagraphNode(nextNode) &&
+    !hasComposerLiteAttachmentChild(currentNode) &&
+    !hasComposerLiteAttachmentChild(nextNode)
+  );
+}
+
+function isTextParagraphNode(node: LexicalNode | undefined): node is ElementNode {
+  return $isElementNode(node) && node.getType() === "paragraph";
+}
+
+function hasComposerLiteAttachmentChild(node: ElementNode) {
+  return node
+    .getChildren()
+    .some((child) => $isComposerLiteAttachmentNode(child));
+}
+
+function isLiteAttachmentSegment(
+  segment: ComposerSegment,
+): segment is Extract<ComposerSegment, { type: "file" | "h5" | "weapp" | "sphfeed" }> {
+  return (
+    segment.type === "file" ||
+    segment.type === "h5" ||
+    segment.type === "weapp" ||
+    segment.type === "sphfeed"
+  );
 }
 
 function findFirstWechatEmojiToken(text: string) {

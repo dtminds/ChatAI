@@ -530,6 +530,52 @@ describe("MessageContentRenderer image messages", () => {
     expect(screen.getAllByTestId("image-preview-ocr-region")).toHaveLength(2);
   });
 
+  it("wraps long OCR text tokens inside the result panel", async () => {
+    const user = userEvent.setup();
+    const longPath = "/Users/admin/workspace/AI/ChatAI/apps/web/src/store/workbench-store.ts";
+    vi.mocked(recognizeImageText).mockResolvedValue({
+      text: longPath,
+      regions: [
+        {
+          id: "ocr-region-1",
+          points: [],
+          text: longPath,
+        },
+      ],
+    });
+
+    render(
+      <ImageMessageCard
+        content={createImageContent({
+          alt: "长英文路径图片",
+          height: 292,
+          imageUrl: "https://cdn.example.com/chat/path-photo.jpg",
+          width: 668,
+        })}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "查看大图：长英文路径图片" }));
+    await user.click(screen.getByRole("button", { name: "提取图片文字" }));
+
+    const panel = await screen.findByTestId("image-preview-ocr-panel");
+    const resultText = await screen.findByText(longPath);
+    const resultCard = resultText.closest("[data-testid='image-preview-ocr-result']");
+
+    expect(panel).toHaveClass("w-[22rem]", "max-w-[22rem]", "min-w-0");
+    expect(panel.parentElement).toHaveClass("min-w-0", "max-w-[22rem]", "overflow-hidden");
+    expect(panel.querySelector("[data-slot='scroll-area-viewport']")?.parentElement)
+      .toHaveClass(
+        "[&_[data-slot=scroll-area-viewport]>div]:!block",
+        "[&_[data-slot=scroll-area-viewport]>div]:w-full",
+        "[&_[data-slot=scroll-area-viewport]>div]:min-w-0",
+        "[&_[data-slot=scroll-area-viewport]>div]:max-w-full",
+      );
+    expect(resultCard).toHaveClass("w-full", "max-w-full", "min-w-0");
+    expect(resultText).toHaveClass("w-full", "max-w-full", "min-w-0");
+    expect(resultText).not.toHaveClass("break-all");
+  });
+
   it("scrolls the matching OCR text block into view when an overlay region is clicked", async () => {
     const user = userEvent.setup();
     const scrollIntoView = vi.fn();

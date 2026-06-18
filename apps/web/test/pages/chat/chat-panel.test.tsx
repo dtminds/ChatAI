@@ -1,5 +1,6 @@
 import { createRef } from "react";
 import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { ChatPanel } from "@/pages/chat/components/chat-panel";
 import type { Conversation } from "@/pages/chat/chat-types";
@@ -64,7 +65,9 @@ describe("ChatPanel", () => {
     ).toBeInTheDocument();
   });
 
-  it("preserves the customer side panel flex layout while history is closed", () => {
+  it("preserves the customer side panel flex layout while history is closed", async () => {
+    const user = userEvent.setup();
+
     render(
       <ChatPanel
         activeConversation={createConversation()}
@@ -134,6 +137,7 @@ describe("ChatPanel", () => {
     expect(within(preservedLayout).getByRole("complementary", { name: "客户信息栏" })).toHaveStyle({
       width: "375px",
     });
+    await user.click(within(preservedLayout).getByRole("tab", { name: "素材中心" }));
     expect(screen.getByTitle("素材中心扩展页").parentElement).toHaveClass("h-full");
   });
 

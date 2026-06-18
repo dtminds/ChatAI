@@ -1,0 +1,3 @@
+export const MEDIA_UPLOAD_SDK_LOAD_FAILED_CODE = "MEDIA_UPLOAD_SDK_LOAD_FAILED";
+export const MEDIA_UPLOAD_SDK_LOAD_FAILED_MESSAGE =
+  "上传组件加载失败，请刷新页面后重试";

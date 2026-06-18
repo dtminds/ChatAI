@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft01Icon,
   ArrowRight01Icon,
@@ -147,7 +147,7 @@ function AgentMetricCarousel({ metrics }: { metrics: AgentMetric[] }) {
 
       <div
         className="flex gap-4 overflow-x-auto scroll-smooth pb-1 scrollbar-none [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
-        onScroll={handleScroll}
+        onScroll={updateScrollState}
         ref={scrollRef}
       >
         {metrics.map((metric) => (

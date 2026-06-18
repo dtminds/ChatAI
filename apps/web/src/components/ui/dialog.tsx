@@ -33,12 +33,24 @@ type DialogContentProps =
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
     closeButtonClassName?: string;
     closeButtonDisabled?: boolean;
+    closeButtonVisible?: boolean;
   };
 
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   DialogContentProps
->(({ className, children, closeButtonClassName, closeButtonDisabled, ...props }, ref) => (
+>(
+  (
+    {
+      className,
+      children,
+      closeButtonClassName,
+      closeButtonDisabled,
+      closeButtonVisible = true,
+      ...props
+    },
+    ref,
+  ) => (
   <DialogPortal>
     <DialogOverlay />
     <DialogPrimitive.Content
@@ -50,24 +62,27 @@ const DialogContent = React.forwardRef<
       {...props}
     >
       {children}
-      <DialogPrimitive.Close
-        className={cn(
-          "absolute right-4 top-4 inline-flex size-8 items-center justify-center rounded-[8px] text-muted-foreground opacity-70 transition-colors hover:bg-accent hover:text-foreground hover:opacity-100 focus:outline-none focus:ring-4 focus:ring-ring/20 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground",
-          closeButtonClassName,
-        )}
-        disabled={closeButtonDisabled}
-      >
-        <HugeiconsIcon
-          color="currentColor"
-          icon={Cancel01Icon}
-          size={16}
-          strokeWidth={1.8}
-        />
-        <span className="sr-only">关闭</span>
-      </DialogPrimitive.Close>
+      {closeButtonVisible ? (
+        <DialogPrimitive.Close
+          className={cn(
+            "absolute right-4 top-4 inline-flex size-8 items-center justify-center rounded-[8px] text-muted-foreground opacity-70 transition-colors hover:bg-accent hover:text-foreground hover:opacity-100 focus:outline-none focus:ring-4 focus:ring-ring/20 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground",
+            closeButtonClassName,
+          )}
+          disabled={closeButtonDisabled}
+        >
+          <HugeiconsIcon
+            color="currentColor"
+            icon={Cancel01Icon}
+            size={16}
+            strokeWidth={1.8}
+          />
+          <span className="sr-only">关闭</span>
+        </DialogPrimitive.Close>
+      ) : null}
     </DialogPrimitive.Content>
   </DialogPortal>
-));
+  ),
+);
 DialogContent.displayName = DialogPrimitive.Content.displayName;
 
 function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {

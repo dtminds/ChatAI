@@ -67,7 +67,7 @@ describe("CustomerSidePanel", () => {
     expect(within(sidePanel).getByRole("tab", { name: "仅群聊" })).toBeInTheDocument();
   });
 
-  it("links single-conversation empty state to sidebar settings", () => {
+  it("shows the quick reply tab for single conversations without custom sidebar items", () => {
     render(
       <CustomerSidePanel
         {...defaultProps}
@@ -79,18 +79,8 @@ describe("CustomerSidePanel", () => {
     const sidePanel = screen.getByRole("complementary", { name: "客户信息栏" });
 
     expect(within(sidePanel).queryByRole("tab", { name: "基础信息" })).not.toBeInTheDocument();
-    expect(within(sidePanel).queryByRole("tab")).not.toBeInTheDocument();
-    expect(
-      within(sidePanel).getByRole("status", { name: "请前往设置页配置聊天侧边栏" }),
-    ).toBeInTheDocument();
-    expect(within(sidePanel).getByRole("link", { name: "设置" })).toHaveAttribute(
-      "href",
-      "/chat/settings/sidebar",
-    );
-    expect(sidePanel.querySelector("img")).toHaveAttribute(
-      "src",
-      "https://b5.bokr.com.cn/dist/no_result.png",
-    );
+    expect(within(sidePanel).getByRole("tab", { name: "快捷话术" })).toBeInTheDocument();
+    expect(within(sidePanel).getByText("暂未加载快捷话术")).toBeInTheDocument();
   });
 
   it("keeps the basic info tab for group conversations without custom sidebar items", () => {
@@ -105,7 +95,8 @@ describe("CustomerSidePanel", () => {
     const sidePanel = screen.getByRole("complementary", { name: "群成员信息栏" });
 
     expect(within(sidePanel).getByRole("tab", { name: "基础信息" })).toBeInTheDocument();
-    expect(within(sidePanel).getAllByRole("tab")).toHaveLength(1);
+    expect(within(sidePanel).getByRole("tab", { name: "快捷话术" })).toBeInTheDocument();
+    expect(within(sidePanel).getAllByRole("tab")).toHaveLength(2);
     expect(within(sidePanel).queryByRole("status", { name: "暂未配置侧边栏" })).not.toBeInTheDocument();
   });
 
@@ -129,15 +120,17 @@ describe("CustomerSidePanel", () => {
 
     const sidePanel = screen.getByRole("complementary", { name: "客户信息栏" });
 
+    expect(within(sidePanel).getByRole("tab", { name: "快捷话术" })).toBeInTheDocument();
     expect(within(sidePanel).getByRole("tab", { name: "页面1" })).toBeInTheDocument();
     expect(within(sidePanel).getByRole("tab", { name: "页面2" })).toBeInTheDocument();
     expect(within(sidePanel).getByRole("tab", { name: "页面3" })).toBeInTheDocument();
-    expect(within(sidePanel).getByRole("tab", { name: "页面4" })).toBeInTheDocument();
+    expect(within(sidePanel).queryByRole("tab", { name: "页面4" })).not.toBeInTheDocument();
     expect(within(sidePanel).queryByRole("tab", { name: "页面5" })).not.toBeInTheDocument();
     expect(within(sidePanel).getByRole("button", { name: "展开" })).toBeInTheDocument();
 
     await user.click(within(sidePanel).getByRole("button", { name: "展开" }));
 
+    expect(within(sidePanel).getByRole("tab", { name: "页面4" })).toBeInTheDocument();
     expect(within(sidePanel).getByRole("tab", { name: "页面5" })).toBeInTheDocument();
     expect(within(sidePanel).getByRole("button", { name: "收起" })).toBeInTheDocument();
   });
@@ -255,7 +248,8 @@ describe("CustomerSidePanel", () => {
       />,
     );
 
-    expect(screen.getByRole("tab", { name: "页面A", selected: true })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "快捷话术", selected: true })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "页面A" })).toBeInTheDocument();
   });
 
   it("shows a loading indicator until the custom sidebar iframe finishes loading", async () => {

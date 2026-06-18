@@ -4,6 +4,7 @@ import {
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
+  type ReactNode,
 } from "react";
 import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -53,7 +54,7 @@ function buildSidebarIframeParamsScopeKey(input: {
 type CustomerSidePanelProps = {
   accountName?: string;
   conversationMode?: ChatMode;
-  /** 当前席位 ID，用于服务端签发侧栏 iframe 涂色参数 */
+  /** 当前席位 ID，用于服务端签发侧栏 iframe 参数 */
   sidebarIframeSeatId?: string;
   /** 当前会话 ID，用于服务端按库表解析三方 ID 并签发参数 */
   sidebarIframeConversationId?: string;
@@ -66,7 +67,9 @@ type CustomerSidePanelProps = {
   isGroupMembersLoading: boolean;
   isResizing: boolean;
   panelWidth: number;
+  quickReplyPanel?: ReactNode;
   sidebarItems?: SettingsSidebarItem[];
+  onQuickReplyActiveChange?: (isActive: boolean) => void;
   onRefreshGroupMembers: () => void;
   onResizeStart: (event: ReactPointerEvent<HTMLButtonElement>) => void;
 };
@@ -83,7 +86,9 @@ export function CustomerSidePanel({
   isGroupMembersLoading,
   isResizing,
   panelWidth,
+  quickReplyPanel,
   sidebarItems = [],
+  onQuickReplyActiveChange,
   onRefreshGroupMembers,
   onResizeStart,
 }: CustomerSidePanelProps) {
@@ -225,11 +230,7 @@ export function CustomerSidePanel({
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(
     readSidebarExpandedPreference,
   );
-  const defaultSidebarValue = isGroupConversation
-    ? "system"
-    : activeSidebarItems[0]
-      ? getSidebarTabValue(activeSidebarItems[0])
-      : "";
+  const defaultSidebarValue = isGroupConversation ? "system" : "quick-reply";
   const sidebarEntries = [
     ...(isGroupConversation
       ? [
@@ -241,6 +242,12 @@ export function CustomerSidePanel({
           },
         ]
       : []),
+    {
+      id: "quick-reply",
+      kind: "quick-reply" as const,
+      name: "快捷话术",
+      value: "quick-reply",
+    },
     ...activeSidebarItems.map((item) => ({
       id: item.id,
       item,
@@ -274,6 +281,10 @@ export function CustomerSidePanel({
       return defaultSidebarValue;
     });
   }, [defaultSidebarValue, sidebarEntries]);
+
+  useEffect(() => {
+    onQuickReplyActiveChange?.(activeSidebarValue === "quick-reply");
+  }, [activeSidebarValue, onQuickReplyActiveChange]);
 
   return (
     <>
@@ -349,6 +360,17 @@ export function CustomerSidePanel({
                   accountName={accountName}
                   customer={customer}
                 />
+              )}
+            </TabsContent>
+
+            <TabsContent
+              className="mt-0 min-h-0 flex-1 overflow-hidden"
+              value="quick-reply"
+            >
+              {quickReplyPanel ?? (
+                <div className="flex h-full min-h-0 items-center justify-center px-6 text-sm text-muted-foreground">
+                  暂未加载快捷话术
+                </div>
               )}
             </TabsContent>
 

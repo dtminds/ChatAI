@@ -76,7 +76,7 @@ export function MiniAppMessageCard({
       </div>
 
       <div className="mt-2.5 flex items-center gap-1 border-t border-divider pt-2 text-[11px] text-muted-foreground">
-        <MiniProgramMark className="shrink-0 text-mini-program-brand" />
+        <MiniProgramMark className="size-3.5 shrink-0 text-mini-program-brand" />
         <span>{content.sourceLabel ?? "小程序"}</span>
       </div>
     </div>
@@ -101,15 +101,17 @@ export function MiniProgramMark({
   return (
     <svg
       aria-hidden="true"
-      className={cn("h-[18px] w-[18px]", className)}
+      className={cn("size-4", className)}
       data-testid="mini-program-mark"
       {...props}
       viewBox="0 0 1024 1024"
     >
-      <path
-        d="M800 384a160.384 160.384 0 0 1-128.64 156.928 32 32 0 0 1-12.48-62.72A96 96 0 1 0 544 384v256a160 160 0 1 1-191.36-156.928 32 32 0 1 1 12.48 62.72A96 96 0 1 0 480 640V384a160 160 0 0 1 320 0z"
-        fill="currentColor"
-      />
+      <g transform="translate(512 512) scale(1.5) translate(-512 -512)">
+        <path
+          d="M800 384a160.384 160.384 0 0 1-128.64 156.928 32 32 0 0 1-12.48-62.72A96 96 0 1 0 544 384v256a160 160 0 1 1-191.36-156.928 32 32 0 1 1 12.48 62.72A96 96 0 1 0 480 640V384a160 160 0 0 1 320 0z"
+          fill="currentColor"
+        />
+      </g>
     </svg>
   );
 }

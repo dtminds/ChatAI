@@ -3,7 +3,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { toast } from "sonner";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { routerConfig } from "@/router";
 import {
   createMockWorkbenchService,
@@ -146,6 +146,13 @@ function createCustomerPageService() {
 }
 
 describe("CustomerPage", () => {
+  beforeAll(async () => {
+    await Promise.all([
+      import("@/pages/chat/chat-workbench-page"),
+      import("@/pages/chat/settings/chat-settings-page"),
+    ]);
+  });
+
   beforeEach(() => {
     vi.useFakeTimers({
       shouldAdvanceTime: true,

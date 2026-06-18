@@ -331,6 +331,6 @@ describe("AI hosting pages", () => {
 
     expect(await screen.findByRole("heading", { level: 1, name: "知识库" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "创建知识点" })).toBeInTheDocument();
-    expect(screen.getByText("产品知识")).toBeInTheDocument();
+    expect(screen.getByText(/华为产品知识/)).toBeInTheDocument();
   });
 });

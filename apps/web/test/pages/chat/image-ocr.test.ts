@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   recognizeImageText,
+  resolvePaddleOcrWorkerUrl,
   resolvePaddleOcrModuleSpecifier,
 } from "@/pages/chat/lib/image-ocr";
 
@@ -80,6 +81,7 @@ const createdImages: ImageMock[] = [];
 
 describe("recognizeImageText", () => {
   beforeEach(() => {
+    vi.useRealTimers();
     create.mockClear();
     WorkerMock.mockClear();
     createObjectUrlMock.mockClear();
@@ -199,6 +201,43 @@ describe("recognizeImageText", () => {
     expect(nextResult.text).toBe("第二张");
   });
 
+  it("revokes the worker blob URL after worker creation can start", () => {
+    vi.useFakeTimers();
+    vi.resetModules();
+    predict.mockResolvedValue([]);
+
+    return import("@/pages/chat/lib/image-ocr").then(
+      async ({ recognizeImageText: recognizeFreshImageText }) => {
+        try {
+          await recognizeFreshImageText({
+            alt: "worker 图片",
+            imageUrl: "https://cdn.example.com/worker.jpg",
+          });
+
+          const createOptions = (create.mock.calls as unknown as Array<
+            [CreateWorkerOptions]
+          >)[0]?.[0];
+          const createWorker =
+            typeof createOptions?.worker === "object"
+              ? createOptions.worker.createWorker
+              : undefined;
+
+          createWorker?.();
+
+          expect(revokeObjectUrlMock).not.toHaveBeenCalled();
+
+          vi.runOnlyPendingTimers();
+
+          expect(revokeObjectUrlMock).toHaveBeenCalledWith(
+            "blob:https://chat.example.com/ocr-worker",
+          );
+        } finally {
+          vi.useRealTimers();
+        }
+      },
+    );
+  });
+
   it("uses the CDN module outside Vitest and keeps a mockable package import in tests", () => {
     expect(resolvePaddleOcrModuleSpecifier("development")).toBe(
       "https://b5.bokr.com.cn/dist/ocr/paddleocr-js/0.4.2/index.mjs",
@@ -207,6 +246,18 @@ describe("recognizeImageText", () => {
       "https://b5.bokr.com.cn/dist/ocr/paddleocr-js/0.4.2/index.mjs",
     );
     expect(resolvePaddleOcrModuleSpecifier("test")).toBe("@paddleocr/paddleocr-js");
+  });
+
+  it("resolves the default worker URL from relative module URLs", () => {
+    expect(
+      resolvePaddleOcrWorkerUrl(
+        "",
+        "/dist/ocr/paddleocr-js/0.4.2/index.mjs",
+        "https://chat.example.com/assets/chat-workbench-page.js",
+      ),
+    ).toBe(
+      "https://chat.example.com/dist/ocr/paddleocr-js/0.4.2/assets/worker-entry-C9UNuyOJ.js",
+    );
   });
 
   it("normalizes falsy OCR results to an empty result", async () => {

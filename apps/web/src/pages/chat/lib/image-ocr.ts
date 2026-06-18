@@ -36,7 +36,11 @@ const paddleOcrModuleUrl =
   "https://b5.bokr.com.cn/dist/ocr/paddleocr-js/0.4.2/index.mjs";
 const paddleOcrWorkerUrl =
   import.meta.env.VITE_OCR_PADDLE_WORKER_URL?.trim() ||
-  new URL("assets/worker-entry-C9UNuyOJ.js", paddleOcrModuleUrl).href;
+  resolvePaddleOcrWorkerUrl(
+    import.meta.env.VITE_OCR_PADDLE_WORKER_URL,
+    paddleOcrModuleUrl,
+    import.meta.url,
+  );
 const paddleOcrModelBasePath = ensureTrailingSlash(paddleOcrModelBaseUrl);
 
 const ocrCreateOptions: LocalPaddleOcrCreateOptions = {
@@ -115,6 +119,23 @@ export function resolvePaddleOcrModuleSpecifier(mode: string | undefined) {
   return mode === "test" ? "@paddleocr/paddleocr-js" : paddleOcrModuleUrl;
 }
 
+export function resolvePaddleOcrWorkerUrl(
+  workerUrl: string | undefined,
+  moduleUrl: string,
+  importMetaUrl: string,
+) {
+  const configuredWorkerUrl = workerUrl?.trim();
+
+  if (configuredWorkerUrl) {
+    return configuredWorkerUrl;
+  }
+
+  return new URL(
+    "assets/worker-entry-C9UNuyOJ.js",
+    new URL(moduleUrl, importMetaUrl),
+  ).href;
+}
+
 function isWorkerInitializationError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
 
@@ -132,7 +153,7 @@ function createPaddleOcrWorker() {
   const workerUrl = URL.createObjectURL(workerModule);
   const worker = new Worker(workerUrl, { type: "module" });
 
-  URL.revokeObjectURL(workerUrl);
+  setTimeout(() => URL.revokeObjectURL(workerUrl), 0);
 
   return worker;
 }

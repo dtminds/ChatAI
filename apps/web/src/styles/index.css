@@ -46,6 +46,12 @@
   --shadow-soft: oklch(0 0 0 / 0.06);
   --shadow-medium: oklch(0 0 0 / 0.14);
   --shadow-strong: oklch(0 0 0 / 0.22);
+  --tabs-trigger-active-bg: var(--background);
+  --tabs-trigger-active-shadow:
+    0 0 0 1px #0000000f,
+    0 1px 1px -0.5px #0000000f,
+    0 3px 3px -1.5px #0000000f,
+    0 6px 6px -3px #0000000f;
   --scrollbar-size: 10px;
   --scrollbar-radius: 999px;
   --scrollbar-track: transparent;
@@ -115,6 +121,14 @@
   --shadow-soft: oklch(0 0 0 / 0.2);
   --shadow-medium: oklch(0 0 0 / 0.3);
   --shadow-strong: oklch(0 0 0 / 0.42);
+  --tabs-trigger-active-bg: #3a3a3a;
+  --tabs-trigger-active-shadow:
+    inset 0 1px 0 0 #ffffff08,
+    inset 0 0 0 1px #ffffff14,
+    0 0 0 1px #00000024,
+    0 1px 1px -0.5px #0000002e,
+    0 3px 3px -1.5px #0000002e,
+    0 6px 6px -3px #0000002e;
   --scrollbar-track: transparent;
   --scrollbar-thumb: oklch(0.556 0 0 / 0.65);
   --scrollbar-thumb-hover: oklch(0.708 0 0 / 0.78);

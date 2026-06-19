@@ -19,6 +19,11 @@ import {
 import { ShinyText } from "@/components/ui/shiny-text";
 import { Slider } from "@/components/ui/slider";
 import {
+  Tabs,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
+import {
   Field,
   PreferenceOption,
 } from "@/pages/chat/settings/shared";
@@ -103,6 +108,40 @@ describe("extended UI primitives", () => {
     expect(text).toHaveStyle({ "--shiny-text-duration": "1.2s" });
     expect(text).toHaveStyle({ "--shiny-text-shimmer-width": "96px" });
     expect(text).toHaveClass("text-primary");
+  });
+
+  it("uses source-matched active shadow without forcing underline tabs", () => {
+    render(
+      <>
+        <Tabs defaultValue="open">
+          <TabsList aria-label="默认标签">
+            <TabsTrigger value="open">待处理</TabsTrigger>
+          </TabsList>
+        </Tabs>
+        <Tabs defaultValue="underline">
+          <TabsList className="rounded-none bg-transparent p-0">
+            <TabsTrigger
+              className="rounded-none border-b-2 border-transparent bg-transparent shadow-none data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+              value="underline"
+            >
+              普通
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+      </>,
+    );
+
+    expect(screen.getByRole("tablist", { name: "默认标签" })).toHaveClass(
+      "bg-secondary/90",
+    );
+    expect(screen.getByRole("tab", { name: "待处理" })).toHaveClass(
+      "data-[state=active]:bg-[var(--tabs-trigger-active-bg)]",
+      "data-[state=active]:shadow-[var(--tabs-trigger-active-shadow)]",
+    );
+    expect(screen.getByRole("tab", { name: "普通" })).toHaveClass(
+      "data-[state=active]:bg-transparent",
+      "data-[state=active]:shadow-none",
+    );
   });
 
   it("supports distinct labels for range slider thumbs", () => {

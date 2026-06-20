@@ -3392,7 +3392,6 @@ describe("MysqlWorkbenchService", () => {
         seatId: "12",
         segment: {
           materialCollectionId: "77",
-          msgid: "msg-sphfeed-quick-reply-001",
           type: "sphfeed",
         },
       }),

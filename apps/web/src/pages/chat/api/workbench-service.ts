@@ -3428,7 +3428,7 @@ function buildPayloadSegmentContent(
   }
 
   if (segment.type === "file") {
-    const materialContent = segment.materialCollectionId && !segment.msgid
+    const materialContent = segment.materialCollectionId
       ? getMockMaterialContentRecord(state, segment.materialCollectionId)
       : {};
     const fileName = readString(materialContent.fileName) || segment.fileName;
@@ -3444,7 +3444,7 @@ function buildPayloadSegmentContent(
   }
 
   if (segment.type === "h5") {
-    const materialContent = segment.materialCollectionId && !segment.msgid
+    const materialContent = segment.materialCollectionId
       ? getMockMaterialContentRecord(state, segment.materialCollectionId)
       : {};
 

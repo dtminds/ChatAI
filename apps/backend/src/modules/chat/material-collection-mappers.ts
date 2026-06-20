@@ -207,18 +207,6 @@ function toNumber(value: number | string | null | undefined) {
   return Number.isFinite(numericValue) ? numericValue : 0;
 }
 
-function toOptionalIdString(value: number | string | null | undefined) {
-  if (value == null || value === "") {
-    return undefined;
-  }
-
-  const numericValue = Number(value);
-
-  return Number.isSafeInteger(numericValue) && numericValue > 0
-    ? String(value)
-    : undefined;
-}
-
 function readString(record: Record<string, unknown>, key: string) {
   const value = record[key];
 

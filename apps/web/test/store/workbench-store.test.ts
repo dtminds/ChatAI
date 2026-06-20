@@ -3297,7 +3297,6 @@ describe("useWorkbenchStore", () => {
         description: "视频号简介",
         imageUrl: "https://cdn.example.com/sphfeed-cover.png",
         materialCollectionId: "material-sphfeed-001",
-        msgid: "msg-sphfeed-001",
         title: "视频号标题",
         type: "sphfeed",
         url: "https://channels.example.com/feed",

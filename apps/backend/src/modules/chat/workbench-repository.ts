@@ -390,7 +390,7 @@ export type MaterialCollectionScope = {
 
 export type MaterialCollectionForwardLookup = {
   content: string;
-  msgInfoId?: string;
+  msgInfoId: string;
 };
 
 type QuickReplyCategoryRow = {
@@ -688,7 +688,7 @@ export class WorkbenchRepository {
 
     return {
       content: typeof row.content === "string" ? row.content : "",
-      ...(row.msg_info_id == null ? {} : { msgInfoId: String(row.msg_info_id) }),
+      msgInfoId: String(row.msg_info_id),
     };
   }
 
@@ -2384,11 +2384,7 @@ export class WorkbenchRepository {
   ): Promise<WorkbenchChatRecordDetailResponse | undefined> {
     const conversationNumericId = parseMySqlId(conversationId);
 
-    if (
-      conversationNumericId == null ||
-      !Number.isSafeInteger(msgInfoId) ||
-      msgInfoId <= 0
-    ) {
+    if (conversationNumericId == null) {
       return undefined;
     }
 
@@ -4987,10 +4983,6 @@ export function parseMySqlId(value: string) {
   }
 
   return numeric;
-}
-
-function parseOptionalMySqlId(value: string | undefined) {
-  return value ? parseMySqlId(value) ?? null : null;
 }
 
 function getMaterialVisibleSubUids(bizType: number, subUserId: string) {

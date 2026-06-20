@@ -31,7 +31,7 @@ export function AgentManagementPage() {
 
     return agents.filter((agent) => agent.name?.toLowerCase().includes(normalizedQuery));
   }, [agentSearchQuery, agents]);
-  const { activePage, endRow, startRow, totalPages } = resolveTablePagination({
+  const { activePage, totalPages } = resolveTablePagination({
     page: currentPage,
     pageSize: AGENT_PAGE_SIZE,
     total: filteredAgents.length,
@@ -89,10 +89,8 @@ export function AgentManagementPage() {
 
           <AgentTable agents={pagedAgents} />
           <TablePagination
-            endRow={endRow}
             onPageChange={setCurrentPage}
             page={activePage}
-            startRow={startRow}
             total={filteredAgents.length}
             totalPages={totalPages}
           />

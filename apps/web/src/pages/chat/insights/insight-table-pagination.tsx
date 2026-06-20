@@ -22,11 +22,9 @@ export function InsightTablePagination({
   return (
     <TablePagination
       className={className}
-      endRow={endRow}
       itemLabel={itemLabel}
       onPageChange={onPageChange}
       page={page}
-      startRow={startRow}
       total={total}
       totalPages={totalPages}
     />

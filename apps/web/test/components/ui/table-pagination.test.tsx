@@ -13,10 +13,8 @@ describe("TablePagination", () => {
 
     render(
       <TablePagination
-        endRow={30}
         onPageChange={onPageChange}
         page={3}
-        startRow={21}
         total={96}
         totalPages={10}
       />,
@@ -38,10 +36,8 @@ describe("TablePagination", () => {
   it("renders compact page controls for table density", () => {
     const { container } = render(
       <TablePagination
-        endRow={30}
         onPageChange={vi.fn()}
         page={3}
-        startRow={21}
         total={96}
         totalPages={10}
       />,
@@ -56,10 +52,8 @@ describe("TablePagination", () => {
   it("clamps invalid page values before rendering controls", () => {
     render(
       <TablePagination
-        endRow={50}
         onPageChange={vi.fn()}
         page={99}
-        startRow={41}
         total={50}
         totalPages={5}
       />,

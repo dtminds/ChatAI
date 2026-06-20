@@ -46,11 +46,9 @@ export function TablePagination({
   totalPages,
 }: {
   className?: string;
-  endRow: number;
   itemLabel?: string;
   onPageChange: (page: number) => void;
   page: number;
-  startRow: number;
   total: number;
   totalPages: number;
 }) {

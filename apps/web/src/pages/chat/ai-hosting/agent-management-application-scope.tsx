@@ -76,7 +76,7 @@ export function ApplicationScopePanel({
     return accounts.filter((account) => account.name.toLowerCase().includes(normalizedQuery));
   }, [accounts, searchQuery]);
 
-  const { activePage, endRow, startRow, totalPages } = resolveTablePagination({
+  const { activePage, totalPages } = resolveTablePagination({
     page: currentPage,
     pageSize: APPLICATION_SCOPE_PAGE_SIZE,
     total: filteredAccounts.length,
@@ -204,10 +204,8 @@ export function ApplicationScopePanel({
           selectedAccountIds={selectedAccountIds}
         />
         <TablePagination
-          endRow={endRow}
           onPageChange={setCurrentPage}
           page={activePage}
-          startRow={startRow}
           total={filteredAccounts.length}
           totalPages={totalPages}
         />

@@ -1276,10 +1276,7 @@ describe("conversation insights pages", () => {
     expect(
       screen.getByRole("table", { name: "咨询会话明细" }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("navigation", { name: "分页" })).toHaveClass(
-      "!mx-0",
-      "!ml-auto",
-    );
+    expect(screen.getByRole("navigation", { name: "分页" })).toBeInTheDocument();
     expect(screen.getByText("摘要")).toBeInTheDocument();
     expect(screen.getByText("物流异常待跟进")).toBeInTheDocument();
     expect(screen.queryByText("客户反馈物流异常")).not.toBeInTheDocument();

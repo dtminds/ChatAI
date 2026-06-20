@@ -101,7 +101,7 @@ export function KnowledgeBasePage() {
     );
   }, [items, searchQuery]);
 
-  const { activePage, endRow, startRow, totalPages } = resolveTablePagination({
+  const { activePage, totalPages } = resolveTablePagination({
     page: currentPage,
     pageSize: PAGE_SIZE,
     total: filteredItems.length,
@@ -235,10 +235,8 @@ export function KnowledgeBasePage() {
               </TableBody>
             </Table>
             <TablePagination
-              endRow={endRow}
               onPageChange={setCurrentPage}
               page={activePage}
-              startRow={startRow}
               total={filteredItems.length}
               totalPages={totalPages}
             />

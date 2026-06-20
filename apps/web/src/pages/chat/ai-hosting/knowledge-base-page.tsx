@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Add01Icon, Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -25,43 +26,12 @@ import {
 } from "@/components/ui/table-pagination";
 import { Textarea } from "@/components/ui/textarea";
 import { AiHostingLayout, AiHostingPageHeader } from "./ai-hosting-layout";
-
-type KnowledgeBaseItem = {
-  id: string;
-  name: string;
-  description: string;
-  lastUpdatedAt: string;
-  createdAt: string;
-};
+import { MOCK_KNOWLEDGE_BASES, type KnowledgeBaseItem } from "./knowledge-base-mock-data";
 
 type CreateFormState = {
   name: string;
   description: string;
 };
-
-const MOCK_KNOWLEDGE_BASES: KnowledgeBaseItem[] = [
-  {
-    id: "kb-1",
-    name: "华为产品知识",
-    description: "华为各系列产品规格、功能与常见问题",
-    lastUpdatedAt: "2025-06-20 22:02:22",
-    createdAt: "2025-06-19 22:02:22",
-  },
-  {
-    id: "kb-2",
-    name: "售后问题解答",
-    description: "退换货、维修、保修流程与话术",
-    lastUpdatedAt: "2025-06-20 22:02:22",
-    createdAt: "2025-06-19 22:02:22",
-  },
-  {
-    id: "kb-3",
-    name: "续费话术指引",
-    description: "不同场景下的续费引导话术与案例",
-    lastUpdatedAt: "2025-06-19 22:02:22",
-    createdAt: "2025-06-19 22:02:22",
-  },
-];
 
 const PAGE_SIZE = 10;
 const KNOWLEDGE_BASE_NAME_MAX_LENGTH = 30;
@@ -86,6 +56,11 @@ export function KnowledgeBasePage() {
     description: "",
   });
   const [createSubmitting, setCreateSubmitting] = useState(false);
+  const [editingItem, setEditingItem] = useState<KnowledgeBaseItem | null>(null);
+  const [editForm, setEditForm] = useState<CreateFormState>({
+    name: "",
+    description: "",
+  });
 
   const filteredItems = useMemo(() => {
     const normalized = searchQuery.trim().toLowerCase();
@@ -134,7 +109,7 @@ export function KnowledgeBasePage() {
 
     const nowStr = getLocalTimeString();
     const newItem: KnowledgeBaseItem = {
-      id: `kb-${Date.now()}`,
+      id: String(Date.now()),
       name,
       description: createForm.description.trim(),
       lastUpdatedAt: nowStr,
@@ -146,6 +121,25 @@ export function KnowledgeBasePage() {
     setCreateDialogOpen(false);
     resetCreateForm();
     setCurrentPage(1);
+  }
+
+  function resetEditForm() {
+    setEditForm({ name: "", description: "" });
+  }
+
+  function handleOpenEditDialog(item: KnowledgeBaseItem) {
+    setEditingItem(item);
+    setEditForm({ name: item.name, description: item.description });
+  }
+
+  function handleCloseEditDialog() {
+    setEditingItem(null);
+    resetEditForm();
+  }
+
+  function handleEditSubmit() {
+    if (!editForm.name.trim()) return;
+    handleCloseEditDialog();
   }
 
   return (
@@ -215,7 +209,17 @@ export function KnowledgeBasePage() {
                       <TableCell className="py-4 text-muted-foreground">{item.createdAt}</TableCell>
                       <TableCell className="py-4 text-right">
                         <div className="flex items-center justify-end gap-3">
-                          <Button className="h-auto p-0 text-primary" type="button" variant="link">
+                          <Button asChild className="h-auto p-0 text-primary" type="button" variant="link">
+                            <Link to={`/chat/ai-hosting/knowledge/${item.id}`}>
+                              查看
+                            </Link>
+                          </Button>
+                          <Button
+                            className="h-auto p-0 text-primary"
+                            onClick={() => handleOpenEditDialog(item)}
+                            type="button"
+                            variant="link"
+                          >
                             编辑
                           </Button>
                           <Button className="h-auto p-0 text-primary" type="button" variant="link">
@@ -256,42 +260,12 @@ export function KnowledgeBasePage() {
             <DialogTitle>创建知识库</DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-5 py-2">
-            <div className="space-y-2">
-              <Label htmlFor="kb-name">
-                知识库名称 <span className="text-destructive">*</span>
-              </Label>
-              <div className="relative">
-                <Input
-                  className="pr-16"
-                  id="kb-name"
-                  maxLength={KNOWLEDGE_BASE_NAME_MAX_LENGTH}
-                  onChange={(event) =>
-                    setCreateForm((prev) => ({ ...prev, name: event.target.value }))
-                  }
-                  placeholder="请输入"
-                  value={createForm.name}
-                />
-                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
-                  {createForm.name.length}/{KNOWLEDGE_BASE_NAME_MAX_LENGTH}
-                </span>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="kb-desc">知识库描述</Label>
-              <Textarea
-                className="min-h-[120px] resize-y"
-                id="kb-desc"
-                maxLength={KNOWLEDGE_BASE_DESCRIPTION_MAX_LENGTH}
-                onChange={(event) =>
-                  setCreateForm((prev) => ({ ...prev, description: event.target.value }))
-                }
-                placeholder="说明知识库的内容和用途，描述会用于指导智能体调用知识库"
-                value={createForm.description}
-              />
-            </div>
-          </div>
+          <KnowledgeBaseDialogForm
+            descriptionInputId="kb-desc"
+            form={createForm}
+            nameInputId="kb-name"
+            onChange={setCreateForm}
+          />
 
           <DialogFooter className="gap-2">
             <Button disabled={createSubmitting} onClick={handleCloseCreateDialog} type="button" variant="outline">
@@ -307,6 +281,86 @@ export function KnowledgeBasePage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog
+        onOpenChange={(open) => {
+          if (!open) {
+            handleCloseEditDialog();
+          }
+        }}
+        open={editingItem !== null}
+      >
+        <DialogContent className="max-w-[520px]">
+          <DialogHeader>
+            <DialogTitle>编辑知识库</DialogTitle>
+          </DialogHeader>
+
+          <KnowledgeBaseDialogForm
+            descriptionInputId="kb-edit-desc"
+            form={editForm}
+            nameInputId="kb-edit-name"
+            onChange={setEditForm}
+          />
+
+          <DialogFooter className="gap-2">
+            <Button onClick={handleCloseEditDialog} type="button" variant="outline">
+              取消
+            </Button>
+            <Button disabled={!editForm.name.trim()} onClick={handleEditSubmit} type="button">
+              保存
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AiHostingLayout>
+  );
+}
+
+function KnowledgeBaseDialogForm({
+  descriptionInputId,
+  form,
+  nameInputId,
+  onChange,
+}: {
+  descriptionInputId: string;
+  form: CreateFormState;
+  nameInputId: string;
+  onChange: (updater: (prev: CreateFormState) => CreateFormState) => void;
+}) {
+  return (
+    <div className="space-y-5 py-2">
+      <div className="space-y-2">
+        <Label htmlFor={nameInputId}>
+          知识库名称 <span className="text-destructive">*</span>
+        </Label>
+        <div className="relative">
+          <Input
+            className="pr-16"
+            id={nameInputId}
+            maxLength={KNOWLEDGE_BASE_NAME_MAX_LENGTH}
+            onChange={(event) => onChange((prev) => ({ ...prev, name: event.target.value }))}
+            placeholder="请输入"
+            value={form.name}
+          />
+          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+            {form.name.length}/{KNOWLEDGE_BASE_NAME_MAX_LENGTH}
+          </span>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor={descriptionInputId}>知识库描述</Label>
+        <Textarea
+          className="min-h-[120px] resize-y"
+          id={descriptionInputId}
+          maxLength={KNOWLEDGE_BASE_DESCRIPTION_MAX_LENGTH}
+          onChange={(event) =>
+            onChange((prev) => ({ ...prev, description: event.target.value }))
+          }
+          placeholder="说明知识库的内容和用途，描述会用于指导智能体调用知识库"
+          value={form.description}
+        />
+      </div>
+    </div>
   );
 }

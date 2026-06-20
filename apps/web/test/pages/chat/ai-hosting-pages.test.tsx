@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { AgentManagementPage } from "@/pages/chat/ai-hosting/agent-management-page";
 import { AgentHostingSettingsPage } from "@/pages/chat/ai-hosting/agent-hosting-settings-page";
 import { AgentSettingsPage } from "@/pages/chat/ai-hosting/agent-settings-page";
+import { KnowledgeBaseManagementPage } from "@/pages/chat/ai-hosting/knowledge-base-management-page";
 import { KnowledgeBasePage } from "@/pages/chat/ai-hosting/knowledge-base-page";
 
 function renderWithRoute(path: string, element: ReactElement) {
@@ -336,11 +337,85 @@ describe("AI hosting pages", () => {
   });
 
   it("renders the knowledge base page", async () => {
+    const user = userEvent.setup();
+
     renderWithRoute("/chat/ai-hosting/knowledge", <KnowledgeBasePage />);
 
     expect(await screen.findByRole("heading", { level: 1, name: "知识库" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "创建知识库" })).toBeInTheDocument();
     expect(screen.getByText(/华为产品知识/)).toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: "查看" })[0]).toHaveAttribute(
+      "href",
+      "/chat/ai-hosting/knowledge/W7zU2fWkVSp65OTAjDd3-w",
+    );
+
+    await user.click(screen.getAllByRole("button", { name: "编辑" })[0]);
+
+    const dialog = screen.getByRole("dialog", { name: "编辑知识库" });
+
+    expect(dialog).toBeInTheDocument();
+    expect(screen.getByLabelText(/知识库名称/)).toHaveValue("华为产品知识");
+    expect(screen.getByLabelText("知识库描述")).toHaveValue("华为各系列产品规格、功能与常见问题");
+    expect(screen.getByLabelText(/知识库名称/)).toHaveAttribute("maxLength", "30");
+    expect(screen.getByLabelText("知识库描述")).toHaveAttribute("maxLength", "1000");
+    expect(screen.getByText("6/30")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存" })).toBeInTheDocument();
+
+    await user.clear(screen.getByLabelText(/知识库名称/));
+    await user.type(screen.getByLabelText(/知识库名称/), "华为知识库");
+    await user.click(screen.getByRole("button", { name: "取消" }));
+
+    expect(screen.queryByRole("dialog", { name: "编辑知识库" })).not.toBeInTheDocument();
+    expect(screen.getByText(/华为产品知识/)).toBeInTheDocument();
+    expect(screen.queryByText(/华为知识库/)).not.toBeInTheDocument();
+  });
+
+  it("renders the knowledge base management page", async () => {
+    renderWithRoute(
+      "/chat/ai-hosting/knowledge/W7zU2fWkVSp65OTAjDd3-w",
+      <KnowledgeBaseManagementPage />,
+    );
+
+    expect(await screen.findByRole("heading", { level: 1, name: "华为产品知识" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "返回知识库" })).toHaveAttribute(
+      "href",
+      "/chat/ai-hosting/knowledge",
+    );
+    expect(screen.getByLabelText("知识库管理头部").firstElementChild).toHaveAccessibleName(
+      "返回知识库",
+    );
+    expect(screen.getByRole("textbox", { name: "搜索知识" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "添加知识" }));
+    expect(screen.getByRole("menuitem", { name: /添加问答/ })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /添加图片/ })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /添加文档/ })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /添加纯文本/ })).not.toBeInTheDocument();
+    expect(screen.getByText("适合沉淀常见问题和标准答案")).toBeInTheDocument();
+    expect(screen.getByText("上传图片后解析为可检索内容")).toBeInTheDocument();
+    expect(screen.getByText("支持 Word、PDF、TXT、Markdown 等内容")).toBeInTheDocument();
+    expect(screen.queryByText("直接录入文本片段或说明")).not.toBeInTheDocument();
+    expect(screen.getAllByTestId("knowledge-add-option-icon")).toHaveLength(3);
+    await userEvent.keyboard("{Escape}");
+    expect(screen.getByRole("table", { name: "知识列表" })).toBeInTheDocument();
+    expect(screen.getByText("产品说明大全")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Word 文件" })).toHaveAttribute(
+      "src",
+      "https://b5.bokr.com.cn/dist/word.png",
+    );
+    expect(screen.getByRole("img", { name: "PDF 文件" })).toHaveAttribute(
+      "src",
+      "https://b5.bokr.com.cn/dist/pdf.png",
+    );
+    expect(screen.getAllByRole("img", { name: "文件" })[0]).toHaveAttribute(
+      "src",
+      "https://b5.bokr.com.cn/dist/file.png",
+    );
+    expect(screen.getByText("文件（.doc）")).toBeInTheDocument();
+    expect(screen.getAllByText("已完成")).toHaveLength(2);
+    expect(screen.getByText("解析中")).toBeInTheDocument();
+    expect(screen.getByText("失败")).toBeInTheDocument();
+    expect(screen.getByText("排队中")).toBeInTheDocument();
+    expect(screen.getByText("共 5 条")).toBeInTheDocument();
   });
 
   it("limits knowledge base creation fields", async () => {

@@ -45,6 +45,13 @@ const KnowledgeBasePage = lazy(() =>
     }),
   ),
 );
+const KnowledgeBaseManagementPage = lazy(() =>
+  import("@/pages/chat/ai-hosting/knowledge-base-management-page").then(
+    ({ KnowledgeBaseManagementPage }) => ({
+      default: KnowledgeBaseManagementPage,
+    }),
+  ),
+);
 const InsightsOverviewPage = lazy(() =>
   import("@/pages/chat/insights/insights-overview-page").then(
     ({ InsightsOverviewPage }) => ({
@@ -200,6 +207,10 @@ export const routerConfig = [
       {
         path: "chat/ai-hosting/knowledge",
         element: withRouteSuspense(<KnowledgeBasePage />),
+      },
+      {
+        path: "chat/ai-hosting/knowledge/:knowledgeBaseId",
+        element: withRouteSuspense(<KnowledgeBaseManagementPage />),
       },
       {
         path: "chat/ai-hosting/hosting-settings",

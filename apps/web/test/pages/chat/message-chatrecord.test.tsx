@@ -10,7 +10,7 @@ describe("ChatRecordMessageCard", () => {
       <ChatRecordMessageCard
         content={createChatRecordContent()}
         conversationId="conversation-1"
-        messageId="parent-chatrecord-msgid"
+        msgInfoId={830}
       />,
     );
 
@@ -32,7 +32,7 @@ describe("ChatRecordMessageCard", () => {
           type: "chatrecord",
         }}
         conversationId="conversation-1"
-        messageId="parent-chatrecord-msgid"
+        msgInfoId={830}
       />,
     );
 
@@ -54,7 +54,7 @@ describe("ChatRecordMessageCard", () => {
         }}
         conversationId="conversation-1"
         loadChatRecordDetail={loadChatRecordDetail}
-        messageId="parent-chatrecord-msgid"
+        msgInfoId={830}
       />,
     );
 
@@ -62,6 +62,30 @@ describe("ChatRecordMessageCard", () => {
     expect(screen.getByText("数据加载中")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "聊天记录加载中：聊天记录" }));
+
+    expect(loadChatRecordDetail).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("keeps the summary card visible without loading detail when msgInfoId is missing", async () => {
+    const user = userEvent.setup();
+    const loadChatRecordDetail = vi.fn();
+
+    render(
+      <ChatRecordMessageCard
+        content={createChatRecordContent()}
+        conversationId="conversation-1"
+        loadChatRecordDetail={loadChatRecordDetail}
+      />,
+    );
+
+    const card = screen.getByRole("button", {
+      name: "查看聊天记录：缪勇飞和范双飞的聊天记录",
+    });
+    expect(card).toBeDisabled();
+    expect(screen.getByText("范双飞：123")).toBeInTheDocument();
+
+    await user.click(card);
 
     expect(loadChatRecordDetail).not.toHaveBeenCalled();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -76,7 +100,7 @@ describe("ChatRecordMessageCard", () => {
           type: "chatrecord",
         }}
         conversationId="conversation-1"
-        messageId="parent-chatrecord-msgid"
+        msgInfoId={830}
       />,
     );
 
@@ -89,10 +113,10 @@ describe("ChatRecordMessageCard", () => {
   it("opens detail dialog and renders detail messages", async () => {
     const user = userEvent.setup();
     const loadChatRecordDetail = vi.fn().mockResolvedValue({
-      messageId: "parent-chatrecord-msgid",
+      messageId: "830",
       messages: [
         createTextMessage({
-          id: "chatrecord:parent-chatrecord-msgid:18",
+          id: "chatrecord:830:18",
           text: "第一条详情",
         }),
         createFileMessage(),
@@ -106,7 +130,7 @@ describe("ChatRecordMessageCard", () => {
         content={createChatRecordContent()}
         conversationId="conversation-1"
         loadChatRecordDetail={loadChatRecordDetail}
-        messageId="parent-chatrecord-msgid"
+        msgInfoId={830}
       />,
     );
 
@@ -114,7 +138,7 @@ describe("ChatRecordMessageCard", () => {
 
     expect(loadChatRecordDetail).toHaveBeenCalledWith({
       conversationId: "conversation-1",
-      messageId: "parent-chatrecord-msgid",
+      msgInfoId: 830,
     });
     const dialog = await screen.findByRole("dialog", {
       name: "缪勇飞和范双飞的聊天记录",
@@ -139,14 +163,14 @@ describe("ChatRecordMessageCard", () => {
     const user = userEvent.setup();
     const loadChatRecordDetail = vi.fn()
       .mockResolvedValueOnce({
-        messageId: "parent-chatrecord-msgid",
+        messageId: "830",
         messages: [],
       })
       .mockResolvedValueOnce({
-        messageId: "parent-chatrecord-msgid",
+        messageId: "830",
         messages: [
           createTextMessage({
-            id: "chatrecord:parent-chatrecord-msgid:22",
+            id: "chatrecord:830:22",
             text: "后续入库的详情",
           }),
         ],
@@ -157,7 +181,7 @@ describe("ChatRecordMessageCard", () => {
         content={createChatRecordContent()}
         conversationId="conversation-1"
         loadChatRecordDetail={loadChatRecordDetail}
-        messageId="parent-chatrecord-msgid"
+        msgInfoId={830}
       />,
     );
 
@@ -205,7 +229,7 @@ describe("ChatRecordMessageCard", () => {
         content={createChatRecordContent()}
         conversationId="conversation-1"
         loadChatRecordDetail={loadChatRecordDetail}
-        messageId="parent-chatrecord-msgid"
+        msgInfoId={830}
       />,
     );
 
@@ -216,22 +240,22 @@ describe("ChatRecordMessageCard", () => {
         content={createChatRecordContent()}
         conversationId="conversation-2"
         loadChatRecordDetail={loadChatRecordDetail}
-        messageId="next-chatrecord-msgid"
+        msgInfoId={831}
       />,
     );
 
     await waitFor(() => {
       expect(loadChatRecordDetail).toHaveBeenCalledWith({
         conversationId: "conversation-2",
-        messageId: "next-chatrecord-msgid",
+        msgInfoId: 831,
       });
     });
 
     nextContextRequest.resolve({
-      messageId: "next-chatrecord-msgid",
+      messageId: "831",
       messages: [
         createTextMessage({
-          id: "chatrecord:next-chatrecord-msgid:new",
+          id: "chatrecord:831:new",
           text: "新的详情",
         }),
       ],
@@ -243,10 +267,10 @@ describe("ChatRecordMessageCard", () => {
     expect(await within(dialog).findByText("新的详情")).toBeInTheDocument();
 
     initialRequest.resolve({
-      messageId: "parent-chatrecord-msgid",
+      messageId: "830",
       messages: [
         createTextMessage({
-          id: "chatrecord:parent-chatrecord-msgid:old",
+          id: "chatrecord:830:old",
           text: "旧的详情",
         }),
       ],

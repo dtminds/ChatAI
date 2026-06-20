@@ -98,8 +98,7 @@ describe("ChatWorkbenchPage download flows", () => {
 
     expect(downloadMessageFile).toHaveBeenCalledWith({
       conversationId: "conv-001",
-      messageId: "remote-expired-video",
-      messageSeq: 539,
+      msgInfoId: 539,
     });
     expect(openSpy).not.toHaveBeenCalled();
   });
@@ -226,8 +225,7 @@ describe("ChatWorkbenchPage download flows", () => {
 
     expect(downloadMessageFile).toHaveBeenCalledWith({
       conversationId: "conv-001",
-      messageId: "remote-pending-video",
-      messageSeq: 539,
+      msgInfoId: 539,
     });
     expect(screen.getByRole("status", { name: "视频下载中" })).toBeInTheDocument();
 
@@ -357,8 +355,7 @@ describe("ChatWorkbenchPage download flows", () => {
 
     expect(downloadMessageFile).toHaveBeenCalledWith({
       conversationId: "conv-001",
-      messageId: "remote-new-video",
-      messageSeq: 539,
+      msgInfoId: 539,
     });
     expect(toast.warning).not.toHaveBeenCalledWith("下载队列已满，请稍后");
   });

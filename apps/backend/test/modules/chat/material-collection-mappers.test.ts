@@ -65,7 +65,6 @@ describe("material collection mappers", () => {
         group_id: 0,
         id: 456,
         msg_info_id: 9001,
-        msgid: "msg-file-001",
         sort: "12",
         title: "报价单",
         update_time: "1781200000000",
@@ -86,7 +85,6 @@ describe("material collection mappers", () => {
       groupId: 0,
       id: "456",
       msgInfoId: "9001",
-      messageId: "msg-file-001",
       sort: 12,
       title: "报价单",
       updatedAt: 1781200000000,
@@ -104,7 +102,7 @@ describe("material collection mappers", () => {
           title: "活动页",
         }),
         group_id: 88,
-        msgid: "msg-link-001",
+        msg_info_id: 9002,
         title: "",
       })),
     ).toMatchObject({
@@ -118,7 +116,7 @@ describe("material collection mappers", () => {
       },
       contentType: "h5",
       groupId: "88",
-      messageId: "msg-link-001",
+      msgInfoId: "9002",
       title: "活动页",
     });
   });
@@ -130,7 +128,7 @@ describe("material collection mappers", () => {
         content: JSON.stringify({
           fileUrl: "media/emotion.gif",
         }),
-        msgid: "msg-expression-001",
+        msg_info_id: 9003,
         title: "贴贴表情",
       })),
     ).toMatchObject({
@@ -139,7 +137,7 @@ describe("material collection mappers", () => {
         fileUrl: "https://b5.bokr.com.cn/media/emotion.gif",
       },
       contentType: "emotion",
-      messageId: "msg-expression-001",
+      msgInfoId: "9003",
       title: "贴贴表情",
     });
   });
@@ -182,7 +180,7 @@ describe("material collection mappers", () => {
           logoUrl: "mini-program/logo.png",
           title: "企微助手",
         }),
-        msgid: "msg-mini-program-001",
+        msg_info_id: 9004,
         title: "",
       })),
     ).toMatchObject({
@@ -195,7 +193,7 @@ describe("material collection mappers", () => {
         title: "小程序",
       },
       contentType: "mini-program",
-      messageId: "msg-mini-program-001",
+      msgInfoId: "9004",
       title: "企微助手",
     });
   });
@@ -211,7 +209,7 @@ describe("material collection mappers", () => {
           title: "都市快报",
         }),
         group_id: 12,
-        msgid: "msg-sphfeed-001",
+        msg_info_id: 9005,
         title: "",
       })),
     ).toMatchObject({
@@ -225,7 +223,7 @@ describe("material collection mappers", () => {
       },
       contentType: "sphfeed",
       groupId: "12",
-      messageId: "msg-sphfeed-001",
+      msgInfoId: "9005",
       title: "都市快报",
     });
   });
@@ -239,8 +237,7 @@ function materialRow(overrides: Partial<MaterialCollectionRow> = {}): MaterialCo
     create_time: 1_781_000_000_000 as unknown as Date,
     group_id: 0,
     id: 1,
-    msg_info_id: null,
-    msgid: "msg-001",
+    msg_info_id: 9001,
     op_sub_uid: 9,
     sort: 0,
     sub_uid: 0,

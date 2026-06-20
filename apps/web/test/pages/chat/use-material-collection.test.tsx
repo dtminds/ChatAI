@@ -57,6 +57,7 @@ const fileMessage = {
     name: "客户",
   },
   sentAt: "2026-06-14 10:00:00",
+  seq: 7001,
   status: "sent",
 } satisfies ChatMessage;
 
@@ -88,7 +89,7 @@ function createFileMaterialItem(
     contentType: "file",
     groupId: "group-file",
     id: "material-file",
-    messageId: "msg-file-001",
+    msgInfoId: "9101",
     sort: 1_781_244_000_000,
     title: "报价单.pdf",
     ...overrides,
@@ -107,7 +108,7 @@ function createMiniProgramMaterialItem(
     contentType: "mini-program",
     groupId: "group-mini",
     id: "material-mini",
-    messageId: "1025657",
+    msgInfoId: "9102",
     sort: 1_781_244_000_000,
     title: "客户跟进小程序",
     ...overrides,
@@ -125,7 +126,7 @@ function createSphfeedMaterialItem(
     contentType: "sphfeed",
     groupId: "group-sphfeed",
     id: "material-sphfeed",
-    messageId: "1025658",
+    msgInfoId: "9103",
     sort: 1_781_244_000_000,
     title: "都市快报",
     ...overrides,
@@ -143,7 +144,7 @@ function createExpressionMaterialItem(
     contentType: "emotion",
     groupId: 0,
     id: "material-expression",
-    messageId: "msg-expression-001",
+    msgInfoId: "9104",
     sort: 1_781_244_000_000,
     title: "贴贴表情",
     ...overrides,
@@ -193,7 +194,7 @@ describe("useMaterialCollection", () => {
 
     expect(result.current.pendingMaterialCollection).toMatchObject({
       conversationId: "conv-001",
-      messageId: "msg-file-001",
+      msgInfoId: "7001",
     });
 
     rerender({
@@ -288,6 +289,7 @@ describe("useMaterialCollection", () => {
         extension: "pdf",
         fileName: "报价单.pdf",
         materialCollectionId: "material-file",
+        msgInfoId: "9101",
         type: "file",
         url: "https://example.com/files/quote.pdf",
       },
@@ -655,7 +657,7 @@ describe("useMaterialCollection", () => {
         bizType: 2,
         fileName: "报价单.pdf",
         groupId: "mock-material-group-file",
-        messageId: "msg-file-001",
+        msgInfoId: "7001",
       }),
     );
     expect(listMaterialCollections).toHaveBeenLastCalledWith({

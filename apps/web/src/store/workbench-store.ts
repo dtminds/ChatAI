@@ -4573,7 +4573,7 @@ export function createWorkbenchStore() {
       try {
         await revokeMessageRequest({
           conversationId: message.conversationId,
-          messageId: message.id,
+          messageId: String(message.seq),
         });
 
         set((currentState) => ({
@@ -5877,16 +5877,6 @@ function stripComposerMentionMetadata(segments: ComposerSegment[]): ComposerSegm
 function toWorkbenchSendSegment(
   segment: ComposerSegment,
 ): WorkbenchSendMessagePayload["segment"] {
-  if (
-    (segment.type === "file" ||
-      segment.type === "h5" ||
-      segment.type === "weapp" ||
-      segment.type === "sphfeed") &&
-    segment.msgid
-  ) {
-    return segment;
-  }
-
   if (segment.type === "file" && segment.materialCollectionId) {
     return {
       materialCollectionId: segment.materialCollectionId,
@@ -5901,24 +5891,34 @@ function toWorkbenchSendSegment(
     };
   }
 
-  if (segment.type === "emotion") {
-    return {
-      materialCollectionId: segment.materialCollectionId,
-      type: "emotion",
-    };
-  }
-
-  if (segment.type === "weapp") {
+  if (segment.type === "weapp" && segment.materialCollectionId) {
     return {
       materialCollectionId: segment.materialCollectionId,
       type: "weapp",
     };
   }
 
-  if (segment.type === "sphfeed") {
+  if (segment.type === "sphfeed" && segment.materialCollectionId) {
     return {
       materialCollectionId: segment.materialCollectionId,
       type: "sphfeed",
+    };
+  }
+
+  if (
+    (segment.type === "file" ||
+      segment.type === "h5" ||
+      segment.type === "weapp" ||
+      segment.type === "sphfeed") &&
+    segment.msgInfoId
+  ) {
+    return segment;
+  }
+
+  if (segment.type === "emotion") {
+    return {
+      materialCollectionId: segment.materialCollectionId,
+      type: "emotion",
     };
   }
 

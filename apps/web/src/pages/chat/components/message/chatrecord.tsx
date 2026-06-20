@@ -39,14 +39,14 @@ type ChatRecordDetail = {
 
 export type LoadChatRecordDetail = (input: {
   conversationId: string;
-  messageId: string;
+  msgInfoId: number;
 }) => Promise<ChatRecordDetail>;
 
 type ChatRecordMessageCardProps = {
   content: ChatRecordMessageContent;
   conversationId: string;
   loadChatRecordDetail?: LoadChatRecordDetail;
-  messageId: string;
+  msgInfoId?: number;
 };
 
 const CHAT_RECORD_FALLBACK_TEXT = "[聊天记录]";
@@ -55,22 +55,23 @@ export function ChatRecordMessageCard({
   content,
   conversationId,
   loadChatRecordDetail = loadChatRecordDetailFromService,
-  messageId,
+  msgInfoId,
 }: ChatRecordMessageCardProps) {
   const [open, setOpen] = useState(false);
   const [detail, setDetail] = useState<ChatRecordDetail | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const contextRef = useRef({ conversationId, messageId });
+  const contextRef = useRef({ conversationId, msgInfoId });
   const isMountedRef = useRef(false);
   const loadDetailRef = useRef<() => Promise<void>>(async () => {});
   const openRef = useRef(open);
   const requestIdRef = useRef(0);
   const isLoadingContent = content.viewState === "loading";
+  const canLoadDetail = msgInfoId != null;
   const title = normalizeChatRecordTitle(content.msgTitle);
   const lines = normalizeChatRecordLines(content);
 
-  contextRef.current = { conversationId, messageId };
+  contextRef.current = { conversationId, msgInfoId };
   openRef.current = open;
 
   useEffect(() => {
@@ -85,10 +86,10 @@ export function ChatRecordMessageCard({
     setDetail(null);
     setError("");
 
-    if (openRef.current) {
+    if (openRef.current && canLoadDetail) {
       void loadDetailRef.current();
     }
-  }, [conversationId, messageId]);
+  }, [canLoadDetail, conversationId, msgInfoId]);
 
   if (isFallbackChatRecordContent(content)) {
     return (
@@ -100,8 +101,12 @@ export function ChatRecordMessageCard({
   }
 
   async function loadDetail() {
+    if (msgInfoId == null) {
+      return;
+    }
+
     const requestId = requestIdRef.current + 1;
-    const requestContext = { conversationId, messageId };
+    const requestContext = { conversationId, msgInfoId };
     requestIdRef.current = requestId;
     setLoading(true);
     setError("");
@@ -133,13 +138,13 @@ export function ChatRecordMessageCard({
 
   function canApplyDetailResult(
     requestId: number,
-    requestContext: { conversationId: string; messageId: string },
+    requestContext: { conversationId: string; msgInfoId: number },
   ) {
     return (
       isMountedRef.current &&
       requestIdRef.current === requestId &&
       contextRef.current.conversationId === requestContext.conversationId &&
-      contextRef.current.messageId === requestContext.messageId
+      contextRef.current.msgInfoId === requestContext.msgInfoId
     );
   }
 
@@ -148,7 +153,7 @@ export function ChatRecordMessageCard({
 
     const hasLoadedMessages = Boolean(detail?.messages.length);
 
-    if (!nextOpen || isLoadingContent || hasLoadedMessages || loading) {
+    if (!nextOpen || !canLoadDetail || isLoadingContent || hasLoadedMessages || loading) {
       return;
     }
 
@@ -165,7 +170,7 @@ export function ChatRecordMessageCard({
         aria-label={isLoadingContent ? `聊天记录加载中：${title}` : `查看聊天记录：${title}`}
         className="block w-[min(19rem,calc(100vw-7rem))] rounded-[8px] border border-border bg-surface p-3 text-left outline-none transition-colors hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:hover:bg-surface"
         data-testid="chat-record-card"
-        disabled={isLoadingContent}
+        disabled={isLoadingContent || !canLoadDetail}
         onClick={() => void handleOpenChange(true)}
         type="button"
       >
@@ -385,7 +390,7 @@ function ChatRecordDetailMessageContent({ message }: { message: ChatMessage }) {
 
 async function loadChatRecordDetailFromService(input: {
   conversationId: string;
-  messageId: string;
+  msgInfoId: number;
 }): Promise<ChatRecordDetail> {
   const response = await getWorkbenchService().getChatRecordDetail(input);
 

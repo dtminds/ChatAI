@@ -84,8 +84,7 @@ export type WorkbenchMaterialCollectionItemDto = {
   groupId: string | 0;
   title: string;
   sort: number;
-  messageId: string;
-  msgInfoId?: string;
+  msgInfoId: string;
   contentType: WorkbenchMaterialCollectionContentType;
   content: Record<string, unknown>;
   createdAt?: number;
@@ -122,7 +121,7 @@ export type WorkbenchMaterialCollectionCreateRequest = {
   description?: string;
   fileName?: string;
   groupId?: string | 0;
-  messageId: string;
+  msgInfoId: string;
   title?: string;
 };
 
@@ -228,6 +227,11 @@ export type WorkbenchRevokeMessageResponse = {
 export type WorkbenchMessageFileDownloadStatusRequest = {
   conversationId: string;
   messageSeq: number;
+};
+
+export type WorkbenchMessageFileDownloadRequest = {
+  conversationId: string;
+  msgInfoId: number;
 };
 
 export type WorkbenchSubUserDto = {
@@ -648,7 +652,6 @@ export type WorkbenchOutgoingMessageFileSegment = {
   fileName?: string;
   materialCollectionId?: string;
   msgInfoId?: string;
-  msgid?: string;
   fileSize?: number;
   fileSizeLabel?: string;
   url?: string;
@@ -661,15 +664,13 @@ export type WorkbenchOutgoingMessageH5Segment = {
   href?: string;
   materialCollectionId?: string;
   msgInfoId?: string;
-  msgid?: string;
   title?: string;
 };
 
 export type WorkbenchOutgoingMessageMiniProgramSegment = {
   type: "weapp";
-  materialCollectionId: string;
+  materialCollectionId?: string;
   msgInfoId?: string;
-  msgid?: string;
   appName?: string;
   coverImageUrl?: string;
   logoUrl?: string;
@@ -679,9 +680,8 @@ export type WorkbenchOutgoingMessageMiniProgramSegment = {
 
 export type WorkbenchOutgoingMessageSphfeedSegment = {
   type: "sphfeed";
-  materialCollectionId: string;
+  materialCollectionId?: string;
   msgInfoId?: string;
-  msgid?: string;
   description?: string;
   imageUrl?: string;
   sourceLabel?: string;

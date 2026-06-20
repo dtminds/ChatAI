@@ -24,7 +24,7 @@ describe("createWorkbenchJavaClient", () => {
 
     await expect(
       createWorkbenchJavaClient(logger).downloadMsgFile({
-        msgid: "msg-001",
+        msgInfoId: 1001,
         platform: 5,
         uid: 9001,
       }),
@@ -36,7 +36,7 @@ describe("createWorkbenchJavaClient", () => {
 
     expect(logger.error).toHaveBeenCalledWith(
       expect.objectContaining({
-        msgid: "msg-001",
+        msgInfoId: 1001,
         operation: "download-message-file",
         path: "/third-internal/wap-embed/conversation/download-msg-file",
         platform: 5,
@@ -211,7 +211,7 @@ describe("createWorkbenchJavaClient", () => {
 
     await expect(
       createWorkbenchJavaClient(logger).downloadMsgFile({
-        msgid: "msg-002",
+        msgInfoId: 1002,
         platform: 5,
         uid: 9001,
       }),
@@ -222,7 +222,7 @@ describe("createWorkbenchJavaClient", () => {
 
     expect(logger.error).toHaveBeenCalledWith(
       expect.objectContaining({
-        msgid: "msg-002",
+        msgInfoId: 1002,
         operation: "download-message-file",
         path: "/third-internal/wap-embed/conversation/download-msg-file",
         requestId: "req-001",
@@ -565,7 +565,7 @@ describe("createWorkbenchJavaClient", () => {
     );
 
     await createWorkbenchJavaClient().downloadMsgFile({
-      msgid: "remote-msg-file-001",
+      msgInfoId: 1001,
       platform: 5,
       uid: 9001,
     });
@@ -574,7 +574,7 @@ describe("createWorkbenchJavaClient", () => {
       "https://java.internal/third-internal/wap-embed/conversation/download-msg-file",
       expect.objectContaining({
         body: JSON.stringify({
-          msgid: "remote-msg-file-001",
+          msgInfoId: 1001,
           platform: 5,
           uid: 9001,
         }),

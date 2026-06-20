@@ -383,13 +383,13 @@ describe("createWorkbenchService", () => {
       service.collectMaterial({
         bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
         groupId: "9",
-        messageId: "msg-file-001",
+        msgInfoId: "9001",
       }),
     ).resolves.toMatchObject({
       receivedBody: {
         bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
         groupId: "9",
-        messageId: "msg-file-001",
+        msgInfoId: "9001",
       },
     });
   });

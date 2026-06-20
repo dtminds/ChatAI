@@ -435,8 +435,7 @@ export async function revokeMessage(input: {
 
 export async function downloadMessageFile(input: {
   conversationId: string;
-  messageId: string;
-  messageSeq: number;
+  msgInfoId: number;
 }) {
   return getWorkbenchService().downloadMessageFile(input);
 }

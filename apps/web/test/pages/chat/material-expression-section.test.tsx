@@ -94,7 +94,7 @@ function createExpressionItem(
     contentType: "emotion",
     groupId: 0,
     id: "expression-1",
-    messageId: "msg-expression-1",
+    msgInfoId: "9101",
     sort: 100,
     title: "表情",
     ...overrides,

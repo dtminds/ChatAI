@@ -3189,6 +3189,7 @@ describe("useWorkbenchStore", () => {
         fileName: "报价单.pdf",
         fileSizeLabel: "2 KB",
         materialCollectionId: "material-file-001",
+        msgInfoId: "9101",
         type: "file",
         url: "https://cdn.example.com/quote.pdf",
       },
@@ -3197,6 +3198,7 @@ describe("useWorkbenchStore", () => {
         desc: "活动说明",
         href: "https://example.com/activity",
         materialCollectionId: "material-h5-001",
+        msgInfoId: "9102",
         title: "活动链接",
         type: "h5",
       },
@@ -3204,6 +3206,7 @@ describe("useWorkbenchStore", () => {
         appName: "客户助手",
         coverImageUrl: "https://cdn.example.com/weapp-cover.png",
         materialCollectionId: "material-weapp-001",
+        msgInfoId: "9103",
         title: "小程序标题",
         type: "weapp",
       },
@@ -3294,7 +3297,6 @@ describe("useWorkbenchStore", () => {
         description: "视频号简介",
         imageUrl: "https://cdn.example.com/sphfeed-cover.png",
         materialCollectionId: "material-sphfeed-001",
-        msgid: "msg-sphfeed-001",
         title: "视频号标题",
         type: "sphfeed",
         url: "https://channels.example.com/feed",
@@ -3310,7 +3312,7 @@ describe("useWorkbenchStore", () => {
     expect(sendMessage).not.toHaveBeenCalled();
   });
 
-  it("keeps quick reply snapshot fields when a material segment has msgid", async () => {
+  it("keeps quick reply snapshot fields when a material segment has msgInfoId", async () => {
     const baseService = createMockWorkbenchService();
     const sendMessage = vi.fn(baseService.sendMessage);
 
@@ -3325,8 +3327,7 @@ describe("useWorkbenchStore", () => {
         extension: "pdf",
         fileName: "报价单.pdf",
         fileSizeLabel: "2 KB",
-        materialCollectionId: "material-file-001",
-        msgid: "msg-file-001",
+        msgInfoId: "9101",
         type: "file",
         url: "https://cdn.example.com/quote.pdf",
       },
@@ -3334,16 +3335,14 @@ describe("useWorkbenchStore", () => {
         coverUrl: "https://cdn.example.com/link-cover.png",
         desc: "活动说明",
         href: "https://example.com/activity",
-        materialCollectionId: "material-h5-001",
-        msgid: "msg-h5-001",
+        msgInfoId: "9102",
         title: "活动链接",
         type: "h5",
       },
       {
         appName: "客户助手",
         coverImageUrl: "https://cdn.example.com/weapp-cover.png",
-        materialCollectionId: "material-weapp-001",
-        msgid: "msg-weapp-001",
+        msgInfoId: "9103",
         title: "小程序标题",
         type: "weapp",
       },
@@ -3355,8 +3354,7 @@ describe("useWorkbenchStore", () => {
       expect.objectContaining({
         segment: expect.objectContaining({
           fileName: "报价单.pdf",
-          materialCollectionId: "material-file-001",
-          msgid: "msg-file-001",
+          msgInfoId: "9101",
           type: "file",
           url: "https://cdn.example.com/quote.pdf",
         }),
@@ -3368,8 +3366,7 @@ describe("useWorkbenchStore", () => {
         segment: expect.objectContaining({
           desc: "活动说明",
           href: "https://example.com/activity",
-          materialCollectionId: "material-h5-001",
-          msgid: "msg-h5-001",
+          msgInfoId: "9102",
           title: "活动链接",
           type: "h5",
         }),
@@ -3379,8 +3376,7 @@ describe("useWorkbenchStore", () => {
       3,
       expect.objectContaining({
         segment: expect.objectContaining({
-          materialCollectionId: "material-weapp-001",
-          msgid: "msg-weapp-001",
+          msgInfoId: "9103",
           type: "weapp",
         }),
       }),

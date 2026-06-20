@@ -277,7 +277,7 @@ export type WorkbenchService = {
   getChatRecordDetail(
     subUserId: string,
     conversationId: string,
-    messageId: string,
+    msgInfoId: number,
   ): Promise<WorkbenchChatRecordDetailResponse> | WorkbenchChatRecordDetailResponse;
   getHistoryMessages(
     subUserId: string,
@@ -287,7 +287,7 @@ export type WorkbenchService = {
   downloadMessageFile(
     subUserId: string,
     conversationId: string,
-    messageId: string,
+    msgInfoId: number,
   ): Promise<WorkbenchMessageFileDownloadResponse> | WorkbenchMessageFileDownloadResponse;
   confirmVoicePlaybackReady(
     subUserId: string,
@@ -867,7 +867,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
   async getChatRecordDetail(
     subUserId: string,
     conversationId: string,
-    messageId: string,
+    msgInfoId: number,
   ) {
     const conversation = await this.repository.getConversationLookup(conversationId);
 
@@ -881,7 +881,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
       conversation.uid,
       conversation.platform,
       conversationId,
-      messageId,
+      msgInfoId,
     );
 
     if (!detail) {
@@ -964,10 +964,9 @@ export class MysqlWorkbenchService implements WorkbenchService {
   async downloadMessageFile(
     subUserId: string,
     conversationId: string,
-    messageId: string,
+    msgInfoId: number,
   ) {
     const conversation = await this.repository.getConversationLookup(conversationId);
-    const normalizedMessageId = messageId.trim();
 
     if (!conversation) {
       throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
@@ -975,12 +974,12 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     await this.assertSeatAccess(subUserId, conversation.seatId);
 
-    if (!normalizedMessageId) {
+    if (!Number.isSafeInteger(msgInfoId) || msgInfoId <= 0) {
       throw new BadRequestError("INVALID_MESSAGE_ID", "消息 ID 不能为空");
     }
 
     await this.javaClient.downloadMsgFile({
-      msgid: normalizedMessageId,
+      msgInfoId,
       platform: conversation.platform,
       uid: conversation.uid,
     });
@@ -988,7 +987,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
     this.logger.info(
       {
         conversationId: conversation.id,
-        messageId: normalizedMessageId,
+        msgInfoId,
         operation: "download-message-file",
         platform: conversation.platform,
         seatId: conversation.seatId,
@@ -999,7 +998,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
     );
 
     return {
-      messageId: normalizedMessageId,
+      messageId: String(msgInfoId),
       status: "accepted" as const,
     };
   }
@@ -1867,23 +1866,10 @@ export class MysqlWorkbenchService implements WorkbenchService {
     }
 
     if (
-      (segment.type === "file" ||
-        segment.type === "h5" ||
-        segment.type === "weapp") &&
-      segment.msgid
-    ) {
-      if (segment.type === "weapp") {
-        return buildForwardJavaSendMessageData(segment.type, segment.msgid);
-      }
-
-      return buildJavaSendMessageData(payload, segment);
-    }
-
-    if (
       segment.type === "emotion" ||
       (segment.type === "file" && segment.materialCollectionId) ||
       (segment.type === "h5" && segment.materialCollectionId) ||
-      segment.type === "weapp"
+      (segment.type === "weapp" && segment.materialCollectionId)
     ) {
       const materialCollectionId = segment.materialCollectionId;
 
@@ -1922,7 +1908,11 @@ export class MysqlWorkbenchService implements WorkbenchService {
         return buildH5JavaSendMessageData(collection.content);
       }
 
-      return buildForwardJavaSendMessageData(segment.type, collection.msgid);
+      return buildForwardJavaSendMessageData(segment.type, collection.msgInfoId);
+    }
+
+    if (segment.type === "weapp") {
+      return buildForwardJavaSendMessageData(segment.type, segment.msgInfoId);
     }
 
     return buildJavaSendMessageData(payload, segment);
@@ -2152,7 +2142,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
     }
 
     const message = await this.repository.findMaterialMessage({
-      msgid: request.messageId,
+      msgInfoId: request.msgInfoId,
       uid: me.uid,
     });
 
@@ -2167,7 +2157,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
       bizType,
       message.content,
       request,
-      request.messageId,
+      request.msgInfoId,
       contentType,
     );
 
@@ -2179,9 +2169,10 @@ export class MysqlWorkbenchService implements WorkbenchService {
     }
 
     const { content: normalizedContent, title } = normalizedMaterial;
+    const msgInfoId = String(message.id);
     const duplicate = await this.repository.findMaterialCollectionByMessage({
       bizType,
-      msgid: request.messageId,
+      msgInfoId,
       subUid,
       uid: me.uid,
     });
@@ -2198,7 +2189,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
         content: normalizedContent,
         groupId,
         id: duplicate.id,
-        msgInfoId: String(message.id),
+        msgInfoId,
         opSubUserId: subUserId,
         sort,
         title,
@@ -2215,8 +2206,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
       bizType,
       content: normalizedContent,
       groupId,
-      msgInfoId: String(message.id),
-      msgid: request.messageId,
+      msgInfoId,
       opSubUserId: subUserId,
       sort,
       subUid,
@@ -4829,17 +4819,17 @@ function buildH5JavaSendMessageData(content: string): JavaSendMessageData {
 
 function buildForwardJavaSendMessageData(
   msgtype: "sphfeed" | "weapp",
-  msgid: string,
+  msgInfoId: string | undefined,
 ): JavaSendMessageData {
-  const transMsgid = msgid.trim();
+  const transMsgInfoId = msgInfoId ? parseMySqlId(msgInfoId) : undefined;
 
-  if (!transMsgid) {
-    throw new BadRequestError("INVALID_TRANS_MESSAGE_ID", "转发消息 ID 无效");
+  if (transMsgInfoId == null) {
+    throw new BadRequestError("INVALID_TRANS_MESSAGE_INFO_ID", "转发消息 ID 无效");
   }
 
   return {
     msgtype,
-    transMsgid,
+    transMsgInfoId,
   };
 }
 

@@ -59,8 +59,7 @@ export function mapMaterialCollectionItem(
     isRecord(mappedMessage.content) ? mappedMessage.content : {},
     contentType,
   );
-  const messageId = row.msgid;
-  const msgInfoId = toOptionalIdString(row.msg_info_id);
+  const msgInfoId = String(row.msg_info_id);
 
   return {
     bizType,
@@ -69,10 +68,9 @@ export function mapMaterialCollectionItem(
     createdAt: toOptionalTimestamp(row.create_time),
     groupId: toGroupId(row.group_id),
     id: String(row.id),
-    messageId,
-    ...(msgInfoId ? { msgInfoId } : {}),
+    msgInfoId,
     sort: toNumber(row.sort),
-    title: resolveTitle(row.title, content, contentType, messageId),
+    title: resolveTitle(row.title, content, contentType, msgInfoId),
     updatedAt: toOptionalTimestamp(row.update_time),
   };
 }
@@ -89,7 +87,7 @@ function buildMessageRow(
     conversation_id: 0,
     from_type: 2,
     id: row.id,
-    msgid: row.msgid,
+    msgid: String(row.msg_info_id),
     msgtime: row.create_time,
     msgtype: getMsgTypeForBizType(bizType),
     opt_no: null,
@@ -137,7 +135,7 @@ function resolveTitle(
   rawTitle: string | null,
   content: Record<string, unknown>,
   contentType: WorkbenchMaterialCollectionContentType,
-  messageId: string,
+  fallbackTitle: string,
 ) {
   const title = rawTitle?.trim();
 
@@ -146,14 +144,14 @@ function resolveTitle(
   }
 
   if (contentType === "mini-program") {
-    return readString(content, "appName") || readString(content, "title") || messageId;
+    return readString(content, "appName") || readString(content, "title") || fallbackTitle;
   }
 
   return (
     readString(content, "title") ||
     readString(content, "fileName") ||
     readString(content, "appName") ||
-    messageId
+    fallbackTitle
   );
 }
 
@@ -207,18 +205,6 @@ function toNumber(value: number | string | null | undefined) {
   const numericValue = Number(value ?? 0);
 
   return Number.isFinite(numericValue) ? numericValue : 0;
-}
-
-function toOptionalIdString(value: number | string | null | undefined) {
-  if (value == null || value === "") {
-    return undefined;
-  }
-
-  const numericValue = Number(value);
-
-  return Number.isSafeInteger(numericValue) && numericValue > 0
-    ? String(value)
-    : undefined;
 }
 
 function readString(record: Record<string, unknown>, key: string) {

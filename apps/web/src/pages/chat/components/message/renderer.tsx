@@ -104,7 +104,7 @@ export function MessageContentRenderer({
         <ChatRecordMessageCard
           content={message.content}
           conversationId={message.conversationId}
-          messageId={message.id}
+          msgInfoId={message.seq}
         />
       );
   }

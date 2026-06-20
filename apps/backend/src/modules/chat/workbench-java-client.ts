@@ -110,11 +110,11 @@ export type JavaSendMessageData =
     }
   | {
       msgtype: "weapp";
-      transMsgid: string;
+      transMsgInfoId: number;
     }
   | {
       msgtype: "sphfeed";
-      transMsgid: string;
+      transMsgInfoId: number;
     }
   | ({
       msgtype: "quote";
@@ -241,7 +241,7 @@ export type WorkbenchJavaClient = {
     uid: number;
   }): Promise<void>;
   downloadMsgFile(input: {
-    msgid: string;
+    msgInfoId: number;
     platform: number;
     uid: number;
   }): Promise<void>;
@@ -1097,6 +1097,7 @@ function buildJavaLogContext(body: unknown) {
   for (const key of [
     "chatType",
     "conversationId",
+    "msgInfoId",
     "msgid",
     "msgId",
     "ids",

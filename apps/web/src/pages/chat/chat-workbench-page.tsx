@@ -1212,8 +1212,7 @@ function ChatWorkbenchContent({
 
     void downloadMessageFile({
       conversationId: message.conversationId,
-      messageId: message.remoteMessageId ?? message.id,
-      messageSeq: message.seq,
+      msgInfoId: message.seq,
     })
       .then(() => {
         if (!isMountedRef.current) {

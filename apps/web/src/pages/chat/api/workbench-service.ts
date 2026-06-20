@@ -177,7 +177,7 @@ export type WorkbenchService = {
   ) => Promise<WorkbenchMessageQueryByIdsResponse>;
   getChatRecordDetail: (input: {
     conversationId: string;
-    messageId: string;
+    msgInfoId: number;
   }) => Promise<WorkbenchChatRecordDetailResponse>;
   revokeMessage: (input: {
     conversationId: string;
@@ -185,8 +185,7 @@ export type WorkbenchService = {
   }) => Promise<WorkbenchRevokeMessageResponse>;
   downloadMessageFile: (input: {
     conversationId: string;
-    messageId: string;
-    messageSeq: number;
+    msgInfoId: number;
   }) => Promise<WorkbenchMessageFileDownloadResponse>;
   getMessageFileDownloadStatus: (input: {
     conversationId: string;
@@ -520,10 +519,14 @@ export function createMockWorkbenchService(): WorkbenchService {
         };
       }
 
+      const sourceMessage = Object.values(state.messagesByConversationId)
+        .flat()
+        .find((message) => getMockMessageInfoId(message) === request.msgInfoId);
+      const sourceMsgInfoId = request.msgInfoId;
       const existing = state.materialItems.find(
         (item) =>
           item.bizType === request.bizType &&
-          item.messageId === request.messageId,
+          item.msgInfoId === sourceMsgInfoId,
       );
 
       if (existing) {
@@ -532,10 +535,6 @@ export function createMockWorkbenchService(): WorkbenchService {
           duplicated: true,
         };
       }
-
-      const sourceMessage = Object.values(state.messagesByConversationId)
-        .flat()
-        .find((message) => message.messageId === request.messageId);
 
       const normalized = resolveMockMaterialCollect(sourceMessage, request);
 
@@ -1407,7 +1406,7 @@ export function createMockWorkbenchService(): WorkbenchService {
     },
     async getChatRecordDetail(input) {
       return {
-        messageId: input.messageId,
+        messageId: String(input.msgInfoId),
         messages: [],
       };
     },
@@ -1425,20 +1424,20 @@ export function createMockWorkbenchService(): WorkbenchService {
       const message = findMessageByIdOrSeq(
         state,
         input.conversationId,
-        input.messageId,
-        input.messageSeq,
+        undefined,
+        input.msgInfoId,
       );
 
       if (!message) {
         throw new Error("Message not found");
       }
 
-      updateMessageDownloadContent(state, input.conversationId, input.messageId, {
+      updateMessageDownloadContent(state, input.conversationId, message.messageId, {
         downloadStatus: "ing",
       });
 
       return {
-        messageId: input.messageId,
+        messageId: String(input.msgInfoId),
         status: "accepted",
       };
     },
@@ -2231,7 +2230,7 @@ export function createHttpWorkbenchService(): WorkbenchService {
     },
     getChatRecordDetail(input) {
       return http.get<WorkbenchChatRecordDetailResponse>(
-        `/server/messages/${encodeURIComponent(input.messageId)}/chat-record`,
+        `/server/messages/${input.msgInfoId}/chat-record`,
         {
           params: {
             conversation_id: input.conversationId,
@@ -2250,10 +2249,10 @@ export function createHttpWorkbenchService(): WorkbenchService {
     downloadMessageFile(input) {
       return http.post<
         WorkbenchMessageFileDownloadResponse,
-        { conversationId: string; messageSeq: number }
-      >(`/server/messages/${input.messageId}/download`, {
+        { conversationId: string; msgInfoId: number }
+      >("/server/messages/download", {
         conversationId: input.conversationId,
-        messageSeq: input.messageSeq,
+        msgInfoId: input.msgInfoId,
       });
     },
     getMessageFileDownloadStatus(input) {
@@ -2718,7 +2717,7 @@ function buildInitialMaterialItems(
           contentType: getMaterialContentType(bizType),
           groupId,
           id: `mock-material-${message.messageId}`,
-          messageId: message.messageId,
+          msgInfoId: getMockMessageInfoId(message),
           sort: (message.createdAt ?? 0) + bizType,
           title: getMaterialTitle(message),
         },
@@ -2785,7 +2784,7 @@ function buildMaterialItemFromMessage(
     contentType,
     groupId,
     id: `mock-material-${state.nextId++}`,
-    messageId: request.messageId,
+    msgInfoId: getMockMessageInfoId(message),
     sort: Date.now(),
     title: getMaterialTitle(message),
   };
@@ -2800,17 +2799,28 @@ function buildFallbackMaterialItem(
     request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION
       ? 0
       : String(request.groupId);
+  const id = `mock-material-${state.nextId++}`;
 
   return {
     bizType: request.bizType,
     content: {},
     contentType,
     groupId,
-    id: `mock-material-${state.nextId++}`,
-    messageId: request.messageId,
+    id,
+    msgInfoId: readNumericIdString(request.msgInfoId) ?? id,
     sort: Date.now(),
-    title: request.messageId,
+    title: request.msgInfoId,
   };
+}
+
+function getMockMessageInfoId(message: WorkbenchMessageDto) {
+  return String(message.seq);
+}
+
+function readNumericIdString(value: string) {
+  const normalized = value.trim();
+
+  return /^[1-9]\d*$/.test(normalized) ? normalized : undefined;
 }
 
 function getMaterialBizTypeForContentType(
@@ -2917,7 +2927,7 @@ function resolveMockMaterialCollect(
 
   return {
     content: message ? getMaterialContentRecord(message) : {},
-    title: message ? getMaterialTitle(message) : request.messageId,
+    title: message ? getMaterialTitle(message) : request.msgInfoId,
   };
 }
 
@@ -3418,7 +3428,7 @@ function buildPayloadSegmentContent(
   }
 
   if (segment.type === "file") {
-    const materialContent = segment.materialCollectionId && !segment.msgid
+    const materialContent = segment.materialCollectionId
       ? getMockMaterialContentRecord(state, segment.materialCollectionId)
       : {};
     const fileName = readString(materialContent.fileName) || segment.fileName;
@@ -3434,7 +3444,7 @@ function buildPayloadSegmentContent(
   }
 
   if (segment.type === "h5") {
-    const materialContent = segment.materialCollectionId && !segment.msgid
+    const materialContent = segment.materialCollectionId
       ? getMockMaterialContentRecord(state, segment.materialCollectionId)
       : {};
 
@@ -3458,9 +3468,9 @@ function buildPayloadSegmentContent(
   }
 
   if (segment.type === "weapp") {
-    const materialContent = segment.msgid
-      ? {}
-      : getMockMaterialContentRecord(state, segment.materialCollectionId);
+    const materialContent = segment.materialCollectionId
+      ? getMockMaterialContentRecord(state, segment.materialCollectionId)
+      : {};
 
     return {
       appName: readString(materialContent.appName) || segment.appName || "小程序",
@@ -3475,9 +3485,9 @@ function buildPayloadSegmentContent(
   }
 
   if (segment.type === "sphfeed") {
-    const materialContent = segment.msgid
-      ? {}
-      : getMockMaterialContentRecord(state, segment.materialCollectionId);
+    const materialContent = segment.materialCollectionId
+      ? getMockMaterialContentRecord(state, segment.materialCollectionId)
+      : {};
 
     return {
       description: readString(materialContent.description) || segment.description || "",

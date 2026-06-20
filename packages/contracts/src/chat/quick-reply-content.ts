@@ -51,6 +51,7 @@ export type WorkbenchQuickReplyAttachmentType =
 export type WorkbenchQuickReplyAttachment = {
   type: WorkbenchQuickReplyAttachmentType;
   materialCollectionId?: string;
+  msgInfoId?: string;
   msgid?: string;
   content: Record<string, unknown>;
 };
@@ -81,12 +82,14 @@ export function normalizeQuickReplyAttachments(
       ? compactRecord(attachment.content)
       : {};
     const materialCollectionId = readString(attachment.materialCollectionId);
+    const msgInfoId = readString(attachment.msgInfoId);
     const msgid = readString(attachment.msgid);
 
     return [
       {
         type,
         ...(materialCollectionId ? { materialCollectionId } : {}),
+        ...(msgInfoId ? { msgInfoId } : {}),
         ...(msgid ? { msgid } : {}),
         content,
       },

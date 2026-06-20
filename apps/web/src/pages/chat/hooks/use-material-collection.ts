@@ -1237,6 +1237,7 @@ function buildH5ComposerSegment(
     ...(desc ? { desc } : {}),
     href,
     materialCollectionId,
+    ...(item.msgInfoId ? { msgInfoId: item.msgInfoId } : {}),
     title,
     type: "h5",
   };
@@ -1289,6 +1290,7 @@ function buildFileComposerSegment(
     fileName,
     ...(fileSizeLabel ? { fileSizeLabel } : {}),
     materialCollectionId,
+    ...(item.msgInfoId ? { msgInfoId: item.msgInfoId } : {}),
     type: "file",
     url: fileUrl,
   };
@@ -1324,6 +1326,7 @@ function buildMiniProgramComposerSegment(
     ...(logoUrl ? { logoUrl } : {}),
     ...(sourceLabel ? { sourceLabel } : {}),
     materialCollectionId,
+    ...(item.msgInfoId ? { msgInfoId: item.msgInfoId } : {}),
     title,
     type: "weapp",
   };
@@ -1350,6 +1353,7 @@ function buildSphfeedComposerSegment(
     ...(description ? { description } : {}),
     ...(imageUrl ? { imageUrl } : {}),
     materialCollectionId,
+    ...(item.msgInfoId ? { msgInfoId: item.msgInfoId } : {}),
     ...(sourceLabel ? { sourceLabel } : {}),
     title,
     type: "sphfeed",

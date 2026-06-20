@@ -85,7 +85,7 @@ describe("quick reply contracts", () => {
     });
   });
 
-  it("normalizes H5 attachment fields without adding bizType and keeps msgid", () => {
+  it("normalizes H5 attachment fields without adding bizType and keeps source ids", () => {
     const attachments = normalizeQuickReplyAttachments([
       {
         bizType: 4,
@@ -96,6 +96,7 @@ describe("quick reply contracts", () => {
           title: "标题",
         },
         materialCollectionId: "12",
+        msgInfoId: "9001",
         msgid: "1025657",
         type: "h5",
       },
@@ -109,6 +110,7 @@ describe("quick reply contracts", () => {
           title: "标题",
         },
         materialCollectionId: "12",
+        msgInfoId: "9001",
         msgid: "1025657",
         type: "h5",
       },

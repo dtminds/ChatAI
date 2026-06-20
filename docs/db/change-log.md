@@ -2,6 +2,55 @@
 
 Manual database changes for the backend should be recorded here.
 
+## 2026-06-20
+
+- Added `xy_wap_embed_material_collection.msg_info_id` to retain the source `xy_wap_embed_msg_audit_info.id` alongside the third-party `msgid`.
+
+Manual migration for existing databases:
+
+```sql
+ALTER TABLE xy_wap_embed_material_collection
+  ADD COLUMN `msg_info_id` bigint unsigned DEFAULT NULL COMMENT 'xy_wap_embed_msg_audit_info.id' AFTER `content`;
+
+UPDATE xy_wap_embed_material_collection AS material
+INNER JOIN xy_wap_embed_msg_audit_info AS message
+  ON message.uid = material.uid
+  AND message.msgid = material.msgid
+SET material.msg_info_id = message.id
+WHERE material.msg_info_id IS NULL
+  AND material.msgid <> '';
+
+UPDATE xy_wap_embed_quick_reply AS quick_reply
+INNER JOIN (
+  SELECT
+    quick_reply.id,
+    JSON_ARRAYAGG(
+      CASE
+        WHEN material.msg_info_id IS NOT NULL
+          AND JSON_UNQUOTE(JSON_EXTRACT(attachment.item, '$.msgInfoId')) IS NULL
+        THEN JSON_SET(attachment.item, '$.msgInfoId', CAST(material.msg_info_id AS CHAR))
+        ELSE attachment.item
+      END
+      ORDER BY attachment.ord
+    ) AS next_attachments
+  FROM xy_wap_embed_quick_reply AS quick_reply
+  JOIN JSON_TABLE(
+    quick_reply.attachments,
+    '$[*]' COLUMNS (
+      ord FOR ORDINALITY,
+      item JSON PATH '$'
+    )
+  ) AS attachment
+  LEFT JOIN xy_wap_embed_material_collection AS material
+    ON material.id = CAST(JSON_UNQUOTE(JSON_EXTRACT(attachment.item, '$.materialCollectionId')) AS UNSIGNED)
+    AND material.uid = quick_reply.uid
+  WHERE quick_reply.attachments IS NOT NULL
+  GROUP BY quick_reply.id
+) AS rebuilt
+  ON rebuilt.id = quick_reply.id
+SET quick_reply.attachments = rebuilt.next_attachments;
+```
+
 ## 2026-06-15
 
 - Added `xy_wap_embed_quick_reply_category` and `xy_wap_embed_quick_reply` for enterprise/personal quick replies.

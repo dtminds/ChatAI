@@ -23,10 +23,11 @@ export function resolveTablePagination({
   pageSize: number;
   total: number;
 }) {
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const safePageSize = Math.max(1, pageSize);
+  const totalPages = Math.max(1, Math.ceil(total / safePageSize));
   const activePage = Math.min(Math.max(1, page), totalPages);
-  const startRow = total === 0 ? 0 : (activePage - 1) * pageSize + 1;
-  const endRow = Math.min(activePage * pageSize, total);
+  const startRow = total === 0 ? 0 : (activePage - 1) * safePageSize + 1;
+  const endRow = Math.min(activePage * safePageSize, total);
 
   return {
     activePage,

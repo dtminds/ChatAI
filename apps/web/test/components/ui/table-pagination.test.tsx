@@ -64,4 +64,19 @@ describe("TablePagination", () => {
       totalPages: 1,
     });
   });
+
+  it("falls back to the minimum page size when resolving invalid page sizes", () => {
+    expect(resolveTablePagination({ page: 1, pageSize: 0, total: 3 })).toEqual({
+      activePage: 1,
+      endRow: 1,
+      startRow: 1,
+      totalPages: 3,
+    });
+    expect(resolveTablePagination({ page: 2, pageSize: -5, total: 3 })).toEqual({
+      activePage: 2,
+      endRow: 2,
+      startRow: 2,
+      totalPages: 3,
+    });
+  });
 });

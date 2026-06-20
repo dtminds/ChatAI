@@ -177,7 +177,7 @@ export type WorkbenchService = {
   ) => Promise<WorkbenchMessageQueryByIdsResponse>;
   getChatRecordDetail: (input: {
     conversationId: string;
-    messageId: string;
+    msgInfoId: number;
   }) => Promise<WorkbenchChatRecordDetailResponse>;
   revokeMessage: (input: {
     conversationId: string;
@@ -185,8 +185,7 @@ export type WorkbenchService = {
   }) => Promise<WorkbenchRevokeMessageResponse>;
   downloadMessageFile: (input: {
     conversationId: string;
-    messageId: string;
-    messageSeq: number;
+    msgInfoId: number;
   }) => Promise<WorkbenchMessageFileDownloadResponse>;
   getMessageFileDownloadStatus: (input: {
     conversationId: string;
@@ -522,10 +521,8 @@ export function createMockWorkbenchService(): WorkbenchService {
 
       const sourceMessage = Object.values(state.messagesByConversationId)
         .flat()
-        .find((message) => message.messageId === request.messageId);
-      const sourceMsgInfoId = sourceMessage
-        ? getMockMessageInfoId(sourceMessage)
-        : readNumericIdString(request.messageId);
+        .find((message) => getMockMessageInfoId(message) === request.msgInfoId);
+      const sourceMsgInfoId = request.msgInfoId;
       const existing = state.materialItems.find(
         (item) =>
           item.bizType === request.bizType &&
@@ -1409,7 +1406,7 @@ export function createMockWorkbenchService(): WorkbenchService {
     },
     async getChatRecordDetail(input) {
       return {
-        messageId: input.messageId,
+        messageId: String(input.msgInfoId),
         messages: [],
       };
     },
@@ -1427,20 +1424,20 @@ export function createMockWorkbenchService(): WorkbenchService {
       const message = findMessageByIdOrSeq(
         state,
         input.conversationId,
-        input.messageId,
-        input.messageSeq,
+        undefined,
+        input.msgInfoId,
       );
 
       if (!message) {
         throw new Error("Message not found");
       }
 
-      updateMessageDownloadContent(state, input.conversationId, input.messageId, {
+      updateMessageDownloadContent(state, input.conversationId, message.messageId, {
         downloadStatus: "ing",
       });
 
       return {
-        messageId: input.messageId,
+        messageId: String(input.msgInfoId),
         status: "accepted",
       };
     },
@@ -2233,7 +2230,7 @@ export function createHttpWorkbenchService(): WorkbenchService {
     },
     getChatRecordDetail(input) {
       return http.get<WorkbenchChatRecordDetailResponse>(
-        `/server/messages/${encodeURIComponent(input.messageId)}/chat-record`,
+        `/server/messages/${input.msgInfoId}/chat-record`,
         {
           params: {
             conversation_id: input.conversationId,
@@ -2252,10 +2249,10 @@ export function createHttpWorkbenchService(): WorkbenchService {
     downloadMessageFile(input) {
       return http.post<
         WorkbenchMessageFileDownloadResponse,
-        { conversationId: string; messageSeq: number }
-      >(`/server/messages/${input.messageId}/download`, {
+        { conversationId: string; msgInfoId: number }
+      >("/server/messages/download", {
         conversationId: input.conversationId,
-        messageSeq: input.messageSeq,
+        msgInfoId: input.msgInfoId,
       });
     },
     getMessageFileDownloadStatus(input) {
@@ -2810,9 +2807,9 @@ function buildFallbackMaterialItem(
     contentType,
     groupId,
     id,
-    msgInfoId: readNumericIdString(request.messageId) ?? id,
+    msgInfoId: readNumericIdString(request.msgInfoId) ?? id,
     sort: Date.now(),
-    title: request.messageId,
+    title: request.msgInfoId,
   };
 }
 
@@ -2930,7 +2927,7 @@ function resolveMockMaterialCollect(
 
   return {
     content: message ? getMaterialContentRecord(message) : {},
-    title: message ? getMaterialTitle(message) : request.messageId,
+    title: message ? getMaterialTitle(message) : request.msgInfoId,
   };
 }
 

@@ -250,7 +250,9 @@ export function createMemoryWorkbenchService() {
       const item = buildMemoryMaterialItem(state, request);
       state.materialItems = [
         item,
-        ...state.materialItems.filter((existing) => existing.messageId !== request.messageId),
+        ...state.materialItems.filter(
+          (existing) => existing.msgInfoId !== request.msgInfoId,
+        ),
       ];
 
       return { success: true };
@@ -1014,7 +1016,7 @@ export function createMemoryWorkbenchService() {
     downloadMessageFile(
       _subUserId: string,
       conversationId: string,
-      messageId: string,
+      msgInfoId: number,
     ): WorkbenchMessageFileDownloadResponse {
       const conversation = findConversation(state, conversationId);
 
@@ -1023,7 +1025,7 @@ export function createMemoryWorkbenchService() {
       }
 
       return {
-        messageId,
+        messageId: String(msgInfoId),
         status: "accepted",
       };
     },
@@ -1651,7 +1653,7 @@ function buildMemoryMaterialItem(
 ): WorkbenchMaterialCollectionItemDto {
   const message = Object.values(state.messagesByConversationId)
     .flat()
-    .find((item) => item.messageId === request.messageId);
+    .find((item) => String(item.seq) === request.msgInfoId);
 
   if (!message) {
     throw new NotFoundError("MATERIAL_MESSAGE_NOT_FOUND", "消息不存在");
@@ -1676,9 +1678,9 @@ function buildMemoryMaterialItem(
     contentType,
     groupId,
     id: `material-item-${state.nextId++}`,
-    messageId: request.messageId,
+    msgInfoId: String(message.seq),
     sort: Date.now(),
-    title: readMemoryMaterialTitle(message.content, contentType, request.messageId),
+    title: readMemoryMaterialTitle(message.content, contentType, request.msgInfoId),
   };
 }
 

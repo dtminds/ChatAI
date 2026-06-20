@@ -4573,7 +4573,7 @@ export function createWorkbenchStore() {
       try {
         await revokeMessageRequest({
           conversationId: message.conversationId,
-          messageId: message.id,
+          messageId: String(message.seq),
         });
 
         set((currentState) => ({

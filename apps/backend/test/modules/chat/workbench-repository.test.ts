@@ -80,6 +80,7 @@ function createMessagesDb(
     limits: number[];
     orderBys: Array<[string, string | undefined]>;
     table: string;
+    whereExpressions: unknown[];
     wheres: Array<[string, string, unknown]>;
   }> = [];
   const hydrationQueries: Array<{
@@ -113,6 +114,7 @@ function createMessagesDb(
           limits: query.limits,
           orderBys: query.orderBys,
           table,
+          whereExpressions: query.whereExpressions,
           wheres: query.wheres,
         });
         return query;
@@ -1577,7 +1579,7 @@ describe("WorkbenchRepository", () => {
     ]);
   });
 
-  it("finds material message from the read-only platform message table by msgid and uid", async () => {
+  it("finds material message from the read-only platform message table by id and uid", async () => {
     const db = createMaterialDb({
       "xy_wap_embed_msg_audit_info as message": {
         content: JSON.stringify({ title: "小程序卡片" }),
@@ -1591,7 +1593,7 @@ describe("WorkbenchRepository", () => {
     const repository = new WorkbenchRepository(db as never);
 
     const message = await repository.findMaterialMessage({
-      msgid: "msg-mini-1",
+      msgInfoId: "988",
       uid: 9001,
     });
 
@@ -1605,7 +1607,7 @@ describe("WorkbenchRepository", () => {
       table: "xy_wap_embed_msg_audit_info as message",
       joinConditions: [],
       wheres: [
-        ["message.msgid", "=", "msg-mini-1"],
+        ["message.id", "=", 988],
         ["message.uid", "=", 9001],
       ],
     });
@@ -4609,7 +4611,7 @@ describe("WorkbenchRepository", () => {
     expect(db.messageQueries).toHaveLength(2);
   });
 
-  it("loads chat record details by parent message msgid in the conversation tenant scope", async () => {
+  it("loads chat record details by parent audit id in the conversation tenant scope", async () => {
     const db = createChatRecordDetailDb({
       parentRow: createConversationMessageRow({
         content: JSON.stringify({
@@ -4627,6 +4629,7 @@ describe("WorkbenchRepository", () => {
           corp_short_name: "",
           id: 18,
           msgid: "parent-chatrecord-msgid",
+          msg_info_id: 830,
           msgtime: 1_778_840_020_000,
           msgtype: "text",
           name: "范双飞",
@@ -4642,14 +4645,14 @@ describe("WorkbenchRepository", () => {
     const repository = new WorkbenchRepository(db as never);
 
     await expect(
-      repository.getChatRecordDetail(9001, 5, "88", "parent-chatrecord-msgid"),
+      repository.getChatRecordDetail(9001, 5, "88", 830),
     ).resolves.toMatchObject({
-      messageId: "parent-chatrecord-msgid",
+      messageId: "830",
       messages: [
         {
           content: { text: "第一条详情" },
           contentType: "text",
-          messageId: "chatrecord:parent-chatrecord-msgid:18",
+          messageId: "chatrecord:830:18",
           senderAvatar: "https://cdn.example.com/avatar.png",
           senderName: "范双飞",
           seq: 18,
@@ -4662,6 +4665,11 @@ describe("WorkbenchRepository", () => {
     expect(db.queries[0]?.wheres).toContainEqual(["conversation.platform", "=", 5]);
     expect(db.queries[0]?.wheres).toContainEqual(["conversation.id", "=", 88]);
     expect(db.queries[1]?.wheres).toContainEqual([
+      "message.id",
+      "=",
+      830,
+    ]);
+    expect(db.queries[1]?.wheres).not.toContainEqual([
       "message.msgid",
       "=",
       "parent-chatrecord-msgid",
@@ -4674,6 +4682,11 @@ describe("WorkbenchRepository", () => {
       "external-1",
     ]);
     expect(db.queries[2]?.wheres).toContainEqual([
+      "record.msg_info_id",
+      "=",
+      830,
+    ]);
+    expect(db.queries[2]?.wheres).not.toContainEqual([
       "record.msgid",
       "=",
       "parent-chatrecord-msgid",
@@ -5075,44 +5088,6 @@ describe("WorkbenchRepository", () => {
     await expect(repository.getConversationLookup("100")).resolves.toMatchObject({
       thirdGroupId: "group-002",
       thirdGroupName: "未知群聊",
-    });
-  });
-
-  it("reads quote content base64 from audit extend origin data", async () => {
-    const queries: Array<{ table: string; wheres: Array<[string, string, unknown]> }> = [];
-    const repository = new WorkbenchRepository(
-      {
-        selectFrom(table: string) {
-          expect(table).toBe("xy_wap_embed_msg_audit_info_extend");
-          const result = {
-            origin_data: JSON.stringify({
-              quote_content_base64: " base64-quote-content ",
-            }),
-          };
-          const query = createQueryBuilder(result);
-          queries.push({ table, wheres: query.wheres });
-
-          return query;
-        },
-      } as never,
-    );
-
-    await expect(
-      repository.getQuoteContentBase64({
-        messageId: "remote-msg-538",
-        platform: 5,
-        uid: 9001,
-      }),
-    ).resolves.toBe("base64-quote-content");
-
-    expect(queries).toHaveLength(1);
-    expect(queries[0]).toMatchObject({
-      table: "xy_wap_embed_msg_audit_info_extend",
-      wheres: [
-        ["msgid", "=", "remote-msg-538"],
-        ["platform", "=", 5],
-        ["uid", "=", 9001],
-      ],
     });
   });
 
@@ -5730,7 +5705,7 @@ describe("WorkbenchRepository", () => {
     await expect(
       repository.getMessageForRevoke({
         conversationId: "88",
-        messageId: "remote-msg-321",
+        messageId: "321",
         platform: 5,
         thirdExternalUserId: "external-1",
         thirdUserId: "seat-third-user-1",
@@ -5741,6 +5716,37 @@ describe("WorkbenchRepository", () => {
       seq: 321,
       status: "sent",
     });
+  });
+
+  it("looks up revoke messages by audit id only", async () => {
+    const db = createMessagesDb([
+      messageRow({
+        from_type: 1,
+        id: 321,
+        msgid: "321",
+        status: 1,
+      }),
+    ]);
+    const repository = new WorkbenchRepository(db as never);
+
+    await expect(
+      repository.getMessageForRevoke({
+        conversationId: "88",
+        messageId: "321",
+        platform: 5,
+        thirdExternalUserId: "external-1",
+        thirdUserId: "seat-third-user-1",
+        uid: 9001,
+      }),
+    ).resolves.toMatchObject({
+      senderType: "agent",
+      seq: 321,
+      status: "sent",
+    });
+
+    expect(db.messageQueries[0]?.wheres).toContainEqual(["message.id", "=", 321]);
+    expect(db.messageQueries[0]?.whereExpressions).toEqual([]);
+    expect(db.messageQueries[0]?.wheres).not.toContainEqual(["message.msgid", "=", "321"]);
   });
 
   it("applies media scope with day and sender filters in history queries", async () => {

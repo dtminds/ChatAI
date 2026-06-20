@@ -329,7 +329,7 @@ describe("workbench revoke state", () => {
     const revokeMessage = vi.fn().mockResolvedValue({
       accepted: true,
       conversationId: "conv-001",
-      messageId: "recent-agent-message",
+      messageId: "99",
       revokeMsgId: 99,
     });
 
@@ -365,7 +365,7 @@ describe("workbench revoke state", () => {
               type: "text",
             },
             conversationId: "conv-001",
-            id: "recent-agent-message",
+            id: "remote-msgid-should-not-be-used",
             isOwnMessage: true,
             role: "agent",
             sender: {
@@ -380,17 +380,19 @@ describe("workbench revoke state", () => {
       },
     }));
 
-    const result = await useWorkbenchStore.getState().revokeMessage("recent-agent-message");
+    const result = await useWorkbenchStore
+      .getState()
+      .revokeMessage("remote-msgid-should-not-be-used");
 
     expect(result).toEqual({ ok: true });
     expect(revokeMessage).toHaveBeenCalledWith({
       conversationId: "conv-001",
-      messageId: "recent-agent-message",
+      messageId: "99",
     });
     expect(
       useWorkbenchStore
         .getState()
-        .messagesByConversationId["conv-001"].find((message) => message.id === "recent-agent-message"),
+        .messagesByConversationId["conv-001"].find((message) => message.id === "remote-msgid-should-not-be-used"),
     ).toMatchObject({
       revokePending: true,
     });
@@ -400,7 +402,7 @@ describe("workbench revoke state", () => {
     expect(
       useWorkbenchStore
         .getState()
-        .messagesByConversationId["conv-001"].find((message) => message.id === "recent-agent-message"),
+        .messagesByConversationId["conv-001"].find((message) => message.id === "remote-msgid-should-not-be-used"),
     ).toMatchObject({
       isRevoked: true,
       revokePending: false,
@@ -455,7 +457,7 @@ describe("workbench revoke state", () => {
     ).resolves.toEqual({ ok: true });
     expect(revokeMessage).toHaveBeenCalledWith({
       conversationId: "conv-001",
-      messageId: "future-agent-message",
+      messageId: "103",
     });
   });
 

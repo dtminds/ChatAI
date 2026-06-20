@@ -1470,6 +1470,10 @@ export interface XyWapEmbedMsgAuditChatRecord {
    */
   msgid: string;
   /**
+   * xy_wap_embed_msg_audit_info.id
+   */
+  msg_info_id: number;
+  /**
    * 消息发送时间戳，utc时间，ms单位
    */
   msgtime: Generated<number>;

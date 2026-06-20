@@ -57,6 +57,7 @@ const fileMessage = {
     name: "客户",
   },
   sentAt: "2026-06-14 10:00:00",
+  seq: 7001,
   status: "sent",
 } satisfies ChatMessage;
 
@@ -193,7 +194,7 @@ describe("useMaterialCollection", () => {
 
     expect(result.current.pendingMaterialCollection).toMatchObject({
       conversationId: "conv-001",
-      messageId: "msg-file-001",
+      msgInfoId: "7001",
     });
 
     rerender({
@@ -656,7 +657,7 @@ describe("useMaterialCollection", () => {
         bizType: 2,
         fileName: "报价单.pdf",
         groupId: "mock-material-group-file",
-        messageId: "msg-file-001",
+        msgInfoId: "7001",
       }),
     );
     expect(listMaterialCollections).toHaveBeenLastCalledWith({

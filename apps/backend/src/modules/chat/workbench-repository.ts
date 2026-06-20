@@ -522,12 +522,12 @@ export class WorkbenchRepository {
   }
 
   async findMaterialMessage(input: {
-    msgid: string;
+    msgInfoId: string;
     uid: number;
   }): Promise<MaterialMessageLookup | undefined> {
-    const msgid = input.msgid.trim();
+    const msgInfoNumericId = parseMySqlId(input.msgInfoId);
 
-    if (!msgid) {
+    if (msgInfoNumericId == null) {
       return undefined;
     }
 
@@ -541,7 +541,7 @@ export class WorkbenchRepository {
         "message.msgtype as msgtype",
         "message.uid as uid",
       ])
-      .where("message.msgid", "=", msgid)
+      .where("message.id", "=", msgInfoNumericId)
       .where("message.uid", "=", input.uid)
       .executeTakeFirst();
 
@@ -1959,28 +1959,6 @@ export class WorkbenchRepository {
     };
   }
 
-  async getQuoteContentBase64(input: {
-    messageId: string;
-    platform: number;
-    uid: number;
-  }) {
-    const messageId = input.messageId.trim();
-
-    if (!messageId) {
-      return undefined;
-    }
-
-    const extend = await this.db
-      .selectFrom("xy_wap_embed_msg_audit_info_extend")
-      .select(["origin_data"])
-      .where("msgid", "=", messageId)
-      .where("platform", "=", input.platform)
-      .where("uid", "=", input.uid)
-      .executeTakeFirst();
-
-    return readQuoteContentBase64(extend?.origin_data);
-  }
-
   async getMessageFileDownloadStatus(input: {
     auditId: number;
     platform: number;
@@ -2054,6 +2032,10 @@ export class WorkbenchRepository {
     }
 
     const auditId = parseMySqlId(normalizedMessageId);
+    if (auditId == null) {
+      return undefined;
+    }
+
     let query = this.db
       .selectFrom("xy_wap_embed_msg_audit_info as message")
       .select([
@@ -2078,14 +2060,7 @@ export class WorkbenchRepository {
       return undefined;
     }
 
-    query = auditId == null
-      ? query.where("message.msgid", "=", normalizedMessageId)
-      : query.where((expressionBuilder) =>
-          expressionBuilder.or([
-            expressionBuilder("message.id", "=", auditId),
-            expressionBuilder("message.msgid", "=", normalizedMessageId),
-          ]),
-        );
+    query = query.where("message.id", "=", auditId);
 
     const row = await query.executeTakeFirst();
 
@@ -2405,12 +2380,15 @@ export class WorkbenchRepository {
     uid: number,
     platform: number,
     conversationId: string,
-    messageId: string,
+    msgInfoId: number,
   ): Promise<WorkbenchChatRecordDetailResponse | undefined> {
     const conversationNumericId = parseMySqlId(conversationId);
-    const normalizedMessageId = messageId.trim();
 
-    if (conversationNumericId == null || !normalizedMessageId) {
+    if (
+      conversationNumericId == null ||
+      !Number.isSafeInteger(msgInfoId) ||
+      msgInfoId <= 0
+    ) {
       return undefined;
     }
 
@@ -2445,7 +2423,7 @@ export class WorkbenchRepository {
       .where("message.uid", "=", conversation.uid)
       .where("message.platform", "=", conversation.platform)
       .where("message.third_user_id", "=", conversation.third_userid)
-      .where("message.msgid", "=", normalizedMessageId);
+      .where("message.id", "=", msgInfoId);
 
     if (conversation.chat_type === CHAT_TYPE_GROUP) {
       parentQuery = parentQuery.where(
@@ -2472,6 +2450,7 @@ export class WorkbenchRepository {
       .select([
         "record.id as id",
         "record.msgid as msgid",
+        "record.msg_info_id as msg_info_id",
         "record.name as name",
         "record.avatar as avatar",
         "record.content as content",
@@ -2479,7 +2458,7 @@ export class WorkbenchRepository {
         "record.msgtime as msgtime",
         "record.status as status",
       ])
-      .where("record.msgid", "=", normalizedMessageId)
+      .where("record.msg_info_id", "=", msgInfoId)
       .where("record.uid", "=", conversation.uid)
       .where("record.platform", "=", conversation.platform)
       .orderBy("record.msgtime", "asc")
@@ -2487,7 +2466,7 @@ export class WorkbenchRepository {
       .execute() as ChatRecordDetailRow[];
 
     return {
-      messageId: normalizedMessageId,
+      messageId: String(msgInfoId),
       messages: detailRows.map((row) =>
         mapMessageRow({
           chat_type: conversation.chat_type,
@@ -2497,7 +2476,7 @@ export class WorkbenchRepository {
           conversation_id: conversation.conversation_id,
           from_type: 2,
           id: row.id,
-          msgid: `chatrecord:${normalizedMessageId}:${row.id}`,
+          msgid: `chatrecord:${msgInfoId}:${row.id}`,
           msgtime: row.msgtime,
           msgtype: row.msgtype,
           opt_no: null,
@@ -4807,26 +4786,6 @@ function emptyHistoryMessagePage(): WorkbenchHistoryMessagePageDto {
     hasPrev: false,
     messages: [],
   };
-}
-
-function readQuoteContentBase64(rawOriginData: string | null | undefined) {
-  if (!rawOriginData) {
-    return undefined;
-  }
-
-  try {
-    const parsed: unknown = JSON.parse(rawOriginData);
-
-    if (!isRecord(parsed)) {
-      return undefined;
-    }
-
-    const value = parsed.quote_content_base64;
-
-    return typeof value === "string" && value.trim() ? value.trim() : undefined;
-  } catch {
-    return undefined;
-  }
 }
 
 function readMessageFileDownloadStatus(content: string | null) {

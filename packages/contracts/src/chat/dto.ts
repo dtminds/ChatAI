@@ -121,7 +121,7 @@ export type WorkbenchMaterialCollectionCreateRequest = {
   description?: string;
   fileName?: string;
   groupId?: string | 0;
-  messageId: string;
+  msgInfoId: string;
   title?: string;
 };
 
@@ -227,6 +227,11 @@ export type WorkbenchRevokeMessageResponse = {
 export type WorkbenchMessageFileDownloadStatusRequest = {
   conversationId: string;
   messageSeq: number;
+};
+
+export type WorkbenchMessageFileDownloadRequest = {
+  conversationId: string;
+  msgInfoId: number;
 };
 
 export type WorkbenchSubUserDto = {

@@ -1253,7 +1253,7 @@ describe("backend app", () => {
       method: "POST",
       payload: {
         bizType: 1,
-        messageId: "msg-002",
+        msgInfoId: "1",
       },
       url: "/api/server/material-collections",
     });
@@ -1274,7 +1274,7 @@ describe("backend app", () => {
       method: "POST",
       payload: {
         bizType: 2,
-        messageId: "msg-004",
+        msgInfoId: "3",
       },
       url: "/api/server/material-collections",
     });
@@ -1319,7 +1319,7 @@ describe("backend app", () => {
       method: "POST",
       payload: {
         bizType: 2,
-        messageId: "msg-004",
+        msgInfoId: "3",
       },
       url: "/api/server/material-collections",
     });
@@ -2647,6 +2647,33 @@ describe("backend app", () => {
     await app.close();
   });
 
+  it("loads chat record details by audit message id", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+    const getChatRecordDetail = vi.fn().mockResolvedValue({
+      messageId: "830",
+      messages: [],
+    });
+    app.workbenchService = {
+      getChatRecordDetail,
+    } as never;
+    app.createWorkbenchService = () => app.workbenchService;
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/messages/830/chat-record?conversation_id=conv-001",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      messageId: "830",
+      messages: [],
+    });
+    expect(getChatRecordDetail).toHaveBeenCalledWith("101", "conv-001", 830);
+
+    await app.close();
+  });
+
   it("expands segmented sends into separate backend messages", async () => {
     const { app, authorization } = await createAuthenticatedApp();
 
@@ -2798,9 +2825,9 @@ describe("backend app", () => {
       method: "POST",
       payload: {
         conversationId: "conv-001",
-        messageSeq: 1,
+        msgInfoId: 1,
       },
-      url: "/api/server/messages/remote-msg-file-001/download",
+      url: "/api/server/messages/download",
     });
     const revoke = await app.inject({
       headers: { authorization },
@@ -2859,7 +2886,7 @@ describe("backend app", () => {
     }
     expect(download.statusCode).toBe(200);
     expect(download.json()).toEqual({
-      messageId: "remote-msg-file-001",
+      messageId: "1",
       status: "accepted",
     });
 

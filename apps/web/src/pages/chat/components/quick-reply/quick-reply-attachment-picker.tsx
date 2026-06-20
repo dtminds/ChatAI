@@ -197,7 +197,7 @@ export function QuickReplyAttachmentPicker({
             {attachments.map((attachment, index) => (
               <AttachmentRow
                 attachment={attachment}
-                key={`${attachment.type}:${attachment.materialCollectionId ?? ""}:${attachment.msgid ?? ""}:${index}`}
+                key={`${attachment.type}:${attachment.materialCollectionId ?? ""}:${attachment.msgInfoId ?? ""}:${index}`}
                 onDelete={() => {
                   onChange(
                     attachments.filter((_, itemIndex) => itemIndex !== index),

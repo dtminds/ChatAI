@@ -163,7 +163,7 @@ describe("chat material collection DTOs", () => {
 
     const createRequest: WorkbenchMaterialCollectionCreateRequest = {
       bizType: MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM,
-      messageId: "msgid-1002",
+      msgInfoId: "9002",
       groupId: "group-2",
     };
 
@@ -199,7 +199,7 @@ describe("chat material collection DTOs", () => {
     expect(listResponse.pagination.pageSize).toBe(100);
     expect(groupListRequest.bizType).toBe(2);
     expect(groupListResponse.groups).toHaveLength(1);
-    expect(createRequest.messageId).toBe("msgid-1002");
+    expect(createRequest.msgInfoId).toBe("9002");
     expect(createResponse.duplicated).toBe(true);
     expect(groupCreateRequest.bizType).toBe(4);
     expect(groupCreateResponse.id).toBe("group-h5");

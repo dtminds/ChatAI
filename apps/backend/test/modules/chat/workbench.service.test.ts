@@ -495,7 +495,7 @@ describe("MysqlWorkbenchService", () => {
     const javaClient = createJavaClient();
     const canAccessSeat = vi.fn().mockResolvedValue(true);
     const getChatRecordDetail = vi.fn().mockResolvedValue({
-      messageId: "parent-chatrecord-msgid",
+      messageId: "830",
       messages: [],
     });
     const service = new MysqlWorkbenchService(
@@ -514,9 +514,9 @@ describe("MysqlWorkbenchService", () => {
     );
 
     await expect(
-      service.getChatRecordDetail("101", "88", "parent-chatrecord-msgid"),
+      service.getChatRecordDetail("101", "88", 830),
     ).resolves.toEqual({
-      messageId: "parent-chatrecord-msgid",
+      messageId: "830",
       messages: [],
     });
     expect(canAccessSeat).toHaveBeenCalledWith("101", "12");
@@ -524,7 +524,7 @@ describe("MysqlWorkbenchService", () => {
       9001,
       5,
       "88",
-      "parent-chatrecord-msgid",
+      830,
     );
   });
 
@@ -1611,7 +1611,7 @@ describe("MysqlWorkbenchService", () => {
     expect(logger.error).not.toHaveBeenCalled();
   });
 
-  it("starts message file transfer with the audit msgid in an accessible conversation", async () => {
+  it("starts message file transfer with the audit message id in an accessible conversation", async () => {
     const javaClient = createJavaClient();
     const service = new MysqlWorkbenchService(
       {
@@ -1628,13 +1628,13 @@ describe("MysqlWorkbenchService", () => {
     );
 
     await expect(
-      service.downloadMessageFile("101", "88", "remote-msg-file-001"),
+      service.downloadMessageFile("101", "88", 538),
     ).resolves.toEqual({
-      messageId: "remote-msg-file-001",
+      messageId: "538",
       status: "accepted",
     });
     expect(javaClient.downloadMsgFile).toHaveBeenCalledWith({
-      msgid: "remote-msg-file-001",
+      msgInfoId: 538,
       platform: 5,
       uid: 9001,
     });
@@ -1657,19 +1657,19 @@ describe("MysqlWorkbenchService", () => {
     );
 
     await expect(
-      service.downloadMessageFile("101", "88", "remote-msg-file-001"),
+      service.downloadMessageFile("101", "88", 538),
     ).resolves.toEqual({
-      messageId: "remote-msg-file-001",
+      messageId: "538",
       status: "accepted",
     });
     expect(javaClient.downloadMsgFile).toHaveBeenCalledWith({
-      msgid: "remote-msg-file-001",
+      msgInfoId: 538,
       platform: 5,
       uid: 9001,
     });
   });
 
-  it("rejects message file transfer when msgid is empty", async () => {
+  it("rejects message file transfer when msgInfoId is invalid", async () => {
     const javaClient = createJavaClient();
     const service = new MysqlWorkbenchService(
       {
@@ -1686,7 +1686,7 @@ describe("MysqlWorkbenchService", () => {
     );
 
     await expect(
-      service.downloadMessageFile("101", "88", "  "),
+      service.downloadMessageFile("101", "88", 0),
     ).rejects.toMatchObject({
       code: "INVALID_MESSAGE_ID",
       statusCode: 400,
@@ -2346,17 +2346,17 @@ describe("MysqlWorkbenchService", () => {
     );
 
     await expect(
-      service.revokeMessage("101", "88", "msg-321"),
+      service.revokeMessage("101", "88", "321"),
     ).resolves.toEqual({
       accepted: true,
       conversationId: "88",
-      messageId: "msg-321",
+      messageId: "321",
       revokeMsgId: 321,
     });
 
     expect(getMessageForRevoke).toHaveBeenCalledWith({
       conversationId: "88",
-      messageId: "msg-321",
+      messageId: "321",
       platform: 5,
       thirdUserId: "seat-user-001",
       uid: 9001,
@@ -2393,7 +2393,7 @@ describe("MysqlWorkbenchService", () => {
     );
 
     await expect(
-      service.revokeMessage("101", "88", "msg-321"),
+      service.revokeMessage("101", "88", "321"),
     ).rejects.toMatchObject({
       code: "MESSAGE_REVOKE_EXPIRED",
       statusCode: 400,
@@ -2426,10 +2426,10 @@ describe("MysqlWorkbenchService", () => {
     );
 
     await expect(
-      service.revokeMessage("101", "88", "msg-321"),
+      service.revokeMessage("101", "88", "321"),
     ).resolves.toMatchObject({
       accepted: true,
-      messageId: "msg-321",
+      messageId: "321",
       revokeMsgId: 321,
     });
     expect(javaClient.revokeMessage).toHaveBeenCalledWith({
@@ -2464,7 +2464,7 @@ describe("MysqlWorkbenchService", () => {
     );
 
     await expect(
-      service.revokeMessage("101", "88", "msg-321"),
+      service.revokeMessage("101", "88", "321"),
     ).rejects.toMatchObject({
       code: "MESSAGE_REVOKE_EXPIRED",
       statusCode: 400,
@@ -2497,7 +2497,7 @@ describe("MysqlWorkbenchService", () => {
     );
 
     await expect(
-      service.revokeMessage("101", "88", "msg-321"),
+      service.revokeMessage("101", "88", "321"),
     ).rejects.toMatchObject({
       code: "MESSAGE_REVOKE_FORBIDDEN",
       statusCode: 403,
@@ -2678,7 +2678,6 @@ describe("MysqlWorkbenchService", () => {
 
   it("maps a quoted text send to the Java local quote payload", async () => {
     const javaClient = createJavaClient();
-    const getQuoteContentBase64 = vi.fn();
     vi.mocked(javaClient.sendMessage).mockResolvedValue({
       clientMessageId: "local-quote-001",
       messageId: "opt-quote-001",
@@ -2697,7 +2696,6 @@ describe("MysqlWorkbenchService", () => {
           thirdUserId: "seat-user-001",
           uid: 9001,
         }),
-        getQuoteContentBase64,
       } as unknown as WorkbenchRepository,
       javaClient,
     );
@@ -2716,7 +2714,6 @@ describe("MysqlWorkbenchService", () => {
       },
     });
 
-    expect(getQuoteContentBase64).not.toHaveBeenCalled();
     expect(javaClient.sendMessage).toHaveBeenCalledWith({
       clientMessageId: "local-quote-001",
       msgData: {
@@ -2785,7 +2782,6 @@ describe("MysqlWorkbenchService", () => {
 
   it("ignores quote payload for image sends", async () => {
     const javaClient = createJavaClient();
-    const getQuoteContentBase64 = vi.fn().mockResolvedValue("base64-quote-content");
     vi.mocked(javaClient.sendMessage).mockResolvedValue({
       clientMessageId: "local-image-quote-001",
       messageId: "opt-image-quote-001",
@@ -2804,7 +2800,6 @@ describe("MysqlWorkbenchService", () => {
           thirdUserId: "seat-user-001",
           uid: 9001,
         }),
-        getQuoteContentBase64,
       } as unknown as WorkbenchRepository,
       javaClient,
     );
@@ -2824,7 +2819,6 @@ describe("MysqlWorkbenchService", () => {
       },
     });
 
-    expect(getQuoteContentBase64).not.toHaveBeenCalled();
     expect(javaClient.sendMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         msgData: {
@@ -3488,7 +3482,6 @@ describe("MysqlWorkbenchService", () => {
 
   it("ignores quote payload for file sends", async () => {
     const javaClient = createJavaClient();
-    const getQuoteContentBase64 = vi.fn().mockResolvedValue("base64-quote-content");
     vi.mocked(javaClient.sendMessage).mockResolvedValue({
       clientMessageId: "local-file-quote-001",
       messageId: "opt-file-quote-001",
@@ -3507,7 +3500,6 @@ describe("MysqlWorkbenchService", () => {
           thirdUserId: "seat-user-001",
           uid: 9001,
         }),
-        getQuoteContentBase64,
       } as unknown as WorkbenchRepository,
       javaClient,
     );
@@ -3529,7 +3521,6 @@ describe("MysqlWorkbenchService", () => {
       },
     });
 
-    expect(getQuoteContentBase64).not.toHaveBeenCalled();
     expect(javaClient.sendMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         msgData: {
@@ -3857,7 +3848,7 @@ describe("MysqlWorkbenchService", () => {
       service.collectMaterial("101", {
         bizType: MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION,
         groupId: "9",
-        messageId: "msg-emotion-1",
+        msgInfoId: "9101",
       }),
     ).resolves.toEqual({ success: true });
 
@@ -3896,10 +3887,14 @@ describe("MysqlWorkbenchService", () => {
       service.collectMaterial("101", {
         bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
         groupId: "9",
-        messageId: "msg-file-1",
+        msgInfoId: "9102",
       }),
     ).resolves.toEqual({ success: true });
 
+    expect(repository.findMaterialMessage).toHaveBeenCalledWith({
+      msgInfoId: "9102",
+      uid: 9001,
+    });
     expect(repository.createMaterialCollection).toHaveBeenCalledWith({
       bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
       content: JSON.stringify({
@@ -3932,7 +3927,7 @@ describe("MysqlWorkbenchService", () => {
       service.collectMaterial("101", {
         bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
         groupId: "9",
-        messageId: "msg-file-1",
+        msgInfoId: "9102",
       }),
     ).resolves.toEqual({
       success: false,
@@ -3959,7 +3954,7 @@ describe("MysqlWorkbenchService", () => {
       service.collectMaterial("101", {
         bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
         groupId: "9",
-        messageId: "msg-file-1",
+        msgInfoId: "9102",
       }),
     ).resolves.toEqual({
       success: false,
@@ -3976,7 +3971,7 @@ describe("MysqlWorkbenchService", () => {
     await expect(
       service.collectMaterial("101", {
         bizType: MATERIAL_COLLECTION_BIZ_TYPE.H5,
-        messageId: "1025657",
+        msgInfoId: "9105",
       }),
     ).resolves.toEqual({
       success: false,
@@ -3986,7 +3981,7 @@ describe("MysqlWorkbenchService", () => {
       service.collectMaterial("101", {
         bizType: MATERIAL_COLLECTION_BIZ_TYPE.H5,
         groupId: 0,
-        messageId: "1025657",
+        msgInfoId: "9105",
       }),
     ).resolves.toEqual({
       success: false,
@@ -3996,7 +3991,7 @@ describe("MysqlWorkbenchService", () => {
       service.collectMaterial("101", {
         bizType: MATERIAL_COLLECTION_BIZ_TYPE.H5,
         groupId: "0",
-        messageId: "1025657",
+        msgInfoId: "9105",
       }),
     ).resolves.toEqual({
       success: false,
@@ -4029,7 +4024,7 @@ describe("MysqlWorkbenchService", () => {
       service.collectMaterial("101", {
         bizType: MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED,
         groupId: "9",
-        messageId: "msg-sphfeed-001",
+        msgInfoId: "9104",
       }),
     ).resolves.toEqual({ success: true });
 
@@ -4053,7 +4048,7 @@ describe("MysqlWorkbenchService", () => {
       service.collectMaterial("101", {
         bizType: MATERIAL_COLLECTION_BIZ_TYPE.H5,
         groupId: "9",
-        messageId: "1025657",
+        msgInfoId: "9105",
       }),
     ).resolves.toEqual({
       success: false,
@@ -4092,7 +4087,7 @@ describe("MysqlWorkbenchService", () => {
       service.collectMaterial("101", {
         bizType: MATERIAL_COLLECTION_BIZ_TYPE.H5,
         groupId: "9",
-        messageId: "1025657",
+        msgInfoId: "9105",
       }),
     ).resolves.toEqual({
       success: false,
@@ -4123,7 +4118,7 @@ describe("MysqlWorkbenchService", () => {
       service.collectMaterial("101", {
         bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
         groupId: "9",
-        messageId: "msg-file-1",
+        msgInfoId: "9106",
       }),
     ).resolves.toEqual({ success: true });
 
@@ -4156,7 +4151,7 @@ describe("MysqlWorkbenchService", () => {
       service.collectMaterial("101", {
         bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
         groupId: "9",
-        messageId: "msg-file-1",
+        msgInfoId: "9107",
       }),
     ).resolves.toEqual({
       success: true,
@@ -4193,7 +4188,7 @@ describe("MysqlWorkbenchService", () => {
       service.collectMaterial("101", {
         bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
         groupId: "9",
-        messageId: "msg-file-1",
+        msgInfoId: "9108",
       }),
     ).resolves.toEqual({
       success: true,
@@ -4241,7 +4236,7 @@ describe("MysqlWorkbenchService", () => {
       service.collectMaterial("101", {
         bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
         groupId: "9",
-        messageId: "msg-file-1",
+        msgInfoId: "9103",
       }),
     ).resolves.toEqual({
       success: true,
@@ -4598,6 +4593,7 @@ describe("MysqlWorkbenchService", () => {
     const unsupportedRepository = createMaterialRepository({
       findMaterialMessage: vi.fn().mockResolvedValue({
         content: JSON.stringify({ text: "普通文本" }),
+        id: 9109,
         msgid: "msg-text-1",
         msgtype: "text",
         uid: 9001,
@@ -4612,7 +4608,7 @@ describe("MysqlWorkbenchService", () => {
       unsupportedService.collectMaterial("101", {
         bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
         groupId: "9",
-        messageId: "msg-text-1",
+        msgInfoId: "9109",
       }),
     ).rejects.toMatchObject({
       code: "UNSUPPORTED_MATERIAL_MESSAGE",
@@ -4623,6 +4619,7 @@ describe("MysqlWorkbenchService", () => {
     const mismatchedRepository = createMaterialRepository({
       findMaterialMessage: vi.fn().mockResolvedValue({
         content: JSON.stringify({ fileName: "报价.pdf" }),
+        id: 9110,
         msgid: "msg-file-1",
         msgtype: "file",
         uid: 9001,
@@ -4637,7 +4634,7 @@ describe("MysqlWorkbenchService", () => {
       mismatchedService.collectMaterial("101", {
         bizType: MATERIAL_COLLECTION_BIZ_TYPE.H5,
         groupId: "9",
-        messageId: "msg-file-1",
+        msgInfoId: "9110",
       }),
     ).rejects.toMatchObject({
       code: "UNSUPPORTED_MATERIAL_MESSAGE",

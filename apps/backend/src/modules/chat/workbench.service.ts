@@ -277,7 +277,7 @@ export type WorkbenchService = {
   getChatRecordDetail(
     subUserId: string,
     conversationId: string,
-    messageId: string,
+    msgInfoId: number,
   ): Promise<WorkbenchChatRecordDetailResponse> | WorkbenchChatRecordDetailResponse;
   getHistoryMessages(
     subUserId: string,
@@ -287,7 +287,7 @@ export type WorkbenchService = {
   downloadMessageFile(
     subUserId: string,
     conversationId: string,
-    messageId: string,
+    msgInfoId: number,
   ): Promise<WorkbenchMessageFileDownloadResponse> | WorkbenchMessageFileDownloadResponse;
   confirmVoicePlaybackReady(
     subUserId: string,
@@ -867,7 +867,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
   async getChatRecordDetail(
     subUserId: string,
     conversationId: string,
-    messageId: string,
+    msgInfoId: number,
   ) {
     const conversation = await this.repository.getConversationLookup(conversationId);
 
@@ -881,7 +881,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
       conversation.uid,
       conversation.platform,
       conversationId,
-      messageId,
+      msgInfoId,
     );
 
     if (!detail) {
@@ -964,10 +964,9 @@ export class MysqlWorkbenchService implements WorkbenchService {
   async downloadMessageFile(
     subUserId: string,
     conversationId: string,
-    messageId: string,
+    msgInfoId: number,
   ) {
     const conversation = await this.repository.getConversationLookup(conversationId);
-    const normalizedMessageId = messageId.trim();
 
     if (!conversation) {
       throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
@@ -975,12 +974,12 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     await this.assertSeatAccess(subUserId, conversation.seatId);
 
-    if (!normalizedMessageId) {
+    if (!Number.isSafeInteger(msgInfoId) || msgInfoId <= 0) {
       throw new BadRequestError("INVALID_MESSAGE_ID", "消息 ID 不能为空");
     }
 
     await this.javaClient.downloadMsgFile({
-      msgid: normalizedMessageId,
+      msgInfoId,
       platform: conversation.platform,
       uid: conversation.uid,
     });
@@ -988,7 +987,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
     this.logger.info(
       {
         conversationId: conversation.id,
-        messageId: normalizedMessageId,
+        msgInfoId,
         operation: "download-message-file",
         platform: conversation.platform,
         seatId: conversation.seatId,
@@ -999,7 +998,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
     );
 
     return {
-      messageId: normalizedMessageId,
+      messageId: String(msgInfoId),
       status: "accepted" as const,
     };
   }
@@ -2143,7 +2142,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
     }
 
     const message = await this.repository.findMaterialMessage({
-      msgid: request.messageId,
+      msgInfoId: request.msgInfoId,
       uid: me.uid,
     });
 
@@ -2158,7 +2157,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
       bizType,
       message.content,
       request,
-      request.messageId,
+      request.msgInfoId,
       contentType,
     );
 

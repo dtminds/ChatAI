@@ -38,7 +38,7 @@ type PendingMaterialCollection = {
   bizType: ComposerMaterialBizType;
   conversationId: string;
   formValues: MaterialContentFormValues;
-  messageId: string;
+  msgInfoId: string;
 };
 
 type MaterialLibraryMutationRefresh =
@@ -474,7 +474,12 @@ export function useMaterialCollection({
         return;
       }
 
-      const messageId = message.remoteMessageId ?? message.id;
+      const msgInfoId = readCollectMessageInfoId(message);
+
+      if (!msgInfoId) {
+        toast.warning("收录失败，请稍后重试");
+        return;
+      }
 
       if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION) {
         setIsCollectingMaterial(true);
@@ -483,7 +488,7 @@ export function useMaterialCollection({
           const response = await getWorkbenchService().collectMaterial({
             bizType,
             groupId: 0,
-            messageId,
+            msgInfoId,
           });
 
           if (!isMountedRef.current) {
@@ -529,7 +534,7 @@ export function useMaterialCollection({
           bizType,
           conversationId: message.conversationId,
           formValues: getCollectFormValuesFromMessage(message),
-          messageId,
+          msgInfoId,
         });
       } catch (error) {
         if (isMountedRef.current) {
@@ -566,7 +571,7 @@ export function useMaterialCollection({
           description: payload.description,
           fileName: payload.fileName,
           groupId: payload.groupId,
-          messageId: pendingMaterialCollection.messageId,
+          msgInfoId: pendingMaterialCollection.msgInfoId,
           title: payload.title,
         });
 
@@ -1199,6 +1204,14 @@ function getMaterialBizTypeForMessage(
   return undefined;
 }
 
+function readCollectMessageInfoId(message: ChatMessage) {
+  const seq = message.seq;
+
+  return typeof seq === "number" && Number.isSafeInteger(seq) && seq > 0
+    ? String(seq)
+    : undefined;
+}
+
 function toComposerMaterialBizType(
   bizType: MaterialCollectionBizType,
 ): ComposerMaterialBizType | undefined {
@@ -1237,7 +1250,7 @@ function buildH5ComposerSegment(
     ...(desc ? { desc } : {}),
     href,
     materialCollectionId,
-    ...(item.msgInfoId ? { msgInfoId: item.msgInfoId } : {}),
+    msgInfoId: item.msgInfoId,
     title,
     type: "h5",
   };
@@ -1290,7 +1303,7 @@ function buildFileComposerSegment(
     fileName,
     ...(fileSizeLabel ? { fileSizeLabel } : {}),
     materialCollectionId,
-    ...(item.msgInfoId ? { msgInfoId: item.msgInfoId } : {}),
+    msgInfoId: item.msgInfoId,
     type: "file",
     url: fileUrl,
   };
@@ -1326,7 +1339,7 @@ function buildMiniProgramComposerSegment(
     ...(logoUrl ? { logoUrl } : {}),
     ...(sourceLabel ? { sourceLabel } : {}),
     materialCollectionId,
-    ...(item.msgInfoId ? { msgInfoId: item.msgInfoId } : {}),
+    msgInfoId: item.msgInfoId,
     title,
     type: "weapp",
   };
@@ -1353,7 +1366,7 @@ function buildSphfeedComposerSegment(
     ...(description ? { description } : {}),
     ...(imageUrl ? { imageUrl } : {}),
     materialCollectionId,
-    ...(item.msgInfoId ? { msgInfoId: item.msgInfoId } : {}),
+    msgInfoId: item.msgInfoId,
     ...(sourceLabel ? { sourceLabel } : {}),
     title,
     type: "sphfeed",

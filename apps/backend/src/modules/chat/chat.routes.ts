@@ -106,6 +106,10 @@ const MessageDownloadParamsSchema = Type.Object({
   messageId: Type.String(),
 });
 
+const MessageChatRecordParamsSchema = Type.Object({
+  msgInfoId: Type.Integer({ minimum: 1 }),
+});
+
 const MessageChatRecordQuerySchema = Type.Object({
   conversation_id: Type.String(),
 });
@@ -117,6 +121,11 @@ const MessageRevokeBodySchema = Type.Object({
 const MessageDownloadStatusBodySchema = Type.Object({
   conversationId: Type.String(),
   messageSeq: Type.Number(),
+});
+
+const MessageDownloadBodySchema = Type.Object({
+  conversationId: Type.String(),
+  msgInfoId: Type.Integer({ minimum: 1 }),
 });
 
 const MessageQueryByIdsBodySchema = Type.Object({
@@ -444,7 +453,7 @@ const MaterialCollectionCreateBodySchema = Type.Object({
   description: Type.Optional(Type.String()),
   fileName: Type.Optional(Type.String()),
   groupId: Type.Optional(Type.Union([Type.String({ maxLength: 64 }), Type.Literal(0)])),
-  messageId: Type.String({ maxLength: 64, minLength: 1 }),
+  msgInfoId: Type.String({ maxLength: 64, minLength: 1 }),
   title: Type.Optional(Type.String()),
 });
 
@@ -598,8 +607,10 @@ type MediaUploadCredentialBody = Static<typeof MediaUploadCredentialBodySchema>;
 type VoicePlaybackConfirmBody = Static<typeof VoicePlaybackConfirmBodySchema>;
 type VoiceTranscriptionBody = Static<typeof VoiceTranscriptionBodySchema>;
 type MessageDownloadParams = Static<typeof MessageDownloadParamsSchema>;
+type MessageChatRecordParams = Static<typeof MessageChatRecordParamsSchema>;
 type MessageChatRecordQuery = Static<typeof MessageChatRecordQuerySchema>;
 type MessageRevokeBody = Static<typeof MessageRevokeBodySchema>;
+type MessageDownloadBody = Static<typeof MessageDownloadBodySchema>;
 type MessageDownloadStatusBody = Static<typeof MessageDownloadStatusBodySchema>;
 type MessageQueryByIdsBody = Static<typeof MessageQueryByIdsBodySchema>;
 type PollQuery = Static<typeof PollQuerySchema>;
@@ -850,14 +861,14 @@ export async function registerChatRoutes(app: FastifyInstance) {
   );
 
   app.get<{
-    Params: MessageDownloadParams;
+    Params: MessageChatRecordParams;
     Querystring: MessageChatRecordQuery;
   }>(
-    "/api/server/messages/:messageId/chat-record",
+    "/api/server/messages/:msgInfoId/chat-record",
     {
       preHandler: app.authenticate,
       schema: {
-        params: MessageDownloadParamsSchema,
+        params: MessageChatRecordParamsSchema,
         querystring: MessageChatRecordQuerySchema,
       },
     },
@@ -865,7 +876,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
       getWorkbenchService(app, request).getChatRecordDetail(
         getSubUserId(request),
         request.query.conversation_id,
-        request.params.messageId,
+        request.params.msgInfoId,
       ),
   );
 
@@ -1834,22 +1845,20 @@ export async function registerChatRoutes(app: FastifyInstance) {
   );
 
   app.post<{
-    Body: MessageDownloadStatusBody;
-    Params: MessageDownloadParams;
+    Body: MessageDownloadBody;
   }>(
-    "/api/server/messages/:messageId/download",
+    "/api/server/messages/download",
     {
       preHandler: app.authenticate,
       schema: {
-        body: MessageDownloadStatusBodySchema,
-        params: MessageDownloadParamsSchema,
+        body: MessageDownloadBodySchema,
       },
     },
     async (request) => {
       return getWorkbenchService(app, request).downloadMessageFile(
         getSubUserId(request),
         request.body.conversationId,
-        request.params.messageId,
+        request.body.msgInfoId,
       );
     },
   );

@@ -1579,7 +1579,7 @@ describe("ChatWorkbenchPage", () => {
       expect(collectMaterial).toHaveBeenCalledWith({
         bizType: 1,
         groupId: 0,
-        messageId: "msg-emotion-collect-001",
+        msgInfoId: "1",
       });
     });
     expect(workbenchToastSuccessMock).toHaveBeenCalledWith("已收录");
@@ -1620,7 +1620,7 @@ describe("ChatWorkbenchPage", () => {
           bizType: 2,
           fileName: "求未 AI 智能营销系统.pdf",
           groupId: "mock-material-group-file",
-          messageId: "msg-004",
+          msgInfoId: "3",
         }),
       );
     });
@@ -1682,7 +1682,7 @@ describe("ChatWorkbenchPage", () => {
           bizType: 2,
           fileName: "求未 AI 智能营销系统.pdf",
           groupId: "group-created",
-          messageId: "msg-004",
+          msgInfoId: "3",
         }),
       );
     });

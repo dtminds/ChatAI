@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { MoreHorizontalIcon, Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -30,6 +31,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  resolveTablePagination,
+  TablePagination,
+} from "@/components/ui/table-pagination";
 import { cn } from "@/lib/utils";
 import {
   mockApplicationScopeAccounts,
@@ -39,6 +44,7 @@ import {
 } from "./agent-management-mock-data";
 
 const selectedAccountPreviewLimit = 5;
+const APPLICATION_SCOPE_PAGE_SIZE = 10;
 
 type ApplicationScopeSettingsDraft = {
   agentId: string | null;
@@ -55,6 +61,7 @@ export function ApplicationScopePanel({
 }) {
   const [accounts, setAccounts] = useState(mockApplicationScopeAccounts);
   const [searchQuery, setSearchQuery] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
   const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([]);
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
   const [settingsTargetAccountIds, setSettingsTargetAccountIds] = useState<string[]>([]);
@@ -69,34 +76,43 @@ export function ApplicationScopePanel({
     return accounts.filter((account) => account.name.toLowerCase().includes(normalizedQuery));
   }, [accounts, searchQuery]);
 
-  const filteredAccountIdSet = useMemo(
-    () => new Set(filteredAccounts.map((account) => account.id)),
-    [filteredAccounts],
+  const { activePage, endRow, startRow, totalPages } = resolveTablePagination({
+    page: currentPage,
+    pageSize: APPLICATION_SCOPE_PAGE_SIZE,
+    total: filteredAccounts.length,
+  });
+  const pagedAccounts = useMemo(() => {
+    const start = (activePage - 1) * APPLICATION_SCOPE_PAGE_SIZE;
+    return filteredAccounts.slice(start, start + APPLICATION_SCOPE_PAGE_SIZE);
+  }, [activePage, filteredAccounts]);
+  const pagedAccountIdSet = useMemo(
+    () => new Set(pagedAccounts.map((account) => account.id)),
+    [pagedAccounts],
   );
   const visibleSelectedAccountIds = useMemo(
-    () => selectedAccountIds.filter((id) => filteredAccountIdSet.has(id)),
-    [selectedAccountIds, filteredAccountIdSet],
+    () => selectedAccountIds.filter((id) => pagedAccountIdSet.has(id)),
+    [selectedAccountIds, pagedAccountIdSet],
   );
-  const selectedFilteredCount = visibleSelectedAccountIds.length;
-  const allFilteredSelected =
-    filteredAccounts.length > 0 && selectedFilteredCount === filteredAccounts.length;
+  const selectedVisibleCount = visibleSelectedAccountIds.length;
+  const allVisibleSelected =
+    pagedAccounts.length > 0 && selectedVisibleCount === pagedAccounts.length;
   const headerCheckboxState: boolean | "indeterminate" =
-    selectedFilteredCount === 0
+    selectedVisibleCount === 0
       ? false
-      : allFilteredSelected
+      : allVisibleSelected
         ? true
         : "indeterminate";
 
   function toggleAllAccounts(checked: boolean) {
     if (checked) {
       setSelectedAccountIds((current) => [
-        ...new Set([...current, ...filteredAccounts.map((account) => account.id)]),
+        ...new Set([...current, ...pagedAccounts.map((account) => account.id)]),
       ]);
       return;
     }
 
     setSelectedAccountIds((current) =>
-      current.filter((id) => !filteredAccountIdSet.has(id)),
+      current.filter((id) => !pagedAccountIdSet.has(id)),
     );
   }
 
@@ -138,43 +154,64 @@ export function ApplicationScopePanel({
 
   return (
     <>
-      <section className="flex flex-wrap items-center justify-between gap-3">
-        <div className="relative w-full max-w-[280px]">
-          <HugeiconsIcon
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-            color="currentColor"
-            icon={Search01Icon}
-            size={17}
-            strokeWidth={1.8}
-          />
-          <Input
-            aria-label="搜索企微账号"
-            className="h-10 rounded-[8px] pl-9"
-            onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder="搜索企微账号"
-            value={searchQuery}
-          />
+      <section
+        aria-label="托管设置列表"
+        className="space-y-4"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="relative w-[280px] max-w-full">
+            <HugeiconsIcon
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+              color="currentColor"
+              icon={Search01Icon}
+              size={17}
+              strokeWidth={1.8}
+            />
+            <Input
+              aria-label="搜索企微账号"
+              className="h-10 rounded-[8px] pl-9"
+              onChange={(event) => {
+                setSearchQuery(event.target.value);
+                setCurrentPage(1);
+              }}
+              placeholder="搜索企微账号"
+              value={searchQuery}
+            />
+          </div>
+
+          <Button
+            className="h-10 px-4"
+            disabled={visibleSelectedAccountIds.length === 0}
+            onClick={() => openSettingsDialog(visibleSelectedAccountIds)}
+            type="button"
+            variant="outline"
+          >
+            <span>批量设置</span>
+            {visibleSelectedAccountIds.length > 0 ? (
+              <Badge className="-mr-1 px-2 py-0.5" variant="secondary">
+                {visibleSelectedAccountIds.length}
+              </Badge>
+            ) : null}
+          </Button>
         </div>
 
-        <Button
-          className="h-10 px-4"
-          disabled={visibleSelectedAccountIds.length === 0}
-          onClick={() => openSettingsDialog(visibleSelectedAccountIds)}
-          type="button"
-          variant="outline"
-        >
-          批量设置
-        </Button>
+        <ApplicationScopeTable
+          accounts={pagedAccounts}
+          headerCheckboxState={headerCheckboxState}
+          onOpenSettings={openSettingsDialog}
+          onToggleAccount={toggleAccountSelection}
+          onToggleAll={toggleAllAccounts}
+          selectedAccountIds={selectedAccountIds}
+        />
+        <TablePagination
+          endRow={endRow}
+          onPageChange={setCurrentPage}
+          page={activePage}
+          startRow={startRow}
+          total={filteredAccounts.length}
+          totalPages={totalPages}
+        />
       </section>
-
-      <ApplicationScopeTable
-        accounts={filteredAccounts}
-        headerCheckboxState={headerCheckboxState}
-        onOpenSettings={openSettingsDialog}
-        onToggleAccount={toggleAccountSelection}
-        onToggleAll={toggleAllAccounts}
-        selectedAccountIds={selectedAccountIds}
-      />
 
       <ApplicationScopeSettingsDialog
         agents={agents}
@@ -410,54 +447,54 @@ function ApplicationScopeTable({
   const selectedAccountIdSet = new Set(selectedAccountIds);
 
   return (
-    <section className="overflow-hidden rounded-[10px] border border-border bg-background">
-      <Table aria-label="应用范围列表">
+    <div>
+      <Table aria-label="托管设置列表" className="table-fixed">
         <TableHeader>
-          <TableRow>
-            <TableHead className="w-12 px-5 py-4">
+          <TableRow className="hover:bg-transparent">
+            <TableHead className="h-11 w-10">
               <Checkbox
                 aria-label="全选企微账号"
                 checked={headerCheckboxState}
                 onCheckedChange={(checked) => onToggleAll(checked === true)}
               />
             </TableHead>
-            <TableHead className="w-[24%] px-5 py-4">企微账号</TableHead>
-            <TableHead className="w-[16%] px-5 py-4">关联Agent</TableHead>
-            <TableHead className="w-[18%] px-5 py-4">全自动托管权限</TableHead>
-            <TableHead className="w-[16%] px-5 py-4">话术推荐</TableHead>
-            <TableHead className="w-[100px] px-5 py-4">操作</TableHead>
+            <TableHead className="h-11 w-[24%]">企微账号</TableHead>
+            <TableHead className="h-11 w-[16%]">关联Agent</TableHead>
+            <TableHead className="h-11 w-[18%]">全自动托管权限</TableHead>
+            <TableHead className="h-11 w-[16%]">话术推荐</TableHead>
+            <TableHead className="h-11 w-[100px] text-right">操作</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {accounts.length === 0 ? (
             <TableRow>
-              <TableCell className="px-5 py-10 text-center text-sm text-muted-foreground" colSpan={6}>
+              <TableCell className="py-10 text-center text-sm text-muted-foreground" colSpan={6}>
                 暂无数据
               </TableCell>
             </TableRow>
           ) : (
             accounts.map((account) => (
               <TableRow key={account.id}>
-                <TableCell className="px-5 py-4">
+                <TableCell className="w-10 py-4">
                   <Checkbox
                     aria-label={`选择${account.name}`}
                     checked={selectedAccountIdSet.has(account.id)}
                     onCheckedChange={() => onToggleAccount(account.id)}
                   />
                 </TableCell>
-                <TableCell className="px-5 py-4">
+                <TableCell className="py-4">
                   <WeComAccountIdentity name={account.name} />
                 </TableCell>
-                <TableCell className="px-5 py-4 text-muted-foreground">
+                <TableCell className="py-4 text-muted-foreground">
                   {resolveApplicationScopeAgentLabel(account.associatedAgentId)}
                 </TableCell>
-                <TableCell className="px-5 py-4">
+                <TableCell className="py-4">
                   <FeatureStatus enabled={account.autoHostingEnabled} />
                 </TableCell>
-                <TableCell className="px-5 py-4">
+                <TableCell className="py-4">
                   <FeatureStatus enabled={account.scriptRecommendationEnabled} />
                 </TableCell>
-                <TableCell className="px-5 py-4">
+                <TableCell className="py-4 text-right">
                   <Button
                     className="h-auto p-0 text-primary"
                     onClick={() => onOpenSettings([account.id])}
@@ -472,7 +509,7 @@ function ApplicationScopeTable({
           )}
         </TableBody>
       </Table>
-    </section>
+    </div>
   );
 }
 

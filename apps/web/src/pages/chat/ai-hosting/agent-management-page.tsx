@@ -1,22 +1,25 @@
 import { useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { Add01Icon, Book04Icon, Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ApplicationScopePanel } from "./agent-management-application-scope";
+import {
+  resolveTablePagination,
+  TablePagination,
+} from "@/components/ui/table-pagination";
 import { AgentTable } from "./agent-management-agent-table";
 import { mockAgentMetricsByPeriod, mockAgents, type AgentStatsPeriod } from "./agent-management-mock-data";
 import { AgentOverviewSection } from "./agent-management-overview";
 import { AiHostingLayout, AiHostingPageHeader } from "./ai-hosting-layout";
 
+const AGENT_PAGE_SIZE = 10;
+
 export function AgentManagementPage() {
-  const navigate = useNavigate();
   const [statsPeriod, setStatsPeriod] = useState<AgentStatsPeriod>("today");
   const [agents] = useState(mockAgents);
   const [agentSearchQuery, setAgentSearchQuery] = useState("");
-  const [activeTab, setActiveTab] = useState("my-agents");
+  const [currentPage, setCurrentPage] = useState(1);
 
   const metrics = mockAgentMetricsByPeriod[statsPeriod];
   const filteredAgents = useMemo(() => {
@@ -28,10 +31,15 @@ export function AgentManagementPage() {
 
     return agents.filter((agent) => agent.name?.toLowerCase().includes(normalizedQuery));
   }, [agentSearchQuery, agents]);
-
-  function handleGoToAddAgent() {
-    navigate("/chat/ai-hosting/agents/new");
-  }
+  const { activePage, endRow, startRow, totalPages } = resolveTablePagination({
+    page: currentPage,
+    pageSize: AGENT_PAGE_SIZE,
+    total: filteredAgents.length,
+  });
+  const pagedAgents = useMemo(() => {
+    const start = (activePage - 1) * AGENT_PAGE_SIZE;
+    return filteredAgents.slice(start, start + AGENT_PAGE_SIZE);
+  }, [activePage, filteredAgents]);
 
   return (
     <AiHostingLayout title="Agent 管理">
@@ -49,50 +57,46 @@ export function AgentManagementPage() {
 
         <AgentOverviewSection metrics={metrics} onPeriodChange={setStatsPeriod} period={statsPeriod} />
 
-        <Tabs onValueChange={setActiveTab} value={activeTab}>
-          <TabsList aria-label="Agent列表视图" className="h-10 w-fit rounded-[8px] bg-muted p-1">
-            <TabsTrigger className="h-8 min-w-24 rounded-[6px] px-4 py-0 text-sm" value="my-agents">
-              我的Agent
-            </TabsTrigger>
-            <TabsTrigger className="h-8 min-w-24 rounded-[6px] px-4 py-0 text-sm" value="scope">
-              应用范围
-            </TabsTrigger>
-          </TabsList>
+        <section aria-label="Agent列表区块" className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="relative w-[280px] max-w-full">
+              <HugeiconsIcon
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                color="currentColor"
+                icon={Search01Icon}
+                size={17}
+                strokeWidth={1.8}
+              />
+              <Input
+                aria-label="搜索 Agent 名称"
+                className="h-10 rounded-[8px] pl-9"
+                onChange={(event) => {
+                  setAgentSearchQuery(event.target.value);
+                  setCurrentPage(1);
+                }}
+                placeholder="搜索 Agent 名称"
+                value={agentSearchQuery}
+              />
+            </div>
 
-          <TabsContent className="mt-4 space-y-4" value="my-agents">
-            <section className="flex flex-wrap items-center justify-between gap-3">
-              <div className="relative w-full max-w-[280px]">
-                <HugeiconsIcon
-                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-                  color="currentColor"
-                  icon={Search01Icon}
-                  size={17}
-                  strokeWidth={1.8}
-                />
-                <Input
-                  aria-label="搜索 Agent 名称"
-                  className="h-10 rounded-[8px] pl-9"
-                  onChange={(event) => setAgentSearchQuery(event.target.value)}
-                  placeholder="搜索 Agent 名称"
-                  value={agentSearchQuery}
-                />
-              </div>
+            <Button asChild className="h-10 px-4" type="button">
+              <Link to="/chat/ai-hosting/agents/new">
+                <HugeiconsIcon color="currentColor" icon={Add01Icon} size={17} strokeWidth={1.8} />
+                <span>添加 Agent</span>
+              </Link>
+            </Button>
+          </div>
 
-              <Button asChild className="h-10 px-4" type="button">
-                <Link to="/chat/ai-hosting/agents/new">
-                  <HugeiconsIcon color="currentColor" icon={Add01Icon} size={17} strokeWidth={1.8} />
-                  <span>添加 Agent</span>
-                </Link>
-              </Button>
-            </section>
-
-            <AgentTable agents={filteredAgents} />
-          </TabsContent>
-
-          <TabsContent className="mt-4 space-y-4" value="scope">
-            <ApplicationScopePanel agents={agents} onGoToAddAgent={handleGoToAddAgent} />
-          </TabsContent>
-        </Tabs>
+          <AgentTable agents={pagedAgents} />
+          <TablePagination
+            endRow={endRow}
+            onPageChange={setCurrentPage}
+            page={activePage}
+            startRow={startRow}
+            total={filteredAgents.length}
+            totalPages={totalPages}
+          />
+        </section>
       </div>
     </AiHostingLayout>
   );

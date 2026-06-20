@@ -7,7 +7,7 @@ import {
 } from "@/components/ui/table-pagination";
 
 describe("TablePagination", () => {
-  it("renders row range, folded page buttons, and disabled edge controls", async () => {
+  it("renders total count, folded page buttons, and disabled edge controls", async () => {
     const user = userEvent.setup();
     const onPageChange = vi.fn();
 
@@ -22,7 +22,8 @@ describe("TablePagination", () => {
       />,
     );
 
-    expect(screen.getByText("显示 21-30 / 共 96 条")).toBeInTheDocument();
+    expect(screen.getByText("共 96 条")).toBeInTheDocument();
+    expect(screen.queryByText("显示 21-30 / 共 96 条")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "上一页" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "下一页" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "3" })).toHaveAttribute("aria-current", "page");
@@ -32,6 +33,24 @@ describe("TablePagination", () => {
     await user.click(screen.getByRole("button", { name: "下一页" }));
 
     expect(onPageChange).toHaveBeenCalledWith(4);
+  });
+
+  it("renders compact page controls for table density", () => {
+    const { container } = render(
+      <TablePagination
+        endRow={30}
+        onPageChange={vi.fn()}
+        page={3}
+        startRow={21}
+        total={96}
+        totalPages={10}
+      />,
+    );
+
+    expect(container.firstChild).toHaveClass("items-end", "px-0", "sm:justify-end");
+    expect(screen.getByRole("button", { name: "上一页" })).toHaveClass("size-8");
+    expect(screen.getByRole("button", { name: "3" })).toHaveClass("size-8");
+    expect(screen.getByRole("button", { name: "下一页" })).toHaveClass("size-8");
   });
 
   it("clamps invalid page values before rendering controls", () => {

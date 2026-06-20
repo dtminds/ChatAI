@@ -158,7 +158,7 @@ export function KnowledgeBasePage() {
 
         <section className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="relative w-full max-w-[280px]">
+            <div className="relative w-[280px] max-w-full">
               <HugeiconsIcon
                 className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
                 color="currentColor"
@@ -184,14 +184,15 @@ export function KnowledgeBasePage() {
             </Button>
           </div>
 
-          <div className="overflow-hidden rounded-[8px] border bg-background">
+          <div>
             <Table className="table-fixed">
               <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[22%] px-5 py-4">知识库名称</TableHead>
-                  <TableHead className="w-[38%] px-5 py-4">描述</TableHead>
-                  <TableHead className="w-[20%] px-5 py-4">最近更新时间</TableHead>
-                  <TableHead className="w-[20%] px-5 py-4">创建时间</TableHead>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead className="h-11 w-[22%]">知识库名称</TableHead>
+                  <TableHead className="h-11 w-[32%]">描述</TableHead>
+                  <TableHead className="h-11 w-[20%]">最近更新时间</TableHead>
+                  <TableHead className="h-11 w-[16%]">创建时间</TableHead>
+                  <TableHead className="h-11 w-[100px] text-right">操作</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -199,24 +200,34 @@ export function KnowledgeBasePage() {
                   pagedItems.map((item) => (
                     <TableRow key={item.id}>
                       <TableCell
-                        className="truncate px-5 py-4 font-medium text-foreground"
+                        className="truncate py-4 font-medium text-foreground"
                         title={item.name}
                       >
                         {item.name}
                       </TableCell>
                       <TableCell
-                        className="truncate px-5 py-4 text-muted-foreground"
+                        className="truncate py-4 text-muted-foreground"
                         title={item.description}
                       >
                         {item.description || "-"}
                       </TableCell>
-                      <TableCell className="px-5 py-4 text-muted-foreground">{item.lastUpdatedAt}</TableCell>
-                      <TableCell className="px-5 py-4 text-muted-foreground">{item.createdAt}</TableCell>
+                      <TableCell className="py-4 text-muted-foreground">{item.lastUpdatedAt}</TableCell>
+                      <TableCell className="py-4 text-muted-foreground">{item.createdAt}</TableCell>
+                      <TableCell className="py-4 text-right">
+                        <div className="flex items-center justify-end gap-3">
+                          <Button className="h-auto p-0 text-primary" type="button" variant="link">
+                            编辑
+                          </Button>
+                          <Button className="h-auto p-0 text-primary" type="button" variant="link">
+                            删除
+                          </Button>
+                        </div>
+                      </TableCell>
                     </TableRow>
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell className="px-5 py-10 text-center text-sm text-muted-foreground" colSpan={4}>
+                    <TableCell className="py-10 text-center text-sm text-muted-foreground" colSpan={5}>
                       暂无数据
                     </TableCell>
                   </TableRow>
@@ -224,7 +235,6 @@ export function KnowledgeBasePage() {
               </TableBody>
             </Table>
             <TablePagination
-              className="px-5"
               endRow={endRow}
               onPageChange={setCurrentPage}
               page={activePage}

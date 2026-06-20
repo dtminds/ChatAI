@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 import { AgentManagementPage } from "@/pages/chat/ai-hosting/agent-management-page";
+import { AgentHostingSettingsPage } from "@/pages/chat/ai-hosting/agent-hosting-settings-page";
 import { AgentSettingsPage } from "@/pages/chat/ai-hosting/agent-settings-page";
 import { KnowledgeBasePage } from "@/pages/chat/ai-hosting/knowledge-base-page";
 
@@ -38,6 +39,10 @@ describe("AI hosting pages", () => {
       "href",
       "/chat/ai-hosting/knowledge",
     );
+    expect(screen.getByRole("link", { name: "托管设置" })).toHaveAttribute(
+      "href",
+      "/chat/ai-hosting/hosting-settings",
+    );
     expect(screen.getByRole("button", { name: "帮助手册" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "数据总览" })).toBeInTheDocument();
     expect(screen.getByText("会话总数")).toBeInTheDocument();
@@ -45,6 +50,9 @@ describe("AI hosting pages", () => {
     expect(screen.getByText("人工发送消息数")).toBeInTheDocument();
     expect(screen.getByText("865")).toBeInTheDocument();
     expect(screen.getByRole("table", { name: "Agent列表" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Agent列表区块" })).toBeInTheDocument();
+    expect(screen.getByText("共 3 条")).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "应用范围" })).not.toBeInTheDocument();
     expect(screen.getByRole("cell", { name: "护肤小助理" })).toBeInTheDocument();
     expect(screen.getByRole("cell", { name: "售后小助理" })).toBeInTheDocument();
     const doubaoIcons = screen.getAllByTitle("模型图标：Doubao-2.0-lite");
@@ -73,17 +81,15 @@ describe("AI hosting pages", () => {
     expect(screen.queryByRole("cell", { name: "护肤小助理" })).not.toBeInTheDocument();
   });
 
-  it("renders the application scope tab", async () => {
-    const user = userEvent.setup();
+  it("renders the hosting settings page", async () => {
+    renderWithRoute("/chat/ai-hosting/hosting-settings", <AgentHostingSettingsPage />);
 
-    renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
-
-    await screen.findByRole("heading", { level: 1, name: "Agent 管理" });
-    await user.click(screen.getByRole("tab", { name: "应用范围" }));
-
+    expect(await screen.findByRole("heading", { level: 1, name: "托管设置" })).toBeInTheDocument();
+    expect(screen.getByText("配置企微账号关联的 Agent 和托管能力")).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "搜索企微账号" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "批量设置" })).toBeDisabled();
-    expect(screen.getByRole("table", { name: "应用范围列表" })).toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "托管设置列表" })).toBeInTheDocument();
+    expect(screen.getByText("共 3 条")).toBeInTheDocument();
     expect(screen.getByText("小助理1")).toBeInTheDocument();
     expect(screen.getByText("小助理2")).toBeInTheDocument();
     expect(screen.getByText("小助理3")).toBeInTheDocument();
@@ -95,10 +101,9 @@ describe("AI hosting pages", () => {
   it("filters application scope accounts by search query", async () => {
     const user = userEvent.setup();
 
-    renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
+    renderWithRoute("/chat/ai-hosting/hosting-settings", <AgentHostingSettingsPage />);
 
-    await screen.findByRole("heading", { level: 1, name: "Agent 管理" });
-    await user.click(screen.getByRole("tab", { name: "应用范围" }));
+    await screen.findByRole("heading", { level: 1, name: "托管设置" });
     await user.type(screen.getByRole("textbox", { name: "搜索企微账号" }), "小助理2");
 
     expect(screen.getByText("小助理2")).toBeInTheDocument();
@@ -109,10 +114,9 @@ describe("AI hosting pages", () => {
   it("opens the batch settings dialog from row settings", async () => {
     const user = userEvent.setup();
 
-    renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
+    renderWithRoute("/chat/ai-hosting/hosting-settings", <AgentHostingSettingsPage />);
 
-    await screen.findByRole("heading", { level: 1, name: "Agent 管理" });
-    await user.click(screen.getByRole("tab", { name: "应用范围" }));
+    await screen.findByRole("heading", { level: 1, name: "托管设置" });
     await user.click(screen.getAllByRole("button", { name: "设置" })[0]);
 
     const dialog = screen.getByRole("dialog", { name: "批量设置" });
@@ -128,13 +132,12 @@ describe("AI hosting pages", () => {
   it("opens the batch settings dialog from batch action", async () => {
     const user = userEvent.setup();
 
-    renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
+    renderWithRoute("/chat/ai-hosting/hosting-settings", <AgentHostingSettingsPage />);
 
-    await screen.findByRole("heading", { level: 1, name: "Agent 管理" });
-    await user.click(screen.getByRole("tab", { name: "应用范围" }));
+    await screen.findByRole("heading", { level: 1, name: "托管设置" });
     await user.click(screen.getByRole("checkbox", { name: "选择小助理2" }));
     await user.click(screen.getByRole("checkbox", { name: "选择小助理3" }));
-    await user.click(screen.getByRole("button", { name: "批量设置" }));
+    await user.click(screen.getByRole("button", { name: "批量设置 2" }));
 
     const dialog = screen.getByRole("dialog", { name: "批量设置" });
 
@@ -146,10 +149,9 @@ describe("AI hosting pages", () => {
   it("saves application scope settings from the dialog", async () => {
     const user = userEvent.setup();
 
-    renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
+    renderWithRoute("/chat/ai-hosting/hosting-settings", <AgentHostingSettingsPage />);
 
-    await screen.findByRole("heading", { level: 1, name: "Agent 管理" });
-    await user.click(screen.getByRole("tab", { name: "应用范围" }));
+    await screen.findByRole("heading", { level: 1, name: "托管设置" });
     await user.click(screen.getAllByRole("button", { name: "设置" })[0]);
     await user.click(screen.getByRole("switch", { name: "全自动托管权限" }));
     await user.click(screen.getByRole("switch", { name: "话术推荐" }));

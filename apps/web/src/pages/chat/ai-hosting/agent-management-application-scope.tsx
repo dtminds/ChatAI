@@ -432,7 +432,7 @@ function ApplicationScopeTable({
           {accounts.length === 0 ? (
             <TableRow>
               <TableCell className="px-5 py-10 text-center text-sm text-muted-foreground" colSpan={6}>
-                未找到匹配的企微账号
+                暂无数据
               </TableCell>
             </TableRow>
           ) : (

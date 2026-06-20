@@ -333,10 +333,37 @@ describe("AI hosting pages", () => {
     expect(screen.getByLabelText("角色描述")).toBeInTheDocument();
   });
 
-  it("renders the knowledge base placeholder", async () => {
+  it("renders the knowledge base page", async () => {
     renderWithRoute("/chat/ai-hosting/knowledge", <KnowledgeBasePage />);
 
     expect(await screen.findByRole("heading", { level: 1, name: "知识库" })).toBeInTheDocument();
-    expect(screen.getByText("功能建设中")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "创建知识库" })).toBeInTheDocument();
+    expect(screen.getByText(/华为产品知识/)).toBeInTheDocument();
+  });
+
+  it("limits knowledge base creation fields", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute("/chat/ai-hosting/knowledge", <KnowledgeBasePage />);
+
+    await user.click(await screen.findByRole("button", { name: "创建知识库" }));
+
+    expect(screen.getByLabelText(/知识库名称/)).toHaveAttribute("maxLength", "30");
+    expect(screen.getByLabelText("知识库描述")).toHaveAttribute("maxLength", "1000");
+  });
+
+  it("shows knowledge base name character count", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute("/chat/ai-hosting/knowledge", <KnowledgeBasePage />);
+
+    await user.click(await screen.findByRole("button", { name: "创建知识库" }));
+
+    expect(screen.getByText("0/30")).toBeInTheDocument();
+    expect(screen.queryByText("0/1000")).not.toBeInTheDocument();
+
+    await user.type(screen.getByLabelText(/知识库名称/), "产品知识库");
+
+    expect(screen.getByText("5/30")).toBeInTheDocument();
   });
 });

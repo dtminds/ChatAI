@@ -314,6 +314,7 @@ function buildAttachmentFromMaterial(
   return {
     content: item.content,
     materialCollectionId: item.id,
+    ...(item.msgInfoId ? { msgInfoId: item.msgInfoId } : {}),
     msgid: item.messageId,
     type,
   };

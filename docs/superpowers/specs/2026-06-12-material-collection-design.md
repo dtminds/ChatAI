@@ -22,7 +22,7 @@
 
 两张表都新增 `sort BIGINT`，用于置顶排序。新建和置顶时写当前时间毫秒。列表统一按 `sort desc, id desc` 排序。
 
-`xy_wap_embed_material_collection.msgid` 存 `xy_wap_embed_msg_audit_info.msgid`。`content` 存 `xy_wap_embed_msg_audit_info.content` 原文，后端列表接口负责把原始 content 映射成工作台已有消息内容 DTO。
+`xy_wap_embed_material_collection.msg_info_id` 存 `xy_wap_embed_msg_audit_info.id`。`msgid` 存 `xy_wap_embed_msg_audit_info.msgid`。`content` 存 `xy_wap_embed_msg_audit_info.content` 原文，后端列表接口负责把原始 content 映射成工作台已有消息内容 DTO。
 
 表情素材固定：
 
@@ -80,7 +80,7 @@
 
 ## 内容映射
 
-后端收录时从 `xy_wap_embed_msg_audit_info` 读取 `msgid`、`msgtype`、`content`、`uid` 等字段。
+后端收录时从 `xy_wap_embed_msg_audit_info` 读取 `id`、`msgid`、`msgtype`、`content`、`uid` 等字段。
 
 素材列表返回给前端的 item 包含：
 
@@ -92,6 +92,7 @@
 - `createdAt`
 - `updatedAt`
 - `messageId`
+- `msgInfoId`
 - `contentType`
 - `content`
 

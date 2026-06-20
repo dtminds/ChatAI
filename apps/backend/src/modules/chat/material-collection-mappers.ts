@@ -60,6 +60,7 @@ export function mapMaterialCollectionItem(
     contentType,
   );
   const messageId = row.msgid;
+  const msgInfoId = toOptionalIdString(row.msg_info_id);
 
   return {
     bizType,
@@ -69,6 +70,7 @@ export function mapMaterialCollectionItem(
     groupId: toGroupId(row.group_id),
     id: String(row.id),
     messageId,
+    ...(msgInfoId ? { msgInfoId } : {}),
     sort: toNumber(row.sort),
     title: resolveTitle(row.title, content, contentType, messageId),
     updatedAt: toOptionalTimestamp(row.update_time),
@@ -205,6 +207,18 @@ function toNumber(value: number | string | null | undefined) {
   const numericValue = Number(value ?? 0);
 
   return Number.isFinite(numericValue) ? numericValue : 0;
+}
+
+function toOptionalIdString(value: number | string | null | undefined) {
+  if (value == null || value === "") {
+    return undefined;
+  }
+
+  const numericValue = Number(value);
+
+  return Number.isSafeInteger(numericValue) && numericValue > 0
+    ? String(value)
+    : undefined;
 }
 
 function readString(record: Record<string, unknown>, key: string) {

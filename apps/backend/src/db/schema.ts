@@ -1257,6 +1257,10 @@ export interface XyWapEmbedMaterialCollection {
    */
   content: string | null;
   /**
+   * xy_wap_embed_msg_audit_info.id
+   */
+  msg_info_id: Generated<number | null>;
+  /**
    * 插入时间
    */
   create_time: Generated<Date>;

@@ -756,6 +756,7 @@ export class WorkbenchRepository {
     bizType: number;
     content: string | null;
     groupId: string | 0;
+    msgInfoId?: string;
     msgid: string;
     opSubUserId: string;
     sort: number;
@@ -764,6 +765,7 @@ export class WorkbenchRepository {
     uid: number;
   }) {
     const groupNumericId = parseMaterialGroupId(input.groupId);
+    const msgInfoNumericId = parseOptionalMySqlId(input.msgInfoId);
     const opSubUserNumericId = parseMySqlId(input.opSubUserId);
 
     if (groupNumericId == null || opSubUserNumericId == null) {
@@ -783,6 +785,7 @@ export class WorkbenchRepository {
           biz_type: input.bizType,
           content: input.content,
           group_id: groupNumericId,
+          msg_info_id: msgInfoNumericId,
           msgid: input.msgid,
           op_sub_uid: opSubUserNumericId,
           sort: input.sort,
@@ -807,6 +810,7 @@ export class WorkbenchRepository {
     content: string | null;
     groupId: string | 0;
     id: string;
+    msgInfoId?: string;
     opSubUserId: string;
     sort: number;
     title: string;
@@ -814,6 +818,7 @@ export class WorkbenchRepository {
   }) {
     const collectionNumericId = parseMySqlId(input.id);
     const groupNumericId = parseMaterialGroupId(input.groupId);
+    const msgInfoNumericId = parseOptionalMySqlId(input.msgInfoId);
     const opSubUserNumericId = parseMySqlId(input.opSubUserId);
 
     if (collectionNumericId == null || groupNumericId == null || opSubUserNumericId == null) {
@@ -826,6 +831,7 @@ export class WorkbenchRepository {
         biz_status: BIZ_STATUS_ACTIVE,
         content: input.content,
         group_id: groupNumericId,
+        msg_info_id: msgInfoNumericId,
         op_sub_uid: opSubUserNumericId,
         sort: input.sort,
         title: input.title,
@@ -5015,6 +5021,10 @@ export function parseMySqlId(value: string) {
   }
 
   return numeric;
+}
+
+function parseOptionalMySqlId(value: string | undefined) {
+  return value ? parseMySqlId(value) ?? null : null;
 }
 
 function getMaterialVisibleSubUids(bizType: number, subUserId: string) {

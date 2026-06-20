@@ -85,6 +85,7 @@ export type WorkbenchMaterialCollectionItemDto = {
   title: string;
   sort: number;
   messageId: string;
+  msgInfoId?: string;
   contentType: WorkbenchMaterialCollectionContentType;
   content: Record<string, unknown>;
   createdAt?: number;
@@ -646,6 +647,7 @@ export type WorkbenchOutgoingMessageFileSegment = {
   fileId?: string;
   fileName?: string;
   materialCollectionId?: string;
+  msgInfoId?: string;
   msgid?: string;
   fileSize?: number;
   fileSizeLabel?: string;
@@ -658,6 +660,7 @@ export type WorkbenchOutgoingMessageH5Segment = {
   desc?: string;
   href?: string;
   materialCollectionId?: string;
+  msgInfoId?: string;
   msgid?: string;
   title?: string;
 };
@@ -665,6 +668,7 @@ export type WorkbenchOutgoingMessageH5Segment = {
 export type WorkbenchOutgoingMessageMiniProgramSegment = {
   type: "weapp";
   materialCollectionId: string;
+  msgInfoId?: string;
   msgid?: string;
   appName?: string;
   coverImageUrl?: string;
@@ -676,6 +680,7 @@ export type WorkbenchOutgoingMessageMiniProgramSegment = {
 export type WorkbenchOutgoingMessageSphfeedSegment = {
   type: "sphfeed";
   materialCollectionId: string;
+  msgInfoId?: string;
   msgid?: string;
   description?: string;
   imageUrl?: string;

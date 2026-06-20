@@ -485,6 +485,7 @@ CREATE TABLE `xy_wap_embed_material_collection` (
   `group_id` bigint unsigned NOT NULL DEFAULT '0' COMMENT '分组ID，xy_wap_embed_material_collection_group.id',
   `title` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '标题',
   `content` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci COMMENT '内容',
+  `msg_info_id` bigint unsigned DEFAULT NULL COMMENT 'xy_wap_embed_msg_audit_info.id',
   `msgid` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '消息ID，第三方消息ID',
   `biz_status` tinyint NOT NULL DEFAULT '1' COMMENT '状态，0：已删除，1：正常',
   `op_sub_uid` bigint unsigned NOT NULL COMMENT '收藏人ID，xy_wap_embed_sub_user.id',

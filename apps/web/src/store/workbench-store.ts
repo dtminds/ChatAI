@@ -5882,7 +5882,7 @@ function toWorkbenchSendSegment(
       segment.type === "h5" ||
       segment.type === "weapp" ||
       segment.type === "sphfeed") &&
-    segment.msgid
+    (segment.msgInfoId || segment.msgid)
   ) {
     return segment;
   }

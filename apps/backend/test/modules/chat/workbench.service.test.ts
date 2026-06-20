@@ -2850,7 +2850,7 @@ describe("MysqlWorkbenchService", () => {
           fileName: "报价单.pdf",
           fileUrl: "chat-files/quote.pdf",
         }),
-        msgid: "msg-file-001",
+        msgInfoId: "9101",
       }),
       getConversationLookup: vi.fn().mockResolvedValue({
         id: "88",
@@ -2898,7 +2898,7 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
-  it("sends quick reply file snapshots from inline fields when msgid is present", async () => {
+  it("sends quick reply file snapshots from inline fields without material lookup", async () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.sendMessage).mockResolvedValue({
       clientMessageId: "local-file-quick-reply-001",
@@ -2927,8 +2927,6 @@ describe("MysqlWorkbenchService", () => {
       seatId: "12",
       segment: {
         fileName: "快捷话术报价单.pdf",
-        materialCollectionId: "66",
-        msgid: "msg-file-quick-reply-001",
         type: "file",
         url: "https://b5.bokr.com.cn/chat-files/quick-reply-quote.pdf",
       },
@@ -2967,7 +2965,7 @@ describe("MysqlWorkbenchService", () => {
           href: "https://example.com/redpacket",
           title: "红包来啦",
         }),
-        msgid: "msg-h5-001",
+        msgInfoId: "9102",
       }),
       getConversationLookup: vi.fn().mockResolvedValue({
         id: "88",
@@ -3017,7 +3015,7 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
-  it("sends quick reply H5 snapshots from inline fields when msgid is present", async () => {
+  it("sends quick reply H5 snapshots from inline fields without material lookup", async () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.sendMessage).mockResolvedValue({
       clientMessageId: "local-h5-quick-reply-001",
@@ -3048,8 +3046,6 @@ describe("MysqlWorkbenchService", () => {
         coverUrl: "https://b5.bokr.com.cn/dist/quick-reply-cover.png",
         desc: "快捷话术说明",
         href: "https://example.com/quick-reply",
-        materialCollectionId: "77",
-        msgid: "msg-h5-quick-reply-001",
         title: "快捷话术链接",
         type: "h5",
       },
@@ -3142,7 +3138,7 @@ describe("MysqlWorkbenchService", () => {
         content: JSON.stringify({
           fileUrl: "https://example.com/expression.gif",
         }),
-        msgid: "msg-expression-001",
+        msgInfoId: "9103",
       }),
       getConversationLookup: vi.fn().mockResolvedValue({
         id: "88",
@@ -3198,7 +3194,7 @@ describe("MysqlWorkbenchService", () => {
         content: JSON.stringify({
           url: "https://example.com/legacy-expression.gif",
         }),
-        msgid: "msg-expression-001",
+        msgInfoId: "9104",
       }),
       getConversationLookup: vi.fn().mockResolvedValue({
         id: "88",
@@ -3240,7 +3236,7 @@ describe("MysqlWorkbenchService", () => {
     const repository = {
       canAccessSeat: vi.fn().mockResolvedValue(true),
       findMaterialCollectionForForward: vi.fn().mockResolvedValue({
-        msgid: "msg-mini-001",
+        msgInfoId: "9105",
       }),
       getConversationLookup: vi.fn().mockResolvedValue({
         id: "88",
@@ -3276,7 +3272,7 @@ describe("MysqlWorkbenchService", () => {
       clientMessageId: "local-weapp-001",
       msgData: {
         msgtype: "weapp",
-        transMsgid: "msg-mini-001",
+        transMsgInfoId: 9105,
       },
       platform: 5,
       sendType: 1,
@@ -3287,7 +3283,7 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
-  it("forwards quick reply mini-program snapshots by msgid without material lookup", async () => {
+  it("forwards quick reply mini-program snapshots by msgInfoId without material lookup", async () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.sendMessage).mockResolvedValue({
       clientMessageId: "local-weapp-quick-reply-001",
@@ -3315,8 +3311,7 @@ describe("MysqlWorkbenchService", () => {
       conversationId: "88",
       seatId: "12",
       segment: {
-        materialCollectionId: "66",
-        msgid: "msg-mini-quick-reply-001",
+        msgInfoId: "9106",
         type: "weapp",
       },
     });
@@ -3326,7 +3321,7 @@ describe("MysqlWorkbenchService", () => {
       clientMessageId: "local-weapp-quick-reply-001",
       msgData: {
         msgtype: "weapp",
-        transMsgid: "msg-mini-quick-reply-001",
+        transMsgInfoId: 9106,
       },
       platform: 5,
       sendType: 1,
@@ -3453,13 +3448,13 @@ describe("MysqlWorkbenchService", () => {
     expect(javaClient.sendMessage).not.toHaveBeenCalled();
   });
 
-  it("rejects forward sends when the stored source message id is blank", async () => {
+  it("rejects forward sends when the stored source message info id is blank", async () => {
     const javaClient = createJavaClient();
     const service = new MysqlWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         findMaterialCollectionForForward: vi.fn().mockResolvedValue({
-          msgid: "   ",
+          msgInfoId: "   ",
         }),
         getConversationLookup: vi.fn().mockResolvedValue({
           id: "88",
@@ -3485,7 +3480,7 @@ describe("MysqlWorkbenchService", () => {
         },
       }),
     ).rejects.toMatchObject({
-      code: "INVALID_TRANS_MESSAGE_ID",
+      code: "INVALID_TRANS_MESSAGE_INFO_ID",
       statusCode: 400,
     });
     expect(javaClient.sendMessage).not.toHaveBeenCalled();
@@ -4856,7 +4851,7 @@ describe("MysqlWorkbenchService", () => {
               fileUrl: "https://example.com/file.pdf",
             },
             materialCollectionId: "8",
-            msgid: "1025656",
+            msgInfoId: "1025656",
             type: "file",
           },
         ],
@@ -4894,7 +4889,7 @@ describe("MysqlWorkbenchService", () => {
             fileUrl: "https://example.com/file.pdf",
           },
           materialCollectionId: "8",
-          msgid: "1025656",
+          msgInfoId: "1025656",
           type: "file",
         },
       ],

@@ -390,7 +390,7 @@ export type MaterialCollectionScope = {
 
 export type MaterialCollectionForwardLookup = {
   content: string;
-  msgid: string;
+  msgInfoId?: string;
 };
 
 type QuickReplyCategoryRow = {
@@ -674,7 +674,7 @@ export class WorkbenchRepository {
 
     const row = await this.db
       .selectFrom("xy_wap_embed_material_collection")
-      .select(["content", "msgid"])
+      .select(["content", "msg_info_id"])
       .where("id", "=", collectionNumericId)
       .where("uid", "=", input.uid)
       .where("biz_type", "=", input.bizType)
@@ -688,7 +688,7 @@ export class WorkbenchRepository {
 
     return {
       content: typeof row.content === "string" ? row.content : "",
-      msgid: row.msgid,
+      ...(row.msg_info_id == null ? {} : { msgInfoId: String(row.msg_info_id) }),
     };
   }
 

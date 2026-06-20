@@ -22,7 +22,7 @@ describe("quick reply contracts", () => {
       {
         type: "h5",
         materialCollectionId: "12",
-        msgid: "1025657",
+        msgInfoId: "9001",
         content: {
           href: "https://example.com",
           title: "活动链接",
@@ -127,7 +127,7 @@ describe("quick reply contracts", () => {
               title: "历史链接",
             },
             materialCollectionId: "12",
-            msgid: "1025657",
+            msgInfoId: "9001",
             type: "h5",
           },
         ],
@@ -138,7 +138,7 @@ describe("quick reply contracts", () => {
     });
   });
 
-  it("rejects non-image material attachments without msgid", () => {
+  it("rejects non-image material attachments without msgInfoId", () => {
     expect(
       validateQuickReplyPayload({
         attachments: [

@@ -667,7 +667,7 @@ export type WorkbenchOutgoingMessageH5Segment = {
 
 export type WorkbenchOutgoingMessageMiniProgramSegment = {
   type: "weapp";
-  materialCollectionId: string;
+  materialCollectionId?: string;
   msgInfoId?: string;
   msgid?: string;
   appName?: string;
@@ -679,7 +679,7 @@ export type WorkbenchOutgoingMessageMiniProgramSegment = {
 
 export type WorkbenchOutgoingMessageSphfeedSegment = {
   type: "sphfeed";
-  materialCollectionId: string;
+  materialCollectionId?: string;
   msgInfoId?: string;
   msgid?: string;
   description?: string;

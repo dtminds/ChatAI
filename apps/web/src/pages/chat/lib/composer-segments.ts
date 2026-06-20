@@ -48,7 +48,7 @@ export type ComposerH5Segment = {
 
 export type ComposerMiniProgramSegment = {
   type: "weapp";
-  materialCollectionId: string;
+  materialCollectionId?: string;
   msgInfoId?: string;
   msgid?: string;
   appName?: string;
@@ -60,7 +60,7 @@ export type ComposerMiniProgramSegment = {
 
 export type ComposerSphfeedSegment = {
   type: "sphfeed";
-  materialCollectionId: string;
+  materialCollectionId?: string;
   msgInfoId?: string;
   msgid?: string;
   description?: string;

@@ -1658,11 +1658,11 @@ describe("WorkbenchRepository", () => {
     ]);
   });
 
-  it("looks up active enterprise material collection msgid for forward sends", async () => {
+  it("looks up active enterprise material collection msgInfoId for forward sends", async () => {
     const db = createMaterialDb({
       xy_wap_embed_material_collection: {
         content: JSON.stringify({ title: "客户跟进小程序" }),
-        msgid: "1025657",
+        msg_info_id: 1025657,
       },
     });
     const repository = new WorkbenchRepository(db as never);
@@ -1675,7 +1675,7 @@ describe("WorkbenchRepository", () => {
       }),
     ).resolves.toEqual({
       content: JSON.stringify({ title: "客户跟进小程序" }),
-      msgid: "1025657",
+      msgInfoId: "1025657",
     });
 
     expect(db.selects[0]).toMatchObject({
@@ -1696,7 +1696,7 @@ describe("WorkbenchRepository", () => {
         content: JSON.stringify({
           fileUrl: "https://example.com/expression.gif",
         }),
-        msgid: "msg-expression-001",
+        msg_info_id: 1025658,
       },
     });
     const repository = new WorkbenchRepository(db as never);
@@ -1712,7 +1712,7 @@ describe("WorkbenchRepository", () => {
       content: JSON.stringify({
         fileUrl: "https://example.com/expression.gif",
       }),
-      msgid: "msg-expression-001",
+      msgInfoId: "1025658",
     });
 
     expect(db.selects[0]).toMatchObject({

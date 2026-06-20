@@ -1867,23 +1867,10 @@ export class MysqlWorkbenchService implements WorkbenchService {
     }
 
     if (
-      (segment.type === "file" ||
-        segment.type === "h5" ||
-        segment.type === "weapp") &&
-      segment.msgid
-    ) {
-      if (segment.type === "weapp") {
-        return buildForwardJavaSendMessageData(segment.type, segment.msgid);
-      }
-
-      return buildJavaSendMessageData(payload, segment);
-    }
-
-    if (
       segment.type === "emotion" ||
       (segment.type === "file" && segment.materialCollectionId) ||
       (segment.type === "h5" && segment.materialCollectionId) ||
-      segment.type === "weapp"
+      (segment.type === "weapp" && segment.materialCollectionId)
     ) {
       const materialCollectionId = segment.materialCollectionId;
 
@@ -1922,7 +1909,11 @@ export class MysqlWorkbenchService implements WorkbenchService {
         return buildH5JavaSendMessageData(collection.content);
       }
 
-      return buildForwardJavaSendMessageData(segment.type, collection.msgid);
+      return buildForwardJavaSendMessageData(segment.type, collection.msgInfoId);
+    }
+
+    if (segment.type === "weapp") {
+      return buildForwardJavaSendMessageData(segment.type, segment.msgInfoId);
     }
 
     return buildJavaSendMessageData(payload, segment);
@@ -4829,17 +4820,17 @@ function buildH5JavaSendMessageData(content: string): JavaSendMessageData {
 
 function buildForwardJavaSendMessageData(
   msgtype: "sphfeed" | "weapp",
-  msgid: string,
+  msgInfoId: string | undefined,
 ): JavaSendMessageData {
-  const transMsgid = msgid.trim();
+  const transMsgInfoId = msgInfoId ? parseMySqlId(msgInfoId) : undefined;
 
-  if (!transMsgid) {
-    throw new BadRequestError("INVALID_TRANS_MESSAGE_ID", "转发消息 ID 无效");
+  if (transMsgInfoId == null) {
+    throw new BadRequestError("INVALID_TRANS_MESSAGE_INFO_ID", "转发消息 ID 无效");
   }
 
   return {
     msgtype,
-    transMsgid,
+    transMsgInfoId,
   };
 }
 

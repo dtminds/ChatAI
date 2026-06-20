@@ -3458,9 +3458,9 @@ function buildPayloadSegmentContent(
   }
 
   if (segment.type === "weapp") {
-    const materialContent = segment.msgid
-      ? {}
-      : getMockMaterialContentRecord(state, segment.materialCollectionId);
+    const materialContent = segment.materialCollectionId
+      ? getMockMaterialContentRecord(state, segment.materialCollectionId)
+      : {};
 
     return {
       appName: readString(materialContent.appName) || segment.appName || "小程序",
@@ -3475,9 +3475,9 @@ function buildPayloadSegmentContent(
   }
 
   if (segment.type === "sphfeed") {
-    const materialContent = segment.msgid
-      ? {}
-      : getMockMaterialContentRecord(state, segment.materialCollectionId);
+    const materialContent = segment.materialCollectionId
+      ? getMockMaterialContentRecord(state, segment.materialCollectionId)
+      : {};
 
     return {
       description: readString(materialContent.description) || segment.description || "",

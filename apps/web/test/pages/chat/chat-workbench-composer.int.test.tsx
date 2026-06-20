@@ -243,7 +243,7 @@ describe("ChatWorkbenchPage composer flows", () => {
               title: "活动链接",
             },
             materialCollectionId: "material-h5-quick-reply",
-            msgid: "msg-h5-quick-reply",
+            msgInfoId: "9101",
             type: "h5",
           },
         ],

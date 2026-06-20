@@ -294,13 +294,13 @@ const SendMessageBodySchema = Type.Object({
         type: Type.Literal("h5"),
       }),
       Type.Object({
-        materialCollectionId: Type.String(),
+        materialCollectionId: Type.Optional(Type.String()),
         msgInfoId: Type.Optional(Type.String()),
         msgid: Type.Optional(Type.String()),
         type: Type.Literal("weapp"),
       }),
       Type.Object({
-        materialCollectionId: Type.String(),
+        materialCollectionId: Type.Optional(Type.String()),
         msgInfoId: Type.Optional(Type.String()),
         msgid: Type.Optional(Type.String()),
         type: Type.Literal("sphfeed"),
@@ -353,7 +353,7 @@ const SendMessageBodySchema = Type.Object({
           appName: Type.Optional(Type.String()),
           coverImageUrl: Type.Optional(Type.String()),
           logoUrl: Type.Optional(Type.String()),
-          materialCollectionId: Type.String(),
+          materialCollectionId: Type.Optional(Type.String()),
           msgInfoId: Type.Optional(Type.String()),
           msgid: Type.Optional(Type.String()),
           sourceLabel: Type.Optional(Type.String()),
@@ -363,7 +363,7 @@ const SendMessageBodySchema = Type.Object({
         Type.Object({
           description: Type.Optional(Type.String()),
           imageUrl: Type.Optional(Type.String()),
-          materialCollectionId: Type.String(),
+          materialCollectionId: Type.Optional(Type.String()),
           msgInfoId: Type.Optional(Type.String()),
           msgid: Type.Optional(Type.String()),
           sourceLabel: Type.Optional(Type.String()),

@@ -83,7 +83,7 @@ describe("message feed row actions", () => {
     expect(screen.queryByRole("menuitem", { name: "@Ta" })).not.toBeInTheDocument();
   });
 
-  it("copies the remote message id from the action menu", async () => {
+  it("copies the message seq from the action menu", async () => {
     const user = userEvent.setup();
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", {
@@ -92,8 +92,9 @@ describe("message feed row actions", () => {
     });
     const message = {
       ...createTextMessage("可复制消息"),
-      id: "local-message-id",
-      remoteMessageId: " remote-message-id ",
+      msgid: " remote-message-id ",
+      uiMessageKey: "local-message-id",
+      seq: 1088,
       sender: {
         id: "sender-customer-id",
         name: "客户甲",
@@ -110,7 +111,7 @@ describe("message feed row actions", () => {
 
     await user.click(screen.getByRole("menuitem", { name: "复制消息ID" }));
 
-    expect(writeText).toHaveBeenCalledWith("remote-message-id");
+    expect(writeText).toHaveBeenCalledWith("1088");
     expect(toast.success).toHaveBeenCalledWith("已复制消息ID");
   });
 
@@ -405,7 +406,7 @@ describe("message feed row actions", () => {
         message={{
           content: { text: "客户想了解产品", type: "text" },
           conversationId: "conv-1",
-          id: "msg-customer-1",
+          uiMessageKey: "msg-customer-1",
           rawMsgtype: "text",
           role: "customer",
           sender: { id: "cus-1", name: "客户甲" },
@@ -436,7 +437,7 @@ describe("message feed row actions", () => {
     const message = {
       content: { text: "客户想了解产品", type: "text" },
       conversationId: "conv-1",
-      id: "msg-customer-1",
+      uiMessageKey: "msg-customer-1",
       rawMsgtype: "text",
       role: "customer",
       sender: { id: "cus-1", name: "客户甲" },
@@ -465,7 +466,7 @@ describe("message feed row actions", () => {
     const message = {
       content: { text: "客户想了解产品", type: "text" },
       conversationId: "conv-1",
-      id: "msg-customer-1",
+      uiMessageKey: "msg-customer-1",
       rawMsgtype: "text",
       role: "customer",
       sender: { id: "cus-1", name: "客户甲" },
@@ -498,7 +499,7 @@ describe("message feed row actions", () => {
         message={{
           content: { text: "客户想了解产品", type: "text" },
           conversationId: "conv-1",
-          id: "msg-customer-1",
+          uiMessageKey: "msg-customer-1",
           rawMsgtype: "text",
           role: "customer",
           sender: { id: "cus-1", name: "客户甲" },
@@ -525,7 +526,7 @@ describe("message feed row actions", () => {
         message={{
           content: { text: "客户想了解产品", type: "text" },
           conversationId: "conv-1",
-          id: "msg-customer-1",
+          uiMessageKey: "msg-customer-1",
           rawMsgtype: "text",
           role: "customer",
           sender: { id: "cus-1", name: "客户甲" },
@@ -547,7 +548,7 @@ describe("message feed row actions", () => {
     const message = {
       content: { text: "客户想了解产品", type: "text" },
       conversationId: "conv-1",
-      id: "msg-customer-1",
+      uiMessageKey: "msg-customer-1",
       rawMsgtype: "text",
       role: "customer",
       sender: { id: "cus-1", name: "客户甲" },
@@ -593,7 +594,7 @@ describe("message feed row actions", () => {
     const message = {
       content: { text: "客户想了解产品", type: "text" },
       conversationId: "conv-1",
-      id: "msg-customer-1",
+      uiMessageKey: "msg-customer-1",
       rawMsgtype: "text",
       role: "customer",
       sender: { id: "cus-1", name: "客户甲" },
@@ -653,7 +654,7 @@ describe("message feed row actions", () => {
 
     expect(onRevokeMessage).toHaveBeenCalledWith(
       expect.objectContaining({
-        id: "msg-text-layout",
+        uiMessageKey: "msg-text-layout",
         seq: 42,
       }),
     );
@@ -783,15 +784,15 @@ describe("message feed row actions", () => {
     const optimisticMessage = {
       ...createTextMessage("已确认消息"),
       clientMessageId: "local-001",
-      id: "local-001",
+      uiMessageKey: "local-001",
       optNo: "opt-001",
-      remoteMessageId: "opt-001",
+      msgid: "opt-001",
       status: "accepted",
     } satisfies ChatMessage;
     const reconciledMessage = {
       ...optimisticMessage,
-      id: "remote-001",
-      remoteMessageId: "remote-001",
+      uiMessageKey: "remote-001",
+      msgid: "remote-001",
       status: "sent",
     } satisfies ChatMessage;
 
@@ -808,7 +809,7 @@ describe("message feed row actions", () => {
         messages={[
           {
             ...createTextMessage("历史消息"),
-            id: "msg-1",
+            uiMessageKey: "msg-1",
           },
         ]}
         showTimeDividers={false}
@@ -828,17 +829,17 @@ describe("message feed row actions", () => {
         messages={[
           {
             ...createTextMessage("历史消息"),
-            id: "msg-1",
+            uiMessageKey: "msg-1",
           },
           {
             ...createTextMessage("新客服消息"),
-            id: "msg-2",
+            uiMessageKey: "msg-2",
             isNew: true,
             isOwnMessage: true,
           },
           {
             ...createTextMessage("新客户消息"),
-            id: "msg-3",
+            uiMessageKey: "msg-3",
             isNew: true,
             role: "customer",
           },
@@ -862,17 +863,17 @@ describe("message feed row actions", () => {
         messages={[
           {
             ...createTextMessage("历史消息"),
-            id: "msg-1",
+            uiMessageKey: "msg-1",
           },
           {
             ...createTextMessage("新客服消息"),
-            id: "msg-2",
+            uiMessageKey: "msg-2",
             isNew: true,
             isOwnMessage: true,
           },
           {
             ...createTextMessage("新客户消息"),
-            id: "msg-3",
+            uiMessageKey: "msg-3",
             isNew: true,
             role: "customer",
           },
@@ -893,7 +894,7 @@ describe("message feed row actions", () => {
           {
             ...createTextMessage("切换后的已有新消息"),
             conversationId: "conv-other",
-            id: "msg-other-1",
+            uiMessageKey: "msg-other-1",
             isNew: true,
             role: "customer",
           },
@@ -917,7 +918,7 @@ describe("message feed row actions", () => {
         messages={[
           {
             ...createTextMessage("历史消息"),
-            id: "msg-1",
+            uiMessageKey: "msg-1",
           },
         ]}
         showTimeDividers={false}
@@ -930,12 +931,12 @@ describe("message feed row actions", () => {
         messages={[
           {
             ...createTextMessage("历史消息"),
-            id: "msg-1",
+            uiMessageKey: "msg-1",
           },
           {
             ...createTextMessage("新客服消息"),
             clientMessageId: "local-001",
-            id: "local-001",
+            uiMessageKey: "local-001",
             isNew: true,
             isOwnMessage: true,
             status: "accepted",
@@ -955,15 +956,15 @@ describe("message feed row actions", () => {
         messages={[
           {
             ...createTextMessage("历史消息"),
-            id: "msg-1",
+            uiMessageKey: "msg-1",
           },
           {
             ...createTextMessage("新客服消息"),
             clientMessageId: "local-001",
-            id: "remote-001",
+            uiMessageKey: "remote-001",
             isNew: true,
             isOwnMessage: true,
-            remoteMessageId: "remote-001",
+            msgid: "remote-001",
             status: "sent",
           },
         ]}
@@ -984,7 +985,7 @@ describe("message feed row actions", () => {
         messages={[
           {
             ...createTextMessage("历史消息"),
-            id: "msg-1",
+            uiMessageKey: "msg-1",
           },
         ]}
         showTimeDividers={false}
@@ -997,11 +998,11 @@ describe("message feed row actions", () => {
         messages={[
           {
             ...createTextMessage("历史消息"),
-            id: "msg-1",
+            uiMessageKey: "msg-1",
           },
           {
             ...createTextMessage("新客服消息"),
-            id: "msg-2",
+            uiMessageKey: "msg-2",
             isNew: true,
             isOwnMessage: true,
           },
@@ -1019,7 +1020,7 @@ describe("message feed row actions", () => {
           {
             ...createTextMessage("切换后的已有新消息"),
             conversationId: "conv-other",
-            id: "msg-other-1",
+            uiMessageKey: "msg-other-1",
             isNew: true,
             role: "customer",
           },
@@ -1045,7 +1046,7 @@ describe("message feed row actions", () => {
         transFileUrlPersisted: false,
         type: "voice" as const,
       },
-      id: "voice-message-1",
+      uiMessageKey: "voice-message-1",
       seq: 538,
     } satisfies ChatMessage;
 
@@ -1211,7 +1212,7 @@ function createTextMessage(text: string) {
       type: "text" as const,
     },
     conversationId: "conv-layout",
-    id: "msg-text-layout",
+    msgid: "msg-text-layout",
     rawMsgtype: "text",
     role: "agent" as const,
     sender: {
@@ -1220,5 +1221,6 @@ function createTextMessage(text: string) {
     },
     sentAt: "2026-05-08 09:54:00",
     status: "sent" as const,
+    uiMessageKey: "msg-text-layout",
   } satisfies ChatMessage;
 }

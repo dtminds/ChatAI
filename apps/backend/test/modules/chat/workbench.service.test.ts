@@ -495,7 +495,7 @@ describe("MysqlWorkbenchService", () => {
     const javaClient = createJavaClient();
     const canAccessSeat = vi.fn().mockResolvedValue(true);
     const getChatRecordDetail = vi.fn().mockResolvedValue({
-      messageId: "830",
+      messageSeq: 830,
       messages: [],
     });
     const service = new MysqlWorkbenchService(
@@ -516,7 +516,7 @@ describe("MysqlWorkbenchService", () => {
     await expect(
       service.getChatRecordDetail("101", "88", 830),
     ).resolves.toEqual({
-      messageId: "830",
+      messageSeq: 830,
       messages: [],
     });
     expect(canAccessSeat).toHaveBeenCalledWith("101", "12");
@@ -1630,7 +1630,7 @@ describe("MysqlWorkbenchService", () => {
     await expect(
       service.downloadMessageFile("101", "88", 538),
     ).resolves.toEqual({
-      messageId: "538",
+      messageSeq: 538,
       status: "accepted",
     });
     expect(javaClient.downloadMsgFile).toHaveBeenCalledWith({
@@ -1659,7 +1659,7 @@ describe("MysqlWorkbenchService", () => {
     await expect(
       service.downloadMessageFile("101", "88", 538),
     ).resolves.toEqual({
-      messageId: "538",
+      messageSeq: 538,
       status: "accepted",
     });
     expect(javaClient.downloadMsgFile).toHaveBeenCalledWith({
@@ -1966,7 +1966,7 @@ describe("MysqlWorkbenchService", () => {
           contentType: "text",
           conversationId: "88",
           customerId: "customer-001",
-          messageId: "remote-msg-101",
+          msgid: "remote-msg-101",
           seatId: "12",
           senderType: "customer",
           seq: 101,
@@ -1980,7 +1980,7 @@ describe("MysqlWorkbenchService", () => {
           contentType: "revoke",
           conversationId: "88",
           customerId: "customer-001",
-          messageId: "remote-msg-103",
+          msgid: "remote-msg-103",
           seatId: "12",
           senderType: "system",
           seq: 103,
@@ -2019,7 +2019,7 @@ describe("MysqlWorkbenchService", () => {
             revokeOriginMsgId: "101",
           },
           contentType: "revoke",
-          messageId: "remote-msg-103",
+          msgid: "remote-msg-103",
         },
       ],
     });
@@ -2038,7 +2038,7 @@ describe("MysqlWorkbenchService", () => {
         conversationId: "88",
         eventTime: 1_778_840_003_000,
         eventId: 4,
-        messageId: "829",
+        messageSeq: 829,
       },
     ]);
     const service = new MysqlWorkbenchService(
@@ -2126,7 +2126,7 @@ describe("MysqlWorkbenchService", () => {
             conversationId: "88",
             eventId: 4,
             eventTime: 1_778_840_003_000,
-            messageId: "829",
+            messageSeq: 829,
           },
         ]),
       } as unknown as WorkbenchRepository,
@@ -2346,17 +2346,17 @@ describe("MysqlWorkbenchService", () => {
     );
 
     await expect(
-      service.revokeMessage("101", "88", "321"),
+      service.revokeMessage("101", "88", 321),
     ).resolves.toEqual({
       accepted: true,
       conversationId: "88",
-      messageId: "321",
+      messageSeq: 321,
       revokeMsgId: 321,
     });
 
     expect(getMessageForRevoke).toHaveBeenCalledWith({
       conversationId: "88",
-      messageId: "321",
+      messageSeq: 321,
       platform: 5,
       thirdUserId: "seat-user-001",
       uid: 9001,
@@ -2393,7 +2393,7 @@ describe("MysqlWorkbenchService", () => {
     );
 
     await expect(
-      service.revokeMessage("101", "88", "321"),
+      service.revokeMessage("101", "88", 321),
     ).rejects.toMatchObject({
       code: "MESSAGE_REVOKE_EXPIRED",
       statusCode: 400,
@@ -2426,10 +2426,10 @@ describe("MysqlWorkbenchService", () => {
     );
 
     await expect(
-      service.revokeMessage("101", "88", "321"),
+      service.revokeMessage("101", "88", 321),
     ).resolves.toMatchObject({
       accepted: true,
-      messageId: "321",
+      messageSeq: 321,
       revokeMsgId: 321,
     });
     expect(javaClient.revokeMessage).toHaveBeenCalledWith({
@@ -2464,7 +2464,7 @@ describe("MysqlWorkbenchService", () => {
     );
 
     await expect(
-      service.revokeMessage("101", "88", "321"),
+      service.revokeMessage("101", "88", 321),
     ).rejects.toMatchObject({
       code: "MESSAGE_REVOKE_EXPIRED",
       statusCode: 400,
@@ -2497,7 +2497,7 @@ describe("MysqlWorkbenchService", () => {
     );
 
     await expect(
-      service.revokeMessage("101", "88", "321"),
+      service.revokeMessage("101", "88", 321),
     ).rejects.toMatchObject({
       code: "MESSAGE_REVOKE_FORBIDDEN",
       statusCode: 403,
@@ -2509,7 +2509,6 @@ describe("MysqlWorkbenchService", () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.sendMessage).mockResolvedValue({
       clientMessageId: "local-001",
-      messageId: "opt-001",
       optNo: "opt-001",
       status: "accepted",
     });
@@ -2546,7 +2545,6 @@ describe("MysqlWorkbenchService", () => {
       }),
     ).resolves.toEqual({
       clientMessageId: "local-001",
-      messageId: "opt-001",
       optNo: "opt-001",
       status: "accepted",
     });
@@ -2573,7 +2571,6 @@ describe("MysqlWorkbenchService", () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.sendMessage).mockResolvedValue({
       clientMessageId: "local-all-001",
-      messageId: "opt-all-001",
       optNo: "opt-all-001",
       status: "accepted",
     });
@@ -2629,7 +2626,6 @@ describe("MysqlWorkbenchService", () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.sendMessage).mockResolvedValue({
       clientMessageId: "local-retry-001",
-      messageId: "opt-retry-001",
       optNo: "opt-retry-001",
       status: "accepted",
     });
@@ -2680,7 +2676,6 @@ describe("MysqlWorkbenchService", () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.sendMessage).mockResolvedValue({
       clientMessageId: "local-quote-001",
-      messageId: "opt-quote-001",
       optNo: "opt-quote-001",
       status: "accepted",
     });
@@ -2734,7 +2729,6 @@ describe("MysqlWorkbenchService", () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.sendMessage).mockResolvedValue({
       clientMessageId: "local-image-001",
-      messageId: "opt-image-001",
       optNo: "opt-image-001",
       status: "accepted",
     });
@@ -2784,7 +2778,6 @@ describe("MysqlWorkbenchService", () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.sendMessage).mockResolvedValue({
       clientMessageId: "local-image-quote-001",
-      messageId: "opt-image-quote-001",
       optNo: "opt-image-quote-001",
       status: "accepted",
     });
@@ -2833,7 +2826,6 @@ describe("MysqlWorkbenchService", () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.sendMessage).mockResolvedValue({
       clientMessageId: "local-file-001",
-      messageId: "opt-file-001",
       optNo: "opt-file-001",
       status: "accepted",
     });
@@ -2896,7 +2888,6 @@ describe("MysqlWorkbenchService", () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.sendMessage).mockResolvedValue({
       clientMessageId: "local-file-quick-reply-001",
-      messageId: "opt-file-quick-reply-001",
       optNo: "opt-file-quick-reply-001",
       status: "accepted",
     });
@@ -2947,7 +2938,6 @@ describe("MysqlWorkbenchService", () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.sendMessage).mockResolvedValue({
       clientMessageId: "local-h5-001",
-      messageId: "opt-h5-001",
       optNo: "opt-h5-001",
       status: "accepted",
     });
@@ -3013,7 +3003,6 @@ describe("MysqlWorkbenchService", () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.sendMessage).mockResolvedValue({
       clientMessageId: "local-h5-quick-reply-001",
-      messageId: "opt-h5-quick-reply-001",
       optNo: "opt-h5-quick-reply-001",
       status: "accepted",
     });
@@ -3068,7 +3057,6 @@ describe("MysqlWorkbenchService", () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.sendMessage).mockResolvedValue({
       clientMessageId: "local-h5-default-cover-001",
-      messageId: "opt-h5-default-cover-001",
       optNo: "opt-h5-default-cover-001",
       status: "accepted",
     });
@@ -3122,7 +3110,6 @@ describe("MysqlWorkbenchService", () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.sendMessage).mockResolvedValue({
       clientMessageId: "local-emotion-001",
-      messageId: "opt-emotion-001",
       optNo: "opt-emotion-001",
       status: "accepted",
     });
@@ -3223,7 +3210,6 @@ describe("MysqlWorkbenchService", () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.sendMessage).mockResolvedValue({
       clientMessageId: "local-weapp-001",
-      messageId: "opt-weapp-001",
       optNo: "opt-weapp-001",
       status: "accepted",
     });
@@ -3281,7 +3267,6 @@ describe("MysqlWorkbenchService", () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.sendMessage).mockResolvedValue({
       clientMessageId: "local-weapp-quick-reply-001",
-      messageId: "opt-weapp-quick-reply-001",
       optNo: "opt-weapp-quick-reply-001",
       status: "accepted",
     });
@@ -3483,7 +3468,6 @@ describe("MysqlWorkbenchService", () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.sendMessage).mockResolvedValue({
       clientMessageId: "local-file-quote-001",
-      messageId: "opt-file-quote-001",
       optNo: "opt-file-quote-001",
       status: "accepted",
     });

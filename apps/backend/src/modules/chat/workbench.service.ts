@@ -13,8 +13,7 @@ import type {
   WorkbenchMessageFileDownloadResponse,
   WorkbenchMessageFileDownloadStatusResponse,
   WorkbenchMessagePageDto,
-  WorkbenchMessageQueryByIdsRequest,
-  WorkbenchMessageQueryByIdsResponse,
+  WorkbenchMessageQueryBySeqsResponse,
   WorkbenchOutgoingMessageSegment,
   WorkbenchPollRequest,
   WorkbenchPollResponse,
@@ -269,11 +268,11 @@ export type WorkbenchService = {
     conversationId: string,
     options?: { beforeSeq?: number; limit?: number },
   ): Promise<WorkbenchMessagePageDto> | WorkbenchMessagePageDto;
-  getMessagesByIds(
+  getMessagesBySeqs(
     subUserId: string,
     conversationId: string,
-    messageIds: string[],
-  ): Promise<WorkbenchMessageQueryByIdsResponse> | WorkbenchMessageQueryByIdsResponse;
+    messageSeqs: number[],
+  ): Promise<WorkbenchMessageQueryBySeqsResponse> | WorkbenchMessageQueryBySeqsResponse;
   getChatRecordDetail(
     subUserId: string,
     conversationId: string,
@@ -422,7 +421,7 @@ export type WorkbenchService = {
   revokeMessage(
     subUserId: string,
     conversationId: string,
-    messageId: string,
+    messageSeq: number,
   ): Promise<WorkbenchRevokeMessageResponse> | WorkbenchRevokeMessageResponse;
   sendMessage(
     subUserId: string,
@@ -848,10 +847,10 @@ export class MysqlWorkbenchService implements WorkbenchService {
     }
   }
 
-  async getMessagesByIds(
+  async getMessagesBySeqs(
     subUserId: string,
     conversationId: string,
-    messageIds: string[],
+    messageSeqs: number[],
   ) {
     const conversation = await this.repository.getConversationLookup(conversationId);
 
@@ -861,7 +860,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     await this.assertSeatAccess(subUserId, conversation.seatId);
 
-    return this.repository.listMessagesByIds(conversationId, messageIds);
+    return this.repository.listMessagesBySeqs(conversationId, messageSeqs);
   }
 
   async getChatRecordDetail(
@@ -998,7 +997,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
     );
 
     return {
-      messageId: String(msgInfoId),
+      messageSeq: msgInfoId,
       status: "accepted" as const,
     };
   }
@@ -1839,9 +1838,9 @@ export class MysqlWorkbenchService implements WorkbenchService {
       {
         clientMessageId: payload.clientMessageId,
         conversationId: conversation.id,
-        messageId: response.messageId,
         messageType: segment.type,
         operation: "send-message",
+        optNo: response.optNo,
         platform: conversation.platform,
         seatId: conversation.seatId,
         sendType: conversation.thirdGroupId ? "group" : "single",
@@ -1921,18 +1920,17 @@ export class MysqlWorkbenchService implements WorkbenchService {
   async revokeMessage(
     subUserId: string,
     conversationId: string,
-    messageId: string,
+    messageSeq: number,
   ): Promise<WorkbenchRevokeMessageResponse> {
     const conversation = await this.getOperableConversation(subUserId, conversationId);
-    const normalizedMessageId = messageId.trim();
 
-    if (!normalizedMessageId) {
-      throw new BadRequestError("INVALID_MESSAGE_ID", "消息 ID 不能为空");
+    if (!Number.isSafeInteger(messageSeq) || messageSeq <= 0) {
+      throw new BadRequestError("INVALID_MESSAGE_SEQ", "消息序号无效");
     }
 
     const message = await this.repository.getMessageForRevoke({
       conversationId: conversation.id,
-      messageId: normalizedMessageId,
+      messageSeq,
       platform: conversation.platform,
       thirdExternalUserId: conversation.thirdExternalUserId,
       thirdGroupId: conversation.thirdGroupId,
@@ -1971,7 +1969,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
     this.logger.info(
       {
         conversationId: conversation.id,
-        messageId: normalizedMessageId,
+        messageSeq,
         operation: "revoke-message",
         platform: conversation.platform,
         revokeMsgId: message.seq,
@@ -1985,7 +1983,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
     return {
       accepted: true,
       conversationId: conversation.id,
-      messageId: normalizedMessageId,
+      messageSeq,
       revokeMsgId: message.seq,
     };
   }
@@ -4397,7 +4395,7 @@ function normalizeMaterialCollectionPayload(
     WorkbenchMaterialCollectionCreateRequest,
     "description" | "fileName" | "title"
   >,
-  messageId: string,
+  msgInfoId: string,
   contentType: WorkbenchMaterialCollectionContentType,
 ): { content: string; title: string } | { errorMsg: string } {
   if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.FILE) {
@@ -4433,14 +4431,14 @@ function normalizeMaterialCollectionPayload(
 
   return {
     content: rawContent ?? "",
-    title: readMaterialTitle(rawContent, contentType, messageId),
+    title: readMaterialTitle(rawContent, contentType, msgInfoId),
   };
 }
 
 function readMaterialTitle(
   rawContent: string | null,
   contentType: WorkbenchMaterialCollectionContentType,
-  messageId: string,
+  msgInfoId: string,
 ) {
   if (contentType === "emotion") {
     return "表情";
@@ -4449,18 +4447,18 @@ function readMaterialTitle(
   const content = parseMaterialContentRecord(rawContent);
 
   if (contentType === "file") {
-    return truncateMaterialTitle(readMaterialString(content, "fileName") || messageId);
+    return truncateMaterialTitle(readMaterialString(content, "fileName") || msgInfoId);
   }
 
   if (contentType === "mini-program") {
     return truncateMaterialTitle(
       readMaterialString(content, "description") ||
         readMaterialString(content, "title") ||
-        messageId,
+        msgInfoId,
     );
   }
 
-  return truncateMaterialTitle(readMaterialString(content, "title") || messageId);
+  return truncateMaterialTitle(readMaterialString(content, "title") || msgInfoId);
 }
 
 function truncateMaterialTitle(title: string) {

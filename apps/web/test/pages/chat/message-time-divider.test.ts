@@ -125,7 +125,7 @@ function createMessage(id: string, text: string, sentAt: string): ChatMessage {
       type: "text",
     },
     conversationId: "conversation-1",
-    id,
+    msgid: id,
     role: "customer",
     sender: {
       id: "customer-1",
@@ -133,5 +133,6 @@ function createMessage(id: string, text: string, sentAt: string): ChatMessage {
     },
     sentAt,
     status: "sent",
+    uiMessageKey: id,
   };
 }

@@ -16,7 +16,7 @@ import {
   loadGroupMembers,
   loadAccountScope,
   loadConversationMessagesPage,
-  loadMessagesByIds,
+  loadMessagesBySeqs,
   loadSeats,
   markConversationRead,
   markConversationUnread,
@@ -228,7 +228,7 @@ type WorkbenchState = {
   activeMessageSeq: number;
   pendingMessages: Message[];
   revokeMessageError?: string;
-  revokeMessage: (messageId: string) => Promise<RevokeMessageResult>;
+  revokeMessage: (uiMessageKey: string) => Promise<RevokeMessageResult>;
   clearRevokeMessageError: () => void;
   sidebarItems: SettingsSidebarItem[];
   clearActiveConversation: () => void;
@@ -264,7 +264,7 @@ type WorkbenchState = {
   setSidebarItems: (items: SettingsSidebarItem[]) => void;
   takeOverAccount: (accountId: string) => Promise<TakeoverResult>;
   unpinConversation: (conversationId: string) => Promise<void>;
-  retryFailedMessage: (messageId: string) => Promise<RetryFailedMessageResult>;
+  retryFailedMessage: (uiMessageKey: string) => Promise<RetryFailedMessageResult>;
   loadOlderMessages: () => Promise<void>;
   openHistoryPanel: (conversationId?: string) => Promise<void>;
   closeHistoryPanel: () => void;
@@ -286,17 +286,17 @@ type WorkbenchState = {
   ) => Promise<SendMessageResult>;
   updateMessageDownloadContent: (
     conversationId: string,
-    messageId: string,
+    uiMessageKey: string,
     contentPatch: DownloadContentPatch,
   ) => void;
   confirmVoicePlaybackReady: (
     conversationId: string,
-    messageId: string,
+    uiMessageKey: string,
     playbackUrl: string,
   ) => Promise<void>;
   transcribeVoiceMessage: (
     conversationId: string,
-    messageId: string,
+    uiMessageKey: string,
   ) => Promise<string>;
   searchKeyword: string;
   searchResults: import("@chatai/contracts").WorkbenchSearchResponseDto | null;
@@ -998,13 +998,13 @@ function mergeSmartReplyPollResult(
   const unansweredKeys = new Set(
     collectUnansweredSmartReplyPendingKeys(messages, Number.POSITIVE_INFINITY),
   );
-  const returnedMessageIds = new Set(Object.keys(nextSuggestions));
+  const returnedMsgIdKeys = new Set(Object.keys(nextSuggestions));
 
   for (const msgId of requestedMsgIds) {
     const lookupKey = String(msgId);
 
     if (
-      !returnedMessageIds.has(lookupKey) &&
+      !returnedMsgIdKeys.has(lookupKey) &&
       !options.allowAnswered &&
       !unansweredKeys.has(lookupKey)
     ) {
@@ -1012,21 +1012,21 @@ function mergeSmartReplyPollResult(
     }
   }
 
-  for (const [messageId, suggestion] of Object.entries(nextSuggestions)) {
+  for (const [msgIdKey, suggestion] of Object.entries(nextSuggestions)) {
     if (isSmartReplyPollComplete(suggestion)) {
-      delete nextPending[messageId];
+      delete nextPending[msgIdKey];
     }
 
-    if (!options.allowAnswered && !unansweredKeys.has(messageId)) {
-      delete nextPending[messageId];
+    if (!options.allowAnswered && !unansweredKeys.has(msgIdKey)) {
+      delete nextPending[msgIdKey];
       continue;
     }
 
-    if (isSmartReplyPollComplete(previousSuggestions[messageId])) {
+    if (isSmartReplyPollComplete(previousSuggestions[msgIdKey])) {
       continue;
     }
 
-    mergedSuggestions[messageId] = suggestion;
+    mergedSuggestions[msgIdKey] = suggestion;
   }
 
   return {
@@ -1513,18 +1513,14 @@ function patchExistingMessageList(
     return currentMessages;
   }
 
-  const currentIndexById = new Map<string, number>();
-
-  currentMessages.forEach((message, index) => {
-    currentIndexById.set(message.id, index);
-  });
-
   const merged = [...currentMessages];
 
   for (const refreshedMessage of refreshedMessages) {
-    const existingIndex = currentIndexById.get(refreshedMessage.id);
+    const existingIndex = merged.findIndex((message) =>
+      isSameMessage(message, refreshedMessage),
+    );
 
-    if (existingIndex == null) {
+    if (existingIndex < 0) {
       continue;
     }
 
@@ -1541,6 +1537,7 @@ function patchExistingMessageList(
     merged[existingIndex] = {
       ...currentMessage,
       ...refreshedMessage,
+      clientMessageId: refreshedMessage.clientMessageId ?? currentMessage.clientMessageId,
       revokePending: refreshedMessage.isRevoked
         ? false
         : currentMessage.revokePending,
@@ -1552,20 +1549,20 @@ function patchExistingMessageList(
 
 function patchDownloadMessageList(
   currentMessages: Message[],
-  messageId: string,
+  uiMessageKey: string,
   contentPatch: DownloadContentPatch,
 ) {
   return currentMessages.map((message) =>
-    patchDownloadMessage(message, messageId, contentPatch),
+    patchDownloadMessage(message, uiMessageKey, contentPatch),
   );
 }
 
 function patchDownloadMessage(
   message: Message,
-  messageId: string,
+  uiMessageKey: string,
   contentPatch: DownloadContentPatch,
 ): Message {
-  if (message.id !== messageId || !isDownloadableMessage(message)) {
+  if (message.uiMessageKey !== uiMessageKey || !isDownloadableMessage(message)) {
     return message;
   }
 
@@ -1616,20 +1613,20 @@ function patchDownloadMessage(
 
 function patchVoicePlaybackMessageList(
   currentMessages: Message[],
-  messageId: string,
+  uiMessageKey: string,
   contentPatch: VoicePlaybackContentPatch,
 ) {
   return currentMessages.map((message) =>
-    patchVoicePlaybackMessage(message, messageId, contentPatch),
+    patchVoicePlaybackMessage(message, uiMessageKey, contentPatch),
   );
 }
 
 function patchVoicePlaybackMessage(
   message: Message,
-  messageId: string,
+  uiMessageKey: string,
   contentPatch: VoicePlaybackContentPatch,
 ): Message {
-  if (message.id !== messageId || !isVoiceMessage(message)) {
+  if (message.uiMessageKey !== uiMessageKey || !isVoiceMessage(message)) {
     return message;
   }
 
@@ -1646,20 +1643,20 @@ function patchVoicePlaybackMessage(
 
 function patchVoiceTranscriptionMessageList(
   currentMessages: Message[],
-  messageId: string,
+  uiMessageKey: string,
   contentPatch: VoiceTranscriptionContentPatch,
 ) {
   return currentMessages.map((message) =>
-    patchVoiceTranscriptionMessage(message, messageId, contentPatch),
+    patchVoiceTranscriptionMessage(message, uiMessageKey, contentPatch),
   );
 }
 
 function patchVoiceTranscriptionMessage(
   message: Message,
-  messageId: string,
+  uiMessageKey: string,
   contentPatch: VoiceTranscriptionContentPatch,
 ): Message {
-  if (message.id !== messageId || !isVoiceMessage(message)) {
+  if (message.uiMessageKey !== uiMessageKey || !isVoiceMessage(message)) {
     return message;
   }
 
@@ -1674,20 +1671,20 @@ function patchVoiceTranscriptionMessage(
 
 function patchMessageRevokePendingList(
   currentMessages: Message[],
-  messageId: string,
+  uiMessageKey: string,
   revokePending: boolean,
 ) {
   return currentMessages.map((message) =>
-    patchMessageRevokePending(message, messageId, revokePending),
+    patchMessageRevokePending(message, uiMessageKey, revokePending),
   );
 }
 
 function patchMessageRevokePending(
   message: Message,
-  messageId: string,
+  uiMessageKey: string,
   revokePending: boolean,
 ): Message {
-  if (!matchesMessageKey(message, messageId)) {
+  if (!matchesMessageKey(message, uiMessageKey)) {
     return message;
   }
 
@@ -1730,8 +1727,7 @@ function uniqueMessageKeys(keys: Array<string | undefined>) {
 
 function matchesMessageKey(message: Message, key: string) {
   return (
-    message.id === key ||
-    message.remoteMessageId === key ||
+    message.uiMessageKey === key ||
     String(message.seq ?? "") === key
   );
 }
@@ -1752,11 +1748,11 @@ function sortMessagesForAppend(messages: Message[]) {
 function isSameMessage(left: Message, right: Message) {
   return (
     (left.optNo && right.optNo && left.optNo === right.optNo) ||
-    (left.remoteMessageId && right.remoteMessageId && left.remoteMessageId === right.remoteMessageId) ||
+    (left.seq != null && right.seq != null && left.seq === right.seq) ||
     (left.clientMessageId &&
       right.clientMessageId &&
       left.clientMessageId === right.clientMessageId) ||
-    left.id === right.id
+    left.uiMessageKey === right.uiMessageKey
   );
 }
 
@@ -2247,12 +2243,12 @@ export function createWorkbenchStore() {
     delete latestGroupMembersRequestIdByConversationId[conversationId];
   }
 
-  function clearRevokePendingTimeout(messageId: string) {
-    const timeoutId = revokePendingTimeoutsByMessageId.get(messageId);
+  function clearRevokePendingTimeout(uiMessageKey: string) {
+    const timeoutId = revokePendingTimeoutsByMessageId.get(uiMessageKey);
 
     if (timeoutId) {
       clearTimeout(timeoutId);
-      revokePendingTimeoutsByMessageId.delete(messageId);
+      revokePendingTimeoutsByMessageId.delete(uiMessageKey);
     }
   }
 
@@ -2477,15 +2473,15 @@ export function createWorkbenchStore() {
       });
     }
 
-    function scheduleRevokePendingTimeout(conversationId: string, messageId: string) {
-      clearRevokePendingTimeout(messageId);
+    function scheduleRevokePendingTimeout(conversationId: string, uiMessageKey: string) {
+      clearRevokePendingTimeout(uiMessageKey);
 
       const timeoutId = setTimeout(() => {
-        revokePendingTimeoutsByMessageId.delete(messageId);
+        revokePendingTimeoutsByMessageId.delete(uiMessageKey);
 
         set((currentState) => {
           const message = (currentState.messagesByConversationId[conversationId] ?? [])
-            .find((item) => item.id === messageId);
+            .find((item) => item.uiMessageKey === uiMessageKey);
 
           if (!message?.revokePending || message.isRevoked) {
             return {};
@@ -2499,7 +2495,7 @@ export function createWorkbenchStore() {
               ...currentState.messagesByConversationId,
               [conversationId]: patchMessageRevokePendingList(
                 currentState.messagesByConversationId[conversationId] ?? [],
-                messageId,
+                uiMessageKey,
                 false,
               ),
             },
@@ -2510,14 +2506,14 @@ export function createWorkbenchStore() {
         });
       }, REVOKE_PENDING_TIMEOUT_MS);
 
-      revokePendingTimeoutsByMessageId.set(messageId, timeoutId);
+      revokePendingTimeoutsByMessageId.set(uiMessageKey, timeoutId);
     }
 
     function clearResolvedRevokePendingTimeouts(messages: Message[]) {
       messages
         .filter((message) => message.isRevoked)
         .forEach((message) => {
-          clearRevokePendingTimeout(message.id);
+          clearRevokePendingTimeout(message.uiMessageKey);
         });
     }
 
@@ -3844,34 +3840,34 @@ export function createWorkbenchStore() {
           customerProfilesById: state.customerProfilesById,
           me: state.me,
         });
-        const messageUpdateIdsByConversationId = (response.messageUpdateEvents ?? []).reduce(
+        const messageUpdateSeqsByConversationId = (response.messageUpdateEvents ?? []).reduce(
           (accumulator, event) => {
-            const currentIds = accumulator[event.conversationId];
+            const currentSeqs = accumulator[event.conversationId];
 
-            if (currentIds) {
-              currentIds.push(event.messageId);
+            if (currentSeqs) {
+              currentSeqs.push(event.messageSeq);
             } else {
-              accumulator[event.conversationId] = [event.messageId];
+              accumulator[event.conversationId] = [event.messageSeq];
             }
 
             return accumulator;
           },
-          {} as Record<string, string[]>,
+          {} as Record<string, number[]>,
         );
 
         const refreshedMessagesByConversationId = Object.fromEntries(
           await Promise.all(
-            Object.entries(messageUpdateIdsByConversationId).map(
-              async ([conversationId, messageIds]): Promise<[string, Message[]]> => [
+            Object.entries(messageUpdateSeqsByConversationId).map(
+              async ([conversationId, messageSeqs]): Promise<[string, Message[]]> => [
                 conversationId,
-                await loadMessagesByIds(
+                await loadMessagesBySeqs(
                   {
                     accounts: state.accounts,
                     customerProfilesById: state.customerProfilesById,
                     me: state.me,
                   },
                   conversationId,
-                  messageIds,
+                  messageSeqs,
                 ),
               ],
             ),
@@ -4386,7 +4382,7 @@ export function createWorkbenchStore() {
         let hasSentQuote = false;
         for (let index = 0; index < segmentsForSend.length; index += 1) {
           const segmentForSend = segmentsForSend[index];
-          const originalSegment = normalizedSegments[index] ?? segmentForSend;
+          const originalSegment = sendableSegments[index] ?? segmentForSend;
           const payloadSegment = toWorkbenchSendSegment(segmentForSend);
           const segmentClientMessageId = buildSegmentClientMessageId(clientMessageId, index);
           const mentionForSegment: SendMentionPayload =
@@ -4414,10 +4410,9 @@ export function createWorkbenchStore() {
             clientMessageId: segmentClientMessageId,
             content: buildOptimisticMessageContent(originalSegment, quoteForSegment),
             conversationId: activeConversationId,
-            id: segmentClientMessageId,
-            optNo: response.optNo ?? response.messageId,
+            uiMessageKey: segmentClientMessageId,
+            optNo: response.optNo,
             role: "agent" as const,
-            remoteMessageId: response.messageId,
             sender: {
               avatarUrl: account?.avatarUrl,
               id: `sender-agent-${activeAccountId}`,
@@ -4433,7 +4428,7 @@ export function createWorkbenchStore() {
             const currentMessages =
               currentState.messagesByConversationId[activeConversationId] ?? [];
             const currentMessagesWithoutAcceptedRemoval = options?.removeMessageIdOnAccepted
-              ? currentMessages.filter((message) => message.id !== options.removeMessageIdOnAccepted)
+              ? currentMessages.filter((message) => message.uiMessageKey !== options.removeMessageIdOnAccepted)
               : currentMessages;
             const nextMessages = [...currentMessagesWithoutAcceptedRemoval, optimisticMessage];
             const currentConversations =
@@ -4464,7 +4459,7 @@ export function createWorkbenchStore() {
               pendingMessages: [
                 ...(options?.removeMessageIdOnAccepted
                   ? currentState.pendingMessages.filter(
-                      (message) => message.id !== options.removeMessageIdOnAccepted,
+                      (message) => message.uiMessageKey !== options.removeMessageIdOnAccepted,
                     )
                   : currentState.pendingMessages),
                 optimisticMessage,
@@ -4505,13 +4500,13 @@ export function createWorkbenchStore() {
         },
       ]);
     },
-    async retryFailedMessage(messageId) {
+    async retryFailedMessage(uiMessageKey) {
       const state = get();
       const conversationMessages =
         state.messagesByConversationId[state.activeConversationId] ?? [];
       const failedMessage = conversationMessages.find(
         (message) =>
-          message.id === messageId &&
+          message.uiMessageKey === uiMessageKey &&
           message.role === "agent" &&
           message.status === "failed",
       );
@@ -4541,15 +4536,15 @@ export function createWorkbenchStore() {
 
       return get().sendAgentMessageSegments([retryInput.segment], {
         failMsgId: failedMessage.seq != null ? String(failedMessage.seq) : undefined,
-        removeMessageIdOnAccepted: failedMessage.id,
+        removeMessageIdOnAccepted: failedMessage.uiMessageKey,
         quote: retryInput.quote,
       });
     },
-    async revokeMessage(messageId) {
+    async revokeMessage(uiMessageKey) {
       const state = get();
       const message = findRevokableMessage(
         state.messagesByConversationId[state.activeConversationId] ?? [],
-        messageId,
+        uiMessageKey,
       );
 
       if (!message || !canUseMessageRevoke(message)) {
@@ -4560,7 +4555,17 @@ export function createWorkbenchStore() {
         };
       }
 
-      if (pendingRevokeRequestMessageIds.has(message.id)) {
+      const messageSeq = message.seq;
+
+      if (messageSeq == null) {
+        return {
+          errorCode: "MESSAGE_NOT_REVOKABLE",
+          errorMessage: "暂不支持撤回该消息",
+          ok: false,
+        };
+      }
+
+      if (pendingRevokeRequestMessageIds.has(message.uiMessageKey)) {
         return {
           errorCode: "MESSAGE_REVOKE_PENDING",
           errorMessage: "消息正在撤回中",
@@ -4568,12 +4573,12 @@ export function createWorkbenchStore() {
         };
       }
 
-      pendingRevokeRequestMessageIds.add(message.id);
+      pendingRevokeRequestMessageIds.add(message.uiMessageKey);
 
       try {
         await revokeMessageRequest({
           conversationId: message.conversationId,
-          messageId: String(message.seq),
+          messageSeq,
         });
 
         set((currentState) => ({
@@ -4581,13 +4586,13 @@ export function createWorkbenchStore() {
             ...currentState.messagesByConversationId,
             [message.conversationId]: patchMessageRevokePendingList(
               currentState.messagesByConversationId[message.conversationId] ?? [],
-              message.id,
+              message.uiMessageKey,
               true,
             ),
           },
           revokeMessageError: undefined,
         }));
-        scheduleRevokePendingTimeout(message.conversationId, message.id);
+        scheduleRevokePendingTimeout(message.conversationId, message.uiMessageKey);
 
         return { ok: true };
       } catch (error) {
@@ -4599,7 +4604,7 @@ export function createWorkbenchStore() {
           ok: false,
         };
       } finally {
-        pendingRevokeRequestMessageIds.delete(message.id);
+        pendingRevokeRequestMessageIds.delete(message.uiMessageKey);
       }
     },
     clearRevokeMessageError() {
@@ -5617,7 +5622,7 @@ export function createWorkbenchStore() {
         });
       }
     },
-      updateMessageDownloadContent(conversationId, messageId, contentPatch) {
+      updateMessageDownloadContent(conversationId, uiMessageKey, contentPatch) {
         set((currentState) => {
           const messages = currentState.messagesByConversationId[conversationId] ?? [];
           const historyPanel = currentState.historyPanelByConversationId[conversationId];
@@ -5630,7 +5635,7 @@ export function createWorkbenchStore() {
                     ...historyPanel,
                     messages: patchDownloadMessageList(
                       historyPanel.messages,
-                      messageId,
+                      uiMessageKey,
                       contentPatch,
                     ),
                   },
@@ -5640,7 +5645,7 @@ export function createWorkbenchStore() {
               ...currentState.messagesByConversationId,
               [conversationId]: patchDownloadMessageList(
                 messages,
-                messageId,
+                uiMessageKey,
                 contentPatch,
               ),
             },
@@ -5690,14 +5695,14 @@ export function createWorkbenchStore() {
           }
         }
       },
-      async confirmVoicePlaybackReady(conversationId, messageId, playbackUrl) {
+      async confirmVoicePlaybackReady(conversationId, uiMessageKey, playbackUrl) {
         const currentState = get();
-        const message = findVoiceMessageById(
+        const message = findVoiceMessageByUiKey(
           [
             ...(currentState.messagesByConversationId[conversationId] ?? []),
             ...(currentState.historyPanelByConversationId[conversationId]?.messages ?? []),
           ],
-          messageId,
+          uiMessageKey,
         );
 
         if (!message || !message.seq || message.content.transFileUrlPersisted) {
@@ -5736,7 +5741,7 @@ export function createWorkbenchStore() {
                       ...historyPanel,
                       messages: patchVoicePlaybackMessageList(
                         historyPanel.messages,
-                        messageId,
+                        uiMessageKey,
                         contentPatch,
                       ),
                     },
@@ -5746,7 +5751,7 @@ export function createWorkbenchStore() {
                 ...state.messagesByConversationId,
                 [conversationId]: patchVoicePlaybackMessageList(
                   messages,
-                  messageId,
+                  uiMessageKey,
                   contentPatch,
                 ),
               },
@@ -5756,14 +5761,14 @@ export function createWorkbenchStore() {
           pendingVoicePlaybackConfirmKeys.delete(pendingKey);
         }
       },
-      async transcribeVoiceMessage(conversationId, messageId) {
+      async transcribeVoiceMessage(conversationId, uiMessageKey) {
         const currentState = get();
-        const message = findVoiceMessageById(
+        const message = findVoiceMessageByUiKey(
           [
             ...(currentState.messagesByConversationId[conversationId] ?? []),
             ...(currentState.historyPanelByConversationId[conversationId]?.messages ?? []),
           ],
-          messageId,
+          uiMessageKey,
         );
 
         if (!message || !message.seq) {
@@ -5795,7 +5800,7 @@ export function createWorkbenchStore() {
                     ...historyPanel,
                     messages: patchVoiceTranscriptionMessageList(
                       historyPanel.messages,
-                      messageId,
+                      uiMessageKey,
                       contentPatch,
                     ),
                   },
@@ -5805,7 +5810,7 @@ export function createWorkbenchStore() {
               ...state.messagesByConversationId,
               [conversationId]: patchVoiceTranscriptionMessageList(
                 messages,
-                messageId,
+                uiMessageKey,
                 contentPatch,
               ),
             },
@@ -5940,23 +5945,23 @@ function isVoiceMessage(
   return message.role !== "system" && message.content.type === "voice";
 }
 
-function findVoiceMessageById(
+function findVoiceMessageByUiKey(
   messages: Message[],
-  messageId: string,
+  uiMessageKey: string,
 ): (ChatMessage & { content: VoiceMessageContent }) | undefined {
   return messages.find(
     (message): message is ChatMessage & { content: VoiceMessageContent } =>
-      isVoiceMessage(message) && message.id === messageId,
+      isVoiceMessage(message) && message.uiMessageKey === uiMessageKey,
   );
 }
 
 function findRevokableMessage(
   messages: Message[],
-  messageId: string,
+  uiMessageKey: string,
 ): ChatMessage | undefined {
   return messages.find(
     (message): message is ChatMessage =>
-      message.role !== "system" && message.id === messageId,
+      message.role !== "system" && message.uiMessageKey === uiMessageKey,
   );
 }
 

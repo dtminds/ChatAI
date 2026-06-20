@@ -75,7 +75,7 @@ describe("ChatWorkbenchPage download flows", () => {
                 conversationId: "conv-001",
                 createdAt: 1778240300000,
                 customerId: "cust-001",
-                messageId: "remote-expired-video",
+                msgid: "remote-expired-video",
                 rawMsgtype: "video",
                 seatId: "drc",
                 senderType: "customer",
@@ -132,7 +132,7 @@ describe("ChatWorkbenchPage download flows", () => {
                 conversationId: "conv-001",
                 createdAt: 1778240300000,
                 customerId: "cust-001",
-                messageId: "remote-pending-video",
+                msgid: "remote-pending-video",
                 rawMsgtype: "video",
                 seatId: "drc",
                 senderType: "customer",
@@ -164,7 +164,7 @@ describe("ChatWorkbenchPage download flows", () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();
     const downloadMessageFile = vi.fn(async () => ({
-      messageId: "remote-pending-video",
+      messageSeq: 539,
       status: "accepted" as const,
     }));
     const getMessageFileDownloadStatus = vi.fn(
@@ -197,7 +197,7 @@ describe("ChatWorkbenchPage download flows", () => {
                 conversationId: "conv-001",
                 createdAt: 1778240300000,
                 customerId: "cust-001",
-                messageId: "remote-pending-video",
+                msgid: "remote-pending-video",
                 rawMsgtype: "video",
                 seatId: "drc",
                 senderType: "customer",
@@ -301,7 +301,7 @@ describe("ChatWorkbenchPage download flows", () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();
     const downloadMessageFile = vi.fn(async () => ({
-      messageId: "remote-new-video",
+      messageSeq: 539,
       status: "accepted" as const,
     }));
 
@@ -439,7 +439,7 @@ function createInProgressVideoDto({
     conversationId: "conv-001",
     createdAt,
     customerId: "cust-001",
-    messageId,
+    msgid: messageId,
     rawMsgtype: "video",
     seatId: "drc",
     senderType: "customer" as const,
@@ -472,7 +472,7 @@ function createInProgressFileDto({
     conversationId: "conv-001",
     createdAt,
     customerId: "cust-001",
-    messageId,
+    msgid: messageId,
     rawMsgtype: "file",
     seatId: "drc",
     senderType: "customer" as const,

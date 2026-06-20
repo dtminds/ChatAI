@@ -93,13 +93,13 @@ async function expectSentConversationMessage(
 
   await waitFor(async () => {
     const sendResult = await sendMessage.mock.results[0]?.value;
-    const messageId = sendResult?.messageId;
+    const optNo = sendResult?.optNo;
 
-    expect(messageId).toBeTruthy();
+    expect(optNo).toBeTruthy();
     sentMessage = useWorkbenchStore
       .getState()
       .messagesByConversationId[conversationId]
-      .find((message) => message.remoteMessageId === messageId);
+      .find((message) => message.optNo === optNo);
     expect(
       sentMessage,
     ).toMatchObject(expectedMessage);
@@ -852,7 +852,7 @@ describe("ChatWorkbenchPage composer flows", () => {
 
     sendGate.resolve({
       clientMessageId: "local-expression-001",
-      messageId: "msg-expression-sent-001",
+      optNo: "opt-expression-sent-001",
       status: "accepted",
     });
 
@@ -2048,11 +2048,11 @@ describe("ChatWorkbenchPage composer flows", () => {
 
     sendMessageGate.resolve({
       clientMessageId: "client-msg-test",
-      messageId: "msg-server-test",
+      optNo: "client-msg-test",
       messages: [
         {
           clientMessageId: "client-msg-test",
-          messageId: "msg-server-test",
+          optNo: "client-msg-test",
           status: "accepted",
         },
       ],
@@ -2141,11 +2141,11 @@ describe("ChatWorkbenchPage composer flows", () => {
 
     sendMessageGate.resolve({
       clientMessageId: "client-msg-test",
-      messageId: "msg-server-test",
+      optNo: "client-msg-test",
       messages: [
         {
           clientMessageId: "client-msg-test",
-          messageId: "msg-server-test",
+          optNo: "client-msg-test",
           status: "accepted",
         },
       ],

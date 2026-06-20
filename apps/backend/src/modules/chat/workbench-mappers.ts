@@ -200,7 +200,7 @@ export function mapMessageRow(
     createdAt: toOptionalTimestamp(row.msgtime),
     customerId,
     isRevoked: toNumber(row.revoke_status ?? null) === 1 ? true : undefined,
-    messageId: row.msgid,
+    msgid: row.msgid,
     optNo: row.opt_no || undefined,
     rawMsgtype: row.msgtype ?? "",
     seatId: String(row.seat_id),

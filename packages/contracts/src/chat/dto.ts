@@ -174,7 +174,7 @@ export type WorkbenchMessageStatus = "queued" | "sending" | "sent" | "failed";
 export type WorkbenchMessageFileDownloadStatus = "ing" | "finished" | "failed";
 
 export type WorkbenchMessageFileDownloadResponse = {
-  messageId: string;
+  messageSeq: number;
   status: "accepted";
 };
 
@@ -220,7 +220,7 @@ export type WorkbenchRevokeMessageRequest = {
 export type WorkbenchRevokeMessageResponse = {
   accepted: true;
   conversationId: string;
-  messageId: string;
+  messageSeq: number;
   revokeMsgId: number;
 };
 
@@ -318,7 +318,7 @@ export type WorkbenchConversationListResponse = {
 };
 
 export type WorkbenchMessageBaseDto = {
-  messageId: string;
+  msgid: string;
   conversationId: string;
   seatId: string;
   customerId: string;
@@ -396,20 +396,20 @@ export type WorkbenchConversationChangeDto =
 export type WorkbenchMessageUpdateEventDto = {
   conversationId: string;
   eventId: number;
-  messageId: string;
+  messageSeq: number;
 };
 
-export type WorkbenchMessageQueryByIdsRequest = {
+export type WorkbenchMessageQueryBySeqsRequest = {
   conversationId: string;
-  messageIds: string[];
+  messageSeqs: number[];
 };
 
-export type WorkbenchMessageQueryByIdsResponse = {
+export type WorkbenchMessageQueryBySeqsResponse = {
   messages: WorkbenchMessageDto[];
 };
 
 export type WorkbenchChatRecordDetailResponse = {
-  messageId: string;
+  messageSeq: number;
   messages: WorkbenchMessageDto[];
 };
 
@@ -720,16 +720,14 @@ export type WorkbenchSendMessagePayload = {
 };
 
 export type WorkbenchSentMessageAck = {
-  messageId: string;
   clientMessageId: string;
-  optNo?: string;
+  optNo: string;
   status: "accepted";
 };
 
 export type WorkbenchSendMessageResponse = {
-  messageId: string;
   clientMessageId: string;
-  optNo?: string;
+  optNo: string;
   status: "accepted";
   messages?: WorkbenchSentMessageAck[];
 };

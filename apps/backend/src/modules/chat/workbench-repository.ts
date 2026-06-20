@@ -11,7 +11,7 @@ import {
   type WorkbenchHistoryMessagePageDto,
   type WorkbenchHistoryMessageQuery,
   type WorkbenchHistoryMessageScope,
-  type WorkbenchMessageQueryByIdsResponse,
+  type WorkbenchMessageQueryBySeqsResponse,
   type WorkbenchMessagePageDto,
   type WorkbenchChatRecordDetailResponse,
   type WorkbenchMessageUpdateEventDto,
@@ -2018,21 +2018,14 @@ export class WorkbenchRepository {
 
   async getMessageForRevoke(input: {
     conversationId: string;
-    messageId: string;
+    messageSeq: number;
     platform: number;
     thirdExternalUserId?: string;
     thirdGroupId?: string;
     thirdUserId: string;
     uid: number;
   }): Promise<RevokeMessageLookup | undefined> {
-    const normalizedMessageId = input.messageId.trim();
-
-    if (!normalizedMessageId) {
-      return undefined;
-    }
-
-    const auditId = parseMySqlId(normalizedMessageId);
-    if (auditId == null) {
+    if (!Number.isSafeInteger(input.messageSeq) || input.messageSeq <= 0) {
       return undefined;
     }
 
@@ -2060,7 +2053,7 @@ export class WorkbenchRepository {
       return undefined;
     }
 
-    query = query.where("message.id", "=", auditId);
+    query = query.where("message.id", "=", input.messageSeq);
 
     const row = await query.executeTakeFirst();
 
@@ -2144,7 +2137,7 @@ export class WorkbenchRepository {
       .map((row) => {
         const event = parseMessageUpdateEvent(String(row.content ?? ""));
 
-        if (!event?.messageId) {
+        if (!event?.messageSeq) {
           return undefined;
         }
 
@@ -2152,7 +2145,7 @@ export class WorkbenchRepository {
           conversationId,
           eventId: Number(row.event_id),
           eventTime: toTimestamp(row.create_time),
-          messageId: event.messageId,
+          messageSeq: event.messageSeq,
         };
       })
       .filter(
@@ -2241,18 +2234,16 @@ export class WorkbenchRepository {
     };
   }
 
-  async listMessagesByIds(
+  async listMessagesBySeqs(
     conversationId: string,
-    messageIds: string[],
-  ): Promise<WorkbenchMessageQueryByIdsResponse> {
+    messageSeqs: number[],
+  ): Promise<WorkbenchMessageQueryBySeqsResponse> {
     const conversationNumericId = parseMySqlId(conversationId);
-    const normalizedIds = uniquePositiveNumbers(
-      messageIds
-        .map((value) => Number.parseInt(value, 10))
-        .filter((value) => Number.isSafeInteger(value) && value > 0),
+    const normalizedSeqs = uniquePositiveNumbers(
+      messageSeqs.filter((value) => Number.isSafeInteger(value) && value > 0),
     );
 
-    if (conversationNumericId == null || !normalizedIds.length) {
+    if (conversationNumericId == null || !normalizedSeqs.length) {
       return { messages: [] };
     }
 
@@ -2313,7 +2304,7 @@ export class WorkbenchRepository {
       .where("message.uid", "=", conversation.uid)
       .where("message.platform", "=", conversation.platform)
       .where("message.third_user_id", "=", conversation.third_userid)
-      .where("message.id", "in", normalizedIds);
+      .where("message.id", "in", normalizedSeqs);
 
     if (conversation.chat_type === CHAT_TYPE_GROUP) {
       query = query.where("message.third_group_id", "=", conversation.conversation_group_id);
@@ -2380,7 +2371,7 @@ export class WorkbenchRepository {
     uid: number,
     platform: number,
     conversationId: string,
-    msgInfoId: number,
+    messageSeq: number,
   ): Promise<WorkbenchChatRecordDetailResponse | undefined> {
     const conversationNumericId = parseMySqlId(conversationId);
 
@@ -2419,7 +2410,7 @@ export class WorkbenchRepository {
       .where("message.uid", "=", conversation.uid)
       .where("message.platform", "=", conversation.platform)
       .where("message.third_user_id", "=", conversation.third_userid)
-      .where("message.id", "=", msgInfoId);
+      .where("message.id", "=", messageSeq);
 
     if (conversation.chat_type === CHAT_TYPE_GROUP) {
       parentQuery = parentQuery.where(
@@ -2454,7 +2445,7 @@ export class WorkbenchRepository {
         "record.msgtime as msgtime",
         "record.status as status",
       ])
-      .where("record.msg_info_id", "=", msgInfoId)
+      .where("record.msg_info_id", "=", messageSeq)
       .where("record.uid", "=", conversation.uid)
       .where("record.platform", "=", conversation.platform)
       .orderBy("record.msgtime", "asc")
@@ -2462,7 +2453,7 @@ export class WorkbenchRepository {
       .execute() as ChatRecordDetailRow[];
 
     return {
-      messageId: String(msgInfoId),
+      messageSeq,
       messages: detailRows.map((row) =>
         mapMessageRow({
           chat_type: conversation.chat_type,
@@ -2472,7 +2463,7 @@ export class WorkbenchRepository {
           conversation_id: conversation.conversation_id,
           from_type: 2,
           id: row.id,
-          msgid: `chatrecord:${msgInfoId}:${row.id}`,
+          msgid: `chatrecord:${messageSeq}:${row.id}`,
           msgtime: row.msgtime,
           msgtype: row.msgtype,
           opt_no: null,
@@ -4709,7 +4700,7 @@ function emptyMessagePage(): WorkbenchMessagePageDto {
 }
 
 type ParsedMessageUpdateEvent = {
-  messageId: string;
+  messageSeq: number;
 };
 
 function parseMessageUpdateEvent(content: string): ParsedMessageUpdateEvent | undefined {
@@ -4720,14 +4711,14 @@ function parseMessageUpdateEvent(content: string): ParsedMessageUpdateEvent | un
       return undefined;
     }
 
-    const messageId = readRecordNumber(parsed, "messageId");
+    const messageSeq = readRecordNumber(parsed, "messageId");
 
-    if (!messageId) {
+    if (!messageSeq) {
       return undefined;
     }
 
     return {
-      messageId: String(messageId),
+      messageSeq,
     };
   } catch {
     return undefined;

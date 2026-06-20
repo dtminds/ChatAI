@@ -429,7 +429,7 @@ describe("workbench MySQL mappers", () => {
       conversationId: "88",
       createdAt: 1778240200000,
       customerId: "external-1",
-      messageId: "remote-msg-101",
+      msgid: "remote-msg-101",
       optNo: "opt-001",
       rawMsgtype: "text",
       seatId: "12",
@@ -556,7 +556,7 @@ describe("workbench MySQL mappers", () => {
         status: 0,
       })),
     ).toMatchObject({
-      messageId: "remote-msg-failed-001",
+      msgid: "remote-msg-failed-001",
       optNo: "opt-failed-001",
       status: "failed",
     });

@@ -186,7 +186,7 @@ describe("workbench gateway message paging", () => {
     });
   });
 
-  it("keeps message update events as ids-only poll metadata", async () => {
+  it("keeps message update events as seq-only poll metadata", async () => {
     const baseService = createMockWorkbenchService();
 
     setWorkbenchService({
@@ -199,7 +199,7 @@ describe("workbench gateway message paging", () => {
             {
               conversationId: request.activeConversationId ?? "",
               eventId: 4,
-              messageId: "829",
+              messageSeq: 829,
             },
           ],
           nextMessageUpdateCursor: 1_778_840_010_000,
@@ -228,7 +228,7 @@ describe("workbench gateway message paging", () => {
       {
         conversationId: "conv-001",
         eventId: 4,
-        messageId: "829",
+        messageSeq: 829,
       },
     ]);
     expect(result.nextSeatUpdateCursor).toBe(1_778_840_020_000);

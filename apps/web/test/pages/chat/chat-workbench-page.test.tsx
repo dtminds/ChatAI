@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMockWorkbenchService, setWorkbenchService } from "@/pages/chat/api/workbench-service";
-import { getFirstUnreadCustomerMessageId } from "@/pages/chat/hooks/use-visible-unread-conversation-read";
+import { getFirstUnreadCustomerMessageKey } from "@/pages/chat/hooks/use-visible-unread-conversation-read";
 import type { Message } from "@/pages/chat/chat-types";
 import { useWorkbenchStore } from "@/store/workbench-store";
 import type { WorkbenchMessageDto } from "@chatai/contracts";
@@ -132,7 +132,7 @@ function createSmartReplyTextMessageDto({
     conversationId: "conv-001",
     createdAt: 1_778_400_000_000 + seq * 1_000,
     customerId: "cust-001",
-    messageId: id,
+    msgid: id,
     rawMsgtype: "text",
     seatId: "drc",
     senderType,
@@ -202,7 +202,7 @@ describe("ChatWorkbenchPage", () => {
         type: "text",
       },
       conversationId: "conv-001",
-      id: "sparse-customer-message",
+      uiMessageKey: "sparse-customer-message",
       role: "customer",
       sender: {
         id: "sender-cust-001",
@@ -212,7 +212,7 @@ describe("ChatWorkbenchPage", () => {
       status: "sent",
     };
 
-    expect(getFirstUnreadCustomerMessageId(messages, 2)).toBe(
+    expect(getFirstUnreadCustomerMessageKey(messages, 2)).toBe(
       "sparse-customer-message",
     );
   });
@@ -263,7 +263,7 @@ describe("ChatWorkbenchPage", () => {
     const observedTarget = intersectionObserver.instances.at(-1)?.observe.mock
       .calls.at(-1)?.[0] as Element;
 
-    expect(observedTarget).toHaveAttribute("data-message-id", "msg-009");
+    expect(observedTarget).toHaveAttribute("data-ui-message-key", "8");
     expect(intersectionObserver.instances.at(-1)?.options).toMatchObject({
       threshold: 0,
     });
@@ -654,7 +654,7 @@ describe("ChatWorkbenchPage", () => {
                 type: "system",
               },
               conversationId: "conv-001",
-              id: "system-unread-tail",
+              uiMessageKey: "system-unread-tail",
               role: "system",
               sentAt: "2026-04-14 19:18:40",
               status: "sent",
@@ -671,7 +671,7 @@ describe("ChatWorkbenchPage", () => {
     const observedTarget = intersectionObserver.instances.at(-1)?.observe.mock
       .calls.at(-1)?.[0] as Element;
 
-    expect(observedTarget).toHaveAttribute("data-message-id", "msg-010");
+    expect(observedTarget).toHaveAttribute("data-ui-message-key", "9");
   });
 
   it("waits until conversation loading finishes before observing unread messages", async () => {
@@ -780,7 +780,7 @@ describe("ChatWorkbenchPage", () => {
     const firstObservedTarget = intersectionObserver.instances.at(-1)?.observe.mock
       .calls.at(-1)?.[0] as Element;
 
-    expect(firstObservedTarget).toHaveAttribute("data-message-id", "msg-009");
+    expect(firstObservedTarget).toHaveAttribute("data-ui-message-key", "8");
     const observeCallCountBeforeMessageUpdate =
       getIntersectionObserverObserveCallCount(intersectionObserver.instances);
 
@@ -790,7 +790,7 @@ describe("ChatWorkbenchPage", () => {
           ...state.messagesByConversationId,
           "conv-001": (state.messagesByConversationId["conv-001"] ?? []).map(
             (message) =>
-              message.id === "msg-009"
+              message.uiMessageKey === "8"
                 ? {
                     ...message,
                     clientMessageId: "remounted-msg-009",
@@ -809,9 +809,9 @@ describe("ChatWorkbenchPage", () => {
 
     const nextObservedTarget = intersectionObserver.instances.at(-1)?.observe.mock
       .calls.at(-1)?.[0] as Element;
-    const currentUnreadElement = document.querySelector('[data-message-id="msg-009"]');
+    const currentUnreadElement = document.querySelector('[data-ui-message-key="8"]');
 
-    expect(nextObservedTarget).toHaveAttribute("data-message-id", "msg-009");
+    expect(nextObservedTarget).toHaveAttribute("data-ui-message-key", "8");
     expect(nextObservedTarget).toBe(currentUnreadElement);
   });
 
@@ -1006,9 +1006,10 @@ describe("ChatWorkbenchPage", () => {
         useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1);
 
       expect(latestMessage).toMatchObject({
-        remoteMessageId: expect.any(String),
+        optNo: expect.any(String),
         status: "accepted",
       });
+      expect(latestMessage?.msgid).toBeUndefined();
     });
 
     await useWorkbenchStore.getState().pollWorkbench();
@@ -1018,7 +1019,7 @@ describe("ChatWorkbenchPage", () => {
     });
 
     const beforeRetryId =
-      useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1)?.id;
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1)?.uiMessageKey;
     const viewport = screen.getByTestId("message-viewport");
     const scrollTo = vi.fn();
     Object.defineProperty(viewport, "scrollTo", {
@@ -1038,7 +1039,6 @@ describe("ChatWorkbenchPage", () => {
 
     retrySendGate.resolve({
       clientMessageId: "retry-local-001",
-      messageId: "retry-opt-001",
       optNo: "retry-opt-001",
       status: "accepted",
     });
@@ -1050,7 +1050,7 @@ describe("ChatWorkbenchPage", () => {
       expect(latestMessage).toMatchObject({
         status: "accepted",
       });
-      expect(latestMessage?.id).not.toBe(beforeRetryId);
+      expect(latestMessage?.uiMessageKey).not.toBe(beforeRetryId);
     });
     expect(scrollTo).toHaveBeenCalledWith({
       top: 0,
@@ -1078,7 +1078,7 @@ describe("ChatWorkbenchPage", () => {
             },
             conversationId: "conv-001",
             failReason: "模拟发送失败",
-            id: "unsupported-failed-message",
+            uiMessageKey: "unsupported-failed-message",
             role: "agent",
             sender: {
               id: "agent-001",
@@ -1128,7 +1128,7 @@ describe("ChatWorkbenchPage", () => {
             },
             conversationId: "conv-001",
             failReason: "模拟发送失败",
-            id: "failed-message-without-error-message",
+            uiMessageKey: "failed-message-without-error-message",
             role: "agent",
             sender: {
               id: "agent-001",
@@ -1188,7 +1188,7 @@ describe("ChatWorkbenchPage", () => {
             },
             conversationId: "conv-001",
             failReason: "模拟发送失败",
-            id: "failed-message-switch-success",
+            uiMessageKey: "failed-message-switch-success",
             role: "agent",
             sender: {
               id: "agent-001",
@@ -1255,7 +1255,7 @@ describe("ChatWorkbenchPage", () => {
             },
             conversationId: "conv-001",
             failReason: "模拟发送失败",
-            id: "failed-message-switch-error",
+            uiMessageKey: "failed-message-switch-error",
             role: "agent",
             sender: {
               id: "agent-001",
@@ -1562,7 +1562,7 @@ describe("ChatWorkbenchPage", () => {
                 fileUrl: "https://example.com/emotion.gif",
               },
               contentType: "emotion",
-              messageId: "msg-emotion-collect-001",
+              msgid: "msg-emotion-collect-001",
             },
           ],
         };

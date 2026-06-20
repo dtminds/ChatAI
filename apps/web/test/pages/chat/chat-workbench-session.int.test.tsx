@@ -272,7 +272,7 @@ describe("ChatWorkbenchPage session flows", () => {
             },
             conversationId: "conv-001",
             failReason: "模拟发送失败",
-            id: "readonly-failed-message",
+            uiMessageKey: "readonly-failed-message",
             role: "agent",
             sender: {
               id: "agent-001",

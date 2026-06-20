@@ -106,7 +106,7 @@ describe("text message bubble layout", () => {
         message={{
           ...createTextMessage("待确认消息"),
           optNo: "opt-001",
-          remoteMessageId: "opt-001",
+          msgid: "opt-001",
           status: "accepted",
         }}
       />,
@@ -135,7 +135,7 @@ describe("text message bubble layout", () => {
             type: "quote",
           },
           optNo: "opt-quote-001",
-          remoteMessageId: "opt-quote-001",
+          msgid: "opt-quote-001",
           status: "accepted",
         }}
       />,
@@ -207,7 +207,7 @@ describe("text message bubble layout", () => {
         message={{
           ...createTextMessage("已确认消息"),
           optNo: "opt-001",
-          remoteMessageId: "remote-001",
+          msgid: "remote-001",
           status: "sent",
         }}
       />,
@@ -244,7 +244,7 @@ describe("text message bubble layout", () => {
             type: "system",
           },
           conversationId: "conv-layout",
-          id: "sys-layout",
+          uiMessageKey: "sys-layout",
           isRevoked: true,
           role: "system",
           sentAt: "2026-05-08 09:54:00",
@@ -267,7 +267,7 @@ describe("text message bubble layout", () => {
             type: "system",
           },
           conversationId: "conv-layout",
-          id: "sys-layout",
+          uiMessageKey: "sys-layout",
           role: "system",
           sentAt: "2026-05-08 09:54:00",
           status: "sent",
@@ -330,7 +330,8 @@ describe("text message bubble layout", () => {
 
 function createTextMessage(text: string): ChatMessage {
   return {
-    id: "msg-text-layout",
+    uiMessageKey: "msg-text-layout",
+    msgid: "msg-text-layout",
     conversationId: "conv-layout",
     role: "agent" as const,
     author: "客服",

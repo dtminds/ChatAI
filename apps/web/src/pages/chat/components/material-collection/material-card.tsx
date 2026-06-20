@@ -112,7 +112,7 @@ function MaterialCardContent({ item }: { item: MaterialCollectionItem }) {
     return (
       <ImageMessageCard
         content={toExpressionContent(item)}
-        messageId={item.id}
+        uiMessageKey={item.id}
       />
     );
   }

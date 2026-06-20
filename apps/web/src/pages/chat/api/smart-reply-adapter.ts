@@ -524,7 +524,7 @@ export function collectSmartReplyMsgIds(
 }
 
 export function collectSmartReplyPollMsgIds(
-  messages: Array<{ id: string; seq?: number }>,
+  messages: Array<{ seq?: number }>,
   suggestions: Record<string, SmartReplySuggestion>,
   limit = 100,
 ) {
@@ -599,8 +599,8 @@ function readNonNegativeInteger(value: unknown) {
   return undefined;
 }
 
-export function getSmartReplyLookupKey(message: { id: string; seq?: number }) {
-  return message.seq != null ? String(message.seq) : message.id;
+export function getSmartReplyLookupKey(message: { uiMessageKey?: string; seq?: number }) {
+  return message.seq != null ? String(message.seq) : (message.uiMessageKey ?? "");
 }
 
 const SMART_REPLY_ATTACHMENT_MEDIA_CDN_PREFIX = "https://b1.dtminds.com";

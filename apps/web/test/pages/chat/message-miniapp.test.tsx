@@ -123,10 +123,10 @@ describe("MiniAppMessageCard", () => {
 
 function createMiniProgramMessage(): ChatMessage {
   return {
-    id: "msg-mini-program-1",
     conversationId: "conv-mini-program",
     role: "customer",
     author: "客户",
+    msgid: "msg-mini-program-1",
     sender: {
       id: "customer-mini-program",
       name: "客户",
@@ -139,5 +139,6 @@ function createMiniProgramMessage(): ChatMessage {
     },
     sentAt: "2026-06-11 13:22:45",
     status: "sent",
+    uiMessageKey: "msg-mini-program-1",
   };
 }

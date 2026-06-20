@@ -1210,7 +1210,7 @@ describe("backend app", () => {
           bizType: 2,
           contentType: "file",
           groupId: "material-group-file-1",
-          messageId: "msg-004",
+          msgInfoId: "3",
         },
       ],
       pagination: {
@@ -2564,7 +2564,7 @@ describe("backend app", () => {
     expect(send.statusCode).toBe(200);
     expect(send.json()).toMatchObject({
       clientMessageId: "local-test-001",
-      messageId: expect.stringMatching(/^msg-server-/),
+      optNo: "local-test-001",
       status: "accepted",
     });
     expect(poll.statusCode).toBe(200);
@@ -2608,7 +2608,18 @@ describe("backend app", () => {
       },
       url: "/api/server/messages/send",
     });
-    const sentMessage = send.json<{ messageId: string }>();
+    const pollBeforeRevoke = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/poll?since_version=1284&current_seat_id=drc&active_conversation_id=conv-001&active_message_seq=0",
+    });
+    const sentMessage = pollBeforeRevoke
+      .json<{ activeConversationMessages: Array<{ clientMessageId?: string; seq: number }> }>()
+      .activeConversationMessages.find(
+        (message) => message.clientMessageId === "local-revoke-001",
+      );
+
+    expect(sentMessage?.seq).toBeGreaterThan(0);
 
     const revoke = await app.inject({
       headers: { authorization },
@@ -2616,7 +2627,7 @@ describe("backend app", () => {
       payload: {
         conversationId: "conv-001",
       },
-      url: `/api/server/messages/${sentMessage.messageId}/revoke`,
+      url: `/api/server/messages/${sentMessage?.seq}/revoke`,
     });
     const poll = await app.inject({
       headers: { authorization },
@@ -2628,7 +2639,7 @@ describe("backend app", () => {
     expect(revoke.json()).toMatchObject({
       accepted: true,
       conversationId: "conv-001",
-      messageId: sentMessage.messageId,
+      messageSeq: sentMessage?.seq,
     });
     expect(poll.statusCode).toBe(200);
     expect(poll.json().activeConversationMessages).toEqual(
@@ -2647,10 +2658,10 @@ describe("backend app", () => {
     await app.close();
   });
 
-  it("loads chat record details by audit message id", async () => {
+  it("loads chat record details by message seq", async () => {
     const { app, authorization } = await createAuthenticatedApp();
     const getChatRecordDetail = vi.fn().mockResolvedValue({
-      messageId: "830",
+      messageSeq: 830,
       messages: [],
     });
     app.workbenchService = {
@@ -2666,7 +2677,7 @@ describe("backend app", () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({
-      messageId: "830",
+      messageSeq: 830,
       messages: [],
     });
     expect(getChatRecordDetail).toHaveBeenCalledWith("101", "conv-001", 830);
@@ -2835,7 +2846,7 @@ describe("backend app", () => {
       payload: {
         conversationId: "conv-001",
       },
-      url: "/api/server/messages/msg-003/revoke",
+      url: "/api/server/messages/2/revoke",
     });
     const smartReplySendAnswer = await app.inject({
       headers: { authorization },
@@ -2886,7 +2897,7 @@ describe("backend app", () => {
     }
     expect(download.statusCode).toBe(200);
     expect(download.json()).toEqual({
-      messageId: "1",
+      messageSeq: 1,
       status: "accepted",
     });
 

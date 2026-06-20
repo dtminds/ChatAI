@@ -1,5 +1,4 @@
 import type {
-  WorkbenchMessageQueryByIdsRequest,
   WorkbenchPollRequest,
   WorkbenchSendMessagePayload,
   WorkbenchGetOrCreateConversationRequestDto,
@@ -102,12 +101,12 @@ const VoiceTranscriptionBodySchema = Type.Object({
   messageSeq: Type.Integer({ minimum: 1 }),
 });
 
-const MessageDownloadParamsSchema = Type.Object({
-  messageId: Type.String(),
+const MessageRevokeParamsSchema = Type.Object({
+  messageSeq: Type.Integer({ minimum: 1 }),
 });
 
 const MessageChatRecordParamsSchema = Type.Object({
-  msgInfoId: Type.Integer({ minimum: 1 }),
+  messageSeq: Type.Integer({ minimum: 1 }),
 });
 
 const MessageChatRecordQuerySchema = Type.Object({
@@ -128,9 +127,9 @@ const MessageDownloadBodySchema = Type.Object({
   msgInfoId: Type.Integer({ minimum: 1 }),
 });
 
-const MessageQueryByIdsBodySchema = Type.Object({
+const MessageQueryBySeqsBodySchema = Type.Object({
   conversationId: Type.String(),
-  messageIds: Type.Array(Type.String()),
+  messageSeqs: Type.Array(Type.Integer({ minimum: 1 })),
 });
 
 const SmartReplyPollBodySchema = Type.Object({
@@ -598,13 +597,13 @@ type PlayableVoiceQuery = Static<typeof PlayableVoiceQuerySchema>;
 type MediaUploadCredentialBody = Static<typeof MediaUploadCredentialBodySchema>;
 type VoicePlaybackConfirmBody = Static<typeof VoicePlaybackConfirmBodySchema>;
 type VoiceTranscriptionBody = Static<typeof VoiceTranscriptionBodySchema>;
-type MessageDownloadParams = Static<typeof MessageDownloadParamsSchema>;
+type MessageRevokeParams = Static<typeof MessageRevokeParamsSchema>;
 type MessageChatRecordParams = Static<typeof MessageChatRecordParamsSchema>;
 type MessageChatRecordQuery = Static<typeof MessageChatRecordQuerySchema>;
 type MessageRevokeBody = Static<typeof MessageRevokeBodySchema>;
 type MessageDownloadBody = Static<typeof MessageDownloadBodySchema>;
 type MessageDownloadStatusBody = Static<typeof MessageDownloadStatusBodySchema>;
-type MessageQueryByIdsBody = Static<typeof MessageQueryByIdsBodySchema>;
+type MessageQueryBySeqsBody = Static<typeof MessageQueryBySeqsBodySchema>;
 type PollQuery = Static<typeof PollQuerySchema>;
 type SendMessageBody = Static<typeof SendMessageBodySchema>;
 type SeatParams = Static<typeof SeatParamsSchema>;
@@ -836,19 +835,19 @@ export async function registerChatRoutes(app: FastifyInstance) {
     },
   );
 
-  app.post<{ Body: MessageQueryByIdsBody }>(
-    "/api/server/messages/query-by-ids",
+  app.post<{ Body: MessageQueryBySeqsBody }>(
+    "/api/server/messages/query-by-seqs",
     {
       preHandler: app.authenticate,
       schema: {
-        body: MessageQueryByIdsBodySchema,
+        body: MessageQueryBySeqsBodySchema,
       },
     },
     async (request) =>
-      getWorkbenchService(app, request).getMessagesByIds(
+      getWorkbenchService(app, request).getMessagesBySeqs(
         getSubUserId(request),
         request.body.conversationId,
-        request.body.messageIds,
+        request.body.messageSeqs,
       ),
   );
 
@@ -856,7 +855,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
     Params: MessageChatRecordParams;
     Querystring: MessageChatRecordQuery;
   }>(
-    "/api/server/messages/:msgInfoId/chat-record",
+    "/api/server/messages/:messageSeq/chat-record",
     {
       preHandler: app.authenticate,
       schema: {
@@ -868,7 +867,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
       getWorkbenchService(app, request).getChatRecordDetail(
         getSubUserId(request),
         request.query.conversation_id,
-        request.params.msgInfoId,
+        request.params.messageSeq,
       ),
   );
 
@@ -1857,14 +1856,14 @@ export async function registerChatRoutes(app: FastifyInstance) {
 
   app.post<{
     Body: MessageRevokeBody;
-    Params: MessageDownloadParams;
+    Params: MessageRevokeParams;
   }>(
-    "/api/server/messages/:messageId/revoke",
+    "/api/server/messages/:messageSeq/revoke",
     {
       preHandler: app.authenticate,
       schema: {
         body: MessageRevokeBodySchema,
-        params: MessageDownloadParamsSchema,
+        params: MessageRevokeParamsSchema,
       },
     },
     async (request) => {
@@ -1872,7 +1871,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
       return getWorkbenchService(app, request).revokeMessage(
         getSubUserId(request),
         request.body.conversationId,
-        request.params.messageId,
+        request.params.messageSeq,
       );
     },
   );

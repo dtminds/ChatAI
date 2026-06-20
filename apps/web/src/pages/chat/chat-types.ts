@@ -269,7 +269,8 @@ export type MessageContent =
   | ChatRecordMessageContent;
 
 type BaseMessage = {
-  id: string;
+  uiMessageKey: string;
+  msgid?: string;
   conversationId: string;
   role: MessageRole;
   author: string;
@@ -279,7 +280,6 @@ type BaseMessage = {
   isNew?: boolean;
   optNo?: string;
   rawMsgtype?: string;
-  remoteMessageId?: string;
   seq?: number;
   failReason?: string;
   isRevoked?: boolean;

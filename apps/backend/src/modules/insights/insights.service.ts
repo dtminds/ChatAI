@@ -716,7 +716,7 @@ export class InsightsService {
 
     if (
       !context.messages.some((message) =>
-        message.messageId === context.targetMessageId ||
+        message.msgid === context.targetMessageId ||
         String(message.seq) === context.targetMessageId
       )
     ) {

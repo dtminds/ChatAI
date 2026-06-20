@@ -136,8 +136,9 @@ describe("adaptMessage", () => {
         me,
       ),
     ).toMatchObject({
-      id: "message-1",
       isRevoked: true,
+      msgid: "remote-msgid-1",
+      uiMessageKey: "1",
     });
   });
 
@@ -153,8 +154,9 @@ describe("adaptMessage", () => {
         me,
       ),
     ).toMatchObject({
-      id: "message-1",
+      msgid: "remote-msgid-1",
       optNo: "opt-001",
+      uiMessageKey: "1",
     });
   });
 
@@ -392,8 +394,9 @@ describe("adaptMessage", () => {
         fileUrl: "https://b5.bokr.com.cn/chat-files/quote.pdf",
         type: "file",
       },
-      id: "message-1",
+      msgid: "remote-msgid-1",
       seq: 1,
+      uiMessageKey: "1",
     });
   });
 
@@ -802,7 +805,7 @@ const messageDto = {
   createdAt: 1715237640000,
   customerId: "group-1",
   failReason: undefined,
-  messageId: "message-1",
+  msgid: "remote-msgid-1",
   optNo: undefined,
   rawMsgtype: "text",
   seatId: "seat-1",

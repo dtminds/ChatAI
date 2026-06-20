@@ -668,7 +668,6 @@ describe("createWorkbenchJavaClient", () => {
       }),
     ).resolves.toEqual({
       clientMessageId: "local-001",
-      messageId: "opt-001",
       optNo: "opt-001",
       status: "accepted",
     });

@@ -1,7 +1,7 @@
 import { createContext, useContext } from "react";
 
 type ConversationImageGalleryContextValue = {
-  openGallery: (messageId: string) => void;
+  openGallery: (uiMessageKey: string) => void;
 };
 
 export const ConversationImageGalleryContext = 

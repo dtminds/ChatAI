@@ -33,20 +33,20 @@ import {
 import { VideoMessageCard } from "@/pages/chat/components/message/video";
 
 type ChatRecordDetail = {
-  messageId: string;
+  messageSeq: number;
   messages: Message[];
 };
 
 export type LoadChatRecordDetail = (input: {
   conversationId: string;
-  msgInfoId: number;
+  messageSeq: number;
 }) => Promise<ChatRecordDetail>;
 
 type ChatRecordMessageCardProps = {
   content: ChatRecordMessageContent;
   conversationId: string;
   loadChatRecordDetail?: LoadChatRecordDetail;
-  msgInfoId?: number;
+  messageSeq?: number;
 };
 
 const CHAT_RECORD_FALLBACK_TEXT = "[聊天记录]";
@@ -55,23 +55,23 @@ export function ChatRecordMessageCard({
   content,
   conversationId,
   loadChatRecordDetail = loadChatRecordDetailFromService,
-  msgInfoId,
+  messageSeq,
 }: ChatRecordMessageCardProps) {
   const [open, setOpen] = useState(false);
   const [detail, setDetail] = useState<ChatRecordDetail | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const contextRef = useRef({ conversationId, msgInfoId });
+  const contextRef = useRef({ conversationId, messageSeq });
   const isMountedRef = useRef(false);
   const loadDetailRef = useRef<() => Promise<void>>(async () => {});
   const openRef = useRef(open);
   const requestIdRef = useRef(0);
   const isLoadingContent = content.viewState === "loading";
-  const canLoadDetail = msgInfoId != null;
+  const canLoadDetail = messageSeq != null;
   const title = normalizeChatRecordTitle(content.msgTitle);
   const lines = normalizeChatRecordLines(content);
 
-  contextRef.current = { conversationId, msgInfoId };
+  contextRef.current = { conversationId, messageSeq };
   openRef.current = open;
 
   useEffect(() => {
@@ -89,7 +89,7 @@ export function ChatRecordMessageCard({
     if (openRef.current && canLoadDetail) {
       void loadDetailRef.current();
     }
-  }, [canLoadDetail, conversationId, msgInfoId]);
+  }, [canLoadDetail, conversationId, messageSeq]);
 
   if (isFallbackChatRecordContent(content)) {
     return (
@@ -101,12 +101,12 @@ export function ChatRecordMessageCard({
   }
 
   async function loadDetail() {
-    if (msgInfoId == null) {
+    if (messageSeq == null) {
       return;
     }
 
     const requestId = requestIdRef.current + 1;
-    const requestContext = { conversationId, msgInfoId };
+    const requestContext = { conversationId, messageSeq };
     requestIdRef.current = requestId;
     setLoading(true);
     setError("");
@@ -138,13 +138,13 @@ export function ChatRecordMessageCard({
 
   function canApplyDetailResult(
     requestId: number,
-    requestContext: { conversationId: string; msgInfoId: number },
+    requestContext: { conversationId: string; messageSeq: number },
   ) {
     return (
       isMountedRef.current &&
       requestIdRef.current === requestId &&
       contextRef.current.conversationId === requestContext.conversationId &&
-      contextRef.current.msgInfoId === requestContext.msgInfoId
+      contextRef.current.messageSeq === requestContext.messageSeq
     );
   }
 
@@ -268,7 +268,7 @@ function ChatRecordDialogBody({
           <div className="space-y-4 px-5 py-4">
             {messages.map((message) => (
               <ChatRecordDetailMessage
-                key={message.clientMessageId ?? message.optNo ?? message.id}
+                key={message.clientMessageId ?? message.optNo ?? message.uiMessageKey}
                 message={message}
               />
             ))}
@@ -390,12 +390,12 @@ function ChatRecordDetailMessageContent({ message }: { message: ChatMessage }) {
 
 async function loadChatRecordDetailFromService(input: {
   conversationId: string;
-  msgInfoId: number;
+  messageSeq: number;
 }): Promise<ChatRecordDetail> {
   const response = await getWorkbenchService().getChatRecordDetail(input);
 
   return {
-    messageId: response.messageId,
+    messageSeq: response.messageSeq,
     messages: response.messages.map((message) => adaptMessage(message, {}, {})),
   };
 }

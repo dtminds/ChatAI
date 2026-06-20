@@ -95,6 +95,7 @@ export function adaptMessage(
   const sentAt = formatWorkbenchTimestamp(dto.createdAt);
   const status = adaptMessageStatus(dto.status);
   const isGroupConversation = Boolean(dto.thirdGroupId);
+  const uiMessageKey = getMessageUiKey(dto);
 
   if (dto.contentType === "revoke") {
     return {
@@ -107,16 +108,16 @@ export function adaptMessage(
       },
       conversationId: dto.conversationId,
       failReason: dto.failReason,
-      id: dto.messageId,
       isRevoked: dto.isRevoked,
+      msgid: dto.msgid,
       optNo: dto.optNo,
       rawMsgtype: dto.rawMsgtype,
-      remoteMessageId: dto.messageId,
       role: "system",
       sentAt,
       seq: dto.seq,
       status,
       author: "系统",
+      uiMessageKey,
     };
   }
 
@@ -129,16 +130,16 @@ export function adaptMessage(
       },
       conversationId: dto.conversationId,
       failReason: dto.failReason,
-      id: dto.messageId,
       isRevoked: dto.isRevoked,
+      msgid: dto.msgid,
       optNo: dto.optNo,
       rawMsgtype: dto.rawMsgtype,
-      remoteMessageId: dto.messageId,
       role: "system",
       sentAt,
       seq: dto.seq,
       status,
       author: "系统",
+      uiMessageKey,
     };
   }
 
@@ -180,11 +181,10 @@ export function adaptMessage(
     isGroupConversation,
     isOwnMessage,
     failReason: dto.failReason,
-    id: dto.messageId,
     isRevoked: dto.isRevoked,
+    msgid: dto.msgid,
     optNo: dto.optNo,
     rawMsgtype: dto.rawMsgtype,
-    remoteMessageId: dto.messageId,
     role: isAgent ? "agent" : "customer",
     senderDisplayName: isGroupConversation && !isOwnMessage ? senderName : undefined,
     sender: {
@@ -201,7 +201,14 @@ export function adaptMessage(
     sentAt,
     seq: dto.seq,
     status,
+    uiMessageKey,
   };
+}
+
+function getMessageUiKey(dto: WorkbenchMessageDto) {
+  return Number.isSafeInteger(dto.seq) && dto.seq > 0
+    ? String(dto.seq)
+    : dto.clientMessageId ?? dto.optNo ?? dto.msgid;
 }
 
 function readSystemMessageText(content: Record<string, unknown>) {

@@ -5,6 +5,7 @@ import {
   ArrowLeft02Icon,
   AiBookIcon,
   RoboticIcon,
+  UserAiIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,11 @@ const aiHostingNavItems = [
     icon: AiBookIcon,
     label: "知识库",
     to: "/chat/ai-hosting/knowledge",
+  },
+  {
+    icon: UserAiIcon,
+    label: "托管设置",
+    to: "/chat/ai-hosting/hosting-settings",
   },
 ] as const;
 

@@ -15,35 +15,35 @@ const visibleKnowledgeBaseCount = 2;
 
 export function AgentTable({ agents }: { agents: AgentRecord[] }) {
   return (
-    <section className="overflow-hidden">
+    <section>
       <Table aria-label="Agent列表">
         <TableHeader>
-          <TableRow>
-            <TableHead className="w-[22%] px-5 py-4">Agent名称</TableHead>
-            <TableHead className="w-[18%] px-5 py-4">大模型</TableHead>
-            <TableHead className="px-5 py-4">关联知识库</TableHead>
-            <TableHead className="w-[120px] px-5 py-4">操作</TableHead>
+          <TableRow className="hover:bg-transparent">
+            <TableHead className="h-11 w-[22%]">Agent名称</TableHead>
+            <TableHead className="h-11 w-[18%]">大模型</TableHead>
+            <TableHead className="h-11">关联知识库</TableHead>
+            <TableHead className="h-11 w-[120px] text-right">操作</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {agents.length === 0 ? (
             <TableRow>
-              <TableCell className="px-5 py-10 text-center text-sm text-muted-foreground" colSpan={4}>
+              <TableCell className="py-10 text-center text-sm text-muted-foreground" colSpan={4}>
                 暂无数据
               </TableCell>
             </TableRow>
           ) : (
             agents.map((agent) => (
               <TableRow key={agent.id}>
-                <TableCell className="px-5 py-4 font-medium text-foreground">{agent.name}</TableCell>
-                <TableCell className="px-5 py-4 text-muted-foreground">
+                <TableCell className="py-4 font-medium text-foreground">{agent.name}</TableCell>
+                <TableCell className="py-4 text-muted-foreground">
                   <AgentModelBadge model={agent.model} />
                 </TableCell>
-                <TableCell className="px-5 py-4">
+                <TableCell className="py-4">
                   <KnowledgeBaseTags knowledgeBases={agent.knowledgeBases} />
                 </TableCell>
-                <TableCell className="px-5 py-4">
-                  <div className="flex items-center gap-3">
+                <TableCell className="py-4 text-right">
+                  <div className="flex items-center justify-end gap-3">
                     <Button className="h-auto p-0 text-primary" type="button" variant="link">
                       编辑
                     </Button>

@@ -39,32 +39,28 @@ export function resolveTablePagination({
 
 export function TablePagination({
   className,
-  endRow,
   itemLabel = "条",
   onPageChange,
   page,
-  startRow,
   total,
   totalPages,
 }: {
   className?: string;
-  endRow: number;
   itemLabel?: string;
   onPageChange: (page: number) => void;
   page: number;
-  startRow: number;
   total: number;
   totalPages: number;
 }) {
   return (
     <div
       className={cn(
-        "flex flex-col gap-3 border-t px-4 py-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between",
+        "flex flex-col items-end gap-3 border-t px-0 py-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-end",
         className,
       )}
     >
       <span className="shrink-0 whitespace-nowrap">
-        显示 {startRow}-{endRow} / 共 {total} {itemLabel}
+        共 {total} {itemLabel}
       </span>
       <PageButtons
         onPageChange={onPageChange}
@@ -103,11 +99,12 @@ function PageButtons({
   }, [safePage, safeTotalPages]);
 
   return (
-    <Pagination className="!mx-0 !ml-auto w-auto shrink-0 justify-end">
+    <Pagination className="!mx-0 w-auto shrink-0 justify-end">
       <PaginationContent>
         <PaginationItem>
           <Button
             aria-label="上一页"
+            className="size-8 rounded-[8px]"
             disabled={safePage <= 1}
             onClick={() => onPageChange(safePage - 1)}
             size="icon"
@@ -143,6 +140,7 @@ function PageButtons({
         <PaginationItem>
           <Button
             aria-label="下一页"
+            className="size-8 rounded-[8px]"
             disabled={safePage >= safeTotalPages}
             onClick={() => onPageChange(safePage + 1)}
             size="icon"
@@ -183,6 +181,7 @@ function PageButton({
       <PaginationItem>
         <Button
           aria-current={isActive ? "page" : undefined}
+          className="size-8 rounded-[8px] text-xs"
           onClick={onClick}
           size="icon"
           type="button"

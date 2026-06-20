@@ -29,7 +29,7 @@ export function AgentTable({ agents }: { agents: AgentRecord[] }) {
           {agents.length === 0 ? (
             <TableRow>
               <TableCell className="px-5 py-10 text-center text-sm text-muted-foreground" colSpan={4}>
-                未找到匹配的 Agent
+                暂无数据
               </TableCell>
             </TableRow>
           ) : (

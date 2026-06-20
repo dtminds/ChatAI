@@ -1,0 +1,49 @@
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it, vi } from "vitest";
+import { TablePagination } from "@/components/ui/table-pagination";
+
+describe("TablePagination", () => {
+  it("renders row range, folded page buttons, and disabled edge controls", async () => {
+    const user = userEvent.setup();
+    const onPageChange = vi.fn();
+
+    render(
+      <TablePagination
+        endRow={30}
+        onPageChange={onPageChange}
+        page={3}
+        startRow={21}
+        total={96}
+        totalPages={10}
+      />,
+    );
+
+    expect(screen.getByText("显示 21-30 / 共 96 条")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "上一页" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "下一页" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "3" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByText("更多页面")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "6" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "下一页" }));
+
+    expect(onPageChange).toHaveBeenCalledWith(4);
+  });
+
+  it("clamps invalid page values before rendering controls", () => {
+    render(
+      <TablePagination
+        endRow={50}
+        onPageChange={vi.fn()}
+        page={99}
+        startRow={41}
+        total={50}
+        totalPages={5}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "5" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("button", { name: "下一页" })).toBeDisabled();
+  });
+});

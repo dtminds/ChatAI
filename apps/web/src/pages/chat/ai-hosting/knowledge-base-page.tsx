@@ -12,13 +12,14 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination";
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { TablePagination } from "@/components/ui/table-pagination";
 import { Textarea } from "@/components/ui/textarea";
 import { AiHostingLayout, AiHostingPageHeader } from "./ai-hosting-layout";
 
@@ -60,6 +61,8 @@ const MOCK_KNOWLEDGE_BASES: KnowledgeBaseItem[] = [
 ];
 
 const PAGE_SIZE = 10;
+const KNOWLEDGE_BASE_NAME_MAX_LENGTH = 30;
+const KNOWLEDGE_BASE_DESCRIPTION_MAX_LENGTH = 1000;
 
 function getLocalTimeString(): string {
   const now = new Date();
@@ -96,6 +99,8 @@ export function KnowledgeBasePage() {
   }, [items, searchQuery]);
 
   const totalPages = Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE));
+  const startRow = filteredItems.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1;
+  const endRow = Math.min(currentPage * PAGE_SIZE, filteredItems.length);
   const pagedItems = useMemo(() => {
     const start = (currentPage - 1) * PAGE_SIZE;
     return filteredItems.slice(start, start + PAGE_SIZE);
@@ -142,7 +147,7 @@ export function KnowledgeBasePage() {
     <AiHostingLayout title="知识库">
       <div className="space-y-6">
         <AiHostingPageHeader
-          description="为Agent提供产品、服务、常见问题（FAQ）等知识，助其在回复客户消息时更精准"
+          description="为智能体补充私有知识，智能体在生成回答前会先从知识库检索相关内容，从而提升回答的准确性"
           title="知识库"
         />
 
@@ -170,91 +175,59 @@ export function KnowledgeBasePage() {
 
             <Button className="h-10 px-4" onClick={handleOpenCreateDialog} type="button">
               <HugeiconsIcon color="currentColor" icon={Add01Icon} size={17} strokeWidth={1.8} />
-              <span>创建知识点</span>
+              <span>创建知识库</span>
             </Button>
           </div>
 
-          <div className="rounded-[8px] border bg-background">
-            <table className="w-full table-fixed text-sm">
-              <thead>
-                <tr className="border-b bg-muted/40 text-left text-muted-foreground">
-                  <th className="w-[22%] px-4 py-3 font-medium">知识库名称</th>
-                  <th className="w-[38%] px-4 py-3 font-medium">描述</th>
-                  <th className="w-[20%] px-4 py-3 font-medium">最近更新时间</th>
-                  <th className="w-[20%] px-4 py-3 font-medium">创建时间</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
+          <div className="overflow-hidden rounded-[8px] border bg-background">
+            <Table className="table-fixed">
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[22%] px-5 py-4">知识库名称</TableHead>
+                  <TableHead className="w-[38%] px-5 py-4">描述</TableHead>
+                  <TableHead className="w-[20%] px-5 py-4">最近更新时间</TableHead>
+                  <TableHead className="w-[20%] px-5 py-4">创建时间</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {pagedItems.length > 0 ? (
                   pagedItems.map((item) => (
-                    <tr className="hover:bg-muted/30" key={item.id}>
-                      <td
-                        className="truncate px-4 py-3 font-medium text-foreground"
+                    <TableRow key={item.id}>
+                      <TableCell
+                        className="truncate px-5 py-4 font-medium text-foreground"
                         title={item.name}
                       >
                         {item.name}
-                      </td>
-                      <td
-                        className="truncate px-4 py-3 text-muted-foreground"
+                      </TableCell>
+                      <TableCell
+                        className="truncate px-5 py-4 text-muted-foreground"
                         title={item.description}
                       >
                         {item.description || "-"}
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">{item.lastUpdatedAt}</td>
-                      <td className="px-4 py-3 text-muted-foreground">{item.createdAt}</td>
-                    </tr>
+                      </TableCell>
+                      <TableCell className="px-5 py-4 text-muted-foreground">{item.lastUpdatedAt}</TableCell>
+                      <TableCell className="px-5 py-4 text-muted-foreground">{item.createdAt}</TableCell>
+                    </TableRow>
                   ))
                 ) : (
-                  <tr>
-                    <td className="px-4 py-10 text-center text-muted-foreground" colSpan={4}>
-                      暂无知识库数据
-                    </td>
-                  </tr>
+                  <TableRow>
+                    <TableCell className="px-5 py-10 text-center text-sm text-muted-foreground" colSpan={4}>
+                      暂无数据
+                    </TableCell>
+                  </TableRow>
                 )}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
+            <TablePagination
+              className="px-5"
+              endRow={endRow}
+              onPageChange={setCurrentPage}
+              page={currentPage}
+              startRow={startRow}
+              total={filteredItems.length}
+              totalPages={totalPages}
+            />
           </div>
-
-          {totalPages > 1 ? (
-            <div className="flex justify-center">
-              <Pagination>
-                <PaginationContent>
-                  <PaginationItem>
-                    <PaginationPrevious
-                      href="#"
-                      onClick={(event) => {
-                        event.preventDefault();
-                        if (currentPage > 1) setCurrentPage(currentPage - 1);
-                      }}
-                    />
-                  </PaginationItem>
-                  {Array.from({ length: totalPages }, (_, index) => index + 1).map((page) => (
-                    <PaginationItem key={page}>
-                      <PaginationLink
-                        href="#"
-                        isActive={page === currentPage}
-                        onClick={(event) => {
-                          event.preventDefault();
-                          setCurrentPage(page);
-                        }}
-                      >
-                        {page}
-                      </PaginationLink>
-                    </PaginationItem>
-                  ))}
-                  <PaginationItem>
-                    <PaginationNext
-                      href="#"
-                      onClick={(event) => {
-                        event.preventDefault();
-                        if (currentPage < totalPages) setCurrentPage(currentPage + 1);
-                      }}
-                    />
-                  </PaginationItem>
-                </PaginationContent>
-              </Pagination>
-            </div>
-          ) : null}
         </section>
       </div>
 
@@ -265,9 +238,9 @@ export function KnowledgeBasePage() {
         }}
         open={createDialogOpen}
       >
-        <DialogContent className="max-w-[420px]">
+        <DialogContent className="max-w-[520px]">
           <DialogHeader>
-            <DialogTitle>创建知识点</DialogTitle>
+            <DialogTitle>创建知识库</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-5 py-2">
@@ -275,25 +248,33 @@ export function KnowledgeBasePage() {
               <Label htmlFor="kb-name">
                 知识库名称 <span className="text-destructive">*</span>
               </Label>
-              <Input
-                id="kb-name"
-                onChange={(event) =>
-                  setCreateForm((prev) => ({ ...prev, name: event.target.value }))
-                }
-                placeholder="请输入"
-                value={createForm.name}
-              />
+              <div className="relative">
+                <Input
+                  className="pr-16"
+                  id="kb-name"
+                  maxLength={KNOWLEDGE_BASE_NAME_MAX_LENGTH}
+                  onChange={(event) =>
+                    setCreateForm((prev) => ({ ...prev, name: event.target.value }))
+                  }
+                  placeholder="请输入"
+                  value={createForm.name}
+                />
+                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+                  {createForm.name.length}/{KNOWLEDGE_BASE_NAME_MAX_LENGTH}
+                </span>
+              </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="kb-desc">描述</Label>
+              <Label htmlFor="kb-desc">知识库描述</Label>
               <Textarea
                 className="min-h-[120px] resize-y"
                 id="kb-desc"
+                maxLength={KNOWLEDGE_BASE_DESCRIPTION_MAX_LENGTH}
                 onChange={(event) =>
                   setCreateForm((prev) => ({ ...prev, description: event.target.value }))
                 }
-                placeholder="请输入"
+                placeholder="说明知识库的内容和用途，描述会用于指导智能体调用知识库"
                 value={createForm.description}
               />
             </div>

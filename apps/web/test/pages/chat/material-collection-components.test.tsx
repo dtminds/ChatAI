@@ -875,7 +875,7 @@ function createItem(
     contentType: "file",
     groupId: "group-file",
     id: "material-1",
-    messageId: "msg-file-1",
+    msgInfoId: "9101",
     sort: 100,
     title: "报价单.pdf",
     ...overrides,

@@ -1699,7 +1699,6 @@ describe("QuickReplyPanel", () => {
               contentType: "file",
               groupId: "material-file-group-1",
               id: "material-file-1",
-              messageId: "msg-file-1",
               msgInfoId: "9001",
               sort: 100,
               title: "报价单.pdf",
@@ -1742,7 +1741,6 @@ describe("QuickReplyPanel", () => {
           expect.objectContaining({
             materialCollectionId: expect.any(String),
             msgInfoId: "9001",
-            msgid: expect.any(String),
             type: "file",
           }),
         ],

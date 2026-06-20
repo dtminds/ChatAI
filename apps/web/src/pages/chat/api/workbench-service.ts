@@ -520,10 +520,16 @@ export function createMockWorkbenchService(): WorkbenchService {
         };
       }
 
+      const sourceMessage = Object.values(state.messagesByConversationId)
+        .flat()
+        .find((message) => message.messageId === request.messageId);
+      const sourceMsgInfoId = sourceMessage
+        ? getMockMessageInfoId(sourceMessage)
+        : readNumericIdString(request.messageId);
       const existing = state.materialItems.find(
         (item) =>
           item.bizType === request.bizType &&
-          item.messageId === request.messageId,
+          item.msgInfoId === sourceMsgInfoId,
       );
 
       if (existing) {
@@ -532,10 +538,6 @@ export function createMockWorkbenchService(): WorkbenchService {
           duplicated: true,
         };
       }
-
-      const sourceMessage = Object.values(state.messagesByConversationId)
-        .flat()
-        .find((message) => message.messageId === request.messageId);
 
       const normalized = resolveMockMaterialCollect(sourceMessage, request);
 
@@ -2718,7 +2720,7 @@ function buildInitialMaterialItems(
           contentType: getMaterialContentType(bizType),
           groupId,
           id: `mock-material-${message.messageId}`,
-          messageId: message.messageId,
+          msgInfoId: getMockMessageInfoId(message),
           sort: (message.createdAt ?? 0) + bizType,
           title: getMaterialTitle(message),
         },
@@ -2785,7 +2787,7 @@ function buildMaterialItemFromMessage(
     contentType,
     groupId,
     id: `mock-material-${state.nextId++}`,
-    messageId: request.messageId,
+    msgInfoId: getMockMessageInfoId(message),
     sort: Date.now(),
     title: getMaterialTitle(message),
   };
@@ -2800,17 +2802,28 @@ function buildFallbackMaterialItem(
     request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION
       ? 0
       : String(request.groupId);
+  const id = `mock-material-${state.nextId++}`;
 
   return {
     bizType: request.bizType,
     content: {},
     contentType,
     groupId,
-    id: `mock-material-${state.nextId++}`,
-    messageId: request.messageId,
+    id,
+    msgInfoId: readNumericIdString(request.messageId) ?? id,
     sort: Date.now(),
     title: request.messageId,
   };
+}
+
+function getMockMessageInfoId(message: WorkbenchMessageDto) {
+  return String(message.seq);
+}
+
+function readNumericIdString(value: string) {
+  const normalized = value.trim();
+
+  return /^[1-9]\d*$/.test(normalized) ? normalized : undefined;
 }
 
 function getMaterialBizTypeForContentType(

@@ -48,7 +48,7 @@ describe("chat material collection DTOs", () => {
       groupId: 0,
       title: "表情",
       sort: 10,
-      messageId: "msgid-1001",
+      msgInfoId: "9001",
       contentType: "emotion",
       content: {
         fileUrl: "https://example.com/emotion.gif",
@@ -70,7 +70,7 @@ describe("chat material collection DTOs", () => {
       groupId: customGroup.id,
       title: "报价单.pdf",
       sort: 30,
-      messageId: "msgid-1002",
+      msgInfoId: "9002",
       contentType: "file",
       content: {
         fileName: "报价单.pdf",
@@ -85,7 +85,7 @@ describe("chat material collection DTOs", () => {
       groupId: "group-h5",
       title: "活动页",
       sort: 40,
-      messageId: "msgid-1003",
+      msgInfoId: "9003",
       contentType: "h5",
       content: {
         title: "活动页",
@@ -99,7 +99,7 @@ describe("chat material collection DTOs", () => {
       groupId: "group-mini-program",
       title: "小程序",
       sort: 50,
-      messageId: "msgid-1004",
+      msgInfoId: "9004",
       contentType: "mini-program",
       content: {
         appid: "wx-appid",
@@ -108,7 +108,7 @@ describe("chat material collection DTOs", () => {
     };
 
     expect(defaultGroupItem.groupId).toBe(0);
-    expect(customGroupItem.messageId).toBe("msgid-1002");
+    expect(customGroupItem.msgInfoId).toBe("9002");
     expect([h5Item.contentType, miniProgramItem.contentType]).toEqual([
       "h5",
       "mini-program",
@@ -138,7 +138,7 @@ describe("chat material collection DTOs", () => {
           groupId: "group-1",
           title: "报价单.pdf",
           sort: 1,
-          messageId: "msgid-1001",
+          msgInfoId: "9001",
           contentType: "file",
           content: {
             fileName: "报价单.pdf",

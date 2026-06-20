@@ -84,8 +84,7 @@ export type WorkbenchMaterialCollectionItemDto = {
   groupId: string | 0;
   title: string;
   sort: number;
-  messageId: string;
-  msgInfoId?: string;
+  msgInfoId: string;
   contentType: WorkbenchMaterialCollectionContentType;
   content: Record<string, unknown>;
   createdAt?: number;

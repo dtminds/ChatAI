@@ -561,13 +561,13 @@ export class WorkbenchRepository {
 
   async findMaterialCollectionByMessage(input: {
     bizType: number;
-    msgid: string;
+    msgInfoId: string;
     subUid: number;
     uid: number;
   }): Promise<MaterialCollectionLookup | undefined> {
-    const msgid = input.msgid.trim();
+    const msgInfoNumericId = parseMySqlId(input.msgInfoId);
 
-    if (!msgid) {
+    if (msgInfoNumericId == null) {
       return undefined;
     }
 
@@ -577,7 +577,7 @@ export class WorkbenchRepository {
       .where("uid", "=", input.uid)
       .where("biz_type", "=", input.bizType)
       .where("sub_uid", "=", input.subUid)
-      .where("msgid", "=", msgid)
+      .where("msg_info_id", "=", msgInfoNumericId)
       .executeTakeFirst();
 
     if (!row) {
@@ -756,8 +756,7 @@ export class WorkbenchRepository {
     bizType: number;
     content: string | null;
     groupId: string | 0;
-    msgInfoId?: string;
-    msgid: string;
+    msgInfoId: string;
     opSubUserId: string;
     sort: number;
     subUid: number;
@@ -765,10 +764,14 @@ export class WorkbenchRepository {
     uid: number;
   }) {
     const groupNumericId = parseMaterialGroupId(input.groupId);
-    const msgInfoNumericId = parseOptionalMySqlId(input.msgInfoId);
+    const msgInfoNumericId = parseMySqlId(input.msgInfoId);
     const opSubUserNumericId = parseMySqlId(input.opSubUserId);
 
-    if (groupNumericId == null || opSubUserNumericId == null) {
+    if (
+      groupNumericId == null ||
+      msgInfoNumericId == null ||
+      opSubUserNumericId == null
+    ) {
       throw new BadRequestError(
         "INVALID_MATERIAL_COLLECTION_INPUT",
         "素材收录参数无效",
@@ -785,8 +788,7 @@ export class WorkbenchRepository {
           biz_type: input.bizType,
           content: input.content,
           group_id: groupNumericId,
-          ...(msgInfoNumericId == null ? {} : { msg_info_id: msgInfoNumericId }),
-          msgid: input.msgid,
+          msg_info_id: msgInfoNumericId,
           op_sub_uid: opSubUserNumericId,
           sort: input.sort,
           sub_uid: input.subUid,
@@ -810,7 +812,7 @@ export class WorkbenchRepository {
     content: string | null;
     groupId: string | 0;
     id: string;
-    msgInfoId?: string;
+    msgInfoId: string;
     opSubUserId: string;
     sort: number;
     title: string;
@@ -818,10 +820,15 @@ export class WorkbenchRepository {
   }) {
     const collectionNumericId = parseMySqlId(input.id);
     const groupNumericId = parseMaterialGroupId(input.groupId);
-    const msgInfoNumericId = parseOptionalMySqlId(input.msgInfoId);
+    const msgInfoNumericId = parseMySqlId(input.msgInfoId);
     const opSubUserNumericId = parseMySqlId(input.opSubUserId);
 
-    if (collectionNumericId == null || groupNumericId == null || opSubUserNumericId == null) {
+    if (
+      collectionNumericId == null ||
+      groupNumericId == null ||
+      msgInfoNumericId == null ||
+      opSubUserNumericId == null
+    ) {
       return;
     }
 
@@ -831,7 +838,7 @@ export class WorkbenchRepository {
         biz_status: BIZ_STATUS_ACTIVE,
         content: input.content,
         group_id: groupNumericId,
-        ...(msgInfoNumericId == null ? {} : { msg_info_id: msgInfoNumericId }),
+        msg_info_id: msgInfoNumericId,
         op_sub_uid: opSubUserNumericId,
         sort: input.sort,
         title: input.title,

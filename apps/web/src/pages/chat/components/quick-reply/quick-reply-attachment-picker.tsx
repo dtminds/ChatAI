@@ -307,15 +307,14 @@ function buildAttachmentFromMaterial(
 ): WorkbenchQuickReplyAttachment | undefined {
   const type = getAttachmentTypeFromBizType(item.bizType);
 
-  if (!type || !item.messageId) {
+  if (!type || !item.msgInfoId) {
     return undefined;
   }
 
   return {
     content: item.content,
     materialCollectionId: item.id,
-    ...(item.msgInfoId ? { msgInfoId: item.msgInfoId } : {}),
-    msgid: item.messageId,
+    msgInfoId: item.msgInfoId,
     type,
   };
 }

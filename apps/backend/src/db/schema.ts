@@ -1259,7 +1259,7 @@ export interface XyWapEmbedMaterialCollection {
   /**
    * xy_wap_embed_msg_audit_info.id
    */
-  msg_info_id: Generated<number | null>;
+  msg_info_id: number;
   /**
    * 插入时间
    */
@@ -1272,10 +1272,6 @@ export interface XyWapEmbedMaterialCollection {
    * id
    */
   id: Generated<number>;
-  /**
-   * 消息ID，第三方消息ID
-   */
-  msgid: Generated<string>;
   /**
    * 收藏人ID，xy_wap_embed_sub_user.id
    */

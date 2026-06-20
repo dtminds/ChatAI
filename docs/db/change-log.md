@@ -5,6 +5,7 @@ Manual database changes for the backend should be recorded here.
 ## 2026-06-20
 
 - Added `xy_wap_embed_material_collection.msg_info_id` to retain the source `xy_wap_embed_msg_audit_info.id` alongside the third-party `msgid`.
+- Removed application dependency on `xy_wap_embed_material_collection.msgid`; after `msg_info_id` backfill is complete, `msg_info_id` is required and the legacy `msgid` column can be dropped.
 
 Manual migration for existing databases:
 
@@ -49,6 +50,12 @@ INNER JOIN (
 ) AS rebuilt
   ON rebuilt.id = quick_reply.id
 SET quick_reply.attachments = rebuilt.next_attachments;
+
+ALTER TABLE xy_wap_embed_material_collection
+  MODIFY COLUMN `msg_info_id` bigint unsigned NOT NULL COMMENT 'xy_wap_embed_msg_audit_info.id';
+
+ALTER TABLE xy_wap_embed_material_collection
+  DROP COLUMN `msgid`;
 ```
 
 ## 2026-06-15
@@ -111,7 +118,6 @@ CREATE TABLE `xy_wap_embed_quick_reply` (
 
 ## 2026-06-11
 
-- Added `uk_material_collection_msg_scope` to prevent concurrent duplicate material collection rows for the same tenant, material type, visibility scope, and message.
 - Added tenant-scoped logical-session indexes for live-analysis scans, disabled-insight close updates, and future agent-scoped session paging.
 - Moved expired insight-job lease takeover out of claim queries; added `idx_insight_job_expired_lease` for the lease reclaim update.
 - Added snapshot-level uniqueness for tag, entity, intent, and QA finding result rows so duplicate LLM outputs cannot create repeated dimensions.
@@ -120,9 +126,6 @@ CREATE TABLE `xy_wap_embed_quick_reply` (
 Manual migration for existing databases:
 
 ```sql
-ALTER TABLE xy_wap_embed_material_collection
-  ADD UNIQUE KEY uk_material_collection_msg_scope (uid, biz_type, sub_uid, msgid);
-
 ALTER TABLE xy_wap_embed_logical_session
   DROP KEY idx_logical_session_uid_agent_started,
   ADD KEY idx_logical_session_uid_agent_started (uid, third_userid, started_at, id),

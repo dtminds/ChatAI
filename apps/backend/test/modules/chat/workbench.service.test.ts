@@ -3866,7 +3866,6 @@ describe("MysqlWorkbenchService", () => {
       content: JSON.stringify({ md5: "emotion-md5" }),
       groupId: 0,
       msgInfoId: "9101",
-      msgid: "msg-emotion-1",
       opSubUserId: "101",
       sort: 1_779_700_000_000,
       subUid: 101,
@@ -3909,7 +3908,6 @@ describe("MysqlWorkbenchService", () => {
       }),
       groupId: "9",
       msgInfoId: "9102",
-      msgid: "msg-file-1",
       opSubUserId: "101",
       sort: 1_779_700_001_000,
       subUid: 0,
@@ -4020,6 +4018,7 @@ describe("MysqlWorkbenchService", () => {
           title: "都市快报",
         }),
         msgid: "msg-sphfeed-001",
+        id: 9104,
         msgtype: "sphfeed",
         uid: 9001,
       }),
@@ -4037,7 +4036,7 @@ describe("MysqlWorkbenchService", () => {
     expect(repository.createMaterialCollection).toHaveBeenCalledWith(
       expect.objectContaining({
         bizType: MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED,
-        msgid: "msg-sphfeed-001",
+        msgInfoId: "9104",
         title: "都市快报",
         uid: 9001,
       }),
@@ -4082,6 +4081,7 @@ describe("MysqlWorkbenchService", () => {
           title: "红包来啦",
         }),
         msgid: "1025657",
+        id: 9105,
         msgtype: "link",
         uid: 9001,
       }),
@@ -4112,6 +4112,7 @@ describe("MysqlWorkbenchService", () => {
           fileUrl: "https://cdn.example.com/quote.pdf",
         }),
         msgid: "msg-file-1",
+        id: 9106,
         msgtype: "file",
         uid: 9001,
       }),
@@ -4129,7 +4130,7 @@ describe("MysqlWorkbenchService", () => {
     expect(repository.canAccessSeat).not.toHaveBeenCalled();
     expect(repository.createMaterialCollection).toHaveBeenCalledWith(
       expect.objectContaining({
-        msgid: "msg-file-1",
+        msgInfoId: "9106",
         uid: 9001,
       }),
     );
@@ -4144,6 +4145,7 @@ describe("MysqlWorkbenchService", () => {
           fileUrl: "https://cdn.example.com/quote.pdf",
         }),
         msgid: "msg-file-1",
+        id: 9107,
         msgtype: "file",
         uid: 9001,
       }),
@@ -4165,7 +4167,7 @@ describe("MysqlWorkbenchService", () => {
   it("material: returns active duplicate without inserting", async () => {
     const existingItem = createMaterialItem({
       id: "77",
-      messageId: "msg-file-1",
+      msgInfoId: "9108",
       title: "已收藏文件",
     });
     const repository = createMaterialRepository({
@@ -4180,6 +4182,7 @@ describe("MysqlWorkbenchService", () => {
           fileUrl: "https://cdn.example.com/quote.pdf",
         }),
         msgid: "msg-file-1",
+        id: 9108,
         msgtype: "file",
         uid: 9001,
       }),
@@ -4199,6 +4202,12 @@ describe("MysqlWorkbenchService", () => {
 
     expect(repository.createMaterialCollection).not.toHaveBeenCalled();
     expect(repository.restoreMaterialCollection).not.toHaveBeenCalled();
+    expect(repository.findMaterialCollectionByMessage).toHaveBeenCalledWith({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+      msgInfoId: "9108",
+      subUid: 0,
+      uid: 9001,
+    });
   });
 
   it("material: restores deleted duplicate with refreshed fields", async () => {
@@ -4206,7 +4215,7 @@ describe("MysqlWorkbenchService", () => {
     const existingItem = createMaterialItem({
       groupId: "3",
       id: "77",
-      messageId: "msg-file-1",
+      msgInfoId: "9103",
       title: "旧文件",
     });
     const repository = createMaterialRepository({
@@ -4253,6 +4262,12 @@ describe("MysqlWorkbenchService", () => {
       uid: 9001,
     });
     expect(repository.createMaterialCollection).not.toHaveBeenCalled();
+    expect(repository.findMaterialCollectionByMessage).toHaveBeenCalledWith({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+      msgInfoId: "9103",
+      subUid: 0,
+      uid: 9001,
+    });
     nowSpy.mockRestore();
   });
 
@@ -5878,7 +5893,7 @@ function createMaterialRepository(overrides: Partial<WorkbenchRepository> = {}) 
     }),
     findMaterialCollectionForForward: vi.fn().mockResolvedValue({
       content: JSON.stringify({ title: "客户跟进小程序" }),
-      msgid: "1025657",
+      msgInfoId: "1025657",
     }),
     findMaterialMessage: vi.fn().mockResolvedValue(undefined),
     findQuickReplyCategoryScope: vi.fn().mockResolvedValue({ parentId: 0 }),
@@ -5926,7 +5941,6 @@ function createMaterialItem(
     contentType: "file",
     groupId: 0,
     id: "66",
-    messageId: "msg-file-1",
     msgInfoId: "9001",
     sort: 100,
     title: "报价.pdf",

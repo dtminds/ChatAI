@@ -22,7 +22,7 @@
 
 两张表都新增 `sort BIGINT`，用于置顶排序。新建和置顶时写当前时间毫秒。列表统一按 `sort desc, id desc` 排序。
 
-`xy_wap_embed_material_collection.msg_info_id` 存 `xy_wap_embed_msg_audit_info.id`。`msgid` 存 `xy_wap_embed_msg_audit_info.msgid`。`content` 存 `xy_wap_embed_msg_audit_info.content` 原文，后端列表接口负责把原始 content 映射成工作台已有消息内容 DTO。
+`xy_wap_embed_material_collection.msg_info_id` 存 `xy_wap_embed_msg_audit_info.id`。`content` 存 `xy_wap_embed_msg_audit_info.content` 原文，后端列表接口负责把原始 content 映射成工作台已有消息内容 DTO。
 
 表情素材固定：
 
@@ -43,7 +43,7 @@
 
 重复收录规则：
 
-- 同一 `uid + biz_type + sub_uid + msgid` 已有正常记录时，不新建重复记录。
+- 同一 `uid + biz_type + sub_uid + msg_info_id` 已有正常记录时，不新建重复记录。
 - 已有记录为删除态时，恢复该记录，并更新 `group_id`、`op_sub_uid`、`sort`、`title`、`content`。
 
 删除统一使用 `biz_status = 0` 软删除。

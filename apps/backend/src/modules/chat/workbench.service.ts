@@ -2170,9 +2170,10 @@ export class MysqlWorkbenchService implements WorkbenchService {
     }
 
     const { content: normalizedContent, title } = normalizedMaterial;
+    const msgInfoId = String(message.id);
     const duplicate = await this.repository.findMaterialCollectionByMessage({
       bizType,
-      msgid: request.messageId,
+      msgInfoId,
       subUid,
       uid: me.uid,
     });
@@ -2189,7 +2190,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
         content: normalizedContent,
         groupId,
         id: duplicate.id,
-        msgInfoId: String(message.id),
+        msgInfoId,
         opSubUserId: subUserId,
         sort,
         title,
@@ -2206,8 +2207,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
       bizType,
       content: normalizedContent,
       groupId,
-      msgInfoId: String(message.id),
-      msgid: request.messageId,
+      msgInfoId,
       opSubUserId: subUserId,
       sort,
       subUid,

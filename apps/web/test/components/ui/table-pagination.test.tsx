@@ -1,7 +1,10 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { TablePagination } from "@/components/ui/table-pagination";
+import {
+  resolveTablePagination,
+  TablePagination,
+} from "@/components/ui/table-pagination";
 
 describe("TablePagination", () => {
   it("renders row range, folded page buttons, and disabled edge controls", async () => {
@@ -45,5 +48,20 @@ describe("TablePagination", () => {
 
     expect(screen.getByRole("button", { name: "5" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("button", { name: "下一页" })).toBeDisabled();
+  });
+
+  it("resolves table row ranges from clamped page state", () => {
+    expect(resolveTablePagination({ page: 3, pageSize: 10, total: 2 })).toEqual({
+      activePage: 1,
+      endRow: 2,
+      startRow: 1,
+      totalPages: 1,
+    });
+    expect(resolveTablePagination({ page: 3, pageSize: 10, total: 0 })).toEqual({
+      activePage: 1,
+      endRow: 0,
+      startRow: 0,
+      totalPages: 1,
+    });
   });
 });

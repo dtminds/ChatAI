@@ -19,7 +19,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { TablePagination } from "@/components/ui/table-pagination";
+import {
+  resolveTablePagination,
+  TablePagination,
+} from "@/components/ui/table-pagination";
 import { Textarea } from "@/components/ui/textarea";
 import { AiHostingLayout, AiHostingPageHeader } from "./ai-hosting-layout";
 
@@ -98,13 +101,15 @@ export function KnowledgeBasePage() {
     );
   }, [items, searchQuery]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE));
-  const startRow = filteredItems.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1;
-  const endRow = Math.min(currentPage * PAGE_SIZE, filteredItems.length);
+  const { activePage, endRow, startRow, totalPages } = resolveTablePagination({
+    page: currentPage,
+    pageSize: PAGE_SIZE,
+    total: filteredItems.length,
+  });
   const pagedItems = useMemo(() => {
-    const start = (currentPage - 1) * PAGE_SIZE;
+    const start = (activePage - 1) * PAGE_SIZE;
     return filteredItems.slice(start, start + PAGE_SIZE);
-  }, [filteredItems, currentPage]);
+  }, [filteredItems, activePage]);
 
   function resetCreateForm() {
     setCreateForm({ name: "", description: "" });
@@ -222,7 +227,7 @@ export function KnowledgeBasePage() {
               className="px-5"
               endRow={endRow}
               onPageChange={setCurrentPage}
-              page={currentPage}
+              page={activePage}
               startRow={startRow}
               total={filteredItems.length}
               totalPages={totalPages}

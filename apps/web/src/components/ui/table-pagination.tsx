@@ -14,6 +14,28 @@ import {
 } from "@/components/ui/pagination";
 import { cn } from "@/lib/utils";
 
+export function resolveTablePagination({
+  page,
+  pageSize,
+  total,
+}: {
+  page: number;
+  pageSize: number;
+  total: number;
+}) {
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const activePage = Math.min(Math.max(1, page), totalPages);
+  const startRow = total === 0 ? 0 : (activePage - 1) * pageSize + 1;
+  const endRow = Math.min(activePage * pageSize, total);
+
+  return {
+    activePage,
+    endRow,
+    startRow,
+    totalPages,
+  };
+}
+
 export function TablePagination({
   className,
   endRow,

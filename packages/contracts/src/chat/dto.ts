@@ -710,7 +710,6 @@ export type WorkbenchSendMessagePayload = {
   };
   quote?: {
     quoteMsgId: string;
-    quotedMessageId?: string;
     quotedMessage?: WorkbenchQuotedMessagePreviewDto;
   };
   segment?: WorkbenchOutgoingMessageSegment;

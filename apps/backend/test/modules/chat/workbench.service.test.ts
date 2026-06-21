@@ -2688,7 +2688,6 @@ describe("MysqlWorkbenchService", () => {
       conversationId: "88",
       quote: {
         quoteMsgId: "538",
-        quotedMessageId: "remote-msg-538",
       },
       seatId: "12",
       segment: {
@@ -2784,7 +2783,6 @@ describe("MysqlWorkbenchService", () => {
       conversationId: "88",
       quote: {
         quoteMsgId: "538",
-        quotedMessageId: "remote-msg-538",
       },
       seatId: "12",
       segment: {
@@ -3443,7 +3441,6 @@ describe("MysqlWorkbenchService", () => {
       conversationId: "88",
       quote: {
         quoteMsgId: "538",
-        quotedMessageId: "remote-msg-538",
       },
       seatId: "12",
       segment: {

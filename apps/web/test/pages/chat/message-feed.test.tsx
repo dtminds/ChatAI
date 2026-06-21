@@ -123,7 +123,15 @@ describe("message feed row actions", () => {
       value: { writeText },
     });
 
-    render(<MessageRow message={createTextMessage("本地待落库消息")} onQuoteMessage={vi.fn()} />);
+    render(
+      <MessageRow
+        message={{
+          ...createTextMessage("本地待落库消息"),
+          seq: undefined,
+        }}
+        onQuoteMessage={vi.fn()}
+      />,
+    );
 
     await user.click(screen.getByRole("button", { name: "消息操作" }));
 
@@ -134,6 +142,30 @@ describe("message feed row actions", () => {
 
     expect(writeText).not.toHaveBeenCalled();
     expect(toast.warning).not.toHaveBeenCalled();
+  });
+
+  it("disables the quote action when seq is unavailable", async () => {
+    const user = userEvent.setup();
+    const onQuoteMessage = vi.fn();
+
+    render(
+      <MessageRow
+        message={{
+          ...createTextMessage("本地待落库消息"),
+          seq: undefined,
+        }}
+        onQuoteMessage={onQuoteMessage}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+
+    const quoteItem = screen.getByRole("menuitem", { name: "引用" });
+    expect(quoteItem).toHaveAttribute("data-disabled");
+
+    await user.click(quoteItem);
+
+    expect(onQuoteMessage).not.toHaveBeenCalled();
   });
 
   it("copies the sender user id from the action menu", async () => {
@@ -1239,6 +1271,7 @@ function createTextMessage(text: string) {
       name: "客服",
     },
     sentAt: "2026-05-08 09:54:00",
+    seq: 1088,
     status: "sent" as const,
     uiMessageKey: "msg-text-layout",
   } satisfies ChatMessage;

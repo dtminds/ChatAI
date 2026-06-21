@@ -245,7 +245,6 @@ const SendMessageBodySchema = Type.Object({
   quote: Type.Optional(
     Type.Object({
       quoteMsgId: Type.String(),
-      quotedMessageId: Type.Optional(Type.String()),
       quotedMessage: Type.Optional(
         Type.Object({
           contentType: WorkbenchMessageContentTypeSchema,

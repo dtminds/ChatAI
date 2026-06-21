@@ -992,7 +992,6 @@ function ChatWorkbenchContent({
         quote: quotedMessage?.quoteMsgId
           ? {
               quoteMsgId: quotedMessage.quoteMsgId,
-              quotedMessageId: quotedMessage.quotedMessageId,
               quotedMessage: {
                 contentType: quotedMessage.contentType,
                 fallbackText: quotedMessage.fallbackText,
@@ -1395,7 +1394,13 @@ function ChatWorkbenchContent({
       return;
     }
 
-    setQuotedMessage(buildQuotedMessagePreview(message));
+    const quotePreview = buildQuotedMessagePreview(message);
+
+    if (!quotePreview) {
+      return;
+    }
+
+    setQuotedMessage(quotePreview);
     composerRef.current?.focus();
   };
 
@@ -2126,17 +2131,20 @@ function isMessageDownloadUrlReady(message: ChatMessage, url: string) {
 
 function buildQuotedMessagePreview(
   message: ChatMessage,
-): QuotedMessagePreviewContent {
+): QuotedMessagePreviewContent | null {
+  if (message.seq == null) {
+    return null;
+  }
+
   const senderName =
     message.senderDisplayName || message.sender.name || message.author;
   const basePreview = {
     contentType: message.content.type,
-    quoteMsgId: String(message.seq ?? message.uiMessageKey),
-    quotedMessageId: message.msgid ?? message.uiMessageKey,
+    quoteMsgId: String(message.seq),
     senderName,
   } satisfies Pick<
     QuotedMessagePreviewContent,
-    "contentType" | "quoteMsgId" | "quotedMessageId" | "senderName"
+    "contentType" | "quoteMsgId" | "senderName"
   >;
 
   switch (message.content.type) {

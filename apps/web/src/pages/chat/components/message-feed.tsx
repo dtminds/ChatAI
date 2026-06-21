@@ -699,6 +699,7 @@ function MessageActionAvatar({
   const canSelectQuoteMessage =
     canUseMessageActions &&
     !message.isRevoked &&
+    message.seq != null &&
     message.content.type !== "contact-card";
   const canCollectMessage = Boolean(onCollectMaterial) && canCollectMaterial(message);
   const canSelectCollectMessage = canCollectMaterialActions && !message.isRevoked;

@@ -2967,7 +2967,6 @@ describe("useWorkbenchStore", () => {
       {
         quote: {
           quoteMsgId: "538",
-          quotedMessageId: "remote-msg-538",
         },
       },
     );
@@ -3029,7 +3028,6 @@ describe("useWorkbenchStore", () => {
       {
         quote: {
           quoteMsgId: "538",
-          quotedMessageId: "remote-msg-538",
           quotedMessage: {
             contentType: "text",
             senderName: "客户",
@@ -3057,7 +3055,6 @@ describe("useWorkbenchStore", () => {
       expect.objectContaining({
         quote: {
           quoteMsgId: "538",
-          quotedMessageId: "remote-msg-538",
           quotedMessage: {
             contentType: "text",
             senderName: "客户",
@@ -3079,6 +3076,10 @@ describe("useWorkbenchStore", () => {
         type: "quote",
       },
     });
+    expect(
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1)
+        ?.content,
+    ).not.toHaveProperty("quotedMessageId");
   });
 
   it("resolves composer image segments even when url is the local data URL", async () => {

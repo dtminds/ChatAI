@@ -228,7 +228,6 @@ export type QuotedMessagePreviewContent = {
   fallbackText?: string;
   imageUrl?: string;
   quoteMsgId?: string;
-  quotedMessageId?: string;
   senderName: string;
   text?: string;
   title?: string;
@@ -238,7 +237,6 @@ export type QuoteMessageContent = {
   type: "quote";
   text: string;
   quoteMsgId: string;
-  quotedMessageId?: string;
   quotedMessage?: QuotedMessagePreviewContent;
 };
 

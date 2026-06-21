@@ -1560,7 +1560,7 @@ function patchDownloadMessage(
   uiMessageKey: string,
   contentPatch: DownloadContentPatch,
 ): Message {
-  if (message.uiMessageKey !== uiMessageKey || !isDownloadableMessage(message)) {
+  if (!matchesMessageKey(message, uiMessageKey) || !isDownloadableMessage(message)) {
     return message;
   }
 
@@ -1624,7 +1624,7 @@ function patchVoicePlaybackMessage(
   uiMessageKey: string,
   contentPatch: VoicePlaybackContentPatch,
 ): Message {
-  if (message.uiMessageKey !== uiMessageKey || !isVoiceMessage(message)) {
+  if (!matchesMessageKey(message, uiMessageKey) || !isVoiceMessage(message)) {
     return message;
   }
 
@@ -1654,7 +1654,7 @@ function patchVoiceTranscriptionMessage(
   uiMessageKey: string,
   contentPatch: VoiceTranscriptionContentPatch,
 ): Message {
-  if (message.uiMessageKey !== uiMessageKey || !isVoiceMessage(message)) {
+  if (!matchesMessageKey(message, uiMessageKey) || !isVoiceMessage(message)) {
     return message;
   }
 
@@ -1726,6 +1726,7 @@ function uniqueMessageKeys(keys: Array<string | undefined>) {
 function matchesMessageKey(message: Message, key: string) {
   return (
     message.uiMessageKey === key ||
+    message.optNo === key ||
     String(message.seq ?? "") === key
   );
 }
@@ -5938,7 +5939,7 @@ function findVoiceMessageByUiKey(
 ): (ChatMessage & { content: VoiceMessageContent }) | undefined {
   return messages.find(
     (message): message is ChatMessage & { content: VoiceMessageContent } =>
-      isVoiceMessage(message) && message.uiMessageKey === uiMessageKey,
+      isVoiceMessage(message) && matchesMessageKey(message, uiMessageKey),
   );
 }
 

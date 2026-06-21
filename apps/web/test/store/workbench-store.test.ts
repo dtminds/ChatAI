@@ -4477,6 +4477,62 @@ describe("useWorkbenchStore", () => {
     });
   });
 
+  it("patches media downloads by optNo after the message key is reconciled to seq", async () => {
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        "conv-001": [
+          ...state.messagesByConversationId["conv-001"],
+          {
+            author: "客户",
+            content: {
+              downloadStatus: "ing",
+              extension: "pdf",
+              fileName: "报价单.pdf",
+              fileSerialNo: "serial-file-902",
+              fileSizeLabel: "2 KB",
+              fileUrl: "https://b5.bokr.com.cn/chat-files/quote.pdf",
+              type: "file",
+            },
+            conversationId: "conv-001",
+            msgid: "remote-file-902",
+            optNo: "opt-file-902",
+            uiMessageKey: "902",
+            role: "customer",
+            sender: {
+              id: "cust-001",
+              name: "客户",
+            },
+            sentAt: "2026-05-21 12:00",
+            seq: 902,
+            status: "sent",
+          },
+        ],
+      },
+    }));
+
+    useWorkbenchStore.getState().updateMessageDownloadContent(
+      "conv-001",
+      "opt-file-902",
+      {
+        downloadStatus: "failed",
+      },
+    );
+
+    const patchedMessage = useWorkbenchStore
+      .getState()
+      .messagesByConversationId["conv-001"].find(
+        (message) => message.uiMessageKey === "902",
+      );
+
+    expect(patchedMessage?.content).toMatchObject({
+      downloadStatus: "failed",
+      fileUrl: "https://b5.bokr.com.cn/chat-files/quote.pdf",
+      type: "file",
+    });
+  });
+
   it("confirms unpersisted voice playback with message seq and patches local content", async () => {
     const baseService = createMockWorkbenchService();
     const confirmVoicePlaybackReady = vi.fn(async (input) => ({

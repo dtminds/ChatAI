@@ -134,7 +134,12 @@ export function ImportDocumentDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-[760px]">
+      <DialogContent
+        className="max-w-[760px]"
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+        }}
+      >
         <DialogHeader>
           <DialogTitle>导入文档</DialogTitle>
           <DialogDescription className="sr-only">
@@ -267,7 +272,7 @@ export function ImportDocumentDialog({
             onClick={() => handleOpenChange(false)}
             type="button"
           >
-            确认提交
+            {parseMode === "enhanced" ? "确认提交（限免）" : "确认提交"}
           </Button>
         </DialogFooter>
       </DialogContent>

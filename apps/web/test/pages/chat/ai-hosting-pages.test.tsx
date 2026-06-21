@@ -523,10 +523,29 @@ describe("AI hosting pages", () => {
     const dialog = screen.getByRole("dialog", { name: "批量导入问答" });
 
     expect(dialog).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "下载模板" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Q&A问答对示例.faq.xlsx" }),
+    ).toHaveAttribute(
+      "href",
+      "https://b5.bokr.com.cn/dist/Q&A问答对示例.faq.xlsx",
+    );
+    expect(
+      screen.getByRole("link", { name: "Q&A问答对示例.faq.xlsx" }),
+    ).toHaveAttribute("download");
     expect(screen.getByRole("button", { name: "上传问答文件" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "查看导入说明" })).not.toHaveFocus();
     expect(screen.getByText("文档支持 .faq.xlsx，最多 30 个 sheet，文件行数总和不超过 30000 行")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "导入文档" })).toBeDisabled();
+    await user.hover(screen.getByRole("button", { name: "查看导入说明" }));
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      "上传文档时，需要通过特殊的后缀 .faq 进行标识",
+    );
+    expect(screen.getByRole("tooltip")).toHaveTextContent(
+      "对于问题或答案为空的行会跳过不做处理",
+    );
+    expect(screen.getByRole("tooltip")).toHaveTextContent(
+      "每个可解析的切片（即原文档中单行或单列）字符长度最多为 65535",
+    );
 
     await user.upload(
       screen.getByLabelText("选择问答导入文件"),
@@ -631,6 +650,7 @@ describe("AI hosting pages", () => {
     expect(dialog).toBeInTheDocument();
     expect(screen.queryByText("限免")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "上传文档文件" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "上传文档文件" })).not.toHaveFocus();
     expect(screen.getByRole("button", { name: "确认提交" })).toBeDisabled();
 
     await user.upload(
@@ -654,6 +674,10 @@ describe("AI hosting pages", () => {
     expect(screen.getByRole("radio", { name: /2,000/ })).toBeChecked();
     expect(screen.getByRole("radio", { name: /1,000/ })).not.toBeChecked();
     expect(screen.getByRole("button", { name: "确认提交" })).toBeEnabled();
+
+    await user.click(screen.getByRole("radio", { name: /增强解析/ }));
+
+    expect(screen.getByRole("button", { name: "确认提交（限免）" })).toBeEnabled();
 
     await user.click(screen.getByRole("radio", { name: /按分隔符切分/ }));
 

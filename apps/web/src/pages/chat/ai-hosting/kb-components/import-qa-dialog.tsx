@@ -21,7 +21,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { FileExtensionBadge } from "@/pages/chat/components/message/file";
-import { getFileExtension } from "./shared";
+import { getFileExtension, useAsyncValidation } from "./shared";
 
 const QA_IMPORT_MAX_SHEETS = 30;
 const QA_IMPORT_MAX_ROWS = 30000;
@@ -40,6 +40,8 @@ export function ImportQaDialog({
   onOpenChange: (open: boolean) => void;
   open: boolean;
 }) {
+  const { beginValidation, invalidateValidation, isCurrentValidation } =
+    useAsyncValidation();
   const [selectedFile, setSelectedFile] = useState<{
     file: File;
     rowCount: number;
@@ -49,6 +51,7 @@ export function ImportQaDialog({
   const [isCheckingFile, setIsCheckingFile] = useState(false);
 
   const reset = () => {
+    invalidateValidation();
     setSelectedFile(null);
     setFileError("");
     setIsCheckingFile(false);
@@ -67,10 +70,20 @@ export function ImportQaDialog({
       return;
     }
 
+    const validationId = beginValidation();
     setSelectedFile(null);
 
     if (!file.name.toLowerCase().endsWith(".faq.xlsx")) {
+      if (!isCurrentValidation(validationId)) {
+        return;
+      }
+
       setFileError("仅支持 .faq.xlsx 文件");
+      setIsCheckingFile(false);
+      return;
+    }
+
+    if (!isCurrentValidation(validationId)) {
       return;
     }
 
@@ -82,6 +95,10 @@ export function ImportQaDialog({
       const sheets = await readXlsxFile(file);
       const sheetCount = sheets.length;
       const rowCount = sheets.reduce((sum, sheet) => sum + sheet.data.length, 0);
+
+      if (!isCurrentValidation(validationId)) {
+        return;
+      }
 
       if (sheetCount > QA_IMPORT_MAX_SHEETS) {
         setFileError(`最多支持 ${QA_IMPORT_MAX_SHEETS} 个 sheet`);
@@ -95,19 +112,27 @@ export function ImportQaDialog({
 
       setSelectedFile({ file, rowCount, sheetCount });
     } catch {
+      if (!isCurrentValidation(validationId)) {
+        return;
+      }
+
       setFileError("文件解析失败，请确认文件为标准 .faq.xlsx");
     } finally {
-      setIsCheckingFile(false);
+      if (isCurrentValidation(validationId)) {
+        setIsCheckingFile(false);
+      }
     }
   };
 
   const handleFileReject = () => {
+    invalidateValidation();
     setSelectedFile(null);
     setFileError("仅支持 .faq.xlsx 文件");
     setIsCheckingFile(false);
   };
 
   const clearSelectedFile = () => {
+    invalidateValidation();
     setSelectedFile(null);
     setFileError("");
     setIsCheckingFile(false);

@@ -18,7 +18,12 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { getFileExtension, RequiredLabel, stripFileExtension } from "./shared";
+import {
+  getFileExtension,
+  RequiredLabel,
+  stripFileExtension,
+  useAsyncValidation,
+} from "./shared";
 
 const IMAGE_KNOWLEDGE_MAX_FILE_SIZE = 5 * 1024 * 1024;
 const IMAGE_KNOWLEDGE_MIN_EDGE = 10;
@@ -36,6 +41,8 @@ export function ImportImageDialog({
   open: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const { beginValidation, invalidateValidation, isCurrentValidation } =
+    useAsyncValidation();
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imageName, setImageName] = useState("");
   const [imageDescription, setImageDescription] = useState("");
@@ -43,6 +50,7 @@ export function ImportImageDialog({
   const [isCheckingImage, setIsCheckingImage] = useState(false);
 
   const reset = () => {
+    invalidateValidation();
     setSelectedImage(null);
     setImageName("");
     setImageDescription("");
@@ -67,15 +75,30 @@ export function ImportImageDialog({
       return;
     }
 
+    const validationId = beginValidation();
     setSelectedImage(null);
 
     if (!isSupportedImageKnowledgeFile(file)) {
+      if (!isCurrentValidation(validationId)) {
+        return;
+      }
+
       setImageError("仅支持 jpg、jpeg、png、webp 格式的图片");
+      setIsCheckingImage(false);
       return;
     }
 
     if (file.size > IMAGE_KNOWLEDGE_MAX_FILE_SIZE) {
+      if (!isCurrentValidation(validationId)) {
+        return;
+      }
+
       setImageError("图片大小不能超过 5MB");
+      setIsCheckingImage(false);
+      return;
+    }
+
+    if (!isCurrentValidation(validationId)) {
       return;
     }
 
@@ -84,6 +107,10 @@ export function ImportImageDialog({
 
     try {
       const dimensions = await readImageDimensions(file);
+
+      if (!isCurrentValidation(validationId)) {
+        return;
+      }
 
       if (
         !isImageEdgeInRange(dimensions.width) ||
@@ -94,20 +121,31 @@ export function ImportImageDialog({
       }
 
       setSelectedImage(file);
+      setImageName((currentName) => {
+        if (!isCurrentValidation(validationId) || currentName.trim()) {
+          return currentName;
+        }
 
-      if (!imageName.trim()) {
-        setImageName(
-          stripFileExtension(file.name).slice(0, IMAGE_KNOWLEDGE_NAME_MAX_LENGTH),
+        return stripFileExtension(file.name).slice(
+          0,
+          IMAGE_KNOWLEDGE_NAME_MAX_LENGTH,
         );
-      }
+      });
     } catch {
+      if (!isCurrentValidation(validationId)) {
+        return;
+      }
+
       setImageError("图片读取失败，请重新选择图片");
     } finally {
-      setIsCheckingImage(false);
+      if (isCurrentValidation(validationId)) {
+        setIsCheckingImage(false);
+      }
     }
   };
 
   const clearSelectedImage = () => {
+    invalidateValidation();
     setSelectedImage(null);
     setImageError("");
     setIsCheckingImage(false);

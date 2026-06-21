@@ -1,4 +1,4 @@
-import type { ComponentProps } from "react";
+import { type ComponentProps, useCallback, useEffect, useRef } from "react";
 import { Label } from "@/components/ui/label";
 
 export function RequiredLabel(props: ComponentProps<typeof Label>) {
@@ -30,4 +30,31 @@ export function stripFileExtension(fileName: string) {
   }
 
   return fileName.slice(0, lastDotIndex);
+}
+
+export function useAsyncValidation() {
+  const validationIdRef = useRef(0);
+
+  const beginValidation = useCallback(() => {
+    const nextId = validationIdRef.current + 1;
+    validationIdRef.current = nextId;
+    return nextId;
+  }, []);
+
+  const invalidateValidation = useCallback(() => {
+    validationIdRef.current += 1;
+  }, []);
+
+  const isCurrentValidation = useCallback(
+    (validationId: number) => validationIdRef.current === validationId,
+    [],
+  );
+
+  useEffect(() => () => invalidateValidation(), [invalidateValidation]);
+
+  return {
+    beginValidation,
+    invalidateValidation,
+    isCurrentValidation,
+  };
 }

@@ -853,6 +853,163 @@ describe("AI hosting pages", () => {
     expect(screen.queryByText("仅支持 jpg、jpeg、png、webp 格式的图片")).not.toBeInTheDocument();
   });
 
+  it("ignores stale image validation after the dialog is closed", async () => {
+    const user = userEvent.setup();
+    let resolvePendingImageLoad: (() => void) | undefined;
+
+    vi.stubGlobal(
+      "Image",
+      class {
+        naturalHeight = mockImageDimensions.height;
+        naturalWidth = mockImageDimensions.width;
+        onerror: (() => void) | null = null;
+        onload: (() => void) | null = null;
+
+        set src(_value: string) {
+          resolvePendingImageLoad = () => {
+            this.onload?.();
+          };
+        }
+      },
+    );
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
+    );
+
+    await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
+    await user.click(screen.getByRole("button", { name: "添加知识" }));
+    await user.click(screen.getByRole("menuitem", { name: /图片/ }));
+    await user.upload(
+      screen.getByLabelText("选择图片知识文件"),
+      new File(["image"], "商品主图.png", { type: "image/png" }),
+    );
+
+    expect(screen.getByText("正在校验图片")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "取消" }));
+    expect(screen.queryByRole("dialog", { name: "添加图片知识" })).not.toBeInTheDocument();
+
+    resolvePendingImageLoad?.();
+    await Promise.resolve();
+
+    await user.click(screen.getByRole("button", { name: "添加知识" }));
+    await user.click(screen.getByRole("menuitem", { name: /图片/ }));
+
+    expect(screen.queryByRole("region", { name: "已选择图片" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "上传图片" })).toBeInTheDocument();
+    expect(screen.queryByText("正在校验图片")).not.toBeInTheDocument();
+  });
+
+  it("ignores stale image validation after the page unmounts", async () => {
+    const user = userEvent.setup();
+    let resolvePendingImageLoad: (() => void) | undefined;
+
+    vi.stubGlobal(
+      "Image",
+      class {
+        naturalHeight = mockImageDimensions.height;
+        naturalWidth = mockImageDimensions.width;
+        onerror: (() => void) | null = null;
+        onload: (() => void) | null = null;
+
+        set src(_value: string) {
+          resolvePendingImageLoad = () => {
+            this.onload?.();
+          };
+        }
+      },
+    );
+
+    const view = renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
+    );
+
+    await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
+    await user.click(screen.getByRole("button", { name: "添加知识" }));
+    await user.click(screen.getByRole("menuitem", { name: /图片/ }));
+    await user.upload(
+      screen.getByLabelText("选择图片知识文件"),
+      new File(["image"], "商品主图.png", { type: "image/png" }),
+    );
+
+    expect(screen.getByText("正在校验图片")).toBeInTheDocument();
+    view.unmount();
+
+    resolvePendingImageLoad?.();
+    await Promise.resolve();
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
+    );
+
+    await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
+    await user.click(screen.getByRole("button", { name: "添加知识" }));
+    await user.click(screen.getByRole("menuitem", { name: /图片/ }));
+
+    expect(screen.queryByRole("region", { name: "已选择图片" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "上传图片" })).toBeInTheDocument();
+    expect(screen.queryByText("正在校验图片")).not.toBeInTheDocument();
+  });
+
+  it("clears image checking state when a subsequent invalid file is selected", async () => {
+    const user = userEvent.setup();
+    let resolvePendingImageLoad: (() => void) | undefined;
+
+    vi.stubGlobal(
+      "Image",
+      class {
+        naturalHeight = mockImageDimensions.height;
+        naturalWidth = mockImageDimensions.width;
+        onerror: (() => void) | null = null;
+        onload: (() => void) | null = null;
+
+        set src(_value: string) {
+          resolvePendingImageLoad = () => {
+            this.onload?.();
+          };
+        }
+      },
+    );
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
+    );
+
+    await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
+    await user.click(screen.getByRole("button", { name: "添加知识" }));
+    await user.click(screen.getByRole("menuitem", { name: /图片/ }));
+
+    const fileInput = screen.getByLabelText("选择图片知识文件");
+
+    await user.upload(
+      fileInput,
+      new File(["image"], "商品主图.png", { type: "image/png" }),
+    );
+
+    expect(screen.getByText("正在校验图片")).toBeInTheDocument();
+
+    await user.upload(
+      fileInput,
+      new File([new Uint8Array(5 * 1024 * 1024 + 1)], "超大图片.png", {
+        type: "image/png",
+      }),
+    );
+
+    expect(await screen.findByText("图片大小不能超过 5MB")).toBeInTheDocument();
+    expect(screen.queryByText("正在校验图片")).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "已选择图片" })).not.toBeInTheDocument();
+
+    resolvePendingImageLoad?.();
+    await Promise.resolve();
+
+    expect(screen.queryByText("正在校验图片")).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "已选择图片" })).not.toBeInTheDocument();
+  });
+
   it("rejects image knowledge files larger than 5MB", async () => {
     const user = userEvent.setup();
 

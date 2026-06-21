@@ -208,7 +208,7 @@ export function adaptMessage(
 function getMessageUiKey(dto: WorkbenchMessageDto) {
   return Number.isSafeInteger(dto.seq) && dto.seq > 0
     ? String(dto.seq)
-    : dto.clientMessageId ?? dto.optNo ?? dto.msgid;
+    : (dto.clientMessageId ?? dto.optNo ?? dto.msgid ?? "");
 }
 
 function readSystemMessageText(content: Record<string, unknown>) {

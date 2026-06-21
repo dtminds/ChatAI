@@ -115,6 +115,27 @@ describe("message feed row actions", () => {
     expect(toast.success).toHaveBeenCalledWith("已复制消息ID");
   });
 
+  it("disables copying the message id when seq is unavailable", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    render(<MessageRow message={createTextMessage("本地待落库消息")} onQuoteMessage={vi.fn()} />);
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+
+    const copyMessageIdItem = screen.getByRole("menuitem", { name: "复制消息ID" });
+    expect(copyMessageIdItem).toHaveAttribute("data-disabled");
+
+    await user.click(copyMessageIdItem);
+
+    expect(writeText).not.toHaveBeenCalled();
+    expect(toast.warning).not.toHaveBeenCalled();
+  });
+
   it("copies the sender user id from the action menu", async () => {
     const user = userEvent.setup();
     const writeText = vi.fn().mockResolvedValue(undefined);

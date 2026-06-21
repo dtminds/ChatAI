@@ -1752,7 +1752,7 @@ function isSameMessage(left: Message, right: Message) {
     (left.clientMessageId &&
       right.clientMessageId &&
       left.clientMessageId === right.clientMessageId) ||
-    left.uiMessageKey === right.uiMessageKey
+    (left.uiMessageKey.length > 0 && left.uiMessageKey === right.uiMessageKey)
   );
 }
 

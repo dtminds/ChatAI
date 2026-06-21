@@ -1165,8 +1165,8 @@ function readJavaNonEmptyId(data: unknown) {
   return trimmed ? trimmed : undefined;
 }
 
-function readJavaOptNo(data: JavaSendMessageResponse) {
-  const optNo = data.optNo?.trim();
+function readJavaOptNo(data: JavaSendMessageResponse | null | undefined) {
+  const optNo = data?.optNo?.trim();
 
   if (!optNo) {
     throw new BadGatewayError(

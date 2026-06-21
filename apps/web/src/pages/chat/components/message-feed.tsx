@@ -835,7 +835,12 @@ function MessageActionAvatar({
             ) : null}
             <DropdownMenuSeparator />
             <DropdownMenuItem
-              onSelect={() => {
+              disabled={!messageSeqForCopy}
+              onSelect={(event) => {
+                if (!messageSeqForCopy) {
+                  event.preventDefault();
+                  return;
+                }
                 void copyMessageId(messageSeqForCopy);
               }}
             >

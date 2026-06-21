@@ -160,6 +160,25 @@ describe("adaptMessage", () => {
     });
   });
 
+  it("uses an empty ui message key when an invalid DTO has no stable identifiers", () => {
+    expect(
+      adaptMessage(
+        {
+          ...messageDto,
+          clientMessageId: undefined,
+          msgid: undefined,
+          optNo: undefined,
+          seq: 0,
+        } as unknown as WorkbenchMessageDto,
+        customerProfilesById,
+        accountsById,
+        me,
+      ),
+    ).toMatchObject({
+      uiMessageKey: "",
+    });
+  });
+
   it("adapts voice playback URL and persisted transcode state", () => {
     expect(
       adaptMessage(

@@ -2594,6 +2594,24 @@ describe("backend app", () => {
     await app.close();
   });
 
+  it("rejects oversized message query-by-seqs batches", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        conversationId: "conv-001",
+        messageSeqs: Array.from({ length: 101 }, (_, index) => index + 1),
+      },
+      url: "/api/server/messages/query-by-seqs",
+    });
+
+    expect(response.statusCode).toBe(400);
+
+    await app.close();
+  });
+
   it("accepts revoke requests and reports revoke status through polling", async () => {
     const { app, authorization } = await createAuthenticatedApp();
     const send = await app.inject({

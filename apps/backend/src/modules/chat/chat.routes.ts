@@ -129,7 +129,7 @@ const MessageDownloadBodySchema = Type.Object({
 
 const MessageQueryBySeqsBodySchema = Type.Object({
   conversationId: Type.String(),
-  messageSeqs: Type.Array(Type.Integer({ minimum: 1 })),
+  messageSeqs: Type.Array(Type.Integer({ minimum: 1 }), { maxItems: 100 }),
 });
 
 const SmartReplyPollBodySchema = Type.Object({

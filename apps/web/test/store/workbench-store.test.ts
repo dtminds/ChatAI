@@ -4271,6 +4271,80 @@ describe("useWorkbenchStore", () => {
     });
   });
 
+  it("does not merge distinct messages only because both ui message keys are empty", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        return {
+          activeConversationMessages: [
+            {
+              clientMessageId: undefined,
+              content: { text: "远端空 key 消息" },
+              contentType: "text",
+              conversationId: "conv-001",
+              createdAt: 1_778_840_050_000,
+              customerId: "cust-001",
+              msgid: undefined,
+              optNo: undefined,
+              rawMsgtype: "text",
+              seatId: "drc",
+              senderType: "customer",
+              seq: 0,
+              status: "sent",
+            } as unknown as WorkbenchMessageDto,
+          ],
+          conversationChanges: [],
+          nextVersion: request.sinceVersion + 1,
+          seatChanges: [],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    useWorkbenchStore.setState((state) => ({
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        "conv-001": [
+          ...(state.messagesByConversationId["conv-001"] ?? []),
+          {
+            author: "客户",
+            content: {
+              text: "本地空 key 消息",
+              type: "text",
+            },
+            conversationId: "conv-001",
+            role: "customer",
+            sender: {
+              id: "customer-local-empty-key",
+              name: "客户",
+            },
+            sentAt: "2026-05-20 10:00:00",
+            status: "sent",
+            uiMessageKey: "",
+          },
+        ],
+      },
+    }));
+
+    const beforeCount =
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].length;
+
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    const messages = useWorkbenchStore.getState().messagesByConversationId["conv-001"];
+    expect(messages).toHaveLength(beforeCount + 1);
+    expect(
+      messages.filter(
+        (message) =>
+          message.uiMessageKey === "" &&
+          message.role !== "system",
+      ),
+    ).toHaveLength(2);
+  });
+
   it("patches poll media updates into the history panel without inserting missing messages", async () => {
     const baseService = createMockWorkbenchService();
     const originalMessage = createDownloadFileMessageDto({

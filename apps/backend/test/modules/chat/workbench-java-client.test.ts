@@ -691,6 +691,44 @@ describe("createWorkbenchJavaClient", () => {
     );
   });
 
+  it("maps null Java send-message data to a contract error", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: null,
+          error: 0,
+          errorMsg: "",
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    await expect(
+      createWorkbenchJavaClient().sendMessage({
+        clientMessageId: "local-001",
+        msgData: {
+          msgtype: "text",
+          text: "今天统一看群公告",
+        },
+        platform: 5,
+        sendType: 2,
+        source: 1,
+        thirdGroupId: "group-001",
+        thirdUserId: "seat-user-001",
+        uid: 9001,
+      }),
+    ).rejects.toMatchObject({
+      code: WORKBENCH_INTERNAL_API_CONTRACT_INVALID_CODE,
+      message: "Java 发送消息响应缺少 optNo",
+      statusCode: 502,
+    });
+  });
+
   it("posts failMsgId for retry send-message requests", async () => {
     process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(

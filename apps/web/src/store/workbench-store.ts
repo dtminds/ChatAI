@@ -3,7 +3,12 @@ import {
   resolveImageSegmentsForSend,
 } from "@/pages/chat/api/media-upload-service";
 import { MEDIA_UPLOAD_SDK_LOAD_FAILED_CODE } from "@/pages/chat/api/media-upload-errors";
-import { formatConversationPreview, formatWorkbenchTimestamp, adaptConversation } from "@/pages/chat/api/workbench-adapter";
+import {
+  adaptConversation,
+  formatConversationPreview,
+  formatWorkbenchTimestamp,
+  isInvalidMessageUiKey,
+} from "@/pages/chat/api/workbench-adapter";
 import { getWorkbenchService } from "@/pages/chat/api/workbench-service";
 import {
   bootstrapWorkbench,
@@ -1724,7 +1729,7 @@ function uniqueMessageKeys(keys: Array<string | undefined>) {
 }
 
 function matchesMessageKey(message: Message, key: string) {
-  if (!key) {
+  if (!key || isInvalidMessageUiKey(key)) {
     return false;
   }
 
@@ -1752,7 +1757,12 @@ function isSameMessage(left: Message, right: Message) {
   return (
     (left.optNo && right.optNo && left.optNo === right.optNo) ||
     (left.seq != null && right.seq != null && left.seq === right.seq) ||
-    (left.uiMessageKey.length > 0 && left.uiMessageKey === right.uiMessageKey)
+    (
+      left.uiMessageKey.length > 0 &&
+      !isInvalidMessageUiKey(left.uiMessageKey) &&
+      !isInvalidMessageUiKey(right.uiMessageKey) &&
+      left.uiMessageKey === right.uiMessageKey
+    )
   );
 }
 

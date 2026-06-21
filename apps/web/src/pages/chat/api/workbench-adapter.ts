@@ -18,6 +18,14 @@ import type {
 
 type ChatMessageContent = ChatMessage["content"];
 
+export const INVALID_MESSAGE_UI_KEY_PREFIX = "invalid-message:";
+
+let invalidMessageUiKeyCounter = 0;
+
+export function isInvalidMessageUiKey(key: string | undefined) {
+  return Boolean(key?.startsWith(INVALID_MESSAGE_UI_KEY_PREFIX));
+}
+
 export function adaptEmployee(dto: WorkbenchSubUserDto): EmployeeProfile {
   return {
     displayName: dto.displayName,
@@ -203,9 +211,22 @@ export function adaptMessage(
 }
 
 function getMessageUiKey(dto: WorkbenchMessageDto) {
-  return Number.isSafeInteger(dto.seq) && dto.seq > 0
-    ? String(dto.seq)
-    : String(dto.optNo ?? dto.msgid ?? "");
+  if (Number.isSafeInteger(dto.seq) && dto.seq > 0) {
+    return String(dto.seq);
+  }
+
+  if (dto.optNo) {
+    return dto.optNo;
+  }
+
+  return createInvalidMessageUiKey();
+}
+
+function createInvalidMessageUiKey() {
+  const randomPart = globalThis.crypto?.randomUUID?.()
+    ?? `${Date.now().toString(36)}-${invalidMessageUiKeyCounter++}`;
+
+  return `${INVALID_MESSAGE_UI_KEY_PREFIX}${randomPart}`;
 }
 
 function readSystemMessageText(content: Record<string, unknown>) {

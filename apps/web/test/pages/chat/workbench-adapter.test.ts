@@ -160,9 +160,8 @@ describe("adaptMessage", () => {
     });
   });
 
-  it("uses an empty ui message key when an invalid DTO has no stable identifiers", () => {
-    expect(
-      adaptMessage(
+  it("uses a synthetic ui message key when an invalid DTO has no stable identifiers", () => {
+    const message = adaptMessage(
         {
           ...messageDto,
           msgid: undefined,
@@ -172,15 +171,13 @@ describe("adaptMessage", () => {
         customerProfilesById,
         accountsById,
         me,
-      ),
-    ).toMatchObject({
-      uiMessageKey: "",
-    });
+      );
+
+    expect(message.uiMessageKey).toMatch(/^invalid-message:/);
   });
 
-  it("coerces fallback message identifiers to string ui message keys", () => {
-    expect(
-      adaptMessage(
+  it("does not use msgid as a fallback ui message key", () => {
+    const message = adaptMessage(
         {
           ...messageDto,
           msgid: 9001001,
@@ -190,10 +187,40 @@ describe("adaptMessage", () => {
         customerProfilesById,
         accountsById,
         me,
-      ),
-    ).toMatchObject({
-      uiMessageKey: "9001001",
-    });
+      );
+
+    expect(message.uiMessageKey).toMatch(/^invalid-message:/);
+    expect(message.uiMessageKey).not.toBe("9001001");
+  });
+
+  it("generates distinct synthetic ui message keys for invalid DTOs", () => {
+    const firstMessage = adaptMessage(
+      {
+        ...messageDto,
+        msgid: undefined,
+        optNo: undefined,
+        seq: 0,
+      } as unknown as WorkbenchMessageDto,
+      customerProfilesById,
+      accountsById,
+      me,
+    );
+    const secondMessage = adaptMessage(
+      {
+        ...messageDto,
+        createdAt: messageDto.createdAt + 1,
+        msgid: undefined,
+        optNo: undefined,
+        seq: 0,
+      } as unknown as WorkbenchMessageDto,
+      customerProfilesById,
+      accountsById,
+      me,
+    );
+
+    expect(firstMessage.uiMessageKey).toMatch(/^invalid-message:/);
+    expect(secondMessage.uiMessageKey).toMatch(/^invalid-message:/);
+    expect(firstMessage.uiMessageKey).not.toBe(secondMessage.uiMessageKey);
   });
 
   it("adapts voice playback URL and persisted transcode state", () => {

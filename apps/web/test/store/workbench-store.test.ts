@@ -2234,10 +2234,11 @@ describe("useWorkbenchStore", () => {
     });
 
     expect(observedHistoryCursors).toEqual([undefined, "before-2", "after-3"]);
-    expect(
+    const messageKeys =
       useWorkbenchStore.getState().historyPanelByConversationId["conv-001"]
-        ?.messages.map((message) => message.uiMessageKey),
-    ).toEqual(["history-0", "1", "2", "3", "4"]);
+        ?.messages.map((message) => message.uiMessageKey) ?? [];
+    expect(messageKeys[0]).toMatch(/^invalid-message:/);
+    expect(messageKeys.slice(1)).toEqual(["1", "2", "3", "4"]);
   });
 
   it("clears history panel messages immediately when changing scope", async () => {
@@ -4273,7 +4274,7 @@ describe("useWorkbenchStore", () => {
     });
   });
 
-  it("does not merge distinct messages only because both ui message keys are empty", async () => {
+  it("does not merge distinct messages only because both ui message keys are synthetic fallbacks", async () => {
     const baseService = createMockWorkbenchService();
 
     setWorkbenchService({
@@ -4319,12 +4320,12 @@ describe("useWorkbenchStore", () => {
             conversationId: "conv-001",
             role: "customer",
             sender: {
-              id: "customer-local-empty-key",
+              id: "customer-local-invalid-key",
               name: "客户",
             },
             sentAt: "2026-05-20 10:00:00",
             status: "sent",
-            uiMessageKey: "",
+            uiMessageKey: "invalid-message:local",
           },
         ],
       },
@@ -4340,7 +4341,7 @@ describe("useWorkbenchStore", () => {
     expect(
       messages.filter(
         (message) =>
-          message.uiMessageKey === "" &&
+          message.uiMessageKey.startsWith("invalid-message:") &&
           message.role !== "system",
       ),
     ).toHaveLength(2);
@@ -4581,6 +4582,59 @@ describe("useWorkbenchStore", () => {
       .getState()
       .messagesByConversationId["conv-001"].find(
         (message) => message.role !== "system" && message.uiMessageKey === "",
+      );
+
+    expect(patchedMessage?.content).toMatchObject({
+      downloadStatus: "ing",
+      type: "file",
+    });
+  });
+
+  it("does not patch media downloads by synthetic fallback ui message keys", async () => {
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        "conv-001": [
+          ...state.messagesByConversationId["conv-001"],
+          {
+            author: "客户",
+            content: {
+              downloadStatus: "ing",
+              extension: "pdf",
+              fileName: "报价单.pdf",
+              fileSerialNo: "serial-file-invalid",
+              fileSizeLabel: "2 KB",
+              fileUrl: "https://b5.bokr.com.cn/chat-files/quote.pdf",
+              type: "file",
+            },
+            conversationId: "conv-001",
+            msgid: undefined,
+            uiMessageKey: "invalid-message:file",
+            role: "customer",
+            sender: {
+              id: "cust-001",
+              name: "客户",
+            },
+            sentAt: "2026-05-21 12:00",
+            status: "sent",
+          },
+        ],
+      },
+    }));
+
+    useWorkbenchStore.getState().updateMessageDownloadContent(
+      "conv-001",
+      "invalid-message:file",
+      {
+        downloadStatus: "failed",
+      },
+    );
+
+    const patchedMessage = useWorkbenchStore
+      .getState()
+      .messagesByConversationId["conv-001"].find(
+        (message) => message.uiMessageKey === "invalid-message:file",
       );
 
     expect(patchedMessage?.content).toMatchObject({

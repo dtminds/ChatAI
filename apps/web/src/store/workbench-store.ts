@@ -4430,7 +4430,10 @@ export function createWorkbenchStore() {
             const currentMessages =
               currentState.messagesByConversationId[activeConversationId] ?? [];
             const currentMessagesWithoutAcceptedRemoval = options?.removeMessageIdOnAccepted
-              ? currentMessages.filter((message) => message.uiMessageKey !== options.removeMessageIdOnAccepted)
+              ? currentMessages.filter(
+                  (message) =>
+                    !matchesMessageKey(message, options.removeMessageIdOnAccepted ?? ""),
+                )
               : currentMessages;
             const nextMessages = [...currentMessagesWithoutAcceptedRemoval, optimisticMessage];
             const currentConversations =
@@ -4461,7 +4464,8 @@ export function createWorkbenchStore() {
               pendingMessages: [
                 ...(options?.removeMessageIdOnAccepted
                   ? currentState.pendingMessages.filter(
-                      (message) => message.uiMessageKey !== options.removeMessageIdOnAccepted,
+                      (message) =>
+                        !matchesMessageKey(message, options.removeMessageIdOnAccepted ?? ""),
                     )
                   : currentState.pendingMessages),
                 optimisticMessage,
@@ -4508,7 +4512,7 @@ export function createWorkbenchStore() {
         state.messagesByConversationId[state.activeConversationId] ?? [];
       const failedMessage = conversationMessages.find(
         (message) =>
-          message.uiMessageKey === uiMessageKey &&
+          matchesMessageKey(message, uiMessageKey) &&
           message.role === "agent" &&
           message.status === "failed",
       );
@@ -5963,7 +5967,7 @@ function findRevokableMessage(
 ): ChatMessage | undefined {
   return messages.find(
     (message): message is ChatMessage =>
-      message.role !== "system" && message.uiMessageKey === uiMessageKey,
+      message.role !== "system" && matchesMessageKey(message, uiMessageKey),
   );
 }
 

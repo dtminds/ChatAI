@@ -3702,6 +3702,73 @@ describe("useWorkbenchStore", () => {
     );
   });
 
+  it("retries a reconciled failed message when called with the previous optNo key", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    useWorkbenchStore.setState((state) => ({
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        "conv-001": [
+          ...(state.messagesByConversationId["conv-001"] ?? []),
+          {
+            author: "客服一号",
+            content: {
+              text: "已落库失败消息",
+              type: "text",
+            },
+            conversationId: "conv-001",
+            failReason: "模拟发送失败",
+            optNo: "opt-failed-538",
+            uiMessageKey: "538",
+            role: "agent",
+            sender: {
+              id: "agent-001",
+              name: "客服一号",
+            },
+            sentAt: "2026-05-20 10:00:00",
+            seq: 538,
+            status: "failed",
+          },
+        ],
+      },
+    }));
+
+    const beforeRetryCount =
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].length;
+
+    await useWorkbenchStore.getState().retryFailedMessage("opt-failed-538");
+
+    const messages = useWorkbenchStore.getState().messagesByConversationId["conv-001"];
+
+    expect(messages).toHaveLength(beforeRetryCount);
+    expect(messages.some((message) => message.uiMessageKey === "538")).toBe(false);
+    expect(sendMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        failMsgId: "538",
+        segment: {
+          text: "已落库失败消息",
+          type: "text",
+        },
+      }),
+    );
+    expect(messages.at(-1)).toMatchObject({
+      content: {
+        text: "已落库失败消息",
+        type: "text",
+      },
+      role: "agent",
+      status: "accepted",
+    });
+  });
+
   it("omits failMsgId when retrying a failed message without seq", async () => {
     const baseService = createMockWorkbenchService();
     const sendMessage = vi.fn(baseService.sendMessage);

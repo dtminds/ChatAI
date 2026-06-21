@@ -2819,6 +2819,10 @@ describe("useWorkbenchStore", () => {
     const state = useWorkbenchStore.getState();
     const latestMessages =
       state.messagesByConversationId[state.activeConversationId].slice(-3);
+    const latestUiMessageKeys = latestMessages.map((message) => message.uiMessageKey);
+    const latestOptNos = latestMessages.map((message) =>
+      isChatMessage(message) ? message.optNo : undefined,
+    );
 
     expect(latestMessages).toMatchObject([
       {
@@ -2849,6 +2853,9 @@ describe("useWorkbenchStore", () => {
         status: "accepted",
       },
     ]);
+    expect(new Set(latestUiMessageKeys).size).toBe(3);
+    expect(new Set(latestOptNos).size).toBe(3);
+    expect(latestOptNos.every(Boolean)).toBe(true);
     expect(state.pendingMessages).toHaveLength(3);
     expect(state.conversationListsByScope[state.activeAccountId][0].preview).toBe(
       "第二段[强]",

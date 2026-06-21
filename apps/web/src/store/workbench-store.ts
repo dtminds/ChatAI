@@ -1724,6 +1724,10 @@ function uniqueMessageKeys(keys: Array<string | undefined>) {
 }
 
 function matchesMessageKey(message: Message, key: string) {
+  if (!key) {
+    return false;
+  }
+
   return (
     message.uiMessageKey === key ||
     message.optNo === key ||

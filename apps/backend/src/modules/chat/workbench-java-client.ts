@@ -135,7 +135,7 @@ export type JavaSendMessageInput = {
 };
 
 type JavaSendMessageResponse = {
-  optNo?: string;
+  optNo?: number | string;
 };
 
 type JavaRevokeMessageResponse = {
@@ -1164,7 +1164,7 @@ function readJavaNonEmptyId(data: unknown) {
 }
 
 function readJavaOptNo(data: JavaSendMessageResponse | null | undefined) {
-  const optNo = data?.optNo?.trim();
+  const optNo = data?.optNo != null ? String(data.optNo).trim() : undefined;
 
   if (!optNo) {
     throw new BadGatewayError(

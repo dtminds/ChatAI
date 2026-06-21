@@ -178,6 +178,24 @@ describe("adaptMessage", () => {
     });
   });
 
+  it("coerces fallback message identifiers to string ui message keys", () => {
+    expect(
+      adaptMessage(
+        {
+          ...messageDto,
+          msgid: 9001001,
+          optNo: undefined,
+          seq: 0,
+        } as unknown as WorkbenchMessageDto,
+        customerProfilesById,
+        accountsById,
+        me,
+      ),
+    ).toMatchObject({
+      uiMessageKey: "9001001",
+    });
+  });
+
   it("adapts voice playback URL and persisted transcode state", () => {
     expect(
       adaptMessage(

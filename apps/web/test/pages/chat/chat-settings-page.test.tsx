@@ -341,7 +341,7 @@ describe("Chat settings pages", () => {
     expect(screen.queryByRole("button", { name: "德仁堂 接管中" })).not.toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "托管账号" })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("link", { name: "返回应用" }));
+    await user.click(screen.getByRole("link", { name: "返回工作台" }));
 
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/chat");

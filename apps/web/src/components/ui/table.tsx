@@ -94,6 +94,33 @@ const TableHead = React.forwardRef<
 ));
 TableHead.displayName = "TableHead";
 
+type TablePinnedSide = "left" | "right";
+
+function getPinnedColumnClassName(side: TablePinnedSide) {
+  if (side === "left") {
+    return "sticky left-0 z-10 bg-surface";
+  }
+
+  return "sticky right-0 z-10 bg-surface";
+}
+
+type TablePinnedHeadProps = React.ThHTMLAttributes<HTMLTableCellElement> & {
+  side?: TablePinnedSide;
+};
+
+const TablePinnedHead = React.forwardRef<
+  HTMLTableCellElement,
+  TablePinnedHeadProps
+>(({ className, side = "right", ...props }, ref) => (
+  <TableHead
+    className={cn(getPinnedColumnClassName(side), className)}
+    data-slot="table-pinned-head"
+    ref={ref}
+    {...props}
+  />
+));
+TablePinnedHead.displayName = "TablePinnedHead";
+
 const TableCell = React.forwardRef<
   HTMLTableCellElement,
   React.TdHTMLAttributes<HTMLTableCellElement>
@@ -109,6 +136,36 @@ const TableCell = React.forwardRef<
   />
 ));
 TableCell.displayName = "TableCell";
+
+type TablePinnedCellProps = React.TdHTMLAttributes<HTMLTableCellElement> & {
+  side?: TablePinnedSide;
+};
+
+const TablePinnedCell = React.forwardRef<
+  HTMLTableCellElement,
+  TablePinnedCellProps
+>(({ className, side = "right", ...props }, ref) => (
+  <TableCell
+    className={cn(getPinnedColumnClassName(side), className)}
+    data-slot="table-pinned-cell"
+    ref={ref}
+    {...props}
+  />
+));
+TablePinnedCell.displayName = "TablePinnedCell";
+
+const TableCellContent = React.forwardRef<
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement>
+>(({ className, ...props }, ref) => (
+  <div
+    className={cn("min-w-0 truncate", className)}
+    data-slot="table-cell-content"
+    ref={ref}
+    {...props}
+  />
+));
+TableCellContent.displayName = "TableCellContent";
 
 const TableCaption = React.forwardRef<
   HTMLTableCaptionElement,
@@ -129,7 +186,10 @@ export {
   TableBody,
   TableFooter,
   TableHead,
+  TablePinnedHead,
   TableRow,
   TableCell,
+  TablePinnedCell,
+  TableCellContent,
   TableCaption,
 };

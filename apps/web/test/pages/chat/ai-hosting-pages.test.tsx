@@ -1,18 +1,28 @@
 import type { ReactElement } from "react";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentManagementPage } from "@/pages/chat/ai-hosting/agent-management-page";
 import { AgentHostingSettingsPage } from "@/pages/chat/ai-hosting/agent-hosting-settings-page";
 import { AgentSettingsPage } from "@/pages/chat/ai-hosting/agent-settings-page";
-import { KnowledgeBasePage } from "@/pages/chat/ai-hosting/knowledge-base-page";
+import { KbDetailPage } from "@/pages/chat/ai-hosting/kb-detail-page";
+import { KbListPage } from "@/pages/chat/ai-hosting/kb-list-page";
+import { resetMockKnowledgeBases } from "@/pages/chat/ai-hosting/kb-mock-data";
 
-function renderWithRoute(path: string, element: ReactElement) {
+const readXlsxFileMock = vi.hoisted(() => vi.fn());
+
+vi.mock("read-excel-file/browser", () => ({
+  default: readXlsxFileMock,
+}));
+
+let mockImageDimensions = { height: 800, width: 800 };
+
+function renderWithRoute(path: string, element: ReactElement, routePath = "*") {
   const router = createMemoryRouter(
     [
       {
-        path: "*",
+        path: routePath,
         element,
       },
     ],
@@ -22,7 +32,58 @@ function renderWithRoute(path: string, element: ReactElement) {
   return render(<RouterProvider router={router} />);
 }
 
+function createDropData(file: File) {
+  return {
+    dataTransfer: {
+      files: [file],
+      items: [
+        {
+          getAsFile: () => file,
+          kind: "file",
+          type: file.type,
+        },
+      ],
+      types: ["Files"],
+    },
+  };
+}
+
 describe("AI hosting pages", () => {
+  beforeEach(() => {
+    resetMockKnowledgeBases();
+    mockImageDimensions = { height: 800, width: 800 };
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: vi.fn(() => "blob:mock-image"),
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: vi.fn(),
+    });
+    vi.stubGlobal(
+      "Image",
+      class {
+        naturalHeight = mockImageDimensions.height;
+        naturalWidth = mockImageDimensions.width;
+        onerror: (() => void) | null = null;
+        onload: (() => void) | null = null;
+
+        set src(_value: string) {
+          queueMicrotask(() => this.onload?.());
+        }
+      },
+    );
+    readXlsxFileMock.mockResolvedValue([
+      {
+        data: [
+          ["问题", "答案"],
+          ["晨间护肤怎么做", "先清洁再保湿"],
+        ],
+        sheet: "Sheet1",
+      },
+    ]);
+  });
+
   it("renders the agent management page", async () => {
     renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
 
@@ -37,7 +98,7 @@ describe("AI hosting pages", () => {
     );
     expect(screen.getByRole("link", { name: "知识库" })).toHaveAttribute(
       "href",
-      "/chat/ai-hosting/knowledge",
+      "/chat/ai-hosting/kb",
     );
     expect(screen.getByRole("link", { name: "托管设置" })).toHaveAttribute(
       "href",
@@ -336,17 +397,669 @@ describe("AI hosting pages", () => {
   });
 
   it("renders the knowledge base page", async () => {
-    renderWithRoute("/chat/ai-hosting/knowledge", <KnowledgeBasePage />);
+    const user = userEvent.setup();
+
+    renderWithRoute("/chat/ai-hosting/kb", <KbListPage />);
 
     expect(await screen.findByRole("heading", { level: 1, name: "知识库" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "创建知识库" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "华为产品知识" })).toHaveAttribute(
+      "href",
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+    );
+    expect(screen.getAllByRole("link", { name: "查看" })[0]).toHaveAttribute(
+      "href",
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+    );
+
+    await user.click(screen.getAllByRole("button", { name: "编辑" })[0]);
+
+    const dialog = screen.getByRole("dialog", { name: "编辑知识库" });
+
+    expect(dialog).toBeInTheDocument();
+    expect(screen.getByLabelText(/知识库名称/)).toHaveValue("华为产品知识");
+    expect(screen.getByLabelText("知识库描述")).toHaveValue("华为各系列产品规格、功能与常见问题");
+    expect(screen.getByLabelText(/知识库名称/)).toHaveAttribute("maxLength", "30");
+    expect(screen.getByLabelText("知识库描述")).toHaveAttribute("maxLength", "1000");
+    expect(screen.getByText("6/30")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存" })).toBeInTheDocument();
+
+    await user.clear(screen.getByLabelText(/知识库名称/));
+    await user.type(screen.getByLabelText(/知识库名称/), "华为知识库");
+    await user.click(screen.getByRole("button", { name: "取消" }));
+
+    expect(screen.queryByRole("dialog", { name: "编辑知识库" })).not.toBeInTheDocument();
     expect(screen.getByText(/华为产品知识/)).toBeInTheDocument();
+    expect(screen.queryByText(/华为知识库/)).not.toBeInTheDocument();
+  });
+
+  it("renders the knowledge base management page", async () => {
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
+    );
+
+    expect(await screen.findByRole("heading", { level: 1, name: "华为产品知识" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "返回知识库" })).toHaveAttribute(
+      "href",
+      "/chat/ai-hosting/kb",
+    );
+    expect(screen.getByLabelText("知识库管理头部").firstElementChild).toHaveAccessibleName(
+      "返回知识库",
+    );
+    expect(screen.getByRole("textbox", { name: "搜索知识" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "添加知识" }));
+    expect(screen.getByRole("menuitem", { name: /问答/ })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /图片/ })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /文档/ })).toBeInTheDocument();
+    expect(screen.getByText("高质量人工知识")).toBeInTheDocument();
+    expect(screen.getByText("原始文档")).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /纯文本/ })).not.toBeInTheDocument();
+    expect(screen.getByText("上传问答表格，批量导入精准知识")).toBeInTheDocument();
+    expect(screen.getByText("上传图片并添加描述，按描述精准召回")).toBeInTheDocument();
+    expect(screen.getByText("自动解析文档内容，效果取决于文档质量")).toBeInTheDocument();
+    expect(screen.queryByText("直接录入文本片段或说明")).not.toBeInTheDocument();
+    expect(screen.getAllByTestId("knowledge-add-option-icon")).toHaveLength(3);
+    await userEvent.keyboard("{Escape}");
+    expect(screen.getByRole("table", { name: "知识列表" })).toBeInTheDocument();
+    expect(screen.getByText("产品说明大全")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Word 文件" })).toHaveAttribute(
+      "src",
+      "https://b5.bokr.com.cn/dist/word.png",
+    );
+    expect(screen.getByRole("img", { name: "PDF 文件" })).toHaveAttribute(
+      "src",
+      "https://b5.bokr.com.cn/dist/pdf.png",
+    );
+    expect(screen.getAllByRole("img", { name: "文件" })[0]).toHaveAttribute(
+      "src",
+      "https://b5.bokr.com.cn/dist/file.png",
+    );
+    expect(screen.getByText("文件（.doc）")).toBeInTheDocument();
+    expect(screen.getAllByText("已完成")).toHaveLength(2);
+    expect(screen.getByText("解析中")).toBeInTheDocument();
+    expect(screen.getByText("失败")).toBeInTheDocument();
+    expect(screen.getByText("排队中")).toBeInTheDocument();
+    expect(screen.getByText("共 5 条")).toBeInTheDocument();
+  });
+
+  it("uses created mock knowledge bases on the management page", async () => {
+    const user = userEvent.setup();
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_789_000_000_000);
+    const listView = renderWithRoute("/chat/ai-hosting/kb", <KbListPage />);
+
+    await user.click(await screen.findByRole("button", { name: "创建知识库" }));
+    await user.type(screen.getByLabelText(/知识库名称/), "新品培训知识");
+    await user.type(screen.getByLabelText("知识库描述"), "用于新品上市培训");
+    await user.click(screen.getByRole("button", { name: "确定" }));
+
+    expect(screen.getByRole("link", { name: "新品培训知识" })).toHaveAttribute(
+      "href",
+      "/chat/ai-hosting/kb/1789000000000",
+    );
+
+    listView.unmount();
+    renderWithRoute(
+      "/chat/ai-hosting/kb/1789000000000",
+      <KbDetailPage />,
+      "/chat/ai-hosting/kb/:knowledgeBaseId",
+    );
+
+    expect(await screen.findByRole("heading", { level: 1, name: "新品培训知识" })).toBeInTheDocument();
+    expect(screen.getByText("用于新品上市培训")).toBeInTheDocument();
+    expect(screen.getByText("暂无数据")).toBeInTheDocument();
+
+    nowSpy.mockRestore();
+  });
+
+  it("shows an empty state for unknown knowledge base ids", async () => {
+    renderWithRoute(
+      "/chat/ai-hosting/kb/not-exist",
+      <KbDetailPage />,
+      "/chat/ai-hosting/kb/:knowledgeBaseId",
+    );
+
+    expect(await screen.findByRole("heading", { level: 1, name: "未找到知识库" })).toBeInTheDocument();
+    expect(screen.getByText("当前知识库不存在或已被删除")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { level: 1, name: "华为产品知识" })).not.toBeInTheDocument();
+  });
+
+  it("opens the QA import dialog and shows the selected faq xlsx file", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
+    );
+
+    await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
+    await user.click(screen.getByRole("button", { name: "添加知识" }));
+    await user.click(screen.getByRole("menuitem", { name: /问答/ }));
+
+    const dialog = screen.getByRole("dialog", { name: "批量导入问答" });
+
+    expect(dialog).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Q&A问答对示例.faq.xlsx" }),
+    ).toHaveAttribute(
+      "href",
+      "https://b5.bokr.com.cn/dist/Q&A问答对示例.faq.xlsx",
+    );
+    expect(
+      screen.getByRole("link", { name: "Q&A问答对示例.faq.xlsx" }),
+    ).toHaveAttribute("download");
+    expect(
+      screen.getByRole("link", { name: "Q&A问答对示例.faq.xlsx" }),
+    ).toHaveAttribute("target", "_blank");
+    expect(
+      screen.getByRole("link", { name: "Q&A问答对示例.faq.xlsx" }),
+    ).toHaveAttribute("rel", "noopener noreferrer");
+    expect(screen.getByRole("button", { name: "上传问答文件" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "查看导入说明" })).not.toHaveFocus();
+    expect(screen.getByText("文档支持 .faq.xlsx，最多 30 个 sheet，文件行数总和不超过 30000 行")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "导入文档" })).toBeDisabled();
+    await user.hover(screen.getByRole("button", { name: "查看导入说明" }));
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      "上传文档时，需要通过特殊的后缀 .faq 进行标识",
+    );
+    expect(screen.getByRole("tooltip")).toHaveTextContent(
+      "对于问题或答案为空的行会跳过不做处理",
+    );
+    expect(screen.getByRole("tooltip")).toHaveTextContent(
+      "每个可解析的切片（即原文档中单行或单列）字符长度最多为 65535",
+    );
+
+    await user.upload(
+      screen.getByLabelText("选择问答导入文件"),
+      new File(["question,answer"], "快捷话术导入.faq.xlsx", {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      }),
+    );
+
+    expect(screen.getByRole("region", { name: "已选择文件" })).toHaveTextContent(
+      "快捷话术导入.faq.xlsx",
+    );
+    expect(screen.getByRole("img", { name: "Excel 文件" })).toHaveAttribute(
+      "src",
+      "https://b5.bokr.com.cn/dist/excel.png",
+    );
+    expect(screen.getByRole("button", { name: "上传问答文件" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "已选择文件" })).toHaveTextContent(
+      "共 1 个 sheet，2 行",
+    );
+    expect(screen.getByRole("button", { name: "导入文档" })).toBeEnabled();
+
+    await user.click(screen.getByRole("button", { name: "移除已选择文件" }));
+
+    expect(screen.queryByRole("region", { name: "已选择文件" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "导入文档" })).toBeDisabled();
+  });
+
+  it("rejects QA import files with more than 30 sheets", async () => {
+    const user = userEvent.setup();
+
+    readXlsxFileMock.mockResolvedValueOnce(
+      Array.from({ length: 31 }, (_, index) => ({
+        data: [["问题", "答案"]],
+        sheet: `Sheet${index + 1}`,
+      })),
+    );
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
+    );
+
+    await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
+    await user.click(screen.getByRole("button", { name: "添加知识" }));
+    await user.click(screen.getByRole("menuitem", { name: /问答/ }));
+    await user.upload(
+      screen.getByLabelText("选择问答导入文件"),
+      new File(["question,answer"], "快捷话术导入.faq.xlsx", {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      }),
+    );
+
+    expect(await screen.findByText("最多支持 30 个 sheet")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "已选择文件" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "导入文档" })).toBeDisabled();
+  });
+
+  it("shows an error when QA files are rejected by the dropzone accept rule", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
+    );
+
+    await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
+    await user.click(screen.getByRole("button", { name: "添加知识" }));
+    await user.click(screen.getByRole("menuitem", { name: /问答/ }));
+
+    fireEvent.drop(
+      screen.getByRole("button", { name: "上传问答文件" }),
+      createDropData(new File(["pdf"], "产品说明.pdf", { type: "application/pdf" })),
+    );
+
+    expect(await screen.findByText("仅支持 .faq.xlsx 文件")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "已选择文件" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "导入文档" })).toBeDisabled();
+  });
+
+  it("rejects QA import files with more than 30000 total rows", async () => {
+    const user = userEvent.setup();
+
+    readXlsxFileMock.mockResolvedValueOnce([
+      {
+        data: Array.from({ length: 30001 }, () => ["问题", "答案"]),
+        sheet: "Sheet1",
+      },
+    ]);
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
+    );
+
+    await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
+    await user.click(screen.getByRole("button", { name: "添加知识" }));
+    await user.click(screen.getByRole("menuitem", { name: /问答/ }));
+    await user.upload(
+      screen.getByLabelText("选择问答导入文件"),
+      new File(["question,answer"], "快捷话术导入.faq.xlsx", {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      }),
+    );
+
+    expect(await screen.findByText("文件行数总和不能超过 30000 行")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "已选择文件" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "导入文档" })).toBeDisabled();
+  });
+
+  it("opens the document import dialog and switches chunk strategy options", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
+    );
+
+    await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
+    await user.click(screen.getByRole("button", { name: "添加知识" }));
+    await user.click(screen.getByRole("menuitem", { name: /文档/ }));
+
+    const dialog = screen.getByRole("dialog", { name: "导入文档" });
+
+    expect(dialog).toBeInTheDocument();
+    expect(screen.queryByText("限免")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "上传文档文件" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "上传文档文件" })).not.toHaveFocus();
+    expect(screen.getByRole("button", { name: "确认提交" })).toBeDisabled();
+
+    await user.upload(
+      screen.getByLabelText("选择文档知识文件"),
+      new File(["document"], "产品手册.pptx", {
+        type: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      }),
+    );
+
+    expect(screen.getByRole("region", { name: "已选择文档" })).toHaveTextContent(
+      "产品手册.pptx",
+    );
+    expect(screen.getByRole("img", { name: "PPT 文件" })).toHaveAttribute(
+      "src",
+      "https://b5.bokr.com.cn/dist/ppt.png",
+    );
+    expect(screen.queryByRole("button", { name: "上传文档文件" })).not.toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /通用解析/ })).toBeChecked();
+    expect(screen.getByRole("radio", { name: /增强解析/ })).not.toBeChecked();
+    expect(screen.getByRole("radio", { name: /按固定长度切分/ })).toBeChecked();
+    expect(screen.getByRole("radio", { name: /2,000/ })).toBeChecked();
+    expect(screen.getByRole("radio", { name: /1,000/ })).not.toBeChecked();
+    expect(screen.getByRole("button", { name: "确认提交" })).toBeEnabled();
+
+    await user.click(screen.getByRole("radio", { name: /增强解析/ }));
+
+    expect(screen.getByRole("button", { name: "确认提交（限免）" })).toBeEnabled();
+
+    await user.click(screen.getByRole("radio", { name: /按分隔符切分/ }));
+
+    expect(screen.getByText("分段标识符")).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /换行符/ })).toBeChecked();
+    expect(screen.queryByText("切片最长字符数")).not.toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: /2,000/ })).not.toBeInTheDocument();
+  });
+
+  it("shows an error when document files are rejected by the dropzone accept rule", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
+    );
+
+    await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
+    await user.click(screen.getByRole("button", { name: "添加知识" }));
+    await user.click(screen.getByRole("menuitem", { name: /文档/ }));
+
+    fireEvent.drop(
+      screen.getByRole("button", { name: "上传文档文件" }),
+      createDropData(new File(["zip"], "资料包.zip", { type: "application/zip" })),
+    );
+
+    expect(await screen.findByText("仅支持 PDF、Word、PPT、Markdown、TXT 文档")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "已选择文档" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "确认提交" })).toBeDisabled();
+  });
+
+  it("disables enhanced parsing for plain text document files", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
+    );
+
+    await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
+    await user.click(screen.getByRole("button", { name: "添加知识" }));
+    await user.click(screen.getByRole("menuitem", { name: /文档/ }));
+    await user.upload(
+      screen.getByLabelText("选择文档知识文件"),
+      new File(["plain text"], "产品说明.txt", { type: "text/plain" }),
+    );
+
+    expect(screen.getByRole("region", { name: "已选择文档" })).toHaveTextContent(
+      "产品说明.txt",
+    );
+    expect(screen.getByRole("radio", { name: /通用解析/ })).toBeChecked();
+    expect(screen.getByRole("radio", { name: /增强解析/ })).toBeDisabled();
+  });
+
+  it("opens the image knowledge dialog and fills the default image name", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
+    );
+
+    await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
+    await user.click(screen.getByRole("button", { name: "添加知识" }));
+    await user.click(screen.getByRole("menuitem", { name: /图片/ }));
+
+    const dialog = screen.getByRole("dialog", { name: "添加图片知识" });
+
+    expect(dialog).toBeInTheDocument();
+    expect(screen.queryByText("限免")).not.toBeInTheDocument();
+    expect(screen.queryByText("注意事项")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("描述会参与图片检索，可填写图片对应的商品说明、售卖亮点或价格等"),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "上传图片" })).toBeInTheDocument();
+    expect(screen.getByLabelText(/知识名称/)).toHaveAttribute("maxLength", "16");
+    expect(screen.getByLabelText(/知识名称/)).toHaveAttribute(
+      "placeholder",
+      "请输入知识名称",
+    );
+    expect(screen.getByLabelText(/图片描述/)).toHaveAttribute(
+      "placeholder",
+      "描述会参与图片检索，可填写图片对应的商品说明、售卖亮点或价格等",
+    );
+    expect(screen.getByText("0/16")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "确认提交" })).toBeDisabled();
+
+    await user.upload(
+      screen.getByLabelText("选择图片知识文件"),
+      new File(["image"], "商品主图.png", { type: "image/png" }),
+    );
+
+    expect(screen.getByRole("region", { name: "已选择图片" })).toHaveTextContent(
+      "商品主图.png",
+    );
+    expect(screen.getByLabelText(/知识名称/)).toHaveValue("商品主图");
+    expect(screen.getByText("4/16")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "确认提交" })).toBeDisabled();
+
+    await user.type(screen.getByLabelText(/图片描述/), "晨间护肤套装商品主图");
+
+    expect(screen.getByRole("button", { name: "确认提交" })).toBeEnabled();
+
+    await user.click(screen.getByRole("button", { name: "移除已选择图片" }));
+
+    expect(screen.queryByRole("region", { name: "已选择图片" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "确认提交" })).toBeDisabled();
+  });
+
+  it("accepts image knowledge files with supported extensions when MIME type is empty", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
+    );
+
+    await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
+    await user.click(screen.getByRole("button", { name: "添加知识" }));
+    await user.click(screen.getByRole("menuitem", { name: /图片/ }));
+    await user.upload(
+      screen.getByLabelText("选择图片知识文件"),
+      new File(["image"], "商品主图.png"),
+    );
+
+    expect(screen.getByRole("region", { name: "已选择图片" })).toHaveTextContent(
+      "商品主图.png",
+    );
+    expect(screen.queryByText("仅支持 jpg、jpeg、png、webp 格式的图片")).not.toBeInTheDocument();
+  });
+
+  it("ignores stale image validation after the dialog is closed", async () => {
+    const user = userEvent.setup();
+    let resolvePendingImageLoad: (() => void) | undefined;
+
+    vi.stubGlobal(
+      "Image",
+      class {
+        naturalHeight = mockImageDimensions.height;
+        naturalWidth = mockImageDimensions.width;
+        onerror: (() => void) | null = null;
+        onload: (() => void) | null = null;
+
+        set src(_value: string) {
+          resolvePendingImageLoad = () => {
+            this.onload?.();
+          };
+        }
+      },
+    );
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
+    );
+
+    await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
+    await user.click(screen.getByRole("button", { name: "添加知识" }));
+    await user.click(screen.getByRole("menuitem", { name: /图片/ }));
+    await user.upload(
+      screen.getByLabelText("选择图片知识文件"),
+      new File(["image"], "商品主图.png", { type: "image/png" }),
+    );
+
+    expect(screen.getByText("正在校验图片")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "取消" }));
+    expect(screen.queryByRole("dialog", { name: "添加图片知识" })).not.toBeInTheDocument();
+
+    resolvePendingImageLoad?.();
+    await Promise.resolve();
+
+    await user.click(screen.getByRole("button", { name: "添加知识" }));
+    await user.click(screen.getByRole("menuitem", { name: /图片/ }));
+
+    expect(screen.queryByRole("region", { name: "已选择图片" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "上传图片" })).toBeInTheDocument();
+    expect(screen.queryByText("正在校验图片")).not.toBeInTheDocument();
+  });
+
+  it("ignores stale image validation after the page unmounts", async () => {
+    const user = userEvent.setup();
+    let resolvePendingImageLoad: (() => void) | undefined;
+
+    vi.stubGlobal(
+      "Image",
+      class {
+        naturalHeight = mockImageDimensions.height;
+        naturalWidth = mockImageDimensions.width;
+        onerror: (() => void) | null = null;
+        onload: (() => void) | null = null;
+
+        set src(_value: string) {
+          resolvePendingImageLoad = () => {
+            this.onload?.();
+          };
+        }
+      },
+    );
+
+    const view = renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
+    );
+
+    await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
+    await user.click(screen.getByRole("button", { name: "添加知识" }));
+    await user.click(screen.getByRole("menuitem", { name: /图片/ }));
+    await user.upload(
+      screen.getByLabelText("选择图片知识文件"),
+      new File(["image"], "商品主图.png", { type: "image/png" }),
+    );
+
+    expect(screen.getByText("正在校验图片")).toBeInTheDocument();
+    view.unmount();
+
+    resolvePendingImageLoad?.();
+    await Promise.resolve();
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
+    );
+
+    await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
+    await user.click(screen.getByRole("button", { name: "添加知识" }));
+    await user.click(screen.getByRole("menuitem", { name: /图片/ }));
+
+    expect(screen.queryByRole("region", { name: "已选择图片" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "上传图片" })).toBeInTheDocument();
+    expect(screen.queryByText("正在校验图片")).not.toBeInTheDocument();
+  });
+
+  it("clears image checking state when a subsequent invalid file is selected", async () => {
+    const user = userEvent.setup();
+    let resolvePendingImageLoad: (() => void) | undefined;
+
+    vi.stubGlobal(
+      "Image",
+      class {
+        naturalHeight = mockImageDimensions.height;
+        naturalWidth = mockImageDimensions.width;
+        onerror: (() => void) | null = null;
+        onload: (() => void) | null = null;
+
+        set src(_value: string) {
+          resolvePendingImageLoad = () => {
+            this.onload?.();
+          };
+        }
+      },
+    );
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
+    );
+
+    await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
+    await user.click(screen.getByRole("button", { name: "添加知识" }));
+    await user.click(screen.getByRole("menuitem", { name: /图片/ }));
+
+    const fileInput = screen.getByLabelText("选择图片知识文件");
+
+    await user.upload(
+      fileInput,
+      new File(["image"], "商品主图.png", { type: "image/png" }),
+    );
+
+    expect(screen.getByText("正在校验图片")).toBeInTheDocument();
+
+    await user.upload(
+      fileInput,
+      new File([new Uint8Array(5 * 1024 * 1024 + 1)], "超大图片.png", {
+        type: "image/png",
+      }),
+    );
+
+    expect(await screen.findByText("图片大小不能超过 5MB")).toBeInTheDocument();
+    expect(screen.queryByText("正在校验图片")).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "已选择图片" })).not.toBeInTheDocument();
+
+    resolvePendingImageLoad?.();
+    await Promise.resolve();
+
+    expect(screen.queryByText("正在校验图片")).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "已选择图片" })).not.toBeInTheDocument();
+  });
+
+  it("rejects image knowledge files larger than 5MB", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
+    );
+
+    await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
+    await user.click(screen.getByRole("button", { name: "添加知识" }));
+    await user.click(screen.getByRole("menuitem", { name: /图片/ }));
+    await user.upload(
+      screen.getByLabelText("选择图片知识文件"),
+      new File([new Uint8Array(5 * 1024 * 1024 + 1)], "超大图片.png", {
+        type: "image/png",
+      }),
+    );
+
+    expect(await screen.findByText("图片大小不能超过 5MB")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "已选择图片" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "确认提交" })).toBeDisabled();
+  });
+
+  it("rejects image knowledge files outside the allowed dimensions", async () => {
+    const user = userEvent.setup();
+
+    mockImageDimensions = { height: 9, width: 800 };
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
+    );
+
+    await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
+    await user.click(screen.getByRole("button", { name: "添加知识" }));
+    await user.click(screen.getByRole("menuitem", { name: /图片/ }));
+    await user.upload(
+      screen.getByLabelText("选择图片知识文件"),
+      new File(["image"], "尺寸过小.png", { type: "image/png" }),
+    );
+
+    expect(await screen.findByText("图片宽高必须在 10 到 6000 像素范围内")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "已选择图片" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "确认提交" })).toBeDisabled();
   });
 
   it("limits knowledge base creation fields", async () => {
     const user = userEvent.setup();
 
-    renderWithRoute("/chat/ai-hosting/knowledge", <KnowledgeBasePage />);
+    renderWithRoute("/chat/ai-hosting/kb", <KbListPage />);
 
     await user.click(await screen.findByRole("button", { name: "创建知识库" }));
 
@@ -357,7 +1070,7 @@ describe("AI hosting pages", () => {
   it("shows knowledge base name character count", async () => {
     const user = userEvent.setup();
 
-    renderWithRoute("/chat/ai-hosting/knowledge", <KnowledgeBasePage />);
+    renderWithRoute("/chat/ai-hosting/kb", <KbListPage />);
 
     await user.click(await screen.findByRole("button", { name: "创建知识库" }));
 

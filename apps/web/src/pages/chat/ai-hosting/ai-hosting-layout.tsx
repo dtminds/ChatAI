@@ -22,7 +22,7 @@ const aiHostingNavItems = [
   {
     icon: AiBookIcon,
     label: "知识库",
-    to: "/chat/ai-hosting/knowledge",
+    to: "/chat/ai-hosting/kb",
   },
   {
     icon: UserAiIcon,
@@ -44,7 +44,7 @@ export function AiHostingLayout({
         <aside className="flex h-full min-h-0 flex-col bg-sidebar px-4 py-5 text-sidebar-foreground max-lg:hidden">
           <Button
             asChild
-            className="mb-5 h-10 justify-start rounded-[8px] px-2 text-[14px] font-normal text-muted-foreground hover:text-foreground"
+            className="mb-5 h-10 justify-start rounded-[8px] px-2 text-[14px] font-normal text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
             variant="ghost"
           >
             <Link aria-label="返回工作台" to="/chat">

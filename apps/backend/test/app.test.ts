@@ -862,7 +862,6 @@ describe("backend app", () => {
       },
       method: "POST",
       payload: {
-        clientMessageId: "csrf-check-001",
         content: "blocked",
         contentType: "text",
         conversationId: "conv-001",
@@ -2337,7 +2336,6 @@ describe("backend app", () => {
       headers: { authorization },
       method: "POST",
       payload: {
-        clientMessageId: "local-sort-test-001",
         content: "未置顶会话的新消息",
         contentType: "text",
         conversationId: "conv-002",
@@ -2547,7 +2545,6 @@ describe("backend app", () => {
       headers: { authorization },
       method: "POST",
       payload: {
-        clientMessageId: "local-test-001",
         content: "后端 mock 发送测试",
         contentType: "text",
         conversationId: "conv-001",
@@ -2562,9 +2559,9 @@ describe("backend app", () => {
     });
 
     expect(send.statusCode).toBe(200);
+    const sendBody = send.json<{ optNo: string; status: string }>();
     expect(send.json()).toMatchObject({
-      clientMessageId: "local-test-001",
-      optNo: "local-test-001",
+      optNo: expect.stringMatching(/^opt-\d+$/),
       status: "accepted",
     });
     expect(poll.statusCode).toBe(200);
@@ -2575,19 +2572,19 @@ describe("backend app", () => {
     });
     expect(poll.json().activeConversationMessages).toMatchObject([
       {
-        clientMessageId: "local-test-001",
         conversationId: "conv-001",
+        optNo: sendBody.optNo,
         status: "sent",
       },
     ]);
     expect(
       poll.json().activeConversationMessages.some(
-        (message) => message.clientMessageId === "local-test-001",
+        (message) => message.optNo === sendBody.optNo,
       ),
     ).toBe(true);
     expect(poll.json().activeConversationMessages[0]).toMatchObject({
-      clientMessageId: "local-test-001",
       conversationId: "conv-001",
+      optNo: sendBody.optNo,
       status: "sent",
     });
 
@@ -2618,7 +2615,6 @@ describe("backend app", () => {
       headers: { authorization },
       method: "POST",
       payload: {
-        clientMessageId: "local-revoke-001",
         content: "这条消息马上撤回",
         contentType: "text",
         conversationId: "conv-001",
@@ -2631,10 +2627,11 @@ describe("backend app", () => {
       method: "GET",
       url: "/api/server/poll?since_version=1284&current_seat_id=drc&active_conversation_id=conv-001&active_message_seq=0",
     });
+    const revokeSendOptNo = send.json<{ optNo: string }>().optNo;
     const sentMessage = pollBeforeRevoke
-      .json<{ activeConversationMessages: Array<{ clientMessageId?: string; seq: number }> }>()
+      .json<{ activeConversationMessages: Array<{ optNo?: string; seq: number }> }>()
       .activeConversationMessages.find(
-        (message) => message.clientMessageId === "local-revoke-001",
+        (message) => message.optNo === revokeSendOptNo,
       );
 
     expect(sentMessage?.seq).toBeGreaterThan(0);
@@ -2710,7 +2707,6 @@ describe("backend app", () => {
       headers: { authorization },
       method: "POST",
       payload: {
-        clientMessageId: "local-segment-test-001",
         conversationId: "conv-001",
         seatId: "drc",
         segments: [
@@ -2745,44 +2741,46 @@ describe("backend app", () => {
     });
 
     expect(send.statusCode).toBe(200);
-    expect(send.json().messages).toMatchObject([
+    const segmentAckMessages = send.json<{ messages: Array<{ optNo: string }> }>().messages;
+    expect(segmentAckMessages).toMatchObject([
       {
-        clientMessageId: "local-segment-test-001",
+        optNo: expect.stringMatching(/^opt-\d+$/),
         status: "accepted",
       },
       {
-        clientMessageId: "local-segment-test-001_2",
+        optNo: expect.stringMatching(/^opt-\d+$/),
         status: "accepted",
       },
       {
-        clientMessageId: "local-segment-test-001_3",
+        optNo: expect.stringMatching(/^opt-\d+$/),
         status: "accepted",
       },
     ]);
+    expect(new Set(segmentAckMessages.map((message) => message.optNo)).size).toBe(3);
     expect(poll.statusCode).toBe(200);
     expect(messages.statusCode).toBe(200);
     expect(messages.json().messages.slice(-3)).toMatchObject([
       {
-        clientMessageId: "local-segment-test-001",
         content: {
           text: "第一段[打脸]",
         },
         contentType: "text",
+        optNo: segmentAckMessages[0]?.optNo,
       },
       {
-        clientMessageId: "local-segment-test-001_2",
         content: {
           alt: "截图",
           imageUrl: "data:image/png;base64,abc",
         },
         contentType: "image",
+        optNo: segmentAckMessages[1]?.optNo,
       },
       {
-        clientMessageId: "local-segment-test-001_3",
         content: {
           text: "第二段[强]",
         },
         contentType: "text",
+        optNo: segmentAckMessages[2]?.optNo,
       },
     ]);
 
@@ -2796,7 +2794,6 @@ describe("backend app", () => {
       headers: { authorization },
       method: "POST",
       payload: {
-        clientMessageId: "local-seat-mismatch-001",
         content: "错误席位不能发送",
         contentType: "text",
         conversationId: "conv-001",
@@ -2823,7 +2820,6 @@ describe("backend app", () => {
       headers: { authorization },
       method: "POST",
       payload: {
-        clientMessageId: "viewer-send-001",
         content: "只读客服不能发送",
         contentType: "text",
         conversationId: "conv-001",

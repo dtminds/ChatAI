@@ -276,7 +276,6 @@ type BaseMessage = {
   author: string;
   sentAt: string;
   status: MessageStatus;
-  clientMessageId?: string;
   isNew?: boolean;
   optNo?: string;
   rawMsgtype?: string;

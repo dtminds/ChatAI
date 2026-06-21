@@ -123,7 +123,6 @@ export type JavaSendMessageData =
     } & JavaMentionFields);
 
 export type JavaSendMessageInput = {
-  clientMessageId: string;
   failMsgId?: number;
   msgData: JavaSendMessageData;
   platform: number;
@@ -662,7 +661,6 @@ export function createWorkbenchJavaClient(
       const optNo = readJavaOptNo(response);
 
       return {
-        clientMessageId: input.clientMessageId,
         optNo,
         status: "accepted",
       };

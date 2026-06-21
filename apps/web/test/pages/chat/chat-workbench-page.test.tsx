@@ -793,7 +793,7 @@ describe("ChatWorkbenchPage", () => {
               message.uiMessageKey === "8"
                 ? {
                     ...message,
-                    clientMessageId: "remounted-msg-009",
+                    optNo: "opt-remounted-msg-009",
                   }
                 : message,
           ),
@@ -1038,7 +1038,6 @@ describe("ChatWorkbenchPage", () => {
     expect(retryingButton).toHaveAttribute("aria-busy", "true");
 
     retrySendGate.resolve({
-      clientMessageId: "retry-local-001",
       optNo: "retry-opt-001",
       status: "accepted",
     });

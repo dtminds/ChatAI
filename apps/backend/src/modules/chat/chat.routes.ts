@@ -231,7 +231,6 @@ const PollQuerySchema = Type.Object({
 });
 
 const SendMessageBodySchema = Type.Object({
-  clientMessageId: Type.String(),
   content: Type.Optional(Type.String()),
   contentType: Type.Optional(Type.Literal("text")),
   conversationId: Type.String(),

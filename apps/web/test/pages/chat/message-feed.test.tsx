@@ -804,10 +804,8 @@ describe("message feed row actions", () => {
   it("keeps the feed item key stable after optimistic messages are reconciled", () => {
     const optimisticMessage = {
       ...createTextMessage("已确认消息"),
-      clientMessageId: "local-001",
-      uiMessageKey: "local-001",
+      uiMessageKey: "opt-001",
       optNo: "opt-001",
-      msgid: "opt-001",
       status: "accepted",
     } satisfies ChatMessage;
     const reconciledMessage = {
@@ -956,8 +954,8 @@ describe("message feed row actions", () => {
           },
           {
             ...createTextMessage("新客服消息"),
-            clientMessageId: "local-001",
-            uiMessageKey: "local-001",
+            optNo: "opt-001",
+            uiMessageKey: "opt-001",
             isNew: true,
             isOwnMessage: true,
             status: "accepted",
@@ -981,7 +979,7 @@ describe("message feed row actions", () => {
           },
           {
             ...createTextMessage("新客服消息"),
-            clientMessageId: "local-001",
+            optNo: "opt-001",
             uiMessageKey: "remote-001",
             isNew: true,
             isOwnMessage: true,

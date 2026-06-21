@@ -335,7 +335,6 @@ export type WorkbenchMessageBaseDto = {
   content: Record<string, unknown>;
   createdAt?: number;
   seq: number;
-  clientMessageId?: string;
   optNo?: string;
   failReason?: string;
   isRevoked?: boolean;
@@ -701,7 +700,6 @@ export type WorkbenchOutgoingMessageSegment =
 export type WorkbenchSendMessagePayload = {
   seatId: string;
   conversationId: string;
-  clientMessageId: string;
   failMsgId?: string;
   contentType?: "text";
   content?: string;
@@ -720,13 +718,11 @@ export type WorkbenchSendMessagePayload = {
 };
 
 export type WorkbenchSentMessageAck = {
-  clientMessageId: string;
   optNo: string;
   status: "accepted";
 };
 
 export type WorkbenchSendMessageResponse = {
-  clientMessageId: string;
   optNo: string;
   status: "accepted";
   messages?: WorkbenchSentMessageAck[];

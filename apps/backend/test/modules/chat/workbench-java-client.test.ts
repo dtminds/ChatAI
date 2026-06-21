@@ -654,7 +654,6 @@ describe("createWorkbenchJavaClient", () => {
 
     await expect(
       createWorkbenchJavaClient().sendMessage({
-        clientMessageId: "local-001",
         msgData: {
           msgtype: "text",
           text: "今天统一看群公告",
@@ -667,7 +666,6 @@ describe("createWorkbenchJavaClient", () => {
         uid: 9001,
       }),
     ).resolves.toEqual({
-      clientMessageId: "local-001",
       optNo: "opt-001",
       status: "accepted",
     });
@@ -710,7 +708,6 @@ describe("createWorkbenchJavaClient", () => {
 
     await expect(
       createWorkbenchJavaClient().sendMessage({
-        clientMessageId: "local-001",
         msgData: {
           msgtype: "text",
           text: "今天统一看群公告",
@@ -747,7 +744,6 @@ describe("createWorkbenchJavaClient", () => {
     );
 
     await createWorkbenchJavaClient().sendMessage({
-      clientMessageId: "local-retry-001",
       failMsgId: 538,
       msgData: {
         msgtype: "text",
@@ -800,7 +796,6 @@ describe("createWorkbenchJavaClient", () => {
     );
 
     await createWorkbenchJavaClient().sendMessage({
-      clientMessageId: "local-quote-001",
       msgData: {
         msgtype: "quote",
         quoteMsgId: 538,
@@ -853,7 +848,6 @@ describe("createWorkbenchJavaClient", () => {
     );
 
     await createWorkbenchJavaClient().sendMessage({
-      clientMessageId: "local-link-001",
       msgData: {
         coverUrl: "https://example.com/cover.png",
         desc: "恭喜发财，大吉大利",

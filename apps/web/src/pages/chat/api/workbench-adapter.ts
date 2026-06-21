@@ -99,7 +99,6 @@ export function adaptMessage(
 
   if (dto.contentType === "revoke") {
     return {
-      clientMessageId: dto.clientMessageId,
       content: {
         revokeMsgId: asOptionalString(dto.content.revokeMsgId),
         revokeOriginMsgId: asOptionalString(dto.content.revokeOriginMsgId),
@@ -123,7 +122,6 @@ export function adaptMessage(
 
   if (dto.contentType === "system" || dto.senderType === "system") {
     return {
-      clientMessageId: dto.clientMessageId,
       content: {
         text: readSystemMessageText(dto.content),
         type: "system",
@@ -175,7 +173,6 @@ export function adaptMessage(
 
   return {
     author: senderName,
-    clientMessageId: dto.clientMessageId,
     content,
     conversationId: dto.conversationId,
     isGroupConversation,
@@ -208,7 +205,7 @@ export function adaptMessage(
 function getMessageUiKey(dto: WorkbenchMessageDto) {
   return Number.isSafeInteger(dto.seq) && dto.seq > 0
     ? String(dto.seq)
-    : (dto.clientMessageId ?? dto.optNo ?? dto.msgid ?? "");
+    : (dto.optNo ?? dto.msgid ?? "");
 }
 
 function readSystemMessageText(content: Record<string, unknown>) {

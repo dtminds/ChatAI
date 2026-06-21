@@ -165,7 +165,6 @@ describe("adaptMessage", () => {
       adaptMessage(
         {
           ...messageDto,
-          clientMessageId: undefined,
           msgid: undefined,
           optNo: undefined,
           seq: 0,
@@ -815,7 +814,6 @@ const conversationDto: WorkbenchConversationSummaryDto = {
 };
 
 const messageDto = {
-  clientMessageId: undefined,
   content: {
     text: "hello",
   },

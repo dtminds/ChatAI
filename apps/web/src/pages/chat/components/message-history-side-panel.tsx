@@ -501,7 +501,7 @@ export function HistoryCompactMessageList({
           className="flex w-full max-w-full min-w-0 flex-col items-start gap-1.5"
           data-scroll-anchor={message.uiMessageKey}
           data-testid="history-message-item"
-          key={message.clientMessageId ?? message.optNo ?? message.uiMessageKey}
+          key={message.optNo ?? message.uiMessageKey}
         >
           <div
             className="flex w-full max-w-full min-w-0 items-center gap-2"

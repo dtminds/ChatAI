@@ -1741,11 +1741,9 @@ export function createMockWorkbenchService(): WorkbenchService {
       const outcome = resolveSendOutcome(state, payload.seatId, segments);
       let hasAppliedQuote = false;
       const backendMessages = segments.map((segment, index) => {
-        const msgid = `msg-server-${state.nextId++}`;
-        const segmentClientMessageId = buildSegmentClientMessageId(
-          payload.clientMessageId,
-          index,
-        );
+        const messageId = state.nextId++;
+        const msgid = `msg-server-${messageId}`;
+        const segmentOptNo = buildMockOptNo(messageId);
         const nextSeq = getNextMessageSeq(state, payload.conversationId) + index;
         const quoteForSegment =
           !hasAppliedQuote && segment.type === "text" ? payload.quote : undefined;
@@ -1753,7 +1751,6 @@ export function createMockWorkbenchService(): WorkbenchService {
 
         return {
           seatId: payload.seatId,
-          clientMessageId: segmentClientMessageId,
           content: buildPayloadSegmentContent(state, segment, quoteForSegment),
           contentType: quoteForSegment
             ? "quote"
@@ -1763,7 +1760,7 @@ export function createMockWorkbenchService(): WorkbenchService {
           customerId: conversation.customerId,
           failReason: outcome.reason,
           msgid,
-          optNo: segmentClientMessageId,
+          optNo: segmentOptNo,
           rawMsgtype: quoteForSegment ? "quote" : getPayloadSegmentRawMsgtype(segment),
           senderType: "agent" as const,
           seq: nextSeq,
@@ -1792,11 +1789,9 @@ export function createMockWorkbenchService(): WorkbenchService {
       });
 
       return {
-        clientMessageId: payload.clientMessageId,
-        optNo: backendMessages[0]?.optNo ?? payload.clientMessageId,
+        optNo: backendMessages[0]?.optNo ?? "",
         messages: backendMessages.map((message) => ({
-          clientMessageId: message.clientMessageId ?? payload.clientMessageId,
-          optNo: message.optNo ?? message.clientMessageId ?? payload.clientMessageId,
+          optNo: message.optNo ?? "",
           status: "accepted" as const,
         })),
         status: "accepted",
@@ -2744,7 +2739,6 @@ function buildMessageDto({
 
   return {
     seatId,
-    clientMessageId: message.clientMessageId,
     content: buildContent(message),
     contentType: message.content.type,
     conversationId: message.conversationId,
@@ -3688,8 +3682,8 @@ function getPayloadPreview(segments: ReturnType<typeof getPayloadSegments>) {
   return segments.some((segment) => segment.type === "sphfeed") ? "[视频号]" : "";
 }
 
-function buildSegmentClientMessageId(clientMessageId: string, index: number) {
-  return index === 0 ? clientMessageId : `${clientMessageId}_${index + 1}`;
+function buildMockOptNo(messageId: number) {
+  return `opt-${messageId}`;
 }
 
 function resolveSendOutcome(

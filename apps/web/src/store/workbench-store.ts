@@ -739,7 +739,6 @@ function upsertMessageList(
         senderDisplayName:
           nextMessage.senderDisplayName ?? currentMessage.senderDisplayName,
         author: nextMessage.author || currentMessage.author,
-        clientMessageId: nextMessage.clientMessageId ?? currentMessage.clientMessageId,
       };
       continue;
     }
@@ -1537,7 +1536,6 @@ function patchExistingMessageList(
     merged[existingIndex] = {
       ...currentMessage,
       ...refreshedMessage,
-      clientMessageId: refreshedMessage.clientMessageId ?? currentMessage.clientMessageId,
       revokePending: refreshedMessage.isRevoked
         ? false
         : currentMessage.revokePending,
@@ -1749,9 +1747,6 @@ function isSameMessage(left: Message, right: Message) {
   return (
     (left.optNo && right.optNo && left.optNo === right.optNo) ||
     (left.seq != null && right.seq != null && left.seq === right.seq) ||
-    (left.clientMessageId &&
-      right.clientMessageId &&
-      left.clientMessageId === right.clientMessageId) ||
     (left.uiMessageKey.length > 0 && left.uiMessageKey === right.uiMessageKey)
   );
 }
@@ -1869,10 +1864,6 @@ function updateConversationPreview(
     updatedAt,
     updatedAtMs,
   });
-}
-
-function buildSegmentClientMessageId(clientMessageId: string, index: number) {
-  return index === 0 ? clientMessageId : `${clientMessageId}_${index + 1}`;
 }
 
 function buildOptimisticMessageContent(
@@ -4333,7 +4324,6 @@ export function createWorkbenchStore() {
         };
       }
       const timestamp = Date.now();
-      const clientMessageId = `local_${timestamp}_${Math.random().toString(36).slice(2, 6)}`;
 
       set((currentState) => ({
         sendStatusByConversationId: {
@@ -4384,7 +4374,6 @@ export function createWorkbenchStore() {
           const segmentForSend = segmentsForSend[index];
           const originalSegment = sendableSegments[index] ?? segmentForSend;
           const payloadSegment = toWorkbenchSendSegment(segmentForSend);
-          const segmentClientMessageId = buildSegmentClientMessageId(clientMessageId, index);
           const mentionForSegment: SendMentionPayload =
             !hasSentMention && segmentForSend.type === "text"
               ? options?.mention
@@ -4394,7 +4383,6 @@ export function createWorkbenchStore() {
           hasSentMention = hasSentMention || Boolean(mentionForSegment);
           hasSentQuote = hasSentQuote || Boolean(quoteForSegment);
           const response = await sendTextMessage({
-            clientMessageId: segmentClientMessageId,
             conversationId: activeConversationId,
             failMsgId: options?.failMsgId,
             mention: mentionForSegment,
@@ -4407,10 +4395,9 @@ export function createWorkbenchStore() {
             isGroupConversation: activeConversation.mode === "group",
             isOwnMessage: true,
             isNew: true,
-            clientMessageId: segmentClientMessageId,
             content: buildOptimisticMessageContent(originalSegment, quoteForSegment),
             conversationId: activeConversationId,
-            uiMessageKey: segmentClientMessageId,
+            uiMessageKey: response.optNo,
             optNo: response.optNo,
             role: "agent" as const,
             sender: {

@@ -284,7 +284,7 @@ export function ChatMessageList({
 }
 
 export function getMessageFeedItemKey(message: Message) {
-  return message.clientMessageId ?? message.optNo ?? message.uiMessageKey;
+  return message.optNo ?? message.uiMessageKey;
 }
 
 function getAppendStartIndex(

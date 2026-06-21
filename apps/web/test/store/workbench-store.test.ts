@@ -2505,7 +2505,6 @@ describe("useWorkbenchStore", () => {
         ...state.pendingMessages,
         {
           author: "客服一号",
-          clientMessageId: "client-pending-001",
           content: { text: "本地待发送消息", type: "text" },
           conversationId: "conv-001",
           uiMessageKey: "pending-001",
@@ -3824,7 +3823,6 @@ describe("useWorkbenchStore", () => {
     ).toBe(true);
 
     sendGate.resolve({
-      clientMessageId: "retry-local-001",
       optNo: "retry-opt-001",
       status: "accepted",
     });
@@ -4182,9 +4180,8 @@ describe("useWorkbenchStore", () => {
 
     setWorkbenchService({
       ...baseService,
-      async sendMessage(payload) {
+      async sendMessage() {
         return {
-          clientMessageId: payload.clientMessageId,
           optNo: "opt-refresh-001",
           status: "accepted",
         };
@@ -4210,7 +4207,6 @@ describe("useWorkbenchStore", () => {
           return {
             messages: [
               {
-                clientMessageId: undefined,
                 content: {
                   text: "服务端刷新后的文本",
                 },
@@ -4258,7 +4254,6 @@ describe("useWorkbenchStore", () => {
 
     expect(patchedMatches).toHaveLength(1);
     expect(patchedMatches[0]).toMatchObject({
-      clientMessageId: optimisticMessage?.clientMessageId,
       content: {
         text: "服务端刷新后的文本",
         type: "text",
@@ -4280,7 +4275,6 @@ describe("useWorkbenchStore", () => {
         return {
           activeConversationMessages: [
             {
-              clientMessageId: undefined,
               content: { text: "远端空 key 消息" },
               contentType: "text",
               conversationId: "conv-001",

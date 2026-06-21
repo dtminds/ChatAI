@@ -1815,7 +1815,6 @@ export class MysqlWorkbenchService implements WorkbenchService {
     const segment = getSingleSendSegment(payload);
     const failMsgId = getRetryFailMsgId(payload);
     const response = await this.javaClient.sendMessage({
-      clientMessageId: payload.clientMessageId,
       ...(failMsgId != null ? { failMsgId } : {}),
       msgData: await this.buildJavaSendMessageData(
         conversation.uid,
@@ -1836,7 +1835,6 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     this.logger.info(
       {
-        clientMessageId: payload.clientMessageId,
         conversationId: conversation.id,
         messageType: segment.type,
         operation: "send-message",

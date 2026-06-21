@@ -32,22 +32,17 @@ describe("workbench message merge state", () => {
 
   it("merges optimistic and remote messages into one stable feed item", async () => {
     const baseService = createMockWorkbenchService();
-    let observedClientMessageId = "";
 
     setWorkbenchService({
       ...baseService,
-      async sendMessage(payload) {
-        observedClientMessageId = payload.clientMessageId;
-
+      async sendMessage() {
         return {
-          clientMessageId: payload.clientMessageId,
           optNo: "opt-stable-001",
           status: "accepted",
         };
       },
       async poll() {
         const remoteMessage = {
-          clientMessageId: undefined,
           content: {
             text: "服务端确认文本",
           },
@@ -84,8 +79,7 @@ describe("workbench message merge state", () => {
 
     expect(optimisticMessages).toHaveLength(initialCount + 1);
     expect(optimisticMessage).toMatchObject({
-      clientMessageId: observedClientMessageId,
-      uiMessageKey: observedClientMessageId,
+      uiMessageKey: "opt-stable-001",
       optNo: "opt-stable-001",
       status: "accepted",
     });
@@ -99,14 +93,12 @@ describe("workbench message merge state", () => {
     const mergedMatches = mergedMessages.filter(
       (message) =>
         message.optNo === "opt-stable-001" ||
-        message.msgid === "remote-stable-001" ||
-        message.uiMessageKey === observedClientMessageId,
+        message.msgid === "remote-stable-001",
     );
 
     expect(mergedMessages).toHaveLength(initialCount + 1);
     expect(mergedMatches).toHaveLength(1);
     expect(mergedMatches[0]).toMatchObject({
-      clientMessageId: observedClientMessageId,
       content: {
         text: "服务端确认文本",
         type: "text",
@@ -130,15 +122,11 @@ describe("workbench message merge state", () => {
 
   it("marks optimistic messages failed when polled audit messages match by optNo", async () => {
     const baseService = createMockWorkbenchService();
-    let observedClientMessageId = "";
 
     setWorkbenchService({
       ...baseService,
-      async sendMessage(payload) {
-        observedClientMessageId = payload.clientMessageId;
-
+      async sendMessage() {
         return {
-          clientMessageId: payload.clientMessageId,
           optNo: "opt-failed-001",
           status: "accepted",
         };
@@ -147,7 +135,6 @@ describe("workbench message merge state", () => {
         return {
           activeConversationMessages: [
             {
-              clientMessageId: undefined,
               content: {
                 text: "发送失败文本",
               },
@@ -185,14 +172,12 @@ describe("workbench message merge state", () => {
     const failedMatches = mergedMessages.filter(
       (message) =>
         message.optNo === "opt-failed-001" ||
-        message.msgid === "remote-failed-001" ||
-        message.uiMessageKey === observedClientMessageId,
+        message.msgid === "remote-failed-001",
     );
 
     expect(mergedMessages).toHaveLength(initialCount + 1);
     expect(failedMatches).toHaveLength(1);
     expect(failedMatches[0]).toMatchObject({
-      clientMessageId: observedClientMessageId,
       uiMessageKey: "999",
       optNo: "opt-failed-001",
       msgid: "remote-failed-001",
@@ -207,11 +192,10 @@ describe("workbench message merge state", () => {
 
     setWorkbenchService({
       ...baseService,
-      async sendMessage(payload) {
+      async sendMessage() {
         sendIndex += 1;
 
         return {
-          clientMessageId: payload.clientMessageId,
           optNo: `opt-${sendIndex}`,
           status: "accepted",
         };
@@ -220,7 +204,6 @@ describe("workbench message merge state", () => {
         return {
           activeConversationMessages: [
             {
-              clientMessageId: undefined,
               content: {
                 text: "服务端文本",
               },
@@ -393,9 +376,8 @@ describe("workbench message merge state", () => {
 
     setWorkbenchService({
       ...baseService,
-      async sendMessage(payload) {
+      async sendMessage() {
         return {
-          clientMessageId: payload.clientMessageId,
           optNo: "opt-new-001",
           status: "accepted",
         };

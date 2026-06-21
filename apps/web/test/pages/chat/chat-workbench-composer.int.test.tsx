@@ -851,7 +851,6 @@ describe("ChatWorkbenchPage composer flows", () => {
     ).toBeInTheDocument();
 
     sendGate.resolve({
-      clientMessageId: "local-expression-001",
       optNo: "opt-expression-sent-001",
       status: "accepted",
     });
@@ -2047,12 +2046,10 @@ describe("ChatWorkbenchPage composer flows", () => {
     });
 
     sendMessageGate.resolve({
-      clientMessageId: "client-msg-test",
-      optNo: "client-msg-test",
+      optNo: "opt-msg-test",
       messages: [
         {
-          clientMessageId: "client-msg-test",
-          optNo: "client-msg-test",
+          optNo: "opt-msg-test",
           status: "accepted",
         },
       ],
@@ -2140,12 +2137,10 @@ describe("ChatWorkbenchPage composer flows", () => {
     });
 
     sendMessageGate.resolve({
-      clientMessageId: "client-msg-test",
-      optNo: "client-msg-test",
+      optNo: "opt-msg-test",
       messages: [
         {
-          clientMessageId: "client-msg-test",
-          optNo: "client-msg-test",
+          optNo: "opt-msg-test",
           status: "accepted",
         },
       ],

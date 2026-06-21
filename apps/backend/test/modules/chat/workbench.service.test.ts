@@ -2508,7 +2508,6 @@ describe("MysqlWorkbenchService", () => {
   it("maps a group text send with mentions to the Java send-message payload", async () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.sendMessage).mockResolvedValue({
-      clientMessageId: "local-001",
       optNo: "opt-001",
       status: "accepted",
     });
@@ -2531,7 +2530,6 @@ describe("MysqlWorkbenchService", () => {
 
     await expect(
       service.sendMessage("101", {
-        clientMessageId: "local-001",
         conversationId: "88",
         mention: {
           location: "end",
@@ -2544,12 +2542,10 @@ describe("MysqlWorkbenchService", () => {
         },
       }),
     ).resolves.toEqual({
-      clientMessageId: "local-001",
       optNo: "opt-001",
       status: "accepted",
     });
     expect(javaClient.sendMessage).toHaveBeenCalledWith({
-      clientMessageId: "local-001",
       msgData: {
         atLocation: 1,
         atWxSerialNos: ["member-user", "member-rui"],
@@ -2570,7 +2566,6 @@ describe("MysqlWorkbenchService", () => {
   it("maps a group text send with mention-all to the Java send-message payload", async () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.sendMessage).mockResolvedValue({
-      clientMessageId: "local-all-001",
       optNo: "opt-all-001",
       status: "accepted",
     });
@@ -2591,7 +2586,6 @@ describe("MysqlWorkbenchService", () => {
     );
 
     await service.sendMessage("101", {
-      clientMessageId: "local-all-001",
       conversationId: "88",
       mention: {
         all: true,
@@ -2606,7 +2600,6 @@ describe("MysqlWorkbenchService", () => {
     });
 
     expect(javaClient.sendMessage).toHaveBeenCalledWith({
-      clientMessageId: "local-all-001",
       msgData: {
         atLocation: 0,
         isHit: 1,
@@ -2625,7 +2618,6 @@ describe("MysqlWorkbenchService", () => {
   it("passes failMsgId to Java when retrying a failed message", async () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.sendMessage).mockResolvedValue({
-      clientMessageId: "local-retry-001",
       optNo: "opt-retry-001",
       status: "accepted",
     });
@@ -2646,7 +2638,6 @@ describe("MysqlWorkbenchService", () => {
     );
 
     await service.sendMessage("101", {
-      clientMessageId: "local-retry-001",
       conversationId: "88",
       failMsgId: "538",
       seatId: "12",
@@ -2657,7 +2648,6 @@ describe("MysqlWorkbenchService", () => {
     });
 
     expect(javaClient.sendMessage).toHaveBeenCalledWith({
-      clientMessageId: "local-retry-001",
       failMsgId: 538,
       msgData: {
         msgtype: "text",
@@ -2675,7 +2665,6 @@ describe("MysqlWorkbenchService", () => {
   it("maps a quoted text send to the Java local quote payload", async () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.sendMessage).mockResolvedValue({
-      clientMessageId: "local-quote-001",
       optNo: "opt-quote-001",
       status: "accepted",
     });
@@ -2696,7 +2685,6 @@ describe("MysqlWorkbenchService", () => {
     );
 
     await service.sendMessage("101", {
-      clientMessageId: "local-quote-001",
       conversationId: "88",
       quote: {
         quoteMsgId: "538",
@@ -2710,7 +2698,6 @@ describe("MysqlWorkbenchService", () => {
     });
 
     expect(javaClient.sendMessage).toHaveBeenCalledWith({
-      clientMessageId: "local-quote-001",
       msgData: {
         msgtype: "quote",
         quoteMsgId: 538,
@@ -2728,7 +2715,6 @@ describe("MysqlWorkbenchService", () => {
   it("maps a single-chat image send to the Java send-message payload", async () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.sendMessage).mockResolvedValue({
-      clientMessageId: "local-image-001",
       optNo: "opt-image-001",
       status: "accepted",
     });
@@ -2749,7 +2735,6 @@ describe("MysqlWorkbenchService", () => {
     );
 
     await service.sendMessage("101", {
-      clientMessageId: "local-image-001",
       conversationId: "88",
       seatId: "12",
       segment: {
@@ -2760,7 +2745,6 @@ describe("MysqlWorkbenchService", () => {
     });
 
     expect(javaClient.sendMessage).toHaveBeenCalledWith({
-      clientMessageId: "local-image-001",
       msgData: {
         fileUrl: "https://b5.bokr.com.cn/s5/upload/a.png",
         msgtype: "image",
@@ -2777,7 +2761,6 @@ describe("MysqlWorkbenchService", () => {
   it("ignores quote payload for image sends", async () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.sendMessage).mockResolvedValue({
-      clientMessageId: "local-image-quote-001",
       optNo: "opt-image-quote-001",
       status: "accepted",
     });
@@ -2798,7 +2781,6 @@ describe("MysqlWorkbenchService", () => {
     );
 
     await service.sendMessage("101", {
-      clientMessageId: "local-image-quote-001",
       conversationId: "88",
       quote: {
         quoteMsgId: "538",
@@ -2825,7 +2807,6 @@ describe("MysqlWorkbenchService", () => {
   it("maps a collected file material send to the Java file payload", async () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.sendMessage).mockResolvedValue({
-      clientMessageId: "local-file-001",
       optNo: "opt-file-001",
       status: "accepted",
     });
@@ -2854,7 +2835,6 @@ describe("MysqlWorkbenchService", () => {
     );
 
     await service.sendMessage("101", {
-      clientMessageId: "local-file-001",
       conversationId: "88",
       seatId: "12",
       segment: {
@@ -2869,7 +2849,6 @@ describe("MysqlWorkbenchService", () => {
       uid: 9001,
     });
     expect(javaClient.sendMessage).toHaveBeenCalledWith({
-      clientMessageId: "local-file-001",
       msgData: {
         fileName: "报价单.pdf",
         fileUrl: "https://b5.bokr.com.cn/chat-files/quote.pdf",
@@ -2887,7 +2866,6 @@ describe("MysqlWorkbenchService", () => {
   it("sends quick reply file snapshots from inline fields without material lookup", async () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.sendMessage).mockResolvedValue({
-      clientMessageId: "local-file-quick-reply-001",
       optNo: "opt-file-quick-reply-001",
       status: "accepted",
     });
@@ -2907,7 +2885,6 @@ describe("MysqlWorkbenchService", () => {
     const service = new MysqlWorkbenchService(repository, javaClient);
 
     await service.sendMessage("101", {
-      clientMessageId: "local-file-quick-reply-001",
       conversationId: "88",
       seatId: "12",
       segment: {
@@ -2919,7 +2896,6 @@ describe("MysqlWorkbenchService", () => {
 
     expect(repository.findMaterialCollectionForForward).not.toHaveBeenCalled();
     expect(javaClient.sendMessage).toHaveBeenCalledWith({
-      clientMessageId: "local-file-quick-reply-001",
       msgData: {
         fileName: "快捷话术报价单.pdf",
         fileUrl: "https://b5.bokr.com.cn/chat-files/quick-reply-quote.pdf",
@@ -2937,7 +2913,6 @@ describe("MysqlWorkbenchService", () => {
   it("maps a collected H5 material send to the Java link payload", async () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.sendMessage).mockResolvedValue({
-      clientMessageId: "local-h5-001",
       optNo: "opt-h5-001",
       status: "accepted",
     });
@@ -2967,7 +2942,6 @@ describe("MysqlWorkbenchService", () => {
     );
 
     await service.sendMessage("101", {
-      clientMessageId: "local-h5-001",
       conversationId: "88",
       seatId: "12",
       segment: {
@@ -2982,7 +2956,6 @@ describe("MysqlWorkbenchService", () => {
       uid: 9001,
     });
     expect(javaClient.sendMessage).toHaveBeenCalledWith({
-      clientMessageId: "local-h5-001",
       msgData: {
         coverUrl: "https://b5.bokr.com.cn/dist/default-cover.png",
         desc: "恭喜发财，大吉大利",
@@ -3002,7 +2975,6 @@ describe("MysqlWorkbenchService", () => {
   it("sends quick reply H5 snapshots from inline fields without material lookup", async () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.sendMessage).mockResolvedValue({
-      clientMessageId: "local-h5-quick-reply-001",
       optNo: "opt-h5-quick-reply-001",
       status: "accepted",
     });
@@ -3022,7 +2994,6 @@ describe("MysqlWorkbenchService", () => {
     const service = new MysqlWorkbenchService(repository, javaClient);
 
     await service.sendMessage("101", {
-      clientMessageId: "local-h5-quick-reply-001",
       conversationId: "88",
       seatId: "12",
       segment: {
@@ -3036,7 +3007,6 @@ describe("MysqlWorkbenchService", () => {
 
     expect(repository.findMaterialCollectionForForward).not.toHaveBeenCalled();
     expect(javaClient.sendMessage).toHaveBeenCalledWith({
-      clientMessageId: "local-h5-quick-reply-001",
       msgData: {
         coverUrl: "https://b5.bokr.com.cn/dist/quick-reply-cover.png",
         desc: "快捷话术说明",
@@ -3056,7 +3026,6 @@ describe("MysqlWorkbenchService", () => {
   it("uses the default cover when direct H5 link send has no cover", async () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.sendMessage).mockResolvedValue({
-      clientMessageId: "local-h5-default-cover-001",
       optNo: "opt-h5-default-cover-001",
       status: "accepted",
     });
@@ -3077,7 +3046,6 @@ describe("MysqlWorkbenchService", () => {
     );
 
     await service.sendMessage("101", {
-      clientMessageId: "local-h5-default-cover-001",
       conversationId: "88",
       seatId: "12",
       segment: {
@@ -3089,7 +3057,6 @@ describe("MysqlWorkbenchService", () => {
     });
 
     expect(javaClient.sendMessage).toHaveBeenCalledWith({
-      clientMessageId: "local-h5-default-cover-001",
       msgData: {
         coverUrl: "https://b5.bokr.com.cn/dist/default-cover.png",
         desc: "恭喜发财，大吉大利",
@@ -3109,7 +3076,6 @@ describe("MysqlWorkbenchService", () => {
   it("maps an expression material send to the Java emotion payload", async () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.sendMessage).mockResolvedValue({
-      clientMessageId: "local-emotion-001",
       optNo: "opt-emotion-001",
       status: "accepted",
     });
@@ -3137,7 +3103,6 @@ describe("MysqlWorkbenchService", () => {
     );
 
     await service.sendMessage("101", {
-      clientMessageId: "local-emotion-001",
       conversationId: "88",
       seatId: "12",
       segment: {
@@ -3153,7 +3118,6 @@ describe("MysqlWorkbenchService", () => {
       uid: 9001,
     });
     expect(javaClient.sendMessage).toHaveBeenCalledWith({
-      clientMessageId: "local-emotion-001",
       msgData: {
         fileUrl: "https://example.com/expression.gif",
         msgtype: "emotion",
@@ -3191,7 +3155,6 @@ describe("MysqlWorkbenchService", () => {
 
     await expect(
       service.sendMessage("101", {
-        clientMessageId: "local-emotion-invalid",
         conversationId: "88",
         seatId: "12",
         segment: {
@@ -3209,7 +3172,6 @@ describe("MysqlWorkbenchService", () => {
   it("maps a mini-program forward send to the Java send-message payload", async () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.sendMessage).mockResolvedValue({
-      clientMessageId: "local-weapp-001",
       optNo: "opt-weapp-001",
       status: "accepted",
     });
@@ -3234,7 +3196,6 @@ describe("MysqlWorkbenchService", () => {
     );
 
     await service.sendMessage("101", {
-      clientMessageId: "local-weapp-001",
       conversationId: "88",
       seatId: "12",
       segment: {
@@ -3249,7 +3210,6 @@ describe("MysqlWorkbenchService", () => {
       uid: 9001,
     });
     expect(javaClient.sendMessage).toHaveBeenCalledWith({
-      clientMessageId: "local-weapp-001",
       msgData: {
         msgtype: "weapp",
         transMsgInfoId: 9105,
@@ -3266,7 +3226,6 @@ describe("MysqlWorkbenchService", () => {
   it("forwards quick reply mini-program snapshots by msgInfoId without material lookup", async () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.sendMessage).mockResolvedValue({
-      clientMessageId: "local-weapp-quick-reply-001",
       optNo: "opt-weapp-quick-reply-001",
       status: "accepted",
     });
@@ -3286,7 +3245,6 @@ describe("MysqlWorkbenchService", () => {
     const service = new MysqlWorkbenchService(repository, javaClient);
 
     await service.sendMessage("101", {
-      clientMessageId: "local-weapp-quick-reply-001",
       conversationId: "88",
       seatId: "12",
       segment: {
@@ -3297,7 +3255,6 @@ describe("MysqlWorkbenchService", () => {
 
     expect(repository.findMaterialCollectionForForward).not.toHaveBeenCalled();
     expect(javaClient.sendMessage).toHaveBeenCalledWith({
-      clientMessageId: "local-weapp-quick-reply-001",
       msgData: {
         msgtype: "weapp",
         transMsgInfoId: 9106,
@@ -3335,7 +3292,6 @@ describe("MysqlWorkbenchService", () => {
 
     await expect(
       service.sendMessage("101", {
-        clientMessageId: "local-sphfeed-001",
         conversationId: "88",
         seatId: "12",
         segment: {
@@ -3372,7 +3328,6 @@ describe("MysqlWorkbenchService", () => {
 
     await expect(
       service.sendMessage("101", {
-        clientMessageId: "local-sphfeed-quick-reply-001",
         conversationId: "88",
         seatId: "12",
         segment: {
@@ -3411,7 +3366,6 @@ describe("MysqlWorkbenchService", () => {
 
     await expect(
       service.sendMessage("101", {
-        clientMessageId: "local-weapp-invalid",
         conversationId: "88",
         seatId: "12",
         segment: {
@@ -3449,7 +3403,6 @@ describe("MysqlWorkbenchService", () => {
 
     await expect(
       service.sendMessage("101", {
-        clientMessageId: "local-weapp-invalid",
         conversationId: "88",
         seatId: "12",
         segment: {
@@ -3467,7 +3420,6 @@ describe("MysqlWorkbenchService", () => {
   it("ignores quote payload for file sends", async () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.sendMessage).mockResolvedValue({
-      clientMessageId: "local-file-quote-001",
       optNo: "opt-file-quote-001",
       status: "accepted",
     });
@@ -3488,7 +3440,6 @@ describe("MysqlWorkbenchService", () => {
     );
 
     await service.sendMessage("101", {
-      clientMessageId: "local-file-quote-001",
       conversationId: "88",
       quote: {
         quoteMsgId: "538",
@@ -3535,7 +3486,6 @@ describe("MysqlWorkbenchService", () => {
 
     await expect(
       service.sendMessage("101", {
-        clientMessageId: "local-image-missing-url",
         conversationId: "88",
         seatId: "12",
         segment: {
@@ -3570,7 +3520,6 @@ describe("MysqlWorkbenchService", () => {
 
     await expect(
       service.sendMessage("101", {
-        clientMessageId: "local-multi-001",
         conversationId: "88",
         seatId: "12",
         segments: [

@@ -268,7 +268,7 @@ function ChatRecordDialogBody({
           <div className="space-y-4 px-5 py-4">
             {messages.map((message) => (
               <ChatRecordDetailMessage
-                key={message.clientMessageId ?? message.optNo ?? message.uiMessageKey}
+                key={message.optNo ?? message.uiMessageKey}
                 message={message}
               />
             ))}

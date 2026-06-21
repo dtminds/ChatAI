@@ -168,7 +168,12 @@ export function ImportQaDialog({
               </TooltipProvider>
             </div>
             <Button asChild variant="outline">
-              <a download href={QA_IMPORT_TEMPLATE_URL}>
+              <a
+                download
+                href={QA_IMPORT_TEMPLATE_URL}
+                rel="noopener noreferrer"
+                target="_blank"
+              >
                 <HugeiconsIcon
                   color="currentColor"
                   icon={Download01Icon}

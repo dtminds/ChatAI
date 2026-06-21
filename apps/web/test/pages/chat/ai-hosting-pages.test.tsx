@@ -548,6 +548,12 @@ describe("AI hosting pages", () => {
     expect(
       screen.getByRole("link", { name: "Q&A问答对示例.faq.xlsx" }),
     ).toHaveAttribute("download");
+    expect(
+      screen.getByRole("link", { name: "Q&A问答对示例.faq.xlsx" }),
+    ).toHaveAttribute("target", "_blank");
+    expect(
+      screen.getByRole("link", { name: "Q&A问答对示例.faq.xlsx" }),
+    ).toHaveAttribute("rel", "noopener noreferrer");
     expect(screen.getByRole("button", { name: "上传问答文件" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "查看导入说明" })).not.toHaveFocus();
     expect(screen.getByText("文档支持 .faq.xlsx，最多 30 个 sheet，文件行数总和不超过 30000 行")).toBeInTheDocument();

@@ -1,18 +1,31 @@
-import { useMemo, useState } from "react";
+import { type ComponentProps, useMemo, useRef, useState } from "react";
 import {
   Add01Icon,
   AlertCircleIcon,
   ArrowLeft01Icon,
+  Cancel01Icon,
   ChatQuestion01Icon,
   CheckmarkCircle02Icon,
+  Download01Icon,
   FileAttachmentIcon,
   FileImageIcon,
+  PlusSignIcon,
   Search01Icon,
+  Upload01Icon,
+  Xls01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Link, useParams } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,6 +33,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Table,
   TableBody,
@@ -35,6 +49,7 @@ import {
   resolveTablePagination,
   TablePagination,
 } from "@/components/ui/table-pagination";
+import { Textarea } from "@/components/ui/textarea";
 import { FileExtensionBadge } from "@/pages/chat/components/message/file";
 import { AiHostingLayout, AiHostingPageHeader } from "./ai-hosting-layout";
 import {
@@ -45,6 +60,15 @@ import {
 } from "./knowledge-base-mock-data";
 
 const PAGE_SIZE = 10;
+const QA_IMPORT_MAX_SHEETS = 30;
+const QA_IMPORT_MAX_ROWS = 30000;
+const QA_IMPORT_ACCEPT =
+  ".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+const IMAGE_KNOWLEDGE_MAX_FILE_SIZE = 5 * 1024 * 1024;
+const IMAGE_KNOWLEDGE_MIN_EDGE = 10;
+const IMAGE_KNOWLEDGE_MAX_EDGE = 6000;
+const IMAGE_KNOWLEDGE_NAME_MAX_LENGTH = 16;
+const IMAGE_KNOWLEDGE_ACCEPT = "image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp";
 
 const addKnowledgeOptions = [
   {
@@ -101,6 +125,8 @@ export function KnowledgeBaseManagementPage() {
     MOCK_KNOWLEDGE_BASES[0];
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+  const [qaImportDialogOpen, setQaImportDialogOpen] = useState(false);
+  const [imageDialogOpen, setImageDialogOpen] = useState(false);
 
   const filteredRecords = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
@@ -183,6 +209,15 @@ export function KnowledgeBaseManagementPage() {
                   <DropdownMenuItem
                     className="h-auto items-start gap-3 px-2.5 py-2.5"
                     key={option.label}
+                    onSelect={() => {
+                      if (option.label === "添加问答") {
+                        setQaImportDialogOpen(true);
+                      }
+
+                      if (option.label === "添加图片") {
+                        setImageDialogOpen(true);
+                      }
+                    }}
                   >
                     <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-[8px] bg-muted text-muted-foreground">
                       <HugeiconsIcon
@@ -218,6 +253,14 @@ export function KnowledgeBaseManagementPage() {
           </div>
         </section>
       </div>
+      <QaImportDialog
+        onOpenChange={setQaImportDialogOpen}
+        open={qaImportDialogOpen}
+      />
+      <ImageKnowledgeDialog
+        onOpenChange={setImageDialogOpen}
+        open={imageDialogOpen}
+      />
     </AiHostingLayout>
   );
 }
@@ -314,4 +357,551 @@ function KnowledgeStatusBadge({ status }: { status: KnowledgeStatus }) {
       <span>{meta.label}</span>
     </span>
   );
+}
+
+function ImageKnowledgeDialog({
+  onOpenChange,
+  open,
+}: {
+  onOpenChange: (open: boolean) => void;
+  open: boolean;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [selectedImage, setSelectedImage] = useState<File | null>(null);
+  const [imageName, setImageName] = useState("");
+  const [imageDescription, setImageDescription] = useState("");
+  const [imageError, setImageError] = useState("");
+  const [isCheckingImage, setIsCheckingImage] = useState(false);
+
+  const reset = () => {
+    setSelectedImage(null);
+    setImageName("");
+    setImageDescription("");
+    setImageError("");
+    setIsCheckingImage(false);
+
+    if (inputRef.current) {
+      inputRef.current.value = "";
+    }
+  };
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen) {
+      reset();
+    }
+
+    onOpenChange(nextOpen);
+  };
+
+  const handleImageSelect = async (file: File | undefined) => {
+    if (!file) {
+      return;
+    }
+
+    setSelectedImage(null);
+
+    if (!isSupportedImageKnowledgeFile(file)) {
+      setImageError("仅支持 jpg、jpeg、png、webp 格式的图片");
+      return;
+    }
+
+    if (file.size > IMAGE_KNOWLEDGE_MAX_FILE_SIZE) {
+      setImageError("图片大小不能超过 5MB");
+      return;
+    }
+
+    setImageError("");
+    setIsCheckingImage(true);
+
+    try {
+      const dimensions = await readImageDimensions(file);
+
+      if (
+        !isImageEdgeInRange(dimensions.width) ||
+        !isImageEdgeInRange(dimensions.height)
+      ) {
+        setImageError("图片宽高必须在 10 到 6000 像素范围内");
+        return;
+      }
+
+      setSelectedImage(file);
+
+      if (!imageName.trim()) {
+        setImageName(
+          stripFileExtension(file.name).slice(0, IMAGE_KNOWLEDGE_NAME_MAX_LENGTH),
+        );
+      }
+    } catch {
+      setImageError("图片读取失败，请重新选择图片");
+    } finally {
+      setIsCheckingImage(false);
+    }
+  };
+
+  const clearSelectedImage = () => {
+    setSelectedImage(null);
+    setImageError("");
+    setIsCheckingImage(false);
+
+    if (inputRef.current) {
+      inputRef.current.value = "";
+    }
+  };
+  const canSubmit = Boolean(
+    selectedImage &&
+      imageName.trim() &&
+      imageDescription.trim() &&
+      !isCheckingImage,
+  );
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="max-w-[640px]">
+        <DialogHeader>
+          <DialogTitle>添加图片知识</DialogTitle>
+          <DialogDescription className="sr-only">
+            上传图片并填写图片知识信息
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-5">
+          <div className="space-y-2.5">
+            <RequiredLabel htmlFor="knowledge-image-upload">上传图片</RequiredLabel>
+            <input
+              ref={inputRef}
+              accept={IMAGE_KNOWLEDGE_ACCEPT}
+              aria-label="选择图片知识文件"
+              className="sr-only"
+              id="knowledge-image-upload"
+              onChange={(event) =>
+                void handleImageSelect(event.currentTarget.files?.[0])
+              }
+              type="file"
+            />
+
+            {selectedImage ? (
+              <div
+                aria-label="已选择图片"
+                className="flex min-w-0 items-center gap-3 rounded-[8px] border bg-background px-3 py-2.5"
+                role="region"
+              >
+                <span className="flex size-10 shrink-0 items-center justify-center rounded-[8px] bg-primary/10 text-primary">
+                  <HugeiconsIcon
+                    color="currentColor"
+                    icon={FileImageIcon}
+                    size={19}
+                    strokeWidth={1.8}
+                  />
+                </span>
+                <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
+                  {selectedImage.name}（{formatFileSize(selectedImage.size)}）
+                </span>
+                <Button
+                  aria-label="移除已选择图片"
+                  className="size-8 shrink-0"
+                  onClick={clearSelectedImage}
+                  size="icon"
+                  type="button"
+                  variant="ghost"
+                >
+                  <HugeiconsIcon
+                    color="currentColor"
+                    icon={Cancel01Icon}
+                    size={16}
+                    strokeWidth={1.8}
+                  />
+                </Button>
+              </div>
+            ) : (
+              <button
+                className="flex size-28 flex-col items-center justify-center gap-2 rounded-[8px] border border-dashed border-border bg-muted/30 text-sm text-muted-foreground transition-colors hover:border-primary/60 hover:bg-primary/[0.03] hover:text-foreground focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/20"
+                onClick={() => inputRef.current?.click()}
+                type="button"
+              >
+                <HugeiconsIcon
+                  color="currentColor"
+                  icon={PlusSignIcon}
+                  size={24}
+                  strokeWidth={1.8}
+                />
+                上传图片
+              </button>
+            )}
+
+            {isCheckingImage ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <HugeiconsIcon
+                  color="currentColor"
+                  icon={AlertCircleIcon}
+                  size={16}
+                  strokeWidth={1.8}
+                />
+                正在校验图片
+              </div>
+            ) : null}
+
+            {imageError ? (
+              <div className="flex items-center gap-2 text-sm text-destructive">
+                <HugeiconsIcon
+                  color="currentColor"
+                  icon={AlertCircleIcon}
+                  size={16}
+                  strokeWidth={1.8}
+                />
+                {imageError}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="space-y-2.5">
+            <RequiredLabel htmlFor="knowledge-image-name">知识名称</RequiredLabel>
+            <div className="relative">
+              <Input
+                className="pr-14"
+                id="knowledge-image-name"
+                maxLength={IMAGE_KNOWLEDGE_NAME_MAX_LENGTH}
+                onChange={(event) => setImageName(event.target.value)}
+                placeholder="请输入知识名称"
+                value={imageName}
+              />
+              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+                {imageName.length}/{IMAGE_KNOWLEDGE_NAME_MAX_LENGTH}
+              </span>
+            </div>
+          </div>
+
+          <div className="space-y-2.5">
+            <RequiredLabel htmlFor="knowledge-image-description">图片描述</RequiredLabel>
+            <Textarea
+              id="knowledge-image-description"
+              onChange={(event) => setImageDescription(event.target.value)}
+              placeholder="描述会参与图片检索，可填写图片对应的商品说明、售卖亮点或价格等"
+              value={imageDescription}
+            />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button
+            onClick={() => handleOpenChange(false)}
+            type="button"
+            variant="outline"
+          >
+            取消
+          </Button>
+          <Button
+            disabled={!canSubmit}
+            onClick={() => handleOpenChange(false)}
+            type="button"
+          >
+            确认提交
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function QaImportDialog({
+  onOpenChange,
+  open,
+}: {
+  onOpenChange: (open: boolean) => void;
+  open: boolean;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [selectedFile, setSelectedFile] = useState<{
+    file: File;
+    rowCount: number;
+    sheetCount: number;
+  } | null>(null);
+  const [fileError, setFileError] = useState("");
+  const [isCheckingFile, setIsCheckingFile] = useState(false);
+
+  const reset = () => {
+    setSelectedFile(null);
+    setFileError("");
+    setIsCheckingFile(false);
+
+    if (inputRef.current) {
+      inputRef.current.value = "";
+    }
+  };
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen) {
+      reset();
+    }
+
+    onOpenChange(nextOpen);
+  };
+
+  const handleFileSelect = async (file: File | undefined) => {
+    if (!file) {
+      return;
+    }
+
+    setSelectedFile(null);
+
+    if (!file.name.toLowerCase().endsWith(".faq.xlsx")) {
+      setFileError("仅支持 .faq.xlsx 文件");
+      return;
+    }
+
+    setFileError("");
+    setIsCheckingFile(true);
+
+    try {
+      const { default: readXlsxFile } = await import("read-excel-file/browser");
+      const sheets = await readXlsxFile(file);
+      const sheetCount = sheets.length;
+      const rowCount = sheets.reduce((sum, sheet) => sum + sheet.data.length, 0);
+
+      if (sheetCount > QA_IMPORT_MAX_SHEETS) {
+        setFileError(`最多支持 ${QA_IMPORT_MAX_SHEETS} 个 sheet`);
+        return;
+      }
+
+      if (rowCount > QA_IMPORT_MAX_ROWS) {
+        setFileError(`文件行数总和不能超过 ${QA_IMPORT_MAX_ROWS} 行`);
+        return;
+      }
+
+      setSelectedFile({ file, rowCount, sheetCount });
+    } catch {
+      setFileError("文件解析失败，请确认文件为标准 .faq.xlsx");
+    } finally {
+      setIsCheckingFile(false);
+    }
+  };
+
+  const clearSelectedFile = () => {
+    setSelectedFile(null);
+    setFileError("");
+    setIsCheckingFile(false);
+
+    if (inputRef.current) {
+      inputRef.current.value = "";
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="max-w-[760px]">
+        <DialogHeader>
+          <DialogTitle>批量导入问答</DialogTitle>
+          <DialogDescription className="sr-only">
+            上传 Excel 文件批量导入问答
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3 text-sm text-muted-foreground">
+              <span className="flex size-7 shrink-0 items-center justify-center rounded-full border bg-muted/60 text-sm">
+                1
+              </span>
+              <span>下载模板</span>
+              <Button
+                className="h-auto px-0 font-normal"
+                type="button"
+                variant="link"
+              >
+                查看导入说明
+              </Button>
+            </div>
+            <Button type="button" variant="outline">
+              <HugeiconsIcon
+                color="currentColor"
+                icon={Download01Icon}
+                size={17}
+                strokeWidth={1.8}
+              />
+              下载模板
+            </Button>
+          </div>
+
+          <input
+            ref={inputRef}
+            accept={QA_IMPORT_ACCEPT}
+            aria-label="选择问答导入文件"
+            className="sr-only"
+            onChange={(event) =>
+              void handleFileSelect(event.currentTarget.files?.[0])
+            }
+            type="file"
+          />
+
+          <button
+            aria-label="上传问答文件"
+            className="flex min-h-40 w-full flex-col items-center justify-center rounded-[8px] border border-dashed border-border bg-muted/30 px-4 py-8 text-center transition-colors hover:border-primary/60 hover:bg-primary/[0.03] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/20"
+            onClick={() => inputRef.current?.click()}
+            onDragOver={(event) => {
+              event.preventDefault();
+            }}
+            onDrop={(event) => {
+              event.preventDefault();
+              void handleFileSelect(event.dataTransfer.files[0]);
+            }}
+            type="button"
+          >
+            <HugeiconsIcon
+              className="text-primary"
+              color="currentColor"
+              icon={Upload01Icon}
+              size={34}
+              strokeWidth={1.8}
+            />
+            <span className="mt-4 text-sm font-medium text-foreground">
+              点击或拖拽上传文件
+            </span>
+            <span className="mt-2 text-sm text-muted-foreground">
+              文档支持 .faq.xlsx，最多 30 个 sheet，文件行数总和不超过 30000 行
+            </span>
+          </button>
+
+          {isCheckingFile ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <HugeiconsIcon
+                color="currentColor"
+                icon={AlertCircleIcon}
+                size={16}
+                strokeWidth={1.8}
+              />
+              正在校验文件
+            </div>
+          ) : null}
+
+          {fileError ? (
+            <div className="flex items-center gap-2 text-sm text-destructive">
+              <HugeiconsIcon
+                color="currentColor"
+                icon={AlertCircleIcon}
+                size={16}
+                strokeWidth={1.8}
+              />
+              {fileError}
+            </div>
+          ) : null}
+
+          {selectedFile ? (
+            <div
+              aria-label="已选择文件"
+              className="flex min-w-0 items-center gap-3 rounded-[8px] border bg-background px-3 py-2.5"
+              role="region"
+            >
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-[6px] bg-emerald-50 text-emerald-600 dark:bg-emerald-500/12 dark:text-emerald-400">
+                <HugeiconsIcon
+                  color="currentColor"
+                  icon={Xls01Icon}
+                  size={18}
+                  strokeWidth={1.8}
+                />
+              </span>
+              <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
+                {selectedFile.file.name}（{formatFileSize(selectedFile.file.size)}，
+                共 {selectedFile.sheetCount} 个 sheet，{selectedFile.rowCount} 行）
+              </span>
+              <Button
+                aria-label="移除已选择文件"
+                className="size-8 shrink-0"
+                onClick={clearSelectedFile}
+                size="icon"
+                type="button"
+                variant="ghost"
+              >
+                <HugeiconsIcon
+                  color="currentColor"
+                  icon={Cancel01Icon}
+                  size={16}
+                  strokeWidth={1.8}
+                />
+              </Button>
+            </div>
+          ) : null}
+        </div>
+
+        <DialogFooter>
+          <Button
+            disabled={!selectedFile || isCheckingFile}
+            onClick={() => handleOpenChange(false)}
+            type="button"
+          >
+            导入文档
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function formatFileSize(size: number) {
+  if (size < 1024) {
+    return `${size}B`;
+  }
+
+  const kb = size / 1024;
+  if (kb < 1024) {
+    return `${formatFileSizeNumber(kb)}KB`;
+  }
+
+  return `${formatFileSizeNumber(kb / 1024)}MB`;
+}
+
+function formatFileSizeNumber(value: number) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(2);
+}
+
+function RequiredLabel(props: ComponentProps<typeof Label>) {
+  return (
+    <Label {...props}>
+      <span className="text-destructive" aria-hidden="true">
+        *
+      </span>
+      {props.children}
+    </Label>
+  );
+}
+
+function isSupportedImageKnowledgeFile(file: File) {
+  const normalizedName = file.name.toLowerCase();
+  const supportedExtensions = [".jpg", ".jpeg", ".png", ".webp"];
+
+  return (
+    file.type.startsWith("image/") &&
+    supportedExtensions.some((extension) => normalizedName.endsWith(extension))
+  );
+}
+
+function isImageEdgeInRange(value: number) {
+  return (
+    value >= IMAGE_KNOWLEDGE_MIN_EDGE && value <= IMAGE_KNOWLEDGE_MAX_EDGE
+  );
+}
+
+function readImageDimensions(file: File) {
+  return new Promise<{ height: number; width: number }>((resolve, reject) => {
+    const image = new Image();
+    const objectUrl = URL.createObjectURL(file);
+
+    image.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve({ height: image.naturalHeight, width: image.naturalWidth });
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error("image load failed"));
+    };
+    image.src = objectUrl;
+  });
+}
+
+function stripFileExtension(fileName: string) {
+  const lastDotIndex = fileName.lastIndexOf(".");
+
+  if (lastDotIndex <= 0) {
+    return fileName;
+  }
+
+  return fileName.slice(0, lastDotIndex);
 }

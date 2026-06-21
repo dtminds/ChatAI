@@ -16,8 +16,11 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableCellContent,
   TableHead,
   TableHeader,
+  TablePinnedCell,
+  TablePinnedHead,
   TableRow,
 } from "@/components/ui/table";
 import {
@@ -179,14 +182,23 @@ export function KnowledgeBasePage() {
           </div>
 
           <div>
-            <Table className="min-w-[1040px] table-fixed">
+            <Table className="min-w-[1120px] table-fixed">
+              <colgroup>
+                <col className="w-[240px]" />
+                <col className="w-[360px]" />
+                <col className="w-[190px]" />
+                <col className="w-[190px]" />
+                <col className="w-[140px]" />
+              </colgroup>
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
-                  <TableHead className="h-11 w-[22%]">知识库名称</TableHead>
-                  <TableHead className="h-11 w-[32%]">描述</TableHead>
-                  <TableHead className="h-11 w-[20%] whitespace-nowrap">最近更新时间</TableHead>
-                  <TableHead className="h-11 w-[16%] whitespace-nowrap">创建时间</TableHead>
-                  <TableHead className="h-11 w-[100px] whitespace-nowrap text-right">操作</TableHead>
+                  <TableHead className="h-11 px-4">知识库名称</TableHead>
+                  <TableHead className="h-11 px-4">描述</TableHead>
+                  <TableHead className="h-11 whitespace-nowrap px-4">最近更新时间</TableHead>
+                  <TableHead className="h-11 whitespace-nowrap px-4">创建时间</TableHead>
+                  <TablePinnedHead className="h-11 whitespace-nowrap px-4 text-right">
+                    操作
+                  </TablePinnedHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -194,20 +206,30 @@ export function KnowledgeBasePage() {
                   pagedItems.map((item) => (
                     <TableRow key={item.id}>
                       <TableCell
-                        className="truncate py-4 font-medium text-foreground"
+                        className="px-4 py-4 font-medium text-foreground"
                         title={item.name}
                       >
-                        {item.name}
+                        <TableCellContent>{item.name}</TableCellContent>
                       </TableCell>
                       <TableCell
-                        className="truncate py-4 text-muted-foreground"
+                        className="px-4 py-4 text-muted-foreground"
                         title={item.description}
                       >
-                        {item.description || "-"}
+                        <TableCellContent>{item.description || "-"}</TableCellContent>
                       </TableCell>
-                      <TableCell className="whitespace-nowrap py-4 text-muted-foreground">{item.lastUpdatedAt}</TableCell>
-                      <TableCell className="whitespace-nowrap py-4 text-muted-foreground">{item.createdAt}</TableCell>
-                      <TableCell className="whitespace-nowrap py-4 text-right">
+                      <TableCell
+                        className="px-4 py-4 text-muted-foreground"
+                        title={item.lastUpdatedAt}
+                      >
+                        <TableCellContent>{item.lastUpdatedAt}</TableCellContent>
+                      </TableCell>
+                      <TableCell
+                        className="px-4 py-4 text-muted-foreground"
+                        title={item.createdAt}
+                      >
+                        <TableCellContent>{item.createdAt}</TableCellContent>
+                      </TableCell>
+                      <TablePinnedCell className="whitespace-nowrap px-4 py-4 text-right">
                         <div className="flex items-center justify-end gap-3">
                           <Button asChild className="h-auto p-0 text-primary" type="button" variant="link">
                             <Link to={`/chat/ai-hosting/knowledge/${item.id}`}>
@@ -226,7 +248,7 @@ export function KnowledgeBasePage() {
                             删除
                           </Button>
                         </div>
-                      </TableCell>
+                      </TablePinnedCell>
                     </TableRow>
                   ))
                 ) : (

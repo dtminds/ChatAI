@@ -24,8 +24,11 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableCellContent,
   TableHead,
   TableHeader,
+  TablePinnedCell,
+  TablePinnedHead,
   TableRow,
 } from "@/components/ui/table";
 import {
@@ -224,44 +227,56 @@ function KnowledgeRecordsTable({ records }: { records: KnowledgeRecord[] }) {
     <Table aria-label="知识列表" className="min-w-[1120px] table-fixed">
       <TableHeader>
         <TableRow className="hover:bg-transparent">
-          <TableHead className="h-11 w-[24%]">知识名称</TableHead>
-          <TableHead className="h-11 w-[14%]">类型</TableHead>
-          <TableHead className="h-11 w-[12%]">切片数量</TableHead>
-          <TableHead className="h-11 w-[14%]">状态</TableHead>
-          <TableHead className="h-11 w-[17%] whitespace-nowrap">创建时间</TableHead>
-          <TableHead className="h-11 w-[17%] whitespace-nowrap">更新时间</TableHead>
-          <TableHead className="h-11 w-[100px] whitespace-nowrap text-right">操作</TableHead>
+          <TableHead className="h-11 w-[24%] px-4">知识名称</TableHead>
+          <TableHead className="h-11 w-[14%] px-4">类型</TableHead>
+          <TableHead className="h-11 w-[12%] px-4">切片数量</TableHead>
+          <TableHead className="h-11 w-[14%] px-4">状态</TableHead>
+          <TableHead className="h-11 w-[17%] whitespace-nowrap px-4">创建时间</TableHead>
+          <TableHead className="h-11 w-[17%] whitespace-nowrap px-4">更新时间</TableHead>
+          <TablePinnedHead className="h-11 w-[100px] whitespace-nowrap px-4 text-right">
+            操作
+          </TablePinnedHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {records.length > 0 ? (
           records.map((record) => (
             <TableRow key={record.id}>
-              <TableCell className="py-4" title={record.name}>
+              <TableCell className="px-4 py-4" title={record.name}>
                 <div className="flex min-w-0 items-center gap-2.5">
                   <FileExtensionBadge
                     className="size-8"
                     extension={record.fileExtension}
                   />
-                  <span className="min-w-0 truncate font-medium text-foreground">
+                  <TableCellContent className="font-medium text-foreground">
                     {record.name}
-                  </span>
+                  </TableCellContent>
                 </div>
               </TableCell>
-              <TableCell className="py-4">
+              <TableCell className="px-4 py-4">
                 <Badge className="rounded-[6px] px-2 py-0.5" variant="secondary">
                   {record.typeLabel}
                 </Badge>
               </TableCell>
-              <TableCell className="py-4 text-muted-foreground">
+              <TableCell className="px-4 py-4 text-muted-foreground">
                 {record.sliceCount ?? "-"}
               </TableCell>
-              <TableCell className="py-4">
+              <TableCell className="px-4 py-4">
                 <KnowledgeStatusBadge status={record.status} />
               </TableCell>
-              <TableCell className="whitespace-nowrap py-4 text-muted-foreground">{record.createdAt}</TableCell>
-              <TableCell className="whitespace-nowrap py-4 text-muted-foreground">{record.updatedAt}</TableCell>
-              <TableCell className="whitespace-nowrap py-4 text-right">
+              <TableCell
+                className="px-4 py-4 text-muted-foreground"
+                title={record.createdAt}
+              >
+                <TableCellContent>{record.createdAt}</TableCellContent>
+              </TableCell>
+              <TableCell
+                className="px-4 py-4 text-muted-foreground"
+                title={record.updatedAt}
+              >
+                <TableCellContent>{record.updatedAt}</TableCellContent>
+              </TableCell>
+              <TablePinnedCell className="whitespace-nowrap px-4 py-4 text-right">
                 <div className="flex items-center justify-end gap-3">
                   <Button
                     className="h-auto p-0 text-primary"
@@ -275,7 +290,7 @@ function KnowledgeRecordsTable({ records }: { records: KnowledgeRecord[] }) {
                     删除
                   </Button>
                 </div>
-              </TableCell>
+              </TablePinnedCell>
             </TableRow>
           ))
         ) : (

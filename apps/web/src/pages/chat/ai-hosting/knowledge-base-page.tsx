@@ -209,7 +209,14 @@ export function KnowledgeBasePage() {
                         className="px-4 py-4 font-medium text-foreground"
                         title={item.name}
                       >
-                        <TableCellContent>{item.name}</TableCellContent>
+                        <TableCellContent>
+                          <Link
+                            className="truncate text-foreground no-underline outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+                            to={`/chat/ai-hosting/knowledge/${item.id}`}
+                          >
+                            {item.name}
+                          </Link>
+                        </TableCellContent>
                       </TableCell>
                       <TableCell
                         className="px-4 py-4 text-muted-foreground"

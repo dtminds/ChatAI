@@ -11,8 +11,8 @@ import {
   FileImageIcon,
   PlusSignIcon,
   Search01Icon,
+  ThumbsUpIcon,
   Upload01Icon,
-  Xls01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Link, useParams } from "react-router-dom";
@@ -30,10 +30,17 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import {
+  SegmentedControl,
+  SegmentedControlItem,
+} from "@/components/ui/segmented-control";
 import {
   Table,
   TableBody,
@@ -68,25 +75,65 @@ const IMAGE_KNOWLEDGE_MAX_FILE_SIZE = 5 * 1024 * 1024;
 const IMAGE_KNOWLEDGE_MIN_EDGE = 10;
 const IMAGE_KNOWLEDGE_MAX_EDGE = 6000;
 const IMAGE_KNOWLEDGE_NAME_MAX_LENGTH = 16;
-const IMAGE_KNOWLEDGE_ACCEPT = "image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp";
+const IMAGE_KNOWLEDGE_ACCEPT =
+  "image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp";
+const DOCUMENT_KNOWLEDGE_ACCEPT =
+  ".pdf,.doc,.docx,.pptx,.ppt,.md,.txt,application/pdf,text/plain,text/markdown,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation";
+const PARSE_MODE_OPTIONS = [
+  {
+    description: "快速提取文档文字，满足大多数场景",
+    label: "通用解析",
+    value: "standard",
+  },
+  {
+    description: "适合扫描件或图片中含有关键文字的文档",
+    label: "增强解析",
+    value: "enhanced",
+  },
+] as const;
+const CHUNK_STRATEGY_OPTIONS = [
+  {
+    description: "按设定最大字符数生成切片",
+    label: "按固定长度切分",
+    value: "length",
+  },
+  {
+    description: "按指定分隔符生成切片",
+    label: "按分隔符切分",
+    value: "separator",
+  },
+] as const;
+const CHUNK_LENGTH_OPTIONS = [
+  { description: "适合长篇说明和完整段落", label: "2,000", value: "2000" },
+  { description: "适合常规知识内容", label: "1,000", value: "1000" },
+  { description: "适合短问答和高频检索", label: "500", value: "500" },
+] as const;
+const SEPARATOR_OPTIONS = [
+  { description: "按自然段落切分内容", label: "换行符", value: "newline" },
+] as const;
+const PLAIN_TEXT_DOCUMENT_EXTENSIONS = new Set(["md", "txt"]);
 
 const addKnowledgeOptions = [
   {
-    description: "适合沉淀常见问题和标准答案",
+    description: "上传问答表格，批量导入精准知识",
     icon: ChatQuestion01Icon,
-    label: "添加问答",
+    label: "问答",
+    type: "qa",
   },
   {
-    description: "上传图片后解析为可检索内容",
+    description: "上传图片并添加描述，按描述精准召回",
     icon: FileImageIcon,
-    label: "添加图片",
+    label: "图片",
+    type: "image",
   },
   {
-    description: "支持 Word、PDF、TXT、Markdown 等内容",
+    description: "自动解析文档内容，效果取决于文档质量",
     icon: FileAttachmentIcon,
-    label: "添加文档",
+    label: "文档",
+    type: "document",
   },
 ] as const;
+type AddKnowledgeOption = (typeof addKnowledgeOptions)[number];
 
 const statusMeta: Record<
   KnowledgeStatus,
@@ -127,6 +174,7 @@ export function KnowledgeBaseManagementPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [qaImportDialogOpen, setQaImportDialogOpen] = useState(false);
   const [imageDialogOpen, setImageDialogOpen] = useState(false);
+  const [documentDialogOpen, setDocumentDialogOpen] = useState(false);
 
   const filteredRecords = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
@@ -204,40 +252,28 @@ export function KnowledgeBaseManagementPage() {
                   <span>添加知识</span>
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-[260px] p-1.5">
-                {addKnowledgeOptions.map((option) => (
-                  <DropdownMenuItem
-                    className="h-auto items-start gap-3 px-2.5 py-2.5"
-                    key={option.label}
-                    onSelect={() => {
-                      if (option.label === "添加问答") {
-                        setQaImportDialogOpen(true);
-                      }
-
-                      if (option.label === "添加图片") {
-                        setImageDialogOpen(true);
-                      }
-                    }}
-                  >
-                    <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-[8px] bg-muted text-muted-foreground">
-                      <HugeiconsIcon
-                        color="currentColor"
-                        data-testid="knowledge-add-option-icon"
-                        icon={option.icon}
-                        size={17}
-                        strokeWidth={1.8}
-                      />
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block text-sm font-medium text-foreground">
-                        {option.label}
-                      </span>
-                      <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">
-                        {option.description}
-                      </span>
-                    </span>
-                  </DropdownMenuItem>
-                ))}
+              <DropdownMenuContent align="end" className="w-[320px] p-1.5">
+                <DropdownMenuLabel className="px-2.5 py-1 text-xs font-medium text-muted-foreground">
+                  高质量人工知识
+                </DropdownMenuLabel>
+                {addKnowledgeOptions.slice(0, 2).map((option) =>
+                  renderAddKnowledgeOption(option, {
+                    onImageDialogOpen: () => setImageDialogOpen(true),
+                    onQaImportDialogOpen: () => setQaImportDialogOpen(true),
+                    onDocumentDialogOpen: () => setDocumentDialogOpen(true),
+                  }),
+                )}
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel className="px-2.5 py-1 text-xs font-medium text-muted-foreground">
+                  原始文档
+                </DropdownMenuLabel>
+                {addKnowledgeOptions.slice(2).map((option) =>
+                  renderAddKnowledgeOption(option, {
+                    onImageDialogOpen: () => setImageDialogOpen(true),
+                    onQaImportDialogOpen: () => setQaImportDialogOpen(true),
+                    onDocumentDialogOpen: () => setDocumentDialogOpen(true),
+                  }),
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -261,7 +297,62 @@ export function KnowledgeBaseManagementPage() {
         onOpenChange={setImageDialogOpen}
         open={imageDialogOpen}
       />
+      <DocumentKnowledgeDialog
+        onOpenChange={setDocumentDialogOpen}
+        open={documentDialogOpen}
+      />
     </AiHostingLayout>
+  );
+}
+
+function renderAddKnowledgeOption(
+  option: AddKnowledgeOption,
+  {
+    onDocumentDialogOpen,
+    onImageDialogOpen,
+    onQaImportDialogOpen,
+  }: {
+    onDocumentDialogOpen: () => void;
+    onImageDialogOpen: () => void;
+    onQaImportDialogOpen: () => void;
+  },
+) {
+  return (
+    <DropdownMenuItem
+      className="h-auto items-start gap-3 px-2.5 py-2.5"
+      key={option.label}
+      onSelect={() => {
+        if (option.type === "qa") {
+          onQaImportDialogOpen();
+        }
+
+        if (option.type === "image") {
+          onImageDialogOpen();
+        }
+
+        if (option.type === "document") {
+          onDocumentDialogOpen();
+        }
+      }}
+    >
+      <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-[8px] bg-muted text-muted-foreground">
+        <HugeiconsIcon
+          color="currentColor"
+          data-testid="knowledge-add-option-icon"
+          icon={option.icon}
+          size={17}
+          strokeWidth={1.8}
+        />
+      </span>
+      <span className="min-w-0">
+        <span className="block text-sm font-medium text-foreground">
+          {option.label}
+        </span>
+        <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">
+          {option.description}
+        </span>
+      </span>
+    </DropdownMenuItem>
   );
 }
 
@@ -732,33 +823,13 @@ function QaImportDialog({
             type="file"
           />
 
-          <button
-            aria-label="上传问答文件"
-            className="flex min-h-40 w-full flex-col items-center justify-center rounded-[8px] border border-dashed border-border bg-muted/30 px-4 py-8 text-center transition-colors hover:border-primary/60 hover:bg-primary/[0.03] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/20"
+          <KnowledgeUploadDropzone
+            ariaLabel="上传问答文件"
+            description="文档支持 .faq.xlsx，最多 30 个 sheet，文件行数总和不超过 30000 行"
             onClick={() => inputRef.current?.click()}
-            onDragOver={(event) => {
-              event.preventDefault();
-            }}
-            onDrop={(event) => {
-              event.preventDefault();
-              void handleFileSelect(event.dataTransfer.files[0]);
-            }}
-            type="button"
-          >
-            <HugeiconsIcon
-              className="text-primary"
-              color="currentColor"
-              icon={Upload01Icon}
-              size={34}
-              strokeWidth={1.8}
-            />
-            <span className="mt-4 text-sm font-medium text-foreground">
-              点击或拖拽上传文件
-            </span>
-            <span className="mt-2 text-sm text-muted-foreground">
-              文档支持 .faq.xlsx，最多 30 个 sheet，文件行数总和不超过 30000 行
-            </span>
-          </button>
+            onFileDrop={(file) => void handleFileSelect(file)}
+            title="点击或拖拽上传文件"
+          />
 
           {isCheckingFile ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -785,39 +856,12 @@ function QaImportDialog({
           ) : null}
 
           {selectedFile ? (
-            <div
-              aria-label="已选择文件"
-              className="flex min-w-0 items-center gap-3 rounded-[8px] border bg-background px-3 py-2.5"
-              role="region"
-            >
-              <span className="flex size-8 shrink-0 items-center justify-center rounded-[6px] bg-emerald-50 text-emerald-600 dark:bg-emerald-500/12 dark:text-emerald-400">
-                <HugeiconsIcon
-                  color="currentColor"
-                  icon={Xls01Icon}
-                  size={18}
-                  strokeWidth={1.8}
-                />
-              </span>
-              <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
-                {selectedFile.file.name}（{formatFileSize(selectedFile.file.size)}，
-                共 {selectedFile.sheetCount} 个 sheet，{selectedFile.rowCount} 行）
-              </span>
-              <Button
-                aria-label="移除已选择文件"
-                className="size-8 shrink-0"
-                onClick={clearSelectedFile}
-                size="icon"
-                type="button"
-                variant="ghost"
-              >
-                <HugeiconsIcon
-                  color="currentColor"
-                  icon={Cancel01Icon}
-                  size={16}
-                  strokeWidth={1.8}
-                />
-              </Button>
-            </div>
+            <SelectedFileRow
+              file={selectedFile.file}
+              label="已选择文件"
+              meta={`共 ${selectedFile.sheetCount} 个 sheet，${selectedFile.rowCount} 行`}
+              onClear={clearSelectedFile}
+            />
           ) : null}
         </div>
 
@@ -832,6 +876,390 @@ function QaImportDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function DocumentKnowledgeDialog({
+  onOpenChange,
+  open,
+}: {
+  onOpenChange: (open: boolean) => void;
+  open: boolean;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [fileError, setFileError] = useState("");
+  const [parseMode, setParseMode] =
+    useState<(typeof PARSE_MODE_OPTIONS)[number]["value"]>("standard");
+  const [chunkStrategy, setChunkStrategy] =
+    useState<(typeof CHUNK_STRATEGY_OPTIONS)[number]["value"]>("length");
+  const [chunkLength, setChunkLength] =
+    useState<(typeof CHUNK_LENGTH_OPTIONS)[number]["value"]>("2000");
+  const [separator, setSeparator] = useState("newline");
+
+  const reset = () => {
+    setSelectedFile(null);
+    setFileError("");
+    setParseMode("standard");
+    setChunkStrategy("length");
+    setChunkLength("2000");
+    setSeparator("newline");
+
+    if (inputRef.current) {
+      inputRef.current.value = "";
+    }
+  };
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen) {
+      reset();
+    }
+
+    onOpenChange(nextOpen);
+  };
+
+  const handleFileSelect = (file: File | undefined) => {
+    if (!file) {
+      return;
+    }
+
+    if (!isSupportedDocumentKnowledgeFile(file)) {
+      setSelectedFile(null);
+      setFileError("仅支持 PDF、Word、PPT、Markdown、TXT 文档");
+      return;
+    }
+
+    setSelectedFile(file);
+    setFileError("");
+
+    if (isPlainTextDocument(file.name)) {
+      setParseMode("standard");
+    }
+  };
+
+  const clearSelectedFile = () => {
+    setSelectedFile(null);
+    setFileError("");
+
+    if (inputRef.current) {
+      inputRef.current.value = "";
+    }
+  };
+  const canSubmit = Boolean(selectedFile);
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="max-w-[760px]">
+        <DialogHeader>
+          <DialogTitle>导入文档</DialogTitle>
+          <DialogDescription className="sr-only">
+            上传文档并配置解析模式和切片策略
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-5">
+          <input
+            ref={inputRef}
+            accept={DOCUMENT_KNOWLEDGE_ACCEPT}
+            aria-label="选择文档知识文件"
+            className="sr-only"
+            onChange={(event) => handleFileSelect(event.currentTarget.files?.[0])}
+            type="file"
+          />
+
+          {selectedFile ? null : (
+            <KnowledgeUploadDropzone
+              ariaLabel="上传文档文件"
+              description="支持 PDF、Word、PPT、Markdown、TXT 文档"
+              onClick={() => inputRef.current?.click()}
+              onFileDrop={handleFileSelect}
+              title="点击或拖拽上传文件"
+            />
+          )}
+
+          {fileError ? (
+            <div className="flex items-center gap-2 text-sm text-destructive">
+              <HugeiconsIcon
+                color="currentColor"
+                icon={AlertCircleIcon}
+                size={16}
+                strokeWidth={1.8}
+              />
+              {fileError}
+            </div>
+          ) : null}
+
+          {selectedFile ? (
+            <>
+              <SelectedFileRow
+                file={selectedFile}
+                label="已选择文档"
+                onClear={clearSelectedFile}
+              />
+
+              <div className="grid gap-2">
+                <RequiredLabel>解析模式</RequiredLabel>
+                <RadioGroup
+                  aria-label="解析模式"
+                  className="grid gap-3 md:grid-cols-2"
+                  onValueChange={(value) =>
+                    setParseMode(value as typeof parseMode)
+                  }
+                  value={parseMode}
+                >
+                  {PARSE_MODE_OPTIONS.map((option) => (
+                    <RadioOptionCard
+                      description={option.description}
+                      disabled={
+                        option.value === "enhanced" &&
+                        isPlainTextDocument(selectedFile.name)
+                      }
+                      key={option.value}
+                      label={option.label}
+                      paid={option.value === "enhanced"}
+                      recommended={option.value === "standard"}
+                      value={option.value}
+                    />
+                  ))}
+                </RadioGroup>
+              </div>
+
+              <div className="grid gap-2">
+                <RequiredLabel>切片方式</RequiredLabel>
+                <SegmentedOptionGroup
+                  aria-label="切片策略"
+                  onValueChange={(value) =>
+                    setChunkStrategy(value as typeof chunkStrategy)
+                  }
+                  options={CHUNK_STRATEGY_OPTIONS}
+                  value={chunkStrategy}
+                />
+                <p className="text-sm leading-6 text-muted-foreground">
+                  {
+                    CHUNK_STRATEGY_OPTIONS.find(
+                      (option) => option.value === chunkStrategy,
+                    )?.description
+                  }
+                </p>
+              </div>
+
+              {chunkStrategy === "separator" ? (
+                <div className="grid gap-2">
+                  <RequiredLabel>分段标识符</RequiredLabel>
+                  <SegmentedOptionGroup
+                    aria-label="分段标识符"
+                    onValueChange={setSeparator}
+                    options={SEPARATOR_OPTIONS}
+                    value={separator}
+                  />
+                </div>
+              ) : (
+                <div className="grid gap-2">
+                  <RequiredLabel>切片最长字符数</RequiredLabel>
+                  <SegmentedOptionGroup
+                    aria-label="切片最长字符数"
+                    onValueChange={(value) =>
+                      setChunkLength(value as typeof chunkLength)
+                    }
+                    options={CHUNK_LENGTH_OPTIONS}
+                    value={chunkLength}
+                  />
+                </div>
+              )}
+            </>
+          ) : null}
+        </div>
+
+        <DialogFooter>
+          <Button
+            onClick={() => handleOpenChange(false)}
+            type="button"
+            variant="outline"
+          >
+            取消
+          </Button>
+          <Button
+            disabled={!canSubmit}
+            onClick={() => handleOpenChange(false)}
+            type="button"
+          >
+            确认提交
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function RadioOptionCard({
+  description,
+  disabled,
+  label,
+  paid,
+  recommended,
+  value,
+}: {
+  description: string;
+  disabled?: boolean;
+  label: string;
+  paid?: boolean;
+  recommended?: boolean;
+  value: string;
+}) {
+  return (
+    <Label className="relative flex cursor-pointer items-start gap-3 overflow-hidden rounded-[10px] border border-border px-4 py-3 transition-colors hover:border-primary/40 has-[[data-disabled]]:cursor-not-allowed has-[[data-disabled]]:opacity-50 has-[[data-state=checked]]:border-primary/80 has-[[data-state=checked]]:bg-primary/[0.04]">
+      {recommended ? (
+        <span className="absolute right-0 top-0 inline-flex items-center gap-1 rounded-bl-[8px] bg-primary px-2.5 py-1 text-xs font-medium leading-none text-primary-foreground">
+          <HugeiconsIcon
+            color="currentColor"
+            icon={ThumbsUpIcon}
+            size={12}
+            strokeWidth={1.8}
+          />
+          推荐
+        </span>
+      ) : null}
+      <RadioGroupItem className="mt-0.5" disabled={disabled} value={value} />
+      <span>
+        <span className="flex items-center gap-2 text-sm font-semibold text-foreground">
+          {label}
+          {paid ? (
+            <Badge
+              className="h-5 rounded-[6px] border-warning/30 bg-warning-muted/55 px-1.5 text-[11px] text-warning"
+              variant="outline"
+            >
+              付费
+            </Badge>
+          ) : null}
+        </span>
+        <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+          {description}
+        </span>
+      </span>
+    </Label>
+  );
+}
+
+function SegmentedOptionGroup({
+  "aria-label": ariaLabel,
+  onValueChange,
+  options,
+  value,
+}: {
+  "aria-label": string;
+  onValueChange: (value: string) => void;
+  options: readonly {
+    label: string;
+    value: string;
+  }[];
+  value: string;
+}) {
+  return (
+    <SegmentedControl
+      aria-label={ariaLabel}
+      className="h-auto flex-wrap gap-2 rounded-none border-0 bg-transparent p-0"
+      onValueChange={(nextValue) => {
+        if (nextValue) {
+          onValueChange(nextValue);
+        }
+      }}
+      type="single"
+      value={value}
+    >
+      {options.map((option) => (
+        <SegmentedControlItem
+          className="h-10 w-auto min-w-24 rounded-[8px] border border-border bg-background px-4 text-sm font-medium text-foreground data-[state=on]:border-primary/70 data-[state=on]:bg-primary/[0.06] data-[state=on]:text-primary data-[state=on]:shadow-none"
+          key={option.value}
+          value={option.value}
+        >
+          {option.label}
+        </SegmentedControlItem>
+      ))}
+    </SegmentedControl>
+  );
+}
+
+function KnowledgeUploadDropzone({
+  ariaLabel,
+  description,
+  onClick,
+  onFileDrop,
+  title,
+}: {
+  ariaLabel: string;
+  description: string;
+  onClick: () => void;
+  onFileDrop: (file: File | undefined) => void;
+  title: string;
+}) {
+  return (
+    <button
+      aria-label={ariaLabel}
+      className="flex min-h-40 w-full flex-col items-center justify-center rounded-[8px] border border-dashed border-border bg-muted/30 px-4 py-8 text-center transition-colors hover:border-primary/60 hover:bg-primary/[0.03] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/20"
+      onClick={onClick}
+      onDragOver={(event) => {
+        event.preventDefault();
+      }}
+      onDrop={(event) => {
+        event.preventDefault();
+        onFileDrop(event.dataTransfer.files[0]);
+      }}
+      type="button"
+    >
+      <HugeiconsIcon
+        className="text-primary"
+        color="currentColor"
+        icon={Upload01Icon}
+        size={34}
+        strokeWidth={1.8}
+      />
+      <span className="mt-4 text-sm font-medium text-foreground">{title}</span>
+      <span className="mt-2 text-sm text-muted-foreground">{description}</span>
+    </button>
+  );
+}
+
+function SelectedFileRow({
+  file,
+  label,
+  meta,
+  onClear,
+}: {
+  file: File;
+  label: string;
+  meta?: string;
+  onClear: () => void;
+}) {
+  return (
+    <div
+      aria-label={label}
+      className="flex min-w-0 items-center gap-3 rounded-[8px] border bg-background px-3 py-2.5"
+      role="region"
+    >
+      <FileExtensionBadge
+        className="size-8"
+        extension={getFileExtension(file.name)}
+      />
+      <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
+        {file.name}（{formatFileSize(file.size)}
+        {meta ? `，${meta}` : ""}）
+      </span>
+      <Button
+        aria-label="移除已选择文件"
+        className="size-8 shrink-0"
+        onClick={onClear}
+        size="icon"
+        type="button"
+        variant="ghost"
+      >
+        <HugeiconsIcon
+          color="currentColor"
+          icon={Cancel01Icon}
+          size={16}
+          strokeWidth={1.8}
+        />
+      </Button>
+    </div>
   );
 }
 
@@ -873,6 +1301,29 @@ function isSupportedImageKnowledgeFile(file: File) {
   );
 }
 
+function isSupportedDocumentKnowledgeFile(file: File) {
+  const normalizedName = file.name.toLowerCase();
+  const supportedExtensions = [
+    ".pdf",
+    ".doc",
+    ".docx",
+    ".pptx",
+    ".ppt",
+    ".md",
+    ".txt",
+  ];
+
+  return supportedExtensions.some((extension) =>
+    normalizedName.endsWith(extension),
+  );
+}
+
+function isPlainTextDocument(fileName: string) {
+  return PLAIN_TEXT_DOCUMENT_EXTENSIONS.has(
+    getFileExtension(fileName).toLowerCase(),
+  );
+}
+
 function isImageEdgeInRange(value: number) {
   return (
     value >= IMAGE_KNOWLEDGE_MIN_EDGE && value <= IMAGE_KNOWLEDGE_MAX_EDGE
@@ -904,4 +1355,14 @@ function stripFileExtension(fileName: string) {
   }
 
   return fileName.slice(0, lastDotIndex);
+}
+
+function getFileExtension(fileName: string) {
+  const lastDotIndex = fileName.lastIndexOf(".");
+
+  if (lastDotIndex < 0 || lastDotIndex === fileName.length - 1) {
+    return "";
+  }
+
+  return fileName.slice(lastDotIndex + 1);
 }

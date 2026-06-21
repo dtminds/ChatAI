@@ -385,7 +385,10 @@ describe("AI hosting pages", () => {
 
     expect(await screen.findByRole("heading", { level: 1, name: "知识库" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "创建知识库" })).toBeInTheDocument();
-    expect(screen.getByText(/华为产品知识/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "华为产品知识" })).toHaveAttribute(
+      "href",
+      "/chat/ai-hosting/knowledge/W7zU2fWkVSp65OTAjDd3-w",
+    );
     expect(screen.getAllByRole("link", { name: "查看" })[0]).toHaveAttribute(
       "href",
       "/chat/ai-hosting/knowledge/W7zU2fWkVSp65OTAjDd3-w",
@@ -428,13 +431,15 @@ describe("AI hosting pages", () => {
     );
     expect(screen.getByRole("textbox", { name: "搜索知识" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "添加知识" }));
-    expect(screen.getByRole("menuitem", { name: /添加问答/ })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: /添加图片/ })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: /添加文档/ })).toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: /添加纯文本/ })).not.toBeInTheDocument();
-    expect(screen.getByText("适合沉淀常见问题和标准答案")).toBeInTheDocument();
-    expect(screen.getByText("上传图片后解析为可检索内容")).toBeInTheDocument();
-    expect(screen.getByText("支持 Word、PDF、TXT、Markdown 等内容")).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /问答/ })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /图片/ })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /文档/ })).toBeInTheDocument();
+    expect(screen.getByText("高质量人工知识")).toBeInTheDocument();
+    expect(screen.getByText("原始文档")).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /纯文本/ })).not.toBeInTheDocument();
+    expect(screen.getByText("上传问答表格，批量导入精准知识")).toBeInTheDocument();
+    expect(screen.getByText("上传图片并添加描述，按描述精准召回")).toBeInTheDocument();
+    expect(screen.getByText("自动解析文档内容，效果取决于文档质量")).toBeInTheDocument();
     expect(screen.queryByText("直接录入文本片段或说明")).not.toBeInTheDocument();
     expect(screen.getAllByTestId("knowledge-add-option-icon")).toHaveLength(3);
     await userEvent.keyboard("{Escape}");
@@ -470,7 +475,7 @@ describe("AI hosting pages", () => {
 
     await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
     await user.click(screen.getByRole("button", { name: "添加知识" }));
-    await user.click(screen.getByRole("menuitem", { name: /添加问答/ }));
+    await user.click(screen.getByRole("menuitem", { name: /问答/ }));
 
     const dialog = screen.getByRole("dialog", { name: "批量导入问答" });
 
@@ -490,6 +495,11 @@ describe("AI hosting pages", () => {
     expect(screen.getByRole("region", { name: "已选择文件" })).toHaveTextContent(
       "快捷话术导入.faq.xlsx",
     );
+    expect(screen.getByRole("img", { name: "Excel 文件" })).toHaveAttribute(
+      "src",
+      "https://b5.bokr.com.cn/dist/excel.png",
+    );
+    expect(screen.getByRole("button", { name: "上传问答文件" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "已选择文件" })).toHaveTextContent(
       "共 1 个 sheet，2 行",
     );
@@ -518,7 +528,7 @@ describe("AI hosting pages", () => {
 
     await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
     await user.click(screen.getByRole("button", { name: "添加知识" }));
-    await user.click(screen.getByRole("menuitem", { name: /添加问答/ }));
+    await user.click(screen.getByRole("menuitem", { name: /问答/ }));
     await user.upload(
       screen.getByLabelText("选择问答导入文件"),
       new File(["question,answer"], "快捷话术导入.faq.xlsx", {
@@ -548,7 +558,7 @@ describe("AI hosting pages", () => {
 
     await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
     await user.click(screen.getByRole("button", { name: "添加知识" }));
-    await user.click(screen.getByRole("menuitem", { name: /添加问答/ }));
+    await user.click(screen.getByRole("menuitem", { name: /问答/ }));
     await user.upload(
       screen.getByLabelText("选择问答导入文件"),
       new File(["question,answer"], "快捷话术导入.faq.xlsx", {
@@ -561,6 +571,78 @@ describe("AI hosting pages", () => {
     expect(screen.getByRole("button", { name: "导入文档" })).toBeDisabled();
   });
 
+  it("opens the document import dialog and switches chunk strategy options", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute(
+      "/chat/ai-hosting/knowledge/W7zU2fWkVSp65OTAjDd3-w",
+      <KnowledgeBaseManagementPage />,
+    );
+
+    await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
+    await user.click(screen.getByRole("button", { name: "添加知识" }));
+    await user.click(screen.getByRole("menuitem", { name: /文档/ }));
+
+    const dialog = screen.getByRole("dialog", { name: "导入文档" });
+
+    expect(dialog).toBeInTheDocument();
+    expect(screen.queryByText("限免")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "上传文档文件" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "确认提交" })).toBeDisabled();
+
+    await user.upload(
+      screen.getByLabelText("选择文档知识文件"),
+      new File(["document"], "产品手册.pptx", {
+        type: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      }),
+    );
+
+    expect(screen.getByRole("region", { name: "已选择文档" })).toHaveTextContent(
+      "产品手册.pptx",
+    );
+    expect(screen.getByRole("img", { name: "PPT 文件" })).toHaveAttribute(
+      "src",
+      "https://b5.bokr.com.cn/dist/ppt.png",
+    );
+    expect(screen.queryByRole("button", { name: "上传文档文件" })).not.toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /通用解析/ })).toBeChecked();
+    expect(screen.getByRole("radio", { name: /增强解析/ })).not.toBeChecked();
+    expect(screen.getByRole("radio", { name: /按固定长度切分/ })).toBeChecked();
+    expect(screen.getByRole("radio", { name: /2,000/ })).toBeChecked();
+    expect(screen.getByRole("radio", { name: /1,000/ })).not.toBeChecked();
+    expect(screen.getByRole("button", { name: "确认提交" })).toBeEnabled();
+
+    await user.click(screen.getByRole("radio", { name: /按分隔符切分/ }));
+
+    expect(screen.getByText("分段标识符")).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /换行符/ })).toBeChecked();
+    expect(screen.queryByText("切片最长字符数")).not.toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: /2,000/ })).not.toBeInTheDocument();
+  });
+
+  it("disables enhanced parsing for plain text document files", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute(
+      "/chat/ai-hosting/knowledge/W7zU2fWkVSp65OTAjDd3-w",
+      <KnowledgeBaseManagementPage />,
+    );
+
+    await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
+    await user.click(screen.getByRole("button", { name: "添加知识" }));
+    await user.click(screen.getByRole("menuitem", { name: /文档/ }));
+    await user.upload(
+      screen.getByLabelText("选择文档知识文件"),
+      new File(["plain text"], "产品说明.txt", { type: "text/plain" }),
+    );
+
+    expect(screen.getByRole("region", { name: "已选择文档" })).toHaveTextContent(
+      "产品说明.txt",
+    );
+    expect(screen.getByRole("radio", { name: /通用解析/ })).toBeChecked();
+    expect(screen.getByRole("radio", { name: /增强解析/ })).toBeDisabled();
+  });
+
   it("opens the image knowledge dialog and fills the default image name", async () => {
     const user = userEvent.setup();
 
@@ -571,7 +653,7 @@ describe("AI hosting pages", () => {
 
     await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
     await user.click(screen.getByRole("button", { name: "添加知识" }));
-    await user.click(screen.getByRole("menuitem", { name: /添加图片/ }));
+    await user.click(screen.getByRole("menuitem", { name: /图片/ }));
 
     const dialog = screen.getByRole("dialog", { name: "添加图片知识" });
 
@@ -626,7 +708,7 @@ describe("AI hosting pages", () => {
 
     await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
     await user.click(screen.getByRole("button", { name: "添加知识" }));
-    await user.click(screen.getByRole("menuitem", { name: /添加图片/ }));
+    await user.click(screen.getByRole("menuitem", { name: /图片/ }));
     await user.upload(
       screen.getByLabelText("选择图片知识文件"),
       new File([new Uint8Array(5 * 1024 * 1024 + 1)], "超大图片.png", {
@@ -651,7 +733,7 @@ describe("AI hosting pages", () => {
 
     await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
     await user.click(screen.getByRole("button", { name: "添加知识" }));
-    await user.click(screen.getByRole("menuitem", { name: /添加图片/ }));
+    await user.click(screen.getByRole("menuitem", { name: /图片/ }));
     await user.upload(
       screen.getByLabelText("选择图片知识文件"),
       new File(["image"], "尺寸过小.png", { type: "image/png" }),

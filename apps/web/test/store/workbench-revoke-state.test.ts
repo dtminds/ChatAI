@@ -462,6 +462,54 @@ describe("workbench revoke state", () => {
     });
   });
 
+  it("rejects revoke when the message seq is invalid", async () => {
+    vi.setSystemTime(new Date("2026-05-27T10:00:00").getTime());
+    const baseService = createMockWorkbenchService();
+    const revokeMessage = vi.fn();
+
+    setWorkbenchService({
+      ...baseService,
+      revokeMessage,
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        "conv-001": [
+          ...(state.messagesByConversationId["conv-001"] ?? []),
+          {
+            author: "德瑞可-小可",
+            content: {
+              text: "异常落库的客服消息",
+              type: "text",
+            },
+            conversationId: "conv-001",
+            uiMessageKey: "invalid-agent-message",
+            isOwnMessage: true,
+            role: "agent",
+            sender: {
+              id: "sender-agent-drc",
+              name: "德瑞可-小可",
+            },
+            sentAt: formatWorkbenchTimestamp(Date.now() - 60_000),
+            seq: 0,
+            status: "sent",
+          },
+        ],
+      },
+    }));
+
+    await expect(
+      useWorkbenchStore.getState().revokeMessage("invalid-agent-message"),
+    ).resolves.toEqual({
+      errorCode: "MESSAGE_NOT_REVOKABLE",
+      errorMessage: "暂不支持撤回该消息",
+      ok: false,
+    });
+    expect(revokeMessage).not.toHaveBeenCalled();
+  });
+
   it("revokes a reconciled message when called with the previous optNo key", async () => {
     vi.setSystemTime(new Date("2026-05-27T10:00:00").getTime());
     const baseService = createMockWorkbenchService();

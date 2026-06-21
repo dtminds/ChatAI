@@ -63,6 +63,7 @@ import {
   formatTextMessageSentAt,
   parseWorkbenchDate,
 } from "@/pages/chat/lib/chat-time";
+import { isValidMessageSeq } from "@/pages/chat/lib/message-seq";
 
 const TIMESTAMP_BREAK_MS = 5 * 60 * 1000;
 export const MESSAGE_SENT_AT_HOVER_DELAY_MS = 400;
@@ -699,7 +700,7 @@ function MessageActionAvatar({
   const canSelectQuoteMessage =
     canUseMessageActions &&
     !message.isRevoked &&
-    message.seq != null &&
+    isValidMessageSeq(message.seq) &&
     message.content.type !== "contact-card";
   const canCollectMessage = Boolean(onCollectMaterial) && canCollectMaterial(message);
   const canSelectCollectMessage = canCollectMaterialActions && !message.isRevoked;
@@ -709,7 +710,7 @@ function MessageActionAvatar({
     canShowRevokeMessageAction(message);
   const canSelectSmartReplyRecommendation =
     canUseMessageActions && Boolean(onTriggerSmartReply);
-  const messageSeqForCopy = message.seq != null ? String(message.seq) : "";
+  const messageSeqForCopy = isValidMessageSeq(message.seq) ? String(message.seq) : "";
   const senderUserIdForCopy = message.sender.userId?.trim() ?? "";
 
   return (
@@ -1073,7 +1074,7 @@ function canShowRevokeMessageAction(message: ChatMessage, now = Date.now()) {
     message.isRevoked ||
     message.revokePending ||
     message.status !== "sent" ||
-    message.seq == null
+    !isValidMessageSeq(message.seq)
   ) {
     return false;
   }

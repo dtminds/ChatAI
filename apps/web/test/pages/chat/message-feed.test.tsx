@@ -144,6 +144,35 @@ describe("message feed row actions", () => {
     expect(toast.warning).not.toHaveBeenCalled();
   });
 
+  it("disables copying the message id when seq is invalid", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    render(
+      <MessageRow
+        message={{
+          ...createTextMessage("异常落库消息"),
+          seq: 0,
+        }}
+        onQuoteMessage={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+
+    const copyMessageIdItem = screen.getByRole("menuitem", { name: "复制消息ID" });
+    expect(copyMessageIdItem).toHaveAttribute("data-disabled");
+
+    await user.click(copyMessageIdItem);
+
+    expect(writeText).not.toHaveBeenCalled();
+    expect(toast.warning).not.toHaveBeenCalled();
+  });
+
   it("disables the quote action when seq is unavailable", async () => {
     const user = userEvent.setup();
     const onQuoteMessage = vi.fn();
@@ -153,6 +182,30 @@ describe("message feed row actions", () => {
         message={{
           ...createTextMessage("本地待落库消息"),
           seq: undefined,
+        }}
+        onQuoteMessage={onQuoteMessage}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+
+    const quoteItem = screen.getByRole("menuitem", { name: "引用" });
+    expect(quoteItem).toHaveAttribute("data-disabled");
+
+    await user.click(quoteItem);
+
+    expect(onQuoteMessage).not.toHaveBeenCalled();
+  });
+
+  it("disables the quote action when seq is invalid", async () => {
+    const user = userEvent.setup();
+    const onQuoteMessage = vi.fn();
+
+    render(
+      <MessageRow
+        message={{
+          ...createTextMessage("异常落库消息"),
+          seq: 0,
         }}
         onQuoteMessage={onQuoteMessage}
       />,
@@ -802,6 +855,30 @@ describe("message feed row actions", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "消息操作" }));
+    expect(screen.queryByRole("menuitem", { name: "撤回消息" })).not.toBeInTheDocument();
+    expect(onRevokeMessage).not.toHaveBeenCalled();
+  });
+
+  it("does not expose revoke action when seq is invalid", async () => {
+    const user = userEvent.setup();
+    const onRevokeMessage = vi.fn();
+    vi.setSystemTime(new Date("2026-05-08T09:56:59").getTime());
+
+    render(
+      <MessageRow
+        message={{
+          ...createTextMessage("异常落库客服消息"),
+          isOwnMessage: true,
+          seq: 0,
+          sentAt: "2026-05-08 09:54:00",
+        }}
+        onRevokeMessage={onRevokeMessage}
+        onQuoteMessage={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+
     expect(screen.queryByRole("menuitem", { name: "撤回消息" })).not.toBeInTheDocument();
     expect(onRevokeMessage).not.toHaveBeenCalled();
   });

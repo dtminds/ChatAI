@@ -69,6 +69,7 @@ import { useMaterialCollection } from "@/pages/chat/hooks/use-material-collectio
 import { useQuickReplies } from "@/pages/chat/hooks/use-quick-replies";
 import { useWorkbenchPolling } from "@/pages/chat/hooks/use-workbench-polling";
 import type { PollingPauseReason } from "@/pages/chat/hooks/use-workbench-polling";
+import { isValidMessageSeq } from "@/pages/chat/lib/message-seq";
 import { useWorkbenchStore } from "@/store/workbench-store";
 import type {
   ChatMessage,
@@ -2132,7 +2133,7 @@ function isMessageDownloadUrlReady(message: ChatMessage, url: string) {
 function buildQuotedMessagePreview(
   message: ChatMessage,
 ): QuotedMessagePreviewContent | null {
-  if (message.seq == null) {
+  if (!isValidMessageSeq(message.seq)) {
     return null;
   }
 

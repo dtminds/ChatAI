@@ -15,6 +15,7 @@ import type {
   MessageStatus,
   QuotedMessagePreviewContent,
 } from "@/pages/chat/chat-types";
+import { isValidMessageSeq } from "@/pages/chat/lib/message-seq";
 
 type ChatMessageContent = ChatMessage["content"];
 
@@ -211,7 +212,7 @@ export function adaptMessage(
 }
 
 function getMessageUiKey(dto: WorkbenchMessageDto) {
-  if (Number.isSafeInteger(dto.seq) && dto.seq > 0) {
+  if (isValidMessageSeq(dto.seq)) {
     return String(dto.seq);
   }
 

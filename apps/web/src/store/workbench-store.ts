@@ -52,6 +52,7 @@ import {
   buildConversationComposerDraft,
   type ConversationComposerDraft,
 } from "@/pages/chat/lib/conversation-composer-draft";
+import { isValidMessageSeq } from "@/pages/chat/lib/message-seq";
 import { notifyPulledCustomerMessage } from "@/pages/chat/lib/new-message-title-alert";
 import { canUseWorkbenchConversationActions } from "@/pages/chat/lib/workbench-permissions";
 import { seedCustomerProfiles } from "@/pages/chat/mock-data";
@@ -1736,7 +1737,7 @@ function matchesMessageKey(message: Message, key: string) {
   return (
     message.uiMessageKey === key ||
     message.optNo === key ||
-    String(message.seq ?? "") === key
+    (isValidMessageSeq(message.seq) && String(message.seq) === key)
   );
 }
 
@@ -1756,7 +1757,11 @@ function sortMessagesForAppend(messages: Message[]) {
 function isSameMessage(left: Message, right: Message) {
   return (
     (left.optNo && right.optNo && left.optNo === right.optNo) ||
-    (left.seq != null && right.seq != null && left.seq === right.seq) ||
+    (
+      isValidMessageSeq(left.seq) &&
+      isValidMessageSeq(right.seq) &&
+      left.seq === right.seq
+    ) ||
     (
       left.uiMessageKey.length > 0 &&
       !isInvalidMessageUiKey(left.uiMessageKey) &&
@@ -5976,7 +5981,7 @@ function canUseMessageRevoke(message: ChatMessage, now = Date.now()) {
     message.isRevoked ||
     message.revokePending ||
     message.status !== "sent" ||
-    message.seq == null
+    !isValidMessageSeq(message.seq)
   ) {
     return false;
   }

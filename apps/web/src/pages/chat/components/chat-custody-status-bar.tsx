@@ -1,22 +1,14 @@
-import { RoboticIcon } from "@hugeicons/core-free-icons";
-import { HugeiconsIcon } from "@hugeicons/react";
+import { BorderBeam } from "border-beam";
 import { Button } from "@/components/ui/button";
+import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
+import { ShinyText } from "@/components/ui/shiny-text";
 import { cn } from "@/lib/utils";
 import {
   getCustodyHostingActionLabel,
   getCustodyHostingStatusLabel,
   isCustodyHostingExited,
-  shouldUseFullCustodyCancelButton,
   type CustodyHostingStatus,
 } from "@/pages/chat/lib/chat-custody-status";
-import {
-  chatCustodyBorderGradient,
-  chatCustodyFullCustodyButtonColors,
-  chatCustodyStatusIconColor,
-  chatCustodyStatusTextGradient,
-  chatCustodySurfaceColors,
-  chatCustodyTextColors,
-} from "@/pages/chat/lib/chat-custody-palette";
 
 export function ChatCustodyStatusBar({
   className,
@@ -31,69 +23,80 @@ export function ChatCustodyStatusBar({
 }) {
   const actionLabel = getCustodyHostingActionLabel(status);
   const isExited = isCustodyHostingExited(status);
-  const useFullCustodyCancelButton = shouldUseFullCustodyCancelButton(status);
+  const isBusy = status === "thinking" || status === "retrying";
+
+  if (isExited) {
+    return null;
+  }
 
   return (
-    <div
+    <BorderBeam
+      active
+      borderRadius={999}
       className={cn(
-        "chat-custody-status-bar-border relative z-20 rounded-t-[10px] rounded-b-none p-px shadow-[0_4px_20px_var(--shadow-soft)]",
+        "relative z-20 block rounded-full",
         className,
       )}
-      data-testid="chat-custody-status-bar"
-      style={{
-        background: chatCustodyBorderGradient,
-        backgroundSize: "200% 100%",
-      }}
+      colorVariant="colorful"
+      duration={2.4}
+      size={isBusy ? "pulse-inner" : "line"}
+      theme="auto"
     >
       <div
-        className="flex items-center justify-between gap-3 rounded-t-[9px] rounded-b-none px-4 py-1.5"
-        style={{ backgroundColor: chatCustodySurfaceColors.barBackground }}
+        className={cn(
+          "relative overflow-hidden border border-border rounded-full shadow-[0_4px_20px_var(--shadow-soft)]",
+          isExited ? "border-border" : "border-primary/25",
+        )}
+        data-testid="chat-custody-status-bar"
       >
-        <div className="flex min-w-0 items-center gap-2">
-          <HugeiconsIcon
-            className="shrink-0"
-            icon={RoboticIcon}
-            size={16}
-            strokeWidth={1.8}
-            style={{
-              color: isExited ? chatCustodyTextColors.exited : chatCustodyStatusIconColor,
-            }}
-          />
-          <span
-            className={cn(
-              "truncate text-sm",
-              !isExited && "bg-clip-text text-transparent",
-            )}
-            style={
-              isExited
-                ? { color: chatCustodyTextColors.exited }
-                : { backgroundImage: chatCustodyStatusTextGradient }
-            }
-          >
-            {getCustodyHostingStatusLabel(status)}
-          </span>
-        </div>
-
-        <Button
-          className={cn(
-            "h-7 shrink-0 rounded-[8px] px-3 text-xs shadow-none",
-            !useFullCustodyCancelButton && "hover:bg-primary/92",
-          )}
-          onClick={isExited ? onEnable : onCancel}
-          style={
-            useFullCustodyCancelButton
-              ? {
-                  backgroundColor: chatCustodyFullCustodyButtonColors.background,
-                  color: chatCustodyFullCustodyButtonColors.text,
-                }
-              : undefined
-          }
-          type="button"
-          variant={useFullCustodyCancelButton ? "outline" : "default"}
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 rounded-full bg-background/85 backdrop-blur-xs"
+          data-testid="chat-custody-status-bar-surface"
+        />
+        <div
+          className="relative z-10 flex items-center justify-between gap-3 px-4 py-1.5"
+          data-testid="chat-custody-status-bar-content"
         >
-          {actionLabel}
-        </Button>
+          <div className="flex min-w-0 items-center gap-2">
+            {isBusy ? (
+              <DotMatrixLoader
+                ariaLabel="处理中"
+                className="text-primary"
+                dotSize={2}
+                size={14}
+                speed={1.2}
+              />
+            ) : (
+              <DotMatrixLoader
+                ariaLabel="AI托管中"
+                cellPadding={0.625}
+                className="text-primary"
+                dotSize={2.5}
+                size={15}
+                speed={1.35}
+                type="circular-8"
+              />
+            )}
+            <ShinyText
+              className="truncate text-xs text-muted-foreground"
+              duration={isBusy ? 1.15 : 2}
+              shimmerWidth={44}
+            >
+              {getCustodyHostingStatusLabel(status)}
+            </ShinyText>
+          </div>
+
+          <Button
+            className="h-7 shrink-0 rounded-[8px] border-transparent bg-neutral-strong px-3 text-xs text-neutral-strong-foreground shadow-none hover:bg-neutral-strong/90 hover:text-neutral-strong-foreground"
+            onClick={isExited ? onEnable : onCancel}
+            type="button"
+            variant="default"
+          >
+            {actionLabel}
+          </Button>
+        </div>
       </div>
-    </div>
+    </BorderBeam>
   );
 }

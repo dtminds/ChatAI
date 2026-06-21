@@ -319,10 +319,168 @@ describe("ChatPanel", () => {
     );
 
     expect(screen.getByTestId("chat-custody-status-bar")).toBeInTheDocument();
-    expect(screen.getByText("思考中...")).toBeInTheDocument();
+    expect(screen.getByTestId("chat-custody-status-bar-anchor")).toHaveClass(
+      "absolute",
+      "left-1/2",
+      "bottom-9",
+      "z-30",
+      "w-4/5",
+      "max-w-[520px]",
+      "-translate-x-1/2",
+    );
+    expect(screen.getByTestId("chat-composer-editor").closest(".px-4")).toHaveClass(
+      "pt-3",
+    );
+    expect(screen.getByText("正在思考")).toBeInTheDocument();
     expect(screen.getByLabelText("AI正在托管中...")).toBeInTheDocument();
   });
+
+  it("hides custody status bar for exited custody conversations", () => {
+    render(
+      <ChatPanel
+        activeConversation={{
+          ...createConversation(),
+          custodyHostingStatus: "exited",
+          custodyMode: "full",
+        }}
+        activeHistoryStatus="idle"
+        canSendMessage
+        composerPlaceholder="输入消息"
+        customerPanelWidth={375}
+        draft=""
+        fileUploadQueue={[]}
+        groupMembers={[]}
+        hasMoreHistory={false}
+        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false, isOpen: false }}
+        inputEnterBehavior="send"
+        isHistoryPanelOpen={false}
+        isConversationLoading={false}
+        isEmojiPickerOpen={false}
+        isGroupMembersLoading={false}
+        isResizingCustomerPanel={false}
+        isSendingDraft={false}
+        messages={[]}
+        quotedMessage={null}
+        sidebarItems={[]}
+        composerRef={createRef()}
+        messageViewportRef={createRef()}
+        workbenchBodyRef={createRef()}
+        onCancelFileUpload={vi.fn()}
+        onClearQuotedMessage={vi.fn()}
+        onComposerSegmentsChange={vi.fn()}
+        onCustomerPanelResizeStart={vi.fn()}
+        onDismissScopeTransitionError={vi.fn()}
+        onDraftChange={vi.fn()}
+        onEmojiPickerOpenChange={vi.fn()}
+        onEnterBehaviorChange={vi.fn()}
+        onFileSelect={vi.fn()}
+        onHistoryClose={vi.fn()}
+        onHistoryLoadMoreNext={vi.fn()}
+        onHistoryLoadMorePrev={vi.fn()}
+        onHistoryRefresh={vi.fn()}
+        onHistorySetDay={vi.fn()}
+        onHistorySetScope={vi.fn()}
+        onHistorySetSenderId={vi.fn()}
+        onLoadOlderMessages={vi.fn()}
+        onMessageViewportScroll={vi.fn()}
+        onOpenHistory={vi.fn()}
+        onRefreshGroupMembers={vi.fn()}
+        onRetryMessage={vi.fn()}
+        onSendDraft={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByTestId("chat-custody-status-bar-anchor")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("chat-custody-status-bar")).not.toBeInTheDocument();
+  });
+
+  it("switches custody status through the composer dev preview menu", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ChatPanel
+        activeConversation={{
+          ...createConversation(),
+          custodyMode: "full",
+        }}
+        activeHistoryStatus="idle"
+        canSendMessage
+        composerPlaceholder="输入消息"
+        customerPanelWidth={375}
+        draft=""
+        fileUploadQueue={[]}
+        groupMembers={[]}
+        hasMoreHistory={false}
+        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false, isOpen: false }}
+        inputEnterBehavior="send"
+        isHistoryPanelOpen={false}
+        isConversationLoading={false}
+        isEmojiPickerOpen={false}
+        isGroupMembersLoading={false}
+        isResizingCustomerPanel={false}
+        isSendingDraft={false}
+        messages={[]}
+        quotedMessage={null}
+        sidebarItems={[]}
+        composerRef={createRef()}
+        messageViewportRef={createRef()}
+        workbenchBodyRef={createRef()}
+        onCancelFileUpload={vi.fn()}
+        onClearQuotedMessage={vi.fn()}
+        onComposerSegmentsChange={vi.fn()}
+        onCustomerPanelResizeStart={vi.fn()}
+        onDismissScopeTransitionError={vi.fn()}
+        onDraftChange={vi.fn()}
+        onEmojiPickerOpenChange={vi.fn()}
+        onEnterBehaviorChange={vi.fn()}
+        onFileSelect={vi.fn()}
+        onHistoryClose={vi.fn()}
+        onHistoryLoadMoreNext={vi.fn()}
+        onHistoryLoadMorePrev={vi.fn()}
+        onHistoryRefresh={vi.fn()}
+        onHistorySetDay={vi.fn()}
+        onHistorySetScope={vi.fn()}
+        onHistorySetSenderId={vi.fn()}
+        onLoadOlderMessages={vi.fn()}
+        onMessageViewportScroll={vi.fn()}
+        onOpenHistory={vi.fn()}
+        onRefreshGroupMembers={vi.fn()}
+        onRetryMessage={vi.fn()}
+        onSendDraft={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("group", { name: "托管状态预览" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "托管状态预览" })).not.toHaveClass(
+      "bg-accent",
+    );
+
+    await selectCustodyStatusPreview(user, "思考中");
+    expect(screen.getByText("正在思考")).toBeInTheDocument();
+
+    await selectCustodyStatusPreview(user, "重试中");
+    expect(screen.getByText("出了点小问题，我正在重试")).toBeInTheDocument();
+
+    await selectCustodyStatusPreview(user, "托管中");
+    expect(screen.getByText("已就绪，正在等待用户消息")).toBeInTheDocument();
+
+    await selectCustodyStatusPreview(user, "已退出");
+    expect(screen.queryByTestId("chat-custody-status-bar")).not.toBeInTheDocument();
+
+    await selectCustodyStatusPreview(user, "思考中");
+    expect(screen.getByText("正在思考")).toBeInTheDocument();
+  });
 });
+
+async function selectCustodyStatusPreview(
+  user: ReturnType<typeof userEvent.setup>,
+  label: string,
+) {
+  await user.click(screen.getByRole("button", { name: "托管状态预览" }));
+  await user.click(screen.getByRole("menuitemradio", { name: label }));
+}
 
 function createConversation(): Conversation {
   return {

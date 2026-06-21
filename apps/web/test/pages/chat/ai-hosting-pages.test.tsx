@@ -1,5 +1,5 @@
 import type { ReactElement } from "react";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -30,6 +30,22 @@ function renderWithRoute(path: string, element: ReactElement, routePath = "*") {
   );
 
   return render(<RouterProvider router={router} />);
+}
+
+function createDropData(file: File) {
+  return {
+    dataTransfer: {
+      files: [file],
+      items: [
+        {
+          getAsFile: () => file,
+          kind: "file",
+          type: file.type,
+        },
+      ],
+      types: ["Files"],
+    },
+  };
 }
 
 describe("AI hosting pages", () => {
@@ -603,6 +619,28 @@ describe("AI hosting pages", () => {
     expect(screen.getByRole("button", { name: "导入文档" })).toBeDisabled();
   });
 
+  it("shows an error when QA files are rejected by the dropzone accept rule", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
+    );
+
+    await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
+    await user.click(screen.getByRole("button", { name: "添加知识" }));
+    await user.click(screen.getByRole("menuitem", { name: /问答/ }));
+
+    fireEvent.drop(
+      screen.getByRole("button", { name: "上传问答文件" }),
+      createDropData(new File(["pdf"], "产品说明.pdf", { type: "application/pdf" })),
+    );
+
+    expect(await screen.findByText("仅支持 .faq.xlsx 文件")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "已选择文件" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "导入文档" })).toBeDisabled();
+  });
+
   it("rejects QA import files with more than 30000 total rows", async () => {
     const user = userEvent.setup();
 
@@ -687,6 +725,28 @@ describe("AI hosting pages", () => {
     expect(screen.queryByRole("radio", { name: /2,000/ })).not.toBeInTheDocument();
   });
 
+  it("shows an error when document files are rejected by the dropzone accept rule", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
+    );
+
+    await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
+    await user.click(screen.getByRole("button", { name: "添加知识" }));
+    await user.click(screen.getByRole("menuitem", { name: /文档/ }));
+
+    fireEvent.drop(
+      screen.getByRole("button", { name: "上传文档文件" }),
+      createDropData(new File(["zip"], "资料包.zip", { type: "application/zip" })),
+    );
+
+    expect(await screen.findByText("仅支持 PDF、Word、PPT、Markdown、TXT 文档")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "已选择文档" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "确认提交" })).toBeDisabled();
+  });
+
   it("disables enhanced parsing for plain text document files", async () => {
     const user = userEvent.setup();
 
@@ -763,6 +823,28 @@ describe("AI hosting pages", () => {
 
     expect(screen.queryByRole("region", { name: "已选择图片" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "确认提交" })).toBeDisabled();
+  });
+
+  it("accepts image knowledge files with supported extensions when MIME type is empty", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
+    );
+
+    await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
+    await user.click(screen.getByRole("button", { name: "添加知识" }));
+    await user.click(screen.getByRole("menuitem", { name: /图片/ }));
+    await user.upload(
+      screen.getByLabelText("选择图片知识文件"),
+      new File(["image"], "商品主图.png"),
+    );
+
+    expect(screen.getByRole("region", { name: "已选择图片" })).toHaveTextContent(
+      "商品主图.png",
+    );
+    expect(screen.queryByText("仅支持 jpg、jpeg、png、webp 格式的图片")).not.toBeInTheDocument();
   });
 
   it("rejects image knowledge files larger than 5MB", async () => {

@@ -1,4 +1,4 @@
-import { type ComponentProps, useState } from "react";
+import { useState } from "react";
 import { AlertCircleIcon, ThumbsUpIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +22,7 @@ import {
   FileUploadSelectedFile,
 } from "@/components/ui/file-upload";
 import { FileExtensionBadge } from "@/pages/chat/components/message/file";
+import { getFileExtension, RequiredLabel } from "./shared";
 
 const PARSE_MODE_OPTIONS = [
   {
@@ -72,6 +73,15 @@ const DOCUMENT_KNOWLEDGE_ACCEPT = {
   "text/plain": [".txt"],
 };
 const PLAIN_TEXT_DOCUMENT_EXTENSIONS = new Set(["md", "txt"]);
+const SUPPORTED_DOCUMENT_EXTENSIONS = new Set([
+  "pdf",
+  "doc",
+  "docx",
+  "pptx",
+  "ppt",
+  "md",
+  "txt",
+]);
 
 export function ImportDocumentDialog({
   onOpenChange,
@@ -126,6 +136,11 @@ export function ImportDocumentDialog({
     }
   };
 
+  const handleFileReject = () => {
+    setSelectedFile(null);
+    setFileError("仅支持 PDF、Word、PPT、Markdown、TXT 文档");
+  };
+
   const clearSelectedFile = () => {
     setSelectedFile(null);
     setFileError("");
@@ -156,6 +171,7 @@ export function ImportDocumentDialog({
               inputAriaLabel="选择文档知识文件"
               maxFiles={1}
               onFilesAccepted={(files) => handleFileSelect(files[0])}
+              onFilesRejected={handleFileReject}
               title="点击或拖拽上传文件"
             />
           )}
@@ -329,17 +345,6 @@ function RadioOptionCard({
   );
 }
 
-function RequiredLabel(props: ComponentProps<typeof Label>) {
-  return (
-    <Label {...props}>
-      <span className="text-destructive" aria-hidden="true">
-        *
-      </span>
-      {props.children}
-    </Label>
-  );
-}
-
 function SegmentedOptionGroup({
   "aria-label": ariaLabel,
   onValueChange,
@@ -380,19 +385,8 @@ function SegmentedOptionGroup({
 }
 
 function isSupportedDocumentKnowledgeFile(file: File) {
-  const normalizedName = file.name.toLowerCase();
-  const supportedExtensions = [
-    ".pdf",
-    ".doc",
-    ".docx",
-    ".pptx",
-    ".ppt",
-    ".md",
-    ".txt",
-  ];
-
-  return supportedExtensions.some((extension) =>
-    normalizedName.endsWith(extension),
+  return SUPPORTED_DOCUMENT_EXTENSIONS.has(
+    getFileExtension(file.name).toLowerCase(),
   );
 }
 
@@ -400,14 +394,4 @@ function isPlainTextDocument(fileName: string) {
   return PLAIN_TEXT_DOCUMENT_EXTENSIONS.has(
     getFileExtension(fileName).toLowerCase(),
   );
-}
-
-function getFileExtension(fileName: string) {
-  const lastDotIndex = fileName.lastIndexOf(".");
-
-  if (lastDotIndex < 0 || lastDotIndex === fileName.length - 1) {
-    return "";
-  }
-
-  return fileName.slice(lastDotIndex + 1);
 }

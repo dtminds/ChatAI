@@ -21,6 +21,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { FileExtensionBadge } from "@/pages/chat/components/message/file";
+import { getFileExtension } from "./shared";
 
 const QA_IMPORT_MAX_SHEETS = 30;
 const QA_IMPORT_MAX_ROWS = 30000;
@@ -98,6 +99,12 @@ export function ImportQaDialog({
     } finally {
       setIsCheckingFile(false);
     }
+  };
+
+  const handleFileReject = () => {
+    setSelectedFile(null);
+    setFileError("仅支持 .faq.xlsx 文件");
+    setIsCheckingFile(false);
   };
 
   const clearSelectedFile = () => {
@@ -180,6 +187,7 @@ export function ImportQaDialog({
             inputAriaLabel="选择问答导入文件"
             maxFiles={1}
             onFilesAccepted={(files) => void handleFileSelect(files[0])}
+            onFilesRejected={handleFileReject}
             title="点击或拖拽上传文件"
           />
 
@@ -235,14 +243,4 @@ export function ImportQaDialog({
       </DialogContent>
     </Dialog>
   );
-}
-
-function getFileExtension(fileName: string) {
-  const lastDotIndex = fileName.lastIndexOf(".");
-
-  if (lastDotIndex < 0 || lastDotIndex === fileName.length - 1) {
-    return "";
-  }
-
-  return fileName.slice(lastDotIndex + 1);
 }

@@ -1,4 +1,4 @@
-import { type ComponentProps, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import {
   AlertCircleIcon,
   Cancel01Icon,
@@ -7,6 +7,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@/components/ui/button";
+import { formatFileSize } from "@/components/ui/file-upload";
 import {
   Dialog,
   DialogContent,
@@ -16,8 +17,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { getFileExtension, RequiredLabel, stripFileExtension } from "./shared";
 
 const IMAGE_KNOWLEDGE_MAX_FILE_SIZE = 5 * 1024 * 1024;
 const IMAGE_KNOWLEDGE_MIN_EDGE = 10;
@@ -25,6 +26,7 @@ const IMAGE_KNOWLEDGE_MAX_EDGE = 6000;
 const IMAGE_KNOWLEDGE_NAME_MAX_LENGTH = 16;
 const IMAGE_KNOWLEDGE_ACCEPT =
   "image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp";
+const IMAGE_KNOWLEDGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "webp"]);
 
 export function ImportImageDialog({
   onOpenChange,
@@ -269,41 +271,9 @@ export function ImportImageDialog({
   );
 }
 
-function RequiredLabel(props: ComponentProps<typeof Label>) {
-  return (
-    <Label {...props}>
-      <span className="text-destructive" aria-hidden="true">
-        *
-      </span>
-      {props.children}
-    </Label>
-  );
-}
-
-function formatFileSize(size: number) {
-  if (size < 1024) {
-    return `${size}B`;
-  }
-
-  const kb = size / 1024;
-  if (kb < 1024) {
-    return `${formatFileSizeNumber(kb)}KB`;
-  }
-
-  return `${formatFileSizeNumber(kb / 1024)}MB`;
-}
-
-function formatFileSizeNumber(value: number) {
-  return Number.isInteger(value) ? String(value) : value.toFixed(2);
-}
-
 function isSupportedImageKnowledgeFile(file: File) {
-  const normalizedName = file.name.toLowerCase();
-  const supportedExtensions = [".jpg", ".jpeg", ".png", ".webp"];
-
-  return (
-    file.type.startsWith("image/") &&
-    supportedExtensions.some((extension) => normalizedName.endsWith(extension))
+  return IMAGE_KNOWLEDGE_EXTENSIONS.has(
+    getFileExtension(file.name).toLowerCase(),
   );
 }
 
@@ -328,14 +298,4 @@ function readImageDimensions(file: File) {
     };
     image.src = objectUrl;
   });
-}
-
-function stripFileExtension(fileName: string) {
-  const lastDotIndex = fileName.lastIndexOf(".");
-
-  if (lastDotIndex <= 0) {
-    return fileName;
-  }
-
-  return fileName.slice(0, lastDotIndex);
 }

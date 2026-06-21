@@ -121,7 +121,7 @@ export function FileUploadSelectedFile({
   );
 }
 
-function formatFileSize(size: number) {
+export function formatFileSize(size: number) {
   if (size < 1024) {
     return `${size}B`;
   }

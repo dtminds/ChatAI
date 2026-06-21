@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import { Add01Icon, Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Link } from "react-router-dom";
@@ -29,7 +29,12 @@ import {
 } from "@/components/ui/table-pagination";
 import { Textarea } from "@/components/ui/textarea";
 import { AiHostingLayout, AiHostingPageHeader } from "./ai-hosting-layout";
-import { MOCK_KNOWLEDGE_BASES, type KnowledgeBaseItem } from "./knowledge-base-mock-data";
+import {
+  addMockKnowledgeBase,
+  getMockKnowledgeBasesSnapshot,
+  subscribeMockKnowledgeBases,
+  type KnowledgeBaseItem,
+} from "./knowledge-base-mock-data";
 
 type CreateFormState = {
   name: string;
@@ -49,7 +54,11 @@ function getLocalTimeString(): string {
 }
 
 export function KnowledgeBasePage() {
-  const [items, setItems] = useState<KnowledgeBaseItem[]>(MOCK_KNOWLEDGE_BASES);
+  const items = useSyncExternalStore(
+    subscribeMockKnowledgeBases,
+    getMockKnowledgeBasesSnapshot,
+    getMockKnowledgeBasesSnapshot,
+  );
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
 
@@ -119,7 +128,7 @@ export function KnowledgeBasePage() {
       createdAt: nowStr,
     };
 
-    setItems((prev) => [newItem, ...prev]);
+    addMockKnowledgeBase(newItem);
     setCreateSubmitting(false);
     setCreateDialogOpen(false);
     resetCreateForm();

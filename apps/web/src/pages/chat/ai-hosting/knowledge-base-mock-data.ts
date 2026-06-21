@@ -44,6 +44,37 @@ export const MOCK_KNOWLEDGE_BASES: KnowledgeBaseItem[] = [
   },
 ];
 
+type KnowledgeBaseStoreListener = () => void;
+
+const knowledgeBaseStoreListeners = new Set<KnowledgeBaseStoreListener>();
+let knowledgeBaseStoreItems = [...MOCK_KNOWLEDGE_BASES];
+
+function emitKnowledgeBaseStoreChange() {
+  knowledgeBaseStoreListeners.forEach((listener) => listener());
+}
+
+export function getMockKnowledgeBasesSnapshot() {
+  return knowledgeBaseStoreItems;
+}
+
+export function subscribeMockKnowledgeBases(listener: KnowledgeBaseStoreListener) {
+  knowledgeBaseStoreListeners.add(listener);
+
+  return () => {
+    knowledgeBaseStoreListeners.delete(listener);
+  };
+}
+
+export function addMockKnowledgeBase(item: KnowledgeBaseItem) {
+  knowledgeBaseStoreItems = [item, ...knowledgeBaseStoreItems];
+  emitKnowledgeBaseStoreChange();
+}
+
+export function resetMockKnowledgeBases() {
+  knowledgeBaseStoreItems = [...MOCK_KNOWLEDGE_BASES];
+  emitKnowledgeBaseStoreChange();
+}
+
 export const MOCK_KNOWLEDGE_RECORDS: KnowledgeRecord[] = [
   {
     fileExtension: "doc",

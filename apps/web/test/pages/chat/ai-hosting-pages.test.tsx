@@ -8,6 +8,7 @@ import { AgentHostingSettingsPage } from "@/pages/chat/ai-hosting/agent-hosting-
 import { AgentSettingsPage } from "@/pages/chat/ai-hosting/agent-settings-page";
 import { KnowledgeBaseManagementPage } from "@/pages/chat/ai-hosting/knowledge-base-management-page";
 import { KnowledgeBasePage } from "@/pages/chat/ai-hosting/knowledge-base-page";
+import { resetMockKnowledgeBases } from "@/pages/chat/ai-hosting/knowledge-base-mock-data";
 
 const readXlsxFileMock = vi.hoisted(() => vi.fn());
 
@@ -17,11 +18,11 @@ vi.mock("read-excel-file/browser", () => ({
 
 let mockImageDimensions = { height: 800, width: 800 };
 
-function renderWithRoute(path: string, element: ReactElement) {
+function renderWithRoute(path: string, element: ReactElement, routePath = "*") {
   const router = createMemoryRouter(
     [
       {
-        path: "*",
+        path: routePath,
         element,
       },
     ],
@@ -33,6 +34,7 @@ function renderWithRoute(path: string, element: ReactElement) {
 
 describe("AI hosting pages", () => {
   beforeEach(() => {
+    resetMockKnowledgeBases();
     mockImageDimensions = { height: 800, width: 800 };
     Object.defineProperty(URL, "createObjectURL", {
       configurable: true,
@@ -463,6 +465,47 @@ describe("AI hosting pages", () => {
     expect(screen.getByText("失败")).toBeInTheDocument();
     expect(screen.getByText("排队中")).toBeInTheDocument();
     expect(screen.getByText("共 5 条")).toBeInTheDocument();
+  });
+
+  it("uses created mock knowledge bases on the management page", async () => {
+    const user = userEvent.setup();
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_789_000_000_000);
+    const listView = renderWithRoute("/chat/ai-hosting/knowledge", <KnowledgeBasePage />);
+
+    await user.click(await screen.findByRole("button", { name: "创建知识库" }));
+    await user.type(screen.getByLabelText(/知识库名称/), "新品培训知识");
+    await user.type(screen.getByLabelText("知识库描述"), "用于新品上市培训");
+    await user.click(screen.getByRole("button", { name: "确定" }));
+
+    expect(screen.getByRole("link", { name: "新品培训知识" })).toHaveAttribute(
+      "href",
+      "/chat/ai-hosting/knowledge/1789000000000",
+    );
+
+    listView.unmount();
+    renderWithRoute(
+      "/chat/ai-hosting/knowledge/1789000000000",
+      <KnowledgeBaseManagementPage />,
+      "/chat/ai-hosting/knowledge/:knowledgeBaseId",
+    );
+
+    expect(await screen.findByRole("heading", { level: 1, name: "新品培训知识" })).toBeInTheDocument();
+    expect(screen.getByText("用于新品上市培训")).toBeInTheDocument();
+    expect(screen.getByText("暂无数据")).toBeInTheDocument();
+
+    nowSpy.mockRestore();
+  });
+
+  it("shows an empty state for unknown knowledge base ids", async () => {
+    renderWithRoute(
+      "/chat/ai-hosting/knowledge/not-exist",
+      <KnowledgeBaseManagementPage />,
+      "/chat/ai-hosting/knowledge/:knowledgeBaseId",
+    );
+
+    expect(await screen.findByRole("heading", { level: 1, name: "未找到知识库" })).toBeInTheDocument();
+    expect(screen.getByText("当前知识库不存在或已被删除")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { level: 1, name: "华为产品知识" })).not.toBeInTheDocument();
   });
 
   it("opens the QA import dialog and shows the selected faq xlsx file", async () => {

@@ -1,4 +1,4 @@
-import { type ComponentProps, useMemo, useRef, useState } from "react";
+import { type ComponentProps, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   Add01Icon,
   AlertCircleIcon,
@@ -60,8 +60,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { FileExtensionBadge } from "@/pages/chat/components/message/file";
 import { AiHostingLayout, AiHostingPageHeader } from "./ai-hosting-layout";
 import {
+  getMockKnowledgeBasesSnapshot,
   MOCK_KNOWLEDGE_BASES,
   MOCK_KNOWLEDGE_RECORDS,
+  subscribeMockKnowledgeBases,
   type KnowledgeRecord,
   type KnowledgeStatus,
 } from "./knowledge-base-mock-data";
@@ -166,10 +168,13 @@ const statusMeta: Record<
 };
 
 export function KnowledgeBaseManagementPage() {
+  const knowledgeBases = useSyncExternalStore(
+    subscribeMockKnowledgeBases,
+    getMockKnowledgeBasesSnapshot,
+    getMockKnowledgeBasesSnapshot,
+  );
   const { knowledgeBaseId = MOCK_KNOWLEDGE_BASES[0]?.id } = useParams();
-  const knowledgeBase =
-    MOCK_KNOWLEDGE_BASES.find((item) => item.id === knowledgeBaseId) ??
-    MOCK_KNOWLEDGE_BASES[0];
+  const knowledgeBase = knowledgeBases.find((item) => item.id === knowledgeBaseId);
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [qaImportDialogOpen, setQaImportDialogOpen] = useState(false);
@@ -178,8 +183,12 @@ export function KnowledgeBaseManagementPage() {
 
   const filteredRecords = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
+    if (!knowledgeBase) {
+      return [];
+    }
+
     const records = MOCK_KNOWLEDGE_RECORDS.filter(
-      (record) => record.knowledgeBaseId === knowledgeBase?.id,
+      (record) => record.knowledgeBaseId === knowledgeBase.id,
     );
 
     if (!normalizedQuery) {
@@ -201,6 +210,32 @@ export function KnowledgeBaseManagementPage() {
     const start = (activePage - 1) * PAGE_SIZE;
     return filteredRecords.slice(start, start + PAGE_SIZE);
   }, [activePage, filteredRecords]);
+
+  if (!knowledgeBase) {
+    return (
+      <AiHostingLayout title="知识库不存在">
+        <div className="space-y-6">
+          <Button
+            asChild
+            className="-ml-2 h-8 w-fit justify-start rounded-[8px] px-2 text-muted-foreground hover:text-foreground"
+            type="button"
+            variant="ghost"
+          >
+            <Link to="/chat/ai-hosting/knowledge">
+              <HugeiconsIcon color="currentColor" icon={ArrowLeft01Icon} size={17} strokeWidth={1.8} />
+              <span>返回知识库</span>
+            </Link>
+          </Button>
+          <div className="py-16 text-center">
+            <h1 className="text-lg font-semibold text-foreground">未找到知识库</h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              当前知识库不存在或已被删除
+            </p>
+          </div>
+        </div>
+      </AiHostingLayout>
+    );
+  }
 
   return (
     <AiHostingLayout title={knowledgeBase?.name ?? "知识库管理"}>

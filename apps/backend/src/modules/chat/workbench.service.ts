@@ -13,8 +13,7 @@ import type {
   WorkbenchMessageFileDownloadResponse,
   WorkbenchMessageFileDownloadStatusResponse,
   WorkbenchMessagePageDto,
-  WorkbenchMessageQueryByIdsRequest,
-  WorkbenchMessageQueryByIdsResponse,
+  WorkbenchMessageQueryBySeqsResponse,
   WorkbenchOutgoingMessageSegment,
   WorkbenchPollRequest,
   WorkbenchPollResponse,
@@ -269,15 +268,15 @@ export type WorkbenchService = {
     conversationId: string,
     options?: { beforeSeq?: number; limit?: number },
   ): Promise<WorkbenchMessagePageDto> | WorkbenchMessagePageDto;
-  getMessagesByIds(
+  getMessagesBySeqs(
     subUserId: string,
     conversationId: string,
-    messageIds: string[],
-  ): Promise<WorkbenchMessageQueryByIdsResponse> | WorkbenchMessageQueryByIdsResponse;
+    messageSeqs: number[],
+  ): Promise<WorkbenchMessageQueryBySeqsResponse> | WorkbenchMessageQueryBySeqsResponse;
   getChatRecordDetail(
     subUserId: string,
     conversationId: string,
-    messageId: string,
+    msgInfoId: number,
   ): Promise<WorkbenchChatRecordDetailResponse> | WorkbenchChatRecordDetailResponse;
   getHistoryMessages(
     subUserId: string,
@@ -287,7 +286,7 @@ export type WorkbenchService = {
   downloadMessageFile(
     subUserId: string,
     conversationId: string,
-    messageId: string,
+    msgInfoId: number,
   ): Promise<WorkbenchMessageFileDownloadResponse> | WorkbenchMessageFileDownloadResponse;
   confirmVoicePlaybackReady(
     subUserId: string,
@@ -422,7 +421,7 @@ export type WorkbenchService = {
   revokeMessage(
     subUserId: string,
     conversationId: string,
-    messageId: string,
+    messageSeq: number,
   ): Promise<WorkbenchRevokeMessageResponse> | WorkbenchRevokeMessageResponse;
   sendMessage(
     subUserId: string,
@@ -848,10 +847,10 @@ export class MysqlWorkbenchService implements WorkbenchService {
     }
   }
 
-  async getMessagesByIds(
+  async getMessagesBySeqs(
     subUserId: string,
     conversationId: string,
-    messageIds: string[],
+    messageSeqs: number[],
   ) {
     const conversation = await this.repository.getConversationLookup(conversationId);
 
@@ -861,13 +860,13 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     await this.assertSeatAccess(subUserId, conversation.seatId);
 
-    return this.repository.listMessagesByIds(conversationId, messageIds);
+    return this.repository.listMessagesBySeqs(conversationId, messageSeqs);
   }
 
   async getChatRecordDetail(
     subUserId: string,
     conversationId: string,
-    messageId: string,
+    msgInfoId: number,
   ) {
     const conversation = await this.repository.getConversationLookup(conversationId);
 
@@ -881,7 +880,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
       conversation.uid,
       conversation.platform,
       conversationId,
-      messageId,
+      msgInfoId,
     );
 
     if (!detail) {
@@ -964,10 +963,9 @@ export class MysqlWorkbenchService implements WorkbenchService {
   async downloadMessageFile(
     subUserId: string,
     conversationId: string,
-    messageId: string,
+    msgInfoId: number,
   ) {
     const conversation = await this.repository.getConversationLookup(conversationId);
-    const normalizedMessageId = messageId.trim();
 
     if (!conversation) {
       throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
@@ -975,12 +973,12 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     await this.assertSeatAccess(subUserId, conversation.seatId);
 
-    if (!normalizedMessageId) {
+    if (!Number.isSafeInteger(msgInfoId) || msgInfoId <= 0) {
       throw new BadRequestError("INVALID_MESSAGE_ID", "消息 ID 不能为空");
     }
 
     await this.javaClient.downloadMsgFile({
-      msgid: normalizedMessageId,
+      msgInfoId,
       platform: conversation.platform,
       uid: conversation.uid,
     });
@@ -988,7 +986,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
     this.logger.info(
       {
         conversationId: conversation.id,
-        messageId: normalizedMessageId,
+        msgInfoId,
         operation: "download-message-file",
         platform: conversation.platform,
         seatId: conversation.seatId,
@@ -999,7 +997,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
     );
 
     return {
-      messageId: normalizedMessageId,
+      messageSeq: msgInfoId,
       status: "accepted" as const,
     };
   }
@@ -1817,7 +1815,6 @@ export class MysqlWorkbenchService implements WorkbenchService {
     const segment = getSingleSendSegment(payload);
     const failMsgId = getRetryFailMsgId(payload);
     const response = await this.javaClient.sendMessage({
-      clientMessageId: payload.clientMessageId,
       ...(failMsgId != null ? { failMsgId } : {}),
       msgData: await this.buildJavaSendMessageData(
         conversation.uid,
@@ -1838,11 +1835,10 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     this.logger.info(
       {
-        clientMessageId: payload.clientMessageId,
         conversationId: conversation.id,
-        messageId: response.messageId,
         messageType: segment.type,
         operation: "send-message",
+        optNo: response.optNo,
         platform: conversation.platform,
         seatId: conversation.seatId,
         sendType: conversation.thirdGroupId ? "group" : "single",
@@ -1867,23 +1863,10 @@ export class MysqlWorkbenchService implements WorkbenchService {
     }
 
     if (
-      (segment.type === "file" ||
-        segment.type === "h5" ||
-        segment.type === "weapp") &&
-      segment.msgid
-    ) {
-      if (segment.type === "weapp") {
-        return buildForwardJavaSendMessageData(segment.type, segment.msgid);
-      }
-
-      return buildJavaSendMessageData(payload, segment);
-    }
-
-    if (
       segment.type === "emotion" ||
       (segment.type === "file" && segment.materialCollectionId) ||
       (segment.type === "h5" && segment.materialCollectionId) ||
-      segment.type === "weapp"
+      (segment.type === "weapp" && segment.materialCollectionId)
     ) {
       const materialCollectionId = segment.materialCollectionId;
 
@@ -1922,7 +1905,11 @@ export class MysqlWorkbenchService implements WorkbenchService {
         return buildH5JavaSendMessageData(collection.content);
       }
 
-      return buildForwardJavaSendMessageData(segment.type, collection.msgid);
+      return buildForwardJavaSendMessageData(segment.type, collection.msgInfoId);
+    }
+
+    if (segment.type === "weapp") {
+      return buildForwardJavaSendMessageData(segment.type, segment.msgInfoId);
     }
 
     return buildJavaSendMessageData(payload, segment);
@@ -1931,18 +1918,17 @@ export class MysqlWorkbenchService implements WorkbenchService {
   async revokeMessage(
     subUserId: string,
     conversationId: string,
-    messageId: string,
+    messageSeq: number,
   ): Promise<WorkbenchRevokeMessageResponse> {
     const conversation = await this.getOperableConversation(subUserId, conversationId);
-    const normalizedMessageId = messageId.trim();
 
-    if (!normalizedMessageId) {
-      throw new BadRequestError("INVALID_MESSAGE_ID", "消息 ID 不能为空");
+    if (!Number.isSafeInteger(messageSeq) || messageSeq <= 0) {
+      throw new BadRequestError("INVALID_MESSAGE_SEQ", "消息序号无效");
     }
 
     const message = await this.repository.getMessageForRevoke({
       conversationId: conversation.id,
-      messageId: normalizedMessageId,
+      messageSeq,
       platform: conversation.platform,
       thirdExternalUserId: conversation.thirdExternalUserId,
       thirdGroupId: conversation.thirdGroupId,
@@ -1981,7 +1967,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
     this.logger.info(
       {
         conversationId: conversation.id,
-        messageId: normalizedMessageId,
+        messageSeq,
         operation: "revoke-message",
         platform: conversation.platform,
         revokeMsgId: message.seq,
@@ -1995,7 +1981,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
     return {
       accepted: true,
       conversationId: conversation.id,
-      messageId: normalizedMessageId,
+      messageSeq,
       revokeMsgId: message.seq,
     };
   }
@@ -2152,7 +2138,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
     }
 
     const message = await this.repository.findMaterialMessage({
-      msgid: request.messageId,
+      msgInfoId: request.msgInfoId,
       uid: me.uid,
     });
 
@@ -2167,7 +2153,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
       bizType,
       message.content,
       request,
-      request.messageId,
+      request.msgInfoId,
       contentType,
     );
 
@@ -2179,9 +2165,10 @@ export class MysqlWorkbenchService implements WorkbenchService {
     }
 
     const { content: normalizedContent, title } = normalizedMaterial;
+    const msgInfoId = String(message.id);
     const duplicate = await this.repository.findMaterialCollectionByMessage({
       bizType,
-      msgid: request.messageId,
+      msgInfoId,
       subUid,
       uid: me.uid,
     });
@@ -2198,6 +2185,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
         content: normalizedContent,
         groupId,
         id: duplicate.id,
+        msgInfoId,
         opSubUserId: subUserId,
         sort,
         title,
@@ -2214,7 +2202,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
       bizType,
       content: normalizedContent,
       groupId,
-      msgid: request.messageId,
+      msgInfoId,
       opSubUserId: subUserId,
       sort,
       subUid,
@@ -4405,7 +4393,7 @@ function normalizeMaterialCollectionPayload(
     WorkbenchMaterialCollectionCreateRequest,
     "description" | "fileName" | "title"
   >,
-  messageId: string,
+  msgInfoId: string,
   contentType: WorkbenchMaterialCollectionContentType,
 ): { content: string; title: string } | { errorMsg: string } {
   if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.FILE) {
@@ -4441,14 +4429,14 @@ function normalizeMaterialCollectionPayload(
 
   return {
     content: rawContent ?? "",
-    title: readMaterialTitle(rawContent, contentType, messageId),
+    title: readMaterialTitle(rawContent, contentType, msgInfoId),
   };
 }
 
 function readMaterialTitle(
   rawContent: string | null,
   contentType: WorkbenchMaterialCollectionContentType,
-  messageId: string,
+  msgInfoId: string,
 ) {
   if (contentType === "emotion") {
     return "表情";
@@ -4457,18 +4445,18 @@ function readMaterialTitle(
   const content = parseMaterialContentRecord(rawContent);
 
   if (contentType === "file") {
-    return truncateMaterialTitle(readMaterialString(content, "fileName") || messageId);
+    return truncateMaterialTitle(readMaterialString(content, "fileName") || msgInfoId);
   }
 
   if (contentType === "mini-program") {
     return truncateMaterialTitle(
       readMaterialString(content, "description") ||
         readMaterialString(content, "title") ||
-        messageId,
+        msgInfoId,
     );
   }
 
-  return truncateMaterialTitle(readMaterialString(content, "title") || messageId);
+  return truncateMaterialTitle(readMaterialString(content, "title") || msgInfoId);
 }
 
 function truncateMaterialTitle(title: string) {
@@ -4827,17 +4815,17 @@ function buildH5JavaSendMessageData(content: string): JavaSendMessageData {
 
 function buildForwardJavaSendMessageData(
   msgtype: "sphfeed" | "weapp",
-  msgid: string,
+  msgInfoId: string | undefined,
 ): JavaSendMessageData {
-  const transMsgid = msgid.trim();
+  const transMsgInfoId = msgInfoId ? parseMySqlId(msgInfoId) : undefined;
 
-  if (!transMsgid) {
-    throw new BadRequestError("INVALID_TRANS_MESSAGE_ID", "转发消息 ID 无效");
+  if (transMsgInfoId == null) {
+    throw new BadRequestError("INVALID_TRANS_MESSAGE_INFO_ID", "转发消息 ID 无效");
   }
 
   return {
     msgtype,
-    transMsgid,
+    transMsgInfoId,
   };
 }
 

@@ -8,7 +8,7 @@ import type { Message } from "@/pages/chat/chat-types";
 
 const ACTIVE_CONVERSATION_READ_THROTTLE_MS = 800;
 
-export function getFirstUnreadCustomerMessageId(
+export function getFirstUnreadCustomerMessageKey(
   messages: Message[],
   unreadCount: number,
 ) {
@@ -24,7 +24,7 @@ export function getFirstUnreadCustomerMessageId(
     const message = messages[index];
 
     if (message && message.role === "customer" && !message.isOwnMessage) {
-      return message.id;
+      return message.uiMessageKey;
     }
   }
 
@@ -40,7 +40,7 @@ export function useVisibleUnreadConversationRead({
   activeMessages,
   activeView,
   canUseConversationActions,
-  firstUnreadMessageId,
+  firstUnreadMessageKey,
   isConversationLoading,
   markConversationRead,
   messageViewportRef,
@@ -50,7 +50,7 @@ export function useVisibleUnreadConversationRead({
   activeMessages: Message[];
   activeView: "chat" | "customers";
   canUseConversationActions: boolean;
-  firstUnreadMessageId?: string;
+  firstUnreadMessageKey?: string;
   isConversationLoading: boolean;
   markConversationRead: (conversationId: string) => Promise<void>;
   messageViewportRef: RefObject<HTMLDivElement | null>;
@@ -120,7 +120,7 @@ export function useVisibleUnreadConversationRead({
       !canUseConversationActions ||
       isConversationLoading ||
       unreadCount <= 0 ||
-      !firstUnreadMessageId ||
+      !firstUnreadMessageKey ||
       typeof IntersectionObserver === "undefined"
     ) {
       return;
@@ -128,7 +128,7 @@ export function useVisibleUnreadConversationRead({
 
     const viewport = messageViewportRef.current;
     const firstUnreadMessageElement = viewport?.querySelector(
-      `[data-message-id="${escapeCssAttributeValue(firstUnreadMessageId)}"]`,
+      `[data-ui-message-key="${escapeCssAttributeValue(firstUnreadMessageKey)}"]`,
     );
 
     if (!viewport || !firstUnreadMessageElement) {
@@ -157,7 +157,7 @@ export function useVisibleUnreadConversationRead({
     activeMessages,
     activeView,
     canUseConversationActions,
-    firstUnreadMessageId,
+    firstUnreadMessageKey,
     isConversationLoading,
     messageViewportRef,
     requestActiveConversationRead,

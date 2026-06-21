@@ -156,7 +156,7 @@ describe("MessageHistorySidePanel", () => {
     await user.click(screen.getByRole("button", { name: "下载文件：全部记录文件.pdf" }));
 
     expect(handleDownloadMessageFile).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "file-all" }),
+      expect.objectContaining({ uiMessageKey: "file-all" }),
     );
   });
 
@@ -1142,7 +1142,7 @@ describe("MessageHistorySidePanel", () => {
     await user.click(screen.getByRole("button", { name: "下载视频：待下载视频" }));
 
     expect(handleDownloadMessageFile).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "video-pending" }),
+      expect.objectContaining({ uiMessageKey: "video-pending" }),
     );
     expect(screen.queryByRole("button", { name: "播放视频：待下载视频" }))
       .not.toBeInTheDocument();
@@ -1655,7 +1655,7 @@ function createTextMessage(
       type: "text",
     },
     conversationId: "conversation-1",
-    id,
+    msgid: id,
     role: "customer",
     sender: {
       id: "customer-1",
@@ -1663,6 +1663,7 @@ function createTextMessage(
     },
     sentAt: overrides.sentAt ?? "2026-05-19 10:00:00",
     status: "sent",
+    uiMessageKey: id,
   };
 }
 
@@ -1682,7 +1683,7 @@ function createImageMessage(
       type: "image",
     },
     conversationId: "conversation-1",
-    id,
+    msgid: id,
     role: "customer",
     sender: {
       id: "customer-1",
@@ -1690,6 +1691,7 @@ function createImageMessage(
     },
     sentAt: overrides.sentAt,
     status: "sent",
+    uiMessageKey: id,
   };
 }
 
@@ -1718,7 +1720,7 @@ function createVideoMessage(
       videoUrl: overrides.videoUrl,
     },
     conversationId: "conversation-1",
-    id,
+    msgid: id,
     role: "customer",
     sender: {
       id: "customer-1",
@@ -1726,6 +1728,7 @@ function createVideoMessage(
     },
     sentAt: overrides.sentAt,
     status: "sent",
+    uiMessageKey: id,
   };
 }
 
@@ -1748,7 +1751,7 @@ function createFileMessage(
       type: "file",
     },
     conversationId: "conversation-1",
-    id,
+    msgid: id,
     role: "customer",
     sender: {
       id: "customer-1",
@@ -1756,6 +1759,7 @@ function createFileMessage(
     },
     sentAt: content.sentAt ?? "2026-05-19 10:00:00",
     status: "sent",
+    uiMessageKey: id,
   };
 }
 
@@ -1775,7 +1779,7 @@ function createH5Message(
       type: "h5",
     },
     conversationId: "conversation-1",
-    id,
+    msgid: id,
     role: "customer",
     sender: {
       id: "customer-1",
@@ -1783,6 +1787,7 @@ function createH5Message(
     },
     sentAt: "2026-05-19 10:00:00",
     status: "sent",
+    uiMessageKey: id,
   };
 }
 
@@ -1801,7 +1806,7 @@ function createMiniProgramMessage(
       type: "mini-program",
     },
     conversationId: "conversation-1",
-    id,
+    msgid: id,
     role: "customer",
     sender: {
       id: "customer-1",
@@ -1809,6 +1814,7 @@ function createMiniProgramMessage(
     },
     sentAt: "2026-05-19 10:00:00",
     status: "sent",
+    uiMessageKey: id,
   };
 }
 
@@ -1830,7 +1836,7 @@ function createQuoteMessage({
       type: "quote",
     },
     conversationId: "conversation-1",
-    id: "quote-message-1",
+    msgid: "quote-message-1",
     role: "agent",
     sender: {
       id: "agent-1",
@@ -1838,6 +1844,7 @@ function createQuoteMessage({
     },
     sentAt: "2026-05-19 10:12:00",
     status: "sent",
+    uiMessageKey: "quote-message-1",
   };
 }
 
@@ -1856,7 +1863,7 @@ function createChatRecordMessage({
       type: "chatrecord",
     },
     conversationId: "conversation-1",
-    id: "chatrecord-message-1",
+    msgid: "chatrecord-message-1",
     role: "customer",
     sender: {
       id: "customer-1",
@@ -1864,5 +1871,6 @@ function createChatRecordMessage({
     },
     sentAt: "2026-05-19 10:15:00",
     status: "sent",
+    uiMessageKey: "chatrecord-message-1",
   };
 }

@@ -75,7 +75,7 @@ describe("ChatWorkbenchPage download flows", () => {
                 conversationId: "conv-001",
                 createdAt: 1778240300000,
                 customerId: "cust-001",
-                messageId: "remote-expired-video",
+                msgid: "remote-expired-video",
                 rawMsgtype: "video",
                 seatId: "drc",
                 senderType: "customer",
@@ -98,8 +98,7 @@ describe("ChatWorkbenchPage download flows", () => {
 
     expect(downloadMessageFile).toHaveBeenCalledWith({
       conversationId: "conv-001",
-      messageId: "remote-expired-video",
-      messageSeq: 539,
+      msgInfoId: 539,
     });
     expect(openSpy).not.toHaveBeenCalled();
   });
@@ -133,7 +132,7 @@ describe("ChatWorkbenchPage download flows", () => {
                 conversationId: "conv-001",
                 createdAt: 1778240300000,
                 customerId: "cust-001",
-                messageId: "remote-pending-video",
+                msgid: "remote-pending-video",
                 rawMsgtype: "video",
                 seatId: "drc",
                 senderType: "customer",
@@ -165,7 +164,7 @@ describe("ChatWorkbenchPage download flows", () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();
     const downloadMessageFile = vi.fn(async () => ({
-      messageId: "remote-pending-video",
+      messageSeq: 539,
       status: "accepted" as const,
     }));
     const getMessageFileDownloadStatus = vi.fn(
@@ -198,7 +197,7 @@ describe("ChatWorkbenchPage download flows", () => {
                 conversationId: "conv-001",
                 createdAt: 1778240300000,
                 customerId: "cust-001",
-                messageId: "remote-pending-video",
+                msgid: "remote-pending-video",
                 rawMsgtype: "video",
                 seatId: "drc",
                 senderType: "customer",
@@ -226,8 +225,7 @@ describe("ChatWorkbenchPage download flows", () => {
 
     expect(downloadMessageFile).toHaveBeenCalledWith({
       conversationId: "conv-001",
-      messageId: "remote-pending-video",
-      messageSeq: 539,
+      msgInfoId: 539,
     });
     expect(screen.getByRole("status", { name: "视频下载中" })).toBeInTheDocument();
 
@@ -303,7 +301,7 @@ describe("ChatWorkbenchPage download flows", () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();
     const downloadMessageFile = vi.fn(async () => ({
-      messageId: "remote-new-video",
+      messageSeq: 539,
       status: "accepted" as const,
     }));
 
@@ -357,8 +355,7 @@ describe("ChatWorkbenchPage download flows", () => {
 
     expect(downloadMessageFile).toHaveBeenCalledWith({
       conversationId: "conv-001",
-      messageId: "remote-new-video",
-      messageSeq: 539,
+      msgInfoId: 539,
     });
     expect(toast.warning).not.toHaveBeenCalledWith("下载队列已满，请稍后");
   });
@@ -442,7 +439,7 @@ function createInProgressVideoDto({
     conversationId: "conv-001",
     createdAt,
     customerId: "cust-001",
-    messageId,
+    msgid: messageId,
     rawMsgtype: "video",
     seatId: "drc",
     senderType: "customer" as const,
@@ -475,7 +472,7 @@ function createInProgressFileDto({
     conversationId: "conv-001",
     createdAt,
     customerId: "cust-001",
-    messageId,
+    msgid: messageId,
     rawMsgtype: "file",
     seatId: "drc",
     senderType: "customer" as const,

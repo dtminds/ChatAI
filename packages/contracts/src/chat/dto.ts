@@ -84,7 +84,7 @@ export type WorkbenchMaterialCollectionItemDto = {
   groupId: string | 0;
   title: string;
   sort: number;
-  messageId: string;
+  msgInfoId: string;
   contentType: WorkbenchMaterialCollectionContentType;
   content: Record<string, unknown>;
   createdAt?: number;
@@ -121,7 +121,7 @@ export type WorkbenchMaterialCollectionCreateRequest = {
   description?: string;
   fileName?: string;
   groupId?: string | 0;
-  messageId: string;
+  msgInfoId: string;
   title?: string;
 };
 
@@ -174,7 +174,7 @@ export type WorkbenchMessageStatus = "queued" | "sending" | "sent" | "failed";
 export type WorkbenchMessageFileDownloadStatus = "ing" | "finished" | "failed";
 
 export type WorkbenchMessageFileDownloadResponse = {
-  messageId: string;
+  messageSeq: number;
   status: "accepted";
 };
 
@@ -220,13 +220,18 @@ export type WorkbenchRevokeMessageRequest = {
 export type WorkbenchRevokeMessageResponse = {
   accepted: true;
   conversationId: string;
-  messageId: string;
+  messageSeq: number;
   revokeMsgId: number;
 };
 
 export type WorkbenchMessageFileDownloadStatusRequest = {
   conversationId: string;
   messageSeq: number;
+};
+
+export type WorkbenchMessageFileDownloadRequest = {
+  conversationId: string;
+  msgInfoId: number;
 };
 
 export type WorkbenchSubUserDto = {
@@ -313,7 +318,7 @@ export type WorkbenchConversationListResponse = {
 };
 
 export type WorkbenchMessageBaseDto = {
-  messageId: string;
+  msgid: string;
   conversationId: string;
   seatId: string;
   customerId: string;
@@ -330,7 +335,6 @@ export type WorkbenchMessageBaseDto = {
   content: Record<string, unknown>;
   createdAt?: number;
   seq: number;
-  clientMessageId?: string;
   optNo?: string;
   failReason?: string;
   isRevoked?: boolean;
@@ -391,20 +395,20 @@ export type WorkbenchConversationChangeDto =
 export type WorkbenchMessageUpdateEventDto = {
   conversationId: string;
   eventId: number;
-  messageId: string;
+  messageSeq: number;
 };
 
-export type WorkbenchMessageQueryByIdsRequest = {
+export type WorkbenchMessageQueryBySeqsRequest = {
   conversationId: string;
-  messageIds: string[];
+  messageSeqs: number[];
 };
 
-export type WorkbenchMessageQueryByIdsResponse = {
+export type WorkbenchMessageQueryBySeqsResponse = {
   messages: WorkbenchMessageDto[];
 };
 
 export type WorkbenchChatRecordDetailResponse = {
-  messageId: string;
+  messageSeq: number;
   messages: WorkbenchMessageDto[];
 };
 
@@ -646,7 +650,7 @@ export type WorkbenchOutgoingMessageFileSegment = {
   fileId?: string;
   fileName?: string;
   materialCollectionId?: string;
-  msgid?: string;
+  msgInfoId?: string;
   fileSize?: number;
   fileSizeLabel?: string;
   url?: string;
@@ -658,14 +662,14 @@ export type WorkbenchOutgoingMessageH5Segment = {
   desc?: string;
   href?: string;
   materialCollectionId?: string;
-  msgid?: string;
+  msgInfoId?: string;
   title?: string;
 };
 
 export type WorkbenchOutgoingMessageMiniProgramSegment = {
   type: "weapp";
-  materialCollectionId: string;
-  msgid?: string;
+  materialCollectionId?: string;
+  msgInfoId?: string;
   appName?: string;
   coverImageUrl?: string;
   logoUrl?: string;
@@ -675,8 +679,8 @@ export type WorkbenchOutgoingMessageMiniProgramSegment = {
 
 export type WorkbenchOutgoingMessageSphfeedSegment = {
   type: "sphfeed";
-  materialCollectionId: string;
-  msgid?: string;
+  materialCollectionId?: string;
+  msgInfoId?: string;
   description?: string;
   imageUrl?: string;
   sourceLabel?: string;
@@ -696,7 +700,6 @@ export type WorkbenchOutgoingMessageSegment =
 export type WorkbenchSendMessagePayload = {
   seatId: string;
   conversationId: string;
-  clientMessageId: string;
   failMsgId?: string;
   contentType?: "text";
   content?: string;
@@ -707,7 +710,6 @@ export type WorkbenchSendMessagePayload = {
   };
   quote?: {
     quoteMsgId: string;
-    quotedMessageId?: string;
     quotedMessage?: WorkbenchQuotedMessagePreviewDto;
   };
   segment?: WorkbenchOutgoingMessageSegment;
@@ -715,16 +717,12 @@ export type WorkbenchSendMessagePayload = {
 };
 
 export type WorkbenchSentMessageAck = {
-  messageId: string;
-  clientMessageId: string;
-  optNo?: string;
+  optNo: string;
   status: "accepted";
 };
 
 export type WorkbenchSendMessageResponse = {
-  messageId: string;
-  clientMessageId: string;
-  optNo?: string;
+  optNo: string;
   status: "accepted";
   messages?: WorkbenchSentMessageAck[];
 };

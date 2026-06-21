@@ -55,7 +55,7 @@ function buildQuickReplyAttachmentSegment(
     const fileName = readString(attachment.content.fileName);
     const fileUrl = readString(attachment.content.fileUrl);
 
-    if (!fileName || !fileUrl || !attachment.materialCollectionId || !attachment.msgid) {
+    if (!fileName || !fileUrl || !attachment.msgInfoId) {
       return undefined;
     }
 
@@ -64,8 +64,7 @@ function buildQuickReplyAttachmentSegment(
       fileName,
       fileSize: readNumber(attachment.content.fileSize),
       fileSizeLabel: readString(attachment.content.fileSizeLabel) || undefined,
-      materialCollectionId: attachment.materialCollectionId,
-      msgid: attachment.msgid,
+      msgInfoId: attachment.msgInfoId,
       type: "file",
       url: fileUrl,
     };
@@ -78,7 +77,7 @@ function buildQuickReplyAttachmentSegment(
       readString(attachment.content.url) ||
       readString(attachment.content.linkUrl);
 
-    if (!title || !href || !attachment.materialCollectionId || !attachment.msgid) {
+    if (!title || !href || !attachment.msgInfoId) {
       return undefined;
     }
 
@@ -92,15 +91,14 @@ function buildQuickReplyAttachmentSegment(
         readString(attachment.content.description) ||
         undefined,
       href,
-      materialCollectionId: attachment.materialCollectionId,
-      msgid: attachment.msgid,
+      msgInfoId: attachment.msgInfoId,
       title,
       type: "h5",
     };
   }
 
   if (attachment.type === "weapp") {
-    if (!attachment.materialCollectionId || !attachment.msgid) {
+    if (!attachment.msgInfoId) {
       return undefined;
     }
 
@@ -111,8 +109,7 @@ function buildQuickReplyAttachmentSegment(
         readString(attachment.content.imageUrl) ||
         undefined,
       logoUrl: readString(attachment.content.logoUrl) || undefined,
-      materialCollectionId: attachment.materialCollectionId,
-      msgid: attachment.msgid,
+      msgInfoId: attachment.msgInfoId,
       sourceLabel: readString(attachment.content.sourceLabel) || undefined,
       title: readString(attachment.content.title) || undefined,
       type: "weapp",
@@ -120,15 +117,14 @@ function buildQuickReplyAttachmentSegment(
   }
 
   if (attachment.type === "sphfeed") {
-    if (!attachment.materialCollectionId || !attachment.msgid) {
+    if (!attachment.msgInfoId) {
       return undefined;
     }
 
     return {
       description: readString(attachment.content.description) || undefined,
       imageUrl: readString(attachment.content.imageUrl) || undefined,
-      materialCollectionId: attachment.materialCollectionId,
-      msgid: attachment.msgid,
+      msgInfoId: attachment.msgInfoId,
       sourceLabel: readString(attachment.content.sourceLabel) || undefined,
       title: readString(attachment.content.title) || undefined,
       type: "sphfeed",

@@ -1,5 +1,4 @@
 import type {
-  WorkbenchMessageQueryByIdsRequest,
   WorkbenchPollRequest,
   WorkbenchSendMessagePayload,
   WorkbenchGetOrCreateConversationRequestDto,
@@ -102,8 +101,12 @@ const VoiceTranscriptionBodySchema = Type.Object({
   messageSeq: Type.Integer({ minimum: 1 }),
 });
 
-const MessageDownloadParamsSchema = Type.Object({
-  messageId: Type.String(),
+const MessageRevokeParamsSchema = Type.Object({
+  messageSeq: Type.Integer({ minimum: 1 }),
+});
+
+const MessageChatRecordParamsSchema = Type.Object({
+  messageSeq: Type.Integer({ minimum: 1 }),
 });
 
 const MessageChatRecordQuerySchema = Type.Object({
@@ -119,9 +122,14 @@ const MessageDownloadStatusBodySchema = Type.Object({
   messageSeq: Type.Number(),
 });
 
-const MessageQueryByIdsBodySchema = Type.Object({
+const MessageDownloadBodySchema = Type.Object({
   conversationId: Type.String(),
-  messageIds: Type.Array(Type.String()),
+  msgInfoId: Type.Integer({ minimum: 1 }),
+});
+
+const MessageQueryBySeqsBodySchema = Type.Object({
+  conversationId: Type.String(),
+  messageSeqs: Type.Array(Type.Integer({ minimum: 1 }), { maxItems: 100 }),
 });
 
 const SmartReplyPollBodySchema = Type.Object({
@@ -223,7 +231,6 @@ const PollQuerySchema = Type.Object({
 });
 
 const SendMessageBodySchema = Type.Object({
-  clientMessageId: Type.String(),
   content: Type.Optional(Type.String()),
   contentType: Type.Optional(Type.Literal("text")),
   conversationId: Type.String(),
@@ -238,7 +245,6 @@ const SendMessageBodySchema = Type.Object({
   quote: Type.Optional(
     Type.Object({
       quoteMsgId: Type.String(),
-      quotedMessageId: Type.Optional(Type.String()),
       quotedMessage: Type.Optional(
         Type.Object({
           contentType: WorkbenchMessageContentTypeSchema,
@@ -276,7 +282,7 @@ const SendMessageBodySchema = Type.Object({
         fileId: Type.Optional(Type.String()),
         fileName: Type.Optional(Type.String()),
         materialCollectionId: Type.Optional(Type.String()),
-        msgid: Type.Optional(Type.String()),
+        msgInfoId: Type.Optional(Type.String()),
         fileSize: Type.Optional(Type.Number()),
         fileSizeLabel: Type.Optional(Type.String()),
         type: Type.Literal("file"),
@@ -287,18 +293,18 @@ const SendMessageBodySchema = Type.Object({
         desc: Type.Optional(Type.String()),
         href: Type.Optional(Type.String()),
         materialCollectionId: Type.Optional(Type.String()),
-        msgid: Type.Optional(Type.String()),
+        msgInfoId: Type.Optional(Type.String()),
         title: Type.Optional(Type.String()),
         type: Type.Literal("h5"),
       }),
       Type.Object({
-        materialCollectionId: Type.String(),
-        msgid: Type.Optional(Type.String()),
+        materialCollectionId: Type.Optional(Type.String()),
+        msgInfoId: Type.Optional(Type.String()),
         type: Type.Literal("weapp"),
       }),
       Type.Object({
-        materialCollectionId: Type.String(),
-        msgid: Type.Optional(Type.String()),
+        materialCollectionId: Type.Optional(Type.String()),
+        msgInfoId: Type.Optional(Type.String()),
         type: Type.Literal("sphfeed"),
       }),
     ]),
@@ -328,7 +334,7 @@ const SendMessageBodySchema = Type.Object({
           fileId: Type.Optional(Type.String()),
           fileName: Type.Optional(Type.String()),
           materialCollectionId: Type.Optional(Type.String()),
-          msgid: Type.Optional(Type.String()),
+          msgInfoId: Type.Optional(Type.String()),
           fileSize: Type.Optional(Type.Number()),
           fileSizeLabel: Type.Optional(Type.String()),
           type: Type.Literal("file"),
@@ -339,7 +345,7 @@ const SendMessageBodySchema = Type.Object({
           desc: Type.Optional(Type.String()),
           href: Type.Optional(Type.String()),
           materialCollectionId: Type.Optional(Type.String()),
-          msgid: Type.Optional(Type.String()),
+          msgInfoId: Type.Optional(Type.String()),
           title: Type.Optional(Type.String()),
           type: Type.Literal("h5"),
         }),
@@ -347,8 +353,8 @@ const SendMessageBodySchema = Type.Object({
           appName: Type.Optional(Type.String()),
           coverImageUrl: Type.Optional(Type.String()),
           logoUrl: Type.Optional(Type.String()),
-          materialCollectionId: Type.String(),
-          msgid: Type.Optional(Type.String()),
+          materialCollectionId: Type.Optional(Type.String()),
+          msgInfoId: Type.Optional(Type.String()),
           sourceLabel: Type.Optional(Type.String()),
           title: Type.Optional(Type.String()),
           type: Type.Literal("weapp"),
@@ -356,8 +362,8 @@ const SendMessageBodySchema = Type.Object({
         Type.Object({
           description: Type.Optional(Type.String()),
           imageUrl: Type.Optional(Type.String()),
-          materialCollectionId: Type.String(),
-          msgid: Type.Optional(Type.String()),
+          materialCollectionId: Type.Optional(Type.String()),
+          msgInfoId: Type.Optional(Type.String()),
           sourceLabel: Type.Optional(Type.String()),
           title: Type.Optional(Type.String()),
           type: Type.Literal("sphfeed"),
@@ -436,7 +442,7 @@ const MaterialCollectionCreateBodySchema = Type.Object({
   description: Type.Optional(Type.String()),
   fileName: Type.Optional(Type.String()),
   groupId: Type.Optional(Type.Union([Type.String({ maxLength: 64 }), Type.Literal(0)])),
-  messageId: Type.String({ maxLength: 64, minLength: 1 }),
+  msgInfoId: Type.String({ maxLength: 64, minLength: 1 }),
   title: Type.Optional(Type.String()),
 });
 
@@ -589,11 +595,13 @@ type PlayableVoiceQuery = Static<typeof PlayableVoiceQuerySchema>;
 type MediaUploadCredentialBody = Static<typeof MediaUploadCredentialBodySchema>;
 type VoicePlaybackConfirmBody = Static<typeof VoicePlaybackConfirmBodySchema>;
 type VoiceTranscriptionBody = Static<typeof VoiceTranscriptionBodySchema>;
-type MessageDownloadParams = Static<typeof MessageDownloadParamsSchema>;
+type MessageRevokeParams = Static<typeof MessageRevokeParamsSchema>;
+type MessageChatRecordParams = Static<typeof MessageChatRecordParamsSchema>;
 type MessageChatRecordQuery = Static<typeof MessageChatRecordQuerySchema>;
 type MessageRevokeBody = Static<typeof MessageRevokeBodySchema>;
+type MessageDownloadBody = Static<typeof MessageDownloadBodySchema>;
 type MessageDownloadStatusBody = Static<typeof MessageDownloadStatusBodySchema>;
-type MessageQueryByIdsBody = Static<typeof MessageQueryByIdsBodySchema>;
+type MessageQueryBySeqsBody = Static<typeof MessageQueryBySeqsBodySchema>;
 type PollQuery = Static<typeof PollQuerySchema>;
 type SendMessageBody = Static<typeof SendMessageBodySchema>;
 type SeatParams = Static<typeof SeatParamsSchema>;
@@ -825,31 +833,31 @@ export async function registerChatRoutes(app: FastifyInstance) {
     },
   );
 
-  app.post<{ Body: MessageQueryByIdsBody }>(
-    "/api/server/messages/query-by-ids",
+  app.post<{ Body: MessageQueryBySeqsBody }>(
+    "/api/server/messages/query-by-seqs",
     {
       preHandler: app.authenticate,
       schema: {
-        body: MessageQueryByIdsBodySchema,
+        body: MessageQueryBySeqsBodySchema,
       },
     },
     async (request) =>
-      getWorkbenchService(app, request).getMessagesByIds(
+      getWorkbenchService(app, request).getMessagesBySeqs(
         getSubUserId(request),
         request.body.conversationId,
-        request.body.messageIds,
+        request.body.messageSeqs,
       ),
   );
 
   app.get<{
-    Params: MessageDownloadParams;
+    Params: MessageChatRecordParams;
     Querystring: MessageChatRecordQuery;
   }>(
-    "/api/server/messages/:messageId/chat-record",
+    "/api/server/messages/:messageSeq/chat-record",
     {
       preHandler: app.authenticate,
       schema: {
-        params: MessageDownloadParamsSchema,
+        params: MessageChatRecordParamsSchema,
         querystring: MessageChatRecordQuerySchema,
       },
     },
@@ -857,7 +865,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
       getWorkbenchService(app, request).getChatRecordDetail(
         getSubUserId(request),
         request.query.conversation_id,
-        request.params.messageId,
+        request.params.messageSeq,
       ),
   );
 
@@ -1826,36 +1834,34 @@ export async function registerChatRoutes(app: FastifyInstance) {
   );
 
   app.post<{
-    Body: MessageDownloadStatusBody;
-    Params: MessageDownloadParams;
+    Body: MessageDownloadBody;
   }>(
-    "/api/server/messages/:messageId/download",
+    "/api/server/messages/download",
     {
       preHandler: app.authenticate,
       schema: {
-        body: MessageDownloadStatusBodySchema,
-        params: MessageDownloadParamsSchema,
+        body: MessageDownloadBodySchema,
       },
     },
     async (request) => {
       return getWorkbenchService(app, request).downloadMessageFile(
         getSubUserId(request),
         request.body.conversationId,
-        request.params.messageId,
+        request.body.msgInfoId,
       );
     },
   );
 
   app.post<{
     Body: MessageRevokeBody;
-    Params: MessageDownloadParams;
+    Params: MessageRevokeParams;
   }>(
-    "/api/server/messages/:messageId/revoke",
+    "/api/server/messages/:messageSeq/revoke",
     {
       preHandler: app.authenticate,
       schema: {
         body: MessageRevokeBodySchema,
-        params: MessageDownloadParamsSchema,
+        params: MessageRevokeParamsSchema,
       },
     },
     async (request) => {
@@ -1863,7 +1869,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
       return getWorkbenchService(app, request).revokeMessage(
         getSubUserId(request),
         request.body.conversationId,
-        request.params.messageId,
+        request.params.messageSeq,
       );
     },
   );

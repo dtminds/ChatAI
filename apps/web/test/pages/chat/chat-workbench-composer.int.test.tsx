@@ -93,13 +93,13 @@ async function expectSentConversationMessage(
 
   await waitFor(async () => {
     const sendResult = await sendMessage.mock.results[0]?.value;
-    const messageId = sendResult?.messageId;
+    const optNo = sendResult?.optNo;
 
-    expect(messageId).toBeTruthy();
+    expect(optNo).toBeTruthy();
     sentMessage = useWorkbenchStore
       .getState()
       .messagesByConversationId[conversationId]
-      .find((message) => message.remoteMessageId === messageId);
+      .find((message) => message.optNo === optNo);
     expect(
       sentMessage,
     ).toMatchObject(expectedMessage);
@@ -243,7 +243,7 @@ describe("ChatWorkbenchPage composer flows", () => {
               title: "活动链接",
             },
             materialCollectionId: "material-h5-quick-reply",
-            msgid: "msg-h5-quick-reply",
+            msgInfoId: "9101",
             type: "h5",
           },
         ],
@@ -356,7 +356,6 @@ describe("ChatWorkbenchPage composer flows", () => {
       ).toMatchObject({
         content: {
           quoteMsgId: "5",
-          quotedMessageId: "msg-006",
           quotedMessage: {
             senderName: "丹阳草莓，得利市大樱桃",
             text: "我先截了个竖图版本给你看。",
@@ -772,7 +771,7 @@ describe("ChatWorkbenchPage composer flows", () => {
             contentType: "emotion" as const,
             groupId: 0 as const,
             id: "material-expression-001",
-            messageId: "msg-expression-001",
+            msgInfoId: "9101",
             sort: 1_781_244_000_000,
             title: "贴贴表情",
           },
@@ -851,8 +850,7 @@ describe("ChatWorkbenchPage composer flows", () => {
     ).toBeInTheDocument();
 
     sendGate.resolve({
-      clientMessageId: "local-expression-001",
-      messageId: "msg-expression-sent-001",
+      optNo: "opt-expression-sent-001",
       status: "accepted",
     });
 
@@ -896,7 +894,7 @@ describe("ChatWorkbenchPage composer flows", () => {
             contentType: "emotion" as const,
             groupId: 0 as const,
             id: "material-expression-001",
-            messageId: "msg-expression-001",
+            msgInfoId: "9106",
             sort: 1_781_244_000_000,
             title: "贴贴表情",
           },
@@ -969,7 +967,7 @@ describe("ChatWorkbenchPage composer flows", () => {
             contentType: "emotion" as const,
             groupId: 0 as const,
             id: `material-expression-00${page}`,
-            messageId: `msg-expression-00${page}`,
+            msgInfoId: `91${String(page).padStart(2, "0")}`,
             sort: 1_781_244_000_000 - page,
             title: `贴贴表情${page}`,
           },
@@ -1065,7 +1063,7 @@ describe("ChatWorkbenchPage composer flows", () => {
               contentType: "mini-program" as const,
               groupId: "group-mini",
               id: "material-mini-001",
-              messageId: "msg-mini-001",
+              msgInfoId: "9102",
               sort: 1,
               title: "企微助手",
             },
@@ -1211,7 +1209,7 @@ describe("ChatWorkbenchPage composer flows", () => {
             contentType: "file" as const,
             groupId: "group-file",
             id: "material-file-001",
-            messageId: "msg-file-001",
+            msgInfoId: "9103",
             sort: 1,
             title: "报价单.pdf",
           },
@@ -1248,10 +1246,10 @@ describe("ChatWorkbenchPage composer flows", () => {
         expect.objectContaining({
           conversationId: "conv-001",
           seatId: "drc",
-          segment: {
+          segment: expect.objectContaining({
             materialCollectionId: "material-file-001",
             type: "file",
-          },
+          }),
         }),
       );
     });
@@ -1308,7 +1306,7 @@ describe("ChatWorkbenchPage composer flows", () => {
             contentType: "h5" as const,
             groupId: "group-h5",
             id: "material-h5-001",
-            messageId: "msg-h5-001",
+            msgInfoId: "9104",
             sort: 1,
             title: "红包来啦",
           },
@@ -1341,10 +1339,10 @@ describe("ChatWorkbenchPage composer flows", () => {
         expect.objectContaining({
           conversationId: "conv-001",
           seatId: "drc",
-          segment: {
+          segment: expect.objectContaining({
             materialCollectionId: "material-h5-001",
             type: "h5",
-          },
+          }),
         }),
       );
     });
@@ -1397,7 +1395,7 @@ describe("ChatWorkbenchPage composer flows", () => {
             contentType: "h5" as const,
             groupId: "group-h5",
             id: "material-h5-link-url",
-            messageId: "msg-h5-link-url",
+            msgInfoId: "9107",
             sort: 1,
             title: "活动页",
           },
@@ -1494,7 +1492,7 @@ describe("ChatWorkbenchPage composer flows", () => {
                   contentType: "file" as const,
                   groupId: "group-second",
                   id: "material-file-second",
-                  messageId: "msg-file-second",
+                  msgInfoId: "9105",
                   sort: 1,
                   title: "第二分组文件.pdf",
                 },
@@ -1598,7 +1596,7 @@ describe("ChatWorkbenchPage composer flows", () => {
                   contentType: "file" as const,
                   groupId: "group-second",
                   id: "material-file-second",
-                  messageId: "msg-file-second",
+                  msgInfoId: "9105",
                   sort: 1,
                   title: "第二分组文件.pdf",
                 },
@@ -2047,12 +2045,10 @@ describe("ChatWorkbenchPage composer flows", () => {
     });
 
     sendMessageGate.resolve({
-      clientMessageId: "client-msg-test",
-      messageId: "msg-server-test",
+      optNo: "opt-msg-test",
       messages: [
         {
-          clientMessageId: "client-msg-test",
-          messageId: "msg-server-test",
+          optNo: "opt-msg-test",
           status: "accepted",
         },
       ],
@@ -2140,12 +2136,10 @@ describe("ChatWorkbenchPage composer flows", () => {
     });
 
     sendMessageGate.resolve({
-      clientMessageId: "client-msg-test",
-      messageId: "msg-server-test",
+      optNo: "opt-msg-test",
       messages: [
         {
-          clientMessageId: "client-msg-test",
-          messageId: "msg-server-test",
+          optNo: "opt-msg-test",
           status: "accepted",
         },
       ],

@@ -22,7 +22,7 @@
 
 两张表都新增 `sort BIGINT`，用于置顶排序。新建和置顶时写当前时间毫秒。列表统一按 `sort desc, id desc` 排序。
 
-`xy_wap_embed_material_collection.msgid` 存 `xy_wap_embed_msg_audit_info.msgid`。`content` 存 `xy_wap_embed_msg_audit_info.content` 原文，后端列表接口负责把原始 content 映射成工作台已有消息内容 DTO。
+`xy_wap_embed_material_collection.msg_info_id` 存 `xy_wap_embed_msg_audit_info.id`。`content` 存 `xy_wap_embed_msg_audit_info.content` 原文，后端列表接口负责把原始 content 映射成工作台已有消息内容 DTO。
 
 表情素材固定：
 
@@ -43,7 +43,7 @@
 
 重复收录规则：
 
-- 同一 `uid + biz_type + sub_uid + msgid` 已有正常记录时，不新建重复记录。
+- 同一 `uid + biz_type + sub_uid + msg_info_id` 已有正常记录时，不新建重复记录。
 - 已有记录为删除态时，恢复该记录，并更新 `group_id`、`op_sub_uid`、`sort`、`title`、`content`。
 
 删除统一使用 `biz_status = 0` 软删除。
@@ -58,7 +58,7 @@
 
 - 拉取分组列表：按 `bizType` 返回可见分组。表情不需要分组接口。
 - 拉取素材列表：按 `bizType`、`groupId` 返回素材。表情不需要 `groupId`；文件、小程序、H5 按真实分组展示。
-- 收录消息：入参包含 `bizType`、`msgId`、`groupId`。表情固定写 `group_id = 0`；文件、小程序、H5 必须传真实分组 ID，后端校验消息类型与 `bizType` 匹配后写入 collection。
+- 收录消息：入参包含 `bizType`、`msgInfoId`、`groupId`。`msgInfoId` 对应 `xy_wap_embed_msg_audit_info.id`，不使用第三方 `msgid` 作为查找键。表情固定写 `group_id = 0`；文件、小程序、H5 必须传真实分组 ID，后端校验消息类型与 `bizType` 匹配后写入 collection。
 - 新建分组：文件、小程序、H5 支持；表情不支持。
 - 重命名分组：仅允许正常状态的自定义分组。
 - 置顶分组：更新该分组 `sort`。
@@ -80,7 +80,7 @@
 
 ## 内容映射
 
-后端收录时从 `xy_wap_embed_msg_audit_info` 读取 `msgid`、`msgtype`、`content`、`uid` 等字段。
+后端收录时按 `xy_wap_embed_msg_audit_info.id` 和 `uid` 定位消息，再读取 `id`、`msgid`、`msgtype`、`content`、`uid` 等字段。
 
 素材列表返回给前端的 item 包含：
 
@@ -92,6 +92,7 @@
 - `createdAt`
 - `updatedAt`
 - `messageId`
+- `msgInfoId`
 - `contentType`
 - `content`
 

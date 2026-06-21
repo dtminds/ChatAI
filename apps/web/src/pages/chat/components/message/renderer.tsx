@@ -55,7 +55,7 @@ export function MessageContentRenderer({
         />
       );
     case "image":
-      return <ImageMessageCard content={message.content} messageId={message.id} />;
+      return <ImageMessageCard content={message.content} uiMessageKey={message.uiMessageKey} />;
     case "video":
       return (
         <VideoMessageCard
@@ -104,7 +104,7 @@ export function MessageContentRenderer({
         <ChatRecordMessageCard
           content={message.content}
           conversationId={message.conversationId}
-          messageId={message.id}
+          messageSeq={message.seq}
         />
       );
   }

@@ -24,19 +24,19 @@ export function isSmartReplyPollTerminalGenerateStatus(
 }
 
 export function normalizeSmartReplyMsgIds(
-  messageIds: number[],
+  msgIds: number[],
   limit = SMART_REPLY_MSG_IDS_LIMIT,
 ) {
   const seen = new Set<number>();
   const normalized: number[] = [];
 
-  for (const messageId of messageIds) {
-    if (!Number.isSafeInteger(messageId) || messageId <= 0 || seen.has(messageId)) {
+  for (const msgId of msgIds) {
+    if (!Number.isSafeInteger(msgId) || msgId <= 0 || seen.has(msgId)) {
       continue;
     }
 
-    seen.add(messageId);
-    normalized.push(messageId);
+    seen.add(msgId);
+    normalized.push(msgId);
 
     if (normalized.length >= limit) {
       break;
@@ -124,9 +124,9 @@ function extractJavaAnswerItems(data: unknown): JavaSmartReplyAnswerItem[] {
 function mapJavaAnswerItem(
   item: JavaSmartReplyAnswerItem,
 ): WorkbenchSmartReplySuggestionDto | undefined {
-  const messageId = readMessageId(item.analyseMsgId);
+  const msgId = readMessageId(item.analyseMsgId);
 
-  if (!messageId) {
+  if (!msgId) {
     return undefined;
   }
 
@@ -146,7 +146,7 @@ function mapJavaAnswerItem(
     content: content.trim(),
     failReason: readString(item.failReason),
     generateStatus: item.status,
-    messageId,
+    messageId: msgId,
     pollComplete: pollComplete ? true : undefined,
     refAttachIds: parseRefAttachIds(item.refAttachIds),
     status: mapSmartReplyStatus(item.status),

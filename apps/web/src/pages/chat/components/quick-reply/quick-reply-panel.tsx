@@ -396,7 +396,7 @@ export function QuickReplyPanel({
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-background">
+    <div className="flex h-full min-h-0 flex-col bg-surface">
       <div className="border-b border-divider px-2.5 py-2.5">
         {sortMode ? (
           <div className="flex h-9 items-center gap-2">

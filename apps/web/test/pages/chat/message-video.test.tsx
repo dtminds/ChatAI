@@ -460,11 +460,13 @@ function createVideoMessage({
   height: number;
   width: number;
 }): ChatMessage {
+  const messageKey = `msg-video-${width}-${height}`;
+
   return {
-    id: `msg-video-${width}-${height}`,
     conversationId: "conv-video",
     role: "customer",
     author: "陈慧燕",
+    msgid: messageKey,
     sender: {
       id: "sender-video",
       name: "陈慧燕",
@@ -477,6 +479,7 @@ function createVideoMessage({
     }),
     sentAt: "2026-04-19 10:12:00",
     status: "sent",
+    uiMessageKey: messageKey,
   };
 }
 

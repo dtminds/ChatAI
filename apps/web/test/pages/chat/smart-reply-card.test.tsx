@@ -420,7 +420,7 @@ describe("SmartReplyCard", () => {
     const message = {
       content: { text: "客户想了解敏感肌护理", type: "text" },
       conversationId: "conv-001",
-      id: "msg-1",
+      uiMessageKey: "msg-1",
       role: "customer",
       sender: { id: "customer-1", name: "客户" },
       sentAt: "刚刚",
@@ -696,7 +696,7 @@ describe("SmartReplyCard", () => {
     const onRegenerate = vi.fn();
     const message = {
       content: { text: "客户想了解敏感肌护理", type: "text" },
-      id: "msg-1",
+      uiMessageKey: "msg-1",
       role: "customer",
     } as ChatMessage;
 
@@ -723,7 +723,7 @@ describe("SmartReplyCard", () => {
     const onMakeShorter = vi.fn();
     const message = {
       content: { text: "客户想了解敏感肌护理", type: "text" },
-      id: "msg-1",
+      uiMessageKey: "msg-1",
       role: "customer",
     } as ChatMessage;
 
@@ -751,7 +751,7 @@ describe("SmartReplyCard", () => {
     const onMakeShorter = vi.fn();
     const message = {
       content: { text: "客户想了解敏感肌护理", type: "text" },
-      id: "msg-1",
+      uiMessageKey: "msg-1",
       role: "customer",
     } as ChatMessage;
 
@@ -778,7 +778,7 @@ describe("SmartReplyCard", () => {
     const user = userEvent.setup();
     const message = {
       content: { text: "客户想了解敏感肌护理", type: "text" },
-      id: "msg-1",
+      uiMessageKey: "msg-1",
       role: "customer",
     } as ChatMessage;
 
@@ -811,7 +811,7 @@ describe("SmartReplyCard", () => {
     });
     const message = {
       content: { text: "客户想了解敏感肌护理", type: "text" },
-      id: "msg-1",
+      uiMessageKey: "msg-1",
       role: "customer",
     } as ChatMessage;
 
@@ -879,7 +879,7 @@ describe("SmartReplyCard", () => {
     vi.mocked(addSmartReplyKnowledgeFaq).mockReturnValue(saveRequest.promise);
     const message = {
       content: { text: "客户想了解敏感肌护理", type: "text" },
-      id: "msg-1",
+      uiMessageKey: "msg-1",
       role: "customer",
     } as ChatMessage;
 
@@ -915,7 +915,7 @@ describe("SmartReplyCard", () => {
     vi.mocked(checkSmartReplyTextModeration).mockResolvedValue({ result: null });
     const message = {
       content: { text: "客户想了解敏感肌护理", type: "text" },
-      id: "msg-1",
+      uiMessageKey: "msg-1",
       role: "customer",
     } as ChatMessage;
 
@@ -952,7 +952,7 @@ describe("SmartReplyCard", () => {
     });
     const message = {
       content: { text: "客户想了解敏感肌护理", type: "text" },
-      id: "msg-1",
+      uiMessageKey: "msg-1",
       role: "customer",
     } as ChatMessage;
 
@@ -990,7 +990,7 @@ describe("SmartReplyCard", () => {
   it("shows generating text while smart reply is thinking", () => {
     const message = {
       content: { audioUrl: "https://example.com/voice.mp3", durationLabel: "3\"", type: "voice" },
-      id: "msg-voice",
+      uiMessageKey: "msg-voice",
       role: "customer",
     } as ChatMessage;
 
@@ -1020,7 +1020,7 @@ describe("SmartReplyCard", () => {
 
     const message = {
       content: { imageUrl: "https://example.com/image.png", type: "image" },
-      id: "msg-image",
+      uiMessageKey: "msg-image",
       role: "customer",
     } as ChatMessage;
 
@@ -1049,7 +1049,7 @@ describe("SmartReplyCard", () => {
     const onRegenerate = vi.fn();
     const message = {
       content: { text: "客户想了解敏感肌护理", type: "text" },
-      id: "msg-1",
+      uiMessageKey: "msg-1",
       role: "customer",
     } as ChatMessage;
 
@@ -1092,7 +1092,7 @@ describe("SmartReplyCard", () => {
         imageUrl: "https://example.com/image.png",
         type: "image",
       },
-      id: "msg-1",
+      uiMessageKey: "msg-1",
       role: "customer",
     } as ChatMessage;
 
@@ -1133,7 +1133,7 @@ describe("SmartReplyCard", () => {
         text: "这个多少钱",
         type: "text",
       },
-      id: "msg-1",
+      uiMessageKey: "msg-1",
       role: "customer",
     } as ChatMessage;
     Object.defineProperty(HTMLElement.prototype, "animate", {
@@ -1178,7 +1178,7 @@ describe("SmartReplyCard", () => {
         text: "这个多少钱",
         type: "text",
       },
-      id: "msg-1",
+      uiMessageKey: "msg-1",
       role: "customer",
     } as ChatMessage;
 
@@ -1210,7 +1210,7 @@ describe("SmartReplyCard", () => {
         text: "这个多少钱",
         type: "text",
       },
-      id: "msg-1",
+      uiMessageKey: "msg-1",
       role: "customer",
     } as ChatMessage;
 
@@ -1251,7 +1251,7 @@ describe("SmartReplyCard", () => {
     const onSend = vi.fn(() => sendGate.promise);
     const message = {
       content: { text: "客户想了解敏感肌护理", type: "text" },
-      id: "msg-1",
+      uiMessageKey: "msg-1",
       role: "customer",
     } as ChatMessage;
 
@@ -1293,7 +1293,7 @@ describe("SmartReplyCard", () => {
   it("renders smart reply card inline below the message anchor", () => {
     const message = {
       content: { text: "客户想了解敏感肌护理", type: "text" },
-      id: "msg-1",
+      uiMessageKey: "msg-1",
       role: "customer",
     } as ChatMessage;
 

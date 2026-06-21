@@ -15,11 +15,11 @@ import {
 export const GALLERY_RADIUS = 20;
 
 export type ConversationGalleryImage = ImageGalleryItem & {
-  messageId: string;
+  uiMessageKey: string;
 };
 
 export type GallerySession = {
-  activeMessageId: string;
+  activeUiMessageKey: string;
   items: ConversationGalleryImage[];
 };
 
@@ -43,17 +43,17 @@ export function toGalleryImage(message: Message): ConversationGalleryImage | nul
   return {
     alt: content.alt ?? "",
     imageUrl,
-    messageId: message.id,
     ocrEnabled: content.variant !== "emotion",
+    uiMessageKey: message.uiMessageKey,
   };
 }
 
 export function buildGalleryWindow(
   messages: Message[],
-  anchorMessageId: string,
+  anchorUiMessageKey: string,
   radius = GALLERY_RADIUS,
 ): GallerySession | null {
-  const anchorIndex = messages.findIndex((message) => message.id === anchorMessageId);
+  const anchorIndex = messages.findIndex((message) => message.uiMessageKey === anchorUiMessageKey);
 
   if (anchorIndex < 0) {
     return null;
@@ -90,13 +90,13 @@ export function buildGalleryWindow(
   }
 
   return {
-    activeMessageId: anchorMessageId,
+    activeUiMessageKey: anchorUiMessageKey,
     items: [...before, anchor, ...after],
   };
 }
 
 export function resolveGallerySessionIndex(session: GallerySession) {
-  return session.items.findIndex((item) => item.messageId === session.activeMessageId);
+  return session.items.findIndex((item) => item.uiMessageKey === session.activeUiMessageKey);
 }
 
 export function ConversationImageGalleryProvider({
@@ -115,8 +115,8 @@ export function ConversationImageGalleryProvider({
   }, [conversationId]);
 
   const openGallery = useCallback(
-    (messageId: string) => {
-      const nextSession = buildGalleryWindow(messages, messageId, GALLERY_RADIUS);
+    (uiMessageKey: string) => {
+      const nextSession = buildGalleryWindow(messages, uiMessageKey, GALLERY_RADIUS);
 
       if (!nextSession) {
         return;
@@ -145,7 +145,7 @@ export function ConversationImageGalleryProvider({
 
       return {
         ...currentSession,
-        activeMessageId: item.messageId,
+        activeUiMessageKey: item.uiMessageKey,
       };
     });
   }, []);

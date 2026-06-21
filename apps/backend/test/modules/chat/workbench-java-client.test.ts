@@ -24,7 +24,7 @@ describe("createWorkbenchJavaClient", () => {
 
     await expect(
       createWorkbenchJavaClient(logger).downloadMsgFile({
-        msgid: "msg-001",
+        msgInfoId: 1001,
         platform: 5,
         uid: 9001,
       }),
@@ -36,7 +36,7 @@ describe("createWorkbenchJavaClient", () => {
 
     expect(logger.error).toHaveBeenCalledWith(
       expect.objectContaining({
-        msgid: "msg-001",
+        msgInfoId: 1001,
         operation: "download-message-file",
         path: "/third-internal/wap-embed/conversation/download-msg-file",
         platform: 5,
@@ -211,7 +211,7 @@ describe("createWorkbenchJavaClient", () => {
 
     await expect(
       createWorkbenchJavaClient(logger).downloadMsgFile({
-        msgid: "msg-002",
+        msgInfoId: 1002,
         platform: 5,
         uid: 9001,
       }),
@@ -222,7 +222,7 @@ describe("createWorkbenchJavaClient", () => {
 
     expect(logger.error).toHaveBeenCalledWith(
       expect.objectContaining({
-        msgid: "msg-002",
+        msgInfoId: 1002,
         operation: "download-message-file",
         path: "/third-internal/wap-embed/conversation/download-msg-file",
         requestId: "req-001",
@@ -565,7 +565,7 @@ describe("createWorkbenchJavaClient", () => {
     );
 
     await createWorkbenchJavaClient().downloadMsgFile({
-      msgid: "remote-msg-file-001",
+      msgInfoId: 1001,
       platform: 5,
       uid: 9001,
     });
@@ -574,7 +574,7 @@ describe("createWorkbenchJavaClient", () => {
       "https://java.internal/third-internal/wap-embed/conversation/download-msg-file",
       expect.objectContaining({
         body: JSON.stringify({
-          msgid: "remote-msg-file-001",
+          msgInfoId: 1001,
           platform: 5,
           uid: 9001,
         }),
@@ -654,7 +654,6 @@ describe("createWorkbenchJavaClient", () => {
 
     await expect(
       createWorkbenchJavaClient().sendMessage({
-        clientMessageId: "local-001",
         msgData: {
           msgtype: "text",
           text: "今天统一看群公告",
@@ -667,8 +666,6 @@ describe("createWorkbenchJavaClient", () => {
         uid: 9001,
       }),
     ).resolves.toEqual({
-      clientMessageId: "local-001",
-      messageId: "opt-001",
       optNo: "opt-001",
       status: "accepted",
     });
@@ -692,6 +689,79 @@ describe("createWorkbenchJavaClient", () => {
     );
   });
 
+  it("coerces numeric Java send-message optNo to a string", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: { optNo: 9001001 },
+          error: 0,
+          errorMsg: "",
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    await expect(
+      createWorkbenchJavaClient().sendMessage({
+        msgData: {
+          msgtype: "text",
+          text: "今天统一看群公告",
+        },
+        platform: 5,
+        sendType: 2,
+        source: 1,
+        thirdGroupId: "group-001",
+        thirdUserId: "seat-user-001",
+        uid: 9001,
+      }),
+    ).resolves.toEqual({
+      optNo: "9001001",
+      status: "accepted",
+    });
+  });
+
+  it("maps null Java send-message data to a contract error", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: null,
+          error: 0,
+          errorMsg: "",
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    await expect(
+      createWorkbenchJavaClient().sendMessage({
+        msgData: {
+          msgtype: "text",
+          text: "今天统一看群公告",
+        },
+        platform: 5,
+        sendType: 2,
+        source: 1,
+        thirdGroupId: "group-001",
+        thirdUserId: "seat-user-001",
+        uid: 9001,
+      }),
+    ).rejects.toMatchObject({
+      code: WORKBENCH_INTERNAL_API_CONTRACT_INVALID_CODE,
+      message: "Java 发送消息响应缺少 optNo",
+      statusCode: 502,
+    });
+  });
+
   it("posts failMsgId for retry send-message requests", async () => {
     process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
@@ -710,7 +780,6 @@ describe("createWorkbenchJavaClient", () => {
     );
 
     await createWorkbenchJavaClient().sendMessage({
-      clientMessageId: "local-retry-001",
       failMsgId: 538,
       msgData: {
         msgtype: "text",
@@ -763,7 +832,6 @@ describe("createWorkbenchJavaClient", () => {
     );
 
     await createWorkbenchJavaClient().sendMessage({
-      clientMessageId: "local-quote-001",
       msgData: {
         msgtype: "quote",
         quoteMsgId: 538,
@@ -816,7 +884,6 @@ describe("createWorkbenchJavaClient", () => {
     );
 
     await createWorkbenchJavaClient().sendMessage({
-      clientMessageId: "local-link-001",
       msgData: {
         coverUrl: "https://example.com/cover.png",
         desc: "恭喜发财，大吉大利",

@@ -51,6 +51,7 @@ export type WorkbenchQuickReplyAttachmentType =
 export type WorkbenchQuickReplyAttachment = {
   type: WorkbenchQuickReplyAttachmentType;
   materialCollectionId?: string;
+  msgInfoId?: string;
   msgid?: string;
   content: Record<string, unknown>;
 };
@@ -81,12 +82,14 @@ export function normalizeQuickReplyAttachments(
       ? compactRecord(attachment.content)
       : {};
     const materialCollectionId = readString(attachment.materialCollectionId);
+    const msgInfoId = readString(attachment.msgInfoId);
     const msgid = readString(attachment.msgid);
 
     return [
       {
         type,
         ...(materialCollectionId ? { materialCollectionId } : {}),
+        ...(msgInfoId ? { msgInfoId } : {}),
         ...(msgid ? { msgid } : {}),
         content,
       },
@@ -143,7 +146,7 @@ export function validateQuickReplyAttachment(
 
   if (attachment.type === "file") {
     return attachment.materialCollectionId &&
-      attachment.msgid &&
+      attachment.msgInfoId &&
       readString(attachment.content.fileName) &&
       readString(attachment.content.fileUrl)
       ? { ok: true }
@@ -152,7 +155,7 @@ export function validateQuickReplyAttachment(
 
   if (attachment.type === "h5") {
     return attachment.materialCollectionId &&
-      attachment.msgid &&
+      attachment.msgInfoId &&
       readString(attachment.content.title) &&
       (readString(attachment.content.href) ||
         readString(attachment.content.url) ||
@@ -162,13 +165,13 @@ export function validateQuickReplyAttachment(
   }
 
   if (attachment.type === "weapp") {
-    return attachment.materialCollectionId && attachment.msgid
+    return attachment.materialCollectionId && attachment.msgInfoId
       ? { ok: true }
       : { ok: false, errorMsg: "小程序附件数据异常" };
   }
 
   if (attachment.type === "sphfeed") {
-    return attachment.materialCollectionId && attachment.msgid
+    return attachment.materialCollectionId && attachment.msgInfoId
       ? { ok: true }
       : { ok: false, errorMsg: "视频号附件数据异常" };
   }

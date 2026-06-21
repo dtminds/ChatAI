@@ -110,11 +110,11 @@ export type JavaSendMessageData =
     }
   | {
       msgtype: "weapp";
-      transMsgid: string;
+      transMsgInfoId: number;
     }
   | {
       msgtype: "sphfeed";
-      transMsgid: string;
+      transMsgInfoId: number;
     }
   | ({
       msgtype: "quote";
@@ -123,7 +123,6 @@ export type JavaSendMessageData =
     } & JavaMentionFields);
 
 export type JavaSendMessageInput = {
-  clientMessageId: string;
   failMsgId?: number;
   msgData: JavaSendMessageData;
   platform: number;
@@ -136,7 +135,7 @@ export type JavaSendMessageInput = {
 };
 
 type JavaSendMessageResponse = {
-  optNo?: string;
+  optNo?: number | string;
 };
 
 type JavaRevokeMessageResponse = {
@@ -241,7 +240,7 @@ export type WorkbenchJavaClient = {
     uid: number;
   }): Promise<void>;
   downloadMsgFile(input: {
-    msgid: string;
+    msgInfoId: number;
     platform: number;
     uid: number;
   }): Promise<void>;
@@ -659,11 +658,9 @@ export function createWorkbenchJavaClient(
         logger,
         "send-message",
       );
-      const optNo = response.optNo ?? input.clientMessageId;
+      const optNo = readJavaOptNo(response);
 
       return {
-        clientMessageId: input.clientMessageId,
-        messageId: optNo,
         optNo,
         status: "accepted",
       };
@@ -1097,6 +1094,7 @@ function buildJavaLogContext(body: unknown) {
   for (const key of [
     "chatType",
     "conversationId",
+    "msgInfoId",
     "msgid",
     "msgId",
     "ids",
@@ -1163,6 +1161,19 @@ function readJavaNonEmptyId(data: unknown) {
   const trimmed = value.trim();
 
   return trimmed ? trimmed : undefined;
+}
+
+function readJavaOptNo(data: JavaSendMessageResponse | null | undefined) {
+  const optNo = data?.optNo != null ? String(data.optNo).trim() : undefined;
+
+  if (!optNo) {
+    throw new BadGatewayError(
+      WORKBENCH_INTERNAL_API_CONTRACT_INVALID_CODE,
+      "Java 发送消息响应缺少 optNo",
+    );
+  }
+
+  return optNo;
 }
 
 function readJavaRecommendAnswerRecordId(value: string) {

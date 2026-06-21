@@ -11,7 +11,7 @@ import {
   type WorkbenchHistoryMessagePageDto,
   type WorkbenchHistoryMessageQuery,
   type WorkbenchHistoryMessageScope,
-  type WorkbenchMessageQueryByIdsResponse,
+  type WorkbenchMessageQueryBySeqsResponse,
   type WorkbenchMessagePageDto,
   type WorkbenchChatRecordDetailResponse,
   type WorkbenchMessageUpdateEventDto,
@@ -390,7 +390,7 @@ export type MaterialCollectionScope = {
 
 export type MaterialCollectionForwardLookup = {
   content: string;
-  msgid: string;
+  msgInfoId: string;
 };
 
 type QuickReplyCategoryRow = {
@@ -522,12 +522,12 @@ export class WorkbenchRepository {
   }
 
   async findMaterialMessage(input: {
-    msgid: string;
+    msgInfoId: string;
     uid: number;
   }): Promise<MaterialMessageLookup | undefined> {
-    const msgid = input.msgid.trim();
+    const msgInfoNumericId = parseMySqlId(input.msgInfoId);
 
-    if (!msgid) {
+    if (msgInfoNumericId == null) {
       return undefined;
     }
 
@@ -541,7 +541,7 @@ export class WorkbenchRepository {
         "message.msgtype as msgtype",
         "message.uid as uid",
       ])
-      .where("message.msgid", "=", msgid)
+      .where("message.id", "=", msgInfoNumericId)
       .where("message.uid", "=", input.uid)
       .executeTakeFirst();
 
@@ -561,13 +561,13 @@ export class WorkbenchRepository {
 
   async findMaterialCollectionByMessage(input: {
     bizType: number;
-    msgid: string;
+    msgInfoId: string;
     subUid: number;
     uid: number;
   }): Promise<MaterialCollectionLookup | undefined> {
-    const msgid = input.msgid.trim();
+    const msgInfoNumericId = parseMySqlId(input.msgInfoId);
 
-    if (!msgid) {
+    if (msgInfoNumericId == null) {
       return undefined;
     }
 
@@ -577,7 +577,7 @@ export class WorkbenchRepository {
       .where("uid", "=", input.uid)
       .where("biz_type", "=", input.bizType)
       .where("sub_uid", "=", input.subUid)
-      .where("msgid", "=", msgid)
+      .where("msg_info_id", "=", msgInfoNumericId)
       .executeTakeFirst();
 
     if (!row) {
@@ -674,7 +674,7 @@ export class WorkbenchRepository {
 
     const row = await this.db
       .selectFrom("xy_wap_embed_material_collection")
-      .select(["content", "msgid"])
+      .select(["content", "msg_info_id"])
       .where("id", "=", collectionNumericId)
       .where("uid", "=", input.uid)
       .where("biz_type", "=", input.bizType)
@@ -688,7 +688,7 @@ export class WorkbenchRepository {
 
     return {
       content: typeof row.content === "string" ? row.content : "",
-      msgid: row.msgid,
+      msgInfoId: String(row.msg_info_id),
     };
   }
 
@@ -756,7 +756,7 @@ export class WorkbenchRepository {
     bizType: number;
     content: string | null;
     groupId: string | 0;
-    msgid: string;
+    msgInfoId: string;
     opSubUserId: string;
     sort: number;
     subUid: number;
@@ -764,9 +764,14 @@ export class WorkbenchRepository {
     uid: number;
   }) {
     const groupNumericId = parseMaterialGroupId(input.groupId);
+    const msgInfoNumericId = parseMySqlId(input.msgInfoId);
     const opSubUserNumericId = parseMySqlId(input.opSubUserId);
 
-    if (groupNumericId == null || opSubUserNumericId == null) {
+    if (
+      groupNumericId == null ||
+      msgInfoNumericId == null ||
+      opSubUserNumericId == null
+    ) {
       throw new BadRequestError(
         "INVALID_MATERIAL_COLLECTION_INPUT",
         "素材收录参数无效",
@@ -783,7 +788,7 @@ export class WorkbenchRepository {
           biz_type: input.bizType,
           content: input.content,
           group_id: groupNumericId,
-          msgid: input.msgid,
+          msg_info_id: msgInfoNumericId,
           op_sub_uid: opSubUserNumericId,
           sort: input.sort,
           sub_uid: input.subUid,
@@ -807,6 +812,7 @@ export class WorkbenchRepository {
     content: string | null;
     groupId: string | 0;
     id: string;
+    msgInfoId: string;
     opSubUserId: string;
     sort: number;
     title: string;
@@ -814,9 +820,15 @@ export class WorkbenchRepository {
   }) {
     const collectionNumericId = parseMySqlId(input.id);
     const groupNumericId = parseMaterialGroupId(input.groupId);
+    const msgInfoNumericId = parseMySqlId(input.msgInfoId);
     const opSubUserNumericId = parseMySqlId(input.opSubUserId);
 
-    if (collectionNumericId == null || groupNumericId == null || opSubUserNumericId == null) {
+    if (
+      collectionNumericId == null ||
+      groupNumericId == null ||
+      msgInfoNumericId == null ||
+      opSubUserNumericId == null
+    ) {
       return;
     }
 
@@ -826,6 +838,7 @@ export class WorkbenchRepository {
         biz_status: BIZ_STATUS_ACTIVE,
         content: input.content,
         group_id: groupNumericId,
+        msg_info_id: msgInfoNumericId,
         op_sub_uid: opSubUserNumericId,
         sort: input.sort,
         title: input.title,
@@ -1946,28 +1959,6 @@ export class WorkbenchRepository {
     };
   }
 
-  async getQuoteContentBase64(input: {
-    messageId: string;
-    platform: number;
-    uid: number;
-  }) {
-    const messageId = input.messageId.trim();
-
-    if (!messageId) {
-      return undefined;
-    }
-
-    const extend = await this.db
-      .selectFrom("xy_wap_embed_msg_audit_info_extend")
-      .select(["origin_data"])
-      .where("msgid", "=", messageId)
-      .where("platform", "=", input.platform)
-      .where("uid", "=", input.uid)
-      .executeTakeFirst();
-
-    return readQuoteContentBase64(extend?.origin_data);
-  }
-
   async getMessageFileDownloadStatus(input: {
     auditId: number;
     platform: number;
@@ -2027,20 +2018,17 @@ export class WorkbenchRepository {
 
   async getMessageForRevoke(input: {
     conversationId: string;
-    messageId: string;
+    messageSeq: number;
     platform: number;
     thirdExternalUserId?: string;
     thirdGroupId?: string;
     thirdUserId: string;
     uid: number;
   }): Promise<RevokeMessageLookup | undefined> {
-    const normalizedMessageId = input.messageId.trim();
-
-    if (!normalizedMessageId) {
+    if (!Number.isSafeInteger(input.messageSeq) || input.messageSeq <= 0) {
       return undefined;
     }
 
-    const auditId = parseMySqlId(normalizedMessageId);
     let query = this.db
       .selectFrom("xy_wap_embed_msg_audit_info as message")
       .select([
@@ -2065,14 +2053,7 @@ export class WorkbenchRepository {
       return undefined;
     }
 
-    query = auditId == null
-      ? query.where("message.msgid", "=", normalizedMessageId)
-      : query.where((expressionBuilder) =>
-          expressionBuilder.or([
-            expressionBuilder("message.id", "=", auditId),
-            expressionBuilder("message.msgid", "=", normalizedMessageId),
-          ]),
-        );
+    query = query.where("message.id", "=", input.messageSeq);
 
     const row = await query.executeTakeFirst();
 
@@ -2156,7 +2137,7 @@ export class WorkbenchRepository {
       .map((row) => {
         const event = parseMessageUpdateEvent(String(row.content ?? ""));
 
-        if (!event?.messageId) {
+        if (!event?.messageSeq) {
           return undefined;
         }
 
@@ -2164,7 +2145,7 @@ export class WorkbenchRepository {
           conversationId,
           eventId: Number(row.event_id),
           eventTime: toTimestamp(row.create_time),
-          messageId: event.messageId,
+          messageSeq: event.messageSeq,
         };
       })
       .filter(
@@ -2253,18 +2234,16 @@ export class WorkbenchRepository {
     };
   }
 
-  async listMessagesByIds(
+  async listMessagesBySeqs(
     conversationId: string,
-    messageIds: string[],
-  ): Promise<WorkbenchMessageQueryByIdsResponse> {
+    messageSeqs: number[],
+  ): Promise<WorkbenchMessageQueryBySeqsResponse> {
     const conversationNumericId = parseMySqlId(conversationId);
-    const normalizedIds = uniquePositiveNumbers(
-      messageIds
-        .map((value) => Number.parseInt(value, 10))
-        .filter((value) => Number.isSafeInteger(value) && value > 0),
+    const normalizedSeqs = uniquePositiveNumbers(
+      messageSeqs.filter((value) => Number.isSafeInteger(value) && value > 0),
     );
 
-    if (conversationNumericId == null || !normalizedIds.length) {
+    if (conversationNumericId == null || !normalizedSeqs.length) {
       return { messages: [] };
     }
 
@@ -2325,7 +2304,7 @@ export class WorkbenchRepository {
       .where("message.uid", "=", conversation.uid)
       .where("message.platform", "=", conversation.platform)
       .where("message.third_user_id", "=", conversation.third_userid)
-      .where("message.id", "in", normalizedIds);
+      .where("message.id", "in", normalizedSeqs);
 
     if (conversation.chat_type === CHAT_TYPE_GROUP) {
       query = query.where("message.third_group_id", "=", conversation.conversation_group_id);
@@ -2392,12 +2371,11 @@ export class WorkbenchRepository {
     uid: number,
     platform: number,
     conversationId: string,
-    messageId: string,
+    messageSeq: number,
   ): Promise<WorkbenchChatRecordDetailResponse | undefined> {
     const conversationNumericId = parseMySqlId(conversationId);
-    const normalizedMessageId = messageId.trim();
 
-    if (conversationNumericId == null || !normalizedMessageId) {
+    if (conversationNumericId == null) {
       return undefined;
     }
 
@@ -2432,7 +2410,7 @@ export class WorkbenchRepository {
       .where("message.uid", "=", conversation.uid)
       .where("message.platform", "=", conversation.platform)
       .where("message.third_user_id", "=", conversation.third_userid)
-      .where("message.msgid", "=", normalizedMessageId);
+      .where("message.id", "=", messageSeq);
 
     if (conversation.chat_type === CHAT_TYPE_GROUP) {
       parentQuery = parentQuery.where(
@@ -2459,6 +2437,7 @@ export class WorkbenchRepository {
       .select([
         "record.id as id",
         "record.msgid as msgid",
+        "record.msg_info_id as msg_info_id",
         "record.name as name",
         "record.avatar as avatar",
         "record.content as content",
@@ -2466,7 +2445,7 @@ export class WorkbenchRepository {
         "record.msgtime as msgtime",
         "record.status as status",
       ])
-      .where("record.msgid", "=", normalizedMessageId)
+      .where("record.msg_info_id", "=", messageSeq)
       .where("record.uid", "=", conversation.uid)
       .where("record.platform", "=", conversation.platform)
       .orderBy("record.msgtime", "asc")
@@ -2474,7 +2453,7 @@ export class WorkbenchRepository {
       .execute() as ChatRecordDetailRow[];
 
     return {
-      messageId: normalizedMessageId,
+      messageSeq,
       messages: detailRows.map((row) =>
         mapMessageRow({
           chat_type: conversation.chat_type,
@@ -2484,7 +2463,7 @@ export class WorkbenchRepository {
           conversation_id: conversation.conversation_id,
           from_type: 2,
           id: row.id,
-          msgid: `chatrecord:${normalizedMessageId}:${row.id}`,
+          msgid: `chatrecord:${messageSeq}:${row.id}`,
           msgtime: row.msgtime,
           msgtype: row.msgtype,
           opt_no: null,
@@ -4721,7 +4700,7 @@ function emptyMessagePage(): WorkbenchMessagePageDto {
 }
 
 type ParsedMessageUpdateEvent = {
-  messageId: string;
+  messageSeq: number;
 };
 
 function parseMessageUpdateEvent(content: string): ParsedMessageUpdateEvent | undefined {
@@ -4732,14 +4711,14 @@ function parseMessageUpdateEvent(content: string): ParsedMessageUpdateEvent | un
       return undefined;
     }
 
-    const messageId = readRecordNumber(parsed, "messageId");
+    const messageSeq = readRecordNumber(parsed, "messageId");
 
-    if (!messageId) {
+    if (!messageSeq) {
       return undefined;
     }
 
     return {
-      messageId: String(messageId),
+      messageSeq,
     };
   } catch {
     return undefined;
@@ -4794,26 +4773,6 @@ function emptyHistoryMessagePage(): WorkbenchHistoryMessagePageDto {
     hasPrev: false,
     messages: [],
   };
-}
-
-function readQuoteContentBase64(rawOriginData: string | null | undefined) {
-  if (!rawOriginData) {
-    return undefined;
-  }
-
-  try {
-    const parsed: unknown = JSON.parse(rawOriginData);
-
-    if (!isRecord(parsed)) {
-      return undefined;
-    }
-
-    const value = parsed.quote_content_base64;
-
-    return typeof value === "string" && value.trim() ? value.trim() : undefined;
-  } catch {
-    return undefined;
-  }
 }
 
 function readMessageFileDownloadStatus(content: string | null) {

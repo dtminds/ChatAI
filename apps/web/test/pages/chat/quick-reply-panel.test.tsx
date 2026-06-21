@@ -68,7 +68,7 @@ const quickReply: WorkbenchQuickReplyDto = {
         title: "活动链接",
       },
       materialCollectionId: "material-h5-1",
-      msgid: "msg-h5-1",
+      msgInfoId: "9001",
       type: "h5",
     },
   ],
@@ -1467,7 +1467,7 @@ describe("QuickReplyPanel", () => {
                     fileUrl: "https://cdn.example.com/quote.pdf",
                   },
                   materialCollectionId: "material-file-1",
-                  msgid: "msg-file-1",
+                  msgInfoId: "9002",
                   type: "file",
                 },
               ],
@@ -1576,7 +1576,7 @@ describe("QuickReplyPanel", () => {
                 title: "活动链接",
               },
               materialCollectionId: "material-h5-1",
-              msgid: "msg-h5-1",
+              msgInfoId: "9003",
               type: "h5",
             },
           ],
@@ -1706,7 +1706,7 @@ describe("QuickReplyPanel", () => {
               contentType: "file",
               groupId: "material-file-group-1",
               id: "material-file-1",
-              messageId: "msg-file-1",
+              msgInfoId: "9001",
               sort: 100,
               title: "报价单.pdf",
             },
@@ -1747,7 +1747,7 @@ describe("QuickReplyPanel", () => {
         attachments: [
           expect.objectContaining({
             materialCollectionId: expect.any(String),
-            msgid: expect.any(String),
+            msgInfoId: "9001",
             type: "file",
           }),
         ],
@@ -1799,7 +1799,7 @@ describe("QuickReplyPanel", () => {
                 url: "https://example.com/activity",
               },
               materialCollectionId: "material-h5-1",
-              msgid: "msg-h5-1",
+              msgInfoId: "9004",
               type: "h5",
             },
           ],
@@ -1814,6 +1814,36 @@ describe("QuickReplyPanel", () => {
 
     expect(await screen.findByTestId("link-card-content")).toBeInTheDocument();
     expect(screen.getByText("查看本期活动规则")).toBeInTheDocument();
+  });
+
+  it("keeps the full long attachment title available in the form dialog", () => {
+    const longTitle =
+      "1-1210已提 不退改)洞门永存! 一加入! 悍在脚上🌊十色洞洞鞋🌴可以穿三个季度的拖孩 全国实拍 芭蕾亲子款 小明星 小特林 贝雅红 云朵 鲸鱼款 鞋花单拍也包邮";
+
+    render(
+      <QuickReplyFormDialog
+        categories={categories}
+        initialValues={{
+          ...createQuickReplyInitialValues(),
+          attachments: [
+            {
+              content: {
+                title: longTitle,
+                url: "https://example.com/activity",
+              },
+              materialCollectionId: "material-h5-long",
+              msgInfoId: "9005",
+              type: "h5",
+            },
+          ],
+        }}
+        onOpenChange={vi.fn()}
+        onSubmit={vi.fn()}
+        open
+      />,
+    );
+
+    expect(screen.getByTitle(longTitle)).toHaveTextContent(longTitle);
   });
 
   it("shows a tooltip when attachment count reaches the limit", async () => {

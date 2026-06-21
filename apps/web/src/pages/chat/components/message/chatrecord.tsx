@@ -33,20 +33,20 @@ import {
 import { VideoMessageCard } from "@/pages/chat/components/message/video";
 
 type ChatRecordDetail = {
-  messageId: string;
+  messageSeq: number;
   messages: Message[];
 };
 
 export type LoadChatRecordDetail = (input: {
   conversationId: string;
-  messageId: string;
+  messageSeq: number;
 }) => Promise<ChatRecordDetail>;
 
 type ChatRecordMessageCardProps = {
   content: ChatRecordMessageContent;
   conversationId: string;
   loadChatRecordDetail?: LoadChatRecordDetail;
-  messageId: string;
+  messageSeq?: number;
 };
 
 const CHAT_RECORD_FALLBACK_TEXT = "[聊天记录]";
@@ -55,22 +55,23 @@ export function ChatRecordMessageCard({
   content,
   conversationId,
   loadChatRecordDetail = loadChatRecordDetailFromService,
-  messageId,
+  messageSeq,
 }: ChatRecordMessageCardProps) {
   const [open, setOpen] = useState(false);
   const [detail, setDetail] = useState<ChatRecordDetail | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const contextRef = useRef({ conversationId, messageId });
+  const contextRef = useRef({ conversationId, messageSeq });
   const isMountedRef = useRef(false);
   const loadDetailRef = useRef<() => Promise<void>>(async () => {});
   const openRef = useRef(open);
   const requestIdRef = useRef(0);
   const isLoadingContent = content.viewState === "loading";
+  const canLoadDetail = messageSeq != null;
   const title = normalizeChatRecordTitle(content.msgTitle);
   const lines = normalizeChatRecordLines(content);
 
-  contextRef.current = { conversationId, messageId };
+  contextRef.current = { conversationId, messageSeq };
   openRef.current = open;
 
   useEffect(() => {
@@ -85,10 +86,10 @@ export function ChatRecordMessageCard({
     setDetail(null);
     setError("");
 
-    if (openRef.current) {
+    if (openRef.current && canLoadDetail) {
       void loadDetailRef.current();
     }
-  }, [conversationId, messageId]);
+  }, [canLoadDetail, conversationId, messageSeq]);
 
   if (isFallbackChatRecordContent(content)) {
     return (
@@ -100,8 +101,12 @@ export function ChatRecordMessageCard({
   }
 
   async function loadDetail() {
+    if (messageSeq == null) {
+      return;
+    }
+
     const requestId = requestIdRef.current + 1;
-    const requestContext = { conversationId, messageId };
+    const requestContext = { conversationId, messageSeq };
     requestIdRef.current = requestId;
     setLoading(true);
     setError("");
@@ -133,13 +138,13 @@ export function ChatRecordMessageCard({
 
   function canApplyDetailResult(
     requestId: number,
-    requestContext: { conversationId: string; messageId: string },
+    requestContext: { conversationId: string; messageSeq: number },
   ) {
     return (
       isMountedRef.current &&
       requestIdRef.current === requestId &&
       contextRef.current.conversationId === requestContext.conversationId &&
-      contextRef.current.messageId === requestContext.messageId
+      contextRef.current.messageSeq === requestContext.messageSeq
     );
   }
 
@@ -148,7 +153,7 @@ export function ChatRecordMessageCard({
 
     const hasLoadedMessages = Boolean(detail?.messages.length);
 
-    if (!nextOpen || isLoadingContent || hasLoadedMessages || loading) {
+    if (!nextOpen || !canLoadDetail || isLoadingContent || hasLoadedMessages || loading) {
       return;
     }
 
@@ -165,7 +170,7 @@ export function ChatRecordMessageCard({
         aria-label={isLoadingContent ? `聊天记录加载中：${title}` : `查看聊天记录：${title}`}
         className="block w-[min(19rem,calc(100vw-7rem))] rounded-[8px] border border-border bg-surface p-3 text-left outline-none transition-colors hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:hover:bg-surface"
         data-testid="chat-record-card"
-        disabled={isLoadingContent}
+        disabled={isLoadingContent || !canLoadDetail}
         onClick={() => void handleOpenChange(true)}
         type="button"
       >
@@ -263,7 +268,7 @@ function ChatRecordDialogBody({
           <div className="space-y-4 px-5 py-4">
             {messages.map((message) => (
               <ChatRecordDetailMessage
-                key={message.clientMessageId ?? message.optNo ?? message.id}
+                key={message.optNo ?? message.uiMessageKey}
                 message={message}
               />
             ))}
@@ -385,12 +390,12 @@ function ChatRecordDetailMessageContent({ message }: { message: ChatMessage }) {
 
 async function loadChatRecordDetailFromService(input: {
   conversationId: string;
-  messageId: string;
+  messageSeq: number;
 }): Promise<ChatRecordDetail> {
   const response = await getWorkbenchService().getChatRecordDetail(input);
 
   return {
-    messageId: response.messageId,
+    messageSeq: response.messageSeq,
     messages: response.messages.map((message) => adaptMessage(message, {}, {})),
   };
 }

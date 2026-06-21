@@ -485,14 +485,13 @@ CREATE TABLE `xy_wap_embed_material_collection` (
   `group_id` bigint unsigned NOT NULL DEFAULT '0' COMMENT '分组ID，xy_wap_embed_material_collection_group.id',
   `title` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '标题',
   `content` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci COMMENT '内容',
-  `msgid` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '消息ID，第三方消息ID',
+  `msg_info_id` bigint unsigned NOT NULL COMMENT 'xy_wap_embed_msg_audit_info.id',
   `biz_status` tinyint NOT NULL DEFAULT '1' COMMENT '状态，0：已删除，1：正常',
   `op_sub_uid` bigint unsigned NOT NULL COMMENT '收藏人ID，xy_wap_embed_sub_user.id',
   `sort` bigint unsigned NOT NULL DEFAULT '0' COMMENT '排序值',
   `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '插入时间',
   `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_material_collection_msg_scope` (`uid`,`biz_type`,`sub_uid`,`msgid`),
   KEY `idx_uid_bizStatus_subUid_bizType_groupId` (`uid`,`biz_status`,`sub_uid`,`biz_type`,`group_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='chatAI-素材收藏表';
 

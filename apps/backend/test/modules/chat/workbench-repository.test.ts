@@ -80,6 +80,7 @@ function createMessagesDb(
     limits: number[];
     orderBys: Array<[string, string | undefined]>;
     table: string;
+    whereExpressions: unknown[];
     wheres: Array<[string, string, unknown]>;
   }> = [];
   const hydrationQueries: Array<{
@@ -113,6 +114,7 @@ function createMessagesDb(
           limits: query.limits,
           orderBys: query.orderBys,
           table,
+          whereExpressions: query.whereExpressions,
           wheres: query.wheres,
         });
         return query;
@@ -157,7 +159,7 @@ function createMessagesDb(
   };
 }
 
-function createMessagesByIdsDb(
+function createMessagesBySeqsDb(
   rows: MessageRow[],
   quoteRows: MessageRow[] = [],
   conversationOverrides: Record<string, unknown> = {},
@@ -686,7 +688,7 @@ describe("WorkbenchRepository", () => {
           create_time: 1_777_000_000_000,
           group_id: 9,
           id: 66,
-          msgid: "msg-file-66",
+          msg_info_id: 9101,
           op_sub_uid: 88,
           sort: 40,
           sub_uid: 0,
@@ -714,7 +716,7 @@ describe("WorkbenchRepository", () => {
         contentType: "file",
         groupId: "9",
         id: "66",
-        messageId: "msg-file-66",
+        msgInfoId: "9101",
         sort: 40,
         title: "报价文件",
       },
@@ -746,7 +748,7 @@ describe("WorkbenchRepository", () => {
           create_time: 1_777_000_000_000,
           group_id: 0,
           id: 68,
-          msgid: "msg-emotion-68",
+          msg_info_id: 9102,
           op_sub_uid: 88,
           sort: 50,
           sub_uid: 88,
@@ -772,7 +774,7 @@ describe("WorkbenchRepository", () => {
         bizType: 1,
         groupId: 0,
         id: "68",
-        messageId: "msg-emotion-68",
+        msgInfoId: "9102",
         title: "表情",
       },
     ]);
@@ -795,7 +797,7 @@ describe("WorkbenchRepository", () => {
           create_time: 1_777_000_000_000,
           group_id: 0,
           id: 68,
-          msgid: "msg-emotion-68",
+          msg_info_id: 9103,
           op_sub_uid: 88,
           sort: 50,
           sub_uid: 88,
@@ -820,7 +822,7 @@ describe("WorkbenchRepository", () => {
       {
         bizType: 1,
         id: "68",
-        messageId: "msg-emotion-68",
+        msgInfoId: "9103",
         title: "表情",
       },
     ]);
@@ -1577,7 +1579,7 @@ describe("WorkbenchRepository", () => {
     ]);
   });
 
-  it("finds material message from the read-only platform message table by msgid and uid", async () => {
+  it("finds material message from the read-only platform message table by id and uid", async () => {
     const db = createMaterialDb({
       "xy_wap_embed_msg_audit_info as message": {
         content: JSON.stringify({ title: "小程序卡片" }),
@@ -1591,7 +1593,7 @@ describe("WorkbenchRepository", () => {
     const repository = new WorkbenchRepository(db as never);
 
     const message = await repository.findMaterialMessage({
-      msgid: "msg-mini-1",
+      msgInfoId: "988",
       uid: 9001,
     });
 
@@ -1605,7 +1607,7 @@ describe("WorkbenchRepository", () => {
       table: "xy_wap_embed_msg_audit_info as message",
       joinConditions: [],
       wheres: [
-        ["message.msgid", "=", "msg-mini-1"],
+        ["message.id", "=", 988],
         ["message.uid", "=", 9001],
       ],
     });
@@ -1623,7 +1625,7 @@ describe("WorkbenchRepository", () => {
         create_time: 1_777_000_000_000,
         group_id: 9,
         id: 77,
-        msgid: "msg-file-77",
+        msg_info_id: 9101,
         op_sub_uid: 88,
         sort: 10,
         sub_uid: 88,
@@ -1636,7 +1638,7 @@ describe("WorkbenchRepository", () => {
 
     const lookup = await repository.findMaterialCollectionByMessage({
       bizType: 2,
-      msgid: "msg-file-77",
+      msgInfoId: "9101",
       subUid: 88,
       uid: 9001,
     });
@@ -1646,7 +1648,7 @@ describe("WorkbenchRepository", () => {
       id: "77",
       item: {
         id: "77",
-        messageId: "msg-file-77",
+        msgInfoId: "9101",
         title: "已删除文件",
       },
     });
@@ -1654,15 +1656,15 @@ describe("WorkbenchRepository", () => {
       ["uid", "=", 9001],
       ["biz_type", "=", 2],
       ["sub_uid", "=", 88],
-      ["msgid", "=", "msg-file-77"],
+      ["msg_info_id", "=", 9101],
     ]);
   });
 
-  it("looks up active enterprise material collection msgid for forward sends", async () => {
+  it("looks up active enterprise material collection msgInfoId for forward sends", async () => {
     const db = createMaterialDb({
       xy_wap_embed_material_collection: {
         content: JSON.stringify({ title: "客户跟进小程序" }),
-        msgid: "1025657",
+        msg_info_id: 1025657,
       },
     });
     const repository = new WorkbenchRepository(db as never);
@@ -1675,7 +1677,7 @@ describe("WorkbenchRepository", () => {
       }),
     ).resolves.toEqual({
       content: JSON.stringify({ title: "客户跟进小程序" }),
-      msgid: "1025657",
+      msgInfoId: "1025657",
     });
 
     expect(db.selects[0]).toMatchObject({
@@ -1696,7 +1698,7 @@ describe("WorkbenchRepository", () => {
         content: JSON.stringify({
           fileUrl: "https://example.com/expression.gif",
         }),
-        msgid: "msg-expression-001",
+        msg_info_id: 1025658,
       },
     });
     const repository = new WorkbenchRepository(db as never);
@@ -1712,7 +1714,7 @@ describe("WorkbenchRepository", () => {
       content: JSON.stringify({
         fileUrl: "https://example.com/expression.gif",
       }),
-      msgid: "msg-expression-001",
+      msgInfoId: "1025658",
     });
 
     expect(db.selects[0]).toMatchObject({
@@ -1768,7 +1770,7 @@ describe("WorkbenchRepository", () => {
       bizType: 2,
       content: JSON.stringify({ fileName: "报价.pdf" }),
       groupId: "9",
-      msgid: "msg-file-66",
+      msgInfoId: "9102",
       opSubUserId: "88",
       sort: 40,
       subUid: 88,
@@ -1785,7 +1787,7 @@ describe("WorkbenchRepository", () => {
           biz_type: 2,
           content: JSON.stringify({ fileName: "报价.pdf" }),
           group_id: 9,
-          msgid: "msg-file-66",
+          msg_info_id: 9102,
           op_sub_uid: 88,
           sort: 40,
           sub_uid: 88,
@@ -1826,7 +1828,7 @@ describe("WorkbenchRepository", () => {
         bizType: 2,
         content: null,
         groupId: "9",
-        msgid: "msg-file-66",
+        msgInfoId: "9103",
         opSubUserId: "88",
         sort: 40,
         subUid: 0,
@@ -1946,6 +1948,7 @@ describe("WorkbenchRepository", () => {
       content: JSON.stringify({ fileName: "报价.pdf" }),
       groupId: "9",
       id: "66",
+      msgInfoId: "9104",
       opSubUserId: "88",
       sort: 120,
       title: "恢复文件",
@@ -1959,6 +1962,7 @@ describe("WorkbenchRepository", () => {
           biz_status: 1,
           content: JSON.stringify({ fileName: "报价.pdf" }),
           group_id: 9,
+          msg_info_id: 9104,
           op_sub_uid: 88,
           sort: 120,
           title: "恢复文件",
@@ -2050,7 +2054,7 @@ describe("WorkbenchRepository", () => {
         bizType: 2,
         content: null,
         groupId: "bad",
-        msgid: "msg-file-66",
+        msgInfoId: "bad",
         opSubUserId: "88",
         sort: 40,
         subUid: 88,
@@ -4470,7 +4474,7 @@ describe("WorkbenchRepository", () => {
     expect(query.wheres).toContainEqual(["conversation.biz_status", "=", 1]);
   });
 
-  it("lists messages by ids in the conversation tenant scope", async () => {
+  it("lists messages by seqs in the conversation tenant scope", async () => {
     const messageRows = [
       createConversationMessageRow({
         id: 829,
@@ -4482,15 +4486,15 @@ describe("WorkbenchRepository", () => {
       }),
     ];
     const repository = new WorkbenchRepository(
-      createMessagesByIdsDb(messageRows) as never,
+      createMessagesBySeqsDb(messageRows) as never,
     );
 
     await expect(
-      repository.listMessagesByIds("88", ["829", "829", "0", "bad"]),
+      repository.listMessagesBySeqs("88", [829, 829, 0, Number.NaN]),
     ).resolves.toMatchObject({
       messages: [
         expect.objectContaining({
-          messageId: "remote-msg-829",
+          msgid: "remote-msg-829",
           senderAvatar: "",
           senderName: "external-1",
           seq: 829,
@@ -4499,8 +4503,8 @@ describe("WorkbenchRepository", () => {
     });
   });
 
-  it("scopes message id lookup to the single conversation key", async () => {
-    const db = createMessagesByIdsDb([
+  it("scopes message seq lookup to the single conversation key", async () => {
+    const db = createMessagesBySeqsDb([
       createConversationMessageRow({
         id: 829,
         msgid: "remote-msg-829",
@@ -4508,7 +4512,7 @@ describe("WorkbenchRepository", () => {
     ]);
     const repository = new WorkbenchRepository(db as never);
 
-    await repository.listMessagesByIds("88", ["829"]);
+    await repository.listMessagesBySeqs("88", [829]);
 
     expect(db.messageQueries[0]?.wheres).toContainEqual(["message.uid", "=", 9001]);
     expect(db.messageQueries[0]?.wheres).toContainEqual(["message.platform", "=", 5]);
@@ -4524,8 +4528,8 @@ describe("WorkbenchRepository", () => {
     ]);
   });
 
-  it("scopes message id lookup to the group conversation key", async () => {
-    const db = createMessagesByIdsDb(
+  it("scopes message seq lookup to the group conversation key", async () => {
+    const db = createMessagesBySeqsDb(
       [
         createConversationMessageRow({
           chat_type: 2,
@@ -4546,7 +4550,7 @@ describe("WorkbenchRepository", () => {
     );
     const repository = new WorkbenchRepository(db as never);
 
-    await repository.listMessagesByIds("88", ["829"]);
+    await repository.listMessagesBySeqs("88", [829]);
 
     expect(db.messageQueries[0]?.wheres).toContainEqual(["message.uid", "=", 9001]);
     expect(db.messageQueries[0]?.wheres).toContainEqual(["message.platform", "=", 5]);
@@ -4562,8 +4566,8 @@ describe("WorkbenchRepository", () => {
     ]);
   });
 
-  it("hydrates quote previews when fetching messages by ids", async () => {
-    const db = createMessagesByIdsDb(
+  it("hydrates quote previews when fetching messages by seqs", async () => {
+    const db = createMessagesBySeqsDb(
       [
         createConversationMessageRow({
           content: JSON.stringify({
@@ -4587,7 +4591,7 @@ describe("WorkbenchRepository", () => {
     );
     const repository = new WorkbenchRepository(db as never);
 
-    await expect(repository.listMessagesByIds("88", ["102"])).resolves.toMatchObject({
+    await expect(repository.listMessagesBySeqs("88", [102])).resolves.toMatchObject({
       messages: [
         {
           content: {
@@ -4600,14 +4604,14 @@ describe("WorkbenchRepository", () => {
             text: "正式引用消息",
           },
           contentType: "quote",
-          messageId: "remote-msg-102",
+          msgid: "remote-msg-102",
         },
       ],
     });
     expect(db.messageQueries).toHaveLength(2);
   });
 
-  it("loads chat record details by parent message msgid in the conversation tenant scope", async () => {
+  it("loads chat record details by parent audit id in the conversation tenant scope", async () => {
     const db = createChatRecordDetailDb({
       parentRow: createConversationMessageRow({
         content: JSON.stringify({
@@ -4625,6 +4629,7 @@ describe("WorkbenchRepository", () => {
           corp_short_name: "",
           id: 18,
           msgid: "parent-chatrecord-msgid",
+          msg_info_id: 830,
           msgtime: 1_778_840_020_000,
           msgtype: "text",
           name: "范双飞",
@@ -4640,14 +4645,14 @@ describe("WorkbenchRepository", () => {
     const repository = new WorkbenchRepository(db as never);
 
     await expect(
-      repository.getChatRecordDetail(9001, 5, "88", "parent-chatrecord-msgid"),
+      repository.getChatRecordDetail(9001, 5, "88", 830),
     ).resolves.toMatchObject({
-      messageId: "parent-chatrecord-msgid",
+      messageSeq: 830,
       messages: [
         {
           content: { text: "第一条详情" },
           contentType: "text",
-          messageId: "chatrecord:parent-chatrecord-msgid:18",
+          msgid: "chatrecord:830:18",
           senderAvatar: "https://cdn.example.com/avatar.png",
           senderName: "范双飞",
           seq: 18,
@@ -4660,6 +4665,11 @@ describe("WorkbenchRepository", () => {
     expect(db.queries[0]?.wheres).toContainEqual(["conversation.platform", "=", 5]);
     expect(db.queries[0]?.wheres).toContainEqual(["conversation.id", "=", 88]);
     expect(db.queries[1]?.wheres).toContainEqual([
+      "message.id",
+      "=",
+      830,
+    ]);
+    expect(db.queries[1]?.wheres).not.toContainEqual([
       "message.msgid",
       "=",
       "parent-chatrecord-msgid",
@@ -4672,6 +4682,11 @@ describe("WorkbenchRepository", () => {
       "external-1",
     ]);
     expect(db.queries[2]?.wheres).toContainEqual([
+      "record.msg_info_id",
+      "=",
+      830,
+    ]);
+    expect(db.queries[2]?.wheres).not.toContainEqual([
       "record.msgid",
       "=",
       "parent-chatrecord-msgid",
@@ -5076,44 +5091,6 @@ describe("WorkbenchRepository", () => {
     });
   });
 
-  it("reads quote content base64 from audit extend origin data", async () => {
-    const queries: Array<{ table: string; wheres: Array<[string, string, unknown]> }> = [];
-    const repository = new WorkbenchRepository(
-      {
-        selectFrom(table: string) {
-          expect(table).toBe("xy_wap_embed_msg_audit_info_extend");
-          const result = {
-            origin_data: JSON.stringify({
-              quote_content_base64: " base64-quote-content ",
-            }),
-          };
-          const query = createQueryBuilder(result);
-          queries.push({ table, wheres: query.wheres });
-
-          return query;
-        },
-      } as never,
-    );
-
-    await expect(
-      repository.getQuoteContentBase64({
-        messageId: "remote-msg-538",
-        platform: 5,
-        uid: 9001,
-      }),
-    ).resolves.toBe("base64-quote-content");
-
-    expect(queries).toHaveLength(1);
-    expect(queries[0]).toMatchObject({
-      table: "xy_wap_embed_msg_audit_info_extend",
-      wheres: [
-        ["msgid", "=", "remote-msg-538"],
-        ["platform", "=", 5],
-        ["uid", "=", 9001],
-      ],
-    });
-  });
-
   it("reads message file transfer status by audit id in tenant scope", async () => {
     const queries: Array<{ table: string; wheres: Array<[string, string, unknown]> }> = [];
     const repository = new WorkbenchRepository(
@@ -5404,7 +5381,7 @@ describe("WorkbenchRepository", () => {
             text: "visible",
           },
           contentType: "text",
-          messageId: "remote-msg-101",
+          msgid: "remote-msg-101",
         },
         {
           content: {
@@ -5412,12 +5389,12 @@ describe("WorkbenchRepository", () => {
             text: "",
           },
           contentType: "revoke",
-          messageId: "remote-msg-102",
+          msgid: "remote-msg-102",
         },
         {
           content: { text: "" },
           contentType: "system",
-          messageId: "remote-msg-103",
+          msgid: "remote-msg-103",
         },
       ],
       nextBeforeSeq: 101,
@@ -5465,7 +5442,7 @@ describe("WorkbenchRepository", () => {
     await expect(repository.listMessages("88", { limit: 1 })).resolves.toMatchObject({
       messages: [
         {
-          messageId: "remote-msg-101",
+          msgid: "remote-msg-101",
           senderAvatar: "https://example.com/member-1.png",
           senderName: "群内成员一",
         },
@@ -5515,7 +5492,7 @@ describe("WorkbenchRepository", () => {
       messages: [
         {
           content: { text: "测试被引用" },
-          messageId: "remote-msg-101",
+          msgid: "remote-msg-101",
         },
         {
           content: {
@@ -5528,7 +5505,7 @@ describe("WorkbenchRepository", () => {
             text: "正式引用消息",
           },
           contentType: "quote",
-          messageId: "remote-msg-102",
+          msgid: "remote-msg-102",
         },
       ],
     });
@@ -5660,8 +5637,8 @@ describe("WorkbenchRepository", () => {
       hasNext: false,
       hasPrev: true,
       messages: [
-        { messageId: "remote-msg-102", seq: 102 },
-        { messageId: "remote-msg-103", seq: 103 },
+        { msgid: "remote-msg-102", seq: 102 },
+        { msgid: "remote-msg-103", seq: 103 },
       ],
     });
     expect(page.prevCursor).toBeDefined();
@@ -5695,7 +5672,7 @@ describe("WorkbenchRepository", () => {
     expect(page.messages).toMatchObject([
       {
         content: { text: "测试被引用" },
-        messageId: "remote-msg-101",
+        msgid: "remote-msg-101",
       },
       {
         content: {
@@ -5708,7 +5685,7 @@ describe("WorkbenchRepository", () => {
           text: "正式引用消息",
         },
         contentType: "quote",
-        messageId: "remote-msg-102",
+        msgid: "remote-msg-102",
       },
     ]);
     expect(db.messageQueries).toHaveLength(1);
@@ -5728,7 +5705,7 @@ describe("WorkbenchRepository", () => {
     await expect(
       repository.getMessageForRevoke({
         conversationId: "88",
-        messageId: "remote-msg-321",
+        messageSeq: 321,
         platform: 5,
         thirdExternalUserId: "external-1",
         thirdUserId: "seat-third-user-1",
@@ -5739,6 +5716,37 @@ describe("WorkbenchRepository", () => {
       seq: 321,
       status: "sent",
     });
+  });
+
+  it("looks up revoke messages by seq only", async () => {
+    const db = createMessagesDb([
+      messageRow({
+        from_type: 1,
+        id: 321,
+        msgid: "321",
+        status: 1,
+      }),
+    ]);
+    const repository = new WorkbenchRepository(db as never);
+
+    await expect(
+      repository.getMessageForRevoke({
+        conversationId: "88",
+        messageSeq: 321,
+        platform: 5,
+        thirdExternalUserId: "external-1",
+        thirdUserId: "seat-third-user-1",
+        uid: 9001,
+      }),
+    ).resolves.toMatchObject({
+      senderType: "agent",
+      seq: 321,
+      status: "sent",
+    });
+
+    expect(db.messageQueries[0]?.wheres).toContainEqual(["message.id", "=", 321]);
+    expect(db.messageQueries[0]?.whereExpressions).toEqual([]);
+    expect(db.messageQueries[0]?.wheres).not.toContainEqual(["message.msgid", "=", "321"]);
   });
 
   it("applies media scope with day and sender filters in history queries", async () => {

@@ -20,7 +20,7 @@ import type {
   WorkbenchSendMessageResponse,
   WorkbenchSeatChangeDto,
   WorkbenchUploadCredentialResponse,
-  WorkbenchMessageQueryByIdsRequest,
+  WorkbenchMessageQueryBySeqsRequest,
   WorkbenchMessageUpdateEventDto,
   WorkbenchSmartReplyPollRequest,
   WorkbenchSmartReplySendAnswerRequest,
@@ -349,19 +349,19 @@ export async function loadConversationMessagesPage(
   };
 }
 
-export async function loadMessagesByIds(
+export async function loadMessagesBySeqs(
   context: GatewayContext,
   conversationId: string,
-  messageIds: string[],
+  messageSeqs: number[],
 ): Promise<Message[]> {
-  if (!messageIds.length) {
+  if (!messageSeqs.length) {
     return [];
   }
 
-  const response = await getWorkbenchService().getMessagesByIds({
+  const response = await getWorkbenchService().getMessagesBySeqs({
     conversationId,
-    messageIds,
-  } satisfies WorkbenchMessageQueryByIdsRequest);
+    messageSeqs,
+  } satisfies WorkbenchMessageQueryBySeqsRequest);
 
   return adaptMessages(response.messages, context);
 }
@@ -428,15 +428,14 @@ export async function sendTextMessage(
 
 export async function revokeMessage(input: {
   conversationId: string;
-  messageId: string;
+  messageSeq: number;
 }): Promise<WorkbenchRevokeMessageResponse> {
   return getWorkbenchService().revokeMessage(input);
 }
 
 export async function downloadMessageFile(input: {
   conversationId: string;
-  messageId: string;
-  messageSeq: number;
+  msgInfoId: number;
 }) {
   return getWorkbenchService().downloadMessageFile(input);
 }

@@ -136,8 +136,9 @@ describe("adaptMessage", () => {
         me,
       ),
     ).toMatchObject({
-      id: "message-1",
       isRevoked: true,
+      msgid: "remote-msgid-1",
+      uiMessageKey: "1",
     });
   });
 
@@ -153,9 +154,73 @@ describe("adaptMessage", () => {
         me,
       ),
     ).toMatchObject({
-      id: "message-1",
+      msgid: "remote-msgid-1",
       optNo: "opt-001",
+      uiMessageKey: "1",
     });
+  });
+
+  it("uses a synthetic ui message key when an invalid DTO has no stable identifiers", () => {
+    const message = adaptMessage(
+        {
+          ...messageDto,
+          msgid: undefined,
+          optNo: undefined,
+          seq: 0,
+        } as unknown as WorkbenchMessageDto,
+        customerProfilesById,
+        accountsById,
+        me,
+      );
+
+    expect(message.uiMessageKey).toMatch(/^invalid-message:/);
+  });
+
+  it("does not use msgid as a fallback ui message key", () => {
+    const message = adaptMessage(
+        {
+          ...messageDto,
+          msgid: 9001001,
+          optNo: undefined,
+          seq: 0,
+        } as unknown as WorkbenchMessageDto,
+        customerProfilesById,
+        accountsById,
+        me,
+      );
+
+    expect(message.uiMessageKey).toMatch(/^invalid-message:/);
+    expect(message.uiMessageKey).not.toBe("9001001");
+  });
+
+  it("generates distinct synthetic ui message keys for invalid DTOs", () => {
+    const firstMessage = adaptMessage(
+      {
+        ...messageDto,
+        msgid: undefined,
+        optNo: undefined,
+        seq: 0,
+      } as unknown as WorkbenchMessageDto,
+      customerProfilesById,
+      accountsById,
+      me,
+    );
+    const secondMessage = adaptMessage(
+      {
+        ...messageDto,
+        createdAt: messageDto.createdAt + 1,
+        msgid: undefined,
+        optNo: undefined,
+        seq: 0,
+      } as unknown as WorkbenchMessageDto,
+      customerProfilesById,
+      accountsById,
+      me,
+    );
+
+    expect(firstMessage.uiMessageKey).toMatch(/^invalid-message:/);
+    expect(secondMessage.uiMessageKey).toMatch(/^invalid-message:/);
+    expect(firstMessage.uiMessageKey).not.toBe(secondMessage.uiMessageKey);
   });
 
   it("adapts voice playback URL and persisted transcode state", () => {
@@ -392,8 +457,9 @@ describe("adaptMessage", () => {
         fileUrl: "https://b5.bokr.com.cn/chat-files/quote.pdf",
         type: "file",
       },
-      id: "message-1",
+      msgid: "remote-msgid-1",
       seq: 1,
+      uiMessageKey: "1",
     });
   });
 
@@ -793,7 +859,6 @@ const conversationDto: WorkbenchConversationSummaryDto = {
 };
 
 const messageDto = {
-  clientMessageId: undefined,
   content: {
     text: "hello",
   },
@@ -802,7 +867,7 @@ const messageDto = {
   createdAt: 1715237640000,
   customerId: "group-1",
   failReason: undefined,
-  messageId: "message-1",
+  msgid: "remote-msgid-1",
   optNo: undefined,
   rawMsgtype: "text",
   seatId: "seat-1",

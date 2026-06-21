@@ -29,7 +29,7 @@ function createRevokeSignalDto(input: {
     conversationId: input.conversationId ?? "conv-001",
     createdAt: Date.now(),
     customerId: "cust-001",
-    messageId: input.messageId,
+    msgid: input.messageId,
     rawMsgtype: "revoke",
     seatId: "drc",
     senderType: "system",
@@ -56,8 +56,8 @@ describe("workbench revoke state", () => {
           activeConversationMessages: [
             createRevokeSignalDto({
               messageId: "revoke-msg-006",
-              revokeMessageId: "msg-006",
-              seq: 7,
+              revokeMessageId: "5",
+              seq: 101,
             }),
           ],
           conversationChanges: [],
@@ -78,13 +78,13 @@ describe("workbench revoke state", () => {
     const state = useWorkbenchStore.getState();
     const messagesAfterPoll = state.messagesByConversationId["conv-001"];
     const revokedLoadedMessage = messagesAfterPoll.find(
-      (message) => message.id === "msg-006",
+      (message) => message.uiMessageKey === "5",
     );
 
     expect(messagesAfterPoll).toHaveLength(messagesBeforePoll.length);
-    expect(messagesAfterPoll.some((message) => message.id === "revoke-msg-006")).toBe(false);
+    expect(messagesAfterPoll.some((message) => message.msgid === "revoke-msg-006")).toBe(false);
     expect(revokedLoadedMessage).toMatchObject({
-      id: "msg-006",
+      uiMessageKey: "5",
       isRevoked: true,
     });
     expect(state.messagePaginationByConversationId["conv-001"]).toEqual(
@@ -113,17 +113,17 @@ describe("workbench revoke state", () => {
               conversationId: "conv-001",
               createdAt: Date.now(),
               customerId: "cust-001",
-              messageId: "msg-new-001",
+              msgid: "msg-new-001",
               rawMsgtype: "text",
               seatId: "drc",
               senderType: "customer",
-              seq: 7,
+              seq: 101,
               status: "sent",
             },
             createRevokeSignalDto({
               messageId: "revoke-msg-new-001",
-              revokeMessageId: "msg-new-001",
-              seq: 8,
+              revokeMessageId: "101",
+              seq: 102,
             }),
           ],
           conversationChanges: [],
@@ -138,13 +138,13 @@ describe("workbench revoke state", () => {
 
     const state = useWorkbenchStore.getState();
     const messages = state.messagesByConversationId["conv-001"];
-    const targetMessage = messages.find((message) => message.id === "msg-new-001");
+    const targetMessage = messages.find((message) => message.uiMessageKey === "101");
 
     expect(targetMessage).toMatchObject({
-      id: "msg-new-001",
+      uiMessageKey: "101",
       isRevoked: true,
     });
-    expect(messages.some((message) => message.id === "revoke-msg-new-001")).toBe(false);
+    expect(messages.some((message) => message.msgid === "revoke-msg-new-001")).toBe(false);
     expect(state.activeMessageSeq).toBe(
       Math.max(...messages.map((message) => message.seq ?? 0)),
     );
@@ -165,7 +165,7 @@ describe("workbench revoke state", () => {
             createRevokeSignalDto({
               messageId: "revoke-seq-5",
               revokeMessageId: "5",
-              seq: 7,
+              seq: 101,
             }),
           ],
           conversationChanges: [],
@@ -188,7 +188,7 @@ describe("workbench revoke state", () => {
       seq: 5,
     });
     expect(
-      state.messagesByConversationId["conv-001"].some((message) => message.id === "revoke-seq-5"),
+      state.messagesByConversationId["conv-001"].some((message) => message.msgid === "revoke-seq-5"),
     ).toBe(false);
   });
 
@@ -205,7 +205,7 @@ describe("workbench revoke state", () => {
             {
               conversationId: "conv-001",
               eventId: 11,
-              messageId: "msg-010",
+              messageSeq: 9,
             },
           ],
           nextMessageUpdateCursor: 11,
@@ -213,8 +213,8 @@ describe("workbench revoke state", () => {
           seatChanges: [],
         };
       },
-      async getMessagesByIds(input) {
-        if (input.conversationId === "conv-001" && input.messageIds.includes("msg-010")) {
+      async getMessagesBySeqs(input) {
+        if (input.conversationId === "conv-001" && input.messageSeqs.includes(9)) {
           return {
             messages: [
               {
@@ -227,18 +227,18 @@ describe("workbench revoke state", () => {
                 conversationId: "conv-001",
                 createdAt: Date.now(),
                 customerId: "cust-001",
-                messageId: "msg-010",
+                msgid: "msg-009",
                 rawMsgtype: "weapp",
                 seatId: "drc",
                 senderType: "customer",
-                seq: 10,
+                seq: 9,
                 status: "sent",
               },
             ],
           };
         }
 
-        return baseService.getMessagesByIds(input);
+        return baseService.getMessagesBySeqs(input);
       },
     });
 
@@ -246,13 +246,13 @@ describe("workbench revoke state", () => {
     await useWorkbenchStore.getState().pollWorkbench();
 
     const state = useWorkbenchStore.getState();
-    expect(state.messagesByConversationId["conv-001"].find((message) => message.id === "msg-010")).toMatchObject(
+    expect(state.messagesByConversationId["conv-001"].find((message) => message.uiMessageKey === "9")).toMatchObject(
       {
         content: {
           coverImageUrl: "https://cdn.example.com/ready-cover.jpg",
           type: "mini-program",
         },
-        id: "msg-010",
+        uiMessageKey: "9",
       },
     );
     expect(state.messageUpdateCursor).toBe(11);
@@ -271,7 +271,7 @@ describe("workbench revoke state", () => {
             {
               conversationId: "conv-001",
               eventId: 12,
-              messageId: "msg-006",
+              messageSeq: 6,
             },
           ],
           nextMessageUpdateCursor: 12,
@@ -279,8 +279,8 @@ describe("workbench revoke state", () => {
           seatChanges: [],
         };
       },
-      async getMessagesByIds(input) {
-        if (input.conversationId === "conv-001" && input.messageIds.includes("msg-006")) {
+      async getMessagesBySeqs(input) {
+        if (input.conversationId === "conv-001" && input.messageSeqs.includes(6)) {
           return {
             messages: [
               {
@@ -292,7 +292,7 @@ describe("workbench revoke state", () => {
                 createdAt: Date.now(),
                 customerId: "cust-001",
                 isRevoked: true,
-                messageId: "msg-006",
+                msgid: "msg-006",
                 rawMsgtype: "text",
                 seatId: "drc",
                 senderType: "customer",
@@ -303,7 +303,7 @@ describe("workbench revoke state", () => {
           };
         }
 
-        return baseService.getMessagesByIds(input);
+        return baseService.getMessagesBySeqs(input);
       },
     });
 
@@ -312,14 +312,14 @@ describe("workbench revoke state", () => {
 
     const state = useWorkbenchStore.getState();
     const revokedLoadedMessage = state.messagesByConversationId["conv-001"].find(
-      (message) => message.id === "msg-006",
+      (message) => message.uiMessageKey === "6",
     );
 
     expect(revokedLoadedMessage).toMatchObject({
-      id: "msg-006",
+      uiMessageKey: "6",
       isRevoked: true,
     });
-    expect(state.messagesByConversationId["conv-001"].some((message) => message.id === "revoke-msg-006")).toBe(false);
+    expect(state.messagesByConversationId["conv-001"].some((message) => message.msgid === "revoke-msg-006")).toBe(false);
     expect(state.messageUpdateCursor).toBe(12);
   });
 
@@ -329,7 +329,7 @@ describe("workbench revoke state", () => {
     const revokeMessage = vi.fn().mockResolvedValue({
       accepted: true,
       conversationId: "conv-001",
-      messageId: "recent-agent-message",
+      messageSeq: 99,
       revokeMsgId: 99,
     });
 
@@ -365,7 +365,8 @@ describe("workbench revoke state", () => {
               type: "text",
             },
             conversationId: "conv-001",
-            id: "recent-agent-message",
+            msgid: "remote-msgid-should-not-be-used",
+            uiMessageKey: "99",
             isOwnMessage: true,
             role: "agent",
             sender: {
@@ -380,17 +381,19 @@ describe("workbench revoke state", () => {
       },
     }));
 
-    const result = await useWorkbenchStore.getState().revokeMessage("recent-agent-message");
+    const result = await useWorkbenchStore
+      .getState()
+      .revokeMessage("99");
 
     expect(result).toEqual({ ok: true });
     expect(revokeMessage).toHaveBeenCalledWith({
       conversationId: "conv-001",
-      messageId: "recent-agent-message",
+      messageSeq: 99,
     });
     expect(
       useWorkbenchStore
         .getState()
-        .messagesByConversationId["conv-001"].find((message) => message.id === "recent-agent-message"),
+        .messagesByConversationId["conv-001"].find((message) => message.uiMessageKey === "99"),
     ).toMatchObject({
       revokePending: true,
     });
@@ -400,7 +403,7 @@ describe("workbench revoke state", () => {
     expect(
       useWorkbenchStore
         .getState()
-        .messagesByConversationId["conv-001"].find((message) => message.id === "recent-agent-message"),
+        .messagesByConversationId["conv-001"].find((message) => message.uiMessageKey === "99"),
     ).toMatchObject({
       isRevoked: true,
       revokePending: false,
@@ -413,7 +416,7 @@ describe("workbench revoke state", () => {
     const revokeMessage = vi.fn().mockResolvedValue({
       accepted: true,
       conversationId: "conv-001",
-      messageId: "future-agent-message",
+      messageSeq: 103,
       revokeMsgId: 103,
     });
 
@@ -435,7 +438,7 @@ describe("workbench revoke state", () => {
               type: "text",
             },
             conversationId: "conv-001",
-            id: "future-agent-message",
+            uiMessageKey: "future-agent-message",
             isOwnMessage: true,
             role: "agent",
             sender: {
@@ -455,7 +458,115 @@ describe("workbench revoke state", () => {
     ).resolves.toEqual({ ok: true });
     expect(revokeMessage).toHaveBeenCalledWith({
       conversationId: "conv-001",
-      messageId: "future-agent-message",
+      messageSeq: 103,
+    });
+  });
+
+  it("rejects revoke when the message seq is invalid", async () => {
+    vi.setSystemTime(new Date("2026-05-27T10:00:00").getTime());
+    const baseService = createMockWorkbenchService();
+    const revokeMessage = vi.fn();
+
+    setWorkbenchService({
+      ...baseService,
+      revokeMessage,
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        "conv-001": [
+          ...(state.messagesByConversationId["conv-001"] ?? []),
+          {
+            author: "德瑞可-小可",
+            content: {
+              text: "异常落库的客服消息",
+              type: "text",
+            },
+            conversationId: "conv-001",
+            uiMessageKey: "invalid-agent-message",
+            isOwnMessage: true,
+            role: "agent",
+            sender: {
+              id: "sender-agent-drc",
+              name: "德瑞可-小可",
+            },
+            sentAt: formatWorkbenchTimestamp(Date.now() - 60_000),
+            seq: 0,
+            status: "sent",
+          },
+        ],
+      },
+    }));
+
+    await expect(
+      useWorkbenchStore.getState().revokeMessage("invalid-agent-message"),
+    ).resolves.toEqual({
+      errorCode: "MESSAGE_NOT_REVOKABLE",
+      errorMessage: "暂不支持撤回该消息",
+      ok: false,
+    });
+    expect(revokeMessage).not.toHaveBeenCalled();
+  });
+
+  it("revokes a reconciled message when called with the previous optNo key", async () => {
+    vi.setSystemTime(new Date("2026-05-27T10:00:00").getTime());
+    const baseService = createMockWorkbenchService();
+    const revokeMessage = vi.fn().mockResolvedValue({
+      accepted: true,
+      conversationId: "conv-001",
+      messageSeq: 104,
+      revokeMsgId: 104,
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      revokeMessage,
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        "conv-001": [
+          ...(state.messagesByConversationId["conv-001"] ?? []),
+          {
+            author: "德瑞可-小可",
+            content: {
+              text: "已落库的客服消息",
+              type: "text",
+            },
+            conversationId: "conv-001",
+            optNo: "opt-revoke-104",
+            uiMessageKey: "104",
+            isOwnMessage: true,
+            role: "agent",
+            sender: {
+              id: "sender-agent-drc",
+              name: "德瑞可-小可",
+            },
+            sentAt: formatWorkbenchTimestamp(Date.now() - 60_000),
+            seq: 104,
+            status: "sent",
+          },
+        ],
+      },
+    }));
+
+    await expect(
+      useWorkbenchStore.getState().revokeMessage("opt-revoke-104"),
+    ).resolves.toEqual({ ok: true });
+    expect(revokeMessage).toHaveBeenCalledWith({
+      conversationId: "conv-001",
+      messageSeq: 104,
+    });
+    expect(
+      useWorkbenchStore
+        .getState()
+        .messagesByConversationId["conv-001"].find((message) => message.uiMessageKey === "104"),
+    ).toMatchObject({
+      revokePending: true,
     });
   });
 
@@ -488,7 +599,7 @@ describe("workbench revoke state", () => {
               type: "text",
             },
             conversationId: "conv-001",
-            id: "dedupe-agent-message",
+            uiMessageKey: "dedupe-agent-message",
             isOwnMessage: true,
             role: "agent",
             sender: {
@@ -516,7 +627,7 @@ describe("workbench revoke state", () => {
     resolveRevoke?.({
       accepted: true,
       conversationId: "conv-001",
-      messageId: "dedupe-agent-message",
+      messageSeq: 102,
       revokeMsgId: 102,
     });
 
@@ -547,7 +658,7 @@ describe("workbench revoke state", () => {
               type: "text",
             },
             conversationId: "conv-001",
-            id: "failed-revoke-agent-message",
+            uiMessageKey: "failed-revoke-agent-message",
             isOwnMessage: true,
             role: "agent",
             sender: {
@@ -583,7 +694,7 @@ describe("workbench revoke state", () => {
         return {
           accepted: true,
           conversationId: input.conversationId,
-          messageId: input.messageId,
+          messageSeq: input.messageSeq,
           revokeMsgId: 101,
         };
       },
@@ -602,7 +713,7 @@ describe("workbench revoke state", () => {
               type: "text",
             },
             conversationId: "conv-001",
-            id: "timeout-agent-message",
+            uiMessageKey: "timeout-agent-message",
             isOwnMessage: true,
             role: "agent",
             sender: {
@@ -621,7 +732,7 @@ describe("workbench revoke state", () => {
     expect(
       useWorkbenchStore
         .getState()
-        .messagesByConversationId["conv-001"].find((message) => message.id === "timeout-agent-message"),
+        .messagesByConversationId["conv-001"].find((message) => message.uiMessageKey === "timeout-agent-message"),
     ).toMatchObject({
       revokePending: true,
     });
@@ -631,7 +742,7 @@ describe("workbench revoke state", () => {
     expect(
       useWorkbenchStore
         .getState()
-        .messagesByConversationId["conv-001"].find((message) => message.id === "timeout-agent-message"),
+        .messagesByConversationId["conv-001"].find((message) => message.uiMessageKey === "timeout-agent-message"),
     ).toMatchObject({
       revokePending: false,
     });
@@ -651,7 +762,7 @@ describe("workbench revoke state", () => {
         return {
           accepted: true,
           conversationId: input.conversationId,
-          messageId: input.messageId,
+          messageSeq: input.messageSeq,
           revokeMsgId: 104,
         };
       },
@@ -671,7 +782,7 @@ describe("workbench revoke state", () => {
               type: "text",
             },
             conversationId: "conv-001",
-            id: "switched-timeout-agent-message",
+            uiMessageKey: "switched-timeout-agent-message",
             isOwnMessage: true,
             role: "agent",
             sender: {
@@ -694,7 +805,7 @@ describe("workbench revoke state", () => {
     expect(
       useWorkbenchStore
         .getState()
-        .messagesByConversationId["conv-001"].find((message) => message.id === "switched-timeout-agent-message"),
+        .messagesByConversationId["conv-001"].find((message) => message.uiMessageKey === "switched-timeout-agent-message"),
     ).toMatchObject({
       revokePending: false,
     });

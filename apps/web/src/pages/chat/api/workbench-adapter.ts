@@ -15,8 +15,17 @@ import type {
   MessageStatus,
   QuotedMessagePreviewContent,
 } from "@/pages/chat/chat-types";
+import { isValidMessageSeq } from "@/pages/chat/lib/message-seq";
 
 type ChatMessageContent = ChatMessage["content"];
+
+export const INVALID_MESSAGE_UI_KEY_PREFIX = "invalid-message:";
+
+let invalidMessageUiKeyCounter = 0;
+
+export function isInvalidMessageUiKey(key: string | undefined) {
+  return Boolean(key?.startsWith(INVALID_MESSAGE_UI_KEY_PREFIX));
+}
 
 export function adaptEmployee(dto: WorkbenchSubUserDto): EmployeeProfile {
   return {
@@ -95,10 +104,10 @@ export function adaptMessage(
   const sentAt = formatWorkbenchTimestamp(dto.createdAt);
   const status = adaptMessageStatus(dto.status);
   const isGroupConversation = Boolean(dto.thirdGroupId);
+  const uiMessageKey = getMessageUiKey(dto);
 
   if (dto.contentType === "revoke") {
     return {
-      clientMessageId: dto.clientMessageId,
       content: {
         revokeMsgId: asOptionalString(dto.content.revokeMsgId),
         revokeOriginMsgId: asOptionalString(dto.content.revokeOriginMsgId),
@@ -107,38 +116,37 @@ export function adaptMessage(
       },
       conversationId: dto.conversationId,
       failReason: dto.failReason,
-      id: dto.messageId,
       isRevoked: dto.isRevoked,
+      msgid: dto.msgid,
       optNo: dto.optNo,
       rawMsgtype: dto.rawMsgtype,
-      remoteMessageId: dto.messageId,
       role: "system",
       sentAt,
       seq: dto.seq,
       status,
       author: "系统",
+      uiMessageKey,
     };
   }
 
   if (dto.contentType === "system" || dto.senderType === "system") {
     return {
-      clientMessageId: dto.clientMessageId,
       content: {
         text: readSystemMessageText(dto.content),
         type: "system",
       },
       conversationId: dto.conversationId,
       failReason: dto.failReason,
-      id: dto.messageId,
       isRevoked: dto.isRevoked,
+      msgid: dto.msgid,
       optNo: dto.optNo,
       rawMsgtype: dto.rawMsgtype,
-      remoteMessageId: dto.messageId,
       role: "system",
       sentAt,
       seq: dto.seq,
       status,
       author: "系统",
+      uiMessageKey,
     };
   }
 
@@ -174,17 +182,15 @@ export function adaptMessage(
 
   return {
     author: senderName,
-    clientMessageId: dto.clientMessageId,
     content,
     conversationId: dto.conversationId,
     isGroupConversation,
     isOwnMessage,
     failReason: dto.failReason,
-    id: dto.messageId,
     isRevoked: dto.isRevoked,
+    msgid: dto.msgid,
     optNo: dto.optNo,
     rawMsgtype: dto.rawMsgtype,
-    remoteMessageId: dto.messageId,
     role: isAgent ? "agent" : "customer",
     senderDisplayName: isGroupConversation && !isOwnMessage ? senderName : undefined,
     sender: {
@@ -201,7 +207,27 @@ export function adaptMessage(
     sentAt,
     seq: dto.seq,
     status,
+    uiMessageKey,
   };
+}
+
+function getMessageUiKey(dto: WorkbenchMessageDto) {
+  if (isValidMessageSeq(dto.seq)) {
+    return String(dto.seq);
+  }
+
+  if (dto.optNo) {
+    return dto.optNo;
+  }
+
+  return createInvalidMessageUiKey();
+}
+
+function createInvalidMessageUiKey() {
+  const randomPart = globalThis.crypto?.randomUUID?.()
+    ?? `${Date.now().toString(36)}-${invalidMessageUiKeyCounter++}`;
+
+  return `${INVALID_MESSAGE_UI_KEY_PREFIX}${randomPart}`;
 }
 
 function readSystemMessageText(content: Record<string, unknown>) {

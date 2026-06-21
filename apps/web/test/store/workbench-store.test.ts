@@ -56,7 +56,7 @@ async function waitForStoreAssertion(assertion: () => void) {
 }
 
 function getSeedMessageIdAt(conversationId: string, index: number) {
-  return seedMessages[conversationId]?.[index]?.id;
+  return seedMessages[conversationId]?.[index] ? String(index + 1) : undefined;
 }
 
 function createCachedConversation(accountId: string): Conversation {
@@ -91,7 +91,7 @@ function createHistoryMessageDto(
     conversationId: "conv-001",
     createdAt: 1_778_400_000_000 + seq * 1_000,
     customerId: "cust-001",
-    messageId: id,
+    msgid: id,
     rawMsgtype: "text",
     seatId: "drc",
     senderType: seq % 2 === 0 ? "agent" : "customer",
@@ -125,7 +125,7 @@ function createDownloadFileMessageDto({
     conversationId: "conv-001",
     createdAt: 1_778_400_000_000 + seq * 1_000,
     customerId: "cust-001",
-    messageId: id,
+    msgid: id,
     rawMsgtype: "file",
     seatId: "drc",
     senderType: "customer",
@@ -155,7 +155,7 @@ function createSmartReplyTextMessageDto({
     conversationId,
     createdAt: 1_778_400_000_000 + seq * 1_000,
     customerId: "cust-001",
-    messageId: id,
+    msgid: id,
     rawMsgtype: "text",
     seatId: "drc",
     senderType,
@@ -186,7 +186,7 @@ function createSmartReplyVoiceMessageDto({
     conversationId: "conv-001",
     createdAt: 1_778_400_000_000 + seq * 1_000,
     customerId: "cust-001",
-    messageId: id,
+    msgid: id,
     rawMsgtype: "voice",
     seatId: "drc",
     senderType: "customer",
@@ -352,7 +352,7 @@ describe("useWorkbenchStore", () => {
 
     await useWorkbenchStore.getState().transcribeVoiceMessage(
       "conv-001",
-      "msg-voice-9",
+      "9",
     );
 
     expect(observedAutoRequests).toEqual([
@@ -468,7 +468,7 @@ describe("useWorkbenchStore", () => {
               conversationId: "conv-001",
               createdAt: 1_778_400_010_000,
               customerId: "cust-001",
-              messageId: "msg-emotion-10",
+              msgid: "msg-emotion-10",
               rawMsgtype: "emotion",
               seatId: "drc",
               senderType: "customer",
@@ -918,7 +918,7 @@ describe("useWorkbenchStore", () => {
               conversationId: "conv-001",
               createdAt: 1_778_400_011_000,
               customerId: "cust-001",
-              messageId: "img-11",
+              msgid: "img-11",
               rawMsgtype: "image",
               seatId: "drc",
               senderType: "customer",
@@ -943,7 +943,7 @@ describe("useWorkbenchStore", () => {
 
     expect(observedAutoRequests).toEqual([]);
 
-    useWorkbenchStore.getState().updateMessageDownloadContent("conv-001", "img-11", {
+    useWorkbenchStore.getState().updateMessageDownloadContent("conv-001", "11", {
       downloadStatus: "finished",
     });
 
@@ -983,7 +983,7 @@ describe("useWorkbenchStore", () => {
               conversationId: "conv-001",
               createdAt: 1_778_400_011_000,
               customerId: "cust-001",
-              messageId: "img-11",
+              msgid: "img-11",
               rawMsgtype: "image",
               seatId: "drc",
               senderType: "customer",
@@ -1012,7 +1012,7 @@ describe("useWorkbenchStore", () => {
     expect(observedAutoRequests).toEqual([]);
     expect(
       useWorkbenchStore.getState().messagesByConversationId["conv-001"].find(
-        (message) => message.id === "img-11",
+        (message) => message.uiMessageKey === "11",
       )?.content,
     ).toMatchObject({
       downloadStatus: "ing",
@@ -2234,10 +2234,11 @@ describe("useWorkbenchStore", () => {
     });
 
     expect(observedHistoryCursors).toEqual([undefined, "before-2", "after-3"]);
-    expect(
+    const messageKeys =
       useWorkbenchStore.getState().historyPanelByConversationId["conv-001"]
-        ?.messages.map((message) => message.id),
-    ).toEqual(["history-0", "history-1", "history-2", "history-3", "history-4"]);
+        ?.messages.map((message) => message.uiMessageKey) ?? [];
+    expect(messageKeys[0]).toMatch(/^invalid-message:/);
+    expect(messageKeys.slice(1)).toEqual(["1", "2", "3", "4"]);
   });
 
   it("clears history panel messages immediately when changing scope", async () => {
@@ -2279,8 +2280,8 @@ describe("useWorkbenchStore", () => {
 
     expect(
       useWorkbenchStore.getState().historyPanelByConversationId["conv-001"]
-        ?.messages.map((message) => message.id),
-    ).toEqual(["history-file"]);
+        ?.messages.map((message) => message.uiMessageKey),
+    ).toEqual(["2"]);
   });
 
   it("keeps history scroll pinned to the end only for all-scope filters without a day", async () => {
@@ -2505,10 +2506,9 @@ describe("useWorkbenchStore", () => {
         ...state.pendingMessages,
         {
           author: "客服一号",
-          clientMessageId: "client-pending-001",
           content: { text: "本地待发送消息", type: "text" },
           conversationId: "conv-001",
-          id: "pending-001",
+          uiMessageKey: "pending-001",
           role: "agent",
           sender: { id: "agent-001", name: "客服一号" },
           sentAt: "2026-05-25T10:00:00+08:00",
@@ -2820,6 +2820,10 @@ describe("useWorkbenchStore", () => {
     const state = useWorkbenchStore.getState();
     const latestMessages =
       state.messagesByConversationId[state.activeConversationId].slice(-3);
+    const latestUiMessageKeys = latestMessages.map((message) => message.uiMessageKey);
+    const latestOptNos = latestMessages.map((message) =>
+      isChatMessage(message) ? message.optNo : undefined,
+    );
 
     expect(latestMessages).toMatchObject([
       {
@@ -2850,6 +2854,9 @@ describe("useWorkbenchStore", () => {
         status: "accepted",
       },
     ]);
+    expect(new Set(latestUiMessageKeys).size).toBe(3);
+    expect(new Set(latestOptNos).size).toBe(3);
+    expect(latestOptNos.every(Boolean)).toBe(true);
     expect(state.pendingMessages).toHaveLength(3);
     expect(state.conversationListsByScope[state.activeAccountId][0].preview).toBe(
       "第二段[强]",
@@ -2960,7 +2967,6 @@ describe("useWorkbenchStore", () => {
       {
         quote: {
           quoteMsgId: "538",
-          quotedMessageId: "remote-msg-538",
         },
       },
     );
@@ -3022,7 +3028,6 @@ describe("useWorkbenchStore", () => {
       {
         quote: {
           quoteMsgId: "538",
-          quotedMessageId: "remote-msg-538",
           quotedMessage: {
             contentType: "text",
             senderName: "客户",
@@ -3050,7 +3055,6 @@ describe("useWorkbenchStore", () => {
       expect.objectContaining({
         quote: {
           quoteMsgId: "538",
-          quotedMessageId: "remote-msg-538",
           quotedMessage: {
             contentType: "text",
             senderName: "客户",
@@ -3072,6 +3076,10 @@ describe("useWorkbenchStore", () => {
         type: "quote",
       },
     });
+    expect(
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1)
+        ?.content,
+    ).not.toHaveProperty("quotedMessageId");
   });
 
   it("resolves composer image segments even when url is the local data URL", async () => {
@@ -3189,6 +3197,7 @@ describe("useWorkbenchStore", () => {
         fileName: "报价单.pdf",
         fileSizeLabel: "2 KB",
         materialCollectionId: "material-file-001",
+        msgInfoId: "9101",
         type: "file",
         url: "https://cdn.example.com/quote.pdf",
       },
@@ -3197,6 +3206,7 @@ describe("useWorkbenchStore", () => {
         desc: "活动说明",
         href: "https://example.com/activity",
         materialCollectionId: "material-h5-001",
+        msgInfoId: "9102",
         title: "活动链接",
         type: "h5",
       },
@@ -3204,6 +3214,7 @@ describe("useWorkbenchStore", () => {
         appName: "客户助手",
         coverImageUrl: "https://cdn.example.com/weapp-cover.png",
         materialCollectionId: "material-weapp-001",
+        msgInfoId: "9103",
         title: "小程序标题",
         type: "weapp",
       },
@@ -3294,7 +3305,6 @@ describe("useWorkbenchStore", () => {
         description: "视频号简介",
         imageUrl: "https://cdn.example.com/sphfeed-cover.png",
         materialCollectionId: "material-sphfeed-001",
-        msgid: "msg-sphfeed-001",
         title: "视频号标题",
         type: "sphfeed",
         url: "https://channels.example.com/feed",
@@ -3310,7 +3320,7 @@ describe("useWorkbenchStore", () => {
     expect(sendMessage).not.toHaveBeenCalled();
   });
 
-  it("keeps quick reply snapshot fields when a material segment has msgid", async () => {
+  it("keeps quick reply snapshot fields when a material segment has msgInfoId", async () => {
     const baseService = createMockWorkbenchService();
     const sendMessage = vi.fn(baseService.sendMessage);
 
@@ -3325,8 +3335,7 @@ describe("useWorkbenchStore", () => {
         extension: "pdf",
         fileName: "报价单.pdf",
         fileSizeLabel: "2 KB",
-        materialCollectionId: "material-file-001",
-        msgid: "msg-file-001",
+        msgInfoId: "9101",
         type: "file",
         url: "https://cdn.example.com/quote.pdf",
       },
@@ -3334,16 +3343,14 @@ describe("useWorkbenchStore", () => {
         coverUrl: "https://cdn.example.com/link-cover.png",
         desc: "活动说明",
         href: "https://example.com/activity",
-        materialCollectionId: "material-h5-001",
-        msgid: "msg-h5-001",
+        msgInfoId: "9102",
         title: "活动链接",
         type: "h5",
       },
       {
         appName: "客户助手",
         coverImageUrl: "https://cdn.example.com/weapp-cover.png",
-        materialCollectionId: "material-weapp-001",
-        msgid: "msg-weapp-001",
+        msgInfoId: "9103",
         title: "小程序标题",
         type: "weapp",
       },
@@ -3355,8 +3362,7 @@ describe("useWorkbenchStore", () => {
       expect.objectContaining({
         segment: expect.objectContaining({
           fileName: "报价单.pdf",
-          materialCollectionId: "material-file-001",
-          msgid: "msg-file-001",
+          msgInfoId: "9101",
           type: "file",
           url: "https://cdn.example.com/quote.pdf",
         }),
@@ -3368,8 +3374,7 @@ describe("useWorkbenchStore", () => {
         segment: expect.objectContaining({
           desc: "活动说明",
           href: "https://example.com/activity",
-          materialCollectionId: "material-h5-001",
-          msgid: "msg-h5-001",
+          msgInfoId: "9102",
           title: "活动链接",
           type: "h5",
         }),
@@ -3379,8 +3384,7 @@ describe("useWorkbenchStore", () => {
       3,
       expect.objectContaining({
         segment: expect.objectContaining({
-          materialCollectionId: "material-weapp-001",
-          msgid: "msg-weapp-001",
+          msgInfoId: "9103",
           type: "weapp",
         }),
       }),
@@ -3634,7 +3638,7 @@ describe("useWorkbenchStore", () => {
       status: "failed",
     });
 
-    await useWorkbenchStore.getState().retryFailedMessage(failedMessage!.id);
+    await useWorkbenchStore.getState().retryFailedMessage(failedMessage!.uiMessageKey);
 
     const state = useWorkbenchStore.getState();
     const latestMessage = state.messagesByConversationId["conv-001"].at(-1);
@@ -3648,7 +3652,7 @@ describe("useWorkbenchStore", () => {
       role: "agent",
       status: "accepted",
     });
-    expect(latestMessage?.id).not.toBe(failedMessage?.id);
+    expect(latestMessage?.uiMessageKey).not.toBe(failedMessage?.uiMessageKey);
   });
 
   it("passes the failed message id when retrying a failed text message", async () => {
@@ -3668,17 +3672,17 @@ describe("useWorkbenchStore", () => {
       useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1);
 
     expect(failedMessage).toMatchObject({
-      remoteMessageId: expect.any(String),
+      msgid: expect.any(String),
       status: "failed",
     });
     useWorkbenchStore.setState((state) => ({
       messagesByConversationId: {
         ...state.messagesByConversationId,
         "conv-001": state.messagesByConversationId["conv-001"].map((message) =>
-          message.id === failedMessage!.id
+          message.uiMessageKey === failedMessage!.uiMessageKey
             ? {
                 ...message,
-                remoteMessageId: "remote-msgid-001",
+                msgid: "remote-msgid-001",
                 seq: 538,
               }
             : message,
@@ -3686,7 +3690,7 @@ describe("useWorkbenchStore", () => {
       },
     }));
 
-    await useWorkbenchStore.getState().retryFailedMessage(failedMessage!.id);
+    await useWorkbenchStore.getState().retryFailedMessage(failedMessage!.uiMessageKey);
 
     expect(sendMessage).toHaveBeenLastCalledWith(
       expect.objectContaining({
@@ -3697,6 +3701,73 @@ describe("useWorkbenchStore", () => {
         },
       }),
     );
+  });
+
+  it("retries a reconciled failed message when called with the previous optNo key", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    useWorkbenchStore.setState((state) => ({
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        "conv-001": [
+          ...(state.messagesByConversationId["conv-001"] ?? []),
+          {
+            author: "客服一号",
+            content: {
+              text: "已落库失败消息",
+              type: "text",
+            },
+            conversationId: "conv-001",
+            failReason: "模拟发送失败",
+            optNo: "opt-failed-538",
+            uiMessageKey: "538",
+            role: "agent",
+            sender: {
+              id: "agent-001",
+              name: "客服一号",
+            },
+            sentAt: "2026-05-20 10:00:00",
+            seq: 538,
+            status: "failed",
+          },
+        ],
+      },
+    }));
+
+    const beforeRetryCount =
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].length;
+
+    await useWorkbenchStore.getState().retryFailedMessage("opt-failed-538");
+
+    const messages = useWorkbenchStore.getState().messagesByConversationId["conv-001"];
+
+    expect(messages).toHaveLength(beforeRetryCount);
+    expect(messages.some((message) => message.uiMessageKey === "538")).toBe(false);
+    expect(sendMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        failMsgId: "538",
+        segment: {
+          text: "已落库失败消息",
+          type: "text",
+        },
+      }),
+    );
+    expect(messages.at(-1)).toMatchObject({
+      content: {
+        text: "已落库失败消息",
+        type: "text",
+      },
+      role: "agent",
+      status: "accepted",
+    });
   });
 
   it("omits failMsgId when retrying a failed message without seq", async () => {
@@ -3722,10 +3793,10 @@ describe("useWorkbenchStore", () => {
       messagesByConversationId: {
         ...state.messagesByConversationId,
         "conv-001": state.messagesByConversationId["conv-001"].map((message) =>
-          message.id === failedMessage!.id
+          message.uiMessageKey === failedMessage!.uiMessageKey
             ? {
                 ...message,
-                remoteMessageId: "remote-msgid-001",
+                msgid: "remote-msgid-001",
                 seq: undefined,
               }
             : message,
@@ -3733,7 +3804,7 @@ describe("useWorkbenchStore", () => {
       },
     }));
 
-    await useWorkbenchStore.getState().retryFailedMessage(failedMessage!.id);
+    await useWorkbenchStore.getState().retryFailedMessage(failedMessage!.uiMessageKey);
 
     expect(sendMessage).toHaveBeenLastCalledWith(
       expect.objectContaining({
@@ -3769,7 +3840,7 @@ describe("useWorkbenchStore", () => {
             },
             conversationId: "conv-001",
             failReason: "模拟发送失败",
-            id: "failed-file-message",
+            uiMessageKey: "failed-file-message",
             role: "agent",
             sender: {
               id: "agent-001",
@@ -3819,17 +3890,15 @@ describe("useWorkbenchStore", () => {
     const failedMessage =
       useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1);
 
-    const retryPromise = useWorkbenchStore.getState().retryFailedMessage(failedMessage!.id);
+    const retryPromise = useWorkbenchStore.getState().retryFailedMessage(failedMessage!.uiMessageKey);
 
     expect(
       useWorkbenchStore
         .getState()
-        .messagesByConversationId["conv-001"].some((message) => message.id === failedMessage!.id),
+        .messagesByConversationId["conv-001"].some((message) => message.uiMessageKey === failedMessage!.uiMessageKey),
     ).toBe(true);
 
     sendGate.resolve({
-      clientMessageId: "retry-local-001",
-      messageId: "retry-opt-001",
       optNo: "retry-opt-001",
       status: "accepted",
     });
@@ -3837,12 +3906,12 @@ describe("useWorkbenchStore", () => {
 
     const messages = useWorkbenchStore.getState().messagesByConversationId["conv-001"];
 
-    expect(messages.some((message) => message.id === failedMessage!.id)).toBe(false);
+    expect(messages.some((message) => message.uiMessageKey === failedMessage!.uiMessageKey)).toBe(false);
     expect(messages.at(-1)).toMatchObject({
       optNo: "retry-opt-001",
-      remoteMessageId: "retry-opt-001",
       status: "accepted",
     });
+    expect(messages.at(-1)?.msgid).toBeUndefined();
   });
 
   it("keeps pending messages when poll has no server receipt", async () => {
@@ -3915,7 +3984,7 @@ describe("useWorkbenchStore", () => {
     const beforeRetryCount =
       useWorkbenchStore.getState().messagesByConversationId["conv-001"].length;
 
-    const result = await useWorkbenchStore.getState().retryFailedMessage(failedMessage!.id);
+    const result = await useWorkbenchStore.getState().retryFailedMessage(failedMessage!.uiMessageKey);
     const messages = useWorkbenchStore.getState().messagesByConversationId["conv-001"];
 
     expect(result).toMatchObject({
@@ -3925,7 +3994,7 @@ describe("useWorkbenchStore", () => {
     });
     expect(messages).toHaveLength(beforeRetryCount);
     expect(messages.at(-1)).toMatchObject({
-      id: failedMessage!.id,
+      uiMessageKey: failedMessage!.uiMessageKey,
       status: "failed",
     });
   });
@@ -3955,7 +4024,7 @@ describe("useWorkbenchStore", () => {
             },
             conversationId: "conv-001",
             failReason: "模拟发送失败",
-            id: "failed-voice-message",
+            uiMessageKey: "failed-voice-message",
             role: "agent",
             sender: {
               id: "agent-001",
@@ -3983,7 +4052,7 @@ describe("useWorkbenchStore", () => {
       useWorkbenchStore
         .getState()
         .messagesByConversationId["conv-001"].some(
-          (message) => message.id === "failed-voice-message",
+          (message) => message.uiMessageKey === "failed-voice-message",
         ),
     ).toBe(true);
   });
@@ -4012,7 +4081,7 @@ describe("useWorkbenchStore", () => {
             },
             conversationId: "conv-001",
             failReason: "模拟发送失败",
-            id: "failed-image-without-url",
+            uiMessageKey: "failed-image-without-url",
             role: "agent",
             sender: {
               id: "agent-001",
@@ -4064,7 +4133,7 @@ describe("useWorkbenchStore", () => {
             },
             conversationId: "conv-001",
             failReason: "模拟发送失败",
-            id: "failed-file-without-url",
+            uiMessageKey: "failed-file-without-url",
             role: "agent",
             sender: {
               id: "agent-001",
@@ -4123,7 +4192,7 @@ describe("useWorkbenchStore", () => {
 
   it("reloads message details in batch for poll message update events", async () => {
     const baseService = createMockWorkbenchService();
-    const observedMessageIdBatches: Array<string[]> = [];
+    const observedMessageSeqBatches: Array<number[]> = [];
 
     setWorkbenchService({
       ...baseService,
@@ -4135,7 +4204,7 @@ describe("useWorkbenchStore", () => {
             {
               conversationId: request.activeConversationId ?? "conv-001",
               eventId: 4,
-              messageId: "829",
+              messageSeq: 829,
             },
           ],
           nextMessageUpdateCursor: 1_778_840_010_000,
@@ -4144,9 +4213,9 @@ describe("useWorkbenchStore", () => {
           seatChanges: [],
         };
       },
-      async getMessagesByIds(input) {
-        if (input.conversationId === "conv-001" && input.messageIds.includes("829")) {
-          observedMessageIdBatches.push(["829"]);
+      async getMessagesBySeqs(input) {
+        if (input.conversationId === "conv-001" && input.messageSeqs.includes(829)) {
+          observedMessageSeqBatches.push([829]);
           return {
             messages: [
               {
@@ -4155,7 +4224,7 @@ describe("useWorkbenchStore", () => {
                 conversationId: "conv-001",
                 createdAt: 1_778_840_010_000,
                 customerId: "cust-001",
-                messageId: "829",
+                msgid: "829",
                 rawMsgtype: "text",
                 seatId: "drc",
                 senderType: "customer",
@@ -4166,20 +4235,184 @@ describe("useWorkbenchStore", () => {
           };
         }
 
-        return baseService.getMessagesByIds(input);
+        return baseService.getMessagesBySeqs(input);
       },
     });
 
     await useWorkbenchStore.getState().initializeWorkbench();
     await useWorkbenchStore.getState().pollWorkbench();
 
-    expect(observedMessageIdBatches).toEqual([["829"]]);
+    expect(observedMessageSeqBatches).toEqual([[829]]);
     expect(useWorkbenchStore.getState().seatUpdateCursor).toBe(1_778_840_020_000);
     expect(
       useWorkbenchStore.getState().messagesByConversationId["conv-001"].some(
-        (message) => message.id === "829",
+        (message) => message.uiMessageKey === "829",
       ),
     ).toBe(false);
+  });
+
+  it("patches refreshed message details into optimistic messages by optNo", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async sendMessage() {
+        return {
+          optNo: "opt-refresh-001",
+          status: "accepted",
+        };
+      },
+      async poll(request) {
+        return {
+          activeConversationMessages: [],
+          conversationChanges: [],
+          messageUpdateEvents: [
+            {
+              conversationId: "conv-001",
+              eventId: 11,
+              messageSeq: 902,
+            },
+          ],
+          nextMessageUpdateCursor: 1_778_840_030_000,
+          nextVersion: request.sinceVersion + 1,
+          seatChanges: [],
+        };
+      },
+      async getMessagesBySeqs(input) {
+        if (input.conversationId === "conv-001" && input.messageSeqs.includes(902)) {
+          return {
+            messages: [
+              {
+                content: {
+                  text: "服务端刷新后的文本",
+                },
+                contentType: "text",
+                conversationId: "conv-001",
+                createdAt: 1_778_840_030_000,
+                customerId: "cust-001",
+                msgid: "remote-refresh-001",
+                optNo: "opt-refresh-001",
+                rawMsgtype: "text",
+                seatId: "drc",
+                senderType: "agent",
+                seq: 902,
+                status: "sent",
+              },
+            ],
+          };
+        }
+
+        return baseService.getMessagesBySeqs(input);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentTextMessage("本地刷新前文本");
+
+    const optimisticMessage =
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1);
+
+    expect(optimisticMessage).toMatchObject({
+      optNo: "opt-refresh-001",
+      status: "accepted",
+    });
+    expect(optimisticMessage?.uiMessageKey).not.toBe("902");
+
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    const messages = useWorkbenchStore.getState().messagesByConversationId["conv-001"];
+    const patchedMatches = messages.filter(
+      (message) =>
+        message.optNo === "opt-refresh-001" ||
+        message.uiMessageKey === optimisticMessage?.uiMessageKey ||
+        message.uiMessageKey === "902",
+    );
+
+    expect(patchedMatches).toHaveLength(1);
+    expect(patchedMatches[0]).toMatchObject({
+      content: {
+        text: "服务端刷新后的文本",
+        type: "text",
+      },
+      msgid: "remote-refresh-001",
+      optNo: "opt-refresh-001",
+      seq: 902,
+      status: "sent",
+      uiMessageKey: "902",
+    });
+  });
+
+  it("does not merge distinct messages only because both ui message keys are synthetic fallbacks", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        return {
+          activeConversationMessages: [
+            {
+              content: { text: "远端空 key 消息" },
+              contentType: "text",
+              conversationId: "conv-001",
+              createdAt: 1_778_840_050_000,
+              customerId: "cust-001",
+              msgid: undefined,
+              optNo: undefined,
+              rawMsgtype: "text",
+              seatId: "drc",
+              senderType: "customer",
+              seq: 0,
+              status: "sent",
+            } as unknown as WorkbenchMessageDto,
+          ],
+          conversationChanges: [],
+          nextVersion: request.sinceVersion + 1,
+          seatChanges: [],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    useWorkbenchStore.setState((state) => ({
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        "conv-001": [
+          ...(state.messagesByConversationId["conv-001"] ?? []),
+          {
+            author: "客户",
+            content: {
+              text: "本地空 key 消息",
+              type: "text",
+            },
+            conversationId: "conv-001",
+            role: "customer",
+            sender: {
+              id: "customer-local-invalid-key",
+              name: "客户",
+            },
+            sentAt: "2026-05-20 10:00:00",
+            status: "sent",
+            uiMessageKey: "invalid-message:local",
+          },
+        ],
+      },
+    }));
+
+    const beforeCount =
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].length;
+
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    const messages = useWorkbenchStore.getState().messagesByConversationId["conv-001"];
+    expect(messages).toHaveLength(beforeCount + 1);
+    expect(
+      messages.filter(
+        (message) =>
+          message.uiMessageKey.startsWith("invalid-message:") &&
+          message.role !== "system",
+      ),
+    ).toHaveLength(2);
   });
 
   it("patches poll media updates into the history panel without inserting missing messages", async () => {
@@ -4212,7 +4445,7 @@ describe("useWorkbenchStore", () => {
             {
               conversationId: "conv-001",
               eventId: 8,
-              messageId: "history-file-1",
+              messageSeq: 901,
             },
           ],
           nextMessageUpdateCursor: 1_778_840_010_000,
@@ -4220,8 +4453,8 @@ describe("useWorkbenchStore", () => {
           seatChanges: [],
         };
       },
-      async getMessagesByIds(input) {
-        if (input.messageIds.includes("history-file-1")) {
+      async getMessagesBySeqs(input) {
+        if (input.messageSeqs.includes(901)) {
           return {
             messages: [
               createDownloadFileMessageDto({
@@ -4234,7 +4467,7 @@ describe("useWorkbenchStore", () => {
           };
         }
 
-        return baseService.getMessagesByIds(input);
+        return baseService.getMessagesBySeqs(input);
       },
     });
 
@@ -4244,7 +4477,7 @@ describe("useWorkbenchStore", () => {
 
     expect(
       useWorkbenchStore.getState().messagesByConversationId["conv-001"].some(
-        (message) => message.id === "history-file-1",
+        (message) => message.uiMessageKey === "901",
       ),
     ).toBe(false);
 
@@ -4261,7 +4494,7 @@ describe("useWorkbenchStore", () => {
     });
     expect(
       useWorkbenchStore.getState().messagesByConversationId["conv-001"].some(
-        (message) => message.id === "history-file-1",
+        (message) => message.uiMessageKey === "901",
       ),
     ).toBe(false);
   });
@@ -4285,8 +4518,8 @@ describe("useWorkbenchStore", () => {
               type: "file",
             },
             conversationId: "conv-001",
-            id: "local-file-1",
-            remoteMessageId: "local-file-1",
+            msgid: "local-file-1",
+            uiMessageKey: "local-file-1",
             role: "customer",
             sender: {
               id: "cust-001",
@@ -4310,12 +4543,170 @@ describe("useWorkbenchStore", () => {
     const patchedMessage = useWorkbenchStore
       .getState()
       .messagesByConversationId["conv-001"].find(
-        (message) => message.id === "local-file-1",
+        (message) => message.uiMessageKey === "local-file-1",
       );
 
     expect(patchedMessage?.content).toMatchObject({
       downloadStatus: "ing",
       fileUrl: "https://b5.bokr.com.cn/chat-files/quote.pdf",
+      type: "file",
+    });
+  });
+
+  it("patches media downloads by optNo after the message key is reconciled to seq", async () => {
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        "conv-001": [
+          ...state.messagesByConversationId["conv-001"],
+          {
+            author: "客户",
+            content: {
+              downloadStatus: "ing",
+              extension: "pdf",
+              fileName: "报价单.pdf",
+              fileSerialNo: "serial-file-902",
+              fileSizeLabel: "2 KB",
+              fileUrl: "https://b5.bokr.com.cn/chat-files/quote.pdf",
+              type: "file",
+            },
+            conversationId: "conv-001",
+            msgid: "remote-file-902",
+            optNo: "opt-file-902",
+            uiMessageKey: "902",
+            role: "customer",
+            sender: {
+              id: "cust-001",
+              name: "客户",
+            },
+            sentAt: "2026-05-21 12:00",
+            seq: 902,
+            status: "sent",
+          },
+        ],
+      },
+    }));
+
+    useWorkbenchStore.getState().updateMessageDownloadContent(
+      "conv-001",
+      "opt-file-902",
+      {
+        downloadStatus: "failed",
+      },
+    );
+
+    const patchedMessage = useWorkbenchStore
+      .getState()
+      .messagesByConversationId["conv-001"].find(
+        (message) => message.uiMessageKey === "902",
+      );
+
+    expect(patchedMessage?.content).toMatchObject({
+      downloadStatus: "failed",
+      fileUrl: "https://b5.bokr.com.cn/chat-files/quote.pdf",
+      type: "file",
+    });
+  });
+
+  it("does not patch media downloads when the provided message key is empty", async () => {
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        "conv-001": [
+          ...state.messagesByConversationId["conv-001"],
+          {
+            author: "客户",
+            content: {
+              downloadStatus: "ing",
+              extension: "pdf",
+              fileName: "报价单.pdf",
+              fileSerialNo: "serial-file-empty",
+              fileSizeLabel: "2 KB",
+              fileUrl: "https://b5.bokr.com.cn/chat-files/quote.pdf",
+              type: "file",
+            },
+            conversationId: "conv-001",
+            msgid: undefined,
+            uiMessageKey: "",
+            role: "customer",
+            sender: {
+              id: "cust-001",
+              name: "客户",
+            },
+            sentAt: "2026-05-21 12:00",
+            status: "sent",
+          },
+        ],
+      },
+    }));
+
+    useWorkbenchStore.getState().updateMessageDownloadContent("conv-001", "", {
+      downloadStatus: "failed",
+    });
+
+    const patchedMessage = useWorkbenchStore
+      .getState()
+      .messagesByConversationId["conv-001"].find(
+        (message) => message.role !== "system" && message.uiMessageKey === "",
+      );
+
+    expect(patchedMessage?.content).toMatchObject({
+      downloadStatus: "ing",
+      type: "file",
+    });
+  });
+
+  it("does not patch media downloads by synthetic fallback ui message keys", async () => {
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        "conv-001": [
+          ...state.messagesByConversationId["conv-001"],
+          {
+            author: "客户",
+            content: {
+              downloadStatus: "ing",
+              extension: "pdf",
+              fileName: "报价单.pdf",
+              fileSerialNo: "serial-file-invalid",
+              fileSizeLabel: "2 KB",
+              fileUrl: "https://b5.bokr.com.cn/chat-files/quote.pdf",
+              type: "file",
+            },
+            conversationId: "conv-001",
+            msgid: undefined,
+            uiMessageKey: "invalid-message:file",
+            role: "customer",
+            sender: {
+              id: "cust-001",
+              name: "客户",
+            },
+            sentAt: "2026-05-21 12:00",
+            status: "sent",
+          },
+        ],
+      },
+    }));
+
+    useWorkbenchStore.getState().updateMessageDownloadContent(
+      "conv-001",
+      "invalid-message:file",
+      {
+        downloadStatus: "failed",
+      },
+    );
+
+    const patchedMessage = useWorkbenchStore
+      .getState()
+      .messagesByConversationId["conv-001"].find(
+        (message) => message.uiMessageKey === "invalid-message:file",
+      );
+
+    expect(patchedMessage?.content).toMatchObject({
+      downloadStatus: "ing",
       type: "file",
     });
   });
@@ -4345,8 +4736,8 @@ describe("useWorkbenchStore", () => {
         type: "voice" as const,
       },
       conversationId: "conv-001",
-      id: "voice-local-1",
-      remoteMessageId: "msgid-should-not-be-used",
+      msgid: "msgid-should-not-be-used",
+      uiMessageKey: "voice-local-1",
       role: "customer" as const,
       sender: {
         id: "cust-001",
@@ -4390,12 +4781,12 @@ describe("useWorkbenchStore", () => {
     const patchedMessage = useWorkbenchStore
       .getState()
       .messagesByConversationId["conv-001"].find(
-        (message) => message.id === "voice-local-1",
+        (message) => message.uiMessageKey === "voice-local-1",
       );
     const patchedHistoryMessage = useWorkbenchStore
       .getState()
       .historyPanelByConversationId["conv-001"]
-      ?.messages.find((message) => message.id === "voice-local-1");
+      ?.messages.find((message) => message.uiMessageKey === "voice-local-1");
 
     expect(patchedMessage?.content).toMatchObject({
       playbackUrl: "https://b5.bokr.com.cn/s5/playable-voice/20260525/272/voice.wav",
@@ -4434,7 +4825,7 @@ describe("useWorkbenchStore", () => {
         type: "voice" as const,
       },
       conversationId: "conv-001",
-      id: "history-voice-1",
+      uiMessageKey: "history-voice-1",
       role: "customer" as const,
       sender: {
         id: "cust-001",
@@ -4457,7 +4848,7 @@ describe("useWorkbenchStore", () => {
       messagesByConversationId: {
         ...state.messagesByConversationId,
         "conv-001": state.messagesByConversationId["conv-001"].filter(
-          (message) => message.id !== "history-voice-1",
+          (message) => message.uiMessageKey !== "history-voice-1",
         ),
       },
     }));
@@ -4477,7 +4868,7 @@ describe("useWorkbenchStore", () => {
     const patchedHistoryMessage = useWorkbenchStore
       .getState()
       .historyPanelByConversationId["conv-001"]
-      ?.messages.find((message) => message.id === "history-voice-1");
+      ?.messages.find((message) => message.uiMessageKey === "history-voice-1");
 
     expect(patchedHistoryMessage?.content).toMatchObject({
       transFileUrlPersisted: true,
@@ -4511,8 +4902,8 @@ describe("useWorkbenchStore", () => {
         type: "voice" as const,
       },
       conversationId: "conv-001",
-      id: "voice-transcribe-1",
-      remoteMessageId: "msgid-should-not-be-used",
+      msgid: "msgid-should-not-be-used",
+      uiMessageKey: "voice-transcribe-1",
       role: "customer" as const,
       sender: {
         id: "cust-001",
@@ -4554,12 +4945,12 @@ describe("useWorkbenchStore", () => {
     const patchedMessage = useWorkbenchStore
       .getState()
       .messagesByConversationId["conv-001"].find(
-        (message) => message.id === "voice-transcribe-1",
+        (message) => message.uiMessageKey === "voice-transcribe-1",
       );
     const patchedHistoryMessage = useWorkbenchStore
       .getState()
       .historyPanelByConversationId["conv-001"]
-      ?.messages.find((message) => message.id === "voice-transcribe-1");
+      ?.messages.find((message) => message.uiMessageKey === "voice-transcribe-1");
 
     expect(patchedMessage?.content).toMatchObject({
       transVoiceText: "识别后的文本",
@@ -4584,7 +4975,7 @@ describe("useWorkbenchStore", () => {
             {
               conversationId: request.activeConversationId ?? "conv-001",
               eventId: 6,
-              messageId: "999999",
+              messageSeq: 999999,
             },
           ],
           nextMessageUpdateCursor: 1_778_840_010_000,
@@ -4592,8 +4983,8 @@ describe("useWorkbenchStore", () => {
           seatChanges: [],
         };
       },
-      async getMessagesByIds(input) {
-        if (input.messageIds.includes("999999")) {
+      async getMessagesBySeqs(input) {
+        if (input.messageSeqs.includes(999999)) {
           return {
             messages: [
               {
@@ -4602,7 +4993,7 @@ describe("useWorkbenchStore", () => {
                 conversationId: input.conversationId,
                 createdAt: 1_778_410_200_000,
                 customerId: "cust-001",
-                messageId: "999999",
+                msgid: "999999",
                 rawMsgtype: "text",
                 seatId: "drc",
                 senderAvatar: "",
@@ -4618,7 +5009,7 @@ describe("useWorkbenchStore", () => {
           };
         }
 
-        return baseService.getMessagesByIds(input);
+        return baseService.getMessagesBySeqs(input);
       },
     });
 
@@ -4721,7 +5112,7 @@ describe("useWorkbenchStore", () => {
       seedMessages["conv-001"].length,
     );
     expect(state.messagesByConversationId["conv-001"][0]).toMatchObject({
-      id: getSeedMessageIdAt("conv-001", 0),
+      uiMessageKey: getSeedMessageIdAt("conv-001", 0),
       seq: 1,
     });
     expect(state.hasMoreHistoryByConversationId["conv-001"]).toBe(false);
@@ -4758,7 +5149,7 @@ describe("useWorkbenchStore", () => {
               conversationId,
               createdAt: Date.now() - index,
               customerId: "cust-001",
-              messageId: `revoke-older-message-${index}`,
+              msgid: `revoke-older-message-${index}`,
               rawMsgtype: "revoke",
               seatId: "drc",
               senderType: "system" as const,
@@ -6006,7 +6397,7 @@ describe("useWorkbenchStore", () => {
                 conversationId,
                 createdAt: 1_778_999_000_000,
                 customerId: hydratedConversation.customerId,
-                messageId: "msg-search-001",
+                msgid: "msg-search-001",
                 rawMsgtype: "text",
                 seatId: hydratedConversation.seatId,
                 senderType: "customer",

@@ -3,6 +3,7 @@ import type {
   ReactNode,
   RefObject,
 } from "react";
+import { useEffect, useState } from "react";
 import { Cancel01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { LexicalEditor } from "lexical";
@@ -30,7 +31,10 @@ import type {
   WorkbenchMaterialCollectionItemDto,
 } from "@chatai/contracts";
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
-import { resolveCustodyHostingStatus } from "@/pages/chat/lib/chat-custody-status";
+import {
+  resolveCustodyHostingStatus,
+  type CustodyHostingStatus,
+} from "@/pages/chat/lib/chat-custody-status";
 import type { SmartReplySendPayload } from "@/pages/chat/api/smart-reply-adapter";
 
 type ChatPanelProps = {
@@ -225,9 +229,23 @@ export function ChatPanel({
   composerRef,
   workbenchBodyRef,
 }: ChatPanelProps) {
-  const custodyHostingStatus = resolveCustodyHostingStatus(activeConversation);
+  const [custodyStatusPreview, setCustodyStatusPreview] =
+    useState<CustodyHostingStatus | null>(null);
+  const resolvedCustodyHostingStatus = resolveCustodyHostingStatus(activeConversation);
+  const displayedCustodyHostingStatus =
+    import.meta.env.DEV && custodyStatusPreview
+      ? custodyStatusPreview
+      : resolvedCustodyHostingStatus;
+  const custodyHostingStatus =
+    displayedCustodyHostingStatus === "exited"
+      ? null
+      : displayedCustodyHostingStatus;
   const hasActiveFileUpload = fileUploadQueue.length > 0;
   const hasActiveConversation = activeConversation !== undefined;
+
+  useEffect(() => {
+    setCustodyStatusPreview(null);
+  }, [activeConversation?.id]);
 
   return (
     <section className="flex min-h-0 min-w-0 flex-col bg-surface">
@@ -307,7 +325,7 @@ export function ChatPanel({
                 <div className="relative overflow-visible bg-surface pb-3">
                   {custodyHostingStatus ? (
                     <div
-                      className="-mt-5 mb-2"
+                      className="absolute bottom-9 left-1/2 z-30 w-4/5 max-w-[520px] -translate-x-1/2"
                       data-testid="chat-custody-status-bar-anchor"
                     >
                       <ChatCustodyStatusBar
@@ -317,7 +335,7 @@ export function ChatPanel({
                       />
                     </div>
                   ) : null}
-                  <div className={cn("px-4", custodyHostingStatus ? undefined : "pt-3")}>
+                  <div className="px-4 pt-3">
                   <ChatComposer
                     canSendMessage={canSendMessage}
                     draft={draft}
@@ -353,6 +371,14 @@ export function ChatPanel({
                     onTopCollectedExpression={onTopCollectedExpression}
                     placeholder={composerPlaceholder}
                     quotedMessage={quotedMessage}
+                    custodyStatusPreview={
+                      import.meta.env.DEV
+                        ? {
+                            activeStatus: displayedCustodyHostingStatus,
+                            onSelectStatus: setCustodyStatusPreview,
+                          }
+                        : undefined
+                    }
                     composerRef={composerRef}
                   />
                   </div>

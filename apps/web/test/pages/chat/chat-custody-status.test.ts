@@ -55,7 +55,7 @@ describe("chat custody status helpers", () => {
         custodyMode: CONVERSATION_CUSTODY_MODE.FULL,
       }),
     ).toBe("thinking");
-    expect(getCustodyHostingStatusLabel("thinking")).toBe("思考中...");
+    expect(getCustodyHostingStatusLabel("thinking")).toBe("正在思考");
   });
 
   it("only uses white cancel button styling for active full custody", () => {

@@ -22,7 +22,7 @@ const aiHostingNavItems = [
   {
     icon: AiBookIcon,
     label: "知识库",
-    to: "/chat/ai-hosting/knowledge",
+    to: "/chat/ai-hosting/kb",
   },
   {
     icon: UserAiIcon,

@@ -1,5 +1,9 @@
 import { Suspense, lazy, useEffect, type ReactNode } from "react";
-import { Navigate, createBrowserRouter, useRouteError } from "react-router-dom";
+import {
+  Navigate,
+  createBrowserRouter,
+  useRouteError,
+} from "react-router-dom";
 import { RootLayout } from "@/app/root-layout";
 import { Button } from "@/components/ui/button";
 import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
@@ -38,17 +42,17 @@ const AgentSettingsPage = lazy(() =>
     default: AgentSettingsPage,
   })),
 );
-const KnowledgeBasePage = lazy(() =>
-  import("@/pages/chat/ai-hosting/knowledge-base-page").then(
-    ({ KnowledgeBasePage }) => ({
-      default: KnowledgeBasePage,
+const KbListPage = lazy(() =>
+  import("@/pages/chat/ai-hosting/kb-list-page").then(
+    ({ KbListPage }) => ({
+      default: KbListPage,
     }),
   ),
 );
-const KnowledgeBaseManagementPage = lazy(() =>
-  import("@/pages/chat/ai-hosting/knowledge-base-management-page").then(
-    ({ KnowledgeBaseManagementPage }) => ({
-      default: KnowledgeBaseManagementPage,
+const KbDetailPage = lazy(() =>
+  import("@/pages/chat/ai-hosting/kb-detail-page").then(
+    ({ KbDetailPage }) => ({
+      default: KbDetailPage,
     }),
   ),
 );
@@ -205,12 +209,12 @@ export const routerConfig = [
         element: withRouteSuspense(<AgentSettingsPage />),
       },
       {
-        path: "chat/ai-hosting/knowledge",
-        element: withRouteSuspense(<KnowledgeBasePage />),
+        path: "chat/ai-hosting/kb",
+        element: withRouteSuspense(<KbListPage />),
       },
       {
-        path: "chat/ai-hosting/knowledge/:knowledgeBaseId",
-        element: withRouteSuspense(<KnowledgeBaseManagementPage />),
+        path: "chat/ai-hosting/kb/:knowledgeBaseId",
+        element: withRouteSuspense(<KbDetailPage />),
       },
       {
         path: "chat/ai-hosting/hosting-settings",

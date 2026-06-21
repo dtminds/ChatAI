@@ -34,7 +34,7 @@ import {
   getMockKnowledgeBasesSnapshot,
   subscribeMockKnowledgeBases,
   type KnowledgeBaseItem,
-} from "./knowledge-base-mock-data";
+} from "./kb-mock-data";
 
 type CreateFormState = {
   name: string;
@@ -53,7 +53,7 @@ function getLocalTimeString(): string {
     .slice(0, 19);
 }
 
-export function KnowledgeBasePage() {
+export function KbListPage() {
   const items = useSyncExternalStore(
     subscribeMockKnowledgeBases,
     getMockKnowledgeBasesSnapshot,
@@ -221,7 +221,7 @@ export function KnowledgeBasePage() {
                         <TableCellContent>
                           <Link
                             className="truncate text-foreground no-underline outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
-                            to={`/chat/ai-hosting/knowledge/${item.id}`}
+                            to={`/chat/ai-hosting/kb/${item.id}`}
                           >
                             {item.name}
                           </Link>
@@ -248,7 +248,7 @@ export function KnowledgeBasePage() {
                       <TablePinnedCell className="whitespace-nowrap px-4 py-4 text-right">
                         <div className="flex items-center justify-end gap-3">
                           <Button asChild className="h-auto p-0 text-primary" type="button" variant="link">
-                            <Link to={`/chat/ai-hosting/knowledge/${item.id}`}>
+                            <Link to={`/chat/ai-hosting/kb/${item.id}`}>
                               查看
                             </Link>
                           </Button>

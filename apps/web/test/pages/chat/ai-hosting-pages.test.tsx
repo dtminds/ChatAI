@@ -6,9 +6,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentManagementPage } from "@/pages/chat/ai-hosting/agent-management-page";
 import { AgentHostingSettingsPage } from "@/pages/chat/ai-hosting/agent-hosting-settings-page";
 import { AgentSettingsPage } from "@/pages/chat/ai-hosting/agent-settings-page";
-import { KnowledgeBaseManagementPage } from "@/pages/chat/ai-hosting/knowledge-base-management-page";
-import { KnowledgeBasePage } from "@/pages/chat/ai-hosting/knowledge-base-page";
-import { resetMockKnowledgeBases } from "@/pages/chat/ai-hosting/knowledge-base-mock-data";
+import { KbDetailPage } from "@/pages/chat/ai-hosting/kb-detail-page";
+import { KbListPage } from "@/pages/chat/ai-hosting/kb-list-page";
+import { resetMockKnowledgeBases } from "@/pages/chat/ai-hosting/kb-mock-data";
 
 const readXlsxFileMock = vi.hoisted(() => vi.fn());
 
@@ -82,7 +82,7 @@ describe("AI hosting pages", () => {
     );
     expect(screen.getByRole("link", { name: "知识库" })).toHaveAttribute(
       "href",
-      "/chat/ai-hosting/knowledge",
+      "/chat/ai-hosting/kb",
     );
     expect(screen.getByRole("link", { name: "托管设置" })).toHaveAttribute(
       "href",
@@ -383,17 +383,17 @@ describe("AI hosting pages", () => {
   it("renders the knowledge base page", async () => {
     const user = userEvent.setup();
 
-    renderWithRoute("/chat/ai-hosting/knowledge", <KnowledgeBasePage />);
+    renderWithRoute("/chat/ai-hosting/kb", <KbListPage />);
 
     expect(await screen.findByRole("heading", { level: 1, name: "知识库" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "创建知识库" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "华为产品知识" })).toHaveAttribute(
       "href",
-      "/chat/ai-hosting/knowledge/W7zU2fWkVSp65OTAjDd3-w",
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
     );
     expect(screen.getAllByRole("link", { name: "查看" })[0]).toHaveAttribute(
       "href",
-      "/chat/ai-hosting/knowledge/W7zU2fWkVSp65OTAjDd3-w",
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
     );
 
     await user.click(screen.getAllByRole("button", { name: "编辑" })[0]);
@@ -419,14 +419,14 @@ describe("AI hosting pages", () => {
 
   it("renders the knowledge base management page", async () => {
     renderWithRoute(
-      "/chat/ai-hosting/knowledge/W7zU2fWkVSp65OTAjDd3-w",
-      <KnowledgeBaseManagementPage />,
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
     );
 
     expect(await screen.findByRole("heading", { level: 1, name: "华为产品知识" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "返回知识库" })).toHaveAttribute(
       "href",
-      "/chat/ai-hosting/knowledge",
+      "/chat/ai-hosting/kb",
     );
     expect(screen.getByLabelText("知识库管理头部").firstElementChild).toHaveAccessibleName(
       "返回知识库",
@@ -470,7 +470,7 @@ describe("AI hosting pages", () => {
   it("uses created mock knowledge bases on the management page", async () => {
     const user = userEvent.setup();
     const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_789_000_000_000);
-    const listView = renderWithRoute("/chat/ai-hosting/knowledge", <KnowledgeBasePage />);
+    const listView = renderWithRoute("/chat/ai-hosting/kb", <KbListPage />);
 
     await user.click(await screen.findByRole("button", { name: "创建知识库" }));
     await user.type(screen.getByLabelText(/知识库名称/), "新品培训知识");
@@ -479,14 +479,14 @@ describe("AI hosting pages", () => {
 
     expect(screen.getByRole("link", { name: "新品培训知识" })).toHaveAttribute(
       "href",
-      "/chat/ai-hosting/knowledge/1789000000000",
+      "/chat/ai-hosting/kb/1789000000000",
     );
 
     listView.unmount();
     renderWithRoute(
-      "/chat/ai-hosting/knowledge/1789000000000",
-      <KnowledgeBaseManagementPage />,
-      "/chat/ai-hosting/knowledge/:knowledgeBaseId",
+      "/chat/ai-hosting/kb/1789000000000",
+      <KbDetailPage />,
+      "/chat/ai-hosting/kb/:knowledgeBaseId",
     );
 
     expect(await screen.findByRole("heading", { level: 1, name: "新品培训知识" })).toBeInTheDocument();
@@ -498,9 +498,9 @@ describe("AI hosting pages", () => {
 
   it("shows an empty state for unknown knowledge base ids", async () => {
     renderWithRoute(
-      "/chat/ai-hosting/knowledge/not-exist",
-      <KnowledgeBaseManagementPage />,
-      "/chat/ai-hosting/knowledge/:knowledgeBaseId",
+      "/chat/ai-hosting/kb/not-exist",
+      <KbDetailPage />,
+      "/chat/ai-hosting/kb/:knowledgeBaseId",
     );
 
     expect(await screen.findByRole("heading", { level: 1, name: "未找到知识库" })).toBeInTheDocument();
@@ -512,8 +512,8 @@ describe("AI hosting pages", () => {
     const user = userEvent.setup();
 
     renderWithRoute(
-      "/chat/ai-hosting/knowledge/W7zU2fWkVSp65OTAjDd3-w",
-      <KnowledgeBaseManagementPage />,
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
     );
 
     await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
@@ -565,8 +565,8 @@ describe("AI hosting pages", () => {
     );
 
     renderWithRoute(
-      "/chat/ai-hosting/knowledge/W7zU2fWkVSp65OTAjDd3-w",
-      <KnowledgeBaseManagementPage />,
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
     );
 
     await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
@@ -595,8 +595,8 @@ describe("AI hosting pages", () => {
     ]);
 
     renderWithRoute(
-      "/chat/ai-hosting/knowledge/W7zU2fWkVSp65OTAjDd3-w",
-      <KnowledgeBaseManagementPage />,
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
     );
 
     await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
@@ -618,8 +618,8 @@ describe("AI hosting pages", () => {
     const user = userEvent.setup();
 
     renderWithRoute(
-      "/chat/ai-hosting/knowledge/W7zU2fWkVSp65OTAjDd3-w",
-      <KnowledgeBaseManagementPage />,
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
     );
 
     await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
@@ -667,8 +667,8 @@ describe("AI hosting pages", () => {
     const user = userEvent.setup();
 
     renderWithRoute(
-      "/chat/ai-hosting/knowledge/W7zU2fWkVSp65OTAjDd3-w",
-      <KnowledgeBaseManagementPage />,
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
     );
 
     await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
@@ -690,8 +690,8 @@ describe("AI hosting pages", () => {
     const user = userEvent.setup();
 
     renderWithRoute(
-      "/chat/ai-hosting/knowledge/W7zU2fWkVSp65OTAjDd3-w",
-      <KnowledgeBaseManagementPage />,
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
     );
 
     await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
@@ -745,8 +745,8 @@ describe("AI hosting pages", () => {
     const user = userEvent.setup();
 
     renderWithRoute(
-      "/chat/ai-hosting/knowledge/W7zU2fWkVSp65OTAjDd3-w",
-      <KnowledgeBaseManagementPage />,
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
     );
 
     await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
@@ -770,8 +770,8 @@ describe("AI hosting pages", () => {
     mockImageDimensions = { height: 9, width: 800 };
 
     renderWithRoute(
-      "/chat/ai-hosting/knowledge/W7zU2fWkVSp65OTAjDd3-w",
-      <KnowledgeBaseManagementPage />,
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
     );
 
     await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
@@ -790,7 +790,7 @@ describe("AI hosting pages", () => {
   it("limits knowledge base creation fields", async () => {
     const user = userEvent.setup();
 
-    renderWithRoute("/chat/ai-hosting/knowledge", <KnowledgeBasePage />);
+    renderWithRoute("/chat/ai-hosting/kb", <KbListPage />);
 
     await user.click(await screen.findByRole("button", { name: "创建知识库" }));
 
@@ -801,7 +801,7 @@ describe("AI hosting pages", () => {
   it("shows knowledge base name character count", async () => {
     const user = userEvent.setup();
 
-    renderWithRoute("/chat/ai-hosting/knowledge", <KnowledgeBasePage />);
+    renderWithRoute("/chat/ai-hosting/kb", <KbListPage />);
 
     await user.click(await screen.findByRole("button", { name: "创建知识库" }));
 

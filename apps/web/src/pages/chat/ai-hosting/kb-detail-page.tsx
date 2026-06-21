@@ -66,7 +66,7 @@ import {
   subscribeMockKnowledgeBases,
   type KnowledgeRecord,
   type KnowledgeStatus,
-} from "./knowledge-base-mock-data";
+} from "./kb-mock-data";
 
 const PAGE_SIZE = 10;
 const QA_IMPORT_MAX_SHEETS = 30;
@@ -167,7 +167,7 @@ const statusMeta: Record<
   },
 };
 
-export function KnowledgeBaseManagementPage() {
+export function KbDetailPage() {
   const knowledgeBases = useSyncExternalStore(
     subscribeMockKnowledgeBases,
     getMockKnowledgeBasesSnapshot,
@@ -221,7 +221,7 @@ export function KnowledgeBaseManagementPage() {
             type="button"
             variant="ghost"
           >
-            <Link to="/chat/ai-hosting/knowledge">
+            <Link to="/chat/ai-hosting/kb">
               <HugeiconsIcon color="currentColor" icon={ArrowLeft01Icon} size={17} strokeWidth={1.8} />
               <span>返回知识库</span>
             </Link>
@@ -247,7 +247,7 @@ export function KnowledgeBaseManagementPage() {
             type="button"
             variant="ghost"
           >
-            <Link to="/chat/ai-hosting/knowledge">
+            <Link to="/chat/ai-hosting/kb">
               <HugeiconsIcon color="currentColor" icon={ArrowLeft01Icon} size={17} strokeWidth={1.8} />
               <span>返回知识库</span>
             </Link>

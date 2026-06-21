@@ -221,16 +221,16 @@ export function KnowledgeBaseManagementPage() {
 
 function KnowledgeRecordsTable({ records }: { records: KnowledgeRecord[] }) {
   return (
-    <Table aria-label="知识列表" className="table-fixed">
+    <Table aria-label="知识列表" className="min-w-[1120px] table-fixed">
       <TableHeader>
         <TableRow className="hover:bg-transparent">
           <TableHead className="h-11 w-[24%]">知识名称</TableHead>
           <TableHead className="h-11 w-[14%]">类型</TableHead>
           <TableHead className="h-11 w-[12%]">切片数量</TableHead>
           <TableHead className="h-11 w-[14%]">状态</TableHead>
-          <TableHead className="h-11 w-[17%]">创建时间</TableHead>
-          <TableHead className="h-11 w-[17%]">更新时间</TableHead>
-          <TableHead className="h-11 w-[100px] text-right">操作</TableHead>
+          <TableHead className="h-11 w-[17%] whitespace-nowrap">创建时间</TableHead>
+          <TableHead className="h-11 w-[17%] whitespace-nowrap">更新时间</TableHead>
+          <TableHead className="h-11 w-[100px] whitespace-nowrap text-right">操作</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -259,9 +259,9 @@ function KnowledgeRecordsTable({ records }: { records: KnowledgeRecord[] }) {
               <TableCell className="py-4">
                 <KnowledgeStatusBadge status={record.status} />
               </TableCell>
-              <TableCell className="py-4 text-muted-foreground">{record.createdAt}</TableCell>
-              <TableCell className="py-4 text-muted-foreground">{record.updatedAt}</TableCell>
-              <TableCell className="py-4 text-right">
+              <TableCell className="whitespace-nowrap py-4 text-muted-foreground">{record.createdAt}</TableCell>
+              <TableCell className="whitespace-nowrap py-4 text-muted-foreground">{record.updatedAt}</TableCell>
+              <TableCell className="whitespace-nowrap py-4 text-right">
                 <div className="flex items-center justify-end gap-3">
                   <Button
                     className="h-auto p-0 text-primary"

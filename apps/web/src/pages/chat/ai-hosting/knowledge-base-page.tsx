@@ -179,14 +179,14 @@ export function KnowledgeBasePage() {
           </div>
 
           <div>
-            <Table className="table-fixed">
+            <Table className="min-w-[1040px] table-fixed">
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
                   <TableHead className="h-11 w-[22%]">知识库名称</TableHead>
                   <TableHead className="h-11 w-[32%]">描述</TableHead>
-                  <TableHead className="h-11 w-[20%]">最近更新时间</TableHead>
-                  <TableHead className="h-11 w-[16%]">创建时间</TableHead>
-                  <TableHead className="h-11 w-[100px] text-right">操作</TableHead>
+                  <TableHead className="h-11 w-[20%] whitespace-nowrap">最近更新时间</TableHead>
+                  <TableHead className="h-11 w-[16%] whitespace-nowrap">创建时间</TableHead>
+                  <TableHead className="h-11 w-[100px] whitespace-nowrap text-right">操作</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -205,9 +205,9 @@ export function KnowledgeBasePage() {
                       >
                         {item.description || "-"}
                       </TableCell>
-                      <TableCell className="py-4 text-muted-foreground">{item.lastUpdatedAt}</TableCell>
-                      <TableCell className="py-4 text-muted-foreground">{item.createdAt}</TableCell>
-                      <TableCell className="py-4 text-right">
+                      <TableCell className="whitespace-nowrap py-4 text-muted-foreground">{item.lastUpdatedAt}</TableCell>
+                      <TableCell className="whitespace-nowrap py-4 text-muted-foreground">{item.createdAt}</TableCell>
+                      <TableCell className="whitespace-nowrap py-4 text-right">
                         <div className="flex items-center justify-end gap-3">
                           <Button asChild className="h-auto p-0 text-primary" type="button" variant="link">
                             <Link to={`/chat/ai-hosting/knowledge/${item.id}`}>

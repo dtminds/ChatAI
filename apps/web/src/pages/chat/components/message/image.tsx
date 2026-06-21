@@ -44,10 +44,10 @@ import {
 
 type ImageMessageCardProps = {
   content: ImageMessageContent;
-  messageId?: string;
+  uiMessageKey?: string;
 };
 
-export function ImageMessageCard({ content, messageId }: ImageMessageCardProps) {
+export function ImageMessageCard({ content, uiMessageKey }: ImageMessageCardProps) {
   const gallery = useConversationImageGallery();
   const mediaSize = getValidImageSize(content);
   const imageUrl = content.imageUrl.trim();
@@ -84,12 +84,12 @@ export function ImageMessageCard({ content, messageId }: ImageMessageCardProps) 
     />
   );
 
-  if (gallery && messageId) {
+  if (gallery && uiMessageKey) {
     return (
       <button
         aria-label={`查看大图：${content.alt}`}
         className={triggerClassName}
-        onClick={() => gallery.openGallery(messageId)}
+        onClick={() => gallery.openGallery(uiMessageKey)}
         style={triggerStyle}
         type="button"
       >

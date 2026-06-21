@@ -10,13 +10,14 @@ function createCustomerMessage(overrides: Partial<ChatMessage> = {}) {
     author: "客户甲",
     content: { text: "想了解产品", type: "text" },
     conversationId: "conv-001",
-    id: "msg-001",
+    msgid: "msg-001",
     rawMsgtype: "text",
     role: "customer",
     sender: { id: "cust-001", name: "客户甲" },
     sentAt: "2026-05-25T10:00:00+08:00",
     seq: 1,
     status: "sent",
+    uiMessageKey: "1",
     ...overrides,
   } satisfies ChatMessage;
 }

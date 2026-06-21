@@ -159,7 +159,7 @@ function createMessagesDb(
   };
 }
 
-function createMessagesByIdsDb(
+function createMessagesBySeqsDb(
   rows: MessageRow[],
   quoteRows: MessageRow[] = [],
   conversationOverrides: Record<string, unknown> = {},
@@ -4474,7 +4474,7 @@ describe("WorkbenchRepository", () => {
     expect(query.wheres).toContainEqual(["conversation.biz_status", "=", 1]);
   });
 
-  it("lists messages by ids in the conversation tenant scope", async () => {
+  it("lists messages by seqs in the conversation tenant scope", async () => {
     const messageRows = [
       createConversationMessageRow({
         id: 829,
@@ -4486,15 +4486,15 @@ describe("WorkbenchRepository", () => {
       }),
     ];
     const repository = new WorkbenchRepository(
-      createMessagesByIdsDb(messageRows) as never,
+      createMessagesBySeqsDb(messageRows) as never,
     );
 
     await expect(
-      repository.listMessagesByIds("88", ["829", "829", "0", "bad"]),
+      repository.listMessagesBySeqs("88", [829, 829, 0, Number.NaN]),
     ).resolves.toMatchObject({
       messages: [
         expect.objectContaining({
-          messageId: "remote-msg-829",
+          msgid: "remote-msg-829",
           senderAvatar: "",
           senderName: "external-1",
           seq: 829,
@@ -4503,8 +4503,8 @@ describe("WorkbenchRepository", () => {
     });
   });
 
-  it("scopes message id lookup to the single conversation key", async () => {
-    const db = createMessagesByIdsDb([
+  it("scopes message seq lookup to the single conversation key", async () => {
+    const db = createMessagesBySeqsDb([
       createConversationMessageRow({
         id: 829,
         msgid: "remote-msg-829",
@@ -4512,7 +4512,7 @@ describe("WorkbenchRepository", () => {
     ]);
     const repository = new WorkbenchRepository(db as never);
 
-    await repository.listMessagesByIds("88", ["829"]);
+    await repository.listMessagesBySeqs("88", [829]);
 
     expect(db.messageQueries[0]?.wheres).toContainEqual(["message.uid", "=", 9001]);
     expect(db.messageQueries[0]?.wheres).toContainEqual(["message.platform", "=", 5]);
@@ -4528,8 +4528,8 @@ describe("WorkbenchRepository", () => {
     ]);
   });
 
-  it("scopes message id lookup to the group conversation key", async () => {
-    const db = createMessagesByIdsDb(
+  it("scopes message seq lookup to the group conversation key", async () => {
+    const db = createMessagesBySeqsDb(
       [
         createConversationMessageRow({
           chat_type: 2,
@@ -4550,7 +4550,7 @@ describe("WorkbenchRepository", () => {
     );
     const repository = new WorkbenchRepository(db as never);
 
-    await repository.listMessagesByIds("88", ["829"]);
+    await repository.listMessagesBySeqs("88", [829]);
 
     expect(db.messageQueries[0]?.wheres).toContainEqual(["message.uid", "=", 9001]);
     expect(db.messageQueries[0]?.wheres).toContainEqual(["message.platform", "=", 5]);
@@ -4566,8 +4566,8 @@ describe("WorkbenchRepository", () => {
     ]);
   });
 
-  it("hydrates quote previews when fetching messages by ids", async () => {
-    const db = createMessagesByIdsDb(
+  it("hydrates quote previews when fetching messages by seqs", async () => {
+    const db = createMessagesBySeqsDb(
       [
         createConversationMessageRow({
           content: JSON.stringify({
@@ -4591,7 +4591,7 @@ describe("WorkbenchRepository", () => {
     );
     const repository = new WorkbenchRepository(db as never);
 
-    await expect(repository.listMessagesByIds("88", ["102"])).resolves.toMatchObject({
+    await expect(repository.listMessagesBySeqs("88", [102])).resolves.toMatchObject({
       messages: [
         {
           content: {
@@ -4604,7 +4604,7 @@ describe("WorkbenchRepository", () => {
             text: "正式引用消息",
           },
           contentType: "quote",
-          messageId: "remote-msg-102",
+          msgid: "remote-msg-102",
         },
       ],
     });
@@ -4647,12 +4647,12 @@ describe("WorkbenchRepository", () => {
     await expect(
       repository.getChatRecordDetail(9001, 5, "88", 830),
     ).resolves.toMatchObject({
-      messageId: "830",
+      messageSeq: 830,
       messages: [
         {
           content: { text: "第一条详情" },
           contentType: "text",
-          messageId: "chatrecord:830:18",
+          msgid: "chatrecord:830:18",
           senderAvatar: "https://cdn.example.com/avatar.png",
           senderName: "范双飞",
           seq: 18,
@@ -5381,7 +5381,7 @@ describe("WorkbenchRepository", () => {
             text: "visible",
           },
           contentType: "text",
-          messageId: "remote-msg-101",
+          msgid: "remote-msg-101",
         },
         {
           content: {
@@ -5389,12 +5389,12 @@ describe("WorkbenchRepository", () => {
             text: "",
           },
           contentType: "revoke",
-          messageId: "remote-msg-102",
+          msgid: "remote-msg-102",
         },
         {
           content: { text: "" },
           contentType: "system",
-          messageId: "remote-msg-103",
+          msgid: "remote-msg-103",
         },
       ],
       nextBeforeSeq: 101,
@@ -5442,7 +5442,7 @@ describe("WorkbenchRepository", () => {
     await expect(repository.listMessages("88", { limit: 1 })).resolves.toMatchObject({
       messages: [
         {
-          messageId: "remote-msg-101",
+          msgid: "remote-msg-101",
           senderAvatar: "https://example.com/member-1.png",
           senderName: "群内成员一",
         },
@@ -5492,7 +5492,7 @@ describe("WorkbenchRepository", () => {
       messages: [
         {
           content: { text: "测试被引用" },
-          messageId: "remote-msg-101",
+          msgid: "remote-msg-101",
         },
         {
           content: {
@@ -5505,7 +5505,7 @@ describe("WorkbenchRepository", () => {
             text: "正式引用消息",
           },
           contentType: "quote",
-          messageId: "remote-msg-102",
+          msgid: "remote-msg-102",
         },
       ],
     });
@@ -5637,8 +5637,8 @@ describe("WorkbenchRepository", () => {
       hasNext: false,
       hasPrev: true,
       messages: [
-        { messageId: "remote-msg-102", seq: 102 },
-        { messageId: "remote-msg-103", seq: 103 },
+        { msgid: "remote-msg-102", seq: 102 },
+        { msgid: "remote-msg-103", seq: 103 },
       ],
     });
     expect(page.prevCursor).toBeDefined();
@@ -5672,7 +5672,7 @@ describe("WorkbenchRepository", () => {
     expect(page.messages).toMatchObject([
       {
         content: { text: "测试被引用" },
-        messageId: "remote-msg-101",
+        msgid: "remote-msg-101",
       },
       {
         content: {
@@ -5685,7 +5685,7 @@ describe("WorkbenchRepository", () => {
           text: "正式引用消息",
         },
         contentType: "quote",
-        messageId: "remote-msg-102",
+        msgid: "remote-msg-102",
       },
     ]);
     expect(db.messageQueries).toHaveLength(1);
@@ -5705,7 +5705,7 @@ describe("WorkbenchRepository", () => {
     await expect(
       repository.getMessageForRevoke({
         conversationId: "88",
-        messageId: "321",
+        messageSeq: 321,
         platform: 5,
         thirdExternalUserId: "external-1",
         thirdUserId: "seat-third-user-1",
@@ -5718,7 +5718,7 @@ describe("WorkbenchRepository", () => {
     });
   });
 
-  it("looks up revoke messages by audit id only", async () => {
+  it("looks up revoke messages by seq only", async () => {
     const db = createMessagesDb([
       messageRow({
         from_type: 1,
@@ -5732,7 +5732,7 @@ describe("WorkbenchRepository", () => {
     await expect(
       repository.getMessageForRevoke({
         conversationId: "88",
-        messageId: "321",
+        messageSeq: 321,
         platform: 5,
         thirdExternalUserId: "external-1",
         thirdUserId: "seat-third-user-1",

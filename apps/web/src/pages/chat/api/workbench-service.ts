@@ -29,8 +29,8 @@ import {
   type WorkbenchGroupMembersResponse,
   type WorkbenchSubUserDto,
   type WorkbenchMessageDto,
-  type WorkbenchMessageQueryByIdsRequest,
-  type WorkbenchMessageQueryByIdsResponse,
+  type WorkbenchMessageQueryBySeqsRequest,
+  type WorkbenchMessageQueryBySeqsResponse,
   type WorkbenchMessageFileDownloadResponse,
   type WorkbenchMessageFileDownloadStatusResponse,
   type WorkbenchMessagePageDto,
@@ -138,7 +138,7 @@ export type WorkbenchConversationListOptions = {
 
 export type WorkbenchService = {
   __mock?: {
-    revokeMessage: (conversationId: string, messageId: string) => Promise<void>;
+    revokeMessage: (conversationId: string, messageSeq: number) => Promise<void>;
   };
   deleteConversation: (conversationId: string) => Promise<WorkbenchConversationDeleteResponse>;
   getSeats: () => Promise<WorkbenchSeatDto[]>;
@@ -172,16 +172,16 @@ export type WorkbenchService = {
   ) => Promise<WorkbenchHistoryMessagePageDto>;
   getSidebarItems: () => Promise<SettingsSidebarItemsResponse>;
   getMessages: (conversationId: string, options?: { beforeSeq?: number; limit?: number }) => Promise<WorkbenchMessagePageDto>;
-  getMessagesByIds: (
-    input: WorkbenchMessageQueryByIdsRequest,
-  ) => Promise<WorkbenchMessageQueryByIdsResponse>;
+  getMessagesBySeqs: (
+    input: WorkbenchMessageQueryBySeqsRequest,
+  ) => Promise<WorkbenchMessageQueryBySeqsResponse>;
   getChatRecordDetail: (input: {
     conversationId: string;
-    msgInfoId: number;
+    messageSeq: number;
   }) => Promise<WorkbenchChatRecordDetailResponse>;
   revokeMessage: (input: {
     conversationId: string;
-    messageId: string;
+    messageSeq: number;
   }) => Promise<WorkbenchRevokeMessageResponse>;
   downloadMessageFile: (input: {
     conversationId: string;
@@ -425,8 +425,8 @@ export function createMockWorkbenchService(): WorkbenchService {
 
   return {
     __mock: {
-      async revokeMessage(conversationId, messageId) {
-        revokeMessage(state, conversationId, messageId);
+      async revokeMessage(conversationId, messageSeq) {
+        revokeMessage(state, conversationId, messageSeq);
       },
     },
     async getSeats() {
@@ -1394,29 +1394,29 @@ export function createMockWorkbenchService(): WorkbenchService {
         scannedCount: scannedMessages.length,
       };
     },
-    async getMessagesByIds(input) {
+    async getMessagesBySeqs(input) {
       const messages = state.messagesByConversationId[input.conversationId] ?? [];
-      const normalizedIds = new Set(input.messageIds);
+      const normalizedSeqs = new Set(input.messageSeqs);
 
       return {
         messages: clone(
-          messages.filter((message) => normalizedIds.has(message.messageId)),
+          messages.filter((message) => normalizedSeqs.has(message.seq)),
         ),
       };
     },
     async getChatRecordDetail(input) {
       return {
-        messageId: String(input.msgInfoId),
+        messageSeq: input.messageSeq,
         messages: [],
       };
     },
     async revokeMessage(input) {
-      const message = revokeMessage(state, input.conversationId, input.messageId);
+      const message = revokeMessage(state, input.conversationId, input.messageSeq);
 
       return {
         accepted: true,
         conversationId: input.conversationId,
-        messageId: input.messageId,
+        messageSeq: input.messageSeq,
         revokeMsgId: message?.seq ?? 0,
       };
     },
@@ -1432,12 +1432,12 @@ export function createMockWorkbenchService(): WorkbenchService {
         throw new Error("Message not found");
       }
 
-      updateMessageDownloadContent(state, input.conversationId, message.messageId, {
+      updateMessageDownloadContent(state, input.conversationId, message.seq, {
         downloadStatus: "ing",
       });
 
       return {
-        messageId: String(input.msgInfoId),
+        messageSeq: input.msgInfoId,
         status: "accepted",
       };
     },
@@ -1741,7 +1741,9 @@ export function createMockWorkbenchService(): WorkbenchService {
       const outcome = resolveSendOutcome(state, payload.seatId, segments);
       let hasAppliedQuote = false;
       const backendMessages = segments.map((segment, index) => {
-        const messageId = `msg-server-${state.nextId++}`;
+        const messageId = state.nextId++;
+        const msgid = `msg-server-${messageId}`;
+        const segmentOptNo = buildMockOptNo(messageId);
         const nextSeq = getNextMessageSeq(state, payload.conversationId) + index;
         const quoteForSegment =
           !hasAppliedQuote && segment.type === "text" ? payload.quote : undefined;
@@ -1749,7 +1751,6 @@ export function createMockWorkbenchService(): WorkbenchService {
 
         return {
           seatId: payload.seatId,
-          clientMessageId: buildSegmentClientMessageId(payload.clientMessageId, index),
           content: buildPayloadSegmentContent(state, segment, quoteForSegment),
           contentType: quoteForSegment
             ? "quote"
@@ -1758,7 +1759,8 @@ export function createMockWorkbenchService(): WorkbenchService {
           createdAt: now + index,
           customerId: conversation.customerId,
           failReason: outcome.reason,
-          messageId,
+          msgid,
+          optNo: segmentOptNo,
           rawMsgtype: quoteForSegment ? "quote" : getPayloadSegmentRawMsgtype(segment),
           senderType: "agent" as const,
           seq: nextSeq,
@@ -1787,11 +1789,9 @@ export function createMockWorkbenchService(): WorkbenchService {
       });
 
       return {
-        clientMessageId: payload.clientMessageId,
-        messageId: backendMessages[0]?.messageId ?? payload.clientMessageId,
+        optNo: backendMessages[0]?.optNo ?? "",
         messages: backendMessages.map((message) => ({
-          clientMessageId: message.clientMessageId ?? payload.clientMessageId,
-          messageId: message.messageId,
+          optNo: message.optNo ?? "",
           status: "accepted" as const,
         })),
         status: "accepted",
@@ -2222,15 +2222,15 @@ export function createHttpWorkbenchService(): WorkbenchService {
         },
       );
     },
-    getMessagesByIds(input) {
-      return http.post<WorkbenchMessageQueryByIdsResponse, WorkbenchMessageQueryByIdsRequest>(
-        "/server/messages/query-by-ids",
+    getMessagesBySeqs(input) {
+      return http.post<WorkbenchMessageQueryBySeqsResponse, WorkbenchMessageQueryBySeqsRequest>(
+        "/server/messages/query-by-seqs",
         input,
       );
     },
     getChatRecordDetail(input) {
       return http.get<WorkbenchChatRecordDetailResponse>(
-        `/server/messages/${input.msgInfoId}/chat-record`,
+        `/server/messages/${input.messageSeq}/chat-record`,
         {
           params: {
             conversation_id: input.conversationId,
@@ -2240,7 +2240,7 @@ export function createHttpWorkbenchService(): WorkbenchService {
     },
     revokeMessage(input) {
       return http.post<WorkbenchRevokeMessageResponse, WorkbenchRevokeMessageRequest>(
-        `/server/messages/${input.messageId}/revoke`,
+        `/server/messages/${input.messageSeq}/revoke`,
         {
           conversationId: input.conversationId,
         },
@@ -2716,7 +2716,7 @@ function buildInitialMaterialItems(
           content: getMaterialContentRecord(message),
           contentType: getMaterialContentType(bizType),
           groupId,
-          id: `mock-material-${message.messageId}`,
+          id: `mock-material-${message.msgid}`,
           msgInfoId: getMockMessageInfoId(message),
           sort: (message.createdAt ?? 0) + bizType,
           title: getMaterialTitle(message),
@@ -2739,7 +2739,6 @@ function buildMessageDto({
 
   return {
     seatId,
-    clientMessageId: message.clientMessageId,
     content: buildContent(message),
     contentType: message.content.type,
     conversationId: message.conversationId,
@@ -2747,7 +2746,7 @@ function buildMessageDto({
     customerId,
     failReason: message.failReason,
     isRevoked: message.isRevoked,
-    messageId: message.remoteMessageId ?? message.id,
+    msgid: message.msgid ?? message.uiMessageKey,
     rawMsgtype: getMockRawMsgtype(message.content.type),
     senderAvatar: message.role === "system" ? undefined : message.sender.avatarUrl,
     senderName: message.role === "system" ? undefined : message.sender.name,
@@ -2942,7 +2941,7 @@ function getMaterialTitle(message: WorkbenchMessageDto) {
     readString(content.fileName) ||
     readString(content.title) ||
     readString(content.appName) ||
-    message.messageId
+    message.msgid
   );
 }
 
@@ -3318,11 +3317,11 @@ function getNextMockEventCursor(
 function revokeMessage(
   state: MockState,
   conversationId: string,
-  messageId: string,
+  messageSeq: number,
 ) {
   const messages = state.messagesByConversationId[conversationId] ?? [];
   const originalMessage = messages.find((message) =>
-    message.messageId === messageId || String(message.seq) === messageId,
+    message.seq === messageSeq,
   );
 
   if (!originalMessage) {
@@ -3335,7 +3334,7 @@ function revokeMessage(
   };
 
   state.messagesByConversationId[conversationId] = messages.map((message) =>
-    message.messageId === originalMessage.messageId ? nextMessage : message,
+    message.msgid === originalMessage.msgid ? nextMessage : message,
   );
 
   const revokeSignal = {
@@ -3348,7 +3347,7 @@ function revokeMessage(
     conversationId,
     createdAt: Date.now(),
     customerId: originalMessage.customerId,
-    messageId: `revoke-${originalMessage.messageId}`,
+    msgid: `revoke-${originalMessage.msgid}`,
     rawMsgtype: "revoke",
     seatId: originalMessage.seatId,
     senderType: "system" as const,
@@ -3364,7 +3363,7 @@ function revokeMessage(
   pushMessageUpdateEvent(state, {
     conversationId,
     eventId: state.version + 1,
-    messageId: originalMessage.messageId,
+    messageSeq: originalMessage.seq,
   });
   pushMessageEvent(state, revokeSignal);
 
@@ -3402,7 +3401,6 @@ function buildPayloadSegmentContent(
   if (quote && segment.type === "text") {
     return {
       quoteMsgId: quote.quoteMsgId,
-      quotedMessageId: quote.quotedMessageId,
       quotedMessage: quote.quotedMessage,
       text: segment.text,
     };
@@ -3538,21 +3536,21 @@ function getPayloadSegmentRawMsgtype(
 function findMessageByIdOrSeq(
   state: MockState,
   conversationId: string,
-  messageId: string | undefined,
+  msgid: string | undefined,
   messageSeq: number,
 ) {
   const messages = state.messagesByConversationId[conversationId] ?? [];
 
   return messages.find(
     (message) =>
-      (messageId && message.messageId === messageId) || message.seq === messageSeq,
+      (msgid && message.msgid === msgid) || message.seq === messageSeq,
   );
 }
 
 function updateMessageDownloadContent(
   state: MockState,
   conversationId: string,
-  messageId: string,
+  messageSeq: number,
   patch: {
     downloadStatus: "ing" | "finished" | "failed";
     fileUrl?: string;
@@ -3562,7 +3560,7 @@ function updateMessageDownloadContent(
   const messages = state.messagesByConversationId[conversationId] ?? [];
 
   state.messagesByConversationId[conversationId] = messages.map((message) => {
-    if (message.messageId !== messageId || !isFileDownloadContent(message.content)) {
+    if (message.seq !== messageSeq || !isFileDownloadContent(message.content)) {
       return message;
     }
 
@@ -3683,8 +3681,8 @@ function getPayloadPreview(segments: ReturnType<typeof getPayloadSegments>) {
   return segments.some((segment) => segment.type === "sphfeed") ? "[视频号]" : "";
 }
 
-function buildSegmentClientMessageId(clientMessageId: string, index: number) {
-  return index === 0 ? clientMessageId : `${clientMessageId}_${index + 1}`;
+function buildMockOptNo(messageId: number) {
+  return `opt-${messageId}`;
 }
 
 function resolveSendOutcome(

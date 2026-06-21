@@ -359,11 +359,11 @@ function HistoryMessageViewport({
     previousScrollHeight: number;
     previousScrollTop: number;
   } | null>(null);
-  const previousMessageIdsKeyRef = useRef("");
+  const previousUiMessageKeysKeyRef = useRef("");
   const previousFilterKeyRef = useRef("");
   const historyMessages = activeHistory?.messages;
-  const messageIdsKey = useMemo(
-    () => historyMessages?.map((message) => message.id).join("\u0000") ?? "",
+  const uiMessageKeysKey = useMemo(
+    () => historyMessages?.map((message) => message.uiMessageKey).join("\u0000") ?? "",
     [historyMessages],
   );
   const handleLoadMorePrev = () => {
@@ -396,7 +396,7 @@ function HistoryMessageViewport({
     const viewport = viewportRef.current;
 
     if (!viewport) {
-      previousMessageIdsKeyRef.current = messageIdsKey;
+      previousUiMessageKeysKeyRef.current = uiMessageKeysKey;
       previousFilterKeyRef.current = filterKey;
       return;
     }
@@ -418,9 +418,9 @@ function HistoryMessageViewport({
       viewport.scrollTop = 0;
     }
 
-    previousMessageIdsKeyRef.current = messageIdsKey;
+    previousUiMessageKeysKeyRef.current = uiMessageKeysKey;
     previousFilterKeyRef.current = filterKey;
-  }, [filterKey, messageIdsKey, scrollMode]);
+  }, [filterKey, uiMessageKeysKey, scrollMode]);
 
   return (
     <ScrollArea
@@ -499,9 +499,9 @@ export function HistoryCompactMessageList({
       {chatMessages.map((message) => (
         <div
           className="flex w-full max-w-full min-w-0 flex-col items-start gap-1.5"
-          data-scroll-anchor={message.id}
+          data-scroll-anchor={message.uiMessageKey}
           data-testid="history-message-item"
-          key={message.clientMessageId ?? message.optNo ?? message.id}
+          key={message.optNo ?? message.uiMessageKey}
         >
           <div
             className="flex w-full max-w-full min-w-0 items-center gap-2"
@@ -645,7 +645,7 @@ function HistoryFileList({
       {fileMessages.map((message) => (
         <div
           className="grid w-full max-w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-3 overflow-hidden px-2 py-3"
-          key={message.id}
+          key={message.uiMessageKey}
         >
           <HistoryFileBadge message={message} />
           <div className="min-w-0 overflow-hidden">
@@ -712,7 +712,7 @@ function getHistoryTabMessages(messages: Message[], scope: HistoryPanelScope) {
       return rightTime - leftTime;
     }
 
-    return right.id.localeCompare(left.id);
+    return right.uiMessageKey.localeCompare(left.uiMessageKey);
   });
 }
 
@@ -743,7 +743,7 @@ function HistoryLinkList({ messages }: { messages: Message[] }) {
   return (
     <div className="w-full max-w-full min-w-0 divide-y divide-divider/80 overflow-hidden">
       {linkMessages.map((message) => (
-        <HistoryLinkRow key={message.id} message={message} />
+        <HistoryLinkRow key={message.uiMessageKey} message={message} />
       ))}
       {linkMessages.length === 0 ? (
         <div className="px-3 py-10 text-center text-sm text-muted-foreground">
@@ -810,7 +810,7 @@ function HistoryMiniProgramList({ messages }: { messages: Message[] }) {
       {miniProgramMessages.map((message) => (
         <div
           className="grid w-full max-w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-3 overflow-hidden px-2 py-3"
-          key={message.id}
+          key={message.uiMessageKey}
         >
           <HistoryMiniProgramThumb message={message} />
           <div className="min-w-0 overflow-hidden">
@@ -878,7 +878,7 @@ function HistoryMediaWall({
           <div className="grid grid-cols-3 gap-2">
             {group.messages.map((message) => (
               <HistoryMediaTile
-                key={message.id}
+                key={message.uiMessageKey}
                 message={message}
                 onDownloadMessageFile={onDownloadMessageFile}
               />
@@ -966,7 +966,7 @@ function HistoryMediaTile({
   return (
     <div
       className="group/media relative isolate aspect-square overflow-hidden rounded-[8px] border border-border bg-muted"
-      data-testid={`history-media-tile-${message.id}`}
+      data-testid={`history-media-tile-${message.uiMessageKey}`}
     >
       {content.type === "image" && imageUrl ? (
         <ImagePreviewDialog

@@ -228,7 +228,6 @@ export type QuotedMessagePreviewContent = {
   fallbackText?: string;
   imageUrl?: string;
   quoteMsgId?: string;
-  quotedMessageId?: string;
   senderName: string;
   text?: string;
   title?: string;
@@ -238,7 +237,6 @@ export type QuoteMessageContent = {
   type: "quote";
   text: string;
   quoteMsgId: string;
-  quotedMessageId?: string;
   quotedMessage?: QuotedMessagePreviewContent;
 };
 
@@ -269,17 +267,16 @@ export type MessageContent =
   | ChatRecordMessageContent;
 
 type BaseMessage = {
-  id: string;
+  uiMessageKey: string;
+  msgid?: string;
   conversationId: string;
   role: MessageRole;
   author: string;
   sentAt: string;
   status: MessageStatus;
-  clientMessageId?: string;
   isNew?: boolean;
   optNo?: string;
   rawMsgtype?: string;
-  remoteMessageId?: string;
   seq?: number;
   failReason?: string;
   isRevoked?: boolean;

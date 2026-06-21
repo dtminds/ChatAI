@@ -1025,10 +1025,10 @@ describe("Conversation image gallery", () => {
             width: 1200,
           }),
           {
-            id: "msg-text-1",
             conversationId: "conv-image",
             role: "customer",
             author: "客户",
+            msgid: "msg-text-1",
             sender: {
               id: "sender-text",
               name: "客户",
@@ -1039,6 +1039,7 @@ describe("Conversation image gallery", () => {
             },
             sentAt: "2026-04-19 10:12:01",
             status: "sent",
+            uiMessageKey: "msg-text-1",
           },
           createImageMessage({
             alt: "第二张",
@@ -1051,19 +1052,19 @@ describe("Conversation image gallery", () => {
         "msg-image-2",
       ),
     ).toEqual({
-      activeMessageId: "msg-image-2",
+      activeUiMessageKey: "msg-image-2",
       items: [
         {
           alt: "第一张",
           imageUrl: "https://cdn.example.com/chat/photo-1.jpg",
-          messageId: "msg-image-1",
           ocrEnabled: true,
+          uiMessageKey: "msg-image-1",
         },
         {
           alt: "第二张",
           imageUrl: "https://cdn.example.com/chat/photo-2.jpg",
-          messageId: "msg-image-2",
           ocrEnabled: true,
+          uiMessageKey: "msg-image-2",
         },
       ],
     });
@@ -1110,19 +1111,19 @@ describe("Conversation image gallery", () => {
         "msg-image-revoked",
       ),
     ).toEqual({
-      activeMessageId: "msg-image-revoked",
+      activeUiMessageKey: "msg-image-revoked",
       items: [
         {
           alt: "保留",
           imageUrl: "https://cdn.example.com/chat/photo-1.jpg",
-          messageId: "msg-image-1",
           ocrEnabled: true,
+          uiMessageKey: "msg-image-1",
         },
         {
           alt: "已撤回",
           imageUrl: "https://cdn.example.com/chat/revoked.jpg",
-          messageId: "msg-image-revoked",
           ocrEnabled: true,
+          uiMessageKey: "msg-image-revoked",
         },
       ],
     });
@@ -1145,8 +1146,8 @@ describe("Conversation image gallery", () => {
     const session = buildGalleryWindow(messages, anchorId, GALLERY_RADIUS);
 
     expect(session?.items).toHaveLength(GALLERY_RADIUS * 2 + 1);
-    expect(session?.activeMessageId).toBe(anchorId);
-    expect(session?.items[GALLERY_RADIUS]?.messageId).toBe(anchorId);
+    expect(session?.activeUiMessageKey).toBe(anchorId);
+    expect(session?.items[GALLERY_RADIUS]?.uiMessageKey).toBe(anchorId);
   });
 
   it("lets users browse other conversation images from the preview", async () => {
@@ -1471,10 +1472,10 @@ function createImageMessage(
   id = "msg-image-1",
 ): ChatMessage {
   return {
-    id,
     conversationId: "conv-image",
     role: "customer",
     author: "客户",
+    msgid: id,
     sender: {
       id: "sender-image",
       name: "客户",
@@ -1482,6 +1483,7 @@ function createImageMessage(
     content,
     sentAt: "2026-04-19 10:12:00",
     status: "sent",
+    uiMessageKey: id,
   };
 }
 

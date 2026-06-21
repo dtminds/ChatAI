@@ -93,13 +93,13 @@ async function expectSentConversationMessage(
 
   await waitFor(async () => {
     const sendResult = await sendMessage.mock.results[0]?.value;
-    const messageId = sendResult?.messageId;
+    const optNo = sendResult?.optNo;
 
-    expect(messageId).toBeTruthy();
+    expect(optNo).toBeTruthy();
     sentMessage = useWorkbenchStore
       .getState()
       .messagesByConversationId[conversationId]
-      .find((message) => message.remoteMessageId === messageId);
+      .find((message) => message.optNo === optNo);
     expect(
       sentMessage,
     ).toMatchObject(expectedMessage);
@@ -356,7 +356,6 @@ describe("ChatWorkbenchPage composer flows", () => {
       ).toMatchObject({
         content: {
           quoteMsgId: "5",
-          quotedMessageId: "msg-006",
           quotedMessage: {
             senderName: "丹阳草莓，得利市大樱桃",
             text: "我先截了个竖图版本给你看。",
@@ -851,8 +850,7 @@ describe("ChatWorkbenchPage composer flows", () => {
     ).toBeInTheDocument();
 
     sendGate.resolve({
-      clientMessageId: "local-expression-001",
-      messageId: "msg-expression-sent-001",
+      optNo: "opt-expression-sent-001",
       status: "accepted",
     });
 
@@ -2047,12 +2045,10 @@ describe("ChatWorkbenchPage composer flows", () => {
     });
 
     sendMessageGate.resolve({
-      clientMessageId: "client-msg-test",
-      messageId: "msg-server-test",
+      optNo: "opt-msg-test",
       messages: [
         {
-          clientMessageId: "client-msg-test",
-          messageId: "msg-server-test",
+          optNo: "opt-msg-test",
           status: "accepted",
         },
       ],
@@ -2140,12 +2136,10 @@ describe("ChatWorkbenchPage composer flows", () => {
     });
 
     sendMessageGate.resolve({
-      clientMessageId: "client-msg-test",
-      messageId: "msg-server-test",
+      optNo: "opt-msg-test",
       messages: [
         {
-          clientMessageId: "client-msg-test",
-          messageId: "msg-server-test",
+          optNo: "opt-msg-test",
           status: "accepted",
         },
       ],

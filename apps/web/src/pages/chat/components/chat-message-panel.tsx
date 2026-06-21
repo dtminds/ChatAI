@@ -34,7 +34,7 @@ type ChatMessagePanelProps = {
   onQuoteMessage?: (message: ChatMessage) => void;
   onRevokeMessage?: (message: ChatMessage) => void;
   onMessageViewportScroll: () => void;
-  onRetryMessage: (messageId: string) => void | Promise<void>;
+  onRetryMessage: (uiMessageKey: string) => void | Promise<void>;
   onSendSmartReply?: (message: ChatMessage, payload: SmartReplySendPayload) => void;
   onFillSmartReplyComposer?: (message: ChatMessage, content: string) => void;
   onDismissSmartReply?: (message: ChatMessage) => void;
@@ -171,9 +171,9 @@ export function ChatMessagePanel({
                 onRevokeMessage={onRevokeMessage}
                 onTranscribeVoice={onTranscribeVoice}
                 onVoicePlaybackReady={onVoicePlaybackReady}
-                onRetryMessage={(messageId) => {
+                onRetryMessage={(uiMessageKey) => {
                   startTransition(() => {
-                    void onRetryMessage(messageId);
+                    void onRetryMessage(uiMessageKey);
                   });
                 }}
                 retryingMessageIds={retryingMessageIds}

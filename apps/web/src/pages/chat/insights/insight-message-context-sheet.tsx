@@ -89,7 +89,7 @@ export function InsightMessageContextSheet({
 
 function isTargetMessage(message: Message, targetMessageId?: string) {
   return (
-    message.remoteMessageId === targetMessageId ||
+    message.msgid === targetMessageId ||
     String(message.seq ?? "") === targetMessageId
   );
 }

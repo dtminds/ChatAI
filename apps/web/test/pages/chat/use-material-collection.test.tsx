@@ -49,8 +49,7 @@ const fileMessage = {
     type: "file",
   },
   conversationId: "conv-001",
-  id: "local-msg-001",
-  remoteMessageId: "msg-file-001",
+  msgid: "msg-file-001",
   role: "customer",
   sender: {
     id: "customer-001",
@@ -59,6 +58,7 @@ const fileMessage = {
   sentAt: "2026-06-14 10:00:00",
   seq: 7001,
   status: "sent",
+  uiMessageKey: "7001",
 } satisfies ChatMessage;
 
 function createDefaultOptions(

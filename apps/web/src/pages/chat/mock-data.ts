@@ -282,7 +282,8 @@ export const seedGroupMembersByConversationId: Record<string, GroupMember[]> = {
 export const seedMessages: Record<string, Message[]> = {
   "conv-001": [
     {
-      id: "msg-002",
+      uiMessageKey: "msg-002",
+      msgid: "msg-002",
       conversationId: "conv-001",
       role: "customer",
       author: "丹阳草莓，得利市大樱桃",
@@ -302,7 +303,8 @@ export const seedMessages: Record<string, Message[]> = {
       status: "sent",
     },
     {
-      id: "msg-003",
+      uiMessageKey: "msg-003",
+      msgid: "msg-003",
       conversationId: "conv-001",
       role: "agent",
       author: "德瑞可-小可",
@@ -322,7 +324,8 @@ export const seedMessages: Record<string, Message[]> = {
       status: "sent",
     },
     {
-      id: "msg-004",
+      uiMessageKey: "msg-004",
+      msgid: "msg-004",
       conversationId: "conv-001",
       role: "agent",
       author: "德瑞可-小可",
@@ -342,7 +345,8 @@ export const seedMessages: Record<string, Message[]> = {
       status: "sent",
     },
     {
-      id: "msg-005",
+      uiMessageKey: "msg-005",
+      msgid: "msg-005",
       conversationId: "conv-001",
       role: "customer",
       author: "丹阳草莓，得利市大樱桃",
@@ -359,7 +363,8 @@ export const seedMessages: Record<string, Message[]> = {
       status: "sent",
     },
     {
-      id: "msg-006",
+      uiMessageKey: "msg-006",
+      msgid: "msg-006",
       conversationId: "conv-001",
       role: "customer",
       author: "丹阳草莓，得利市大樱桃",
@@ -376,7 +381,8 @@ export const seedMessages: Record<string, Message[]> = {
       status: "sent",
     },
     {
-      id: "msg-007",
+      uiMessageKey: "msg-007",
+      msgid: "msg-007",
       conversationId: "conv-001",
       role: "customer",
       author: "丹阳草莓，得利市大樱桃",
@@ -396,7 +402,8 @@ export const seedMessages: Record<string, Message[]> = {
       status: "sent",
     },
     {
-      id: "msg-008",
+      uiMessageKey: "msg-008",
+      msgid: "msg-008",
       conversationId: "conv-001",
       role: "customer",
       author: "丹阳草莓，得利市大樱桃",
@@ -413,7 +420,8 @@ export const seedMessages: Record<string, Message[]> = {
       status: "sent",
     },
     {
-      id: "msg-009",
+      uiMessageKey: "msg-009",
+      msgid: "msg-009",
       conversationId: "conv-001",
       role: "customer",
       author: "丹阳草莓，得利市大樱桃",
@@ -430,7 +438,8 @@ export const seedMessages: Record<string, Message[]> = {
       status: "sent",
     },
     {
-      id: "msg-010",
+      uiMessageKey: "msg-010",
+      msgid: "msg-010",
       conversationId: "conv-001",
       role: "customer",
       author: "丹阳草莓，得利市大樱桃",
@@ -452,7 +461,8 @@ export const seedMessages: Record<string, Message[]> = {
   ],
   "conv-002": [
     {
-      id: "msg-011",
+      uiMessageKey: "msg-011",
+      msgid: "msg-011",
       conversationId: "conv-002",
       role: "customer",
       author: "睿白鸽",
@@ -469,7 +479,8 @@ export const seedMessages: Record<string, Message[]> = {
       status: "sent",
     },
     {
-      id: "msg-011-video-horizontal",
+      uiMessageKey: "msg-011-video-horizontal",
+      msgid: "msg-011-video-horizontal",
       conversationId: "conv-002",
       role: "customer",
       author: "睿白鸽",
@@ -491,7 +502,8 @@ export const seedMessages: Record<string, Message[]> = {
       status: "sent",
     },
     {
-      id: "msg-011-video-vertical",
+      uiMessageKey: "msg-011-video-vertical",
+      msgid: "msg-011-video-vertical",
       conversationId: "conv-002",
       role: "customer",
       author: "睿白鸽",
@@ -515,7 +527,8 @@ export const seedMessages: Record<string, Message[]> = {
   ],
   "conv-003": [
     {
-      id: "msg-012",
+      uiMessageKey: "msg-012",
+      msgid: "msg-012",
       conversationId: "conv-003",
       role: "customer",
       author: "+1.",
@@ -534,7 +547,8 @@ export const seedMessages: Record<string, Message[]> = {
   ],
   "conv-004": [
     {
-      id: "msg-013",
+      uiMessageKey: "msg-013",
+      msgid: "msg-013",
       conversationId: "conv-004",
       role: "system",
       author: "系统",
@@ -546,7 +560,8 @@ export const seedMessages: Record<string, Message[]> = {
       status: "sent",
     },
     {
-      id: "msg-013-solitaire",
+      uiMessageKey: "msg-013-solitaire",
+      msgid: "msg-013-solitaire",
       conversationId: "conv-004",
       role: "customer",
       author: "缪勇飞 群昵称111",
@@ -581,7 +596,8 @@ export const seedMessages: Record<string, Message[]> = {
   ],
   "conv-005": [
     {
-      id: "msg-014",
+      uiMessageKey: "msg-014",
+      msgid: "msg-014",
       conversationId: "conv-005",
       role: "customer",
       author: "小宇._",
@@ -600,7 +616,8 @@ export const seedMessages: Record<string, Message[]> = {
   ],
   "conv-006": [
     {
-      id: "msg-015",
+      uiMessageKey: "msg-015",
+      msgid: "msg-015",
       conversationId: "conv-006",
       role: "agent",
       author: "念都堂-尚青",

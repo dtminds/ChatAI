@@ -63,6 +63,7 @@ import {
   formatTextMessageSentAt,
   parseWorkbenchDate,
 } from "@/pages/chat/lib/chat-time";
+import { isValidMessageSeq } from "@/pages/chat/lib/message-seq";
 
 const TIMESTAMP_BREAK_MS = 5 * 60 * 1000;
 export const MESSAGE_SENT_AT_HOVER_DELAY_MS = 400;
@@ -80,7 +81,7 @@ type ChatMessageListProps = {
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
   onQuoteMessage?: (message: ChatMessage) => void;
   onRevokeMessage?: (message: ChatMessage) => void;
-  onRetryMessage?: (messageId: string) => void;
+  onRetryMessage?: (uiMessageKey: string) => void;
   onSendSmartReply?: (message: ChatMessage, payload: SmartReplySendPayload) => void;
   onFillSmartReplyComposer?: (message: ChatMessage, content: string) => void;
   onDismissSmartReply?: (message: ChatMessage) => void;
@@ -238,8 +239,8 @@ export function ChatMessageList({
             </div>
           ) : (
             <div
-              data-message-id={item.message.id}
-              data-scroll-anchor={item.message.id}
+              data-ui-message-key={item.message.uiMessageKey}
+              data-scroll-anchor={item.message.uiMessageKey}
               key={getMessageFeedItemKey(item.message)}
             >
               <MessageRow
@@ -265,7 +266,7 @@ export function ChatMessageList({
                 onTriggerSmartReply={onTriggerSmartReply}
                 onTranscribeVoice={onTranscribeVoice}
                 onVoicePlaybackReady={onVoicePlaybackReady}
-                isRetryingMessage={retryingMessageIds?.has(item.message.id) ?? false}
+                isRetryingMessage={retryingMessageIds?.has(item.message.uiMessageKey) ?? false}
                 isSmartReplyAutoPending={
                   Boolean(
                     smartReplyAutoPendingByMessageId?.[
@@ -284,7 +285,7 @@ export function ChatMessageList({
 }
 
 export function getMessageFeedItemKey(message: Message) {
-  return message.clientMessageId ?? message.optNo ?? message.id;
+  return message.optNo ?? message.uiMessageKey;
 }
 
 function getAppendStartIndex(
@@ -364,7 +365,7 @@ export function MessageRow({
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
   onQuoteMessage?: (message: ChatMessage) => void;
   onRevokeMessage?: (message: ChatMessage) => void;
-  onRetryMessage?: (messageId: string) => void;
+  onRetryMessage?: (uiMessageKey: string) => void;
   onSendSmartReply?: (message: ChatMessage, payload: SmartReplySendPayload) => void;
   onFillSmartReplyComposer?: (message: ChatMessage, content: string) => void;
   onDismissSmartReply?: (message: ChatMessage) => void;
@@ -627,7 +628,7 @@ function QuoteMessageContentWithDelivery({
   isAgent: boolean;
   message: ChatMessage;
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
-  onRetryMessage?: (messageId: string) => void;
+  onRetryMessage?: (uiMessageKey: string) => void;
 }) {
   return (
     <div className={cn("flex max-w-full flex-col gap-1.5", isAgent ? "items-end" : "items-start")}>
@@ -699,6 +700,7 @@ function MessageActionAvatar({
   const canSelectQuoteMessage =
     canUseMessageActions &&
     !message.isRevoked &&
+    isValidMessageSeq(message.seq) &&
     message.content.type !== "contact-card";
   const canCollectMessage = Boolean(onCollectMaterial) && canCollectMaterial(message);
   const canSelectCollectMessage = canCollectMaterialActions && !message.isRevoked;
@@ -708,7 +710,7 @@ function MessageActionAvatar({
     canShowRevokeMessageAction(message);
   const canSelectSmartReplyRecommendation =
     canUseMessageActions && Boolean(onTriggerSmartReply);
-  const messageIdForCopy = (message.remoteMessageId ?? message.id).trim();
+  const messageSeqForCopy = isValidMessageSeq(message.seq) ? String(message.seq) : "";
   const senderUserIdForCopy = message.sender.userId?.trim() ?? "";
 
   return (
@@ -835,8 +837,13 @@ function MessageActionAvatar({
             ) : null}
             <DropdownMenuSeparator />
             <DropdownMenuItem
-              onSelect={() => {
-                void copyMessageId(messageIdForCopy);
+              disabled={!messageSeqForCopy}
+              onSelect={(event) => {
+                if (!messageSeqForCopy) {
+                  event.preventDefault();
+                  return;
+                }
+                void copyMessageId(messageSeqForCopy);
               }}
             >
               <HugeiconsIcon
@@ -895,14 +902,14 @@ function MessageActionAvatar({
   );
 }
 
-async function copyMessageId(messageId: string) {
-  if (!messageId || !navigator.clipboard) {
+async function copyMessageId(messageSeq: string) {
+  if (!messageSeq || !navigator.clipboard) {
     toast.warning("复制失败，请稍后重试");
     return;
   }
 
   try {
-    await navigator.clipboard.writeText(messageId);
+    await navigator.clipboard.writeText(messageSeq);
     toast.success("已复制消息ID");
   } catch {
     toast.warning("复制失败，请稍后重试");
@@ -933,7 +940,7 @@ function MessageInlineStatusSlot({
   canRetryMessage: boolean;
   isRetryingMessage: boolean;
   message: ChatMessage;
-  onRetryMessage?: (messageId: string) => void;
+  onRetryMessage?: (uiMessageKey: string) => void;
   state: InlineDeliveryState | null;
 }) {
   if (!state) {
@@ -963,7 +970,7 @@ function MessageInlineStatusSlot({
               return;
             }
 
-            onRetryMessage?.(message.id);
+            onRetryMessage?.(message.uiMessageKey);
           }}
           title={isRetryingMessage ? "正在重试发送" : "重试发送"}
           type="button"
@@ -1056,7 +1063,7 @@ function isOptimisticAcceptedMessage(message: ChatMessage) {
   return (
     message.status === "accepted" &&
     Boolean(message.optNo) &&
-    message.remoteMessageId === message.optNo
+    message.seq == null
   );
 }
 
@@ -1067,7 +1074,7 @@ function canShowRevokeMessageAction(message: ChatMessage, now = Date.now()) {
     message.isRevoked ||
     message.revokePending ||
     message.status !== "sent" ||
-    message.seq == null
+    !isValidMessageSeq(message.seq)
   ) {
     return false;
   }
@@ -1121,7 +1128,7 @@ function buildFeedItems(messages: Message[], showTimeDividers: boolean): FeedIte
       shouldInsertDivider(previousTimestampedMessage, message)
     ) {
       items.push({
-        id: `divider-${message.id}`,
+        id: `divider-${message.uiMessageKey}`,
         label: formatMessageDividerLabel(message.sentAt),
         type: "divider",
       });

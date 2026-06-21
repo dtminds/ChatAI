@@ -402,7 +402,7 @@ function createQuoteMessage(content: ChatMessage["content"]): ChatMessage {
     author: "Support Agent",
     content,
     conversationId: "conv-quote",
-    id: "msg-quote",
+    msgid: "msg-quote",
     role: "agent",
     sender: {
       id: "agent-quote",
@@ -410,5 +410,6 @@ function createQuoteMessage(content: ChatMessage["content"]): ChatMessage {
     },
     sentAt: "2026-05-13 10:00:00",
     status: "sent",
+    uiMessageKey: "msg-quote",
   };
 }

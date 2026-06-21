@@ -60,7 +60,7 @@ import { useAccountRailResize } from "@/pages/chat/hooks/use-account-rail-resize
 import { useCustomerPanelResize } from "@/pages/chat/hooks/use-customer-panel-resize";
 import { useMessageScrollRestoration } from "@/pages/chat/hooks/use-message-scroll-restoration";
 import {
-  getFirstUnreadCustomerMessageId,
+  getFirstUnreadCustomerMessageKey,
   useVisibleUnreadConversationRead,
 } from "@/pages/chat/hooks/use-visible-unread-conversation-read";
 import { useConversationRevealTimer } from "@/pages/chat/hooks/use-conversation-reveal-timer";
@@ -69,6 +69,7 @@ import { useMaterialCollection } from "@/pages/chat/hooks/use-material-collectio
 import { useQuickReplies } from "@/pages/chat/hooks/use-quick-replies";
 import { useWorkbenchPolling } from "@/pages/chat/hooks/use-workbench-polling";
 import type { PollingPauseReason } from "@/pages/chat/hooks/use-workbench-polling";
+import { isValidMessageSeq } from "@/pages/chat/lib/message-seq";
 import { useWorkbenchStore } from "@/store/workbench-store";
 import type {
   ChatMessage,
@@ -366,7 +367,7 @@ function ChatWorkbenchContent({
     [],
   );
   const [isSendingDraft, setIsSendingDraft] = useState(false);
-  const [retryingMessageIds, setRetryingMessageIds] = useState<Set<string>>(
+  const [retryingUiMessageKeys, setRetryingUiMessageKeys] = useState<Set<string>>(
     () => new Set(),
   );
   const [quotedMessage, setQuotedMessage] =
@@ -491,9 +492,9 @@ function ChatWorkbenchContent({
   } = workbenchPermissions;
   const canCollectMaterialActions = Boolean(subUser && subUser.role !== "viewer");
   const sidebarIframeTos: "0" | "1" = isAccountTakenOverByCurrentUser ? "1" : "0";
-  const firstUnreadMessageId = useMemo(
+  const firstUnreadMessageKey = useMemo(
     () =>
-      getFirstUnreadCustomerMessageId(
+      getFirstUnreadCustomerMessageKey(
         activeMessages,
         activeConversation?.unread ?? 0,
       ),
@@ -504,7 +505,7 @@ function ChatWorkbenchContent({
     activeMessages,
     activeView,
     canUseConversationActions,
-    firstUnreadMessageId,
+    firstUnreadMessageKey,
     isConversationLoading,
     markConversationRead,
     messageViewportRef,
@@ -643,16 +644,16 @@ function ChatWorkbenchContent({
   );
 
   const handleRetryFailedMessage = useCallback(
-    async (messageId: string) => {
+    async (uiMessageKey: string) => {
       if (!canSendMessage) {
         return;
       }
 
       const retryConversationId = activeConversationIdRef.current;
-      setRetryingMessageIds((current) => new Set(current).add(messageId));
+      setRetryingUiMessageKeys((current) => new Set(current).add(uiMessageKey));
 
       try {
-        const result = await retryFailedMessage(messageId);
+        const result = await retryFailedMessage(uiMessageKey);
 
         if (
           !isMountedRef.current ||
@@ -676,9 +677,9 @@ function ChatWorkbenchContent({
         }
       } finally {
         if (isMountedRef.current) {
-          setRetryingMessageIds((current) => {
+          setRetryingUiMessageKeys((current) => {
             const next = new Set(current);
-            next.delete(messageId);
+            next.delete(uiMessageKey);
             return next;
           });
         }
@@ -693,7 +694,7 @@ function ChatWorkbenchContent({
         return;
       }
 
-      const result = await revokeMessage(message.id);
+      const result = await revokeMessage(message.uiMessageKey);
 
       if (!isMountedRef.current || result.ok) {
         return;
@@ -992,7 +993,6 @@ function ChatWorkbenchContent({
         quote: quotedMessage?.quoteMsgId
           ? {
               quoteMsgId: quotedMessage.quoteMsgId,
-              quotedMessageId: quotedMessage.quotedMessageId,
               quotedMessage: {
                 contentType: quotedMessage.contentType,
                 fallbackText: quotedMessage.fallbackText,
@@ -1206,7 +1206,7 @@ function ChatWorkbenchContent({
       return;
     }
 
-    updateMessageDownloadContent(message.conversationId, message.id, {
+    updateMessageDownloadContent(message.conversationId, message.uiMessageKey, {
       downloadStatus: "ing",
     });
 
@@ -1225,7 +1225,7 @@ function ChatWorkbenchContent({
           return;
         }
 
-        updateMessageDownloadContent(message.conversationId, message.id, {
+        updateMessageDownloadContent(message.conversationId, message.uiMessageKey, {
           downloadStatus: "failed",
         });
         toast.warning("下载失败，请稍后重试");
@@ -1242,7 +1242,7 @@ function ChatWorkbenchContent({
 
     void confirmVoicePlaybackReady(
       message.conversationId,
-      message.id,
+      message.uiMessageKey,
       payload.playbackUrl,
     );
   };
@@ -1252,7 +1252,7 @@ function ChatWorkbenchContent({
       throw new Error("当前消息不支持转文字");
     }
 
-    return transcribeVoiceMessage(message.conversationId, message.id);
+    return transcribeVoiceMessage(message.conversationId, message.uiMessageKey);
   };
 
   const handleDraftChange = (nextDraft: string) => {
@@ -1376,7 +1376,7 @@ function ChatWorkbenchContent({
     const viewport = messageViewportRef.current;
     const anchor =
       viewport && originalMessage
-        ? findViewportAnchor(viewport, originalMessage.id)
+        ? findViewportAnchor(viewport, originalMessage.uiMessageKey)
         : null;
 
     if (!anchor) {
@@ -1395,7 +1395,13 @@ function ChatWorkbenchContent({
       return;
     }
 
-    setQuotedMessage(buildQuotedMessagePreview(message));
+    const quotePreview = buildQuotedMessagePreview(message);
+
+    if (!quotePreview) {
+      return;
+    }
+
+    setQuotedMessage(quotePreview);
     composerRef.current?.focus();
   };
 
@@ -1737,7 +1743,7 @@ function ChatWorkbenchContent({
                   onRevokeMessage={handleRevokeMessage}
                   onMessageViewportScroll={handleMessageViewportScroll}
                   onRetryMessage={handleRetryFailedMessage}
-                  retryingMessageIds={retryingMessageIds}
+                  retryingMessageIds={retryingUiMessageKeys}
                   onSendDraft={handleSendDraft}
                   onQuickReplyActiveChange={setIsQuickReplyPanelActive}
                   quickReplyPanel={quickReplyPanel}
@@ -2126,17 +2132,20 @@ function isMessageDownloadUrlReady(message: ChatMessage, url: string) {
 
 function buildQuotedMessagePreview(
   message: ChatMessage,
-): QuotedMessagePreviewContent {
+): QuotedMessagePreviewContent | null {
+  if (!isValidMessageSeq(message.seq)) {
+    return null;
+  }
+
   const senderName =
     message.senderDisplayName || message.sender.name || message.author;
   const basePreview = {
     contentType: message.content.type,
-    quoteMsgId: String(message.seq ?? message.remoteMessageId ?? message.id),
-    quotedMessageId: message.remoteMessageId ?? message.id,
+    quoteMsgId: String(message.seq),
     senderName,
   } satisfies Pick<
     QuotedMessagePreviewContent,
-    "contentType" | "quoteMsgId" | "quotedMessageId" | "senderName"
+    "contentType" | "quoteMsgId" | "senderName"
   >;
 
   switch (message.content.type) {

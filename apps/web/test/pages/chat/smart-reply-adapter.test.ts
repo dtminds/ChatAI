@@ -40,7 +40,7 @@ describe("smart-reply-adapter", () => {
   it("collects the latest message seq values up to the limit", () => {
     const msgIds = collectSmartReplyMsgIds(
       Array.from({ length: 120 }, (_, index) => ({
-        id: `msg-${index}`,
+        uiMessageKey: `msg-${index}`,
         seq: index + 1,
       })),
       100,
@@ -61,8 +61,8 @@ describe("smart-reply-adapter", () => {
   });
 
   it("uses seq for smart reply lookup key", () => {
-    expect(getSmartReplyLookupKey({ id: "wx-msg-001", seq: 1090 })).toBe("1090");
-    expect(getSmartReplyLookupKey({ id: "wx-msg-001" })).toBe("wx-msg-001");
+    expect(getSmartReplyLookupKey({ uiMessageKey: "wx-msg-001", seq: 1090 })).toBe("1090");
+    expect(getSmartReplyLookupKey({ uiMessageKey: "wx-msg-001" })).toBe("wx-msg-001");
   });
 
   it("returns processing labels by message content type", () => {
@@ -83,7 +83,7 @@ describe("smart-reply-adapter", () => {
     expect(
       collectQuestionImgs({
         content: { imageUrl: "https://example.com/image.png", alt: "图片", type: "image" },
-        id: "msg-image",
+        uiMessageKey: "msg-image",
         rawMsgtype: "image",
         role: "customer",
       } as ChatMessage),
@@ -91,7 +91,7 @@ describe("smart-reply-adapter", () => {
     expect(
       collectQuestionImgs({
         content: { text: "文本", type: "text" },
-        id: "msg-text",
+        uiMessageKey: "msg-text",
         role: "customer",
       } as ChatMessage),
     ).toEqual([]);
@@ -103,7 +103,7 @@ describe("smart-reply-adapter", () => {
           type: "image",
           variant: "emotion",
         },
-        id: "msg-emotion",
+        uiMessageKey: "msg-emotion",
         rawMsgtype: "emotion",
         role: "customer",
       } as ChatMessage),
@@ -112,7 +112,7 @@ describe("smart-reply-adapter", () => {
 
   it("only treats voice and image messages as eligible after usable content is ready", () => {
     const baseMessage = {
-      id: "msg-1",
+      uiMessageKey: "msg-1",
       role: "customer",
     } as ChatMessage;
 
@@ -246,7 +246,7 @@ describe("smart-reply-adapter", () => {
           transVoiceText: "转写后的问题",
           type: "voice",
         },
-        id: "msg-voice",
+        uiMessageKey: "msg-voice",
         role: "customer",
       } as ChatMessage),
     ).toBe("转写后的问题");
@@ -257,7 +257,7 @@ describe("smart-reply-adapter", () => {
           imageUrl: "https://example.com/product.png",
           type: "image",
         },
-        id: "msg-image",
+        uiMessageKey: "msg-image",
         role: "customer",
       } as ChatMessage),
     ).toBe("客户上传的产品照片");
@@ -266,7 +266,7 @@ describe("smart-reply-adapter", () => {
   it("creates triggered suggestions with media processing state", () => {
     const pendingSuggestion = createTriggeredSmartReplySuggestion({
       content: { imageUrl: "https://example.com/image.png", alt: "图片", type: "image" },
-      id: "msg-image",
+      uiMessageKey: "msg-image",
       role: "customer",
     } as ChatMessage);
 
@@ -279,7 +279,7 @@ describe("smart-reply-adapter", () => {
     expect(
       createTriggeredSmartReplySuggestion({
         content: { text: "文本", type: "text" },
-        id: "msg-text",
+        uiMessageKey: "msg-text",
         role: "customer",
       } as ChatMessage),
     ).toMatchObject({
@@ -314,7 +314,7 @@ describe("smart-reply-adapter", () => {
         [
           {
             content: { text: "旧消息", type: "text" },
-            id: "msg-1",
+            uiMessageKey: "msg-1",
             rawMsgtype: "text",
             role: "customer",
             sender: { id: "cus-1", name: "客户" },
@@ -325,7 +325,7 @@ describe("smart-reply-adapter", () => {
         [
           {
             content: { text: "新消息", type: "text" },
-            id: "msg-2",
+            uiMessageKey: "msg-2",
             rawMsgtype: "text",
             role: "customer",
             sender: { id: "cus-1", name: "客户" },
@@ -340,7 +340,7 @@ describe("smart-reply-adapter", () => {
   it("collects new smart reply pending keys from large histories without spreading seq values", () => {
     const previousMessages = Array.from({ length: 150_000 }, (_, index) => ({
       content: { text: `旧消息 ${index + 1}`, type: "text" as const },
-      id: `msg-${index + 1}`,
+      uiMessageKey: `msg-${index + 1}`,
       rawMsgtype: "text",
       role: "customer" as const,
       sender: { id: "cus-1", name: "客户" },
@@ -352,7 +352,7 @@ describe("smart-reply-adapter", () => {
       collectNewSmartReplyPendingKeys(previousMessages, [
         {
           content: { text: "新消息", type: "text" },
-          id: "msg-new",
+          uiMessageKey: "msg-new",
           rawMsgtype: "text",
           role: "customer",
           sender: { id: "cus-1", name: "客户" },
@@ -369,7 +369,7 @@ describe("smart-reply-adapter", () => {
         [
           {
             content: { text: "旧消息", type: "text" },
-            id: "msg-100",
+            uiMessageKey: "msg-100",
             rawMsgtype: "text",
             role: "customer",
             sender: { id: "cus-1", name: "客户" },
@@ -377,7 +377,7 @@ describe("smart-reply-adapter", () => {
             seq: 100,
           },
           {
-            id: "typing-system",
+            uiMessageKey: "typing-system",
             role: "system",
             sentAt: "2026-05-25T10:00:01+08:00",
             text: "系统提示",
@@ -386,7 +386,7 @@ describe("smart-reply-adapter", () => {
         [
           {
             content: { text: "历史补齐消息", type: "text" },
-            id: "msg-90",
+            uiMessageKey: "msg-90",
             rawMsgtype: "text",
             role: "customer",
             sender: { id: "cus-1", name: "客户" },
@@ -395,7 +395,7 @@ describe("smart-reply-adapter", () => {
           },
           {
             content: { text: "新消息", type: "text" },
-            id: "msg-101",
+            uiMessageKey: "msg-101",
             rawMsgtype: "text",
             role: "customer",
             sender: { id: "cus-1", name: "客户" },
@@ -413,7 +413,7 @@ describe("smart-reply-adapter", () => {
         [
           {
             content: { text: "首屏消息", type: "text" },
-            id: "msg-1",
+            uiMessageKey: "msg-1",
             rawMsgtype: "text",
             role: "customer",
             sender: { id: "cus-1", name: "客户" },
@@ -429,7 +429,7 @@ describe("smart-reply-adapter", () => {
     const messages = [
       {
         content: { text: "已回复的问题", type: "text" },
-        id: "msg-old-customer",
+        uiMessageKey: "msg-old-customer",
         rawMsgtype: "text",
         role: "customer",
         sender: { id: "cus-1", name: "客户" },
@@ -438,7 +438,7 @@ describe("smart-reply-adapter", () => {
       },
       {
         content: { text: "客服回复", type: "text" },
-        id: "msg-agent",
+        uiMessageKey: "msg-agent",
         role: "agent",
         sender: { id: "agent-1", name: "客服" },
         sentAt: "2026-05-25T10:01:00+08:00",
@@ -446,7 +446,7 @@ describe("smart-reply-adapter", () => {
       },
       ...Array.from({ length: 6 }, (_, index) => ({
         content: { text: `未回复问题 ${index + 1}`, type: "text" as const },
-        id: `msg-new-${index + 1}`,
+        uiMessageKey: `msg-new-${index + 1}`,
         rawMsgtype: "text",
         role: "customer" as const,
         sender: { id: "cus-1", name: "客户" },
@@ -469,7 +469,7 @@ describe("smart-reply-adapter", () => {
       collectUnansweredSmartReplyPendingKeys([
         {
           content: { text: "客户问题", type: "text" },
-          id: "msg-customer",
+          uiMessageKey: "msg-customer",
           rawMsgtype: "text",
           role: "customer",
           sender: { id: "cus-1", name: "客户" },
@@ -478,7 +478,7 @@ describe("smart-reply-adapter", () => {
         },
         {
           content: { text: "客服回复", type: "text" },
-          id: "msg-agent",
+          uiMessageKey: "msg-agent",
           role: "agent",
           sender: { id: "agent-1", name: "客服" },
           sentAt: "2026-05-25T10:01:00+08:00",
@@ -494,7 +494,7 @@ describe("smart-reply-adapter", () => {
         [
           {
             content: { text: "旧消息", type: "text" },
-            id: "msg-1",
+            uiMessageKey: "msg-1",
             rawMsgtype: "text",
             role: "customer",
             sender: { id: "cus-1", name: "客户" },
@@ -505,7 +505,7 @@ describe("smart-reply-adapter", () => {
         [
           {
             content: { text: "新问题", type: "text" },
-            id: "msg-2",
+            uiMessageKey: "msg-2",
             rawMsgtype: "text",
             role: "customer",
             sender: { id: "cus-1", name: "客户" },
@@ -514,7 +514,7 @@ describe("smart-reply-adapter", () => {
           },
           {
             content: { text: "客服回复", type: "text" },
-            id: "msg-3",
+            uiMessageKey: "msg-3",
             role: "agent",
             sender: { id: "agent-1", name: "客服" },
             sentAt: "2026-05-25T10:02:00+08:00",
@@ -528,7 +528,7 @@ describe("smart-reply-adapter", () => {
   it("shows trigger icon only for eligible customer messages without a smart reply card", () => {
     const customerMessage = {
       content: { text: "客户消息", type: "text" },
-      id: "msg-1",
+      uiMessageKey: "msg-1",
       rawMsgtype: "text",
       role: "customer",
     } as ChatMessage;
@@ -665,7 +665,7 @@ describe("smart-reply-adapter", () => {
     expect(shouldShowSmartReplyTriggerIcon(
       {
         content: { text: "客户消息", type: "text" },
-        id: "msg-1",
+        uiMessageKey: "msg-1",
         role: "customer",
       } as ChatMessage,
       suggestion,
@@ -691,7 +691,7 @@ describe("smart-reply-adapter", () => {
           imageUrl: "https://example.com/image.png",
           type: "image",
         },
-        id: "msg-1",
+        uiMessageKey: "msg-1",
         role: "customer",
       } as ChatMessage,
       suggestion,
@@ -820,7 +820,7 @@ describe("smart-reply-adapter", () => {
     expect(
       getSmartReplyCustomerQuestion({
         content: { text: "  客户想了解敏感肌护理  ", type: "text" },
-        id: "msg-1",
+        uiMessageKey: "msg-1",
         role: "customer",
       } as ChatMessage),
     ).toBe("客户想了解敏感肌护理");
@@ -991,9 +991,9 @@ describe("smart-reply-adapter", () => {
     expect(
       collectSmartReplyPollMsgIds(
         [
-          { id: "msg-1", seq: 1 },
-          { id: "msg-2", seq: 2 },
-          { id: "msg-3", seq: 3 },
+          { seq: 1 },
+          { seq: 2 },
+          { seq: 3 },
         ],
         {
           "2": {
@@ -1014,7 +1014,7 @@ describe("smart-reply-adapter", () => {
         [
           {
             content: { text: "待推荐 1", type: "text" },
-            id: "msg-1",
+            uiMessageKey: "msg-1",
             rawMsgtype: "text",
             role: "customer",
             sender: { id: "cus-1", name: "客户" },
@@ -1023,7 +1023,7 @@ describe("smart-reply-adapter", () => {
           },
           {
             content: { text: "待推荐 2", type: "text" },
-            id: "msg-2",
+            uiMessageKey: "msg-2",
             rawMsgtype: "text",
             role: "customer",
             sender: { id: "cus-1", name: "客户" },
@@ -1032,7 +1032,7 @@ describe("smart-reply-adapter", () => {
           },
           {
             content: { text: "未加入 pending", type: "text" },
-            id: "msg-3",
+            uiMessageKey: "msg-3",
             rawMsgtype: "text",
             role: "customer",
             sender: { id: "cus-1", name: "客户" },
@@ -1063,7 +1063,7 @@ describe("smart-reply-adapter", () => {
         [
           {
             content: { text: "已被回复的问题", type: "text" },
-            id: "msg-1",
+            uiMessageKey: "msg-1",
             rawMsgtype: "text",
             role: "customer",
             sender: { id: "cus-1", name: "客户" },
@@ -1072,7 +1072,7 @@ describe("smart-reply-adapter", () => {
           },
           {
             content: { text: "客服回复", type: "text" },
-            id: "msg-2",
+            uiMessageKey: "msg-2",
             role: "agent",
             sender: { id: "agent-1", name: "客服" },
             sentAt: "2026-05-25T10:02:00+08:00",

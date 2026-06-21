@@ -1025,7 +1025,7 @@ export function createMemoryWorkbenchService() {
       }
 
       return {
-        messageId: String(msgInfoId),
+        messageSeq: msgInfoId,
         status: "accepted",
       };
     },
@@ -1330,7 +1330,9 @@ export function createMemoryWorkbenchService() {
       const outcome = resolveSendOutcome(state, payload.seatId, segments);
       let hasAppliedQuote = false;
       const backendMessages = segments.map((segment, index) => {
-        const messageId = `msg-server-${state.nextId++}`;
+        const messageId = state.nextId++;
+        const msgid = `msg-server-${messageId}`;
+        const segmentOptNo = buildMockOptNo(messageId);
         const nextSeq = getNextMessageSeq(state, payload.conversationId) + index;
         const quoteForSegment =
           !hasAppliedQuote && segment.type === "text" ? payload.quote : undefined;
@@ -1338,15 +1340,14 @@ export function createMemoryWorkbenchService() {
 
         return {
           seatId: payload.seatId,
-          clientMessageId: buildSegmentClientMessageId(payload.clientMessageId, index),
           content: buildPayloadSegmentContent(segment, quoteForSegment),
           contentType: quoteForSegment ? "quote" : segment.type,
           conversationId: payload.conversationId,
           createdAt: now + index,
           customerId: conversation.customerId,
           failReason: outcome.reason,
-          messageId,
-          optNo: messageId,
+          msgid,
+          optNo: segmentOptNo,
           rawMsgtype: quoteForSegment ? "quote" : segment.type,
           senderType: "agent" as const,
           seq: nextSeq,
@@ -1375,12 +1376,9 @@ export function createMemoryWorkbenchService() {
       });
 
       return {
-        clientMessageId: payload.clientMessageId,
-        messageId: backendMessages[0]?.messageId ?? payload.clientMessageId,
+        optNo: backendMessages[0]?.optNo ?? "",
         messages: backendMessages.map((message) => ({
-          clientMessageId: message.clientMessageId ?? payload.clientMessageId,
-          messageId: message.messageId,
-          optNo: message.optNo,
+          optNo: message.optNo ?? "",
           status: "accepted" as const,
         })),
         status: "accepted",
@@ -1389,9 +1387,9 @@ export function createMemoryWorkbenchService() {
     revokeMessage(
       _subUserId: string,
       conversationId: string,
-      messageId: string,
+      messageSeq: number,
     ): WorkbenchRevokeMessageResponse {
-      return revokeMessage(state, conversationId, messageId);
+      return revokeMessage(state, conversationId, messageSeq);
     },
     takeOverSeat(_subUserId: string, seatId: string): WorkbenchTakeOverSeatResponse {
       const seat = findSeat(state, seatId);
@@ -1505,7 +1503,7 @@ function buildInitialState(): MemoryWorkbenchState {
         contentType: "file",
         groupId: "material-group-file-1",
         id: "material-item-file-1",
-        messageId: "msg-004",
+        msgInfoId: "3",
         sort: 100,
         title: "求未 AI 智能营销系统.pdf",
       },
@@ -1608,7 +1606,7 @@ function conversation(
 }
 
 function message(
-  messageId: string,
+  msgid: string,
   conversationId: string,
   seatId: string,
   customerId: string,
@@ -1626,7 +1624,7 @@ function message(
     conversationId,
     createdAt: toTimestamp(createdAt),
     customerId,
-    messageId,
+    msgid,
     rawMsgtype: getMemoryRawMsgtype(contentType),
     senderType,
     seq,
@@ -1687,14 +1685,14 @@ function buildMemoryMaterialItem(
 function readMemoryMaterialTitle(
   content: unknown,
   contentType: WorkbenchMaterialCollectionItemDto["contentType"],
-  messageId: string,
+  msgInfoId: string,
 ) {
   if (contentType === "emotion") {
     return "表情";
   }
 
   if (!content || typeof content !== "object") {
-    return messageId;
+    return msgInfoId;
   }
 
   const record = content as Record<string, unknown>;
@@ -1702,7 +1700,7 @@ function readMemoryMaterialTitle(
     readString(record.fileName) ||
     readString(record.description) ||
     readString(record.title) ||
-    messageId
+    msgInfoId
   );
 }
 
@@ -1803,7 +1801,7 @@ function removeConversation(
 function revokeMessage(
   state: MemoryWorkbenchState,
   conversationId: string,
-  messageId: string,
+  messageSeq: number,
 ): WorkbenchRevokeMessageResponse {
   const conversation = findConversation(state, conversationId);
 
@@ -1812,12 +1810,7 @@ function revokeMessage(
   }
 
   const messages = state.messagesByConversationId[conversationId] ?? [];
-  const targetMessage = messages.find(
-    (message) =>
-      message.messageId === messageId ||
-      String(message.seq) === messageId ||
-      message.optNo === messageId,
-  );
+  const targetMessage = messages.find((message) => message.seq === messageSeq);
 
   if (!targetMessage) {
     throw new NotFoundError("MESSAGE_NOT_FOUND", "消息不存在");
@@ -1828,7 +1821,7 @@ function revokeMessage(
     isRevoked: true,
   };
   state.messagesByConversationId[conversationId] = messages.map((message) =>
-    message.messageId === targetMessage.messageId ? nextMessage : message,
+    message.seq === targetMessage.seq ? nextMessage : message,
   );
 
   const revokeSignal = {
@@ -1841,7 +1834,7 @@ function revokeMessage(
     conversationId,
     createdAt: Date.now(),
     customerId: targetMessage.customerId,
-    messageId: `revoke-${targetMessage.messageId}`,
+    msgid: `revoke-${targetMessage.seq}`,
     rawMsgtype: "revoke",
     seatId: targetMessage.seatId,
     senderType: "system" as const,
@@ -1859,7 +1852,7 @@ function revokeMessage(
   return {
     accepted: true,
     conversationId,
-    messageId,
+    messageSeq,
     revokeMsgId: targetMessage.seq,
   };
 }
@@ -2000,7 +1993,6 @@ function buildPayloadSegmentContent(
   if (quote && segment.type === "text") {
     return {
       quoteMsgId: quote.quoteMsgId,
-      quotedMessageId: quote.quotedMessageId,
       quotedMessage: quote.quotedMessage,
       text: segment.text,
     };
@@ -2043,8 +2035,8 @@ function getPayloadPreview(segments: ReturnType<typeof getPayloadSegments>) {
   return segments.some((segment) => segment.type === "file") ? "[文件]" : "";
 }
 
-function buildSegmentClientMessageId(clientMessageId: string, index: number) {
-  return index === 0 ? clientMessageId : `${clientMessageId}_${index + 1}`;
+function buildMockOptNo(messageId: number) {
+  return `opt-${messageId}`;
 }
 
 function resolveSendOutcome(

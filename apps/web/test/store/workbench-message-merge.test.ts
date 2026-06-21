@@ -32,23 +32,17 @@ describe("workbench message merge state", () => {
 
   it("merges optimistic and remote messages into one stable feed item", async () => {
     const baseService = createMockWorkbenchService();
-    let observedClientMessageId = "";
 
     setWorkbenchService({
       ...baseService,
-      async sendMessage(payload) {
-        observedClientMessageId = payload.clientMessageId;
-
+      async sendMessage() {
         return {
-          clientMessageId: payload.clientMessageId,
-          messageId: "opt-stable-001",
           optNo: "opt-stable-001",
           status: "accepted",
         };
       },
       async poll() {
         const remoteMessage = {
-          clientMessageId: undefined,
           content: {
             text: "服务端确认文本",
           },
@@ -56,7 +50,7 @@ describe("workbench message merge state", () => {
           conversationId: "conv-001",
           createdAt: Date.now(),
           customerId: "cust-001",
-          messageId: "remote-stable-001",
+          msgid: "remote-stable-001",
           optNo: "opt-stable-001",
           rawMsgtype: "text",
           seatId: "drc",
@@ -85,12 +79,11 @@ describe("workbench message merge state", () => {
 
     expect(optimisticMessages).toHaveLength(initialCount + 1);
     expect(optimisticMessage).toMatchObject({
-      clientMessageId: observedClientMessageId,
-      id: observedClientMessageId,
+      uiMessageKey: "opt-stable-001",
       optNo: "opt-stable-001",
-      remoteMessageId: "opt-stable-001",
       status: "accepted",
     });
+    expect(optimisticMessage?.msgid).toBeUndefined();
     expect(useWorkbenchStore.getState().pendingMessages).toHaveLength(1);
 
     await useWorkbenchStore.getState().pollWorkbench();
@@ -100,21 +93,19 @@ describe("workbench message merge state", () => {
     const mergedMatches = mergedMessages.filter(
       (message) =>
         message.optNo === "opt-stable-001" ||
-        message.remoteMessageId === "remote-stable-001" ||
-        message.id === observedClientMessageId,
+        message.msgid === "remote-stable-001",
     );
 
     expect(mergedMessages).toHaveLength(initialCount + 1);
     expect(mergedMatches).toHaveLength(1);
     expect(mergedMatches[0]).toMatchObject({
-      clientMessageId: observedClientMessageId,
       content: {
         text: "服务端确认文本",
         type: "text",
       },
-      id: "remote-stable-001",
+      uiMessageKey: "999",
       optNo: "opt-stable-001",
-      remoteMessageId: "remote-stable-001",
+      msgid: "remote-stable-001",
       status: "sent",
     });
     expect(state.pendingMessages).toHaveLength(0);
@@ -131,16 +122,11 @@ describe("workbench message merge state", () => {
 
   it("marks optimistic messages failed when polled audit messages match by optNo", async () => {
     const baseService = createMockWorkbenchService();
-    let observedClientMessageId = "";
 
     setWorkbenchService({
       ...baseService,
-      async sendMessage(payload) {
-        observedClientMessageId = payload.clientMessageId;
-
+      async sendMessage() {
         return {
-          clientMessageId: payload.clientMessageId,
-          messageId: "opt-failed-001",
           optNo: "opt-failed-001",
           status: "accepted",
         };
@@ -149,7 +135,6 @@ describe("workbench message merge state", () => {
         return {
           activeConversationMessages: [
             {
-              clientMessageId: undefined,
               content: {
                 text: "发送失败文本",
               },
@@ -157,7 +142,7 @@ describe("workbench message merge state", () => {
               conversationId: "conv-001",
               createdAt: Date.now(),
               customerId: "cust-001",
-              messageId: "remote-failed-001",
+              msgid: "remote-failed-001",
               optNo: "opt-failed-001",
               rawMsgtype: "text",
               seatId: "drc",
@@ -187,17 +172,15 @@ describe("workbench message merge state", () => {
     const failedMatches = mergedMessages.filter(
       (message) =>
         message.optNo === "opt-failed-001" ||
-        message.remoteMessageId === "remote-failed-001" ||
-        message.id === observedClientMessageId,
+        message.msgid === "remote-failed-001",
     );
 
     expect(mergedMessages).toHaveLength(initialCount + 1);
     expect(failedMatches).toHaveLength(1);
     expect(failedMatches[0]).toMatchObject({
-      clientMessageId: observedClientMessageId,
-      id: "remote-failed-001",
+      uiMessageKey: "999",
       optNo: "opt-failed-001",
-      remoteMessageId: "remote-failed-001",
+      msgid: "remote-failed-001",
       status: "failed",
     });
     expect(state.pendingMessages).toHaveLength(0);
@@ -209,12 +192,10 @@ describe("workbench message merge state", () => {
 
     setWorkbenchService({
       ...baseService,
-      async sendMessage(payload) {
+      async sendMessage() {
         sendIndex += 1;
 
         return {
-          clientMessageId: payload.clientMessageId,
-          messageId: `opt-${sendIndex}`,
           optNo: `opt-${sendIndex}`,
           status: "accepted",
         };
@@ -223,7 +204,6 @@ describe("workbench message merge state", () => {
         return {
           activeConversationMessages: [
             {
-              clientMessageId: undefined,
               content: {
                 text: "服务端文本",
               },
@@ -231,7 +211,7 @@ describe("workbench message merge state", () => {
               conversationId: "conv-001",
               createdAt: Date.now(),
               customerId: "cust-001",
-              messageId: "remote-text-001",
+              msgid: "remote-text-001",
               optNo: "opt-2",
               rawMsgtype: "text",
               seatId: "drc",
@@ -303,7 +283,6 @@ describe("workbench message merge state", () => {
           type: "image",
         },
         optNo: "opt-1",
-        remoteMessageId: "opt-1",
         status: "accepted",
       },
       {
@@ -311,9 +290,9 @@ describe("workbench message merge state", () => {
           text: "服务端文本",
           type: "text",
         },
-        id: "remote-text-001",
+        uiMessageKey: "999",
         optNo: "opt-2",
-        remoteMessageId: "remote-text-001",
+        msgid: "remote-text-001",
         status: "sent",
       },
       {
@@ -321,10 +300,11 @@ describe("workbench message merge state", () => {
           type: "image",
         },
         optNo: "opt-3",
-        remoteMessageId: "opt-3",
         status: "accepted",
       },
     ]);
+    expect(latestMessages[0]?.msgid).toBeUndefined();
+    expect(latestMessages[2]?.msgid).toBeUndefined();
     expect(
       state.messagesByConversationId["conv-001"].filter((message) => message.optNo === "opt-2"),
     ).toHaveLength(1);
@@ -349,7 +329,7 @@ describe("workbench message merge state", () => {
               conversationId: "conv-001",
               createdAt: Date.now(),
               customerId: "cust-001",
-              messageId: "remote-extra-001",
+              msgid: "remote-extra-001",
               rawMsgtype: "text",
               seatId: "drc",
               senderType: "customer",
@@ -366,14 +346,14 @@ describe("workbench message merge state", () => {
 
     await useWorkbenchStore.getState().initializeWorkbench();
 
-    const initialSeedIds = seedMessages["conv-001"].map((message) => message.id);
+    const initialSeedIds = seedMessages["conv-001"].map((_, index) => String(index + 1));
 
     await useWorkbenchStore.getState().pollWorkbench();
 
     const state = useWorkbenchStore.getState();
     const messages = state.messagesByConversationId["conv-001"];
 
-    expect(messages.slice(0, initialSeedIds.length).map((message) => message.id)).toEqual(
+    expect(messages.slice(0, initialSeedIds.length).map((message) => message.uiMessageKey)).toEqual(
       initialSeedIds,
     );
     expect(messages.at(-1)).toMatchObject({
@@ -381,7 +361,8 @@ describe("workbench message merge state", () => {
         text: "服务端补充消息",
         type: "text",
       },
-      id: "remote-extra-001",
+      uiMessageKey: "999",
+      msgid: "remote-extra-001",
     });
     expect(state.activeMessageSeq).toBe(999);
     expect(state.messagePaginationByConversationId["conv-001"]).toMatchObject({
@@ -395,10 +376,8 @@ describe("workbench message merge state", () => {
 
     setWorkbenchService({
       ...baseService,
-      async sendMessage(payload) {
+      async sendMessage() {
         return {
-          clientMessageId: payload.clientMessageId,
-          messageId: "opt-new-001",
           optNo: "opt-new-001",
           status: "accepted",
         };
@@ -414,7 +393,7 @@ describe("workbench message merge state", () => {
               conversationId: "conv-001",
               createdAt: Date.now(),
               customerId: "cust-001",
-              messageId: "remote-new-customer-001",
+              msgid: "remote-new-customer-001",
               rawMsgtype: "text",
               seatId: "drc",
               senderType: "customer",
@@ -446,7 +425,7 @@ describe("workbench message merge state", () => {
       isNew: true,
       role: "agent",
     });
-    expect(messages.find((message) => message.id === "remote-new-customer-001"))
+    expect(messages.find((message) => message.uiMessageKey === "1000"))
       .toMatchObject({
         isNew: true,
         role: "customer",
@@ -618,7 +597,7 @@ function createPolledMessage({
     conversationId: "conv-001",
     createdAt: Date.now(),
     customerId: "cust-001",
-    messageId,
+    msgid: messageId,
     rawMsgtype: senderType === "system" ? "system" : "text",
     seatId: "drc",
     senderType,

@@ -48,7 +48,8 @@ function createFileMessage(): ChatMessage {
     },
     author: "客户",
     conversationId: "conversation-1",
-    id: "message-file",
+    uiMessageKey: "message-file",
+    msgid: "message-file",
     role: "customer",
     sender: {
       id: "customer-1",
@@ -70,7 +71,8 @@ function createVideoMessage(): ChatMessage {
     },
     author: "客户",
     conversationId: "conversation-1",
-    id: "message-video",
+    uiMessageKey: "message-video",
+    msgid: "message-video",
     role: "customer",
     sender: {
       id: "customer-1",

@@ -33,7 +33,7 @@ const customerMessage = {
     type: "text",
   },
   conversationId: "conv-001",
-  id: "msg-001",
+  msgid: "msg-001",
   role: "customer",
   sender: {
     id: "cust-001",
@@ -42,6 +42,7 @@ const customerMessage = {
   sentAt: "2026-05-30 10:00:00",
   seq: 1,
   status: "sent",
+  uiMessageKey: "1",
 } satisfies ChatMessage;
 
 function createSendPayload(content = "推荐话术"): SmartReplySendPayload {

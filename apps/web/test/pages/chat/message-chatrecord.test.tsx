@@ -10,7 +10,7 @@ describe("ChatRecordMessageCard", () => {
       <ChatRecordMessageCard
         content={createChatRecordContent()}
         conversationId="conversation-1"
-        msgInfoId={830}
+        messageSeq={830}
       />,
     );
 
@@ -32,7 +32,7 @@ describe("ChatRecordMessageCard", () => {
           type: "chatrecord",
         }}
         conversationId="conversation-1"
-        msgInfoId={830}
+        messageSeq={830}
       />,
     );
 
@@ -54,7 +54,7 @@ describe("ChatRecordMessageCard", () => {
         }}
         conversationId="conversation-1"
         loadChatRecordDetail={loadChatRecordDetail}
-        msgInfoId={830}
+        messageSeq={830}
       />,
     );
 
@@ -67,7 +67,7 @@ describe("ChatRecordMessageCard", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("keeps the summary card visible without loading detail when msgInfoId is missing", async () => {
+  it("keeps the summary card visible without loading detail when messageSeq is missing", async () => {
     const user = userEvent.setup();
     const loadChatRecordDetail = vi.fn();
 
@@ -100,7 +100,7 @@ describe("ChatRecordMessageCard", () => {
           type: "chatrecord",
         }}
         conversationId="conversation-1"
-        msgInfoId={830}
+        messageSeq={830}
       />,
     );
 
@@ -113,7 +113,7 @@ describe("ChatRecordMessageCard", () => {
   it("opens detail dialog and renders detail messages", async () => {
     const user = userEvent.setup();
     const loadChatRecordDetail = vi.fn().mockResolvedValue({
-      messageId: "830",
+      messageSeq: 830,
       messages: [
         createTextMessage({
           id: "chatrecord:830:18",
@@ -130,7 +130,7 @@ describe("ChatRecordMessageCard", () => {
         content={createChatRecordContent()}
         conversationId="conversation-1"
         loadChatRecordDetail={loadChatRecordDetail}
-        msgInfoId={830}
+        messageSeq={830}
       />,
     );
 
@@ -138,7 +138,7 @@ describe("ChatRecordMessageCard", () => {
 
     expect(loadChatRecordDetail).toHaveBeenCalledWith({
       conversationId: "conversation-1",
-      msgInfoId: 830,
+      messageSeq: 830,
     });
     const dialog = await screen.findByRole("dialog", {
       name: "缪勇飞和范双飞的聊天记录",
@@ -163,11 +163,11 @@ describe("ChatRecordMessageCard", () => {
     const user = userEvent.setup();
     const loadChatRecordDetail = vi.fn()
       .mockResolvedValueOnce({
-        messageId: "830",
+        messageSeq: 830,
         messages: [],
       })
       .mockResolvedValueOnce({
-        messageId: "830",
+        messageSeq: 830,
         messages: [
           createTextMessage({
             id: "chatrecord:830:22",
@@ -181,7 +181,7 @@ describe("ChatRecordMessageCard", () => {
         content={createChatRecordContent()}
         conversationId="conversation-1"
         loadChatRecordDetail={loadChatRecordDetail}
-        msgInfoId={830}
+        messageSeq={830}
       />,
     );
 
@@ -213,11 +213,11 @@ describe("ChatRecordMessageCard", () => {
   it("ignores stale detail responses after the message context changes", async () => {
     const user = userEvent.setup();
     const initialRequest = createDeferred<{
-      messageId: string;
+      messageSeq: number;
       messages: ChatMessage[];
     }>();
     const nextContextRequest = createDeferred<{
-      messageId: string;
+      messageSeq: number;
       messages: ChatMessage[];
     }>();
     const loadChatRecordDetail = vi.fn()
@@ -229,7 +229,7 @@ describe("ChatRecordMessageCard", () => {
         content={createChatRecordContent()}
         conversationId="conversation-1"
         loadChatRecordDetail={loadChatRecordDetail}
-        msgInfoId={830}
+        messageSeq={830}
       />,
     );
 
@@ -240,19 +240,19 @@ describe("ChatRecordMessageCard", () => {
         content={createChatRecordContent()}
         conversationId="conversation-2"
         loadChatRecordDetail={loadChatRecordDetail}
-        msgInfoId={831}
+        messageSeq={831}
       />,
     );
 
     await waitFor(() => {
       expect(loadChatRecordDetail).toHaveBeenCalledWith({
         conversationId: "conversation-2",
-        msgInfoId: 831,
+        messageSeq: 831,
       });
     });
 
     nextContextRequest.resolve({
-      messageId: "831",
+      messageSeq: 831,
       messages: [
         createTextMessage({
           id: "chatrecord:831:new",
@@ -267,7 +267,7 @@ describe("ChatRecordMessageCard", () => {
     expect(await within(dialog).findByText("新的详情")).toBeInTheDocument();
 
     initialRequest.resolve({
-      messageId: "830",
+      messageSeq: 830,
       messages: [
         createTextMessage({
           id: "chatrecord:830:old",
@@ -320,7 +320,8 @@ function createTextMessage({
       type: "text",
     },
     conversationId: "conversation-1",
-    id,
+    uiMessageKey: id,
+    msgid: id,
     role: "customer",
     sender: {
       id: "customer-1",
@@ -342,7 +343,8 @@ function createFileMessage(): ChatMessage {
       type: "file",
     },
     conversationId: "conversation-1",
-    id: "chatrecord:parent-chatrecord-msgid:19",
+    uiMessageKey: "chatrecord:parent-chatrecord-msgid:19",
+    msgid: "chatrecord:parent-chatrecord-msgid:19",
     role: "customer",
     sender: {
       id: "customer-1",
@@ -365,7 +367,8 @@ function createVideoMessage(): ChatMessage {
       videoUrl: "",
     },
     conversationId: "conversation-1",
-    id: "chatrecord:parent-chatrecord-msgid:20",
+    uiMessageKey: "chatrecord:parent-chatrecord-msgid:20",
+    msgid: "chatrecord:parent-chatrecord-msgid:20",
     role: "customer",
     sender: {
       id: "customer-1",
@@ -386,7 +389,8 @@ function createNestedChatRecordMessage(): ChatMessage {
       unsupportedDisplayText: "该消息类型暂不能展示",
     },
     conversationId: "conversation-1",
-    id: "chatrecord:parent-chatrecord-msgid:21",
+    uiMessageKey: "chatrecord:parent-chatrecord-msgid:21",
+    msgid: "chatrecord:parent-chatrecord-msgid:21",
     role: "customer",
     sender: {
       id: "customer-1",

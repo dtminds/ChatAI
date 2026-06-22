@@ -46,12 +46,12 @@ export function resolveSidebarIframeSendStatus(input: {
     return "1";
   }
 
-  if (input.isAccountOffline) {
-    return "2";
-  }
-
   if (input.isAccountSeatExpired) {
     return "3";
+  }
+
+  if (input.isAccountOffline) {
+    return "2";
   }
 
   if (!input.isAccountTakenOver) {

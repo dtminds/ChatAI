@@ -90,6 +90,7 @@ describe("resolveWorkbenchPermissions", () => {
       resolveWorkbenchPermissions({
         account: createAccount({
           bizStatus: 0,
+          loginStatus: "offline",
           takenOverEmployeeId: me.id,
         }),
         activeConversation: createConversation(),
@@ -219,6 +220,7 @@ describe("resolveWorkbenchPermissions", () => {
     const permissions = resolveWorkbenchPermissions({
       account: createAccount({
         bizStatus: 0,
+        loginStatus: "offline",
         takenOverEmployeeId: me.id,
       }),
       activeConversation: createConversation(),

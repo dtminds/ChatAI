@@ -147,12 +147,12 @@ function resolveComposerPlaceholder({
     return "当前列表暂无可发送会话";
   }
 
-  if (isAccountOffline) {
-    return "当前账号离线，暂时无法发送消息";
-  }
-
   if (isAccountSeatExpired) {
     return "当前席位已失效，暂时无法发送消息";
+  }
+
+  if (isAccountOffline) {
+    return "当前账号离线，暂时无法发送消息";
   }
 
   if (!isAccountTakenOverByCurrentUser) {

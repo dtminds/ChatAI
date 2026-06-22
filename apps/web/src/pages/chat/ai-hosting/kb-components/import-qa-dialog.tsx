@@ -1,3 +1,4 @@
+import type { Sheet } from "read-excel-file/browser";
 import { useState } from "react";
 import { AlertCircleIcon, Download01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -33,9 +34,11 @@ const QA_IMPORT_ACCEPT = {
 const QA_IMPORT_TEMPLATE_URL =
   "https://b5.bokr.com.cn/dist/Q&A问答对示例.faq.xlsx";
 
-async function readAllQaImportSheets(file: File) {
-  const { default: readExcelFile } = await import("read-excel-file/browser");
-  return readExcelFile(file);
+async function readAllQaImportSheets(file: File): Promise<Sheet[]> {
+  const { default: readAllSheetsFromWorkbook } = await import(
+    "read-excel-file/browser"
+  );
+  return readAllSheetsFromWorkbook(file);
 }
 
 export function ImportQaDialog({

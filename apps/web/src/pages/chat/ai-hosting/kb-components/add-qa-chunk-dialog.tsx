@@ -62,18 +62,22 @@ export function AddQaChunkDialog({
     }
 
     setSubmitting(true);
+    let submitSuccessful = false;
 
     try {
       await Promise.resolve(
         onSubmit({ question: normalizedQuestion, answer: normalizedAnswer }),
       );
-      if (isMountedRef.current) {
-        handleOpenChange(false);
-      }
+      submitSuccessful = true;
     } finally {
       if (isMountedRef.current) {
         setSubmitting(false);
       }
+    }
+
+    if (submitSuccessful && isMountedRef.current) {
+      reset();
+      onOpenChange(false);
     }
   }
 

@@ -60,18 +60,22 @@ export function AddDocChunkDialog({
     }
 
     setSubmitting(true);
+    let submitSuccessful = false;
 
     try {
       await Promise.resolve(
         onSubmit({ title: normalizedTitle, content: normalizedContent }),
       );
-      if (isMountedRef.current) {
-        handleOpenChange(false);
-      }
+      submitSuccessful = true;
     } finally {
       if (isMountedRef.current) {
         setSubmitting(false);
       }
+    }
+
+    if (submitSuccessful && isMountedRef.current) {
+      reset();
+      onOpenChange(false);
     }
   }
 

@@ -71,6 +71,7 @@ export function EditChunkDialog({
     }
 
     setSubmitting(true);
+    let submitSuccessful = false;
 
     try {
       if (chunk.type === "qa") {
@@ -103,13 +104,15 @@ export function EditChunkDialog({
         );
       }
 
-      if (isMountedRef.current) {
-        handleOpenChange(false);
-      }
+      submitSuccessful = true;
     } finally {
       if (isMountedRef.current) {
         setSubmitting(false);
       }
+    }
+
+    if (submitSuccessful && isMountedRef.current) {
+      onOpenChange(false);
     }
   }
 

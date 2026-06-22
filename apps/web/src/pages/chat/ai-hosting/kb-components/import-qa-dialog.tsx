@@ -119,6 +119,7 @@ export function ImportQaDialog({
     }
 
     setIsImporting(true);
+    let importSuccessful = false;
 
     try {
       const sheets = await readAllQaImportSheets(selectedFile.file);
@@ -137,7 +138,7 @@ export function ImportQaDialog({
       );
 
       onImportComplete?.(entries);
-      handleOpenChange(false);
+      importSuccessful = true;
     } catch {
       if (isMountedRef.current) {
         setFileError("文件解析失败，请确认文件为标准 .faq.xlsx");
@@ -146,6 +147,11 @@ export function ImportQaDialog({
       if (isMountedRef.current) {
         setIsImporting(false);
       }
+    }
+
+    if (importSuccessful && isMountedRef.current) {
+      reset();
+      onOpenChange(false);
     }
   }
 

@@ -17,6 +17,8 @@ import { getPlayableMediaHost, toPlayableVoicePathname } from "./media-config.js
 
 export type SeatRow = {
   avatar: string | null;
+  biz_status?: number | string | null;
+  expire_time?: number | string | null;
   host_sub_id: number | string | null;
   id: number | string;
   is_online: number | null;
@@ -112,7 +114,9 @@ export function mapSeatRow(row: SeatRow): WorkbenchSeatDto {
 
   return {
     avatar: row.avatar ?? "",
+    bizStatus: row.biz_status == null ? 1 : toNumber(row.biz_status),
     description: "",
+    expireTime: row.expire_time == null ? undefined : toNumber(row.expire_time),
     hostSubUserId,
     lastMessageTime: toOptionalTimestamp(row.last_message_time),
     loginStatus: row.is_online === 1 ? "online" : "offline",

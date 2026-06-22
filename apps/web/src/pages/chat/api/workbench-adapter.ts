@@ -37,7 +37,9 @@ export function adaptEmployee(dto: WorkbenchSubUserDto): EmployeeProfile {
 export function adaptAccount(dto: WorkbenchSeatDto, unreadCount = dto.unreadCount): Account {
   return {
     avatarUrl: dto.avatar,
+    bizStatus: dto.bizStatus,
     description: dto.description,
+    expireTime: dto.expireTime,
     id: dto.seatId,
     lastMessageTime: dto.lastMessageTime,
     loginStatus: dto.loginStatus,

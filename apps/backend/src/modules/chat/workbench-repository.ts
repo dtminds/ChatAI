@@ -188,6 +188,8 @@ type ConversationHydrationSources = {
 
 type SeatBaseRow = {
   avatar: string | null;
+  biz_status: number | string | null;
+  expire_time: number | string | null;
   host_sub_id: number | string | null;
   id: number | string;
   is_online: number | null;
@@ -2509,6 +2511,8 @@ export class WorkbenchRepository {
         "seat.third_user_name as third_user_name",
         "seat.third_avatar as avatar",
         "seat.is_online as is_online",
+        "seat.expire_time as expire_time",
+        "seat.biz_status as biz_status",
         "seat.host_sub_id as host_sub_id",
       ])
       .where("relation.sub_id", "=", subUserNumericId)
@@ -3116,6 +3120,8 @@ export class WorkbenchRepository {
         "third_user_name",
         "third_avatar as avatar",
         "is_online",
+        "expire_time",
+        "biz_status",
         "host_sub_id",
       ])
       .where("id", "=", seatNumericId)
@@ -3153,6 +3159,8 @@ export class WorkbenchRepository {
         "seat.third_user_name as third_user_name",
         "seat.third_avatar as avatar",
         "seat.is_online as is_online",
+        "seat.expire_time as expire_time",
+        "seat.biz_status as biz_status",
         "seat.host_sub_id as host_sub_id",
         expressionBuilder.fn
           .coalesce(
@@ -3169,6 +3177,8 @@ export class WorkbenchRepository {
         "seat.third_user_name",
         "seat.third_avatar",
         "seat.is_online",
+        "seat.expire_time",
+        "seat.biz_status",
         "seat.host_sub_id",
       ])
       .execute();

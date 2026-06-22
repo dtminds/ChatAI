@@ -3989,6 +3989,12 @@ export function createWorkbenchStore() {
 
                 return {
                   ...account,
+                  ...(change.bizStatus !== undefined
+                    ? { bizStatus: change.bizStatus }
+                    : {}),
+                  ...(change.expireTime !== undefined
+                    ? { expireTime: change.expireTime }
+                    : {}),
                   lastMessageTime: change.lastMessageTime,
                   ...(Object.prototype.hasOwnProperty.call(change, "hostSubUserId")
                     ? { takenOverEmployeeId: change.hostSubUserId ?? undefined }

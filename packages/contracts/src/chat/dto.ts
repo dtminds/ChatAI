@@ -275,6 +275,10 @@ export type WorkbenchSeatDto = {
   lastMessageTime?: number;
   loginStatus: "online" | "offline";
   hostSubUserId?: string;
+  /** 席位业务状态：1 已绑定，0 已注销 */
+  bizStatus?: number;
+  /** 过期时间戳，单位：秒 */
+  expireTime?: number;
 };
 
 export type WorkbenchConversationSummaryDto = {
@@ -380,6 +384,8 @@ export type WorkbenchSeatChangeDto = {
   unreadCount: number;
   lastMessageTime?: number;
   hostSubUserId?: string | null;
+  bizStatus?: number;
+  expireTime?: number;
 };
 
 export type WorkbenchConversationChangeDto =

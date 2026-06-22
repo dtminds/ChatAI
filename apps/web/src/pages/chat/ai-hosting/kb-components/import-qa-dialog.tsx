@@ -85,6 +85,14 @@ export function ImportQaDialog({
   const [isCheckingFile, setIsCheckingFile] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
 
+  function reset() {
+    invalidateValidation();
+    setSelectedFile(null);
+    setFileError("");
+    setIsCheckingFile(false);
+    setIsImporting(false);
+  }
+
   useEffect(() => {
     isMountedRef.current = true;
 
@@ -93,21 +101,15 @@ export function ImportQaDialog({
     };
   }, []);
 
-  const reset = () => {
-    invalidateValidation();
-    setSelectedFile(null);
-    setFileError("");
-    setIsCheckingFile(false);
-    setIsImporting(false);
-  };
+  useEffect(() => {
+    if (!open) {
+      reset();
+    }
+  }, [open]);
 
   const handleOpenChange = (nextOpen: boolean) => {
     if (!nextOpen && (isCheckingFile || isImporting)) {
       return;
-    }
-
-    if (!nextOpen) {
-      reset();
     }
 
     onOpenChange(nextOpen);
@@ -150,7 +152,6 @@ export function ImportQaDialog({
     }
 
     if (importSuccessful && isMountedRef.current) {
-      reset();
       onOpenChange(false);
     }
   }

@@ -120,6 +120,10 @@ export function KbDocDetailPage() {
 
   const debouncedSearchQuery = useDebouncedValue(searchQuery.trim().toLowerCase(), 300);
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearchQuery]);
+
   const docChunks = useMemo(() => {
     if (!doc) {
       return [];
@@ -283,7 +287,6 @@ export function KbDocDetailPage() {
                 className="h-10 rounded-[8px] pl-9"
                 onChange={(event) => {
                   setSearchQuery(event.target.value);
-                  setCurrentPage(1);
                 }}
                 placeholder="搜索切片标题"
                 value={searchQuery}

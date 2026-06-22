@@ -35,6 +35,12 @@ export function AddQaChunkDialog({
     };
   }, []);
 
+  useEffect(() => {
+    if (!open) {
+      reset();
+    }
+  }, [open]);
+
   function reset() {
     setQuestion("");
     setAnswer("");
@@ -44,10 +50,6 @@ export function AddQaChunkDialog({
   function handleOpenChange(nextOpen: boolean) {
     if (!nextOpen && submitting) {
       return;
-    }
-
-    if (!nextOpen) {
-      reset();
     }
 
     onOpenChange(nextOpen);
@@ -76,7 +78,6 @@ export function AddQaChunkDialog({
     }
 
     if (submitSuccessful && isMountedRef.current) {
-      reset();
       onOpenChange(false);
     }
   }

@@ -33,6 +33,12 @@ export function AddDocChunkDialog({
     };
   }, []);
 
+  useEffect(() => {
+    if (!open) {
+      reset();
+    }
+  }, [open]);
+
   function reset() {
     setTitle("");
     setContent("");
@@ -42,10 +48,6 @@ export function AddDocChunkDialog({
   function handleOpenChange(nextOpen: boolean) {
     if (!nextOpen && submitting) {
       return;
-    }
-
-    if (!nextOpen) {
-      reset();
     }
 
     onOpenChange(nextOpen);
@@ -74,7 +76,6 @@ export function AddDocChunkDialog({
     }
 
     if (submitSuccessful && isMountedRef.current) {
-      reset();
       onOpenChange(false);
     }
   }

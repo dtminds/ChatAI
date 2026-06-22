@@ -89,8 +89,9 @@ function getChunkSearchTitle(chunk: KnowledgeChunk) {
   return chunk.title ?? "";
 }
 
-function createChunkId() {
-  return `chunk-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+function createChunkId(suffix?: string | number) {
+  const uniquePart = suffix ?? Math.random().toString(36).slice(2, 8);
+  return `chunk-${Date.now()}-${uniquePart}`;
 }
 
 export function KbDocDetailPage() {
@@ -175,8 +176,8 @@ export function KbDocDetailPage() {
 
     const now = getLocalTimeString();
     addMockKnowledgeChunks(
-      entries.map((entry) => ({
-        id: createChunkId(),
+      entries.map((entry, index) => ({
+        id: createChunkId(index),
         knowledgeBaseId: knowledgeBase.id,
         docId: doc.id,
         type: "qa",

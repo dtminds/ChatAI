@@ -600,6 +600,35 @@ describe("AI hosting pages", () => {
     expect(screen.getByRole("button", { name: "导入文档" })).toBeDisabled();
   });
 
+  it("accepts QA import files when read-excel-file returns single-sheet rows", async () => {
+    const user = userEvent.setup();
+
+    readXlsxFileMock.mockResolvedValueOnce([
+      ["问题", "答案"],
+      ["晨间护肤怎么做", "先清洁再保湿"],
+    ]);
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
+    );
+
+    await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
+    await user.click(screen.getByRole("button", { name: "添加知识" }));
+    await user.click(screen.getByRole("menuitem", { name: /问答/ }));
+    await user.upload(
+      screen.getByLabelText("选择问答导入文件"),
+      new File(["question,answer"], "快捷话术导入.faq.xlsx", {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      }),
+    );
+
+    expect(screen.getByRole("region", { name: "已选择文件" })).toHaveTextContent(
+      "共 1 个 sheet，2 行",
+    );
+    expect(screen.getByRole("button", { name: "导入文档" })).toBeEnabled();
+  });
+
   it("rejects QA import files with more than 30 sheets", async () => {
     const user = userEvent.setup();
 

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -17,12 +17,21 @@ export function AddDocChunkDialog({
   open,
 }: {
   onOpenChange: (open: boolean) => void;
-  onSubmit: (values: { title: string; content: string }) => void;
+  onSubmit: (values: { title: string; content: string }) => void | Promise<void>;
   open: boolean;
 }) {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const isMountedRef = useRef(false);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   function reset() {
     setTitle("");
@@ -42,7 +51,7 @@ export function AddDocChunkDialog({
     onOpenChange(nextOpen);
   }
 
-  function handleSubmit() {
+  async function handleSubmit() {
     const normalizedTitle = title.trim();
     const normalizedContent = content.trim();
 
@@ -51,9 +60,19 @@ export function AddDocChunkDialog({
     }
 
     setSubmitting(true);
-    onSubmit({ title: normalizedTitle, content: normalizedContent });
-    setSubmitting(false);
-    handleOpenChange(false);
+
+    try {
+      await Promise.resolve(
+        onSubmit({ title: normalizedTitle, content: normalizedContent }),
+      );
+      if (isMountedRef.current) {
+        handleOpenChange(false);
+      }
+    } finally {
+      if (isMountedRef.current) {
+        setSubmitting(false);
+      }
+    }
   }
 
   return (
@@ -96,7 +115,7 @@ export function AddDocChunkDialog({
           </Button>
           <Button
             disabled={submitting || !title.trim() || !content.trim()}
-            onClick={handleSubmit}
+            onClick={() => void handleSubmit()}
             type="button"
           >
             确定

@@ -31,6 +31,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { isExpiredAccountSeat } from "@/pages/chat/lib/workbench-permissions";
 import type { Account } from "@/pages/chat/chat-types";
 
 export function AccountSidebarItem({
@@ -57,17 +58,26 @@ export function AccountSidebarItem({
   const [isTakeoverConfirmOpen, setIsTakeoverConfirmOpen] = useState(false);
   const [isTakeoverConfirmPending, setIsTakeoverConfirmPending] = useState(false);
   const isMountedRef = useRef(true);
+  const isExpired = isExpiredAccountSeat(account);
   const isOffline = account.loginStatus === "offline";
   const isTakenOverByCurrentUser =
     !!account.takenOverEmployeeId && account.takenOverEmployeeId === currentEmployeeId;
   const isTakingOver = takeoverStatus === "taking-over";
-  const statusLabel = isOffline ? "离线" : isTakenOverByCurrentUser ? "接管中" : "未接管";
-  const canShowTakeoverPopover = !isOffline && !isTakenOverByCurrentUser;
+  const statusLabel = isExpired
+    ? "席位已失效"
+    : isOffline
+      ? "离线"
+      : isTakenOverByCurrentUser
+        ? "接管中"
+        : "未接管";
+  const canShowTakeoverPopover = !isExpired && !isOffline && !isTakenOverByCurrentUser;
   const canTakeOver = canTakeOverAccount && canShowTakeoverPopover && !isTakingOver;
   const shouldShowUnreadDot =
-    !isActive && isTakenOverByCurrentUser && !!account.unreadCount;
+    !isExpired && !isActive && isTakenOverByCurrentUser && !!account.unreadCount;
   const compactStatusLabel =
-    isTakingOver
+    isExpired
+      ? "席位已失效"
+      : isTakingOver
       ? "接管中"
       : isOffline
         ? "离线"
@@ -78,21 +88,21 @@ export function AccountSidebarItem({
     <span
       className={cn(
         "inline-flex shrink-0 items-center gap-1 rounded-full text-[10px] font-medium leading-none",
-        isOffline && "text-muted-foreground",
-        !isOffline && isTakenOverByCurrentUser && "text-success",
-        !isOffline && !isTakenOverByCurrentUser && "text-warning",
+        (isExpired || isOffline) && "text-muted-foreground",
+        !isExpired && !isOffline && isTakenOverByCurrentUser && "text-success",
+        !isExpired && !isOffline && !isTakenOverByCurrentUser && "text-warning",
       )}
     >
       <span
         data-testid="account-status-dot"
         className={cn(
           "size-1.5 rounded-full",
-          isOffline && "bg-muted-foreground/50",
-          !isOffline && isTakenOverByCurrentUser && "bg-success",
-          !isOffline && !isTakenOverByCurrentUser && "bg-warning"
+          (isExpired || isOffline) && "bg-muted-foreground/50",
+          !isExpired && !isOffline && isTakenOverByCurrentUser && "bg-success",
+          !isExpired && !isOffline && !isTakenOverByCurrentUser && "bg-warning"
         )}
       />
-      <span>{isTakingOver ? "接管中" : statusLabel}</span>
+      <span>{statusLabel}</span>
     </span>
   );
   const compactStatusBadge = (
@@ -100,9 +110,9 @@ export function AccountSidebarItem({
       aria-label={`${account.name} 状态 ${compactStatusLabel}`}
       className={cn(
         "size-2.5",
-        isOffline && "bg-muted-foreground/50",
-        !isOffline && isTakenOverByCurrentUser && "bg-success",
-        !isOffline && !isTakenOverByCurrentUser && "bg-warning",
+        (isExpired || isOffline) && "bg-muted-foreground/50",
+        !isExpired && !isOffline && isTakenOverByCurrentUser && "bg-success",
+        !isExpired && !isOffline && !isTakenOverByCurrentUser && "bg-warning",
       )}
       data-testid={`account-compact-status-${account.id}`}
     />

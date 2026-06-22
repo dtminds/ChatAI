@@ -1359,6 +1359,8 @@ export class MysqlWorkbenchService implements WorkbenchService {
       ),
       seatChanges: orderedChangedSeats
         .map((seat) => ({
+          bizStatus: seat.bizStatus,
+          expireTime: seat.expireTime,
           hostSubUserId: seat.hostSubUserId ?? null,
           lastMessageTime: seat.lastMessageTime,
           seatId: seat.seatId,

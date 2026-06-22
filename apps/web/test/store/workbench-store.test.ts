@@ -2685,6 +2685,51 @@ describe("useWorkbenchStore", () => {
     expect(useWorkbenchStore.getState().accounts).toBe(accountsBeforePoll);
   });
 
+  it("preserves account status fields when poll account changes contain undefined values", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        return {
+          activeConversationMessages: [],
+          conversationChanges: [],
+          nextVersion: request.sinceVersion + 1,
+          seatChanges: [
+            {
+              accountId: "drc",
+              bizStatus: undefined,
+              expireTime: undefined,
+              seatId: "drc",
+              unreadCount: 3,
+            },
+          ],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              bizStatus: 0,
+              expireTime: 1,
+            }
+          : account,
+      ),
+    }));
+
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(useWorkbenchStore.getState().accounts.find((account) => account.id === "drc")).toMatchObject({
+      bizStatus: 0,
+      expireTime: 1,
+      unreadCount: 3,
+    });
+  });
+
   it("preserves pending messages reference when poll messages do not resolve pending items", async () => {
     const baseService = createMockWorkbenchService();
 
@@ -3650,6 +3695,46 @@ describe("useWorkbenchStore", () => {
     const result = await useWorkbenchStore.getState().sendAgentTextMessage(
       "失效会话不能发送",
     );
+
+    expect(result).toEqual({
+      errorCode: "UNAVAILABLE",
+      errorMessage: "当前无法发送消息",
+      reason: "unavailable",
+      ok: false,
+    });
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("does not send messages from an inactive account seat", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              bizStatus: 0,
+            }
+          : account,
+      ),
+    }));
+
+    expect(useWorkbenchStore.getState().activeAccountId).toBe("drc");
+    expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-001");
+
+    const result = await useWorkbenchStore.getState().sendAgentMessageSegments([
+      {
+        text: "失效席位不能发送",
+        type: "text",
+      },
+    ]);
 
     expect(result).toEqual({
       errorCode: "UNAVAILABLE",

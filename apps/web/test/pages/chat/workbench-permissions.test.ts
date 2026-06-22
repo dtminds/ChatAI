@@ -85,6 +85,20 @@ describe("resolveWorkbenchPermissions", () => {
         subUser: undefined,
       }).sidebarIframeSendStatus,
     ).toBe("4");
+
+    expect(
+      resolveWorkbenchPermissions({
+        account: createAccount({
+          bizStatus: 0,
+          loginStatus: "offline",
+          takenOverEmployeeId: me.id,
+        }),
+        activeConversation: createConversation(),
+        bootstrapStatus: "ready",
+        me,
+        subUser: operator,
+      }).sidebarIframeSendStatus,
+    ).toBe("3");
   });
 
   it("prioritizes unavailable conversation state before account state and permission copy", () => {
@@ -198,6 +212,28 @@ describe("resolveWorkbenchPermissions", () => {
       canSendMessage: false,
       canUseChatSend: true,
       canUseConversationActions: false,
+      isConversationActionDisabled: true,
+    });
+  });
+
+  it("blocks sending and conversation actions when the account seat is inactive", () => {
+    const permissions = resolveWorkbenchPermissions({
+      account: createAccount({
+        bizStatus: 0,
+        loginStatus: "offline",
+        takenOverEmployeeId: me.id,
+      }),
+      activeConversation: createConversation(),
+      bootstrapStatus: "ready",
+      me,
+      subUser: operator,
+    });
+
+    expect(permissions).toMatchObject({
+      canSendMessage: false,
+      canUseConversationActions: false,
+      composerPlaceholder: "当前席位已失效，暂时无法发送消息",
+      isAccountSeatExpired: true,
       isConversationActionDisabled: true,
     });
   });

@@ -16,6 +16,8 @@ describe("workbench MySQL mappers", () => {
     expect(
       mapSeatRow({
         avatar: "https://example.com/avatar.png",
+        biz_status: 0,
+        expire_time: 1778240000,
         host_sub_id: 3,
         id: 12,
         is_online: 1,
@@ -26,7 +28,9 @@ describe("workbench MySQL mappers", () => {
       }),
     ).toEqual({
       avatar: "https://example.com/avatar.png",
+      bizStatus: 0,
       description: "",
+      expireTime: 1778240000,
       hostSubUserId: "3",
       lastMessageTime: 1778240000000,
       loginStatus: "online",

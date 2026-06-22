@@ -3557,7 +3557,9 @@ describe("WorkbenchRepository", () => {
     await expect(repository.getSeatsByIds(["13", "12", "12", "not-a-seat"])).resolves.toEqual([
       {
         avatar: "",
+        bizStatus: 1,
         description: "",
+        expireTime: undefined,
         hostSubUserId: "101",
         lastMessageTime: new Date("2026-05-21T06:15:21.000Z").getTime(),
         loginStatus: "online",
@@ -3570,7 +3572,9 @@ describe("WorkbenchRepository", () => {
       },
       {
         avatar: "",
+        bizStatus: 1,
         description: "",
+        expireTime: undefined,
         hostSubUserId: "202",
         lastMessageTime: new Date("2026-05-21T06:16:21.000Z").getTime(),
         loginStatus: "offline",

@@ -303,11 +303,6 @@ export function addMockKnowledgeChunk(chunk: KnowledgeChunk) {
   emitKnowledgeChunkStoreChange();
 }
 
-export function addMockKnowledgeChunks(chunks: KnowledgeChunk[]) {
-  knowledgeChunkStoreItems = [...chunks, ...knowledgeChunkStoreItems];
-  emitKnowledgeChunkStoreChange();
-}
-
 export function updateMockKnowledgeChunk(
   chunkId: string,
   patch: Partial<Pick<KnowledgeChunk, "question" | "answer" | "title" | "content">>,

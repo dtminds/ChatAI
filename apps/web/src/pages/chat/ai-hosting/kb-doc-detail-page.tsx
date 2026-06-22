@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import {
   Add01Icon,
   ArrowLeft01Icon,
-  ArrowDown01Icon,
   Search01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -20,12 +19,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import {
   Table,
@@ -46,10 +39,8 @@ import { FileExtensionBadge } from "@/pages/chat/components/message/file";
 import { AiHostingLayout, AiHostingPageHeader } from "./ai-hosting-layout";
 import { AddChunkDialog } from "./kb-components/add-chunk-dialog";
 import { EditChunkDialog } from "./kb-components/edit-chunk-dialog";
-import { ImportQaDialog } from "./kb-components/import-qa-dialog";
 import {
   addMockKnowledgeChunk,
-  addMockKnowledgeChunks,
   deleteMockKnowledgeChunk,
   getKnowledgeRecordById,
   getLocalTimeString,
@@ -107,7 +98,6 @@ export function KbDocDetailPage() {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const [importQaDialogOpen, setImportQaDialogOpen] = useState(false);
   const [addQaDialogOpen, setAddQaDialogOpen] = useState(false);
   const [addDocDialogOpen, setAddDocDialogOpen] = useState(false);
   const [editChunk, setEditChunk] = useState<KnowledgeChunk | null>(null);
@@ -166,28 +156,6 @@ export function KbDocDetailPage() {
     });
     setCurrentPage(1);
     toast.success("已添加问答切片");
-  }
-
-  function handleImportQaChunks(entries: Array<{ answer: string; question: string }>) {
-    if (!doc || !knowledgeBase || entries.length === 0) {
-      return;
-    }
-
-    const now = getLocalTimeString();
-    addMockKnowledgeChunks(
-      entries.map((entry, index) => ({
-        id: createChunkId(index),
-        knowledgeBaseId: knowledgeBase.id,
-        docId: doc.id,
-        type: "qa",
-        question: entry.question,
-        answer: entry.answer,
-        createdAt: now,
-        updatedAt: now,
-      })),
-    );
-    setCurrentPage(1);
-    toast.success(`已导入 ${entries.length} 条问答切片`);
   }
 
   function handleCreateDocChunk(values: { content: string; title: string }) {
@@ -291,7 +259,11 @@ export function KbDocDetailPage() {
               />
             </div>
 
-            <AddChunkActions doc={doc} onAddDoc={() => setAddDocDialogOpen(true)} onAddQa={() => setAddQaDialogOpen(true)} onImportQa={() => setImportQaDialogOpen(true)} />
+            <AddChunkActions
+              doc={doc}
+              onAddDoc={() => setAddDocDialogOpen(true)}
+              onAddQa={() => setAddQaDialogOpen(true)}
+            />
           </div>
 
           <div>
@@ -311,11 +283,6 @@ export function KbDocDetailPage() {
         </section>
       </div>
 
-      <ImportQaDialog
-        onImportComplete={handleImportQaChunks}
-        onOpenChange={setImportQaDialogOpen}
-        open={importQaDialogOpen}
-      />
       <AddChunkDialog
         dialogTitle="添加问答"
         fieldIdPrefix="qa-chunk"
@@ -363,7 +330,9 @@ export function KbDocDetailPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmDelete}>删除</AlertDialogAction>
+            <AlertDialogAction onClick={handleConfirmDelete} variant="destructive">
+              删除
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -390,12 +359,10 @@ function AddChunkActions({
   doc,
   onAddDoc,
   onAddQa,
-  onImportQa,
 }: {
   doc: KnowledgeRecord;
   onAddDoc: () => void;
   onAddQa: () => void;
-  onImportQa: () => void;
 }) {
   if (doc.type === "image") {
     return null;
@@ -403,24 +370,15 @@ function AddChunkActions({
 
   if (doc.type === "qa") {
     return (
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button className="h-10 px-4" type="button">
-            <HugeiconsIcon color="currentColor" icon={Add01Icon} size={17} strokeWidth={1.8} />
-            <span>添加切片</span>
-            <HugeiconsIcon color="currentColor" icon={ArrowDown01Icon} size={16} strokeWidth={1.8} />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-[180px]">
-          <DropdownMenuItem onSelect={onImportQa}>批量导入问答</DropdownMenuItem>
-          <DropdownMenuItem onSelect={onAddQa}>手动添加</DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <Button className="h-10 px-4" onClick={onAddQa} type="button" variant="outline">
+        <HugeiconsIcon color="currentColor" icon={Add01Icon} size={17} strokeWidth={1.8} />
+        <span>添加问答</span>
+      </Button>
     );
   }
 
   return (
-    <Button className="h-10 px-4" onClick={onAddDoc} type="button">
+    <Button className="h-10 px-4" onClick={onAddDoc} type="button" variant="outline">
       <HugeiconsIcon color="currentColor" icon={Add01Icon} size={17} strokeWidth={1.8} />
       <span>添加切片</span>
     </Button>

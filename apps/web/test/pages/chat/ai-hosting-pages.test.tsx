@@ -646,14 +646,13 @@ describe("AI hosting pages", () => {
     ]);
 
     renderWithRoute(
-      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-3",
-      <KbDocDetailPage />,
-      "/chat/ai-hosting/kb/:knowledgeBaseId/docs/:docId",
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
     );
 
-    await screen.findByRole("button", { name: "添加切片" });
-    await user.click(screen.getByRole("button", { name: "添加切片" }));
-    await user.click(screen.getByRole("menuitem", { name: "批量导入问答" }));
+    await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
+    await user.click(screen.getByRole("button", { name: "添加知识" }));
+    await user.click(screen.getByRole("menuitem", { name: /问答/ }));
 
     const dialog = screen.getByRole("dialog", { name: "批量导入问答" });
     await user.upload(
@@ -666,7 +665,7 @@ describe("AI hosting pages", () => {
 
     expect(await screen.findByText("未解析到有效问答，请检查文件内容")).toBeInTheDocument();
     expect(dialog).toBeInTheDocument();
-    expect(screen.getByText("如何恢复出厂设置")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "导入文档" })).toBeEnabled();
   });
 
   it("rejects QA import files with more than 30 sheets", async () => {
@@ -1173,7 +1172,11 @@ describe("AI hosting pages", () => {
     expect(screen.queryByText("FAQ · 华为产品知识")).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "返回知识列表" })).not.toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "搜索切片标题" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "添加切片" })).toBeInTheDocument();
+    const addQaButton = screen.getByRole("button", { name: "添加问答" });
+    expect(addQaButton).not.toHaveAttribute("aria-haspopup", "menu");
+    expect(addQaButton).not.toHaveClass("bg-primary");
+    expect(addQaButton).toHaveClass("border-border");
+    expect(screen.queryByRole("button", { name: "添加切片" })).not.toBeInTheDocument();
     expect(screen.getByRole("table", { name: "切片列表" })).toBeInTheDocument();
     expect(screen.getByText("问题")).toBeInTheDocument();
     expect(screen.getByText("答案")).toBeInTheDocument();
@@ -1209,9 +1212,8 @@ describe("AI hosting pages", () => {
       "/chat/ai-hosting/kb/:knowledgeBaseId/docs/:docId",
     );
 
-    await screen.findByRole("button", { name: "添加切片" });
-    await user.click(screen.getByRole("button", { name: "添加切片" }));
-    await user.click(screen.getByRole("menuitem", { name: "手动添加" }));
+    await screen.findByRole("button", { name: "添加问答" });
+    await user.click(screen.getByRole("button", { name: "添加问答" }));
 
     const dialog = screen.getByRole("dialog", { name: "添加问答" });
     await user.type(within(dialog).getByLabelText(/问题/), "支持 NFC 吗");
@@ -1219,31 +1221,6 @@ describe("AI hosting pages", () => {
     await user.click(within(dialog).getByRole("button", { name: "确定" }));
 
     expect(await screen.findByText("支持 NFC 吗")).toBeInTheDocument();
-  });
-
-  it("imports QA chunks on the chunk detail page", async () => {
-    const user = userEvent.setup();
-
-    renderWithRoute(
-      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-3",
-      <KbDocDetailPage />,
-      "/chat/ai-hosting/kb/:knowledgeBaseId/docs/:docId",
-    );
-
-    await screen.findByRole("button", { name: "添加切片" });
-    await user.click(screen.getByRole("button", { name: "添加切片" }));
-    await user.click(screen.getByRole("menuitem", { name: "批量导入问答" }));
-    await user.upload(
-      screen.getByLabelText("选择问答导入文件"),
-      new File(["question,answer"], "快捷话术导入.faq.xlsx", {
-        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      }),
-    );
-    await user.click(screen.getByRole("button", { name: "导入文档" }));
-
-    expect(await screen.findByText("晨间护肤怎么做")).toBeInTheDocument();
-    expect(screen.getByText("先清洁再保湿")).toBeInTheDocument();
-    expect(screen.queryByRole("dialog", { name: "批量导入问答" })).not.toBeInTheDocument();
   });
 
   it("keeps the add QA chunk dialog open when submit fails", async () => {
@@ -1259,9 +1236,8 @@ describe("AI hosting pages", () => {
         "/chat/ai-hosting/kb/:knowledgeBaseId/docs/:docId",
       );
 
-      await screen.findByRole("button", { name: "添加切片" });
-      await user.click(screen.getByRole("button", { name: "添加切片" }));
-      await user.click(screen.getByRole("menuitem", { name: "手动添加" }));
+      await screen.findByRole("button", { name: "添加问答" });
+      await user.click(screen.getByRole("button", { name: "添加问答" }));
 
       const dialog = screen.getByRole("dialog", { name: "添加问答" });
       await user.type(within(dialog).getByLabelText(/问题/), "支持 NFC 吗");
@@ -1321,7 +1297,10 @@ describe("AI hosting pages", () => {
     expect(screen.getByText("切片内容")).toBeInTheDocument();
     expect(screen.getByText("第一章 产品介绍")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "添加切片" }));
+    const addChunkButton = screen.getByRole("button", { name: "添加切片" });
+    expect(addChunkButton).not.toHaveClass("bg-primary");
+    expect(addChunkButton).toHaveClass("border-border");
+    await user.click(addChunkButton);
     const dialog = screen.getByRole("dialog", { name: "添加切片" });
     await user.type(within(dialog).getByLabelText(/切片标题/), "第三章 配件说明");
     await user.type(within(dialog).getByLabelText(/切片内容/), "原装充电器与数据线需单独购买");
@@ -1346,6 +1325,7 @@ describe("AI hosting pages", () => {
     );
     expect(screen.queryByText("图片 · 华为产品知识")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "添加切片" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "添加问答" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "编辑" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "删除" })).not.toBeInTheDocument();
     expect(screen.getByRole("table", { name: "切片列表" })).toHaveTextContent("产品宣传图");
@@ -1363,8 +1343,10 @@ describe("AI hosting pages", () => {
     await screen.findByText("第一章 产品介绍");
     await user.click(screen.getAllByRole("button", { name: "删除" })[0]);
     const dialog = screen.getByRole("alertdialog", { name: "确定删除该切片吗" });
+    const confirmDeleteButton = within(dialog).getByRole("button", { name: "删除" });
     expect(dialog).toBeInTheDocument();
-    await user.click(within(dialog).getByRole("button", { name: "删除" }));
+    expect(confirmDeleteButton).toHaveClass("bg-destructive");
+    await user.click(confirmDeleteButton);
 
     expect(screen.queryByText("第一章 产品介绍")).not.toBeInTheDocument();
     expect(screen.getByText("第二章 售后政策")).toBeInTheDocument();

@@ -671,7 +671,6 @@ describe("workbench revoke state", () => {
           },
         ],
       },
-      revokeMessageError: undefined,
     }));
 
     await expect(
@@ -680,7 +679,6 @@ describe("workbench revoke state", () => {
       errorMessage: "Java 撤回失败",
       ok: false,
     });
-    expect(useWorkbenchStore.getState().revokeMessageError).toBeUndefined();
   });
 
   it("keeps revoke pending for ten seconds and clears it without toast when no revoke signal arrives", async () => {
@@ -746,7 +744,6 @@ describe("workbench revoke state", () => {
     ).toMatchObject({
       revokePending: true,
     });
-    expect(useWorkbenchStore.getState().revokeMessageError).toBeUndefined();
 
     vi.advanceTimersByTime(5_000);
 
@@ -757,7 +754,6 @@ describe("workbench revoke state", () => {
     ).toMatchObject({
       revokePending: false,
     });
-    expect(useWorkbenchStore.getState().revokeMessageError).toBeUndefined();
 
     vi.useRealTimers();
   });
@@ -820,7 +816,6 @@ describe("workbench revoke state", () => {
     ).toMatchObject({
       revokePending: false,
     });
-    expect(useWorkbenchStore.getState().revokeMessageError).toBeUndefined();
 
     vi.useRealTimers();
   });

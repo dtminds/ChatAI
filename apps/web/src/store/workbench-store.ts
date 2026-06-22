@@ -233,9 +233,7 @@ type WorkbenchState = {
   hasChatSendPermission: boolean;
   activeMessageSeq: number;
   pendingMessages: Message[];
-  revokeMessageError?: string;
   revokeMessage: (uiMessageKey: string) => Promise<RevokeMessageResult>;
-  clearRevokeMessageError: () => void;
   sidebarItems: SettingsSidebarItem[];
   clearActiveConversation: () => void;
   deleteConversation: (conversationId: string) => Promise<void>;
@@ -367,7 +365,6 @@ function createInitialState(): Omit<
   | "unpinConversation"
   | "retryFailedMessage"
   | "revokeMessage"
-  | "clearRevokeMessageError"
   | "loadOlderMessages"
   | "openHistoryPanel"
   | "closeHistoryPanel"
@@ -429,7 +426,6 @@ function createInitialState(): Omit<
     smartReplyPendingMessageKeysByConversationId: {},
     smartReplyLastPolledAtByConversationId: {},
     pendingMessages: [],
-    revokeMessageError: undefined,
     pollState: {
       intervalMs: 2500,
       jitterMs: 350,
@@ -4593,7 +4589,6 @@ export function createWorkbenchStore() {
               true,
             ),
           },
-          revokeMessageError: undefined,
         }));
         scheduleRevokePendingTimeout(message.conversationId, message.uiMessageKey);
 
@@ -4609,9 +4604,6 @@ export function createWorkbenchStore() {
       } finally {
         pendingRevokeRequestMessageIds.delete(message.uiMessageKey);
       }
-    },
-    clearRevokeMessageError() {
-      set({ revokeMessageError: undefined });
     },
     async loadOlderMessages() {
       const state = get();

@@ -1038,6 +1038,7 @@ export function useMaterialCollection({
     setCollectedExpressionPage(1);
     setHasMoreCollectedExpressions(false);
     setIsCollectedExpressionLoadingMore(false);
+    setIsMaterialLibraryBusy(false);
   }, [resetMaterialLibrary, resetPendingCollection]);
 
   const handleSelectMaterial = useCallback(

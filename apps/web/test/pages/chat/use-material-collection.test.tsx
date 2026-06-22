@@ -695,10 +695,66 @@ describe("useMaterialCollection", () => {
       activeMaterialLibraryGroupId: null,
       collectedExpressions: [],
       hasMoreCollectedExpressions: false,
+      isMaterialLibraryBusy: false,
       materialCollectionGroups: [],
       materialLibraryGroups: [],
       materialLibraryItems: [],
       pendingMaterialCollection: null,
     });
+  });
+
+  it("clears material library busy state when session reset invalidates in-flight loads", async () => {
+    const baseService = createMockWorkbenchService();
+    const deferredItems = createDeferred<
+      Awaited<ReturnType<typeof baseService.listMaterialCollections>>
+    >();
+
+    setWorkbenchService({
+      ...baseService,
+      listMaterialCollections: vi.fn(() => deferredItems.promise),
+    });
+
+    const { result } = renderHook(() =>
+      useMaterialCollection(createDefaultOptions()),
+    );
+
+    act(() => {
+      result.current.handleOpenMaterialLibrary(2);
+    });
+
+    await waitFor(() => {
+      expect(result.current.activeMaterialLibraryGroupId).toBe(
+        "mock-material-group-file",
+      );
+    });
+
+    await act(async () => {
+      void result.current.handleSelectMaterialLibraryGroup("mock-material-group-file");
+    });
+
+    await waitFor(() => {
+      expect(result.current.isMaterialLibraryBusy).toBe(true);
+    });
+
+    act(() => {
+      result.current.resetMaterialSessionState();
+    });
+
+    expect(result.current.isMaterialLibraryBusy).toBe(false);
+
+    await act(async () => {
+      deferredItems.resolve({
+        items: [],
+        pagination: {
+          hasMore: false,
+          page: 1,
+          pageSize: 100,
+          total: 0,
+        },
+      });
+      await deferredItems.promise;
+    });
+
+    expect(result.current.isMaterialLibraryBusy).toBe(false);
   });
 });

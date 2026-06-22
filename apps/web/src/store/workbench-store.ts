@@ -5094,21 +5094,19 @@ export function createWorkbenchStore() {
       try {
         const nextAccounts = await loadSeats();
 
-        set((currentState) => ({
-          accounts:
-            isCurrentScopeRequest(requestId) &&
-            currentState.bootstrapStatus === "ready"
-              ? currentState.accounts.map((account) => {
-                  if (account.id === currentState.activeAccountId) {
-                    return account;
-                  }
+        if (!isReadyScopeRequest(requestId, get())) {
+          return;
+        }
 
-                  const nextAccount = nextAccounts.find(
-                    (item) => item.id === account.id,
-                  );
-                  return nextAccount ?? account;
-                })
-              : currentState.accounts,
+        set((currentState) => ({
+          accounts: currentState.accounts.map((account) => {
+            if (account.id === currentState.activeAccountId) {
+              return account;
+            }
+
+            const nextAccount = nextAccounts.find((item) => item.id === account.id);
+            return nextAccount ?? account;
+          }),
         }));
       } catch {
         // Keep current seat summaries if the refresh fails.

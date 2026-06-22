@@ -15,6 +15,7 @@ import type {
   WorkbenchConversationSummaryDto,
   WorkbenchHistoryMessagePageDto,
   WorkbenchMessageDto,
+  WorkbenchPollResponse,
   WorkbenchSmartReplyPollRequest,
 } from "@chatai/contracts";
 import { resetWorkbenchStoreTestState } from "./workbench-store-test-utils";
@@ -227,6 +228,211 @@ describe("useWorkbenchStore", () => {
       unread: 0,
     });
     expect(state.accounts.find((account) => account.id === "drc")?.unreadCount).toBe(11);
+  });
+
+  it("clears user-scoped workbench data before another login initializes the workbench", async () => {
+    const firstService = createMockWorkbenchService();
+    const secondService = createMockWorkbenchService();
+    const secondGetSeats = vi.fn(async () => [
+      {
+        avatar: "",
+        description: "",
+        hostSubUserId: "sub-user-002",
+        lastMessageTime: 1_778_500_000_000,
+        loginStatus: "online" as const,
+        name: "B 用户席位",
+        operatorName: "客服二号",
+        phone: "",
+        seatId: "b-seat",
+        unreadCount: 0,
+      },
+    ]);
+    const secondGetMe = vi.fn(async () => ({
+      displayName: "客服二号",
+      subUserId: "sub-user-002",
+    }));
+
+    setWorkbenchService(firstService);
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    expect(useWorkbenchStore.getState().bootstrapStatus).toBe("ready");
+    expect(useWorkbenchStore.getState().activeAccountId).toBe("drc");
+
+    useWorkbenchStore.getState().resetWorkbenchSession();
+    setWorkbenchService({
+      ...secondService,
+      getMe: secondGetMe,
+      getSeats: secondGetSeats,
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    const state = useWorkbenchStore.getState();
+    expect(secondGetMe).toHaveBeenCalledTimes(1);
+    expect(secondGetSeats).toHaveBeenCalledTimes(1);
+    expect(state.bootstrapStatus).toBe("ready");
+    expect(state.me).toMatchObject({ id: "sub-user-002" });
+    expect(state.accounts).toHaveLength(1);
+    expect(state.activeAccountId).toBe("b-seat");
+    expect(state.conversationListsByScope).toEqual({ "b-seat": [] });
+    expect(state.messagesByConversationId).toEqual({});
+    expect(state.takeoverStatusByAccountId).toEqual({});
+  });
+
+  it("ignores stale initialize failures after the workbench session resets", async () => {
+    const baseService = createMockWorkbenchService();
+    const deferredSeats = createDeferred<never>();
+
+    setWorkbenchService({
+      ...baseService,
+      async getSeats() {
+        return deferredSeats.promise;
+      },
+    });
+
+    const initializePromise = useWorkbenchStore.getState().initializeWorkbench();
+
+    await vi.waitFor(() => {
+      expect(useWorkbenchStore.getState().bootstrapStatus).toBe("loading");
+    });
+
+    useWorkbenchStore.getState().resetWorkbenchSession();
+    deferredSeats.reject(new Error("旧用户初始化失败"));
+    await initializePromise;
+
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      bootstrapError: undefined,
+      bootstrapStatus: "idle",
+    });
+  });
+
+  it("ignores stale poll responses after the workbench session resets", async () => {
+    const baseService = createMockWorkbenchService();
+    const deferredPoll = createDeferred<WorkbenchPollResponse>();
+
+    setWorkbenchService({
+      ...baseService,
+      async poll() {
+        return deferredPoll.promise;
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    const pollPromise = useWorkbenchStore.getState().pollWorkbench();
+
+    useWorkbenchStore.getState().resetWorkbenchSession();
+    deferredPoll.resolve({
+      activeConversationMessages: [],
+      conversationChanges: [],
+      nextMessageUpdateCursor: 99,
+      nextSeatUpdateCursor: 88,
+      nextVersion: 1_778_600_000_000,
+      seatChanges: [
+        {
+          hostSubUserId: "sub-user-001",
+          lastMessageTime: 1_778_600_000_000,
+          seatId: "drc",
+          unreadCount: 42,
+        },
+      ],
+    });
+    await pollPromise;
+
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      accounts: [],
+      bootstrapStatus: "idle",
+      messageUpdateCursor: undefined,
+      seatUpdateCursor: undefined,
+      sinceVersion: 0,
+    });
+  });
+
+  it("keeps the active poll latch when a stale poll finishes after another login", async () => {
+    const baseService = createMockWorkbenchService();
+    const firstPoll = createDeferred<WorkbenchPollResponse>();
+    const secondPoll = createDeferred<WorkbenchPollResponse>();
+    let pollCallCount = 0;
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        pollCallCount += 1;
+
+        if (pollCallCount === 1) {
+          return firstPoll.promise;
+        }
+
+        if (pollCallCount === 2) {
+          return secondPoll.promise;
+        }
+
+        return baseService.poll(request);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    const stalePollPromise = useWorkbenchStore.getState().pollWorkbench();
+
+    useWorkbenchStore.getState().resetWorkbenchSession();
+    await useWorkbenchStore.getState().initializeWorkbench();
+    const activePollPromise = useWorkbenchStore.getState().pollWorkbench();
+
+    firstPoll.resolve({
+      activeConversationMessages: [],
+      conversationChanges: [],
+      nextVersion: 1_778_600_000_000,
+      seatChanges: [],
+    });
+    await stalePollPromise;
+
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(pollCallCount).toBe(2);
+
+    secondPoll.resolve({
+      activeConversationMessages: [],
+      conversationChanges: [],
+      nextVersion: 1_778_600_000_001,
+      seatChanges: [],
+    });
+    await activePollPromise;
+  });
+
+  it("ignores stale seat summary refreshes after another login initializes matching seats", async () => {
+    const baseService = createMockWorkbenchService();
+    const deferredSeats = createDeferred<Awaited<ReturnType<typeof baseService.getSeats>>>();
+    let shouldDeferSeats = false;
+
+    setWorkbenchService({
+      ...baseService,
+      async getSeats() {
+        if (shouldDeferSeats) {
+          return deferredSeats.promise;
+        }
+
+        return baseService.getSeats();
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    shouldDeferSeats = true;
+    const refreshPromise = useWorkbenchStore.getState().refreshSeatSummaries();
+
+    useWorkbenchStore.getState().resetWorkbenchSession();
+    setWorkbenchService(baseService);
+    await useWorkbenchStore.getState().initializeWorkbench();
+    deferredSeats.resolve(
+      (await baseService.getSeats()).map((seat) => ({
+        ...seat,
+        unreadCount: seat.seatId === "ndt" ? 42 : seat.unreadCount,
+      })),
+    );
+    await refreshPromise;
+
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      activeAccountId: "drc",
+      bootstrapStatus: "ready",
+    });
+    expect(useWorkbenchStore.getState().accounts.find((account) => account.id === "ndt")?.unreadCount).toBe(1);
   });
 
   it("requests 50 messages for initial and switched conversation pages", async () => {

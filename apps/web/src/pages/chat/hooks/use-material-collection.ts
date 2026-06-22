@@ -1029,6 +1029,18 @@ export function useMaterialCollection({
     setSendingMaterialId(null);
   }, []);
 
+  const resetMaterialSessionState = useCallback(() => {
+    resetMaterialLibrary();
+    resetPendingCollection();
+    setMaterialCollectionGroups([]);
+    setIsCollectingMaterial(false);
+    setCollectedExpressions([]);
+    setCollectedExpressionPage(1);
+    setHasMoreCollectedExpressions(false);
+    setIsCollectedExpressionLoadingMore(false);
+    setIsMaterialLibraryBusy(false);
+  }, [resetMaterialLibrary, resetPendingCollection]);
+
   const handleSelectMaterial = useCallback(
     async (item: WorkbenchMaterialCollectionItemDto) => {
       if (item.contentType === "sphfeed") {
@@ -1138,6 +1150,7 @@ export function useMaterialCollection({
     handleTopMaterial,
     handleTopMaterialGroup,
     resetMaterialLibrary,
+    resetMaterialSessionState,
     resetPendingCollection,
   };
 }

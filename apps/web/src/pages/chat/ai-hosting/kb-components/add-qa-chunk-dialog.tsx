@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -19,12 +19,21 @@ export function AddQaChunkDialog({
   open,
 }: {
   onOpenChange: (open: boolean) => void;
-  onSubmit: (values: { question: string; answer: string }) => void;
+  onSubmit: (values: { question: string; answer: string }) => void | Promise<void>;
   open: boolean;
 }) {
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const isMountedRef = useRef(false);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   function reset() {
     setQuestion("");
@@ -44,7 +53,7 @@ export function AddQaChunkDialog({
     onOpenChange(nextOpen);
   }
 
-  function handleSubmit() {
+  async function handleSubmit() {
     const normalizedQuestion = question.trim();
     const normalizedAnswer = answer.trim();
 
@@ -53,9 +62,19 @@ export function AddQaChunkDialog({
     }
 
     setSubmitting(true);
-    onSubmit({ question: normalizedQuestion, answer: normalizedAnswer });
-    setSubmitting(false);
-    handleOpenChange(false);
+
+    try {
+      await Promise.resolve(
+        onSubmit({ question: normalizedQuestion, answer: normalizedAnswer }),
+      );
+      if (isMountedRef.current) {
+        handleOpenChange(false);
+      }
+    } finally {
+      if (isMountedRef.current) {
+        setSubmitting(false);
+      }
+    }
   }
 
   return (
@@ -100,7 +119,7 @@ export function AddQaChunkDialog({
           </Button>
           <Button
             disabled={submitting || !question.trim() || !answer.trim()}
-            onClick={handleSubmit}
+            onClick={() => void handleSubmit()}
             type="button"
           >
             确定

@@ -34,9 +34,11 @@ const QA_IMPORT_TEMPLATE_URL =
   "https://b5.bokr.com.cn/dist/Q&A问答对示例.faq.xlsx";
 
 export function ImportQaDialog({
+  onImportComplete,
   onOpenChange,
   open,
 }: {
+  onImportComplete?: (entries: Array<{ answer: string; question: string }>) => void;
   onOpenChange: (open: boolean) => void;
   open: boolean;
 }) {
@@ -49,21 +51,56 @@ export function ImportQaDialog({
   } | null>(null);
   const [fileError, setFileError] = useState("");
   const [isCheckingFile, setIsCheckingFile] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
 
   const reset = () => {
     invalidateValidation();
     setSelectedFile(null);
     setFileError("");
     setIsCheckingFile(false);
+    setIsImporting(false);
   };
 
   const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen && (isCheckingFile || isImporting)) {
+      return;
+    }
+
     if (!nextOpen) {
       reset();
     }
 
     onOpenChange(nextOpen);
   };
+
+  async function handleImport() {
+    if (!selectedFile) {
+      return;
+    }
+
+    setIsImporting(true);
+
+    try {
+      const { default: readXlsxFile } = await import("read-excel-file/browser");
+      const sheets = await readXlsxFile(selectedFile.file);
+      const entries = sheets.flatMap((sheet) =>
+        sheet.data
+          .slice(1)
+          .map((row) => ({
+            question: String(row[0] ?? "").trim(),
+            answer: String(row[1] ?? "").trim(),
+          }))
+          .filter((entry) => entry.question && entry.answer),
+      );
+
+      onImportComplete?.(entries);
+      handleOpenChange(false);
+    } catch {
+      setFileError("文件解析失败，请确认文件为标准 .faq.xlsx");
+    } finally {
+      setIsImporting(false);
+    }
+  }
 
   const handleFileSelect = async (file: File | undefined) => {
     if (!file) {
@@ -263,8 +300,8 @@ export function ImportQaDialog({
 
         <DialogFooter>
           <Button
-            disabled={!selectedFile || isCheckingFile}
-            onClick={() => handleOpenChange(false)}
+            disabled={!selectedFile || isCheckingFile || isImporting}
+            onClick={() => void handleImport()}
             type="button"
           >
             导入文档

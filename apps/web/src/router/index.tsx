@@ -56,6 +56,13 @@ const KbDetailPage = lazy(() =>
     }),
   ),
 );
+const KbDocDetailPage = lazy(() =>
+  import("@/pages/chat/ai-hosting/kb-doc-detail-page").then(
+    ({ KbDocDetailPage }) => ({
+      default: KbDocDetailPage,
+    }),
+  ),
+);
 const InsightsOverviewPage = lazy(() =>
   import("@/pages/chat/insights/insights-overview-page").then(
     ({ InsightsOverviewPage }) => ({
@@ -215,6 +222,10 @@ export const routerConfig = [
       {
         path: "chat/ai-hosting/kb/:knowledgeBaseId",
         element: withRouteSuspense(<KbDetailPage />),
+      },
+      {
+        path: "chat/ai-hosting/kb/:knowledgeBaseId/docs/:docId",
+        element: withRouteSuspense(<KbDocDetailPage />),
       },
       {
         path: "chat/ai-hosting/hosting-settings",

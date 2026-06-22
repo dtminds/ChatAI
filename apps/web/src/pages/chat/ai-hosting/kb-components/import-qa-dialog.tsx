@@ -33,6 +33,11 @@ const QA_IMPORT_ACCEPT = {
 const QA_IMPORT_TEMPLATE_URL =
   "https://b5.bokr.com.cn/dist/Q&A问答对示例.faq.xlsx";
 
+async function readAllQaImportSheets(file: File) {
+  const { default: readExcelFile } = await import("read-excel-file/browser");
+  return readExcelFile(file);
+}
+
 export function ImportQaDialog({
   onImportComplete,
   onOpenChange,
@@ -81,8 +86,7 @@ export function ImportQaDialog({
     setIsImporting(true);
 
     try {
-      const { default: readXlsxFile } = await import("read-excel-file/browser");
-      const sheets = await readXlsxFile(selectedFile.file);
+      const sheets = await readAllQaImportSheets(selectedFile.file);
       const entries = sheets.flatMap((sheet) =>
         sheet.data
           .slice(1)
@@ -128,8 +132,7 @@ export function ImportQaDialog({
     setIsCheckingFile(true);
 
     try {
-      const { default: readXlsxFile } = await import("read-excel-file/browser");
-      const sheets = await readXlsxFile(file);
+      const sheets = await readAllQaImportSheets(file);
       const sheetCount = sheets.length;
       const rowCount = sheets.reduce((sum, sheet) => sum + sheet.data.length, 0);
 

@@ -19,6 +19,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -41,9 +42,9 @@ import {
   resolveTablePagination,
   TablePagination,
 } from "@/components/ui/table-pagination";
+import { FileExtensionBadge } from "@/pages/chat/components/message/file";
 import { AiHostingLayout, AiHostingPageHeader } from "./ai-hosting-layout";
-import { AddDocChunkDialog } from "./kb-components/add-doc-chunk-dialog";
-import { AddQaChunkDialog } from "./kb-components/add-qa-chunk-dialog";
+import { AddChunkDialog } from "./kb-components/add-chunk-dialog";
 import { EditChunkDialog } from "./kb-components/edit-chunk-dialog";
 import { ImportQaDialog } from "./kb-components/import-qa-dialog";
 import {
@@ -63,12 +64,6 @@ import {
 } from "./kb-mock-data";
 
 const PAGE_SIZE = 10;
-
-const docTypeLabels: Record<KnowledgeDocType, string> = {
-  qa: "FAQ",
-  document: "文档",
-  image: "图片",
-};
 
 function useDebouncedValue<T>(value: T, delayMs: number) {
   const [debouncedValue, setDebouncedValue] = useState(value);
@@ -265,10 +260,13 @@ export function KbDocDetailPage() {
     <AiHostingLayout title={doc.name}>
       <div className="space-y-6">
         <div aria-label="文档切片头部" className="space-y-3">
-          <BackToKnowledgeListButton knowledgeBaseId={knowledgeBase.id} />
+          <BackToKnowledgeListButton
+            knowledgeBaseId={knowledgeBase.id}
+            label={knowledgeBase.name}
+          />
           <AiHostingPageHeader
-            description={`${docTypeLabels[doc.type]} · ${knowledgeBase.name}`}
-            title={doc.name}
+            title={<KnowledgeDocTitle doc={doc} />}
+            titleAriaLabel={doc.name}
           />
         </div>
 
@@ -318,15 +316,27 @@ export function KbDocDetailPage() {
         onOpenChange={setImportQaDialogOpen}
         open={importQaDialogOpen}
       />
-      <AddQaChunkDialog
+      <AddChunkDialog
+        dialogTitle="添加问答"
+        fieldIdPrefix="qa-chunk"
+        firstFieldLabel="问题"
         onOpenChange={setAddQaDialogOpen}
-        onSubmit={handleCreateQaChunk}
+        onSubmit={({ first, second }) =>
+          handleCreateQaChunk({ question: first, answer: second })
+        }
         open={addQaDialogOpen}
+        secondFieldLabel="答案"
       />
-      <AddDocChunkDialog
+      <AddChunkDialog
+        dialogTitle="添加切片"
+        fieldIdPrefix="doc-chunk"
+        firstFieldLabel="切片标题"
         onOpenChange={setAddDocDialogOpen}
-        onSubmit={handleCreateDocChunk}
+        onSubmit={({ first, second }) =>
+          handleCreateDocChunk({ title: first, content: second })
+        }
         open={addDocDialogOpen}
+        secondFieldLabel="切片内容"
       />
       <EditChunkDialog
         chunk={editChunk}
@@ -358,6 +368,21 @@ export function KbDocDetailPage() {
         </AlertDialogContent>
       </AlertDialog>
     </AiHostingLayout>
+  );
+}
+
+function KnowledgeDocTitle({ doc }: { doc: KnowledgeRecord }) {
+  return (
+    <span className="flex min-w-0 flex-wrap items-center gap-2.5">
+      <FileExtensionBadge
+        className="size-7"
+        extension={doc.fileExtension}
+      />
+      <span className="min-w-0 truncate">{doc.name}</span>
+      <Badge className="rounded-[6px] px-2 py-0.5 text-xs" variant="secondary">
+        {doc.typeLabel}
+      </Badge>
+    </span>
   );
 }
 
@@ -503,7 +528,13 @@ function KnowledgeChunksTable({
   );
 }
 
-function BackToKnowledgeListButton({ knowledgeBaseId }: { knowledgeBaseId: string }) {
+function BackToKnowledgeListButton({
+  knowledgeBaseId,
+  label = "返回知识列表",
+}: {
+  knowledgeBaseId: string;
+  label?: string;
+}) {
   return (
     <Button
       asChild
@@ -513,7 +544,7 @@ function BackToKnowledgeListButton({ knowledgeBaseId }: { knowledgeBaseId: strin
     >
       <Link to={`/chat/ai-hosting/kb/${knowledgeBaseId}`}>
         <HugeiconsIcon color="currentColor" icon={ArrowLeft01Icon} size={17} strokeWidth={1.8} />
-        <span>返回知识列表</span>
+        <span>{label}</span>
       </Link>
     </Button>
   );

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -11,10 +11,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import type { KnowledgeChunk } from "../kb-mock-data";
-
-const QA_QUESTION_MAX_LENGTH = 500;
-const QA_ANSWER_MAX_LENGTH = 2000;
-const IMAGE_TITLE_MAX_LENGTH = 16;
+import {
+  IMAGE_TITLE_MAX_LENGTH,
+  QA_ANSWER_MAX_LENGTH,
+  QA_QUESTION_MAX_LENGTH,
+  useDialogSubmit,
+} from "./shared";
 
 export function EditChunkDialog({
   chunk,
@@ -34,16 +36,11 @@ export function EditChunkDialog({
   const [answer, setAnswer] = useState("");
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const isMountedRef = useRef(false);
 
-  useEffect(() => {
-    isMountedRef.current = true;
-
-    return () => {
-      isMountedRef.current = false;
-    };
-  }, []);
+  const { handleOpenChange, runSubmit, submitting } = useDialogSubmit({
+    onOpenChange,
+    open,
+  });
 
   useEffect(() => {
     if (!chunk || !open) {
@@ -54,66 +51,41 @@ export function EditChunkDialog({
     setAnswer(chunk.answer ?? "");
     setTitle(chunk.title ?? "");
     setContent(chunk.content ?? "");
-    setSubmitting(false);
   }, [chunk, open]);
 
-  function handleOpenChange(nextOpen: boolean) {
-    if (!nextOpen && submitting) {
-      return;
-    }
-
-    onOpenChange(nextOpen);
-  }
-
-  async function handleSubmit() {
+  function handleSubmit() {
     if (!chunk) {
       return;
     }
 
-    setSubmitting(true);
-    let submitSuccessful = false;
-
-    try {
+    void runSubmit(async () => {
       if (chunk.type === "qa") {
         const normalizedQuestion = question.trim();
         const normalizedAnswer = answer.trim();
 
         if (!normalizedQuestion || !normalizedAnswer) {
-          return;
+          return false;
         }
 
-        await Promise.resolve(
-          onSubmit(chunk.id, {
-            question: normalizedQuestion,
-            answer: normalizedAnswer,
-          }),
-        );
-      } else {
-        const normalizedTitle = title.trim();
-        const normalizedContent = content.trim();
-
-        if (!normalizedTitle || !normalizedContent) {
-          return;
-        }
-
-        await Promise.resolve(
-          onSubmit(chunk.id, {
-            title: normalizedTitle,
-            content: normalizedContent,
-          }),
-        );
+        await onSubmit(chunk.id, {
+          question: normalizedQuestion,
+          answer: normalizedAnswer,
+        });
+        return;
       }
 
-      submitSuccessful = true;
-    } finally {
-      if (isMountedRef.current) {
-        setSubmitting(false);
-      }
-    }
+      const normalizedTitle = title.trim();
+      const normalizedContent = content.trim();
 
-    if (submitSuccessful && isMountedRef.current) {
-      onOpenChange(false);
-    }
+      if (!normalizedTitle || !normalizedContent) {
+        return false;
+      }
+
+      await onSubmit(chunk.id, {
+        title: normalizedTitle,
+        content: normalizedContent,
+      });
+    });
   }
 
   const isValid =
@@ -198,7 +170,7 @@ export function EditChunkDialog({
           <Button disabled={submitting} onClick={() => handleOpenChange(false)} type="button" variant="outline">
             取消
           </Button>
-          <Button disabled={submitting || !isValid} onClick={() => void handleSubmit()} type="button">
+          <Button disabled={submitting || !isValid} onClick={handleSubmit} type="button">
             保存
           </Button>
         </DialogFooter>

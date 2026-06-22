@@ -1,4 +1,4 @@
-import type { Row, Sheet } from "read-excel-file/browser";
+import type { Sheet } from "read-excel-file/browser";
 import { useEffect, useRef, useState } from "react";
 import { AlertCircleIcon, Download01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -34,34 +34,11 @@ const QA_IMPORT_ACCEPT = {
 const QA_IMPORT_TEMPLATE_URL =
   "https://b5.bokr.com.cn/dist/Q&A问答对示例.faq.xlsx";
 
-function isWorkbookSheetList(result: unknown): result is Sheet[] {
-  return (
-    Array.isArray(result) &&
-    (result.length === 0 ||
-      (typeof result[0] === "object" &&
-        result[0] !== null &&
-        "data" in result[0] &&
-        Array.isArray((result[0] as Sheet).data)))
-  );
-}
-
-function normalizeWorkbookSheets(result: Sheet[] | Row[]): Sheet[] {
-  if (isWorkbookSheetList(result)) {
-    return result;
-  }
-
-  if (!Array.isArray(result)) {
-    throw new TypeError("Invalid workbook sheets");
-  }
-
-  return [{ sheet: "Sheet1", data: result }];
-}
-
 async function readAllQaImportSheets(file: File): Promise<Sheet[]> {
   const { default: readAllSheetsFromWorkbook } = await import(
     "read-excel-file/browser"
   );
-  return normalizeWorkbookSheets(await readAllSheetsFromWorkbook(file));
+  return readAllSheetsFromWorkbook(file);
 }
 
 export function ImportQaDialog({
@@ -138,6 +115,11 @@ export function ImportQaDialog({
           }))
           .filter((entry) => entry.question && entry.answer),
       );
+
+      if (entries.length === 0) {
+        setFileError("未解析到有效问答，请检查文件内容");
+        return;
+      }
 
       onImportComplete?.(entries);
       importSuccessful = true;

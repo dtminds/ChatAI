@@ -233,9 +233,7 @@ type WorkbenchState = {
   hasChatSendPermission: boolean;
   activeMessageSeq: number;
   pendingMessages: Message[];
-  revokeMessageError?: string;
   revokeMessage: (uiMessageKey: string) => Promise<RevokeMessageResult>;
-  clearRevokeMessageError: () => void;
   sidebarItems: SettingsSidebarItem[];
   clearActiveConversation: () => void;
   deleteConversation: (conversationId: string) => Promise<void>;
@@ -344,7 +342,7 @@ const defaultCustomerProfiles = seedCustomerProfiles;
 const MESSAGE_PAGE_SIZE = 50;
 const CONVERSATION_MODES = ["single", "group"] as const satisfies readonly ChatMode[];
 const GROUP_MEMBERS_CACHE_TTL_MS = 5 * 60 * 1000;
-const REVOKE_PENDING_TIMEOUT_MS = 5 * 1000;
+const REVOKE_PENDING_TIMEOUT_MS = 10 * 1000;
 export const MAX_CONVERSATION_LIST_CACHE_SEATS = 3;
 
 function createInitialState(): Omit<
@@ -367,7 +365,6 @@ function createInitialState(): Omit<
   | "unpinConversation"
   | "retryFailedMessage"
   | "revokeMessage"
-  | "clearRevokeMessageError"
   | "loadOlderMessages"
   | "openHistoryPanel"
   | "closeHistoryPanel"
@@ -429,7 +426,6 @@ function createInitialState(): Omit<
     smartReplyPendingMessageKeysByConversationId: {},
     smartReplyLastPolledAtByConversationId: {},
     pendingMessages: [],
-    revokeMessageError: undefined,
     pollState: {
       intervalMs: 2500,
       jitterMs: 350,
@@ -2496,9 +2492,6 @@ export function createWorkbenchStore() {
             return {};
           }
 
-          const isCurrentActiveConversation =
-            currentState.activeConversationId === conversationId;
-
           return {
             messagesByConversationId: {
               ...currentState.messagesByConversationId,
@@ -2508,9 +2501,6 @@ export function createWorkbenchStore() {
                 false,
               ),
             },
-            ...(isCurrentActiveConversation
-              ? { revokeMessageError: "撤回失败，请稍后重试" }
-              : {}),
           };
         });
       }, REVOKE_PENDING_TIMEOUT_MS);
@@ -4599,7 +4589,6 @@ export function createWorkbenchStore() {
               true,
             ),
           },
-          revokeMessageError: undefined,
         }));
         scheduleRevokePendingTimeout(message.conversationId, message.uiMessageKey);
 
@@ -4615,9 +4604,6 @@ export function createWorkbenchStore() {
       } finally {
         pendingRevokeRequestMessageIds.delete(message.uiMessageKey);
       }
-    },
-    clearRevokeMessageError() {
-      set({ revokeMessageError: undefined });
     },
     async loadOlderMessages() {
       const state = get();

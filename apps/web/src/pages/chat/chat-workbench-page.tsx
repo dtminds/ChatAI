@@ -219,12 +219,10 @@ function ChatWorkbenchContent({
     requestSmartReplyMakeShorter,
     readReceiptError,
     revokeMessage,
-    revokeMessageError,
     pinConversation,
     retryFailedMessage,
     saveComposerDraft,
     setChatSendPermission,
-    clearRevokeMessageError,
     closeHistoryPanel,
     clearActiveConversation,
     clearComposerDraft,
@@ -258,7 +256,6 @@ function ChatWorkbenchContent({
       bootstrapStatus: state.bootstrapStatus,
       clearActiveConversation: state.clearActiveConversation,
       clearComposerDraft: state.clearComposerDraft,
-      clearRevokeMessageError: state.clearRevokeMessageError,
       closeHistoryPanel: state.closeHistoryPanel,
       composerDraftsByConversationId: state.composerDraftsByConversationId,
       confirmVoicePlaybackReady: state.confirmVoicePlaybackReady,
@@ -305,7 +302,6 @@ function ChatWorkbenchContent({
       requestSmartReplyMakeShorter: state.requestSmartReplyMakeShorter,
       retryFailedMessage: state.retryFailedMessage,
       revokeMessage: state.revokeMessage,
-      revokeMessageError: state.revokeMessageError,
       saveComposerDraft: state.saveComposerDraft,
       scopeTransitionError: state.scopeTransitionError,
       selectOrCreateAndSelectConversation:
@@ -595,15 +591,6 @@ function ChatWorkbenchContent({
     toast.warning(readReceiptError);
     dismissReadReceiptError();
   }, [dismissReadReceiptError, readReceiptError]);
-
-  useEffect(() => {
-    if (!revokeMessageError) {
-      return;
-    }
-
-    toast.warning(revokeMessageError);
-    clearRevokeMessageError();
-  }, [clearRevokeMessageError, revokeMessageError]);
 
   const handleTakeOverAccount = useCallback(
     async (accountId: string) => {

@@ -205,7 +205,10 @@ export function KbDetailPage() {
           </div>
 
           <div>
-            <KnowledgeRecordsTable records={pagedRecords} />
+            <KnowledgeRecordsTable
+              knowledgeBaseId={knowledgeBase.id}
+              records={pagedRecords}
+            />
             <TablePagination
               onPageChange={setCurrentPage}
               page={activePage}
@@ -326,7 +329,13 @@ function renderAddKnowledgeOption(
   );
 }
 
-function KnowledgeRecordsTable({ records }: { records: KnowledgeRecord[] }) {
+function KnowledgeRecordsTable({
+  knowledgeBaseId,
+  records,
+}: {
+  knowledgeBaseId: string;
+  records: KnowledgeRecord[];
+}) {
   return (
     <Table aria-label="知识列表" className="min-w-[1120px] table-fixed">
       <TableHeader>
@@ -383,12 +392,19 @@ function KnowledgeRecordsTable({ records }: { records: KnowledgeRecord[] }) {
               <TablePinnedCell className="whitespace-nowrap px-4 py-4 text-right">
                 <div className="flex items-center justify-end gap-3">
                   <Button
+                    asChild={record.status === "completed"}
                     className="h-auto p-0 text-primary"
                     disabled={record.status !== "completed"}
                     type="button"
                     variant="link"
                   >
-                    查看
+                    {record.status === "completed" ? (
+                      <Link to={`/chat/ai-hosting/kb/${knowledgeBaseId}/docs/${record.id}`}>
+                        查看
+                      </Link>
+                    ) : (
+                      <span>查看</span>
+                    )}
                   </Button>
                   <Button className="h-auto p-0 text-primary" type="button" variant="link">
                     删除

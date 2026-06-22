@@ -1,5 +1,5 @@
 import type { ReactElement } from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -7,8 +7,10 @@ import { AgentManagementPage } from "@/pages/chat/ai-hosting/agent-management-pa
 import { AgentHostingSettingsPage } from "@/pages/chat/ai-hosting/agent-hosting-settings-page";
 import { AgentSettingsPage } from "@/pages/chat/ai-hosting/agent-settings-page";
 import { KbDetailPage } from "@/pages/chat/ai-hosting/kb-detail-page";
+import { KbDocDetailPage } from "@/pages/chat/ai-hosting/kb-doc-detail-page";
 import { KbListPage } from "@/pages/chat/ai-hosting/kb-list-page";
-import { resetMockKnowledgeBases } from "@/pages/chat/ai-hosting/kb-mock-data";
+import { resetMockKnowledgeData } from "@/pages/chat/ai-hosting/kb-mock-data";
+import * as kbMockData from "@/pages/chat/ai-hosting/kb-mock-data";
 
 const readXlsxFileMock = vi.hoisted(() => vi.fn());
 
@@ -50,7 +52,7 @@ function createDropData(file: File) {
 
 describe("AI hosting pages", () => {
   beforeEach(() => {
-    resetMockKnowledgeBases();
+    resetMockKnowledgeData();
     mockImageDimensions = { height: 800, width: 800 };
     Object.defineProperty(URL, "createObjectURL", {
       configurable: true,
@@ -476,11 +478,15 @@ describe("AI hosting pages", () => {
       "https://b5.bokr.com.cn/dist/file.png",
     );
     expect(screen.getByText("文件（.doc）")).toBeInTheDocument();
-    expect(screen.getAllByText("已完成")).toHaveLength(2);
+    expect(screen.getAllByText("已完成")).toHaveLength(3);
     expect(screen.getByText("解析中")).toBeInTheDocument();
     expect(screen.getByText("失败")).toBeInTheDocument();
     expect(screen.getByText("排队中")).toBeInTheDocument();
-    expect(screen.getByText("共 5 条")).toBeInTheDocument();
+    expect(screen.getByText("共 6 条")).toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: "查看" })[0]).toHaveAttribute(
+      "href",
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-1",
+    );
   });
 
   it("uses created mock knowledge bases on the management page", async () => {
@@ -593,6 +599,73 @@ describe("AI hosting pages", () => {
 
     expect(screen.queryByRole("region", { name: "已选择文件" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "导入文档" })).toBeDisabled();
+  });
+
+  it("accepts QA import files with valid sheet data", async () => {
+    const user = userEvent.setup();
+
+    readXlsxFileMock.mockResolvedValueOnce([
+      {
+        data: [
+          ["问题", "答案"],
+          ["晨间护肤怎么做", "先清洁再保湿"],
+        ],
+        sheet: "Sheet1",
+      },
+    ]);
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
+    );
+
+    await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
+    await user.click(screen.getByRole("button", { name: "添加知识" }));
+    await user.click(screen.getByRole("menuitem", { name: /问答/ }));
+    await user.upload(
+      screen.getByLabelText("选择问答导入文件"),
+      new File(["question,answer"], "快捷话术导入.faq.xlsx", {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      }),
+    );
+
+    expect(screen.getByRole("region", { name: "已选择文件" })).toHaveTextContent(
+      "共 1 个 sheet，2 行",
+    );
+    expect(screen.getByRole("button", { name: "导入文档" })).toBeEnabled();
+  });
+
+  it("shows an error when QA import resolves to zero valid rows", async () => {
+    const user = userEvent.setup();
+
+    readXlsxFileMock.mockResolvedValue([
+      {
+        data: [["问题", "答案"]],
+        sheet: "Sheet1",
+      },
+    ]);
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
+    );
+
+    await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
+    await user.click(screen.getByRole("button", { name: "添加知识" }));
+    await user.click(screen.getByRole("menuitem", { name: /问答/ }));
+
+    const dialog = screen.getByRole("dialog", { name: "批量导入问答" });
+    await user.upload(
+      screen.getByLabelText("选择问答导入文件"),
+      new File(["question,answer"], "空内容导入.faq.xlsx", {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      }),
+    );
+    await user.click(screen.getByRole("button", { name: "导入文档" }));
+
+    expect(await screen.findByText("未解析到有效问答，请检查文件内容")).toBeInTheDocument();
+    expect(dialog).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "导入文档" })).toBeEnabled();
   });
 
   it("rejects QA import files with more than 30 sheets", async () => {
@@ -1080,5 +1153,202 @@ describe("AI hosting pages", () => {
     await user.type(screen.getByLabelText(/知识库名称/), "产品知识库");
 
     expect(screen.getByText("5/30")).toBeInTheDocument();
+  });
+
+  it("renders the QA chunk detail page", async () => {
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-3",
+      <KbDocDetailPage />,
+      "/chat/ai-hosting/kb/:knowledgeBaseId/docs/:docId",
+    );
+
+    expect(await screen.findByRole("heading", { level: 1, name: "常见问题解答" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "文件" })).toBeInTheDocument();
+    expect(screen.getByText("FAQ")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "华为产品知识" })).toHaveAttribute(
+      "href",
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+    );
+    expect(screen.queryByText("FAQ · 华为产品知识")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "返回知识列表" })).not.toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "搜索切片标题" })).toBeInTheDocument();
+    const addQaButton = screen.getByRole("button", { name: "添加问答" });
+    expect(addQaButton).not.toHaveAttribute("aria-haspopup", "menu");
+    expect(addQaButton).not.toHaveClass("bg-primary");
+    expect(addQaButton).toHaveClass("border-border");
+    expect(screen.queryByRole("button", { name: "添加切片" })).not.toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "切片列表" })).toBeInTheDocument();
+    expect(screen.getByText("问题")).toBeInTheDocument();
+    expect(screen.getByText("答案")).toBeInTheDocument();
+    expect(screen.getByText("如何恢复出厂设置")).toBeInTheDocument();
+    expect(screen.getByText("保修期多久")).toBeInTheDocument();
+  });
+
+  it("filters QA chunks by question title only", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-3",
+      <KbDocDetailPage />,
+      "/chat/ai-hosting/kb/:knowledgeBaseId/docs/:docId",
+    );
+
+    await screen.findByText("如何恢复出厂设置");
+    await user.type(screen.getByRole("textbox", { name: "搜索切片标题" }), "物流");
+
+    await waitFor(() => {
+      expect(screen.getByText("如何查询物流")).toBeInTheDocument();
+      expect(screen.queryByText("如何恢复出厂设置")).not.toBeInTheDocument();
+      expect(screen.queryByText("保修期多久")).not.toBeInTheDocument();
+    });
+  });
+
+  it("adds a QA chunk manually", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-3",
+      <KbDocDetailPage />,
+      "/chat/ai-hosting/kb/:knowledgeBaseId/docs/:docId",
+    );
+
+    await screen.findByRole("button", { name: "添加问答" });
+    await user.click(screen.getByRole("button", { name: "添加问答" }));
+
+    const dialog = screen.getByRole("dialog", { name: "添加问答" });
+    await user.type(within(dialog).getByLabelText(/问题/), "支持 NFC 吗");
+    await user.type(within(dialog).getByLabelText(/答案/), "支持，可在设置中开启");
+    await user.click(within(dialog).getByRole("button", { name: "确定" }));
+
+    expect(await screen.findByText("支持 NFC 吗")).toBeInTheDocument();
+  });
+
+  it("keeps the add QA chunk dialog open when submit fails", async () => {
+    const user = userEvent.setup();
+    const addChunkSpy = vi.spyOn(kbMockData, "addMockKnowledgeChunk").mockImplementation(() => {
+      throw new Error("submit failed");
+    });
+
+    try {
+      renderWithRoute(
+        "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-3",
+        <KbDocDetailPage />,
+        "/chat/ai-hosting/kb/:knowledgeBaseId/docs/:docId",
+      );
+
+      await screen.findByRole("button", { name: "添加问答" });
+      await user.click(screen.getByRole("button", { name: "添加问答" }));
+
+      const dialog = screen.getByRole("dialog", { name: "添加问答" });
+      await user.type(within(dialog).getByLabelText(/问题/), "支持 NFC 吗");
+      await user.type(within(dialog).getByLabelText(/答案/), "支持，可在设置中开启");
+      await user.click(within(dialog).getByRole("button", { name: "确定" }));
+
+      expect(dialog).toBeInTheDocument();
+      expect(within(dialog).getByLabelText(/问题/)).toHaveValue("支持 NFC 吗");
+      expect(within(dialog).getByLabelText(/答案/)).toHaveValue("支持，可在设置中开启");
+      expect(addChunkSpy).toHaveBeenCalled();
+    } finally {
+      addChunkSpy.mockRestore();
+    }
+  });
+
+  it("edits a QA chunk on the chunk detail page", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-3",
+      <KbDocDetailPage />,
+      "/chat/ai-hosting/kb/:knowledgeBaseId/docs/:docId",
+    );
+
+    await screen.findByText("如何恢复出厂设置");
+    await user.click(screen.getAllByRole("button", { name: "编辑" })[0]);
+
+    const dialog = screen.getByRole("dialog", { name: "编辑切片" });
+    const questionField = within(dialog).getByLabelText(/问题/);
+    await user.clear(questionField);
+    await user.type(questionField, "如何重置手机");
+    await user.click(within(dialog).getByRole("button", { name: "保存" }));
+
+    expect(await screen.findByText("如何重置手机")).toBeInTheDocument();
+    expect(screen.queryByText("如何恢复出厂设置")).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "编辑切片" })).not.toBeInTheDocument();
+  });
+
+  it("renders the document chunk detail page and adds a chunk", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-1",
+      <KbDocDetailPage />,
+      "/chat/ai-hosting/kb/:knowledgeBaseId/docs/:docId",
+    );
+
+    await screen.findByRole("heading", { level: 1, name: "产品说明大全" });
+    expect(screen.getByRole("img", { name: "Word 文件" })).toBeInTheDocument();
+    expect(screen.getByText("文件（.doc）")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "华为产品知识" })).toHaveAttribute(
+      "href",
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+    );
+    expect(screen.queryByText("文档 · 华为产品知识")).not.toBeInTheDocument();
+    expect(screen.getByText("切片标题")).toBeInTheDocument();
+    expect(screen.getByText("切片内容")).toBeInTheDocument();
+    expect(screen.getByText("第一章 产品介绍")).toBeInTheDocument();
+
+    const addChunkButton = screen.getByRole("button", { name: "添加切片" });
+    expect(addChunkButton).not.toHaveClass("bg-primary");
+    expect(addChunkButton).toHaveClass("border-border");
+    await user.click(addChunkButton);
+    const dialog = screen.getByRole("dialog", { name: "添加切片" });
+    await user.type(within(dialog).getByLabelText(/切片标题/), "第三章 配件说明");
+    await user.type(within(dialog).getByLabelText(/切片内容/), "原装充电器与数据线需单独购买");
+    await user.click(within(dialog).getByRole("button", { name: "确定" }));
+
+    expect(await screen.findByText("第三章 配件说明")).toBeInTheDocument();
+  });
+
+  it("renders the image chunk detail page without add or delete actions", async () => {
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-8",
+      <KbDocDetailPage />,
+      "/chat/ai-hosting/kb/:knowledgeBaseId/docs/:docId",
+    );
+
+    await screen.findByRole("heading", { level: 1, name: "产品宣传图" });
+    expect(screen.getByRole("img", { name: "文件" })).toBeInTheDocument();
+    expect(screen.getByText("图片（.png）")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "华为产品知识" })).toHaveAttribute(
+      "href",
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+    );
+    expect(screen.queryByText("图片 · 华为产品知识")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "添加切片" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "添加问答" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "编辑" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "删除" })).not.toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "切片列表" })).toHaveTextContent("产品宣传图");
+  });
+
+  it("deletes a document chunk after confirmation", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-1",
+      <KbDocDetailPage />,
+      "/chat/ai-hosting/kb/:knowledgeBaseId/docs/:docId",
+    );
+
+    await screen.findByText("第一章 产品介绍");
+    await user.click(screen.getAllByRole("button", { name: "删除" })[0]);
+    const dialog = screen.getByRole("alertdialog", { name: "确定删除该切片吗" });
+    const confirmDeleteButton = within(dialog).getByRole("button", { name: "删除" });
+    expect(dialog).toBeInTheDocument();
+    expect(confirmDeleteButton).toHaveClass("bg-destructive");
+    await user.click(confirmDeleteButton);
+
+    expect(screen.queryByText("第一章 产品介绍")).not.toBeInTheDocument();
+    expect(screen.getByText("第二章 售后政策")).toBeInTheDocument();
   });
 });

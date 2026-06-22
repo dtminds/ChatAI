@@ -95,15 +95,22 @@ export function AiHostingPageHeader({
   actions,
   description,
   title,
+  titleAriaLabel,
 }: {
   actions?: ReactNode;
   description?: string;
-  title: string;
+  title: ReactNode;
+  titleAriaLabel?: string;
 }) {
   return (
     <header className="flex items-start justify-between gap-4">
       <div className="min-w-0">
-        <h1 className="text-[22px] font-semibold leading-tight text-foreground">{title}</h1>
+        <h1
+          aria-label={titleAriaLabel}
+          className="text-[22px] font-semibold leading-tight text-foreground"
+        >
+          {title}
+        </h1>
         {description ? (
           <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">{description}</p>
         ) : null}

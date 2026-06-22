@@ -1,5 +1,5 @@
 import type { Sheet } from "read-excel-file/browser";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AlertCircleIcon, Download01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@/components/ui/button";
@@ -52,6 +52,7 @@ export function ImportQaDialog({
 }) {
   const { beginValidation, invalidateValidation, isCurrentValidation } =
     useAsyncValidation();
+  const isMountedRef = useRef(false);
   const [selectedFile, setSelectedFile] = useState<{
     file: File;
     rowCount: number;
@@ -60,6 +61,14 @@ export function ImportQaDialog({
   const [fileError, setFileError] = useState("");
   const [isCheckingFile, setIsCheckingFile] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   const reset = () => {
     invalidateValidation();
@@ -90,6 +99,10 @@ export function ImportQaDialog({
 
     try {
       const sheets = await readAllQaImportSheets(selectedFile.file);
+      if (!isMountedRef.current) {
+        return;
+      }
+
       const entries = sheets.flatMap((sheet) =>
         sheet.data
           .slice(1)
@@ -103,9 +116,13 @@ export function ImportQaDialog({
       onImportComplete?.(entries);
       handleOpenChange(false);
     } catch {
-      setFileError("文件解析失败，请确认文件为标准 .faq.xlsx");
+      if (isMountedRef.current) {
+        setFileError("文件解析失败，请确认文件为标准 .faq.xlsx");
+      }
     } finally {
-      setIsImporting(false);
+      if (isMountedRef.current) {
+        setIsImporting(false);
+      }
     }
   }
 
@@ -136,12 +153,12 @@ export function ImportQaDialog({
 
     try {
       const sheets = await readAllQaImportSheets(file);
-      const sheetCount = sheets.length;
-      const rowCount = sheets.reduce((sum, sheet) => sum + sheet.data.length, 0);
-
-      if (!isCurrentValidation(validationId)) {
+      if (!isMountedRef.current || !isCurrentValidation(validationId)) {
         return;
       }
+
+      const sheetCount = sheets.length;
+      const rowCount = sheets.reduce((sum, sheet) => sum + sheet.data.length, 0);
 
       if (sheetCount > QA_IMPORT_MAX_SHEETS) {
         setFileError(`最多支持 ${QA_IMPORT_MAX_SHEETS} 个 sheet`);
@@ -155,13 +172,13 @@ export function ImportQaDialog({
 
       setSelectedFile({ file, rowCount, sheetCount });
     } catch {
-      if (!isCurrentValidation(validationId)) {
+      if (!isMountedRef.current || !isCurrentValidation(validationId)) {
         return;
       }
 
       setFileError("文件解析失败，请确认文件为标准 .faq.xlsx");
     } finally {
-      if (isCurrentValidation(validationId)) {
+      if (isMountedRef.current && isCurrentValidation(validationId)) {
         setIsCheckingFile(false);
       }
     }

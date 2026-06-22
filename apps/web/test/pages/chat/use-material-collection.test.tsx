@@ -668,4 +668,37 @@ describe("useMaterialCollection", () => {
     });
     expect(result.current.pendingMaterialCollection).toBeNull();
   });
+
+  it("clears material library and pending collection state on session reset", async () => {
+    const { result } = renderHook(() =>
+      useMaterialCollection(createDefaultOptions()),
+    );
+
+    act(() => {
+      result.current.handleOpenMaterialLibrary(2);
+    });
+
+    await waitFor(() => {
+      expect(result.current.activeMaterialLibraryBizType).toBe(2);
+    });
+
+    await act(async () => {
+      await result.current.handleCollectMaterial(fileMessage);
+    });
+
+    act(() => {
+      result.current.resetMaterialSessionState();
+    });
+
+    expect(result.current).toMatchObject({
+      activeMaterialLibraryBizType: null,
+      activeMaterialLibraryGroupId: null,
+      collectedExpressions: [],
+      hasMoreCollectedExpressions: false,
+      materialCollectionGroups: [],
+      materialLibraryGroups: [],
+      materialLibraryItems: [],
+      pendingMaterialCollection: null,
+    });
+  });
 });

@@ -9,6 +9,7 @@ import {
 import { getAuthSession } from "@/pages/auth/auth-service";
 import { subscribeAuthSessionChanged } from "@/pages/auth/auth-tokens";
 import { useAuthStore } from "@/store/auth-store";
+import { useWorkbenchStore } from "@/store/workbench-store";
 
 const PUBLIC_PATHS = new Set(["/login"]);
 
@@ -19,11 +20,21 @@ export function RootLayout() {
   const setChecking = useAuthStore((state) => state.setChecking);
   const setSession = useAuthStore((state) => state.setSession);
   const status = useAuthStore((state) => state.status);
+  const subUserId = useAuthStore((state) => state.subUser?.subUserId ?? null);
+  const resetWorkbenchSession = useWorkbenchStore(
+    (state) => state.resetWorkbenchSession,
+  );
   const authStatusRef = useRef(status);
+  const authSubUserIdRef = useRef(subUserId);
+  const lastSubUserIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     authStatusRef.current = status;
   }, [status]);
+
+  useEffect(() => {
+    authSubUserIdRef.current = subUserId;
+  }, [subUserId]);
 
   useEffect(() => {
     applyAppearanceTheme(getInitialAppearanceTheme());
@@ -33,6 +44,8 @@ export function RootLayout() {
     let isActive = true;
 
     if (PUBLIC_PATHS.has(location.pathname)) {
+      resetWorkbenchSession();
+      lastSubUserIdRef.current = null;
       clearSession();
       return undefined;
     }
@@ -48,10 +61,26 @@ export function RootLayout() {
         const response = await getAuthSession();
 
         if (isActive) {
+          const nextSubUserId = response.data.subUser.subUserId;
+          // RootLayout may mount after login already populated auth-store, so
+          // compare the last synced session first and fall back to auth-store.
+          const currentSubUserId =
+            lastSubUserIdRef.current ?? authSubUserIdRef.current;
+
+          if (
+            currentSubUserId !== null &&
+            currentSubUserId !== nextSubUserId
+          ) {
+            resetWorkbenchSession();
+          }
+
+          lastSubUserIdRef.current = nextSubUserId;
           setSession(response.data.subUser);
         }
       } catch {
         if (isActive) {
+          resetWorkbenchSession();
+          lastSubUserIdRef.current = null;
           clearSession(location.pathname);
         }
       }
@@ -68,7 +97,13 @@ export function RootLayout() {
       isActive = false;
       unsubscribe();
     };
-  }, [clearSession, setChecking, setSession, location.pathname]);
+  }, [
+    clearSession,
+    resetWorkbenchSession,
+    setChecking,
+    setSession,
+    location.pathname,
+  ]);
 
   const isPublicPath = PUBLIC_PATHS.has(location.pathname);
   const shouldVerifyPrivatePath =

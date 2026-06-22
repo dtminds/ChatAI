@@ -218,6 +218,7 @@ function ChatWorkbenchContent({
     requestSmartReplyGeneralAnswer,
     requestSmartReplyMakeShorter,
     readReceiptError,
+    resetWorkbenchSession,
     revokeMessage,
     pinConversation,
     retryFailedMessage,
@@ -297,6 +298,7 @@ function ChatWorkbenchContent({
       pollJitterMs: state.pollState.jitterMs,
       pollWorkbench: state.pollWorkbench,
       readReceiptError: state.readReceiptError,
+      resetWorkbenchSession: state.resetWorkbenchSession,
       refreshSeatSummaries: state.refreshSeatSummaries,
       requestSmartReplyGeneralAnswer: state.requestSmartReplyGeneralAnswer,
       requestSmartReplyMakeShorter: state.requestSmartReplyMakeShorter,
@@ -414,6 +416,7 @@ function ChatWorkbenchContent({
     try {
       await logout();
     } finally {
+      resetWorkbenchSession();
       notifyAuthSessionChanged();
     }
   }
@@ -911,6 +914,7 @@ function ChatWorkbenchContent({
     handleTopMaterial,
     handleTopMaterialGroup,
     resetMaterialLibrary,
+    resetMaterialSessionState,
     resetPendingCollection,
   } = useMaterialCollection({
     bootstrapStatus,
@@ -924,6 +928,48 @@ function ChatWorkbenchContent({
     resolvedActiveConversationId: activeConversation?.id,
     sendAgentMessageSegments,
   });
+
+  const resetLocalSessionState = useCallback(() => {
+    fileUploadAbortControllersRef.current.forEach((controller) => {
+      controller.abort();
+    });
+    fileUploadAbortControllersRef.current.clear();
+    fileUploadQueueRef.current = [];
+    mentionRetryDialogStateRef.current = null;
+    isSendingDraftRef.current = false;
+    shouldRestoreComposerFocusRef.current = false;
+    composerDraftHydratedConversationIdRef.current = undefined;
+    setDraft("");
+    setComposerSegments([]);
+    setFileUploadQueue([]);
+    setFileUploadTransitionError(undefined);
+    setIsEmojiPickerOpen(false);
+    setIsQuickReplyPanelActive(false);
+    setIsRefreshingMentionTarget(false);
+    setIsSendingDraft(false);
+    setMentionRetryDialogState(null);
+    setPollingPauseReason(null);
+    setQuickReplyCategoryFormState(null);
+    setQuickReplyFormState(null);
+    setQuotedMessage(null);
+    setRetryingUiMessageKeys(new Set());
+    setSendFailureDialog(null);
+    resetMaterialSessionState();
+    composerRef.current?.dispatchCommand(CLEAR_COMPOSER_COMMAND, undefined);
+  }, [resetMaterialSessionState]);
+
+  const subUserId = subUser?.subUserId ?? null;
+  const previousSubUserIdRef = useRef(subUserId);
+
+  useEffect(() => {
+    if (previousSubUserIdRef.current === subUserId) {
+      return;
+    }
+
+    previousSubUserIdRef.current = subUserId;
+    resetLocalSessionState();
+  }, [resetLocalSessionState, subUserId]);
+
   const quickReplies = useQuickReplies({
     enabled: activeView === "chat" && Boolean(activeConversation) && isQuickReplyPanelActive,
   });

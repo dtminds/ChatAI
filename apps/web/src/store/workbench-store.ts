@@ -236,6 +236,7 @@ type WorkbenchState = {
   revokeMessage: (uiMessageKey: string) => Promise<RevokeMessageResult>;
   sidebarItems: SettingsSidebarItem[];
   clearActiveConversation: () => void;
+  resetWorkbenchSession: () => void;
   deleteConversation: (conversationId: string) => Promise<void>;
   dismissScopeTransitionError: () => void;
   dismissReadReceiptError: () => void;
@@ -349,6 +350,7 @@ function createInitialState(): Omit<
   WorkbenchState,
   | "deleteConversation"
   | "clearActiveConversation"
+  | "resetWorkbenchSession"
   | "initializeWorkbench"
   | "markConversationRead"
   | "pinConversation"
@@ -2199,6 +2201,8 @@ export function createWorkbenchStore() {
   let latestScopeRequestId = 0;
   let latestTakeoverRequestId = 0;
   let latestGroupMembersRequestId = 0;
+  let latestPollRunId = 0;
+  let runningPollRunId: number | undefined;
   let isPollWorkbenchRunning = false;
   let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   const pendingVoicePlaybackConfirmKeys = new Set<string>();
@@ -2215,8 +2219,20 @@ export function createWorkbenchStore() {
     return latestScopeRequestId;
   }
 
+  function bumpScopeRequestId() {
+    latestScopeRequestId += 1;
+  }
+
+  function getScopeRequestId() {
+    return latestScopeRequestId;
+  }
+
   function isCurrentScopeRequest(requestId: number) {
     return requestId === latestScopeRequestId;
+  }
+
+  function isReadyScopeRequest(requestId: number, state: WorkbenchStore) {
+    return isCurrentScopeRequest(requestId) && state.bootstrapStatus === "ready";
   }
 
   function issueTakeoverRequestId(accountId: string) {
@@ -2304,6 +2320,52 @@ export function createWorkbenchStore() {
         clearTimeout(timer);
         smartReplyTimeoutsByKey.delete(timerKey);
       }
+    }
+  }
+
+  function clearAllRuntimeState() {
+    bumpScopeRequestId();
+    latestTakeoverRequestId += 1;
+    latestGroupMembersRequestId += 1;
+    runningPollRunId = undefined;
+    isPollWorkbenchRunning = false;
+
+    if (searchDebounceTimer) {
+      clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = null;
+    }
+
+    for (const timer of smartReplyPollTimersByConversationId.values()) {
+      clearTimeout(timer);
+    }
+    smartReplyPollTimersByConversationId.clear();
+
+    for (const timer of smartReplyAutoPreviewTimeoutsByKey.values()) {
+      clearTimeout(timer);
+    }
+    smartReplyAutoPreviewTimeoutsByKey.clear();
+
+    for (const timer of smartReplyTimeoutsByKey.values()) {
+      clearTimeout(timer);
+    }
+    smartReplyTimeoutsByKey.clear();
+
+    for (const timeoutId of revokePendingTimeoutsByMessageId.values()) {
+      clearTimeout(timeoutId);
+    }
+    revokePendingTimeoutsByMessageId.clear();
+
+    pendingVoicePlaybackConfirmKeys.clear();
+    pendingRevokeRequestMessageIds.clear();
+
+    for (const accountId of Object.keys(latestTakeoverRequestIdByAccountId)) {
+      delete latestTakeoverRequestIdByAccountId[accountId];
+    }
+
+    for (const conversationId of Object.keys(
+      latestGroupMembersRequestIdByConversationId,
+    )) {
+      delete latestGroupMembersRequestIdByConversationId[conversationId];
     }
   }
 
@@ -3800,6 +3862,10 @@ export function createWorkbenchStore() {
           }
         }
       } catch (error) {
+        if (!isCurrentScopeRequest(requestId)) {
+          return;
+        }
+
         set({
           bootstrapError: error instanceof Error ? error.message : "工作台初始化失败",
           bootstrapStatus: "error",
@@ -3818,6 +3884,10 @@ export function createWorkbenchStore() {
       }
 
       isPollWorkbenchRunning = true;
+      latestPollRunId += 1;
+      const pollRunId = latestPollRunId;
+      runningPollRunId = pollRunId;
+      const requestId = getScopeRequestId();
 
       try {
         const activeConversationId = state.activeConversationId || undefined;
@@ -3839,6 +3909,11 @@ export function createWorkbenchStore() {
           customerProfilesById: state.customerProfilesById,
           me: state.me,
         });
+
+        if (!isReadyScopeRequest(requestId, get())) {
+          return;
+        }
+
         const messageUpdateSeqsByConversationId = (response.messageUpdateEvents ?? []).reduce(
           (accumulator, event) => {
             const currentSeqs = accumulator[event.conversationId];
@@ -3873,10 +3948,18 @@ export function createWorkbenchStore() {
           ),
         ) as Record<string, Message[]>;
 
+        if (!isReadyScopeRequest(requestId, get())) {
+          return;
+        }
+
         const polledConversationId = response.request.activeConversationId;
         let shouldNotifyPulledCustomerMessage = false;
 
         set((currentState) => {
+          if (!isReadyScopeRequest(requestId, currentState)) {
+            return currentState;
+          }
+
           const requestedActiveConversationId =
             response.request.activeConversationId ?? "";
           const isStaleScope =
@@ -4129,6 +4212,10 @@ export function createWorkbenchStore() {
           };
         });
 
+        if (!isReadyScopeRequest(requestId, get())) {
+          return;
+        }
+
         if (shouldNotifyPulledCustomerMessage) {
           notifyPulledCustomerMessage();
         }
@@ -4178,6 +4265,10 @@ export function createWorkbenchStore() {
           }
         }
       } catch (error) {
+        if (!isCurrentScopeRequest(requestId)) {
+          return;
+        }
+
         if (isCursorInvalidationError(error)) {
           try {
             const latestState = get();
@@ -4198,10 +4289,19 @@ export function createWorkbenchStore() {
               MESSAGE_PAGE_SIZE,
               latestState.activeConversationId,
             );
+
+            if (!isReadyScopeRequest(requestId, get())) {
+              return;
+            }
+
             const conversationPage = scopeResult.conversationPage;
             const loadedAt = Date.now();
 
             set((currentState) => {
+              if (!isReadyScopeRequest(requestId, currentState)) {
+                return currentState;
+              }
+
               const nextMessagesByConversationId = conversationPage
                 ? {
                     ...currentState.messagesByConversationId,
@@ -4283,7 +4383,10 @@ export function createWorkbenchStore() {
           },
         }));
       } finally {
-        isPollWorkbenchRunning = false;
+        if (runningPollRunId === pollRunId) {
+          runningPollRunId = undefined;
+          isPollWorkbenchRunning = false;
+        }
       }
     },
     async sendAgentMessageSegments(segments, options) {
@@ -4975,6 +5078,10 @@ export function createWorkbenchStore() {
         scopeTransitionError: undefined,
       });
     },
+    resetWorkbenchSession() {
+      clearAllRuntimeState();
+      set(createInitialState());
+    },
     async refreshSeatSummaries() {
       const state = get();
 
@@ -4982,18 +5089,26 @@ export function createWorkbenchStore() {
         return;
       }
 
+      const requestId = getScopeRequestId();
+
       try {
         const nextAccounts = await loadSeats();
 
         set((currentState) => ({
-          accounts: currentState.accounts.map((account) => {
-            if (account.id === currentState.activeAccountId) {
-              return account;
-            }
+          accounts:
+            isCurrentScopeRequest(requestId) &&
+            currentState.bootstrapStatus === "ready"
+              ? currentState.accounts.map((account) => {
+                  if (account.id === currentState.activeAccountId) {
+                    return account;
+                  }
 
-            const nextAccount = nextAccounts.find((item) => item.id === account.id);
-            return nextAccount ?? account;
-          }),
+                  const nextAccount = nextAccounts.find(
+                    (item) => item.id === account.id,
+                  );
+                  return nextAccount ?? account;
+                })
+              : currentState.accounts,
         }));
       } catch {
         // Keep current seat summaries if the refresh fails.

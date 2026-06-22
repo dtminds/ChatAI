@@ -344,7 +344,7 @@ const defaultCustomerProfiles = seedCustomerProfiles;
 const MESSAGE_PAGE_SIZE = 50;
 const CONVERSATION_MODES = ["single", "group"] as const satisfies readonly ChatMode[];
 const GROUP_MEMBERS_CACHE_TTL_MS = 5 * 60 * 1000;
-const REVOKE_PENDING_TIMEOUT_MS = 5 * 1000;
+const REVOKE_PENDING_TIMEOUT_MS = 10 * 1000;
 export const MAX_CONVERSATION_LIST_CACHE_SEATS = 3;
 
 function createInitialState(): Omit<
@@ -2496,9 +2496,6 @@ export function createWorkbenchStore() {
             return {};
           }
 
-          const isCurrentActiveConversation =
-            currentState.activeConversationId === conversationId;
-
           return {
             messagesByConversationId: {
               ...currentState.messagesByConversationId,
@@ -2508,9 +2505,6 @@ export function createWorkbenchStore() {
                 false,
               ),
             },
-            ...(isCurrentActiveConversation
-              ? { revokeMessageError: "撤回失败，请稍后重试" }
-              : {}),
           };
         });
       }, REVOKE_PENDING_TIMEOUT_MS);

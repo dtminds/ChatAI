@@ -683,7 +683,7 @@ describe("workbench revoke state", () => {
     expect(useWorkbenchStore.getState().revokeMessageError).toBeUndefined();
   });
 
-  it("clears revoke pending after five seconds when no revoke signal arrives", async () => {
+  it("keeps revoke pending for ten seconds and clears it without toast when no revoke signal arrives", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-27T10:00:00").getTime());
     const baseService = createMockWorkbenchService();
@@ -744,9 +744,20 @@ describe("workbench revoke state", () => {
         .getState()
         .messagesByConversationId["conv-001"].find((message) => message.uiMessageKey === "timeout-agent-message"),
     ).toMatchObject({
+      revokePending: true,
+    });
+    expect(useWorkbenchStore.getState().revokeMessageError).toBeUndefined();
+
+    vi.advanceTimersByTime(5_000);
+
+    expect(
+      useWorkbenchStore
+        .getState()
+        .messagesByConversationId["conv-001"].find((message) => message.uiMessageKey === "timeout-agent-message"),
+    ).toMatchObject({
       revokePending: false,
     });
-    expect(useWorkbenchStore.getState().revokeMessageError).toBe("撤回失败，请稍后重试");
+    expect(useWorkbenchStore.getState().revokeMessageError).toBeUndefined();
 
     vi.useRealTimers();
   });
@@ -800,7 +811,7 @@ describe("workbench revoke state", () => {
     await useWorkbenchStore.getState().revokeMessage("switched-timeout-agent-message");
     useWorkbenchStore.setState({ activeConversationId: "conv-002" });
 
-    vi.advanceTimersByTime(5_000);
+    vi.advanceTimersByTime(10_000);
 
     expect(
       useWorkbenchStore

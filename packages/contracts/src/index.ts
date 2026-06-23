@@ -1,4 +1,5 @@
 export * from "./ai-hosting/dto.js";
+export * from "./ai-hosting/kb-doc.js";
 export * from "./auth/dto.js";
 export * from "./chat/dto.js";
 export * from "./chat/enums.js";

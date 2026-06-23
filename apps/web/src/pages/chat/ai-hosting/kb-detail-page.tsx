@@ -43,10 +43,13 @@ import { ImportDocumentDialog } from "./kb-components/import-document-dialog";
 import { ImportImageDialog } from "./kb-components/import-image-dialog";
 import { ImportQaDialog } from "./kb-components/import-qa-dialog";
 import {
+  addMockKnowledgeRecord,
+  getLocalTimeString,
   getMockKnowledgeBasesSnapshot,
+  getMockKnowledgeRecordsSnapshot,
   MOCK_KNOWLEDGE_BASES,
-  MOCK_KNOWLEDGE_RECORDS,
   subscribeMockKnowledgeBases,
+  subscribeMockKnowledgeRecords,
   type KnowledgeRecord,
   type KnowledgeStatus,
 } from "./kb-mock-data";
@@ -110,8 +113,13 @@ export function KbDetailPage() {
     getMockKnowledgeBasesSnapshot,
     getMockKnowledgeBasesSnapshot,
   );
-  const { knowledgeBaseId = MOCK_KNOWLEDGE_BASES[0]?.id } = useParams();
-  const knowledgeBase = knowledgeBases.find((item) => item.id === knowledgeBaseId);
+  const knowledgeRecords = useSyncExternalStore(
+    subscribeMockKnowledgeRecords,
+    getMockKnowledgeRecordsSnapshot,
+    getMockKnowledgeRecordsSnapshot,
+  );
+  const { knowledgeBaseId: kbId = MOCK_KNOWLEDGE_BASES[0]?.id } = useParams();
+  const knowledgeBase = knowledgeBases.find((item) => item.id === kbId);
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [importQaDialogOpen, setImportQaDialogOpen] = useState(false);
@@ -124,7 +132,7 @@ export function KbDetailPage() {
       return [];
     }
 
-    const records = MOCK_KNOWLEDGE_RECORDS.filter(
+    const records = knowledgeRecords.filter(
       (record) => record.knowledgeBaseId === knowledgeBase.id,
     );
 
@@ -137,7 +145,7 @@ export function KbDetailPage() {
         record.name.toLowerCase().includes(normalizedQuery) ||
         record.typeLabel.toLowerCase().includes(normalizedQuery),
     );
-  }, [knowledgeBase?.id, searchQuery]);
+  }, [knowledgeBase?.id, knowledgeRecords, searchQuery]);
   const { activePage, totalPages } = resolveTablePagination({
     page: currentPage,
     pageSize: PAGE_SIZE,
@@ -227,6 +235,26 @@ export function KbDetailPage() {
         open={imageDialogOpen}
       />
       <ImportDocumentDialog
+        kbId={kbId}
+        onCreated={(result) => {
+          const createdAt = getLocalTimeString();
+          const docSuffix = result.docSuffix.toLowerCase();
+          addMockKnowledgeRecord({
+            createdAt,
+            fileExtension: docSuffix,
+            id: result.docId,
+            knowledgeBaseId: kbId,
+            name: result.name,
+            sliceCount: null,
+            status: "queued",
+            type: "document",
+            typeLabel:
+              docSuffix === "txt" || docSuffix === "md"
+                ? "纯文本"
+                : `文件（.${docSuffix}）`,
+            updatedAt: createdAt,
+          });
+        }}
         onOpenChange={setDocumentDialogOpen}
         open={documentDialogOpen}
       />

@@ -100,7 +100,7 @@ export function getLocalTimeString(): string {
     .slice(0, 19);
 }
 
-export const MOCK_KNOWLEDGE_RECORDS: KnowledgeRecord[] = [
+const INITIAL_MOCK_KNOWLEDGE_RECORDS: KnowledgeRecord[] = [
   {
     fileExtension: "doc",
     id: "knowledge-1",
@@ -199,8 +199,41 @@ export const MOCK_KNOWLEDGE_RECORDS: KnowledgeRecord[] = [
   },
 ];
 
+type KnowledgeRecordStoreListener = () => void;
+
+const knowledgeRecordStoreListeners = new Set<KnowledgeRecordStoreListener>();
+let knowledgeRecordStoreItems = [...INITIAL_MOCK_KNOWLEDGE_RECORDS];
+
+function emitKnowledgeRecordStoreChange() {
+  knowledgeRecordStoreListeners.forEach((listener) => listener());
+}
+
+export const MOCK_KNOWLEDGE_RECORDS = INITIAL_MOCK_KNOWLEDGE_RECORDS;
+
+export function getMockKnowledgeRecordsSnapshot() {
+  return knowledgeRecordStoreItems;
+}
+
+export function subscribeMockKnowledgeRecords(listener: KnowledgeRecordStoreListener) {
+  knowledgeRecordStoreListeners.add(listener);
+
+  return () => {
+    knowledgeRecordStoreListeners.delete(listener);
+  };
+}
+
+export function addMockKnowledgeRecord(record: KnowledgeRecord) {
+  knowledgeRecordStoreItems = [record, ...knowledgeRecordStoreItems];
+  emitKnowledgeRecordStoreChange();
+}
+
+export function resetMockKnowledgeRecords() {
+  knowledgeRecordStoreItems = [...INITIAL_MOCK_KNOWLEDGE_RECORDS];
+  emitKnowledgeRecordStoreChange();
+}
+
 export function getKnowledgeRecordById(id: string): KnowledgeRecord | undefined {
-  return MOCK_KNOWLEDGE_RECORDS.find((record) => record.id === id);
+  return knowledgeRecordStoreItems.find((record) => record.id === id);
 }
 
 const INITIAL_MOCK_KNOWLEDGE_CHUNKS: KnowledgeChunk[] = [
@@ -333,5 +366,6 @@ export function resetMockKnowledgeChunks() {
 
 export function resetMockKnowledgeData() {
   resetMockKnowledgeBases();
+  resetMockKnowledgeRecords();
   resetMockKnowledgeChunks();
 }

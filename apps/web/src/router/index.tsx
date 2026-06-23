@@ -216,6 +216,10 @@ export const routerConfig = [
         element: withRouteSuspense(<AgentSettingsPage />),
       },
       {
+        path: "chat/ai-hosting/agents/:agentId",
+        element: withRouteSuspense(<AgentSettingsPage />),
+      },
+      {
         path: "chat/ai-hosting/kb",
         element: withRouteSuspense(<KbListPage />),
       },

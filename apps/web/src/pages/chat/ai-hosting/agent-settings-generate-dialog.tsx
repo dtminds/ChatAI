@@ -27,7 +27,7 @@ import {
   agentIndustryOptions,
   defaultAgentGenerateForm,
   type AgentGenerateForm,
-} from "./agent-settings.constants";
+} from "./agent-components/agent-settings.constants";
 
 type GeneratePhase = "form" | "generating";
 
@@ -155,7 +155,7 @@ export function AgentSettingsGenerateDialog({
               className="text-sm leading-6 text-muted-foreground"
               id="agent-settings-generate-description"
             >
-              按实际情况填写表单后，AI会帮您自动生成Agent的配置内容
+              按实际情况填写表单后，AI 会帮您自动生成 Agent 的配置内容
             </DialogDescription>
           </DialogHeader>
 
@@ -205,14 +205,14 @@ export function AgentSettingsGenerateDialog({
             </div>
 
             <div className="space-y-2">
-              <RequiredLabel htmlFor="agent-generate-role">您希望AI扮演什么样的角色?</RequiredLabel>
+              <RequiredLabel htmlFor="agent-generate-role">您希望 AI 扮演什么样的角色?</RequiredLabel>
               <Select
                 disabled={isGenerating}
                 onValueChange={(value) => updateForm("aiRole", value)}
                 value={form.aiRole}
               >
                 <SelectTrigger
-                  aria-label="您希望AI扮演什么样的角色?"
+                  aria-label="您希望 AI 扮演什么样的角色?"
                   className={generateFieldClassName}
                   id="agent-generate-role"
                 >
@@ -240,7 +240,7 @@ export function AgentSettingsGenerateDialog({
             </div>
           ) : null}
 
-          <DialogFooter className="relative gap-2 px-6 pb-6 pt-8 sm:gap-2">
+          <DialogFooter className="relative px-6 pb-6 pt-8">
             <DialogClose asChild>
               <Button
                 className="h-10 rounded-[8px] shadow-none"

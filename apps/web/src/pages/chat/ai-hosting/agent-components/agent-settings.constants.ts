@@ -1,16 +1,16 @@
 export type AgentToneStyle =
-  | "friendly"
-  | "professional"
-  | "lively"
-  | "restrained"
-  | "efficient"
-  | "gentle";
+  | "亲切自然"
+  | "专业顾问"
+  | "活泼"
+  | "高级克制"
+  | "高效客服"
+  | "温柔陪伴";
 
-export type AgentReplyLength = "concise" | "standard" | "detailed";
+export type AgentReplyLength = "简洁" | "标准" | "充分";
 
 export type ConditionalLogicSegment =
   | { type: "text"; value: string }
-  | { type: "knowledgeBase"; id: string };
+  | { type: "knowledgeBase"; id: string; name?: string };
 
 export type AgentSettingsForm = {
   communicationStyle: string;
@@ -36,11 +36,11 @@ export const mockKnowledgeBaseOptions: KnowledgeBaseOption[] = [
   { id: "kb-policy", name: "活动政策知识库" },
 ];
 
-export const agentNameMaxLength = 16;
+export const agentNameMaxLength = 50;
+export const agentLongTextMaxLength = 2000;
 
 export const agentModelOptions = [
-  { label: "默认模型", value: "default-model" },
-  { label: "Doubao-2.0-lite", value: "doubao-2.0-lite" },
+  { label: "默认模型", model: "default-model", value: "0" },
 ] as const;
 
 export const agentToneStyleOptions: Array<{
@@ -48,28 +48,67 @@ export const agentToneStyleOptions: Array<{
   label: string;
   value: AgentToneStyle;
 }> = [
-  { emoji: "😊", label: "亲切自然", value: "friendly" },
-  { label: "专业顾问", value: "professional" },
-  { label: "活泼", value: "lively" },
-  { label: "高级克制", value: "restrained" },
-  { label: "高效客服", value: "efficient" },
-  { label: "温柔陪伴", value: "gentle" },
+  { emoji: "😊", label: "亲切自然", value: "亲切自然" },
+  { label: "专业顾问", value: "专业顾问" },
+  { label: "活泼", value: "活泼" },
+  { label: "高级克制", value: "高级克制" },
+  { label: "高效客服", value: "高效客服" },
+  { label: "温柔陪伴", value: "温柔陪伴" },
+];
+
+export const agentCommunicationStyleTemplates: Array<{
+  description: string;
+  emoji?: string;
+  label: string;
+  value: AgentToneStyle;
+}> = [
+  {
+    description: "语气亲切自然，像真人客服一样耐心回应客户，适度使用礼貌表达和轻松语气，避免生硬、模板化或过度营销。",
+    emoji: "😊",
+    label: "亲切自然",
+    value: "亲切自然",
+  },
+  {
+    description: "表达专业、准确、可信，优先说明依据、适用场景和注意事项，避免夸大承诺，适合需要建立信任的咨询场景。",
+    label: "专业顾问",
+    value: "专业顾问",
+  },
+  {
+    description: "语气轻快有感染力，适度突出亮点和使用体验，适合新品介绍、活动推荐和种草转化，但不要过度催促客户。",
+    label: "活泼种草",
+    value: "活泼",
+  },
+  {
+    description: "表达克制、高级、简洁，少用感叹和夸张词，重点突出品质、质感和专业判断，适合高客单价或品牌调性较稳的场景。",
+    label: "高级克制",
+    value: "高级克制",
+  },
+  {
+    description: "回复直接高效，优先给出结论、步骤和下一步动作，减少铺垫和闲聊，适合售后处理、流程咨询和高频标准问题。",
+    label: "高效客服",
+    value: "高效客服",
+  },
+  {
+    description: "语气温柔、有耐心，优先安抚客户情绪并确认诉求，适合投诉、退款、敏感问题和需要陪伴式沟通的场景。",
+    label: "温柔陪伴",
+    value: "温柔陪伴",
+  },
 ];
 
 export const agentReplyLengthOptions: Array<{
   label: string;
   value: AgentReplyLength;
 }> = [
-  { label: "简洁", value: "concise" },
-  { label: "标准", value: "standard" },
-  { label: "充分", value: "detailed" },
+  { label: "简洁", value: "简洁" },
+  { label: "标准", value: "标准" },
+  { label: "充分", value: "充分" },
 ];
 
 export const defaultAgentSettingsForm: AgentSettingsForm = {
   name: "",
   model: agentModelOptions[0].value,
-  toneStyle: "friendly",
-  replyLength: "concise",
+  toneStyle: "亲切自然",
+  replyLength: "简洁",
   roleDescription: "",
   communicationStyle: "",
   conditionalLogic: [{ type: "text", value: "" }],

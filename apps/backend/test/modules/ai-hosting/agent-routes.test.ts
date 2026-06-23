@@ -67,6 +67,7 @@ describe("AI hosting agent routes", () => {
     });
     expect(db.joinCalls).toEqual([]);
     expect(db.agentListWheres).toContainEqual(["agent.uid", "=", 9001]);
+    expect(db.agentListSelects).not.toContain("agent.prompt_config as prompt_config");
     expect(db.historyListExecuteCount).toBe(0);
     expect(db.modelListWheres).toContainEqual(["status", "=", 1]);
     expect(db.modelUidFilter).toEqual([9001, 0]);
@@ -278,6 +279,7 @@ function createAiHostingDbMock() {
   ];
   const state = {
     agentListWheres: [] as Array<[string, string, unknown]>,
+    agentListSelects: [] as string[],
     deletedAgent: undefined as
       | { id: number | undefined; values: Record<string, unknown> }
       | undefined,
@@ -394,7 +396,13 @@ function createAiHostingDbMock() {
           orderByCalls.push([column, direction]);
           return builder;
         },
-        select: () => builder,
+        select: (selection: string | string[]) => {
+          if (table === "xy_wap_embed_agent as agent") {
+            state.agentListSelects = Array.isArray(selection) ? selection : [selection];
+          }
+
+          return builder;
+        },
         where: (column: string, operator: string, value: unknown) => {
           wheres.push([column, operator, value]);
           return builder;

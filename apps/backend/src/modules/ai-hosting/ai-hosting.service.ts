@@ -26,7 +26,7 @@ type AgentRow = {
   id: number;
   model_id: number;
   name: string;
-  prompt_config: string | null;
+  prompt_config?: string | null;
   update_time?: Date | number | string | null;
 };
 
@@ -305,7 +305,6 @@ export class AiHostingService {
         "agent.id as id",
         "agent.model_id as model_id",
         "agent.name as name",
-        "agent.prompt_config as prompt_config",
         "agent.update_time as update_time",
       ])
       .where("agent.uid", "=", scope.uid)

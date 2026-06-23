@@ -137,6 +137,8 @@ describe("AI hosting agent routes", () => {
       operator_id: 1,
       uid: 9001,
     });
+    expect(db.historyLatestLimitValues).not.toHaveLength(0);
+    expect(db.historyLatestLimitValues.every((value) => value === 1)).toBe(true);
 
     await app.close();
   });
@@ -283,6 +285,7 @@ function createAiHostingDbMock() {
     insertedHistories: [] as Array<Record<string, unknown>>,
     joinCalls: [] as string[],
     historyListExecuteCount: 0,
+    historyLatestLimitValues: [] as number[],
     modelListWheres: [] as Array<[string, string, unknown]>,
     modelUidFilter: undefined as unknown,
     updatedAgent: undefined as
@@ -379,7 +382,13 @@ function createAiHostingDbMock() {
           state.joinCalls.push(tableName);
           return builder;
         },
-        limit: () => builder,
+        limit: (value: number) => {
+          if (table === "xy_wap_embed_agent_history") {
+            state.historyLatestLimitValues.push(value);
+          }
+
+          return builder;
+        },
         offset: () => builder,
         orderBy: (column: string, direction?: string) => {
           orderByCalls.push([column, direction]);

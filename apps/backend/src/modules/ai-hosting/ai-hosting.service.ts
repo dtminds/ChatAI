@@ -410,6 +410,7 @@ export class AiHostingService {
       .where("uid", "=", scope.uid)
       .where("agent_id", "=", agentId)
       .orderBy("id", "desc")
+      .limit(1)
       .executeTakeFirst() as Promise<AgentHistoryRow | undefined>;
   }
 

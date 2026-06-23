@@ -1860,15 +1860,12 @@ export class MysqlWorkbenchService implements WorkbenchService {
     payload: WorkbenchSendMessagePayload,
     segment: WorkbenchOutgoingMessageSegment,
   ): Promise<JavaSendMessageData> {
-    if (segment.type === "sphfeed") {
-      throw new BadRequestError("SPHFEED_UNAVAILABLE", "视频号发送功能暂未开放");
-    }
-
     if (
       segment.type === "emotion" ||
       (segment.type === "file" && segment.materialCollectionId) ||
       (segment.type === "h5" && segment.materialCollectionId) ||
-      (segment.type === "weapp" && segment.materialCollectionId)
+      (segment.type === "weapp" && segment.materialCollectionId) ||
+      (segment.type === "sphfeed" && segment.materialCollectionId)
     ) {
       const materialCollectionId = segment.materialCollectionId;
 
@@ -1883,6 +1880,8 @@ export class MysqlWorkbenchService implements WorkbenchService {
           ? MATERIAL_COLLECTION_BIZ_TYPE.FILE
           : segment.type === "h5"
           ? MATERIAL_COLLECTION_BIZ_TYPE.H5
+          : segment.type === "sphfeed"
+          ? MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED
           : MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM;
       const collection = await this.repository.findMaterialCollectionForForward({
         bizType,
@@ -1910,7 +1909,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
       return buildForwardJavaSendMessageData(segment.type, collection.msgInfoId);
     }
 
-    if (segment.type === "weapp") {
+    if (segment.type === "weapp" || segment.type === "sphfeed") {
       return buildForwardJavaSendMessageData(segment.type, segment.msgInfoId);
     }
 

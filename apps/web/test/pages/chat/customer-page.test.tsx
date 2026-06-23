@@ -873,7 +873,9 @@ describe("CustomerPage", () => {
     await waitFor(() => {
       expect(settingsRouter.state.location.pathname).toBe("/chat/settings");
     });
-    expect(screen.getByRole("navigation", { name: "设置菜单" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("navigation", { name: "设置菜单" }),
+    ).toBeInTheDocument();
   });
 
   it("keeps the workbench rail alive and returns to chat when a seat is selected", async () => {

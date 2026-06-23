@@ -32,7 +32,6 @@ export const AiHostingAgentListItemSchema = Type.Object({
   knowledgeBases: Type.Array(Type.String()),
   model: AiHostingAgentModelSummarySchema,
   name: Type.String(),
-  publishedAt: Type.Optional(Type.Number()),
   updatedAt: Type.Optional(Type.Number()),
 });
 

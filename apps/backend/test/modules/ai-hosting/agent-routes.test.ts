@@ -30,7 +30,6 @@ describe("AI hosting agent routes", () => {
               name: "Doubao-2.0-lite",
             },
             name: "护肤小助理",
-            publishedAt: 1_718_006_400_000,
             updatedAt: 1_718_006_460_000,
           },
         ],
@@ -68,7 +67,7 @@ describe("AI hosting agent routes", () => {
     });
     expect(db.joinCalls).toEqual([]);
     expect(db.agentListWheres).toContainEqual(["agent.uid", "=", 9001]);
-    expect(db.historyListWheres).toContainEqual(["agent_id", "in", [301]]);
+    expect(db.historyListExecuteCount).toBe(0);
     expect(db.modelListWheres).toContainEqual(["status", "=", 1]);
     expect(db.modelUidFilter).toEqual([9001, 0]);
 
@@ -283,7 +282,7 @@ function createAiHostingDbMock() {
     insertedAgent: undefined as Record<string, unknown> | undefined,
     insertedHistories: [] as Array<Record<string, unknown>>,
     joinCalls: [] as string[],
-    historyListWheres: [] as Array<[string, string, unknown]>,
+    historyListExecuteCount: 0,
     modelListWheres: [] as Array<[string, string, unknown]>,
     modelUidFilter: undefined as unknown,
     updatedAgent: undefined as
@@ -318,7 +317,7 @@ function createAiHostingDbMock() {
           }
 
           if (table === "xy_wap_embed_agent_history") {
-            state.historyListWheres = wheres;
+            state.historyListExecuteCount += 1;
             const agentIdFilter = wheres.find(([column]) => column === "agent_id")?.[2] as
               | number[]
               | undefined;

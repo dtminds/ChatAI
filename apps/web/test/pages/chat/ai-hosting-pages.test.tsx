@@ -62,7 +62,6 @@ const mockAgents = [
       name: "Doubao-2.0-lite",
     },
     name: "护肤小助理",
-    publishedAt: 1_718_006_400_000,
     updatedAt: 1_718_006_460_000,
   },
   {
@@ -75,7 +74,6 @@ const mockAgents = [
       name: "Doubao-2.0-lite",
     },
     name: "售后小助理",
-    publishedAt: undefined,
     updatedAt: 1_718_006_470_000,
   },
 ];

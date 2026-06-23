@@ -66,13 +66,9 @@ export class AiHostingService {
     const rows = await this.listAgentRows(scope, pagination, normalizedQuery);
     const models = await this.listModelRows(scope);
     const modelMap = new Map(models.map((model) => [String(model.id), mapModelSummary(model)]));
-    const historyMap = await this.listLatestHistoryMap(
-      scope,
-      rows.map((row) => row.id),
-    );
 
     return {
-      agents: rows.map((row) => this.mapAgentListItem(row, modelMap, historyMap.get(row.id))),
+      agents: rows.map((row) => this.mapAgentListItem(row, modelMap)),
       pagination: {
         page: pagination.page,
         pageSize: pagination.pageSize,
@@ -417,30 +413,6 @@ export class AiHostingService {
       .executeTakeFirst() as Promise<AgentHistoryRow | undefined>;
   }
 
-  private async listLatestHistoryMap(scope: TenantScope, agentIds: number[]) {
-    const histories = new Map<number, AgentHistoryRow>();
-
-    if (agentIds.length === 0) {
-      return histories;
-    }
-
-    const rows = await this.db
-      .selectFrom("xy_wap_embed_agent_history")
-      .select(["agent_id", "create_time", "id", "model_id", "prompt_config"])
-      .where("uid", "=", scope.uid)
-      .where("agent_id", "in", agentIds)
-      .orderBy("id", "desc")
-      .execute() as AgentHistoryRow[];
-
-    for (const row of rows) {
-      if (!histories.has(row.agent_id)) {
-        histories.set(row.agent_id, row);
-      }
-    }
-
-    return histories;
-  }
-
   private async getAgentDetailOrThrow(scope: TenantScope, agentId: number): Promise<AiHostingAgentDetail> {
     const agent = await this.getAgentRowOrThrow(scope, agentId);
     const model = await this.getModelRow(scope, agent.model_id);
@@ -461,14 +433,12 @@ export class AiHostingService {
   private mapAgentListItem(
     row: AgentRow,
     modelMap: Map<string, AiHostingAgentModelSummary>,
-    latestHistory: AgentHistoryRow | undefined,
   ): AiHostingAgentListItem {
     return {
       id: String(row.id),
       knowledgeBases: [],
       model: modelMap.get(String(row.model_id)) ?? fallbackModelSummary(row.model_id),
       name: row.name,
-      publishedAt: toOptionalTimestamp(latestHistory?.create_time),
       updatedAt: toOptionalTimestamp(row.update_time),
     };
   }

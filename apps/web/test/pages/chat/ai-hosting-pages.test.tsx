@@ -13,9 +13,14 @@ import { resetMockKnowledgeData } from "@/pages/chat/ai-hosting/kb-mock-data";
 import * as kbMockData from "@/pages/chat/ai-hosting/kb-mock-data";
 
 const readXlsxFileMock = vi.hoisted(() => vi.fn());
+const importKbDocMock = vi.hoisted(() => vi.fn());
 
 vi.mock("read-excel-file/browser", () => ({
   default: readXlsxFileMock,
+}));
+
+vi.mock("@/pages/chat/ai-hosting/api/kb-doc-service", () => ({
+  importKbDoc: importKbDocMock,
 }));
 
 let mockImageDimensions = { height: 800, width: 800 };
@@ -84,6 +89,8 @@ describe("AI hosting pages", () => {
         sheet: "Sheet1",
       },
     ]);
+    importKbDocMock.mockReset();
+    importKbDocMock.mockResolvedValue({ docId: "mock-doc-created" });
   });
 
   it("renders the agent management page", async () => {
@@ -768,7 +775,7 @@ describe("AI hosting pages", () => {
     expect(screen.queryByText("限免")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "上传文档文件" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "上传文档文件" })).not.toHaveFocus();
-    expect(screen.getByRole("button", { name: "确认提交" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "下一步" })).toBeDisabled();
 
     await user.upload(
       screen.getByLabelText("选择文档知识文件"),
@@ -785,11 +792,18 @@ describe("AI hosting pages", () => {
       "https://b5.bokr.com.cn/dist/ppt.png",
     );
     expect(screen.queryByRole("button", { name: "上传文档文件" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: /通用解析/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "下一步" })).toBeEnabled();
+
+    await user.click(screen.getByRole("button", { name: "下一步" }));
+
+    expect(screen.getByRole("dialog", { name: "导入文档" })).toBeInTheDocument();
+    expect(screen.getAllByText("限免")).toHaveLength(2);
     expect(screen.getByRole("radio", { name: /通用解析/ })).toBeChecked();
     expect(screen.getByRole("radio", { name: /增强解析/ })).not.toBeChecked();
     expect(screen.getByRole("radio", { name: /按固定长度切分/ })).toBeChecked();
-    expect(screen.getByRole("radio", { name: /2,000/ })).toBeChecked();
-    expect(screen.getByRole("radio", { name: /1,000/ })).not.toBeChecked();
+    expect(screen.getByRole("radio", { name: /2000/ })).toBeChecked();
+    expect(screen.getByRole("radio", { name: /1000/ })).not.toBeChecked();
     expect(screen.getByRole("button", { name: "确认提交" })).toBeEnabled();
 
     await user.click(screen.getByRole("radio", { name: /增强解析/ }));
@@ -798,10 +812,17 @@ describe("AI hosting pages", () => {
 
     await user.click(screen.getByRole("radio", { name: /按分隔符切分/ }));
 
-    expect(screen.getByText("分段标识符")).toBeInTheDocument();
-    expect(screen.getByRole("radio", { name: /换行符/ })).toBeChecked();
+    expect(screen.getByText("分隔符为：换行符、换行符*2")).toBeInTheDocument();
     expect(screen.queryByText("切片最长字符数")).not.toBeInTheDocument();
-    expect(screen.queryByRole("radio", { name: /2,000/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: /2000/ })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "确认提交（限免）" }));
+
+    await waitFor(() => {
+      expect(importKbDocMock).toHaveBeenCalledTimes(1);
+    });
+    expect(screen.queryByRole("dialog", { name: "导入文档" })).not.toBeInTheDocument();
+    expect(await screen.findByText("产品手册")).toBeInTheDocument();
   });
 
   it("shows an error when document files are rejected by the dropzone accept rule", async () => {
@@ -823,7 +844,7 @@ describe("AI hosting pages", () => {
 
     expect(await screen.findByText("仅支持 PDF、Word、PPT、Markdown、TXT 文档")).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "已选择文档" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "确认提交" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "下一步" })).toBeDisabled();
   });
 
   it("disables enhanced parsing for plain text document files", async () => {
@@ -845,6 +866,8 @@ describe("AI hosting pages", () => {
     expect(screen.getByRole("region", { name: "已选择文档" })).toHaveTextContent(
       "产品说明.txt",
     );
+    await user.click(screen.getByRole("button", { name: "下一步" }));
+
     expect(screen.getByRole("radio", { name: /通用解析/ })).toBeChecked();
     expect(screen.getByRole("radio", { name: /增强解析/ })).toBeDisabled();
   });

@@ -91,16 +91,27 @@ export function FileUploadSelectedFile({
   meta?: string;
   onClear: () => void;
 }) {
+  const fileLabel = `${file.name}（${formatFileSize(file.size)}${
+    meta ? `，${meta}` : ""
+  }）`;
+
   return (
     <div
       aria-label={label}
-      className="flex min-w-0 items-center gap-3 rounded-[8px] border bg-background px-3 py-2.5"
+      className={cn(
+        "grid w-full min-w-0 items-center gap-3 overflow-hidden rounded-[8px] border bg-background px-3 py-2.5",
+        icon
+          ? "grid-cols-[auto_minmax(0,1fr)_auto]"
+          : "grid-cols-[minmax(0,1fr)_auto]",
+      )}
       role="region"
     >
       {icon}
-      <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
-        {file.name}（{formatFileSize(file.size)}
-        {meta ? `，${meta}` : ""}）
+      <span
+        className="min-w-0 truncate text-sm text-muted-foreground"
+        title={fileLabel}
+      >
+        {fileLabel}
       </span>
       <Button
         aria-label="移除已选择文件"

@@ -1,7 +1,13 @@
 import { useEffect } from "react";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
-import { COMMAND_PRIORITY_LOW, type LexicalEditor } from "lexical";
+import {
+  COMMAND_PRIORITY_LOW,
+  SKIP_DOM_SELECTION_TAG,
+  SKIP_SCROLL_INTO_VIEW_TAG,
+  SKIP_SELECTION_FOCUS_TAG,
+  type LexicalEditor,
+} from "lexical";
 import type { ConditionalLogicSegment } from "./agent-settings.constants";
 import {
   INSERT_CONDITIONAL_LOGIC_KNOWLEDGE_BASE_COMMAND,
@@ -50,9 +56,18 @@ export function ConditionalLogicRuntimePlugin({
     return editor.registerCommand(
       RESTORE_CONDITIONAL_LOGIC_SEGMENTS_COMMAND,
       (nextSegments) => {
-        editor.update(() => {
-          $restoreConditionalLogicFromSegments(nextSegments);
-        });
+        editor.update(
+          () => {
+            $restoreConditionalLogicFromSegments(nextSegments);
+          },
+          {
+            tag: [
+              SKIP_DOM_SELECTION_TAG,
+              SKIP_SELECTION_FOCUS_TAG,
+              SKIP_SCROLL_INTO_VIEW_TAG,
+            ],
+          },
+        );
         return true;
       },
       COMMAND_PRIORITY_LOW,
@@ -60,15 +75,24 @@ export function ConditionalLogicRuntimePlugin({
   }, [editor]);
 
   useEffect(() => {
-    editor.update(() => {
-      const currentSegments = $exportConditionalLogicSegments();
+    editor.update(
+      () => {
+        const currentSegments = $exportConditionalLogicSegments();
 
-      if (segmentsEqual(currentSegments, segments)) {
-        return;
-      }
+        if (segmentsEqual(currentSegments, segments)) {
+          return;
+        }
 
-      $restoreConditionalLogicFromSegments(segments);
-    });
+        $restoreConditionalLogicFromSegments(segments);
+      },
+      {
+        tag: [
+          SKIP_DOM_SELECTION_TAG,
+          SKIP_SELECTION_FOCUS_TAG,
+          SKIP_SCROLL_INTO_VIEW_TAG,
+        ],
+      },
+    );
   }, [editor, segments]);
 
   return (

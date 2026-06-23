@@ -92,16 +92,20 @@ export function $insertConditionalLogicText(text: string) {
 }
 
 export function $restoreConditionalLogicFromSegments(segments: ConditionalLogicSegment[]) {
-  $clearConditionalLogicEditor();
+  const root = $getRoot();
+  root.clear();
+
+  const paragraph = $createParagraphNode();
+  root.append(paragraph);
 
   for (const segment of normalizeConditionalLogicSegments(segments)) {
     if (segment.type === "knowledgeBase") {
-      $insertKnowledgeBaseChip(segment.id);
+      paragraph.append($createKnowledgeBaseChipNode(segment.id));
       continue;
     }
 
     if (segment.value.length > 0) {
-      $insertConditionalLogicText(segment.value);
+      paragraph.append($createTextNode(segment.value));
     }
   }
 }

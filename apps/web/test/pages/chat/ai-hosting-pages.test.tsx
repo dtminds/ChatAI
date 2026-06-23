@@ -259,12 +259,33 @@ describe("AI hosting pages", () => {
     expect(screen.getByRole("status", { name: "正在加载Agent列表" })).toBeInTheDocument();
   });
 
-  it("does not autofocus the conditional logic editor when opening agent settings", async () => {
-    renderWithRoute("/chat/ai-hosting/agents/301", <AgentSettingsPage />, "/chat/ai-hosting/agents/:agentId");
+  it("does not focus the conditional logic editor while restoring agent settings", async () => {
+    const focusedConditionalLogicEditors: HTMLElement[] = [];
+    const focusSpy = vi
+      .spyOn(HTMLElement.prototype, "focus")
+      .mockImplementation(function focus(this: HTMLElement) {
+        if (this.getAttribute("aria-label") === "条件逻辑描述") {
+          focusedConditionalLogicEditors.push(this);
+        }
+      });
 
-    await screen.findByDisplayValue("护肤小助理");
+    try {
+      renderWithRoute(
+        "/chat/ai-hosting/agents/301",
+        <AgentSettingsPage />,
+        "/chat/ai-hosting/agents/:agentId",
+      );
 
-    expect(screen.getByLabelText("条件逻辑描述")).not.toBe(document.activeElement);
+      await screen.findByDisplayValue("护肤小助理");
+      expect(screen.getByRole("group", { name: "条件逻辑" })).toHaveTextContent(
+        "如果客户咨询成分",
+      );
+
+      expect(focusedConditionalLogicEditors).toHaveLength(0);
+      expect(screen.getByLabelText("条件逻辑描述")).not.toBe(document.activeElement);
+    } finally {
+      focusSpy.mockRestore();
+    }
   });
 
   it("filters agents by search query", async () => {

@@ -106,6 +106,143 @@ export interface XyWapEmbedAnalysisRun {
   update_time: Generated<Date>;
 }
 
+export interface XyWapEmbedAgent {
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date | null>;
+  /**
+   * 主键id
+   */
+  id: Generated<number>;
+  /**
+   * 最近一次操作人（子账号id）
+   */
+  last_operator_id: Generated<number>;
+  /**
+   * 关联模型（xy_wap_embed_ai_model.id）
+   */
+  model_id: Generated<number>;
+  /**
+   * agent名称
+   */
+  name: string;
+  /**
+   * 创建操作人（子账号id）
+   */
+  operator_id: Generated<number>;
+  /**
+   * 提示词配置（基调、角色、沟通风格等）
+   */
+  prompt_config: string | null;
+  /**
+   * 状态 0：已删除 1：有效
+   */
+  status: Generated<number>;
+  /**
+   * 租户id
+   */
+  uid: Generated<number>;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date | null>;
+}
+
+export interface XyWapEmbedAgentHistory {
+  /**
+   * 关联agent（xy_wap_embed_agent.id）
+   */
+  agent_id: Generated<number>;
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date | null>;
+  /**
+   * 主键id
+   */
+  id: Generated<number>;
+  /**
+   * 关联模型（xy_wap_embed_ai_model.id）
+   */
+  model_id: Generated<number>;
+  /**
+   * 创建操作人（子账号id）
+   */
+  operator_id: Generated<number>;
+  /**
+   * 提示词配置（基调、角色、沟通风格等）
+   */
+  prompt_config: string | null;
+  /**
+   * 租户id
+   */
+  uid: Generated<number>;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date | null>;
+}
+
+export interface XyWapEmbedAiModel {
+  /**
+   * 算粒/百万Token，放大100倍的值
+   */
+  credit: Generated<number>;
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date | null>;
+  /**
+   * 模型描述
+   */
+  description: Generated<string>;
+  /**
+   * 选择接入点
+   */
+  endpoint: Generated<string>;
+  /**
+   * 主键id
+   */
+  id: Generated<number>;
+  /**
+   * 选择模型id
+   */
+  model: Generated<string>;
+  /**
+   * 模型名称
+   */
+  model_name: Generated<string>;
+  /**
+   * 模型版本
+   */
+  model_version: Generated<string>;
+  /**
+   * 模型名称
+   */
+  name: string;
+  /**
+   * 状态 0：已删除 1：有效
+   */
+  status: Generated<number>;
+  /**
+   * 多模态，0：不支持，1：支持
+   */
+  support_multimodal: Generated<number>;
+  /**
+   * 思考模式
+   */
+  thinking_type: Generated<string>;
+  /**
+   * 租户id，0：UID兜底
+   */
+  uid: Generated<number>;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date | null>;
+}
+
 export interface XyWapEmbedBroadcastEvent {
   /**
    * 事件分类：conversation-会话
@@ -2391,6 +2528,9 @@ export interface XyWapEmbedUserSeatSubRelation {
 
 export interface DB {
   xy_wap_embed_analysis_run: XyWapEmbedAnalysisRun;
+  xy_wap_embed_agent: XyWapEmbedAgent;
+  xy_wap_embed_agent_history: XyWapEmbedAgentHistory;
+  xy_wap_embed_ai_model: XyWapEmbedAiModel;
   xy_wap_embed_broadcast_event: XyWapEmbedBroadcastEvent;
   xy_wap_embed_contact: XyWapEmbedContact;
   xy_wap_embed_conversation: XyWapEmbedConversation;

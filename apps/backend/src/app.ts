@@ -2,6 +2,7 @@ import fastifyCookie from "@fastify/cookie";
 import Fastify from "fastify";
 import { checkSchema } from "./db/schema-check.js";
 import { registerAuthRoutes } from "./modules/auth/auth.routes.js";
+import { registerAiHostingRoutes } from "./modules/ai-hosting/ai-hosting.routes.js";
 import { registerChatRoutes } from "./modules/chat/chat.routes.js";
 import { registerInsightsRoutes } from "./modules/insights/insights.routes.js";
 import { registerSettingsRoutes } from "./modules/settings/settings.routes.js";
@@ -38,6 +39,7 @@ export async function buildApp() {
   });
 
   await registerAuthRoutes(app);
+  await registerAiHostingRoutes(app);
   await registerChatRoutes(app);
   await registerInsightsRoutes(app);
   await registerSettingsRoutes(app);

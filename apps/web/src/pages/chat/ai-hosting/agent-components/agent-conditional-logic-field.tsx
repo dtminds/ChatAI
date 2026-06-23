@@ -1,5 +1,5 @@
-import { useMemo, useRef, useState } from "react";
-import { Add01Icon, Book04Icon, Search01Icon } from "@hugeicons/core-free-icons";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Add01Icon, AiBookIcon, Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
 import { ContentEditable } from "@lexical/react/LexicalContentEditable";
@@ -8,7 +8,6 @@ import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin";
 import type { LexicalEditor } from "lexical";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { INSERT_CONDITIONAL_LOGIC_KNOWLEDGE_BASE_COMMAND } from "./agent-conditional-logic-lexical-commands";
@@ -23,11 +22,14 @@ import {
   type ConditionalLogicSegment,
   type KnowledgeBaseOption,
 } from "./agent-settings.constants";
+import "./agent-conditional-logic.css";
 
 export function AgentConditionalLogicField({
+  disabled = false,
   onChange,
   segments,
 }: {
+  disabled?: boolean;
   onChange: (value: ConditionalLogicSegment[]) => void;
   segments: ConditionalLogicSegment[];
 }) {
@@ -72,14 +74,27 @@ export function AgentConditionalLogicField({
     editorRef.current = editor;
   }
 
-  function insertKnowledgeBase(knowledgeBaseId: string) {
+  useEffect(() => {
+    if (disabled) {
+      setOpen(false);
+    }
+  }, [disabled]);
+
+  function insertKnowledgeBase(knowledgeBase: KnowledgeBaseOption) {
+    if (disabled) {
+      return;
+    }
+
     editorRef.current?.dispatchCommand(
       INSERT_CONDITIONAL_LOGIC_KNOWLEDGE_BASE_COMMAND,
-      knowledgeBaseId,
+      {
+        id: knowledgeBase.id,
+        name: knowledgeBase.name,
+      },
     );
-    editorRef.current?.focus();
     setOpen(false);
     setSearchQuery("");
+    editorRef.current?.focus();
   }
 
   return (
@@ -90,79 +105,87 @@ export function AgentConditionalLogicField({
     >
       <div className="relative min-h-24 text-sm leading-7 text-foreground">
         <span className="absolute left-0 top-0 z-10">
-          <Popover
-            onOpenChange={(nextOpen) => {
-              setOpen(nextOpen);
-
-              if (!nextOpen) {
-                setSearchQuery("");
-              }
+          <Button
+            aria-expanded={open}
+            aria-label="添加关联知识库"
+            className="size-7 rounded-full border border-border bg-background text-muted-foreground hover:bg-muted/40"
+            disabled={disabled}
+            onClick={() => setOpen((currentOpen) => !currentOpen)}
+            onMouseDown={(event) => {
+              event.preventDefault();
             }}
-            open={open}
+            size="icon"
+            type="button"
+            variant="ghost"
           >
-            <PopoverTrigger asChild>
-              <Button
-                aria-label="添加关联知识库"
-                className="size-7 rounded-full border border-border bg-background text-muted-foreground hover:bg-muted/40"
-                onMouseDown={(event) => {
-                  event.preventDefault();
-                }}
-                size="icon"
-                type="button"
-                variant="ghost"
-              >
-                <HugeiconsIcon icon={Add01Icon} size={14} strokeWidth={1.8} />
-              </Button>
-            </PopoverTrigger>
-
-            <PopoverContent align="start" className="w-[280px] p-0">
-              <div className="border-b border-border p-2">
-                <div className="relative">
-                  <HugeiconsIcon
-                    className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
-                    icon={Search01Icon}
-                    size={15}
-                    strokeWidth={1.8}
-                  />
-                  <Input
-                    aria-label="搜索知识库"
-                    className="h-9 rounded-[8px] pl-8"
-                    onChange={(event) => setSearchQuery(event.target.value)}
-                    placeholder="搜索"
-                    value={searchQuery}
-                  />
-                </div>
-              </div>
-
-              <ScrollArea className="max-h-56">
-                <div className="p-1">
-                  {filteredKnowledgeBases.length === 0 ? (
-                    <p className="px-3 py-6 text-center text-sm text-muted-foreground">
-                      未找到匹配知识库
-                    </p>
-                  ) : (
-                    filteredKnowledgeBases.map((knowledgeBase) => (
-                      <KnowledgeBaseOptionRow
-                        key={knowledgeBase.id}
-                        knowledgeBase={knowledgeBase}
-                        onSelect={() => insertKnowledgeBase(knowledgeBase.id)}
-                      />
-                    ))
-                  )}
-                </div>
-              </ScrollArea>
-            </PopoverContent>
-          </Popover>
+            <HugeiconsIcon icon={Add01Icon} size={14} strokeWidth={1.8} />
+          </Button>
         </span>
+
+        {open ? (
+          <div
+            aria-label="选择知识库"
+            className="absolute left-0 top-8 z-30 w-[280px] rounded-[8px] border border-border bg-popover p-0 shadow-[0_10px_28px_var(--shadow-soft)]"
+            role="listbox"
+          >
+            <div className="border-b border-border p-2">
+              <div className="relative">
+                <HugeiconsIcon
+                  className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+                  icon={Search01Icon}
+                  size={15}
+                  strokeWidth={1.8}
+                />
+                <Input
+                  aria-label="搜索知识库"
+                  className="h-9 rounded-[8px] pl-8"
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") {
+                      setOpen(false);
+                      setSearchQuery("");
+                      editorRef.current?.focus();
+                    }
+                  }}
+                  placeholder="搜索"
+                  value={searchQuery}
+                />
+              </div>
+            </div>
+
+            <ScrollArea className="max-h-56">
+              <div className="p-1">
+                {filteredKnowledgeBases.length === 0 ? (
+                  <p className="px-3 py-6 text-center text-sm text-muted-foreground">
+                    未找到匹配知识库
+                  </p>
+                ) : (
+                  filteredKnowledgeBases.map((knowledgeBase) => (
+                    <KnowledgeBaseOptionRow
+                      key={knowledgeBase.id}
+                      knowledgeBase={knowledgeBase}
+                      onSelect={() => insertKnowledgeBase(knowledgeBase)}
+                    />
+                  ))
+                )}
+              </div>
+            </ScrollArea>
+          </div>
+        ) : null}
 
         <LexicalComposer initialConfig={editorConfig}>
           <PlainTextPlugin
             contentEditable={
               <ContentEditable
                 aria-label="条件逻辑描述"
+                aria-disabled={disabled}
                 aria-multiline="true"
-                className="min-h-24 w-full whitespace-pre-wrap break-words pt-8 outline-none"
+                className={cn(
+                  "min-h-24 w-full whitespace-pre-wrap break-words pt-8 outline-none",
+                  disabled && "cursor-not-allowed opacity-70",
+                )}
                 role="textbox"
+                tabIndex={disabled ? -1 : undefined}
               />
             }
             ErrorBoundary={LexicalErrorBoundary}
@@ -178,6 +201,7 @@ export function AgentConditionalLogicField({
             }
           />
           <ConditionalLogicRuntimePlugin
+            disabled={disabled}
             onChange={onChange}
             registerEditor={registerEditor}
             segments={normalizedSegments}
@@ -205,11 +229,12 @@ function KnowledgeBaseOptionRow({
       onMouseDown={(event) => {
         event.preventDefault();
       }}
+      role="option"
       type="button"
     >
       <HugeiconsIcon
         className="text-muted-foreground"
-        icon={Book04Icon}
+        icon={AiBookIcon}
         size={15}
         strokeWidth={1.8}
       />

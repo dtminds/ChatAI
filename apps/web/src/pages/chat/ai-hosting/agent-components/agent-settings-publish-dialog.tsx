@@ -8,12 +8,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Spinner } from "@/components/ui/spinner";
 
 export function AgentSettingsPublishDialog({
+  disabled,
   onConfirm,
   onOpenChange,
   open,
 }: {
+  disabled: boolean;
   onConfirm: () => void;
   onOpenChange: (open: boolean) => void;
   open: boolean;
@@ -28,18 +31,29 @@ export function AgentSettingsPublishDialog({
         <DialogHeader className="space-y-2 px-6 pt-6 text-left">
           <DialogTitle>是否确认发布到正式版？</DialogTitle>
           <DialogDescription id="agent-settings-publish-description">
-            确认发布后，Agent配置将立即生效。
+            确认发布后，Agent 配置将立即生效。
           </DialogDescription>
         </DialogHeader>
 
-        <DialogFooter className="gap-2 px-6 pb-6 pt-8 sm:gap-2">
+        <DialogFooter className="px-6 pb-6 pt-8">
           <DialogClose asChild>
-            <Button type="button" variant="outline">
+            <Button disabled={disabled} type="button" variant="outline">
               取消
             </Button>
           </DialogClose>
-          <Button onClick={onConfirm} type="button">
-            确认
+          <Button disabled={disabled} onClick={onConfirm} type="button">
+            {disabled ? (
+              <>
+                <Spinner
+                  aria-hidden="true"
+                  className="text-current"
+                  size={14}
+                  variant="classic"
+                />
+                <span className="sr-only">发布中</span>
+              </>
+            ) : null}
+            发布
           </Button>
         </DialogFooter>
       </DialogContent>

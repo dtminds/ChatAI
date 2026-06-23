@@ -28,6 +28,7 @@ import {
   TablePagination,
 } from "@/components/ui/table-pagination";
 import { isRequestError } from "@/lib/request";
+import { useAuthStore } from "@/store/auth-store";
 import {
   listAiHostingAgents,
   removeAiHostingAgent,
@@ -38,6 +39,7 @@ import {
   type AgentMetric,
   type AgentStatsPeriod,
 } from "./agent-management-overview";
+import { canManageAiHostingAgents } from "./agent-permissions";
 import { AiHostingLayout, AiHostingPageHeader } from "./ai-hosting-layout";
 
 type AgentRecord = AiHostingAgentListItem;
@@ -53,15 +55,18 @@ const emptyAgentMetrics: AgentMetric[] = [
 ];
 
 export function AgentManagementPage() {
+  const role = useAuthStore((state) => state.subUser?.role);
   const [statsPeriod, setStatsPeriod] = useState<AgentStatsPeriod>("today");
   const [agents, setAgents] = useState<AgentRecord[]>([]);
   const [agentSearchQuery, setAgentSearchQuery] = useState("");
+  const [debouncedAgentSearchQuery, setDebouncedAgentSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [totalAgents, setTotalAgents] = useState(0);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const [removeTarget, setRemoveTarget] = useState<AgentRecord | null>(null);
   const [removing, setRemoving] = useState(false);
+  const canManage = canManageAiHostingAgents(role);
 
   const metrics = emptyAgentMetrics;
   const { activePage, totalPages } = resolveTablePagination({
@@ -69,6 +74,14 @@ export function AgentManagementPage() {
     pageSize: AGENT_PAGE_SIZE,
     total: totalAgents,
   });
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedAgentSearchQuery(agentSearchQuery);
+    }, 300);
+
+    return () => window.clearTimeout(timer);
+  }, [agentSearchQuery]);
 
   useEffect(() => {
     let ignore = false;
@@ -81,7 +94,7 @@ export function AgentManagementPage() {
         const response = await listAiHostingAgents({
           page: activePage,
           pageSize: AGENT_PAGE_SIZE,
-          query: agentSearchQuery,
+          query: debouncedAgentSearchQuery,
         });
 
         if (ignore) {
@@ -110,10 +123,10 @@ export function AgentManagementPage() {
     return () => {
       ignore = true;
     };
-  }, [activePage, agentSearchQuery]);
+  }, [activePage, debouncedAgentSearchQuery]);
 
   async function handleRemoveConfirm() {
-    if (!removeTarget) {
+    if (!canManage || !removeTarget) {
       return;
     }
 
@@ -126,7 +139,7 @@ export function AgentManagementPage() {
       const response = await listAiHostingAgents({
         page: activePage,
         pageSize: AGENT_PAGE_SIZE,
-        query: agentSearchQuery,
+        query: debouncedAgentSearchQuery,
       });
       setAgents(response.agents);
       setTotalAgents(response.pagination.total);
@@ -175,21 +188,33 @@ export function AgentManagementPage() {
               />
             </div>
 
-            <Button asChild className="h-10 px-4" type="button">
-              <Link to="/chat/ai-hosting/agents/new">
-                <HugeiconsIcon color="currentColor" icon={Add01Icon} size={17} strokeWidth={1.8} />
-                <span>添加 Agent</span>
-              </Link>
-            </Button>
+            {canManage ? (
+              <Button asChild className="h-10 px-4" type="button">
+                <Link to="/chat/ai-hosting/agents/new">
+                  <HugeiconsIcon color="currentColor" icon={Add01Icon} size={17} strokeWidth={1.8} />
+                  <span>添加 Agent</span>
+                </Link>
+              </Button>
+            ) : null}
           </div>
 
           <div className="mt-4">
+            {!canManage ? (
+              <p className="mb-3 text-sm text-muted-foreground">
+                当前账号仅可查看 Agent，管理操作需管理员权限
+              </p>
+            ) : null}
             {errorMessage ? (
               <p className="mb-3 text-sm text-destructive" role="alert">
                 {errorMessage}
               </p>
             ) : null}
-            <AgentTable agents={agents} loading={loading} onRemove={setRemoveTarget} />
+            <AgentTable
+              agents={agents}
+              canManage={canManage}
+              loading={loading}
+              onRemove={setRemoveTarget}
+            />
             <TablePagination
               onPageChange={setCurrentPage}
               page={activePage}
@@ -229,10 +254,12 @@ export function AgentManagementPage() {
 
 function AgentTable({
   agents,
+  canManage,
   loading,
   onRemove,
 }: {
   agents: AgentRecord[];
+  canManage: boolean;
   loading: boolean;
   onRemove: (agent: AgentRecord) => void;
 }) {
@@ -280,16 +307,20 @@ function AgentTable({
                 <TableCell className="py-4 text-right">
                   <div className="flex items-center justify-end gap-3">
                     <Button asChild className="h-auto p-0 text-primary" type="button" variant="link">
-                      <Link to={`/chat/ai-hosting/agents/${agent.id}`}>编辑</Link>
+                      <Link to={`/chat/ai-hosting/agents/${agent.id}`}>
+                        {canManage ? "编辑" : "查看"}
+                      </Link>
                     </Button>
-                    <Button
-                      className="h-auto p-0 text-primary"
-                      onClick={() => onRemove(agent)}
-                      type="button"
-                      variant="link"
-                    >
-                      删除
-                    </Button>
+                    {canManage ? (
+                      <Button
+                        className="h-auto p-0 text-primary"
+                        onClick={() => onRemove(agent)}
+                        type="button"
+                        variant="link"
+                      >
+                        删除
+                      </Button>
+                    ) : null}
                   </div>
                 </TableCell>
               </TableRow>

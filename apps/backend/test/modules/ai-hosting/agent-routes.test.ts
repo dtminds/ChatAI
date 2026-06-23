@@ -75,6 +75,21 @@ describe("AI hosting agent routes", () => {
     await app.close();
   });
 
+  it("escapes wildcard characters in agent name search", async () => {
+    const { app, authorization, db } = await createAiHostingApp();
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/ai-hosting/agents?query=%25_",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(db.likeSearchValues).toContain("%\\%\\_%");
+
+    await app.close();
+  });
+
   it("saves drafts without writing publish history and publishes only changed model or prompt", async () => {
     const { app, authorization, db } = await createAiHostingApp();
 
@@ -270,9 +285,161 @@ describe("AI hosting agent routes", () => {
 
     await app.close();
   });
+
+  it("rejects agent writes for non-manage roles", async () => {
+    for (const role of ["operator", "viewer"]) {
+      const { app, authorization, db } = await createAiHostingApp([role]);
+      const headers = { authorization };
+      const promptConfig = {
+        conditionLogic: "",
+        replyStyle: {
+          length: "简洁",
+          styleInstruction: "亲切自然",
+        },
+        handoffRules: "客户要求真人",
+        role: "你是护肤顾问",
+      };
+      const requests = [
+        app.inject({
+          headers,
+          method: "POST",
+          payload: {
+            modelId: "11",
+            name: "售后小助理",
+            promptConfig,
+          },
+          url: "/api/server/ai-hosting/agents",
+        }),
+        app.inject({
+          headers,
+          method: "PUT",
+          payload: {
+            modelId: "11",
+            promptConfig,
+          },
+          url: "/api/server/ai-hosting/agents/301",
+        }),
+        app.inject({
+          headers,
+          method: "PATCH",
+          payload: {
+            name: "护肤专家",
+          },
+          url: "/api/server/ai-hosting/agents/301/name",
+        }),
+        app.inject({
+          headers,
+          method: "POST",
+          url: "/api/server/ai-hosting/agents/301/publish",
+        }),
+        app.inject({
+          headers,
+          method: "POST",
+          url: "/api/server/ai-hosting/agents/301/restore",
+        }),
+        app.inject({
+          headers,
+          method: "DELETE",
+          url: "/api/server/ai-hosting/agents/301",
+        }),
+      ];
+
+      const responses = await Promise.all(requests);
+
+      expect(responses.map((response) => response.statusCode)).toEqual([
+        403,
+        403,
+        403,
+        403,
+        403,
+        403,
+      ]);
+      for (const response of responses) {
+        expect(response.json()).toMatchObject({
+          error: {
+            code: "FORBIDDEN",
+            message: "无权限访问",
+          },
+          success: false,
+        });
+      }
+      expect(db.deletedAgent).toBeUndefined();
+      expect(db.insertedAgent).toBeUndefined();
+      expect(db.insertedHistories).toEqual([]);
+      expect(db.updatedAgent).toBeUndefined();
+
+      await app.close();
+    }
+  });
+
+  it("restores the latest published agent version and reports empty history", async () => {
+    const { app, authorization, db } = await createAiHostingApp();
+
+    db.setAgentPrompt("草稿内容");
+    const restore = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      url: "/api/server/ai-hosting/agents/301/restore",
+    });
+
+    expect(restore.statusCode).toBe(200);
+    expect(db.updatedAgent).toMatchObject({
+      id: 301,
+      values: {
+        last_operator_id: 1,
+        model_id: 11,
+        update_time: expect.any(Date),
+      },
+    });
+    expect(JSON.parse(String(db.updatedAgent?.values.prompt_config))).toMatchObject({
+      condition_logic: "如何客户咨询成分，那么说明功效",
+    });
+
+    db.clearHistories();
+    const emptyRestore = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      url: "/api/server/ai-hosting/agents/301/restore",
+    });
+
+    expect(emptyRestore.statusCode).toBe(400);
+    expect(emptyRestore.json()).toMatchObject({
+      error: {
+        code: "AGENT_HISTORY_EMPTY",
+        message: "暂无正式版内容",
+      },
+      success: false,
+    });
+
+    await app.close();
+  });
+
+  it("keeps agent access scoped to the current tenant", async () => {
+    const { app, authorization } = await createAiHostingApp(["admin"], { uid: 8001 });
+
+    const detail = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/ai-hosting/agents/301",
+    });
+
+    expect(detail.statusCode).toBe(404);
+    expect(detail.json()).toMatchObject({
+      error: {
+        code: "AGENT_NOT_FOUND",
+        message: "Agent 不存在",
+      },
+      success: false,
+    });
+
+    await app.close();
+  });
 });
 
-async function createAiHostingApp(roles = ["admin"]) {
+async function createAiHostingApp(
+  roles = ["admin"],
+  options: { uid?: number } = {},
+) {
   const app = await buildMockedApp();
   const token = app.jwt.sign({
     roles,
@@ -280,7 +447,7 @@ async function createAiHostingApp(roles = ["admin"]) {
     sessionVersion: 1,
     subUserId: "1",
   });
-  const db = createAiHostingDbMock();
+  const db = createAiHostingDbMock(options);
 
   app.db = db as never;
 
@@ -291,13 +458,13 @@ async function createAiHostingApp(roles = ["admin"]) {
   };
 }
 
-function createAiHostingDbMock() {
+function createAiHostingDbMock(options: { uid?: number } = {}) {
   const subUsers = [
     {
       id: 1,
       platform: 5,
       status: 1,
-      uid: 9001,
+      uid: options.uid ?? 9001,
     },
   ];
   const models = [
@@ -357,6 +524,7 @@ function createAiHostingDbMock() {
     joinCalls: [] as string[],
     historyListExecuteCount: 0,
     historyLatestLimitValues: [] as number[],
+    likeSearchValues: [] as unknown[],
     modelListWheres: [] as Array<[string, string, unknown]>,
     modelUidFilter: undefined as unknown,
     updatedAgent: undefined as
@@ -365,6 +533,9 @@ function createAiHostingDbMock() {
     setAgentPrompt: (prompt: string) => {
       agentPrompt = prompt;
       agents[0].prompt_config = buildPromptConfig(prompt);
+    },
+    clearHistories: () => {
+      histories.splice(0, histories.length);
     },
     selectFrom(table: string) {
       const wheres: Array<[string, string, unknown]> = [];
@@ -420,18 +591,35 @@ function createAiHostingDbMock() {
           }
 
           if (table === "xy_wap_embed_agent as agent") {
-            return { total: agents.filter((agent) => agent.status === 1).length };
+            const uid = Number(wheres.find(([column]) => column === "agent.uid")?.[2]);
+            return {
+              total: agents.filter(
+                (agent) =>
+                  agent.status === 1 && (!Number.isFinite(uid) || agent.uid === uid),
+              ).length,
+            };
           }
 
           if (table === "xy_wap_embed_agent") {
             const id = Number(wheres.find(([column]) => column === "id")?.[2]);
-            return agents.find((agent) => agent.id === id && agent.status === 1);
+            const uid = Number(wheres.find(([column]) => column === "uid")?.[2]);
+            return agents.find(
+              (agent) =>
+                agent.id === id &&
+                agent.status === 1 &&
+                (!Number.isFinite(uid) || agent.uid === uid),
+            );
           }
 
           if (table === "xy_wap_embed_agent_history") {
             const agentId = Number(wheres.find(([column]) => column === "agent_id")?.[2]);
+            const uid = Number(wheres.find(([column]) => column === "uid")?.[2]);
             return histories
-              .filter((history) => history.agent_id === agentId)
+              .filter(
+                (history) =>
+                  history.agent_id === agentId &&
+                  (!Number.isFinite(uid) || history.uid === uid),
+              )
               .sort((left, right) => right.id - left.id)[0];
           }
 
@@ -474,6 +662,9 @@ function createAiHostingDbMock() {
         },
         where: (column: string, operator: string, value: unknown) => {
           wheres.push([column, operator, value]);
+          if (operator === "like") {
+            state.likeSearchValues.push(value);
+          }
           return builder;
         },
       };

@@ -12,6 +12,8 @@ import { KbListPage } from "@/pages/chat/ai-hosting/kb-list-page";
 import { resetMockKnowledgeData } from "@/pages/chat/ai-hosting/kb-mock-data";
 import * as kbMockData from "@/pages/chat/ai-hosting/kb-mock-data";
 import * as agentService from "@/pages/chat/ai-hosting/agent-service";
+import { useAuthStore } from "@/store/auth-store";
+import type { AccountRole } from "@chatai/contracts";
 
 const readXlsxFileMock = vi.hoisted(() => vi.fn());
 const agentServiceMock = vi.hoisted(() => ({
@@ -133,8 +135,21 @@ function createDropData(file: File) {
   };
 }
 
+function mockSession(role: AccountRole = "admin") {
+  useAuthStore.setState(useAuthStore.getInitialState(), true);
+  useAuthStore.getState().setSession({
+    accountType: "sub",
+    displayName: "客服主管",
+    permissions: ["chat.access", "chat.send", "chat.takeover"],
+    role,
+    subUserId: "101",
+    uid: 1,
+  });
+}
+
 describe("AI hosting pages", () => {
   beforeEach(() => {
+    mockSession();
     resetMockKnowledgeData();
     vi.mocked(agentService.listAiHostingAgents).mockResolvedValue({
       agents: mockAgents,
@@ -308,6 +323,18 @@ describe("AI hosting pages", () => {
         query: "售后",
       });
     });
+  });
+
+  it("renders agent management as read-only for non-manage roles", async () => {
+    mockSession("operator");
+
+    renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
+
+    expect(await screen.findByRole("heading", { level: 1, name: "Agent 管理" })).toBeInTheDocument();
+    expect(screen.getByText("当前账号仅可查看 Agent，管理操作需管理员权限")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "添加 Agent" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: "查看" })).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: "删除" })).not.toBeInTheDocument();
   });
 
   it("removes agents from the management page after confirmation", async () => {
@@ -788,6 +815,27 @@ describe("AI hosting pages", () => {
     await user.type(screen.getByLabelText("角色描述"), "你是资深护肤顾问");
 
     expect(screen.getByRole("button", { name: "发布正式版" })).toBeEnabled();
+  });
+
+  it("renders agent settings as read-only for non-manage roles", async () => {
+    mockSession("operator");
+
+    renderWithRoute("/chat/ai-hosting/agents/301", <AgentSettingsPage />, "/chat/ai-hosting/agents/:agentId");
+
+    expect(await screen.findByRole("heading", { level: 1, name: "护肤小助理" })).toBeInTheDocument();
+    expect(
+      screen.getByText("当前账号仅可查看 Agent，保存、发布和还原操作需管理员权限"),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "保存" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "智能生成" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "发布正式版" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "编辑 Agent 名称" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "还原为正式版" })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Agent 名称")).toBeDisabled();
+    expect(screen.getByLabelText("角色描述")).toBeDisabled();
+    expect(screen.getByLabelText("沟通风格")).toBeDisabled();
+    expect(screen.getByLabelText("转人工条件")).toBeDisabled();
+    expect(screen.getByLabelText("条件逻辑描述")).toHaveAttribute("aria-disabled", "true");
   });
 
   it("inserts knowledge bases inline with conditional logic text", async () => {

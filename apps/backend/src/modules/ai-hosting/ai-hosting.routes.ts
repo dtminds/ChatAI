@@ -21,7 +21,7 @@ const AgentListQuerySchema = Type.Object({
 });
 
 const AgentParamsSchema = Type.Object({
-  agentId: Type.String(),
+  agentId: NumericStringSchema,
 });
 
 type AgentListQuery = Static<typeof AgentListQuerySchema>;

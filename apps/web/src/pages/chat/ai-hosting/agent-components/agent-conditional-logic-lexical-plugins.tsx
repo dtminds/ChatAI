@@ -21,12 +21,14 @@ import {
 } from "./agent-conditional-logic-lexical-utils";
 
 type ConditionalLogicRuntimePluginProps = {
+  disabled?: boolean;
   onChange: (segments: ConditionalLogicSegment[]) => void;
   registerEditor: (editor: LexicalEditor | null) => void;
   segments: ConditionalLogicSegment[];
 };
 
 export function ConditionalLogicRuntimePlugin({
+  disabled = false,
   onChange,
   registerEditor,
   segments,
@@ -38,6 +40,10 @@ export function ConditionalLogicRuntimePlugin({
 
     return () => registerEditor(null);
   }, [editor, registerEditor]);
+
+  useEffect(() => {
+    editor.setEditable(!disabled);
+  }, [disabled, editor]);
 
   useEffect(() => {
     return editor.registerCommand(

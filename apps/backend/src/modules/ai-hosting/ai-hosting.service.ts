@@ -20,7 +20,6 @@ import {
 } from "../../shared/errors.js";
 
 type TenantScope = {
-  platform: number;
   uid: number;
 };
 
@@ -318,7 +317,7 @@ export class AiHostingService {
 
     const currentSubUser = await this.db
       .selectFrom("xy_wap_embed_sub_user")
-      .select(["platform", "uid"])
+      .select(["uid"])
       .where("id", "=", numericSubUserId)
       .where("status", "=", dbActiveStatus)
       .executeTakeFirst();
@@ -328,7 +327,6 @@ export class AiHostingService {
     }
 
     return {
-      platform: currentSubUser.platform,
       uid: currentSubUser.uid,
     };
   }
@@ -350,7 +348,7 @@ export class AiHostingService {
       .where("agent.status", "=", dbActiveStatus);
 
     if (query) {
-      builder = builder.where("agent.name", "like", `%${query}%`);
+      builder = builder.where("agent.name", "like", `%${escapeLikePattern(query)}%`);
     }
 
     return builder
@@ -369,7 +367,7 @@ export class AiHostingService {
       .where("agent.status", "=", dbActiveStatus);
 
     if (query) {
-      builder = builder.where("agent.name", "like", `%${query}%`);
+      builder = builder.where("agent.name", "like", `%${escapeLikePattern(query)}%`);
     }
 
     const row = await builder.executeTakeFirst();
@@ -689,4 +687,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function readString(value: unknown) {
   return typeof value === "string" ? value : "";
+}
+
+function escapeLikePattern(value: string) {
+  return value.replace(/[\\%_]/g, "\\$&");
 }

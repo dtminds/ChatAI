@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Add01Icon, AiBookIcon, Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
@@ -25,9 +25,11 @@ import {
 import "./agent-conditional-logic.css";
 
 export function AgentConditionalLogicField({
+  disabled = false,
   onChange,
   segments,
 }: {
+  disabled?: boolean;
   onChange: (value: ConditionalLogicSegment[]) => void;
   segments: ConditionalLogicSegment[];
 }) {
@@ -72,7 +74,17 @@ export function AgentConditionalLogicField({
     editorRef.current = editor;
   }
 
+  useEffect(() => {
+    if (disabled) {
+      setOpen(false);
+    }
+  }, [disabled]);
+
   function insertKnowledgeBase(knowledgeBase: KnowledgeBaseOption) {
+    if (disabled) {
+      return;
+    }
+
     editorRef.current?.dispatchCommand(
       INSERT_CONDITIONAL_LOGIC_KNOWLEDGE_BASE_COMMAND,
       {
@@ -97,6 +109,7 @@ export function AgentConditionalLogicField({
             aria-expanded={open}
             aria-label="添加关联知识库"
             className="size-7 rounded-full border border-border bg-background text-muted-foreground hover:bg-muted/40"
+            disabled={disabled}
             onClick={() => setOpen((currentOpen) => !currentOpen)}
             onMouseDown={(event) => {
               event.preventDefault();
@@ -165,9 +178,14 @@ export function AgentConditionalLogicField({
             contentEditable={
               <ContentEditable
                 aria-label="条件逻辑描述"
+                aria-disabled={disabled}
                 aria-multiline="true"
-                className="min-h-24 w-full whitespace-pre-wrap break-words pt-8 outline-none"
+                className={cn(
+                  "min-h-24 w-full whitespace-pre-wrap break-words pt-8 outline-none",
+                  disabled && "cursor-not-allowed opacity-70",
+                )}
                 role="textbox"
+                tabIndex={disabled ? -1 : undefined}
               />
             }
             ErrorBoundary={LexicalErrorBoundary}
@@ -183,6 +201,7 @@ export function AgentConditionalLogicField({
             }
           />
           <ConditionalLogicRuntimePlugin
+            disabled={disabled}
             onChange={onChange}
             registerEditor={registerEditor}
             segments={normalizedSegments}

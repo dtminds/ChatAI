@@ -52,6 +52,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { isRequestError } from "@/lib/request";
 import { cn } from "@/lib/utils";
+import { useAuthStore } from "@/store/auth-store";
 import {
   createAiHostingAgent,
   getAiHostingAgent,
@@ -74,6 +75,7 @@ import {
   type AgentToneStyle,
 } from "./agent-components/agent-settings.constants";
 import { AgentModelBadge } from "./agent-model-badge";
+import { canManageAiHostingAgents } from "./agent-permissions";
 import { AiHostingLayout } from "./ai-hosting-layout";
 import { aiHostingSettingsModuleSurface } from "./ai-hosting-palette";
 
@@ -98,6 +100,7 @@ const agentSettingsModuleSurfaceStyle = {
 export function AgentSettingsPage() {
   const navigate = useNavigate();
   const { agentId } = useParams();
+  const role = useAuthStore((state) => state.subUser?.role);
   const isEditing = Boolean(agentId);
   const [form, setForm] = useState<AgentSettingsForm>(defaultAgentSettingsForm);
   const [models, setModels] = useState<AiHostingModel[]>([]);
@@ -116,6 +119,8 @@ export function AgentSettingsPage() {
   const [errorMessage, setErrorMessage] = useState("");
   const hasUnpublishedDraft = Boolean(agentDetail?.hasUnpublishedChanges);
   const hasPublishedVersion = Boolean(agentDetail?.publishedAt);
+  const canManage = canManageAiHostingAgents(role);
+  const controlsDisabled = loading || !canManage;
   const hasLocalPublishChanges = Boolean(
     agentDetail && hasModelOrPromptChanges(form, agentDetail),
   );
@@ -184,10 +189,18 @@ export function AgentSettingsPage() {
   }, [agentId]);
 
   function updateForm<K extends keyof AgentSettingsForm>(key: K, value: AgentSettingsForm[K]) {
+    if (!canManage) {
+      return;
+    }
+
     setForm((current) => ({ ...current, [key]: value }));
   }
 
   function applyCommunicationStyleTemplate(value: AgentToneStyle) {
+    if (!canManage) {
+      return;
+    }
+
     const template = agentCommunicationStyleTemplates.find((option) => option.value === value);
 
     if (!template) {
@@ -202,6 +215,10 @@ export function AgentSettingsPage() {
   }
 
   async function handleSave() {
+    if (!canManage) {
+      return null;
+    }
+
     if (isEditing && agentId) {
       const payload = buildSettingsSavePayload(form);
 
@@ -256,7 +273,7 @@ export function AgentSettingsPage() {
   }
 
   async function handlePublish() {
-    if (!agentId) {
+    if (!canManage || !agentId) {
       return;
     }
 
@@ -282,7 +299,7 @@ export function AgentSettingsPage() {
   }
 
   async function handlePublishCreatedDraft() {
-    if (!createdDraftAgentId) {
+    if (!canManage || !createdDraftAgentId) {
       return;
     }
 
@@ -310,12 +327,16 @@ export function AgentSettingsPage() {
   }
 
   function openRenameDialog() {
+    if (!canManage) {
+      return;
+    }
+
     setRenameValue(agentDetail?.name ?? form.name);
     setRenameDialogOpen(true);
   }
 
   async function handleRename() {
-    if (!agentId) {
+    if (!canManage || !agentId) {
       return;
     }
 
@@ -342,7 +363,7 @@ export function AgentSettingsPage() {
   }
 
   async function handleRestore() {
-    if (!agentId) {
+    if (!canManage || !agentId) {
       return;
     }
 
@@ -405,7 +426,7 @@ export function AgentSettingsPage() {
                 <h1 className="truncate text-xl font-semibold leading-tight text-foreground">
                   {pageTitle}
                 </h1>
-                {isEditing ? (
+                {isEditing && canManage ? (
                   <Button
                     aria-label="编辑 Agent 名称"
                     className="size-6 shrink-0 rounded-[6px] text-muted-foreground"
@@ -427,7 +448,7 @@ export function AgentSettingsPage() {
                   ) : null}
                   {hasUnpublishedDraft ? (
                     <AgentSettingsHeaderDraftBadge
-                      onRestoreClick={() => setRestoreDialogOpen(true)}
+                      onRestoreClick={canManage ? () => setRestoreDialogOpen(true) : undefined}
                       published={hasPublishedVersion}
                     />
                   ) : null}
@@ -436,25 +457,27 @@ export function AgentSettingsPage() {
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <Button disabled={submitting || loading} onClick={handleSave} type="button" variant="outline">
-              {submitting ? <ButtonSpinner label="保存中" /> : null}
-              保存
-            </Button>
-            <AgentGenerateGradientButton onClick={() => setGenerateDialogOpen(true)}>
-              智能生成
-            </AgentGenerateGradientButton>
-            {isEditing ? (
-              <Button
-                disabled={submitting || loading || !canPublish}
-                onClick={() => setPublishDialogOpen(true)}
-                type="button"
-              >
-                <HugeiconsIcon icon={SentIcon} size={16} strokeWidth={1.8} />
-                发布正式版
+          {canManage ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button disabled={submitting || loading} onClick={handleSave} type="button" variant="outline">
+                {submitting ? <ButtonSpinner label="保存中" /> : null}
+                保存
               </Button>
-            ) : null}
-          </div>
+              <AgentGenerateGradientButton onClick={() => setGenerateDialogOpen(true)}>
+                智能生成
+              </AgentGenerateGradientButton>
+              {isEditing ? (
+                <Button
+                  disabled={submitting || loading || !canPublish}
+                  onClick={() => setPublishDialogOpen(true)}
+                  type="button"
+                >
+                  <HugeiconsIcon icon={SentIcon} size={16} strokeWidth={1.8} />
+                  发布正式版
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
         </header>
 
         <AgentSettingsRestoreDialog
@@ -497,6 +520,11 @@ export function AgentSettingsPage() {
             {errorMessage}
           </p>
         ) : null}
+        {!canManage ? (
+          <p className="rounded-[8px] border border-border bg-muted/35 px-3 py-2 text-sm text-muted-foreground">
+            当前账号仅可查看 Agent，保存、发布和还原操作需管理员权限
+          </p>
+        ) : null}
 
         <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
           <div className="space-y-4">
@@ -506,7 +534,7 @@ export function AgentSettingsPage() {
                   <Label htmlFor="agent-settings-name">Agent 名称</Label>
                   <div className="relative">
                     <Input
-                      disabled={isEditing}
+                      disabled={isEditing || controlsDisabled}
                       id="agent-settings-name"
                       maxLength={agentNameMaxLength}
                       onChange={(event) => updateForm("name", event.target.value)}
@@ -522,6 +550,7 @@ export function AgentSettingsPage() {
                 <div className="space-y-2">
                   <Label htmlFor="agent-settings-model">大模型</Label>
                   <Select
+                    disabled={controlsDisabled}
                     onValueChange={(value) => updateForm("model", value)}
                     value={form.model}
                   >
@@ -562,6 +591,7 @@ export function AgentSettingsPage() {
               <Textarea
                 aria-label="角色描述"
                 className="bg-background"
+                disabled={controlsDisabled}
                 onChange={(event) => updateForm("roleDescription", event.target.value)}
                 placeholder="请输入角色描述"
                 value={form.roleDescription}
@@ -572,7 +602,9 @@ export function AgentSettingsPage() {
               description={
                 <>
                   {agentSettingsFieldHints.communicationStyle}
-                  <CommunicationStyleTemplateDropdown onSelect={applyCommunicationStyleTemplate} />
+                  {canManage ? (
+                    <CommunicationStyleTemplateDropdown onSelect={applyCommunicationStyleTemplate} />
+                  ) : null}
                 </>
               }
               title="沟通风格"
@@ -584,6 +616,7 @@ export function AgentSettingsPage() {
                     <Textarea
                       aria-label="沟通风格"
                       className="bg-background"
+                      disabled={controlsDisabled}
                       onChange={(event) => updateForm("communicationStyle", event.target.value)}
                       placeholder="请输入沟通风格描述"
                       value={form.communicationStyle}
@@ -594,6 +627,7 @@ export function AgentSettingsPage() {
                 <div className="space-y-3">
                   <Label>回复长度</Label>
                   <OptionChipGroup
+                    disabled={controlsDisabled}
                     onChange={(value) => updateForm("replyLength", value as AgentReplyLength)}
                     options={agentReplyLengthOptions}
                     value={form.replyLength}
@@ -607,6 +641,7 @@ export function AgentSettingsPage() {
               title="条件逻辑"
             >
               <AgentConditionalLogicField
+                disabled={controlsDisabled}
                 onChange={(value) => updateForm("conditionalLogic", value)}
                 segments={form.conditionalLogic}
               />
@@ -619,6 +654,7 @@ export function AgentSettingsPage() {
               <Textarea
                 aria-label="转人工条件"
                 className="bg-background"
+                disabled={controlsDisabled}
                 onChange={(event) => updateForm("transferToHumanConditions", event.target.value)}
                 placeholder="请输入转人工条件"
                 value={form.transferToHumanConditions}
@@ -757,10 +793,12 @@ function CommunicationStyleTemplateDropdown({
 }
 
 function OptionChipGroup({
+  disabled = false,
   onChange,
   options,
   value,
 }: {
+  disabled?: boolean;
   onChange: (value: string) => void;
   options: Array<{ label: string; value: string }>;
   value: string;
@@ -777,7 +815,9 @@ function OptionChipGroup({
               isActive
                 ? "border-primary/30 bg-primary/10 text-primary"
                 : "border-border bg-background text-foreground hover:bg-muted/40",
+              disabled && "cursor-not-allowed opacity-60 hover:bg-background",
             )}
+            disabled={disabled}
             key={option.value}
             onClick={() => onChange(option.value)}
             type="button"
@@ -903,12 +943,12 @@ function AgentSettingsHeaderDraftBadge({
   onRestoreClick,
   published,
 }: {
-  onRestoreClick: () => void;
+  onRestoreClick?: () => void;
   published: boolean;
 }) {
   return (
     <span className="inline-flex items-center rounded-[6px] bg-warning-muted/55 px-1.5 py-0 leading-4 text-warning">
-      {published ? (
+      {published && onRestoreClick ? (
         <>
           有尚未发布的修改，你也可以
           <Button
@@ -1104,7 +1144,27 @@ function hasModelOrPromptChanges(form: AgentSettingsForm, agent: AiHostingAgentD
 
   return (
     payload.modelId !== agent.modelId ||
-    JSON.stringify(payload.promptConfig) !== JSON.stringify(agent.promptConfig)
+    stableStringify(payload.promptConfig) !== stableStringify(agent.promptConfig)
+  );
+}
+
+function stableStringify(value: unknown) {
+  return JSON.stringify(sortObjectKeys(value));
+}
+
+function sortObjectKeys(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(sortObjectKeys);
+  }
+
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, nestedValue]) => [key, sortObjectKeys(nestedValue)]),
   );
 }
 

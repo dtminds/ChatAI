@@ -188,13 +188,7 @@ export function AgentManagementPage() {
               {errorMessage}
             </p>
           ) : null}
-          {loading ? (
-            <div className="rounded-[8px] border border-border py-10 text-center text-sm text-muted-foreground">
-              加载中
-            </div>
-          ) : (
-            <AgentTable agents={agents} onRemove={setRemoveTarget} />
-          )}
+          <AgentTable agents={agents} loading={loading} onRemove={setRemoveTarget} />
           <TablePagination
             onPageChange={setCurrentPage}
             page={activePage}
@@ -233,9 +227,11 @@ export function AgentManagementPage() {
 
 function AgentTable({
   agents,
+  loading,
   onRemove,
 }: {
   agents: AgentRecord[];
+  loading: boolean;
   onRemove: (agent: AgentRecord) => void;
 }) {
   return (
@@ -250,7 +246,20 @@ function AgentTable({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {agents.length === 0 ? (
+          {loading ? (
+            <TableRow>
+              <TableCell className="py-10 text-center" colSpan={4}>
+                <div
+                  aria-label="正在加载Agent列表"
+                  className="inline-flex items-center gap-2 text-sm text-muted-foreground"
+                  role="status"
+                >
+                  <span className="size-3.5 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-muted-foreground" />
+                  <span>正在加载Agent列表</span>
+                </div>
+              </TableCell>
+            </TableRow>
+          ) : agents.length === 0 ? (
             <TableRow>
               <TableCell className="py-10 text-center text-sm text-muted-foreground" colSpan={4}>
                 暂无数据

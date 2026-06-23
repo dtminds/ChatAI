@@ -244,6 +244,21 @@ describe("AI hosting pages", () => {
     });
   });
 
+  it("keeps the agent table header visible while loading", async () => {
+    vi.mocked(agentService.listAiHostingAgents).mockReturnValueOnce(
+      new Promise(() => undefined),
+    );
+
+    renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
+
+    expect(screen.getByRole("table", { name: "Agent列表" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Agent名称" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "大模型" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "关联知识库" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "操作" })).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "正在加载Agent列表" })).toBeInTheDocument();
+  });
+
   it("filters agents by search query", async () => {
     const user = userEvent.setup();
 

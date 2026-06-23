@@ -62,7 +62,7 @@ export class KbDocService {
     request: KbDocCreateRequest,
   ): Promise<KbDocCreateResponse> {
     const uid = await this.resolveUid(subUserId);
-    this.assertCreateRequest(request);
+    const normalizedSuffix = this.assertCreateRequest(request);
 
     const volcStrategyResourceId = resolveVolcStrategyResourceId({
       chunkParams: request.chunkParams,
@@ -77,7 +77,7 @@ export class KbDocService {
       {
         description: request.description,
         docId,
-        docSuffix: request.docSuffix,
+        docSuffix: normalizedSuffix,
         docType: KB_DOC_TYPE_DOCUMENT,
         docUrl: request.docUrl,
         kbId: request.kbId,
@@ -119,6 +119,8 @@ export class KbDocService {
         "切片配置无效",
       );
     }
+
+    return normalizedSuffix;
   }
 
   private async resolveUid(subUserId: string) {

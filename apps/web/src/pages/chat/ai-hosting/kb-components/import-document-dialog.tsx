@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AlertCircleIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { toast } from "sonner";
@@ -108,6 +108,7 @@ export function ImportDocumentDialog({
     onReset: resetForm,
     open,
   });
+  const isMountedRef = useRef(false);
   const [step, setStep] = useState<ImportStep>("file");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [fileError, setFileError] = useState("");
@@ -126,6 +127,14 @@ export function ImportDocumentDialog({
     setChunkStrategy("length");
     setChunkLength("2000");
   }
+
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   const handleFileSelect = (file: File | undefined) => {
     if (!file) {
@@ -175,6 +184,10 @@ export function ImportDocumentDialog({
           parseMode,
         });
 
+        if (!isMountedRef.current) {
+          return false;
+        }
+
         toast.success("文档已提交解析");
         onCreated?.({
           docId: result.docId,
@@ -182,6 +195,10 @@ export function ImportDocumentDialog({
           name: stripFileExtension(selectedFile.name) || selectedFile.name,
         });
       } catch (error) {
+        if (!isMountedRef.current) {
+          return false;
+        }
+
         toast.error(isRequestError(error) ? error.message : "文档导入失败");
         return false;
       }

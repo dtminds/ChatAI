@@ -556,7 +556,7 @@ export function ChatComposer({
                 type="button"
                 variant="ghost"
               >
-                <SphFeedMark className="size-4.5" />
+                <SphFeedMark className="size-5.75" />
               </Button>
             </ComposerActionTooltip>
             <ComposerActionTooltip

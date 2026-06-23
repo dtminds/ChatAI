@@ -52,7 +52,11 @@ function getSubUserId(request: { user?: { subUserId: string } }) {
 }
 
 function assertAiHostingWriteAccess(request: FastifyRequest) {
-  if (request.user?.roles?.includes("viewer")) {
-    throw new ForbiddenError("FORBIDDEN", "当前账号无操作权限");
+  const roles = request.user?.roles ?? [];
+
+  if (roles.includes("owner") || roles.includes("admin")) {
+    return;
   }
+
+  throw new ForbiddenError("FORBIDDEN", "当前账号无操作权限");
 }

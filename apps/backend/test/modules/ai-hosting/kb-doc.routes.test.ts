@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildMockedApp } from "../../helpers/build-mocked-app.js";
 
-async function createAuthenticatedApp(role: "admin" | "operator" | "viewer" = "operator") {
+async function createAuthenticatedApp(role: "admin" | "operator" | "owner" | "viewer" = "admin") {
   const app = await buildMockedApp();
   const token = app.jwt.sign({
     roles: [role],
@@ -193,7 +193,7 @@ describe("ai-hosting kb-doc routes", () => {
     const mockedApp = await buildMockedApp();
     app = mockedApp;
     const authorization = `Bearer ${mockedApp.jwt.sign({
-      roles: ["operator"],
+      roles: ["admin"],
       sessionId: "501",
       sessionVersion: 1,
       subUserId: "101abc",
@@ -267,5 +267,31 @@ describe("ai-hosting kb-doc routes", () => {
     });
 
     expect(response.statusCode).toBe(403);
+  });
+
+  it("forbids operator accounts", async () => {
+    const context = await createAuthenticatedApp("operator");
+    app = context.app;
+
+    const response = await app.inject({
+      headers: { authorization: context.authorization },
+      method: "POST",
+      url: "/api/server/ai-hosting/kb-docs/upload-credential",
+    });
+
+    expect(response.statusCode).toBe(403);
+  });
+
+  it("allows owner accounts", async () => {
+    const context = await createAuthenticatedApp("owner");
+    app = context.app;
+
+    const response = await app.inject({
+      headers: { authorization: context.authorization },
+      method: "POST",
+      url: "/api/server/ai-hosting/kb-docs/upload-credential",
+    });
+
+    expect(response.statusCode).toBe(200);
   });
 });

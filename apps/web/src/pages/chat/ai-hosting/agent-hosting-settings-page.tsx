@@ -165,7 +165,7 @@ export function AgentHostingSettingsPage() {
       setSettingsDialogOpen(false);
       setErrorMessage("");
     } catch (error) {
-      setErrorMessage(isRequestError(error) ? error.message : "托管设置保存失败");
+      throw new Error(isRequestError(error) ? error.message : "托管设置保存失败");
     }
   }
 
@@ -271,6 +271,7 @@ function HostingSettingsDialog({
   const [agentId, setAgentId] = useState<string | undefined>(undefined);
   const [fullAutoAuth, setFullAutoAuth] = useState(false);
   const [semiAutoAuth, setSemiAutoAuth] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [validationMessage, setValidationMessage] = useState("");
 
   const targetAccounts = useMemo(
@@ -295,6 +296,7 @@ function HostingSettingsDialog({
       setAgentId(matchedAgentId);
       setFullAutoAuth(account.fullAutoAuth);
       setSemiAutoAuth(account.semiAutoAuth);
+      setSaving(false);
       setValidationMessage("");
       return;
     }
@@ -302,13 +304,14 @@ function HostingSettingsDialog({
     setAgentId(undefined);
     setFullAutoAuth(false);
     setSemiAutoAuth(false);
+    setSaving(false);
     setValidationMessage("");
   }, [agents, open, targetAccounts]);
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (targetAccountIds.length === 0) {
+    if (targetAccountIds.length === 0 || saving) {
       return;
     }
 
@@ -319,11 +322,20 @@ function HostingSettingsDialog({
       return;
     }
 
-    onSave(targetAccountIds, {
-      agentId: selectedAgent.id,
-      fullAutoAuth,
-      semiAutoAuth,
-    });
+    setSaving(true);
+    setValidationMessage("");
+
+    try {
+      await onSave(targetAccountIds, {
+        agentId: selectedAgent.id,
+        fullAutoAuth,
+        semiAutoAuth,
+      });
+    } catch (error) {
+      setValidationMessage(getErrorMessage(error, "托管设置保存失败"));
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -386,7 +398,16 @@ function HostingSettingsDialog({
                 取消
               </Button>
             </DialogClose>
-            <Button type="submit">保存设置</Button>
+            <Button disabled={saving} type="submit">
+              {saving ? (
+                <>
+                  <Spinner aria-hidden="true" size={14} />
+                  <span>保存中</span>
+                </>
+              ) : (
+                "保存设置"
+              )}
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -627,4 +648,16 @@ function FeatureStatus({ enabled }: { enabled: boolean }) {
       {enabled ? "启用" : "关闭"}
     </span>
   );
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  if (error && typeof error === "object" && "message" in error) {
+    const message = (error as { message?: unknown }).message;
+
+    if (typeof message === "string" && message.trim()) {
+      return message;
+    }
+  }
+
+  return fallback;
 }

@@ -559,6 +559,46 @@ describe("AI hosting pages", () => {
     expect(screen.getAllByText("关闭")).toHaveLength(1);
   });
 
+  it("keeps save errors inside the hosting settings dialog", async () => {
+    const user = userEvent.setup();
+    vi.mocked(agentService.updateAiHostingSettings).mockRejectedValueOnce(
+      new Error("保存失败，请稍后重试"),
+    );
+
+    renderWithRoute("/chat/ai-hosting/hosting-settings", <AgentHostingSettingsPage />);
+
+    await screen.findByRole("heading", { level: 1, name: "托管设置" });
+    await user.click(screen.getAllByRole("button", { name: "设置" })[0]);
+    await user.click(screen.getByRole("combobox", { name: "关联 Agent" }));
+    await user.click(screen.getByRole("option", { name: "护肤小助理" }));
+    await user.click(screen.getByRole("button", { name: "保存设置" }));
+
+    const dialog = screen.getByRole("dialog", { name: "设置" });
+
+    expect(dialog).toBeInTheDocument();
+    expect(within(dialog).getByRole("alert")).toHaveTextContent("保存失败，请稍后重试");
+  });
+
+  it("disables hosting settings submit while saving", async () => {
+    const user = userEvent.setup();
+    const saveRequest = new Promise<AiHostingSettingsResponse>(() => undefined);
+    vi.mocked(agentService.updateAiHostingSettings).mockReturnValueOnce(saveRequest);
+
+    renderWithRoute("/chat/ai-hosting/hosting-settings", <AgentHostingSettingsPage />);
+
+    await screen.findByRole("heading", { level: 1, name: "托管设置" });
+    await user.click(screen.getAllByRole("button", { name: "设置" })[0]);
+    await user.click(screen.getByRole("combobox", { name: "关联 Agent" }));
+    await user.click(screen.getByRole("option", { name: "护肤小助理" }));
+    await user.click(screen.getByRole("button", { name: "保存设置" }));
+
+    const savingButton = screen.getByRole("button", { name: "保存中" });
+
+    expect(savingButton).toBeDisabled();
+    await user.click(savingButton);
+    expect(agentService.updateAiHostingSettings).toHaveBeenCalledTimes(1);
+  });
+
   it("navigates to agent settings page from add agent link", async () => {
     renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
 

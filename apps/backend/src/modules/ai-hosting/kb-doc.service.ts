@@ -12,6 +12,15 @@ import { resolveVolcStrategyResourceId } from "./kb-doc-strategy-mappers.js";
 export const KB_DOC_TYPE_DOCUMENT = 2;
 
 const PLAIN_TEXT_DOC_SUFFIXES = new Set(["md", "txt"]);
+const SUPPORTED_DOC_SUFFIXES = new Set([
+  "pdf",
+  "doc",
+  "docx",
+  "ppt",
+  "pptx",
+  "md",
+  "txt",
+]);
 
 type KbDocServiceLogger = {
   info: (payload: Record<string, unknown>, message: string) => void;
@@ -87,6 +96,13 @@ export class KbDocService {
   private assertCreateRequest(request: KbDocCreateRequest) {
     const normalizedSuffix = request.docSuffix.trim().toLowerCase();
 
+    if (!SUPPORTED_DOC_SUFFIXES.has(normalizedSuffix)) {
+      throw new BadRequestError(
+        "INVALID_KB_DOC_SUFFIX",
+        "不支持的文件类型",
+      );
+    }
+
     if (
       PLAIN_TEXT_DOC_SUFFIXES.has(normalizedSuffix) &&
       request.parseMode === "enhanced"
@@ -119,7 +135,7 @@ export class KbDocService {
       .where("status", "=", 1)
       .executeTakeFirst();
 
-    if (!subUser?.uid) {
+    if (subUser?.uid == null) {
       throw new NotFoundError("SUB_USER_NOT_FOUND", "子账号不存在");
     }
 

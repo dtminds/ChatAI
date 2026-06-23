@@ -36,14 +36,7 @@ export function resolveVolcStrategyResourceId(input: {
     );
   }
 
-  if (input.chunkStrategy === "length") {
-    if (input.chunkParams.strategy !== "length") {
-      throw new BadRequestError(
-        "INVALID_KB_DOC_CHUNK_CONFIG",
-        "切片配置无效",
-      );
-    }
-
+  if (input.chunkParams.strategy === "length") {
     const strategyId =
       VOLC_STRATEGY_RESOURCE_IDS[input.parseMode].length[input.chunkParams.maxLength];
 
@@ -57,7 +50,7 @@ export function resolveVolcStrategyResourceId(input: {
     return strategyId;
   }
 
-  if (input.chunkParams.strategy !== "separator" || input.chunkParams.separator !== "newline") {
+  if (input.chunkParams.separator !== "newline") {
     throw new BadRequestError(
       "INVALID_KB_DOC_CHUNK_CONFIG",
       "切片配置无效",

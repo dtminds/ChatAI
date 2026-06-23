@@ -167,6 +167,34 @@ describe("ai-hosting kb-doc routes", () => {
     });
   });
 
+  it("rejects unsupported document suffixes", async () => {
+    const context = await createAuthenticatedApp();
+    app = context.app;
+
+    const response = await app.inject({
+      headers: { authorization: context.authorization },
+      method: "POST",
+      payload: {
+        chunkParams: { maxLength: 2000, strategy: "length" },
+        chunkStrategy: "length",
+        docSuffix: "zip",
+        docUrl: "mock://kb-docs/W7zU2fWkVSp65OTAjDd3-w/demo.zip",
+        kbId: "W7zU2fWkVSp65OTAjDd3-w",
+        name: "资料包",
+        parseMode: "standard",
+      },
+      url: "/api/server/ai-hosting/kb-docs/create",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      error: {
+        code: "INVALID_KB_DOC_SUFFIX",
+      },
+      success: false,
+    });
+  });
+
   it("forbids viewer accounts", async () => {
     const context = await createAuthenticatedApp("viewer");
     app = context.app;

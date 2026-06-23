@@ -17,7 +17,7 @@ import {
   type AgentMetric,
   type AgentMetricKey,
   type AgentStatsPeriod,
-} from "./agent-management-mock-data";
+} from "./agent-management-types";
 
 const metricVisuals: Record<
   AgentMetricKey,

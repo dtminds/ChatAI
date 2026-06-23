@@ -1,15 +1,34 @@
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Add01Icon, Book04Icon, Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   resolveTablePagination,
   TablePagination,
 } from "@/components/ui/table-pagination";
+import { isRequestError } from "@/lib/request";
+import {
+  listAiHostingAgents,
+  removeAiHostingAgent,
+} from "./agent-service";
 import { AgentTable } from "./agent-management-agent-table";
-import { mockAgentMetricsByPeriod, mockAgents, type AgentStatsPeriod } from "./agent-management-mock-data";
+import {
+  emptyAgentMetrics,
+  type AgentRecord,
+  type AgentStatsPeriod,
+} from "./agent-management-types";
 import { AgentOverviewSection } from "./agent-management-overview";
 import { AiHostingLayout, AiHostingPageHeader } from "./ai-hosting-layout";
 
@@ -17,29 +36,88 @@ const AGENT_PAGE_SIZE = 10;
 
 export function AgentManagementPage() {
   const [statsPeriod, setStatsPeriod] = useState<AgentStatsPeriod>("today");
-  const [agents] = useState(mockAgents);
+  const [agents, setAgents] = useState<AgentRecord[]>([]);
   const [agentSearchQuery, setAgentSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+  const [totalAgents, setTotalAgents] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [removeTarget, setRemoveTarget] = useState<AgentRecord | null>(null);
+  const [removing, setRemoving] = useState(false);
 
-  const metrics = mockAgentMetricsByPeriod[statsPeriod];
-  const filteredAgents = useMemo(() => {
-    const normalizedQuery = agentSearchQuery.trim().toLowerCase();
-
-    if (!normalizedQuery) {
-      return agents;
-    }
-
-    return agents.filter((agent) => agent.name?.toLowerCase().includes(normalizedQuery));
-  }, [agentSearchQuery, agents]);
+  const metrics = emptyAgentMetrics;
   const { activePage, totalPages } = resolveTablePagination({
     page: currentPage,
     pageSize: AGENT_PAGE_SIZE,
-    total: filteredAgents.length,
+    total: totalAgents,
   });
-  const pagedAgents = useMemo(() => {
-    const start = (activePage - 1) * AGENT_PAGE_SIZE;
-    return filteredAgents.slice(start, start + AGENT_PAGE_SIZE);
-  }, [activePage, filteredAgents]);
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadAgents() {
+      setLoading(true);
+      setErrorMessage("");
+
+      try {
+        const response = await listAiHostingAgents({
+          page: activePage,
+          pageSize: AGENT_PAGE_SIZE,
+          query: agentSearchQuery,
+        });
+
+        if (ignore) {
+          return;
+        }
+
+        setAgents(response.agents);
+        setTotalAgents(response.pagination.total);
+      } catch (error) {
+        if (ignore) {
+          return;
+        }
+
+        setAgents([]);
+        setTotalAgents(0);
+        setErrorMessage(isRequestError(error) ? error.message : "Agent列表加载失败");
+      } finally {
+        if (!ignore) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadAgents();
+
+    return () => {
+      ignore = true;
+    };
+  }, [activePage, agentSearchQuery]);
+
+  async function handleRemoveConfirm() {
+    if (!removeTarget) {
+      return;
+    }
+
+    setRemoving(true);
+    setErrorMessage("");
+
+    try {
+      await removeAiHostingAgent(removeTarget.id);
+      setRemoveTarget(null);
+      const response = await listAiHostingAgents({
+        page: activePage,
+        pageSize: AGENT_PAGE_SIZE,
+        query: agentSearchQuery,
+      });
+      setAgents(response.agents);
+      setTotalAgents(response.pagination.total);
+    } catch (error) {
+      setErrorMessage(isRequestError(error) ? error.message : "删除Agent失败");
+    } finally {
+      setRemoving(false);
+    }
+  }
 
   return (
     <AiHostingLayout title="Agent 管理">
@@ -87,15 +165,50 @@ export function AgentManagementPage() {
             </Button>
           </div>
 
-          <AgentTable agents={pagedAgents} />
+          {errorMessage ? (
+            <p className="text-sm text-destructive" role="alert">
+              {errorMessage}
+            </p>
+          ) : null}
+          {loading ? (
+            <div className="rounded-[8px] border border-border py-10 text-center text-sm text-muted-foreground">
+              加载中
+            </div>
+          ) : (
+            <AgentTable agents={agents} onRemove={setRemoveTarget} />
+          )}
           <TablePagination
             onPageChange={setCurrentPage}
             page={activePage}
-            total={filteredAgents.length}
+            total={totalAgents}
             totalPages={totalPages}
           />
         </section>
       </div>
+
+      <AlertDialog
+        onOpenChange={(open) => {
+          if (!open) {
+            setRemoveTarget(null);
+          }
+        }}
+        open={Boolean(removeTarget)}
+      >
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认删除Agent？</AlertDialogTitle>
+            <AlertDialogDescription>
+              删除后，该Agent将不再出现在管理列表中
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={removing}>取消</AlertDialogCancel>
+            <AlertDialogAction disabled={removing} onClick={handleRemoveConfirm}>
+              确认
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AiHostingLayout>
   );
 }

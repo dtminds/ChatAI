@@ -1,4 +1,4 @@
-import { Badge } from "@/components/ui/badge";
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -8,12 +8,16 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { type AgentRecord } from "./agent-management-mock-data";
+import { type AgentRecord } from "./agent-management-types";
 import { AgentModelBadge } from "./agent-model-badge";
 
-const visibleKnowledgeBaseCount = 2;
-
-export function AgentTable({ agents }: { agents: AgentRecord[] }) {
+export function AgentTable({
+  agents,
+  onRemove,
+}: {
+  agents: AgentRecord[];
+  onRemove: (agent: AgentRecord) => void;
+}) {
   return (
     <section>
       <Table aria-label="Agent列表">
@@ -37,17 +41,22 @@ export function AgentTable({ agents }: { agents: AgentRecord[] }) {
               <TableRow key={agent.id}>
                 <TableCell className="py-4 font-medium text-foreground">{agent.name}</TableCell>
                 <TableCell className="py-4 text-muted-foreground">
-                  <AgentModelBadge model={agent.model} />
+                  <AgentModelBadge label={agent.model.label} model={agent.model.model} />
                 </TableCell>
                 <TableCell className="py-4">
-                  <KnowledgeBaseTags knowledgeBases={agent.knowledgeBases} />
+                  <KnowledgeBaseTags />
                 </TableCell>
                 <TableCell className="py-4 text-right">
                   <div className="flex items-center justify-end gap-3">
-                    <Button className="h-auto p-0 text-primary" type="button" variant="link">
-                      编辑
+                    <Button asChild className="h-auto p-0 text-primary" type="button" variant="link">
+                      <Link to={`/chat/ai-hosting/agents/${agent.id}`}>编辑</Link>
                     </Button>
-                    <Button className="h-auto p-0 text-primary" type="button" variant="link">
+                    <Button
+                      className="h-auto p-0 text-primary"
+                      onClick={() => onRemove(agent)}
+                      type="button"
+                      variant="link"
+                    >
                       删除
                     </Button>
                   </div>
@@ -61,23 +70,6 @@ export function AgentTable({ agents }: { agents: AgentRecord[] }) {
   );
 }
 
-function KnowledgeBaseTags({ knowledgeBases = [] }: { knowledgeBases?: string[] }) {
-  const safeKnowledgeBases = knowledgeBases ?? [];
-  const visibleTags = safeKnowledgeBases.slice(0, visibleKnowledgeBaseCount);
-  const hiddenCount = safeKnowledgeBases.length - visibleTags.length;
-
-  return (
-    <div className="flex flex-wrap items-center gap-2">
-      {visibleTags.map((name) => (
-        <Badge className="rounded-[6px] px-2 py-0.5" key={name} variant="secondary">
-          {name}
-        </Badge>
-      ))}
-      {hiddenCount > 0 ? (
-        <Badge className="rounded-[6px] px-2 py-0.5" variant="outline">
-          ...
-        </Badge>
-      ) : null}
-    </div>
-  );
+function KnowledgeBaseTags() {
+  return <span className="text-muted-foreground">-</span>;
 }

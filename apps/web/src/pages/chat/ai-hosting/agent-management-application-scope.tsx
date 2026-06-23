@@ -38,10 +38,9 @@ import {
 import { cn } from "@/lib/utils";
 import {
   mockApplicationScopeAccounts,
-  resolveApplicationScopeAgentLabel,
-  type AgentRecord,
   type ApplicationScopeAccount,
 } from "./agent-management-mock-data";
+import type { AgentRecord } from "./agent-management-types";
 
 const selectedAccountPreviewLimit = 5;
 const APPLICATION_SCOPE_PAGE_SIZE = 10;
@@ -197,6 +196,7 @@ export function ApplicationScopePanel({
 
         <ApplicationScopeTable
           accounts={pagedAccounts}
+          agents={agents}
           headerCheckboxState={headerCheckboxState}
           onOpenSettings={openSettingsDialog}
           onToggleAccount={toggleAccountSelection}
@@ -429,6 +429,7 @@ function SelectedAccountsPreview({ accounts }: { accounts: ApplicationScopeAccou
 
 function ApplicationScopeTable({
   accounts,
+  agents,
   headerCheckboxState,
   onOpenSettings,
   onToggleAccount,
@@ -436,6 +437,7 @@ function ApplicationScopeTable({
   selectedAccountIds,
 }: {
   accounts: ApplicationScopeAccount[];
+  agents: AgentRecord[];
   headerCheckboxState: boolean | "indeterminate";
   onOpenSettings: (accountIds: string[]) => void;
   onToggleAccount: (accountId: string) => void;
@@ -443,6 +445,7 @@ function ApplicationScopeTable({
   selectedAccountIds: string[];
 }) {
   const selectedAccountIdSet = new Set(selectedAccountIds);
+  const agentNameById = new Map(agents.map((agent) => [agent.id, agent.name]));
 
   return (
     <div>
@@ -484,7 +487,9 @@ function ApplicationScopeTable({
                   <WeComAccountIdentity name={account.name} />
                 </TableCell>
                 <TableCell className="py-4 text-muted-foreground">
-                  {resolveApplicationScopeAgentLabel(account.associatedAgentId)}
+                  {account.associatedAgentId
+                    ? agentNameById.get(account.associatedAgentId) ?? "-"
+                    : "-"}
                 </TableCell>
                 <TableCell className="py-4">
                   <FeatureStatus enabled={account.autoHostingEnabled} />

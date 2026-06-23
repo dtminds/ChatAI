@@ -1,12 +1,12 @@
 export type AgentToneStyle =
-  | "friendly"
-  | "professional"
-  | "lively"
-  | "restrained"
-  | "efficient"
-  | "gentle";
+  | "亲切自然"
+  | "专业顾问"
+  | "活泼"
+  | "高级克制"
+  | "高效客服"
+  | "温柔陪伴";
 
-export type AgentReplyLength = "concise" | "standard" | "detailed";
+export type AgentReplyLength = "简洁" | "标准" | "充分";
 
 export type ConditionalLogicSegment =
   | { type: "text"; value: string }
@@ -36,11 +36,10 @@ export const mockKnowledgeBaseOptions: KnowledgeBaseOption[] = [
   { id: "kb-policy", name: "活动政策知识库" },
 ];
 
-export const agentNameMaxLength = 16;
+export const agentNameMaxLength = 50;
 
 export const agentModelOptions = [
-  { label: "默认模型", value: "default-model" },
-  { label: "Doubao-2.0-lite", value: "doubao-2.0-lite" },
+  { label: "默认模型", model: "default-model", value: "0" },
 ] as const;
 
 export const agentToneStyleOptions: Array<{
@@ -48,28 +47,28 @@ export const agentToneStyleOptions: Array<{
   label: string;
   value: AgentToneStyle;
 }> = [
-  { emoji: "😊", label: "亲切自然", value: "friendly" },
-  { label: "专业顾问", value: "professional" },
-  { label: "活泼", value: "lively" },
-  { label: "高级克制", value: "restrained" },
-  { label: "高效客服", value: "efficient" },
-  { label: "温柔陪伴", value: "gentle" },
+  { emoji: "😊", label: "亲切自然", value: "亲切自然" },
+  { label: "专业顾问", value: "专业顾问" },
+  { label: "活泼", value: "活泼" },
+  { label: "高级克制", value: "高级克制" },
+  { label: "高效客服", value: "高效客服" },
+  { label: "温柔陪伴", value: "温柔陪伴" },
 ];
 
 export const agentReplyLengthOptions: Array<{
   label: string;
   value: AgentReplyLength;
 }> = [
-  { label: "简洁", value: "concise" },
-  { label: "标准", value: "standard" },
-  { label: "充分", value: "detailed" },
+  { label: "简洁", value: "简洁" },
+  { label: "标准", value: "标准" },
+  { label: "充分", value: "充分" },
 ];
 
 export const defaultAgentSettingsForm: AgentSettingsForm = {
   name: "",
   model: agentModelOptions[0].value,
-  toneStyle: "friendly",
-  replyLength: "concise",
+  toneStyle: "亲切自然",
+  replyLength: "简洁",
   roleDescription: "",
   communicationStyle: "",
   conditionalLogic: [{ type: "text", value: "" }],

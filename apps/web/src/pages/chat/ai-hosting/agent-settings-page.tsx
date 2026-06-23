@@ -1,5 +1,10 @@
-import { useMemo, useState, type ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import type {
+  AiHostingAgentDetail,
+  AiHostingAgentPromptConfig,
+  AiHostingModel,
+} from "@chatai/contracts";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   AiChat02Icon,
   ArrowDown01Icon,
@@ -28,7 +33,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { isRequestError } from "@/lib/request";
 import { cn } from "@/lib/utils";
+import {
+  createAiHostingAgent,
+  getAiHostingAgent,
+  listAiHostingModels,
+  publishAiHostingAgent,
+  restoreAiHostingAgent,
+  updateAiHostingAgent,
+} from "./agent-service";
 import {
   agentModelOptions,
   agentNameMaxLength,
@@ -51,6 +65,12 @@ type PreviewMessage = {
   role: "agent" | "customer";
 };
 
+type ModelOption = {
+  id: string;
+  label: string;
+  model: string;
+};
+
 const agentSettingsModuleSurfaceClassName = "rounded-[12px] border border-border bg-card shadow-xs";
 
 const agentSettingsModuleSurfaceStyle = {
@@ -58,19 +78,164 @@ const agentSettingsModuleSurfaceStyle = {
 } as const;
 
 export function AgentSettingsPage() {
+  const navigate = useNavigate();
+  const { agentId } = useParams();
+  const isEditing = Boolean(agentId);
   const [form, setForm] = useState<AgentSettingsForm>(defaultAgentSettingsForm);
+  const [models, setModels] = useState<AiHostingModel[]>([]);
+  const [agentDetail, setAgentDetail] = useState<AiHostingAgentDetail | null>(null);
   const [previewMessages, setPreviewMessages] = useState<PreviewMessage[]>(agentPreviewSeedMessages);
   const [previewInput, setPreviewInput] = useState("");
   const [restoreDialogOpen, setRestoreDialogOpen] = useState(false);
   const [publishDialogOpen, setPublishDialogOpen] = useState(false);
   const [generateDialogOpen, setGenerateDialogOpen] = useState(false);
-  const hasUnpublishedDraft = true;
-  const selectedModel = agentModelOptions.find((option) => option.value === form.model);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+  const hasUnpublishedDraft = Boolean(agentDetail?.hasUnpublishedChanges);
+  const hasLocalPublishChanges = Boolean(
+    agentDetail && hasModelOrPromptChanges(form, agentDetail),
+  );
+  const canPublish = !isEditing || hasUnpublishedDraft || hasLocalPublishChanges;
+  const modelOptions = useMemo<ModelOption[]>(
+    () =>
+      models.length > 0
+        ? models.map((model) => ({
+          id: model.id,
+          label: model.label,
+          model: model.model,
+        }))
+        : agentModelOptions.map((model) => ({
+          id: model.value,
+          label: model.label,
+          model: model.model,
+        })),
+    [models],
+  );
+  const selectedModel = modelOptions.find((option) => option.id === form.model);
 
   const previewTitle = form.name.trim() || "美妆小助手";
 
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadInitialData() {
+      setLoading(true);
+      setErrorMessage("");
+
+      try {
+        const [modelsResponse, detailResponse] = await Promise.all([
+          listAiHostingModels(),
+          agentId ? getAiHostingAgent(agentId) : Promise.resolve(null),
+        ]);
+
+        if (ignore) {
+          return;
+        }
+
+        setModels(modelsResponse.models);
+
+        if (detailResponse) {
+          setAgentDetail(detailResponse);
+          setForm(mapAgentDetailToForm(detailResponse));
+        } else if (modelsResponse.models[0]) {
+          setForm((current) => ({ ...current, model: modelsResponse.models[0].id }));
+        }
+      } catch (error) {
+        if (!ignore) {
+          setErrorMessage(isRequestError(error) ? error.message : "Agent设置加载失败");
+        }
+      } finally {
+        if (!ignore) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadInitialData();
+
+    return () => {
+      ignore = true;
+    };
+  }, [agentId]);
+
   function updateForm<K extends keyof AgentSettingsForm>(key: K, value: AgentSettingsForm[K]) {
     setForm((current) => ({ ...current, [key]: value }));
+  }
+
+  async function handleSave() {
+    const payload = buildSavePayload(form);
+
+    if (!payload) {
+      setErrorMessage("请填写Agent名称并选择大模型");
+      return null;
+    }
+
+    setSubmitting(true);
+    setErrorMessage("");
+
+    try {
+      const saved = agentId
+        ? await updateAiHostingAgent(agentId, payload)
+        : await createAiHostingAgent(payload);
+
+      setAgentDetail(saved);
+      setForm(mapAgentDetailToForm(saved));
+
+      if (!agentId) {
+        navigate(`/chat/ai-hosting/agents/${saved.id}`, { replace: true });
+      }
+
+      return saved;
+    } catch (error) {
+      setErrorMessage(isRequestError(error) ? error.message : "保存Agent失败");
+      return null;
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handlePublish() {
+    const saved = await handleSave();
+    const publishAgentId = saved?.id ?? agentId;
+
+    if (!publishAgentId) {
+      return;
+    }
+
+    setSubmitting(true);
+    setErrorMessage("");
+
+    try {
+      const published = await publishAiHostingAgent(publishAgentId);
+      setAgentDetail(published);
+      setForm(mapAgentDetailToForm(published));
+      setPublishDialogOpen(false);
+    } catch (error) {
+      setErrorMessage(isRequestError(error) ? error.message : "发布Agent失败");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleRestore() {
+    if (!agentId) {
+      return;
+    }
+
+    setSubmitting(true);
+    setErrorMessage("");
+
+    try {
+      const restored = await restoreAiHostingAgent(agentId);
+      setAgentDetail(restored);
+      setForm(mapAgentDetailToForm(restored));
+      setRestoreDialogOpen(false);
+    } catch (error) {
+      setErrorMessage(isRequestError(error) ? error.message : "还原正式版失败");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   function handlePreviewSend() {
@@ -119,13 +284,17 @@ export function AgentSettingsPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <Button type="button" variant="outline">
+            <Button disabled={submitting || loading} onClick={handleSave} type="button" variant="outline">
               保存
             </Button>
             <AgentGenerateGradientButton onClick={() => setGenerateDialogOpen(true)}>
               智能生成
             </AgentGenerateGradientButton>
-            <Button onClick={() => setPublishDialogOpen(true)} type="button">
+            <Button
+              disabled={submitting || loading || (isEditing && !canPublish)}
+              onClick={() => setPublishDialogOpen(true)}
+              type="button"
+            >
               <HugeiconsIcon icon={SentIcon} size={16} strokeWidth={1.8} />
               发布正式版
             </Button>
@@ -133,17 +302,13 @@ export function AgentSettingsPage() {
         </header>
 
         <AgentSettingsRestoreDialog
-          onConfirm={() => {
-            setRestoreDialogOpen(false);
-          }}
+          onConfirm={handleRestore}
           onOpenChange={setRestoreDialogOpen}
           open={restoreDialogOpen}
         />
 
         <AgentSettingsPublishDialog
-          onConfirm={() => {
-            setPublishDialogOpen(false);
-          }}
+          onConfirm={handlePublish}
           onOpenChange={setPublishDialogOpen}
           open={publishDialogOpen}
         />
@@ -152,6 +317,12 @@ export function AgentSettingsPage() {
           onOpenChange={setGenerateDialogOpen}
           open={generateDialogOpen}
         />
+
+        {errorMessage ? (
+          <p className="text-sm text-destructive" role="alert">
+            {errorMessage}
+          </p>
+        ) : null}
 
         <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
           <div className="space-y-4">
@@ -182,16 +353,25 @@ export function AgentSettingsPage() {
                     <SelectTrigger className="w-full" id="agent-settings-model">
                       {selectedModel ? (
                         <div className="min-w-0" data-agent-model-trigger-value>
-                          <AgentModelBadge label={selectedModel.label} model={selectedModel.value} />
+                          <AgentModelBadge
+                            label={selectedModel.label}
+                            model={selectedModel.model}
+                          />
                         </div>
                       ) : (
                         <SelectValue placeholder="请选择大模型" />
                       )}
                     </SelectTrigger>
                     <SelectContent>
-                      {agentModelOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          <AgentModelBadge label={option.label} model={option.value} />
+                      {modelOptions.map((option) => (
+                        <SelectItem
+                          key={option.id}
+                          value={option.id}
+                        >
+                          <AgentModelBadge
+                            label={option.label}
+                            model={option.model}
+                          />
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -504,4 +684,102 @@ function PreviewCustomerAvatar() {
       </AvatarFallback>
     </Avatar>
   );
+}
+
+function mapAgentDetailToForm(agent: AiHostingAgentDetail): AgentSettingsForm {
+  return {
+    communicationStyle: agent.promptConfig.style,
+    conditionalLogic: parseConditionalLogicSegments(agent.promptConfig.conditionLogic),
+    model: agent.modelId,
+    name: agent.name,
+    replyLength: normalizeReplyLength(agent.promptConfig.keynote.length),
+    roleDescription: agent.promptConfig.role,
+    toneStyle: normalizeToneStyle(agent.promptConfig.keynote.style[0] ?? agent.promptConfig.style),
+    transferToHumanConditions: agent.promptConfig.transferToHuman,
+  };
+}
+
+function buildSavePayload(form: AgentSettingsForm) {
+  const name = form.name.trim();
+  const modelId = form.model.trim();
+
+  if (!name || !modelId) {
+    return null;
+  }
+
+  return {
+    modelId,
+    name,
+    promptConfig: {
+      conditionLogic: serializeConditionalLogicSegments(form.conditionalLogic),
+      keynote: {
+        length: form.replyLength,
+        style: [form.toneStyle],
+      },
+      role: form.roleDescription,
+      style: form.communicationStyle,
+      transferToHuman: form.transferToHumanConditions,
+    } satisfies AiHostingAgentPromptConfig,
+  };
+}
+
+function hasModelOrPromptChanges(form: AgentSettingsForm, agent: AiHostingAgentDetail) {
+  const payload = buildSavePayload(form);
+
+  if (!payload) {
+    return false;
+  }
+
+  return (
+    payload.modelId !== agent.modelId ||
+    JSON.stringify(payload.promptConfig) !== JSON.stringify(agent.promptConfig)
+  );
+}
+
+function serializeConditionalLogicSegments(segments: AgentSettingsForm["conditionalLogic"]) {
+  return segments
+    .map((segment) =>
+      segment.type === "knowledgeBase"
+        ? `{{knowledgeBase:${segment.id}}}`
+        : segment.value,
+    )
+    .join("");
+}
+
+function parseConditionalLogicSegments(value: string): AgentSettingsForm["conditionalLogic"] {
+  if (!value) {
+    return [{ type: "text", value: "" }];
+  }
+
+  const segments: AgentSettingsForm["conditionalLogic"] = [];
+  const tokenPattern = /\{\{knowledgeBase:([^}]+)\}\}/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = tokenPattern.exec(value))) {
+    if (match.index > lastIndex) {
+      segments.push({ type: "text", value: value.slice(lastIndex, match.index) });
+    }
+
+    segments.push({ type: "knowledgeBase", id: match[1] });
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < value.length) {
+    segments.push({ type: "text", value: value.slice(lastIndex) });
+  }
+
+  return segments.length > 0 ? segments : [{ type: "text", value }];
+}
+
+function normalizeToneStyle(value: string): AgentToneStyle {
+  return agentToneStyleOptions.some((option) => option.value === value)
+    ? (value as AgentToneStyle)
+    : "亲切自然";
+}
+
+function normalizeReplyLength(value: string): AgentReplyLength {
+  return agentReplyLengthOptions.some((option) => option.value === value)
+    ? (value as AgentReplyLength)
+    : "简洁";
 }

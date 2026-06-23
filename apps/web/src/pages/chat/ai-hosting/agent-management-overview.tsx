@@ -12,12 +12,29 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@/components/ui/button";
 import { SegmentedControl, SegmentedControlItem } from "@/components/ui/segmented-control";
 import { cn } from "@/lib/utils";
-import {
-  agentStatsPeriodOptions,
-  type AgentMetric,
-  type AgentMetricKey,
-  type AgentStatsPeriod,
-} from "./agent-management-types";
+
+export type AgentStatsPeriod = "today" | "yesterday" | "last7days" | "last30days";
+
+export type AgentMetricKey =
+  | "totalSessions"
+  | "aiIndependentSessions"
+  | "totalMessages"
+  | "aiMessages"
+  | "humanMessages";
+
+export type AgentMetric = {
+  changePercent: number;
+  key: AgentMetricKey;
+  label: string;
+  value: number;
+};
+
+const agentStatsPeriodOptions: Array<{ label: string; value: AgentStatsPeriod }> = [
+  { label: "今日", value: "today" },
+  { label: "昨日", value: "yesterday" },
+  { label: "近7日", value: "last7days" },
+  { label: "近30日", value: "last30days" },
+];
 
 const metricVisuals: Record<
   AgentMetricKey,

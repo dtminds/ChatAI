@@ -77,7 +77,6 @@ export function $clearConditionalLogicEditor() {
   const root = $getRoot();
   root.clear();
   root.append($createParagraphNode());
-  root.selectStart();
 }
 
 export function $insertKnowledgeBaseChip(knowledgeBaseId: string) {
@@ -105,8 +104,6 @@ export function $restoreConditionalLogicFromSegments(segments: ConditionalLogicS
       $insertConditionalLogicText(segment.value);
     }
   }
-
-  $getRoot().selectEnd();
 }
 
 export function $exportConditionalLogicSegments() {

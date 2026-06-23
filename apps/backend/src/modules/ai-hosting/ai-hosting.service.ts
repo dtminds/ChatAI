@@ -15,7 +15,7 @@ import type {
   AiHostingModel,
   AiHostingModelListResponse,
 } from "@chatai/contracts";
-import type { Kysely } from "kysely";
+import type { Insertable, Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
 import {
   BadRequestError,
@@ -60,6 +60,8 @@ type UserSeatAgentRow = {
   semi_auto_auth: number | null;
   user_seat_id: number;
 };
+
+type UserSeatAgentInsert = Insertable<Database["xy_wap_embed_user_seat_agent"]>;
 
 type AiModelRow = {
   description?: string | null;
@@ -150,6 +152,8 @@ export class AiHostingService {
 
     const currentConfigs = await this.listUserSeatAgentRows(scope, userSeatIds);
     const existingSeatIds = new Set(currentConfigs.map((config) => config.user_seat_id));
+    const insertRows: UserSeatAgentInsert[] = [];
+    const updateSeatIds: number[] = [];
     const values = {
       agent_id: agentId,
       full_auto_auth: payload.fullAutoAuth ? 1 : 0,
@@ -158,26 +162,34 @@ export class AiHostingService {
 
     for (const userSeatId of userSeatIds) {
       if (existingSeatIds.has(userSeatId)) {
-        await this.db
-          .updateTable("xy_wap_embed_user_seat_agent")
-          .set({
-            ...values,
-            update_time: new Date(),
-          })
-          .where("uid", "=", scope.uid)
-          .where("user_seat_id", "=", userSeatId)
-          .execute();
+        updateSeatIds.push(userSeatId);
         continue;
       }
 
+      insertRows.push({
+        ...values,
+        uid: scope.uid,
+        user_seat_id: userSeatId,
+      });
+    }
+
+    if (insertRows.length > 0) {
       await this.db
         .insertInto("xy_wap_embed_user_seat_agent")
-        .values({
-          ...values,
-          uid: scope.uid,
-          user_seat_id: userSeatId,
-        })
+        .values(insertRows)
         .executeTakeFirstOrThrow();
+    }
+
+    if (updateSeatIds.length > 0) {
+      await this.db
+        .updateTable("xy_wap_embed_user_seat_agent")
+        .set({
+          ...values,
+          update_time: new Date(),
+        })
+        .where("uid", "=", scope.uid)
+        .where("user_seat_id", "in", updateSeatIds)
+        .execute();
     }
 
     return this.listHostingSettings(currentSubUserId);

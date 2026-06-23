@@ -19,7 +19,10 @@ import {
   SmileIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import type { WorkbenchMaterialCollectionItemDto } from "@chatai/contracts";
+import {
+  MATERIAL_COLLECTION_BIZ_TYPE,
+  type WorkbenchMaterialCollectionItemDto,
+} from "@chatai/contracts";
 import { Spinner } from "@/components/ui/spinner";
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
 import { ContentEditable } from "@lexical/react/LexicalContentEditable";
@@ -535,7 +538,9 @@ export function ChatComposer({
                 aria-label="收藏小程序"
                 className={composerActionButtonClass}
                 disabled={isSending || !canSendMessage}
-                onClick={() => onOpenMaterialLibrary(3)}
+                onClick={() =>
+                  onOpenMaterialLibrary(MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM)
+                }
                 size="icon"
                 type="button"
                 variant="ghost"
@@ -551,7 +556,9 @@ export function ChatComposer({
                 aria-label="收藏视频号"
                 className={composerActionButtonClass}
                 disabled={isSending || !canSendMessage}
-                onClick={() => onOpenMaterialLibrary(5)}
+                onClick={() =>
+                  onOpenMaterialLibrary(MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED)
+                }
                 size="icon"
                 type="button"
                 variant="ghost"
@@ -567,7 +574,7 @@ export function ChatComposer({
                 aria-label="收藏H5"
                 className={composerActionButtonClass}
                 disabled={isSending || !canSendMessage}
-                onClick={() => onOpenMaterialLibrary(4)}
+                onClick={() => onOpenMaterialLibrary(MATERIAL_COLLECTION_BIZ_TYPE.H5)}
                 size="icon"
                 type="button"
                 variant="ghost"

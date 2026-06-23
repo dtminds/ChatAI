@@ -69,7 +69,7 @@ export function isConditionalLogicEmpty(segments: ConditionalLogicSegment[]) {
   return !normalizeConditionalLogicSegments(segments).some(
     (segment) =>
       segment.type === "knowledgeBase" ||
-      (segment.type === "text" && segment.value.replace(/\u200b/g, "").length > 0),
+      (segment.type === "text" && segment.value.length > 0),
   );
 }
 
@@ -79,8 +79,15 @@ export function $clearConditionalLogicEditor() {
   root.append($createParagraphNode());
 }
 
-export function $insertKnowledgeBaseChip(knowledgeBaseId: string) {
-  $insertNodes([$createKnowledgeBaseChipNode(knowledgeBaseId)]);
+export function $insertKnowledgeBaseChip(knowledgeBase: {
+  id: string;
+  name?: string;
+}) {
+  const chipNode = $createKnowledgeBaseChipNode(knowledgeBase);
+  const trailingSpaceNode = $createTextNode(" ");
+
+  $insertNodes([chipNode, trailingSpaceNode]);
+  trailingSpaceNode.select(1, 1);
 }
 
 export function $insertConditionalLogicText(text: string) {
@@ -100,7 +107,12 @@ export function $restoreConditionalLogicFromSegments(segments: ConditionalLogicS
 
   for (const segment of normalizeConditionalLogicSegments(segments)) {
     if (segment.type === "knowledgeBase") {
-      paragraph.append($createKnowledgeBaseChipNode(segment.id));
+      paragraph.append(
+        $createKnowledgeBaseChipNode({
+          id: segment.id,
+          name: segment.name,
+        }),
+      );
       continue;
     }
 
@@ -127,13 +139,14 @@ function collectConditionalLogicSegmentsFromNode(
   if ($isKnowledgeBaseChipNode(node)) {
     segments.push({
       id: node.getKnowledgeBaseId(),
+      name: node.getKnowledgeBaseName(),
       type: "knowledgeBase",
     });
     return;
   }
 
   if ($isTextNode(node)) {
-    appendConditionalLogicText(segments, stripConditionalLogicAnchors(node.getTextContent()));
+    appendConditionalLogicText(segments, node.getTextContent());
     return;
   }
 
@@ -164,8 +177,4 @@ function appendConditionalLogicText(segments: ConditionalLogicSegment[], value: 
   }
 
   segments.push({ type: "text", value });
-}
-
-function stripConditionalLogicAnchors(value: string) {
-  return value.replace(/\u200b/g, "");
 }

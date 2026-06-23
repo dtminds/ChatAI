@@ -8,12 +8,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Spinner } from "@/components/ui/spinner";
 
 export function AgentSettingsRestoreDialog({
+  disabled,
   onConfirm,
   onOpenChange,
   open,
 }: {
+  disabled: boolean;
   onConfirm: () => void;
   onOpenChange: (open: boolean) => void;
   open: boolean;
@@ -32,14 +35,25 @@ export function AgentSettingsRestoreDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <DialogFooter className="gap-2 px-6 pb-6 pt-8 sm:gap-2">
+        <DialogFooter className="px-6 pb-6 pt-8">
           <DialogClose asChild>
-            <Button type="button" variant="outline">
+            <Button disabled={disabled} type="button" variant="outline">
               取消
             </Button>
           </DialogClose>
-          <Button onClick={onConfirm} type="button">
-            确认
+          <Button disabled={disabled} onClick={onConfirm} type="button" variant="destructive">
+            {disabled ? (
+              <>
+                <Spinner
+                  aria-hidden="true"
+                  className="text-current"
+                  size={14}
+                  variant="classic"
+                />
+                <span className="sr-only">还原中</span>
+              </>
+            ) : null}
+            还原
           </Button>
         </DialogFooter>
       </DialogContent>

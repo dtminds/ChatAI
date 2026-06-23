@@ -1,8 +1,10 @@
 import type {
   AiHostingAgentDetail,
   AiHostingAgentListResponse,
+  AiHostingAgentRenameRequest,
   AiHostingAgentRemoveResponse,
   AiHostingAgentSaveRequest,
+  AiHostingAgentSettingsSaveRequest,
   AiHostingModelListResponse,
   ApiSuccessEnvelope,
 } from "@chatai/contracts";
@@ -62,11 +64,26 @@ export async function createAiHostingAgent(payload: AiHostingAgentSaveRequest) {
   return response.data;
 }
 
-export async function updateAiHostingAgent(agentId: string, payload: AiHostingAgentSaveRequest) {
+export async function updateAiHostingAgent(
+  agentId: string,
+  payload: AiHostingAgentSettingsSaveRequest,
+) {
   const response = await http.put<
     ApiSuccessEnvelope<AiHostingAgentDetail>,
-    AiHostingAgentSaveRequest
+    AiHostingAgentSettingsSaveRequest
   >(`/server/ai-hosting/agents/${agentId}`, payload);
+
+  return response.data;
+}
+
+export async function renameAiHostingAgent(
+  agentId: string,
+  payload: AiHostingAgentRenameRequest,
+) {
+  const response = await http.patch<
+    ApiSuccessEnvelope<AiHostingAgentDetail>,
+    AiHostingAgentRenameRequest
+  >(`/server/ai-hosting/agents/${agentId}/name`, payload);
 
   return response.data;
 }

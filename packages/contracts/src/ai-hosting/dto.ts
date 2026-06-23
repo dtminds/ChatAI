@@ -2,13 +2,12 @@ import { Type, type Static } from "@sinclair/typebox";
 
 export const AiHostingAgentPromptConfigSchema = Type.Object({
   conditionLogic: Type.String(),
-  keynote: Type.Object({
+  handoffRules: Type.String(),
+  replyStyle: Type.Object({
     length: Type.String(),
-    style: Type.Array(Type.String()),
+    styleInstruction: Type.String(),
   }, { additionalProperties: false }),
   role: Type.String(),
-  style: Type.String(),
-  transferToHuman: Type.String(),
 }, { additionalProperties: false });
 
 export const AiHostingModelSchema = Type.Object({
@@ -65,6 +64,15 @@ export const AiHostingAgentSaveRequestSchema = Type.Object({
   promptConfig: AiHostingAgentPromptConfigSchema,
 }, { additionalProperties: false });
 
+export const AiHostingAgentSettingsSaveRequestSchema = Type.Object({
+  modelId: Type.String({ minLength: 1 }),
+  promptConfig: AiHostingAgentPromptConfigSchema,
+}, { additionalProperties: false });
+
+export const AiHostingAgentRenameRequestSchema = Type.Object({
+  name: Type.String({ minLength: 1, maxLength: 50 }),
+}, { additionalProperties: false });
+
 export const AiHostingAgentRemoveResponseSchema = Type.Object({
   deleted: Type.Boolean(),
 });
@@ -77,4 +85,7 @@ export type AiHostingAgentDetail = Static<typeof AiHostingAgentDetailSchema>;
 export type AiHostingAgentListResponse = Static<typeof AiHostingAgentListResponseSchema>;
 export type AiHostingModelListResponse = Static<typeof AiHostingModelListResponseSchema>;
 export type AiHostingAgentSaveRequest = Static<typeof AiHostingAgentSaveRequestSchema>;
+export type AiHostingAgentSettingsSaveRequest =
+  Static<typeof AiHostingAgentSettingsSaveRequestSchema>;
+export type AiHostingAgentRenameRequest = Static<typeof AiHostingAgentRenameRequestSchema>;
 export type AiHostingAgentRemoveResponse = Static<typeof AiHostingAgentRemoveResponseSchema>;

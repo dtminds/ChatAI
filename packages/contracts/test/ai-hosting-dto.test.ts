@@ -2,7 +2,9 @@ import { Value } from "@sinclair/typebox/value";
 import { describe, expect, it } from "vitest";
 import {
   AiHostingAgentDetailSchema,
+  AiHostingAgentRenameRequestSchema,
   AiHostingAgentSaveRequestSchema,
+  AiHostingAgentSettingsSaveRequestSchema,
   AiHostingModelListResponseSchema,
 } from "../src";
 
@@ -14,16 +16,50 @@ describe("AI hosting DTOs", () => {
         name: "护肤小助理",
         promptConfig: {
           conditionLogic: "如果客户咨询成分，那么说明功效",
-          keynote: {
+          replyStyle: {
             length: "简洁",
-            style: ["亲切自然"],
+            styleInstruction: "亲切自然",
           },
+          handoffRules: "客户要求真人",
           role: "你是护肤顾问",
-          style: "亲切自然",
-          transferToHuman: "客户要求真人",
         },
       }),
     ).toBe(true);
+  });
+
+  it("keeps agent settings saves separate from name edits", () => {
+    expect(
+      Value.Check(AiHostingAgentSettingsSaveRequestSchema, {
+        modelId: "11",
+        promptConfig: {
+          conditionLogic: "如果客户咨询成分，那么说明功效",
+          replyStyle: {
+            length: "简洁",
+            styleInstruction: "亲切自然",
+          },
+          handoffRules: "客户要求真人",
+          role: "你是护肤顾问",
+        },
+      }),
+    ).toBe(true);
+
+    expect(
+      Value.Check(AiHostingAgentSettingsSaveRequestSchema, {
+        modelId: "11",
+        name: "护肤小助理",
+        promptConfig: {
+          conditionLogic: "",
+          replyStyle: {
+            length: "简洁",
+            styleInstruction: "亲切自然",
+          },
+          handoffRules: "客户要求真人",
+          role: "你是护肤顾问",
+        },
+      }),
+    ).toBe(false);
+
+    expect(Value.Check(AiHostingAgentRenameRequestSchema, { name: "护肤小助理" })).toBe(true);
   });
 
   it("keeps publish state separate from agent history internals", () => {
@@ -41,13 +77,12 @@ describe("AI hosting DTOs", () => {
         name: "护肤小助理",
         promptConfig: {
           conditionLogic: "如果客户咨询成分，那么说明功效",
-          keynote: {
+          replyStyle: {
             length: "简洁",
-            style: ["亲切自然"],
+            styleInstruction: "亲切自然",
           },
+          handoffRules: "客户要求真人",
           role: "你是护肤顾问",
-          style: "亲切自然",
-          transferToHuman: "客户要求真人",
         },
         publishedAt: 1_718_006_400_000,
         updatedAt: 1_718_006_460_000,

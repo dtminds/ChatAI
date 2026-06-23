@@ -22,6 +22,7 @@ const agentServiceMock = vi.hoisted(() => ({
   publishAiHostingAgent: vi.fn(),
   removeAiHostingAgent: vi.fn(),
   restoreAiHostingAgent: vi.fn(),
+  renameAiHostingAgent: vi.fn(),
   updateAiHostingAgent: vi.fn(),
 }));
 
@@ -91,13 +92,12 @@ const mockAgentDetail = {
   name: "护肤小助理",
   promptConfig: {
     conditionLogic: "如果客户咨询成分，那么说明功效",
-    keynote: {
+    replyStyle: {
       length: "简洁",
-      style: ["亲切自然"],
+      styleInstruction: "亲切自然",
     },
+    handoffRules: "客户要求真人",
     role: "你是护肤顾问",
-    style: "亲切自然",
-    transferToHuman: "客户要求真人",
   },
   publishedAt: 1_718_006_400_000,
   updatedAt: 1_718_006_460_000,
@@ -160,6 +160,10 @@ describe("AI hosting pages", () => {
       ...mockAgentDetail,
       hasUnpublishedChanges: false,
     });
+    vi.mocked(agentService.renameAiHostingAgent).mockResolvedValue({
+      ...mockAgentDetail,
+      name: "护肤专家",
+    });
     vi.mocked(agentService.removeAiHostingAgent).mockResolvedValue({ deleted: true });
     mockImageDimensions = { height: 800, width: 800 };
     Object.defineProperty(URL, "createObjectURL", {
@@ -219,8 +223,8 @@ describe("AI hosting pages", () => {
     expect(screen.getByText("会话总数")).toBeInTheDocument();
     expect(screen.getAllByText("0")[0]).toBeInTheDocument();
     expect(screen.getByText("人工发送消息数")).toBeInTheDocument();
-    expect(screen.getByRole("table", { name: "Agent列表" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Agent列表区块" })).toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "Agent 列表" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Agent 列表区块" })).toBeInTheDocument();
     expect(await screen.findByText("共 2 条")).toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: "应用范围" })).not.toBeInTheDocument();
     expect(screen.getByRole("cell", { name: "护肤小助理" })).toBeInTheDocument();
@@ -251,12 +255,12 @@ describe("AI hosting pages", () => {
 
     renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
 
-    expect(screen.getByRole("table", { name: "Agent列表" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "Agent名称" })).toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "Agent 列表" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Agent 名称" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "大模型" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "关联知识库" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "操作" })).toBeInTheDocument();
-    expect(screen.getByRole("status", { name: "正在加载Agent列表" })).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "正在加载 Agent 列表" })).toBeInTheDocument();
   });
 
   it("does not focus the conditional logic editor while restoring agent settings", async () => {
@@ -314,7 +318,7 @@ describe("AI hosting pages", () => {
     await screen.findByRole("cell", { name: "护肤小助理" });
     await user.click(screen.getAllByRole("button", { name: "删除" })[0]);
 
-    expect(screen.getByRole("alertdialog", { name: "确认删除Agent？" })).toBeInTheDocument();
+    expect(screen.getByRole("alertdialog", { name: "确认删除 Agent？" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "确认" }));
 
@@ -407,17 +411,31 @@ describe("AI hosting pages", () => {
   it("navigates to agent settings page from add agent link", async () => {
     renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
 
-    expect(await screen.findByRole("heading", { level: 1, name: "Agent设置" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: "创建 Agent" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "保存" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "智能生成" })).toHaveAttribute(
       "data-agent-generate-gradient-button",
       "true",
     );
-    expect(screen.getByRole("button", { name: "发布正式版" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "发布正式版" })).not.toBeInTheDocument();
     expect(screen.getByText("基本设置")).toBeInTheDocument();
-    expect(screen.getByText("回复基调")).toBeInTheDocument();
+    expect(screen.queryByText("回复基调")).not.toBeInTheDocument();
     expect(screen.getByText("角色")).toBeInTheDocument();
     expect(screen.getByText("沟通风格")).toBeInTheDocument();
+    expect(screen.queryByText("语气风格")).not.toBeInTheDocument();
+    expect(screen.getByText("风格描述")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "查看模板" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "😊 亲切自然" })).not.toBeInTheDocument();
+    expect(screen.getByText("回复长度")).toBeInTheDocument();
+    expect(
+      screen.getByText("沟通风格").compareDocumentPosition(screen.getByRole("button", { name: "查看模板" })),
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(
+      screen.getByRole("button", { name: "查看模板" }).compareDocumentPosition(screen.getByText("风格描述")),
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(
+      screen.getByText("风格描述").compareDocumentPosition(screen.getByLabelText("沟通风格")),
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(screen.getByText("条件逻辑")).toBeInTheDocument();
     expect(screen.getByText("转人工条件")).toBeInTheDocument();
     expect(await screen.findByTitle("模型图标：默认模型")).toBeInTheDocument();
@@ -425,18 +443,32 @@ describe("AI hosting pages", () => {
     expect(screen.getByText("我想了解下晨间护肤")).toBeInTheDocument();
   });
 
+  it("fills communication style from the template menu", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
+
+    await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
+    await user.click(screen.getByRole("button", { name: "查看模板" }));
+    await user.click(screen.getByRole("menuitem", { name: "活泼种草" }));
+
+    expect(screen.getByLabelText("沟通风格")).toHaveValue(
+      "语气轻快有感染力，适度突出亮点和使用体验，适合新品介绍、活动推荐和种草转化，但不要过度催促客户。",
+    );
+  });
+
   it("uses the database name length limit for agent names", async () => {
     renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
 
-    await screen.findByRole("heading", { level: 1, name: "Agent设置" });
+    await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
 
-    expect(screen.getByLabelText("Agent名称")).toHaveAttribute("maxLength", "50");
+    expect(screen.getByLabelText("Agent 名称")).toHaveAttribute("maxLength", "50");
   });
 
   it("keeps the selected model icon and label in one trigger row", async () => {
     renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
 
-    await screen.findByRole("heading", { level: 1, name: "Agent设置" });
+    await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
     await screen.findByTitle("模型图标：默认模型");
 
     const trigger = screen.getByRole("combobox", { name: "大模型" });
@@ -449,7 +481,7 @@ describe("AI hosting pages", () => {
 
     renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
 
-    await screen.findByRole("heading", { level: 1, name: "Agent设置" });
+    await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
     await screen.findByTitle("模型图标：默认模型");
     await user.click(screen.getByRole("combobox", { name: "大模型" }));
 
@@ -464,16 +496,16 @@ describe("AI hosting pages", () => {
 
     renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
 
-    await screen.findByRole("heading", { level: 1, name: "Agent设置" });
+    await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
     await user.click(screen.getByRole("button", { name: "智能生成" }));
 
     const dialog = screen.getByRole("dialog", { name: "智能生成" });
 
     expect(dialog).toBeInTheDocument();
-    expect(dialog).toHaveTextContent("按实际情况填写表单后，AI会帮您自动生成Agent的配置内容");
+    expect(dialog).toHaveTextContent("按实际情况填写表单后，AI 会帮您自动生成 Agent 的配置内容");
     expect(screen.getByLabelText("行业")).toBeInTheDocument();
     expect(screen.getByLabelText("请问您为客户提供哪些服务/商品?")).toBeInTheDocument();
-    expect(screen.getByLabelText("您希望AI扮演什么样的角色?")).toBeInTheDocument();
+    expect(screen.getByLabelText("您希望 AI 扮演什么样的角色?")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "开始生成" })).toHaveAttribute(
       "data-agent-generate-gradient-button",
       "true",
@@ -486,13 +518,13 @@ describe("AI hosting pages", () => {
 
     renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
 
-    await screen.findByRole("heading", { level: 1, name: "Agent设置" });
+    await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
     await user.click(screen.getByRole("button", { name: "智能生成" }));
 
     await user.click(screen.getByRole("combobox", { name: "行业" }));
     await user.click(screen.getByRole("option", { name: "美妆护肤" }));
     await user.type(screen.getByLabelText("请问您为客户提供哪些服务/商品?"), "护肤咨询");
-    await user.click(screen.getByRole("combobox", { name: "您希望AI扮演什么样的角色?" }));
+    await user.click(screen.getByRole("combobox", { name: "您希望 AI 扮演什么样的角色?" }));
     await user.click(screen.getByRole("option", { name: "品牌客服" }));
     await user.click(screen.getByRole("button", { name: "开始生成" }));
 
@@ -502,21 +534,104 @@ describe("AI hosting pages", () => {
     expect(screen.getByRole("progressbar", { name: "生成进度" })).toBeInTheDocument();
   });
 
-  it("opens publish dialog from the publish button", async () => {
+  it("shows an unpublished draft dialog after creating an agent", async () => {
     const user = userEvent.setup();
+    const create = createDeferred<typeof mockAgentDetail>();
+
+    vi.mocked(agentService.createAiHostingAgent).mockReturnValueOnce(create.promise);
 
     renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
 
-    await screen.findByRole("heading", { level: 1, name: "Agent设置" });
+    await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
     await screen.findByTitle("模型图标：默认模型");
-    await user.click(screen.getByRole("button", { name: "发布正式版" }));
+    await user.clear(screen.getByLabelText("Agent 名称"));
+    await user.type(screen.getByLabelText("Agent 名称"), "新品小助理");
+    await user.click(screen.getByRole("button", { name: "保存" }));
 
-    const dialog = screen.getByRole("dialog", { name: "是否确认发布到正式版？" });
+    const saveButton = screen.getByRole("button", { name: "保存中保存" });
+    expect(saveButton).toBeDisabled();
+    expect(saveButton.querySelector("[data-slot='spinner']")).toBeInTheDocument();
+
+    create.resolve({
+      ...mockAgentDetail,
+      id: "303",
+      name: "新品小助理",
+    });
+
+    const dialog = await screen.findByRole("dialog", { name: "保存成功" });
 
     expect(dialog).toBeInTheDocument();
-    expect(dialog).toHaveTextContent("确认发布后，Agent配置将立即生效。");
-    expect(screen.getByRole("button", { name: "取消" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "确认" })).toBeInTheDocument();
+    expect(dialog).toHaveTextContent("保存成功，尚未发布");
+    expect(screen.getByRole("button", { name: "知道了" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "立即发布" })).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(agentService.createAiHostingAgent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "新品小助理",
+        }),
+      );
+    });
+  });
+
+  it("returns to the agent list when acknowledging a newly saved draft", async () => {
+    const user = userEvent.setup();
+
+    const router = createMemoryRouter(
+      [
+        {
+          path: "/chat/ai-hosting/agents/new",
+          element: <AgentSettingsPage />,
+        },
+        {
+          path: "/chat/ai-hosting/agents",
+          element: <div>Agent 列表页</div>,
+        },
+      ],
+      { initialEntries: ["/chat/ai-hosting/agents/new"] },
+    );
+
+    render(<RouterProvider router={router} />);
+
+    await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
+    await screen.findByTitle("模型图标：默认模型");
+    await user.clear(screen.getByLabelText("Agent 名称"));
+    await user.type(screen.getByLabelText("Agent 名称"), "新品小助理");
+    await user.click(screen.getByRole("button", { name: "保存" }));
+    await user.click(await screen.findByRole("button", { name: "知道了" }));
+
+    expect(await screen.findByText("Agent 列表页")).toBeInTheDocument();
+  });
+
+  it("publishes immediately from the newly saved draft dialog", async () => {
+    const user = userEvent.setup();
+    const publish = createDeferred<typeof mockAgentDetail>();
+
+    vi.mocked(agentService.publishAiHostingAgent).mockReturnValueOnce(publish.promise);
+
+    renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
+
+    await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
+    await screen.findByTitle("模型图标：默认模型");
+    await user.clear(screen.getByLabelText("Agent 名称"));
+    await user.type(screen.getByLabelText("Agent 名称"), "新品小助理");
+    await user.click(screen.getByRole("button", { name: "保存" }));
+    await user.click(await screen.findByRole("button", { name: "立即发布" }));
+
+    const publishButton = screen.getByRole("button", { name: "发布中立即发布" });
+    expect(publishButton).toBeDisabled();
+    expect(publishButton.querySelector("[data-slot='spinner']")).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(agentService.publishAiHostingAgent).toHaveBeenCalledWith("303");
+    });
+
+    publish.resolve({
+      ...mockAgentDetail,
+      hasUnpublishedChanges: false,
+      id: "303",
+      name: "新品小助理",
+    });
   });
 
   it("opens restore draft dialog from the draft banner", async () => {
@@ -524,44 +639,108 @@ describe("AI hosting pages", () => {
 
     renderWithRoute("/chat/ai-hosting/agents/301", <AgentSettingsPage />, "/chat/ai-hosting/agents/:agentId");
 
-    expect(await screen.findByText(/当前为未发布的草稿/)).toBeInTheDocument();
+    expect(await screen.findByText(/有尚未发布的修改，你也可以/)).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "还原为正式版内容" }));
+    await user.click(screen.getByRole("button", { name: "还原为正式版" }));
 
     const dialog = screen.getByRole("dialog", { name: "是否还原到正式版内容？" });
 
     expect(dialog).toBeInTheDocument();
     expect(dialog).toHaveTextContent("确认还原后，将无法恢复当前草稿内容");
     expect(screen.getByRole("button", { name: "取消" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "确认" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "还原" })).toBeInTheDocument();
   });
 
-  it("saves and publishes agent settings through the API", async () => {
+  it("shows a non-restorable draft hint before the first publish", async () => {
+    vi.mocked(agentService.getAiHostingAgent).mockResolvedValueOnce({
+      ...mockAgentDetail,
+      publishedAt: undefined,
+    });
+
+    renderWithRoute("/chat/ai-hosting/agents/301", <AgentSettingsPage />, "/chat/ai-hosting/agents/:agentId");
+
+    expect(await screen.findByText("有尚未发布的修改")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "还原为正式版" })).not.toBeInTheDocument();
+  });
+
+  it("saves and publishes agent settings through the API without changing the name", async () => {
     const user = userEvent.setup();
+    const publish = createDeferred<typeof mockAgentDetail>();
+
+    vi.mocked(agentService.publishAiHostingAgent).mockReturnValueOnce(publish.promise);
 
     renderWithRoute("/chat/ai-hosting/agents/301", <AgentSettingsPage />, "/chat/ai-hosting/agents/:agentId");
 
     await screen.findByDisplayValue("护肤小助理");
-    await user.clear(screen.getByLabelText("Agent名称"));
-    await user.type(screen.getByLabelText("Agent名称"), "护肤专家");
+    expect(screen.getByRole("heading", { level: 1, name: "护肤小助理" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Agent 名称")).toBeDisabled();
+
+    await user.clear(screen.getByLabelText("角色描述"));
+    await user.type(screen.getByLabelText("角色描述"), "你是资深护肤顾问");
     await user.click(screen.getByRole("button", { name: "保存" }));
 
     await waitFor(() => {
       expect(agentService.updateAiHostingAgent).toHaveBeenCalledWith(
         "301",
-        expect.objectContaining({
+        {
           modelId: "11",
-          name: "护肤专家",
-        }),
+          promptConfig: expect.objectContaining({
+            role: "你是资深护肤顾问",
+          }),
+        },
       );
     });
 
     await user.click(screen.getByRole("button", { name: "发布正式版" }));
-    await user.click(screen.getByRole("button", { name: "确认" }));
+    await user.click(screen.getByRole("button", { name: "发布" }));
+
+    const confirmButton = screen.getByRole("button", { name: "发布中发布" });
+    expect(confirmButton).toBeDisabled();
+    expect(confirmButton.querySelector("[data-slot='spinner']")).toBeInTheDocument();
 
     await waitFor(() => {
       expect(agentService.publishAiHostingAgent).toHaveBeenCalledWith("301");
     });
+
+    publish.resolve({
+      ...mockAgentDetail,
+      hasUnpublishedChanges: false,
+    });
+  });
+
+  it("renames an existing agent from the title edit dialog", async () => {
+    const user = userEvent.setup();
+    const rename = createDeferred<typeof mockAgentDetail>();
+
+    vi.mocked(agentService.renameAiHostingAgent).mockReturnValueOnce(rename.promise);
+
+    renderWithRoute("/chat/ai-hosting/agents/301", <AgentSettingsPage />, "/chat/ai-hosting/agents/:agentId");
+
+    await screen.findByRole("heading", { level: 1, name: "护肤小助理" });
+    await user.click(screen.getByRole("button", { name: "编辑 Agent 名称" }));
+
+    const dialog = screen.getByRole("dialog", { name: "编辑 Agent 名称" });
+
+    await user.clear(within(dialog).getByLabelText("Agent 名称"));
+    await user.type(within(dialog).getByLabelText("Agent 名称"), "护肤专家");
+    await user.click(within(dialog).getByRole("button", { name: "保存" }));
+
+    const saveButton = within(dialog).getByRole("button", { name: "保存中保存" });
+    expect(saveButton).toBeDisabled();
+    expect(saveButton.querySelector("[data-slot='spinner']")).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(agentService.renameAiHostingAgent).toHaveBeenCalledWith("301", {
+        name: "护肤专家",
+      });
+    });
+
+    rename.resolve({
+      ...mockAgentDetail,
+      name: "护肤专家",
+    });
+
+    expect(await screen.findByRole("heading", { level: 1, name: "护肤专家" })).toBeInTheDocument();
   });
 
   it("does not publish the previous draft when saving changes fails", async () => {
@@ -575,7 +754,7 @@ describe("AI hosting pages", () => {
     await user.clear(screen.getByLabelText("角色描述"));
     await user.type(screen.getByLabelText("角色描述"), "你是资深护肤顾问");
     await user.click(screen.getByRole("button", { name: "发布正式版" }));
-    await user.click(screen.getByRole("button", { name: "确认" }));
+    await user.click(screen.getByRole("button", { name: "发布" }));
 
     await waitFor(() => {
       expect(agentService.updateAiHostingAgent).toHaveBeenCalledWith(
@@ -616,7 +795,7 @@ describe("AI hosting pages", () => {
 
     renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
 
-    await screen.findByRole("heading", { level: 1, name: "Agent设置" });
+    await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
     expect(
       screen.getByText(
         "配置 Agent 在不同客户问题、业务场景或会话状态下的处理方式，例如商品咨询调用知识库",
@@ -628,20 +807,34 @@ describe("AI hosting pages", () => {
     await user.click(descriptionInput);
     await user.paste("111 ");
     await user.click(screen.getByRole("button", { name: "添加关联知识库" }));
-    await user.click(screen.getByRole("button", { name: "美妆知识大全" }));
+    await user.click(screen.getByRole("option", { name: "美妆知识大全" }));
 
     const conditionalLogicGroup = screen.getByRole("group", { name: "条件逻辑" });
 
     expect(conditionalLogicGroup).toHaveTextContent("111");
     expect(conditionalLogicGroup).toHaveTextContent("美妆知识大全");
 
-    await user.click(descriptionInput);
     await user.paste("xxx 333 ");
     await user.click(screen.getByRole("button", { name: "添加关联知识库" }));
-    await user.click(screen.getByRole("button", { name: "彩妆精选" }));
+    await user.click(screen.getByRole("option", { name: "彩妆精选" }));
 
     expect(conditionalLogicGroup).toHaveTextContent("彩妆精选");
     expect(conditionalLogicGroup).toHaveTextContent("xxx 333");
+
+    await user.clear(screen.getByLabelText("Agent 名称"));
+    await user.type(screen.getByLabelText("Agent 名称"), "新品小助理");
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => {
+      expect(agentService.createAiHostingAgent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          promptConfig: expect.objectContaining({
+            conditionLogic:
+              "111 {{kb:kb-skincare|%E7%BE%8E%E5%A6%86%E7%9F%A5%E8%AF%86%E5%A4%A7%E5%85%A8}} xxx 333 {{kb:kb-makeup|%E5%BD%A9%E5%A6%86%E7%B2%BE%E9%80%89}} ",
+          }),
+        }),
+      );
+    });
   });
 
   it("collapses and expands agent settings sections", async () => {
@@ -649,7 +842,7 @@ describe("AI hosting pages", () => {
 
     renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
 
-    await screen.findByRole("heading", { level: 1, name: "Agent设置" });
+    await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
     expect(screen.getByLabelText("角色描述")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "角色设置", expanded: true }));
@@ -1616,3 +1809,14 @@ describe("AI hosting pages", () => {
     expect(screen.getByText("第二章 售后政策")).toBeInTheDocument();
   });
 });
+
+function createDeferred<T = void>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+
+  return { promise, reject, resolve };
+}

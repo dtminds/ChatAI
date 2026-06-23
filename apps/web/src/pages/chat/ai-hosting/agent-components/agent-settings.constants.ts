@@ -10,7 +10,7 @@ export type AgentReplyLength = "简洁" | "标准" | "充分";
 
 export type ConditionalLogicSegment =
   | { type: "text"; value: string }
-  | { type: "knowledgeBase"; id: string };
+  | { type: "knowledgeBase"; id: string; name?: string };
 
 export type AgentSettingsForm = {
   communicationStyle: string;
@@ -53,6 +53,45 @@ export const agentToneStyleOptions: Array<{
   { label: "高级克制", value: "高级克制" },
   { label: "高效客服", value: "高效客服" },
   { label: "温柔陪伴", value: "温柔陪伴" },
+];
+
+export const agentCommunicationStyleTemplates: Array<{
+  description: string;
+  emoji?: string;
+  label: string;
+  value: AgentToneStyle;
+}> = [
+  {
+    description: "语气亲切自然，像真人客服一样耐心回应客户，适度使用礼貌表达和轻松语气，避免生硬、模板化或过度营销。",
+    emoji: "😊",
+    label: "亲切自然",
+    value: "亲切自然",
+  },
+  {
+    description: "表达专业、准确、可信，优先说明依据、适用场景和注意事项，避免夸大承诺，适合需要建立信任的咨询场景。",
+    label: "专业顾问",
+    value: "专业顾问",
+  },
+  {
+    description: "语气轻快有感染力，适度突出亮点和使用体验，适合新品介绍、活动推荐和种草转化，但不要过度催促客户。",
+    label: "活泼种草",
+    value: "活泼",
+  },
+  {
+    description: "表达克制、高级、简洁，少用感叹和夸张词，重点突出品质、质感和专业判断，适合高客单价或品牌调性较稳的场景。",
+    label: "高级克制",
+    value: "高级克制",
+  },
+  {
+    description: "回复直接高效，优先给出结论、步骤和下一步动作，减少铺垫和闲聊，适合售后处理、流程咨询和高频标准问题。",
+    label: "高效客服",
+    value: "高效客服",
+  },
+  {
+    description: "语气温柔、有耐心，优先安抚客户情绪并确认诉求，适合投诉、退款、敏感问题和需要陪伴式沟通的场景。",
+    label: "温柔陪伴",
+    value: "温柔陪伴",
+  },
 ];
 
 export const agentReplyLengthOptions: Array<{

@@ -1,7 +1,11 @@
 import {
+  AiHostingAgentRenameRequestSchema,
   AiHostingAgentSaveRequestSchema,
+  AiHostingAgentSettingsSaveRequestSchema,
   apiSuccess,
+  type AiHostingAgentRenameRequest,
   type AiHostingAgentSaveRequest,
+  type AiHostingAgentSettingsSaveRequest,
 } from "@chatai/contracts";
 import { Type, type Static } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
@@ -88,14 +92,14 @@ export async function registerAiHostingRoutes(app: FastifyInstance) {
   );
 
   app.put<{
-    Body: AiHostingAgentSaveRequest;
+    Body: AiHostingAgentSettingsSaveRequest;
     Params: AgentParams;
   }>(
     "/api/server/ai-hosting/agents/:agentId",
     {
       preHandler: app.authenticate,
       schema: {
-        body: AiHostingAgentSaveRequestSchema,
+        body: AiHostingAgentSettingsSaveRequestSchema,
         params: AgentParamsSchema,
       },
     },
@@ -103,6 +107,30 @@ export async function registerAiHostingRoutes(app: FastifyInstance) {
       assertAiHostingManage(request);
       return apiSuccess(
         await createAiHostingService(app.db).updateAgent(
+          getSubUserId(request),
+          request.params.agentId,
+          request.body,
+        ),
+      );
+    },
+  );
+
+  app.patch<{
+    Body: AiHostingAgentRenameRequest;
+    Params: AgentParams;
+  }>(
+    "/api/server/ai-hosting/agents/:agentId/name",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: AiHostingAgentRenameRequestSchema,
+        params: AgentParamsSchema,
+      },
+    },
+    async (request) => {
+      assertAiHostingManage(request);
+      return apiSuccess(
+        await createAiHostingService(app.db).renameAgent(
           getSubUserId(request),
           request.params.agentId,
           request.body,

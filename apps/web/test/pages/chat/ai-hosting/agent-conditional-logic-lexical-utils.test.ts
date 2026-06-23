@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { createEditor } from "lexical";
-import type { ConditionalLogicSegment } from "@/pages/chat/ai-hosting/agent-settings.constants";
-import { KnowledgeBaseChipNode } from "@/pages/chat/ai-hosting/agent-conditional-logic-lexical-nodes";
+import {
+  $getRoot,
+  $getSelection,
+  $isElementNode,
+  $isRangeSelection,
+  createEditor,
+} from "lexical";
+import type { ConditionalLogicSegment } from "@/pages/chat/ai-hosting/agent-components/agent-settings.constants";
+import { KnowledgeBaseChipNode } from "@/pages/chat/ai-hosting/agent-components/agent-conditional-logic-lexical-nodes";
 import {
   $exportConditionalLogicSegments,
   $insertConditionalLogicText,
@@ -9,7 +15,7 @@ import {
   $restoreConditionalLogicFromSegments,
   isConditionalLogicEmpty,
   normalizeConditionalLogicSegments,
-} from "@/pages/chat/ai-hosting/agent-conditional-logic-lexical-utils";
+} from "@/pages/chat/ai-hosting/agent-components/agent-conditional-logic-lexical-utils";
 
 describe("conditional logic lexical utils", () => {
   it("exports text and knowledge base segments from the editor", () => {
@@ -25,9 +31,15 @@ describe("conditional logic lexical utils", () => {
     editor.update(
       () => {
         $insertConditionalLogicText("111 ");
-        $insertKnowledgeBaseChip("kb-skincare");
+        $insertKnowledgeBaseChip({
+          id: "kb-skincare",
+          name: "美妆知识大全",
+        });
         $insertConditionalLogicText("xxx 333 ");
-        $insertKnowledgeBaseChip("kb-makeup");
+        $insertKnowledgeBaseChip({
+          id: "kb-makeup",
+          name: "彩妆精选",
+        });
         segments = $exportConditionalLogicSegments();
       },
       { discrete: true },
@@ -35,10 +47,10 @@ describe("conditional logic lexical utils", () => {
 
     expect(normalizeConditionalLogicSegments(segments)).toEqual([
       { type: "text", value: "111 " },
-      { type: "knowledgeBase", id: "kb-skincare" },
-      { type: "text", value: "xxx 333 " },
-      { type: "knowledgeBase", id: "kb-makeup" },
-      { type: "text", value: "" },
+      { type: "knowledgeBase", id: "kb-skincare", name: "美妆知识大全" },
+      { type: "text", value: " xxx 333 " },
+      { type: "knowledgeBase", id: "kb-makeup", name: "彩妆精选" },
+      { type: "text", value: " " },
     ]);
   });
 
@@ -56,7 +68,7 @@ describe("conditional logic lexical utils", () => {
       () => {
         $restoreConditionalLogicFromSegments([
           { type: "text", value: "hello " },
-          { type: "knowledgeBase", id: "kb-skincare" },
+          { type: "knowledgeBase", id: "kb-skincare", name: "美妆知识大全" },
           { type: "text", value: "world" },
         ]);
         exported = $exportConditionalLogicSegments();
@@ -66,9 +78,97 @@ describe("conditional logic lexical utils", () => {
 
     expect(exported).toEqual([
       { type: "text", value: "hello " },
-      { type: "knowledgeBase", id: "kb-skincare" },
+      { type: "knowledgeBase", id: "kb-skincare", name: "美妆知识大全" },
       { type: "text", value: "world" },
     ]);
+  });
+
+  it("exports a leading knowledge base token without synthetic text content", () => {
+    const editor = createEditor({
+      namespace: "conditional-logic-leading-chip-test",
+      nodes: [KnowledgeBaseChipNode],
+      onError(error) {
+        throw error;
+      },
+    });
+    let exported: ConditionalLogicSegment[] = [];
+
+    editor.update(
+      () => {
+        $restoreConditionalLogicFromSegments([
+          { type: "knowledgeBase", id: "kb-skincare", name: "美妆知识大全" },
+          { type: "text", value: " then reply" },
+        ]);
+        exported = $exportConditionalLogicSegments();
+      },
+      { discrete: true },
+    );
+
+    expect(exported).toEqual([
+      { type: "text", value: "" },
+      { type: "knowledgeBase", id: "kb-skincare", name: "美妆知识大全" },
+      { type: "text", value: " then reply" },
+    ]);
+  });
+
+  it("places selection after the trailing space when inserting a knowledge base token", () => {
+    const editor = createEditor({
+      namespace: "conditional-logic-token-insert-selection-test",
+      nodes: [KnowledgeBaseChipNode],
+      onError(error) {
+        throw error;
+      },
+    });
+    let selectionPoint:
+      | {
+        key: string;
+        offset: number;
+        type: "element" | "text";
+      }
+      | null = null;
+    let trailingTextKey = "";
+
+    editor.update(
+      () => {
+        $restoreConditionalLogicFromSegments([{ type: "text", value: "before " }]);
+        const paragraph = $getRoot().getFirstChildOrThrow();
+
+        if (!$isElementNode(paragraph)) {
+          throw new Error("Expected paragraph element");
+        }
+
+        paragraph.selectEnd();
+
+        $insertKnowledgeBaseChip({
+          id: "kb-skincare",
+          name: "美妆知识大全",
+        });
+        const trailingText = paragraph.getChildAtIndex(2);
+
+        if (!trailingText) {
+          throw new Error("Expected trailing text");
+        }
+
+        trailingTextKey = trailingText.getKey();
+
+        const selection = $getSelection();
+
+        if ($isRangeSelection(selection)) {
+          selectionPoint = {
+            key: selection.anchor.key,
+            offset: selection.anchor.offset,
+            type: selection.anchor.type,
+          };
+        }
+      },
+      { discrete: true },
+    );
+
+    expect(selectionPoint).toEqual({
+      key: trailingTextKey,
+      offset: 1,
+      type: "text",
+    });
   });
 
   it("detects empty conditional logic segments", () => {
@@ -76,7 +176,7 @@ describe("conditional logic lexical utils", () => {
     expect(
       isConditionalLogicEmpty([
         { type: "text", value: " " },
-        { type: "knowledgeBase", id: "kb-skincare" },
+        { type: "knowledgeBase", id: "kb-skincare", name: "美妆知识大全" },
       ]),
     ).toBe(false);
   });

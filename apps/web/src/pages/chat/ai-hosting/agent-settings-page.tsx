@@ -6,23 +6,39 @@ import type {
 } from "@chatai/contracts";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
+  AiIdeaIcon,
   AiChat02Icon,
   ArrowDown01Icon,
   ArrowLeft01Icon,
   ArrowLeft02Icon,
+  Edit02Icon,
   Image01Icon,
   SentIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { AgentConditionalLogicField } from "./agent-conditional-logic-field";
+import { AgentConditionalLogicField } from "./agent-components/agent-conditional-logic-field";
+import { AgentSettingsPublishDialog } from "./agent-components/agent-settings-publish-dialog";
+import { AgentSettingsRestoreDialog } from "./agent-components/agent-settings-restore-dialog";
 import { AgentGenerateGradientButton } from "./agent-generate-gradient-button";
-import { AgentSettingsDraftBanner } from "./agent-settings-draft-banner";
 import { AgentSettingsGenerateDialog } from "./agent-settings-generate-dialog";
-import { AgentSettingsPublishDialog } from "./agent-settings-publish-dialog";
-import { AgentSettingsRestoreDialog } from "./agent-settings-restore-dialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -32,6 +48,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { isRequestError } from "@/lib/request";
 import { cn } from "@/lib/utils";
@@ -40,21 +57,22 @@ import {
   getAiHostingAgent,
   listAiHostingModels,
   publishAiHostingAgent,
+  renameAiHostingAgent,
   restoreAiHostingAgent,
   updateAiHostingAgent,
 } from "./agent-service";
 import {
   agentModelOptions,
   agentNameMaxLength,
+  agentCommunicationStyleTemplates,
   agentPreviewSeedMessages,
   agentReplyLengthOptions,
   agentSettingsFieldHints,
-  agentToneStyleOptions,
   defaultAgentSettingsForm,
   type AgentReplyLength,
   type AgentSettingsForm,
   type AgentToneStyle,
-} from "./agent-settings.constants";
+} from "./agent-components/agent-settings.constants";
 import { AgentModelBadge } from "./agent-model-badge";
 import { AiHostingLayout } from "./ai-hosting-layout";
 import { aiHostingSettingsModuleSurface } from "./ai-hosting-palette";
@@ -88,15 +106,20 @@ export function AgentSettingsPage() {
   const [previewInput, setPreviewInput] = useState("");
   const [restoreDialogOpen, setRestoreDialogOpen] = useState(false);
   const [publishDialogOpen, setPublishDialogOpen] = useState(false);
+  const [createdDraftDialogOpen, setCreatedDraftDialogOpen] = useState(false);
+  const [createdDraftAgentId, setCreatedDraftAgentId] = useState<string | null>(null);
+  const [renameDialogOpen, setRenameDialogOpen] = useState(false);
+  const [renameValue, setRenameValue] = useState("");
   const [generateDialogOpen, setGenerateDialogOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const hasUnpublishedDraft = Boolean(agentDetail?.hasUnpublishedChanges);
+  const hasPublishedVersion = Boolean(agentDetail?.publishedAt);
   const hasLocalPublishChanges = Boolean(
     agentDetail && hasModelOrPromptChanges(form, agentDetail),
   );
-  const canPublish = !isEditing || hasUnpublishedDraft || hasLocalPublishChanges;
+  const canPublish = hasUnpublishedDraft || hasLocalPublishChanges;
   const modelOptions = useMemo<ModelOption[]>(
     () =>
       models.length > 0
@@ -115,6 +138,7 @@ export function AgentSettingsPage() {
   const selectedModel = modelOptions.find((option) => option.id === form.model);
 
   const previewTitle = form.name.trim() || "美妆小助手";
+  const pageTitle = isEditing ? (agentDetail?.name || form.name || "Agent") : "创建 Agent";
 
   useEffect(() => {
     let ignore = false;
@@ -143,7 +167,7 @@ export function AgentSettingsPage() {
         }
       } catch (error) {
         if (!ignore) {
-          setErrorMessage(isRequestError(error) ? error.message : "Agent设置加载失败");
+          setErrorMessage(isRequestError(error) ? error.message : "Agent 设置加载失败");
         }
       } finally {
         if (!ignore) {
@@ -163,11 +187,51 @@ export function AgentSettingsPage() {
     setForm((current) => ({ ...current, [key]: value }));
   }
 
+  function applyCommunicationStyleTemplate(value: AgentToneStyle) {
+    const template = agentCommunicationStyleTemplates.find((option) => option.value === value);
+
+    if (!template) {
+      return;
+    }
+
+    setForm((current) => ({
+      ...current,
+      communicationStyle: template.description,
+      toneStyle: template.value,
+    }));
+  }
+
   async function handleSave() {
-    const payload = buildSavePayload(form);
+    if (isEditing && agentId) {
+      const payload = buildSettingsSavePayload(form);
+
+      if (!payload) {
+        setErrorMessage("请填写 Agent 名称并选择大模型");
+        return null;
+      }
+
+      setSubmitting(true);
+      setErrorMessage("");
+
+      try {
+        const saved = await updateAiHostingAgent(agentId, payload);
+
+        setAgentDetail(saved);
+        setForm(mapAgentDetailToForm(saved));
+
+        return saved;
+      } catch (error) {
+        setErrorMessage(isRequestError(error) ? error.message : "保存 Agent 失败");
+        return null;
+      } finally {
+        setSubmitting(false);
+      }
+    }
+
+    const payload = buildCreatePayload(form);
 
     if (!payload) {
-      setErrorMessage("请填写Agent名称并选择大模型");
+      setErrorMessage("请填写 Agent 名称并选择大模型");
       return null;
     }
 
@@ -175,20 +239,16 @@ export function AgentSettingsPage() {
     setErrorMessage("");
 
     try {
-      const saved = agentId
-        ? await updateAiHostingAgent(agentId, payload)
-        : await createAiHostingAgent(payload);
+      const saved = await createAiHostingAgent(payload);
 
       setAgentDetail(saved);
       setForm(mapAgentDetailToForm(saved));
-
-      if (!agentId) {
-        navigate(`/chat/ai-hosting/agents/${saved.id}`, { replace: true });
-      }
+      setCreatedDraftAgentId(saved.id);
+      setCreatedDraftDialogOpen(true);
 
       return saved;
     } catch (error) {
-      setErrorMessage(isRequestError(error) ? error.message : "保存Agent失败");
+      setErrorMessage(isRequestError(error) ? error.message : "保存 Agent 失败");
       return null;
     } finally {
       setSubmitting(false);
@@ -196,6 +256,10 @@ export function AgentSettingsPage() {
   }
 
   async function handlePublish() {
+    if (!agentId) {
+      return;
+    }
+
     const saved = await handleSave();
 
     if (!saved) {
@@ -211,7 +275,67 @@ export function AgentSettingsPage() {
       setForm(mapAgentDetailToForm(published));
       setPublishDialogOpen(false);
     } catch (error) {
-      setErrorMessage(isRequestError(error) ? error.message : "发布Agent失败");
+      setErrorMessage(isRequestError(error) ? error.message : "发布 Agent 失败");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handlePublishCreatedDraft() {
+    if (!createdDraftAgentId) {
+      return;
+    }
+
+    setSubmitting(true);
+    setErrorMessage("");
+
+    try {
+      const published = await publishAiHostingAgent(createdDraftAgentId);
+      setAgentDetail(published);
+      setForm(mapAgentDetailToForm(published));
+      setCreatedDraftDialogOpen(false);
+      setCreatedDraftAgentId(null);
+      navigate(`/chat/ai-hosting/agents/${published.id}`, { replace: true });
+    } catch (error) {
+      setErrorMessage(isRequestError(error) ? error.message : "发布 Agent 失败");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function handleAcknowledgeCreatedDraft() {
+    setCreatedDraftDialogOpen(false);
+    setCreatedDraftAgentId(null);
+    navigate("/chat/ai-hosting/agents");
+  }
+
+  function openRenameDialog() {
+    setRenameValue(agentDetail?.name ?? form.name);
+    setRenameDialogOpen(true);
+  }
+
+  async function handleRename() {
+    if (!agentId) {
+      return;
+    }
+
+    const name = renameValue.trim();
+
+    if (!name) {
+      setErrorMessage("请输入 Agent 名称");
+      return;
+    }
+
+    setSubmitting(true);
+    setErrorMessage("");
+
+    try {
+      const renamed = await renameAiHostingAgent(agentId, { name });
+      setAgentDetail(renamed);
+      setForm(mapAgentDetailToForm(renamed));
+      setRenameDialogOpen(false);
+    } catch (error) {
+      setErrorMessage(isRequestError(error) ? error.message : "保存 Agent 名称失败");
     } finally {
       setSubmitting(false);
     }
@@ -261,14 +385,14 @@ export function AgentSettingsPage() {
   }
 
   return (
-    <AiHostingLayout title="Agent设置">
+    <AiHostingLayout title={pageTitle}>
       <div className="space-y-6">
         <header className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex min-w-0 flex-wrap items-center gap-3">
+          <div className="flex min-w-0 items-center gap-3">
             <Button
               aria-label="返回 Agent 管理"
               asChild
-              className="size-9 shrink-0 rounded-[8px]"
+              className="-ml-2 size-9 shrink-0 rounded-[8px]"
               size="icon"
               variant="ghost"
             >
@@ -276,40 +400,91 @@ export function AgentSettingsPage() {
                 <HugeiconsIcon icon={ArrowLeft02Icon} size={18} strokeWidth={1.8} />
               </Link>
             </Button>
-            <h1 className="text-[22px] font-semibold leading-tight text-foreground">Agent设置</h1>
-            {hasUnpublishedDraft ? (
-              <AgentSettingsDraftBanner onRestoreClick={() => setRestoreDialogOpen(true)} />
-            ) : null}
+            <div className="min-w-0 space-y-1.5">
+              <div className="flex min-w-0 items-center gap-2">
+                <h1 className="truncate text-xl font-semibold leading-tight text-foreground">
+                  {pageTitle}
+                </h1>
+                {isEditing ? (
+                  <Button
+                    aria-label="编辑 Agent 名称"
+                    className="size-6 shrink-0 rounded-[6px] text-muted-foreground"
+                    onClick={openRenameDialog}
+                    size="icon"
+                    type="button"
+                    variant="ghost"
+                  >
+                    <HugeiconsIcon icon={Edit02Icon} size={14} strokeWidth={1.8} />
+                  </Button>
+                ) : null}
+              </div>
+              {isEditing ? (
+                <div className="flex min-w-0 flex-wrap items-center gap-2 text-[11px]">
+                  {agentDetail?.updatedAt ? (
+                    <span className="rounded-[6px] bg-muted px-1.5 py-0 leading-4 text-muted-foreground">
+                      最近一次保存 {formatAgentSaveTime(agentDetail.updatedAt)}
+                    </span>
+                  ) : null}
+                  {hasUnpublishedDraft ? (
+                    <AgentSettingsHeaderDraftBadge
+                      onRestoreClick={() => setRestoreDialogOpen(true)}
+                      published={hasPublishedVersion}
+                    />
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
             <Button disabled={submitting || loading} onClick={handleSave} type="button" variant="outline">
+              {submitting ? <ButtonSpinner label="保存中" /> : null}
               保存
             </Button>
             <AgentGenerateGradientButton onClick={() => setGenerateDialogOpen(true)}>
               智能生成
             </AgentGenerateGradientButton>
-            <Button
-              disabled={submitting || loading || (isEditing && !canPublish)}
-              onClick={() => setPublishDialogOpen(true)}
-              type="button"
-            >
-              <HugeiconsIcon icon={SentIcon} size={16} strokeWidth={1.8} />
-              发布正式版
-            </Button>
+            {isEditing ? (
+              <Button
+                disabled={submitting || loading || !canPublish}
+                onClick={() => setPublishDialogOpen(true)}
+                type="button"
+              >
+                <HugeiconsIcon icon={SentIcon} size={16} strokeWidth={1.8} />
+                发布正式版
+              </Button>
+            ) : null}
           </div>
         </header>
 
         <AgentSettingsRestoreDialog
+          disabled={submitting}
           onConfirm={handleRestore}
           onOpenChange={setRestoreDialogOpen}
           open={restoreDialogOpen}
         />
 
         <AgentSettingsPublishDialog
+          disabled={submitting}
           onConfirm={handlePublish}
           onOpenChange={setPublishDialogOpen}
           open={publishDialogOpen}
+        />
+
+        <CreatedDraftDialog
+          disabled={submitting}
+          onAcknowledge={handleAcknowledgeCreatedDraft}
+          onPublish={handlePublishCreatedDraft}
+          open={createdDraftDialogOpen}
+        />
+
+        <RenameAgentDialog
+          disabled={submitting}
+          name={renameValue}
+          onChange={setRenameValue}
+          onConfirm={handleRename}
+          onOpenChange={setRenameDialogOpen}
+          open={renameDialogOpen}
         />
 
         <AgentSettingsGenerateDialog
@@ -328,9 +503,10 @@ export function AgentSettingsPage() {
             <AgentSettingsSection title="基本设置">
               <div className="grid gap-5 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="agent-settings-name">Agent名称</Label>
+                  <Label htmlFor="agent-settings-name">Agent 名称</Label>
                   <div className="relative">
                     <Input
+                      disabled={isEditing}
                       id="agent-settings-name"
                       maxLength={agentNameMaxLength}
                       onChange={(event) => updateForm("name", event.target.value)}
@@ -379,31 +555,6 @@ export function AgentSettingsPage() {
               </div>
             </AgentSettingsSection>
 
-            <AgentSettingsSection title="回复基调">
-              <div className="space-y-5">
-                <div className="space-y-3">
-                  <Label>语气风格</Label>
-                  <OptionChipGroup
-                    onChange={(value) => updateForm("toneStyle", value as AgentToneStyle)}
-                    options={agentToneStyleOptions.map((option) => ({
-                      label: option.emoji ? `${option.emoji} ${option.label}` : option.label,
-                      value: option.value,
-                    }))}
-                    value={form.toneStyle}
-                  />
-                </div>
-
-                <div className="space-y-3">
-                  <Label>回复长度</Label>
-                  <OptionChipGroup
-                    onChange={(value) => updateForm("replyLength", value as AgentReplyLength)}
-                    options={agentReplyLengthOptions}
-                    value={form.replyLength}
-                  />
-                </div>
-              </div>
-            </AgentSettingsSection>
-
             <CollapsibleAgentSettingsSection
               description={agentSettingsFieldHints.roleDescription}
               title="角色"
@@ -418,16 +569,37 @@ export function AgentSettingsPage() {
             </CollapsibleAgentSettingsSection>
 
             <CollapsibleAgentSettingsSection
-              description={agentSettingsFieldHints.communicationStyle}
+              description={
+                <>
+                  {agentSettingsFieldHints.communicationStyle}
+                  <CommunicationStyleTemplateDropdown onSelect={applyCommunicationStyleTemplate} />
+                </>
+              }
               title="沟通风格"
             >
-              <Textarea
-                aria-label="沟通风格"
-                className="bg-background"
-                onChange={(event) => updateForm("communicationStyle", event.target.value)}
-                placeholder="请输入沟通风格描述"
-                value={form.communicationStyle}
-              />
+              <div className="space-y-5">
+                <div className="space-y-3">
+                  <Label>风格描述</Label>
+                  <div className="relative">
+                    <Textarea
+                      aria-label="沟通风格"
+                      className="bg-background"
+                      onChange={(event) => updateForm("communicationStyle", event.target.value)}
+                      placeholder="请输入沟通风格描述"
+                      value={form.communicationStyle}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <Label>回复长度</Label>
+                  <OptionChipGroup
+                    onChange={(value) => updateForm("replyLength", value as AgentReplyLength)}
+                    options={agentReplyLengthOptions}
+                    value={form.replyLength}
+                  />
+                </div>
+              </div>
             </CollapsibleAgentSettingsSection>
 
             <CollapsibleAgentSettingsSection
@@ -468,10 +640,12 @@ export function AgentSettingsPage() {
 }
 
 function AgentSettingsSection({
+  action,
   children,
   description,
   title,
 }: {
+  action?: ReactNode;
   children: ReactNode;
   description?: string;
   title: string;
@@ -481,9 +655,12 @@ function AgentSettingsSection({
       className={cn(agentSettingsModuleSurfaceClassName, "p-5")}
       style={agentSettingsModuleSurfaceStyle}
     >
-      <div className="mb-4 space-y-1">
-        <h2 className="text-base font-semibold text-foreground">{title}</h2>
-        {description ? <p className="text-sm text-muted-foreground">{description}</p> : null}
+      <div className="mb-4 flex items-start justify-between gap-4">
+        <div className="min-w-0 flex-1 space-y-1">
+          <h2 className="text-base font-semibold text-foreground">{title}</h2>
+          {description ? <p className="text-sm text-muted-foreground">{description}</p> : null}
+        </div>
+        {action ? <div className="shrink-0">{action}</div> : null}
       </div>
       {children}
     </section>
@@ -498,7 +675,7 @@ function CollapsibleAgentSettingsSection({
 }: {
   children: ReactNode;
   defaultOpen?: boolean;
-  description?: string;
+  description?: ReactNode;
   title: string;
 }) {
   const [open, setOpen] = useState(defaultOpen);
@@ -510,35 +687,72 @@ function CollapsibleAgentSettingsSection({
         className={cn(agentSettingsModuleSurfaceClassName, "p-5")}
         style={agentSettingsModuleSurfaceStyle}
       >
-        <CollapsibleTrigger asChild>
-          <button
-            aria-controls={sectionId}
-            aria-expanded={open}
-            aria-label={`${title}设置`}
-            className="flex w-full items-start justify-between gap-4 text-left outline-none focus-visible:ring-4 focus-visible:ring-ring/20"
-            type="button"
-          >
-            <div className="min-w-0 flex-1 space-y-1">
-              <h2 className="text-base font-semibold text-foreground">{title}</h2>
-              {description ? (
-                <p className="text-sm leading-6 text-muted-foreground">{description}</p>
-              ) : null}
-            </div>
-            <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted/70 text-muted-foreground">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0 flex-1 space-y-1">
+            <h2 className="text-base font-semibold text-foreground">{title}</h2>
+            {description ? (
+              <p className="text-sm leading-6 text-muted-foreground">{description}</p>
+            ) : null}
+          </div>
+          <CollapsibleTrigger asChild>
+            <button
+              aria-controls={sectionId}
+              aria-expanded={open}
+              aria-label={`${title}设置`}
+              className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted/70 text-muted-foreground outline-none focus-visible:ring-4 focus-visible:ring-ring/20"
+              type="button"
+            >
               <HugeiconsIcon
                 icon={open ? ArrowDown01Icon : ArrowLeft01Icon}
                 size={16}
                 strokeWidth={1.8}
               />
-            </span>
-          </button>
-        </CollapsibleTrigger>
+            </button>
+          </CollapsibleTrigger>
+        </div>
 
         <CollapsibleContent className="pt-4" id={sectionId}>
           {children}
         </CollapsibleContent>
       </section>
     </Collapsible>
+  );
+}
+
+function CommunicationStyleTemplateDropdown({
+  onSelect,
+}: {
+  onSelect: (value: AgentToneStyle) => void;
+}) {
+  return (
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger asChild>
+        <button
+          className="ml-1 inline-flex items-baseline gap-1 align-baseline text-sm font-normal leading-6 text-primary outline-none hover:text-primary/80 focus-visible:ring-4 focus-visible:ring-ring/20"
+          onClick={(event) => event.stopPropagation()}
+          type="button"
+        >
+          <HugeiconsIcon
+            aria-hidden="true"
+            className="relative top-[1px]"
+            icon={AiIdeaIcon}
+            size={14}
+            strokeWidth={1.8}
+          />
+          查看模板
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-44">
+        {agentCommunicationStyleTemplates.map((template) => (
+          <DropdownMenuItem
+            key={template.value}
+            onSelect={() => onSelect(template.value)}
+          >
+            {template.emoji ? `${template.emoji} ${template.label}` : template.label}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -685,45 +899,204 @@ function PreviewCustomerAvatar() {
   );
 }
 
+function AgentSettingsHeaderDraftBadge({
+  onRestoreClick,
+  published,
+}: {
+  onRestoreClick: () => void;
+  published: boolean;
+}) {
+  return (
+    <span className="inline-flex items-center rounded-[6px] bg-warning-muted/55 px-1.5 py-0 leading-4 text-warning">
+      {published ? (
+        <>
+          有尚未发布的修改，你也可以
+          <Button
+            className="h-auto px-1 py-0 text-[11px] font-normal text-primary hover:bg-transparent hover:text-primary/80"
+            onClick={onRestoreClick}
+            type="button"
+            variant="ghost"
+          >
+            还原为正式版
+          </Button>
+        </>
+      ) : (
+        "有尚未发布的修改"
+      )}
+    </span>
+  );
+}
+
+function formatAgentSaveTime(timestamp: number) {
+  return new Intl.DateTimeFormat("zh-CN", {
+    hour: "2-digit",
+    hour12: false,
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(new Date(timestamp));
+}
+
+function CreatedDraftDialog({
+  disabled,
+  onAcknowledge,
+  onPublish,
+  open,
+}: {
+  disabled: boolean;
+  onAcknowledge: () => void;
+  onPublish: () => void;
+  open: boolean;
+}) {
+  return (
+    <Dialog open={open}>
+      <DialogContent
+        aria-describedby="agent-created-draft-description"
+        className="gap-0 p-0 sm:max-w-[420px]"
+        closeButtonVisible={false}
+        onOpenAutoFocus={(event) => event.preventDefault()}
+      >
+        <DialogHeader className="space-y-2 px-6 pt-6 text-left">
+          <DialogTitle>保存成功</DialogTitle>
+          <DialogDescription id="agent-created-draft-description">
+            保存成功，尚未发布
+          </DialogDescription>
+        </DialogHeader>
+
+        <DialogFooter className="px-6 pb-6 pt-8">
+          <Button disabled={disabled} onClick={onAcknowledge} type="button" variant="outline">
+            知道了
+          </Button>
+          <Button disabled={disabled} onClick={onPublish} type="button">
+            {disabled ? <ButtonSpinner label="发布中" /> : null}
+            立即发布
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function RenameAgentDialog({
+  disabled,
+  name,
+  onChange,
+  onConfirm,
+  onOpenChange,
+  open,
+}: {
+  disabled: boolean;
+  name: string;
+  onChange: (value: string) => void;
+  onConfirm: () => void;
+  onOpenChange: (open: boolean) => void;
+  open: boolean;
+}) {
+  return (
+    <Dialog onOpenChange={onOpenChange} open={open}>
+      <DialogContent
+        aria-describedby="agent-rename-description"
+        className="gap-0 p-0 sm:max-w-[420px]"
+        onOpenAutoFocus={(event) => event.preventDefault()}
+      >
+        <DialogHeader className="space-y-2 px-6 pt-6 text-left">
+          <DialogTitle>编辑 Agent 名称</DialogTitle>
+          <DialogDescription className="sr-only" id="agent-rename-description">
+            修改 Agent 名称
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-2 px-6 pt-5">
+          <Label htmlFor="agent-rename-name">Agent 名称</Label>
+          <div className="relative">
+            <Input
+              disabled={disabled}
+              id="agent-rename-name"
+              maxLength={agentNameMaxLength}
+              onChange={(event) => onChange(event.target.value)}
+              placeholder="请输入 Agent 名称"
+              value={name}
+            />
+            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+              {name.length}/{agentNameMaxLength}
+            </span>
+          </div>
+        </div>
+
+        <DialogFooter className="px-6 pb-6 pt-8">
+          <DialogClose asChild>
+            <Button disabled={disabled} type="button" variant="outline">
+              取消
+            </Button>
+          </DialogClose>
+          <Button disabled={disabled} onClick={onConfirm} type="button">
+            {disabled ? <ButtonSpinner label="保存中" /> : null}
+            保存
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ButtonSpinner({ label }: { label: string }) {
+  return (
+    <>
+      <Spinner aria-hidden="true" className="text-current" size={14} variant="classic" />
+      <span className="sr-only">{label}</span>
+    </>
+  );
+}
+
 function mapAgentDetailToForm(agent: AiHostingAgentDetail): AgentSettingsForm {
   return {
-    communicationStyle: agent.promptConfig.style,
+    communicationStyle: agent.promptConfig.replyStyle.styleInstruction,
     conditionalLogic: parseConditionalLogicSegments(agent.promptConfig.conditionLogic),
     model: agent.modelId,
     name: agent.name,
-    replyLength: normalizeReplyLength(agent.promptConfig.keynote.length),
+    replyLength: normalizeReplyLength(agent.promptConfig.replyStyle.length),
     roleDescription: agent.promptConfig.role,
-    toneStyle: normalizeToneStyle(agent.promptConfig.keynote.style[0] ?? agent.promptConfig.style),
-    transferToHumanConditions: agent.promptConfig.transferToHuman,
+    toneStyle: normalizeToneStyle(agent.promptConfig.replyStyle.styleInstruction),
+    transferToHumanConditions: agent.promptConfig.handoffRules,
   };
 }
 
-function buildSavePayload(form: AgentSettingsForm) {
+function buildCreatePayload(form: AgentSettingsForm) {
+  const settingsPayload = buildSettingsSavePayload(form);
   const name = form.name.trim();
+
+  if (!settingsPayload || !name) {
+    return null;
+  }
+
+  return {
+    ...settingsPayload,
+    name,
+  };
+}
+
+function buildSettingsSavePayload(form: AgentSettingsForm) {
   const modelId = form.model.trim();
 
-  if (!name || !modelId) {
+  if (!modelId) {
     return null;
   }
 
   return {
     modelId,
-    name,
     promptConfig: {
       conditionLogic: serializeConditionalLogicSegments(form.conditionalLogic),
-      keynote: {
+      handoffRules: form.transferToHumanConditions,
+      replyStyle: {
         length: form.replyLength,
-        style: [form.toneStyle],
+        styleInstruction: form.communicationStyle || form.toneStyle,
       },
       role: form.roleDescription,
-      style: form.communicationStyle,
-      transferToHuman: form.transferToHumanConditions,
     } satisfies AiHostingAgentPromptConfig,
   };
 }
 
 function hasModelOrPromptChanges(form: AgentSettingsForm, agent: AiHostingAgentDetail) {
-  const payload = buildSavePayload(form);
+  const payload = buildSettingsSavePayload(form);
 
   if (!payload) {
     return false;
@@ -739,7 +1112,9 @@ function serializeConditionalLogicSegments(segments: AgentSettingsForm["conditio
   return segments
     .map((segment) =>
       segment.type === "knowledgeBase"
-        ? `{{knowledgeBase:${segment.id}}}`
+        ? `{{kb:${encodeKnowledgeBaseTokenPart(segment.id)}|${encodeKnowledgeBaseTokenPart(
+            segment.name ?? segment.id,
+          )}}}`
         : segment.value,
     )
     .join("");
@@ -751,7 +1126,7 @@ function parseConditionalLogicSegments(value: string): AgentSettingsForm["condit
   }
 
   const segments: AgentSettingsForm["conditionalLogic"] = [];
-  const tokenPattern = /\{\{knowledgeBase:([^}]+)\}\}/g;
+  const tokenPattern = /\{\{(?:kb:([^|}]+)\|([^}]+)|knowledgeBase:([^}]+))\}\}/g;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
 
@@ -760,7 +1135,19 @@ function parseConditionalLogicSegments(value: string): AgentSettingsForm["condit
       segments.push({ type: "text", value: value.slice(lastIndex, match.index) });
     }
 
-    segments.push({ type: "knowledgeBase", id: match[1] });
+    if (match[3]) {
+      segments.push({ type: "knowledgeBase", id: decodeKnowledgeBaseTokenPart(match[3]) });
+    } else {
+      const id = decodeKnowledgeBaseTokenPart(match[1] ?? "");
+      const name = decodeKnowledgeBaseTokenPart(match[2] ?? "");
+
+      segments.push({
+        id,
+        name: name || undefined,
+        type: "knowledgeBase",
+      });
+    }
+
     lastIndex = match.index + match[0].length;
   }
 
@@ -771,8 +1158,20 @@ function parseConditionalLogicSegments(value: string): AgentSettingsForm["condit
   return segments.length > 0 ? segments : [{ type: "text", value }];
 }
 
+function encodeKnowledgeBaseTokenPart(value: string) {
+  return encodeURIComponent(value);
+}
+
+function decodeKnowledgeBaseTokenPart(value: string) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 function normalizeToneStyle(value: string): AgentToneStyle {
-  return agentToneStyleOptions.some((option) => option.value === value)
+  return agentCommunicationStyleTemplates.some((option) => option.value === value)
     ? (value as AgentToneStyle)
     : "亲切自然";
 }

@@ -83,16 +83,14 @@ describe("AI hosting agent routes", () => {
       method: "PUT",
       payload: {
         modelId: "11",
-        name: "护肤小助理改",
         promptConfig: {
           conditionLogic: "如何客户咨询成分，那么说明功效",
-          keynote: {
+          replyStyle: {
             length: "简洁",
-            style: ["亲切自然"],
+            styleInstruction: "亲切自然",
           },
+          handoffRules: "客户要求真人",
           role: "你是护肤顾问",
-          style: "亲切自然",
-          transferToHuman: "客户要求真人",
         },
       },
       url: "/api/server/ai-hosting/agents/301",
@@ -118,9 +116,18 @@ describe("AI hosting agent routes", () => {
       values: {
         last_operator_id: 1,
         model_id: 11,
-        name: "护肤小助理改",
         update_time: expect.any(Date),
       },
+    });
+    expect(db.updatedAgent?.values).not.toHaveProperty("name");
+    expect(JSON.parse(String(db.updatedAgent?.values.prompt_config))).toEqual({
+      condition_logic: "如何客户咨询成分，那么说明功效",
+      handoff_rules: "客户要求真人",
+      reply_style: {
+        length: "简洁",
+        style_instruction: "亲切自然",
+      },
+      role: "你是护肤顾问",
     });
     expect(unchangedPublish.statusCode).toBe(400);
     expect(unchangedPublish.json()).toMatchObject({
@@ -144,6 +151,38 @@ describe("AI hosting agent routes", () => {
     await app.close();
   });
 
+  it("renames agents through a separate write path", async () => {
+    const { app, authorization, db } = await createAiHostingApp();
+
+    const rename = await app.inject({
+      headers: { authorization },
+      method: "PATCH",
+      payload: {
+        name: "护肤专家",
+      },
+      url: "/api/server/ai-hosting/agents/301/name",
+    });
+
+    expect(rename.statusCode).toBe(200);
+    expect(rename.json()).toMatchObject({
+      data: {
+        id: "301",
+        name: "护肤专家",
+      },
+      success: true,
+    });
+    expect(db.updatedAgent).toEqual({
+      id: 301,
+      values: {
+        last_operator_id: 1,
+        name: "护肤专家",
+        update_time: expect.any(Date),
+      },
+    });
+
+    await app.close();
+  });
+
   it("creates agents as drafts and removes agents with a soft delete", async () => {
     const { app, authorization, db } = await createAiHostingApp();
 
@@ -155,13 +194,12 @@ describe("AI hosting agent routes", () => {
         name: "售后小助理",
         promptConfig: {
           conditionLogic: "",
-          keynote: {
+          replyStyle: {
             length: "简洁",
-            style: ["亲切自然"],
+            styleInstruction: "亲切自然",
           },
+          handoffRules: "退款投诉",
           role: "你是售后客服",
-          style: "亲切自然",
-          transferToHuman: "退款投诉",
         },
       },
       url: "/api/server/ai-hosting/agents",
@@ -187,6 +225,15 @@ describe("AI hosting agent routes", () => {
       operator_id: 1,
       status: 1,
       uid: 9001,
+    });
+    expect(JSON.parse(String(db.insertedAgent?.prompt_config))).toEqual({
+      condition_logic: "",
+      handoff_rules: "退款投诉",
+      reply_style: {
+        length: "简洁",
+        style_instruction: "亲切自然",
+      },
+      role: "你是售后客服",
     });
     expect(db.insertedHistories).toEqual([]);
     expect(remove.statusCode).toBe(200);
@@ -518,12 +565,11 @@ function createAiHostingDbMock() {
 function buildPromptConfig(conditionLogic: string) {
   return JSON.stringify({
     condition_logic: conditionLogic,
-    keynote: {
+    reply_style: {
       length: "简洁",
-      style: ["亲切自然"],
+      style_instruction: "亲切自然",
     },
+    handoff_rules: "客户要求真人",
     role: "你是护肤顾问",
-    style: "亲切自然",
-    trans_manual: "客户要求真人",
   });
 }

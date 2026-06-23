@@ -97,7 +97,7 @@ export function AgentManagementPage() {
 
         setAgents([]);
         setTotalAgents(0);
-        setErrorMessage(isRequestError(error) ? error.message : "Agent列表加载失败");
+        setErrorMessage(isRequestError(error) ? error.message : "Agent 列表加载失败");
       } finally {
         if (!ignore) {
           setLoading(false);
@@ -131,7 +131,7 @@ export function AgentManagementPage() {
       setAgents(response.agents);
       setTotalAgents(response.pagination.total);
     } catch (error) {
-      setErrorMessage(isRequestError(error) ? error.message : "删除Agent失败");
+      setErrorMessage(isRequestError(error) ? error.message : "删除 Agent 失败");
     } finally {
       setRemoving(false);
     }
@@ -153,7 +153,7 @@ export function AgentManagementPage() {
 
         <AgentOverviewSection metrics={metrics} onPeriodChange={setStatsPeriod} period={statsPeriod} />
 
-        <section aria-label="Agent列表区块">
+        <section aria-label="Agent 列表区块">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="relative w-[280px] max-w-full">
               <HugeiconsIcon
@@ -210,9 +210,9 @@ export function AgentManagementPage() {
       >
         <AlertDialogContent size="sm">
           <AlertDialogHeader>
-            <AlertDialogTitle>确认删除Agent？</AlertDialogTitle>
+            <AlertDialogTitle>确认删除 Agent？</AlertDialogTitle>
             <AlertDialogDescription>
-              删除后，该Agent将不再出现在管理列表中
+              删除后，该 Agent 将不再出现在管理列表中
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -238,10 +238,10 @@ function AgentTable({
 }) {
   return (
     <>
-      <Table aria-label="Agent列表">
+      <Table aria-label="Agent 列表">
         <TableHeader>
           <TableRow className="hover:bg-transparent">
-            <TableHead className="h-11 w-[22%]">Agent名称</TableHead>
+            <TableHead className="h-11 w-[22%]">Agent 名称</TableHead>
             <TableHead className="h-11 w-[18%]">大模型</TableHead>
             <TableHead className="h-11">关联知识库</TableHead>
             <TableHead className="h-11 w-[120px] text-right">操作</TableHead>
@@ -252,12 +252,12 @@ function AgentTable({
             <TableRow>
               <TableCell className="py-10 text-center" colSpan={4}>
                 <div
-                  aria-label="正在加载Agent列表"
+                  aria-label="正在加载 Agent 列表"
                   className="inline-flex items-center gap-2 text-sm text-muted-foreground"
                   role="status"
                 >
                   <span className="size-3.5 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-muted-foreground" />
-                  <span>正在加载Agent列表</span>
+                  <span>正在加载 Agent 列表</span>
                 </div>
               </TableCell>
             </TableRow>

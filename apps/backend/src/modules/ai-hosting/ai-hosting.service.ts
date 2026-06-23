@@ -4,8 +4,10 @@ import type {
   AiHostingAgentListResponse,
   AiHostingAgentModelSummary,
   AiHostingAgentPromptConfig,
+  AiHostingAgentRenameRequest,
   AiHostingAgentRemoveResponse,
   AiHostingAgentSaveRequest,
+  AiHostingAgentSettingsSaveRequest,
   AiHostingModel,
   AiHostingModelListResponse,
 } from "@chatai/contracts";
@@ -90,7 +92,7 @@ export class AiHostingService {
     const numericAgentId = parseMySqlId(agentId);
 
     if (numericAgentId == null) {
-      throw new BadRequestError("INVALID_AGENT", "Agent不存在");
+      throw new BadRequestError("INVALID_AGENT", "Agent 不存在");
     }
 
     return this.getAgentDetailOrThrow(scope, numericAgentId);
@@ -123,7 +125,7 @@ export class AiHostingService {
     const agentId = parseInsertedMySqlId(inserted);
 
     if (agentId == null) {
-      throw new ServiceUnavailableError("AGENT_ID_UNAVAILABLE", "Agent服务暂不可用");
+      throw new ServiceUnavailableError("AGENT_ID_UNAVAILABLE", "Agent 服务暂不可用");
     }
 
     return this.getAgentDetailOrThrow(scope, agentId);
@@ -132,19 +134,19 @@ export class AiHostingService {
   async updateAgent(
     currentSubUserId: string,
     agentId: string,
-    payload: AiHostingAgentSaveRequest,
+    payload: AiHostingAgentSettingsSaveRequest,
   ): Promise<AiHostingAgentDetail> {
     const scope = await this.getTenantScope(currentSubUserId);
     const operatorId = parseMySqlId(currentSubUserId);
     const numericAgentId = parseMySqlId(agentId);
-    const normalized = await this.normalizeSavePayload(scope, payload);
+    const normalized = await this.normalizeSettingsSavePayload(scope, payload);
 
     if (operatorId == null) {
       throw new BadRequestError("INVALID_SUB_ACCOUNT", "当前账号无效");
     }
 
     if (numericAgentId == null) {
-      throw new BadRequestError("INVALID_AGENT", "Agent不存在");
+      throw new BadRequestError("INVALID_AGENT", "Agent 不存在");
     }
 
     await this.assertAgentInScope(scope, numericAgentId);
@@ -153,8 +155,45 @@ export class AiHostingService {
       .set({
         last_operator_id: operatorId,
         model_id: normalized.modelId,
-        name: normalized.name,
         prompt_config: normalized.promptConfig,
+        update_time: new Date(),
+      })
+      .where("id", "=", numericAgentId)
+      .where("uid", "=", scope.uid)
+      .where("status", "=", dbActiveStatus)
+      .execute();
+
+    return this.getAgentDetailOrThrow(scope, numericAgentId);
+  }
+
+  async renameAgent(
+    currentSubUserId: string,
+    agentId: string,
+    payload: AiHostingAgentRenameRequest,
+  ): Promise<AiHostingAgentDetail> {
+    const scope = await this.getTenantScope(currentSubUserId);
+    const operatorId = parseMySqlId(currentSubUserId);
+    const numericAgentId = parseMySqlId(agentId);
+    const name = normalizeAgentName(payload.name);
+
+    if (operatorId == null) {
+      throw new BadRequestError("INVALID_SUB_ACCOUNT", "当前账号无效");
+    }
+
+    if (numericAgentId == null) {
+      throw new BadRequestError("INVALID_AGENT", "Agent 不存在");
+    }
+
+    if (!name) {
+      throw new BadRequestError("INVALID_AGENT_NAME", "请输入 Agent 名称");
+    }
+
+    await this.assertAgentInScope(scope, numericAgentId);
+    await this.db
+      .updateTable("xy_wap_embed_agent")
+      .set({
+        last_operator_id: operatorId,
+        name,
         update_time: new Date(),
       })
       .where("id", "=", numericAgentId)
@@ -175,7 +214,7 @@ export class AiHostingService {
     }
 
     if (numericAgentId == null) {
-      throw new BadRequestError("INVALID_AGENT", "Agent不存在");
+      throw new BadRequestError("INVALID_AGENT", "Agent 不存在");
     }
 
     const agent = await this.getAgentRowOrThrow(scope, numericAgentId);
@@ -212,7 +251,7 @@ export class AiHostingService {
     }
 
     if (numericAgentId == null) {
-      throw new BadRequestError("INVALID_AGENT", "Agent不存在");
+      throw new BadRequestError("INVALID_AGENT", "Agent 不存在");
     }
 
     await this.assertAgentInScope(scope, numericAgentId);
@@ -251,7 +290,7 @@ export class AiHostingService {
     }
 
     if (numericAgentId == null) {
-      throw new BadRequestError("INVALID_AGENT", "Agent不存在");
+      throw new BadRequestError("INVALID_AGENT", "Agent 不存在");
     }
 
     await this.assertAgentInScope(scope, numericAgentId);
@@ -360,12 +399,24 @@ export class AiHostingService {
   }
 
   private async normalizeSavePayload(scope: TenantScope, payload: AiHostingAgentSaveRequest) {
-    const modelId = parseMySqlId(payload.modelId);
-    const name = payload.name.trim();
+    const normalized = await this.normalizeSettingsSavePayload(scope, payload);
+    const name = normalizeAgentName(payload.name);
 
     if (!name) {
-      throw new BadRequestError("INVALID_AGENT_NAME", "请输入Agent名称");
+      throw new BadRequestError("INVALID_AGENT_NAME", "请输入 Agent 名称");
     }
+
+    return {
+      ...normalized,
+      name,
+    };
+  }
+
+  private async normalizeSettingsSavePayload(
+    scope: TenantScope,
+    payload: AiHostingAgentSettingsSaveRequest,
+  ) {
+    const modelId = parseMySqlId(payload.modelId);
 
     if (modelId == null || !(await this.getModelRow(scope, modelId))) {
       throw new BadRequestError("INVALID_AGENT_MODEL", "请选择有效的大模型");
@@ -373,7 +424,6 @@ export class AiHostingService {
 
     return {
       modelId,
-      name,
       promptConfig: serializePromptConfig(payload.promptConfig),
     };
   }
@@ -392,7 +442,7 @@ export class AiHostingService {
     const agent = await this.getAgentRow(scope, agentId);
 
     if (!agent) {
-      throw new NotFoundError("AGENT_NOT_FOUND", "Agent不存在");
+      throw new NotFoundError("AGENT_NOT_FOUND", "Agent 不存在");
     }
 
     return agent;
@@ -539,29 +589,31 @@ function fallbackModelSummary(modelId: number): AiHostingAgentModelSummary {
   };
 }
 
+function normalizeAgentName(value: string) {
+  return value.trim();
+}
+
 function serializePromptConfig(promptConfig: AiHostingAgentPromptConfig) {
   return JSON.stringify({
     condition_logic: promptConfig.conditionLogic,
-    keynote: {
-      length: promptConfig.keynote.length,
-      style: promptConfig.keynote.style,
+    handoff_rules: promptConfig.handoffRules,
+    reply_style: {
+      length: promptConfig.replyStyle.length,
+      style_instruction: promptConfig.replyStyle.styleInstruction,
     },
     role: promptConfig.role,
-    style: promptConfig.style,
-    trans_manual: promptConfig.transferToHuman,
   });
 }
 
 function parsePromptConfig(value: string | null | undefined): AiHostingAgentPromptConfig {
   const fallback: AiHostingAgentPromptConfig = {
     conditionLogic: "",
-    keynote: {
+    handoffRules: "",
+    replyStyle: {
       length: "简洁",
-      style: ["亲切自然"],
+      styleInstruction: "亲切自然",
     },
     role: "",
-    style: "",
-    transferToHuman: "",
   };
 
   if (!value) {
@@ -570,19 +622,27 @@ function parsePromptConfig(value: string | null | undefined): AiHostingAgentProm
 
   try {
     const parsed = JSON.parse(value) as Record<string, unknown>;
+    const replyStyle = isRecord(parsed.reply_style) ? parsed.reply_style : {};
     const keynote = isRecord(parsed.keynote) ? parsed.keynote : {};
+    const legacyKeynoteStyle = Array.isArray(keynote.style)
+      ? keynote.style.find((item): item is string => typeof item === "string")
+      : "";
 
     return {
       conditionLogic: readString(parsed.condition_logic),
-      keynote: {
-        length: readString(keynote.length) || fallback.keynote.length,
-        style: Array.isArray(keynote.style)
-          ? keynote.style.filter((item): item is string => typeof item === "string")
-          : fallback.keynote.style,
+      handoffRules: readString(parsed.handoff_rules) || readString(parsed.trans_manual),
+      replyStyle: {
+        length:
+          readString(replyStyle.length) ||
+          readString(keynote.length) ||
+          fallback.replyStyle.length,
+        styleInstruction:
+          readString(replyStyle.style_instruction) ||
+          readString(parsed.style) ||
+          legacyKeynoteStyle ||
+          fallback.replyStyle.styleInstruction,
       },
       role: readString(parsed.role),
-      style: readString(parsed.style),
-      transferToHuman: readString(parsed.trans_manual),
     };
   } catch {
     return fallback;

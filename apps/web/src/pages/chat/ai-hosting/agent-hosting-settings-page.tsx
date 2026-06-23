@@ -106,7 +106,7 @@ export function AgentHostingSettingsPage() {
         }
       } catch (error) {
         if (!ignore) {
-          setErrorMessage(isRequestError(error) ? error.message : "Agent列表加载失败");
+          setErrorMessage(isRequestError(error) ? error.message : "Agent 列表加载失败");
         }
       }
     }
@@ -370,7 +370,7 @@ function HostingSettingsDialog({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="hosting-settings-agent">关联Agent</Label>
+            <Label htmlFor="hosting-settings-agent">关联 Agent</Label>
             <AgentAssociationField
               agentId={agentId}
               agents={agents}
@@ -397,7 +397,7 @@ function HostingSettingsDialog({
             />
           </div>
 
-          <DialogFooter className="gap-2 sm:gap-2">
+          <DialogFooter>
             <DialogClose asChild>
               <Button type="button" variant="outline">
                 取消
@@ -425,7 +425,7 @@ function AgentAssociationField({
   if (agents.length === 0) {
     return (
       <div className="flex h-10 items-center justify-center rounded-[8px] border border-border bg-background px-3 text-sm text-muted-foreground">
-        暂无Agent，
+        暂无 Agent，
         <Button
           className="h-auto p-0 text-primary"
           onClick={onGoToAddAgent}
@@ -441,7 +441,7 @@ function AgentAssociationField({
   return (
     <Select onValueChange={onAgentIdChange} value={agentId}>
       <SelectTrigger className="w-full" id="hosting-settings-agent">
-        <SelectValue placeholder="请选择Agent" />
+        <SelectValue placeholder="请选择 Agent" />
       </SelectTrigger>
       <SelectContent>
         {agents.map((agent) => (
@@ -525,7 +525,7 @@ function HostingSettingsTable({
               />
             </TableHead>
             <TableHead className="h-11 w-[24%]">企微账号</TableHead>
-            <TableHead className="h-11 w-[16%]">关联Agent</TableHead>
+            <TableHead className="h-11 w-[16%]">关联 Agent</TableHead>
             <TableHead className="h-11 w-[18%]">全自动托管权限</TableHead>
             <TableHead className="h-11 w-[16%]">话术推荐</TableHead>
             <TableHead className="h-11 w-[100px] text-right">操作</TableHead>

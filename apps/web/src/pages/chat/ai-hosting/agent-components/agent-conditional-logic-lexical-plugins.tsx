@@ -42,9 +42,9 @@ export function ConditionalLogicRuntimePlugin({
   useEffect(() => {
     return editor.registerCommand(
       INSERT_CONDITIONAL_LOGIC_KNOWLEDGE_BASE_COMMAND,
-      (knowledgeBaseId) => {
+      (knowledgeBase) => {
         editor.update(() => {
-          $insertKnowledgeBaseChip(knowledgeBaseId);
+          $insertKnowledgeBaseChip(knowledgeBase);
         });
         return true;
       },

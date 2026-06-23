@@ -184,9 +184,9 @@ function parseOptionalInteger(value: string | undefined) {
 }
 
 function assertAiHostingManage(request: FastifyRequest) {
-  const role = request.user?.roles?.[0];
+  const roles = request.user?.roles ?? [];
 
-  if (role === "owner" || role === "admin") {
+  if (roles.includes("owner") || roles.includes("admin")) {
     return;
   }
 

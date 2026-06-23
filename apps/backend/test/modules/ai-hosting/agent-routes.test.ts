@@ -201,12 +201,34 @@ describe("AI hosting agent routes", () => {
 
     await app.close();
   });
+
+  it("allows agent writes when admin is not the first token role", async () => {
+    const { app, authorization, db } = await createAiHostingApp(["operator", "admin"]);
+
+    const remove = await app.inject({
+      headers: { authorization },
+      method: "DELETE",
+      url: "/api/server/ai-hosting/agents/301",
+    });
+
+    expect(remove.statusCode).toBe(200);
+    expect(db.deletedAgent).toEqual({
+      id: 301,
+      values: {
+        last_operator_id: 1,
+        status: 0,
+        update_time: expect.any(Date),
+      },
+    });
+
+    await app.close();
+  });
 });
 
-async function createAiHostingApp() {
+async function createAiHostingApp(roles = ["admin"]) {
   const app = await buildMockedApp();
   const token = app.jwt.sign({
-    roles: ["admin"],
+    roles,
     sessionId: "501",
     sessionVersion: 1,
     subUserId: "1",

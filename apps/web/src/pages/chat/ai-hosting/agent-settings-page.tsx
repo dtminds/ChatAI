@@ -197,9 +197,8 @@ export function AgentSettingsPage() {
 
   async function handlePublish() {
     const saved = await handleSave();
-    const publishAgentId = saved?.id ?? agentId;
 
-    if (!publishAgentId) {
+    if (!saved) {
       return;
     }
 
@@ -207,7 +206,7 @@ export function AgentSettingsPage() {
     setErrorMessage("");
 
     try {
-      const published = await publishAiHostingAgent(publishAgentId);
+      const published = await publishAiHostingAgent(saved.id);
       setAgentDetail(published);
       setForm(mapAgentDetailToForm(published));
       setPublishDialogOpen(false);

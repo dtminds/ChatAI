@@ -520,6 +520,33 @@ describe("AI hosting pages", () => {
     });
   });
 
+  it("does not publish the previous draft when saving changes fails", async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(agentService.updateAiHostingAgent).mockRejectedValueOnce(new Error("save failed"));
+
+    renderWithRoute("/chat/ai-hosting/agents/301", <AgentSettingsPage />, "/chat/ai-hosting/agents/:agentId");
+
+    await screen.findByDisplayValue("护肤小助理");
+    await user.clear(screen.getByLabelText("角色描述"));
+    await user.type(screen.getByLabelText("角色描述"), "你是资深护肤顾问");
+    await user.click(screen.getByRole("button", { name: "发布正式版" }));
+    await user.click(screen.getByRole("button", { name: "确认" }));
+
+    await waitFor(() => {
+      expect(agentService.updateAiHostingAgent).toHaveBeenCalledWith(
+        "301",
+        expect.objectContaining({
+          promptConfig: expect.objectContaining({
+            role: "你是资深护肤顾问",
+          }),
+        }),
+      );
+    });
+
+    expect(agentService.publishAiHostingAgent).not.toHaveBeenCalled();
+  });
+
   it("enables publishing when local model or prompt config differs from the latest published version", async () => {
     const user = userEvent.setup();
 

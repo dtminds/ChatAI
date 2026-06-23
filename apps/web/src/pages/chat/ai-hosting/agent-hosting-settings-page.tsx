@@ -218,7 +218,7 @@ export function AgentHostingSettingsPage() {
           </p>
         ) : null}
 
-        <section aria-label="托管设置列表" className="space-y-4">
+        <section aria-label="托管设置列表">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="relative w-[280px] max-w-full">
               <HugeiconsIcon
@@ -256,21 +256,23 @@ export function AgentHostingSettingsPage() {
             </Button>
           </div>
 
-          <HostingSettingsTable
-            accounts={pagedAccounts}
-            agents={agents}
-            headerCheckboxState={headerCheckboxState}
-            onOpenSettings={openSettingsDialog}
-            onToggleAccount={toggleAccountSelection}
-            onToggleAll={toggleAllAccounts}
-            selectedAccountIds={selectedAccountIds}
-          />
-          <TablePagination
-            onPageChange={setCurrentPage}
-            page={activePage}
-            total={filteredAccounts.length}
-            totalPages={totalPages}
-          />
+          <div className="mt-4">
+            <HostingSettingsTable
+              accounts={pagedAccounts}
+              agents={agents}
+              headerCheckboxState={headerCheckboxState}
+              onOpenSettings={openSettingsDialog}
+              onToggleAccount={toggleAccountSelection}
+              onToggleAll={toggleAllAccounts}
+              selectedAccountIds={selectedAccountIds}
+            />
+            <TablePagination
+              onPageChange={setCurrentPage}
+              page={activePage}
+              total={filteredAccounts.length}
+              totalPages={totalPages}
+            />
+          </div>
         </section>
 
         <HostingSettingsDialog
@@ -511,7 +513,7 @@ function HostingSettingsTable({
   const agentNameById = new Map(agents.map((agent) => [agent.id, agent.name]));
 
   return (
-    <div>
+    <>
       <Table aria-label="托管设置列表" className="table-fixed">
         <TableHeader>
           <TableRow className="hover:bg-transparent">
@@ -575,7 +577,7 @@ function HostingSettingsTable({
           )}
         </TableBody>
       </Table>
-    </div>
+    </>
   );
 }
 

@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
-import { Link, NavLink } from "react-router-dom";
+import { useEffect, useRef, type ReactNode } from "react";
+import { Link, NavLink, useLocation } from "react-router-dom";
 import {
   AiGenerativeIcon,
   ArrowLeft02Icon,
@@ -38,6 +38,25 @@ export function AiHostingLayout({
   children: ReactNode;
   title: string;
 }) {
+  const location = useLocation();
+  const viewportRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+
+    if (!viewport) {
+      return;
+    }
+
+    if (typeof viewport.scrollTo === "function") {
+      viewport.scrollTo({ left: 0, top: 0 });
+      return;
+    }
+
+    viewport.scrollTop = 0;
+    viewport.scrollLeft = 0;
+  }, [location.pathname]);
+
   return (
     <div className="fixed inset-0 overflow-hidden bg-sidebar text-foreground">
       <div className="grid h-full grid-cols-[13.5rem_minmax(0,1fr)] overflow-hidden max-lg:grid-cols-1">
@@ -82,7 +101,7 @@ export function AiHostingLayout({
         </aside>
 
         <main className="h-full min-h-0 overflow-hidden rounded-[14px_0_0_14px] bg-surface pl-0 shadow max-lg:rounded-none">
-          <div className="h-full min-h-0 overflow-y-auto">
+          <div className="h-full min-h-0 overflow-y-auto" ref={viewportRef}>
             <div className="mx-auto w-full max-w-[1360px] px-8 py-8">{children}</div>
           </div>
         </main>

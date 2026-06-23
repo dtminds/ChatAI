@@ -153,7 +153,7 @@ export function AgentManagementPage() {
 
         <AgentOverviewSection metrics={metrics} onPeriodChange={setStatsPeriod} period={statsPeriod} />
 
-        <section aria-label="Agent列表区块" className="space-y-4">
+        <section aria-label="Agent列表区块">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="relative w-[280px] max-w-full">
               <HugeiconsIcon
@@ -183,18 +183,20 @@ export function AgentManagementPage() {
             </Button>
           </div>
 
-          {errorMessage ? (
-            <p className="text-sm text-destructive" role="alert">
-              {errorMessage}
-            </p>
-          ) : null}
-          <AgentTable agents={agents} loading={loading} onRemove={setRemoveTarget} />
-          <TablePagination
-            onPageChange={setCurrentPage}
-            page={activePage}
-            total={totalAgents}
-            totalPages={totalPages}
-          />
+          <div className="mt-4">
+            {errorMessage ? (
+              <p className="mb-3 text-sm text-destructive" role="alert">
+                {errorMessage}
+              </p>
+            ) : null}
+            <AgentTable agents={agents} loading={loading} onRemove={setRemoveTarget} />
+            <TablePagination
+              onPageChange={setCurrentPage}
+              page={activePage}
+              total={totalAgents}
+              totalPages={totalPages}
+            />
+          </div>
         </section>
       </div>
 
@@ -235,7 +237,7 @@ function AgentTable({
   onRemove: (agent: AgentRecord) => void;
 }) {
   return (
-    <section>
+    <>
       <Table aria-label="Agent列表">
         <TableHeader>
           <TableRow className="hover:bg-transparent">
@@ -295,6 +297,6 @@ function AgentTable({
           )}
         </TableBody>
       </Table>
-    </section>
+    </>
   );
 }

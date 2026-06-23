@@ -259,6 +259,50 @@ describe("AI hosting pages", () => {
     expect(screen.getByRole("status", { name: "正在加载Agent列表" })).toBeInTheDocument();
   });
 
+  it("resets the ai-hosting viewport when opening an agent editor", async () => {
+    const user = userEvent.setup();
+    const scrollTo = vi.fn();
+    const originalScrollTo = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollTo");
+
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+      configurable: true,
+      value: scrollTo,
+    });
+
+    try {
+      const router = createMemoryRouter(
+        [
+          {
+            path: "/chat/ai-hosting/agents",
+            element: <AgentManagementPage />,
+          },
+          {
+            path: "/chat/ai-hosting/agents/:agentId",
+            element: <AgentSettingsPage />,
+          },
+        ],
+        { initialEntries: ["/chat/ai-hosting/agents"] },
+      );
+
+      render(<RouterProvider router={router} />);
+
+      await screen.findByRole("cell", { name: "护肤小助理" });
+      scrollTo.mockClear();
+
+      await user.click(screen.getAllByRole("link", { name: "编辑" })[0]);
+
+      await screen.findByRole("heading", { level: 1, name: "Agent设置" });
+
+      expect(scrollTo).toHaveBeenCalledWith({ left: 0, top: 0 });
+    } finally {
+      if (originalScrollTo) {
+        Object.defineProperty(HTMLElement.prototype, "scrollTo", originalScrollTo);
+      } else {
+        Reflect.deleteProperty(HTMLElement.prototype, "scrollTo");
+      }
+    }
+  });
+
   it("filters agents by search query", async () => {
     const user = userEvent.setup();
 

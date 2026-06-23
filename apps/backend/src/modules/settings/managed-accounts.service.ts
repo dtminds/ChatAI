@@ -59,6 +59,8 @@ const dbSubAccountType = {
   sub: 0,
 } as const;
 
+const managedAccountListLimit = 200;
+
 export class ManagedAccountSettingsService {
   constructor(
     private readonly db: Kysely<Database>,
@@ -68,11 +70,13 @@ export class ManagedAccountSettingsService {
 
   async list(currentSubUserId: string): Promise<SettingsManagedAccountsResponse> {
     const scope = await this.getTenantScope(currentSubUserId);
-    const [managedAccounts, subAccounts, relationLinks] = await Promise.all([
-      this.listManagedAccountRows(scope),
+    const [managedAccounts, subAccounts] = await Promise.all([
+      this.listManagedAccountRows(scope, { limit: managedAccountListLimit }),
       this.listAssignableSubAccountRows(scope),
-      this.listRelationLinkRows(scope),
     ]);
+    const relationLinks = await this.listRelationLinkRows(scope, {
+      managedAccountIds: managedAccounts.map((account) => account.id),
+    });
     const subAccountsById = new Map(
       subAccounts.map((subAccount) => [subAccount.id, subAccount] as const),
     );
@@ -104,7 +108,7 @@ export class ManagedAccountSettingsService {
 
     await this.assertManagedAccountInScope(scope, numericManagedAccountId);
     const oldSubAccountIds = uniquePositiveNumbers(
-      (await this.listRelationLinkRows(scope, numericManagedAccountId))
+      (await this.listRelationLinkRows(scope, { managedAccountId: numericManagedAccountId }))
         .map((relation) => relation.sub_id),
     );
     const subAccountIds = await this.normalizeSubAccountIds(scope, payload.subAccountIds);
@@ -142,8 +146,8 @@ export class ManagedAccountSettingsService {
     };
   }
 
-  private listManagedAccountRows(scope: TenantScope) {
-    return this.db
+  private listManagedAccountRows(scope: TenantScope, options: { limit?: number } = {}) {
+    let query = this.db
       .selectFrom("xy_wap_embed_user_seat as seat")
       .select([
         "seat.third_avatar as avatarUrl",
@@ -154,8 +158,13 @@ export class ManagedAccountSettingsService {
       ])
       .where("seat.uid", "=", scope.uid)
       .where("seat.platform", "=", scope.platform)
-      .orderBy("seat.id", "desc")
-      .execute() as Promise<ManagedAccountRow[]>;
+      .orderBy("seat.id", "desc");
+
+    if (options.limit !== undefined) {
+      query = query.limit(options.limit);
+    }
+
+    return query.execute() as Promise<ManagedAccountRow[]>;
   }
 
   private listAssignableSubAccountRows(scope: TenantScope, subAccountIds?: number[]) {
@@ -181,7 +190,10 @@ export class ManagedAccountSettingsService {
       .execute() as Promise<SubAccountRow[]>;
   }
 
-  private listRelationLinkRows(scope: TenantScope, managedAccountId?: number) {
+  private listRelationLinkRows(
+    scope: TenantScope,
+    options: { managedAccountId?: number; managedAccountIds?: number[] } = {},
+  ) {
     let query = this.db
       .selectFrom("xy_wap_embed_user_seat_sub_relation as relation")
       .select([
@@ -191,8 +203,14 @@ export class ManagedAccountSettingsService {
       .where("relation.uid", "=", scope.uid)
       .where("relation.platform", "=", scope.platform);
 
-    if (managedAccountId !== undefined) {
-      query = query.where("relation.user_seat_id", "=", managedAccountId);
+    if (options.managedAccountId !== undefined) {
+      query = query.where("relation.user_seat_id", "=", options.managedAccountId);
+    } else if (options.managedAccountIds !== undefined) {
+      if (options.managedAccountIds.length === 0) {
+        return Promise.resolve([]);
+      }
+
+      query = query.where("relation.user_seat_id", "in", options.managedAccountIds);
     }
 
     return query.execute() as Promise<RelationLinkRow[]>;
@@ -279,7 +297,7 @@ export class ManagedAccountSettingsService {
         .where("seat.uid", "=", scope.uid)
         .where("seat.platform", "=", scope.platform)
         .executeTakeFirst() as Promise<ManagedAccountRow | undefined>,
-      this.listRelationLinkRows(scope, managedAccountId),
+      this.listRelationLinkRows(scope, { managedAccountId }),
     ]);
 
     if (!managedAccount) {

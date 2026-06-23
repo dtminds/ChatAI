@@ -13,18 +13,20 @@ import { resetMockKnowledgeData } from "@/pages/chat/ai-hosting/kb-mock-data";
 import * as kbMockData from "@/pages/chat/ai-hosting/kb-mock-data";
 import * as agentService from "@/pages/chat/ai-hosting/agent-service";
 import { useAuthStore } from "@/store/auth-store";
-import type { AccountRole } from "@chatai/contracts";
+import type { AccountRole, AiHostingSettingsResponse } from "@chatai/contracts";
 
 const readXlsxFileMock = vi.hoisted(() => vi.fn());
 const agentServiceMock = vi.hoisted(() => ({
   createAiHostingAgent: vi.fn(),
   getAiHostingAgent: vi.fn(),
+  listAiHostingSettings: vi.fn(),
   listAiHostingAgents: vi.fn(),
   listAiHostingModels: vi.fn(),
   publishAiHostingAgent: vi.fn(),
   removeAiHostingAgent: vi.fn(),
   restoreAiHostingAgent: vi.fn(),
   renameAiHostingAgent: vi.fn(),
+  updateAiHostingSettings: vi.fn(),
   updateAiHostingAgent: vi.fn(),
 }));
 
@@ -105,6 +107,47 @@ const mockAgentDetail = {
   updatedAt: 1_718_006_460_000,
 };
 
+const mockHostingSettings: AiHostingSettingsResponse = {
+  accounts: [
+    {
+      agentId: null,
+      avatarUrl: "",
+      fullAutoAuth: false,
+      id: "101",
+      name: "小助理1",
+      semiAutoAuth: false,
+    },
+    {
+      agentId: "301",
+      avatarUrl: "https://example.com/avatar-102.png",
+      fullAutoAuth: true,
+      id: "102",
+      name: "小助理2",
+      semiAutoAuth: true,
+    },
+    {
+      agentId: "303",
+      avatarUrl: "",
+      fullAutoAuth: false,
+      id: "103",
+      name: "小助理3",
+      semiAutoAuth: true,
+    },
+  ],
+  agents: [
+    {
+      id: "301",
+      isPublished: true,
+      name: "护肤小助理",
+    },
+    {
+      id: "303",
+      isPublished: false,
+      name: "未发布小助理",
+    },
+  ],
+};
+
 function renderWithRoute(path: string, element: ReactElement, routePath = "*") {
   const router = createMemoryRouter(
     [
@@ -160,6 +203,20 @@ describe("AI hosting pages", () => {
       },
     });
     vi.mocked(agentService.listAiHostingModels).mockResolvedValue({ models: mockModels });
+    vi.mocked(agentService.listAiHostingSettings).mockResolvedValue(mockHostingSettings);
+    vi.mocked(agentService.updateAiHostingSettings).mockResolvedValue({
+      ...mockHostingSettings,
+      accounts: mockHostingSettings.accounts.map((account) =>
+        account.id === "101"
+          ? {
+              ...account,
+              agentId: "301",
+              fullAutoAuth: true,
+              semiAutoAuth: true,
+            }
+          : account,
+      ),
+    });
     vi.mocked(agentService.getAiHostingAgent).mockResolvedValue(mockAgentDetail);
     vi.mocked(agentService.createAiHostingAgent).mockResolvedValue({
       ...mockAgentDetail,
@@ -192,13 +249,28 @@ describe("AI hosting pages", () => {
     vi.stubGlobal(
       "Image",
       class {
+        private readonly listeners = new Map<string, Set<() => void>>();
+
         naturalHeight = mockImageDimensions.height;
         naturalWidth = mockImageDimensions.width;
         onerror: (() => void) | null = null;
         onload: (() => void) | null = null;
 
+        addEventListener(type: string, listener: () => void) {
+          const listeners = this.listeners.get(type) ?? new Set<() => void>();
+          listeners.add(listener);
+          this.listeners.set(type, listeners);
+        }
+
+        removeEventListener(type: string, listener: () => void) {
+          this.listeners.get(type)?.delete(listener);
+        }
+
         set src(_value: string) {
-          queueMicrotask(() => this.onload?.());
+          queueMicrotask(() => {
+            this.onload?.();
+            this.listeners.get("load")?.forEach((listener) => listener());
+          });
         }
       },
     );
@@ -275,7 +347,7 @@ describe("AI hosting pages", () => {
     expect(screen.getByRole("columnheader", { name: "大模型" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "关联知识库" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "操作" })).toBeInTheDocument();
-    expect(screen.getByRole("status", { name: "正在加载 Agent 列表" })).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "正在加载" })).toBeInTheDocument();
   });
 
   it("does not focus the conditional logic editor while restoring agent settings", async () => {
@@ -358,17 +430,42 @@ describe("AI hosting pages", () => {
     renderWithRoute("/chat/ai-hosting/hosting-settings", <AgentHostingSettingsPage />);
 
     expect(await screen.findByRole("heading", { level: 1, name: "托管设置" })).toBeInTheDocument();
-    expect(screen.getByText("配置企微账号关联的 Agent 和托管能力")).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "搜索企微账号" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(agentService.listAiHostingSettings).toHaveBeenCalledTimes(1);
+    });
+    expect(screen.getByText("配置托管账号关联的 Agent 和托管策略")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "搜索托管账号" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "批量设置" })).toBeDisabled();
     expect(screen.getByRole("table", { name: "托管设置列表" })).toBeInTheDocument();
-    expect(screen.getByText("共 3 条")).toBeInTheDocument();
     expect(screen.getByText("小助理1")).toBeInTheDocument();
     expect(screen.getByText("小助理2")).toBeInTheDocument();
     expect(screen.getByText("小助理3")).toBeInTheDocument();
-    expect(screen.getAllByText("启用")).toHaveLength(4);
-    expect(screen.getAllByText("关闭")).toHaveLength(2);
+    expect(screen.getByAltText("小助理2头像")).toHaveAttribute(
+      "src",
+      "https://example.com/avatar-102.png",
+    );
+    expect(screen.getByText("护肤小助理")).toBeInTheDocument();
+    expect(screen.getByText("未发布小助理")).toBeInTheDocument();
+    expect(screen.getAllByText("启用")).toHaveLength(3);
+    expect(screen.getAllByText("关闭")).toHaveLength(3);
     expect(screen.getAllByRole("button", { name: "设置" })).toHaveLength(3);
+  });
+
+  it("keeps the hosting settings table header visible while loading", async () => {
+    vi.mocked(agentService.listAiHostingSettings).mockReturnValueOnce(
+      new Promise(() => undefined),
+    );
+
+    renderWithRoute("/chat/ai-hosting/hosting-settings", <AgentHostingSettingsPage />);
+
+    expect(screen.getByRole("table", { name: "托管设置列表" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "托管账号" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "关联 Agent" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "允许开启 AI 回复" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "允许话术推荐" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "操作" })).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "正在加载" })).toBeInTheDocument();
+    expect(screen.queryByText("暂无数据")).not.toBeInTheDocument();
   });
 
   it("filters application scope accounts by search query", async () => {
@@ -377,28 +474,40 @@ describe("AI hosting pages", () => {
     renderWithRoute("/chat/ai-hosting/hosting-settings", <AgentHostingSettingsPage />);
 
     await screen.findByRole("heading", { level: 1, name: "托管设置" });
-    await user.type(screen.getByRole("textbox", { name: "搜索企微账号" }), "小助理2");
+    await user.type(screen.getByRole("textbox", { name: "搜索托管账号" }), "小助理2");
 
     expect(screen.getByText("小助理2")).toBeInTheDocument();
     expect(screen.queryByText("小助理1")).not.toBeInTheDocument();
     expect(screen.queryByText("小助理3")).not.toBeInTheDocument();
   });
 
-  it("opens the batch settings dialog from row settings", async () => {
+  it("opens the settings dialog from row settings", async () => {
     const user = userEvent.setup();
 
     renderWithRoute("/chat/ai-hosting/hosting-settings", <AgentHostingSettingsPage />);
 
     await screen.findByRole("heading", { level: 1, name: "托管设置" });
-    await user.click(screen.getAllByRole("button", { name: "设置" })[0]);
+    await user.click(screen.getAllByRole("button", { name: "设置" })[1]);
 
-    const dialog = screen.getByRole("dialog", { name: "批量设置" });
+    const dialog = screen.getByRole("dialog", { name: "设置" });
 
     expect(dialog).toBeInTheDocument();
-    expect(dialog).toHaveTextContent("已选企微账号");
-    expect(dialog).toHaveTextContent("小助理1");
-    expect(dialog).toHaveTextContent("全自动托管权限");
-    expect(dialog).toHaveTextContent("话术推荐");
+    expect(dialog).toHaveTextContent("小助理2");
+    expect(within(dialog).getByAltText("小助理2头像")).toHaveAttribute(
+      "src",
+      "https://example.com/avatar-102.png",
+    );
+    expect(dialog).toHaveTextContent("允许开启 AI 回复");
+    expect(dialog).toHaveTextContent("客服可开启 AI 回复， Agent 将自动回复客户的消息");
+    expect(dialog).toHaveTextContent("允许话术推荐");
+    expect(dialog).toHaveTextContent("Agent 会自动生成回复建议，提升客服服务效率");
+    await user.click(screen.getByRole("combobox", { name: "关联 Agent" }));
+    expect(screen.getByRole("option", { name: "护肤小助理" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "未发布小助理" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    await user.keyboard("{Escape}");
     expect(screen.getByRole("button", { name: "保存设置" })).toBeInTheDocument();
   });
 
@@ -426,13 +535,28 @@ describe("AI hosting pages", () => {
 
     await screen.findByRole("heading", { level: 1, name: "托管设置" });
     await user.click(screen.getAllByRole("button", { name: "设置" })[0]);
-    await user.click(screen.getByRole("switch", { name: "全自动托管权限" }));
-    await user.click(screen.getByRole("switch", { name: "话术推荐" }));
+    await user.click(screen.getByRole("switch", { name: "允许开启 AI 回复" }));
+    await user.click(screen.getByRole("switch", { name: "允许话术推荐" }));
     await user.click(screen.getByRole("button", { name: "保存设置" }));
 
-    expect(screen.queryByRole("dialog", { name: "批量设置" })).not.toBeInTheDocument();
-    expect(screen.getAllByText("启用")).toHaveLength(6);
-    expect(screen.queryAllByText("关闭")).toHaveLength(0);
+    expect(screen.getByRole("alert")).toHaveTextContent("请选择已发布 Agent");
+    expect(agentService.updateAiHostingSettings).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("combobox", { name: "关联 Agent" }));
+    await user.click(screen.getByRole("option", { name: "护肤小助理" }));
+    await user.click(screen.getByRole("button", { name: "保存设置" }));
+
+    await waitFor(() => {
+      expect(agentService.updateAiHostingSettings).toHaveBeenCalledWith({
+        agentId: "301",
+        fullAutoAuth: true,
+        semiAutoAuth: true,
+        userSeatIds: ["101"],
+      });
+    });
+    expect(screen.queryByRole("dialog", { name: "设置" })).not.toBeInTheDocument();
+    expect(screen.getAllByText("启用")).toHaveLength(5);
+    expect(screen.getAllByText("关闭")).toHaveLength(1);
   });
 
   it("navigates to agent settings page from add agent link", async () => {

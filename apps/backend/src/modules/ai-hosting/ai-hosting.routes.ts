@@ -2,10 +2,12 @@ import {
   AiHostingAgentRenameRequestSchema,
   AiHostingAgentSaveRequestSchema,
   AiHostingAgentSettingsSaveRequestSchema,
+  AiHostingSettingsUpdateRequestSchema,
   apiSuccess,
   type AiHostingAgentRenameRequest,
   type AiHostingAgentSaveRequest,
   type AiHostingAgentSettingsSaveRequest,
+  type AiHostingSettingsUpdateRequest,
 } from "@chatai/contracts";
 import { Type, type Static } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
@@ -54,6 +56,37 @@ export async function registerAiHostingRoutes(app: FastifyInstance) {
     },
     async (request) => {
       return apiSuccess(await createAiHostingService(app.db).listModels(getSubUserId(request)));
+    },
+  );
+
+  app.get(
+    "/api/server/ai-hosting/hosting-settings",
+    {
+      preHandler: app.authenticate,
+    },
+    async (request) => {
+      return apiSuccess(
+        await createAiHostingService(app.db).listHostingSettings(getSubUserId(request)),
+      );
+    },
+  );
+
+  app.put<{ Body: AiHostingSettingsUpdateRequest }>(
+    "/api/server/ai-hosting/hosting-settings",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: AiHostingSettingsUpdateRequestSchema,
+      },
+    },
+    async (request) => {
+      assertAiHostingManage(request);
+      return apiSuccess(
+        await createAiHostingService(app.db).updateHostingSettings(
+          getSubUserId(request),
+          request.body,
+        ),
+      );
     },
   );
 

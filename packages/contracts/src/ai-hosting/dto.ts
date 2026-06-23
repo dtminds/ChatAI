@@ -77,6 +77,33 @@ export const AiHostingAgentRemoveResponseSchema = Type.Object({
   deleted: Type.Boolean(),
 });
 
+export const AiHostingSettingsAccountSchema = Type.Object({
+  agentId: Type.Union([Type.String(), Type.Null()]),
+  avatarUrl: Type.String(),
+  fullAutoAuth: Type.Boolean(),
+  id: Type.String(),
+  name: Type.String(),
+  semiAutoAuth: Type.Boolean(),
+});
+
+export const AiHostingSettingsAgentOptionSchema = Type.Object({
+  id: Type.String(),
+  isPublished: Type.Boolean(),
+  name: Type.String(),
+});
+
+export const AiHostingSettingsResponseSchema = Type.Object({
+  accounts: Type.Array(AiHostingSettingsAccountSchema),
+  agents: Type.Array(AiHostingSettingsAgentOptionSchema),
+});
+
+export const AiHostingSettingsUpdateRequestSchema = Type.Object({
+  agentId: Type.String({ minLength: 1 }),
+  fullAutoAuth: Type.Boolean(),
+  semiAutoAuth: Type.Boolean(),
+  userSeatIds: Type.Array(Type.String(), { minItems: 1 }),
+}, { additionalProperties: false });
+
 export type AiHostingAgentPromptConfig = Static<typeof AiHostingAgentPromptConfigSchema>;
 export type AiHostingModel = Static<typeof AiHostingModelSchema>;
 export type AiHostingAgentModelSummary = Static<typeof AiHostingAgentModelSummarySchema>;
@@ -89,3 +116,8 @@ export type AiHostingAgentSettingsSaveRequest =
   Static<typeof AiHostingAgentSettingsSaveRequestSchema>;
 export type AiHostingAgentRenameRequest = Static<typeof AiHostingAgentRenameRequestSchema>;
 export type AiHostingAgentRemoveResponse = Static<typeof AiHostingAgentRemoveResponseSchema>;
+export type AiHostingSettingsAccount = Static<typeof AiHostingSettingsAccountSchema>;
+export type AiHostingSettingsAgentOption = Static<typeof AiHostingSettingsAgentOptionSchema>;
+export type AiHostingSettingsResponse = Static<typeof AiHostingSettingsResponseSchema>;
+export type AiHostingSettingsUpdateRequest =
+  Static<typeof AiHostingSettingsUpdateRequestSchema>;

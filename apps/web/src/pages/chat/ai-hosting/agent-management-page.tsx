@@ -23,6 +23,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Spinner } from "@/components/ui/spinner";
 import {
   resolveTablePagination,
   TablePagination,
@@ -279,12 +280,12 @@ function AgentTable({
             <TableRow>
               <TableCell className="py-10 text-center" colSpan={4}>
                 <div
-                  aria-label="正在加载 Agent 列表"
+                  aria-label="正在加载"
                   className="inline-flex items-center gap-2 text-sm text-muted-foreground"
                   role="status"
                 >
-                  <span className="size-3.5 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-muted-foreground" />
-                  <span>正在加载 Agent 列表</span>
+                  <Spinner aria-hidden="true" size={14} />
+                  <span>正在加载</span>
                 </div>
               </TableCell>
             </TableRow>

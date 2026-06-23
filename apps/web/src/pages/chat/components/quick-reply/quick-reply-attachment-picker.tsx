@@ -129,7 +129,7 @@ export function QuickReplyAttachmentPicker({
                         图片
                       </DropdownMenuItem>
                       <DropdownMenuItem
-                        onClick={() =>
+                        onSelect={() =>
                           setActivePickerBizType(MATERIAL_COLLECTION_BIZ_TYPE.FILE)
                         }
                       >
@@ -141,7 +141,7 @@ export function QuickReplyAttachmentPicker({
                         文件
                       </DropdownMenuItem>
                       <DropdownMenuItem
-                        onClick={() =>
+                        onSelect={() =>
                           setActivePickerBizType(MATERIAL_COLLECTION_BIZ_TYPE.H5)
                         }
                       >
@@ -153,7 +153,7 @@ export function QuickReplyAttachmentPicker({
                         H5
                       </DropdownMenuItem>
                       <DropdownMenuItem
-                        onClick={() =>
+                        onSelect={() =>
                           setActivePickerBizType(
                             MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM,
                           )
@@ -163,7 +163,7 @@ export function QuickReplyAttachmentPicker({
                         小程序
                       </DropdownMenuItem>
                       <DropdownMenuItem
-                        onClick={() =>
+                        onSelect={() =>
                           setActivePickerBizType(
                             MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED,
                           )

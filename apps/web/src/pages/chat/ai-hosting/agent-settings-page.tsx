@@ -1172,7 +1172,7 @@ function sortObjectKeys(value: unknown): unknown {
     return value.map(sortObjectKeys);
   }
 
-  if (!value || typeof value !== "object") {
+  if (!isPlainObject(value)) {
     return value;
   }
 
@@ -1181,6 +1181,10 @@ function sortObjectKeys(value: unknown): unknown {
       .sort(([left], [right]) => left.localeCompare(right))
       .map(([key, nestedValue]) => [key, sortObjectKeys(nestedValue)]),
   );
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Object.prototype.toString.call(value) === "[object Object]";
 }
 
 function serializeConditionalLogicSegments(segments: AgentSettingsForm["conditionalLogic"]) {

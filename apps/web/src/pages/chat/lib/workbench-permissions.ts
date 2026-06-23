@@ -1,4 +1,4 @@
-import type { AuthSubUser } from "@chatai/contracts";
+import { CONVERSATION_CUSTODY_MODE, type AuthSubUser } from "@chatai/contracts";
 import type {
   Account,
   Conversation,
@@ -62,7 +62,7 @@ export function resolveWorkbenchPermissions({
     canUseConversationActions &&
     !!activeConversation &&
     !isConversationBizInactive &&
-    activeConversation.custodyMode !== "full";
+    activeConversation.custodyMode !== CONVERSATION_CUSTODY_MODE.FULL;
 
   return {
     canSendMessage,
@@ -125,7 +125,7 @@ function resolveComposerPlaceholder({
   canUseChatSend: boolean;
 }) {
   const isActivelyHosted =
-    activeConversation?.custodyMode === "full" &&
+    activeConversation?.custodyMode === CONVERSATION_CUSTODY_MODE.FULL &&
     activeConversation.custodyHostingStatus !== "exited";
 
   if (isActivelyHosted) {

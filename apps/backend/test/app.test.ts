@@ -3304,6 +3304,7 @@ function createSettingsDbMock(currentSubUser: {
           return result;
         },
         innerJoin: () => builder,
+        limit: () => builder,
         orderBy: () => builder,
         select: () => builder,
         where: (column: string, operator: string, value: unknown) => {

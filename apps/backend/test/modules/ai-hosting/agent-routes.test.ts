@@ -32,11 +32,23 @@ describe("AI hosting agent routes", () => {
             name: "护肤小助理",
             updatedAt: 1_718_006_460_000,
           },
+          {
+            id: "303",
+            knowledgeBases: [],
+            model: {
+              id: "11",
+              label: "Doubao-2.0-lite",
+              model: "doubao-2.0-lite",
+              name: "Doubao-2.0-lite",
+            },
+            name: "未发布小助理",
+            updatedAt: 1_718_179_260_000,
+          },
         ],
         pagination: {
           page: 1,
           pageSize: 10,
-          total: 1,
+          total: 2,
         },
       },
       success: true,
@@ -270,12 +282,12 @@ describe("AI hosting agent routes", () => {
     const remove = await app.inject({
       headers: { authorization },
       method: "DELETE",
-      url: "/api/server/ai-hosting/agents/301",
+      url: "/api/server/ai-hosting/agents/303",
     });
 
     expect(remove.statusCode).toBe(200);
     expect(db.deletedAgent).toEqual({
-      id: 301,
+      id: 303,
       values: {
         last_operator_id: 1,
         status: 0,
@@ -434,11 +446,211 @@ describe("AI hosting agent routes", () => {
 
     await app.close();
   });
+
+  it("hydrates hosting settings from seats, seat-agent configs, agents, and publish history without joins", async () => {
+    const { app, authorization, db } = await createAiHostingApp();
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/ai-hosting/hosting-settings",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      data: {
+        accounts: [
+          {
+            agentId: "301",
+            avatarUrl: "https://example.com/seat-102.png",
+            fullAutoAuth: true,
+            id: "102",
+            name: "小助理2",
+            semiAutoAuth: false,
+          },
+          {
+            agentId: null,
+            avatarUrl: "",
+            fullAutoAuth: false,
+            id: "101",
+            name: "小助理1",
+            semiAutoAuth: false,
+          },
+        ],
+        agents: [
+          {
+            id: "301",
+            isPublished: true,
+            name: "护肤小助理",
+          },
+          {
+            id: "303",
+            isPublished: false,
+            name: "未发布小助理",
+          },
+        ],
+      },
+      success: true,
+    });
+    expect(db.joinCalls).toEqual([]);
+    expect(db.seatListWheres).toContainEqual(["seat.uid", "=", 9001]);
+    expect(db.seatListWheres).toContainEqual(["seat.platform", "=", 5]);
+    expect(db.seatListLimitValues).toContain(200);
+    expect(db.hostingConfigListWheres).toContainEqual(["uid", "=", 9001]);
+    expect(db.hostingConfigListWheres).toContainEqual(["user_seat_id", "in", [102, 101]]);
+    expect(db.historyListExecuteCount).toBe(1);
+
+    await app.close();
+  });
+
+  it("saves hosting settings with bulk writes after checking existing seat-agent rows", async () => {
+    const { app, authorization, db } = await createAiHostingApp(["admin"], {
+      bulkHostingSeats: true,
+    });
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "PUT",
+      payload: {
+        agentId: "301",
+        fullAutoAuth: true,
+        semiAutoAuth: true,
+        userSeatIds: ["101", "102", "103", "104"],
+      },
+      url: "/api/server/ai-hosting/hosting-settings",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      data: {
+        accounts: expect.arrayContaining([
+          expect.objectContaining({
+            agentId: "301",
+            fullAutoAuth: true,
+            id: "102",
+            semiAutoAuth: true,
+          }),
+          expect.objectContaining({
+            agentId: "301",
+            fullAutoAuth: true,
+            id: "101",
+            semiAutoAuth: true,
+          }),
+          expect.objectContaining({
+            agentId: "301",
+            fullAutoAuth: true,
+            id: "104",
+            semiAutoAuth: true,
+          }),
+          expect.objectContaining({
+            agentId: "301",
+            fullAutoAuth: true,
+            id: "103",
+            semiAutoAuth: true,
+          }),
+        ]),
+      },
+      success: true,
+    });
+    expect(db.hostingConfigLookupWheres).toContainEqual(["uid", "=", 9001]);
+    expect(db.hostingConfigLookupWheres).toContainEqual([
+      "user_seat_id",
+      "in",
+      expect.arrayContaining([101, 102, 103, 104]),
+    ]);
+    expect(db.insertedHostingConfigBatches).toEqual([
+      [
+        {
+          agent_id: 301,
+          full_auto_auth: 1,
+          semi_auto_auth: 1,
+          uid: 9001,
+          user_seat_id: 101,
+        },
+        {
+          agent_id: 301,
+          full_auto_auth: 1,
+          semi_auto_auth: 1,
+          uid: 9001,
+          user_seat_id: 103,
+        },
+      ],
+    ]);
+    expect(db.insertedHostingConfigs).toEqual(db.insertedHostingConfigBatches[0]);
+    expect(db.updatedHostingConfigs).toEqual([
+      {
+        userSeatIds: [102, 104],
+        values: {
+          agent_id: 301,
+          full_auto_auth: 1,
+          semi_auto_auth: 1,
+          update_time: expect.any(Date),
+        },
+      },
+    ]);
+    expect(db.insertedHostingConfigs[0]).not.toHaveProperty("full_auto_switch");
+    expect(db.insertedHostingConfigs[0]).not.toHaveProperty("semi_auto_switch");
+    expect(db.updatedHostingConfigs[0]?.values).not.toHaveProperty("full_auto_switch");
+    expect(db.updatedHostingConfigs[0]?.values).not.toHaveProperty("semi_auto_switch");
+
+    await app.close();
+  });
+
+  it("rejects hosting settings saves for unpublished agents", async () => {
+    const { app, authorization, db } = await createAiHostingApp();
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "PUT",
+      payload: {
+        agentId: "303",
+        fullAutoAuth: true,
+        semiAutoAuth: false,
+        userSeatIds: ["101"],
+      },
+      url: "/api/server/ai-hosting/hosting-settings",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      error: {
+        code: "AGENT_UNPUBLISHED",
+        message: "Agent 未发布，不能用于托管设置",
+      },
+      success: false,
+    });
+    expect(db.insertedHostingConfigs).toEqual([]);
+    expect(db.updatedHostingConfigs).toEqual([]);
+
+    await app.close();
+  });
+
+  it("prevents deleting agents referenced by hosting settings", async () => {
+    const { app, authorization, db } = await createAiHostingApp();
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "DELETE",
+      url: "/api/server/ai-hosting/agents/301",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      error: {
+        code: "AGENT_IN_USE",
+        message: "Agent 已被托管设置引用，不能删除",
+      },
+      success: false,
+    });
+    expect(db.deletedAgent).toBeUndefined();
+
+    await app.close();
+  });
 });
 
 async function createAiHostingApp(
   roles = ["admin"],
-  options: { uid?: number } = {},
+  options: { bulkHostingSeats?: boolean; uid?: number } = {},
 ) {
   const app = await buildMockedApp();
   const token = app.jwt.sign({
@@ -458,7 +670,7 @@ async function createAiHostingApp(
   };
 }
 
-function createAiHostingDbMock(options: { uid?: number } = {}) {
+function createAiHostingDbMock(options: { bulkHostingSeats?: boolean; uid?: number } = {}) {
   const subUsers = [
     {
       id: 1,
@@ -501,6 +713,18 @@ function createAiHostingDbMock(options: { uid?: number } = {}) {
       uid: 9001,
       update_time: new Date("2024-06-10T08:01:00Z"),
     },
+    {
+      create_time: new Date("2024-06-12T08:00:00Z"),
+      id: 303,
+      last_operator_id: 1,
+      model_id: 11,
+      name: "未发布小助理",
+      operator_id: 1,
+      prompt_config: buildPromptConfig(agentPrompt),
+      status: 1,
+      uid: 9001,
+      update_time: new Date("2024-06-12T08:01:00Z"),
+    },
   ];
   const histories = [
     {
@@ -513,6 +737,70 @@ function createAiHostingDbMock(options: { uid?: number } = {}) {
       uid: 9001,
     },
   ];
+  const seats = [
+    {
+      avatarUrl: "https://example.com/seat-102.png",
+      id: 102,
+      platform: 5,
+      third_avatar: "https://example.com/seat-102.png",
+      third_user_name: "小助理2",
+      uid: 9001,
+    },
+    {
+      avatarUrl: "",
+      id: 101,
+      platform: 5,
+      third_avatar: "",
+      third_user_name: "小助理1",
+      uid: 9001,
+    },
+    ...(options.bulkHostingSeats
+      ? [
+          {
+            avatarUrl: "https://example.com/seat-104.png",
+            id: 104,
+            platform: 5,
+            third_avatar: "https://example.com/seat-104.png",
+            third_user_name: "小助理4",
+            uid: 9001,
+          },
+          {
+            avatarUrl: "https://example.com/seat-103.png",
+            id: 103,
+            platform: 5,
+            third_avatar: "https://example.com/seat-103.png",
+            third_user_name: "小助理3",
+            uid: 9001,
+          },
+        ]
+      : []),
+  ];
+  const hostingConfigs = [
+    {
+      agent_id: 301,
+      full_auto_auth: 1,
+      full_auto_switch: 1,
+      id: 801,
+      semi_auto_auth: 0,
+      semi_auto_switch: 1,
+      uid: 9001,
+      user_seat_id: 102,
+    },
+    ...(options.bulkHostingSeats
+      ? [
+          {
+            agent_id: 301,
+            full_auto_auth: 0,
+            full_auto_switch: 0,
+            id: 802,
+            semi_auto_auth: 1,
+            semi_auto_switch: 0,
+            uid: 9001,
+            user_seat_id: 104,
+          },
+        ]
+      : []),
+  ];
   const state = {
     agentListWheres: [] as Array<[string, string, unknown]>,
     agentListSelects: [] as string[],
@@ -524,12 +812,22 @@ function createAiHostingDbMock(options: { uid?: number } = {}) {
     joinCalls: [] as string[],
     historyListExecuteCount: 0,
     historyLatestLimitValues: [] as number[],
+    hostingConfigListWheres: [] as Array<[string, string, unknown]>,
+    hostingConfigLookupWheres: [] as Array<[string, string, unknown]>,
+    insertedHostingConfigBatches: [] as Array<Array<Record<string, unknown>>>,
+    insertedHostingConfigs: [] as Array<Record<string, unknown>>,
     likeSearchValues: [] as unknown[],
     modelListWheres: [] as Array<[string, string, unknown]>,
     modelUidFilter: undefined as unknown,
     updatedAgent: undefined as
       | { id: number | undefined; values: Record<string, unknown> }
       | undefined,
+    seatListLimitValues: [] as number[],
+    seatListWheres: [] as Array<[string, string, unknown]>,
+    updatedHostingConfigs: [] as Array<{
+      userSeatIds: number[];
+      values: Record<string, unknown>;
+    }>,
     setAgentPrompt: (prompt: string) => {
       agentPrompt = prompt;
       agents[0].prompt_config = buildPromptConfig(prompt);
@@ -570,6 +868,43 @@ function createAiHostingDbMock(options: { uid?: number } = {}) {
             return histories
               .filter((history) => !agentIdFilter || agentIdFilter.includes(history.agent_id))
               .sort((left, right) => right.id - left.id);
+          }
+
+          if (table === "xy_wap_embed_user_seat as seat") {
+            state.seatListWheres = wheres;
+            const uid = Number(wheres.find(([column]) => column === "seat.uid")?.[2]);
+            const platform = Number(wheres.find(([column]) => column === "seat.platform")?.[2]);
+            const seatIds = wheres.find(([column]) => column === "seat.id")?.[2] as
+              | number[]
+              | undefined;
+
+            return seats.filter(
+              (seat) =>
+                seat.uid === uid &&
+                seat.platform === platform &&
+                (!seatIds || seatIds.includes(seat.id)),
+            );
+          }
+
+          if (table === "xy_wap_embed_user_seat_agent") {
+            const seatIds = wheres.find(([column]) => column === "user_seat_id")?.[2] as
+              | number[]
+              | undefined;
+            const uid = Number(wheres.find(([column]) => column === "uid")?.[2]);
+
+            if (seatIds) {
+              if (state.hostingConfigListWheres.length === 0) {
+                state.hostingConfigListWheres = wheres;
+              } else {
+                state.hostingConfigLookupWheres = wheres;
+              }
+            }
+
+            return hostingConfigs.filter(
+              (config) =>
+                config.uid === uid &&
+                (!seatIds || seatIds.includes(config.user_seat_id)),
+            );
           }
 
           throw new Error(`Unexpected execute table: ${table}`);
@@ -635,6 +970,19 @@ function createAiHostingDbMock(options: { uid?: number } = {}) {
             );
           }
 
+          if (table === "xy_wap_embed_user_seat_agent") {
+            const uid = Number(wheres.find(([column]) => column === "uid")?.[2]);
+            const agentId = Number(wheres.find(([column]) => column === "agent_id")?.[2]);
+            const userSeatId = Number(wheres.find(([column]) => column === "user_seat_id")?.[2]);
+
+            return hostingConfigs.find(
+              (config) =>
+                config.uid === uid &&
+                (!Number.isFinite(agentId) || config.agent_id === agentId) &&
+                (!Number.isFinite(userSeatId) || config.user_seat_id === userSeatId),
+            );
+          }
+
           throw new Error(`Unexpected executeTakeFirst table: ${table}`);
         },
         innerJoin: (tableName: string) => {
@@ -644,6 +992,8 @@ function createAiHostingDbMock(options: { uid?: number } = {}) {
         limit: (value: number) => {
           if (table === "xy_wap_embed_agent_history") {
             state.historyLatestLimitValues.push(value);
+          } else if (table === "xy_wap_embed_user_seat as seat") {
+            state.seatListLimitValues.push(value);
           }
 
           return builder;
@@ -674,8 +1024,11 @@ function createAiHostingDbMock(options: { uid?: number } = {}) {
     insertInto(table: string) {
       const builder = {
         executeTakeFirstOrThrow: async () => ({ insertId: table === "xy_wap_embed_agent" ? 302 : 702 }),
-        values: (values: Record<string, unknown>) => {
+        values: (values: Record<string, unknown> | Array<Record<string, unknown>>) => {
           if (table === "xy_wap_embed_agent") {
+            if (Array.isArray(values)) {
+              throw new Error("Agent insert expects one row");
+            }
             state.insertedAgent = values;
             agents.push({
               create_time: new Date("2024-06-11T08:00:00Z"),
@@ -692,7 +1045,30 @@ function createAiHostingDbMock(options: { uid?: number } = {}) {
             return builder;
           }
 
+          if (table === "xy_wap_embed_user_seat_agent") {
+            const rows = Array.isArray(values) ? values : [values];
+            state.insertedHostingConfigBatches.push(rows);
+
+            for (const row of rows) {
+              state.insertedHostingConfigs.push(row);
+              hostingConfigs.push({
+                agent_id: Number(row.agent_id),
+                full_auto_auth: Number(row.full_auto_auth),
+                full_auto_switch: Number(row.full_auto_switch ?? 0),
+                id: 802 + state.insertedHostingConfigs.length,
+                semi_auto_auth: Number(row.semi_auto_auth),
+                semi_auto_switch: Number(row.semi_auto_switch ?? 0),
+                uid: Number(row.uid),
+                user_seat_id: Number(row.user_seat_id),
+              });
+            }
+            return builder;
+          }
+
           if (table === "xy_wap_embed_agent_history") {
+            if (Array.isArray(values)) {
+              throw new Error("Agent history insert expects one row");
+            }
             state.insertedHistories.push(values);
             histories.push({
               agent_id: Number(values.agent_id),
@@ -713,7 +1089,7 @@ function createAiHostingDbMock(options: { uid?: number } = {}) {
       return builder;
     },
     updateTable(table: string) {
-      if (table !== "xy_wap_embed_agent") {
+      if (table !== "xy_wap_embed_agent" && table !== "xy_wap_embed_user_seat_agent") {
         throw new Error(`Unexpected update table: ${table}`);
       }
 
@@ -721,6 +1097,28 @@ function createAiHostingDbMock(options: { uid?: number } = {}) {
       let updateValues: Record<string, unknown> = {};
       const builder = {
         execute: async () => {
+          if (table === "xy_wap_embed_user_seat_agent") {
+            const uid = Number(wheres.find(([column]) => column === "uid")?.[2]);
+            const userSeatWhere = wheres.find(([column]) => column === "user_seat_id");
+            const userSeatIds =
+              userSeatWhere?.[1] === "in"
+                ? (userSeatWhere[2] as number[])
+                : [Number(userSeatWhere?.[2])];
+
+            for (const userSeatId of userSeatIds) {
+              const config = hostingConfigs.find(
+                (item) => item.uid === uid && item.user_seat_id === userSeatId,
+              );
+
+              if (config) {
+                Object.assign(config, updateValues);
+              }
+            }
+
+            state.updatedHostingConfigs.push({ userSeatIds, values: updateValues });
+            return [];
+          }
+
           const id = Number(wheres.find(([column]) => column === "id")?.[2]);
           const agent = agents.find((item) => item.id === id);
 

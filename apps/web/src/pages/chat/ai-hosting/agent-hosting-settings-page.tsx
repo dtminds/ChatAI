@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import type { AiHostingAgentListItem } from "@chatai/contracts";
+import type {
+  AiHostingSettingsAccount,
+  AiHostingSettingsAgentOption,
+} from "@chatai/contracts";
 import { MoreHorizontalIcon, Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useNavigate } from "react-router-dom";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -33,85 +36,60 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  resolveTablePagination,
-  TablePagination,
-} from "@/components/ui/table-pagination";
+import { Spinner } from "@/components/ui/spinner";
 import { isRequestError } from "@/lib/request";
 import { cn } from "@/lib/utils";
-import { listAiHostingAgents } from "./agent-service";
+import { listAiHostingSettings, updateAiHostingSettings } from "./agent-service";
 import { AiHostingLayout, AiHostingPageHeader } from "./ai-hosting-layout";
 
-type HostingAccount = {
-  associatedAgentId: string | null;
-  autoHostingEnabled: boolean;
-  id: string;
-  name: string;
-  scriptRecommendationEnabled: boolean;
-};
+type HostingAccount = AiHostingSettingsAccount;
+type HostingAgent = AiHostingSettingsAgentOption;
 
 type HostingSettingsDraft = {
-  agentId: string | null;
-  autoHostingEnabled: boolean;
-  scriptRecommendationEnabled: boolean;
+  agentId: string;
+  fullAutoAuth: boolean;
+  semiAutoAuth: boolean;
 };
 
-const HOSTING_SETTINGS_PAGE_SIZE = 10;
 const SELECTED_ACCOUNT_PREVIEW_LIMIT = 5;
-
-const initialHostingAccounts: HostingAccount[] = [
-  {
-    id: "wecom-account-1",
-    name: "小助理1",
-    associatedAgentId: null,
-    autoHostingEnabled: false,
-    scriptRecommendationEnabled: false,
-  },
-  {
-    id: "wecom-account-2",
-    name: "小助理2",
-    associatedAgentId: null,
-    autoHostingEnabled: true,
-    scriptRecommendationEnabled: true,
-  },
-  {
-    id: "wecom-account-3",
-    name: "小助理3",
-    associatedAgentId: null,
-    autoHostingEnabled: true,
-    scriptRecommendationEnabled: true,
-  },
-];
 
 export function AgentHostingSettingsPage() {
   const navigate = useNavigate();
-  const [agents, setAgents] = useState<AiHostingAgentListItem[]>([]);
-  const [accounts, setAccounts] = useState(initialHostingAccounts);
+  const [agents, setAgents] = useState<HostingAgent[]>([]);
+  const [accounts, setAccounts] = useState<HostingAccount[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [currentPage, setCurrentPage] = useState(1);
   const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([]);
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
   const [settingsTargetAccountIds, setSettingsTargetAccountIds] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
 
   useEffect(() => {
     let ignore = false;
 
-    async function loadAgents() {
+    async function loadHostingSettings() {
+      setLoading(true);
+      setErrorMessage("");
+
       try {
-        const response = await listAiHostingAgents({ page: 1, pageSize: 100 });
+        const response = await listAiHostingSettings();
 
         if (!ignore) {
+          setAccounts(response.accounts);
           setAgents(response.agents);
         }
       } catch (error) {
         if (!ignore) {
-          setErrorMessage(isRequestError(error) ? error.message : "Agent 列表加载失败");
+          setErrorMessage(isRequestError(error) ? error.message : "托管设置加载失败");
+        }
+      } finally {
+        if (!ignore) {
+          setLoading(false);
         }
       }
     }
 
-    void loadAgents();
+    void loadHostingSettings();
 
     return () => {
       ignore = true;
@@ -128,26 +106,17 @@ export function AgentHostingSettingsPage() {
     return accounts.filter((account) => account.name.toLowerCase().includes(normalizedQuery));
   }, [accounts, searchQuery]);
 
-  const { activePage, totalPages } = resolveTablePagination({
-    page: currentPage,
-    pageSize: HOSTING_SETTINGS_PAGE_SIZE,
-    total: filteredAccounts.length,
-  });
-  const pagedAccounts = useMemo(() => {
-    const start = (activePage - 1) * HOSTING_SETTINGS_PAGE_SIZE;
-    return filteredAccounts.slice(start, start + HOSTING_SETTINGS_PAGE_SIZE);
-  }, [activePage, filteredAccounts]);
-  const pagedAccountIdSet = useMemo(
-    () => new Set(pagedAccounts.map((account) => account.id)),
-    [pagedAccounts],
+  const visibleAccountIdSet = useMemo(
+    () => new Set(filteredAccounts.map((account) => account.id)),
+    [filteredAccounts],
   );
   const visibleSelectedAccountIds = useMemo(
-    () => selectedAccountIds.filter((id) => pagedAccountIdSet.has(id)),
-    [pagedAccountIdSet, selectedAccountIds],
+    () => selectedAccountIds.filter((id) => visibleAccountIdSet.has(id)),
+    [selectedAccountIds, visibleAccountIdSet],
   );
   const selectedVisibleCount = visibleSelectedAccountIds.length;
   const allVisibleSelected =
-    pagedAccounts.length > 0 && selectedVisibleCount === pagedAccounts.length;
+    filteredAccounts.length > 0 && selectedVisibleCount === filteredAccounts.length;
   const headerCheckboxState: boolean | "indeterminate" =
     selectedVisibleCount === 0
       ? false
@@ -158,13 +127,13 @@ export function AgentHostingSettingsPage() {
   function toggleAllAccounts(checked: boolean) {
     if (checked) {
       setSelectedAccountIds((current) => [
-        ...new Set([...current, ...pagedAccounts.map((account) => account.id)]),
+        ...new Set([...current, ...filteredAccounts.map((account) => account.id)]),
       ]);
       return;
     }
 
     setSelectedAccountIds((current) =>
-      current.filter((id) => !pagedAccountIdSet.has(id)),
+      current.filter((id) => !visibleAccountIdSet.has(id)),
     );
   }
 
@@ -181,22 +150,23 @@ export function AgentHostingSettingsPage() {
     setSettingsDialogOpen(true);
   }
 
-  function handleSaveSettings(accountIds: string[], draft: HostingSettingsDraft) {
-    setAccounts((current) =>
-      current.map((account) => {
-        if (!accountIds.includes(account.id)) {
-          return account;
-        }
+  async function handleSaveSettings(accountIds: string[], draft: HostingSettingsDraft) {
+    try {
+      const response = await updateAiHostingSettings({
+        agentId: draft.agentId,
+        fullAutoAuth: draft.fullAutoAuth,
+        semiAutoAuth: draft.semiAutoAuth,
+        userSeatIds: accountIds,
+      });
 
-        return {
-          ...account,
-          associatedAgentId: draft.agentId,
-          autoHostingEnabled: draft.autoHostingEnabled,
-          scriptRecommendationEnabled: draft.scriptRecommendationEnabled,
-        };
-      }),
-    );
-    setSettingsDialogOpen(false);
+      setAccounts(response.accounts);
+      setAgents(response.agents);
+      setSelectedAccountIds((current) => current.filter((id) => !accountIds.includes(id)));
+      setSettingsDialogOpen(false);
+      setErrorMessage("");
+    } catch (error) {
+      throw new Error(isRequestError(error) ? error.message : "托管设置保存失败");
+    }
   }
 
   function handleGoToAddAgent() {
@@ -208,7 +178,7 @@ export function AgentHostingSettingsPage() {
     <AiHostingLayout title="托管设置">
       <div className="space-y-6">
         <AiHostingPageHeader
-          description="配置企微账号关联的 Agent 和托管能力"
+          description="配置托管账号关联的 Agent 和托管策略"
           title="托管设置"
         />
 
@@ -229,13 +199,10 @@ export function AgentHostingSettingsPage() {
                 strokeWidth={1.8}
               />
               <Input
-                aria-label="搜索企微账号"
+                aria-label="搜索托管账号"
                 className="h-10 rounded-[8px] pl-9"
-                onChange={(event) => {
-                  setSearchQuery(event.target.value);
-                  setCurrentPage(1);
-                }}
-                placeholder="搜索企微账号"
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="搜索托管账号"
                 value={searchQuery}
               />
             </div>
@@ -258,19 +225,14 @@ export function AgentHostingSettingsPage() {
 
           <div className="mt-4">
             <HostingSettingsTable
-              accounts={pagedAccounts}
+              accounts={filteredAccounts}
               agents={agents}
               headerCheckboxState={headerCheckboxState}
+              loading={loading}
               onOpenSettings={openSettingsDialog}
               onToggleAccount={toggleAccountSelection}
               onToggleAll={toggleAllAccounts}
               selectedAccountIds={selectedAccountIds}
-            />
-            <TablePagination
-              onPageChange={setCurrentPage}
-              page={activePage}
-              total={filteredAccounts.length}
-              totalPages={totalPages}
             />
           </div>
         </section>
@@ -299,21 +261,24 @@ function HostingSettingsDialog({
   targetAccountIds,
 }: {
   accounts: HostingAccount[];
-  agents: AiHostingAgentListItem[];
+  agents: HostingAgent[];
   onGoToAddAgent: () => void;
   onOpenChange: (open: boolean) => void;
-  onSave: (accountIds: string[], draft: HostingSettingsDraft) => void;
+  onSave: (accountIds: string[], draft: HostingSettingsDraft) => void | Promise<void>;
   open: boolean;
   targetAccountIds: string[];
 }) {
   const [agentId, setAgentId] = useState<string | undefined>(undefined);
-  const [autoHostingEnabled, setAutoHostingEnabled] = useState(false);
-  const [scriptRecommendationEnabled, setScriptRecommendationEnabled] = useState(false);
+  const [fullAutoAuth, setFullAutoAuth] = useState(false);
+  const [semiAutoAuth, setSemiAutoAuth] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [validationMessage, setValidationMessage] = useState("");
 
   const targetAccounts = useMemo(
     () => accounts.filter((account) => targetAccountIds.includes(account.id)),
     [accounts, targetAccountIds],
   );
+  const dialogTitle = targetAccounts.length === 1 ? "设置" : "批量设置";
 
   useEffect(() => {
     if (!open || targetAccounts.length === 0) {
@@ -323,49 +288,69 @@ function HostingSettingsDialog({
     if (targetAccounts.length === 1) {
       const account = targetAccounts[0];
       const matchedAgentId =
-        account.associatedAgentId && agents.some((agent) => agent.id === account.associatedAgentId)
-          ? account.associatedAgentId
+        account.agentId &&
+        agents.some((agent) => agent.id === account.agentId && agent.isPublished)
+          ? account.agentId
           : undefined;
 
       setAgentId(matchedAgentId);
-      setAutoHostingEnabled(account.autoHostingEnabled);
-      setScriptRecommendationEnabled(account.scriptRecommendationEnabled);
+      setFullAutoAuth(account.fullAutoAuth);
+      setSemiAutoAuth(account.semiAutoAuth);
+      setSaving(false);
+      setValidationMessage("");
       return;
     }
 
     setAgentId(undefined);
-    setAutoHostingEnabled(false);
-    setScriptRecommendationEnabled(false);
+    setFullAutoAuth(false);
+    setSemiAutoAuth(false);
+    setSaving(false);
+    setValidationMessage("");
   }, [agents, open, targetAccounts]);
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (targetAccountIds.length === 0) {
+    if (targetAccountIds.length === 0 || saving) {
       return;
     }
 
-    onSave(targetAccountIds, {
-      agentId: agentId ?? null,
-      autoHostingEnabled,
-      scriptRecommendationEnabled,
-    });
+    const selectedAgent = agents.find((agent) => agent.id === agentId);
+
+    if (!selectedAgent?.isPublished) {
+      setValidationMessage("请选择已发布 Agent");
+      return;
+    }
+
+    setSaving(true);
+    setValidationMessage("");
+
+    try {
+      await onSave(targetAccountIds, {
+        agentId: selectedAgent.id,
+        fullAutoAuth,
+        semiAutoAuth,
+      });
+    } catch (error) {
+      setValidationMessage(getErrorMessage(error, "托管设置保存失败"));
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogContent
         aria-describedby={undefined}
-        className="gap-0 p-0 sm:max-w-[480px]"
+        className="gap-0 p-0 sm:max-w-xl"
         onOpenAutoFocus={(event) => event.preventDefault()}
       >
         <DialogHeader className="px-6 pt-6">
-          <DialogTitle>批量设置</DialogTitle>
+          <DialogTitle>{dialogTitle}</DialogTitle>
         </DialogHeader>
 
         <form className="space-y-5 px-6 py-5" onSubmit={handleSubmit}>
-          <div className="space-y-2">
-            <Label>已选企微账号</Label>
+          <div>
             <SelectedAccountsPreview accounts={targetAccounts} />
           </div>
 
@@ -374,27 +359,37 @@ function HostingSettingsDialog({
             <AgentAssociationField
               agentId={agentId}
               agents={agents}
-              onAgentIdChange={setAgentId}
+              onAgentIdChange={(value) => {
+                setAgentId(value);
+                setValidationMessage("");
+              }}
               onGoToAddAgent={onGoToAddAgent}
             />
+            {validationMessage ? (
+              <p className="text-sm text-destructive" role="alert">
+                {validationMessage}
+              </p>
+            ) : null}
           </div>
 
-          <div className="flex items-center justify-between gap-4">
-            <Label htmlFor="hosting-settings-auto-hosting">全自动托管权限</Label>
-            <Switch
-              checked={autoHostingEnabled}
-              id="hosting-settings-auto-hosting"
-              onCheckedChange={setAutoHostingEnabled}
-            />
-          </div>
-
-          <div className="flex items-center justify-between gap-4">
-            <Label htmlFor="hosting-settings-script-recommendation">话术推荐</Label>
-            <Switch
-              checked={scriptRecommendationEnabled}
-              id="hosting-settings-script-recommendation"
-              onCheckedChange={setScriptRecommendationEnabled}
-            />
+          <div className="space-y-2">
+            <h3 className="text-sm font-medium text-foreground">托管设置</h3>
+            <div className="overflow-hidden rounded-[8px] border border-border">
+              <PermissionSettingRow
+                checked={fullAutoAuth}
+                description="客服可开启 AI 回复， Agent 将自动回复客户的消息"
+                id="hosting-settings-auto-hosting"
+                onCheckedChange={setFullAutoAuth}
+                title="允许开启 AI 回复"
+              />
+              <PermissionSettingRow
+                checked={semiAutoAuth}
+                description="Agent 会自动生成回复建议，提升客服服务效率"
+                id="hosting-settings-script-recommendation"
+                onCheckedChange={setSemiAutoAuth}
+                title="允许话术推荐"
+              />
+            </div>
           </div>
 
           <DialogFooter>
@@ -403,11 +398,46 @@ function HostingSettingsDialog({
                 取消
               </Button>
             </DialogClose>
-            <Button type="submit">保存设置</Button>
+            <Button disabled={saving} type="submit">
+              {saving ? (
+                <>
+                  <Spinner aria-hidden="true" size={14} />
+                  <span>保存中</span>
+                </>
+              ) : (
+                "保存设置"
+              )}
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function PermissionSettingRow({
+  checked,
+  description,
+  id,
+  onCheckedChange,
+  title,
+}: {
+  checked: boolean;
+  description: string;
+  id: string;
+  onCheckedChange: (checked: boolean) => void;
+  title: string;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4 border-b border-border px-4 py-3.5 last:border-b-0">
+      <div className="min-w-0 space-y-1">
+        <Label className="font-medium text-foreground" htmlFor={id}>
+          {title}
+        </Label>
+        <p className="text-xs text-muted-foreground">{description}</p>
+      </div>
+      <Switch checked={checked} id={id} onCheckedChange={onCheckedChange} />
+    </div>
   );
 }
 
@@ -418,7 +448,7 @@ function AgentAssociationField({
   onGoToAddAgent,
 }: {
   agentId: string | undefined;
-  agents: AiHostingAgentListItem[];
+  agents: HostingAgent[];
   onAgentIdChange: (agentId: string) => void;
   onGoToAddAgent: () => void;
 }) {
@@ -445,7 +475,7 @@ function AgentAssociationField({
       </SelectTrigger>
       <SelectContent>
         {agents.map((agent) => (
-          <SelectItem key={agent.id} value={agent.id}>
+          <SelectItem disabled={!agent.isPublished} key={agent.id} value={agent.id}>
             {agent.name}
           </SelectItem>
         ))}
@@ -465,12 +495,15 @@ function SelectedAccountsPreview({ accounts }: { accounts: HostingAccount[] }) {
         {previewAccounts.map((account, index) => (
           <Avatar
             className={cn(
-              "size-8 rounded-full border-2 border-background",
+              "size-10 rounded-full border-2 border-background",
               index > 0 && "-ml-2",
             )}
             key={account.id}
             title={account.name}
           >
+            {account.avatarUrl ? (
+              <AvatarImage alt={`${account.name}头像`} src={account.avatarUrl} />
+            ) : null}
             <AvatarFallback className="rounded-full bg-emerald-500 text-xs font-medium text-white">
               {account.name.slice(0, 1)}
             </AvatarFallback>
@@ -479,7 +512,7 @@ function SelectedAccountsPreview({ accounts }: { accounts: HostingAccount[] }) {
         {remainingCount > 0 ? (
           <span
             aria-hidden="true"
-            className="-ml-2 inline-flex size-8 items-center justify-center rounded-full border-2 border-background bg-muted text-muted-foreground"
+            className="-ml-2 inline-flex size-10 items-center justify-center rounded-full border-2 border-background bg-muted text-muted-foreground"
           >
             <HugeiconsIcon icon={MoreHorizontalIcon} size={16} strokeWidth={1.8} />
           </span>
@@ -496,14 +529,16 @@ function HostingSettingsTable({
   accounts,
   agents,
   headerCheckboxState,
+  loading,
   onOpenSettings,
   onToggleAccount,
   onToggleAll,
   selectedAccountIds,
 }: {
   accounts: HostingAccount[];
-  agents: AiHostingAgentListItem[];
+  agents: HostingAgent[];
   headerCheckboxState: boolean | "indeterminate";
+  loading: boolean;
   onOpenSettings: (accountIds: string[]) => void;
   onToggleAccount: (accountId: string) => void;
   onToggleAll: (checked: boolean) => void;
@@ -519,20 +554,34 @@ function HostingSettingsTable({
           <TableRow className="hover:bg-transparent">
             <TableHead className="h-11 w-10">
               <Checkbox
-                aria-label="全选企微账号"
+                aria-label="全选托管账号"
                 checked={headerCheckboxState}
+                disabled={loading || accounts.length === 0}
                 onCheckedChange={(checked) => onToggleAll(checked === true)}
               />
             </TableHead>
-            <TableHead className="h-11 w-[24%]">企微账号</TableHead>
+            <TableHead className="h-11 w-[24%]">托管账号</TableHead>
             <TableHead className="h-11 w-[16%]">关联 Agent</TableHead>
-            <TableHead className="h-11 w-[18%]">全自动托管权限</TableHead>
-            <TableHead className="h-11 w-[16%]">话术推荐</TableHead>
+            <TableHead className="h-11 w-[18%]">允许开启 AI 回复</TableHead>
+            <TableHead className="h-11 w-[16%]">允许话术推荐</TableHead>
             <TableHead className="h-11 w-[100px] text-right">操作</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {accounts.length === 0 ? (
+          {loading ? (
+            <TableRow>
+              <TableCell className="py-10 text-center" colSpan={6}>
+                <div
+                  aria-label="正在加载"
+                  className="inline-flex items-center gap-2 text-sm text-muted-foreground"
+                  role="status"
+                >
+                  <Spinner aria-hidden="true" size={14} />
+                  <span>正在加载</span>
+                </div>
+              </TableCell>
+            </TableRow>
+          ) : accounts.length === 0 ? (
             <TableRow>
               <TableCell className="py-10 text-center text-sm text-muted-foreground" colSpan={6}>
                 暂无数据
@@ -549,18 +598,18 @@ function HostingSettingsTable({
                   />
                 </TableCell>
                 <TableCell className="py-4">
-                  <WeComAccountIdentity name={account.name} />
+                  <WeComAccountIdentity avatarUrl={account.avatarUrl} name={account.name} />
                 </TableCell>
                 <TableCell className="py-4 text-muted-foreground">
-                  {account.associatedAgentId
-                    ? agentNameById.get(account.associatedAgentId) ?? "-"
+                  {account.agentId
+                    ? agentNameById.get(account.agentId) ?? "-"
                     : "-"}
                 </TableCell>
                 <TableCell className="py-4">
-                  <FeatureStatus enabled={account.autoHostingEnabled} />
+                  <FeatureStatus enabled={account.fullAutoAuth} />
                 </TableCell>
                 <TableCell className="py-4">
-                  <FeatureStatus enabled={account.scriptRecommendationEnabled} />
+                  <FeatureStatus enabled={account.semiAutoAuth} />
                 </TableCell>
                 <TableCell className="py-4 text-right">
                   <Button
@@ -581,10 +630,11 @@ function HostingSettingsTable({
   );
 }
 
-function WeComAccountIdentity({ name }: { name: string }) {
+function WeComAccountIdentity({ avatarUrl, name }: { avatarUrl: string; name: string }) {
   return (
     <div className="flex items-center gap-2.5">
       <Avatar className="size-8 rounded-[8px]">
+        {avatarUrl ? <AvatarImage alt={`${name}头像`} src={avatarUrl} /> : null}
         <AvatarFallback className="rounded-[8px] bg-muted text-muted-foreground" />
       </Avatar>
       <span className="font-medium text-foreground">{name}</span>
@@ -598,4 +648,16 @@ function FeatureStatus({ enabled }: { enabled: boolean }) {
       {enabled ? "启用" : "关闭"}
     </span>
   );
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  if (error && typeof error === "object" && "message" in error) {
+    const message = (error as { message?: unknown }).message;
+
+    if (typeof message === "string" && message.trim()) {
+      return message;
+    }
+  }
+
+  return fallback;
 }

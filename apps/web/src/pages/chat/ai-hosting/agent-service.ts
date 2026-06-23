@@ -5,6 +5,8 @@ import type {
   AiHostingAgentRemoveResponse,
   AiHostingAgentSaveRequest,
   AiHostingAgentSettingsSaveRequest,
+  AiHostingSettingsResponse,
+  AiHostingSettingsUpdateRequest,
   AiHostingModelListResponse,
   ApiSuccessEnvelope,
 } from "@chatai/contracts";
@@ -43,6 +45,23 @@ export async function listAiHostingModels() {
   const response = await http.get<ApiSuccessEnvelope<AiHostingModelListResponse>>(
     "/server/ai-hosting/models",
   );
+
+  return response.data;
+}
+
+export async function listAiHostingSettings() {
+  const response = await http.get<ApiSuccessEnvelope<AiHostingSettingsResponse>>(
+    "/server/ai-hosting/hosting-settings",
+  );
+
+  return response.data;
+}
+
+export async function updateAiHostingSettings(payload: AiHostingSettingsUpdateRequest) {
+  const response = await http.put<
+    ApiSuccessEnvelope<AiHostingSettingsResponse>,
+    AiHostingSettingsUpdateRequest
+  >("/server/ai-hosting/hosting-settings", payload);
 
   return response.data;
 }

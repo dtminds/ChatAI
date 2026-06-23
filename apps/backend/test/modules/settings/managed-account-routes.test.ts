@@ -13,7 +13,16 @@ describe("settings managed-account routes", () => {
 
     expect(response.statusCode).toBe(200);
     expect(db.joinCalls).toEqual([]);
+    expect(db.limitCalls).toContainEqual({
+      table: "xy_wap_embed_user_seat as seat",
+      value: 200,
+    });
     expect(db.managedAccountSeatWheres).not.toContainEqual(["seat.biz_status", "=", 1]);
+    expect(db.relationListWheres).toContainEqual([
+      "relation.user_seat_id",
+      "in",
+      [101, 102],
+    ]);
     expect(response.json()).toEqual({
       data: {
         managedAccounts: [
@@ -241,7 +250,9 @@ function createSettingsDbMock() {
     deletedRelationSeatIds: [] as number[],
     insertedRelations: [] as Array<Record<string, unknown>>,
     joinCalls: [] as Array<{ method: string; table: unknown }>,
+    limitCalls: [] as Array<{ table: string; value: number }>,
     managedAccountSeatWheres: [] as Array<[string, string, unknown]>,
+    relationListWheres: [] as Array<[string, string, unknown]>,
     subAccountValidationWheres: [] as Array<[string, string, unknown]>,
     selectFrom(table: string) {
       const wheres: Array<[string, string, unknown]> = [];
@@ -295,6 +306,7 @@ function createSettingsDbMock() {
           }
 
           if (table === "xy_wap_embed_user_seat_sub_relation as relation") {
+            state.relationListWheres = wheres;
             const seatId = wheres.find(([column]) => column === "relation.user_seat_id")?.[2];
 
             return [
@@ -303,7 +315,15 @@ function createSettingsDbMock() {
               ),
               ...state.insertedRelations,
             ]
-              .filter((relation) => seatId === undefined || relation.user_seat_id === seatId)
+              .filter((relation) => {
+                if (seatId === undefined) {
+                  return true;
+                }
+
+                return Array.isArray(seatId)
+                  ? seatId.includes(relation.user_seat_id)
+                  : relation.user_seat_id === seatId;
+              })
               .map((relation) => ({
                 seat_id: relation.user_seat_id,
                 sub_id: relation.sub_id,
@@ -352,6 +372,10 @@ function createSettingsDbMock() {
         groupBy: () => builder,
         innerJoin: (table: unknown) => {
           state.joinCalls.push({ method: "innerJoin", table });
+          return builder;
+        },
+        limit: (value: number) => {
+          state.limitCalls.push({ table, value });
           return builder;
         },
         orderBy: () => builder,

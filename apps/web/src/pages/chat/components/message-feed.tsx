@@ -1092,7 +1092,8 @@ export function canCollectMaterial(message: ChatMessage) {
   return (
     message.content.type === "file" ||
     message.content.type === "mini-program" ||
-    message.content.type === "h5"
+    message.content.type === "h5" ||
+    message.content.type === "sphfeed"
   );
 }
 

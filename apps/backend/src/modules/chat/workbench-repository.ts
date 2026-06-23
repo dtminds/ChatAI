@@ -68,6 +68,7 @@ import {
   mapMaterialCollectionItem,
   type MaterialCollectionRow,
 } from "./material-collection-mappers.js";
+import { readBooleanFlag } from "./workbench-flags.js";
 const BIZ_STATUS_HIDDEN = 0;
 const BIZ_STATUS_ACTIVE = 1;
 const CHAT_TYPE_SINGLE = 1;
@@ -187,7 +188,10 @@ type ConversationHydrationSources = {
 };
 
 type SeatBaseRow = {
+  ai_hosting_enabled?: number | string | boolean | null;
   avatar: string | null;
+  full_auto_auth?: number | string | boolean | null;
+  full_auto_switch?: number | string | boolean | null;
   host_sub_id: number | string | null;
   id: number | string;
   is_online: number | null;
@@ -2501,6 +2505,11 @@ export class WorkbenchRepository {
           .onRef("seat.uid", "=", "relation.uid")
           .onRef("seat.platform", "=", "relation.platform"),
       )
+      .leftJoin("xy_wap_embed_user_seat_agent as seat_agent", (join) =>
+        join
+          .onRef("seat_agent.user_seat_id", "=", "seat.id")
+          .onRef("seat_agent.uid", "=", "seat.uid"),
+      )
       .select([
         "seat.id as id",
         "seat.uid as uid",
@@ -2510,6 +2519,8 @@ export class WorkbenchRepository {
         "seat.third_avatar as avatar",
         "seat.is_online as is_online",
         "seat.host_sub_id as host_sub_id",
+        "seat_agent.full_auto_auth as full_auto_auth",
+        "seat_agent.full_auto_switch as full_auto_switch",
       ])
       .where("relation.sub_id", "=", subUserNumericId)
       .where("relation.uid", "=", scope.uid)
@@ -3108,17 +3119,24 @@ export class WorkbenchRepository {
 
     const seat = await this.db
       .selectFrom("xy_wap_embed_user_seat")
+      .leftJoin("xy_wap_embed_user_seat_agent as seat_agent", (join) =>
+        join
+          .onRef("seat_agent.user_seat_id", "=", "xy_wap_embed_user_seat.id")
+          .onRef("seat_agent.uid", "=", "xy_wap_embed_user_seat.uid"),
+      )
       .select([
-        "id",
-        "uid",
-        "platform",
-        "third_userid",
-        "third_user_name",
-        "third_avatar as avatar",
-        "is_online",
-        "host_sub_id",
+        "xy_wap_embed_user_seat.id as id",
+        "xy_wap_embed_user_seat.uid as uid",
+        "xy_wap_embed_user_seat.platform as platform",
+        "xy_wap_embed_user_seat.third_userid as third_userid",
+        "xy_wap_embed_user_seat.third_user_name as third_user_name",
+        "xy_wap_embed_user_seat.third_avatar as avatar",
+        "xy_wap_embed_user_seat.is_online as is_online",
+        "xy_wap_embed_user_seat.host_sub_id as host_sub_id",
+        "seat_agent.full_auto_auth as full_auto_auth",
+        "seat_agent.full_auto_switch as full_auto_switch",
       ])
-      .where("id", "=", seatNumericId)
+      .where("xy_wap_embed_user_seat.id", "=", seatNumericId)
       .executeTakeFirst() as SeatBaseRow | undefined;
 
     if (!seat) {
@@ -3140,6 +3158,11 @@ export class WorkbenchRepository {
 
     const rows = await this.db
       .selectFrom("xy_wap_embed_user_seat as seat")
+      .leftJoin("xy_wap_embed_user_seat_agent as seat_agent", (join) =>
+        join
+          .onRef("seat_agent.user_seat_id", "=", "seat.id")
+          .onRef("seat_agent.uid", "=", "seat.uid"),
+      )
       .leftJoin("xy_wap_embed_conversation as conversation", (join) =>
         join
           .onRef("conversation.third_userid", "=", "seat.third_userid")
@@ -3154,6 +3177,8 @@ export class WorkbenchRepository {
         "seat.third_avatar as avatar",
         "seat.is_online as is_online",
         "seat.host_sub_id as host_sub_id",
+        "seat_agent.full_auto_auth as full_auto_auth",
+        "seat_agent.full_auto_switch as full_auto_switch",
         expressionBuilder.fn
           .coalesce(
             expressionBuilder.fn.sum<number>("conversation.unread_cnt"),
@@ -3170,6 +3195,8 @@ export class WorkbenchRepository {
         "seat.third_avatar",
         "seat.is_online",
         "seat.host_sub_id",
+        "seat_agent.full_auto_auth",
+        "seat_agent.full_auto_switch",
       ])
       .execute();
 
@@ -3240,6 +3267,7 @@ export class WorkbenchRepository {
         "conversation.id as id",
         "conversation.chat_type as chat_type",
         "conversation.create_time as create_time",
+        "conversation.full_auto_switch as full_auto_switch",
         "conversation.last_audit_info_id as last_audit_info_id",
         "conversation.third_userid as third_userid",
         "conversation.third_external_userid as third_external_userid",
@@ -3354,6 +3382,7 @@ export class WorkbenchRepository {
         "conversation.id as id",
         "conversation.chat_type as chat_type",
         "conversation.create_time as create_time",
+        "conversation.full_auto_switch as full_auto_switch",
         "conversation.last_audit_info_id as last_audit_info_id",
         "conversation.third_userid as third_userid",
         "conversation.third_external_userid as third_external_userid",
@@ -4654,6 +4683,7 @@ export class WorkbenchRepository {
         "conversation.id as id",
         "conversation.chat_type as chat_type",
         "conversation.create_time as create_time",
+        "conversation.full_auto_switch as full_auto_switch",
         "conversation.last_audit_info_id as last_audit_info_id",
         "conversation.third_userid as third_userid",
         "conversation.third_external_userid as third_external_userid",
@@ -4827,6 +4857,9 @@ function withSeatConversationAggregate(
 
   return {
     ...seat,
+    ai_hosting_enabled:
+      readBooleanFlag(seat.full_auto_auth) &&
+      readBooleanFlag(seat.full_auto_switch),
     last_message_time: aggregate?.lastMessageTime ?? null,
     unread_count: aggregate?.unreadCount ?? 0,
   };

@@ -264,6 +264,7 @@ export type WorkbenchSidebarIframeParamsDto = {
 };
 
 export type WorkbenchSeatDto = {
+  aiHostingEnabled?: boolean;
   seatId: string;
   thirdUserId?: string;
   name: string;
@@ -278,6 +279,8 @@ export type WorkbenchSeatDto = {
 };
 
 export type WorkbenchConversationSummaryDto = {
+  /** 会话是否已切到全自动 AI 托管，前端需结合席位 AI 托管开关判断筛选可见性 */
+  aiHosted?: boolean;
   /** 关联联系人或群席位业务状态；0 表示该会话展示对象已失效 */
   bizStatus?: number;
   conversationId: string;

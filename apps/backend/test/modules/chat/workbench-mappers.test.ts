@@ -15,6 +15,7 @@ describe("workbench MySQL mappers", () => {
   it("maps a user seat row into the public seat DTO", () => {
     expect(
       mapSeatRow({
+        ai_hosting_enabled: 1,
         avatar: "https://example.com/avatar.png",
         host_sub_id: 3,
         id: 12,
@@ -25,6 +26,7 @@ describe("workbench MySQL mappers", () => {
         unread_count: 5,
       }),
     ).toEqual({
+      aiHostingEnabled: true,
       avatar: "https://example.com/avatar.png",
       description: "",
       hostSubUserId: "3",
@@ -45,6 +47,7 @@ describe("workbench MySQL mappers", () => {
         create_time: new Date("2026-05-15T08:00:00.000Z"),
         customer_avatar: "https://example.com/customer.png",
         customer_name: "客户备注",
+        full_auto_switch: 1,
         group_avatar: "",
         group_name: "",
         id: 88,
@@ -63,6 +66,7 @@ describe("workbench MySQL mappers", () => {
     expect(conversation).toMatchObject({
       conversationId: "88",
       custodyMode: "semi",
+      aiHosted: true,
       customerAvatar: "https://example.com/customer.png",
       customerId: "external-1",
       customerName: "客户备注",
@@ -1093,6 +1097,7 @@ describe("workbench MySQL mappers", () => {
   it("maps timestamp fields from Date objects and date strings", () => {
     expect(
       mapSeatRow({
+        ai_hosting_enabled: 0,
         avatar: "",
         host_sub_id: 0,
         id: 12,
@@ -1103,6 +1108,7 @@ describe("workbench MySQL mappers", () => {
         unread_count: 0,
       }),
     ).toMatchObject({
+      aiHostingEnabled: false,
       lastMessageTime: 1778315400000,
     });
 
@@ -1116,6 +1122,7 @@ describe("workbench MySQL mappers", () => {
         id: 88,
         last_message_content: "",
         last_message_type: "text",
+        full_auto_switch: 0,
         last_msgtime: "2026-05-09T08:31:00.000Z",
         pinned_time: 0,
         seat_id: 12,
@@ -1125,6 +1132,7 @@ describe("workbench MySQL mappers", () => {
         unread_cnt: 0,
       }),
     ).toMatchObject({
+      aiHosted: false,
       lastMessageTime: 1778315460000,
     });
 

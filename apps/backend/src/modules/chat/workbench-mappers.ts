@@ -13,9 +13,11 @@ import {
   readRecordNumber,
   readRecordString,
 } from "./workbench-content-utils.js";
+import { readBooleanFlag } from "./workbench-flags.js";
 import { getPlayableMediaHost, toPlayableVoicePathname } from "./media-config.js";
 
 export type SeatRow = {
+  ai_hosting_enabled?: number | string | boolean | null;
   avatar: string | null;
   host_sub_id: number | string | null;
   id: number | string;
@@ -33,6 +35,7 @@ export type ConversationRow = {
   customer_avatar: string | null;
   customer_name: string | null;
   contact_original_name: string | null;
+  full_auto_switch?: number | string | boolean | null;
   group_avatar: string | null;
   group_name: string | null;
   group_remark: string | null;
@@ -111,6 +114,7 @@ export function mapSeatRow(row: SeatRow): WorkbenchSeatDto {
   const hostSubUserId = normalizeOptionalId(row.host_sub_id);
 
   return {
+    aiHostingEnabled: readBooleanFlag(row.ai_hosting_enabled),
     avatar: row.avatar ?? "",
     description: "",
     hostSubUserId,
@@ -157,6 +161,7 @@ export function mapConversationRow(
     mode === "group" ? row.group_avatar ?? "" : row.customer_avatar ?? "";
 
   return {
+    aiHosted: readBooleanFlag(row.full_auto_switch),
     bizStatus: row.biz_status == null ? 0 : toNumber(row.biz_status),
     conversationId: String(row.id),
     custodyMode: CONVERSATION_CUSTODY_MODE.SEMI,

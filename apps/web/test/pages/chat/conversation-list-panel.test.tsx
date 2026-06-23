@@ -38,16 +38,21 @@ vi.mock("@/store/workbench-store", () => ({
 // Helpers
 // ---------------------------------------------------------------------------
 function createConversation({
+  aiHosted = false,
   id,
   customerName,
   mode,
+  unread = 0,
 }: {
+  aiHosted?: boolean;
   id: string;
   customerName: string;
   mode: ChatMode;
+  unread?: number;
 }): Conversation {
   return {
     accountId: "account-1",
+    aiHosted,
     custodyMode: "semi",
     customerAvatarUrl: `https://example.com/${id}.png`,
     customerId: `customer-${id}`,
@@ -57,7 +62,7 @@ function createConversation({
     preview: mode === "group" ? "包含：星云客户、运营客服" : "客户成功部 / 运营客服",
     priority: "medium",
     quietFor: "刚刚",
-    unread: 0,
+    unread,
     updatedAt: "2026-05-07 09:00:00",
   };
 }
@@ -203,6 +208,202 @@ describe("ConversationListPanel", () => {
     expect(screen.getByText("星云客户 1")).toBeVisible();
     expect(screen.getByText("星云群聊 1")).not.toBeVisible();
     expect(screen.getByText("星云群聊 1").closest(".group")).toBe(groupCard);
+  });
+
+  it("keeps the active tab underline when the tab also opens the view menu", () => {
+    render(
+      <ConversationListPanel
+        activeMode="single"
+        conversations={conversations}
+        onSelectConversation={vi.fn()}
+        onSelectMode={vi.fn()}
+        searchableConversations={conversations}
+      />,
+    );
+
+    expect(screen.getByRole("tab", { name: "单聊视图" })).toHaveClass(
+      "border-primary",
+    );
+  });
+
+  it("filters single conversations from the compact view menu", async () => {
+    const user = userEvent.setup();
+    const onSelectView = vi.fn();
+    const viewConversations = [
+      createConversation({
+        aiHosted: true,
+        id: "single-ai",
+        customerName: "AI托管客户",
+        mode: "single",
+        unread: 2,
+      }),
+      createConversation({
+        id: "single-human",
+        customerName: "人工接待客户",
+        mode: "single",
+      }),
+      createConversation({
+        id: "single-read",
+        customerName: "已读客户",
+        mode: "single",
+      }),
+      createConversation({
+        id: "group-unread",
+        customerName: "群聊未读",
+        mode: "group",
+        unread: 3,
+      }),
+    ];
+
+    const { rerender } = render(
+      <ConversationListPanel
+        activeMode="single"
+        activeView="all"
+        conversations={viewConversations}
+        isAiHostingEnabled
+        onSelectConversation={vi.fn()}
+        onSelectMode={vi.fn()}
+        onSelectView={onSelectView}
+        searchableConversations={conversations}
+      />,
+    );
+
+    expect(screen.getByText("AI托管客户")).toBeVisible();
+    expect(screen.getByText("人工接待客户")).toBeVisible();
+    expect(screen.getByText("已读客户")).toBeVisible();
+
+    await user.click(screen.getByRole("tab", { name: "单聊视图" }));
+    await user.click(screen.getByRole("menuitemradio", { name: "AI托管" }));
+
+    expect(onSelectView).toHaveBeenCalledWith("ai");
+
+    rerender(
+      <ConversationListPanel
+        activeMode="single"
+        activeView="ai"
+        conversations={viewConversations}
+        isAiHostingEnabled
+        onSelectConversation={vi.fn()}
+        onSelectMode={vi.fn()}
+        onSelectView={onSelectView}
+        searchableConversations={conversations}
+      />,
+    );
+
+    expect(screen.getByText("AI托管客户")).toBeVisible();
+    expect(screen.queryByText("人工接待客户")).not.toBeInTheDocument();
+    expect(screen.queryByText("已读客户")).not.toBeInTheDocument();
+    expect(screen.getByText("单聊 · AI托管")).toBeInTheDocument();
+  });
+
+  it("filters each mounted mode with its own selected view", () => {
+    const viewConversations = [
+      createConversation({
+        aiHosted: true,
+        id: "single-ai",
+        customerName: "AI托管客户",
+        mode: "single",
+      }),
+      createConversation({
+        id: "single-human",
+        customerName: "人工接待客户",
+        mode: "single",
+      }),
+      createConversation({
+        id: "group-read",
+        customerName: "已读群聊",
+        mode: "group",
+      }),
+      createConversation({
+        id: "group-unread",
+        customerName: "未读群聊",
+        mode: "group",
+        unread: 3,
+      }),
+    ];
+
+    const { rerender } = render(
+      <ConversationListPanel
+        activeMode="single"
+        activeView="ai"
+        conversationViews={{ group: "unread", single: "ai" }}
+        conversations={viewConversations}
+        isAiHostingEnabled
+        onSelectConversation={vi.fn()}
+        onSelectMode={vi.fn()}
+        searchableConversations={viewConversations}
+      />,
+    );
+
+    expect(screen.getByText("AI托管客户")).toBeVisible();
+    expect(screen.queryByText("人工接待客户")).not.toBeInTheDocument();
+    expect(screen.queryByText("未读群聊")).not.toBeInTheDocument();
+
+    rerender(
+      <ConversationListPanel
+        activeMode="group"
+        activeView="unread"
+        conversationViews={{ group: "unread", single: "ai" }}
+        conversations={viewConversations}
+        isAiHostingEnabled
+        onSelectConversation={vi.fn()}
+        onSelectMode={vi.fn()}
+        searchableConversations={viewConversations}
+      />,
+    );
+
+    expect(screen.getByText("AI托管客户")).not.toBeVisible();
+    expect(screen.queryByText("人工接待客户")).not.toBeInTheDocument();
+    expect(screen.getByText("未读群聊")).toBeVisible();
+    expect(screen.queryByText("已读群聊")).not.toBeInTheDocument();
+  });
+
+  it("omits AI hosting views when the active seat has not enabled hosting", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ConversationListPanel
+        activeMode="single"
+        activeView="all"
+        conversations={conversations}
+        isAiHostingEnabled={false}
+        onSelectConversation={vi.fn()}
+        onSelectMode={vi.fn()}
+        onSelectView={vi.fn()}
+        searchableConversations={conversations}
+      />,
+    );
+
+    await user.click(screen.getByRole("tab", { name: "单聊视图" }));
+
+    expect(screen.getByRole("menuitemradio", { name: "全部" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitemradio", { name: "未读" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitemradio", { name: "AI托管" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitemradio", { name: "人工接待" })).not.toBeInTheDocument();
+  });
+
+  it("keeps group views limited to all and unread", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ConversationListPanel
+        activeMode="group"
+        activeView="all"
+        conversations={conversations}
+        isAiHostingEnabled
+        onSelectConversation={vi.fn()}
+        onSelectMode={vi.fn()}
+        onSelectView={vi.fn()}
+        searchableConversations={conversations}
+      />,
+    );
+
+    await user.click(screen.getByRole("tab", { name: "群聊视图" }));
+
+    expect(screen.getByRole("menuitemradio", { name: "全部" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitemradio", { name: "未读" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitemradio", { name: "AI托管" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitemradio", { name: "人工接待" })).not.toBeInTheDocument();
   });
 
   it("closes search results when clicking outside the dropdown", async () => {

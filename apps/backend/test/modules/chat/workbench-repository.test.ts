@@ -2216,7 +2216,7 @@ describe("WorkbenchRepository", () => {
       "xy_wap_embed_user_seat_sub_relation as relation",
       "xy_wap_embed_conversation",
     ]);
-    expect(queries[0]?.query.joins).toEqual(["innerJoin"]);
+    expect(queries[0]?.query.joins).toEqual(["innerJoin", "leftJoin"]);
     expect(queries[0]?.query.joinConditions).toEqual([
       {
         conditions: [
@@ -2227,11 +2227,18 @@ describe("WorkbenchRepository", () => {
         table: "xy_wap_embed_user_seat as seat",
         type: "innerJoin",
       },
+      {
+        conditions: [
+          ["seat_agent.user_seat_id", "=", "seat.id"],
+          ["seat_agent.uid", "=", "seat.uid"],
+        ],
+        table: "xy_wap_embed_user_seat_agent as seat_agent",
+        type: "leftJoin",
+      },
     ]);
     expect(queries[0]?.query.wheres).toContainEqual(["relation.uid", "=", 9001]);
     expect(queries[0]?.query.wheres).toContainEqual(["relation.platform", "=", 5]);
     expect(queries[0]?.query.wheres).not.toContainEqual(["seat.biz_status", "=", 1]);
-    expect(queries[0]?.query.joins).not.toContain("leftJoin");
     expect(queries[1]?.query.joins).toEqual([]);
     expect(queries[1]?.query.wheres).toContainEqual(["uid", "=", 9001]);
     expect(queries[1]?.query.wheres).toContainEqual(["platform", "=", 5]);
@@ -2291,7 +2298,17 @@ describe("WorkbenchRepository", () => {
       unreadCount: 3,
     });
 
-    expect(queryBuilders[0]?.joins).toEqual([]);
+    expect(queryBuilders[0]?.joins).toEqual(["leftJoin"]);
+    expect(queryBuilders[0]?.joinConditions).toEqual([
+      {
+        conditions: [
+          ["seat_agent.user_seat_id", "=", "xy_wap_embed_user_seat.id"],
+          ["seat_agent.uid", "=", "xy_wap_embed_user_seat.uid"],
+        ],
+        table: "xy_wap_embed_user_seat_agent as seat_agent",
+        type: "leftJoin",
+      },
+    ]);
     expect(queryBuilders[1]?.joins).toEqual([]);
   });
 
@@ -3556,6 +3573,7 @@ describe("WorkbenchRepository", () => {
 
     await expect(repository.getSeatsByIds(["13", "12", "12", "not-a-seat"])).resolves.toEqual([
       {
+        aiHostingEnabled: false,
         avatar: "",
         description: "",
         hostSubUserId: "101",
@@ -3569,6 +3587,7 @@ describe("WorkbenchRepository", () => {
         unreadCount: 7,
       },
       {
+        aiHostingEnabled: false,
         avatar: "",
         description: "",
         hostSubUserId: "202",

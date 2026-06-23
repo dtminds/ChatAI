@@ -1,5 +1,6 @@
 import { startTransition, useEffect, useMemo, useState } from "react";
 import {
+  ArrowDown01Icon,
   Cancel01Icon,
   LicenseNoIcon,
   Male02Icon,
@@ -20,6 +21,13 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Empty, EmptyMedia } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
@@ -29,6 +37,13 @@ import { cn } from "@/lib/utils";
 import { ConversationCard } from "@/pages/chat/components/conversation-card";
 import type { ChatMode, Conversation } from "@/pages/chat/chat-types";
 import type { ConversationComposerDraft } from "@/pages/chat/lib/conversation-composer-draft";
+import {
+  DEFAULT_CONVERSATION_VIEW,
+  filterConversationsByView,
+  getConversationViewLabel,
+  getConversationViewOptions,
+  type ConversationView,
+} from "@/pages/chat/lib/conversation-view";
 import type {
   WorkbenchSearchContactResultDto,
   WorkbenchSearchGroupResultDto,
@@ -44,8 +59,11 @@ const CHAT_MODES = ["single", "group"] as const satisfies readonly ChatMode[];
 type ConversationListPanelProps = {
   activeConversation?: Conversation;
   activeMode: ChatMode;
+  activeView?: ConversationView;
+  conversationViews?: Record<ChatMode, ConversationView>;
   composerDraftsByConversationId?: Record<string, ConversationComposerDraft>;
   conversations: Conversation[];
+  isAiHostingEnabled?: boolean;
   isConversationActionDisabled?: boolean;
   isConversationLoading?: boolean;
   onMarkConversationRead?: (conversationId: string) => void | Promise<void>;
@@ -54,15 +72,20 @@ type ConversationListPanelProps = {
   onPinConversation?: (conversationId: string) => void | Promise<void>;
   onSelectConversation: (conversationId: string) => void | Promise<void>;
   onSelectMode: (mode: ChatMode) => void | Promise<void>;
+  onSelectView?: (view: ConversationView) => void | Promise<void>;
   onUnpinConversation?: (conversationId: string) => void | Promise<void>;
+  retainedConversationIds?: ReadonlySet<string>;
   searchableConversations?: Conversation[];
 };
 
 export function ConversationListPanel({
   activeConversation,
   activeMode,
+  activeView = DEFAULT_CONVERSATION_VIEW,
+  conversationViews,
   composerDraftsByConversationId = {},
   conversations,
+  isAiHostingEnabled = false,
   isConversationActionDisabled = false,
   isConversationLoading = false,
   onMarkConversationRead,
@@ -71,7 +94,9 @@ export function ConversationListPanel({
   onPinConversation,
   onSelectConversation,
   onSelectMode,
+  onSelectView,
   onUnpinConversation,
+  retainedConversationIds,
   searchableConversations = conversations,
 }: ConversationListPanelProps) {
   const {
@@ -102,12 +127,38 @@ export function ConversationListPanel({
   const [mountedModes, setMountedModes] = useState<ReadonlySet<ChatMode>>(
     () => new Set([activeMode]),
   );
+  const viewsByMode = useMemo(
+    () => conversationViews ?? {
+      group: activeView,
+      single: activeView,
+    },
+    [activeView, conversationViews],
+  );
   const conversationsByMode = useMemo(
     () => ({
-      group: conversations.filter((conversation) => conversation.mode === "group"),
-      single: conversations.filter((conversation) => conversation.mode === "single"),
+      group: filterConversationsByView(
+        conversations,
+        "group",
+        viewsByMode.group,
+        false,
+        activeMode === "group" ? retainedConversationIds : undefined,
+      ),
+      single: filterConversationsByView(
+        conversations,
+        "single",
+        viewsByMode.single,
+        isAiHostingEnabled,
+        activeMode === "single" ? retainedConversationIds : undefined,
+      ),
     }),
-    [conversations],
+    [
+      activeMode,
+      conversations,
+      isAiHostingEnabled,
+      retainedConversationIds,
+      viewsByMode.group,
+      viewsByMode.single,
+    ],
   );
 
   useEffect(() => {
@@ -243,18 +294,16 @@ export function ConversationListPanel({
         >
           <div className="border-b border-divider px-4">
             <TabsList className="h-auto w-full justify-center gap-5 rounded-none bg-transparent p-0">
-              <TabsTrigger
-                className="rounded-none border-b-2 border-transparent px-0 py-2.5 text-[13px] font-medium text-muted-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none"
-                value="single"
-              >
-                单聊
-              </TabsTrigger>
-              <TabsTrigger
-                className="rounded-none border-b-2 border-transparent px-0 py-2.5 text-[13px] font-medium text-muted-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none"
-                value="group"
-              >
-                群聊
-              </TabsTrigger>
+              {CHAT_MODES.map((mode) => (
+                <ConversationModeTab
+                  isActive={activeMode === mode}
+                  isAiHostingEnabled={isAiHostingEnabled}
+                  key={mode}
+                  mode={mode}
+                  onSelectView={onSelectView}
+                  view={activeView}
+                />
+              ))}
             </TabsList>
           </div>
 
@@ -355,6 +404,109 @@ export function ConversationListPanel({
     </section>
     </>
   );
+}
+
+const conversationModeTabClassName =
+  "rounded-none border-b-2 border-transparent px-0 py-2.5 text-[13px] font-medium text-muted-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none";
+
+function ConversationModeTab({
+  isActive,
+  isAiHostingEnabled,
+  mode,
+  onSelectView,
+  view,
+}: {
+  isActive: boolean;
+  isAiHostingEnabled: boolean;
+  mode: ChatMode;
+  onSelectView?: (view: ConversationView) => void | Promise<void>;
+  view: ConversationView;
+}) {
+  if (!isActive) {
+    return (
+      <TabsTrigger className={conversationModeTabClassName} value={mode}>
+        {getConversationModeLabel(mode)}
+      </TabsTrigger>
+    );
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <TabsTrigger
+          aria-label={`${getConversationModeLabel(mode)}视图`}
+          className={cn(
+            conversationModeTabClassName,
+            "border-primary bg-transparent text-foreground shadow-none",
+          )}
+          value={mode}
+        >
+          <ConversationModeTabLabel
+            isAiHostingEnabled={isAiHostingEnabled}
+            mode={mode}
+            view={view}
+          />
+        </TabsTrigger>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="center" className="min-w-28">
+        <DropdownMenuRadioGroup
+          onValueChange={(value) => {
+            void onSelectView?.(value as ConversationView);
+          }}
+          value={resolveActiveConversationView(mode, view, isAiHostingEnabled)}
+        >
+          {getConversationViewOptions(mode, isAiHostingEnabled).map((option) => (
+            <DropdownMenuRadioItem key={option.value} value={option.value}>
+              {option.label}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function ConversationModeTabLabel({
+  isAiHostingEnabled,
+  mode,
+  view,
+}: {
+  isAiHostingEnabled: boolean;
+  mode: ChatMode;
+  view: ConversationView;
+}) {
+  const modeLabel = getConversationModeLabel(mode);
+  const selectedView = resolveActiveConversationView(mode, view, isAiHostingEnabled);
+  const viewLabel = selectedView === "all"
+    ? ""
+    : ` · ${getConversationViewLabel(selectedView)}`;
+
+  return (
+    <>
+      <span>{modeLabel}{viewLabel}</span>
+      <HugeiconsIcon
+        color="currentColor"
+        icon={ArrowDown01Icon}
+        size={14}
+        strokeWidth={1.8}
+      />
+    </>
+  );
+}
+
+function getConversationModeLabel(mode: ChatMode) {
+  return mode === "single" ? "单聊" : "群聊";
+}
+
+function resolveActiveConversationView(
+  mode: ChatMode,
+  view: ConversationView,
+  isAiHostingEnabled: boolean,
+) {
+  const options = getConversationViewOptions(mode, isAiHostingEnabled);
+  return options.some((option) => option.value === view)
+    ? view
+    : DEFAULT_CONVERSATION_VIEW;
 }
 
 function SearchResultDropdown({

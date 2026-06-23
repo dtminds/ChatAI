@@ -492,6 +492,17 @@ describe("AI hosting pages", () => {
     expect(screen.getByLabelText("Agent 名称")).toHaveAttribute("maxLength", "50");
   });
 
+  it("limits long text agent settings fields to 2000 characters", async () => {
+    renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
+
+    await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
+
+    expect(screen.getByLabelText("角色描述")).toHaveAttribute("maxLength", "2000");
+    expect(screen.getByLabelText("沟通风格")).toHaveAttribute("maxLength", "2000");
+    expect(screen.getByLabelText("转人工条件")).toHaveAttribute("maxLength", "2000");
+    expect(screen.getAllByText("0/2000")).toHaveLength(3);
+  });
+
   it("keeps the selected model icon and label in one trigger row", async () => {
     renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
 

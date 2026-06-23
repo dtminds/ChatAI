@@ -64,6 +64,7 @@ import {
 } from "./agent-service";
 import {
   agentModelOptions,
+  agentLongTextMaxLength,
   agentNameMaxLength,
   agentCommunicationStyleTemplates,
   agentPreviewSeedMessages,
@@ -592,10 +593,12 @@ export function AgentSettingsPage() {
                 aria-label="角色描述"
                 className="bg-background"
                 disabled={controlsDisabled}
+                maxLength={agentLongTextMaxLength}
                 onChange={(event) => updateForm("roleDescription", event.target.value)}
                 placeholder="请输入角色描述"
                 value={form.roleDescription}
               />
+              <TextCounter maxLength={agentLongTextMaxLength} value={form.roleDescription} />
             </CollapsibleAgentSettingsSection>
 
             <CollapsibleAgentSettingsSection
@@ -617,10 +620,12 @@ export function AgentSettingsPage() {
                       aria-label="沟通风格"
                       className="bg-background"
                       disabled={controlsDisabled}
+                      maxLength={agentLongTextMaxLength}
                       onChange={(event) => updateForm("communicationStyle", event.target.value)}
                       placeholder="请输入沟通风格描述"
                       value={form.communicationStyle}
                     />
+                    <TextCounter maxLength={agentLongTextMaxLength} value={form.communicationStyle} />
                   </div>
                 </div>
 
@@ -655,10 +660,12 @@ export function AgentSettingsPage() {
                 aria-label="转人工条件"
                 className="bg-background"
                 disabled={controlsDisabled}
+                maxLength={agentLongTextMaxLength}
                 onChange={(event) => updateForm("transferToHumanConditions", event.target.value)}
                 placeholder="请输入转人工条件"
                 value={form.transferToHumanConditions}
               />
+              <TextCounter maxLength={agentLongTextMaxLength} value={form.transferToHumanConditions} />
             </CollapsibleAgentSettingsSection>
           </div>
 
@@ -826,6 +833,14 @@ function OptionChipGroup({
           </button>
         );
       })}
+    </div>
+  );
+}
+
+function TextCounter({ maxLength, value }: { maxLength: number; value: string }) {
+  return (
+    <div className="mt-1 text-right text-xs text-muted-foreground">
+      {value.length}/{maxLength}
     </div>
   );
 }

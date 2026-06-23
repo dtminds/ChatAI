@@ -37,6 +37,7 @@ export const mockKnowledgeBaseOptions: KnowledgeBaseOption[] = [
 ];
 
 export const agentNameMaxLength = 50;
+export const agentLongTextMaxLength = 2000;
 
 export const agentModelOptions = [
   { label: "默认模型", model: "default-model", value: "0" },

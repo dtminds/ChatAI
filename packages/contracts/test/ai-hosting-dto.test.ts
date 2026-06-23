@@ -27,6 +27,54 @@ describe("AI hosting DTOs", () => {
     ).toBe(true);
   });
 
+  it("limits long text prompt fields to 2000 characters", () => {
+    const longText = "a".repeat(2001);
+    const basePayload = {
+      modelId: "11",
+      name: "护肤小助理",
+      promptConfig: {
+        conditionLogic: "如果客户咨询成分，那么说明功效",
+        replyStyle: {
+          length: "简洁",
+          styleInstruction: "亲切自然",
+        },
+        handoffRules: "客户要求真人",
+        role: "你是护肤顾问",
+      },
+    };
+
+    expect(
+      Value.Check(AiHostingAgentSaveRequestSchema, {
+        ...basePayload,
+        promptConfig: {
+          ...basePayload.promptConfig,
+          role: longText,
+        },
+      }),
+    ).toBe(false);
+    expect(
+      Value.Check(AiHostingAgentSaveRequestSchema, {
+        ...basePayload,
+        promptConfig: {
+          ...basePayload.promptConfig,
+          replyStyle: {
+            ...basePayload.promptConfig.replyStyle,
+            styleInstruction: longText,
+          },
+        },
+      }),
+    ).toBe(false);
+    expect(
+      Value.Check(AiHostingAgentSaveRequestSchema, {
+        ...basePayload,
+        promptConfig: {
+          ...basePayload.promptConfig,
+          handoffRules: longText,
+        },
+      }),
+    ).toBe(false);
+  });
+
   it("keeps agent settings saves separate from name edits", () => {
     expect(
       Value.Check(AiHostingAgentSettingsSaveRequestSchema, {

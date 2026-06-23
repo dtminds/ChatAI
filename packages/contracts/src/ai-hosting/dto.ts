@@ -2,12 +2,12 @@ import { Type, type Static } from "@sinclair/typebox";
 
 export const AiHostingAgentPromptConfigSchema = Type.Object({
   conditionLogic: Type.String(),
-  handoffRules: Type.String(),
+  handoffRules: Type.String({ maxLength: 2000 }),
   replyStyle: Type.Object({
     length: Type.String(),
-    styleInstruction: Type.String(),
+    styleInstruction: Type.String({ maxLength: 2000 }),
   }, { additionalProperties: false }),
-  role: Type.String(),
+  role: Type.String({ maxLength: 2000 }),
 }, { additionalProperties: false });
 
 export const AiHostingModelSchema = Type.Object({

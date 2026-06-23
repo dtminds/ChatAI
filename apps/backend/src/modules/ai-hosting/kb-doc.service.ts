@@ -94,7 +94,7 @@ export class KbDocService {
   }
 
   private assertCreateRequest(request: KbDocCreateRequest) {
-    const normalizedSuffix = request.docSuffix.trim().toLowerCase();
+    const normalizedSuffix = normalizeDocSuffix(request.docSuffix);
 
     if (!SUPPORTED_DOC_SUFFIXES.has(normalizedSuffix)) {
       throw new BadRequestError(
@@ -143,8 +143,12 @@ export class KbDocService {
   }
 }
 
+function normalizeDocSuffix(value: string) {
+  return value.trim().toLowerCase().replace(/^\./, "");
+}
+
 function parsePositiveInteger(value: string) {
-  const parsed = Number.parseInt(value, 10);
+  const parsed = Number(value);
 
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
 }

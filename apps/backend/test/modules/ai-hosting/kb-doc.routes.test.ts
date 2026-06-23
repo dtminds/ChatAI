@@ -167,6 +167,67 @@ describe("ai-hosting kb-doc routes", () => {
     });
   });
 
+  it("accepts document suffixes with a leading dot", async () => {
+    const context = await createAuthenticatedApp();
+    app = context.app;
+
+    const response = await app.inject({
+      headers: { authorization: context.authorization },
+      method: "POST",
+      payload: {
+        chunkParams: { maxLength: 2000, strategy: "length" },
+        chunkStrategy: "length",
+        docSuffix: ".pdf",
+        docUrl: "mock://kb-docs/W7zU2fWkVSp65OTAjDd3-w/demo.pdf",
+        kbId: "W7zU2fWkVSp65OTAjDd3-w",
+        name: "产品手册",
+        parseMode: "standard",
+      },
+      url: "/api/server/ai-hosting/kb-docs/create",
+    });
+
+    expect(response.statusCode).toBe(200);
+  });
+
+  it("rejects sub-user ids with trailing non-digit characters", async () => {
+    const mockedApp = await buildMockedApp();
+    app = mockedApp;
+    const authorization = `Bearer ${mockedApp.jwt.sign({
+      roles: ["operator"],
+      sessionId: "501",
+      sessionVersion: 1,
+      subUserId: "101abc",
+    })}`;
+    mockedApp.db = createSessionDbMock({
+      id: "501",
+      session_version: 1,
+      sub_user_id: "101abc",
+      subUser: {
+        account: "agent001",
+        id: 101,
+        name: "客服一号",
+        platform: 1,
+        role: "operator",
+        type: 2,
+        uid: 9001,
+      },
+    });
+
+    const response = await mockedApp.inject({
+      headers: { authorization },
+      method: "POST",
+      url: "/api/server/ai-hosting/kb-docs/upload-credential",
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toMatchObject({
+      error: {
+        code: "SUB_USER_NOT_FOUND",
+      },
+      success: false,
+    });
+  });
+
   it("rejects unsupported document suffixes", async () => {
     const context = await createAuthenticatedApp();
     app = context.app;

@@ -1357,15 +1357,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
         seatUpdateCursor,
         seatUpdateEvents,
       ),
-      seatChanges: orderedChangedSeats
-        .map((seat) => ({
-          bizStatus: seat.bizStatus,
-          expireTime: seat.expireTime,
-          hostSubUserId: seat.hostSubUserId ?? null,
-          lastMessageTime: seat.lastMessageTime,
-          seatId: seat.seatId,
-          unreadCount: seat.unreadCount,
-        })),
+      seatChanges: orderedChangedSeats,
     };
   }
 

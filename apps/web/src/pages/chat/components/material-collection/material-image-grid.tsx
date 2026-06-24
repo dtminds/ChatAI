@@ -231,11 +231,7 @@ function MaterialImagePreviewDialog({
 }
 
 function getImageMaterialContent(item: MaterialCollectionItem) {
-  const imageUrl =
-    readString(item.content.imageUrl) ||
-    readString(item.content.fileUrl) ||
-    readString(item.content.url) ||
-    readString(item.content.localUrl);
+  const imageUrl = readString(item.content.fileUrl);
 
   return {
     alt:

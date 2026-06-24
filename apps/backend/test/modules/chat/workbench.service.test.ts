@@ -3982,7 +3982,6 @@ describe("MysqlWorkbenchService", () => {
       alt: "商品图",
       fileUrl: "https://cdn.example.com/product.png",
       height: 960,
-      imageUrl: "https://cdn.example.com/product.png",
       width: 720,
     });
     nowSpy.mockRestore();

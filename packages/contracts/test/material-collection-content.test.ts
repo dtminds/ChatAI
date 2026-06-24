@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildMaterialImageContentJson,
   buildMaterialH5ContentJson,
   readMaterialDescription,
   readMaterialLinkUrl,
+  resolveMaterialImageCollectFields,
   resolveMaterialH5CollectFields,
   validateMaterialCollectionSubmitFields,
 } from "../src/chat/material-collection-content.js";
@@ -68,6 +70,33 @@ describe("material collection H5 content helpers", () => {
         description: "新描述",
       }),
     ).toBe("新描述");
+  });
+
+  it("normalizes image content to the canonical fileUrl field", () => {
+    const resolved = resolveMaterialImageCollectFields(
+      JSON.stringify({
+        fileUrl: " https://b5.bokr.com.cn/s5/msg/product.jpg ",
+      }),
+    );
+
+    expect(resolved).toEqual({
+      fileUrl: "https://b5.bokr.com.cn/s5/msg/product.jpg",
+    });
+
+    const content = JSON.parse(
+      buildMaterialImageContentJson(
+        JSON.stringify({
+          alt: "商品图",
+          fileUrl: "https://b5.bokr.com.cn/s5/msg/product.jpg",
+        }),
+        resolved as Exclude<typeof resolved, { errorMsg: string }>,
+      ),
+    ) as Record<string, unknown>;
+
+    expect(content).toMatchObject({
+      alt: "商品图",
+      fileUrl: "https://b5.bokr.com.cn/s5/msg/product.jpg",
+    });
   });
 
   it("rejects material submit fields over collection limits", () => {

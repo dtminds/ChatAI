@@ -1294,11 +1294,7 @@ function buildImageComposerSegment(
 ): ComposerSegment | undefined {
   const materialCollectionId = item.id.trim();
   const contentRecord = isMaterialContentRecord(item.content);
-  const imageUrl =
-    readMaterialContentString(contentRecord.imageUrl) ||
-    readMaterialContentString(contentRecord.fileUrl) ||
-    readMaterialContentString(contentRecord.url) ||
-    readMaterialContentString(contentRecord.localUrl);
+  const imageUrl = readMaterialContentString(contentRecord.fileUrl);
 
   if (!materialCollectionId || !imageUrl) {
     return undefined;

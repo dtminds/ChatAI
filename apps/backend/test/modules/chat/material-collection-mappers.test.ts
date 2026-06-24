@@ -153,10 +153,8 @@ describe("material collection mappers", () => {
       mapMaterialCollectionItem(materialRow({
         biz_type: MATERIAL_COLLECTION_BIZ_TYPE.IMAGE,
         content: JSON.stringify({
-          alt: "商品图",
+          downloadStatus: "finished",
           fileUrl: "media/product.png",
-          height: 960,
-          width: 720,
         }),
         group_id: 66,
         msg_info_id: 9006,
@@ -165,9 +163,8 @@ describe("material collection mappers", () => {
     ).toMatchObject({
       bizType: MATERIAL_COLLECTION_BIZ_TYPE.IMAGE,
       content: {
-        alt: "图片",
+        downloadStatus: "finished",
         fileUrl: "https://b5.bokr.com.cn/media/product.png",
-        imageUrl: "https://b5.bokr.com.cn/media/product.png",
       },
       contentType: "image",
       groupId: "66",

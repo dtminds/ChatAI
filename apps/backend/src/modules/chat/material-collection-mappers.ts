@@ -7,6 +7,7 @@ import {
 } from "@chatai/contracts";
 import type { Selectable } from "kysely";
 import type { XyWapEmbedMaterialCollection } from "../../db/schema.js";
+import { normalizeMediaAssetUrl } from "./workbench-content-utils.js";
 import { mapMessageRow, type MessageRow } from "./workbench-mappers.js";
 
 export type MaterialCollectionRow = Selectable<XyWapEmbedMaterialCollection>;
@@ -57,12 +58,15 @@ export function mapMaterialCollectionItem(
   row: MaterialCollectionRow,
 ): WorkbenchMaterialCollectionItemDto {
   const bizType = toMaterialBizType(row.biz_type);
-  const mappedMessage = mapMessageRow(buildMessageRow(row, bizType));
   const contentType = getMaterialContentTypeForBizType(bizType) ?? "file";
-  const content = normalizeMaterialContent(
-    isRecord(mappedMessage.content) ? mappedMessage.content : {},
-    contentType,
-  );
+  const rawContent = parseMaterialRowContent(row.content);
+  const mappedMessage =
+    contentType === "image" ? null : mapMessageRow(buildMessageRow(row, bizType));
+  const sourceContent =
+    contentType === "image"
+      ? rawContent
+      : isRecord(mappedMessage?.content) ? mappedMessage.content : {};
+  const content = normalizeMaterialContent(sourceContent, contentType);
   const msgInfoId = String(row.msg_info_id);
 
   return {
@@ -171,19 +175,16 @@ function normalizeMaterialContent(
   contentType: WorkbenchMaterialCollectionContentType,
 ) {
   if (contentType === "image") {
-    const imageUrl =
-      readString(content, "imageUrl") ||
-      readString(content, "fileUrl") ||
-      readString(content, "url") ||
-      readString(content, "localUrl");
+    const fileUrl = normalizeMediaAssetUrl(readString(content, "fileUrl"));
 
-    return imageUrl
-      ? {
-          ...content,
-          fileUrl: imageUrl,
-          imageUrl,
-        }
-      : content;
+    if (fileUrl) {
+      return {
+        ...content,
+        fileUrl,
+      };
+    }
+
+    return content;
   }
 
   if (contentType !== "emotion") {
@@ -238,6 +239,20 @@ function readString(record: Record<string, unknown>, key: string) {
   const value = record[key];
 
   return typeof value === "string" ? value.trim() : "";
+}
+
+function parseMaterialRowContent(rawContent: string | null) {
+  if (!rawContent) {
+    return {};
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(rawContent);
+
+    return isRecord(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

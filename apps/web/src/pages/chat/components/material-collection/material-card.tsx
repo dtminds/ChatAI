@@ -176,11 +176,7 @@ function toExpressionContent(item: MaterialCollectionItem): ImageMessageContent 
 }
 
 function toImageContent(item: MaterialCollectionItem): ImageMessageContent {
-  const imageUrl =
-    readString(item.content.imageUrl) ||
-    readString(item.content.fileUrl) ||
-    readString(item.content.url) ||
-    readString(item.content.localUrl);
+  const imageUrl = readString(item.content.fileUrl);
 
   return {
     alt: readString(item.content.alt) || item.title || "图片",

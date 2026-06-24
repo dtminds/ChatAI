@@ -829,7 +829,6 @@ describe("material collection components", () => {
       content: {
         alt: "商品图",
         fileUrl: imageUrl,
-        imageUrl,
       },
       contentType: "image",
       groupId: "group-image",

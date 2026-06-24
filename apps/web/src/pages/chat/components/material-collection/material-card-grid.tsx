@@ -128,10 +128,7 @@ function isCardLibraryBizType(
 function getCardLibraryItemClassName(
   bizType: WorkbenchMaterialCollectionGroupCreateRequest["bizType"],
 ) {
-  if (
-    bizType === MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED ||
-    bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO
-  ) {
+  if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED) {
     return "w-[217px]";
   }
 

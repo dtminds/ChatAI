@@ -7,9 +7,13 @@ import {
 import { FileMessageCard } from "@/pages/chat/components/message/file";
 import { ImageMessageCard } from "@/pages/chat/components/message/image";
 import { LinkMessageCard } from "@/pages/chat/components/message/link";
+import {
+  LoadableMessageImage,
+  MessageMediaFallback,
+} from "@/pages/chat/components/message/media-fallback";
 import { MiniAppMessageCard } from "@/pages/chat/components/message/miniapp";
 import { SphFeedMessageCard } from "@/pages/chat/components/message/sphfeed";
-import { VideoMessageCard } from "@/pages/chat/components/message/video";
+import { getOptimizedMessageImageUrl } from "@/pages/chat/components/message/url";
 import { MaterialActionsMenu } from "@/pages/chat/components/material-collection/material-actions-menu";
 import { MaterialSelectionIndicator } from "@/pages/chat/components/material-collection/material-selection-indicator";
 import type {
@@ -18,7 +22,6 @@ import type {
   ImageMessageContent,
   MiniProgramMessageContent,
   SphFeedMessageContent,
-  VideoMessageContent,
 } from "@/pages/chat/chat-types";
 import type {
   MaterialCollectionItem,
@@ -158,13 +161,7 @@ function MaterialCardContent({ item }: { item: MaterialCollectionItem }) {
   }
 
   if (item.contentType === "video") {
-    return (
-      <VideoMessageCard
-        content={toVideoContent(item)}
-        showDownloadAction={false}
-        showPlayAction={false}
-      />
-    );
+    return <MaterialVideoCoverCard item={item} />;
   }
 
   return (
@@ -244,18 +241,56 @@ function toSphFeedContent(item: MaterialCollectionItem): SphFeedMessageContent {
   };
 }
 
-function toVideoContent(item: MaterialCollectionItem): VideoMessageContent {
-  return {
-    alt: item.title || "视频",
-    coverImageUrl: readString(item.content.coverUrl),
-    downloadStatus: readFileDownloadStatus(item.content.downloadStatus),
-    durationLabel: readString(item.content.durationLabel),
-    fileUrlExpireTime: readNumber(item.content.fileUrlExpireTime),
-    height: readNumber(item.content.height),
-    type: "video",
-    videoUrl: readString(item.content.fileUrl),
-    width: readNumber(item.content.width),
-  };
+const MATERIAL_VIDEO_COVER_STYLE = {
+  aspectRatio: "3 / 4",
+  height: "280px",
+  width: "210px",
+} as const;
+
+function MaterialVideoCoverCard({ item }: { item: MaterialCollectionItem }) {
+  const alt = item.title || "视频";
+  const coverUrl = readString(item.content.coverUrl);
+  const durationLabel = readString(item.content.durationLabel);
+
+  return (
+    <div
+      className="relative isolate overflow-hidden rounded-[8px] bg-neutral-950 shadow-sm"
+      style={MATERIAL_VIDEO_COVER_STYLE}
+    >
+      {coverUrl ? (
+        <LoadableMessageImage
+          alt={alt}
+          className="block h-full w-full object-contain"
+          fallback={<MaterialVideoCoverFallback alt={alt} />}
+          height={280}
+          loading="lazy"
+          src={getOptimizedMessageImageUrl(coverUrl)}
+          width={210}
+        />
+      ) : (
+        <MaterialVideoCoverFallback alt={alt} />
+      )}
+
+      {durationLabel ? (
+        <span
+          className="absolute bottom-1.5 right-1.5 z-1 rounded-[4px] bg-black/45 px-1.5 py-0.5 text-[12px] font-semibold leading-4 text-white shadow-sm"
+          data-testid="video-duration"
+        >
+          {durationLabel}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function MaterialVideoCoverFallback({ alt }: { alt: string }) {
+  return (
+    <MessageMediaFallback
+      className="h-full w-full bg-neutral-950 text-white/35"
+      label={`视频封面不可用：${alt}`}
+      testId="video-cover-fallback"
+    />
+  );
 }
 
 function toH5Content(item: MaterialCollectionItem): H5CardMessageContent {

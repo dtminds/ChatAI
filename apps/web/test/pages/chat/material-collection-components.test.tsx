@@ -929,10 +929,18 @@ describe("material collection components", () => {
 
     expect(screen.getByRole("dialog", { name: "收录的视频" })).toBeInTheDocument();
     const videoButton = screen.getByRole("button", { name: "选择素材 视频" });
-    expect(screen.getByRole("img", { name: "视频" })).toHaveAttribute(
+    const videoCover = screen.getByRole("img", { name: "视频" });
+    expect(videoCover).toHaveAttribute(
       "src",
       `${coverUrl}!w480.webp`,
     );
+    expect(videoCover.parentElement).toHaveStyle({
+      aspectRatio: "3 / 4",
+      height: "280px",
+      width: "210px",
+    });
+    expect(videoCover.parentElement).toHaveClass("bg-neutral-950");
+    expect(videoCover).toHaveClass("object-contain");
     expect(
       screen.queryByRole("button", { name: "播放视频：视频" }),
     ).not.toBeInTheDocument();

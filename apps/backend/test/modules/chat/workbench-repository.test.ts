@@ -4028,6 +4028,95 @@ describe("WorkbenchRepository", () => {
     });
   });
 
+  it("filters application customer conversations after hydration", async () => {
+    const observedConversationQueries: Array<ReturnType<typeof createQueryBuilder>> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_user_seat") {
+            return createQueryBuilder({
+              id: 12,
+              platform: 5,
+              third_userid: "seat-user-001",
+              uid: 9001,
+            });
+          }
+
+          if (table === "xy_wap_embed_conversation as conversation") {
+            const query = createQueryBuilder([
+              createConversationRow({
+                id: 88,
+                third_external_userid: "external-normal",
+              }),
+              createConversationRow({
+                id: 89,
+                third_external_userid: "external-app",
+              }),
+              createConversationRow({
+                chat_type: 2,
+                id: 90,
+                third_external_userid: "",
+                third_group_id: "group-001",
+              }),
+            ]);
+            observedConversationQueries.push(query);
+
+            return query;
+          }
+
+          if (table === "xy_wap_embed_customer_bind_relation") {
+            return createQueryBuilder([
+              {
+                bind_type: 1,
+                remark: "普通客户备注",
+                third_external_userid: "external-normal",
+              },
+              {
+                bind_type: 2,
+                remark: "应用客户备注",
+                third_external_userid: "external-app",
+              },
+            ]);
+          }
+
+          if (table === "xy_wap_embed_group_seat") {
+            return createQueryBuilder({
+              avatar: "",
+              biz_status: 1,
+              name: "群聊",
+              remark: null,
+              third_group_id: "group-001",
+            });
+          }
+
+          if (
+            table === "xy_wap_embed_msg_audit_info" ||
+            table === "xy_wap_embed_contact"
+          ) {
+            return createQueryBuilder([]);
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    const page = await repository.listConversations("12", {
+      limit: 30,
+    });
+
+    expect(page.items.map((item) => item.conversationId)).toEqual(["88", "90"]);
+    expect(page.items[0]).toMatchObject({
+      conversationId: "88",
+      customerName: "普通客户备注",
+    });
+    expect(page.items[1]).toMatchObject({
+      conversationId: "90",
+      mode: "group",
+    });
+    expect(observedConversationQueries[0]?.joins).toEqual([]);
+  });
+
   it("keeps single chat conversations sendable regardless of contact biz status", async () => {
     const observedContactQueries: Array<ReturnType<typeof createQueryBuilder>> = [];
     const repository = new WorkbenchRepository(

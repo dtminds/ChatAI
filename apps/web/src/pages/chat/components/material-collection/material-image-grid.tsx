@@ -2,18 +2,14 @@ import { useState } from "react";
 import { ZoomInAreaIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { MaterialActionsMenu } from "@/pages/chat/components/material-collection/material-actions-menu";
 import { MaterialLibraryFooter } from "@/pages/chat/components/material-collection/material-library-footer";
 import { MaterialSelectionIndicator } from "@/pages/chat/components/material-collection/material-selection-indicator";
+import { ImagePreviewDialog } from "@/pages/chat/components/message/image";
+import { getOptimizedMessageImageUrl } from "@/pages/chat/components/message/url";
 import type {
   MaterialCollectionGroup,
   MaterialCollectionItem,
@@ -171,7 +167,7 @@ function MaterialImageTile({
             alt={image.alt}
             className="size-full object-contain"
             loading="lazy"
-            src={image.imageUrl}
+            src={getOptimizedMessageImageUrl(image.imageUrl)}
           />
         ) : (
           <span className="flex size-full items-center justify-center text-[13px] text-muted-foreground">
@@ -220,26 +216,17 @@ function MaterialImagePreviewDialog({
 }) {
   const image = item ? getImageMaterialContent(item) : null;
 
+  if (!image?.imageUrl) {
+    return null;
+  }
+
   return (
-    <Dialog onOpenChange={onOpenChange} open={item != null}>
-      <DialogContent className="h-[min(42rem,calc(100vh-3rem))] max-w-[min(70rem,calc(100vw-2rem))] gap-0 overflow-hidden border-0 bg-neutral-950 p-0">
-        <DialogTitle className="sr-only">查看大图</DialogTitle>
-        <DialogDescription className="sr-only">
-          查看已收录图片的大图
-        </DialogDescription>
-        <div className="flex size-full items-center justify-center p-6">
-          {image?.imageUrl ? (
-            <img
-              alt={image.alt}
-              className="max-h-full max-w-full object-contain"
-              src={image.imageUrl}
-            />
-          ) : (
-            <div className="text-sm text-white/70">图片加载失败</div>
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
+    <ImagePreviewDialog
+      alt={image.alt}
+      imageUrl={image.imageUrl}
+      onOpenChange={onOpenChange}
+      open={item != null}
+    />
   );
 }
 

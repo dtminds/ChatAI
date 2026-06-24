@@ -823,12 +823,13 @@ describe("material collection components", () => {
     const user = userEvent.setup();
     const handleSelect = vi.fn();
     const handleEdit = vi.fn();
+    const imageUrl = "https://b5.bokr.com.cn/product.png";
     const item = createItem({
       bizType: MATERIAL_COLLECTION_BIZ_TYPE.IMAGE,
       content: {
         alt: "商品图",
-        fileUrl: "https://cdn.example.com/product.png",
-        imageUrl: "https://cdn.example.com/product.png",
+        fileUrl: imageUrl,
+        imageUrl,
       },
       contentType: "image",
       groupId: "group-image",
@@ -859,6 +860,10 @@ describe("material collection components", () => {
 
     expect(screen.getByRole("dialog", { name: "收录的图片" })).toBeInTheDocument();
     const imageButton = screen.getByRole("button", { name: "选择图片 商品图" });
+    expect(screen.getByRole("img", { name: "商品图" })).toHaveAttribute(
+      "src",
+      `${imageUrl}!w480.webp`,
+    );
 
     await user.click(imageButton);
 
@@ -868,15 +873,18 @@ describe("material collection components", () => {
 
     await user.click(screen.getByRole("button", { name: "查看大图 商品图" }));
 
-    expect(screen.getByRole("dialog", { name: "查看大图" })).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "商品图" })).toHaveAttribute(
+    expect(screen.getByRole("dialog", { name: "图片预览" })).toBeInTheDocument();
+    expect(screen.getByTestId("image-preview-full")).toHaveAttribute(
       "src",
-      "https://cdn.example.com/product.png",
+      `${imageUrl}!w1100.webp`,
     );
+    expect(screen.getByRole("button", { name: "提取图片文字" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "上一张图片" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "下一张图片" })).not.toBeInTheDocument();
     expect(imageButton).toHaveAttribute("aria-pressed", "true");
     expect(screen.queryByRole("menuitem", { name: "编辑" })).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "关闭" }));
+    await user.click(screen.getByRole("button", { name: "关闭图片预览" }));
     await user.click(screen.getByRole("button", { name: "发送" }));
 
     expect(handleSelect).toHaveBeenCalledWith(item);

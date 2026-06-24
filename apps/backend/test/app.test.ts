@@ -1223,6 +1223,23 @@ describe("backend app", () => {
     await app.close();
   });
 
+  it("material: accepts image material group business type", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+
+    const groupsResponse = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/material-collections/groups?biz_type=6",
+    });
+
+    expect(groupsResponse.statusCode).toBe(200);
+    expect(groupsResponse.json()).toMatchObject({
+      groups: expect.any(Array),
+    });
+
+    await app.close();
+  });
+
   it("material: rejects enterprise collection page without group id", async () => {
     const { app, authorization } = await createAuthenticatedApp();
 

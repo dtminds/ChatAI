@@ -890,6 +890,59 @@ describe("material collection components", () => {
     expect(handleEdit).not.toHaveBeenCalled();
   });
 
+  it("renders video materials as selectable cover cards without a play action", async () => {
+    const user = userEvent.setup();
+    const handleSelect = vi.fn();
+    const coverUrl = "https://b5.bokr.com.cn/video-cover.jpg";
+    const item = createItem({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.VIDEO,
+      content: {
+        coverUrl,
+        fileUrl: "https://example.com/video.mp4",
+      },
+      contentType: "video",
+      groupId: "group-video",
+      id: "video-1",
+      title: "视频",
+    });
+
+    render(
+      <MaterialLibraryDialog
+        activeGroupId="group-video"
+        bizType={MATERIAL_COLLECTION_BIZ_TYPE.VIDEO}
+        groups={[createGroup({ id: "group-video", title: "常用视频" })]}
+        items={[item]}
+        onCreateGroup={() => undefined}
+        onDeleteGroup={() => undefined}
+        onDeleteMaterial={() => undefined}
+        onEditMaterial={() => undefined}
+        onMoveMaterial={() => undefined}
+        onOpenChange={() => undefined}
+        onRenameGroup={() => undefined}
+        onSelectGroup={() => undefined}
+        onSelectMaterial={handleSelect}
+        onTopGroup={() => undefined}
+        onTopMaterial={() => undefined}
+        open
+      />,
+    );
+
+    expect(screen.getByRole("dialog", { name: "收录的视频" })).toBeInTheDocument();
+    const videoButton = screen.getByRole("button", { name: "选择素材 视频" });
+    expect(screen.getByRole("img", { name: "视频" })).toHaveAttribute(
+      "src",
+      `${coverUrl}!w480.webp`,
+    );
+    expect(
+      screen.queryByRole("button", { name: "播放视频：视频" }),
+    ).not.toBeInTheDocument();
+
+    await user.click(videoButton);
+    await user.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(handleSelect).toHaveBeenCalledWith(item);
+  });
+
   it("renders collected expression section", async () => {
     const user = userEvent.setup();
     const handleSelect = vi.fn();

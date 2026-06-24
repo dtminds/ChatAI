@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   buildMaterialImageContentJson,
   buildMaterialH5ContentJson,
+  buildMaterialVideoContentJson,
   readMaterialDescription,
   readMaterialLinkUrl,
   resolveMaterialImageCollectFields,
   resolveMaterialH5CollectFields,
+  resolveMaterialVideoCollectFields,
   validateMaterialCollectionSubmitFields,
 } from "../src/chat/material-collection-content.js";
 
@@ -97,6 +99,60 @@ describe("material collection H5 content helpers", () => {
       alt: "商品图",
       fileUrl: "https://b5.bokr.com.cn/s5/msg/product.jpg",
     });
+  });
+
+  it("normalizes video content to canonical fileUrl and coverUrl fields", () => {
+    const resolved = resolveMaterialVideoCollectFields(
+      JSON.stringify({
+        coverUrl: " s5/msg/20260514/272/video-cover.jpg ",
+        fileUrl: " https://cdn.example.com/video.mp4 ",
+        videoUrl: "https://example.com/ignored-display-url.mp4",
+      }),
+    );
+
+    expect(resolved).toEqual({
+      coverUrl: "s5/msg/20260514/272/video-cover.jpg",
+      fileUrl: "https://cdn.example.com/video.mp4",
+    });
+
+    const content = JSON.parse(
+      buildMaterialVideoContentJson(
+        JSON.stringify({
+          coverUrl: "s5/msg/20260514/272/video-cover.jpg",
+          downloadStatus: "finished",
+          fileSerialNo: "serial-video-001",
+          fileUrl: "https://cdn.example.com/video.mp4",
+          optSerNo: "20260520161942296211617558032",
+        }),
+        resolved as Exclude<typeof resolved, { errorMsg: string }>,
+      ),
+    ) as Record<string, unknown>;
+
+    expect(content).toEqual({
+      coverUrl: "s5/msg/20260514/272/video-cover.jpg",
+      downloadStatus: "finished",
+      fileSerialNo: "serial-video-001",
+      fileUrl: "https://cdn.example.com/video.mp4",
+      optSerNo: "20260520161942296211617558032",
+    });
+  });
+
+  it("rejects video collect fields when fileUrl or coverUrl is missing", () => {
+    expect(
+      resolveMaterialVideoCollectFields(
+        JSON.stringify({
+          coverUrl: "s5/msg/20260514/272/video-cover.jpg",
+        }),
+      ),
+    ).toEqual({ errorMsg: "视频缺少地址，无法收录" });
+
+    expect(
+      resolveMaterialVideoCollectFields(
+        JSON.stringify({
+          fileUrl: "https://cdn.example.com/video.mp4",
+        }),
+      ),
+    ).toEqual({ errorMsg: "视频缺少封面，无法收录" });
   });
 
   it("rejects material submit fields over collection limits", () => {

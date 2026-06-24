@@ -120,14 +120,18 @@ function isCardLibraryBizType(
 ) {
   return (
     bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM ||
-    bizType === MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED
+    bizType === MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED ||
+    bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO
   );
 }
 
 function getCardLibraryItemClassName(
   bizType: WorkbenchMaterialCollectionGroupCreateRequest["bizType"],
 ) {
-  if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED) {
+  if (
+    bizType === MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED ||
+    bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO
+  ) {
     return "w-[217px]";
   }
 

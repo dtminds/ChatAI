@@ -9,6 +9,7 @@ import { ImageMessageCard } from "@/pages/chat/components/message/image";
 import { LinkMessageCard } from "@/pages/chat/components/message/link";
 import { MiniAppMessageCard } from "@/pages/chat/components/message/miniapp";
 import { SphFeedMessageCard } from "@/pages/chat/components/message/sphfeed";
+import { VideoMessageCard } from "@/pages/chat/components/message/video";
 import { MaterialActionsMenu } from "@/pages/chat/components/material-collection/material-actions-menu";
 import { MaterialSelectionIndicator } from "@/pages/chat/components/material-collection/material-selection-indicator";
 import type {
@@ -17,6 +18,7 @@ import type {
   ImageMessageContent,
   MiniProgramMessageContent,
   SphFeedMessageContent,
+  VideoMessageContent,
 } from "@/pages/chat/chat-types";
 import type {
   MaterialCollectionItem,
@@ -155,6 +157,16 @@ function MaterialCardContent({ item }: { item: MaterialCollectionItem }) {
     );
   }
 
+  if (item.contentType === "video") {
+    return (
+      <VideoMessageCard
+        content={toVideoContent(item)}
+        showDownloadAction={false}
+        showPlayAction={false}
+      />
+    );
+  }
+
   return (
     <LinkMessageCard
       className="w-full"
@@ -229,6 +241,20 @@ function toSphFeedContent(item: MaterialCollectionItem): SphFeedMessageContent {
     title: readString(item.content.title) || item.title || "视频号",
     type: "sphfeed",
     url: readString(item.content.url) || undefined,
+  };
+}
+
+function toVideoContent(item: MaterialCollectionItem): VideoMessageContent {
+  return {
+    alt: item.title || "视频",
+    coverImageUrl: readString(item.content.coverUrl),
+    downloadStatus: readFileDownloadStatus(item.content.downloadStatus),
+    durationLabel: readString(item.content.durationLabel),
+    fileUrlExpireTime: readNumber(item.content.fileUrlExpireTime),
+    height: readNumber(item.content.height),
+    type: "video",
+    videoUrl: readString(item.content.fileUrl),
+    width: readNumber(item.content.width),
   };
 }
 

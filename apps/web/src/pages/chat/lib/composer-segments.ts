@@ -68,6 +68,15 @@ export type ComposerSphfeedSegment = {
   url?: string;
 };
 
+export type ComposerVideoSegment = {
+  type: "video";
+  coverUrl: string;
+  materialCollectionId: string;
+  msgInfoId?: string;
+  title?: string;
+  url: string;
+};
+
 export type ComposerSegment =
   | ComposerTextSegment
   | ComposerImageSegment
@@ -75,7 +84,8 @@ export type ComposerSegment =
   | ComposerFileSegment
   | ComposerH5Segment
   | ComposerMiniProgramSegment
-  | ComposerSphfeedSegment;
+  | ComposerSphfeedSegment
+  | ComposerVideoSegment;
 
 export function normalizeComposerSegments(
   segments: ComposerSegment[],
@@ -149,6 +159,10 @@ export function getComposerSegmentsPreview(segments: ComposerSegment[]) {
 
   if (normalizedSegments.some((segment) => segment.type === "sphfeed")) {
     return "[视频号]";
+  }
+
+  if (normalizedSegments.some((segment) => segment.type === "video")) {
+    return "[视频]";
   }
 
   return normalizedSegments.some((segment) => segment.type === "file")

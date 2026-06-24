@@ -118,6 +118,7 @@ import {
   buildMaterialFileContentJson,
   buildMaterialH5ContentJson,
   buildMaterialImageContentJson,
+  buildMaterialVideoContentJson,
   canEditMaterialCollectionItem,
   isQuickReplyLabelColor,
   normalizeQuickReplyAttachments,
@@ -126,6 +127,7 @@ import {
   resolveMaterialFileCollectFields,
   resolveMaterialH5CollectFields,
   resolveMaterialImageCollectFields,
+  resolveMaterialVideoCollectFields,
   validateQuickReplyPayload,
 } from "@chatai/contracts";
 import {
@@ -2148,6 +2150,16 @@ export class MysqlWorkbenchService implements WorkbenchService {
       throw new BadRequestError("UNSUPPORTED_MATERIAL_MESSAGE", "当前消息不支持收藏");
     }
 
+    if (
+      bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO &&
+      !isAgentMaterialMessage(message)
+    ) {
+      return {
+        success: false,
+        errorMsg: "只能收录席位号发送的视频",
+      };
+    }
+
     const subUid =
       bizType === MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION ? subUserNumericId : 0;
     const sort = Date.now();
@@ -3934,6 +3946,7 @@ function parseMaterialBizType(value: number): MaterialCollectionBizType {
     case MATERIAL_COLLECTION_BIZ_TYPE.H5:
     case MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED:
     case MATERIAL_COLLECTION_BIZ_TYPE.IMAGE:
+    case MATERIAL_COLLECTION_BIZ_TYPE.VIDEO:
       return value;
     default:
       throw new BadRequestError("INVALID_MATERIAL_BIZ_TYPE", "素材类型无效");
@@ -4378,6 +4391,8 @@ function isMaterialMessageTypeMatched(
       return msgtype === "emotion";
     case MATERIAL_COLLECTION_BIZ_TYPE.IMAGE:
       return msgtype === "image";
+    case MATERIAL_COLLECTION_BIZ_TYPE.VIDEO:
+      return msgtype === "video";
     case MATERIAL_COLLECTION_BIZ_TYPE.FILE:
       return msgtype === "file";
     case MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM:
@@ -4389,6 +4404,22 @@ function isMaterialMessageTypeMatched(
     default:
       return false;
   }
+}
+
+function isAgentMaterialMessage(message: {
+  chatType?: number | null;
+  fromType?: number | null;
+  thirdFromId?: string | null;
+  thirdUserId?: string | null;
+}) {
+  if (message.chatType === CHAT_TYPE.GROUP) {
+    const thirdFromId = (message.thirdFromId ?? "").trim();
+    const thirdUserId = (message.thirdUserId ?? "").trim();
+
+    return thirdFromId.length > 0 && thirdFromId === thirdUserId;
+  }
+
+  return message.fromType === 1;
 }
 
 function normalizeMaterialCollectionPayload(
@@ -4442,6 +4473,25 @@ function normalizeMaterialCollectionPayload(
     return {
       content: buildMaterialImageContentJson(rawContent, resolved),
       title: "图片",
+    };
+  }
+
+  if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO) {
+    const content = parseMaterialContentRecord(rawContent);
+
+    if (readMaterialString(content, "downloadStatus") !== "finished") {
+      return { errorMsg: "视频下载未完成，无法收录" };
+    }
+
+    const resolved = resolveMaterialVideoCollectFields(rawContent);
+
+    if ("errorMsg" in resolved) {
+      return resolved;
+    }
+
+    return {
+      content: buildMaterialVideoContentJson(rawContent, resolved),
+      title: "视频",
     };
   }
 

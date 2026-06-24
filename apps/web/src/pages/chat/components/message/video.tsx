@@ -21,6 +21,7 @@ type VideoMessageCardProps = {
   onDownloadClick?: () => void;
   onPlayClick?: () => void;
   showDownloadAction?: boolean;
+  showPlayAction?: boolean;
 };
 
 export function VideoMessageCard({
@@ -28,6 +29,7 @@ export function VideoMessageCard({
   onDownloadClick,
   onPlayClick,
   showDownloadAction = true,
+  showPlayAction = true,
 }: VideoMessageCardProps) {
   const coverImageUrl = content.coverImageUrl?.trim() ?? "";
   const [loadedCoverSize, setLoadedCoverSize] = useState<VideoSize | null>(null);
@@ -41,7 +43,8 @@ export function VideoMessageCard({
           !canUseExpiringUrl(content.videoUrl, content.fileUrlExpireTime))),
   );
   const canPlay = Boolean(
-    onPlayClick || canUseExpiringUrl(content.videoUrl, content.fileUrlExpireTime),
+    showPlayAction &&
+      (onPlayClick || canUseExpiringUrl(content.videoUrl, content.fileUrlExpireTime)),
   );
   const handlePlayClick = () => {
     if (onPlayClick) {

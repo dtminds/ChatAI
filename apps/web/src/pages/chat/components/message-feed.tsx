@@ -1096,6 +1096,15 @@ export function canCollectMaterial(message: ChatMessage) {
     );
   }
 
+  if (message.content.type === "video") {
+    return (
+      message.role === "agent" &&
+      message.content.downloadStatus === "finished" &&
+      message.content.coverImageUrl.trim().length > 0 &&
+      message.content.videoUrl.trim().length > 0
+    );
+  }
+
   return (
     message.content.type === "file" ||
     message.content.type === "mini-program" ||

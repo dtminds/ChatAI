@@ -20,6 +20,8 @@ export function getMaterialContentTypeForBizType(
       return "emotion";
     case MATERIAL_COLLECTION_BIZ_TYPE.IMAGE:
       return "image";
+    case MATERIAL_COLLECTION_BIZ_TYPE.VIDEO:
+      return "video";
     case MATERIAL_COLLECTION_BIZ_TYPE.FILE:
       return "file";
     case MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM:
@@ -41,6 +43,8 @@ export function getMaterialBizTypeForMessageContentType(
       return MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION;
     case "image":
       return MATERIAL_COLLECTION_BIZ_TYPE.IMAGE;
+    case "video":
+      return MATERIAL_COLLECTION_BIZ_TYPE.VIDEO;
     case "file":
       return MATERIAL_COLLECTION_BIZ_TYPE.FILE;
     case "mini-program":
@@ -60,10 +64,13 @@ export function mapMaterialCollectionItem(
   const bizType = toMaterialBizType(row.biz_type);
   const contentType = getMaterialContentTypeForBizType(bizType) ?? "file";
   const rawContent = parseMaterialRowContent(row.content);
-  const mappedMessage =
-    contentType === "image" ? null : mapMessageRow(buildMessageRow(row, bizType));
+  const shouldUseRawContent =
+    contentType === "image" || contentType === "video";
+  const mappedMessage = shouldUseRawContent
+    ? null
+    : mapMessageRow(buildMessageRow(row, bizType));
   const sourceContent =
-    contentType === "image"
+    shouldUseRawContent
       ? rawContent
       : isRecord(mappedMessage?.content) ? mappedMessage.content : {};
   const content = normalizeMaterialContent(sourceContent, contentType);
@@ -114,6 +121,8 @@ function getMsgTypeForBizType(bizType: MaterialCollectionBizType) {
       return "emotion";
     case MATERIAL_COLLECTION_BIZ_TYPE.IMAGE:
       return "image";
+    case MATERIAL_COLLECTION_BIZ_TYPE.VIDEO:
+      return "video";
     case MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM:
       return "weapp";
     case MATERIAL_COLLECTION_BIZ_TYPE.H5:
@@ -136,6 +145,7 @@ function toMaterialBizType(value: number | string): MaterialCollectionBizType {
     case MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM:
     case MATERIAL_COLLECTION_BIZ_TYPE.H5:
     case MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED:
+    case MATERIAL_COLLECTION_BIZ_TYPE.VIDEO:
       return numericValue;
     default:
       throw new Error(`Unsupported material collection biz type: ${value}`);
@@ -162,6 +172,10 @@ function resolveTitle(
     return readString(content, "title") || readString(content, "alt") || "图片";
   }
 
+  if (contentType === "video") {
+    return "视频";
+  }
+
   return (
     readString(content, "title") ||
     readString(content, "fileName") ||
@@ -181,6 +195,19 @@ function normalizeMaterialContent(
       return {
         ...content,
         fileUrl,
+      };
+    }
+
+    return content;
+  }
+
+  if (contentType === "video") {
+    const coverUrl = normalizeMediaAssetUrl(readString(content, "coverUrl"));
+
+    if (coverUrl) {
+      return {
+        ...content,
+        coverUrl,
       };
     }
 

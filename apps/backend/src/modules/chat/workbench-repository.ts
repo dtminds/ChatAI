@@ -371,11 +371,15 @@ type MaterialCollectionGroupRow = {
 };
 
 export type MaterialMessageLookup = {
+  chatType?: number | null;
   content: string | null;
+  fromType?: number | null;
   id: number | string;
   msgid: string;
   msgtime?: Date | number | string | null;
   msgtype: string;
+  thirdFromId?: string | null;
+  thirdUserId?: string | null;
   uid: number;
 };
 
@@ -537,10 +541,14 @@ export class WorkbenchRepository {
       .selectFrom("xy_wap_embed_msg_audit_info as message")
       .select([
         "message.id as id",
+        "message.chat_type as chatType",
         "message.content as content",
+        "message.from_type as fromType",
         "message.msgid as msgid",
         "message.msgtime as msgtime",
         "message.msgtype as msgtype",
+        "message.third_from_id as thirdFromId",
+        "message.third_user_id as thirdUserId",
         "message.uid as uid",
       ])
       .where("message.id", "=", msgInfoNumericId)
@@ -552,11 +560,15 @@ export class WorkbenchRepository {
     }
 
     return {
+      chatType: row.chatType,
       content: row.content,
+      fromType: row.fromType,
       id: row.id,
       msgid: row.msgid,
       msgtime: row.msgtime,
       msgtype: row.msgtype,
+      thirdFromId: row.thirdFromId,
+      thirdUserId: row.thirdUserId,
       uid: row.uid,
     };
   }
@@ -5027,6 +5039,7 @@ function toMaterialCollectionBizType(value: number): MaterialCollectionBizType {
     case MATERIAL_COLLECTION_BIZ_TYPE.H5:
     case MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED:
     case MATERIAL_COLLECTION_BIZ_TYPE.IMAGE:
+    case MATERIAL_COLLECTION_BIZ_TYPE.VIDEO:
       return value;
     default:
       throw new Error(`Unsupported material collection biz type: ${value}`);

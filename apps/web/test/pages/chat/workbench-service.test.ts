@@ -539,4 +539,23 @@ describe("createWorkbenchService", () => {
     });
     expect(sentMessage?.content).not.toHaveProperty("imageUrl");
   });
+
+  it("keeps mock video material groups without pre-collecting customer videos", async () => {
+    const service = createMockWorkbenchService();
+    const groups = await service.listMaterialGroups({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.VIDEO,
+    });
+    const groupId = groups.groups[0]?.id;
+
+    expect(groupId).toBeTruthy();
+
+    const materials = await service.listMaterialCollections({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.VIDEO,
+      groupId: groupId ?? "",
+      page: 1,
+      pageSize: 1,
+    });
+
+    expect(materials.items).toEqual([]);
+  });
 });

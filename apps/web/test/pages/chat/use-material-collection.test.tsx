@@ -133,6 +133,25 @@ function createSphfeedMaterialItem(
   };
 }
 
+function createVideoMaterialItem(
+  overrides: Partial<WorkbenchMaterialCollectionItemDto> = {},
+): WorkbenchMaterialCollectionItemDto {
+  return {
+    bizType: 7,
+    content: {
+      coverUrl: "https://example.com/video-cover.jpg",
+      fileUrl: "https://example.com/video.mp4",
+    },
+    contentType: "video",
+    groupId: "group-video",
+    id: "material-video",
+    msgInfoId: "9105",
+    sort: 1_781_244_000_000,
+    title: "视频",
+    ...overrides,
+  };
+}
+
 function createExpressionMaterialItem(
   overrides: Partial<WorkbenchMaterialCollectionItemDto> = {},
 ): WorkbenchMaterialCollectionItemDto {
@@ -345,6 +364,25 @@ describe("useMaterialCollection", () => {
         type: "sphfeed",
       }),
     ]);
+  });
+
+  it("shows an unsupported warning when selecting a collected video material", async () => {
+    const sendAgentMessageSegments = vi.fn(async () => ({ ok: true as const }));
+
+    const { result } = renderHook(() =>
+      useMaterialCollection(
+        createDefaultOptions({
+          sendAgentMessageSegments,
+        }),
+      ),
+    );
+
+    await act(async () => {
+      await result.current.handleSelectMaterial(createVideoMaterialItem());
+    });
+
+    expect(sendAgentMessageSegments).not.toHaveBeenCalled();
+    expect(toast.warning).toHaveBeenCalledWith("暂未支持");
   });
 
   it("sends a collected expression material as an emotion segment", async () => {

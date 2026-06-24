@@ -4482,6 +4482,11 @@ export function createWorkbenchStore() {
           const segmentForSend = segmentsForSend[index];
           const originalSegment = sendableSegments[index] ?? segmentForSend;
           const payloadSegment = toWorkbenchSendSegment(segmentForSend);
+
+          if (!payloadSegment) {
+            continue;
+          }
+
           const mentionForSegment: SendMentionPayload =
             !hasSentMention && segmentForSend.type === "text"
               ? options?.mention
@@ -6053,6 +6058,10 @@ function toWorkbenchSendSegment(
       materialCollectionId: segment.materialCollectionId,
       type: "emotion",
     };
+  }
+
+  if (segment.type === "video") {
+    return undefined;
   }
 
   return segment;

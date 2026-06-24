@@ -257,6 +257,10 @@ function getCollectTitle(
     return "收录视频号";
   }
 
+  if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO) {
+    return "收录视频";
+  }
+
   if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.IMAGE) {
     return "收录图片";
   }

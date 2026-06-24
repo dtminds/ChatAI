@@ -22,7 +22,8 @@ export type ComposerMaterialBizType =
   | typeof MATERIAL_COLLECTION_BIZ_TYPE.FILE
   | typeof MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM
   | typeof MATERIAL_COLLECTION_BIZ_TYPE.H5
-  | typeof MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED;
+  | typeof MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED
+  | typeof MATERIAL_COLLECTION_BIZ_TYPE.VIDEO;
 
 type SendMaterialResult =
   | {
@@ -1071,6 +1072,11 @@ export function useMaterialCollection({
         return;
       }
 
+      if (materialSegment.type === "video") {
+        toast.warning(getMaterialSendUnavailableMessage(item.contentType));
+        return;
+      }
+
       setIsMaterialLibrarySending(true);
       setSendingMaterialId(item.id);
       try {
@@ -1215,6 +1221,10 @@ function getMaterialBizTypeForMessage(
     return MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED;
   }
 
+  if (message.content.type === "video") {
+    return MATERIAL_COLLECTION_BIZ_TYPE.VIDEO;
+  }
+
   return undefined;
 }
 
@@ -1234,7 +1244,8 @@ function toComposerMaterialBizType(
     bizType === MATERIAL_COLLECTION_BIZ_TYPE.IMAGE ||
     bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM ||
     bizType === MATERIAL_COLLECTION_BIZ_TYPE.H5 ||
-    bizType === MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED
+    bizType === MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED ||
+    bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO
   ) {
     return bizType;
   }
@@ -1413,6 +1424,28 @@ function buildSphfeedComposerSegment(
   };
 }
 
+function buildVideoComposerSegment(
+  item: WorkbenchMaterialCollectionItemDto,
+): ComposerSegment | undefined {
+  const materialCollectionId = item.id.trim();
+  const contentRecord = isMaterialContentRecord(item.content);
+  const coverUrl = readMaterialContentString(contentRecord.coverUrl);
+  const videoUrl = readMaterialContentString(contentRecord.fileUrl);
+
+  if (!materialCollectionId || !coverUrl || !videoUrl) {
+    return undefined;
+  }
+
+  return {
+    coverUrl,
+    materialCollectionId,
+    msgInfoId: item.msgInfoId,
+    title: item.title || "视频",
+    type: "video",
+    url: videoUrl,
+  };
+}
+
 function buildComposerSegmentFromMaterial(
   item: WorkbenchMaterialCollectionItemDto,
 ): ComposerSegment | undefined {
@@ -1440,12 +1473,20 @@ function buildComposerSegmentFromMaterial(
     return buildSphfeedComposerSegment(item);
   }
 
+  if (item.contentType === "video") {
+    return buildVideoComposerSegment(item);
+  }
+
   return undefined;
 }
 
 function getMaterialSendUnavailableMessage(
   contentType: WorkbenchMaterialCollectionItemDto["contentType"],
 ) {
+  if (contentType === "video") {
+    return "暂未支持";
+  }
+
   return "发送功能内测中，即将开放";
 }
 

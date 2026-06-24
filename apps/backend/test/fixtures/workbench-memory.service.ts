@@ -1682,7 +1682,13 @@ function buildMemoryMaterialItem(
         ? "mini-program"
         : request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.H5
           ? "h5"
-          : "file";
+          : request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED
+            ? "sphfeed"
+            : request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.IMAGE
+              ? "image"
+              : request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO
+                ? "video"
+                : "file";
   const groupId =
     request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION
       ? 0
@@ -1707,6 +1713,14 @@ function readMemoryMaterialTitle(
 ) {
   if (contentType === "emotion") {
     return "表情";
+  }
+
+  if (contentType === "image") {
+    return "图片";
+  }
+
+  if (contentType === "video") {
+    return "视频";
   }
 
   if (!content || typeof content !== "object") {

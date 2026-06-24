@@ -19,7 +19,10 @@ import {
   SmileIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import type { WorkbenchMaterialCollectionItemDto } from "@chatai/contracts";
+import {
+  MATERIAL_COLLECTION_BIZ_TYPE,
+  type WorkbenchMaterialCollectionItemDto,
+} from "@chatai/contracts";
 import { Spinner } from "@/components/ui/spinner";
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
 import { ContentEditable } from "@lexical/react/LexicalContentEditable";
@@ -66,6 +69,7 @@ import {
 import { ComposerRuntimePlugin } from "@/pages/chat/components/composer/lexical-plugins";
 import { QuoteMessagePreview } from "@/pages/chat/components/message/quote";
 import { MiniProgramMark } from "@/pages/chat/components/message/miniapp";
+import { SphFeedMark } from "@/pages/chat/components/message/sphfeed";
 import {
   $insertComposerMention,
   $insertComposerText,
@@ -534,12 +538,32 @@ export function ChatComposer({
                 aria-label="收藏小程序"
                 className={composerActionButtonClass}
                 disabled={isSending || !canSendMessage}
-                onClick={() => onOpenMaterialLibrary(3)}
+                onClick={() =>
+                  onOpenMaterialLibrary(MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM)
+                }
                 size="icon"
                 type="button"
                 variant="ghost"
               >
                 <MiniProgramMark className="size-4.5" />
+              </Button>
+            </ComposerActionTooltip>
+            <ComposerActionTooltip
+              disabled={isSending || !canSendMessage}
+              label="视频号"
+            >
+              <Button
+                aria-label="收藏视频号"
+                className={composerActionButtonClass}
+                disabled={isSending || !canSendMessage}
+                onClick={() =>
+                  onOpenMaterialLibrary(MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED)
+                }
+                size="icon"
+                type="button"
+                variant="ghost"
+              >
+                <SphFeedMark className="size-5.75" />
               </Button>
             </ComposerActionTooltip>
             <ComposerActionTooltip
@@ -550,7 +574,7 @@ export function ChatComposer({
                 aria-label="收藏H5"
                 className={composerActionButtonClass}
                 disabled={isSending || !canSendMessage}
-                onClick={() => onOpenMaterialLibrary(4)}
+                onClick={() => onOpenMaterialLibrary(MATERIAL_COLLECTION_BIZ_TYPE.H5)}
                 size="icon"
                 type="button"
                 variant="ghost"

@@ -3266,11 +3266,16 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
-  it("rejects collected sphfeed sends while sphfeed sending is unavailable", async () => {
+  it("forwards collected sphfeed materials by their source message", async () => {
     const javaClient = createJavaClient();
+    vi.mocked(javaClient.sendMessage).mockResolvedValue({
+      optNo: "opt-sphfeed-001",
+      status: "accepted",
+    });
     const repository = {
       canAccessSeat: vi.fn().mockResolvedValue(true),
       findMaterialCollectionForForward: vi.fn().mockResolvedValue({
+        msgInfoId: "9107",
         msgid: "msg-sphfeed-001",
       }),
       getConversationLookup: vi.fn().mockResolvedValue({
@@ -3288,27 +3293,40 @@ describe("MysqlWorkbenchService", () => {
       javaClient,
     );
 
-    await expect(
-      service.sendMessage("101", {
-        conversationId: "88",
-        seatId: "12",
-        segment: {
-          materialCollectionId: "77",
-          type: "sphfeed",
-        },
-      }),
-    ).rejects.toMatchObject({
-      code: "SPHFEED_UNAVAILABLE",
-      message: "视频号发送功能暂未开放",
-      statusCode: 400,
+    await service.sendMessage("101", {
+      conversationId: "88",
+      seatId: "12",
+      segment: {
+        materialCollectionId: "77",
+        type: "sphfeed",
+      },
     });
 
-    expect(repository.findMaterialCollectionForForward).not.toHaveBeenCalled();
-    expect(javaClient.sendMessage).not.toHaveBeenCalled();
+    expect(repository.findMaterialCollectionForForward).toHaveBeenCalledWith({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED,
+      id: "77",
+      uid: 9001,
+    });
+    expect(javaClient.sendMessage).toHaveBeenCalledWith({
+      msgData: {
+        msgtype: "sphfeed",
+        transMsgInfoId: 9107,
+      },
+      platform: 5,
+      sendType: 2,
+      source: 1,
+      thirdGroupId: "group-001",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
   });
 
-  it("rejects quick reply sphfeed snapshots while sphfeed sending is unavailable", async () => {
+  it("forwards quick reply sphfeed snapshots by msgInfoId without material lookup", async () => {
     const javaClient = createJavaClient();
+    vi.mocked(javaClient.sendMessage).mockResolvedValue({
+      optNo: "opt-sphfeed-quick-reply-001",
+      status: "accepted",
+    });
     const repository = {
       canAccessSeat: vi.fn().mockResolvedValue(true),
       findMaterialCollectionForForward: vi.fn(),
@@ -3324,23 +3342,28 @@ describe("MysqlWorkbenchService", () => {
     } as unknown as WorkbenchRepository;
     const service = new MysqlWorkbenchService(repository, javaClient);
 
-    await expect(
-      service.sendMessage("101", {
-        conversationId: "88",
-        seatId: "12",
-        segment: {
-          materialCollectionId: "77",
-          type: "sphfeed",
-        },
-      }),
-    ).rejects.toMatchObject({
-      code: "SPHFEED_UNAVAILABLE",
-      message: "视频号发送功能暂未开放",
-      statusCode: 400,
+    await service.sendMessage("101", {
+      conversationId: "88",
+      seatId: "12",
+      segment: {
+        msgInfoId: "9108",
+        type: "sphfeed",
+      },
     });
 
     expect(repository.findMaterialCollectionForForward).not.toHaveBeenCalled();
-    expect(javaClient.sendMessage).not.toHaveBeenCalled();
+    expect(javaClient.sendMessage).toHaveBeenCalledWith({
+      msgData: {
+        msgtype: "sphfeed",
+        transMsgInfoId: 9108,
+      },
+      platform: 5,
+      sendType: 2,
+      source: 1,
+      thirdGroupId: "group-001",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
   });
 
   it("rejects forward sends when the material collection is not visible", async () => {

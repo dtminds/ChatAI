@@ -3541,7 +3541,7 @@ describe("useWorkbenchStore", () => {
     ]);
   });
 
-  it("blocks sphfeed composer sends before calling the send API", async () => {
+  it("sends sphfeed composer segments through the send API", async () => {
     const baseService = createMockWorkbenchService();
     const sendMessage = vi.fn(baseService.sendMessage);
 
@@ -3563,12 +3563,17 @@ describe("useWorkbenchStore", () => {
     ]);
 
     expect(result).toEqual({
-      errorCode: "SPHFEED_UNAVAILABLE",
-      errorMessage: "视频号发送功能暂未开放",
-      reason: "unavailable",
-      ok: false,
+      didConsumeQuote: false,
+      ok: true,
     });
-    expect(sendMessage).not.toHaveBeenCalled();
+    expect(sendMessage).toHaveBeenCalledWith({
+      conversationId: expect.any(String),
+      seatId: expect.any(String),
+      segment: {
+        materialCollectionId: "material-sphfeed-001",
+        type: "sphfeed",
+      },
+    });
   });
 
   it("keeps quick reply snapshot fields when a material segment has msgInfoId", async () => {

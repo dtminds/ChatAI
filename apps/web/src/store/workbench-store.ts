@@ -4402,15 +4402,6 @@ export function createWorkbenchStore() {
         return { didConsumeQuote: false, ok: true };
       }
 
-      if (normalizedSegments.some((segment) => segment.type === "sphfeed")) {
-        return {
-          errorCode: "SPHFEED_UNAVAILABLE",
-          errorMessage: "视频号发送功能暂未开放",
-          reason: "unavailable",
-          ok: false,
-        };
-      }
-
       const state = get();
       const { activeAccountId, activeConversationId, me } = state;
 

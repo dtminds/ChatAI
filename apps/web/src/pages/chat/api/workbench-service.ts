@@ -3442,8 +3442,8 @@ function buildPayloadSegmentContent(
 
     return {
       alt: segment.alt,
+      fileUrl: readString(materialContent.fileUrl) || segment.url || segment.localUrl || "",
       height: segment.height,
-      imageUrl: readString(materialContent.fileUrl) || segment.url || segment.localUrl || "",
       width: segment.width,
     };
   }

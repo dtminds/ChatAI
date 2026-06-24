@@ -2644,7 +2644,7 @@ describe("backend app", () => {
 
     expect(sentMessage?.contentType).toBe("image");
     expect(sentMessage?.content).toMatchObject({
-      imageUrl: "https://example.com/materials/product.png",
+      fileUrl: "https://example.com/materials/product.png",
     });
 
     await app.close();
@@ -2829,7 +2829,7 @@ describe("backend app", () => {
       {
         content: {
           alt: "截图",
-          imageUrl: "data:image/png;base64,abc",
+          fileUrl: "data:image/png;base64,abc",
         },
         contentType: "image",
         optNo: segmentAckMessages[1]?.optNo,

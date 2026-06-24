@@ -336,6 +336,10 @@ export interface XyWapEmbedConversation {
    */
   create_time: Generated<Date>;
   /**
+   * 全自动-全托管开关（默认关闭）
+   */
+  full_auto_switch: Generated<number>;
+  /**
    * id
    */
   id: Generated<number>;

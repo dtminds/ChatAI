@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  adaptAccount,
   adaptConversation,
   adaptMessage,
 } from "@/pages/chat/api/workbench-adapter";
@@ -52,6 +53,34 @@ describe("workbench adapter", () => {
       }),
     ).toMatchObject({
       bizStatus: 2,
+    });
+  });
+
+  it("adapts AI hosting flags from workbench summary DTOs", () => {
+    expect(
+      adaptAccount({
+        aiHostingEnabled: true,
+        avatar: "",
+        description: "",
+        loginStatus: "online",
+        name: "测试席位",
+        operatorName: "测试席位",
+        phone: "",
+        seatId: "seat-1",
+        thirdUserId: "third-user-1",
+        unreadCount: 0,
+      }),
+    ).toMatchObject({
+      aiHostingEnabled: true,
+    });
+
+    expect(
+      adaptConversation({
+        ...conversationDto,
+        aiHosted: true,
+      }),
+    ).toMatchObject({
+      aiHosted: true,
     });
   });
 

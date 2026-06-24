@@ -60,4 +60,6 @@ export function useConversationRevealTimer(conversations: Conversation[]) {
       }
     };
   }, [nextRevealAt, tick]);
+
+  return tick;
 }

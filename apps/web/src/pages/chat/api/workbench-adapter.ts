@@ -36,6 +36,7 @@ export function adaptEmployee(dto: WorkbenchSubUserDto): EmployeeProfile {
 
 export function adaptAccount(dto: WorkbenchSeatDto, unreadCount = dto.unreadCount): Account {
   return {
+    aiHostingEnabled: dto.aiHostingEnabled,
     avatarUrl: dto.avatar,
     description: dto.description,
     id: dto.seatId,
@@ -62,6 +63,7 @@ export function adaptConversation(dto: WorkbenchConversationSummaryDto): Convers
 
   return {
     accountId: dto.seatId,
+    aiHosted: dto.aiHosted,
     bizStatus: dto.bizStatus ?? 0,
     custodyMode: dto.custodyMode,
     createdAtMs: createdAt,

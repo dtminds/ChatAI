@@ -30,6 +30,8 @@ const agentServiceMock = vi.hoisted(() => ({
   updateAiHostingSettings: vi.fn(),
   updateAiHostingAgent: vi.fn(),
 }));
+const uploadKbImageMock = vi.hoisted(() => vi.fn());
+const uploadKbQaFileMock = vi.hoisted(() => vi.fn());
 
 vi.mock("read-excel-file/browser", () => ({
   default: readXlsxFileMock,
@@ -38,6 +40,8 @@ vi.mock("@/pages/chat/ai-hosting/agent-service", () => agentServiceMock);
 
 vi.mock("@/pages/chat/ai-hosting/api/kb-doc-service", () => ({
   importKbDoc: importKbDocMock,
+  uploadKbImage: uploadKbImageMock,
+  uploadKbQaFile: uploadKbQaFileMock,
 }));
 
 let mockImageDimensions = { height: 800, width: 800 };
@@ -290,6 +294,16 @@ describe("AI hosting pages", () => {
     ]);
     importKbDocMock.mockReset();
     importKbDocMock.mockResolvedValue({ docId: "mock-doc-created" });
+    uploadKbImageMock.mockReset();
+    uploadKbImageMock.mockResolvedValue({
+      docUrl: "kb-images/mock-image.png",
+      url: "https://b5.bokr.com.cn/kb-images/mock-image.png",
+    });
+    uploadKbQaFileMock.mockReset();
+    uploadKbQaFileMock.mockResolvedValue({
+      docUrl: "kb-faqs/mock-qa.faq.xlsx",
+      url: "https://b5.bokr.com.cn/kb-faqs/mock-qa.faq.xlsx",
+    });
   });
 
   it("renders the agent management page", async () => {
@@ -1250,6 +1264,7 @@ describe("AI hosting pages", () => {
     expect(screen.getByRole("button", { name: "上传问答文件" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "查看导入说明" })).not.toHaveFocus();
     expect(screen.getByText("文档支持 .faq.xlsx，最多 30 个 sheet，文件行数总和不超过 30000 行")).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "取消" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "导入文档" })).toBeDisabled();
     await user.hover(screen.getByRole("button", { name: "查看导入说明" }));
     expect(await screen.findByRole("tooltip")).toHaveTextContent(
@@ -1320,6 +1335,42 @@ describe("AI hosting pages", () => {
       "共 1 个 sheet，2 行",
     );
     expect(screen.getByRole("button", { name: "导入文档" })).toBeEnabled();
+  });
+
+  it("uploads QA import files to COS and refreshes the list after submit", async () => {
+    const user = userEvent.setup();
+
+    readXlsxFileMock.mockResolvedValueOnce([
+      {
+        data: [
+          ["问题", "答案"],
+          ["晨间护肤怎么做", "先清洁再保湿"],
+        ],
+        sheet: "Sheet1",
+      },
+    ]);
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
+    );
+
+    await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
+    await user.click(screen.getByRole("button", { name: "添加知识" }));
+    await user.click(screen.getByRole("menuitem", { name: /问答/ }));
+    await user.upload(
+      screen.getByLabelText("选择问答导入文件"),
+      new File(["question,answer"], "快捷话术导入.faq.xlsx", {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      }),
+    );
+    await user.click(screen.getByRole("button", { name: "导入文档" }));
+
+    await waitFor(() => {
+      expect(uploadKbQaFileMock).toHaveBeenCalledTimes(1);
+    });
+    expect(screen.queryByRole("dialog", { name: "批量导入问答" })).not.toBeInTheDocument();
+    expect(await screen.findByText("快捷话术导入.faq")).toBeInTheDocument();
   });
 
   it("shows an error when QA import resolves to zero valid rows", async () => {
@@ -1498,16 +1549,19 @@ describe("AI hosting pages", () => {
     await user.click(screen.getByRole("button", { name: "确认提交（限免）" }));
 
     await waitFor(() => {
-      expect(importKbDocMock).toHaveBeenCalledWith({
-        chunkParams: {
-          separator: "newline",
-          strategy: "separator",
-        },
-        chunkStrategy: "separator",
-        file: expect.objectContaining({ name: "产品手册.pptx" }),
-        kbId: "W7zU2fWkVSp65OTAjDd3-w",
-        parseMode: "enhanced",
-      });
+      expect(importKbDocMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          chunkParams: {
+            separator: "newline",
+            strategy: "separator",
+          },
+          chunkStrategy: "separator",
+          file: expect.objectContaining({ name: "产品手册.pptx" }),
+          kbId: "W7zU2fWkVSp65OTAjDd3-w",
+          onProgress: expect.any(Function),
+          parseMode: "enhanced",
+        }),
+      );
     });
     expect(screen.queryByRole("dialog", { name: "导入文档" })).not.toBeInTheDocument();
     expect(await screen.findByText("产品手册")).toBeInTheDocument();
@@ -1612,6 +1666,31 @@ describe("AI hosting pages", () => {
 
     expect(screen.queryByRole("region", { name: "已选择图片" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "确认提交" })).toBeDisabled();
+  });
+
+  it("uploads image knowledge to COS and refreshes the list after submit", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
+    );
+
+    await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
+    await user.click(screen.getByRole("button", { name: "添加知识" }));
+    await user.click(screen.getByRole("menuitem", { name: /图片/ }));
+    await user.upload(
+      screen.getByLabelText("选择图片知识文件"),
+      new File(["image"], "商品主图.png", { type: "image/png" }),
+    );
+    await user.type(screen.getByLabelText(/图片描述/), "晨间护肤套装商品主图");
+    await user.click(screen.getByRole("button", { name: "确认提交" }));
+
+    await waitFor(() => {
+      expect(uploadKbImageMock).toHaveBeenCalledTimes(1);
+    });
+    expect(screen.queryByRole("dialog", { name: "添加图片知识" })).not.toBeInTheDocument();
+    expect(await screen.findByText("商品主图")).toBeInTheDocument();
   });
 
   it("accepts image knowledge files with supported extensions when MIME type is empty", async () => {

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AlertCircleIcon,
   Cancel01Icon,
@@ -6,6 +6,7 @@ import {
   PlusSignIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { formatFileSize } from "@/components/ui/file-upload";
 import {
@@ -18,11 +19,15 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { isRequestError } from "@/lib/request";
+import { uploadKbImage } from "@/pages/chat/ai-hosting/api/kb-doc-service";
 import {
+  createLocalDocId,
   getFileExtension,
   RequiredLabel,
   stripFileExtension,
   useAsyncValidation,
+  useDialogSubmit,
 } from "./shared";
 
 const IMAGE_KNOWLEDGE_MAX_FILE_SIZE = 5 * 1024 * 1024;
@@ -34,22 +39,46 @@ const IMAGE_KNOWLEDGE_ACCEPT =
 const IMAGE_KNOWLEDGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "webp"]);
 
 export function ImportImageDialog({
+  onCreated,
   onOpenChange,
   open,
 }: {
+  onCreated?: (result: {
+    docId: string;
+    docSuffix: string;
+    name: string;
+    url: string;
+  }) => void;
   onOpenChange: (open: boolean) => void;
   open: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const isMountedRef = useRef(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
   const { beginValidation, invalidateValidation, isCurrentValidation } =
     useAsyncValidation();
+  const { runSubmit, submitting } = useDialogSubmit({
+    onOpenChange,
+    onReset: reset,
+    open,
+  });
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imageName, setImageName] = useState("");
   const [imageDescription, setImageDescription] = useState("");
   const [imageError, setImageError] = useState("");
   const [isCheckingImage, setIsCheckingImage] = useState(false);
 
-  const reset = () => {
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    return () => {
+      isMountedRef.current = false;
+      abortControllerRef.current?.abort();
+    };
+  }, []);
+
+  function reset() {
+    abortControllerRef.current?.abort();
     invalidateValidation();
     setSelectedImage(null);
     setImageName("");
@@ -60,15 +89,7 @@ export function ImportImageDialog({
     if (inputRef.current) {
       inputRef.current.value = "";
     }
-  };
-
-  const handleOpenChange = (nextOpen: boolean) => {
-    if (!nextOpen) {
-      reset();
-    }
-
-    onOpenChange(nextOpen);
-  };
+  }
 
   const handleImageSelect = async (file: File | undefined) => {
     if (!file) {
@@ -154,6 +175,54 @@ export function ImportImageDialog({
       inputRef.current.value = "";
     }
   };
+
+  const handleSubmit = () => {
+    if (!selectedImage) {
+      return;
+    }
+
+    const trimmedName = imageName.trim();
+
+    void runSubmit(async () => {
+      abortControllerRef.current?.abort();
+      abortControllerRef.current = new AbortController();
+
+      try {
+        const uploadResult = await uploadKbImage(selectedImage, {
+          signal: abortControllerRef.current.signal,
+        });
+
+        if (!isMountedRef.current) {
+          return false;
+        }
+
+        const docId = createLocalDocId();
+        const docSuffix = getFileExtension(uploadResult.docUrl).toLowerCase();
+
+        toast.success("图片已提交");
+        onCreated?.({
+          docId,
+          docSuffix,
+          name: trimmedName,
+          url: uploadResult.url,
+        });
+
+        return true;
+      } catch (error) {
+        if (!isMountedRef.current) {
+          return false;
+        }
+
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return false;
+        }
+
+        toast.error(isRequestError(error) ? error.message : "图片上传失败");
+        return false;
+      }
+    });
+  };
+
   const canSubmit = Boolean(
     selectedImage &&
       imageName.trim() &&
@@ -162,8 +231,14 @@ export function ImportImageDialog({
   );
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-[640px]">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className="max-w-[640px]"
+        closeButtonVisible={false}
+        onInteractOutside={(event) => {
+          event.preventDefault();
+        }}
+      >
         <DialogHeader>
           <DialogTitle>添加图片知识</DialogTitle>
           <DialogDescription className="sr-only">
@@ -206,6 +281,7 @@ export function ImportImageDialog({
                 <Button
                   aria-label="移除已选择图片"
                   className="size-8 shrink-0"
+                  disabled={submitting}
                   onClick={clearSelectedImage}
                   size="icon"
                   type="button"
@@ -222,6 +298,7 @@ export function ImportImageDialog({
             ) : (
               <button
                 className="flex size-28 flex-col items-center justify-center gap-2 rounded-[8px] border border-dashed border-border bg-muted/30 text-sm text-muted-foreground transition-colors hover:border-primary/60 hover:bg-primary/[0.03] hover:text-foreground focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/20"
+                disabled={submitting}
                 onClick={() => inputRef.current?.click()}
                 type="button"
               >
@@ -265,6 +342,7 @@ export function ImportImageDialog({
             <div className="relative">
               <Input
                 className="pr-14"
+                disabled={submitting}
                 id="knowledge-image-name"
                 maxLength={IMAGE_KNOWLEDGE_NAME_MAX_LENGTH}
                 onChange={(event) => setImageName(event.target.value)}
@@ -280,6 +358,7 @@ export function ImportImageDialog({
           <div className="space-y-2.5">
             <RequiredLabel htmlFor="knowledge-image-description">图片描述</RequiredLabel>
             <Textarea
+              disabled={submitting}
               id="knowledge-image-description"
               onChange={(event) => setImageDescription(event.target.value)}
               placeholder="描述会参与图片检索，可填写图片对应的商品说明、售卖亮点或价格等"
@@ -290,18 +369,19 @@ export function ImportImageDialog({
 
         <DialogFooter>
           <Button
-            onClick={() => handleOpenChange(false)}
+            disabled={submitting}
+            onClick={() => onOpenChange(false)}
             type="button"
             variant="outline"
           >
             取消
           </Button>
           <Button
-            disabled={!canSubmit}
-            onClick={() => handleOpenChange(false)}
+            disabled={!canSubmit || submitting}
+            onClick={handleSubmit}
             type="button"
           >
-            确认提交
+            {submitting ? "提交中" : "确认提交"}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -10,5 +10,6 @@ interface ImportMetaEnv {
   readonly VITE_OCR_PADDLE_MODEL_BASE_URL?: string;
   readonly VITE_OCR_PADDLE_WORKER_URL?: string;
   readonly VITE_OCR_ORT_WASM_BASE_URL?: string;
+  readonly VITE_PLAYABLE_MEDIA_HOST?: string;
   readonly VITE_WECHAT_EMOJI_BASE_URL?: string;
 }

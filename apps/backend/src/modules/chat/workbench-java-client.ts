@@ -245,6 +245,7 @@ export type WorkbenchJavaClient = {
     uid: number;
   }): Promise<void>;
   getUploadCredential(input: {
+    type?: string;
     uid: number;
   }): Promise<WorkbenchUploadCredentialResponse>;
   markConversationRead(input: {

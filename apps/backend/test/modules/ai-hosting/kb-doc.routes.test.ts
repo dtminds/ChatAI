@@ -1,5 +1,38 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildMockedApp } from "../../helpers/build-mocked-app.js";
+
+const uploadCredential = {
+  allowPerfixs: ["kb-docs/"],
+  bucket: "examplebucket-1250000000",
+  credentials: {
+    sessionToken: "session-token",
+    tmpSecretId: "tmp-secret-id",
+    tmpSecretKey: "tmp-secret-key",
+    token: "token",
+  },
+  expiration: "2026-05-13T12:00:00Z",
+  expiredTime: 1778673600,
+  region: "ap-guangzhou",
+  requestId: "request-001",
+  startTime: 1778670000,
+};
+
+function mockJavaUploadCredentialFetch() {
+  return vi.spyOn(globalThis, "fetch").mockResolvedValue(
+    new Response(
+      JSON.stringify({
+        data: uploadCredential,
+        error: 0,
+        errorMsg: "",
+        success: true,
+      }),
+      {
+        headers: { "content-type": "application/json" },
+        status: 200,
+      },
+    ),
+  );
+}
 
 async function createAuthenticatedApp(role: "admin" | "operator" | "owner" | "viewer" = "admin") {
   const app = await buildMockedApp();
@@ -83,6 +116,7 @@ describe("ai-hosting kb-doc routes", () => {
 
   beforeEach(() => {
     app = undefined;
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
   });
 
   afterEach(async () => {
@@ -91,7 +125,8 @@ describe("ai-hosting kb-doc routes", () => {
     }
   });
 
-  it("returns mocked upload credentials without requiring a conversation", async () => {
+  it("returns upload credentials without requiring a conversation", async () => {
+    const fetchMock = mockJavaUploadCredentialFetch();
     const context = await createAuthenticatedApp();
     app = context.app;
 
@@ -103,12 +138,17 @@ describe("ai-hosting kb-doc routes", () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({
-      data: {
-        mocked: true,
-        requestId: expect.stringMatching(/^kb-doc-upload-9001-/),
-      },
+      data: uploadCredential,
       success: true,
     });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/file/get-upload-credential",
+      expect.objectContaining({
+        body: JSON.stringify({ type: "kb", uid: 9001 }),
+        method: "POST",
+      }),
+    );
+    fetchMock.mockRestore();
   });
 
   it("creates a kb doc via backend mapping without calling Java", async () => {
@@ -122,7 +162,7 @@ describe("ai-hosting kb-doc routes", () => {
         chunkParams: { maxLength: 2000, strategy: "length" },
         chunkStrategy: "length",
         docSuffix: "pdf",
-        docUrl: "mock://kb-docs/W7zU2fWkVSp65OTAjDd3-w/demo.pdf",
+        docUrl: "kb-docs/W7zU2fWkVSp65OTAjDd3-w/demo.pdf",
         kbId: "W7zU2fWkVSp65OTAjDd3-w",
         name: "产品手册",
         parseMode: "standard",
@@ -150,7 +190,7 @@ describe("ai-hosting kb-doc routes", () => {
         chunkParams: { maxLength: 2000, strategy: "length" },
         chunkStrategy: "length",
         docSuffix: "txt",
-        docUrl: "mock://kb-docs/W7zU2fWkVSp65OTAjDd3-w/demo.txt",
+        docUrl: "kb-docs/W7zU2fWkVSp65OTAjDd3-w/demo.txt",
         kbId: "W7zU2fWkVSp65OTAjDd3-w",
         name: "说明",
         parseMode: "enhanced",
@@ -178,7 +218,7 @@ describe("ai-hosting kb-doc routes", () => {
         chunkParams: { maxLength: 2000, strategy: "length" },
         chunkStrategy: "length",
         docSuffix: ".pdf",
-        docUrl: "mock://kb-docs/W7zU2fWkVSp65OTAjDd3-w/demo.pdf",
+        docUrl: "kb-docs/W7zU2fWkVSp65OTAjDd3-w/demo.pdf",
         kbId: "W7zU2fWkVSp65OTAjDd3-w",
         name: "产品手册",
         parseMode: "standard",
@@ -239,7 +279,7 @@ describe("ai-hosting kb-doc routes", () => {
         chunkParams: { maxLength: 2000, strategy: "length" },
         chunkStrategy: "length",
         docSuffix: "zip",
-        docUrl: "mock://kb-docs/W7zU2fWkVSp65OTAjDd3-w/demo.zip",
+        docUrl: "kb-docs/W7zU2fWkVSp65OTAjDd3-w/demo.zip",
         kbId: "W7zU2fWkVSp65OTAjDd3-w",
         name: "资料包",
         parseMode: "standard",
@@ -257,6 +297,7 @@ describe("ai-hosting kb-doc routes", () => {
   });
 
   it("forbids viewer accounts", async () => {
+    mockJavaUploadCredentialFetch();
     const context = await createAuthenticatedApp("viewer");
     app = context.app;
 
@@ -270,6 +311,7 @@ describe("ai-hosting kb-doc routes", () => {
   });
 
   it("forbids operator accounts", async () => {
+    mockJavaUploadCredentialFetch();
     const context = await createAuthenticatedApp("operator");
     app = context.app;
 
@@ -283,6 +325,7 @@ describe("ai-hosting kb-doc routes", () => {
   });
 
   it("allows owner accounts", async () => {
+    const fetchMock = mockJavaUploadCredentialFetch();
     const context = await createAuthenticatedApp("owner");
     app = context.app;
 
@@ -293,5 +336,6 @@ describe("ai-hosting kb-doc routes", () => {
     });
 
     expect(response.statusCode).toBe(200);
+    fetchMock.mockRestore();
   });
 });

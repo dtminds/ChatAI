@@ -5,6 +5,7 @@ import {
 } from "@chatai/contracts";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { ForbiddenError } from "../../shared/errors.js";
+import { createWorkbenchJavaClient } from "../chat/workbench-java-client.js";
 import { KbDocService } from "./kb-doc.service.js";
 
 export async function registerAiHostingRoutes(app: FastifyInstance) {
@@ -44,7 +45,7 @@ export async function registerAiHostingRoutes(app: FastifyInstance) {
 }
 
 function getKbDocService(app: FastifyInstance) {
-  return new KbDocService(app.db, app.log);
+  return new KbDocService(app.db, app.log, createWorkbenchJavaClient(app.log));
 }
 
 function getSubUserId(request: { user?: { subUserId: string } }) {

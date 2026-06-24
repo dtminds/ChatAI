@@ -41,8 +41,19 @@ export const KbDocCreateResponseSchema = Type.Object({
 });
 
 export const KbDocUploadCredentialResponseSchema = Type.Object({
-  mocked: Type.Literal(true),
+  allowPerfixs: Type.Array(Type.String()),
+  bucket: Type.String(),
+  credentials: Type.Object({
+    sessionToken: Type.String(),
+    tmpSecretId: Type.String(),
+    tmpSecretKey: Type.String(),
+    token: Type.Optional(Type.String()),
+  }),
+  expiration: Type.String(),
+  expiredTime: Type.Number(),
+  region: Type.String(),
   requestId: Type.String(),
+  startTime: Type.Number(),
 });
 
 export type KbDocParseMode = Static<typeof KbDocParseModeSchema>;

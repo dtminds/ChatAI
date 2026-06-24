@@ -3271,11 +3271,7 @@ function pushAccountEvent(state: MockState, seatId: string) {
 
   state.version = Math.max(state.version + 1, Date.now());
   state.events.push({
-    payload: {
-      seatId,
-      lastMessageTime: seat.lastMessageTime,
-      unreadCount: seat.unreadCount,
-    },
+    payload: clone(seat),
     type: "seat",
     version: state.version,
   });

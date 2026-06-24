@@ -18,7 +18,7 @@ import type {
   WorkbenchRevokeMessageResponse,
   WorkbenchSendMessagePayload,
   WorkbenchSendMessageResponse,
-  WorkbenchSeatChangeDto,
+  WorkbenchSeatDto,
   WorkbenchUploadCredentialResponse,
   WorkbenchMessageQueryBySeqsRequest,
   WorkbenchMessageUpdateEventDto,
@@ -126,7 +126,7 @@ export type WorkbenchConversationChange =
     };
 
 export type WorkbenchPollResult = {
-  accountChanges: Array<WorkbenchSeatChangeDto & { accountId: string }>;
+  accountChanges: Array<Account & { accountId: string; seatId: string }>;
   activeConversationMessages: Message[];
   conversationChanges: WorkbenchConversationChange[];
   messageUpdateEvents: WorkbenchMessageUpdateEventDto[];
@@ -482,9 +482,10 @@ export async function pollWorkbench(
   });
 
   return {
-    accountChanges: response.seatChanges.map((change) => ({
-      ...change,
+    accountChanges: response.seatChanges.map((change: WorkbenchSeatDto) => ({
+      ...adaptAccount(change),
       accountId: change.seatId,
+      seatId: change.seatId,
     })),
     activeConversationMessages: adaptMessages(response.activeConversationMessages, context),
     conversationChanges: response.conversationChanges.map((change) =>

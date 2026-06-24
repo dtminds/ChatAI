@@ -3990,19 +3990,16 @@ export function createWorkbenchStore() {
                   return account;
                 }
 
+                const { accountId, seatId, ...accountChange } = change;
+                void accountId;
+                void seatId;
+
                 return {
                   ...account,
-                  ...(change.bizStatus !== undefined
-                    ? { bizStatus: change.bizStatus }
-                    : {}),
-                  ...(change.expireTime !== undefined
-                    ? { expireTime: change.expireTime }
-                    : {}),
-                  lastMessageTime: change.lastMessageTime,
-                  ...(Object.prototype.hasOwnProperty.call(change, "hostSubUserId")
-                    ? { takenOverEmployeeId: change.hostSubUserId ?? undefined }
-                    : {}),
-                  unreadCount: change.unreadCount,
+                  ...accountChange,
+                  id: account.id,
+                  metrics: account.metrics,
+                  tone: account.tone,
                 };
               })
             : currentState.accounts;

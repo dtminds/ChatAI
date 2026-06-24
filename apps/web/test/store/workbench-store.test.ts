@@ -333,8 +333,14 @@ describe("useWorkbenchStore", () => {
       nextVersion: 1_778_600_000_000,
       seatChanges: [
         {
+          avatar: "",
+          description: "私域客户管理",
           hostSubUserId: "sub-user-001",
           lastMessageTime: 1_778_600_000_000,
+          loginStatus: "online",
+          name: "德瑞可",
+          operatorName: "小可",
+          phone: "13296712905",
           seatId: "drc",
           unreadCount: 42,
         },
@@ -2670,7 +2676,12 @@ describe("useWorkbenchStore", () => {
           nextVersion: request.sinceVersion + 1,
           seatChanges: [
             {
-              accountId: "missing-seat",
+              avatar: "",
+              description: "私域客户管理",
+              loginStatus: "online",
+              name: "未加载账号",
+              operatorName: "小可",
+              phone: "13296712905",
               seatId: "missing-seat",
               unreadCount: 3,
             },
@@ -2690,7 +2701,7 @@ describe("useWorkbenchStore", () => {
     expect(useWorkbenchStore.getState().accounts).toBe(accountsBeforePoll);
   });
 
-  it("preserves account status fields when poll account changes contain undefined values", async () => {
+  it("refreshes full account metadata from poll account changes", async () => {
     const baseService = createMockWorkbenchService();
 
     setWorkbenchService({
@@ -2703,10 +2714,67 @@ describe("useWorkbenchStore", () => {
           seatChanges: [
             {
               accountId: "drc",
-              bizStatus: undefined,
-              expireTime: undefined,
+              avatar: "https://example.test/offline-seat.png",
+              bizStatus: 0,
+              description: "账号已更新",
+              expireTime: 1,
+              hostSubUserId: "sub-user-002",
+              lastMessageTime: 1_778_840_020_000,
+              loginStatus: "offline",
+              name: "德瑞可更新",
+              operatorName: "小可更新",
+              phone: "13296712906",
               seatId: "drc",
+              thirdUserId: "third-drc-updated",
               unreadCount: 3,
+            },
+          ],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(useWorkbenchStore.getState().accounts.find((account) => account.id === "drc")).toMatchObject({
+      avatarUrl: "https://example.test/offline-seat.png",
+      bizStatus: 0,
+      description: "账号已更新",
+      expireTime: 1,
+      lastMessageTime: 1_778_840_020_000,
+      loginStatus: "offline",
+      name: "德瑞可更新",
+      operator: "小可更新",
+      phone: "13296712906",
+      takenOverEmployeeId: "sub-user-002",
+      unreadCount: 3,
+    });
+  });
+
+  it("clears optional account metadata from full poll snapshots", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        return {
+          activeConversationMessages: [],
+          conversationChanges: [],
+          nextVersion: request.sinceVersion + 1,
+          seatChanges: [
+            {
+              avatar: "https://example.test/active-seat.png",
+              bizStatus: 1,
+              description: "账号恢复",
+              expireTime: undefined,
+              hostSubUserId: undefined,
+              lastMessageTime: 1_778_840_030_000,
+              loginStatus: "online",
+              name: "德瑞可",
+              operatorName: "小可",
+              phone: "13296712905",
+              seatId: "drc",
+              unreadCount: 0,
             },
           ],
         };
@@ -2719,8 +2787,8 @@ describe("useWorkbenchStore", () => {
         account.id === "drc"
           ? {
               ...account,
-              bizStatus: 0,
               expireTime: 1,
+              takenOverEmployeeId: "sub-user-002",
             }
           : account,
       ),
@@ -2728,11 +2796,14 @@ describe("useWorkbenchStore", () => {
 
     await useWorkbenchStore.getState().pollWorkbench();
 
-    expect(useWorkbenchStore.getState().accounts.find((account) => account.id === "drc")).toMatchObject({
-      bizStatus: 0,
-      expireTime: 1,
-      unreadCount: 3,
+    const account = useWorkbenchStore.getState().accounts.find((item) => item.id === "drc");
+    expect(account).toMatchObject({
+      bizStatus: 1,
+      loginStatus: "online",
+      unreadCount: 0,
     });
+    expect(account?.expireTime).toBeUndefined();
+    expect(account?.takenOverEmployeeId).toBeUndefined();
   });
 
   it("preserves pending messages reference when poll messages do not resolve pending items", async () => {

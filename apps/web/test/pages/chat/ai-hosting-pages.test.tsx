@@ -1548,16 +1548,19 @@ describe("AI hosting pages", () => {
     await user.click(screen.getByRole("button", { name: "确认提交（限免）" }));
 
     await waitFor(() => {
-      expect(importKbDocMock).toHaveBeenCalledWith({
-        chunkParams: {
-          separator: "newline",
-          strategy: "separator",
-        },
-        chunkStrategy: "separator",
-        file: expect.objectContaining({ name: "产品手册.pptx" }),
-        kbId: "W7zU2fWkVSp65OTAjDd3-w",
-        parseMode: "enhanced",
-      });
+      expect(importKbDocMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          chunkParams: {
+            separator: "newline",
+            strategy: "separator",
+          },
+          chunkStrategy: "separator",
+          file: expect.objectContaining({ name: "产品手册.pptx" }),
+          kbId: "W7zU2fWkVSp65OTAjDd3-w",
+          onProgress: expect.any(Function),
+          parseMode: "enhanced",
+        }),
+      );
     });
     expect(screen.queryByRole("dialog", { name: "导入文档" })).not.toBeInTheDocument();
     expect(await screen.findByText("产品手册")).toBeInTheDocument();

@@ -22,6 +22,7 @@ import {
   FileUploadDropzone,
   FileUploadSelectedFile,
 } from "@/components/ui/file-upload";
+import { Progress } from "@/components/ui/progress";
 import { isRequestError } from "@/lib/request";
 import { importKbDoc } from "@/pages/chat/ai-hosting/api/kb-doc-service";
 import { FileExtensionBadge } from "@/pages/chat/components/message/file";
@@ -122,6 +123,7 @@ export function ImportDocumentDialog({
     useState<(typeof CHUNK_LENGTH_OPTIONS)[number]["value"]>("2000");
   const [separator, setSeparator] =
     useState<(typeof SEPARATOR_OPTIONS)[number]["value"]>("newline");
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   function resetForm() {
     setSelectedFile(null);
@@ -130,6 +132,7 @@ export function ImportDocumentDialog({
     setChunkStrategy("length");
     setChunkLength("2000");
     setSeparator("newline");
+    setUploadProgress(0);
   }
 
   useEffect(() => {
@@ -175,6 +178,8 @@ export function ImportDocumentDialog({
     }
 
     void runSubmit(async () => {
+      setUploadProgress(0);
+
       try {
         const result = await importKbDoc({
           chunkParams:
@@ -190,6 +195,7 @@ export function ImportDocumentDialog({
           chunkStrategy,
           file: selectedFile,
           kbId,
+          onProgress: setUploadProgress,
           parseMode,
         });
 
@@ -344,6 +350,20 @@ export function ImportDocumentDialog({
                   />
                 </div>
               )}
+
+              {submitting ? (
+                <div className="grid gap-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-foreground">上传进度</span>
+                    <span className="text-muted-foreground">{uploadProgress}%</span>
+                  </div>
+                  <Progress
+                    aria-label="文档上传进度"
+                    className="h-2 bg-primary/15"
+                    value={uploadProgress}
+                  />
+                </div>
+              ) : null}
             </>
           ) : null}
         </div>

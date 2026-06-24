@@ -5,7 +5,6 @@ import type {
   KbDocCreateRequest,
   KbDocCreateResponse,
   KbDocParseMode,
-  KbDocUploadCredentialResponse,
 } from "@chatai/contracts";
 import { request } from "@/lib/request";
 import {
@@ -20,16 +19,6 @@ import {
 } from "@/pages/chat/ai-hosting/kb-components/shared";
 
 export type { KbCosUploadResult } from "@/pages/chat/ai-hosting/api/kb-upload-service";
-export { uploadKbImageToCos } from "@/pages/chat/ai-hosting/api/kb-upload-service";
-
-export async function getKbDocUploadCredential() {
-  const response = await request<ApiSuccessEnvelope<KbDocUploadCredentialResponse>>({
-    method: "POST",
-    url: "/server/ai-hosting/kb-docs/upload-credential",
-  });
-
-  return response.data;
-}
 
 export async function createKbDoc(payload: KbDocCreateRequest) {
   const response = await request<ApiSuccessEnvelope<KbDocCreateResponse>>({
@@ -101,8 +90,13 @@ export async function importKbDoc(input: {
   kbId: string;
   parseMode: KbDocParseMode;
   description?: string;
+  onProgress?: (progress: number) => void;
+  signal?: AbortSignal;
 }) {
-  const uploadResult = await uploadKbDocFile(input.file);
+  const uploadResult = await uploadKbDocFile(input.file, {
+    onProgress: input.onProgress,
+    signal: input.signal,
+  });
 
   return createKbDoc(
     buildKbDocCreateRequest({

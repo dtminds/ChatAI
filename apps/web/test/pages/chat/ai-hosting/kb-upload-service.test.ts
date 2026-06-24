@@ -26,11 +26,13 @@ vi.mock("cos-js-sdk-v5", () => ({
   default: cosConstructorMock,
 }));
 
+const MOCK_KB_UPLOAD_PREFIX = "s5/upload/2026/05/13/272/";
+
 function createUploadCredential(
   overrides: Partial<KbDocUploadCredentialResponse> = {},
 ): KbDocUploadCredentialResponse {
   return {
-    allowPerfixs: ["kb-docs/"],
+    allowPerfixs: [MOCK_KB_UPLOAD_PREFIX],
     bucket: "mock-bucket-1250000000",
     credentials: {
       sessionToken: "mock-session-token",
@@ -69,6 +71,7 @@ describe("kb-upload-service", () => {
       type: "application/pdf",
     });
     const result = await uploadKbDocFileToCos(file);
+    const objectKey = `${MOCK_KB_UPLOAD_PREFIX}1778659200000-4fzyo82m.pdf`;
 
     expect(requestMock).toHaveBeenCalledWith({
       method: "POST",
@@ -79,21 +82,19 @@ describe("kb-upload-service", () => {
         Body: file,
         Bucket: credential.bucket,
         ContentType: "application/pdf",
-        Key: "kb-docs/1778659200000-4fzyo82m.pdf",
+        Key: objectKey,
         Region: credential.region,
         SliceSize: 1024 * 1024,
       }),
     );
     expect(result).toEqual({
-      docUrl: "kb-docs/1778659200000-4fzyo82m.pdf",
-      url: "https://b5.bokr.com.cn/kb-docs/1778659200000-4fzyo82m.pdf",
+      docUrl: objectKey,
+      url: `https://b5.bokr.com.cn/${objectKey}`,
     });
   });
 
   it("uploads kb images to COS and returns object path and public url", async () => {
-    const credential = createUploadCredential({
-      allowPerfixs: ["kb-images/"],
-    });
+    const credential = createUploadCredential();
     requestMock.mockResolvedValue({ data: credential });
     vi.setSystemTime(new Date("2026-05-13T08:00:00Z"));
     vi.spyOn(Math, "random").mockReturnValue(0.123456);
@@ -106,17 +107,18 @@ describe("kb-upload-service", () => {
       type: "image/png",
     });
     const result = await uploadKbImageToCos(file);
+    const objectKey = `${MOCK_KB_UPLOAD_PREFIX}1778659200000-4fzyo82m.png`;
 
     expect(cosUploadFileMock).toHaveBeenCalledWith(
       expect.objectContaining({
         Body: file,
         ContentType: "image/png",
-        Key: "kb-images/1778659200000-4fzyo82m.png",
+        Key: objectKey,
       }),
     );
     expect(result).toEqual({
-      docUrl: "kb-images/1778659200000-4fzyo82m.png",
-      url: "https://b5.bokr.com.cn/kb-images/1778659200000-4fzyo82m.png",
+      docUrl: objectKey,
+      url: `https://b5.bokr.com.cn/${objectKey}`,
     });
   });
 
@@ -155,9 +157,7 @@ describe("kb-upload-service", () => {
   });
 
   it("uploads kb qa files to COS and preserves the faq.xlsx suffix", async () => {
-    const credential = createUploadCredential({
-      allowPerfixs: ["kb-faqs/"],
-    });
+    const credential = createUploadCredential();
     requestMock.mockResolvedValue({ data: credential });
     vi.setSystemTime(new Date("2026-05-13T08:00:00Z"));
     vi.spyOn(Math, "random").mockReturnValue(0.123456);
@@ -170,18 +170,19 @@ describe("kb-upload-service", () => {
       type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     });
     const result = await uploadKbQaFileToCos(file);
+    const objectKey = `${MOCK_KB_UPLOAD_PREFIX}1778659200000-4fzyo82m.faq.xlsx`;
 
     expect(cosUploadFileMock).toHaveBeenCalledWith(
       expect.objectContaining({
         Body: file,
         ContentType:
           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        Key: "kb-faqs/1778659200000-4fzyo82m.faq.xlsx",
+        Key: objectKey,
       }),
     );
     expect(result).toEqual({
-      docUrl: "kb-faqs/1778659200000-4fzyo82m.faq.xlsx",
-      url: "https://b5.bokr.com.cn/kb-faqs/1778659200000-4fzyo82m.faq.xlsx",
+      docUrl: objectKey,
+      url: `https://b5.bokr.com.cn/${objectKey}`,
     });
   });
 });

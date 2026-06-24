@@ -1898,10 +1898,12 @@ function buildOptimisticMessageContent(
   }
 
   if (segment.type === "image") {
+    const imageUrl = segment.imageUrl ?? segment.url ?? segment.localUrl ?? "";
+
     return {
       alt: segment.alt,
       height: segment.height,
-      imageUrl: segment.url ?? segment.localUrl ?? "",
+      imageUrl,
       type: "image",
       width: segment.width,
     };
@@ -4444,7 +4446,7 @@ export function createWorkbenchStore() {
       let segmentsForSend = sendableSegments;
 
       try {
-        if (normalizedSegments.some((segment) => segment.type === "image")) {
+        if (normalizedSegments.some(shouldUploadImageSegment)) {
           segmentsForSend = options?.onImageUploaded
             ? await resolveImageSegmentsForSend(
                 activeConversationId,
@@ -5987,6 +5989,24 @@ function stripComposerMentionMetadata(segments: ComposerSegment[]): ComposerSegm
 function toWorkbenchSendSegment(
   segment: ComposerSegment,
 ): WorkbenchSendMessagePayload["segment"] {
+  if (segment.type === "image") {
+    const imageUrl = segment.imageUrl?.trim();
+
+    if (imageUrl) {
+      return {
+        alt: segment.alt,
+        imageUrl,
+        ...(segment.materialCollectionId
+          ? { materialCollectionId: segment.materialCollectionId }
+          : {}),
+        type: "image",
+        url: imageUrl,
+        ...(segment.height != null ? { height: segment.height } : {}),
+        ...(segment.width != null ? { width: segment.width } : {}),
+      };
+    }
+  }
+
   if (segment.type === "file" && segment.materialCollectionId) {
     return {
       materialCollectionId: segment.materialCollectionId,
@@ -6033,6 +6053,14 @@ function toWorkbenchSendSegment(
   }
 
   return segment;
+}
+
+function shouldUploadImageSegment(segment: ComposerSegment) {
+  return (
+    segment.type === "image" &&
+    !segment.materialCollectionId &&
+    !segment.imageUrl?.trim()
+  );
 }
 
 function isDownloadableMessage(message: Message): message is ChatMessage {

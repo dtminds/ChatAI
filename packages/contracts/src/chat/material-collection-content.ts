@@ -14,6 +14,10 @@ export type MaterialH5CollectFields = {
   title: string;
 };
 
+export type MaterialImageCollectFields = {
+  imageUrl: string;
+};
+
 export type MaterialCollectFieldError = {
   errorMsg: string;
 };
@@ -53,6 +57,15 @@ export function readMaterialDescription(record: Record<string, unknown>) {
   return (
     readMaterialRawString(record, "description") ||
     readMaterialRawString(record, "desc")
+  );
+}
+
+export function readMaterialImageUrl(record: Record<string, unknown>) {
+  return (
+    readMaterialRawString(record, "imageUrl") ||
+    readMaterialRawString(record, "fileUrl") ||
+    readMaterialRawString(record, "url") ||
+    readMaterialRawString(record, "localUrl")
   );
 }
 
@@ -198,6 +211,18 @@ export function resolveMaterialH5CollectFields(
   };
 }
 
+export function resolveMaterialImageCollectFields(
+  rawContent: string | null | undefined,
+): MaterialImageCollectFields | MaterialCollectFieldError {
+  const imageUrl = readMaterialImageUrl(parseMaterialRawContent(rawContent));
+
+  if (!imageUrl) {
+    return { errorMsg: "图片缺少地址，无法收录" };
+  }
+
+  return { imageUrl };
+}
+
 export function buildMaterialFileContentJson(
   rawContent: string | null | undefined,
   fields: MaterialFileCollectFields,
@@ -228,6 +253,19 @@ export function buildMaterialH5ContentJson(
   delete nextContent.url;
 
   return JSON.stringify(nextContent);
+}
+
+export function buildMaterialImageContentJson(
+  rawContent: string | null | undefined,
+  fields: MaterialImageCollectFields,
+) {
+  const content = {
+    ...parseMaterialRawContent(rawContent),
+    fileUrl: fields.imageUrl,
+    imageUrl: fields.imageUrl,
+  };
+
+  return JSON.stringify(content);
 }
 
 export function patchMaterialFileContentJson(

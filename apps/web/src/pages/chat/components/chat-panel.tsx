@@ -8,7 +8,10 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import type { LexicalEditor } from "lexical";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
-import { ChatComposer } from "@/pages/chat/components/chat-composer";
+import {
+  ChatComposer,
+  type ComposerMaterialLibraryBizType,
+} from "@/pages/chat/components/chat-composer";
 import { ChatHeader } from "@/pages/chat/components/chat-header";
 import { ChatMessagePanel } from "@/pages/chat/components/chat-message-panel";
 import { CustomerSidePanel } from "@/pages/chat/components/customer-side-panel";
@@ -90,7 +93,7 @@ type ChatPanelProps = {
   onDeleteCollectedExpression?: (item: WorkbenchMaterialCollectionItemDto) => void;
   onLoadMoreCollectedExpressions?: () => void;
   onOpenCollectedExpressions?: () => void;
-  onOpenMaterialLibrary?: (bizType: 2 | 3 | 4 | 5) => void;
+  onOpenMaterialLibrary?: (bizType: ComposerMaterialLibraryBizType) => void;
   onSelectCollectedExpression?: (item: WorkbenchMaterialCollectionItemDto) => void;
   onTopCollectedExpression?: (item: WorkbenchMaterialCollectionItemDto) => void;
   onDownloadMessageFile?: (message: ChatMessage) => void;

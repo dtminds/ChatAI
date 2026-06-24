@@ -117,6 +117,7 @@ import {
   QUICK_REPLY_TOP_CATEGORY_LIMIT,
   buildMaterialFileContentJson,
   buildMaterialH5ContentJson,
+  buildMaterialImageContentJson,
   canEditMaterialCollectionItem,
   isQuickReplyLabelColor,
   normalizeQuickReplyAttachments,
@@ -124,6 +125,7 @@ import {
   patchMaterialH5ContentJson,
   resolveMaterialFileCollectFields,
   resolveMaterialH5CollectFields,
+  resolveMaterialImageCollectFields,
   validateQuickReplyPayload,
 } from "@chatai/contracts";
 import {
@@ -3932,6 +3934,7 @@ function parseMaterialBizType(value: number): MaterialCollectionBizType {
     case MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM:
     case MATERIAL_COLLECTION_BIZ_TYPE.H5:
     case MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED:
+    case MATERIAL_COLLECTION_BIZ_TYPE.IMAGE:
       return value;
     default:
       throw new BadRequestError("INVALID_MATERIAL_BIZ_TYPE", "素材类型无效");
@@ -4374,6 +4377,8 @@ function isMaterialMessageTypeMatched(
   switch (bizType) {
     case MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION:
       return msgtype === "emotion";
+    case MATERIAL_COLLECTION_BIZ_TYPE.IMAGE:
+      return msgtype === "image";
     case MATERIAL_COLLECTION_BIZ_TYPE.FILE:
       return msgtype === "file";
     case MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM:
@@ -4428,6 +4433,19 @@ function normalizeMaterialCollectionPayload(
     };
   }
 
+  if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.IMAGE) {
+    const resolved = resolveMaterialImageCollectFields(rawContent);
+
+    if ("errorMsg" in resolved) {
+      return resolved;
+    }
+
+    return {
+      content: buildMaterialImageContentJson(rawContent, resolved),
+      title: "图片",
+    };
+  }
+
   return {
     content: rawContent ?? "",
     title: readMaterialTitle(rawContent, contentType, msgInfoId),
@@ -4447,6 +4465,10 @@ function readMaterialTitle(
 
   if (contentType === "file") {
     return truncateMaterialTitle(readMaterialString(content, "fileName") || msgInfoId);
+  }
+
+  if (contentType === "image") {
+    return "图片";
   }
 
   if (contentType === "mini-program") {
@@ -4643,7 +4665,8 @@ function buildJavaSendMessageData(
   >,
 ): JavaSendMessageData {
   if (segment.type === "image") {
-    const imageUrl = segment.url?.trim() || segment.localUrl?.trim();
+    const imageUrl =
+      segment.imageUrl?.trim() || segment.url?.trim() || segment.localUrl?.trim();
 
     if (!imageUrl) {
       throw new BadRequestError("INVALID_IMAGE_MESSAGE", "图片消息缺少可发送地址");

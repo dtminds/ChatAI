@@ -115,10 +115,12 @@ import {
   type WorkbenchQuickReplyUpdateRequest,
   buildMaterialFileContentJson,
   buildMaterialH5ContentJson,
+  buildMaterialImageContentJson,
   patchMaterialFileContentJson,
   patchMaterialH5ContentJson,
   resolveMaterialFileCollectFields,
   resolveMaterialH5CollectFields,
+  resolveMaterialImageCollectFields,
   isQuickReplyLabelColor,
   normalizeQuickReplyAttachments,
   validateQuickReplyPayload,
@@ -2686,6 +2688,12 @@ function buildInitialState(): MockState {
         sort: 200,
         title: "常用视频号",
       },
+      {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.IMAGE,
+        id: "mock-material-group-image",
+        sort: 200,
+        title: "常用图片",
+      },
     ],
     materialItems: buildInitialMaterialItems(messagesByConversationId),
     messagesByConversationId,
@@ -2828,6 +2836,8 @@ function getMaterialBizTypeForContentType(
   switch (contentType) {
     case "emotion":
       return MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION;
+    case "image":
+      return MATERIAL_COLLECTION_BIZ_TYPE.IMAGE;
     case "file":
       return MATERIAL_COLLECTION_BIZ_TYPE.FILE;
     case "mini-program":
@@ -2847,6 +2857,8 @@ function getMaterialContentType(
   switch (bizType) {
     case MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION:
       return "emotion";
+    case MATERIAL_COLLECTION_BIZ_TYPE.IMAGE:
+      return "image";
     case MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM:
       return "mini-program";
     case MATERIAL_COLLECTION_BIZ_TYPE.H5:
@@ -2868,6 +2880,8 @@ function getMockMaterialGroupId(bizType: MaterialCollectionBizType): string | 0 
       return "mock-material-group-h5";
     case MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED:
       return "mock-material-group-sphfeed";
+    case MATERIAL_COLLECTION_BIZ_TYPE.IMAGE:
+      return "mock-material-group-image";
     case MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION:
       return 0;
   }
@@ -2924,6 +2938,21 @@ function resolveMockMaterialCollect(
     };
   }
 
+  if (request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.IMAGE) {
+    const resolved = resolveMaterialImageCollectFields(rawContent);
+
+    if ("errorMsg" in resolved) {
+      return resolved;
+    }
+
+    return {
+      content: JSON.parse(
+        buildMaterialImageContentJson(rawContent, resolved),
+      ) as WorkbenchMaterialCollectionItemDto["content"],
+      title: "图片",
+    };
+  }
+
   return {
     content: message ? getMaterialContentRecord(message) : {},
     title: message ? getMaterialTitle(message) : request.msgInfoId,
@@ -2935,6 +2964,10 @@ function getMaterialTitle(message: WorkbenchMessageDto) {
 
   if (message.contentType === "emotion") {
     return "表情";
+  }
+
+  if (message.contentType === "image") {
+    return "图片";
   }
 
   return (

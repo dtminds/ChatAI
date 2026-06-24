@@ -117,6 +117,15 @@ function MaterialCardContent({ item }: { item: MaterialCollectionItem }) {
     );
   }
 
+  if (item.contentType === "image") {
+    return (
+      <ImageMessageCard
+        content={toImageContent(item)}
+        uiMessageKey={item.id}
+      />
+    );
+  }
+
   if (item.contentType === "file") {
     return (
       <FileMessageCard
@@ -162,6 +171,22 @@ function toExpressionContent(item: MaterialCollectionItem): ImageMessageContent 
     imageUrl: readString(item.content.fileUrl),
     type: "image",
     variant: "emotion",
+    width: readNumber(item.content.width),
+  };
+}
+
+function toImageContent(item: MaterialCollectionItem): ImageMessageContent {
+  const imageUrl =
+    readString(item.content.imageUrl) ||
+    readString(item.content.fileUrl) ||
+    readString(item.content.url) ||
+    readString(item.content.localUrl);
+
+  return {
+    alt: readString(item.content.alt) || item.title || "图片",
+    height: readNumber(item.content.height),
+    imageUrl,
+    type: "image",
     width: readNumber(item.content.width),
   };
 }

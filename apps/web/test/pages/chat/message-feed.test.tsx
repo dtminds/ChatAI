@@ -299,6 +299,14 @@ describe("message feed row actions", () => {
       },
     ],
     [
+      "普通图片",
+      {
+        alt: "商品图",
+        imageUrl: "https://example.com/image.png",
+        type: "image" as const,
+      },
+    ],
+    [
       "文件",
       {
         extension: "pdf",
@@ -361,14 +369,6 @@ describe("message feed row actions", () => {
       {
         text: "普通文本",
         type: "text" as const,
-      },
-    ],
-    [
-      "普通图片",
-      {
-        alt: "图片",
-        imageUrl: "https://example.com/image.png",
-        type: "image" as const,
       },
     ],
     [

@@ -17,6 +17,8 @@ export function getMaterialContentTypeForBizType(
   switch (bizType) {
     case MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION:
       return "emotion";
+    case MATERIAL_COLLECTION_BIZ_TYPE.IMAGE:
+      return "image";
     case MATERIAL_COLLECTION_BIZ_TYPE.FILE:
       return "file";
     case MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM:
@@ -36,6 +38,8 @@ export function getMaterialBizTypeForMessageContentType(
   switch (contentType) {
     case "emotion":
       return MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION;
+    case "image":
+      return MATERIAL_COLLECTION_BIZ_TYPE.IMAGE;
     case "file":
       return MATERIAL_COLLECTION_BIZ_TYPE.FILE;
     case "mini-program":
@@ -104,6 +108,8 @@ function getMsgTypeForBizType(bizType: MaterialCollectionBizType) {
   switch (bizType) {
     case MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION:
       return "emotion";
+    case MATERIAL_COLLECTION_BIZ_TYPE.IMAGE:
+      return "image";
     case MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM:
       return "weapp";
     case MATERIAL_COLLECTION_BIZ_TYPE.H5:
@@ -121,6 +127,7 @@ function toMaterialBizType(value: number | string): MaterialCollectionBizType {
 
   switch (numericValue) {
     case MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION:
+    case MATERIAL_COLLECTION_BIZ_TYPE.IMAGE:
     case MATERIAL_COLLECTION_BIZ_TYPE.FILE:
     case MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM:
     case MATERIAL_COLLECTION_BIZ_TYPE.H5:
@@ -147,6 +154,10 @@ function resolveTitle(
     return readString(content, "appName") || readString(content, "title") || fallbackTitle;
   }
 
+  if (contentType === "image") {
+    return readString(content, "title") || readString(content, "alt") || "图片";
+  }
+
   return (
     readString(content, "title") ||
     readString(content, "fileName") ||
@@ -159,6 +170,22 @@ function normalizeMaterialContent(
   content: Record<string, unknown>,
   contentType: WorkbenchMaterialCollectionContentType,
 ) {
+  if (contentType === "image") {
+    const imageUrl =
+      readString(content, "imageUrl") ||
+      readString(content, "fileUrl") ||
+      readString(content, "url") ||
+      readString(content, "localUrl");
+
+    return imageUrl
+      ? {
+          ...content,
+          fileUrl: imageUrl,
+          imageUrl,
+        }
+      : content;
+  }
+
   if (contentType !== "emotion") {
     return content;
   }

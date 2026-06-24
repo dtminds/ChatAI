@@ -3444,6 +3444,12 @@ describe("useWorkbenchStore", () => {
         type: "emotion",
       },
       {
+        alt: "商品图",
+        imageUrl: "https://cdn.example.com/product.png",
+        materialCollectionId: "material-image-001",
+        type: "image",
+      },
+      {
         extension: "pdf",
         fileName: "报价单.pdf",
         fileSizeLabel: "2 KB",
@@ -3471,7 +3477,7 @@ describe("useWorkbenchStore", () => {
       },
     ]);
 
-    expect(sendMessage).toHaveBeenCalledTimes(4);
+    expect(sendMessage).toHaveBeenCalledTimes(5);
     expect(sendMessage).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
@@ -3484,6 +3490,17 @@ describe("useWorkbenchStore", () => {
     expect(sendMessage).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
+        segment: expect.objectContaining({
+          alt: "商品图",
+          imageUrl: "https://cdn.example.com/product.png",
+          materialCollectionId: "material-image-001",
+          type: "image",
+        }),
+      }),
+    );
+    expect(sendMessage).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
         segment: {
           materialCollectionId: "material-file-001",
           type: "file",
@@ -3491,7 +3508,7 @@ describe("useWorkbenchStore", () => {
       }),
     );
     expect(sendMessage).toHaveBeenNthCalledWith(
-      3,
+      4,
       expect.objectContaining({
         segment: {
           materialCollectionId: "material-h5-001",
@@ -3500,7 +3517,7 @@ describe("useWorkbenchStore", () => {
       }),
     );
     expect(sendMessage).toHaveBeenNthCalledWith(
-      4,
+      5,
       expect.objectContaining({
         segment: {
           materialCollectionId: "material-weapp-001",
@@ -3509,7 +3526,7 @@ describe("useWorkbenchStore", () => {
       }),
     );
     const latestMessages =
-      useWorkbenchStore.getState().messagesByConversationId["conv-001"].slice(-4);
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].slice(-5);
 
     expect(latestMessages).toMatchObject([
       {
@@ -3517,6 +3534,12 @@ describe("useWorkbenchStore", () => {
           imageUrl: "https://cdn.example.com/expression.gif",
           type: "image",
           variant: "emotion",
+        },
+      },
+      {
+        content: {
+          imageUrl: "https://cdn.example.com/product.png",
+          type: "image",
         },
       },
       {

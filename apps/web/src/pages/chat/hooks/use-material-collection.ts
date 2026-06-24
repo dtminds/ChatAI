@@ -18,6 +18,7 @@ import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
 import { getFileExtension } from "@/pages/chat/lib/composer-file-files";
 
 export type ComposerMaterialBizType =
+  | typeof MATERIAL_COLLECTION_BIZ_TYPE.IMAGE
   | typeof MATERIAL_COLLECTION_BIZ_TYPE.FILE
   | typeof MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM
   | typeof MATERIAL_COLLECTION_BIZ_TYPE.H5
@@ -1061,6 +1062,11 @@ export function useMaterialCollection({
           return;
         }
 
+        if (item.contentType === "image") {
+          toast.warning("图片素材数据异常");
+          return;
+        }
+
         toast.warning(getMaterialSendUnavailableMessage(item.contentType));
         return;
       }
@@ -1190,7 +1196,7 @@ function getMaterialBizTypeForMessage(
   if (message.content.type === "image") {
     return message.content.variant === "emotion"
       ? MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION
-      : undefined;
+      : MATERIAL_COLLECTION_BIZ_TYPE.IMAGE;
   }
 
   if (message.content.type === "file") {
@@ -1225,6 +1231,7 @@ function toComposerMaterialBizType(
 ): ComposerMaterialBizType | undefined {
   if (
     bizType === MATERIAL_COLLECTION_BIZ_TYPE.FILE ||
+    bizType === MATERIAL_COLLECTION_BIZ_TYPE.IMAGE ||
     bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM ||
     bizType === MATERIAL_COLLECTION_BIZ_TYPE.H5 ||
     bizType === MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED
@@ -1279,6 +1286,34 @@ function buildExpressionComposerSegment(
     imageUrl,
     materialCollectionId,
     type: "emotion",
+  };
+}
+
+function buildImageComposerSegment(
+  item: WorkbenchMaterialCollectionItemDto,
+): ComposerSegment | undefined {
+  const materialCollectionId = item.id.trim();
+  const contentRecord = isMaterialContentRecord(item.content);
+  const imageUrl =
+    readMaterialContentString(contentRecord.imageUrl) ||
+    readMaterialContentString(contentRecord.fileUrl) ||
+    readMaterialContentString(contentRecord.url) ||
+    readMaterialContentString(contentRecord.localUrl);
+
+  if (!materialCollectionId || !imageUrl) {
+    return undefined;
+  }
+
+  return {
+    alt:
+      readMaterialContentString(contentRecord.alt) ||
+      readMaterialContentString(contentRecord.title) ||
+      "图片",
+    height: readMaterialContentNumber(contentRecord.height),
+    imageUrl,
+    materialCollectionId,
+    type: "image",
+    width: readMaterialContentNumber(contentRecord.width),
   };
 }
 
@@ -1389,6 +1424,10 @@ function buildComposerSegmentFromMaterial(
     return buildExpressionComposerSegment(item);
   }
 
+  if (item.contentType === "image") {
+    return buildImageComposerSegment(item);
+  }
+
   if (item.contentType === "file") {
     return buildFileComposerSegment(item);
   }
@@ -1416,6 +1455,10 @@ function getMaterialSendUnavailableMessage(
 
 function readMaterialContentString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function readMaterialContentNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 function getMaterialErrorMessage(error: unknown, fallback: string) {

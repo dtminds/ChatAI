@@ -320,7 +320,9 @@ const SendMessageBodySchema = Type.Object({
           alt: Type.String(),
           fileId: Type.Optional(Type.String()),
           height: Type.Optional(Type.Number()),
+          imageUrl: Type.Optional(Type.String()),
           localUrl: Type.Optional(Type.String()),
+          materialCollectionId: Type.Optional(Type.String()),
           type: Type.Literal("image"),
           url: Type.Optional(Type.String()),
           width: Type.Optional(Type.Number()),
@@ -417,6 +419,7 @@ const MaterialBizTypeSchema = Type.Union([
   Type.Literal(3),
   Type.Literal(4),
   Type.Literal(5),
+  Type.Literal(6),
 ]);
 
 const MaterialGroupBizTypeSchema = Type.Union([
@@ -424,6 +427,7 @@ const MaterialGroupBizTypeSchema = Type.Union([
   Type.Literal(3),
   Type.Literal(4),
   Type.Literal(5),
+  Type.Literal(6),
 ]);
 
 const MaterialCollectionsQuerySchema = Type.Object({

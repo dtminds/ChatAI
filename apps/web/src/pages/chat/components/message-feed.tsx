@@ -1086,7 +1086,7 @@ function canShowRevokeMessageAction(message: ChatMessage, now = Date.now()) {
 
 export function canCollectMaterial(message: ChatMessage) {
   if (message.content.type === "image") {
-    return message.content.variant === "emotion";
+    return true;
   }
 
   return (

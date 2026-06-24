@@ -1,26 +1,22 @@
 import type COS from "cos-js-sdk-v5";
+import type {
+  ApiSuccessEnvelope,
+  KbDocUploadCredentialResponse,
+} from "@chatai/contracts";
 import {
   createCosClientOptions,
 } from "@/lib/cos-dev-proxy";
 import { buildMediaAssetUrl } from "@/lib/media-asset-url";
-import { getUploadCredential } from "@/pages/chat/api/workbench-gateway";
-import {
-  formatFileSize,
-  getSupportedFileExtension,
-} from "@/pages/chat/lib/composer-file-files";
+import { request } from "@/lib/request";
 import {
   MEDIA_UPLOAD_SDK_LOAD_FAILED_CODE,
   MEDIA_UPLOAD_SDK_LOAD_FAILED_MESSAGE,
 } from "@/pages/chat/api/media-upload-errors";
-import type {
-  ComposerImageSegment,
-  ComposerFileSegment,
-  ComposerSegment,
-} from "@/pages/chat/lib/composer-segments";
-import type { WorkbenchUploadCredentialResponse } from "@chatai/contracts";
+import { getFileExtension } from "@/pages/chat/ai-hosting/kb-components/shared";
 
-const DEFAULT_IMAGE_UPLOAD_PREFIX = "chat-images/";
-const DEFAULT_FILE_UPLOAD_PREFIX = "chat-files/";
+const DEFAULT_KB_DOC_UPLOAD_PREFIX = "kb-docs/";
+const DEFAULT_KB_IMAGE_UPLOAD_PREFIX = "kb-images/";
+const DEFAULT_KB_QA_UPLOAD_PREFIX = "kb-faqs/";
 const DEFAULT_FALLBACK_EXTENSION = "bin";
 const UPLOAD_SLICE_SIZE = 1024 * 1024;
 
@@ -28,84 +24,58 @@ type CosConstructor = typeof COS;
 type CosClient = InstanceType<CosConstructor>;
 type CosModule = Awaited<ReturnType<typeof importCosModule>>;
 
+export type KbCosUploadResult = {
+  docUrl: string;
+  url: string;
+};
+
 let cosConstructorPromise: Promise<CosConstructor> | null = null;
 
-export async function resolveImageSegmentsForSend(
-  conversationId: string,
-  segments: ComposerSegment[],
-  options: {
-    onImageUploaded?: (payload: {
-      nextSegment: ComposerSegment;
-      previousSegment: ComposerSegment;
-    }) => void;
-  } = {},
-): Promise<ComposerSegment[]> {
-  const localImageSegments = segments.filter(isLocalImageSegment);
+export async function uploadKbDocFileToCos(
+  file: File,
+  options: KbCosUploadOptions = {},
+): Promise<KbCosUploadResult> {
+  const extension =
+    getFileExtension(file.name).toLowerCase() || DEFAULT_FALLBACK_EXTENSION;
 
-  if (localImageSegments.length === 0) {
-    return segments;
-  }
-
-  const credential = await getUploadCredential(conversationId);
-  const cos = await createCosClient(credential);
-  const uploads = new Map<ComposerSegment, ComposerSegment>();
-
-  await Promise.all(localImageSegments.map(async (segment) => {
-    if (segment.type !== "image" || !segment.localUrl) {
-      return;
-    }
-
-    const blob = await dataUrlToBlob(segment.localUrl);
-    const key = buildObjectKey({
-      credential,
-      extension: getImageExtension(blob.type),
-    });
-    await cos.uploadFile({
-      Body: blob,
-      Bucket: credential.bucket,
-      ContentType: blob.type || undefined,
-      Key: key,
-      Region: credential.region,
-      SliceSize: UPLOAD_SLICE_SIZE,
-    });
-
-    const nextSegment: ComposerSegment = {
-      alt: segment.alt,
-      fileId: key,
-      height: segment.height,
-      type: "image",
-      url: buildObjectUrl(key),
-      width: segment.width,
-    };
-
-    uploads.set(segment, nextSegment);
-    options.onImageUploaded?.({
-      nextSegment: {
-        ...nextSegment,
-        clientId: segment.clientId,
-        localUrl: segment.localUrl,
-      },
-      previousSegment: segment,
-    });
-  }));
-
-  return segments.map((segment) => uploads.get(segment) ?? segment);
+  return uploadFileToCos(file, extension, DEFAULT_KB_DOC_UPLOAD_PREFIX, options);
 }
 
-export async function uploadWorkbenchFile(
-  conversationId: string,
+export async function uploadKbImageToCos(
   file: File,
-  options: {
-    onProgress?: (progress: number) => void;
-    signal?: AbortSignal;
-  } = {},
-): Promise<ComposerFileSegment> {
-  const credential = await getUploadCredential(conversationId);
+  options: KbCosUploadOptions = {},
+): Promise<KbCosUploadResult> {
+  const extension = getImageExtension(file.type) || DEFAULT_FALLBACK_EXTENSION;
+
+  return uploadFileToCos(file, extension, DEFAULT_KB_IMAGE_UPLOAD_PREFIX, options);
+}
+
+export async function uploadKbQaFileToCos(
+  file: File,
+  options: KbCosUploadOptions = {},
+): Promise<KbCosUploadResult> {
+  const extension = getKbQaUploadExtension(file.name);
+
+  return uploadFileToCos(file, extension, DEFAULT_KB_QA_UPLOAD_PREFIX, options);
+}
+
+type KbCosUploadOptions = {
+  onProgress?: (progress: number) => void;
+  signal?: AbortSignal;
+};
+
+async function uploadFileToCos(
+  file: File,
+  extension: string,
+  fallbackPrefix: string,
+  options: KbCosUploadOptions,
+): Promise<KbCosUploadResult> {
+  const credential = await fetchKbDocUploadCredential();
   const cos = await createCosClient(credential);
-  const extension = getSupportedFileExtension(file) || DEFAULT_FALLBACK_EXTENSION;
-  const key = buildFileObjectKey({
+  const key = buildObjectKey({
     credential,
     extension,
+    fallbackPrefix,
   });
   let taskId: string | undefined;
   const abortUploadTask = () => {
@@ -149,40 +119,7 @@ export async function uploadWorkbenchFile(
   options.onProgress?.(100);
 
   return {
-    extension,
-    fileId: key,
-    fileName: file.name,
-    fileSize: file.size,
-    fileSizeLabel: formatFileSize(file.size),
-    type: "file",
-    url: buildObjectUrl(key),
-  };
-}
-
-export async function uploadWorkbenchImageFile(
-  conversationId: string,
-  file: File,
-): Promise<ComposerImageSegment> {
-  const credential = await getUploadCredential(conversationId);
-  const cos = await createCosClient(credential);
-  const key = buildObjectKey({
-    credential,
-    extension: getImageExtension(file.type),
-  });
-
-  await cos.uploadFile({
-    Body: file,
-    Bucket: credential.bucket,
-    ContentType: file.type || undefined,
-    Key: key,
-    Region: credential.region,
-    SliceSize: UPLOAD_SLICE_SIZE,
-  });
-
-  return {
-    alt: file.name || "图片",
-    fileId: key,
-    type: "image",
+    docUrl: key,
     url: buildObjectUrl(key),
   };
 }
@@ -191,20 +128,8 @@ function createUploadAbortError() {
   return new DOMException("文件上传已取消", "AbortError");
 }
 
-function isLocalImageSegment(segment: ComposerSegment) {
-  if (segment.type !== "image" || !segment.localUrl) {
-    return false;
-  }
-
-  return !segment.url || segment.url === segment.localUrl || isLocalPreviewUrl(segment.url);
-}
-
-function isLocalPreviewUrl(url: string) {
-  return url.startsWith("data:") || url.startsWith("blob:");
-}
-
 async function createCosClient(
-  credential: WorkbenchUploadCredentialResponse,
+  credential: KbDocUploadCredentialResponse,
 ): Promise<CosClient> {
   const COS = await loadCosConstructor();
 
@@ -287,51 +212,25 @@ function collectErrorMessages(error: unknown): string[] {
   return messages;
 }
 
-async function dataUrlToBlob(dataUrl: string) {
-  const response = await fetch(dataUrl);
-
-  if (!response.ok) {
-    throw new Error("图片读取失败");
-  }
-
-  return response.blob();
-}
-
 function buildObjectKey({
   credential,
   extension,
+  fallbackPrefix,
 }: {
-  credential: WorkbenchUploadCredentialResponse;
+  credential: KbDocUploadCredentialResponse;
   extension: string;
+  fallbackPrefix: string;
 }) {
   const prefix = normalizeUploadPrefix(
-    getAllowedUploadPrefixes(credential)[0] ?? DEFAULT_IMAGE_UPLOAD_PREFIX,
+    getAllowedUploadPrefixes(credential)[0] ?? fallbackPrefix,
+    fallbackPrefix,
   );
   const randomPart = Math.random().toString(36).slice(2, 10);
 
   return `${prefix}${Date.now()}-${randomPart}.${extension}`;
 }
 
-function buildFileObjectKey({
-  credential,
-  extension,
-}: {
-  credential: WorkbenchUploadCredentialResponse;
-  extension: string;
-}) {
-  const prefix = normalizeUploadPrefix(
-    getAllowedUploadPrefixes(credential)[0] ?? DEFAULT_FILE_UPLOAD_PREFIX,
-    DEFAULT_FILE_UPLOAD_PREFIX,
-  );
-  const randomPart = Math.random().toString(36).slice(2, 10);
-
-  return `${prefix}${Date.now()}-${randomPart}.${extension}`;
-}
-
-function normalizeUploadPrefix(
-  prefix: string,
-  fallbackPrefix = DEFAULT_IMAGE_UPLOAD_PREFIX,
-) {
+function normalizeUploadPrefix(prefix: string, fallbackPrefix: string) {
   const normalizedPrefix = prefix
     .trim()
     .replace(/^\/+/, "")
@@ -344,6 +243,16 @@ function normalizeUploadPrefix(
   }
 
   return `${normalizedPrefix}/`;
+}
+
+function getKbQaUploadExtension(fileName: string) {
+  const normalizedName = fileName.trim().toLowerCase();
+
+  if (normalizedName.endsWith(".faq.xlsx")) {
+    return "faq.xlsx";
+  }
+
+  return getFileExtension(fileName).toLowerCase() || DEFAULT_FALLBACK_EXTENSION;
 }
 
 function getImageExtension(contentType: string) {
@@ -369,6 +278,15 @@ function buildObjectUrl(key: string) {
   return buildMediaAssetUrl(key);
 }
 
-function getAllowedUploadPrefixes(credential: WorkbenchUploadCredentialResponse) {
+function getAllowedUploadPrefixes(credential: KbDocUploadCredentialResponse) {
   return credential.allowPerfixs;
+}
+
+async function fetchKbDocUploadCredential() {
+  const response = await request<ApiSuccessEnvelope<KbDocUploadCredentialResponse>>({
+    method: "POST",
+    url: "/server/ai-hosting/kb-docs/upload-credential",
+  });
+
+  return response.data;
 }

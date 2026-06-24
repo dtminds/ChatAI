@@ -227,10 +227,40 @@ export function KbDetailPage() {
         </section>
       </div>
       <ImportQaDialog
+        onImportComplete={(result) => {
+          const createdAt = getLocalTimeString();
+          addMockKnowledgeRecord({
+            createdAt,
+            fileExtension: result.docSuffix,
+            id: result.docId,
+            knowledgeBaseId: kbId,
+            name: result.name,
+            sliceCount: result.entries.length,
+            status: "queued",
+            type: "qa",
+            typeLabel: "FAQ",
+            updatedAt: createdAt,
+          });
+        }}
         onOpenChange={setImportQaDialogOpen}
         open={importQaDialogOpen}
       />
       <ImportImageDialog
+        onCreated={(result) => {
+          const createdAt = getLocalTimeString();
+          addMockKnowledgeRecord({
+            createdAt,
+            fileExtension: result.docSuffix,
+            id: result.docId,
+            knowledgeBaseId: kbId,
+            name: result.name,
+            sliceCount: null,
+            status: "queued",
+            type: "image",
+            typeLabel: "图片",
+            updatedAt: createdAt,
+          });
+        }}
         onOpenChange={setImageDialogOpen}
         open={imageDialogOpen}
       />

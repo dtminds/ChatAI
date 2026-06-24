@@ -7,6 +7,7 @@ import type {
 import type { Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
 import { BadRequestError, NotFoundError } from "../../shared/errors.js";
+import type { WorkbenchJavaClient } from "../chat/workbench-java-client.js";
 import { resolveVolcStrategyResourceId } from "./kb-doc-strategy-mappers.js";
 
 export const KB_DOC_TYPE_DOCUMENT = 2;
@@ -29,32 +30,28 @@ type KbDocServiceLogger = {
 export class KbDocService {
   constructor(
     private readonly db: Kysely<Database>,
-    private readonly logger: KbDocServiceLogger = {
-      info() {
-        // noop
-      },
-    },
+    private readonly logger: KbDocServiceLogger,
+    private readonly javaClient: WorkbenchJavaClient,
   ) {}
 
   async getUploadCredential(subUserId: string): Promise<KbDocUploadCredentialResponse> {
     const uid = await this.resolveUid(subUserId);
 
-    const response = {
-      mocked: true as const,
-      requestId: `kb-doc-upload-${uid}-${randomUUID()}`,
-    };
+    const credential = await this.javaClient.getUploadCredential({ uid });
 
     this.logger.info(
       {
+        bucket: credential.bucket,
+        javaRequestId: credential.requestId,
         operation: "kb-doc-upload-credential",
-        requestId: response.requestId,
+        region: credential.region,
         subUserId,
         uid,
       },
-      "知识库文档上传凭证（mock）",
+      "知识库上传凭证获取成功",
     );
 
-    return response;
+    return credential;
   }
 
   async createKbDoc(

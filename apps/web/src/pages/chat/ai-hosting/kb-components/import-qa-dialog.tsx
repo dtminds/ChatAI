@@ -2,6 +2,7 @@ import type { Sheet } from "read-excel-file/browser";
 import { useEffect, useRef, useState } from "react";
 import { AlertCircleIcon, Download01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -21,8 +22,10 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { isRequestError } from "@/lib/request";
+import { uploadKbQaFile } from "@/pages/chat/ai-hosting/api/kb-doc-service";
 import { FileExtensionBadge } from "@/pages/chat/components/message/file";
-import { getFileExtension, useAsyncValidation } from "./shared";
+import { getFileExtension, stripFileExtension, useAsyncValidation } from "./shared";
 
 const QA_IMPORT_MAX_SHEETS = 30;
 const QA_IMPORT_MAX_ROWS = 30000;
@@ -46,7 +49,14 @@ export function ImportQaDialog({
   onOpenChange,
   open,
 }: {
-  onImportComplete?: (entries: Array<{ answer: string; question: string }>) => void;
+  onImportComplete?: (result: {
+    docId: string;
+    docSuffix: string;
+    docUrl: string;
+    entries: Array<{ answer: string; question: string }>;
+    name: string;
+    url: string;
+  }) => void;
   onOpenChange: (open: boolean) => void;
   open: boolean;
 }) {
@@ -121,8 +131,34 @@ export function ImportQaDialog({
         return;
       }
 
-      onImportComplete?.(entries);
-      importSuccessful = true;
+      try {
+        const uploadResult = await uploadKbQaFile(selectedFile.file);
+
+        if (!isMountedRef.current) {
+          return;
+        }
+
+        const docId = crypto.randomUUID();
+        const name =
+          stripFileExtension(selectedFile.file.name) || selectedFile.file.name;
+
+        toast.success("问答已提交");
+        onImportComplete?.({
+          docId,
+          docSuffix: getKbQaDocSuffix(selectedFile.file.name),
+          docUrl: uploadResult.docUrl,
+          entries,
+          name,
+          url: uploadResult.url,
+        });
+        importSuccessful = true;
+      } catch (uploadError) {
+        if (isMountedRef.current) {
+          toast.error(
+            isRequestError(uploadError) ? uploadError.message : "问答上传失败",
+          );
+        }
+      }
     } catch {
       if (isMountedRef.current) {
         setFileError("文件解析失败，请确认文件为标准 .faq.xlsx");
@@ -339,10 +375,16 @@ export function ImportQaDialog({
             onClick={() => void handleImport()}
             type="button"
           >
-            导入文档
+            {isImporting ? "提交中" : "导入文档"}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
+}
+
+function getKbQaDocSuffix(fileName: string) {
+  return fileName.toLowerCase().endsWith(".faq.xlsx")
+    ? "faq"
+    : getFileExtension(fileName).toLowerCase();
 }

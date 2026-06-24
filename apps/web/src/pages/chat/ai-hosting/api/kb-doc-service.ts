@@ -9,9 +9,18 @@ import type {
 } from "@chatai/contracts";
 import { request } from "@/lib/request";
 import {
+  uploadKbDocFileToCos,
+  uploadKbImageToCos,
+  uploadKbQaFileToCos,
+  type KbCosUploadResult,
+} from "@/pages/chat/ai-hosting/api/kb-upload-service";
+import {
   getFileExtension,
   stripFileExtension,
 } from "@/pages/chat/ai-hosting/kb-components/shared";
+
+export type { KbCosUploadResult } from "@/pages/chat/ai-hosting/api/kb-upload-service";
+export { uploadKbImageToCos } from "@/pages/chat/ai-hosting/api/kb-upload-service";
 
 export async function getKbDocUploadCredential() {
   const response = await request<ApiSuccessEnvelope<KbDocUploadCredentialResponse>>({
@@ -32,14 +41,34 @@ export async function createKbDoc(payload: KbDocCreateRequest) {
   return response.data;
 }
 
-export async function uploadKbDocFile(file: File, kbId: string) {
-  await getKbDocUploadCredential();
+export async function uploadKbDocFile(
+  file: File,
+  options: {
+    onProgress?: (progress: number) => void;
+    signal?: AbortSignal;
+  } = {},
+): Promise<KbCosUploadResult> {
+  return uploadKbDocFileToCos(file, options);
+}
 
-  // TOS 直传尚未接入；先 mock 上传结果，仅用于前后端联调。
-  const docSuffix = getFileExtension(file.name).toLowerCase();
-  const token = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+export async function uploadKbImage(
+  file: File,
+  options: {
+    onProgress?: (progress: number) => void;
+    signal?: AbortSignal;
+  } = {},
+): Promise<KbCosUploadResult> {
+  return uploadKbImageToCos(file, options);
+}
 
-  return `mock://kb-docs/${kbId}/${token}.${docSuffix}`;
+export async function uploadKbQaFile(
+  file: File,
+  options: {
+    onProgress?: (progress: number) => void;
+    signal?: AbortSignal;
+  } = {},
+): Promise<KbCosUploadResult> {
+  return uploadKbQaFileToCos(file, options);
 }
 
 export function buildKbDocCreateRequest(input: {
@@ -73,12 +102,12 @@ export async function importKbDoc(input: {
   parseMode: KbDocParseMode;
   description?: string;
 }) {
-  const docUrl = await uploadKbDocFile(input.file, input.kbId);
+  const uploadResult = await uploadKbDocFile(input.file);
 
   return createKbDoc(
     buildKbDocCreateRequest({
       ...input,
-      docUrl,
+      docUrl: uploadResult.docUrl,
     }),
   );
 }

@@ -738,7 +738,7 @@ describe("workbench MySQL mappers", () => {
         alt: "图片",
         downloadStatus: "ing",
         fileSerialNo: "serial-image-001",
-        imageUrl: "",
+        fileUrl: "",
       },
       contentType: "image",
     });
@@ -1176,7 +1176,7 @@ describe("workbench MySQL mappers", () => {
     ).toMatchObject({
       content: {
         alt: "图片",
-        imageUrl: "https://cdn.example.com/a.jpg",
+        fileUrl: "https://cdn.example.com/a.jpg",
       },
       contentType: "image",
     });
@@ -1188,7 +1188,7 @@ describe("workbench MySQL mappers", () => {
       })).content,
     ).toEqual({
       alt: "图片",
-      imageUrl: "https://b5.bokr.com.cn/media/20260508/272/a.jpg",
+      fileUrl: "https://b5.bokr.com.cn/media/20260508/272/a.jpg",
     });
 
     expect(

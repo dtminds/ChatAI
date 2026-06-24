@@ -1644,7 +1644,7 @@ describe("ChatWorkbenchPage", () => {
               content: {
                 alt: "商品图",
                 downloadStatus: "finished",
-                imageUrl: "https://example.com/product.png",
+                fileUrl: "https://example.com/product.png",
               },
               contentType: "image",
               msgid: "msg-image-collect-001",

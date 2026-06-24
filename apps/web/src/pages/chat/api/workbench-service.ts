@@ -3015,9 +3015,9 @@ function buildContent(message: Message) {
       return {
         alt: message.content.alt,
         downloadStatus: message.content.downloadStatus,
+        fileUrl: message.content.imageUrl,
         fileSerialNo: message.content.fileSerialNo,
         height: message.content.height,
-        imageUrl: message.content.imageUrl,
         width: message.content.width,
       };
     case "video":
@@ -3440,10 +3440,14 @@ function buildPayloadSegmentContent(
   }
 
   if (segment.type === "image") {
+    const materialContent = segment.materialCollectionId
+      ? getMockMaterialContentRecord(state, segment.materialCollectionId)
+      : {};
+
     return {
       alt: segment.alt,
       height: segment.height,
-      imageUrl: segment.url ?? segment.localUrl ?? "",
+      imageUrl: readString(materialContent.fileUrl) || segment.url || segment.localUrl || "",
       width: segment.width,
     };
   }

@@ -1123,7 +1123,7 @@ describe("useWorkbenchStore", () => {
               content: {
                 alt: "产品图片",
                 downloadStatus: "ing",
-                imageUrl: "https://b5.bokr.com.cn/chat-images/product.png",
+                fileUrl: "https://b5.bokr.com.cn/chat-images/product.png",
               },
               contentType: "image",
               conversationId: "conv-001",
@@ -1188,7 +1188,7 @@ describe("useWorkbenchStore", () => {
               content: {
                 alt: "图片",
                 downloadStatus: "ing",
-                imageUrl: "",
+                fileUrl: "",
               },
               contentType: "image",
               conversationId: "conv-001",

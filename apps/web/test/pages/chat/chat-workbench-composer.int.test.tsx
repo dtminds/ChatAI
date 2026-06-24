@@ -1294,7 +1294,6 @@ describe("ChatWorkbenchPage composer flows", () => {
             content: {
               alt: "商品图",
               fileUrl: "https://example.com/images/product.png",
-              imageUrl: "https://example.com/images/product.png",
             },
             contentType: "image" as const,
             groupId: "group-image",
@@ -1339,14 +1338,16 @@ describe("ChatWorkbenchPage composer flows", () => {
         expect.objectContaining({
           conversationId: "conv-001",
           seatId: "drc",
-          segment: expect.objectContaining({
-            imageUrl: "https://example.com/images/product.png",
+          segment: {
+            alt: "商品图",
             materialCollectionId: "material-image-001",
             type: "image",
-          }),
+          },
         }),
       );
     });
+    expect(sendMessage.mock.calls[0]?.[0].segment).not.toHaveProperty("imageUrl");
+    expect(sendMessage.mock.calls[0]?.[0].segment).not.toHaveProperty("url");
     const sentMessage = await expectSentConversationMessage("conv-001", sendMessage, {
       content: {
         imageUrl: "https://example.com/images/product.png",

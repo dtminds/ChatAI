@@ -471,7 +471,7 @@ describe("adaptMessage", () => {
           content: {
             alt: "图片",
             downloadStatus: "ing",
-            imageUrl: "https://b5.bokr.com.cn/chat-images/photo.png",
+            fileUrl: "https://b5.bokr.com.cn/chat-images/photo.png",
           },
           contentType: "image",
           rawMsgtype: "image",
@@ -496,7 +496,7 @@ describe("adaptMessage", () => {
           ...messageDto,
           content: {
             alt: "图片",
-            imageUrl: "",
+            fileUrl: "",
           },
           contentType: "image",
           downloadStatus: "ing",

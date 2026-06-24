@@ -305,7 +305,7 @@ function adaptChatMessageContent(
         imageUrl:
           contentType === "emotion"
             ? String(content.fileUrl ?? "")
-            : String(content.imageUrl ?? ""),
+            : String(content.fileUrl ?? ""),
         type: "image",
         variant: contentType,
         width: asOptionalNumber(content.width),

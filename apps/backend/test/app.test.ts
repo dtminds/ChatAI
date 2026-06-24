@@ -2618,7 +2618,6 @@ describe("backend app", () => {
         conversationId: "conv-001",
         seatId: "drc",
         segment: {
-          alt: "商品图",
           materialCollectionId: "material-item-image-1",
           type: "image",
         },
@@ -2645,7 +2644,6 @@ describe("backend app", () => {
 
     expect(sentMessage?.contentType).toBe("image");
     expect(sentMessage?.content).toMatchObject({
-      alt: "商品图",
       imageUrl: "https://example.com/materials/product.png",
     });
 

@@ -630,7 +630,7 @@ export type WorkbenchOutgoingMessageTextSegment = {
 
 export type WorkbenchOutgoingMessageImageSegment = {
   type: "image";
-  alt: string;
+  alt?: string;
   fileId?: string;
   height?: number;
   imageUrl?: string;

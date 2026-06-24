@@ -265,6 +265,11 @@ const SendMessageBodySchema = Type.Object({
         type: Type.Literal("text"),
       }),
       Type.Object({
+        alt: Type.Optional(Type.String()),
+        materialCollectionId: Type.String(),
+        type: Type.Literal("image"),
+      }),
+      Type.Object({
         alt: Type.String(),
         fileId: Type.Optional(Type.String()),
         height: Type.Optional(Type.Number()),
@@ -317,6 +322,11 @@ const SendMessageBodySchema = Type.Object({
         Type.Object({
           text: Type.String(),
           type: Type.Literal("text"),
+        }),
+        Type.Object({
+          alt: Type.Optional(Type.String()),
+          materialCollectionId: Type.String(),
+          type: Type.Literal("image"),
         }),
         Type.Object({
           alt: Type.String(),

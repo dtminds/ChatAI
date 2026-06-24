@@ -120,6 +120,60 @@ describe("kb-upload-service", () => {
     });
   });
 
+  it("chooses the matching upload prefix when credential allows multiple prefixes", async () => {
+    const credential = createUploadCredential({
+      allowPerfixs: ["kb-docs/", "kb-images/", "kb-faqs/"],
+    });
+    requestMock.mockResolvedValue({ data: credential });
+    vi.setSystemTime(new Date("2026-05-13T08:00:00Z"));
+    vi.spyOn(Math, "random").mockReturnValue(0.123456);
+    cosUploadFileMock.mockImplementation(async (params) => ({
+      ETag: '"mock-etag"',
+      Location: `${params.Bucket}.cos.${params.Region}.myqcloud.com/${params.Key}`,
+    }));
+
+    const imageFile = new File(["demo"], "封面.png", {
+      type: "image/png",
+    });
+    await uploadKbImageToCos(imageFile);
+
+    expect(cosUploadFileMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        Key: "kb-images/1778659200000-4fzyo82m.png",
+      }),
+    );
+
+    const docFile = new File(["demo"], "产品手册.pdf", {
+      type: "application/pdf",
+    });
+    await uploadKbDocFileToCos(docFile);
+
+    expect(cosUploadFileMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        Key: "kb-docs/1778659200000-4fzyo82m.pdf",
+      }),
+    );
+  });
+
+  it("throws a standard AbortError when upload is cancelled", async () => {
+    const credential = createUploadCredential();
+    requestMock.mockResolvedValue({ data: credential });
+    cosUploadFileMock.mockRejectedValue(new Error("upload task cancelled"));
+    const controller = new AbortController();
+    controller.abort();
+
+    const file = new File(["demo"], "产品手册.pdf", {
+      type: "application/pdf",
+    });
+
+    await expect(
+      uploadKbDocFileToCos(file, { signal: controller.signal }),
+    ).rejects.toMatchObject({
+      message: "文件上传已取消",
+      name: "AbortError",
+    });
+  });
+
   it("uploads kb qa files to COS and preserves the faq.xlsx suffix", async () => {
     const credential = createUploadCredential({
       allowPerfixs: ["kb-faqs/"],

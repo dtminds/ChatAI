@@ -54,6 +54,7 @@ export function ImportImageDialog({
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const isMountedRef = useRef(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
   const { beginValidation, invalidateValidation, isCurrentValidation } =
     useAsyncValidation();
   const { handleOpenChange, runSubmit, submitting } = useDialogSubmit({
@@ -72,6 +73,7 @@ export function ImportImageDialog({
 
     return () => {
       isMountedRef.current = false;
+      abortControllerRef.current?.abort();
     };
   }, []);
 
@@ -181,15 +183,20 @@ export function ImportImageDialog({
     const trimmedName = imageName.trim();
 
     void runSubmit(async () => {
+      abortControllerRef.current?.abort();
+      abortControllerRef.current = new AbortController();
+
       try {
-        const uploadResult = await uploadKbImage(selectedImage);
+        const uploadResult = await uploadKbImage(selectedImage, {
+          signal: abortControllerRef.current.signal,
+        });
 
         if (!isMountedRef.current) {
           return false;
         }
 
         const docId = createLocalDocId();
-        const docSuffix = getFileExtension(selectedImage.name).toLowerCase();
+        const docSuffix = getFileExtension(uploadResult.docUrl).toLowerCase();
 
         toast.success("图片已提交");
         onCreated?.({
@@ -202,6 +209,10 @@ export function ImportImageDialog({
         return true;
       } catch (error) {
         if (!isMountedRef.current) {
+          return false;
+        }
+
+        if (error instanceof DOMException && error.name === "AbortError") {
           return false;
         }
 

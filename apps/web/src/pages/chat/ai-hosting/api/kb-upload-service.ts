@@ -108,6 +108,12 @@ async function uploadFileToCos(
         }
       },
     });
+  } catch (error) {
+    if (options.signal?.aborted) {
+      throw createUploadAbortError();
+    }
+
+    throw error;
   } finally {
     options.signal?.removeEventListener("abort", abortUploadTask);
   }
@@ -221,13 +227,40 @@ function buildObjectKey({
   extension: string;
   fallbackPrefix: string;
 }) {
-  const prefix = normalizeUploadPrefix(
-    getAllowedUploadPrefixes(credential)[0] ?? fallbackPrefix,
+  const prefix = chooseUploadPrefix(
+    getAllowedUploadPrefixes(credential),
     fallbackPrefix,
   );
   const randomPart = Math.random().toString(36).slice(2, 10);
 
   return `${prefix}${Date.now()}-${randomPart}.${extension}`;
+}
+
+function chooseUploadPrefix(allowedPrefixes: string[], fallbackPrefix: string) {
+  const fallbackKey = stripPrefixForMatch(fallbackPrefix);
+
+  const matchedPrefix = allowedPrefixes.find((prefix) => {
+    const prefixKey = stripPrefixForMatch(prefix);
+
+    return (
+      prefixKey === fallbackKey ||
+      fallbackKey.startsWith(prefixKey) ||
+      prefixKey.startsWith(fallbackKey)
+    );
+  });
+
+  return normalizeUploadPrefix(
+    matchedPrefix ?? allowedPrefixes[0] ?? fallbackPrefix,
+    fallbackPrefix,
+  );
+}
+
+function stripPrefixForMatch(prefix: string) {
+  return prefix
+    .trim()
+    .replace(/^\/+/, "")
+    .replace(/\*+$/, "")
+    .replace(/\/+$/, "");
 }
 
 function normalizeUploadPrefix(prefix: string, fallbackPrefix: string) {

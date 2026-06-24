@@ -120,39 +120,19 @@ describe("kb-upload-service", () => {
     });
   });
 
-  it("chooses the matching upload prefix when credential allows multiple prefixes", async () => {
-    const credential = createUploadCredential({
-      allowPerfixs: ["kb-docs/", "kb-images/", "kb-faqs/"],
+  it("throws when upload credential is missing allowed prefix", async () => {
+    requestMock.mockResolvedValue({
+      data: createUploadCredential({ allowPerfixs: [] }),
     });
-    requestMock.mockResolvedValue({ data: credential });
-    vi.setSystemTime(new Date("2026-05-13T08:00:00Z"));
-    vi.spyOn(Math, "random").mockReturnValue(0.123456);
-    cosUploadFileMock.mockImplementation(async (params) => ({
-      ETag: '"mock-etag"',
-      Location: `${params.Bucket}.cos.${params.Region}.myqcloud.com/${params.Key}`,
-    }));
 
-    const imageFile = new File(["demo"], "封面.png", {
-      type: "image/png",
-    });
-    await uploadKbImageToCos(imageFile);
-
-    expect(cosUploadFileMock).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        Key: "kb-images/1778659200000-4fzyo82m.png",
-      }),
-    );
-
-    const docFile = new File(["demo"], "产品手册.pdf", {
+    const file = new File(["demo"], "产品手册.pdf", {
       type: "application/pdf",
     });
-    await uploadKbDocFileToCos(docFile);
 
-    expect(cosUploadFileMock).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        Key: "kb-docs/1778659200000-4fzyo82m.pdf",
-      }),
+    await expect(uploadKbDocFileToCos(file)).rejects.toThrow(
+      "获取文件上传凭证失败：缺少允许路径",
     );
+    expect(cosUploadFileMock).not.toHaveBeenCalled();
   });
 
   it("throws a standard AbortError when upload is cancelled", async () => {

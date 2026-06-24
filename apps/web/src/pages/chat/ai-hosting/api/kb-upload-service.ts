@@ -14,9 +14,6 @@ import {
 } from "@/pages/chat/api/media-upload-errors";
 import { getFileExtension } from "@/pages/chat/ai-hosting/kb-components/shared";
 
-const DEFAULT_KB_DOC_UPLOAD_PREFIX = "kb-docs/";
-const DEFAULT_KB_IMAGE_UPLOAD_PREFIX = "kb-images/";
-const DEFAULT_KB_QA_UPLOAD_PREFIX = "kb-faqs/";
 const DEFAULT_FALLBACK_EXTENSION = "bin";
 const UPLOAD_SLICE_SIZE = 1024 * 1024;
 
@@ -38,7 +35,7 @@ export async function uploadKbDocFileToCos(
   const extension =
     getFileExtension(file.name).toLowerCase() || DEFAULT_FALLBACK_EXTENSION;
 
-  return uploadFileToCos(file, extension, DEFAULT_KB_DOC_UPLOAD_PREFIX, options);
+  return uploadFileToCos(file, extension, options);
 }
 
 export async function uploadKbImageToCos(
@@ -47,7 +44,7 @@ export async function uploadKbImageToCos(
 ): Promise<KbCosUploadResult> {
   const extension = getImageExtension(file.type) || DEFAULT_FALLBACK_EXTENSION;
 
-  return uploadFileToCos(file, extension, DEFAULT_KB_IMAGE_UPLOAD_PREFIX, options);
+  return uploadFileToCos(file, extension, options);
 }
 
 export async function uploadKbQaFileToCos(
@@ -56,7 +53,7 @@ export async function uploadKbQaFileToCos(
 ): Promise<KbCosUploadResult> {
   const extension = getKbQaUploadExtension(file.name);
 
-  return uploadFileToCos(file, extension, DEFAULT_KB_QA_UPLOAD_PREFIX, options);
+  return uploadFileToCos(file, extension, options);
 }
 
 type KbCosUploadOptions = {
@@ -67,7 +64,6 @@ type KbCosUploadOptions = {
 async function uploadFileToCos(
   file: File,
   extension: string,
-  fallbackPrefix: string,
   options: KbCosUploadOptions,
 ): Promise<KbCosUploadResult> {
   const credential = await fetchKbDocUploadCredential();
@@ -75,7 +71,6 @@ async function uploadFileToCos(
   const key = buildObjectKey({
     credential,
     extension,
-    fallbackPrefix,
   });
   let taskId: string | undefined;
   const abortUploadTask = () => {
@@ -221,59 +216,33 @@ function collectErrorMessages(error: unknown): string[] {
 function buildObjectKey({
   credential,
   extension,
-  fallbackPrefix,
 }: {
   credential: KbDocUploadCredentialResponse;
   extension: string;
-  fallbackPrefix: string;
 }) {
-  const prefix = chooseUploadPrefix(
-    getAllowedUploadPrefixes(credential),
-    fallbackPrefix,
-  );
+  const prefix = resolveUploadPrefix(credential);
   const randomPart = Math.random().toString(36).slice(2, 10);
 
   return `${prefix}${Date.now()}-${randomPart}.${extension}`;
 }
 
-function chooseUploadPrefix(allowedPrefixes: string[], fallbackPrefix: string) {
-  const fallbackKey = stripPrefixForMatch(fallbackPrefix);
+function resolveUploadPrefix(credential: KbDocUploadCredentialResponse) {
+  const prefix = credential.allowPerfixs?.[0];
 
-  const matchedPrefix = allowedPrefixes.find((prefix) => {
-    const prefixKey = stripPrefixForMatch(prefix);
+  if (!prefix?.trim()) {
+    throw new Error("获取文件上传凭证失败：缺少允许路径");
+  }
 
-    return (
-      prefixKey === fallbackKey ||
-      fallbackKey.startsWith(prefixKey) ||
-      prefixKey.startsWith(fallbackKey)
-    );
-  });
-
-  return normalizeUploadPrefix(
-    matchedPrefix ?? allowedPrefixes[0] ?? fallbackPrefix,
-    fallbackPrefix,
-  );
+  return normalizeUploadPrefix(prefix);
 }
 
-function stripPrefixForMatch(prefix: string) {
-  return prefix
-    .trim()
-    .replace(/^\/+/, "")
-    .replace(/\*+$/, "")
-    .replace(/\/+$/, "");
-}
-
-function normalizeUploadPrefix(prefix: string, fallbackPrefix: string) {
+function normalizeUploadPrefix(prefix: string) {
   const normalizedPrefix = prefix
     .trim()
     .replace(/^\/+/, "")
     .replace(/\*+$/, "")
     .replace(/\/+$/, "")
     .replace(/\/+/g, "/");
-
-  if (!normalizedPrefix) {
-    return fallbackPrefix;
-  }
 
   return `${normalizedPrefix}/`;
 }
@@ -309,10 +278,6 @@ function getImageExtension(contentType: string) {
 
 function buildObjectUrl(key: string) {
   return buildMediaAssetUrl(key);
-}
-
-function getAllowedUploadPrefixes(credential: KbDocUploadCredentialResponse) {
-  return credential.allowPerfixs;
 }
 
 async function fetchKbDocUploadCredential() {

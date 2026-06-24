@@ -79,12 +79,14 @@ export function FileUploadDropzone({
 }
 
 export function FileUploadSelectedFile({
+  clearDisabled,
   file,
   icon,
   label,
   meta,
   onClear,
 }: {
+  clearDisabled?: boolean;
   file: File;
   icon?: ReactNode;
   label: string;
@@ -116,6 +118,7 @@ export function FileUploadSelectedFile({
       <Button
         aria-label="移除已选择文件"
         className="size-8 shrink-0"
+        disabled={clearDisabled}
         onClick={onClear}
         size="icon"
         type="button"

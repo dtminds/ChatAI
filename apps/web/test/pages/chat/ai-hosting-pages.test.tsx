@@ -1264,6 +1264,7 @@ describe("AI hosting pages", () => {
     expect(screen.getByRole("button", { name: "上传问答文件" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "查看导入说明" })).not.toHaveFocus();
     expect(screen.getByText("文档支持 .faq.xlsx，最多 30 个 sheet，文件行数总和不超过 30000 行")).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "取消" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "导入文档" })).toBeDisabled();
     await user.hover(screen.getByRole("button", { name: "查看导入说明" }));
     expect(await screen.findByRole("tooltip")).toHaveTextContent(

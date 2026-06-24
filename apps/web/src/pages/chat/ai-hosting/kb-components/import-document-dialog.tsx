@@ -107,7 +107,7 @@ export function ImportDocumentDialog({
   onOpenChange: (open: boolean) => void;
   open: boolean;
 }) {
-  const { handleOpenChange, runSubmit, submitting } = useDialogSubmit({
+  const { runSubmit, submitting } = useDialogSubmit({
     onOpenChange,
     onReset: resetForm,
     open,
@@ -225,9 +225,13 @@ export function ImportDocumentDialog({
     parseMode === "enhanced" ? "确认提交（限免）" : "确认提交";
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className="max-w-[760px]"
+        closeButtonVisible={false}
+        onInteractOutside={(event) => {
+          event.preventDefault();
+        }}
         onOpenAutoFocus={(event) => {
           event.preventDefault();
         }}
@@ -268,6 +272,7 @@ export function ImportDocumentDialog({
           {selectedFile ? (
             <>
               <FileUploadSelectedFile
+                clearDisabled={submitting}
                 file={selectedFile}
                 icon={
                   <FileExtensionBadge
@@ -371,7 +376,7 @@ export function ImportDocumentDialog({
         <DialogFooter>
           <Button
             disabled={submitting}
-            onClick={() => handleOpenChange(false)}
+            onClick={() => onOpenChange(false)}
             type="button"
             variant="outline"
           >

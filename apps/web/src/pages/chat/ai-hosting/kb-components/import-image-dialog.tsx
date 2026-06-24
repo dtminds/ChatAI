@@ -57,7 +57,7 @@ export function ImportImageDialog({
   const abortControllerRef = useRef<AbortController | null>(null);
   const { beginValidation, invalidateValidation, isCurrentValidation } =
     useAsyncValidation();
-  const { handleOpenChange, runSubmit, submitting } = useDialogSubmit({
+  const { runSubmit, submitting } = useDialogSubmit({
     onOpenChange,
     onReset: reset,
     open,
@@ -231,8 +231,14 @@ export function ImportImageDialog({
   );
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-[640px]">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className="max-w-[640px]"
+        closeButtonVisible={false}
+        onInteractOutside={(event) => {
+          event.preventDefault();
+        }}
+      >
         <DialogHeader>
           <DialogTitle>添加图片知识</DialogTitle>
           <DialogDescription className="sr-only">
@@ -364,7 +370,7 @@ export function ImportImageDialog({
         <DialogFooter>
           <Button
             disabled={submitting}
-            onClick={() => handleOpenChange(false)}
+            onClick={() => onOpenChange(false)}
             type="button"
             variant="outline"
           >

@@ -97,14 +97,6 @@ export function ImportQaDialog({
     }
   }, [open]);
 
-  const handleOpenChange = (nextOpen: boolean) => {
-    if (!nextOpen && (isCheckingFile || isImporting)) {
-      return;
-    }
-
-    onOpenChange(nextOpen);
-  };
-
   async function handleImport() {
     if (!selectedFile || isImporting) {
       return;
@@ -261,9 +253,13 @@ export function ImportQaDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className="max-w-[760px]"
+        closeButtonVisible={false}
+        onInteractOutside={(event) => {
+          event.preventDefault();
+        }}
         onOpenAutoFocus={(event) => {
           event.preventDefault();
         }}
@@ -369,6 +365,7 @@ export function ImportQaDialog({
 
           {selectedFile ? (
             <FileUploadSelectedFile
+              clearDisabled={isImporting}
               file={selectedFile.file}
               icon={
                 <FileExtensionBadge
@@ -384,6 +381,14 @@ export function ImportQaDialog({
         </div>
 
         <DialogFooter>
+          <Button
+            disabled={isImporting}
+            onClick={() => onOpenChange(false)}
+            type="button"
+            variant="outline"
+          >
+            取消
+          </Button>
           <Button
             disabled={!selectedFile || isCheckingFile || isImporting}
             onClick={() => void handleImport()}

@@ -78,6 +78,7 @@ export function ImportImageDialog({
   }, []);
 
   function reset() {
+    abortControllerRef.current?.abort();
     invalidateValidation();
     setSelectedImage(null);
     setImageName("");

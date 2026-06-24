@@ -63,6 +63,7 @@ export function ImportQaDialog({
   const { beginValidation, invalidateValidation, isCurrentValidation } =
     useAsyncValidation();
   const isMountedRef = useRef(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
   const [selectedFile, setSelectedFile] = useState<{
     file: File;
     rowCount: number;
@@ -73,6 +74,7 @@ export function ImportQaDialog({
   const [isImporting, setIsImporting] = useState(false);
 
   function reset() {
+    abortControllerRef.current?.abort();
     invalidateValidation();
     setSelectedFile(null);
     setFileError("");
@@ -85,6 +87,7 @@ export function ImportQaDialog({
 
     return () => {
       isMountedRef.current = false;
+      abortControllerRef.current?.abort();
     };
   }, []);
 
@@ -132,7 +135,12 @@ export function ImportQaDialog({
       }
 
       try {
-        const uploadResult = await uploadKbQaFile(selectedFile.file);
+        abortControllerRef.current?.abort();
+        abortControllerRef.current = new AbortController();
+
+        const uploadResult = await uploadKbQaFile(selectedFile.file, {
+          signal: abortControllerRef.current.signal,
+        });
 
         if (!isMountedRef.current) {
           return;
@@ -153,11 +161,17 @@ export function ImportQaDialog({
         });
         importSuccessful = true;
       } catch (uploadError) {
-        if (isMountedRef.current) {
-          toast.error(
-            isRequestError(uploadError) ? uploadError.message : "问答上传失败",
-          );
+        if (!isMountedRef.current) {
+          return;
         }
+
+        if (uploadError instanceof DOMException && uploadError.name === "AbortError") {
+          return;
+        }
+
+        toast.error(
+          isRequestError(uploadError) ? uploadError.message : "问答上传失败",
+        );
       }
     } catch {
       if (isMountedRef.current) {

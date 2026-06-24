@@ -1340,7 +1340,7 @@ export function createMemoryWorkbenchService() {
 
         return {
           seatId: payload.seatId,
-          content: buildPayloadSegmentContent(segment, quoteForSegment),
+          content: buildPayloadSegmentContent(state, segment, quoteForSegment),
           contentType: quoteForSegment ? "quote" : segment.type,
           conversationId: payload.conversationId,
           createdAt: now + index,
@@ -1495,8 +1495,26 @@ function buildInitialState(): MemoryWorkbenchState {
         sort: 100,
         title: "文件分组",
       },
+      {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.IMAGE,
+        id: "material-group-image-1",
+        sort: 90,
+        title: "图片分组",
+      },
     ],
     materialItems: [
+      {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.IMAGE,
+        content: {
+          fileUrl: "https://example.com/materials/product.png",
+        },
+        contentType: "image",
+        groupId: "material-group-image-1",
+        id: "material-item-image-1",
+        msgInfoId: "9",
+        sort: 90,
+        title: "商品图",
+      },
       {
         bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
         content: { fileName: "求未 AI 智能营销系统.pdf" },
@@ -1987,6 +2005,7 @@ function getPayloadSegments(payload: WorkbenchSendMessagePayload) {
 }
 
 function buildPayloadSegmentContent(
+  state: MemoryWorkbenchState,
   segment: ReturnType<typeof getPayloadSegments>[number],
   quote?: WorkbenchSendMessagePayload["quote"],
 ) {
@@ -1999,10 +2018,15 @@ function buildPayloadSegmentContent(
   }
 
   if (segment.type === "image") {
+    const materialContent = segment.materialCollectionId
+      ? getMemoryMaterialContent(state, segment.materialCollectionId)
+      : {};
+    const materialFileUrl = readString(materialContent.fileUrl);
+
     return {
       alt: segment.alt,
       height: segment.height,
-      imageUrl: segment.url ?? segment.localUrl ?? "",
+      imageUrl: materialFileUrl || segment.url || segment.localUrl || "",
       width: segment.width,
     };
   }
@@ -2019,6 +2043,16 @@ function buildPayloadSegmentContent(
   return {
     text: segment.text,
   };
+}
+
+function getMemoryMaterialContent(state: MemoryWorkbenchState, materialCollectionId: string) {
+  const item = state.materialItems.find(
+    (materialItem) => materialItem.id === materialCollectionId,
+  );
+
+  return item?.content && typeof item.content === "object"
+    ? item.content as Record<string, unknown>
+    : {};
 }
 
 function getPayloadPreview(segments: ReturnType<typeof getPayloadSegments>) {

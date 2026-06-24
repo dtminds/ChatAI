@@ -109,7 +109,7 @@ type ChatComposerProps = {
   onFileSelect: (files: FileList | File[] | null) => void;
   onLoadMoreCollectedExpressions?: () => void;
   onOpenCollectedExpressions?: () => void;
-  onOpenMaterialLibrary: (bizType: 2 | 3 | 4 | 5) => void;
+  onOpenMaterialLibrary: (bizType: ComposerMaterialLibraryBizType) => void;
   onOpenHistory: () => void;
   onSelectCollectedExpression?: (item: WorkbenchMaterialCollectionItemDto) => void;
   onSegmentsChange: (segments: ComposerSegment[]) => void;
@@ -119,6 +119,13 @@ type ChatComposerProps = {
   quotedMessage: QuotedMessagePreviewContent | null;
   composerRef: RefObject<LexicalEditor | null>;
 };
+
+export type ComposerMaterialLibraryBizType =
+  | typeof MATERIAL_COLLECTION_BIZ_TYPE.IMAGE
+  | typeof MATERIAL_COLLECTION_BIZ_TYPE.FILE
+  | typeof MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM
+  | typeof MATERIAL_COLLECTION_BIZ_TYPE.H5
+  | typeof MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED;
 
 type MentionDropdownItem =
   | {
@@ -501,22 +508,21 @@ export function ChatComposer({
                 </div>
               ) : null}
             </div>
-            <ComposerActionTooltip
-              disabled={!canAddComposerImage}
-              label="图片"
-            >
-              <Button
-                aria-label="发送图片"
-                className={composerActionButtonClass}
-                disabled={!canAddComposerImage}
-                onClick={() => imageInputRef.current?.click()}
-                size="icon"
-                type="button"
-                variant="ghost"
-              >
-                <HugeiconsIcon icon={Image01Icon} size={18} strokeWidth={2} />
-              </Button>
-            </ComposerActionTooltip>
+            <ComposerMaterialSplitButton
+              canOpenCollected={isSending ? false : canSendMessage}
+              canSelectLocal={canAddComposerImage}
+              collectedIcon={FolderFavouriteIcon}
+              collectedLabel="收录的图片"
+              localLabel="本地图片"
+              menuLabel="打开图片菜单"
+              onOpenCollected={() => {
+                onOpenMaterialLibrary(MATERIAL_COLLECTION_BIZ_TYPE.IMAGE);
+              }}
+              onSelectLocal={() => imageInputRef.current?.click()}
+              primaryIcon={Image01Icon}
+              primaryLabel="选择收录图片"
+              tooltipLabel="图片"
+            />
             <input
               accept={COMPOSER_IMAGE_FILE_ACCEPT}
               aria-label="选择图片"
@@ -582,11 +588,18 @@ export function ChatComposer({
                 <HugeiconsIcon icon={Link01Icon} size={18} strokeWidth={2} />
               </Button>
             </ComposerActionTooltip>
-            <ComposerFileSplitButton
-              canOpenCollectedFiles={canOpenCollectedFiles}
-              canSelectLocalFile={canSelectFile}
-              onOpenCollectedFiles={() => onOpenMaterialLibrary(2)}
-              onSelectLocalFile={() => fileInputRef.current?.click()}
+            <ComposerMaterialSplitButton
+              canOpenCollected={canOpenCollectedFiles}
+              canSelectLocal={canSelectFile}
+              collectedIcon={FolderFavouriteIcon}
+              collectedLabel="收录的文件"
+              localLabel="本地文件"
+              menuLabel="打开文件菜单"
+              onOpenCollected={() => onOpenMaterialLibrary(MATERIAL_COLLECTION_BIZ_TYPE.FILE)}
+              onSelectLocal={() => fileInputRef.current?.click()}
+              primaryIcon={Folder01Icon}
+              primaryLabel="收藏文件"
+              tooltipLabel="文件"
             />
             <input
               accept={COMPOSER_FILE_ACCEPT}
@@ -780,23 +793,37 @@ export function ChatComposer({
   );
 }
 
-function ComposerFileSplitButton({
-  canOpenCollectedFiles,
-  canSelectLocalFile,
-  onOpenCollectedFiles,
-  onSelectLocalFile,
+function ComposerMaterialSplitButton({
+  canOpenCollected,
+  canSelectLocal,
+  collectedIcon,
+  collectedLabel,
+  localLabel,
+  menuLabel,
+  onOpenCollected,
+  onSelectLocal,
+  primaryIcon,
+  primaryLabel,
+  tooltipLabel,
 }: {
-  canOpenCollectedFiles: boolean;
-  canSelectLocalFile: boolean;
-  onOpenCollectedFiles: () => void;
-  onSelectLocalFile: () => void;
+  canOpenCollected: boolean;
+  canSelectLocal: boolean;
+  collectedIcon: typeof FolderFavouriteIcon;
+  collectedLabel: string;
+  localLabel: string;
+  menuLabel: string;
+  onOpenCollected: () => void;
+  onSelectLocal: () => void;
+  primaryIcon: typeof Folder01Icon;
+  primaryLabel: string;
+  tooltipLabel: string;
 }) {
-  const isControlDisabled = !canOpenCollectedFiles && !canSelectLocalFile;
+  const isControlDisabled = !canOpenCollected && !canSelectLocal;
   const segmentHoverClass =
     "transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25";
 
   return (
-    <ComposerActionTooltip disabled={isControlDisabled} label="文件">
+    <ComposerActionTooltip disabled={isControlDisabled} label={tooltipLabel}>
       <div
         className={cn(
           "inline-flex h-8 shrink-0 items-center overflow-hidden rounded-[8px] text-muted-foreground transition-colors",
@@ -810,21 +837,21 @@ function ComposerFileSplitButton({
         )}
       >
         <button
-          aria-label="收藏文件"
+          aria-label={primaryLabel}
           className={cn(
             "flex h-8 shrink-0 items-center justify-center rounded-l-[8px] pl-1.5 pr-0.5 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-inherit",
             segmentHoverClass,
           )}
-          disabled={!canOpenCollectedFiles}
-          onClick={onOpenCollectedFiles}
+          disabled={!canOpenCollected}
+          onClick={onOpenCollected}
           type="button"
         >
-          <HugeiconsIcon icon={Folder01Icon} size={18} strokeWidth={2} />
+          <HugeiconsIcon icon={primaryIcon} size={18} strokeWidth={2} />
         </button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
-              aria-label="打开文件菜单"
+              aria-label={menuLabel}
               className={cn(
                 "flex h-8 w-4 shrink-0 items-center justify-center rounded-r-[8px] pr-0.5 data-[state=open]:bg-accent data-[state=open]:text-accent-foreground",
                 segmentHoverClass,
@@ -841,18 +868,18 @@ function ComposerFileSplitButton({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="min-w-[8.5rem]">
             <DropdownMenuItem
-              disabled={!canSelectLocalFile}
-              onSelect={onSelectLocalFile}
+              disabled={!canSelectLocal}
+              onSelect={onSelectLocal}
             >
               <HugeiconsIcon icon={ArrowUp02Icon} size={16} strokeWidth={1.8} />
-              本地文件
+              {localLabel}
             </DropdownMenuItem>
             <DropdownMenuItem
-              disabled={!canOpenCollectedFiles}
-              onSelect={onOpenCollectedFiles}
+              disabled={!canOpenCollected}
+              onSelect={onOpenCollected}
             >
-              <HugeiconsIcon icon={FolderFavouriteIcon} size={16} strokeWidth={1.8} />
-              收录的文件
+              <HugeiconsIcon icon={collectedIcon} size={16} strokeWidth={1.8} />
+              {collectedLabel}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

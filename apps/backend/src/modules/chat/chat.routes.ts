@@ -265,10 +265,17 @@ const SendMessageBodySchema = Type.Object({
         type: Type.Literal("text"),
       }),
       Type.Object({
+        alt: Type.Optional(Type.String()),
+        materialCollectionId: Type.String(),
+        type: Type.Literal("image"),
+      }),
+      Type.Object({
         alt: Type.String(),
         fileId: Type.Optional(Type.String()),
         height: Type.Optional(Type.Number()),
+        imageUrl: Type.Optional(Type.String()),
         localUrl: Type.Optional(Type.String()),
+        materialCollectionId: Type.Optional(Type.String()),
         type: Type.Literal("image"),
         url: Type.Optional(Type.String()),
         width: Type.Optional(Type.Number()),
@@ -317,10 +324,17 @@ const SendMessageBodySchema = Type.Object({
           type: Type.Literal("text"),
         }),
         Type.Object({
+          alt: Type.Optional(Type.String()),
+          materialCollectionId: Type.String(),
+          type: Type.Literal("image"),
+        }),
+        Type.Object({
           alt: Type.String(),
           fileId: Type.Optional(Type.String()),
           height: Type.Optional(Type.Number()),
+          imageUrl: Type.Optional(Type.String()),
           localUrl: Type.Optional(Type.String()),
+          materialCollectionId: Type.Optional(Type.String()),
           type: Type.Literal("image"),
           url: Type.Optional(Type.String()),
           width: Type.Optional(Type.Number()),
@@ -417,6 +431,7 @@ const MaterialBizTypeSchema = Type.Union([
   Type.Literal(3),
   Type.Literal(4),
   Type.Literal(5),
+  Type.Literal(6),
 ]);
 
 const MaterialGroupBizTypeSchema = Type.Union([
@@ -424,6 +439,7 @@ const MaterialGroupBizTypeSchema = Type.Union([
   Type.Literal(3),
   Type.Literal(4),
   Type.Literal(5),
+  Type.Literal(6),
 ]);
 
 const MaterialCollectionsQuerySchema = Type.Object({
@@ -1964,20 +1980,27 @@ function parseRequiredInteger(value: string) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function parseMaterialBizTypeQuery(value: string): 1 | 2 | 3 | 4 | 5 {
+function parseMaterialBizTypeQuery(value: string): 1 | 2 | 3 | 4 | 5 | 6 {
   const parsed = parseRequiredInteger(value);
 
-  if (parsed === 1 || parsed === 2 || parsed === 3 || parsed === 4 || parsed === 5) {
+  if (
+    parsed === 1 ||
+    parsed === 2 ||
+    parsed === 3 ||
+    parsed === 4 ||
+    parsed === 5 ||
+    parsed === 6
+  ) {
     return parsed;
   }
 
   throw new BadRequestError("INVALID_MATERIAL_BIZ_TYPE", "素材类型无效");
 }
 
-function parseMaterialGroupBizTypeQuery(value: string): 2 | 3 | 4 | 5 {
+function parseMaterialGroupBizTypeQuery(value: string): 2 | 3 | 4 | 5 | 6 {
   const parsed = parseRequiredInteger(value);
 
-  if (parsed === 2 || parsed === 3 || parsed === 4 || parsed === 5) {
+  if (parsed === 2 || parsed === 3 || parsed === 4 || parsed === 5 || parsed === 6) {
     return parsed;
   }
 

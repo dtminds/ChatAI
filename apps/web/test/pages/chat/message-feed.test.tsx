@@ -299,6 +299,15 @@ describe("message feed row actions", () => {
       },
     ],
     [
+      "普通图片",
+      {
+        alt: "商品图",
+        downloadStatus: "finished" as const,
+        imageUrl: "https://example.com/image.png",
+        type: "image" as const,
+      },
+    ],
+    [
       "文件",
       {
         extension: "pdf",
@@ -364,14 +373,6 @@ describe("message feed row actions", () => {
       },
     ],
     [
-      "普通图片",
-      {
-        alt: "图片",
-        imageUrl: "https://example.com/image.png",
-        type: "image" as const,
-      },
-    ],
-    [
       "名片",
       {
         name: "客户甲",
@@ -385,6 +386,44 @@ describe("message feed row actions", () => {
       <MessageRow
         message={{
           ...createTextMessage("不可收录"),
+          content,
+          role: "customer",
+        } as ChatMessage}
+        onCollectMaterial={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+
+    expect(screen.queryByRole("menuitem", { name: "收录" })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    [
+      "下载中的普通图片",
+      {
+        alt: "下载中图片",
+        downloadStatus: "ing",
+        imageUrl: "https://example.com/image.png",
+        type: "image" as const,
+      },
+    ],
+    [
+      "未取得地址的普通图片",
+      {
+        alt: "无地址图片",
+        downloadStatus: "finished",
+        imageUrl: "",
+        type: "image" as const,
+      },
+    ],
+  ])("does not show collection action for %s", async (_label, content) => {
+    const user = userEvent.setup();
+
+    render(
+      <MessageRow
+        message={{
+          ...createTextMessage("不可收录图片"),
           content,
           role: "customer",
         } as ChatMessage}

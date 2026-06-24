@@ -11,7 +11,9 @@ export type ComposerImageSegment = {
   clientId?: string;
   fileId?: string;
   height?: number;
+  imageUrl?: string;
   localUrl?: string;
+  materialCollectionId?: string;
   url?: string;
   width?: number;
 };

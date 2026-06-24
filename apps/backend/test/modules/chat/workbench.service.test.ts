@@ -2777,6 +2777,106 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
+  it("maps an imageUrl-only image send to the Java send-message payload", async () => {
+    const javaClient = createJavaClient();
+    vi.mocked(javaClient.sendMessage).mockResolvedValue({
+      optNo: "opt-image-url-001",
+      status: "accepted",
+    });
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "101",
+          thirdExternalUserId: "external-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await service.sendMessage("101", {
+      conversationId: "88",
+      seatId: "12",
+      segment: {
+        alt: "商品图",
+        imageUrl: "https://b5.bokr.com.cn/s5/upload/product.png",
+        type: "image",
+      },
+    });
+
+    expect(javaClient.sendMessage).toHaveBeenCalledWith({
+      msgData: {
+        fileUrl: "https://b5.bokr.com.cn/s5/upload/product.png",
+        msgtype: "image",
+      },
+      platform: 5,
+      sendType: 1,
+      source: 1,
+      thirdExternalUserid: "external-001",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
+  });
+
+  it("maps an image material send from the collected file url", async () => {
+    const javaClient = createJavaClient();
+    vi.mocked(javaClient.sendMessage).mockResolvedValue({
+      optNo: "opt-image-material-001",
+      status: "accepted",
+    });
+    const repository = {
+      canAccessSeat: vi.fn().mockResolvedValue(true),
+      findMaterialCollectionForForward: vi.fn().mockResolvedValue({
+        content: JSON.stringify({
+          fileUrl: "s5/msg/20260624/272/product.png",
+        }),
+        msgInfoId: "2197",
+      }),
+      getConversationLookup: vi.fn().mockResolvedValue({
+        id: "88",
+        platform: 5,
+        seatId: "12",
+        seatHostSubUserId: "101",
+        thirdExternalUserId: "external-001",
+        thirdUserId: "seat-user-001",
+        uid: 9001,
+      }),
+    } as unknown as WorkbenchRepository;
+    const service = new MysqlWorkbenchService(repository, javaClient);
+
+    await service.sendMessage("101", {
+      conversationId: "88",
+      seatId: "12",
+      segment: {
+        materialCollectionId: "material-image-001",
+        type: "image",
+      },
+    });
+
+    expect(repository.findMaterialCollectionForForward).toHaveBeenCalledWith({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.IMAGE,
+      id: "material-image-001",
+      uid: 9001,
+    });
+    expect(javaClient.sendMessage).toHaveBeenCalledWith({
+      msgData: {
+        fileUrl: "https://b5.bokr.com.cn/s5/msg/20260624/272/product.png",
+        msgtype: "image",
+      },
+      platform: 5,
+      sendType: 1,
+      source: 1,
+      thirdExternalUserid: "external-001",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
+  });
+
   it("ignores quote payload for image sends", async () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.sendMessage).mockResolvedValue({
@@ -3905,6 +4005,84 @@ describe("MysqlWorkbenchService", () => {
       success: false,
       errorMsg: "文件缺少下载地址，无法收录",
     });
+  });
+
+  it("material: collects image messages into tenant materials", async () => {
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_779_700_002_000);
+    const repository = createMaterialRepository({
+      createMaterialCollection: vi.fn().mockResolvedValue("183"),
+      findMaterialMessage: vi.fn().mockResolvedValue({
+        content: JSON.stringify({
+          alt: "商品图",
+          fileUrl: "https://cdn.example.com/product.png",
+          height: 960,
+          width: 720,
+        }),
+        id: "9106",
+        msgid: "msg-image-1",
+        msgtype: "image",
+        uid: 9001,
+      }),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.collectMaterial("101", {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.IMAGE,
+        groupId: "9",
+        msgInfoId: "9106",
+      }),
+    ).resolves.toEqual({ success: true });
+
+    expect(repository.createMaterialCollection).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.IMAGE,
+        groupId: "9",
+        msgInfoId: "9106",
+        opSubUserId: "101",
+        sort: 1_779_700_002_000,
+        subUid: 0,
+        title: "图片",
+        uid: 9001,
+      }),
+    );
+    expect(
+      JSON.parse(
+        vi.mocked(repository.createMaterialCollection).mock.calls[0]?.[0].content ??
+          "{}",
+      ),
+    ).toEqual({
+      alt: "商品图",
+      fileUrl: "https://cdn.example.com/product.png",
+      height: 960,
+      width: 720,
+    });
+    nowSpy.mockRestore();
+  });
+
+  it("material: rejects image collect when image url is missing", async () => {
+    const repository = createMaterialRepository({
+      findMaterialMessage: vi.fn().mockResolvedValue({
+        content: JSON.stringify({ alt: "缺少地址" }),
+        msgid: "msg-image-1",
+        msgtype: "image",
+        uid: 9001,
+      }),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.collectMaterial("101", {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.IMAGE,
+        groupId: "9",
+        msgInfoId: "9106",
+      }),
+    ).resolves.toEqual({
+      success: false,
+      errorMsg: "图片缺少地址，无法收录",
+    });
+
+    expect(repository.createMaterialCollection).not.toHaveBeenCalled();
   });
 
   it("material: rejects generated material title over collection limit", async () => {

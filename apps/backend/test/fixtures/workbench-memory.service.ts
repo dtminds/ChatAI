@@ -1340,7 +1340,7 @@ export function createMemoryWorkbenchService() {
 
         return {
           seatId: payload.seatId,
-          content: buildPayloadSegmentContent(segment, quoteForSegment),
+          content: buildPayloadSegmentContent(state, segment, quoteForSegment),
           contentType: quoteForSegment ? "quote" : segment.type,
           conversationId: payload.conversationId,
           createdAt: now + index,
@@ -1495,8 +1495,26 @@ function buildInitialState(): MemoryWorkbenchState {
         sort: 100,
         title: "文件分组",
       },
+      {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.IMAGE,
+        id: "material-group-image-1",
+        sort: 90,
+        title: "图片分组",
+      },
     ],
     materialItems: [
+      {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.IMAGE,
+        content: {
+          fileUrl: "https://example.com/materials/product.png",
+        },
+        contentType: "image",
+        groupId: "material-group-image-1",
+        id: "material-item-image-1",
+        msgInfoId: "9",
+        sort: 90,
+        title: "商品图",
+      },
       {
         bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
         content: { fileName: "求未 AI 智能营销系统.pdf" },
@@ -1515,10 +1533,10 @@ function buildInitialState(): MemoryWorkbenchState {
         message("msg-004", "conv-001", "drc", "cust-001", "agent", "file", { fileName: "求未 AI 智能营销系统.pdf", fileSizeLabel: "6.10M", extension: "pdf", sourceLabel: "企业微信文件" }, "2026-04-13 09:10:00", 3, "sent"),
         message("msg-005", "conv-001", "drc", "cust-001", "customer", "text", { text: "Seedream 4.0 这张活动卡片我准备转给群里，你看标题会不会太满？" }, "2026-04-14 18:37:00", 4, "sent"),
         message("msg-006", "conv-001", "drc", "cust-001", "customer", "text", { text: "我先截了个竖图版本给你看。" }, "2026-04-14 18:37:18", 5, "sent"),
-        message("msg-007", "conv-001", "drc", "cust-001", "customer", "image", { imageUrl: imagePlaceholder("phone"), alt: "手机截图", width: 300, height: 620 }, "2026-04-14 18:37:24", 6, "sent"),
+        message("msg-007", "conv-001", "drc", "cust-001", "customer", "image", { fileUrl: imagePlaceholder("phone"), alt: "手机截图", width: 300, height: 620 }, "2026-04-14 18:37:24", 6, "sent"),
         message("msg-008", "conv-001", "drc", "cust-001", "customer", "voice", { durationLabel: "11\"" }, "2026-04-14 18:38:12", 7, "sent"),
         message("msg-009", "conv-001", "drc", "cust-001", "customer", "text", { text: "这是最新的权益清单截图，你帮我确认下。" }, "2026-04-14 19:18:18", 8, "sent"),
-        message("msg-010", "conv-001", "drc", "cust-001", "customer", "image", { imageUrl: imagePlaceholder("sheet"), alt: "权益清单截图", width: 1180, height: 540 }, "2026-04-14 19:18:32", 9, "sent"),
+        message("msg-010", "conv-001", "drc", "cust-001", "customer", "image", { fileUrl: imagePlaceholder("sheet"), alt: "权益清单截图", width: 1180, height: 540 }, "2026-04-14 19:18:32", 9, "sent"),
       ],
       "conv-002": [
         message("msg-011", "conv-002", "drc", "cust-002", "customer", "text", { text: "早餐能不能换成酸奶和坚果？" }, "2026-04-13 15:04:16", 1, "sent"),
@@ -1987,6 +2005,7 @@ function getPayloadSegments(payload: WorkbenchSendMessagePayload) {
 }
 
 function buildPayloadSegmentContent(
+  state: MemoryWorkbenchState,
   segment: ReturnType<typeof getPayloadSegments>[number],
   quote?: WorkbenchSendMessagePayload["quote"],
 ) {
@@ -1999,10 +2018,15 @@ function buildPayloadSegmentContent(
   }
 
   if (segment.type === "image") {
+    const materialContent = segment.materialCollectionId
+      ? getMemoryMaterialContent(state, segment.materialCollectionId)
+      : {};
+    const materialFileUrl = readString(materialContent.fileUrl);
+
     return {
       alt: segment.alt,
+      fileUrl: materialFileUrl || segment.url || segment.localUrl || "",
       height: segment.height,
-      imageUrl: segment.url ?? segment.localUrl ?? "",
       width: segment.width,
     };
   }
@@ -2019,6 +2043,16 @@ function buildPayloadSegmentContent(
   return {
     text: segment.text,
   };
+}
+
+function getMemoryMaterialContent(state: MemoryWorkbenchState, materialCollectionId: string) {
+  const item = state.materialItems.find(
+    (materialItem) => materialItem.id === materialCollectionId,
+  );
+
+  return item?.content && typeof item.content === "object"
+    ? item.content as Record<string, unknown>
+    : {};
 }
 
 function getPayloadPreview(segments: ReturnType<typeof getPayloadSegments>) {

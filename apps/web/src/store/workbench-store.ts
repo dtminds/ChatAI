@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import {
+  isLocalImageSegment,
   resolveImageSegmentsForSend,
 } from "@/pages/chat/api/media-upload-service";
 import { MEDIA_UPLOAD_SDK_LOAD_FAILED_CODE } from "@/pages/chat/api/media-upload-errors";
@@ -1898,10 +1899,12 @@ function buildOptimisticMessageContent(
   }
 
   if (segment.type === "image") {
+    const imageUrl = segment.imageUrl ?? segment.url ?? segment.localUrl ?? "";
+
     return {
       alt: segment.alt,
       height: segment.height,
-      imageUrl: segment.url ?? segment.localUrl ?? "",
+      imageUrl,
       type: "image",
       width: segment.width,
     };
@@ -4441,7 +4444,7 @@ export function createWorkbenchStore() {
       let segmentsForSend = sendableSegments;
 
       try {
-        if (normalizedSegments.some((segment) => segment.type === "image")) {
+        if (normalizedSegments.some(isLocalImageSegment)) {
           segmentsForSend = options?.onImageUploaded
             ? await resolveImageSegmentsForSend(
                 activeConversationId,
@@ -5984,6 +5987,29 @@ function stripComposerMentionMetadata(segments: ComposerSegment[]): ComposerSegm
 function toWorkbenchSendSegment(
   segment: ComposerSegment,
 ): WorkbenchSendMessagePayload["segment"] {
+  if (segment.type === "image" && segment.materialCollectionId) {
+    return {
+      alt: segment.alt,
+      materialCollectionId: segment.materialCollectionId,
+      type: "image",
+    };
+  }
+
+  if (segment.type === "image") {
+    const imageUrl = segment.imageUrl?.trim();
+
+    if (imageUrl) {
+      return {
+        alt: segment.alt,
+        imageUrl,
+        type: "image",
+        url: imageUrl,
+        ...(segment.height != null ? { height: segment.height } : {}),
+        ...(segment.width != null ? { width: segment.width } : {}),
+      };
+    }
+  }
+
   if (segment.type === "file" && segment.materialCollectionId) {
     return {
       materialCollectionId: segment.materialCollectionId,

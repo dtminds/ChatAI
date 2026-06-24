@@ -490,4 +490,53 @@ describe("createWorkbenchService", () => {
       }),
     ).rejects.toThrow("附件类型不支持");
   });
+
+  it("returns mock sent image messages with backend fileUrl content", async () => {
+    const service = createMockWorkbenchService();
+    const groups = await service.listMaterialGroups({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.IMAGE,
+    });
+    const groupId = groups.groups[0]?.id;
+
+    expect(groupId).toBeTruthy();
+
+    const materials = await service.listMaterialCollections({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.IMAGE,
+      groupId: groupId ?? "",
+      page: 1,
+      pageSize: 1,
+    });
+    const material = materials.items[0];
+    const materialFileUrl = String(material?.content.fileUrl ?? "");
+
+    expect(material?.id).toBeTruthy();
+    expect(materialFileUrl).toBeTruthy();
+
+    const result = await service.sendMessage({
+      conversationId: "conv-001",
+      seatId: "drc",
+      segment: {
+        alt: "商品图",
+        materialCollectionId: material?.id ?? "",
+        type: "image",
+      },
+    });
+    const poll = await service.poll({
+      activeConversationId: "conv-001",
+      activeMessageSeq: 0,
+      currentSeatId: "drc",
+      sinceVersion: 0,
+    });
+    const sentMessage = poll.activeConversationMessages.find(
+      (message) => message.optNo === result.optNo,
+    );
+
+    expect(sentMessage).toMatchObject({
+      content: {
+        fileUrl: materialFileUrl,
+      },
+      contentType: "image",
+    });
+    expect(sentMessage?.content).not.toHaveProperty("imageUrl");
+  });
 });

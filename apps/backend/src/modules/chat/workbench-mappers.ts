@@ -418,7 +418,7 @@ function parseMessageContent(row: MessageRow, quotePreview?: MessageRowQuotePrev
         alt: "图片",
         ...(downloadStatus ? { downloadStatus } : {}),
         ...(fileSerialNo ? { fileSerialNo } : {}),
-        imageUrl: normalizeMediaAssetUrl(readStringField(parsed, "fileUrl")),
+        fileUrl: normalizeMediaAssetUrl(readStringField(parsed, "fileUrl")),
       };
     }
     case "emotion": {
@@ -746,7 +746,7 @@ export function buildQuotedMessagePreview(row: MessageRow): MessageRowQuotePrevi
     case "image":
       return {
         contentType: mapped.contentType,
-        imageUrl: readRecordString(mapped.content, "imageUrl"),
+        imageUrl: readRecordString(mapped.content, "fileUrl"),
         senderName,
       };
     case "emotion":

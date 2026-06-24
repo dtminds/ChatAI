@@ -1009,6 +1009,7 @@ describe("ChatWorkbenchPage composer flows", () => {
   });
 
   it.each([
+    ["选择收录图片", "收录的图片"],
     ["收藏文件", "收录的文件"],
     ["收藏小程序", "收录的小程序"],
     ["收藏H5", "收录的H5"],
@@ -1255,6 +1256,102 @@ describe("ChatWorkbenchPage composer flows", () => {
         fileSizeLabel: "128 KB",
         sourceLabel: "文件",
         type: "file",
+      },
+      role: "agent",
+    });
+    expect(sentMessage?.status === "accepted" || sentMessage?.status === "sent").toBe(true);
+  });
+
+  it("sends a collected image material as an image segment after selection", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+    const listMaterialGroups = vi.fn(async (request) => {
+      if (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.IMAGE) {
+        return baseService.listMaterialGroups(request);
+      }
+
+      return {
+        groups: [
+          {
+            bizType: MATERIAL_COLLECTION_BIZ_TYPE.IMAGE,
+            id: "group-image",
+            sort: 100,
+            title: "图片分组",
+          },
+        ],
+      };
+    });
+    const listMaterialCollections = vi.fn(async (request) => {
+      if (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.IMAGE) {
+        return baseService.listMaterialCollections(request);
+      }
+
+      return {
+        items: [
+          {
+            bizType: MATERIAL_COLLECTION_BIZ_TYPE.IMAGE,
+            content: {
+              alt: "商品图",
+              fileUrl: "https://example.com/images/product.png",
+            },
+            contentType: "image" as const,
+            groupId: "group-image",
+            id: "material-image-001",
+            msgInfoId: "9109",
+            sort: 1,
+            title: "图片",
+          },
+        ],
+        pagination: {
+          hasMore: false,
+          page: request.page ?? 1,
+          pageSize: 100,
+          total: 1,
+        },
+      };
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      listMaterialCollections,
+      listMaterialGroups,
+      sendMessage,
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getByRole("button", { name: "选择收录图片" }));
+    const imageButton = await screen.findByRole("button", {
+      name: "选择图片 商品图",
+    });
+
+    await user.click(imageButton);
+
+    expect(imageButton).toHaveAttribute("aria-pressed", "true");
+    expect(sendMessage).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "发送" }));
+
+    await waitFor(() => {
+      expect(sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          conversationId: "conv-001",
+          seatId: "drc",
+          segment: {
+            alt: "商品图",
+            materialCollectionId: "material-image-001",
+            type: "image",
+          },
+        }),
+      );
+    });
+    expect(sendMessage.mock.calls[0]?.[0].segment).not.toHaveProperty("imageUrl");
+    expect(sendMessage.mock.calls[0]?.[0].segment).not.toHaveProperty("url");
+    const sentMessage = await expectSentConversationMessage("conv-001", sendMessage, {
+      content: {
+        imageUrl: "https://example.com/images/product.png",
+        type: "image",
       },
       role: "agent",
     });
@@ -1912,9 +2009,15 @@ describe("ChatWorkbenchPage composer flows", () => {
     });
 
     expect(await within(composer).findAllByRole("img")).toHaveLength(5);
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: "发送图片" })).toBeDisabled();
-    });
+    await userEvent.click(screen.getByRole("button", { name: "打开图片菜单" }));
+
+    expect(await screen.findByRole("menuitem", { name: "本地图片" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    expect(screen.getByRole("menuitem", { name: "收录的图片" })).not.toHaveAttribute(
+      "aria-disabled",
+    );
   });
 
   it("keeps consecutive pasted images inline without visible spacer text", async () => {

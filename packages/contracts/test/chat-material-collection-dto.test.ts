@@ -27,6 +27,7 @@ describe("chat material collection DTOs", () => {
       MINI_PROGRAM: 3,
       H5: 4,
       SPHFEED: 5,
+      IMAGE: 6,
     });
     expect(MATERIAL_COLLECTION_GROUP_MAX_COUNT).toBe(20);
 
@@ -37,6 +38,7 @@ describe("chat material collection DTOs", () => {
     expect(compiler.Check(MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM)).toBe(true);
     expect(compiler.Check(MATERIAL_COLLECTION_BIZ_TYPE.H5)).toBe(true);
     expect(compiler.Check(MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED)).toBe(true);
+    expect(compiler.Check(MATERIAL_COLLECTION_BIZ_TYPE.IMAGE)).toBe(true);
     expect(compiler.Check(0)).toBe(false);
     expect(compiler.Check("1")).toBe(false);
   });
@@ -107,11 +109,26 @@ describe("chat material collection DTOs", () => {
       },
     };
 
+    const imageItem: WorkbenchMaterialCollectionItemDto = {
+      id: "collection-5",
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.IMAGE,
+      groupId: "group-image",
+      title: "图片",
+      sort: 60,
+      msgInfoId: "9005",
+      contentType: "image",
+      content: {
+        fileUrl: "https://example.com/image.png",
+      },
+    };
+
     expect(defaultGroupItem.groupId).toBe(0);
     expect(customGroupItem.msgInfoId).toBe("9002");
-    expect([h5Item.contentType, miniProgramItem.contentType]).toEqual([
+    expect([h5Item.contentType, miniProgramItem.contentType, imageItem.contentType])
+      .toEqual([
       "h5",
       "mini-program",
+      "image",
     ]);
   });
 
@@ -207,6 +224,6 @@ describe("chat material collection DTOs", () => {
     expect(moveRequest.groupId).toBe("group-h5");
     expect(okResponse.ok).toBe(true);
 
-    expectTypeOf(groupCreateRequest.bizType).toEqualTypeOf<2 | 3 | 4 | 5>();
+    expectTypeOf(groupCreateRequest.bizType).toEqualTypeOf<2 | 3 | 4 | 5 | 6>();
   });
 });

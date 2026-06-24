@@ -1223,6 +1223,23 @@ describe("backend app", () => {
     await app.close();
   });
 
+  it("material: accepts image material group business type", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+
+    const groupsResponse = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/material-collections/groups?biz_type=6",
+    });
+
+    expect(groupsResponse.statusCode).toBe(200);
+    expect(groupsResponse.json()).toMatchObject({
+      groups: expect.any(Array),
+    });
+
+    await app.close();
+  });
+
   it("material: rejects enterprise collection page without group id", async () => {
     const { app, authorization } = await createAuthenticatedApp();
 
@@ -2591,6 +2608,48 @@ describe("backend app", () => {
     await app.close();
   });
 
+  it("accepts collected image material sends and reports the material image through polling", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+
+    const send = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        conversationId: "conv-001",
+        seatId: "drc",
+        segment: {
+          materialCollectionId: "material-item-image-1",
+          type: "image",
+        },
+      },
+      url: "/api/server/messages/send",
+    });
+    const poll = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/poll?since_version=1284&current_seat_id=drc&active_conversation_id=conv-001&active_message_seq=0",
+    });
+
+    expect(send.statusCode).toBe(200);
+    const sendBody = send.json<{ optNo: string; status: string }>();
+    const sentMessage = poll
+      .json<{
+        activeConversationMessages: Array<{
+          content?: unknown;
+          contentType?: string;
+          optNo?: string;
+        }>;
+      }>()
+      .activeConversationMessages.find((message) => message.optNo === sendBody.optNo);
+
+    expect(sentMessage?.contentType).toBe("image");
+    expect(sentMessage?.content).toMatchObject({
+      fileUrl: "https://example.com/materials/product.png",
+    });
+
+    await app.close();
+  });
+
   it("rejects oversized message query-by-seqs batches", async () => {
     const { app, authorization } = await createAuthenticatedApp();
 
@@ -2770,7 +2829,7 @@ describe("backend app", () => {
       {
         content: {
           alt: "截图",
-          imageUrl: "data:image/png;base64,abc",
+          fileUrl: "data:image/png;base64,abc",
         },
         contentType: "image",
         optNo: segmentAckMessages[1]?.optNo,

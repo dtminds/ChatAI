@@ -117,6 +117,7 @@ import {
   QUICK_REPLY_TOP_CATEGORY_LIMIT,
   buildMaterialFileContentJson,
   buildMaterialH5ContentJson,
+  buildMaterialImageContentJson,
   canEditMaterialCollectionItem,
   isQuickReplyLabelColor,
   normalizeQuickReplyAttachments,
@@ -124,6 +125,7 @@ import {
   patchMaterialH5ContentJson,
   resolveMaterialFileCollectFields,
   resolveMaterialH5CollectFields,
+  resolveMaterialImageCollectFields,
   validateQuickReplyPayload,
 } from "@chatai/contracts";
 import {
@@ -1854,6 +1856,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
   ): Promise<JavaSendMessageData> {
     if (
       segment.type === "emotion" ||
+      (segment.type === "image" && segment.materialCollectionId) ||
       (segment.type === "file" && segment.materialCollectionId) ||
       (segment.type === "h5" && segment.materialCollectionId) ||
       (segment.type === "weapp" && segment.materialCollectionId) ||
@@ -1868,6 +1871,8 @@ export class MysqlWorkbenchService implements WorkbenchService {
       const bizType =
         segment.type === "emotion"
           ? MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION
+          : segment.type === "image"
+          ? MATERIAL_COLLECTION_BIZ_TYPE.IMAGE
           : segment.type === "file"
           ? MATERIAL_COLLECTION_BIZ_TYPE.FILE
           : segment.type === "h5"
@@ -1892,6 +1897,10 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
       if (segment.type === "file") {
         return buildFileJavaSendMessageData(collection.content);
+      }
+
+      if (segment.type === "image") {
+        return buildImageJavaSendMessageData(collection.content);
       }
 
       if (segment.type === "h5") {
@@ -3924,6 +3933,7 @@ function parseMaterialBizType(value: number): MaterialCollectionBizType {
     case MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM:
     case MATERIAL_COLLECTION_BIZ_TYPE.H5:
     case MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED:
+    case MATERIAL_COLLECTION_BIZ_TYPE.IMAGE:
       return value;
     default:
       throw new BadRequestError("INVALID_MATERIAL_BIZ_TYPE", "素材类型无效");
@@ -4366,6 +4376,8 @@ function isMaterialMessageTypeMatched(
   switch (bizType) {
     case MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION:
       return msgtype === "emotion";
+    case MATERIAL_COLLECTION_BIZ_TYPE.IMAGE:
+      return msgtype === "image";
     case MATERIAL_COLLECTION_BIZ_TYPE.FILE:
       return msgtype === "file";
     case MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM:
@@ -4420,6 +4432,19 @@ function normalizeMaterialCollectionPayload(
     };
   }
 
+  if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.IMAGE) {
+    const resolved = resolveMaterialImageCollectFields(rawContent);
+
+    if ("errorMsg" in resolved) {
+      return resolved;
+    }
+
+    return {
+      content: buildMaterialImageContentJson(rawContent, resolved),
+      title: "图片",
+    };
+  }
+
   return {
     content: rawContent ?? "",
     title: readMaterialTitle(rawContent, contentType, msgInfoId),
@@ -4439,6 +4464,10 @@ function readMaterialTitle(
 
   if (contentType === "file") {
     return truncateMaterialTitle(readMaterialString(content, "fileName") || msgInfoId);
+  }
+
+  if (contentType === "image") {
+    return "图片";
   }
 
   if (contentType === "mini-program") {
@@ -4635,7 +4664,8 @@ function buildJavaSendMessageData(
   >,
 ): JavaSendMessageData {
   if (segment.type === "image") {
-    const imageUrl = segment.url?.trim() || segment.localUrl?.trim();
+    const imageUrl =
+      segment.imageUrl?.trim() || segment.url?.trim() || segment.localUrl?.trim();
 
     if (!imageUrl) {
       throw new BadRequestError("INVALID_IMAGE_MESSAGE", "图片消息缺少可发送地址");
@@ -4731,6 +4761,20 @@ function buildEmotionJavaSendMessageData(content: string): JavaSendMessageData {
   return {
     fileUrl,
     msgtype: "emotion",
+  };
+}
+
+function buildImageJavaSendMessageData(content: string): JavaSendMessageData {
+  const record = parseMaterialContentRecord(content);
+  const fileUrl = readMaterialString(record, "fileUrl");
+
+  if (!fileUrl) {
+    throw new BadRequestError("INVALID_IMAGE_MESSAGE", "图片素材数据异常");
+  }
+
+  return {
+    fileUrl: normalizeMediaAssetUrl(fileUrl),
+    msgtype: "image",
   };
 }
 

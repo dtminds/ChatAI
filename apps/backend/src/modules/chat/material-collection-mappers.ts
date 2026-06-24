@@ -7,6 +7,7 @@ import {
 } from "@chatai/contracts";
 import type { Selectable } from "kysely";
 import type { XyWapEmbedMaterialCollection } from "../../db/schema.js";
+import { normalizeMediaAssetUrl } from "./workbench-content-utils.js";
 import { mapMessageRow, type MessageRow } from "./workbench-mappers.js";
 
 export type MaterialCollectionRow = Selectable<XyWapEmbedMaterialCollection>;
@@ -17,6 +18,8 @@ export function getMaterialContentTypeForBizType(
   switch (bizType) {
     case MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION:
       return "emotion";
+    case MATERIAL_COLLECTION_BIZ_TYPE.IMAGE:
+      return "image";
     case MATERIAL_COLLECTION_BIZ_TYPE.FILE:
       return "file";
     case MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM:
@@ -36,6 +39,8 @@ export function getMaterialBizTypeForMessageContentType(
   switch (contentType) {
     case "emotion":
       return MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION;
+    case "image":
+      return MATERIAL_COLLECTION_BIZ_TYPE.IMAGE;
     case "file":
       return MATERIAL_COLLECTION_BIZ_TYPE.FILE;
     case "mini-program":
@@ -53,12 +58,15 @@ export function mapMaterialCollectionItem(
   row: MaterialCollectionRow,
 ): WorkbenchMaterialCollectionItemDto {
   const bizType = toMaterialBizType(row.biz_type);
-  const mappedMessage = mapMessageRow(buildMessageRow(row, bizType));
   const contentType = getMaterialContentTypeForBizType(bizType) ?? "file";
-  const content = normalizeMaterialContent(
-    isRecord(mappedMessage.content) ? mappedMessage.content : {},
-    contentType,
-  );
+  const rawContent = parseMaterialRowContent(row.content);
+  const mappedMessage =
+    contentType === "image" ? null : mapMessageRow(buildMessageRow(row, bizType));
+  const sourceContent =
+    contentType === "image"
+      ? rawContent
+      : isRecord(mappedMessage?.content) ? mappedMessage.content : {};
+  const content = normalizeMaterialContent(sourceContent, contentType);
   const msgInfoId = String(row.msg_info_id);
 
   return {
@@ -104,6 +112,8 @@ function getMsgTypeForBizType(bizType: MaterialCollectionBizType) {
   switch (bizType) {
     case MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION:
       return "emotion";
+    case MATERIAL_COLLECTION_BIZ_TYPE.IMAGE:
+      return "image";
     case MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM:
       return "weapp";
     case MATERIAL_COLLECTION_BIZ_TYPE.H5:
@@ -121,6 +131,7 @@ function toMaterialBizType(value: number | string): MaterialCollectionBizType {
 
   switch (numericValue) {
     case MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION:
+    case MATERIAL_COLLECTION_BIZ_TYPE.IMAGE:
     case MATERIAL_COLLECTION_BIZ_TYPE.FILE:
     case MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM:
     case MATERIAL_COLLECTION_BIZ_TYPE.H5:
@@ -147,6 +158,10 @@ function resolveTitle(
     return readString(content, "appName") || readString(content, "title") || fallbackTitle;
   }
 
+  if (contentType === "image") {
+    return readString(content, "title") || readString(content, "alt") || "图片";
+  }
+
   return (
     readString(content, "title") ||
     readString(content, "fileName") ||
@@ -159,6 +174,19 @@ function normalizeMaterialContent(
   content: Record<string, unknown>,
   contentType: WorkbenchMaterialCollectionContentType,
 ) {
+  if (contentType === "image") {
+    const fileUrl = normalizeMediaAssetUrl(readString(content, "fileUrl"));
+
+    if (fileUrl) {
+      return {
+        ...content,
+        fileUrl,
+      };
+    }
+
+    return content;
+  }
+
   if (contentType !== "emotion") {
     return content;
   }
@@ -211,6 +239,20 @@ function readString(record: Record<string, unknown>, key: string) {
   const value = record[key];
 
   return typeof value === "string" ? value.trim() : "";
+}
+
+function parseMaterialRowContent(rawContent: string | null) {
+  if (!rawContent) {
+    return {};
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(rawContent);
+
+    return isRecord(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

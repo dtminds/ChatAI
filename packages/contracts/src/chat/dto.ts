@@ -61,7 +61,7 @@ export type WorkbenchMessageContentType =
 
 export type WorkbenchMaterialCollectionContentType = Extract<
   WorkbenchMessageContentType,
-  "emotion" | "file" | "h5" | "mini-program" | "sphfeed"
+  "emotion" | "file" | "h5" | "image" | "mini-program" | "sphfeed"
 >;
 
 export type WorkbenchMaterialCollectionGroupBizType = Exclude<
@@ -630,10 +630,12 @@ export type WorkbenchOutgoingMessageTextSegment = {
 
 export type WorkbenchOutgoingMessageImageSegment = {
   type: "image";
-  alt: string;
+  alt?: string;
   fileId?: string;
   height?: number;
+  imageUrl?: string;
   localUrl?: string;
+  materialCollectionId?: string;
   url?: string;
   width?: number;
 };

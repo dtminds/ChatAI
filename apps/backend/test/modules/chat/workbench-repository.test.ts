@@ -1729,6 +1729,42 @@ describe("WorkbenchRepository", () => {
     });
   });
 
+  it("looks up active image material collection in enterprise scope", async () => {
+    const db = createMaterialDb({
+      xy_wap_embed_material_collection: {
+        content: JSON.stringify({
+          fileUrl: "s5/msg/20260624/272/product.png",
+        }),
+        msg_info_id: 1025659,
+      },
+    });
+    const repository = new WorkbenchRepository(db as never);
+
+    await expect(
+      repository.findMaterialCollectionForForward({
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.IMAGE,
+        id: "68",
+        uid: 9001,
+      }),
+    ).resolves.toEqual({
+      content: JSON.stringify({
+        fileUrl: "s5/msg/20260624/272/product.png",
+      }),
+      msgInfoId: "1025659",
+    });
+
+    expect(db.selects[0]).toMatchObject({
+      table: "xy_wap_embed_material_collection",
+      wheres: [
+        ["id", "=", 68],
+        ["uid", "=", 9001],
+        ["biz_type", "=", MATERIAL_COLLECTION_BIZ_TYPE.IMAGE],
+        ["sub_uid", "=", 0],
+        ["biz_status", "=", 1],
+      ],
+    });
+  });
+
   it("returns false when material group has active collections", async () => {
     const db = createMaterialDb({
       xy_wap_embed_material_collection: { id: 66 },

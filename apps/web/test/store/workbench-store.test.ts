@@ -21,9 +21,14 @@ import type {
 import { resetWorkbenchStoreTestState } from "./workbench-store-test-utils";
 import { createFreshWorkbenchStoreForTest } from "./workbench-store-test-utils";
 
-vi.mock("@/pages/chat/api/media-upload-service", () => ({
-  resolveImageSegmentsForSend: vi.fn(async (_conversationId, segments) => segments),
-}));
+vi.mock("@/pages/chat/api/media-upload-service", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/pages/chat/api/media-upload-service")>();
+
+  return {
+    ...actual,
+    resolveImageSegmentsForSend: vi.fn(async (_conversationId, segments) => segments),
+  };
+});
 
 function createDeferred<T = void>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
@@ -1124,7 +1129,7 @@ describe("useWorkbenchStore", () => {
               content: {
                 alt: "产品图片",
                 downloadStatus: "ing",
-                imageUrl: "https://b5.bokr.com.cn/chat-images/product.png",
+                fileUrl: "https://b5.bokr.com.cn/chat-images/product.png",
               },
               contentType: "image",
               conversationId: "conv-001",
@@ -1189,7 +1194,7 @@ describe("useWorkbenchStore", () => {
               content: {
                 alt: "图片",
                 downloadStatus: "ing",
-                imageUrl: "",
+                fileUrl: "",
               },
               contentType: "image",
               conversationId: "conv-001",
@@ -3515,6 +3520,12 @@ describe("useWorkbenchStore", () => {
         type: "emotion",
       },
       {
+        alt: "商品图",
+        imageUrl: "https://cdn.example.com/product.png",
+        materialCollectionId: "material-image-001",
+        type: "image",
+      },
+      {
         extension: "pdf",
         fileName: "报价单.pdf",
         fileSizeLabel: "2 KB",
@@ -3542,7 +3553,7 @@ describe("useWorkbenchStore", () => {
       },
     ]);
 
-    expect(sendMessage).toHaveBeenCalledTimes(4);
+    expect(sendMessage).toHaveBeenCalledTimes(5);
     expect(sendMessage).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
@@ -3556,13 +3567,25 @@ describe("useWorkbenchStore", () => {
       2,
       expect.objectContaining({
         segment: {
+          alt: "商品图",
+          materialCollectionId: "material-image-001",
+          type: "image",
+        },
+      }),
+    );
+    expect(sendMessage.mock.calls[1]?.[0].segment).not.toHaveProperty("imageUrl");
+    expect(sendMessage.mock.calls[1]?.[0].segment).not.toHaveProperty("url");
+    expect(sendMessage).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        segment: {
           materialCollectionId: "material-file-001",
           type: "file",
         },
       }),
     );
     expect(sendMessage).toHaveBeenNthCalledWith(
-      3,
+      4,
       expect.objectContaining({
         segment: {
           materialCollectionId: "material-h5-001",
@@ -3571,7 +3594,7 @@ describe("useWorkbenchStore", () => {
       }),
     );
     expect(sendMessage).toHaveBeenNthCalledWith(
-      4,
+      5,
       expect.objectContaining({
         segment: {
           materialCollectionId: "material-weapp-001",
@@ -3580,7 +3603,7 @@ describe("useWorkbenchStore", () => {
       }),
     );
     const latestMessages =
-      useWorkbenchStore.getState().messagesByConversationId["conv-001"].slice(-4);
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].slice(-5);
 
     expect(latestMessages).toMatchObject([
       {
@@ -3588,6 +3611,12 @@ describe("useWorkbenchStore", () => {
           imageUrl: "https://cdn.example.com/expression.gif",
           type: "image",
           variant: "emotion",
+        },
+      },
+      {
+        content: {
+          imageUrl: "https://cdn.example.com/product.png",
+          type: "image",
         },
       },
       {

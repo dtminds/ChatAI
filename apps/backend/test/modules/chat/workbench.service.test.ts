@@ -2785,7 +2785,6 @@ describe("MysqlWorkbenchService", () => {
       segment: {
         alt: "商品图",
         imageUrl: "https://b5.bokr.com.cn/s5/upload/product.png",
-        materialCollectionId: "material-image-001",
         type: "image",
       },
     });
@@ -2793,6 +2792,60 @@ describe("MysqlWorkbenchService", () => {
     expect(javaClient.sendMessage).toHaveBeenCalledWith({
       msgData: {
         fileUrl: "https://b5.bokr.com.cn/s5/upload/product.png",
+        msgtype: "image",
+      },
+      platform: 5,
+      sendType: 1,
+      source: 1,
+      thirdExternalUserid: "external-001",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
+  });
+
+  it("maps an image material send from the collected file url", async () => {
+    const javaClient = createJavaClient();
+    vi.mocked(javaClient.sendMessage).mockResolvedValue({
+      optNo: "opt-image-material-001",
+      status: "accepted",
+    });
+    const repository = {
+      canAccessSeat: vi.fn().mockResolvedValue(true),
+      findMaterialCollectionForForward: vi.fn().mockResolvedValue({
+        content: JSON.stringify({
+          fileUrl: "s5/msg/20260624/272/product.png",
+        }),
+        msgInfoId: "2197",
+      }),
+      getConversationLookup: vi.fn().mockResolvedValue({
+        id: "88",
+        platform: 5,
+        seatId: "12",
+        seatHostSubUserId: "101",
+        thirdExternalUserId: "external-001",
+        thirdUserId: "seat-user-001",
+        uid: 9001,
+      }),
+    } as unknown as WorkbenchRepository;
+    const service = new MysqlWorkbenchService(repository, javaClient);
+
+    await service.sendMessage("101", {
+      conversationId: "88",
+      seatId: "12",
+      segment: {
+        materialCollectionId: "material-image-001",
+        type: "image",
+      },
+    });
+
+    expect(repository.findMaterialCollectionForForward).toHaveBeenCalledWith({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.IMAGE,
+      id: "material-image-001",
+      uid: 9001,
+    });
+    expect(javaClient.sendMessage).toHaveBeenCalledWith({
+      msgData: {
+        fileUrl: "https://b5.bokr.com.cn/s5/msg/20260624/272/product.png",
         msgtype: "image",
       },
       platform: 5,

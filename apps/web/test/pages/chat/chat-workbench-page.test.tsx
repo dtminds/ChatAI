@@ -1643,7 +1643,7 @@ describe("ChatWorkbenchPage", () => {
               ...page.messages[0],
               content: {
                 alt: "商品图",
-                fileUrl: "https://example.com/product.png",
+                downloadStatus: "finished",
                 imageUrl: "https://example.com/product.png",
               },
               contentType: "image",

@@ -1864,6 +1864,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
   ): Promise<JavaSendMessageData> {
     if (
       segment.type === "emotion" ||
+      (segment.type === "image" && segment.materialCollectionId) ||
       (segment.type === "file" && segment.materialCollectionId) ||
       (segment.type === "h5" && segment.materialCollectionId) ||
       (segment.type === "weapp" && segment.materialCollectionId) ||
@@ -1878,6 +1879,8 @@ export class MysqlWorkbenchService implements WorkbenchService {
       const bizType =
         segment.type === "emotion"
           ? MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION
+          : segment.type === "image"
+          ? MATERIAL_COLLECTION_BIZ_TYPE.IMAGE
           : segment.type === "file"
           ? MATERIAL_COLLECTION_BIZ_TYPE.FILE
           : segment.type === "h5"
@@ -1902,6 +1905,10 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
       if (segment.type === "file") {
         return buildFileJavaSendMessageData(collection.content);
+      }
+
+      if (segment.type === "image") {
+        return buildImageJavaSendMessageData(collection.content);
       }
 
       if (segment.type === "h5") {
@@ -4762,6 +4769,20 @@ function buildEmotionJavaSendMessageData(content: string): JavaSendMessageData {
   return {
     fileUrl,
     msgtype: "emotion",
+  };
+}
+
+function buildImageJavaSendMessageData(content: string): JavaSendMessageData {
+  const record = parseMaterialContentRecord(content);
+  const fileUrl = readMaterialString(record, "fileUrl");
+
+  if (!fileUrl) {
+    throw new BadRequestError("INVALID_IMAGE_MESSAGE", "图片素材数据异常");
+  }
+
+  return {
+    fileUrl: normalizeMediaAssetUrl(fileUrl),
+    msgtype: "image",
   };
 }
 

@@ -9,9 +9,14 @@ import { resolveImageSegmentsForSend } from "@/pages/chat/api/media-upload-servi
 import { useWorkbenchStore } from "@/store/workbench-store";
 import { resetWorkbenchStoreTestState } from "./workbench-store-test-utils";
 
-vi.mock("@/pages/chat/api/media-upload-service", () => ({
-  resolveImageSegmentsForSend: vi.fn(async (_conversationId, segments) => segments),
-}));
+vi.mock("@/pages/chat/api/media-upload-service", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/pages/chat/api/media-upload-service")>();
+
+  return {
+    ...actual,
+    resolveImageSegmentsForSend: vi.fn(async (_conversationId, segments) => segments),
+  };
+});
 
 function createRevokeSignalDto(input: {
   conversationId?: string;

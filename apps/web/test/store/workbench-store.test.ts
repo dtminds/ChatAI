@@ -21,9 +21,14 @@ import type {
 import { resetWorkbenchStoreTestState } from "./workbench-store-test-utils";
 import { createFreshWorkbenchStoreForTest } from "./workbench-store-test-utils";
 
-vi.mock("@/pages/chat/api/media-upload-service", () => ({
-  resolveImageSegmentsForSend: vi.fn(async (_conversationId, segments) => segments),
-}));
+vi.mock("@/pages/chat/api/media-upload-service", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/pages/chat/api/media-upload-service")>();
+
+  return {
+    ...actual,
+    resolveImageSegmentsForSend: vi.fn(async (_conversationId, segments) => segments),
+  };
+});
 
 function createDeferred<T = void>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
@@ -3490,14 +3495,15 @@ describe("useWorkbenchStore", () => {
     expect(sendMessage).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
-        segment: expect.objectContaining({
+        segment: {
           alt: "商品图",
-          imageUrl: "https://cdn.example.com/product.png",
           materialCollectionId: "material-image-001",
           type: "image",
-        }),
+        },
       }),
     );
+    expect(sendMessage.mock.calls[1]?.[0].segment).not.toHaveProperty("imageUrl");
+    expect(sendMessage.mock.calls[1]?.[0].segment).not.toHaveProperty("url");
     expect(sendMessage).toHaveBeenNthCalledWith(
       3,
       expect.objectContaining({

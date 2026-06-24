@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import {
+  isLocalImageSegment,
   resolveImageSegmentsForSend,
 } from "@/pages/chat/api/media-upload-service";
 import { MEDIA_UPLOAD_SDK_LOAD_FAILED_CODE } from "@/pages/chat/api/media-upload-errors";
@@ -4446,7 +4447,7 @@ export function createWorkbenchStore() {
       let segmentsForSend = sendableSegments;
 
       try {
-        if (normalizedSegments.some(shouldUploadImageSegment)) {
+        if (normalizedSegments.some(isLocalImageSegment)) {
           segmentsForSend = options?.onImageUploaded
             ? await resolveImageSegmentsForSend(
                 activeConversationId,
@@ -5989,6 +5990,14 @@ function stripComposerMentionMetadata(segments: ComposerSegment[]): ComposerSegm
 function toWorkbenchSendSegment(
   segment: ComposerSegment,
 ): WorkbenchSendMessagePayload["segment"] {
+  if (segment.type === "image" && segment.materialCollectionId) {
+    return {
+      alt: segment.alt,
+      materialCollectionId: segment.materialCollectionId,
+      type: "image",
+    };
+  }
+
   if (segment.type === "image") {
     const imageUrl = segment.imageUrl?.trim();
 
@@ -5996,9 +6005,6 @@ function toWorkbenchSendSegment(
       return {
         alt: segment.alt,
         imageUrl,
-        ...(segment.materialCollectionId
-          ? { materialCollectionId: segment.materialCollectionId }
-          : {}),
         type: "image",
         url: imageUrl,
         ...(segment.height != null ? { height: segment.height } : {}),
@@ -6053,14 +6059,6 @@ function toWorkbenchSendSegment(
   }
 
   return segment;
-}
-
-function shouldUploadImageSegment(segment: ComposerSegment) {
-  return (
-    segment.type === "image" &&
-    !segment.materialCollectionId &&
-    !segment.imageUrl?.trim()
-  );
 }
 
 function isDownloadableMessage(message: Message): message is ChatMessage {

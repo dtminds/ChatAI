@@ -246,8 +246,15 @@ describe("workbench gateway message paging", () => {
           nextVersion: request.sinceVersion + 1,
           seatChanges: [
             {
+              avatar: "https://example.test/drc.png",
+              bizStatus: 1,
+              description: "私域客户管理",
               hostSubUserId: "202",
               lastMessageTime: 1_778_840_020_000,
+              loginStatus: "offline",
+              name: "德瑞可",
+              operatorName: "小可",
+              phone: "13296712905",
               seatId: "drc",
               unreadCount: 3,
             },
@@ -272,9 +279,25 @@ describe("workbench gateway message paging", () => {
     expect(result.accountChanges).toEqual([
       {
         accountId: "drc",
-        hostSubUserId: "202",
+        avatarUrl: "https://example.test/drc.png",
+        bizStatus: 1,
+        description: "私域客户管理",
+        expireTime: undefined,
+        id: "drc",
         lastMessageTime: 1_778_840_020_000,
+        loginStatus: "offline",
+        metrics: {
+          activeCustomers: 0,
+          agents: 0,
+          stores: 0,
+          totalCustomers: 0,
+        },
+        name: "德瑞可",
+        operator: "小可",
+        phone: "13296712905",
         seatId: "drc",
+        takenOverEmployeeId: "202",
+        tone: "linear-gradient(135deg, var(--muted-foreground), var(--primary))",
         unreadCount: 3,
       },
     ]);

@@ -379,14 +379,7 @@ export type WorkbenchHistoryMessagePageDto = {
   hasPrev: boolean;
 };
 
-export type WorkbenchSeatChangeDto = {
-  seatId: string;
-  unreadCount: number;
-  lastMessageTime?: number;
-  hostSubUserId?: string | null;
-  bizStatus?: number;
-  expireTime?: number;
-};
+export type WorkbenchSeatChangeDto = WorkbenchSeatDto;
 
 export type WorkbenchConversationChangeDto =
   | ({
@@ -432,7 +425,7 @@ export type WorkbenchPollResponse = {
   nextVersion: number;
   nextMessageUpdateCursor?: number;
   nextSeatUpdateCursor?: number;
-  seatChanges: WorkbenchSeatChangeDto[];
+  seatChanges: WorkbenchSeatDto[];
   conversationChanges: WorkbenchConversationChangeDto[];
   activeConversationMessages: WorkbenchMessageDto[];
   messageUpdateEvents?: WorkbenchMessageUpdateEventDto[];

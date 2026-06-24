@@ -1862,7 +1862,8 @@ export class MysqlWorkbenchService implements WorkbenchService {
       (segment.type === "file" && segment.materialCollectionId) ||
       (segment.type === "h5" && segment.materialCollectionId) ||
       (segment.type === "weapp" && segment.materialCollectionId) ||
-      (segment.type === "sphfeed" && segment.materialCollectionId)
+      (segment.type === "sphfeed" && segment.materialCollectionId) ||
+      (segment.type === "video" && segment.materialCollectionId)
     ) {
       const materialCollectionId = segment.materialCollectionId;
 
@@ -1881,6 +1882,8 @@ export class MysqlWorkbenchService implements WorkbenchService {
           ? MATERIAL_COLLECTION_BIZ_TYPE.H5
           : segment.type === "sphfeed"
           ? MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED
+          : segment.type === "video"
+          ? MATERIAL_COLLECTION_BIZ_TYPE.VIDEO
           : MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM;
       const collection = await this.repository.findMaterialCollectionForForward({
         bizType,
@@ -1912,7 +1915,11 @@ export class MysqlWorkbenchService implements WorkbenchService {
       return buildForwardJavaSendMessageData(segment.type, collection.msgInfoId);
     }
 
-    if (segment.type === "weapp" || segment.type === "sphfeed") {
+    if (
+      segment.type === "weapp" ||
+      segment.type === "sphfeed" ||
+      segment.type === "video"
+    ) {
       return buildForwardJavaSendMessageData(segment.type, segment.msgInfoId);
     }
 
@@ -4710,7 +4717,7 @@ function buildJavaSendMessageData(
   payload: WorkbenchSendMessagePayload,
   segment: Exclude<
     WorkbenchOutgoingMessageSegment,
-    { type: "emotion" } | { type: "sphfeed" } | { type: "weapp" }
+    { type: "emotion" } | { type: "sphfeed" } | { type: "video" } | { type: "weapp" }
   >,
 ): JavaSendMessageData {
   if (segment.type === "image") {
@@ -4901,7 +4908,7 @@ function buildH5JavaSendMessageData(content: string): JavaSendMessageData {
 }
 
 function buildForwardJavaSendMessageData(
-  msgtype: "sphfeed" | "weapp",
+  msgtype: "sphfeed" | "video" | "weapp",
   msgInfoId: string | undefined,
 ): JavaSendMessageData {
   const transMsgInfoId = msgInfoId ? parseMySqlId(msgInfoId) : undefined;

@@ -1072,11 +1072,6 @@ export function useMaterialCollection({
         return;
       }
 
-      if (materialSegment.type === "video") {
-        toast.warning(getMaterialSendUnavailableMessage(item.contentType));
-        return;
-      }
-
       setIsMaterialLibrarySending(true);
       setSendingMaterialId(item.id);
       try {
@@ -1483,10 +1478,6 @@ function buildComposerSegmentFromMaterial(
 function getMaterialSendUnavailableMessage(
   contentType: WorkbenchMaterialCollectionItemDto["contentType"],
 ) {
-  if (contentType === "video") {
-    return "暂未支持";
-  }
-
   return "发送功能内测中，即将开放";
 }
 

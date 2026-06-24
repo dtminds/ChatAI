@@ -2667,6 +2667,49 @@ describe("backend app", () => {
     await app.close();
   });
 
+  it("accepts collected video material sends and reports the forwarded video through polling", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+
+    const send = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        conversationId: "conv-001",
+        seatId: "drc",
+        segment: {
+          materialCollectionId: "material-item-video-1",
+          type: "video",
+        },
+      },
+      url: "/api/server/messages/send",
+    });
+    const poll = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/poll?since_version=1284&current_seat_id=drc&active_conversation_id=conv-001&active_message_seq=0",
+    });
+
+    expect(send.statusCode).toBe(200);
+    const sendBody = send.json<{ optNo: string; status: string }>();
+    const sentMessage = poll
+      .json<{
+        activeConversationMessages: Array<{
+          content?: unknown;
+          contentType?: string;
+          optNo?: string;
+        }>;
+      }>()
+      .activeConversationMessages.find((message) => message.optNo === sendBody.optNo);
+
+    expect(sentMessage?.contentType).toBe("video");
+    expect(sentMessage?.content).toMatchObject({
+      coverImageUrl: "https://example.com/materials/video-cover.jpg",
+      videoUrl: "https://example.com/materials/demo.mp4",
+    });
+
+    await app.close();
+  });
+
   it("rejects oversized message query-by-seqs batches", async () => {
     const { app, authorization } = await createAuthenticatedApp();
 

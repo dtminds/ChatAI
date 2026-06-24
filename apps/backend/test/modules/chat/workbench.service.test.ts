@@ -3441,6 +3441,60 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
+  it("forwards collected video materials by their source message", async () => {
+    const javaClient = createJavaClient();
+    vi.mocked(javaClient.sendMessage).mockResolvedValue({
+      optNo: "opt-video-001",
+      status: "accepted",
+    });
+    const repository = {
+      canAccessSeat: vi.fn().mockResolvedValue(true),
+      findMaterialCollectionForForward: vi.fn().mockResolvedValue({
+        msgInfoId: "2205",
+      }),
+      getConversationLookup: vi.fn().mockResolvedValue({
+        id: "88",
+        platform: 5,
+        seatId: "12",
+        seatHostSubUserId: "101",
+        thirdExternalUserId: "external-001",
+        thirdUserId: "seat-user-001",
+        uid: 9001,
+      }),
+    } as unknown as WorkbenchRepository;
+    const service = new MysqlWorkbenchService(
+      repository,
+      javaClient,
+    );
+
+    await service.sendMessage("101", {
+      conversationId: "88",
+      seatId: "12",
+      segment: {
+        materialCollectionId: "77",
+        type: "video",
+      },
+    });
+
+    expect(repository.findMaterialCollectionForForward).toHaveBeenCalledWith({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.VIDEO,
+      id: "77",
+      uid: 9001,
+    });
+    expect(javaClient.sendMessage).toHaveBeenCalledWith({
+      msgData: {
+        msgtype: "video",
+        transMsgInfoId: 2205,
+      },
+      platform: 5,
+      sendType: 1,
+      source: 1,
+      thirdExternalUserid: "external-001",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
+  });
+
   it("forwards quick reply sphfeed snapshots by msgInfoId without material lookup", async () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.sendMessage).mockResolvedValue({

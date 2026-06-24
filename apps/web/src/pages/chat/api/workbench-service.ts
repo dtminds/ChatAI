@@ -3621,6 +3621,19 @@ function buildPayloadSegmentContent(
     };
   }
 
+  if (segment.type === "video") {
+    const materialContent = segment.materialCollectionId
+      ? getMockMaterialContentRecord(state, segment.materialCollectionId)
+      : {};
+
+    return {
+      alt: "视频",
+      coverImageUrl: readString(materialContent.coverUrl),
+      durationLabel: "",
+      videoUrl: readString(materialContent.fileUrl),
+    };
+  }
+
   if (segment.type === "text") {
     return {
       text: segment.text,

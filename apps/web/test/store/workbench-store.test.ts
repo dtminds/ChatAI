@@ -3676,6 +3676,41 @@ describe("useWorkbenchStore", () => {
     });
   });
 
+  it("sends video material composer segments through the send API as forwards", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    const result = await useWorkbenchStore.getState().sendAgentMessageSegments([
+      {
+        coverUrl: "https://cdn.example.com/video-cover.jpg",
+        materialCollectionId: "material-video-001",
+        msgInfoId: "2205",
+        title: "视频",
+        type: "video",
+        url: "https://cdn.example.com/video.mp4",
+      },
+    ]);
+
+    expect(result).toEqual({
+      didConsumeQuote: false,
+      ok: true,
+    });
+    expect(sendMessage).toHaveBeenCalledWith({
+      conversationId: expect.any(String),
+      seatId: expect.any(String),
+      segment: {
+        materialCollectionId: "material-video-001",
+        type: "video",
+      },
+    });
+  });
+
   it("keeps quick reply snapshot fields when a material segment has msgInfoId", async () => {
     const baseService = createMockWorkbenchService();
     const sendMessage = vi.fn(baseService.sendMessage);

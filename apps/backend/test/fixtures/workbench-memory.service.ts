@@ -1516,6 +1516,19 @@ function buildInitialState(): MemoryWorkbenchState {
         title: "商品图",
       },
       {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.VIDEO,
+        content: {
+          coverUrl: "https://example.com/materials/video-cover.jpg",
+          fileUrl: "https://example.com/materials/demo.mp4",
+        },
+        contentType: "video",
+        groupId: "material-group-image-1",
+        id: "material-item-video-1",
+        msgInfoId: "10",
+        sort: 80,
+        title: "视频",
+      },
+      {
         bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
         content: { fileName: "求未 AI 智能营销系统.pdf" },
         contentType: "file",
@@ -2051,6 +2064,17 @@ function buildPayloadSegmentContent(
       fileName: segment.fileName,
       fileSizeLabel: segment.fileSizeLabel ?? "",
       sourceLabel: "文件",
+    };
+  }
+
+  if (segment.type === "video") {
+    const materialContent = segment.materialCollectionId
+      ? getMemoryMaterialContent(state, segment.materialCollectionId)
+      : {};
+
+    return {
+      coverImageUrl: readString(materialContent.coverUrl),
+      videoUrl: readString(materialContent.fileUrl),
     };
   }
 

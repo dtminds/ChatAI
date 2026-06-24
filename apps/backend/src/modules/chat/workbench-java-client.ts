@@ -116,6 +116,10 @@ export type JavaSendMessageData =
       msgtype: "sphfeed";
       transMsgInfoId: number;
     }
+  | {
+      msgtype: "video";
+      transMsgInfoId: number;
+    }
   | ({
       msgtype: "quote";
       quoteMsgId: number;

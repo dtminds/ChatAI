@@ -366,7 +366,7 @@ describe("useMaterialCollection", () => {
     ]);
   });
 
-  it("shows an unsupported warning when selecting a collected video material", async () => {
+  it("sends a collected video material by forwarding its source message", async () => {
     const sendAgentMessageSegments = vi.fn(async () => ({ ok: true as const }));
 
     const { result } = renderHook(() =>
@@ -381,8 +381,15 @@ describe("useMaterialCollection", () => {
       await result.current.handleSelectMaterial(createVideoMaterialItem());
     });
 
-    expect(sendAgentMessageSegments).not.toHaveBeenCalled();
-    expect(toast.warning).toHaveBeenCalledWith("暂未支持");
+    expect(sendAgentMessageSegments).toHaveBeenCalledWith([
+      expect.objectContaining({
+        materialCollectionId: "material-video",
+        msgInfoId: "9105",
+        title: "视频",
+        type: "video",
+      }),
+    ]);
+    expect(toast.warning).not.toHaveBeenCalledWith("暂未支持");
   });
 
   it("sends a collected expression material as an emotion segment", async () => {

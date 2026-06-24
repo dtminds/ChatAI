@@ -6043,11 +6043,19 @@ function toWorkbenchSendSegment(
     };
   }
 
+  if (segment.type === "video" && segment.materialCollectionId) {
+    return {
+      materialCollectionId: segment.materialCollectionId,
+      type: "video",
+    };
+  }
+
   if (
     (segment.type === "file" ||
       segment.type === "h5" ||
       segment.type === "weapp" ||
-      segment.type === "sphfeed") &&
+      segment.type === "sphfeed" ||
+      segment.type === "video") &&
     segment.msgInfoId
   ) {
     return segment;
@@ -6058,10 +6066,6 @@ function toWorkbenchSendSegment(
       materialCollectionId: segment.materialCollectionId,
       type: "emotion",
     };
-  }
-
-  if (segment.type === "video") {
-    return undefined;
   }
 
   return segment;

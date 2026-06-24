@@ -689,6 +689,15 @@ export type WorkbenchOutgoingMessageSphfeedSegment = {
   url?: string;
 };
 
+export type WorkbenchOutgoingMessageVideoSegment = {
+  type: "video";
+  coverUrl?: string;
+  materialCollectionId?: string;
+  msgInfoId?: string;
+  title?: string;
+  url?: string;
+};
+
 export type WorkbenchOutgoingMessageSegment =
   | WorkbenchOutgoingMessageTextSegment
   | WorkbenchOutgoingMessageImageSegment
@@ -696,7 +705,8 @@ export type WorkbenchOutgoingMessageSegment =
   | WorkbenchOutgoingMessageFileSegment
   | WorkbenchOutgoingMessageH5Segment
   | WorkbenchOutgoingMessageMiniProgramSegment
-  | WorkbenchOutgoingMessageSphfeedSegment;
+  | WorkbenchOutgoingMessageSphfeedSegment
+  | WorkbenchOutgoingMessageVideoSegment;
 
 export type WorkbenchSendMessagePayload = {
   seatId: string;

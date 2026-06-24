@@ -25,7 +25,7 @@ import {
 import { isRequestError } from "@/lib/request";
 import { uploadKbQaFile } from "@/pages/chat/ai-hosting/api/kb-doc-service";
 import { FileExtensionBadge } from "@/pages/chat/components/message/file";
-import { getFileExtension, stripFileExtension, useAsyncValidation } from "./shared";
+import { createLocalDocId, getFileExtension, stripFileExtension, useAsyncValidation } from "./shared";
 
 const QA_IMPORT_MAX_SHEETS = 30;
 const QA_IMPORT_MAX_ROWS = 30000;
@@ -103,7 +103,7 @@ export function ImportQaDialog({
   };
 
   async function handleImport() {
-    if (!selectedFile) {
+    if (!selectedFile || isImporting) {
       return;
     }
 
@@ -138,7 +138,7 @@ export function ImportQaDialog({
           return;
         }
 
-        const docId = crypto.randomUUID();
+        const docId = createLocalDocId();
         const name =
           stripFileExtension(selectedFile.file.name) || selectedFile.file.name;
 

@@ -88,6 +88,12 @@ export function RequiredLabel(props: ComponentProps<typeof Label>) {
   );
 }
 
+export function createLocalDocId() {
+  return typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `local-${Math.random().toString(36).slice(2, 11)}`;
+}
+
 export function getFileExtension(fileName: string) {
   const lastDotIndex = fileName.lastIndexOf(".");
 

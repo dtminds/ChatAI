@@ -22,6 +22,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { isRequestError } from "@/lib/request";
 import { uploadKbImage } from "@/pages/chat/ai-hosting/api/kb-doc-service";
 import {
+  createLocalDocId,
   getFileExtension,
   RequiredLabel,
   stripFileExtension,
@@ -187,7 +188,7 @@ export function ImportImageDialog({
           return false;
         }
 
-        const docId = crypto.randomUUID();
+        const docId = createLocalDocId();
         const docSuffix = getFileExtension(selectedImage.name).toLowerCase();
 
         toast.success("图片已提交");

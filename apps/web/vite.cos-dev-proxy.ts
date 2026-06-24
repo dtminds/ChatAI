@@ -12,10 +12,17 @@ export function parseCosDevProxyRequest(pathname: string) {
   }
 
   const rewrittenPath = match[2] || "/";
+  let hostPart: string;
+
+  try {
+    hostPart = decodeURIComponent(match[1]);
+  } catch {
+    return null;
+  }
 
   return {
     rewrittenPath: rewrittenPath.startsWith("/") ? rewrittenPath : `/${rewrittenPath}`,
-    target: `https://${decodeURIComponent(match[1])}`,
+    target: `https://${hostPart}`,
   };
 }
 
@@ -25,10 +32,6 @@ export function rewriteCosDevProxyPath(pathname: string) {
 
 export function resolveCosDevProxyTarget(pathname: string) {
   return parseCosDevProxyRequest(pathname)?.target;
-}
-
-function resolveCosDevProxyHost(target: string) {
-  return new URL(target).host;
 }
 
 export function createCosDevProxyMiddleware() {
@@ -48,8 +51,17 @@ export function createCosDevProxyMiddleware() {
       return;
     }
 
-    const targetBase = new URL(parsed.target);
-    const requestHeaders = { ...req.headers, host: resolveCosDevProxyHost(parsed.target) };
+    let targetBase: URL;
+
+    try {
+      targetBase = new URL(parsed.target);
+    } catch {
+      res.statusCode = 400;
+      res.end("Invalid COS proxy target URL");
+      return;
+    }
+
+    const requestHeaders = { ...req.headers, host: targetBase.host };
     delete requestHeaders.connection;
 
     const proxyReq = https.request(
@@ -69,6 +81,10 @@ export function createCosDevProxyMiddleware() {
 
     proxyReq.on("error", (error) => {
       next(error);
+    });
+
+    req.on("close", () => {
+      proxyReq.destroy();
     });
 
     req.pipe(proxyReq);

@@ -1086,7 +1086,14 @@ function canShowRevokeMessageAction(message: ChatMessage, now = Date.now()) {
 
 export function canCollectMaterial(message: ChatMessage) {
   if (message.content.type === "image") {
-    return true;
+    if (message.content.variant === "emotion") {
+      return true;
+    }
+
+    return (
+      message.content.downloadStatus === "finished" &&
+      message.content.imageUrl.trim().length > 0
+    );
   }
 
   return (

@@ -37,7 +37,10 @@ export class KbDocService {
   async getUploadCredential(subUserId: string): Promise<KbDocUploadCredentialResponse> {
     const uid = await this.resolveUid(subUserId);
 
-    const credential = await this.javaClient.getUploadCredential({ uid });
+    const credential = await this.javaClient.getUploadCredential({
+      type: "kb",
+      uid,
+    });
 
     this.logger.info(
       {

@@ -78,8 +78,11 @@ describe("vite.cos-dev-proxy", () => {
     expect(next).not.toHaveBeenCalled();
   });
 
-  it("destroys the proxy request when the client closes the connection", async () => {
-    const proxyReq = Object.assign(new EventEmitter(), { destroy: vi.fn() });
+  it("destroys the proxy request when the client aborts the connection", async () => {
+    const proxyReq = Object.assign(new EventEmitter(), { destroyed: false, destroy: vi.fn() });
+    proxyReq.destroy.mockImplementation(function (this: { destroyed: boolean }) {
+      this.destroyed = true;
+    });
     const https = await import("node:https");
     const requestSpy = vi.spyOn(https.default, "request").mockReturnValue(proxyReq as never);
     const middleware = createCosDevProxyMiddleware();
@@ -89,16 +92,53 @@ describe("vite.cos-dev-proxy", () => {
       url: "/__cos/examplebucket-1250000000.cos.ap-guangzhou.myqcloud.com/demo.pdf",
     });
 
+    const res = Object.assign(new EventEmitter(), {
+      end: vi.fn(),
+      headersSent: false,
+      statusCode: 200,
+      writableEnded: false,
+      writeHead: vi.fn(),
+    });
+
     try {
-      middleware(
-        req as never,
-        { end: vi.fn(), statusCode: 200, writeHead: vi.fn() } as never,
-        vi.fn(),
-      );
+      middleware(req as never, res as never, vi.fn());
+
+      req.emit("aborted");
+
+      expect(proxyReq.destroy).toHaveBeenCalled();
+    } finally {
+      requestSpy.mockRestore();
+    }
+  });
+
+  it("does not abort the proxy request when the request body finishes reading", async () => {
+    const proxyReq = Object.assign(new EventEmitter(), { destroyed: false, destroy: vi.fn() });
+    proxyReq.destroy.mockImplementation(function (this: { destroyed: boolean }) {
+      this.destroyed = true;
+    });
+    const https = await import("node:https");
+    const requestSpy = vi.spyOn(https.default, "request").mockReturnValue(proxyReq as never);
+    const middleware = createCosDevProxyMiddleware();
+    const req = Object.assign(new EventEmitter(), {
+      headers: {},
+      pipe: vi.fn(),
+      url: "/__cos/examplebucket-1250000000.cos.ap-guangzhou.myqcloud.com/demo.pdf",
+    });
+
+    const res = Object.assign(new EventEmitter(), {
+      end: vi.fn(),
+      headersSent: false,
+      statusCode: 200,
+      writableEnded: false,
+      writeHead: vi.fn(),
+    });
+
+    try {
+      middleware(req as never, res as never, vi.fn());
 
       req.emit("close");
 
-      expect(proxyReq.destroy).toHaveBeenCalled();
+      expect(proxyReq.destroy).not.toHaveBeenCalled();
     } finally {
       requestSpy.mockRestore();
     }

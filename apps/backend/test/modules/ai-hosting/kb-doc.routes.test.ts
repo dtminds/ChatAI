@@ -144,7 +144,7 @@ describe("ai-hosting kb-doc routes", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       "https://java.internal/third-internal/file/get-upload-credential",
       expect.objectContaining({
-        body: JSON.stringify({ uid: 9001 }),
+        body: JSON.stringify({ type: "kb", uid: 9001 }),
         method: "POST",
       }),
     );

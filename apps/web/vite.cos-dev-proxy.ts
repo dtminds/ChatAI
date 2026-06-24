@@ -64,6 +64,12 @@ export function createCosDevProxyMiddleware() {
     const requestHeaders = { ...req.headers, host: targetBase.host };
     delete requestHeaders.connection;
 
+    const abortProxy = () => {
+      if (!proxyReq.destroyed) {
+        proxyReq.destroy();
+      }
+    };
+
     const proxyReq = https.request(
       {
         headers: requestHeaders,
@@ -75,16 +81,35 @@ export function createCosDevProxyMiddleware() {
       },
       (proxyRes) => {
         res.writeHead(proxyRes.statusCode ?? 502, proxyRes.headers);
+        proxyRes.on("error", () => {
+          if (!res.headersSent) {
+            res.statusCode = 502;
+          }
+
+          if (!res.writableEnded) {
+            res.end();
+          }
+        });
         proxyRes.pipe(res);
       },
     );
 
     proxyReq.on("error", (error) => {
+      if (!res.headersSent) {
+        res.statusCode = 502;
+        res.end();
+      }
+
       next(error);
     });
 
-    req.on("close", () => {
-      proxyReq.destroy();
+    // `close` fires after the request body is fully read; using it would abort COS
+    // uploads immediately after the client finishes sending (including empty POST).
+    req.on("aborted", abortProxy);
+    res.on("close", () => {
+      if (!res.writableEnded) {
+        abortProxy();
+      }
     });
 
     req.pipe(proxyReq);

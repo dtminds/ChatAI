@@ -5,7 +5,7 @@
 将 AI 托管知识库从 `kb-mock-data.ts` 迁移到真实数据：
 
 1. **读路径**：知识库 / 文档 / 切片列表与详情由 Node 通过 Kysely **只读**查询三张平台表。
-2. **写路径**：创建/删除文档、手动增删改切片由 Node 代理调用 Java `third-internal` 接口；Node **不直接 INSERT/UPDATE/DELETE** 平台表。
+2. **写路径**：创建/删除文档、手动增删改切片由 Node 代理调用 Java `third-internal` 接口；Node **不直接 INSERT/UPDATE/DELETE** 平台表。**例外**：知识库集创建（`POST /api/server/ai-hosting/kbs`）由 Node 直写 `xy_wap_embed_agent_kb`（见下文「写路径例外」）。
 3. **上传路径**：文件仍由前端 COS/TOS 直传（`type: kb` 凭证），创建文档时只传 `docUrl` + 元信息。
 
 本文是 [kb 文档导入 design](./2026-06-23-knowledge-document-import-design.md) 的上位 spec：导入交互、策略语义映射、TOS 直传细节仍以该文档为准；本文补齐 **全量读写边界、表字段映射、Chunk 管理、Doc 删除、列表读接口**。
@@ -42,12 +42,12 @@
 | --- | --- |
 | Contracts | `packages/contracts/src/ai-hosting/kb.ts`、`kb-doc.ts`、`kb-chunk.ts` |
 | Backend 读 | `apps/backend/src/modules/ai-hosting/kb-read.service.ts` |
-| Backend 写 | `apps/backend/src/modules/ai-hosting/kb-doc.service.ts`、`kb-chunk.service.ts` |
+| Backend 写 | `apps/backend/src/modules/ai-hosting/kb-write.service.ts`（知识库创建）、`kb-doc.service.ts`、`kb-chunk.service.ts` |
 | Java Client | `apps/backend/src/modules/ai-hosting/agent-kb-java-client.ts`（独立于 `workbench-java-client`） |
 | DB 查询 | `apps/backend/src/db/queries/agent-kb*.ts` |
 | Web 适配 | `apps/web/src/pages/chat/ai-hosting/api/kb-service.ts`、`kb-doc-service.ts`、`kb-chunk-service.ts` |
 
-**隔离要求**：不扩展智能回复遗留 `knowledge-*` 路径（见上表例外）；`xy_wap_embed_agent_kb*` 三表 **不在** `writable-tables.ts` 白名单，Node 仅 SELECT。
+**隔离要求**：不扩展智能回复遗留 `knowledge-*` 路径（见上表例外）。`xy_wap_embed_agent_kb_doc` / `xy_wap_embed_agent_kb_chunk` **不在** `writable-tables.ts` 白名单，Node 仅 SELECT；`xy_wap_embed_agent_kb` **仅允许 INSERT**（创建知识库），不允许 UPDATE/DELETE。
 
 ## 数据模型
 
@@ -55,7 +55,7 @@
 
 | 表 | 用途 | Node 权限 |
 | --- | --- | --- |
-| `xy_wap_embed_agent_kb` | 知识库集 | 只读 |
+| `xy_wap_embed_agent_kb` | 知识库集 | SELECT + **INSERT**（创建，见写路径例外） |
 | `xy_wap_embed_agent_kb_doc` | 知识文档 | 只读 |
 | `xy_wap_embed_agent_kb_chunk` | 文档切片 | 只读 |
 
@@ -66,11 +66,21 @@
 | MySQL 库表 | **已存在**（平台侧已建） |
 | `apps/backend/scripts/codegen-db.config.json` | **尚未纳入** |
 | `apps/backend/src/db/schema.ts` Kysely 类型 | **尚未生成** |
-| `writable-tables.ts` | **不纳入**（Node 只读，写走 Java） |
+| `writable-tables.ts` | **仅纳入** `xy_wap_embed_agent_kb`（INSERT）；doc/chunk 表不纳入 |
 
 PR1 第一步：将三表名加入 `codegen-db.config.json`，在可连 `DATABASE_URL` 的环境执行 `pnpm backend:db:codegen` 生成类型，再编写 SELECT 查询。
 
-写入、逻辑删、同步状态变更均由 Java 侧完成；前端通过手动刷新列表感知状态变化（`sync_status` 轮询见「待确认项」）。
+写入、逻辑删、同步状态变更（doc/chunk）均由 Java 侧完成；前端通过手动刷新列表感知状态变化（`sync_status` 轮询见「待确认项」）。
+
+### 写路径例外：知识库创建
+
+当前 Java 平台**未提供**知识库集 create 接口；工作台「创建知识库」由 Node 直写 `xy_wap_embed_agent_kb`：
+
+- 白名单：`writable-tables.ts` 纳入 `xy_wap_embed_agent_kb`（**仅 INSERT**）
+- 服务：`kb-write.service.ts` → `createKb`
+- 路由：`POST /api/server/ai-hosting/kbs`
+- 字段：`name`、`remark`（description）、`uid`、`operator_id` / `last_operator_id`、`status = 1`
+- **不支持** Node 侧重命名、编辑、删除知识库集；若 Java 后续提供对应接口，应迁移写路径并移出白名单
 
 ### 文档类型 `doc_type`
 
@@ -269,6 +279,27 @@ GET /api/server/ai-hosting/kbs?page=&pageSize=&query=
 ```
 GET /api/server/ai-hosting/kbs/:kbId
 ```
+
+### 创建知识库（Node 直写例外）
+
+```
+POST /api/server/ai-hosting/kbs
+```
+
+请求体（`KbCreateRequest`）：
+
+```ts
+{
+  name: string;
+  description?: string;
+}
+```
+
+Node 流程：
+
+1. 从 session 解析 `uid`、`operatorId`（子账号 ID）
+2. Kysely INSERT `xy_wap_embed_agent_kb`
+3. 返回 `KbListItem`（含 `kbId`）
 
 ### 知识文档列表
 
@@ -552,8 +583,8 @@ Envelope 见上文「响应规范 · Java 内部接口」：`{ success, error, e
 
 ## 非目标
 
-- Node 直写 `xy_wap_embed_agent_kb*` 表
-- 知识库集（`xy_wap_embed_agent_kb`）的创建/编辑/删除（平台或其他接口维护）
+- Node 直写 `xy_wap_embed_agent_kb_doc` / `xy_wap_embed_agent_kb_chunk` 表
+- 知识库集（`xy_wap_embed_agent_kb`）的**编辑/删除**（平台或其他接口维护；**创建**已由 Node INSERT 例外实现）
 - 切片内容 Markdown/HTML 预览渲染（`md_content` / `html_content`）
 - XXL-Job 进度推送、失败重试 UI
 - 智能回复遗留 `knowledge-*` 模块下线（非本 kb 模块）

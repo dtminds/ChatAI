@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Add01Icon, Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Link } from "react-router-dom";
@@ -67,6 +67,15 @@ export function KbListPage() {
   });
   const [createSubmitting, setCreateSubmitting] = useState(false);
   const [listReloadKey, setListReloadKey] = useState(0);
+  const isMountedRef = useRef(false);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -144,12 +153,19 @@ export function KbListPage() {
         description: createForm.description.trim() || undefined,
         name,
       });
+
+      if (!isMountedRef.current) {
+        return;
+      }
+
       setCreateDialogOpen(false);
       resetCreateForm();
       setCurrentPage(1);
       setListReloadKey((value) => value + 1);
     } finally {
-      setCreateSubmitting(false);
+      if (isMountedRef.current) {
+        setCreateSubmitting(false);
+      }
     }
   }
 

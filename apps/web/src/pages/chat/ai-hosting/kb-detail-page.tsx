@@ -142,6 +142,15 @@ export function KbDetailPage() {
   const [deleteRecord, setDeleteRecord] = useState<KbDocViewItem | null>(null);
   const [deleting, setDeleting] = useState(false);
   const requestVersionRef = useRef(0);
+  const isMountedRef = useRef(false);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   const loadDocs = useCallback(async () => {
     if (!kbId) {
@@ -245,13 +254,22 @@ export function KbDetailPage() {
 
     try {
       await deleteKbDoc(deleteRecord.id);
+
+      if (!isMountedRef.current) {
+        return;
+      }
+
       setDeleteRecord(null);
       toast.success("已删除");
       await loadDocs();
     } catch {
-      toast.error("删除失败，请稍后重试");
+      if (isMountedRef.current) {
+        toast.error("删除失败，请稍后重试");
+      }
     } finally {
-      setDeleting(false);
+      if (isMountedRef.current) {
+        setDeleting(false);
+      }
     }
   }
 

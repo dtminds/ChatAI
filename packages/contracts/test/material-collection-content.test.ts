@@ -3,6 +3,7 @@ import {
   buildMaterialImageContentJson,
   buildMaterialH5ContentJson,
   buildMaterialVideoContentJson,
+  isOwnVideoMaterialUrl,
   readMaterialDescription,
   readMaterialLinkUrl,
   resolveMaterialImageCollectFields,
@@ -135,6 +136,19 @@ describe("material collection H5 content helpers", () => {
       fileUrl: "https://cdn.example.com/video.mp4",
       optSerNo: "20260520161942296211617558032",
     });
+  });
+
+  it("only treats exact bokr video material hosts as own absolute URLs", () => {
+    expect(
+      isOwnVideoMaterialUrl(
+        "https://b5.bokr.com.cn/s5/msg/20260514/272/video.mp4",
+      ),
+    ).toBe(true);
+    expect(
+      isOwnVideoMaterialUrl(
+        "https://b5.bokr.com.cn.evil.example/s5/msg/20260514/272/video.mp4",
+      ),
+    ).toBe(false);
   });
 
   it("rejects video collect fields when fileUrl or coverUrl is missing", () => {

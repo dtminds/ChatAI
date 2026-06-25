@@ -30,11 +30,15 @@ export type MaterialCollectFieldError = {
 export function isOwnVideoMaterialUrl(fileUrl: string) {
   const normalizedUrl = fileUrl.trim();
 
-  if (normalizedUrl.startsWith("https://b5.bokr.com.cn")) {
-    return true;
-  }
+  try {
+    const parsedUrl = new URL(normalizedUrl);
 
-  return normalizedUrl.replace(/^\/+/, "").startsWith("s5/msg/");
+    return (
+      parsedUrl.protocol === "https:" && parsedUrl.hostname === "b5.bokr.com.cn"
+    );
+  } catch {
+    return normalizedUrl.replace(/^\/+/, "").startsWith("s5/msg/");
+  }
 }
 
 export function parseMaterialRawContent(rawContent: string | null | undefined) {

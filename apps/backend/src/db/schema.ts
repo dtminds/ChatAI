@@ -2573,10 +2573,76 @@ export interface XyWapEmbedUserSeatSubRelation {
   user_seat_id: Generated<number>;
 }
 
+export interface XyWapEmbedAgentKb {
+  create_time: Generated<Date>;
+  id: Generated<number>;
+  last_operator_id: Generated<number>;
+  name: string;
+  operator_id: Generated<number>;
+  remark: string;
+  status: Generated<number>;
+  uid: number;
+  update_time: Generated<Date>;
+}
+
+export interface XyWapEmbedAgentKbChunk {
+  content: string | null;
+  create_time: Generated<Date>;
+  description: string | null;
+  doc_id: number;
+  html_content: string | null;
+  id: Generated<number>;
+  kb_id: number;
+  last_sync_time: Date | null;
+  md_content: string | null;
+  point_process_time: Date | null;
+  point_update_time: Date | null;
+  source: number;
+  status: Generated<number>;
+  sync_status: number;
+  title: string | null;
+  tokens: number | null;
+  type: number | string;
+  uid: number;
+  update_time: Generated<Date>;
+  volc_chunk_id: string | null;
+  volc_doc_id: string | null;
+  volc_resource_id: string | null;
+}
+
+export interface XyWapEmbedAgentKbDoc {
+  create_time: Generated<Date>;
+  doc_process_time: Date | null;
+  doc_suffix: string;
+  doc_type: number;
+  doc_update_time: Date | null;
+  doc_url: string;
+  id: Generated<number>;
+  kb_id: number;
+  last_operator_id: Generated<number>;
+  last_sync_time: Date | null;
+  name: string;
+  operator_id: Generated<number>;
+  point_num: number | null;
+  remark: string | null;
+  status: Generated<number>;
+  sync_error_msg: string | null;
+  sync_status: number;
+  tokens: number | null;
+  uid: number;
+  update_time: Generated<Date>;
+  volc_doc_id: string | null;
+  volc_resource_id: string | null;
+  volc_strategy_resource_id: string | null;
+}
+
 export interface DB {
   xy_wap_embed_analysis_run: XyWapEmbedAnalysisRun;
   xy_wap_embed_agent: XyWapEmbedAgent;
   xy_wap_embed_agent_history: XyWapEmbedAgentHistory;
+  xy_wap_embed_agent_kb: XyWapEmbedAgentKb;
+  xy_wap_embed_agent_kb_chunk: XyWapEmbedAgentKbChunk;
+  xy_wap_embed_agent_kb_doc: XyWapEmbedAgentKbDoc;
   xy_wap_embed_ai_model: XyWapEmbedAiModel;
   xy_wap_embed_broadcast_event: XyWapEmbedBroadcastEvent;
   xy_wap_embed_contact: XyWapEmbedContact;

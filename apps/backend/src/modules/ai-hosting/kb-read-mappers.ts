@@ -1,0 +1,244 @@
+import type {
+  KbChunkListItem,
+  KbChunkSource,
+  KbChunkType,
+  KbDocDetail,
+  KbDocListItem,
+  KbDocStatus,
+  KbDocType,
+  KbListItem,
+} from "@chatai/contracts";
+import type { Selectable } from "kysely";
+import type {
+  XyWapEmbedAgentKb,
+  XyWapEmbedAgentKbChunk,
+  XyWapEmbedAgentKbDoc,
+} from "../../db/schema.js";
+import { normalizeMediaAssetUrl } from "../chat/workbench-content-utils.js";
+
+const KB_DOC_TYPE_FAQ = 1;
+const KB_DOC_TYPE_DOCUMENT = 2;
+const KB_DOC_TYPE_IMAGE = 3;
+
+const KB_CHUNK_SOURCE_MANUAL = 1;
+const KB_CHUNK_SOURCE_SYSTEM = 2;
+const KB_CHUNK_SOURCE_SIDEBAR = 3;
+
+const SYNC_STATUS_QUEUED = new Set([-1, 2]);
+const SYNC_STATUS_COMPLETED = 0;
+const SYNC_STATUS_FAILED = 1;
+const SYNC_STATUS_PARSING = new Set([3, 5, 6]);
+
+const STATUS_MESSAGE_MAX_LENGTH = 200;
+
+export function mapKbListItem(row: Selectable<XyWapEmbedAgentKb>): KbListItem {
+  return {
+    createdAt: toIsoString(row.create_time),
+    description: row.remark ?? "",
+    kbId: String(row.id),
+    name: row.name,
+    updatedAt: toIsoString(row.update_time),
+  };
+}
+
+export function mapKbDocListItem(row: Selectable<XyWapEmbedAgentKbDoc>): KbDocListItem {
+  const status = mapSyncStatus(row.sync_status);
+  const statusMessage = truncateStatusMessage(row.sync_error_msg);
+
+  return {
+    createdAt: toIsoString(row.create_time),
+    description: row.remark ?? undefined,
+    docId: String(row.id),
+    docSuffix: row.doc_suffix,
+    docType: mapDocType(row.doc_type),
+    docUrl: row.doc_url,
+    kbId: String(row.kb_id),
+    name: row.name,
+    sliceCount: row.point_num,
+    status,
+    statusMessage: status === "failed" ? statusMessage : undefined,
+    updatedAt: toIsoString(row.update_time),
+  };
+}
+
+export function mapKbDocDetail(row: Selectable<XyWapEmbedAgentKbDoc>): KbDocDetail {
+  return {
+    ...mapKbDocListItem(row),
+    volcDocId: row.volc_doc_id ?? undefined,
+  };
+}
+
+export function mapKbChunkListItem(
+  row: Selectable<XyWapEmbedAgentKbChunk>,
+  docType: KbDocType,
+): KbChunkListItem {
+  const chunkType = normalizeChunkType(row.type, docType);
+  const source = mapChunkSource(row.source);
+  const imageUrls = resolveChunkImageUrls(row, chunkType);
+
+  return {
+    chunkId: String(row.id),
+    chunkType,
+    content: resolveChunkContent(row, chunkType),
+    createdAt: toIsoString(row.create_time),
+    description: row.description ?? undefined,
+    docId: String(row.doc_id),
+    imageUrls,
+    kbId: String(row.kb_id),
+    source,
+    title: row.title ?? undefined,
+    updatedAt: toIsoString(row.update_time),
+  };
+}
+
+function resolveChunkImageUrls(
+  row: Selectable<XyWapEmbedAgentKbChunk>,
+  chunkType: KbChunkType,
+) {
+  if (chunkType !== "image") {
+    return undefined;
+  }
+
+  const normalizedUrl = normalizeMediaAssetUrl(row.content ?? "");
+
+  return normalizedUrl ? [normalizedUrl] : undefined;
+}
+
+function resolveChunkContent(
+  row: Selectable<XyWapEmbedAgentKbChunk>,
+  chunkType: KbChunkType,
+) {
+  if (chunkType === "image") {
+    return row.description ?? "";
+  }
+
+  return row.content ?? "";
+}
+
+export function mapDocType(docType: number): KbDocType {
+  if (docType === KB_DOC_TYPE_FAQ) {
+    return "qa";
+  }
+
+  if (docType === KB_DOC_TYPE_IMAGE) {
+    return "image";
+  }
+
+  return "document";
+}
+
+export function mapDocTypeToDb(docType: KbDocType): number {
+  if (docType === "qa") {
+    return KB_DOC_TYPE_FAQ;
+  }
+
+  if (docType === "image") {
+    return KB_DOC_TYPE_IMAGE;
+  }
+
+  return KB_DOC_TYPE_DOCUMENT;
+}
+
+export function mapSyncStatus(syncStatus: number): KbDocStatus {
+  if (syncStatus === SYNC_STATUS_COMPLETED) {
+    return "completed";
+  }
+
+  if (syncStatus === SYNC_STATUS_FAILED) {
+    return "failed";
+  }
+
+  if (SYNC_STATUS_QUEUED.has(syncStatus)) {
+    return "queued";
+  }
+
+  if (SYNC_STATUS_PARSING.has(syncStatus)) {
+    return "parsing";
+  }
+
+  return "queued";
+}
+
+export function mapChunkSource(source: number): KbChunkSource {
+  if (source === KB_CHUNK_SOURCE_MANUAL) {
+    return "manual";
+  }
+
+  if (source === KB_CHUNK_SOURCE_SIDEBAR) {
+    return "sidebar";
+  }
+
+  return "system";
+}
+
+export function normalizeChunkType(rawType: number | string, docType: KbDocType): KbChunkType {
+  if (typeof rawType === "number") {
+    if (rawType === 1) {
+      return "faq";
+    }
+
+    if (rawType === 3) {
+      return "image";
+    }
+
+    return "text";
+  }
+
+  if (typeof rawType === "string") {
+    const normalized = rawType.trim().toLowerCase();
+
+    if (normalized === "faq") {
+      return "faq";
+    }
+
+    if (normalized === "image" || normalized === "doc-image") {
+      return "image";
+    }
+
+    if (normalized === "text") {
+      return "text";
+    }
+  }
+
+  if (docType === "qa") {
+    return "faq";
+  }
+
+  if (docType === "image") {
+    return "image";
+  }
+
+  return "text";
+}
+
+function truncateStatusMessage(message: string | null | undefined) {
+  if (!message?.trim()) {
+    return undefined;
+  }
+
+  const trimmed = message.trim();
+
+  if (trimmed.length <= STATUS_MESSAGE_MAX_LENGTH) {
+    return trimmed;
+  }
+
+  return `${trimmed.slice(0, STATUS_MESSAGE_MAX_LENGTH)}…`;
+}
+
+function toIsoString(value: Date | number | string | null | undefined) {
+  if (value == null) {
+    return new Date(0).toISOString();
+  }
+
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  const parsed = new Date(value);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return String(value);
+  }
+
+  return parsed.toISOString();
+}

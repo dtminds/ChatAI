@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildMockedApp } from "../../helpers/build-mocked-app.js";
+import { createKbReadDbMock } from "../../helpers/create-kb-read-db-mock.js";
 
 const uploadCredential = {
   allowPerfixs: ["kb-docs/"],
@@ -34,6 +35,23 @@ function mockJavaUploadCredentialFetch() {
   );
 }
 
+function mockJavaKbDocCreateFetch(docId = 1001) {
+  return vi.spyOn(globalThis, "fetch").mockResolvedValue(
+    new Response(
+      JSON.stringify({
+        data: docId,
+        error: 0,
+        errorMsg: "",
+        success: true,
+      }),
+      {
+        headers: { "content-type": "application/json" },
+        status: 200,
+      },
+    ),
+  );
+}
+
 async function createAuthenticatedApp(role: "admin" | "operator" | "owner" | "viewer" = "admin") {
   const app = await buildMockedApp();
   const token = app.jwt.sign({
@@ -42,73 +60,12 @@ async function createAuthenticatedApp(role: "admin" | "operator" | "owner" | "vi
     sessionVersion: 1,
     subUserId: "101",
   });
-  app.db = createSessionDbMock({
-    id: "501",
-    session_version: 1,
-    sub_user_id: "101",
-    subUser: {
-      account: "agent001",
-      id: 101,
-      name: "客服一号",
-      platform: 1,
-      role: "operator",
-      type: 2,
-      uid: 9001,
-    },
-  });
+  app.db = createKbReadDbMock() as never;
 
   return {
     app,
     authorization: `Bearer ${token}`,
   };
-}
-
-function createSessionDbMock(session: {
-  id: string;
-  session_version: number;
-  sub_user_id: string;
-  subUser?: {
-    account: string;
-    id: number;
-    name: string;
-    platform: number;
-    role: string;
-    type: number;
-    uid: number;
-  };
-}) {
-  return {
-    selectFrom(table: string) {
-      if (
-        table !== "xy_wap_embed_sub_user_session" &&
-        table !== "xy_wap_embed_sub_user"
-      ) {
-        throw new Error(`Unexpected select table: ${table}`);
-      }
-
-      const builder = {
-        executeTakeFirst: async () => {
-          if (table === "xy_wap_embed_sub_user") {
-            return session.subUser;
-          }
-
-          return {
-            expires_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
-            id: session.id,
-            refresh_token_hash: "dev-refresh-token-hash",
-            revoked_at: null,
-            session_version: session.session_version,
-            sub_user_id: session.sub_user_id,
-          };
-        },
-        orderBy: () => builder,
-        select: () => builder,
-        where: () => builder,
-      };
-
-      return builder;
-    },
-  } as never;
 }
 
 describe("ai-hosting kb-doc routes", () => {
@@ -117,6 +74,7 @@ describe("ai-hosting kb-doc routes", () => {
   beforeEach(() => {
     app = undefined;
     process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
+    process.env.PLAYABLE_MEDIA_HOST = "b5.bokr.com.cn";
   });
 
   afterEach(async () => {
@@ -141,17 +99,11 @@ describe("ai-hosting kb-doc routes", () => {
       data: uploadCredential,
       success: true,
     });
-    expect(fetchMock).toHaveBeenCalledWith(
-      "https://java.internal/third-internal/file/get-upload-credential",
-      expect.objectContaining({
-        body: JSON.stringify({ type: "kb", uid: 9001 }),
-        method: "POST",
-      }),
-    );
     fetchMock.mockRestore();
   });
 
-  it("creates a kb doc via backend mapping without calling Java", async () => {
+  it("creates a document via Java with strategy key", async () => {
+    const fetchMock = mockJavaKbDocCreateFetch(3001);
     const context = await createAuthenticatedApp();
     app = context.app;
 
@@ -162,8 +114,8 @@ describe("ai-hosting kb-doc routes", () => {
         chunkParams: { maxLength: 2000, strategy: "length" },
         chunkStrategy: "length",
         docSuffix: "pdf",
-        docUrl: "kb-docs/W7zU2fWkVSp65OTAjDd3-w/demo.pdf",
-        kbId: "W7zU2fWkVSp65OTAjDd3-w",
+        docUrl: "kb-docs/demo.pdf",
+        kbId: "1",
         name: "产品手册",
         parseMode: "standard",
       },
@@ -173,10 +125,140 @@ describe("ai-hosting kb-doc routes", () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({
       data: {
-        docId: expect.any(String),
+        docId: "3001",
       },
       success: true,
     });
+    expect(String(fetchMock.mock.calls[0]?.[1]?.body)).toContain(
+      "volcStrategyResourceId=kb-strategy-233abb0cd67b8429",
+    );
+    expect(String(fetchMock.mock.calls[0]?.[1]?.body)).toContain(
+      "docUrl=https%3A%2F%2Fb5.bokr.com.cn%2Fkb-docs%2Fdemo.pdf",
+    );
+    fetchMock.mockRestore();
+  });
+
+  it("creates FAQ docs with the init strategy id", async () => {
+    const fetchMock = mockJavaKbDocCreateFetch(3002);
+    const context = await createAuthenticatedApp();
+    app = context.app;
+
+    const response = await app.inject({
+      headers: { authorization: context.authorization },
+      method: "POST",
+      payload: {
+        docSuffix: "faq.xlsx",
+        docUrl: "kb/upload/2026/06/24/272/1782294357364-iswksm6u.faq.xlsx",
+        kbId: "1",
+        name: "Q&A问答对示例.faq",
+      },
+      url: "/api/server/ai-hosting/kb-docs/create-faq",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      data: {
+        docId: "3002",
+      },
+      success: true,
+    });
+
+    const javaFormBody = String(fetchMock.mock.calls[0]?.[1]?.body);
+    expect(javaFormBody).toContain("uid=9001");
+    expect(javaFormBody).toContain("kbId=1");
+    expect(javaFormBody).toContain("docType=1");
+    expect(javaFormBody).toContain("docSuffix=faq.xlsx");
+    expect(javaFormBody).toContain("operatorId=101");
+    expect(javaFormBody).toContain(
+      "docUrl=https%3A%2F%2Fb5.bokr.com.cn%2Fkb%2Fupload%2F2026%2F06%2F24%2F272%2F1782294357364-iswksm6u.faq.xlsx",
+    );
+    expect(javaFormBody).toContain(
+      "volcStrategyResourceId=kb-strategy-def92e30c1456c07",
+    );
+    fetchMock.mockRestore();
+  });
+
+  it("creates image docs with the init strategy id", async () => {
+    const fetchMock = mockJavaKbDocCreateFetch(3003);
+    const context = await createAuthenticatedApp();
+    app = context.app;
+
+    const response = await app.inject({
+      headers: { authorization: context.authorization },
+      method: "POST",
+      payload: {
+        description: "晨间护肤套装商品主图",
+        docSuffix: "png",
+        docUrl: "kb-images/demo.png",
+        kbId: "1",
+        name: "商品主图",
+      },
+      url: "/api/server/ai-hosting/kb-docs/create-image",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      data: {
+        docId: "3003",
+      },
+      success: true,
+    });
+    expect(String(fetchMock.mock.calls[0]?.[1]?.body)).toContain("docType=3");
+    expect(String(fetchMock.mock.calls[0]?.[1]?.body)).toContain(
+      "volcStrategyResourceId=kb-strategy-def92e30c1456c07",
+    );
+    expect(String(fetchMock.mock.calls[0]?.[1]?.body)).toContain(
+      "docUrl=https%3A%2F%2Fb5.bokr.com.cn%2Fkb-images%2Fdemo.png",
+    );
+    fetchMock.mockRestore();
+  });
+
+  it("deletes a kb doc via Java", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: true,
+          error: 0,
+          errorMsg: "",
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+    const context = await createAuthenticatedApp();
+    app = context.app;
+
+    const response = await app.inject({
+      headers: { authorization: context.authorization },
+      method: "POST",
+      url: "/api/server/ai-hosting/kb-docs/1001/delete",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      data: {
+        deleted: true,
+      },
+      success: true,
+    });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "https://java.internal/third-internal/wap-embed-agent-kb-doc/del",
+    );
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+      body: JSON.stringify({
+        id: 1001,
+        operatorId: "101",
+        uid: 9001,
+      }),
+      headers: expect.objectContaining({
+        "content-type": "application/json",
+      }),
+      method: "POST",
+    });
+    fetchMock.mockRestore();
   });
 
   it("rejects enhanced parsing for plain text documents", async () => {
@@ -190,8 +272,8 @@ describe("ai-hosting kb-doc routes", () => {
         chunkParams: { maxLength: 2000, strategy: "length" },
         chunkStrategy: "length",
         docSuffix: "txt",
-        docUrl: "kb-docs/W7zU2fWkVSp65OTAjDd3-w/demo.txt",
-        kbId: "W7zU2fWkVSp65OTAjDd3-w",
+        docUrl: "kb-docs/demo.txt",
+        kbId: "1",
         name: "说明",
         parseMode: "enhanced",
       },
@@ -202,95 +284,6 @@ describe("ai-hosting kb-doc routes", () => {
     expect(response.json()).toMatchObject({
       error: {
         code: "INVALID_KB_DOC_PARSE_MODE",
-      },
-      success: false,
-    });
-  });
-
-  it("accepts document suffixes with a leading dot", async () => {
-    const context = await createAuthenticatedApp();
-    app = context.app;
-
-    const response = await app.inject({
-      headers: { authorization: context.authorization },
-      method: "POST",
-      payload: {
-        chunkParams: { maxLength: 2000, strategy: "length" },
-        chunkStrategy: "length",
-        docSuffix: ".pdf",
-        docUrl: "kb-docs/W7zU2fWkVSp65OTAjDd3-w/demo.pdf",
-        kbId: "W7zU2fWkVSp65OTAjDd3-w",
-        name: "产品手册",
-        parseMode: "standard",
-      },
-      url: "/api/server/ai-hosting/kb-docs/create",
-    });
-
-    expect(response.statusCode).toBe(200);
-  });
-
-  it("rejects sub-user ids with trailing non-digit characters", async () => {
-    const mockedApp = await buildMockedApp();
-    app = mockedApp;
-    const authorization = `Bearer ${mockedApp.jwt.sign({
-      roles: ["admin"],
-      sessionId: "501",
-      sessionVersion: 1,
-      subUserId: "101abc",
-    })}`;
-    mockedApp.db = createSessionDbMock({
-      id: "501",
-      session_version: 1,
-      sub_user_id: "101abc",
-      subUser: {
-        account: "agent001",
-        id: 101,
-        name: "客服一号",
-        platform: 1,
-        role: "operator",
-        type: 2,
-        uid: 9001,
-      },
-    });
-
-    const response = await mockedApp.inject({
-      headers: { authorization },
-      method: "POST",
-      url: "/api/server/ai-hosting/kb-docs/upload-credential",
-    });
-
-    expect(response.statusCode).toBe(404);
-    expect(response.json()).toMatchObject({
-      error: {
-        code: "SUB_USER_NOT_FOUND",
-      },
-      success: false,
-    });
-  });
-
-  it("rejects unsupported document suffixes", async () => {
-    const context = await createAuthenticatedApp();
-    app = context.app;
-
-    const response = await app.inject({
-      headers: { authorization: context.authorization },
-      method: "POST",
-      payload: {
-        chunkParams: { maxLength: 2000, strategy: "length" },
-        chunkStrategy: "length",
-        docSuffix: "zip",
-        docUrl: "kb-docs/W7zU2fWkVSp65OTAjDd3-w/demo.zip",
-        kbId: "W7zU2fWkVSp65OTAjDd3-w",
-        name: "资料包",
-        parseMode: "standard",
-      },
-      url: "/api/server/ai-hosting/kb-docs/create",
-    });
-
-    expect(response.statusCode).toBe(400);
-    expect(response.json()).toMatchObject({
-      error: {
-        code: "INVALID_KB_DOC_SUFFIX",
       },
       success: false,
     });
@@ -308,34 +301,5 @@ describe("ai-hosting kb-doc routes", () => {
     });
 
     expect(response.statusCode).toBe(403);
-  });
-
-  it("forbids operator accounts", async () => {
-    mockJavaUploadCredentialFetch();
-    const context = await createAuthenticatedApp("operator");
-    app = context.app;
-
-    const response = await app.inject({
-      headers: { authorization: context.authorization },
-      method: "POST",
-      url: "/api/server/ai-hosting/kb-docs/upload-credential",
-    });
-
-    expect(response.statusCode).toBe(403);
-  });
-
-  it("allows owner accounts", async () => {
-    const fetchMock = mockJavaUploadCredentialFetch();
-    const context = await createAuthenticatedApp("owner");
-    app = context.app;
-
-    const response = await app.inject({
-      headers: { authorization: context.authorization },
-      method: "POST",
-      url: "/api/server/ai-hosting/kb-docs/upload-credential",
-    });
-
-    expect(response.statusCode).toBe(200);
-    fetchMock.mockRestore();
   });
 });

@@ -4,6 +4,7 @@ import {
   validateMaterialCollectionSubmitFields,
   type WorkbenchMaterialCollectionGroupCreateRequest,
 } from "@chatai/contracts";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -179,6 +180,14 @@ export function MaterialGroupSelectDialog({
             <p className="text-sm text-destructive" role="alert">
               {formError ?? formValidationError}
             </p>
+          ) : null}
+
+          {bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO ? (
+            <Alert>
+              <AlertDescription>
+                仅支持收录由该企微账号直接发送的视频，如果是转发了个微的视频，收录后将无法发送。原视频大小需在30MB以内。
+              </AlertDescription>
+            </Alert>
           ) : null}
 
           <div className="space-y-2">

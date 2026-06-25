@@ -71,6 +71,9 @@ describe("material collection components", () => {
     expect(screen.getByRole("dialog", { name: "收录文件" })).toBeInTheDocument();
     expect(screen.queryByText("默认分组不会新建分组记录")).not.toBeInTheDocument();
     expect(screen.queryByText("默认分组")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/仅支持收录由该企微账号直接发送的视频/),
+    ).not.toBeInTheDocument();
     expect(screen.queryByRole("radio")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "收录" })).toBeDisabled();
 
@@ -137,6 +140,11 @@ describe("material collection components", () => {
     expect(screen.getByRole("status")).toHaveTextContent(
       "正在收录视频，请耐心等待",
     );
+    expect(
+      screen.getByText(
+        "仅支持收录由该企微账号直接发送的视频，如果是转发了个微的视频，收录后将无法发送。原视频大小需在30MB以内。",
+      ),
+    ).toBeInTheDocument();
     const collectButton = screen.getByRole("button", { name: "收录" });
     expect(collectButton).toBeDisabled();
     expect(collectButton).toHaveAttribute("aria-busy", "true");

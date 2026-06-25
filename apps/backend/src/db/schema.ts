@@ -1285,6 +1285,10 @@ export interface XyWapEmbedMaterialCollection {
    */
   sub_uid: Generated<number>;
   /**
+   * 客服第三方用户ID，视频号素材按该字段隔离
+   */
+  third_userid: string | null;
+  /**
    * 标题
    */
   title: Generated<string>;

@@ -738,6 +738,59 @@ describe("WorkbenchRepository", () => {
     });
   });
 
+  it("lists sphfeed material collections scoped to the requested third user", async () => {
+    const db = createMaterialDb({
+      xy_wap_embed_material_collection: [
+        {
+          biz_status: 1,
+          biz_type: MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED,
+          content: JSON.stringify({ title: "都市快报" }),
+          create_time: 1_777_000_000_000,
+          group_id: 9,
+          id: 67,
+          msg_info_id: 9106,
+          op_sub_uid: 88,
+          sort: 41,
+          sub_uid: 0,
+          third_userid: "seat-user-001",
+          title: "都市快报",
+          uid: 9001,
+          update_time: 1_777_000_005_000,
+        },
+      ],
+    });
+    const repository = new WorkbenchRepository(db as never);
+
+    const result = await repository.listMaterialCollections({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED,
+      groupId: "9",
+      limit: 100,
+      offset: 0,
+      subUserId: "88",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
+
+    expect(result.items).toMatchObject([
+      {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED,
+        contentType: "sphfeed",
+        groupId: "9",
+        id: "67",
+        msgInfoId: "9106",
+        title: "都市快报",
+      },
+    ]);
+    expect(db.selects[0].wheres).toEqual([
+      ["uid", "=", 9001],
+      ["biz_type", "=", MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED],
+      ["biz_status", "=", 1],
+      ["sub_uid", "in", [0]],
+      ["group_id", "=", 9],
+      ["third_userid", "=", "seat-user-001"],
+    ]);
+  });
+
   it("lists material collections with string default group id", async () => {
     const db = createMaterialDb({
       xy_wap_embed_material_collection: [
@@ -1660,6 +1713,48 @@ describe("WorkbenchRepository", () => {
     ]);
   });
 
+  it("looks up sphfeed material duplicates in the same third user domain", async () => {
+    const db = createMaterialDb({
+      xy_wap_embed_material_collection: {
+        biz_status: 1,
+        biz_type: MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED,
+        content: JSON.stringify({ title: "都市快报" }),
+        create_time: 1_777_000_000_000,
+        group_id: 9,
+        id: 78,
+        msg_info_id: 9106,
+        op_sub_uid: 88,
+        sort: 10,
+        sub_uid: 0,
+        third_userid: "seat-user-001",
+        title: "都市快报",
+        uid: 9001,
+        update_time: 1_777_000_005_000,
+      },
+    });
+    const repository = new WorkbenchRepository(db as never);
+
+    await expect(
+      repository.findMaterialCollectionByMessage({
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED,
+        msgInfoId: "9106",
+        subUid: 0,
+        thirdUserId: "seat-user-001",
+        uid: 9001,
+      }),
+    ).resolves.toMatchObject({
+      bizStatus: 1,
+      id: "78",
+    });
+    expect(db.selects[0].wheres).toEqual([
+      ["uid", "=", 9001],
+      ["biz_type", "=", MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED],
+      ["sub_uid", "=", 0],
+      ["msg_info_id", "=", 9106],
+      ["third_userid", "=", "seat-user-001"],
+    ]);
+  });
+
   it("looks up active enterprise material collection msgInfoId for forward sends", async () => {
     const db = createMaterialDb({
       xy_wap_embed_material_collection: {
@@ -1922,6 +2017,69 @@ describe("WorkbenchRepository", () => {
     ]);
   });
 
+  it("soft deletes, tops, and moves sphfeed material rows in third user scope", async () => {
+    const db = createMaterialDb();
+    const repository = new WorkbenchRepository(db as never);
+
+    await repository.deleteMaterialCollection({
+      id: "66",
+      subUid: 0,
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
+    await repository.topMaterialCollection({
+      id: "66",
+      sort: 90,
+      subUid: 0,
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
+    await repository.moveMaterialCollection({
+      groupId: "9",
+      id: "66",
+      sort: 12,
+      subUid: 0,
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
+
+    expect(db.updates).toEqual([
+      {
+        table: "xy_wap_embed_material_collection",
+        values: { biz_status: 0 },
+        wheres: [
+          ["id", "=", 66],
+          ["uid", "=", 9001],
+          ["sub_uid", "=", 0],
+          ["biz_status", "=", 1],
+          ["third_userid", "=", "seat-user-001"],
+        ],
+      },
+      {
+        table: "xy_wap_embed_material_collection",
+        values: { sort: 90 },
+        wheres: [
+          ["id", "=", 66],
+          ["uid", "=", 9001],
+          ["sub_uid", "=", 0],
+          ["biz_status", "=", 1],
+          ["third_userid", "=", "seat-user-001"],
+        ],
+      },
+      {
+        table: "xy_wap_embed_material_collection",
+        values: { group_id: 9, sort: 12 },
+        wheres: [
+          ["id", "=", 66],
+          ["uid", "=", 9001],
+          ["sub_uid", "=", 0],
+          ["biz_status", "=", 1],
+          ["third_userid", "=", "seat-user-001"],
+        ],
+      },
+    ]);
+  });
+
   it("looks up material collection operation scope", async () => {
     const db = createMaterialDb({
       xy_wap_embed_material_collection: {
@@ -1938,6 +2096,33 @@ describe("WorkbenchRepository", () => {
       subUid: 101,
     });
 
+    expect(db.selects[0]).toMatchObject({
+      table: "xy_wap_embed_material_collection",
+      wheres: [
+        ["id", "=", 66],
+        ["uid", "=", 9001],
+        ["biz_status", "=", 1],
+      ],
+    });
+  });
+
+  it("looks up sphfeed material collection operation scope with third user id", async () => {
+    const db = createMaterialDb({
+      xy_wap_embed_material_collection: {
+        biz_type: MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED,
+        sub_uid: 0,
+        third_userid: "seat-user-001",
+      },
+    });
+    const repository = new WorkbenchRepository(db as never);
+
+    await expect(
+      repository.findMaterialCollectionScope({ id: "66", uid: 9001 }),
+    ).resolves.toEqual({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED,
+      subUid: 0,
+      thirdUserId: "seat-user-001",
+    });
     expect(db.selects[0]).toMatchObject({
       table: "xy_wap_embed_material_collection",
       wheres: [
@@ -2002,6 +2187,43 @@ describe("WorkbenchRepository", () => {
           op_sub_uid: 88,
           sort: 120,
           title: "恢复文件",
+        },
+        wheres: [
+          ["id", "=", 66],
+          ["uid", "=", 9001],
+        ],
+      },
+    ]);
+  });
+
+  it("restores sphfeed material collection rows with third user scope", async () => {
+    const db = createMaterialDb();
+    const repository = new WorkbenchRepository(db as never);
+
+    await repository.restoreMaterialCollection({
+      content: JSON.stringify({ title: "都市快报" }),
+      groupId: "9",
+      id: "66",
+      msgInfoId: "9106",
+      opSubUserId: "88",
+      sort: 120,
+      thirdUserId: "seat-user-001",
+      title: "都市快报",
+      uid: 9001,
+    });
+
+    expect(db.updates).toEqual([
+      {
+        table: "xy_wap_embed_material_collection",
+        values: {
+          biz_status: 1,
+          content: JSON.stringify({ title: "都市快报" }),
+          group_id: 9,
+          msg_info_id: 9106,
+          op_sub_uid: 88,
+          sort: 120,
+          third_userid: "seat-user-001",
+          title: "都市快报",
         },
         wheres: [
           ["id", "=", 66],

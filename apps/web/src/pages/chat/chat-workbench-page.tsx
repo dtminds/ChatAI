@@ -918,6 +918,7 @@ function ChatWorkbenchContent({
     resetPendingCollection,
   } = useMaterialCollection({
     bootstrapStatus,
+    currentMaterialThirdUserId: activeConversation?.thirdUserId,
     isMountedRef,
     onSendFailure: handleSmartReplySendFailure,
     onSent: () => {

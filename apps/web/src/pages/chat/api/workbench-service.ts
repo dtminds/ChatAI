@@ -91,6 +91,7 @@ import {
   type WorkbenchMaterialCollectionListResponse,
   type WorkbenchMaterialCollectionMoveRequest,
   type WorkbenchMaterialCollectionOkResponse,
+  type WorkbenchMaterialCollectionScopeRequest,
   type WorkbenchMaterialCollectionUpdateRequest,
   type WorkbenchQuickReplyCategoryCreateRequest,
   type WorkbenchQuickReplyBatchCreateRequest,
@@ -257,13 +258,16 @@ export type WorkbenchService = {
   ) => Promise<WorkbenchMaterialCollectionCreateResponse>;
   deleteMaterialCollection: (
     collectionId: string,
+    request?: WorkbenchMaterialCollectionScopeRequest,
   ) => Promise<WorkbenchMaterialCollectionOkResponse>;
   topMaterialCollection: (
     collectionId: string,
+    request?: WorkbenchMaterialCollectionScopeRequest,
   ) => Promise<WorkbenchMaterialCollectionOkResponse>;
   moveMaterialCollection: (
     collectionId: string,
     request: WorkbenchMaterialCollectionMoveRequest,
+    scopeRequest?: WorkbenchMaterialCollectionScopeRequest,
   ) => Promise<WorkbenchMaterialCollectionOkResponse>;
   updateMaterialCollection: (
     collectionId: string,
@@ -475,7 +479,9 @@ export function createMockWorkbenchService(): WorkbenchService {
         .filter(
           (item) =>
             item.bizType === request.bizType &&
-            item.groupId === request.groupId,
+            item.groupId === request.groupId &&
+            (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED ||
+              item.thirdUserId === request.thirdUserId),
         )
         .sort(sortMaterialItems);
 
@@ -528,7 +534,9 @@ export function createMockWorkbenchService(): WorkbenchService {
       const existing = state.materialItems.find(
         (item) =>
           item.bizType === request.bizType &&
-          item.msgInfoId === sourceMsgInfoId,
+          item.msgInfoId === sourceMsgInfoId &&
+          (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED ||
+            item.thirdUserId === request.thirdUserId),
       );
 
       if (existing) {
@@ -551,6 +559,7 @@ export function createMockWorkbenchService(): WorkbenchService {
         ? {
             ...buildMaterialItemFromMessage(state, sourceMessage, request),
             content: normalized.content,
+            thirdUserId: request.thirdUserId ?? null,
             title: normalized.title,
           }
         : buildFallbackMaterialItem(state, request);
@@ -560,21 +569,32 @@ export function createMockWorkbenchService(): WorkbenchService {
         success: true,
       };
     },
-    async deleteMaterialCollection(collectionId) {
-      state.materialItems = state.materialItems.filter((item) => item.id !== collectionId);
-      return { ok: true };
-    },
-    async topMaterialCollection(collectionId) {
-      const sort = Date.now();
-      state.materialItems = state.materialItems.map((item) =>
-        item.id === collectionId ? { ...item, sort } : item,
+    async deleteMaterialCollection(collectionId, request) {
+      state.materialItems = state.materialItems.filter(
+        (item) =>
+          item.id !== collectionId ||
+          (item.bizType === MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED &&
+            item.thirdUserId !== request?.thirdUserId),
       );
       return { ok: true };
     },
-    async moveMaterialCollection(collectionId, request) {
+    async topMaterialCollection(collectionId, request) {
       const sort = Date.now();
       state.materialItems = state.materialItems.map((item) =>
-        item.id === collectionId
+        item.id === collectionId &&
+        (item.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED ||
+          item.thirdUserId === request?.thirdUserId)
+          ? { ...item, sort }
+          : item,
+      );
+      return { ok: true };
+    },
+    async moveMaterialCollection(collectionId, request, scopeRequest) {
+      const sort = Date.now();
+      state.materialItems = state.materialItems.map((item) =>
+        item.id === collectionId &&
+        (item.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED ||
+          item.thirdUserId === scopeRequest?.thirdUserId)
           ? { ...item, groupId: request.groupId, sort }
           : item,
       );
@@ -1941,6 +1961,7 @@ export function createHttpWorkbenchService(): WorkbenchService {
             group_id: request.groupId,
             page: request.page,
             page_size: request.pageSize,
+            third_userid: request.thirdUserId,
           },
         },
       );
@@ -1961,21 +1982,36 @@ export function createHttpWorkbenchService(): WorkbenchService {
         WorkbenchMaterialCollectionCreateRequest
       >("/server/material-collections", request);
     },
-    deleteMaterialCollection(collectionId) {
+    deleteMaterialCollection(collectionId, request) {
       return http.delete<WorkbenchMaterialCollectionOkResponse>(
         `/server/material-collections/${collectionId}`,
+        {
+          params: {
+            third_userid: request?.thirdUserId,
+          },
+        },
       );
     },
-    topMaterialCollection(collectionId) {
+    topMaterialCollection(collectionId, request) {
       return http.post<WorkbenchMaterialCollectionOkResponse>(
         `/server/material-collections/${collectionId}/top`,
+        undefined,
+        {
+          params: {
+            third_userid: request?.thirdUserId,
+          },
+        },
       );
     },
-    moveMaterialCollection(collectionId, request) {
+    moveMaterialCollection(collectionId, request, scopeRequest) {
       return http.post<
         WorkbenchMaterialCollectionOkResponse,
         WorkbenchMaterialCollectionMoveRequest
-      >(`/server/material-collections/${collectionId}/move`, request);
+      >(`/server/material-collections/${collectionId}/move`, request, {
+        params: {
+          third_userid: scopeRequest?.thirdUserId,
+        },
+      });
     },
     updateMaterialCollection(collectionId, request) {
       return http.patch<

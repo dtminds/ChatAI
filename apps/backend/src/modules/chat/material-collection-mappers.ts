@@ -78,6 +78,7 @@ export function mapMaterialCollectionItem(
     id: String(row.id),
     msgInfoId,
     sort: toNumber(row.sort),
+    thirdUserId: row.third_userid ?? null,
     title: resolveTitle(row.title, content, contentType, msgInfoId),
     updatedAt: toOptionalTimestamp(row.update_time),
   };

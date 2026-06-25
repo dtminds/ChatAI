@@ -105,7 +105,9 @@ export function validateQuickReplyPayload(input: {
   const rawAttachments = Array.isArray(input.attachments) ? input.attachments : [];
 
   for (const attachment of rawAttachments) {
-    if (!isRecord(attachment) || !isQuickReplyAttachmentType(readString(attachment.type))) {
+    const type = isRecord(attachment) ? readString(attachment.type) : "";
+
+    if (!isQuickReplyAttachmentType(type) || type === "sphfeed") {
       return { ok: false, errorMsg: "附件类型不支持" };
     }
   }
@@ -168,12 +170,6 @@ export function validateQuickReplyAttachment(
     return attachment.materialCollectionId && attachment.msgInfoId
       ? { ok: true }
       : { ok: false, errorMsg: "小程序附件数据异常" };
-  }
-
-  if (attachment.type === "sphfeed") {
-    return attachment.materialCollectionId && attachment.msgInfoId
-      ? { ok: true }
-      : { ok: false, errorMsg: "视频号附件数据异常" };
   }
 
   return { ok: false, errorMsg: "附件类型不支持" };

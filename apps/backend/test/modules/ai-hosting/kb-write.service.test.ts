@@ -20,4 +20,13 @@ describe("KbWriteService", () => {
       name: "新品培训知识",
     });
   });
+
+  it("rejects whitespace-only kb names", async () => {
+    const db = createKbReadDbMock() as unknown as Kysely<Database>;
+    const service = createKbWriteService(db);
+
+    await expect(service.createKb("101", { name: "   " })).rejects.toMatchObject({
+      code: "INVALID_KB_NAME",
+    });
+  });
 });

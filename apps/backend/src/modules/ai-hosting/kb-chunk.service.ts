@@ -17,6 +17,7 @@ import {
   KB_DOC_TYPE_FAQ,
   KB_DOC_TYPE_IMAGE,
 } from "./kb-doc.service.js";
+import { parsePositiveInteger, resolveAgentKbUid } from "./kb-tenant-utils.js";
 
 const KB_CHUNK_TITLE_MAX_LENGTH = 256;
 const dbActiveStatus = 1;
@@ -36,7 +37,7 @@ export class KbChunkService {
     subUserId: string,
     request: KbChunkCreateRequest,
   ): Promise<KbChunkCreateResponse> {
-    const uid = await this.resolveUid(subUserId);
+    const uid = await resolveAgentKbUid(this.db, subUserId);
     const docNumericId = parseRequiredNumericId(request.docId, "KB_DOC_NOT_FOUND", "知识不存在");
     const doc = await this.getKbDocRow(uid, docNumericId);
 
@@ -76,7 +77,7 @@ export class KbChunkService {
     chunkId: string,
     request: KbChunkUpdateRequest,
   ): Promise<KbChunkUpdateResponse> {
-    const uid = await this.resolveUid(subUserId);
+    const uid = await resolveAgentKbUid(this.db, subUserId);
     const chunkNumericId = parseRequiredNumericId(chunkId, "KB_CHUNK_NOT_FOUND", "切片不存在");
     const chunk = await this.getKbChunkRow(uid, chunkNumericId);
 
@@ -111,7 +112,7 @@ export class KbChunkService {
   }
 
   async deleteKbChunk(subUserId: string, chunkId: string): Promise<KbChunkDeleteResponse> {
-    const uid = await this.resolveUid(subUserId);
+    const uid = await resolveAgentKbUid(this.db, subUserId);
     const chunkNumericId = parseRequiredNumericId(chunkId, "KB_CHUNK_NOT_FOUND", "切片不存在");
 
     await this.assertKbChunkExists(uid, chunkNumericId);
@@ -192,33 +193,6 @@ export class KbChunkService {
       throw new NotFoundError("KB_CHUNK_NOT_FOUND", "切片不存在");
     }
   }
-
-  private async resolveUid(subUserId: string) {
-    const subUserNumericId = parsePositiveInteger(subUserId);
-
-    if (subUserNumericId == null) {
-      throw new NotFoundError("SUB_USER_NOT_FOUND", "子账号不存在");
-    }
-
-    const subUser = await this.db
-      .selectFrom("xy_wap_embed_sub_user")
-      .select(["id", "uid"])
-      .where("id", "=", subUserNumericId)
-      .where("status", "=", dbActiveStatus)
-      .executeTakeFirst();
-
-    if (subUser?.uid == null) {
-      throw new NotFoundError("SUB_USER_NOT_FOUND", "子账号不存在");
-    }
-
-    return subUser.uid;
-  }
-}
-
-function parsePositiveInteger(value: string) {
-  const parsed = Number(value);
-
-  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
 function parseRequiredNumericId(value: string, code: string, message: string) {

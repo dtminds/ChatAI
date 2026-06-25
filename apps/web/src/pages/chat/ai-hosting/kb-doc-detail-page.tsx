@@ -86,6 +86,15 @@ export function KbDocDetailPage() {
   const [editChunk, setEditChunk] = useState<KbDocChunkViewItem | null>(null);
   const [deleteChunk, setDeleteChunk] = useState<KbDocChunkViewItem | null>(null);
   const requestVersionRef = useRef(0);
+  const isMountedRef = useRef(false);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   const debouncedSearchQuery = useDebouncedValue(searchQuery.trim(), 300);
 
@@ -204,9 +213,17 @@ export function KbDocDetailPage() {
       docId: doc.id,
       title: values.question,
     });
+
+    if (!isMountedRef.current) {
+      return;
+    }
+
     setCurrentPage(1);
     await loadChunks();
-    toast.success("已添加问答切片");
+
+    if (isMountedRef.current) {
+      toast.success("已添加问答切片");
+    }
   }
 
   async function handleCreateDocChunk(values: { content: string; title: string }) {
@@ -220,9 +237,17 @@ export function KbDocDetailPage() {
       docId: doc.id,
       title: values.title,
     });
+
+    if (!isMountedRef.current) {
+      return;
+    }
+
     setCurrentPage(1);
     await loadChunks();
-    toast.success("已添加切片");
+
+    if (isMountedRef.current) {
+      toast.success("已添加切片");
+    }
   }
 
   async function handleEditChunk(
@@ -247,8 +272,15 @@ export function KbDocDetailPage() {
       });
     }
 
+    if (!isMountedRef.current) {
+      return;
+    }
+
     await loadChunks();
-    toast.success("已保存");
+
+    if (isMountedRef.current) {
+      toast.success("已保存");
+    }
   }
 
   async function handleConfirmDelete() {
@@ -256,10 +288,24 @@ export function KbDocDetailPage() {
       return;
     }
 
-    await deleteKbChunk(deleteChunk.id);
-    setDeleteChunk(null);
-    await loadChunks();
-    toast.success("已删除切片");
+    try {
+      await deleteKbChunk(deleteChunk.id);
+
+      if (!isMountedRef.current) {
+        return;
+      }
+
+      setDeleteChunk(null);
+      await loadChunks();
+
+      if (isMountedRef.current) {
+        toast.success("已删除切片");
+      }
+    } catch {
+      if (isMountedRef.current) {
+        toast.error("删除失败，请稍后重试");
+      }
+    }
   }
 
   if (loading) {

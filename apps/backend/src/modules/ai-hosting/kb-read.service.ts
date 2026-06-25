@@ -17,6 +17,7 @@ import {
   mapKbDocListItem,
   mapKbListItem,
 } from "./kb-read-mappers.js";
+import { parsePositiveInteger, resolveAgentKbUid } from "./kb-tenant-utils.js";
 
 const dbActiveStatus = 1;
 const defaultPage = 1;
@@ -30,7 +31,7 @@ export class KbReadService {
     subUserId: string,
     options: { page?: number; pageSize?: number; query?: string } = {},
   ): Promise<KbListResponse> {
-    const uid = await this.resolveUid(subUserId);
+    const uid = await resolveAgentKbUid(this.db, subUserId);
     const pagination = normalizePagination(options);
     const normalizedQuery = options.query?.trim();
 
@@ -66,7 +67,7 @@ export class KbReadService {
   }
 
   async getKb(subUserId: string, kbId: string): Promise<KbListResponse["kbs"][number]> {
-    const uid = await this.resolveUid(subUserId);
+    const uid = await resolveAgentKbUid(this.db, subUserId);
     const kbNumericId = parsePositiveInteger(kbId);
 
     if (kbNumericId == null) {
@@ -98,7 +99,7 @@ export class KbReadService {
       query?: string;
     } = {},
   ): Promise<KbDocListResponse> {
-    const uid = await this.resolveUid(subUserId);
+    const uid = await resolveAgentKbUid(this.db, subUserId);
     const kbNumericId = parsePositiveInteger(kbId);
 
     if (kbNumericId == null) {
@@ -142,7 +143,7 @@ export class KbReadService {
   }
 
   async getKbDoc(subUserId: string, docId: string): Promise<KbDocDetail> {
-    const uid = await this.resolveUid(subUserId);
+    const uid = await resolveAgentKbUid(this.db, subUserId);
     const docNumericId = parsePositiveInteger(docId);
 
     if (docNumericId == null) {
@@ -169,7 +170,7 @@ export class KbReadService {
     docId: string,
     options: { page?: number; pageSize?: number; query?: string } = {},
   ): Promise<KbChunkListResponse> {
-    const uid = await this.resolveUid(subUserId);
+    const uid = await resolveAgentKbUid(this.db, subUserId);
     const docNumericId = parsePositiveInteger(docId);
 
     if (docNumericId == null) {
@@ -300,27 +301,6 @@ export class KbReadService {
       throw new NotFoundError("KB_NOT_FOUND", "知识库不存在");
     }
   }
-
-  private async resolveUid(subUserId: string) {
-    const subUserNumericId = parsePositiveInteger(subUserId);
-
-    if (subUserNumericId == null) {
-      throw new NotFoundError("SUB_USER_NOT_FOUND", "子账号不存在");
-    }
-
-    const subUser = await this.db
-      .selectFrom("xy_wap_embed_sub_user")
-      .select(["id", "uid"])
-      .where("id", "=", subUserNumericId)
-      .where("status", "=", dbActiveStatus)
-      .executeTakeFirst();
-
-    if (subUser?.uid == null) {
-      throw new NotFoundError("SUB_USER_NOT_FOUND", "子账号不存在");
-    }
-
-    return subUser.uid;
-  }
 }
 
 export function createKbReadService(db: Kysely<Database>, _logger?: RequestAwareLogger) {
@@ -336,10 +316,4 @@ function normalizePagination(input: { page?: number; pageSize?: number }) {
       : defaultPageSize;
 
   return { page, pageSize };
-}
-
-function parsePositiveInteger(value: string) {
-  const parsed = Number(value);
-
-  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
 }

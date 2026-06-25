@@ -16,6 +16,7 @@ import {
   resolveVolcStrategyResourceId,
 } from "./kb-doc-strategy-mappers.js";
 import { resolveKbDocUrlForJava } from "./kb-doc-url.js";
+import { resolveAgentKbUid } from "./kb-tenant-utils.js";
 
 export const KB_DOC_TYPE_FAQ = 1;
 export const KB_DOC_TYPE_DOCUMENT = 2;
@@ -49,7 +50,7 @@ export class KbDocService {
   ) {}
 
   async getUploadCredential(subUserId: string): Promise<KbDocUploadCredentialResponse> {
-    const uid = await this.resolveUid(subUserId);
+    const uid = await resolveAgentKbUid(this.db, subUserId);
 
     const credential = await this.workbenchJavaClient.getUploadCredential({
       type: "kb",
@@ -75,7 +76,7 @@ export class KbDocService {
     subUserId: string,
     request: KbDocCreateRequest,
   ): Promise<KbDocCreateResponse> {
-    const uid = await this.resolveUid(subUserId);
+    const uid = await resolveAgentKbUid(this.db, subUserId);
     const normalizedSuffix = this.assertDocumentCreateRequest(request);
     const kbNumericId = parseRequiredNumericId(request.kbId, "KB_NOT_FOUND", "知识库不存在");
 
@@ -123,7 +124,7 @@ export class KbDocService {
     subUserId: string,
     request: KbDocCreateFaqRequest,
   ): Promise<KbDocCreateResponse> {
-    const uid = await this.resolveUid(subUserId);
+    const uid = await resolveAgentKbUid(this.db, subUserId);
     const normalizedSuffix = this.assertFaqCreateRequest(request);
     const kbNumericId = parseRequiredNumericId(request.kbId, "KB_NOT_FOUND", "知识库不存在");
 
@@ -167,7 +168,7 @@ export class KbDocService {
     subUserId: string,
     request: KbDocCreateImageRequest,
   ): Promise<KbDocCreateResponse> {
-    const uid = await this.resolveUid(subUserId);
+    const uid = await resolveAgentKbUid(this.db, subUserId);
     const normalizedSuffix = this.assertImageCreateRequest(request);
     const kbNumericId = parseRequiredNumericId(request.kbId, "KB_NOT_FOUND", "知识库不存在");
 
@@ -208,7 +209,7 @@ export class KbDocService {
   }
 
   async deleteKbDoc(subUserId: string, docId: string): Promise<KbDocDeleteResponse> {
-    const uid = await this.resolveUid(subUserId);
+    const uid = await resolveAgentKbUid(this.db, subUserId);
     const docNumericId = parseRequiredNumericId(docId, "KB_DOC_NOT_FOUND", "知识不存在");
 
     await this.assertKbDocExists(uid, docNumericId);
@@ -319,37 +320,10 @@ export class KbDocService {
       throw new NotFoundError("KB_DOC_NOT_FOUND", "知识不存在");
     }
   }
-
-  private async resolveUid(subUserId: string) {
-    const subUserNumericId = parsePositiveInteger(subUserId);
-
-    if (subUserNumericId == null) {
-      throw new NotFoundError("SUB_USER_NOT_FOUND", "子账号不存在");
-    }
-
-    const subUser = await this.db
-      .selectFrom("xy_wap_embed_sub_user")
-      .select(["id", "uid"])
-      .where("id", "=", subUserNumericId)
-      .where("status", "=", dbActiveStatus)
-      .executeTakeFirst();
-
-    if (subUser?.uid == null) {
-      throw new NotFoundError("SUB_USER_NOT_FOUND", "子账号不存在");
-    }
-
-    return subUser.uid;
-  }
 }
 
 function normalizeDocSuffix(value: string) {
   return value.trim().toLowerCase().replace(/^\./, "");
-}
-
-function parsePositiveInteger(value: string) {
-  const parsed = Number(value);
-
-  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
 function parseRequiredNumericId(value: string, code: string, message: string) {

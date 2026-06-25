@@ -236,7 +236,7 @@ export function KbDetailPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [debouncedSearchQuery]);
+  }, [debouncedSearchQuery, kbId]);
 
   const { activePage, totalPages } = resolveTablePagination({
     page: currentPage,

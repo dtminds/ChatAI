@@ -1,8 +1,9 @@
 import type { KbCreateRequest, KbListItem } from "@chatai/contracts";
 import type { Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
-import { BadRequestError, NotFoundError, ServiceUnavailableError } from "../../shared/errors.js";
+import { BadRequestError, ServiceUnavailableError } from "../../shared/errors.js";
 import { mapKbListItem } from "./kb-read-mappers.js";
+import { parsePositiveInteger, resolveAgentKbUid } from "./kb-tenant-utils.js";
 
 const dbActiveStatus = 1;
 
@@ -10,7 +11,7 @@ export class KbWriteService {
   constructor(private readonly db: Kysely<Database>) {}
 
   async createKb(subUserId: string, payload: KbCreateRequest): Promise<KbListItem> {
-    const uid = await this.resolveUid(subUserId);
+    const uid = await resolveAgentKbUid(this.db, subUserId);
     const operatorId = parsePositiveInteger(subUserId);
 
     if (operatorId == null) {
@@ -18,6 +19,11 @@ export class KbWriteService {
     }
 
     const name = payload.name.trim();
+
+    if (!name) {
+      throw new BadRequestError("INVALID_KB_NAME", "知识库名称不能为空");
+    }
+
     const remark = payload.description?.trim() ?? "";
 
     const inserted = await this.db
@@ -52,27 +58,6 @@ export class KbWriteService {
 
     return mapKbListItem(row);
   }
-
-  private async resolveUid(subUserId: string) {
-    const subUserNumericId = parsePositiveInteger(subUserId);
-
-    if (subUserNumericId == null) {
-      throw new NotFoundError("SUB_USER_NOT_FOUND", "子账号不存在");
-    }
-
-    const subUser = await this.db
-      .selectFrom("xy_wap_embed_sub_user")
-      .select(["id", "uid"])
-      .where("id", "=", subUserNumericId)
-      .where("status", "=", dbActiveStatus)
-      .executeTakeFirst();
-
-    if (subUser?.uid == null) {
-      throw new NotFoundError("SUB_USER_NOT_FOUND", "子账号不存在");
-    }
-
-    return subUser.uid;
-  }
 }
 
 export function createKbWriteService(db: Kysely<Database>) {
@@ -104,10 +89,4 @@ function parseInsertedMySqlId(result: unknown) {
   }
 
   return undefined;
-}
-
-function parsePositiveInteger(value: string) {
-  const parsed = Number(value);
-
-  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
 }

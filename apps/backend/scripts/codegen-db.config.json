@@ -45,6 +45,9 @@
     "xy_wap_embed_insight_label_config",
     "xy_wap_embed_insight_intent_config",
     "xy_wap_embed_insight_qa_rule_config",
-    "xy_wap_embed_insight_entity_dictionary"
+    "xy_wap_embed_insight_entity_dictionary",
+    "xy_wap_embed_agent_kb",
+    "xy_wap_embed_agent_kb_doc",
+    "xy_wap_embed_agent_kb_chunk"
   ]
 }

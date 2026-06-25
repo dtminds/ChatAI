@@ -1,4 +1,4 @@
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useState } from "react";
 import { Add01Icon, Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Link } from "react-router-dom";
@@ -29,12 +29,8 @@ import {
 } from "@/components/ui/table-pagination";
 import { Textarea } from "@/components/ui/textarea";
 import { AiHostingLayout, AiHostingPageHeader } from "./ai-hosting-layout";
-import {
-  addMockKnowledgeBase,
-  getMockKnowledgeBasesSnapshot,
-  subscribeMockKnowledgeBases,
-  type KnowledgeBaseItem,
-} from "./kb-mock-data";
+import { createKb, listKbs, toKbListViewItem } from "./api/kb-service";
+import type { KbListViewItem } from "./kb-types";
 
 type CreateFormState = {
   name: string;
@@ -45,21 +41,23 @@ const PAGE_SIZE = 10;
 const KNOWLEDGE_BASE_NAME_MAX_LENGTH = 30;
 const KNOWLEDGE_BASE_DESCRIPTION_MAX_LENGTH = 1000;
 
-function getLocalTimeString(): string {
-  const now = new Date();
-  return new Date(now.getTime() - now.getTimezoneOffset() * 60000)
-    .toISOString()
-    .replace("T", " ")
-    .slice(0, 19);
+function useDebouncedValue<T>(value: T, delayMs: number) {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedValue(value), delayMs);
+    return () => window.clearTimeout(timer);
+  }, [delayMs, value]);
+
+  return debouncedValue;
 }
 
 export function KbListPage() {
-  const items = useSyncExternalStore(
-    subscribeMockKnowledgeBases,
-    getMockKnowledgeBasesSnapshot,
-    getMockKnowledgeBasesSnapshot,
-  );
+  const [items, setItems] = useState<KbListViewItem[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearchQuery = useDebouncedValue(searchQuery, 300);
   const [currentPage, setCurrentPage] = useState(1);
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -68,35 +66,51 @@ export function KbListPage() {
     description: "",
   });
   const [createSubmitting, setCreateSubmitting] = useState(false);
-  const [editingItem, setEditingItem] = useState<KnowledgeBaseItem | null>(null);
-  const [editForm, setEditForm] = useState<CreateFormState>({
-    name: "",
-    description: "",
-  });
+  const [listReloadKey, setListReloadKey] = useState(0);
 
-  const filteredItems = useMemo(() => {
-    const normalized = searchQuery.trim().toLowerCase();
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearchQuery]);
 
-    if (!normalized) {
-      return items;
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadKbs() {
+      setLoading(true);
+
+      try {
+        const response = await listKbs({
+          page: currentPage,
+          pageSize: PAGE_SIZE,
+          query: debouncedSearchQuery,
+        });
+
+        if (cancelled) {
+          return;
+        }
+
+        setItems(response.kbs.map(toKbListViewItem));
+        setTotal(response.pagination.total);
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
     }
 
-    return items.filter(
-      (item) =>
-        item.name.toLowerCase().includes(normalized) ||
-        item.description.toLowerCase().includes(normalized),
-    );
-  }, [items, searchQuery]);
+    void loadKbs();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentPage, debouncedSearchQuery, listReloadKey]);
 
   const { activePage, totalPages } = resolveTablePagination({
     page: currentPage,
     pageSize: PAGE_SIZE,
-    total: filteredItems.length,
+    total,
   });
-  const pagedItems = useMemo(() => {
-    const start = (activePage - 1) * PAGE_SIZE;
-    return filteredItems.slice(start, start + PAGE_SIZE);
-  }, [filteredItems, activePage]);
+  const pagedItems = items;
 
   function resetCreateForm() {
     setCreateForm({ name: "", description: "" });
@@ -108,50 +122,35 @@ export function KbListPage() {
   }
 
   function handleCloseCreateDialog() {
-    if (createSubmitting) return;
+    if (createSubmitting) {
+      return;
+    }
+
     setCreateDialogOpen(false);
     resetCreateForm();
   }
 
-  function handleCreateSubmit() {
+  async function handleCreateSubmit() {
     const name = createForm.name.trim();
-    if (!name) return;
+
+    if (!name) {
+      return;
+    }
 
     setCreateSubmitting(true);
 
-    const nowStr = getLocalTimeString();
-    const newItem: KnowledgeBaseItem = {
-      id: String(Date.now()),
-      name,
-      description: createForm.description.trim(),
-      lastUpdatedAt: nowStr,
-      createdAt: nowStr,
-    };
-
-    addMockKnowledgeBase(newItem);
-    setCreateSubmitting(false);
-    setCreateDialogOpen(false);
-    resetCreateForm();
-    setCurrentPage(1);
-  }
-
-  function resetEditForm() {
-    setEditForm({ name: "", description: "" });
-  }
-
-  function handleOpenEditDialog(item: KnowledgeBaseItem) {
-    setEditingItem(item);
-    setEditForm({ name: item.name, description: item.description });
-  }
-
-  function handleCloseEditDialog() {
-    setEditingItem(null);
-    resetEditForm();
-  }
-
-  function handleEditSubmit() {
-    if (!editForm.name.trim()) return;
-    handleCloseEditDialog();
+    try {
+      await createKb({
+        description: createForm.description.trim() || undefined,
+        name,
+      });
+      setCreateDialogOpen(false);
+      resetCreateForm();
+      setCurrentPage(1);
+      setListReloadKey((value) => value + 1);
+    } finally {
+      setCreateSubmitting(false);
+    }
   }
 
   return (
@@ -175,10 +174,7 @@ export function KbListPage() {
               <Input
                 aria-label="搜索知识库"
                 className="h-10 rounded-[8px] pl-9"
-                onChange={(event) => {
-                  setSearchQuery(event.target.value);
-                  setCurrentPage(1);
-                }}
+                onChange={(event) => setSearchQuery(event.target.value)}
                 placeholder="搜索知识库"
                 value={searchQuery}
               />
@@ -211,7 +207,13 @@ export function KbListPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {pagedItems.length > 0 ? (
+                {loading ? (
+                  <TableRow>
+                    <TableCell className="py-10 text-center text-sm text-muted-foreground" colSpan={5}>
+                      加载中
+                    </TableCell>
+                  </TableRow>
+                ) : pagedItems.length > 0 ? (
                   pagedItems.map((item) => (
                     <TableRow key={item.id}>
                       <TableCell
@@ -246,24 +248,11 @@ export function KbListPage() {
                         <TableCellContent>{item.createdAt}</TableCellContent>
                       </TableCell>
                       <TablePinnedCell className="whitespace-nowrap px-4 py-4 text-right">
-                        <div className="flex items-center justify-end gap-3">
-                          <Button asChild className="h-auto p-0 text-primary" type="button" variant="link">
-                            <Link to={`/chat/ai-hosting/kb/${item.id}`}>
-                              查看
-                            </Link>
-                          </Button>
-                          <Button
-                            className="h-auto p-0 text-primary"
-                            onClick={() => handleOpenEditDialog(item)}
-                            type="button"
-                            variant="link"
-                          >
-                            编辑
-                          </Button>
-                          <Button className="h-auto p-0 text-primary" type="button" variant="link">
-                            删除
-                          </Button>
-                        </div>
+                        <Button asChild className="h-auto p-0 text-primary" type="button" variant="link">
+                          <Link to={`/chat/ai-hosting/kb/${item.id}`}>
+                            查看
+                          </Link>
+                        </Button>
                       </TablePinnedCell>
                     </TableRow>
                   ))
@@ -279,7 +268,7 @@ export function KbListPage() {
             <TablePagination
               onPageChange={setCurrentPage}
               page={activePage}
-              total={filteredItems.length}
+              total={total}
               totalPages={totalPages}
             />
           </div>
@@ -288,8 +277,15 @@ export function KbListPage() {
 
       <Dialog
         onOpenChange={(open) => {
-          if (!open && createSubmitting) return;
+          if (!open && createSubmitting) {
+            return;
+          }
+
           setCreateDialogOpen(open);
+
+          if (!open) {
+            resetCreateForm();
+          }
         }}
         open={createDialogOpen}
       >
@@ -311,41 +307,10 @@ export function KbListPage() {
             </Button>
             <Button
               disabled={createSubmitting || !createForm.name.trim()}
-              onClick={handleCreateSubmit}
+              onClick={() => void handleCreateSubmit()}
               type="button"
             >
-              确定
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        onOpenChange={(open) => {
-          if (!open) {
-            handleCloseEditDialog();
-          }
-        }}
-        open={editingItem !== null}
-      >
-        <DialogContent className="max-w-[520px]">
-          <DialogHeader>
-            <DialogTitle>编辑知识库</DialogTitle>
-          </DialogHeader>
-
-          <KnowledgeBaseDialogForm
-            descriptionInputId="kb-edit-desc"
-            form={editForm}
-            nameInputId="kb-edit-name"
-            onChange={setEditForm}
-          />
-
-          <DialogFooter className="gap-2">
-            <Button onClick={handleCloseEditDialog} type="button" variant="outline">
-              取消
-            </Button>
-            <Button disabled={!editForm.name.trim()} onClick={handleEditSubmit} type="button">
-              保存
+              {createSubmitting ? "提交中" : "确定"}
             </Button>
           </DialogFooter>
         </DialogContent>

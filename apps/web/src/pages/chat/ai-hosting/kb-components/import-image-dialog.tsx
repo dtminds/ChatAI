@@ -20,9 +20,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { isRequestError } from "@/lib/request";
-import { uploadKbImage } from "@/pages/chat/ai-hosting/api/kb-doc-service";
+import { importKbImageDoc } from "@/pages/chat/ai-hosting/api/kb-doc-service";
 import {
-  createLocalDocId,
   getFileExtension,
   RequiredLabel,
   stripFileExtension,
@@ -39,10 +38,12 @@ const IMAGE_KNOWLEDGE_ACCEPT =
 const IMAGE_KNOWLEDGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "webp"]);
 
 export function ImportImageDialog({
+  kbId,
   onCreated,
   onOpenChange,
   open,
 }: {
+  kbId: string;
   onCreated?: (result: {
     docId: string;
     docSuffix: string;
@@ -188,7 +189,11 @@ export function ImportImageDialog({
       abortControllerRef.current = new AbortController();
 
       try {
-        const uploadResult = await uploadKbImage(selectedImage, {
+        const createResult = await importKbImageDoc({
+          description: imageDescription.trim(),
+          file: selectedImage,
+          kbId,
+          name: trimmedName,
           signal: abortControllerRef.current.signal,
         });
 
@@ -196,15 +201,14 @@ export function ImportImageDialog({
           return false;
         }
 
-        const docId = createLocalDocId();
-        const docSuffix = getFileExtension(uploadResult.docUrl).toLowerCase();
+        const docSuffix = getFileExtension(selectedImage.name).toLowerCase();
 
         toast.success("图片已提交");
         onCreated?.({
-          docId,
+          docId: createResult.docId,
           docSuffix,
           name: trimmedName,
-          url: uploadResult.url,
+          url: "",
         });
 
         return true;

@@ -52,6 +52,7 @@ import type {
   Message,
 } from "@/pages/chat/chat-types";
 import { sortConversations } from "@/pages/chat/lib/conversation-order";
+import { sortMessagesBySentAt } from "@/pages/chat/lib/message-order";
 
 type GatewayContext = {
   accounts: Account[];
@@ -336,7 +337,7 @@ export async function loadConversationMessagesPage(
 ): Promise<WorkbenchConversationPage> {
   const service = getWorkbenchService();
   const page = await service.getMessages(conversationId, options);
-  const messages = adaptMessages(page.messages, context);
+  const messages = sortMessagesBySentAt(adaptMessages(page.messages, context));
 
   return {
     conversationId,
@@ -487,7 +488,9 @@ export async function pollWorkbench(
       accountId: change.seatId,
       seatId: change.seatId,
     })),
-    activeConversationMessages: adaptMessages(response.activeConversationMessages, context),
+    activeConversationMessages: sortMessagesBySentAt(
+      adaptMessages(response.activeConversationMessages, context),
+    ),
     conversationChanges: response.conversationChanges.map((change) =>
       change.type === "remove"
         ? {
@@ -681,7 +684,7 @@ function adaptHistoryMessagePage(
   return {
     hasNext: page.hasNext,
     hasPrev: page.hasPrev,
-    messages: adaptMessages(page.messages, context),
+    messages: sortMessagesBySentAt(adaptMessages(page.messages, context)),
     nextCursor: page.nextCursor,
     prevCursor: page.prevCursor,
   };

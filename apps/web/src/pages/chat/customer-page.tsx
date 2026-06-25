@@ -47,6 +47,7 @@ import { adaptMessage } from "@/pages/chat/api/workbench-adapter";
 import { formatMessageDividerLabel } from "@/pages/chat/components/message-feed";
 import { HistoryCompactMessageList } from "@/pages/chat/components/message-history-side-panel";
 import type { Account, Message } from "@/pages/chat/chat-types";
+import { sortMessagesBySentAt } from "@/pages/chat/lib/message-order";
 
 const ALL_VISIBLE_SEATS = "__all_visible_seats__";
 const CUSTOMER_PAGE_SIZE = 50;
@@ -579,26 +580,28 @@ function CustomerLastConversationPopover({
           accounts.map((item) => [item.id, item]),
         );
         setMessages(
-          page.messages.map((message) =>
-            adaptMessage(
-              message,
-              {
-                [customer.customerKey]: {
-                  avatarUrl: customer.avatar,
-                  city: "",
-                  id: customer.customerKey,
-                  intentScore: 0,
-                  metrics: [],
-                  name: displayName,
-                  notes: [],
-                  persona: "",
-                  phone: "",
-                  stage: "",
-                  tags: [],
-                  tasks: [],
+          sortMessagesBySentAt(
+            page.messages.map((message) =>
+              adaptMessage(
+                message,
+                {
+                  [customer.customerKey]: {
+                    avatarUrl: customer.avatar,
+                    city: "",
+                    id: customer.customerKey,
+                    intentScore: 0,
+                    metrics: [],
+                    name: displayName,
+                    notes: [],
+                    persona: "",
+                    phone: "",
+                    stage: "",
+                    tags: [],
+                    tasks: [],
+                  },
                 },
-              },
-              accountsById,
+                accountsById,
+              ),
             ),
           ),
         );

@@ -465,6 +465,114 @@ describe("useWorkbenchStore", () => {
     expect(observedLimits).toEqual([50, 50]);
   });
 
+  it("keeps a loaded message page in message time order when seq order differs", async () => {
+    const baseService = createMockWorkbenchService();
+    const laterMessage = {
+      ...createHistoryMessageDto("later-message", 100, "后写入但时间更晚"),
+      createdAt: 1_778_400_030_000,
+    };
+    const earlierMessage = {
+      ...createHistoryMessageDto("earlier-message", 101, "后写入但时间更早"),
+      createdAt: 1_778_400_020_000,
+    };
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        if (conversationId === "conv-001") {
+          return {
+            filteredCount: 0,
+            hasMore: false,
+            messages: [laterMessage, earlierMessage],
+            scannedCount: 2,
+          };
+        }
+
+        return baseService.getMessages(conversationId, options);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    expect(
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].map((message) => message.uiMessageKey),
+    ).toEqual(["101", "100"]);
+  });
+
+  it("keeps messages with invalid timestamps after timestamped page messages", async () => {
+    const baseService = createMockWorkbenchService();
+    const validLaterMessage = {
+      ...createHistoryMessageDto("valid-later-message", 100, "有效时间较晚"),
+      createdAt: 1_778_400_030_000,
+    };
+    const invalidTimestampMessage = {
+      ...createHistoryMessageDto("invalid-time-message", 101, "没有有效时间"),
+      createdAt: undefined,
+    };
+    const validEarlierMessage = {
+      ...createHistoryMessageDto("valid-earlier-message", 102, "有效时间较早"),
+      createdAt: 1_778_400_020_000,
+    };
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        if (conversationId === "conv-001") {
+          return {
+            filteredCount: 0,
+            hasMore: false,
+            messages: [validLaterMessage, invalidTimestampMessage, validEarlierMessage],
+            scannedCount: 3,
+          };
+        }
+
+        return baseService.getMessages(conversationId, options);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    expect(
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].map((message) => message.uiMessageKey),
+    ).toEqual(["102", "100", "101"]);
+  });
+
+  it("keeps history page messages in message time order when seq order differs", async () => {
+    const baseService = createMockWorkbenchService();
+    const laterMessage = {
+      ...createHistoryMessageDto("later-message", 100, "后写入但时间更晚"),
+      createdAt: 1_778_400_030_000,
+    };
+    const earlierMessage = {
+      ...createHistoryMessageDto("earlier-message", 101, "后写入但时间更早"),
+      createdAt: 1_778_400_020_000,
+    };
+
+    setWorkbenchService({
+      ...baseService,
+      async getHistoryMessages(conversationId, options) {
+        if (conversationId === "conv-001") {
+          return {
+            hasNext: false,
+            hasPrev: false,
+            messages: [laterMessage, earlierMessage],
+          };
+        }
+
+        return baseService.getHistoryMessages(conversationId, options);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().openHistoryPanel("conv-001");
+
+    expect(
+      useWorkbenchStore.getState().historyPanelByConversationId["conv-001"]?.messages.map(
+        (message) => message.uiMessageKey,
+      ),
+    ).toEqual(["101", "100"]);
+  });
+
   it("auto-generates only the latest unanswered customer message after loading a conversation", async () => {
     const baseService = createMockWorkbenchService();
     const observedAutoRequests: Array<{ conversationId: string; msgId: number }> = [];
@@ -1106,6 +1214,55 @@ describe("useWorkbenchStore", () => {
         msgId: 11,
       },
     ]);
+  });
+
+  it("keeps polled active conversation messages in message time order", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        const response = await baseService.poll(request);
+
+        if (request.activeConversationId !== "conv-001") {
+          return response;
+        }
+
+        return {
+          ...response,
+          activeConversationMessages: [
+            {
+              ...createSmartReplyTextMessageDto({
+                id: "poll-late",
+                seq: 12,
+                text: "后到的消息",
+              }),
+              createdAt: 1_778_400_030_000,
+            },
+            {
+              ...createSmartReplyTextMessageDto({
+                id: "poll-early",
+                seq: 13,
+                text: "先到的消息",
+              }),
+              createdAt: 1_778_400_020_000,
+            },
+          ],
+        };
+      },
+      async pollSmartReplies() {
+        return { suggestions: [] };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].slice(-2).map(
+        (message) => message.uiMessageKey,
+      ),
+    ).toEqual(["13", "12"]);
   });
 
   it("waits for a customer image download to finish before auto-generating smart reply", async () => {

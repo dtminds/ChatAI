@@ -17,7 +17,7 @@ import {
   KB_DOC_TYPE_FAQ,
   KB_DOC_TYPE_IMAGE,
 } from "./kb-doc.service.js";
-import { parsePositiveInteger, resolveAgentKbUid } from "./kb-tenant-utils.js";
+import { parseRequiredNumericId, resolveAgentKbUid } from "./kb-tenant-utils.js";
 
 const KB_CHUNK_TITLE_MAX_LENGTH = 256;
 const dbActiveStatus = 1;
@@ -193,18 +193,4 @@ export class KbChunkService {
       throw new NotFoundError("KB_CHUNK_NOT_FOUND", "切片不存在");
     }
   }
-}
-
-function parseRequiredNumericId(value: string, code: string, message: string) {
-  if (!/^\d+$/.test(value.trim())) {
-    throw new NotFoundError(code, message);
-  }
-
-  const parsed = Number(value);
-
-  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
-    throw new NotFoundError(code, message);
-  }
-
-  return parsed;
 }

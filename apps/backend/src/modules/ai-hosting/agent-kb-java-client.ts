@@ -303,85 +303,16 @@ async function postJavaJson<T>(
   operation: string,
   logContext: Record<string, unknown>,
 ): Promise<T> {
-  if (!baseUrl) {
-    logger.error(
-      {
-        operation,
-        path,
-        requestId: getLoggerRequestId(logger),
-      },
-      "内部接口未配置",
-    );
-    throw new ServiceUnavailableError(
-      AI_HOSTING_INTERNAL_API_NOT_CONFIGURED_CODE,
-      AI_HOSTING_INTERNAL_API_USER_MESSAGE,
-    );
-  }
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), readJavaApiTimeoutMs());
-  const requestId = getLoggerRequestId(logger);
-
-  try {
-    const response = await fetch(`${baseUrl}${path}`, {
-      body: JSON.stringify(body),
-      headers: {
-        "content-type": "application/json",
-        ...(token ? { authorization: `Bearer ${token}` } : {}),
-        ...(requestId ? { "x-request-id": requestId } : {}),
-      },
-      method: "POST",
-      signal: controller.signal,
-    });
-
-    if (!response.ok) {
-      logger.error(
-        {
-          ...logContext,
-          operation,
-          path,
-          requestId,
-          status: response.status,
-        },
-        "内部接口返回异常状态",
-      );
-      throw new UpstreamHttpError(
-        AI_HOSTING_INTERNAL_API_FAILED_CODE,
-        AI_HOSTING_INTERNAL_API_USER_MESSAGE,
-        mapJavaHttpFailureStatus(response.status),
-        {
-          status: response.status,
-        },
-      );
-    }
-
-    return (await response.json()) as T;
-  } catch (error) {
-    if (
-      error instanceof UpstreamHttpError ||
-      error instanceof ServiceUnavailableError ||
-      error instanceof NotFoundError ||
-      error instanceof BadGatewayError
-    ) {
-      throw error;
-    }
-
-    logger.error(
-      {
-        ...logContext,
-        operation,
-        path,
-        reason: error instanceof Error ? error.name : "unknown",
-        requestId,
-      },
-      "内部接口调用失败",
-    );
-    throw new BadGatewayError(AI_HOSTING_INTERNAL_API_FAILED_CODE, AI_HOSTING_INTERNAL_API_USER_MESSAGE, {
-      reason: error instanceof Error ? error.name : "unknown",
-    });
-  } finally {
-    clearTimeout(timeoutId);
-  }
+  return postJavaRequest<T>({
+    baseUrl,
+    body: JSON.stringify(body),
+    contentType: "application/json",
+    logContext,
+    logger,
+    operation,
+    path,
+    token,
+  });
 }
 
 async function postJavaForm<T>(
@@ -393,6 +324,39 @@ async function postJavaForm<T>(
   operation: string,
   logContext: Record<string, unknown>,
 ): Promise<T> {
+  return postJavaRequest<T>({
+    baseUrl,
+    body: form.toString(),
+    contentType: "application/x-www-form-urlencoded",
+    logContext,
+    logger,
+    operation,
+    path,
+    token,
+  });
+}
+
+type PostJavaRequestOptions = {
+  baseUrl: string | undefined;
+  body: string;
+  contentType: string;
+  logContext: Record<string, unknown>;
+  logger: AppLogger;
+  operation: string;
+  path: string;
+  token: string | undefined;
+};
+
+async function postJavaRequest<T>({
+  baseUrl,
+  body,
+  contentType,
+  logContext,
+  logger,
+  operation,
+  path,
+  token,
+}: PostJavaRequestOptions): Promise<T> {
   if (!baseUrl) {
     logger.error(
       {
@@ -414,9 +378,9 @@ async function postJavaForm<T>(
 
   try {
     const response = await fetch(`${baseUrl}${path}`, {
-      body: form.toString(),
+      body,
       headers: {
-        "content-type": "application/x-www-form-urlencoded",
+        "content-type": contentType,
         ...(token ? { authorization: `Bearer ${token}` } : {}),
         ...(requestId ? { "x-request-id": requestId } : {}),
       },
@@ -466,69 +430,132 @@ async function postJavaForm<T>(
       },
       "内部接口调用失败",
     );
-    throw new BadGatewayError(AI_HOSTING_INTERNAL_API_FAILED_CODE, AI_HOSTING_INTERNAL_API_USER_MESSAGE, {
-      reason: error instanceof Error ? error.name : "unknown",
-    });
+    throw attachErrorCause(
+      new BadGatewayError(AI_HOSTING_INTERNAL_API_FAILED_CODE, AI_HOSTING_INTERNAL_API_USER_MESSAGE, {
+        reason: error instanceof Error ? error.name : "unknown",
+      }),
+      error,
+    );
   } finally {
     clearTimeout(timeoutId);
   }
 }
 
+const AGENT_KB_JAVA_ERROR_TOKENS = {
+  CHUNK_NOT_EDITABLE: "CHUNK_NOT_EDITABLE",
+  CHUNK_NOT_FOUND: "CHUNK_NOT_FOUND",
+  DOC_NOT_FOUND: "DOC_NOT_FOUND",
+  KB_NOT_FOUND: "KB_NOT_FOUND",
+} as const;
+
+type AgentKbJavaErrorKind =
+  | "chunk_not_editable"
+  | "chunk_not_found"
+  | "doc_not_found"
+  | "kb_not_found";
+
 function mapAgentKbJavaBusinessError(response: JavaApiResponse<unknown>, operation: string) {
   const errorMsg = response.errorMsg?.trim() ?? "";
+  const kind = resolveAgentKbJavaErrorKind(errorMsg);
+  const details = {
+    error: response.error,
+    errorMsg,
+    operation,
+    token: extractAgentKbJavaErrorToken(errorMsg),
+  };
 
-  if (operation === "agent-kb-doc-delete" && isDocNotFoundError(response, errorMsg)) {
+  if (operation === "agent-kb-doc-delete" && kind === "doc_not_found") {
     return new NotFoundError("KB_DOC_NOT_FOUND", "知识不存在");
   }
 
-  if (operation === "agent-kb-chunk-delete" && isChunkNotFoundError(response, errorMsg)) {
+  if (operation === "agent-kb-chunk-delete" && (kind === "chunk_not_found" || kind === "doc_not_found")) {
     return new NotFoundError("KB_CHUNK_NOT_FOUND", "切片不存在");
   }
 
-  if (operation === "agent-kb-chunk-page" && isDocNotFoundError(response, errorMsg)) {
+  if (operation === "agent-kb-chunk-page" && kind === "doc_not_found") {
     return new NotFoundError("KB_DOC_NOT_FOUND", "知识不存在");
   }
 
-  if (operation === "agent-kb-chunk-update" && isChunkNotEditableError(response, errorMsg)) {
+  if (operation === "agent-kb-chunk-update" && kind === "chunk_not_editable") {
     return new ForbiddenError("KB_CHUNK_NOT_EDITABLE", "系统切片不可编辑");
   }
 
-  if (isDocNotFoundError(response, errorMsg)) {
+  if (kind === "kb_not_found") {
     return new NotFoundError("KB_NOT_FOUND", "知识库不存在");
+  }
+
+  if (kind === "doc_not_found") {
+    return new NotFoundError("KB_DOC_NOT_FOUND", "知识不存在");
   }
 
   return new BadGatewayError(
     AI_HOSTING_INTERNAL_API_FAILED_CODE,
     errorMsg || AI_HOSTING_INTERNAL_API_USER_MESSAGE,
-    {
-      error: response.error,
-      errorMsg,
-    },
+    details,
   );
 }
 
-function isChunkNotFoundError(response: JavaApiResponse<unknown>, errorMsg: string) {
-  return (
-    errorMsg.includes("CHUNK_NOT_FOUND") ||
-    errorMsg.includes("切片不存在") ||
-    errorMsg.includes("DOC_NOT_FOUND")
-  );
+function resolveAgentKbJavaErrorKind(errorMsg: string): AgentKbJavaErrorKind | undefined {
+  const token = extractAgentKbJavaErrorToken(errorMsg);
+
+  if (token === AGENT_KB_JAVA_ERROR_TOKENS.CHUNK_NOT_EDITABLE) {
+    return "chunk_not_editable";
+  }
+
+  if (token === AGENT_KB_JAVA_ERROR_TOKENS.CHUNK_NOT_FOUND) {
+    return "chunk_not_found";
+  }
+
+  if (token === AGENT_KB_JAVA_ERROR_TOKENS.DOC_NOT_FOUND) {
+    return "doc_not_found";
+  }
+
+  if (token === AGENT_KB_JAVA_ERROR_TOKENS.KB_NOT_FOUND) {
+    return "kb_not_found";
+  }
+
+  if (errorMsg.includes("切片不存在")) {
+    return "chunk_not_found";
+  }
+
+  if (errorMsg.includes("不可编辑")) {
+    return "chunk_not_editable";
+  }
+
+  if (errorMsg.includes("知识不存在")) {
+    return "doc_not_found";
+  }
+
+  if (errorMsg.includes("知识库不存在")) {
+    return "kb_not_found";
+  }
+
+  return undefined;
 }
 
-function isChunkNotEditableError(response: JavaApiResponse<unknown>, errorMsg: string) {
-  return (
-    errorMsg.includes("CHUNK_NOT_EDITABLE") ||
-    errorMsg.includes("系统切片不可编辑") ||
-    errorMsg.includes("不可编辑")
-  );
+function extractAgentKbJavaErrorToken(errorMsg: string) {
+  const normalized = errorMsg.trim();
+
+  if (!normalized) {
+    return undefined;
+  }
+
+  const tokens = Object.values(AGENT_KB_JAVA_ERROR_TOKENS);
+  const exactMatch = tokens.find((token) => token === normalized);
+
+  if (exactMatch) {
+    return exactMatch;
+  }
+
+  return tokens.find((token) => normalized.includes(token));
 }
 
-function isDocNotFoundError(response: JavaApiResponse<unknown>, errorMsg: string) {
-  return (
-    errorMsg.includes("DOC_NOT_FOUND") ||
-    errorMsg.includes("知识不存在") ||
-    errorMsg.includes("知识库不存在")
-  );
+function attachErrorCause(error: BadGatewayError, cause: unknown) {
+  if (cause instanceof Error) {
+    error.cause = cause;
+  }
+
+  return error;
 }
 
 function isJavaEnvelopeSuccessful(response: JavaApiResponse<unknown>) {

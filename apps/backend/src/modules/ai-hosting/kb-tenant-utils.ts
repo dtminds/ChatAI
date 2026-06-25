@@ -30,3 +30,17 @@ export async function resolveAgentKbUid(db: Kysely<Database>, subUserId: string)
 
   return subUser.uid;
 }
+
+export function parseRequiredNumericId(value: string, code: string, message: string) {
+  if (!/^\d+$/.test(value.trim())) {
+    throw new NotFoundError(code, message);
+  }
+
+  const parsed = Number(value);
+
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    throw new NotFoundError(code, message);
+  }
+
+  return parsed;
+}

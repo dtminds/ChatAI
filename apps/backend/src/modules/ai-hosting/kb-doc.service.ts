@@ -16,7 +16,7 @@ import {
   resolveVolcStrategyResourceId,
 } from "./kb-doc-strategy-mappers.js";
 import { resolveKbDocUrlForJava } from "./kb-doc-url.js";
-import { resolveAgentKbUid } from "./kb-tenant-utils.js";
+import { parseRequiredNumericId, resolveAgentKbUid } from "./kb-tenant-utils.js";
 
 export const KB_DOC_TYPE_FAQ = 1;
 export const KB_DOC_TYPE_DOCUMENT = 2;
@@ -324,18 +324,4 @@ export class KbDocService {
 
 function normalizeDocSuffix(value: string) {
   return value.trim().toLowerCase().replace(/^\./, "");
-}
-
-function parseRequiredNumericId(value: string, code: string, message: string) {
-  if (!/^\d+$/.test(value.trim())) {
-    throw new NotFoundError(code, message);
-  }
-
-  const parsed = Number(value);
-
-  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
-    throw new NotFoundError(code, message);
-  }
-
-  return parsed;
 }

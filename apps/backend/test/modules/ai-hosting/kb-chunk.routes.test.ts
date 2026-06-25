@@ -82,6 +82,40 @@ describe("ai-hosting kb-chunk routes", () => {
     fetchMock.mockRestore();
   });
 
+  it("rejects whitespace-only chunk content on create", async () => {
+    const fetchMock = mockJavaChunkFetch({
+      data: 601,
+      error: 0,
+      errorMsg: "",
+      success: true,
+    });
+    const context = await createAuthenticatedApp();
+    app = context.app;
+
+    const response = await app.inject({
+      headers: { authorization: context.authorization },
+      method: "POST",
+      payload: {
+        chunkType: "text",
+        content: "   ",
+        docId: "1001",
+        title: "切片标题",
+      },
+      url: "/api/server/ai-hosting/kb-chunks",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      error: {
+        code: "INVALID_KB_CHUNK_CONTENT",
+        message: "切片内容不能为空",
+      },
+      success: false,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    fetchMock.mockRestore();
+  });
+
   it("rejects manual chunk creation for image docs", async () => {
     const context = await createAuthenticatedApp();
     app = context.app;
@@ -142,6 +176,38 @@ describe("ai-hosting kb-chunk routes", () => {
       title: "更新后的标题",
       uid: 9001,
     });
+    fetchMock.mockRestore();
+  });
+
+  it("rejects whitespace-only chunk content on update", async () => {
+    const fetchMock = mockJavaChunkFetch({
+      data: true,
+      error: 0,
+      errorMsg: "",
+      success: true,
+    });
+    const context = await createAuthenticatedApp();
+    app = context.app;
+
+    const response = await app.inject({
+      headers: { authorization: context.authorization },
+      method: "POST",
+      payload: {
+        content: "   ",
+        title: "更新后的标题",
+      },
+      url: "/api/server/ai-hosting/kb-chunks/501/update",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      error: {
+        code: "INVALID_KB_CHUNK_CONTENT",
+        message: "切片内容不能为空",
+      },
+      success: false,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
     fetchMock.mockRestore();
   });
 

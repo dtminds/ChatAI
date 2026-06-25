@@ -49,10 +49,11 @@ export class KbChunkService {
 
     this.assertChunkTypeMatchesDoc(request, doc.doc_type);
     this.assertWritableTitle(request.title, request.chunkType);
+    const normalizedContent = this.assertWritableContent(request.content);
 
     const chunkId = await this.agentKbJavaClient.addKbChunk({
       chunkType: request.chunkType,
-      content: request.content.trim(),
+      content: normalizedContent,
       docId: docNumericId,
       operatorId: subUserId,
       title: request.title?.trim(),
@@ -96,9 +97,11 @@ export class KbChunkService {
       throw new BadRequestError("INVALID_KB_CHUNK_TITLE", "切片标题过长");
     }
 
+    const normalizedContent = this.assertWritableContent(request.content);
+
     await this.agentKbJavaClient.updateKbChunk({
       chunkId: chunkNumericId,
-      content: request.content.trim(),
+      content: normalizedContent,
       operatorId: subUserId,
       title: normalizedTitle,
       uid,
@@ -170,6 +173,16 @@ export class KbChunkService {
     if (chunkType === "faq" && !normalizedTitle) {
       throw new BadRequestError("INVALID_KB_CHUNK_TITLE", "问题不能为空");
     }
+  }
+
+  private assertWritableContent(content: string) {
+    const normalizedContent = content.trim();
+
+    if (!normalizedContent) {
+      throw new BadRequestError("INVALID_KB_CHUNK_CONTENT", "切片内容不能为空");
+    }
+
+    return normalizedContent;
   }
 
   private async getKbDocRow(uid: number, docId: number) {

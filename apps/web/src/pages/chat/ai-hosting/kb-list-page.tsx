@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/table-pagination";
 import { Textarea } from "@/components/ui/textarea";
 import { AiHostingLayout, AiHostingPageHeader } from "./ai-hosting-layout";
+import { KbTableLoadingRow } from "./kb-components/kb-table-loading-row";
 import { createKb, listKbs, toKbListViewItem } from "./api/kb-service";
 import type { KbListViewItem } from "./kb-types";
 
@@ -224,11 +225,7 @@ export function KbListPage() {
               </TableHeader>
               <TableBody>
                 {loading ? (
-                  <TableRow>
-                    <TableCell className="py-10 text-center text-sm text-muted-foreground" colSpan={5}>
-                      加载中
-                    </TableCell>
-                  </TableRow>
+                  <KbTableLoadingRow colSpan={5} />
                 ) : pagedItems.length > 0 ? (
                   pagedItems.map((item) => (
                     <TableRow key={item.id}>

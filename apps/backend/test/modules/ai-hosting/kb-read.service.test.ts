@@ -18,6 +18,15 @@ describe("KbReadService", () => {
     });
   });
 
+  it("allows loading up to 200 kbs for local picker searches", async () => {
+    const response = await service.listKbs("101", {
+      page: 1,
+      pageSize: 200,
+    });
+
+    expect(response.pagination.pageSize).toBe(200);
+  });
+
   it("filters docs by kb and maps sync status", async () => {
     const response = await service.listKbDocs("101", "1");
 

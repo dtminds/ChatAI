@@ -24,6 +24,7 @@ const dbActiveStatus = 1;
 const defaultPage = 1;
 const defaultPageSize = 10;
 const maxPageSize = 100;
+const maxKbListPageSize = 200;
 
 export class KbReadService {
   constructor(private readonly db: Kysely<Database>) {}
@@ -33,7 +34,7 @@ export class KbReadService {
     options: { page?: number; pageSize?: number; query?: string } = {},
   ): Promise<KbListResponse> {
     const uid = await resolveAgentKbUid(this.db, subUserId);
-    const pagination = normalizePagination(options);
+    const pagination = normalizePagination(options, maxKbListPageSize);
     const normalizedQuery = options.query?.trim();
 
     let query = this.db
@@ -314,12 +315,12 @@ export function createKbReadService(db: Kysely<Database>, _logger?: RequestAware
   return new KbReadService(db);
 }
 
-function normalizePagination(input: { page?: number; pageSize?: number }) {
+function normalizePagination(input: { page?: number; pageSize?: number }, maxSize = maxPageSize) {
   const page =
     Number.isInteger(input.page) && input.page && input.page > 0 ? input.page : defaultPage;
   const pageSize =
     Number.isInteger(input.pageSize) && input.pageSize && input.pageSize > 0
-      ? Math.min(input.pageSize, maxPageSize)
+      ? Math.min(input.pageSize, maxSize)
       : defaultPageSize;
 
   return { page, pageSize };

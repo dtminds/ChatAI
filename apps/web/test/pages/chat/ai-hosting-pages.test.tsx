@@ -1162,6 +1162,29 @@ describe("AI hosting pages", () => {
 
   it("inserts knowledge bases inline with conditional logic text", async () => {
     const user = userEvent.setup();
+    vi.mocked(kbService.listKbs).mockResolvedValue({
+      kbs: [
+        {
+          createdAt: "2026-06-20T08:00:00.000Z",
+          description: "",
+          kbId: "kb-real-skincare",
+          name: "真实护肤知识库",
+          updatedAt: "2026-06-20T08:00:00.000Z",
+        },
+        {
+          createdAt: "2026-06-20T08:00:00.000Z",
+          description: "",
+          kbId: "kb-real-makeup",
+          name: "真实彩妆知识库",
+          updatedAt: "2026-06-20T08:00:00.000Z",
+        },
+      ],
+      pagination: {
+        page: 1,
+        pageSize: 200,
+        total: 2,
+      },
+    });
 
     renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
 
@@ -1177,19 +1200,25 @@ describe("AI hosting pages", () => {
     await user.click(descriptionInput);
     await user.paste("111 ");
     await user.click(screen.getByRole("button", { name: "添加关联知识库" }));
-    await user.click(screen.getByRole("option", { name: "美妆知识大全" }));
+
+    const listbox = await screen.findByRole("listbox", { name: "选择知识库" });
+
+    expect(kbService.listKbs).toHaveBeenLastCalledWith({
+      page: 1,
+      pageSize: 200,
+    });
+    expect(screen.queryByRole("option", { name: "美妆知识大全" })).not.toBeInTheDocument();
+
+    await user.type(within(listbox).getByRole("textbox", { name: "搜索知识库" }), "彩妆");
+
+    expect(kbService.listKbs).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("option", { name: "真实护肤知识库" })).not.toBeInTheDocument();
+    await user.click(await screen.findByRole("option", { name: "真实彩妆知识库" }));
 
     const conditionalLogicGroup = screen.getByRole("group", { name: "条件逻辑" });
 
     expect(conditionalLogicGroup).toHaveTextContent("111");
-    expect(conditionalLogicGroup).toHaveTextContent("美妆知识大全");
-
-    await user.paste("xxx 333 ");
-    await user.click(screen.getByRole("button", { name: "添加关联知识库" }));
-    await user.click(screen.getByRole("option", { name: "彩妆精选" }));
-
-    expect(conditionalLogicGroup).toHaveTextContent("彩妆精选");
-    expect(conditionalLogicGroup).toHaveTextContent("xxx 333");
+    expect(conditionalLogicGroup).toHaveTextContent("真实彩妆知识库");
 
     await user.clear(screen.getByLabelText("Agent 名称"));
     await user.type(screen.getByLabelText("Agent 名称"), "新品小助理");
@@ -1200,10 +1229,44 @@ describe("AI hosting pages", () => {
         expect.objectContaining({
           promptConfig: expect.objectContaining({
             conditionLogic:
-              "111 {{kb:kb-skincare|%E7%BE%8E%E5%A6%86%E7%9F%A5%E8%AF%86%E5%A4%A7%E5%85%A8}} xxx 333 {{kb:kb-makeup|%E5%BD%A9%E5%A6%86%E7%B2%BE%E9%80%89}} ",
+              "111 {{kb:kb-real-makeup|%E7%9C%9F%E5%AE%9E%E5%BD%A9%E5%A6%86%E7%9F%A5%E8%AF%86%E5%BA%93}} ",
           }),
         }),
       );
+    });
+  });
+
+  it("closes the conditional logic knowledge base popover when clicking outside", async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(kbService.listKbs).mockResolvedValue({
+      kbs: [
+        {
+          createdAt: "2026-06-20T08:00:00.000Z",
+          description: "",
+          kbId: "kb-real-skincare",
+          name: "真实护肤知识库",
+          updatedAt: "2026-06-20T08:00:00.000Z",
+        },
+      ],
+      pagination: {
+        page: 1,
+        pageSize: 200,
+        total: 1,
+      },
+    });
+
+    renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
+
+    await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
+    await user.click(screen.getByRole("button", { name: "添加关联知识库" }));
+
+    expect(await screen.findByRole("listbox", { name: "选择知识库" })).toBeInTheDocument();
+
+    await user.click(screen.getByLabelText("Agent 名称"));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("listbox", { name: "选择知识库" })).not.toBeInTheDocument();
     });
   });
 

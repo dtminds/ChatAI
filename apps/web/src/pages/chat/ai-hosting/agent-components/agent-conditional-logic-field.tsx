@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Add01Icon, AiBookIcon, Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
@@ -8,8 +8,12 @@ import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin";
 import type { LexicalEditor } from "lexical";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Spinner } from "@/components/ui/spinner";
+import { isRequestError } from "@/lib/request";
 import { cn } from "@/lib/utils";
+import { listKbs } from "../api/kb-service";
 import { INSERT_CONDITIONAL_LOGIC_KNOWLEDGE_BASE_COMMAND } from "./agent-conditional-logic-lexical-commands";
 import { KnowledgeBaseChipNode } from "./agent-conditional-logic-lexical-nodes";
 import { ConditionalLogicRuntimePlugin } from "./agent-conditional-logic-lexical-plugins";
@@ -18,11 +22,12 @@ import {
   normalizeConditionalLogicSegments,
 } from "./agent-conditional-logic-lexical-utils";
 import {
-  mockKnowledgeBaseOptions,
   type ConditionalLogicSegment,
   type KnowledgeBaseOption,
 } from "./agent-settings.constants";
 import "./agent-conditional-logic.css";
+
+const knowledgeBasePickerPageSize = 200;
 
 export function AgentConditionalLogicField({
   disabled = false,
@@ -35,7 +40,12 @@ export function AgentConditionalLogicField({
 }) {
   const [open, setOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBaseOption[]>([]);
+  const [knowledgeBasesLoaded, setKnowledgeBasesLoaded] = useState(false);
+  const [knowledgeBasesLoading, setKnowledgeBasesLoading] = useState(false);
+  const [knowledgeBasesError, setKnowledgeBasesError] = useState("");
   const editorRef = useRef<LexicalEditor | null>(null);
+  const isMountedRef = useRef(false);
 
   const normalizedSegments = useMemo(
     () => normalizeConditionalLogicSegments(segments),
@@ -48,13 +58,13 @@ export function AgentConditionalLogicField({
     const normalizedQuery = searchQuery.trim().toLowerCase();
 
     if (!normalizedQuery) {
-      return mockKnowledgeBaseOptions;
+      return knowledgeBases;
     }
 
-    return mockKnowledgeBaseOptions.filter((knowledgeBase) =>
+    return knowledgeBases.filter((knowledgeBase) =>
       knowledgeBase.name.toLowerCase().includes(normalizedQuery),
     );
-  }, [searchQuery]);
+  }, [knowledgeBases, searchQuery]);
 
   const editorConfig = useMemo(
     () => ({
@@ -73,6 +83,64 @@ export function AgentConditionalLogicField({
   function registerEditor(editor: LexicalEditor | null) {
     editorRef.current = editor;
   }
+
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  const loadKnowledgeBases = useCallback(async () => {
+    setKnowledgeBasesLoading(true);
+    setKnowledgeBasesError("");
+
+    try {
+      const response = await listKbs({
+        page: 1,
+        pageSize: knowledgeBasePickerPageSize,
+      });
+
+      if (!isMountedRef.current) {
+        return;
+      }
+
+      setKnowledgeBases(
+        response.kbs.map((knowledgeBase) => ({
+          id: knowledgeBase.kbId,
+          name: knowledgeBase.name,
+        })),
+      );
+      setKnowledgeBasesLoaded(true);
+    } catch (error) {
+      if (!isMountedRef.current) {
+        return;
+      }
+
+      setKnowledgeBasesError(
+        isRequestError(error) ? error.message : "知识库加载失败",
+      );
+    } finally {
+      if (isMountedRef.current) {
+        setKnowledgeBasesLoading(false);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!open || knowledgeBasesLoaded || knowledgeBasesLoading || knowledgeBasesError) {
+      return;
+    }
+
+    void loadKnowledgeBases();
+  }, [
+    knowledgeBasesError,
+    knowledgeBasesLoaded,
+    knowledgeBasesLoading,
+    loadKnowledgeBases,
+    open,
+  ]);
 
   useEffect(() => {
     if (disabled) {
@@ -104,74 +172,100 @@ export function AgentConditionalLogicField({
       role="group"
     >
       <div className="relative min-h-24 text-sm leading-7 text-foreground">
-        <span className="absolute left-0 top-0 z-10">
-          <Button
-            aria-expanded={open}
-            aria-label="添加关联知识库"
-            className="size-7 rounded-full border border-border bg-background text-muted-foreground hover:bg-muted/40"
-            disabled={disabled}
-            onClick={() => setOpen((currentOpen) => !currentOpen)}
-            onMouseDown={(event) => {
-              event.preventDefault();
-            }}
-            size="icon"
-            type="button"
-            variant="ghost"
-          >
-            <HugeiconsIcon icon={Add01Icon} size={14} strokeWidth={1.8} />
-          </Button>
-        </span>
+        <Popover
+          modal={false}
+          onOpenChange={(nextOpen) => {
+            setOpen(nextOpen);
+            if (!nextOpen) {
+              setSearchQuery("");
+            }
+          }}
+          open={open}
+        >
+          <PopoverTrigger asChild>
+            <Button
+              aria-expanded={open}
+              aria-label="添加关联知识库"
+              className="absolute left-0 top-0 z-10 size-7 rounded-full border border-border bg-background text-muted-foreground hover:bg-muted/40"
+              disabled={disabled}
+              onMouseDown={(event) => {
+                event.preventDefault();
+              }}
+              size="icon"
+              type="button"
+              variant="ghost"
+            >
+              <HugeiconsIcon icon={Add01Icon} size={14} strokeWidth={1.8} />
+            </Button>
+          </PopoverTrigger>
 
-        {open ? (
-          <div
-            aria-label="选择知识库"
-            className="absolute left-0 top-8 z-30 w-[280px] rounded-[8px] border border-border bg-popover p-0 shadow-[0_10px_28px_var(--shadow-soft)]"
-            role="listbox"
+          <PopoverContent
+            align="start"
+            className="w-[280px] rounded-[8px] p-0"
+            onOpenAutoFocus={(event) => event.preventDefault()}
+            sideOffset={8}
           >
-            <div className="border-b border-border p-2">
-              <div className="relative">
-                <HugeiconsIcon
-                  className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
-                  icon={Search01Icon}
-                  size={15}
-                  strokeWidth={1.8}
-                />
-                <Input
-                  aria-label="搜索知识库"
-                  className="h-9 rounded-[8px] pl-8"
-                  onChange={(event) => setSearchQuery(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Escape") {
-                      setOpen(false);
-                      setSearchQuery("");
-                      editorRef.current?.focus();
-                    }
-                  }}
-                  placeholder="搜索"
-                  value={searchQuery}
-                />
+            <div aria-label="选择知识库" role="listbox">
+              <div className="border-b border-border p-2">
+                <div className="relative">
+                  <HugeiconsIcon
+                    className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+                    icon={Search01Icon}
+                    size={15}
+                    strokeWidth={1.8}
+                  />
+                  <Input
+                    aria-label="搜索知识库"
+                    className="h-9 rounded-[8px] pl-8"
+                    onChange={(event) => setSearchQuery(event.target.value)}
+                    placeholder="搜索"
+                    value={searchQuery}
+                  />
+                </div>
               </div>
+
+              <ScrollArea className="max-h-72">
+                <div className="p-1">
+                  {knowledgeBasesLoading ? (
+                    <div
+                      aria-label="正在加载"
+                      className="flex items-center justify-center gap-2 px-3 py-6 text-sm text-muted-foreground"
+                      role="status"
+                    >
+                      <Spinner aria-hidden="true" size={14} />
+                      <span>正在加载</span>
+                    </div>
+                  ) : knowledgeBasesError ? (
+                    <div className="space-y-3 px-3 py-5 text-center">
+                      <p className="text-sm text-muted-foreground">{knowledgeBasesError}</p>
+                      <Button
+                        className="h-8 rounded-[8px] px-3"
+                        onClick={() => void loadKnowledgeBases()}
+                        size="sm"
+                        type="button"
+                        variant="outline"
+                      >
+                        重试
+                      </Button>
+                    </div>
+                  ) : filteredKnowledgeBases.length === 0 ? (
+                    <p className="px-3 py-6 text-center text-sm text-muted-foreground">
+                      未找到匹配知识库
+                    </p>
+                  ) : (
+                    filteredKnowledgeBases.map((knowledgeBase) => (
+                      <KnowledgeBaseOptionRow
+                        key={knowledgeBase.id}
+                        knowledgeBase={knowledgeBase}
+                        onSelect={() => insertKnowledgeBase(knowledgeBase)}
+                      />
+                    ))
+                  )}
+                </div>
+              </ScrollArea>
             </div>
-
-            <ScrollArea className="max-h-56">
-              <div className="p-1">
-                {filteredKnowledgeBases.length === 0 ? (
-                  <p className="px-3 py-6 text-center text-sm text-muted-foreground">
-                    未找到匹配知识库
-                  </p>
-                ) : (
-                  filteredKnowledgeBases.map((knowledgeBase) => (
-                    <KnowledgeBaseOptionRow
-                      key={knowledgeBase.id}
-                      knowledgeBase={knowledgeBase}
-                      onSelect={() => insertKnowledgeBase(knowledgeBase)}
-                    />
-                  ))
-                )}
-              </div>
-            </ScrollArea>
-          </div>
-        ) : null}
+          </PopoverContent>
+        </Popover>
 
         <LexicalComposer initialConfig={editorConfig}>
           <PlainTextPlugin

@@ -38,6 +38,23 @@ describe("FileMessageCard", () => {
     expect(screen.queryByText(extension)).not.toBeInTheDocument();
   });
 
+  it("resolves compound extensions like .faq.xlsx to the last segment", () => {
+    render(
+      <FileMessageCard
+        content={{
+          ...createFileContent(),
+          extension: ".faq.xlsx",
+          fileName: "问答表.faq.xlsx",
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("img", { name: "Excel 文件" })).toHaveAttribute(
+      "src",
+      "https://b5.bokr.com.cn/dist/excel.png",
+    );
+  });
+
   it("renders the default file icon for unknown extensions", () => {
     render(
       <FileMessageCard

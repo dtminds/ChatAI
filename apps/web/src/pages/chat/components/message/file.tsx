@@ -181,5 +181,8 @@ function getFileTypeIcon(extension: string | null | undefined) {
     return undefined;
   }
 
-  return FILE_TYPE_ICON_BY_EXTENSION[extension.trim().toLowerCase()];
+  const trimmed = extension.trim().toLowerCase();
+  const lastSegment = trimmed.split(".").pop() ?? trimmed;
+
+  return FILE_TYPE_ICON_BY_EXTENSION[lastSegment];
 }

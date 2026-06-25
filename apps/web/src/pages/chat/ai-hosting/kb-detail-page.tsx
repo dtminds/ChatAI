@@ -3,10 +3,7 @@ import {
   Add01Icon,
   AlertCircleIcon,
   ArrowLeft01Icon,
-  ChatQuestion01Icon,
   CheckmarkCircle02Icon,
-  FileAttachmentIcon,
-  FileImageIcon,
   Search01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -79,19 +76,19 @@ function useDebouncedValue<T>(value: T, delayMs: number) {
 const addKnowledgeOptions = [
   {
     description: "上传问答表格，批量导入精准知识",
-    icon: ChatQuestion01Icon,
+    imgSrc: "https://b5.bokr.com.cn/dist/excel.png",
     label: "问答",
     type: "qa",
   },
   {
     description: "上传图片并添加描述，按描述精准召回",
-    icon: FileImageIcon,
+    imgSrc: "https://b5.bokr.com.cn/dist/image.png",
     label: "图片",
     type: "image",
   },
   {
     description: "自动解析文档内容，效果取决于文档质量",
-    icon: FileAttachmentIcon,
+    imgSrc: "https://b5.bokr.com.cn/dist/file.png",
     label: "文档",
     type: "document",
   },
@@ -476,13 +473,12 @@ function renderAddKnowledgeOption(
         }
       }}
     >
-      <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-[8px] bg-muted text-muted-foreground">
-        <HugeiconsIcon
-          color="currentColor"
+      <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-[8px] bg-muted">
+        <img
+          alt={option.label}
+          className="size-6 object-contain"
           data-testid="knowledge-add-option-icon"
-          icon={option.icon}
-          size={17}
-          strokeWidth={1.8}
+          src={option.imgSrc}
         />
       </span>
       <span className="min-w-0">

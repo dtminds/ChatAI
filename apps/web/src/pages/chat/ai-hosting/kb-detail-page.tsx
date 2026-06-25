@@ -50,6 +50,7 @@ import {
 } from "@/components/ui/table-pagination";
 import { FileExtensionBadge } from "@/pages/chat/components/message/file";
 import { AiHostingLayout, AiHostingPageHeader } from "./ai-hosting-layout";
+import { KbTableLoadingRow } from "./kb-components/kb-table-loading-row";
 import { ImportDocumentDialog } from "./kb-components/import-document-dialog";
 import { ImportImageDialog } from "./kb-components/import-image-dialog";
 import { ImportQaDialog } from "./kb-components/import-qa-dialog";
@@ -133,6 +134,7 @@ export function KbDetailPage() {
   const [records, setRecords] = useState<KbDocViewItem[]>([]);
   const [total, setTotal] = useState(0);
   const [loadingKb, setLoadingKb] = useState(true);
+  const [loadingDocs, setLoadingDocs] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const debouncedSearchQuery = useDebouncedValue(searchQuery, 300);
   const [currentPage, setCurrentPage] = useState(1);
@@ -158,6 +160,7 @@ export function KbDetailPage() {
     }
 
     const version = ++requestVersionRef.current;
+    setLoadingDocs(true);
 
     try {
       const response = await listKbDocs(kbId, {
@@ -179,6 +182,10 @@ export function KbDetailPage() {
 
       setRecords([]);
       setTotal(0);
+    } finally {
+      if (version === requestVersionRef.current) {
+        setLoadingDocs(false);
+      }
     }
   }, [currentPage, debouncedSearchQuery, kbId]);
 
@@ -244,6 +251,7 @@ export function KbDetailPage() {
     total,
   });
   const pagedRecords = records;
+  const recordsLoading = loadingKb || loadingDocs;
 
   async function handleConfirmDelete() {
     if (!deleteRecord || deleting) {
@@ -273,15 +281,7 @@ export function KbDetailPage() {
     }
   }
 
-  if (loadingKb) {
-    return (
-      <AiHostingLayout title="知识库">
-        <div className="py-16 text-center text-sm text-muted-foreground">加载中</div>
-      </AiHostingLayout>
-    );
-  }
-
-  if (!knowledgeBase) {
+  if (!loadingKb && !knowledgeBase) {
     return (
       <AiHostingLayout title="知识库不存在">
         <div className="space-y-6">
@@ -298,13 +298,13 @@ export function KbDetailPage() {
   }
 
   return (
-    <AiHostingLayout title={knowledgeBase.name}>
+    <AiHostingLayout title={knowledgeBase?.name ?? "知识库"}>
       <div className="space-y-6">
         <div aria-label="知识库管理头部" className="space-y-3">
           <BackToKbListButton />
           <AiHostingPageHeader
-            description={knowledgeBase.description}
-            title={knowledgeBase.name}
+            description={knowledgeBase?.description}
+            title={knowledgeBase?.name ?? "知识库"}
           />
         </div>
 
@@ -339,7 +339,8 @@ export function KbDetailPage() {
 
           <div>
             <KnowledgeRecordsTable
-              kbId={knowledgeBase.id}
+              kbId={knowledgeBase?.id ?? kbId}
+              loading={recordsLoading}
               onDelete={setDeleteRecord}
               records={pagedRecords}
             />
@@ -498,10 +499,12 @@ function renderAddKnowledgeOption(
 
 function KnowledgeRecordsTable({
   kbId,
+  loading,
   onDelete,
   records,
 }: {
   kbId: string;
+  loading: boolean;
   onDelete: (record: KbDocViewItem) => void;
   records: KbDocViewItem[];
 }) {
@@ -521,7 +524,9 @@ function KnowledgeRecordsTable({
         </TableRow>
       </TableHeader>
       <TableBody>
-        {records.length > 0 ? (
+        {loading ? (
+          <KbTableLoadingRow colSpan={7} />
+        ) : records.length > 0 ? (
           records.map((record) => (
             <TableRow key={record.id}>
               <TableCell className="px-4 py-4" title={record.name}>

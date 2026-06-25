@@ -9,6 +9,7 @@ import type { Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
 import {
   BadRequestError,
+  ForbiddenError,
   NotFoundError,
 } from "../../shared/errors.js";
 import type { AgentKbJavaClient } from "./agent-kb-java-client.js";
@@ -20,6 +21,7 @@ import {
 import { parseRequiredNumericId, resolveAgentKbUid } from "./kb-tenant-utils.js";
 
 const KB_CHUNK_TITLE_MAX_LENGTH = 256;
+const KB_CHUNK_SOURCE_SYSTEM = 2;
 const dbActiveStatus = 1;
 
 type KbChunkServiceLogger = {
@@ -83,6 +85,10 @@ export class KbChunkService {
 
     if (!chunk) {
       throw new NotFoundError("KB_CHUNK_NOT_FOUND", "切片不存在");
+    }
+
+    if (chunk.source === KB_CHUNK_SOURCE_SYSTEM) {
+      throw new ForbiddenError("KB_CHUNK_NOT_EDITABLE", "系统切片不可编辑");
     }
 
     const normalizedTitle = request.title?.trim();
@@ -179,7 +185,7 @@ export class KbChunkService {
   private async getKbChunkRow(uid: number, chunkId: number) {
     return this.db
       .selectFrom("xy_wap_embed_agent_kb_chunk")
-      .select(["id"])
+      .select(["id", "source"])
       .where("id", "=", chunkId)
       .where("uid", "=", uid)
       .where("status", "=", dbActiveStatus)

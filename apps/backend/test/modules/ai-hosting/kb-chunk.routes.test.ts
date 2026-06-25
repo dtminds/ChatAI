@@ -145,7 +145,7 @@ describe("ai-hosting kb-chunk routes", () => {
     fetchMock.mockRestore();
   });
 
-  it("updates system chunks via Java", async () => {
+  it("rejects system chunk updates before calling Java", async () => {
     const fetchMock = mockJavaChunkFetch({
       data: true,
       error: 0,
@@ -165,11 +165,15 @@ describe("ai-hosting kb-chunk routes", () => {
       url: "/api/server/ai-hosting/kb-chunks/502/update",
     });
 
-    expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({
-      data: { updated: true },
-      success: true,
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({
+      error: {
+        code: "KB_CHUNK_NOT_EDITABLE",
+        message: "系统切片不可编辑",
+      },
+      success: false,
     });
+    expect(fetchMock).not.toHaveBeenCalled();
     fetchMock.mockRestore();
   });
 

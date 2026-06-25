@@ -40,6 +40,7 @@ import { AiHostingLayout, AiHostingPageHeader } from "./ai-hosting-layout";
 import { AddChunkDialog } from "./kb-components/add-chunk-dialog";
 import { ChunkImagePreview } from "./kb-components/chunk-image-preview";
 import { EditChunkDialog } from "./kb-components/edit-chunk-dialog";
+import { KbTableLoadingRow } from "./kb-components/kb-table-loading-row";
 import {
   createKbChunk,
   deleteKbChunk,
@@ -77,7 +78,8 @@ export function KbDocDetailPage() {
   const [doc, setDoc] = useState<KbDocViewItem | null>(null);
   const [chunks, setChunks] = useState<KbDocChunkViewItem[]>([]);
   const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [loadingPage, setLoadingPage] = useState(true);
+  const [loadingChunks, setLoadingChunks] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
@@ -104,6 +106,7 @@ export function KbDocDetailPage() {
     }
 
     const version = ++requestVersionRef.current;
+    setLoadingChunks(true);
 
     try {
       const response = await listKbDocChunks(docId, {
@@ -129,6 +132,10 @@ export function KbDocDetailPage() {
 
       setChunks([]);
       setTotal(0);
+    } finally {
+      if (version === requestVersionRef.current) {
+        setLoadingChunks(false);
+      }
     }
   }, [currentPage, debouncedSearchQuery, doc, docId]);
 
@@ -145,11 +152,11 @@ export function KbDocDetailPage() {
       if (!docId || !kbId) {
         setKnowledgeBase(null);
         setDoc(null);
-        setLoading(false);
+        setLoadingPage(false);
         return;
       }
 
-      setLoading(true);
+      setLoadingPage(true);
 
       try {
         const [kb, docDetail] = await Promise.all([getKb(kbId), getKbDoc(docId)]);
@@ -176,7 +183,7 @@ export function KbDocDetailPage() {
         }
       } finally {
         if (!cancelled) {
-          setLoading(false);
+          setLoadingPage(false);
         }
       }
     }
@@ -189,12 +196,12 @@ export function KbDocDetailPage() {
   }, [docId, kbId]);
 
   useEffect(() => {
-    if (!doc || loading) {
+    if (!doc || loadingPage) {
       return;
     }
 
     void loadChunks();
-  }, [doc, loadChunks, loading]);
+  }, [doc, loadChunks, loadingPage]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -312,15 +319,7 @@ export function KbDocDetailPage() {
     }
   }
 
-  if (loading) {
-    return (
-      <AiHostingLayout title="文档">
-        <div className="py-16 text-center text-sm text-muted-foreground">加载中</div>
-      </AiHostingLayout>
-    );
-  }
-
-  if (!knowledgeBase || !doc || doc.kbId !== knowledgeBase.id) {
+  if (!loadingPage && (!knowledgeBase || !doc || doc.kbId !== knowledgeBase.id)) {
     return (
       <AiHostingLayout title="文档不存在">
         <div className="space-y-6">
@@ -334,11 +333,11 @@ export function KbDocDetailPage() {
     );
   }
 
-  if (doc.status !== "completed") {
+  if (!loadingPage && doc && doc.status !== "completed") {
     return (
       <AiHostingLayout title={doc.name}>
         <div className="space-y-6">
-          <BackToKnowledgeListButton kbId={knowledgeBase.id} />
+          <BackToKnowledgeListButton kbId={knowledgeBase?.id ?? doc.kbId} />
           <div className="py-16 text-center">
             <h1 className="text-lg font-semibold text-foreground">文档尚未解析完成</h1>
             <p className="mt-2 text-sm text-muted-foreground">请等待解析完成后再查看切片</p>
@@ -349,16 +348,16 @@ export function KbDocDetailPage() {
   }
 
   return (
-    <AiHostingLayout title={doc.name}>
+    <AiHostingLayout title={doc?.name ?? "文档"}>
       <div className="space-y-6">
         <div aria-label="文档切片头部" className="space-y-3">
           <BackToKnowledgeListButton
-            kbId={knowledgeBase.id}
-            label={knowledgeBase.name}
+            kbId={knowledgeBase?.id ?? kbId}
+            label={knowledgeBase?.name}
           />
           <AiHostingPageHeader
-            title={<KnowledgeDocTitle doc={doc} />}
-            titleAriaLabel={doc.name}
+            title={doc ? <KnowledgeDocTitle doc={doc} /> : "文档"}
+            titleAriaLabel={doc?.name ?? "文档"}
           />
         </div>
 
@@ -375,6 +374,7 @@ export function KbDocDetailPage() {
               <Input
                 aria-label="搜索切片标题"
                 className="h-10 rounded-[8px] pl-9"
+                disabled={loadingPage || !doc || doc.status !== "completed"}
                 onChange={(event) => {
                   setSearchQuery(event.target.value);
                 }}
@@ -383,17 +383,20 @@ export function KbDocDetailPage() {
               />
             </div>
 
-            <AddChunkActions
-              doc={doc}
-              onAddDoc={() => setAddDocDialogOpen(true)}
-              onAddQa={() => setAddQaDialogOpen(true)}
-            />
+            {doc && doc.status === "completed" ? (
+              <AddChunkActions
+                doc={doc}
+                onAddDoc={() => setAddDocDialogOpen(true)}
+                onAddQa={() => setAddQaDialogOpen(true)}
+              />
+            ) : null}
           </div>
 
           <div>
             <KnowledgeChunksTable
               chunks={chunks}
-              docType={doc.type}
+              docType={doc?.type ?? "document"}
+              loading={loadingPage || loadingChunks}
               onDelete={setDeleteChunk}
               onEdit={setEditChunk}
             />
@@ -512,11 +515,13 @@ function AddChunkActions({
 function KnowledgeChunksTable({
   chunks,
   docType,
+  loading,
   onDelete,
   onEdit,
 }: {
   chunks: KbDocChunkViewItem[];
   docType: KbDocType;
+  loading: boolean;
   onDelete: (chunk: KbDocChunkViewItem) => void;
   onEdit: (chunk: KbDocChunkViewItem) => void;
 }) {
@@ -543,7 +548,9 @@ function KnowledgeChunksTable({
         </TableRow>
       </TableHeader>
       <TableBody>
-        {chunks.length > 0 ? (
+        {loading ? (
+          <KbTableLoadingRow colSpan={3} />
+        ) : chunks.length > 0 ? (
           chunks.map((chunk) => (
             <TableRow key={chunk.id}>
               {isQa ? (

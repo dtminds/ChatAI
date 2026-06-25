@@ -2,6 +2,7 @@ import type { ReactElement } from "react";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
+import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentManagementPage } from "@/pages/chat/ai-hosting/agent-management-page";
 import { AgentHostingSettingsPage } from "@/pages/chat/ai-hosting/agent-hosting-settings-page";
@@ -84,6 +85,19 @@ vi.mock("@/pages/chat/ai-hosting/api/kb-chunk-service", () => ({
   deleteKbChunk: deleteKbChunkMock,
   updateKbChunk: updateKbChunkMock,
 }));
+
+vi.mock("sonner", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("sonner")>();
+
+  return {
+    ...actual,
+    toast: {
+      ...actual.toast,
+      error: vi.fn(),
+      success: vi.fn(),
+    },
+  };
+});
 
 let mockImageDimensions = { height: 800, width: 800 };
 
@@ -244,6 +258,8 @@ describe("AI hosting pages", () => {
   beforeEach(() => {
     mockSession();
     resetMockKbData();
+    vi.mocked(toast.error).mockClear();
+    vi.mocked(toast.success).mockClear();
     vi.mocked(agentService.listAiHostingAgents).mockResolvedValue({
       agents: mockAgents,
       pagination: {
@@ -2086,6 +2102,7 @@ describe("AI hosting pages", () => {
       expect(within(dialog).getByLabelText(/问题/)).toHaveValue("支持 NFC 吗");
       expect(within(dialog).getByLabelText(/答案/)).toHaveValue("支持，可在设置中开启");
       expect(createKbChunkMock).toHaveBeenCalled();
+      expect(toast.error).toHaveBeenCalledWith("submit failed");
   });
 
   it("edits a QA chunk on the chunk detail page", async () => {
@@ -2111,6 +2128,26 @@ describe("AI hosting pages", () => {
     expect(screen.queryByRole("dialog", { name: "编辑切片" })).not.toBeInTheDocument();
   });
 
+  it("shows an error toast when editing a chunk fails", async () => {
+    const user = userEvent.setup();
+    updateKbChunkMock.mockRejectedValueOnce(new Error("系统切片不可编辑"));
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-3",
+      <KbDocDetailPage />,
+      "/chat/ai-hosting/kb/:kbId/docs/:docId",
+    );
+
+    await screen.findByText("如何恢复出厂设置");
+    await user.click(screen.getAllByRole("button", { name: "编辑" })[0]);
+
+    const dialog = screen.getByRole("dialog", { name: "编辑切片" });
+    await user.click(within(dialog).getByRole("button", { name: "保存" }));
+
+    expect(dialog).toBeInTheDocument();
+    expect(toast.error).toHaveBeenCalledWith("系统切片不可编辑");
+  });
+
   it("renders the document chunk detail page and adds a chunk", async () => {
     const user = userEvent.setup();
 
@@ -2131,6 +2168,7 @@ describe("AI hosting pages", () => {
     expect(screen.getByText("切片标题")).toBeInTheDocument();
     expect(screen.getByText("切片内容")).toBeInTheDocument();
     expect(screen.getByText("第一章 产品介绍")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "编辑" })).toHaveLength(2);
 
     const addChunkButton = screen.getByRole("button", { name: "添加切片" });
     await user.click(addChunkButton);
@@ -2161,7 +2199,7 @@ describe("AI hosting pages", () => {
     expect(screen.queryByText("图片 · 华为产品知识")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "添加切片" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "添加问答" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "编辑" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "编辑" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "删除" })).toBeInTheDocument();
     expect(screen.getByRole("table", { name: "切片列表" })).toHaveTextContent("产品宣传图");
   });

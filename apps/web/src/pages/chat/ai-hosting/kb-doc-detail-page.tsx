@@ -41,6 +41,7 @@ import { AddChunkDialog } from "./kb-components/add-chunk-dialog";
 import { ChunkImagePreview } from "./kb-components/chunk-image-preview";
 import { EditChunkDialog } from "./kb-components/edit-chunk-dialog";
 import { KbTableLoadingRow } from "./kb-components/kb-table-loading-row";
+import { resolveKbRequestErrorMessage } from "./kb-components/shared";
 import {
   createKbChunk,
   deleteKbChunk,
@@ -312,9 +313,9 @@ export function KbDocDetailPage() {
       if (isMountedRef.current) {
         toast.success("已删除切片");
       }
-    } catch {
+    } catch (error) {
       if (isMountedRef.current) {
-        toast.error("删除失败，请稍后重试");
+        toast.error(resolveKbRequestErrorMessage(error, "删除失败，请稍后重试"));
       }
     }
   }
@@ -580,14 +581,16 @@ function KnowledgeChunksTable({
               )}
               <TablePinnedCell className="whitespace-nowrap px-4 py-4 text-right">
                 <div className="flex items-center justify-end gap-3">
-                  <Button
-                    className="h-auto p-0 text-primary"
-                    onClick={() => onEdit(chunk)}
-                    type="button"
-                    variant="link"
-                  >
-                    编辑
-                  </Button>
+                  {chunk.source !== "system" ? (
+                    <Button
+                      className="h-auto p-0 text-primary"
+                      onClick={() => onEdit(chunk)}
+                      type="button"
+                      variant="link"
+                    >
+                      编辑
+                    </Button>
+                  ) : null}
                   <Button
                     className="h-auto p-0 text-primary"
                     onClick={() => onDelete(chunk)}

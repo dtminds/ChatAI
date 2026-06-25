@@ -3710,6 +3710,64 @@ describe("WorkbenchRepository", () => {
     expect(conversationQueryBuilders[0].joins).toEqual([]);
   });
 
+  it("does not snapshot-filter the initial conversation list by last message time", async () => {
+    const conversationQueryBuilders: Array<ReturnType<typeof createQueryBuilder>> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_user_seat") {
+            return createQueryBuilder({
+              id: 12,
+              platform: 5,
+              third_userid: "seat-user-001",
+              uid: 9001,
+            });
+          }
+
+          if (table === "xy_wap_embed_conversation as conversation") {
+            const query = createQueryBuilder([
+              createConversationRow({
+                chat_type: 2,
+                id: 165,
+                last_msgtime: null,
+                third_external_userid: "",
+                third_group_id: "group-001",
+                unread_cnt: 4,
+              }),
+            ]);
+            conversationQueryBuilders.push(query);
+
+            return query;
+          }
+
+          if (
+            table === "xy_wap_embed_msg_audit_info" ||
+            table === "xy_wap_embed_contact" ||
+            table === "xy_wap_embed_customer_bind_relation" ||
+            table === "xy_wap_embed_group_seat"
+          ) {
+            return createQueryBuilder([]);
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    const page = await repository.listConversations("12", {
+      limit: 30,
+      mode: "group",
+    });
+
+    expect(page.items).toEqual([
+      expect.objectContaining({
+        conversationId: "165",
+        mode: "group",
+        unreadCount: 4,
+      }),
+    ]);
+  });
+
   it("applies stable cursor ordering and keyset bounds to conversation lists", async () => {
     const conversationQueryBuilders: Array<ReturnType<typeof createQueryBuilder>> = [];
     const repository = new WorkbenchRepository(

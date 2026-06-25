@@ -3265,8 +3265,7 @@ export class WorkbenchRepository {
       .where("conversation.uid", "=", seat.uid)
       .where("conversation.platform", "=", seat.platform)
       .where("conversation.third_userid", "=", seat.third_userid)
-      .where("conversation.biz_status", "=", 1)
-      .where("conversation.last_msgtime", "<=", snapshotAt);
+      .where("conversation.biz_status", "=", 1);
 
     if (options?.mode) {
       query = query.where(
@@ -3277,15 +3276,17 @@ export class WorkbenchRepository {
     }
 
     if (cursor) {
-      query = query.where((expressionBuilder) =>
-        expressionBuilder.or([
-          expressionBuilder("conversation.last_msgtime", "<", cursor.lastMsgTime),
-          expressionBuilder.and([
-            expressionBuilder("conversation.last_msgtime", "=", cursor.lastMsgTime),
-            expressionBuilder("conversation.id", "<", asSchemaBigIntId(cursor.id)),
+      query = query
+        .where("conversation.last_msgtime", "<=", snapshotAt)
+        .where((expressionBuilder) =>
+          expressionBuilder.or([
+            expressionBuilder("conversation.last_msgtime", "<", cursor.lastMsgTime),
+            expressionBuilder.and([
+              expressionBuilder("conversation.last_msgtime", "=", cursor.lastMsgTime),
+              expressionBuilder("conversation.id", "<", asSchemaBigIntId(cursor.id)),
+            ]),
           ]),
-        ]),
-      )
+        )
         .orderBy("conversation.last_msgtime", "desc")
         .orderBy("conversation.id", "desc");
     } else {

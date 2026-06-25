@@ -2119,6 +2119,7 @@ describe("AI hosting pages", () => {
 
     const dialog = screen.getByRole("dialog", { name: "编辑切片" });
     const questionField = within(dialog).getByLabelText(/问题/);
+    expect(questionField.tagName).toBe("TEXTAREA");
     await user.clear(questionField);
     await user.type(questionField, "如何重置手机");
     await user.click(within(dialog).getByRole("button", { name: "保存" }));

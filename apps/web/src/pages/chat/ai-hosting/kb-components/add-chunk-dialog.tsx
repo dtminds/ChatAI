@@ -7,7 +7,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { CHUNK_FIRST_FIELD_MAX_LENGTH, CHUNK_SECOND_FIELD_MAX_LENGTH, useDialogSubmit } from "./shared";
@@ -71,11 +70,13 @@ export function AddChunkDialog({
             <Label htmlFor={firstFieldId}>
               {firstFieldLabel} <span className="text-destructive">*</span>
             </Label>
-            <Input
+            <Textarea
+              className="min-h-0 resize-none"
               id={firstFieldId}
               maxLength={CHUNK_FIRST_FIELD_MAX_LENGTH}
               onChange={(event) => setFirst(event.target.value)}
               placeholder="请输入"
+              rows={2}
               value={first}
             />
           </div>

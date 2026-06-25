@@ -7,7 +7,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import type { KbDocChunkViewItem } from "../kb-types";
@@ -96,32 +95,38 @@ export function EditChunkDialog({
 
   return (
     <Dialog onOpenChange={handleOpenChange} open={open}>
-      <DialogContent className="flex h-[470px] w-[700px] max-w-[700px] flex-col">
+      <DialogContent className="max-w-[760px]">
         <DialogHeader>
           <DialogTitle>编辑切片</DialogTitle>
         </DialogHeader>
 
-        <div className="min-h-0 flex-1 overflow-y-auto">
         {chunk?.type === "qa" ? (
-          <div className="flex h-full flex-col gap-4 py-2">
+          <div className="space-y-5 py-3">
             <div className="space-y-2">
               <Label htmlFor="edit-chunk-question">
                 问题 <span className="text-destructive">*</span>
               </Label>
               <Textarea
+                className="min-h-0 resize-none"
                 id="edit-chunk-question"
                 maxLength={QA_QUESTION_MAX_LENGTH}
                 onChange={(event) => setQuestion(event.target.value)}
                 placeholder="请输入"
+                rows={2}
                 value={question}
               />
             </div>
-            <div className="flex min-h-0 flex-1 flex-col space-y-2">
-              <Label htmlFor="edit-chunk-answer">
-                答案 <span className="text-destructive">*</span>
-              </Label>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-3">
+                <Label htmlFor="edit-chunk-answer">
+                  答案 <span className="text-destructive">*</span>
+                </Label>
+                <span className="text-xs text-muted-foreground">
+                  {answer.length}/{QA_ANSWER_MAX_LENGTH}
+                </span>
+              </div>
               <Textarea
-                className="min-h-[240px] flex-1"
+                className="min-h-[320px] resize-y"
                 id="edit-chunk-answer"
                 maxLength={QA_ANSWER_MAX_LENGTH}
                 onChange={(event) => setAnswer(event.target.value)}
@@ -131,26 +136,28 @@ export function EditChunkDialog({
             </div>
           </div>
         ) : (
-          <div className="flex h-full flex-col gap-4 py-2">
+          <div className="space-y-5 py-3">
             <div className="space-y-2">
               <Label htmlFor="edit-chunk-title">
                 切片标题 <span className="text-destructive">*</span>
               </Label>
-              <Input
+              <Textarea
+                className="min-h-0 resize-none"
                 id="edit-chunk-title"
                 maxLength={chunk?.type === "image" ? IMAGE_TITLE_MAX_LENGTH : undefined}
                 onChange={(event) => setTitle(event.target.value)}
                 placeholder="请输入"
+                rows={2}
                 value={title}
               />
             </div>
-            <div className="flex min-h-0 flex-1 flex-col space-y-2">
+            <div className="space-y-2">
               <Label htmlFor="edit-chunk-content">
                 {chunk?.imageUrls?.length ? "内容" : "切片内容"}{" "}
                 <span className="text-destructive">*</span>
               </Label>
               <ChunkContentEditor
-                className="min-h-[280px] flex-1"
+                className="min-h-[320px]"
                 content={content}
                 imageAlt={title || chunk?.title || "切片图片"}
                 imageUrls={chunk?.imageUrls}
@@ -159,7 +166,6 @@ export function EditChunkDialog({
             </div>
           </div>
         )}
-        </div>
 
         <DialogFooter className="gap-2">
           <Button disabled={submitting} onClick={() => handleOpenChange(false)} type="button" variant="outline">

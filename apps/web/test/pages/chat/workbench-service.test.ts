@@ -579,4 +579,47 @@ describe("createWorkbenchService", () => {
 
     expect(materials.items).toEqual([]);
   });
+
+  it("rejects expired external mock video materials from videoUrl content", async () => {
+    const service = createMockWorkbenchService();
+    const sourceMessage = await service.__mock?.appendMessage("conv-001", {
+      content: {
+        alt: "视频",
+        coverImageUrl: "s5/msg/mock/video-cover.jpg",
+        downloadStatus: "finished",
+        durationLabel: "",
+        fileUrlExpireTime: Date.now() - 1_000,
+        type: "video",
+        videoUrl: "https://example-cdn.test/expired-video.mp4",
+      },
+      contentType: "video",
+      createdAt: Date.now(),
+      customerId: "cust-001",
+      msgid: "msg-expired-video",
+      optNo: "opt-expired-video",
+      rawMsgtype: "video",
+      seatId: "drc",
+      senderType: "agent",
+      status: "sent",
+    });
+
+    expect(sourceMessage).toMatchObject({
+      content: {
+        videoUrl: "https://example-cdn.test/expired-video.mp4",
+      },
+      contentType: "video",
+      senderType: "agent",
+    });
+
+    await expect(
+      service.collectMaterial({
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.VIDEO,
+        groupId: "mock-material-group-video",
+        msgInfoId: String(sourceMessage?.seq ?? ""),
+      }),
+    ).resolves.toEqual({
+      errorMsg: "视频下载地址已过期，无法收录",
+      success: false,
+    });
+  });
 });

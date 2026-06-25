@@ -145,6 +145,13 @@ export type WorkbenchConversationListOptions = {
 
 export type WorkbenchService = {
   __mock?: {
+    appendMessage: (
+      conversationId: string,
+      message: Omit<WorkbenchMessageDto, "conversationId" | "seq"> & {
+        conversationId?: string;
+        seq?: number;
+      },
+    ) => Promise<WorkbenchMessageDto>;
     revokeMessage: (conversationId: string, messageSeq: number) => Promise<void>;
   };
   deleteConversation: (conversationId: string) => Promise<WorkbenchConversationDeleteResponse>;
@@ -432,6 +439,22 @@ export function createMockWorkbenchService(): WorkbenchService {
 
   return {
     __mock: {
+      async appendMessage(conversationId, message) {
+        const messages = state.messagesByConversationId[conversationId] ?? [];
+        const nextMessage = {
+          ...message,
+          conversationId,
+          seq: message.seq ?? getNextMessageSeq(state, conversationId),
+        } satisfies WorkbenchMessageDto;
+
+        state.messagesByConversationId[conversationId] = [
+          ...messages,
+          nextMessage,
+        ];
+        pushMessageEvent(state, nextMessage);
+
+        return clone(nextMessage);
+      },
       async revokeMessage(conversationId, messageSeq) {
         revokeMessage(state, conversationId, messageSeq);
       },
@@ -3028,7 +3051,9 @@ function resolveMockMaterialCollect(
   }
 
   if (request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO) {
-    const contentRecord = message ? getMaterialContentRecord(message) : {};
+    const contentRecord = message
+      ? getMockMaterialSourceContentRecord(message, request.bizType)
+      : {};
     let rawContentForCollection = rawContent;
     let resolvedForCollection = resolveMaterialVideoCollectFields(rawContent);
 
@@ -3667,9 +3692,9 @@ function buildPayloadSegmentContent(
 
     return {
       alt: "视频",
-      coverImageUrl: readString(materialContent.coverUrl),
+      coverImageUrl: readString(materialContent.coverUrl) || segment.coverUrl,
       durationLabel: "",
-      videoUrl: readString(materialContent.fileUrl),
+      videoUrl: readString(materialContent.fileUrl) || segment.url,
     };
   }
 

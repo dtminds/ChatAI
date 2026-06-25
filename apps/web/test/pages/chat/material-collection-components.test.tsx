@@ -912,15 +912,17 @@ describe("material collection components", () => {
     expect(handleEdit).not.toHaveBeenCalled();
   });
 
-  it("renders video materials as selectable cover cards without a play action", async () => {
+  it("renders video materials as selectable cover cards with a play action", async () => {
     const user = userEvent.setup();
     const handleSelect = vi.fn();
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
     const coverUrl = "https://b5.bokr.com.cn/video-cover.jpg";
+    const videoUrl = "s5/msg/20260514/272/video.mp4";
     const item = createItem({
       bizType: MATERIAL_COLLECTION_BIZ_TYPE.VIDEO,
       content: {
         coverUrl,
-        fileUrl: "https://example.com/video.mp4",
+        fileUrl: videoUrl,
       },
       contentType: "video",
       groupId: "group-video",
@@ -963,9 +965,17 @@ describe("material collection components", () => {
     });
     expect(videoCover.parentElement).toHaveClass("bg-neutral-950");
     expect(videoCover).toHaveClass("object-contain");
-    expect(
-      screen.queryByRole("button", { name: "播放视频：视频" }),
-    ).not.toBeInTheDocument();
+    const playButton = screen.getByRole("button", { name: "播放视频：视频" });
+    expect(playButton).toHaveClass("bottom-2", "right-2");
+
+    await user.click(playButton);
+
+    expect(openSpy).toHaveBeenCalledWith(
+      "https://b5.bokr.com.cn/s5/msg/20260514/272/video.mp4",
+      "_blank",
+      "noopener,noreferrer",
+    );
+    expect(videoButton).not.toHaveAttribute("aria-pressed", "true");
 
     await user.click(videoButton);
     await user.click(screen.getByRole("button", { name: "发送" }));

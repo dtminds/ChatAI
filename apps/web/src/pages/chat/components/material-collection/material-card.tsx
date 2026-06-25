@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { PlayIcon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { cn } from "@/lib/utils";
 import {
   readMaterialDescription,
@@ -16,6 +18,7 @@ import { SphFeedMessageCard } from "@/pages/chat/components/message/sphfeed";
 import { getOptimizedMessageImageUrl } from "@/pages/chat/components/message/url";
 import { MaterialActionsMenu } from "@/pages/chat/components/material-collection/material-actions-menu";
 import { MaterialSelectionIndicator } from "@/pages/chat/components/material-collection/material-selection-indicator";
+import { normalizeMediaAssetUrl } from "@/pages/chat/lib/media-asset-url";
 import type {
   FileMessageContent,
   H5CardMessageContent,
@@ -59,6 +62,11 @@ export function MaterialCard({
     null,
   );
   const isToggleMode = selectionMode === "toggle";
+  const videoPlayUrl =
+    item.contentType === "video"
+      ? normalizeMediaAssetUrl(readString(item.content.fileUrl))
+      : "";
+  const videoAlt = item.title || "视频";
 
   return (
     <div
@@ -97,6 +105,26 @@ export function MaterialCard({
         ) : null}
         <MaterialCardContent item={item} />
       </button>
+
+      {videoPlayUrl ? (
+        <button
+          aria-label={`播放视频：${videoAlt}`}
+          className="absolute bottom-2 right-2 inline-flex size-7 items-center justify-center rounded-[8px] bg-background/90 p-0 text-foreground opacity-0 shadow-sm backdrop-blur transition-opacity hover:bg-background focus-visible:opacity-100 group-hover/material:opacity-100"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            window.open(videoPlayUrl, "_blank", "noopener,noreferrer");
+          }}
+          type="button"
+        >
+          <HugeiconsIcon
+            className="translate-x-[0.5px]"
+            icon={PlayIcon}
+            size={15}
+            strokeWidth={1.8}
+          />
+        </button>
+      ) : null}
 
       <MaterialActionsMenu
         groups={groups}

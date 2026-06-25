@@ -23,9 +23,9 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { isRequestError } from "@/lib/request";
-import { importKbQaDoc, getKbQaDocSuffix } from "@/pages/chat/ai-hosting/api/kb-doc-service";
+import { uploadKbQaFile } from "@/pages/chat/ai-hosting/api/kb-doc-service";
 import { FileExtensionBadge } from "@/pages/chat/components/message/file";
-import { getFileExtension, stripFileExtension, useAsyncValidation } from "./shared";
+import { createLocalDocId, getFileExtension, stripFileExtension, useAsyncValidation } from "./shared";
 
 const QA_IMPORT_MAX_SHEETS = 30;
 const QA_IMPORT_MAX_ROWS = 30000;
@@ -45,12 +45,10 @@ async function readAllQaImportSheets(file: File): Promise<Sheet[]> {
 }
 
 export function ImportQaDialog({
-  kbId,
   onImportComplete,
   onOpenChange,
   open,
 }: {
-  kbId: string;
   onImportComplete?: (result: {
     docId: string;
     docSuffix: string;
@@ -132,9 +130,7 @@ export function ImportQaDialog({
         abortControllerRef.current?.abort();
         abortControllerRef.current = new AbortController();
 
-        const uploadResult = await importKbQaDoc({
-          file: selectedFile.file,
-          kbId,
+        const uploadResult = await uploadKbQaFile(selectedFile.file, {
           signal: abortControllerRef.current.signal,
         });
 
@@ -142,17 +138,18 @@ export function ImportQaDialog({
           return;
         }
 
+        const docId = createLocalDocId();
         const name =
           stripFileExtension(selectedFile.file.name) || selectedFile.file.name;
 
         toast.success("问答已提交");
         onImportComplete?.({
-          docId: uploadResult.docId,
+          docId,
           docSuffix: getKbQaDocSuffix(selectedFile.file.name),
-          docUrl: "",
+          docUrl: uploadResult.docUrl,
           entries,
           name,
-          url: "",
+          url: uploadResult.url,
         });
         importSuccessful = true;
       } catch (uploadError) {
@@ -403,4 +400,10 @@ export function ImportQaDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+function getKbQaDocSuffix(fileName: string) {
+  return fileName.toLowerCase().endsWith(".faq.xlsx")
+    ? "faq"
+    : getFileExtension(fileName).toLowerCase();
 }

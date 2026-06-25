@@ -1,26 +1,12 @@
 import {
   apiSuccess,
-  KbDocCreateFaqRequestSchema,
-  KbDocCreateImageRequestSchema,
   KbDocCreateRequestSchema,
-  type KbDocCreateFaqRequest,
-  type KbDocCreateImageRequest,
   type KbDocCreateRequest,
 } from "@chatai/contracts";
-import { Type, type Static } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { ForbiddenError } from "../../shared/errors.js";
-import { createAgentKbJavaClient } from "./agent-kb-java-client.js";
 import { createWorkbenchJavaClient } from "../chat/workbench-java-client.js";
 import { KbDocService } from "./kb-doc.service.js";
-
-const NumericStringSchema = Type.String({ pattern: "^[0-9]+$" });
-
-const KbDocParamsSchema = Type.Object({
-  docId: NumericStringSchema,
-});
-
-type KbDocParams = Static<typeof KbDocParamsSchema>;
 
 export async function registerAiHostingRoutes(app: FastifyInstance) {
   app.post(
@@ -49,60 +35,9 @@ export async function registerAiHostingRoutes(app: FastifyInstance) {
       assertAiHostingWriteAccess(request);
 
       return apiSuccess(
-        await getKbDocService(app).createKbDoc(getSubUserId(request), request.body),
-      );
-    },
-  );
-
-  app.post<{ Body: KbDocCreateFaqRequest }>(
-    "/api/server/ai-hosting/kb-docs/create-faq",
-    {
-      preHandler: app.authenticate,
-      schema: {
-        body: KbDocCreateFaqRequestSchema,
-      },
-    },
-    async (request) => {
-      assertAiHostingWriteAccess(request);
-
-      return apiSuccess(
-        await getKbDocService(app).createKbFaqDoc(getSubUserId(request), request.body),
-      );
-    },
-  );
-
-  app.post<{ Body: KbDocCreateImageRequest }>(
-    "/api/server/ai-hosting/kb-docs/create-image",
-    {
-      preHandler: app.authenticate,
-      schema: {
-        body: KbDocCreateImageRequestSchema,
-      },
-    },
-    async (request) => {
-      assertAiHostingWriteAccess(request);
-
-      return apiSuccess(
-        await getKbDocService(app).createKbImageDoc(getSubUserId(request), request.body),
-      );
-    },
-  );
-
-  app.post<{ Params: KbDocParams }>(
-    "/api/server/ai-hosting/kb-docs/:docId/delete",
-    {
-      preHandler: app.authenticate,
-      schema: {
-        params: KbDocParamsSchema,
-      },
-    },
-    async (request) => {
-      assertAiHostingWriteAccess(request);
-
-      return apiSuccess(
-        await getKbDocService(app).deleteKbDoc(
+        await getKbDocService(app).createKbDoc(
           getSubUserId(request),
-          request.params.docId,
+          request.body,
         ),
       );
     },
@@ -110,12 +45,7 @@ export async function registerAiHostingRoutes(app: FastifyInstance) {
 }
 
 function getKbDocService(app: FastifyInstance) {
-  return new KbDocService(
-    app.db,
-    app.log,
-    createWorkbenchJavaClient(app.log),
-    createAgentKbJavaClient(app.log),
-  );
+  return new KbDocService(app.db, app.log, createWorkbenchJavaClient(app.log));
 }
 
 function getSubUserId(request: { user?: { subUserId: string } }) {

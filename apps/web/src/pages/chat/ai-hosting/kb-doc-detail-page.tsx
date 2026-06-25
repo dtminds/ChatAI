@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import {
   Add01Icon,
   ArrowLeft01Icon,
@@ -38,22 +38,21 @@ import {
 import { FileExtensionBadge } from "@/pages/chat/components/message/file";
 import { AiHostingLayout, AiHostingPageHeader } from "./ai-hosting-layout";
 import { AddChunkDialog } from "./kb-components/add-chunk-dialog";
-import { ChunkImagePreview } from "./kb-components/chunk-image-preview";
 import { EditChunkDialog } from "./kb-components/edit-chunk-dialog";
 import {
-  createKbChunk,
-  deleteKbChunk,
-  updateKbChunk,
-} from "./api/kb-chunk-service";
-import {
-  getKb,
-  getKbDoc,
-  listKbDocChunks,
-  toKbDocChunkViewItem,
-  toKbDocViewItem,
-  toKbListViewItem,
-} from "./api/kb-service";
-import type { KbDocChunkViewItem, KbDocType, KbDocViewItem } from "./kb-types";
+  addMockKnowledgeChunk,
+  deleteMockKnowledgeChunk,
+  getKnowledgeRecordById,
+  getLocalTimeString,
+  getMockKnowledgeBasesSnapshot,
+  getMockKnowledgeChunksSnapshot,
+  subscribeMockKnowledgeBases,
+  subscribeMockKnowledgeChunks,
+  updateMockKnowledgeChunk,
+  type KnowledgeChunk,
+  type KnowledgeDocType,
+  type KnowledgeRecord,
+} from "./kb-mock-data";
 
 const PAGE_SIZE = 10;
 
@@ -68,191 +67,140 @@ function useDebouncedValue<T>(value: T, delayMs: number) {
   return debouncedValue;
 }
 
+function getChunkSearchTitle(chunk: KnowledgeChunk) {
+  if (chunk.type === "qa") {
+    return chunk.question ?? "";
+  }
+
+  return chunk.title ?? "";
+}
+
+function createChunkId(suffix?: string | number) {
+  const uniquePart = suffix ?? Math.random().toString(36).slice(2, 8);
+  return `chunk-${Date.now()}-${uniquePart}`;
+}
+
 export function KbDocDetailPage() {
-  const { docId = "", kbId = "" } = useParams();
-  const [knowledgeBase, setKnowledgeBase] = useState<{
-    id: string;
-    name: string;
-  } | null>(null);
-  const [doc, setDoc] = useState<KbDocViewItem | null>(null);
-  const [chunks, setChunks] = useState<KbDocChunkViewItem[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const { docId = "", knowledgeBaseId = "" } = useParams();
+  const knowledgeBases = useSyncExternalStore(
+    subscribeMockKnowledgeBases,
+    getMockKnowledgeBasesSnapshot,
+    getMockKnowledgeBasesSnapshot,
+  );
+  const chunks = useSyncExternalStore(
+    subscribeMockKnowledgeChunks,
+    getMockKnowledgeChunksSnapshot,
+    getMockKnowledgeChunksSnapshot,
+  );
+
+  const knowledgeBase = knowledgeBases.find((item) => item.id === knowledgeBaseId);
+  const doc = getKnowledgeRecordById(docId);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [addQaDialogOpen, setAddQaDialogOpen] = useState(false);
   const [addDocDialogOpen, setAddDocDialogOpen] = useState(false);
-  const [editChunk, setEditChunk] = useState<KbDocChunkViewItem | null>(null);
-  const [deleteChunk, setDeleteChunk] = useState<KbDocChunkViewItem | null>(null);
+  const [editChunk, setEditChunk] = useState<KnowledgeChunk | null>(null);
+  const [deleteChunk, setDeleteChunk] = useState<KnowledgeChunk | null>(null);
 
-  const debouncedSearchQuery = useDebouncedValue(searchQuery.trim(), 300);
-
-  const loadChunks = useCallback(async () => {
-    if (!docId || !doc) {
-      return;
-    }
-
-    const response = await listKbDocChunks(docId, {
-      page: currentPage,
-      pageSize: PAGE_SIZE,
-      query: debouncedSearchQuery,
-    });
-
-    setChunks(response.chunks.map((chunk) => toKbDocChunkViewItem(chunk, doc.type)));
-    setTotal(response.pagination.total);
-  }, [currentPage, debouncedSearchQuery, doc, docId]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadDocPage() {
-      if (!docId || !kbId) {
-        setKnowledgeBase(null);
-        setDoc(null);
-        setLoading(false);
-        return;
-      }
-
-      setLoading(true);
-
-      try {
-        const [kb, docDetail] = await Promise.all([getKb(kbId), getKbDoc(docId)]);
-
-        if (cancelled) {
-          return;
-        }
-
-        const mappedKb = toKbListViewItem(kb);
-        const mappedDoc = toKbDocViewItem(docDetail);
-
-        if (mappedDoc.kbId !== mappedKb.id) {
-          setKnowledgeBase(null);
-          setDoc(null);
-          return;
-        }
-
-        setKnowledgeBase({ id: mappedKb.id, name: mappedKb.name });
-        setDoc(mappedDoc);
-      } catch {
-        if (!cancelled) {
-          setKnowledgeBase(null);
-          setDoc(null);
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    }
-
-    void loadDocPage();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [docId, kbId]);
-
-  useEffect(() => {
-    if (!doc || loading) {
-      return;
-    }
-
-    void loadChunks();
-  }, [doc, loadChunks, loading]);
+  const debouncedSearchQuery = useDebouncedValue(searchQuery.trim().toLowerCase(), 300);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [debouncedSearchQuery, docId]);
+  }, [debouncedSearchQuery]);
+
+  const docChunks = useMemo(() => {
+    if (!doc) {
+      return [];
+    }
+
+    return chunks.filter((chunk) => chunk.docId === doc.id);
+  }, [chunks, doc]);
+
+  const filteredChunks = useMemo(() => {
+    if (!debouncedSearchQuery) {
+      return docChunks;
+    }
+
+    return docChunks.filter((chunk) =>
+      getChunkSearchTitle(chunk).toLowerCase().includes(debouncedSearchQuery),
+    );
+  }, [debouncedSearchQuery, docChunks]);
 
   const { activePage, totalPages } = resolveTablePagination({
     page: currentPage,
     pageSize: PAGE_SIZE,
-    total,
+    total: filteredChunks.length,
   });
 
-  async function handleCreateQaChunk(values: { answer: string; question: string }) {
-    if (!doc) {
+  const pagedChunks = useMemo(() => {
+    const start = (activePage - 1) * PAGE_SIZE;
+    return filteredChunks.slice(start, start + PAGE_SIZE);
+  }, [activePage, filteredChunks]);
+
+  function handleCreateQaChunk(values: { answer: string; question: string }) {
+    if (!doc || !knowledgeBase) {
       return;
     }
 
-    await createKbChunk({
-      chunkType: "faq",
-      content: values.answer,
+    const now = getLocalTimeString();
+    addMockKnowledgeChunk({
+      id: createChunkId(),
+      knowledgeBaseId: knowledgeBase.id,
       docId: doc.id,
-      title: values.question,
+      type: "qa",
+      question: values.question,
+      answer: values.answer,
+      createdAt: now,
+      updatedAt: now,
     });
     setCurrentPage(1);
-    await loadChunks();
     toast.success("已添加问答切片");
   }
 
-  async function handleCreateDocChunk(values: { content: string; title: string }) {
-    if (!doc) {
+  function handleCreateDocChunk(values: { content: string; title: string }) {
+    if (!doc || !knowledgeBase) {
       return;
     }
 
-    await createKbChunk({
-      chunkType: "text",
-      content: values.content,
+    const now = getLocalTimeString();
+    addMockKnowledgeChunk({
+      id: createChunkId(),
+      knowledgeBaseId: knowledgeBase.id,
       docId: doc.id,
+      type: "document",
       title: values.title,
+      content: values.content,
+      createdAt: now,
+      updatedAt: now,
     });
     setCurrentPage(1);
-    await loadChunks();
     toast.success("已添加切片");
   }
 
-  async function handleEditChunk(
+  function handleEditChunk(
     chunkId: string,
-    values: Partial<Pick<KbDocChunkViewItem, "question" | "answer" | "title" | "content">>,
+    values: Partial<Pick<KnowledgeChunk, "question" | "answer" | "title" | "content">>,
   ) {
-    const chunk = chunks.find((item) => item.id === chunkId);
-
-    if (!chunk) {
-      return;
-    }
-
-    if (chunk.type === "qa") {
-      await updateKbChunk(chunkId, {
-        content: values.answer ?? chunk.answer ?? "",
-        title: values.question ?? chunk.question,
-      });
-    } else {
-      await updateKbChunk(chunkId, {
-        content: values.content ?? chunk.content ?? "",
-        title: values.title ?? chunk.title,
-      });
-    }
-
-    await loadChunks();
+    updateMockKnowledgeChunk(chunkId, values);
     toast.success("已保存");
   }
 
-  async function handleConfirmDelete() {
+  function handleConfirmDelete() {
     if (!deleteChunk) {
       return;
     }
 
-    await deleteKbChunk(deleteChunk.id);
+    deleteMockKnowledgeChunk(deleteChunk.id);
     setDeleteChunk(null);
-    await loadChunks();
     toast.success("已删除切片");
   }
 
-  if (loading) {
-    return (
-      <AiHostingLayout title="文档">
-        <div className="py-16 text-center text-sm text-muted-foreground">加载中</div>
-      </AiHostingLayout>
-    );
-  }
-
-  if (!knowledgeBase || !doc || doc.kbId !== knowledgeBase.id) {
+  if (!knowledgeBase || !doc || doc.knowledgeBaseId !== knowledgeBase.id) {
     return (
       <AiHostingLayout title="文档不存在">
         <div className="space-y-6">
-          <BackToKnowledgeListButton kbId={kbId} />
+          <BackToKnowledgeListButton knowledgeBaseId={knowledgeBaseId} />
           <div className="py-16 text-center">
             <h1 className="text-lg font-semibold text-foreground">未找到文档</h1>
             <p className="mt-2 text-sm text-muted-foreground">当前文档不存在或已被删除</p>
@@ -266,7 +214,7 @@ export function KbDocDetailPage() {
     return (
       <AiHostingLayout title={doc.name}>
         <div className="space-y-6">
-          <BackToKnowledgeListButton kbId={knowledgeBase.id} />
+          <BackToKnowledgeListButton knowledgeBaseId={knowledgeBase.id} />
           <div className="py-16 text-center">
             <h1 className="text-lg font-semibold text-foreground">文档尚未解析完成</h1>
             <p className="mt-2 text-sm text-muted-foreground">请等待解析完成后再查看切片</p>
@@ -281,7 +229,7 @@ export function KbDocDetailPage() {
       <div className="space-y-6">
         <div aria-label="文档切片头部" className="space-y-3">
           <BackToKnowledgeListButton
-            kbId={knowledgeBase.id}
+            knowledgeBaseId={knowledgeBase.id}
             label={knowledgeBase.name}
           />
           <AiHostingPageHeader
@@ -320,7 +268,7 @@ export function KbDocDetailPage() {
 
           <div>
             <KnowledgeChunksTable
-              chunks={chunks}
+              chunks={pagedChunks}
               docType={doc.type}
               onDelete={setDeleteChunk}
               onEdit={setEditChunk}
@@ -328,7 +276,7 @@ export function KbDocDetailPage() {
             <TablePagination
               onPageChange={setCurrentPage}
               page={activePage}
-              total={total}
+              total={filteredChunks.length}
               totalPages={totalPages}
             />
           </div>
@@ -382,7 +330,7 @@ export function KbDocDetailPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
-            <AlertDialogAction onClick={() => void handleConfirmDelete()} variant="destructive">
+            <AlertDialogAction onClick={handleConfirmDelete} variant="destructive">
               删除
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -392,7 +340,7 @@ export function KbDocDetailPage() {
   );
 }
 
-function KnowledgeDocTitle({ doc }: { doc: KbDocViewItem }) {
+function KnowledgeDocTitle({ doc }: { doc: KnowledgeRecord }) {
   return (
     <span className="flex min-w-0 flex-wrap items-center gap-2.5">
       <FileExtensionBadge
@@ -412,7 +360,7 @@ function AddChunkActions({
   onAddDoc,
   onAddQa,
 }: {
-  doc: KbDocViewItem;
+  doc: KnowledgeRecord;
   onAddDoc: () => void;
   onAddQa: () => void;
 }) {
@@ -422,7 +370,7 @@ function AddChunkActions({
 
   if (doc.type === "qa") {
     return (
-      <Button className="h-10 px-4" onClick={onAddQa} type="button">
+      <Button className="h-10 px-4" onClick={onAddQa} type="button" variant="outline">
         <HugeiconsIcon color="currentColor" icon={Add01Icon} size={17} strokeWidth={1.8} />
         <span>添加问答</span>
       </Button>
@@ -430,7 +378,7 @@ function AddChunkActions({
   }
 
   return (
-    <Button className="h-10 px-4" onClick={onAddDoc} type="button">
+    <Button className="h-10 px-4" onClick={onAddDoc} type="button" variant="outline">
       <HugeiconsIcon color="currentColor" icon={Add01Icon} size={17} strokeWidth={1.8} />
       <span>添加切片</span>
     </Button>
@@ -443,12 +391,13 @@ function KnowledgeChunksTable({
   onDelete,
   onEdit,
 }: {
-  chunks: KbDocChunkViewItem[];
-  docType: KbDocType;
-  onDelete: (chunk: KbDocChunkViewItem) => void;
-  onEdit: (chunk: KbDocChunkViewItem) => void;
+  chunks: KnowledgeChunk[];
+  docType: KnowledgeDocType;
+  onDelete: (chunk: KnowledgeChunk) => void;
+  onEdit: (chunk: KnowledgeChunk) => void;
 }) {
   const isQa = docType === "qa";
+  const allowDelete = docType !== "image";
 
   return (
     <Table aria-label="切片列表" className="min-w-[960px] table-fixed">
@@ -495,7 +444,9 @@ function KnowledgeChunksTable({
                     </TableCellContent>
                   </TableCell>
                   <TableCell className="px-4 py-4" title={chunk.content}>
-                    <ChunkContentCell content={chunk.content} imageUrls={chunk.imageUrls} />
+                    <TableCellContent className="text-muted-foreground">
+                      {chunk.content}
+                    </TableCellContent>
                   </TableCell>
                 </>
               )}
@@ -509,14 +460,16 @@ function KnowledgeChunksTable({
                   >
                     编辑
                   </Button>
-                  <Button
-                    className="h-auto p-0 text-primary"
-                    onClick={() => onDelete(chunk)}
-                    type="button"
-                    variant="link"
-                  >
-                    删除
-                  </Button>
+                  {allowDelete ? (
+                    <Button
+                      className="h-auto p-0 text-primary"
+                      onClick={() => onDelete(chunk)}
+                      type="button"
+                      variant="link"
+                    >
+                      删除
+                    </Button>
+                  ) : null}
                 </div>
               </TablePinnedCell>
             </TableRow>
@@ -533,43 +486,11 @@ function KnowledgeChunksTable({
   );
 }
 
-function ChunkContentCell({
-  content,
-  imageUrls,
-}: {
-  content?: string;
-  imageUrls?: string[];
-}) {
-  if (imageUrls && imageUrls.length > 0) {
-    return (
-      <div className="flex items-start gap-3">
-        <div className="flex shrink-0 items-start gap-2">
-          {imageUrls.map((imageUrl, index) => (
-            <ChunkImagePreview
-              key={`${imageUrl}-${index}`}
-              alt={content}
-              imageUrl={imageUrl}
-              size="sm"
-            />
-          ))}
-        </div>
-        <TableCellContent className="min-w-0 text-muted-foreground">
-          {content}
-        </TableCellContent>
-      </div>
-    );
-  }
-
-  return (
-    <TableCellContent className="text-muted-foreground">{content}</TableCellContent>
-  );
-}
-
 function BackToKnowledgeListButton({
-  kbId,
+  knowledgeBaseId,
   label = "返回知识列表",
 }: {
-  kbId: string;
+  knowledgeBaseId: string;
   label?: string;
 }) {
   return (
@@ -579,7 +500,7 @@ function BackToKnowledgeListButton({
       type="button"
       variant="ghost"
     >
-      <Link to={`/chat/ai-hosting/kb/${kbId}`}>
+      <Link to={`/chat/ai-hosting/kb/${knowledgeBaseId}`}>
         <HugeiconsIcon color="currentColor" icon={ArrowLeft01Icon} size={17} strokeWidth={1.8} />
         <span>{label}</span>
       </Link>

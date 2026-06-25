@@ -224,11 +224,11 @@ export const routerConfig = [
         element: withRouteSuspense(<KbListPage />),
       },
       {
-        path: "chat/ai-hosting/kb/:kbId",
+        path: "chat/ai-hosting/kb/:knowledgeBaseId",
         element: withRouteSuspense(<KbDetailPage />),
       },
       {
-        path: "chat/ai-hosting/kb/:kbId/docs/:docId",
+        path: "chat/ai-hosting/kb/:knowledgeBaseId/docs/:docId",
         element: withRouteSuspense(<KbDocDetailPage />),
       },
       {

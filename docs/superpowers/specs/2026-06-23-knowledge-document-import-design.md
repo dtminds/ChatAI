@@ -202,8 +202,6 @@ export type KbDocCreateResponse = {
 
 模块：`apps/backend/src/modules/ai-hosting/`。路由注册独立于 `chat.routes.ts`。
 
-**响应**：成功 `{ success: true, data }`；失败 `{ success: false, error: { code, message } }`（见平台集成 spec「响应规范」）。Java 内部接口使用 `{ success, error, errorMsg, data }`，由 Node 转换，不透传浏览器。
-
 ### 上传凭证
 
 ```
@@ -293,18 +291,7 @@ Node 将 JSON body 转为 Form 或 query 提交（与 Java 约定一致）：
 
 ### 响应
 
-Java 返回 `{ success, error, errorMsg, data }`（`error === 0` 为成功），`data` 为新创建 kb-doc 的 ID（`Long`）。Node `agent-kb-java-client` 解析后，公开接口返回：
-
-```json
-{
-  "success": true,
-  "data": {
-    "docId": "123456789"
-  }
-}
-```
-
-`docId` 统一转为字符串，避免 JS 大整数精度问题。
+`ApiResponseTO<Long>` — 返回新创建 kb-doc 的 ID。Node mapper 将 `Long` 转为字符串 `docId`。
 
 ### Java 侧异步行为
 

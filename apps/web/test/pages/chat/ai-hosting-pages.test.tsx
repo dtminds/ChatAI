@@ -9,30 +9,14 @@ import { AgentSettingsPage } from "@/pages/chat/ai-hosting/agent-settings-page";
 import { KbDetailPage } from "@/pages/chat/ai-hosting/kb-detail-page";
 import { KbDocDetailPage } from "@/pages/chat/ai-hosting/kb-doc-detail-page";
 import { KbListPage } from "@/pages/chat/ai-hosting/kb-list-page";
-import { resetMockKbData } from "./kb-service-mock-data";
+import { resetMockKnowledgeData } from "@/pages/chat/ai-hosting/kb-mock-data";
+import * as kbMockData from "@/pages/chat/ai-hosting/kb-mock-data";
 import * as agentService from "@/pages/chat/ai-hosting/agent-service";
-import * as kbService from "@/pages/chat/ai-hosting/api/kb-service";
 import { useAuthStore } from "@/store/auth-store";
 import type { AccountRole, AiHostingSettingsResponse } from "@chatai/contracts";
-import {
-  createMockKbDocChunksResponse,
-  createMockKbDocDetail,
-  createMockKbDocsResponse,
-  createMockKbItem,
-  createMockKbListResponse,
-  addMockKbChunk,
-  addMockKbListItem,
-  deleteMockKbChunk,
-  updateMockKbChunk,
-} from "./kb-service-mock-data";
 
 const readXlsxFileMock = vi.hoisted(() => vi.fn());
 const importKbDocMock = vi.hoisted(() => vi.fn());
-const importKbQaDocMock = vi.hoisted(() => vi.fn());
-const importKbImageDocMock = vi.hoisted(() => vi.fn());
-const createKbChunkMock = vi.hoisted(() => vi.fn());
-const updateKbChunkMock = vi.hoisted(() => vi.fn());
-const deleteKbChunkMock = vi.hoisted(() => vi.fn());
 const agentServiceMock = vi.hoisted(() => ({
   createAiHostingAgent: vi.fn(),
   getAiHostingAgent: vi.fn(),
@@ -46,43 +30,18 @@ const agentServiceMock = vi.hoisted(() => ({
   updateAiHostingSettings: vi.fn(),
   updateAiHostingAgent: vi.fn(),
 }));
-const kbServiceMock = vi.hoisted(() => ({
-  createKb: vi.fn(),
-  getKb: vi.fn(),
-  getKbDoc: vi.fn(),
-  listKbDocChunks: vi.fn(),
-  listKbDocs: vi.fn(),
-  listKbs: vi.fn(),
-}));
+const uploadKbImageMock = vi.hoisted(() => vi.fn());
+const uploadKbQaFileMock = vi.hoisted(() => vi.fn());
 
 vi.mock("read-excel-file/browser", () => ({
   default: readXlsxFileMock,
 }));
 vi.mock("@/pages/chat/ai-hosting/agent-service", () => agentServiceMock);
-vi.mock("@/pages/chat/ai-hosting/api/kb-service", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/pages/chat/ai-hosting/api/kb-service")>();
 
-  return {
-    ...actual,
-    ...kbServiceMock,
-  };
-});
-
-vi.mock("@/pages/chat/ai-hosting/api/kb-doc-service", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/pages/chat/ai-hosting/api/kb-doc-service")>();
-
-  return {
-    ...actual,
-    importKbDoc: importKbDocMock,
-    importKbImageDoc: importKbImageDocMock,
-    importKbQaDoc: importKbQaDocMock,
-  };
-});
-
-vi.mock("@/pages/chat/ai-hosting/api/kb-chunk-service", () => ({
-  createKbChunk: createKbChunkMock,
-  deleteKbChunk: deleteKbChunkMock,
-  updateKbChunk: updateKbChunkMock,
+vi.mock("@/pages/chat/ai-hosting/api/kb-doc-service", () => ({
+  importKbDoc: importKbDocMock,
+  uploadKbImage: uploadKbImageMock,
+  uploadKbQaFile: uploadKbQaFileMock,
 }));
 
 let mockImageDimensions = { height: 800, width: 800 };
@@ -243,7 +202,7 @@ function mockSession(role: AccountRole = "admin") {
 describe("AI hosting pages", () => {
   beforeEach(() => {
     mockSession();
-    resetMockKbData();
+    resetMockKnowledgeData();
     vi.mocked(agentService.listAiHostingAgents).mockResolvedValue({
       agents: mockAgents,
       pagination: {
@@ -287,33 +246,6 @@ describe("AI hosting pages", () => {
       name: "护肤专家",
     });
     vi.mocked(agentService.removeAiHostingAgent).mockResolvedValue({ deleted: true });
-    vi.mocked(kbService.listKbs).mockImplementation(async (params) =>
-      createMockKbListResponse(params?.query),
-    );
-    vi.mocked(kbService.createKb).mockImplementation(async (payload) => {
-      const created = addMockKbListItem({
-        description: payload.description ?? "",
-        name: payload.name,
-      });
-
-      return {
-        createdAt: new Date(created.createdAt).toISOString(),
-        description: created.description,
-        kbId: created.id,
-        name: created.name,
-        updatedAt: new Date(created.lastUpdatedAt).toISOString(),
-      };
-    });
-    vi.mocked(kbService.getKb).mockImplementation(async (kbId) => createMockKbItem(kbId));
-    vi.mocked(kbService.listKbDocs).mockImplementation(async (kbId, params) =>
-      createMockKbDocsResponse(kbId, params?.query),
-    );
-    vi.mocked(kbService.getKbDoc).mockImplementation(async (docId) =>
-      createMockKbDocDetail(docId),
-    );
-    vi.mocked(kbService.listKbDocChunks).mockImplementation(async (docId, params) =>
-      createMockKbDocChunksResponse(docId, params?.query),
-    );
     mockImageDimensions = { height: 800, width: 800 };
     Object.defineProperty(URL, "createObjectURL", {
       configurable: true,
@@ -362,57 +294,15 @@ describe("AI hosting pages", () => {
     ]);
     importKbDocMock.mockReset();
     importKbDocMock.mockResolvedValue({ docId: "mock-doc-created" });
-    importKbQaDocMock.mockReset();
-    importKbQaDocMock.mockResolvedValue({ docId: "mock-qa-created" });
-    importKbImageDocMock.mockReset();
-    importKbImageDocMock.mockResolvedValue({ docId: "mock-image-created" });
-    createKbChunkMock.mockReset();
-    createKbChunkMock.mockImplementation(async (payload) => {
-      const docDetail = createMockKbDocDetail(payload.docId);
-      const chunkId = `chunk-created-${Date.now()}`;
-
-      if (payload.chunkType === "faq") {
-        addMockKbChunk({
-          answer: payload.content,
-          createdAt: "2026-06-20 12:00:00",
-          docId: payload.docId,
-          id: chunkId,
-          kbId: docDetail.kbId,
-          question: payload.title ?? "",
-          source: "manual",
-          type: "qa",
-          updatedAt: "2026-06-20 12:00:00",
-        });
-      } else {
-        addMockKbChunk({
-          content: payload.content,
-          createdAt: "2026-06-20 12:00:00",
-          docId: payload.docId,
-          id: chunkId,
-          kbId: docDetail.kbId,
-          source: "manual",
-          title: payload.title ?? "",
-          type: "document",
-          updatedAt: "2026-06-20 12:00:00",
-        });
-      }
-
-      return { chunkId };
+    uploadKbImageMock.mockReset();
+    uploadKbImageMock.mockResolvedValue({
+      docUrl: "kb-images/mock-image.png",
+      url: "https://b5.bokr.com.cn/kb-images/mock-image.png",
     });
-    updateKbChunkMock.mockReset();
-    updateKbChunkMock.mockImplementation(async (chunkId, payload) => {
-      updateMockKbChunk(chunkId, {
-        answer: payload.content,
-        content: payload.content,
-        question: payload.title,
-        title: payload.title,
-      });
-      return { updated: true };
-    });
-    deleteKbChunkMock.mockReset();
-    deleteKbChunkMock.mockImplementation(async (chunkId) => {
-      deleteMockKbChunk(chunkId);
-      return { deleted: true };
+    uploadKbQaFileMock.mockReset();
+    uploadKbQaFileMock.mockResolvedValue({
+      docUrl: "kb-faqs/mock-qa.faq.xlsx",
+      url: "https://b5.bokr.com.cn/kb-faqs/mock-qa.faq.xlsx",
     });
   });
 
@@ -1210,6 +1100,8 @@ describe("AI hosting pages", () => {
   });
 
   it("renders the knowledge base page", async () => {
+    const user = userEvent.setup();
+
     renderWithRoute("/chat/ai-hosting/kb", <KbListPage />);
 
     expect(await screen.findByRole("heading", { level: 1, name: "知识库" })).toBeInTheDocument();
@@ -1222,15 +1114,32 @@ describe("AI hosting pages", () => {
       "href",
       "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
     );
-    expect(screen.queryByRole("button", { name: "编辑" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "删除" })).not.toBeInTheDocument();
+
+    await user.click(screen.getAllByRole("button", { name: "编辑" })[0]);
+
+    const dialog = screen.getByRole("dialog", { name: "编辑知识库" });
+
+    expect(dialog).toBeInTheDocument();
+    expect(screen.getByLabelText(/知识库名称/)).toHaveValue("华为产品知识");
+    expect(screen.getByLabelText("知识库描述")).toHaveValue("华为各系列产品规格、功能与常见问题");
+    expect(screen.getByLabelText(/知识库名称/)).toHaveAttribute("maxLength", "30");
+    expect(screen.getByLabelText("知识库描述")).toHaveAttribute("maxLength", "1000");
+    expect(screen.getByText("6/30")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存" })).toBeInTheDocument();
+
+    await user.clear(screen.getByLabelText(/知识库名称/));
+    await user.type(screen.getByLabelText(/知识库名称/), "华为知识库");
+    await user.click(screen.getByRole("button", { name: "取消" }));
+
+    expect(screen.queryByRole("dialog", { name: "编辑知识库" })).not.toBeInTheDocument();
+    expect(screen.getByText(/华为产品知识/)).toBeInTheDocument();
+    expect(screen.queryByText(/华为知识库/)).not.toBeInTheDocument();
   });
 
   it("renders the knowledge base management page", async () => {
     renderWithRoute(
       "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
       <KbDetailPage />,
-      "/chat/ai-hosting/kb/:kbId",
     );
 
     expect(await screen.findByRole("heading", { level: 1, name: "华为产品知识" })).toBeInTheDocument();
@@ -1281,13 +1190,40 @@ describe("AI hosting pages", () => {
     );
   });
 
-  it("shows an empty state for unknown knowledge base ids", async () => {
-    vi.mocked(kbService.getKb).mockRejectedValueOnce(new Error("KB_NOT_FOUND"));
+  it("uses created mock knowledge bases on the management page", async () => {
+    const user = userEvent.setup();
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_789_000_000_000);
+    const listView = renderWithRoute("/chat/ai-hosting/kb", <KbListPage />);
 
+    await user.click(await screen.findByRole("button", { name: "创建知识库" }));
+    await user.type(screen.getByLabelText(/知识库名称/), "新品培训知识");
+    await user.type(screen.getByLabelText("知识库描述"), "用于新品上市培训");
+    await user.click(screen.getByRole("button", { name: "确定" }));
+
+    expect(screen.getByRole("link", { name: "新品培训知识" })).toHaveAttribute(
+      "href",
+      "/chat/ai-hosting/kb/1789000000000",
+    );
+
+    listView.unmount();
+    renderWithRoute(
+      "/chat/ai-hosting/kb/1789000000000",
+      <KbDetailPage />,
+      "/chat/ai-hosting/kb/:knowledgeBaseId",
+    );
+
+    expect(await screen.findByRole("heading", { level: 1, name: "新品培训知识" })).toBeInTheDocument();
+    expect(screen.getByText("用于新品上市培训")).toBeInTheDocument();
+    expect(screen.getByText("暂无数据")).toBeInTheDocument();
+
+    nowSpy.mockRestore();
+  });
+
+  it("shows an empty state for unknown knowledge base ids", async () => {
     renderWithRoute(
       "/chat/ai-hosting/kb/not-exist",
       <KbDetailPage />,
-      "/chat/ai-hosting/kb/:kbId",
+      "/chat/ai-hosting/kb/:knowledgeBaseId",
     );
 
     expect(await screen.findByRole("heading", { level: 1, name: "未找到知识库" })).toBeInTheDocument();
@@ -1301,7 +1237,6 @@ describe("AI hosting pages", () => {
     renderWithRoute(
       "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
       <KbDetailPage />,
-      "/chat/ai-hosting/kb/:kbId",
     );
 
     await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
@@ -1384,7 +1319,6 @@ describe("AI hosting pages", () => {
     renderWithRoute(
       "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
       <KbDetailPage />,
-      "/chat/ai-hosting/kb/:kbId",
     );
 
     await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
@@ -1419,7 +1353,6 @@ describe("AI hosting pages", () => {
     renderWithRoute(
       "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
       <KbDetailPage />,
-      "/chat/ai-hosting/kb/:kbId",
     );
 
     await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
@@ -1434,9 +1367,10 @@ describe("AI hosting pages", () => {
     await user.click(screen.getByRole("button", { name: "导入文档" }));
 
     await waitFor(() => {
-      expect(importKbQaDocMock).toHaveBeenCalledTimes(1);
+      expect(uploadKbQaFileMock).toHaveBeenCalledTimes(1);
     });
     expect(screen.queryByRole("dialog", { name: "批量导入问答" })).not.toBeInTheDocument();
+    expect(await screen.findByText("快捷话术导入.faq")).toBeInTheDocument();
   });
 
   it("shows an error when QA import resolves to zero valid rows", async () => {
@@ -1452,7 +1386,6 @@ describe("AI hosting pages", () => {
     renderWithRoute(
       "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
       <KbDetailPage />,
-      "/chat/ai-hosting/kb/:kbId",
     );
 
     await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
@@ -1486,7 +1419,6 @@ describe("AI hosting pages", () => {
     renderWithRoute(
       "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
       <KbDetailPage />,
-      "/chat/ai-hosting/kb/:kbId",
     );
 
     await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
@@ -1510,7 +1442,6 @@ describe("AI hosting pages", () => {
     renderWithRoute(
       "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
       <KbDetailPage />,
-      "/chat/ai-hosting/kb/:kbId",
     );
 
     await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
@@ -1540,7 +1471,6 @@ describe("AI hosting pages", () => {
     renderWithRoute(
       "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
       <KbDetailPage />,
-      "/chat/ai-hosting/kb/:kbId",
     );
 
     await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
@@ -1564,7 +1494,6 @@ describe("AI hosting pages", () => {
     renderWithRoute(
       "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
       <KbDetailPage />,
-      "/chat/ai-hosting/kb/:kbId",
     );
 
     await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
@@ -1635,6 +1564,7 @@ describe("AI hosting pages", () => {
       );
     });
     expect(screen.queryByRole("dialog", { name: "导入文档" })).not.toBeInTheDocument();
+    expect(await screen.findByText("产品手册")).toBeInTheDocument();
   });
 
   it("shows an error when document files are rejected by the dropzone accept rule", async () => {
@@ -1643,7 +1573,6 @@ describe("AI hosting pages", () => {
     renderWithRoute(
       "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
       <KbDetailPage />,
-      "/chat/ai-hosting/kb/:kbId",
     );
 
     await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
@@ -1666,7 +1595,6 @@ describe("AI hosting pages", () => {
     renderWithRoute(
       "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
       <KbDetailPage />,
-      "/chat/ai-hosting/kb/:kbId",
     );
 
     await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
@@ -1691,7 +1619,6 @@ describe("AI hosting pages", () => {
     renderWithRoute(
       "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
       <KbDetailPage />,
-      "/chat/ai-hosting/kb/:kbId",
     );
 
     await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
@@ -1747,7 +1674,6 @@ describe("AI hosting pages", () => {
     renderWithRoute(
       "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
       <KbDetailPage />,
-      "/chat/ai-hosting/kb/:kbId",
     );
 
     await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
@@ -1761,9 +1687,10 @@ describe("AI hosting pages", () => {
     await user.click(screen.getByRole("button", { name: "确认提交" }));
 
     await waitFor(() => {
-      expect(importKbImageDocMock).toHaveBeenCalledTimes(1);
+      expect(uploadKbImageMock).toHaveBeenCalledTimes(1);
     });
     expect(screen.queryByRole("dialog", { name: "添加图片知识" })).not.toBeInTheDocument();
+    expect(await screen.findByText("商品主图")).toBeInTheDocument();
   });
 
   it("accepts image knowledge files with supported extensions when MIME type is empty", async () => {
@@ -1772,7 +1699,6 @@ describe("AI hosting pages", () => {
     renderWithRoute(
       "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
       <KbDetailPage />,
-      "/chat/ai-hosting/kb/:kbId",
     );
 
     await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
@@ -1812,7 +1738,6 @@ describe("AI hosting pages", () => {
     renderWithRoute(
       "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
       <KbDetailPage />,
-      "/chat/ai-hosting/kb/:kbId",
     );
 
     await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
@@ -1861,7 +1786,6 @@ describe("AI hosting pages", () => {
     const view = renderWithRoute(
       "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
       <KbDetailPage />,
-      "/chat/ai-hosting/kb/:kbId",
     );
 
     await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
@@ -1881,7 +1805,6 @@ describe("AI hosting pages", () => {
     renderWithRoute(
       "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
       <KbDetailPage />,
-      "/chat/ai-hosting/kb/:kbId",
     );
 
     await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
@@ -1916,7 +1839,6 @@ describe("AI hosting pages", () => {
     renderWithRoute(
       "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
       <KbDetailPage />,
-      "/chat/ai-hosting/kb/:kbId",
     );
 
     await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
@@ -1956,7 +1878,6 @@ describe("AI hosting pages", () => {
     renderWithRoute(
       "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
       <KbDetailPage />,
-      "/chat/ai-hosting/kb/:kbId",
     );
 
     await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
@@ -1982,7 +1903,6 @@ describe("AI hosting pages", () => {
     renderWithRoute(
       "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
       <KbDetailPage />,
-      "/chat/ai-hosting/kb/:kbId",
     );
 
     await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
@@ -1998,11 +1918,37 @@ describe("AI hosting pages", () => {
     expect(screen.getByRole("button", { name: "确认提交" })).toBeDisabled();
   });
 
+  it("limits knowledge base creation fields", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute("/chat/ai-hosting/kb", <KbListPage />);
+
+    await user.click(await screen.findByRole("button", { name: "创建知识库" }));
+
+    expect(screen.getByLabelText(/知识库名称/)).toHaveAttribute("maxLength", "30");
+    expect(screen.getByLabelText("知识库描述")).toHaveAttribute("maxLength", "1000");
+  });
+
+  it("shows knowledge base name character count", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute("/chat/ai-hosting/kb", <KbListPage />);
+
+    await user.click(await screen.findByRole("button", { name: "创建知识库" }));
+
+    expect(screen.getByText("0/30")).toBeInTheDocument();
+    expect(screen.queryByText("0/1000")).not.toBeInTheDocument();
+
+    await user.type(screen.getByLabelText(/知识库名称/), "产品知识库");
+
+    expect(screen.getByText("5/30")).toBeInTheDocument();
+  });
+
   it("renders the QA chunk detail page", async () => {
     renderWithRoute(
       "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-3",
       <KbDocDetailPage />,
-      "/chat/ai-hosting/kb/:kbId/docs/:docId",
+      "/chat/ai-hosting/kb/:knowledgeBaseId/docs/:docId",
     );
 
     expect(await screen.findByRole("heading", { level: 1, name: "常见问题解答" })).toBeInTheDocument();
@@ -2017,6 +1963,8 @@ describe("AI hosting pages", () => {
     expect(screen.getByRole("textbox", { name: "搜索切片标题" })).toBeInTheDocument();
     const addQaButton = screen.getByRole("button", { name: "添加问答" });
     expect(addQaButton).not.toHaveAttribute("aria-haspopup", "menu");
+    expect(addQaButton).not.toHaveClass("bg-primary");
+    expect(addQaButton).toHaveClass("border-border");
     expect(screen.queryByRole("button", { name: "添加切片" })).not.toBeInTheDocument();
     expect(screen.getByRole("table", { name: "切片列表" })).toBeInTheDocument();
     expect(screen.getByText("问题")).toBeInTheDocument();
@@ -2031,7 +1979,7 @@ describe("AI hosting pages", () => {
     renderWithRoute(
       "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-3",
       <KbDocDetailPage />,
-      "/chat/ai-hosting/kb/:kbId/docs/:docId",
+      "/chat/ai-hosting/kb/:knowledgeBaseId/docs/:docId",
     );
 
     await screen.findByText("如何恢复出厂设置");
@@ -2050,7 +1998,7 @@ describe("AI hosting pages", () => {
     renderWithRoute(
       "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-3",
       <KbDocDetailPage />,
-      "/chat/ai-hosting/kb/:kbId/docs/:docId",
+      "/chat/ai-hosting/kb/:knowledgeBaseId/docs/:docId",
     );
 
     await screen.findByRole("button", { name: "添加问答" });
@@ -2066,12 +2014,15 @@ describe("AI hosting pages", () => {
 
   it("keeps the add QA chunk dialog open when submit fails", async () => {
     const user = userEvent.setup();
-    createKbChunkMock.mockRejectedValueOnce(new Error("submit failed"));
+    const addChunkSpy = vi.spyOn(kbMockData, "addMockKnowledgeChunk").mockImplementation(() => {
+      throw new Error("submit failed");
+    });
 
-    renderWithRoute(
+    try {
+      renderWithRoute(
         "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-3",
         <KbDocDetailPage />,
-        "/chat/ai-hosting/kb/:kbId/docs/:docId",
+        "/chat/ai-hosting/kb/:knowledgeBaseId/docs/:docId",
       );
 
       await screen.findByRole("button", { name: "添加问答" });
@@ -2085,7 +2036,10 @@ describe("AI hosting pages", () => {
       expect(dialog).toBeInTheDocument();
       expect(within(dialog).getByLabelText(/问题/)).toHaveValue("支持 NFC 吗");
       expect(within(dialog).getByLabelText(/答案/)).toHaveValue("支持，可在设置中开启");
-      expect(createKbChunkMock).toHaveBeenCalled();
+      expect(addChunkSpy).toHaveBeenCalled();
+    } finally {
+      addChunkSpy.mockRestore();
+    }
   });
 
   it("edits a QA chunk on the chunk detail page", async () => {
@@ -2094,7 +2048,7 @@ describe("AI hosting pages", () => {
     renderWithRoute(
       "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-3",
       <KbDocDetailPage />,
-      "/chat/ai-hosting/kb/:kbId/docs/:docId",
+      "/chat/ai-hosting/kb/:knowledgeBaseId/docs/:docId",
     );
 
     await screen.findByText("如何恢复出厂设置");
@@ -2117,7 +2071,7 @@ describe("AI hosting pages", () => {
     renderWithRoute(
       "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-1",
       <KbDocDetailPage />,
-      "/chat/ai-hosting/kb/:kbId/docs/:docId",
+      "/chat/ai-hosting/kb/:knowledgeBaseId/docs/:docId",
     );
 
     await screen.findByRole("heading", { level: 1, name: "产品说明大全" });
@@ -2133,6 +2087,8 @@ describe("AI hosting pages", () => {
     expect(screen.getByText("第一章 产品介绍")).toBeInTheDocument();
 
     const addChunkButton = screen.getByRole("button", { name: "添加切片" });
+    expect(addChunkButton).not.toHaveClass("bg-primary");
+    expect(addChunkButton).toHaveClass("border-border");
     await user.click(addChunkButton);
     const dialog = screen.getByRole("dialog", { name: "添加切片" });
     await user.type(within(dialog).getByLabelText(/切片标题/), "第三章 配件说明");
@@ -2142,17 +2098,15 @@ describe("AI hosting pages", () => {
     expect(await screen.findByText("第三章 配件说明")).toBeInTheDocument();
   });
 
-  it("renders the image chunk detail page without add actions", async () => {
+  it("renders the image chunk detail page without add or delete actions", async () => {
     renderWithRoute(
       "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-8",
       <KbDocDetailPage />,
-      "/chat/ai-hosting/kb/:kbId/docs/:docId",
+      "/chat/ai-hosting/kb/:knowledgeBaseId/docs/:docId",
     );
 
     await screen.findByRole("heading", { level: 1, name: "产品宣传图" });
-    expect(
-      screen.getByRole("img", { name: "Mate 系列旗舰机型外观与核心卖点展示" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "文件" })).toBeInTheDocument();
     expect(screen.getByText("图片（.png）")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "华为产品知识" })).toHaveAttribute(
       "href",
@@ -2162,7 +2116,7 @@ describe("AI hosting pages", () => {
     expect(screen.queryByRole("button", { name: "添加切片" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "添加问答" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "编辑" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "删除" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "删除" })).not.toBeInTheDocument();
     expect(screen.getByRole("table", { name: "切片列表" })).toHaveTextContent("产品宣传图");
   });
 
@@ -2172,7 +2126,7 @@ describe("AI hosting pages", () => {
     renderWithRoute(
       "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-1",
       <KbDocDetailPage />,
-      "/chat/ai-hosting/kb/:kbId/docs/:docId",
+      "/chat/ai-hosting/kb/:knowledgeBaseId/docs/:docId",
     );
 
     await screen.findByText("第一章 产品介绍");

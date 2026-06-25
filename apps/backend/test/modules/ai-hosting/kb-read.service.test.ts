@@ -1,34 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { Kysely } from "kysely";
 import type { Database } from "../../../src/db/schema.js";
-import type { AgentKbJavaClient } from "../../../src/modules/ai-hosting/agent-kb-java-client.js";
 import { KbReadService } from "../../../src/modules/ai-hosting/kb-read.service.js";
 import { createKbReadDbMock } from "../../helpers/create-kb-read-db-mock.js";
 
-function createMockJavaClient(
-  overrides: Partial<AgentKbJavaClient> = {},
-): AgentKbJavaClient {
-  return {
-    addKbChunk: vi.fn(),
-    createKbDoc: vi.fn(),
-    deleteKbChunk: vi.fn(),
-    deleteKbDoc: vi.fn(),
-    listKbChunks: vi.fn().mockResolvedValue({
-      count: 0,
-      list: [],
-      page: 1,
-      pageSize: 10,
-    }),
-    updateKbChunk: vi.fn(),
-    ...overrides,
-  };
-}
-
 describe("KbReadService", () => {
-  const service = new KbReadService(
-    createKbReadDbMock() as unknown as Kysely<Database>,
-    createMockJavaClient(),
-  );
+  const service = new KbReadService(createKbReadDbMock() as unknown as Kysely<Database>);
 
   it("lists kbs for the current uid", async () => {
     const response = await service.listKbs("101");
@@ -49,6 +26,33 @@ describe("KbReadService", () => {
       docId: "1001",
       docType: "document",
       status: "completed",
+    });
+  });
+
+  it("lists chunks from the database with pagination", async () => {
+    const response = await service.listKbDocChunks("101", "1001");
+
+    expect(response.chunks).toHaveLength(2);
+    expect(response.pagination.total).toBe(2);
+    expect(response.chunks[0]).toMatchObject({
+      chunkId: "501",
+      source: "manual",
+      title: "切片标题",
+    });
+  });
+
+  it("filters chunks by title or content before pagination", async () => {
+    const response = await service.listKbDocChunks("101", "1001", {
+      page: 1,
+      pageSize: 10,
+      query: "系统",
+    });
+
+    expect(response.chunks).toHaveLength(1);
+    expect(response.pagination.total).toBe(1);
+    expect(response.chunks[0]).toMatchObject({
+      chunkId: "502",
+      title: "系统切片",
     });
   });
 

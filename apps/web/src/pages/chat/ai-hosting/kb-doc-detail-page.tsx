@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Add01Icon,
   ArrowLeft01Icon,
@@ -85,6 +85,7 @@ export function KbDocDetailPage() {
   const [addDocDialogOpen, setAddDocDialogOpen] = useState(false);
   const [editChunk, setEditChunk] = useState<KbDocChunkViewItem | null>(null);
   const [deleteChunk, setDeleteChunk] = useState<KbDocChunkViewItem | null>(null);
+  const requestVersionRef = useRef(0);
 
   const debouncedSearchQuery = useDebouncedValue(searchQuery.trim(), 300);
 
@@ -93,15 +94,36 @@ export function KbDocDetailPage() {
       return;
     }
 
-    const response = await listKbDocChunks(docId, {
-      page: currentPage,
-      pageSize: PAGE_SIZE,
-      query: debouncedSearchQuery,
-    });
+    const version = ++requestVersionRef.current;
 
-    setChunks(response.chunks.map((chunk) => toKbDocChunkViewItem(chunk, doc.type)));
-    setTotal(response.pagination.total);
+    try {
+      const response = await listKbDocChunks(docId, {
+        page: currentPage,
+        pageSize: PAGE_SIZE,
+        query: debouncedSearchQuery,
+      });
+
+      if (version !== requestVersionRef.current) {
+        return;
+      }
+
+      setChunks(response.chunks.map((chunk) => toKbDocChunkViewItem(chunk, doc.type)));
+      setTotal(response.pagination.total);
+    } catch {
+      if (version !== requestVersionRef.current) {
+        return;
+      }
+
+      setChunks([]);
+      setTotal(0);
+    }
   }, [currentPage, debouncedSearchQuery, doc, docId]);
+
+  useEffect(() => {
+    return () => {
+      requestVersionRef.current++;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;

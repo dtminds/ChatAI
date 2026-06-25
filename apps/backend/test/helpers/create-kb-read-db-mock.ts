@@ -1,4 +1,50 @@
-type WhereClause = [string, string, unknown];
+type WhereClause =
+  | { type: "eq"; column: string; value: unknown }
+  | { type: "or"; clauses: Array<{ column: string; operator: string; value: unknown }> };
+
+function createExpressionBuilder() {
+  const eb = ((column: string, operator: string, value: unknown) => ({
+    column,
+    operator,
+    value,
+  })) as ((column: string, operator: string, value: unknown) => {
+    column: string;
+    operator: string;
+    value: unknown;
+  }) & {
+    or: (
+      clauses: Array<{ column: string; operator: string; value: unknown }>,
+    ) => WhereClause;
+  };
+
+  eb.or = (clauses) => ({ type: "or", clauses });
+
+  return eb;
+}
+
+function matchesWhere(row: Record<string, unknown>, where: WhereClause) {
+  if (where.type === "eq") {
+    return row[where.column] === where.value;
+  }
+
+  return where.clauses.some((clause) => matchesColumn(row, clause));
+}
+
+function matchesColumn(
+  row: Record<string, unknown>,
+  clause: { column: string; operator: string; value: unknown },
+) {
+  if (clause.operator === "=") {
+    return row[clause.column] === clause.value;
+  }
+
+  if (clause.operator === "like") {
+    const pattern = String(clause.value).replace(/^%/, "").replace(/%$/, "");
+    return String(row[clause.column] ?? "").includes(pattern);
+  }
+
+  return true;
+}
 
 export function createKbReadDbMock() {
   const subUser = {
@@ -165,15 +211,7 @@ export function createKbReadDbMock() {
       let isCountQuery = false;
 
       const filterRows = <TRow extends Record<string, unknown>>(rows: TRow[]) =>
-        rows.filter((row) =>
-          wheres.every(([column, operator, value]) => {
-            if (operator !== "=") {
-              return true;
-            }
-
-            return row[column] === value;
-          }),
-        );
+        rows.filter((row) => wheres.every((where) => matchesWhere(row, where)));
 
       const builder = {
         execute: async () => {
@@ -227,8 +265,19 @@ export function createKbReadDbMock() {
           return builder;
         },
         selectAll: () => builder,
-        where(column: string, operator: string, value: unknown) {
-          wheres.push([column, operator, value]);
+        where(
+          columnOrFn:
+            | string
+            | ((eb: ReturnType<typeof createExpressionBuilder>) => WhereClause),
+          operator?: string,
+          value?: unknown,
+        ) {
+          if (typeof columnOrFn === "function") {
+            wheres.push(columnOrFn(createExpressionBuilder()));
+          } else {
+            wheres.push({ type: "eq", column: columnOrFn, value });
+          }
+
           return builder;
         },
       };

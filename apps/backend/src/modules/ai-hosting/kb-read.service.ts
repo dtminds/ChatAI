@@ -10,13 +10,9 @@ import type { Database } from "../../db/schema.js";
 import { NotFoundError } from "../../shared/errors.js";
 import type { RequestAwareLogger } from "../../shared/logger.js";
 import {
-  createAgentKbJavaClient,
-  type AgentKbJavaClient,
-} from "./agent-kb-java-client.js";
-import { mapJavaChunkPageItem } from "./kb-chunk-java-mappers.js";
-import {
   mapDocType,
   mapDocTypeToDb,
+  mapKbChunkListItem,
   mapKbDocDetail,
   mapKbDocListItem,
   mapKbListItem,
@@ -28,10 +24,7 @@ const defaultPageSize = 10;
 const maxPageSize = 100;
 
 export class KbReadService {
-  constructor(
-    private readonly db: Kysely<Database>,
-    private readonly agentKbJavaClient: AgentKbJavaClient,
-  ) {}
+  constructor(private readonly db: Kysely<Database>) {}
 
   async listKbs(
     subUserId: string,
@@ -199,25 +192,34 @@ export class KbReadService {
     const pagination = normalizePagination(options);
     const normalizedQuery = options.query?.trim();
 
-    const page = await this.agentKbJavaClient.listKbChunks({
-      docId: docNumericId,
-      page: pagination.page,
-      pageSize: pagination.pageSize,
-      uid,
-    });
-
-    let chunks = page.list.map((item) => mapJavaChunkPageItem(item, docType));
+    let query = this.db
+      .selectFrom("xy_wap_embed_agent_kb_chunk")
+      .selectAll()
+      .where("uid", "=", uid)
+      .where("doc_id", "=", docNumericId)
+      .where("status", "=", dbActiveStatus);
 
     if (normalizedQuery) {
-      chunks = chunks.filter((chunk) => matchesChunkQuery(chunk, normalizedQuery));
+      query = query.where((eb) =>
+        eb.or([
+          eb("title", "like", `%${normalizedQuery}%`),
+          eb("content", "like", `%${normalizedQuery}%`),
+        ]),
+      );
     }
 
+    const rows = await query
+      .orderBy("update_time", "desc")
+      .limit(pagination.pageSize)
+      .offset((pagination.page - 1) * pagination.pageSize)
+      .execute();
+
     return {
-      chunks,
+      chunks: rows.map((row) => mapKbChunkListItem(row, docType)),
       pagination: {
-        page: page.page,
-        pageSize: page.pageSize,
-        total: page.count,
+        page: pagination.page,
+        pageSize: pagination.pageSize,
+        total: await this.countKbDocChunks(uid, docNumericId, normalizedQuery),
       },
     };
   }
@@ -232,6 +234,25 @@ export class KbReadService {
     if (query) {
       countQuery = countQuery.where((eb) =>
         eb.or([eb("name", "like", `%${query}%`), eb("remark", "like", `%${query}%`)]),
+      );
+    }
+
+    const result = await countQuery.executeTakeFirst();
+
+    return Number(result?.total ?? 0);
+  }
+
+  private async countKbDocChunks(uid: number, docId: number, query?: string) {
+    let countQuery = this.db
+      .selectFrom("xy_wap_embed_agent_kb_chunk")
+      .select((eb) => eb.fn.countAll<number>().as("total"))
+      .where("uid", "=", uid)
+      .where("doc_id", "=", docId)
+      .where("status", "=", dbActiveStatus);
+
+    if (query) {
+      countQuery = countQuery.where((eb) =>
+        eb.or([eb("title", "like", `%${query}%`), eb("content", "like", `%${query}%`)]),
       );
     }
 
@@ -302,23 +323,8 @@ export class KbReadService {
   }
 }
 
-export function createKbReadService(
-  db: Kysely<Database>,
-  logger?: RequestAwareLogger,
-) {
-  return new KbReadService(db, createAgentKbJavaClient(logger));
-}
-
-function matchesChunkQuery(
-  chunk: KbChunkListResponse["chunks"][number],
-  query: string,
-) {
-  const normalizedQuery = query.toLowerCase();
-
-  return (
-    (chunk.title ?? "").toLowerCase().includes(normalizedQuery) ||
-    chunk.content.toLowerCase().includes(normalizedQuery)
-  );
+export function createKbReadService(db: Kysely<Database>, _logger?: RequestAwareLogger) {
+  return new KbReadService(db);
 }
 
 function normalizePagination(input: { page?: number; pageSize?: number }) {

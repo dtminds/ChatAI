@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Add01Icon,
   AlertCircleIcon,
@@ -141,21 +141,43 @@ export function KbDetailPage() {
   const [documentDialogOpen, setDocumentDialogOpen] = useState(false);
   const [deleteRecord, setDeleteRecord] = useState<KbDocViewItem | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const requestVersionRef = useRef(0);
 
   const loadDocs = useCallback(async () => {
     if (!kbId) {
       return;
     }
 
-    const response = await listKbDocs(kbId, {
-      page: currentPage,
-      pageSize: PAGE_SIZE,
-      query: debouncedSearchQuery,
-    });
+    const version = ++requestVersionRef.current;
 
-    setRecords(response.docs.map(toKbDocViewItem));
-    setTotal(response.pagination.total);
+    try {
+      const response = await listKbDocs(kbId, {
+        page: currentPage,
+        pageSize: PAGE_SIZE,
+        query: debouncedSearchQuery,
+      });
+
+      if (version !== requestVersionRef.current) {
+        return;
+      }
+
+      setRecords(response.docs.map(toKbDocViewItem));
+      setTotal(response.pagination.total);
+    } catch {
+      if (version !== requestVersionRef.current) {
+        return;
+      }
+
+      setRecords([]);
+      setTotal(0);
+    }
   }, [currentPage, debouncedSearchQuery, kbId]);
+
+  useEffect(() => {
+    return () => {
+      requestVersionRef.current++;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;

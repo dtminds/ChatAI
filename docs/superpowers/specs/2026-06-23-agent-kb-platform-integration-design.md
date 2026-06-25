@@ -122,15 +122,15 @@ DB `type` 字段为火山返回的细粒度类型（`text`、`faq`、`doc-image`
 
 ## 策略 ID 映射
 
-**仅文档创建（`docType = 2`）**需要策略：前端传语义配置（`parseMode` + `chunkStrategy` + `chunkParams`），Node 映射为 **策略 key**，作为 Java `volcStrategyResourceId` 入参。
+**仅文档创建（`docType = 2`）**需要策略：前端传语义配置（`parseMode` + `chunkStrategy` + `chunkParams`），Node 在 `kb-doc-strategy-mappers.ts` 映射为 **火山资源 ID**（`kb-strategy-*`），作为 Java `volcStrategyResourceId` 入参。
 
 **FAQ（`docType = 1`）、图片（`docType = 3`）创建时不传 `volcStrategyResourceId`**，由 Java 侧按 `docType` 使用默认策略。
 
-> Java 侧会将文档类的 key 解析为火山资源 ID 写入 `volc_strategy_resource_id` 列；接口层传 **key**，不传 `kb-strategy-*` 字面量。
+> 当前 Java 对接实测：`volcStrategyResourceId` 直接传 `kb-strategy-*` 字面量；语义 key（如 `chat_kd_common_2000`）仅作对照，Node 不传给 Java。
 
-### 文档导入策略 key（`docType = 2`）
+### 文档导入策略映射（`docType = 2`）
 
-| parseMode | chunkStrategy | chunkParams | 策略 key（传 Java） | 火山资源 ID（库表落库，Node 不维护） |
+| parseMode | chunkStrategy | chunkParams | 语义 key（对照） | 火山资源 ID（Node 传 Java） |
 | --- | --- | --- | --- | --- |
 | `standard` | `length` | `maxLength: 2000` | `chat_kd_common_2000` | `kb-strategy-233abb0cd67b8429` |
 | `standard` | `length` | `maxLength: 1000` | `chat_kd_common_1000` | `kb-strategy-bb86846bd8964b93` |
@@ -141,7 +141,7 @@ DB `type` 字段为火山返回的细粒度类型（`text`、`faq`、`doc-image`
 | `enhanced` | `length` | `maxLength: 500` | `chat_kd_ocr_500` | `kb-strategy-51899c0babcd5d25` |
 | `enhanced` | `separator` | `separator: newline` | `chat_kd_ocr_n` | `kb-strategy-76c06c05cf06ac2c` |
 
-实现落点：`kb-doc-strategy-mappers.ts`（已存在，key 与上表一致；**仅** `docType = 2` 调用）。
+实现落点：`kb-doc-strategy-mappers.ts`（已存在，映射结果为 `kb-strategy-*`；**仅** `docType = 2` 调用）。
 
 ### FAQ / 图片创建
 
@@ -372,7 +372,7 @@ POST /api/server/ai-hosting/kb-docs/create
 Node 流程：
 
 1. 校验归属与字段
-2. 文档类（`docType = 2`）：`resolveVolcStrategyResourceId` → 写入 Java Form 的 `volcStrategyResourceId`；FAQ/图片：**不传**该字段
+2. 文档类（`docType = 2`）：`resolveVolcStrategyResourceId` → 写入 Java Form 的 `volcStrategyResourceId`（`kb-strategy-*`）；FAQ/图片：**不传**该字段
 3. 调 Java `wap-embed-agent-kb-doc/create`（Form）
 4. 返回 `{ docId: string }`
 
@@ -468,7 +468,7 @@ Envelope 见上文「响应规范 · Java 内部接口」：`{ success, error, e
 | `docSuffix` | 是 | 是 | 是 |
 | `name` | 是 | 是 | 是 |
 | `description` | 可选 | 可选 | 建议必填 |
-| `volcStrategyResourceId` | 策略 key（必填） | **不传** | **不传** |
+| `volcStrategyResourceId` | `kb-strategy-*`（必填） | **不传** | **不传** |
 | `operatorId` | Node 注入 | 同左 | 同左 |
 
 ## 前端改造要点

@@ -1,23 +1,11 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { buildMockedApp } from "../../helpers/build-mocked-app.js";
 import { createKbReadDbMock } from "../../helpers/create-kb-read-db-mock.js";
 
-function mockJavaChunkPageFetch(payload: Record<string, unknown>) {
-  return vi.spyOn(globalThis, "fetch").mockResolvedValue(
-    new Response(JSON.stringify(payload), {
-      headers: { "content-type": "application/json" },
-      status: 200,
-    }),
-  );
-}
-
 describe("KB read routes", () => {
   let app: Awaited<ReturnType<typeof buildMockedApp>> | undefined;
-  let fetchMock: ReturnType<typeof mockJavaChunkPageFetch> | undefined;
 
   afterEach(async () => {
-    fetchMock?.mockRestore();
-    fetchMock = undefined;
     await app?.close();
     app = undefined;
   });
@@ -82,27 +70,6 @@ describe("KB read routes", () => {
   });
 
   it("lists docs and chunks for the current tenant", async () => {
-    fetchMock = mockJavaChunkPageFetch({
-      count: 1,
-      error: 0,
-      list: [
-        {
-          content: "切片正文",
-          createTime: "2026-06-18T15:22:22.000Z",
-          docId: 1001,
-          id: 501,
-          kbId: 1,
-          source: 1,
-          title: "切片标题",
-          type: 2,
-          uid: 9001,
-          updateTime: "2026-06-18T15:22:22.000Z",
-        },
-      ],
-      page: 1,
-      pageSize: 10,
-      success: true,
-    });
     const context = await createAuthenticatedKbApp();
     app = context.app;
 
@@ -145,23 +112,25 @@ describe("KB read routes", () => {
             title: "切片标题",
             updatedAt: "2026-06-18T15:22:22.000Z",
           },
+          {
+            chunkId: "502",
+            chunkType: "text",
+            content: "系统切片正文",
+            createdAt: "2026-06-18T15:22:22.000Z",
+            docId: "1001",
+            kbId: "1",
+            source: "system",
+            title: "系统切片",
+            updatedAt: "2026-06-18T15:22:22.000Z",
+          },
         ],
         pagination: {
           page: 1,
           pageSize: 10,
-          total: 1,
+          total: 2,
         },
       },
       success: true,
-    });
-    expect(fetchMock?.mock.calls[0]?.[0]).toBe(
-      "https://java.internal/third-internal/wap-embed-agent-kb-chunk/page",
-    );
-    expect(JSON.parse(String(fetchMock?.mock.calls[0]?.[1]?.body))).toEqual({
-      docId: 1001,
-      page: 1,
-      pageSize: 10,
-      uid: 9001,
     });
   });
 

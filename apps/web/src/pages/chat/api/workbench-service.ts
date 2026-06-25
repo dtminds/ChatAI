@@ -135,6 +135,8 @@ import type {
   VideoMessageContent,
 } from "@/pages/chat/chat-types";
 
+const VIDEO_MATERIAL_COLLECT_TIMEOUT_MS = 130000;
+
 export type WorkbenchConversationListOptions = {
   cursor?: string;
   limit?: number;
@@ -1972,7 +1974,11 @@ export function createHttpWorkbenchService(): WorkbenchService {
       return http.post<
         WorkbenchMaterialCollectionCreateResponse,
         WorkbenchMaterialCollectionCreateRequest
-      >("/server/material-collections", request);
+      >("/server/material-collections", request, {
+        ...(request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO
+          ? { timeout: VIDEO_MATERIAL_COLLECT_TIMEOUT_MS }
+          : {}),
+      });
     },
     deleteMaterialCollection(collectionId) {
       return http.delete<WorkbenchMaterialCollectionOkResponse>(

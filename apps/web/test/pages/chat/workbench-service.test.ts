@@ -371,13 +371,14 @@ describe("createWorkbenchService", () => {
 
   it("collects material messages", async () => {
     const service = createHttpWorkbenchService();
-    mock.onPost("/server/material-collections").reply((config) => [
-      200,
-      {
-        success: true,
-        receivedBody: JSON.parse(String(config.data)),
-      },
-    ]);
+    const requestConfigs: Array<{ data?: unknown; timeout?: number }> = [];
+    mock.onPost("/server/material-collections").reply((config) => {
+      requestConfigs.push({
+        data: JSON.parse(String(config.data)),
+        timeout: config.timeout,
+      });
+      return [200, { success: true }];
+    });
 
     await expect(
       service.collectMaterial({
@@ -385,13 +386,33 @@ describe("createWorkbenchService", () => {
         groupId: "9",
         msgInfoId: "9001",
       }),
-    ).resolves.toMatchObject({
-      receivedBody: {
-        bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+    ).resolves.toMatchObject({ success: true });
+    await expect(
+      service.collectMaterial({
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.VIDEO,
         groupId: "9",
-        msgInfoId: "9001",
+        msgInfoId: "9002",
+      }),
+    ).resolves.toMatchObject({ success: true });
+
+    expect(requestConfigs).toEqual([
+      {
+        data: {
+          bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+          groupId: "9",
+          msgInfoId: "9001",
+        },
+        timeout: 15000,
       },
-    });
+      {
+        data: {
+          bizType: MATERIAL_COLLECTION_BIZ_TYPE.VIDEO,
+          groupId: "9",
+          msgInfoId: "9002",
+        },
+        timeout: 130000,
+      },
+    ]);
   });
 
   it("creates material groups and returns the group payload", async () => {

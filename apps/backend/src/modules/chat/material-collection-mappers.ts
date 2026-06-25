@@ -203,11 +203,13 @@ function normalizeMaterialContent(
 
   if (contentType === "video") {
     const coverUrl = normalizeMediaAssetUrl(readString(content, "coverUrl"));
+    const fileUrl = normalizeMediaAssetUrl(readString(content, "fileUrl"));
 
-    if (coverUrl) {
+    if (coverUrl || fileUrl) {
       return {
         ...content,
-        coverUrl,
+        ...(coverUrl ? { coverUrl } : {}),
+        ...(fileUrl ? { fileUrl } : {}),
       };
     }
 

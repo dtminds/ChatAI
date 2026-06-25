@@ -1,22 +1,38 @@
-import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { Spinner } from "@/components/ui/spinner";
 import type { KbDocChunkViewItem } from "../kb-types";
+import { IMAGE_CHUNK_COLUMN, IMAGE_CHUNK_COLUMN_PADDING } from "./image-chunk-layout";
 
 export function ImageKnowledgeChunkList({
   chunks,
+  className,
   loading,
-  onDelete,
+  matchedHeight,
 }: {
   chunks: KbDocChunkViewItem[];
+  className?: string;
   loading: boolean;
-  onDelete: (chunk: KbDocChunkViewItem) => void;
+  matchedHeight?: number;
 }) {
+  const panelStyle = matchedHeight ? { height: matchedHeight } : undefined;
+  const panelClassName = cn(
+    "flex min-h-0 flex-col overflow-hidden",
+    IMAGE_CHUNK_COLUMN,
+    IMAGE_CHUNK_COLUMN_PADDING,
+    className,
+  );
+
   if (loading) {
     return (
-      <div aria-label="切片列表" role="region">
+      <div
+        aria-label="切片列表"
+        className={cn(panelClassName, "items-center justify-center")}
+        role="region"
+        style={panelStyle}
+      >
         <div
           aria-label="正在加载"
-          className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground"
+          className="flex items-center gap-2 text-sm text-muted-foreground"
           role="status"
         >
           <Spinner aria-hidden="true" size={14} />
@@ -30,8 +46,9 @@ export function ImageKnowledgeChunkList({
     return (
       <div
         aria-label="切片列表"
-        className="py-16 text-center text-sm text-muted-foreground"
+        className={cn(panelClassName, "items-center justify-center text-sm text-muted-foreground")}
         role="region"
+        style={panelStyle}
       >
         暂无切片数据
       </div>
@@ -39,27 +56,24 @@ export function ImageKnowledgeChunkList({
   }
 
   return (
-    <div aria-label="切片列表" className="space-y-3" role="region">
-      {chunks.map((chunk) => (
-        <article
-          className="rounded-[8px] border border-border bg-background p-4"
-          key={chunk.id}
-        >
-          <div className="flex items-start justify-between gap-3">
-            <p className="text-sm font-medium text-foreground">描述</p>
-            <Button
-              className="h-auto shrink-0 p-0 text-primary"
-              onClick={() => onDelete(chunk)}
-              type="button"
-              variant="link"
+    <div aria-label="切片列表" className={panelClassName} role="region" style={panelStyle}>
+      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto">
+        {chunks.map((chunk) => (
+          <article key={chunk.id}>
+            {chunk.title ? (
+              <p className="text-sm font-semibold leading-6 text-foreground">{chunk.title}</p>
+            ) : null}
+            <p
+              className={cn(
+                "text-sm leading-6 whitespace-pre-wrap text-foreground",
+                chunk.title ? "mt-3" : undefined,
+              )}
             >
-              删除
-            </Button>
-          </div>
-
-          <p className="mt-3 text-sm leading-6 text-muted-foreground">{chunk.content}</p>
-        </article>
-      ))}
+              {chunk.content}
+            </p>
+          </article>
+        ))}
+      </div>
     </div>
   );
 }

@@ -1,25 +1,34 @@
-export function ImageDocSourcePanel({
-  docName,
-  imageUrl,
-}: {
-  docName: string;
-  imageUrl: string;
-}) {
+import { forwardRef } from "react";
+import { ImagePreviewDialog } from "@/pages/chat/components/message/image";
+import { cn } from "@/lib/utils";
+import { IMAGE_CHUNK_COLUMN, IMAGE_CHUNK_COLUMN_PADDING } from "./image-chunk-layout";
+
+export const ImageDocSourcePanel = forwardRef<
+  HTMLElement,
+  {
+    className?: string;
+    docName: string;
+    imageUrl: string;
+  }
+>(function ImageDocSourcePanel({ className, docName, imageUrl }, ref) {
   return (
     <aside
       aria-label="原文预览"
-      className="flex w-[min(42%,480px)] shrink-0 flex-col overflow-hidden rounded-[8px] border border-border bg-background"
+      className={cn(IMAGE_CHUNK_COLUMN, IMAGE_CHUNK_COLUMN_PADDING, className)}
+      ref={ref}
     >
-      <header className="border-b border-border px-3 py-2.5">
-        <p className="text-sm font-medium text-foreground">原图</p>
-      </header>
-      <div className="flex min-h-[420px] flex-1 items-center justify-center overflow-auto bg-muted/20 p-4">
+      <ImagePreviewDialog
+        alt={docName}
+        imageUrl={imageUrl}
+        ocrEnabled={false}
+        triggerClassName="block w-full"
+      >
         <img
           alt={docName}
-          className="max-h-full max-w-full object-contain"
+          className="mx-auto block h-auto w-full max-w-full cursor-zoom-in object-contain transition-opacity hover:opacity-90"
           src={imageUrl}
         />
-      </div>
+      </ImagePreviewDialog>
     </aside>
   );
-}
+});

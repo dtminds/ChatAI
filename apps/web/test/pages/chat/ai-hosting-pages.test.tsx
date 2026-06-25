@@ -2200,12 +2200,8 @@ describe("AI hosting pages", () => {
     expect(screen.queryByRole("button", { name: "添加切片" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "添加问答" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "编辑" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "删除" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "切片列表" })).toHaveTextContent(
-      "Mate 系列旗舰机型外观与核心卖点展示",
-    );
-    expect(screen.getByText("原图")).toBeInTheDocument();
-    expect(screen.getByText("描述")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "删除" })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "切片列表" })).toHaveTextContent("产品宣传图");
     expect(screen.queryByRole("table", { name: "切片列表" })).not.toBeInTheDocument();
   });
 

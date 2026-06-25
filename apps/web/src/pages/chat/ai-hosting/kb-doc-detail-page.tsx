@@ -372,7 +372,6 @@ export function KbDocDetailPage() {
                 chunks={chunks}
                 doc={doc}
                 loading={loadingPage || loadingChunks}
-                onDelete={setDeleteChunk}
               />
             ) : null
           ) : (

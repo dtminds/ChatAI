@@ -1749,7 +1749,7 @@ describe("QuickReplyPanel", () => {
     );
   });
 
-  it("opens the collected sphfeed picker from the quick reply form", async () => {
+  it("hides the video channel attachment entry from the quick reply form by default", async () => {
     const user = userEvent.setup();
 
     render(
@@ -1764,36 +1764,7 @@ describe("QuickReplyPanel", () => {
 
     await user.click(screen.getByRole("button", { name: "添加附件" }));
 
-    const sphfeedMenuItem = screen.getByRole("menuitem", { name: "视频号" });
-
-    await user.click(sphfeedMenuItem);
-
-    expect(
-      await screen.findByRole("dialog", { name: "收录的视频号" }),
-    ).toBeInTheDocument();
-  });
-
-  it("opens the collected sphfeed picker from the quick reply form by keyboard", async () => {
-    const user = userEvent.setup();
-
-    render(
-      <QuickReplyFormDialog
-        categories={categories}
-        initialValues={createQuickReplyInitialValues()}
-        onOpenChange={vi.fn()}
-        onSubmit={vi.fn()}
-        open
-      />,
-    );
-
-    await user.click(screen.getByRole("button", { name: "添加附件" }));
-
-    screen.getByRole("menuitem", { name: "图片" }).focus();
-    await user.keyboard("{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}{Enter}");
-
-    expect(
-      await screen.findByRole("dialog", { name: "收录的视频号" }),
-    ).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "视频号" })).not.toBeInTheDocument();
   });
 
   it("previews attachment content from the form dialog", async () => {

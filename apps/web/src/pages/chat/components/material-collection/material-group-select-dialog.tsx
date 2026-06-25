@@ -158,7 +158,7 @@ export function MaterialGroupSelectDialog({
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>{getCollectTitle(bizType)}</DialogTitle>
           <DialogDescription className="sr-only">
@@ -166,7 +166,7 @@ export function MaterialGroupSelectDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="min-h-[13rem] space-y-4">
           {hasContentFields ? (
             <MaterialContentFormFields
               bizType={bizType}

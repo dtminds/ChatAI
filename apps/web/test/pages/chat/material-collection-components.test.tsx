@@ -68,7 +68,10 @@ describe("material collection components", () => {
       />,
     );
 
-    expect(screen.getByRole("dialog", { name: "收录文件" })).toBeInTheDocument();
+    const dialog = screen.getByRole("dialog", { name: "收录文件" });
+    expect(dialog).toBeInTheDocument();
+    expect(dialog).toHaveClass("max-w-lg");
+    expect(dialog.querySelector(".min-h-\\[13rem\\]")).toBeInTheDocument();
     expect(screen.queryByText("默认分组不会新建分组记录")).not.toBeInTheDocument();
     expect(screen.queryByText("默认分组")).not.toBeInTheDocument();
     expect(

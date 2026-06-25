@@ -56,10 +56,7 @@ import {
   SmartReplyMessageAnchor,
   type SmartReplySuggestion,
 } from "@/pages/chat/components/smart-reply-card";
-import {
-  DISABLE_SPH_COLLECTION,
-  MESSAGE_REVOKE_WINDOW_MS,
-} from "@/pages/chat/chat-constants";
+import { MESSAGE_REVOKE_WINDOW_MS } from "@/pages/chat/chat-constants";
 import type { ChatMessage, Message } from "@/pages/chat/chat-types";
 import {
   isSameCalendarDay,
@@ -1103,7 +1100,7 @@ export function canCollectMaterial(message: ChatMessage) {
     message.content.type === "file" ||
     message.content.type === "mini-program" ||
     message.content.type === "h5" ||
-    (!DISABLE_SPH_COLLECTION && message.content.type === "sphfeed")
+    message.content.type === "sphfeed"
   );
 }
 

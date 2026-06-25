@@ -49,6 +49,7 @@ type MaterialLibraryMutationRefresh =
 
 type UseMaterialCollectionOptions = {
   bootstrapStatus: "idle" | "loading" | "ready" | "error";
+  currentMaterialThirdUserId?: string;
   isMountedRef: RefObject<boolean>;
   onSendFailure: (failure: {
     errorCode: string;
@@ -69,6 +70,7 @@ export function useMaterialCollection({
   onSendFailure,
   onSent,
   requestActiveConversationRead,
+  currentMaterialThirdUserId,
   resolvedActiveConversationId,
   sendAgentMessageSegments,
 }: UseMaterialCollectionOptions) {
@@ -204,6 +206,10 @@ export function useMaterialCollection({
         groupId,
         page,
         pageSize: 100,
+        ...(bizType === MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED &&
+        currentMaterialThirdUserId
+          ? { thirdUserId: currentMaterialThirdUserId }
+          : {}),
       });
 
       if (
@@ -224,7 +230,7 @@ export function useMaterialCollection({
       setMaterialLibraryPage(response.pagination.page);
       setHasMoreMaterialLibraryItems(response.pagination.hasMore);
     },
-    [isMountedRef],
+    [isMountedRef, currentMaterialThirdUserId],
   );
 
   const loadMaterialLibrary = useCallback(
@@ -547,7 +553,7 @@ export function useMaterialCollection({
         }
       }
     },
-    [isMountedRef, refreshMaterialList],
+    [currentMaterialThirdUserId, isMountedRef, refreshMaterialList],
   );
 
   const handleSubmitMaterialCollection = useCallback(
@@ -573,6 +579,10 @@ export function useMaterialCollection({
           fileName: payload.fileName,
           groupId: payload.groupId,
           msgInfoId: pendingMaterialCollection.msgInfoId,
+          ...(pendingMaterialCollection.bizType === MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED &&
+          currentMaterialThirdUserId
+            ? { thirdUserId: currentMaterialThirdUserId }
+            : {}),
           title: payload.title,
         });
 
@@ -600,7 +610,7 @@ export function useMaterialCollection({
         }
       }
     },
-    [isMountedRef, pendingMaterialCollection, refreshMaterialList],
+    [currentMaterialThirdUserId, isMountedRef, pendingMaterialCollection, refreshMaterialList],
   );
 
   const handleCreatePendingMaterialGroup = useCallback(
@@ -920,11 +930,20 @@ export function useMaterialCollection({
 
       void runMaterialLibraryMutation(
         bizType,
-        () => getWorkbenchService().deleteMaterialCollection(item.id),
+        () => {
+          const scope = getMaterialThirdUserScope(
+            bizType,
+            currentMaterialThirdUserId,
+          );
+
+          return scope
+            ? getWorkbenchService().deleteMaterialCollection(item.id, scope)
+            : getWorkbenchService().deleteMaterialCollection(item.id);
+        },
         "删除素材失败",
       );
     },
-    [runMaterialLibraryMutation],
+    [currentMaterialThirdUserId, runMaterialLibraryMutation],
   );
 
   const handleTopMaterial = useCallback(
@@ -937,11 +956,20 @@ export function useMaterialCollection({
 
       void runMaterialLibraryMutation(
         bizType,
-        () => getWorkbenchService().topMaterialCollection(item.id),
+        () => {
+          const scope = getMaterialThirdUserScope(
+            bizType,
+            currentMaterialThirdUserId,
+          );
+
+          return scope
+            ? getWorkbenchService().topMaterialCollection(item.id, scope)
+            : getWorkbenchService().topMaterialCollection(item.id);
+        },
         "置顶素材失败",
       );
     },
-    [runMaterialLibraryMutation],
+    [currentMaterialThirdUserId, runMaterialLibraryMutation],
   );
 
   const handleMoveMaterial = useCallback(
@@ -954,14 +982,21 @@ export function useMaterialCollection({
 
       void runMaterialLibraryMutation(
         bizType,
-        () =>
-          getWorkbenchService().moveMaterialCollection(item.id, {
-            groupId,
-          }),
+        () => {
+          const scope = getMaterialThirdUserScope(
+            bizType,
+            currentMaterialThirdUserId,
+          );
+          const request = { groupId };
+
+          return scope
+            ? getWorkbenchService().moveMaterialCollection(item.id, request, scope)
+            : getWorkbenchService().moveMaterialCollection(item.id, request);
+        },
         "移动素材失败",
       );
     },
-    [runMaterialLibraryMutation],
+    [currentMaterialThirdUserId, runMaterialLibraryMutation],
   );
 
   const handleEditMaterial = useCallback(
@@ -1240,6 +1275,15 @@ function toComposerMaterialBizType(
   }
 
   return undefined;
+}
+
+function getMaterialThirdUserScope(
+  bizType: ComposerMaterialBizType,
+  thirdUserId: string | undefined,
+) {
+  return bizType === MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED && thirdUserId
+    ? { thirdUserId }
+    : undefined;
 }
 
 function buildH5ComposerSegment(

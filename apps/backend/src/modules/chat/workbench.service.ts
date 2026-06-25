@@ -72,6 +72,7 @@ import type {
   WorkbenchMaterialCollectionListResponse,
   WorkbenchMaterialCollectionMoveRequest,
   WorkbenchMaterialCollectionOkResponse,
+  WorkbenchMaterialCollectionScopeRequest,
   WorkbenchMaterialCollectionContentType,
   WorkbenchMaterialCollectionUpdateRequest,
   QuickReplyScopeType,
@@ -467,15 +468,18 @@ export type WorkbenchService = {
   deleteMaterialCollection(
     subUserId: string,
     collectionId: string,
+    request?: WorkbenchMaterialCollectionScopeRequest,
   ): Promise<WorkbenchMaterialCollectionOkResponse> | WorkbenchMaterialCollectionOkResponse;
   topMaterialCollection(
     subUserId: string,
     collectionId: string,
+    request?: WorkbenchMaterialCollectionScopeRequest,
   ): Promise<WorkbenchMaterialCollectionOkResponse> | WorkbenchMaterialCollectionOkResponse;
   moveMaterialCollection(
     subUserId: string,
     collectionId: string,
     request: WorkbenchMaterialCollectionMoveRequest,
+    scopeRequest?: WorkbenchMaterialCollectionScopeRequest,
   ): Promise<WorkbenchMaterialCollectionOkResponse> | WorkbenchMaterialCollectionOkResponse;
   updateMaterialCollection(
     subUserId: string,
@@ -2062,12 +2066,14 @@ export class MysqlWorkbenchService implements WorkbenchService {
     const requiredGroupId = groupId ?? 0;
     const page = normalizeMaterialPage(request.page);
     const pageSize = normalizeMaterialPageSize(request.pageSize);
+    const thirdUserId = getRequiredMaterialThirdUserId(bizType, request.thirdUserId);
     const result = await this.repository.listMaterialCollections({
       bizType,
       groupId: requiredGroupId,
       limit: pageSize,
       offset: (page - 1) * pageSize,
       subUserId,
+      thirdUserId,
       uid: me.uid,
     });
 
@@ -2148,6 +2154,10 @@ export class MysqlWorkbenchService implements WorkbenchService {
       throw new BadRequestError("UNSUPPORTED_MATERIAL_MESSAGE", "当前消息不支持收藏");
     }
 
+    const thirdUserId = resolveMaterialCreateThirdUserId(bizType, {
+      requestThirdUserId: request.thirdUserId,
+      sourceThirdUserId: message.thirdUserId,
+    });
     const subUid =
       bizType === MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION ? subUserNumericId : 0;
     const sort = Date.now();
@@ -2172,6 +2182,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
       bizType,
       msgInfoId,
       subUid,
+      thirdUserId,
       uid: me.uid,
     });
 
@@ -2190,6 +2201,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
         msgInfoId,
         opSubUserId: subUserId,
         sort,
+        thirdUserId,
         title,
         uid: me.uid,
       });
@@ -2208,6 +2220,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
       opSubUserId: subUserId,
       sort,
       subUid,
+      thirdUserId,
       title,
       uid: me.uid,
     });
@@ -2283,17 +2296,20 @@ export class MysqlWorkbenchService implements WorkbenchService {
   async deleteMaterialCollection(
     subUserId: string,
     collectionId: string,
+    request: WorkbenchMaterialCollectionScopeRequest = {},
   ): Promise<WorkbenchMaterialCollectionOkResponse> {
     const me = await this.getMaterialActor(subUserId);
     const scope = await this.getOperableMaterialCollectionScope(
       me.uid,
       collectionId,
       subUserId,
+      request,
     );
 
     await this.repository.deleteMaterialCollection({
       id: collectionId,
       subUid: scope.subUid,
+      thirdUserId: scope.thirdUserId,
       uid: me.uid,
     });
 
@@ -2303,18 +2319,21 @@ export class MysqlWorkbenchService implements WorkbenchService {
   async topMaterialCollection(
     subUserId: string,
     collectionId: string,
+    request: WorkbenchMaterialCollectionScopeRequest = {},
   ): Promise<WorkbenchMaterialCollectionOkResponse> {
     const me = await this.getMaterialActor(subUserId);
     const scope = await this.getOperableMaterialCollectionScope(
       me.uid,
       collectionId,
       subUserId,
+      request,
     );
 
     await this.repository.topMaterialCollection({
       id: collectionId,
       sort: Date.now(),
       subUid: scope.subUid,
+      thirdUserId: scope.thirdUserId,
       uid: me.uid,
     });
 
@@ -2325,6 +2344,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
     subUserId: string,
     collectionId: string,
     request: WorkbenchMaterialCollectionMoveRequest,
+    scopeRequest: WorkbenchMaterialCollectionScopeRequest = {},
   ): Promise<WorkbenchMaterialCollectionOkResponse> {
     const me = await this.getMaterialActor(subUserId);
     const groupId = readEnterpriseMaterialGroupId(request.groupId);
@@ -2337,6 +2357,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
       me.uid,
       collectionId,
       subUserId,
+      scopeRequest,
     );
 
     if (scope.bizType === MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION) {
@@ -2358,6 +2379,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
       id: collectionId,
       sort: Date.now(),
       subUid: scope.subUid,
+      thirdUserId: scope.thirdUserId,
       uid: me.uid,
     });
 
@@ -3566,6 +3588,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
     uid: number,
     collectionId: string,
     subUserId: string,
+    request: WorkbenchMaterialCollectionScopeRequest = {},
   ): Promise<MaterialCollectionScope> {
     const scope = await this.repository.findMaterialCollectionScope({
       id: collectionId,
@@ -3580,6 +3603,16 @@ export class MysqlWorkbenchService implements WorkbenchService {
       const subUserNumericId = parseMaterialSubUserId(subUserId);
 
       if (scope.subUid !== subUserNumericId) {
+        throw new NotFoundError("MATERIAL_COLLECTION_NOT_FOUND", "素材不存在");
+      }
+
+      return scope;
+    }
+
+    if (scope.bizType === MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED) {
+      const requestedThirdUserId = normalizeMaterialThirdUserId(request.thirdUserId);
+
+      if (!requestedThirdUserId || scope.thirdUserId !== requestedThirdUserId) {
         throw new NotFoundError("MATERIAL_COLLECTION_NOT_FOUND", "素材不存在");
       }
 
@@ -3938,6 +3971,58 @@ function parseMaterialBizType(value: number): MaterialCollectionBizType {
     default:
       throw new BadRequestError("INVALID_MATERIAL_BIZ_TYPE", "素材类型无效");
   }
+}
+
+function normalizeMaterialThirdUserId(value: string | undefined) {
+  const thirdUserId = value?.trim() ?? "";
+
+  return thirdUserId || undefined;
+}
+
+function getRequiredMaterialThirdUserId(
+  bizType: MaterialCollectionBizType,
+  value: string | undefined,
+) {
+  if (bizType !== MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED) {
+    return undefined;
+  }
+
+  const thirdUserId = normalizeMaterialThirdUserId(value);
+
+  if (!thirdUserId) {
+    throw new BadRequestError(
+      "MATERIAL_THIRD_USER_REQUIRED",
+      "视频号素材需要指定账号",
+    );
+  }
+
+  return thirdUserId;
+}
+
+function resolveMaterialCreateThirdUserId(
+  bizType: MaterialCollectionBizType,
+  input: { requestThirdUserId?: string; sourceThirdUserId?: string },
+) {
+  if (bizType !== MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED) {
+    return undefined;
+  }
+
+  const sourceThirdUserId = normalizeMaterialThirdUserId(input.sourceThirdUserId);
+
+  if (!sourceThirdUserId) {
+    throw new BadRequestError(
+      "MATERIAL_THIRD_USER_REQUIRED",
+      "视频号素材需要指定账号",
+    );
+  }
+
+  const requestThirdUserId = normalizeMaterialThirdUserId(input.requestThirdUserId);
+
+  if (requestThirdUserId && requestThirdUserId !== sourceThirdUserId) {
+    throw new NotFoundError("MATERIAL_COLLECTION_NOT_FOUND", "素材不存在");
+  }
+
+  return sourceThirdUserId;
 }
 
 function parseMaterialGroupBizType(value: number): Exclude<MaterialCollectionBizType, 1> {

@@ -82,6 +82,7 @@ export type WorkbenchMaterialCollectionItemDto = {
   id: string;
   bizType: MaterialCollectionBizType;
   groupId: string | 0;
+  thirdUserId?: string | null;
   title: string;
   sort: number;
   msgInfoId: string;
@@ -96,6 +97,7 @@ export type WorkbenchMaterialCollectionListRequest = {
   groupId?: string | 0;
   page?: number;
   pageSize?: number;
+  thirdUserId?: string;
 };
 
 export type WorkbenchMaterialCollectionListResponse = {
@@ -122,6 +124,7 @@ export type WorkbenchMaterialCollectionCreateRequest = {
   fileName?: string;
   groupId?: string | 0;
   msgInfoId: string;
+  thirdUserId?: string;
   title?: string;
 };
 
@@ -149,6 +152,10 @@ export type WorkbenchMaterialCollectionGroupUpdateRequest = {
 
 export type WorkbenchMaterialCollectionMoveRequest = {
   groupId: string;
+};
+
+export type WorkbenchMaterialCollectionScopeRequest = {
+  thirdUserId?: string;
 };
 
 export type WorkbenchMaterialCollectionUpdateRequest = {

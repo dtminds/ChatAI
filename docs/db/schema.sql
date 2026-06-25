@@ -481,6 +481,7 @@ CREATE TABLE `xy_wap_embed_material_collection` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT 'id',
   `uid` bigint unsigned NOT NULL COMMENT '租户id',
   `sub_uid` bigint unsigned NOT NULL DEFAULT '0' COMMENT '控制可见性，0：全员可见，其他：对应子账号可见，xy_wap_embed_sub_user.id',
+  `third_userid` varchar(128) DEFAULT NULL COMMENT '客服第三方用户ID，视频号素材按该字段隔离',
   `biz_type` tinyint NOT NULL DEFAULT '1' COMMENT '业务类型',
   `group_id` bigint unsigned NOT NULL DEFAULT '0' COMMENT '分组ID，xy_wap_embed_material_collection_group.id',
   `title` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '标题',
@@ -492,7 +493,8 @@ CREATE TABLE `xy_wap_embed_material_collection` (
   `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '插入时间',
   `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (`id`),
-  KEY `idx_uid_bizStatus_subUid_bizType_groupId` (`uid`,`biz_status`,`sub_uid`,`biz_type`,`group_id`)
+  KEY `idx_uid_bizStatus_subUid_bizType_groupId` (`uid`,`biz_status`,`sub_uid`,`biz_type`,`group_id`),
+  KEY `idx_material_collection_sphfeed_scope` (`uid`,`biz_status`,`biz_type`,`third_userid`,`group_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='chatAI-素材收藏表';
 
 CREATE TABLE `xy_wap_embed_material_collection_group` (

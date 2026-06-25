@@ -22,6 +22,7 @@ import type {
   WorkbenchMaterialCollectionGroupUpdateRequest,
   WorkbenchMaterialCollectionListRequest,
   WorkbenchMaterialCollectionMoveRequest,
+  WorkbenchMaterialCollectionScopeRequest,
   WorkbenchMaterialCollectionUpdateRequest,
   WorkbenchQuickReplyCategoryCreateRequest,
   WorkbenchQuickReplyBatchCreateRequest,
@@ -447,6 +448,7 @@ const MaterialCollectionsQuerySchema = Type.Object({
   group_id: Type.Optional(Type.String({ maxLength: 64, minLength: 1 })),
   page: Type.Optional(NumericStringSchema),
   page_size: Type.Optional(NumericStringSchema),
+  third_userid: Type.Optional(Type.String({ maxLength: 128, minLength: 1 })),
 });
 
 const MaterialGroupsQuerySchema = Type.Object({
@@ -470,6 +472,10 @@ const MaterialCollectionUpdateBodySchema = Type.Object({
 
 const MaterialCollectionParamsSchema = Type.Object({
   collectionId: Type.String({ maxLength: 64, minLength: 1 }),
+});
+
+const MaterialCollectionScopeQuerySchema = Type.Object({
+  third_userid: Type.Optional(Type.String({ maxLength: 128, minLength: 1 })),
 });
 
 const MaterialCollectionMoveBodySchema = Type.Object({
@@ -634,6 +640,7 @@ type MaterialGroupsQuery = Static<typeof MaterialGroupsQuerySchema>;
 type MaterialCollectionCreateBody = Static<typeof MaterialCollectionCreateBodySchema>;
 type MaterialCollectionUpdateBody = Static<typeof MaterialCollectionUpdateBodySchema>;
 type MaterialCollectionParams = Static<typeof MaterialCollectionParamsSchema>;
+type MaterialCollectionScopeQuery = Static<typeof MaterialCollectionScopeQuerySchema>;
 type MaterialCollectionMoveBody = Static<typeof MaterialCollectionMoveBodySchema>;
 type MaterialCollectionGroupCreateBody = Static<
   typeof MaterialCollectionGroupCreateBodySchema
@@ -1048,6 +1055,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
             parsePositiveIntegerQuery(request.query.page_size) ?? 100,
             100,
           ),
+          thirdUserId: request.query.third_userid,
         } satisfies WorkbenchMaterialCollectionListRequest,
       ),
   );
@@ -1069,12 +1077,16 @@ export async function registerChatRoutes(app: FastifyInstance) {
     },
   );
 
-  app.delete<{ Params: MaterialCollectionParams }>(
+  app.delete<{
+    Params: MaterialCollectionParams;
+    Querystring: MaterialCollectionScopeQuery;
+  }>(
     "/api/server/material-collections/:collectionId",
     {
       preHandler: app.authenticate,
       schema: {
         params: MaterialCollectionParamsSchema,
+        querystring: MaterialCollectionScopeQuerySchema,
       },
     },
     async (request) => {
@@ -1082,6 +1094,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
       return getWorkbenchService(app, request).deleteMaterialCollection(
         getSubUserId(request),
         request.params.collectionId,
+        parseMaterialCollectionScopeQuery(request.query),
       );
     },
   );
@@ -1108,12 +1121,16 @@ export async function registerChatRoutes(app: FastifyInstance) {
     },
   );
 
-  app.post<{ Params: MaterialCollectionParams }>(
+  app.post<{
+    Params: MaterialCollectionParams;
+    Querystring: MaterialCollectionScopeQuery;
+  }>(
     "/api/server/material-collections/:collectionId/top",
     {
       preHandler: app.authenticate,
       schema: {
         params: MaterialCollectionParamsSchema,
+        querystring: MaterialCollectionScopeQuerySchema,
       },
     },
     async (request) => {
@@ -1121,6 +1138,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
       return getWorkbenchService(app, request).topMaterialCollection(
         getSubUserId(request),
         request.params.collectionId,
+        parseMaterialCollectionScopeQuery(request.query),
       );
     },
   );
@@ -1128,6 +1146,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
   app.post<{
     Body: MaterialCollectionMoveBody;
     Params: MaterialCollectionParams;
+    Querystring: MaterialCollectionScopeQuery;
   }>(
     "/api/server/material-collections/:collectionId/move",
     {
@@ -1135,6 +1154,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
       schema: {
         body: MaterialCollectionMoveBodySchema,
         params: MaterialCollectionParamsSchema,
+        querystring: MaterialCollectionScopeQuerySchema,
       },
     },
     async (request) => {
@@ -1143,6 +1163,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
         getSubUserId(request),
         request.params.collectionId,
         request.body satisfies WorkbenchMaterialCollectionMoveRequest,
+        parseMaterialCollectionScopeQuery(request.query),
       );
     },
   );
@@ -2013,6 +2034,14 @@ function parseMaterialGroupIdQuery(value: string | undefined) {
   }
 
   return value === "0" ? 0 : value;
+}
+
+function parseMaterialCollectionScopeQuery(
+  query: MaterialCollectionScopeQuery,
+): WorkbenchMaterialCollectionScopeRequest {
+  return {
+    thirdUserId: query.third_userid,
+  };
 }
 
 function parseQuickReplyScopeTypeQuery(value: string): 1 | 2 {

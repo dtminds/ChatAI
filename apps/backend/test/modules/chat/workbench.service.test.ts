@@ -4165,6 +4165,7 @@ describe("MysqlWorkbenchService", () => {
         msgid: "msg-sphfeed-001",
         id: 9104,
         msgtype: "sphfeed",
+        thirdUserId: "seat-user-001",
         uid: 9001,
       }),
     });
@@ -4182,10 +4183,74 @@ describe("MysqlWorkbenchService", () => {
       expect.objectContaining({
         bizType: MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED,
         msgInfoId: "9104",
+        thirdUserId: "seat-user-001",
         title: "都市快报",
         uid: 9001,
       }),
     );
+  });
+
+  it("material: lists sphfeed materials in the requested third user scope", async () => {
+    const repository = createMaterialRepository({
+      listMaterialCollections: vi.fn().mockResolvedValue({
+        items: [
+          createMaterialItem({
+            bizType: MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED,
+            contentType: "sphfeed",
+            title: "都市快报",
+          }),
+        ],
+        total: 1,
+      }),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.listMaterialCollections("101", {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED,
+        groupId: "9",
+        page: 1,
+        pageSize: 20,
+        thirdUserId: "seat-user-001",
+      }),
+    ).resolves.toMatchObject({
+      items: [
+        {
+          contentType: "sphfeed",
+          title: "都市快报",
+        },
+      ],
+      pagination: {
+        total: 1,
+      },
+    });
+
+    expect(repository.listMaterialCollections).toHaveBeenCalledWith({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED,
+      groupId: "9",
+      limit: 20,
+      offset: 0,
+      subUserId: "101",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
+  });
+
+  it("material: requires third user scope before listing sphfeed materials", async () => {
+    const repository = createMaterialRepository();
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.listMaterialCollections("101", {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED,
+        groupId: "9",
+      }),
+    ).rejects.toMatchObject({
+      code: "MATERIAL_THIRD_USER_REQUIRED",
+      statusCode: 400,
+    });
+
+    expect(repository.listMaterialCollections).not.toHaveBeenCalled();
   });
 
   it("material: rejects invalid selected group before collecting tenant materials", async () => {
@@ -4592,6 +4657,86 @@ describe("MysqlWorkbenchService", () => {
       uid: 9001,
     });
     nowSpy.mockRestore();
+  });
+
+  it("material: mutates sphfeed materials with third user scope", async () => {
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_779_700_005_000);
+    const repository = createMaterialRepository({
+      findMaterialCollectionScope: vi.fn().mockResolvedValue({
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED,
+        subUid: 0,
+        thirdUserId: "seat-user-001",
+      }),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.deleteMaterialCollection("101", "66", {
+        thirdUserId: "seat-user-001",
+      }),
+    ).resolves.toEqual({
+      ok: true,
+    });
+    await expect(
+      service.topMaterialCollection("101", "66", {
+        thirdUserId: "seat-user-001",
+      }),
+    ).resolves.toEqual({
+      ok: true,
+    });
+    await expect(
+      service.moveMaterialCollection(
+        "101",
+        "66",
+        { groupId: "9" },
+        { thirdUserId: "seat-user-001" },
+      ),
+    ).resolves.toEqual({ ok: true });
+
+    expect(repository.deleteMaterialCollection).toHaveBeenCalledWith({
+      id: "66",
+      subUid: 0,
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
+    expect(repository.topMaterialCollection).toHaveBeenCalledWith({
+      id: "66",
+      sort: 1_779_700_005_000,
+      subUid: 0,
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
+    expect(repository.moveMaterialCollection).toHaveBeenCalledWith({
+      groupId: "9",
+      id: "66",
+      sort: 1_779_700_005_000,
+      subUid: 0,
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
+    nowSpy.mockRestore();
+  });
+
+  it("material: rejects sphfeed material operations from another third user", async () => {
+    const repository = createMaterialRepository({
+      findMaterialCollectionScope: vi.fn().mockResolvedValue({
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED,
+        subUid: 0,
+        thirdUserId: "seat-user-002",
+      }),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.deleteMaterialCollection("101", "66", {
+        thirdUserId: "seat-user-001",
+      }),
+    ).rejects.toMatchObject({
+      code: "MATERIAL_COLLECTION_NOT_FOUND",
+      statusCode: 404,
+    });
+
+    expect(repository.deleteMaterialCollection).not.toHaveBeenCalled();
   });
 
   it("material: updates file and h5 collection content/title when edited", async () => {

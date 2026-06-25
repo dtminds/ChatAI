@@ -376,6 +376,7 @@ export type MaterialMessageLookup = {
   msgid: string;
   msgtime?: Date | number | string | null;
   msgtype: string;
+  thirdUserId?: string;
   uid: number;
 };
 
@@ -388,6 +389,7 @@ export type MaterialCollectionLookup = {
 export type MaterialCollectionScope = {
   bizType: number;
   subUid: number;
+  thirdUserId?: string;
 };
 
 export type MaterialCollectionForwardLookup = {
@@ -486,6 +488,7 @@ export class WorkbenchRepository {
     limit: number;
     offset: number;
     subUserId: string;
+    thirdUserId?: string;
     uid: number;
   }): Promise<{ items: WorkbenchMaterialCollectionItemDto[]; total: number }> {
     const groupNumericId = parseMaterialGroupId(input.groupId);
@@ -504,15 +507,20 @@ export class WorkbenchRepository {
       .where("biz_status", "=", BIZ_STATUS_ACTIVE)
       .where("sub_uid", "in", getMaterialVisibleSubUids(input.bizType, input.subUserId))
       .where("group_id", "=", groupNumericId);
+    const scopedQuery = withMaterialCollectionThirdUserScope(
+      baseQuery,
+      input.bizType,
+      input.thirdUserId,
+    );
     const [rows, totalRow] = await Promise.all([
-      baseQuery
+      scopedQuery
         .selectAll()
         .orderBy("sort", "desc")
         .orderBy("id", "desc")
         .limit(input.limit)
         .offset(input.offset)
         .execute(),
-      baseQuery
+      scopedQuery
         .select((eb) => eb.fn.countAll().as("count"))
         .executeTakeFirst() as Promise<{ count: number | string | bigint } | undefined>,
     ]);
@@ -541,6 +549,7 @@ export class WorkbenchRepository {
         "message.msgid as msgid",
         "message.msgtime as msgtime",
         "message.msgtype as msgtype",
+        "message.third_user_id as third_user_id",
         "message.uid as uid",
       ])
       .where("message.id", "=", msgInfoNumericId)
@@ -557,6 +566,7 @@ export class WorkbenchRepository {
       msgid: row.msgid,
       msgtime: row.msgtime,
       msgtype: row.msgtype,
+      thirdUserId: row.third_user_id ?? undefined,
       uid: row.uid,
     };
   }
@@ -565,6 +575,7 @@ export class WorkbenchRepository {
     bizType: number;
     msgInfoId: string;
     subUid: number;
+    thirdUserId?: string;
     uid: number;
   }): Promise<MaterialCollectionLookup | undefined> {
     const msgInfoNumericId = parseMySqlId(input.msgInfoId);
@@ -573,13 +584,19 @@ export class WorkbenchRepository {
       return undefined;
     }
 
-    const row = await this.db
+    const query = this.db
       .selectFrom("xy_wap_embed_material_collection")
       .selectAll()
       .where("uid", "=", input.uid)
       .where("biz_type", "=", input.bizType)
       .where("sub_uid", "=", input.subUid)
-      .where("msg_info_id", "=", msgInfoNumericId)
+      .where("msg_info_id", "=", msgInfoNumericId);
+    const scopedQuery = withMaterialCollectionThirdUserScope(
+      query,
+      input.bizType,
+      input.thirdUserId,
+    );
+    const row = await scopedQuery
       .executeTakeFirst();
 
     if (!row) {
@@ -607,7 +624,7 @@ export class WorkbenchRepository {
 
     const row = await this.db
       .selectFrom("xy_wap_embed_material_collection")
-      .select(["biz_type", "sub_uid"])
+      .select(["biz_type", "sub_uid", "third_userid"])
       .where("id", "=", collectionNumericId)
       .where("uid", "=", input.uid)
       .where("biz_status", "=", BIZ_STATUS_ACTIVE)
@@ -620,6 +637,7 @@ export class WorkbenchRepository {
     return {
       bizType: toSafeNumber(row.biz_type),
       subUid: toSafeNumber(row.sub_uid),
+      thirdUserId: row.third_userid ?? undefined,
     };
   }
 
@@ -701,7 +719,7 @@ export class WorkbenchRepository {
     title: string;
     uid: number;
   }) {
-    await this.updateActiveMaterialCollection(input.id, input.uid, input.subUid, {
+    await this.updateActiveMaterialCollection(input.id, input.uid, input.subUid, undefined, {
       content: input.content,
       title: input.title,
     });
@@ -762,6 +780,7 @@ export class WorkbenchRepository {
     opSubUserId: string;
     sort: number;
     subUid: number;
+    thirdUserId?: string;
     title: string;
     uid: number;
   }) {
@@ -794,6 +813,7 @@ export class WorkbenchRepository {
           op_sub_uid: opSubUserNumericId,
           sort: input.sort,
           sub_uid: input.subUid,
+          ...(input.thirdUserId ? { third_userid: input.thirdUserId } : {}),
           title: input.title,
           uid: input.uid,
         })
@@ -817,6 +837,7 @@ export class WorkbenchRepository {
     msgInfoId: string;
     opSubUserId: string;
     sort: number;
+    thirdUserId?: string;
     title: string;
     uid: number;
   }) {
@@ -843,6 +864,7 @@ export class WorkbenchRepository {
         msg_info_id: msgInfoNumericId,
         op_sub_uid: opSubUserNumericId,
         sort: input.sort,
+        ...(input.thirdUserId ? { third_userid: input.thirdUserId } : {}),
         title: input.title,
       })
       .where("id", "=", collectionNumericId)
@@ -850,14 +872,14 @@ export class WorkbenchRepository {
       .execute();
   }
 
-  async deleteMaterialCollection(input: { id: string; subUid: number; uid: number }) {
-    await this.updateActiveMaterialCollection(input.id, input.uid, input.subUid, {
+  async deleteMaterialCollection(input: { id: string; subUid: number; thirdUserId?: string; uid: number }) {
+    await this.updateActiveMaterialCollection(input.id, input.uid, input.subUid, input.thirdUserId, {
       biz_status: BIZ_STATUS_HIDDEN,
     });
   }
 
-  async topMaterialCollection(input: { id: string; sort: number; subUid: number; uid: number }) {
-    await this.updateActiveMaterialCollection(input.id, input.uid, input.subUid, {
+  async topMaterialCollection(input: { id: string; sort: number; subUid: number; thirdUserId?: string; uid: number }) {
+    await this.updateActiveMaterialCollection(input.id, input.uid, input.subUid, input.thirdUserId, {
       sort: input.sort,
     });
   }
@@ -867,6 +889,7 @@ export class WorkbenchRepository {
     id: string;
     sort: number;
     subUid: number;
+    thirdUserId?: string;
     uid: number;
   }) {
     const groupNumericId = parseMaterialGroupId(input.groupId);
@@ -875,7 +898,7 @@ export class WorkbenchRepository {
       return;
     }
 
-    await this.updateActiveMaterialCollection(input.id, input.uid, input.subUid, {
+    await this.updateActiveMaterialCollection(input.id, input.uid, input.subUid, input.thirdUserId, {
       group_id: groupNumericId,
       sort: input.sort,
     });
@@ -1803,6 +1826,7 @@ export class WorkbenchRepository {
     id: string,
     uid: number,
     subUid: number,
+    thirdUserId: string | undefined,
     values: Record<string, unknown>,
   ) {
     const collectionNumericId = parseMySqlId(id);
@@ -1811,13 +1835,16 @@ export class WorkbenchRepository {
       return;
     }
 
-    await this.db
+    const query = this.db
       .updateTable("xy_wap_embed_material_collection")
       .set(values)
       .where("id", "=", collectionNumericId)
       .where("uid", "=", uid)
       .where("sub_uid", "=", subUid)
-      .where("biz_status", "=", BIZ_STATUS_ACTIVE)
+      .where("biz_status", "=", BIZ_STATUS_ACTIVE);
+    const scopedQuery = thirdUserId ? query.where("third_userid", "=", thirdUserId) : query;
+
+    await scopedQuery
       .execute();
   }
 
@@ -4997,6 +5024,14 @@ function getMaterialVisibleSubUids(bizType: number, subUserId: string) {
   const subUserNumericId = parseMySqlId(subUserId);
 
   return subUserNumericId == null ? [] : [subUserNumericId];
+}
+
+function withMaterialCollectionThirdUserScope<
+  T extends { where: (column: string, operator: string, value: unknown) => T },
+>(query: T, bizType: number, thirdUserId: string | undefined) {
+  return bizType === MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED && thirdUserId
+    ? query.where("third_userid", "=", thirdUserId)
+    : query;
 }
 
 function getQuickReplySubUid(scopeType: QuickReplyScopeType, subUserId: string) {

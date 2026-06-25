@@ -96,6 +96,29 @@ function createFileMaterialItem(
   };
 }
 
+const sphfeedMessage = {
+  author: "客户",
+  content: {
+    description: "杭州高架惊现鸵鸟飞奔",
+    imageUrl: "https://finder.video.qq.com/cover.jpg",
+    sourceLabel: "视频号",
+    title: "都市快报",
+    type: "sphfeed",
+    url: "https://channels.weixin.qq.com/web/pages/feed?eid=export",
+  },
+  conversationId: "conv-001",
+  msgid: "msg-sphfeed-001",
+  role: "customer",
+  sender: {
+    id: "customer-001",
+    name: "客户",
+  },
+  sentAt: "2026-06-14 10:00:00",
+  seq: 7002,
+  status: "sent",
+  uiMessageKey: "7002",
+} satisfies ChatMessage;
+
 function createMiniProgramMaterialItem(
   overrides: Partial<WorkbenchMaterialCollectionItemDto> = {},
 ): WorkbenchMaterialCollectionItemDto {
@@ -673,6 +696,90 @@ describe("useMaterialCollection", () => {
       pageSize: 100,
     });
     expect(result.current.pendingMaterialCollection).toBeNull();
+  });
+
+  it("scopes sphfeed collection and library requests by current third user", async () => {
+    const baseService = createMockWorkbenchService();
+    const collectMaterial = vi.fn(async () => ({
+      success: true as const,
+    }));
+    const deleteMaterialCollection = vi.fn(async () => ({ ok: true as const }));
+    const listMaterialCollections = vi.fn(baseService.listMaterialCollections);
+    const moveMaterialCollection = vi.fn(async () => ({ ok: true as const }));
+    const topMaterialCollection = vi.fn(async () => ({ ok: true as const }));
+
+    setWorkbenchService({
+      ...baseService,
+      collectMaterial,
+      deleteMaterialCollection,
+      listMaterialCollections,
+      listMaterialGroups: vi.fn(baseService.listMaterialGroups),
+      moveMaterialCollection,
+      topMaterialCollection,
+    });
+
+    const { result } = renderHook(() =>
+      useMaterialCollection(
+        createDefaultOptions({
+          currentMaterialThirdUserId: "seat-user-001",
+        }),
+      ),
+    );
+
+    await act(async () => {
+      result.current.handleOpenMaterialLibrary(5);
+    });
+    await waitFor(() => {
+      expect(result.current.activeMaterialLibraryGroupId).toBe(
+        "mock-material-group-sphfeed",
+      );
+    });
+
+    expect(listMaterialCollections).toHaveBeenLastCalledWith({
+      bizType: 5,
+      groupId: "mock-material-group-sphfeed",
+      page: 1,
+      pageSize: 100,
+      thirdUserId: "seat-user-001",
+    });
+
+    await act(async () => {
+      await result.current.handleCollectMaterial(sphfeedMessage);
+    });
+    await act(async () => {
+      await result.current.handleSubmitMaterialCollection({
+        groupId: "mock-material-group-sphfeed",
+      });
+    });
+
+    expect(collectMaterial).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bizType: 5,
+        groupId: "mock-material-group-sphfeed",
+        msgInfoId: "7002",
+        thirdUserId: "seat-user-001",
+      }),
+    );
+
+    act(() => {
+      result.current.handleTopMaterial(createSphfeedMaterialItem());
+      result.current.handleMoveMaterial(createSphfeedMaterialItem(), "group-next");
+      result.current.handleDeleteMaterial(createSphfeedMaterialItem());
+    });
+
+    await waitFor(() => {
+      expect(topMaterialCollection).toHaveBeenCalledWith("material-sphfeed", {
+        thirdUserId: "seat-user-001",
+      });
+      expect(moveMaterialCollection).toHaveBeenCalledWith(
+        "material-sphfeed",
+        { groupId: "group-next" },
+        { thirdUserId: "seat-user-001" },
+      );
+      expect(deleteMaterialCollection).toHaveBeenCalledWith("material-sphfeed", {
+        thirdUserId: "seat-user-001",
+      });
+    });
   });
 
   it("clears material library and pending collection state on session reset", async () => {

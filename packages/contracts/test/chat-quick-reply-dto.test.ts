@@ -85,6 +85,27 @@ describe("quick reply contracts", () => {
     });
   });
 
+  it("rejects sphfeed attachments while quick reply does not support video channels", () => {
+    expect(
+      validateQuickReplyPayload({
+        attachments: [
+          {
+            content: {
+              title: "都市快报",
+            },
+            materialCollectionId: "12",
+            msgInfoId: "9001",
+            type: "sphfeed",
+          },
+        ],
+        contentText: "",
+      }),
+    ).toEqual({
+      errorMsg: "附件类型不支持",
+      ok: false,
+    });
+  });
+
   it("normalizes H5 attachment fields without adding bizType and keeps source ids", () => {
     const attachments = normalizeQuickReplyAttachments([
       {

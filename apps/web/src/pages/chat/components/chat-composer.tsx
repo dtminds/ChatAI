@@ -82,7 +82,6 @@ import {
   MAX_COMPOSER_IMAGE_SEGMENTS,
 } from "@/pages/chat/lib/composer-image-files";
 import { COMPOSER_FILE_ACCEPT } from "@/pages/chat/lib/composer-file-files";
-import { DISABLE_SPH_COLLECTION } from "@/pages/chat/chat-constants";
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
 import { getWechatEmojiByName, type WechatEmojiName } from "@/pages/chat/wechat-emoji";
 import type { GroupMember, QuotedMessagePreviewContent } from "@/pages/chat/chat-types";
@@ -555,26 +554,24 @@ export function ChatComposer({
                 <MiniProgramMark className="size-4.5" />
               </Button>
             </ComposerActionTooltip>
-            {DISABLE_SPH_COLLECTION ? null : (
-              <ComposerActionTooltip
+            <ComposerActionTooltip
+              disabled={isSending || !canSendMessage}
+              label="视频号"
+            >
+              <Button
+                aria-label="收藏视频号"
+                className={composerActionButtonClass}
                 disabled={isSending || !canSendMessage}
-                label="视频号"
+                onClick={() =>
+                  onOpenMaterialLibrary(MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED)
+                }
+                size="icon"
+                type="button"
+                variant="ghost"
               >
-                <Button
-                  aria-label="收藏视频号"
-                  className={composerActionButtonClass}
-                  disabled={isSending || !canSendMessage}
-                  onClick={() =>
-                    onOpenMaterialLibrary(MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED)
-                  }
-                  size="icon"
-                  type="button"
-                  variant="ghost"
-                >
-                  <SphFeedMark className="size-5.75" />
-                </Button>
-              </ComposerActionTooltip>
-            )}
+                <SphFeedMark className="size-5.75" />
+              </Button>
+            </ComposerActionTooltip>
             <ComposerActionTooltip
               disabled={isSending || !canSendMessage}
               label="H5链接"

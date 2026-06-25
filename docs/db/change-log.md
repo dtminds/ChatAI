@@ -2,6 +2,19 @@
 
 Manual database changes for the backend should be recorded here.
 
+## 2026-06-26
+
+- Added nullable `xy_wap_embed_material_collection.third_userid` for video channel material isolation by current seat third-party user id.
+- `xy_wap_embed_material_collection_group` remains enterprise-shared and is unchanged.
+
+Manual migration for existing databases:
+
+```sql
+ALTER TABLE xy_wap_embed_material_collection
+  ADD COLUMN `third_userid` varchar(128) DEFAULT NULL COMMENT '客服第三方用户ID，视频号素材按该字段隔离' AFTER `sub_uid`,
+  ADD KEY `idx_material_collection_sphfeed_scope` (`uid`,`biz_status`,`biz_type`,`third_userid`,`group_id`);
+```
+
 ## 2026-06-20
 
 - Added `xy_wap_embed_material_collection.msg_info_id` to retain the source `xy_wap_embed_msg_audit_info.id` alongside the third-party `msgid`.

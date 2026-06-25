@@ -32,6 +32,7 @@ const MOCK_KB_LIST: KbListViewItem[] = [
 
 const INITIAL_MOCK_KB_DOCS: KbDocViewItem[] = [
   {
+    docUrl: "kb-docs/knowledge-1.doc",
     fileExtension: "doc",
     id: "knowledge-1",
     kbId: "W7zU2fWkVSp65OTAjDd3-w",
@@ -44,6 +45,7 @@ const INITIAL_MOCK_KB_DOCS: KbDocViewItem[] = [
     updatedAt: "2026-06-20 23:22:22",
   },
   {
+    docUrl: "kb-images/knowledge-2.png",
     fileExtension: "png",
     id: "knowledge-2",
     kbId: "W7zU2fWkVSp65OTAjDd3-w",
@@ -56,6 +58,7 @@ const INITIAL_MOCK_KB_DOCS: KbDocViewItem[] = [
     updatedAt: "2026-06-19 23:22:22",
   },
   {
+    docUrl: "kb-faq/knowledge-3.faq",
     fileExtension: "faq",
     id: "knowledge-3",
     kbId: "W7zU2fWkVSp65OTAjDd3-w",
@@ -68,6 +71,7 @@ const INITIAL_MOCK_KB_DOCS: KbDocViewItem[] = [
     updatedAt: "2026-06-19 23:22:22",
   },
   {
+    docUrl: "kb-docs/knowledge-4.txt",
     fileExtension: "txt",
     id: "knowledge-4",
     kbId: "W7zU2fWkVSp65OTAjDd3-w",
@@ -80,6 +84,7 @@ const INITIAL_MOCK_KB_DOCS: KbDocViewItem[] = [
     updatedAt: "2026-06-19 23:22:22",
   },
   {
+    docUrl: "kb-docs/knowledge-5.pdf",
     fileExtension: "pdf",
     id: "knowledge-5",
     kbId: "W7zU2fWkVSp65OTAjDd3-w",
@@ -92,6 +97,7 @@ const INITIAL_MOCK_KB_DOCS: KbDocViewItem[] = [
     updatedAt: "2026-06-18 23:22:22",
   },
   {
+    docUrl: "kb-docs/knowledge-6.doc",
     fileExtension: "doc",
     id: "knowledge-6",
     kbId: "88",
@@ -104,6 +110,7 @@ const INITIAL_MOCK_KB_DOCS: KbDocViewItem[] = [
     updatedAt: "2026-06-19 18:22:22",
   },
   {
+    docUrl: "kb-faq/knowledge-7.faq",
     fileExtension: "faq",
     id: "knowledge-7",
     kbId: "89",
@@ -116,6 +123,7 @@ const INITIAL_MOCK_KB_DOCS: KbDocViewItem[] = [
     updatedAt: "2026-06-18 18:22:22",
   },
   {
+    docUrl: "kb-images/knowledge-8.png",
     fileExtension: "png",
     id: "knowledge-8",
     kbId: "W7zU2fWkVSp65OTAjDd3-w",
@@ -250,7 +258,7 @@ function toKbDocListItem(record: KbDocViewItem): KbDocListItem {
     docId: record.id,
     docSuffix: record.fileExtension,
     docType: record.type,
-    docUrl: `kb-docs/${record.id}.${record.fileExtension}`,
+    docUrl: record.docUrl,
     kbId: record.kbId,
     name: record.name,
     sliceCount: record.sliceCount,

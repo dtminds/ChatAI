@@ -11,6 +11,7 @@ import type {
   KbListResponse,
 } from "@chatai/contracts";
 import { http } from "@/lib/request";
+import { buildMediaAssetUrl } from "@/lib/media-asset-url";
 import type {
   KbDocChunkViewItem,
   KbDocType as KbDocViewType,
@@ -100,6 +101,7 @@ export function toKbListViewItem(item: KbListItem): KbListViewItem {
 export function toKbDocViewItem(item: KbDocListItem): KbDocViewItem {
   return {
     createdAt: formatDisplayTime(item.createdAt),
+    docUrl: item.docUrl,
     fileExtension: item.docSuffix,
     id: item.docId,
     kbId: item.kbId,
@@ -115,12 +117,14 @@ export function toKbDocViewItem(item: KbDocListItem): KbDocViewItem {
 export function toKbDocChunkViewItem(
   item: KbChunkListItem,
   docType: KbDocViewType,
+  options?: { docUrl?: string },
 ): KbDocChunkViewItem {
+  const imageUrls = resolveKbDocChunkImageUrls(item.imageUrls, docType, options?.docUrl);
   const chunk: KbDocChunkViewItem = {
     createdAt: formatDisplayTime(item.createdAt),
     docId: item.docId,
     id: item.chunkId,
-    imageUrls: item.imageUrls,
+    imageUrls,
     kbId: item.kbId,
     source: item.source,
     type: docType,
@@ -136,6 +140,28 @@ export function toKbDocChunkViewItem(
   chunk.title = item.title ?? "";
   chunk.content = item.content;
   return chunk;
+}
+
+function resolveKbDocChunkImageUrls(
+  imageUrls: string[] | undefined,
+  docType: KbDocViewType,
+  docUrl?: string,
+) {
+  if (imageUrls?.length) {
+    return imageUrls;
+  }
+
+  if (docType !== "image" || !docUrl?.trim()) {
+    return undefined;
+  }
+
+  const normalizedDocUrl = docUrl.trim();
+
+  if (/^https?:\/\//iu.test(normalizedDocUrl)) {
+    return [normalizedDocUrl];
+  }
+
+  return [buildMediaAssetUrl(normalizedDocUrl)];
 }
 
 function buildQueryString(params: Record<string, string | number | undefined>) {

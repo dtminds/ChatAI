@@ -99,4 +99,39 @@ describe("kb-chunk-java-mappers", () => {
       title: "切片标题",
     });
   });
+
+  it("maps image doc Java page item with JSON chunkAttachment", () => {
+    expect(
+      mapJavaChunkPageItem(
+        {
+          content: JSON.stringify({
+            chunkAttachment: [
+              {
+                link: "kb-images/demo.png",
+                type: "image",
+              },
+            ],
+            chunkType: "image",
+            content: "图片描述",
+          }),
+          createTime: "2026-06-24T18:54:30",
+          docId: 31,
+          id: 63,
+          kbId: 3,
+          source: 2,
+          title: "产品宣传图",
+          type: 2,
+          uid: 272,
+          updateTime: "2026-06-24T19:02:34",
+        },
+        "image",
+      ),
+    ).toMatchObject({
+      chunkId: "63",
+      chunkType: "image",
+      content: "图片描述",
+      imageUrls: ["https://b5.bokr.com.cn/kb-images/demo.png"],
+      title: "产品宣传图",
+    });
+  });
 });

@@ -1,6 +1,12 @@
-import type { KbChunkListItem, KbChunkType, KbDocType } from "@chatai/contracts";
+import type { KbChunkListItem, KbDocType } from "@chatai/contracts";
+import { parseJsonRecord } from "../chat/workbench-content-utils.js";
 import { parseKbChunkContent } from "./kb-chunk-content-parser.js";
-import { mapChunkSource, normalizeChunkType } from "./kb-read-mappers.js";
+import {
+  mapChunkSource,
+  resolveKbChunkContent,
+  resolveKbChunkImageUrls,
+  resolveKbChunkType,
+} from "./kb-read-mappers.js";
 
 export type AgentKbJavaChunkPageItem = {
   content: string | null;
@@ -22,15 +28,28 @@ export function mapJavaChunkPageItem(
   docType: KbDocType,
 ): KbChunkListItem {
   const parsed = parseKbChunkContent(item.content);
-  const chunkType = resolveJavaChunkType(parsed.chunkType, item.type, docType);
+  const rawContent = item.content?.trim() ?? "";
+  const rawIsJson = Boolean(parseJsonRecord(rawContent));
+  const chunkType = resolveKbChunkType(parsed, item.type, docType);
 
   return {
     chunkId: String(item.id),
     chunkType,
-    content: parsed.content,
+    content: resolveKbChunkContent(
+      { content: item.content, description: null },
+      docType,
+      parsed,
+      rawIsJson,
+    ),
     createdAt: toIsoString(item.createTime),
     docId: String(item.docId),
-    imageUrls: parsed.imageUrls.length > 0 ? parsed.imageUrls : undefined,
+    imageUrls: resolveKbChunkImageUrls(
+      { content: item.content },
+      chunkType,
+      docType,
+      parsed,
+      rawIsJson,
+    ),
     kbId: String(item.kbId),
     source: mapChunkSource(item.source),
     title: item.title?.trim() || parsed.title || undefined,
@@ -39,18 +58,6 @@ export function mapJavaChunkPageItem(
 }
 
 export const parseJavaChunkContent = parseKbChunkContent;
-
-function resolveJavaChunkType(
-  parsedChunkType: string | undefined,
-  javaType: number,
-  docType: KbDocType,
-): KbChunkType {
-  if (parsedChunkType) {
-    return normalizeChunkType(parsedChunkType, docType);
-  }
-
-  return normalizeChunkType(javaType, docType);
-}
 
 function toIsoString(value: Date | number | string | null | undefined) {
   if (value == null) {

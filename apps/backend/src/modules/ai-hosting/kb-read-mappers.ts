@@ -14,8 +14,8 @@ import type {
   XyWapEmbedAgentKbChunk,
   XyWapEmbedAgentKbDoc,
 } from "../../db/schema.js";
-import { normalizeMediaAssetUrl } from "../chat/workbench-content-utils.js";
-import { parseKbChunkContent } from "./kb-chunk-content-parser.js";
+import { normalizeMediaAssetUrl, parseJsonRecord } from "../chat/workbench-content-utils.js";
+import { parseKbChunkContent, type ParsedKbChunkContent } from "./kb-chunk-content-parser.js";
 
 const KB_DOC_TYPE_FAQ = 1;
 const KB_DOC_TYPE_DOCUMENT = 2;
@@ -74,18 +74,20 @@ export function mapKbChunkListItem(
   docType: KbDocType,
 ): KbChunkListItem {
   const parsedContent = parseKbChunkContent(row.content);
-  const chunkType = parsedContent.chunkType
-    ? normalizeChunkType(parsedContent.chunkType, docType)
-    : normalizeChunkType(row.type, docType);
+  const rawContent = row.content?.trim() ?? "";
+  const rawIsJson = Boolean(parseJsonRecord(rawContent));
+  const chunkType = resolveKbChunkType(parsedContent, row.type, docType);
   const source = mapChunkSource(row.source);
-  const imageUrls = resolveChunkImageUrls(row, chunkType, parsedContent.imageUrls);
+  const imageUrls = resolveKbChunkImageUrls(row, chunkType, docType, parsedContent, rawIsJson);
+  const content = resolveKbChunkContent(row, docType, parsedContent, rawIsJson);
+  const description = row.description?.trim() || undefined;
 
   return {
     chunkId: String(row.id),
     chunkType,
-    content: resolveChunkContent(row, docType, parsedContent),
+    content,
     createdAt: toIsoString(row.create_time),
-    description: row.description ?? undefined,
+    description: docType === "image" ? (description ?? (content || undefined)) : description,
     docId: String(row.doc_id),
     imageUrls,
     kbId: String(row.kb_id),
@@ -95,31 +97,71 @@ export function mapKbChunkListItem(
   };
 }
 
-function resolveChunkImageUrls(
-  row: Selectable<XyWapEmbedAgentKbChunk>,
-  chunkType: KbChunkType,
-  parsedImageUrls: string[],
-) {
-  if (parsedImageUrls.length > 0) {
-    return parsedImageUrls;
+type KbChunkContentRow = {
+  content: string | null;
+  description?: string | null;
+};
+
+export function resolveKbChunkType(
+  parsedContent: ParsedKbChunkContent,
+  rowType: number | string,
+  docType: KbDocType,
+): KbChunkType {
+  if (docType === "image") {
+    return "image";
   }
 
-  if (chunkType !== "image") {
+  if (parsedContent.chunkType) {
+    return normalizeChunkType(parsedContent.chunkType, docType);
+  }
+
+  return normalizeChunkType(rowType, docType);
+}
+
+export function resolveKbChunkImageUrls(
+  row: KbChunkContentRow,
+  chunkType: KbChunkType,
+  docType: KbDocType,
+  parsedContent: ParsedKbChunkContent,
+  rawIsJson: boolean,
+) {
+  if (parsedContent.imageUrls.length > 0) {
+    return parsedContent.imageUrls;
+  }
+
+  if (chunkType !== "image" && docType !== "image") {
     return undefined;
   }
 
-  const normalizedUrl = normalizeMediaAssetUrl(row.content ?? "");
+  const rawContent = row.content?.trim() ?? "";
+
+  if (!rawContent || rawIsJson) {
+    return undefined;
+  }
+
+  const normalizedUrl = normalizeMediaAssetUrl(rawContent);
 
   return normalizedUrl ? [normalizedUrl] : undefined;
 }
 
-function resolveChunkContent(
-  row: Selectable<XyWapEmbedAgentKbChunk>,
+export function resolveKbChunkContent(
+  row: KbChunkContentRow,
   docType: KbDocType,
-  parsedContent: ReturnType<typeof parseKbChunkContent>,
+  parsedContent: ParsedKbChunkContent,
+  rawIsJson: boolean,
 ) {
   if (docType === "image") {
-    return row.description ?? "";
+    if (rawIsJson && parsedContent.content) {
+      return parsedContent.content;
+    }
+
+    const description = row.description?.trim();
+
+    if (description) {
+      return description;
+    }
+
+    return parsedContent.content;
   }
 
   return parsedContent.content;

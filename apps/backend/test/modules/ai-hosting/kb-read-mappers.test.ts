@@ -185,6 +185,92 @@ describe("kb-read-mappers", () => {
     });
   });
 
+  it("maps image doc chunks with JSON chunkAttachment like document chunks", () => {
+    expect(
+      mapKbChunkListItem(
+        {
+          content: JSON.stringify({
+            chunkAttachment: [
+              {
+                link: "kb-images/demo.png",
+                type: "image",
+              },
+            ],
+            chunkType: "image",
+            content: "图片描述文字",
+          }),
+          create_time: new Date("2026-06-18T15:22:22.000Z"),
+          description: "兜底描述",
+          doc_id: 1002,
+          html_content: null,
+          id: 505,
+          kb_id: 1,
+          last_sync_time: null,
+          md_content: null,
+          point_process_time: null,
+          point_update_time: null,
+          source: 2,
+          status: 1,
+          sync_status: 0,
+          title: "产品宣传图",
+          tokens: null,
+          type: "text",
+          uid: 9001,
+          update_time: new Date("2026-06-18T15:22:22.000Z"),
+          volc_chunk_id: null,
+          volc_doc_id: null,
+          volc_resource_id: null,
+        },
+        "image",
+      ),
+    ).toMatchObject({
+      chunkId: "505",
+      chunkType: "image",
+      content: "图片描述文字",
+      imageUrls: ["https://b5.bokr.com.cn/kb-images/demo.png"],
+      title: "产品宣传图",
+    });
+  });
+
+  it("does not treat JSON content as a raw image path", () => {
+    expect(
+      mapKbChunkListItem(
+        {
+          content: JSON.stringify({
+            chunkType: "image",
+            content: "仅描述文字",
+          }),
+          create_time: new Date("2026-06-18T15:22:22.000Z"),
+          description: null,
+          doc_id: 1002,
+          html_content: null,
+          id: 506,
+          kb_id: 1,
+          last_sync_time: null,
+          md_content: null,
+          point_process_time: null,
+          point_update_time: null,
+          source: 2,
+          status: 1,
+          sync_status: 0,
+          title: "产品宣传图",
+          tokens: null,
+          type: "image",
+          uid: 9001,
+          update_time: new Date("2026-06-18T15:22:22.000Z"),
+          volc_chunk_id: null,
+          volc_doc_id: null,
+          volc_resource_id: null,
+        },
+        "image",
+      ),
+    ).toMatchObject({
+      chunkType: "image",
+      content: "仅描述文字",
+      imageUrls: undefined,
+    });
+  });
+
   it("maps image chunk url and analysis text", () => {
     expect(
       mapKbChunkListItem(

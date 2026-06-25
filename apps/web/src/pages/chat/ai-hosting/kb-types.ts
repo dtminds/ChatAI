@@ -12,6 +12,7 @@ export type KbListViewItem = {
 
 export type KbDocViewItem = {
   createdAt: string;
+  docUrl: string;
   fileExtension: string;
   id: string;
   kbId: string;

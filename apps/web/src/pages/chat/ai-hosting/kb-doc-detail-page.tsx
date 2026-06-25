@@ -116,7 +116,11 @@ export function KbDocDetailPage() {
         return;
       }
 
-      setChunks(response.chunks.map((chunk) => toKbDocChunkViewItem(chunk, doc.type)));
+      setChunks(
+        response.chunks.map((chunk) =>
+          toKbDocChunkViewItem(chunk, doc.type, { docUrl: doc.docUrl }),
+        ),
+      );
       setTotal(response.pagination.total);
     } catch {
       if (version !== requestVersionRef.current) {

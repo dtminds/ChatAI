@@ -62,6 +62,34 @@ const FILE_TYPE_ICON_BY_EXTENSION: Record<
     alt: "Excel 文件",
     src: "https://b5.bokr.com.cn/dist/excel.png",
   },
+  bmp: {
+    alt: "图片文件",
+    src: "https://b5.bokr.com.cn/dist/image.png",
+  },
+  gif: {
+    alt: "图片文件",
+    src: "https://b5.bokr.com.cn/dist/image.png",
+  },
+  jpeg: {
+    alt: "图片文件",
+    src: "https://b5.bokr.com.cn/dist/image.png",
+  },
+  jpg: {
+    alt: "图片文件",
+    src: "https://b5.bokr.com.cn/dist/image.png",
+  },
+  png: {
+    alt: "图片文件",
+    src: "https://b5.bokr.com.cn/dist/image.png",
+  },
+  svg: {
+    alt: "图片文件",
+    src: "https://b5.bokr.com.cn/dist/image.png",
+  },
+  webp: {
+    alt: "图片文件",
+    src: "https://b5.bokr.com.cn/dist/image.png",
+  },
   zip: {
     alt: "压缩文件",
     src: "https://b5.bokr.com.cn/dist/zip.png",

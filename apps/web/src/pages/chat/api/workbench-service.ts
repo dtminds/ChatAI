@@ -3033,6 +3033,16 @@ function resolveMockMaterialCollect(
       return resolved;
     }
 
+    const rawFileUrl = readString(contentRecord.fileUrl);
+
+    if (rawFileUrl && !isOwnVideoMaterialUrl(rawFileUrl)) {
+      const expireTime = readNumber(contentRecord.fileUrlExpireTime);
+
+      if (expireTime === undefined || Date.now() > expireTime) {
+        return { errorMsg: "视频下载地址已过期，无法收录" };
+      }
+    }
+
     return {
       content: JSON.parse(
         buildMaterialVideoContentJson(rawContent, resolved),
@@ -3079,6 +3089,22 @@ function sortMaterialItems(
 
 function readString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function readNumber(value: unknown) {
+  const numericValue = typeof value === "number" ? value : Number(value);
+
+  return Number.isFinite(numericValue) ? numericValue : undefined;
+}
+
+function isOwnVideoMaterialUrl(fileUrl: string) {
+  const normalizedUrl = fileUrl.trim();
+
+  if (normalizedUrl.startsWith("https://b5.bokr.com.cn")) {
+    return true;
+  }
+
+  return normalizedUrl.replace(/^\/+/, "").startsWith("s5/msg/");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

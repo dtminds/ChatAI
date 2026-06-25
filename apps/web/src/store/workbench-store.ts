@@ -1962,6 +1962,16 @@ function buildOptimisticMessageContent(
     };
   }
 
+  if (segment.type === "video") {
+    return {
+      alt: segment.title ?? "视频",
+      coverImageUrl: segment.coverUrl,
+      durationLabel: "",
+      type: "video",
+      videoUrl: segment.url,
+    };
+  }
+
   if (segment.type === "text") {
     return {
       text: segment.text,
@@ -4482,11 +4492,6 @@ export function createWorkbenchStore() {
           const segmentForSend = segmentsForSend[index];
           const originalSegment = sendableSegments[index] ?? segmentForSend;
           const payloadSegment = toWorkbenchSendSegment(segmentForSend);
-
-          if (!payloadSegment) {
-            continue;
-          }
-
           const mentionForSegment: SendMentionPayload =
             !hasSentMention && segmentForSend.type === "text"
               ? options?.mention

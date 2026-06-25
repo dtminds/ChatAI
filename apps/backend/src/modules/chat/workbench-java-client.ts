@@ -248,6 +248,11 @@ export type WorkbenchJavaClient = {
     platform: number;
     uid: number;
   }): Promise<void>;
+  transMsgFile(input: {
+    msgInfoId: number;
+    platform: number;
+    uid: number;
+  }): Promise<string>;
   getUploadCredential(input: {
     uid: number;
   }): Promise<WorkbenchUploadCredentialResponse>;
@@ -592,6 +597,16 @@ export function createWorkbenchJavaClient(
         logger,
         "download-message-file",
       ).then(() => undefined);
+    },
+    transMsgFile(input) {
+      return postJavaEnvelope<string>(
+        baseUrl,
+        token,
+        "/third-internal/wap-embed/conversation/trans-msg-file",
+        input,
+        logger,
+        "transfer-message-file",
+      );
     },
     getUploadCredential(input) {
       return postJavaEnvelope<WorkbenchUploadCredentialResponse>(

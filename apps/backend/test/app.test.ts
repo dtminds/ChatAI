@@ -1251,7 +1251,118 @@ describe("backend app", () => {
 
     expect(groupsResponse.statusCode).toBe(200);
     expect(groupsResponse.json()).toMatchObject({
-      groups: expect.any(Array),
+      groups: [
+        {
+          bizType: 7,
+          id: "material-group-video-1",
+          title: "视频分组",
+        },
+      ],
+    });
+
+    await app.close();
+  });
+
+  it("material: collects finished agent video messages through public routes", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        bizType: 7,
+        groupId: "material-group-video-1",
+        msgInfoId: "1001",
+      },
+      url: "/api/server/material-collections",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      success: true,
+    });
+
+    const listResponse = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/material-collections/materials?biz_type=7&group_id=material-group-video-1&page=1&page_size=100",
+    });
+
+    expect(listResponse.statusCode).toBe(200);
+    expect(listResponse.json().items[0]).toMatchObject({
+      bizType: 7,
+      content: {
+        coverUrl: "s5/msg/20260514/272/agent-video-cover.jpg",
+        downloadStatus: "finished",
+        fileUrl: "s5/msg/20260514/272/agent-demo.mp4",
+      },
+      contentType: "video",
+      groupId: "material-group-video-1",
+      msgInfoId: "1001",
+      title: "视频",
+    });
+
+    await app.close();
+  });
+
+  it("material: rejects customer video collection through public routes", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        bizType: 7,
+        groupId: "material-group-video-1",
+        msgInfoId: "1002",
+      },
+      url: "/api/server/material-collections",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      success: false,
+      errorMsg: "只能收录席位号发送的视频",
+    });
+
+    await app.close();
+  });
+
+  it("material: rejects unavailable video content through public routes", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+
+    const downloadingResponse = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        bizType: 7,
+        groupId: "material-group-video-1",
+        msgInfoId: "1003",
+      },
+      url: "/api/server/material-collections",
+    });
+
+    expect(downloadingResponse.statusCode).toBe(200);
+    expect(downloadingResponse.json()).toEqual({
+      success: false,
+      errorMsg: "视频下载未完成，无法收录",
+    });
+
+    const missingCoverResponse = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        bizType: 7,
+        groupId: "material-group-video-1",
+        msgInfoId: "1004",
+      },
+      url: "/api/server/material-collections",
+    });
+
+    expect(missingCoverResponse.statusCode).toBe(200);
+    expect(missingCoverResponse.json()).toEqual({
+      success: false,
+      errorMsg: "视频缺少封面，无法收录",
     });
 
     await app.close();

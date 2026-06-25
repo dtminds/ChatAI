@@ -73,7 +73,7 @@ export function VideoMessageCard({
     setLoadedCoverSize(null);
   }, [coverImageUrl]);
 
-  if (isDownloading) {
+  if (isDownloading && !coverImageUrl) {
     return (
       <VideoMessageLoading style={frameStyle} />
     );
@@ -100,7 +100,9 @@ export function VideoMessageCard({
       )}
       <div className="absolute inset-0 bg-black/5" />
 
-      {showDownloadAction && needsTransfer ? (
+      {isDownloading ? (
+        <VideoDownloadOverlay />
+      ) : showDownloadAction && needsTransfer ? (
         <button
           aria-label={`下载视频：${content.alt}`}
           className="absolute left-1/2 top-1/2 z-1 inline-flex size-12 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-white/90 bg-black/10 text-white shadow-[0_2px_12px_var(--shadow-medium)] outline-none backdrop-blur-[1px] transition-colors hover:bg-black/20 focus-visible:ring-4 focus-visible:ring-white/35"
@@ -134,6 +136,18 @@ export function VideoMessageCard({
         </span>
       ) : null}
     </div>
+  );
+}
+
+function VideoDownloadOverlay() {
+  return (
+    <span
+      aria-label="视频下载中"
+      className="absolute left-1/2 top-1/2 z-1 inline-flex size-12 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-white/90 bg-black/20 text-white shadow-[0_2px_12px_var(--shadow-medium)] backdrop-blur-[1px]"
+      role="status"
+    >
+      <Spinner size={22} strokeWidth={2.2} className="text-white" />
+    </span>
   );
 }
 

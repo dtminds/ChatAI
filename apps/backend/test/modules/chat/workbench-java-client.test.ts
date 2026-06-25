@@ -583,6 +583,51 @@ describe("createWorkbenchJavaClient", () => {
     );
   });
 
+  it("posts message file transcode payload and returns transferred content", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
+    const transferredContent = JSON.stringify({
+      coverUrl: "s5/msg/20260514/272/video-cover.jpg",
+      downloadStatus: "finished",
+      fileSerialNo: "serial-video-001",
+      fileUrl: "https://b5.bokr.com.cn/s5/msg/20260514/272/video.mp4",
+      optSerNo: "20260520161942296211617558032",
+    });
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: transferredContent,
+          error: 0,
+          errorMsg: "",
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    await expect(
+      createWorkbenchJavaClient().transMsgFile({
+        msgInfoId: 2197,
+        platform: 5,
+        uid: 9001,
+      }),
+    ).resolves.toBe(transferredContent);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/wap-embed/conversation/trans-msg-file",
+      expect.objectContaining({
+        body: JSON.stringify({
+          msgInfoId: 2197,
+          platform: 5,
+          uid: 9001,
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
   it("posts revoke message payload and preserves Java errorMsg", async () => {
     process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
     const fetchMock = vi.spyOn(globalThis, "fetch")

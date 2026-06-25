@@ -93,11 +93,14 @@ import {
   QUICK_REPLY_BATCH_CREATE_LIMIT,
   QUICK_REPLY_CATEGORY_TITLE_MAX_LENGTH,
   QUICK_REPLY_CONTENT_TEXT_MAX_LENGTH,
+  buildMaterialVideoContentJson,
   QUICK_REPLY_IMPORT_PRIMARY_CATEGORY_LIMIT,
   QUICK_REPLY_IMPORT_SECONDARY_CATEGORY_LIMIT,
   QUICK_REPLY_LABEL_TEXT_MAX_LENGTH,
   isQuickReplyLabelColor,
   normalizeQuickReplyAttachments,
+  readMaterialRawString,
+  resolveMaterialVideoCollectFields,
   validateQuickReplyPayload,
 } from "@chatai/contracts";
 import { BadRequestError, NotFoundError } from "../../src/shared/errors.js";
@@ -247,7 +250,25 @@ export function createMemoryWorkbenchService() {
         };
       }
 
-      const item = buildMemoryMaterialItem(state, request);
+      const sourceMessage = findMemoryMaterialMessage(state, request.msgInfoId);
+
+      if (!sourceMessage) {
+        throw new NotFoundError("MATERIAL_MESSAGE_NOT_FOUND", "消息不存在");
+      }
+
+      const normalized = normalizeMemoryMaterialCollectionContent(
+        sourceMessage,
+        request,
+      );
+
+      if ("errorMsg" in normalized) {
+        return {
+          success: false,
+          errorMsg: normalized.errorMsg,
+        };
+      }
+
+      const item = buildMemoryMaterialItem(state, request, sourceMessage, normalized);
       state.materialItems = [
         item,
         ...state.materialItems.filter(
@@ -1501,6 +1522,12 @@ function buildInitialState(): MemoryWorkbenchState {
         sort: 90,
         title: "图片分组",
       },
+      {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.VIDEO,
+        id: "material-group-video-1",
+        sort: 80,
+        title: "视频分组",
+      },
     ],
     materialItems: [
       {
@@ -1519,10 +1546,11 @@ function buildInitialState(): MemoryWorkbenchState {
         bizType: MATERIAL_COLLECTION_BIZ_TYPE.VIDEO,
         content: {
           coverUrl: "https://example.com/materials/video-cover.jpg",
+          downloadStatus: "finished",
           fileUrl: "https://example.com/materials/demo.mp4",
         },
         contentType: "video",
-        groupId: "material-group-image-1",
+        groupId: "material-group-video-1",
         id: "material-item-video-1",
         msgInfoId: "10",
         sort: 80,
@@ -1572,6 +1600,12 @@ function buildInitialState(): MemoryWorkbenchState {
       ],
       "conv-006": [
         message("msg-015", "conv-006", "ndt", "cust-006", "agent", "text", { text: "多喝水，明天继续打卡。" }, "2026-04-09 16:04:45", 1, "sent"),
+      ],
+      "conv-material-video": [
+        message("msg-material-video-1001", "conv-material-video", "drc", "cust-material-video", "agent", "video", { coverUrl: "s5/msg/20260514/272/agent-video-cover.jpg", downloadStatus: "finished", fileUrl: "s5/msg/20260514/272/agent-demo.mp4" }, "2026-04-15 10:00:00", 1001, "sent"),
+        message("msg-material-video-1002", "conv-material-video", "drc", "cust-material-video", "customer", "video", { coverUrl: "https://example.com/materials/customer-video-cover.jpg", downloadStatus: "finished", fileUrl: "https://example.com/materials/customer-demo.mp4" }, "2026-04-15 10:01:00", 1002, "sent"),
+        message("msg-material-video-1003", "conv-material-video", "drc", "cust-material-video", "agent", "video", { coverUrl: "https://example.com/materials/downloading-video-cover.jpg", downloadStatus: "ing", fileUrl: "https://example.com/materials/downloading-demo.mp4" }, "2026-04-15 10:02:00", 1003, "sent"),
+        message("msg-material-video-1004", "conv-material-video", "drc", "cust-material-video", "agent", "video", { downloadStatus: "finished", fileUrl: "https://example.com/materials/missing-cover-demo.mp4" }, "2026-04-15 10:03:00", 1004, "sent"),
       ],
     },
     nextId: 1,
@@ -1679,15 +1713,12 @@ function getMemoryRawMsgtype(contentType: WorkbenchMessageDto["contentType"]) {
 function buildMemoryMaterialItem(
   state: MemoryWorkbenchState,
   request: WorkbenchMaterialCollectionCreateRequest,
+  message: WorkbenchMessageDto,
+  normalized: {
+    content: WorkbenchMaterialCollectionItemDto["content"];
+    title: string;
+  },
 ): WorkbenchMaterialCollectionItemDto {
-  const message = Object.values(state.messagesByConversationId)
-    .flat()
-    .find((item) => String(item.seq) === request.msgInfoId);
-
-  if (!message) {
-    throw new NotFoundError("MATERIAL_MESSAGE_NOT_FOUND", "消息不存在");
-  }
-
   const contentType =
     request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION
       ? "emotion"
@@ -1709,12 +1740,82 @@ function buildMemoryMaterialItem(
 
   return {
     bizType: request.bizType,
-    content: message.content,
+    content: normalized.content,
     contentType,
     groupId,
     id: `material-item-${state.nextId++}`,
     msgInfoId: String(message.seq),
     sort: Date.now(),
+    title: normalized.title,
+  };
+}
+
+function findMemoryMaterialMessage(state: MemoryWorkbenchState, msgInfoId: string) {
+  return Object.values(state.messagesByConversationId)
+    .flat()
+    .find((item) => String(item.seq) === msgInfoId);
+}
+
+function normalizeMemoryMaterialCollectionContent(
+  message: WorkbenchMessageDto,
+  request: WorkbenchMaterialCollectionCreateRequest,
+):
+  | {
+      content: WorkbenchMaterialCollectionItemDto["content"];
+      title: string;
+    }
+  | { errorMsg: string } {
+  if (request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO) {
+    if (message.senderType !== "agent") {
+      return { errorMsg: "只能收录席位号发送的视频" };
+    }
+
+    const rawContent = JSON.stringify(message.content);
+    const contentRecord = isRecord(message.content) ? message.content : {};
+
+    if (readMaterialRawString(contentRecord, "downloadStatus") !== "finished") {
+      return { errorMsg: "视频下载未完成，无法收录" };
+    }
+
+    const resolved = resolveMaterialVideoCollectFields(rawContent);
+
+    if ("errorMsg" in resolved) {
+      return resolved;
+    }
+
+    const rawFileUrl = readMaterialRawString(contentRecord, "fileUrl");
+
+    if (rawFileUrl && !isOwnVideoMaterialUrl(rawFileUrl)) {
+      const expireTime = readNumber(contentRecord.fileUrlExpireTime);
+
+      if (expireTime === undefined || Date.now() > expireTime) {
+        return { errorMsg: "视频下载地址已过期，无法收录" };
+      }
+    }
+
+    return {
+      content: JSON.parse(
+        buildMaterialVideoContentJson(rawContent, resolved),
+      ) as WorkbenchMaterialCollectionItemDto["content"],
+      title: "视频",
+    };
+  }
+
+  const contentType =
+    request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION
+      ? "emotion"
+      : request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM
+        ? "mini-program"
+        : request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.H5
+          ? "h5"
+          : request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED
+            ? "sphfeed"
+            : request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.IMAGE
+              ? "image"
+              : "file";
+
+  return {
+    content: message.content,
     title: readMemoryMaterialTitle(message.content, contentType, request.msgInfoId),
   };
 }
@@ -1751,6 +1852,26 @@ function readMemoryMaterialTitle(
 
 function readString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function readNumber(value: unknown) {
+  const numericValue = typeof value === "number" ? value : Number(value);
+
+  return Number.isFinite(numericValue) ? numericValue : undefined;
+}
+
+function isOwnVideoMaterialUrl(fileUrl: string) {
+  const normalizedUrl = fileUrl.trim();
+
+  if (normalizedUrl.startsWith("https://b5.bokr.com.cn")) {
+    return true;
+  }
+
+  return normalizedUrl.replace(/^\/+/, "").startsWith("s5/msg/");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 function imagePlaceholder(label: string) {

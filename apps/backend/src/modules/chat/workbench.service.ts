@@ -2167,12 +2167,25 @@ export class MysqlWorkbenchService implements WorkbenchService {
       };
     }
 
+    const rawContentForCollection = await this.prepareMaterialCollectionContent(
+      bizType,
+      message,
+      me,
+    );
+
+    if ("errorMsg" in rawContentForCollection) {
+      return {
+        success: false,
+        errorMsg: rawContentForCollection.errorMsg,
+      };
+    }
+
     const subUid =
       bizType === MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION ? subUserNumericId : 0;
     const sort = Date.now();
     const normalizedMaterial = normalizeMaterialCollectionPayload(
       bizType,
-      message.content,
+      rawContentForCollection.content,
       request,
       request.msgInfoId,
       contentType,
@@ -3578,7 +3591,56 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     return {
       uid: me.uid,
+      platform: me.platform,
     };
+  }
+
+  private async prepareMaterialCollectionContent(
+    bizType: MaterialCollectionBizType,
+    message: {
+      content: string | null;
+      id: number | string;
+    },
+    actor: { platform: number; uid: number },
+  ): Promise<{ content: string | null } | { errorMsg: string }> {
+    if (bizType !== MATERIAL_COLLECTION_BIZ_TYPE.VIDEO) {
+      return { content: message.content };
+    }
+
+    const content = parseMaterialContentRecord(message.content);
+    const fileUrl = readMaterialString(content, "fileUrl");
+
+    if (readMaterialString(content, "downloadStatus") !== "finished") {
+      return { errorMsg: "视频下载未完成，无法收录" };
+    }
+
+    const resolved = resolveMaterialVideoCollectFields(message.content);
+
+    if ("errorMsg" in resolved) {
+      return resolved;
+    }
+
+    if (!fileUrl || isOwnVideoMaterialUrl(fileUrl)) {
+      return { content: message.content };
+    }
+
+    if (isExternalVideoFileUrlExpired(content)) {
+      return { errorMsg: "视频下载地址已过期，无法收录" };
+    }
+
+    const msgInfoId = parseMySqlId(String(message.id));
+
+    if (msgInfoId == null) {
+      throw new BadRequestError("INVALID_MESSAGE_ID", "消息 ID 不能为空");
+    }
+
+    const transferredContent = await this.javaClient.transMsgFile({
+      msgInfoId,
+      platform: actor.platform,
+      uid: actor.uid,
+    });
+
+    return { content: transferredContent };
   }
 
   private async getOperableMaterialCollectionScope(
@@ -4560,6 +4622,29 @@ function readMaterialString(record: Record<string, unknown>, key: string) {
   const value = record[key];
 
   return typeof value === "string" ? value.trim() : "";
+}
+
+function isOwnVideoMaterialUrl(fileUrl: string) {
+  const normalizedUrl = fileUrl.trim();
+
+  if (normalizedUrl.startsWith("https://b5.bokr.com.cn")) {
+    return true;
+  }
+
+  return normalizedUrl.replace(/^\/+/, "").startsWith("s5/msg/");
+}
+
+function isExternalVideoFileUrlExpired(content: Record<string, unknown>) {
+  const expireTime = readMaterialNumber(content, "fileUrlExpireTime");
+
+  return expireTime === undefined || Date.now() > expireTime;
+}
+
+function readMaterialNumber(record: Record<string, unknown>, key: string) {
+  const value = record[key];
+  const numericValue = typeof value === "number" ? value : Number(value);
+
+  return Number.isFinite(numericValue) ? numericValue : undefined;
 }
 
 function readStringValue(value: unknown) {

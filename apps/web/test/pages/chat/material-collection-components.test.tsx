@@ -121,6 +121,25 @@ describe("material collection components", () => {
     });
   });
 
+  it("shows a separate waiting message while collecting video", () => {
+    render(
+      <MaterialGroupSelectDialog
+        bizType={MATERIAL_COLLECTION_BIZ_TYPE.VIDEO}
+        groups={[createGroup({ id: "group-video", title: "视频素材" })]}
+        isSaving
+        onCreateGroup={async () => undefined}
+        onOpenChange={() => undefined}
+        onSubmit={() => undefined}
+        open
+      />,
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "正在收录视频，请耐心等待",
+    );
+    expect(screen.getByRole("button", { name: "收录" })).toBeDisabled();
+  });
+
   it("limits material group names to 10 characters", async () => {
     const user = userEvent.setup();
     const handleCreateGroup = vi.fn(async (title: string) =>

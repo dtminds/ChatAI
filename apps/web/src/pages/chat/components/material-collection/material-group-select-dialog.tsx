@@ -213,6 +213,12 @@ export function MaterialGroupSelectDialog({
               </SelectContent>
             </Select>
           </div>
+
+          {bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO && isSaving ? (
+            <p className="text-sm text-muted-foreground" role="status">
+              正在收录视频，请耐心等待
+            </p>
+          ) : null}
         </div>
 
         <DialogFooter>

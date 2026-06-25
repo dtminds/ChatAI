@@ -1068,6 +1068,11 @@ export function useMaterialCollection({
           return;
         }
 
+        if (item.contentType === "video") {
+          toast.warning("视频素材数据异常");
+          return;
+        }
+
         toast.warning(getMaterialSendUnavailableMessage(item.contentType));
         return;
       }

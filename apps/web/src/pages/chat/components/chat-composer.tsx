@@ -16,7 +16,7 @@ import {
   FolderFavouriteIcon,
   Image01Icon,
   Link01Icon,
-  PlayIcon,
+  PlayListIcon,
   SmileIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -540,6 +540,24 @@ export function ChatComposer({
             />
             <ComposerActionTooltip
               disabled={isSending || !canSendMessage}
+              label="视频"
+            >
+              <Button
+                aria-label="收录视频"
+                className={composerActionButtonClass}
+                disabled={isSending || !canSendMessage}
+                onClick={() =>
+                  onOpenMaterialLibrary(MATERIAL_COLLECTION_BIZ_TYPE.VIDEO)
+                }
+                size="icon"
+                type="button"
+                variant="ghost"
+              >
+                <HugeiconsIcon icon={PlayListIcon} size={18} strokeWidth={2} />
+              </Button>
+            </ComposerActionTooltip>
+            <ComposerActionTooltip
+              disabled={isSending || !canSendMessage}
               label="小程序"
             >
               <Button
@@ -572,24 +590,6 @@ export function ChatComposer({
                 variant="ghost"
               >
                 <SphFeedMark className="size-5.75" />
-              </Button>
-            </ComposerActionTooltip>
-            <ComposerActionTooltip
-              disabled={isSending || !canSendMessage}
-              label="视频"
-            >
-              <Button
-                aria-label="收录视频"
-                className={composerActionButtonClass}
-                disabled={isSending || !canSendMessage}
-                onClick={() =>
-                  onOpenMaterialLibrary(MATERIAL_COLLECTION_BIZ_TYPE.VIDEO)
-                }
-                size="icon"
-                type="button"
-                variant="ghost"
-              >
-                <HugeiconsIcon icon={PlayIcon} size={18} strokeWidth={2} />
               </Button>
             </ComposerActionTooltip>
             <ComposerActionTooltip

@@ -441,6 +441,31 @@ describe("useMaterialCollection", () => {
     expect(toast.warning).toHaveBeenCalledWith("表情素材数据异常");
   });
 
+  it("shows an incomplete content warning when video material content is invalid", async () => {
+    const sendAgentMessageSegments = vi.fn(async () => ({ ok: true as const }));
+
+    const { result } = renderHook(() =>
+      useMaterialCollection(
+        createDefaultOptions({
+          sendAgentMessageSegments,
+        }),
+      ),
+    );
+
+    await act(async () => {
+      await result.current.handleSelectMaterial(
+        createVideoMaterialItem({
+          content: {
+            fileUrl: "https://example.com/video.mp4",
+          },
+        }),
+      );
+    });
+
+    expect(sendAgentMessageSegments).not.toHaveBeenCalled();
+    expect(toast.warning).toHaveBeenCalledWith("视频素材数据异常");
+  });
+
   it("calls send failure callback when material send fails", async () => {
     const onSendFailure = vi.fn();
     const onSent = vi.fn();

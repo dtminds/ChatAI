@@ -331,17 +331,6 @@ describe("message feed row actions", () => {
         type: "h5" as const,
       },
     ],
-    [
-      "视频号",
-      {
-        description: "视频号内容",
-        imageUrl: "https://example.com/sphfeed.jpg",
-        sourceLabel: "视频号",
-        title: "视频号标题",
-        type: "sphfeed" as const,
-        url: "https://channels.weixin.qq.com/web/pages/feed?eid=export",
-      },
-    ],
   ])("shows collection action for %s messages", async (_label, content) => {
     const user = userEvent.setup();
     const onCollectMaterial = vi.fn();
@@ -362,6 +351,32 @@ describe("message feed row actions", () => {
     await user.click(screen.getByRole("menuitem", { name: "收录" }));
 
     expect(onCollectMaterial).toHaveBeenCalledWith(message);
+  });
+
+  it("does not show collection action for video channel messages when collection is disabled", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <MessageRow
+        message={{
+          ...createTextMessage("视频号"),
+          content: {
+            description: "视频号内容",
+            imageUrl: "https://example.com/sphfeed.jpg",
+            sourceLabel: "视频号",
+            title: "视频号标题",
+            type: "sphfeed",
+            url: "https://channels.weixin.qq.com/web/pages/feed?eid=export",
+          },
+          role: "customer",
+        }}
+        onCollectMaterial={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+
+    expect(screen.queryByRole("menuitem", { name: "收录" })).not.toBeInTheDocument();
   });
 
   it.each([

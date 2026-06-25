@@ -2189,9 +2189,8 @@ describe("AI hosting pages", () => {
     );
 
     await screen.findByRole("heading", { level: 1, name: "产品宣传图" });
-    expect(
-      screen.getByRole("img", { name: "Mate 系列旗舰机型外观与核心卖点展示" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "产品宣传图" })).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("搜索切片 ID")).not.toBeInTheDocument();
     expect(screen.getByText("图片（.png）")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "华为产品知识" })).toHaveAttribute(
       "href",
@@ -2202,7 +2201,12 @@ describe("AI hosting pages", () => {
     expect(screen.queryByRole("button", { name: "添加问答" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "编辑" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "删除" })).toBeInTheDocument();
-    expect(screen.getByRole("table", { name: "切片列表" })).toHaveTextContent("产品宣传图");
+    expect(screen.getByRole("region", { name: "切片列表" })).toHaveTextContent(
+      "Mate 系列旗舰机型外观与核心卖点展示",
+    );
+    expect(screen.getByText("原图")).toBeInTheDocument();
+    expect(screen.getByText("描述")).toBeInTheDocument();
+    expect(screen.queryByRole("table", { name: "切片列表" })).not.toBeInTheDocument();
   });
 
   it("deletes a document chunk after confirmation", async () => {

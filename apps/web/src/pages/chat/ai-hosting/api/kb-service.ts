@@ -142,6 +142,20 @@ export function toKbDocChunkViewItem(
   return chunk;
 }
 
+export function resolveKbDocImageUrl(docUrl: string) {
+  const normalizedDocUrl = docUrl.trim();
+
+  if (!normalizedDocUrl) {
+    return "";
+  }
+
+  if (/^https?:\/\//iu.test(normalizedDocUrl)) {
+    return normalizedDocUrl;
+  }
+
+  return buildMediaAssetUrl(normalizedDocUrl);
+}
+
 function resolveKbDocChunkImageUrls(
   imageUrls: string[] | undefined,
   docType: KbDocViewType,

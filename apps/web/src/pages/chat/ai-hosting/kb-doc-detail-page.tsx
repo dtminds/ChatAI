@@ -40,6 +40,7 @@ import { AiHostingLayout, AiHostingPageHeader } from "./ai-hosting-layout";
 import { AddChunkDialog } from "./kb-components/add-chunk-dialog";
 import { ChunkImagePreview } from "./kb-components/chunk-image-preview";
 import { EditChunkDialog } from "./kb-components/edit-chunk-dialog";
+import { ImageKnowledgeChunkWorkspace } from "./kb-components/image-chunk-workspace";
 import { KbTableLoadingRow } from "./kb-components/kb-table-loading-row";
 import { resolveKbRequestErrorMessage } from "./kb-components/shared";
 import {
@@ -58,6 +59,7 @@ import {
 import type { KbDocChunkViewItem, KbDocType, KbDocViewItem } from "./kb-types";
 
 const PAGE_SIZE = 10;
+const IMAGE_CHUNK_PAGE_SIZE = 100;
 
 function useDebouncedValue<T>(value: T, delayMs: number) {
   const [debouncedValue, setDebouncedValue] = useState(value);
@@ -110,10 +112,11 @@ export function KbDocDetailPage() {
     setLoadingChunks(true);
 
     try {
+      const isImageDoc = doc.type === "image";
       const response = await listKbDocChunks(docId, {
-        page: currentPage,
-        pageSize: PAGE_SIZE,
-        query: debouncedSearchQuery,
+        page: isImageDoc ? 1 : currentPage,
+        pageSize: isImageDoc ? IMAGE_CHUNK_PAGE_SIZE : PAGE_SIZE,
+        query: isImageDoc ? undefined : debouncedSearchQuery || undefined,
       });
 
       if (version !== requestVersionRef.current) {
@@ -363,51 +366,64 @@ export function KbDocDetailPage() {
         </div>
 
         <section aria-label="切片列表区块" className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="relative w-[280px] max-w-full">
-              <HugeiconsIcon
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-                color="currentColor"
-                icon={Search01Icon}
-                size={17}
-                strokeWidth={1.8}
-              />
-              <Input
-                aria-label="搜索切片标题"
-                className="h-10 rounded-[8px] pl-9"
-                disabled={loadingPage || !doc || doc.status !== "completed"}
-                onChange={(event) => {
-                  setSearchQuery(event.target.value);
-                }}
-                placeholder="搜索切片标题"
-                value={searchQuery}
-              />
-            </div>
-
-            {doc && doc.status === "completed" ? (
-              <AddChunkActions
+          {doc?.type === "image" ? (
+            doc ? (
+              <ImageKnowledgeChunkWorkspace
+                chunks={chunks}
                 doc={doc}
-                onAddDoc={() => setAddDocDialogOpen(true)}
-                onAddQa={() => setAddQaDialogOpen(true)}
+                loading={loadingPage || loadingChunks}
+                onDelete={setDeleteChunk}
               />
-            ) : null}
-          </div>
+            ) : null
+          ) : (
+            <>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="relative w-[280px] max-w-full">
+                  <HugeiconsIcon
+                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                    color="currentColor"
+                    icon={Search01Icon}
+                    size={17}
+                    strokeWidth={1.8}
+                  />
+                  <Input
+                    aria-label="搜索切片标题"
+                    className="h-10 rounded-[8px] pl-9"
+                    disabled={loadingPage || !doc || doc.status !== "completed"}
+                    onChange={(event) => {
+                      setSearchQuery(event.target.value);
+                    }}
+                    placeholder="搜索切片标题"
+                    value={searchQuery}
+                  />
+                </div>
 
-          <div>
-            <KnowledgeChunksTable
-              chunks={chunks}
-              docType={doc?.type ?? "document"}
-              loading={loadingPage || loadingChunks}
-              onDelete={setDeleteChunk}
-              onEdit={setEditChunk}
-            />
-            <TablePagination
-              onPageChange={setCurrentPage}
-              page={activePage}
-              total={total}
-              totalPages={totalPages}
-            />
-          </div>
+                {doc && doc.status === "completed" ? (
+                  <AddChunkActions
+                    doc={doc}
+                    onAddDoc={() => setAddDocDialogOpen(true)}
+                    onAddQa={() => setAddQaDialogOpen(true)}
+                  />
+                ) : null}
+              </div>
+
+              <div>
+                <KnowledgeChunksTable
+                  chunks={chunks}
+                  docType={doc?.type ?? "document"}
+                  loading={loadingPage || loadingChunks}
+                  onDelete={setDeleteChunk}
+                  onEdit={setEditChunk}
+                />
+                <TablePagination
+                  onPageChange={setCurrentPage}
+                  page={activePage}
+                  total={total}
+                  totalPages={totalPages}
+                />
+              </div>
+            </>
+          )}
         </section>
       </div>
 

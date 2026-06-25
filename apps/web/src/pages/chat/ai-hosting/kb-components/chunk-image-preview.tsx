@@ -21,14 +21,14 @@ export function ChunkImagePreview({
   galleryItems?: ChunkImageGalleryItem[];
   imageUrl: string;
   previewable?: boolean;
-  size?: "md" | "sm";
+  size?: "list" | "md" | "sm";
 }) {
   const resolvedAlt = alt ?? "切片图片";
   const preview = (
     <div
       className={cn(
         "shrink-0 overflow-hidden rounded-[6px] border bg-muted/30",
-        size === "sm" ? "size-11" : "size-20",
+        size === "sm" ? "size-11" : size === "list" ? "h-20 w-[100px]" : "size-20",
         previewable && "cursor-zoom-in transition-opacity hover:opacity-90",
         className,
       )}

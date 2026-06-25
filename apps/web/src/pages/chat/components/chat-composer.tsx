@@ -82,7 +82,7 @@ import {
   MAX_COMPOSER_IMAGE_SEGMENTS,
 } from "@/pages/chat/lib/composer-image-files";
 import { COMPOSER_FILE_ACCEPT } from "@/pages/chat/lib/composer-file-files";
-import { DISABLE_SPH_COLLECITION } from "@/pages/chat/chat-constants";
+import { DISABLE_SPH_COLLECTION } from "@/pages/chat/chat-constants";
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
 import { getWechatEmojiByName, type WechatEmojiName } from "@/pages/chat/wechat-emoji";
 import type { GroupMember, QuotedMessagePreviewContent } from "@/pages/chat/chat-types";
@@ -555,7 +555,7 @@ export function ChatComposer({
                 <MiniProgramMark className="size-4.5" />
               </Button>
             </ComposerActionTooltip>
-            {DISABLE_SPH_COLLECITION ? null : (
+            {DISABLE_SPH_COLLECTION ? null : (
               <ComposerActionTooltip
                 disabled={isSending || !canSendMessage}
                 label="视频号"

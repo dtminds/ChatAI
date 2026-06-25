@@ -39,7 +39,7 @@ import {
 } from "@/pages/chat/components/quick-reply/quick-reply-material-picker-dialog";
 import { MiniProgramMark } from "@/pages/chat/components/message/miniapp";
 import { SphFeedMark } from "@/pages/chat/components/message/sphfeed";
-import { DISABLE_SPH_COLLECITION } from "@/pages/chat/chat-constants";
+import { DISABLE_SPH_COLLECTION } from "@/pages/chat/chat-constants";
 
 type QuickReplyAttachmentPickerProps = {
   attachments: QuickReplyDraftAttachment[];
@@ -163,7 +163,7 @@ export function QuickReplyAttachmentPicker({
                         <MiniProgramMark className="!size-3.5" />
                         小程序
                       </DropdownMenuItem>
-                      {DISABLE_SPH_COLLECITION ? null : (
+                      {DISABLE_SPH_COLLECTION ? null : (
                         <DropdownMenuItem
                           onSelect={() =>
                             setActivePickerBizType(

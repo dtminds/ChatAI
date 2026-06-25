@@ -18,6 +18,7 @@ import {
   mapKbListItem,
 } from "./kb-read-mappers.js";
 import { parsePositiveInteger, resolveAgentKbUid } from "./kb-tenant-utils.js";
+import { buildContainsLikePattern } from "./sql-like-utils.js";
 
 const dbActiveStatus = 1;
 const defaultPage = 1;
@@ -44,8 +45,8 @@ export class KbReadService {
     if (normalizedQuery) {
       query = query.where((eb) =>
         eb.or([
-          eb("name", "like", `%${normalizedQuery}%`),
-          eb("remark", "like", `%${normalizedQuery}%`),
+          eb("name", "like", buildContainsLikePattern(normalizedQuery)),
+          eb("remark", "like", buildContainsLikePattern(normalizedQuery)),
         ]),
       );
     }
@@ -123,7 +124,7 @@ export class KbReadService {
     }
 
     if (normalizedQuery) {
-      query = query.where("name", "like", `%${normalizedQuery}%`);
+      query = query.where("name", "like", buildContainsLikePattern(normalizedQuery));
     }
 
     const rows = await query
@@ -203,8 +204,8 @@ export class KbReadService {
     if (normalizedQuery) {
       query = query.where((eb) =>
         eb.or([
-          eb("title", "like", `%${normalizedQuery}%`),
-          eb("content", "like", `%${normalizedQuery}%`),
+          eb("title", "like", buildContainsLikePattern(normalizedQuery)),
+          eb("content", "like", buildContainsLikePattern(normalizedQuery)),
         ]),
       );
     }
@@ -234,7 +235,10 @@ export class KbReadService {
 
     if (query) {
       countQuery = countQuery.where((eb) =>
-        eb.or([eb("name", "like", `%${query}%`), eb("remark", "like", `%${query}%`)]),
+        eb.or([
+          eb("name", "like", buildContainsLikePattern(query)),
+          eb("remark", "like", buildContainsLikePattern(query)),
+        ]),
       );
     }
 
@@ -253,7 +257,10 @@ export class KbReadService {
 
     if (query) {
       countQuery = countQuery.where((eb) =>
-        eb.or([eb("title", "like", `%${query}%`), eb("content", "like", `%${query}%`)]),
+        eb.or([
+          eb("title", "like", buildContainsLikePattern(query)),
+          eb("content", "like", buildContainsLikePattern(query)),
+        ]),
       );
     }
 
@@ -280,7 +287,7 @@ export class KbReadService {
     }
 
     if (query) {
-      countQuery = countQuery.where("name", "like", `%${query}%`);
+      countQuery = countQuery.where("name", "like", buildContainsLikePattern(query));
     }
 
     const result = await countQuery.executeTakeFirst();

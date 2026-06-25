@@ -56,6 +56,17 @@ describe("KbReadService", () => {
     });
   });
 
+  it("treats percent in query as literal text", async () => {
+    const response = await service.listKbDocChunks("101", "1001", {
+      page: 1,
+      pageSize: 10,
+      query: "%",
+    });
+
+    expect(response.chunks).toHaveLength(0);
+    expect(response.pagination.total).toBe(0);
+  });
+
   it("rejects kb outside the tenant scope", async () => {
     await expect(service.getKb("101", "999")).rejects.toMatchObject({
       code: "KB_NOT_FOUND",

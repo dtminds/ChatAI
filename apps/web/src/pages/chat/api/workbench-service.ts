@@ -117,6 +117,7 @@ import {
   buildMaterialH5ContentJson,
   buildMaterialImageContentJson,
   buildMaterialVideoContentJson,
+  isOwnVideoMaterialUrl,
   patchMaterialFileContentJson,
   patchMaterialH5ContentJson,
   resolveMaterialFileCollectFields,
@@ -3022,15 +3023,11 @@ function resolveMockMaterialCollect(
 
   if (request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO) {
     const contentRecord = message ? getMaterialContentRecord(message) : {};
+    let rawContentForCollection = rawContent;
+    let resolvedForCollection = resolveMaterialVideoCollectFields(rawContent);
 
     if (readString(contentRecord.downloadStatus) !== "finished") {
       return { errorMsg: "视频下载未完成，无法收录" };
-    }
-
-    const resolved = resolveMaterialVideoCollectFields(rawContent);
-
-    if ("errorMsg" in resolved) {
-      return resolved;
     }
 
     const rawFileUrl = readString(contentRecord.fileUrl);
@@ -3041,11 +3038,18 @@ function resolveMockMaterialCollect(
       if (expireTime === undefined || Date.now() > expireTime) {
         return { errorMsg: "视频下载地址已过期，无法收录" };
       }
+
+      rawContentForCollection = buildMockTransferredVideoContent(rawContent);
+      resolvedForCollection = resolveMaterialVideoCollectFields(rawContentForCollection);
+    }
+
+    if ("errorMsg" in resolvedForCollection) {
+      return resolvedForCollection;
     }
 
     return {
       content: JSON.parse(
-        buildMaterialVideoContentJson(rawContent, resolved),
+        buildMaterialVideoContentJson(rawContentForCollection, resolvedForCollection),
       ) as WorkbenchMaterialCollectionItemDto["content"],
       title: "视频",
     };
@@ -3097,18 +3101,21 @@ function readNumber(value: unknown) {
   return Number.isFinite(numericValue) ? numericValue : undefined;
 }
 
-function isOwnVideoMaterialUrl(fileUrl: string) {
-  const normalizedUrl = fileUrl.trim();
-
-  if (normalizedUrl.startsWith("https://b5.bokr.com.cn")) {
-    return true;
-  }
-
-  return normalizedUrl.replace(/^\/+/, "").startsWith("s5/msg/");
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function buildMockTransferredVideoContent(rawContent: string) {
+  const resolved = resolveMaterialVideoCollectFields(rawContent);
+
+  if ("errorMsg" in resolved) {
+    return rawContent;
+  }
+
+  return buildMaterialVideoContentJson(rawContent, {
+    coverUrl: resolved.coverUrl,
+    fileUrl: "s5/msg/mock/transferred-video.mp4",
+  });
 }
 
 function buildContent(message: Message) {

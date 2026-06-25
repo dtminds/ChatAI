@@ -120,6 +120,7 @@ import {
   buildMaterialImageContentJson,
   buildMaterialVideoContentJson,
   canEditMaterialCollectionItem,
+  isOwnVideoMaterialUrl,
   isQuickReplyLabelColor,
   normalizeQuickReplyAttachments,
   patchMaterialFileContentJson,
@@ -3589,6 +3590,10 @@ export class MysqlWorkbenchService implements WorkbenchService {
       throw new BadRequestError("INVALID_SUB_USER", "子账号无效");
     }
 
+    if (me.platform == null) {
+      throw new BadRequestError("INVALID_SUB_USER", "子账号无效");
+    }
+
     return {
       uid: me.uid,
       platform: me.platform,
@@ -3610,10 +3615,6 @@ export class MysqlWorkbenchService implements WorkbenchService {
     const content = parseMaterialContentRecord(message.content);
     const fileUrl = readMaterialString(content, "fileUrl");
 
-    if (readMaterialString(content, "downloadStatus") !== "finished") {
-      return { errorMsg: "视频下载未完成，无法收录" };
-    }
-
     const resolved = resolveMaterialVideoCollectFields(message.content);
 
     if ("errorMsg" in resolved) {
@@ -3621,7 +3622,13 @@ export class MysqlWorkbenchService implements WorkbenchService {
     }
 
     if (!fileUrl || isOwnVideoMaterialUrl(fileUrl)) {
-      return { content: message.content };
+      return assertVideoMaterialContentReady(message.content);
+    }
+
+    const sourceDownloadStatusError = readVideoMaterialDownloadStatusError(message.content);
+
+    if (sourceDownloadStatusError) {
+      return sourceDownloadStatusError;
     }
 
     if (isExternalVideoFileUrlExpired(content)) {
@@ -3634,13 +3641,38 @@ export class MysqlWorkbenchService implements WorkbenchService {
       throw new BadRequestError("INVALID_MESSAGE_ID", "消息 ID 不能为空");
     }
 
-    const transferredContent = await this.javaClient.transMsgFile({
+    const transferredContent = await this.transferMaterialVideoFile({
       msgInfoId,
       platform: actor.platform,
       uid: actor.uid,
     });
 
-    return { content: transferredContent };
+    if (typeof transferredContent !== "string") {
+      return transferredContent;
+    }
+
+    return assertVideoMaterialContentReady(transferredContent);
+  }
+
+  private async transferMaterialVideoFile(input: {
+    msgInfoId: number;
+    platform: number;
+    uid: number;
+  }): Promise<string | { errorMsg: string }> {
+    try {
+      return await this.javaClient.transMsgFile(input);
+    } catch (error) {
+      this.logger.warn(
+        {
+          error,
+          msgInfoId: input.msgInfoId,
+          platform: input.platform,
+          uid: input.uid,
+        },
+        "视频素材转存失败",
+      );
+      return { errorMsg: "视频转存失败，无法收录" };
+    }
   }
 
   private async getOperableMaterialCollectionScope(
@@ -4546,12 +4578,6 @@ function normalizeMaterialCollectionPayload(
   }
 
   if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO) {
-    const content = parseMaterialContentRecord(rawContent);
-
-    if (readMaterialString(content, "downloadStatus") !== "finished") {
-      return { errorMsg: "视频下载未完成，无法收录" };
-    }
-
     const resolved = resolveMaterialVideoCollectFields(rawContent);
 
     if ("errorMsg" in resolved) {
@@ -4624,14 +4650,26 @@ function readMaterialString(record: Record<string, unknown>, key: string) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function isOwnVideoMaterialUrl(fileUrl: string) {
-  const normalizedUrl = fileUrl.trim();
+function readVideoMaterialDownloadStatusError(rawContent: string | null) {
+  const content = parseMaterialContentRecord(rawContent);
 
-  if (normalizedUrl.startsWith("https://b5.bokr.com.cn")) {
-    return true;
+  if (readMaterialString(content, "downloadStatus") !== "finished") {
+    return { errorMsg: "视频下载未完成，无法收录" };
   }
 
-  return normalizedUrl.replace(/^\/+/, "").startsWith("s5/msg/");
+  return null;
+}
+
+function assertVideoMaterialContentReady(
+  rawContent: string | null,
+): { content: string | null } | { errorMsg: string } {
+  const downloadStatusError = readVideoMaterialDownloadStatusError(rawContent);
+
+  if (downloadStatusError) {
+    return downloadStatusError;
+  }
+
+  return { content: rawContent };
 }
 
 function isExternalVideoFileUrlExpired(content: Record<string, unknown>) {

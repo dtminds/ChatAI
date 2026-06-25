@@ -97,6 +97,7 @@ import {
   QUICK_REPLY_IMPORT_PRIMARY_CATEGORY_LIMIT,
   QUICK_REPLY_IMPORT_SECONDARY_CATEGORY_LIMIT,
   QUICK_REPLY_LABEL_TEXT_MAX_LENGTH,
+  isOwnVideoMaterialUrl,
   isQuickReplyLabelColor,
   normalizeQuickReplyAttachments,
   readMaterialRawString,
@@ -1784,6 +1785,8 @@ function normalizeMemoryMaterialCollectionContent(
     }
 
     const rawFileUrl = readMaterialRawString(contentRecord, "fileUrl");
+    let rawContentForCollection = rawContent;
+    let resolvedForCollection = resolved;
 
     if (rawFileUrl && !isOwnVideoMaterialUrl(rawFileUrl)) {
       const expireTime = readNumber(contentRecord.fileUrlExpireTime);
@@ -1791,11 +1794,18 @@ function normalizeMemoryMaterialCollectionContent(
       if (expireTime === undefined || Date.now() > expireTime) {
         return { errorMsg: "视频下载地址已过期，无法收录" };
       }
+
+      rawContentForCollection = buildMockTransferredVideoContent(rawContent, resolved);
+      resolvedForCollection = resolveMaterialVideoCollectFields(rawContentForCollection);
+
+      if ("errorMsg" in resolvedForCollection) {
+        return resolvedForCollection;
+      }
     }
 
     return {
       content: JSON.parse(
-        buildMaterialVideoContentJson(rawContent, resolved),
+        buildMaterialVideoContentJson(rawContentForCollection, resolvedForCollection),
       ) as WorkbenchMaterialCollectionItemDto["content"],
       title: "视频",
     };
@@ -1860,18 +1870,18 @@ function readNumber(value: unknown) {
   return Number.isFinite(numericValue) ? numericValue : undefined;
 }
 
-function isOwnVideoMaterialUrl(fileUrl: string) {
-  const normalizedUrl = fileUrl.trim();
-
-  if (normalizedUrl.startsWith("https://b5.bokr.com.cn")) {
-    return true;
-  }
-
-  return normalizedUrl.replace(/^\/+/, "").startsWith("s5/msg/");
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function buildMockTransferredVideoContent(
+  rawContent: string,
+  fields: { coverUrl: string; fileUrl: string },
+) {
+  return buildMaterialVideoContentJson(rawContent, {
+    coverUrl: fields.coverUrl,
+    fileUrl: "s5/msg/mock/transferred-video.mp4",
+  });
 }
 
 function imagePlaceholder(label: string) {

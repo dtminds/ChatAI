@@ -5,6 +5,7 @@ import {
   type WorkbenchMaterialCollectionGroupCreateRequest,
 } from "@chatai/contracts";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import {
   Dialog,
   DialogContent,
@@ -230,7 +231,13 @@ export function MaterialGroupSelectDialog({
           >
             取消
           </Button>
-          <Button disabled={!canSubmit} onClick={handleSubmit} type="button">
+          <Button
+            aria-busy={isSaving ? "true" : undefined}
+            disabled={!canSubmit}
+            onClick={handleSubmit}
+            type="button"
+          >
+            {isSaving ? <Spinner className="mr-2" size={14} /> : null}
             收录
           </Button>
         </DialogFooter>

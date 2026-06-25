@@ -27,6 +27,16 @@ export type MaterialCollectFieldError = {
   errorMsg: string;
 };
 
+export function isOwnVideoMaterialUrl(fileUrl: string) {
+  const normalizedUrl = fileUrl.trim();
+
+  if (normalizedUrl.startsWith("https://b5.bokr.com.cn")) {
+    return true;
+  }
+
+  return normalizedUrl.replace(/^\/+/, "").startsWith("s5/msg/");
+}
+
 export function parseMaterialRawContent(rawContent: string | null | undefined) {
   if (!rawContent) {
     return {};

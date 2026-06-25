@@ -4357,6 +4357,55 @@ describe("MysqlWorkbenchService", () => {
     nowSpy.mockRestore();
   });
 
+  it("material: returns business failure when external video transfer fails", async () => {
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_779_700_002_500);
+    const javaClient = createJavaClient();
+    vi.mocked(javaClient.transMsgFile).mockRejectedValue(
+      new BadGatewayError(
+        WORKBENCH_INTERNAL_API_FAILED_CODE,
+        JAVA_INTERNAL_API_USER_MESSAGE,
+      ),
+    );
+    const repository = createMaterialRepository({
+      findMaterialMessage: vi.fn().mockResolvedValue({
+        chatType: 1,
+        content: JSON.stringify({
+          coverUrl: "https://b5.bokr.com.cn/materials/video-cover.jpg",
+          downloadStatus: "finished",
+          fileSerialNo: "serial-video-transfer-failed",
+          fileUrl: "https://cdn.example.com/video.mp4",
+          fileUrlExpireTime: 1_779_700_099_999,
+          optSerNo: "20260520161942296211617558037",
+        }),
+        fromType: 1,
+        id: "9113",
+        msgid: "msg-video-transfer-failed",
+        msgtype: "video",
+        uid: 9001,
+      }),
+    });
+    const service = new MysqlWorkbenchService(repository, javaClient);
+
+    await expect(
+      service.collectMaterial("101", {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.VIDEO,
+        groupId: "9",
+        msgInfoId: "9113",
+      }),
+    ).resolves.toEqual({
+      success: false,
+      errorMsg: "视频转存失败，无法收录",
+    });
+
+    expect(javaClient.transMsgFile).toHaveBeenCalledWith({
+      msgInfoId: 9113,
+      platform: 5,
+      uid: 9001,
+    });
+    expect(repository.createMaterialCollection).not.toHaveBeenCalled();
+    nowSpy.mockRestore();
+  });
+
   it("material: collects internal video files without transferring them", async () => {
     const javaClient = createJavaClient();
     const repository = createMaterialRepository({
@@ -4404,6 +4453,53 @@ describe("MysqlWorkbenchService", () => {
     );
   });
 
+  it("material: collects internal absolute video URLs without transferring them", async () => {
+    const javaClient = createJavaClient();
+    const repository = createMaterialRepository({
+      createMaterialCollection: vi.fn().mockResolvedValue("187"),
+      findMaterialMessage: vi.fn().mockResolvedValue({
+        chatType: 1,
+        content: JSON.stringify({
+          coverUrl: "https://b5.bokr.com.cn/s5/msg/20260514/272/video-cover.jpg",
+          downloadStatus: "finished",
+          fileSerialNo: "serial-video-absolute",
+          fileUrl: "https://b5.bokr.com.cn/s5/msg/20260514/272/video.mp4",
+          optSerNo: "20260520161942296211617558038",
+        }),
+        fromType: 1,
+        id: "9114",
+        msgid: "msg-video-absolute",
+        msgtype: "video",
+        uid: 9001,
+      }),
+    });
+    const service = new MysqlWorkbenchService(repository, javaClient);
+
+    await expect(
+      service.collectMaterial("101", {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.VIDEO,
+        groupId: "9",
+        msgInfoId: "9114",
+      }),
+    ).resolves.toEqual({ success: true });
+
+    expect(javaClient.transMsgFile).not.toHaveBeenCalled();
+    expect(repository.createMaterialCollection).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: JSON.stringify({
+          coverUrl: "https://b5.bokr.com.cn/s5/msg/20260514/272/video-cover.jpg",
+          downloadStatus: "finished",
+          fileSerialNo: "serial-video-absolute",
+          fileUrl: "https://b5.bokr.com.cn/s5/msg/20260514/272/video.mp4",
+          optSerNo: "20260520161942296211617558038",
+        }),
+        groupId: "9",
+        msgInfoId: "9114",
+        title: "视频",
+      }),
+    );
+  });
+
   it("material: rejects expired external video files before collecting them", async () => {
     const repository = createMaterialRepository({
       findMaterialMessage: vi.fn().mockResolvedValue({
@@ -4439,6 +4535,33 @@ describe("MysqlWorkbenchService", () => {
 
     expect(javaClient.transMsgFile).not.toHaveBeenCalled();
     expect(repository.createMaterialCollection).not.toHaveBeenCalled();
+  });
+
+  it("material: rejects video transfer when current sub user has no platform", async () => {
+    const javaClient = createJavaClient();
+    const repository = createMaterialRepository({
+      getSubUser: vi.fn().mockResolvedValue({
+        displayName: "客服一号",
+        subUserId: "101",
+        uid: 9001,
+      }),
+    });
+    const service = new MysqlWorkbenchService(repository, javaClient);
+
+    await expect(
+      service.collectMaterial("101", {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.VIDEO,
+        groupId: "9",
+        msgInfoId: "9115",
+      }),
+    ).rejects.toMatchObject({
+      code: "INVALID_SUB_USER",
+      message: "子账号无效",
+      statusCode: 400,
+    });
+
+    expect(javaClient.transMsgFile).not.toHaveBeenCalled();
+    expect(repository.findMaterialMessage).not.toHaveBeenCalled();
   });
 
   it("material: rejects external video files without expire time before collecting them", async () => {

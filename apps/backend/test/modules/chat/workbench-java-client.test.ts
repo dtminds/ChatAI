@@ -14,6 +14,7 @@ describe("createWorkbenchJavaClient", () => {
     delete process.env.JAVA_INTERNAL_API_BASE_URL;
     delete process.env.JAVA_INTERNAL_API_TOKEN;
     delete process.env.JAVA_INTERNAL_API_STREAM_IDLE_TIMEOUT_MS;
+    delete process.env.JAVA_INTERNAL_API_TRANS_MSG_FILE_TIMEOUT_MS;
     delete process.env.JAVA_INTERNAL_API_TIMEOUT_MS;
   });
 
@@ -141,6 +142,47 @@ describe("createWorkbenchJavaClient", () => {
         signal: expect.any(AbortSignal),
       }),
     );
+  });
+
+  it("uses a dedicated timeout for message file transfer", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    process.env.JAVA_INTERNAL_API_TIMEOUT_MS = "1";
+    process.env.JAVA_INTERNAL_API_TRANS_MSG_FILE_TIMEOUT_MS = "60000";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(
+      async (_url, init) => {
+        expect((init?.signal as AbortSignal).aborted).toBe(false);
+        return new Response(
+          JSON.stringify({
+            data: JSON.stringify({
+              coverUrl: "s5/msg/mock/video-cover.jpg",
+              fileUrl: "s5/msg/mock/video.mp4",
+            }),
+            error: 0,
+            errorMsg: "",
+            success: true,
+          }),
+          {
+            headers: { "content-type": "application/json" },
+            status: 200,
+          },
+        );
+      },
+    );
+
+    await expect(
+      createWorkbenchJavaClient().transMsgFile({
+        msgInfoId: 2197,
+        platform: 5,
+        uid: 9001,
+      }),
+    ).resolves.toBe(
+      JSON.stringify({
+        coverUrl: "s5/msg/mock/video-cover.jpg",
+        fileUrl: "s5/msg/mock/video.mp4",
+      }),
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("posts seat takeover payload to the Java internal API", async () => {

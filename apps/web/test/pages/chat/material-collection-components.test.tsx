@@ -137,7 +137,10 @@ describe("material collection components", () => {
     expect(screen.getByRole("status")).toHaveTextContent(
       "正在收录视频，请耐心等待",
     );
-    expect(screen.getByRole("button", { name: "收录" })).toBeDisabled();
+    const collectButton = screen.getByRole("button", { name: "收录" });
+    expect(collectButton).toBeDisabled();
+    expect(collectButton).toHaveAttribute("aria-busy", "true");
+    expect(collectButton.querySelector('[data-slot="spinner"]')).toBeInTheDocument();
   });
 
   it("limits material group names to 10 characters", async () => {

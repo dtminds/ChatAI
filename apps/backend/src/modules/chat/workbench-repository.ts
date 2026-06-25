@@ -3276,6 +3276,8 @@ export class WorkbenchRepository {
     }
 
     if (cursor) {
+      // 会话列表的 cursor 只为未来分页预留，当前首屏不会传这个参数。
+      // 这里保留 snapshot 上界是为了后续 cursor 页的稳定性，不影响首屏展示。
       query = query
         .where("conversation.last_msgtime", "<=", snapshotAt)
         .where((expressionBuilder) =>

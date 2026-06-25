@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { Add01Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import {
   MATERIAL_COLLECTION_BIZ_TYPE,
   validateMaterialCollectionSubmitFields,
@@ -20,6 +22,7 @@ import {
   Select,
   SelectContent,
   SelectItem,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -218,7 +221,22 @@ export function MaterialGroupSelectDialog({
                   </SelectItem>
                 ))}
                 {canCreateGroup ? (
-                  <SelectItem value={CREATE_GROUP_VALUE}>新建分组</SelectItem>
+                  <>
+                    <SelectSeparator />
+                    <SelectItem
+                      className="mt-1 font-medium text-primary focus:bg-primary/10 focus:text-primary"
+                      value={CREATE_GROUP_VALUE}
+                    >
+                      <span className="inline-flex items-center gap-2">
+                        <HugeiconsIcon
+                          icon={Add01Icon}
+                          size={14}
+                          strokeWidth={1.9}
+                        />
+                        新建分组
+                      </span>
+                    </SelectItem>
+                  </>
                 ) : null}
               </SelectContent>
             </Select>

@@ -110,7 +110,9 @@ describe("material collection components", () => {
     expect(screen.getByRole("button", { name: "收录" })).toBeDisabled();
 
     await user.click(screen.getByRole("combobox", { name: "选择分组" }));
-    await user.click(await screen.findByRole("option", { name: "新建分组" }));
+    const createGroupOption = await screen.findByRole("option", { name: "新建分组" });
+    expect(createGroupOption).toHaveClass("mt-1", "text-primary");
+    await user.click(createGroupOption);
     expect(screen.getByRole("dialog", { name: "新建分组" })).toBeInTheDocument();
     await user.type(screen.getByRole("textbox", { name: "分组名称" }), "售后文件");
     await user.click(screen.getByRole("button", { name: "新建" }));

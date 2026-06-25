@@ -1,9 +1,5 @@
 import type { KbChunkListItem, KbChunkType, KbDocType } from "@chatai/contracts";
-import {
-  normalizeMediaAssetUrl,
-  parseJsonRecord,
-  readRecordString,
-} from "../chat/workbench-content-utils.js";
+import { parseKbChunkContent } from "./kb-chunk-content-parser.js";
 import { mapChunkSource, normalizeChunkType } from "./kb-read-mappers.js";
 
 export type AgentKbJavaChunkPageItem = {
@@ -21,18 +17,11 @@ export type AgentKbJavaChunkPageItem = {
   volcChunkId?: string | null;
 };
 
-type ParsedJavaChunkContent = {
-  chunkType?: string;
-  content: string;
-  imageUrls: string[];
-  title?: string;
-};
-
 export function mapJavaChunkPageItem(
   item: AgentKbJavaChunkPageItem,
   docType: KbDocType,
 ): KbChunkListItem {
-  const parsed = parseJavaChunkContent(item.content);
+  const parsed = parseKbChunkContent(item.content);
   const chunkType = resolveJavaChunkType(parsed.chunkType, item.type, docType);
 
   return {
@@ -49,65 +38,7 @@ export function mapJavaChunkPageItem(
   };
 }
 
-export function parseJavaChunkContent(rawContent: string | null | undefined): ParsedJavaChunkContent {
-  const trimmed = rawContent?.trim() ?? "";
-
-  if (!trimmed) {
-    return { content: "", imageUrls: [] };
-  }
-
-  const parsed = parseJsonRecord(trimmed);
-
-  if (!parsed) {
-    return { content: trimmed, imageUrls: [] };
-  }
-
-  const imageUrls = extractChunkAttachmentImageUrls(parsed);
-
-  return {
-    chunkType: readRecordString(parsed, "chunkType"),
-    content: readRecordString(parsed, "content") ?? trimmed,
-    imageUrls,
-    title: readRecordString(parsed, "chunkTitle"),
-  };
-}
-
-function extractChunkAttachmentImageUrls(parsed: Record<string, unknown>) {
-  const attachments = parsed.chunkAttachment;
-
-  if (!Array.isArray(attachments)) {
-    return [];
-  }
-
-  const imageUrls: string[] = [];
-
-  for (const attachment of attachments) {
-    if (!attachment || typeof attachment !== "object") {
-      continue;
-    }
-
-    const record = attachment as Record<string, unknown>;
-    const type = readRecordString(record, "type");
-
-    if (type !== "image") {
-      continue;
-    }
-
-    const link = readRecordString(record, "link");
-
-    if (!link) {
-      continue;
-    }
-
-    const normalizedUrl = normalizeMediaAssetUrl(link);
-
-    if (normalizedUrl) {
-      imageUrls.push(normalizedUrl);
-    }
-  }
-
-  return imageUrls;
-}
+export const parseJavaChunkContent = parseKbChunkContent;
 
 function resolveJavaChunkType(
   parsedChunkType: string | undefined,

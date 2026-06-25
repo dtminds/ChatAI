@@ -136,6 +136,55 @@ describe("kb-read-mappers", () => {
     expect(systemChunk.source).toBe("system");
   });
 
+  it("parses JSON content stored in database rows", () => {
+    expect(
+      mapKbChunkListItem(
+        {
+          content: JSON.stringify({
+            chunkAttachment: [
+              {
+                link: "https://knowledgebase-image.tos-cn-beijing.volces.com/demo.png",
+                type: "image",
+              },
+            ],
+            chunkTitle: "结构化标题",
+            chunkType: "image",
+            content: "解析文字",
+          }),
+          create_time: new Date("2026-06-18T15:22:22.000Z"),
+          description: null,
+          doc_id: 1001,
+          html_content: null,
+          id: 504,
+          kb_id: 1,
+          last_sync_time: null,
+          md_content: null,
+          point_process_time: null,
+          point_update_time: null,
+          source: 2,
+          status: 1,
+          sync_status: 0,
+          title: "切片标题",
+          tokens: null,
+          type: "text",
+          uid: 9001,
+          update_time: new Date("2026-06-18T15:22:22.000Z"),
+          volc_chunk_id: null,
+          volc_doc_id: null,
+          volc_resource_id: null,
+        },
+        "document",
+      ),
+    ).toMatchObject({
+      chunkId: "504",
+      chunkType: "image",
+      content: "解析文字",
+      imageUrls: ["https://knowledgebase-image.tos-cn-beijing.volces.com/demo.png"],
+      source: "system",
+      title: "切片标题",
+    });
+  });
+
   it("maps image chunk url and analysis text", () => {
     expect(
       mapKbChunkListItem(

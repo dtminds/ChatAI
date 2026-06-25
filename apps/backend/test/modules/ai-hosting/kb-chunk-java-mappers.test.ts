@@ -42,6 +42,26 @@ describe("kb-chunk-java-mappers", () => {
     });
   });
 
+  it("returns empty content when JSON payload lacks content field", () => {
+    expect(
+      parseJavaChunkContent(
+        JSON.stringify({
+          chunkAttachment: [
+            {
+              link: "https://knowledgebase-image.tos-cn-beijing.volces.com/demo.png",
+              type: "image",
+            },
+          ],
+          chunkType: "image",
+        }),
+      ),
+    ).toMatchObject({
+      chunkType: "image",
+      content: "",
+      imageUrls: ["https://knowledgebase-image.tos-cn-beijing.volces.com/demo.png"],
+    });
+  });
+
   it("maps Java page item into chunk list item", () => {
     expect(
       mapJavaChunkPageItem(

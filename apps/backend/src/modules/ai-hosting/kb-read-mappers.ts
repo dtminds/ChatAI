@@ -15,6 +15,7 @@ import type {
   XyWapEmbedAgentKbDoc,
 } from "../../db/schema.js";
 import { normalizeMediaAssetUrl } from "../chat/workbench-content-utils.js";
+import { parseKbChunkContent } from "./kb-chunk-content-parser.js";
 
 const KB_DOC_TYPE_FAQ = 1;
 const KB_DOC_TYPE_DOCUMENT = 2;
@@ -72,21 +73,24 @@ export function mapKbChunkListItem(
   row: Selectable<XyWapEmbedAgentKbChunk>,
   docType: KbDocType,
 ): KbChunkListItem {
-  const chunkType = normalizeChunkType(row.type, docType);
+  const parsedContent = parseKbChunkContent(row.content);
+  const chunkType = parsedContent.chunkType
+    ? normalizeChunkType(parsedContent.chunkType, docType)
+    : normalizeChunkType(row.type, docType);
   const source = mapChunkSource(row.source);
-  const imageUrls = resolveChunkImageUrls(row, chunkType);
+  const imageUrls = resolveChunkImageUrls(row, chunkType, parsedContent.imageUrls);
 
   return {
     chunkId: String(row.id),
     chunkType,
-    content: resolveChunkContent(row, chunkType),
+    content: resolveChunkContent(row, docType, parsedContent),
     createdAt: toIsoString(row.create_time),
     description: row.description ?? undefined,
     docId: String(row.doc_id),
     imageUrls,
     kbId: String(row.kb_id),
     source,
-    title: row.title ?? undefined,
+    title: row.title?.trim() || parsedContent.title || undefined,
     updatedAt: toIsoString(row.update_time),
   };
 }
@@ -94,7 +98,12 @@ export function mapKbChunkListItem(
 function resolveChunkImageUrls(
   row: Selectable<XyWapEmbedAgentKbChunk>,
   chunkType: KbChunkType,
+  parsedImageUrls: string[],
 ) {
+  if (parsedImageUrls.length > 0) {
+    return parsedImageUrls;
+  }
+
   if (chunkType !== "image") {
     return undefined;
   }
@@ -106,13 +115,14 @@ function resolveChunkImageUrls(
 
 function resolveChunkContent(
   row: Selectable<XyWapEmbedAgentKbChunk>,
-  chunkType: KbChunkType,
+  docType: KbDocType,
+  parsedContent: ReturnType<typeof parseKbChunkContent>,
 ) {
-  if (chunkType === "image") {
+  if (docType === "image") {
     return row.description ?? "";
   }
 
-  return row.content ?? "";
+  return parsedContent.content;
 }
 
 export function mapDocType(docType: number): KbDocType {

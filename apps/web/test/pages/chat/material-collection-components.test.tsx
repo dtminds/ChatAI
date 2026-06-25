@@ -142,9 +142,13 @@ describe("material collection components", () => {
     );
     expect(
       screen.getByText(
-        "仅支持收录由该企微账号直接发送的视频，如果是转发了个微的视频，收录后将无法发送。原视频大小需在30MB以内。",
+        "仅支持收录由该企微账号直接发送的视频，转发个微的视频收录后将无法发送。原视频大小需在30MB以内。",
       ),
     ).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveClass(
+      "border-warning/30",
+      "bg-warning-muted",
+    );
     const collectButton = screen.getByRole("button", { name: "收录" });
     expect(collectButton).toBeDisabled();
     expect(collectButton).toHaveAttribute("aria-busy", "true");

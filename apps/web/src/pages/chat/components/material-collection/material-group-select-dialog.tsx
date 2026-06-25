@@ -183,9 +183,9 @@ export function MaterialGroupSelectDialog({
           ) : null}
 
           {bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO ? (
-            <Alert>
-              <AlertDescription>
-                仅支持收录由该企微账号直接发送的视频，如果是转发了个微的视频，收录后将无法发送。原视频大小需在30MB以内。
+            <Alert className="border-warning/30 bg-warning-muted text-warning">
+              <AlertDescription className="text-warning">
+                仅支持收录由该企微账号直接发送的视频，转发个微的视频收录后将无法发送。原视频大小需在30MB以内。
               </AlertDescription>
             </Alert>
           ) : null}

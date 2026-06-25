@@ -59,6 +59,26 @@ describe("MessageContentRenderer video messages", () => {
     );
   });
 
+  it("shows the play control for normalized collected video material URLs", () => {
+    render(
+      <VideoMessageCard
+        content={{
+          ...createVideoContent({
+            alt: "收录视频",
+            durationLabel: "",
+            height: 360,
+            width: 640,
+          }),
+          coverImageUrl: "https://b5.bokr.com.cn/s5/msg/20260514/272/video-cover.jpg",
+          downloadStatus: "finished",
+          videoUrl: "https://b5.bokr.com.cn/s5/msg/20260514/272/video.mp4",
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "播放视频：收录视频" })).toBeInTheDocument();
+  });
+
   it("renders a vertical video preview from the same content contract", () => {
     render(
       <MessageContentRenderer

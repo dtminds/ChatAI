@@ -3552,12 +3552,12 @@ describe("useWorkbenchStore", () => {
         type: "weapp",
       },
       {
-        coverUrl: "https://cdn.example.com/video-cover.png",
+        coverUrl: "s5/msg/20260514/272/video-cover.jpg",
         materialCollectionId: "material-video-001",
         msgInfoId: "9104",
         title: "讲解视频",
         type: "video",
-        url: "https://cdn.example.com/video.mp4",
+        url: "s5/msg/20260514/272/video.mp4",
       },
     ]);
 
@@ -3658,9 +3658,10 @@ describe("useWorkbenchStore", () => {
       {
         content: {
           alt: "讲解视频",
-          coverImageUrl: "https://cdn.example.com/video-cover.png",
+          coverImageUrl: "https://b5.bokr.com.cn/s5/msg/20260514/272/video-cover.jpg",
+          downloadStatus: "finished",
           type: "video",
-          videoUrl: "https://cdn.example.com/video.mp4",
+          videoUrl: "https://b5.bokr.com.cn/s5/msg/20260514/272/video.mp4",
         },
       },
     ]);

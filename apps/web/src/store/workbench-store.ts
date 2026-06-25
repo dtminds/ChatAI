@@ -53,6 +53,7 @@ import {
   buildConversationComposerDraft,
   type ConversationComposerDraft,
 } from "@/pages/chat/lib/conversation-composer-draft";
+import { normalizeMediaAssetUrl } from "@/pages/chat/lib/media-asset-url";
 import { isValidMessageSeq } from "@/pages/chat/lib/message-seq";
 import { notifyPulledCustomerMessage } from "@/pages/chat/lib/new-message-title-alert";
 import { canUseWorkbenchConversationActions } from "@/pages/chat/lib/workbench-permissions";
@@ -1965,10 +1966,11 @@ function buildOptimisticMessageContent(
   if (segment.type === "video") {
     return {
       alt: segment.title ?? "视频",
-      coverImageUrl: segment.coverUrl,
+      coverImageUrl: normalizeMediaAssetUrl(segment.coverUrl),
+      downloadStatus: "finished",
       durationLabel: "",
       type: "video",
-      videoUrl: segment.url,
+      videoUrl: normalizeMediaAssetUrl(segment.url),
     };
   }
 

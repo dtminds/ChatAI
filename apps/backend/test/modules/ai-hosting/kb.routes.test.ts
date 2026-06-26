@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildMockedApp } from "../../helpers/build-mocked-app.js";
 import { createKbReadDbMock } from "../../helpers/create-kb-read-db-mock.js";
 
@@ -72,6 +72,47 @@ describe("KB read routes", () => {
   it("lists docs and chunks for the current tenant", async () => {
     const context = await createAuthenticatedKbApp();
     app = context.app;
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          count: 2,
+          error: 0,
+          list: [
+            {
+              content: "切片正文",
+              createTime: "2026-06-18T15:22:22.000Z",
+              docId: 1001,
+              id: 501,
+              kbId: 1,
+              source: 1,
+              title: "切片标题",
+              type: 2,
+              uid: 9001,
+              updateTime: "2026-06-18T15:22:22.000Z",
+            },
+            {
+              content: "系统切片正文",
+              createTime: "2026-06-18T15:22:22.000Z",
+              docId: 1001,
+              id: 502,
+              kbId: 1,
+              source: 2,
+              title: "系统切片",
+              type: 2,
+              uid: 9001,
+              updateTime: "2026-06-18T15:22:22.000Z",
+            },
+          ],
+          page: 1,
+          pageSize: 10,
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
 
     const docs = await app.inject({
       headers: { authorization: context.authorization },
@@ -132,6 +173,10 @@ describe("KB read routes", () => {
       },
       success: true,
     });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "https://java.internal/third-internal/wap-embed-agent-kb-chunk/page",
+    );
+    fetchMock.mockRestore();
   });
 
   it("returns not found for another tenant kb", async () => {

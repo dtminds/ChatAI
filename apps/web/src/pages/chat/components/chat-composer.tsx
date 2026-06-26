@@ -301,6 +301,7 @@ export function ChatComposer({
   const canSubmitDraft = canSendMessage && !isSending && segments.length > 0;
   const canEditComposer = canSendMessage && !isSending;
   const canSelectFile = canEditComposer && !hasActiveFileUpload;
+  const isComposerActionDisabled = isSending || !canSendMessage;
   const composerImageCount = segments.filter(
     (segment) => segment.type === "image",
   ).length;
@@ -669,11 +670,15 @@ export function ChatComposer({
               type="file"
             />
             <Popover open={isAgentDialogOpen} onOpenChange={setIsAgentDialogOpen}>
-              <ComposerActionTooltip label="AI 对话">
+              <ComposerActionTooltip
+                disabled={isComposerActionDisabled}
+                label="AI 对话"
+              >
                 <PopoverTrigger asChild>
                   <Button
                     aria-label="AI 对话"
                     className={composerActionButtonClass}
+                    disabled={isComposerActionDisabled}
                     size="icon"
                     type="button"
                     variant="ghost"

@@ -571,6 +571,72 @@ describe("ChatPanel", () => {
     expect(screen.getByRole("button", { name: "开启当前会话托管" })).toBeDisabled();
   });
 
+  it("disables the AI dialog button when messages cannot be sent", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ChatPanel
+        activeConversation={createConversation()}
+        activeHistoryStatus="idle"
+        canConfigureFullAuto
+        canEnableFullAuto
+        canConfigureSemiAuto
+        canSendMessage={false}
+        isFullAutoAvailable
+        isSemiAutoAvailable
+        composerPlaceholder="输入消息"
+        customerPanelWidth={375}
+        draft=""
+        fileUploadQueue={[]}
+        groupMembers={[]}
+        hasMoreHistory={false}
+        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false, isOpen: false }}
+        inputEnterBehavior="send"
+        isHistoryPanelOpen={false}
+        isConversationLoading={false}
+        isEmojiPickerOpen={false}
+        isGroupMembersLoading={false}
+        isResizingCustomerPanel={false}
+        isSendingDraft={false}
+        messages={[]}
+        quotedMessage={null}
+        sidebarItems={[]}
+        composerRef={createRef()}
+        messageViewportRef={createRef()}
+        workbenchBodyRef={createRef()}
+        onChangeFullAuto={vi.fn()}
+        onCancelFileUpload={vi.fn()}
+        onClearQuotedMessage={vi.fn()}
+        onComposerSegmentsChange={vi.fn()}
+        onCustomerPanelResizeStart={vi.fn()}
+        onDismissScopeTransitionError={vi.fn()}
+        onDraftChange={vi.fn()}
+        onEmojiPickerOpenChange={vi.fn()}
+        onEnterBehaviorChange={vi.fn()}
+        onFileSelect={vi.fn()}
+        onHistoryClose={vi.fn()}
+        onHistoryLoadMoreNext={vi.fn()}
+        onHistoryLoadMorePrev={vi.fn()}
+        onHistoryRefresh={vi.fn()}
+        onHistorySetDay={vi.fn()}
+        onHistorySetScope={vi.fn()}
+        onHistorySetSenderId={vi.fn()}
+        onLoadOlderMessages={vi.fn()}
+        onMessageViewportScroll={vi.fn()}
+        onOpenHistory={vi.fn()}
+        onRefreshGroupMembers={vi.fn()}
+        onRetryMessage={vi.fn()}
+        onSendDraft={vi.fn()}
+      />,
+    );
+
+    const aiDialogButton = screen.getByRole("button", { name: "AI 对话" });
+
+    expect(aiDialogButton).toBeDisabled();
+    await user.click(aiDialogButton);
+    expect(screen.queryByText("AI 对话配置")).not.toBeInTheDocument();
+  });
+
   it("requests full-auto enable from the AI dialog current conversation button", async () => {
     const user = userEvent.setup();
     const onChangeFullAuto = vi.fn();
@@ -725,7 +791,7 @@ describe("ChatPanel", () => {
         canConfigureFullAuto
         canEnableFullAuto
         canConfigureSemiAuto
-        canSendMessage={false}
+        canSendMessage
         isFullAutoAvailable
         isSemiAutoAvailable
         isFullAutoActive

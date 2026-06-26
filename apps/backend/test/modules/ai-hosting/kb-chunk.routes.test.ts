@@ -211,7 +211,7 @@ describe("ai-hosting kb-chunk routes", () => {
     fetchMock.mockRestore();
   });
 
-  it("rejects system chunk updates before calling Java", async () => {
+  it("updates a system chunk via Java", async () => {
     const fetchMock = mockJavaChunkFetch({
       data: true,
       error: 0,
@@ -231,15 +231,21 @@ describe("ai-hosting kb-chunk routes", () => {
       url: "/api/server/ai-hosting/kb-chunks/502/update",
     });
 
-    expect(response.statusCode).toBe(403);
-    expect(response.json()).toMatchObject({
-      error: {
-        code: "KB_CHUNK_NOT_EDITABLE",
-        message: "系统切片不可编辑",
-      },
-      success: false,
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      data: { updated: true },
+      success: true,
     });
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "https://java.internal/third-internal/wap-embed-agent-kb-chunk/update",
+    );
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      content: "尝试编辑",
+      id: 502,
+      operatorId: "101",
+      title: "系统切片",
+      uid: 9001,
+    });
     fetchMock.mockRestore();
   });
 

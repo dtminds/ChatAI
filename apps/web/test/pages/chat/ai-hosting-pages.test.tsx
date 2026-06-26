@@ -2194,7 +2194,7 @@ describe("AI hosting pages", () => {
 
   it("shows an error toast when editing a chunk fails", async () => {
     const user = userEvent.setup();
-    updateKbChunkMock.mockRejectedValueOnce(new Error("系统切片不可编辑"));
+    updateKbChunkMock.mockRejectedValueOnce(new Error("保存失败"));
 
     renderWithRoute(
       "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-3",
@@ -2209,7 +2209,7 @@ describe("AI hosting pages", () => {
     await user.click(within(dialog).getByRole("button", { name: "保存" }));
 
     expect(dialog).toBeInTheDocument();
-    expect(toast.error).toHaveBeenCalledWith("系统切片不可编辑");
+    expect(toast.error).toHaveBeenCalledWith("保存失败");
   });
 
   it("renders the document chunk detail page and adds a chunk", async () => {
@@ -2232,7 +2232,7 @@ describe("AI hosting pages", () => {
     expect(screen.getByText("切片标题")).toBeInTheDocument();
     expect(screen.getByText("切片内容")).toBeInTheDocument();
     expect(screen.getByText("第一章 产品介绍")).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: "编辑" })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: "编辑" })).toHaveLength(3);
 
     const addChunkButton = screen.getByRole("button", { name: "添加切片" });
     await user.click(addChunkButton);

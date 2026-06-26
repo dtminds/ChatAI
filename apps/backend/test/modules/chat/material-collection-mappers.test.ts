@@ -15,6 +15,9 @@ describe("material collection mappers", () => {
     expect(getMaterialBizTypeForMessageContentType("emotion")).toBe(
       MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION,
     );
+    expect(getMaterialBizTypeForMessageContentType("image")).toBe(
+      MATERIAL_COLLECTION_BIZ_TYPE.IMAGE,
+    );
     expect(getMaterialBizTypeForMessageContentType("file")).toBe(
       MATERIAL_COLLECTION_BIZ_TYPE.FILE,
     );
@@ -26,6 +29,9 @@ describe("material collection mappers", () => {
     );
     expect(getMaterialBizTypeForMessageContentType("sphfeed")).toBe(
       MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED,
+    );
+    expect(getMaterialBizTypeForMessageContentType("video")).toBe(
+      MATERIAL_COLLECTION_BIZ_TYPE.VIDEO,
     );
     expect(
       getMaterialBizTypeForMessageContentType("text" as WorkbenchMessageContentType),
@@ -48,6 +54,12 @@ describe("material collection mappers", () => {
     expect(
       getMaterialContentTypeForBizType(MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED),
     ).toBe("sphfeed");
+    expect(
+      getMaterialContentTypeForBizType(MATERIAL_COLLECTION_BIZ_TYPE.IMAGE),
+    ).toBe("image");
+    expect(
+      getMaterialContentTypeForBizType(MATERIAL_COLLECTION_BIZ_TYPE.VIDEO),
+    ).toBe("video");
   });
 
   it("maps a file material row to a normalized item dto", () => {
@@ -139,6 +151,62 @@ describe("material collection mappers", () => {
       contentType: "emotion",
       msgInfoId: "9003",
       title: "贴贴表情",
+    });
+  });
+
+  it("normalizes image material content for gallery rendering", () => {
+    expect(
+      mapMaterialCollectionItem(materialRow({
+        biz_type: MATERIAL_COLLECTION_BIZ_TYPE.IMAGE,
+        content: JSON.stringify({
+          downloadStatus: "finished",
+          fileUrl: "media/product.png",
+        }),
+        group_id: 66,
+        msg_info_id: 9006,
+        title: "",
+      })),
+    ).toMatchObject({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.IMAGE,
+      content: {
+        downloadStatus: "finished",
+        fileUrl: "https://b5.bokr.com.cn/media/product.png",
+      },
+      contentType: "image",
+      groupId: "66",
+      msgInfoId: "9006",
+      title: "图片",
+    });
+  });
+
+  it("normalizes video material content for gallery rendering", () => {
+    expect(
+      mapMaterialCollectionItem(materialRow({
+        biz_type: MATERIAL_COLLECTION_BIZ_TYPE.VIDEO,
+        content: JSON.stringify({
+          coverUrl: "s5/msg/20260514/272/video-cover.jpg",
+          downloadStatus: "finished",
+          fileSerialNo: "serial-video-001",
+          fileUrl: "s5/msg/20260514/272/video.mp4",
+          optSerNo: "20260520161942296211617558032",
+        }),
+        group_id: 77,
+        msg_info_id: 9007,
+        title: "",
+      })),
+    ).toMatchObject({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.VIDEO,
+      content: {
+        coverUrl: "https://b5.bokr.com.cn/s5/msg/20260514/272/video-cover.jpg",
+        downloadStatus: "finished",
+        fileSerialNo: "serial-video-001",
+        fileUrl: "https://b5.bokr.com.cn/s5/msg/20260514/272/video.mp4",
+        optSerNo: "20260520161942296211617558032",
+      },
+      contentType: "video",
+      groupId: "77",
+      msgInfoId: "9007",
+      title: "视频",
     });
   });
 

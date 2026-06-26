@@ -93,11 +93,15 @@ import {
   QUICK_REPLY_BATCH_CREATE_LIMIT,
   QUICK_REPLY_CATEGORY_TITLE_MAX_LENGTH,
   QUICK_REPLY_CONTENT_TEXT_MAX_LENGTH,
+  buildMaterialVideoContentJson,
   QUICK_REPLY_IMPORT_PRIMARY_CATEGORY_LIMIT,
   QUICK_REPLY_IMPORT_SECONDARY_CATEGORY_LIMIT,
   QUICK_REPLY_LABEL_TEXT_MAX_LENGTH,
+  isOwnVideoMaterialUrl,
   isQuickReplyLabelColor,
   normalizeQuickReplyAttachments,
+  readMaterialRawString,
+  resolveMaterialVideoCollectFields,
   validateQuickReplyPayload,
 } from "@chatai/contracts";
 import { BadRequestError, NotFoundError } from "../../src/shared/errors.js";
@@ -247,7 +251,25 @@ export function createMemoryWorkbenchService() {
         };
       }
 
-      const item = buildMemoryMaterialItem(state, request);
+      const sourceMessage = findMemoryMaterialMessage(state, request.msgInfoId);
+
+      if (!sourceMessage) {
+        throw new NotFoundError("MATERIAL_MESSAGE_NOT_FOUND", "消息不存在");
+      }
+
+      const normalized = normalizeMemoryMaterialCollectionContent(
+        sourceMessage,
+        request,
+      );
+
+      if ("errorMsg" in normalized) {
+        return {
+          success: false,
+          errorMsg: normalized.errorMsg,
+        };
+      }
+
+      const item = buildMemoryMaterialItem(state, request, sourceMessage, normalized);
       state.materialItems = [
         item,
         ...state.materialItems.filter(
@@ -1340,7 +1362,7 @@ export function createMemoryWorkbenchService() {
 
         return {
           seatId: payload.seatId,
-          content: buildPayloadSegmentContent(segment, quoteForSegment),
+          content: buildPayloadSegmentContent(state, segment, quoteForSegment),
           contentType: quoteForSegment ? "quote" : segment.type,
           conversationId: payload.conversationId,
           createdAt: now + index,
@@ -1495,8 +1517,46 @@ function buildInitialState(): MemoryWorkbenchState {
         sort: 100,
         title: "文件分组",
       },
+      {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.IMAGE,
+        id: "material-group-image-1",
+        sort: 90,
+        title: "图片分组",
+      },
+      {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.VIDEO,
+        id: "material-group-video-1",
+        sort: 80,
+        title: "视频分组",
+      },
     ],
     materialItems: [
+      {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.IMAGE,
+        content: {
+          fileUrl: "https://example.com/materials/product.png",
+        },
+        contentType: "image",
+        groupId: "material-group-image-1",
+        id: "material-item-image-1",
+        msgInfoId: "9",
+        sort: 90,
+        title: "商品图",
+      },
+      {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.VIDEO,
+        content: {
+          coverUrl: "https://example.com/materials/video-cover.jpg",
+          downloadStatus: "finished",
+          fileUrl: "https://example.com/materials/demo.mp4",
+        },
+        contentType: "video",
+        groupId: "material-group-video-1",
+        id: "material-item-video-1",
+        msgInfoId: "10",
+        sort: 80,
+        title: "视频",
+      },
       {
         bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
         content: { fileName: "求未 AI 智能营销系统.pdf" },
@@ -1515,10 +1575,10 @@ function buildInitialState(): MemoryWorkbenchState {
         message("msg-004", "conv-001", "drc", "cust-001", "agent", "file", { fileName: "求未 AI 智能营销系统.pdf", fileSizeLabel: "6.10M", extension: "pdf", sourceLabel: "企业微信文件" }, "2026-04-13 09:10:00", 3, "sent"),
         message("msg-005", "conv-001", "drc", "cust-001", "customer", "text", { text: "Seedream 4.0 这张活动卡片我准备转给群里，你看标题会不会太满？" }, "2026-04-14 18:37:00", 4, "sent"),
         message("msg-006", "conv-001", "drc", "cust-001", "customer", "text", { text: "我先截了个竖图版本给你看。" }, "2026-04-14 18:37:18", 5, "sent"),
-        message("msg-007", "conv-001", "drc", "cust-001", "customer", "image", { imageUrl: imagePlaceholder("phone"), alt: "手机截图", width: 300, height: 620 }, "2026-04-14 18:37:24", 6, "sent"),
+        message("msg-007", "conv-001", "drc", "cust-001", "customer", "image", { fileUrl: imagePlaceholder("phone"), alt: "手机截图", width: 300, height: 620 }, "2026-04-14 18:37:24", 6, "sent"),
         message("msg-008", "conv-001", "drc", "cust-001", "customer", "voice", { durationLabel: "11\"" }, "2026-04-14 18:38:12", 7, "sent"),
         message("msg-009", "conv-001", "drc", "cust-001", "customer", "text", { text: "这是最新的权益清单截图，你帮我确认下。" }, "2026-04-14 19:18:18", 8, "sent"),
-        message("msg-010", "conv-001", "drc", "cust-001", "customer", "image", { imageUrl: imagePlaceholder("sheet"), alt: "权益清单截图", width: 1180, height: 540 }, "2026-04-14 19:18:32", 9, "sent"),
+        message("msg-010", "conv-001", "drc", "cust-001", "customer", "image", { fileUrl: imagePlaceholder("sheet"), alt: "权益清单截图", width: 1180, height: 540 }, "2026-04-14 19:18:32", 9, "sent"),
       ],
       "conv-002": [
         message("msg-011", "conv-002", "drc", "cust-002", "customer", "text", { text: "早餐能不能换成酸奶和坚果？" }, "2026-04-13 15:04:16", 1, "sent"),
@@ -1541,6 +1601,12 @@ function buildInitialState(): MemoryWorkbenchState {
       ],
       "conv-006": [
         message("msg-015", "conv-006", "ndt", "cust-006", "agent", "text", { text: "多喝水，明天继续打卡。" }, "2026-04-09 16:04:45", 1, "sent"),
+      ],
+      "conv-material-video": [
+        message("msg-material-video-1001", "conv-material-video", "drc", "cust-material-video", "agent", "video", { coverUrl: "s5/msg/20260514/272/agent-video-cover.jpg", downloadStatus: "finished", fileUrl: "s5/msg/20260514/272/agent-demo.mp4" }, "2026-04-15 10:00:00", 1001, "sent"),
+        message("msg-material-video-1002", "conv-material-video", "drc", "cust-material-video", "customer", "video", { coverUrl: "https://example.com/materials/customer-video-cover.jpg", downloadStatus: "finished", fileUrl: "https://example.com/materials/customer-demo.mp4" }, "2026-04-15 10:01:00", 1002, "sent"),
+        message("msg-material-video-1003", "conv-material-video", "drc", "cust-material-video", "agent", "video", { coverUrl: "https://example.com/materials/downloading-video-cover.jpg", downloadStatus: "ing", fileUrl: "https://example.com/materials/downloading-demo.mp4" }, "2026-04-15 10:02:00", 1003, "sent"),
+        message("msg-material-video-1004", "conv-material-video", "drc", "cust-material-video", "agent", "video", { downloadStatus: "finished", fileUrl: "https://example.com/materials/missing-cover-demo.mp4" }, "2026-04-15 10:03:00", 1004, "sent"),
       ],
     },
     nextId: 1,
@@ -1648,13 +1714,101 @@ function getMemoryRawMsgtype(contentType: WorkbenchMessageDto["contentType"]) {
 function buildMemoryMaterialItem(
   state: MemoryWorkbenchState,
   request: WorkbenchMaterialCollectionCreateRequest,
+  message: WorkbenchMessageDto,
+  normalized: {
+    content: WorkbenchMaterialCollectionItemDto["content"];
+    title: string;
+  },
 ): WorkbenchMaterialCollectionItemDto {
-  const message = Object.values(state.messagesByConversationId)
-    .flat()
-    .find((item) => String(item.seq) === request.msgInfoId);
+  const contentType =
+    request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION
+      ? "emotion"
+      : request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM
+        ? "mini-program"
+        : request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.H5
+          ? "h5"
+          : request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED
+            ? "sphfeed"
+            : request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.IMAGE
+              ? "image"
+              : request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO
+                ? "video"
+                : "file";
+  const groupId =
+    request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION
+      ? 0
+      : String(request.groupId);
 
-  if (!message) {
-    throw new NotFoundError("MATERIAL_MESSAGE_NOT_FOUND", "消息不存在");
+  return {
+    bizType: request.bizType,
+    content: normalized.content,
+    contentType,
+    groupId,
+    id: `material-item-${state.nextId++}`,
+    msgInfoId: String(message.seq),
+    sort: Date.now(),
+    title: normalized.title,
+  };
+}
+
+function findMemoryMaterialMessage(state: MemoryWorkbenchState, msgInfoId: string) {
+  return Object.values(state.messagesByConversationId)
+    .flat()
+    .find((item) => String(item.seq) === msgInfoId);
+}
+
+function normalizeMemoryMaterialCollectionContent(
+  message: WorkbenchMessageDto,
+  request: WorkbenchMaterialCollectionCreateRequest,
+):
+  | {
+      content: WorkbenchMaterialCollectionItemDto["content"];
+      title: string;
+    }
+  | { errorMsg: string } {
+  if (request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO) {
+    if (message.senderType !== "agent") {
+      return { errorMsg: "只能收录席位号发送的视频" };
+    }
+
+    const rawContent = JSON.stringify(message.content);
+    const contentRecord = isRecord(message.content) ? message.content : {};
+
+    if (readMaterialRawString(contentRecord, "downloadStatus") !== "finished") {
+      return { errorMsg: "视频下载未完成，无法收录" };
+    }
+
+    const resolved = resolveMaterialVideoCollectFields(rawContent);
+
+    if ("errorMsg" in resolved) {
+      return resolved;
+    }
+
+    const rawFileUrl = readMaterialRawString(contentRecord, "fileUrl");
+    let rawContentForCollection = rawContent;
+    let resolvedForCollection = resolved;
+
+    if (rawFileUrl && !isOwnVideoMaterialUrl(rawFileUrl)) {
+      const expireTime = readNumber(contentRecord.fileUrlExpireTime);
+
+      if (expireTime === undefined || Date.now() > expireTime) {
+        return { errorMsg: "视频下载地址已过期，无法收录" };
+      }
+
+      rawContentForCollection = buildMockTransferredVideoContent(rawContent, resolved);
+      resolvedForCollection = resolveMaterialVideoCollectFields(rawContentForCollection);
+
+      if ("errorMsg" in resolvedForCollection) {
+        return resolvedForCollection;
+      }
+    }
+
+    return {
+      content: JSON.parse(
+        buildMaterialVideoContentJson(rawContentForCollection, resolvedForCollection),
+      ) as WorkbenchMaterialCollectionItemDto["content"],
+      title: "视频",
+    };
   }
 
   const contentType =
@@ -1664,20 +1818,14 @@ function buildMemoryMaterialItem(
         ? "mini-program"
         : request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.H5
           ? "h5"
-          : "file";
-  const groupId =
-    request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION
-      ? 0
-      : String(request.groupId);
+          : request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED
+            ? "sphfeed"
+            : request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.IMAGE
+              ? "image"
+              : "file";
 
   return {
-    bizType: request.bizType,
     content: message.content,
-    contentType,
-    groupId,
-    id: `material-item-${state.nextId++}`,
-    msgInfoId: String(message.seq),
-    sort: Date.now(),
     title: readMemoryMaterialTitle(message.content, contentType, request.msgInfoId),
   };
 }
@@ -1689,6 +1837,14 @@ function readMemoryMaterialTitle(
 ) {
   if (contentType === "emotion") {
     return "表情";
+  }
+
+  if (contentType === "image") {
+    return "图片";
+  }
+
+  if (contentType === "video") {
+    return "视频";
   }
 
   if (!content || typeof content !== "object") {
@@ -1706,6 +1862,26 @@ function readMemoryMaterialTitle(
 
 function readString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function readNumber(value: unknown) {
+  const numericValue = typeof value === "number" ? value : Number(value);
+
+  return Number.isFinite(numericValue) ? numericValue : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function buildMockTransferredVideoContent(
+  rawContent: string,
+  fields: { coverUrl: string; fileUrl: string },
+) {
+  return buildMaterialVideoContentJson(rawContent, {
+    coverUrl: fields.coverUrl,
+    fileUrl: "s5/msg/mock/transferred-video.mp4",
+  });
 }
 
 function imagePlaceholder(label: string) {
@@ -1987,6 +2163,7 @@ function getPayloadSegments(payload: WorkbenchSendMessagePayload) {
 }
 
 function buildPayloadSegmentContent(
+  state: MemoryWorkbenchState,
   segment: ReturnType<typeof getPayloadSegments>[number],
   quote?: WorkbenchSendMessagePayload["quote"],
 ) {
@@ -1999,10 +2176,15 @@ function buildPayloadSegmentContent(
   }
 
   if (segment.type === "image") {
+    const materialContent = segment.materialCollectionId
+      ? getMemoryMaterialContent(state, segment.materialCollectionId)
+      : {};
+    const materialFileUrl = readString(materialContent.fileUrl);
+
     return {
       alt: segment.alt,
+      fileUrl: materialFileUrl || segment.url || segment.localUrl || "",
       height: segment.height,
-      imageUrl: segment.url ?? segment.localUrl ?? "",
       width: segment.width,
     };
   }
@@ -2016,9 +2198,30 @@ function buildPayloadSegmentContent(
     };
   }
 
+  if (segment.type === "video") {
+    const materialContent = segment.materialCollectionId
+      ? getMemoryMaterialContent(state, segment.materialCollectionId)
+      : {};
+
+    return {
+      coverImageUrl: readString(materialContent.coverUrl),
+      videoUrl: readString(materialContent.fileUrl),
+    };
+  }
+
   return {
     text: segment.text,
   };
+}
+
+function getMemoryMaterialContent(state: MemoryWorkbenchState, materialCollectionId: string) {
+  const item = state.materialItems.find(
+    (materialItem) => materialItem.id === materialCollectionId,
+  );
+
+  return item?.content && typeof item.content === "object"
+    ? item.content as Record<string, unknown>
+    : {};
 }
 
 function getPayloadPreview(segments: ReturnType<typeof getPayloadSegments>) {

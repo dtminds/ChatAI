@@ -190,6 +190,8 @@ type ConversationHydrationSources = {
 type SeatBaseRow = {
   ai_hosting_enabled?: number | string | boolean | null;
   avatar: string | null;
+  biz_status: number | string | null;
+  expire_time: number | string | null;
   full_auto_auth?: number | string | boolean | null;
   full_auto_switch?: number | string | boolean | null;
   host_sub_id: number | string | null;
@@ -373,11 +375,15 @@ type MaterialCollectionGroupRow = {
 };
 
 export type MaterialMessageLookup = {
+  chatType?: number | null;
   content: string | null;
+  fromType?: number | null;
   id: number | string;
   msgid: string;
   msgtime?: Date | number | string | null;
   msgtype: string;
+  thirdFromId?: string | null;
+  thirdUserId?: string | null;
   uid: number;
 };
 
@@ -539,10 +545,14 @@ export class WorkbenchRepository {
       .selectFrom("xy_wap_embed_msg_audit_info as message")
       .select([
         "message.id as id",
+        "message.chat_type as chatType",
         "message.content as content",
+        "message.from_type as fromType",
         "message.msgid as msgid",
         "message.msgtime as msgtime",
         "message.msgtype as msgtype",
+        "message.third_from_id as thirdFromId",
+        "message.third_user_id as thirdUserId",
         "message.uid as uid",
       ])
       .where("message.id", "=", msgInfoNumericId)
@@ -554,11 +564,15 @@ export class WorkbenchRepository {
     }
 
     return {
+      chatType: row.chatType,
       content: row.content,
+      fromType: row.fromType,
       id: row.id,
       msgid: row.msgid,
       msgtime: row.msgtime,
       msgtype: row.msgtype,
+      thirdFromId: row.thirdFromId,
+      thirdUserId: row.thirdUserId,
       uid: row.uid,
     };
   }
@@ -2304,6 +2318,7 @@ export class WorkbenchRepository {
         "message.opt_no as opt_no",
         "message.revoke_status as revoke_status",
         "message.status as status",
+        "message.update_time as update_time",
       ])
       .where("message.uid", "=", conversation.uid)
       .where("message.platform", "=", conversation.platform)
@@ -2518,6 +2533,8 @@ export class WorkbenchRepository {
         "seat.third_user_name as third_user_name",
         "seat.third_avatar as avatar",
         "seat.is_online as is_online",
+        "seat.expire_time as expire_time",
+        "seat.biz_status as biz_status",
         "seat.host_sub_id as host_sub_id",
         "seat_agent.full_auto_auth as full_auto_auth",
         "seat_agent.full_auto_switch as full_auto_switch",
@@ -3132,6 +3149,8 @@ export class WorkbenchRepository {
         "xy_wap_embed_user_seat.third_user_name as third_user_name",
         "xy_wap_embed_user_seat.third_avatar as avatar",
         "xy_wap_embed_user_seat.is_online as is_online",
+        "xy_wap_embed_user_seat.expire_time as expire_time",
+        "xy_wap_embed_user_seat.biz_status as biz_status",
         "xy_wap_embed_user_seat.host_sub_id as host_sub_id",
         "seat_agent.full_auto_auth as full_auto_auth",
         "seat_agent.full_auto_switch as full_auto_switch",
@@ -3176,6 +3195,8 @@ export class WorkbenchRepository {
         "seat.third_user_name as third_user_name",
         "seat.third_avatar as avatar",
         "seat.is_online as is_online",
+        "seat.expire_time as expire_time",
+        "seat.biz_status as biz_status",
         "seat.host_sub_id as host_sub_id",
         "seat_agent.full_auto_auth as full_auto_auth",
         "seat_agent.full_auto_switch as full_auto_switch",
@@ -3194,6 +3215,8 @@ export class WorkbenchRepository {
         "seat.third_user_name",
         "seat.third_avatar",
         "seat.is_online",
+        "seat.expire_time",
+        "seat.biz_status",
         "seat.host_sub_id",
         "seat_agent.full_auto_auth",
         "seat_agent.full_auto_switch",
@@ -3283,8 +3306,7 @@ export class WorkbenchRepository {
       .where("conversation.uid", "=", seat.uid)
       .where("conversation.platform", "=", seat.platform)
       .where("conversation.third_userid", "=", seat.third_userid)
-      .where("conversation.biz_status", "=", 1)
-      .where("conversation.last_msgtime", "<=", snapshotAt);
+      .where("conversation.biz_status", "=", 1);
 
     if (options?.mode) {
       query = query.where(
@@ -3295,15 +3317,19 @@ export class WorkbenchRepository {
     }
 
     if (cursor) {
-      query = query.where((expressionBuilder) =>
-        expressionBuilder.or([
-          expressionBuilder("conversation.last_msgtime", "<", cursor.lastMsgTime),
-          expressionBuilder.and([
-            expressionBuilder("conversation.last_msgtime", "=", cursor.lastMsgTime),
-            expressionBuilder("conversation.id", "<", asSchemaBigIntId(cursor.id)),
+      // 会话列表的 cursor 只为未来分页预留，当前首屏不会传这个参数。
+      // 这里保留 snapshot 上界是为了后续 cursor 页的稳定性，不影响首屏展示。
+      query = query
+        .where("conversation.last_msgtime", "<=", snapshotAt)
+        .where((expressionBuilder) =>
+          expressionBuilder.or([
+            expressionBuilder("conversation.last_msgtime", "<", cursor.lastMsgTime),
+            expressionBuilder.and([
+              expressionBuilder("conversation.last_msgtime", "=", cursor.lastMsgTime),
+              expressionBuilder("conversation.id", "<", asSchemaBigIntId(cursor.id)),
+            ]),
           ]),
-        ]),
-      )
+        )
         .orderBy("conversation.last_msgtime", "desc")
         .orderBy("conversation.id", "desc");
     } else {
@@ -3775,6 +3801,7 @@ export class WorkbenchRepository {
         "message.opt_no as opt_no",
         "message.revoke_status as revoke_status",
         "message.status as status",
+        "message.update_time as update_time",
       ])
       .select((expressionBuilder) => [
         expressionBuilder.val(conversation.conversation_id).as("conversation_id"),
@@ -3944,6 +3971,7 @@ export class WorkbenchRepository {
         "message.opt_no as opt_no",
         "message.revoke_status as revoke_status",
         "message.status as status",
+        "message.update_time as update_time",
       ])
       .select((expressionBuilder) => [
         expressionBuilder.val(conversation.conversation_id).as("conversation_id"),
@@ -4109,6 +4137,7 @@ export class WorkbenchRepository {
         "message.msgtime as msgtime",
         "message.revoke_status as revoke_status",
         "message.status as status",
+        "message.update_time as update_time",
       ])
       .select((expressionBuilder) => [
         expressionBuilder.val(0).as("conversation_id"),
@@ -5049,6 +5078,8 @@ function toMaterialCollectionBizType(value: number): MaterialCollectionBizType {
     case MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM:
     case MATERIAL_COLLECTION_BIZ_TYPE.H5:
     case MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED:
+    case MATERIAL_COLLECTION_BIZ_TYPE.IMAGE:
+    case MATERIAL_COLLECTION_BIZ_TYPE.VIDEO:
       return value;
     default:
       throw new Error(`Unsupported material collection biz type: ${value}`);

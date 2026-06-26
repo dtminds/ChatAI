@@ -1582,11 +1582,15 @@ describe("WorkbenchRepository", () => {
   it("finds material message from the read-only platform message table by id and uid", async () => {
     const db = createMaterialDb({
       "xy_wap_embed_msg_audit_info as message": {
+        chatType: 2,
         content: JSON.stringify({ title: "小程序卡片" }),
+        fromType: 1,
         id: 988,
         msgid: "msg-mini-1",
         msgtime: 1_777_000_000_000,
         msgtype: "weapp",
+        thirdFromId: "seat-third-user-1",
+        thirdUserId: "seat-third-user-1",
         uid: 9001,
       },
     });
@@ -1598,9 +1602,13 @@ describe("WorkbenchRepository", () => {
     });
 
     expect(message).toMatchObject({
+      chatType: 2,
       content: JSON.stringify({ title: "小程序卡片" }),
+      fromType: 1,
       msgid: "msg-mini-1",
       msgtype: "weapp",
+      thirdFromId: "seat-third-user-1",
+      thirdUserId: "seat-third-user-1",
       uid: 9001,
     });
     expect(db.selects[0]).toMatchObject({
@@ -1724,6 +1732,42 @@ describe("WorkbenchRepository", () => {
         ["uid", "=", 9001],
         ["biz_type", "=", MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION],
         ["sub_uid", "=", 101],
+        ["biz_status", "=", 1],
+      ],
+    });
+  });
+
+  it("looks up active image material collection in enterprise scope", async () => {
+    const db = createMaterialDb({
+      xy_wap_embed_material_collection: {
+        content: JSON.stringify({
+          fileUrl: "s5/msg/20260624/272/product.png",
+        }),
+        msg_info_id: 1025659,
+      },
+    });
+    const repository = new WorkbenchRepository(db as never);
+
+    await expect(
+      repository.findMaterialCollectionForForward({
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.IMAGE,
+        id: "68",
+        uid: 9001,
+      }),
+    ).resolves.toEqual({
+      content: JSON.stringify({
+        fileUrl: "s5/msg/20260624/272/product.png",
+      }),
+      msgInfoId: "1025659",
+    });
+
+    expect(db.selects[0]).toMatchObject({
+      table: "xy_wap_embed_material_collection",
+      wheres: [
+        ["id", "=", 68],
+        ["uid", "=", 9001],
+        ["biz_type", "=", MATERIAL_COLLECTION_BIZ_TYPE.IMAGE],
+        ["sub_uid", "=", 0],
         ["biz_status", "=", 1],
       ],
     });
@@ -3575,7 +3619,9 @@ describe("WorkbenchRepository", () => {
       {
         aiHostingEnabled: false,
         avatar: "",
+        bizStatus: 1,
         description: "",
+        expireTime: undefined,
         hostSubUserId: "101",
         lastMessageTime: new Date("2026-05-21T06:15:21.000Z").getTime(),
         loginStatus: "online",
@@ -3589,7 +3635,9 @@ describe("WorkbenchRepository", () => {
       {
         aiHostingEnabled: false,
         avatar: "",
+        bizStatus: 1,
         description: "",
+        expireTime: undefined,
         hostSubUserId: "202",
         lastMessageTime: new Date("2026-05-21T06:16:21.000Z").getTime(),
         loginStatus: "offline",
@@ -3687,6 +3735,64 @@ describe("WorkbenchRepository", () => {
     });
 
     expect(conversationQueryBuilders[0].joins).toEqual([]);
+  });
+
+  it("does not snapshot-filter the initial conversation list by last message time", async () => {
+    const conversationQueryBuilders: Array<ReturnType<typeof createQueryBuilder>> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_user_seat") {
+            return createQueryBuilder({
+              id: 12,
+              platform: 5,
+              third_userid: "seat-user-001",
+              uid: 9001,
+            });
+          }
+
+          if (table === "xy_wap_embed_conversation as conversation") {
+            const query = createQueryBuilder([
+              createConversationRow({
+                chat_type: 2,
+                id: 165,
+                last_msgtime: null,
+                third_external_userid: "",
+                third_group_id: "group-001",
+                unread_cnt: 4,
+              }),
+            ]);
+            conversationQueryBuilders.push(query);
+
+            return query;
+          }
+
+          if (
+            table === "xy_wap_embed_msg_audit_info" ||
+            table === "xy_wap_embed_contact" ||
+            table === "xy_wap_embed_customer_bind_relation" ||
+            table === "xy_wap_embed_group_seat"
+          ) {
+            return createQueryBuilder([]);
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    const page = await repository.listConversations("12", {
+      limit: 30,
+      mode: "group",
+    });
+
+    expect(page.items).toEqual([
+      expect.objectContaining({
+        conversationId: "165",
+        mode: "group",
+        unreadCount: 4,
+      }),
+    ]);
   });
 
   it("applies stable cursor ordering and keyset bounds to conversation lists", async () => {

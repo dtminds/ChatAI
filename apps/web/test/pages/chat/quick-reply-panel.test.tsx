@@ -1756,7 +1756,7 @@ describe("QuickReplyPanel", () => {
     );
   });
 
-  it("disables adding sphfeed attachments from the quick reply form", async () => {
+  it("hides the video channel attachment entry from the quick reply form by default", async () => {
     const user = userEvent.setup();
 
     render(
@@ -1771,15 +1771,7 @@ describe("QuickReplyPanel", () => {
 
     await user.click(screen.getByRole("button", { name: "添加附件" }));
 
-    const sphfeedMenuItem = screen.getByRole("menuitem", { name: "视频号" });
-
-    expect(sphfeedMenuItem).toHaveAttribute("aria-disabled", "true");
-
-    await user.click(sphfeedMenuItem);
-
-    expect(
-      screen.queryByRole("dialog", { name: "收录的视频号" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "视频号" })).not.toBeInTheDocument();
   });
 
   it("previews attachment content from the form dialog", async () => {

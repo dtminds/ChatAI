@@ -61,7 +61,7 @@ export type WorkbenchMessageContentType =
 
 export type WorkbenchMaterialCollectionContentType = Extract<
   WorkbenchMessageContentType,
-  "emotion" | "file" | "h5" | "mini-program" | "sphfeed"
+  "emotion" | "file" | "h5" | "image" | "mini-program" | "sphfeed" | "video"
 >;
 
 export type WorkbenchMaterialCollectionGroupBizType = Exclude<
@@ -276,6 +276,10 @@ export type WorkbenchSeatDto = {
   lastMessageTime?: number;
   loginStatus: "online" | "offline";
   hostSubUserId?: string;
+  /** 席位业务状态：1 已绑定，0 已注销 */
+  bizStatus?: number;
+  /** 过期时间戳，单位：秒 */
+  expireTime?: number;
 };
 
 export type WorkbenchConversationSummaryDto = {
@@ -337,6 +341,7 @@ export type WorkbenchMessageBaseDto = {
   status: WorkbenchMessageStatus;
   content: Record<string, unknown>;
   createdAt?: number;
+  updatedAt?: number;
   seq: number;
   optNo?: string;
   failReason?: string;
@@ -378,12 +383,7 @@ export type WorkbenchHistoryMessagePageDto = {
   hasPrev: boolean;
 };
 
-export type WorkbenchSeatChangeDto = {
-  seatId: string;
-  unreadCount: number;
-  lastMessageTime?: number;
-  hostSubUserId?: string | null;
-};
+export type WorkbenchSeatChangeDto = WorkbenchSeatDto;
 
 export type WorkbenchConversationChangeDto =
   | ({
@@ -429,7 +429,7 @@ export type WorkbenchPollResponse = {
   nextVersion: number;
   nextMessageUpdateCursor?: number;
   nextSeatUpdateCursor?: number;
-  seatChanges: WorkbenchSeatChangeDto[];
+  seatChanges: WorkbenchSeatDto[];
   conversationChanges: WorkbenchConversationChangeDto[];
   activeConversationMessages: WorkbenchMessageDto[];
   messageUpdateEvents?: WorkbenchMessageUpdateEventDto[];
@@ -634,10 +634,12 @@ export type WorkbenchOutgoingMessageTextSegment = {
 
 export type WorkbenchOutgoingMessageImageSegment = {
   type: "image";
-  alt: string;
+  alt?: string;
   fileId?: string;
   height?: number;
+  imageUrl?: string;
   localUrl?: string;
+  materialCollectionId?: string;
   url?: string;
   width?: number;
 };
@@ -691,6 +693,15 @@ export type WorkbenchOutgoingMessageSphfeedSegment = {
   url?: string;
 };
 
+export type WorkbenchOutgoingMessageVideoSegment = {
+  type: "video";
+  coverUrl?: string;
+  materialCollectionId?: string;
+  msgInfoId?: string;
+  title?: string;
+  url?: string;
+};
+
 export type WorkbenchOutgoingMessageSegment =
   | WorkbenchOutgoingMessageTextSegment
   | WorkbenchOutgoingMessageImageSegment
@@ -698,7 +709,8 @@ export type WorkbenchOutgoingMessageSegment =
   | WorkbenchOutgoingMessageFileSegment
   | WorkbenchOutgoingMessageH5Segment
   | WorkbenchOutgoingMessageMiniProgramSegment
-  | WorkbenchOutgoingMessageSphfeedSegment;
+  | WorkbenchOutgoingMessageSphfeedSegment
+  | WorkbenchOutgoingMessageVideoSegment;
 
 export type WorkbenchSendMessagePayload = {
   seatId: string;

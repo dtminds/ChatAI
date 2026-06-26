@@ -49,6 +49,10 @@ export type Account = {
   lastMessageTime?: number;
   loginStatus?: "online" | "offline";
   takenOverEmployeeId?: string;
+  /** 席位业务状态：1 已绑定，0 已注销 */
+  bizStatus?: number;
+  /** 过期时间戳，单位：秒 */
+  expireTime?: number;
 };
 
 export type Conversation = {
@@ -278,6 +282,7 @@ type BaseMessage = {
   role: MessageRole;
   author: string;
   sentAt: string;
+  updatedAtMs?: number;
   status: MessageStatus;
   isNew?: boolean;
   optNo?: string;

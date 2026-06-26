@@ -32,6 +32,7 @@ export type WorkbenchPermissions = {
   canUseChatSend: boolean;
   canUseConversationActions: boolean;
   composerPlaceholder: string;
+  isAccountSeatExpired: boolean;
   isAccountOffline: boolean;
   isAccountTakenOverByCurrentUser: boolean;
   isConversationActionDisabled: boolean;
@@ -49,6 +50,7 @@ export function resolveWorkbenchPermissions({
   const canUseChatSend = subUser?.permissions.includes("chat.send") ?? false;
   const canTakeOverAccount =
     subUser?.permissions.includes("chat.takeover") ?? false;
+  const isAccountSeatExpired = isExpiredAccountSeat(account);
   const isAccountOffline = account?.loginStatus === "offline";
   const isAccountTakenOverByCurrentUser =
     !!account?.takenOverEmployeeId && account.takenOverEmployeeId === me?.id;
@@ -75,15 +77,18 @@ export function resolveWorkbenchPermissions({
       canSendMessage,
       canUseChatSend,
       isAccountOffline,
+      isAccountSeatExpired,
       isAccountTakenOverByCurrentUser,
       isConversationBizInactive,
     }),
+    isAccountSeatExpired,
     isAccountOffline,
     isAccountTakenOverByCurrentUser,
     isConversationActionDisabled: !canUseConversationActions,
     isConversationBizInactive,
     sidebarIframeSendStatus: resolveSidebarIframeSendStatus({
       hasActiveConversation: !!activeConversation,
+      isAccountSeatExpired,
       isAccountOffline,
       isAccountTakenOver: isAccountTakenOverByCurrentUser,
       isConversationBizInactive,
@@ -99,10 +104,15 @@ export function canUseWorkbenchConversationActions({
 }: CanUseWorkbenchConversationActionsInput) {
   return (
     hasSendPermission &&
+    !isExpiredAccountSeat(account) &&
     account?.loginStatus !== "offline" &&
     !!account?.takenOverEmployeeId &&
     account.takenOverEmployeeId === me?.id
   );
+}
+
+export function isExpiredAccountSeat(account: Account | undefined) {
+  return account?.bizStatus === 0;
 }
 
 function resolveComposerPlaceholder({
@@ -111,12 +121,14 @@ function resolveComposerPlaceholder({
   canSendMessage,
   canUseChatSend,
   isAccountOffline,
+  isAccountSeatExpired,
   isAccountTakenOverByCurrentUser,
   isConversationBizInactive,
 }: Pick<
   WorkbenchPermissions,
   | "canSendMessage"
   | "isAccountOffline"
+  | "isAccountSeatExpired"
   | "isAccountTakenOverByCurrentUser"
   | "isConversationBizInactive"
 > & {
@@ -142,6 +154,10 @@ function resolveComposerPlaceholder({
 
   if (!activeConversation) {
     return "当前列表暂无可发送会话";
+  }
+
+  if (isAccountSeatExpired) {
+    return "当前席位已失效，暂时无法发送消息";
   }
 
   if (isAccountOffline) {

@@ -117,13 +117,18 @@ import {
   QUICK_REPLY_TOP_CATEGORY_LIMIT,
   buildMaterialFileContentJson,
   buildMaterialH5ContentJson,
+  buildMaterialImageContentJson,
+  buildMaterialVideoContentJson,
   canEditMaterialCollectionItem,
+  isOwnVideoMaterialUrl,
   isQuickReplyLabelColor,
   normalizeQuickReplyAttachments,
   patchMaterialFileContentJson,
   patchMaterialH5ContentJson,
   resolveMaterialFileCollectFields,
   resolveMaterialH5CollectFields,
+  resolveMaterialImageCollectFields,
+  resolveMaterialVideoCollectFields,
   validateQuickReplyPayload,
 } from "@chatai/contracts";
 import {
@@ -1357,13 +1362,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
         seatUpdateCursor,
         seatUpdateEvents,
       ),
-      seatChanges: orderedChangedSeats
-        .map((seat) => ({
-          hostSubUserId: seat.hostSubUserId ?? null,
-          lastMessageTime: seat.lastMessageTime,
-          seatId: seat.seatId,
-          unreadCount: seat.unreadCount,
-        })),
+      seatChanges: orderedChangedSeats,
     };
   }
 
@@ -1858,15 +1857,14 @@ export class MysqlWorkbenchService implements WorkbenchService {
     payload: WorkbenchSendMessagePayload,
     segment: WorkbenchOutgoingMessageSegment,
   ): Promise<JavaSendMessageData> {
-    if (segment.type === "sphfeed") {
-      throw new BadRequestError("SPHFEED_UNAVAILABLE", "视频号发送功能暂未开放");
-    }
-
     if (
       segment.type === "emotion" ||
+      (segment.type === "image" && segment.materialCollectionId) ||
       (segment.type === "file" && segment.materialCollectionId) ||
       (segment.type === "h5" && segment.materialCollectionId) ||
-      (segment.type === "weapp" && segment.materialCollectionId)
+      (segment.type === "weapp" && segment.materialCollectionId) ||
+      (segment.type === "sphfeed" && segment.materialCollectionId) ||
+      (segment.type === "video" && segment.materialCollectionId)
     ) {
       const materialCollectionId = segment.materialCollectionId;
 
@@ -1877,10 +1875,16 @@ export class MysqlWorkbenchService implements WorkbenchService {
       const bizType =
         segment.type === "emotion"
           ? MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION
+          : segment.type === "image"
+          ? MATERIAL_COLLECTION_BIZ_TYPE.IMAGE
           : segment.type === "file"
           ? MATERIAL_COLLECTION_BIZ_TYPE.FILE
           : segment.type === "h5"
           ? MATERIAL_COLLECTION_BIZ_TYPE.H5
+          : segment.type === "sphfeed"
+          ? MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED
+          : segment.type === "video"
+          ? MATERIAL_COLLECTION_BIZ_TYPE.VIDEO
           : MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM;
       const collection = await this.repository.findMaterialCollectionForForward({
         bizType,
@@ -1901,6 +1905,10 @@ export class MysqlWorkbenchService implements WorkbenchService {
         return buildFileJavaSendMessageData(collection.content);
       }
 
+      if (segment.type === "image") {
+        return buildImageJavaSendMessageData(collection.content);
+      }
+
       if (segment.type === "h5") {
         return buildH5JavaSendMessageData(collection.content);
       }
@@ -1908,7 +1916,11 @@ export class MysqlWorkbenchService implements WorkbenchService {
       return buildForwardJavaSendMessageData(segment.type, collection.msgInfoId);
     }
 
-    if (segment.type === "weapp") {
+    if (
+      segment.type === "weapp" ||
+      segment.type === "sphfeed" ||
+      segment.type === "video"
+    ) {
       return buildForwardJavaSendMessageData(segment.type, segment.msgInfoId);
     }
 
@@ -2146,12 +2158,35 @@ export class MysqlWorkbenchService implements WorkbenchService {
       throw new BadRequestError("UNSUPPORTED_MATERIAL_MESSAGE", "当前消息不支持收藏");
     }
 
+    if (
+      bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO &&
+      !isAgentMaterialMessage(message)
+    ) {
+      return {
+        success: false,
+        errorMsg: "只能收录席位号发送的视频",
+      };
+    }
+
+    const rawContentForCollection = await this.prepareMaterialCollectionContent(
+      bizType,
+      message,
+      me,
+    );
+
+    if ("errorMsg" in rawContentForCollection) {
+      return {
+        success: false,
+        errorMsg: rawContentForCollection.errorMsg,
+      };
+    }
+
     const subUid =
       bizType === MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION ? subUserNumericId : 0;
     const sort = Date.now();
     const normalizedMaterial = normalizeMaterialCollectionPayload(
       bizType,
-      message.content,
+      rawContentForCollection.content,
       request,
       request.msgInfoId,
       contentType,
@@ -3555,9 +3590,89 @@ export class MysqlWorkbenchService implements WorkbenchService {
       throw new BadRequestError("INVALID_SUB_USER", "子账号无效");
     }
 
+    if (me.platform == null) {
+      throw new BadRequestError("INVALID_SUB_USER", "子账号无效");
+    }
+
     return {
       uid: me.uid,
+      platform: me.platform,
     };
+  }
+
+  private async prepareMaterialCollectionContent(
+    bizType: MaterialCollectionBizType,
+    message: {
+      content: string | null;
+      id: number | string;
+    },
+    actor: { platform: number; uid: number },
+  ): Promise<{ content: string | null } | { errorMsg: string }> {
+    if (bizType !== MATERIAL_COLLECTION_BIZ_TYPE.VIDEO) {
+      return { content: message.content };
+    }
+
+    const content = parseMaterialContentRecord(message.content);
+    const fileUrl = readMaterialString(content, "fileUrl");
+
+    const resolved = resolveMaterialVideoCollectFields(message.content);
+
+    if ("errorMsg" in resolved) {
+      return resolved;
+    }
+
+    if (!fileUrl || isOwnVideoMaterialUrl(fileUrl)) {
+      return assertVideoMaterialContentReady(message.content);
+    }
+
+    const sourceDownloadStatusError = readVideoMaterialDownloadStatusError(message.content);
+
+    if (sourceDownloadStatusError) {
+      return sourceDownloadStatusError;
+    }
+
+    if (isExternalVideoFileUrlExpired(content)) {
+      return { errorMsg: "视频下载地址已过期，无法收录" };
+    }
+
+    const msgInfoId = parseMySqlId(String(message.id));
+
+    if (msgInfoId == null) {
+      throw new BadRequestError("INVALID_MESSAGE_ID", "消息 ID 不能为空");
+    }
+
+    const transferredContent = await this.transferMaterialVideoFile({
+      msgInfoId,
+      platform: actor.platform,
+      uid: actor.uid,
+    });
+
+    if (typeof transferredContent !== "string") {
+      return transferredContent;
+    }
+
+    return assertVideoMaterialContentReady(transferredContent);
+  }
+
+  private async transferMaterialVideoFile(input: {
+    msgInfoId: number;
+    platform: number;
+    uid: number;
+  }): Promise<string | { errorMsg: string }> {
+    try {
+      return await this.javaClient.transMsgFile(input);
+    } catch (error) {
+      this.logger.warn(
+        {
+          error,
+          msgInfoId: input.msgInfoId,
+          platform: input.platform,
+          uid: input.uid,
+        },
+        "视频素材转存失败",
+      );
+      return { errorMsg: "视频转存失败，无法收录" };
+    }
   }
 
   private async getOperableMaterialCollectionScope(
@@ -3931,6 +4046,8 @@ function parseMaterialBizType(value: number): MaterialCollectionBizType {
     case MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM:
     case MATERIAL_COLLECTION_BIZ_TYPE.H5:
     case MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED:
+    case MATERIAL_COLLECTION_BIZ_TYPE.IMAGE:
+    case MATERIAL_COLLECTION_BIZ_TYPE.VIDEO:
       return value;
     default:
       throw new BadRequestError("INVALID_MATERIAL_BIZ_TYPE", "素材类型无效");
@@ -4373,6 +4490,10 @@ function isMaterialMessageTypeMatched(
   switch (bizType) {
     case MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION:
       return msgtype === "emotion";
+    case MATERIAL_COLLECTION_BIZ_TYPE.IMAGE:
+      return msgtype === "image";
+    case MATERIAL_COLLECTION_BIZ_TYPE.VIDEO:
+      return msgtype === "video";
     case MATERIAL_COLLECTION_BIZ_TYPE.FILE:
       return msgtype === "file";
     case MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM:
@@ -4384,6 +4505,22 @@ function isMaterialMessageTypeMatched(
     default:
       return false;
   }
+}
+
+function isAgentMaterialMessage(message: {
+  chatType?: number | null;
+  fromType?: number | null;
+  thirdFromId?: string | null;
+  thirdUserId?: string | null;
+}) {
+  if (message.chatType === CHAT_TYPE.GROUP) {
+    const thirdFromId = (message.thirdFromId ?? "").trim();
+    const thirdUserId = (message.thirdUserId ?? "").trim();
+
+    return thirdFromId.length > 0 && thirdFromId === thirdUserId;
+  }
+
+  return message.fromType === 1;
 }
 
 function normalizeMaterialCollectionPayload(
@@ -4427,6 +4564,32 @@ function normalizeMaterialCollectionPayload(
     };
   }
 
+  if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.IMAGE) {
+    const resolved = resolveMaterialImageCollectFields(rawContent);
+
+    if ("errorMsg" in resolved) {
+      return resolved;
+    }
+
+    return {
+      content: buildMaterialImageContentJson(rawContent, resolved),
+      title: "图片",
+    };
+  }
+
+  if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO) {
+    const resolved = resolveMaterialVideoCollectFields(rawContent);
+
+    if ("errorMsg" in resolved) {
+      return resolved;
+    }
+
+    return {
+      content: buildMaterialVideoContentJson(rawContent, resolved),
+      title: "视频",
+    };
+  }
+
   return {
     content: rawContent ?? "",
     title: readMaterialTitle(rawContent, contentType, msgInfoId),
@@ -4446,6 +4609,10 @@ function readMaterialTitle(
 
   if (contentType === "file") {
     return truncateMaterialTitle(readMaterialString(content, "fileName") || msgInfoId);
+  }
+
+  if (contentType === "image") {
+    return "图片";
   }
 
   if (contentType === "mini-program") {
@@ -4481,6 +4648,41 @@ function readMaterialString(record: Record<string, unknown>, key: string) {
   const value = record[key];
 
   return typeof value === "string" ? value.trim() : "";
+}
+
+function readVideoMaterialDownloadStatusError(rawContent: string | null) {
+  const content = parseMaterialContentRecord(rawContent);
+
+  if (readMaterialString(content, "downloadStatus") !== "finished") {
+    return { errorMsg: "视频下载未完成，无法收录" };
+  }
+
+  return null;
+}
+
+function assertVideoMaterialContentReady(
+  rawContent: string | null,
+): { content: string | null } | { errorMsg: string } {
+  const downloadStatusError = readVideoMaterialDownloadStatusError(rawContent);
+
+  if (downloadStatusError) {
+    return downloadStatusError;
+  }
+
+  return { content: rawContent };
+}
+
+function isExternalVideoFileUrlExpired(content: Record<string, unknown>) {
+  const expireTime = readMaterialNumber(content, "fileUrlExpireTime");
+
+  return expireTime === undefined || Date.now() > expireTime;
+}
+
+function readMaterialNumber(record: Record<string, unknown>, key: string) {
+  const value = record[key];
+  const numericValue = typeof value === "number" ? value : Number(value);
+
+  return Number.isFinite(numericValue) ? numericValue : undefined;
 }
 
 function readStringValue(value: unknown) {
@@ -4638,11 +4840,12 @@ function buildJavaSendMessageData(
   payload: WorkbenchSendMessagePayload,
   segment: Exclude<
     WorkbenchOutgoingMessageSegment,
-    { type: "emotion" } | { type: "sphfeed" } | { type: "weapp" }
+    { type: "emotion" } | { type: "sphfeed" } | { type: "video" } | { type: "weapp" }
   >,
 ): JavaSendMessageData {
   if (segment.type === "image") {
-    const imageUrl = segment.url?.trim() || segment.localUrl?.trim();
+    const imageUrl =
+      segment.imageUrl?.trim() || segment.url?.trim() || segment.localUrl?.trim();
 
     if (!imageUrl) {
       throw new BadRequestError("INVALID_IMAGE_MESSAGE", "图片消息缺少可发送地址");
@@ -4741,6 +4944,20 @@ function buildEmotionJavaSendMessageData(content: string): JavaSendMessageData {
   };
 }
 
+function buildImageJavaSendMessageData(content: string): JavaSendMessageData {
+  const record = parseMaterialContentRecord(content);
+  const fileUrl = readMaterialString(record, "fileUrl");
+
+  if (!fileUrl) {
+    throw new BadRequestError("INVALID_IMAGE_MESSAGE", "图片素材数据异常");
+  }
+
+  return {
+    fileUrl: normalizeMediaAssetUrl(fileUrl),
+    msgtype: "image",
+  };
+}
+
 function buildSortRewriteItems(ids: string[]) {
   return ids.map((id, index) => ({
     id,
@@ -4814,7 +5031,7 @@ function buildH5JavaSendMessageData(content: string): JavaSendMessageData {
 }
 
 function buildForwardJavaSendMessageData(
-  msgtype: "sphfeed" | "weapp",
+  msgtype: "sphfeed" | "video" | "weapp",
   msgInfoId: string | undefined,
 ): JavaSendMessageData {
   const transMsgInfoId = msgInfoId ? parseMySqlId(msgInfoId) : undefined;

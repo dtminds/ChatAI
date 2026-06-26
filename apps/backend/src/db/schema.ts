@@ -2461,6 +2461,10 @@ export interface XyWapEmbedUserSeat {
    */
   create_time: Generated<Date>;
   /**
+   * 过期时间戳，单位：秒
+   */
+  expire_time: Generated<number>;
+  /**
    * 当前接管子账号id(xy_wap_embed_sub_user.id)
    */
   host_sub_id: Generated<number>;

@@ -70,7 +70,14 @@ vi.mock("sonner", async (importOriginal) => {
   };
 });
 
-vi.mock("@/pages/chat/api/media-upload-service", () => mediaUploadMocks);
+vi.mock("@/pages/chat/api/media-upload-service", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/pages/chat/api/media-upload-service")>();
+
+  return {
+    ...actual,
+    ...mediaUploadMocks,
+  };
+});
 
 export const workbenchToastWarningMock = vi.mocked(toast.warning);
 export const workbenchToastSuccessMock = vi.mocked(toast.success);

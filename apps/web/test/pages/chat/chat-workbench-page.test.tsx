@@ -5,7 +5,10 @@ import { createMockWorkbenchService, setWorkbenchService } from "@/pages/chat/ap
 import { getFirstUnreadCustomerMessageKey } from "@/pages/chat/hooks/use-visible-unread-conversation-read";
 import type { Message } from "@/pages/chat/chat-types";
 import { useWorkbenchStore } from "@/store/workbench-store";
-import type { WorkbenchMessageDto } from "@chatai/contracts";
+import {
+  MATERIAL_COLLECTION_BIZ_TYPE,
+  type WorkbenchMessageDto,
+} from "@chatai/contracts";
 import {
   installChatWorkbenchTestEnvironment,
   renderChatWorkbenchPage,
@@ -1646,17 +1649,6 @@ describe("ChatWorkbenchPage", () => {
     expect(workbenchToastWarningMock).toHaveBeenCalledWith("重试失败，请稍后重试");
   });
 
-  it("shows a warning when revoke pending times out", async () => {
-    renderChatWorkbenchPage();
-
-    await screen.findByRole("textbox", { name: "请输入消息……" });
-    act(() => {
-      useWorkbenchStore.setState({ revokeMessageError: "撤回失败，请稍后重试" });
-    });
-
-    expect(workbenchToastWarningMock).toHaveBeenCalledWith("撤回失败，请稍后重试");
-  });
-
   it("does not scroll the current conversation when retry succeeds after switching away", async () => {
     const user = userEvent.setup();
     const retryGate = createDeferred<{
@@ -2122,6 +2114,74 @@ describe("ChatWorkbenchPage", () => {
     });
     await waitFor(() => {
       expect(screen.queryByRole("dialog", { name: "收录文件" })).not.toBeInTheDocument();
+    });
+    expect(workbenchToastSuccessMock).toHaveBeenCalledWith("已收录");
+  });
+
+  it("collects image messages after choosing a material group", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const collectMaterial = vi.fn(async () => ({ success: true as const }));
+    const listMaterialGroups = vi.fn(baseService.listMaterialGroups);
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          messages: [
+            {
+              ...page.messages[0],
+              content: {
+                alt: "商品图",
+                downloadStatus: "finished",
+                fileUrl: "https://example.com/product.png",
+              },
+              contentType: "image",
+              msgid: "msg-image-collect-001",
+            },
+          ],
+        };
+      },
+      collectMaterial,
+      listMaterialGroups,
+    });
+
+    renderChatWorkbenchPage();
+
+    const targetImage = await screen.findByRole("img", { name: "商品图" });
+    const targetRow = targetImage.closest('[data-testid="message-row"]');
+    expect(targetRow).not.toBeNull();
+
+    await user.click(
+      within(targetRow as HTMLElement).getByRole("button", { name: "消息操作" }),
+    );
+    await user.click(screen.getByRole("menuitem", { name: "收录" }));
+
+    expect(await screen.findByRole("dialog", { name: "收录图片" })).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "文件名称" })).not.toBeInTheDocument();
+    expect(listMaterialGroups).toHaveBeenCalledWith({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.IMAGE,
+    });
+    await user.click(screen.getByRole("combobox", { name: "选择分组" }));
+    await user.click(await screen.findByRole("option", { name: "常用图片" }));
+    await user.click(screen.getByRole("button", { name: "收录" }));
+
+    await waitFor(() => {
+      expect(collectMaterial).toHaveBeenCalledWith({
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.IMAGE,
+        groupId: "mock-material-group-image",
+        msgInfoId: "1",
+      });
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "收录图片" })).not.toBeInTheDocument();
     });
     expect(workbenchToastSuccessMock).toHaveBeenCalledWith("已收录");
   });

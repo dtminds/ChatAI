@@ -19,6 +19,8 @@ import { getPlayableMediaHost, toPlayableVoicePathname } from "./media-config.js
 export type SeatRow = {
   ai_hosting_enabled?: number | string | boolean | null;
   avatar: string | null;
+  biz_status?: number | string | null;
+  expire_time?: number | string | null;
   host_sub_id: number | string | null;
   id: number | string;
   is_online: number | null;
@@ -74,6 +76,7 @@ export type MessageRow = {
   third_from_id: string | null | undefined;
   third_group_id: string | null | undefined;
   third_user_id: string | null | undefined;
+  update_time?: Date | number | string | null;
 };
 
 export type MessageRowQuotePreview = WorkbenchQuotedMessagePreviewDto;
@@ -116,7 +119,9 @@ export function mapSeatRow(row: SeatRow): WorkbenchSeatDto {
   return {
     aiHostingEnabled: readBooleanFlag(row.ai_hosting_enabled),
     avatar: row.avatar ?? "",
+    bizStatus: row.biz_status == null ? 1 : toNumber(row.biz_status),
     description: "",
+    expireTime: row.expire_time == null ? undefined : toNumber(row.expire_time),
     hostSubUserId,
     lastMessageTime: toOptionalTimestamp(row.last_message_time),
     loginStatus: row.is_online === 1 ? "online" : "offline",
@@ -218,6 +223,7 @@ export function mapMessageRow(
     thirdFromId: row.third_from_id || undefined,
     thirdGroupId,
     thirdUserId: row.third_user_id || undefined,
+    updatedAt: toOptionalTimestamp(row.update_time),
   };
 }
 
@@ -419,7 +425,7 @@ function parseMessageContent(row: MessageRow, quotePreview?: MessageRowQuotePrev
         alt: "图片",
         ...(downloadStatus ? { downloadStatus } : {}),
         ...(fileSerialNo ? { fileSerialNo } : {}),
-        imageUrl: normalizeMediaAssetUrl(readStringField(parsed, "fileUrl")),
+        fileUrl: normalizeMediaAssetUrl(readStringField(parsed, "fileUrl")),
       };
     }
     case "emotion": {
@@ -747,7 +753,7 @@ export function buildQuotedMessagePreview(row: MessageRow): MessageRowQuotePrevi
     case "image":
       return {
         contentType: mapped.contentType,
-        imageUrl: readRecordString(mapped.content, "imageUrl"),
+        imageUrl: readRecordString(mapped.content, "fileUrl"),
         senderName,
       };
     case "emotion":

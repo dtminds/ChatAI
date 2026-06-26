@@ -56,7 +56,10 @@ import {
   SmartReplyMessageAnchor,
   type SmartReplySuggestion,
 } from "@/pages/chat/components/smart-reply-card";
-import { MESSAGE_REVOKE_WINDOW_MS } from "@/pages/chat/chat-constants";
+import {
+  DISABLE_SPH_COLLECTION,
+  MESSAGE_REVOKE_WINDOW_MS,
+} from "@/pages/chat/chat-constants";
 import type { ChatMessage, Message } from "@/pages/chat/chat-types";
 import {
   isSameCalendarDay,
@@ -1086,13 +1089,30 @@ function canShowRevokeMessageAction(message: ChatMessage, now = Date.now()) {
 
 export function canCollectMaterial(message: ChatMessage) {
   if (message.content.type === "image") {
-    return message.content.variant === "emotion";
+    if (message.content.variant === "emotion") {
+      return true;
+    }
+
+    return (
+      message.content.downloadStatus === "finished" &&
+      message.content.imageUrl.trim().length > 0
+    );
+  }
+
+  if (message.content.type === "video") {
+    return (
+      message.role === "agent" &&
+      message.content.downloadStatus === "finished" &&
+      message.content.coverImageUrl.trim().length > 0 &&
+      message.content.videoUrl.trim().length > 0
+    );
   }
 
   return (
     message.content.type === "file" ||
     message.content.type === "mini-program" ||
-    message.content.type === "h5"
+    message.content.type === "h5" ||
+    (!DISABLE_SPH_COLLECTION && message.content.type === "sphfeed")
   );
 }
 

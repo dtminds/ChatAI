@@ -263,12 +263,12 @@ describe("CustomerPage", () => {
         hasMore: false,
         messages: [
           {
-            content: { text: "最近一句客户消息" },
+            content: { text: "较晚的客户消息" },
             contentType: "text",
             conversationId,
-            createdAt: 1_779_600_000_000,
+            createdAt: 1_779_600_003_000,
             customerId: "cust-001",
-            msgid: "msg-recent-1",
+            msgid: "msg-recent-late",
             rawMsgtype: "text",
             seatId: "drc",
             senderName: "客户A",
@@ -276,8 +276,22 @@ describe("CustomerPage", () => {
             seq: 101,
             status: "sent",
           },
+          {
+            content: { text: "较早的客户消息" },
+            contentType: "text",
+            conversationId,
+            createdAt: 1_779_600_001_000,
+            customerId: "cust-001",
+            msgid: "msg-recent-early",
+            rawMsgtype: "text",
+            seatId: "drc",
+            senderName: "客户A",
+            senderType: "customer",
+            seq: 102,
+            status: "sent",
+          },
         ],
-        scannedCount: 1,
+        scannedCount: 2,
       };
     });
     setWorkbenchService(service);
@@ -303,9 +317,11 @@ describe("CustomerPage", () => {
 
     await user.hover(refreshedRecentConversationButton);
 
-    expect(await screen.findByTestId("history-message-text")).toHaveTextContent(
-      "最近一句客户消息",
-    );
+    const previewMessages = await screen.findAllByTestId("history-message-text");
+    expect(previewMessages.map((item) => item.textContent)).toEqual([
+      "较早的客户消息",
+      "较晚的客户消息",
+    ]);
     expect(screen.getByText("最近会话")).toBeInTheDocument();
     expect(screen.queryByText("销售一号")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "继续聊天" })).toBeEnabled();
@@ -873,7 +889,9 @@ describe("CustomerPage", () => {
     await waitFor(() => {
       expect(settingsRouter.state.location.pathname).toBe("/chat/settings");
     });
-    expect(screen.getByRole("navigation", { name: "设置菜单" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("navigation", { name: "设置菜单" }),
+    ).toBeInTheDocument();
   });
 
   it("keeps the workbench rail alive and returns to chat when a seat is selected", async () => {

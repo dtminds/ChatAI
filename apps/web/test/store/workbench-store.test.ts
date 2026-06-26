@@ -15,14 +15,20 @@ import type {
   WorkbenchConversationSummaryDto,
   WorkbenchHistoryMessagePageDto,
   WorkbenchMessageDto,
+  WorkbenchPollResponse,
   WorkbenchSmartReplyPollRequest,
 } from "@chatai/contracts";
 import { resetWorkbenchStoreTestState } from "./workbench-store-test-utils";
 import { createFreshWorkbenchStoreForTest } from "./workbench-store-test-utils";
 
-vi.mock("@/pages/chat/api/media-upload-service", () => ({
-  resolveImageSegmentsForSend: vi.fn(async (_conversationId, segments) => segments),
-}));
+vi.mock("@/pages/chat/api/media-upload-service", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/pages/chat/api/media-upload-service")>();
+
+  return {
+    ...actual,
+    resolveImageSegmentsForSend: vi.fn(async (_conversationId, segments) => segments),
+  };
+});
 
 function createDeferred<T = void>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
@@ -229,6 +235,217 @@ describe("useWorkbenchStore", () => {
     expect(state.accounts.find((account) => account.id === "drc")?.unreadCount).toBe(11);
   });
 
+  it("clears user-scoped workbench data before another login initializes the workbench", async () => {
+    const firstService = createMockWorkbenchService();
+    const secondService = createMockWorkbenchService();
+    const secondGetSeats = vi.fn(async () => [
+      {
+        avatar: "",
+        description: "",
+        hostSubUserId: "sub-user-002",
+        lastMessageTime: 1_778_500_000_000,
+        loginStatus: "online" as const,
+        name: "B 用户席位",
+        operatorName: "客服二号",
+        phone: "",
+        seatId: "b-seat",
+        unreadCount: 0,
+      },
+    ]);
+    const secondGetMe = vi.fn(async () => ({
+      displayName: "客服二号",
+      subUserId: "sub-user-002",
+    }));
+
+    setWorkbenchService(firstService);
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    expect(useWorkbenchStore.getState().bootstrapStatus).toBe("ready");
+    expect(useWorkbenchStore.getState().activeAccountId).toBe("drc");
+
+    useWorkbenchStore.getState().resetWorkbenchSession();
+    setWorkbenchService({
+      ...secondService,
+      getMe: secondGetMe,
+      getSeats: secondGetSeats,
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    const state = useWorkbenchStore.getState();
+    expect(secondGetMe).toHaveBeenCalledTimes(1);
+    expect(secondGetSeats).toHaveBeenCalledTimes(1);
+    expect(state.bootstrapStatus).toBe("ready");
+    expect(state.me).toMatchObject({ id: "sub-user-002" });
+    expect(state.accounts).toHaveLength(1);
+    expect(state.activeAccountId).toBe("b-seat");
+    expect(state.conversationListsByScope).toEqual({ "b-seat": [] });
+    expect(state.messagesByConversationId).toEqual({});
+    expect(state.takeoverStatusByAccountId).toEqual({});
+  });
+
+  it("ignores stale initialize failures after the workbench session resets", async () => {
+    const baseService = createMockWorkbenchService();
+    const deferredSeats = createDeferred<never>();
+
+    setWorkbenchService({
+      ...baseService,
+      async getSeats() {
+        return deferredSeats.promise;
+      },
+    });
+
+    const initializePromise = useWorkbenchStore.getState().initializeWorkbench();
+
+    await vi.waitFor(() => {
+      expect(useWorkbenchStore.getState().bootstrapStatus).toBe("loading");
+    });
+
+    useWorkbenchStore.getState().resetWorkbenchSession();
+    deferredSeats.reject(new Error("旧用户初始化失败"));
+    await initializePromise;
+
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      bootstrapError: undefined,
+      bootstrapStatus: "idle",
+    });
+  });
+
+  it("ignores stale poll responses after the workbench session resets", async () => {
+    const baseService = createMockWorkbenchService();
+    const deferredPoll = createDeferred<WorkbenchPollResponse>();
+
+    setWorkbenchService({
+      ...baseService,
+      async poll() {
+        return deferredPoll.promise;
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    const pollPromise = useWorkbenchStore.getState().pollWorkbench();
+
+    useWorkbenchStore.getState().resetWorkbenchSession();
+    deferredPoll.resolve({
+      activeConversationMessages: [],
+      conversationChanges: [],
+      nextMessageUpdateCursor: 99,
+      nextSeatUpdateCursor: 88,
+      nextVersion: 1_778_600_000_000,
+      seatChanges: [
+        {
+          avatar: "",
+          description: "私域客户管理",
+          hostSubUserId: "sub-user-001",
+          lastMessageTime: 1_778_600_000_000,
+          loginStatus: "online",
+          name: "德瑞可",
+          operatorName: "小可",
+          phone: "13296712905",
+          seatId: "drc",
+          unreadCount: 42,
+        },
+      ],
+    });
+    await pollPromise;
+
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      accounts: [],
+      bootstrapStatus: "idle",
+      messageUpdateCursor: undefined,
+      seatUpdateCursor: undefined,
+      sinceVersion: 0,
+    });
+  });
+
+  it("keeps the active poll latch when a stale poll finishes after another login", async () => {
+    const baseService = createMockWorkbenchService();
+    const firstPoll = createDeferred<WorkbenchPollResponse>();
+    const secondPoll = createDeferred<WorkbenchPollResponse>();
+    let pollCallCount = 0;
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        pollCallCount += 1;
+
+        if (pollCallCount === 1) {
+          return firstPoll.promise;
+        }
+
+        if (pollCallCount === 2) {
+          return secondPoll.promise;
+        }
+
+        return baseService.poll(request);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    const stalePollPromise = useWorkbenchStore.getState().pollWorkbench();
+
+    useWorkbenchStore.getState().resetWorkbenchSession();
+    await useWorkbenchStore.getState().initializeWorkbench();
+    const activePollPromise = useWorkbenchStore.getState().pollWorkbench();
+
+    firstPoll.resolve({
+      activeConversationMessages: [],
+      conversationChanges: [],
+      nextVersion: 1_778_600_000_000,
+      seatChanges: [],
+    });
+    await stalePollPromise;
+
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(pollCallCount).toBe(2);
+
+    secondPoll.resolve({
+      activeConversationMessages: [],
+      conversationChanges: [],
+      nextVersion: 1_778_600_000_001,
+      seatChanges: [],
+    });
+    await activePollPromise;
+  });
+
+  it("ignores stale seat summary refreshes after another login initializes matching seats", async () => {
+    const baseService = createMockWorkbenchService();
+    const deferredSeats = createDeferred<Awaited<ReturnType<typeof baseService.getSeats>>>();
+    let shouldDeferSeats = false;
+
+    setWorkbenchService({
+      ...baseService,
+      async getSeats() {
+        if (shouldDeferSeats) {
+          return deferredSeats.promise;
+        }
+
+        return baseService.getSeats();
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    shouldDeferSeats = true;
+    const refreshPromise = useWorkbenchStore.getState().refreshSeatSummaries();
+
+    useWorkbenchStore.getState().resetWorkbenchSession();
+    setWorkbenchService(baseService);
+    await useWorkbenchStore.getState().initializeWorkbench();
+    deferredSeats.resolve(
+      (await baseService.getSeats()).map((seat) => ({
+        ...seat,
+        unreadCount: seat.seatId === "ndt" ? 42 : seat.unreadCount,
+      })),
+    );
+    await refreshPromise;
+
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      activeAccountId: "drc",
+      bootstrapStatus: "ready",
+    });
+    expect(useWorkbenchStore.getState().accounts.find((account) => account.id === "ndt")?.unreadCount).toBe(1);
+  });
+
   it("requests 50 messages for initial and switched conversation pages", async () => {
     const baseService = createMockWorkbenchService();
     const observedLimits: Array<number | undefined> = [];
@@ -246,6 +463,114 @@ describe("useWorkbenchStore", () => {
     await useWorkbenchStore.getState().setActiveConversation("conv-002");
 
     expect(observedLimits).toEqual([50, 50]);
+  });
+
+  it("keeps a loaded message page in message time order when seq order differs", async () => {
+    const baseService = createMockWorkbenchService();
+    const laterMessage = {
+      ...createHistoryMessageDto("later-message", 100, "后写入但时间更晚"),
+      createdAt: 1_778_400_030_000,
+    };
+    const earlierMessage = {
+      ...createHistoryMessageDto("earlier-message", 101, "后写入但时间更早"),
+      createdAt: 1_778_400_020_000,
+    };
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        if (conversationId === "conv-001") {
+          return {
+            filteredCount: 0,
+            hasMore: false,
+            messages: [laterMessage, earlierMessage],
+            scannedCount: 2,
+          };
+        }
+
+        return baseService.getMessages(conversationId, options);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    expect(
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].map((message) => message.uiMessageKey),
+    ).toEqual(["101", "100"]);
+  });
+
+  it("keeps messages with invalid timestamps after timestamped page messages", async () => {
+    const baseService = createMockWorkbenchService();
+    const validLaterMessage = {
+      ...createHistoryMessageDto("valid-later-message", 100, "有效时间较晚"),
+      createdAt: 1_778_400_030_000,
+    };
+    const invalidTimestampMessage = {
+      ...createHistoryMessageDto("invalid-time-message", 101, "没有有效时间"),
+      createdAt: undefined,
+    };
+    const validEarlierMessage = {
+      ...createHistoryMessageDto("valid-earlier-message", 102, "有效时间较早"),
+      createdAt: 1_778_400_020_000,
+    };
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        if (conversationId === "conv-001") {
+          return {
+            filteredCount: 0,
+            hasMore: false,
+            messages: [validLaterMessage, invalidTimestampMessage, validEarlierMessage],
+            scannedCount: 3,
+          };
+        }
+
+        return baseService.getMessages(conversationId, options);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    expect(
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].map((message) => message.uiMessageKey),
+    ).toEqual(["102", "100", "101"]);
+  });
+
+  it("keeps history page messages in message time order when seq order differs", async () => {
+    const baseService = createMockWorkbenchService();
+    const laterMessage = {
+      ...createHistoryMessageDto("later-message", 100, "后写入但时间更晚"),
+      createdAt: 1_778_400_030_000,
+    };
+    const earlierMessage = {
+      ...createHistoryMessageDto("earlier-message", 101, "后写入但时间更早"),
+      createdAt: 1_778_400_020_000,
+    };
+
+    setWorkbenchService({
+      ...baseService,
+      async getHistoryMessages(conversationId, options) {
+        if (conversationId === "conv-001") {
+          return {
+            hasNext: false,
+            hasPrev: false,
+            messages: [laterMessage, earlierMessage],
+          };
+        }
+
+        return baseService.getHistoryMessages(conversationId, options);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().openHistoryPanel("conv-001");
+
+    expect(
+      useWorkbenchStore.getState().historyPanelByConversationId["conv-001"]?.messages.map(
+        (message) => message.uiMessageKey,
+      ),
+    ).toEqual(["101", "100"]);
   });
 
   it("auto-generates only the latest unanswered customer message after loading a conversation", async () => {
@@ -891,6 +1216,55 @@ describe("useWorkbenchStore", () => {
     ]);
   });
 
+  it("keeps polled active conversation messages in message time order", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        const response = await baseService.poll(request);
+
+        if (request.activeConversationId !== "conv-001") {
+          return response;
+        }
+
+        return {
+          ...response,
+          activeConversationMessages: [
+            {
+              ...createSmartReplyTextMessageDto({
+                id: "poll-late",
+                seq: 12,
+                text: "后到的消息",
+              }),
+              createdAt: 1_778_400_030_000,
+            },
+            {
+              ...createSmartReplyTextMessageDto({
+                id: "poll-early",
+                seq: 13,
+                text: "先到的消息",
+              }),
+              createdAt: 1_778_400_020_000,
+            },
+          ],
+        };
+      },
+      async pollSmartReplies() {
+        return { suggestions: [] };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].slice(-2).map(
+        (message) => message.uiMessageKey,
+      ),
+    ).toEqual(["13", "12"]);
+  });
+
   it("waits for a customer image download to finish before auto-generating smart reply", async () => {
     const baseService = createMockWorkbenchService();
     const observedAutoRequests: Array<{ conversationId: string; msgId: number }> = [];
@@ -912,7 +1286,7 @@ describe("useWorkbenchStore", () => {
               content: {
                 alt: "产品图片",
                 downloadStatus: "ing",
-                imageUrl: "https://b5.bokr.com.cn/chat-images/product.png",
+                fileUrl: "https://b5.bokr.com.cn/chat-images/product.png",
               },
               contentType: "image",
               conversationId: "conv-001",
@@ -977,7 +1351,7 @@ describe("useWorkbenchStore", () => {
               content: {
                 alt: "图片",
                 downloadStatus: "ing",
-                imageUrl: "",
+                fileUrl: "",
               },
               contentType: "image",
               conversationId: "conv-001",
@@ -2459,7 +2833,12 @@ describe("useWorkbenchStore", () => {
           nextVersion: request.sinceVersion + 1,
           seatChanges: [
             {
-              accountId: "missing-seat",
+              avatar: "",
+              description: "私域客户管理",
+              loginStatus: "online",
+              name: "未加载账号",
+              operatorName: "小可",
+              phone: "13296712905",
               seatId: "missing-seat",
               unreadCount: 3,
             },
@@ -2477,6 +2856,111 @@ describe("useWorkbenchStore", () => {
     await useWorkbenchStore.getState().pollWorkbench();
 
     expect(useWorkbenchStore.getState().accounts).toBe(accountsBeforePoll);
+  });
+
+  it("refreshes full account metadata from poll account changes", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        return {
+          activeConversationMessages: [],
+          conversationChanges: [],
+          nextVersion: request.sinceVersion + 1,
+          seatChanges: [
+            {
+              accountId: "drc",
+              avatar: "https://example.test/offline-seat.png",
+              bizStatus: 0,
+              description: "账号已更新",
+              expireTime: 1,
+              hostSubUserId: "sub-user-002",
+              lastMessageTime: 1_778_840_020_000,
+              loginStatus: "offline",
+              name: "德瑞可更新",
+              operatorName: "小可更新",
+              phone: "13296712906",
+              seatId: "drc",
+              thirdUserId: "third-drc-updated",
+              unreadCount: 3,
+            },
+          ],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(useWorkbenchStore.getState().accounts.find((account) => account.id === "drc")).toMatchObject({
+      avatarUrl: "https://example.test/offline-seat.png",
+      bizStatus: 0,
+      description: "账号已更新",
+      expireTime: 1,
+      lastMessageTime: 1_778_840_020_000,
+      loginStatus: "offline",
+      name: "德瑞可更新",
+      operator: "小可更新",
+      phone: "13296712906",
+      takenOverEmployeeId: "sub-user-002",
+      unreadCount: 3,
+    });
+  });
+
+  it("clears optional account metadata from full poll snapshots", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        return {
+          activeConversationMessages: [],
+          conversationChanges: [],
+          nextVersion: request.sinceVersion + 1,
+          seatChanges: [
+            {
+              avatar: "https://example.test/active-seat.png",
+              bizStatus: 1,
+              description: "账号恢复",
+              expireTime: undefined,
+              hostSubUserId: undefined,
+              lastMessageTime: 1_778_840_030_000,
+              loginStatus: "online",
+              name: "德瑞可",
+              operatorName: "小可",
+              phone: "13296712905",
+              seatId: "drc",
+              unreadCount: 0,
+            },
+          ],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              expireTime: 1,
+              takenOverEmployeeId: "sub-user-002",
+            }
+          : account,
+      ),
+    }));
+
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    const account = useWorkbenchStore.getState().accounts.find((item) => item.id === "drc");
+    expect(account).toMatchObject({
+      bizStatus: 1,
+      loginStatus: "online",
+      unreadCount: 0,
+    });
+    expect(account?.expireTime).toBeUndefined();
+    expect(account?.takenOverEmployeeId).toBeUndefined();
   });
 
   it("preserves pending messages reference when poll messages do not resolve pending items", async () => {
@@ -3193,6 +3677,12 @@ describe("useWorkbenchStore", () => {
         type: "emotion",
       },
       {
+        alt: "商品图",
+        imageUrl: "https://cdn.example.com/product.png",
+        materialCollectionId: "material-image-001",
+        type: "image",
+      },
+      {
         extension: "pdf",
         fileName: "报价单.pdf",
         fileSizeLabel: "2 KB",
@@ -3218,9 +3708,17 @@ describe("useWorkbenchStore", () => {
         title: "小程序标题",
         type: "weapp",
       },
+      {
+        coverUrl: "s5/msg/20260514/272/video-cover.jpg",
+        materialCollectionId: "material-video-001",
+        msgInfoId: "9104",
+        title: "讲解视频",
+        type: "video",
+        url: "s5/msg/20260514/272/video.mp4",
+      },
     ]);
 
-    expect(sendMessage).toHaveBeenCalledTimes(4);
+    expect(sendMessage).toHaveBeenCalledTimes(6);
     expect(sendMessage).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
@@ -3234,13 +3732,25 @@ describe("useWorkbenchStore", () => {
       2,
       expect.objectContaining({
         segment: {
+          alt: "商品图",
+          materialCollectionId: "material-image-001",
+          type: "image",
+        },
+      }),
+    );
+    expect(sendMessage.mock.calls[1]?.[0].segment).not.toHaveProperty("imageUrl");
+    expect(sendMessage.mock.calls[1]?.[0].segment).not.toHaveProperty("url");
+    expect(sendMessage).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        segment: {
           materialCollectionId: "material-file-001",
           type: "file",
         },
       }),
     );
     expect(sendMessage).toHaveBeenNthCalledWith(
-      3,
+      4,
       expect.objectContaining({
         segment: {
           materialCollectionId: "material-h5-001",
@@ -3249,7 +3759,7 @@ describe("useWorkbenchStore", () => {
       }),
     );
     expect(sendMessage).toHaveBeenNthCalledWith(
-      4,
+      5,
       expect.objectContaining({
         segment: {
           materialCollectionId: "material-weapp-001",
@@ -3257,8 +3767,17 @@ describe("useWorkbenchStore", () => {
         },
       }),
     );
+    expect(sendMessage).toHaveBeenNthCalledWith(
+      6,
+      expect.objectContaining({
+        segment: {
+          materialCollectionId: "material-video-001",
+          type: "video",
+        },
+      }),
+    );
     const latestMessages =
-      useWorkbenchStore.getState().messagesByConversationId["conv-001"].slice(-4);
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].slice(-6);
 
     expect(latestMessages).toMatchObject([
       {
@@ -3266,6 +3785,12 @@ describe("useWorkbenchStore", () => {
           imageUrl: "https://cdn.example.com/expression.gif",
           type: "image",
           variant: "emotion",
+        },
+      },
+      {
+        content: {
+          imageUrl: "https://cdn.example.com/product.png",
+          type: "image",
         },
       },
       {
@@ -3287,10 +3812,19 @@ describe("useWorkbenchStore", () => {
           type: "mini-program",
         },
       },
+      {
+        content: {
+          alt: "讲解视频",
+          coverImageUrl: "https://b5.bokr.com.cn/s5/msg/20260514/272/video-cover.jpg",
+          downloadStatus: "finished",
+          type: "video",
+          videoUrl: "https://b5.bokr.com.cn/s5/msg/20260514/272/video.mp4",
+        },
+      },
     ]);
   });
 
-  it("blocks sphfeed composer sends before calling the send API", async () => {
+  it("sends sphfeed composer segments through the send API", async () => {
     const baseService = createMockWorkbenchService();
     const sendMessage = vi.fn(baseService.sendMessage);
 
@@ -3312,12 +3846,17 @@ describe("useWorkbenchStore", () => {
     ]);
 
     expect(result).toEqual({
-      errorCode: "SPHFEED_UNAVAILABLE",
-      errorMessage: "视频号发送功能暂未开放",
-      reason: "unavailable",
-      ok: false,
+      didConsumeQuote: false,
+      ok: true,
     });
-    expect(sendMessage).not.toHaveBeenCalled();
+    expect(sendMessage).toHaveBeenCalledWith({
+      conversationId: expect.any(String),
+      seatId: expect.any(String),
+      segment: {
+        materialCollectionId: "material-sphfeed-001",
+        type: "sphfeed",
+      },
+    });
   });
 
   it("keeps quick reply snapshot fields when a material segment has msgInfoId", async () => {
@@ -3444,6 +3983,46 @@ describe("useWorkbenchStore", () => {
     const result = await useWorkbenchStore.getState().sendAgentTextMessage(
       "失效会话不能发送",
     );
+
+    expect(result).toEqual({
+      errorCode: "UNAVAILABLE",
+      errorMessage: "当前无法发送消息",
+      reason: "unavailable",
+      ok: false,
+    });
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("does not send messages from an inactive account seat", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              bizStatus: 0,
+            }
+          : account,
+      ),
+    }));
+
+    expect(useWorkbenchStore.getState().activeAccountId).toBe("drc");
+    expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-001");
+
+    const result = await useWorkbenchStore.getState().sendAgentMessageSegments([
+      {
+        text: "失效席位不能发送",
+        type: "text",
+      },
+    ]);
 
     expect(result).toEqual({
       errorCode: "UNAVAILABLE",

@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { PlayIcon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { cn } from "@/lib/utils";
 import {
   readMaterialDescription,
@@ -7,10 +9,16 @@ import {
 import { FileMessageCard } from "@/pages/chat/components/message/file";
 import { ImageMessageCard } from "@/pages/chat/components/message/image";
 import { LinkMessageCard } from "@/pages/chat/components/message/link";
+import {
+  LoadableMessageImage,
+  MessageMediaFallback,
+} from "@/pages/chat/components/message/media-fallback";
 import { MiniAppMessageCard } from "@/pages/chat/components/message/miniapp";
 import { SphFeedMessageCard } from "@/pages/chat/components/message/sphfeed";
+import { getOptimizedMessageImageUrl } from "@/pages/chat/components/message/url";
 import { MaterialActionsMenu } from "@/pages/chat/components/material-collection/material-actions-menu";
 import { MaterialSelectionIndicator } from "@/pages/chat/components/material-collection/material-selection-indicator";
+import { normalizeMediaAssetUrl } from "@/pages/chat/lib/media-asset-url";
 import type {
   FileMessageContent,
   H5CardMessageContent,
@@ -54,6 +62,11 @@ export function MaterialCard({
     null,
   );
   const isToggleMode = selectionMode === "toggle";
+  const videoPlayUrl =
+    item.contentType === "video"
+      ? normalizeMediaAssetUrl(readString(item.content.fileUrl))
+      : "";
+  const videoAlt = item.title || "视频";
 
   return (
     <div
@@ -93,6 +106,26 @@ export function MaterialCard({
         <MaterialCardContent item={item} />
       </button>
 
+      {videoPlayUrl ? (
+        <button
+          aria-label={`播放视频：${videoAlt}`}
+          className="absolute bottom-2 right-2 inline-flex size-7 items-center justify-center rounded-[8px] bg-background/90 p-0 text-foreground opacity-0 shadow-sm backdrop-blur transition-opacity hover:bg-background focus-visible:opacity-100 group-hover/material:opacity-100"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            window.open(videoPlayUrl, "_blank", "noopener,noreferrer");
+          }}
+          type="button"
+        >
+          <HugeiconsIcon
+            className="translate-x-[0.5px]"
+            icon={PlayIcon}
+            size={15}
+            strokeWidth={1.8}
+          />
+        </button>
+      ) : null}
+
       <MaterialActionsMenu
         groups={groups}
         item={item}
@@ -112,6 +145,15 @@ function MaterialCardContent({ item }: { item: MaterialCollectionItem }) {
     return (
       <ImageMessageCard
         content={toExpressionContent(item)}
+        uiMessageKey={item.id}
+      />
+    );
+  }
+
+  if (item.contentType === "image") {
+    return (
+      <ImageMessageCard
+        content={toImageContent(item)}
         uiMessageKey={item.id}
       />
     );
@@ -146,6 +188,10 @@ function MaterialCardContent({ item }: { item: MaterialCollectionItem }) {
     );
   }
 
+  if (item.contentType === "video") {
+    return <MaterialVideoCoverCard item={item} />;
+  }
+
   return (
     <LinkMessageCard
       className="w-full"
@@ -162,6 +208,18 @@ function toExpressionContent(item: MaterialCollectionItem): ImageMessageContent 
     imageUrl: readString(item.content.fileUrl),
     type: "image",
     variant: "emotion",
+    width: readNumber(item.content.width),
+  };
+}
+
+function toImageContent(item: MaterialCollectionItem): ImageMessageContent {
+  const imageUrl = readString(item.content.fileUrl);
+
+  return {
+    alt: readString(item.content.alt) || item.title || "图片",
+    height: readNumber(item.content.height),
+    imageUrl,
+    type: "image",
     width: readNumber(item.content.width),
   };
 }
@@ -209,6 +267,58 @@ function toSphFeedContent(item: MaterialCollectionItem): SphFeedMessageContent {
     type: "sphfeed",
     url: readString(item.content.url) || undefined,
   };
+}
+
+const MATERIAL_VIDEO_COVER_STYLE = {
+  aspectRatio: "3 / 4",
+  height: "280px",
+  width: "210px",
+} as const;
+
+function MaterialVideoCoverCard({ item }: { item: MaterialCollectionItem }) {
+  const alt = item.title || "视频";
+  const coverUrl = readString(item.content.coverUrl);
+  const durationLabel = readString(item.content.durationLabel);
+
+  return (
+    <div
+      className="relative isolate overflow-hidden rounded-[8px] bg-neutral-950 shadow-sm"
+      style={MATERIAL_VIDEO_COVER_STYLE}
+    >
+      {coverUrl ? (
+        <LoadableMessageImage
+          alt={alt}
+          className="block h-full w-full object-contain"
+          fallback={<MaterialVideoCoverFallback alt={alt} />}
+          height={280}
+          loading="lazy"
+          src={getOptimizedMessageImageUrl(coverUrl)}
+          width={210}
+        />
+      ) : (
+        <MaterialVideoCoverFallback alt={alt} />
+      )}
+
+      {durationLabel ? (
+        <span
+          className="absolute bottom-1.5 right-1.5 z-1 rounded-[4px] bg-black/45 px-1.5 py-0.5 text-[12px] font-semibold leading-4 text-white shadow-sm"
+          data-testid="video-duration"
+        >
+          {durationLabel}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function MaterialVideoCoverFallback({ alt }: { alt: string }) {
+  return (
+    <MessageMediaFallback
+      className="h-full w-full bg-neutral-950 text-white/35"
+      label={`视频封面不可用：${alt}`}
+      testId="video-cover-fallback"
+    />
+  );
 }
 
 function toH5Content(item: MaterialCollectionItem): H5CardMessageContent {

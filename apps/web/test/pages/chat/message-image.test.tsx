@@ -88,6 +88,37 @@ describe("MessageContentRenderer image messages", () => {
     expect(screen.queryByRole("dialog", { name: "图片预览" })).not.toBeInTheDocument();
   });
 
+  it("passes image download clicks through for failed images", async () => {
+    const user = userEvent.setup();
+    const handleDownloadMessageFile = vi.fn();
+
+    render(
+      <MessageContentRenderer
+        isAgent={false}
+        message={createImageMessage({
+          alt: "转存失败图片",
+          downloadStatus: "failed",
+          fileSerialNo: "serial-image-renderer",
+          height: 900,
+          imageUrl: "https://cdn.example.com/chat/photo.jpg",
+          type: "image",
+          width: 1200,
+        })}
+        onDownloadMessageFile={handleDownloadMessageFile}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "重试" }));
+
+    expect(handleDownloadMessageFile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.objectContaining({
+          type: "image",
+        }),
+      }),
+    );
+  });
+
   it("uses optimized b5 image URLs for thumbnails and preview", async () => {
     const user = userEvent.setup();
     const imageUrl =
@@ -278,7 +309,6 @@ describe("MessageContentRenderer image messages", () => {
       <ImageMessageCard
         content={createImageContent({
           alt: "空图片",
-          downloadStatus: "failed",
           height: 900,
           imageUrl: "",
           width: 1200,
@@ -288,6 +318,56 @@ describe("MessageContentRenderer image messages", () => {
 
     expect(screen.getByRole("img", { name: "图片不可用：空图片" })).toBeInTheDocument();
     expect(screen.queryByRole("img", { name: "空图片" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "下载图片：空图片" }))
+      .not.toBeInTheDocument();
+  });
+
+  it("renders a download action for a failed image even when the image URL is empty", () => {
+    const handleDownloadClick = vi.fn();
+
+    render(
+      <ImageMessageCard
+        content={createImageContent({
+          alt: "空地址失败图片",
+          downloadStatus: "failed",
+          fileSerialNo: "serial-image-001",
+          height: 900,
+          imageUrl: "",
+          width: 1200,
+        })}
+        onDownloadClick={handleDownloadClick}
+      />,
+    );
+
+    expect(screen.getByText("下载超时")).toBeInTheDocument();
+    expect(
+      screen.getByTestId("image-message-download-fallback").querySelector(
+        '[data-icon-name="image-not-found-01"]',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "重试" })).toBeInTheDocument();
+  });
+
+  it("does not render a retry action for failed images without file serial metadata", () => {
+    render(
+      <ImageMessageCard
+        content={createImageContent({
+          alt: "缺少序列号图片",
+          downloadStatus: "failed",
+          height: 900,
+          imageUrl: "",
+          width: 1200,
+        })}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "重试" })).not.toBeInTheDocument();
+    expect(screen.getByText("下载超时")).toBeInTheDocument();
+    expect(
+      screen.getByTestId("image-message-download-fallback").querySelector(
+        '[data-icon-name="image-not-found-01"]',
+      ),
+    ).toBeInTheDocument();
   });
 
   it("renders a loading state while an image is downloading", () => {
@@ -307,6 +387,84 @@ describe("MessageContentRenderer image messages", () => {
     expect(
       screen.queryByRole("img", { name: "图片不可用：下载中的图片" }),
     ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "下载图片：下载中的图片" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders a download action for an in-progress image after five minutes", async () => {
+    const user = userEvent.setup();
+    const handleDownloadClick = vi.fn();
+    const now = new Date("2026-06-26T08:00:00.000Z").getTime();
+    vi.setSystemTime(now);
+
+    render(
+      <ImageMessageCard
+        content={createImageContent({
+          alt: "超时图片",
+          downloadStatus: "ing",
+          fileSerialNo: "serial-image-002",
+          height: 900,
+          imageUrl: "https://cdn.example.com/chat/photo.jpg",
+          width: 1200,
+        })}
+        downloadUpdatedAtMs={now - 5 * 60 * 1000}
+        onDownloadClick={handleDownloadClick}
+      />,
+    );
+
+    expect(screen.getByText("下载超时")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "重试" }));
+
+    expect(handleDownloadClick).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("status", { name: "图片加载中" })).not.toBeInTheDocument();
+  });
+
+  it("renders a download action for an expired in-progress image even when the image URL is empty", () => {
+    const handleDownloadClick = vi.fn();
+    const now = new Date("2026-06-26T08:00:00.000Z").getTime();
+    vi.setSystemTime(now);
+
+    render(
+      <ImageMessageCard
+        content={createImageContent({
+          alt: "空地址超时图片",
+          downloadStatus: "ing",
+          fileSerialNo: "serial-image-003",
+          height: 900,
+          imageUrl: "",
+          width: 1200,
+        })}
+        downloadUpdatedAtMs={now - 5 * 60 * 1000}
+        onDownloadClick={handleDownloadClick}
+      />,
+    );
+
+    expect(screen.getByText("下载超时")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "重试" })).toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: "图片加载中" })).not.toBeInTheDocument();
+  });
+
+  it("renders timeout UI without retry for an expired in-progress image missing file serial metadata", () => {
+    const now = new Date("2026-06-26T08:00:00.000Z").getTime();
+    vi.setSystemTime(now);
+
+    render(
+      <ImageMessageCard
+        content={createImageContent({
+          alt: "缺少序列号超时图片",
+          downloadStatus: "ing",
+          height: 900,
+          imageUrl: "",
+          width: 1200,
+        })}
+        downloadUpdatedAtMs={now - 5 * 60 * 1000}
+      />,
+    );
+
+    expect(screen.getByText("下载超时")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "重试" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: "图片加载中" })).not.toBeInTheDocument();
   });
 
   it("renders an image-not-found fallback when the thumbnail fails to load", () => {
@@ -1490,12 +1648,14 @@ function createImageMessage(
 function createImageContent({
   alt,
   downloadStatus,
+  fileSerialNo,
   height,
   imageUrl,
   width,
 }: {
   alt: string;
   downloadStatus?: ImageMessageContent["downloadStatus"];
+  fileSerialNo?: string;
   height: number;
   imageUrl: string;
   width: number;
@@ -1504,6 +1664,7 @@ function createImageContent({
     type: "image",
     alt,
     downloadStatus,
+    fileSerialNo,
     height,
     imageUrl,
     width,

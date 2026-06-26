@@ -153,6 +153,22 @@ describe("adaptMessage", () => {
     });
   });
 
+  it("adapts message update timestamps for download timeout decisions", () => {
+    expect(
+      adaptMessage(
+        {
+          ...messageDto,
+          updatedAt: 1778240600000,
+        },
+        customerProfilesById,
+        accountsById,
+        me,
+      ),
+    ).toMatchObject({
+      updatedAtMs: 1778240600000,
+    });
+  });
+
   it("preserves revoked message state from backend messages", () => {
     expect(
       adaptMessage(
@@ -500,7 +516,7 @@ describe("adaptMessage", () => {
           content: {
             alt: "图片",
             downloadStatus: "ing",
-            imageUrl: "https://b5.bokr.com.cn/chat-images/photo.png",
+            fileUrl: "https://b5.bokr.com.cn/chat-images/photo.png",
           },
           contentType: "image",
           rawMsgtype: "image",
@@ -525,7 +541,7 @@ describe("adaptMessage", () => {
           ...messageDto,
           content: {
             alt: "图片",
-            imageUrl: "",
+            fileUrl: "",
           },
           contentType: "image",
           downloadStatus: "ing",

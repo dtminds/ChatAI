@@ -133,6 +133,25 @@ function createSphfeedMaterialItem(
   };
 }
 
+function createVideoMaterialItem(
+  overrides: Partial<WorkbenchMaterialCollectionItemDto> = {},
+): WorkbenchMaterialCollectionItemDto {
+  return {
+    bizType: 7,
+    content: {
+      coverUrl: "https://example.com/video-cover.jpg",
+      fileUrl: "https://example.com/video.mp4",
+    },
+    contentType: "video",
+    groupId: "group-video",
+    id: "material-video",
+    msgInfoId: "9105",
+    sort: 1_781_244_000_000,
+    title: "视频",
+    ...overrides,
+  };
+}
+
 function createExpressionMaterialItem(
   overrides: Partial<WorkbenchMaterialCollectionItemDto> = {},
 ): WorkbenchMaterialCollectionItemDto {
@@ -322,7 +341,7 @@ describe("useMaterialCollection", () => {
     ]);
   });
 
-  it("blocks collected sphfeed material sends with an unavailable message", async () => {
+  it("sends a collected sphfeed material by forwarding its source message", async () => {
     const sendAgentMessageSegments = vi.fn(async () => ({ ok: true as const }));
 
     const { result } = renderHook(() =>
@@ -337,8 +356,40 @@ describe("useMaterialCollection", () => {
       await result.current.handleSelectMaterial(createSphfeedMaterialItem());
     });
 
-    expect(sendAgentMessageSegments).not.toHaveBeenCalled();
-    expect(toast.warning).toHaveBeenCalledWith("视频号发送功能暂未开放");
+    expect(sendAgentMessageSegments).toHaveBeenCalledWith([
+      expect.objectContaining({
+        materialCollectionId: "material-sphfeed",
+        msgInfoId: "9103",
+        title: "都市快报",
+        type: "sphfeed",
+      }),
+    ]);
+  });
+
+  it("sends a collected video material by forwarding its source message", async () => {
+    const sendAgentMessageSegments = vi.fn(async () => ({ ok: true as const }));
+
+    const { result } = renderHook(() =>
+      useMaterialCollection(
+        createDefaultOptions({
+          sendAgentMessageSegments,
+        }),
+      ),
+    );
+
+    await act(async () => {
+      await result.current.handleSelectMaterial(createVideoMaterialItem());
+    });
+
+    expect(sendAgentMessageSegments).toHaveBeenCalledWith([
+      expect.objectContaining({
+        materialCollectionId: "material-video",
+        msgInfoId: "9105",
+        title: "视频",
+        type: "video",
+      }),
+    ]);
+    expect(toast.warning).not.toHaveBeenCalledWith("暂未支持");
   });
 
   it("sends a collected expression material as an emotion segment", async () => {
@@ -388,6 +439,31 @@ describe("useMaterialCollection", () => {
 
     expect(sendAgentMessageSegments).not.toHaveBeenCalled();
     expect(toast.warning).toHaveBeenCalledWith("表情素材数据异常");
+  });
+
+  it("shows an incomplete content warning when video material content is invalid", async () => {
+    const sendAgentMessageSegments = vi.fn(async () => ({ ok: true as const }));
+
+    const { result } = renderHook(() =>
+      useMaterialCollection(
+        createDefaultOptions({
+          sendAgentMessageSegments,
+        }),
+      ),
+    );
+
+    await act(async () => {
+      await result.current.handleSelectMaterial(
+        createVideoMaterialItem({
+          content: {
+            fileUrl: "https://example.com/video.mp4",
+          },
+        }),
+      );
+    });
+
+    expect(sendAgentMessageSegments).not.toHaveBeenCalled();
+    expect(toast.warning).toHaveBeenCalledWith("视频素材数据异常");
   });
 
   it("calls send failure callback when material send fails", async () => {
@@ -667,5 +743,94 @@ describe("useMaterialCollection", () => {
       pageSize: 100,
     });
     expect(result.current.pendingMaterialCollection).toBeNull();
+  });
+
+  it("clears material library and pending collection state on session reset", async () => {
+    const { result } = renderHook(() =>
+      useMaterialCollection(createDefaultOptions()),
+    );
+
+    act(() => {
+      result.current.handleOpenMaterialLibrary(2);
+    });
+
+    await waitFor(() => {
+      expect(result.current.activeMaterialLibraryBizType).toBe(2);
+    });
+
+    await act(async () => {
+      await result.current.handleCollectMaterial(fileMessage);
+    });
+
+    act(() => {
+      result.current.resetMaterialSessionState();
+    });
+
+    expect(result.current).toMatchObject({
+      activeMaterialLibraryBizType: null,
+      activeMaterialLibraryGroupId: null,
+      collectedExpressions: [],
+      hasMoreCollectedExpressions: false,
+      isMaterialLibraryBusy: false,
+      materialCollectionGroups: [],
+      materialLibraryGroups: [],
+      materialLibraryItems: [],
+      pendingMaterialCollection: null,
+    });
+  });
+
+  it("clears material library busy state when session reset invalidates in-flight loads", async () => {
+    const baseService = createMockWorkbenchService();
+    const deferredItems = createDeferred<
+      Awaited<ReturnType<typeof baseService.listMaterialCollections>>
+    >();
+
+    setWorkbenchService({
+      ...baseService,
+      listMaterialCollections: vi.fn(() => deferredItems.promise),
+    });
+
+    const { result } = renderHook(() =>
+      useMaterialCollection(createDefaultOptions()),
+    );
+
+    act(() => {
+      result.current.handleOpenMaterialLibrary(2);
+    });
+
+    await waitFor(() => {
+      expect(result.current.activeMaterialLibraryGroupId).toBe(
+        "mock-material-group-file",
+      );
+    });
+
+    await act(async () => {
+      void result.current.handleSelectMaterialLibraryGroup("mock-material-group-file");
+    });
+
+    await waitFor(() => {
+      expect(result.current.isMaterialLibraryBusy).toBe(true);
+    });
+
+    act(() => {
+      result.current.resetMaterialSessionState();
+    });
+
+    expect(result.current.isMaterialLibraryBusy).toBe(false);
+
+    await act(async () => {
+      deferredItems.resolve({
+        items: [],
+        pagination: {
+          hasMore: false,
+          page: 1,
+          pageSize: 100,
+          total: 0,
+        },
+      });
+      await deferredItems.promise;
+    });
+
+    expect(result.current.isMaterialLibraryBusy).toBe(false);
   });
 });

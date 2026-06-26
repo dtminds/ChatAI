@@ -39,6 +39,8 @@ export const MATERIAL_COLLECTION_BIZ_TYPE = {
   MINI_PROGRAM: 3,
   H5: 4,
   SPHFEED: 5,
+  IMAGE: 6,
+  VIDEO: 7,
 } as const;
 
 export const MATERIAL_COLLECTION_GROUP_MAX_COUNT = 20;
@@ -49,6 +51,8 @@ export const MaterialCollectionBizTypeSchema = Type.Union([
   Type.Literal(MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM),
   Type.Literal(MATERIAL_COLLECTION_BIZ_TYPE.H5),
   Type.Literal(MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED),
+  Type.Literal(MATERIAL_COLLECTION_BIZ_TYPE.IMAGE),
+  Type.Literal(MATERIAL_COLLECTION_BIZ_TYPE.VIDEO),
 ]);
 
 export type LoginStatus = Static<typeof LoginStatusSchema>;

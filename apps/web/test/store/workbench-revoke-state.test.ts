@@ -9,9 +9,14 @@ import { resolveImageSegmentsForSend } from "@/pages/chat/api/media-upload-servi
 import { useWorkbenchStore } from "@/store/workbench-store";
 import { resetWorkbenchStoreTestState } from "./workbench-store-test-utils";
 
-vi.mock("@/pages/chat/api/media-upload-service", () => ({
-  resolveImageSegmentsForSend: vi.fn(async (_conversationId, segments) => segments),
-}));
+vi.mock("@/pages/chat/api/media-upload-service", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/pages/chat/api/media-upload-service")>();
+
+  return {
+    ...actual,
+    resolveImageSegmentsForSend: vi.fn(async (_conversationId, segments) => segments),
+  };
+});
 
 function createRevokeSignalDto(input: {
   conversationId?: string;
@@ -671,7 +676,6 @@ describe("workbench revoke state", () => {
           },
         ],
       },
-      revokeMessageError: undefined,
     }));
 
     await expect(
@@ -680,10 +684,9 @@ describe("workbench revoke state", () => {
       errorMessage: "Java 撤回失败",
       ok: false,
     });
-    expect(useWorkbenchStore.getState().revokeMessageError).toBeUndefined();
   });
 
-  it("clears revoke pending after five seconds when no revoke signal arrives", async () => {
+  it("keeps revoke pending for ten seconds and clears it without toast when no revoke signal arrives", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-27T10:00:00").getTime());
     const baseService = createMockWorkbenchService();
@@ -744,9 +747,18 @@ describe("workbench revoke state", () => {
         .getState()
         .messagesByConversationId["conv-001"].find((message) => message.uiMessageKey === "timeout-agent-message"),
     ).toMatchObject({
+      revokePending: true,
+    });
+
+    vi.advanceTimersByTime(5_000);
+
+    expect(
+      useWorkbenchStore
+        .getState()
+        .messagesByConversationId["conv-001"].find((message) => message.uiMessageKey === "timeout-agent-message"),
+    ).toMatchObject({
       revokePending: false,
     });
-    expect(useWorkbenchStore.getState().revokeMessageError).toBe("撤回失败，请稍后重试");
 
     vi.useRealTimers();
   });
@@ -800,7 +812,7 @@ describe("workbench revoke state", () => {
     await useWorkbenchStore.getState().revokeMessage("switched-timeout-agent-message");
     useWorkbenchStore.setState({ activeConversationId: "conv-002" });
 
-    vi.advanceTimersByTime(5_000);
+    vi.advanceTimersByTime(10_000);
 
     expect(
       useWorkbenchStore
@@ -809,7 +821,6 @@ describe("workbench revoke state", () => {
     ).toMatchObject({
       revokePending: false,
     });
-    expect(useWorkbenchStore.getState().revokeMessageError).toBeUndefined();
 
     vi.useRealTimers();
   });

@@ -7,14 +7,17 @@ import { notifyAuthSessionChanged } from "@/pages/auth/auth-tokens";
 import { requestInstance } from "@/lib/request";
 import { routerConfig } from "@/router";
 import { useAuthStore } from "@/store/auth-store";
+import { useWorkbenchStore } from "@/store/workbench-store";
+import type { AuthSubUser } from "@chatai/contracts";
 
 const mock = new MockAdapter(requestInstance);
-const operatorSubUser = {
-  accountType: "sub" as const,
+const operatorSubUser: AuthSubUser = {
+  accountType: "sub",
   displayName: "客服一号",
-  permissions: ["chat.access", "chat.send", "chat.takeover"] as const,
-  role: "operator" as const,
+  permissions: ["chat.access", "chat.send", "chat.takeover"],
+  role: "operator",
   subUserId: "101",
+  uid: 101,
 };
 
 describe("auth routes", () => {
@@ -25,6 +28,7 @@ describe("auth routes", () => {
   afterEach(() => {
     mock.reset();
     useAuthStore.setState(useAuthStore.getInitialState(), true);
+    useWorkbenchStore.setState(useWorkbenchStore.getInitialState(), true);
   });
 
   it("redirects /chat to /login when the session is missing", async () => {
@@ -35,6 +39,10 @@ describe("auth routes", () => {
       },
       success: false,
     });
+    useWorkbenchStore.setState({
+      activeAccountId: "drc",
+      bootstrapStatus: "ready",
+    });
     const router = createMemoryRouter(routerConfig, {
       initialEntries: ["/chat"],
     });
@@ -43,6 +51,33 @@ describe("auth routes", () => {
 
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/login");
+    });
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      activeAccountId: "",
+      bootstrapStatus: "idle",
+    });
+  });
+
+  it("clears workbench state when entering the login page", async () => {
+    useWorkbenchStore.setState({
+      activeAccountId: "drc",
+      bootstrapStatus: "ready",
+      messagesByConversationId: {
+        "conv-001": [],
+      },
+    });
+    const router = createMemoryRouter(routerConfig, {
+      initialEntries: ["/login"],
+    });
+
+    render(<RouterProvider router={router} />);
+
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState()).toMatchObject({
+        activeAccountId: "",
+        bootstrapStatus: "idle",
+        messagesByConversationId: {},
+      });
     });
   });
 
@@ -125,6 +160,16 @@ describe("auth routes", () => {
       },
       success: true,
     });
+    useWorkbenchStore.setState({
+      activeAccountId: "drc",
+      bootstrapStatus: "ready",
+      messagesByConversationId: {
+        "conv-001": [],
+      },
+      takeoverStatusByAccountId: {
+        drc: "taking-over",
+      },
+    });
     const router = createMemoryRouter(routerConfig, {
       initialEntries: ["/chat"],
     });
@@ -146,6 +191,12 @@ describe("auth routes", () => {
 
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/login");
+    });
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      activeAccountId: "",
+      bootstrapStatus: "idle",
+      messagesByConversationId: {},
+      takeoverStatusByAccountId: {},
     });
   });
 
@@ -177,6 +228,135 @@ describe("auth routes", () => {
 
     await waitFor(() => {
       expect(mock.history.get.filter((request) => request.url === "/auth/session")).toHaveLength(2);
+    });
+  });
+
+  it("clears user-scoped workbench state when the authenticated sub user changes", async () => {
+    mock.onGet("/auth/session").replyOnce(200, {
+      data: {
+        subUser: operatorSubUser,
+      },
+      success: true,
+    });
+    mock.onGet("/auth/session").reply(200, {
+      data: {
+        subUser: {
+          ...operatorSubUser,
+          displayName: "客服二号",
+          subUserId: "202",
+        },
+      },
+      success: true,
+    });
+    useWorkbenchStore.setState({
+      activeAccountId: "drc",
+      bootstrapStatus: "ready",
+      messagesByConversationId: {
+        "conv-001": [],
+      },
+      takeoverStatusByAccountId: {
+        drc: "taking-over",
+      },
+    });
+    const router = createMemoryRouter(
+      [
+        {
+          path: "/",
+          element: <RootLayout />,
+          children: [
+            {
+              path: "login",
+              element: <div>登录页占位</div>,
+            },
+            {
+              path: "chat",
+              element: <div>聊天页占位</div>,
+            },
+          ],
+        },
+      ],
+      {
+        initialEntries: ["/chat"],
+      },
+    );
+
+    render(<RouterProvider router={router} />);
+
+    expect(await screen.findByText("聊天页占位")).toBeInTheDocument();
+    expect(useWorkbenchStore.getState().bootstrapStatus).toBe("ready");
+
+    notifyAuthSessionChanged();
+
+    await waitFor(() => {
+      expect(useAuthStore.getState().subUser?.subUserId).toBe("202");
+    });
+
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      activeAccountId: "",
+      bootstrapStatus: "idle",
+      messagesByConversationId: {},
+      takeoverStatusByAccountId: {},
+    });
+  });
+
+  it("clears workbench state when auth store already holds a previous user before session sync", async () => {
+    useAuthStore.getState().setSession(operatorSubUser);
+    useWorkbenchStore.setState({
+      activeAccountId: "drc",
+      bootstrapStatus: "ready",
+      messagesByConversationId: {
+        "conv-001": [],
+      },
+      takeoverStatusByAccountId: {
+        drc: "taking-over",
+      },
+    });
+    mock.onGet("/auth/session").reply(200, {
+      data: {
+        subUser: {
+          ...operatorSubUser,
+          displayName: "客服二号",
+          subUserId: "202",
+        },
+      },
+      success: true,
+    });
+    const router = createMemoryRouter(
+      [
+        {
+          path: "/",
+          element: <RootLayout />,
+          children: [
+            {
+              path: "login",
+              element: <div>登录页占位</div>,
+            },
+            {
+              path: "chat",
+              element: <div>聊天页占位</div>,
+            },
+          ],
+        },
+      ],
+      {
+        initialEntries: ["/chat"],
+      },
+    );
+
+    render(<RouterProvider router={router} />);
+
+    expect(await screen.findByText("聊天页占位")).toBeInTheDocument();
+    notifyAuthSessionChanged();
+
+    await waitFor(() => {
+      expect(useAuthStore.getState().subUser?.subUserId).toBe("202");
+    });
+
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      activeAccountId: "",
+      bootstrapStatus: "idle",
+      messagesByConversationId: {},
+      takeoverStatusByAccountId: {},
     });
   });
 });

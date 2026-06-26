@@ -18,10 +18,12 @@ import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
 import { getFileExtension } from "@/pages/chat/lib/composer-file-files";
 
 export type ComposerMaterialBizType =
+  | typeof MATERIAL_COLLECTION_BIZ_TYPE.IMAGE
   | typeof MATERIAL_COLLECTION_BIZ_TYPE.FILE
   | typeof MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM
   | typeof MATERIAL_COLLECTION_BIZ_TYPE.H5
-  | typeof MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED;
+  | typeof MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED
+  | typeof MATERIAL_COLLECTION_BIZ_TYPE.VIDEO;
 
 type SendMaterialResult =
   | {
@@ -1031,13 +1033,20 @@ export function useMaterialCollection({
     setSendingMaterialId(null);
   }, []);
 
+  const resetMaterialSessionState = useCallback(() => {
+    resetMaterialLibrary();
+    resetPendingCollection();
+    setMaterialCollectionGroups([]);
+    setIsCollectingMaterial(false);
+    setCollectedExpressions([]);
+    setCollectedExpressionPage(1);
+    setHasMoreCollectedExpressions(false);
+    setIsCollectedExpressionLoadingMore(false);
+    setIsMaterialLibraryBusy(false);
+  }, [resetMaterialLibrary, resetPendingCollection]);
+
   const handleSelectMaterial = useCallback(
     async (item: WorkbenchMaterialCollectionItemDto) => {
-      if (item.contentType === "sphfeed") {
-        toast.warning("视频号发送功能暂未开放");
-        return;
-      }
-
       const materialSegment = buildComposerSegmentFromMaterial(item);
 
       if (!materialSegment) {
@@ -1053,6 +1062,16 @@ export function useMaterialCollection({
 
         if (item.contentType === "emotion") {
           toast.warning("表情素材数据异常");
+          return;
+        }
+
+        if (item.contentType === "image") {
+          toast.warning("图片素材数据异常");
+          return;
+        }
+
+        if (item.contentType === "video") {
+          toast.warning("视频素材数据异常");
           return;
         }
 
@@ -1140,6 +1159,7 @@ export function useMaterialCollection({
     handleTopMaterial,
     handleTopMaterialGroup,
     resetMaterialLibrary,
+    resetMaterialSessionState,
     resetPendingCollection,
   };
 }
@@ -1184,7 +1204,7 @@ function getMaterialBizTypeForMessage(
   if (message.content.type === "image") {
     return message.content.variant === "emotion"
       ? MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION
-      : undefined;
+      : MATERIAL_COLLECTION_BIZ_TYPE.IMAGE;
   }
 
   if (message.content.type === "file") {
@@ -1203,6 +1223,10 @@ function getMaterialBizTypeForMessage(
     return MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED;
   }
 
+  if (message.content.type === "video") {
+    return MATERIAL_COLLECTION_BIZ_TYPE.VIDEO;
+  }
+
   return undefined;
 }
 
@@ -1219,9 +1243,11 @@ function toComposerMaterialBizType(
 ): ComposerMaterialBizType | undefined {
   if (
     bizType === MATERIAL_COLLECTION_BIZ_TYPE.FILE ||
+    bizType === MATERIAL_COLLECTION_BIZ_TYPE.IMAGE ||
     bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM ||
     bizType === MATERIAL_COLLECTION_BIZ_TYPE.H5 ||
-    bizType === MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED
+    bizType === MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED ||
+    bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO
   ) {
     return bizType;
   }
@@ -1273,6 +1299,30 @@ function buildExpressionComposerSegment(
     imageUrl,
     materialCollectionId,
     type: "emotion",
+  };
+}
+
+function buildImageComposerSegment(
+  item: WorkbenchMaterialCollectionItemDto,
+): ComposerSegment | undefined {
+  const materialCollectionId = item.id.trim();
+  const contentRecord = isMaterialContentRecord(item.content);
+  const imageUrl = readMaterialContentString(contentRecord.fileUrl);
+
+  if (!materialCollectionId || !imageUrl) {
+    return undefined;
+  }
+
+  return {
+    alt:
+      readMaterialContentString(contentRecord.alt) ||
+      readMaterialContentString(contentRecord.title) ||
+      "图片",
+    height: readMaterialContentNumber(contentRecord.height),
+    imageUrl,
+    materialCollectionId,
+    type: "image",
+    width: readMaterialContentNumber(contentRecord.width),
   };
 }
 
@@ -1376,11 +1426,37 @@ function buildSphfeedComposerSegment(
   };
 }
 
+function buildVideoComposerSegment(
+  item: WorkbenchMaterialCollectionItemDto,
+): ComposerSegment | undefined {
+  const materialCollectionId = item.id.trim();
+  const contentRecord = isMaterialContentRecord(item.content);
+  const coverUrl = readMaterialContentString(contentRecord.coverUrl);
+  const videoUrl = readMaterialContentString(contentRecord.fileUrl);
+
+  if (!materialCollectionId || !coverUrl || !videoUrl) {
+    return undefined;
+  }
+
+  return {
+    coverUrl,
+    materialCollectionId,
+    msgInfoId: item.msgInfoId,
+    title: item.title || "视频",
+    type: "video",
+    url: videoUrl,
+  };
+}
+
 function buildComposerSegmentFromMaterial(
   item: WorkbenchMaterialCollectionItemDto,
 ): ComposerSegment | undefined {
   if (item.contentType === "emotion") {
     return buildExpressionComposerSegment(item);
+  }
+
+  if (item.contentType === "image") {
+    return buildImageComposerSegment(item);
   }
 
   if (item.contentType === "file") {
@@ -1399,6 +1475,10 @@ function buildComposerSegmentFromMaterial(
     return buildSphfeedComposerSegment(item);
   }
 
+  if (item.contentType === "video") {
+    return buildVideoComposerSegment(item);
+  }
+
   return undefined;
 }
 
@@ -1410,6 +1490,10 @@ function getMaterialSendUnavailableMessage(
 
 function readMaterialContentString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function readMaterialContentNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 function getMaterialErrorMessage(error: unknown, fallback: string) {

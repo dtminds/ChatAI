@@ -334,6 +334,39 @@ describe("AccountRail", () => {
     expect(screen.queryByTestId("account-sidebar-item-operator-account-2")).not.toBeInTheDocument();
   });
 
+  it("shows expired seats before online or takeover status", async () => {
+    const user = userEvent.setup();
+    const handleTakeOverAccount = vi.fn();
+
+    render(
+      <AccountRail
+        accounts={[
+          accounts[0],
+          {
+            ...accounts[1],
+            bizStatus: 0,
+            expireTime: 1,
+            takenOverEmployeeId: "emp-001",
+          },
+        ]}
+        activeAccountId="account-1"
+        currentEmployeeId="emp-001"
+        onSelectAccount={vi.fn()}
+        onTakeOverAccount={handleTakeOverAccount}
+        takeoverStatusByAccountId={{ "account-2": "taking-over" }}
+      />,
+    );
+
+    expect(screen.getByTestId("account-sidebar-item-status-row-account-2")).toHaveTextContent(
+      "席位已失效",
+    );
+
+    await user.hover(screen.getByRole("button", { name: "选择 support" }));
+
+    expect(screen.queryByRole("button", { name: "接管账号" })).not.toBeInTheDocument();
+    expect(handleTakeOverAccount).not.toHaveBeenCalled();
+  });
+
   it("opens and closes the takeover popover from card hover", async () => {
     const user = userEvent.setup();
 

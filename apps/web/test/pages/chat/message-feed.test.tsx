@@ -299,6 +299,15 @@ describe("message feed row actions", () => {
       },
     ],
     [
+      "普通图片",
+      {
+        alt: "商品图",
+        downloadStatus: "finished" as const,
+        imageUrl: "https://example.com/image.png",
+        type: "image" as const,
+      },
+    ],
+    [
       "文件",
       {
         extension: "pdf",
@@ -344,6 +353,32 @@ describe("message feed row actions", () => {
     expect(onCollectMaterial).toHaveBeenCalledWith(message);
   });
 
+  it("does not show collection action for video channel messages when collection is disabled", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <MessageRow
+        message={{
+          ...createTextMessage("视频号"),
+          content: {
+            description: "视频号内容",
+            imageUrl: "https://example.com/sphfeed.jpg",
+            sourceLabel: "视频号",
+            title: "视频号标题",
+            type: "sphfeed",
+            url: "https://channels.weixin.qq.com/web/pages/feed?eid=export",
+          },
+          role: "customer",
+        }}
+        onCollectMaterial={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+
+    expect(screen.queryByRole("menuitem", { name: "收录" })).not.toBeInTheDocument();
+  });
+
   it.each([
     [
       "文本",
@@ -353,29 +388,10 @@ describe("message feed row actions", () => {
       },
     ],
     [
-      "普通图片",
-      {
-        alt: "图片",
-        imageUrl: "https://example.com/image.png",
-        type: "image" as const,
-      },
-    ],
-    [
       "名片",
       {
         name: "客户甲",
         type: "contact-card" as const,
-      },
-    ],
-    [
-      "视频号",
-      {
-        description: "视频号内容",
-        imageUrl: "https://example.com/sphfeed.jpg",
-        sourceLabel: "视频号",
-        title: "视频号标题",
-        type: "sphfeed" as const,
-        url: "https://channels.weixin.qq.com/web/pages/feed?eid=export",
       },
     ],
   ])("does not show collection action for %s messages", async (_label, content) => {
@@ -388,6 +404,136 @@ describe("message feed row actions", () => {
           content,
           role: "customer",
         } as ChatMessage}
+        onCollectMaterial={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+
+    expect(screen.queryByRole("menuitem", { name: "收录" })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    [
+      "下载中的普通图片",
+      {
+        alt: "下载中图片",
+        downloadStatus: "ing",
+        imageUrl: "https://example.com/image.png",
+        type: "image" as const,
+      },
+    ],
+    [
+      "未取得地址的普通图片",
+      {
+        alt: "无地址图片",
+        downloadStatus: "finished",
+        imageUrl: "",
+        type: "image" as const,
+      },
+    ],
+  ])("does not show collection action for %s", async (_label, content) => {
+    const user = userEvent.setup();
+
+    render(
+      <MessageRow
+        message={{
+          ...createTextMessage("不可收录图片"),
+          content,
+          role: "customer",
+        } as ChatMessage}
+        onCollectMaterial={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+
+    expect(screen.queryByRole("menuitem", { name: "收录" })).not.toBeInTheDocument();
+  });
+
+  it("only shows collection action for finished agent video messages", async () => {
+    const user = userEvent.setup();
+    const onCollectMaterial = vi.fn();
+    const message = {
+      ...createTextMessage("可收录视频"),
+      content: {
+        alt: "视频",
+        coverImageUrl: "https://example.com/video-cover.jpg",
+        downloadStatus: "finished" as const,
+        durationLabel: "",
+        type: "video" as const,
+        videoUrl: "https://example.com/video.mp4",
+      },
+      role: "agent" as const,
+    } satisfies ChatMessage;
+
+    render(
+      <MessageRow
+        message={message}
+        onCollectMaterial={onCollectMaterial}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "收录" }));
+
+    expect(onCollectMaterial).toHaveBeenCalledWith(message);
+  });
+
+  it.each([
+    [
+      "客户发送的视频",
+      {
+        coverImageUrl: "https://example.com/video-cover.jpg",
+        role: "customer" as const,
+        downloadStatus: "finished" as const,
+        videoUrl: "https://example.com/video.mp4",
+      },
+    ],
+    [
+      "下载中的视频",
+      {
+        coverImageUrl: "https://example.com/video-cover.jpg",
+        role: "agent" as const,
+        downloadStatus: "ing" as const,
+        videoUrl: "https://example.com/video.mp4",
+      },
+    ],
+    [
+      "未取得地址的视频",
+      {
+        coverImageUrl: "https://example.com/video-cover.jpg",
+        role: "agent" as const,
+        downloadStatus: "finished" as const,
+        videoUrl: "",
+      },
+    ],
+    [
+      "未取得封面的视频",
+      {
+        coverImageUrl: "",
+        role: "agent" as const,
+        downloadStatus: "finished" as const,
+        videoUrl: "https://example.com/video.mp4",
+      },
+    ],
+  ])("does not show collection action for %s", async (_label, input) => {
+    const user = userEvent.setup();
+
+    render(
+      <MessageRow
+        message={{
+          ...createTextMessage("不可收录视频"),
+          content: {
+            alt: "视频",
+            coverImageUrl: input.coverImageUrl,
+            downloadStatus: input.downloadStatus,
+            durationLabel: "",
+            type: "video",
+            videoUrl: input.videoUrl,
+          },
+          role: input.role,
+        } satisfies ChatMessage}
         onCollectMaterial={vi.fn()}
       />,
     );

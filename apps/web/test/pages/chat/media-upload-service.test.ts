@@ -7,6 +7,7 @@ import {
   setWorkbenchService,
 } from "@/pages/chat/api/workbench-service";
 import {
+  isLocalImageSegment,
   resolveImageSegmentsForSend,
   uploadWorkbenchFile,
 } from "@/pages/chat/api/media-upload-service";
@@ -45,6 +46,41 @@ function createUploadCredential(
     ...overrides,
   };
 }
+
+describe("isLocalImageSegment", () => {
+  it("returns true for image segments that still need upload", () => {
+    expect(
+      isLocalImageSegment({
+        alt: "截图",
+        localUrl: "data:image/png;base64,aaa",
+        type: "image",
+      }),
+    ).toBe(true);
+  });
+
+  it("returns false for collected image segments with a remote url only", () => {
+    expect(
+      isLocalImageSegment({
+        alt: "商品图",
+        imageUrl: "https://cdn.example.com/product.png",
+        materialCollectionId: "material-image-001",
+        type: "image",
+        url: "https://cdn.example.com/product.png",
+      }),
+    ).toBe(false);
+  });
+
+  it("returns false for image segments that already have a remote url", () => {
+    expect(
+      isLocalImageSegment({
+        alt: "截图",
+        localUrl: "blob:preview",
+        type: "image",
+        url: "https://mock-bucket.cos.ap-guangzhou.myqcloud.com/chat-images/conv-001/a.png",
+      }),
+    ).toBe(false);
+  });
+});
 
 describe("resolveImageSegmentsForSend", () => {
   beforeEach(() => {

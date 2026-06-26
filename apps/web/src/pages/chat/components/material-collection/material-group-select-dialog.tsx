@@ -1,10 +1,14 @@
 import { useEffect, useRef, useState } from "react";
+import { Add01Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import {
   MATERIAL_COLLECTION_BIZ_TYPE,
   validateMaterialCollectionSubmitFields,
   type WorkbenchMaterialCollectionGroupCreateRequest,
 } from "@chatai/contracts";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import {
   Dialog,
   DialogContent,
@@ -18,6 +22,7 @@ import {
   Select,
   SelectContent,
   SelectItem,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -153,7 +158,7 @@ export function MaterialGroupSelectDialog({
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>{getCollectTitle(bizType)}</DialogTitle>
           <DialogDescription className="sr-only">
@@ -161,7 +166,7 @@ export function MaterialGroupSelectDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="min-h-[13rem] space-y-4">
           {hasContentFields ? (
             <MaterialContentFormFields
               bizType={bizType}
@@ -178,6 +183,14 @@ export function MaterialGroupSelectDialog({
             <p className="text-sm text-destructive" role="alert">
               {formError ?? formValidationError}
             </p>
+          ) : null}
+
+          {bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO ? (
+            <Alert className="border-warning/30 bg-warning-muted text-warning">
+              <AlertDescription className="text-warning">
+                受接口能力限制， 仅支持收录由该企微账号直接发送的视频，原视频大小需在30MB以内，以保障发送成功率。
+              </AlertDescription>
+            </Alert>
           ) : null}
 
           <div className="space-y-2">
@@ -208,11 +221,32 @@ export function MaterialGroupSelectDialog({
                   </SelectItem>
                 ))}
                 {canCreateGroup ? (
-                  <SelectItem value={CREATE_GROUP_VALUE}>新建分组</SelectItem>
+                  <>
+                    <SelectSeparator />
+                    <SelectItem
+                      className="mt-1 font-medium text-primary focus:bg-primary/10 focus:text-primary"
+                      value={CREATE_GROUP_VALUE}
+                    >
+                      <span className="inline-flex items-center gap-2">
+                        <HugeiconsIcon
+                          icon={Add01Icon}
+                          size={14}
+                          strokeWidth={1.9}
+                        />
+                        新建分组
+                      </span>
+                    </SelectItem>
+                  </>
                 ) : null}
               </SelectContent>
             </Select>
           </div>
+
+          {bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO && isSaving ? (
+            <p className="text-sm text-muted-foreground" role="status">
+              正在收录视频，请耐心等待
+            </p>
+          ) : null}
         </div>
 
         <DialogFooter>
@@ -224,7 +258,13 @@ export function MaterialGroupSelectDialog({
           >
             取消
           </Button>
-          <Button disabled={!canSubmit} onClick={handleSubmit} type="button">
+          <Button
+            aria-busy={isSaving ? "true" : undefined}
+            disabled={!canSubmit}
+            onClick={handleSubmit}
+            type="button"
+          >
+            {isSaving ? <Spinner className="mr-2" size={14} /> : null}
             收录
           </Button>
         </DialogFooter>
@@ -255,6 +295,14 @@ function getCollectTitle(
 
   if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED) {
     return "收录视频号";
+  }
+
+  if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO) {
+    return "收录视频";
+  }
+
+  if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.IMAGE) {
+    return "收录图片";
   }
 
   return "收录链接";

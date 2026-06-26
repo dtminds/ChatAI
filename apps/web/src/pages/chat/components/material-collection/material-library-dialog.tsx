@@ -36,6 +36,7 @@ import {
 import { cn } from "@/lib/utils";
 import { MaterialCardGrid } from "@/pages/chat/components/material-collection/material-card-grid";
 import { MaterialFileTable } from "@/pages/chat/components/material-collection/material-file-table";
+import { MaterialImageGrid } from "@/pages/chat/components/material-collection/material-image-grid";
 import { MaterialGroupFormDialog } from "@/pages/chat/components/material-collection/material-group-form-dialog";
 import type {
   MaterialCollectionGroup,
@@ -112,6 +113,7 @@ export function MaterialLibraryDialog({
   const libraryTitle = getBizTypeLabel(bizType);
   const isGroupLimitReached = isMaterialCollectionGroupLimitReached(groups.length);
   const isFileLibrary = bizType === MATERIAL_COLLECTION_BIZ_TYPE.FILE;
+  const isImageLibrary = bizType === MATERIAL_COLLECTION_BIZ_TYPE.IMAGE;
 
   function handleSubmitGroupTitle(title: string) {
     if (groupDialogState?.mode === "edit") {
@@ -247,6 +249,21 @@ export function MaterialLibraryDialog({
                   onMove={onMoveMaterial}
                   onSelect={onSelectMaterial}
                   onTop={onTopMaterial}
+                />
+              ) : isImageLibrary ? (
+                <MaterialImageGrid
+                  groups={groups}
+                  hasMoreItems={hasMoreItems}
+                  isBusy={isBusy}
+                  isLoadingMoreItems={isLoadingMoreItems}
+                  isSending={isSending}
+                  items={items}
+                  onCancel={() => onOpenChange(false)}
+                  onDeleteMaterial={onDeleteMaterial}
+                  onLoadMoreItems={onLoadMoreItems}
+                  onMoveMaterial={onMoveMaterial}
+                  onSendMaterial={onSelectMaterial}
+                  onTopMaterial={onTopMaterial}
                 />
               ) : (
                 <MaterialCardGrid
@@ -417,6 +434,14 @@ function getBizTypeLabel(
     return "收录的视频号";
   }
 
+  if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO) {
+    return "收录的视频";
+  }
+
+  if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.IMAGE) {
+    return "收录的图片";
+  }
+
   return "收录的H5";
 }
 
@@ -425,7 +450,8 @@ function getLibraryDialogStyle(
 ) {
   if (
     bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM ||
-    bizType === MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED
+    bizType === MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED ||
+    bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO
   ) {
     return {
       maxWidth: "calc(100vw - 2rem)",

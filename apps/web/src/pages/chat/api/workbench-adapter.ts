@@ -38,7 +38,9 @@ export function adaptAccount(dto: WorkbenchSeatDto, unreadCount = dto.unreadCoun
   return {
     aiHostingEnabled: dto.aiHostingEnabled,
     avatarUrl: dto.avatar,
+    bizStatus: dto.bizStatus,
     description: dto.description,
+    expireTime: dto.expireTime,
     id: dto.seatId,
     lastMessageTime: dto.lastMessageTime,
     loginStatus: dto.loginStatus,
@@ -104,6 +106,7 @@ export function adaptMessage(
   me?: EmployeeProfile,
 ): Message {
   const sentAt = formatWorkbenchTimestamp(dto.createdAt);
+  const updatedAtMs = normalizeOptionalTimestamp(dto.updatedAt);
   const status = adaptMessageStatus(dto.status);
   const isGroupConversation = Boolean(dto.thirdGroupId);
   const uiMessageKey = getMessageUiKey(dto);
@@ -127,6 +130,7 @@ export function adaptMessage(
       seq: dto.seq,
       status,
       author: "系统",
+      updatedAtMs,
       uiMessageKey,
     };
   }
@@ -148,6 +152,7 @@ export function adaptMessage(
       seq: dto.seq,
       status,
       author: "系统",
+      updatedAtMs,
       uiMessageKey,
     };
   }
@@ -209,6 +214,7 @@ export function adaptMessage(
     sentAt,
     seq: dto.seq,
     status,
+    updatedAtMs,
     uiMessageKey,
   };
 }
@@ -305,7 +311,7 @@ function adaptChatMessageContent(
         imageUrl:
           contentType === "emotion"
             ? String(content.fileUrl ?? "")
-            : String(content.imageUrl ?? ""),
+            : String(content.fileUrl ?? ""),
         type: "image",
         variant: contentType,
         width: asOptionalNumber(content.width),

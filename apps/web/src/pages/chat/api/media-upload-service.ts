@@ -191,7 +191,7 @@ function createUploadAbortError() {
   return new DOMException("文件上传已取消", "AbortError");
 }
 
-function isLocalImageSegment(segment: ComposerSegment) {
+export function isLocalImageSegment(segment: ComposerSegment) {
   if (segment.type !== "image" || !segment.localUrl) {
     return false;
   }

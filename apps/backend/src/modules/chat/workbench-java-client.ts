@@ -41,6 +41,7 @@ import {
 } from "../../shared/logger.js";
 
 const DEFAULT_JAVA_INTERNAL_API_TIMEOUT_MS = 8000;
+const DEFAULT_JAVA_INTERNAL_API_TRANS_MSG_FILE_TIMEOUT_MS = 120000;
 const DEFAULT_JAVA_INTERNAL_API_STREAM_IDLE_TIMEOUT_MS = 60000;
 export const JAVA_INTERNAL_API_USER_MESSAGE = "服务繁忙，请稍后重试";
 export const WORKBENCH_INTERNAL_API_NOT_CONFIGURED_CODE =
@@ -114,6 +115,10 @@ export type JavaSendMessageData =
     }
   | {
       msgtype: "sphfeed";
+      transMsgInfoId: number;
+    }
+  | {
+      msgtype: "video";
       transMsgInfoId: number;
     }
   | ({
@@ -244,6 +249,11 @@ export type WorkbenchJavaClient = {
     platform: number;
     uid: number;
   }): Promise<void>;
+  transMsgFile(input: {
+    msgInfoId: number;
+    platform: number;
+    uid: number;
+  }): Promise<string>;
   getUploadCredential(input: {
     type?: string;
     uid: number;
@@ -590,6 +600,17 @@ export function createWorkbenchJavaClient(
         "download-message-file",
       ).then(() => undefined);
     },
+    transMsgFile(input) {
+      return postJavaEnvelope<string>(
+        baseUrl,
+        token,
+        "/third-internal/wap-embed/conversation/trans-msg-file",
+        input,
+        logger,
+        "transfer-message-file",
+        { timeoutMs: readJavaApiTransMsgFileTimeoutMs() },
+      );
+    },
     getUploadCredential(input) {
       return postJavaEnvelope<WorkbenchUploadCredentialResponse>(
         baseUrl,
@@ -741,6 +762,7 @@ async function postJava<T>(
   body: unknown,
   logger: AppLogger,
   operation: string,
+  options: { timeoutMs?: number } = {},
 ): Promise<T> {
   if (!baseUrl) {
     logger.error(
@@ -757,7 +779,10 @@ async function postJava<T>(
   }
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), readJavaApiTimeoutMs());
+  const timeoutId = setTimeout(
+    () => controller.abort(),
+    options.timeoutMs ?? readJavaApiTimeoutMs(),
+  );
   let response: Response;
   const requestId = getLoggerRequestId(logger);
 
@@ -975,6 +1000,7 @@ async function postJavaEnvelope<T>(
   body: unknown,
   logger: AppLogger,
   operation: string,
+  options: { timeoutMs?: number } = {},
 ): Promise<T> {
   const response = await postJava<JavaApiResponse<T>>(
     baseUrl,
@@ -983,6 +1009,7 @@ async function postJavaEnvelope<T>(
     body,
     logger,
     operation,
+    options,
   );
 
   if (!isJavaEnvelopeSuccessful(response)) {
@@ -1135,6 +1162,17 @@ function readJavaApiTimeoutMs() {
   return Number.isSafeInteger(value) && value > 0
     ? value
     : DEFAULT_JAVA_INTERNAL_API_TIMEOUT_MS;
+}
+
+function readJavaApiTransMsgFileTimeoutMs() {
+  const value = Number.parseInt(
+    process.env.JAVA_INTERNAL_API_TRANS_MSG_FILE_TIMEOUT_MS ?? "",
+    10,
+  );
+
+  return Number.isSafeInteger(value) && value > 0
+    ? value
+    : DEFAULT_JAVA_INTERNAL_API_TRANS_MSG_FILE_TIMEOUT_MS;
 }
 
 function readJavaApiStreamIdleTimeoutMs() {

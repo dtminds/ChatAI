@@ -115,10 +115,15 @@ import {
   type WorkbenchQuickReplyUpdateRequest,
   buildMaterialFileContentJson,
   buildMaterialH5ContentJson,
+  buildMaterialImageContentJson,
+  buildMaterialVideoContentJson,
+  isOwnVideoMaterialUrl,
   patchMaterialFileContentJson,
   patchMaterialH5ContentJson,
   resolveMaterialFileCollectFields,
   resolveMaterialH5CollectFields,
+  resolveMaterialImageCollectFields,
+  resolveMaterialVideoCollectFields,
   isQuickReplyLabelColor,
   normalizeQuickReplyAttachments,
   validateQuickReplyPayload,
@@ -130,6 +135,8 @@ import type {
   VideoMessageContent,
 } from "@/pages/chat/chat-types";
 
+const VIDEO_MATERIAL_COLLECT_TIMEOUT_MS = 130000;
+
 export type WorkbenchConversationListOptions = {
   cursor?: string;
   limit?: number;
@@ -138,6 +145,13 @@ export type WorkbenchConversationListOptions = {
 
 export type WorkbenchService = {
   __mock?: {
+    appendMessage: (
+      conversationId: string,
+      message: Omit<WorkbenchMessageDto, "conversationId" | "seq"> & {
+        conversationId?: string;
+        seq?: number;
+      },
+    ) => Promise<WorkbenchMessageDto>;
     revokeMessage: (conversationId: string, messageSeq: number) => Promise<void>;
   };
   deleteConversation: (conversationId: string) => Promise<WorkbenchConversationDeleteResponse>;
@@ -425,6 +439,22 @@ export function createMockWorkbenchService(): WorkbenchService {
 
   return {
     __mock: {
+      async appendMessage(conversationId, message) {
+        const messages = state.messagesByConversationId[conversationId] ?? [];
+        const nextMessage = {
+          ...message,
+          conversationId,
+          seq: message.seq ?? getNextMessageSeq(state, conversationId),
+        } satisfies WorkbenchMessageDto;
+
+        state.messagesByConversationId[conversationId] = [
+          ...messages,
+          nextMessage,
+        ];
+        pushMessageEvent(state, nextMessage);
+
+        return clone(nextMessage);
+      },
       async revokeMessage(conversationId, messageSeq) {
         revokeMessage(state, conversationId, messageSeq);
       },
@@ -533,6 +563,16 @@ export function createMockWorkbenchService(): WorkbenchService {
         return {
           success: true,
           duplicated: true,
+        };
+      }
+
+      if (
+        request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO &&
+        sourceMessage?.senderType !== "agent"
+      ) {
+        return {
+          success: false,
+          errorMsg: "只能收录席位号发送的视频",
         };
       }
 
@@ -1957,7 +1997,11 @@ export function createHttpWorkbenchService(): WorkbenchService {
       return http.post<
         WorkbenchMaterialCollectionCreateResponse,
         WorkbenchMaterialCollectionCreateRequest
-      >("/server/material-collections", request);
+      >("/server/material-collections", request, {
+        ...(request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO
+          ? { timeout: VIDEO_MATERIAL_COLLECT_TIMEOUT_MS }
+          : {}),
+      });
     },
     deleteMaterialCollection(collectionId) {
       return http.delete<WorkbenchMaterialCollectionOkResponse>(
@@ -2686,6 +2730,18 @@ function buildInitialState(): MockState {
         sort: 200,
         title: "常用视频号",
       },
+      {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.IMAGE,
+        id: "mock-material-group-image",
+        sort: 200,
+        title: "常用图片",
+      },
+      {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.VIDEO,
+        id: "mock-material-group-video",
+        sort: 200,
+        title: "常用视频",
+      },
     ],
     materialItems: buildInitialMaterialItems(messagesByConversationId),
     messagesByConversationId,
@@ -2708,12 +2764,19 @@ function buildInitialMaterialItems(
         return [];
       }
 
+      if (
+        bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO &&
+        !canMockCollectVideoMessage(message)
+      ) {
+        return [];
+      }
+
       const groupId = getMockMaterialGroupId(bizType);
 
       return [
         {
           bizType,
-          content: getMaterialContentRecord(message),
+          content: getMockMaterialSourceContentRecord(message, bizType),
           contentType: getMaterialContentType(bizType),
           groupId,
           id: `mock-material-${message.msgid}`,
@@ -2779,7 +2842,7 @@ function buildMaterialItemFromMessage(
 
   return {
     bizType,
-    content: getMaterialContentRecord(message),
+    content: getMockMaterialSourceContentRecord(message, bizType),
     contentType,
     groupId,
     id: `mock-material-${state.nextId++}`,
@@ -2828,6 +2891,10 @@ function getMaterialBizTypeForContentType(
   switch (contentType) {
     case "emotion":
       return MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION;
+    case "image":
+      return MATERIAL_COLLECTION_BIZ_TYPE.IMAGE;
+    case "video":
+      return MATERIAL_COLLECTION_BIZ_TYPE.VIDEO;
     case "file":
       return MATERIAL_COLLECTION_BIZ_TYPE.FILE;
     case "mini-program":
@@ -2847,6 +2914,10 @@ function getMaterialContentType(
   switch (bizType) {
     case MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION:
       return "emotion";
+    case MATERIAL_COLLECTION_BIZ_TYPE.IMAGE:
+      return "image";
+    case MATERIAL_COLLECTION_BIZ_TYPE.VIDEO:
+      return "video";
     case MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM:
       return "mini-program";
     case MATERIAL_COLLECTION_BIZ_TYPE.H5:
@@ -2868,6 +2939,10 @@ function getMockMaterialGroupId(bizType: MaterialCollectionBizType): string | 0 
       return "mock-material-group-h5";
     case MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED:
       return "mock-material-group-sphfeed";
+    case MATERIAL_COLLECTION_BIZ_TYPE.IMAGE:
+      return "mock-material-group-image";
+    case MATERIAL_COLLECTION_BIZ_TYPE.VIDEO:
+      return "mock-material-group-video";
     case MATERIAL_COLLECTION_BIZ_TYPE.EXPRESSION:
       return 0;
   }
@@ -2881,13 +2956,49 @@ function getMaterialContentRecordFromItem(item: WorkbenchMaterialCollectionItemD
   return isRecord(item.content) ? item.content : {};
 }
 
+function getMockMaterialSourceContentRecord(
+  message: WorkbenchMessageDto,
+  bizType: MaterialCollectionBizType,
+) {
+  const content = getMaterialContentRecord(message);
+
+  if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO) {
+    const { coverImageUrl, videoUrl, ...restContent } = content;
+
+    return {
+      ...restContent,
+      coverUrl: readString(coverImageUrl),
+      fileUrl: readString(videoUrl),
+    };
+  }
+
+  return content;
+}
+
+function canMockCollectVideoMessage(message: WorkbenchMessageDto) {
+  if (message.contentType !== "video") {
+    return false;
+  }
+
+  const content = getMaterialContentRecord(message);
+
+  return (
+    message.senderType === "agent" &&
+    readString(content.downloadStatus) === "finished" &&
+    readString(content.coverImageUrl).length > 0 &&
+    readString(content.videoUrl).length > 0
+  );
+}
+
 function resolveMockMaterialCollect(
   message: WorkbenchMessageDto | undefined,
   request: WorkbenchMaterialCollectionCreateRequest,
 ):
   | { content: WorkbenchMaterialCollectionItemDto["content"]; title: string }
   | { errorMsg: string } {
-  const rawContent = message ? JSON.stringify(getMaterialContentRecord(message)) : "{}";
+  const rawContent = message
+    ? JSON.stringify(getMockMaterialSourceContentRecord(message, request.bizType))
+    : "{}";
 
   if (request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.FILE) {
     const resolved = resolveMaterialFileCollectFields(rawContent, {
@@ -2924,6 +3035,57 @@ function resolveMockMaterialCollect(
     };
   }
 
+  if (request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.IMAGE) {
+    const resolved = resolveMaterialImageCollectFields(rawContent);
+
+    if ("errorMsg" in resolved) {
+      return resolved;
+    }
+
+    return {
+      content: JSON.parse(
+        buildMaterialImageContentJson(rawContent, resolved),
+      ) as WorkbenchMaterialCollectionItemDto["content"],
+      title: "图片",
+    };
+  }
+
+  if (request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO) {
+    const contentRecord = message
+      ? getMockMaterialSourceContentRecord(message, request.bizType)
+      : {};
+    let rawContentForCollection = rawContent;
+    let resolvedForCollection = resolveMaterialVideoCollectFields(rawContent);
+
+    if (readString(contentRecord.downloadStatus) !== "finished") {
+      return { errorMsg: "视频下载未完成，无法收录" };
+    }
+
+    const rawFileUrl = readString(contentRecord.fileUrl);
+
+    if (rawFileUrl && !isOwnVideoMaterialUrl(rawFileUrl)) {
+      const expireTime = readNumber(contentRecord.fileUrlExpireTime);
+
+      if (expireTime === undefined || Date.now() > expireTime) {
+        return { errorMsg: "视频下载地址已过期，无法收录" };
+      }
+
+      rawContentForCollection = buildMockTransferredVideoContent(rawContent);
+      resolvedForCollection = resolveMaterialVideoCollectFields(rawContentForCollection);
+    }
+
+    if ("errorMsg" in resolvedForCollection) {
+      return resolvedForCollection;
+    }
+
+    return {
+      content: JSON.parse(
+        buildMaterialVideoContentJson(rawContentForCollection, resolvedForCollection),
+      ) as WorkbenchMaterialCollectionItemDto["content"],
+      title: "视频",
+    };
+  }
+
   return {
     content: message ? getMaterialContentRecord(message) : {},
     title: message ? getMaterialTitle(message) : request.msgInfoId,
@@ -2935,6 +3097,14 @@ function getMaterialTitle(message: WorkbenchMessageDto) {
 
   if (message.contentType === "emotion") {
     return "表情";
+  }
+
+  if (message.contentType === "image") {
+    return "图片";
+  }
+
+  if (message.contentType === "video") {
+    return "视频";
   }
 
   return (
@@ -2956,8 +3126,27 @@ function readString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function readNumber(value: unknown) {
+  const numericValue = typeof value === "number" ? value : Number(value);
+
+  return Number.isFinite(numericValue) ? numericValue : undefined;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function buildMockTransferredVideoContent(rawContent: string) {
+  const resolved = resolveMaterialVideoCollectFields(rawContent);
+
+  if ("errorMsg" in resolved) {
+    return rawContent;
+  }
+
+  return buildMaterialVideoContentJson(rawContent, {
+    coverUrl: resolved.coverUrl,
+    fileUrl: "s5/msg/mock/transferred-video.mp4",
+  });
 }
 
 function buildContent(message: Message) {
@@ -2982,9 +3171,9 @@ function buildContent(message: Message) {
       return {
         alt: message.content.alt,
         downloadStatus: message.content.downloadStatus,
+        fileUrl: message.content.imageUrl,
         fileSerialNo: message.content.fileSerialNo,
         height: message.content.height,
-        imageUrl: message.content.imageUrl,
         width: message.content.width,
       };
     case "video":
@@ -3238,11 +3427,7 @@ function pushAccountEvent(state: MockState, seatId: string) {
 
   state.version = Math.max(state.version + 1, Date.now());
   state.events.push({
-    payload: {
-      seatId,
-      lastMessageTime: seat.lastMessageTime,
-      unreadCount: seat.unreadCount,
-    },
+    payload: clone(seat),
     type: "seat",
     version: state.version,
   });
@@ -3407,10 +3592,14 @@ function buildPayloadSegmentContent(
   }
 
   if (segment.type === "image") {
+    const materialContent = segment.materialCollectionId
+      ? getMockMaterialContentRecord(state, segment.materialCollectionId)
+      : {};
+
     return {
       alt: segment.alt,
+      fileUrl: readString(materialContent.fileUrl) || segment.url || segment.localUrl || "",
       height: segment.height,
-      imageUrl: segment.url ?? segment.localUrl ?? "",
       width: segment.width,
     };
   }
@@ -3493,6 +3682,19 @@ function buildPayloadSegmentContent(
       sourceLabel: readString(materialContent.sourceLabel) || segment.sourceLabel || "视频号",
       title: readString(materialContent.title) || segment.title || "视频号",
       url: readString(materialContent.url) || segment.url,
+    };
+  }
+
+  if (segment.type === "video") {
+    const materialContent = segment.materialCollectionId
+      ? getMockMaterialContentRecord(state, segment.materialCollectionId)
+      : {};
+
+    return {
+      alt: "视频",
+      coverImageUrl: readString(materialContent.coverUrl) || segment.coverUrl,
+      durationLabel: "",
+      videoUrl: readString(materialContent.fileUrl) || segment.url,
     };
   }
 

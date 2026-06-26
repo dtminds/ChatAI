@@ -17,6 +17,8 @@ describe("workbench MySQL mappers", () => {
       mapSeatRow({
         ai_hosting_enabled: 1,
         avatar: "https://example.com/avatar.png",
+        biz_status: 0,
+        expire_time: 1778240000,
         host_sub_id: 3,
         id: 12,
         is_online: 1,
@@ -28,7 +30,9 @@ describe("workbench MySQL mappers", () => {
     ).toEqual({
       aiHostingEnabled: true,
       avatar: "https://example.com/avatar.png",
+      bizStatus: 0,
       description: "",
+      expireTime: 1778240000,
       hostSubUserId: "3",
       lastMessageTime: 1778240000000,
       loginStatus: "online",
@@ -738,7 +742,7 @@ describe("workbench MySQL mappers", () => {
         alt: "图片",
         downloadStatus: "ing",
         fileSerialNo: "serial-image-001",
-        imageUrl: "",
+        fileUrl: "",
       },
       contentType: "image",
     });
@@ -1145,6 +1149,16 @@ describe("workbench MySQL mappers", () => {
     });
   });
 
+  it("maps message update time for media download timeout decisions", () => {
+    expect(
+      mapMessageRow(messageRow({
+        update_time: "2026-05-09T08:37:00.000Z",
+      })),
+    ).toMatchObject({
+      updatedAt: 1778315820000,
+    });
+  });
+
   it("does not coerce messages without a valid sent time to epoch", () => {
     expect(
       mapMessageRow(messageRow({
@@ -1180,7 +1194,7 @@ describe("workbench MySQL mappers", () => {
     ).toMatchObject({
       content: {
         alt: "图片",
-        imageUrl: "https://cdn.example.com/a.jpg",
+        fileUrl: "https://cdn.example.com/a.jpg",
       },
       contentType: "image",
     });
@@ -1192,7 +1206,7 @@ describe("workbench MySQL mappers", () => {
       })).content,
     ).toEqual({
       alt: "图片",
-      imageUrl: "https://b5.bokr.com.cn/media/20260508/272/a.jpg",
+      fileUrl: "https://b5.bokr.com.cn/media/20260508/272/a.jpg",
     });
 
     expect(

@@ -4,7 +4,7 @@
  * `mid` 与 rd/fsw/ts 同源，由服务端签发。仅用于 URL 脱敏与既有嵌入页协议，不是对嵌入页的身份防伪边界。
  * `tos`：`0` 当前坐席未接管该账号，`1` 已接管；`qd`：群会话时的三方群 ID（明文，兼容旧嵌入页）。
  * 群聊时 `thirdGroupId` / `thirdGroupName` 为服务端签发的 AES 密文，语义对齐 `fsw`。
- * `sendStatus`：`0` 可发送，`1` 未接管，`2` 离线，`3` 会话已失效，`4` 只读客服。
+ * `sendStatus`：`0` 可发送，`1` 未接管，`2` 离线，`3` 会话或席位已失效，`4` 只读客服。
  */
 
 export type SidebarIframeSendStatus = "0" | "1" | "2" | "3" | "4";
@@ -32,6 +32,7 @@ export type SidebarIframeUrlContext = {
 
 export function resolveSidebarIframeSendStatus(input: {
   hasActiveConversation: boolean;
+  isAccountSeatExpired?: boolean;
   isAccountOffline: boolean;
   isAccountTakenOver: boolean;
   isConversationBizInactive: boolean;
@@ -43,6 +44,10 @@ export function resolveSidebarIframeSendStatus(input: {
 
   if (!input.hasActiveConversation) {
     return "1";
+  }
+
+  if (input.isAccountSeatExpired) {
+    return "3";
   }
 
   if (input.isAccountOffline) {

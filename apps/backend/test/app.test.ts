@@ -1223,6 +1223,151 @@ describe("backend app", () => {
     await app.close();
   });
 
+  it("material: accepts image material group business type", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+
+    const groupsResponse = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/material-collections/groups?biz_type=6",
+    });
+
+    expect(groupsResponse.statusCode).toBe(200);
+    expect(groupsResponse.json()).toMatchObject({
+      groups: expect.any(Array),
+    });
+
+    await app.close();
+  });
+
+  it("material: accepts video material group business type", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+
+    const groupsResponse = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/material-collections/groups?biz_type=7",
+    });
+
+    expect(groupsResponse.statusCode).toBe(200);
+    expect(groupsResponse.json()).toMatchObject({
+      groups: [
+        {
+          bizType: 7,
+          id: "material-group-video-1",
+          title: "视频分组",
+        },
+      ],
+    });
+
+    await app.close();
+  });
+
+  it("material: collects finished agent video messages through public routes", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        bizType: 7,
+        groupId: "material-group-video-1",
+        msgInfoId: "1001",
+      },
+      url: "/api/server/material-collections",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      success: true,
+    });
+
+    const listResponse = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/material-collections/materials?biz_type=7&group_id=material-group-video-1&page=1&page_size=100",
+    });
+
+    expect(listResponse.statusCode).toBe(200);
+    expect(listResponse.json().items[0]).toMatchObject({
+      bizType: 7,
+      content: {
+        coverUrl: "s5/msg/20260514/272/agent-video-cover.jpg",
+        downloadStatus: "finished",
+        fileUrl: "s5/msg/20260514/272/agent-demo.mp4",
+      },
+      contentType: "video",
+      groupId: "material-group-video-1",
+      msgInfoId: "1001",
+      title: "视频",
+    });
+
+    await app.close();
+  });
+
+  it("material: rejects customer video collection through public routes", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        bizType: 7,
+        groupId: "material-group-video-1",
+        msgInfoId: "1002",
+      },
+      url: "/api/server/material-collections",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      success: false,
+      errorMsg: "只能收录席位号发送的视频",
+    });
+
+    await app.close();
+  });
+
+  it("material: rejects unavailable video content through public routes", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+
+    const downloadingResponse = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        bizType: 7,
+        groupId: "material-group-video-1",
+        msgInfoId: "1003",
+      },
+      url: "/api/server/material-collections",
+    });
+
+    expect(downloadingResponse.statusCode).toBe(200);
+    expect(downloadingResponse.json()).toEqual({
+      success: false,
+      errorMsg: "视频下载未完成，无法收录",
+    });
+
+    const missingCoverResponse = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        bizType: 7,
+        groupId: "material-group-video-1",
+        msgInfoId: "1004",
+      },
+      url: "/api/server/material-collections",
+    });
+
+    expect(missingCoverResponse.statusCode).toBe(200);
+    expect(missingCoverResponse.json()).toEqual({
+      success: false,
+      errorMsg: "视频缺少封面，无法收录",
+    });
+
+    await app.close();
+  });
+
   it("material: rejects enterprise collection page without group id", async () => {
     const { app, authorization } = await createAuthenticatedApp();
 
@@ -2591,6 +2736,91 @@ describe("backend app", () => {
     await app.close();
   });
 
+  it("accepts collected image material sends and reports the material image through polling", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+
+    const send = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        conversationId: "conv-001",
+        seatId: "drc",
+        segment: {
+          materialCollectionId: "material-item-image-1",
+          type: "image",
+        },
+      },
+      url: "/api/server/messages/send",
+    });
+    const poll = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/poll?since_version=1284&current_seat_id=drc&active_conversation_id=conv-001&active_message_seq=0",
+    });
+
+    expect(send.statusCode).toBe(200);
+    const sendBody = send.json<{ optNo: string; status: string }>();
+    const sentMessage = poll
+      .json<{
+        activeConversationMessages: Array<{
+          content?: unknown;
+          contentType?: string;
+          optNo?: string;
+        }>;
+      }>()
+      .activeConversationMessages.find((message) => message.optNo === sendBody.optNo);
+
+    expect(sentMessage?.contentType).toBe("image");
+    expect(sentMessage?.content).toMatchObject({
+      fileUrl: "https://example.com/materials/product.png",
+    });
+
+    await app.close();
+  });
+
+  it("accepts collected video material sends and reports the forwarded video through polling", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+
+    const send = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        conversationId: "conv-001",
+        seatId: "drc",
+        segment: {
+          materialCollectionId: "material-item-video-1",
+          type: "video",
+        },
+      },
+      url: "/api/server/messages/send",
+    });
+    const poll = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/poll?since_version=1284&current_seat_id=drc&active_conversation_id=conv-001&active_message_seq=0",
+    });
+
+    expect(send.statusCode).toBe(200);
+    const sendBody = send.json<{ optNo: string; status: string }>();
+    const sentMessage = poll
+      .json<{
+        activeConversationMessages: Array<{
+          content?: unknown;
+          contentType?: string;
+          optNo?: string;
+        }>;
+      }>()
+      .activeConversationMessages.find((message) => message.optNo === sendBody.optNo);
+
+    expect(sentMessage?.contentType).toBe("video");
+    expect(sentMessage?.content).toMatchObject({
+      coverImageUrl: "https://example.com/materials/video-cover.jpg",
+      videoUrl: "https://example.com/materials/demo.mp4",
+    });
+
+    await app.close();
+  });
+
   it("rejects oversized message query-by-seqs batches", async () => {
     const { app, authorization } = await createAuthenticatedApp();
 
@@ -2770,7 +3000,7 @@ describe("backend app", () => {
       {
         content: {
           alt: "截图",
-          imageUrl: "data:image/png;base64,abc",
+          fileUrl: "data:image/png;base64,abc",
         },
         contentType: "image",
         optNo: segmentAckMessages[1]?.optNo,

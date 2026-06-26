@@ -120,7 +120,8 @@ function isCardLibraryBizType(
 ) {
   return (
     bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM ||
-    bizType === MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED
+    bizType === MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED ||
+    bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO
   );
 }
 

@@ -68,9 +68,15 @@ describe("material collection components", () => {
       />,
     );
 
-    expect(screen.getByRole("dialog", { name: "收录文件" })).toBeInTheDocument();
+    const dialog = screen.getByRole("dialog", { name: "收录文件" });
+    expect(dialog).toBeInTheDocument();
+    expect(dialog).toHaveClass("max-w-lg");
+    expect(dialog.querySelector(".min-h-\\[13rem\\]")).toBeInTheDocument();
     expect(screen.queryByText("默认分组不会新建分组记录")).not.toBeInTheDocument();
     expect(screen.queryByText("默认分组")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/仅支持收录由该企微账号直接发送的视频/),
+    ).not.toBeInTheDocument();
     expect(screen.queryByRole("radio")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "收录" })).toBeDisabled();
 
@@ -107,7 +113,9 @@ describe("material collection components", () => {
     expect(screen.getByRole("button", { name: "收录" })).toBeDisabled();
 
     await user.click(screen.getByRole("combobox", { name: "选择分组" }));
-    await user.click(await screen.findByRole("option", { name: "新建分组" }));
+    const createGroupOption = await screen.findByRole("option", { name: "新建分组" });
+    expect(createGroupOption).toHaveClass("mt-1", "text-primary");
+    await user.click(createGroupOption);
     expect(screen.getByRole("dialog", { name: "新建分组" })).toBeInTheDocument();
     await user.type(screen.getByRole("textbox", { name: "分组名称" }), "售后文件");
     await user.click(screen.getByRole("button", { name: "新建" }));
@@ -119,6 +127,37 @@ describe("material collection components", () => {
       fileName: "售后文件.pdf",
       groupId: "group-new",
     });
+  });
+
+  it("shows a separate waiting message while collecting video", () => {
+    render(
+      <MaterialGroupSelectDialog
+        bizType={MATERIAL_COLLECTION_BIZ_TYPE.VIDEO}
+        groups={[createGroup({ id: "group-video", title: "视频素材" })]}
+        isSaving
+        onCreateGroup={async () => undefined}
+        onOpenChange={() => undefined}
+        onSubmit={() => undefined}
+        open
+      />,
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "正在收录视频，请耐心等待",
+    );
+    expect(
+      screen.getByText(
+        "受接口能力限制， 仅支持收录由该企微账号直接发送的视频，原视频大小需在30MB以内，以保障发送成功率。",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveClass(
+      "border-warning/30",
+      "bg-warning-muted",
+    );
+    const collectButton = screen.getByRole("button", { name: "收录" });
+    expect(collectButton).toBeDisabled();
+    expect(collectButton).toHaveAttribute("aria-busy", "true");
+    expect(collectButton.querySelector('[data-slot="spinner"]')).toBeInTheDocument();
   });
 
   it("limits material group names to 10 characters", async () => {
@@ -817,6 +856,148 @@ describe("material collection components", () => {
       });
     expect(screen.getByRole("button", { name: "选择素材 都市快报" }).parentElement)
       .toHaveClass("w-[217px]");
+  });
+
+  it("renders image materials in a selectable gallery with a preview action", async () => {
+    const user = userEvent.setup();
+    const handleSelect = vi.fn();
+    const handleEdit = vi.fn();
+    const imageUrl = "https://b5.bokr.com.cn/product.png";
+    const item = createItem({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.IMAGE,
+      content: {
+        alt: "商品图",
+        fileUrl: imageUrl,
+      },
+      contentType: "image",
+      groupId: "group-image",
+      id: "image-1",
+      title: "图片",
+    });
+
+    render(
+      <MaterialLibraryDialog
+        activeGroupId="group-image"
+        bizType={MATERIAL_COLLECTION_BIZ_TYPE.IMAGE}
+        groups={[createGroup({ id: "group-image", title: "常用图片" })]}
+        items={[item]}
+        onCreateGroup={() => undefined}
+        onDeleteGroup={() => undefined}
+        onDeleteMaterial={() => undefined}
+        onEditMaterial={handleEdit}
+        onMoveMaterial={() => undefined}
+        onOpenChange={() => undefined}
+        onRenameGroup={() => undefined}
+        onSelectGroup={() => undefined}
+        onSelectMaterial={handleSelect}
+        onTopGroup={() => undefined}
+        onTopMaterial={() => undefined}
+        open
+      />,
+    );
+
+    expect(screen.getByRole("dialog", { name: "收录的图片" })).toBeInTheDocument();
+    const imageButton = screen.getByRole("button", { name: "选择图片 商品图" });
+    expect(screen.getByRole("img", { name: "商品图" })).toHaveAttribute(
+      "src",
+      `${imageUrl}!w480.webp`,
+    );
+
+    await user.click(imageButton);
+
+    expect(imageButton).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "发送" })).toBeEnabled();
+    expect(handleSelect).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "查看大图 商品图" }));
+
+    expect(screen.getByRole("dialog", { name: "图片预览" })).toBeInTheDocument();
+    expect(screen.getByTestId("image-preview-full")).toHaveAttribute(
+      "src",
+      `${imageUrl}!w1100.webp`,
+    );
+    expect(screen.getByRole("button", { name: "提取图片文字" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "上一张图片" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "下一张图片" })).not.toBeInTheDocument();
+    expect(imageButton).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByRole("menuitem", { name: "编辑" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "关闭图片预览" }));
+    await user.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(handleSelect).toHaveBeenCalledWith(item);
+    expect(handleEdit).not.toHaveBeenCalled();
+  });
+
+  it("renders video materials as selectable cover cards with a play action", async () => {
+    const user = userEvent.setup();
+    const handleSelect = vi.fn();
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+    const coverUrl = "https://b5.bokr.com.cn/video-cover.jpg";
+    const videoUrl = "s5/msg/20260514/272/video.mp4";
+    const item = createItem({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.VIDEO,
+      content: {
+        coverUrl,
+        fileUrl: videoUrl,
+      },
+      contentType: "video",
+      groupId: "group-video",
+      id: "video-1",
+      title: "视频",
+    });
+
+    render(
+      <MaterialLibraryDialog
+        activeGroupId="group-video"
+        bizType={MATERIAL_COLLECTION_BIZ_TYPE.VIDEO}
+        groups={[createGroup({ id: "group-video", title: "常用视频" })]}
+        items={[item]}
+        onCreateGroup={() => undefined}
+        onDeleteGroup={() => undefined}
+        onDeleteMaterial={() => undefined}
+        onEditMaterial={() => undefined}
+        onMoveMaterial={() => undefined}
+        onOpenChange={() => undefined}
+        onRenameGroup={() => undefined}
+        onSelectGroup={() => undefined}
+        onSelectMaterial={handleSelect}
+        onTopGroup={() => undefined}
+        onTopMaterial={() => undefined}
+        open
+      />,
+    );
+
+    expect(screen.getByRole("dialog", { name: "收录的视频" })).toBeInTheDocument();
+    const videoButton = screen.getByRole("button", { name: "选择素材 视频" });
+    const videoCover = screen.getByRole("img", { name: "视频" });
+    expect(videoCover).toHaveAttribute(
+      "src",
+      `${coverUrl}!w480.webp`,
+    );
+    expect(videoCover.parentElement).toHaveStyle({
+      aspectRatio: "3 / 4",
+      height: "280px",
+      width: "210px",
+    });
+    expect(videoCover.parentElement).toHaveClass("bg-neutral-950");
+    expect(videoCover).toHaveClass("object-contain");
+    const playButton = screen.getByRole("button", { name: "播放视频：视频" });
+    expect(playButton).toHaveClass("bottom-2", "right-2");
+
+    await user.click(playButton);
+
+    expect(openSpy).toHaveBeenCalledWith(
+      "https://b5.bokr.com.cn/s5/msg/20260514/272/video.mp4",
+      "_blank",
+      "noopener,noreferrer",
+    );
+    expect(videoButton).not.toHaveAttribute("aria-pressed", "true");
+
+    await user.click(videoButton);
+    await user.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(handleSelect).toHaveBeenCalledWith(item);
   });
 
   it("renders collected expression section", async () => {

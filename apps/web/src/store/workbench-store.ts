@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import {
+  isLocalImageSegment,
   resolveImageSegmentsForSend,
 } from "@/pages/chat/api/media-upload-service";
 import { MEDIA_UPLOAD_SDK_LOAD_FAILED_CODE } from "@/pages/chat/api/media-upload-errors";
@@ -48,10 +49,12 @@ import {
 } from "@/pages/chat/lib/composer-segments";
 import { sortConversations } from "@/pages/chat/lib/conversation-order";
 import { parseWorkbenchDate } from "@/pages/chat/lib/chat-time";
+import { sortMessagesBySentAt } from "@/pages/chat/lib/message-order";
 import {
   buildConversationComposerDraft,
   type ConversationComposerDraft,
 } from "@/pages/chat/lib/conversation-composer-draft";
+import { normalizeMediaAssetUrl } from "@/pages/chat/lib/media-asset-url";
 import { isValidMessageSeq } from "@/pages/chat/lib/message-seq";
 import { notifyPulledCustomerMessage } from "@/pages/chat/lib/new-message-title-alert";
 import { canUseWorkbenchConversationActions } from "@/pages/chat/lib/workbench-permissions";
@@ -233,11 +236,10 @@ type WorkbenchState = {
   hasChatSendPermission: boolean;
   activeMessageSeq: number;
   pendingMessages: Message[];
-  revokeMessageError?: string;
   revokeMessage: (uiMessageKey: string) => Promise<RevokeMessageResult>;
-  clearRevokeMessageError: () => void;
   sidebarItems: SettingsSidebarItem[];
   clearActiveConversation: () => void;
+  resetWorkbenchSession: () => void;
   deleteConversation: (conversationId: string) => Promise<void>;
   dismissScopeTransitionError: () => void;
   dismissReadReceiptError: () => void;
@@ -328,6 +330,7 @@ type DownloadContentPatch = {
   downloadStatus?: "ing" | "finished" | "failed";
   fileUrlExpireTime?: number;
   fileUrl?: string;
+  updatedAtMs?: number;
 };
 
 type VoicePlaybackContentPatch = {
@@ -344,13 +347,14 @@ const defaultCustomerProfiles = seedCustomerProfiles;
 const MESSAGE_PAGE_SIZE = 50;
 const CONVERSATION_MODES = ["single", "group"] as const satisfies readonly ChatMode[];
 const GROUP_MEMBERS_CACHE_TTL_MS = 5 * 60 * 1000;
-const REVOKE_PENDING_TIMEOUT_MS = 5 * 1000;
+const REVOKE_PENDING_TIMEOUT_MS = 10 * 1000;
 export const MAX_CONVERSATION_LIST_CACHE_SEATS = 3;
 
 function createInitialState(): Omit<
   WorkbenchState,
   | "deleteConversation"
   | "clearActiveConversation"
+  | "resetWorkbenchSession"
   | "initializeWorkbench"
   | "markConversationRead"
   | "pinConversation"
@@ -367,7 +371,6 @@ function createInitialState(): Omit<
   | "unpinConversation"
   | "retryFailedMessage"
   | "revokeMessage"
-  | "clearRevokeMessageError"
   | "loadOlderMessages"
   | "openHistoryPanel"
   | "closeHistoryPanel"
@@ -429,7 +432,6 @@ function createInitialState(): Omit<
     smartReplyPendingMessageKeysByConversationId: {},
     smartReplyLastPolledAtByConversationId: {},
     pendingMessages: [],
-    revokeMessageError: undefined,
     pollState: {
       intervalMs: 2500,
       jitterMs: 350,
@@ -1573,6 +1575,9 @@ function patchDownloadMessage(
   if (message.content.type === "video") {
     return {
       ...message,
+      ...(contentPatch.updatedAtMs === undefined
+        ? {}
+        : { updatedAtMs: contentPatch.updatedAtMs }),
       content: {
         ...message.content,
         ...(contentPatch.downloadStatus === undefined
@@ -1591,6 +1596,9 @@ function patchDownloadMessage(
   if (message.content.type === "image") {
     return {
       ...message,
+      ...(contentPatch.updatedAtMs === undefined
+        ? {}
+        : { updatedAtMs: contentPatch.updatedAtMs }),
       content: {
         ...message.content,
         ...(contentPatch.downloadStatus === undefined
@@ -1605,6 +1613,9 @@ function patchDownloadMessage(
 
   return {
     ...message,
+    ...(contentPatch.updatedAtMs === undefined
+      ? {}
+      : { updatedAtMs: contentPatch.updatedAtMs }),
     content: {
       ...message.content,
       ...(contentPatch.downloadStatus === undefined
@@ -1742,16 +1753,7 @@ function matchesMessageKey(message: Message, key: string) {
 }
 
 function sortMessagesForAppend(messages: Message[]) {
-  return [...messages].sort((left, right) => {
-    const leftSeq = left.seq;
-    const rightSeq = right.seq;
-
-    if (leftSeq != null && rightSeq != null && leftSeq !== rightSeq) {
-      return leftSeq - rightSeq;
-    }
-
-    return parseWorkbenchTimestamp(left.sentAt) - parseWorkbenchTimestamp(right.sentAt);
-  });
+  return sortMessagesBySentAt(messages);
 }
 
 function isSameMessage(left: Message, right: Message) {
@@ -1771,7 +1773,11 @@ function isSameMessage(left: Message, right: Message) {
   );
 }
 
-function parseWorkbenchTimestamp(value: string) {
+function parseWorkbenchTimestamp(value: unknown) {
+  if (typeof value !== "string") {
+    return Number.NaN;
+  }
+
   return parseWorkbenchDate(value)?.getTime() ?? Number.NaN;
 }
 
@@ -1900,10 +1906,12 @@ function buildOptimisticMessageContent(
   }
 
   if (segment.type === "image") {
+    const imageUrl = segment.imageUrl ?? segment.url ?? segment.localUrl ?? "";
+
     return {
       alt: segment.alt,
       height: segment.height,
-      imageUrl: segment.url ?? segment.localUrl ?? "",
+      imageUrl,
       type: "image",
       width: segment.width,
     };
@@ -1958,6 +1966,17 @@ function buildOptimisticMessageContent(
       title: segment.title ?? "视频号",
       type: "sphfeed",
       url: segment.url,
+    };
+  }
+
+  if (segment.type === "video") {
+    return {
+      alt: segment.title ?? "视频",
+      coverImageUrl: normalizeMediaAssetUrl(segment.coverUrl),
+      downloadStatus: "finished",
+      durationLabel: "",
+      type: "video",
+      videoUrl: normalizeMediaAssetUrl(segment.url),
     };
   }
 
@@ -2203,6 +2222,8 @@ export function createWorkbenchStore() {
   let latestScopeRequestId = 0;
   let latestTakeoverRequestId = 0;
   let latestGroupMembersRequestId = 0;
+  let latestPollRunId = 0;
+  let runningPollRunId: number | undefined;
   let isPollWorkbenchRunning = false;
   let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   const pendingVoicePlaybackConfirmKeys = new Set<string>();
@@ -2219,8 +2240,20 @@ export function createWorkbenchStore() {
     return latestScopeRequestId;
   }
 
+  function bumpScopeRequestId() {
+    latestScopeRequestId += 1;
+  }
+
+  function getScopeRequestId() {
+    return latestScopeRequestId;
+  }
+
   function isCurrentScopeRequest(requestId: number) {
     return requestId === latestScopeRequestId;
+  }
+
+  function isReadyScopeRequest(requestId: number, state: WorkbenchStore) {
+    return isCurrentScopeRequest(requestId) && state.bootstrapStatus === "ready";
   }
 
   function issueTakeoverRequestId(accountId: string) {
@@ -2308,6 +2341,52 @@ export function createWorkbenchStore() {
         clearTimeout(timer);
         smartReplyTimeoutsByKey.delete(timerKey);
       }
+    }
+  }
+
+  function clearAllRuntimeState() {
+    bumpScopeRequestId();
+    latestTakeoverRequestId += 1;
+    latestGroupMembersRequestId += 1;
+    runningPollRunId = undefined;
+    isPollWorkbenchRunning = false;
+
+    if (searchDebounceTimer) {
+      clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = null;
+    }
+
+    for (const timer of smartReplyPollTimersByConversationId.values()) {
+      clearTimeout(timer);
+    }
+    smartReplyPollTimersByConversationId.clear();
+
+    for (const timer of smartReplyAutoPreviewTimeoutsByKey.values()) {
+      clearTimeout(timer);
+    }
+    smartReplyAutoPreviewTimeoutsByKey.clear();
+
+    for (const timer of smartReplyTimeoutsByKey.values()) {
+      clearTimeout(timer);
+    }
+    smartReplyTimeoutsByKey.clear();
+
+    for (const timeoutId of revokePendingTimeoutsByMessageId.values()) {
+      clearTimeout(timeoutId);
+    }
+    revokePendingTimeoutsByMessageId.clear();
+
+    pendingVoicePlaybackConfirmKeys.clear();
+    pendingRevokeRequestMessageIds.clear();
+
+    for (const accountId of Object.keys(latestTakeoverRequestIdByAccountId)) {
+      delete latestTakeoverRequestIdByAccountId[accountId];
+    }
+
+    for (const conversationId of Object.keys(
+      latestGroupMembersRequestIdByConversationId,
+    )) {
+      delete latestGroupMembersRequestIdByConversationId[conversationId];
     }
   }
 
@@ -2496,9 +2575,6 @@ export function createWorkbenchStore() {
             return {};
           }
 
-          const isCurrentActiveConversation =
-            currentState.activeConversationId === conversationId;
-
           return {
             messagesByConversationId: {
               ...currentState.messagesByConversationId,
@@ -2508,9 +2584,6 @@ export function createWorkbenchStore() {
                 false,
               ),
             },
-            ...(isCurrentActiveConversation
-              ? { revokeMessageError: "撤回失败，请稍后重试" }
-              : {}),
           };
         });
       }, REVOKE_PENDING_TIMEOUT_MS);
@@ -3810,6 +3883,10 @@ export function createWorkbenchStore() {
           }
         }
       } catch (error) {
+        if (!isCurrentScopeRequest(requestId)) {
+          return;
+        }
+
         set({
           bootstrapError: error instanceof Error ? error.message : "工作台初始化失败",
           bootstrapStatus: "error",
@@ -3828,6 +3905,10 @@ export function createWorkbenchStore() {
       }
 
       isPollWorkbenchRunning = true;
+      latestPollRunId += 1;
+      const pollRunId = latestPollRunId;
+      runningPollRunId = pollRunId;
+      const requestId = getScopeRequestId();
 
       try {
         const activeConversationId = state.activeConversationId || undefined;
@@ -3849,6 +3930,11 @@ export function createWorkbenchStore() {
           customerProfilesById: state.customerProfilesById,
           me: state.me,
         });
+
+        if (!isReadyScopeRequest(requestId, get())) {
+          return;
+        }
+
         const messageUpdateSeqsByConversationId = (response.messageUpdateEvents ?? []).reduce(
           (accumulator, event) => {
             const currentSeqs = accumulator[event.conversationId];
@@ -3883,10 +3969,18 @@ export function createWorkbenchStore() {
           ),
         ) as Record<string, Message[]>;
 
+        if (!isReadyScopeRequest(requestId, get())) {
+          return;
+        }
+
         const polledConversationId = response.request.activeConversationId;
         let shouldNotifyPulledCustomerMessage = false;
 
         set((currentState) => {
+          if (!isReadyScopeRequest(requestId, currentState)) {
+            return currentState;
+          }
+
           const requestedActiveConversationId =
             response.request.activeConversationId ?? "";
           const isStaleScope =
@@ -3914,13 +4008,16 @@ export function createWorkbenchStore() {
                   return account;
                 }
 
+                const { accountId, seatId, ...accountChange } = change;
+                void accountId;
+                void seatId;
+
                 return {
                   ...account,
-                  lastMessageTime: change.lastMessageTime,
-                  ...(Object.prototype.hasOwnProperty.call(change, "hostSubUserId")
-                    ? { takenOverEmployeeId: change.hostSubUserId ?? undefined }
-                    : {}),
-                  unreadCount: change.unreadCount,
+                  ...accountChange,
+                  id: account.id,
+                  metrics: account.metrics,
+                  tone: account.tone,
                 };
               })
             : currentState.accounts;
@@ -4139,6 +4236,10 @@ export function createWorkbenchStore() {
           };
         });
 
+        if (!isReadyScopeRequest(requestId, get())) {
+          return;
+        }
+
         if (shouldNotifyPulledCustomerMessage) {
           notifyPulledCustomerMessage();
         }
@@ -4188,6 +4289,10 @@ export function createWorkbenchStore() {
           }
         }
       } catch (error) {
+        if (!isCurrentScopeRequest(requestId)) {
+          return;
+        }
+
         if (isCursorInvalidationError(error)) {
           try {
             const latestState = get();
@@ -4208,10 +4313,19 @@ export function createWorkbenchStore() {
               MESSAGE_PAGE_SIZE,
               latestState.activeConversationId,
             );
+
+            if (!isReadyScopeRequest(requestId, get())) {
+              return;
+            }
+
             const conversationPage = scopeResult.conversationPage;
             const loadedAt = Date.now();
 
             set((currentState) => {
+              if (!isReadyScopeRequest(requestId, currentState)) {
+                return currentState;
+              }
+
               const nextMessagesByConversationId = conversationPage
                 ? {
                     ...currentState.messagesByConversationId,
@@ -4293,7 +4407,10 @@ export function createWorkbenchStore() {
           },
         }));
       } finally {
-        isPollWorkbenchRunning = false;
+        if (runningPollRunId === pollRunId) {
+          runningPollRunId = undefined;
+          isPollWorkbenchRunning = false;
+        }
       }
     },
     async sendAgentMessageSegments(segments, options) {
@@ -4301,15 +4418,6 @@ export function createWorkbenchStore() {
 
       if (normalizedSegments.length === 0) {
         return { didConsumeQuote: false, ok: true };
-      }
-
-      if (normalizedSegments.some((segment) => segment.type === "sphfeed")) {
-        return {
-          errorCode: "SPHFEED_UNAVAILABLE",
-          errorMessage: "视频号发送功能暂未开放",
-          reason: "unavailable",
-          ok: false,
-        };
       }
 
       const state = get();
@@ -4354,7 +4462,7 @@ export function createWorkbenchStore() {
       let segmentsForSend = sendableSegments;
 
       try {
-        if (normalizedSegments.some((segment) => segment.type === "image")) {
+        if (normalizedSegments.some(isLocalImageSegment)) {
           segmentsForSend = options?.onImageUploaded
             ? await resolveImageSegmentsForSend(
                 activeConversationId,
@@ -4599,7 +4707,6 @@ export function createWorkbenchStore() {
               true,
             ),
           },
-          revokeMessageError: undefined,
         }));
         scheduleRevokePendingTimeout(message.conversationId, message.uiMessageKey);
 
@@ -4615,9 +4722,6 @@ export function createWorkbenchStore() {
       } finally {
         pendingRevokeRequestMessageIds.delete(message.uiMessageKey);
       }
-    },
-    clearRevokeMessageError() {
-      set({ revokeMessageError: undefined });
     },
     async loadOlderMessages() {
       const state = get();
@@ -4989,6 +5093,10 @@ export function createWorkbenchStore() {
         scopeTransitionError: undefined,
       });
     },
+    resetWorkbenchSession() {
+      clearAllRuntimeState();
+      set(createInitialState());
+    },
     async refreshSeatSummaries() {
       const state = get();
 
@@ -4996,8 +5104,14 @@ export function createWorkbenchStore() {
         return;
       }
 
+      const requestId = getScopeRequestId();
+
       try {
         const nextAccounts = await loadSeats();
+
+        if (!isReadyScopeRequest(requestId, get())) {
+          return;
+        }
 
         set((currentState) => ({
           accounts: currentState.accounts.map((account) => {
@@ -5891,6 +6005,29 @@ function stripComposerMentionMetadata(segments: ComposerSegment[]): ComposerSegm
 function toWorkbenchSendSegment(
   segment: ComposerSegment,
 ): WorkbenchSendMessagePayload["segment"] {
+  if (segment.type === "image" && segment.materialCollectionId) {
+    return {
+      alt: segment.alt,
+      materialCollectionId: segment.materialCollectionId,
+      type: "image",
+    };
+  }
+
+  if (segment.type === "image") {
+    const imageUrl = segment.imageUrl?.trim();
+
+    if (imageUrl) {
+      return {
+        alt: segment.alt,
+        imageUrl,
+        type: "image",
+        url: imageUrl,
+        ...(segment.height != null ? { height: segment.height } : {}),
+        ...(segment.width != null ? { width: segment.width } : {}),
+      };
+    }
+  }
+
   if (segment.type === "file" && segment.materialCollectionId) {
     return {
       materialCollectionId: segment.materialCollectionId,
@@ -5916,6 +6053,13 @@ function toWorkbenchSendSegment(
     return {
       materialCollectionId: segment.materialCollectionId,
       type: "sphfeed",
+    };
+  }
+
+  if (segment.type === "video" && segment.materialCollectionId) {
+    return {
+      materialCollectionId: segment.materialCollectionId,
+      type: "video",
     };
   }
 

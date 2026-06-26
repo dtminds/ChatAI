@@ -119,7 +119,7 @@ export function KbDocDetailPage() {
       const response = await listKbDocChunks(docId, {
         page: isImageDoc ? 1 : page,
         pageSize: isImageDoc ? IMAGE_CHUNK_PAGE_SIZE : pageSize,
-        query: isImageDoc ? undefined : debouncedSearchQuery || undefined,
+        title: isImageDoc ? undefined : debouncedSearchQuery || undefined,
       });
 
       if (version !== requestVersionRef.current) {

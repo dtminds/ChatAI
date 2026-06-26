@@ -175,7 +175,7 @@ export class KbReadService {
   async listKbDocChunks(
     subUserId: string,
     docId: string,
-    options: { page?: number; pageSize?: number; query?: string } = {},
+    options: { page?: number; pageSize?: number; title?: string } = {},
   ): Promise<KbChunkListResponse> {
     const uid = await resolveAgentKbUid(this.db, subUserId);
     const docNumericId = parsePositiveInteger(docId);
@@ -198,32 +198,24 @@ export class KbReadService {
 
     const docType = mapDocType(doc.doc_type);
     const pagination = normalizePagination(options);
-    const normalizedQuery = options.query?.trim();
+    const normalizedTitle = options.title?.trim();
 
     const response = await this.agentKbJavaClient.listKbChunks({
       docId: docNumericId,
       page: pagination.page,
       pageSize: pagination.pageSize,
+      title: normalizedTitle,
       uid,
     });
 
-    let chunks = response.list.map((item) => mapJavaChunkPageItem(item, docType));
-
-    if (normalizedQuery) {
-      const loweredQuery = normalizedQuery.toLowerCase();
-      chunks = chunks.filter(
-        (chunk) =>
-          chunk.title?.toLowerCase().includes(loweredQuery) ||
-          chunk.content?.toLowerCase().includes(loweredQuery),
-      );
-    }
+    const chunks = response.list.map((item) => mapJavaChunkPageItem(item, docType));
 
     return {
       chunks,
       pagination: {
         page: response.page,
         pageSize: response.pageSize,
-        total: normalizedQuery ? chunks.length : response.count,
+        total: response.count,
       },
     };
   }

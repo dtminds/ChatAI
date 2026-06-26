@@ -264,6 +264,7 @@ function ChatWorkbenchContent({
     conversationListsByScope,
     customerProfilesById,
     deleteConversation,
+    dismissFullAutoActionError,
     groupMembersLoadingByConversationId,
     groupMembersByConversationId,
     dismissScopeTransitionError,
@@ -276,6 +277,7 @@ function ChatWorkbenchContent({
     historyPanelLoadingByConversationId,
     historyPanelScrollModeByConversationId,
     historyPanelOpenConversationId,
+    fullAutoActionError,
     initializeWorkbench,
     isConversationLoading,
     loadActiveGroupMembers,
@@ -340,6 +342,7 @@ function ChatWorkbenchContent({
       conversationListsByScope: state.conversationListsByScope,
       customerProfilesById: state.customerProfilesById,
       deleteConversation: state.deleteConversation,
+      dismissFullAutoActionError: state.dismissFullAutoActionError,
       dismissReadReceiptError: state.dismissReadReceiptError,
       dismissScopeTransitionError: state.dismissScopeTransitionError,
       dismissSmartReply: state.dismissSmartReply,
@@ -358,6 +361,7 @@ function ChatWorkbenchContent({
       historyPanelScrollModeByConversationId:
         state.historyPanelScrollModeByConversationId,
       historyStatusByConversationId: state.historyStatusByConversationId,
+      fullAutoActionError: state.fullAutoActionError,
       initializeWorkbench: state.initializeWorkbench,
       isConversationLoading: state.isConversationLoading,
       loadActiveGroupMembers: state.loadActiveGroupMembers,
@@ -949,6 +953,15 @@ function ChatWorkbenchContent({
     toast.warning(readReceiptError);
     dismissReadReceiptError();
   }, [dismissReadReceiptError, readReceiptError]);
+
+  useEffect(() => {
+    if (!fullAutoActionError) {
+      return;
+    }
+
+    toast.warning(fullAutoActionError);
+    dismissFullAutoActionError();
+  }, [dismissFullAutoActionError, fullAutoActionError]);
 
   const handleTakeOverAccount = useCallback(
     async (accountId: string) => {

@@ -214,6 +214,7 @@ type WorkbenchState = {
   activeMode: ChatMode;
   bootstrapStatus: AsyncStatus;
   bootstrapError?: string;
+  fullAutoActionError?: string;
   isConversationLoading: boolean;
   readReceiptError?: string;
   scopeTransitionError?: string;
@@ -243,6 +244,7 @@ type WorkbenchState = {
   clearActiveConversation: () => void;
   resetWorkbenchSession: () => void;
   deleteConversation: (conversationId: string) => Promise<void>;
+  dismissFullAutoActionError: () => void;
   dismissScopeTransitionError: () => void;
   dismissReadReceiptError: () => void;
   initializeWorkbench: () => Promise<void>;
@@ -390,6 +392,7 @@ function createInitialState(): Omit<
   | "confirmVoicePlaybackReady"
   | "transcribeVoiceMessage"
   | "changeActiveConversationFullAuto"
+  | "dismissFullAutoActionError"
   | "dismissScopeTransitionError"
   | "dismissReadReceiptError"
   | "setSearchKeyword"
@@ -440,6 +443,7 @@ function createInitialState(): Omit<
       jitterMs: 350,
       status: "idle",
     },
+    fullAutoActionError: undefined,
     readReceiptError: undefined,
     scopeTransitionError: undefined,
     sendStatusByConversationId: {},
@@ -3531,6 +3535,9 @@ export function createWorkbenchStore() {
       dismissReadReceiptError() {
         set({ readReceiptError: undefined });
       },
+      dismissFullAutoActionError() {
+        set({ fullAutoActionError: undefined });
+      },
       async markConversationUnread(conversationId) {
         const state = get();
         const conversation = getConversationById(state, conversationId);
@@ -5113,10 +5120,10 @@ export function createWorkbenchStore() {
       try {
         await changeConversationFullAuto(activeConversationId, enabled);
         await reloadAccountConversations(conversation.accountId);
-        set({ readReceiptError: undefined });
+        set({ fullAutoActionError: undefined });
       } catch (error) {
         set({
-          readReceiptError: getRequestErrorMessage(
+          fullAutoActionError: getRequestErrorMessage(
             error,
             enabled ? "开启托管失败" : "取消托管失败",
           ),

@@ -596,6 +596,72 @@ describe("ChatPanel", () => {
 
     expect(onChangeFullAuto).toHaveBeenCalledWith(true);
   });
+
+  it("requests full-auto disable from the active composer AI button", async () => {
+    const user = userEvent.setup();
+    const onChangeFullAuto = vi.fn();
+
+    render(
+      <ChatPanel
+        activeConversation={{
+          ...createConversation(),
+          custodyHostingStatus: "thinking",
+          custodyMode: "full",
+        }}
+        activeHistoryStatus="idle"
+        canEnableFullAuto
+        canSendMessage={false}
+        isFullAutoActive
+        composerPlaceholder="输入消息"
+        customerPanelWidth={375}
+        draft=""
+        fileUploadQueue={[]}
+        groupMembers={[]}
+        hasMoreHistory={false}
+        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false, isOpen: false }}
+        inputEnterBehavior="send"
+        isHistoryPanelOpen={false}
+        isConversationLoading={false}
+        isEmojiPickerOpen={false}
+        isGroupMembersLoading={false}
+        isResizingCustomerPanel={false}
+        isSendingDraft={false}
+        messages={[]}
+        quotedMessage={null}
+        sidebarItems={[]}
+        composerRef={createRef()}
+        messageViewportRef={createRef()}
+        workbenchBodyRef={createRef()}
+        onChangeFullAuto={onChangeFullAuto}
+        onCancelFileUpload={vi.fn()}
+        onClearQuotedMessage={vi.fn()}
+        onComposerSegmentsChange={vi.fn()}
+        onCustomerPanelResizeStart={vi.fn()}
+        onDismissScopeTransitionError={vi.fn()}
+        onDraftChange={vi.fn()}
+        onEmojiPickerOpenChange={vi.fn()}
+        onEnterBehaviorChange={vi.fn()}
+        onFileSelect={vi.fn()}
+        onHistoryClose={vi.fn()}
+        onHistoryLoadMoreNext={vi.fn()}
+        onHistoryLoadMorePrev={vi.fn()}
+        onHistoryRefresh={vi.fn()}
+        onHistorySetDay={vi.fn()}
+        onHistorySetScope={vi.fn()}
+        onHistorySetSenderId={vi.fn()}
+        onLoadOlderMessages={vi.fn()}
+        onMessageViewportScroll={vi.fn()}
+        onOpenHistory={vi.fn()}
+        onRefreshGroupMembers={vi.fn()}
+        onRetryMessage={vi.fn()}
+        onSendDraft={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "AI托管" }));
+
+    expect(onChangeFullAuto).toHaveBeenCalledWith(false);
+  });
 });
 
 function createConversation(): Conversation {

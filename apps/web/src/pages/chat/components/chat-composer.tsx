@@ -656,9 +656,7 @@ export function ChatComposer({
                 )}
                 disabled={!canEnableFullAuto}
                 onClick={() => {
-                  if (!isFullAutoActive) {
-                    onChangeFullAuto(true);
-                  }
+                  onChangeFullAuto(!isFullAutoActive);
                 }}
                 size="icon"
                 type="button"

@@ -252,6 +252,24 @@ describe("useWorkbenchStore", () => {
     });
   });
 
+  it("keeps full-auto action errors separate from read receipt errors", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async changeConversationFullAuto() {
+        throw new Error("取消托管失败");
+      },
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState({ readReceiptError: "标记已读失败" });
+
+    await useWorkbenchStore.getState().changeActiveConversationFullAuto(false);
+
+    expect(useWorkbenchStore.getState().readReceiptError).toBe("标记已读失败");
+    expect(useWorkbenchStore.getState().fullAutoActionError).toBe("取消托管失败");
+  });
+
   it("bootstraps the first account, conversation, and read state", async () => {
     await useWorkbenchStore.getState().initializeWorkbench();
 

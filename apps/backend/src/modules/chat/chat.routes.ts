@@ -314,6 +314,14 @@ const SendMessageBodySchema = Type.Object({
         msgInfoId: Type.Optional(Type.String()),
         type: Type.Literal("sphfeed"),
       }),
+      Type.Object({
+        coverUrl: Type.Optional(Type.String()),
+        materialCollectionId: Type.Optional(Type.String()),
+        msgInfoId: Type.Optional(Type.String()),
+        title: Type.Optional(Type.String()),
+        type: Type.Literal("video"),
+        url: Type.Optional(Type.String()),
+      }),
     ]),
   ),
   segments: Type.Optional(
@@ -383,6 +391,14 @@ const SendMessageBodySchema = Type.Object({
           type: Type.Literal("sphfeed"),
           url: Type.Optional(Type.String()),
         }),
+        Type.Object({
+          coverUrl: Type.Optional(Type.String()),
+          materialCollectionId: Type.Optional(Type.String()),
+          msgInfoId: Type.Optional(Type.String()),
+          title: Type.Optional(Type.String()),
+          type: Type.Literal("video"),
+          url: Type.Optional(Type.String()),
+        }),
       ]),
     ),
   ),
@@ -432,6 +448,7 @@ const MaterialBizTypeSchema = Type.Union([
   Type.Literal(4),
   Type.Literal(5),
   Type.Literal(6),
+  Type.Literal(7),
 ]);
 
 const MaterialGroupBizTypeSchema = Type.Union([
@@ -440,6 +457,7 @@ const MaterialGroupBizTypeSchema = Type.Union([
   Type.Literal(4),
   Type.Literal(5),
   Type.Literal(6),
+  Type.Literal(7),
 ]);
 
 const MaterialCollectionsQuerySchema = Type.Object({
@@ -1980,7 +1998,7 @@ function parseRequiredInteger(value: string) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function parseMaterialBizTypeQuery(value: string): 1 | 2 | 3 | 4 | 5 | 6 {
+function parseMaterialBizTypeQuery(value: string): 1 | 2 | 3 | 4 | 5 | 6 | 7 {
   const parsed = parseRequiredInteger(value);
 
   if (
@@ -1989,7 +2007,8 @@ function parseMaterialBizTypeQuery(value: string): 1 | 2 | 3 | 4 | 5 | 6 {
     parsed === 3 ||
     parsed === 4 ||
     parsed === 5 ||
-    parsed === 6
+    parsed === 6 ||
+    parsed === 7
   ) {
     return parsed;
   }
@@ -1997,10 +2016,17 @@ function parseMaterialBizTypeQuery(value: string): 1 | 2 | 3 | 4 | 5 | 6 {
   throw new BadRequestError("INVALID_MATERIAL_BIZ_TYPE", "素材类型无效");
 }
 
-function parseMaterialGroupBizTypeQuery(value: string): 2 | 3 | 4 | 5 | 6 {
+function parseMaterialGroupBizTypeQuery(value: string): 2 | 3 | 4 | 5 | 6 | 7 {
   const parsed = parseRequiredInteger(value);
 
-  if (parsed === 2 || parsed === 3 || parsed === 4 || parsed === 5 || parsed === 6) {
+  if (
+    parsed === 2 ||
+    parsed === 3 ||
+    parsed === 4 ||
+    parsed === 5 ||
+    parsed === 6 ||
+    parsed === 7
+  ) {
     return parsed;
   }
 

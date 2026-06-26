@@ -54,6 +54,7 @@ import {
   buildConversationComposerDraft,
   type ConversationComposerDraft,
 } from "@/pages/chat/lib/conversation-composer-draft";
+import { normalizeMediaAssetUrl } from "@/pages/chat/lib/media-asset-url";
 import { isValidMessageSeq } from "@/pages/chat/lib/message-seq";
 import { notifyPulledCustomerMessage } from "@/pages/chat/lib/new-message-title-alert";
 import { canUseWorkbenchConversationActions } from "@/pages/chat/lib/workbench-permissions";
@@ -1955,6 +1956,17 @@ function buildOptimisticMessageContent(
       title: segment.title ?? "视频号",
       type: "sphfeed",
       url: segment.url,
+    };
+  }
+
+  if (segment.type === "video") {
+    return {
+      alt: segment.title ?? "视频",
+      coverImageUrl: normalizeMediaAssetUrl(segment.coverUrl),
+      downloadStatus: "finished",
+      durationLabel: "",
+      type: "video",
+      videoUrl: normalizeMediaAssetUrl(segment.url),
     };
   }
 
@@ -6031,6 +6043,13 @@ function toWorkbenchSendSegment(
     return {
       materialCollectionId: segment.materialCollectionId,
       type: "sphfeed",
+    };
+  }
+
+  if (segment.type === "video" && segment.materialCollectionId) {
+    return {
+      materialCollectionId: segment.materialCollectionId,
+      type: "video",
     };
   }
 

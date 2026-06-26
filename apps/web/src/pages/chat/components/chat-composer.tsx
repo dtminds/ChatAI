@@ -16,6 +16,7 @@ import {
   FolderFavouriteIcon,
   Image01Icon,
   Link01Icon,
+  PlayListIcon,
   SmileIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -126,7 +127,8 @@ export type ComposerMaterialLibraryBizType =
   | typeof MATERIAL_COLLECTION_BIZ_TYPE.FILE
   | typeof MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM
   | typeof MATERIAL_COLLECTION_BIZ_TYPE.H5
-  | typeof MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED;
+  | typeof MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED
+  | typeof MATERIAL_COLLECTION_BIZ_TYPE.VIDEO;
 
 type MentionDropdownItem =
   | {
@@ -537,6 +539,24 @@ export function ChatComposer({
               ref={imageInputRef}
               type="file"
             />
+            <ComposerActionTooltip
+              disabled={isSending || !canSendMessage}
+              label="视频"
+            >
+              <Button
+                aria-label="收录视频"
+                className={composerActionButtonClass}
+                disabled={isSending || !canSendMessage}
+                onClick={() =>
+                  onOpenMaterialLibrary(MATERIAL_COLLECTION_BIZ_TYPE.VIDEO)
+                }
+                size="icon"
+                type="button"
+                variant="ghost"
+              >
+                <HugeiconsIcon icon={PlayListIcon} size={18} strokeWidth={2} />
+              </Button>
+            </ComposerActionTooltip>
             <ComposerActionTooltip
               disabled={isSending || !canSendMessage}
               label="小程序"

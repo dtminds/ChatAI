@@ -133,6 +133,25 @@ function createSphfeedMaterialItem(
   };
 }
 
+function createVideoMaterialItem(
+  overrides: Partial<WorkbenchMaterialCollectionItemDto> = {},
+): WorkbenchMaterialCollectionItemDto {
+  return {
+    bizType: 7,
+    content: {
+      coverUrl: "https://example.com/video-cover.jpg",
+      fileUrl: "https://example.com/video.mp4",
+    },
+    contentType: "video",
+    groupId: "group-video",
+    id: "material-video",
+    msgInfoId: "9105",
+    sort: 1_781_244_000_000,
+    title: "视频",
+    ...overrides,
+  };
+}
+
 function createExpressionMaterialItem(
   overrides: Partial<WorkbenchMaterialCollectionItemDto> = {},
 ): WorkbenchMaterialCollectionItemDto {
@@ -347,6 +366,32 @@ describe("useMaterialCollection", () => {
     ]);
   });
 
+  it("sends a collected video material by forwarding its source message", async () => {
+    const sendAgentMessageSegments = vi.fn(async () => ({ ok: true as const }));
+
+    const { result } = renderHook(() =>
+      useMaterialCollection(
+        createDefaultOptions({
+          sendAgentMessageSegments,
+        }),
+      ),
+    );
+
+    await act(async () => {
+      await result.current.handleSelectMaterial(createVideoMaterialItem());
+    });
+
+    expect(sendAgentMessageSegments).toHaveBeenCalledWith([
+      expect.objectContaining({
+        materialCollectionId: "material-video",
+        msgInfoId: "9105",
+        title: "视频",
+        type: "video",
+      }),
+    ]);
+    expect(toast.warning).not.toHaveBeenCalledWith("暂未支持");
+  });
+
   it("sends a collected expression material as an emotion segment", async () => {
     const sendAgentMessageSegments = vi.fn(async () => ({ ok: true as const }));
 
@@ -394,6 +439,31 @@ describe("useMaterialCollection", () => {
 
     expect(sendAgentMessageSegments).not.toHaveBeenCalled();
     expect(toast.warning).toHaveBeenCalledWith("表情素材数据异常");
+  });
+
+  it("shows an incomplete content warning when video material content is invalid", async () => {
+    const sendAgentMessageSegments = vi.fn(async () => ({ ok: true as const }));
+
+    const { result } = renderHook(() =>
+      useMaterialCollection(
+        createDefaultOptions({
+          sendAgentMessageSegments,
+        }),
+      ),
+    );
+
+    await act(async () => {
+      await result.current.handleSelectMaterial(
+        createVideoMaterialItem({
+          content: {
+            fileUrl: "https://example.com/video.mp4",
+          },
+        }),
+      );
+    });
+
+    expect(sendAgentMessageSegments).not.toHaveBeenCalled();
+    expect(toast.warning).toHaveBeenCalledWith("视频素材数据异常");
   });
 
   it("calls send failure callback when material send fails", async () => {

@@ -371,13 +371,14 @@ describe("createWorkbenchService", () => {
 
   it("collects material messages", async () => {
     const service = createHttpWorkbenchService();
-    mock.onPost("/server/material-collections").reply((config) => [
-      200,
-      {
-        success: true,
-        receivedBody: JSON.parse(String(config.data)),
-      },
-    ]);
+    const requestConfigs: Array<{ data?: unknown; timeout?: number }> = [];
+    mock.onPost("/server/material-collections").reply((config) => {
+      requestConfigs.push({
+        data: JSON.parse(String(config.data)),
+        timeout: config.timeout,
+      });
+      return [200, { success: true }];
+    });
 
     await expect(
       service.collectMaterial({
@@ -385,13 +386,33 @@ describe("createWorkbenchService", () => {
         groupId: "9",
         msgInfoId: "9001",
       }),
-    ).resolves.toMatchObject({
-      receivedBody: {
-        bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+    ).resolves.toMatchObject({ success: true });
+    await expect(
+      service.collectMaterial({
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.VIDEO,
         groupId: "9",
-        msgInfoId: "9001",
+        msgInfoId: "9002",
+      }),
+    ).resolves.toMatchObject({ success: true });
+
+    expect(requestConfigs).toEqual([
+      {
+        data: {
+          bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+          groupId: "9",
+          msgInfoId: "9001",
+        },
+        timeout: 15000,
       },
-    });
+      {
+        data: {
+          bizType: MATERIAL_COLLECTION_BIZ_TYPE.VIDEO,
+          groupId: "9",
+          msgInfoId: "9002",
+        },
+        timeout: 130000,
+      },
+    ]);
   });
 
   it("creates material groups and returns the group payload", async () => {
@@ -538,5 +559,67 @@ describe("createWorkbenchService", () => {
       contentType: "image",
     });
     expect(sentMessage?.content).not.toHaveProperty("imageUrl");
+  });
+
+  it("keeps mock video material groups without pre-collecting customer videos", async () => {
+    const service = createMockWorkbenchService();
+    const groups = await service.listMaterialGroups({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.VIDEO,
+    });
+    const groupId = groups.groups[0]?.id;
+
+    expect(groupId).toBeTruthy();
+
+    const materials = await service.listMaterialCollections({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.VIDEO,
+      groupId: groupId ?? "",
+      page: 1,
+      pageSize: 1,
+    });
+
+    expect(materials.items).toEqual([]);
+  });
+
+  it("rejects expired external mock video materials from videoUrl content", async () => {
+    const service = createMockWorkbenchService();
+    const sourceMessage = await service.__mock?.appendMessage("conv-001", {
+      content: {
+        alt: "视频",
+        coverImageUrl: "s5/msg/mock/video-cover.jpg",
+        downloadStatus: "finished",
+        durationLabel: "",
+        fileUrlExpireTime: Date.now() - 1_000,
+        type: "video",
+        videoUrl: "https://example-cdn.test/expired-video.mp4",
+      },
+      contentType: "video",
+      createdAt: Date.now(),
+      customerId: "cust-001",
+      msgid: "msg-expired-video",
+      optNo: "opt-expired-video",
+      rawMsgtype: "video",
+      seatId: "drc",
+      senderType: "agent",
+      status: "sent",
+    });
+
+    expect(sourceMessage).toMatchObject({
+      content: {
+        videoUrl: "https://example-cdn.test/expired-video.mp4",
+      },
+      contentType: "video",
+      senderType: "agent",
+    });
+
+    await expect(
+      service.collectMaterial({
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.VIDEO,
+        groupId: "mock-material-group-video",
+        msgInfoId: String(sourceMessage?.seq ?? ""),
+      }),
+    ).resolves.toEqual({
+      errorMsg: "视频下载地址已过期，无法收录",
+      success: false,
+    });
   });
 });

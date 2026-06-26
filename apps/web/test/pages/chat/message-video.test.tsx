@@ -59,6 +59,26 @@ describe("MessageContentRenderer video messages", () => {
     );
   });
 
+  it("shows the play control for normalized collected video material URLs", () => {
+    render(
+      <VideoMessageCard
+        content={{
+          ...createVideoContent({
+            alt: "收录视频",
+            durationLabel: "",
+            height: 360,
+            width: 640,
+          }),
+          coverImageUrl: "https://b5.bokr.com.cn/s5/msg/20260514/272/video-cover.jpg",
+          downloadStatus: "finished",
+          videoUrl: "https://b5.bokr.com.cn/s5/msg/20260514/272/video.mp4",
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "播放视频：收录视频" })).toBeInTheDocument();
+  });
+
   it("renders a vertical video preview from the same content contract", () => {
     render(
       <MessageContentRenderer
@@ -162,7 +182,7 @@ describe("MessageContentRenderer video messages", () => {
       .not.toBeInTheDocument();
   });
 
-  it("renders initial server-side in-progress videos as downloading", () => {
+  it("keeps the cover visible and overlays progress while downloading", () => {
     render(
       <VideoMessageCard
         content={{
@@ -180,11 +200,12 @@ describe("MessageContentRenderer video messages", () => {
     );
 
     expect(screen.getByRole("status", { name: "视频下载中" })).toBeInTheDocument();
-    expect(screen.queryByRole("img", { name: "服务端转存中视频" }))
-      .not.toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "服务端转存中视频" })).toBeInTheDocument();
     expect(screen.queryByTestId("video-cover-fallback"))
       .not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "下载视频：服务端转存中视频" }))
+      .not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "播放视频：服务端转存中视频" }))
       .not.toBeInTheDocument();
   });
 
@@ -260,6 +281,31 @@ describe("MessageContentRenderer video messages", () => {
 
     expect(screen.getByRole("status", { name: "视频下载中" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "播放视频：转存中视频" }))
+      .not.toBeInTheDocument();
+  });
+
+  it("renders a standalone downloading frame when no cover is available", () => {
+    render(
+      <VideoMessageCard
+        content={{
+          ...createVideoContent({
+            alt: "无封面转存中视频",
+            durationLabel: "1:01",
+            height: 360,
+            width: 640,
+          }),
+          coverImageUrl: "",
+          downloadStatus: "ing",
+          fileSerialNo: "serial-video-001",
+          videoUrl: "",
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("status", { name: "视频下载中" })).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: "无封面转存中视频" }))
+      .not.toBeInTheDocument();
+    expect(screen.queryByTestId("video-cover-fallback"))
       .not.toBeInTheDocument();
   });
 

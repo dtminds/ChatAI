@@ -1582,11 +1582,15 @@ describe("WorkbenchRepository", () => {
   it("finds material message from the read-only platform message table by id and uid", async () => {
     const db = createMaterialDb({
       "xy_wap_embed_msg_audit_info as message": {
+        chatType: 2,
         content: JSON.stringify({ title: "小程序卡片" }),
+        fromType: 1,
         id: 988,
         msgid: "msg-mini-1",
         msgtime: 1_777_000_000_000,
         msgtype: "weapp",
+        thirdFromId: "seat-third-user-1",
+        thirdUserId: "seat-third-user-1",
         uid: 9001,
       },
     });
@@ -1598,9 +1602,13 @@ describe("WorkbenchRepository", () => {
     });
 
     expect(message).toMatchObject({
+      chatType: 2,
       content: JSON.stringify({ title: "小程序卡片" }),
+      fromType: 1,
       msgid: "msg-mini-1",
       msgtype: "weapp",
+      thirdFromId: "seat-third-user-1",
+      thirdUserId: "seat-third-user-1",
       uid: 9001,
     });
     expect(db.selects[0]).toMatchObject({

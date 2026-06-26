@@ -3441,6 +3441,60 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
+  it("forwards collected video materials by their source message", async () => {
+    const javaClient = createJavaClient();
+    vi.mocked(javaClient.sendMessage).mockResolvedValue({
+      optNo: "opt-video-001",
+      status: "accepted",
+    });
+    const repository = {
+      canAccessSeat: vi.fn().mockResolvedValue(true),
+      findMaterialCollectionForForward: vi.fn().mockResolvedValue({
+        msgInfoId: "2205",
+      }),
+      getConversationLookup: vi.fn().mockResolvedValue({
+        id: "88",
+        platform: 5,
+        seatId: "12",
+        seatHostSubUserId: "101",
+        thirdExternalUserId: "external-001",
+        thirdUserId: "seat-user-001",
+        uid: 9001,
+      }),
+    } as unknown as WorkbenchRepository;
+    const service = new MysqlWorkbenchService(
+      repository,
+      javaClient,
+    );
+
+    await service.sendMessage("101", {
+      conversationId: "88",
+      seatId: "12",
+      segment: {
+        materialCollectionId: "77",
+        type: "video",
+      },
+    });
+
+    expect(repository.findMaterialCollectionForForward).toHaveBeenCalledWith({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.VIDEO,
+      id: "77",
+      uid: 9001,
+    });
+    expect(javaClient.sendMessage).toHaveBeenCalledWith({
+      msgData: {
+        msgtype: "video",
+        transMsgInfoId: 2205,
+      },
+      platform: 5,
+      sendType: 1,
+      source: 1,
+      thirdExternalUserid: "external-001",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
+  });
+
   it("forwards quick reply sphfeed snapshots by msgInfoId without material lookup", async () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.sendMessage).mockResolvedValue({
@@ -4082,6 +4136,467 @@ describe("MysqlWorkbenchService", () => {
       errorMsg: "图片缺少地址，无法收录",
     });
 
+    expect(repository.createMaterialCollection).not.toHaveBeenCalled();
+  });
+
+  it("material: collects finished agent video messages into tenant materials", async () => {
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_779_700_002_500);
+    const repository = createMaterialRepository({
+      createMaterialCollection: vi.fn().mockResolvedValue("184"),
+      findMaterialMessage: vi.fn().mockResolvedValue({
+        chatType: 2,
+        content: JSON.stringify({
+          coverUrl: "s5/msg/20260514/272/video-cover.jpg",
+          downloadStatus: "finished",
+          fileSerialNo: "serial-video-001",
+          fileUrl: "s5/msg/20260514/272/video.mp4",
+          optSerNo: "20260520161942296211617558032",
+        }),
+        fromType: 1,
+        id: "9107",
+        msgid: "msg-video-1",
+        msgtype: "video",
+        thirdFromId: "seat-third-user-id",
+        thirdUserId: "seat-third-user-id",
+        uid: 9001,
+      }),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.collectMaterial("101", {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.VIDEO,
+        groupId: "9",
+        msgInfoId: "9107",
+      }),
+    ).resolves.toEqual({ success: true });
+
+    expect(repository.createMaterialCollection).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.VIDEO,
+        groupId: "9",
+        msgInfoId: "9107",
+        opSubUserId: "101",
+        sort: 1_779_700_002_500,
+        subUid: 0,
+        title: "视频",
+        uid: 9001,
+      }),
+    );
+    expect(
+      JSON.parse(
+        vi.mocked(repository.createMaterialCollection).mock.calls[0]?.[0].content ??
+          "{}",
+      ),
+    ).toEqual({
+      coverUrl: "s5/msg/20260514/272/video-cover.jpg",
+      downloadStatus: "finished",
+      fileSerialNo: "serial-video-001",
+      fileUrl: "s5/msg/20260514/272/video.mp4",
+      optSerNo: "20260520161942296211617558032",
+    });
+    nowSpy.mockRestore();
+  });
+
+  it("material: rejects video collect from non-agent senders", async () => {
+    const repository = createMaterialRepository({
+      findMaterialMessage: vi.fn().mockResolvedValue({
+        chatType: 2,
+        content: JSON.stringify({
+          coverUrl: "s5/msg/20260514/272/video-cover.jpg",
+          downloadStatus: "finished",
+          fileUrl: "https://cdn.example.com/video.mp4",
+        }),
+        fromType: 2,
+        msgid: "msg-video-1",
+        msgtype: "video",
+        thirdFromId: "customer-third-id",
+        thirdUserId: "seat-third-user-id",
+        uid: 9001,
+      }),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.collectMaterial("101", {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.VIDEO,
+        groupId: "9",
+        msgInfoId: "9107",
+      }),
+    ).resolves.toEqual({
+      success: false,
+      errorMsg: "只能收录席位号发送的视频",
+    });
+
+    expect(repository.createMaterialCollection).not.toHaveBeenCalled();
+  });
+
+  it("material: rejects video collect when video is not ready or cover is missing", async () => {
+    const downloadingRepository = createMaterialRepository({
+      findMaterialMessage: vi.fn().mockResolvedValue({
+        chatType: 1,
+        content: JSON.stringify({
+          coverUrl: "s5/msg/20260514/272/video-cover.jpg",
+          downloadStatus: "ing",
+          fileUrl: "https://cdn.example.com/video.mp4",
+        }),
+        fromType: 1,
+        msgid: "msg-video-1",
+        msgtype: "video",
+        uid: 9001,
+      }),
+    });
+    const downloadingService = new MysqlWorkbenchService(
+      downloadingRepository,
+      createJavaClient(),
+    );
+
+    await expect(
+      downloadingService.collectMaterial("101", {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.VIDEO,
+        groupId: "9",
+        msgInfoId: "9107",
+      }),
+    ).resolves.toEqual({
+      success: false,
+      errorMsg: "视频下载未完成，无法收录",
+    });
+    expect(downloadingRepository.createMaterialCollection).not.toHaveBeenCalled();
+
+    const missingCoverRepository = createMaterialRepository({
+      findMaterialMessage: vi.fn().mockResolvedValue({
+        chatType: 1,
+        content: JSON.stringify({
+          downloadStatus: "finished",
+          fileUrl: "https://cdn.example.com/video.mp4",
+        }),
+        fromType: 1,
+        msgid: "msg-video-2",
+        msgtype: "video",
+        uid: 9001,
+      }),
+    });
+    const missingCoverService = new MysqlWorkbenchService(
+      missingCoverRepository,
+      createJavaClient(),
+    );
+
+    await expect(
+      missingCoverService.collectMaterial("101", {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.VIDEO,
+        groupId: "9",
+        msgInfoId: "9108",
+      }),
+    ).resolves.toEqual({
+      success: false,
+      errorMsg: "视频缺少封面，无法收录",
+    });
+    expect(missingCoverRepository.createMaterialCollection).not.toHaveBeenCalled();
+  });
+
+  it("material: transfers external video files before collecting them", async () => {
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_779_700_002_500);
+    const javaClient = createJavaClient();
+    vi.mocked(javaClient.transMsgFile).mockResolvedValue(
+      JSON.stringify({
+        coverUrl: "https://b5.bokr.com.cn/materials/video-cover.jpg",
+        downloadStatus: "finished",
+        fileSerialNo: "serial-video-002",
+        fileUrl: "https://b5.bokr.com.cn/materials/video.mp4",
+        optSerNo: "20260520161942296211617558033",
+      }),
+    );
+    const repository = createMaterialRepository({
+      createMaterialCollection: vi.fn().mockResolvedValue("185"),
+      findMaterialMessage: vi.fn().mockResolvedValue({
+        chatType: 1,
+        content: JSON.stringify({
+          coverUrl: "https://b5.bokr.com.cn/materials/video-cover.jpg",
+          downloadStatus: "finished",
+          fileSerialNo: "serial-video-002",
+          fileUrl: "https://cdn.example.com/video.mp4",
+          fileUrlExpireTime: 1_779_700_099_999,
+          optSerNo: "20260520161942296211617558033",
+        }),
+        fromType: 1,
+        id: "9109",
+        msgid: "msg-video-3",
+        msgtype: "video",
+        uid: 9001,
+      }),
+    });
+    const service = new MysqlWorkbenchService(repository, javaClient);
+
+    await expect(
+      service.collectMaterial("101", {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.VIDEO,
+        groupId: "9",
+        msgInfoId: "9109",
+      }),
+    ).resolves.toEqual({ success: true });
+
+    expect(javaClient.transMsgFile).toHaveBeenCalledWith({
+      msgInfoId: 9109,
+      platform: 5,
+      uid: 9001,
+    });
+    expect(repository.createMaterialCollection).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: JSON.stringify({
+          coverUrl: "https://b5.bokr.com.cn/materials/video-cover.jpg",
+          downloadStatus: "finished",
+          fileSerialNo: "serial-video-002",
+          fileUrl: "https://b5.bokr.com.cn/materials/video.mp4",
+          optSerNo: "20260520161942296211617558033",
+        }),
+        groupId: "9",
+        msgInfoId: "9109",
+        title: "视频",
+      }),
+    );
+    nowSpy.mockRestore();
+  });
+
+  it("material: returns business failure when external video transfer fails", async () => {
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_779_700_002_500);
+    const javaClient = createJavaClient();
+    vi.mocked(javaClient.transMsgFile).mockRejectedValue(
+      new BadGatewayError(
+        WORKBENCH_INTERNAL_API_FAILED_CODE,
+        JAVA_INTERNAL_API_USER_MESSAGE,
+      ),
+    );
+    const repository = createMaterialRepository({
+      findMaterialMessage: vi.fn().mockResolvedValue({
+        chatType: 1,
+        content: JSON.stringify({
+          coverUrl: "https://b5.bokr.com.cn/materials/video-cover.jpg",
+          downloadStatus: "finished",
+          fileSerialNo: "serial-video-transfer-failed",
+          fileUrl: "https://cdn.example.com/video.mp4",
+          fileUrlExpireTime: 1_779_700_099_999,
+          optSerNo: "20260520161942296211617558037",
+        }),
+        fromType: 1,
+        id: "9113",
+        msgid: "msg-video-transfer-failed",
+        msgtype: "video",
+        uid: 9001,
+      }),
+    });
+    const service = new MysqlWorkbenchService(repository, javaClient);
+
+    await expect(
+      service.collectMaterial("101", {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.VIDEO,
+        groupId: "9",
+        msgInfoId: "9113",
+      }),
+    ).resolves.toEqual({
+      success: false,
+      errorMsg: "视频转存失败，无法收录",
+    });
+
+    expect(javaClient.transMsgFile).toHaveBeenCalledWith({
+      msgInfoId: 9113,
+      platform: 5,
+      uid: 9001,
+    });
+    expect(repository.createMaterialCollection).not.toHaveBeenCalled();
+    nowSpy.mockRestore();
+  });
+
+  it("material: collects internal video files without transferring them", async () => {
+    const javaClient = createJavaClient();
+    const repository = createMaterialRepository({
+      createMaterialCollection: vi.fn().mockResolvedValue("186"),
+      findMaterialMessage: vi.fn().mockResolvedValue({
+        chatType: 1,
+        content: JSON.stringify({
+          coverUrl: "s5/msg/20260514/272/video-cover.jpg",
+          downloadStatus: "finished",
+          fileSerialNo: "serial-video-004",
+          fileUrl: "s5/msg/20260514/272/video.mp4",
+          optSerNo: "20260520161942296211617558035",
+        }),
+        fromType: 1,
+        id: "9111",
+        msgid: "msg-video-5",
+        msgtype: "video",
+        uid: 9001,
+      }),
+    });
+    const service = new MysqlWorkbenchService(repository, javaClient);
+
+    await expect(
+      service.collectMaterial("101", {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.VIDEO,
+        groupId: "9",
+        msgInfoId: "9111",
+      }),
+    ).resolves.toEqual({ success: true });
+
+    expect(javaClient.transMsgFile).not.toHaveBeenCalled();
+    expect(repository.createMaterialCollection).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: JSON.stringify({
+          coverUrl: "s5/msg/20260514/272/video-cover.jpg",
+          downloadStatus: "finished",
+          fileSerialNo: "serial-video-004",
+          fileUrl: "s5/msg/20260514/272/video.mp4",
+          optSerNo: "20260520161942296211617558035",
+        }),
+        groupId: "9",
+        msgInfoId: "9111",
+        title: "视频",
+      }),
+    );
+  });
+
+  it("material: collects internal absolute video URLs without transferring them", async () => {
+    const javaClient = createJavaClient();
+    const repository = createMaterialRepository({
+      createMaterialCollection: vi.fn().mockResolvedValue("187"),
+      findMaterialMessage: vi.fn().mockResolvedValue({
+        chatType: 1,
+        content: JSON.stringify({
+          coverUrl: "https://b5.bokr.com.cn/s5/msg/20260514/272/video-cover.jpg",
+          downloadStatus: "finished",
+          fileSerialNo: "serial-video-absolute",
+          fileUrl: "https://b5.bokr.com.cn/s5/msg/20260514/272/video.mp4",
+          optSerNo: "20260520161942296211617558038",
+        }),
+        fromType: 1,
+        id: "9114",
+        msgid: "msg-video-absolute",
+        msgtype: "video",
+        uid: 9001,
+      }),
+    });
+    const service = new MysqlWorkbenchService(repository, javaClient);
+
+    await expect(
+      service.collectMaterial("101", {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.VIDEO,
+        groupId: "9",
+        msgInfoId: "9114",
+      }),
+    ).resolves.toEqual({ success: true });
+
+    expect(javaClient.transMsgFile).not.toHaveBeenCalled();
+    expect(repository.createMaterialCollection).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: JSON.stringify({
+          coverUrl: "https://b5.bokr.com.cn/s5/msg/20260514/272/video-cover.jpg",
+          downloadStatus: "finished",
+          fileSerialNo: "serial-video-absolute",
+          fileUrl: "https://b5.bokr.com.cn/s5/msg/20260514/272/video.mp4",
+          optSerNo: "20260520161942296211617558038",
+        }),
+        groupId: "9",
+        msgInfoId: "9114",
+        title: "视频",
+      }),
+    );
+  });
+
+  it("material: rejects expired external video files before collecting them", async () => {
+    const repository = createMaterialRepository({
+      findMaterialMessage: vi.fn().mockResolvedValue({
+        chatType: 1,
+        content: JSON.stringify({
+          coverUrl: "https://b5.bokr.com.cn/materials/video-cover.jpg",
+          downloadStatus: "finished",
+          fileSerialNo: "serial-video-003",
+          fileUrl: "https://cdn.example.com/video.mp4",
+          fileUrlExpireTime: 1_779_699_999_999,
+          optSerNo: "20260520161942296211617558034",
+        }),
+        fromType: 1,
+        id: "9110",
+        msgid: "msg-video-4",
+        msgtype: "video",
+        uid: 9001,
+      }),
+    });
+    const javaClient = createJavaClient();
+    const service = new MysqlWorkbenchService(repository, javaClient);
+
+    await expect(
+      service.collectMaterial("101", {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.VIDEO,
+        groupId: "9",
+        msgInfoId: "9110",
+      }),
+    ).resolves.toEqual({
+      success: false,
+      errorMsg: "视频下载地址已过期，无法收录",
+    });
+
+    expect(javaClient.transMsgFile).not.toHaveBeenCalled();
+    expect(repository.createMaterialCollection).not.toHaveBeenCalled();
+  });
+
+  it("material: rejects video transfer when current sub user has no platform", async () => {
+    const javaClient = createJavaClient();
+    const repository = createMaterialRepository({
+      getSubUser: vi.fn().mockResolvedValue({
+        displayName: "客服一号",
+        subUserId: "101",
+        uid: 9001,
+      }),
+    });
+    const service = new MysqlWorkbenchService(repository, javaClient);
+
+    await expect(
+      service.collectMaterial("101", {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.VIDEO,
+        groupId: "9",
+        msgInfoId: "9115",
+      }),
+    ).rejects.toMatchObject({
+      code: "INVALID_SUB_USER",
+      message: "子账号无效",
+      statusCode: 400,
+    });
+
+    expect(javaClient.transMsgFile).not.toHaveBeenCalled();
+    expect(repository.findMaterialMessage).not.toHaveBeenCalled();
+  });
+
+  it("material: rejects external video files without expire time before collecting them", async () => {
+    const repository = createMaterialRepository({
+      findMaterialMessage: vi.fn().mockResolvedValue({
+        chatType: 1,
+        content: JSON.stringify({
+          coverUrl: "https://b5.bokr.com.cn/materials/video-cover.jpg",
+          downloadStatus: "finished",
+          fileSerialNo: "serial-video-005",
+          fileUrl: "https://cdn.example.com/video.mp4",
+          optSerNo: "20260520161942296211617558036",
+        }),
+        fromType: 1,
+        id: "9112",
+        msgid: "msg-video-6",
+        msgtype: "video",
+        uid: 9001,
+      }),
+    });
+    const javaClient = createJavaClient();
+    const service = new MysqlWorkbenchService(repository, javaClient);
+
+    await expect(
+      service.collectMaterial("101", {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.VIDEO,
+        groupId: "9",
+        msgInfoId: "9112",
+      }),
+    ).resolves.toEqual({
+      success: false,
+      errorMsg: "视频下载地址已过期，无法收录",
+    });
+
+    expect(javaClient.transMsgFile).not.toHaveBeenCalled();
     expect(repository.createMaterialCollection).not.toHaveBeenCalled();
   });
 
@@ -6133,6 +6648,7 @@ function createJavaClient(): WorkbenchJavaClient {
     sendMessage: vi.fn(),
     sendSmartHeartbeat: vi.fn().mockResolvedValue(undefined),
     takeOverSeat: vi.fn().mockResolvedValue(undefined),
+    transMsgFile: vi.fn(),
     updateMessageContent: vi.fn().mockResolvedValue(undefined),
     unpinConversation: vi.fn().mockResolvedValue(undefined),
   };

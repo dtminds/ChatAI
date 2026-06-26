@@ -28,6 +28,7 @@ describe("chat material collection DTOs", () => {
       H5: 4,
       SPHFEED: 5,
       IMAGE: 6,
+      VIDEO: 7,
     });
     expect(MATERIAL_COLLECTION_GROUP_MAX_COUNT).toBe(20);
 
@@ -39,6 +40,7 @@ describe("chat material collection DTOs", () => {
     expect(compiler.Check(MATERIAL_COLLECTION_BIZ_TYPE.H5)).toBe(true);
     expect(compiler.Check(MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED)).toBe(true);
     expect(compiler.Check(MATERIAL_COLLECTION_BIZ_TYPE.IMAGE)).toBe(true);
+    expect(compiler.Check(MATERIAL_COLLECTION_BIZ_TYPE.VIDEO)).toBe(true);
     expect(compiler.Check(0)).toBe(false);
     expect(compiler.Check("1")).toBe(false);
   });
@@ -122,13 +124,33 @@ describe("chat material collection DTOs", () => {
       },
     };
 
+    const videoItem: WorkbenchMaterialCollectionItemDto = {
+      id: "collection-6",
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.VIDEO,
+      groupId: "group-video",
+      title: "视频",
+      sort: 70,
+      msgInfoId: "9006",
+      contentType: "video",
+      content: {
+        coverUrl: "https://example.com/video-cover.jpg",
+        fileUrl: "https://example.com/video.mp4",
+      },
+    };
+
     expect(defaultGroupItem.groupId).toBe(0);
     expect(customGroupItem.msgInfoId).toBe("9002");
-    expect([h5Item.contentType, miniProgramItem.contentType, imageItem.contentType])
+    expect([
+      h5Item.contentType,
+      miniProgramItem.contentType,
+      imageItem.contentType,
+      videoItem.contentType,
+    ])
       .toEqual([
       "h5",
       "mini-program",
       "image",
+      "video",
     ]);
   });
 

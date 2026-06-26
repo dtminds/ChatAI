@@ -434,6 +434,10 @@ function getBizTypeLabel(
     return "收录的视频号";
   }
 
+  if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO) {
+    return "收录的视频";
+  }
+
   if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.IMAGE) {
     return "收录的图片";
   }
@@ -446,7 +450,8 @@ function getLibraryDialogStyle(
 ) {
   if (
     bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM ||
-    bizType === MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED
+    bizType === MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED ||
+    bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO
   ) {
     return {
       maxWidth: "calc(100vw - 2rem)",

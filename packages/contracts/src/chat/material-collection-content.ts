@@ -18,9 +18,28 @@ export type MaterialImageCollectFields = {
   fileUrl: string;
 };
 
+export type MaterialVideoCollectFields = {
+  coverUrl: string;
+  fileUrl: string;
+};
+
 export type MaterialCollectFieldError = {
   errorMsg: string;
 };
+
+export function isOwnVideoMaterialUrl(fileUrl: string) {
+  const normalizedUrl = fileUrl.trim();
+
+  try {
+    const parsedUrl = new URL(normalizedUrl);
+
+    return (
+      parsedUrl.protocol === "https:" && parsedUrl.hostname === "b5.bokr.com.cn"
+    );
+  } catch {
+    return normalizedUrl.replace(/^\/+/, "").startsWith("s5/msg/");
+  }
+}
 
 export function parseMaterialRawContent(rawContent: string | null | undefined) {
   if (!rawContent) {
@@ -214,6 +233,25 @@ export function resolveMaterialImageCollectFields(
   return { fileUrl };
 }
 
+export function resolveMaterialVideoCollectFields(
+  rawContent: string | null | undefined,
+): MaterialVideoCollectFields | MaterialCollectFieldError {
+  const content = parseMaterialRawContent(rawContent);
+  const fileUrl = readMaterialRawString(content, "fileUrl");
+
+  if (!fileUrl) {
+    return { errorMsg: "视频缺少地址，无法收录" };
+  }
+
+  const coverUrl = readMaterialRawString(content, "coverUrl");
+
+  if (!coverUrl) {
+    return { errorMsg: "视频缺少封面，无法收录" };
+  }
+
+  return { coverUrl, fileUrl };
+}
+
 export function buildMaterialFileContentJson(
   rawContent: string | null | undefined,
   fields: MaterialFileCollectFields,
@@ -252,6 +290,19 @@ export function buildMaterialImageContentJson(
 ) {
   const content = {
     ...parseMaterialRawContent(rawContent),
+    fileUrl: fields.fileUrl,
+  };
+
+  return JSON.stringify(content);
+}
+
+export function buildMaterialVideoContentJson(
+  rawContent: string | null | undefined,
+  fields: MaterialVideoCollectFields,
+) {
+  const content = {
+    ...parseMaterialRawContent(rawContent),
+    coverUrl: fields.coverUrl,
     fileUrl: fields.fileUrl,
   };
 

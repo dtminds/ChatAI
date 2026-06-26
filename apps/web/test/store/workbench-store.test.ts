@@ -3708,9 +3708,17 @@ describe("useWorkbenchStore", () => {
         title: "小程序标题",
         type: "weapp",
       },
+      {
+        coverUrl: "s5/msg/20260514/272/video-cover.jpg",
+        materialCollectionId: "material-video-001",
+        msgInfoId: "9104",
+        title: "讲解视频",
+        type: "video",
+        url: "s5/msg/20260514/272/video.mp4",
+      },
     ]);
 
-    expect(sendMessage).toHaveBeenCalledTimes(5);
+    expect(sendMessage).toHaveBeenCalledTimes(6);
     expect(sendMessage).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
@@ -3759,8 +3767,17 @@ describe("useWorkbenchStore", () => {
         },
       }),
     );
+    expect(sendMessage).toHaveBeenNthCalledWith(
+      6,
+      expect.objectContaining({
+        segment: {
+          materialCollectionId: "material-video-001",
+          type: "video",
+        },
+      }),
+    );
     const latestMessages =
-      useWorkbenchStore.getState().messagesByConversationId["conv-001"].slice(-5);
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].slice(-6);
 
     expect(latestMessages).toMatchObject([
       {
@@ -3793,6 +3810,15 @@ describe("useWorkbenchStore", () => {
         content: {
           title: "小程序标题",
           type: "mini-program",
+        },
+      },
+      {
+        content: {
+          alt: "讲解视频",
+          coverImageUrl: "https://b5.bokr.com.cn/s5/msg/20260514/272/video-cover.jpg",
+          downloadStatus: "finished",
+          type: "video",
+          videoUrl: "https://b5.bokr.com.cn/s5/msg/20260514/272/video.mp4",
         },
       },
     ]);

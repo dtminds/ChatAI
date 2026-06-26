@@ -804,6 +804,16 @@ describe("smart-reply-adapter", () => {
     ).toBe(buildJavaGenAnswerFromText("编辑后话术"));
   });
 
+  it("builds empty genAnswer json when user clears edited smart reply content", () => {
+    expect(
+      resolveSmartReplyRealAnswer(
+        '[{"msgtype":"text","text":"原始话术"}]',
+        "",
+        "原始话术",
+      ),
+    ).toBe(buildJavaGenAnswerFromText(""));
+  });
+
   it("adapts attachment list into recommended attachments", () => {
     expect(
       adaptSmartReplyAttachments([

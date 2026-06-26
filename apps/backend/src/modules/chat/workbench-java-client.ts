@@ -197,7 +197,6 @@ export type WorkbenchJavaClient = {
   sendRecommendAnswer(input: {
     optNos: string[];
     realAnswer: string;
-    // realAttachIds: string[];
     recordId: string;
     uid: number;
   }): Promise<void>;

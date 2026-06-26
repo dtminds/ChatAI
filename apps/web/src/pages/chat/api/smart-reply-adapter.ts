@@ -501,7 +501,11 @@ export function resolveSmartReplyRealAnswer(
   const trimmedOriginalContent = originalContent?.trim() ?? "";
 
   if (!trimmedEditedContent) {
-    return trimmedGenAnswer ?? "";
+    if (!trimmedOriginalContent) {
+      return trimmedGenAnswer ?? "";
+    }
+
+    return buildJavaGenAnswerFromText("");
   }
 
   if (trimmedGenAnswer && trimmedEditedContent === trimmedOriginalContent) {

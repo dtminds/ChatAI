@@ -1566,7 +1566,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
       throw new BadRequestError("SMART_REPLY_RECORD_INVALID", "智能回复记录无效");
     }
 
-    const optNos = request.optNos
+    const optNos = (request.optNos ?? [])
       .map((optNo) => optNo.trim())
       .filter((optNo) => optNo.length > 0);
 

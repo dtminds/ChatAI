@@ -1095,6 +1095,7 @@ describe("createWorkbenchJavaClient", () => {
         {
           assistantName: "护肤小助手",
           content: "您好",
+          genAnswer: "您好",
           generateStatus: 2,
           messageId: "1001",
           pollComplete: true,
@@ -1180,6 +1181,7 @@ describe("createWorkbenchJavaClient", () => {
       suggestion: {
         assistantName: "护肤小助手",
         content: "您好",
+        genAnswer: "您好",
         generateStatus: 0,
         messageId: "1121",
         status: "thinking",

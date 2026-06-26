@@ -3851,6 +3851,7 @@ describe("useWorkbenchStore", () => {
     expect(result).toEqual({
       didConsumeQuote: false,
       ok: true,
+      optNos: ["opt-1"],
     });
     expect(sendMessage).toHaveBeenCalledWith({
       conversationId: expect.any(String),

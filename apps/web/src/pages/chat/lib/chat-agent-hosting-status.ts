@@ -25,9 +25,9 @@ const agentHostingStatusLabels: Record<AgentHostingStatus, string> = {
   sendFailed: "Agent 回复发送失败",
   sendPartialFailed: "Agent 回复部分发送失败",
   sending: "Agent 回复已生成，正在发送",
-  sent: "Agent 已发送回复，正在等待用户消息",
+  sent: "Agent 已发送回复，本轮对话结束",
   thinking: "Agent 正在查看消息",
-  waiting: "Agent 正在等待客户是否还有新消息",
+  waiting: "Agent 正在确认客户是否追加新消息",
 };
 
 export function resolveAgentHostingStatus(

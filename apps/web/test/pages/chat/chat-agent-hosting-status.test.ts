@@ -61,12 +61,12 @@ describe("chat agent hosting status helpers", () => {
 
   it("labels full-auto answer progress statuses", () => {
     expect(getAgentHostingStatusLabel("waiting")).toBe(
-      "Agent 正在等待客户是否还有新消息",
+      "Agent 正在确认客户是否追加新消息",
     );
     expect(getAgentHostingStatusLabel("generating")).toBe("Agent 正在思考回复话术");
     expect(getAgentHostingStatusLabel("sending")).toBe("Agent 回复已生成，正在发送");
     expect(getAgentHostingStatusLabel("sent")).toBe(
-      "Agent 已发送回复，正在等待用户消息",
+      "Agent 已发送回复，本轮对话结束",
     );
     expect(getAgentHostingStatusLabel("failed")).toBe("Agent 遇到了一些问题");
     expect(getAgentHostingStatusLabel("handoff")).toBe("Agent 已转人工处理");

@@ -325,6 +325,7 @@ function ChatWorkbenchContent({
     updateMessageDownloadContent,
     confirmVoicePlaybackReady,
     transcribeVoiceMessage,
+    fullAutoActionPending,
   } = useWorkbenchStore(
     useShallow((state) => ({
       accounts: state.accounts,
@@ -362,6 +363,7 @@ function ChatWorkbenchContent({
         state.historyPanelScrollModeByConversationId,
       historyStatusByConversationId: state.historyStatusByConversationId,
       fullAutoActionError: state.fullAutoActionError,
+      fullAutoActionPending: state.fullAutoActionPending,
       initializeWorkbench: state.initializeWorkbench,
       isConversationLoading: state.isConversationLoading,
       loadActiveGroupMembers: state.loadActiveGroupMembers,
@@ -2065,6 +2067,7 @@ function ChatWorkbenchContent({
                   customerPanelWidth={customerPanelWidth}
                   draft={draft}
                   groupMembers={activeGroupMembers}
+                  fullAutoActionPending={fullAutoActionPending}
                   isGroupMembersLoading={isActiveGroupMembersLoading}
                   inputEnterBehavior={inputEnterBehavior}
                   isConversationLoading={isConversationLoading}

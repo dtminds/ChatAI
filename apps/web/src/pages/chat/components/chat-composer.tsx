@@ -98,6 +98,7 @@ type ChatComposerProps = {
   hasActiveFileUpload: boolean;
   groupMembers: GroupMember[];
   currentSeatThirdUserId?: string;
+  fullAutoActionPending?: boolean;
   inputEnterBehavior: InputEnterBehavior;
   isGroupConversation: boolean;
   isEmojiPickerOpen: boolean;
@@ -161,6 +162,7 @@ export function ChatComposer({
   hasActiveFileUpload,
   groupMembers,
   currentSeatThirdUserId,
+  fullAutoActionPending = false,
   inputEnterBehavior,
   isGroupConversation,
   isEmojiPickerOpen,
@@ -654,7 +656,7 @@ export function ChatComposer({
                   isFullAutoActive &&
                     "bg-accent text-accent-foreground hover:bg-accent hover:text-accent-foreground",
                 )}
-                disabled={!canEnableFullAuto}
+                disabled={!canEnableFullAuto || fullAutoActionPending}
                 onClick={() => {
                   onChangeFullAuto(!isFullAutoActive);
                 }}

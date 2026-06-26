@@ -226,6 +226,7 @@ type WorkbenchState = {
   historyPanelErrorByConversationId: Record<string, string | undefined>;
   historyPanelScrollModeByConversationId: Record<string, HistoryPanelScrollMode | undefined>;
   historyPanelOpenConversationId?: string;
+  fullAutoActionPending: boolean;
   groupMembersByConversationId: Record<string, GroupMember[]>;
   hasMoreHistoryByConversationId: Record<string, boolean>;
   messagePaginationByConversationId: Record<string, MessagePaginationState>;
@@ -445,6 +446,7 @@ function createInitialState(): Omit<
       status: "idle",
     },
     fullAutoActionError: undefined,
+    fullAutoActionPending: false,
     readReceiptError: undefined,
     scopeTransitionError: undefined,
     sendStatusByConversationId: {},
@@ -5164,7 +5166,7 @@ export function createWorkbenchStore() {
       const state = get();
       const { activeConversationId } = state;
 
-      if (!activeConversationId) {
+      if (!activeConversationId || state.fullAutoActionPending) {
         return;
       }
 
@@ -5174,16 +5176,31 @@ export function createWorkbenchStore() {
         return;
       }
 
+      const account = state.accounts.find(
+        (item) => item.id === conversation.accountId,
+      );
+
+      if (
+        !canUseConversationActions(state, account) ||
+        account?.fullAutoAuth !== true ||
+        account.fullAutoSwitch !== true
+      ) {
+        return;
+      }
+
+      set({ fullAutoActionPending: true });
+
       try {
         await changeConversationFullAuto(activeConversationId, enabled);
         await reloadAccountConversations(conversation.accountId);
-        set({ fullAutoActionError: undefined });
+        set({ fullAutoActionError: undefined, fullAutoActionPending: false });
       } catch (error) {
         set({
           fullAutoActionError: getRequestErrorMessage(
             error,
             enabled ? "开启托管失败" : "取消托管失败",
           ),
+          fullAutoActionPending: false,
         });
       }
     },

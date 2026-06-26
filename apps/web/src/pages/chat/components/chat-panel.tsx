@@ -46,6 +46,7 @@ type ChatPanelProps = {
   canEnableFullAuto?: boolean;
   canCollectMaterialActions?: boolean;
   canSendMessage: boolean;
+  fullAutoActionPending?: boolean;
   isFullAutoActive?: boolean;
   composerPlaceholder: string;
   customer?: CustomerProfile;
@@ -158,6 +159,7 @@ export function ChatPanel({
   canEnableFullAuto = false,
   canCollectMaterialActions = true,
   canSendMessage,
+  fullAutoActionPending = false,
   isFullAutoActive = false,
   composerPlaceholder,
   customer,
@@ -337,6 +339,7 @@ export function ChatPanel({
                       canEnableFullAuto={canEnableFullAuto}
                       canSendMessage={canSendMessage}
                       draft={draft}
+                      fullAutoActionPending={fullAutoActionPending}
                       hasActiveFileUpload={hasActiveFileUpload}
                       currentSeatThirdUserId={activeConversation.thirdUserId}
                       groupMembers={groupMembers}

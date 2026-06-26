@@ -230,6 +230,15 @@ describe("useWorkbenchStore", () => {
     });
     await useWorkbenchStore.getState().initializeWorkbench();
     useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              fullAutoAuth: true,
+              fullAutoSwitch: true,
+            }
+          : account,
+      ),
       conversationListsByScope: {
         ...state.conversationListsByScope,
         drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
@@ -252,6 +261,75 @@ describe("useWorkbenchStore", () => {
     });
   });
 
+  it("does not change full-auto when the active account cannot enable full-auto", async () => {
+    const baseService = createMockWorkbenchService();
+    const changeConversationFullAuto = vi.fn();
+
+    setWorkbenchService({
+      ...baseService,
+      changeConversationFullAuto,
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              fullAutoAuth: false,
+              fullAutoSwitch: false,
+            }
+          : account,
+      ),
+    }));
+
+    await useWorkbenchStore.getState().changeActiveConversationFullAuto(true);
+
+    expect(changeConversationFullAuto).not.toHaveBeenCalled();
+  });
+
+  it("ignores duplicate full-auto changes while a request is pending", async () => {
+    const baseService = createMockWorkbenchService();
+    const fullAutoChange = createDeferred<Awaited<ReturnType<typeof baseService.changeConversationFullAuto>>>();
+    const changeConversationFullAuto = vi.fn(() => fullAutoChange.promise);
+
+    setWorkbenchService({
+      ...baseService,
+      changeConversationFullAuto,
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              fullAutoAuth: true,
+              fullAutoSwitch: true,
+            }
+          : account,
+      ),
+    }));
+
+    const firstRequest = useWorkbenchStore
+      .getState()
+      .changeActiveConversationFullAuto(true);
+    await waitForStoreAssertion(() => {
+      expect(useWorkbenchStore.getState().fullAutoActionPending).toBe(true);
+    });
+    const secondRequest = useWorkbenchStore
+      .getState()
+      .changeActiveConversationFullAuto(true);
+
+    expect(changeConversationFullAuto).toHaveBeenCalledTimes(1);
+    fullAutoChange.resolve({
+      aiHosted: true,
+      conversationId: "conv-001",
+      custodyMode: "full",
+      seatId: "drc",
+    });
+    await Promise.all([firstRequest, secondRequest]);
+    expect(useWorkbenchStore.getState().fullAutoActionPending).toBe(false);
+  });
+
   it("keeps full-auto action errors separate from read receipt errors", async () => {
     const baseService = createMockWorkbenchService();
 
@@ -262,7 +340,18 @@ describe("useWorkbenchStore", () => {
       },
     });
     await useWorkbenchStore.getState().initializeWorkbench();
-    useWorkbenchStore.setState({ readReceiptError: "标记已读失败" });
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              fullAutoAuth: true,
+              fullAutoSwitch: true,
+            }
+          : account,
+      ),
+      readReceiptError: "标记已读失败",
+    }));
 
     await useWorkbenchStore.getState().changeActiveConversationFullAuto(false);
 

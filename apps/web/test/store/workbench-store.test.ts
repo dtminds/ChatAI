@@ -2213,12 +2213,15 @@ describe("useWorkbenchStore", () => {
     const state = useWorkbenchStore.getState();
 
     expect(result.ok).toBe(true);
-    expect(sendSmartReplyAnswer).toHaveBeenCalledWith({
-      conversationId: "conv-001",
-      realAnswer: "发送第一条推荐",
-      realAttachIds: [],
-      recordId: "record-9",
-    });
+    expect(sendSmartReplyAnswer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: "conv-001",
+        optNos: expect.arrayContaining([expect.stringMatching(/^opt-\d+$/)]),
+        realAnswer: '[{"msgtype":"text","text":"发送第一条推荐"}]',
+        realAttachIds: [],
+        recordId: "record-9",
+      }),
+    );
     expect(state.smartReplyHiddenMessageKeysByConversationId["conv-001"]).toEqual({
       "9": true,
     });

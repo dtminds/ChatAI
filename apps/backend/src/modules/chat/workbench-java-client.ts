@@ -195,8 +195,9 @@ export type WorkbenchJavaClient = {
     uid: number;
   }): Promise<string>;
   sendRecommendAnswer(input: {
+    optNos: string[];
     realAnswer: string;
-    realAttachIds: string[];
+    // realAttachIds: string[];
     recordId: string;
     uid: number;
   }): Promise<void>;
@@ -312,7 +313,7 @@ export function createWorkbenchJavaClient(
       return postJavaEnvelope<unknown>(
         baseUrl,
         token,
-        "/third-internal/wap-embed/wap-embed-agent-answer-record/user-history-answer-list",
+        "/third-internal/wap-embed-agent-answer-record/user-history-answer-list",
         {
           chatType: input.chatType,
           msgIds: input.msgIds,
@@ -331,7 +332,7 @@ export function createWorkbenchJavaClient(
       return postJavaEnvelope<unknown>(
         baseUrl,
         token,
-        "/third-internal/wap-embed/wap-embed-agent-answer-record/general-answer",
+        "/third-internal/wap-embed-agent-answer-record/general-answer",
         {
           chatType: input.chatType,
           msgId: input.msgId,
@@ -352,7 +353,7 @@ export function createWorkbenchJavaClient(
       return postJavaEnvelope<unknown>(
         baseUrl,
         token,
-        "/third-internal/wap-embed/wap-embed-agent-answer-record/auto-general-answer",
+        "/third-internal/wap-embed-agent-answer-record/auto-general-answer",
         {
           chatType: input.chatType,
           msgId: input.msgId,
@@ -369,7 +370,7 @@ export function createWorkbenchJavaClient(
           logger.error(
             {
               operation: "request-auto-general-answer",
-              path: "/third-internal/wap-embed/wap-embed-agent-answer-record/auto-general-answer",
+              path: "/third-internal/wap-embed-agent-answer-record/auto-general-answer",
               requestId: getLoggerRequestId(logger),
             },
             "上游接口响应异常",
@@ -475,10 +476,12 @@ export function createWorkbenchJavaClient(
       return postJavaEnvelope<boolean>(
         baseUrl,
         token,
-        "/third-internal/wap-embed/wap-embed-agent-answer-record/send-answer",
+        "/third-internal/wap-embed-agent-answer-record/send-answer",
         {
+          optNos: input.optNos,
           realAnswer: input.realAnswer,
-          realAttachIds: input.realAttachIds,
+          // 新 send-answer 接口暂未启用附件 id，先不传 realAttachIds
+          // realAttachIds: input.realAttachIds,
           recordId: numericRecordId ?? input.recordId,
           uid: input.uid,
         },

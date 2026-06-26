@@ -71,6 +71,8 @@ export type SmartReplySuggestion = {
   busyRequestId?: number;
   content: string;
   failReason?: string;
+  /** Java 原始 genAnswer，send-answer 的 realAnswer 需原样回传 */
+  genAnswer?: string;
   generateStatus?: number | string;
   pollComplete?: boolean;
   status?: "thinking" | "processing" | "ready";

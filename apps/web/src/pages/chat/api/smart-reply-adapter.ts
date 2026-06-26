@@ -481,6 +481,36 @@ export function isSmartReplyTerminalGenerateStatus(
   );
 }
 
+export function buildJavaGenAnswerFromText(text: string) {
+  const trimmed = text.trim();
+
+  if (!trimmed) {
+    return "";
+  }
+
+  return JSON.stringify([{ msgtype: "text", text: trimmed }]);
+}
+
+export function resolveSmartReplyRealAnswer(
+  genAnswer: string | undefined,
+  editedContent: string,
+  originalContent: string | undefined,
+) {
+  const trimmedGenAnswer = genAnswer?.trim();
+  const trimmedEditedContent = editedContent.trim();
+  const trimmedOriginalContent = originalContent?.trim() ?? "";
+
+  if (!trimmedEditedContent) {
+    return trimmedGenAnswer ?? "";
+  }
+
+  if (trimmedGenAnswer && trimmedEditedContent === trimmedOriginalContent) {
+    return trimmedGenAnswer;
+  }
+
+  return buildJavaGenAnswerFromText(trimmedEditedContent);
+}
+
 export function adaptSmartReplySuggestions(
   suggestions: WorkbenchSmartReplySuggestionDto[],
 ): Record<string, SmartReplySuggestion> {
@@ -491,6 +521,7 @@ export function adaptSmartReplySuggestions(
         assistantName: suggestion.assistantName,
         content: suggestion.content,
         failReason: suggestion.failReason,
+        genAnswer: suggestion.genAnswer,
         generateStatus: suggestion.generateStatus,
         pollComplete: suggestion.pollComplete,
         refAttachIds: suggestion.refAttachIds,

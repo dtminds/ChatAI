@@ -66,7 +66,6 @@ import {
   type WorkbenchSendMessagePayload,
 } from "@chatai/contracts";
 import {
-  buildSmartReplyRealAttachIds,
   buildSmartReplySendSegments,
   collectPendingSmartReplyPollMsgIds,
   collectSmartReplyPendingKeysFromSuggestions,
@@ -82,6 +81,7 @@ import {
   isSmartReplyPollComplete,
   isSmartReplyEligibleMessage,
   isSmartReplySupportedConversation,
+  resolveSmartReplyRealAnswer,
   SMART_REPLY_CONTENT_INCOMPLETE_SKIP_HINT,
   SMART_REPLY_CONTENT_INCOMPLETE_SKIP_MESSAGE,
   SMART_REPLY_BUSY_TIMEOUT_MS,
@@ -111,6 +111,7 @@ type SendQuotePayload = WorkbenchSendMessagePayload["quote"];
 type SendMessageResult =
   | {
       didConsumeQuote?: boolean;
+      optNos?: string[];
       ok: true;
     }
   | {
@@ -3366,11 +3367,36 @@ export function createWorkbenchStore() {
           };
         }
 
+        let sendResult: SendMessageResult;
+
         try {
+          sendResult = await get().sendAgentMessageSegments(segments);
+
+          if (!sendResult.ok) {
+            return sendResult;
+          }
+
+          const optNos = (sendResult.optNos ?? []).filter((optNo) => optNo.trim().length > 0);
+          if (optNos.length === 0) {
+            return {
+              errorCode: "SMART_REPLY_OPT_NO_INVALID",
+              errorMessage: "发送消息操作编号无效",
+              reason: "send",
+              ok: false,
+            };
+          }
+
           await sendSmartReplyAnswer({
             conversationId,
-            realAnswer: payload.content.trim(),
-            realAttachIds: buildSmartReplyRealAttachIds(payload.selectedAttachmentIds),
+            optNos,
+            realAnswer: resolveSmartReplyRealAnswer(
+              suggestion?.genAnswer,
+              payload.content,
+              suggestion?.content,
+            ),
+            // 新 send-answer 接口暂未启用附件 id，先不传 realAttachIds
+            // realAttachIds: buildSmartReplyRealAttachIds(payload.selectedAttachmentIds),
+            realAttachIds: [],
             recordId,
           });
         } catch (error) {
@@ -3380,12 +3406,6 @@ export function createWorkbenchStore() {
             reason: "send",
             ok: false,
           };
-        }
-
-        const result = await get().sendAgentMessageSegments(segments);
-
-        if (!result.ok) {
-          return result;
         }
 
         set((currentState) => {
@@ -3433,7 +3453,7 @@ export function createWorkbenchStore() {
           };
         });
 
-        return result;
+        return sendResult;
       },
       setSidebarItems(items) {
         set({ sidebarItems: items });
@@ -4417,7 +4437,7 @@ export function createWorkbenchStore() {
       const normalizedSegments = normalizeComposerSegments(segments);
 
       if (normalizedSegments.length === 0) {
-        return { didConsumeQuote: false, ok: true };
+        return { didConsumeQuote: false, ok: true, optNos: [] };
       }
 
       const state = get();
@@ -4496,6 +4516,7 @@ export function createWorkbenchStore() {
       try {
         let hasSentMention = false;
         let hasSentQuote = false;
+        const optNos: string[] = [];
         for (let index = 0; index < segmentsForSend.length; index += 1) {
           const segmentForSend = segmentsForSend[index];
           const originalSegment = sendableSegments[index] ?? segmentForSend;
@@ -4516,6 +4537,7 @@ export function createWorkbenchStore() {
             seatId: activeAccountId,
             segment: payloadSegment,
           });
+          optNos.push(response.optNo);
           const optimisticMessage = {
             author: account ? `${account.name}-${account.operator}` : me.displayName,
             isGroupConversation: activeConversation.mode === "group",
@@ -4592,7 +4614,7 @@ export function createWorkbenchStore() {
           },
         }));
 
-        return { didConsumeQuote: hasSentQuote, ok: true };
+        return { didConsumeQuote: hasSentQuote, ok: true, optNos };
       } catch (error) {
         set((currentState) => ({
           sendStatusByConversationId: {

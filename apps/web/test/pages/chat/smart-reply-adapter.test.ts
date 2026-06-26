@@ -6,6 +6,8 @@ import {
   adaptSmartReplyViolationResult,
   buildSmartReplyRealAttachIds,
   buildSmartReplySendSegments,
+  buildJavaGenAnswerFromText,
+  resolveSmartReplyRealAnswer,
   collectNewSmartReplyPendingKeys,
   collectPendingSmartReplyPollMsgIds,
   collectQuestionImgs,
@@ -763,6 +765,7 @@ describe("smart-reply-adapter", () => {
       {
         assistantName: "护肤小助手",
         content: "建议回复",
+        genAnswer: '[{"msgtype":"text","text":"建议回复"}]',
         messageId: "1090",
         refAttachIds: ["101", "102"],
         status: "ready",
@@ -772,9 +775,33 @@ describe("smart-reply-adapter", () => {
     expect(map["1090"]).toEqual({
       assistantName: "护肤小助手",
       content: "建议回复",
+      genAnswer: '[{"msgtype":"text","text":"建议回复"}]',
       refAttachIds: ["101", "102"],
       status: "ready",
     });
+  });
+
+  it("uses raw genAnswer for send-answer when content is unchanged", () => {
+    const genAnswer =
+      '[{"msgtype":"text","text":"麻烦您告知一下所在的城市，还有家里宠物的具体情况哦，我会给您介绍合适的上门服务哒~"}]';
+
+    expect(
+      resolveSmartReplyRealAnswer(
+        genAnswer,
+        "麻烦您告知一下所在的城市，还有家里宠物的具体情况哦，我会给您介绍合适的上门服务哒~",
+        "麻烦您告知一下所在的城市，还有家里宠物的具体情况哦，我会给您介绍合适的上门服务哒~",
+      ),
+    ).toBe(genAnswer);
+  });
+
+  it("builds genAnswer json when user edits smart reply content", () => {
+    expect(
+      resolveSmartReplyRealAnswer(
+        '[{"msgtype":"text","text":"原始话术"}]',
+        "编辑后话术",
+        "原始话术",
+      ),
+    ).toBe(buildJavaGenAnswerFromText("编辑后话术"));
   });
 
   it("adapts attachment list into recommended attachments", () => {

@@ -155,6 +155,7 @@ const SmartReplyMakeShorterBodySchema = Type.Object({
 
 const SmartReplySendAnswerBodySchema = Type.Object({
   conversationId: Type.String(),
+  optNos: Type.Array(Type.String({ minLength: 1 }), { minItems: 1 }),
   realAnswer: Type.String({ minLength: 1 }),
   realAttachIds: Type.Array(Type.String()),
   recordId: Type.String({ minLength: 1 }),

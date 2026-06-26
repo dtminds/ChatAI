@@ -31,6 +31,7 @@ const readXlsxFileMock = vi.hoisted(() => vi.fn());
 const importKbDocMock = vi.hoisted(() => vi.fn());
 const importKbQaDocMock = vi.hoisted(() => vi.fn());
 const importKbImageDocMock = vi.hoisted(() => vi.fn());
+const uploadKbImageMock = vi.hoisted(() => vi.fn());
 const createKbChunkMock = vi.hoisted(() => vi.fn());
 const updateKbChunkMock = vi.hoisted(() => vi.fn());
 const deleteKbChunkMock = vi.hoisted(() => vi.fn());
@@ -78,6 +79,7 @@ vi.mock("@/pages/chat/ai-hosting/api/kb-doc-service", async (importOriginal) => 
     importKbDoc: importKbDocMock,
     importKbImageDoc: importKbImageDocMock,
     importKbQaDoc: importKbQaDocMock,
+    uploadKbImage: uploadKbImageMock,
   };
 });
 
@@ -387,6 +389,11 @@ describe("AI hosting pages", () => {
     importKbQaDocMock.mockResolvedValue({ docId: "mock-qa-created" });
     importKbImageDocMock.mockReset();
     importKbImageDocMock.mockResolvedValue({ docId: "mock-image-created" });
+    uploadKbImageMock.mockReset();
+    uploadKbImageMock.mockResolvedValue({
+      docUrl: "kb-docs/demo/preview.png",
+      url: "https://cdn.example.com/kb-docs/demo/preview.png",
+    });
     createKbChunkMock.mockReset();
     createKbChunkMock.mockImplementation(async (payload) => {
       const docDetail = createMockKbDocDetail(payload.docId);

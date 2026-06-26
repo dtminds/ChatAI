@@ -58,7 +58,8 @@ import {
 } from "./api/kb-service";
 import type { KbDocChunkViewItem, KbDocType, KbDocViewItem } from "./kb-types";
 
-const PAGE_SIZE = 10;
+const DEFAULT_PAGE_SIZE = 10;
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const;
 const IMAGE_CHUNK_PAGE_SIZE = 100;
 
 function useDebouncedValue<T>(value: T, delayMs: number) {
@@ -86,6 +87,7 @@ export function KbDocDetailPage() {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE);
   const [addQaDialogOpen, setAddQaDialogOpen] = useState(false);
   const [addDocDialogOpen, setAddDocDialogOpen] = useState(false);
   const [editChunk, setEditChunk] = useState<KbDocChunkViewItem | null>(null);
@@ -116,7 +118,7 @@ export function KbDocDetailPage() {
       const page = options?.page ?? (isImageDoc ? 1 : currentPage);
       const response = await listKbDocChunks(docId, {
         page: isImageDoc ? 1 : page,
-        pageSize: isImageDoc ? IMAGE_CHUNK_PAGE_SIZE : PAGE_SIZE,
+        pageSize: isImageDoc ? IMAGE_CHUNK_PAGE_SIZE : pageSize,
         query: isImageDoc ? undefined : debouncedSearchQuery || undefined,
       });
 
@@ -142,7 +144,7 @@ export function KbDocDetailPage() {
         setLoadingChunks(false);
       }
     }
-  }, [currentPage, debouncedSearchQuery, doc, docId]);
+  }, [currentPage, debouncedSearchQuery, doc, docId, pageSize]);
 
   useEffect(() => {
     return () => {
@@ -210,13 +212,18 @@ export function KbDocDetailPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [debouncedSearchQuery, docId]);
+  }, [debouncedSearchQuery, docId, pageSize]);
 
   const { activePage, totalPages } = resolveTablePagination({
     page: currentPage,
-    pageSize: PAGE_SIZE,
+    pageSize,
     total,
   });
+
+  function handlePageSizeChange(nextPageSize: number) {
+    setPageSize(nextPageSize);
+    setCurrentPage(1);
+  }
 
   async function handleCreateQaChunk(values: { answer: string; question: string }) {
     if (!doc) {
@@ -418,7 +425,10 @@ export function KbDocDetailPage() {
                 />
                 <TablePagination
                   onPageChange={setCurrentPage}
+                  onPageSizeChange={handlePageSizeChange}
                   page={activePage}
+                  pageSize={pageSize}
+                  pageSizeOptions={PAGE_SIZE_OPTIONS}
                   total={total}
                   totalPages={totalPages}
                 />

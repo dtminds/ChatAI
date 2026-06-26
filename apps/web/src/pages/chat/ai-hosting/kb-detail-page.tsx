@@ -300,12 +300,24 @@ export function KbDetailPage() {
 
   return (
     <AiHostingLayout title={knowledgeBase?.name ?? "知识库"}>
+      <TooltipProvider>
       <div className="space-y-6">
         <div aria-label="知识库管理头部" className="space-y-3">
           <BackToKbListButton />
           <AiHostingPageHeader
             description={knowledgeBase?.description}
-            title={knowledgeBase?.name ?? "知识库"}
+            title={
+              knowledgeBase ? (
+                <TableOverflowTooltip
+                  className="text-[22px] font-semibold leading-tight text-foreground"
+                  tooltip={knowledgeBase.name}
+                >
+                  {knowledgeBase.name}
+                </TableOverflowTooltip>
+              ) : (
+                "知识库"
+              )
+            }
           />
         </div>
 
@@ -354,6 +366,7 @@ export function KbDetailPage() {
           </div>
         </section>
       </div>
+      </TooltipProvider>
       <ImportQaDialog
         kbId={kbId}
         onImportComplete={() => {
@@ -509,8 +522,7 @@ function KnowledgeRecordsTable({
   records: KbDocViewItem[];
 }) {
   return (
-    <TooltipProvider>
-      <Table aria-label="知识列表" className="min-w-[1120px] table-fixed">
+    <Table aria-label="知识列表" className="min-w-[1120px] table-fixed">
       <TableHeader>
         <TableRow className="hover:bg-transparent">
           <TableHead className="h-11 w-[24%] px-4">知识名称</TableHead>
@@ -607,7 +619,6 @@ function KnowledgeRecordsTable({
         )}
       </TableBody>
     </Table>
-    </TooltipProvider>
   );
 }
 

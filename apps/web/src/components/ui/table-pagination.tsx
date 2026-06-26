@@ -12,6 +12,13 @@ import {
   PaginationEllipsis,
   PaginationItem,
 } from "@/components/ui/pagination";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
 export function resolveTablePagination({
@@ -41,17 +48,29 @@ export function TablePagination({
   className,
   itemLabel = "条",
   onPageChange,
+  onPageSizeChange,
   page,
+  pageSize,
+  pageSizeOptions,
   total,
   totalPages,
 }: {
   className?: string;
   itemLabel?: string;
   onPageChange: (page: number) => void;
+  onPageSizeChange?: (pageSize: number) => void;
   page: number;
+  pageSize?: number;
+  pageSizeOptions?: readonly number[];
   total: number;
   totalPages: number;
 }) {
+  const showPageSizeSelector =
+    pageSize != null &&
+    pageSizeOptions != null &&
+    pageSizeOptions.length > 0 &&
+    onPageSizeChange != null;
+
   return (
     <div
       className={cn(
@@ -59,6 +78,13 @@ export function TablePagination({
         className,
       )}
     >
+      {showPageSizeSelector ? (
+        <PageSizeSelector
+          onPageSizeChange={onPageSizeChange}
+          pageSize={pageSize}
+          pageSizeOptions={pageSizeOptions}
+        />
+      ) : null}
       <span className="shrink-0 whitespace-nowrap">
         共 {total} {itemLabel}
       </span>
@@ -67,6 +93,41 @@ export function TablePagination({
         page={page}
         totalPages={totalPages}
       />
+    </div>
+  );
+}
+
+function PageSizeSelector({
+  onPageSizeChange,
+  pageSize,
+  pageSizeOptions,
+}: {
+  onPageSizeChange: (pageSize: number) => void;
+  pageSize: number;
+  pageSizeOptions: readonly number[];
+}) {
+  return (
+    <div className="flex shrink-0 items-center gap-2 whitespace-nowrap">
+      <span>每页</span>
+      <Select
+        onValueChange={(value) => onPageSizeChange(Number.parseInt(value, 10))}
+        value={String(pageSize)}
+      >
+        <SelectTrigger
+          aria-label="每页条数"
+          className="h-8 w-[72px] rounded-[8px] px-2.5"
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent align="end">
+          {pageSizeOptions.map((option) => (
+            <SelectItem key={option} value={String(option)}>
+              {option}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <span>条</span>
     </div>
   );
 }

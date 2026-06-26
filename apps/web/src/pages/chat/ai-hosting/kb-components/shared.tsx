@@ -166,7 +166,10 @@ export function TableOverflowTooltip({
       return;
     }
 
-    setIsOverflowing(element.scrollWidth > element.clientWidth);
+    const overflowTarget =
+      element.firstElementChild instanceof HTMLElement ? element.firstElementChild : element;
+
+    setIsOverflowing(overflowTarget.scrollWidth > overflowTarget.clientWidth);
   }, []);
 
   useEffect(() => {

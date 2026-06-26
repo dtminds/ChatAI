@@ -107,7 +107,7 @@ export function AiHostingPageHeader({
       <div className="min-w-0">
         <h1
           aria-label={titleAriaLabel}
-          className="text-[22px] font-semibold leading-tight text-foreground"
+          className="truncate text-[22px] font-semibold leading-tight text-foreground"
         >
           {title}
         </h1>

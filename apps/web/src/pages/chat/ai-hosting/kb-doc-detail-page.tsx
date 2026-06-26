@@ -93,7 +93,6 @@ export function KbDocDetailPage() {
   const [editChunk, setEditChunk] = useState<KbDocChunkViewItem | null>(null);
   const [deleteChunk, setDeleteChunk] = useState<KbDocChunkViewItem | null>(null);
   const requestVersionRef = useRef(0);
-  const skipNextAutoLoadRef = useRef(false);
   const isMountedRef = useRef(false);
 
   useEffect(() => {
@@ -149,10 +148,10 @@ export function KbDocDetailPage() {
 
   const refreshChunksFromFirstPage = useCallback(async () => {
     if (currentPage !== 1) {
-      skipNextAutoLoadRef.current = true;
       setCurrentPage(1);
+    } else {
+      await loadChunks();
     }
-    await loadChunks({ page: 1 });
   }, [currentPage, loadChunks]);
 
   useEffect(() => {
@@ -213,11 +212,6 @@ export function KbDocDetailPage() {
 
   useEffect(() => {
     if (!doc || loadingPage) {
-      return;
-    }
-
-    if (skipNextAutoLoadRef.current) {
-      skipNextAutoLoadRef.current = false;
       return;
     }
 

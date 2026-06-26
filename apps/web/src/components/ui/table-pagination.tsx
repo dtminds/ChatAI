@@ -65,12 +65,6 @@ export function TablePagination({
   total: number;
   totalPages: number;
 }) {
-  const showPageSizeSelector =
-    pageSize != null &&
-    pageSizeOptions != null &&
-    pageSizeOptions.length > 0 &&
-    onPageSizeChange != null;
-
   return (
     <div
       className={cn(
@@ -78,7 +72,10 @@ export function TablePagination({
         className,
       )}
     >
-      {showPageSizeSelector ? (
+      {pageSize != null &&
+      pageSizeOptions != null &&
+      pageSizeOptions.length > 0 &&
+      onPageSizeChange != null ? (
         <PageSizeSelector
           onPageSizeChange={onPageSizeChange}
           pageSize={pageSize}

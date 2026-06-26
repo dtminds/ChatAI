@@ -166,10 +166,7 @@ export function TableOverflowTooltip({
       return;
     }
 
-    const overflowTarget =
-      element.firstElementChild instanceof HTMLElement ? element.firstElementChild : element;
-
-    setIsOverflowing(overflowTarget.scrollWidth > overflowTarget.clientWidth);
+    setIsOverflowing(element.scrollWidth > element.clientWidth);
   }, []);
 
   useEffect(() => {

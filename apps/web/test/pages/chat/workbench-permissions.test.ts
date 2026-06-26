@@ -92,7 +92,7 @@ describe("resolveWorkbenchPermissions", () => {
     ).toBe(false);
   });
 
-  it("treats a full custody conversation as active only when full-auto can be enabled", () => {
+  it("treats a full agent mode conversation as active only when full-auto can be enabled", () => {
     expect(
       resolveWorkbenchPermissions({
         account: createAccount({
@@ -100,7 +100,7 @@ describe("resolveWorkbenchPermissions", () => {
           fullAutoSwitch: true,
           takenOverEmployeeId: me.id,
         }),
-        activeConversation: createConversation({ custodyMode: "full" }),
+        activeConversation: createConversation({ agentMode: "full" }),
         bootstrapStatus: "ready",
         me,
         subUser: operator,
@@ -113,7 +113,7 @@ describe("resolveWorkbenchPermissions", () => {
           fullAutoAuth: true,
           fullAutoSwitch: true,
         }),
-        activeConversation: createConversation({ custodyMode: "full" }),
+        activeConversation: createConversation({ agentMode: "full" }),
         bootstrapStatus: "ready",
         me,
         subUser: operator,
@@ -128,7 +128,7 @@ describe("resolveWorkbenchPermissions", () => {
         fullAutoSwitch: true,
         takenOverEmployeeId: me.id,
       }),
-      activeConversation: createConversation({ custodyMode: "full" }),
+      activeConversation: createConversation({ agentMode: "full" }),
       bootstrapStatus: "ready",
       me,
       subUser: operator,
@@ -141,13 +141,13 @@ describe("resolveWorkbenchPermissions", () => {
     });
   });
 
-  it("does not apply full-auto custody blocking when the current account cannot enable full-auto", () => {
+  it("does not apply full-auto agent mode blocking when the current account cannot enable full-auto", () => {
     const permissions = resolveWorkbenchPermissions({
       account: createAccount({
         fullAutoAuth: true,
         fullAutoSwitch: true,
       }),
-      activeConversation: createConversation({ custodyMode: "full" }),
+      activeConversation: createConversation({ agentMode: "full" }),
       bootstrapStatus: "ready",
       me,
       subUser: operator,
@@ -161,12 +161,12 @@ describe("resolveWorkbenchPermissions", () => {
     });
   });
 
-  it("allows sending after a full custody conversation has exited hosting", () => {
+  it("allows sending after a full agent mode conversation has exited hosting", () => {
     const permissions = resolveWorkbenchPermissions({
       account: createAccount({ takenOverEmployeeId: me.id }),
       activeConversation: createConversation({
-        custodyHostingStatus: "exited",
-        custodyMode: "full",
+        agentHostingStatus: "exited",
+        agentMode: "full",
       }),
       bootstrapStatus: "ready",
       me,
@@ -403,7 +403,7 @@ function createConversation(overrides: Partial<Conversation> = {}): Conversation
     customerId: "customer-001",
     customerName: "客户一号",
     id: "conv-001",
-    custodyMode: "semi",
+    agentMode: "semi",
     mode: "single",
     preview: "",
     priority: "medium",

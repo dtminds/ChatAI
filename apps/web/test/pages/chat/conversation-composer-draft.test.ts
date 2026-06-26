@@ -13,7 +13,7 @@ describe("conversation composer draft", () => {
       drc: [
         {
           accountId: "drc",
-          custodyMode: "semi",
+          agentMode: "semi",
           customerAvatarUrl: "https://example.com/customer.png",
           customerId: "customer-1",
           customerName: "客户 A",

@@ -159,7 +159,7 @@ describe("ChatWorkbenchPage", () => {
     expect(screen.getByRole("button", { name: "发送消息" })).toBeInTheDocument();
   });
 
-  it("exits full custody when cancel custody is clicked", async () => {
+  it("exits full agent mode when cancel agent hosting is clicked", async () => {
     const user = userEvent.setup();
 
     renderChatWorkbenchPage();
@@ -185,8 +185,8 @@ describe("ChatWorkbenchPage", () => {
               ? {
                   ...conversation,
                   aiHosted: true,
-                  custodyHostingStatus: "thinking",
-                  custodyMode: "full",
+                  agentHostingStatus: "thinking",
+                  agentMode: "full",
                 }
               : conversation,
           ),
@@ -203,7 +203,7 @@ describe("ChatWorkbenchPage", () => {
     await user.click(screen.getByRole("button", { name: "取消托管" }));
 
     await waitFor(() => {
-      expect(screen.queryByTestId("chat-custody-status-bar")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("chat-agent-hosting-status-bar")).not.toBeInTheDocument();
     });
     expect(screen.getByRole("textbox", { name: "请输入消息……" })).toHaveAttribute(
       "contenteditable",

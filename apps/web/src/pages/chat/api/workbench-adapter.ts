@@ -69,7 +69,7 @@ export function adaptConversation(dto: WorkbenchConversationSummaryDto): Convers
     accountId: dto.seatId,
     aiHosted: dto.aiHosted,
     bizStatus: dto.bizStatus ?? 0,
-    custodyMode: dto.custodyMode,
+    agentMode: dto.agentMode,
     createdAtMs: createdAt,
     customerAvatarUrl: dto.customerAvatar,
     customerId: dto.customerId,

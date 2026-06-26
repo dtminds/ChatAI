@@ -56,7 +56,7 @@ import {
   buildConversationComposerDraft,
   type ConversationComposerDraft,
 } from "@/pages/chat/lib/conversation-composer-draft";
-import type { CustodyHostingStatus } from "@/pages/chat/lib/chat-custody-status";
+import type { AgentHostingStatus } from "@/pages/chat/lib/chat-agent-hosting-status";
 import { normalizeMediaAssetUrl } from "@/pages/chat/lib/media-asset-url";
 import { isValidMessageSeq } from "@/pages/chat/lib/message-seq";
 import { notifyPulledCustomerMessage } from "@/pages/chat/lib/new-message-title-alert";
@@ -64,7 +64,7 @@ import { canUseWorkbenchConversationActions } from "@/pages/chat/lib/workbench-p
 import { seedCustomerProfiles } from "@/pages/chat/mock-data";
 import {
   CHAT_TYPE,
-  CONVERSATION_CUSTODY_MODE,
+  CONVERSATION_AGENT_MODE,
   SMART_REPLY_POLL_INTERVAL_MS,
   type WorkbenchFullAutoAnswerStatusResponse,
   type SettingsSidebarItem,
@@ -113,7 +113,7 @@ type TakeoverStatus = "idle" | "taking-over";
 type FullAutoStatusState = {
   lastCustomerMessageAt: number;
   lastCustomerMessageId: string;
-  status: CustodyHostingStatus;
+  status: AgentHostingStatus;
 };
 type FullAutoFinishedMessage = {
   messageAt: number;
@@ -256,7 +256,7 @@ type WorkbenchState = {
   revokeMessage: (uiMessageKey: string) => Promise<RevokeMessageResult>;
   sidebarItems: SettingsSidebarItem[];
   changeActiveConversationFullAuto: (enabled: boolean) => Promise<void>;
-  syncFullAutoCustodyStatus: () => Promise<void>;
+  syncFullAutoAgentStatus: () => Promise<void>;
   resetWorkbenchRuntime: () => void;
   clearActiveConversation: () => void;
   resetWorkbenchSession: () => void;
@@ -412,7 +412,7 @@ function createInitialState(): Omit<
   | "confirmVoicePlaybackReady"
   | "transcribeVoiceMessage"
   | "changeActiveConversationFullAuto"
-  | "syncFullAutoCustodyStatus"
+  | "syncFullAutoAgentStatus"
   | "dismissFullAutoActionError"
   | "resetWorkbenchRuntime"
   | "dismissScopeTransitionError"
@@ -2125,8 +2125,8 @@ function isConversationFullAutoActive(
 ) {
   if (
     !conversation ||
-    conversation.custodyMode !== CONVERSATION_CUSTODY_MODE.FULL ||
-    conversation.custodyHostingStatus === "exited"
+    conversation.agentMode !== CONVERSATION_AGENT_MODE.FULL ||
+    conversation.agentHostingStatus === "exited"
   ) {
     return false;
   }
@@ -2171,7 +2171,7 @@ function isFullAutoAnswerRecordForMessage(
 
 function resolveFullAutoAnswerStatus(
   status: WorkbenchFullAutoAnswerStatusResponse,
-): { isTerminal: boolean; status: CustodyHostingStatus } {
+): { isTerminal: boolean; status: AgentHostingStatus } {
   if (status.sendStatus === 2) {
     return { isTerminal: true, status: "sendFailed" };
   }
@@ -2691,7 +2691,7 @@ export function createWorkbenchStore() {
       }
     }
 
-    async function syncFullAutoCustodyStatusForCurrentState() {
+    async function syncFullAutoAgentStatusForCurrentState() {
       const state = get();
       const conversationId = state.activeConversationId;
 
@@ -3907,8 +3907,8 @@ export function createWorkbenchStore() {
       dismissFullAutoActionError() {
         set({ fullAutoActionError: undefined });
       },
-      async syncFullAutoCustodyStatus() {
-        await syncFullAutoCustodyStatusForCurrentState();
+      async syncFullAutoAgentStatus() {
+        await syncFullAutoAgentStatusForCurrentState();
       },
       async markConversationUnread(conversationId) {
         const state = get();
@@ -4197,7 +4197,7 @@ export function createWorkbenchStore() {
           (conversation) => conversation.id === bootstrapResult.activeConversationId,
         );
 
-        await syncFullAutoCustodyStatusForCurrentState();
+        await syncFullAutoAgentStatusForCurrentState();
 
         if (bootstrapActiveConversation?.mode === "group") {
           set((currentState) => ({
@@ -4634,7 +4634,7 @@ export function createWorkbenchStore() {
           return;
         }
 
-        await syncFullAutoCustodyStatusForCurrentState();
+        await syncFullAutoAgentStatusForCurrentState();
 
         if (shouldNotifyPulledCustomerMessage) {
           notifyPulledCustomerMessage();
@@ -5963,7 +5963,7 @@ export function createWorkbenchStore() {
           };
         });
 
-        await syncFullAutoCustodyStatusForCurrentState();
+        await syncFullAutoAgentStatusForCurrentState();
 
         await loadGroupMembersForConversation(conversationId, requestId);
 

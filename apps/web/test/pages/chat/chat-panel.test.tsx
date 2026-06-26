@@ -263,17 +263,17 @@ describe("ChatPanel", () => {
     expect(screen.queryByTestId("customer-side-panel-shell")).not.toBeInTheDocument();
   });
 
-  it("hides composer placeholder without blocking non-send composer actions in full custody", async () => {
+  it("hides composer placeholder without blocking non-send composer actions in full agent mode", async () => {
     const user = userEvent.setup();
-    const onCancelCustody = vi.fn();
+    const onCancelAgentHosting = vi.fn();
     const onOpenHistory = vi.fn();
 
     render(
       <ChatPanel
         activeConversation={{
           ...createConversation(),
-          custodyHostingStatus: "thinking",
-          custodyMode: "full",
+          agentHostingStatus: "thinking",
+          agentMode: "full",
         }}
         activeHistoryStatus="idle"
         canSendMessage={false}
@@ -298,7 +298,7 @@ describe("ChatPanel", () => {
         composerRef={createRef()}
         messageViewportRef={createRef()}
         workbenchBodyRef={createRef()}
-        onCancelCustody={onCancelCustody}
+        onCancelAgentHosting={onCancelAgentHosting}
         onCancelFileUpload={vi.fn()}
         onClearQuotedMessage={vi.fn()}
         onComposerSegmentsChange={vi.fn()}
@@ -324,10 +324,10 @@ describe("ChatPanel", () => {
       />,
     );
 
-    expect(screen.getByTestId("chat-custody-status-bar")).toHaveClass(
+    expect(screen.getByTestId("chat-agent-hosting-status-bar")).toHaveClass(
       "rounded-full",
     );
-    expect(screen.getByTestId("chat-custody-status-bar-anchor")).toHaveClass(
+    expect(screen.getByTestId("chat-agent-hosting-status-bar-anchor")).toHaveClass(
       "absolute",
       "left-1/2",
       "bottom-12",
@@ -336,12 +336,12 @@ describe("ChatPanel", () => {
       "max-w-[520px]",
       "-translate-x-1/2",
     );
-    expect(screen.getByTestId("chat-custody-status-bar-content")).toHaveClass(
+    expect(screen.getByTestId("chat-agent-hosting-status-bar-content")).toHaveClass(
       "relative",
       "z-10",
     );
-    expect(screen.queryByTestId("chat-custody-composer-shell")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("chat-custody-composer-mask")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("chat-agent-hosting-composer-shell")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("chat-agent-hosting-composer-mask")).not.toBeInTheDocument();
     expect(screen.getByTestId("chat-composer-editor").closest(".px-4")).toHaveClass(
       "pt-3",
     );
@@ -357,16 +357,16 @@ describe("ChatPanel", () => {
     await user.click(screen.getByRole("button", { name: "取消托管" }));
 
     expect(onOpenHistory).toHaveBeenCalledTimes(1);
-    expect(onCancelCustody).toHaveBeenCalledTimes(1);
+    expect(onCancelAgentHosting).toHaveBeenCalledTimes(1);
   });
 
-  it("hides custody status bar for exited custody conversations", () => {
+  it("hides agent hosting status bar for exited agent mode conversations", () => {
     render(
       <ChatPanel
         activeConversation={{
           ...createConversation(),
-          custodyHostingStatus: "exited",
-          custodyMode: "full",
+          agentHostingStatus: "exited",
+          agentMode: "full",
         }}
         activeHistoryStatus="idle"
         canSendMessage
@@ -415,8 +415,8 @@ describe("ChatPanel", () => {
       />,
     );
 
-    expect(screen.queryByTestId("chat-custody-status-bar-anchor")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("chat-custody-status-bar")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("chat-agent-hosting-status-bar-anchor")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("chat-agent-hosting-status-bar")).not.toBeInTheDocument();
   });
 
   it("shows the real full-auto button and removes the dev preview menu", () => {
@@ -424,7 +424,7 @@ describe("ChatPanel", () => {
       <ChatPanel
         activeConversation={{
           ...createConversation(),
-          custodyMode: "full",
+          agentMode: "full",
         }}
         activeHistoryStatus="idle"
         canEnableFullAuto
@@ -669,8 +669,8 @@ describe("ChatPanel", () => {
       <ChatPanel
         activeConversation={{
           ...createConversation(),
-          custodyHostingStatus: "thinking",
-          custodyMode: "full",
+          agentHostingStatus: "thinking",
+          agentMode: "full",
         }}
         activeHistoryStatus="idle"
         canEnableFullAuto
@@ -735,7 +735,7 @@ function createConversation(): Conversation {
     customerId: "customer-1",
     customerName: "客户",
     id: "conversation-1",
-    custodyMode: "semi",
+    agentMode: "semi",
     mode: "single",
     preview: "",
     priority: "medium",

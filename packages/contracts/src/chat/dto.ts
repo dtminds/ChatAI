@@ -3,7 +3,7 @@ import {
   GROUP_MEMBER_TYPE,
   LoginStatusSchema,
   TakeoverStatusSchema,
-  type ConversationCustodyMode,
+  type ConversationAgentMode,
   type MaterialCollectionBizType,
 } from "./enums.js";
 import type {
@@ -293,7 +293,7 @@ export type WorkbenchConversationSummaryDto = {
   bizStatus?: number;
   conversationId: string;
   /** 会话托管模式：full 全托管，semi 半托管 */
-  custodyMode: ConversationCustodyMode;
+  agentMode: ConversationAgentMode;
   seatId: string;
   thirdUserId?: string;
   thirdExternalUserId?: string;
@@ -765,7 +765,7 @@ export type WorkbenchConversationUnpinResponse = WorkbenchConversationPinRespons
 export type WorkbenchConversationFullAutoResponse = {
   aiHosted: boolean;
   conversationId: string;
-  custodyMode: ConversationCustodyMode;
+  agentMode: ConversationAgentMode;
   seatId: string;
 };
 

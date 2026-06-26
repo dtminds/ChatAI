@@ -53,7 +53,7 @@ function createConversation({
   return {
     accountId: "account-1",
     aiHosted,
-    custodyMode: "semi",
+    agentMode: "semi",
     customerAvatarUrl: `https://example.com/${id}.png`,
     customerId: `customer-${id}`,
     customerName,

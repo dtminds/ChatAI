@@ -2097,7 +2097,7 @@ function ChatWorkbenchContent({
                   onCustomerPanelResizeStart={handleCustomerPanelResizeStart}
                   onComposerSegmentsChange={handleComposerSegmentsChange}
                   onCancelFileUpload={handleCancelFileUpload}
-                  onCancelCustody={() => handleChangeFullAuto(false)}
+                  onCancelAgentHosting={() => handleChangeFullAuto(false)}
                   onChangeFullAuto={handleChangeFullAuto}
                   onClearQuotedMessage={() => setQuotedMessage(null)}
                   onCollectMaterial={handleCollectMaterial}

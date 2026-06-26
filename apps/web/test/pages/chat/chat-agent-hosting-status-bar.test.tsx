@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { ChatCustodyStatusBar } from "@/pages/chat/components/chat-custody-status-bar";
+import { ChatAgentHostingStatusBar } from "@/pages/chat/components/chat-agent-hosting-status-bar";
 
 vi.mock("border-beam", () => ({
   BorderBeam: ({
@@ -24,54 +24,54 @@ vi.mock("border-beam", () => ({
       data-border-beam="true"
       data-border-radius={borderRadius}
       data-size={size}
-      data-testid="custody-border-beam"
+      data-testid="agent-hosting-border-beam"
     >
       {children}
     </div>
   ),
 }));
 
-describe("ChatCustodyStatusBar", () => {
-  it("renders active full custody status with cancel action", async () => {
+describe("ChatAgentHostingStatusBar", () => {
+  it("renders active full agent mode status with cancel action", async () => {
     const user = userEvent.setup();
     const onCancel = vi.fn();
 
-    render(<ChatCustodyStatusBar onCancel={onCancel} status="active" />);
+    render(<ChatAgentHostingStatusBar onCancel={onCancel} status="active" />);
 
-    expect(screen.getByTestId("custody-border-beam")).toHaveAttribute(
+    expect(screen.getByTestId("agent-hosting-border-beam")).toHaveAttribute(
       "data-border-beam",
       "true",
     );
-    expect(screen.getByTestId("custody-border-beam")).toHaveAttribute(
+    expect(screen.getByTestId("agent-hosting-border-beam")).toHaveAttribute(
       "data-active",
       "true",
     );
-    expect(screen.getByTestId("custody-border-beam")).toHaveAttribute(
+    expect(screen.getByTestId("agent-hosting-border-beam")).toHaveAttribute(
       "data-border-radius",
       "999",
     );
-    expect(screen.getByTestId("custody-border-beam")).toHaveAttribute(
+    expect(screen.getByTestId("agent-hosting-border-beam")).toHaveAttribute(
       "data-size",
       "line",
     );
-    expect(screen.getByTestId("custody-border-beam")).toHaveClass("rounded-full");
-    expect(screen.getByTestId("chat-custody-status-bar")).toHaveClass("rounded-full");
-    expect(screen.getByTestId("chat-custody-status-bar")).toHaveClass(
+    expect(screen.getByTestId("agent-hosting-border-beam")).toHaveClass("rounded-full");
+    expect(screen.getByTestId("chat-agent-hosting-status-bar")).toHaveClass("rounded-full");
+    expect(screen.getByTestId("chat-agent-hosting-status-bar")).toHaveClass(
       "border",
     );
-    expect(screen.getByTestId("chat-custody-status-bar")).not.toHaveClass(
+    expect(screen.getByTestId("chat-agent-hosting-status-bar")).not.toHaveClass(
       "bg-background/85",
     );
-    expect(screen.getByTestId("chat-custody-status-bar-surface")).toHaveClass(
+    expect(screen.getByTestId("chat-agent-hosting-status-bar-surface")).toHaveClass(
       "absolute",
       "inset-0",
       "rounded-full",
     );
-    expect(screen.getByTestId("chat-custody-status-bar-content")).toHaveClass(
+    expect(screen.getByTestId("chat-agent-hosting-status-bar-content")).toHaveClass(
       "relative",
       "z-10",
     );
-    expect(screen.getByTestId("chat-custody-status-bar")).toBeInTheDocument();
+    expect(screen.getByTestId("chat-agent-hosting-status-bar")).toBeInTheDocument();
     expect(screen.getByText("Agent 已就绪，正在等待用户消息")).toBeInTheDocument();
     expect(screen.getByText("Agent 已就绪，正在等待用户消息")).not.toHaveClass("text-transparent");
     expect(screen.getByTestId("dot-matrix-loader")).toHaveAttribute(
@@ -93,8 +93,8 @@ describe("ChatCustodyStatusBar", () => {
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
 
-  it("renders retrying and thinking status labels", () => {
-    const { rerender } = render(<ChatCustodyStatusBar status="retrying" />);
+  it("renders in-progress agent hosting status labels", () => {
+    const { rerender } = render(<ChatAgentHostingStatusBar status="retrying" />);
 
     expect(screen.getByText("出了点小问题，我正在重试")).toBeInTheDocument();
     expect(screen.getByText("出了点小问题，我正在重试")).toHaveClass("shiny-text");
@@ -106,31 +106,31 @@ describe("ChatCustodyStatusBar", () => {
     expect(screen.getByRole("button", { name: "取消托管" })).not.toHaveClass(
       "bg-primary",
     );
-    expect(screen.getByTestId("custody-border-beam")).toHaveAttribute(
+    expect(screen.getByTestId("agent-hosting-border-beam")).toHaveAttribute(
       "data-active",
       "true",
     );
-    expect(screen.getByTestId("custody-border-beam")).toHaveAttribute(
+    expect(screen.getByTestId("agent-hosting-border-beam")).toHaveAttribute(
       "data-size",
       "pulse-inner",
     );
 
-    rerender(<ChatCustodyStatusBar status="thinking" />);
+    rerender(<ChatAgentHostingStatusBar status="thinking" />);
 
-    expect(screen.getByText("Agent 正在思考")).toBeInTheDocument();
-    expect(screen.getByText("Agent 正在思考")).toHaveClass("shiny-text");
+    expect(screen.getByText("Agent 正在查看消息")).toBeInTheDocument();
+    expect(screen.getByText("Agent 正在查看消息")).toHaveClass("shiny-text");
     expect(screen.getByTestId("dot-matrix-loader")).toBeInTheDocument();
-    expect(screen.getByTestId("custody-border-beam")).toHaveAttribute(
+    expect(screen.getByTestId("agent-hosting-border-beam")).toHaveAttribute(
       "data-active",
       "true",
     );
   });
 
   it("hides exited status", () => {
-    render(<ChatCustodyStatusBar status="exited" />);
+    render(<ChatAgentHostingStatusBar status="exited" />);
 
-    expect(screen.queryByTestId("chat-custody-status-bar")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("custody-border-beam")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("chat-agent-hosting-status-bar")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("agent-hosting-border-beam")).not.toBeInTheDocument();
   });
 });
 

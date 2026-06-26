@@ -1,4 +1,4 @@
-import { CONVERSATION_CUSTODY_MODE, type AuthSubUser } from "@chatai/contracts";
+import { CONVERSATION_AGENT_MODE, type AuthSubUser } from "@chatai/contracts";
 import type {
   Account,
   Conversation,
@@ -62,14 +62,14 @@ export function resolveWorkbenchPermissions({
     hasSendPermission: canUseChatSend,
     me,
   });
-  const isActiveFullCustody =
-    activeConversation?.custodyMode === CONVERSATION_CUSTODY_MODE.FULL &&
-    activeConversation.custodyHostingStatus !== "exited";
+  const isActiveFullAutoAgentMode =
+    activeConversation?.agentMode === CONVERSATION_AGENT_MODE.FULL &&
+    activeConversation.agentHostingStatus !== "exited";
   const canEnableFullAuto =
     isAccountTakenOverByCurrentUser &&
     account?.fullAutoAuth === true &&
     account.fullAutoSwitch === true;
-  const isFullAutoActive = canEnableFullAuto && isActiveFullCustody;
+  const isFullAutoActive = canEnableFullAuto && isActiveFullAutoAgentMode;
   const canSendMessage =
     canUseConversationActions &&
     !!activeConversation &&

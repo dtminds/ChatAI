@@ -333,7 +333,7 @@ describe("MysqlWorkbenchService", () => {
           thirdExternalUserId: "external-001",
           thirdUserId: "seat-user-001",
           uid: 9001,
-          custodyMode: "full",
+          agentMode: "full",
         }),
         listMessages: vi.fn().mockResolvedValue({
           filteredCount: 0,
@@ -1489,7 +1489,7 @@ describe("MysqlWorkbenchService", () => {
     ).resolves.toEqual({
       aiHosted: true,
       conversationId: "88",
-      custodyMode: "full",
+      agentMode: "full",
       seatId: "12",
     });
     expect(javaClient.changeConversationFullAuto).toHaveBeenCalledWith({

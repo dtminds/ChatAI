@@ -1,4 +1,4 @@
-import { CONVERSATION_CUSTODY_MODE } from "@chatai/contracts";
+import { CONVERSATION_AGENT_MODE } from "@chatai/contracts";
 import type {
   Account,
   Conversation,
@@ -7,12 +7,12 @@ import type {
   Message,
 } from "@/pages/chat/chat-types";
 
-type SeedConversation = Omit<Conversation, "custodyMode">;
+type SeedConversation = Omit<Conversation, "agentMode">;
 
-function withDefaultCustodyMode(conversations: SeedConversation[]): Conversation[] {
+function withDefaultAgentMode(conversations: SeedConversation[]): Conversation[] {
   return conversations.map((conversation) => ({
     ...conversation,
-    custodyMode: CONVERSATION_CUSTODY_MODE.SEMI,
+    agentMode: CONVERSATION_AGENT_MODE.SEMI,
   }));
 }
 
@@ -228,7 +228,7 @@ const rawSeedConversations: Record<string, SeedConversation[]> = {
 export const seedConversations: Record<string, Conversation[]> = Object.fromEntries(
   Object.entries(rawSeedConversations).map(([accountId, conversations]) => [
     accountId,
-    withDefaultCustodyMode(conversations),
+    withDefaultAgentMode(conversations),
   ]),
 );
 

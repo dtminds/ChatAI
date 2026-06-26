@@ -3,7 +3,7 @@ import type {
   WorkbenchMessageContentType,
 } from "@chatai/contracts";
 
-import type { ConversationCustodyMode } from "@chatai/contracts";
+import type { ConversationAgentMode } from "@chatai/contracts";
 
 export type ChatMode = "single" | "group";
 
@@ -62,9 +62,9 @@ export type Conversation = {
   /** 当前会话是否切换到 AI 全托管 */
   aiHosted?: boolean;
   /** 会话托管模式：full 全托管，semi 半托管 */
-  custodyMode: ConversationCustodyMode;
+  agentMode: ConversationAgentMode;
   /** 托管状态栏展示状态 */
-  custodyHostingStatus?:
+  agentHostingStatus?:
     | "active"
     | "exited"
     | "failed"

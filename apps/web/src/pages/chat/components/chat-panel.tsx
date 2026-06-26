@@ -12,7 +12,7 @@ import {
   ChatComposer,
   type ComposerMaterialLibraryBizType,
 } from "@/pages/chat/components/chat-composer";
-import { ChatCustodyStatusBar } from "@/pages/chat/components/chat-custody-status-bar";
+import { ChatAgentHostingStatusBar } from "@/pages/chat/components/chat-agent-hosting-status-bar";
 import { ChatHeader } from "@/pages/chat/components/chat-header";
 import { ChatMessagePanel } from "@/pages/chat/components/chat-message-panel";
 import { CustomerSidePanel } from "@/pages/chat/components/customer-side-panel";
@@ -34,9 +34,9 @@ import type {
 } from "@chatai/contracts";
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
 import {
-  resolveCustodyHostingStatus,
-  type CustodyHostingStatus,
-} from "@/pages/chat/lib/chat-custody-status";
+  resolveAgentHostingStatus,
+  type AgentHostingStatus,
+} from "@/pages/chat/lib/chat-agent-hosting-status";
 import type { SmartReplySendPayload } from "@/pages/chat/api/smart-reply-adapter";
 
 type ChatPanelProps = {
@@ -48,7 +48,7 @@ type ChatPanelProps = {
   canCollectMaterialActions?: boolean;
   canSendMessage: boolean;
   fullAutoActionPending?: boolean;
-  fullAutoDisplayStatus?: CustodyHostingStatus;
+  fullAutoDisplayStatus?: AgentHostingStatus;
   isFullAutoActive?: boolean;
   composerPlaceholder: string;
   customer?: CustomerProfile;
@@ -94,8 +94,8 @@ type ChatPanelProps = {
   onEmojiPickerOpenChange: (isOpen: boolean) => void;
   onEnterBehaviorChange: (behavior: InputEnterBehavior) => void;
   onCancelFileUpload: (uploadId: string) => void;
-  onCancelCustody?: () => void;
-  onEnableCustody?: () => void;
+  onCancelAgentHosting?: () => void;
+  onEnableAgentHosting?: () => void;
   onChangeFullAuto?: (enabled: boolean) => void;
   collectedExpressions?: WorkbenchMaterialCollectionItemDto[];
   hasMoreCollectedExpressions?: boolean;
@@ -189,8 +189,8 @@ export function ChatPanel({
   onEmojiPickerOpenChange,
   onEnterBehaviorChange,
   onCancelFileUpload,
-  onCancelCustody,
-  onEnableCustody,
+  onCancelAgentHosting,
+  onEnableAgentHosting,
   onChangeFullAuto,
   collectedExpressions,
   hasMoreCollectedExpressions,
@@ -241,12 +241,12 @@ export function ChatPanel({
   composerRef,
   workbenchBodyRef,
 }: ChatPanelProps) {
-  const resolvedCustodyHostingStatus =
-    fullAutoDisplayStatus ?? resolveCustodyHostingStatus(activeConversation);
-  const custodyHostingStatus =
-    !isFullAutoActive || resolvedCustodyHostingStatus === "exited"
+  const resolvedAgentHostingStatus =
+    fullAutoDisplayStatus ?? resolveAgentHostingStatus(activeConversation);
+  const agentHostingStatus =
+    !isFullAutoActive || resolvedAgentHostingStatus === "exited"
       ? null
-      : resolvedCustodyHostingStatus;
+      : resolvedAgentHostingStatus;
   const hasActiveFileUpload = fileUploadQueue.length > 0;
   const hasActiveConversation = activeConversation !== undefined;
 
@@ -326,15 +326,15 @@ export function ChatPanel({
                 ) : null}
 
                 <div className="relative overflow-visible bg-surface pb-3">
-                  {custodyHostingStatus ? (
+                  {agentHostingStatus ? (
                     <div
                       className="absolute bottom-12 left-1/2 z-30 w-4/5 max-w-[520px] -translate-x-1/2"
-                      data-testid="chat-custody-status-bar-anchor"
+                      data-testid="chat-agent-hosting-status-bar-anchor"
                     >
-                      <ChatCustodyStatusBar
-                        onCancel={onCancelCustody}
-                        onEnable={onEnableCustody}
-                        status={custodyHostingStatus}
+                      <ChatAgentHostingStatusBar
+                        onCancel={onCancelAgentHosting}
+                        onEnable={onEnableAgentHosting}
+                        status={agentHostingStatus}
                       />
                     </div>
                   ) : null}
@@ -347,7 +347,7 @@ export function ChatPanel({
                       hasActiveFileUpload={hasActiveFileUpload}
                       currentSeatThirdUserId={activeConversation.thirdUserId}
                       groupMembers={groupMembers}
-                      hidePlaceholder={!!custodyHostingStatus}
+                      hidePlaceholder={!!agentHostingStatus}
                       isGroupConversation={activeConversation.mode === "group"}
                       inputEnterBehavior={inputEnterBehavior}
                       isEmojiPickerOpen={isEmojiPickerOpen}

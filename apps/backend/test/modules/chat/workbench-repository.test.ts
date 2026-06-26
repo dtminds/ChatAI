@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  CONVERSATION_CUSTODY_MODE,
+  CONVERSATION_AGENT_MODE,
   MATERIAL_COLLECTION_BIZ_TYPE,
 } from "@chatai/contracts";
 import type { MessageRow } from "../../../src/modules/chat/workbench-mappers.js";
@@ -5093,7 +5093,7 @@ describe("WorkbenchRepository", () => {
     );
 
     await expect(repository.getConversationLookup("88")).resolves.toEqual({
-      custodyMode: CONVERSATION_CUSTODY_MODE.SEMI,
+      agentMode: CONVERSATION_AGENT_MODE.SEMI,
       id: "88",
       platform: 5,
       seatHostSubUserId: "101",
@@ -5180,7 +5180,7 @@ describe("WorkbenchRepository", () => {
     );
 
     await expect(repository.getConversationLookup("99")).resolves.toEqual({
-      custodyMode: CONVERSATION_CUSTODY_MODE.SEMI,
+      agentMode: CONVERSATION_AGENT_MODE.SEMI,
       id: "99",
       platform: 5,
       seatHostSubUserId: "101",

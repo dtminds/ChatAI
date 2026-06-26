@@ -1,7 +1,7 @@
-import { CONVERSATION_CUSTODY_MODE } from "@chatai/contracts";
+import { CONVERSATION_AGENT_MODE } from "@chatai/contracts";
 import type { Conversation } from "@/pages/chat/chat-types";
 
-export type CustodyHostingStatus =
+export type AgentHostingStatus =
   | "active"
   | "exited"
   | "failed"
@@ -15,7 +15,7 @@ export type CustodyHostingStatus =
   | "thinking"
   | "waiting";
 
-const custodyHostingStatusLabels: Record<CustodyHostingStatus, string> = {
+const agentHostingStatusLabels: Record<AgentHostingStatus, string> = {
   active: "Agent 已就绪，正在等待用户消息",
   exited: "当前已退出全托管模式",
   failed: "Agent 遇到了一些问题",
@@ -30,22 +30,22 @@ const custodyHostingStatusLabels: Record<CustodyHostingStatus, string> = {
   waiting: "Agent 正在等待客户是否还有新消息",
 };
 
-export function resolveCustodyHostingStatus(
+export function resolveAgentHostingStatus(
   conversation?: Conversation,
-): CustodyHostingStatus | null {
+): AgentHostingStatus | null {
   if (!conversation) {
     return null;
   }
 
-  if (conversation.custodyHostingStatus === "exited") {
+  if (conversation.agentHostingStatus === "exited") {
     return "exited";
   }
 
-  if (conversation.custodyMode !== CONVERSATION_CUSTODY_MODE.FULL) {
+  if (conversation.agentMode !== CONVERSATION_AGENT_MODE.FULL) {
     return null;
   }
 
-  const status = conversation.custodyHostingStatus;
+  const status = conversation.agentHostingStatus;
 
   if (
     status === "failed" ||
@@ -65,11 +65,11 @@ export function resolveCustodyHostingStatus(
   return "active";
 }
 
-export function isCustodyHostingExited(status: CustodyHostingStatus) {
+export function isAgentHostingExited(status: AgentHostingStatus) {
   return status === "exited";
 }
 
-export function isCustodyHostingBusy(status: CustodyHostingStatus) {
+export function isAgentHostingBusy(status: AgentHostingStatus) {
   return (
     status === "thinking" ||
     status === "waiting" ||
@@ -79,22 +79,22 @@ export function isCustodyHostingBusy(status: CustodyHostingStatus) {
   );
 }
 
-export function isCustodyHostingFullCustody(status: CustodyHostingStatus) {
+export function isAgentHostingEnabled(status: AgentHostingStatus) {
   return status !== "exited";
 }
 
-export function shouldUseFullCustodyCancelButton(status: CustodyHostingStatus) {
+export function shouldUsePrimaryAgentHostingAction(status: AgentHostingStatus) {
   return status === "active";
 }
 
-export function getCustodyHostingActionLabel(status: CustodyHostingStatus) {
+export function getAgentHostingActionLabel(status: AgentHostingStatus) {
   return status === "exited" ? "开启托管" : "取消托管";
 }
 
-export function getCustodyHostingStatusLabel(status: CustodyHostingStatus) {
-  return custodyHostingStatusLabels[status];
+export function getAgentHostingStatusLabel(status: AgentHostingStatus) {
+  return agentHostingStatusLabels[status];
 }
 
-export function isConversationInFullCustody(conversation?: Conversation) {
-  return conversation?.custodyMode === CONVERSATION_CUSTODY_MODE.FULL;
+export function isConversationInFullAutoAgentMode(conversation?: Conversation) {
+  return conversation?.agentMode === CONVERSATION_AGENT_MODE.FULL;
 }

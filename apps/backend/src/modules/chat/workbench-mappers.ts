@@ -1,5 +1,5 @@
 import {
-  CONVERSATION_CUSTODY_MODE,
+  CONVERSATION_AGENT_MODE,
   type WorkbenchConversationSummaryDto,
   WorkbenchMessageContentType,
   WorkbenchMessageDto,
@@ -173,9 +173,9 @@ export function mapConversationRow(
     aiHosted: readBooleanFlag(row.full_auto_switch),
     bizStatus: row.biz_status == null ? 0 : toNumber(row.biz_status),
     conversationId: String(row.id),
-    custodyMode: readBooleanFlag(row.full_auto_switch)
-      ? CONVERSATION_CUSTODY_MODE.FULL
-      : CONVERSATION_CUSTODY_MODE.SEMI,
+    agentMode: readBooleanFlag(row.full_auto_switch)
+      ? CONVERSATION_AGENT_MODE.FULL
+      : CONVERSATION_AGENT_MODE.SEMI,
     createdAt: toOptionalTimestamp(row.create_time),
     customerAvatar,
     customerId,

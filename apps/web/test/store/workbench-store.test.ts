@@ -70,7 +70,7 @@ function getSeedMessageIdAt(conversationId: string, index: number) {
 function createCachedConversation(accountId: string): Conversation {
   return {
     accountId,
-    custodyMode: "semi",
+    agentMode: "semi",
     customerAvatarUrl: "",
     customerId: `${accountId}-customer`,
     customerName: `${accountId} 客户`,
@@ -224,7 +224,7 @@ describe("useWorkbenchStore", () => {
     const changeConversationFullAuto = vi.fn().mockResolvedValue({
       aiHosted: false,
       conversationId: "conv-001",
-      custodyMode: "semi" as const,
+      agentMode: "semi" as const,
       seatId: "drc",
     });
 
@@ -250,8 +250,8 @@ describe("useWorkbenchStore", () => {
             ? {
                 ...conversation,
                 aiHosted: true,
-                custodyHostingStatus: "thinking",
-                custodyMode: "full",
+                agentHostingStatus: "thinking",
+                agentMode: "full",
               }
             : conversation,
         ),
@@ -327,7 +327,7 @@ describe("useWorkbenchStore", () => {
     fullAutoChange.resolve({
       aiHosted: true,
       conversationId: "conv-001",
-      custodyMode: "full",
+      agentMode: "full",
       seatId: "drc",
     });
     await Promise.all([firstRequest, secondRequest]);
@@ -1345,7 +1345,7 @@ describe("useWorkbenchStore", () => {
             conversation.conversationId === "conv-001"
               ? {
                   ...conversation,
-                  custodyMode: "full",
+                  agentMode: "full",
                 }
               : conversation,
           ),
@@ -1461,14 +1461,14 @@ describe("useWorkbenchStore", () => {
           conversation.id === "conv-001"
             ? {
                 ...conversation,
-                custodyMode: "full",
+                agentMode: "full",
               }
             : conversation,
         ),
       },
     }));
 
-    await useWorkbenchStore.getState().syncFullAutoCustodyStatus();
+    await useWorkbenchStore.getState().syncFullAutoAgentStatus();
 
     expect(
       useWorkbenchStore.getState().fullAutoStatusByConversationId["conv-001"]?.status,
@@ -1543,14 +1543,14 @@ describe("useWorkbenchStore", () => {
           conversation.id === "conv-001"
             ? {
                 ...conversation,
-                custodyMode: "full",
+                agentMode: "full",
               }
             : conversation,
         ),
       },
     }));
 
-    await useWorkbenchStore.getState().syncFullAutoCustodyStatus();
+    await useWorkbenchStore.getState().syncFullAutoAgentStatus();
 
     expect(
       useWorkbenchStore.getState().fullAutoStatusByConversationId["conv-001"]?.status,
@@ -1622,14 +1622,14 @@ describe("useWorkbenchStore", () => {
           conversation.id === "conv-001"
             ? {
                 ...conversation,
-                custodyMode: "full",
+                agentMode: "full",
               }
             : conversation,
         ),
       },
     }));
 
-    await useWorkbenchStore.getState().syncFullAutoCustodyStatus();
+    await useWorkbenchStore.getState().syncFullAutoAgentStatus();
     expect(
       useWorkbenchStore.getState().fullAutoStatusByConversationId["conv-001"]?.status,
     ).toBe("sent");
@@ -1655,7 +1655,7 @@ describe("useWorkbenchStore", () => {
       },
     }));
 
-    await useWorkbenchStore.getState().syncFullAutoCustodyStatus();
+    await useWorkbenchStore.getState().syncFullAutoAgentStatus();
 
     expect(observedStatusRequests).toEqual(["conv-001", "conv-001"]);
     expect(
@@ -7451,7 +7451,7 @@ describe("useWorkbenchStore", () => {
       priority: "medium",
       thirdExternalUserId: "external-search-001",
       thirdUserId: "third-user-drc",
-      custodyMode: "semi",
+      agentMode: "semi",
     };
     const observedPayloads: unknown[] = [];
 
@@ -7509,7 +7509,7 @@ describe("useWorkbenchStore", () => {
         quietFor: "",
         unread: 0,
         updatedAt: "",
-        custodyMode: "semi",
+        agentMode: "semi",
       },
     });
 
@@ -7559,7 +7559,7 @@ describe("useWorkbenchStore", () => {
       thirdExternalUserId: "external-search-stale",
       thirdUserId: "third-user-drc",
       unreadCount: 0,
-      custodyMode: "semi",
+      agentMode: "semi",
     });
     await selectPromise;
 
@@ -7660,7 +7660,7 @@ describe("useWorkbenchStore", () => {
         quietFor: "",
         unread: 0,
         updatedAt: "",
-        custodyMode: "semi",
+        agentMode: "semi",
       },
     });
 
@@ -7692,7 +7692,7 @@ describe("useWorkbenchStore", () => {
       thirdGroupId: "group-search-001",
       thirdUserId: "third-user-drc",
       unreadCount: 0,
-      custodyMode: "semi",
+      agentMode: "semi",
     };
 
     setWorkbenchService({
@@ -7764,7 +7764,7 @@ describe("useWorkbenchStore", () => {
         quietFor: "",
         unread: 0,
         updatedAt: "",
-        custodyMode: "semi",
+        agentMode: "semi",
       },
     });
 

@@ -14,7 +14,7 @@ function createConversation(
   return {
     accountId: "account-1",
     aiHosted: false,
-    custodyMode: "semi",
+    agentMode: "semi",
     customerAvatarUrl: "",
     customerId: `customer-${id}`,
     customerName: id,

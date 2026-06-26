@@ -12,12 +12,12 @@ export const TakeoverStatusSchema = Type.Union([
   Type.Literal("TAKEN_BY_OTHER"),
 ]);
 
-export const ConversationCustodyModeSchema = Type.Union([
+export const ConversationAgentModeSchema = Type.Union([
   Type.Literal("full"),
   Type.Literal("semi"),
 ]);
 
-export const CONVERSATION_CUSTODY_MODE = {
+export const CONVERSATION_AGENT_MODE = {
   FULL: "full",
   SEMI: "semi",
 } as const;
@@ -57,7 +57,7 @@ export const MaterialCollectionBizTypeSchema = Type.Union([
 
 export type LoginStatus = Static<typeof LoginStatusSchema>;
 export type TakeoverStatus = Static<typeof TakeoverStatusSchema>;
-export type ConversationCustodyMode = Static<typeof ConversationCustodyModeSchema>;
+export type ConversationAgentMode = Static<typeof ConversationAgentModeSchema>;
 export type MaterialCollectionBizType = Static<
   typeof MaterialCollectionBizTypeSchema
 >;

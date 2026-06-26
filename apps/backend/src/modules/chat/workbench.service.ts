@@ -103,7 +103,7 @@ import type {
 } from "@chatai/contracts";
 import {
   CHAT_TYPE,
-  CONVERSATION_CUSTODY_MODE,
+  CONVERSATION_AGENT_MODE,
   MATERIAL_COLLECTION_BIZ_TYPE,
   MATERIAL_COLLECTION_GROUP_MAX_COUNT,
   MATERIAL_COLLECTION_TITLE_MAX_LENGTH,
@@ -832,7 +832,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
       };
     }
 
-    if (conversation.custodyMode === CONVERSATION_CUSTODY_MODE.FULL) {
+    if (conversation.agentMode === CONVERSATION_AGENT_MODE.FULL) {
       return {
         ...publicPage,
         smartReplyEnabled: true,
@@ -1293,7 +1293,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
     return {
       aiHosted: request.enabled,
       conversationId: conversation.id,
-      custodyMode: request.enabled ? "full" : "semi",
+      agentMode: request.enabled ? "full" : "semi",
       seatId: conversation.seatId,
     };
   }

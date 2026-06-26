@@ -7,7 +7,7 @@ import {
 import { fetchWorkbenchSidebarIframeParams } from "@/pages/chat/api/sidebar-iframe-params";
 import { http } from "@/lib/request";
 import {
-  CONVERSATION_CUSTODY_MODE,
+  CONVERSATION_AGENT_MODE,
   type ApiSuccessEnvelope,
   type WorkbenchConversationDeleteResponse,
   type WorkbenchConversationListResponse,
@@ -1904,8 +1904,8 @@ export function createMockWorkbenchService(): WorkbenchService {
           thirdGroupId: existingConversation.thirdGroupId,
           thirdUserId: existingConversation.thirdUserId,
           unreadCount: existingConversation.unreadCount,
-          custodyMode:
-            existingConversation.custodyMode ?? CONVERSATION_CUSTODY_MODE.SEMI,
+          agentMode:
+            existingConversation.agentMode ?? CONVERSATION_AGENT_MODE.SEMI,
         };
       }
 
@@ -1927,7 +1927,7 @@ export function createMockWorkbenchService(): WorkbenchService {
         thirdGroupId: payload.thirdGroupId,
         thirdUserId: `third-user-${payload.seatId}`,
         unreadCount: 0,
-        custodyMode: CONVERSATION_CUSTODY_MODE.SEMI,
+        agentMode: CONVERSATION_AGENT_MODE.SEMI,
       };
     },
   };
@@ -2667,7 +2667,7 @@ function buildInitialState(): MockState {
           seatId: conversation.accountId,
           conversationId: conversation.id,
           bizStatus: conversation.bizStatus ?? 1,
-          custodyMode: conversation.custodyMode,
+          agentMode: conversation.agentMode,
           customerAvatar: conversation.customerAvatarUrl,
           customerId: conversation.customerId,
           customerName: conversation.customerName,
@@ -3401,10 +3401,10 @@ function setConversationFullAuto(
   const nextConversation = {
     ...conversation,
     aiHosted: enabled,
-    custodyHostingStatus: enabled ? "thinking" : undefined,
-    custodyMode: enabled
-      ? CONVERSATION_CUSTODY_MODE.FULL
-      : CONVERSATION_CUSTODY_MODE.SEMI,
+    agentHostingStatus: enabled ? "thinking" : undefined,
+    agentMode: enabled
+      ? CONVERSATION_AGENT_MODE.FULL
+      : CONVERSATION_AGENT_MODE.SEMI,
   };
 
   upsertConversation(state, nextConversation);
@@ -3413,7 +3413,7 @@ function setConversationFullAuto(
   return {
     aiHosted: enabled,
     conversationId,
-    custodyMode: nextConversation.custodyMode,
+    agentMode: nextConversation.agentMode,
     seatId: nextConversation.seatId,
   };
 }

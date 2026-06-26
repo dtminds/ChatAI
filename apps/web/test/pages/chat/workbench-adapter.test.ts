@@ -35,13 +35,13 @@ describe("workbench adapter", () => {
     expect(conversation.isVerified).toBe(false);
   });
 
-  it("maps conversation custody mode from the workbench DTO", () => {
-    expect(adaptConversation(conversationDto).custodyMode).toBe("semi");
+  it("maps conversation agent mode from the workbench DTO", () => {
+    expect(adaptConversation(conversationDto).agentMode).toBe("semi");
     expect(
       adaptConversation({
         ...conversationDto,
-        custodyMode: "full",
-      }).custodyMode,
+        agentMode: "full",
+      }).agentMode,
     ).toBe("full");
   });
 
@@ -890,7 +890,7 @@ describe("adaptMessage", () => {
 
 const conversationDto: WorkbenchConversationSummaryDto = {
   conversationId: "conversation-1",
-  custodyMode: "semi",
+  agentMode: "semi",
   customerAvatar: "",
   customerId: "group-1",
   customerName: "测试群002",

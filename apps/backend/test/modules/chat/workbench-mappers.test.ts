@@ -73,7 +73,7 @@ describe("workbench MySQL mappers", () => {
 
     expect(conversation).toMatchObject({
       conversationId: "88",
-      custodyMode: "full",
+      agentMode: "full",
       aiHosted: true,
       customerAvatar: "https://example.com/customer.png",
       customerId: "external-1",

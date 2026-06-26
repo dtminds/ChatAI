@@ -1,9 +1,9 @@
 import {
-  CONVERSATION_CUSTODY_MODE,
+  CONVERSATION_AGENT_MODE,
   GROUP_MEMBER_TYPE,
   MATERIAL_COLLECTION_BIZ_TYPE,
   QUICK_REPLY_SCOPE_TYPE,
-  type ConversationCustodyMode,
+  type ConversationAgentMode,
   type MaterialCollectionBizType,
   type QuickReplyScopeType,
   type WorkbenchGroupMemberDto,
@@ -92,7 +92,7 @@ const GROUP_MEMBER_SORT_RANK = {
 } as const;
 
 export type ConversationLookup = {
-  custodyMode: ConversationCustodyMode;
+  agentMode: ConversationAgentMode;
   id: string;
   platform: number;
   seatId: string;
@@ -3551,9 +3551,9 @@ export class WorkbenchRepository {
 
     return row
       ? {
-          custodyMode: readBooleanFlag(row.full_auto_switch)
-            ? CONVERSATION_CUSTODY_MODE.FULL
-            : CONVERSATION_CUSTODY_MODE.SEMI,
+          agentMode: readBooleanFlag(row.full_auto_switch)
+            ? CONVERSATION_AGENT_MODE.FULL
+            : CONVERSATION_AGENT_MODE.SEMI,
           id: String(row.id),
           platform: row.platform,
           seatId: String(row.seat_id),

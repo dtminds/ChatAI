@@ -64,3 +64,27 @@ export type KbDocCreateResponse = Static<typeof KbDocCreateResponseSchema>;
 export type KbDocUploadCredentialResponse = Static<
   typeof KbDocUploadCredentialResponseSchema
 >;
+
+export const KbDocCreateFaqRequestSchema = Type.Object({
+  description: Type.Optional(Type.String()),
+  docSuffix: Type.String({ minLength: 1 }),
+  docUrl: Type.String({ minLength: 1 }),
+  kbId: Type.String({ minLength: 1 }),
+  name: Type.String({ minLength: 1 }),
+});
+
+export const KbDocCreateImageRequestSchema = Type.Object({
+  description: Type.String({ minLength: 1 }),
+  docSuffix: Type.String({ minLength: 1 }),
+  docUrl: Type.String({ minLength: 1 }),
+  kbId: Type.String({ minLength: 1 }),
+  name: Type.String({ minLength: 1 }),
+});
+
+export const KbDocDeleteResponseSchema = Type.Object({
+  deleted: Type.Boolean(),
+});
+
+export type KbDocCreateFaqRequest = Static<typeof KbDocCreateFaqRequestSchema>;
+export type KbDocCreateImageRequest = Static<typeof KbDocCreateImageRequestSchema>;
+export type KbDocDeleteResponse = Static<typeof KbDocDeleteResponseSchema>;

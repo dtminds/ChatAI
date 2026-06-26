@@ -7,10 +7,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import type { KnowledgeChunk } from "../kb-mock-data";
+import type { KbDocChunkViewItem } from "../kb-types";
+import { ChunkContentEditor } from "./chunk-content-editor";
 import {
   IMAGE_TITLE_MAX_LENGTH,
   QA_ANSWER_MAX_LENGTH,
@@ -24,11 +24,11 @@ export function EditChunkDialog({
   onSubmit,
   open,
 }: {
-  chunk: KnowledgeChunk | null;
+  chunk: KbDocChunkViewItem | null;
   onOpenChange: (open: boolean) => void;
   onSubmit: (
     chunkId: string,
-    values: Partial<Pick<KnowledgeChunk, "question" | "answer" | "title" | "content">>,
+    values: Partial<Pick<KbDocChunkViewItem, "question" | "answer" | "title" | "content">>,
   ) => void | Promise<void>;
   open: boolean;
 }) {
@@ -95,31 +95,38 @@ export function EditChunkDialog({
 
   return (
     <Dialog onOpenChange={handleOpenChange} open={open}>
-      <DialogContent className="max-w-[520px]">
+      <DialogContent className="max-w-[760px]">
         <DialogHeader>
           <DialogTitle>编辑切片</DialogTitle>
         </DialogHeader>
 
         {chunk?.type === "qa" ? (
-          <div className="space-y-4 py-2">
+          <div className="space-y-5 py-3">
             <div className="space-y-2">
               <Label htmlFor="edit-chunk-question">
                 问题 <span className="text-destructive">*</span>
               </Label>
               <Textarea
+                className="min-h-0 resize-none"
                 id="edit-chunk-question"
                 maxLength={QA_QUESTION_MAX_LENGTH}
                 onChange={(event) => setQuestion(event.target.value)}
                 placeholder="请输入"
+                rows={2}
                 value={question}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit-chunk-answer">
-                答案 <span className="text-destructive">*</span>
-              </Label>
+              <div className="flex items-center justify-between gap-3">
+                <Label htmlFor="edit-chunk-answer">
+                  答案 <span className="text-destructive">*</span>
+                </Label>
+                <span className="text-xs text-muted-foreground">
+                  {answer.length}/{QA_ANSWER_MAX_LENGTH}
+                </span>
+              </div>
               <Textarea
-                className="min-h-[120px]"
+                className="min-h-[320px] resize-y"
                 id="edit-chunk-answer"
                 maxLength={QA_ANSWER_MAX_LENGTH}
                 onChange={(event) => setAnswer(event.target.value)}
@@ -129,38 +136,32 @@ export function EditChunkDialog({
             </div>
           </div>
         ) : (
-          <div className="space-y-4 py-2">
-            {chunk?.type === "image" && chunk.fileUrl ? (
-              <div className="overflow-hidden rounded-[8px] border bg-muted/30 p-3">
-                <img
-                  alt={chunk.title ?? "图片预览"}
-                  className="mx-auto max-h-40 object-contain"
-                  src={chunk.fileUrl}
-                />
-              </div>
-            ) : null}
+          <div className="space-y-5 py-3">
             <div className="space-y-2">
               <Label htmlFor="edit-chunk-title">
                 切片标题 <span className="text-destructive">*</span>
               </Label>
-              <Input
+              <Textarea
+                className="min-h-0 resize-none"
                 id="edit-chunk-title"
                 maxLength={chunk?.type === "image" ? IMAGE_TITLE_MAX_LENGTH : undefined}
                 onChange={(event) => setTitle(event.target.value)}
                 placeholder="请输入"
+                rows={2}
                 value={title}
               />
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-chunk-content">
-                切片内容 <span className="text-destructive">*</span>
+                {chunk?.imageUrls?.length ? "内容" : "切片内容"}{" "}
+                <span className="text-destructive">*</span>
               </Label>
-              <Textarea
-                className="min-h-[120px]"
-                id="edit-chunk-content"
-                onChange={(event) => setContent(event.target.value)}
-                placeholder="请输入"
-                value={content}
+              <ChunkContentEditor
+                className="min-h-[320px]"
+                content={content}
+                imageAlt={title || chunk?.title || "切片图片"}
+                imageUrls={chunk?.imageUrls}
+                onContentChange={setContent}
               />
             </div>
           </div>

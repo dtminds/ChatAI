@@ -1,5 +1,7 @@
 import { type ComponentProps, useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
+import { isRequestError } from "@/lib/request";
 
 export const QA_QUESTION_MAX_LENGTH = 500;
 export const QA_ANSWER_MAX_LENGTH = 2000;
@@ -7,14 +9,30 @@ export const IMAGE_TITLE_MAX_LENGTH = 16;
 export const CHUNK_FIRST_FIELD_MAX_LENGTH = 100;
 export const CHUNK_SECOND_FIELD_MAX_LENGTH = 2000;
 
+export function resolveKbRequestErrorMessage(error: unknown, fallback = "操作失败，请稍后重试") {
+  if (isRequestError(error)) {
+    return error.message || fallback;
+  }
+
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return fallback;
+}
+
 export function useDialogSubmit({
   onOpenChange,
   onReset,
+  onSubmitError,
   open,
+  submitErrorMessage = "操作失败，请稍后重试",
 }: {
   onOpenChange: (open: boolean) => void;
   onReset?: () => void;
+  onSubmitError?: (error: unknown) => void;
   open: boolean;
+  submitErrorMessage?: string;
 }) {
   const [submitting, setSubmitting] = useState(false);
   const isMountedRef = useRef(false);
@@ -55,8 +73,14 @@ export function useDialogSubmit({
         if (result !== false) {
           submitSuccessful = true;
         }
-      } catch {
-        // Keep dialog open when submit fails.
+      } catch (error) {
+        if (isMountedRef.current) {
+          if (onSubmitError) {
+            onSubmitError(error);
+          } else {
+            toast.error(resolveKbRequestErrorMessage(error, submitErrorMessage));
+          }
+        }
       } finally {
         if (isMountedRef.current) {
           setSubmitting(false);
@@ -67,7 +91,7 @@ export function useDialogSubmit({
         onOpenChange(false);
       }
     },
-    [onOpenChange],
+    [onOpenChange, onSubmitError, submitErrorMessage],
   );
 
   return {

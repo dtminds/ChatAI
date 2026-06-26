@@ -4,25 +4,32 @@ import { BadRequestError } from "../../shared/errors.js";
 const VOLC_STRATEGY_RESOURCE_IDS = {
   standard: {
     length: {
-      2000: "chat_kd_common_2000",
-      1000: "chat_kd_common_1000",
-      500: "chat_kd_common_500",
+      2000: "kb-strategy-233abb0cd67b8429",
+      1000: "kb-strategy-bb86846bd8964b93",
+      500: "kb-strategy-309dc4df244db26d",
     },
     separator: {
-      newline: "chat_kd_common_n",
+      newline: "kb-strategy-c0593b44acfbc5e8",
     },
   },
   enhanced: {
     length: {
-      2000: "chat_kd_ocr_2000",
-      1000: "chat_kd_ocr_1000",
-      500: "chat_kd_ocr_500",
+      2000: "kb-strategy-e1e2a815d50c4692",
+      1000: "kb-strategy-d4a3777d577b8e32",
+      500: "kb-strategy-51899c0babcd5d25",
     },
     separator: {
-      newline: "chat_kd_ocr_n",
+      newline: "kb-strategy-76c06c05cf06ac2c",
     },
   },
 } as const;
+
+/** FAQ / 图片创建使用的系统策略（key: chat_knowledge_init_version-auto） */
+export const KB_INIT_VOLC_STRATEGY_RESOURCE_ID = "kb-strategy-def92e30c1456c07";
+
+export function resolveKbInitVolcStrategyResourceId() {
+  return KB_INIT_VOLC_STRATEGY_RESOURCE_ID;
+}
 
 export function resolveVolcStrategyResourceId(input: {
   chunkParams: KbDocChunkParams;

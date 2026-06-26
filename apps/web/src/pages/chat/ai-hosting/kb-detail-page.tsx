@@ -1,16 +1,24 @@
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Add01Icon,
   AlertCircleIcon,
   ArrowLeft01Icon,
-  ChatQuestion01Icon,
   CheckmarkCircle02Icon,
-  FileAttachmentIcon,
-  FileImageIcon,
   Search01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Link, useParams } from "react-router-dom";
+import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -39,38 +47,48 @@ import {
 } from "@/components/ui/table-pagination";
 import { FileExtensionBadge } from "@/pages/chat/components/message/file";
 import { AiHostingLayout, AiHostingPageHeader } from "./ai-hosting-layout";
+import { KbTableLoadingRow } from "./kb-components/kb-table-loading-row";
 import { ImportDocumentDialog } from "./kb-components/import-document-dialog";
 import { ImportImageDialog } from "./kb-components/import-image-dialog";
 import { ImportQaDialog } from "./kb-components/import-qa-dialog";
+import { deleteKbDoc } from "./api/kb-doc-service";
 import {
-  addMockKnowledgeRecord,
-  getLocalTimeString,
-  getMockKnowledgeBasesSnapshot,
-  getMockKnowledgeRecordsSnapshot,
-  MOCK_KNOWLEDGE_BASES,
-  subscribeMockKnowledgeBases,
-  subscribeMockKnowledgeRecords,
-  type KnowledgeRecord,
-  type KnowledgeStatus,
-} from "./kb-mock-data";
+  getKb,
+  listKbDocs,
+  toKbDocViewItem,
+  toKbListViewItem,
+} from "./api/kb-service";
+import type { KbDocViewItem, KbListViewItem, KbStatus } from "./kb-types";
 
 const PAGE_SIZE = 10;
+
+function useDebouncedValue<T>(value: T, delayMs: number) {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedValue(value), delayMs);
+    return () => window.clearTimeout(timer);
+  }, [delayMs, value]);
+
+  return debouncedValue;
+}
+
 const addKnowledgeOptions = [
   {
     description: "上传问答表格，批量导入精准知识",
-    icon: ChatQuestion01Icon,
+    imgSrc: "https://b5.bokr.com.cn/dist/excel.png",
     label: "问答",
     type: "qa",
   },
   {
     description: "上传图片并添加描述，按描述精准召回",
-    icon: FileImageIcon,
+    imgSrc: "https://b5.bokr.com.cn/dist/image.png",
     label: "图片",
     type: "image",
   },
   {
     description: "自动解析文档内容，效果取决于文档质量",
-    icon: FileAttachmentIcon,
+    imgSrc: "https://b5.bokr.com.cn/dist/file.png",
     label: "文档",
     type: "document",
   },
@@ -78,7 +96,7 @@ const addKnowledgeOptions = [
 type AddKnowledgeOption = (typeof addKnowledgeOptions)[number];
 
 const statusMeta: Record<
-  KnowledgeStatus,
+  KbStatus,
   {
     label: string;
     className: string;
@@ -108,55 +126,159 @@ const statusMeta: Record<
 };
 
 export function KbDetailPage() {
-  const knowledgeBases = useSyncExternalStore(
-    subscribeMockKnowledgeBases,
-    getMockKnowledgeBasesSnapshot,
-    getMockKnowledgeBasesSnapshot,
-  );
-  const knowledgeRecords = useSyncExternalStore(
-    subscribeMockKnowledgeRecords,
-    getMockKnowledgeRecordsSnapshot,
-    getMockKnowledgeRecordsSnapshot,
-  );
-  const { knowledgeBaseId: kbId = MOCK_KNOWLEDGE_BASES[0]?.id } = useParams();
-  const knowledgeBase = knowledgeBases.find((item) => item.id === kbId);
+  const { kbId = "" } = useParams();
+  const [knowledgeBase, setKnowledgeBase] = useState<KbListViewItem | null>(null);
+  const [records, setRecords] = useState<KbDocViewItem[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loadingKb, setLoadingKb] = useState(true);
+  const [loadingDocs, setLoadingDocs] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearchQuery = useDebouncedValue(searchQuery, 300);
   const [currentPage, setCurrentPage] = useState(1);
   const [importQaDialogOpen, setImportQaDialogOpen] = useState(false);
   const [imageDialogOpen, setImageDialogOpen] = useState(false);
   const [documentDialogOpen, setDocumentDialogOpen] = useState(false);
+  const [deleteRecord, setDeleteRecord] = useState<KbDocViewItem | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const requestVersionRef = useRef(0);
+  const isMountedRef = useRef(false);
 
-  const filteredRecords = useMemo(() => {
-    const normalizedQuery = searchQuery.trim().toLowerCase();
-    if (!knowledgeBase) {
-      return [];
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  const loadDocs = useCallback(async () => {
+    if (!kbId) {
+      return;
     }
 
-    const records = knowledgeRecords.filter(
-      (record) => record.knowledgeBaseId === knowledgeBase.id,
-    );
+    const version = ++requestVersionRef.current;
+    setLoadingDocs(true);
 
-    if (!normalizedQuery) {
-      return records;
+    try {
+      const response = await listKbDocs(kbId, {
+        page: currentPage,
+        pageSize: PAGE_SIZE,
+        query: debouncedSearchQuery,
+      });
+
+      if (version !== requestVersionRef.current) {
+        return;
+      }
+
+      setRecords(response.docs.map(toKbDocViewItem));
+      setTotal(response.pagination.total);
+    } catch {
+      if (version !== requestVersionRef.current) {
+        return;
+      }
+
+      setRecords([]);
+      setTotal(0);
+    } finally {
+      if (version === requestVersionRef.current) {
+        setLoadingDocs(false);
+      }
+    }
+  }, [currentPage, debouncedSearchQuery, kbId]);
+
+  useEffect(() => {
+    return () => {
+      requestVersionRef.current++;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadKb() {
+      if (!kbId) {
+        setKnowledgeBase(null);
+        setLoadingKb(false);
+        return;
+      }
+
+      setLoadingKb(true);
+
+      try {
+        const kb = await getKb(kbId);
+
+        if (cancelled) {
+          return;
+        }
+
+        setKnowledgeBase(toKbListViewItem(kb));
+      } catch {
+        if (!cancelled) {
+          setKnowledgeBase(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingKb(false);
+        }
+      }
     }
 
-    return records.filter(
-      (record) =>
-        record.name.toLowerCase().includes(normalizedQuery) ||
-        record.typeLabel.toLowerCase().includes(normalizedQuery),
-    );
-  }, [knowledgeBase?.id, knowledgeRecords, searchQuery]);
+    void loadKb();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [kbId]);
+
+  useEffect(() => {
+    if (!kbId || loadingKb || !knowledgeBase) {
+      return;
+    }
+
+    void loadDocs();
+  }, [kbId, knowledgeBase, loadDocs, loadingKb]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearchQuery, kbId]);
+
   const { activePage, totalPages } = resolveTablePagination({
     page: currentPage,
     pageSize: PAGE_SIZE,
-    total: filteredRecords.length,
+    total,
   });
-  const pagedRecords = useMemo(() => {
-    const start = (activePage - 1) * PAGE_SIZE;
-    return filteredRecords.slice(start, start + PAGE_SIZE);
-  }, [activePage, filteredRecords]);
+  const pagedRecords = records;
+  const recordsLoading = loadingKb || loadingDocs;
 
-  if (!knowledgeBase) {
+  async function handleConfirmDelete() {
+    if (!deleteRecord || deleting) {
+      return;
+    }
+
+    setDeleting(true);
+
+    try {
+      await deleteKbDoc(deleteRecord.id);
+
+      if (!isMountedRef.current) {
+        return;
+      }
+
+      setDeleteRecord(null);
+      toast.success("已删除");
+      await loadDocs();
+    } catch {
+      if (isMountedRef.current) {
+        toast.error("删除失败，请稍后重试");
+      }
+    } finally {
+      if (isMountedRef.current) {
+        setDeleting(false);
+      }
+    }
+  }
+
+  if (!loadingKb && !knowledgeBase) {
     return (
       <AiHostingLayout title="知识库不存在">
         <div className="space-y-6">
@@ -173,13 +295,13 @@ export function KbDetailPage() {
   }
 
   return (
-    <AiHostingLayout title={knowledgeBase.name}>
+    <AiHostingLayout title={knowledgeBase?.name ?? "知识库"}>
       <div className="space-y-6">
         <div aria-label="知识库管理头部" className="space-y-3">
           <BackToKbListButton />
           <AiHostingPageHeader
-            description={knowledgeBase.description}
-            title={knowledgeBase.name}
+            description={knowledgeBase?.description}
+            title={knowledgeBase?.name ?? "知识库"}
           />
         </div>
 
@@ -214,80 +336,65 @@ export function KbDetailPage() {
 
           <div>
             <KnowledgeRecordsTable
-              knowledgeBaseId={knowledgeBase.id}
+              kbId={knowledgeBase?.id ?? kbId}
+              loading={recordsLoading}
+              onDelete={setDeleteRecord}
               records={pagedRecords}
             />
             <TablePagination
               onPageChange={setCurrentPage}
               page={activePage}
-              total={filteredRecords.length}
+              total={total}
               totalPages={totalPages}
             />
           </div>
         </section>
       </div>
       <ImportQaDialog
-        onImportComplete={(result) => {
-          const createdAt = getLocalTimeString();
-          addMockKnowledgeRecord({
-            createdAt,
-            fileExtension: result.docSuffix,
-            id: result.docId,
-            knowledgeBaseId: kbId,
-            name: result.name,
-            sliceCount: result.entries.length,
-            status: "queued",
-            type: "qa",
-            typeLabel: "FAQ",
-            updatedAt: createdAt,
-          });
+        kbId={kbId}
+        onImportComplete={() => {
+          void loadDocs();
         }}
         onOpenChange={setImportQaDialogOpen}
         open={importQaDialogOpen}
       />
       <ImportImageDialog
-        onCreated={(result) => {
-          const createdAt = getLocalTimeString();
-          addMockKnowledgeRecord({
-            createdAt,
-            fileExtension: result.docSuffix,
-            id: result.docId,
-            knowledgeBaseId: kbId,
-            name: result.name,
-            sliceCount: null,
-            status: "queued",
-            type: "image",
-            typeLabel: "图片",
-            updatedAt: createdAt,
-          });
+        kbId={kbId}
+        onCreated={() => {
+          void loadDocs();
         }}
         onOpenChange={setImageDialogOpen}
         open={imageDialogOpen}
       />
       <ImportDocumentDialog
         kbId={kbId}
-        onCreated={(result) => {
-          const createdAt = getLocalTimeString();
-          const docSuffix = result.docSuffix.toLowerCase();
-          addMockKnowledgeRecord({
-            createdAt,
-            fileExtension: docSuffix,
-            id: result.docId,
-            knowledgeBaseId: kbId,
-            name: result.name,
-            sliceCount: null,
-            status: "queued",
-            type: "document",
-            typeLabel:
-              docSuffix === "txt" || docSuffix === "md"
-                ? "纯文本"
-                : `文件（.${docSuffix}）`,
-            updatedAt: createdAt,
-          });
+        onCreated={() => {
+          void loadDocs();
         }}
         onOpenChange={setDocumentDialogOpen}
         open={documentDialogOpen}
       />
+      <AlertDialog
+        onOpenChange={(open) => {
+          if (!open && !deleting) {
+            setDeleteRecord(null);
+          }
+        }}
+        open={deleteRecord != null}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确定删除该知识吗</AlertDialogTitle>
+            <AlertDialogDescription>删除后无法恢复</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>取消</AlertDialogCancel>
+            <AlertDialogAction disabled={deleting} onClick={() => void handleConfirmDelete()}>
+              删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AiHostingLayout>
   );
 }
@@ -366,13 +473,12 @@ function renderAddKnowledgeOption(
         }
       }}
     >
-      <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-[8px] bg-muted text-muted-foreground">
-        <HugeiconsIcon
-          color="currentColor"
+      <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-[8px] bg-muted">
+        <img
+          alt={option.label}
+          className="size-6 object-contain"
           data-testid="knowledge-add-option-icon"
-          icon={option.icon}
-          size={17}
-          strokeWidth={1.8}
+          src={option.imgSrc}
         />
       </span>
       <span className="min-w-0">
@@ -388,11 +494,15 @@ function renderAddKnowledgeOption(
 }
 
 function KnowledgeRecordsTable({
-  knowledgeBaseId,
+  kbId,
+  loading,
+  onDelete,
   records,
 }: {
-  knowledgeBaseId: string;
-  records: KnowledgeRecord[];
+  kbId: string;
+  loading: boolean;
+  onDelete: (record: KbDocViewItem) => void;
+  records: KbDocViewItem[];
 }) {
   return (
     <Table aria-label="知识列表" className="min-w-[1120px] table-fixed">
@@ -410,7 +520,9 @@ function KnowledgeRecordsTable({
         </TableRow>
       </TableHeader>
       <TableBody>
-        {records.length > 0 ? (
+        {loading ? (
+          <KbTableLoadingRow colSpan={7} />
+        ) : records.length > 0 ? (
           records.map((record) => (
             <TableRow key={record.id}>
               <TableCell className="px-4 py-4" title={record.name}>
@@ -457,14 +569,19 @@ function KnowledgeRecordsTable({
                     variant="link"
                   >
                     {record.status === "completed" ? (
-                      <Link to={`/chat/ai-hosting/kb/${knowledgeBaseId}/docs/${record.id}`}>
+                      <Link to={`/chat/ai-hosting/kb/${kbId}/docs/${record.id}`}>
                         查看
                       </Link>
                     ) : (
                       <span>查看</span>
                     )}
                   </Button>
-                  <Button className="h-auto p-0 text-primary" type="button" variant="link">
+                  <Button
+                    className="h-auto p-0 text-primary"
+                    onClick={() => onDelete(record)}
+                    type="button"
+                    variant="link"
+                  >
                     删除
                   </Button>
                 </div>
@@ -483,7 +600,7 @@ function KnowledgeRecordsTable({
   );
 }
 
-function KnowledgeStatusBadge({ status }: { status: KnowledgeStatus }) {
+function KnowledgeStatusBadge({ status }: { status: KbStatus }) {
   const meta = statusMeta[status];
 
   return (

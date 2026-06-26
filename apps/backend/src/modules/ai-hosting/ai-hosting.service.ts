@@ -22,6 +22,7 @@ import {
   NotFoundError,
   ServiceUnavailableError,
 } from "../../shared/errors.js";
+import { buildContainsLikePattern } from "./sql-like-utils.js";
 
 type TenantScope = {
   platform: number;
@@ -527,7 +528,7 @@ export class AiHostingService {
       .where("agent.status", "=", dbActiveStatus);
 
     if (query) {
-      builder = builder.where("agent.name", "like", `%${escapeLikePattern(query)}%`);
+      builder = builder.where("agent.name", "like", buildContainsLikePattern(query));
     }
 
     return builder
@@ -546,7 +547,7 @@ export class AiHostingService {
       .where("agent.status", "=", dbActiveStatus);
 
     if (query) {
-      builder = builder.where("agent.name", "like", `%${escapeLikePattern(query)}%`);
+      builder = builder.where("agent.name", "like", buildContainsLikePattern(query));
     }
 
     const row = await builder.executeTakeFirst();
@@ -931,8 +932,4 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function readString(value: unknown) {
   return typeof value === "string" ? value : "";
-}
-
-function escapeLikePattern(value: string) {
-  return value.replace(/[\\%_]/g, "\\$&");
 }

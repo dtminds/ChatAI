@@ -16,6 +16,13 @@ describe("FileMessageCard", () => {
     ["pptx", "PPT 文件", "https://b5.bokr.com.cn/dist/ppt.png"],
     ["zip", "压缩文件", "https://b5.bokr.com.cn/dist/zip.png"],
     ["rar", "压缩文件", "https://b5.bokr.com.cn/dist/zip.png"],
+    ["png", "图片文件", "https://b5.bokr.com.cn/dist/image.png"],
+    ["jpg", "图片文件", "https://b5.bokr.com.cn/dist/image.png"],
+    ["jpeg", "图片文件", "https://b5.bokr.com.cn/dist/image.png"],
+    ["gif", "图片文件", "https://b5.bokr.com.cn/dist/image.png"],
+    ["webp", "图片文件", "https://b5.bokr.com.cn/dist/image.png"],
+    ["svg", "图片文件", "https://b5.bokr.com.cn/dist/image.png"],
+    ["bmp", "图片文件", "https://b5.bokr.com.cn/dist/image.png"],
   ])("renders the configured file type icon for %s files", (extension, label, src) => {
     render(
       <FileMessageCard
@@ -29,6 +36,23 @@ describe("FileMessageCard", () => {
 
     expect(screen.getByRole("img", { name: label })).toHaveAttribute("src", src);
     expect(screen.queryByText(extension)).not.toBeInTheDocument();
+  });
+
+  it("resolves compound extensions like .faq.xlsx to the last segment", () => {
+    render(
+      <FileMessageCard
+        content={{
+          ...createFileContent(),
+          extension: ".faq.xlsx",
+          fileName: "问答表.faq.xlsx",
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("img", { name: "Excel 文件" })).toHaveAttribute(
+      "src",
+      "https://b5.bokr.com.cn/dist/excel.png",
+    );
   });
 
   it("renders the default file icon for unknown extensions", () => {

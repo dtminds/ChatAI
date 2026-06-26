@@ -37,7 +37,7 @@ const KbDocParamsSchema = Type.Object({
 const KbDocChunkListQuerySchema = Type.Object({
   page: Type.Optional(NumericStringSchema),
   pageSize: Type.Optional(NumericStringSchema),
-  query: Type.Optional(Type.String()),
+  title: Type.Optional(Type.String()),
 });
 
 type KbListQuery = Static<typeof KbListQuerySchema>;
@@ -158,7 +158,7 @@ export async function registerKbRoutes(app: FastifyInstance) {
           {
             page: parseOptionalInteger(request.query.page),
             pageSize: parseOptionalInteger(request.query.pageSize),
-            query: request.query.query,
+            title: request.query.title,
           },
         ),
       );

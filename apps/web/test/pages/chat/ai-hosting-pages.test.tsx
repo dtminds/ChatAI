@@ -328,7 +328,7 @@ describe("AI hosting pages", () => {
       createMockKbDocDetail(docId),
     );
     vi.mocked(kbService.listKbDocChunks).mockImplementation(async (docId, params) =>
-      createMockKbDocChunksResponse(docId, params?.query),
+      createMockKbDocChunksResponse(docId, params?.title),
     );
     mockImageDimensions = { height: 800, width: 800 };
     Object.defineProperty(URL, "createObjectURL", {

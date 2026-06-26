@@ -115,10 +115,10 @@ describe("KbReadService", () => {
     });
   });
 
-  it("filters chunks by title or content on the current Java page", async () => {
+  it("forwards chunk title filter to Java", async () => {
     const listKbChunks = vi.fn().mockResolvedValue({
-      count: 2,
-      list: javaChunkPageItems,
+      count: 1,
+      list: [javaChunkPageItems[1]],
       page: 1,
       pageSize: 10,
     });
@@ -127,13 +127,14 @@ describe("KbReadService", () => {
     const response = await service.listKbDocChunks("101", "1001", {
       page: 1,
       pageSize: 10,
-      query: "系统",
+      title: "系统",
     });
 
     expect(listKbChunks).toHaveBeenCalledWith({
       docId: 1001,
       page: 1,
       pageSize: 10,
+      title: "系统",
       uid: 9001,
     });
     expect(response.chunks).toHaveLength(1);
@@ -142,25 +143,6 @@ describe("KbReadService", () => {
       chunkId: "502",
       title: "系统切片",
     });
-  });
-
-  it("treats percent in query as literal text", async () => {
-    const listKbChunks = vi.fn().mockResolvedValue({
-      count: 2,
-      list: javaChunkPageItems,
-      page: 1,
-      pageSize: 10,
-    });
-    const { service } = createService(listKbChunks);
-
-    const response = await service.listKbDocChunks("101", "1001", {
-      page: 1,
-      pageSize: 10,
-      query: "%",
-    });
-
-    expect(response.chunks).toHaveLength(0);
-    expect(response.pagination.total).toBe(0);
   });
 
   it("rejects kb outside the tenant scope", async () => {

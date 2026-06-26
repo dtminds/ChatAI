@@ -1,7 +1,10 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type {
   AiHostingAgentDetail,
   AiHostingAgentPromptConfig,
+  AiHostingAgentTestMessage,
+  AiHostingAgentTestMessageContent,
+  AiHostingAgentTestResponse,
   AiHostingModel,
 } from "@chatai/contracts";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -16,6 +19,7 @@ import {
   SentIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { toast } from "sonner";
 import { AgentConditionalLogicField } from "./agent-components/agent-conditional-logic-field";
 import { AgentSettingsPublishDialog } from "./agent-components/agent-settings-publish-dialog";
 import { AgentSettingsRestoreDialog } from "./agent-components/agent-settings-restore-dialog";
@@ -52,6 +56,11 @@ import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { isRequestError } from "@/lib/request";
 import { cn } from "@/lib/utils";
+import {
+  COMPOSER_IMAGE_FILE_ACCEPT,
+  isSupportedComposerImageFile,
+  MAX_COMPOSER_IMAGE_SEGMENTS,
+} from "@/pages/chat/lib/composer-image-files";
 import { useAuthStore } from "@/store/auth-store";
 import {
   createAiHostingAgent,
@@ -60,14 +69,17 @@ import {
   publishAiHostingAgent,
   renameAiHostingAgent,
   restoreAiHostingAgent,
+  testAiHostingAgent,
   updateAiHostingAgent,
 } from "./agent-service";
+import { uploadKbImage } from "./api/kb-doc-service";
 import {
   agentModelOptions,
   agentLongTextMaxLength,
   agentNameMaxLength,
   agentCommunicationStyleTemplates,
   agentPreviewSeedMessages,
+  agentPreviewTestMessageLimit,
   agentReplyLengthOptions,
   agentSettingsFieldHints,
   defaultAgentSettingsForm,
@@ -83,6 +95,8 @@ import { aiHostingSettingsModuleSurface } from "./ai-hosting-palette";
 type PreviewMessage = {
   content: string;
   id: string;
+  imageUrls?: string[];
+  pending?: boolean;
   role: "agent" | "customer";
 };
 
@@ -108,6 +122,7 @@ export function AgentSettingsPage() {
   const [agentDetail, setAgentDetail] = useState<AiHostingAgentDetail | null>(null);
   const [previewMessages, setPreviewMessages] = useState<PreviewMessage[]>(agentPreviewSeedMessages);
   const [previewInput, setPreviewInput] = useState("");
+  const [previewTesting, setPreviewTesting] = useState(false);
   const [restoreDialogOpen, setRestoreDialogOpen] = useState(false);
   const [publishDialogOpen, setPublishDialogOpen] = useState(false);
   const [createdDraftDialogOpen, setCreatedDraftDialogOpen] = useState(false);
@@ -383,26 +398,120 @@ export function AgentSettingsPage() {
     }
   }
 
-  function handlePreviewSend() {
+  async function handlePreviewSend() {
     const content = previewInput.trim();
 
-    if (!content) {
+    if (!content || previewTesting) {
       return;
     }
 
+    const succeeded = await submitPreviewTest([{ type: "text", text: content }]);
+
+    if (succeeded) {
+      setPreviewInput("");
+    }
+  }
+
+  async function handlePreviewImageSelect(fileList: FileList | File[] | null) {
+    if (previewTesting) {
+      return;
+    }
+
+    const supportedFiles = Array.from(fileList ?? []).filter(isSupportedComposerImageFile);
+    const files = supportedFiles.slice(0, MAX_COMPOSER_IMAGE_SEGMENTS);
+
+    if (supportedFiles.length > MAX_COMPOSER_IMAGE_SEGMENTS) {
+      toast.warning("单次发送图片限制为5张");
+    }
+
+    if (files.length === 0) {
+      return;
+    }
+
+    try {
+      const imageUrls = (
+        await Promise.all(
+          files.map(async (file) => {
+            const uploadResult = await uploadKbImage(file);
+            return uploadResult.url;
+          }),
+        )
+      ).filter(Boolean);
+
+      if (imageUrls.length === 0) {
+        return;
+      }
+
+      await submitPreviewTest(
+        imageUrls.map((url) => ({
+          type: "image" as const,
+          url,
+        })),
+        { imageUrls },
+      );
+    } catch (error) {
+      toast.error(isRequestError(error) ? error.message : "图片发送失败");
+    }
+  }
+
+  async function submitPreviewTest(
+    userContents: AiHostingAgentTestMessageContent[],
+    previewOverrides?: Partial<Pick<PreviewMessage, "content" | "imageUrls">>,
+  ): Promise<boolean> {
+    const settingsPayload = buildSettingsSavePayload(form);
+
+    if (!settingsPayload) {
+      toast.error("请先选择模型");
+      return false;
+    }
+
+    if (userContents.length === 0 || previewTesting) {
+      return false;
+    }
+
+    const historyMessages = mapPreviewMessagesToTestMessages(previewMessages);
+    const nextUserMessage: AiHostingAgentTestMessage = {
+      role: "user",
+      contents: userContents,
+    };
+    const pendingUserMessage = buildPreviewUserMessage(userContents, previewOverrides);
+    const nextMessageCount = previewMessages.length + 2;
+
+    setPreviewTesting(true);
     setPreviewMessages((current) => [
       ...current,
+      pendingUserMessage,
       {
-        id: `preview-user-${current.length + 1}`,
-        role: "customer",
-        content,
-      },
-      {
-        id: `preview-agent-${current.length + 1}`,
+        id: `preview-agent-pending-${nextMessageCount}`,
         role: "agent",
-        content: "你好，请问有什么可以帮您？",
+        content: "",
+        pending: true,
       },
     ]);
+
+    try {
+      const response = await testAiHostingAgent({
+        messages: [...historyMessages, nextUserMessage].slice(-agentPreviewTestMessageLimit),
+        modelId: settingsPayload.modelId,
+        promptConfig: settingsPayload.promptConfig,
+      });
+
+      setPreviewMessages((current) => {
+        const withoutPending = current.slice(0, -1);
+        return [...withoutPending, ...mapTestResponseToPreviewMessages(response, nextMessageCount)];
+      });
+      return true;
+    } catch (error) {
+      setPreviewMessages((current) => current.slice(0, -2));
+      toast.error(isRequestError(error) ? error.message : "模拟测试失败");
+      return false;
+    } finally {
+      setPreviewTesting(false);
+    }
+  }
+
+  function handlePreviewClear() {
+    setPreviewMessages(agentPreviewSeedMessages);
     setPreviewInput("");
   }
 
@@ -672,8 +781,11 @@ export function AgentSettingsPage() {
           <AgentPreviewPanel
             inputValue={previewInput}
             messages={previewMessages}
+            onClear={handlePreviewClear}
+            onImageSelect={handlePreviewImageSelect}
             onInputChange={setPreviewInput}
             onSend={handlePreviewSend}
+            testing={previewTesting}
             title={previewTitle}
           />
         </div>
@@ -848,17 +960,42 @@ function TextCounter({ maxLength, value }: { maxLength: number; value: string })
 function AgentPreviewPanel({
   inputValue,
   messages,
+  onClear,
+  onImageSelect,
   onInputChange,
   onSend,
+  testing,
   title,
 }: {
   inputValue: string;
   messages: PreviewMessage[];
+  onClear: () => void;
+  onImageSelect: (files: FileList | File[] | null) => void | Promise<void>;
   onInputChange: (value: string) => void;
-  onSend: () => void;
+  onSend: () => void | Promise<void>;
+  testing: boolean;
   title: string;
 }) {
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const messageViewportRef = useRef<HTMLDivElement | null>(null);
   const visibleMessages = useMemo(() => messages, [messages]);
+
+  const scrollPreviewToBottom = useCallback(() => {
+    const viewport = messageViewportRef.current;
+    if (!viewport) {
+      return;
+    }
+
+    viewport.scrollTop = viewport.scrollHeight;
+  }, []);
+
+  useEffect(() => {
+    scrollPreviewToBottom();
+    window.requestAnimationFrame(() => {
+      scrollPreviewToBottom();
+      window.requestAnimationFrame(scrollPreviewToBottom);
+    });
+  }, [scrollPreviewToBottom, testing, visibleMessages]);
 
   return (
     <aside className="xl:sticky xl:top-0">
@@ -876,16 +1013,34 @@ function AgentPreviewPanel({
               <HugeiconsIcon icon={AiChat02Icon} size={16} strokeWidth={1.8} />
             </span>
             <h2 className="truncate text-base font-semibold text-foreground">{title}</h2>
+            <span className="rounded-[6px] bg-background px-2 py-1 text-xs text-muted-foreground">
+              模拟测试
+            </span>
           </div>
-          <span className="shrink-0 rounded-[6px] bg-background px-2 py-1 text-xs text-muted-foreground">
-            模拟测试
-          </span>
+          <div className="flex shrink-0 items-center gap-2">
+            <Button
+              className="h-auto rounded-[6px] px-2 py-1 text-xs text-muted-foreground hover:bg-background hover:text-foreground"
+              disabled={testing}
+              onClick={onClear}
+              type="button"
+              variant="ghost"
+            >
+              清空
+            </Button>
+          </div>
         </header>
 
         <div className="flex min-h-0 flex-1 flex-col bg-background">
-          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
+          <div
+            className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4"
+            ref={messageViewportRef}
+          >
             {visibleMessages.map((message) => (
-              <PreviewMessageRow key={message.id} message={message} />
+              <PreviewMessageRow
+                key={message.id}
+                message={message}
+                onMediaLoad={scrollPreviewToBottom}
+              />
             ))}
           </div>
 
@@ -894,19 +1049,37 @@ function AgentPreviewPanel({
               <Button
                 aria-label="上传图片"
                 className="mb-1 size-7 rounded-[6px] p-0 text-muted-foreground hover:bg-muted/40"
+                disabled={testing}
+                onClick={() => imageInputRef.current?.click()}
                 type="button"
                 variant="ghost"
               >
                 <HugeiconsIcon icon={Image01Icon} size={18} strokeWidth={1.8} />
               </Button>
+              <input
+                accept={COMPOSER_IMAGE_FILE_ACCEPT}
+                aria-label="选择图片"
+                className="sr-only"
+                disabled={testing}
+                multiple
+                onChange={(event) => {
+                  void onImageSelect(event.currentTarget.files);
+                  event.currentTarget.value = "";
+                }}
+                ref={imageInputRef}
+                type="file"
+              />
               <Textarea
                 aria-label="预览输入框"
                 className="min-h-20 resize-none border-0 bg-transparent p-0 shadow-none focus-visible:ring-0"
+                disabled={testing}
                 onChange={(event) => onInputChange(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" && !event.shiftKey) {
                     event.preventDefault();
-                    onSend();
+                    if (inputValue.trim() && !testing) {
+                      void onSend();
+                    }
                   }
                 }}
                 placeholder="请输入消息"
@@ -920,14 +1093,44 @@ function AgentPreviewPanel({
   );
 }
 
-function PreviewMessageRow({ message }: { message: PreviewMessage }) {
+function PreviewMessageRow({
+  message,
+  onMediaLoad,
+}: {
+  message: PreviewMessage;
+  onMediaLoad?: () => void;
+}) {
   const isAgent = message.role === "agent";
+  const hasImages = Boolean(message.imageUrls?.length);
 
   return (
     <div className={cn("flex items-start gap-2", isAgent ? "justify-start" : "justify-end")}>
       {isAgent ? <PreviewAgentAvatar /> : null}
-      <div className="max-w-[78%] rounded-[12px] bg-muted px-3 py-2 text-sm leading-6 text-foreground">
-        {message.content}
+      <div className="max-w-[78%] space-y-2 rounded-[12px] bg-muted px-3 py-2 text-sm leading-6 text-foreground">
+        {message.pending ? (
+          <div className="flex items-center gap-2 text-muted-foreground" role="status">
+            <Spinner aria-hidden="true" size={14} variant="classic" />
+            正在加载
+          </div>
+        ) : (
+          <>
+            {hasImages ? (
+              <div className="space-y-2">
+                {message.imageUrls?.map((imageUrl, index) => (
+                  <img
+                    alt=""
+                    className="max-h-44 max-w-full rounded-lg border border-border object-contain"
+                    draggable={false}
+                    key={`${message.id}-image-${index}`}
+                    onLoad={onMediaLoad}
+                    src={imageUrl}
+                  />
+                ))}
+              </div>
+            ) : null}
+            {message.content ? <p>{message.content}</p> : null}
+          </>
+        )}
       </div>
       {!isAgent ? <PreviewCustomerAvatar /> : null}
     </div>
@@ -1259,4 +1462,131 @@ function normalizeReplyLength(value: string): AgentReplyLength {
   return agentReplyLengthOptions.some((option) => option.value === value)
     ? (value as AgentReplyLength)
     : "简洁";
+}
+
+function mapPreviewMessagesToTestMessages(messages: PreviewMessage[]): AiHostingAgentTestMessage[] {
+  return messages.flatMap((message) => {
+    if (message.pending) {
+      return [];
+    }
+
+    const contents = buildTestMessageContents(message);
+    if (contents.length === 0) {
+      return [];
+    }
+
+    return [
+      {
+        role: message.role === "customer" ? "user" : "assistant",
+        contents,
+      },
+    ];
+  });
+}
+
+function buildTestMessageContents(message: PreviewMessage): AiHostingAgentTestMessageContent[] {
+  if (message.role === "agent") {
+    const text = message.content.trim();
+    return text ? [{ type: "text", text }] : [];
+  }
+
+  const contents: AiHostingAgentTestMessageContent[] = [];
+
+  for (const url of message.imageUrls ?? []) {
+    contents.push({ type: "image", url });
+  }
+
+  const text = message.content.trim();
+  if (text) {
+    contents.push({ type: "text", text });
+  }
+
+  return contents;
+}
+
+function buildPreviewUserMessage(
+  userContents: AiHostingAgentTestMessageContent[],
+  previewOverrides?: Partial<Pick<PreviewMessage, "content" | "imageUrls">>,
+): PreviewMessage {
+  const text = previewOverrides?.content ?? readTestTextContent(userContents);
+  const imageUrls =
+    previewOverrides?.imageUrls ??
+    userContents.flatMap((content) => (content.type === "image" && content.url ? [content.url] : []));
+
+  return {
+    id: `preview-user-${Date.now()}`,
+    role: "customer",
+    content: text,
+    ...(imageUrls.length > 0 ? { imageUrls } : {}),
+  };
+}
+
+function readTestTextContent(contents: AiHostingAgentTestMessageContent[]) {
+  return contents
+    .flatMap((content) => (content.type === "text" && content.text ? [content.text] : []))
+    .join("\n")
+    .trim();
+}
+
+function mapTestResponseToPreviewMessages(
+  response: AiHostingAgentTestResponse,
+  messageIndex: number,
+): PreviewMessage[] {
+  return response.reply.flatMap((item, index) => {
+    const id = `preview-agent-${messageIndex + index}`;
+    const textContent = normalizePreviewReplyText(item);
+
+    if (item.type === "text" && textContent) {
+      return [
+        {
+          id,
+          role: "agent" as const,
+          content: textContent,
+        },
+      ];
+    }
+
+    if (item.type === "image" && item.content) {
+      return [
+        {
+          id,
+          role: "agent" as const,
+          content: "",
+          imageUrls: [item.content],
+        },
+      ];
+    }
+
+    return [];
+  });
+}
+
+function normalizePreviewReplyText(item: AiHostingAgentTestResponse["reply"][number]) {
+  if (item.type !== "text") {
+    return "";
+  }
+
+  const content = item.content.trim();
+  if (!content.startsWith("{")) {
+    return content;
+  }
+
+  try {
+    const parsed = JSON.parse(content) as unknown;
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      "reply" in parsed &&
+      Array.isArray((parsed as { reply?: unknown }).reply)
+    ) {
+      return (parsed as AiHostingAgentTestResponse).reply
+        .flatMap((replyItem) => (replyItem.type === "text" ? [replyItem.content.trim()] : []))
+        .filter(Boolean)
+        .join("\n");
+    }
+  } catch {
+    return content;
+  }
+
+  return content;
 }

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { buildMockedApp } from "../../helpers/build-mocked-app";
 
 describe("AI hosting agent routes", () => {
@@ -644,6 +644,135 @@ describe("AI hosting agent routes", () => {
     });
     expect(db.deletedAgent).toBeUndefined();
 
+    await app.close();
+  });
+
+  it("proxies agent simulation tests to the Java test-agent endpoint", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: {
+            action: "reply",
+            reply: [{ type: "text", content: "你好，我是 Agent" }],
+          },
+          success: true,
+        }),
+        { status: 200 },
+      ),
+    );
+    const { app, authorization } = await createAiHostingApp();
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        messages: [
+          {
+            contents: [{ type: "text", text: "我想了解晨间护肤" }],
+            role: "user",
+          },
+        ],
+        modelId: "11",
+        promptConfig: {
+          conditionLogic: "如果客户咨询成分，那么说明功效",
+          replyStyle: {
+            length: "简洁",
+            styleInstruction: "亲切自然",
+          },
+          handoffRules: "客户要求真人",
+          role: "你是护肤顾问",
+        },
+      },
+      url: "/api/server/ai-hosting/agents/test",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      data: {
+        action: "reply",
+        reply: [{ type: "text", content: "你好，我是 Agent" }],
+      },
+      success: true,
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/wap-embed-agent/test-agent",
+      expect.objectContaining({
+        method: "POST",
+      }),
+    );
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      messages: [
+        {
+          contents: [{ text: "我想了解晨间护肤", type: "text" }],
+          role: "user",
+        },
+      ],
+      modelId: 11,
+      promptConfig: JSON.stringify({
+        condition_logic: "如果客户咨询成分，那么说明功效",
+        handoff_rules: "客户要求真人",
+        reply_style: {
+          length: "简洁",
+          style_instruction: "亲切自然",
+        },
+        role: "你是护肤顾问",
+      }),
+      uid: 9001,
+    });
+
+    fetchMock.mockRestore();
+    await app.close();
+  });
+
+  it("only forwards the latest 20 messages to the Java test-agent endpoint", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: {
+            action: "reply",
+            reply: [{ type: "text", content: "收到" }],
+          },
+          success: true,
+        }),
+        { status: 200 },
+      ),
+    );
+    const { app, authorization } = await createAiHostingApp();
+    const messages = Array.from({ length: 25 }, (_, index) => ({
+      contents: [{ type: "text", text: `消息 ${index + 1}` }],
+      role: index % 2 === 0 ? "user" : "assistant",
+    }));
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        messages,
+        modelId: "11",
+        promptConfig: {
+          conditionLogic: "",
+          replyStyle: {
+            length: "简洁",
+            styleInstruction: "亲切自然",
+          },
+          handoffRules: "",
+          role: "你是护肤顾问",
+        },
+      },
+      url: "/api/server/ai-hosting/agents/test",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)).messages).toEqual(
+      messages.slice(-20).map((message) => ({
+        contents: [{ text: message.contents[0]?.text, type: "text" }],
+        role: message.role,
+      })),
+    );
+
+    fetchMock.mockRestore();
     await app.close();
   });
 });

@@ -5,6 +5,8 @@ import type {
   AiHostingAgentRemoveResponse,
   AiHostingAgentSaveRequest,
   AiHostingAgentSettingsSaveRequest,
+  AiHostingAgentTestRequest,
+  AiHostingAgentTestResponse,
   AiHostingSettingsResponse,
   AiHostingSettingsUpdateRequest,
   AiHostingModelListResponse,
@@ -127,6 +129,15 @@ export async function removeAiHostingAgent(agentId: string) {
   const response = await http.delete<ApiSuccessEnvelope<AiHostingAgentRemoveResponse>>(
     `/server/ai-hosting/agents/${agentId}`,
   );
+
+  return response.data;
+}
+
+export async function testAiHostingAgent(payload: AiHostingAgentTestRequest) {
+  const response = await http.post<
+    ApiSuccessEnvelope<AiHostingAgentTestResponse>,
+    AiHostingAgentTestRequest
+  >("/server/ai-hosting/agents/test", payload);
 
   return response.data;
 }

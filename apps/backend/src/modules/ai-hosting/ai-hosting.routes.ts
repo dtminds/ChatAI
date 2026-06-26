@@ -2,16 +2,20 @@ import {
   AiHostingAgentRenameRequestSchema,
   AiHostingAgentSaveRequestSchema,
   AiHostingAgentSettingsSaveRequestSchema,
+  AiHostingAgentTestRequestSchema,
   AiHostingSettingsUpdateRequestSchema,
   apiSuccess,
   type AiHostingAgentRenameRequest,
   type AiHostingAgentSaveRequest,
   type AiHostingAgentSettingsSaveRequest,
+  type AiHostingAgentTestRequest,
   type AiHostingSettingsUpdateRequest,
 } from "@chatai/contracts";
 import { Type, type Static } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { ForbiddenError } from "../../shared/errors.js";
+import { createWorkbenchJavaClient } from "../chat/workbench-java-client.js";
+import { AgentTestService } from "./agent-test.service.js";
 import { createAiHostingService } from "./ai-hosting.service.js";
 
 const NumericStringSchema = Type.String({ pattern: "^[0-9]+$" });
@@ -210,6 +214,21 @@ export async function registerAiHostingRoutes(app: FastifyInstance) {
     },
   );
 
+  app.post<{ Body: AiHostingAgentTestRequest }>(
+    "/api/server/ai-hosting/agents/test",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: AiHostingAgentTestRequestSchema,
+      },
+    },
+    async (request) => {
+      return apiSuccess(
+        await getAgentTestService(app).testAgent(getSubUserId(request), request.body),
+      );
+    },
+  );
+
   app.delete<{ Params: AgentParams }>(
     "/api/server/ai-hosting/agents/:agentId",
     {
@@ -232,6 +251,10 @@ export async function registerAiHostingRoutes(app: FastifyInstance) {
 
 function getSubUserId(request: { user?: { subUserId: string } }) {
   return request.user?.subUserId ?? "";
+}
+
+function getAgentTestService(app: FastifyInstance) {
+  return new AgentTestService(app.db, createWorkbenchJavaClient(app.log));
 }
 
 function parseOptionalInteger(value: string | undefined) {

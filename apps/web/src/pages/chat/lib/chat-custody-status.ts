@@ -4,10 +4,10 @@ import type { Conversation } from "@/pages/chat/chat-types";
 export type CustodyHostingStatus = "active" | "exited" | "retrying" | "thinking";
 
 const custodyHostingStatusLabels: Record<CustodyHostingStatus, string> = {
-  active: "已就绪，正在等待用户消息",
+  active: "Agent 已就绪，正在等待用户消息",
   exited: "当前已退出全托管模式",
   retrying: "出了点小问题，我正在重试",
-  thinking: "正在思考",
+  thinking: "Agent 正在思考",
 };
 
 export function resolveCustodyHostingStatus(

@@ -8,7 +8,7 @@ import {
   useState,
 } from "react";
 import {
-  AiMagicIcon,
+  AiChat02Icon,
   ArrowDown01Icon,
   ArrowUp02Icon,
   Cancel01Icon,
@@ -37,8 +37,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -88,11 +86,11 @@ import {
 import { COMPOSER_FILE_ACCEPT } from "@/pages/chat/lib/composer-file-files";
 import { DISABLE_SPH_COLLECTION } from "@/pages/chat/chat-constants";
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
-import type { CustodyHostingStatus } from "@/pages/chat/lib/chat-custody-status";
 import { getWechatEmojiByName, type WechatEmojiName } from "@/pages/chat/wechat-emoji";
 import type { GroupMember, QuotedMessagePreviewContent } from "@/pages/chat/chat-types";
 
 type ChatComposerProps = {
+  canEnableFullAuto: boolean;
   canSendMessage: boolean;
   collectedExpressions?: WorkbenchMaterialCollectionItemDto[];
   draft: string;
@@ -100,10 +98,6 @@ type ChatComposerProps = {
   hasActiveFileUpload: boolean;
   groupMembers: GroupMember[];
   currentSeatThirdUserId?: string;
-  custodyStatusPreview?: {
-    activeStatus: CustodyHostingStatus | null;
-    onSelectStatus: (status: CustodyHostingStatus) => void;
-  };
   inputEnterBehavior: InputEnterBehavior;
   isGroupConversation: boolean;
   isEmojiPickerOpen: boolean;
@@ -112,12 +106,14 @@ type ChatComposerProps = {
   sendingCollectedExpressionId?: string | null;
   isSending: boolean;
   isHistoryPanelOpen: boolean;
+  isFullAutoActive?: boolean;
   onClearQuotedMessage: () => void;
   onDeleteCollectedExpression?: (item: WorkbenchMaterialCollectionItemDto) => void;
   onDraftChange: (draft: string) => void;
   onEmojiPickerOpenChange: (isOpen: boolean) => void;
   onEnterBehaviorChange: (behavior: InputEnterBehavior) => void;
   onFileSelect: (files: FileList | File[] | null) => void;
+  onChangeFullAuto: (enabled: boolean) => void;
   onLoadMoreCollectedExpressions?: () => void;
   onOpenCollectedExpressions?: () => void;
   onOpenMaterialLibrary: (bizType: ComposerMaterialLibraryBizType) => void;
@@ -157,6 +153,7 @@ function createComposerImageClientId() {
 }
 
 export function ChatComposer({
+  canEnableFullAuto,
   canSendMessage,
   collectedExpressions = [],
   draft,
@@ -164,7 +161,6 @@ export function ChatComposer({
   hasActiveFileUpload,
   groupMembers,
   currentSeatThirdUserId,
-  custodyStatusPreview,
   inputEnterBehavior,
   isGroupConversation,
   isEmojiPickerOpen,
@@ -173,12 +169,14 @@ export function ChatComposer({
   sendingCollectedExpressionId,
   isSending,
   isHistoryPanelOpen,
+  isFullAutoActive = false,
   onClearQuotedMessage,
   onDeleteCollectedExpression,
   onDraftChange,
   onEmojiPickerOpenChange,
   onEnterBehaviorChange,
   onFileSelect,
+  onChangeFullAuto,
   onLoadMoreCollectedExpressions,
   onOpenCollectedExpressions,
   onOpenMaterialLibrary,
@@ -647,13 +645,28 @@ export function ChatComposer({
               ref={fileInputRef}
               type="file"
             />
-            {custodyStatusPreview ? (
-              <ComposerCustodyStatusPreviewMenu
-                activeStatus={custodyStatusPreview.activeStatus}
-                buttonClassName={composerActionButtonClass}
-                onSelectStatus={custodyStatusPreview.onSelectStatus}
-              />
-            ) : null}
+            <ComposerActionTooltip label="AI托管">
+              <Button
+                aria-label="AI托管"
+                aria-pressed={isFullAutoActive}
+                className={cn(
+                  composerActionButtonClass,
+                  isFullAutoActive &&
+                    "bg-accent text-accent-foreground hover:bg-accent hover:text-accent-foreground",
+                )}
+                disabled={!canEnableFullAuto}
+                onClick={() => {
+                  if (!isFullAutoActive) {
+                    onChangeFullAuto(true);
+                  }
+                }}
+                size="icon"
+                type="button"
+                variant="ghost"
+              >
+                <HugeiconsIcon icon={AiChat02Icon} size={18} strokeWidth={2} />
+              </Button>
+            </ComposerActionTooltip>
             <ComposerActionTooltip label="聊天记录">
               <Button
                 aria-label="历史记录"
@@ -835,56 +848,6 @@ export function ChatComposer({
       </div>
     </div>
     </TooltipProvider>
-  );
-}
-
-const CUSTODY_STATUS_PREVIEW_OPTIONS: Array<{
-  label: string;
-  status: CustodyHostingStatus;
-}> = [
-  { label: "思考中", status: "thinking" },
-  { label: "重试中", status: "retrying" },
-  { label: "托管中", status: "active" },
-  { label: "已退出", status: "exited" },
-];
-
-function ComposerCustodyStatusPreviewMenu({
-  activeStatus,
-  buttonClassName,
-  onSelectStatus,
-}: {
-  activeStatus: CustodyHostingStatus | null;
-  buttonClassName: string;
-  onSelectStatus: (status: CustodyHostingStatus) => void;
-}) {
-  return (
-    <DropdownMenu>
-      <ComposerActionTooltip label="托管状态预览">
-        <DropdownMenuTrigger asChild>
-          <Button
-            aria-label="托管状态预览"
-            className={buttonClassName}
-            size="icon"
-            type="button"
-            variant="ghost"
-          >
-            <HugeiconsIcon icon={AiMagicIcon} size={18} strokeWidth={2} />
-          </Button>
-        </DropdownMenuTrigger>
-      </ComposerActionTooltip>
-      <DropdownMenuContent align="start" className="min-w-[8.5rem]" side="top">
-        <DropdownMenuRadioGroup
-          onValueChange={(status) => onSelectStatus(status as CustodyHostingStatus)}
-          value={activeStatus ?? ""}
-        >
-          {CUSTODY_STATUS_PREVIEW_OPTIONS.map(({ label, status }) => (
-            <DropdownMenuRadioItem key={status} value={status}>
-              {label}
-            </DropdownMenuRadioItem>
-          ))}
-        </DropdownMenuRadioGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
   );
 }
 

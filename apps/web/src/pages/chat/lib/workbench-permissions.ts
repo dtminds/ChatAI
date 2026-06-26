@@ -27,6 +27,7 @@ type CanUseWorkbenchConversationActionsInput = {
 };
 
 export type WorkbenchPermissions = {
+  canEnableFullAuto: boolean;
   canSendMessage: boolean;
   canTakeOverAccount: boolean;
   canUseChatSend: boolean;
@@ -35,6 +36,7 @@ export type WorkbenchPermissions = {
   isAccountSeatExpired: boolean;
   isAccountOffline: boolean;
   isAccountTakenOverByCurrentUser: boolean;
+  isFullAutoActive: boolean;
   isConversationActionDisabled: boolean;
   isConversationBizInactive: boolean;
   sidebarIframeSendStatus: SidebarIframeSendStatus;
@@ -63,13 +65,19 @@ export function resolveWorkbenchPermissions({
   const isActiveFullCustody =
     activeConversation?.custodyMode === CONVERSATION_CUSTODY_MODE.FULL &&
     activeConversation.custodyHostingStatus !== "exited";
+  const canEnableFullAuto =
+    isAccountTakenOverByCurrentUser &&
+    account?.fullAutoAuth === true &&
+    account.fullAutoSwitch === true;
+  const isFullAutoActive = canEnableFullAuto && isActiveFullCustody;
   const canSendMessage =
     canUseConversationActions &&
     !!activeConversation &&
     !isConversationBizInactive &&
-    !isActiveFullCustody;
+    !isFullAutoActive;
 
   return {
+    canEnableFullAuto,
     canSendMessage,
     canTakeOverAccount,
     canUseChatSend,
@@ -83,10 +91,12 @@ export function resolveWorkbenchPermissions({
       isAccountSeatExpired,
       isAccountTakenOverByCurrentUser,
       isConversationBizInactive,
+      isFullAutoActive,
     }),
     isAccountSeatExpired,
     isAccountOffline,
     isAccountTakenOverByCurrentUser,
+    isFullAutoActive,
     isConversationActionDisabled: !canUseConversationActions,
     isConversationBizInactive,
     sidebarIframeSendStatus: resolveSidebarIframeSendStatus({
@@ -127,6 +137,7 @@ function resolveComposerPlaceholder({
   isAccountSeatExpired,
   isAccountTakenOverByCurrentUser,
   isConversationBizInactive,
+  isFullAutoActive,
 }: Pick<
   WorkbenchPermissions,
   | "canSendMessage"
@@ -134,20 +145,13 @@ function resolveComposerPlaceholder({
   | "isAccountSeatExpired"
   | "isAccountTakenOverByCurrentUser"
   | "isConversationBizInactive"
+  | "isFullAutoActive"
 > & {
   activeConversation?: Conversation;
   bootstrapStatus: WorkbenchBootstrapStatus;
   canUseChatSend: boolean;
 }) {
-  const isActivelyHosted =
-    activeConversation?.custodyMode === CONVERSATION_CUSTODY_MODE.FULL &&
-    activeConversation.custodyHostingStatus !== "exited";
-
-  if (isActivelyHosted) {
-    return "AI正在托管中...";
-  }
-
-  if (canSendMessage) {
+  if (canSendMessage || isFullAutoActive) {
     return "请输入消息……";
   }
 

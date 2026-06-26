@@ -3,7 +3,6 @@ import type {
   ReactNode,
   RefObject,
 } from "react";
-import { useEffect, useState } from "react";
 import { Cancel01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { LexicalEditor } from "lexical";
@@ -36,7 +35,6 @@ import type {
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
 import {
   resolveCustodyHostingStatus,
-  type CustodyHostingStatus,
 } from "@/pages/chat/lib/chat-custody-status";
 import type { SmartReplySendPayload } from "@/pages/chat/api/smart-reply-adapter";
 
@@ -45,8 +43,10 @@ type ChatPanelProps = {
   accountAvatarUrl?: string;
   activeConversation?: Conversation;
   activeHistoryStatus: "idle" | "loading" | "error";
+  canEnableFullAuto?: boolean;
   canCollectMaterialActions?: boolean;
   canSendMessage: boolean;
+  isFullAutoActive?: boolean;
   composerPlaceholder: string;
   customer?: CustomerProfile;
   /** 侧栏 iframe `tos`：当前坐席是否已接管账号 */
@@ -93,6 +93,7 @@ type ChatPanelProps = {
   onCancelFileUpload: (uploadId: string) => void;
   onCancelCustody?: () => void;
   onEnableCustody?: () => void;
+  onChangeFullAuto?: (enabled: boolean) => void;
   collectedExpressions?: WorkbenchMaterialCollectionItemDto[];
   hasMoreCollectedExpressions?: boolean;
   isCollectedExpressionLoadingMore?: boolean;
@@ -154,8 +155,10 @@ export function ChatPanel({
   accountAvatarUrl,
   activeConversation,
   activeHistoryStatus,
+  canEnableFullAuto = false,
   canCollectMaterialActions = true,
   canSendMessage,
+  isFullAutoActive = false,
   composerPlaceholder,
   customer,
   sidebarIframeTos,
@@ -183,6 +186,7 @@ export function ChatPanel({
   onCancelFileUpload,
   onCancelCustody,
   onEnableCustody,
+  onChangeFullAuto,
   collectedExpressions,
   hasMoreCollectedExpressions,
   isCollectedExpressionLoadingMore,
@@ -232,23 +236,13 @@ export function ChatPanel({
   composerRef,
   workbenchBodyRef,
 }: ChatPanelProps) {
-  const [custodyStatusPreview, setCustodyStatusPreview] =
-    useState<CustodyHostingStatus | null>(null);
   const resolvedCustodyHostingStatus = resolveCustodyHostingStatus(activeConversation);
-  const displayedCustodyHostingStatus =
-    import.meta.env.DEV && custodyStatusPreview
-      ? custodyStatusPreview
-      : resolvedCustodyHostingStatus;
   const custodyHostingStatus =
-    displayedCustodyHostingStatus === "exited"
+    !isFullAutoActive || resolvedCustodyHostingStatus === "exited"
       ? null
-      : displayedCustodyHostingStatus;
+      : resolvedCustodyHostingStatus;
   const hasActiveFileUpload = fileUploadQueue.length > 0;
   const hasActiveConversation = activeConversation !== undefined;
-
-  useEffect(() => {
-    setCustodyStatusPreview(null);
-  }, [activeConversation?.id]);
 
   return (
     <section className="flex min-h-0 min-w-0 flex-col bg-surface">
@@ -340,6 +334,7 @@ export function ChatPanel({
                   ) : null}
                   <div className="px-4 pt-3">
                     <ChatComposer
+                      canEnableFullAuto={canEnableFullAuto}
                       canSendMessage={canSendMessage}
                       draft={draft}
                       hasActiveFileUpload={hasActiveFileUpload}
@@ -351,6 +346,7 @@ export function ChatPanel({
                       isEmojiPickerOpen={isEmojiPickerOpen}
                       isSending={isSendingDraft}
                       isHistoryPanelOpen={isHistoryPanelOpen}
+                      isFullAutoActive={isFullAutoActive}
                       collectedExpressions={collectedExpressions}
                       hasMoreCollectedExpressions={hasMoreCollectedExpressions}
                       isCollectedExpressionLoadingMore={
@@ -363,6 +359,7 @@ export function ChatPanel({
                       onEmojiPickerOpenChange={onEmojiPickerOpenChange}
                       onEnterBehaviorChange={onEnterBehaviorChange}
                       onFileSelect={onFileSelect}
+                      onChangeFullAuto={onChangeFullAuto ?? noopChangeFullAuto}
                       onLoadMoreCollectedExpressions={
                         onLoadMoreCollectedExpressions
                       }
@@ -375,14 +372,6 @@ export function ChatPanel({
                       onTopCollectedExpression={onTopCollectedExpression}
                       placeholder={composerPlaceholder}
                       quotedMessage={quotedMessage}
-                      custodyStatusPreview={
-                        import.meta.env.DEV
-                          ? {
-                              activeStatus: displayedCustodyHostingStatus,
-                              onSelectStatus: setCustodyStatusPreview,
-                            }
-                          : undefined
-                      }
                       composerRef={composerRef}
                     />
                   </div>
@@ -511,3 +500,5 @@ function FileUploadQueueBar({
 }
 
 function noop() {}
+
+function noopChangeFullAuto() {}

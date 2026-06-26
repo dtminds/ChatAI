@@ -72,8 +72,8 @@ describe("ChatCustodyStatusBar", () => {
       "z-10",
     );
     expect(screen.getByTestId("chat-custody-status-bar")).toBeInTheDocument();
-    expect(screen.getByText("已就绪，正在等待用户消息")).toBeInTheDocument();
-    expect(screen.getByText("已就绪，正在等待用户消息")).not.toHaveClass("text-transparent");
+    expect(screen.getByText("Agent 已就绪，正在等待用户消息")).toBeInTheDocument();
+    expect(screen.getByText("Agent 已就绪，正在等待用户消息")).not.toHaveClass("text-transparent");
     expect(screen.getByTestId("dot-matrix-loader")).toHaveAttribute(
       "data-loader-type",
       "circular-8",
@@ -117,8 +117,8 @@ describe("ChatCustodyStatusBar", () => {
 
     rerender(<ChatCustodyStatusBar status="thinking" />);
 
-    expect(screen.getByText("正在思考")).toBeInTheDocument();
-    expect(screen.getByText("正在思考")).toHaveClass("shiny-text");
+    expect(screen.getByText("Agent 正在思考")).toBeInTheDocument();
+    expect(screen.getByText("Agent 正在思考")).toHaveClass("shiny-text");
     expect(screen.getByTestId("dot-matrix-loader")).toBeInTheDocument();
     expect(screen.getByTestId("custody-border-beam")).toHaveAttribute(
       "data-active",

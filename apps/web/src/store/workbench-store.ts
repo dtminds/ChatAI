@@ -13,6 +13,7 @@ import {
 import { getWorkbenchService } from "@/pages/chat/api/workbench-service";
 import {
   bootstrapWorkbench,
+  changeConversationFullAuto,
   CONVERSATION_MODE_CACHE_TTL_MS,
   deleteConversation as deleteConversationRequest,
   getVisibleConversations,
@@ -61,7 +62,6 @@ import { canUseWorkbenchConversationActions } from "@/pages/chat/lib/workbench-p
 import { seedCustomerProfiles } from "@/pages/chat/mock-data";
 import {
   CHAT_TYPE,
-  CONVERSATION_CUSTODY_MODE,
   SMART_REPLY_POLL_INTERVAL_MS,
   type SettingsSidebarItem,
   type WorkbenchSendMessagePayload,
@@ -239,7 +239,7 @@ type WorkbenchState = {
   pendingMessages: Message[];
   revokeMessage: (uiMessageKey: string) => Promise<RevokeMessageResult>;
   sidebarItems: SettingsSidebarItem[];
-  cancelActiveConversationCustody: () => void;
+  changeActiveConversationFullAuto: (enabled: boolean) => Promise<void>;
   clearActiveConversation: () => void;
   resetWorkbenchSession: () => void;
   deleteConversation: (conversationId: string) => Promise<void>;
@@ -389,7 +389,7 @@ function createInitialState(): Omit<
   | "updateMessageDownloadContent"
   | "confirmVoicePlaybackReady"
   | "transcribeVoiceMessage"
-  | "cancelActiveConversationCustody"
+  | "changeActiveConversationFullAuto"
   | "dismissScopeTransitionError"
   | "dismissReadReceiptError"
   | "setSearchKeyword"
@@ -5096,42 +5096,32 @@ export function createWorkbenchStore() {
         scopeTransitionError: undefined,
       });
     },
-    cancelActiveConversationCustody() {
-      set((currentState) => {
-        const { activeAccountId, activeConversationId } = currentState;
+    async changeActiveConversationFullAuto(enabled) {
+      const state = get();
+      const { activeConversationId } = state;
 
-        if (!activeAccountId || !activeConversationId) {
-          return currentState;
-        }
+      if (!activeConversationId) {
+        return;
+      }
 
-        const currentConversations =
-          currentState.conversationListsByScope[activeAccountId] ?? [];
-        let changed = false;
-        const nextConversations = currentConversations.map((conversation) => {
-          if (conversation.id !== activeConversationId) {
-            return conversation;
-          }
+      const conversation = getConversationById(state, activeConversationId);
 
-          changed = true;
-          return {
-            ...conversation,
-            aiHosted: false,
-            custodyHostingStatus: undefined,
-            custodyMode: CONVERSATION_CUSTODY_MODE.SEMI,
-          };
+      if (!conversation) {
+        return;
+      }
+
+      try {
+        await changeConversationFullAuto(activeConversationId, enabled);
+        await reloadAccountConversations(conversation.accountId);
+        set({ readReceiptError: undefined });
+      } catch (error) {
+        set({
+          readReceiptError: getRequestErrorMessage(
+            error,
+            enabled ? "开启托管失败" : "取消托管失败",
+          ),
         });
-
-        if (!changed) {
-          return currentState;
-        }
-
-        return {
-          conversationListsByScope: {
-            ...currentState.conversationListsByScope,
-            [activeAccountId]: nextConversations,
-          },
-        };
-      });
+      }
     },
     resetWorkbenchSession() {
       clearAllRuntimeState();

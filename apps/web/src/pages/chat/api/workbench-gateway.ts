@@ -9,6 +9,7 @@ import type {
   SettingsSidebarItem,
   WorkbenchHistoryMessagePageDto,
   WorkbenchHistoryMessageQuery,
+  WorkbenchConversationFullAutoResponse,
   WorkbenchConversationDeleteResponse,
   WorkbenchConversationPinResponse,
   WorkbenchConversationReadResponse,
@@ -462,6 +463,15 @@ export async function transcribeVoiceMessage(
 
 export async function takeOverAccount(accountId: string) {
   return getWorkbenchService().takeOverSeat(accountId);
+}
+
+export async function changeConversationFullAuto(
+  conversationId: string,
+  enabled: boolean,
+): Promise<WorkbenchConversationFullAutoResponse> {
+  return getWorkbenchService().changeConversationFullAuto(conversationId, {
+    enabled,
+  });
 }
 
 export async function pollWorkbench(

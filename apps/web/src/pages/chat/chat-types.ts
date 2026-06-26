@@ -32,6 +32,8 @@ export type GroupMember = {
 
 export type Account = {
   aiHostingEnabled?: boolean;
+  fullAutoAuth?: boolean;
+  fullAutoSwitch?: boolean;
   id: string;
   name: string;
   avatarUrl: string;

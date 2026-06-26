@@ -1,5 +1,6 @@
 import type {
   WorkbenchConversationDeleteResponse,
+  WorkbenchConversationFullAutoResponse,
   WorkbenchConversationListResponse,
   WorkbenchConversationPinResponse,
   WorkbenchConversationReadResponse,
@@ -251,6 +252,13 @@ function collectSmartReplyMessagePageCandidateIds(messages: WorkbenchMessageDto[
 }
 
 export type WorkbenchService = {
+  changeConversationFullAuto(
+    subUserId: string,
+    conversationId: string,
+    request: { enabled: boolean },
+  ):
+    | Promise<WorkbenchConversationFullAutoResponse>
+    | WorkbenchConversationFullAutoResponse;
   deleteConversation(
     subUserId: string,
     conversationId: string,
@@ -1241,6 +1249,35 @@ export class MysqlWorkbenchService implements WorkbenchService {
     return {
       conversationId: conversation.id,
       isPinned: true,
+      seatId: conversation.seatId,
+    };
+  }
+
+  async changeConversationFullAuto(
+    subUserId: string,
+    conversationId: string,
+    request: { enabled: boolean },
+  ): Promise<WorkbenchConversationFullAutoResponse> {
+    const subUserNumericId = parseMySqlId(subUserId);
+
+    if (subUserNumericId == null) {
+      throw new NotFoundError("SUB_USER_NOT_FOUND", "子账号不存在");
+    }
+
+    const conversation = await this.getAccessibleConversation(subUserId, conversationId);
+
+    await this.javaClient.changeConversationFullAuto({
+      change: request.enabled ? 1 : 2,
+      conversationId: conversation.id,
+      operatorId: subUserNumericId,
+      platform: conversation.platform,
+      uid: conversation.uid,
+    });
+
+    return {
+      aiHosted: request.enabled,
+      conversationId: conversation.id,
+      custodyMode: request.enabled ? "full" : "semi",
       seatId: conversation.seatId,
     };
   }
@@ -3568,6 +3605,16 @@ export class MysqlWorkbenchService implements WorkbenchService {
   }
 
   private async getOperableConversation(subUserId: string, conversationId: string) {
+    const conversation = await this.getAccessibleConversation(subUserId, conversationId);
+
+    if (conversation.seatHostSubUserId !== subUserId) {
+      throw new ForbiddenError("SEAT_NOT_TAKEN_OVER", "当前账号尚未由你接管");
+    }
+
+    return conversation;
+  }
+
+  private async getAccessibleConversation(subUserId: string, conversationId: string) {
     const conversation = await this.repository.getConversationLookup(conversationId);
 
     if (!conversation) {
@@ -3575,10 +3622,6 @@ export class MysqlWorkbenchService implements WorkbenchService {
     }
 
     await this.assertSeatAccess(subUserId, conversation.seatId);
-
-    if (conversation.seatHostSubUserId !== subUserId) {
-      throw new ForbiddenError("SEAT_NOT_TAKEN_OVER", "当前账号尚未由你接管");
-    }
 
     return conversation;
   }

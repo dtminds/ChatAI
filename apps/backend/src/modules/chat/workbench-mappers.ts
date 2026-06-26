@@ -21,6 +21,8 @@ export type SeatRow = {
   avatar: string | null;
   biz_status?: number | string | null;
   expire_time?: number | string | null;
+  full_auto_auth?: number | string | boolean | null;
+  full_auto_switch?: number | string | boolean | null;
   host_sub_id: number | string | null;
   id: number | string;
   is_online: number | null;
@@ -122,6 +124,8 @@ export function mapSeatRow(row: SeatRow): WorkbenchSeatDto {
     bizStatus: row.biz_status == null ? 1 : toNumber(row.biz_status),
     description: "",
     expireTime: row.expire_time == null ? undefined : toNumber(row.expire_time),
+    fullAutoAuth: readBooleanFlag(row.full_auto_auth),
+    fullAutoSwitch: readBooleanFlag(row.full_auto_switch),
     hostSubUserId,
     lastMessageTime: toOptionalTimestamp(row.last_message_time),
     loginStatus: row.is_online === 1 ? "online" : "offline",
@@ -169,7 +173,9 @@ export function mapConversationRow(
     aiHosted: readBooleanFlag(row.full_auto_switch),
     bizStatus: row.biz_status == null ? 0 : toNumber(row.biz_status),
     conversationId: String(row.id),
-    custodyMode: CONVERSATION_CUSTODY_MODE.SEMI,
+    custodyMode: readBooleanFlag(row.full_auto_switch)
+      ? CONVERSATION_CUSTODY_MODE.FULL
+      : CONVERSATION_CUSTODY_MODE.SEMI,
     createdAt: toOptionalTimestamp(row.create_time),
     customerAvatar,
     customerId,

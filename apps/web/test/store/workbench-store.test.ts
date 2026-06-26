@@ -215,7 +215,19 @@ describe("useWorkbenchStore", () => {
     );
   });
 
-  it("cancels active conversation custody locally", async () => {
+  it("changes active conversation full-auto through the workbench service", async () => {
+    const baseService = createMockWorkbenchService();
+    const changeConversationFullAuto = vi.fn().mockResolvedValue({
+      aiHosted: false,
+      conversationId: "conv-001",
+      custodyMode: "semi" as const,
+      seatId: "drc",
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      changeConversationFullAuto,
+    });
     await useWorkbenchStore.getState().initializeWorkbench();
     useWorkbenchStore.setState((state) => ({
       conversationListsByScope: {
@@ -233,18 +245,10 @@ describe("useWorkbenchStore", () => {
       },
     }));
 
-    useWorkbenchStore.getState().cancelActiveConversationCustody();
+    await useWorkbenchStore.getState().changeActiveConversationFullAuto(false);
 
-    expect(
-      useWorkbenchStore
-        .getState()
-        .conversationListsByScope.drc.find(
-          (conversation) => conversation.id === "conv-001",
-        ),
-    ).toMatchObject({
-      aiHosted: false,
-      custodyHostingStatus: undefined,
-      custodyMode: "semi",
+    expect(changeConversationFullAuto).toHaveBeenCalledWith("conv-001", {
+      enabled: false,
     });
   });
 

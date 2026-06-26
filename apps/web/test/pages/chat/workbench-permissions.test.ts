@@ -38,6 +38,7 @@ describe("resolveWorkbenchPermissions", () => {
 
     expect(permissions).toMatchObject({
       canSendMessage: true,
+      canEnableFullAuto: false,
       canTakeOverAccount: true,
       canUseConversationActions: true,
       composerPlaceholder: "请输入消息……",
@@ -45,9 +46,88 @@ describe("resolveWorkbenchPermissions", () => {
     });
   });
 
-  it("blocks sending and shows hosting placeholder for full custody conversations", () => {
+  it("allows enabling full-auto only when the taken-over account has seat-level auth and switch", () => {
+    expect(
+      resolveWorkbenchPermissions({
+        account: createAccount({
+          fullAutoAuth: true,
+          fullAutoSwitch: true,
+          takenOverEmployeeId: me.id,
+        }),
+        activeConversation: createConversation(),
+        bootstrapStatus: "ready",
+        me,
+        subUser: operator,
+      }),
+    ).toMatchObject({
+      canEnableFullAuto: true,
+      isFullAutoActive: false,
+    });
+
+    expect(
+      resolveWorkbenchPermissions({
+        account: createAccount({
+          fullAutoAuth: true,
+          fullAutoSwitch: true,
+        }),
+        activeConversation: createConversation(),
+        bootstrapStatus: "ready",
+        me,
+        subUser: operator,
+      }).canEnableFullAuto,
+    ).toBe(false);
+
+    expect(
+      resolveWorkbenchPermissions({
+        account: createAccount({
+          fullAutoAuth: true,
+          fullAutoSwitch: false,
+          takenOverEmployeeId: me.id,
+        }),
+        activeConversation: createConversation(),
+        bootstrapStatus: "ready",
+        me,
+        subUser: operator,
+      }).canEnableFullAuto,
+    ).toBe(false);
+  });
+
+  it("treats a full custody conversation as active only when full-auto can be enabled", () => {
+    expect(
+      resolveWorkbenchPermissions({
+        account: createAccount({
+          fullAutoAuth: true,
+          fullAutoSwitch: true,
+          takenOverEmployeeId: me.id,
+        }),
+        activeConversation: createConversation({ custodyMode: "full" }),
+        bootstrapStatus: "ready",
+        me,
+        subUser: operator,
+      }).isFullAutoActive,
+    ).toBe(true);
+
+    expect(
+      resolveWorkbenchPermissions({
+        account: createAccount({
+          fullAutoAuth: true,
+          fullAutoSwitch: true,
+        }),
+        activeConversation: createConversation({ custodyMode: "full" }),
+        bootstrapStatus: "ready",
+        me,
+        subUser: operator,
+      }).isFullAutoActive,
+    ).toBe(false);
+  });
+
+  it("blocks sending without showing a hosting placeholder for active full-auto conversations", () => {
     const permissions = resolveWorkbenchPermissions({
-      account: createAccount({ takenOverEmployeeId: me.id }),
+      account: createAccount({
+        fullAutoAuth: true,
+        fullAutoSwitch: true,
+        takenOverEmployeeId: me.id,
+      }),
       activeConversation: createConversation({ custodyMode: "full" }),
       bootstrapStatus: "ready",
       me,
@@ -57,7 +137,27 @@ describe("resolveWorkbenchPermissions", () => {
     expect(permissions).toMatchObject({
       canSendMessage: false,
       canUseConversationActions: true,
-      composerPlaceholder: "AI正在托管中...",
+      composerPlaceholder: "请输入消息……",
+    });
+  });
+
+  it("does not apply full-auto custody blocking when the current account cannot enable full-auto", () => {
+    const permissions = resolveWorkbenchPermissions({
+      account: createAccount({
+        fullAutoAuth: true,
+        fullAutoSwitch: true,
+      }),
+      activeConversation: createConversation({ custodyMode: "full" }),
+      bootstrapStatus: "ready",
+      me,
+      subUser: operator,
+    });
+
+    expect(permissions).toMatchObject({
+      canEnableFullAuto: false,
+      canSendMessage: false,
+      composerPlaceholder: "当前账号未接管，暂时无法发送消息",
+      isFullAutoActive: false,
     });
   });
 

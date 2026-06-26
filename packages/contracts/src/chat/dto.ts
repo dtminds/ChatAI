@@ -265,6 +265,10 @@ export type WorkbenchSidebarIframeParamsDto = {
 
 export type WorkbenchSeatDto = {
   aiHostingEnabled?: boolean;
+  /** 席位是否具备全自动托管授权，对应 `xy_wap_embed_user_seat_agent.full_auto_auth` */
+  fullAutoAuth?: boolean;
+  /** 席位全自动托管总开关，对应 `xy_wap_embed_user_seat_agent.full_auto_switch` */
+  fullAutoSwitch?: boolean;
   seatId: string;
   thirdUserId?: string;
   name: string;
@@ -757,6 +761,13 @@ export type WorkbenchConversationPinResponse = {
 };
 
 export type WorkbenchConversationUnpinResponse = WorkbenchConversationPinResponse;
+
+export type WorkbenchConversationFullAutoResponse = {
+  aiHosted: boolean;
+  conversationId: string;
+  custodyMode: ConversationCustodyMode;
+  seatId: string;
+};
 
 export type WorkbenchConversationDeleteResponse = {
   conversationId: string;

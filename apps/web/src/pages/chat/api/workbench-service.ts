@@ -14,6 +14,7 @@ import {
   type WorkbenchSeatChangeDto,
   type WorkbenchSeatDto,
   type WorkbenchConversationChangeDto,
+  type WorkbenchConversationFullAutoResponse,
   type WorkbenchConversationPinResponse,
   type WorkbenchConversationReadResponse,
   type WorkbenchConversationUnpinResponse,
@@ -216,6 +217,10 @@ export type WorkbenchService = {
   markConversationRead: (conversationId: string) => Promise<WorkbenchConversationReadResponse>;
   markConversationUnread: (conversationId: string) => Promise<WorkbenchConversationUnreadResponse>;
   pinConversation: (conversationId: string) => Promise<WorkbenchConversationPinResponse>;
+  changeConversationFullAuto: (
+    conversationId: string,
+    request: { enabled: boolean },
+  ) => Promise<WorkbenchConversationFullAutoResponse>;
   poll: (request: WorkbenchPollRequest) => Promise<WorkbenchPollResponse>;
   pollSmartReplies: (
     request: WorkbenchSmartReplyPollRequest,
@@ -1624,6 +1629,9 @@ export function createMockWorkbenchService(): WorkbenchService {
     async pinConversation(conversationId) {
       return setConversationPinned(state, conversationId, true);
     },
+    async changeConversationFullAuto(conversationId, request) {
+      return setConversationFullAuto(state, conversationId, request.enabled);
+    },
     async unpinConversation(conversationId) {
       return setConversationPinned(state, conversationId, false);
     },
@@ -2346,6 +2354,12 @@ export function createHttpWorkbenchService(): WorkbenchService {
     pinConversation(conversationId) {
       return http.post<WorkbenchConversationPinResponse>(
         `/server/conversations/${conversationId}/pin`,
+      );
+    },
+    changeConversationFullAuto(conversationId, request) {
+      return http.post<WorkbenchConversationFullAutoResponse, { enabled: boolean }>(
+        `/server/conversations/${conversationId}/full-auto`,
+        request,
       );
     },
     poll(request) {
@@ -3357,6 +3371,37 @@ function setConversationPinned(
   return {
     conversationId,
     isPinned,
+    seatId: nextConversation.seatId,
+  };
+}
+
+function setConversationFullAuto(
+  state: MockState,
+  conversationId: string,
+  enabled: boolean,
+) {
+  const conversation = findConversation(state, conversationId);
+
+  if (!conversation) {
+    throw new Error("Conversation not found");
+  }
+
+  const nextConversation = {
+    ...conversation,
+    aiHosted: enabled,
+    custodyHostingStatus: enabled ? "thinking" : undefined,
+    custodyMode: enabled
+      ? CONVERSATION_CUSTODY_MODE.FULL
+      : CONVERSATION_CUSTODY_MODE.SEMI,
+  };
+
+  upsertConversation(state, nextConversation);
+  pushConversationEvent(state, nextConversation);
+
+  return {
+    aiHosted: enabled,
+    conversationId,
+    custodyMode: nextConversation.custodyMode,
     seatId: nextConversation.seatId,
   };
 }

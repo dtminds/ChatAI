@@ -19,6 +19,8 @@ describe("workbench MySQL mappers", () => {
         avatar: "https://example.com/avatar.png",
         biz_status: 0,
         expire_time: 1778240000,
+        full_auto_auth: 1,
+        full_auto_switch: 1,
         host_sub_id: 3,
         id: 12,
         is_online: 1,
@@ -33,6 +35,8 @@ describe("workbench MySQL mappers", () => {
       bizStatus: 0,
       description: "",
       expireTime: 1778240000,
+      fullAutoAuth: true,
+      fullAutoSwitch: true,
       hostSubUserId: "3",
       lastMessageTime: 1778240000000,
       loginStatus: "online",
@@ -69,7 +73,7 @@ describe("workbench MySQL mappers", () => {
 
     expect(conversation).toMatchObject({
       conversationId: "88",
-      custodyMode: "semi",
+      custodyMode: "full",
       aiHosted: true,
       customerAvatar: "https://example.com/customer.png",
       customerId: "external-1",

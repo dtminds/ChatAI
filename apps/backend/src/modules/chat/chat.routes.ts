@@ -61,6 +61,12 @@ const ConversationParamsSchema = Type.Object({
   conversationId: Type.String(),
 });
 
+const ConversationFullAutoRequestSchema = Type.Object({
+  enabled: Type.Boolean(),
+});
+
+type ConversationFullAutoRequest = Static<typeof ConversationFullAutoRequestSchema>;
+
 const ConversationMessagesQuerySchema = Type.Object({
   before_seq: Type.Optional(NumericStringSchema),
   limit: Type.Optional(NumericStringSchema),
@@ -994,6 +1000,25 @@ export async function registerChatRoutes(app: FastifyInstance) {
       return getWorkbenchService(app, request).unpinConversation(
         getSubUserId(request),
         request.params.conversationId,
+      );
+    },
+  );
+
+  app.post<{ Body: ConversationFullAutoRequest; Params: ConversationParams }>(
+    "/api/server/conversations/:conversationId/full-auto",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: ConversationFullAutoRequestSchema,
+        params: ConversationParamsSchema,
+      },
+    },
+    async (request) => {
+      assertChatWriteAccess(request);
+      return getWorkbenchService(app, request).changeConversationFullAuto(
+        getSubUserId(request),
+        request.params.conversationId,
+        request.body,
       );
     },
   );

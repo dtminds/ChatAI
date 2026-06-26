@@ -1429,6 +1429,39 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
+  it("changes conversation full-auto through Java after conversation access check", async () => {
+    const javaClient = createJavaClient();
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "another-sub-user",
+          uid: 9001,
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.changeConversationFullAuto("101", "88", { enabled: true }),
+    ).resolves.toEqual({
+      aiHosted: true,
+      conversationId: "88",
+      custodyMode: "full",
+      seatId: "12",
+    });
+    expect(javaClient.changeConversationFullAuto).toHaveBeenCalledWith({
+      change: 1,
+      conversationId: "88",
+      operatorId: 101,
+      platform: 5,
+      uid: 9001,
+    });
+  });
+
   it("rejects delete when the conversation seat is not taken over by the current sub-user", async () => {
     const javaClient = createJavaClient();
     const service = new MysqlWorkbenchService(
@@ -6633,6 +6666,7 @@ function createMessageDto(input: {
 
 function createJavaClient(): WorkbenchJavaClient {
   return {
+    changeConversationFullAuto: vi.fn().mockResolvedValue(undefined),
     createConversation: vi.fn(),
     deleteConversation: vi.fn().mockResolvedValue(undefined),
     downloadMsgFile: vi.fn().mockResolvedValue(undefined),

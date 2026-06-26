@@ -168,6 +168,16 @@ describe("ChatWorkbenchPage", () => {
 
     act(() => {
       useWorkbenchStore.setState((state) => ({
+        accounts: state.accounts.map((account) =>
+          account.id === "drc"
+            ? {
+                ...account,
+                fullAutoAuth: true,
+                fullAutoSwitch: true,
+                takenOverEmployeeId: "sub-user-001",
+              }
+            : account,
+        ),
         conversationListsByScope: {
           ...state.conversationListsByScope,
           drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
@@ -184,8 +194,8 @@ describe("ChatWorkbenchPage", () => {
       }));
     });
 
-    expect(screen.getByText("正在思考")).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "AI正在托管中..." })).toHaveAttribute(
+    expect(screen.getByText(/正在思考/)).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "请输入消息……" })).toHaveAttribute(
       "contenteditable",
       "false",
     );

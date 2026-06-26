@@ -1104,7 +1104,7 @@ describe("createWorkbenchJavaClient", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://java.internal/third-internal/wap-embed-msg-audit-recommend-answer/user-history-answer-list",
+      "https://java.internal/third-internal/wap-embed/wap-embed-agent-answer-record/user-history-answer-list",
       expect.objectContaining({
         body: JSON.stringify({
           chatType: 1,
@@ -1187,7 +1187,7 @@ describe("createWorkbenchJavaClient", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://java.internal/third-internal/wap-embed-msg-audit-recommend-answer/general-answer",
+      "https://java.internal/third-internal/wap-embed/wap-embed-agent-answer-record/general-answer",
       expect.objectContaining({
         body: JSON.stringify({
           chatType: 1,
@@ -1269,7 +1269,7 @@ describe("createWorkbenchJavaClient", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://java.internal/third-internal/wap-embed-msg-audit-recommend-answer/auto-general-answer",
+      "https://java.internal/third-internal/wap-embed/wap-embed-agent-answer-record/auto-general-answer",
       expect.objectContaining({
         body: JSON.stringify({
           chatType: 1,
@@ -1724,7 +1724,7 @@ describe("createWorkbenchJavaClient", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://java.internal/third-internal/wap-embed-msg-audit-recommend-answer/send-answer",
+      "https://java.internal/third-internal/wap-embed/wap-embed-agent-answer-record/send-answer",
       expect.objectContaining({
         body: JSON.stringify({
           realAnswer: "您好，这是发送的话术",

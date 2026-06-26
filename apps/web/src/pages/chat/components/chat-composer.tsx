@@ -34,11 +34,17 @@ import type { LexicalEditor } from "lexical";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -90,6 +96,8 @@ import { getWechatEmojiByName, type WechatEmojiName } from "@/pages/chat/wechat-
 import type { GroupMember, QuotedMessagePreviewContent } from "@/pages/chat/chat-types";
 
 type ChatComposerProps = {
+  canConfigureFullAuto: boolean;
+  canConfigureSemiAuto: boolean;
   canEnableFullAuto: boolean;
   canSendMessage: boolean;
   collectedExpressions?: WorkbenchMaterialCollectionItemDto[];
@@ -99,6 +107,7 @@ type ChatComposerProps = {
   groupMembers: GroupMember[];
   currentSeatThirdUserId?: string;
   fullAutoActionPending?: boolean;
+  seatAgentModeActionPending?: boolean;
   inputEnterBehavior: InputEnterBehavior;
   isGroupConversation: boolean;
   isEmojiPickerOpen: boolean;
@@ -107,14 +116,17 @@ type ChatComposerProps = {
   sendingCollectedExpressionId?: string | null;
   isSending: boolean;
   isHistoryPanelOpen: boolean;
+  isFullAutoAvailable?: boolean;
   isFullAutoActive?: boolean;
+  isSemiAutoAvailable?: boolean;
   onClearQuotedMessage: () => void;
   onDeleteCollectedExpression?: (item: WorkbenchMaterialCollectionItemDto) => void;
   onDraftChange: (draft: string) => void;
   onEmojiPickerOpenChange: (isOpen: boolean) => void;
   onEnterBehaviorChange: (behavior: InputEnterBehavior) => void;
   onFileSelect: (files: FileList | File[] | null) => void;
-  onChangeFullAuto: (enabled: boolean) => void;
+  onChangeSeatAgentMode: (mode: "full" | "semi", enabled: boolean) => void;
+  onChangeFullAuto: (enabled: boolean) => void | Promise<void>;
   onLoadMoreCollectedExpressions?: () => void;
   onOpenCollectedExpressions?: () => void;
   onOpenMaterialLibrary: (bizType: ComposerMaterialLibraryBizType) => void;
@@ -154,6 +166,8 @@ function createComposerImageClientId() {
 }
 
 export function ChatComposer({
+  canConfigureFullAuto,
+  canConfigureSemiAuto,
   canEnableFullAuto,
   canSendMessage,
   collectedExpressions = [],
@@ -163,6 +177,7 @@ export function ChatComposer({
   groupMembers,
   currentSeatThirdUserId,
   fullAutoActionPending = false,
+  seatAgentModeActionPending = false,
   inputEnterBehavior,
   isGroupConversation,
   isEmojiPickerOpen,
@@ -171,13 +186,16 @@ export function ChatComposer({
   sendingCollectedExpressionId,
   isSending,
   isHistoryPanelOpen,
+  isFullAutoAvailable = false,
   isFullAutoActive = false,
+  isSemiAutoAvailable = false,
   onClearQuotedMessage,
   onDeleteCollectedExpression,
   onDraftChange,
   onEmojiPickerOpenChange,
   onEnterBehaviorChange,
   onFileSelect,
+  onChangeSeatAgentMode,
   onChangeFullAuto,
   onLoadMoreCollectedExpressions,
   onOpenCollectedExpressions,
@@ -199,6 +217,8 @@ export function ChatComposer({
   const [cursorPosition, setCursorPosition] = useState(draft.length);
   const [activeMentionIndex, setActiveMentionIndex] = useState(0);
   const [isMentionPickerDismissed, setIsMentionPickerDismissed] = useState(false);
+  const [isAgentDialogOpen, setIsAgentDialogOpen] = useState(false);
+  const [isFullAutoSubmitting, setIsFullAutoSubmitting] = useState(false);
   const editorConfig = useMemo(
     () => ({
       namespace: "ChatComposer",
@@ -217,6 +237,7 @@ export function ChatComposer({
     () => getMentionTrigger(draftText, cursorPosition),
     [cursorPosition, draftText],
   );
+  const isFullAutoButtonPending = fullAutoActionPending || isFullAutoSubmitting;
   const mentionableGroupMembers = useMemo(() => {
     if (!currentSeatThirdUserId) {
       return groupMembers;
@@ -647,26 +668,75 @@ export function ChatComposer({
               ref={fileInputRef}
               type="file"
             />
-            <ComposerActionTooltip label="AI托管">
-              <Button
-                aria-label="AI托管"
-                aria-pressed={isFullAutoActive}
-                className={cn(
-                  composerActionButtonClass,
-                  isFullAutoActive &&
-                    "bg-accent text-accent-foreground hover:bg-accent hover:text-accent-foreground",
-                )}
-                disabled={!canEnableFullAuto || fullAutoActionPending}
-                onClick={() => {
-                  onChangeFullAuto(!isFullAutoActive);
-                }}
-                size="icon"
-                type="button"
-                variant="ghost"
-              >
-                <HugeiconsIcon icon={AiChat02Icon} size={18} strokeWidth={2} />
-              </Button>
-            </ComposerActionTooltip>
+            <Popover open={isAgentDialogOpen} onOpenChange={setIsAgentDialogOpen}>
+              <ComposerActionTooltip label="AI 对话">
+                <PopoverTrigger asChild>
+                  <Button
+                    aria-label="AI 对话"
+                    className={composerActionButtonClass}
+                    size="icon"
+                    type="button"
+                    variant="ghost"
+                  >
+                    <HugeiconsIcon icon={AiChat02Icon} size={18} strokeWidth={2} />
+                  </Button>
+                </PopoverTrigger>
+              </ComposerActionTooltip>
+              <PopoverContent align="end" className="w-96 p-0" side="top">
+                <div className="border-b border-divider px-4 py-3">
+                  <p className="text-sm font-semibold text-popover-foreground">
+                    AI 对话配置
+                  </p>
+                </div>
+                <div className="space-y-1 p-2">
+                  <AgentModeSwitchRow
+                    checked={isSemiAutoAvailable}
+                    description="Agent 生成话术推荐，人工确认后发送"
+                    disabled={!canConfigureSemiAuto || seatAgentModeActionPending}
+                    label="辅助模式"
+                    onCheckedChange={(checked) => {
+                      onChangeSeatAgentMode("semi", checked);
+                    }}
+                  />
+                  <AgentModeSwitchRow
+                    checked={isFullAutoAvailable}
+                    description="Agent 自动生成并发送消息，仅在必要时转人工"
+                    disabled={!canConfigureFullAuto || seatAgentModeActionPending}
+                    label="托管模式"
+                    onCheckedChange={(checked) => {
+                      onChangeSeatAgentMode("full", checked);
+                    }}
+                  />
+                </div>
+                <div className="border-t border-divider p-3">
+                  <Button
+                    className="w-full bg-neutral-strong text-neutral-strong-foreground shadow-none hover:bg-neutral-strong/90 hover:text-neutral-strong-foreground"
+                    disabled={!canEnableFullAuto || isFullAutoButtonPending}
+                    onClick={async () => {
+                      setIsFullAutoSubmitting(true);
+                      try {
+                        await onChangeFullAuto(!isFullAutoActive);
+                      } finally {
+                        setIsFullAutoSubmitting(false);
+                        setIsAgentDialogOpen(false);
+                      }
+                    }}
+                    type="button"
+                    variant="ghost"
+                  >
+                    {isFullAutoButtonPending ? (
+                      <Spinner
+                        aria-hidden="true"
+                        className="text-neutral-strong-foreground"
+                        size={14}
+                        variant="classic"
+                      />
+                    ) : null}
+                    {isFullAutoActive ? "关闭当前会话托管" : "开启当前会话托管"}
+                  </Button>
+                </div>
+              </PopoverContent>
+            </Popover>
             <ComposerActionTooltip label="聊天记录">
               <Button
                 aria-label="历史记录"
@@ -943,6 +1013,37 @@ function ComposerMaterialSplitButton({
         </DropdownMenu>
       </div>
     </ComposerActionTooltip>
+  );
+}
+
+function AgentModeSwitchRow({
+  checked,
+  description,
+  disabled,
+  label,
+  onCheckedChange,
+}: {
+  checked: boolean;
+  description: string;
+  disabled: boolean;
+  label: string;
+  onCheckedChange: (checked: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-[8px] px-2 py-2">
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-popover-foreground">{label}</p>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+          {description}
+        </p>
+      </div>
+      <Switch
+        aria-label={label}
+        checked={checked}
+        disabled={disabled}
+        onCheckedChange={onCheckedChange}
+      />
+    </div>
   );
 }
 

@@ -291,6 +291,63 @@ describe("useWorkbenchStore", () => {
     expect(changeConversationFullAuto).not.toHaveBeenCalled();
   });
 
+  it("changes the active account agent mode switch and patches local account state", async () => {
+    const baseService = createMockWorkbenchService();
+    const updateSeatAgentMode = vi.fn().mockResolvedValue({
+      fullAutoSwitch: true,
+      seatId: "drc",
+      semiAutoSwitch: false,
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      updateSeatAgentMode,
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    await useWorkbenchStore.getState().changeActiveSeatAgentMode("semi", false);
+
+    expect(updateSeatAgentMode).toHaveBeenCalledWith("drc", {
+      mode: "semi",
+      enabled: false,
+    });
+    expect(useWorkbenchStore.getState().accounts.find((account) => account.id === "drc")).toMatchObject({
+      fullAutoSwitch: true,
+      semiAutoSwitch: false,
+    });
+  });
+
+  it("ignores duplicate active account agent mode switch changes while pending", async () => {
+    const baseService = createMockWorkbenchService();
+    const seatAgentModeChange = createDeferred<Awaited<ReturnType<typeof baseService.updateSeatAgentMode>>>();
+    const updateSeatAgentMode = vi.fn(() => seatAgentModeChange.promise);
+
+    setWorkbenchService({
+      ...baseService,
+      updateSeatAgentMode,
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    const firstRequest = useWorkbenchStore
+      .getState()
+      .changeActiveSeatAgentMode("full", false);
+    await waitForStoreAssertion(() => {
+      expect(useWorkbenchStore.getState().seatAgentModeActionPending).toBe(true);
+    });
+    const secondRequest = useWorkbenchStore
+      .getState()
+      .changeActiveSeatAgentMode("full", true);
+
+    expect(updateSeatAgentMode).toHaveBeenCalledTimes(1);
+    seatAgentModeChange.resolve({
+      fullAutoSwitch: false,
+      seatId: "drc",
+      semiAutoSwitch: true,
+    });
+    await Promise.all([firstRequest, secondRequest]);
+    expect(useWorkbenchStore.getState().seatAgentModeActionPending).toBe(false);
+  });
+
   it("ignores duplicate full-auto changes while a request is pending", async () => {
     const baseService = createMockWorkbenchService();
     const fullAutoChange = createDeferred<Awaited<ReturnType<typeof baseService.changeConversationFullAuto>>>();

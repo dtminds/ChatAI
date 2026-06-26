@@ -302,6 +302,7 @@ function ChatWorkbenchContent({
     saveComposerDraft,
     setChatSendPermission,
     closeHistoryPanel,
+    changeActiveSeatAgentMode,
     changeActiveConversationFullAuto,
     clearActiveConversation,
     clearComposerDraft,
@@ -326,6 +327,7 @@ function ChatWorkbenchContent({
     confirmVoicePlaybackReady,
     transcribeVoiceMessage,
     fullAutoActionPending,
+    seatAgentModeActionPending,
     fullAutoStatusByConversationId,
   } = useWorkbenchStore(
     useShallow((state) => ({
@@ -336,6 +338,7 @@ function ChatWorkbenchContent({
       bootstrapError: state.bootstrapError,
       bootstrapStatus: state.bootstrapStatus,
       changeActiveConversationFullAuto: state.changeActiveConversationFullAuto,
+      changeActiveSeatAgentMode: state.changeActiveSeatAgentMode,
       clearActiveConversation: state.clearActiveConversation,
       clearComposerDraft: state.clearComposerDraft,
       closeHistoryPanel: state.closeHistoryPanel,
@@ -365,6 +368,7 @@ function ChatWorkbenchContent({
       historyStatusByConversationId: state.historyStatusByConversationId,
       fullAutoActionError: state.fullAutoActionError,
       fullAutoActionPending: state.fullAutoActionPending,
+      seatAgentModeActionPending: state.seatAgentModeActionPending,
       fullAutoStatusByConversationId: state.fullAutoStatusByConversationId,
       initializeWorkbench: state.initializeWorkbench,
       isConversationLoading: state.isConversationLoading,
@@ -682,12 +686,16 @@ function ChatWorkbenchContent({
   });
   const {
     canSendMessage,
+    canConfigureFullAuto,
+    canConfigureSemiAuto,
     canEnableFullAuto,
     canTakeOverAccount,
     canUseChatSend,
     canUseConversationActions,
     composerPlaceholder,
     isFullAutoActive,
+    isFullAutoAvailable,
+    isSemiAutoAvailable,
     isAccountTakenOverByCurrentUser,
     isConversationActionDisabled,
     sidebarIframeSendStatus,
@@ -990,9 +998,15 @@ function ChatWorkbenchContent({
 
   const handleChangeFullAuto = useCallback(
     (enabled: boolean) => {
-      void changeActiveConversationFullAuto(enabled);
+      return changeActiveConversationFullAuto(enabled);
     },
     [changeActiveConversationFullAuto],
+  );
+  const handleChangeSeatAgentMode = useCallback(
+    (mode: "full" | "semi", enabled: boolean) => {
+      void changeActiveSeatAgentMode(mode, enabled);
+    },
+    [changeActiveSeatAgentMode],
   );
 
   const handleStartCustomerChat = useCallback(
@@ -2062,6 +2076,8 @@ function ChatWorkbenchContent({
                   accountAvatarUrl={activeAccount?.avatarUrl}
                   activeConversation={activeConversation}
                   activeHistoryStatus={activeHistoryStatus}
+                  canConfigureFullAuto={canConfigureFullAuto}
+                  canConfigureSemiAuto={canConfigureSemiAuto}
                   canEnableFullAuto={canEnableFullAuto}
                   canCollectMaterialActions={canCollectMaterialActions}
                   canSendMessage={canSendMessage}
@@ -2074,12 +2090,15 @@ function ChatWorkbenchContent({
                   fullAutoDisplayStatus={fullAutoDisplayStatus}
                   groupMembers={activeGroupMembers}
                   fullAutoActionPending={fullAutoActionPending}
+                  seatAgentModeActionPending={seatAgentModeActionPending}
                   isGroupMembersLoading={isActiveGroupMembersLoading}
                   inputEnterBehavior={inputEnterBehavior}
                   isConversationLoading={isConversationLoading}
+                  isFullAutoAvailable={isFullAutoAvailable}
                   isEmojiPickerOpen={isEmojiPickerOpen}
                   isSendingDraft={isSendingDraft}
                   isFullAutoActive={isFullAutoActive}
+                  isSemiAutoAvailable={isSemiAutoAvailable}
                   isResizingCustomerPanel={isResizingCustomerPanel}
                   fileUploadQueue={fileUploadQueue}
                   collectedExpressions={collectedExpressions}
@@ -2098,6 +2117,7 @@ function ChatWorkbenchContent({
                   onComposerSegmentsChange={handleComposerSegmentsChange}
                   onCancelFileUpload={handleCancelFileUpload}
                   onCancelAgentHosting={() => handleChangeFullAuto(false)}
+                  onChangeSeatAgentMode={handleChangeSeatAgentMode}
                   onChangeFullAuto={handleChangeFullAuto}
                   onClearQuotedMessage={() => setQuotedMessage(null)}
                   onCollectMaterial={handleCollectMaterial}

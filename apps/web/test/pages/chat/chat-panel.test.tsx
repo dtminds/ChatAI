@@ -419,7 +419,10 @@ describe("ChatPanel", () => {
     expect(screen.queryByTestId("chat-agent-hosting-status-bar")).not.toBeInTheDocument();
   });
 
-  it("shows the real full-auto button and removes the dev preview menu", () => {
+  it("shows the AI dialog configuration popover and removes the dev preview menu", async () => {
+    const user = userEvent.setup();
+    const onChangeSeatAgentMode = vi.fn();
+
     render(
       <ChatPanel
         activeConversation={{
@@ -427,8 +430,12 @@ describe("ChatPanel", () => {
           agentMode: "full",
         }}
         activeHistoryStatus="idle"
+        canConfigureFullAuto
         canEnableFullAuto
+        canConfigureSemiAuto
         canSendMessage
+        isFullAutoAvailable
+        isSemiAutoAvailable
         isFullAutoActive
         composerPlaceholder="输入消息"
         customerPanelWidth={375}
@@ -450,6 +457,7 @@ describe("ChatPanel", () => {
         composerRef={createRef()}
         messageViewportRef={createRef()}
         workbenchBodyRef={createRef()}
+        onChangeSeatAgentMode={onChangeSeatAgentMode}
         onChangeFullAuto={vi.fn()}
         onCancelFileUpload={vi.fn()}
         onClearQuotedMessage={vi.fn()}
@@ -477,16 +485,38 @@ describe("ChatPanel", () => {
     );
 
     expect(screen.queryByRole("button", { name: "托管状态预览" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "AI托管" })).toBeEnabled();
+    const aiDialogButton = screen.getByRole("button", { name: "AI 对话" });
+    expect(aiDialogButton).toBeEnabled();
+
+    await user.click(aiDialogButton);
+
+    expect(screen.getByText("AI 对话配置")).toBeInTheDocument();
+    expect(screen.getByText("辅助模式")).toBeInTheDocument();
+    expect(screen.getByText("Agent 生成话术推荐，人工确认后发送")).toBeInTheDocument();
+    expect(screen.getByText("托管模式")).toBeInTheDocument();
+    expect(screen.getByText("Agent 自动生成并发送消息，仅在必要时转人工")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "关闭当前会话托管" })).toBeEnabled();
+
+    await user.click(screen.getByRole("switch", { name: "辅助模式" }));
+
+    expect(onChangeSeatAgentMode).toHaveBeenCalledWith("semi", false);
   });
 
-  it("keeps the full-auto button visible but disabled when full-auto cannot be enabled", () => {
+  it("keeps the AI dialog button visible when full-auto cannot be enabled", async () => {
+    const user = userEvent.setup();
+    const onChangeFullAuto = vi.fn();
+    const onChangeSeatAgentMode = vi.fn();
+
     render(
       <ChatPanel
         activeConversation={createConversation()}
         activeHistoryStatus="idle"
+        canConfigureFullAuto
         canEnableFullAuto={false}
+        canConfigureSemiAuto
         canSendMessage
+        isFullAutoAvailable={false}
+        isSemiAutoAvailable
         composerPlaceholder="输入消息"
         customerPanelWidth={375}
         draft=""
@@ -507,7 +537,8 @@ describe("ChatPanel", () => {
         composerRef={createRef()}
         messageViewportRef={createRef()}
         workbenchBodyRef={createRef()}
-        onChangeFullAuto={vi.fn()}
+        onChangeSeatAgentMode={onChangeSeatAgentMode}
+        onChangeFullAuto={onChangeFullAuto}
         onCancelFileUpload={vi.fn()}
         onClearQuotedMessage={vi.fn()}
         onComposerSegmentsChange={vi.fn()}
@@ -533,10 +564,14 @@ describe("ChatPanel", () => {
       />,
     );
 
-    expect(screen.getByRole("button", { name: "AI托管" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "AI 对话" }));
+
+    expect(screen.getByRole("switch", { name: "辅助模式" })).toBeEnabled();
+    expect(screen.getByRole("switch", { name: "托管模式" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "开启当前会话托管" })).toBeDisabled();
   });
 
-  it("requests full-auto enable from the composer AI button", async () => {
+  it("requests full-auto enable from the AI dialog current conversation button", async () => {
     const user = userEvent.setup();
     const onChangeFullAuto = vi.fn();
 
@@ -544,8 +579,12 @@ describe("ChatPanel", () => {
       <ChatPanel
         activeConversation={createConversation()}
         activeHistoryStatus="idle"
+        canConfigureFullAuto
         canEnableFullAuto
+        canConfigureSemiAuto
         canSendMessage
+        isFullAutoAvailable
+        isSemiAutoAvailable
         composerPlaceholder="输入消息"
         customerPanelWidth={375}
         draft=""
@@ -592,12 +631,14 @@ describe("ChatPanel", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "AI托管" }));
+    await user.click(screen.getByRole("button", { name: "AI 对话" }));
+    await user.click(screen.getByRole("button", { name: "开启当前会话托管" }));
 
     expect(onChangeFullAuto).toHaveBeenCalledWith(true);
+    expect(screen.queryByText("AI 对话配置")).not.toBeInTheDocument();
   });
 
-  it("disables the composer AI button while a full-auto change is pending", async () => {
+  it("shows a spinner on the current conversation hosting button while a full-auto change is pending", async () => {
     const user = userEvent.setup();
     const onChangeFullAuto = vi.fn();
 
@@ -605,8 +646,12 @@ describe("ChatPanel", () => {
       <ChatPanel
         activeConversation={createConversation()}
         activeHistoryStatus="idle"
+        canConfigureFullAuto
         canEnableFullAuto
+        canConfigureSemiAuto
         canSendMessage
+        isFullAutoAvailable
+        isSemiAutoAvailable
         composerPlaceholder="输入消息"
         customerPanelWidth={375}
         draft=""
@@ -654,14 +699,18 @@ describe("ChatPanel", () => {
       />,
     );
 
-    const fullAutoButton = screen.getByRole("button", { name: "AI托管" });
+    const aiDialogButton = screen.getByRole("button", { name: "AI 对话" });
 
+    expect(aiDialogButton).toBeEnabled();
+    await user.click(aiDialogButton);
+    const fullAutoButton = screen.getByRole("button", { name: "开启当前会话托管" });
     expect(fullAutoButton).toBeDisabled();
+    expect(fullAutoButton.querySelector('[data-slot="spinner"]')).toBeInTheDocument();
     await user.click(fullAutoButton);
     expect(onChangeFullAuto).not.toHaveBeenCalled();
   });
 
-  it("requests full-auto disable from the active composer AI button", async () => {
+  it("requests full-auto disable from the AI dialog current conversation button", async () => {
     const user = userEvent.setup();
     const onChangeFullAuto = vi.fn();
 
@@ -673,8 +722,12 @@ describe("ChatPanel", () => {
           agentMode: "full",
         }}
         activeHistoryStatus="idle"
+        canConfigureFullAuto
         canEnableFullAuto
+        canConfigureSemiAuto
         canSendMessage={false}
+        isFullAutoAvailable
+        isSemiAutoAvailable
         isFullAutoActive
         composerPlaceholder="输入消息"
         customerPanelWidth={375}
@@ -722,7 +775,8 @@ describe("ChatPanel", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "AI托管" }));
+    await user.click(screen.getByRole("button", { name: "AI 对话" }));
+    await user.click(screen.getByRole("button", { name: "关闭当前会话托管" }));
 
     expect(onChangeFullAuto).toHaveBeenCalledWith(false);
   });

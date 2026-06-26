@@ -113,6 +113,7 @@ type FullAutoAnswerStatusScope = {
 };
 
 export type SeatOperateScope = {
+  hostSubUserId?: string;
   platform: number;
   seatId: string;
   thirdUserId: string;
@@ -208,6 +209,8 @@ type SeatBaseRow = {
   id: number | string;
   is_online: number | null;
   platform: number;
+  semi_auto_auth?: number | string | boolean | null;
+  semi_auto_switch?: number | string | boolean | null;
   third_user_name: string;
   third_userid: string;
   uid: number;
@@ -2564,6 +2567,8 @@ export class WorkbenchRepository {
         "seat.host_sub_id as host_sub_id",
         "seat_agent.full_auto_auth as full_auto_auth",
         "seat_agent.full_auto_switch as full_auto_switch",
+        "seat_agent.semi_auto_auth as semi_auto_auth",
+        "seat_agent.semi_auto_switch as semi_auto_switch",
       ])
       .where("relation.sub_id", "=", subUserNumericId)
       .where("relation.uid", "=", scope.uid)
@@ -3180,6 +3185,8 @@ export class WorkbenchRepository {
         "xy_wap_embed_user_seat.host_sub_id as host_sub_id",
         "seat_agent.full_auto_auth as full_auto_auth",
         "seat_agent.full_auto_switch as full_auto_switch",
+        "seat_agent.semi_auto_auth as semi_auto_auth",
+        "seat_agent.semi_auto_switch as semi_auto_switch",
       ])
       .where("xy_wap_embed_user_seat.id", "=", seatNumericId)
       .executeTakeFirst() as SeatBaseRow | undefined;
@@ -3226,6 +3233,8 @@ export class WorkbenchRepository {
         "seat.host_sub_id as host_sub_id",
         "seat_agent.full_auto_auth as full_auto_auth",
         "seat_agent.full_auto_switch as full_auto_switch",
+        "seat_agent.semi_auto_auth as semi_auto_auth",
+        "seat_agent.semi_auto_switch as semi_auto_switch",
         expressionBuilder.fn
           .coalesce(
             expressionBuilder.fn.sum<number>("conversation.unread_cnt"),
@@ -3246,6 +3255,8 @@ export class WorkbenchRepository {
         "seat.host_sub_id",
         "seat_agent.full_auto_auth",
         "seat_agent.full_auto_switch",
+        "seat_agent.semi_auto_auth",
+        "seat_agent.semi_auto_switch",
       ])
       .execute();
 
@@ -3266,6 +3277,7 @@ export class WorkbenchRepository {
     }
 
     return {
+      hostSubUserId: normalizeOptionalSeatId(seat.host_sub_id),
       platform: seat.platform,
       seatId: String(seat.id),
       thirdUserId: seat.third_userid,
@@ -3720,6 +3732,48 @@ export class WorkbenchRepository {
       .where("platform", "=", input.platform)
       .where("biz_status", "=", BIZ_STATUS_ACTIVE)
       .execute();
+  }
+
+  async updateSeatAgentModeSwitch(input: {
+    enabled: boolean;
+    mode: "full" | "semi";
+    platform: number;
+    seatId: string;
+    uid: number;
+  }) {
+    const seatNumericId = parseMySqlId(input.seatId);
+
+    if (seatNumericId == null) {
+      return {
+        fullAutoSwitch: false,
+        seatId: input.seatId,
+        semiAutoSwitch: false,
+      };
+    }
+
+    await this.db
+      .updateTable("xy_wap_embed_user_seat_agent")
+      .set({
+        [input.mode === "full" ? "full_auto_switch" : "semi_auto_switch"]:
+          input.enabled ? 1 : 0,
+        update_time: new Date(),
+      })
+      .where("uid", "=", input.uid)
+      .where("user_seat_id", "=", seatNumericId)
+      .execute();
+
+    const config = await this.db
+      .selectFrom("xy_wap_embed_user_seat_agent")
+      .select(["full_auto_switch", "semi_auto_switch"])
+      .where("uid", "=", input.uid)
+      .where("user_seat_id", "=", seatNumericId)
+      .executeTakeFirst();
+
+    return {
+      fullAutoSwitch: readBooleanFlag(config?.full_auto_switch),
+      seatId: input.seatId,
+      semiAutoSwitch: readBooleanFlag(config?.semi_auto_switch),
+    };
   }
 
   async listGroupMembers(conversationId: string): Promise<WorkbenchGroupMembersResponse | undefined> {
@@ -4259,7 +4313,7 @@ export class WorkbenchRepository {
   private async getSeatRecord(seatId: number) {
     return this.db
       .selectFrom("xy_wap_embed_user_seat")
-      .select(["id", "uid", "platform", "third_userid"])
+      .select(["id", "uid", "platform", "third_userid", "host_sub_id"])
       .where("id", "=", seatId)
       .executeTakeFirst();
   }
@@ -5676,6 +5730,14 @@ function mapCustomerLastConversation(
 
 function buildCustomerKey(uid: number, platform: number, thirdExternalUserId: string) {
   return `${uid}:${platform}:${thirdExternalUserId}`;
+}
+
+function normalizeOptionalSeatId(value: number | string | null | undefined) {
+  if (value == null || value === "" || value === 0 || value === "0") {
+    return undefined;
+  }
+
+  return String(value);
 }
 
 function normalizeGroupMemberType(value: number | null): WorkbenchGroupMemberDto["type"] {

@@ -269,6 +269,10 @@ export type WorkbenchSeatDto = {
   fullAutoAuth?: boolean;
   /** 席位全自动托管总开关，对应 `xy_wap_embed_user_seat_agent.full_auto_switch` */
   fullAutoSwitch?: boolean;
+  /** 席位是否具备半自动辅助授权，对应 `xy_wap_embed_user_seat_agent.semi_auto_auth` */
+  semiAutoAuth?: boolean;
+  /** 席位半自动辅助总开关，对应 `xy_wap_embed_user_seat_agent.semi_auto_switch` */
+  semiAutoSwitch?: boolean;
   seatId: string;
   thirdUserId?: string;
   name: string;
@@ -767,6 +771,17 @@ export type WorkbenchConversationFullAutoResponse = {
   conversationId: string;
   agentMode: ConversationAgentMode;
   seatId: string;
+};
+
+export type WorkbenchSeatAgentModeSwitchRequest = {
+  enabled: boolean;
+  mode: "full" | "semi";
+};
+
+export type WorkbenchSeatAgentModeSwitchResponse = {
+  fullAutoSwitch: boolean;
+  seatId: string;
+  semiAutoSwitch: boolean;
 };
 
 export type WorkbenchFullAutoAnswerStatusResponse = {

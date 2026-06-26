@@ -21,6 +21,8 @@ import type {
   WorkbenchSendMessagePayload,
   WorkbenchSendMessageResponse,
   WorkbenchSeatDto,
+  WorkbenchSeatAgentModeSwitchRequest,
+  WorkbenchSeatAgentModeSwitchResponse,
   WorkbenchUploadCredentialResponse,
   WorkbenchMessageQueryBySeqsRequest,
   WorkbenchMessageUpdateEventDto,
@@ -473,6 +475,13 @@ export async function changeConversationFullAuto(
   return getWorkbenchService().changeConversationFullAuto(conversationId, {
     enabled,
   });
+}
+
+export async function updateSeatAgentMode(
+  seatId: string,
+  request: WorkbenchSeatAgentModeSwitchRequest,
+): Promise<WorkbenchSeatAgentModeSwitchResponse> {
+  return getWorkbenchService().updateSeatAgentMode(seatId, request);
 }
 
 export async function getFullAutoAnswerStatus(

@@ -25,6 +25,8 @@ describe("workbench MySQL mappers", () => {
         id: 12,
         is_online: 1,
         last_message_time: 1778240000000,
+        semi_auto_auth: 1,
+        semi_auto_switch: 0,
         third_user_name: "小可",
         third_userid: "third-user-1",
         unread_count: 5,
@@ -44,6 +46,8 @@ describe("workbench MySQL mappers", () => {
       operatorName: "小可",
       phone: "",
       seatId: "12",
+      semiAutoAuth: true,
+      semiAutoSwitch: false,
       thirdUserId: "third-user-1",
       unreadCount: 5,
     });

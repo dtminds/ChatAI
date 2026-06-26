@@ -34,6 +34,8 @@ export type Account = {
   aiHostingEnabled?: boolean;
   fullAutoAuth?: boolean;
   fullAutoSwitch?: boolean;
+  semiAutoAuth?: boolean;
+  semiAutoSwitch?: boolean;
   id: string;
   name: string;
   avatarUrl: string;

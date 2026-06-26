@@ -41,6 +41,7 @@ import {
   takeOverAccount as takeOverAccountRequest,
   transcribeVoiceMessage as transcribeVoiceMessageRequest,
   unpinConversation,
+  updateSeatAgentMode,
 } from "@/pages/chat/api/workbench-gateway";
 import type { WorkbenchConversationPage } from "@/pages/chat/api/workbench-gateway";
 import {
@@ -229,6 +230,7 @@ type WorkbenchState = {
   bootstrapError?: string;
   fullAutoActionError?: string;
   fullAutoStatusByConversationId: Record<string, FullAutoStatusState>;
+  seatAgentModeActionPending: boolean;
   isConversationLoading: boolean;
   readReceiptError?: string;
   scopeTransitionError?: string;
@@ -255,6 +257,7 @@ type WorkbenchState = {
   pendingMessages: Message[];
   revokeMessage: (uiMessageKey: string) => Promise<RevokeMessageResult>;
   sidebarItems: SettingsSidebarItem[];
+  changeActiveSeatAgentMode: (mode: "full" | "semi", enabled: boolean) => Promise<void>;
   changeActiveConversationFullAuto: (enabled: boolean) => Promise<void>;
   syncFullAutoAgentStatus: () => Promise<void>;
   resetWorkbenchRuntime: () => void;
@@ -411,6 +414,7 @@ function createInitialState(): Omit<
   | "updateMessageDownloadContent"
   | "confirmVoicePlaybackReady"
   | "transcribeVoiceMessage"
+  | "changeActiveSeatAgentMode"
   | "changeActiveConversationFullAuto"
   | "syncFullAutoAgentStatus"
   | "dismissFullAutoActionError"
@@ -468,6 +472,7 @@ function createInitialState(): Omit<
     fullAutoActionError: undefined,
     fullAutoActionPending: false,
     fullAutoStatusByConversationId: {},
+    seatAgentModeActionPending: false,
     readReceiptError: undefined,
     scopeTransitionError: undefined,
     sendStatusByConversationId: {},
@@ -5497,6 +5502,43 @@ export function createWorkbenchStore() {
         messageUpdateCursor: undefined,
         scopeTransitionError: undefined,
       });
+    },
+    async changeActiveSeatAgentMode(mode, enabled) {
+      const state = get();
+      const { activeAccountId } = state;
+
+      if (!activeAccountId || state.seatAgentModeActionPending) {
+        return;
+      }
+
+      const account = state.accounts.find((item) => item.id === activeAccountId);
+
+      if (!canUseConversationActions(state, account)) {
+        return;
+      }
+
+      set({ seatAgentModeActionPending: true });
+
+      try {
+        const response = await updateSeatAgentMode(activeAccountId, {
+          enabled,
+          mode,
+        });
+        set((currentState) => ({
+          accounts: currentState.accounts.map((item) =>
+            item.id === response.seatId
+              ? {
+                  ...item,
+                  fullAutoSwitch: response.fullAutoSwitch,
+                  semiAutoSwitch: response.semiAutoSwitch,
+                }
+              : item,
+          ),
+          seatAgentModeActionPending: false,
+        }));
+      } catch {
+        set({ seatAgentModeActionPending: false });
+      }
     },
     async changeActiveConversationFullAuto(enabled) {
       const state = get();

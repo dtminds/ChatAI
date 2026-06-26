@@ -43,6 +43,8 @@ import type {
   WorkbenchSmartReplySendAnswerRequest,
   WorkbenchSmartReplySendAnswerResponse,
   WorkbenchRevokeMessageResponse,
+  WorkbenchSeatAgentModeSwitchRequest,
+  WorkbenchSeatAgentModeSwitchResponse,
   WorkbenchSeatDto,
   WorkbenchSendMessagePayload,
   WorkbenchSendMessageResponse,
@@ -452,6 +454,13 @@ export type WorkbenchService = {
     subUserId: string,
     seatId: string,
   ): Promise<WorkbenchTakeOverSeatResponse> | WorkbenchTakeOverSeatResponse;
+  updateSeatAgentModeSwitch(
+    subUserId: string,
+    seatId: string,
+    request: WorkbenchSeatAgentModeSwitchRequest,
+  ):
+    | Promise<WorkbenchSeatAgentModeSwitchResponse>
+    | WorkbenchSeatAgentModeSwitchResponse;
   unpinConversation(
     subUserId: string,
     conversationId: string,
@@ -2100,6 +2109,32 @@ export class MysqlWorkbenchService implements WorkbenchService {
       hostSubUserId: subUserId,
       seatId: seat.seatId,
     };
+  }
+
+  async updateSeatAgentModeSwitch(
+    subUserId: string,
+    seatId: string,
+    request: WorkbenchSeatAgentModeSwitchRequest,
+  ): Promise<WorkbenchSeatAgentModeSwitchResponse> {
+    await this.assertSeatAccess(subUserId, seatId);
+
+    const seat = await this.repository.getSeatOperateScope(seatId);
+
+    if (!seat) {
+      throw new NotFoundError("SEAT_NOT_FOUND", "席位不存在");
+    }
+
+    if (seat.hostSubUserId !== subUserId) {
+      throw new ForbiddenError("SEAT_NOT_TAKEN_OVER", "账号未接管");
+    }
+
+    return this.repository.updateSeatAgentModeSwitch({
+      enabled: request.enabled,
+      mode: request.mode,
+      platform: seat.platform,
+      seatId: seat.seatId,
+      uid: seat.uid,
+    });
   }
 
   async unpinConversation(subUserId: string, conversationId: string) {

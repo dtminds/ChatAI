@@ -1501,6 +1501,75 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
+  it("updates the taken-over seat agent mode switch through Node storage", async () => {
+    const javaClient = createJavaClient();
+    const updateSeatAgentModeSwitch = vi.fn().mockResolvedValue({
+      fullAutoSwitch: true,
+      seatId: "12",
+      semiAutoSwitch: false,
+    });
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getSeatOperateScope: vi.fn().mockResolvedValue({
+          hostSubUserId: "101",
+          platform: 5,
+          seatId: "12",
+          uid: 9001,
+        }),
+        updateSeatAgentModeSwitch,
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.updateSeatAgentModeSwitch("101", "12", {
+        enabled: false,
+        mode: "semi",
+      }),
+    ).resolves.toEqual({
+      fullAutoSwitch: true,
+      seatId: "12",
+      semiAutoSwitch: false,
+    });
+    expect(updateSeatAgentModeSwitch).toHaveBeenCalledWith({
+      enabled: false,
+      mode: "semi",
+      platform: 5,
+      seatId: "12",
+      uid: 9001,
+    });
+  });
+
+  it("rejects seat agent mode switch changes when the seat is not taken over", async () => {
+    const javaClient = createJavaClient();
+    const updateSeatAgentModeSwitch = vi.fn();
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getSeatOperateScope: vi.fn().mockResolvedValue({
+          hostSubUserId: "202",
+          platform: 5,
+          seatId: "12",
+          uid: 9001,
+        }),
+        updateSeatAgentModeSwitch,
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.updateSeatAgentModeSwitch("101", "12", {
+        enabled: true,
+        mode: "full",
+      }),
+    ).rejects.toMatchObject({
+      code: "SEAT_NOT_TAKEN_OVER",
+      statusCode: 403,
+    });
+    expect(updateSeatAgentModeSwitch).not.toHaveBeenCalled();
+  });
+
   it("rejects full-auto changes when the conversation seat is not taken over by the current sub-user", async () => {
     const javaClient = createJavaClient();
     const service = new MysqlWorkbenchService(

@@ -27,6 +27,8 @@ type CanUseWorkbenchConversationActionsInput = {
 };
 
 export type WorkbenchPermissions = {
+  canConfigureFullAuto: boolean;
+  canConfigureSemiAuto: boolean;
   canEnableFullAuto: boolean;
   canSendMessage: boolean;
   canTakeOverAccount: boolean;
@@ -37,6 +39,8 @@ export type WorkbenchPermissions = {
   isAccountOffline: boolean;
   isAccountTakenOverByCurrentUser: boolean;
   isFullAutoActive: boolean;
+  isFullAutoAvailable: boolean;
+  isSemiAutoAvailable: boolean;
   isConversationActionDisabled: boolean;
   isConversationBizInactive: boolean;
   sidebarIframeSendStatus: SidebarIframeSendStatus;
@@ -65,10 +69,15 @@ export function resolveWorkbenchPermissions({
   const isActiveFullAutoAgentMode =
     activeConversation?.agentMode === CONVERSATION_AGENT_MODE.FULL &&
     activeConversation.agentHostingStatus !== "exited";
-  const canEnableFullAuto =
+  const canConfigureFullAuto =
     isAccountTakenOverByCurrentUser &&
-    account?.fullAutoAuth === true &&
-    account.fullAutoSwitch === true;
+    account?.fullAutoAuth === true;
+  const canConfigureSemiAuto =
+    isAccountTakenOverByCurrentUser &&
+    account?.semiAutoAuth === true;
+  const canEnableFullAuto =
+    canConfigureFullAuto &&
+    account?.fullAutoSwitch === true;
   const isFullAutoActive = canEnableFullAuto && isActiveFullAutoAgentMode;
   const canSendMessage =
     canUseConversationActions &&
@@ -77,6 +86,8 @@ export function resolveWorkbenchPermissions({
     !isFullAutoActive;
 
   return {
+    canConfigureFullAuto,
+    canConfigureSemiAuto,
     canEnableFullAuto,
     canSendMessage,
     canTakeOverAccount,
@@ -97,6 +108,8 @@ export function resolveWorkbenchPermissions({
     isAccountOffline,
     isAccountTakenOverByCurrentUser,
     isFullAutoActive,
+    isFullAutoAvailable: account?.fullAutoSwitch === true,
+    isSemiAutoAvailable: account?.semiAutoSwitch === true,
     isConversationActionDisabled: !canUseConversationActions,
     isConversationBizInactive,
     sidebarIframeSendStatus: resolveSidebarIframeSendStatus({

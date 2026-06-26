@@ -77,6 +77,8 @@ import {
   type WorkbenchTakeOverSeatResponse,
   type WorkbenchUploadCredentialResponse,
   type WorkbenchSearchResponseDto,
+  type WorkbenchSeatAgentModeSwitchRequest,
+  type WorkbenchSeatAgentModeSwitchResponse,
   type WorkbenchGetOrCreateConversationRequestDto,
   MATERIAL_COLLECTION_BIZ_TYPE,
   type MaterialCollectionBizType,
@@ -222,6 +224,10 @@ export type WorkbenchService = {
     conversationId: string,
     request: { enabled: boolean },
   ) => Promise<WorkbenchConversationFullAutoResponse>;
+  updateSeatAgentMode: (
+    seatId: string,
+    request: WorkbenchSeatAgentModeSwitchRequest,
+  ) => Promise<WorkbenchSeatAgentModeSwitchResponse>;
   getFullAutoAnswerStatus: (
     conversationId: string,
   ) => Promise<WorkbenchFullAutoAnswerStatusResponse>;
@@ -1636,6 +1642,30 @@ export function createMockWorkbenchService(): WorkbenchService {
     async changeConversationFullAuto(conversationId, request) {
       return setConversationFullAuto(state, conversationId, request.enabled);
     },
+    async updateSeatAgentMode(seatId, request) {
+      const seat = state.seats.find((item) => item.seatId === seatId);
+
+      if (!seat) {
+        return {
+          fullAutoSwitch: false,
+          seatId,
+          semiAutoSwitch: false,
+        };
+      }
+
+      if (request.mode === "full") {
+        seat.fullAutoSwitch = request.enabled;
+      } else {
+        seat.semiAutoSwitch = request.enabled;
+      }
+      pushAccountEvent(state, seatId);
+
+      return {
+        fullAutoSwitch: seat.fullAutoSwitch === true,
+        seatId,
+        semiAutoSwitch: seat.semiAutoSwitch === true,
+      };
+    },
     async getFullAutoAnswerStatus() {
       return {};
     },
@@ -2368,6 +2398,12 @@ export function createHttpWorkbenchService(): WorkbenchService {
         `/server/conversations/${conversationId}/full-auto`,
         request,
       );
+    },
+    updateSeatAgentMode(seatId, request) {
+      return http.patch<
+        WorkbenchSeatAgentModeSwitchResponse,
+        WorkbenchSeatAgentModeSwitchRequest
+      >(`/server/seats/${seatId}/agent-mode-switch`, request);
     },
     getFullAutoAnswerStatus(conversationId) {
       return http.get<WorkbenchFullAutoAnswerStatusResponse>(

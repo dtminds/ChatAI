@@ -44,12 +44,17 @@ type ChatPanelProps = {
   accountAvatarUrl?: string;
   activeConversation?: Conversation;
   activeHistoryStatus: "idle" | "loading" | "error";
+  canConfigureFullAuto?: boolean;
+  canConfigureSemiAuto?: boolean;
   canEnableFullAuto?: boolean;
   canCollectMaterialActions?: boolean;
   canSendMessage: boolean;
   fullAutoActionPending?: boolean;
+  seatAgentModeActionPending?: boolean;
   fullAutoDisplayStatus?: AgentHostingStatus;
+  isFullAutoAvailable?: boolean;
   isFullAutoActive?: boolean;
+  isSemiAutoAvailable?: boolean;
   composerPlaceholder: string;
   customer?: CustomerProfile;
   /** 侧栏 iframe `tos`：当前坐席是否已接管账号 */
@@ -96,6 +101,7 @@ type ChatPanelProps = {
   onCancelFileUpload: (uploadId: string) => void;
   onCancelAgentHosting?: () => void;
   onEnableAgentHosting?: () => void;
+  onChangeSeatAgentMode?: (mode: "full" | "semi", enabled: boolean) => void;
   onChangeFullAuto?: (enabled: boolean) => void;
   collectedExpressions?: WorkbenchMaterialCollectionItemDto[];
   hasMoreCollectedExpressions?: boolean;
@@ -158,12 +164,17 @@ export function ChatPanel({
   accountAvatarUrl,
   activeConversation,
   activeHistoryStatus,
+  canConfigureFullAuto = false,
+  canConfigureSemiAuto = false,
   canEnableFullAuto = false,
   canCollectMaterialActions = true,
   canSendMessage,
   fullAutoActionPending = false,
+  seatAgentModeActionPending = false,
   fullAutoDisplayStatus,
+  isFullAutoAvailable = false,
   isFullAutoActive = false,
+  isSemiAutoAvailable = false,
   composerPlaceholder,
   customer,
   sidebarIframeTos,
@@ -191,6 +202,7 @@ export function ChatPanel({
   onCancelFileUpload,
   onCancelAgentHosting,
   onEnableAgentHosting,
+  onChangeSeatAgentMode,
   onChangeFullAuto,
   collectedExpressions,
   hasMoreCollectedExpressions,
@@ -340,10 +352,13 @@ export function ChatPanel({
                   ) : null}
                   <div className="px-4 pt-3">
                     <ChatComposer
+                      canConfigureFullAuto={canConfigureFullAuto}
+                      canConfigureSemiAuto={canConfigureSemiAuto}
                       canEnableFullAuto={canEnableFullAuto}
                       canSendMessage={canSendMessage}
                       draft={draft}
                       fullAutoActionPending={fullAutoActionPending}
+                      seatAgentModeActionPending={seatAgentModeActionPending}
                       hasActiveFileUpload={hasActiveFileUpload}
                       currentSeatThirdUserId={activeConversation.thirdUserId}
                       groupMembers={groupMembers}
@@ -353,7 +368,9 @@ export function ChatPanel({
                       isEmojiPickerOpen={isEmojiPickerOpen}
                       isSending={isSendingDraft}
                       isHistoryPanelOpen={isHistoryPanelOpen}
+                      isFullAutoAvailable={isFullAutoAvailable}
                       isFullAutoActive={isFullAutoActive}
+                      isSemiAutoAvailable={isSemiAutoAvailable}
                       collectedExpressions={collectedExpressions}
                       hasMoreCollectedExpressions={hasMoreCollectedExpressions}
                       isCollectedExpressionLoadingMore={
@@ -366,6 +383,7 @@ export function ChatPanel({
                       onEmojiPickerOpenChange={onEmojiPickerOpenChange}
                       onEnterBehaviorChange={onEnterBehaviorChange}
                       onFileSelect={onFileSelect}
+                      onChangeSeatAgentMode={onChangeSeatAgentMode ?? noopChangeSeatAgentMode}
                       onChangeFullAuto={onChangeFullAuto ?? noopChangeFullAuto}
                       onLoadMoreCollectedExpressions={
                         onLoadMoreCollectedExpressions
@@ -507,5 +525,7 @@ function FileUploadQueueBar({
 }
 
 function noop() {}
+
+function noopChangeSeatAgentMode() {}
 
 function noopChangeFullAuto() {}

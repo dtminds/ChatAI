@@ -277,6 +277,7 @@ type BaseMessage = {
   role: MessageRole;
   author: string;
   sentAt: string;
+  updatedAtMs?: number;
   status: MessageStatus;
   isNew?: boolean;
   optNo?: string;

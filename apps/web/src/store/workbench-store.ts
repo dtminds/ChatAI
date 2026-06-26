@@ -329,6 +329,7 @@ type DownloadContentPatch = {
   downloadStatus?: "ing" | "finished" | "failed";
   fileUrlExpireTime?: number;
   fileUrl?: string;
+  updatedAtMs?: number;
 };
 
 type VoicePlaybackContentPatch = {
@@ -1573,6 +1574,9 @@ function patchDownloadMessage(
   if (message.content.type === "video") {
     return {
       ...message,
+      ...(contentPatch.updatedAtMs === undefined
+        ? {}
+        : { updatedAtMs: contentPatch.updatedAtMs }),
       content: {
         ...message.content,
         ...(contentPatch.downloadStatus === undefined
@@ -1591,6 +1595,9 @@ function patchDownloadMessage(
   if (message.content.type === "image") {
     return {
       ...message,
+      ...(contentPatch.updatedAtMs === undefined
+        ? {}
+        : { updatedAtMs: contentPatch.updatedAtMs }),
       content: {
         ...message.content,
         ...(contentPatch.downloadStatus === undefined
@@ -1605,6 +1612,9 @@ function patchDownloadMessage(
 
   return {
     ...message,
+    ...(contentPatch.updatedAtMs === undefined
+      ? {}
+      : { updatedAtMs: contentPatch.updatedAtMs }),
     content: {
       ...message.content,
       ...(contentPatch.downloadStatus === undefined

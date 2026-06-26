@@ -360,6 +360,125 @@ describe("ChatWorkbenchPage download flows", () => {
     expect(toast.warning).not.toHaveBeenCalledWith("下载队列已满，请稍后");
   });
 
+  it("starts a message download for failed images with file serial metadata", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const downloadMessageFile = vi.fn(async () => ({
+      messageSeq: 539,
+      status: "accepted" as const,
+    }));
+
+    setWorkbenchService({
+      ...baseService,
+      downloadMessageFile,
+      async getMessages(conversationId, options) {
+        if (conversationId === "conv-001" && options?.beforeSeq == null) {
+          return {
+            filteredCount: 0,
+            hasMore: false,
+            messages: [
+              createImageDto({
+                alt: "失败图片",
+                createdAt: 1778240300000,
+                downloadStatus: "failed",
+                messageId: "remote-failed-image",
+                seq: 539,
+                updatedAt: 1778240600000,
+              }),
+            ],
+            scannedCount: 1,
+          };
+        }
+
+        return baseService.getMessages(conversationId, options);
+      },
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await user.click(screen.getByRole("button", { name: "重试" }));
+
+    expect(downloadMessageFile).toHaveBeenCalledWith({
+      conversationId: "conv-001",
+      msgInfoId: 539,
+    });
+    expect(screen.getByRole("status", { name: "图片加载中" })).toBeInTheDocument();
+  });
+
+  it("does not show image retry when failed image is missing file serial metadata", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        if (conversationId === "conv-001" && options?.beforeSeq == null) {
+          return {
+            filteredCount: 0,
+            hasMore: false,
+            messages: [
+              createImageDto({
+                alt: "缺少序列号图片",
+                createdAt: 1778240300000,
+                downloadStatus: "failed",
+                fileSerialNo: null,
+                messageId: "remote-missing-serial-image",
+                seq: 539,
+                updatedAt: 1778240600000,
+              }),
+            ],
+            scannedCount: 1,
+          };
+        }
+
+        return baseService.getMessages(conversationId, options);
+      },
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+
+    expect(screen.queryByRole("button", { name: "重试" })).not.toBeInTheDocument();
+    expect(screen.getByText("下载超时")).toBeInTheDocument();
+  });
+
+  it("does not show an image download action for empty URLs unless the transfer failed", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        if (conversationId === "conv-001" && options?.beforeSeq == null) {
+          return {
+            filteredCount: 0,
+            hasMore: false,
+            messages: [
+              createImageDto({
+                alt: "空地址图片",
+                createdAt: 1778240300000,
+                downloadStatus: undefined,
+                imageUrl: "",
+                messageId: "remote-empty-image",
+                seq: 539,
+              }),
+            ],
+            scannedCount: 1,
+          };
+        }
+
+        return baseService.getMessages(conversationId, options);
+      },
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+
+    expect(screen.queryByRole("button", { name: "下载图片：空地址图片" }))
+      .not.toBeInTheDocument();
+  });
+
   it("does not restore download-status polling for in-progress downloads after StrictMode remount", async () => {
     const baseService = createMockWorkbenchService();
     const getMessageFileDownloadStatus = vi.fn(
@@ -420,7 +539,7 @@ function createInProgressVideoDto({
   alt: string;
   createdAt: number;
   downloadStatus?: "ing" | "finished" | "failed";
-  fileSerialNo?: string;
+  fileSerialNo?: string | null;
   messageId: string;
   seq: number;
 }) {
@@ -478,5 +597,47 @@ function createInProgressFileDto({
     senderType: "customer" as const,
     seq,
     status: "sent" as const,
+  };
+}
+
+function createImageDto({
+  alt,
+  createdAt,
+  downloadStatus,
+  fileSerialNo = "default",
+  imageUrl = "https://b5.bokr.com.cn/chat-images/photo.png",
+  messageId,
+  seq,
+  updatedAt,
+}: {
+  alt: string;
+  createdAt: number;
+  downloadStatus?: "ing" | "finished" | "failed";
+  fileSerialNo?: string | null;
+  imageUrl?: string;
+  messageId: string;
+  seq: number;
+  updatedAt?: number;
+}) {
+  return {
+    content: {
+      alt,
+      downloadStatus,
+      ...(fileSerialNo === null
+        ? {}
+        : { fileSerialNo: fileSerialNo === "default" ? `serial-${seq}` : fileSerialNo }),
+      fileUrl: imageUrl,
+    },
+    contentType: "image" as const,
+    conversationId: "conv-001",
+    createdAt,
+    customerId: "cust-001",
+    msgid: messageId,
+    rawMsgtype: "image",
+    seatId: "drc",
+    senderType: "customer" as const,
+    seq,
+    status: "sent" as const,
+    updatedAt,
   };
 }

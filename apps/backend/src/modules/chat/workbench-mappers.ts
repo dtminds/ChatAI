@@ -73,6 +73,7 @@ export type MessageRow = {
   third_from_id: string | null | undefined;
   third_group_id: string | null | undefined;
   third_user_id: string | null | undefined;
+  update_time?: Date | number | string | null;
 };
 
 export type MessageRowQuotePreview = WorkbenchQuotedMessagePreviewDto;
@@ -217,6 +218,7 @@ export function mapMessageRow(
     thirdFromId: row.third_from_id || undefined,
     thirdGroupId,
     thirdUserId: row.third_user_id || undefined,
+    updatedAt: toOptionalTimestamp(row.update_time),
   };
 }
 

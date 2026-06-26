@@ -1220,7 +1220,11 @@ function ChatWorkbenchContent({
   };
 
   const handleDownloadMessageFile = (message: ChatMessage) => {
-    if (message.content.type !== "file" && message.content.type !== "video") {
+    if (
+      message.content.type !== "file" &&
+      message.content.type !== "video" &&
+      message.content.type !== "image"
+    ) {
       return;
     }
 
@@ -1241,6 +1245,7 @@ function ChatWorkbenchContent({
 
     updateMessageDownloadContent(message.conversationId, message.uiMessageKey, {
       downloadStatus: "ing",
+      updatedAtMs: Date.now(),
     });
 
     void downloadMessageFile({
@@ -2143,6 +2148,10 @@ function getMessageDownloadUrl(message: ChatMessage) {
 
   if (message.content.type === "video") {
     return message.content.videoUrl?.trim() ?? "";
+  }
+
+  if (message.content.type === "image") {
+    return message.content.imageUrl.trim();
   }
 
   return "";

@@ -1141,6 +1141,16 @@ describe("workbench MySQL mappers", () => {
     });
   });
 
+  it("maps message update time for media download timeout decisions", () => {
+    expect(
+      mapMessageRow(messageRow({
+        update_time: "2026-05-09T08:37:00.000Z",
+      })),
+    ).toMatchObject({
+      updatedAt: 1778315820000,
+    });
+  });
+
   it("does not coerce messages without a valid sent time to epoch", () => {
     expect(
       mapMessageRow(messageRow({

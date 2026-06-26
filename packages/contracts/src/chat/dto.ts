@@ -338,6 +338,7 @@ export type WorkbenchMessageBaseDto = {
   status: WorkbenchMessageStatus;
   content: Record<string, unknown>;
   createdAt?: number;
+  updatedAt?: number;
   seq: number;
   optNo?: string;
   failReason?: string;

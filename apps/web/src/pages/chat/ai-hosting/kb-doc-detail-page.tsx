@@ -93,6 +93,7 @@ export function KbDocDetailPage() {
   const [editChunk, setEditChunk] = useState<KbDocChunkViewItem | null>(null);
   const [deleteChunk, setDeleteChunk] = useState<KbDocChunkViewItem | null>(null);
   const requestVersionRef = useRef(0);
+  const skipNextAutoLoadRef = useRef(false);
   const isMountedRef = useRef(false);
 
   useEffect(() => {
@@ -145,6 +146,14 @@ export function KbDocDetailPage() {
       }
     }
   }, [currentPage, debouncedSearchQuery, doc, docId, pageSize]);
+
+  const refreshChunksFromFirstPage = useCallback(async () => {
+    if (currentPage !== 1) {
+      skipNextAutoLoadRef.current = true;
+      setCurrentPage(1);
+    }
+    await loadChunks({ page: 1 });
+  }, [currentPage, loadChunks]);
 
   useEffect(() => {
     return () => {
@@ -207,6 +216,11 @@ export function KbDocDetailPage() {
       return;
     }
 
+    if (skipNextAutoLoadRef.current) {
+      skipNextAutoLoadRef.current = false;
+      return;
+    }
+
     void loadChunks();
   }, [doc, loadChunks, loadingPage]);
 
@@ -241,8 +255,7 @@ export function KbDocDetailPage() {
       return;
     }
 
-    setCurrentPage(1);
-    await loadChunks({ page: 1 });
+    await refreshChunksFromFirstPage();
 
     if (isMountedRef.current) {
       toast.success("已添加问答切片");
@@ -265,8 +278,7 @@ export function KbDocDetailPage() {
       return;
     }
 
-    setCurrentPage(1);
-    await loadChunks({ page: 1 });
+    await refreshChunksFromFirstPage();
 
     if (isMountedRef.current) {
       toast.success("已添加切片");
@@ -319,8 +331,7 @@ export function KbDocDetailPage() {
       }
 
       setDeleteChunk(null);
-      setCurrentPage(1);
-      await loadChunks({ page: 1 });
+      await refreshChunksFromFirstPage();
 
       if (isMountedRef.current) {
         toast.success("已删除切片");

@@ -215,6 +215,39 @@ describe("useWorkbenchStore", () => {
     );
   });
 
+  it("cancels active conversation custody locally", async () => {
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-001"
+            ? {
+                ...conversation,
+                aiHosted: true,
+                custodyHostingStatus: "thinking",
+                custodyMode: "full",
+              }
+            : conversation,
+        ),
+      },
+    }));
+
+    useWorkbenchStore.getState().cancelActiveConversationCustody();
+
+    expect(
+      useWorkbenchStore
+        .getState()
+        .conversationListsByScope.drc.find(
+          (conversation) => conversation.id === "conv-001",
+        ),
+    ).toMatchObject({
+      aiHosted: false,
+      custodyHostingStatus: undefined,
+      custodyMode: "semi",
+    });
+  });
+
   it("bootstraps the first account, conversation, and read state", async () => {
     await useWorkbenchStore.getState().initializeWorkbench();
 

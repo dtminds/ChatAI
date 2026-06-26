@@ -21,6 +21,7 @@ vi.mock("border-beam", () => ({
     <div
       className={className}
       data-active={active ? "true" : "false"}
+      data-border-beam="true"
       data-border-radius={borderRadius}
       data-size={size}
       data-testid="custody-border-beam"
@@ -38,6 +39,14 @@ describe("ChatCustodyStatusBar", () => {
     render(<ChatCustodyStatusBar onCancel={onCancel} status="active" />);
 
     expect(screen.getByTestId("custody-border-beam")).toHaveAttribute(
+      "data-border-beam",
+      "true",
+    );
+    expect(screen.getByTestId("custody-border-beam")).toHaveAttribute(
+      "data-active",
+      "true",
+    );
+    expect(screen.getByTestId("custody-border-beam")).toHaveAttribute(
       "data-border-radius",
       "999",
     );
@@ -47,6 +56,9 @@ describe("ChatCustodyStatusBar", () => {
     );
     expect(screen.getByTestId("custody-border-beam")).toHaveClass("rounded-full");
     expect(screen.getByTestId("chat-custody-status-bar")).toHaveClass("rounded-full");
+    expect(screen.getByTestId("chat-custody-status-bar")).toHaveClass(
+      "border",
+    );
     expect(screen.getByTestId("chat-custody-status-bar")).not.toHaveClass(
       "bg-background/85",
     );

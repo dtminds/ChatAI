@@ -60,11 +60,14 @@ export function resolveWorkbenchPermissions({
     hasSendPermission: canUseChatSend,
     me,
   });
+  const isActiveFullCustody =
+    activeConversation?.custodyMode === CONVERSATION_CUSTODY_MODE.FULL &&
+    activeConversation.custodyHostingStatus !== "exited";
   const canSendMessage =
     canUseConversationActions &&
     !!activeConversation &&
     !isConversationBizInactive &&
-    activeConversation.custodyMode !== CONVERSATION_CUSTODY_MODE.FULL;
+    !isActiveFullCustody;
 
   return {
     canSendMessage,

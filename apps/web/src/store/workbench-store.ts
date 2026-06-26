@@ -61,6 +61,7 @@ import { canUseWorkbenchConversationActions } from "@/pages/chat/lib/workbench-p
 import { seedCustomerProfiles } from "@/pages/chat/mock-data";
 import {
   CHAT_TYPE,
+  CONVERSATION_CUSTODY_MODE,
   SMART_REPLY_POLL_INTERVAL_MS,
   type SettingsSidebarItem,
   type WorkbenchSendMessagePayload,
@@ -238,6 +239,7 @@ type WorkbenchState = {
   pendingMessages: Message[];
   revokeMessage: (uiMessageKey: string) => Promise<RevokeMessageResult>;
   sidebarItems: SettingsSidebarItem[];
+  cancelActiveConversationCustody: () => void;
   clearActiveConversation: () => void;
   resetWorkbenchSession: () => void;
   deleteConversation: (conversationId: string) => Promise<void>;
@@ -387,6 +389,7 @@ function createInitialState(): Omit<
   | "updateMessageDownloadContent"
   | "confirmVoicePlaybackReady"
   | "transcribeVoiceMessage"
+  | "cancelActiveConversationCustody"
   | "dismissScopeTransitionError"
   | "dismissReadReceiptError"
   | "setSearchKeyword"
@@ -5091,6 +5094,43 @@ export function createWorkbenchStore() {
         isConversationLoading: false,
         messageUpdateCursor: undefined,
         scopeTransitionError: undefined,
+      });
+    },
+    cancelActiveConversationCustody() {
+      set((currentState) => {
+        const { activeAccountId, activeConversationId } = currentState;
+
+        if (!activeAccountId || !activeConversationId) {
+          return currentState;
+        }
+
+        const currentConversations =
+          currentState.conversationListsByScope[activeAccountId] ?? [];
+        let changed = false;
+        const nextConversations = currentConversations.map((conversation) => {
+          if (conversation.id !== activeConversationId) {
+            return conversation;
+          }
+
+          changed = true;
+          return {
+            ...conversation,
+            aiHosted: false,
+            custodyHostingStatus: undefined,
+            custodyMode: CONVERSATION_CUSTODY_MODE.SEMI,
+          };
+        });
+
+        if (!changed) {
+          return currentState;
+        }
+
+        return {
+          conversationListsByScope: {
+            ...currentState.conversationListsByScope,
+            [activeAccountId]: nextConversations,
+          },
+        };
       });
     },
     resetWorkbenchSession() {

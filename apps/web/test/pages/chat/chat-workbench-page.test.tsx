@@ -159,6 +159,48 @@ describe("ChatWorkbenchPage", () => {
     expect(screen.getByRole("button", { name: "发送消息" })).toBeInTheDocument();
   });
 
+  it("exits full custody when cancel custody is clicked", async () => {
+    const user = userEvent.setup();
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+
+    act(() => {
+      useWorkbenchStore.setState((state) => ({
+        conversationListsByScope: {
+          ...state.conversationListsByScope,
+          drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+            conversation.id === "conv-001"
+              ? {
+                  ...conversation,
+                  aiHosted: true,
+                  custodyHostingStatus: "thinking",
+                  custodyMode: "full",
+                }
+              : conversation,
+          ),
+        },
+      }));
+    });
+
+    expect(screen.getByText("正在思考")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "AI正在托管中..." })).toHaveAttribute(
+      "contenteditable",
+      "false",
+    );
+
+    await user.click(screen.getByRole("button", { name: "取消托管" }));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("chat-custody-status-bar")).not.toBeInTheDocument();
+    });
+    expect(screen.getByRole("textbox", { name: "请输入消息……" })).toHaveAttribute(
+      "contenteditable",
+      "true",
+    );
+  });
+
   it("does not bootstrap again when the workbench store is already ready", () => {
     const baseService = createMockWorkbenchService();
     const getSeats = vi.fn(baseService.getSeats);

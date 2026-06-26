@@ -263,7 +263,11 @@ describe("ChatPanel", () => {
     expect(screen.queryByTestId("customer-side-panel-shell")).not.toBeInTheDocument();
   });
 
-  it("shows custody status bar above composer for full custody conversations", () => {
+  it("hides composer placeholder without blocking non-send composer actions in full custody", async () => {
+    const user = userEvent.setup();
+    const onCancelCustody = vi.fn();
+    const onOpenHistory = vi.fn();
+
     render(
       <ChatPanel
         activeConversation={{
@@ -293,6 +297,7 @@ describe("ChatPanel", () => {
         composerRef={createRef()}
         messageViewportRef={createRef()}
         workbenchBodyRef={createRef()}
+        onCancelCustody={onCancelCustody}
         onCancelFileUpload={vi.fn()}
         onClearQuotedMessage={vi.fn()}
         onComposerSegmentsChange={vi.fn()}
@@ -311,28 +316,47 @@ describe("ChatPanel", () => {
         onHistorySetSenderId={vi.fn()}
         onLoadOlderMessages={vi.fn()}
         onMessageViewportScroll={vi.fn()}
-        onOpenHistory={vi.fn()}
+        onOpenHistory={onOpenHistory}
         onRefreshGroupMembers={vi.fn()}
         onRetryMessage={vi.fn()}
         onSendDraft={vi.fn()}
       />,
     );
 
-    expect(screen.getByTestId("chat-custody-status-bar")).toBeInTheDocument();
+    expect(screen.getByTestId("chat-custody-status-bar")).toHaveClass(
+      "rounded-full",
+    );
     expect(screen.getByTestId("chat-custody-status-bar-anchor")).toHaveClass(
       "absolute",
       "left-1/2",
-      "bottom-9",
+      "bottom-12",
       "z-30",
       "w-4/5",
       "max-w-[520px]",
       "-translate-x-1/2",
     );
+    expect(screen.getByTestId("chat-custody-status-bar-content")).toHaveClass(
+      "relative",
+      "z-10",
+    );
+    expect(screen.queryByTestId("chat-custody-composer-shell")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("chat-custody-composer-mask")).not.toBeInTheDocument();
     expect(screen.getByTestId("chat-composer-editor").closest(".px-4")).toHaveClass(
       "pt-3",
     );
     expect(screen.getByText("正在思考")).toBeInTheDocument();
     expect(screen.getByLabelText("AI正在托管中...")).toBeInTheDocument();
+    expect(screen.queryByText("AI正在托管中...")).not.toBeInTheDocument();
+    expect(screen.getByTestId("message-content").closest(".pb-12")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("combobox", { name: "选择 Enter 键行为" }),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "历史记录" }));
+    await user.click(screen.getByRole("button", { name: "取消托管" }));
+
+    expect(onOpenHistory).toHaveBeenCalledTimes(1);
+    expect(onCancelCustody).toHaveBeenCalledTimes(1);
   });
 
   it("hides custody status bar for exited custody conversations", () => {

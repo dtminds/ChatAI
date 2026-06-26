@@ -328,7 +328,7 @@ export function ChatPanel({
                 <div className="relative overflow-visible bg-surface pb-3">
                   {custodyHostingStatus ? (
                     <div
-                      className="absolute bottom-9 left-1/2 z-30 w-4/5 max-w-[520px] -translate-x-1/2"
+                      className="absolute bottom-12 left-1/2 z-30 w-4/5 max-w-[520px] -translate-x-1/2"
                       data-testid="chat-custody-status-bar-anchor"
                     >
                       <ChatCustodyStatusBar
@@ -339,51 +339,52 @@ export function ChatPanel({
                     </div>
                   ) : null}
                   <div className="px-4 pt-3">
-                  <ChatComposer
-                    canSendMessage={canSendMessage}
-                    draft={draft}
-                    hasActiveFileUpload={hasActiveFileUpload}
-                    currentSeatThirdUserId={activeConversation.thirdUserId}
-                    groupMembers={groupMembers}
-                    isGroupConversation={activeConversation.mode === "group"}
-                    inputEnterBehavior={inputEnterBehavior}
-                    isEmojiPickerOpen={isEmojiPickerOpen}
-                    isSending={isSendingDraft}
-                    isHistoryPanelOpen={isHistoryPanelOpen}
-                    collectedExpressions={collectedExpressions}
-                    hasMoreCollectedExpressions={hasMoreCollectedExpressions}
-                    isCollectedExpressionLoadingMore={
-                      isCollectedExpressionLoadingMore
-                    }
-                    sendingCollectedExpressionId={sendingCollectedExpressionId}
-                    onClearQuotedMessage={onClearQuotedMessage}
-                    onDeleteCollectedExpression={onDeleteCollectedExpression}
-                    onDraftChange={onDraftChange}
-                    onEmojiPickerOpenChange={onEmojiPickerOpenChange}
-                    onEnterBehaviorChange={onEnterBehaviorChange}
-                    onFileSelect={onFileSelect}
-                    onLoadMoreCollectedExpressions={
-                      onLoadMoreCollectedExpressions
-                    }
-                    onOpenCollectedExpressions={onOpenCollectedExpressions}
-                    onOpenMaterialLibrary={onOpenMaterialLibrary ?? noop}
-                    onOpenHistory={onOpenHistory}
-                    onSelectCollectedExpression={onSelectCollectedExpression}
-                    onSegmentsChange={onComposerSegmentsChange}
-                    onSendDraft={onSendDraft}
-                    onTopCollectedExpression={onTopCollectedExpression}
-                    placeholder={composerPlaceholder}
-                    quotedMessage={quotedMessage}
-                    custodyStatusPreview={
-                      import.meta.env.DEV
-                        ? {
-                            activeStatus: displayedCustodyHostingStatus,
-                            onSelectStatus: setCustodyStatusPreview,
-                          }
-                        : undefined
-                    }
-                    composerRef={composerRef}
-                  />
+                    <ChatComposer
+                      canSendMessage={canSendMessage}
+                      draft={draft}
+                      hasActiveFileUpload={hasActiveFileUpload}
+                      currentSeatThirdUserId={activeConversation.thirdUserId}
+                      groupMembers={groupMembers}
+                      hidePlaceholder={!!custodyHostingStatus}
+                      isGroupConversation={activeConversation.mode === "group"}
+                      inputEnterBehavior={inputEnterBehavior}
+                      isEmojiPickerOpen={isEmojiPickerOpen}
+                      isSending={isSendingDraft}
+                      isHistoryPanelOpen={isHistoryPanelOpen}
+                      collectedExpressions={collectedExpressions}
+                      hasMoreCollectedExpressions={hasMoreCollectedExpressions}
+                      isCollectedExpressionLoadingMore={
+                        isCollectedExpressionLoadingMore
+                      }
+                      sendingCollectedExpressionId={sendingCollectedExpressionId}
+                      onClearQuotedMessage={onClearQuotedMessage}
+                      onDeleteCollectedExpression={onDeleteCollectedExpression}
+                      onDraftChange={onDraftChange}
+                      onEmojiPickerOpenChange={onEmojiPickerOpenChange}
+                      onEnterBehaviorChange={onEnterBehaviorChange}
+                      onFileSelect={onFileSelect}
+                      onLoadMoreCollectedExpressions={
+                        onLoadMoreCollectedExpressions
+                      }
+                      onOpenCollectedExpressions={onOpenCollectedExpressions}
+                      onOpenMaterialLibrary={onOpenMaterialLibrary ?? noop}
+                      onOpenHistory={onOpenHistory}
+                      onSelectCollectedExpression={onSelectCollectedExpression}
+                      onSegmentsChange={onComposerSegmentsChange}
+                      onSendDraft={onSendDraft}
+                      onTopCollectedExpression={onTopCollectedExpression}
+                      placeholder={composerPlaceholder}
+                      quotedMessage={quotedMessage}
+                      custodyStatusPreview={
+                        import.meta.env.DEV
+                          ? {
+                              activeStatus: displayedCustodyHostingStatus,
+                              onSelectStatus: setCustodyStatusPreview,
+                            }
+                          : undefined
+                      }
+                      composerRef={composerRef}
+                    />
                   </div>
                 </div>
               </div>

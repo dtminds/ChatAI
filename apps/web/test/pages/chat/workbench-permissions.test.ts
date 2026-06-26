@@ -61,6 +61,25 @@ describe("resolveWorkbenchPermissions", () => {
     });
   });
 
+  it("allows sending after a full custody conversation has exited hosting", () => {
+    const permissions = resolveWorkbenchPermissions({
+      account: createAccount({ takenOverEmployeeId: me.id }),
+      activeConversation: createConversation({
+        custodyHostingStatus: "exited",
+        custodyMode: "full",
+      }),
+      bootstrapStatus: "ready",
+      me,
+      subUser: operator,
+    });
+
+    expect(permissions).toMatchObject({
+      canSendMessage: true,
+      canUseConversationActions: true,
+      composerPlaceholder: "请输入消息……",
+    });
+  });
+
   it("maps sidebar iframe send status from workbench state", () => {
     expect(
       resolveWorkbenchPermissions({

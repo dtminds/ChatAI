@@ -108,6 +108,7 @@ type ChatComposerProps = {
   isGroupConversation: boolean;
   isEmojiPickerOpen: boolean;
   isCollectedExpressionLoadingMore?: boolean;
+  hidePlaceholder?: boolean;
   sendingCollectedExpressionId?: string | null;
   isSending: boolean;
   isHistoryPanelOpen: boolean;
@@ -168,6 +169,7 @@ export function ChatComposer({
   isGroupConversation,
   isEmojiPickerOpen,
   isCollectedExpressionLoadingMore,
+  hidePlaceholder = false,
   sendingCollectedExpressionId,
   isSending,
   isHistoryPanelOpen,
@@ -671,28 +673,30 @@ export function ChatComposer({
             </ComposerActionTooltip>
           </div>
           <div className="flex items-center gap-1">
-            <Select
-              onValueChange={(value) =>
-                onEnterBehaviorChange(value as InputEnterBehavior)
-              }
-              value={inputEnterBehavior}
-            >
-              <SelectTrigger
-                aria-label="选择 Enter 键行为"
-                className="h-7 min-w-0 border-0 text-[12px] bg-transparent px-1.5 text-muted-foreground shadow-none focus:ring-0"
-                disabled={isSending}
+            {canSendMessage ? (
+              <Select
+                onValueChange={(value) =>
+                  onEnterBehaviorChange(value as InputEnterBehavior)
+                }
+                value={inputEnterBehavior}
               >
-                <span>{INPUT_ENTER_BEHAVIOR_LABELS[inputEnterBehavior]}</span>
-              </SelectTrigger>
-              <SelectContent align="end">
-                <SelectItem value="send">
-                  {INPUT_ENTER_BEHAVIOR_DESCRIPTIONS.send}
-                </SelectItem>
-                <SelectItem value="newline">
-                  {INPUT_ENTER_BEHAVIOR_DESCRIPTIONS.newline}
-                </SelectItem>
-              </SelectContent>
-            </Select>
+                <SelectTrigger
+                  aria-label="选择 Enter 键行为"
+                  className="h-7 min-w-0 border-0 text-[12px] bg-transparent px-1.5 text-muted-foreground shadow-none focus:ring-0"
+                  disabled={isSending}
+                >
+                  <span>{INPUT_ENTER_BEHAVIOR_LABELS[inputEnterBehavior]}</span>
+                </SelectTrigger>
+                <SelectContent align="end">
+                  <SelectItem value="send">
+                    {INPUT_ENTER_BEHAVIOR_DESCRIPTIONS.send}
+                  </SelectItem>
+                  <SelectItem value="newline">
+                    {INPUT_ENTER_BEHAVIOR_DESCRIPTIONS.newline}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            ) : null}
 
             <Button
               aria-label="发送消息"
@@ -805,9 +809,11 @@ export function ChatComposer({
                 />
               }
               placeholder={
-                <div className="pointer-events-none absolute left-0 top-1 text-[14px] text-muted-foreground">
-                  {placeholder}
-                </div>
+                hidePlaceholder ? null : (
+                  <div className="pointer-events-none absolute left-0 top-1 text-[14px] text-muted-foreground">
+                    {placeholder}
+                  </div>
+                )
               }
               ErrorBoundary={LexicalErrorBoundary}
             />

@@ -300,6 +300,7 @@ function ChatWorkbenchContent({
     saveComposerDraft,
     setChatSendPermission,
     closeHistoryPanel,
+    cancelActiveConversationCustody,
     clearActiveConversation,
     clearComposerDraft,
     composerDraftsByConversationId,
@@ -330,6 +331,7 @@ function ChatWorkbenchContent({
       activeMode: state.activeMode,
       bootstrapError: state.bootstrapError,
       bootstrapStatus: state.bootstrapStatus,
+      cancelActiveConversationCustody: state.cancelActiveConversationCustody,
       clearActiveConversation: state.clearActiveConversation,
       clearComposerDraft: state.clearComposerDraft,
       closeHistoryPanel: state.closeHistoryPanel,
@@ -963,6 +965,10 @@ function ChatWorkbenchContent({
     },
     [canTakeOverAccount, takeOverAccount],
   );
+
+  const handleCancelCustody = useCallback(() => {
+    cancelActiveConversationCustody();
+  }, [cancelActiveConversationCustody]);
 
   const handleStartCustomerChat = useCallback(
     async (input: {
@@ -2062,6 +2068,7 @@ function ChatWorkbenchContent({
                   onCustomerPanelResizeStart={handleCustomerPanelResizeStart}
                   onComposerSegmentsChange={handleComposerSegmentsChange}
                   onCancelFileUpload={handleCancelFileUpload}
+                  onCancelCustody={handleCancelCustody}
                   onClearQuotedMessage={() => setQuotedMessage(null)}
                   onCollectMaterial={handleCollectMaterial}
                   onDeleteCollectedExpression={handleDeleteCollectedExpression}

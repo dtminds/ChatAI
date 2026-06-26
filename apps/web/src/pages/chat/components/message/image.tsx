@@ -4,6 +4,7 @@ import {
   ArrowRight01Icon,
   Cancel01Icon,
   Copy01Icon,
+  ImageNotFound01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -44,14 +45,37 @@ import {
 
 type ImageMessageCardProps = {
   content: ImageMessageContent;
+  downloadUpdatedAtMs?: number;
+  onDownloadClick?: () => void;
   uiMessageKey?: string;
 };
 
-export function ImageMessageCard({ content, uiMessageKey }: ImageMessageCardProps) {
+const IMAGE_DOWNLOAD_TIMEOUT_MS = 5 * 60 * 1000;
+
+export function ImageMessageCard({
+  content,
+  downloadUpdatedAtMs,
+  onDownloadClick,
+  uiMessageKey,
+}: ImageMessageCardProps) {
   const gallery = useConversationImageGallery();
   const mediaSize = getValidImageSize(content);
   const imageUrl = content.imageUrl.trim();
   const isEmotion = content.variant === "emotion";
+  const showDownloadTimeout =
+    content.downloadStatus === "failed" ||
+    (content.downloadStatus === "ing" &&
+      isExpiredImageDownload(downloadUpdatedAtMs, Date.now()));
+  const showRetryAction = showDownloadTimeout && Boolean(content.fileSerialNo);
+
+  if (showDownloadTimeout) {
+    return (
+      <ImageMessageDownloadFallback
+        alt={content.alt}
+        onDownloadClick={showRetryAction ? onDownloadClick : undefined}
+      />
+    );
+  }
 
   if (content.downloadStatus === "ing") {
     return (
@@ -132,6 +156,49 @@ function ImageMessageFallback({ alt }: { alt: string }) {
       label={`图片不可用：${alt}`}
       testId="image-message-fallback"
     />
+  );
+}
+
+function ImageMessageDownloadFallback({
+  alt,
+  onDownloadClick,
+}: {
+  alt: string;
+  onDownloadClick?: () => void;
+}) {
+  return (
+    <div
+      aria-label={`图片下载超时：${alt}`}
+      className="inline-flex h-[120px] w-[120px] flex-col items-center justify-center gap-1.5 rounded-[8px] border border-border/40 bg-muted-foreground/5 text-muted-foreground"
+      data-testid="image-message-download-fallback"
+    >
+      <HugeiconsIcon
+        data-icon-name="image-not-found-01"
+        icon={ImageNotFound01Icon}
+        size={22}
+        strokeWidth={1.6}
+      />
+      <span className="text-xs">下载超时</span>
+      {onDownloadClick ? (
+        <Button
+          aria-label="重试"
+          className="h-auto rounded-none px-0 py-0 text-xs font-medium text-primary hover:bg-transparent hover:text-primary/80"
+          onClick={onDownloadClick}
+          type="button"
+          variant="link"
+        >
+          重试
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
+function isExpiredImageDownload(updatedAtMs: number | undefined, now: number) {
+  return (
+    typeof updatedAtMs === "number" &&
+    Number.isFinite(updatedAtMs) &&
+    now - updatedAtMs >= IMAGE_DOWNLOAD_TIMEOUT_MS
   );
 }
 

@@ -104,6 +104,7 @@ export function adaptMessage(
   me?: EmployeeProfile,
 ): Message {
   const sentAt = formatWorkbenchTimestamp(dto.createdAt);
+  const updatedAtMs = normalizeOptionalTimestamp(dto.updatedAt);
   const status = adaptMessageStatus(dto.status);
   const isGroupConversation = Boolean(dto.thirdGroupId);
   const uiMessageKey = getMessageUiKey(dto);
@@ -127,6 +128,7 @@ export function adaptMessage(
       seq: dto.seq,
       status,
       author: "系统",
+      updatedAtMs,
       uiMessageKey,
     };
   }
@@ -148,6 +150,7 @@ export function adaptMessage(
       seq: dto.seq,
       status,
       author: "系统",
+      updatedAtMs,
       uiMessageKey,
     };
   }
@@ -209,6 +212,7 @@ export function adaptMessage(
     sentAt,
     seq: dto.seq,
     status,
+    updatedAtMs,
     uiMessageKey,
   };
 }

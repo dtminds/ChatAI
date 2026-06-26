@@ -124,6 +124,22 @@ describe("adaptMessage", () => {
     });
   });
 
+  it("adapts message update timestamps for download timeout decisions", () => {
+    expect(
+      adaptMessage(
+        {
+          ...messageDto,
+          updatedAt: 1778240600000,
+        },
+        customerProfilesById,
+        accountsById,
+        me,
+      ),
+    ).toMatchObject({
+      updatedAtMs: 1778240600000,
+    });
+  });
+
   it("preserves revoked message state from backend messages", () => {
     expect(
       adaptMessage(

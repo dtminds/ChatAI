@@ -55,7 +55,14 @@ export function MessageContentRenderer({
         />
       );
     case "image":
-      return <ImageMessageCard content={message.content} uiMessageKey={message.uiMessageKey} />;
+      return (
+        <ImageMessageCard
+          content={message.content}
+          downloadUpdatedAtMs={message.updatedAtMs}
+          onDownloadClick={() => onDownloadMessageFile?.(message)}
+          uiMessageKey={message.uiMessageKey}
+        />
+      );
     case "video":
       return (
         <VideoMessageCard

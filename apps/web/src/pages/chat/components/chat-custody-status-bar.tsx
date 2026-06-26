@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import {
   getCustodyHostingActionLabel,
   getCustodyHostingStatusLabel,
+  isCustodyHostingBusy,
   isCustodyHostingExited,
   type CustodyHostingStatus,
 } from "@/pages/chat/lib/chat-custody-status";
@@ -23,7 +24,7 @@ export function ChatCustodyStatusBar({
 }) {
   const actionLabel = getCustodyHostingActionLabel(status);
   const isExited = isCustodyHostingExited(status);
-  const isBusy = status === "thinking" || status === "retrying";
+  const isBusy = isCustodyHostingBusy(status);
 
   if (isExited) {
     return null;

@@ -69,6 +69,16 @@ export function isCustodyHostingExited(status: CustodyHostingStatus) {
   return status === "exited";
 }
 
+export function isCustodyHostingBusy(status: CustodyHostingStatus) {
+  return (
+    status === "thinking" ||
+    status === "waiting" ||
+    status === "generating" ||
+    status === "sending" ||
+    status === "retrying"
+  );
+}
+
 export function isCustodyHostingFullCustody(status: CustodyHostingStatus) {
   return status !== "exited";
 }

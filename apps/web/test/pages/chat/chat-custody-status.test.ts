@@ -3,6 +3,7 @@ import { CONVERSATION_CUSTODY_MODE } from "@chatai/contracts";
 import type { Conversation } from "@/pages/chat/chat-types";
 import {
   getCustodyHostingStatusLabel,
+  isCustodyHostingBusy,
   resolveCustodyHostingStatus,
   shouldUseFullCustodyCancelButton,
 } from "@/pages/chat/lib/chat-custody-status";
@@ -80,5 +81,21 @@ describe("chat custody status helpers", () => {
     expect(shouldUseFullCustodyCancelButton("retrying")).toBe(false);
     expect(shouldUseFullCustodyCancelButton("thinking")).toBe(false);
     expect(shouldUseFullCustodyCancelButton("exited")).toBe(false);
+  });
+
+  it("treats in-progress full-auto statuses as busy", () => {
+    expect(isCustodyHostingBusy("thinking")).toBe(true);
+    expect(isCustodyHostingBusy("waiting")).toBe(true);
+    expect(isCustodyHostingBusy("generating")).toBe(true);
+    expect(isCustodyHostingBusy("sending")).toBe(true);
+    expect(isCustodyHostingBusy("retrying")).toBe(true);
+
+    expect(isCustodyHostingBusy("active")).toBe(false);
+    expect(isCustodyHostingBusy("sent")).toBe(false);
+    expect(isCustodyHostingBusy("failed")).toBe(false);
+    expect(isCustodyHostingBusy("handoff")).toBe(false);
+    expect(isCustodyHostingBusy("sendFailed")).toBe(false);
+    expect(isCustodyHostingBusy("sendPartialFailed")).toBe(false);
+    expect(isCustodyHostingBusy("exited")).toBe(false);
   });
 });

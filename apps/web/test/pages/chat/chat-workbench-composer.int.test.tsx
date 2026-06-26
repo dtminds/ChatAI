@@ -85,27 +85,27 @@ async function expectSentConversationMessage(
   sendMessage: ReturnType<typeof vi.fn>,
   expectedMessage: object,
 ) {
-  let sentMessage:
-    | NonNullable<
-        ReturnType<typeof useWorkbenchStore.getState>["messagesByConversationId"][string]
-      >[number]
-    | undefined;
+  await waitFor(() => {
+    expect(sendMessage).toHaveBeenCalled();
+  });
 
-  await waitFor(async () => {
-    const sendResult = await sendMessage.mock.results[0]?.value;
-    const optNo = sendResult?.optNo;
+  const sendResult = await sendMessage.mock.results.at(-1)?.value;
+  const optNo = sendResult?.optNo;
 
-    expect(optNo).toBeTruthy();
-    sentMessage = useWorkbenchStore
+  expect(optNo).toBeTruthy();
+
+  await waitFor(() => {
+    const sentMessage = useWorkbenchStore
       .getState()
       .messagesByConversationId[conversationId]
       .find((message) => message.optNo === optNo);
-    expect(
-      sentMessage,
-    ).toMatchObject(expectedMessage);
+    expect(sentMessage).toMatchObject(expectedMessage);
   });
 
-  return sentMessage;
+  return useWorkbenchStore
+    .getState()
+    .messagesByConversationId[conversationId]
+    .find((message) => message.optNo === optNo);
 }
 
 function installQuickReplyService(quickReplies: WorkbenchQuickReplyDto[]) {

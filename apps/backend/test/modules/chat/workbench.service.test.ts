@@ -1468,7 +1468,7 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
-  it("changes conversation full-auto through Java after conversation access check", async () => {
+  it("changes conversation full-auto through Java after operable conversation check", async () => {
     const javaClient = createJavaClient();
     const service = new MysqlWorkbenchService(
       {
@@ -1477,7 +1477,7 @@ describe("MysqlWorkbenchService", () => {
           id: "88",
           platform: 5,
           seatId: "12",
-          seatHostSubUserId: "another-sub-user",
+          seatHostSubUserId: "101",
           uid: 9001,
         }),
       } as unknown as WorkbenchRepository,
@@ -1499,6 +1499,31 @@ describe("MysqlWorkbenchService", () => {
       platform: 5,
       uid: 9001,
     });
+  });
+
+  it("rejects full-auto changes when the conversation seat is not taken over by the current sub-user", async () => {
+    const javaClient = createJavaClient();
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "202",
+          uid: 9001,
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.changeConversationFullAuto("101", "88", { enabled: true }),
+    ).rejects.toMatchObject({
+      code: "SEAT_NOT_TAKEN_OVER",
+      statusCode: 403,
+    });
+    expect(javaClient.changeConversationFullAuto).not.toHaveBeenCalled();
   });
 
   it("rejects delete when the conversation seat is not taken over by the current sub-user", async () => {

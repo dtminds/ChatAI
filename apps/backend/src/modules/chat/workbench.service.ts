@@ -1273,7 +1273,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
       throw new NotFoundError("SUB_USER_NOT_FOUND", "子账号不存在");
     }
 
-    const conversation = await this.getAccessibleConversation(subUserId, conversationId);
+    const conversation = await this.getOperableConversation(subUserId, conversationId);
 
     await this.javaClient.changeConversationFullAuto({
       change: request.enabled ? 1 : 2,

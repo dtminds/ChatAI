@@ -4,6 +4,8 @@ import {
   AlertCircleIcon,
   ArrowLeft01Icon,
   CheckmarkCircle02Icon,
+  Clock04Icon,
+  Loading03Icon,
   Search01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -45,12 +47,14 @@ import {
   resolveTablePagination,
   TablePagination,
 } from "@/components/ui/table-pagination";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { FileExtensionBadge } from "@/pages/chat/components/message/file";
 import { AiHostingLayout, AiHostingPageHeader } from "./ai-hosting-layout";
 import { KbTableLoadingRow } from "./kb-components/kb-table-loading-row";
 import { ImportDocumentDialog } from "./kb-components/import-document-dialog";
 import { ImportImageDialog } from "./kb-components/import-image-dialog";
 import { ImportQaDialog } from "./kb-components/import-qa-dialog";
+import { TableOverflowTooltip } from "./kb-components/shared";
 import { deleteKbDoc } from "./api/kb-doc-service";
 import {
   getKb,
@@ -111,7 +115,7 @@ const statusMeta: Record<
   parsing: {
     label: "解析中",
     className: "text-muted-foreground",
-    icon: AlertCircleIcon,
+    icon: Loading03Icon,
   },
   failed: {
     label: "失败",
@@ -121,7 +125,7 @@ const statusMeta: Record<
   queued: {
     label: "排队中",
     className: "text-muted-foreground",
-    icon: AlertCircleIcon,
+    icon: Clock04Icon,
   },
 };
 
@@ -505,7 +509,8 @@ function KnowledgeRecordsTable({
   records: KbDocViewItem[];
 }) {
   return (
-    <Table aria-label="知识列表" className="min-w-[1120px] table-fixed">
+    <TooltipProvider>
+      <Table aria-label="知识列表" className="min-w-[1120px] table-fixed">
       <TableHeader>
         <TableRow className="hover:bg-transparent">
           <TableHead className="h-11 w-[24%] px-4">知识名称</TableHead>
@@ -525,15 +530,20 @@ function KnowledgeRecordsTable({
         ) : records.length > 0 ? (
           records.map((record) => (
             <TableRow key={record.id}>
-              <TableCell className="px-4 py-4" title={record.name}>
+              <TableCell className="px-4 py-4">
                 <div className="flex min-w-0 items-center gap-2.5">
                   <FileExtensionBadge
                     className="size-8"
                     extension={record.fileExtension}
                   />
-                  <TableCellContent className="font-medium text-foreground">
-                    {record.name}
-                  </TableCellContent>
+                  <div className="min-w-0 flex-1">
+                    <TableOverflowTooltip
+                      className="font-medium text-foreground"
+                      tooltip={record.name}
+                    >
+                      {record.name}
+                    </TableOverflowTooltip>
+                  </div>
                 </div>
               </TableCell>
               <TableCell className="px-4 py-4">
@@ -597,6 +607,7 @@ function KnowledgeRecordsTable({
         )}
       </TableBody>
     </Table>
+    </TooltipProvider>
   );
 }
 

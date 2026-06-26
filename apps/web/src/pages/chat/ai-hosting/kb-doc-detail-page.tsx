@@ -24,7 +24,6 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableCellContent,
   TableHead,
   TableHeader,
   TablePinnedCell,
@@ -35,6 +34,7 @@ import {
   resolveTablePagination,
   TablePagination,
 } from "@/components/ui/table-pagination";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { FileExtensionBadge } from "@/pages/chat/components/message/file";
 import { AiHostingLayout, AiHostingPageHeader } from "./ai-hosting-layout";
 import { AddChunkDialog } from "./kb-components/add-chunk-dialog";
@@ -42,7 +42,7 @@ import { ChunkImagePreview } from "./kb-components/chunk-image-preview";
 import { EditChunkDialog } from "./kb-components/edit-chunk-dialog";
 import { ImageKnowledgeChunkWorkspace } from "./kb-components/image-chunk-workspace";
 import { KbTableLoadingRow } from "./kb-components/kb-table-loading-row";
-import { resolveKbRequestErrorMessage } from "./kb-components/shared";
+import { resolveKbRequestErrorMessage, TableOverflowTooltip } from "./kb-components/shared";
 import {
   createKbChunk,
   deleteKbChunk,
@@ -103,7 +103,7 @@ export function KbDocDetailPage() {
 
   const debouncedSearchQuery = useDebouncedValue(searchQuery.trim(), 300);
 
-  const loadChunks = useCallback(async () => {
+  const loadChunks = useCallback(async (options?: { page?: number }) => {
     if (!docId || !doc) {
       return;
     }
@@ -113,8 +113,9 @@ export function KbDocDetailPage() {
 
     try {
       const isImageDoc = doc.type === "image";
+      const page = options?.page ?? (isImageDoc ? 1 : currentPage);
       const response = await listKbDocChunks(docId, {
-        page: isImageDoc ? 1 : currentPage,
+        page: isImageDoc ? 1 : page,
         pageSize: isImageDoc ? IMAGE_CHUNK_PAGE_SIZE : PAGE_SIZE,
         query: isImageDoc ? undefined : debouncedSearchQuery || undefined,
       });
@@ -234,7 +235,7 @@ export function KbDocDetailPage() {
     }
 
     setCurrentPage(1);
-    await loadChunks();
+    await loadChunks({ page: 1 });
 
     if (isMountedRef.current) {
       toast.success("已添加问答切片");
@@ -258,7 +259,7 @@ export function KbDocDetailPage() {
     }
 
     setCurrentPage(1);
-    await loadChunks();
+    await loadChunks({ page: 1 });
 
     if (isMountedRef.current) {
       toast.success("已添加切片");
@@ -311,7 +312,8 @@ export function KbDocDetailPage() {
       }
 
       setDeleteChunk(null);
-      await loadChunks();
+      setCurrentPage(1);
+      await loadChunks({ page: 1 });
 
       if (isMountedRef.current) {
         toast.success("已删除切片");
@@ -544,7 +546,8 @@ function KnowledgeChunksTable({
   const isQa = docType === "qa";
 
   return (
-    <Table aria-label="切片列表" className="min-w-[960px] table-fixed">
+    <TooltipProvider>
+      <Table aria-label="切片列表" className="min-w-[960px] table-fixed">
       <TableHeader>
         <TableRow className="hover:bg-transparent">
           {isQa ? (
@@ -571,25 +574,31 @@ function KnowledgeChunksTable({
             <TableRow key={chunk.id}>
               {isQa ? (
                 <>
-                  <TableCell className="px-4 py-4" title={chunk.question}>
-                    <TableCellContent className="font-medium text-foreground">
+                  <TableCell className="px-4 py-4">
+                    <TableOverflowTooltip
+                      className="font-medium text-foreground"
+                      tooltip={chunk.question}
+                    >
                       {chunk.question}
-                    </TableCellContent>
+                    </TableOverflowTooltip>
                   </TableCell>
-                  <TableCell className="px-4 py-4" title={chunk.answer}>
-                    <TableCellContent className="text-muted-foreground">
+                  <TableCell className="px-4 py-4">
+                    <TableOverflowTooltip className="text-muted-foreground" tooltip={chunk.answer}>
                       {chunk.answer}
-                    </TableCellContent>
+                    </TableOverflowTooltip>
                   </TableCell>
                 </>
               ) : (
                 <>
-                  <TableCell className="px-4 py-4" title={chunk.title}>
-                    <TableCellContent className="font-medium text-foreground">
+                  <TableCell className="px-4 py-4">
+                    <TableOverflowTooltip
+                      className="font-medium text-foreground"
+                      tooltip={chunk.title}
+                    >
                       {chunk.title}
-                    </TableCellContent>
+                    </TableOverflowTooltip>
                   </TableCell>
-                  <TableCell className="px-4 py-4" title={chunk.content}>
+                  <TableCell className="px-4 py-4">
                     <ChunkContentCell content={chunk.content} imageUrls={chunk.imageUrls} />
                   </TableCell>
                 </>
@@ -625,6 +634,7 @@ function KnowledgeChunksTable({
         )}
       </TableBody>
     </Table>
+    </TooltipProvider>
   );
 }
 
@@ -648,15 +658,17 @@ function ChunkContentCell({
             />
           ))}
         </div>
-        <TableCellContent className="min-w-0 text-muted-foreground">
+        <TableOverflowTooltip className="min-w-0 text-muted-foreground" tooltip={content}>
           {content}
-        </TableCellContent>
+        </TableOverflowTooltip>
       </div>
     );
   }
 
   return (
-    <TableCellContent className="text-muted-foreground">{content}</TableCellContent>
+    <TableOverflowTooltip className="text-muted-foreground" tooltip={content}>
+      {content}
+    </TableOverflowTooltip>
   );
 }
 

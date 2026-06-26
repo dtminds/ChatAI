@@ -304,6 +304,16 @@ describe("useWorkbenchStore", () => {
       updateSeatAgentMode,
     });
     await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              semiAutoAuth: true,
+            }
+          : account,
+      ),
+    }));
 
     await useWorkbenchStore.getState().changeActiveSeatAgentMode("semi", false);
 
@@ -317,6 +327,60 @@ describe("useWorkbenchStore", () => {
     });
   });
 
+  it("does not change active account agent mode when the account lacks mode auth", async () => {
+    const baseService = createMockWorkbenchService();
+    const updateSeatAgentMode = vi.fn();
+
+    setWorkbenchService({
+      ...baseService,
+      updateSeatAgentMode,
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              fullAutoAuth: false,
+              semiAutoAuth: false,
+            }
+          : account,
+      ),
+    }));
+
+    await useWorkbenchStore.getState().changeActiveSeatAgentMode("full", false);
+    await useWorkbenchStore.getState().changeActiveSeatAgentMode("semi", false);
+
+    expect(updateSeatAgentMode).not.toHaveBeenCalled();
+  });
+
+  it("reports active account agent mode switch failures", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async updateSeatAgentMode() {
+        throw new Error("托管模式更新失败");
+      },
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              fullAutoAuth: true,
+            }
+          : account,
+      ),
+    }));
+
+    await useWorkbenchStore.getState().changeActiveSeatAgentMode("full", false);
+
+    expect(useWorkbenchStore.getState().seatAgentModeActionPending).toBe(false);
+    expect(useWorkbenchStore.getState().fullAutoActionError).toBe("托管模式更新失败");
+  });
+
   it("ignores duplicate active account agent mode switch changes while pending", async () => {
     const baseService = createMockWorkbenchService();
     const seatAgentModeChange = createDeferred<Awaited<ReturnType<typeof baseService.updateSeatAgentMode>>>();
@@ -327,6 +391,16 @@ describe("useWorkbenchStore", () => {
       updateSeatAgentMode,
     });
     await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              fullAutoAuth: true,
+            }
+          : account,
+      ),
+    }));
 
     const firstRequest = useWorkbenchStore
       .getState()

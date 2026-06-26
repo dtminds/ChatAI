@@ -5520,7 +5520,12 @@ export function createWorkbenchStore() {
 
       const account = state.accounts.find((item) => item.id === activeAccountId);
 
-      if (!canUseConversationActions(state, account)) {
+      const canConfigureMode =
+        mode === "full"
+          ? account?.fullAutoAuth === true
+          : account?.semiAutoAuth === true;
+
+      if (!canUseConversationActions(state, account) || !canConfigureMode) {
         return;
       }
 
@@ -5541,10 +5546,17 @@ export function createWorkbenchStore() {
                 }
               : item,
           ),
+          fullAutoActionError: undefined,
           seatAgentModeActionPending: false,
         }));
-      } catch {
-        set({ seatAgentModeActionPending: false });
+      } catch (error) {
+        set({
+          fullAutoActionError: getRequestErrorMessage(
+            error,
+            mode === "full" ? "更新托管模式失败" : "更新辅助模式失败",
+          ),
+          seatAgentModeActionPending: false,
+        });
       }
     },
     async changeActiveConversationFullAuto(enabled) {

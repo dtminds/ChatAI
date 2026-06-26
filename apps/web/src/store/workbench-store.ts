@@ -49,6 +49,7 @@ import {
 } from "@/pages/chat/lib/composer-segments";
 import { sortConversations } from "@/pages/chat/lib/conversation-order";
 import { parseWorkbenchDate } from "@/pages/chat/lib/chat-time";
+import { sortMessagesBySentAt } from "@/pages/chat/lib/message-order";
 import {
   buildConversationComposerDraft,
   type ConversationComposerDraft,
@@ -1742,16 +1743,7 @@ function matchesMessageKey(message: Message, key: string) {
 }
 
 function sortMessagesForAppend(messages: Message[]) {
-  return [...messages].sort((left, right) => {
-    const leftSeq = left.seq;
-    const rightSeq = right.seq;
-
-    if (leftSeq != null && rightSeq != null && leftSeq !== rightSeq) {
-      return leftSeq - rightSeq;
-    }
-
-    return parseWorkbenchTimestamp(left.sentAt) - parseWorkbenchTimestamp(right.sentAt);
-  });
+  return sortMessagesBySentAt(messages);
 }
 
 function isSameMessage(left: Message, right: Message) {
@@ -1771,7 +1763,11 @@ function isSameMessage(left: Message, right: Message) {
   );
 }
 
-function parseWorkbenchTimestamp(value: string) {
+function parseWorkbenchTimestamp(value: unknown) {
+  if (typeof value !== "string") {
+    return Number.NaN;
+  }
+
   return parseWorkbenchDate(value)?.getTime() ?? Number.NaN;
 }
 

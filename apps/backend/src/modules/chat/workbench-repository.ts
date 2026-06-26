@@ -3277,8 +3277,7 @@ export class WorkbenchRepository {
       .where("conversation.uid", "=", seat.uid)
       .where("conversation.platform", "=", seat.platform)
       .where("conversation.third_userid", "=", seat.third_userid)
-      .where("conversation.biz_status", "=", 1)
-      .where("conversation.last_msgtime", "<=", snapshotAt);
+      .where("conversation.biz_status", "=", 1);
 
     if (options?.mode) {
       query = query.where(
@@ -3289,15 +3288,19 @@ export class WorkbenchRepository {
     }
 
     if (cursor) {
-      query = query.where((expressionBuilder) =>
-        expressionBuilder.or([
-          expressionBuilder("conversation.last_msgtime", "<", cursor.lastMsgTime),
-          expressionBuilder.and([
-            expressionBuilder("conversation.last_msgtime", "=", cursor.lastMsgTime),
-            expressionBuilder("conversation.id", "<", asSchemaBigIntId(cursor.id)),
+      // 会话列表的 cursor 只为未来分页预留，当前首屏不会传这个参数。
+      // 这里保留 snapshot 上界是为了后续 cursor 页的稳定性，不影响首屏展示。
+      query = query
+        .where("conversation.last_msgtime", "<=", snapshotAt)
+        .where((expressionBuilder) =>
+          expressionBuilder.or([
+            expressionBuilder("conversation.last_msgtime", "<", cursor.lastMsgTime),
+            expressionBuilder.and([
+              expressionBuilder("conversation.last_msgtime", "=", cursor.lastMsgTime),
+              expressionBuilder("conversation.id", "<", asSchemaBigIntId(cursor.id)),
+            ]),
           ]),
-        ]),
-      )
+        )
         .orderBy("conversation.last_msgtime", "desc")
         .orderBy("conversation.id", "desc");
     } else {

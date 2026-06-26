@@ -1013,7 +1013,6 @@ describe("ChatWorkbenchPage composer flows", () => {
     ["收藏文件", "收录的文件"],
     ["收藏小程序", "收录的小程序"],
     ["收藏H5", "收录的H5"],
-    ["收藏视频号", "收录的视频号"],
   ])("opens the %s material library from the composer", async (buttonName, dialogName) => {
     const user = userEvent.setup();
 
@@ -1025,6 +1024,16 @@ describe("ChatWorkbenchPage composer flows", () => {
     expect(
       await screen.findByRole("dialog", { name: dialogName }),
     ).toBeInTheDocument();
+  });
+
+  it("hides the video channel material library entry in the composer by default", async () => {
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+
+    expect(
+      screen.queryByRole("button", { name: "收藏视频号" }),
+    ).not.toBeInTheDocument();
   });
 
   it("keeps the latest material library request when switching material types quickly", async () => {

@@ -159,6 +159,7 @@ const mockAgentDetail = {
   modelId: "11",
   name: "护肤小助理",
   promptConfig: {
+    availableKbIds: [],
     conditionLogic: "如果客户咨询成分，那么说明功效",
     replyStyle: {
       length: "简洁",
@@ -1167,14 +1168,14 @@ describe("AI hosting pages", () => {
         {
           createdAt: "2026-06-20T08:00:00.000Z",
           description: "",
-          kbId: "kb-real-skincare",
+          kbId: "1",
           name: "真实护肤知识库",
           updatedAt: "2026-06-20T08:00:00.000Z",
         },
         {
           createdAt: "2026-06-20T08:00:00.000Z",
           description: "",
-          kbId: "kb-real-makeup",
+          kbId: "3",
           name: "真实彩妆知识库",
           updatedAt: "2026-06-20T08:00:00.000Z",
         },
@@ -1228,8 +1229,9 @@ describe("AI hosting pages", () => {
       expect(agentService.createAiHostingAgent).toHaveBeenCalledWith(
         expect.objectContaining({
           promptConfig: expect.objectContaining({
+            availableKbIds: [3],
             conditionLogic:
-              "111 {{kb:kb-real-makeup|%E7%9C%9F%E5%AE%9E%E5%BD%A9%E5%A6%86%E7%9F%A5%E8%AF%86%E5%BA%93}} ",
+              '111 <resource type="knowledge_base" kbId="3" name="真实彩妆知识库" /> ',
           }),
         }),
       );

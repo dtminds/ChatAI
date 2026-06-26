@@ -111,6 +111,7 @@ describe("AI hosting agent routes", () => {
       payload: {
         modelId: "11",
         promptConfig: {
+          availableKbIds: [1, 3],
           conditionLogic: "如何客户咨询成分，那么说明功效",
           replyStyle: {
             length: "简洁",
@@ -148,6 +149,7 @@ describe("AI hosting agent routes", () => {
     });
     expect(db.updatedAgent?.values).not.toHaveProperty("name");
     expect(JSON.parse(String(db.updatedAgent?.values.prompt_config))).toEqual({
+      available_kb_ids: [1, 3],
       condition_logic: "如何客户咨询成分，那么说明功效",
       handoff_rules: "客户要求真人",
       reply_style: {
@@ -220,6 +222,7 @@ describe("AI hosting agent routes", () => {
         modelId: "10",
         name: "售后小助理",
         promptConfig: {
+          availableKbIds: [],
           conditionLogic: "",
           replyStyle: {
             length: "简洁",
@@ -254,6 +257,7 @@ describe("AI hosting agent routes", () => {
       uid: 9001,
     });
     expect(JSON.parse(String(db.insertedAgent?.prompt_config))).toEqual({
+      available_kb_ids: [],
       condition_logic: "",
       handoff_rules: "退款投诉",
       reply_style: {
@@ -303,6 +307,7 @@ describe("AI hosting agent routes", () => {
       const { app, authorization, db } = await createAiHostingApp([role]);
       const headers = { authorization };
       const promptConfig = {
+        availableKbIds: [1, 3],
         conditionLogic: "",
         replyStyle: {
           length: "简洁",
@@ -1153,6 +1158,7 @@ function createAiHostingDbMock(options: { bulkHostingSeats?: boolean; uid?: numb
 
 function buildPromptConfig(conditionLogic: string) {
   return JSON.stringify({
+    available_kb_ids: [1, 3],
     condition_logic: conditionLogic,
     reply_style: {
       length: "简洁",

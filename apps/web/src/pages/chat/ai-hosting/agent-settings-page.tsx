@@ -1139,6 +1139,7 @@ function buildSettingsSavePayload(form: AgentSettingsForm) {
   return {
     modelId,
     promptConfig: {
+      availableKbIds: collectAvailableKnowledgeBaseIds(form.conditionalLogic),
       conditionLogic: serializeConditionalLogicSegments(form.conditionalLogic),
       handoffRules: form.transferToHumanConditions,
       replyStyle: {
@@ -1191,9 +1192,9 @@ function serializeConditionalLogicSegments(segments: AgentSettingsForm["conditio
   return segments
     .map((segment) =>
       segment.type === "knowledgeBase"
-        ? `{{kb:${encodeKnowledgeBaseTokenPart(segment.id)}|${encodeKnowledgeBaseTokenPart(
-            segment.name ?? segment.id,
-          )}}}`
+        ? `<resource type="knowledge_base" kbId="${escapeResourceAttribute(
+            segment.id,
+          )}" name="${escapeResourceAttribute(segment.name ?? segment.id)}" />`
         : segment.value,
     )
     .join("");
@@ -1205,7 +1206,7 @@ function parseConditionalLogicSegments(value: string): AgentSettingsForm["condit
   }
 
   const segments: AgentSettingsForm["conditionalLogic"] = [];
-  const tokenPattern = /\{\{(?:kb:([^|}]+)\|([^}]+)|knowledgeBase:([^}]+))\}\}/g;
+  const tokenPattern = /<resource\s+type="knowledge_base"\s+kbId="([^"]+)"\s+name="([^"]*)"\s*\/>/g;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
 
@@ -1214,18 +1215,14 @@ function parseConditionalLogicSegments(value: string): AgentSettingsForm["condit
       segments.push({ type: "text", value: value.slice(lastIndex, match.index) });
     }
 
-    if (match[3]) {
-      segments.push({ type: "knowledgeBase", id: decodeKnowledgeBaseTokenPart(match[3]) });
-    } else {
-      const id = decodeKnowledgeBaseTokenPart(match[1] ?? "");
-      const name = decodeKnowledgeBaseTokenPart(match[2] ?? "");
+    const id = unescapeResourceAttribute(match[1] ?? "");
+    const name = unescapeResourceAttribute(match[2] ?? "");
 
-      segments.push({
-        id,
-        name: name || undefined,
-        type: "knowledgeBase",
-      });
-    }
+    segments.push({
+      id,
+      name: name || undefined,
+      type: "knowledgeBase",
+    });
 
     lastIndex = match.index + match[0].length;
   }
@@ -1237,16 +1234,31 @@ function parseConditionalLogicSegments(value: string): AgentSettingsForm["condit
   return segments.length > 0 ? segments : [{ type: "text", value }];
 }
 
-function encodeKnowledgeBaseTokenPart(value: string) {
-  return encodeURIComponent(value);
+function collectAvailableKnowledgeBaseIds(segments: AgentSettingsForm["conditionalLogic"]) {
+  const ids = segments
+    .filter((segment): segment is Extract<AgentSettingsForm["conditionalLogic"][number], { type: "knowledgeBase" }> =>
+      segment.type === "knowledgeBase",
+    )
+    .map((segment) => Number(segment.id))
+    .filter((id) => Number.isSafeInteger(id) && id > 0);
+
+  return Array.from(new Set(ids));
 }
 
-function decodeKnowledgeBaseTokenPart(value: string) {
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return value;
-  }
+function escapeResourceAttribute(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+
+function unescapeResourceAttribute(value: string) {
+  return value
+    .replaceAll("&quot;", '"')
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">")
+    .replaceAll("&amp;", "&");
 }
 
 function normalizeToneStyle(value: string): AgentToneStyle {

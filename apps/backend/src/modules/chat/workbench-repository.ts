@@ -3634,7 +3634,8 @@ export class WorkbenchRepository {
     }
 
     return {
-      analyseMsgId: String(row.analyse_msg_id),
+      analyseMsgId:
+        row.analyse_msg_id == null ? "" : String(row.analyse_msg_id),
       createdAt: toTimestamp(row.create_time),
       genStatus: Number(row.gen_status ?? 0),
       recordId: String(row.id),

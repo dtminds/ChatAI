@@ -5318,6 +5318,35 @@ describe("WorkbenchRepository", () => {
     expect(answerRecordQuery?.limits).toEqual([1]);
   });
 
+  it("normalizes nullable full-auto answer analyse message ids to an empty string", async () => {
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          expect(table).toBe("xy_wap_embed_agent_answer_record");
+
+          return createQueryBuilder({
+            analyse_msg_id: null,
+            create_time: new Date("2026-06-26T08:00:00.000Z"),
+            gen_status: 0,
+            id: 27,
+            send_status: 0,
+            update_time: new Date("2026-06-26T08:00:02.000Z"),
+          });
+        },
+      } as never,
+    );
+
+    await expect(
+      repository.getLatestFullAutoAnswerStatus({
+        thirdExternalUserId: "external-001",
+        thirdUserId: "seat-user-001",
+        uid: 9001,
+      }),
+    ).resolves.toMatchObject({
+      analyseMsgId: "",
+    });
+  });
+
   it("reads message file transfer status by audit id in tenant scope", async () => {
     const queries: Array<{ table: string; wheres: Array<[string, string, unknown]> }> = [];
     const repository = new WorkbenchRepository(

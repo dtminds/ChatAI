@@ -2264,7 +2264,10 @@ describe("AI hosting pages", () => {
     expect(screen.queryByRole("button", { name: "添加问答" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "编辑" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "删除" })).not.toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "切片列表" })).toHaveTextContent("产品宣传图");
+    const chunkListRegion = await screen.findByRole("region", { name: "切片列表" });
+    expect(
+      await within(chunkListRegion).findByText("Mate 系列旗舰机型外观与核心卖点展示"),
+    ).toBeInTheDocument();
     expect(screen.queryByRole("table", { name: "切片列表" })).not.toBeInTheDocument();
   });
 

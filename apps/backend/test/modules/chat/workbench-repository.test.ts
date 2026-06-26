@@ -3665,6 +3665,50 @@ describe("WorkbenchRepository", () => {
     expect(seatQueryBuilders[0]?.wheres).not.toContainEqual(["seat.biz_status", "=", 1]);
   });
 
+  it("loads seat operate scope with agent mode auth flags", async () => {
+    const queries: Array<ReturnType<typeof createQueryBuilder>> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_user_seat as seat") {
+            const query = createQueryBuilder({
+              full_auto_auth: 1,
+              host_sub_id: 101,
+              id: 12,
+              platform: 5,
+              semi_auto_auth: 0,
+              third_userid: "seat-third-user-1",
+              uid: 9001,
+            });
+            queries.push(query);
+            return query;
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    await expect(repository.getSeatOperateScope("12")).resolves.toEqual({
+      fullAutoAuth: true,
+      hostSubUserId: "101",
+      platform: 5,
+      seatId: "12",
+      semiAutoAuth: false,
+      thirdUserId: "seat-third-user-1",
+      uid: 9001,
+    });
+    expect(queries[0]?.joinConditions).toContainEqual({
+      conditions: [
+        ["seat_agent.user_seat_id", "=", "seat.id"],
+        ["seat_agent.uid", "=", "seat.uid"],
+      ],
+      table: "xy_wap_embed_user_seat_agent as seat_agent",
+      type: "leftJoin",
+    });
+    expect(queries[0]?.wheres).toContainEqual(["seat.id", "=", 12]);
+  });
+
   it("filters and limits conversation lists by requested chat mode", async () => {
     const conversationQueryBuilders: Array<ReturnType<typeof createQueryBuilder>> = [];
     const repository = new WorkbenchRepository(

@@ -1515,6 +1515,7 @@ describe("MysqlWorkbenchService", () => {
           hostSubUserId: "101",
           platform: 5,
           seatId: "12",
+          semiAutoAuth: true,
           uid: 9001,
         }),
         updateSeatAgentModeSwitch,
@@ -1565,6 +1566,46 @@ describe("MysqlWorkbenchService", () => {
       }),
     ).rejects.toMatchObject({
       code: "SEAT_NOT_TAKEN_OVER",
+      statusCode: 403,
+    });
+    expect(updateSeatAgentModeSwitch).not.toHaveBeenCalled();
+  });
+
+  it("rejects seat agent mode switch changes when the mode is not authorized", async () => {
+    const javaClient = createJavaClient();
+    const updateSeatAgentModeSwitch = vi.fn();
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getSeatOperateScope: vi.fn().mockResolvedValue({
+          fullAutoAuth: false,
+          hostSubUserId: "101",
+          platform: 5,
+          seatId: "12",
+          semiAutoAuth: false,
+          uid: 9001,
+        }),
+        updateSeatAgentModeSwitch,
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.updateSeatAgentModeSwitch("101", "12", {
+        enabled: true,
+        mode: "full",
+      }),
+    ).rejects.toMatchObject({
+      code: "SEAT_AGENT_MODE_UNAUTHORIZED",
+      statusCode: 403,
+    });
+    await expect(
+      service.updateSeatAgentModeSwitch("101", "12", {
+        enabled: true,
+        mode: "semi",
+      }),
+    ).rejects.toMatchObject({
+      code: "SEAT_AGENT_MODE_UNAUTHORIZED",
       statusCode: 403,
     });
     expect(updateSeatAgentModeSwitch).not.toHaveBeenCalled();

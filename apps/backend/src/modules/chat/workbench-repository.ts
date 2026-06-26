@@ -113,9 +113,11 @@ type FullAutoAnswerStatusScope = {
 };
 
 export type SeatOperateScope = {
+  fullAutoAuth: boolean;
   hostSubUserId?: string;
   platform: number;
   seatId: string;
+  semiAutoAuth: boolean;
   thirdUserId: string;
   uid: number;
 };
@@ -3270,16 +3272,35 @@ export class WorkbenchRepository {
       return undefined;
     }
 
-    const seat = await this.getSeatRecord(seatNumericId);
+    const seat = await this.db
+      .selectFrom("xy_wap_embed_user_seat as seat")
+      .leftJoin("xy_wap_embed_user_seat_agent as seat_agent", (join) =>
+        join
+          .onRef("seat_agent.user_seat_id", "=", "seat.id")
+          .onRef("seat_agent.uid", "=", "seat.uid"),
+      )
+      .select([
+        "seat.id as id",
+        "seat.uid as uid",
+        "seat.platform as platform",
+        "seat.third_userid as third_userid",
+        "seat.host_sub_id as host_sub_id",
+        "seat_agent.full_auto_auth as full_auto_auth",
+        "seat_agent.semi_auto_auth as semi_auto_auth",
+      ])
+      .where("seat.id", "=", seatNumericId)
+      .executeTakeFirst();
 
     if (!seat) {
       return undefined;
     }
 
     return {
+      fullAutoAuth: readBooleanFlag(seat.full_auto_auth),
       hostSubUserId: normalizeOptionalSeatId(seat.host_sub_id),
       platform: seat.platform,
       seatId: String(seat.id),
+      semiAutoAuth: readBooleanFlag(seat.semi_auto_auth),
       thirdUserId: seat.third_userid,
       uid: seat.uid,
     };

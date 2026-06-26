@@ -2128,6 +2128,18 @@ export class MysqlWorkbenchService implements WorkbenchService {
       throw new ForbiddenError("SEAT_NOT_TAKEN_OVER", "账号未接管");
     }
 
+    const canUseAgentMode =
+      request.mode === "full"
+        ? seat.fullAutoAuth === true
+        : seat.semiAutoAuth === true;
+
+    if (!canUseAgentMode) {
+      throw new ForbiddenError(
+        "SEAT_AGENT_MODE_UNAUTHORIZED",
+        "当前账号未授权该 Agent 模式",
+      );
+    }
+
     return this.repository.updateSeatAgentModeSwitch({
       enabled: request.enabled,
       mode: request.mode,

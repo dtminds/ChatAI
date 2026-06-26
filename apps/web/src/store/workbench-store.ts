@@ -62,6 +62,7 @@ import { canUseWorkbenchConversationActions } from "@/pages/chat/lib/workbench-p
 import { seedCustomerProfiles } from "@/pages/chat/mock-data";
 import {
   CHAT_TYPE,
+  CONVERSATION_CUSTODY_MODE,
   SMART_REPLY_POLL_INTERVAL_MS,
   type SettingsSidebarItem,
   type WorkbenchSendMessagePayload,
@@ -892,6 +893,22 @@ function getPageSmartReplies(page: WorkbenchConversationPage) {
   return filterSmartReplyRecordByKeys(page.smartReplies, eligibleMessageKeys);
 }
 
+function getPageSmartRepliesForConversation(
+  state: WorkbenchState,
+  page: WorkbenchConversationPage,
+) {
+  const conversation = findConversationById(
+    state.conversationListsByScope,
+    page.conversationId,
+  );
+
+  if (isConversationFullAutoActive(state, conversation)) {
+    return {};
+  }
+
+  return getPageSmartReplies(page);
+}
+
 function getSmartReplyTimerKey(conversationId: string, lookupKey: string) {
   return `${conversationId}:${lookupKey}`;
 }
@@ -1074,6 +1091,10 @@ function canUseSmartReplyForConversation(
   );
 
   if (conversation) {
+    if (isConversationFullAutoActive(state, conversation)) {
+      return false;
+    }
+
     const account = state.accounts.find(
       (item) => item.id === conversation.accountId,
     );
@@ -2075,6 +2096,29 @@ function canUseConversationActions(state: WorkbenchState, account: Account | und
   });
 }
 
+function isConversationFullAutoActive(
+  state: WorkbenchState,
+  conversation: Conversation | undefined,
+) {
+  if (
+    !conversation ||
+    conversation.custodyMode !== CONVERSATION_CUSTODY_MODE.FULL ||
+    conversation.custodyHostingStatus === "exited"
+  ) {
+    return false;
+  }
+
+  const account = state.accounts.find(
+    (item) => item.id === conversation.accountId,
+  );
+
+  return (
+    canUseConversationActions(state, account) &&
+    account?.fullAutoAuth === true &&
+    account.fullAutoSwitch === true
+  );
+}
+
 function omitByKeys<T>(record: Record<string, T>, keys: Iterable<string>) {
   const keySet = new Set(keys);
   const next: Record<string, T> = {};
@@ -2824,7 +2868,10 @@ export function createWorkbenchStore() {
           return;
         }
 
-        const pageSmartReplyByMessageId = getPageSmartReplies(page);
+        const pageSmartReplyByMessageId = getPageSmartRepliesForConversation(
+          get(),
+          page,
+        );
         const pageSmartReplyHidden = buildSmartReplyHiddenKeys(
           page.messages,
           pageSmartReplyByMessageId,
@@ -3720,8 +3767,18 @@ export function createWorkbenchStore() {
           seatOrder: conversationListCacheSeatOrder,
         });
 
+          const bootstrapSmartReplyState = {
+            ...get(),
+            accounts: bootstrapResult.accounts,
+            conversationListsByScope:
+              prunedConversationListCache.conversationListsByScope,
+            me: bootstrapResult.me,
+          };
           const bootstrapSmartReplyByMessageId = conversationPage
-            ? getPageSmartReplies(conversationPage)
+            ? getPageSmartRepliesForConversation(
+                bootstrapSmartReplyState,
+                conversationPage,
+              )
             : {};
           const bootstrapSmartReplyHidden = conversationPage
             ? buildSmartReplyHiddenKeys(
@@ -5298,7 +5355,7 @@ export function createWorkbenchStore() {
         }
 
         const accountSwitchSmartReplyByMessageId =
-          getPageSmartReplies(conversationPage);
+          getPageSmartRepliesForConversation(get(), conversationPage);
         const accountSwitchSmartReplyHidden = buildSmartReplyHiddenKeys(
           conversationPage.messages,
           accountSwitchSmartReplyByMessageId,
@@ -5484,7 +5541,10 @@ export function createWorkbenchStore() {
           return;
         }
 
-        const pageSmartReplyByMessageId = getPageSmartReplies(page);
+        const pageSmartReplyByMessageId = getPageSmartRepliesForConversation(
+          get(),
+          page,
+        );
         const pageSmartReplyHidden = buildSmartReplyHiddenKeys(
           page.messages,
           pageSmartReplyByMessageId,

@@ -1223,6 +1223,88 @@ describe("useWorkbenchStore", () => {
     ).toEqual({});
   });
 
+  it("does not display or auto-generate smart replies for active full-auto conversations", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedAutoRequests: Array<{ conversationId: string; msgId: number }> = [];
+    const observedSmartReplyRequests: WorkbenchSmartReplyPollRequest[] = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async getSeats() {
+        const seats = await baseService.getSeats();
+
+        return seats.map((seat) =>
+          seat.seatId === "drc"
+            ? {
+                ...seat,
+                fullAutoAuth: true,
+                fullAutoSwitch: true,
+              }
+            : seat,
+        );
+      },
+      async getConversations(seatId, options) {
+        const response = await baseService.getConversations(seatId, options);
+
+        return {
+          ...response,
+          items: response.items.map((conversation) =>
+            conversation.conversationId === "conv-001"
+              ? {
+                  ...conversation,
+                  custodyMode: "full",
+                }
+              : conversation,
+          ),
+        };
+      },
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          smartReplyEnabled: true,
+          smartReplies: [
+            {
+              assistantName: "智能助手",
+              content: "推荐回复",
+              messageId: "9",
+              pollComplete: true,
+            },
+          ],
+        };
+      },
+      async requestSmartReplyAutoGeneralAnswer(request) {
+        observedAutoRequests.push(request);
+
+        return { id: "88" };
+      },
+      async pollSmartReplies(request) {
+        observedSmartReplyRequests.push(request);
+
+        return { suggestions: [] };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    expect(useWorkbenchStore.getState().smartReplyEnabledByConversationId["conv-001"]).toBe(
+      true,
+    );
+    expect(
+      useWorkbenchStore.getState().smartReplyByMessageIdByConversationId["conv-001"],
+    ).toEqual({});
+    expect(
+      useWorkbenchStore.getState().smartReplyPendingMessageKeysByConversationId["conv-001"],
+    ).toEqual({});
+    expect(observedAutoRequests).toEqual([]);
+    expect(observedSmartReplyRequests).toEqual([]);
+  });
+
   it("auto-generates a smart reply task for a newly loaded customer message", async () => {
     const baseService = createMockWorkbenchService();
     const observedAutoRequests: Array<{ conversationId: string; msgId: number }> = [];

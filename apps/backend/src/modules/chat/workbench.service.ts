@@ -102,6 +102,7 @@ import type {
 } from "@chatai/contracts";
 import {
   CHAT_TYPE,
+  CONVERSATION_CUSTODY_MODE,
   MATERIAL_COLLECTION_BIZ_TYPE,
   MATERIAL_COLLECTION_GROUP_MAX_COUNT,
   MATERIAL_COLLECTION_TITLE_MAX_LENGTH,
@@ -821,6 +822,14 @@ export class MysqlWorkbenchService implements WorkbenchService {
       return {
         ...publicPage,
         smartReplyEnabled: false,
+      };
+    }
+
+    if (conversation.custodyMode === CONVERSATION_CUSTODY_MODE.FULL) {
+      return {
+        ...publicPage,
+        smartReplyEnabled: true,
+        smartReplies: [],
       };
     }
 

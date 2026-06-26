@@ -1,7 +1,9 @@
 import {
+  CONVERSATION_CUSTODY_MODE,
   GROUP_MEMBER_TYPE,
   MATERIAL_COLLECTION_BIZ_TYPE,
   QUICK_REPLY_SCOPE_TYPE,
+  type ConversationCustodyMode,
   type MaterialCollectionBizType,
   type QuickReplyScopeType,
   type WorkbenchGroupMemberDto,
@@ -89,6 +91,7 @@ const GROUP_MEMBER_SORT_RANK = {
 } as const;
 
 export type ConversationLookup = {
+  custodyMode: ConversationCustodyMode;
   id: string;
   platform: number;
   seatId: string;
@@ -3486,6 +3489,7 @@ export class WorkbenchRepository {
       )
       .select([
         "conversation.id as id",
+        "conversation.full_auto_switch as full_auto_switch",
         "conversation.platform as platform",
         "conversation.third_external_userid as third_external_userid",
         "conversation.third_group_id as third_group_id",
@@ -3524,6 +3528,9 @@ export class WorkbenchRepository {
 
     return row
       ? {
+          custodyMode: readBooleanFlag(row.full_auto_switch)
+            ? CONVERSATION_CUSTODY_MODE.FULL
+            : CONVERSATION_CUSTODY_MODE.SEMI,
           id: String(row.id),
           platform: row.platform,
           seatId: String(row.seat_id),

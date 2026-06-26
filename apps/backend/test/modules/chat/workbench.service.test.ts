@@ -320,6 +320,45 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
+  it("keeps smart reply capability but skips loading recommendations for full-auto conversations", async () => {
+    const javaClient = createJavaClient();
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "101",
+          thirdExternalUserId: "external-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+          custodyMode: "full",
+        }),
+        listMessages: vi.fn().mockResolvedValue({
+          filteredCount: 0,
+          hasMore: false,
+          messages: [createMessageDto({ senderType: "customer", seq: 7 })],
+          scannedCount: 1,
+          smartReplyEnabled: true,
+          smartReplyScope: {
+            chatType: 1,
+            thirdExternalId: "external-001",
+            thirdUserId: "seat-user-001",
+            uid: 9001,
+          },
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(service.getMessages("101", "88", { limit: 10 })).resolves.toMatchObject({
+      smartReplyEnabled: true,
+      smartReplies: [],
+    });
+    expect(javaClient.listUserHistoryAnswers).not.toHaveBeenCalled();
+  });
+
   it("loads page smart replies only for raw message types that can trigger recommendations", async () => {
     const javaClient = createJavaClient();
     const service = new MysqlWorkbenchService(

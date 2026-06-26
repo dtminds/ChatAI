@@ -4367,6 +4367,14 @@ export function createWorkbenchStore() {
             ),
           ),
         ) as Record<string, Message[]>;
+        const hasRefreshedMessageEntries = Object.values(
+          refreshedMessagesByConversationId,
+        ).some((messages) => messages.length > 0);
+        const shouldSyncFullAutoAgentStatus =
+          response.activeConversationMessages.length > 0 ||
+          hasRefreshedMessageEntries ||
+          response.conversationChanges.length > 0 ||
+          response.accountChanges.length > 0;
 
         if (!isReadyScopeRequest(requestId, get())) {
           return;
@@ -4457,9 +4465,6 @@ export function createWorkbenchStore() {
           const hasActiveConversationMessages =
             response.activeConversationMessages.length > 0 &&
             Boolean(polledConversationId);
-          const hasRefreshedMessageEntries = Object.values(
-            refreshedMessagesByConversationId,
-          ).some((messages) => messages.length > 0);
           const shouldPatchMessageState =
             hasActiveConversationMessages ||
             hasRefreshedMessageEntries ||
@@ -4639,7 +4644,9 @@ export function createWorkbenchStore() {
           return;
         }
 
-        await syncFullAutoAgentStatusForCurrentState();
+        if (shouldSyncFullAutoAgentStatus) {
+          await syncFullAutoAgentStatusForCurrentState();
+        }
 
         if (shouldNotifyPulledCustomerMessage) {
           notifyPulledCustomerMessage();

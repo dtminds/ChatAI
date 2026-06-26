@@ -147,7 +147,7 @@ describe("material collection components", () => {
     );
     expect(
       screen.getByText(
-        "仅支持收录由该企微账号直接发送的视频，转发个微的视频收录后将无法发送。原视频大小需在30MB以内。",
+        "受接口能力限制， 仅支持收录由该企微账号直接发送的视频，原视频大小需在30MB以内，以保障发送成功率。",
       ),
     ).toBeInTheDocument();
     expect(screen.getByRole("alert")).toHaveClass(

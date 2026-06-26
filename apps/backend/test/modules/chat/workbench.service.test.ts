@@ -1526,6 +1526,66 @@ describe("MysqlWorkbenchService", () => {
     expect(javaClient.changeConversationFullAuto).not.toHaveBeenCalled();
   });
 
+  it("loads full-auto answer status for accessible single conversations", async () => {
+    const javaClient = createJavaClient();
+    const getLatestFullAutoAnswerStatus = vi.fn().mockResolvedValue({
+      genStatus: 1,
+      recordId: "27",
+      sendStatus: 0,
+    });
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          thirdExternalUserId: "external-001",
+          thirdGroupId: undefined,
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+        }),
+        getLatestFullAutoAnswerStatus,
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(service.getFullAutoAnswerStatus("101", "88")).resolves.toEqual({
+      genStatus: 1,
+      recordId: "27",
+      sendStatus: 0,
+    });
+    expect(getLatestFullAutoAnswerStatus).toHaveBeenCalledWith({
+      thirdExternalUserId: "external-001",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
+  });
+
+  it("does not load full-auto answer status for group conversations", async () => {
+    const javaClient = createJavaClient();
+    const getLatestFullAutoAnswerStatus = vi.fn();
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          thirdExternalUserId: undefined,
+          thirdGroupId: "group-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+        }),
+        getLatestFullAutoAnswerStatus,
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(service.getFullAutoAnswerStatus("101", "88")).resolves.toEqual({});
+    expect(getLatestFullAutoAnswerStatus).not.toHaveBeenCalled();
+  });
+
   it("rejects delete when the conversation seat is not taken over by the current sub-user", async () => {
     const javaClient = createJavaClient();
     const service = new MysqlWorkbenchService(

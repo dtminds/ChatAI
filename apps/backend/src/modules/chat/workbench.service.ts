@@ -54,6 +54,7 @@ import type {
   WorkbenchSearchResponseDto,
   WorkbenchGetOrCreateConversationRequestDto,
   WorkbenchConversationSummaryDto,
+  WorkbenchFullAutoAnswerStatusResponse,
   WorkbenchVoicePlaybackConfirmRequest,
   WorkbenchVoicePlaybackConfirmResponse,
   WorkbenchVoiceTranscriptionRequest,
@@ -282,6 +283,12 @@ export type WorkbenchService = {
     conversationId: string,
     options?: { beforeSeq?: number; limit?: number },
   ): Promise<WorkbenchMessagePageDto> | WorkbenchMessagePageDto;
+  getFullAutoAnswerStatus(
+    subUserId: string,
+    conversationId: string,
+  ):
+    | Promise<WorkbenchFullAutoAnswerStatusResponse>
+    | WorkbenchFullAutoAnswerStatusResponse;
   getMessagesBySeqs(
     subUserId: string,
     conversationId: string,
@@ -1289,6 +1296,23 @@ export class MysqlWorkbenchService implements WorkbenchService {
       custodyMode: request.enabled ? "full" : "semi",
       seatId: conversation.seatId,
     };
+  }
+
+  async getFullAutoAnswerStatus(
+    subUserId: string,
+    conversationId: string,
+  ): Promise<WorkbenchFullAutoAnswerStatusResponse> {
+    const conversation = await this.getAccessibleConversation(subUserId, conversationId);
+
+    if (conversation.thirdGroupId || !conversation.thirdExternalUserId) {
+      return {};
+    }
+
+    return this.repository.getLatestFullAutoAnswerStatus({
+      thirdExternalUserId: conversation.thirdExternalUserId,
+      thirdUserId: conversation.thirdUserId,
+      uid: conversation.uid,
+    });
   }
 
   async poll(subUserId: string, request: WorkbenchPollRequest) {

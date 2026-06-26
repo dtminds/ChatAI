@@ -55,7 +55,24 @@ describe("chat custody status helpers", () => {
         custodyMode: CONVERSATION_CUSTODY_MODE.FULL,
       }),
     ).toBe("thinking");
-    expect(getCustodyHostingStatusLabel("thinking")).toBe("Agent 正在思考");
+    expect(getCustodyHostingStatusLabel("thinking")).toBe("Agent 正在查看消息");
+  });
+
+  it("labels full-auto answer progress statuses", () => {
+    expect(getCustodyHostingStatusLabel("waiting")).toBe(
+      "Agent 正在等待客户是否还有新消息",
+    );
+    expect(getCustodyHostingStatusLabel("generating")).toBe("Agent 正在思考回复话术");
+    expect(getCustodyHostingStatusLabel("sending")).toBe("Agent 回复已生成，正在发送");
+    expect(getCustodyHostingStatusLabel("sent")).toBe(
+      "Agent 已发送回复，正在等待用户消息",
+    );
+    expect(getCustodyHostingStatusLabel("failed")).toBe("Agent 遇到了一些问题");
+    expect(getCustodyHostingStatusLabel("handoff")).toBe("Agent 已转人工处理");
+    expect(getCustodyHostingStatusLabel("sendFailed")).toBe("Agent 回复发送失败");
+    expect(getCustodyHostingStatusLabel("sendPartialFailed")).toBe(
+      "Agent 回复部分发送失败",
+    );
   });
 
   it("only uses white cancel button styling for active full custody", () => {

@@ -5225,6 +5225,51 @@ describe("WorkbenchRepository", () => {
     });
   });
 
+  it("loads the latest full-auto answer status for a single conversation", async () => {
+    let answerRecordQuery: ReturnType<typeof createQueryBuilder> | undefined;
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          expect(table).toBe("xy_wap_embed_agent_answer_record");
+
+          answerRecordQuery = createQueryBuilder({
+            analyse_msg_id: 20,
+            create_time: new Date("2026-06-26T08:00:00.000Z"),
+            gen_status: 1,
+            id: 27,
+            send_status: 0,
+            update_time: new Date("2026-06-26T08:00:02.000Z"),
+          });
+          return answerRecordQuery;
+        },
+      } as never,
+    );
+
+    await expect(
+      repository.getLatestFullAutoAnswerStatus({
+        thirdExternalUserId: "external-001",
+        thirdUserId: "seat-user-001",
+        uid: 9001,
+      }),
+    ).resolves.toEqual({
+      analyseMsgId: "20",
+      createdAt: Date.parse("2026-06-26T08:00:00.000Z"),
+      genStatus: 1,
+      recordId: "27",
+      sendStatus: 0,
+      updatedAt: Date.parse("2026-06-26T08:00:02.000Z"),
+    });
+    expect(answerRecordQuery?.wheres).toEqual([
+      ["uid", "=", 9001],
+      ["third_userid", "=", "seat-user-001"],
+      ["third_external_userid", "=", "external-001"],
+      ["third_group_id", "=", ""],
+      ["trigger_type", "=", 1],
+    ]);
+    expect(answerRecordQuery?.orderBys).toEqual([["id", "desc"]]);
+    expect(answerRecordQuery?.limits).toEqual([1]);
+  });
+
   it("reads message file transfer status by audit id in tenant scope", async () => {
     const queries: Array<{ table: string; wheres: Array<[string, string, unknown]> }> = [];
     const repository = new WorkbenchRepository(

@@ -107,6 +107,7 @@ export function adaptMessage(
   accountsById: Record<string, Account>,
   me?: EmployeeProfile,
 ): Message {
+  const createdAtMs = normalizeOptionalTimestamp(dto.createdAt);
   const sentAt = formatWorkbenchTimestamp(dto.createdAt);
   const updatedAtMs = normalizeOptionalTimestamp(dto.updatedAt);
   const status = adaptMessageStatus(dto.status);
@@ -122,6 +123,7 @@ export function adaptMessage(
         type: "revoke",
       },
       conversationId: dto.conversationId,
+      createdAtMs,
       failReason: dto.failReason,
       isRevoked: dto.isRevoked,
       msgid: dto.msgid,
@@ -144,6 +146,7 @@ export function adaptMessage(
         type: "system",
       },
       conversationId: dto.conversationId,
+      createdAtMs,
       failReason: dto.failReason,
       isRevoked: dto.isRevoked,
       msgid: dto.msgid,
@@ -193,6 +196,7 @@ export function adaptMessage(
     author: senderName,
     content,
     conversationId: dto.conversationId,
+    createdAtMs,
     isGroupConversation,
     isOwnMessage,
     failReason: dto.failReason,

@@ -10,6 +10,7 @@ import type {
   WorkbenchHistoryMessagePageDto,
   WorkbenchHistoryMessageQuery,
   WorkbenchConversationFullAutoResponse,
+  WorkbenchFullAutoAnswerStatusResponse,
   WorkbenchConversationDeleteResponse,
   WorkbenchConversationPinResponse,
   WorkbenchConversationReadResponse,
@@ -472,6 +473,12 @@ export async function changeConversationFullAuto(
   return getWorkbenchService().changeConversationFullAuto(conversationId, {
     enabled,
   });
+}
+
+export async function getFullAutoAnswerStatus(
+  conversationId: string,
+): Promise<WorkbenchFullAutoAnswerStatusResponse> {
+  return getWorkbenchService().getFullAutoAnswerStatus(conversationId);
 }
 
 export async function pollWorkbench(

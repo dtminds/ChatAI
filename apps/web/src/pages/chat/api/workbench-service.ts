@@ -15,6 +15,7 @@ import {
   type WorkbenchSeatDto,
   type WorkbenchConversationChangeDto,
   type WorkbenchConversationFullAutoResponse,
+  type WorkbenchFullAutoAnswerStatusResponse,
   type WorkbenchConversationPinResponse,
   type WorkbenchConversationReadResponse,
   type WorkbenchConversationUnpinResponse,
@@ -221,6 +222,9 @@ export type WorkbenchService = {
     conversationId: string,
     request: { enabled: boolean },
   ) => Promise<WorkbenchConversationFullAutoResponse>;
+  getFullAutoAnswerStatus: (
+    conversationId: string,
+  ) => Promise<WorkbenchFullAutoAnswerStatusResponse>;
   poll: (request: WorkbenchPollRequest) => Promise<WorkbenchPollResponse>;
   pollSmartReplies: (
     request: WorkbenchSmartReplyPollRequest,
@@ -1632,6 +1636,9 @@ export function createMockWorkbenchService(): WorkbenchService {
     async changeConversationFullAuto(conversationId, request) {
       return setConversationFullAuto(state, conversationId, request.enabled);
     },
+    async getFullAutoAnswerStatus() {
+      return {};
+    },
     async unpinConversation(conversationId) {
       return setConversationPinned(state, conversationId, false);
     },
@@ -2360,6 +2367,11 @@ export function createHttpWorkbenchService(): WorkbenchService {
       return http.post<WorkbenchConversationFullAutoResponse, { enabled: boolean }>(
         `/server/conversations/${conversationId}/full-auto`,
         request,
+      );
+    },
+    getFullAutoAnswerStatus(conversationId) {
+      return http.get<WorkbenchFullAutoAnswerStatusResponse>(
+        `/server/conversations/${conversationId}/full-auto/answer-status`,
       );
     },
     poll(request) {

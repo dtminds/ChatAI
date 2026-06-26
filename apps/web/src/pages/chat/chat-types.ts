@@ -64,7 +64,19 @@ export type Conversation = {
   /** 会话托管模式：full 全托管，semi 半托管 */
   custodyMode: ConversationCustodyMode;
   /** 托管状态栏展示状态 */
-  custodyHostingStatus?: "active" | "exited" | "retrying" | "thinking";
+  custodyHostingStatus?:
+    | "active"
+    | "exited"
+    | "failed"
+    | "generating"
+    | "handoff"
+    | "retrying"
+    | "sendFailed"
+    | "sendPartialFailed"
+    | "sending"
+    | "sent"
+    | "thinking"
+    | "waiting";
   accountId: string;
   /** 关联客户绑定或群席位业务状态；非 1 表示会话对象已失效 */
   bizStatus?: number;
@@ -281,6 +293,7 @@ type BaseMessage = {
   uiMessageKey: string;
   msgid?: string;
   conversationId: string;
+  createdAtMs?: number;
   role: MessageRole;
   author: string;
   sentAt: string;

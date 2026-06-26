@@ -194,7 +194,7 @@ describe("ChatWorkbenchPage", () => {
       }));
     });
 
-    expect(screen.getByText(/正在思考/)).toBeInTheDocument();
+    expect(screen.getByText(/Agent 正在查看消息/)).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "请输入消息……" })).toHaveAttribute(
       "contenteditable",
       "false",

@@ -31,6 +31,7 @@ import {
   type WorkbenchSearchGroupResultDto,
   type WorkbenchSearchResponseDto,
   type WorkbenchConversationSummaryDto,
+  type WorkbenchFullAutoAnswerStatusResponse,
   normalizeQuickReplyAttachments,
   type WorkbenchQuickReplyAttachment,
 } from "@chatai/contracts";
@@ -103,6 +104,12 @@ export type ConversationLookup = {
   thirdUserId: string;
   uid: number;
   unreadCount: number;
+};
+
+type FullAutoAnswerStatusScope = {
+  thirdExternalUserId: string;
+  thirdUserId: string;
+  uid: number;
 };
 
 export type SeatOperateScope = {
@@ -223,6 +230,22 @@ type SeatAccessSnapshot = {
   seatIds: string[];
   uid: number;
   version: 1;
+};
+
+type AgentAnswerRecordDb = Database & {
+  xy_wap_embed_agent_answer_record: {
+    analyse_msg_id: number | string | null;
+    create_time: Date | number | string | null;
+    gen_status: number | string | null;
+    id: number | string;
+    send_status: number | string | null;
+    third_external_userid: string;
+    third_group_id: string;
+    third_userid: string;
+    trigger_type: number | string;
+    uid: number | string;
+    update_time: Date | number | string | null;
+  };
 };
 
 type SeatConversationAggregateRow = {
@@ -3549,6 +3572,42 @@ export class WorkbenchRepository {
           unreadCount: Number(row.unread_cnt ?? 0),
         }
       : undefined;
+  }
+
+  async getLatestFullAutoAnswerStatus(
+    scope: FullAutoAnswerStatusScope,
+  ): Promise<WorkbenchFullAutoAnswerStatusResponse> {
+    const row = await (this.db as unknown as Kysely<AgentAnswerRecordDb>)
+      .selectFrom("xy_wap_embed_agent_answer_record")
+      .select([
+        "analyse_msg_id",
+        "create_time",
+        "gen_status",
+        "id",
+        "send_status",
+        "update_time",
+      ])
+      .where("uid", "=", scope.uid)
+      .where("third_userid", "=", scope.thirdUserId)
+      .where("third_external_userid", "=", scope.thirdExternalUserId)
+      .where("third_group_id", "=", "")
+      .where("trigger_type", "=", 1)
+      .orderBy("id", "desc")
+      .limit(1)
+      .executeTakeFirst();
+
+    if (!row) {
+      return {};
+    }
+
+    return {
+      analyseMsgId: String(row.analyse_msg_id),
+      createdAt: toTimestamp(row.create_time),
+      genStatus: Number(row.gen_status ?? 0),
+      recordId: String(row.id),
+      sendStatus: Number(row.send_status ?? 0),
+      updatedAt: toTimestamp(row.update_time),
+    };
   }
 
   async getSeatUnreadCountAfterMarkRead(input: {

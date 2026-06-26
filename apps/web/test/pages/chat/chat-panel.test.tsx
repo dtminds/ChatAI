@@ -345,7 +345,7 @@ describe("ChatPanel", () => {
     expect(screen.getByTestId("chat-composer-editor").closest(".px-4")).toHaveClass(
       "pt-3",
     );
-    expect(screen.getByText(/正在思考/)).toBeInTheDocument();
+    expect(screen.getByText(/Agent 正在查看消息/)).toBeInTheDocument();
     expect(screen.getByLabelText("请输入消息……")).toBeInTheDocument();
     expect(screen.queryByText("请输入消息……")).not.toBeInTheDocument();
     expect(screen.getByTestId("message-content").closest(".pb-12")).not.toBeInTheDocument();

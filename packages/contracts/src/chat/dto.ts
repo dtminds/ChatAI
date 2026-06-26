@@ -769,6 +769,15 @@ export type WorkbenchConversationFullAutoResponse = {
   seatId: string;
 };
 
+export type WorkbenchFullAutoAnswerStatusResponse = {
+  analyseMsgId?: string;
+  createdAt?: number;
+  genStatus?: number;
+  recordId?: string;
+  sendStatus?: number;
+  updatedAt?: number;
+};
+
 export type WorkbenchConversationDeleteResponse = {
   conversationId: string;
   seatId: string;

@@ -1023,6 +1023,21 @@ export async function registerChatRoutes(app: FastifyInstance) {
     },
   );
 
+  app.get<{ Params: ConversationParams }>(
+    "/api/server/conversations/:conversationId/full-auto/answer-status",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        params: ConversationParamsSchema,
+      },
+    },
+    async (request) =>
+      getWorkbenchService(app, request).getFullAutoAnswerStatus(
+        getSubUserId(request),
+        request.params.conversationId,
+      ),
+  );
+
   app.post<{ Params: ConversationParams }>(
     "/api/server/conversations/:conversationId/delete",
     {

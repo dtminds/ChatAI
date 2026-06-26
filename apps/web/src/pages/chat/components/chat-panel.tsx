@@ -35,6 +35,7 @@ import type {
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
 import {
   resolveCustodyHostingStatus,
+  type CustodyHostingStatus,
 } from "@/pages/chat/lib/chat-custody-status";
 import type { SmartReplySendPayload } from "@/pages/chat/api/smart-reply-adapter";
 
@@ -47,6 +48,7 @@ type ChatPanelProps = {
   canCollectMaterialActions?: boolean;
   canSendMessage: boolean;
   fullAutoActionPending?: boolean;
+  fullAutoDisplayStatus?: CustodyHostingStatus;
   isFullAutoActive?: boolean;
   composerPlaceholder: string;
   customer?: CustomerProfile;
@@ -160,6 +162,7 @@ export function ChatPanel({
   canCollectMaterialActions = true,
   canSendMessage,
   fullAutoActionPending = false,
+  fullAutoDisplayStatus,
   isFullAutoActive = false,
   composerPlaceholder,
   customer,
@@ -238,7 +241,8 @@ export function ChatPanel({
   composerRef,
   workbenchBodyRef,
 }: ChatPanelProps) {
-  const resolvedCustodyHostingStatus = resolveCustodyHostingStatus(activeConversation);
+  const resolvedCustodyHostingStatus =
+    fullAutoDisplayStatus ?? resolveCustodyHostingStatus(activeConversation);
   const custodyHostingStatus =
     !isFullAutoActive || resolvedCustodyHostingStatus === "exited"
       ? null

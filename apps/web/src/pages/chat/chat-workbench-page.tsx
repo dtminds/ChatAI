@@ -326,6 +326,7 @@ function ChatWorkbenchContent({
     confirmVoicePlaybackReady,
     transcribeVoiceMessage,
     fullAutoActionPending,
+    fullAutoStatusByConversationId,
   } = useWorkbenchStore(
     useShallow((state) => ({
       accounts: state.accounts,
@@ -364,6 +365,7 @@ function ChatWorkbenchContent({
       historyStatusByConversationId: state.historyStatusByConversationId,
       fullAutoActionError: state.fullAutoActionError,
       fullAutoActionPending: state.fullAutoActionPending,
+      fullAutoStatusByConversationId: state.fullAutoStatusByConversationId,
       initializeWorkbench: state.initializeWorkbench,
       isConversationLoading: state.isConversationLoading,
       loadActiveGroupMembers: state.loadActiveGroupMembers,
@@ -656,6 +658,9 @@ function ChatWorkbenchContent({
   const hasMoreHistory = activeConversation
     ? hasMoreHistoryByConversationId[activeConversation.id] === true
     : false;
+  const fullAutoDisplayStatus = activeConversation
+    ? fullAutoStatusByConversationId[activeConversation.id]?.status
+    : undefined;
   const skippedHiddenCount = activeConversation
     ? (messagePaginationByConversationId[activeConversation.id]
         ?.skippedHiddenCount ?? 0)
@@ -2066,6 +2071,7 @@ function ChatWorkbenchContent({
                   sidebarIframeSendStatus={sidebarIframeSendStatus}
                   customerPanelWidth={customerPanelWidth}
                   draft={draft}
+                  fullAutoDisplayStatus={fullAutoDisplayStatus}
                   groupMembers={activeGroupMembers}
                   fullAutoActionPending={fullAutoActionPending}
                   isGroupMembersLoading={isActiveGroupMembersLoading}

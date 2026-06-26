@@ -3,6 +3,7 @@ import {
   createMockWorkbenchService,
   setWorkbenchService,
 } from "@/pages/chat/api/workbench-service";
+import { adaptMessage } from "@/pages/chat/api/workbench-adapter";
 import { resolveImageSegmentsForSend } from "@/pages/chat/api/media-upload-service";
 import { seedMessages } from "@/pages/chat/mock-data";
 import {
@@ -13,6 +14,7 @@ import {
 import type { ChatMessage, Conversation, Message } from "@/pages/chat/chat-types";
 import type {
   WorkbenchConversationSummaryDto,
+  WorkbenchFullAutoAnswerStatusResponse,
   WorkbenchHistoryMessagePageDto,
   WorkbenchMessageDto,
   WorkbenchPollResponse,
@@ -142,6 +144,7 @@ function createDownloadFileMessageDto({
 
 function createSmartReplyTextMessageDto({
   conversationId = "conv-001",
+  createdAt,
   id,
   isRevoked = false,
   senderType = "customer",
@@ -149,6 +152,7 @@ function createSmartReplyTextMessageDto({
   text,
 }: {
   conversationId?: string;
+  createdAt?: number;
   id: string;
   isRevoked?: boolean;
   senderType?: "customer" | "agent";
@@ -159,7 +163,7 @@ function createSmartReplyTextMessageDto({
     content: { text },
     contentType: "text",
     conversationId,
-    createdAt: 1_778_400_000_000 + seq * 1_000,
+    createdAt: createdAt ?? 1_778_400_000_000 + seq * 1_000,
     customerId: "cust-001",
     msgid: id,
     rawMsgtype: "text",
@@ -1392,6 +1396,273 @@ describe("useWorkbenchStore", () => {
     ).toEqual({});
     expect(observedAutoRequests).toEqual([]);
     expect(observedSmartReplyRequests).toEqual([]);
+  });
+
+  it("polls full-auto answer status for a recent customer message and returns to active after terminal status", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-26T12:00:00+08:00"));
+    const baseService = createMockWorkbenchService();
+    const answerStatuses: WorkbenchFullAutoAnswerStatusResponse[] = [
+      { analyseMsgId: "20", genStatus: 2, recordId: "27", sendStatus: 0 },
+      { analyseMsgId: "20", genStatus: 2, recordId: "27", sendStatus: 1 },
+    ];
+    const observedStatusRequests: string[] = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async getFullAutoAnswerStatus(conversationId) {
+        observedStatusRequests.push(conversationId);
+
+        return (
+          answerStatuses.shift() ?? {
+            analyseMsgId: "20",
+            genStatus: 2,
+            recordId: "27",
+            sendStatus: 1,
+          }
+        );
+      },
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          messages: [
+            ...page.messages,
+            createSmartReplyTextMessageDto({
+              id: "full-auto-customer",
+              seq: 20,
+              text: "请帮我看下",
+              createdAt: Date.now(),
+            }),
+          ],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              fullAutoAuth: true,
+              fullAutoSwitch: true,
+            }
+          : account,
+      ),
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-001"
+            ? {
+                ...conversation,
+                custodyMode: "full",
+              }
+            : conversation,
+        ),
+      },
+    }));
+
+    await useWorkbenchStore.getState().syncFullAutoCustodyStatus();
+
+    expect(
+      useWorkbenchStore.getState().fullAutoStatusByConversationId["conv-001"]?.status,
+    ).toBe("sending");
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(
+      useWorkbenchStore.getState().fullAutoStatusByConversationId["conv-001"]?.status,
+    ).toBe("sent");
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(
+      useWorkbenchStore.getState().fullAutoStatusByConversationId["conv-001"]?.status,
+    ).toBeUndefined();
+    expect(observedStatusRequests).toEqual(["conv-001", "conv-001"]);
+
+    vi.useRealTimers();
+  });
+
+  it("keeps full-auto thinking when the latest answer record belongs to an older customer message", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-26T12:00:00+08:00"));
+    const baseService = createMockWorkbenchService();
+    const observedStatusRequests: string[] = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async getFullAutoAnswerStatus(conversationId) {
+        observedStatusRequests.push(conversationId);
+
+        return {
+          analyseMsgId: "19",
+          genStatus: 2,
+          recordId: "27",
+          sendStatus: 1,
+        };
+      },
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          messages: [
+            ...page.messages,
+            createSmartReplyTextMessageDto({
+              id: "full-auto-customer",
+              seq: 20,
+              text: "请帮我看下",
+              createdAt: Date.now(),
+            }),
+          ],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              fullAutoAuth: true,
+              fullAutoSwitch: true,
+            }
+          : account,
+      ),
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-001"
+            ? {
+                ...conversation,
+                custodyMode: "full",
+              }
+            : conversation,
+        ),
+      },
+    }));
+
+    await useWorkbenchStore.getState().syncFullAutoCustodyStatus();
+
+    expect(
+      useWorkbenchStore.getState().fullAutoStatusByConversationId["conv-001"]?.status,
+    ).toBe("thinking");
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(
+      useWorkbenchStore.getState().fullAutoStatusByConversationId["conv-001"]?.status,
+    ).toBe("thinking");
+    expect(observedStatusRequests).toEqual(["conv-001", "conv-001"]);
+
+    vi.useRealTimers();
+  });
+
+  it("restarts full-auto status polling for a new customer message with the same timestamp", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-26T12:00:00+08:00"));
+    const baseService = createMockWorkbenchService();
+    let latestCustomerSeq = 20;
+    const observedStatusRequests: string[] = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async getFullAutoAnswerStatus(conversationId) {
+        observedStatusRequests.push(conversationId);
+
+        return {
+          analyseMsgId: String(latestCustomerSeq),
+          genStatus: 2,
+          recordId: `record-${latestCustomerSeq}`,
+          sendStatus: 1,
+        };
+      },
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          messages: [
+            ...page.messages,
+            createSmartReplyTextMessageDto({
+              id: "full-auto-customer",
+              seq: 20,
+              text: "第一条",
+              createdAt: Date.now(),
+            }),
+          ],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              fullAutoAuth: true,
+              fullAutoSwitch: true,
+            }
+          : account,
+      ),
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-001"
+            ? {
+                ...conversation,
+                custodyMode: "full",
+              }
+            : conversation,
+        ),
+      },
+    }));
+
+    await useWorkbenchStore.getState().syncFullAutoCustodyStatus();
+    expect(
+      useWorkbenchStore.getState().fullAutoStatusByConversationId["conv-001"]?.status,
+    ).toBe("sent");
+
+    latestCustomerSeq = 21;
+    useWorkbenchStore.setState((state) => ({
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        "conv-001": [
+          ...(state.messagesByConversationId["conv-001"] ?? []),
+          adaptMessage(
+            createSmartReplyTextMessageDto({
+              id: "full-auto-customer-2",
+              seq: 21,
+              text: "第二条",
+              createdAt: Date.now(),
+            }),
+            state.customerProfilesById,
+            Object.fromEntries(state.accounts.map((account) => [account.id, account])),
+            state.me,
+          ),
+        ],
+      },
+    }));
+
+    await useWorkbenchStore.getState().syncFullAutoCustodyStatus();
+
+    expect(observedStatusRequests).toEqual(["conv-001", "conv-001"]);
+    expect(
+      useWorkbenchStore.getState().fullAutoStatusByConversationId["conv-001"]?.status,
+    ).toBe("sent");
+
+    vi.useRealTimers();
   });
 
   it("auto-generates a smart reply task for a newly loaded customer message", async () => {

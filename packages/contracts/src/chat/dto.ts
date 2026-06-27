@@ -3,7 +3,6 @@ import {
   GROUP_MEMBER_TYPE,
   LoginStatusSchema,
   TakeoverStatusSchema,
-  type ConversationAgentMode,
   type MaterialCollectionBizType,
 } from "./enums.js";
 import type {
@@ -264,9 +263,10 @@ export type WorkbenchSidebarIframeParamsDto = {
 };
 
 export type WorkbenchSeatDto = {
-  aiHostingEnabled?: boolean;
-  /** 席位是否具备全自动托管授权，对应 `xy_wap_embed_user_seat_agent.full_auto_auth` */
-  fullAutoAuth?: boolean;
+  /** 席位是否具备 AI 托管授权，对应 `xy_wap_embed_user_seat_agent.full_auto_auth` */
+  seatAIHostingAuth?: boolean;
+  /** 席位 AI 托管能力是否开启，对应 `full_auto_auth && full_auto_switch` */
+  seatAIHostingEnabled?: boolean;
   /** 席位全自动托管总开关，对应 `xy_wap_embed_user_seat_agent.full_auto_switch` */
   fullAutoSwitch?: boolean;
   /** 席位是否具备半自动辅助授权，对应 `xy_wap_embed_user_seat_agent.semi_auto_auth` */
@@ -291,13 +291,11 @@ export type WorkbenchSeatDto = {
 };
 
 export type WorkbenchConversationSummaryDto = {
-  /** 会话是否已切到全自动 AI 托管，前端需结合席位 AI 托管开关判断筛选可见性 */
-  aiHosted?: boolean;
+  /** 会话 AI 托管开关，对应 `xy_wap_embed_conversation.full_auto_switch` */
+  conversationAIHostingSwitch?: boolean;
   /** 关联联系人或群席位业务状态；0 表示该会话展示对象已失效 */
   bizStatus?: number;
   conversationId: string;
-  /** 会话托管模式：full 全托管，semi 半托管 */
-  agentMode: ConversationAgentMode;
   seatId: string;
   thirdUserId?: string;
   thirdExternalUserId?: string;
@@ -767,9 +765,8 @@ export type WorkbenchConversationPinResponse = {
 export type WorkbenchConversationUnpinResponse = WorkbenchConversationPinResponse;
 
 export type WorkbenchConversationFullAutoResponse = {
-  aiHosted: boolean;
+  conversationAIHostingSwitch: boolean;
   conversationId: string;
-  agentMode: ConversationAgentMode;
   seatId: string;
 };
 

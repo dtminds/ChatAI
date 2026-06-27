@@ -172,7 +172,8 @@ describe("ChatWorkbenchPage", () => {
           account.id === "drc"
             ? {
                 ...account,
-                fullAutoAuth: true,
+                seatAIHostingAuth: true,
+                seatAIHostingEnabled: true,
                 fullAutoSwitch: true,
                 takenOverEmployeeId: "sub-user-001",
               }
@@ -184,9 +185,8 @@ describe("ChatWorkbenchPage", () => {
             conversation.id === "conv-001"
               ? {
                   ...conversation,
-                  aiHosted: true,
+                  conversationAIHostingSwitch: true,
                   agentHostingStatus: "thinking",
-                  agentMode: "full",
                 }
               : conversation,
           ),
@@ -263,7 +263,7 @@ describe("ChatWorkbenchPage", () => {
 
         return seats.map((seat) => ({
           ...seat,
-          aiHostingEnabled: false,
+          seatAIHostingEnabled: false,
         }));
       },
       async getConversations(seatId, options) {
@@ -273,7 +273,7 @@ describe("ChatWorkbenchPage", () => {
           ...response,
           items: response.items.map((conversation, index) => ({
             ...conversation,
-            aiHosted: index === 0,
+            conversationAIHostingSwitch: index === 0,
           })),
         };
       },
@@ -299,7 +299,7 @@ describe("ChatWorkbenchPage", () => {
 
         return seats.map((seat) => ({
           ...seat,
-          aiHostingEnabled: seat.seatId === "drc",
+          seatAIHostingEnabled: seat.seatId === "drc",
         }));
       },
       async getConversations(seatId, options) {
@@ -309,7 +309,7 @@ describe("ChatWorkbenchPage", () => {
           ...response,
           items: response.items.map((conversation) => ({
             ...conversation,
-            aiHosted: conversation.conversationId === "conv-002",
+            conversationAIHostingSwitch: conversation.conversationId === "conv-002",
           })),
         };
       },
@@ -339,7 +339,7 @@ describe("ChatWorkbenchPage", () => {
 
         return seats.map((seat) => ({
           ...seat,
-          aiHostingEnabled: seat.seatId === "drc",
+          seatAIHostingEnabled: seat.seatId === "drc",
         }));
       },
       async getConversations(seatId, options) {
@@ -349,7 +349,7 @@ describe("ChatWorkbenchPage", () => {
           ...response,
           items: response.items.map((conversation) => ({
             ...conversation,
-            aiHosted: false,
+            conversationAIHostingSwitch: false,
           })),
         };
       },

@@ -273,11 +273,11 @@ describe("ChatPanel", () => {
         activeConversation={{
           ...createConversation(),
           agentHostingStatus: "thinking",
-          agentMode: "full",
+          conversationAIHostingSwitch: true,
         }}
         activeHistoryStatus="idle"
         canSendMessage={false}
-        isFullAutoActive
+        conversationAIHostingEnabled
         composerPlaceholder="请输入消息……"
         customerPanelWidth={375}
         draft=""
@@ -366,7 +366,7 @@ describe("ChatPanel", () => {
         activeConversation={{
           ...createConversation(),
           agentHostingStatus: "exited",
-          agentMode: "full",
+          conversationAIHostingSwitch: true,
         }}
         activeHistoryStatus="idle"
         canSendMessage
@@ -427,16 +427,16 @@ describe("ChatPanel", () => {
       <ChatPanel
         activeConversation={{
           ...createConversation(),
-          agentMode: "full",
+          conversationAIHostingSwitch: true,
         }}
         activeHistoryStatus="idle"
-        canConfigureFullAuto
-        canEnableFullAuto
-        canConfigureSemiAuto
+        canConfigureSeatAIHosting
+        canToggleConversationAIHosting
+        canConfigureSeatSemiAuto
         canSendMessage
-        isFullAutoAvailable
-        isSemiAutoAvailable
-        isFullAutoActive
+        seatAIHostingEnabled
+        seatSemiAutoEnabled
+        conversationAIHostingEnabled
         composerPlaceholder="输入消息"
         customerPanelWidth={375}
         draft=""
@@ -511,12 +511,12 @@ describe("ChatPanel", () => {
       <ChatPanel
         activeConversation={createConversation()}
         activeHistoryStatus="idle"
-        canConfigureFullAuto
-        canEnableFullAuto={false}
-        canConfigureSemiAuto
+        canConfigureSeatAIHosting
+        canToggleConversationAIHosting={false}
+        canConfigureSeatSemiAuto
         canSendMessage
-        isFullAutoAvailable={false}
-        isSemiAutoAvailable
+        seatAIHostingEnabled={false}
+        seatSemiAutoEnabled
         composerPlaceholder="输入消息"
         customerPanelWidth={375}
         draft=""
@@ -578,12 +578,12 @@ describe("ChatPanel", () => {
       <ChatPanel
         activeConversation={createConversation()}
         activeHistoryStatus="idle"
-        canConfigureFullAuto
-        canEnableFullAuto
-        canConfigureSemiAuto
+        canConfigureSeatAIHosting
+        canToggleConversationAIHosting
+        canConfigureSeatSemiAuto
         canSendMessage={false}
-        isFullAutoAvailable
-        isSemiAutoAvailable
+        seatAIHostingEnabled
+        seatSemiAutoEnabled
         composerPlaceholder="输入消息"
         customerPanelWidth={375}
         draft=""
@@ -645,12 +645,12 @@ describe("ChatPanel", () => {
       <ChatPanel
         activeConversation={createConversation()}
         activeHistoryStatus="idle"
-        canConfigureFullAuto
-        canEnableFullAuto
-        canConfigureSemiAuto
+        canConfigureSeatAIHosting
+        canToggleConversationAIHosting
+        canConfigureSeatSemiAuto
         canSendMessage
-        isFullAutoAvailable
-        isSemiAutoAvailable
+        seatAIHostingEnabled
+        seatSemiAutoEnabled
         composerPlaceholder="输入消息"
         customerPanelWidth={375}
         draft=""
@@ -712,12 +712,12 @@ describe("ChatPanel", () => {
       <ChatPanel
         activeConversation={createConversation()}
         activeHistoryStatus="idle"
-        canConfigureFullAuto
-        canEnableFullAuto
-        canConfigureSemiAuto
+        canConfigureSeatAIHosting
+        canToggleConversationAIHosting
+        canConfigureSeatSemiAuto
         canSendMessage
-        isFullAutoAvailable
-        isSemiAutoAvailable
+        seatAIHostingEnabled
+        seatSemiAutoEnabled
         composerPlaceholder="输入消息"
         customerPanelWidth={375}
         draft=""
@@ -785,16 +785,16 @@ describe("ChatPanel", () => {
         activeConversation={{
           ...createConversation(),
           agentHostingStatus: "thinking",
-          agentMode: "full",
+          conversationAIHostingSwitch: true,
         }}
         activeHistoryStatus="idle"
-        canConfigureFullAuto
-        canEnableFullAuto
-        canConfigureSemiAuto
+        canConfigureSeatAIHosting
+        canToggleConversationAIHosting
+        canConfigureSeatSemiAuto
         canSendMessage
-        isFullAutoAvailable
-        isSemiAutoAvailable
-        isFullAutoActive
+        seatAIHostingEnabled
+        seatSemiAutoEnabled
+        conversationAIHostingEnabled
         composerPlaceholder="输入消息"
         customerPanelWidth={375}
         draft=""
@@ -855,7 +855,7 @@ function createConversation(): Conversation {
     customerId: "customer-1",
     customerName: "客户",
     id: "conversation-1",
-    agentMode: "semi",
+    conversationAIHostingSwitch: false,
     mode: "single",
     preview: "",
     priority: "medium",

@@ -3,8 +3,6 @@ import type {
   WorkbenchMessageContentType,
 } from "@chatai/contracts";
 
-import type { ConversationAgentMode } from "@chatai/contracts";
-
 export type ChatMode = "single" | "group";
 
 export type MessageRole = "customer" | "agent" | "system";
@@ -31,8 +29,8 @@ export type GroupMember = {
 };
 
 export type Account = {
-  aiHostingEnabled?: boolean;
-  fullAutoAuth?: boolean;
+  seatAIHostingEnabled?: boolean;
+  seatAIHostingAuth?: boolean;
   fullAutoSwitch?: boolean;
   semiAutoAuth?: boolean;
   semiAutoSwitch?: boolean;
@@ -61,10 +59,8 @@ export type Account = {
 
 export type Conversation = {
   id: string;
-  /** 当前会话是否切换到 AI 全托管 */
-  aiHosted?: boolean;
-  /** 会话托管模式：full 全托管，semi 半托管 */
-  agentMode: ConversationAgentMode;
+  /** 会话 AI 托管开关，对应 `xy_wap_embed_conversation.full_auto_switch` */
+  conversationAIHostingSwitch?: boolean;
   /** 托管状态栏展示状态 */
   agentHostingStatus?:
     | "active"

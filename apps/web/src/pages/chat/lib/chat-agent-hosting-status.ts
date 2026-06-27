@@ -1,4 +1,3 @@
-import { CONVERSATION_AGENT_MODE } from "@chatai/contracts";
 import type { Conversation } from "@/pages/chat/chat-types";
 
 export type AgentHostingStatus =
@@ -32,6 +31,7 @@ const agentHostingStatusLabels: Record<AgentHostingStatus, string> = {
 
 export function resolveAgentHostingStatus(
   conversation?: Conversation,
+  conversationAIHostingEnabled = false,
 ): AgentHostingStatus | null {
   if (!conversation) {
     return null;
@@ -41,7 +41,7 @@ export function resolveAgentHostingStatus(
     return "exited";
   }
 
-  if (conversation.agentMode !== CONVERSATION_AGENT_MODE.FULL) {
+  if (!conversationAIHostingEnabled) {
     return null;
   }
 
@@ -93,8 +93,4 @@ export function getAgentHostingActionLabel(status: AgentHostingStatus) {
 
 export function getAgentHostingStatusLabel(status: AgentHostingStatus) {
   return agentHostingStatusLabels[status];
-}
-
-export function isConversationInFullAutoAgentMode(conversation?: Conversation) {
-  return conversation?.agentMode === CONVERSATION_AGENT_MODE.FULL;
 }

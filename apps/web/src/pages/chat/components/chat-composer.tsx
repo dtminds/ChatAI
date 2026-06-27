@@ -96,9 +96,9 @@ import { getWechatEmojiByName, type WechatEmojiName } from "@/pages/chat/wechat-
 import type { GroupMember, QuotedMessagePreviewContent } from "@/pages/chat/chat-types";
 
 type ChatComposerProps = {
-  canConfigureFullAuto: boolean;
-  canConfigureSemiAuto: boolean;
-  canEnableFullAuto: boolean;
+  canConfigureSeatAIHosting: boolean;
+  canConfigureSeatSemiAuto: boolean;
+  canToggleConversationAIHosting: boolean;
   canSendMessage: boolean;
   collectedExpressions?: WorkbenchMaterialCollectionItemDto[];
   draft: string;
@@ -116,9 +116,9 @@ type ChatComposerProps = {
   sendingCollectedExpressionId?: string | null;
   isSending: boolean;
   isHistoryPanelOpen: boolean;
-  isFullAutoAvailable?: boolean;
-  isFullAutoActive?: boolean;
-  isSemiAutoAvailable?: boolean;
+  seatAIHostingEnabled?: boolean;
+  conversationAIHostingEnabled?: boolean;
+  seatSemiAutoEnabled?: boolean;
   onClearQuotedMessage: () => void;
   onDeleteCollectedExpression?: (item: WorkbenchMaterialCollectionItemDto) => void;
   onDraftChange: (draft: string) => void;
@@ -166,9 +166,9 @@ function createComposerImageClientId() {
 }
 
 export function ChatComposer({
-  canConfigureFullAuto,
-  canConfigureSemiAuto,
-  canEnableFullAuto,
+  canConfigureSeatAIHosting,
+  canConfigureSeatSemiAuto,
+  canToggleConversationAIHosting,
   canSendMessage,
   collectedExpressions = [],
   draft,
@@ -186,9 +186,9 @@ export function ChatComposer({
   sendingCollectedExpressionId,
   isSending,
   isHistoryPanelOpen,
-  isFullAutoAvailable = false,
-  isFullAutoActive = false,
-  isSemiAutoAvailable = false,
+  seatAIHostingEnabled = false,
+  conversationAIHostingEnabled = false,
+  seatSemiAutoEnabled = false,
   onClearQuotedMessage,
   onDeleteCollectedExpression,
   onDraftChange,
@@ -695,18 +695,18 @@ export function ChatComposer({
                 </div>
                 <div className="space-y-1 p-2">
                   <AgentModeSwitchRow
-                    checked={isSemiAutoAvailable}
+                    checked={seatSemiAutoEnabled}
                     description="Agent 生成话术推荐，人工确认后发送"
-                    disabled={!canConfigureSemiAuto || seatAgentModeActionPending}
+                    disabled={!canConfigureSeatSemiAuto || seatAgentModeActionPending}
                     label="辅助模式"
                     onCheckedChange={(checked) => {
                       onChangeSeatAgentMode("semi", checked);
                     }}
                   />
                   <AgentModeSwitchRow
-                    checked={isFullAutoAvailable}
+                    checked={seatAIHostingEnabled}
                     description="Agent 自动生成并发送消息，仅在必要时转人工"
-                    disabled={!canConfigureFullAuto || seatAgentModeActionPending}
+                    disabled={!canConfigureSeatAIHosting || seatAgentModeActionPending}
                     label="托管模式"
                     onCheckedChange={(checked) => {
                       onChangeSeatAgentMode("full", checked);
@@ -716,11 +716,11 @@ export function ChatComposer({
                 <div className="border-t border-divider p-3">
                   <Button
                     className="w-full bg-neutral-strong text-neutral-strong-foreground shadow-none hover:bg-neutral-strong/90 hover:text-neutral-strong-foreground"
-                    disabled={!canEnableFullAuto || isFullAutoButtonPending}
+                    disabled={!canToggleConversationAIHosting || isFullAutoButtonPending}
                     onClick={async () => {
                       setIsFullAutoSubmitting(true);
                       try {
-                        await onChangeFullAuto(!isFullAutoActive);
+                        await onChangeFullAuto(!conversationAIHostingEnabled);
                       } finally {
                         setIsFullAutoSubmitting(false);
                         setIsAgentDialogOpen(false);
@@ -737,7 +737,7 @@ export function ChatComposer({
                         variant="classic"
                       />
                     ) : null}
-                    {isFullAutoActive ? "关闭当前会话托管" : "开启当前会话托管"}
+                    {conversationAIHostingEnabled ? "关闭当前会话托管" : "开启当前会话托管"}
                   </Button>
                 </div>
               </PopoverContent>

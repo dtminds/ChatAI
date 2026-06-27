@@ -105,7 +105,6 @@ import type {
 } from "@chatai/contracts";
 import {
   CHAT_TYPE,
-  CONVERSATION_AGENT_MODE,
   MATERIAL_COLLECTION_BIZ_TYPE,
   MATERIAL_COLLECTION_GROUP_MAX_COUNT,
   MATERIAL_COLLECTION_TITLE_MAX_LENGTH,
@@ -841,14 +840,6 @@ export class MysqlWorkbenchService implements WorkbenchService {
       };
     }
 
-    if (conversation.agentMode === CONVERSATION_AGENT_MODE.FULL) {
-      return {
-        ...publicPage,
-        smartReplyEnabled: true,
-        smartReplies: [],
-      };
-    }
-
     const msgIds = collectSmartReplyMessagePageCandidateIds(publicPage.messages);
 
     if (msgIds.length === 0) {
@@ -1300,9 +1291,8 @@ export class MysqlWorkbenchService implements WorkbenchService {
     });
 
     return {
-      aiHosted: request.enabled,
+      conversationAIHostingSwitch: request.enabled,
       conversationId: conversation.id,
-      agentMode: request.enabled ? "full" : "semi",
       seatId: conversation.seatId,
     };
   }
@@ -2130,7 +2120,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     const canUseAgentMode =
       request.mode === "full"
-        ? seat.fullAutoAuth === true
+        ? seat.seatAIHostingAuth === true
         : seat.semiAutoAuth === true;
 
     if (!canUseAgentMode) {

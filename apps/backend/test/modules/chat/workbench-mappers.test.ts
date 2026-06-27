@@ -15,7 +15,6 @@ describe("workbench MySQL mappers", () => {
   it("maps a user seat row into the public seat DTO", () => {
     expect(
       mapSeatRow({
-        ai_hosting_enabled: 1,
         avatar: "https://example.com/avatar.png",
         biz_status: 0,
         expire_time: 1778240000,
@@ -32,12 +31,12 @@ describe("workbench MySQL mappers", () => {
         unread_count: 5,
       }),
     ).toEqual({
-      aiHostingEnabled: true,
+      seatAIHostingEnabled: true,
       avatar: "https://example.com/avatar.png",
       bizStatus: 0,
       description: "",
       expireTime: 1778240000,
-      fullAutoAuth: true,
+      seatAIHostingAuth: true,
       fullAutoSwitch: true,
       hostSubUserId: "3",
       lastMessageTime: 1778240000000,
@@ -77,8 +76,7 @@ describe("workbench MySQL mappers", () => {
 
     expect(conversation).toMatchObject({
       conversationId: "88",
-      agentMode: "full",
-      aiHosted: true,
+      conversationAIHostingSwitch: true,
       customerAvatar: "https://example.com/customer.png",
       customerId: "external-1",
       customerName: "客户备注",
@@ -1109,7 +1107,6 @@ describe("workbench MySQL mappers", () => {
   it("maps timestamp fields from Date objects and date strings", () => {
     expect(
       mapSeatRow({
-        ai_hosting_enabled: 0,
         avatar: "",
         host_sub_id: 0,
         id: 12,
@@ -1120,7 +1117,7 @@ describe("workbench MySQL mappers", () => {
         unread_count: 0,
       }),
     ).toMatchObject({
-      aiHostingEnabled: false,
+      seatAIHostingEnabled: false,
       lastMessageTime: 1778315400000,
     });
 
@@ -1144,7 +1141,7 @@ describe("workbench MySQL mappers", () => {
         unread_cnt: 0,
       }),
     ).toMatchObject({
-      aiHosted: false,
+      conversationAIHostingSwitch: false,
       lastMessageTime: 1778315460000,
     });
 

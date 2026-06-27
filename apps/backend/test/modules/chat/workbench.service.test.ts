@@ -320,8 +320,18 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
-  it("keeps smart reply capability but skips loading recommendations for full-auto conversations", async () => {
+  it("keeps loading smart reply recommendations for full-auto conversations", async () => {
     const javaClient = createJavaClient();
+    vi.mocked(javaClient.listUserHistoryAnswers).mockResolvedValue({
+      suggestions: [
+        {
+          assistantName: "智能助手",
+          content: "推荐回复 7",
+          messageId: "7",
+          pollComplete: true,
+        },
+      ],
+    });
     const service = new MysqlWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
@@ -333,7 +343,6 @@ describe("MysqlWorkbenchService", () => {
           thirdExternalUserId: "external-001",
           thirdUserId: "seat-user-001",
           uid: 9001,
-          agentMode: "full",
         }),
         listMessages: vi.fn().mockResolvedValue({
           filteredCount: 0,
@@ -354,9 +363,20 @@ describe("MysqlWorkbenchService", () => {
 
     await expect(service.getMessages("101", "88", { limit: 10 })).resolves.toMatchObject({
       smartReplyEnabled: true,
-      smartReplies: [],
+      smartReplies: [
+        {
+          content: "推荐回复 7",
+          messageId: "7",
+        },
+      ],
     });
-    expect(javaClient.listUserHistoryAnswers).not.toHaveBeenCalled();
+    expect(javaClient.listUserHistoryAnswers).toHaveBeenCalledWith({
+      chatType: 1,
+      msgIds: [7],
+      thirdExternalId: "external-001",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
   });
 
   it("loads page smart replies only for raw message types that can trigger recommendations", async () => {
@@ -1487,9 +1507,8 @@ describe("MysqlWorkbenchService", () => {
     await expect(
       service.changeConversationFullAuto("101", "88", { enabled: true }),
     ).resolves.toEqual({
-      aiHosted: true,
+      conversationAIHostingSwitch: true,
       conversationId: "88",
-      agentMode: "full",
       seatId: "12",
     });
     expect(javaClient.changeConversationFullAuto).toHaveBeenCalledWith({
@@ -1578,7 +1597,7 @@ describe("MysqlWorkbenchService", () => {
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getSeatOperateScope: vi.fn().mockResolvedValue({
-          fullAutoAuth: false,
+          seatAIHostingAuth: false,
           hostSubUserId: "101",
           platform: 5,
           seatId: "12",

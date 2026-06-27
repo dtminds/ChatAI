@@ -126,7 +126,7 @@ type ConversationViewState = Record<ChatMode, ConversationView>;
 type ConversationViewRetainedState = {
   accountId: string;
   ids: ReadonlySet<string>;
-  isAiHostingEnabled: boolean;
+  isSeatAIHostingEnabled: boolean;
   mode: ChatMode;
   view: ConversationView;
 };
@@ -548,15 +548,15 @@ function ChatWorkbenchContent({
   const resolvedConversationView = resolveConversationView(
     currentConversationView,
     activeMode,
-    activeAccount?.aiHostingEnabled === true,
+    activeAccount?.seatAIHostingEnabled === true,
   );
-  const isActiveAiHostingEnabled = activeAccount?.aiHostingEnabled === true;
+  const isActiveSeatAIHostingEnabled = activeAccount?.seatAIHostingEnabled === true;
   const activeViewRetainedConversationIds =
     resolvedConversationView !== DEFAULT_CONVERSATION_VIEW &&
     conversationViewRetainedState?.accountId === activeAccountId &&
     conversationViewRetainedState.mode === activeMode &&
     conversationViewRetainedState.view === resolvedConversationView &&
-    conversationViewRetainedState.isAiHostingEnabled === isActiveAiHostingEnabled
+    conversationViewRetainedState.isSeatAIHostingEnabled === isActiveSeatAIHostingEnabled
       ? conversationViewRetainedState.ids
       : undefined;
   const activeModeConversations = visibleSearchableConversations.filter(
@@ -566,7 +566,7 @@ function ChatWorkbenchContent({
     visibleSearchableConversations,
     activeMode,
     resolvedConversationView,
-    isActiveAiHostingEnabled,
+    isActiveSeatAIHostingEnabled,
     activeViewRetainedConversationIds,
   );
   const firstActiveViewConversationId = activeViewConversations[0]?.id;
@@ -578,7 +578,7 @@ function ChatWorkbenchContent({
       const resolvedView = resolveConversationView(
         view,
         activeMode,
-        isActiveAiHostingEnabled,
+        isActiveSeatAIHostingEnabled,
       );
 
       setConversationViewRetainedState(
@@ -591,10 +591,10 @@ function ChatWorkbenchContent({
                   visibleSearchableConversations,
                   activeMode,
                   resolvedView,
-                  isActiveAiHostingEnabled,
+                  isActiveSeatAIHostingEnabled,
                 ),
               ),
-              isAiHostingEnabled: isActiveAiHostingEnabled,
+              isSeatAIHostingEnabled: isActiveSeatAIHostingEnabled,
               mode: activeMode,
               view: resolvedView,
             },
@@ -606,7 +606,7 @@ function ChatWorkbenchContent({
               visibleSearchableConversations,
               activeMode,
               resolvedView,
-              isActiveAiHostingEnabled,
+              isActiveSeatAIHostingEnabled,
             );
 
       if (
@@ -633,7 +633,7 @@ function ChatWorkbenchContent({
       activeMode,
       activeModeConversations,
       clearActiveConversation,
-      isActiveAiHostingEnabled,
+      isActiveSeatAIHostingEnabled,
       setConversationView,
       setActiveConversation,
       visibleSearchableConversations,
@@ -686,16 +686,16 @@ function ChatWorkbenchContent({
   });
   const {
     canSendMessage,
-    canConfigureFullAuto,
-    canConfigureSemiAuto,
-    canEnableFullAuto,
+    canConfigureSeatAIHosting,
+    canConfigureSeatSemiAuto,
+    canToggleConversationAIHosting,
     canTakeOverAccount,
     canUseChatSend,
     canUseConversationActions,
     composerPlaceholder,
-    isFullAutoActive,
-    isFullAutoAvailable,
-    isSemiAutoAvailable,
+    conversationAIHostingEnabled,
+    seatAIHostingEnabled,
+    seatSemiAutoEnabled,
     isAccountTakenOverByCurrentUser,
     isConversationActionDisabled,
     sidebarIframeSendStatus,
@@ -885,7 +885,7 @@ function ChatWorkbenchContent({
       visibleSearchableConversations,
       activeMode,
       resolvedConversationView,
-      isActiveAiHostingEnabled,
+      isActiveSeatAIHostingEnabled,
     );
 
     setConversationViewRetainedState((currentState) => {
@@ -893,13 +893,13 @@ function ChatWorkbenchContent({
         currentState?.accountId !== activeAccountId ||
         currentState.mode !== activeMode ||
         currentState.view !== resolvedConversationView ||
-        currentState.isAiHostingEnabled !== isActiveAiHostingEnabled;
+        currentState.isSeatAIHostingEnabled !== isActiveSeatAIHostingEnabled;
 
       if (shouldReset) {
         return {
           accountId: activeAccountId,
           ids: new Set(currentMatchingIds),
-          isAiHostingEnabled: isActiveAiHostingEnabled,
+          isSeatAIHostingEnabled: isActiveSeatAIHostingEnabled,
           mode: activeMode,
           view: resolvedConversationView,
         };
@@ -927,7 +927,7 @@ function ChatWorkbenchContent({
   }, [
     activeAccountId,
     activeMode,
-    isActiveAiHostingEnabled,
+    isActiveSeatAIHostingEnabled,
     resolvedConversationView,
     visibleSearchableConversations,
   ]);
@@ -2056,7 +2056,7 @@ function ChatWorkbenchContent({
                   conversationViews={conversationViewState}
                   composerDraftsByConversationId={composerDraftsByConversationId}
                   conversations={visibleSearchableConversations}
-                  isAiHostingEnabled={activeAccount?.aiHostingEnabled === true}
+                  isSeatAIHostingEnabled={activeAccount?.seatAIHostingEnabled === true}
                   isConversationActionDisabled={isConversationActionDisabled}
                   isConversationLoading={isConversationLoading}
                   onDeleteConversation={deleteConversation}
@@ -2076,9 +2076,9 @@ function ChatWorkbenchContent({
                   accountAvatarUrl={activeAccount?.avatarUrl}
                   activeConversation={activeConversation}
                   activeHistoryStatus={activeHistoryStatus}
-                  canConfigureFullAuto={canConfigureFullAuto}
-                  canConfigureSemiAuto={canConfigureSemiAuto}
-                  canEnableFullAuto={canEnableFullAuto}
+                  canConfigureSeatAIHosting={canConfigureSeatAIHosting}
+                  canConfigureSeatSemiAuto={canConfigureSeatSemiAuto}
+                  canToggleConversationAIHosting={canToggleConversationAIHosting}
                   canCollectMaterialActions={canCollectMaterialActions}
                   canSendMessage={canSendMessage}
                   composerPlaceholder={composerPlaceholder}
@@ -2094,11 +2094,11 @@ function ChatWorkbenchContent({
                   isGroupMembersLoading={isActiveGroupMembersLoading}
                   inputEnterBehavior={inputEnterBehavior}
                   isConversationLoading={isConversationLoading}
-                  isFullAutoAvailable={isFullAutoAvailable}
+                  seatAIHostingEnabled={seatAIHostingEnabled}
                   isEmojiPickerOpen={isEmojiPickerOpen}
                   isSendingDraft={isSendingDraft}
-                  isFullAutoActive={isFullAutoActive}
-                  isSemiAutoAvailable={isSemiAutoAvailable}
+                  conversationAIHostingEnabled={conversationAIHostingEnabled}
+                  seatSemiAutoEnabled={seatSemiAutoEnabled}
                   isResizingCustomerPanel={isResizingCustomerPanel}
                   fileUploadQueue={fileUploadQueue}
                   collectedExpressions={collectedExpressions}

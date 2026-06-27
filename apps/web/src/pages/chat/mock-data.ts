@@ -1,4 +1,3 @@
-import { CONVERSATION_AGENT_MODE } from "@chatai/contracts";
 import type {
   Account,
   Conversation,
@@ -7,12 +6,13 @@ import type {
   Message,
 } from "@/pages/chat/chat-types";
 
-type SeedConversation = Omit<Conversation, "agentMode">;
+type SeedConversation = Omit<Conversation, "conversationAIHostingSwitch"> &
+  Partial<Pick<Conversation, "conversationAIHostingSwitch">>;
 
-function withDefaultAgentMode(conversations: SeedConversation[]): Conversation[] {
+function withDefaultAIHostingSwitch(conversations: SeedConversation[]): Conversation[] {
   return conversations.map((conversation) => ({
     ...conversation,
-    agentMode: CONVERSATION_AGENT_MODE.SEMI,
+    conversationAIHostingSwitch: conversation.conversationAIHostingSwitch ?? false,
   }));
 }
 
@@ -228,7 +228,7 @@ const rawSeedConversations: Record<string, SeedConversation[]> = {
 export const seedConversations: Record<string, Conversation[]> = Object.fromEntries(
   Object.entries(rawSeedConversations).map(([accountId, conversations]) => [
     accountId,
-    withDefaultAgentMode(conversations),
+    withDefaultAIHostingSwitch(conversations),
   ]),
 );
 

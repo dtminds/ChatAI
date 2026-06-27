@@ -36,12 +36,13 @@ export function adaptEmployee(dto: WorkbenchSubUserDto): EmployeeProfile {
 
 export function adaptAccount(dto: WorkbenchSeatDto, unreadCount = dto.unreadCount): Account {
   return {
-    aiHostingEnabled: dto.aiHostingEnabled,
+    seatAIHostingEnabled:
+      dto.seatAIHostingAuth === true && dto.fullAutoSwitch === true,
     avatarUrl: dto.avatar,
     bizStatus: dto.bizStatus,
     description: dto.description,
     expireTime: dto.expireTime,
-    fullAutoAuth: dto.fullAutoAuth,
+    seatAIHostingAuth: dto.seatAIHostingAuth,
     fullAutoSwitch: dto.fullAutoSwitch,
     id: dto.seatId,
     lastMessageTime: dto.lastMessageTime,
@@ -69,9 +70,8 @@ export function adaptConversation(dto: WorkbenchConversationSummaryDto): Convers
 
   return {
     accountId: dto.seatId,
-    aiHosted: dto.aiHosted,
+    conversationAIHostingSwitch: dto.conversationAIHostingSwitch,
     bizStatus: dto.bizStatus ?? 0,
-    agentMode: dto.agentMode,
     createdAtMs: createdAt,
     customerAvatarUrl: dto.customerAvatar,
     customerId: dto.customerId,

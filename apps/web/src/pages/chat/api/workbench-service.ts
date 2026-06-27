@@ -7,7 +7,6 @@ import {
 import { fetchWorkbenchSidebarIframeParams } from "@/pages/chat/api/sidebar-iframe-params";
 import { http } from "@/lib/request";
 import {
-  CONVERSATION_AGENT_MODE,
   type ApiSuccessEnvelope,
   type WorkbenchConversationDeleteResponse,
   type WorkbenchConversationListResponse,
@@ -1655,6 +1654,8 @@ export function createMockWorkbenchService(): WorkbenchService {
 
       if (request.mode === "full") {
         seat.fullAutoSwitch = request.enabled;
+        seat.seatAIHostingEnabled =
+          seat.seatAIHostingAuth === true && seat.fullAutoSwitch === true;
       } else {
         seat.semiAutoSwitch = request.enabled;
       }
@@ -1934,8 +1935,8 @@ export function createMockWorkbenchService(): WorkbenchService {
           thirdGroupId: existingConversation.thirdGroupId,
           thirdUserId: existingConversation.thirdUserId,
           unreadCount: existingConversation.unreadCount,
-          agentMode:
-            existingConversation.agentMode ?? CONVERSATION_AGENT_MODE.SEMI,
+          conversationAIHostingSwitch:
+            existingConversation.conversationAIHostingSwitch ?? false,
         };
       }
 
@@ -1957,7 +1958,7 @@ export function createMockWorkbenchService(): WorkbenchService {
         thirdGroupId: payload.thirdGroupId,
         thirdUserId: `third-user-${payload.seatId}`,
         unreadCount: 0,
-        agentMode: CONVERSATION_AGENT_MODE.SEMI,
+        conversationAIHostingSwitch: false,
       };
     },
   };
@@ -2703,7 +2704,7 @@ function buildInitialState(): MockState {
           seatId: conversation.accountId,
           conversationId: conversation.id,
           bizStatus: conversation.bizStatus ?? 1,
-          agentMode: conversation.agentMode,
+          conversationAIHostingSwitch: conversation.conversationAIHostingSwitch,
           customerAvatar: conversation.customerAvatarUrl,
           customerId: conversation.customerId,
           customerName: conversation.customerName,
@@ -3436,20 +3437,16 @@ function setConversationFullAuto(
 
   const nextConversation = {
     ...conversation,
-    aiHosted: enabled,
+    conversationAIHostingSwitch: enabled,
     agentHostingStatus: enabled ? "thinking" : undefined,
-    agentMode: enabled
-      ? CONVERSATION_AGENT_MODE.FULL
-      : CONVERSATION_AGENT_MODE.SEMI,
   };
 
   upsertConversation(state, nextConversation);
   pushConversationEvent(state, nextConversation);
 
   return {
-    aiHosted: enabled,
+    conversationAIHostingSwitch: enabled,
     conversationId,
-    agentMode: nextConversation.agentMode,
     seatId: nextConversation.seatId,
   };
 }

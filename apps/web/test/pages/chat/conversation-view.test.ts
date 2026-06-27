@@ -13,8 +13,7 @@ function createConversation(
 
   return {
     accountId: "account-1",
-    aiHosted: false,
-    agentMode: "semi",
+    conversationAIHostingSwitch: false,
     customerAvatarUrl: "",
     customerId: `customer-${id}`,
     customerName: id,
@@ -41,17 +40,17 @@ describe("conversation view helpers", () => {
   it("filters conversations by mode and resolved view", () => {
     const conversations = [
       createConversation({
-        aiHosted: true,
+        conversationAIHostingSwitch: true,
         id: "single-ai",
         mode: "single",
       }),
       createConversation({
-        aiHosted: false,
+        conversationAIHostingSwitch: false,
         id: "single-human",
         mode: "single",
       }),
       createConversation({
-        aiHosted: undefined,
+        conversationAIHostingSwitch: undefined,
         id: "single-unknown",
         mode: "single",
       }),

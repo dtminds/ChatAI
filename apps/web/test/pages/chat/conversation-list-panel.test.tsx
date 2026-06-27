@@ -38,13 +38,13 @@ vi.mock("@/store/workbench-store", () => ({
 // Helpers
 // ---------------------------------------------------------------------------
 function createConversation({
-  aiHosted = false,
+  conversationAIHostingSwitch = false,
   id,
   customerName,
   mode,
   unread = 0,
 }: {
-  aiHosted?: boolean;
+  conversationAIHostingSwitch?: boolean;
   id: string;
   customerName: string;
   mode: ChatMode;
@@ -52,8 +52,7 @@ function createConversation({
 }): Conversation {
   return {
     accountId: "account-1",
-    aiHosted,
-    agentMode: "semi",
+    conversationAIHostingSwitch,
     customerAvatarUrl: `https://example.com/${id}.png`,
     customerId: `customer-${id}`,
     customerName,
@@ -231,7 +230,7 @@ describe("ConversationListPanel", () => {
     const onSelectView = vi.fn();
     const viewConversations = [
       createConversation({
-        aiHosted: true,
+        conversationAIHostingSwitch: true,
         id: "single-ai",
         customerName: "AI托管客户",
         mode: "single",
@@ -260,7 +259,7 @@ describe("ConversationListPanel", () => {
         activeMode="single"
         activeView="all"
         conversations={viewConversations}
-        isAiHostingEnabled
+        isSeatAIHostingEnabled
         onSelectConversation={vi.fn()}
         onSelectMode={vi.fn()}
         onSelectView={onSelectView}
@@ -282,7 +281,7 @@ describe("ConversationListPanel", () => {
         activeMode="single"
         activeView="ai"
         conversations={viewConversations}
-        isAiHostingEnabled
+        isSeatAIHostingEnabled
         onSelectConversation={vi.fn()}
         onSelectMode={vi.fn()}
         onSelectView={onSelectView}
@@ -299,7 +298,7 @@ describe("ConversationListPanel", () => {
   it("filters each mounted mode with its own selected view", () => {
     const viewConversations = [
       createConversation({
-        aiHosted: true,
+        conversationAIHostingSwitch: true,
         id: "single-ai",
         customerName: "AI托管客户",
         mode: "single",
@@ -328,7 +327,7 @@ describe("ConversationListPanel", () => {
         activeView="ai"
         conversationViews={{ group: "unread", single: "ai" }}
         conversations={viewConversations}
-        isAiHostingEnabled
+        isSeatAIHostingEnabled
         onSelectConversation={vi.fn()}
         onSelectMode={vi.fn()}
         searchableConversations={viewConversations}
@@ -345,7 +344,7 @@ describe("ConversationListPanel", () => {
         activeView="unread"
         conversationViews={{ group: "unread", single: "ai" }}
         conversations={viewConversations}
-        isAiHostingEnabled
+        isSeatAIHostingEnabled
         onSelectConversation={vi.fn()}
         onSelectMode={vi.fn()}
         searchableConversations={viewConversations}
@@ -366,7 +365,7 @@ describe("ConversationListPanel", () => {
         activeMode="single"
         activeView="all"
         conversations={conversations}
-        isAiHostingEnabled={false}
+        isSeatAIHostingEnabled={false}
         onSelectConversation={vi.fn()}
         onSelectMode={vi.fn()}
         onSelectView={vi.fn()}
@@ -390,7 +389,7 @@ describe("ConversationListPanel", () => {
         activeMode="group"
         activeView="all"
         conversations={conversations}
-        isAiHostingEnabled
+        isSeatAIHostingEnabled
         onSelectConversation={vi.fn()}
         onSelectMode={vi.fn()}
         onSelectView={vi.fn()}

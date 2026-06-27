@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { CONVERSATION_AGENT_MODE } from "@chatai/contracts";
 import type { Conversation } from "@/pages/chat/chat-types";
 import {
   getAgentHostingStatusLabel,
@@ -10,7 +9,7 @@ import {
 
 const baseConversation: Conversation = {
   accountId: "account-1",
-  agentMode: CONVERSATION_AGENT_MODE.SEMI,
+  conversationAIHostingSwitch: false,
   customerAvatarUrl: "https://example.com/customer.png",
   customerId: "customer-1",
   customerName: "测试客户",
@@ -33,7 +32,7 @@ describe("chat agent hosting status helpers", () => {
       resolveAgentHostingStatus({
         ...baseConversation,
         agentHostingStatus: "exited",
-        agentMode: CONVERSATION_AGENT_MODE.SEMI,
+        conversationAIHostingSwitch: false,
       }),
     ).toBe("exited");
     expect(getAgentHostingStatusLabel("exited")).toBe("当前已退出全托管模式");
@@ -43,8 +42,8 @@ describe("chat agent hosting status helpers", () => {
     expect(
       resolveAgentHostingStatus({
         ...baseConversation,
-        agentMode: CONVERSATION_AGENT_MODE.FULL,
-      }),
+        conversationAIHostingSwitch: true,
+      }, true),
     ).toBe("active");
   });
 
@@ -53,8 +52,8 @@ describe("chat agent hosting status helpers", () => {
       resolveAgentHostingStatus({
         ...baseConversation,
         agentHostingStatus: "thinking",
-        agentMode: CONVERSATION_AGENT_MODE.FULL,
-      }),
+        conversationAIHostingSwitch: true,
+      }, true),
     ).toBe("thinking");
     expect(getAgentHostingStatusLabel("thinking")).toBe("Agent 正在查看消息");
   });

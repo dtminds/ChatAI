@@ -44,17 +44,17 @@ type ChatPanelProps = {
   accountAvatarUrl?: string;
   activeConversation?: Conversation;
   activeHistoryStatus: "idle" | "loading" | "error";
-  canConfigureFullAuto?: boolean;
-  canConfigureSemiAuto?: boolean;
-  canEnableFullAuto?: boolean;
+  canConfigureSeatAIHosting?: boolean;
+  canConfigureSeatSemiAuto?: boolean;
+  canToggleConversationAIHosting?: boolean;
   canCollectMaterialActions?: boolean;
   canSendMessage: boolean;
   fullAutoActionPending?: boolean;
   seatAgentModeActionPending?: boolean;
   fullAutoDisplayStatus?: AgentHostingStatus;
-  isFullAutoAvailable?: boolean;
-  isFullAutoActive?: boolean;
-  isSemiAutoAvailable?: boolean;
+  seatAIHostingEnabled?: boolean;
+  conversationAIHostingEnabled?: boolean;
+  seatSemiAutoEnabled?: boolean;
   composerPlaceholder: string;
   customer?: CustomerProfile;
   /** 侧栏 iframe `tos`：当前坐席是否已接管账号 */
@@ -164,17 +164,17 @@ export function ChatPanel({
   accountAvatarUrl,
   activeConversation,
   activeHistoryStatus,
-  canConfigureFullAuto = false,
-  canConfigureSemiAuto = false,
-  canEnableFullAuto = false,
+  canConfigureSeatAIHosting = false,
+  canConfigureSeatSemiAuto = false,
+  canToggleConversationAIHosting = false,
   canCollectMaterialActions = true,
   canSendMessage,
   fullAutoActionPending = false,
   seatAgentModeActionPending = false,
   fullAutoDisplayStatus,
-  isFullAutoAvailable = false,
-  isFullAutoActive = false,
-  isSemiAutoAvailable = false,
+  seatAIHostingEnabled = false,
+  conversationAIHostingEnabled = false,
+  seatSemiAutoEnabled = false,
   composerPlaceholder,
   customer,
   sidebarIframeTos,
@@ -254,9 +254,10 @@ export function ChatPanel({
   workbenchBodyRef,
 }: ChatPanelProps) {
   const resolvedAgentHostingStatus =
-    fullAutoDisplayStatus ?? resolveAgentHostingStatus(activeConversation);
+    fullAutoDisplayStatus ??
+    resolveAgentHostingStatus(activeConversation, conversationAIHostingEnabled);
   const agentHostingStatus =
-    !isFullAutoActive || resolvedAgentHostingStatus === "exited"
+    !conversationAIHostingEnabled || resolvedAgentHostingStatus === "exited"
       ? null
       : resolvedAgentHostingStatus;
   const hasActiveFileUpload = fileUploadQueue.length > 0;
@@ -352,9 +353,9 @@ export function ChatPanel({
                   ) : null}
                   <div className="px-4 pt-3">
                     <ChatComposer
-                      canConfigureFullAuto={canConfigureFullAuto}
-                      canConfigureSemiAuto={canConfigureSemiAuto}
-                      canEnableFullAuto={canEnableFullAuto}
+                      canConfigureSeatAIHosting={canConfigureSeatAIHosting}
+                      canConfigureSeatSemiAuto={canConfigureSeatSemiAuto}
+                      canToggleConversationAIHosting={canToggleConversationAIHosting}
                       canSendMessage={canSendMessage}
                       draft={draft}
                       fullAutoActionPending={fullAutoActionPending}
@@ -368,9 +369,9 @@ export function ChatPanel({
                       isEmojiPickerOpen={isEmojiPickerOpen}
                       isSending={isSendingDraft}
                       isHistoryPanelOpen={isHistoryPanelOpen}
-                      isFullAutoAvailable={isFullAutoAvailable}
-                      isFullAutoActive={isFullAutoActive}
-                      isSemiAutoAvailable={isSemiAutoAvailable}
+                      seatAIHostingEnabled={seatAIHostingEnabled}
+                      conversationAIHostingEnabled={conversationAIHostingEnabled}
+                      seatSemiAutoEnabled={seatSemiAutoEnabled}
                       collectedExpressions={collectedExpressions}
                       hasMoreCollectedExpressions={hasMoreCollectedExpressions}
                       isCollectedExpressionLoadingMore={

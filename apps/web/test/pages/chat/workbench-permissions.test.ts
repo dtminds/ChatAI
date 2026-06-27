@@ -38,7 +38,7 @@ describe("resolveWorkbenchPermissions", () => {
 
     expect(permissions).toMatchObject({
       canSendMessage: true,
-      canEnableFullAuto: false,
+      canToggleConversationAIHosting: false,
       canTakeOverAccount: true,
       canUseConversationActions: true,
       composerPlaceholder: "请输入消息……",
@@ -46,12 +46,12 @@ describe("resolveWorkbenchPermissions", () => {
     });
   });
 
-  it("allows enabling full-auto only when the taken-over account has seat-level auth and switch", () => {
+  it("allows enabling full-auto only when the taken-over account has seat hosting enabled", () => {
     expect(
       resolveWorkbenchPermissions({
         account: createAccount({
-          fullAutoAuth: true,
-          fullAutoSwitch: true,
+          seatAIHostingAuth: true,
+          seatAIHostingEnabled: true,
           takenOverEmployeeId: me.id,
         }),
         activeConversation: createConversation(),
@@ -60,75 +60,75 @@ describe("resolveWorkbenchPermissions", () => {
         subUser: operator,
       }),
     ).toMatchObject({
-      canEnableFullAuto: true,
-      isFullAutoActive: false,
+      canToggleConversationAIHosting: true,
+      conversationAIHostingEnabled: false,
     });
 
     expect(
       resolveWorkbenchPermissions({
         account: createAccount({
-          fullAutoAuth: true,
-          fullAutoSwitch: true,
+          seatAIHostingAuth: true,
+          seatAIHostingEnabled: true,
         }),
         activeConversation: createConversation(),
         bootstrapStatus: "ready",
         me,
         subUser: operator,
-      }).canEnableFullAuto,
+      }).canToggleConversationAIHosting,
     ).toBe(false);
 
     expect(
       resolveWorkbenchPermissions({
         account: createAccount({
-          fullAutoAuth: true,
-          fullAutoSwitch: false,
+          seatAIHostingAuth: true,
+          seatAIHostingEnabled: false,
           takenOverEmployeeId: me.id,
         }),
         activeConversation: createConversation(),
         bootstrapStatus: "ready",
         me,
         subUser: operator,
-      }).canEnableFullAuto,
+      }).canToggleConversationAIHosting,
     ).toBe(false);
   });
 
-  it("treats a full agent mode conversation as active only when full-auto can be enabled", () => {
+  it("derives conversation AI hosting from seat hosting and conversation switch", () => {
     expect(
       resolveWorkbenchPermissions({
         account: createAccount({
-          fullAutoAuth: true,
-          fullAutoSwitch: true,
+          seatAIHostingAuth: true,
+          seatAIHostingEnabled: true,
           takenOverEmployeeId: me.id,
         }),
-        activeConversation: createConversation({ agentMode: "full" }),
+        activeConversation: createConversation({ conversationAIHostingSwitch: true }),
         bootstrapStatus: "ready",
         me,
         subUser: operator,
-      }).isFullAutoActive,
+      }).conversationAIHostingEnabled,
     ).toBe(true);
 
     expect(
       resolveWorkbenchPermissions({
         account: createAccount({
-          fullAutoAuth: true,
-          fullAutoSwitch: true,
+          seatAIHostingAuth: true,
+          seatAIHostingEnabled: false,
         }),
-        activeConversation: createConversation({ agentMode: "full" }),
+        activeConversation: createConversation({ conversationAIHostingSwitch: true }),
         bootstrapStatus: "ready",
         me,
         subUser: operator,
-      }).isFullAutoActive,
+      }).conversationAIHostingEnabled,
     ).toBe(false);
   });
 
   it("blocks sending without showing a hosting placeholder for active full-auto conversations", () => {
     const permissions = resolveWorkbenchPermissions({
       account: createAccount({
-        fullAutoAuth: true,
-        fullAutoSwitch: true,
+        seatAIHostingAuth: true,
+        seatAIHostingEnabled: true,
         takenOverEmployeeId: me.id,
       }),
-      activeConversation: createConversation({ agentMode: "full" }),
+      activeConversation: createConversation({ conversationAIHostingSwitch: true }),
       bootstrapStatus: "ready",
       me,
       subUser: operator,
@@ -141,32 +141,32 @@ describe("resolveWorkbenchPermissions", () => {
     });
   });
 
-  it("does not apply full-auto agent mode blocking when the current account cannot enable full-auto", () => {
+  it("keeps conversation hosting active while showing takeover copy when the account is not taken over", () => {
     const permissions = resolveWorkbenchPermissions({
       account: createAccount({
-        fullAutoAuth: true,
-        fullAutoSwitch: true,
+        seatAIHostingAuth: true,
+        seatAIHostingEnabled: true,
       }),
-      activeConversation: createConversation({ agentMode: "full" }),
+      activeConversation: createConversation({ conversationAIHostingSwitch: true }),
       bootstrapStatus: "ready",
       me,
       subUser: operator,
     });
 
     expect(permissions).toMatchObject({
-      canEnableFullAuto: false,
+      canToggleConversationAIHosting: false,
       canSendMessage: false,
       composerPlaceholder: "当前账号未接管，暂时无法发送消息",
-      isFullAutoActive: false,
+      conversationAIHostingEnabled: true,
     });
   });
 
-  it("allows sending after a full agent mode conversation has exited hosting", () => {
+  it("allows sending after a conversation exits AI hosting", () => {
     const permissions = resolveWorkbenchPermissions({
       account: createAccount({ takenOverEmployeeId: me.id }),
       activeConversation: createConversation({
         agentHostingStatus: "exited",
-        agentMode: "full",
+        conversationAIHostingSwitch: false,
       }),
       bootstrapStatus: "ready",
       me,
@@ -403,7 +403,7 @@ function createConversation(overrides: Partial<Conversation> = {}): Conversation
     customerId: "customer-001",
     customerName: "客户一号",
     id: "conv-001",
-    agentMode: "semi",
+    conversationAIHostingSwitch: false,
     mode: "single",
     preview: "",
     priority: "medium",

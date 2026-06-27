@@ -70,7 +70,7 @@ function getSeedMessageIdAt(conversationId: string, index: number) {
 function createCachedConversation(accountId: string): Conversation {
   return {
     accountId,
-    agentMode: "semi",
+    conversationAIHostingSwitch: false,
     customerAvatarUrl: "",
     customerId: `${accountId}-customer`,
     customerName: `${accountId} 客户`,
@@ -222,24 +222,26 @@ describe("useWorkbenchStore", () => {
   it("changes active conversation full-auto through the workbench service", async () => {
     const baseService = createMockWorkbenchService();
     const changeConversationFullAuto = vi.fn().mockResolvedValue({
-      aiHosted: false,
+      conversationAIHostingSwitch: false,
       conversationId: "conv-001",
-      agentMode: "semi" as const,
       seatId: "drc",
     });
+    const getConversations = vi.fn(baseService.getConversations);
 
     setWorkbenchService({
       ...baseService,
       changeConversationFullAuto,
+      getConversations,
     });
     await useWorkbenchStore.getState().initializeWorkbench();
+    getConversations.mockClear();
     useWorkbenchStore.setState((state) => ({
       accounts: state.accounts.map((account) =>
         account.id === "drc"
           ? {
               ...account,
-              fullAutoAuth: true,
-              fullAutoSwitch: true,
+              seatAIHostingAuth: true,
+              seatAIHostingEnabled: true,
             }
           : account,
       ),
@@ -249,9 +251,8 @@ describe("useWorkbenchStore", () => {
           conversation.id === "conv-001"
             ? {
                 ...conversation,
-                aiHosted: true,
+                conversationAIHostingSwitch: true,
                 agentHostingStatus: "thinking",
-                agentMode: "full",
               }
             : conversation,
         ),
@@ -263,6 +264,125 @@ describe("useWorkbenchStore", () => {
     expect(changeConversationFullAuto).toHaveBeenCalledWith("conv-001", {
       enabled: false,
     });
+    expect(getConversations).not.toHaveBeenCalled();
+    expect(
+      useWorkbenchStore
+        .getState()
+        .conversationListsByScope.drc.find((conversation) => conversation.id === "conv-001")
+        ?.conversationAIHostingSwitch,
+    ).toBe(false);
+  });
+
+  it("patches active conversation full-auto from API response instead of request input", async () => {
+    const baseService = createMockWorkbenchService();
+    const changeConversationFullAuto = vi.fn().mockResolvedValue({
+      conversationAIHostingSwitch: false,
+      conversationId: "conv-001",
+      seatId: "drc",
+    });
+    const getConversations = vi.fn(baseService.getConversations);
+
+    setWorkbenchService({
+      ...baseService,
+      changeConversationFullAuto,
+      getConversations,
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    getConversations.mockClear();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              seatAIHostingAuth: true,
+              seatAIHostingEnabled: true,
+            }
+          : account,
+      ),
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-001"
+            ? {
+                ...conversation,
+                agentHostingStatus: "exited",
+                conversationAIHostingSwitch: false,
+              }
+            : conversation,
+        ),
+      },
+    }));
+
+    await useWorkbenchStore.getState().changeActiveConversationFullAuto(true);
+
+    const conversation = useWorkbenchStore
+      .getState()
+      .conversationListsByScope.drc.find((item) => item.id === "conv-001");
+
+    expect(changeConversationFullAuto).toHaveBeenCalledWith("conv-001", {
+      enabled: true,
+    });
+    expect(getConversations).not.toHaveBeenCalled();
+    expect(conversation).toMatchObject({
+      conversationAIHostingSwitch: false,
+      agentHostingStatus: "exited",
+    });
+  });
+
+  it("locally re-enters active conversation full-auto without keeping exited status", async () => {
+    const baseService = createMockWorkbenchService();
+    const changeConversationFullAuto = vi.fn().mockResolvedValue({
+      conversationAIHostingSwitch: true,
+      conversationId: "conv-001",
+      seatId: "drc",
+    });
+    const getConversations = vi.fn(baseService.getConversations);
+
+    setWorkbenchService({
+      ...baseService,
+      changeConversationFullAuto,
+      getConversations,
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    getConversations.mockClear();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              seatAIHostingAuth: true,
+              seatAIHostingEnabled: true,
+            }
+          : account,
+      ),
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-001"
+            ? {
+                ...conversation,
+                agentHostingStatus: "exited",
+                conversationAIHostingSwitch: false,
+              }
+            : conversation,
+        ),
+      },
+    }));
+
+    await useWorkbenchStore.getState().changeActiveConversationFullAuto(true);
+
+    const conversation = useWorkbenchStore
+      .getState()
+      .conversationListsByScope.drc.find((item) => item.id === "conv-001");
+
+    expect(changeConversationFullAuto).toHaveBeenCalledWith("conv-001", {
+      enabled: true,
+    });
+    expect(getConversations).not.toHaveBeenCalled();
+    expect(conversation).toMatchObject({
+      conversationAIHostingSwitch: true,
+    });
+    expect(conversation?.agentHostingStatus).toBeUndefined();
   });
 
   it("does not change full-auto when the active account cannot enable full-auto", async () => {
@@ -279,8 +399,8 @@ describe("useWorkbenchStore", () => {
         account.id === "drc"
           ? {
               ...account,
-              fullAutoAuth: false,
-              fullAutoSwitch: false,
+              seatAIHostingAuth: false,
+              seatAIHostingEnabled: false,
             }
           : account,
       ),
@@ -341,7 +461,7 @@ describe("useWorkbenchStore", () => {
         account.id === "drc"
           ? {
               ...account,
-              fullAutoAuth: false,
+              seatAIHostingAuth: false,
               semiAutoAuth: false,
             }
           : account,
@@ -369,7 +489,7 @@ describe("useWorkbenchStore", () => {
         account.id === "drc"
           ? {
               ...account,
-              fullAutoAuth: true,
+              seatAIHostingAuth: true,
             }
           : account,
       ),
@@ -396,7 +516,7 @@ describe("useWorkbenchStore", () => {
         account.id === "drc"
           ? {
               ...account,
-              fullAutoAuth: true,
+              seatAIHostingAuth: true,
             }
           : account,
       ),
@@ -437,8 +557,8 @@ describe("useWorkbenchStore", () => {
         account.id === "drc"
           ? {
               ...account,
-              fullAutoAuth: true,
-              fullAutoSwitch: true,
+              seatAIHostingAuth: true,
+              seatAIHostingEnabled: true,
             }
           : account,
       ),
@@ -456,9 +576,8 @@ describe("useWorkbenchStore", () => {
 
     expect(changeConversationFullAuto).toHaveBeenCalledTimes(1);
     fullAutoChange.resolve({
-      aiHosted: true,
+      conversationAIHostingSwitch: true,
       conversationId: "conv-001",
-      agentMode: "full",
       seatId: "drc",
     });
     await Promise.all([firstRequest, secondRequest]);
@@ -480,8 +599,8 @@ describe("useWorkbenchStore", () => {
         account.id === "drc"
           ? {
               ...account,
-              fullAutoAuth: true,
-              fullAutoSwitch: true,
+              seatAIHostingAuth: true,
+              seatAIHostingEnabled: true,
             }
           : account,
       ),
@@ -1459,12 +1578,13 @@ describe("useWorkbenchStore", () => {
 
         return seats.map((seat) =>
           seat.seatId === "drc"
-            ? {
-                ...seat,
-                fullAutoAuth: true,
-                fullAutoSwitch: true,
-              }
-            : seat,
+              ? {
+                  ...seat,
+                  seatAIHostingAuth: true,
+                  seatAIHostingEnabled: true,
+                  fullAutoSwitch: true,
+                }
+              : seat,
         );
       },
       async getConversations(seatId, options) {
@@ -1476,7 +1596,7 @@ describe("useWorkbenchStore", () => {
             conversation.conversationId === "conv-001"
               ? {
                   ...conversation,
-                  agentMode: "full",
+                  conversationAIHostingSwitch: true,
                 }
               : conversation,
           ),
@@ -1581,8 +1701,8 @@ describe("useWorkbenchStore", () => {
         account.id === "drc"
           ? {
               ...account,
-              fullAutoAuth: true,
-              fullAutoSwitch: true,
+              seatAIHostingAuth: true,
+              seatAIHostingEnabled: true,
             }
           : account,
       ),
@@ -1592,7 +1712,7 @@ describe("useWorkbenchStore", () => {
           conversation.id === "conv-001"
             ? {
                 ...conversation,
-                agentMode: "full",
+                conversationAIHostingSwitch: true,
               }
             : conversation,
         ),
@@ -1663,7 +1783,8 @@ describe("useWorkbenchStore", () => {
         account.id === "drc"
           ? {
               ...account,
-              fullAutoAuth: true,
+              seatAIHostingAuth: true,
+              seatAIHostingEnabled: true,
               fullAutoSwitch: true,
             }
           : account,
@@ -1674,7 +1795,7 @@ describe("useWorkbenchStore", () => {
           conversation.id === "conv-001"
             ? {
                 ...conversation,
-                agentMode: "full",
+                conversationAIHostingSwitch: true,
               }
             : conversation,
         ),
@@ -1742,7 +1863,8 @@ describe("useWorkbenchStore", () => {
         account.id === "drc"
           ? {
               ...account,
-              fullAutoAuth: true,
+              seatAIHostingAuth: true,
+              seatAIHostingEnabled: true,
               fullAutoSwitch: true,
             }
           : account,
@@ -1753,7 +1875,7 @@ describe("useWorkbenchStore", () => {
           conversation.id === "conv-001"
             ? {
                 ...conversation,
-                agentMode: "full",
+                conversationAIHostingSwitch: true,
               }
             : conversation,
         ),
@@ -7582,7 +7704,7 @@ describe("useWorkbenchStore", () => {
       priority: "medium",
       thirdExternalUserId: "external-search-001",
       thirdUserId: "third-user-drc",
-      agentMode: "semi",
+      conversationAIHostingSwitch: false,
     };
     const observedPayloads: unknown[] = [];
 
@@ -7640,7 +7762,7 @@ describe("useWorkbenchStore", () => {
         quietFor: "",
         unread: 0,
         updatedAt: "",
-        agentMode: "semi",
+        conversationAIHostingSwitch: false,
       },
     });
 
@@ -7690,7 +7812,7 @@ describe("useWorkbenchStore", () => {
       thirdExternalUserId: "external-search-stale",
       thirdUserId: "third-user-drc",
       unreadCount: 0,
-      agentMode: "semi",
+      conversationAIHostingSwitch: false,
     });
     await selectPromise;
 
@@ -7791,7 +7913,7 @@ describe("useWorkbenchStore", () => {
         quietFor: "",
         unread: 0,
         updatedAt: "",
-        agentMode: "semi",
+        conversationAIHostingSwitch: false,
       },
     });
 
@@ -7823,7 +7945,7 @@ describe("useWorkbenchStore", () => {
       thirdGroupId: "group-search-001",
       thirdUserId: "third-user-drc",
       unreadCount: 0,
-      agentMode: "semi",
+      conversationAIHostingSwitch: false,
     };
 
     setWorkbenchService({
@@ -7895,7 +8017,7 @@ describe("useWorkbenchStore", () => {
         quietFor: "",
         unread: 0,
         updatedAt: "",
-        agentMode: "semi",
+        conversationAIHostingSwitch: false,
       },
     });
 

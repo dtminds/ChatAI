@@ -1,8 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import {
-  CONVERSATION_AGENT_MODE,
-  MATERIAL_COLLECTION_BIZ_TYPE,
-} from "@chatai/contracts";
+import { MATERIAL_COLLECTION_BIZ_TYPE } from "@chatai/contracts";
 import type { MessageRow } from "../../../src/modules/chat/workbench-mappers.js";
 import {
   decodeConversationListCursor,
@@ -3590,6 +3587,8 @@ describe("WorkbenchRepository", () => {
             const query = createQueryBuilder([
               {
                 avatar: "",
+                full_auto_auth: 1,
+                full_auto_switch: 1,
                 host_sub_id: 101,
                 id: 12,
                 is_online: 1,
@@ -3620,13 +3619,13 @@ describe("WorkbenchRepository", () => {
 
     await expect(repository.getSeatsByIds(["13", "12", "12", "not-a-seat"])).resolves.toEqual([
       {
-        aiHostingEnabled: false,
+        seatAIHostingEnabled: true,
         avatar: "",
         bizStatus: 1,
         description: "",
         expireTime: undefined,
-        fullAutoAuth: false,
-        fullAutoSwitch: false,
+        seatAIHostingAuth: true,
+        fullAutoSwitch: true,
         hostSubUserId: "101",
         lastMessageTime: new Date("2026-05-21T06:15:21.000Z").getTime(),
         loginStatus: "online",
@@ -3640,12 +3639,12 @@ describe("WorkbenchRepository", () => {
         unreadCount: 7,
       },
       {
-        aiHostingEnabled: false,
+        seatAIHostingEnabled: false,
         avatar: "",
         bizStatus: 1,
         description: "",
         expireTime: undefined,
-        fullAutoAuth: false,
+        seatAIHostingAuth: false,
         fullAutoSwitch: false,
         hostSubUserId: "202",
         lastMessageTime: new Date("2026-05-21T06:16:21.000Z").getTime(),
@@ -3690,7 +3689,7 @@ describe("WorkbenchRepository", () => {
     );
 
     await expect(repository.getSeatOperateScope("12")).resolves.toEqual({
-      fullAutoAuth: true,
+      seatAIHostingAuth: true,
       hostSubUserId: "101",
       platform: 5,
       seatId: "12",
@@ -5141,7 +5140,6 @@ describe("WorkbenchRepository", () => {
     );
 
     await expect(repository.getConversationLookup("88")).resolves.toEqual({
-      agentMode: CONVERSATION_AGENT_MODE.SEMI,
       id: "88",
       platform: 5,
       seatHostSubUserId: "101",
@@ -5228,7 +5226,6 @@ describe("WorkbenchRepository", () => {
     );
 
     await expect(repository.getConversationLookup("99")).resolves.toEqual({
-      agentMode: CONVERSATION_AGENT_MODE.SEMI,
       id: "99",
       platform: 5,
       seatHostSubUserId: "101",

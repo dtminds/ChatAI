@@ -1,5 +1,4 @@
 import {
-  CONVERSATION_AGENT_MODE,
   type WorkbenchConversationSummaryDto,
   WorkbenchMessageContentType,
   WorkbenchMessageDto,
@@ -17,7 +16,6 @@ import { readBooleanFlag } from "./workbench-flags.js";
 import { getPlayableMediaHost, toPlayableVoicePathname } from "./media-config.js";
 
 export type SeatRow = {
-  ai_hosting_enabled?: number | string | boolean | null;
   avatar: string | null;
   biz_status?: number | string | null;
   expire_time?: number | string | null;
@@ -119,15 +117,17 @@ const CHAT_RECORD_LOADING_WINDOW_MS = 15_000;
 export function mapSeatRow(row: SeatRow): WorkbenchSeatDto {
   const seatName = row.third_user_name || "未命名席位";
   const hostSubUserId = normalizeOptionalId(row.host_sub_id);
+  const seatAIHostingAuth = readBooleanFlag(row.full_auto_auth);
+  const fullAutoSwitch = readBooleanFlag(row.full_auto_switch);
 
   return {
-    aiHostingEnabled: readBooleanFlag(row.ai_hosting_enabled),
+    seatAIHostingEnabled: seatAIHostingAuth && fullAutoSwitch,
     avatar: row.avatar ?? "",
     bizStatus: row.biz_status == null ? 1 : toNumber(row.biz_status),
     description: "",
     expireTime: row.expire_time == null ? undefined : toNumber(row.expire_time),
-    fullAutoAuth: readBooleanFlag(row.full_auto_auth),
-    fullAutoSwitch: readBooleanFlag(row.full_auto_switch),
+    seatAIHostingAuth,
+    fullAutoSwitch,
     hostSubUserId,
     lastMessageTime: toOptionalTimestamp(row.last_message_time),
     loginStatus: row.is_online === 1 ? "online" : "offline",
@@ -174,12 +174,9 @@ export function mapConversationRow(
     mode === "group" ? row.group_avatar ?? "" : row.customer_avatar ?? "";
 
   return {
-    aiHosted: readBooleanFlag(row.full_auto_switch),
     bizStatus: row.biz_status == null ? 0 : toNumber(row.biz_status),
     conversationId: String(row.id),
-    agentMode: readBooleanFlag(row.full_auto_switch)
-      ? CONVERSATION_AGENT_MODE.FULL
-      : CONVERSATION_AGENT_MODE.SEMI,
+    conversationAIHostingSwitch: readBooleanFlag(row.full_auto_switch),
     createdAt: toOptionalTimestamp(row.create_time),
     customerAvatar,
     customerId,

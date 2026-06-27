@@ -1,4 +1,5 @@
 import type { ChatMode, Conversation } from "@/pages/chat/chat-types";
+import { isConversationAIHostingEnabled } from "@/pages/chat/lib/conversation-ai-hosting";
 
 export type ConversationView = "all" | "ai" | "human" | "unread";
 
@@ -21,9 +22,9 @@ const SINGLE_AI_VIEW_OPTIONS = [
 
 export function getConversationViewOptions(
   mode: ChatMode,
-  isAiHostingEnabled: boolean,
+  isSeatAIHostingEnabled: boolean,
 ): ConversationViewOption[] {
-  if (mode !== "single" || !isAiHostingEnabled) {
+  if (mode !== "single" || !isSeatAIHostingEnabled) {
     return [...BASE_VIEW_OPTIONS];
   }
 
@@ -33,9 +34,9 @@ export function getConversationViewOptions(
 export function isConversationViewAvailable(
   view: ConversationView,
   mode: ChatMode,
-  isAiHostingEnabled: boolean,
+  isSeatAIHostingEnabled: boolean,
 ) {
-  return getConversationViewOptions(mode, isAiHostingEnabled).some(
+  return getConversationViewOptions(mode, isSeatAIHostingEnabled).some(
     (option) => option.value === view,
   );
 }
@@ -43,9 +44,9 @@ export function isConversationViewAvailable(
 export function resolveConversationView(
   view: ConversationView,
   mode: ChatMode,
-  isAiHostingEnabled: boolean,
+  isSeatAIHostingEnabled: boolean,
 ): ConversationView {
-  return isConversationViewAvailable(view, mode, isAiHostingEnabled)
+  return isConversationViewAvailable(view, mode, isSeatAIHostingEnabled)
     ? view
     : DEFAULT_CONVERSATION_VIEW;
 }
@@ -54,17 +55,17 @@ export function filterConversationsByView(
   conversations: Conversation[],
   mode: ChatMode,
   view: ConversationView,
-  isAiHostingEnabled = false,
+  isSeatAIHostingEnabled = false,
   retainedConversationIds?: ReadonlySet<string>,
 ) {
-  const resolvedView = resolveConversationView(view, mode, isAiHostingEnabled);
+  const resolvedView = resolveConversationView(view, mode, isSeatAIHostingEnabled);
 
   return conversations.filter((conversation) =>
     isConversationIncludedInView(
       conversation,
       mode,
       resolvedView,
-      isAiHostingEnabled,
+      isSeatAIHostingEnabled,
       retainedConversationIds,
     ),
   );
@@ -74,13 +75,13 @@ export function getConversationIdsInView(
   conversations: Conversation[],
   mode: ChatMode,
   view: ConversationView,
-  isAiHostingEnabled = false,
+  isSeatAIHostingEnabled = false,
 ) {
   return filterConversationsByView(
     conversations,
     mode,
     view,
-    isAiHostingEnabled,
+    isSeatAIHostingEnabled,
   ).map((conversation) => conversation.id);
 }
 
@@ -88,7 +89,7 @@ function isConversationIncludedInView(
   conversation: Conversation,
   mode: ChatMode,
   resolvedView: ConversationView,
-  isAiHostingEnabled: boolean,
+  isSeatAIHostingEnabled: boolean,
   retainedConversationIds?: ReadonlySet<string>,
 ) {
     if (conversation.mode !== mode) {
@@ -104,11 +105,14 @@ function isConversationIncludedInView(
     }
 
     if (resolvedView === "ai") {
-      return isAiHostingEnabled && conversation.aiHosted === true;
+      return isConversationAIHostingEnabled(conversation, isSeatAIHostingEnabled);
     }
 
     if (resolvedView === "human") {
-      return isAiHostingEnabled && conversation.aiHosted !== true;
+      return (
+        isSeatAIHostingEnabled &&
+        !isConversationAIHostingEnabled(conversation, isSeatAIHostingEnabled)
+      );
     }
 
     return true;

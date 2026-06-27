@@ -62,10 +62,10 @@ import { normalizeMediaAssetUrl } from "@/pages/chat/lib/media-asset-url";
 import { isValidMessageSeq } from "@/pages/chat/lib/message-seq";
 import { notifyPulledCustomerMessage } from "@/pages/chat/lib/new-message-title-alert";
 import { canUseWorkbenchConversationActions } from "@/pages/chat/lib/workbench-permissions";
+import { isConversationAIHostingEnabled } from "@/pages/chat/lib/conversation-ai-hosting";
 import { seedCustomerProfiles } from "@/pages/chat/mock-data";
 import {
   CHAT_TYPE,
-  CONVERSATION_AGENT_MODE,
   SMART_REPLY_POLL_INTERVAL_MS,
   type WorkbenchFullAutoAnswerStatusResponse,
   type SettingsSidebarItem,
@@ -930,7 +930,7 @@ function getPageSmartRepliesForConversation(
     page.conversationId,
   );
 
-  if (isConversationFullAutoActive(state, conversation)) {
+  if (isConversationAIHostingEnabledInState(state, conversation)) {
     return {};
   }
 
@@ -1119,7 +1119,7 @@ function canUseSmartReplyForConversation(
   );
 
   if (conversation) {
-    if (isConversationFullAutoActive(state, conversation)) {
+    if (isConversationAIHostingEnabledInState(state, conversation)) {
       return false;
     }
 
@@ -1926,6 +1926,34 @@ function applyUnreadResult(
   };
 }
 
+function applyConversationAIHostingSwitchResult(
+  state: WorkbenchStore,
+  conversationId: string,
+  accountId: string,
+  enabled: boolean,
+) {
+  return {
+    conversationListsByScope: {
+      ...state.conversationListsByScope,
+      [accountId]: (state.conversationListsByScope[accountId] ?? []).map(
+        (conversation): Conversation =>
+          conversation.id === conversationId
+            ? {
+                ...conversation,
+                conversationAIHostingSwitch: enabled,
+                agentHostingStatus: enabled
+                  ? undefined
+                  : "exited",
+              }
+            : conversation,
+      ),
+    },
+    fullAutoStatusByConversationId: enabled
+      ? state.fullAutoStatusByConversationId
+      : omitByKeys(state.fullAutoStatusByConversationId, [conversationId]),
+  };
+}
+
 function updateConversationPreview(
   conversations: Conversation[],
   conversationId: string,
@@ -2124,26 +2152,17 @@ function canUseConversationActions(state: WorkbenchState, account: Account | und
   });
 }
 
-function isConversationFullAutoActive(
+function isConversationAIHostingEnabledInState(
   state: WorkbenchState,
   conversation: Conversation | undefined,
 ) {
-  if (
-    !conversation ||
-    conversation.agentMode !== CONVERSATION_AGENT_MODE.FULL ||
-    conversation.agentHostingStatus === "exited"
-  ) {
-    return false;
-  }
-
   const account = state.accounts.find(
-    (item) => item.id === conversation.accountId,
+    (item) => item.id === conversation?.accountId,
   );
 
-  return (
-    canUseConversationActions(state, account) &&
-    account?.fullAutoAuth === true &&
-    account.fullAutoSwitch === true
+  return isConversationAIHostingEnabled(
+    conversation,
+    account?.seatAIHostingEnabled === true,
   );
 }
 
@@ -2627,7 +2646,7 @@ export function createWorkbenchStore() {
 
       if (
         currentState.activeConversationId !== conversationId ||
-        !isConversationFullAutoActive(currentState, conversation) ||
+        !isConversationAIHostingEnabledInState(currentState, conversation) ||
         conversation?.mode !== "single" ||
         Date.now() - lastCustomerMessageAt > FULL_AUTO_RECENT_CUSTOMER_MESSAGE_WINDOW_MS
       ) {
@@ -2707,7 +2726,7 @@ export function createWorkbenchStore() {
       const conversation = getConversationById(state, conversationId);
 
       if (
-        !isConversationFullAutoActive(state, conversation) ||
+        !isConversationAIHostingEnabledInState(state, conversation) ||
         conversation?.mode !== "single"
       ) {
         clearFullAutoRuntime(conversationId);
@@ -5522,7 +5541,7 @@ export function createWorkbenchStore() {
 
       const canConfigureMode =
         mode === "full"
-          ? account?.fullAutoAuth === true
+          ? account?.seatAIHostingAuth === true
           : account?.semiAutoAuth === true;
 
       if (!canUseConversationActions(state, account) || !canConfigureMode) {
@@ -5536,19 +5555,28 @@ export function createWorkbenchStore() {
           enabled,
           mode,
         });
-        set((currentState) => ({
-          accounts: currentState.accounts.map((item) =>
-            item.id === response.seatId
-              ? {
-                  ...item,
-                  fullAutoSwitch: response.fullAutoSwitch,
-                  semiAutoSwitch: response.semiAutoSwitch,
-                }
-              : item,
-          ),
-          fullAutoActionError: undefined,
-          seatAgentModeActionPending: false,
-        }));
+        set((currentState) => {
+          const nextAccount = currentState.accounts.find(
+            (item) => item.id === response.seatId,
+          );
+          const nextSeatAIHostingEnabled =
+            nextAccount?.seatAIHostingAuth === true &&
+            response.fullAutoSwitch === true;
+
+          return {
+            accounts: currentState.accounts.map((item) =>
+              item.id === response.seatId
+                ? {
+                    ...item,
+                    fullAutoSwitch: response.fullAutoSwitch,
+                    seatAIHostingEnabled: nextSeatAIHostingEnabled,
+                    semiAutoSwitch: response.semiAutoSwitch,
+                  }
+                : item,
+            ),
+          };
+        });
+        set({ fullAutoActionError: undefined, seatAgentModeActionPending: false });
       } catch (error) {
         set({
           fullAutoActionError: getRequestErrorMessage(
@@ -5579,8 +5607,7 @@ export function createWorkbenchStore() {
 
       if (
         !canUseConversationActions(state, account) ||
-        account?.fullAutoAuth !== true ||
-        account.fullAutoSwitch !== true
+        account?.seatAIHostingEnabled !== true
       ) {
         return;
       }
@@ -5588,9 +5615,22 @@ export function createWorkbenchStore() {
       set({ fullAutoActionPending: true });
 
       try {
-        await changeConversationFullAuto(activeConversationId, enabled);
-        await reloadAccountConversations(conversation.accountId);
-        set({ fullAutoActionError: undefined, fullAutoActionPending: false });
+        const response = await changeConversationFullAuto(activeConversationId, enabled);
+        const nextConversationAIHostingSwitch =
+          response.conversationAIHostingSwitch === true;
+        if (!nextConversationAIHostingSwitch) {
+          clearFullAutoRuntime(activeConversationId);
+        }
+        set((currentState) => ({
+          ...applyConversationAIHostingSwitchResult(
+            currentState,
+            activeConversationId,
+            conversation.accountId,
+            nextConversationAIHostingSwitch,
+          ),
+          fullAutoActionError: undefined,
+          fullAutoActionPending: false,
+        }));
       } catch (error) {
         set({
           fullAutoActionError: getRequestErrorMessage(

@@ -105,4 +105,5 @@ export const uiComponentNames = [
   "Breadcrumb",
   "AspectRatio",
   "Sonner",
+  "AnimatedTextSwitch",
 ] as const;

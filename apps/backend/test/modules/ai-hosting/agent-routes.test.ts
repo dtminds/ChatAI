@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { buildMockedApp } from "../../helpers/build-mocked-app";
 
 describe("AI hosting agent routes", () => {
@@ -100,6 +100,36 @@ describe("AI hosting agent routes", () => {
     expect(db.likeSearchValues).toContain("%\\%\\_%");
 
     await app.close();
+  });
+
+  it("runs agent list rows, count, and model queries in parallel", async () => {
+    const probe = createBlockedAgentListProbe();
+    const { app, authorization } = await createAiHostingApp(["admin"], {
+      beforeExecute: probe.beforeExecute,
+    });
+
+    const responsePromise = app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/ai-hosting/agents",
+    });
+
+    try {
+      await vi.waitFor(() => {
+        expect(probe.queryStarts.map((query) => query.kind)).toContain("rows");
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(probe.queryStarts.map((query) => query.kind).sort()).toEqual([
+        "count",
+        "models",
+        "rows",
+      ]);
+    } finally {
+      probe.releaseRowsQuery();
+      await responsePromise;
+      await app.close();
+    }
   });
 
   it("saves drafts without writing publish history and publishes only changed model or prompt", async () => {
@@ -660,7 +690,7 @@ describe("AI hosting agent routes", () => {
 
 async function createAiHostingApp(
   roles = ["admin"],
-  options: { bulkHostingSeats?: boolean; uid?: number } = {},
+  options: CreateAiHostingDbMockOptions = {},
 ) {
   const app = await buildMockedApp();
   const token = app.jwt.sign({
@@ -681,7 +711,48 @@ async function createAiHostingApp(
   };
 }
 
-function createAiHostingDbMock(options: { bulkHostingSeats?: boolean; uid?: number } = {}) {
+type QueryExecutionEvent = {
+  isCountQuery: boolean;
+  table: string;
+  type: "execute" | "executeTakeFirst";
+};
+
+type CreateAiHostingDbMockOptions = {
+  beforeExecute?: (event: QueryExecutionEvent) => Promise<void> | void;
+  bulkHostingSeats?: boolean;
+  uid?: number;
+};
+
+function createBlockedAgentListProbe() {
+  const queryStarts: Array<QueryExecutionEvent & { kind: "count" | "models" | "rows" }> = [];
+  let releaseRowsQuery: (() => void) | undefined;
+  const rowsQueryGate = new Promise<void>((resolve) => {
+    releaseRowsQuery = resolve;
+  });
+
+  return {
+    async beforeExecute(event: QueryExecutionEvent) {
+      if (event.table === "xy_wap_embed_agent as agent" && event.type === "execute") {
+        queryStarts.push({ ...event, kind: "rows" });
+        await rowsQueryGate;
+        return;
+      }
+
+      if (event.table === "xy_wap_embed_agent as agent" && event.isCountQuery) {
+        queryStarts.push({ ...event, kind: "count" });
+        return;
+      }
+
+      if (event.table === "xy_wap_embed_ai_model" && event.type === "execute") {
+        queryStarts.push({ ...event, kind: "models" });
+      }
+    },
+    queryStarts,
+    releaseRowsQuery: () => releaseRowsQuery?.(),
+  };
+}
+
+function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
   const subUsers = [
     {
       id: 1,
@@ -852,8 +923,15 @@ function createAiHostingDbMock(options: { bulkHostingSeats?: boolean; uid?: numb
     selectFrom(table: string) {
       const wheres: Array<[string, string, unknown]> = [];
       const orderByCalls: Array<[string, string | undefined]> = [];
+      let isCountQuery = false;
       const builder = {
         execute: async () => {
+          await options.beforeExecute?.({
+            isCountQuery,
+            table,
+            type: "execute",
+          });
+
           if (table === "xy_wap_embed_agent" || table === "xy_wap_embed_agent as agent") {
             state.agentListWheres = wheres;
 
@@ -924,6 +1002,12 @@ function createAiHostingDbMock(options: { bulkHostingSeats?: boolean; uid?: numb
           throw new Error(`Unexpected execute table: ${table}`);
         },
         executeTakeFirst: async () => {
+          await options.beforeExecute?.({
+            isCountQuery,
+            table,
+            type: "executeTakeFirst",
+          });
+
           if (table === "xy_wap_embed_sub_user_session") {
             return {
               expires_at: new Date(Date.now() + 1000),
@@ -1017,7 +1101,12 @@ function createAiHostingDbMock(options: { bulkHostingSeats?: boolean; uid?: numb
           orderByCalls.push([column, direction]);
           return builder;
         },
-        select: (selection: string | string[]) => {
+        select: (selection: string | string[] | ((expressionBuilder: unknown) => unknown)) => {
+          if (typeof selection === "function") {
+            isCountQuery = true;
+            return builder;
+          }
+
           if (table === "xy_wap_embed_agent as agent") {
             state.agentListSelects = Array.isArray(selection) ? selection : [selection];
           }

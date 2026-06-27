@@ -87,8 +87,11 @@ export class AiHostingService {
     const scope = await this.getTenantScope(currentSubUserId);
     const pagination = normalizePagination(options);
     const normalizedQuery = options.query?.trim();
-    const rows = await this.listAgentRows(scope, pagination, normalizedQuery);
-    const models = await this.listModelRows(scope);
+    const [rows, models, total] = await Promise.all([
+      this.listAgentRows(scope, pagination, normalizedQuery),
+      this.listModelRows(scope),
+      this.countAgents(scope, normalizedQuery),
+    ]);
     const modelMap = new Map(models.map((model) => [String(model.id), mapModelSummary(model)]));
 
     return {
@@ -96,7 +99,7 @@ export class AiHostingService {
       pagination: {
         page: pagination.page,
         pageSize: pagination.pageSize,
-        total: await this.countAgents(scope, normalizedQuery),
+        total,
       },
     };
   }

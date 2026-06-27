@@ -1,3 +1,4 @@
+import { KB_SEARCH_QUERY_MAX_LENGTH } from "@chatai/contracts";
 import type {
   KbChunkListResponse,
   KbDocDetail,
@@ -7,7 +8,7 @@ import type {
 } from "@chatai/contracts";
 import type { Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
-import { NotFoundError } from "../../shared/errors.js";
+import { BadRequestError, NotFoundError } from "../../shared/errors.js";
 import type { RequestAwareLogger } from "../../shared/logger.js";
 import type { AgentKbJavaClient } from "./agent-kb-java-client.js";
 import { createAgentKbJavaClient } from "./agent-kb-java-client.js";
@@ -40,7 +41,7 @@ export class KbReadService {
   ): Promise<KbListResponse> {
     const uid = tenant.uid;
     const pagination = normalizePagination(options, maxKbListPageSize);
-    const normalizedQuery = options.query?.trim();
+    const normalizedQuery = normalizeSearchQuery(options.query);
 
     let query = this.db
       .selectFrom("xy_wap_embed_agent_kb")
@@ -112,7 +113,7 @@ export class KbReadService {
     }
 
     const pagination = normalizePagination(options);
-    const normalizedQuery = options.query?.trim();
+    const normalizedQuery = normalizeSearchQuery(options.query);
 
     let query = this.db
       .selectFrom("xy_wap_embed_agent_kb_doc")
@@ -276,4 +277,21 @@ function normalizePagination(input: { page?: number; pageSize?: number }, maxSiz
       : defaultPageSize;
 
   return { page, pageSize };
+}
+
+function normalizeSearchQuery(query?: string) {
+  const normalizedQuery = query?.trim();
+
+  if (!normalizedQuery) {
+    return undefined;
+  }
+
+  if (normalizedQuery.length > KB_SEARCH_QUERY_MAX_LENGTH) {
+    throw new BadRequestError(
+      "INVALID_KB_QUERY",
+      `搜索关键词不能超过 ${KB_SEARCH_QUERY_MAX_LENGTH} 个字符`,
+    );
+  }
+
+  return normalizedQuery;
 }

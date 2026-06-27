@@ -1,5 +1,6 @@
 import {
   apiSuccess,
+  KB_SEARCH_QUERY_MAX_LENGTH,
   KbCreateRequestSchema,
   KbDocTypeSchema,
   type KbCreateRequest,
@@ -17,7 +18,7 @@ const NumericStringSchema = Type.String({ pattern: "^[0-9]+$" });
 const KbListQuerySchema = Type.Object({
   page: Type.Optional(NumericStringSchema),
   pageSize: Type.Optional(NumericStringSchema),
-  query: Type.Optional(Type.String()),
+  query: Type.Optional(Type.String({ maxLength: KB_SEARCH_QUERY_MAX_LENGTH })),
 });
 
 const KbParamsSchema = Type.Object({
@@ -28,7 +29,7 @@ const KbDocListQuerySchema = Type.Object({
   docType: Type.Optional(KbDocTypeSchema),
   page: Type.Optional(NumericStringSchema),
   pageSize: Type.Optional(NumericStringSchema),
-  query: Type.Optional(Type.String()),
+  query: Type.Optional(Type.String({ maxLength: KB_SEARCH_QUERY_MAX_LENGTH })),
 });
 
 const KbDocParamsSchema = Type.Object({

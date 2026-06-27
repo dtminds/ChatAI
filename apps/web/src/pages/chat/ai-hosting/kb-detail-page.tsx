@@ -9,6 +9,7 @@ import {
   Search01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { KB_SEARCH_QUERY_MAX_LENGTH } from "@chatai/contracts";
 import { Link, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import {
@@ -334,6 +335,7 @@ export function KbDetailPage() {
               <Input
                 aria-label="搜索知识"
                 className="h-10 rounded-[8px] pl-9"
+                maxLength={KB_SEARCH_QUERY_MAX_LENGTH}
                 onChange={(event) => {
                   setSearchQuery(event.target.value);
                   setCurrentPage(1);

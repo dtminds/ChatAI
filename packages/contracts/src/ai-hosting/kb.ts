@@ -1,5 +1,7 @@
 import { Type, type Static } from "@sinclair/typebox";
 
+export const KB_SEARCH_QUERY_MAX_LENGTH = 32;
+
 export const KbDocTypeSchema = Type.Union([
   Type.Literal("qa"),
   Type.Literal("document"),

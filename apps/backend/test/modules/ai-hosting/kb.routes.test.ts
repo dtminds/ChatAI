@@ -90,6 +90,46 @@ describe("KB read routes", () => {
     expect(subUserLookups).toEqual([]);
   });
 
+  it("rejects kb list queries longer than 32 characters", async () => {
+    const context = await createAuthenticatedKbApp();
+    app = context.app;
+
+    const response = await app.inject({
+      headers: { authorization: context.authorization },
+      method: "GET",
+      url: `/api/server/ai-hosting/kbs?query=${"a".repeat(33)}`,
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      error: {
+        code: "BAD_REQUEST",
+        message: "搜索关键词不能超过 32 个字符",
+      },
+      success: false,
+    });
+  });
+
+  it("rejects kb doc list queries longer than 32 characters", async () => {
+    const context = await createAuthenticatedKbApp();
+    app = context.app;
+
+    const response = await app.inject({
+      headers: { authorization: context.authorization },
+      method: "GET",
+      url: `/api/server/ai-hosting/kbs/1/docs?query=${"a".repeat(33)}`,
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      error: {
+        code: "BAD_REQUEST",
+        message: "搜索关键词不能超过 32 个字符",
+      },
+      success: false,
+    });
+  });
+
   it("lists docs and chunks for the current tenant", async () => {
     const context = await createAuthenticatedKbApp();
     app = context.app;

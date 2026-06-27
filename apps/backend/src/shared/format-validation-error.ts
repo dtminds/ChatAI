@@ -3,6 +3,7 @@ import type { FastifyError } from "fastify";
 const REQUEST_FIELD_LABELS: Record<string, string> = {
   description: "链接描述",
   fileName: "文件名称",
+  query: "搜索关键词",
   title: "链接标题",
   groupId: "分组",
   messageId: "消息",

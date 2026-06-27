@@ -128,6 +128,19 @@ describe("KbReadService", () => {
     expect(response.pagination.total).toBe(0);
   });
 
+  it("rejects kb list search queries longer than 32 characters", async () => {
+    const { service } = createService();
+
+    await expect(
+      service.listKbs(tenant, {
+        query: "a".repeat(33),
+      }),
+    ).rejects.toMatchObject({
+      code: "INVALID_KB_QUERY",
+      statusCode: 400,
+    });
+  });
+
   it("runs kb list rows and total queries in parallel", async () => {
     const probe = createBlockedListProbe("xy_wap_embed_agent_kb");
     const { service } = createService(vi.fn(), probe.dbOptions);
@@ -177,6 +190,19 @@ describe("KbReadService", () => {
       docId: "1001",
       docType: "document",
       status: "completed",
+    });
+  });
+
+  it("rejects kb doc list search queries longer than 32 characters", async () => {
+    const { service } = createService();
+
+    await expect(
+      service.listKbDocs(tenant, "1", {
+        query: "a".repeat(33),
+      }),
+    ).rejects.toMatchObject({
+      code: "INVALID_KB_QUERY",
+      statusCode: 400,
     });
   });
 

@@ -17,7 +17,7 @@ import {
   KB_DOC_TYPE_FAQ,
   KB_DOC_TYPE_IMAGE,
 } from "./kb-doc.service.js";
-import { parseRequiredNumericId, resolveAgentKbUid } from "./kb-tenant-utils.js";
+import { type AgentKbTenant, parseRequiredNumericId } from "./kb-tenant-utils.js";
 
 const KB_CHUNK_TITLE_MAX_LENGTH = 256;
 const dbActiveStatus = 1;
@@ -34,10 +34,11 @@ export class KbChunkService {
   ) {}
 
   async addKbChunk(
-    subUserId: string,
+    tenant: AgentKbTenant,
     request: KbChunkCreateRequest,
   ): Promise<KbChunkCreateResponse> {
-    const uid = await resolveAgentKbUid(this.db, subUserId);
+    const uid = tenant.uid;
+    const subUserId = tenant.subUserId;
     const docNumericId = parseRequiredNumericId(request.docId, "KB_DOC_NOT_FOUND", "知识不存在");
     const doc = await this.getKbDocRow(uid, docNumericId);
 
@@ -74,11 +75,12 @@ export class KbChunkService {
   }
 
   async updateKbChunk(
-    subUserId: string,
+    tenant: AgentKbTenant,
     chunkId: string,
     request: KbChunkUpdateRequest,
   ): Promise<KbChunkUpdateResponse> {
-    const uid = await resolveAgentKbUid(this.db, subUserId);
+    const uid = tenant.uid;
+    const subUserId = tenant.subUserId;
     const chunkNumericId = parseRequiredNumericId(chunkId, "KB_CHUNK_NOT_FOUND", "切片不存在");
     const chunk = await this.getKbChunkRow(uid, chunkNumericId);
 
@@ -114,8 +116,9 @@ export class KbChunkService {
     return { updated: true };
   }
 
-  async deleteKbChunk(subUserId: string, chunkId: string): Promise<KbChunkDeleteResponse> {
-    const uid = await resolveAgentKbUid(this.db, subUserId);
+  async deleteKbChunk(tenant: AgentKbTenant, chunkId: string): Promise<KbChunkDeleteResponse> {
+    const uid = tenant.uid;
+    const subUserId = tenant.subUserId;
     const chunkNumericId = parseRequiredNumericId(chunkId, "KB_CHUNK_NOT_FOUND", "切片不存在");
 
     await this.assertKbChunkExists(uid, chunkNumericId);

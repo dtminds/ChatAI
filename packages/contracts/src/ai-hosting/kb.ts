@@ -1,5 +1,7 @@
 import { Type, type Static } from "@sinclair/typebox";
 
+export const KB_SEARCH_QUERY_MAX_LENGTH = 32;
+
 export const KbDocTypeSchema = Type.Union([
   Type.Literal("qa"),
   Type.Literal("document"),
@@ -29,6 +31,13 @@ export const KbCreateRequestSchema = Type.Object({
   description: Type.Optional(Type.String({ maxLength: 1000 })),
   name: Type.String({ minLength: 1, maxLength: 30 }),
 });
+
+export const KbCreateResponseSchema = Type.Object(
+  {
+    kbId: Type.String(),
+  },
+  { additionalProperties: false },
+);
 
 export const KbListItemSchema = Type.Object({
   createdAt: Type.String(),
@@ -102,6 +111,7 @@ export const KbChunkListResponseSchema = Type.Object({
 });
 
 export type KbCreateRequest = Static<typeof KbCreateRequestSchema>;
+export type KbCreateResponse = Static<typeof KbCreateResponseSchema>;
 export type KbDocType = Static<typeof KbDocTypeSchema>;
 export type KbDocStatus = Static<typeof KbDocStatusSchema>;
 export type KbChunkType = Static<typeof KbChunkTypeSchema>;

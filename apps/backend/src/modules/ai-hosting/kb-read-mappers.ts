@@ -32,7 +32,31 @@ const SYNC_STATUS_PARSING = new Set([3, 5, 6]);
 
 const STATUS_MESSAGE_MAX_LENGTH = 200;
 
-export function mapKbListItem(row: Selectable<XyWapEmbedAgentKb>): KbListItem {
+type KbListRow = Pick<
+  Selectable<XyWapEmbedAgentKb>,
+  "create_time" | "id" | "name" | "remark" | "update_time"
+>;
+
+type KbDocListRow = Pick<
+  Selectable<XyWapEmbedAgentKbDoc>,
+  | "create_time"
+  | "doc_suffix"
+  | "doc_type"
+  | "doc_url"
+  | "id"
+  | "kb_id"
+  | "name"
+  | "point_num"
+  | "remark"
+  | "sync_error_msg"
+  | "sync_status"
+  | "update_time"
+>;
+
+type KbDocDetailRow = KbDocListRow &
+  Pick<Selectable<XyWapEmbedAgentKbDoc>, "volc_doc_id">;
+
+export function mapKbListItem(row: KbListRow): KbListItem {
   return {
     createdAt: toIsoString(row.create_time),
     description: row.remark ?? "",
@@ -42,7 +66,7 @@ export function mapKbListItem(row: Selectable<XyWapEmbedAgentKb>): KbListItem {
   };
 }
 
-export function mapKbDocListItem(row: Selectable<XyWapEmbedAgentKbDoc>): KbDocListItem {
+export function mapKbDocListItem(row: KbDocListRow): KbDocListItem {
   const status = mapSyncStatus(row.sync_status);
   const statusMessage = truncateStatusMessage(row.sync_error_msg);
 
@@ -62,7 +86,7 @@ export function mapKbDocListItem(row: Selectable<XyWapEmbedAgentKbDoc>): KbDocLi
   };
 }
 
-export function mapKbDocDetail(row: Selectable<XyWapEmbedAgentKbDoc>): KbDocDetail {
+export function mapKbDocDetail(row: KbDocDetailRow): KbDocDetail {
   return {
     ...mapKbDocListItem(row),
     volcDocId: row.volc_doc_id ?? undefined,

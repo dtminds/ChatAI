@@ -12,7 +12,8 @@ import {
 import { Type, type Static } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { ForbiddenError } from "../../shared/errors.js";
-import { createAiHostingService } from "./ai-hosting.service.js";
+import { createAiHostingAgentService } from "./ai-hosting-agent.service.js";
+import { createAiHostingSettingsService } from "./ai-hosting-settings.service.js";
 
 const NumericStringSchema = Type.String({ pattern: "^[0-9]+$" });
 
@@ -40,7 +41,7 @@ export async function registerAiHostingRoutes(app: FastifyInstance) {
     },
     async (request) => {
       return apiSuccess(
-        await createAiHostingService(app.db).listAgents(getSubUserId(request), {
+        await createAiHostingAgentService(app.db).listAgents(getUid(request), {
           page: parseOptionalInteger(request.query.page),
           pageSize: parseOptionalInteger(request.query.pageSize),
           query: request.query.query,
@@ -55,7 +56,7 @@ export async function registerAiHostingRoutes(app: FastifyInstance) {
       preHandler: app.authenticate,
     },
     async (request) => {
-      return apiSuccess(await createAiHostingService(app.db).listModels(getSubUserId(request)));
+      return apiSuccess(await createAiHostingAgentService(app.db).listModels(getUid(request)));
     },
   );
 
@@ -66,7 +67,7 @@ export async function registerAiHostingRoutes(app: FastifyInstance) {
     },
     async (request) => {
       return apiSuccess(
-        await createAiHostingService(app.db).listHostingSettings(getSubUserId(request)),
+        await createAiHostingSettingsService(app.db).listHostingSettings(getSubUserId(request)),
       );
     },
   );
@@ -82,7 +83,7 @@ export async function registerAiHostingRoutes(app: FastifyInstance) {
     async (request) => {
       assertAiHostingManage(request);
       return apiSuccess(
-        await createAiHostingService(app.db).updateHostingSettings(
+        await createAiHostingSettingsService(app.db).updateHostingSettings(
           getSubUserId(request),
           request.body,
         ),
@@ -100,8 +101,8 @@ export async function registerAiHostingRoutes(app: FastifyInstance) {
     },
     async (request) => {
       return apiSuccess(
-        await createAiHostingService(app.db).getAgent(
-          getSubUserId(request),
+        await createAiHostingAgentService(app.db).getAgent(
+          getUid(request),
           request.params.agentId,
         ),
       );
@@ -119,7 +120,10 @@ export async function registerAiHostingRoutes(app: FastifyInstance) {
     async (request) => {
       assertAiHostingManage(request);
       return apiSuccess(
-        await createAiHostingService(app.db).createAgent(getSubUserId(request), request.body),
+        await createAiHostingAgentService(app.db).createAgent(
+          getAgentWriteContext(request),
+          request.body,
+        ),
       );
     },
   );
@@ -139,8 +143,8 @@ export async function registerAiHostingRoutes(app: FastifyInstance) {
     async (request) => {
       assertAiHostingManage(request);
       return apiSuccess(
-        await createAiHostingService(app.db).updateAgent(
-          getSubUserId(request),
+        await createAiHostingAgentService(app.db).updateAgent(
+          getAgentWriteContext(request),
           request.params.agentId,
           request.body,
         ),
@@ -163,8 +167,8 @@ export async function registerAiHostingRoutes(app: FastifyInstance) {
     async (request) => {
       assertAiHostingManage(request);
       return apiSuccess(
-        await createAiHostingService(app.db).renameAgent(
-          getSubUserId(request),
+        await createAiHostingAgentService(app.db).renameAgent(
+          getAgentWriteContext(request),
           request.params.agentId,
           request.body,
         ),
@@ -183,8 +187,8 @@ export async function registerAiHostingRoutes(app: FastifyInstance) {
     async (request) => {
       assertAiHostingManage(request);
       return apiSuccess(
-        await createAiHostingService(app.db).publishAgent(
-          getSubUserId(request),
+        await createAiHostingAgentService(app.db).publishAgent(
+          getAgentWriteContext(request),
           request.params.agentId,
         ),
       );
@@ -202,8 +206,8 @@ export async function registerAiHostingRoutes(app: FastifyInstance) {
     async (request) => {
       assertAiHostingManage(request);
       return apiSuccess(
-        await createAiHostingService(app.db).restorePublishedAgent(
-          getSubUserId(request),
+        await createAiHostingAgentService(app.db).restorePublishedAgent(
+          getAgentWriteContext(request),
           request.params.agentId,
         ),
       );
@@ -221,8 +225,8 @@ export async function registerAiHostingRoutes(app: FastifyInstance) {
     async (request) => {
       assertAiHostingManage(request);
       return apiSuccess(
-        await createAiHostingService(app.db).removeAgent(
-          getSubUserId(request),
+        await createAiHostingAgentService(app.db).removeAgent(
+          getAgentWriteContext(request),
           request.params.agentId,
         ),
       );
@@ -230,8 +234,19 @@ export async function registerAiHostingRoutes(app: FastifyInstance) {
   );
 }
 
-function getSubUserId(request: { user?: { subUserId: string } }) {
-  return request.user?.subUserId ?? "";
+function getSubUserId(request: FastifyRequest) {
+  return request.user.subUserId;
+}
+
+function getUid(request: FastifyRequest) {
+  return request.user.uid;
+}
+
+function getAgentWriteContext(request: FastifyRequest) {
+  return {
+    operatorSubUserId: request.user.subUserId,
+    uid: request.user.uid,
+  };
 }
 
 function parseOptionalInteger(value: string | undefined) {

@@ -120,6 +120,10 @@ export interface XyWapEmbedAgent {
    */
   last_operator_id: Generated<number>;
   /**
+   * 最近一次发布时间，毫秒时间戳；0 表示未发布
+   */
+  last_publish_time: Generated<number>;
+  /**
    * 关联模型（xy_wap_embed_ai_model.id）
    */
   model_id: Generated<number>;

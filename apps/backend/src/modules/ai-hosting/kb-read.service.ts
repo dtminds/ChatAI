@@ -28,6 +28,22 @@ const defaultPage = 1;
 const defaultPageSize = 10;
 const maxPageSize = 100;
 const maxKbListPageSize = 200;
+const kbListColumns = ["id", "name", "remark", "create_time", "update_time"] as const;
+const kbDocListColumns = [
+  "id",
+  "kb_id",
+  "name",
+  "remark",
+  "doc_suffix",
+  "doc_type",
+  "doc_url",
+  "point_num",
+  "sync_error_msg",
+  "sync_status",
+  "create_time",
+  "update_time",
+] as const;
+const kbDocDetailColumns = [...kbDocListColumns, "volc_doc_id"] as const;
 
 export class KbReadService {
   constructor(
@@ -45,7 +61,7 @@ export class KbReadService {
 
     let query = this.db
       .selectFrom("xy_wap_embed_agent_kb")
-      .selectAll()
+      .select(kbListColumns)
       .where("uid", "=", uid)
       .where("status", "=", dbActiveStatus);
 
@@ -82,7 +98,7 @@ export class KbReadService {
 
     const row = await this.db
       .selectFrom("xy_wap_embed_agent_kb")
-      .selectAll()
+      .select(kbListColumns)
       .where("id", "=", kbNumericId)
       .where("uid", "=", uid)
       .where("status", "=", dbActiveStatus)
@@ -117,7 +133,7 @@ export class KbReadService {
 
     let query = this.db
       .selectFrom("xy_wap_embed_agent_kb_doc")
-      .selectAll()
+      .select(kbDocListColumns)
       .where("uid", "=", uid)
       .where("kb_id", "=", kbNumericId)
       .where("status", "=", dbActiveStatus);
@@ -159,7 +175,7 @@ export class KbReadService {
 
     const row = await this.db
       .selectFrom("xy_wap_embed_agent_kb_doc")
-      .selectAll()
+      .select(kbDocDetailColumns)
       .where("id", "=", docNumericId)
       .where("uid", "=", uid)
       .where("status", "=", dbActiveStatus)

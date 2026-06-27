@@ -37,6 +37,22 @@ const tenant = {
   uid: 9001,
 };
 
+const kbListColumns = ["id", "name", "remark", "create_time", "update_time"];
+const kbDocListColumns = [
+  "id",
+  "kb_id",
+  "name",
+  "remark",
+  "doc_suffix",
+  "doc_type",
+  "doc_url",
+  "point_num",
+  "sync_error_msg",
+  "sync_status",
+  "create_time",
+  "update_time",
+];
+
 function createService(
   listKbChunks = vi.fn(),
   dbOptions?: Parameters<typeof createKbReadDbMock>[0],
@@ -161,6 +177,33 @@ describe("KbReadService", () => {
     });
   });
 
+  it("selects only kb list fields for kb list rows", async () => {
+    const selectedListQueries: Array<{ selectedAll: boolean; selectedColumns: string[] }> = [];
+    const { service } = createService(vi.fn(), {
+      beforeExecute(event) {
+        if (
+          event.table === "xy_wap_embed_agent_kb"
+          && event.type === "execute"
+          && !event.isCountQuery
+        ) {
+          selectedListQueries.push({
+            selectedAll: event.selectedAll,
+            selectedColumns: event.selectedColumns,
+          });
+        }
+      },
+    });
+
+    await service.listKbs(tenant);
+
+    expect(selectedListQueries).toEqual([
+      {
+        selectedAll: false,
+        selectedColumns: kbListColumns,
+      },
+    ]);
+  });
+
   it("orders kb lists by id desc", async () => {
     const orderByCalls: Array<[string, string | undefined]> = [];
     const { service } = createService(vi.fn(), {
@@ -242,6 +285,33 @@ describe("KbReadService", () => {
     });
   });
 
+  it("selects only kb doc list fields for kb doc list rows", async () => {
+    const selectedListQueries: Array<{ selectedAll: boolean; selectedColumns: string[] }> = [];
+    const { service } = createService(vi.fn(), {
+      beforeExecute(event) {
+        if (
+          event.table === "xy_wap_embed_agent_kb_doc"
+          && event.type === "execute"
+          && !event.isCountQuery
+        ) {
+          selectedListQueries.push({
+            selectedAll: event.selectedAll,
+            selectedColumns: event.selectedColumns,
+          });
+        }
+      },
+    });
+
+    await service.listKbDocs(tenant, "1");
+
+    expect(selectedListQueries).toEqual([
+      {
+        selectedAll: false,
+        selectedColumns: kbDocListColumns,
+      },
+    ]);
+  });
+
   it("orders kb doc lists by id desc", async () => {
     const orderByCalls: Array<[string, string | undefined]> = [];
     const { service } = createService(vi.fn(), {
@@ -315,6 +385,33 @@ describe("KbReadService", () => {
       chunkId: "502",
       title: "系统切片",
     });
+  });
+
+  it("selects only kb doc detail fields for kb doc detail rows", async () => {
+    const selectedDetailQueries: Array<{ selectedAll: boolean; selectedColumns: string[] }> = [];
+    const { service } = createService(vi.fn(), {
+      beforeExecute(event) {
+        if (
+          event.table === "xy_wap_embed_agent_kb_doc"
+          && event.type === "executeTakeFirst"
+          && !event.isCountQuery
+        ) {
+          selectedDetailQueries.push({
+            selectedAll: event.selectedAll,
+            selectedColumns: event.selectedColumns,
+          });
+        }
+      },
+    });
+
+    await service.getKbDoc(tenant, "1001");
+
+    expect(selectedDetailQueries).toEqual([
+      {
+        selectedAll: false,
+        selectedColumns: [...kbDocListColumns, "volc_doc_id"],
+      },
+    ]);
   });
 
   it("rejects kb outside the tenant scope", async () => {

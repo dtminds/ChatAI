@@ -5,6 +5,8 @@ type WhereClause =
 type QueryExecutionEvent = {
   isCountQuery: boolean;
   orderByCalls: Array<[string, string | undefined]>;
+  selectedAll: boolean;
+  selectedColumns: string[];
   table: string;
   type: "execute" | "executeTakeFirst";
 };
@@ -221,9 +223,20 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
       const wheres: WhereClause[] = [];
       const orderByCalls: Array<[string, string | undefined]> = [];
       let isCountQuery = false;
+      let selectedAll = false;
+      let selectedColumns: string[] = [];
 
       const filterRows = <TRow extends Record<string, unknown>>(rows: TRow[]) =>
         rows.filter((row) => wheres.every((where) => matchesWhere(row, where)));
+      const projectRows = <TRow extends Record<string, unknown>>(rows: TRow[]) => {
+        if (selectedAll || selectedColumns.length === 0) {
+          return rows;
+        }
+
+        return rows.map((row) =>
+          Object.fromEntries(selectedColumns.map((column) => [column, row[column]])),
+        );
+      };
 
       const builder = {
         countResult: async () => {
@@ -242,20 +255,22 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
           await options.beforeExecute?.({
             isCountQuery,
             orderByCalls,
+            selectedAll,
+            selectedColumns,
             table,
             type: "execute",
           });
 
           if (table === "xy_wap_embed_agent_kb") {
-            return filterRows(kbs);
+            return projectRows(filterRows(kbs));
           }
 
           if (table === "xy_wap_embed_agent_kb_doc") {
-            return filterRows(docs);
+            return projectRows(filterRows(docs));
           }
 
           if (table === "xy_wap_embed_agent_kb_chunk") {
-            return filterRows(chunks);
+            return projectRows(filterRows(chunks));
           }
 
           return [];
@@ -264,6 +279,8 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
           await options.beforeExecute?.({
             isCountQuery,
             orderByCalls,
+            selectedAll,
+            selectedColumns,
             table,
             type: "executeTakeFirst",
           });
@@ -302,9 +319,18 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
             return builder;
           }
 
+          if (Array.isArray(selection)) {
+            selectedAll = false;
+            selectedColumns = selection.map(String);
+          }
+
           return builder;
         },
-        selectAll: () => builder,
+        selectAll: () => {
+          selectedAll = true;
+          selectedColumns = [];
+          return builder;
+        },
         where(
           columnOrFn:
             | string

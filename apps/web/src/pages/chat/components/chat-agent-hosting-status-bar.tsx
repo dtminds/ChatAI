@@ -81,10 +81,11 @@ export function ChatAgentHostingStatusBar({
               />
             )}
             <AnimatedTextSwitch
-              className="min-w-0 text-xs text-muted-foreground"
+              className="min-w-0 text-xs font-medium text-muted-foreground"
               shiny
               shinyDuration={isBusy ? 1.15 : 2}
               shinyShimmerWidth={44}
+              staggerMs={12}
               value={statusLabel}
             />
           </div>

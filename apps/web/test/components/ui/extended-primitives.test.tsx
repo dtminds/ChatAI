@@ -163,6 +163,85 @@ describe("extended UI primitives", () => {
     vi.useRealTimers();
   });
 
+  it("keeps the current exit text and enters the latest value when updates happen during exit", () => {
+    vi.useFakeTimers();
+    const { container, rerender } = render(
+      <AnimatedTextSwitch staggerMs={1} value="等待发送" />,
+    );
+
+    rerender(<AnimatedTextSwitch staggerMs={1} value="正在生成" />);
+
+    expect(container.querySelector("[data-phase='exit']")).toHaveTextContent(
+      "等待发送",
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(60);
+    });
+
+    rerender(<AnimatedTextSwitch staggerMs={1} value="正在发送" />);
+
+    expect(container.querySelector("[data-phase='exit']")).toHaveTextContent(
+      "等待发送",
+    );
+    expect(container.textContent).not.toContain("正在生成");
+    expect(container.textContent).not.toContain("正在发送");
+
+    act(() => {
+      vi.advanceTimersByTime(70);
+    });
+
+    expect(container.querySelector("[data-phase='exit']")).toBeNull();
+    expect(container.querySelector("[data-phase='enter']")).toHaveTextContent(
+      "正在发送",
+    );
+    expect(container.textContent).not.toContain("正在生成");
+    vi.useRealTimers();
+  });
+
+  it("finishes the current enter animation before switching to a pending value", () => {
+    vi.useFakeTimers();
+    const { container, rerender } = render(
+      <AnimatedTextSwitch staggerMs={1} value="等待发送" />,
+    );
+
+    rerender(<AnimatedTextSwitch staggerMs={1} value="正在生成" />);
+
+    act(() => {
+      vi.advanceTimersByTime(130);
+    });
+
+    expect(container.querySelector("[data-phase='enter']")).toHaveTextContent(
+      "正在生成",
+    );
+
+    rerender(<AnimatedTextSwitch staggerMs={1} value="正在发送" />);
+
+    expect(container.querySelector("[data-phase='enter']")).toHaveTextContent(
+      "正在生成",
+    );
+    expect(container.querySelector("[data-phase='exit']")).toBeNull();
+    expect(container.textContent).not.toContain("正在发送");
+
+    act(() => {
+      vi.advanceTimersByTime(170);
+    });
+
+    expect(container.querySelector("[data-phase='exit']")).toHaveTextContent(
+      "正在生成",
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(130);
+    });
+
+    expect(container.querySelector("[data-phase='exit']")).toBeNull();
+    expect(container.querySelector("[data-phase='enter']")).toHaveTextContent(
+      "正在发送",
+    );
+    vi.useRealTimers();
+  });
+
   it("enables shiny text only after switch animation settles", () => {
     vi.useFakeTimers();
     const { container, rerender } = render(

@@ -1163,7 +1163,7 @@ html.dark[data-appearance-theme="nature"] {
 
   .animated-text-switch__char--enter {
     animation-name: animated-text-switch-enter;
-    animation-duration: 0.34s;
+    animation-duration: 0.16s;
     animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
     animation-fill-mode: both;
   }

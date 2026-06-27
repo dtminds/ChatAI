@@ -19,8 +19,10 @@ type TextRun = {
   value: string;
 };
 
+type SwitchPhase = "settled" | "exiting" | "entering";
+
 const EXIT_ANIMATION_MS = 120;
-const ENTER_ANIMATION_MS = 340;
+const ENTER_ANIMATION_MS = 160;
 
 function splitText(value: string) {
   return Array.from(value);
@@ -41,52 +43,138 @@ function AnimatedTextSwitch({
     { id: 0, phase: "enter", value },
   ]);
   const [isSettled, setIsSettled] = React.useState(true);
-  const latestValueRef = React.useRef(value);
+  const phaseRef = React.useRef<SwitchPhase>("settled");
+  const displayedValueRef = React.useRef(value);
+  const pendingValueRef = React.useRef<string | null>(null);
+  const staggerMsRef = React.useRef(staggerMs);
+  const targetValueRef = React.useRef<string | null>(null);
+  const enterTimeoutRef = React.useRef<ReturnType<typeof globalThis.setTimeout> | null>(
+    null,
+  );
+  const settleTimeoutRef = React.useRef<ReturnType<typeof globalThis.setTimeout> | null>(
+    null,
+  );
   const nextRunIdRef = React.useRef(1);
 
+  staggerMsRef.current = staggerMs;
+
+  function clearEnterTimeout() {
+    if (enterTimeoutRef.current !== null) {
+      globalThis.clearTimeout(enterTimeoutRef.current);
+      enterTimeoutRef.current = null;
+    }
+  }
+
+  function clearSettleTimeout() {
+    if (settleTimeoutRef.current !== null) {
+      globalThis.clearTimeout(settleTimeoutRef.current);
+      settleTimeoutRef.current = null;
+    }
+  }
+
+  function getEnterDuration(nextValue: string) {
+    return ENTER_ANIMATION_MS
+      + Math.max(splitText(nextValue).length - 1, 0) * staggerMsRef.current;
+  }
+
+  function beginEnter(nextValue: string) {
+    clearSettleTimeout();
+    phaseRef.current = "entering";
+    displayedValueRef.current = nextValue;
+    setRuns([
+      {
+        id: nextRunIdRef.current,
+        phase: "enter",
+        value: nextValue,
+      },
+    ]);
+    nextRunIdRef.current += 1;
+
+    const enterDuration =
+      getEnterDuration(nextValue);
+
+    settleTimeoutRef.current = globalThis.setTimeout(() => {
+      settleTimeoutRef.current = null;
+      const pendingValue = pendingValueRef.current;
+      pendingValueRef.current = null;
+
+      if (
+        pendingValue !== null
+        && pendingValue !== displayedValueRef.current
+      ) {
+        beginExit(pendingValue);
+        return;
+      }
+
+      phaseRef.current = "settled";
+      setIsSettled(true);
+    }, enterDuration);
+  }
+
+  function beginExit(nextValue: string) {
+    clearEnterTimeout();
+    clearSettleTimeout();
+    phaseRef.current = "exiting";
+    targetValueRef.current = nextValue;
+    pendingValueRef.current = null;
+    setIsSettled(false);
+    setRuns([
+      {
+        id: nextRunIdRef.current,
+        phase: "exit",
+        value: displayedValueRef.current,
+      },
+    ]);
+    nextRunIdRef.current += 1;
+
+    enterTimeoutRef.current = globalThis.setTimeout(() => {
+      enterTimeoutRef.current = null;
+      const targetValue = targetValueRef.current;
+      targetValueRef.current = null;
+
+      if (
+        targetValue === null
+        || targetValue === displayedValueRef.current
+      ) {
+        phaseRef.current = "settled";
+        setRuns([
+          {
+            id: nextRunIdRef.current,
+            phase: "enter",
+            value: displayedValueRef.current,
+          },
+        ]);
+        nextRunIdRef.current += 1;
+        setIsSettled(true);
+        return;
+      }
+
+      beginEnter(targetValue);
+    }, EXIT_ANIMATION_MS);
+  }
+
   React.useEffect(() => {
-    if (latestValueRef.current === value) {
+    if (phaseRef.current === "settled") {
+      if (value !== displayedValueRef.current) {
+        beginExit(value);
+      }
       return undefined;
     }
 
-    const previousValue = latestValueRef.current;
-    const enterRun: TextRun = {
-      id: nextRunIdRef.current + 1,
-      phase: "enter",
-      value,
-    };
-    const exitRun: TextRun = {
-      id: nextRunIdRef.current,
-      phase: "exit",
-      value: previousValue,
-    };
-    const exitDuration = EXIT_ANIMATION_MS;
-    const enterDuration =
-      ENTER_ANIMATION_MS + splitText(value).length * staggerMs;
-
-    nextRunIdRef.current += 2;
-    latestValueRef.current = value;
-    if (shiny) {
-      setIsSettled(false);
+    if (phaseRef.current === "exiting") {
+      targetValueRef.current = value;
+      return undefined;
     }
-    setRuns([exitRun]);
 
-    const enterTimeoutId = globalThis.setTimeout(() => {
-      setRuns([enterRun]);
-    }, exitDuration);
-    const settleTimeoutId = shiny
-      ? globalThis.setTimeout(() => {
-          setIsSettled(true);
-        }, exitDuration + enterDuration)
-      : undefined;
+    pendingValueRef.current =
+      value === displayedValueRef.current ? null : value;
+    return undefined;
+  }, [value]);
 
-    return () => {
-      globalThis.clearTimeout(enterTimeoutId);
-      if (settleTimeoutId !== undefined) {
-        globalThis.clearTimeout(settleTimeoutId);
-      }
-    };
-  }, [shiny, staggerMs, value]);
+  React.useEffect(() => () => {
+    clearEnterTimeout();
+    clearSettleTimeout();
+  }, []);
 
   return (
     <span

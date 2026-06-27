@@ -132,6 +132,42 @@ describe("AI hosting agent routes", () => {
     }
   });
 
+  it("uses JWT uid for agent management without resolving sub user scope", async () => {
+    const { app, authorization, db } = await createAiHostingApp();
+    const headers = { authorization };
+
+    const responses = await Promise.all([
+      app.inject({
+        headers,
+        method: "GET",
+        url: "/api/server/ai-hosting/agents",
+      }),
+      app.inject({
+        headers,
+        method: "GET",
+        url: "/api/server/ai-hosting/models",
+      }),
+      app.inject({
+        headers,
+        method: "GET",
+        url: "/api/server/ai-hosting/agents/301",
+      }),
+      app.inject({
+        headers,
+        method: "PATCH",
+        payload: {
+          name: "护肤专家",
+        },
+        url: "/api/server/ai-hosting/agents/301/name",
+      }),
+    ]);
+
+    expect(responses.map((response) => response.statusCode)).toEqual([200, 200, 200, 200]);
+    expect(db.queriedTables).not.toContain("xy_wap_embed_sub_user");
+
+    await app.close();
+  });
+
   it("saves drafts without writing publish history and publishes only changed model or prompt", async () => {
     const { app, authorization, db } = await createAiHostingApp();
 
@@ -535,6 +571,7 @@ describe("AI hosting agent routes", () => {
     expect(db.joinCalls).toEqual([]);
     expect(db.seatListWheres).toContainEqual(["seat.uid", "=", 9001]);
     expect(db.seatListWheres).toContainEqual(["seat.platform", "=", 5]);
+    expect(db.queriedTables).toContain("xy_wap_embed_sub_user");
     expect(db.seatListLimitValues).toContain(200);
     expect(db.hostingConfigListWheres).toContainEqual(["uid", "=", 9001]);
     expect(db.hostingConfigListWheres).toContainEqual(["user_seat_id", "in", [102, 101]]);
@@ -903,6 +940,7 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
     likeSearchValues: [] as unknown[],
     modelListWheres: [] as Array<[string, string, unknown]>,
     modelUidFilter: undefined as unknown,
+    queriedTables: [] as string[],
     updatedAgent: undefined as
       | { id: number | undefined; values: Record<string, unknown> }
       | undefined,
@@ -926,6 +964,7 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
       let isCountQuery = false;
       const builder = {
         execute: async () => {
+          state.queriedTables.push(table);
           await options.beforeExecute?.({
             isCountQuery,
             table,
@@ -1002,6 +1041,7 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
           throw new Error(`Unexpected execute table: ${table}`);
         },
         executeTakeFirst: async () => {
+          state.queriedTables.push(table);
           await options.beforeExecute?.({
             isCountQuery,
             table,

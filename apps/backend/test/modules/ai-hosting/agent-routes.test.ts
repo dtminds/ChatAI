@@ -569,6 +569,7 @@ describe("AI hosting agent routes", () => {
       success: true,
     });
     expect(db.joinCalls).toEqual([]);
+    expect(db.agentListLimitValues).toContain(100);
     expect(db.seatListWheres).toContainEqual(["seat.uid", "=", 9001]);
     expect(db.seatListWheres).toContainEqual(["seat.platform", "=", 5]);
     expect(db.queriedTables).toContain("xy_wap_embed_sub_user");
@@ -924,6 +925,7 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
   ];
   const state = {
     agentListWheres: [] as Array<[string, string, unknown]>,
+    agentListLimitValues: [] as number[],
     agentListSelects: [] as string[],
     deletedAgent: undefined as
       | { id: number | undefined; values: Record<string, unknown> }
@@ -1130,6 +1132,8 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
         limit: (value: number) => {
           if (table === "xy_wap_embed_agent_history") {
             state.historyLatestLimitValues.push(value);
+          } else if (table === "xy_wap_embed_agent as agent") {
+            state.agentListLimitValues.push(value);
           } else if (table === "xy_wap_embed_user_seat as seat") {
             state.seatListLimitValues.push(value);
           }

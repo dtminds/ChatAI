@@ -61,6 +61,7 @@ const dbDeletedStatus = 0;
 const defaultPage = 1;
 const defaultPageSize = 10;
 const maxPageSize = 100;
+const hostingSettingsAgentLimit = 100;
 
 export class AiHostingAgentService {
   constructor(private readonly db: Kysely<Database>) {}
@@ -353,6 +354,7 @@ export class AiHostingAgentService {
       .where("agent.status", "=", dbActiveStatus)
       .orderBy("agent.update_time", "desc")
       .orderBy("agent.id", "desc")
+      .limit(hostingSettingsAgentLimit)
       .execute() as Promise<AgentRow[]>;
   }
 

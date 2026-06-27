@@ -10,7 +10,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { ForbiddenError } from "../../shared/errors.js";
 import { createAgentKbJavaClient } from "./agent-kb-java-client.js";
 import { KbChunkService } from "./kb-chunk.service.js";
-import type { AgentKbTenant } from "./kb-tenant-utils.js";
+import { getAgentKbTenant } from "./kb-tenant-utils.js";
 
 const NumericStringSchema = Type.String({ pattern: "^[0-9]+$" });
 
@@ -83,13 +83,6 @@ export async function registerKbChunkRoutes(app: FastifyInstance) {
 
 function getKbChunkService(app: FastifyInstance) {
   return new KbChunkService(app.db, app.log, createAgentKbJavaClient(app.log));
-}
-
-function getAgentKbTenant(request: { user: { subUserId: string; uid: number } }): AgentKbTenant {
-  return {
-    subUserId: request.user.subUserId,
-    uid: request.user.uid,
-  };
 }
 
 function assertAiHostingWriteAccess(request: FastifyRequest) {

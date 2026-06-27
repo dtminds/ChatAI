@@ -11,7 +11,14 @@ const tenant = {
 
 describe("KbWriteService", () => {
   it("creates a kb for the current tenant", async () => {
-    const db = createKbReadDbMock() as unknown as Kysely<Database>;
+    const kbReadEvents: string[] = [];
+    const db = createKbReadDbMock({
+      beforeExecute: ({ table, type }) => {
+        if (table === "xy_wap_embed_agent_kb" && type === "executeTakeFirst") {
+          kbReadEvents.push(table);
+        }
+      },
+    }) as unknown as Kysely<Database>;
     const service = createKbWriteService(db);
 
     const created = await service.createKb(tenant, {
@@ -19,11 +26,10 @@ describe("KbWriteService", () => {
       name: "新品培训知识",
     });
 
-    expect(created).toMatchObject({
-      description: "用于新品上市培训",
+    expect(created).toEqual({
       kbId: "2",
-      name: "新品培训知识",
     });
+    expect(kbReadEvents).toEqual([]);
   });
 
   it("rejects whitespace-only kb names", async () => {

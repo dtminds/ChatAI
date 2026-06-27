@@ -27,11 +27,7 @@ describe("KB read routes", () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({
       data: {
-        createdAt: expect.any(String),
-        description: "用于新品上市培训",
         kbId: "2",
-        name: "新品培训知识",
-        updatedAt: expect.any(String),
       },
       success: true,
     });

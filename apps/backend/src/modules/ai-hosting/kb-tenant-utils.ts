@@ -5,6 +5,13 @@ export type AgentKbTenant = {
   uid: number;
 };
 
+export function getAgentKbTenant(request: { user: AgentKbTenant }): AgentKbTenant {
+  return {
+    subUserId: request.user.subUserId,
+    uid: request.user.uid,
+  };
+}
+
 export function parsePositiveInteger(value: string) {
   const parsed = Number(value);
 

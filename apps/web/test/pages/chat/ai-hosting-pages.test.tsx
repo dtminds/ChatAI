@@ -313,11 +313,7 @@ describe("AI hosting pages", () => {
       });
 
       return {
-        createdAt: new Date(created.createdAt).toISOString(),
-        description: created.description,
         kbId: created.id,
-        name: created.name,
-        updatedAt: new Date(created.lastUpdatedAt).toISOString(),
       };
     });
     vi.mocked(kbService.getKb).mockImplementation(async (kbId) => createMockKbItem(kbId));

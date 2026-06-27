@@ -1,8 +1,7 @@
-import type { KbCreateRequest, KbListItem } from "@chatai/contracts";
+import type { KbCreateRequest, KbCreateResponse } from "@chatai/contracts";
 import type { Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
 import { BadRequestError, ServiceUnavailableError } from "../../shared/errors.js";
-import { mapKbListItem } from "./kb-read-mappers.js";
 import { type AgentKbTenant, parsePositiveInteger } from "./kb-tenant-utils.js";
 
 const dbActiveStatus = 1;
@@ -10,7 +9,10 @@ const dbActiveStatus = 1;
 export class KbWriteService {
   constructor(private readonly db: Kysely<Database>) {}
 
-  async createKb(tenant: AgentKbTenant, payload: KbCreateRequest): Promise<KbListItem> {
+  async createKb(
+    tenant: AgentKbTenant,
+    payload: KbCreateRequest,
+  ): Promise<KbCreateResponse> {
     const uid = tenant.uid;
     const subUserId = tenant.subUserId;
     const operatorId = parsePositiveInteger(subUserId);
@@ -45,19 +47,7 @@ export class KbWriteService {
       throw new ServiceUnavailableError("KB_ID_UNAVAILABLE", "知识库服务暂不可用");
     }
 
-    const row = await this.db
-      .selectFrom("xy_wap_embed_agent_kb")
-      .selectAll()
-      .where("id", "=", kbId)
-      .where("uid", "=", uid)
-      .where("status", "=", dbActiveStatus)
-      .executeTakeFirst();
-
-    if (!row) {
-      throw new ServiceUnavailableError("KB_ID_UNAVAILABLE", "知识库服务暂不可用");
-    }
-
-    return mapKbListItem(row);
+    return { kbId: String(kbId) };
   }
 }
 

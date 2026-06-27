@@ -13,7 +13,7 @@ import { ForbiddenError } from "../../shared/errors.js";
 import { createAgentKbJavaClient } from "./agent-kb-java-client.js";
 import { createWorkbenchJavaClient } from "../chat/workbench-java-client.js";
 import { KbDocService } from "./kb-doc.service.js";
-import type { AgentKbTenant } from "./kb-tenant-utils.js";
+import { getAgentKbTenant } from "./kb-tenant-utils.js";
 
 const NumericStringSchema = Type.String({ pattern: "^[0-9]+$" });
 
@@ -117,13 +117,6 @@ function getKbDocService(app: FastifyInstance) {
     createWorkbenchJavaClient(app.log),
     createAgentKbJavaClient(app.log),
   );
-}
-
-function getAgentKbTenant(request: { user: { subUserId: string; uid: number } }): AgentKbTenant {
-  return {
-    subUserId: request.user.subUserId,
-    uid: request.user.uid,
-  };
 }
 
 function assertAiHostingWriteAccess(request: FastifyRequest) {

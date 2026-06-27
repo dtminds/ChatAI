@@ -11,7 +11,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { ForbiddenError } from "../../shared/errors.js";
 import { createKbReadService } from "./kb-read.service.js";
 import { createKbWriteService } from "./kb-write.service.js";
-import type { AgentKbTenant } from "./kb-tenant-utils.js";
+import { getAgentKbTenant } from "./kb-tenant-utils.js";
 
 const NumericStringSchema = Type.String({ pattern: "^[0-9]+$" });
 
@@ -169,13 +169,6 @@ export async function registerKbRoutes(app: FastifyInstance) {
       );
     },
   );
-}
-
-function getAgentKbTenant(request: FastifyRequest): AgentKbTenant {
-  return {
-    subUserId: request.user.subUserId,
-    uid: request.user.uid,
-  };
 }
 
 function parseOptionalInteger(value?: string) {

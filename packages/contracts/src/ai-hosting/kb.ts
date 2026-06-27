@@ -32,6 +32,13 @@ export const KbCreateRequestSchema = Type.Object({
   name: Type.String({ minLength: 1, maxLength: 30 }),
 });
 
+export const KbCreateResponseSchema = Type.Object(
+  {
+    kbId: Type.String(),
+  },
+  { additionalProperties: false },
+);
+
 export const KbListItemSchema = Type.Object({
   createdAt: Type.String(),
   description: Type.String(),
@@ -104,6 +111,7 @@ export const KbChunkListResponseSchema = Type.Object({
 });
 
 export type KbCreateRequest = Static<typeof KbCreateRequestSchema>;
+export type KbCreateResponse = Static<typeof KbCreateResponseSchema>;
 export type KbDocType = Static<typeof KbDocTypeSchema>;
 export type KbDocStatus = Static<typeof KbDocStatusSchema>;
 export type KbChunkType = Static<typeof KbChunkTypeSchema>;

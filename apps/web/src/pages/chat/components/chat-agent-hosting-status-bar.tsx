@@ -1,7 +1,7 @@
 import { BorderBeam } from "border-beam";
+import { AnimatedTextSwitch } from "@/components/ui/animated-text-switch";
 import { Button } from "@/components/ui/button";
 import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
-import { ShinyText } from "@/components/ui/shiny-text";
 import { cn } from "@/lib/utils";
 import {
   getAgentHostingActionLabel,
@@ -23,6 +23,7 @@ export function ChatAgentHostingStatusBar({
   status: AgentHostingStatus;
 }) {
   const actionLabel = getAgentHostingActionLabel(status);
+  const statusLabel = getAgentHostingStatusLabel(status);
   const isExited = isAgentHostingExited(status);
   const isBusy = isAgentHostingBusy(status);
 
@@ -79,13 +80,13 @@ export function ChatAgentHostingStatusBar({
                 type="circular-8"
               />
             )}
-            <ShinyText
-              className="truncate text-xs text-muted-foreground"
-              duration={isBusy ? 1.15 : 2}
-              shimmerWidth={44}
-            >
-              {getAgentHostingStatusLabel(status)}
-            </ShinyText>
+            <AnimatedTextSwitch
+              className="min-w-0 text-xs text-muted-foreground"
+              shiny
+              shinyDuration={isBusy ? 1.15 : 2}
+              shinyShimmerWidth={44}
+              value={statusLabel}
+            />
           </div>
 
           <Button

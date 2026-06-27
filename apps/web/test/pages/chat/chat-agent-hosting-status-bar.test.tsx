@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { ChatAgentHostingStatusBar } from "@/pages/chat/components/chat-agent-hosting-status-bar";
@@ -72,8 +72,10 @@ describe("ChatAgentHostingStatusBar", () => {
       "z-10",
     );
     expect(screen.getByTestId("chat-agent-hosting-status-bar")).toBeInTheDocument();
-    expect(screen.getByText("Agent 已就绪，正在等待用户消息")).toBeInTheDocument();
-    expect(screen.getByText("Agent 已就绪，正在等待用户消息")).not.toHaveClass("text-transparent");
+    const statusText = screen.getByLabelText("Agent 已就绪，正在等待用户消息");
+    expect(statusText).toHaveAttribute("data-slot", "animated-text-switch");
+    expect(statusText).toHaveClass("text-xs", "text-muted-foreground");
+    expect(statusText.querySelector("[data-phase='enter']")).toHaveClass("shiny-text");
     expect(screen.getByTestId("dot-matrix-loader")).toHaveAttribute(
       "data-loader-type",
       "circular-8",
@@ -94,10 +96,12 @@ describe("ChatAgentHostingStatusBar", () => {
   });
 
   it("renders in-progress agent hosting status labels", () => {
+    vi.useFakeTimers();
     const { rerender } = render(<ChatAgentHostingStatusBar status="retrying" />);
 
-    expect(screen.getByText("出了点小问题，我正在重试")).toBeInTheDocument();
-    expect(screen.getByText("出了点小问题，我正在重试")).toHaveClass("shiny-text");
+    let statusText = screen.getByLabelText("出了点小问题，我正在重试");
+    expect(statusText).toHaveAttribute("data-slot", "animated-text-switch");
+    expect(statusText.querySelector("[data-phase='enter']")).toHaveClass("shiny-text");
     expect(screen.getByTestId("dot-matrix-loader")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "取消托管" })).toHaveClass(
       "bg-neutral-strong",
@@ -117,13 +121,30 @@ describe("ChatAgentHostingStatusBar", () => {
 
     rerender(<ChatAgentHostingStatusBar status="thinking" />);
 
-    expect(screen.getByText("Agent 正在查看消息")).toBeInTheDocument();
-    expect(screen.getByText("Agent 正在查看消息")).toHaveClass("shiny-text");
+    expect(screen.getByLabelText("Agent 正在查看消息")).toBeInTheDocument();
+    expect(
+      screen
+        .getByLabelText("Agent 正在查看消息")
+        .querySelector("[data-phase='enter']"),
+    ).toBeNull();
+    act(() => {
+      vi.advanceTimersByTime(130);
+    });
+    statusText = screen.getByLabelText("Agent 正在查看消息");
+    expect(statusText.querySelector("[data-phase='enter']")).not.toHaveClass("shiny-text");
+    expect(
+      statusText.querySelectorAll("[data-slot='animated-text-switch-char']").length,
+    ).toBeGreaterThan(0);
+    act(() => {
+      vi.advanceTimersByTime(800);
+    });
+    expect(statusText.querySelector("[data-phase='enter']")).toHaveClass("shiny-text");
     expect(screen.getByTestId("dot-matrix-loader")).toBeInTheDocument();
     expect(screen.getByTestId("agent-hosting-border-beam")).toHaveAttribute(
       "data-active",
       "true",
     );
+    vi.useRealTimers();
   });
 
   it("hides exited status", () => {

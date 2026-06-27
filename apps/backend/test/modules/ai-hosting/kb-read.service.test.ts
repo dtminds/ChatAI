@@ -148,6 +148,25 @@ describe("KbReadService", () => {
     });
   });
 
+  it("orders kb lists by id desc", async () => {
+    const orderByCalls: Array<[string, string | undefined]> = [];
+    const { service } = createService(vi.fn(), {
+      beforeExecute(event) {
+        if (
+          event.table === "xy_wap_embed_agent_kb"
+          && event.type === "execute"
+          && !event.isCountQuery
+        ) {
+          orderByCalls.push(...event.orderByCalls);
+        }
+      },
+    });
+
+    await service.listKbs(tenant);
+
+    expect(orderByCalls).toEqual([["id", "desc"]]);
+  });
+
   it("filters docs by kb and maps sync status", async () => {
     const { service } = createService();
 
@@ -179,6 +198,25 @@ describe("KbReadService", () => {
         total: 2,
       },
     });
+  });
+
+  it("orders kb doc lists by id desc", async () => {
+    const orderByCalls: Array<[string, string | undefined]> = [];
+    const { service } = createService(vi.fn(), {
+      beforeExecute(event) {
+        if (
+          event.table === "xy_wap_embed_agent_kb_doc"
+          && event.type === "execute"
+          && !event.isCountQuery
+        ) {
+          orderByCalls.push(...event.orderByCalls);
+        }
+      },
+    });
+
+    await service.listKbDocs(tenant, "1");
+
+    expect(orderByCalls).toEqual([["id", "desc"]]);
   });
 
   it("lists chunks via Java with pagination", async () => {

@@ -54,7 +54,7 @@ export class KbReadService {
 
     const [rows, total] = await Promise.all([
       query
-        .orderBy("update_time", "desc")
+        .orderBy("id", "desc")
         .limit(pagination.pageSize)
         .offset((pagination.page - 1) * pagination.pageSize)
         .execute(),
@@ -133,7 +133,7 @@ export class KbReadService {
 
     const [rows, total] = await Promise.all([
       query
-        .orderBy("update_time", "desc")
+        .orderBy("id", "desc")
         .limit(pagination.pageSize)
         .offset((pagination.page - 1) * pagination.pageSize)
         .execute(),

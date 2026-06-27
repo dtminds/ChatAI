@@ -4,6 +4,7 @@ type WhereClause =
 
 type QueryExecutionEvent = {
   isCountQuery: boolean;
+  orderByCalls: Array<[string, string | undefined]>;
   table: string;
   type: "execute" | "executeTakeFirst";
 };
@@ -218,6 +219,7 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
     },
     selectFrom(table: string) {
       const wheres: WhereClause[] = [];
+      const orderByCalls: Array<[string, string | undefined]> = [];
       let isCountQuery = false;
 
       const filterRows = <TRow extends Record<string, unknown>>(rows: TRow[]) =>
@@ -239,6 +241,7 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
         execute: async () => {
           await options.beforeExecute?.({
             isCountQuery,
+            orderByCalls,
             table,
             type: "execute",
           });
@@ -260,6 +263,7 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
         executeTakeFirst: async () => {
           await options.beforeExecute?.({
             isCountQuery,
+            orderByCalls,
             table,
             type: "executeTakeFirst",
           });
@@ -288,7 +292,10 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
         },
         limit: () => builder,
         offset: () => builder,
-        orderBy: () => builder,
+        orderBy: (column: string, direction?: string) => {
+          orderByCalls.push([column, direction]);
+          return builder;
+        },
         select: (selection?: unknown) => {
           if (typeof selection === "function") {
             isCountQuery = true;

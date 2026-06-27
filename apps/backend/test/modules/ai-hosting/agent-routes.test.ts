@@ -138,7 +138,7 @@ describe("AI hosting agent routes", () => {
     });
 
     expect(save.statusCode).toBe(200);
-    expect(db.updatedAgent).toMatchObject({
+    expect(db.updatedAgents[0]).toMatchObject({
       id: 301,
       values: {
         last_operator_id: 1,
@@ -146,8 +146,8 @@ describe("AI hosting agent routes", () => {
         update_time: expect.any(Date),
       },
     });
-    expect(db.updatedAgent?.values).not.toHaveProperty("name");
-    expect(JSON.parse(String(db.updatedAgent?.values.prompt_config))).toEqual({
+    expect(db.updatedAgents[0]?.values).not.toHaveProperty("name");
+    expect(JSON.parse(String(db.updatedAgents[0]?.values.prompt_config))).toEqual({
       condition_logic: "如何客户咨询成分，那么说明功效",
       handoff_rules: "客户要求真人",
       reply_style: {
@@ -168,10 +168,20 @@ describe("AI hosting agent routes", () => {
     expect(db.insertedHistories).toHaveLength(1);
     expect(db.insertedHistories[0]).toMatchObject({
       agent_id: 301,
+      create_time: expect.any(Date),
       model_id: 11,
       operator_id: 1,
       uid: 9001,
     });
+    expect(db.updatedAgents[1]).toMatchObject({
+      id: 301,
+      values: {
+        last_operator_id: 1,
+        last_publish_time: expect.any(Number),
+        update_time: expect.any(Date),
+      },
+    });
+    expect(db.updatedAgents[1]?.values.last_publish_time).toBeGreaterThan(0);
     expect(db.historyLatestLimitValues).not.toHaveLength(0);
     expect(db.historyLatestLimitValues.every((value) => value === 1)).toBe(true);
 
@@ -447,7 +457,7 @@ describe("AI hosting agent routes", () => {
     await app.close();
   });
 
-  it("hydrates hosting settings from seats, seat-agent configs, agents, and publish history without joins", async () => {
+  it("hydrates hosting settings from seats, seat-agent configs, and agent publish flags without joins", async () => {
     const { app, authorization, db } = await createAiHostingApp();
 
     const response = await app.inject({
@@ -498,7 +508,7 @@ describe("AI hosting agent routes", () => {
     expect(db.seatListLimitValues).toContain(200);
     expect(db.hostingConfigListWheres).toContainEqual(["uid", "=", 9001]);
     expect(db.hostingConfigListWheres).toContainEqual(["user_seat_id", "in", [102, 101]]);
-    expect(db.historyListExecuteCount).toBe(1);
+    expect(db.historyListExecuteCount).toBe(0);
 
     await app.close();
   });
@@ -704,6 +714,7 @@ function createAiHostingDbMock(options: { bulkHostingSeats?: boolean; uid?: numb
     {
       create_time: new Date("2024-06-10T08:00:00Z"),
       id: 301,
+      last_publish_time: new Date("2024-06-10T08:00:00Z").getTime(),
       last_operator_id: 1,
       model_id: 11,
       name: "护肤小助理",
@@ -716,6 +727,7 @@ function createAiHostingDbMock(options: { bulkHostingSeats?: boolean; uid?: numb
     {
       create_time: new Date("2024-06-12T08:00:00Z"),
       id: 303,
+      last_publish_time: 0,
       last_operator_id: 1,
       model_id: 11,
       name: "未发布小助理",
@@ -822,6 +834,7 @@ function createAiHostingDbMock(options: { bulkHostingSeats?: boolean; uid?: numb
     updatedAgent: undefined as
       | { id: number | undefined; values: Record<string, unknown> }
       | undefined,
+    updatedAgents: [] as Array<{ id: number | undefined; values: Record<string, unknown> }>,
     seatListLimitValues: [] as number[],
     seatListWheres: [] as Array<[string, string, unknown]>,
     updatedHostingConfigs: [] as Array<{
@@ -1034,6 +1047,7 @@ function createAiHostingDbMock(options: { bulkHostingSeats?: boolean; uid?: numb
               create_time: new Date("2024-06-11T08:00:00Z"),
               id: 302,
               last_operator_id: Number(values.last_operator_id),
+              last_publish_time: 0,
               model_id: Number(values.model_id),
               name: String(values.name),
               operator_id: Number(values.operator_id),
@@ -1130,6 +1144,7 @@ function createAiHostingDbMock(options: { bulkHostingSeats?: boolean; uid?: numb
             state.deletedAgent = { id, values: updateValues };
           } else {
             state.updatedAgent = { id, values: updateValues };
+            state.updatedAgents.push({ id, values: updateValues });
           }
 
           return [];
@@ -1145,6 +1160,11 @@ function createAiHostingDbMock(options: { bulkHostingSeats?: boolean; uid?: numb
       };
 
       return builder;
+    },
+    transaction() {
+      return {
+        execute: async (callback: (trx: typeof state) => Promise<unknown>) => callback(state),
+      };
     },
   };
 

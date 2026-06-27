@@ -31,6 +31,7 @@ type TenantScope = {
 
 type AgentRow = {
   id: number;
+  last_publish_time?: number | string | null;
   model_id: number;
   name: string;
   prompt_config?: string | null;
@@ -43,10 +44,6 @@ type AgentHistoryRow = {
   id: number;
   model_id: number;
   prompt_config: string | null;
-};
-
-type AgentPublishedRow = {
-  agent_id: number;
 };
 
 type HostingSettingsSeatRow = {
@@ -119,16 +116,12 @@ export class AiHostingService {
       this.listAllAgentRows(scope),
     ]);
     const seatIds = seats.map((seat) => seat.id);
-    const agentIds = agents.map((agent) => agent.id);
-    const [configs, publishedAgentIds] = await Promise.all([
-      this.listUserSeatAgentRows(scope, seatIds),
-      this.listPublishedAgentIds(scope, agentIds),
-    ]);
+    const configs = await this.listUserSeatAgentRows(scope, seatIds);
     const configsBySeatId = new Map(configs.map((config) => [config.user_seat_id, config]));
 
     return {
       accounts: seats.map((seat) => mapHostingSettingsAccount(seat, configsBySeatId.get(seat.id))),
-      agents: agents.map((agent) => mapHostingSettingsAgent(agent, publishedAgentIds)),
+      agents: agents.map(mapHostingSettingsAgent),
     };
   }
 
@@ -333,16 +326,33 @@ export class AiHostingService {
       throw new BadRequestError("AGENT_UNCHANGED", "当前配置已是正式版");
     }
 
-    await this.db
-      .insertInto("xy_wap_embed_agent_history")
-      .values({
-        agent_id: agent.id,
-        model_id: agent.model_id,
-        operator_id: operatorId,
-        prompt_config: normalizePromptConfigText(agent.prompt_config),
-        uid: scope.uid,
-      })
-      .executeTakeFirstOrThrow();
+    const publishTime = Date.now();
+
+    await this.db.transaction().execute(async (trx) => {
+      await trx
+        .insertInto("xy_wap_embed_agent_history")
+        .values({
+          agent_id: agent.id,
+          create_time: new Date(publishTime),
+          model_id: agent.model_id,
+          operator_id: operatorId,
+          prompt_config: normalizePromptConfigText(agent.prompt_config),
+          uid: scope.uid,
+        })
+        .executeTakeFirstOrThrow();
+
+      await trx
+        .updateTable("xy_wap_embed_agent")
+        .set({
+          last_operator_id: operatorId,
+          last_publish_time: publishTime,
+          update_time: new Date(publishTime),
+        })
+        .where("id", "=", numericAgentId)
+        .where("uid", "=", scope.uid)
+        .where("status", "=", dbActiveStatus)
+        .execute();
+    });
 
     return this.getAgentDetailOrThrow(scope, numericAgentId);
   }
@@ -448,6 +458,7 @@ export class AiHostingService {
       .selectFrom("xy_wap_embed_agent as agent")
       .select([
         "agent.id as id",
+        "agent.last_publish_time as last_publish_time",
         "agent.model_id as model_id",
         "agent.name as name",
         "agent.update_time as update_time",
@@ -496,21 +507,6 @@ export class AiHostingService {
       .execute() as Promise<UserSeatAgentRow[]>;
   }
 
-  private async listPublishedAgentIds(scope: TenantScope, agentIds: number[]) {
-    if (agentIds.length === 0) {
-      return new Set<number>();
-    }
-
-    const rows = await (this.db
-      .selectFrom("xy_wap_embed_agent_history")
-      .select(["agent_id"])
-      .where("uid", "=", scope.uid)
-      .where("agent_id", "in", agentIds)
-      .execute() as Promise<AgentPublishedRow[]>);
-
-    return new Set(rows.map((row) => row.agent_id));
-  }
-
   private listAgentRows(
     scope: TenantScope,
     pagination: { page: number; pageSize: number },
@@ -520,6 +516,7 @@ export class AiHostingService {
       .selectFrom("xy_wap_embed_agent as agent")
       .select([
         "agent.id as id",
+        "agent.last_publish_time as last_publish_time",
         "agent.model_id as model_id",
         "agent.name as name",
         "agent.update_time as update_time",
@@ -609,7 +606,7 @@ export class AiHostingService {
   private getAgentRow(scope: TenantScope, agentId: number) {
     return this.db
       .selectFrom("xy_wap_embed_agent")
-      .select(["id", "model_id", "name", "prompt_config", "update_time"])
+      .select(["id", "last_publish_time", "model_id", "name", "prompt_config", "update_time"])
       .where("id", "=", agentId)
       .where("uid", "=", scope.uid)
       .where("status", "=", dbActiveStatus)
@@ -631,9 +628,9 @@ export class AiHostingService {
   }
 
   private async assertPublishedAgentInScope(scope: TenantScope, agentId: number) {
-    await this.assertAgentInScope(scope, agentId);
+    const agent = await this.getAgentRowOrThrow(scope, agentId);
 
-    if (!(await this.getLatestHistory(scope, agentId))) {
+    if (!isPublishedAgent(agent)) {
       throw new BadRequestError("AGENT_UNPUBLISHED", "Agent 未发布，不能用于托管设置");
     }
   }
@@ -683,7 +680,7 @@ export class AiHostingService {
       modelId: String(agent.model_id),
       name: agent.name,
       promptConfig: parsePromptConfig(agent.prompt_config),
-      publishedAt: toOptionalTimestamp(latestHistory?.create_time),
+      publishedAt: toOptionalTimestamp(agent.last_publish_time),
       updatedAt: toOptionalTimestamp(agent.update_time),
     };
   }
@@ -821,15 +818,16 @@ function mapHostingSettingsAccount(
   };
 }
 
-function mapHostingSettingsAgent(
-  agent: AgentRow,
-  publishedAgentIds: Set<number>,
-): AiHostingSettingsAgentOption {
+function mapHostingSettingsAgent(agent: AgentRow): AiHostingSettingsAgentOption {
   return {
     id: String(agent.id),
-    isPublished: publishedAgentIds.has(agent.id),
+    isPublished: isPublishedAgent(agent),
     name: agent.name,
   };
+}
+
+function isPublishedAgent(agent: AgentRow) {
+  return Boolean(toOptionalTimestamp(agent.last_publish_time));
 }
 
 function normalizeAgentName(value: string) {
@@ -918,12 +916,18 @@ function toOptionalTimestamp(value: Date | number | string | null | undefined) {
   }
 
   if (typeof value === "number") {
-    return Number.isFinite(value) ? value : undefined;
+    return Number.isFinite(value) && value > 0 ? value : undefined;
+  }
+
+  if (/^\d+$/.test(value)) {
+    const parsed = Number(value);
+
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
   }
 
   const parsed = Date.parse(value);
 
-  return Number.isFinite(parsed) ? parsed : undefined;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

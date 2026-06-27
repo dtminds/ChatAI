@@ -3,6 +3,7 @@ import type {
   KbChunkListItem,
   KbChunkListResponse,
   KbCreateRequest,
+  KbCreateResponse,
   KbDocDetail,
   KbDocListItem,
   KbDocListResponse,
@@ -36,7 +37,7 @@ export type ListKbDocsParams = {
 export type ListKbDocChunksParams = {
   page?: number;
   pageSize?: number;
-  query?: string;
+  title?: string;
 };
 
 export async function listKbs(params: ListKbsParams = {}) {
@@ -48,7 +49,7 @@ export async function listKbs(params: ListKbsParams = {}) {
 }
 
 export async function createKb(payload: KbCreateRequest) {
-  const response = await http.post<ApiSuccessEnvelope<KbListItem>>(
+  const response = await http.post<ApiSuccessEnvelope<KbCreateResponse>>(
     "/server/ai-hosting/kbs",
     payload,
   );

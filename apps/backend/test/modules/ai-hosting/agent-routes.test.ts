@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { buildMockedApp } from "../../helpers/build-mocked-app";
 
 describe("AI hosting agent routes", () => {
@@ -102,6 +102,72 @@ describe("AI hosting agent routes", () => {
     await app.close();
   });
 
+  it("runs agent list rows, count, and model queries in parallel", async () => {
+    const probe = createBlockedAgentListProbe();
+    const { app, authorization } = await createAiHostingApp(["admin"], {
+      beforeExecute: probe.beforeExecute,
+    });
+
+    const responsePromise = app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/ai-hosting/agents",
+    });
+
+    try {
+      await vi.waitFor(() => {
+        expect(probe.queryStarts.map((query) => query.kind)).toContain("rows");
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(probe.queryStarts.map((query) => query.kind).sort()).toEqual([
+        "count",
+        "models",
+        "rows",
+      ]);
+    } finally {
+      probe.releaseRowsQuery();
+      await responsePromise;
+      await app.close();
+    }
+  });
+
+  it("uses JWT uid for agent management without resolving sub user scope", async () => {
+    const { app, authorization, db } = await createAiHostingApp();
+    const headers = { authorization };
+
+    const responses = await Promise.all([
+      app.inject({
+        headers,
+        method: "GET",
+        url: "/api/server/ai-hosting/agents",
+      }),
+      app.inject({
+        headers,
+        method: "GET",
+        url: "/api/server/ai-hosting/models",
+      }),
+      app.inject({
+        headers,
+        method: "GET",
+        url: "/api/server/ai-hosting/agents/301",
+      }),
+      app.inject({
+        headers,
+        method: "PATCH",
+        payload: {
+          name: "护肤专家",
+        },
+        url: "/api/server/ai-hosting/agents/301/name",
+      }),
+    ]);
+
+    expect(responses.map((response) => response.statusCode)).toEqual([200, 200, 200, 200]);
+    expect(db.queriedTables).not.toContain("xy_wap_embed_sub_user");
+
+    await app.close();
+  });
+
   it("saves drafts without writing publish history and publishes only changed model or prompt", async () => {
     const { app, authorization, db } = await createAiHostingApp();
 
@@ -139,7 +205,7 @@ describe("AI hosting agent routes", () => {
     });
 
     expect(save.statusCode).toBe(200);
-    expect(db.updatedAgent).toMatchObject({
+    expect(db.updatedAgents[0]).toMatchObject({
       id: 301,
       values: {
         last_operator_id: 1,
@@ -147,8 +213,8 @@ describe("AI hosting agent routes", () => {
         update_time: expect.any(Date),
       },
     });
-    expect(db.updatedAgent?.values).not.toHaveProperty("name");
-    expect(JSON.parse(String(db.updatedAgent?.values.prompt_config))).toEqual({
+    expect(db.updatedAgents[0]?.values).not.toHaveProperty("name");
+    expect(JSON.parse(String(db.updatedAgents[0]?.values.prompt_config))).toEqual({
       available_kb_ids: [1, 3],
       condition_logic: "如何客户咨询成分，那么说明功效",
       handoff_rules: "客户要求真人",
@@ -170,10 +236,20 @@ describe("AI hosting agent routes", () => {
     expect(db.insertedHistories).toHaveLength(1);
     expect(db.insertedHistories[0]).toMatchObject({
       agent_id: 301,
+      create_time: expect.any(Date),
       model_id: 11,
       operator_id: 1,
       uid: 9001,
     });
+    expect(db.updatedAgents[1]).toMatchObject({
+      id: 301,
+      values: {
+        last_operator_id: 1,
+        last_publish_time: expect.any(Number),
+        update_time: expect.any(Date),
+      },
+    });
+    expect(db.updatedAgents[1]?.values.last_publish_time).toBeGreaterThan(0);
     expect(db.historyLatestLimitValues).not.toHaveLength(0);
     expect(db.historyLatestLimitValues.every((value) => value === 1)).toBe(true);
 
@@ -452,7 +528,7 @@ describe("AI hosting agent routes", () => {
     await app.close();
   });
 
-  it("hydrates hosting settings from seats, seat-agent configs, agents, and publish history without joins", async () => {
+  it("hydrates hosting settings from seats, seat-agent configs, and agent publish flags without joins", async () => {
     const { app, authorization, db } = await createAiHostingApp();
 
     const response = await app.inject({
@@ -498,12 +574,14 @@ describe("AI hosting agent routes", () => {
       success: true,
     });
     expect(db.joinCalls).toEqual([]);
+    expect(db.agentListLimitValues).toContain(100);
     expect(db.seatListWheres).toContainEqual(["seat.uid", "=", 9001]);
     expect(db.seatListWheres).toContainEqual(["seat.platform", "=", 5]);
+    expect(db.queriedTables).toContain("xy_wap_embed_sub_user");
     expect(db.seatListLimitValues).toContain(200);
     expect(db.hostingConfigListWheres).toContainEqual(["uid", "=", 9001]);
     expect(db.hostingConfigListWheres).toContainEqual(["user_seat_id", "in", [102, 101]]);
-    expect(db.historyListExecuteCount).toBe(1);
+    expect(db.historyListExecuteCount).toBe(0);
 
     await app.close();
   });
@@ -655,7 +733,7 @@ describe("AI hosting agent routes", () => {
 
 async function createAiHostingApp(
   roles = ["admin"],
-  options: { bulkHostingSeats?: boolean; uid?: number } = {},
+  options: CreateAiHostingDbMockOptions = {},
 ) {
   const app = await buildMockedApp();
   const token = app.jwt.sign({
@@ -663,6 +741,7 @@ async function createAiHostingApp(
     sessionId: "501",
     sessionVersion: 1,
     subUserId: "1",
+    uid: options.uid ?? 9001,
   });
   const db = createAiHostingDbMock(options);
 
@@ -675,7 +754,48 @@ async function createAiHostingApp(
   };
 }
 
-function createAiHostingDbMock(options: { bulkHostingSeats?: boolean; uid?: number } = {}) {
+type QueryExecutionEvent = {
+  isCountQuery: boolean;
+  table: string;
+  type: "execute" | "executeTakeFirst";
+};
+
+type CreateAiHostingDbMockOptions = {
+  beforeExecute?: (event: QueryExecutionEvent) => Promise<void> | void;
+  bulkHostingSeats?: boolean;
+  uid?: number;
+};
+
+function createBlockedAgentListProbe() {
+  const queryStarts: Array<QueryExecutionEvent & { kind: "count" | "models" | "rows" }> = [];
+  let releaseRowsQuery: (() => void) | undefined;
+  const rowsQueryGate = new Promise<void>((resolve) => {
+    releaseRowsQuery = resolve;
+  });
+
+  return {
+    async beforeExecute(event: QueryExecutionEvent) {
+      if (event.table === "xy_wap_embed_agent as agent" && event.type === "execute") {
+        queryStarts.push({ ...event, kind: "rows" });
+        await rowsQueryGate;
+        return;
+      }
+
+      if (event.table === "xy_wap_embed_agent as agent" && event.isCountQuery) {
+        queryStarts.push({ ...event, kind: "count" });
+        return;
+      }
+
+      if (event.table === "xy_wap_embed_ai_model" && event.type === "execute") {
+        queryStarts.push({ ...event, kind: "models" });
+      }
+    },
+    queryStarts,
+    releaseRowsQuery: () => releaseRowsQuery?.(),
+  };
+}
+
+function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
   const subUsers = [
     {
       id: 1,
@@ -709,6 +829,7 @@ function createAiHostingDbMock(options: { bulkHostingSeats?: boolean; uid?: numb
     {
       create_time: new Date("2024-06-10T08:00:00Z"),
       id: 301,
+      last_publish_time: new Date("2024-06-10T08:00:00Z").getTime(),
       last_operator_id: 1,
       model_id: 11,
       name: "护肤小助理",
@@ -721,6 +842,7 @@ function createAiHostingDbMock(options: { bulkHostingSeats?: boolean; uid?: numb
     {
       create_time: new Date("2024-06-12T08:00:00Z"),
       id: 303,
+      last_publish_time: 0,
       last_operator_id: 1,
       model_id: 11,
       name: "未发布小助理",
@@ -808,6 +930,7 @@ function createAiHostingDbMock(options: { bulkHostingSeats?: boolean; uid?: numb
   ];
   const state = {
     agentListWheres: [] as Array<[string, string, unknown]>,
+    agentListLimitValues: [] as number[],
     agentListSelects: [] as string[],
     deletedAgent: undefined as
       | { id: number | undefined; values: Record<string, unknown> }
@@ -824,9 +947,11 @@ function createAiHostingDbMock(options: { bulkHostingSeats?: boolean; uid?: numb
     likeSearchValues: [] as unknown[],
     modelListWheres: [] as Array<[string, string, unknown]>,
     modelUidFilter: undefined as unknown,
+    queriedTables: [] as string[],
     updatedAgent: undefined as
       | { id: number | undefined; values: Record<string, unknown> }
       | undefined,
+    updatedAgents: [] as Array<{ id: number | undefined; values: Record<string, unknown> }>,
     seatListLimitValues: [] as number[],
     seatListWheres: [] as Array<[string, string, unknown]>,
     updatedHostingConfigs: [] as Array<{
@@ -843,8 +968,16 @@ function createAiHostingDbMock(options: { bulkHostingSeats?: boolean; uid?: numb
     selectFrom(table: string) {
       const wheres: Array<[string, string, unknown]> = [];
       const orderByCalls: Array<[string, string | undefined]> = [];
+      let isCountQuery = false;
       const builder = {
         execute: async () => {
+          state.queriedTables.push(table);
+          await options.beforeExecute?.({
+            isCountQuery,
+            table,
+            type: "execute",
+          });
+
           if (table === "xy_wap_embed_agent" || table === "xy_wap_embed_agent as agent") {
             state.agentListWheres = wheres;
 
@@ -915,6 +1048,13 @@ function createAiHostingDbMock(options: { bulkHostingSeats?: boolean; uid?: numb
           throw new Error(`Unexpected execute table: ${table}`);
         },
         executeTakeFirst: async () => {
+          state.queriedTables.push(table);
+          await options.beforeExecute?.({
+            isCountQuery,
+            table,
+            type: "executeTakeFirst",
+          });
+
           if (table === "xy_wap_embed_sub_user_session") {
             return {
               expires_at: new Date(Date.now() + 1000),
@@ -997,6 +1137,8 @@ function createAiHostingDbMock(options: { bulkHostingSeats?: boolean; uid?: numb
         limit: (value: number) => {
           if (table === "xy_wap_embed_agent_history") {
             state.historyLatestLimitValues.push(value);
+          } else if (table === "xy_wap_embed_agent as agent") {
+            state.agentListLimitValues.push(value);
           } else if (table === "xy_wap_embed_user_seat as seat") {
             state.seatListLimitValues.push(value);
           }
@@ -1008,7 +1150,12 @@ function createAiHostingDbMock(options: { bulkHostingSeats?: boolean; uid?: numb
           orderByCalls.push([column, direction]);
           return builder;
         },
-        select: (selection: string | string[]) => {
+        select: (selection: string | string[] | ((expressionBuilder: unknown) => unknown)) => {
+          if (typeof selection === "function") {
+            isCountQuery = true;
+            return builder;
+          }
+
           if (table === "xy_wap_embed_agent as agent") {
             state.agentListSelects = Array.isArray(selection) ? selection : [selection];
           }
@@ -1039,6 +1186,7 @@ function createAiHostingDbMock(options: { bulkHostingSeats?: boolean; uid?: numb
               create_time: new Date("2024-06-11T08:00:00Z"),
               id: 302,
               last_operator_id: Number(values.last_operator_id),
+              last_publish_time: 0,
               model_id: Number(values.model_id),
               name: String(values.name),
               operator_id: Number(values.operator_id),
@@ -1135,6 +1283,7 @@ function createAiHostingDbMock(options: { bulkHostingSeats?: boolean; uid?: numb
             state.deletedAgent = { id, values: updateValues };
           } else {
             state.updatedAgent = { id, values: updateValues };
+            state.updatedAgents.push({ id, values: updateValues });
           }
 
           return [];
@@ -1150,6 +1299,11 @@ function createAiHostingDbMock(options: { bulkHostingSeats?: boolean; uid?: numb
       };
 
       return builder;
+    },
+    transaction() {
+      return {
+        execute: async (callback: (trx: typeof state) => Promise<unknown>) => callback(state),
+      };
     },
   };
 

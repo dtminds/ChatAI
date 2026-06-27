@@ -1,3 +1,4 @@
+import { KB_SEARCH_QUERY_MAX_LENGTH } from "@chatai/contracts";
 import type {
   KbChunkListResponse,
   KbDocDetail,
@@ -7,7 +8,7 @@ import type {
 } from "@chatai/contracts";
 import type { Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
-import { NotFoundError } from "../../shared/errors.js";
+import { BadRequestError, NotFoundError } from "../../shared/errors.js";
 import type { RequestAwareLogger } from "../../shared/logger.js";
 import type { AgentKbJavaClient } from "./agent-kb-java-client.js";
 import { createAgentKbJavaClient } from "./agent-kb-java-client.js";
@@ -19,7 +20,7 @@ import {
   mapKbDocListItem,
   mapKbListItem,
 } from "./kb-read-mappers.js";
-import { parsePositiveInteger, resolveAgentKbUid } from "./kb-tenant-utils.js";
+import { type AgentKbTenant, parsePositiveInteger } from "./kb-tenant-utils.js";
 import { buildContainsLikePattern } from "./sql-like-utils.js";
 
 const dbActiveStatus = 1;
@@ -27,6 +28,22 @@ const defaultPage = 1;
 const defaultPageSize = 10;
 const maxPageSize = 100;
 const maxKbListPageSize = 200;
+const kbListColumns = ["id", "name", "remark", "create_time", "update_time"] as const;
+const kbDocListColumns = [
+  "id",
+  "kb_id",
+  "name",
+  "remark",
+  "doc_suffix",
+  "doc_type",
+  "doc_url",
+  "point_num",
+  "sync_error_msg",
+  "sync_status",
+  "create_time",
+  "update_time",
+] as const;
+const kbDocDetailColumns = [...kbDocListColumns, "volc_doc_id"] as const;
 
 export class KbReadService {
   constructor(
@@ -35,46 +52,44 @@ export class KbReadService {
   ) {}
 
   async listKbs(
-    subUserId: string,
+    tenant: AgentKbTenant,
     options: { page?: number; pageSize?: number; query?: string } = {},
   ): Promise<KbListResponse> {
-    const uid = await resolveAgentKbUid(this.db, subUserId);
+    const uid = tenant.uid;
     const pagination = normalizePagination(options, maxKbListPageSize);
-    const normalizedQuery = options.query?.trim();
+    const normalizedQuery = normalizeSearchQuery(options.query);
 
     let query = this.db
       .selectFrom("xy_wap_embed_agent_kb")
-      .selectAll()
+      .select(kbListColumns)
       .where("uid", "=", uid)
       .where("status", "=", dbActiveStatus);
 
     if (normalizedQuery) {
-      query = query.where((eb) =>
-        eb.or([
-          eb("name", "like", buildContainsLikePattern(normalizedQuery)),
-          eb("remark", "like", buildContainsLikePattern(normalizedQuery)),
-        ]),
-      );
+      query = query.where("name", "like", buildContainsLikePattern(normalizedQuery));
     }
 
-    const rows = await query
-      .orderBy("update_time", "desc")
-      .limit(pagination.pageSize)
-      .offset((pagination.page - 1) * pagination.pageSize)
-      .execute();
+    const [rows, total] = await Promise.all([
+      query
+        .orderBy("id", "desc")
+        .limit(pagination.pageSize)
+        .offset((pagination.page - 1) * pagination.pageSize)
+        .execute(),
+      this.countKbs(uid, normalizedQuery),
+    ]);
 
     return {
       kbs: rows.map(mapKbListItem),
       pagination: {
         page: pagination.page,
         pageSize: pagination.pageSize,
-        total: await this.countKbs(uid, normalizedQuery),
+        total,
       },
     };
   }
 
-  async getKb(subUserId: string, kbId: string): Promise<KbListResponse["kbs"][number]> {
-    const uid = await resolveAgentKbUid(this.db, subUserId);
+  async getKb(tenant: AgentKbTenant, kbId: string): Promise<KbListResponse["kbs"][number]> {
+    const uid = tenant.uid;
     const kbNumericId = parsePositiveInteger(kbId);
 
     if (kbNumericId == null) {
@@ -83,7 +98,7 @@ export class KbReadService {
 
     const row = await this.db
       .selectFrom("xy_wap_embed_agent_kb")
-      .selectAll()
+      .select(kbListColumns)
       .where("id", "=", kbNumericId)
       .where("uid", "=", uid)
       .where("status", "=", dbActiveStatus)
@@ -97,7 +112,7 @@ export class KbReadService {
   }
 
   async listKbDocs(
-    subUserId: string,
+    tenant: AgentKbTenant,
     kbId: string,
     options: {
       docType?: KbDocType;
@@ -106,21 +121,19 @@ export class KbReadService {
       query?: string;
     } = {},
   ): Promise<KbDocListResponse> {
-    const uid = await resolveAgentKbUid(this.db, subUserId);
+    const uid = tenant.uid;
     const kbNumericId = parsePositiveInteger(kbId);
 
     if (kbNumericId == null) {
       throw new NotFoundError("KB_NOT_FOUND", "知识库不存在");
     }
 
-    await this.assertKbExists(uid, kbNumericId);
-
     const pagination = normalizePagination(options);
-    const normalizedQuery = options.query?.trim();
+    const normalizedQuery = normalizeSearchQuery(options.query);
 
     let query = this.db
       .selectFrom("xy_wap_embed_agent_kb_doc")
-      .selectAll()
+      .select(kbDocListColumns)
       .where("uid", "=", uid)
       .where("kb_id", "=", kbNumericId)
       .where("status", "=", dbActiveStatus);
@@ -133,24 +146,27 @@ export class KbReadService {
       query = query.where("name", "like", buildContainsLikePattern(normalizedQuery));
     }
 
-    const rows = await query
-      .orderBy("update_time", "desc")
-      .limit(pagination.pageSize)
-      .offset((pagination.page - 1) * pagination.pageSize)
-      .execute();
+    const [rows, total] = await Promise.all([
+      query
+        .orderBy("id", "desc")
+        .limit(pagination.pageSize)
+        .offset((pagination.page - 1) * pagination.pageSize)
+        .execute(),
+      this.countKbDocs(uid, kbNumericId, normalizedQuery, options.docType),
+    ]);
 
     return {
       docs: rows.map(mapKbDocListItem),
       pagination: {
         page: pagination.page,
         pageSize: pagination.pageSize,
-        total: await this.countKbDocs(uid, kbNumericId, normalizedQuery, options.docType),
+        total,
       },
     };
   }
 
-  async getKbDoc(subUserId: string, docId: string): Promise<KbDocDetail> {
-    const uid = await resolveAgentKbUid(this.db, subUserId);
+  async getKbDoc(tenant: AgentKbTenant, docId: string): Promise<KbDocDetail> {
+    const uid = tenant.uid;
     const docNumericId = parsePositiveInteger(docId);
 
     if (docNumericId == null) {
@@ -159,7 +175,7 @@ export class KbReadService {
 
     const row = await this.db
       .selectFrom("xy_wap_embed_agent_kb_doc")
-      .selectAll()
+      .select(kbDocDetailColumns)
       .where("id", "=", docNumericId)
       .where("uid", "=", uid)
       .where("status", "=", dbActiveStatus)
@@ -173,11 +189,11 @@ export class KbReadService {
   }
 
   async listKbDocChunks(
-    subUserId: string,
+    tenant: AgentKbTenant,
     docId: string,
-    options: { page?: number; pageSize?: number; query?: string } = {},
+    options: { page?: number; pageSize?: number; title?: string } = {},
   ): Promise<KbChunkListResponse> {
-    const uid = await resolveAgentKbUid(this.db, subUserId);
+    const uid = tenant.uid;
     const docNumericId = parsePositiveInteger(docId);
 
     if (docNumericId == null) {
@@ -198,32 +214,24 @@ export class KbReadService {
 
     const docType = mapDocType(doc.doc_type);
     const pagination = normalizePagination(options);
-    const normalizedQuery = options.query?.trim();
+    const normalizedTitle = options.title?.trim();
 
     const response = await this.agentKbJavaClient.listKbChunks({
       docId: docNumericId,
       page: pagination.page,
       pageSize: pagination.pageSize,
+      title: normalizedTitle,
       uid,
     });
 
-    let chunks = response.list.map((item) => mapJavaChunkPageItem(item, docType));
-
-    if (normalizedQuery) {
-      const loweredQuery = normalizedQuery.toLowerCase();
-      chunks = chunks.filter(
-        (chunk) =>
-          chunk.title?.toLowerCase().includes(loweredQuery) ||
-          chunk.content?.toLowerCase().includes(loweredQuery),
-      );
-    }
+    const chunks = response.list.map((item) => mapJavaChunkPageItem(item, docType));
 
     return {
       chunks,
       pagination: {
         page: response.page,
         pageSize: response.pageSize,
-        total: normalizedQuery ? chunks.length : response.count,
+        total: response.count,
       },
     };
   }
@@ -236,12 +244,7 @@ export class KbReadService {
       .where("status", "=", dbActiveStatus);
 
     if (query) {
-      countQuery = countQuery.where((eb) =>
-        eb.or([
-          eb("name", "like", buildContainsLikePattern(query)),
-          eb("remark", "like", buildContainsLikePattern(query)),
-        ]),
-      );
+      countQuery = countQuery.where("name", "like", buildContainsLikePattern(query));
     }
 
     const result = await countQuery.executeTakeFirst();
@@ -275,19 +278,6 @@ export class KbReadService {
     return Number(result?.total ?? 0);
   }
 
-  private async assertKbExists(uid: number, kbId: number) {
-    const row = await this.db
-      .selectFrom("xy_wap_embed_agent_kb")
-      .select(["id"])
-      .where("id", "=", kbId)
-      .where("uid", "=", uid)
-      .where("status", "=", dbActiveStatus)
-      .executeTakeFirst();
-
-    if (!row) {
-      throw new NotFoundError("KB_NOT_FOUND", "知识库不存在");
-    }
-  }
 }
 
 export function createKbReadService(db: Kysely<Database>, logger?: RequestAwareLogger) {
@@ -303,4 +293,21 @@ function normalizePagination(input: { page?: number; pageSize?: number }, maxSiz
       : defaultPageSize;
 
   return { page, pageSize };
+}
+
+function normalizeSearchQuery(query?: string) {
+  const normalizedQuery = query?.trim();
+
+  if (!normalizedQuery) {
+    return undefined;
+  }
+
+  if (normalizedQuery.length > KB_SEARCH_QUERY_MAX_LENGTH) {
+    throw new BadRequestError(
+      "INVALID_KB_QUERY",
+      `搜索关键词不能超过 ${KB_SEARCH_QUERY_MAX_LENGTH} 个字符`,
+    );
+  }
+
+  return normalizedQuery;
 }

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   AuthRefreshResponseSchema,
   AuthSessionResponseSchema,
+  JwtUserSchema,
 } from "../src/auth/dto";
 import {
   SettingsSidebarItemCreateRequestSchema,
@@ -224,6 +225,27 @@ describe("settings sub-account DTOs", () => {
     expect(
       Value.Check(AuthRefreshResponseSchema, {
         expiresIn: 1200,
+      }),
+    ).toBe(false);
+  });
+
+  it("requires tenant uid in JWT payloads", () => {
+    expect(
+      Value.Check(JwtUserSchema, {
+        roles: ["operator"],
+        sessionId: "501",
+        sessionVersion: 1,
+        subUserId: "101",
+        uid: 9001,
+      }),
+    ).toBe(true);
+
+    expect(
+      Value.Check(JwtUserSchema, {
+        roles: ["operator"],
+        sessionId: "501",
+        sessionVersion: 1,
+        subUserId: "101",
       }),
     ).toBe(false);
   });

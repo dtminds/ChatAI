@@ -10,6 +10,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { ForbiddenError } from "../../shared/errors.js";
 import { createAgentKbJavaClient } from "./agent-kb-java-client.js";
 import { KbChunkService } from "./kb-chunk.service.js";
+import { getAgentKbTenant } from "./kb-tenant-utils.js";
 
 const NumericStringSchema = Type.String({ pattern: "^[0-9]+$" });
 
@@ -32,7 +33,7 @@ export async function registerKbChunkRoutes(app: FastifyInstance) {
       assertAiHostingWriteAccess(request);
 
       return apiSuccess(
-        await getKbChunkService(app).addKbChunk(getSubUserId(request), request.body),
+        await getKbChunkService(app).addKbChunk(getAgentKbTenant(request), request.body),
       );
     },
   );
@@ -51,7 +52,7 @@ export async function registerKbChunkRoutes(app: FastifyInstance) {
 
       return apiSuccess(
         await getKbChunkService(app).updateKbChunk(
-          getSubUserId(request),
+          getAgentKbTenant(request),
           request.params.chunkId,
           request.body,
         ),
@@ -72,7 +73,7 @@ export async function registerKbChunkRoutes(app: FastifyInstance) {
 
       return apiSuccess(
         await getKbChunkService(app).deleteKbChunk(
-          getSubUserId(request),
+          getAgentKbTenant(request),
           request.params.chunkId,
         ),
       );
@@ -82,10 +83,6 @@ export async function registerKbChunkRoutes(app: FastifyInstance) {
 
 function getKbChunkService(app: FastifyInstance) {
   return new KbChunkService(app.db, app.log, createAgentKbJavaClient(app.log));
-}
-
-function getSubUserId(request: { user?: { subUserId: string } }) {
-  return request.user?.subUserId ?? "";
 }
 
 function assertAiHostingWriteAccess(request: FastifyRequest) {

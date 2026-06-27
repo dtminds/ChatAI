@@ -79,6 +79,7 @@ export type AgentKbJavaListChunksInput = {
   docId: number;
   page: number;
   pageSize: number;
+  title?: string;
   uid: number;
 };
 
@@ -191,16 +192,24 @@ export function createAgentKbJavaClient(
       );
     },
     async listKbChunks(input) {
+      const body: Record<string, number | string> = {
+        docId: input.docId,
+        page: input.page,
+        pageSize: input.pageSize,
+        uid: input.uid,
+      };
+
+      const normalizedTitle = input.title?.trim();
+
+      if (normalizedTitle) {
+        body.title = normalizedTitle;
+      }
+
       const response = await postJavaJson<JavaChunkPageResponse>(
         baseUrl,
         token,
         "/third-internal/wap-embed-agent-kb-chunk/page",
-        {
-          docId: input.docId,
-          page: input.page,
-          pageSize: input.pageSize,
-          uid: input.uid,
-        },
+        body,
         logger,
         "agent-kb-chunk-page",
         input,

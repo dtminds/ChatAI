@@ -2,6 +2,29 @@
 
 Manual database changes for the backend should be recorded here.
 
+## 2026-06-27
+
+- Added `xy_wap_embed_agent.last_publish_time` as the denormalized publish-state source for AI hosting settings. `0` means unpublished; positive values are millisecond timestamps.
+- Hosting settings should read publish state from `xy_wap_embed_agent.last_publish_time`, not aggregate `xy_wap_embed_agent_history` rows.
+
+Manual migration for existing databases:
+
+```sql
+ALTER TABLE xy_wap_embed_agent
+  ADD COLUMN last_publish_time BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '最近一次发布时间，毫秒时间戳，0表示未发布' AFTER last_operator_id;
+
+UPDATE xy_wap_embed_agent AS agent
+JOIN (
+  SELECT agent_id, MAX(create_time) AS last_publish_time
+  FROM xy_wap_embed_agent_history
+  GROUP BY agent_id
+) AS latest_history
+  ON latest_history.agent_id = agent.id
+SET agent.last_publish_time = UNIX_TIMESTAMP(latest_history.last_publish_time) * 1000
+WHERE agent.last_publish_time = 0
+  AND latest_history.last_publish_time IS NOT NULL;
+```
+
 ## 2026-06-20
 
 - Added `xy_wap_embed_material_collection.msg_info_id` to retain the source `xy_wap_embed_msg_audit_info.id` alongside the third-party `msgid`.

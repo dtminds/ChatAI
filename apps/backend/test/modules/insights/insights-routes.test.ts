@@ -524,7 +524,7 @@ describe("insights routes", () => {
     expect(response.statusCode).toBe(200);
   });
 
-  it("looks up bigint sub user ids without coercing them through Number", async () => {
+  it("uses the authenticated uid without resolving the sub user", async () => {
     const subUserId = "9007199254740993";
     const operator = await createInsightsApp("operator", {
       subUserId,
@@ -539,9 +539,7 @@ describe("insights routes", () => {
     await operator.app.close();
 
     expect(response.statusCode).toBe(200);
-    expect(operator.db.selectBuilders.some((builder) =>
-      builder.wheres.some((where) => where[0] === "id" && where[2] === subUserId)
-    )).toBe(true);
+    expect(operator.db.selectedTables).not.toContain("xy_wap_embed_sub_user");
   });
 
   it("accepts offset date-time insight filters", async () => {
@@ -870,6 +868,7 @@ async function createInsightsApp(
     sessionId: "501",
     sessionVersion: 1,
     subUserId,
+    uid: 9001,
   });
   const db = createInsightsDbMock({ ...options, subUserId });
 
@@ -900,6 +899,7 @@ function createInsightsDbMock(options: {
     actionStatus: "open",
     rescanTaskListQueries: [] as Array<{ limit?: unknown; offset?: unknown }>,
     selectBuilders: [] as Array<{ wheres: Array<[string, string, unknown]> }>,
+    selectedTables: [] as string[],
     upsertedFeatureConfig: undefined as Record<string, unknown> | undefined,
     updatedActionStatus: undefined as { id: number | undefined; status: string | undefined } | undefined,
     insertInto(table: string) {
@@ -952,6 +952,9 @@ function createInsightsDbMock(options: {
       return builder;
     },
     selectFrom(table: string | ((eb: unknown) => unknown)) {
+      if (typeof table === "string") {
+        state.selectedTables.push(table);
+      }
       const wheres: Array<[string, string, unknown]> = [];
       const joins: Array<{ conditions: Array<[string, string, unknown]>; table: string }> = [];
 

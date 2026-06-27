@@ -1048,7 +1048,7 @@ describe("WorkbenchRepository", () => {
     const repository = new WorkbenchRepository(db as never);
 
     await repository.listQuickReplies({
-      keyword: "退款",
+      keyword: "a\\b%_",
       page: 2,
       pageSize: 20,
       scopeType: 2,
@@ -1060,15 +1060,15 @@ describe("WorkbenchRepository", () => {
     expect(db.selects[0].whereExpressions).toContainEqual({
       type: "or",
       expressions: [
-        { column: "content_text", operator: "like", value: "%退款%" },
-        { column: "label_text", operator: "like", value: "%退款%" },
+        { column: "content_text", operator: "like", value: "%a\\\\b\\%\\_%" },
+        { column: "label_text", operator: "like", value: "%a\\\\b\\%\\_%" },
       ],
     });
     expect(db.selects[1].whereExpressions).toContainEqual({
       type: "or",
       expressions: [
-        { column: "content_text", operator: "like", value: "%退款%" },
-        { column: "label_text", operator: "like", value: "%退款%" },
+        { column: "content_text", operator: "like", value: "%a\\\\b\\%\\_%" },
+        { column: "label_text", operator: "like", value: "%a\\\\b\\%\\_%" },
       ],
     });
     expect(db.selects[0]).toMatchObject({

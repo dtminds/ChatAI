@@ -8,29 +8,31 @@ import type {
   AiHostingAgentRemoveResponse,
   AiHostingAgentSaveRequest,
   AiHostingAgentSettingsSaveRequest,
-  AiHostingSettingsAccount,
-  AiHostingSettingsAgentOption,
-  AiHostingSettingsResponse,
-  AiHostingSettingsUpdateRequest,
   AiHostingModel,
   AiHostingModelListResponse,
 } from "@chatai/contracts";
-import type { Insertable, Kysely } from "kysely";
+import type { Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
 import {
   BadRequestError,
   NotFoundError,
   ServiceUnavailableError,
 } from "../../shared/errors.js";
+import { parseMySqlId } from "./ai-hosting-id-utils.js";
 import { buildContainsLikePattern } from "./sql-like-utils.js";
 
-type TenantScope = {
-  platform: number;
+type AgentTenantScope = {
   uid: number;
 };
 
-type AgentRow = {
+type AgentWriteContext = {
+  operatorSubUserId: string;
+  uid: number;
+};
+
+export type AgentRow = {
   id: number;
+  last_publish_time?: number | string | null;
   model_id: number;
   name: string;
   prompt_config?: string | null;
@@ -44,25 +46,6 @@ type AgentHistoryRow = {
   model_id: number;
   prompt_config: string | null;
 };
-
-type AgentPublishedRow = {
-  agent_id: number;
-};
-
-type HostingSettingsSeatRow = {
-  avatarUrl: string | null;
-  id: number;
-  third_user_name: string | null;
-};
-
-type UserSeatAgentRow = {
-  agent_id: number;
-  full_auto_auth: number | null;
-  semi_auto_auth: number | null;
-  user_seat_id: number;
-};
-
-type UserSeatAgentInsert = Insertable<Database["xy_wap_embed_user_seat_agent"]>;
 
 type AiModelRow = {
   description?: string | null;
@@ -78,20 +61,23 @@ const dbDeletedStatus = 0;
 const defaultPage = 1;
 const defaultPageSize = 10;
 const maxPageSize = 100;
-const hostingSettingsSeatLimit = 200;
+const hostingSettingsAgentLimit = 100;
 
-export class AiHostingService {
+export class AiHostingAgentService {
   constructor(private readonly db: Kysely<Database>) {}
 
   async listAgents(
-    currentSubUserId: string,
+    uid: number,
     options: { page?: number; pageSize?: number; query?: string } = {},
   ): Promise<AiHostingAgentListResponse> {
-    const scope = await this.getTenantScope(currentSubUserId);
+    const scope = normalizeAgentTenantScope(uid);
     const pagination = normalizePagination(options);
     const normalizedQuery = options.query?.trim();
-    const rows = await this.listAgentRows(scope, pagination, normalizedQuery);
-    const models = await this.listModelRows(scope);
+    const [rows, models, total] = await Promise.all([
+      this.listAgentRows(scope, pagination, normalizedQuery),
+      this.listModelRows(scope),
+      this.countAgents(scope, normalizedQuery),
+    ]);
     const modelMap = new Map(models.map((model) => [String(model.id), mapModelSummary(model)]));
 
     return {
@@ -99,105 +85,21 @@ export class AiHostingService {
       pagination: {
         page: pagination.page,
         pageSize: pagination.pageSize,
-        total: await this.countAgents(scope, normalizedQuery),
+        total,
       },
     };
   }
 
-  async listModels(currentSubUserId: string): Promise<AiHostingModelListResponse> {
-    const scope = await this.getTenantScope(currentSubUserId);
+  async listModels(uid: number): Promise<AiHostingModelListResponse> {
+    const scope = normalizeAgentTenantScope(uid);
 
     return {
       models: (await this.listModelRows(scope)).map(mapModel),
     };
   }
 
-  async listHostingSettings(currentSubUserId: string): Promise<AiHostingSettingsResponse> {
-    const scope = await this.getTenantScope(currentSubUserId);
-    const [seats, agents] = await Promise.all([
-      this.listHostingSettingSeats(scope),
-      this.listAllAgentRows(scope),
-    ]);
-    const seatIds = seats.map((seat) => seat.id);
-    const agentIds = agents.map((agent) => agent.id);
-    const [configs, publishedAgentIds] = await Promise.all([
-      this.listUserSeatAgentRows(scope, seatIds),
-      this.listPublishedAgentIds(scope, agentIds),
-    ]);
-    const configsBySeatId = new Map(configs.map((config) => [config.user_seat_id, config]));
-
-    return {
-      accounts: seats.map((seat) => mapHostingSettingsAccount(seat, configsBySeatId.get(seat.id))),
-      agents: agents.map((agent) => mapHostingSettingsAgent(agent, publishedAgentIds)),
-    };
-  }
-
-  async updateHostingSettings(
-    currentSubUserId: string,
-    payload: AiHostingSettingsUpdateRequest,
-  ): Promise<AiHostingSettingsResponse> {
-    const scope = await this.getTenantScope(currentSubUserId);
-    const agentId = parseMySqlId(payload.agentId);
-    const userSeatIds = normalizeIdList(payload.userSeatIds);
-
-    if (agentId == null) {
-      throw new BadRequestError("INVALID_AGENT", "Agent 不存在");
-    }
-
-    if (userSeatIds == null || userSeatIds.length === 0) {
-      throw new BadRequestError("INVALID_USER_SEAT", "企微账号不存在");
-    }
-
-    await this.assertPublishedAgentInScope(scope, agentId);
-    await this.assertUserSeatsInScope(scope, userSeatIds);
-
-    const currentConfigs = await this.listUserSeatAgentRows(scope, userSeatIds);
-    const existingSeatIds = new Set(currentConfigs.map((config) => config.user_seat_id));
-    const insertRows: UserSeatAgentInsert[] = [];
-    const updateSeatIds: number[] = [];
-    const values = {
-      agent_id: agentId,
-      full_auto_auth: payload.fullAutoAuth ? 1 : 0,
-      semi_auto_auth: payload.semiAutoAuth ? 1 : 0,
-    };
-
-    for (const userSeatId of userSeatIds) {
-      if (existingSeatIds.has(userSeatId)) {
-        updateSeatIds.push(userSeatId);
-        continue;
-      }
-
-      insertRows.push({
-        ...values,
-        uid: scope.uid,
-        user_seat_id: userSeatId,
-      });
-    }
-
-    if (insertRows.length > 0) {
-      await this.db
-        .insertInto("xy_wap_embed_user_seat_agent")
-        .values(insertRows)
-        .executeTakeFirstOrThrow();
-    }
-
-    if (updateSeatIds.length > 0) {
-      await this.db
-        .updateTable("xy_wap_embed_user_seat_agent")
-        .set({
-          ...values,
-          update_time: new Date(),
-        })
-        .where("uid", "=", scope.uid)
-        .where("user_seat_id", "in", updateSeatIds)
-        .execute();
-    }
-
-    return this.listHostingSettings(currentSubUserId);
-  }
-
-  async getAgent(currentSubUserId: string, agentId: string): Promise<AiHostingAgentDetail> {
-    const scope = await this.getTenantScope(currentSubUserId);
+  async getAgent(uid: number, agentId: string): Promise<AiHostingAgentDetail> {
+    const scope = normalizeAgentTenantScope(uid);
     const numericAgentId = parseMySqlId(agentId);
 
     if (numericAgentId == null) {
@@ -208,11 +110,11 @@ export class AiHostingService {
   }
 
   async createAgent(
-    currentSubUserId: string,
+    context: AgentWriteContext,
     payload: AiHostingAgentSaveRequest,
   ): Promise<AiHostingAgentDetail> {
-    const scope = await this.getTenantScope(currentSubUserId);
-    const operatorId = parseMySqlId(currentSubUserId);
+    const scope = normalizeAgentTenantScope(context.uid);
+    const operatorId = parseMySqlId(context.operatorSubUserId);
     const normalized = await this.normalizeSavePayload(scope, payload);
 
     if (operatorId == null) {
@@ -241,12 +143,12 @@ export class AiHostingService {
   }
 
   async updateAgent(
-    currentSubUserId: string,
+    context: AgentWriteContext,
     agentId: string,
     payload: AiHostingAgentSettingsSaveRequest,
   ): Promise<AiHostingAgentDetail> {
-    const scope = await this.getTenantScope(currentSubUserId);
-    const operatorId = parseMySqlId(currentSubUserId);
+    const scope = normalizeAgentTenantScope(context.uid);
+    const operatorId = parseMySqlId(context.operatorSubUserId);
     const numericAgentId = parseMySqlId(agentId);
     const normalized = await this.normalizeSettingsSavePayload(scope, payload);
 
@@ -276,12 +178,12 @@ export class AiHostingService {
   }
 
   async renameAgent(
-    currentSubUserId: string,
+    context: AgentWriteContext,
     agentId: string,
     payload: AiHostingAgentRenameRequest,
   ): Promise<AiHostingAgentDetail> {
-    const scope = await this.getTenantScope(currentSubUserId);
-    const operatorId = parseMySqlId(currentSubUserId);
+    const scope = normalizeAgentTenantScope(context.uid);
+    const operatorId = parseMySqlId(context.operatorSubUserId);
     const numericAgentId = parseMySqlId(agentId);
     const name = normalizeAgentName(payload.name);
 
@@ -313,9 +215,9 @@ export class AiHostingService {
     return this.getAgentDetailOrThrow(scope, numericAgentId);
   }
 
-  async publishAgent(currentSubUserId: string, agentId: string): Promise<AiHostingAgentDetail> {
-    const scope = await this.getTenantScope(currentSubUserId);
-    const operatorId = parseMySqlId(currentSubUserId);
+  async publishAgent(context: AgentWriteContext, agentId: string): Promise<AiHostingAgentDetail> {
+    const scope = normalizeAgentTenantScope(context.uid);
+    const operatorId = parseMySqlId(context.operatorSubUserId);
     const numericAgentId = parseMySqlId(agentId);
 
     if (operatorId == null) {
@@ -333,26 +235,43 @@ export class AiHostingService {
       throw new BadRequestError("AGENT_UNCHANGED", "当前配置已是正式版");
     }
 
-    await this.db
-      .insertInto("xy_wap_embed_agent_history")
-      .values({
-        agent_id: agent.id,
-        model_id: agent.model_id,
-        operator_id: operatorId,
-        prompt_config: normalizePromptConfigText(agent.prompt_config),
-        uid: scope.uid,
-      })
-      .executeTakeFirstOrThrow();
+    const publishTime = Date.now();
+
+    await this.db.transaction().execute(async (trx) => {
+      await trx
+        .insertInto("xy_wap_embed_agent_history")
+        .values({
+          agent_id: agent.id,
+          create_time: new Date(publishTime),
+          model_id: agent.model_id,
+          operator_id: operatorId,
+          prompt_config: normalizePromptConfigText(agent.prompt_config),
+          uid: scope.uid,
+        })
+        .executeTakeFirstOrThrow();
+
+      await trx
+        .updateTable("xy_wap_embed_agent")
+        .set({
+          last_operator_id: operatorId,
+          last_publish_time: publishTime,
+          update_time: new Date(publishTime),
+        })
+        .where("id", "=", numericAgentId)
+        .where("uid", "=", scope.uid)
+        .where("status", "=", dbActiveStatus)
+        .execute();
+    });
 
     return this.getAgentDetailOrThrow(scope, numericAgentId);
   }
 
   async restorePublishedAgent(
-    currentSubUserId: string,
+    context: AgentWriteContext,
     agentId: string,
   ): Promise<AiHostingAgentDetail> {
-    const scope = await this.getTenantScope(currentSubUserId);
-    const operatorId = parseMySqlId(currentSubUserId);
+    const scope = normalizeAgentTenantScope(context.uid);
+    const operatorId = parseMySqlId(context.operatorSubUserId);
     const numericAgentId = parseMySqlId(agentId);
 
     if (operatorId == null) {
@@ -387,11 +306,11 @@ export class AiHostingService {
   }
 
   async removeAgent(
-    currentSubUserId: string,
+    context: AgentWriteContext,
     agentId: string,
   ): Promise<AiHostingAgentRemoveResponse> {
-    const scope = await this.getTenantScope(currentSubUserId);
-    const operatorId = parseMySqlId(currentSubUserId);
+    const scope = normalizeAgentTenantScope(context.uid);
+    const operatorId = parseMySqlId(context.operatorSubUserId);
     const numericAgentId = parseMySqlId(agentId);
 
     if (operatorId == null) {
@@ -419,35 +338,14 @@ export class AiHostingService {
     return { deleted: true };
   }
 
-  private async getTenantScope(currentSubUserId: string): Promise<TenantScope> {
-    const numericSubUserId = parseMySqlId(currentSubUserId);
+  listAllAgentRows(uid: number) {
+    const scope = normalizeAgentTenantScope(uid);
 
-    if (numericSubUserId == null) {
-      throw new BadRequestError("INVALID_SUB_ACCOUNT", "当前账号无效");
-    }
-
-    const currentSubUser = await this.db
-      .selectFrom("xy_wap_embed_sub_user")
-      .select(["platform", "uid"])
-      .where("id", "=", numericSubUserId)
-      .where("status", "=", dbActiveStatus)
-      .executeTakeFirst();
-
-    if (!currentSubUser) {
-      throw new NotFoundError("SUB_ACCOUNT_NOT_FOUND", "当前账号不存在");
-    }
-
-    return {
-      platform: currentSubUser.platform,
-      uid: currentSubUser.uid,
-    };
-  }
-
-  private listAllAgentRows(scope: TenantScope) {
     return this.db
       .selectFrom("xy_wap_embed_agent as agent")
       .select([
         "agent.id as id",
+        "agent.last_publish_time as last_publish_time",
         "agent.model_id as model_id",
         "agent.name as name",
         "agent.update_time as update_time",
@@ -456,63 +354,12 @@ export class AiHostingService {
       .where("agent.status", "=", dbActiveStatus)
       .orderBy("agent.update_time", "desc")
       .orderBy("agent.id", "desc")
+      .limit(hostingSettingsAgentLimit)
       .execute() as Promise<AgentRow[]>;
   }
 
-  private listHostingSettingSeats(scope: TenantScope, seatIds?: number[]) {
-    let query = this.db
-      .selectFrom("xy_wap_embed_user_seat as seat")
-      .select([
-        "seat.third_avatar as avatarUrl",
-        "seat.id",
-        "seat.third_user_name",
-      ])
-      .where("seat.uid", "=", scope.uid)
-      .where("seat.platform", "=", scope.platform);
-
-    if (seatIds !== undefined) {
-      query = query.where("seat.id", "in", seatIds);
-    }
-
-    query = query.orderBy("seat.id", "desc");
-
-    if (seatIds === undefined) {
-      query = query.limit(hostingSettingsSeatLimit);
-    }
-
-    return query.execute() as Promise<HostingSettingsSeatRow[]>;
-  }
-
-  private listUserSeatAgentRows(scope: TenantScope, seatIds: number[]) {
-    if (seatIds.length === 0) {
-      return Promise.resolve([]);
-    }
-
-    return this.db
-      .selectFrom("xy_wap_embed_user_seat_agent")
-      .select(["agent_id", "full_auto_auth", "semi_auto_auth", "user_seat_id"])
-      .where("uid", "=", scope.uid)
-      .where("user_seat_id", "in", seatIds)
-      .execute() as Promise<UserSeatAgentRow[]>;
-  }
-
-  private async listPublishedAgentIds(scope: TenantScope, agentIds: number[]) {
-    if (agentIds.length === 0) {
-      return new Set<number>();
-    }
-
-    const rows = await (this.db
-      .selectFrom("xy_wap_embed_agent_history")
-      .select(["agent_id"])
-      .where("uid", "=", scope.uid)
-      .where("agent_id", "in", agentIds)
-      .execute() as Promise<AgentPublishedRow[]>);
-
-    return new Set(rows.map((row) => row.agent_id));
-  }
-
   private listAgentRows(
-    scope: TenantScope,
+    scope: AgentTenantScope,
     pagination: { page: number; pageSize: number },
     query?: string,
   ) {
@@ -520,6 +367,7 @@ export class AiHostingService {
       .selectFrom("xy_wap_embed_agent as agent")
       .select([
         "agent.id as id",
+        "agent.last_publish_time as last_publish_time",
         "agent.model_id as model_id",
         "agent.name as name",
         "agent.update_time as update_time",
@@ -539,7 +387,7 @@ export class AiHostingService {
       .execute() as Promise<AgentRow[]>;
   }
 
-  private async countAgents(scope: TenantScope, query?: string) {
+  private async countAgents(scope: AgentTenantScope, query?: string) {
     let builder = this.db
       .selectFrom("xy_wap_embed_agent as agent")
       .select(({ fn }) => fn.count<number>("agent.id").as("total"))
@@ -555,7 +403,7 @@ export class AiHostingService {
     return parseCount((row as { total?: number | string | bigint } | undefined)?.total);
   }
 
-  private listModelRows(scope: TenantScope) {
+  private listModelRows(scope: AgentTenantScope) {
     return this.db
       .selectFrom("xy_wap_embed_ai_model")
       .select(["description", "id", "model", "name", "support_multimodal", "uid"])
@@ -566,7 +414,7 @@ export class AiHostingService {
       .execute() as Promise<AiModelRow[]>;
   }
 
-  private getModelRow(scope: TenantScope, modelId: number) {
+  private getModelRow(scope: AgentTenantScope, modelId: number) {
     return this.db
       .selectFrom("xy_wap_embed_ai_model")
       .select(["description", "id", "model", "name", "support_multimodal", "uid"])
@@ -576,7 +424,7 @@ export class AiHostingService {
       .executeTakeFirst() as Promise<AiModelRow | undefined>;
   }
 
-  private async normalizeSavePayload(scope: TenantScope, payload: AiHostingAgentSaveRequest) {
+  private async normalizeSavePayload(scope: AgentTenantScope, payload: AiHostingAgentSaveRequest) {
     const normalized = await this.normalizeSettingsSavePayload(scope, payload);
     const name = normalizeAgentName(payload.name);
 
@@ -591,7 +439,7 @@ export class AiHostingService {
   }
 
   private async normalizeSettingsSavePayload(
-    scope: TenantScope,
+    scope: AgentTenantScope,
     payload: AiHostingAgentSettingsSaveRequest,
   ) {
     const modelId = parseMySqlId(payload.modelId);
@@ -606,17 +454,17 @@ export class AiHostingService {
     };
   }
 
-  private getAgentRow(scope: TenantScope, agentId: number) {
+  private getAgentRow(scope: AgentTenantScope, agentId: number) {
     return this.db
       .selectFrom("xy_wap_embed_agent")
-      .select(["id", "model_id", "name", "prompt_config", "update_time"])
+      .select(["id", "last_publish_time", "model_id", "name", "prompt_config", "update_time"])
       .where("id", "=", agentId)
       .where("uid", "=", scope.uid)
       .where("status", "=", dbActiveStatus)
       .executeTakeFirst() as Promise<AgentRow | undefined>;
   }
 
-  private async getAgentRowOrThrow(scope: TenantScope, agentId: number) {
+  private async getAgentRowOrThrow(scope: AgentTenantScope, agentId: number) {
     const agent = await this.getAgentRow(scope, agentId);
 
     if (!agent) {
@@ -626,28 +474,20 @@ export class AiHostingService {
     return agent;
   }
 
-  private async assertAgentInScope(scope: TenantScope, agentId: number) {
+  private async assertAgentInScope(scope: AgentTenantScope, agentId: number) {
     await this.getAgentRowOrThrow(scope, agentId);
   }
 
-  private async assertPublishedAgentInScope(scope: TenantScope, agentId: number) {
-    await this.assertAgentInScope(scope, agentId);
+  async assertPublishedAgentInTenant(uid: number, agentId: number) {
+    const scope = normalizeAgentTenantScope(uid);
+    const agent = await this.getAgentRowOrThrow(scope, agentId);
 
-    if (!(await this.getLatestHistory(scope, agentId))) {
+    if (!isPublishedAgent(agent)) {
       throw new BadRequestError("AGENT_UNPUBLISHED", "Agent 未发布，不能用于托管设置");
     }
   }
 
-  private async assertUserSeatsInScope(scope: TenantScope, userSeatIds: number[]) {
-    const seats = await this.listHostingSettingSeats(scope, userSeatIds);
-    const validSeatIds = new Set(seats.map((seat) => seat.id));
-
-    if (userSeatIds.some((userSeatId) => !validSeatIds.has(userSeatId))) {
-      throw new BadRequestError("INVALID_USER_SEAT", "企微账号不存在");
-    }
-  }
-
-  private async assertAgentNotUsedByHostingSettings(scope: TenantScope, agentId: number) {
+  private async assertAgentNotUsedByHostingSettings(scope: AgentTenantScope, agentId: number) {
     const usedConfig = await this.db
       .selectFrom("xy_wap_embed_user_seat_agent")
       .select("id")
@@ -660,7 +500,7 @@ export class AiHostingService {
     }
   }
 
-  private getLatestHistory(scope: TenantScope, agentId: number) {
+  private getLatestHistory(scope: AgentTenantScope, agentId: number) {
     return this.db
       .selectFrom("xy_wap_embed_agent_history")
       .select(["agent_id", "create_time", "id", "model_id", "prompt_config"])
@@ -671,7 +511,10 @@ export class AiHostingService {
       .executeTakeFirst() as Promise<AgentHistoryRow | undefined>;
   }
 
-  private async getAgentDetailOrThrow(scope: TenantScope, agentId: number): Promise<AiHostingAgentDetail> {
+  private async getAgentDetailOrThrow(
+    scope: AgentTenantScope,
+    agentId: number,
+  ): Promise<AiHostingAgentDetail> {
     const agent = await this.getAgentRowOrThrow(scope, agentId);
     const model = await this.getModelRow(scope, agent.model_id);
     const latestHistory = await this.getLatestHistory(scope, agent.id);
@@ -683,7 +526,7 @@ export class AiHostingService {
       modelId: String(agent.model_id),
       name: agent.name,
       promptConfig: parsePromptConfig(agent.prompt_config),
-      publishedAt: toOptionalTimestamp(latestHistory?.create_time),
+      publishedAt: toOptionalTimestamp(agent.last_publish_time),
       updatedAt: toOptionalTimestamp(agent.update_time),
     };
   }
@@ -702,8 +545,16 @@ export class AiHostingService {
   }
 }
 
-export function createAiHostingService(db: Kysely<Database>) {
-  return new AiHostingService(db);
+export function createAiHostingAgentService(db: Kysely<Database>) {
+  return new AiHostingAgentService(db);
+}
+
+function normalizeAgentTenantScope(uid: number): AgentTenantScope {
+  if (!Number.isSafeInteger(uid) || uid <= 0) {
+    throw new BadRequestError("INVALID_TENANT", "当前租户无效");
+  }
+
+  return { uid };
 }
 
 function normalizePagination(input: { page?: number; pageSize?: number }) {
@@ -714,30 +565,6 @@ function normalizePagination(input: { page?: number; pageSize?: number }) {
       : defaultPageSize;
 
   return { page, pageSize };
-}
-
-function parseMySqlId(value: number | string | null | undefined) {
-  if (typeof value === "number" && Number.isSafeInteger(value) && value > 0) {
-    return value;
-  }
-
-  if (typeof value !== "string" || !/^\d+$/.test(value)) {
-    return null;
-  }
-
-  const parsed = Number(value);
-
-  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
-}
-
-function normalizeIdList(values: string[]) {
-  const normalizedValues = values.map(parseMySqlId);
-
-  if (normalizedValues.some((value) => value == null)) {
-    return null;
-  }
-
-  return Array.from(new Set(normalizedValues as number[]));
 }
 
 function parseInsertedMySqlId(value: unknown) {
@@ -807,29 +634,8 @@ function fallbackModelSummary(modelId: number): AiHostingAgentModelSummary {
   };
 }
 
-function mapHostingSettingsAccount(
-  seat: HostingSettingsSeatRow,
-  config: UserSeatAgentRow | undefined,
-): AiHostingSettingsAccount {
-  return {
-    agentId: config && config.agent_id > 0 ? String(config.agent_id) : null,
-    avatarUrl: seat.avatarUrl || "",
-    fullAutoAuth: config?.full_auto_auth === 1,
-    id: String(seat.id),
-    name: seat.third_user_name || "未命名托管账号",
-    semiAutoAuth: config?.semi_auto_auth === 1,
-  };
-}
-
-function mapHostingSettingsAgent(
-  agent: AgentRow,
-  publishedAgentIds: Set<number>,
-): AiHostingSettingsAgentOption {
-  return {
-    id: String(agent.id),
-    isPublished: publishedAgentIds.has(agent.id),
-    name: agent.name,
-  };
+export function isPublishedAgent(agent: AgentRow) {
+  return Boolean(toOptionalTimestamp(agent.last_publish_time));
 }
 
 function normalizeAgentName(value: string) {
@@ -921,12 +727,18 @@ function toOptionalTimestamp(value: Date | number | string | null | undefined) {
   }
 
   if (typeof value === "number") {
-    return Number.isFinite(value) ? value : undefined;
+    return Number.isFinite(value) && value > 0 ? value : undefined;
+  }
+
+  if (/^\d+$/.test(value)) {
+    const parsed = Number(value);
+
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
   }
 
   const parsed = Date.parse(value);
 
-  return Number.isFinite(parsed) ? parsed : undefined;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

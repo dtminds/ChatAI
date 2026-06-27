@@ -4,9 +4,12 @@ import {
   AlertCircleIcon,
   ArrowLeft01Icon,
   CheckmarkCircle02Icon,
+  Clock04Icon,
+  Loading03Icon,
   Search01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { KB_SEARCH_QUERY_MAX_LENGTH } from "@chatai/contracts";
 import { Link, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import {
@@ -45,12 +48,14 @@ import {
   resolveTablePagination,
   TablePagination,
 } from "@/components/ui/table-pagination";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { FileExtensionBadge } from "@/pages/chat/components/message/file";
 import { AiHostingLayout, AiHostingPageHeader } from "./ai-hosting-layout";
 import { KbTableLoadingRow } from "./kb-components/kb-table-loading-row";
 import { ImportDocumentDialog } from "./kb-components/import-document-dialog";
 import { ImportImageDialog } from "./kb-components/import-image-dialog";
 import { ImportQaDialog } from "./kb-components/import-qa-dialog";
+import { TableOverflowTooltip } from "./kb-components/shared";
 import { deleteKbDoc } from "./api/kb-doc-service";
 import {
   getKb,
@@ -111,7 +116,7 @@ const statusMeta: Record<
   parsing: {
     label: "解析中",
     className: "text-muted-foreground",
-    icon: AlertCircleIcon,
+    icon: Loading03Icon,
   },
   failed: {
     label: "失败",
@@ -121,7 +126,7 @@ const statusMeta: Record<
   queued: {
     label: "排队中",
     className: "text-muted-foreground",
-    icon: AlertCircleIcon,
+    icon: Clock04Icon,
   },
 };
 
@@ -296,12 +301,24 @@ export function KbDetailPage() {
 
   return (
     <AiHostingLayout title={knowledgeBase?.name ?? "知识库"}>
+      <TooltipProvider>
       <div className="space-y-6">
         <div aria-label="知识库管理头部" className="space-y-3">
           <BackToKbListButton />
           <AiHostingPageHeader
             description={knowledgeBase?.description}
-            title={knowledgeBase?.name ?? "知识库"}
+            title={
+              knowledgeBase ? (
+                <TableOverflowTooltip
+                  className="text-[22px] font-semibold leading-tight text-foreground"
+                  tooltip={knowledgeBase.name}
+                >
+                  {knowledgeBase.name}
+                </TableOverflowTooltip>
+              ) : (
+                "知识库"
+              )
+            }
           />
         </div>
 
@@ -318,6 +335,7 @@ export function KbDetailPage() {
               <Input
                 aria-label="搜索知识"
                 className="h-10 rounded-[8px] pl-9"
+                maxLength={KB_SEARCH_QUERY_MAX_LENGTH}
                 onChange={(event) => {
                   setSearchQuery(event.target.value);
                   setCurrentPage(1);
@@ -350,6 +368,7 @@ export function KbDetailPage() {
           </div>
         </section>
       </div>
+      </TooltipProvider>
       <ImportQaDialog
         kbId={kbId}
         onImportComplete={() => {
@@ -525,15 +544,20 @@ function KnowledgeRecordsTable({
         ) : records.length > 0 ? (
           records.map((record) => (
             <TableRow key={record.id}>
-              <TableCell className="px-4 py-4" title={record.name}>
+              <TableCell className="px-4 py-4">
                 <div className="flex min-w-0 items-center gap-2.5">
                   <FileExtensionBadge
                     className="size-8"
                     extension={record.fileExtension}
                   />
-                  <TableCellContent className="font-medium text-foreground">
-                    {record.name}
-                  </TableCellContent>
+                  <div className="min-w-0 flex-1">
+                    <TableOverflowTooltip
+                      className="font-medium text-foreground"
+                      tooltip={record.name}
+                    >
+                      {record.name}
+                    </TableOverflowTooltip>
+                  </div>
                 </div>
               </TableCell>
               <TableCell className="px-4 py-4">

@@ -180,7 +180,23 @@ describe("KbReadService", () => {
     });
   });
 
-  it("runs kb doc list rows and total queries in parallel after kb existence check", async () => {
+  it("lists kb docs without checking kb existence", async () => {
+    const queriedTables: string[] = [];
+    const { service } = createService(vi.fn(), {
+      beforeExecute(event) {
+        queriedTables.push(event.table);
+      },
+    });
+
+    await service.listKbDocs(tenant, "1");
+
+    expect(queriedTables).toEqual([
+      "xy_wap_embed_agent_kb_doc",
+      "xy_wap_embed_agent_kb_doc",
+    ]);
+  });
+
+  it("runs kb doc list rows and total queries in parallel", async () => {
     const probe = createBlockedListProbe("xy_wap_embed_agent_kb_doc");
     const { service } = createService(vi.fn(), probe.dbOptions);
 

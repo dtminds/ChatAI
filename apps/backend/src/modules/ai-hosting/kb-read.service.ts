@@ -111,8 +111,6 @@ export class KbReadService {
       throw new NotFoundError("KB_NOT_FOUND", "知识库不存在");
     }
 
-    await this.assertKbExists(uid, kbNumericId);
-
     const pagination = normalizePagination(options);
     const normalizedQuery = options.query?.trim();
 
@@ -263,19 +261,6 @@ export class KbReadService {
     return Number(result?.total ?? 0);
   }
 
-  private async assertKbExists(uid: number, kbId: number) {
-    const row = await this.db
-      .selectFrom("xy_wap_embed_agent_kb")
-      .select(["id"])
-      .where("id", "=", kbId)
-      .where("uid", "=", uid)
-      .where("status", "=", dbActiveStatus)
-      .executeTakeFirst();
-
-    if (!row) {
-      throw new NotFoundError("KB_NOT_FOUND", "知识库不存在");
-    }
-  }
 }
 
 export function createKbReadService(db: Kysely<Database>, logger?: RequestAwareLogger) {

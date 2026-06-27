@@ -1,6 +1,13 @@
-import { type ComponentProps, useCallback, useEffect, useRef, useState } from "react";
+import { type ComponentProps, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
+import { TableCellContent } from "@/components/ui/table";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import { isRequestError } from "@/lib/request";
 
 export const QA_QUESTION_MAX_LENGTH = 500;
@@ -136,6 +143,65 @@ export function stripFileExtension(fileName: string) {
   }
 
   return fileName.slice(0, lastDotIndex);
+}
+
+export function TableOverflowTooltip({
+  children,
+  className,
+  tooltip,
+}: {
+  children: ReactNode;
+  className?: string;
+  tooltip?: string | null;
+}) {
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [isOverflowing, setIsOverflowing] = useState(false);
+  const tooltipText =
+    tooltip ?? (typeof children === "string" || typeof children === "number" ? String(children) : "");
+
+  const updateOverflow = useCallback(() => {
+    const element = contentRef.current;
+
+    if (!element) {
+      return;
+    }
+
+    setIsOverflowing(element.scrollWidth > element.clientWidth);
+  }, []);
+
+  useEffect(() => {
+    updateOverflow();
+
+    const element = contentRef.current;
+
+    if (!element || typeof ResizeObserver === "undefined") {
+      return;
+    }
+
+    const observer = new ResizeObserver(updateOverflow);
+    observer.observe(element);
+
+    return () => observer.disconnect();
+  }, [tooltipText, updateOverflow]);
+
+  const content = (
+    <TableCellContent className={cn(className)} ref={contentRef}>
+      {children}
+    </TableCellContent>
+  );
+
+  if (!tooltipText || !isOverflowing) {
+    return content;
+  }
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{content}</TooltipTrigger>
+      <TooltipContent className="max-w-sm break-words" side="top" sideOffset={4}>
+        {tooltipText}
+      </TooltipContent>
+    </Tooltip>
+  );
 }
 
 export function useAsyncValidation() {

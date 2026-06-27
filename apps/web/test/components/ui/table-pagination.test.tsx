@@ -92,4 +92,28 @@ describe("TablePagination", () => {
       totalPages: 3,
     });
   });
+
+  it("calls onPageSizeChange when selecting a new page size", async () => {
+    const user = userEvent.setup();
+    const onPageChange = vi.fn();
+    const onPageSizeChange = vi.fn();
+
+    render(
+      <TablePagination
+        onPageChange={onPageChange}
+        onPageSizeChange={onPageSizeChange}
+        page={1}
+        pageSize={10}
+        pageSizeOptions={[10, 20, 50]}
+        total={30}
+        totalPages={3}
+      />,
+    );
+
+    expect(screen.getByText("每页")).toBeInTheDocument();
+    await user.click(screen.getByRole("combobox", { name: "每页条数" }));
+    await user.click(screen.getByRole("option", { name: "20" }));
+
+    expect(onPageSizeChange).toHaveBeenCalledWith(20);
+  });
 });

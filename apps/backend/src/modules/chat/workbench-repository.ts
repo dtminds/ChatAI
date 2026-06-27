@@ -1011,7 +1011,7 @@ export class WorkbenchRepository {
     }
 
     if (input.keyword?.trim()) {
-      const keyword = `%${input.keyword.trim()}%`;
+      const keyword = `%${escapeLikeKeyword(input.keyword.trim())}%`;
 
       listQuery = listQuery.where((eb) =>
         eb.or([

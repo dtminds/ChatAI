@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Add01Icon, Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { KB_SEARCH_QUERY_MAX_LENGTH } from "@chatai/contracts";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import {
@@ -193,6 +194,7 @@ export function KbListPage() {
               <Input
                 aria-label="搜索知识库"
                 className="h-10 rounded-[8px] pl-9"
+                maxLength={KB_SEARCH_QUERY_MAX_LENGTH}
                 onChange={(event) => setSearchQuery(event.target.value)}
                 placeholder="搜索知识库"
                 value={searchQuery}

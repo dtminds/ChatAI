@@ -16,7 +16,7 @@ import {
   resolveVolcStrategyResourceId,
 } from "./kb-doc-strategy-mappers.js";
 import { resolveKbDocUrlForJava } from "./kb-doc-url.js";
-import { parseRequiredNumericId, resolveAgentKbUid } from "./kb-tenant-utils.js";
+import { type AgentKbTenant, parseRequiredNumericId } from "./kb-tenant-utils.js";
 
 export const KB_DOC_TYPE_FAQ = 1;
 export const KB_DOC_TYPE_DOCUMENT = 2;
@@ -49,8 +49,9 @@ export class KbDocService {
     private readonly agentKbJavaClient: AgentKbJavaClient,
   ) {}
 
-  async getUploadCredential(subUserId: string): Promise<KbDocUploadCredentialResponse> {
-    const uid = await resolveAgentKbUid(this.db, subUserId);
+  async getUploadCredential(tenant: AgentKbTenant): Promise<KbDocUploadCredentialResponse> {
+    const uid = tenant.uid;
+    const subUserId = tenant.subUserId;
 
     const credential = await this.workbenchJavaClient.getUploadCredential({
       type: "kb",
@@ -73,10 +74,11 @@ export class KbDocService {
   }
 
   async createKbDoc(
-    subUserId: string,
+    tenant: AgentKbTenant,
     request: KbDocCreateRequest,
   ): Promise<KbDocCreateResponse> {
-    const uid = await resolveAgentKbUid(this.db, subUserId);
+    const uid = tenant.uid;
+    const subUserId = tenant.subUserId;
     const normalizedSuffix = this.assertDocumentCreateRequest(request);
     const kbNumericId = parseRequiredNumericId(request.kbId, "KB_NOT_FOUND", "知识库不存在");
 
@@ -121,10 +123,11 @@ export class KbDocService {
   }
 
   async createKbFaqDoc(
-    subUserId: string,
+    tenant: AgentKbTenant,
     request: KbDocCreateFaqRequest,
   ): Promise<KbDocCreateResponse> {
-    const uid = await resolveAgentKbUid(this.db, subUserId);
+    const uid = tenant.uid;
+    const subUserId = tenant.subUserId;
     const normalizedSuffix = this.assertFaqCreateRequest(request);
     const kbNumericId = parseRequiredNumericId(request.kbId, "KB_NOT_FOUND", "知识库不存在");
 
@@ -165,10 +168,11 @@ export class KbDocService {
   }
 
   async createKbImageDoc(
-    subUserId: string,
+    tenant: AgentKbTenant,
     request: KbDocCreateImageRequest,
   ): Promise<KbDocCreateResponse> {
-    const uid = await resolveAgentKbUid(this.db, subUserId);
+    const uid = tenant.uid;
+    const subUserId = tenant.subUserId;
     const normalizedSuffix = this.assertImageCreateRequest(request);
     const kbNumericId = parseRequiredNumericId(request.kbId, "KB_NOT_FOUND", "知识库不存在");
 
@@ -208,8 +212,9 @@ export class KbDocService {
     return { docId };
   }
 
-  async deleteKbDoc(subUserId: string, docId: string): Promise<KbDocDeleteResponse> {
-    const uid = await resolveAgentKbUid(this.db, subUserId);
+  async deleteKbDoc(tenant: AgentKbTenant, docId: string): Promise<KbDocDeleteResponse> {
+    const uid = tenant.uid;
+    const subUserId = tenant.subUserId;
     const docNumericId = parseRequiredNumericId(docId, "KB_DOC_NOT_FOUND", "知识不存在");
 
     await this.assertKbDocExists(uid, docNumericId);

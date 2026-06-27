@@ -1133,6 +1133,45 @@ html.dark[data-appearance-theme="nature"] {
     animation: shiny-text-sweep var(--shiny-text-duration) cubic-bezier(0.36, 0, 0.2, 1) infinite;
   }
 
+  .animated-text-switch {
+    display: inline-grid;
+    max-width: 100%;
+    overflow: hidden;
+    white-space: nowrap;
+    perspective: 12rem;
+  }
+
+  .animated-text-switch__run {
+    grid-area: 1 / 1;
+    display: inline-flex;
+    min-width: 0;
+  }
+
+  .animated-text-switch__run--exit {
+    animation: animated-text-switch-exit 0.12s ease-out both;
+    pointer-events: none;
+  }
+
+  .animated-text-switch__char {
+    --animated-text-switch-delay: 0ms;
+    display: inline-block;
+    min-width: 0;
+    transform-origin: 50% 56%;
+    animation-delay: var(--animated-text-switch-delay);
+    will-change: opacity, transform, filter;
+  }
+
+  .animated-text-switch__char--enter {
+    animation-name: animated-text-switch-enter;
+    animation-duration: 0.34s;
+    animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+    animation-fill-mode: both;
+  }
+
+  .animated-text-switch__char--exit {
+    animation: none;
+  }
+
   .anim-pop-right {
     animation: chat-bubble-pop var(--chat-bubble-pop-duration) var(--chat-bubble-spring-easing) both;
     transform-origin: bottom right;
@@ -1141,6 +1180,34 @@ html.dark[data-appearance-theme="nature"] {
   .anim-pop-left {
     animation: chat-bubble-pop var(--chat-bubble-pop-duration) var(--chat-bubble-spring-easing) both;
     transform-origin: bottom left;
+  }
+}
+
+@keyframes animated-text-switch-enter {
+  0% {
+    opacity: 0;
+    filter: blur(3px);
+    transform: translateY(8px) rotateX(80deg);
+  }
+
+  58% {
+    filter: blur(0.6px);
+  }
+
+  100% {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(0) rotateX(0deg);
+  }
+}
+
+@keyframes animated-text-switch-exit {
+  0% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
   }
 }
 
@@ -1168,9 +1235,15 @@ html.dark[data-appearance-theme="nature"] {
 
 @media (prefers-reduced-motion: reduce) {
   .shiny-text,
+  .animated-text-switch__char,
   .anim-pop-right,
   .anim-pop-left {
     animation: none;
+  }
+
+  .animated-text-switch__char {
+    filter: none;
+    transform: none;
   }
 
   .shiny-text {

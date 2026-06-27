@@ -320,11 +320,7 @@ describe("AI hosting pages", () => {
       });
 
       return {
-        createdAt: new Date(created.createdAt).toISOString(),
-        description: created.description,
         kbId: created.id,
-        name: created.name,
-        updatedAt: new Date(created.lastUpdatedAt).toISOString(),
       };
     });
     vi.mocked(kbService.getKb).mockImplementation(async (kbId) => createMockKbItem(kbId));
@@ -1393,6 +1389,10 @@ describe("AI hosting pages", () => {
     renderWithRoute("/chat/ai-hosting/kb", <KbListPage />);
 
     expect(await screen.findByRole("heading", { level: 1, name: "知识库" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "搜索知识库" })).toHaveAttribute(
+      "maxLength",
+      "32",
+    );
     expect(screen.getByRole("button", { name: "创建知识库" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "华为产品知识" })).toHaveAttribute(
       "href",
@@ -1421,7 +1421,10 @@ describe("AI hosting pages", () => {
     expect(screen.getByLabelText("知识库管理头部").firstElementChild).toHaveAccessibleName(
       "返回知识库",
     );
-    expect(screen.getByRole("textbox", { name: "搜索知识" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "搜索知识" })).toHaveAttribute(
+      "maxLength",
+      "32",
+    );
     await userEvent.click(screen.getByRole("button", { name: "添加知识" }));
     expect(screen.getByRole("menuitem", { name: /问答/ })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: /图片/ })).toBeInTheDocument();

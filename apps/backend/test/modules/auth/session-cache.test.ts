@@ -168,6 +168,7 @@ describe("verifyAccessSession cache", () => {
         sessionId: "501",
         sessionVersion: 1,
         subUserId: "101",
+        uid: 9001,
       }, cache),
     ).resolves.toBe(true);
     expect(db.calls).toEqual([]);
@@ -194,6 +195,7 @@ describe("verifyAccessSession cache", () => {
         sessionId: "501",
         sessionVersion: 2,
         subUserId: "101",
+        uid: 9001,
       }, cache),
     ).resolves.toBe(true);
     expect(db.calls).toEqual(["xy_wap_embed_sub_user_session"]);
@@ -220,6 +222,7 @@ describe("verifyAccessSession cache", () => {
         sessionId: "501",
         sessionVersion: 1,
         subUserId: "101",
+        uid: 9001,
       }, cache),
     ).resolves.toBe(true);
     expect(db.calls).toEqual(["xy_wap_embed_sub_user_session"]);
@@ -246,6 +249,7 @@ describe("verifyAccessSession cache", () => {
         sessionId: "501",
         sessionVersion: 1,
         subUserId: "101",
+        uid: 9001,
       }, cache),
     ).resolves.toBe(true);
     expect(db.calls).toEqual(["xy_wap_embed_sub_user_session"]);
@@ -265,6 +269,7 @@ describe("verifyAccessSession cache", () => {
         sessionId: "501",
         sessionVersion: 1,
         subUserId: "101",
+        uid: 9001,
       }, cache),
     ).resolves.toBe(false);
     expect(cache.set).toHaveBeenCalledWith(
@@ -285,9 +290,29 @@ describe("verifyAccessSession cache", () => {
         sessionId: "501",
         sessionVersion: 2,
         subUserId: "101",
+        uid: 9001,
       }, cache),
     ).resolves.toBe(true);
     expect(currentVersionDb.calls).toEqual(["xy_wap_embed_sub_user_session"]);
+  });
+
+  it("rejects access tokens without a tenant uid", async () => {
+    const cache = createCache();
+    const db = createSessionDb({
+      id: 501,
+      session_version: 1,
+      sub_user_id: 101,
+    });
+
+    await expect(
+      verifyAccessSession(db, {
+        roles: ["operator"],
+        sessionId: "501",
+        sessionVersion: 1,
+        subUserId: "101",
+      } as never, cache),
+    ).resolves.toBe(false);
+    expect(db.calls).toEqual([]);
   });
 });
 
@@ -319,6 +344,7 @@ describe("revokeSession cache invalidation", () => {
         sessionId: "501",
         sessionVersion: 1,
         subUserId: "101",
+        uid: 9001,
       }),
     ).resolves.toEqual({ revoked: true });
     expect(cache.del).toHaveBeenCalledWith("chatai:auth:session:501");
@@ -362,6 +388,10 @@ describe("loginWithPassword cache invalidation", () => {
       expect.stringContaining("\"sessionVersion\":2"),
       expect.any(Number),
     );
+    expect(app.jwt.sign).toHaveBeenCalledWith(expect.objectContaining({
+      subUserId: "101",
+      uid: 9001,
+    }));
     expect(sessionWrite).toHaveBeenCalled();
   });
 

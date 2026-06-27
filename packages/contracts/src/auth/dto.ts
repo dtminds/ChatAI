@@ -58,6 +58,7 @@ export const JwtUserSchema = Type.Object({
   sessionId: Type.String(),
   sessionVersion: Type.Number(),
   subUserId: Type.String(),
+  uid: Type.Number(),
 });
 
 export type AuthLoginRequest = Static<typeof AuthLoginRequestSchema>;

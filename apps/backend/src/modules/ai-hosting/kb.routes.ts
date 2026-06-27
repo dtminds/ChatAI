@@ -1,5 +1,6 @@
 import {
   apiSuccess,
+  KB_SEARCH_QUERY_MAX_LENGTH,
   KbCreateRequestSchema,
   KbDocTypeSchema,
   type KbCreateRequest,
@@ -10,13 +11,14 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { ForbiddenError } from "../../shared/errors.js";
 import { createKbReadService } from "./kb-read.service.js";
 import { createKbWriteService } from "./kb-write.service.js";
+import { getAgentKbTenant } from "./kb-tenant-utils.js";
 
 const NumericStringSchema = Type.String({ pattern: "^[0-9]+$" });
 
 const KbListQuerySchema = Type.Object({
   page: Type.Optional(NumericStringSchema),
   pageSize: Type.Optional(NumericStringSchema),
-  query: Type.Optional(Type.String()),
+  query: Type.Optional(Type.String({ maxLength: KB_SEARCH_QUERY_MAX_LENGTH })),
 });
 
 const KbParamsSchema = Type.Object({
@@ -27,7 +29,7 @@ const KbDocListQuerySchema = Type.Object({
   docType: Type.Optional(KbDocTypeSchema),
   page: Type.Optional(NumericStringSchema),
   pageSize: Type.Optional(NumericStringSchema),
-  query: Type.Optional(Type.String()),
+  query: Type.Optional(Type.String({ maxLength: KB_SEARCH_QUERY_MAX_LENGTH })),
 });
 
 const KbDocParamsSchema = Type.Object({
@@ -59,7 +61,7 @@ export async function registerKbRoutes(app: FastifyInstance) {
       assertAiHostingWriteAccess(request);
 
       return apiSuccess(
-        await createKbWriteService(app.db).createKb(getSubUserId(request), request.body),
+        await createKbWriteService(app.db).createKb(getAgentKbTenant(request), request.body),
       );
     },
   );
@@ -74,7 +76,7 @@ export async function registerKbRoutes(app: FastifyInstance) {
     },
     async (request) => {
       return apiSuccess(
-        await createKbReadService(app.db, app.log).listKbs(getSubUserId(request), {
+        await createKbReadService(app.db, app.log).listKbs(getAgentKbTenant(request), {
           page: parseOptionalInteger(request.query.page),
           pageSize: parseOptionalInteger(request.query.pageSize),
           query: request.query.query,
@@ -93,7 +95,10 @@ export async function registerKbRoutes(app: FastifyInstance) {
     },
     async (request) => {
       return apiSuccess(
-        await createKbReadService(app.db, app.log).getKb(getSubUserId(request), request.params.kbId),
+        await createKbReadService(app.db, app.log).getKb(
+          getAgentKbTenant(request),
+          request.params.kbId,
+        ),
       );
     },
   );
@@ -110,7 +115,7 @@ export async function registerKbRoutes(app: FastifyInstance) {
     async (request) => {
       return apiSuccess(
         await createKbReadService(app.db, app.log).listKbDocs(
-          getSubUserId(request),
+          getAgentKbTenant(request),
           request.params.kbId,
           {
             docType: request.query.docType as KbDocType | undefined,
@@ -134,7 +139,7 @@ export async function registerKbRoutes(app: FastifyInstance) {
     async (request) => {
       return apiSuccess(
         await createKbReadService(app.db, app.log).getKbDoc(
-          getSubUserId(request),
+          getAgentKbTenant(request),
           request.params.docId,
         ),
       );
@@ -153,7 +158,7 @@ export async function registerKbRoutes(app: FastifyInstance) {
     async (request) => {
       return apiSuccess(
         await createKbReadService(app.db, app.log).listKbDocChunks(
-          getSubUserId(request),
+          getAgentKbTenant(request),
           request.params.docId,
           {
             page: parseOptionalInteger(request.query.page),
@@ -164,10 +169,6 @@ export async function registerKbRoutes(app: FastifyInstance) {
       );
     },
   );
-}
-
-function getSubUserId(request: FastifyRequest) {
-  return request.user?.subUserId ?? "";
 }
 
 function parseOptionalInteger(value?: string) {

@@ -2,6 +2,16 @@ type WhereClause =
   | { type: "eq"; column: string; value: unknown }
   | { type: "or"; clauses: Array<{ column: string; operator: string; value: unknown }> };
 
+type QueryExecutionEvent = {
+  isCountQuery: boolean;
+  table: string;
+  type: "execute" | "executeTakeFirst";
+};
+
+type KbReadDbMockOptions = {
+  beforeExecute?: (event: QueryExecutionEvent) => Promise<void> | void;
+};
+
 function createExpressionBuilder() {
   const eb = ((column: string, operator: string, value: unknown) => ({
     column,
@@ -46,7 +56,7 @@ function matchesColumn(
   return true;
 }
 
-export function createKbReadDbMock() {
+export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
   const subUser = {
     id: 101,
     uid: 9001,
@@ -214,7 +224,25 @@ export function createKbReadDbMock() {
         rows.filter((row) => wheres.every((where) => matchesWhere(row, where)));
 
       const builder = {
+        countResult: async () => {
+          let rows: Record<string, unknown>[] = [];
+          if (table === "xy_wap_embed_agent_kb") {
+            rows = filterRows(kbs);
+          } else if (table === "xy_wap_embed_agent_kb_doc") {
+            rows = filterRows(docs);
+          } else if (table === "xy_wap_embed_agent_kb_chunk") {
+            rows = filterRows(chunks);
+          }
+
+          return { total: rows.length };
+        },
         execute: async () => {
+          await options.beforeExecute?.({
+            isCountQuery,
+            table,
+            type: "execute",
+          });
+
           if (table === "xy_wap_embed_agent_kb") {
             return filterRows(kbs);
           }
@@ -230,6 +258,12 @@ export function createKbReadDbMock() {
           return [];
         },
         executeTakeFirst: async () => {
+          await options.beforeExecute?.({
+            isCountQuery,
+            table,
+            type: "executeTakeFirst",
+          });
+
           if (table === "xy_wap_embed_sub_user") {
             return subUser;
           }
@@ -246,8 +280,7 @@ export function createKbReadDbMock() {
           }
 
           if (isCountQuery) {
-            const rows = await builder.execute();
-            return { total: rows.length };
+            return builder.countResult();
           }
 
           const rows = await builder.execute();

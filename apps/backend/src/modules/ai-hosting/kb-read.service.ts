@@ -49,26 +49,24 @@ export class KbReadService {
       .where("status", "=", dbActiveStatus);
 
     if (normalizedQuery) {
-      query = query.where((eb) =>
-        eb.or([
-          eb("name", "like", buildContainsLikePattern(normalizedQuery)),
-          eb("remark", "like", buildContainsLikePattern(normalizedQuery)),
-        ]),
-      );
+      query = query.where("name", "like", buildContainsLikePattern(normalizedQuery));
     }
 
-    const rows = await query
-      .orderBy("update_time", "desc")
-      .limit(pagination.pageSize)
-      .offset((pagination.page - 1) * pagination.pageSize)
-      .execute();
+    const [rows, total] = await Promise.all([
+      query
+        .orderBy("update_time", "desc")
+        .limit(pagination.pageSize)
+        .offset((pagination.page - 1) * pagination.pageSize)
+        .execute(),
+      this.countKbs(uid, normalizedQuery),
+    ]);
 
     return {
       kbs: rows.map(mapKbListItem),
       pagination: {
         page: pagination.page,
         pageSize: pagination.pageSize,
-        total: await this.countKbs(uid, normalizedQuery),
+        total,
       },
     };
   }
@@ -133,18 +131,21 @@ export class KbReadService {
       query = query.where("name", "like", buildContainsLikePattern(normalizedQuery));
     }
 
-    const rows = await query
-      .orderBy("update_time", "desc")
-      .limit(pagination.pageSize)
-      .offset((pagination.page - 1) * pagination.pageSize)
-      .execute();
+    const [rows, total] = await Promise.all([
+      query
+        .orderBy("update_time", "desc")
+        .limit(pagination.pageSize)
+        .offset((pagination.page - 1) * pagination.pageSize)
+        .execute(),
+      this.countKbDocs(uid, kbNumericId, normalizedQuery, options.docType),
+    ]);
 
     return {
       docs: rows.map(mapKbDocListItem),
       pagination: {
         page: pagination.page,
         pageSize: pagination.pageSize,
-        total: await this.countKbDocs(uid, kbNumericId, normalizedQuery, options.docType),
+        total,
       },
     };
   }
@@ -228,12 +229,7 @@ export class KbReadService {
       .where("status", "=", dbActiveStatus);
 
     if (query) {
-      countQuery = countQuery.where((eb) =>
-        eb.or([
-          eb("name", "like", buildContainsLikePattern(query)),
-          eb("remark", "like", buildContainsLikePattern(query)),
-        ]),
-      );
+      countQuery = countQuery.where("name", "like", buildContainsLikePattern(query));
     }
 
     const result = await countQuery.executeTakeFirst();

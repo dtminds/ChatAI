@@ -32,7 +32,10 @@ const javaChunkPageItems = [
   },
 ];
 
-function createService(listKbChunks = vi.fn()) {
+function createService(
+  listKbChunks = vi.fn(),
+  dbOptions?: Parameters<typeof createKbReadDbMock>[0],
+) {
   const agentKbJavaClient = {
     addKbChunk: vi.fn(),
     createKbDoc: vi.fn(),
@@ -45,9 +48,42 @@ function createService(listKbChunks = vi.fn()) {
   return {
     agentKbJavaClient,
     service: new KbReadService(
-      createKbReadDbMock() as unknown as Kysely<Database>,
+      createKbReadDbMock(dbOptions) as unknown as Kysely<Database>,
       agentKbJavaClient,
     ),
+  };
+}
+
+function createBlockedListProbe(table: string) {
+  const queryStarts: Array<{ isCountQuery: boolean; table: string }> = [];
+  let releaseRowsQuery: (() => void) | undefined;
+  const rowsQueryGate = new Promise<void>((resolve) => {
+    releaseRowsQuery = resolve;
+  });
+
+  return {
+    dbOptions: {
+      async beforeExecute(event) {
+        if (event.table !== table) {
+          return;
+        }
+
+        queryStarts.push({
+          isCountQuery: event.isCountQuery,
+          table: event.table,
+        });
+
+        if (event.type === "execute" && !event.isCountQuery) {
+          await rowsQueryGate;
+        }
+      },
+    },
+    queryStarts,
+    releaseRowsQuery: () => releaseRowsQuery?.(),
+  } satisfies {
+    dbOptions: Parameters<typeof createKbReadDbMock>[0];
+    queryStarts: Array<{ isCountQuery: boolean; table: string }>;
+    releaseRowsQuery: () => void;
   };
 }
 
@@ -76,6 +112,37 @@ describe("KbReadService", () => {
     expect(response.pagination.pageSize).toBe(200);
   });
 
+  it("filters kb searches by name only", async () => {
+    const { service } = createService();
+
+    const response = await service.listKbs("101", {
+      query: "常见问题",
+    });
+
+    expect(response.kbs).toHaveLength(0);
+    expect(response.pagination.total).toBe(0);
+  });
+
+  it("runs kb list rows and total queries in parallel", async () => {
+    const probe = createBlockedListProbe("xy_wap_embed_agent_kb");
+    const { service } = createService(vi.fn(), probe.dbOptions);
+
+    const responsePromise = service.listKbs("101");
+    await vi.waitFor(() => {
+      expect(probe.queryStarts).toEqual([
+        { isCountQuery: false, table: "xy_wap_embed_agent_kb" },
+        { isCountQuery: true, table: "xy_wap_embed_agent_kb" },
+      ]);
+    });
+    probe.releaseRowsQuery();
+
+    await expect(responsePromise).resolves.toMatchObject({
+      pagination: {
+        total: 1,
+      },
+    });
+  });
+
   it("filters docs by kb and maps sync status", async () => {
     const { service } = createService();
 
@@ -86,6 +153,26 @@ describe("KbReadService", () => {
       docId: "1001",
       docType: "document",
       status: "completed",
+    });
+  });
+
+  it("runs kb doc list rows and total queries in parallel after kb existence check", async () => {
+    const probe = createBlockedListProbe("xy_wap_embed_agent_kb_doc");
+    const { service } = createService(vi.fn(), probe.dbOptions);
+
+    const responsePromise = service.listKbDocs("101", "1");
+    await vi.waitFor(() => {
+      expect(probe.queryStarts).toEqual([
+        { isCountQuery: false, table: "xy_wap_embed_agent_kb_doc" },
+        { isCountQuery: true, table: "xy_wap_embed_agent_kb_doc" },
+      ]);
+    });
+    probe.releaseRowsQuery();
+
+    await expect(responsePromise).resolves.toMatchObject({
+      pagination: {
+        total: 2,
+      },
     });
   });
 

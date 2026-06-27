@@ -302,6 +302,7 @@ async function createSettingsApp() {
     sessionId: "501",
     sessionVersion: 1,
     subUserId: "1",
+    uid: 9001,
   });
   const db = createSettingsDbMock();
 

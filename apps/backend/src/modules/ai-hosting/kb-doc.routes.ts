@@ -13,6 +13,7 @@ import { ForbiddenError } from "../../shared/errors.js";
 import { createAgentKbJavaClient } from "./agent-kb-java-client.js";
 import { createWorkbenchJavaClient } from "../chat/workbench-java-client.js";
 import { KbDocService } from "./kb-doc.service.js";
+import type { AgentKbTenant } from "./kb-tenant-utils.js";
 
 const NumericStringSchema = Type.String({ pattern: "^[0-9]+$" });
 
@@ -32,7 +33,7 @@ export async function registerAiHostingRoutes(app: FastifyInstance) {
       assertAiHostingWriteAccess(request);
 
       return apiSuccess(
-        await getKbDocService(app).getUploadCredential(getSubUserId(request)),
+        await getKbDocService(app).getUploadCredential(getAgentKbTenant(request)),
       );
     },
   );
@@ -49,7 +50,7 @@ export async function registerAiHostingRoutes(app: FastifyInstance) {
       assertAiHostingWriteAccess(request);
 
       return apiSuccess(
-        await getKbDocService(app).createKbDoc(getSubUserId(request), request.body),
+        await getKbDocService(app).createKbDoc(getAgentKbTenant(request), request.body),
       );
     },
   );
@@ -66,7 +67,7 @@ export async function registerAiHostingRoutes(app: FastifyInstance) {
       assertAiHostingWriteAccess(request);
 
       return apiSuccess(
-        await getKbDocService(app).createKbFaqDoc(getSubUserId(request), request.body),
+        await getKbDocService(app).createKbFaqDoc(getAgentKbTenant(request), request.body),
       );
     },
   );
@@ -83,7 +84,7 @@ export async function registerAiHostingRoutes(app: FastifyInstance) {
       assertAiHostingWriteAccess(request);
 
       return apiSuccess(
-        await getKbDocService(app).createKbImageDoc(getSubUserId(request), request.body),
+        await getKbDocService(app).createKbImageDoc(getAgentKbTenant(request), request.body),
       );
     },
   );
@@ -101,7 +102,7 @@ export async function registerAiHostingRoutes(app: FastifyInstance) {
 
       return apiSuccess(
         await getKbDocService(app).deleteKbDoc(
-          getSubUserId(request),
+          getAgentKbTenant(request),
           request.params.docId,
         ),
       );
@@ -118,8 +119,11 @@ function getKbDocService(app: FastifyInstance) {
   );
 }
 
-function getSubUserId(request: { user?: { subUserId: string } }) {
-  return request.user?.subUserId ?? "";
+function getAgentKbTenant(request: { user: { subUserId: string; uid: number } }): AgentKbTenant {
+  return {
+    subUserId: request.user.subUserId,
+    uid: request.user.uid,
+  };
 }
 
 function assertAiHostingWriteAccess(request: FastifyRequest) {

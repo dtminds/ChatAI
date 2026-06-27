@@ -19,7 +19,7 @@ import {
   mapKbDocListItem,
   mapKbListItem,
 } from "./kb-read-mappers.js";
-import { parsePositiveInteger, resolveAgentKbUid } from "./kb-tenant-utils.js";
+import { type AgentKbTenant, parsePositiveInteger } from "./kb-tenant-utils.js";
 import { buildContainsLikePattern } from "./sql-like-utils.js";
 
 const dbActiveStatus = 1;
@@ -35,10 +35,10 @@ export class KbReadService {
   ) {}
 
   async listKbs(
-    subUserId: string,
+    tenant: AgentKbTenant,
     options: { page?: number; pageSize?: number; query?: string } = {},
   ): Promise<KbListResponse> {
-    const uid = await resolveAgentKbUid(this.db, subUserId);
+    const uid = tenant.uid;
     const pagination = normalizePagination(options, maxKbListPageSize);
     const normalizedQuery = options.query?.trim();
 
@@ -71,8 +71,8 @@ export class KbReadService {
     };
   }
 
-  async getKb(subUserId: string, kbId: string): Promise<KbListResponse["kbs"][number]> {
-    const uid = await resolveAgentKbUid(this.db, subUserId);
+  async getKb(tenant: AgentKbTenant, kbId: string): Promise<KbListResponse["kbs"][number]> {
+    const uid = tenant.uid;
     const kbNumericId = parsePositiveInteger(kbId);
 
     if (kbNumericId == null) {
@@ -95,7 +95,7 @@ export class KbReadService {
   }
 
   async listKbDocs(
-    subUserId: string,
+    tenant: AgentKbTenant,
     kbId: string,
     options: {
       docType?: KbDocType;
@@ -104,7 +104,7 @@ export class KbReadService {
       query?: string;
     } = {},
   ): Promise<KbDocListResponse> {
-    const uid = await resolveAgentKbUid(this.db, subUserId);
+    const uid = tenant.uid;
     const kbNumericId = parsePositiveInteger(kbId);
 
     if (kbNumericId == null) {
@@ -150,8 +150,8 @@ export class KbReadService {
     };
   }
 
-  async getKbDoc(subUserId: string, docId: string): Promise<KbDocDetail> {
-    const uid = await resolveAgentKbUid(this.db, subUserId);
+  async getKbDoc(tenant: AgentKbTenant, docId: string): Promise<KbDocDetail> {
+    const uid = tenant.uid;
     const docNumericId = parsePositiveInteger(docId);
 
     if (docNumericId == null) {
@@ -174,11 +174,11 @@ export class KbReadService {
   }
 
   async listKbDocChunks(
-    subUserId: string,
+    tenant: AgentKbTenant,
     docId: string,
     options: { page?: number; pageSize?: number; title?: string } = {},
   ): Promise<KbChunkListResponse> {
-    const uid = await resolveAgentKbUid(this.db, subUserId);
+    const uid = tenant.uid;
     const docNumericId = parsePositiveInteger(docId);
 
     if (docNumericId == null) {

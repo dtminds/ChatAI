@@ -69,6 +69,27 @@ describe("KB read routes", () => {
     });
   });
 
+  it("uses the authenticated uid without resolving the sub user for kb lists", async () => {
+    const subUserLookups: string[] = [];
+    const context = await createAuthenticatedKbApp({
+      beforeExecute: ({ table }) => {
+        if (table === "xy_wap_embed_sub_user") {
+          subUserLookups.push(table);
+        }
+      },
+    });
+    app = context.app;
+
+    const response = await app.inject({
+      headers: { authorization: context.authorization },
+      method: "GET",
+      url: "/api/server/ai-hosting/kbs",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(subUserLookups).toEqual([]);
+  });
+
   it("lists docs and chunks for the current tenant", async () => {
     const context = await createAuthenticatedKbApp();
     app = context.app;
@@ -199,7 +220,9 @@ describe("KB read routes", () => {
   });
 });
 
-async function createAuthenticatedKbApp() {
+async function createAuthenticatedKbApp(
+  options: Parameters<typeof createKbReadDbMock>[0] = {},
+) {
   process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
   const app = await buildMockedApp();
   const token = app.jwt.sign({
@@ -207,9 +230,10 @@ async function createAuthenticatedKbApp() {
     sessionId: "501",
     sessionVersion: 1,
     subUserId: "101",
+    uid: 9001,
   });
 
-  app.db = createKbReadDbMock() as never;
+  app.db = createKbReadDbMock(options) as never;
 
   return {
     app,

@@ -4,12 +4,17 @@ import type { Database } from "../../../src/db/schema.js";
 import { createKbWriteService } from "../../../src/modules/ai-hosting/kb-write.service.js";
 import { createKbReadDbMock } from "../../helpers/create-kb-read-db-mock.js";
 
+const tenant = {
+  subUserId: "101",
+  uid: 9001,
+};
+
 describe("KbWriteService", () => {
   it("creates a kb for the current tenant", async () => {
     const db = createKbReadDbMock() as unknown as Kysely<Database>;
     const service = createKbWriteService(db);
 
-    const created = await service.createKb("101", {
+    const created = await service.createKb(tenant, {
       description: "用于新品上市培训",
       name: "新品培训知识",
     });
@@ -25,7 +30,7 @@ describe("KbWriteService", () => {
     const db = createKbReadDbMock() as unknown as Kysely<Database>;
     const service = createKbWriteService(db);
 
-    await expect(service.createKb("101", { name: "   " })).rejects.toMatchObject({
+    await expect(service.createKb(tenant, { name: "   " })).rejects.toMatchObject({
       code: "INVALID_KB_NAME",
     });
   });

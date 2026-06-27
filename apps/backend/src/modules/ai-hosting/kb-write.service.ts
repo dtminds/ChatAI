@@ -3,15 +3,16 @@ import type { Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
 import { BadRequestError, ServiceUnavailableError } from "../../shared/errors.js";
 import { mapKbListItem } from "./kb-read-mappers.js";
-import { parsePositiveInteger, resolveAgentKbUid } from "./kb-tenant-utils.js";
+import { type AgentKbTenant, parsePositiveInteger } from "./kb-tenant-utils.js";
 
 const dbActiveStatus = 1;
 
 export class KbWriteService {
   constructor(private readonly db: Kysely<Database>) {}
 
-  async createKb(subUserId: string, payload: KbCreateRequest): Promise<KbListItem> {
-    const uid = await resolveAgentKbUid(this.db, subUserId);
+  async createKb(tenant: AgentKbTenant, payload: KbCreateRequest): Promise<KbListItem> {
+    const uid = tenant.uid;
+    const subUserId = tenant.subUserId;
     const operatorId = parsePositiveInteger(subUserId);
 
     if (operatorId == null) {

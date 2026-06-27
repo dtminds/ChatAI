@@ -32,6 +32,11 @@ const javaChunkPageItems = [
   },
 ];
 
+const tenant = {
+  subUserId: "101",
+  uid: 9001,
+};
+
 function createService(
   listKbChunks = vi.fn(),
   dbOptions?: Parameters<typeof createKbReadDbMock>[0],
@@ -91,7 +96,7 @@ describe("KbReadService", () => {
   it("lists kbs for the current uid", async () => {
     const { service } = createService();
 
-    const response = await service.listKbs("101");
+    const response = await service.listKbs(tenant);
 
     expect(response.kbs).toHaveLength(1);
     expect(response.pagination.total).toBe(1);
@@ -104,7 +109,7 @@ describe("KbReadService", () => {
   it("allows loading up to 200 kbs for local picker searches", async () => {
     const { service } = createService();
 
-    const response = await service.listKbs("101", {
+    const response = await service.listKbs(tenant, {
       page: 1,
       pageSize: 200,
     });
@@ -115,7 +120,7 @@ describe("KbReadService", () => {
   it("filters kb searches by name only", async () => {
     const { service } = createService();
 
-    const response = await service.listKbs("101", {
+    const response = await service.listKbs(tenant, {
       query: "常见问题",
     });
 
@@ -127,7 +132,7 @@ describe("KbReadService", () => {
     const probe = createBlockedListProbe("xy_wap_embed_agent_kb");
     const { service } = createService(vi.fn(), probe.dbOptions);
 
-    const responsePromise = service.listKbs("101");
+    const responsePromise = service.listKbs(tenant);
     await vi.waitFor(() => {
       expect(probe.queryStarts).toEqual([
         { isCountQuery: false, table: "xy_wap_embed_agent_kb" },
@@ -146,7 +151,7 @@ describe("KbReadService", () => {
   it("filters docs by kb and maps sync status", async () => {
     const { service } = createService();
 
-    const response = await service.listKbDocs("101", "1");
+    const response = await service.listKbDocs(tenant, "1");
 
     expect(response.docs.length).toBeGreaterThanOrEqual(1);
     expect(response.docs[0]).toMatchObject({
@@ -160,7 +165,7 @@ describe("KbReadService", () => {
     const probe = createBlockedListProbe("xy_wap_embed_agent_kb_doc");
     const { service } = createService(vi.fn(), probe.dbOptions);
 
-    const responsePromise = service.listKbDocs("101", "1");
+    const responsePromise = service.listKbDocs(tenant, "1");
     await vi.waitFor(() => {
       expect(probe.queryStarts).toEqual([
         { isCountQuery: false, table: "xy_wap_embed_agent_kb_doc" },
@@ -185,7 +190,7 @@ describe("KbReadService", () => {
     });
     const { agentKbJavaClient, service } = createService(listKbChunks);
 
-    const response = await service.listKbDocChunks("101", "1001");
+    const response = await service.listKbDocChunks(tenant, "1001");
 
     expect(agentKbJavaClient.listKbChunks).toHaveBeenCalledWith({
       docId: 1001,
@@ -211,7 +216,7 @@ describe("KbReadService", () => {
     });
     const { service } = createService(listKbChunks);
 
-    const response = await service.listKbDocChunks("101", "1001", {
+    const response = await service.listKbDocChunks(tenant, "1001", {
       page: 1,
       pageSize: 10,
       title: "系统",
@@ -235,7 +240,7 @@ describe("KbReadService", () => {
   it("rejects kb outside the tenant scope", async () => {
     const { service } = createService();
 
-    await expect(service.getKb("101", "999")).rejects.toMatchObject({
+    await expect(service.getKb(tenant, "999")).rejects.toMatchObject({
       code: "KB_NOT_FOUND",
     });
   });

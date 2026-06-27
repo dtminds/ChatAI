@@ -668,6 +668,7 @@ async function createAiHostingApp(
     sessionId: "501",
     sessionVersion: 1,
     subUserId: "1",
+    uid: options.uid ?? 9001,
   });
   const db = createAiHostingDbMock(options);
 

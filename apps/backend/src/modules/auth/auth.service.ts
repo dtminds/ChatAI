@@ -107,7 +107,7 @@ export async function loginWithPassword(
     },
   );
   const accountRole = deriveAccountRole(subUser);
-  const accessToken = signAccessToken(app, subUserId, session, accountRole);
+  const accessToken = signAccessToken(app, subUserId, subUser.uid, session, accountRole);
 
   return {
     accessToken,
@@ -138,10 +138,16 @@ export async function refreshAccessToken(
   }
 
   return {
-    accessToken: signAccessToken(app, String(session.sub_user_id), {
-      id: session.id,
-      sessionVersion: session.session_version,
-    }, deriveAccountRole(subUser)),
+    accessToken: signAccessToken(
+      app,
+      String(session.sub_user_id),
+      subUser.uid,
+      {
+        id: session.id,
+        sessionVersion: session.session_version,
+      },
+      deriveAccountRole(subUser),
+    ),
     expiresIn: ACCESS_TOKEN_EXPIRES_IN_SECONDS,
     refreshToken,
     refreshTokenExpiresIn: REFRESH_TOKEN_EXPIRES_IN_SECONDS,
@@ -200,7 +206,9 @@ export async function verifyAccessSession(
   if (
     !Number.isSafeInteger(sessionId) ||
     !user.subUserId ||
-    !Number.isSafeInteger(user.sessionVersion)
+    !Number.isSafeInteger(user.sessionVersion) ||
+    !Number.isSafeInteger(user.uid) ||
+    user.uid <= 0
   ) {
     return false;
   }
@@ -379,6 +387,7 @@ async function touchSession(db: Kysely<Database>, sessionId: number) {
 function signAccessToken(
   app: FastifyInstance,
   subUserId: string,
+  uid: number,
   session: { id: number; sessionVersion: number },
   role: AccountRole = "operator",
 ) {
@@ -387,6 +396,7 @@ function signAccessToken(
     sessionId: String(session.id),
     sessionVersion: session.sessionVersion,
     subUserId,
+    uid,
   });
 }
 

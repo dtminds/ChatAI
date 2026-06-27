@@ -59,6 +59,7 @@ async function createAuthenticatedApp(role: "admin" | "operator" | "owner" | "vi
     sessionId: "501",
     sessionVersion: 1,
     subUserId: "101",
+    uid: 9001,
   });
   app.db = createKbReadDbMock() as never;
 

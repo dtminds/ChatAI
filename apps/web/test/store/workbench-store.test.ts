@@ -1649,6 +1649,115 @@ describe("useWorkbenchStore", () => {
     expect(observedSmartReplyRequests).toEqual([]);
   });
 
+  it("does not auto-generate smart replies after disabling full-auto without a new customer message", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedAutoRequests: Array<{ conversationId: string; msgId: number }> = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async getSeats() {
+        const seats = await baseService.getSeats();
+
+        return seats.map((seat) =>
+          seat.seatId === "drc"
+            ? {
+                ...seat,
+                fullAutoSwitch: true,
+                seatAIHostingAuth: true,
+                seatAIHostingEnabled: true,
+              }
+            : seat,
+        );
+      },
+      async getConversations(seatId, options) {
+        const response = await baseService.getConversations(seatId, options);
+
+        return {
+          ...response,
+          items: response.items.map((conversation) =>
+            conversation.conversationId === "conv-001"
+              ? {
+                  ...conversation,
+                  conversationAIHostingSwitch: true,
+                }
+              : conversation,
+          ),
+        };
+      },
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          messages: [
+            createSmartReplyTextMessageDto({
+              id: "msg-customer-9",
+              seq: 9,
+              text: "已有客户问题",
+            }),
+          ],
+          smartReplyEnabled: true,
+          smartReplies: [
+            {
+              assistantName: "智能助手",
+              content: "已有推荐回复",
+              messageId: "9",
+              pollComplete: true,
+            },
+          ],
+        };
+      },
+      async changeConversationFullAuto(conversationId, request) {
+        return {
+          conversationAIHostingSwitch: request.enabled,
+          conversationId,
+          seatId: "drc",
+        };
+      },
+      async poll(request) {
+        const conversation = (
+          await baseService.getConversations("drc", {
+            mode: "single",
+          })
+        ).items.find((item) => item.conversationId === "conv-001")!;
+
+        return {
+          activeConversationMessages: [],
+          conversationChanges: [
+            {
+              ...conversation,
+              conversationAIHostingSwitch: false,
+              type: "upsert",
+            },
+          ],
+          nextVersion: request.sinceVersion + 1,
+          seatChanges: [],
+        };
+      },
+      async requestSmartReplyAutoGeneralAnswer(request) {
+        observedAutoRequests.push(request);
+
+        return { id: "88" };
+      },
+      async pollSmartReplies() {
+        return { suggestions: [] };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    expect(observedAutoRequests).toEqual([]);
+
+    await useWorkbenchStore.getState().changeActiveConversationFullAuto(false);
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(observedAutoRequests).toEqual([]);
+  });
+
   it("polls full-auto answer status for a recent customer message and returns to active after terminal status", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-26T12:00:00+08:00"));

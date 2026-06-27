@@ -299,7 +299,8 @@ describe("ChatWorkbenchPage", () => {
 
         return seats.map((seat) => ({
           ...seat,
-          seatAIHostingEnabled: seat.seatId === "drc",
+          fullAutoSwitch: seat.seatId === "drc",
+          seatAIHostingAuth: seat.seatId === "drc",
         }));
       },
       async getConversations(seatId, options) {
@@ -339,7 +340,8 @@ describe("ChatWorkbenchPage", () => {
 
         return seats.map((seat) => ({
           ...seat,
-          seatAIHostingEnabled: seat.seatId === "drc",
+          fullAutoSwitch: seat.seatId === "drc",
+          seatAIHostingAuth: seat.seatId === "drc",
         }));
       },
       async getConversations(seatId, options) {

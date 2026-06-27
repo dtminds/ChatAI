@@ -4401,6 +4401,7 @@ export function createWorkbenchStore() {
 
         const polledConversationId = response.request.activeConversationId;
         let shouldNotifyPulledCustomerMessage = false;
+        let shouldAutoGenerateForPulledCustomerMessage = false;
 
         set((currentState) => {
           if (!isReadyScopeRequest(requestId, currentState)) {
@@ -4512,10 +4513,13 @@ export function createWorkbenchStore() {
           ) {
             const currentMessages =
               nextMessagesByConversationId[polledConversationId] ?? [];
-            shouldNotifyPulledCustomerMessage ||= hasNewCustomerMessage(
+            const hasPulledNewCustomerMessage = hasNewCustomerMessage(
               currentMessages,
               response.activeConversationMessages,
             );
+            shouldNotifyPulledCustomerMessage ||= hasPulledNewCustomerMessage;
+            shouldAutoGenerateForPulledCustomerMessage ||=
+              hasPulledNewCustomerMessage;
             nextMessagesByConversationId[polledConversationId] = upsertMessageList(
               currentMessages,
               response.activeConversationMessages,
@@ -4675,7 +4679,9 @@ export function createWorkbenchStore() {
           scheduleSmartReplyPollForConversation(polledConversationId, {
             force: false,
           });
+        }
 
+        if (polledConversationId && shouldAutoGenerateForPulledCustomerMessage) {
           const autoGenerateMessage = shouldAutoGenerateSmartReply({
             autoPending:
               get().smartReplyAutoPendingMessageKeysByConversationId[

@@ -3767,45 +3767,35 @@ export function createWorkbenchStore() {
           };
         }
 
-        let sendResult: SendMessageResult;
+        const sendResult = await get().sendAgentMessageSegments(segments);
 
-        try {
-          sendResult = await get().sendAgentMessageSegments(segments);
+        if (!sendResult.ok) {
+          return sendResult;
+        }
 
-          if (!sendResult.ok) {
-            return sendResult;
+        const optNos = (sendResult.optNos ?? []).filter(
+          (optNo) => optNo.trim().length > 0,
+        );
+
+        if (optNos.length > 0) {
+          try {
+            await sendSmartReplyAnswer({
+              conversationId,
+              optNos,
+              realAnswer: resolveSmartReplyRealAnswer(
+                suggestion?.genAnswer,
+                payload.content,
+                suggestion?.content,
+              ),
+              // 新 send-answer 接口暂未启用附件 id，先不传 realAttachIds
+              // realAttachIds: buildSmartReplyRealAttachIds(payload.selectedAttachmentIds),
+              realAttachIds: [],
+              recordId,
+            });
+          } catch {
+            // send-answer only marks the recommendation as adopted. The message
+            // has already been sent, so marker failures must not surface as send failures.
           }
-
-          const optNos = (sendResult.optNos ?? []).filter((optNo) => optNo.trim().length > 0);
-          if (optNos.length === 0) {
-            return {
-              errorCode: "SMART_REPLY_OPT_NO_INVALID",
-              errorMessage: "发送消息操作编号无效",
-              reason: "send",
-              ok: false,
-            };
-          }
-
-          await sendSmartReplyAnswer({
-            conversationId,
-            optNos,
-            realAnswer: resolveSmartReplyRealAnswer(
-              suggestion?.genAnswer,
-              payload.content,
-              suggestion?.content,
-            ),
-            // 新 send-answer 接口暂未启用附件 id，先不传 realAttachIds
-            // realAttachIds: buildSmartReplyRealAttachIds(payload.selectedAttachmentIds),
-            realAttachIds: [],
-            recordId,
-          });
-        } catch (error) {
-          return {
-            errorCode: "SMART_REPLY_SEND_ANSWER_FAILED",
-            errorMessage: getRequestApiErrorMessage(error) ?? "智能回复发送失败",
-            reason: "send",
-            ok: false,
-          };
         }
 
         set((currentState) => {

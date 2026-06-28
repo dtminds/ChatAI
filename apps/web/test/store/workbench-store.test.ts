@@ -3097,6 +3097,66 @@ describe("useWorkbenchStore", () => {
     });
   });
 
+  it("treats smart reply adoption marker failures as non-blocking after message send succeeds", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendSmartReplyAnswer = vi.fn(async () => {
+      throw new Error("采纳记录接口失败");
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      sendSmartReplyAnswer,
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    const messages = useWorkbenchStore.getState().messagesByConversationId["conv-001"];
+    const firstMessage = messages.find((message) => message.seq === 9);
+
+    if (!isChatMessage(firstMessage)) {
+      throw new Error("Expected smart reply test message to be a chat message");
+    }
+
+    useWorkbenchStore.setState((state) => ({
+      smartReplyByMessageIdByConversationId: {
+        ...state.smartReplyByMessageIdByConversationId,
+        "conv-001": {
+          "9": {
+            assistantName: "智能助手",
+            content: "第一条推荐",
+            recordId: "record-9",
+            status: "ready",
+          },
+        },
+      },
+      smartReplyPendingMessageKeysByConversationId: {
+        ...state.smartReplyPendingMessageKeysByConversationId,
+        "conv-001": {
+          "9": true,
+        },
+      },
+    }));
+
+    const result = await useWorkbenchStore.getState().sendSmartReply(firstMessage, {
+      content: "发送第一条推荐",
+      recommendedAttachments: [],
+      selectedAttachmentIds: [],
+    });
+
+    const state = useWorkbenchStore.getState();
+
+    expect(result.ok).toBe(true);
+    expect(sendSmartReplyAnswer).toHaveBeenCalledTimes(1);
+    expect(state.smartReplyHiddenMessageKeysByConversationId["conv-001"]).toEqual({
+      "9": true,
+    });
+    expect(state.smartReplyByMessageIdByConversationId["conv-001"]?.["9"]).toMatchObject({
+      content: "发送第一条推荐",
+      generateStatus: 4,
+      pollComplete: true,
+    });
+  });
+
   it("continues polling smart replies after a transient poll failure", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-29T12:00:00+08:00"));

@@ -8,6 +8,7 @@ import type {
   WorkbenchConversationSummaryDto,
   WorkbenchMessageDto,
 } from "@chatai/contracts";
+import { WORKBENCH_MESSAGE_SOURCE } from "@chatai/contracts";
 import type { Account, CustomerProfile, EmployeeProfile } from "@/pages/chat/chat-types";
 
 describe("workbench adapter", () => {
@@ -137,6 +138,38 @@ describe("adaptMessage", () => {
       tasks: [],
     },
   };
+
+  it("marks messages sent by Agent source", () => {
+    expect(
+      adaptMessage(
+        {
+          ...messageDto,
+          senderType: "agent",
+          source: WORKBENCH_MESSAGE_SOURCE.AGENT,
+        } as WorkbenchMessageDto,
+        customerProfilesById,
+        accountsById,
+        me,
+      ),
+    ).toMatchObject({
+      isAgentMessage: true,
+    });
+
+    expect(
+      adaptMessage(
+        {
+          ...messageDto,
+          senderType: "agent",
+          source: 1,
+        } as WorkbenchMessageDto,
+        customerProfilesById,
+        accountsById,
+        me,
+      ),
+    ).not.toMatchObject({
+      isAgentMessage: true,
+    });
+  });
 
   it("does not format zero message timestamps as epoch dates", () => {
     expect(

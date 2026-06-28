@@ -273,6 +273,8 @@ export type WorkbenchSeatDto = {
   semiAutoAuth?: boolean;
   /** 席位半自动辅助总开关，对应 `xy_wap_embed_user_seat_agent.semi_auto_switch` */
   semiAutoSwitch?: boolean;
+  /** 席位 AI 话术推荐能力是否开启，对应 `semi_auto_auth && semi_auto_switch` */
+  seatAIAssistantEnabled?: boolean;
   seatId: string;
   thirdUserId?: string;
   name: string;
@@ -345,6 +347,7 @@ export type WorkbenchMessageBaseDto = {
   contentType: WorkbenchMessageContentType;
   rawMsgtype: string;
   status: WorkbenchMessageStatus;
+  source?: number;
   content: Record<string, unknown>;
   createdAt?: number;
   updatedAt?: number;
@@ -358,7 +361,6 @@ export type WorkbenchMessageDto = WorkbenchMessageBaseDto;
 
 export type WorkbenchMessagePageDto = {
   messages: WorkbenchMessageDto[];
-  smartReplyEnabled?: boolean;
   smartReplies?: WorkbenchSmartReplySuggestionDto[];
   nextBeforeSeq?: number;
   hasMore: boolean;

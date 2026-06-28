@@ -1173,6 +1173,25 @@ describe("message feed row actions", () => {
     );
   });
 
+  it("marks agent-hosted outbound messages on the avatar", () => {
+    render(
+      <MessageRow
+        message={{
+          ...createTextMessage("Agent 自动回复"),
+          isAgentMessage: true,
+        }}
+      />,
+    );
+
+    expect(screen.getByLabelText("AI托管")).toBeInTheDocument();
+  });
+
+  it("does not mark regular outbound messages as agent-hosted", () => {
+    render(<MessageRow message={createTextMessage("人工回复")} />);
+
+    expect(screen.queryByLabelText("AI托管")).not.toBeInTheDocument();
+  });
+
   it("adds directional entrance animation only to appended new messages", () => {
     vi.useFakeTimers();
     const { rerender } = render(

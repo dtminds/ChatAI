@@ -5,6 +5,7 @@ import type {
   WorkbenchSeatDto,
   WorkbenchSubUserDto,
 } from "@chatai/contracts";
+import { WORKBENCH_MESSAGE_SOURCE } from "@chatai/contracts";
 import type {
   Account,
   ChatMessage,
@@ -38,6 +39,9 @@ export function adaptAccount(dto: WorkbenchSeatDto, unreadCount = dto.unreadCoun
   return {
     seatAIHostingEnabled:
       dto.seatAIHostingAuth === true && dto.fullAutoSwitch === true,
+    seatAIAssistantEnabled:
+      dto.seatAIAssistantEnabled ??
+      (dto.semiAutoAuth === true && dto.semiAutoSwitch === true),
     avatarUrl: dto.avatar,
     bizStatus: dto.bizStatus,
     description: dto.description,
@@ -200,6 +204,8 @@ export function adaptMessage(
     conversationId: dto.conversationId,
     createdAtMs,
     isGroupConversation,
+    isAgentMessage:
+      dto.source === WORKBENCH_MESSAGE_SOURCE.AGENT ? true : undefined,
     isOwnMessage,
     failReason: dto.failReason,
     isRevoked: dto.isRevoked,

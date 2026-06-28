@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { AIHostingAvatarBadge } from "@/pages/chat/components/ai-hosting-avatar-badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -1150,20 +1151,23 @@ export function canCollectMaterial(message: ChatMessage) {
 
 export function MessageAvatar({ message }: { message: ChatMessage }) {
   return (
-    <Avatar className="size-8 rounded-[6px] bg-surface">
-      {message.sender.avatarUrl ? (
-        <AvatarImage alt={message.sender.name} src={message.sender.avatarUrl} />
-      ) : null}
-      <AvatarFallback className="rounded-[6px] text-sm">
-        <HugeiconsIcon
-          aria-hidden="true"
-          color="currentColor"
-          icon={Male02Icon}
-          size={16}
-          strokeWidth={1.8}
-        />
-      </AvatarFallback>
-    </Avatar>
+    <div className="relative">
+      <Avatar className="size-8 rounded-[6px] bg-surface">
+        {message.sender.avatarUrl ? (
+          <AvatarImage alt={message.sender.name} src={message.sender.avatarUrl} />
+        ) : null}
+        <AvatarFallback className="rounded-[6px] text-sm">
+          <HugeiconsIcon
+            aria-hidden="true"
+            color="currentColor"
+            icon={Male02Icon}
+            size={16}
+            strokeWidth={1.8}
+          />
+        </AvatarFallback>
+      </Avatar>
+      {message.isAgentMessage ? <AIHostingAvatarBadge /> : null}
+    </div>
   );
 }
 

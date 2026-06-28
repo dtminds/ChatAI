@@ -139,6 +139,19 @@ describe("ConversationCard", () => {
     expect(avatarFallback?.querySelector("svg")).toBeInTheDocument();
   });
 
+  it("shows an AI badge on hosted conversations", () => {
+    render(
+      <ConversationCard
+        conversation={conversation}
+        isActive={false}
+        isAIHostingEnabled
+        onSelect={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByLabelText("AI托管")).toBeInTheDocument();
+  });
+
   it("shows mark-read for unread conversations and mark-unread for read conversations", async () => {
     const user = userEvent.setup();
     const { rerender } = render(

@@ -266,6 +266,7 @@ describe("MysqlWorkbenchService", () => {
         },
       ],
     });
+    const getSeatsByIds = vi.fn();
     const service = new MysqlWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
@@ -278,6 +279,7 @@ describe("MysqlWorkbenchService", () => {
           thirdUserId: "seat-user-001",
           uid: 9001,
         }),
+        getSeatsByIds,
         listMessages: vi.fn().mockResolvedValue({
           filteredCount: 0,
           hasMore: false,
@@ -291,7 +293,6 @@ describe("MysqlWorkbenchService", () => {
             createMessageDto({ senderType: "customer", seq: 7 }),
           ],
           scannedCount: 7,
-          smartReplyEnabled: true,
           smartReplyScope: {
             chatType: 1,
             thirdExternalId: "external-001",
@@ -318,6 +319,7 @@ describe("MysqlWorkbenchService", () => {
       thirdUserId: "seat-user-001",
       uid: 9001,
     });
+    expect(getSeatsByIds).not.toHaveBeenCalled();
   });
 
   it("keeps loading smart reply recommendations for full-auto conversations", async () => {
@@ -349,7 +351,6 @@ describe("MysqlWorkbenchService", () => {
           hasMore: false,
           messages: [createMessageDto({ senderType: "customer", seq: 7 })],
           scannedCount: 1,
-          smartReplyEnabled: true,
           smartReplyScope: {
             chatType: 1,
             thirdExternalId: "external-001",
@@ -362,7 +363,6 @@ describe("MysqlWorkbenchService", () => {
     );
 
     await expect(service.getMessages("101", "88", { limit: 10 })).resolves.toMatchObject({
-      smartReplyEnabled: true,
       smartReplies: [
         {
           content: "推荐回复 7",
@@ -405,7 +405,6 @@ describe("MysqlWorkbenchService", () => {
             createMessageDto({ rawMsgtype: "voice", senderType: "customer", seq: 6 }),
           ],
           scannedCount: 6,
-          smartReplyEnabled: true,
           smartReplyScope: {
             chatType: 1,
             thirdExternalId: "external-001",
@@ -453,7 +452,6 @@ describe("MysqlWorkbenchService", () => {
             createMessageDto({ rawMsgtype: " text ", senderType: "customer", seq: 2 }),
           ],
           scannedCount: 2,
-          smartReplyEnabled: true,
           smartReplyScope: {
             chatType: 1,
             thirdExternalId: "external-001",
@@ -495,7 +493,6 @@ describe("MysqlWorkbenchService", () => {
           hasMore: false,
           messages: [createMessageDto({ senderType: "customer", seq: 7 })],
           scannedCount: 1,
-          smartReplyEnabled: true,
           smartReplyScope: {
             chatType: 1,
             thirdExternalId: "external-001",
@@ -512,8 +509,18 @@ describe("MysqlWorkbenchService", () => {
     expect(javaClient.listUserHistoryAnswers).not.toHaveBeenCalled();
   });
 
-  it("does not load smart replies when the seat has no assistant", async () => {
+  it("loads smart replies from message page scope without checking seat assistant switch", async () => {
     const javaClient = createJavaClient();
+    vi.mocked(javaClient.listUserHistoryAnswers).mockResolvedValue({
+      suggestions: [
+        {
+          assistantName: "智能助手",
+          content: "推荐回复 7",
+          messageId: "7",
+          pollComplete: true,
+        },
+      ],
+    });
     const service = new MysqlWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
@@ -531,7 +538,6 @@ describe("MysqlWorkbenchService", () => {
           hasMore: false,
           messages: [createMessageDto({ senderType: "customer", seq: 7 })],
           scannedCount: 1,
-          smartReplyEnabled: false,
           smartReplyScope: {
             chatType: 1,
             thirdExternalId: "external-001",
@@ -544,10 +550,20 @@ describe("MysqlWorkbenchService", () => {
     );
 
     await expect(service.getMessages("101", "88", { limit: 10 })).resolves.toMatchObject({
-      smartReplyEnabled: false,
+      smartReplies: [
+        {
+          content: "推荐回复 7",
+          messageId: "7",
+        },
+      ],
     });
-
-    expect(javaClient.listUserHistoryAnswers).not.toHaveBeenCalled();
+    expect(javaClient.listUserHistoryAnswers).toHaveBeenCalledWith({
+      chatType: 1,
+      msgIds: [7],
+      thirdExternalId: "external-001",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
   });
 
   it("loads chat record detail after checking conversation access", async () => {
@@ -614,7 +630,6 @@ describe("MysqlWorkbenchService", () => {
           hasMore: false,
           messages: [createMessageDto({ senderType: "customer", seq: 7 })],
           scannedCount: 1,
-          smartReplyEnabled: true,
           smartReplyScope: {
             chatType: 1,
             thirdExternalId: "external-001",
@@ -633,7 +648,6 @@ describe("MysqlWorkbenchService", () => {
           seq: 7,
         },
       ],
-      smartReplyEnabled: true,
     });
     expect(logger.warn).toHaveBeenCalledWith(
       {

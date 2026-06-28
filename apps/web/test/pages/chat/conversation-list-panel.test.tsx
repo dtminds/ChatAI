@@ -293,6 +293,7 @@ describe("ConversationListPanel", () => {
     expect(screen.queryByText("人工接待客户")).not.toBeInTheDocument();
     expect(screen.queryByText("已读客户")).not.toBeInTheDocument();
     expect(screen.getByText("单聊 · AI托管")).toBeInTheDocument();
+    expect(screen.getByLabelText("AI托管")).toBeInTheDocument();
   });
 
   it("filters each mounted mode with its own selected view", () => {

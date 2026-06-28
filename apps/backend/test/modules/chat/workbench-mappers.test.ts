@@ -1,3 +1,4 @@
+import { WORKBENCH_MESSAGE_SOURCE } from "@chatai/contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   getGroupMemberHydrationKey,
@@ -32,6 +33,7 @@ describe("workbench MySQL mappers", () => {
       }),
     ).toEqual({
       seatAIHostingEnabled: true,
+      seatAIAssistantEnabled: false,
       avatar: "https://example.com/avatar.png",
       bizStatus: 0,
       description: "",
@@ -455,6 +457,18 @@ describe("workbench MySQL mappers", () => {
       thirdExternalUserId: "external-1",
       thirdGroupId: undefined,
       thirdUserId: "third-user-1",
+    });
+  });
+
+  it("maps audit message source for Agent-sent messages", () => {
+    expect(
+      mapMessageRow(messageRow({
+        from_type: 1,
+        source: WORKBENCH_MESSAGE_SOURCE.AGENT,
+      })),
+    ).toMatchObject({
+      senderType: "agent",
+      source: WORKBENCH_MESSAGE_SOURCE.AGENT,
     });
   });
 

@@ -23,6 +23,10 @@ export const CHAT_TYPE = {
   GROUP: 2,
 } as const;
 
+export const WORKBENCH_MESSAGE_SOURCE = {
+  AGENT: 3,
+} as const;
+
 export const MATERIAL_COLLECTION_BIZ_TYPE = {
   EXPRESSION: 1,
   FILE: 2,

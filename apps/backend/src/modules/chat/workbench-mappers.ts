@@ -73,6 +73,7 @@ export type MessageRow = {
   seat_id: number | string;
   sender_avatar?: string;
   sender_name?: string;
+  source?: number | string | null;
   status?: number | string | null;
   third_external_id: string | null | undefined;
   third_from_id: string | null | undefined;
@@ -119,9 +120,12 @@ export function mapSeatRow(row: SeatRow): WorkbenchSeatDto {
   const hostSubUserId = normalizeOptionalId(row.host_sub_id);
   const seatAIHostingAuth = readBooleanFlag(row.full_auto_auth);
   const fullAutoSwitch = readBooleanFlag(row.full_auto_switch);
+  const semiAutoAuth = readBooleanFlag(row.semi_auto_auth);
+  const semiAutoSwitch = readBooleanFlag(row.semi_auto_switch);
 
   return {
     seatAIHostingEnabled: seatAIHostingAuth && fullAutoSwitch,
+    seatAIAssistantEnabled: semiAutoAuth && semiAutoSwitch,
     avatar: row.avatar ?? "",
     bizStatus: row.biz_status == null ? 1 : toNumber(row.biz_status),
     description: "",
@@ -135,8 +139,8 @@ export function mapSeatRow(row: SeatRow): WorkbenchSeatDto {
     operatorName: seatName,
     phone: "",
     seatId: String(row.id),
-    semiAutoAuth: readBooleanFlag(row.semi_auto_auth),
-    semiAutoSwitch: readBooleanFlag(row.semi_auto_switch),
+    semiAutoAuth,
+    semiAutoSwitch,
     thirdUserId: row.third_userid,
     unreadCount: toNumber(row.unread_count),
   };
@@ -225,6 +229,7 @@ export function mapMessageRow(
     senderName: row.sender_name,
     senderType: mapSenderType(row),
     seq: toNumber(row.id),
+    ...(row.source == null ? {} : { source: toNumber(row.source) }),
     status: mapMessageStatus(row.status),
     thirdExternalUserId,
     thirdFromId: row.third_from_id || undefined,

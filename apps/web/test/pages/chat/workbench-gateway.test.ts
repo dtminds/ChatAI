@@ -296,6 +296,7 @@ describe("workbench gateway message paging", () => {
         name: "德瑞可",
         operator: "小可",
         phone: "13296712905",
+        seatAIAssistantEnabled: false,
         seatAIHostingAuth: undefined,
         seatAIHostingEnabled: false,
         seatId: "drc",

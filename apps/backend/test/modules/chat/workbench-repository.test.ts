@@ -3620,6 +3620,7 @@ describe("WorkbenchRepository", () => {
     await expect(repository.getSeatsByIds(["13", "12", "12", "not-a-seat"])).resolves.toEqual([
       {
         seatAIHostingEnabled: true,
+        seatAIAssistantEnabled: false,
         avatar: "",
         bizStatus: 1,
         description: "",
@@ -3640,6 +3641,7 @@ describe("WorkbenchRepository", () => {
       },
       {
         seatAIHostingEnabled: false,
+        seatAIAssistantEnabled: false,
         avatar: "",
         bizStatus: 1,
         description: "",

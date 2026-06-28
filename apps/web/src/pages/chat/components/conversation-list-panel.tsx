@@ -36,6 +36,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { ConversationCard } from "@/pages/chat/components/conversation-card";
 import type { ChatMode, Conversation } from "@/pages/chat/chat-types";
+import { isConversationAIHostingEnabled } from "@/pages/chat/lib/conversation-ai-hosting";
 import type { ConversationComposerDraft } from "@/pages/chat/lib/conversation-composer-draft";
 import {
   DEFAULT_CONVERSATION_VIEW,
@@ -370,6 +371,10 @@ export function ConversationListPanel({
                           conversation={conversation}
                           isActionDisabled={isConversationActionDisabled}
                           isActive={conversation.id === activeConversation?.id}
+                          isAIHostingEnabled={isConversationAIHostingEnabled(
+                            conversation,
+                            isSeatAIHostingEnabled,
+                          )}
                           key={conversation.id}
                           onDelete={() => {
                             void onDeleteConversation?.(conversation.id);

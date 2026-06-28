@@ -206,7 +206,6 @@ type NormalizedQuickReplyBatchItem = {
 };
 
 type SmartReplyMessagePageMetadata = {
-  smartReplyEnabled?: boolean;
   smartReplyScope?: {
     chatType: number;
     thirdExternalId: string;
@@ -827,26 +826,20 @@ export class MysqlWorkbenchService implements WorkbenchService {
       includeHiddenConversation: true,
       limit: options?.limit ?? 30,
     })) as MessagePageWithSmartReplyMetadata;
-    const { smartReplyEnabled, smartReplyScope, ...publicPage } = page;
+    const { smartReplyScope, ...publicPage } = page;
 
     if (options?.beforeSeq != null) {
       return publicPage;
     }
 
-    if (!smartReplyEnabled || !smartReplyScope) {
-      return {
-        ...publicPage,
-        smartReplyEnabled: false,
-      };
+    if (!smartReplyScope) {
+      return publicPage;
     }
 
     const msgIds = collectSmartReplyMessagePageCandidateIds(publicPage.messages);
 
     if (msgIds.length === 0) {
-      return {
-        ...publicPage,
-        smartReplyEnabled: true,
-      };
+      return publicPage;
     }
 
     try {
@@ -860,7 +853,6 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
       return {
         ...publicPage,
-        smartReplyEnabled: true,
         smartReplies: smartReplies.suggestions,
       };
     } catch (error) {
@@ -869,10 +861,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
         "Failed to load smart replies for message page",
       );
 
-      return {
-        ...publicPage,
-        smartReplyEnabled: true,
-      };
+      return publicPage;
     }
   }
 

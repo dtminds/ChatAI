@@ -60,6 +60,10 @@ describe("KB read routes", () => {
           pageSize: 10,
           total: 1,
         },
+        quota: {
+          limit: 20,
+          used: 1,
+        },
       },
       success: true,
     });

@@ -24,6 +24,9 @@ export const CHAT_TYPE = {
 } as const;
 
 export const WORKBENCH_MESSAGE_SOURCE = {
+  DEFAULT: 0,
+  WORKBENCH: 1,
+  SIDEBAR: 2,
   AGENT: 3,
 } as const;
 

@@ -247,9 +247,10 @@ function mapMessageSource(source: MessageRow["source"]) {
   }
 
   const normalizedSource = toNumber(source);
+  const supportedSources: readonly number[] = Object.values(WORKBENCH_MESSAGE_SOURCE);
 
-  if (normalizedSource === WORKBENCH_MESSAGE_SOURCE.AGENT) {
-    return WORKBENCH_MESSAGE_SOURCE.AGENT;
+  if (supportedSources.includes(normalizedSource)) {
+    return normalizedSource;
   }
 
   return undefined;

@@ -472,6 +472,32 @@ describe("workbench MySQL mappers", () => {
     });
   });
 
+  it("maps known audit message source values", () => {
+    expect(
+      mapMessageRow(messageRow({
+        source: WORKBENCH_MESSAGE_SOURCE.DEFAULT,
+      })),
+    ).toMatchObject({
+      source: WORKBENCH_MESSAGE_SOURCE.DEFAULT,
+    });
+
+    expect(
+      mapMessageRow(messageRow({
+        source: String(WORKBENCH_MESSAGE_SOURCE.WORKBENCH),
+      })),
+    ).toMatchObject({
+      source: WORKBENCH_MESSAGE_SOURCE.WORKBENCH,
+    });
+
+    expect(
+      mapMessageRow(messageRow({
+        source: WORKBENCH_MESSAGE_SOURCE.SIDEBAR,
+      })),
+    ).toMatchObject({
+      source: WORKBENCH_MESSAGE_SOURCE.SIDEBAR,
+    });
+  });
+
   it("omits unsupported audit message source values", () => {
     expect(
       mapMessageRow(messageRow({

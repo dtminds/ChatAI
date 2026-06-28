@@ -5,6 +5,7 @@ import {
   WorkbenchMessageFileDownloadStatus,
   WorkbenchQuotedMessagePreviewDto,
   WorkbenchSeatDto,
+  WORKBENCH_MESSAGE_SOURCE,
 } from "@chatai/contracts";
 import {
   isRecord,
@@ -213,6 +214,7 @@ export function mapMessageRow(
     mode === "group"
       ? row.conversation_group_id || row.third_group_id || buildMissingCustomerId(row)
       : row.conversation_external_id || row.third_external_id || buildMissingCustomerId(row);
+  const messageSource = mapMessageSource(row.source);
 
   return {
     content: parseMessageContent(row, quotePreview),
@@ -229,7 +231,7 @@ export function mapMessageRow(
     senderName: row.sender_name,
     senderType: mapSenderType(row),
     seq: toNumber(row.id),
-    ...(row.source == null ? {} : { source: toNumber(row.source) }),
+    ...(messageSource == null ? {} : { source: messageSource }),
     status: mapMessageStatus(row.status),
     thirdExternalUserId,
     thirdFromId: row.third_from_id || undefined,
@@ -237,6 +239,20 @@ export function mapMessageRow(
     thirdUserId: row.third_user_id || undefined,
     updatedAt: toOptionalTimestamp(row.update_time),
   };
+}
+
+function mapMessageSource(source: MessageRow["source"]) {
+  if (source == null) {
+    return undefined;
+  }
+
+  const normalizedSource = toNumber(source);
+
+  if (normalizedSource === WORKBENCH_MESSAGE_SOURCE.AGENT) {
+    return WORKBENCH_MESSAGE_SOURCE.AGENT;
+  }
+
+  return undefined;
 }
 
 export function hydrateMessageRows(

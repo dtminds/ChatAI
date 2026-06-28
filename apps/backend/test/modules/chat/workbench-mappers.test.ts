@@ -464,12 +464,20 @@ describe("workbench MySQL mappers", () => {
     expect(
       mapMessageRow(messageRow({
         from_type: 1,
-        source: WORKBENCH_MESSAGE_SOURCE.AGENT,
+        source: String(WORKBENCH_MESSAGE_SOURCE.AGENT),
       })),
     ).toMatchObject({
       senderType: "agent",
       source: WORKBENCH_MESSAGE_SOURCE.AGENT,
     });
+  });
+
+  it("omits unsupported audit message source values", () => {
+    expect(
+      mapMessageRow(messageRow({
+        source: 999,
+      })),
+    ).not.toHaveProperty("source");
   });
 
   it("keeps a recent empty chat record as loading content", () => {

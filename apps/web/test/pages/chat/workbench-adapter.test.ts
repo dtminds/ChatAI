@@ -103,6 +103,63 @@ describe("workbench adapter", () => {
     });
   });
 
+  it("adapts AI assistant enablement from DTO value or semi-auto fallback", () => {
+    expect(
+      adaptAccount({
+        avatar: "",
+        description: "",
+        loginStatus: "online",
+        name: "测试席位",
+        operatorName: "测试席位",
+        phone: "",
+        seatAIAssistantEnabled: true,
+        seatId: "seat-1",
+        semiAutoAuth: true,
+        semiAutoSwitch: false,
+        thirdUserId: "third-user-1",
+        unreadCount: 0,
+      }),
+    ).toMatchObject({
+      seatAIAssistantEnabled: true,
+    });
+
+    expect(
+      adaptAccount({
+        avatar: "",
+        description: "",
+        loginStatus: "online",
+        name: "测试席位",
+        operatorName: "测试席位",
+        phone: "",
+        seatId: "seat-1",
+        semiAutoAuth: true,
+        semiAutoSwitch: true,
+        thirdUserId: "third-user-1",
+        unreadCount: 0,
+      }),
+    ).toMatchObject({
+      seatAIAssistantEnabled: true,
+    });
+
+    expect(
+      adaptAccount({
+        avatar: "",
+        description: "",
+        loginStatus: "online",
+        name: "测试席位",
+        operatorName: "测试席位",
+        phone: "",
+        seatId: "seat-1",
+        semiAutoAuth: true,
+        semiAutoSwitch: false,
+        thirdUserId: "third-user-1",
+        unreadCount: 0,
+      }),
+    ).toMatchObject({
+      seatAIAssistantEnabled: false,
+    });
+  });
+
   it("defaults missing conversation biz status to hidden (0)", () => {
     expect(
       adaptConversation({

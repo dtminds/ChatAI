@@ -5537,9 +5537,7 @@ export function createWorkbenchStore() {
       const canConfigureMode =
         mode === "off" ||
         (mode === "assistant" && account?.semiAutoAuth === true) ||
-        (mode === "autoReply" &&
-          account?.semiAutoAuth === true &&
-          account?.seatAIHostingAuth === true);
+        (mode === "autoReply" && account?.seatAIHostingAuth === true);
 
       if (!canUseConversationActions(state, account) || !canConfigureMode) {
         return;

@@ -274,9 +274,7 @@ export function ChatComposer({
       }
 
       return (
-        !canConfigureSeatSemiAuto ||
         !canConfigureSeatAIHosting ||
-        !seatSemiAutoAuth ||
         !seatAIHostingAuth
       );
     },

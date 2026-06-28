@@ -449,6 +449,44 @@ describe("useWorkbenchStore", () => {
     });
   });
 
+  it("allows auto-reply mode when the account only has full-auto auth", async () => {
+    const baseService = createMockWorkbenchService();
+    const updateSeatAgentMode = vi.fn().mockResolvedValue({
+      fullAutoSwitch: true,
+      seatId: "drc",
+      semiAutoSwitch: true,
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      updateSeatAgentMode,
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              seatAIHostingAuth: true,
+              semiAutoAuth: false,
+            }
+          : account,
+      ),
+    }));
+
+    await useWorkbenchStore.getState().changeActiveSeatAgentMode("autoReply");
+
+    expect(updateSeatAgentMode).toHaveBeenCalledWith("drc", {
+      mode: "autoReply",
+    });
+    expect(useWorkbenchStore.getState().accounts.find((account) => account.id === "drc")).toMatchObject({
+      fullAutoSwitch: true,
+      seatAIAssistantEnabled: false,
+      seatAIHostingEnabled: true,
+      semiAutoSwitch: true,
+    });
+  });
+
   it("does not change active account agent mode when the account lacks mode auth", async () => {
     const baseService = createMockWorkbenchService();
     const updateSeatAgentMode = vi.fn();

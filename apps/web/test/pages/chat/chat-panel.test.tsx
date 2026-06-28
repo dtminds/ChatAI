@@ -610,6 +610,91 @@ describe("ChatPanel", () => {
     expect(screen.getByRole("button", { name: "托管当前会话" })).toBeDisabled();
   });
 
+  it("keeps auto-reply selectable without semi-auto auth", async () => {
+    const user = userEvent.setup();
+    const onChangeSeatAgentMode = vi.fn();
+
+    render(
+      <ChatPanel
+        activeAccount={{
+          ...account,
+          fullAutoSwitch: false,
+          seatAIHostingAuth: true,
+          seatAIHostingEnabled: false,
+          semiAutoAuth: false,
+          semiAutoSwitch: false,
+        }}
+        activeConversation={createConversation()}
+        activeHistoryStatus="idle"
+        canConfigureSeatAIHosting
+        canToggleConversationAIHosting={false}
+        canConfigureSeatSemiAuto={false}
+        canSendMessage
+        seatAIHostingEnabled={false}
+        composerPlaceholder="输入消息"
+        customerPanelWidth={375}
+        draft=""
+        fileUploadQueue={[]}
+        groupMembers={[]}
+        hasMoreHistory={false}
+        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false, isOpen: false }}
+        inputEnterBehavior="send"
+        isHistoryPanelOpen={false}
+        isConversationLoading={false}
+        isEmojiPickerOpen={false}
+        isGroupMembersLoading={false}
+        isResizingCustomerPanel={false}
+        isSendingDraft={false}
+        messages={[]}
+        quotedMessage={null}
+        sidebarItems={[]}
+        composerRef={createRef()}
+        messageViewportRef={createRef()}
+        workbenchBodyRef={createRef()}
+        onChangeSeatAgentMode={onChangeSeatAgentMode}
+        onChangeFullAuto={vi.fn()}
+        onCancelFileUpload={vi.fn()}
+        onClearQuotedMessage={vi.fn()}
+        onComposerSegmentsChange={vi.fn()}
+        onCustomerPanelResizeStart={vi.fn()}
+        onDismissScopeTransitionError={vi.fn()}
+        onDraftChange={vi.fn()}
+        onEmojiPickerOpenChange={vi.fn()}
+        onEnterBehaviorChange={vi.fn()}
+        onFileSelect={vi.fn()}
+        onHistoryClose={vi.fn()}
+        onHistoryLoadMoreNext={vi.fn()}
+        onHistoryLoadMorePrev={vi.fn()}
+        onHistoryRefresh={vi.fn()}
+        onHistorySetDay={vi.fn()}
+        onHistorySetScope={vi.fn()}
+        onHistorySetSenderId={vi.fn()}
+        onLoadOlderMessages={vi.fn()}
+        onMessageViewportScroll={vi.fn()}
+        onOpenHistory={vi.fn()}
+        onRefreshGroupMembers={vi.fn()}
+        onRetryMessage={vi.fn()}
+        onSendDraft={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "AI 对话" }));
+    await user.click(screen.getByRole("combobox", { name: "切换 AI 模式" }));
+
+    expect(screen.getByRole("option", { name: /话术推荐/ })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    expect(screen.getByRole("option", { name: /自动回复/ })).not.toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+
+    await user.click(screen.getByRole("option", { name: /自动回复/ }));
+
+    expect(onChangeSeatAgentMode).toHaveBeenCalledWith("autoReply");
+  });
+
   it("disables the AI dialog button when messages cannot be sent", async () => {
     const user = userEvent.setup();
 

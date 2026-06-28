@@ -502,6 +502,9 @@ export function createWorkbenchJavaClient(
         {
           optNos: input.optNos,
           realAnswer: input.realAnswer,
+          // TODO: Confirm send-answer contract with Java backend. realAnswer currently
+          // records text-only content, but editing should not change whether the payload
+          // is text-only or full message segments.
           // 新 send-answer 接口暂未启用附件 id，先不传 realAttachIds
           // realAttachIds: input.realAttachIds,
           recordId: numericRecordId ?? input.recordId,

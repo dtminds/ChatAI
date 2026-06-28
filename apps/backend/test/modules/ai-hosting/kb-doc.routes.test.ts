@@ -52,7 +52,10 @@ function mockJavaKbDocCreateFetch(docId = 1001) {
   );
 }
 
-async function createAuthenticatedApp(role: "admin" | "operator" | "owner" | "viewer" = "admin") {
+async function createAuthenticatedApp(
+  role: "admin" | "operator" | "owner" | "viewer" = "admin",
+  dbOptions: Parameters<typeof createKbReadDbMock>[0] = {},
+) {
   const app = await buildMockedApp();
   const token = app.jwt.sign({
     roles: [role],
@@ -61,7 +64,7 @@ async function createAuthenticatedApp(role: "admin" | "operator" | "owner" | "vi
     subUserId: "101",
     uid: 9001,
   });
-  app.db = createKbReadDbMock() as never;
+  app.db = createKbReadDbMock(dbOptions) as never;
 
   return {
     app,
@@ -176,6 +179,41 @@ describe("ai-hosting kb-doc routes", () => {
     expect(javaFormBody).toContain(
       "volcStrategyResourceId=kb-strategy-def92e30c1456c07",
     );
+    fetchMock.mockRestore();
+  });
+
+  it("rejects creating docs when the knowledge base has reached the fixed quota", async () => {
+    const fetchMock = mockJavaKbDocCreateFetch(3009);
+    const context = await createAuthenticatedApp("admin", {
+      deletedDocCount: 5,
+      totalDocCount: 100,
+    });
+    app = context.app;
+
+    const response = await app.inject({
+      headers: { authorization: context.authorization },
+      method: "POST",
+      payload: {
+        chunkParams: { maxLength: 2000, strategy: "length" },
+        chunkStrategy: "length",
+        docSuffix: "pdf",
+        docUrl: "kb-docs/over-limit.pdf",
+        kbId: "1",
+        name: "超额文档",
+        parseMode: "standard",
+      },
+      url: "/api/server/ai-hosting/kb-docs/create",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      error: {
+        code: "KB_DOC_QUOTA_EXCEEDED",
+        message: "当前知识库的知识数量已达上限",
+      },
+      success: false,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
     fetchMock.mockRestore();
   });
 

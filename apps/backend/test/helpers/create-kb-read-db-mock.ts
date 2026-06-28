@@ -13,6 +13,10 @@ type QueryExecutionEvent = {
 
 type KbReadDbMockOptions = {
   beforeExecute?: (event: QueryExecutionEvent) => Promise<void> | void;
+  deletedDocCount?: number;
+  deletedKbCount?: number;
+  totalDocCount?: number;
+  totalKbCount?: number;
 };
 
 function createExpressionBuilder() {
@@ -78,6 +82,32 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
       update_time: new Date("2026-06-20T14:02:22.000Z"),
     },
   ];
+  for (let index = kbs.length; index < (options.totalKbCount ?? kbs.length); index += 1) {
+    kbs.push({
+      create_time: new Date("2026-06-19T14:02:22.000Z"),
+      id: index + 1,
+      last_operator_id: 1,
+      name: `配额测试知识库${index + 1}`,
+      operator_id: 1,
+      remark: "配额测试",
+      status: 1,
+      uid: 9001,
+      update_time: new Date("2026-06-20T14:02:22.000Z"),
+    });
+  }
+  for (let index = 0; index < (options.deletedKbCount ?? 0); index += 1) {
+    kbs.push({
+      create_time: new Date("2026-06-19T14:02:22.000Z"),
+      id: 100 + index,
+      last_operator_id: 1,
+      name: `已删除知识库${index + 1}`,
+      operator_id: 1,
+      remark: "配额测试",
+      status: 0,
+      uid: 9001,
+      update_time: new Date("2026-06-20T14:02:22.000Z"),
+    });
+  }
 
   const docs = [
     {
@@ -131,6 +161,60 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
       volc_strategy_resource_id: null,
     },
   ];
+  for (let index = docs.length; index < (options.totalDocCount ?? docs.length); index += 1) {
+    docs.push({
+      create_time: new Date("2026-06-18T15:22:22.000Z"),
+      doc_process_time: null,
+      doc_suffix: "doc",
+      doc_type: 2,
+      doc_update_time: null,
+      doc_url: `kb-docs/quota-${index}.doc`,
+      id: 2000 + index,
+      kb_id: 1,
+      last_operator_id: 1,
+      last_sync_time: null,
+      name: `配额测试知识${index + 1}`,
+      operator_id: 1,
+      point_num: 1,
+      remark: null,
+      status: 1,
+      sync_error_msg: null,
+      sync_status: 0,
+      tokens: null,
+      uid: 9001,
+      update_time: new Date("2026-06-20T15:22:22.000Z"),
+      volc_doc_id: `volc-doc-quota-${index}`,
+      volc_resource_id: null,
+      volc_strategy_resource_id: null,
+    });
+  }
+  for (let index = 0; index < (options.deletedDocCount ?? 0); index += 1) {
+    docs.push({
+      create_time: new Date("2026-06-18T15:22:22.000Z"),
+      doc_process_time: null,
+      doc_suffix: "doc",
+      doc_type: 2,
+      doc_update_time: null,
+      doc_url: `kb-docs/deleted-${index}.doc`,
+      id: 3000 + index,
+      kb_id: 1,
+      last_operator_id: 1,
+      last_sync_time: null,
+      name: `已删除知识${index + 1}`,
+      operator_id: 1,
+      point_num: 1,
+      remark: null,
+      status: 0,
+      sync_error_msg: null,
+      sync_status: 0,
+      tokens: null,
+      uid: 9001,
+      update_time: new Date("2026-06-20T15:22:22.000Z"),
+      volc_doc_id: `volc-doc-deleted-${index}`,
+      volc_resource_id: null,
+      volc_strategy_resource_id: null,
+    });
+  }
 
   const chunks = [
     {
@@ -316,6 +400,13 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
         select: (selection?: unknown) => {
           if (typeof selection === "function") {
             isCountQuery = true;
+            selection({
+              fn: {
+                countAll: () => ({
+                  as: () => undefined,
+                }),
+              },
+            });
             return builder;
           }
 

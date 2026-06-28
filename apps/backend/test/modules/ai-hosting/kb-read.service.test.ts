@@ -116,6 +116,10 @@ describe("KbReadService", () => {
 
     expect(response.kbs).toHaveLength(1);
     expect(response.pagination.total).toBe(1);
+    expect(response.quota).toEqual({
+      limit: 20,
+      used: 1,
+    });
     expect(response.kbs[0]).toMatchObject({
       kbId: "1",
       name: "华为产品知识",
@@ -165,6 +169,7 @@ describe("KbReadService", () => {
     await vi.waitFor(() => {
       expect(probe.queryStarts).toEqual([
         { isCountQuery: false, table: "xy_wap_embed_agent_kb" },
+        { isCountQuery: true, table: "xy_wap_embed_agent_kb" },
         { isCountQuery: true, table: "xy_wap_embed_agent_kb" },
       ]);
     });
@@ -262,6 +267,7 @@ describe("KbReadService", () => {
     expect(queriedTables).toEqual([
       "xy_wap_embed_agent_kb_doc",
       "xy_wap_embed_agent_kb_doc",
+      "xy_wap_embed_agent_kb_doc",
     ]);
   });
 
@@ -274,6 +280,7 @@ describe("KbReadService", () => {
       expect(probe.queryStarts).toEqual([
         { isCountQuery: false, table: "xy_wap_embed_agent_kb_doc" },
         { isCountQuery: true, table: "xy_wap_embed_agent_kb_doc" },
+        { isCountQuery: true, table: "xy_wap_embed_agent_kb_doc" },
       ]);
     });
     probe.releaseRowsQuery();
@@ -281,6 +288,10 @@ describe("KbReadService", () => {
     await expect(responsePromise).resolves.toMatchObject({
       pagination: {
         total: 2,
+      },
+      quota: {
+        limit: 100,
+        used: 2,
       },
     });
   });

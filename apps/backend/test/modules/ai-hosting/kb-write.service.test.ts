@@ -29,7 +29,7 @@ describe("KbWriteService", () => {
     expect(created).toEqual({
       kbId: "2",
     });
-    expect(kbReadEvents).toEqual([]);
+    expect(kbReadEvents).toEqual(["xy_wap_embed_agent_kb"]);
   });
 
   it("rejects whitespace-only kb names", async () => {
@@ -38,6 +38,24 @@ describe("KbWriteService", () => {
 
     await expect(service.createKb(tenant, { name: "   " })).rejects.toMatchObject({
       code: "INVALID_KB_NAME",
+    });
+  });
+
+  it("rejects creating kbs when the tenant has reached the fixed quota", async () => {
+    const db = createKbReadDbMock({
+      deletedKbCount: 3,
+      totalKbCount: 20,
+    }) as unknown as Kysely<Database>;
+    const service = createKbWriteService(db);
+
+    await expect(
+      service.createKb(tenant, {
+        description: "用于新品上市培训",
+        name: "超额知识库",
+      }),
+    ).rejects.toMatchObject({
+      code: "KB_QUOTA_EXCEEDED",
+      message: "知识库数量已达上限",
     });
   });
 });

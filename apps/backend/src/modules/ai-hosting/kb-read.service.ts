@@ -6,6 +6,10 @@ import type {
   KbDocType,
   KbListResponse,
 } from "@chatai/contracts";
+import {
+  AI_HOSTING_KB_DOC_QUOTA_LIMIT,
+  AI_HOSTING_KB_QUOTA_LIMIT,
+} from "@chatai/contracts";
 import type { Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
 import { BadRequestError, NotFoundError } from "../../shared/errors.js";
@@ -69,13 +73,14 @@ export class KbReadService {
       query = query.where("name", "like", buildContainsLikePattern(normalizedQuery));
     }
 
-    const [rows, total] = await Promise.all([
+    const [rows, total, quotaUsed] = await Promise.all([
       query
         .orderBy("id", "desc")
         .limit(pagination.pageSize)
         .offset((pagination.page - 1) * pagination.pageSize)
         .execute(),
       this.countKbs(uid, normalizedQuery),
+      this.countKbs(uid),
     ]);
 
     return {
@@ -84,6 +89,10 @@ export class KbReadService {
         page: pagination.page,
         pageSize: pagination.pageSize,
         total,
+      },
+      quota: {
+        limit: AI_HOSTING_KB_QUOTA_LIMIT,
+        used: quotaUsed,
       },
     };
   }
@@ -146,13 +155,14 @@ export class KbReadService {
       query = query.where("name", "like", buildContainsLikePattern(normalizedQuery));
     }
 
-    const [rows, total] = await Promise.all([
+    const [rows, total, quotaUsed] = await Promise.all([
       query
         .orderBy("id", "desc")
         .limit(pagination.pageSize)
         .offset((pagination.page - 1) * pagination.pageSize)
         .execute(),
       this.countKbDocs(uid, kbNumericId, normalizedQuery, options.docType),
+      this.countKbDocs(uid, kbNumericId),
     ]);
 
     return {
@@ -161,6 +171,10 @@ export class KbReadService {
         page: pagination.page,
         pageSize: pagination.pageSize,
         total,
+      },
+      quota: {
+        limit: AI_HOSTING_KB_DOC_QUOTA_LIMIT,
+        used: quotaUsed,
       },
     };
   }

@@ -268,6 +268,10 @@ describe("AI hosting pages", () => {
         pageSize: 10,
         total: mockAgents.length,
       },
+      quota: {
+        limit: 5,
+        used: mockAgents.length,
+      },
     });
     vi.mocked(agentService.listAiHostingModels).mockResolvedValue({ models: mockModels });
     vi.mocked(agentService.listAiHostingSettings).mockResolvedValue(mockHostingSettings);
@@ -457,6 +461,7 @@ describe("AI hosting pages", () => {
     expect(screen.getByRole("table", { name: "Agent 列表" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Agent 列表区块" })).toBeInTheDocument();
     expect(await screen.findByText("共 2 条")).toBeInTheDocument();
+    expect(screen.getByText("已用 2/5 个 Agent")).toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: "应用范围" })).not.toBeInTheDocument();
     expect(screen.getByRole("cell", { name: "护肤小助理" })).toBeInTheDocument();
     expect(screen.getByRole("cell", { name: "售后小助理" })).toBeInTheDocument();
@@ -477,6 +482,28 @@ describe("AI hosting pages", () => {
       pageSize: 10,
       query: "",
     });
+  });
+
+  it("prevents adding agents when the fixed agent quota is reached", async () => {
+    vi.mocked(agentService.listAiHostingAgents).mockResolvedValueOnce({
+      agents: mockAgents,
+      pagination: {
+        page: 1,
+        pageSize: 10,
+        total: mockAgents.length,
+      },
+      quota: {
+        limit: 5,
+        used: 5,
+      },
+    });
+
+    renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
+
+    expect(await screen.findByText("已用 5/5 个 Agent")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "添加 Agent" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "添加 Agent" })).toBeDisabled();
+    expect(screen.getByText("Agent 数量已达上限")).toBeInTheDocument();
   });
 
   it("keeps the agent table header visible while loading", async () => {
@@ -1181,6 +1208,10 @@ describe("AI hosting pages", () => {
         pageSize: 200,
         total: 2,
       },
+      quota: {
+        limit: 20,
+        used: 2,
+      },
     });
 
     renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
@@ -1252,6 +1283,10 @@ describe("AI hosting pages", () => {
         pageSize: 200,
         total: 1,
       },
+      quota: {
+        limit: 20,
+        used: 1,
+      },
     });
 
     renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
@@ -1295,6 +1330,7 @@ describe("AI hosting pages", () => {
       "32",
     );
     expect(screen.getByRole("button", { name: "创建知识库" })).toBeInTheDocument();
+    expect(screen.getByText("已用 3/20 个知识库")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "华为产品知识" })).toHaveAttribute(
       "href",
       "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
@@ -1305,6 +1341,22 @@ describe("AI hosting pages", () => {
     );
     expect(screen.queryByRole("button", { name: "编辑" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "删除" })).not.toBeInTheDocument();
+  });
+
+  it("prevents creating knowledge bases when the fixed knowledge base quota is reached", async () => {
+    vi.mocked(kbService.listKbs).mockResolvedValueOnce({
+      ...createMockKbListResponse(),
+      quota: {
+        limit: 20,
+        used: 20,
+      },
+    });
+
+    renderWithRoute("/chat/ai-hosting/kb", <KbListPage />);
+
+    expect(await screen.findByText("已用 20/20 个知识库")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "创建知识库" })).toBeDisabled();
+    expect(screen.getByText("知识库数量已达上限")).toBeInTheDocument();
   });
 
   it("renders the knowledge base management page", async () => {
@@ -1359,10 +1411,31 @@ describe("AI hosting pages", () => {
     expect(screen.getByText("失败")).toBeInTheDocument();
     expect(screen.getByText("排队中")).toBeInTheDocument();
     expect(screen.getByText("共 6 条")).toBeInTheDocument();
+    expect(screen.getByText("已用 6/100 条知识")).toBeInTheDocument();
     expect(screen.getAllByRole("link", { name: "查看" })[0]).toHaveAttribute(
       "href",
       "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-1",
     );
+  });
+
+  it("prevents adding knowledge when the fixed per-kb knowledge quota is reached", async () => {
+    vi.mocked(kbService.listKbDocs).mockResolvedValueOnce({
+      ...createMockKbDocsResponse("W7zU2fWkVSp65OTAjDd3-w"),
+      quota: {
+        limit: 100,
+        used: 100,
+      },
+    });
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
+      "/chat/ai-hosting/kb/:kbId",
+    );
+
+    expect(await screen.findByText("已用 100/100 条知识")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "添加知识" })).toBeDisabled();
+    expect(screen.getByText("当前知识库的知识数量已达上限")).toBeInTheDocument();
   });
 
   it("shows an empty state for unknown knowledge base ids", async () => {

@@ -9,7 +9,7 @@ import {
   Search01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { KB_SEARCH_QUERY_MAX_LENGTH } from "@chatai/contracts";
+import { KB_SEARCH_QUERY_MAX_LENGTH, type AiHostingQuota } from "@chatai/contracts";
 import { Link, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import {
@@ -135,6 +135,7 @@ export function KbDetailPage() {
   const [knowledgeBase, setKnowledgeBase] = useState<KbListViewItem | null>(null);
   const [records, setRecords] = useState<KbDocViewItem[]>([]);
   const [total, setTotal] = useState(0);
+  const [knowledgeQuota, setKnowledgeQuota] = useState<AiHostingQuota | null>(null);
   const [loadingKb, setLoadingKb] = useState(true);
   const [loadingDocs, setLoadingDocs] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -177,6 +178,7 @@ export function KbDetailPage() {
 
       setRecords(response.docs.map(toKbDocViewItem));
       setTotal(response.pagination.total);
+      setKnowledgeQuota(response.quota);
     } catch {
       if (version !== requestVersionRef.current) {
         return;
@@ -184,6 +186,7 @@ export function KbDetailPage() {
 
       setRecords([]);
       setTotal(0);
+      setKnowledgeQuota(null);
     } finally {
       if (version === requestVersionRef.current) {
         setLoadingDocs(false);
@@ -254,6 +257,7 @@ export function KbDetailPage() {
   });
   const pagedRecords = records;
   const recordsLoading = loadingKb || loadingDocs;
+  const knowledgeQuotaReached = isQuotaReached(knowledgeQuota);
 
   async function handleConfirmDelete() {
     if (!deleteRecord || deleting) {
@@ -346,10 +350,20 @@ export function KbDetailPage() {
             </div>
 
             <AddKnowledgeMenu
+              disabled={knowledgeQuotaReached}
               onDocumentDialogOpen={() => setDocumentDialogOpen(true)}
               onImageDialogOpen={() => setImageDialogOpen(true)}
               onImportQaDialogOpen={() => setImportQaDialogOpen(true)}
             />
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+            {knowledgeQuota ? (
+              <span>{formatQuotaText(knowledgeQuota, "条知识")}</span>
+            ) : null}
+            {knowledgeQuotaReached ? (
+              <span>当前知识库的知识数量已达上限</span>
+            ) : null}
           </div>
 
           <div>
@@ -419,10 +433,12 @@ export function KbDetailPage() {
 }
 
 function AddKnowledgeMenu({
+  disabled = false,
   onDocumentDialogOpen,
   onImageDialogOpen,
   onImportQaDialogOpen,
 }: {
+  disabled?: boolean;
   onDocumentDialogOpen: () => void;
   onImageDialogOpen: () => void;
   onImportQaDialogOpen: () => void;
@@ -430,7 +446,7 @@ function AddKnowledgeMenu({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button className="h-10 px-4" type="button">
+        <Button className="h-10 px-4" disabled={disabled} type="button">
           <HugeiconsIcon color="currentColor" icon={Add01Icon} size={17} strokeWidth={1.8} />
           <span>添加知识</span>
         </Button>
@@ -460,6 +476,14 @@ function AddKnowledgeMenu({
       </DropdownMenuContent>
     </DropdownMenu>
   );
+}
+
+function isQuotaReached(quota: AiHostingQuota | null) {
+  return quota != null && quota.used >= quota.limit;
+}
+
+function formatQuotaText(quota: AiHostingQuota, unit: string) {
+  return `已用 ${quota.used}/${quota.limit} ${unit}`;
 }
 
 function renderAddKnowledgeOption(

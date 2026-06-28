@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { AiHostingAgentListItem } from "@chatai/contracts";
+import type { AiHostingQuota } from "@chatai/contracts";
 import { Link } from "react-router-dom";
 import { Add01Icon, Book04Icon, Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -63,6 +64,7 @@ export function AgentManagementPage() {
   const [debouncedAgentSearchQuery, setDebouncedAgentSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [totalAgents, setTotalAgents] = useState(0);
+  const [agentQuota, setAgentQuota] = useState<AiHostingQuota | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const [removeTarget, setRemoveTarget] = useState<AgentRecord | null>(null);
@@ -75,6 +77,7 @@ export function AgentManagementPage() {
     pageSize: AGENT_PAGE_SIZE,
     total: totalAgents,
   });
+  const agentQuotaReached = isQuotaReached(agentQuota);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -104,6 +107,7 @@ export function AgentManagementPage() {
 
         setAgents(response.agents);
         setTotalAgents(response.pagination.total);
+        setAgentQuota(response.quota);
       } catch (error) {
         if (ignore) {
           return;
@@ -111,6 +115,7 @@ export function AgentManagementPage() {
 
         setAgents([]);
         setTotalAgents(0);
+        setAgentQuota(null);
         setErrorMessage(isRequestError(error) ? error.message : "Agent 列表加载失败");
       } finally {
         if (!ignore) {
@@ -144,6 +149,7 @@ export function AgentManagementPage() {
       });
       setAgents(response.agents);
       setTotalAgents(response.pagination.total);
+      setAgentQuota(response.quota);
     } catch (error) {
       setErrorMessage(isRequestError(error) ? error.message : "删除 Agent 失败");
     } finally {
@@ -189,20 +195,39 @@ export function AgentManagementPage() {
               />
             </div>
 
-            {canManage ? (
-              <Button asChild className="h-10 px-4" type="button">
-                <Link to="/chat/ai-hosting/agents/new">
-                  <HugeiconsIcon color="currentColor" icon={Add01Icon} size={17} strokeWidth={1.8} />
-                  <span>添加 Agent</span>
-                </Link>
-              </Button>
-            ) : null}
+            <div className="flex flex-wrap items-center justify-end gap-3">
+              {agentQuota ? (
+                <span className="text-sm text-muted-foreground">
+                  {formatQuotaText(agentQuota, "个 Agent")}
+                </span>
+              ) : null}
+              {canManage ? (
+                agentQuotaReached ? (
+                  <Button className="h-10 px-4" disabled type="button">
+                    <HugeiconsIcon color="currentColor" icon={Add01Icon} size={17} strokeWidth={1.8} />
+                    <span>添加 Agent</span>
+                  </Button>
+                ) : (
+                  <Button asChild className="h-10 px-4" type="button">
+                    <Link to="/chat/ai-hosting/agents/new">
+                      <HugeiconsIcon color="currentColor" icon={Add01Icon} size={17} strokeWidth={1.8} />
+                      <span>添加 Agent</span>
+                    </Link>
+                  </Button>
+                )
+              ) : null}
+            </div>
           </div>
 
           <div className="mt-4">
             {!canManage ? (
               <p className="mb-3 text-sm text-muted-foreground">
                 当前账号仅可查看 Agent，管理操作需管理员权限
+              </p>
+            ) : null}
+            {canManage && agentQuotaReached ? (
+              <p className="mb-3 text-sm text-muted-foreground">
+                Agent 数量已达上限
               </p>
             ) : null}
             {errorMessage ? (
@@ -251,6 +276,14 @@ export function AgentManagementPage() {
       </AlertDialog>
     </AiHostingLayout>
   );
+}
+
+function isQuotaReached(quota: AiHostingQuota | null) {
+  return quota != null && quota.used >= quota.limit;
+}
+
+function formatQuotaText(quota: AiHostingQuota, unit: string) {
+  return `已用 ${quota.used}/${quota.limit} ${unit}`;
 }
 
 function AgentTable({

@@ -361,6 +361,10 @@ export function createMockKbListResponse(query?: string) {
       pageSize: 10,
       total: kbs.length,
     },
+    quota: {
+      limit: 20,
+      used: mockKbListItems.length,
+    },
   };
 }
 
@@ -399,6 +403,10 @@ export function createMockKbDocsResponse(kbId: string, query?: string) {
       page: 1,
       pageSize: 10,
       total: docs.length,
+    },
+    quota: {
+      limit: 100,
+      used: mockKbDocItems.filter((record) => record.kbId === kbId).length,
     },
   };
 }

@@ -50,6 +50,10 @@ describe("AI hosting agent routes", () => {
           pageSize: 10,
           total: 2,
         },
+        quota: {
+          limit: 5,
+          used: 2,
+        },
       },
       success: true,
     });
@@ -121,6 +125,7 @@ describe("AI hosting agent routes", () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(probe.queryStarts.map((query) => query.kind).sort()).toEqual([
+        "count",
         "count",
         "models",
         "rows",
@@ -352,6 +357,45 @@ describe("AI hosting agent routes", () => {
         update_time: expect.any(Date),
       },
     });
+
+    await app.close();
+  });
+
+  it("rejects creating agents when the tenant has reached the fixed quota", async () => {
+    const { app, authorization, db } = await createAiHostingApp(["admin"], {
+      activeAgentCount: 5,
+      deletedAgentCount: 2,
+    });
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        modelId: "10",
+        name: "超额小助理",
+        promptConfig: {
+          availableKbIds: [],
+          conditionLogic: "",
+          replyStyle: {
+            length: "简洁",
+            styleInstruction: "亲切自然",
+          },
+          handoffRules: "退款投诉",
+          role: "你是售后客服",
+        },
+      },
+      url: "/api/server/ai-hosting/agents",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      error: {
+        code: "AGENT_QUOTA_EXCEEDED",
+        message: "Agent 数量已达上限",
+      },
+      success: false,
+    });
+    expect(db.insertedAgent).toBeUndefined();
 
     await app.close();
   });
@@ -761,8 +805,10 @@ type QueryExecutionEvent = {
 };
 
 type CreateAiHostingDbMockOptions = {
+  activeAgentCount?: number;
   beforeExecute?: (event: QueryExecutionEvent) => Promise<void> | void;
   bulkHostingSeats?: boolean;
+  deletedAgentCount?: number;
   uid?: number;
 };
 
@@ -853,6 +899,36 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
       update_time: new Date("2024-06-12T08:01:00Z"),
     },
   ];
+  for (let index = agents.length; index < (options.activeAgentCount ?? agents.length); index += 1) {
+    agents.push({
+      create_time: new Date("2024-06-13T08:00:00Z"),
+      id: 400 + index,
+      last_publish_time: 0,
+      last_operator_id: 1,
+      model_id: 11,
+      name: `配额测试小助理${index}`,
+      operator_id: 1,
+      prompt_config: buildPromptConfig(agentPrompt),
+      status: 1,
+      uid: 9001,
+      update_time: new Date("2024-06-13T08:01:00Z"),
+    });
+  }
+  for (let index = 0; index < (options.deletedAgentCount ?? 0); index += 1) {
+    agents.push({
+      create_time: new Date("2024-06-14T08:00:00Z"),
+      id: 500 + index,
+      last_publish_time: 0,
+      last_operator_id: 1,
+      model_id: 11,
+      name: `已删除小助理${index}`,
+      operator_id: 1,
+      prompt_config: buildPromptConfig(agentPrompt),
+      status: 0,
+      uid: 9001,
+      update_time: new Date("2024-06-14T08:01:00Z"),
+    });
+  }
   const histories = [
     {
       agent_id: 301,

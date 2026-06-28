@@ -11,6 +11,7 @@ import type {
   AiHostingModel,
   AiHostingModelListResponse,
 } from "@chatai/contracts";
+import { AI_HOSTING_AGENT_QUOTA_LIMIT } from "@chatai/contracts";
 import type { Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
 import {
@@ -73,10 +74,11 @@ export class AiHostingAgentService {
     const scope = normalizeAgentTenantScope(uid);
     const pagination = normalizePagination(options);
     const normalizedQuery = options.query?.trim();
-    const [rows, models, total] = await Promise.all([
+    const [rows, models, total, quotaUsed] = await Promise.all([
       this.listAgentRows(scope, pagination, normalizedQuery),
       this.listModelRows(scope),
       this.countAgents(scope, normalizedQuery),
+      this.countAgents(scope),
     ]);
     const modelMap = new Map(models.map((model) => [String(model.id), mapModelSummary(model)]));
 
@@ -86,6 +88,10 @@ export class AiHostingAgentService {
         page: pagination.page,
         pageSize: pagination.pageSize,
         total,
+      },
+      quota: {
+        limit: AI_HOSTING_AGENT_QUOTA_LIMIT,
+        used: quotaUsed,
       },
     };
   }
@@ -120,6 +126,8 @@ export class AiHostingAgentService {
     if (operatorId == null) {
       throw new BadRequestError("INVALID_SUB_ACCOUNT", "当前账号无效");
     }
+
+    await this.assertAgentQuotaAvailable(scope);
 
     const inserted = await this.db
       .insertInto("xy_wap_embed_agent")
@@ -401,6 +409,21 @@ export class AiHostingAgentService {
     const row = await builder.executeTakeFirst();
 
     return parseCount((row as { total?: number | string | bigint } | undefined)?.total);
+  }
+
+  private async assertAgentQuotaAvailable(scope: AgentTenantScope) {
+    const used = await this.countAgents(scope);
+
+    if (used >= AI_HOSTING_AGENT_QUOTA_LIMIT) {
+      throw new BadRequestError(
+        "AGENT_QUOTA_EXCEEDED",
+        "Agent 数量已达上限",
+        {
+          limit: AI_HOSTING_AGENT_QUOTA_LIMIT,
+          used,
+        },
+      );
+    }
   }
 
   private listModelRows(scope: AgentTenantScope) {

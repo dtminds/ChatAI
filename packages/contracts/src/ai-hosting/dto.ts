@@ -1,5 +1,14 @@
 import { Type, type Static } from "@sinclair/typebox";
 
+export const AI_HOSTING_AGENT_QUOTA_LIMIT = 5;
+export const AI_HOSTING_KB_QUOTA_LIMIT = 20;
+export const AI_HOSTING_KB_DOC_QUOTA_LIMIT = 100;
+
+export const AiHostingQuotaSchema = Type.Object({
+  limit: Type.Number(),
+  used: Type.Number(),
+});
+
 export const AiHostingAgentPromptConfigSchema = Type.Object({
   availableKbIds: Type.Array(Type.Number()),
   conditionLogic: Type.String(),
@@ -53,6 +62,7 @@ export const AiHostingAgentListResponseSchema = Type.Object({
     pageSize: Type.Number(),
     total: Type.Number(),
   }),
+  quota: AiHostingQuotaSchema,
 });
 
 export const AiHostingModelListResponseSchema = Type.Object({
@@ -106,6 +116,7 @@ export const AiHostingSettingsUpdateRequestSchema = Type.Object({
 }, { additionalProperties: false });
 
 export type AiHostingAgentPromptConfig = Static<typeof AiHostingAgentPromptConfigSchema>;
+export type AiHostingQuota = Static<typeof AiHostingQuotaSchema>;
 export type AiHostingModel = Static<typeof AiHostingModelSchema>;
 export type AiHostingAgentModelSummary = Static<typeof AiHostingAgentModelSummarySchema>;
 export type AiHostingAgentListItem = Static<typeof AiHostingAgentListItemSchema>;

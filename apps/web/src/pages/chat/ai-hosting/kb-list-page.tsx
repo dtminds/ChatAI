@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Add01Icon, Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { KB_SEARCH_QUERY_MAX_LENGTH } from "@chatai/contracts";
+import { KB_SEARCH_QUERY_MAX_LENGTH, type AiHostingQuota } from "@chatai/contracts";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import {
@@ -59,6 +59,7 @@ function useDebouncedValue<T>(value: T, delayMs: number) {
 export function KbListPage() {
   const [items, setItems] = useState<KbListViewItem[]>([]);
   const [total, setTotal] = useState(0);
+  const [kbQuota, setKbQuota] = useState<AiHostingQuota | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const debouncedSearchQuery = useDebouncedValue(searchQuery, 300);
@@ -104,6 +105,7 @@ export function KbListPage() {
 
         setItems(response.kbs.map(toKbListViewItem));
         setTotal(response.pagination.total);
+        setKbQuota(response.quota);
       } finally {
         if (!cancelled) {
           setLoading(false);
@@ -124,12 +126,17 @@ export function KbListPage() {
     total,
   });
   const pagedItems = items;
+  const kbQuotaReached = isQuotaReached(kbQuota);
 
   function resetCreateForm() {
     setCreateForm({ name: "", description: "" });
   }
 
   function handleOpenCreateDialog() {
+    if (kbQuotaReached) {
+      return;
+    }
+
     resetCreateForm();
     setCreateDialogOpen(true);
   }
@@ -201,11 +208,27 @@ export function KbListPage() {
               />
             </div>
 
-            <Button className="h-10 px-4" onClick={handleOpenCreateDialog} type="button">
-              <HugeiconsIcon color="currentColor" icon={Add01Icon} size={17} strokeWidth={1.8} />
-              <span>创建知识库</span>
-            </Button>
+            <div className="flex flex-wrap items-center justify-end gap-3">
+              {kbQuota ? (
+                <span className="text-sm text-muted-foreground">
+                  {formatQuotaText(kbQuota, "个知识库")}
+                </span>
+              ) : null}
+              <Button
+                className="h-10 px-4"
+                disabled={kbQuotaReached}
+                onClick={handleOpenCreateDialog}
+                type="button"
+              >
+                <HugeiconsIcon color="currentColor" icon={Add01Icon} size={17} strokeWidth={1.8} />
+                <span>创建知识库</span>
+              </Button>
+            </div>
           </div>
+
+          {kbQuotaReached ? (
+            <p className="text-sm text-muted-foreground">知识库数量已达上限</p>
+          ) : null}
 
           <div>
             <TooltipProvider>
@@ -336,6 +359,14 @@ export function KbListPage() {
       </Dialog>
     </AiHostingLayout>
   );
+}
+
+function isQuotaReached(quota: AiHostingQuota | null) {
+  return quota != null && quota.used >= quota.limit;
+}
+
+function formatQuotaText(quota: AiHostingQuota, unit: string) {
+  return `已用 ${quota.used}/${quota.limit} ${unit}`;
 }
 
 function KnowledgeBaseDialogForm({

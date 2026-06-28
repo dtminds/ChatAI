@@ -6,6 +6,7 @@ import type {
   KbDocDeleteResponse,
   KbDocUploadCredentialResponse,
 } from "@chatai/contracts";
+import { AI_HOSTING_KB_DOC_QUOTA_LIMIT } from "@chatai/contracts";
 import type { Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
 import { BadRequestError, NotFoundError } from "../../shared/errors.js";
@@ -83,6 +84,7 @@ export class KbDocService {
     const kbNumericId = parseRequiredNumericId(request.kbId, "KB_NOT_FOUND", "知识库不存在");
 
     await this.assertKbExists(uid, kbNumericId);
+    await this.assertKbDocQuotaAvailable(uid, kbNumericId);
 
     const volcStrategyResourceId = resolveVolcStrategyResourceId({
       chunkParams: request.chunkParams,
@@ -132,6 +134,7 @@ export class KbDocService {
     const kbNumericId = parseRequiredNumericId(request.kbId, "KB_NOT_FOUND", "知识库不存在");
 
     await this.assertKbExists(uid, kbNumericId);
+    await this.assertKbDocQuotaAvailable(uid, kbNumericId);
 
     const docUrl = resolveKbDocUrlForJava(request.docUrl);
     const volcStrategyResourceId = resolveKbInitVolcStrategyResourceId();
@@ -177,6 +180,7 @@ export class KbDocService {
     const kbNumericId = parseRequiredNumericId(request.kbId, "KB_NOT_FOUND", "知识库不存在");
 
     await this.assertKbExists(uid, kbNumericId);
+    await this.assertKbDocQuotaAvailable(uid, kbNumericId);
 
     const docUrl = resolveKbDocUrlForJava(request.docUrl);
     const volcStrategyResourceId = resolveKbInitVolcStrategyResourceId();
@@ -323,6 +327,28 @@ export class KbDocService {
 
     if (!row) {
       throw new NotFoundError("KB_DOC_NOT_FOUND", "知识不存在");
+    }
+  }
+
+  private async assertKbDocQuotaAvailable(uid: number, kbId: number) {
+    const result = await this.db
+      .selectFrom("xy_wap_embed_agent_kb_doc")
+      .select((eb) => eb.fn.countAll<number>().as("total"))
+      .where("uid", "=", uid)
+      .where("kb_id", "=", kbId)
+      .where("status", "=", dbActiveStatus)
+      .executeTakeFirst();
+    const used = Number(result?.total ?? 0);
+
+    if (used >= AI_HOSTING_KB_DOC_QUOTA_LIMIT) {
+      throw new BadRequestError(
+        "KB_DOC_QUOTA_EXCEEDED",
+        "当前知识库的知识数量已达上限",
+        {
+          limit: AI_HOSTING_KB_DOC_QUOTA_LIMIT,
+          used,
+        },
+      );
     }
   }
 }

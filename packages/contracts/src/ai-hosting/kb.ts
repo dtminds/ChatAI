@@ -1,4 +1,5 @@
 import { Type, type Static } from "@sinclair/typebox";
+import { AiHostingQuotaSchema } from "./dto.js";
 
 export const KB_SEARCH_QUERY_MAX_LENGTH = 32;
 
@@ -54,6 +55,7 @@ export const KbListResponseSchema = Type.Object({
     pageSize: Type.Number(),
     total: Type.Number(),
   }),
+  quota: AiHostingQuotaSchema,
 });
 
 export const KbDocListItemSchema = Type.Object({
@@ -85,6 +87,7 @@ export const KbDocListResponseSchema = Type.Object({
     pageSize: Type.Number(),
     total: Type.Number(),
   }),
+  quota: AiHostingQuotaSchema,
 });
 
 export const KbChunkListItemSchema = Type.Object({

@@ -3,6 +3,7 @@ import {
   createMockWorkbenchService,
   setWorkbenchService,
 } from "@/pages/chat/api/workbench-service";
+import { adaptMessage } from "@/pages/chat/api/workbench-adapter";
 import { resolveImageSegmentsForSend } from "@/pages/chat/api/media-upload-service";
 import { seedMessages } from "@/pages/chat/mock-data";
 import {
@@ -13,6 +14,7 @@ import {
 import type { ChatMessage, Conversation, Message } from "@/pages/chat/chat-types";
 import type {
   WorkbenchConversationSummaryDto,
+  WorkbenchFullAutoAnswerStatusResponse,
   WorkbenchHistoryMessagePageDto,
   WorkbenchMessageDto,
   WorkbenchPollResponse,
@@ -68,7 +70,7 @@ function getSeedMessageIdAt(conversationId: string, index: number) {
 function createCachedConversation(accountId: string): Conversation {
   return {
     accountId,
-    custodyMode: "semi",
+    conversationAIHostingSwitch: false,
     customerAvatarUrl: "",
     customerId: `${accountId}-customer`,
     customerName: `${accountId} 客户`,
@@ -142,6 +144,7 @@ function createDownloadFileMessageDto({
 
 function createSmartReplyTextMessageDto({
   conversationId = "conv-001",
+  createdAt,
   id,
   isRevoked = false,
   senderType = "customer",
@@ -149,6 +152,7 @@ function createSmartReplyTextMessageDto({
   text,
 }: {
   conversationId?: string;
+  createdAt?: number;
   id: string;
   isRevoked?: boolean;
   senderType?: "customer" | "agent";
@@ -159,7 +163,7 @@ function createSmartReplyTextMessageDto({
     content: { text },
     contentType: "text",
     conversationId,
-    createdAt: 1_778_400_000_000 + seq * 1_000,
+    createdAt: createdAt ?? 1_778_400_000_000 + seq * 1_000,
     customerId: "cust-001",
     msgid: id,
     rawMsgtype: "text",
@@ -213,6 +217,400 @@ describe("useWorkbenchStore", () => {
     expect(createFreshWorkbenchStoreForTest().getState().hasChatSendPermission).toBe(
       false,
     );
+  });
+
+  it("changes active conversation full-auto through the workbench service", async () => {
+    const baseService = createMockWorkbenchService();
+    const changeConversationFullAuto = vi.fn().mockResolvedValue({
+      conversationAIHostingSwitch: false,
+      conversationId: "conv-001",
+      seatId: "drc",
+    });
+    const getConversations = vi.fn(baseService.getConversations);
+
+    setWorkbenchService({
+      ...baseService,
+      changeConversationFullAuto,
+      getConversations,
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    getConversations.mockClear();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              seatAIHostingAuth: true,
+              seatAIHostingEnabled: true,
+            }
+          : account,
+      ),
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-001"
+            ? {
+                ...conversation,
+                conversationAIHostingSwitch: true,
+                agentHostingStatus: "thinking",
+              }
+            : conversation,
+        ),
+      },
+    }));
+
+    await useWorkbenchStore.getState().changeActiveConversationFullAuto(false);
+
+    expect(changeConversationFullAuto).toHaveBeenCalledWith("conv-001", {
+      enabled: false,
+    });
+    expect(getConversations).not.toHaveBeenCalled();
+    expect(
+      useWorkbenchStore
+        .getState()
+        .conversationListsByScope.drc.find((conversation) => conversation.id === "conv-001")
+        ?.conversationAIHostingSwitch,
+    ).toBe(false);
+  });
+
+  it("patches active conversation full-auto from API response instead of request input", async () => {
+    const baseService = createMockWorkbenchService();
+    const changeConversationFullAuto = vi.fn().mockResolvedValue({
+      conversationAIHostingSwitch: false,
+      conversationId: "conv-001",
+      seatId: "drc",
+    });
+    const getConversations = vi.fn(baseService.getConversations);
+
+    setWorkbenchService({
+      ...baseService,
+      changeConversationFullAuto,
+      getConversations,
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    getConversations.mockClear();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              seatAIHostingAuth: true,
+              seatAIHostingEnabled: true,
+            }
+          : account,
+      ),
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-001"
+            ? {
+                ...conversation,
+                agentHostingStatus: "exited",
+                conversationAIHostingSwitch: false,
+              }
+            : conversation,
+        ),
+      },
+    }));
+
+    await useWorkbenchStore.getState().changeActiveConversationFullAuto(true);
+
+    const conversation = useWorkbenchStore
+      .getState()
+      .conversationListsByScope.drc.find((item) => item.id === "conv-001");
+
+    expect(changeConversationFullAuto).toHaveBeenCalledWith("conv-001", {
+      enabled: true,
+    });
+    expect(getConversations).not.toHaveBeenCalled();
+    expect(conversation).toMatchObject({
+      conversationAIHostingSwitch: false,
+      agentHostingStatus: "exited",
+    });
+  });
+
+  it("locally re-enters active conversation full-auto without keeping exited status", async () => {
+    const baseService = createMockWorkbenchService();
+    const changeConversationFullAuto = vi.fn().mockResolvedValue({
+      conversationAIHostingSwitch: true,
+      conversationId: "conv-001",
+      seatId: "drc",
+    });
+    const getConversations = vi.fn(baseService.getConversations);
+
+    setWorkbenchService({
+      ...baseService,
+      changeConversationFullAuto,
+      getConversations,
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    getConversations.mockClear();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              seatAIHostingAuth: true,
+              seatAIHostingEnabled: true,
+            }
+          : account,
+      ),
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-001"
+            ? {
+                ...conversation,
+                agentHostingStatus: "exited",
+                conversationAIHostingSwitch: false,
+              }
+            : conversation,
+        ),
+      },
+    }));
+
+    await useWorkbenchStore.getState().changeActiveConversationFullAuto(true);
+
+    const conversation = useWorkbenchStore
+      .getState()
+      .conversationListsByScope.drc.find((item) => item.id === "conv-001");
+
+    expect(changeConversationFullAuto).toHaveBeenCalledWith("conv-001", {
+      enabled: true,
+    });
+    expect(getConversations).not.toHaveBeenCalled();
+    expect(conversation).toMatchObject({
+      conversationAIHostingSwitch: true,
+    });
+    expect(conversation?.agentHostingStatus).toBeUndefined();
+  });
+
+  it("does not change full-auto when the active account cannot enable full-auto", async () => {
+    const baseService = createMockWorkbenchService();
+    const changeConversationFullAuto = vi.fn();
+
+    setWorkbenchService({
+      ...baseService,
+      changeConversationFullAuto,
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              seatAIHostingAuth: false,
+              seatAIHostingEnabled: false,
+            }
+          : account,
+      ),
+    }));
+
+    await useWorkbenchStore.getState().changeActiveConversationFullAuto(true);
+
+    expect(changeConversationFullAuto).not.toHaveBeenCalled();
+  });
+
+  it("changes the active account agent mode switch and patches local account state", async () => {
+    const baseService = createMockWorkbenchService();
+    const updateSeatAgentMode = vi.fn().mockResolvedValue({
+      fullAutoSwitch: true,
+      seatId: "drc",
+      semiAutoSwitch: false,
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      updateSeatAgentMode,
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              semiAutoAuth: true,
+            }
+          : account,
+      ),
+    }));
+
+    await useWorkbenchStore.getState().changeActiveSeatAgentMode("semi", false);
+
+    expect(updateSeatAgentMode).toHaveBeenCalledWith("drc", {
+      mode: "semi",
+      enabled: false,
+    });
+    expect(useWorkbenchStore.getState().accounts.find((account) => account.id === "drc")).toMatchObject({
+      fullAutoSwitch: true,
+      semiAutoSwitch: false,
+    });
+  });
+
+  it("does not change active account agent mode when the account lacks mode auth", async () => {
+    const baseService = createMockWorkbenchService();
+    const updateSeatAgentMode = vi.fn();
+
+    setWorkbenchService({
+      ...baseService,
+      updateSeatAgentMode,
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              seatAIHostingAuth: false,
+              semiAutoAuth: false,
+            }
+          : account,
+      ),
+    }));
+
+    await useWorkbenchStore.getState().changeActiveSeatAgentMode("full", false);
+    await useWorkbenchStore.getState().changeActiveSeatAgentMode("semi", false);
+
+    expect(updateSeatAgentMode).not.toHaveBeenCalled();
+  });
+
+  it("reports active account agent mode switch failures", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async updateSeatAgentMode() {
+        throw new Error("托管模式更新失败");
+      },
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              seatAIHostingAuth: true,
+            }
+          : account,
+      ),
+    }));
+
+    await useWorkbenchStore.getState().changeActiveSeatAgentMode("full", false);
+
+    expect(useWorkbenchStore.getState().seatAgentModeActionPending).toBe(false);
+    expect(useWorkbenchStore.getState().fullAutoActionError).toBe("托管模式更新失败");
+  });
+
+  it("ignores duplicate active account agent mode switch changes while pending", async () => {
+    const baseService = createMockWorkbenchService();
+    const seatAgentModeChange = createDeferred<Awaited<ReturnType<typeof baseService.updateSeatAgentMode>>>();
+    const updateSeatAgentMode = vi.fn(() => seatAgentModeChange.promise);
+
+    setWorkbenchService({
+      ...baseService,
+      updateSeatAgentMode,
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              seatAIHostingAuth: true,
+            }
+          : account,
+      ),
+    }));
+
+    const firstRequest = useWorkbenchStore
+      .getState()
+      .changeActiveSeatAgentMode("full", false);
+    await waitForStoreAssertion(() => {
+      expect(useWorkbenchStore.getState().seatAgentModeActionPending).toBe(true);
+    });
+    const secondRequest = useWorkbenchStore
+      .getState()
+      .changeActiveSeatAgentMode("full", true);
+
+    expect(updateSeatAgentMode).toHaveBeenCalledTimes(1);
+    seatAgentModeChange.resolve({
+      fullAutoSwitch: false,
+      seatId: "drc",
+      semiAutoSwitch: true,
+    });
+    await Promise.all([firstRequest, secondRequest]);
+    expect(useWorkbenchStore.getState().seatAgentModeActionPending).toBe(false);
+  });
+
+  it("ignores duplicate full-auto changes while a request is pending", async () => {
+    const baseService = createMockWorkbenchService();
+    const fullAutoChange = createDeferred<Awaited<ReturnType<typeof baseService.changeConversationFullAuto>>>();
+    const changeConversationFullAuto = vi.fn(() => fullAutoChange.promise);
+
+    setWorkbenchService({
+      ...baseService,
+      changeConversationFullAuto,
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              seatAIHostingAuth: true,
+              seatAIHostingEnabled: true,
+            }
+          : account,
+      ),
+    }));
+
+    const firstRequest = useWorkbenchStore
+      .getState()
+      .changeActiveConversationFullAuto(true);
+    await waitForStoreAssertion(() => {
+      expect(useWorkbenchStore.getState().fullAutoActionPending).toBe(true);
+    });
+    const secondRequest = useWorkbenchStore
+      .getState()
+      .changeActiveConversationFullAuto(true);
+
+    expect(changeConversationFullAuto).toHaveBeenCalledTimes(1);
+    fullAutoChange.resolve({
+      conversationAIHostingSwitch: true,
+      conversationId: "conv-001",
+      seatId: "drc",
+    });
+    await Promise.all([firstRequest, secondRequest]);
+    expect(useWorkbenchStore.getState().fullAutoActionPending).toBe(false);
+  });
+
+  it("keeps full-auto action errors separate from read receipt errors", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async changeConversationFullAuto() {
+        throw new Error("取消托管失败");
+      },
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              seatAIHostingAuth: true,
+              seatAIHostingEnabled: true,
+            }
+          : account,
+      ),
+      readReceiptError: "标记已读失败",
+    }));
+
+    await useWorkbenchStore.getState().changeActiveConversationFullAuto(false);
+
+    expect(useWorkbenchStore.getState().readReceiptError).toBe("标记已读失败");
+    expect(useWorkbenchStore.getState().fullAutoActionError).toBe("取消托管失败");
   });
 
   it("bootstraps the first account, conversation, and read state", async () => {
@@ -1166,6 +1564,467 @@ describe("useWorkbenchStore", () => {
     expect(
       useWorkbenchStore.getState().smartReplyByMessageIdByConversationId["conv-001"],
     ).toEqual({});
+  });
+
+  it("does not display or auto-generate smart replies for active full-auto conversations", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedAutoRequests: Array<{ conversationId: string; msgId: number }> = [];
+    const observedSmartReplyRequests: WorkbenchSmartReplyPollRequest[] = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async getSeats() {
+        const seats = await baseService.getSeats();
+
+        return seats.map((seat) =>
+          seat.seatId === "drc"
+              ? {
+                  ...seat,
+                  seatAIHostingAuth: true,
+                  seatAIHostingEnabled: true,
+                  fullAutoSwitch: true,
+                }
+              : seat,
+        );
+      },
+      async getConversations(seatId, options) {
+        const response = await baseService.getConversations(seatId, options);
+
+        return {
+          ...response,
+          items: response.items.map((conversation) =>
+            conversation.conversationId === "conv-001"
+              ? {
+                  ...conversation,
+                  conversationAIHostingSwitch: true,
+                }
+              : conversation,
+          ),
+        };
+      },
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          smartReplyEnabled: true,
+          smartReplies: [
+            {
+              assistantName: "智能助手",
+              content: "推荐回复",
+              messageId: "9",
+              pollComplete: true,
+            },
+          ],
+        };
+      },
+      async requestSmartReplyAutoGeneralAnswer(request) {
+        observedAutoRequests.push(request);
+
+        return { id: "88" };
+      },
+      async pollSmartReplies(request) {
+        observedSmartReplyRequests.push(request);
+
+        return { suggestions: [] };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    expect(useWorkbenchStore.getState().smartReplyEnabledByConversationId["conv-001"]).toBe(
+      true,
+    );
+    expect(
+      useWorkbenchStore.getState().smartReplyByMessageIdByConversationId["conv-001"],
+    ).toEqual({});
+    expect(
+      useWorkbenchStore.getState().smartReplyPendingMessageKeysByConversationId["conv-001"],
+    ).toEqual({});
+    expect(observedAutoRequests).toEqual([]);
+    expect(observedSmartReplyRequests).toEqual([]);
+  });
+
+  it("does not auto-generate smart replies after disabling full-auto without a new customer message", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedAutoRequests: Array<{ conversationId: string; msgId: number }> = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async getSeats() {
+        const seats = await baseService.getSeats();
+
+        return seats.map((seat) =>
+          seat.seatId === "drc"
+            ? {
+                ...seat,
+                fullAutoSwitch: true,
+                seatAIHostingAuth: true,
+                seatAIHostingEnabled: true,
+              }
+            : seat,
+        );
+      },
+      async getConversations(seatId, options) {
+        const response = await baseService.getConversations(seatId, options);
+
+        return {
+          ...response,
+          items: response.items.map((conversation) =>
+            conversation.conversationId === "conv-001"
+              ? {
+                  ...conversation,
+                  conversationAIHostingSwitch: true,
+                }
+              : conversation,
+          ),
+        };
+      },
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          messages: [
+            createSmartReplyTextMessageDto({
+              id: "msg-customer-9",
+              seq: 9,
+              text: "已有客户问题",
+            }),
+          ],
+          smartReplyEnabled: true,
+          smartReplies: [
+            {
+              assistantName: "智能助手",
+              content: "已有推荐回复",
+              messageId: "9",
+              pollComplete: true,
+            },
+          ],
+        };
+      },
+      async changeConversationFullAuto(conversationId, request) {
+        return {
+          conversationAIHostingSwitch: request.enabled,
+          conversationId,
+          seatId: "drc",
+        };
+      },
+      async poll(request) {
+        const conversation = (
+          await baseService.getConversations("drc", {
+            mode: "single",
+          })
+        ).items.find((item) => item.conversationId === "conv-001")!;
+
+        return {
+          activeConversationMessages: [],
+          conversationChanges: [
+            {
+              ...conversation,
+              conversationAIHostingSwitch: false,
+              type: "upsert",
+            },
+          ],
+          nextVersion: request.sinceVersion + 1,
+          seatChanges: [],
+        };
+      },
+      async requestSmartReplyAutoGeneralAnswer(request) {
+        observedAutoRequests.push(request);
+
+        return { id: "88" };
+      },
+      async pollSmartReplies() {
+        return { suggestions: [] };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    expect(observedAutoRequests).toEqual([]);
+
+    await useWorkbenchStore.getState().changeActiveConversationFullAuto(false);
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(observedAutoRequests).toEqual([]);
+  });
+
+  it("polls full-auto answer status for a recent customer message and returns to active after terminal status", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-26T12:00:00+08:00"));
+    const baseService = createMockWorkbenchService();
+    const answerStatuses: WorkbenchFullAutoAnswerStatusResponse[] = [
+      { analyseMsgId: "20", genStatus: 2, recordId: "27", sendStatus: 0 },
+      { analyseMsgId: "20", genStatus: 2, recordId: "27", sendStatus: 1 },
+    ];
+    const observedStatusRequests: string[] = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async getFullAutoAnswerStatus(conversationId) {
+        observedStatusRequests.push(conversationId);
+
+        return (
+          answerStatuses.shift() ?? {
+            analyseMsgId: "20",
+            genStatus: 2,
+            recordId: "27",
+            sendStatus: 1,
+          }
+        );
+      },
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          messages: [
+            ...page.messages,
+            createSmartReplyTextMessageDto({
+              id: "full-auto-customer",
+              seq: 20,
+              text: "请帮我看下",
+              createdAt: Date.now(),
+            }),
+          ],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              seatAIHostingAuth: true,
+              seatAIHostingEnabled: true,
+            }
+          : account,
+      ),
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-001"
+            ? {
+                ...conversation,
+                conversationAIHostingSwitch: true,
+              }
+            : conversation,
+        ),
+      },
+    }));
+
+    await useWorkbenchStore.getState().syncFullAutoAgentStatus();
+
+    expect(
+      useWorkbenchStore.getState().fullAutoStatusByConversationId["conv-001"]?.status,
+    ).toBe("sending");
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(
+      useWorkbenchStore.getState().fullAutoStatusByConversationId["conv-001"]?.status,
+    ).toBe("sent");
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(
+      useWorkbenchStore.getState().fullAutoStatusByConversationId["conv-001"]?.status,
+    ).toBeUndefined();
+    expect(observedStatusRequests).toEqual(["conv-001", "conv-001"]);
+
+    vi.useRealTimers();
+  });
+
+  it("keeps full-auto thinking when the latest answer record belongs to an older customer message", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-26T12:00:00+08:00"));
+    const baseService = createMockWorkbenchService();
+    const observedStatusRequests: string[] = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async getFullAutoAnswerStatus(conversationId) {
+        observedStatusRequests.push(conversationId);
+
+        return {
+          analyseMsgId: "19",
+          genStatus: 2,
+          recordId: "27",
+          sendStatus: 1,
+        };
+      },
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          messages: [
+            ...page.messages,
+            createSmartReplyTextMessageDto({
+              id: "full-auto-customer",
+              seq: 20,
+              text: "请帮我看下",
+              createdAt: Date.now(),
+            }),
+          ],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              seatAIHostingAuth: true,
+              seatAIHostingEnabled: true,
+              fullAutoSwitch: true,
+            }
+          : account,
+      ),
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-001"
+            ? {
+                ...conversation,
+                conversationAIHostingSwitch: true,
+              }
+            : conversation,
+        ),
+      },
+    }));
+
+    await useWorkbenchStore.getState().syncFullAutoAgentStatus();
+
+    expect(
+      useWorkbenchStore.getState().fullAutoStatusByConversationId["conv-001"]?.status,
+    ).toBe("thinking");
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(
+      useWorkbenchStore.getState().fullAutoStatusByConversationId["conv-001"]?.status,
+    ).toBe("thinking");
+    expect(observedStatusRequests).toEqual(["conv-001", "conv-001"]);
+
+    vi.useRealTimers();
+  });
+
+  it("restarts full-auto status polling for a new customer message with the same timestamp", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-26T12:00:00+08:00"));
+    const baseService = createMockWorkbenchService();
+    let latestCustomerSeq = 20;
+    const observedStatusRequests: string[] = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async getFullAutoAnswerStatus(conversationId) {
+        observedStatusRequests.push(conversationId);
+
+        return {
+          analyseMsgId: String(latestCustomerSeq),
+          genStatus: 2,
+          recordId: `record-${latestCustomerSeq}`,
+          sendStatus: 1,
+        };
+      },
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          messages: [
+            ...page.messages,
+            createSmartReplyTextMessageDto({
+              id: "full-auto-customer",
+              seq: 20,
+              text: "第一条",
+              createdAt: Date.now(),
+            }),
+          ],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              seatAIHostingAuth: true,
+              seatAIHostingEnabled: true,
+              fullAutoSwitch: true,
+            }
+          : account,
+      ),
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-001"
+            ? {
+                ...conversation,
+                conversationAIHostingSwitch: true,
+              }
+            : conversation,
+        ),
+      },
+    }));
+
+    await useWorkbenchStore.getState().syncFullAutoAgentStatus();
+    expect(
+      useWorkbenchStore.getState().fullAutoStatusByConversationId["conv-001"]?.status,
+    ).toBe("sent");
+
+    latestCustomerSeq = 21;
+    useWorkbenchStore.setState((state) => ({
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        "conv-001": [
+          ...(state.messagesByConversationId["conv-001"] ?? []),
+          adaptMessage(
+            createSmartReplyTextMessageDto({
+              id: "full-auto-customer-2",
+              seq: 21,
+              text: "第二条",
+              createdAt: Date.now(),
+            }),
+            state.customerProfilesById,
+            Object.fromEntries(state.accounts.map((account) => [account.id, account])),
+            state.me,
+          ),
+        ],
+      },
+    }));
+
+    await useWorkbenchStore.getState().syncFullAutoAgentStatus();
+
+    expect(observedStatusRequests).toEqual(["conv-001", "conv-001"]);
+    expect(
+      useWorkbenchStore.getState().fullAutoStatusByConversationId["conv-001"]?.status,
+    ).toBe("sent");
+
+    vi.useRealTimers();
   });
 
   it("auto-generates a smart reply task for a newly loaded customer message", async () => {
@@ -6954,7 +7813,7 @@ describe("useWorkbenchStore", () => {
       priority: "medium",
       thirdExternalUserId: "external-search-001",
       thirdUserId: "third-user-drc",
-      custodyMode: "semi",
+      conversationAIHostingSwitch: false,
     };
     const observedPayloads: unknown[] = [];
 
@@ -7012,7 +7871,7 @@ describe("useWorkbenchStore", () => {
         quietFor: "",
         unread: 0,
         updatedAt: "",
-        custodyMode: "semi",
+        conversationAIHostingSwitch: false,
       },
     });
 
@@ -7062,7 +7921,7 @@ describe("useWorkbenchStore", () => {
       thirdExternalUserId: "external-search-stale",
       thirdUserId: "third-user-drc",
       unreadCount: 0,
-      custodyMode: "semi",
+      conversationAIHostingSwitch: false,
     });
     await selectPromise;
 
@@ -7163,7 +8022,7 @@ describe("useWorkbenchStore", () => {
         quietFor: "",
         unread: 0,
         updatedAt: "",
-        custodyMode: "semi",
+        conversationAIHostingSwitch: false,
       },
     });
 
@@ -7195,7 +8054,7 @@ describe("useWorkbenchStore", () => {
       thirdGroupId: "group-search-001",
       thirdUserId: "third-user-drc",
       unreadCount: 0,
-      custodyMode: "semi",
+      conversationAIHostingSwitch: false,
     };
 
     setWorkbenchService({
@@ -7267,7 +8126,7 @@ describe("useWorkbenchStore", () => {
         quietFor: "",
         unread: 0,
         updatedAt: "",
-        custodyMode: "semi",
+        conversationAIHostingSwitch: false,
       },
     });
 

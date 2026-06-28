@@ -35,14 +35,14 @@ describe("workbench adapter", () => {
     expect(conversation.isVerified).toBe(false);
   });
 
-  it("maps conversation custody mode from the workbench DTO", () => {
-    expect(adaptConversation(conversationDto).custodyMode).toBe("semi");
+  it("maps conversation AI hosting switch from the workbench DTO", () => {
+    expect(adaptConversation(conversationDto).conversationAIHostingSwitch).toBe(false);
     expect(
       adaptConversation({
         ...conversationDto,
-        custodyMode: "full",
-      }).custodyMode,
-    ).toBe("full");
+        conversationAIHostingSwitch: true,
+      }).conversationAIHostingSwitch,
+    ).toBe(true);
   });
 
   it("adapts conversation biz status for send availability", () => {
@@ -59,28 +59,29 @@ describe("workbench adapter", () => {
   it("adapts AI hosting flags from workbench summary DTOs", () => {
     expect(
       adaptAccount({
-        aiHostingEnabled: true,
         avatar: "",
         description: "",
+        fullAutoSwitch: true,
         loginStatus: "online",
         name: "测试席位",
         operatorName: "测试席位",
         phone: "",
+        seatAIHostingAuth: true,
         seatId: "seat-1",
         thirdUserId: "third-user-1",
         unreadCount: 0,
       }),
     ).toMatchObject({
-      aiHostingEnabled: true,
+      seatAIHostingEnabled: true,
     });
 
     expect(
       adaptConversation({
         ...conversationDto,
-        aiHosted: true,
+        conversationAIHostingSwitch: true,
       }),
     ).toMatchObject({
-      aiHosted: true,
+      conversationAIHostingSwitch: true,
     });
   });
 
@@ -890,7 +891,7 @@ describe("adaptMessage", () => {
 
 const conversationDto: WorkbenchConversationSummaryDto = {
   conversationId: "conversation-1",
-  custodyMode: "semi",
+  conversationAIHostingSwitch: false,
   customerAvatar: "",
   customerId: "group-1",
   customerName: "测试群002",

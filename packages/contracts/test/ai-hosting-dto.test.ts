@@ -16,6 +16,7 @@ describe("AI hosting DTOs", () => {
         modelId: "11",
         name: "护肤小助理",
         promptConfig: {
+          availableKbIds: [1, 3],
           conditionLogic: "如果客户咨询成分，那么说明功效",
           replyStyle: {
             length: "简洁",
@@ -34,6 +35,7 @@ describe("AI hosting DTOs", () => {
       modelId: "11",
       name: "护肤小助理",
       promptConfig: {
+        availableKbIds: [1, 3],
         conditionLogic: "如果客户咨询成分，那么说明功效",
         replyStyle: {
           length: "简洁",
@@ -81,6 +83,7 @@ describe("AI hosting DTOs", () => {
       Value.Check(AiHostingAgentSettingsSaveRequestSchema, {
         modelId: "11",
         promptConfig: {
+          availableKbIds: [1, 3],
           conditionLogic: "如果客户咨询成分，那么说明功效",
           replyStyle: {
             length: "简洁",
@@ -97,6 +100,7 @@ describe("AI hosting DTOs", () => {
         modelId: "11",
         name: "护肤小助理",
         promptConfig: {
+          availableKbIds: [1, 3],
           conditionLogic: "",
           replyStyle: {
             length: "简洁",
@@ -125,6 +129,7 @@ describe("AI hosting DTOs", () => {
         modelId: "11",
         name: "护肤小助理",
         promptConfig: {
+          availableKbIds: [1, 3],
           conditionLogic: "如果客户咨询成分，那么说明功效",
           replyStyle: {
             length: "简洁",

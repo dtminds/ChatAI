@@ -1658,7 +1658,7 @@ function conversation(
   return {
     seatId,
     conversationId,
-    custodyMode: "semi",
+    conversationAIHostingSwitch: false,
     customerAvatar,
     customerId,
     customerName,

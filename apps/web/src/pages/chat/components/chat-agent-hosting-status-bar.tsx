@@ -1,16 +1,17 @@
 import { BorderBeam } from "border-beam";
+import { AnimatedTextSwitch } from "@/components/ui/animated-text-switch";
 import { Button } from "@/components/ui/button";
 import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
-import { ShinyText } from "@/components/ui/shiny-text";
 import { cn } from "@/lib/utils";
 import {
-  getCustodyHostingActionLabel,
-  getCustodyHostingStatusLabel,
-  isCustodyHostingExited,
-  type CustodyHostingStatus,
-} from "@/pages/chat/lib/chat-custody-status";
+  getAgentHostingActionLabel,
+  getAgentHostingStatusLabel,
+  isAgentHostingBusy,
+  isAgentHostingExited,
+  type AgentHostingStatus,
+} from "@/pages/chat/lib/chat-agent-hosting-status";
 
-export function ChatCustodyStatusBar({
+export function ChatAgentHostingStatusBar({
   className,
   onCancel,
   onEnable,
@@ -19,11 +20,12 @@ export function ChatCustodyStatusBar({
   className?: string;
   onCancel?: () => void;
   onEnable?: () => void;
-  status: CustodyHostingStatus;
+  status: AgentHostingStatus;
 }) {
-  const actionLabel = getCustodyHostingActionLabel(status);
-  const isExited = isCustodyHostingExited(status);
-  const isBusy = status === "thinking" || status === "retrying";
+  const actionLabel = getAgentHostingActionLabel(status);
+  const statusLabel = getAgentHostingStatusLabel(status);
+  const isExited = isAgentHostingExited(status);
+  const isBusy = isAgentHostingBusy(status);
 
   if (isExited) {
     return null;
@@ -47,16 +49,16 @@ export function ChatCustodyStatusBar({
           "relative overflow-hidden border border-border rounded-full shadow-[0_4px_20px_var(--shadow-soft)]",
           isExited ? "border-border" : "border-primary/25",
         )}
-        data-testid="chat-custody-status-bar"
+        data-testid="chat-agent-hosting-status-bar"
       >
         <div
           aria-hidden="true"
           className="absolute inset-0 rounded-full bg-background/85 backdrop-blur-xs"
-          data-testid="chat-custody-status-bar-surface"
+          data-testid="chat-agent-hosting-status-bar-surface"
         />
         <div
           className="relative z-10 flex items-center justify-between gap-3 px-4 py-1.5"
-          data-testid="chat-custody-status-bar-content"
+          data-testid="chat-agent-hosting-status-bar-content"
         >
           <div className="flex min-w-0 items-center gap-2">
             {isBusy ? (
@@ -78,13 +80,14 @@ export function ChatCustodyStatusBar({
                 type="circular-8"
               />
             )}
-            <ShinyText
-              className="truncate text-xs text-muted-foreground"
-              duration={isBusy ? 1.15 : 2}
-              shimmerWidth={44}
-            >
-              {getCustodyHostingStatusLabel(status)}
-            </ShinyText>
+            <AnimatedTextSwitch
+              className="min-w-0 text-xs font-medium text-muted-foreground"
+              shiny
+              shinyDuration={isBusy ? 1.15 : 2}
+              shinyShimmerWidth={44}
+              staggerMs={12}
+              value={statusLabel}
+            />
           </div>
 
           <Button

@@ -8,7 +8,7 @@ import {
   useState,
 } from "react";
 import {
-  AiMagicIcon,
+  AiChat02Icon,
   ArrowDown01Icon,
   ArrowUp02Icon,
   Cancel01Icon,
@@ -34,13 +34,17 @@ import type { LexicalEditor } from "lexical";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -88,11 +92,13 @@ import {
 import { COMPOSER_FILE_ACCEPT } from "@/pages/chat/lib/composer-file-files";
 import { DISABLE_SPH_COLLECTION } from "@/pages/chat/chat-constants";
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
-import type { CustodyHostingStatus } from "@/pages/chat/lib/chat-custody-status";
 import { getWechatEmojiByName, type WechatEmojiName } from "@/pages/chat/wechat-emoji";
 import type { GroupMember, QuotedMessagePreviewContent } from "@/pages/chat/chat-types";
 
 type ChatComposerProps = {
+  canConfigureSeatAIHosting: boolean;
+  canConfigureSeatSemiAuto: boolean;
+  canToggleConversationAIHosting: boolean;
   canSendMessage: boolean;
   collectedExpressions?: WorkbenchMaterialCollectionItemDto[];
   draft: string;
@@ -100,23 +106,27 @@ type ChatComposerProps = {
   hasActiveFileUpload: boolean;
   groupMembers: GroupMember[];
   currentSeatThirdUserId?: string;
-  custodyStatusPreview?: {
-    activeStatus: CustodyHostingStatus | null;
-    onSelectStatus: (status: CustodyHostingStatus) => void;
-  };
+  fullAutoActionPending?: boolean;
+  seatAgentModeActionPending?: boolean;
   inputEnterBehavior: InputEnterBehavior;
   isGroupConversation: boolean;
   isEmojiPickerOpen: boolean;
   isCollectedExpressionLoadingMore?: boolean;
+  hidePlaceholder?: boolean;
   sendingCollectedExpressionId?: string | null;
   isSending: boolean;
   isHistoryPanelOpen: boolean;
+  seatAIHostingEnabled?: boolean;
+  conversationAIHostingEnabled?: boolean;
+  seatSemiAutoEnabled?: boolean;
   onClearQuotedMessage: () => void;
   onDeleteCollectedExpression?: (item: WorkbenchMaterialCollectionItemDto) => void;
   onDraftChange: (draft: string) => void;
   onEmojiPickerOpenChange: (isOpen: boolean) => void;
   onEnterBehaviorChange: (behavior: InputEnterBehavior) => void;
   onFileSelect: (files: FileList | File[] | null) => void;
+  onChangeSeatAgentMode: (mode: "full" | "semi", enabled: boolean) => void;
+  onChangeFullAuto: (enabled: boolean) => void | Promise<void>;
   onLoadMoreCollectedExpressions?: () => void;
   onOpenCollectedExpressions?: () => void;
   onOpenMaterialLibrary: (bizType: ComposerMaterialLibraryBizType) => void;
@@ -156,6 +166,9 @@ function createComposerImageClientId() {
 }
 
 export function ChatComposer({
+  canConfigureSeatAIHosting,
+  canConfigureSeatSemiAuto,
+  canToggleConversationAIHosting,
   canSendMessage,
   collectedExpressions = [],
   draft,
@@ -163,20 +176,27 @@ export function ChatComposer({
   hasActiveFileUpload,
   groupMembers,
   currentSeatThirdUserId,
-  custodyStatusPreview,
+  fullAutoActionPending = false,
+  seatAgentModeActionPending = false,
   inputEnterBehavior,
   isGroupConversation,
   isEmojiPickerOpen,
   isCollectedExpressionLoadingMore,
+  hidePlaceholder = false,
   sendingCollectedExpressionId,
   isSending,
   isHistoryPanelOpen,
+  seatAIHostingEnabled = false,
+  conversationAIHostingEnabled = false,
+  seatSemiAutoEnabled = false,
   onClearQuotedMessage,
   onDeleteCollectedExpression,
   onDraftChange,
   onEmojiPickerOpenChange,
   onEnterBehaviorChange,
   onFileSelect,
+  onChangeSeatAgentMode,
+  onChangeFullAuto,
   onLoadMoreCollectedExpressions,
   onOpenCollectedExpressions,
   onOpenMaterialLibrary,
@@ -197,6 +217,8 @@ export function ChatComposer({
   const [cursorPosition, setCursorPosition] = useState(draft.length);
   const [activeMentionIndex, setActiveMentionIndex] = useState(0);
   const [isMentionPickerDismissed, setIsMentionPickerDismissed] = useState(false);
+  const [isAgentDialogOpen, setIsAgentDialogOpen] = useState(false);
+  const [isFullAutoSubmitting, setIsFullAutoSubmitting] = useState(false);
   const editorConfig = useMemo(
     () => ({
       namespace: "ChatComposer",
@@ -215,6 +237,7 @@ export function ChatComposer({
     () => getMentionTrigger(draftText, cursorPosition),
     [cursorPosition, draftText],
   );
+  const isFullAutoButtonPending = fullAutoActionPending || isFullAutoSubmitting;
   const mentionableGroupMembers = useMemo(() => {
     if (!currentSeatThirdUserId) {
       return groupMembers;
@@ -278,6 +301,7 @@ export function ChatComposer({
   const canSubmitDraft = canSendMessage && !isSending && segments.length > 0;
   const canEditComposer = canSendMessage && !isSending;
   const canSelectFile = canEditComposer && !hasActiveFileUpload;
+  const isComposerActionDisabled = isSending || !canSendMessage;
   const composerImageCount = segments.filter(
     (segment) => segment.type === "image",
   ).length;
@@ -645,13 +669,79 @@ export function ChatComposer({
               ref={fileInputRef}
               type="file"
             />
-            {custodyStatusPreview ? (
-              <ComposerCustodyStatusPreviewMenu
-                activeStatus={custodyStatusPreview.activeStatus}
-                buttonClassName={composerActionButtonClass}
-                onSelectStatus={custodyStatusPreview.onSelectStatus}
-              />
-            ) : null}
+            <Popover open={isAgentDialogOpen} onOpenChange={setIsAgentDialogOpen}>
+              <ComposerActionTooltip
+                disabled={isComposerActionDisabled}
+                label="AI 对话"
+              >
+                <PopoverTrigger asChild>
+                  <Button
+                    aria-label="AI 对话"
+                    className={composerActionButtonClass}
+                    disabled={isComposerActionDisabled}
+                    size="icon"
+                    type="button"
+                    variant="ghost"
+                  >
+                    <HugeiconsIcon icon={AiChat02Icon} size={18} strokeWidth={2} />
+                  </Button>
+                </PopoverTrigger>
+              </ComposerActionTooltip>
+              <PopoverContent align="end" className="w-96 p-0" side="top">
+                <div className="border-b border-divider px-4 py-3">
+                  <p className="text-sm font-semibold text-popover-foreground">
+                    AI 对话配置
+                  </p>
+                </div>
+                <div className="space-y-1 p-2">
+                  <AgentModeSwitchRow
+                    checked={seatSemiAutoEnabled}
+                    description="Agent 生成话术推荐，人工确认后发送"
+                    disabled={!canConfigureSeatSemiAuto || seatAgentModeActionPending}
+                    label="辅助模式"
+                    onCheckedChange={(checked) => {
+                      onChangeSeatAgentMode("semi", checked);
+                    }}
+                  />
+                  <AgentModeSwitchRow
+                    checked={seatAIHostingEnabled}
+                    description="Agent 自动生成并发送消息，仅在必要时转人工"
+                    disabled={!canConfigureSeatAIHosting || seatAgentModeActionPending}
+                    label="托管模式"
+                    onCheckedChange={(checked) => {
+                      onChangeSeatAgentMode("full", checked);
+                    }}
+                  />
+                </div>
+                <div className="border-t border-divider p-3">
+                  <Button
+                    className="w-full bg-neutral-strong text-neutral-strong-foreground shadow-none hover:bg-neutral-strong/90 hover:text-neutral-strong-foreground"
+                    disabled={!canToggleConversationAIHosting || isFullAutoButtonPending}
+                    onClick={async () => {
+                      setIsFullAutoSubmitting(true);
+                      try {
+                        await onChangeFullAuto(!conversationAIHostingEnabled);
+                      } finally {
+                        setIsFullAutoSubmitting(false);
+                        setIsAgentDialogOpen(false);
+                      }
+                    }}
+                    type="button"
+                    variant="ghost"
+                  >
+                    {isFullAutoButtonPending ? (
+                      <Spinner
+                        aria-hidden="true"
+                        className="text-neutral-strong-foreground"
+                        size={14}
+                        variant="classic"
+                      />
+                    ) : null}
+                    {conversationAIHostingEnabled ? "关闭当前会话托管" : "开启当前会话托管"}
+                  </Button>
+                </div>
+              </PopoverContent>
+            </Popover>
             <ComposerActionTooltip label="聊天记录">
               <Button
                 aria-label="历史记录"
@@ -671,28 +761,30 @@ export function ChatComposer({
             </ComposerActionTooltip>
           </div>
           <div className="flex items-center gap-1">
-            <Select
-              onValueChange={(value) =>
-                onEnterBehaviorChange(value as InputEnterBehavior)
-              }
-              value={inputEnterBehavior}
-            >
-              <SelectTrigger
-                aria-label="选择 Enter 键行为"
-                className="h-7 min-w-0 border-0 text-[12px] bg-transparent px-1.5 text-muted-foreground shadow-none focus:ring-0"
-                disabled={isSending}
+            {canSendMessage ? (
+              <Select
+                onValueChange={(value) =>
+                  onEnterBehaviorChange(value as InputEnterBehavior)
+                }
+                value={inputEnterBehavior}
               >
-                <span>{INPUT_ENTER_BEHAVIOR_LABELS[inputEnterBehavior]}</span>
-              </SelectTrigger>
-              <SelectContent align="end">
-                <SelectItem value="send">
-                  {INPUT_ENTER_BEHAVIOR_DESCRIPTIONS.send}
-                </SelectItem>
-                <SelectItem value="newline">
-                  {INPUT_ENTER_BEHAVIOR_DESCRIPTIONS.newline}
-                </SelectItem>
-              </SelectContent>
-            </Select>
+                <SelectTrigger
+                  aria-label="选择 Enter 键行为"
+                  className="h-7 min-w-0 border-0 text-[12px] bg-transparent px-1.5 text-muted-foreground shadow-none focus:ring-0"
+                  disabled={isSending}
+                >
+                  <span>{INPUT_ENTER_BEHAVIOR_LABELS[inputEnterBehavior]}</span>
+                </SelectTrigger>
+                <SelectContent align="end">
+                  <SelectItem value="send">
+                    {INPUT_ENTER_BEHAVIOR_DESCRIPTIONS.send}
+                  </SelectItem>
+                  <SelectItem value="newline">
+                    {INPUT_ENTER_BEHAVIOR_DESCRIPTIONS.newline}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            ) : null}
 
             <Button
               aria-label="发送消息"
@@ -805,9 +897,11 @@ export function ChatComposer({
                 />
               }
               placeholder={
-                <div className="pointer-events-none absolute left-0 top-1 text-[14px] text-muted-foreground">
-                  {placeholder}
-                </div>
+                hidePlaceholder ? null : (
+                  <div className="pointer-events-none absolute left-0 top-1 text-[14px] text-muted-foreground">
+                    {placeholder}
+                  </div>
+                )
               }
               ErrorBoundary={LexicalErrorBoundary}
             />
@@ -829,56 +923,6 @@ export function ChatComposer({
       </div>
     </div>
     </TooltipProvider>
-  );
-}
-
-const CUSTODY_STATUS_PREVIEW_OPTIONS: Array<{
-  label: string;
-  status: CustodyHostingStatus;
-}> = [
-  { label: "思考中", status: "thinking" },
-  { label: "重试中", status: "retrying" },
-  { label: "托管中", status: "active" },
-  { label: "已退出", status: "exited" },
-];
-
-function ComposerCustodyStatusPreviewMenu({
-  activeStatus,
-  buttonClassName,
-  onSelectStatus,
-}: {
-  activeStatus: CustodyHostingStatus | null;
-  buttonClassName: string;
-  onSelectStatus: (status: CustodyHostingStatus) => void;
-}) {
-  return (
-    <DropdownMenu>
-      <ComposerActionTooltip label="托管状态预览">
-        <DropdownMenuTrigger asChild>
-          <Button
-            aria-label="托管状态预览"
-            className={buttonClassName}
-            size="icon"
-            type="button"
-            variant="ghost"
-          >
-            <HugeiconsIcon icon={AiMagicIcon} size={18} strokeWidth={2} />
-          </Button>
-        </DropdownMenuTrigger>
-      </ComposerActionTooltip>
-      <DropdownMenuContent align="start" className="min-w-[8.5rem]" side="top">
-        <DropdownMenuRadioGroup
-          onValueChange={(status) => onSelectStatus(status as CustodyHostingStatus)}
-          value={activeStatus ?? ""}
-        >
-          {CUSTODY_STATUS_PREVIEW_OPTIONS.map(({ label, status }) => (
-            <DropdownMenuRadioItem key={status} value={status}>
-              {label}
-            </DropdownMenuRadioItem>
-          ))}
-        </DropdownMenuRadioGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
   );
 }
 
@@ -974,6 +1018,37 @@ function ComposerMaterialSplitButton({
         </DropdownMenu>
       </div>
     </ComposerActionTooltip>
+  );
+}
+
+function AgentModeSwitchRow({
+  checked,
+  description,
+  disabled,
+  label,
+  onCheckedChange,
+}: {
+  checked: boolean;
+  description: string;
+  disabled: boolean;
+  label: string;
+  onCheckedChange: (checked: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-[8px] px-2 py-2">
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-popover-foreground">{label}</p>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+          {description}
+        </p>
+      </div>
+      <Switch
+        aria-label={label}
+        checked={checked}
+        disabled={disabled}
+        onCheckedChange={onCheckedChange}
+      />
+    </div>
   );
 }
 

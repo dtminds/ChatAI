@@ -6,7 +6,7 @@ import type { Conversation } from "@/pages/chat/chat-types";
 
 const conversation: Conversation = {
   accountId: "account-1",
-  custodyMode: "semi",
+  conversationAIHostingSwitch: false,
   customerAvatarUrl: "https://example.com/customer.png",
   customerId: "customer-1",
   customerName: "测试客户",

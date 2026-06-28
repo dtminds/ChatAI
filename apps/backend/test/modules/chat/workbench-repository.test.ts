@@ -3587,6 +3587,8 @@ describe("WorkbenchRepository", () => {
             const query = createQueryBuilder([
               {
                 avatar: "",
+                full_auto_auth: 1,
+                full_auto_switch: 1,
                 host_sub_id: 101,
                 id: 12,
                 is_online: 1,
@@ -3617,33 +3619,41 @@ describe("WorkbenchRepository", () => {
 
     await expect(repository.getSeatsByIds(["13", "12", "12", "not-a-seat"])).resolves.toEqual([
       {
-        aiHostingEnabled: false,
+        seatAIHostingEnabled: true,
         avatar: "",
         bizStatus: 1,
         description: "",
         expireTime: undefined,
+        seatAIHostingAuth: true,
+        fullAutoSwitch: true,
         hostSubUserId: "101",
         lastMessageTime: new Date("2026-05-21T06:15:21.000Z").getTime(),
         loginStatus: "online",
         name: "德瑞可",
         operatorName: "德瑞可",
         phone: "",
+        semiAutoAuth: false,
+        semiAutoSwitch: false,
         seatId: "12",
         thirdUserId: "seat-third-user-1",
         unreadCount: 7,
       },
       {
-        aiHostingEnabled: false,
+        seatAIHostingEnabled: false,
         avatar: "",
         bizStatus: 1,
         description: "",
         expireTime: undefined,
+        seatAIHostingAuth: false,
+        fullAutoSwitch: false,
         hostSubUserId: "202",
         lastMessageTime: new Date("2026-05-21T06:16:21.000Z").getTime(),
         loginStatus: "offline",
         name: "念都堂",
         operatorName: "念都堂",
         phone: "",
+        semiAutoAuth: false,
+        semiAutoSwitch: false,
         seatId: "13",
         thirdUserId: "seat-third-user-2",
         unreadCount: 2,
@@ -3652,6 +3662,50 @@ describe("WorkbenchRepository", () => {
     expect(seatQueryBuilders).toHaveLength(1);
     expect(seatQueryBuilders[0]?.wheres).toContainEqual(["seat.id", "in", ["13", "12"]]);
     expect(seatQueryBuilders[0]?.wheres).not.toContainEqual(["seat.biz_status", "=", 1]);
+  });
+
+  it("loads seat operate scope with agent mode auth flags", async () => {
+    const queries: Array<ReturnType<typeof createQueryBuilder>> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_user_seat as seat") {
+            const query = createQueryBuilder({
+              full_auto_auth: 1,
+              host_sub_id: 101,
+              id: 12,
+              platform: 5,
+              semi_auto_auth: 0,
+              third_userid: "seat-third-user-1",
+              uid: 9001,
+            });
+            queries.push(query);
+            return query;
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    await expect(repository.getSeatOperateScope("12")).resolves.toEqual({
+      seatAIHostingAuth: true,
+      hostSubUserId: "101",
+      platform: 5,
+      seatId: "12",
+      semiAutoAuth: false,
+      thirdUserId: "seat-third-user-1",
+      uid: 9001,
+    });
+    expect(queries[0]?.joinConditions).toContainEqual({
+      conditions: [
+        ["seat_agent.user_seat_id", "=", "seat.id"],
+        ["seat_agent.uid", "=", "seat.uid"],
+      ],
+      table: "xy_wap_embed_user_seat_agent as seat_agent",
+      type: "leftJoin",
+    });
+    expect(queries[0]?.wheres).toContainEqual(["seat.id", "=", 12]);
   });
 
   it("filters and limits conversation lists by requested chat mode", async () => {
@@ -5213,6 +5267,80 @@ describe("WorkbenchRepository", () => {
     await expect(repository.getConversationLookup("100")).resolves.toMatchObject({
       thirdGroupId: "group-002",
       thirdGroupName: "未知群聊",
+    });
+  });
+
+  it("loads the latest full-auto answer status for a single conversation", async () => {
+    let answerRecordQuery: ReturnType<typeof createQueryBuilder> | undefined;
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          expect(table).toBe("xy_wap_embed_agent_answer_record");
+
+          answerRecordQuery = createQueryBuilder({
+            analyse_msg_id: 20,
+            create_time: new Date("2026-06-26T08:00:00.000Z"),
+            gen_status: 1,
+            id: 27,
+            send_status: 0,
+            update_time: new Date("2026-06-26T08:00:02.000Z"),
+          });
+          return answerRecordQuery;
+        },
+      } as never,
+    );
+
+    await expect(
+      repository.getLatestFullAutoAnswerStatus({
+        thirdExternalUserId: "external-001",
+        thirdUserId: "seat-user-001",
+        uid: 9001,
+      }),
+    ).resolves.toEqual({
+      analyseMsgId: "20",
+      createdAt: Date.parse("2026-06-26T08:00:00.000Z"),
+      genStatus: 1,
+      recordId: "27",
+      sendStatus: 0,
+      updatedAt: Date.parse("2026-06-26T08:00:02.000Z"),
+    });
+    expect(answerRecordQuery?.wheres).toEqual([
+      ["uid", "=", 9001],
+      ["third_userid", "=", "seat-user-001"],
+      ["third_external_userid", "=", "external-001"],
+      ["third_group_id", "=", ""],
+      ["trigger_type", "=", 1],
+    ]);
+    expect(answerRecordQuery?.orderBys).toEqual([["id", "desc"]]);
+    expect(answerRecordQuery?.limits).toEqual([1]);
+  });
+
+  it("normalizes nullable full-auto answer analyse message ids to an empty string", async () => {
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          expect(table).toBe("xy_wap_embed_agent_answer_record");
+
+          return createQueryBuilder({
+            analyse_msg_id: null,
+            create_time: new Date("2026-06-26T08:00:00.000Z"),
+            gen_status: 0,
+            id: 27,
+            send_status: 0,
+            update_time: new Date("2026-06-26T08:00:02.000Z"),
+          });
+        },
+      } as never,
+    );
+
+    await expect(
+      repository.getLatestFullAutoAnswerStatus({
+        thirdExternalUserId: "external-001",
+        thirdUserId: "seat-user-001",
+        uid: 9001,
+      }),
+    ).resolves.toMatchObject({
+      analyseMsgId: "",
     });
   });
 

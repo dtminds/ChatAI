@@ -1,6 +1,7 @@
 import { Type, type Static } from "@sinclair/typebox";
 
 export const AiHostingAgentPromptConfigSchema = Type.Object({
+  availableKbIds: Type.Array(Type.Number()),
   conditionLogic: Type.String(),
   handoffRules: Type.String({ maxLength: 2000 }),
   replyStyle: Type.Object({

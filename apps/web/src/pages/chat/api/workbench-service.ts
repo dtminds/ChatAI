@@ -1652,15 +1652,12 @@ export function createMockWorkbenchService(): WorkbenchService {
         };
       }
 
-      if (request.mode === "full") {
-        seat.fullAutoSwitch = request.enabled;
-        seat.seatAIHostingEnabled =
-          seat.seatAIHostingAuth === true && seat.fullAutoSwitch === true;
-      } else {
-        seat.semiAutoSwitch = request.enabled;
-        seat.seatAIAssistantEnabled =
-          seat.semiAutoAuth === true && seat.semiAutoSwitch === true;
-      }
+      seat.fullAutoSwitch = request.mode === "autoReply";
+      seat.semiAutoSwitch = request.mode !== "off";
+      seat.seatAIHostingEnabled =
+        seat.seatAIHostingAuth === true && seat.fullAutoSwitch === true;
+      seat.seatAIAssistantEnabled =
+        seat.semiAutoAuth === true && seat.semiAutoSwitch === true;
       pushAccountEvent(state, seatId);
 
       return {

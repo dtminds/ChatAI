@@ -41,7 +41,7 @@ export type WorkbenchPermissions = {
   isAccountTakenOverByCurrentUser: boolean;
   conversationAIHostingEnabled: boolean;
   seatAIHostingEnabled: boolean;
-  seatSemiAutoEnabled: boolean;
+  seatAIAssistantEnabled: boolean;
   isConversationActionDisabled: boolean;
   isConversationBizInactive: boolean;
   sidebarIframeSendStatus: SidebarIframeSendStatus;
@@ -109,7 +109,7 @@ export function resolveWorkbenchPermissions({
     isAccountTakenOverByCurrentUser,
     conversationAIHostingEnabled,
     seatAIHostingEnabled,
-    seatSemiAutoEnabled: account?.semiAutoSwitch === true,
+    seatAIAssistantEnabled: account?.seatAIAssistantEnabled === true,
     isConversationActionDisabled: !canUseConversationActions,
     isConversationBizInactive,
     sidebarIframeSendStatus: resolveSidebarIframeSendStatus({

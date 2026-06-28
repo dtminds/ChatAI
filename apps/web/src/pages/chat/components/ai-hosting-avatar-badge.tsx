@@ -6,7 +6,7 @@ export function AIHostingAvatarBadge() {
     >
       <svg
         aria-hidden="true"
-        className="size-2 text-white"
+        className="size-1.75 text-white"
         fill="currentColor"
         fillRule="evenodd"
         viewBox="0 0 24 24"

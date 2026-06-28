@@ -35,6 +35,7 @@ import {
 import { cn } from "@/lib/utils";
 import {
   MATERIAL_COLLECTION_BIZ_TYPE,
+  type WorkbenchSeatAgentMode,
   type WorkbenchQuickReplyCategoryDto,
   type WorkbenchQuickReplyDto,
 } from "@chatai/contracts";
@@ -695,7 +696,6 @@ function ChatWorkbenchContent({
     composerPlaceholder,
     conversationAIHostingEnabled,
     seatAIHostingEnabled,
-    seatSemiAutoEnabled,
     isAccountTakenOverByCurrentUser,
     isConversationActionDisabled,
     sidebarIframeSendStatus,
@@ -1003,8 +1003,8 @@ function ChatWorkbenchContent({
     [changeActiveConversationFullAuto],
   );
   const handleChangeSeatAgentMode = useCallback(
-    (mode: "full" | "semi", enabled: boolean) => {
-      void changeActiveSeatAgentMode(mode, enabled);
+    (mode: WorkbenchSeatAgentMode) => {
+      void changeActiveSeatAgentMode(mode);
     },
     [changeActiveSeatAgentMode],
   );
@@ -2074,6 +2074,7 @@ function ChatWorkbenchContent({
                 <ChatPanel
                   accountName={activeAccount?.name}
                   accountAvatarUrl={activeAccount?.avatarUrl}
+                  activeAccount={activeAccount}
                   activeConversation={activeConversation}
                   activeHistoryStatus={activeHistoryStatus}
                   canConfigureSeatAIHosting={canConfigureSeatAIHosting}
@@ -2098,7 +2099,6 @@ function ChatWorkbenchContent({
                   isEmojiPickerOpen={isEmojiPickerOpen}
                   isSendingDraft={isSendingDraft}
                   conversationAIHostingEnabled={conversationAIHostingEnabled}
-                  seatSemiAutoEnabled={seatSemiAutoEnabled}
                   isResizingCustomerPanel={isResizingCustomerPanel}
                   fileUploadQueue={fileUploadQueue}
                   collectedExpressions={collectedExpressions}

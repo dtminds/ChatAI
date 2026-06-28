@@ -775,9 +775,10 @@ export type WorkbenchConversationFullAutoResponse = {
   seatId: string;
 };
 
+export type WorkbenchSeatAgentMode = "assistant" | "autoReply" | "off";
+
 export type WorkbenchSeatAgentModeSwitchRequest = {
-  enabled: boolean;
-  mode: "full" | "semi";
+  mode: WorkbenchSeatAgentMode;
 };
 
 export type WorkbenchSeatAgentModeSwitchResponse = {

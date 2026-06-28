@@ -2118,9 +2118,11 @@ export class MysqlWorkbenchService implements WorkbenchService {
     }
 
     const canUseAgentMode =
-      request.mode === "full"
-        ? seat.seatAIHostingAuth === true
-        : seat.semiAutoAuth === true;
+      request.mode === "off" ||
+      (request.mode === "assistant" && seat.semiAutoAuth === true) ||
+      (request.mode === "autoReply" &&
+        seat.semiAutoAuth === true &&
+        seat.seatAIHostingAuth === true);
 
     if (!canUseAgentMode) {
       throw new ForbiddenError(
@@ -2130,7 +2132,6 @@ export class MysqlWorkbenchService implements WorkbenchService {
     }
 
     return this.repository.updateSeatAgentModeSwitch({
-      enabled: request.enabled,
       mode: request.mode,
       platform: seat.platform,
       seatId: seat.seatId,

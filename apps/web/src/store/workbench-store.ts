@@ -68,6 +68,7 @@ import {
   CHAT_TYPE,
   SMART_REPLY_POLL_INTERVAL_MS,
   type WorkbenchFullAutoAnswerStatusResponse,
+  type WorkbenchSeatAgentMode,
   type SettingsSidebarItem,
   type WorkbenchSendMessagePayload,
 } from "@chatai/contracts";
@@ -257,7 +258,7 @@ type WorkbenchState = {
   pendingMessages: Message[];
   revokeMessage: (uiMessageKey: string) => Promise<RevokeMessageResult>;
   sidebarItems: SettingsSidebarItem[];
-  changeActiveSeatAgentMode: (mode: "full" | "semi", enabled: boolean) => Promise<void>;
+  changeActiveSeatAgentMode: (mode: WorkbenchSeatAgentMode) => Promise<void>;
   changeActiveConversationFullAuto: (enabled: boolean) => Promise<void>;
   syncFullAutoAgentStatus: () => Promise<void>;
   resetWorkbenchRuntime: () => void;
@@ -5523,7 +5524,7 @@ export function createWorkbenchStore() {
         scopeTransitionError: undefined,
       });
     },
-    async changeActiveSeatAgentMode(mode, enabled) {
+    async changeActiveSeatAgentMode(mode) {
       const state = get();
       const { activeAccountId } = state;
 
@@ -5534,9 +5535,11 @@ export function createWorkbenchStore() {
       const account = state.accounts.find((item) => item.id === activeAccountId);
 
       const canConfigureMode =
-        mode === "full"
-          ? account?.seatAIHostingAuth === true
-          : account?.semiAutoAuth === true;
+        mode === "off" ||
+        (mode === "assistant" && account?.semiAutoAuth === true) ||
+        (mode === "autoReply" &&
+          account?.semiAutoAuth === true &&
+          account?.seatAIHostingAuth === true);
 
       if (!canUseConversationActions(state, account) || !canConfigureMode) {
         return;
@@ -5546,7 +5549,6 @@ export function createWorkbenchStore() {
 
       try {
         const response = await updateSeatAgentMode(activeAccountId, {
-          enabled,
           mode,
         });
         set((currentState) => {
@@ -5579,7 +5581,7 @@ export function createWorkbenchStore() {
         set({
           fullAutoActionError: getRequestErrorMessage(
             error,
-            mode === "full" ? "更新托管模式失败" : "更新辅助模式失败",
+            "更新 AI 辅助模式失败",
           ),
           seatAgentModeActionPending: false,
         });

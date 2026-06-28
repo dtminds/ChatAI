@@ -21,6 +21,7 @@ import { MessageHistorySidePanel } from "@/pages/chat/components/message-history
 import type { InputEnterBehavior } from "@/pages/chat/components/input-enter-behavior";
 import type {
   Conversation,
+  Account,
   CustomerProfile,
   FileUploadQueueItem,
   GroupMember,
@@ -31,6 +32,7 @@ import type {
 import type {
   SettingsSidebarItem,
   WorkbenchMaterialCollectionItemDto,
+  WorkbenchSeatAgentMode,
 } from "@chatai/contracts";
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
 import {
@@ -52,9 +54,9 @@ type ChatPanelProps = {
   fullAutoActionPending?: boolean;
   seatAgentModeActionPending?: boolean;
   fullAutoDisplayStatus?: AgentHostingStatus;
+  activeAccount?: Account;
   seatAIHostingEnabled?: boolean;
   conversationAIHostingEnabled?: boolean;
-  seatSemiAutoEnabled?: boolean;
   composerPlaceholder: string;
   customer?: CustomerProfile;
   /** 侧栏 iframe `tos`：当前坐席是否已接管账号 */
@@ -101,7 +103,7 @@ type ChatPanelProps = {
   onCancelFileUpload: (uploadId: string) => void;
   onCancelAgentHosting?: () => void;
   onEnableAgentHosting?: () => void;
-  onChangeSeatAgentMode?: (mode: "full" | "semi", enabled: boolean) => void;
+  onChangeSeatAgentMode?: (mode: WorkbenchSeatAgentMode) => void;
   onChangeFullAuto?: (enabled: boolean) => void;
   collectedExpressions?: WorkbenchMaterialCollectionItemDto[];
   hasMoreCollectedExpressions?: boolean;
@@ -172,9 +174,9 @@ export function ChatPanel({
   fullAutoActionPending = false,
   seatAgentModeActionPending = false,
   fullAutoDisplayStatus,
+  activeAccount,
   seatAIHostingEnabled = false,
   conversationAIHostingEnabled = false,
-  seatSemiAutoEnabled = false,
   composerPlaceholder,
   customer,
   sidebarIframeTos,
@@ -369,9 +371,13 @@ export function ChatPanel({
                       isEmojiPickerOpen={isEmojiPickerOpen}
                       isSending={isSendingDraft}
                       isHistoryPanelOpen={isHistoryPanelOpen}
-                      seatAIHostingEnabled={seatAIHostingEnabled}
+                      accountAvatarUrl={activeAccount?.avatarUrl ?? accountAvatarUrl}
+                      accountName={activeAccount?.name ?? accountName}
+                      seatAIHostingAuth={activeAccount?.seatAIHostingAuth === true}
+                      seatSemiAutoAuth={activeAccount?.semiAutoAuth === true}
+                      fullAutoSwitch={activeAccount?.fullAutoSwitch === true}
+                      semiAutoSwitch={activeAccount?.semiAutoSwitch === true}
                       conversationAIHostingEnabled={conversationAIHostingEnabled}
-                      seatSemiAutoEnabled={seatSemiAutoEnabled}
                       collectedExpressions={collectedExpressions}
                       hasMoreCollectedExpressions={hasMoreCollectedExpressions}
                       isCollectedExpressionLoadingMore={

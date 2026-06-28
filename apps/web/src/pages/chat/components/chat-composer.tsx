@@ -9,6 +9,7 @@ import {
 } from "react";
 import {
   AiChat02Icon,
+  AiSecurity02Icon,
   ArrowDown01Icon,
   ArrowUp02Icon,
   Cancel01Icon,
@@ -24,6 +25,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import {
   MATERIAL_COLLECTION_BIZ_TYPE,
   type WorkbenchMaterialCollectionItemDto,
+  type WorkbenchSeatAgentMode,
 } from "@chatai/contracts";
 import { Spinner } from "@/components/ui/spinner";
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
@@ -44,13 +46,17 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
 } from "@/components/ui/select";
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from "@/components/ui/avatar";
 import {
   Tooltip,
   TooltipContent,
@@ -100,6 +106,8 @@ type ChatComposerProps = {
   canConfigureSeatSemiAuto: boolean;
   canToggleConversationAIHosting: boolean;
   canSendMessage: boolean;
+  accountAvatarUrl?: string;
+  accountName?: string;
   collectedExpressions?: WorkbenchMaterialCollectionItemDto[];
   draft: string;
   hasMoreCollectedExpressions?: boolean;
@@ -116,16 +124,18 @@ type ChatComposerProps = {
   sendingCollectedExpressionId?: string | null;
   isSending: boolean;
   isHistoryPanelOpen: boolean;
-  seatAIHostingEnabled?: boolean;
+  seatAIHostingAuth?: boolean;
+  seatSemiAutoAuth?: boolean;
   conversationAIHostingEnabled?: boolean;
-  seatSemiAutoEnabled?: boolean;
+  fullAutoSwitch?: boolean;
+  semiAutoSwitch?: boolean;
   onClearQuotedMessage: () => void;
   onDeleteCollectedExpression?: (item: WorkbenchMaterialCollectionItemDto) => void;
   onDraftChange: (draft: string) => void;
   onEmojiPickerOpenChange: (isOpen: boolean) => void;
   onEnterBehaviorChange: (behavior: InputEnterBehavior) => void;
   onFileSelect: (files: FileList | File[] | null) => void;
-  onChangeSeatAgentMode: (mode: "full" | "semi", enabled: boolean) => void;
+  onChangeSeatAgentMode: (mode: WorkbenchSeatAgentMode) => void;
   onChangeFullAuto: (enabled: boolean) => void | Promise<void>;
   onLoadMoreCollectedExpressions?: () => void;
   onOpenCollectedExpressions?: () => void;
@@ -170,6 +180,8 @@ export function ChatComposer({
   canConfigureSeatSemiAuto,
   canToggleConversationAIHosting,
   canSendMessage,
+  accountAvatarUrl,
+  accountName,
   collectedExpressions = [],
   draft,
   hasMoreCollectedExpressions,
@@ -186,9 +198,11 @@ export function ChatComposer({
   sendingCollectedExpressionId,
   isSending,
   isHistoryPanelOpen,
-  seatAIHostingEnabled = false,
+  seatAIHostingAuth = false,
+  seatSemiAutoAuth = false,
   conversationAIHostingEnabled = false,
-  seatSemiAutoEnabled = false,
+  fullAutoSwitch = false,
+  semiAutoSwitch = false,
   onClearQuotedMessage,
   onDeleteCollectedExpression,
   onDraftChange,
@@ -238,6 +252,44 @@ export function ChatComposer({
     [cursorPosition, draftText],
   );
   const isFullAutoButtonPending = fullAutoActionPending || isFullAutoSubmitting;
+  const seatAIMode = resolveSeatAIMode({
+    fullAutoSwitch,
+    semiAutoSwitch,
+  });
+  const selectedSeatAIModeOption = SEAT_AI_MODE_OPTIONS.find(
+    (option) => option.value === seatAIMode,
+  ) ?? SEAT_AI_MODE_OPTIONS[0];
+  const isSeatAIModeOptionDisabled = useCallback(
+    (mode: WorkbenchSeatAgentMode) => {
+      if (seatAgentModeActionPending) {
+        return true;
+      }
+
+      if (mode === "off") {
+        return false;
+      }
+
+      if (mode === "assistant") {
+        return !canConfigureSeatSemiAuto || !seatSemiAutoAuth;
+      }
+
+      return (
+        !canConfigureSeatSemiAuto ||
+        !canConfigureSeatAIHosting ||
+        !seatSemiAutoAuth ||
+        !seatAIHostingAuth
+      );
+    },
+    [
+      canConfigureSeatAIHosting,
+      canConfigureSeatSemiAuto,
+      seatAgentModeActionPending,
+      seatAIHostingAuth,
+      seatSemiAutoAuth,
+    ],
+  );
+  const canUseCurrentConversationHosting =
+    canToggleConversationAIHosting && seatAIMode === "autoReply";
   const mentionableGroupMembers = useMemo(() => {
     if (!currentSeatThirdUserId) {
       return groupMembers;
@@ -688,57 +740,97 @@ export function ChatComposer({
                 </PopoverTrigger>
               </ComposerActionTooltip>
               <PopoverContent align="end" className="w-96 p-0" side="top">
-                <div className="border-b border-divider px-4 py-3">
-                  <p className="text-sm font-semibold text-popover-foreground">
-                    AI 对话配置
-                  </p>
-                </div>
-                <div className="space-y-1 p-2">
-                  <AgentModeSwitchRow
-                    checked={seatSemiAutoEnabled}
-                    description="Agent 生成话术推荐，人工确认后发送"
-                    disabled={!canConfigureSeatSemiAuto || seatAgentModeActionPending}
-                    label="辅助模式"
-                    onCheckedChange={(checked) => {
-                      onChangeSeatAgentMode("semi", checked);
-                    }}
-                  />
-                  <AgentModeSwitchRow
-                    checked={seatAIHostingEnabled}
-                    description="Agent 自动生成并发送消息，仅在必要时转人工"
-                    disabled={!canConfigureSeatAIHosting || seatAgentModeActionPending}
-                    label="托管模式"
-                    onCheckedChange={(checked) => {
-                      onChangeSeatAgentMode("full", checked);
-                    }}
-                  />
-                </div>
-                <div className="border-t border-divider p-3">
-                  <Button
-                    className="w-full bg-neutral-strong text-neutral-strong-foreground shadow-none hover:bg-neutral-strong/90 hover:text-neutral-strong-foreground"
-                    disabled={!canToggleConversationAIHosting || isFullAutoButtonPending}
-                    onClick={async () => {
-                      setIsFullAutoSubmitting(true);
-                      try {
-                        await onChangeFullAuto(!conversationAIHostingEnabled);
-                      } finally {
-                        setIsFullAutoSubmitting(false);
-                        setIsAgentDialogOpen(false);
-                      }
-                    }}
-                    type="button"
-                    variant="ghost"
-                  >
-                    {isFullAutoButtonPending ? (
-                      <Spinner
-                        aria-hidden="true"
-                        className="text-neutral-strong-foreground"
-                        size={14}
-                        variant="classic"
-                      />
+                <div className="space-y-4 p-3.5">
+                  <div className="flex items-center gap-2">
+                    <Avatar className="size-8 rounded-[8px]">
+                      {accountAvatarUrl ? (
+                        <AvatarImage alt={accountName ?? "当前席位"} src={accountAvatarUrl} />
+                      ) : null}
+                      <AvatarFallback className="text-xs">
+                        {accountName?.slice(0, 1)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-popover-foreground">
+                        {accountName ?? "当前席位"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <section className="space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground">
+                      切换 AI 模式
+                    </p>
+                    <Select
+                      disabled={seatAgentModeActionPending}
+                      onValueChange={(value) => {
+                        onChangeSeatAgentMode(value as WorkbenchSeatAgentMode);
+                      }}
+                      value={seatAIMode}
+                    >
+                      <SelectTrigger
+                        aria-label="切换 AI 模式"
+                        className="h-auto w-full rounded-[8px] border border-border bg-accent/40 px-3 py-2.5 shadow-none focus:outline-none focus:ring-0 data-[state=open]:bg-accent/50 [&>span]:line-clamp-none"
+                      >
+                        <SeatAIModeOptionContent option={selectedSeatAIModeOption} />
+                      </SelectTrigger>
+                      <SelectContent align="end" className="w-[var(--radix-select-trigger-width)]">
+                        {SEAT_AI_MODE_OPTIONS.map((option) => (
+                          <SelectItem
+                            className="h-auto py-2 pl-8 pr-2.5"
+                            disabled={isSeatAIModeOptionDisabled(option.value)}
+                            key={option.value}
+                            value={option.value}
+                          >
+                            <SeatAIModeOptionContent option={option} />
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </section>
+
+                  <section className="space-y-2">
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground">
+                        会话托管
+                      </p>
+                      <p className="mt-1 text-xs leading-5 text-warning">
+                        仅影响此会话，开启后 Agent 将自动回复客户
+                      </p>
+                    </div>
+                    <Button
+                      className="w-full bg-neutral-strong text-neutral-strong-foreground shadow-none hover:bg-neutral-strong/90 hover:text-neutral-strong-foreground"
+                      disabled={!canUseCurrentConversationHosting || isFullAutoButtonPending}
+                      onClick={async () => {
+                        setIsFullAutoSubmitting(true);
+                        try {
+                          await onChangeFullAuto(!conversationAIHostingEnabled);
+                        } finally {
+                          setIsFullAutoSubmitting(false);
+                          setIsAgentDialogOpen(false);
+                        }
+                      }}
+                      type="button"
+                      variant="ghost"
+                    >
+                      {isFullAutoButtonPending ? (
+                        <Spinner
+                          aria-hidden="true"
+                          className="text-neutral-strong-foreground"
+                          size={14}
+                          variant="classic"
+                        />
+                      ) : conversationAIHostingEnabled ? null : (
+                        <HugeiconsIcon icon={AiSecurity02Icon} size={16} strokeWidth={1.8} />
+                      )}
+                      {conversationAIHostingEnabled ? "关闭当前会话托管" : "托管当前会话"}
+                    </Button>
+                    {seatAIMode !== "autoReply" ? (
+                      <p className="text-center text-xs text-muted-foreground">
+                        切换 AI 模式为自动回复后，可托管此会话
+                      </p>
                     ) : null}
-                    {conversationAIHostingEnabled ? "关闭当前会话托管" : "开启当前会话托管"}
-                  </Button>
+                  </section>
                 </div>
               </PopoverContent>
             </Popover>
@@ -1021,33 +1113,59 @@ function ComposerMaterialSplitButton({
   );
 }
 
-function AgentModeSwitchRow({
-  checked,
-  description,
-  disabled,
-  label,
-  onCheckedChange,
-}: {
-  checked: boolean;
+const SEAT_AI_MODE_OPTIONS: Array<{
   description: string;
-  disabled: boolean;
   label: string;
-  onCheckedChange: (checked: boolean) => void;
+  value: WorkbenchSeatAgentMode;
+}> = [
+  {
+    description: "由人工客服独立承接，不开启 AI 辅助",
+    label: "关闭",
+    value: "off",
+  },
+  {
+    description: "Agent 生成话术推荐，人工确认后发送",
+    label: "话术推荐",
+    value: "assistant",
+  },
+  {
+    description: "Agent 自动生成并发送消息，仅在必要时转人工",
+    label: "自动回复",
+    value: "autoReply",
+  },
+];
+
+function resolveSeatAIMode({
+  fullAutoSwitch,
+  semiAutoSwitch,
+}: {
+  fullAutoSwitch: boolean;
+  semiAutoSwitch: boolean;
+}): WorkbenchSeatAgentMode {
+  if (fullAutoSwitch) {
+    return "autoReply";
+  }
+
+  if (semiAutoSwitch) {
+    return "assistant";
+  }
+
+  return "off";
+}
+
+function SeatAIModeOptionContent({
+  option,
+}: {
+  option: (typeof SEAT_AI_MODE_OPTIONS)[number];
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-[8px] px-2 py-2">
-      <div className="min-w-0">
-        <p className="text-sm font-medium text-popover-foreground">{label}</p>
-        <p className="mt-1 text-xs leading-5 text-muted-foreground">
-          {description}
-        </p>
-      </div>
-      <Switch
-        aria-label={label}
-        checked={checked}
-        disabled={disabled}
-        onCheckedChange={onCheckedChange}
-      />
+    <div className="min-w-0 text-left">
+      <p className="truncate text-sm font-medium text-popover-foreground">
+        {option.label}
+      </p>
+      <p className="mt-0.5 truncate text-xs leading-5 text-muted-foreground">
+        {option.description}
+      </p>
     </div>
   );
 }

@@ -69,8 +69,11 @@ const ConversationFullAutoRequestSchema = Type.Object({
 type ConversationFullAutoRequest = Static<typeof ConversationFullAutoRequestSchema>;
 
 const SeatAgentModeSwitchRequestSchema = Type.Object({
-  enabled: Type.Boolean(),
-  mode: Type.Union([Type.Literal("full"), Type.Literal("semi")]),
+  mode: Type.Union([
+    Type.Literal("assistant"),
+    Type.Literal("autoReply"),
+    Type.Literal("off"),
+  ]),
 });
 
 type SeatAgentModeSwitchRequest = Static<typeof SeatAgentModeSwitchRequestSchema> &

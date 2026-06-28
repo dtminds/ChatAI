@@ -1539,7 +1539,7 @@ describe("MysqlWorkbenchService", () => {
     const updateSeatAgentModeSwitch = vi.fn().mockResolvedValue({
       fullAutoSwitch: true,
       seatId: "12",
-      semiAutoSwitch: false,
+      semiAutoSwitch: true,
     });
     const service = new MysqlWorkbenchService(
       {
@@ -1547,6 +1547,7 @@ describe("MysqlWorkbenchService", () => {
         getSeatOperateScope: vi.fn().mockResolvedValue({
           hostSubUserId: "101",
           platform: 5,
+          seatAIHostingAuth: true,
           seatId: "12",
           semiAutoAuth: true,
           uid: 9001,
@@ -1558,17 +1559,15 @@ describe("MysqlWorkbenchService", () => {
 
     await expect(
       service.updateSeatAgentModeSwitch("101", "12", {
-        enabled: false,
-        mode: "semi",
+        mode: "autoReply",
       }),
     ).resolves.toEqual({
       fullAutoSwitch: true,
       seatId: "12",
-      semiAutoSwitch: false,
+      semiAutoSwitch: true,
     });
     expect(updateSeatAgentModeSwitch).toHaveBeenCalledWith({
-      enabled: false,
-      mode: "semi",
+      mode: "autoReply",
       platform: 5,
       seatId: "12",
       uid: 9001,
@@ -1594,8 +1593,7 @@ describe("MysqlWorkbenchService", () => {
 
     await expect(
       service.updateSeatAgentModeSwitch("101", "12", {
-        enabled: true,
-        mode: "full",
+        mode: "autoReply",
       }),
     ).rejects.toMatchObject({
       code: "SEAT_NOT_TAKEN_OVER",
@@ -1625,8 +1623,7 @@ describe("MysqlWorkbenchService", () => {
 
     await expect(
       service.updateSeatAgentModeSwitch("101", "12", {
-        enabled: true,
-        mode: "full",
+        mode: "autoReply",
       }),
     ).rejects.toMatchObject({
       code: "SEAT_AGENT_MODE_UNAUTHORIZED",
@@ -1634,14 +1631,53 @@ describe("MysqlWorkbenchService", () => {
     });
     await expect(
       service.updateSeatAgentModeSwitch("101", "12", {
-        enabled: true,
-        mode: "semi",
+        mode: "assistant",
       }),
     ).rejects.toMatchObject({
       code: "SEAT_AGENT_MODE_UNAUTHORIZED",
       statusCode: 403,
     });
     expect(updateSeatAgentModeSwitch).not.toHaveBeenCalled();
+  });
+
+  it("allows turning off seat agent mode without agent mode auth", async () => {
+    const javaClient = createJavaClient();
+    const updateSeatAgentModeSwitch = vi.fn().mockResolvedValue({
+      fullAutoSwitch: false,
+      seatId: "12",
+      semiAutoSwitch: false,
+    });
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getSeatOperateScope: vi.fn().mockResolvedValue({
+          seatAIHostingAuth: false,
+          hostSubUserId: "101",
+          platform: 5,
+          seatId: "12",
+          semiAutoAuth: false,
+          uid: 9001,
+        }),
+        updateSeatAgentModeSwitch,
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.updateSeatAgentModeSwitch("101", "12", {
+        mode: "off",
+      }),
+    ).resolves.toEqual({
+      fullAutoSwitch: false,
+      seatId: "12",
+      semiAutoSwitch: false,
+    });
+    expect(updateSeatAgentModeSwitch).toHaveBeenCalledWith({
+      mode: "off",
+      platform: 5,
+      seatId: "12",
+      uid: 9001,
+    });
   });
 
   it("rejects full-auto changes when the conversation seat is not taken over by the current sub-user", async () => {

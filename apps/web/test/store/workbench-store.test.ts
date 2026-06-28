@@ -416,7 +416,7 @@ describe("useWorkbenchStore", () => {
     const updateSeatAgentMode = vi.fn().mockResolvedValue({
       fullAutoSwitch: true,
       seatId: "drc",
-      semiAutoSwitch: false,
+      semiAutoSwitch: true,
     });
 
     setWorkbenchService({
@@ -429,21 +429,23 @@ describe("useWorkbenchStore", () => {
         account.id === "drc"
           ? {
               ...account,
+              seatAIHostingAuth: true,
               semiAutoAuth: true,
             }
           : account,
       ),
     }));
 
-    await useWorkbenchStore.getState().changeActiveSeatAgentMode("semi", false);
+    await useWorkbenchStore.getState().changeActiveSeatAgentMode("autoReply");
 
     expect(updateSeatAgentMode).toHaveBeenCalledWith("drc", {
-      mode: "semi",
-      enabled: false,
+      mode: "autoReply",
     });
     expect(useWorkbenchStore.getState().accounts.find((account) => account.id === "drc")).toMatchObject({
       fullAutoSwitch: true,
-      semiAutoSwitch: false,
+      seatAIAssistantEnabled: true,
+      seatAIHostingEnabled: true,
+      semiAutoSwitch: true,
     });
   });
 
@@ -468,10 +470,42 @@ describe("useWorkbenchStore", () => {
       ),
     }));
 
-    await useWorkbenchStore.getState().changeActiveSeatAgentMode("full", false);
-    await useWorkbenchStore.getState().changeActiveSeatAgentMode("semi", false);
+    await useWorkbenchStore.getState().changeActiveSeatAgentMode("autoReply");
+    await useWorkbenchStore.getState().changeActiveSeatAgentMode("assistant");
 
     expect(updateSeatAgentMode).not.toHaveBeenCalled();
+  });
+
+  it("allows turning off active account agent mode without agent mode auth", async () => {
+    const baseService = createMockWorkbenchService();
+    const updateSeatAgentMode = vi.fn().mockResolvedValue({
+      fullAutoSwitch: false,
+      seatId: "drc",
+      semiAutoSwitch: false,
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      updateSeatAgentMode,
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              seatAIHostingAuth: false,
+              semiAutoAuth: false,
+            }
+          : account,
+      ),
+    }));
+
+    await useWorkbenchStore.getState().changeActiveSeatAgentMode("off");
+
+    expect(updateSeatAgentMode).toHaveBeenCalledWith("drc", {
+      mode: "off",
+    });
   });
 
   it("reports active account agent mode switch failures", async () => {
@@ -490,12 +524,13 @@ describe("useWorkbenchStore", () => {
           ? {
               ...account,
               seatAIHostingAuth: true,
+              semiAutoAuth: true,
             }
           : account,
       ),
     }));
 
-    await useWorkbenchStore.getState().changeActiveSeatAgentMode("full", false);
+    await useWorkbenchStore.getState().changeActiveSeatAgentMode("autoReply");
 
     expect(useWorkbenchStore.getState().seatAgentModeActionPending).toBe(false);
     expect(useWorkbenchStore.getState().fullAutoActionError).toBe("托管模式更新失败");
@@ -517,6 +552,7 @@ describe("useWorkbenchStore", () => {
           ? {
               ...account,
               seatAIHostingAuth: true,
+              semiAutoAuth: true,
             }
           : account,
       ),
@@ -524,13 +560,13 @@ describe("useWorkbenchStore", () => {
 
     const firstRequest = useWorkbenchStore
       .getState()
-      .changeActiveSeatAgentMode("full", false);
+      .changeActiveSeatAgentMode("autoReply");
     await waitForStoreAssertion(() => {
       expect(useWorkbenchStore.getState().seatAgentModeActionPending).toBe(true);
     });
     const secondRequest = useWorkbenchStore
       .getState()
-      .changeActiveSeatAgentMode("full", true);
+      .changeActiveSeatAgentMode("assistant");
 
     expect(updateSeatAgentMode).toHaveBeenCalledTimes(1);
     seatAgentModeChange.resolve({

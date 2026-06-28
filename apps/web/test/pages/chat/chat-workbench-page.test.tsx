@@ -159,6 +159,58 @@ describe("ChatWorkbenchPage", () => {
     expect(screen.getByRole("button", { name: "发送消息" })).toBeInTheDocument();
   });
 
+  it("exits full agent mode when cancel agent hosting is clicked", async () => {
+    const user = userEvent.setup();
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+
+    act(() => {
+      useWorkbenchStore.setState((state) => ({
+        accounts: state.accounts.map((account) =>
+          account.id === "drc"
+            ? {
+                ...account,
+                seatAIHostingAuth: true,
+                seatAIHostingEnabled: true,
+                fullAutoSwitch: true,
+                takenOverEmployeeId: "sub-user-001",
+              }
+            : account,
+        ),
+        conversationListsByScope: {
+          ...state.conversationListsByScope,
+          drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+            conversation.id === "conv-001"
+              ? {
+                  ...conversation,
+                  conversationAIHostingSwitch: true,
+                  agentHostingStatus: "thinking",
+                }
+              : conversation,
+          ),
+        },
+      }));
+    });
+
+    expect(screen.getByText(/Agent 正在查看消息/)).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "请输入消息……" })).toHaveAttribute(
+      "contenteditable",
+      "false",
+    );
+
+    await user.click(screen.getByRole("button", { name: "取消托管" }));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("chat-agent-hosting-status-bar")).not.toBeInTheDocument();
+    });
+    expect(screen.getByRole("textbox", { name: "请输入消息……" })).toHaveAttribute(
+      "contenteditable",
+      "true",
+    );
+  });
+
   it("does not bootstrap again when the workbench store is already ready", () => {
     const baseService = createMockWorkbenchService();
     const getSeats = vi.fn(baseService.getSeats);
@@ -211,7 +263,7 @@ describe("ChatWorkbenchPage", () => {
 
         return seats.map((seat) => ({
           ...seat,
-          aiHostingEnabled: false,
+          seatAIHostingEnabled: false,
         }));
       },
       async getConversations(seatId, options) {
@@ -221,7 +273,7 @@ describe("ChatWorkbenchPage", () => {
           ...response,
           items: response.items.map((conversation, index) => ({
             ...conversation,
-            aiHosted: index === 0,
+            conversationAIHostingSwitch: index === 0,
           })),
         };
       },
@@ -247,7 +299,8 @@ describe("ChatWorkbenchPage", () => {
 
         return seats.map((seat) => ({
           ...seat,
-          aiHostingEnabled: seat.seatId === "drc",
+          fullAutoSwitch: seat.seatId === "drc",
+          seatAIHostingAuth: seat.seatId === "drc",
         }));
       },
       async getConversations(seatId, options) {
@@ -257,7 +310,7 @@ describe("ChatWorkbenchPage", () => {
           ...response,
           items: response.items.map((conversation) => ({
             ...conversation,
-            aiHosted: conversation.conversationId === "conv-002",
+            conversationAIHostingSwitch: conversation.conversationId === "conv-002",
           })),
         };
       },
@@ -287,7 +340,8 @@ describe("ChatWorkbenchPage", () => {
 
         return seats.map((seat) => ({
           ...seat,
-          aiHostingEnabled: seat.seatId === "drc",
+          fullAutoSwitch: seat.seatId === "drc",
+          seatAIHostingAuth: seat.seatId === "drc",
         }));
       },
       async getConversations(seatId, options) {
@@ -297,7 +351,7 @@ describe("ChatWorkbenchPage", () => {
           ...response,
           items: response.items.map((conversation) => ({
             ...conversation,
-            aiHosted: false,
+            conversationAIHostingSwitch: false,
           })),
         };
       },

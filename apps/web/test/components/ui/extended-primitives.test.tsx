@@ -1,6 +1,6 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { useForm } from "react-hook-form";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -27,6 +27,7 @@ import {
   Field,
   PreferenceOption,
 } from "@/pages/chat/settings/shared";
+import { AnimatedTextSwitch } from "@/components/ui/animated-text-switch";
 import { Sun01Icon } from "@hugeicons/core-free-icons";
 
 function BrokenFormFieldUsage() {
@@ -108,6 +109,201 @@ describe("extended UI primitives", () => {
     expect(text).toHaveStyle({ "--shiny-text-duration": "1.2s" });
     expect(text).toHaveStyle({ "--shiny-text-shimmer-width": "96px" });
     expect(text).toHaveClass("text-primary");
+  });
+
+  it("renders animated text switch as a single accessible phrase", () => {
+    const { rerender } = render(<AnimatedTextSwitch value="正在生成" />);
+
+    const text = screen.getByLabelText("正在生成");
+    expect(text).toHaveAttribute("data-slot", "animated-text-switch");
+    expect(text.querySelectorAll("[data-slot='animated-text-switch-char']")).toHaveLength(
+      4,
+    );
+
+    rerender(<AnimatedTextSwitch value="可发送" />);
+
+    expect(screen.getByLabelText("可发送")).toBeInTheDocument();
+  });
+
+  it("exits the previous text before entering the next text", () => {
+    vi.useFakeTimers();
+    const { container, rerender } = render(
+      <AnimatedTextSwitch staggerMs={1} value="等待发送" />,
+    );
+
+    expect(container.querySelector("[data-phase='enter']")).toHaveTextContent(
+      "等待发送",
+    );
+
+    rerender(<AnimatedTextSwitch staggerMs={1} value="正在发送" />);
+
+    expect(container.querySelector("[data-phase='exit']")).toHaveTextContent(
+      "等待发送",
+    );
+    expect(container.querySelector("[data-phase='enter']")).toBeNull();
+    expect(container.textContent).not.toContain("正在发送");
+
+    act(() => {
+      vi.advanceTimersByTime(130);
+    });
+
+    expect(container.querySelector("[data-phase='exit']")).toBeNull();
+    expect(container.querySelector("[data-phase='enter']")).toHaveTextContent(
+      "正在发送",
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+
+    expect(container.querySelector("[data-phase='exit']")).toBeNull();
+    expect(container.querySelector("[data-phase='enter']")).toHaveTextContent(
+      "正在发送",
+    );
+    vi.useRealTimers();
+  });
+
+  it("keeps the current exit text and enters the latest value when updates happen during exit", () => {
+    vi.useFakeTimers();
+    const { container, rerender } = render(
+      <AnimatedTextSwitch staggerMs={1} value="等待发送" />,
+    );
+
+    rerender(<AnimatedTextSwitch staggerMs={1} value="正在生成" />);
+
+    expect(container.querySelector("[data-phase='exit']")).toHaveTextContent(
+      "等待发送",
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(60);
+    });
+
+    rerender(<AnimatedTextSwitch staggerMs={1} value="正在发送" />);
+
+    expect(container.querySelector("[data-phase='exit']")).toHaveTextContent(
+      "等待发送",
+    );
+    expect(container.textContent).not.toContain("正在生成");
+    expect(container.textContent).not.toContain("正在发送");
+
+    act(() => {
+      vi.advanceTimersByTime(70);
+    });
+
+    expect(container.querySelector("[data-phase='exit']")).toBeNull();
+    expect(container.querySelector("[data-phase='enter']")).toHaveTextContent(
+      "正在发送",
+    );
+    expect(container.textContent).not.toContain("正在生成");
+    vi.useRealTimers();
+  });
+
+  it("finishes the current enter animation before switching to a pending value", () => {
+    vi.useFakeTimers();
+    const { container, rerender } = render(
+      <AnimatedTextSwitch staggerMs={1} value="等待发送" />,
+    );
+
+    rerender(<AnimatedTextSwitch staggerMs={1} value="正在生成" />);
+
+    act(() => {
+      vi.advanceTimersByTime(130);
+    });
+
+    expect(container.querySelector("[data-phase='enter']")).toHaveTextContent(
+      "正在生成",
+    );
+
+    rerender(<AnimatedTextSwitch staggerMs={1} value="正在发送" />);
+
+    expect(container.querySelector("[data-phase='enter']")).toHaveTextContent(
+      "正在生成",
+    );
+    expect(container.querySelector("[data-phase='exit']")).toBeNull();
+    expect(container.textContent).not.toContain("正在发送");
+
+    act(() => {
+      vi.advanceTimersByTime(170);
+    });
+
+    expect(container.querySelector("[data-phase='exit']")).toHaveTextContent(
+      "正在生成",
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(130);
+    });
+
+    expect(container.querySelector("[data-phase='exit']")).toBeNull();
+    expect(container.querySelector("[data-phase='enter']")).toHaveTextContent(
+      "正在发送",
+    );
+    vi.useRealTimers();
+  });
+
+  it("enables shiny text only after switch animation settles", () => {
+    vi.useFakeTimers();
+    const { container, rerender } = render(
+      <AnimatedTextSwitch
+        shiny
+        shinyDuration={1.1}
+        shinyShimmerWidth={72}
+        staggerMs={1}
+        value="等待发送"
+      />,
+    );
+
+    expect(container.querySelector("[data-phase='enter']")).toHaveClass(
+      "shiny-text",
+    );
+    expect(container.querySelector("[data-phase='enter']")).toHaveStyle({
+      "--shiny-text-duration": "1.1s",
+      "--shiny-text-shimmer-width": "72px",
+    });
+    expect(
+      container.querySelector("[data-phase='enter'] [data-slot='animated-text-switch-char']"),
+    ).toBeNull();
+    expect(container.querySelector("[data-phase='enter']")).toHaveTextContent(
+      "等待发送",
+    );
+
+    rerender(
+      <AnimatedTextSwitch
+        shiny
+        shinyDuration={1.1}
+        shinyShimmerWidth={72}
+        staggerMs={1}
+        value="正在发送"
+      />,
+    );
+
+    expect(container.querySelector("[data-phase='exit']")).not.toHaveClass(
+      "shiny-text",
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(130);
+    });
+
+    expect(container.querySelector("[data-phase='enter']")).not.toHaveClass(
+      "shiny-text",
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(350);
+    });
+
+    expect(container.querySelector("[data-phase='enter']")).toHaveClass(
+      "shiny-text",
+    );
+    expect(
+      container.querySelector("[data-phase='enter'] [data-slot='animated-text-switch-char']"),
+    ).toBeNull();
+    expect(container.querySelector("[data-phase='enter']")).toHaveTextContent(
+      "正在发送",
+    );
+    vi.useRealTimers();
   });
 
   it("uses source-matched active shadow without forcing underline tabs", () => {

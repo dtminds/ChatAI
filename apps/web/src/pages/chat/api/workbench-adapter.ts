@@ -36,11 +36,14 @@ export function adaptEmployee(dto: WorkbenchSubUserDto): EmployeeProfile {
 
 export function adaptAccount(dto: WorkbenchSeatDto, unreadCount = dto.unreadCount): Account {
   return {
-    aiHostingEnabled: dto.aiHostingEnabled,
+    seatAIHostingEnabled:
+      dto.seatAIHostingAuth === true && dto.fullAutoSwitch === true,
     avatarUrl: dto.avatar,
     bizStatus: dto.bizStatus,
     description: dto.description,
     expireTime: dto.expireTime,
+    seatAIHostingAuth: dto.seatAIHostingAuth,
+    fullAutoSwitch: dto.fullAutoSwitch,
     id: dto.seatId,
     lastMessageTime: dto.lastMessageTime,
     loginStatus: dto.loginStatus,
@@ -53,6 +56,8 @@ export function adaptAccount(dto: WorkbenchSeatDto, unreadCount = dto.unreadCoun
     name: dto.name,
     operator: dto.operatorName,
     phone: dto.phone,
+    semiAutoAuth: dto.semiAutoAuth,
+    semiAutoSwitch: dto.semiAutoSwitch,
     takenOverEmployeeId: dto.hostSubUserId,
     tone: buildAccountTone(dto.seatId),
     unreadCount,
@@ -65,9 +70,8 @@ export function adaptConversation(dto: WorkbenchConversationSummaryDto): Convers
 
   return {
     accountId: dto.seatId,
-    aiHosted: dto.aiHosted,
+    conversationAIHostingSwitch: dto.conversationAIHostingSwitch,
     bizStatus: dto.bizStatus ?? 0,
-    custodyMode: dto.custodyMode,
     createdAtMs: createdAt,
     customerAvatarUrl: dto.customerAvatar,
     customerId: dto.customerId,
@@ -105,6 +109,7 @@ export function adaptMessage(
   accountsById: Record<string, Account>,
   me?: EmployeeProfile,
 ): Message {
+  const createdAtMs = normalizeOptionalTimestamp(dto.createdAt);
   const sentAt = formatWorkbenchTimestamp(dto.createdAt);
   const updatedAtMs = normalizeOptionalTimestamp(dto.updatedAt);
   const status = adaptMessageStatus(dto.status);
@@ -120,6 +125,7 @@ export function adaptMessage(
         type: "revoke",
       },
       conversationId: dto.conversationId,
+      createdAtMs,
       failReason: dto.failReason,
       isRevoked: dto.isRevoked,
       msgid: dto.msgid,
@@ -142,6 +148,7 @@ export function adaptMessage(
         type: "system",
       },
       conversationId: dto.conversationId,
+      createdAtMs,
       failReason: dto.failReason,
       isRevoked: dto.isRevoked,
       msgid: dto.msgid,
@@ -191,6 +198,7 @@ export function adaptMessage(
     author: senderName,
     content,
     conversationId: dto.conversationId,
+    createdAtMs,
     isGroupConversation,
     isOwnMessage,
     failReason: dto.failReason,

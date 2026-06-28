@@ -63,7 +63,7 @@ type ConversationListPanelProps = {
   conversationViews?: Record<ChatMode, ConversationView>;
   composerDraftsByConversationId?: Record<string, ConversationComposerDraft>;
   conversations: Conversation[];
-  isAiHostingEnabled?: boolean;
+  isSeatAIHostingEnabled?: boolean;
   isConversationActionDisabled?: boolean;
   isConversationLoading?: boolean;
   onMarkConversationRead?: (conversationId: string) => void | Promise<void>;
@@ -85,7 +85,7 @@ export function ConversationListPanel({
   conversationViews,
   composerDraftsByConversationId = {},
   conversations,
-  isAiHostingEnabled = false,
+  isSeatAIHostingEnabled = false,
   isConversationActionDisabled = false,
   isConversationLoading = false,
   onMarkConversationRead,
@@ -147,14 +147,14 @@ export function ConversationListPanel({
         conversations,
         "single",
         viewsByMode.single,
-        isAiHostingEnabled,
+        isSeatAIHostingEnabled,
         activeMode === "single" ? retainedConversationIds : undefined,
       ),
     }),
     [
       activeMode,
       conversations,
-      isAiHostingEnabled,
+      isSeatAIHostingEnabled,
       retainedConversationIds,
       viewsByMode.group,
       viewsByMode.single,
@@ -297,7 +297,7 @@ export function ConversationListPanel({
               {CHAT_MODES.map((mode) => (
                 <ConversationModeTab
                   isActive={activeMode === mode}
-                  isAiHostingEnabled={isAiHostingEnabled}
+                  isSeatAIHostingEnabled={isSeatAIHostingEnabled}
                   key={mode}
                   mode={mode}
                   onSelectView={onSelectView}
@@ -407,17 +407,17 @@ export function ConversationListPanel({
 }
 
 const conversationModeTabClassName =
-  "rounded-none border-b-2 border-transparent px-0 py-2.5 text-[13px] font-medium text-muted-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none";
+  "rounded-none border-b-2 border-transparent px-0 py-2.5 text-[13px] font-medium text-muted-foreground focus-visible:ring-0 focus-visible:ring-offset-0 data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none";
 
 function ConversationModeTab({
   isActive,
-  isAiHostingEnabled,
+  isSeatAIHostingEnabled,
   mode,
   onSelectView,
   view,
 }: {
   isActive: boolean;
-  isAiHostingEnabled: boolean;
+  isSeatAIHostingEnabled: boolean;
   mode: ChatMode;
   onSelectView?: (view: ConversationView) => void | Promise<void>;
   view: ConversationView;
@@ -442,7 +442,7 @@ function ConversationModeTab({
           value={mode}
         >
           <ConversationModeTabLabel
-            isAiHostingEnabled={isAiHostingEnabled}
+            isSeatAIHostingEnabled={isSeatAIHostingEnabled}
             mode={mode}
             view={view}
           />
@@ -453,9 +453,9 @@ function ConversationModeTab({
           onValueChange={(value) => {
             void onSelectView?.(value as ConversationView);
           }}
-          value={resolveActiveConversationView(mode, view, isAiHostingEnabled)}
+          value={resolveActiveConversationView(mode, view, isSeatAIHostingEnabled)}
         >
-          {getConversationViewOptions(mode, isAiHostingEnabled).map((option) => (
+          {getConversationViewOptions(mode, isSeatAIHostingEnabled).map((option) => (
             <DropdownMenuRadioItem key={option.value} value={option.value}>
               {option.label}
             </DropdownMenuRadioItem>
@@ -467,16 +467,16 @@ function ConversationModeTab({
 }
 
 function ConversationModeTabLabel({
-  isAiHostingEnabled,
+  isSeatAIHostingEnabled,
   mode,
   view,
 }: {
-  isAiHostingEnabled: boolean;
+  isSeatAIHostingEnabled: boolean;
   mode: ChatMode;
   view: ConversationView;
 }) {
   const modeLabel = getConversationModeLabel(mode);
-  const selectedView = resolveActiveConversationView(mode, view, isAiHostingEnabled);
+  const selectedView = resolveActiveConversationView(mode, view, isSeatAIHostingEnabled);
   const viewLabel = selectedView === "all"
     ? ""
     : ` · ${getConversationViewLabel(selectedView)}`;
@@ -501,9 +501,9 @@ function getConversationModeLabel(mode: ChatMode) {
 function resolveActiveConversationView(
   mode: ChatMode,
   view: ConversationView,
-  isAiHostingEnabled: boolean,
+  isSeatAIHostingEnabled: boolean,
 ) {
-  const options = getConversationViewOptions(mode, isAiHostingEnabled);
+  const options = getConversationViewOptions(mode, isSeatAIHostingEnabled);
   return options.some((option) => option.value === view)
     ? view
     : DEFAULT_CONVERSATION_VIEW;

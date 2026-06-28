@@ -2,6 +2,19 @@ type WhereClause =
   | { type: "eq"; column: string; value: unknown }
   | { type: "or"; clauses: Array<{ column: string; operator: string; value: unknown }> };
 
+type QueryExecutionEvent = {
+  isCountQuery: boolean;
+  orderByCalls: Array<[string, string | undefined]>;
+  selectedAll: boolean;
+  selectedColumns: string[];
+  table: string;
+  type: "execute" | "executeTakeFirst";
+};
+
+type KbReadDbMockOptions = {
+  beforeExecute?: (event: QueryExecutionEvent) => Promise<void> | void;
+};
+
 function createExpressionBuilder() {
   const eb = ((column: string, operator: string, value: unknown) => ({
     column,
@@ -46,7 +59,7 @@ function matchesColumn(
   return true;
 }
 
-export function createKbReadDbMock() {
+export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
   const subUser = {
     id: 101,
     uid: 9001,
@@ -208,28 +221,70 @@ export function createKbReadDbMock() {
     },
     selectFrom(table: string) {
       const wheres: WhereClause[] = [];
+      const orderByCalls: Array<[string, string | undefined]> = [];
       let isCountQuery = false;
+      let selectedAll = false;
+      let selectedColumns: string[] = [];
 
       const filterRows = <TRow extends Record<string, unknown>>(rows: TRow[]) =>
         rows.filter((row) => wheres.every((where) => matchesWhere(row, where)));
+      const projectRows = <TRow extends Record<string, unknown>>(rows: TRow[]) => {
+        if (selectedAll || selectedColumns.length === 0) {
+          return rows;
+        }
+
+        return rows.map((row) =>
+          Object.fromEntries(selectedColumns.map((column) => [column, row[column]])),
+        );
+      };
 
       const builder = {
-        execute: async () => {
+        countResult: async () => {
+          let rows: Record<string, unknown>[] = [];
           if (table === "xy_wap_embed_agent_kb") {
-            return filterRows(kbs);
+            rows = filterRows(kbs);
+          } else if (table === "xy_wap_embed_agent_kb_doc") {
+            rows = filterRows(docs);
+          } else if (table === "xy_wap_embed_agent_kb_chunk") {
+            rows = filterRows(chunks);
+          }
+
+          return { total: rows.length };
+        },
+        execute: async () => {
+          await options.beforeExecute?.({
+            isCountQuery,
+            orderByCalls,
+            selectedAll,
+            selectedColumns,
+            table,
+            type: "execute",
+          });
+
+          if (table === "xy_wap_embed_agent_kb") {
+            return projectRows(filterRows(kbs));
           }
 
           if (table === "xy_wap_embed_agent_kb_doc") {
-            return filterRows(docs);
+            return projectRows(filterRows(docs));
           }
 
           if (table === "xy_wap_embed_agent_kb_chunk") {
-            return filterRows(chunks);
+            return projectRows(filterRows(chunks));
           }
 
           return [];
         },
         executeTakeFirst: async () => {
+          await options.beforeExecute?.({
+            isCountQuery,
+            orderByCalls,
+            selectedAll,
+            selectedColumns,
+            table,
+            type: "executeTakeFirst",
+          });
+
           if (table === "xy_wap_embed_sub_user") {
             return subUser;
           }
@@ -246,8 +301,7 @@ export function createKbReadDbMock() {
           }
 
           if (isCountQuery) {
-            const rows = await builder.execute();
-            return { total: rows.length };
+            return builder.countResult();
           }
 
           const rows = await builder.execute();
@@ -255,16 +309,28 @@ export function createKbReadDbMock() {
         },
         limit: () => builder,
         offset: () => builder,
-        orderBy: () => builder,
+        orderBy: (column: string, direction?: string) => {
+          orderByCalls.push([column, direction]);
+          return builder;
+        },
         select: (selection?: unknown) => {
           if (typeof selection === "function") {
             isCountQuery = true;
             return builder;
           }
 
+          if (Array.isArray(selection)) {
+            selectedAll = false;
+            selectedColumns = selection.map(String);
+          }
+
           return builder;
         },
-        selectAll: () => builder,
+        selectAll: () => {
+          selectedAll = true;
+          selectedColumns = [];
+          return builder;
+        },
         where(
           columnOrFn:
             | string

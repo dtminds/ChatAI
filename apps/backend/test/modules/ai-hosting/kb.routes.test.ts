@@ -27,11 +27,7 @@ describe("KB read routes", () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({
       data: {
-        createdAt: expect.any(String),
-        description: "用于新品上市培训",
         kbId: "2",
-        name: "新品培训知识",
-        updatedAt: expect.any(String),
       },
       success: true,
     });
@@ -66,6 +62,67 @@ describe("KB read routes", () => {
         },
       },
       success: true,
+    });
+  });
+
+  it("uses the authenticated uid without resolving the sub user for kb lists", async () => {
+    const subUserLookups: string[] = [];
+    const context = await createAuthenticatedKbApp({
+      beforeExecute: ({ table }) => {
+        if (table === "xy_wap_embed_sub_user") {
+          subUserLookups.push(table);
+        }
+      },
+    });
+    app = context.app;
+
+    const response = await app.inject({
+      headers: { authorization: context.authorization },
+      method: "GET",
+      url: "/api/server/ai-hosting/kbs",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(subUserLookups).toEqual([]);
+  });
+
+  it("rejects kb list queries longer than 32 characters", async () => {
+    const context = await createAuthenticatedKbApp();
+    app = context.app;
+
+    const response = await app.inject({
+      headers: { authorization: context.authorization },
+      method: "GET",
+      url: `/api/server/ai-hosting/kbs?query=${"a".repeat(33)}`,
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      error: {
+        code: "BAD_REQUEST",
+        message: "搜索关键词不能超过 32 个字符",
+      },
+      success: false,
+    });
+  });
+
+  it("rejects kb doc list queries longer than 32 characters", async () => {
+    const context = await createAuthenticatedKbApp();
+    app = context.app;
+
+    const response = await app.inject({
+      headers: { authorization: context.authorization },
+      method: "GET",
+      url: `/api/server/ai-hosting/kbs/1/docs?query=${"a".repeat(33)}`,
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      error: {
+        code: "BAD_REQUEST",
+        message: "搜索关键词不能超过 32 个字符",
+      },
+      success: false,
     });
   });
 
@@ -199,7 +256,9 @@ describe("KB read routes", () => {
   });
 });
 
-async function createAuthenticatedKbApp() {
+async function createAuthenticatedKbApp(
+  options: Parameters<typeof createKbReadDbMock>[0] = {},
+) {
   process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
   const app = await buildMockedApp();
   const token = app.jwt.sign({
@@ -207,9 +266,10 @@ async function createAuthenticatedKbApp() {
     sessionId: "501",
     sessionVersion: 1,
     subUserId: "101",
+    uid: 9001,
   });
 
-  app.db = createKbReadDbMock() as never;
+  app.db = createKbReadDbMock(options) as never;
 
   return {
     app,

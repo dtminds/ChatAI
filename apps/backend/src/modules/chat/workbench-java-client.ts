@@ -148,6 +148,13 @@ type JavaRevokeMessageResponse = {
 };
 
 export type WorkbenchJavaClient = {
+  changeConversationFullAuto(input: {
+    change: 1 | 2;
+    conversationId: string;
+    operatorId: number;
+    platform: number;
+    uid: number;
+  }): Promise<void>;
   listUserHistoryAnswers(input: {
     chatType: number;
     msgIds: number[];
@@ -308,6 +315,22 @@ export function createWorkbenchJavaClient(
   const token = process.env.JAVA_INTERNAL_API_TOKEN;
 
   return {
+    changeConversationFullAuto(input) {
+      return postJavaEnvelope<boolean>(
+        baseUrl,
+        token,
+        "/third-internal/wap-embed/conversation/change-full-auto",
+        {
+          change: input.change,
+          conversationId: Number(input.conversationId),
+          operatorId: input.operatorId,
+          platform: input.platform,
+          uid: input.uid,
+        },
+        logger,
+        "change-conversation-full-auto",
+      ).then(() => undefined);
+    },
     listUserHistoryAnswers(input) {
       return postJavaEnvelope<unknown>(
         baseUrl,

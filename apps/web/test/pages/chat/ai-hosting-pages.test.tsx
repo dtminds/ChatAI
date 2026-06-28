@@ -159,6 +159,7 @@ const mockAgentDetail = {
   modelId: "11",
   name: "护肤小助理",
   promptConfig: {
+    availableKbIds: [],
     conditionLogic: "如果客户咨询成分，那么说明功效",
     replyStyle: {
       length: "简洁",
@@ -313,11 +314,7 @@ describe("AI hosting pages", () => {
       });
 
       return {
-        createdAt: new Date(created.createdAt).toISOString(),
-        description: created.description,
         kbId: created.id,
-        name: created.name,
-        updatedAt: new Date(created.lastUpdatedAt).toISOString(),
       };
     });
     vi.mocked(kbService.getKb).mockImplementation(async (kbId) => createMockKbItem(kbId));
@@ -328,7 +325,7 @@ describe("AI hosting pages", () => {
       createMockKbDocDetail(docId),
     );
     vi.mocked(kbService.listKbDocChunks).mockImplementation(async (docId, params) =>
-      createMockKbDocChunksResponse(docId, params?.query),
+      createMockKbDocChunksResponse(docId, params?.title),
     );
     mockImageDimensions = { height: 800, width: 800 };
     Object.defineProperty(URL, "createObjectURL", {
@@ -1167,14 +1164,14 @@ describe("AI hosting pages", () => {
         {
           createdAt: "2026-06-20T08:00:00.000Z",
           description: "",
-          kbId: "kb-real-skincare",
+          kbId: "1",
           name: "真实护肤知识库",
           updatedAt: "2026-06-20T08:00:00.000Z",
         },
         {
           createdAt: "2026-06-20T08:00:00.000Z",
           description: "",
-          kbId: "kb-real-makeup",
+          kbId: "3",
           name: "真实彩妆知识库",
           updatedAt: "2026-06-20T08:00:00.000Z",
         },
@@ -1228,8 +1225,9 @@ describe("AI hosting pages", () => {
       expect(agentService.createAiHostingAgent).toHaveBeenCalledWith(
         expect.objectContaining({
           promptConfig: expect.objectContaining({
+            availableKbIds: [3],
             conditionLogic:
-              "111 {{kb:kb-real-makeup|%E7%9C%9F%E5%AE%9E%E5%BD%A9%E5%A6%86%E7%9F%A5%E8%AF%86%E5%BA%93}} ",
+              '111 <resource type="knowledge_base" kbId="3" name="真实彩妆知识库" /> ',
           }),
         }),
       );
@@ -1292,6 +1290,10 @@ describe("AI hosting pages", () => {
     renderWithRoute("/chat/ai-hosting/kb", <KbListPage />);
 
     expect(await screen.findByRole("heading", { level: 1, name: "知识库" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "搜索知识库" })).toHaveAttribute(
+      "maxLength",
+      "32",
+    );
     expect(screen.getByRole("button", { name: "创建知识库" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "华为产品知识" })).toHaveAttribute(
       "href",
@@ -1320,7 +1322,10 @@ describe("AI hosting pages", () => {
     expect(screen.getByLabelText("知识库管理头部").firstElementChild).toHaveAccessibleName(
       "返回知识库",
     );
-    expect(screen.getByRole("textbox", { name: "搜索知识" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "搜索知识" })).toHaveAttribute(
+      "maxLength",
+      "32",
+    );
     await userEvent.click(screen.getByRole("button", { name: "添加知识" }));
     expect(screen.getByRole("menuitem", { name: /问答/ })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: /图片/ })).toBeInTheDocument();

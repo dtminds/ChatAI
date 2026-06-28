@@ -6,6 +6,7 @@ import {
   AiHostingAgentSaveRequestSchema,
   AiHostingAgentSettingsSaveRequestSchema,
   AiHostingModelListResponseSchema,
+  KbCreateResponseSchema,
 } from "../src";
 
 describe("AI hosting DTOs", () => {
@@ -15,6 +16,7 @@ describe("AI hosting DTOs", () => {
         modelId: "11",
         name: "护肤小助理",
         promptConfig: {
+          availableKbIds: [1, 3],
           conditionLogic: "如果客户咨询成分，那么说明功效",
           replyStyle: {
             length: "简洁",
@@ -33,6 +35,7 @@ describe("AI hosting DTOs", () => {
       modelId: "11",
       name: "护肤小助理",
       promptConfig: {
+        availableKbIds: [1, 3],
         conditionLogic: "如果客户咨询成分，那么说明功效",
         replyStyle: {
           length: "简洁",
@@ -80,6 +83,7 @@ describe("AI hosting DTOs", () => {
       Value.Check(AiHostingAgentSettingsSaveRequestSchema, {
         modelId: "11",
         promptConfig: {
+          availableKbIds: [1, 3],
           conditionLogic: "如果客户咨询成分，那么说明功效",
           replyStyle: {
             length: "简洁",
@@ -96,6 +100,7 @@ describe("AI hosting DTOs", () => {
         modelId: "11",
         name: "护肤小助理",
         promptConfig: {
+          availableKbIds: [1, 3],
           conditionLogic: "",
           replyStyle: {
             length: "简洁",
@@ -124,6 +129,7 @@ describe("AI hosting DTOs", () => {
         modelId: "11",
         name: "护肤小助理",
         promptConfig: {
+          availableKbIds: [1, 3],
           conditionLogic: "如果客户咨询成分，那么说明功效",
           replyStyle: {
             length: "简洁",
@@ -153,5 +159,18 @@ describe("AI hosting DTOs", () => {
         ],
       }),
     ).toBe(true);
+  });
+
+  it("keeps kb creation response command-shaped", () => {
+    expect(Value.Check(KbCreateResponseSchema, { kbId: "2" })).toBe(true);
+    expect(
+      Value.Check(KbCreateResponseSchema, {
+        createdAt: "2026-06-27T08:00:00.000Z",
+        description: "用于新品上市培训",
+        kbId: "2",
+        name: "新品培训知识",
+        updatedAt: "2026-06-27T08:00:00.000Z",
+      }),
+    ).toBe(false);
   });
 });

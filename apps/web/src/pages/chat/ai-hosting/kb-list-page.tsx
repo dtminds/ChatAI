@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Add01Icon, Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { KB_SEARCH_QUERY_MAX_LENGTH } from "@chatai/contracts";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,9 +28,11 @@ import {
   resolveTablePagination,
   TablePagination,
 } from "@/components/ui/table-pagination";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { Textarea } from "@/components/ui/textarea";
 import { AiHostingLayout, AiHostingPageHeader } from "./ai-hosting-layout";
 import { KbTableLoadingRow } from "./kb-components/kb-table-loading-row";
+import { TableOverflowTooltip } from "./kb-components/shared";
 import { createKb, listKbs, toKbListViewItem } from "./api/kb-service";
 import type { KbListViewItem } from "./kb-types";
 
@@ -191,6 +194,7 @@ export function KbListPage() {
               <Input
                 aria-label="搜索知识库"
                 className="h-10 rounded-[8px] pl-9"
+                maxLength={KB_SEARCH_QUERY_MAX_LENGTH}
                 onChange={(event) => setSearchQuery(event.target.value)}
                 placeholder="搜索知识库"
                 value={searchQuery}
@@ -204,7 +208,8 @@ export function KbListPage() {
           </div>
 
           <div>
-            <Table className="min-w-[1120px] table-fixed">
+            <TooltipProvider>
+              <Table className="min-w-[1120px] table-fixed">
               <colgroup>
                 <col className="w-[240px]" />
                 <col className="w-[360px]" />
@@ -229,18 +234,18 @@ export function KbListPage() {
                 ) : pagedItems.length > 0 ? (
                   pagedItems.map((item) => (
                     <TableRow key={item.id}>
-                      <TableCell
-                        className="px-4 py-4 font-medium text-foreground"
-                        title={item.name}
-                      >
-                        <TableCellContent>
-                          <Link
-                            className="truncate text-foreground no-underline outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
-                            to={`/chat/ai-hosting/kb/${item.id}`}
+                      <TableCell className="px-4 py-4 font-medium text-foreground">
+                        <Link
+                          className="block min-w-0 max-w-full text-foreground no-underline outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+                          to={`/chat/ai-hosting/kb/${item.id}`}
+                        >
+                          <TableOverflowTooltip
+                            className="font-medium text-foreground"
+                            tooltip={item.name}
                           >
                             {item.name}
-                          </Link>
-                        </TableCellContent>
+                          </TableOverflowTooltip>
+                        </Link>
                       </TableCell>
                       <TableCell
                         className="px-4 py-4 text-muted-foreground"
@@ -278,6 +283,7 @@ export function KbListPage() {
                 )}
               </TableBody>
             </Table>
+            </TooltipProvider>
             <TablePagination
               onPageChange={setCurrentPage}
               page={activePage}

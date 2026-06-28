@@ -17,6 +17,7 @@ async function createAuthenticatedApp() {
     sessionId: "501",
     sessionVersion: 1,
     subUserId: "101",
+    uid: 9001,
   });
   app.db = createSessionDbMock({
     id: "501",
@@ -39,6 +40,7 @@ async function createAuthenticatedAppWithRole(role: "admin" | "operator" | "view
     sessionId: "501",
     sessionVersion: 1,
     subUserId: "101",
+    uid: 9001,
   });
   app.db = createSessionDbMock({
     id: "501",
@@ -63,6 +65,7 @@ async function createAuthenticatedSettingsApp(
     sessionId: "501",
     sessionVersion: 1,
     subUserId: "101",
+    uid: 9001,
   });
   app.db = createSettingsDbMock({
     account: "agent001",
@@ -379,6 +382,7 @@ describe("backend app", () => {
       sessionId: "501",
       sessionVersion: 1,
       subUserId: "101",
+      uid: 9001,
     });
 
     await app.close();
@@ -392,6 +396,7 @@ describe("backend app", () => {
       sessionId: "501",
       sessionVersion: 1,
       subUserId: "101",
+      uid: 9001,
     });
     app.db = createSessionDbMock({
       id: "501",
@@ -663,6 +668,7 @@ describe("backend app", () => {
       sessionId: "501",
       sessionVersion: 1,
       subUserId: "101",
+      uid: 9001,
     });
 
     await app.close();
@@ -717,6 +723,7 @@ describe("backend app", () => {
       sessionId: "501",
       sessionVersion: 2,
       subUserId: "101",
+      uid: 9001,
     });
 
     const oldAccess = await app.inject({

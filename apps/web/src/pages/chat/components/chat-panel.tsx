@@ -3,7 +3,6 @@ import type {
   ReactNode,
   RefObject,
 } from "react";
-import { useEffect, useState } from "react";
 import { Cancel01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { LexicalEditor } from "lexical";
@@ -13,7 +12,7 @@ import {
   ChatComposer,
   type ComposerMaterialLibraryBizType,
 } from "@/pages/chat/components/chat-composer";
-import { ChatCustodyStatusBar } from "@/pages/chat/components/chat-custody-status-bar";
+import { ChatAgentHostingStatusBar } from "@/pages/chat/components/chat-agent-hosting-status-bar";
 import { ChatHeader } from "@/pages/chat/components/chat-header";
 import { ChatMessagePanel } from "@/pages/chat/components/chat-message-panel";
 import { CustomerSidePanel } from "@/pages/chat/components/customer-side-panel";
@@ -35,9 +34,9 @@ import type {
 } from "@chatai/contracts";
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
 import {
-  resolveCustodyHostingStatus,
-  type CustodyHostingStatus,
-} from "@/pages/chat/lib/chat-custody-status";
+  resolveAgentHostingStatus,
+  type AgentHostingStatus,
+} from "@/pages/chat/lib/chat-agent-hosting-status";
 import type { SmartReplySendPayload } from "@/pages/chat/api/smart-reply-adapter";
 
 type ChatPanelProps = {
@@ -45,8 +44,17 @@ type ChatPanelProps = {
   accountAvatarUrl?: string;
   activeConversation?: Conversation;
   activeHistoryStatus: "idle" | "loading" | "error";
+  canConfigureSeatAIHosting?: boolean;
+  canConfigureSeatSemiAuto?: boolean;
+  canToggleConversationAIHosting?: boolean;
   canCollectMaterialActions?: boolean;
   canSendMessage: boolean;
+  fullAutoActionPending?: boolean;
+  seatAgentModeActionPending?: boolean;
+  fullAutoDisplayStatus?: AgentHostingStatus;
+  seatAIHostingEnabled?: boolean;
+  conversationAIHostingEnabled?: boolean;
+  seatSemiAutoEnabled?: boolean;
   composerPlaceholder: string;
   customer?: CustomerProfile;
   /** 侧栏 iframe `tos`：当前坐席是否已接管账号 */
@@ -91,8 +99,10 @@ type ChatPanelProps = {
   onEmojiPickerOpenChange: (isOpen: boolean) => void;
   onEnterBehaviorChange: (behavior: InputEnterBehavior) => void;
   onCancelFileUpload: (uploadId: string) => void;
-  onCancelCustody?: () => void;
-  onEnableCustody?: () => void;
+  onCancelAgentHosting?: () => void;
+  onEnableAgentHosting?: () => void;
+  onChangeSeatAgentMode?: (mode: "full" | "semi", enabled: boolean) => void;
+  onChangeFullAuto?: (enabled: boolean) => void;
   collectedExpressions?: WorkbenchMaterialCollectionItemDto[];
   hasMoreCollectedExpressions?: boolean;
   isCollectedExpressionLoadingMore?: boolean;
@@ -154,8 +164,17 @@ export function ChatPanel({
   accountAvatarUrl,
   activeConversation,
   activeHistoryStatus,
+  canConfigureSeatAIHosting = false,
+  canConfigureSeatSemiAuto = false,
+  canToggleConversationAIHosting = false,
   canCollectMaterialActions = true,
   canSendMessage,
+  fullAutoActionPending = false,
+  seatAgentModeActionPending = false,
+  fullAutoDisplayStatus,
+  seatAIHostingEnabled = false,
+  conversationAIHostingEnabled = false,
+  seatSemiAutoEnabled = false,
   composerPlaceholder,
   customer,
   sidebarIframeTos,
@@ -181,8 +200,10 @@ export function ChatPanel({
   onEmojiPickerOpenChange,
   onEnterBehaviorChange,
   onCancelFileUpload,
-  onCancelCustody,
-  onEnableCustody,
+  onCancelAgentHosting,
+  onEnableAgentHosting,
+  onChangeSeatAgentMode,
+  onChangeFullAuto,
   collectedExpressions,
   hasMoreCollectedExpressions,
   isCollectedExpressionLoadingMore,
@@ -232,23 +253,15 @@ export function ChatPanel({
   composerRef,
   workbenchBodyRef,
 }: ChatPanelProps) {
-  const [custodyStatusPreview, setCustodyStatusPreview] =
-    useState<CustodyHostingStatus | null>(null);
-  const resolvedCustodyHostingStatus = resolveCustodyHostingStatus(activeConversation);
-  const displayedCustodyHostingStatus =
-    import.meta.env.DEV && custodyStatusPreview
-      ? custodyStatusPreview
-      : resolvedCustodyHostingStatus;
-  const custodyHostingStatus =
-    displayedCustodyHostingStatus === "exited"
+  const resolvedAgentHostingStatus =
+    fullAutoDisplayStatus ??
+    resolveAgentHostingStatus(activeConversation, conversationAIHostingEnabled);
+  const agentHostingStatus =
+    !conversationAIHostingEnabled || resolvedAgentHostingStatus === "exited"
       ? null
-      : displayedCustodyHostingStatus;
+      : resolvedAgentHostingStatus;
   const hasActiveFileUpload = fileUploadQueue.length > 0;
   const hasActiveConversation = activeConversation !== undefined;
-
-  useEffect(() => {
-    setCustodyStatusPreview(null);
-  }, [activeConversation?.id]);
 
   return (
     <section className="flex min-h-0 min-w-0 flex-col bg-surface">
@@ -326,64 +339,67 @@ export function ChatPanel({
                 ) : null}
 
                 <div className="relative overflow-visible bg-surface pb-3">
-                  {custodyHostingStatus ? (
+                  {agentHostingStatus ? (
                     <div
-                      className="absolute bottom-9 left-1/2 z-30 w-4/5 max-w-[520px] -translate-x-1/2"
-                      data-testid="chat-custody-status-bar-anchor"
+                      className="absolute bottom-12 left-1/2 z-30 w-4/5 max-w-[520px] -translate-x-1/2"
+                      data-testid="chat-agent-hosting-status-bar-anchor"
                     >
-                      <ChatCustodyStatusBar
-                        onCancel={onCancelCustody}
-                        onEnable={onEnableCustody}
-                        status={custodyHostingStatus}
+                      <ChatAgentHostingStatusBar
+                        onCancel={onCancelAgentHosting}
+                        onEnable={onEnableAgentHosting}
+                        status={agentHostingStatus}
                       />
                     </div>
                   ) : null}
                   <div className="px-4 pt-3">
-                  <ChatComposer
-                    canSendMessage={canSendMessage}
-                    draft={draft}
-                    hasActiveFileUpload={hasActiveFileUpload}
-                    currentSeatThirdUserId={activeConversation.thirdUserId}
-                    groupMembers={groupMembers}
-                    isGroupConversation={activeConversation.mode === "group"}
-                    inputEnterBehavior={inputEnterBehavior}
-                    isEmojiPickerOpen={isEmojiPickerOpen}
-                    isSending={isSendingDraft}
-                    isHistoryPanelOpen={isHistoryPanelOpen}
-                    collectedExpressions={collectedExpressions}
-                    hasMoreCollectedExpressions={hasMoreCollectedExpressions}
-                    isCollectedExpressionLoadingMore={
-                      isCollectedExpressionLoadingMore
-                    }
-                    sendingCollectedExpressionId={sendingCollectedExpressionId}
-                    onClearQuotedMessage={onClearQuotedMessage}
-                    onDeleteCollectedExpression={onDeleteCollectedExpression}
-                    onDraftChange={onDraftChange}
-                    onEmojiPickerOpenChange={onEmojiPickerOpenChange}
-                    onEnterBehaviorChange={onEnterBehaviorChange}
-                    onFileSelect={onFileSelect}
-                    onLoadMoreCollectedExpressions={
-                      onLoadMoreCollectedExpressions
-                    }
-                    onOpenCollectedExpressions={onOpenCollectedExpressions}
-                    onOpenMaterialLibrary={onOpenMaterialLibrary ?? noop}
-                    onOpenHistory={onOpenHistory}
-                    onSelectCollectedExpression={onSelectCollectedExpression}
-                    onSegmentsChange={onComposerSegmentsChange}
-                    onSendDraft={onSendDraft}
-                    onTopCollectedExpression={onTopCollectedExpression}
-                    placeholder={composerPlaceholder}
-                    quotedMessage={quotedMessage}
-                    custodyStatusPreview={
-                      import.meta.env.DEV
-                        ? {
-                            activeStatus: displayedCustodyHostingStatus,
-                            onSelectStatus: setCustodyStatusPreview,
-                          }
-                        : undefined
-                    }
-                    composerRef={composerRef}
-                  />
+                    <ChatComposer
+                      canConfigureSeatAIHosting={canConfigureSeatAIHosting}
+                      canConfigureSeatSemiAuto={canConfigureSeatSemiAuto}
+                      canToggleConversationAIHosting={canToggleConversationAIHosting}
+                      canSendMessage={canSendMessage}
+                      draft={draft}
+                      fullAutoActionPending={fullAutoActionPending}
+                      seatAgentModeActionPending={seatAgentModeActionPending}
+                      hasActiveFileUpload={hasActiveFileUpload}
+                      currentSeatThirdUserId={activeConversation.thirdUserId}
+                      groupMembers={groupMembers}
+                      hidePlaceholder={!!agentHostingStatus}
+                      isGroupConversation={activeConversation.mode === "group"}
+                      inputEnterBehavior={inputEnterBehavior}
+                      isEmojiPickerOpen={isEmojiPickerOpen}
+                      isSending={isSendingDraft}
+                      isHistoryPanelOpen={isHistoryPanelOpen}
+                      seatAIHostingEnabled={seatAIHostingEnabled}
+                      conversationAIHostingEnabled={conversationAIHostingEnabled}
+                      seatSemiAutoEnabled={seatSemiAutoEnabled}
+                      collectedExpressions={collectedExpressions}
+                      hasMoreCollectedExpressions={hasMoreCollectedExpressions}
+                      isCollectedExpressionLoadingMore={
+                        isCollectedExpressionLoadingMore
+                      }
+                      sendingCollectedExpressionId={sendingCollectedExpressionId}
+                      onClearQuotedMessage={onClearQuotedMessage}
+                      onDeleteCollectedExpression={onDeleteCollectedExpression}
+                      onDraftChange={onDraftChange}
+                      onEmojiPickerOpenChange={onEmojiPickerOpenChange}
+                      onEnterBehaviorChange={onEnterBehaviorChange}
+                      onFileSelect={onFileSelect}
+                      onChangeSeatAgentMode={onChangeSeatAgentMode ?? noopChangeSeatAgentMode}
+                      onChangeFullAuto={onChangeFullAuto ?? noopChangeFullAuto}
+                      onLoadMoreCollectedExpressions={
+                        onLoadMoreCollectedExpressions
+                      }
+                      onOpenCollectedExpressions={onOpenCollectedExpressions}
+                      onOpenMaterialLibrary={onOpenMaterialLibrary ?? noop}
+                      onOpenHistory={onOpenHistory}
+                      onSelectCollectedExpression={onSelectCollectedExpression}
+                      onSegmentsChange={onComposerSegmentsChange}
+                      onSendDraft={onSendDraft}
+                      onTopCollectedExpression={onTopCollectedExpression}
+                      placeholder={composerPlaceholder}
+                      quotedMessage={quotedMessage}
+                      composerRef={composerRef}
+                    />
                   </div>
                 </div>
               </div>
@@ -510,3 +526,7 @@ function FileUploadQueueBar({
 }
 
 function noop() {}
+
+function noopChangeSeatAgentMode() {}
+
+function noopChangeFullAuto() {}

@@ -320,6 +320,65 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
+  it("keeps loading smart reply recommendations for full-auto conversations", async () => {
+    const javaClient = createJavaClient();
+    vi.mocked(javaClient.listUserHistoryAnswers).mockResolvedValue({
+      suggestions: [
+        {
+          assistantName: "智能助手",
+          content: "推荐回复 7",
+          messageId: "7",
+          pollComplete: true,
+        },
+      ],
+    });
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "101",
+          thirdExternalUserId: "external-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+        }),
+        listMessages: vi.fn().mockResolvedValue({
+          filteredCount: 0,
+          hasMore: false,
+          messages: [createMessageDto({ senderType: "customer", seq: 7 })],
+          scannedCount: 1,
+          smartReplyEnabled: true,
+          smartReplyScope: {
+            chatType: 1,
+            thirdExternalId: "external-001",
+            thirdUserId: "seat-user-001",
+            uid: 9001,
+          },
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(service.getMessages("101", "88", { limit: 10 })).resolves.toMatchObject({
+      smartReplyEnabled: true,
+      smartReplies: [
+        {
+          content: "推荐回复 7",
+          messageId: "7",
+        },
+      ],
+    });
+    expect(javaClient.listUserHistoryAnswers).toHaveBeenCalledWith({
+      chatType: 1,
+      msgIds: [7],
+      thirdExternalId: "external-001",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
+  });
+
   it("loads page smart replies only for raw message types that can trigger recommendations", async () => {
     const javaClient = createJavaClient();
     const service = new MysqlWorkbenchService(
@@ -1427,6 +1486,233 @@ describe("MysqlWorkbenchService", () => {
       platform: 5,
       uid: 9001,
     });
+  });
+
+  it("changes conversation full-auto through Java after operable conversation check", async () => {
+    const javaClient = createJavaClient();
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "101",
+          uid: 9001,
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.changeConversationFullAuto("101", "88", { enabled: true }),
+    ).resolves.toEqual({
+      conversationAIHostingSwitch: true,
+      conversationId: "88",
+      seatId: "12",
+    });
+    expect(javaClient.changeConversationFullAuto).toHaveBeenCalledWith({
+      change: 1,
+      conversationId: "88",
+      operatorId: 101,
+      platform: 5,
+      uid: 9001,
+    });
+  });
+
+  it("updates the taken-over seat agent mode switch through Node storage", async () => {
+    const javaClient = createJavaClient();
+    const updateSeatAgentModeSwitch = vi.fn().mockResolvedValue({
+      fullAutoSwitch: true,
+      seatId: "12",
+      semiAutoSwitch: false,
+    });
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getSeatOperateScope: vi.fn().mockResolvedValue({
+          hostSubUserId: "101",
+          platform: 5,
+          seatId: "12",
+          semiAutoAuth: true,
+          uid: 9001,
+        }),
+        updateSeatAgentModeSwitch,
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.updateSeatAgentModeSwitch("101", "12", {
+        enabled: false,
+        mode: "semi",
+      }),
+    ).resolves.toEqual({
+      fullAutoSwitch: true,
+      seatId: "12",
+      semiAutoSwitch: false,
+    });
+    expect(updateSeatAgentModeSwitch).toHaveBeenCalledWith({
+      enabled: false,
+      mode: "semi",
+      platform: 5,
+      seatId: "12",
+      uid: 9001,
+    });
+  });
+
+  it("rejects seat agent mode switch changes when the seat is not taken over", async () => {
+    const javaClient = createJavaClient();
+    const updateSeatAgentModeSwitch = vi.fn();
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getSeatOperateScope: vi.fn().mockResolvedValue({
+          hostSubUserId: "202",
+          platform: 5,
+          seatId: "12",
+          uid: 9001,
+        }),
+        updateSeatAgentModeSwitch,
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.updateSeatAgentModeSwitch("101", "12", {
+        enabled: true,
+        mode: "full",
+      }),
+    ).rejects.toMatchObject({
+      code: "SEAT_NOT_TAKEN_OVER",
+      statusCode: 403,
+    });
+    expect(updateSeatAgentModeSwitch).not.toHaveBeenCalled();
+  });
+
+  it("rejects seat agent mode switch changes when the mode is not authorized", async () => {
+    const javaClient = createJavaClient();
+    const updateSeatAgentModeSwitch = vi.fn();
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getSeatOperateScope: vi.fn().mockResolvedValue({
+          seatAIHostingAuth: false,
+          hostSubUserId: "101",
+          platform: 5,
+          seatId: "12",
+          semiAutoAuth: false,
+          uid: 9001,
+        }),
+        updateSeatAgentModeSwitch,
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.updateSeatAgentModeSwitch("101", "12", {
+        enabled: true,
+        mode: "full",
+      }),
+    ).rejects.toMatchObject({
+      code: "SEAT_AGENT_MODE_UNAUTHORIZED",
+      statusCode: 403,
+    });
+    await expect(
+      service.updateSeatAgentModeSwitch("101", "12", {
+        enabled: true,
+        mode: "semi",
+      }),
+    ).rejects.toMatchObject({
+      code: "SEAT_AGENT_MODE_UNAUTHORIZED",
+      statusCode: 403,
+    });
+    expect(updateSeatAgentModeSwitch).not.toHaveBeenCalled();
+  });
+
+  it("rejects full-auto changes when the conversation seat is not taken over by the current sub-user", async () => {
+    const javaClient = createJavaClient();
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "202",
+          uid: 9001,
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.changeConversationFullAuto("101", "88", { enabled: true }),
+    ).rejects.toMatchObject({
+      code: "SEAT_NOT_TAKEN_OVER",
+      statusCode: 403,
+    });
+    expect(javaClient.changeConversationFullAuto).not.toHaveBeenCalled();
+  });
+
+  it("loads full-auto answer status for accessible single conversations", async () => {
+    const javaClient = createJavaClient();
+    const getLatestFullAutoAnswerStatus = vi.fn().mockResolvedValue({
+      genStatus: 1,
+      recordId: "27",
+      sendStatus: 0,
+    });
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          thirdExternalUserId: "external-001",
+          thirdGroupId: undefined,
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+        }),
+        getLatestFullAutoAnswerStatus,
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(service.getFullAutoAnswerStatus("101", "88")).resolves.toEqual({
+      genStatus: 1,
+      recordId: "27",
+      sendStatus: 0,
+    });
+    expect(getLatestFullAutoAnswerStatus).toHaveBeenCalledWith({
+      thirdExternalUserId: "external-001",
+      thirdUserId: "seat-user-001",
+      uid: 9001,
+    });
+  });
+
+  it("does not load full-auto answer status for group conversations", async () => {
+    const javaClient = createJavaClient();
+    const getLatestFullAutoAnswerStatus = vi.fn();
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          thirdExternalUserId: undefined,
+          thirdGroupId: "group-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+        }),
+        getLatestFullAutoAnswerStatus,
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(service.getFullAutoAnswerStatus("101", "88")).resolves.toEqual({});
+    expect(getLatestFullAutoAnswerStatus).not.toHaveBeenCalled();
   });
 
   it("rejects delete when the conversation seat is not taken over by the current sub-user", async () => {
@@ -6633,6 +6919,7 @@ function createMessageDto(input: {
 
 function createJavaClient(): WorkbenchJavaClient {
   return {
+    changeConversationFullAuto: vi.fn().mockResolvedValue(undefined),
     createConversation: vi.fn(),
     deleteConversation: vi.fn().mockResolvedValue(undefined),
     downloadMsgFile: vi.fn().mockResolvedValue(undefined),

@@ -1524,6 +1524,10 @@ describe("Chat settings pages", () => {
     expect(screen.getByText("同步失败：企微素材库暂时不可用")).toBeInTheDocument();
     expect(screen.getByText("导入进度")).toBeInTheDocument();
     expect(screen.getByText("加载占位")).toBeInTheDocument();
+    expect(screen.getByText("文字切换")).toBeInTheDocument();
+    expect(screen.getByLabelText("文字切换示例")).toHaveTextContent(
+      "Agent 正在查看消息",
+    );
     expect(screen.getByRole("navigation", { name: "设置路径" })).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "分页" })).toBeInTheDocument();
     expect(screen.getByRole("slider", { name: "质检抽样比例" })).toBeInTheDocument();

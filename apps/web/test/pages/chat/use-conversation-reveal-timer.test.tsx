@@ -16,7 +16,7 @@ function RevealTimerHarness({
 function createConversation(id: string, createdAtMs: number): Conversation {
   return {
     accountId: "account-1",
-    custodyMode: "semi",
+    conversationAIHostingSwitch: false,
     createdAtMs,
     customerAvatarUrl: "",
     customerId: `customer-${id}`,

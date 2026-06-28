@@ -80,7 +80,6 @@ export type WorkbenchConversationPage = {
   messages: Message[];
   nextBeforeSeq?: number;
   skippedHiddenCount: number;
-  smartReplyEnabled?: boolean;
   smartReplies: Record<string, SmartReplySuggestion>;
 };
 
@@ -349,7 +348,6 @@ export async function loadConversationMessagesPage(
     messages,
     nextBeforeSeq: page.nextBeforeSeq,
     skippedHiddenCount: page.filteredCount,
-    smartReplyEnabled: page.smartReplyEnabled,
     smartReplies: adaptSmartReplySuggestions(page.smartReplies ?? []),
   };
 }

@@ -132,9 +132,9 @@ describe("ChatWorkbenchPage render scope", () => {
     await waitFor(() => expect(chatPanelRenderMock).toHaveBeenCalled());
     act(() => {
       useWorkbenchStore.setState((state) => ({
-        smartReplyEnabledByConversationId: {
-          ...state.smartReplyEnabledByConversationId,
-          "conv-001": false,
+        smartReplyLastPolledAtByConversationId: {
+          ...state.smartReplyLastPolledAtByConversationId,
+          "conv-001": Date.now(),
         },
       }));
     });

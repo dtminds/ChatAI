@@ -51,6 +51,8 @@ export type Account = {
   lastMessageTime?: number;
   loginStatus?: "online" | "offline";
   takenOverEmployeeId?: string;
+  /** 席位 AI 话术推荐能力是否开启，对应 `semiAutoAuth && semiAutoSwitch` */
+  seatAIAssistantEnabled?: boolean;
   /** 席位业务状态：1 已绑定，0 已注销 */
   bizStatus?: number;
   /** 过期时间戳，单位：秒 */
@@ -315,6 +317,7 @@ export type ChatMessage = BaseMessage & {
   role: "customer" | "agent";
   sender: MessageSender;
   isGroupConversation?: boolean;
+  isAgentMessage?: boolean;
   isOwnMessage?: boolean;
   senderDisplayName?: string;
   content:

@@ -1658,6 +1658,8 @@ export function createMockWorkbenchService(): WorkbenchService {
           seat.seatAIHostingAuth === true && seat.fullAutoSwitch === true;
       } else {
         seat.semiAutoSwitch = request.enabled;
+        seat.seatAIAssistantEnabled =
+          seat.semiAutoAuth === true && seat.semiAutoSwitch === true;
       }
       pushAccountEvent(state, seatId);
 
@@ -2733,6 +2735,9 @@ function buildInitialState(): MockState {
     operatorName: seat.operator,
     phone: seat.phone,
     hostSubUserId: seat.id === "drc" ? CURRENT_SUB_USER_ID : undefined,
+    semiAutoAuth: true,
+    semiAutoSwitch: true,
+    seatAIAssistantEnabled: true,
     unreadCount: seat.unreadCount ?? MOCK_SEAT_UNREAD_COUNTS[seat.id] ?? 0,
   }));
 

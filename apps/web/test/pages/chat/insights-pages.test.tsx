@@ -1084,7 +1084,7 @@ function installInsightMocks() {
   });
   serviceMocks.createInsightLabelConfig.mockResolvedValue({
     status: 1,
-    id: "12",
+    id: "15",
     labelCode: "high_intent",
     labelName: "高意向",
   });

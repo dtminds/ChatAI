@@ -139,6 +139,23 @@ describe("ConversationCard", () => {
     expect(avatarFallback?.querySelector("svg")).toBeInTheDocument();
   });
 
+  it("shows an AI badge on hosted conversations", () => {
+    const { container } = render(
+      <ConversationCard
+        conversation={conversation}
+        isActive={false}
+        isAIHostingEnabled
+        onSelect={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByLabelText("AI托管")).toBeInTheDocument();
+    expect(container.querySelector("[aria-label='AI托管'] svg")).toBeInTheDocument();
+    expect(
+      container.querySelector("[aria-label='AI托管'] [class*='mask-image']"),
+    ).not.toBeInTheDocument();
+  });
+
   it("shows mark-read for unread conversations and mark-unread for read conversations", async () => {
     const user = userEvent.setup();
     const { rerender } = render(

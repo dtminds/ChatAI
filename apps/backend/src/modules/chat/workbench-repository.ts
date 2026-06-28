@@ -2353,6 +2353,7 @@ export class WorkbenchRepository {
         "message.msgtime as msgtime",
         "message.opt_no as opt_no",
         "message.revoke_status as revoke_status",
+        "message.source as source",
         "message.status as status",
         "message.update_time as update_time",
       ])
@@ -3867,7 +3868,6 @@ export class WorkbenchRepository {
     },
   ): Promise<
     WorkbenchMessagePageDto & {
-      smartReplyEnabled?: boolean;
       smartReplyScope?: {
         chatType: number;
         thirdExternalId: string;
@@ -3898,7 +3898,6 @@ export class WorkbenchRepository {
         "conversation.third_external_userid as conversation_external_id",
         "conversation.third_group_id as conversation_group_id",
         "conversation.third_userid as third_userid",
-        "seat.assistant_id as assistant_id",
         "seat.id as seat_id",
       ])
       .select((expressionBuilder) => [
@@ -3943,6 +3942,7 @@ export class WorkbenchRepository {
         "message.msgtime as msgtime",
         "message.opt_no as opt_no",
         "message.revoke_status as revoke_status",
+        "message.source as source",
         "message.status as status",
         "message.update_time as update_time",
       ])
@@ -4026,8 +4026,6 @@ export class WorkbenchRepository {
       ),
       nextBeforeSeq: rawRows.length > 0 ? toNumber(rawRows.at(-1)?.id) : undefined,
       scannedCount: rawRows.length,
-      smartReplyEnabled:
-        smartReplyScope != null && (toNumber(conversation.assistant_id) ?? 0) > 0,
       smartReplyScope,
     };
   }
@@ -4113,6 +4111,7 @@ export class WorkbenchRepository {
         "message.msgtime as msgtime",
         "message.opt_no as opt_no",
         "message.revoke_status as revoke_status",
+        "message.source as source",
         "message.status as status",
         "message.update_time as update_time",
       ])
@@ -4279,6 +4278,7 @@ export class WorkbenchRepository {
         "message.msgtype as msgtype",
         "message.msgtime as msgtime",
         "message.revoke_status as revoke_status",
+        "message.source as source",
         "message.status as status",
         "message.update_time as update_time",
       ])

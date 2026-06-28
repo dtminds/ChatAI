@@ -8,6 +8,7 @@ import type {
   WorkbenchConversationSummaryDto,
   WorkbenchMessageDto,
 } from "@chatai/contracts";
+import { WORKBENCH_MESSAGE_SOURCE } from "@chatai/contracts";
 import type { Account, CustomerProfile, EmployeeProfile } from "@/pages/chat/chat-types";
 
 describe("workbench adapter", () => {
@@ -76,12 +77,86 @@ describe("workbench adapter", () => {
     });
 
     expect(
+      adaptAccount({
+        avatar: "",
+        description: "",
+        loginStatus: "online",
+        name: "测试席位",
+        operatorName: "测试席位",
+        phone: "",
+        seatAIHostingEnabled: true,
+        seatId: "seat-1",
+        thirdUserId: "third-user-1",
+        unreadCount: 0,
+      }),
+    ).toMatchObject({
+      seatAIHostingEnabled: true,
+    });
+
+    expect(
       adaptConversation({
         ...conversationDto,
         conversationAIHostingSwitch: true,
       }),
     ).toMatchObject({
       conversationAIHostingSwitch: true,
+    });
+  });
+
+  it("adapts AI assistant enablement from DTO value or semi-auto fallback", () => {
+    expect(
+      adaptAccount({
+        avatar: "",
+        description: "",
+        loginStatus: "online",
+        name: "测试席位",
+        operatorName: "测试席位",
+        phone: "",
+        seatAIAssistantEnabled: true,
+        seatId: "seat-1",
+        semiAutoAuth: true,
+        semiAutoSwitch: false,
+        thirdUserId: "third-user-1",
+        unreadCount: 0,
+      }),
+    ).toMatchObject({
+      seatAIAssistantEnabled: true,
+    });
+
+    expect(
+      adaptAccount({
+        avatar: "",
+        description: "",
+        loginStatus: "online",
+        name: "测试席位",
+        operatorName: "测试席位",
+        phone: "",
+        seatId: "seat-1",
+        semiAutoAuth: true,
+        semiAutoSwitch: true,
+        thirdUserId: "third-user-1",
+        unreadCount: 0,
+      }),
+    ).toMatchObject({
+      seatAIAssistantEnabled: true,
+    });
+
+    expect(
+      adaptAccount({
+        avatar: "",
+        description: "",
+        loginStatus: "online",
+        name: "测试席位",
+        operatorName: "测试席位",
+        phone: "",
+        seatId: "seat-1",
+        semiAutoAuth: true,
+        semiAutoSwitch: false,
+        thirdUserId: "third-user-1",
+        unreadCount: 0,
+      }),
+    ).toMatchObject({
+      seatAIAssistantEnabled: false,
     });
   });
 
@@ -137,6 +212,38 @@ describe("adaptMessage", () => {
       tasks: [],
     },
   };
+
+  it("marks messages sent by Agent source", () => {
+    expect(
+      adaptMessage(
+        {
+          ...messageDto,
+          senderType: "agent",
+          source: WORKBENCH_MESSAGE_SOURCE.AGENT,
+        } as WorkbenchMessageDto,
+        customerProfilesById,
+        accountsById,
+        me,
+      ),
+    ).toMatchObject({
+      isAgentMessage: true,
+    });
+
+    expect(
+      adaptMessage(
+        {
+          ...messageDto,
+          senderType: "agent",
+          source: 1,
+        } as WorkbenchMessageDto,
+        customerProfilesById,
+        accountsById,
+        me,
+      ),
+    ).not.toMatchObject({
+      isAgentMessage: true,
+    });
+  });
 
   it("does not format zero message timestamps as epoch dates", () => {
     expect(

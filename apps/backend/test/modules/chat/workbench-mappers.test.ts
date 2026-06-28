@@ -1,3 +1,4 @@
+import { WORKBENCH_MESSAGE_SOURCE } from "@chatai/contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   getGroupMemberHydrationKey,
@@ -32,6 +33,7 @@ describe("workbench MySQL mappers", () => {
       }),
     ).toEqual({
       seatAIHostingEnabled: true,
+      seatAIAssistantEnabled: false,
       avatar: "https://example.com/avatar.png",
       bizStatus: 0,
       description: "",
@@ -456,6 +458,52 @@ describe("workbench MySQL mappers", () => {
       thirdGroupId: undefined,
       thirdUserId: "third-user-1",
     });
+  });
+
+  it("maps audit message source for Agent-sent messages", () => {
+    expect(
+      mapMessageRow(messageRow({
+        from_type: 1,
+        source: String(WORKBENCH_MESSAGE_SOURCE.AGENT),
+      })),
+    ).toMatchObject({
+      senderType: "agent",
+      source: WORKBENCH_MESSAGE_SOURCE.AGENT,
+    });
+  });
+
+  it("maps known audit message source values", () => {
+    expect(
+      mapMessageRow(messageRow({
+        source: WORKBENCH_MESSAGE_SOURCE.DEFAULT,
+      })),
+    ).toMatchObject({
+      source: WORKBENCH_MESSAGE_SOURCE.DEFAULT,
+    });
+
+    expect(
+      mapMessageRow(messageRow({
+        source: String(WORKBENCH_MESSAGE_SOURCE.WORKBENCH),
+      })),
+    ).toMatchObject({
+      source: WORKBENCH_MESSAGE_SOURCE.WORKBENCH,
+    });
+
+    expect(
+      mapMessageRow(messageRow({
+        source: WORKBENCH_MESSAGE_SOURCE.SIDEBAR,
+      })),
+    ).toMatchObject({
+      source: WORKBENCH_MESSAGE_SOURCE.SIDEBAR,
+    });
+  });
+
+  it("omits unsupported audit message source values", () => {
+    expect(
+      mapMessageRow(messageRow({
+        source: 999,
+      })),
+    ).not.toHaveProperty("source");
   });
 
   it("keeps a recent empty chat record as loading content", () => {

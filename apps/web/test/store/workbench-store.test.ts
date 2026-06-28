@@ -1515,13 +1515,27 @@ describe("useWorkbenchStore", () => {
     ).toEqual({});
   });
 
-  it("does not auto-generate or poll smart replies when the latest page disables the feature", async () => {
+  it("does not auto-generate or poll smart replies when seat AI assistant is disabled", async () => {
     const baseService = createMockWorkbenchService();
     const observedAutoRequests: Array<{ conversationId: string; msgId: number }> = [];
     const observedSmartReplyRequests: WorkbenchSmartReplyPollRequest[] = [];
 
     setWorkbenchService({
       ...baseService,
+      async getSeats() {
+        const seats = await baseService.getSeats();
+
+        return seats.map((seat) =>
+          seat.seatId === "drc"
+            ? {
+                ...seat,
+                seatAIAssistantEnabled: false,
+                semiAutoAuth: true,
+                semiAutoSwitch: false,
+              }
+            : seat,
+        );
+      },
       async getMessages(conversationId, options) {
         const page = await baseService.getMessages(conversationId, options);
 
@@ -1531,13 +1545,12 @@ describe("useWorkbenchStore", () => {
 
         return {
           ...page,
-          smartReplyEnabled: false,
           smartReplies: [
             {
               assistantName: "智能助手",
-              content: "",
+              content: "不应展示的推荐",
               messageId: "9",
-              status: "processing",
+              pollComplete: true,
             },
           ],
         };
@@ -1561,6 +1574,68 @@ describe("useWorkbenchStore", () => {
     expect(
       useWorkbenchStore.getState().smartReplyPendingMessageKeysByConversationId["conv-001"],
     ).toEqual({});
+    expect(
+      useWorkbenchStore.getState().smartReplyByMessageIdByConversationId["conv-001"],
+    ).toEqual({});
+  });
+
+  it("does not keep page smart replies before the active conversation enters the list", async () => {
+    const customerMessageDto = createSmartReplyTextMessageDto({
+      id: "msg-009",
+      seq: 9,
+      text: "需要推荐",
+    });
+
+    useWorkbenchStore.setState((state) => ({
+      accounts: [
+        {
+          ...state.accounts[0],
+          avatarUrl: "",
+          description: "",
+          id: "drc",
+          loginStatus: "online",
+          metrics: {
+            activeCustomers: 0,
+            agents: 0,
+            stores: 0,
+            totalCustomers: 0,
+          },
+          name: "席位",
+          operator: "客服",
+          phone: "",
+          seatAIAssistantEnabled: true,
+          takenOverEmployeeId: state.me?.id,
+          tone: "",
+        },
+      ],
+      activeAccountId: "drc",
+      activeConversationId: "",
+      conversationListsByScope: {},
+    }));
+
+    const baseService = createMockWorkbenchService();
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        return {
+          ...page,
+          messages: [customerMessageDto],
+          smartReplies: [
+            {
+              assistantName: "智能助手",
+              content: "竞态下不应保留的推荐",
+              messageId: "9",
+              pollComplete: true,
+            },
+          ],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().setActiveConversation("conv-001");
+
     expect(
       useWorkbenchStore.getState().smartReplyByMessageIdByConversationId["conv-001"],
     ).toEqual({});
@@ -1611,7 +1686,6 @@ describe("useWorkbenchStore", () => {
 
         return {
           ...page,
-          smartReplyEnabled: true,
           smartReplies: [
             {
               assistantName: "智能助手",
@@ -1636,9 +1710,6 @@ describe("useWorkbenchStore", () => {
 
     await useWorkbenchStore.getState().initializeWorkbench();
 
-    expect(useWorkbenchStore.getState().smartReplyEnabledByConversationId["conv-001"]).toBe(
-      true,
-    );
     expect(
       useWorkbenchStore.getState().smartReplyByMessageIdByConversationId["conv-001"],
     ).toEqual({});
@@ -1700,7 +1771,6 @@ describe("useWorkbenchStore", () => {
               text: "已有客户问题",
             }),
           ],
-          smartReplyEnabled: true,
           smartReplies: [
             {
               assistantName: "智能助手",

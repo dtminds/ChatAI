@@ -38,7 +38,8 @@ export function adaptEmployee(dto: WorkbenchSubUserDto): EmployeeProfile {
 export function adaptAccount(dto: WorkbenchSeatDto, unreadCount = dto.unreadCount): Account {
   return {
     seatAIHostingEnabled:
-      dto.seatAIHostingAuth === true && dto.fullAutoSwitch === true,
+      dto.seatAIHostingEnabled ??
+      (dto.seatAIHostingAuth === true && dto.fullAutoSwitch === true),
     seatAIAssistantEnabled:
       dto.seatAIAssistantEnabled ??
       (dto.semiAutoAuth === true && dto.semiAutoSwitch === true),

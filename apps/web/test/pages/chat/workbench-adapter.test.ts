@@ -77,6 +77,23 @@ describe("workbench adapter", () => {
     });
 
     expect(
+      adaptAccount({
+        avatar: "",
+        description: "",
+        loginStatus: "online",
+        name: "测试席位",
+        operatorName: "测试席位",
+        phone: "",
+        seatAIHostingEnabled: true,
+        seatId: "seat-1",
+        thirdUserId: "third-user-1",
+        unreadCount: 0,
+      }),
+    ).toMatchObject({
+      seatAIHostingEnabled: true,
+    });
+
+    expect(
       adaptConversation({
         ...conversationDto,
         conversationAIHostingSwitch: true,

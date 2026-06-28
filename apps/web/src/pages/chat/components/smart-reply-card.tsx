@@ -40,7 +40,6 @@ import {
   isSmartReplyGenerationFailed,
   isSmartReplyKnowledgeMiss,
   isSmartReplyMediaContentType,
-  isSmartReplySent,
   resolveSmartReplyProcessingLabel,
   SMART_REPLY_BUSY_TIMEOUT_MS,
   SMART_REPLY_CONTENT_INCOMPLETE_SKIP_HINT,
@@ -91,7 +90,6 @@ export type SmartReplyCardProps = {
   isGenerationFailed?: boolean;
   isKnowledgeHit?: boolean;
   isKnowledgeMiss?: boolean;
-  isSent?: boolean;
   isSending?: boolean;
   canSendMessage?: boolean;
   onEdit?: () => void;
@@ -116,7 +114,6 @@ export function SmartReplyCard({
   isGenerationFailed = false,
   isKnowledgeHit = true,
   isKnowledgeMiss = false,
-  isSent = false,
   isSending = false,
   canSendMessage = true,
   onEdit,
@@ -825,7 +822,6 @@ export function SmartReplyMessageAnchor({
   const isGenerationFailed = isSmartReplyGenerationFailed(resolvedSuggestion);
   const isKnowledgeHit =
     !isKnowledgeMiss && !isGenerationFailed && !isContentIncompleteSkip;
-  const isSent = isSmartReplySent(resolvedSuggestion);
   const canMakeShorter = canRequestSmartReplyMakeShorter(resolvedSuggestion);
 
   if (isContentIncompleteSkip) {
@@ -857,7 +853,6 @@ export function SmartReplyMessageAnchor({
           isGenerationFailed={isGenerationFailed}
           isKnowledgeHit={isKnowledgeHit}
           isKnowledgeMiss={isKnowledgeMiss}
-          isSent={isSent}
           isSending={isSending}
           isThinking={isThinking}
           isProcessing={isProcessing}

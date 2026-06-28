@@ -782,6 +782,31 @@ describe("smart-reply-adapter", () => {
     });
   });
 
+  it("parses getMessages smart reply json content into display text", () => {
+    const genAnswer =
+      '[{"msgtype":"text","text":"小礼品会和您的订单一起发出的哦~"},{"msgtype":"text","text":"您可以留意下订单的物流更新信息就可以啦。"}]';
+    const map = adaptSmartReplySuggestions([
+      {
+        assistantName: "护肤小助手",
+        content: genAnswer,
+        genAnswer,
+        generateStatus: 2,
+        messageId: "1090",
+        pollComplete: true,
+        status: "ready",
+      },
+    ]);
+
+    expect(map["1090"]).toMatchObject({
+      content:
+        "小礼品会和您的订单一起发出的哦~\n您可以留意下订单的物流更新信息就可以啦。",
+      genAnswer,
+      generateStatus: 2,
+      pollComplete: true,
+      status: "ready",
+    });
+  });
+
   it("uses raw genAnswer for send-answer when content is unchanged", () => {
     const genAnswer =
       '[{"msgtype":"text","text":"麻烦您告知一下所在的城市，还有家里宠物的具体情况哦，我会给您介绍合适的上门服务哒~"}]';

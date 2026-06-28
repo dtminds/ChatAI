@@ -557,6 +557,83 @@ export function buildJavaGenAnswerFromText(text: string) {
   return JSON.stringify([{ msgtype: "text", text: trimmed }]);
 }
 
+function parseSmartReplyDisplayContent(raw: unknown): string {
+  if (raw == null) {
+    return "";
+  }
+
+  if (typeof raw !== "string") {
+    return parseSmartReplyDisplayPayload(raw);
+  }
+
+  const trimmed = raw.trim();
+
+  if (!trimmed) {
+    return "";
+  }
+
+  if (!trimmed.startsWith("[") && !trimmed.startsWith("{")) {
+    return trimmed;
+  }
+
+  let parsedJson: unknown;
+
+  try {
+    parsedJson = JSON.parse(trimmed);
+  } catch {
+    return trimmed;
+  }
+
+  const parsed = parseSmartReplyDisplayPayload(parsedJson);
+
+  return parsed || trimmed;
+}
+
+function parseSmartReplyDisplayPayload(payload: unknown): string {
+  if (Array.isArray(payload)) {
+    return payload
+      .map((segment) => parseSmartReplyDisplaySegment(segment))
+      .filter((part): part is string => Boolean(part))
+      .join("\n");
+  }
+
+  return parseSmartReplyDisplaySegment(payload) ?? "";
+}
+
+function parseSmartReplyDisplaySegment(segment: unknown): string | undefined {
+  if (!isRecord(segment)) {
+    return undefined;
+  }
+
+  const msgtype = readString(segment.msgtype)?.toLowerCase();
+
+  if (msgtype === "text") {
+    return readString(segment.text);
+  }
+
+  if (msgtype === "image") {
+    return readString(segment.alt) ?? "[图片]";
+  }
+
+  if (msgtype === "file") {
+    return readString(segment.fileName) ?? "[文件]";
+  }
+
+  if (msgtype === "video") {
+    return readString(segment.title) ?? readString(segment.alt) ?? "[视频]";
+  }
+
+  return readString(segment.text) ?? readString(segment.content);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function readString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
 export function resolveSmartReplyRealAnswer(
   genAnswer: string | undefined,
   editedContent: string,
@@ -589,7 +666,7 @@ export function adaptSmartReplySuggestions(
       suggestion.messageId,
       {
         assistantName: suggestion.assistantName,
-        content: suggestion.content,
+        content: parseSmartReplyDisplayContent(suggestion.content),
         failReason: suggestion.failReason,
         genAnswer: suggestion.genAnswer,
         generateStatus: suggestion.generateStatus,

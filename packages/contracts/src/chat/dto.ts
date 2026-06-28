@@ -442,7 +442,7 @@ export type WorkbenchPollResponse = {
 };
 
 export const SMART_REPLY_MSG_IDS_LIMIT = 100;
-/** Java user-history-answer-list 终态：2 推荐成功、3 推荐失败、4 已发送 */
+/** Java user-history-answer-list 终态：2 生成成功、3 生成失败、4 转人工 */
 export const SMART_REPLY_TERMINAL_GENERATE_STATUSES = [2, 3, 4] as const;
 /** Java user-history-answer-list 失败原因：未命中知识集 */
 export const SMART_REPLY_FAIL_REASON_KNOWLEDGE_MISS = "knowledge_miss";
@@ -456,6 +456,8 @@ export type WorkbenchSmartReplySuggestionDto = {
   assistantName: string;
   content: string;
   failReason?: string;
+  /** Java 原始 genAnswer，send-answer 的 realAnswer 需原样回传 */
+  genAnswer?: string;
   generateStatus?: number | string;
   pollComplete?: boolean;
   refAttachIds?: string[];
@@ -506,6 +508,7 @@ export type WorkbenchSmartReplyMakeShorterResponse = {
 
 export type WorkbenchSmartReplySendAnswerRequest = {
   conversationId: string;
+  optNos: string[];
   realAnswer: string;
   realAttachIds: string[];
   recordId: string;

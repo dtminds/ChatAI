@@ -1100,8 +1100,8 @@ describe("createWorkbenchJavaClient", () => {
             {
               analyseMsgId: 1001,
               assistantName: "护肤小助手",
-              recommendAnswer: "您好",
-              status: 2,
+              genAnswer: "您好",
+              genStatus: 2,
             },
           ],
           error: 0,
@@ -1127,6 +1127,7 @@ describe("createWorkbenchJavaClient", () => {
         {
           assistantName: "护肤小助手",
           content: "您好",
+          genAnswer: "您好",
           generateStatus: 2,
           messageId: "1001",
           pollComplete: true,
@@ -1136,7 +1137,7 @@ describe("createWorkbenchJavaClient", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://java.internal/third-internal/wap-embed-msg-audit-recommend-answer/user-history-answer-list",
+      "https://java.internal/third-internal/wap-embed-agent-answer-record/user-history-answer-list",
       expect.objectContaining({
         body: JSON.stringify({
           chatType: 1,
@@ -1186,8 +1187,8 @@ describe("createWorkbenchJavaClient", () => {
           data: {
             analyseMsgId: 1121,
             assistantName: "护肤小助手",
-            recommendAnswer: "您好",
-            status: 0,
+            genAnswer: "您好",
+            genStatus: 0,
           },
           error: 0,
           success: true,
@@ -1212,6 +1213,7 @@ describe("createWorkbenchJavaClient", () => {
       suggestion: {
         assistantName: "护肤小助手",
         content: "您好",
+        genAnswer: "您好",
         generateStatus: 0,
         messageId: "1121",
         status: "thinking",
@@ -1219,7 +1221,7 @@ describe("createWorkbenchJavaClient", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://java.internal/third-internal/wap-embed-msg-audit-recommend-answer/general-answer",
+      "https://java.internal/third-internal/wap-embed-agent-answer-record/general-answer",
       expect.objectContaining({
         body: JSON.stringify({
           chatType: 1,
@@ -1301,7 +1303,7 @@ describe("createWorkbenchJavaClient", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://java.internal/third-internal/wap-embed-msg-audit-recommend-answer/auto-general-answer",
+      "https://java.internal/third-internal/wap-embed-agent-answer-record/auto-general-answer",
       expect.objectContaining({
         body: JSON.stringify({
           chatType: 1,
@@ -1749,18 +1751,20 @@ describe("createWorkbenchJavaClient", () => {
 
     const client = createWorkbenchJavaClient(createLoggerMock());
     await client.sendRecommendAnswer({
+      optNos: ["opt-88001", "opt-88002"],
       realAnswer: "您好，这是发送的话术",
-      realAttachIds: ["101", "102"],
+      // realAttachIds: ["101", "102"],
       recordId: "88001",
       uid: 9001,
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://java.internal/third-internal/wap-embed-msg-audit-recommend-answer/send-answer",
+      "https://java.internal/third-internal/wap-embed-agent-answer-record/send-answer",
       expect.objectContaining({
         body: JSON.stringify({
+          optNos: ["opt-88001", "opt-88002"],
           realAnswer: "您好，这是发送的话术",
-          realAttachIds: ["101", "102"],
+          // realAttachIds: ["101", "102"],
           recordId: 88001,
           uid: 9001,
         }),

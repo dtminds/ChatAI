@@ -86,6 +86,7 @@ export function ChatMessagePanel({
   const {
     smartReplyAutoPendingByMessageId,
     smartReplyHiddenMessageKeys,
+    smartReplyPendingByMessageId,
     smartReplySuggestionsByMessageId,
   } = useWorkbenchStore(
     useShallow((state) => ({
@@ -93,6 +94,8 @@ export function ChatMessagePanel({
         state.smartReplyAutoPendingMessageKeysByConversationId[conversationId],
       smartReplyHiddenMessageKeys:
         state.smartReplyHiddenMessageKeysByConversationId[conversationId],
+      smartReplyPendingByMessageId:
+        state.smartReplyPendingMessageKeysByConversationId[conversationId],
       smartReplySuggestionsByMessageId:
         state.smartReplyByMessageIdByConversationId[conversationId],
     })),
@@ -179,6 +182,7 @@ export function ChatMessagePanel({
                 retryingMessageIds={retryingMessageIds}
                 smartReplyAutoPendingByMessageId={smartReplyAutoPendingByMessageId}
                 smartReplyByMessageId={smartReplyByMessageId}
+                smartReplyPendingByMessageId={smartReplyPendingByMessageId}
               />
             </div>
           </div>

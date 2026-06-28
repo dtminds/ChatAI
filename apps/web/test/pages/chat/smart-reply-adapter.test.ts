@@ -6,6 +6,8 @@ import {
   adaptSmartReplyViolationResult,
   buildSmartReplyRealAttachIds,
   buildSmartReplySendSegments,
+  buildJavaGenAnswerFromText,
+  resolveSmartReplyRealAnswer,
   collectNewSmartReplyPendingKeys,
   collectPendingSmartReplyPollMsgIds,
   collectQuestionImgs,
@@ -628,6 +630,7 @@ describe("smart-reply-adapter", () => {
       shouldShowSmartReplyTriggerIcon(customerMessage, {
         assistantName: "护肤小助手",
         content: "建议回复",
+        generateStatus: 2,
         status: "ready",
       }),
     ).toBe(false);
@@ -661,7 +664,7 @@ describe("smart-reply-adapter", () => {
     expect(isSmartReplyKnowledgeMiss(suggestion)).toBe(true);
     expect(isSmartReplyGenerationFailed(suggestion)).toBe(false);
     expect(isSmartReplyReady(suggestion)).toBe(false);
-    expect(shouldShowSmartReplyCard(suggestion)).toBe(true);
+    expect(shouldShowSmartReplyCard(suggestion)).toBe(false);
     expect(shouldShowSmartReplyTriggerIcon(
       {
         content: { text: "客户消息", type: "text" },
@@ -683,7 +686,7 @@ describe("smart-reply-adapter", () => {
 
     expect(isSmartReplyGenerationFailed(suggestion)).toBe(true);
     expect(isSmartReplyKnowledgeMiss(suggestion)).toBe(false);
-    expect(shouldShowSmartReplyCard(suggestion)).toBe(true);
+    expect(shouldShowSmartReplyCard(suggestion)).toBe(false);
     expect(shouldShowSmartReplyTriggerIcon(
       {
         content: {
@@ -698,7 +701,7 @@ describe("smart-reply-adapter", () => {
     )).toBe(false);
   });
 
-  it("treats incomplete content skips as a visible non-failure hint", () => {
+  it("treats incomplete content skips as an inline non-failure hint", () => {
     const suggestion = {
       assistantName: "护肤小助手",
       content: "",
@@ -709,10 +712,10 @@ describe("smart-reply-adapter", () => {
 
     expect(isSmartReplyContentIncompleteSkip(suggestion)).toBe(true);
     expect(isSmartReplyGenerationFailed(suggestion)).toBe(false);
-    expect(shouldShowSmartReplyCard(suggestion)).toBe(true);
+    expect(shouldShowSmartReplyCard(suggestion)).toBe(false);
   });
 
-  it("treats raw incomplete content skips from history as a non-failure hint", () => {
+  it("treats raw incomplete content skips from history as an inline non-failure hint", () => {
     const suggestion = {
       assistantName: "护肤小助手",
       content: "",
@@ -723,10 +726,10 @@ describe("smart-reply-adapter", () => {
 
     expect(isSmartReplyContentIncompleteSkip(suggestion)).toBe(true);
     expect(isSmartReplyGenerationFailed(suggestion)).toBe(false);
-    expect(shouldShowSmartReplyCard(suggestion)).toBe(true);
+    expect(shouldShowSmartReplyCard(suggestion)).toBe(false);
   });
 
-  it("shows smart reply card while poll is still active", () => {
+  it("keeps smart reply card hidden while poll is still active", () => {
     expect(shouldShowSmartReplyCard(undefined)).toBe(false);
     expect(
       shouldShowSmartReplyCard({
@@ -735,7 +738,7 @@ describe("smart-reply-adapter", () => {
         generateStatus: 0,
         status: "thinking",
       }),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       shouldShowSmartReplyCard({
         assistantName: "护肤小助手",
@@ -743,7 +746,7 @@ describe("smart-reply-adapter", () => {
         generateStatus: 1,
         status: "processing",
       }),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       shouldShowSmartReplyCard({
         assistantName: "护肤小助手",
@@ -763,6 +766,7 @@ describe("smart-reply-adapter", () => {
       {
         assistantName: "护肤小助手",
         content: "建议回复",
+        genAnswer: '[{"msgtype":"text","text":"建议回复"}]',
         messageId: "1090",
         refAttachIds: ["101", "102"],
         status: "ready",
@@ -772,9 +776,68 @@ describe("smart-reply-adapter", () => {
     expect(map["1090"]).toEqual({
       assistantName: "护肤小助手",
       content: "建议回复",
+      genAnswer: '[{"msgtype":"text","text":"建议回复"}]',
       refAttachIds: ["101", "102"],
       status: "ready",
     });
+  });
+
+  it("parses getMessages smart reply json content into display text", () => {
+    const genAnswer =
+      '[{"msgtype":"text","text":"小礼品会和您的订单一起发出的哦~"},{"msgtype":"text","text":"您可以留意下订单的物流更新信息就可以啦。"}]';
+    const map = adaptSmartReplySuggestions([
+      {
+        assistantName: "护肤小助手",
+        content: genAnswer,
+        genAnswer,
+        generateStatus: 2,
+        messageId: "1090",
+        pollComplete: true,
+        status: "ready",
+      },
+    ]);
+
+    expect(map["1090"]).toMatchObject({
+      content:
+        "小礼品会和您的订单一起发出的哦~\n您可以留意下订单的物流更新信息就可以啦。",
+      genAnswer,
+      generateStatus: 2,
+      pollComplete: true,
+      status: "ready",
+    });
+  });
+
+  it("uses raw genAnswer for send-answer when content is unchanged", () => {
+    const genAnswer =
+      '[{"msgtype":"text","text":"麻烦您告知一下所在的城市，还有家里宠物的具体情况哦，我会给您介绍合适的上门服务哒~"}]';
+
+    expect(
+      resolveSmartReplyRealAnswer(
+        genAnswer,
+        "麻烦您告知一下所在的城市，还有家里宠物的具体情况哦，我会给您介绍合适的上门服务哒~",
+        "麻烦您告知一下所在的城市，还有家里宠物的具体情况哦，我会给您介绍合适的上门服务哒~",
+      ),
+    ).toBe(genAnswer);
+  });
+
+  it("builds genAnswer json when user edits smart reply content", () => {
+    expect(
+      resolveSmartReplyRealAnswer(
+        '[{"msgtype":"text","text":"原始话术"}]',
+        "编辑后话术",
+        "原始话术",
+      ),
+    ).toBe(buildJavaGenAnswerFromText("编辑后话术"));
+  });
+
+  it("builds empty genAnswer json when user clears edited smart reply content", () => {
+    expect(
+      resolveSmartReplyRealAnswer(
+        '[{"msgtype":"text","text":"原始话术"}]',
+        "",
+        "原始话术",
+      ),
+    ).toBe(buildJavaGenAnswerFromText(""));
   });
 
   it("adapts attachment list into recommended attachments", () => {
@@ -950,10 +1013,19 @@ describe("smart-reply-adapter", () => {
       canRequestSmartReplyMakeShorter({
         assistantName: "护肤小助手",
         content: "已发送话术",
-        generateStatus: 4,
+        generateStatus: 2,
+        sent: true,
         status: "ready",
       }),
     ).toBe(true);
+    expect(
+      canRequestSmartReplyMakeShorter({
+        assistantName: "护肤小助手",
+        content: "已转人工",
+        generateStatus: 4,
+        status: "ready",
+      }),
+    ).toBe(false);
     expect(
       canRequestSmartReplyMakeShorter({
         assistantName: "护肤小助手",
@@ -1122,6 +1194,42 @@ describe("smart-reply-adapter", () => {
     })).toBe(false);
   });
 
+  it("only shows generated smart reply cards for successful generate status", () => {
+    expect(shouldShowSmartReplyCard({
+      assistantName: "智能助手",
+      content: "",
+      generateStatus: 0,
+      status: "thinking",
+    })).toBe(false);
+    expect(shouldShowSmartReplyCard({
+      assistantName: "智能助手",
+      content: "",
+      generateStatus: 1,
+      status: "processing",
+    })).toBe(false);
+    expect(shouldShowSmartReplyCard({
+      assistantName: "智能助手",
+      content: "推荐话术",
+      generateStatus: 2,
+      pollComplete: true,
+      status: "ready",
+    })).toBe(true);
+    expect(shouldShowSmartReplyCard({
+      assistantName: "智能助手",
+      content: "",
+      failReason: "model_error",
+      generateStatus: 3,
+      pollComplete: true,
+    })).toBe(false);
+    expect(shouldShowSmartReplyCard({
+      assistantName: "智能助手",
+      content: "",
+      generateStatus: 4,
+      pollComplete: true,
+      status: "ready",
+    })).toBe(false);
+  });
+
   it("marks sent suggestions as poll complete and keeps the card visible", () => {
     const sentSuggestion = createSentSmartReplySuggestion(
       {
@@ -1138,9 +1246,10 @@ describe("smart-reply-adapter", () => {
     expect(sentSuggestion).toEqual({
       assistantName: "护肤小助手",
       content: "已发送话术",
-      generateStatus: 4,
+      generateStatus: 2,
       pollComplete: true,
       recordId: "88001",
+      sent: true,
       status: "ready",
     });
     expect(isSmartReplySent(sentSuggestion)).toBe(true);
@@ -1148,22 +1257,22 @@ describe("smart-reply-adapter", () => {
     expect(shouldShowSmartReplyCard(sentSuggestion)).toBe(true);
   });
 
-  it("adapts poll complete fields from dto", () => {
-    expect(
-      adaptSmartReplySuggestions([
-        {
-          assistantName: "智能助手",
-          content: "推荐话术",
-          generateStatus: 4,
-          messageId: "1001",
-          pollComplete: true,
-          status: "ready",
-        },
-      ]),
-    ).toEqual({
+  it("adapts handoff generate status from dto without marking it sent", () => {
+    const suggestions = adaptSmartReplySuggestions([
+      {
+        assistantName: "智能助手",
+        content: "转人工原因",
+        generateStatus: 4,
+        messageId: "1001",
+        pollComplete: true,
+        status: "ready",
+      },
+    ]);
+
+    expect(suggestions).toEqual({
       "1001": {
         assistantName: "智能助手",
-        content: "推荐话术",
+        content: "转人工原因",
         failReason: undefined,
         generateStatus: 4,
         pollComplete: true,
@@ -1171,5 +1280,6 @@ describe("smart-reply-adapter", () => {
         status: "ready",
       },
     });
+    expect(isSmartReplySent(suggestions["1001"])).toBe(false);
   });
 });

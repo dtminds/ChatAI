@@ -1635,9 +1635,19 @@ export class MysqlWorkbenchService implements WorkbenchService {
       throw new BadRequestError("SMART_REPLY_RECORD_INVALID", "智能回复记录无效");
     }
 
+    const optNos = (request.optNos ?? [])
+      .map((optNo) => optNo.trim())
+      .filter((optNo) => optNo.length > 0);
+
+    if (optNos.length === 0) {
+      throw new BadRequestError("SMART_REPLY_OPT_NO_INVALID", "发送消息操作编号无效");
+    }
+
     await this.javaClient.sendRecommendAnswer({
+      optNos,
       realAnswer,
-      realAttachIds: request.realAttachIds,
+      // 新 send-answer 接口暂未启用附件 id，先不传 realAttachIds
+      // realAttachIds: request.realAttachIds,
       recordId,
       uid: conversation.uid,
     });

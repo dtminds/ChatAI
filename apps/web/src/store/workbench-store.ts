@@ -72,7 +72,6 @@ import {
   type WorkbenchSendMessagePayload,
 } from "@chatai/contracts";
 import {
-  buildSmartReplyRealAttachIds,
   buildSmartReplySendSegments,
   collectPendingSmartReplyPollMsgIds,
   collectSmartReplyPendingKeysFromSuggestions,
@@ -88,6 +87,7 @@ import {
   isSmartReplyPollComplete,
   isSmartReplyEligibleMessage,
   isSmartReplySupportedConversation,
+  resolveSmartReplyRealAnswer,
   SMART_REPLY_CONTENT_INCOMPLETE_SKIP_HINT,
   SMART_REPLY_CONTENT_INCOMPLETE_SKIP_MESSAGE,
   SMART_REPLY_BUSY_TIMEOUT_MS,
@@ -126,6 +126,7 @@ type SendQuotePayload = WorkbenchSendMessagePayload["quote"];
 type SendMessageResult =
   | {
       didConsumeQuote?: boolean;
+      optNos?: string[];
       ok: true;
     }
   | {
@@ -3524,16 +3525,7 @@ export function createWorkbenchStore() {
           // 单次历史查询失败不展示错误卡片，继续走原生成链路。
         }
 
-        const optimisticSuggestion = createTriggeredSmartReplySuggestion(message);
-
         set((currentState) => ({
-          smartReplyByMessageIdByConversationId: {
-            ...currentState.smartReplyByMessageIdByConversationId,
-            [conversationId]: {
-              ...(currentState.smartReplyByMessageIdByConversationId[conversationId] ?? {}),
-              [lookupKey]: optimisticSuggestion,
-            },
-          },
           smartReplyPendingMessageKeysByConversationId: {
             ...currentState.smartReplyPendingMessageKeysByConversationId,
             [conversationId]: {
@@ -3605,7 +3597,7 @@ export function createWorkbenchStore() {
                   ...(currentState.smartReplyByMessageIdByConversationId[conversationId] ??
                     {}),
                   [lookupKey]: {
-                    ...optimisticSuggestion,
+                    ...createTriggeredSmartReplySuggestion(message),
                     failReason: errorMessage,
                     generateStatus: 3,
                     pollComplete: true,
@@ -3766,26 +3758,35 @@ export function createWorkbenchStore() {
           };
         }
 
-        try {
-          await sendSmartReplyAnswer({
-            conversationId,
-            realAnswer: payload.content.trim(),
-            realAttachIds: buildSmartReplyRealAttachIds(payload.selectedAttachmentIds),
-            recordId,
-          });
-        } catch (error) {
-          return {
-            errorCode: "SMART_REPLY_SEND_ANSWER_FAILED",
-            errorMessage: getRequestApiErrorMessage(error) ?? "智能回复发送失败",
-            reason: "send",
-            ok: false,
-          };
+        const sendResult = await get().sendAgentMessageSegments(segments);
+
+        if (!sendResult.ok) {
+          return sendResult;
         }
 
-        const result = await get().sendAgentMessageSegments(segments);
+        const optNos = (sendResult.optNos ?? [])
+          .map((optNo) => optNo?.trim())
+          .filter((optNo): optNo is string => Boolean(optNo));
 
-        if (!result.ok) {
-          return result;
+        if (optNos.length > 0) {
+          try {
+            await sendSmartReplyAnswer({
+              conversationId,
+              optNos,
+              realAnswer: resolveSmartReplyRealAnswer(
+                suggestion?.genAnswer,
+                payload.content,
+                suggestion?.content,
+              ),
+              // 新 send-answer 接口暂未启用附件 id，先不传 realAttachIds
+              // realAttachIds: buildSmartReplyRealAttachIds(payload.selectedAttachmentIds),
+              realAttachIds: [],
+              recordId,
+            });
+          } catch {
+            // send-answer only marks the recommendation as adopted. The message
+            // has already been sent, so marker failures must not surface as send failures.
+          }
         }
 
         set((currentState) => {
@@ -3833,7 +3834,7 @@ export function createWorkbenchStore() {
           };
         });
 
-        return result;
+        return sendResult;
       },
       setSidebarItems(items) {
         set({ sidebarItems: items });
@@ -4850,7 +4851,7 @@ export function createWorkbenchStore() {
       const normalizedSegments = normalizeComposerSegments(segments);
 
       if (normalizedSegments.length === 0) {
-        return { didConsumeQuote: false, ok: true };
+        return { didConsumeQuote: false, ok: true, optNos: [] };
       }
 
       const state = get();
@@ -4929,6 +4930,7 @@ export function createWorkbenchStore() {
       try {
         let hasSentMention = false;
         let hasSentQuote = false;
+        const optNos: string[] = [];
         for (let index = 0; index < segmentsForSend.length; index += 1) {
           const segmentForSend = segmentsForSend[index];
           const originalSegment = sendableSegments[index] ?? segmentForSend;
@@ -4949,6 +4951,7 @@ export function createWorkbenchStore() {
             seatId: activeAccountId,
             segment: payloadSegment,
           });
+          optNos.push(response.optNo);
           const optimisticMessage = {
             author: account ? `${account.name}-${account.operator}` : me.displayName,
             isGroupConversation: activeConversation.mode === "group",
@@ -5025,7 +5028,7 @@ export function createWorkbenchStore() {
           },
         }));
 
-        return { didConsumeQuote: hasSentQuote, ok: true };
+        return { didConsumeQuote: hasSentQuote, ok: true, optNos };
       } catch (error) {
         set((currentState) => ({
           sendStatusByConversationId: {

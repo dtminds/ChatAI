@@ -879,8 +879,10 @@ describe("ChatWorkbenchPage", () => {
     await user.click(screen.getAllByRole("button", { name: "消息操作" })[0]);
     await user.click(screen.getByRole("menuitem", { name: "话术推荐" }));
 
-    expect(await screen.findByTestId("smart-reply-card")).toBeInTheDocument();
-    expect(screen.getByText("生成失败：当前未配置可用AI助手")).toBeInTheDocument();
+    expect(
+      await screen.findByText("生成失败：当前未配置可用AI助手"),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("smart-reply-card")).not.toBeInTheDocument();
     expect(workbenchToastWarningMock).not.toHaveBeenCalledWith(
       "当前未配置可用AI助手",
     );
@@ -923,6 +925,7 @@ describe("ChatWorkbenchPage", () => {
           suggestion: {
             assistantName: "护肤小助手",
             content: "建议先确认权益清单口径",
+            generateStatus: 2,
             messageId: "10",
             pollComplete: true,
             recordId: "smart-reply-001",
@@ -991,6 +994,7 @@ describe("ChatWorkbenchPage", () => {
             {
               assistantName: "护肤小助手",
               content: "建议先确认权益清单口径",
+              generateStatus: 2,
               messageId: "9",
               pollComplete: true,
               recordId: "smart-reply-001",
@@ -1024,6 +1028,7 @@ describe("ChatWorkbenchPage", () => {
         suggestion: {
           assistantName: "护肤小助手",
           content: `重新生成话术 ${request.msgId}`,
+          generateStatus: 2,
           messageId: String(request.msgId),
           pollComplete: true,
           recordId: "smart-reply-regenerated",
@@ -1054,6 +1059,7 @@ describe("ChatWorkbenchPage", () => {
             {
               assistantName: "护肤小助手",
               content: "已有推荐话术",
+              generateStatus: 2,
               messageId: "9",
               pollComplete: true,
               recordId: "smart-reply-existing",
@@ -1121,6 +1127,7 @@ describe("ChatWorkbenchPage", () => {
             {
               assistantName: "智能助手",
               content: "旧问题推荐话术",
+              generateStatus: 2,
               messageId: "7",
               pollComplete: true,
               status: "ready",
@@ -1128,6 +1135,7 @@ describe("ChatWorkbenchPage", () => {
             {
               assistantName: "智能助手",
               content: "最新问题推荐话术",
+              generateStatus: 2,
               messageId: "9",
               pollComplete: true,
               status: "ready",

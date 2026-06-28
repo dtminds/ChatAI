@@ -58,6 +58,7 @@ describe("ChatMessagePanel smart reply state", () => {
           "1": {
             assistantName: "智能助手",
             content: "可展示的话术",
+            generateStatus: 2,
             pollComplete: true,
             status: "ready",
           },
@@ -79,6 +80,7 @@ describe("ChatMessagePanel smart reply state", () => {
           "1": {
             assistantName: "智能助手",
             content: "隐藏的话术",
+            generateStatus: 2,
             pollComplete: true,
             status: "ready",
           },
@@ -106,6 +108,7 @@ describe("ChatMessagePanel smart reply state", () => {
           "1": {
             assistantName: "智能助手",
             content: "群聊不展示的话术",
+            generateStatus: 2,
             pollComplete: true,
             status: "ready",
           },

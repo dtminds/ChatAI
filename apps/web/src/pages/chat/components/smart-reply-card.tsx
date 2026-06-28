@@ -12,6 +12,7 @@ import {
   MessageNotification01Icon,
   MoreHorizontalIcon,
   Cancel01Icon,
+  RefreshIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Spinner } from "@/components/ui/spinner";
@@ -75,6 +76,7 @@ export type SmartReplySuggestion = {
   genAnswer?: string;
   generateStatus?: number | string;
   pollComplete?: boolean;
+  sent?: boolean;
   status?: "thinking" | "processing" | "ready";
   refAttachIds?: string[];
   recordId?: string;
@@ -1049,18 +1051,64 @@ export function SmartReplyTriggerIcon({
   );
 }
 
-export function SmartReplyInlineProcessingHint({ label }: { label: string }) {
+export function SmartReplyInlineProcessingHint({
+  animated = true,
+  label,
+  onDismiss,
+  onRegenerate,
+}: {
+  animated?: boolean;
+  label: string;
+  onDismiss?: () => void;
+  onRegenerate?: () => void;
+}) {
   return (
     <div
-      className="flex shrink-0 items-center text-muted-foreground"
+      className="flex shrink-0 items-center gap-1.5 text-muted-foreground"
       data-testid="smart-reply-inline-processing"
       role="status"
     >
       <p className="text-[13px] leading-5">
-        <ShinyText duration={1.15} shimmerWidth={44}>
-          {label}
-        </ShinyText>
+        {animated ? (
+          <ShinyText duration={1.15} shimmerWidth={44}>
+            {label}
+          </ShinyText>
+        ) : (
+          label
+        )}
       </p>
+      {onRegenerate ? (
+        <button
+          aria-label="重新生成"
+          className="inline-flex size-5 shrink-0 items-center justify-center rounded-[5px] text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/20"
+          onClick={onRegenerate}
+          title="重新生成"
+          type="button"
+        >
+          <HugeiconsIcon
+            aria-hidden="true"
+            icon={RefreshIcon}
+            size={14}
+            strokeWidth={2}
+          />
+        </button>
+      ) : null}
+      {onDismiss ? (
+        <button
+          aria-label="收起"
+          className="inline-flex size-5 shrink-0 items-center justify-center rounded-[5px] text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/20"
+          onClick={onDismiss}
+          title="收起"
+          type="button"
+        >
+          <HugeiconsIcon
+            aria-hidden="true"
+            icon={Cancel01Icon}
+            size={14}
+            strokeWidth={2}
+          />
+        </button>
+      ) : null}
     </div>
   );
 }

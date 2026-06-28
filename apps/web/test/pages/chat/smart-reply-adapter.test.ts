@@ -630,6 +630,7 @@ describe("smart-reply-adapter", () => {
       shouldShowSmartReplyTriggerIcon(customerMessage, {
         assistantName: "护肤小助手",
         content: "建议回复",
+        generateStatus: 2,
         status: "ready",
       }),
     ).toBe(false);
@@ -663,7 +664,7 @@ describe("smart-reply-adapter", () => {
     expect(isSmartReplyKnowledgeMiss(suggestion)).toBe(true);
     expect(isSmartReplyGenerationFailed(suggestion)).toBe(false);
     expect(isSmartReplyReady(suggestion)).toBe(false);
-    expect(shouldShowSmartReplyCard(suggestion)).toBe(true);
+    expect(shouldShowSmartReplyCard(suggestion)).toBe(false);
     expect(shouldShowSmartReplyTriggerIcon(
       {
         content: { text: "客户消息", type: "text" },
@@ -685,7 +686,7 @@ describe("smart-reply-adapter", () => {
 
     expect(isSmartReplyGenerationFailed(suggestion)).toBe(true);
     expect(isSmartReplyKnowledgeMiss(suggestion)).toBe(false);
-    expect(shouldShowSmartReplyCard(suggestion)).toBe(true);
+    expect(shouldShowSmartReplyCard(suggestion)).toBe(false);
     expect(shouldShowSmartReplyTriggerIcon(
       {
         content: {
@@ -700,7 +701,7 @@ describe("smart-reply-adapter", () => {
     )).toBe(false);
   });
 
-  it("treats incomplete content skips as a visible non-failure hint", () => {
+  it("treats incomplete content skips as an inline non-failure hint", () => {
     const suggestion = {
       assistantName: "护肤小助手",
       content: "",
@@ -711,10 +712,10 @@ describe("smart-reply-adapter", () => {
 
     expect(isSmartReplyContentIncompleteSkip(suggestion)).toBe(true);
     expect(isSmartReplyGenerationFailed(suggestion)).toBe(false);
-    expect(shouldShowSmartReplyCard(suggestion)).toBe(true);
+    expect(shouldShowSmartReplyCard(suggestion)).toBe(false);
   });
 
-  it("treats raw incomplete content skips from history as a non-failure hint", () => {
+  it("treats raw incomplete content skips from history as an inline non-failure hint", () => {
     const suggestion = {
       assistantName: "护肤小助手",
       content: "",
@@ -725,10 +726,10 @@ describe("smart-reply-adapter", () => {
 
     expect(isSmartReplyContentIncompleteSkip(suggestion)).toBe(true);
     expect(isSmartReplyGenerationFailed(suggestion)).toBe(false);
-    expect(shouldShowSmartReplyCard(suggestion)).toBe(true);
+    expect(shouldShowSmartReplyCard(suggestion)).toBe(false);
   });
 
-  it("shows smart reply card while poll is still active", () => {
+  it("keeps smart reply card hidden while poll is still active", () => {
     expect(shouldShowSmartReplyCard(undefined)).toBe(false);
     expect(
       shouldShowSmartReplyCard({
@@ -737,7 +738,7 @@ describe("smart-reply-adapter", () => {
         generateStatus: 0,
         status: "thinking",
       }),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       shouldShowSmartReplyCard({
         assistantName: "护肤小助手",
@@ -745,7 +746,7 @@ describe("smart-reply-adapter", () => {
         generateStatus: 1,
         status: "processing",
       }),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       shouldShowSmartReplyCard({
         assistantName: "护肤小助手",
@@ -987,10 +988,19 @@ describe("smart-reply-adapter", () => {
       canRequestSmartReplyMakeShorter({
         assistantName: "护肤小助手",
         content: "已发送话术",
-        generateStatus: 4,
+        generateStatus: 2,
+        sent: true,
         status: "ready",
       }),
     ).toBe(true);
+    expect(
+      canRequestSmartReplyMakeShorter({
+        assistantName: "护肤小助手",
+        content: "已转人工",
+        generateStatus: 4,
+        status: "ready",
+      }),
+    ).toBe(false);
     expect(
       canRequestSmartReplyMakeShorter({
         assistantName: "护肤小助手",
@@ -1159,6 +1169,42 @@ describe("smart-reply-adapter", () => {
     })).toBe(false);
   });
 
+  it("only shows generated smart reply cards for successful generate status", () => {
+    expect(shouldShowSmartReplyCard({
+      assistantName: "智能助手",
+      content: "",
+      generateStatus: 0,
+      status: "thinking",
+    })).toBe(false);
+    expect(shouldShowSmartReplyCard({
+      assistantName: "智能助手",
+      content: "",
+      generateStatus: 1,
+      status: "processing",
+    })).toBe(false);
+    expect(shouldShowSmartReplyCard({
+      assistantName: "智能助手",
+      content: "推荐话术",
+      generateStatus: 2,
+      pollComplete: true,
+      status: "ready",
+    })).toBe(true);
+    expect(shouldShowSmartReplyCard({
+      assistantName: "智能助手",
+      content: "",
+      failReason: "model_error",
+      generateStatus: 3,
+      pollComplete: true,
+    })).toBe(false);
+    expect(shouldShowSmartReplyCard({
+      assistantName: "智能助手",
+      content: "",
+      generateStatus: 4,
+      pollComplete: true,
+      status: "ready",
+    })).toBe(false);
+  });
+
   it("marks sent suggestions as poll complete and keeps the card visible", () => {
     const sentSuggestion = createSentSmartReplySuggestion(
       {
@@ -1175,9 +1221,10 @@ describe("smart-reply-adapter", () => {
     expect(sentSuggestion).toEqual({
       assistantName: "护肤小助手",
       content: "已发送话术",
-      generateStatus: 4,
+      generateStatus: 2,
       pollComplete: true,
       recordId: "88001",
+      sent: true,
       status: "ready",
     });
     expect(isSmartReplySent(sentSuggestion)).toBe(true);

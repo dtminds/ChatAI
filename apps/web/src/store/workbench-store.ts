@@ -3525,16 +3525,7 @@ export function createWorkbenchStore() {
           // 单次历史查询失败不展示错误卡片，继续走原生成链路。
         }
 
-        const optimisticSuggestion = createTriggeredSmartReplySuggestion(message);
-
         set((currentState) => ({
-          smartReplyByMessageIdByConversationId: {
-            ...currentState.smartReplyByMessageIdByConversationId,
-            [conversationId]: {
-              ...(currentState.smartReplyByMessageIdByConversationId[conversationId] ?? {}),
-              [lookupKey]: optimisticSuggestion,
-            },
-          },
           smartReplyPendingMessageKeysByConversationId: {
             ...currentState.smartReplyPendingMessageKeysByConversationId,
             [conversationId]: {
@@ -3606,7 +3597,7 @@ export function createWorkbenchStore() {
                   ...(currentState.smartReplyByMessageIdByConversationId[conversationId] ??
                     {}),
                   [lookupKey]: {
-                    ...optimisticSuggestion,
+                    ...createTriggeredSmartReplySuggestion(message),
                     failReason: errorMessage,
                     generateStatus: 3,
                     pollComplete: true,

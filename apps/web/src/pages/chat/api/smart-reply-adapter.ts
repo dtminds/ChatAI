@@ -18,6 +18,8 @@ export const SMART_REPLY_THINKING_LABEL = "思考中..";
 export const SMART_REPLY_CONTENT_INCOMPLETE_SKIP_MESSAGE = "content_incomplete_skip";
 export const SMART_REPLY_CONTENT_INCOMPLETE_SKIP_HINT =
   "这条消息信息不足，已跳过话术推荐";
+export const SMART_REPLY_HANDOFF_HINT = "已转人工";
+export const SMART_REPLY_INLINE_LOADING_HINT = "正在生成话术推荐";
 
 const SMART_REPLY_TRIGGER_RAW_MSGTYPES = new Set(["text", "image", "voice"]);
 
@@ -36,6 +38,10 @@ function isSmartReplyQuestionImageContent(
   content: MessageContent,
 ): content is Extract<MessageContent, { type: "image" }> {
   return content.type === "image" && content.variant !== "emotion";
+}
+
+function readSmartReplyGenerateStatus(suggestion?: SmartReplySuggestion | null) {
+  return readNonNegativeInteger(suggestion?.generateStatus);
 }
 
 export function hasSmartReplyTriggerRawMsgtype(message: Pick<ChatMessage, "rawMsgtype">) {
@@ -253,7 +259,7 @@ export function isSmartReplyGenerationFailed(
     return true;
   }
 
-  return readNonNegativeInteger(suggestion.generateStatus) === 3;
+  return readSmartReplyGenerateStatus(suggestion) === 3;
 }
 
 export function isSmartReplyContentIncompleteSkip(
@@ -272,23 +278,19 @@ export function shouldShowSmartReplyCard(suggestion?: SmartReplySuggestion | nul
     return false;
   }
 
-  if (
-    isSmartReplyContentIncompleteSkip(suggestion) ||
-    isSmartReplyKnowledgeMiss(suggestion) ||
-    isSmartReplyGenerationFailed(suggestion)
-  ) {
+  if (isSmartReplySent(suggestion)) {
     return true;
   }
 
-  if (isSmartReplyReady(suggestion)) {
-    return true;
-  }
-
-  if (!isSmartReplyBusy(suggestion)) {
+  if (readSmartReplyGenerateStatus(suggestion) !== 2) {
     return false;
   }
 
-  return true;
+  if (!isSmartReplyReady(suggestion)) {
+    return false;
+  }
+
+  return suggestion.content.trim().length > 0;
 }
 
 export function shouldShowSmartReplyTriggerIcon(
@@ -299,7 +301,7 @@ export function shouldShowSmartReplyTriggerIcon(
     return false;
   }
 
-  return !shouldShowSmartReplyCard(suggestion);
+  return !shouldShowSmartReplyCard(suggestion) && !getSmartReplyInlineState(suggestion);
 }
 
 export function collectNewSmartReplyPendingKeys(
@@ -392,6 +394,12 @@ export function isSmartReplyReady(suggestion?: SmartReplySuggestion | null) {
     return false;
   }
 
+  const generateStatus = readSmartReplyGenerateStatus(suggestion);
+
+  if (generateStatus != null) {
+    return generateStatus === 2 && suggestion.content.trim().length > 0;
+  }
+
   if (suggestion.status === "thinking" || suggestion.status === "processing") {
     return false;
   }
@@ -421,6 +429,10 @@ export function canRequestSmartReplyMakeShorter(
     return false;
   }
 
+  if (!isSmartReplySent(suggestion) && readSmartReplyGenerateStatus(suggestion) !== 2) {
+    return false;
+  }
+
   return suggestion.content.trim().length > 0;
 }
 
@@ -438,7 +450,7 @@ export function createMakeShorterSmartReplySuggestion(
 }
 
 export function isSmartReplySent(suggestion?: SmartReplySuggestion | null) {
-  return readNonNegativeInteger(suggestion?.generateStatus) === 4;
+  return suggestion?.sent === true;
 }
 
 export function createSentSmartReplySuggestion(
@@ -449,8 +461,8 @@ export function createSentSmartReplySuggestion(
     ...previous,
     busyRequestId: undefined,
     content: content.trim(),
-    generateStatus: 4,
     pollComplete: true,
+    sent: true,
     status: "ready",
   };
 }
@@ -479,6 +491,60 @@ export function isSmartReplyTerminalGenerateStatus(
   return (SMART_REPLY_TERMINAL_GENERATE_STATUSES as readonly number[]).includes(
     numericStatus,
   );
+}
+
+export type SmartReplyInlineState = {
+  canDismiss: boolean;
+  canRegenerate: boolean;
+  isLoading: boolean;
+  label: string;
+};
+
+export function getSmartReplyInlineState(
+  suggestion?: SmartReplySuggestion | null,
+): SmartReplyInlineState | undefined {
+  if (!suggestion) {
+    return undefined;
+  }
+
+  const generateStatus = readSmartReplyGenerateStatus(suggestion);
+
+  if (generateStatus === 0 || generateStatus === 1 || isSmartReplyBusy(suggestion)) {
+    return {
+      canDismiss: false,
+      canRegenerate: false,
+      isLoading: true,
+      label: SMART_REPLY_INLINE_LOADING_HINT,
+    };
+  }
+
+  if (generateStatus === 3) {
+    const failReason = suggestion.failReason?.trim();
+
+    return {
+      canDismiss: true,
+      canRegenerate: true,
+      isLoading: false,
+      label: isSmartReplyKnowledgeMiss(suggestion)
+        ? "未命中知识集，暂无推荐话术"
+        : isSmartReplyContentIncompleteSkip(suggestion)
+          ? SMART_REPLY_CONTENT_INCOMPLETE_SKIP_HINT
+          : failReason
+            ? `生成失败：${failReason}`
+            : "生成失败",
+    };
+  }
+
+  if (generateStatus === 4) {
+    return {
+      canDismiss: true,
+      canRegenerate: false,
+      isLoading: false,
+      label: SMART_REPLY_HANDOFF_HINT,
+    };
+  }
+
+  return undefined;
 }
 
 export function buildJavaGenAnswerFromText(text: string) {

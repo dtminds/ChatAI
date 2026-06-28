@@ -762,6 +762,7 @@ describe("message feed row actions", () => {
         smartReply={{
           assistantName: "护肤小助手",
           content: "建议先确认肤质",
+          generateStatus: 2,
           status: "ready",
         }}
       />,
@@ -794,6 +795,101 @@ describe("message feed row actions", () => {
     expect(screen.queryByTestId("smart-reply-card")).not.toBeInTheDocument();
   });
 
+  it("shows a compact inline spinner instead of a card while manual smart reply is pending", () => {
+    render(
+      <MessageRow
+        isSmartReplyPending
+        message={{
+          content: { text: "客户想了解产品", type: "text" },
+          conversationId: "conv-1",
+          uiMessageKey: "msg-customer-1",
+          rawMsgtype: "text",
+          role: "customer",
+          sender: { id: "cus-1", name: "客户甲" },
+          sentAt: "2026-05-25T10:00:00+08:00",
+          seq: 12,
+          status: "sent",
+        } as ChatMessage}
+      />,
+    );
+
+    expect(screen.getByTestId("smart-reply-inline-processing")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("正在生成话术推荐");
+    expect(screen.queryByTestId("smart-reply-card")).not.toBeInTheDocument();
+  });
+
+  it.each([
+    { expectedLabel: "正在生成话术推荐", generateStatus: 0, status: "thinking" as const },
+    { expectedLabel: "正在生成话术推荐", generateStatus: 1, status: "processing" as const },
+    { expectedLabel: "生成失败：model_error", failReason: "model_error", generateStatus: 3 },
+    { expectedLabel: "已转人工", generateStatus: 4, status: "ready" as const },
+  ])(
+    "shows inline smart reply state instead of a card for gen_status $generateStatus",
+    ({ expectedLabel, failReason, generateStatus, status }) => {
+      render(
+        <MessageRow
+          message={{
+            content: { text: "客户想了解产品", type: "text" },
+            conversationId: "conv-1",
+            uiMessageKey: "msg-customer-1",
+            rawMsgtype: "text",
+            role: "customer",
+            sender: { id: "cus-1", name: "客户甲" },
+            sentAt: "2026-05-25T10:00:00+08:00",
+            seq: 12,
+            status: "sent",
+          } as ChatMessage}
+          smartReply={{
+            assistantName: "护肤小助手",
+            content: generateStatus === 4 ? "转人工原因" : "",
+            failReason,
+            generateStatus,
+            pollComplete: generateStatus === 3 || generateStatus === 4,
+            status,
+          }}
+        />,
+      );
+
+      expect(screen.getByTestId("smart-reply-inline-processing")).toBeInTheDocument();
+      expect(screen.getByRole("status")).toHaveTextContent(expectedLabel);
+      expect(screen.queryByTestId("smart-reply-card")).not.toBeInTheDocument();
+    },
+  );
+
+  it("regenerates failed inline smart replies from the refresh action", async () => {
+    const user = userEvent.setup();
+    const onTriggerSmartReply = vi.fn();
+    const message = {
+      content: { text: "客户想了解产品", type: "text" },
+      conversationId: "conv-1",
+      uiMessageKey: "msg-customer-1",
+      rawMsgtype: "text",
+      role: "customer",
+      sender: { id: "cus-1", name: "客户甲" },
+      sentAt: "2026-05-25T10:00:00+08:00",
+      seq: 12,
+      status: "sent",
+    } as ChatMessage;
+
+    render(
+      <MessageRow
+        message={message}
+        onTriggerSmartReply={onTriggerSmartReply}
+        smartReply={{
+          assistantName: "护肤小助手",
+          content: "",
+          failReason: "model_error",
+          generateStatus: 3,
+          pollComplete: true,
+        }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "重新生成" }));
+
+    expect(onTriggerSmartReply).toHaveBeenCalledWith(message, { force: true });
+  });
+
   it("dismisses the smart reply card so the avatar recommendation action can be used again", async () => {
     const user = userEvent.setup();
     const onDismissSmartReply = vi.fn();
@@ -815,6 +911,7 @@ describe("message feed row actions", () => {
         smartReply={{
           assistantName: "护肤小助手",
           content: "建议先确认肤质",
+          generateStatus: 2,
           status: "ready",
         }}
       />,
@@ -861,6 +958,7 @@ describe("message feed row actions", () => {
         smartReply={{
           assistantName: "护肤小助手",
           content: "建议先确认肤质",
+          generateStatus: 2,
           status: "ready",
         }}
       />,

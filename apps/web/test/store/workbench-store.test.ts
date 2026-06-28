@@ -2498,6 +2498,68 @@ describe("useWorkbenchStore", () => {
     });
   });
 
+  it("keeps manual smart reply generation as pending before the trigger request resolves", async () => {
+    const baseService = createMockWorkbenchService();
+    const generalAnswer = createDeferred<{
+      suggestion: {
+        assistantName: string;
+        content: string;
+        messageId: string;
+        status: "processing";
+      } | null;
+    }>();
+
+    setWorkbenchService({
+      ...baseService,
+      async pollSmartReplies() {
+        return { suggestions: [] };
+      },
+      async requestSmartReplyGeneralAnswer() {
+        return generalAnswer.promise;
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    const message = useWorkbenchStore
+      .getState()
+      .messagesByConversationId["conv-001"].find(
+        (item): item is Message & { role: "customer" } =>
+          item.role === "customer" && item.seq === 8,
+      );
+
+    expect(message).toBeDefined();
+
+    const requestPromise =
+      useWorkbenchStore.getState().requestSmartReplyGeneralAnswer(message!, {
+        force: true,
+      });
+    await Promise.resolve();
+
+    expect(
+      useWorkbenchStore.getState().smartReplyPendingMessageKeysByConversationId[
+        "conv-001"
+      ],
+    ).toMatchObject({
+      "8": true,
+    });
+    expect(
+      useWorkbenchStore.getState().smartReplyByMessageIdByConversationId[
+        "conv-001"
+      ]?.["8"],
+    ).toBeUndefined();
+
+    generalAnswer.resolve({
+      suggestion: {
+        assistantName: "智能助手",
+        content: "",
+        messageId: "8",
+        status: "processing",
+      },
+    });
+    await requestPromise;
+  });
+
   it("reveals an existing hidden smart reply without requesting generation", async () => {
     const baseService = createMockWorkbenchService();
     const observedGeneralAnswerRequests: Array<{ conversationId: string; msgId: number }> = [];
@@ -3152,9 +3214,12 @@ describe("useWorkbenchStore", () => {
     });
     expect(state.smartReplyByMessageIdByConversationId["conv-001"]?.["9"]).toMatchObject({
       content: "发送第一条推荐",
-      generateStatus: 4,
       pollComplete: true,
+      sent: true,
     });
+    expect(
+      state.smartReplyByMessageIdByConversationId["conv-001"]?.["9"]?.generateStatus,
+    ).not.toBe(4);
   });
 
   it("continues polling smart replies after a transient poll failure", async () => {

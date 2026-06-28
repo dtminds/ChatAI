@@ -152,7 +152,7 @@ describe("mapJavaUserHistoryAnswerList", () => {
         generateStatus: 4,
         messageId: "2002",
         pollComplete: true,
-        status: "ready",
+        status: undefined,
       },
     ]);
   });

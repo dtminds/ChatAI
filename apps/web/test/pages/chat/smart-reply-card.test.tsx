@@ -762,7 +762,8 @@ describe("SmartReplyCard", () => {
         suggestion={{
           assistantName: "护肤小助手",
           content: "已发送话术",
-          generateStatus: 4,
+          generateStatus: 2,
+          sent: true,
           status: "ready",
         }}
       />,

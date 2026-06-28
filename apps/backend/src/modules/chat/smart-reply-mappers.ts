@@ -356,7 +356,7 @@ function mapSmartReplyStatus(
     return "processing";
   }
 
-  if (numericStatus === 3) {
+  if (numericStatus === 3 || numericStatus === 4) {
     return undefined;
   }
 

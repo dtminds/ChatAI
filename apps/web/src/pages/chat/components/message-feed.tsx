@@ -47,8 +47,10 @@ import { QuoteMessagePreview } from "@/pages/chat/components/message/quote";
 import { TextMessageBubble } from "@/pages/chat/components/message/text";
 import {
   getSmartReplyLookupKey,
+  getSmartReplyInlineState,
   shouldShowSmartReplyCard,
   shouldShowSmartReplyTriggerIcon,
+  SMART_REPLY_INLINE_LOADING_HINT,
   type SmartReplySendPayload,
 } from "@/pages/chat/api/smart-reply-adapter";
 import {
@@ -101,6 +103,7 @@ type ChatMessageListProps = {
   retryingMessageIds?: ReadonlySet<string>;
   smartReplyAutoPendingByMessageId?: Record<string, true>;
   smartReplyByMessageId?: Record<string, SmartReplySuggestion>;
+  smartReplyPendingByMessageId?: Record<string, true>;
 };
 
 
@@ -139,6 +142,7 @@ export function ChatMessageList({
   retryingMessageIds,
   smartReplyAutoPendingByMessageId,
   smartReplyByMessageId,
+  smartReplyPendingByMessageId,
 }: ChatMessageListProps) {
   const items = useMemo(
     () => buildFeedItems(messages, showTimeDividers),
@@ -277,6 +281,13 @@ export function ChatMessageList({
                     ],
                   )
                 }
+                isSmartReplyPending={
+                  Boolean(
+                    smartReplyPendingByMessageId?.[
+                      getSmartReplyLookupKey(item.message)
+                    ],
+                  )
+                }
                 smartReply={smartReplyByMessageId?.[getSmartReplyLookupKey(item.message)]}
               />
             </div>
@@ -352,6 +363,7 @@ export function MessageRow({
   onTranscribeVoice,
   isRetryingMessage = false,
   isSmartReplyAutoPending = false,
+  isSmartReplyPending = false,
   smartReply,
 }: {
   conversationId?: string;
@@ -360,6 +372,7 @@ export function MessageRow({
   canCollectMaterialActions?: boolean;
   isRetryingMessage?: boolean;
   isSmartReplyAutoPending?: boolean;
+  isSmartReplyPending?: boolean;
   shouldAnimate?: boolean;
   showTimestamp?: boolean;
   onDownloadMessageFile?: (message: ChatMessage) => void;
@@ -427,7 +440,13 @@ export function MessageRow({
   const showSentAtHoverSlot = Boolean(formattedSentAt) && !showSentAtAfterSenderName;
   const inlineDeliveryState = getInlineDeliveryState(message);
   const showSmartReplyCard = shouldShowSmartReplyCard(smartReply);
-  const showSmartReplyInlineProcessing = isSmartReplyAutoPending && !showSmartReplyCard;
+  const smartReplyInlineState =
+    !showSmartReplyCard && smartReply
+      ? getSmartReplyInlineState(smartReply)
+      : undefined;
+  const showSmartReplyInlineProcessing =
+    !showSmartReplyCard &&
+    (isSmartReplyAutoPending || isSmartReplyPending || smartReplyInlineState != null);
   const showSmartReplyTriggerIcon =
     !showSmartReplyInlineProcessing &&
     shouldShowSmartReplyTriggerIcon(message, smartReply);
@@ -582,7 +601,20 @@ export function MessageRow({
                   />
                 ) : null}
                 {showSmartReplyInlineProcessing ? (
-                  <SmartReplyInlineProcessingHint label="正在生成话术推荐" />
+                  <SmartReplyInlineProcessingHint
+                    animated={smartReplyInlineState?.isLoading ?? true}
+                    label={smartReplyInlineState?.label ?? SMART_REPLY_INLINE_LOADING_HINT}
+                    onDismiss={
+                      smartReplyInlineState?.canDismiss && onDismissSmartReply
+                        ? () => onDismissSmartReply(message)
+                        : undefined
+                    }
+                    onRegenerate={
+                      smartReplyInlineState?.canRegenerate && onTriggerSmartReply
+                        ? () => onTriggerSmartReply(message, { force: true })
+                        : undefined
+                    }
+                  />
                 ) : null}
                 {showTimestamp ? (
                   <p className="px-1 text-[11px] leading-4 text-muted-foreground/80">

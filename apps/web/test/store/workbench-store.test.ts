@@ -3222,6 +3222,57 @@ describe("useWorkbenchStore", () => {
     ).not.toBe(4);
   });
 
+  it("ignores blank or missing optNos before marking a smart reply answer", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendSmartReplyAnswer = vi.fn(baseService.sendSmartReplyAnswer);
+
+    setWorkbenchService({
+      ...baseService,
+      sendSmartReplyAnswer,
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    const messages = useWorkbenchStore.getState().messagesByConversationId["conv-001"];
+    const firstMessage = messages.find((message) => message.seq === 9);
+
+    if (!isChatMessage(firstMessage)) {
+      throw new Error("Expected smart reply test message to be a chat message");
+    }
+
+    useWorkbenchStore.setState((state) => ({
+      sendAgentMessageSegments: vi.fn(async () => ({
+        didConsumeQuote: false,
+        ok: true as const,
+        optNos: [" ", undefined, " opt-keep-001 "] as unknown as string[],
+      })),
+      smartReplyByMessageIdByConversationId: {
+        ...state.smartReplyByMessageIdByConversationId,
+        "conv-001": {
+          "9": {
+            assistantName: "智能助手",
+            content: "第一条推荐",
+            recordId: "record-9",
+            status: "ready",
+          },
+        },
+      },
+    }));
+
+    const result = await useWorkbenchStore.getState().sendSmartReply(firstMessage, {
+      content: "发送第一条推荐",
+      recommendedAttachments: [],
+      selectedAttachmentIds: [],
+    });
+
+    expect(result.ok).toBe(true);
+    expect(sendSmartReplyAnswer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        optNos: ["opt-keep-001"],
+      }),
+    );
+  });
+
   it("continues polling smart replies after a transient poll failure", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-29T12:00:00+08:00"));

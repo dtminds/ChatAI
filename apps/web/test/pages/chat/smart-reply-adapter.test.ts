@@ -1257,22 +1257,22 @@ describe("smart-reply-adapter", () => {
     expect(shouldShowSmartReplyCard(sentSuggestion)).toBe(true);
   });
 
-  it("adapts poll complete fields from dto", () => {
-    expect(
-      adaptSmartReplySuggestions([
-        {
-          assistantName: "智能助手",
-          content: "推荐话术",
-          generateStatus: 4,
-          messageId: "1001",
-          pollComplete: true,
-          status: "ready",
-        },
-      ]),
-    ).toEqual({
+  it("adapts handoff generate status from dto without marking it sent", () => {
+    const suggestions = adaptSmartReplySuggestions([
+      {
+        assistantName: "智能助手",
+        content: "转人工原因",
+        generateStatus: 4,
+        messageId: "1001",
+        pollComplete: true,
+        status: "ready",
+      },
+    ]);
+
+    expect(suggestions).toEqual({
       "1001": {
         assistantName: "智能助手",
-        content: "推荐话术",
+        content: "转人工原因",
         failReason: undefined,
         generateStatus: 4,
         pollComplete: true,
@@ -1280,5 +1280,6 @@ describe("smart-reply-adapter", () => {
         status: "ready",
       },
     });
+    expect(isSmartReplySent(suggestions["1001"])).toBe(false);
   });
 });

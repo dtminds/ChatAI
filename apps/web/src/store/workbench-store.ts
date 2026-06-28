@@ -3764,9 +3764,9 @@ export function createWorkbenchStore() {
           return sendResult;
         }
 
-        const optNos = (sendResult.optNos ?? []).filter(
-          (optNo) => optNo.trim().length > 0,
-        );
+        const optNos = (sendResult.optNos ?? [])
+          .map((optNo) => optNo?.trim())
+          .filter((optNo): optNo is string => Boolean(optNo));
 
         if (optNos.length > 0) {
           try {

@@ -7,6 +7,8 @@ import type {
   AiHostingAgentSettingsSaveRequest,
   AiHostingQuotaOverview,
   AiHostingSettingsResponse,
+  AiHostingSettingsSyncSeatGroupsRequest,
+  AiHostingSettingsSyncSeatGroupsResponse,
   AiHostingSettingsUpdateRequest,
   AiHostingModelListResponse,
   ApiSuccessEnvelope,
@@ -71,6 +73,18 @@ export async function updateAiHostingSettings(payload: AiHostingSettingsUpdateRe
     ApiSuccessEnvelope<AiHostingSettingsResponse>,
     AiHostingSettingsUpdateRequest
   >("/server/ai-hosting/hosting-settings", payload);
+
+  return response.data;
+}
+
+export async function syncAiHostingSeatGroups(
+  userSeatId: string,
+  payload: AiHostingSettingsSyncSeatGroupsRequest = {},
+) {
+  const response = await http.post<
+    ApiSuccessEnvelope<AiHostingSettingsSyncSeatGroupsResponse>,
+    AiHostingSettingsSyncSeatGroupsRequest
+  >(`/server/ai-hosting/hosting-settings/${userSeatId}/sync-seat-groups`, payload);
 
   return response.data;
 }

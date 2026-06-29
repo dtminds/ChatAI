@@ -45,6 +45,7 @@ const agentServiceMock = vi.hoisted(() => ({
   removeAiHostingAgent: vi.fn(),
   restoreAiHostingAgent: vi.fn(),
   renameAiHostingAgent: vi.fn(),
+  syncAiHostingSeatGroups: vi.fn(),
   updateAiHostingSettings: vi.fn(),
   updateAiHostingAgent: vi.fn(),
 }));
@@ -179,6 +180,7 @@ const mockHostingSettings: AiHostingSettingsResponse = {
       agentId: null,
       avatarUrl: "",
       fullAutoAuth: false,
+      groupChatCount: 2,
       id: "101",
       name: "小助理1",
       semiAutoAuth: false,
@@ -187,6 +189,7 @@ const mockHostingSettings: AiHostingSettingsResponse = {
       agentId: "301",
       avatarUrl: "https://example.com/avatar-102.png",
       fullAutoAuth: true,
+      groupChatCount: 5,
       id: "102",
       name: "小助理2",
       semiAutoAuth: true,
@@ -195,6 +198,7 @@ const mockHostingSettings: AiHostingSettingsResponse = {
       agentId: "303",
       avatarUrl: "",
       fullAutoAuth: false,
+      groupChatCount: 0,
       id: "103",
       name: "小助理3",
       semiAutoAuth: true,
@@ -684,6 +688,8 @@ describe("AI hosting pages", () => {
     expect(screen.getAllByText("启用")).toHaveLength(3);
     expect(screen.getAllByText("关闭")).toHaveLength(3);
     expect(screen.getAllByRole("button", { name: "设置" })).toHaveLength(3);
+    expect(screen.getAllByRole("button", { name: /^同步.*群聊$/ })).toHaveLength(3);
+    expect(screen.getByRole("cell", { name: "5" })).toBeInTheDocument();
   });
 
   it("keeps the hosting settings table header visible while loading", async () => {
@@ -695,6 +701,7 @@ describe("AI hosting pages", () => {
 
     expect(screen.getByRole("table", { name: "托管设置列表" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "托管账号" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "开通群聊数" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "关联 Agent" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "允许开启 AI 回复" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "允许话术推荐" })).toBeInTheDocument();
@@ -714,6 +721,24 @@ describe("AI hosting pages", () => {
     expect(screen.getByText("小助理2")).toBeInTheDocument();
     expect(screen.queryByText("小助理1")).not.toBeInTheDocument();
     expect(screen.queryByText("小助理3")).not.toBeInTheDocument();
+  });
+
+  it("syncs seat groups from the hosting settings table", async () => {
+    const user = userEvent.setup();
+    vi.mocked(agentService.syncAiHostingSeatGroups).mockResolvedValue({ synced: true });
+
+    renderWithRoute("/chat/ai-hosting/hosting-settings", <AgentHostingSettingsPage />);
+
+    await screen.findByRole("heading", { level: 1, name: "托管设置" });
+    await user.click(screen.getByRole("button", { name: "同步小助理2群聊" }));
+
+    await waitFor(() => {
+      expect(agentService.syncAiHostingSeatGroups).toHaveBeenCalledWith("102", {
+        syncMembers: true,
+      });
+    });
+    expect(agentService.listAiHostingSettings).toHaveBeenCalledTimes(2);
+    expect(toast.success).toHaveBeenCalledWith("群聊同步已触发");
   });
 
   it("opens the settings dialog from row settings", async () => {

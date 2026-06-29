@@ -37,6 +37,7 @@ type JavaChunkPageResponse = JavaApiResponse<unknown> & {
 export type AgentKbJavaCreateDocInput = {
   description?: string;
   docSuffix: string;
+  docSize: number;
   docType: 1 | 2 | 3;
   docUrl: string;
   kbId: number;
@@ -138,6 +139,7 @@ export function createAgentKbJavaClient(
       appendFormField(form, "docType", input.docType);
       appendFormField(form, "docUrl", input.docUrl);
       appendFormField(form, "docSuffix", input.docSuffix);
+      appendFormField(form, "docSize", input.docSize);
       appendFormField(form, "name", input.name);
       appendFormField(form, "operatorId", input.operatorId);
 

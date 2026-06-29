@@ -190,6 +190,7 @@ describe("KB read routes", () => {
       pageSize: 10,
       total: 2,
     });
+    expect(docsBody.data).not.toHaveProperty("quota");
     expect(docsBody.data.docs[0]).toMatchObject({
       docId: "1001",
       docType: "document",

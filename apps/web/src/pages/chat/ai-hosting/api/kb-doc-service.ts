@@ -117,6 +117,7 @@ export function buildKbDocCreateRequest(input: {
     chunkParams: input.chunkParams,
     chunkStrategy: input.chunkStrategy,
     description: input.description,
+    docSize: input.file.size,
     docSuffix,
     docUrl: input.docUrl,
     kbId: input.kbId,
@@ -159,6 +160,7 @@ export async function importKbQaDoc(input: {
   const docSuffix = getKbQaDocSuffix(input.file.name);
 
   return createKbFaqDoc({
+    docSize: input.file.size,
     docSuffix,
     docUrl: uploadResult.docUrl,
     kbId: input.kbId,
@@ -180,6 +182,7 @@ export async function importKbImageDoc(input: {
 
   return createKbImageDoc({
     description: input.description.trim(),
+    docSize: input.file.size,
     docSuffix,
     docUrl: uploadResult.docUrl,
     kbId: input.kbId,

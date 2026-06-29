@@ -29,6 +29,7 @@ export const KbDocCreateRequestSchema = Type.Object({
   chunkParams: KbDocChunkParamsSchema,
   chunkStrategy: KbDocChunkStrategySchema,
   description: Type.Optional(Type.String()),
+  docSize: Type.Number({ minimum: 0 }),
   docSuffix: Type.String({ minLength: 1 }),
   docUrl: Type.String({ minLength: 1 }),
   kbId: Type.String({ minLength: 1 }),
@@ -67,6 +68,7 @@ export type KbDocUploadCredentialResponse = Static<
 
 export const KbDocCreateFaqRequestSchema = Type.Object({
   description: Type.Optional(Type.String()),
+  docSize: Type.Number({ minimum: 0 }),
   docSuffix: Type.String({ minLength: 1 }),
   docUrl: Type.String({ minLength: 1 }),
   kbId: Type.String({ minLength: 1 }),
@@ -75,6 +77,7 @@ export const KbDocCreateFaqRequestSchema = Type.Object({
 
 export const KbDocCreateImageRequestSchema = Type.Object({
   description: Type.String({ minLength: 1 }),
+  docSize: Type.Number({ minimum: 0 }),
   docSuffix: Type.String({ minLength: 1 }),
   docUrl: Type.String({ minLength: 1 }),
   kbId: Type.String({ minLength: 1 }),

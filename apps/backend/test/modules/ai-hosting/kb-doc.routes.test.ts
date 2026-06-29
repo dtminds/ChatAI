@@ -52,7 +52,10 @@ function mockJavaKbDocCreateFetch(docId = 1001) {
   );
 }
 
-async function createAuthenticatedApp(role: "admin" | "operator" | "owner" | "viewer" = "admin") {
+async function createAuthenticatedApp(
+  role: "admin" | "operator" | "owner" | "viewer" = "admin",
+  dbOptions: Parameters<typeof createKbReadDbMock>[0] = {},
+) {
   const app = await buildMockedApp();
   const token = app.jwt.sign({
     roles: [role],
@@ -61,7 +64,7 @@ async function createAuthenticatedApp(role: "admin" | "operator" | "owner" | "vi
     subUserId: "101",
     uid: 9001,
   });
-  app.db = createKbReadDbMock() as never;
+  app.db = createKbReadDbMock(dbOptions) as never;
 
   return {
     app,
@@ -114,6 +117,7 @@ describe("ai-hosting kb-doc routes", () => {
       payload: {
         chunkParams: { maxLength: 2000, strategy: "length" },
         chunkStrategy: "length",
+        docSize: 1024,
         docSuffix: "pdf",
         docUrl: "kb-docs/demo.pdf",
         kbId: "1",
@@ -136,6 +140,7 @@ describe("ai-hosting kb-doc routes", () => {
     expect(String(fetchMock.mock.calls[0]?.[1]?.body)).toContain(
       "docUrl=https%3A%2F%2Fb5.bokr.com.cn%2Fkb-docs%2Fdemo.pdf",
     );
+    expect(String(fetchMock.mock.calls[0]?.[1]?.body)).toContain("docSize=1024");
     fetchMock.mockRestore();
   });
 
@@ -149,6 +154,7 @@ describe("ai-hosting kb-doc routes", () => {
       method: "POST",
       payload: {
         docSuffix: "faq.xlsx",
+        docSize: 2048,
         docUrl: "kb/upload/2026/06/24/272/1782294357364-iswksm6u.faq.xlsx",
         kbId: "1",
         name: "Q&A问答对示例.faq",
@@ -169,6 +175,7 @@ describe("ai-hosting kb-doc routes", () => {
     expect(javaFormBody).toContain("kbId=1");
     expect(javaFormBody).toContain("docType=1");
     expect(javaFormBody).toContain("docSuffix=faq.xlsx");
+    expect(javaFormBody).toContain("docSize=2048");
     expect(javaFormBody).toContain("operatorId=101");
     expect(javaFormBody).toContain(
       "docUrl=https%3A%2F%2Fb5.bokr.com.cn%2Fkb%2Fupload%2F2026%2F06%2F24%2F272%2F1782294357364-iswksm6u.faq.xlsx",
@@ -176,6 +183,41 @@ describe("ai-hosting kb-doc routes", () => {
     expect(javaFormBody).toContain(
       "volcStrategyResourceId=kb-strategy-def92e30c1456c07",
     );
+    fetchMock.mockRestore();
+  });
+
+  it("rejects creating docs when tenant document storage quota would be exceeded", async () => {
+    const fetchMock = mockJavaKbDocCreateFetch(3009);
+    const context = await createAuthenticatedApp("admin", {
+      docSizeBytes: [1024 * 1024 * 1024 - 512],
+    });
+    app = context.app;
+
+    const response = await app.inject({
+      headers: { authorization: context.authorization },
+      method: "POST",
+      payload: {
+        chunkParams: { maxLength: 2000, strategy: "length" },
+        chunkStrategy: "length",
+        docSize: 1024,
+        docSuffix: "pdf",
+        docUrl: "kb-docs/over-limit.pdf",
+        kbId: "1",
+        name: "超额文档",
+        parseMode: "standard",
+      },
+      url: "/api/server/ai-hosting/kb-docs/create",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      error: {
+        code: "KB_DOC_QUOTA_EXCEEDED",
+        message: "知识库存储空间已达上限",
+      },
+      success: false,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
     fetchMock.mockRestore();
   });
 
@@ -189,6 +231,7 @@ describe("ai-hosting kb-doc routes", () => {
       method: "POST",
       payload: {
         description: "晨间护肤套装商品主图",
+        docSize: 4096,
         docSuffix: "png",
         docUrl: "kb-images/demo.png",
         kbId: "1",
@@ -205,6 +248,7 @@ describe("ai-hosting kb-doc routes", () => {
       success: true,
     });
     expect(String(fetchMock.mock.calls[0]?.[1]?.body)).toContain("docType=3");
+    expect(String(fetchMock.mock.calls[0]?.[1]?.body)).toContain("docSize=4096");
     expect(String(fetchMock.mock.calls[0]?.[1]?.body)).toContain(
       "volcStrategyResourceId=kb-strategy-def92e30c1456c07",
     );
@@ -302,6 +346,7 @@ describe("ai-hosting kb-doc routes", () => {
       payload: {
         chunkParams: { maxLength: 2000, strategy: "length" },
         chunkStrategy: "length",
+        docSize: 1024,
         docSuffix: "txt",
         docUrl: "kb-docs/demo.txt",
         kbId: "1",

@@ -7,6 +7,7 @@ import type {
   KbDocRetryResponse,
   KbDocUploadCredentialResponse,
 } from "@chatai/contracts";
+import { AI_HOSTING_KB_DOC_STORAGE_QUOTA_LIMIT } from "@chatai/contracts";
 import type { Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
 import { BadRequestError, NotFoundError } from "../../shared/errors.js";
@@ -22,6 +23,7 @@ import {
 } from "./kb-doc-strategy-mappers.js";
 import { resolveKbDocUrlForJava } from "./kb-doc-url.js";
 import { type AgentKbTenant, parseRequiredNumericId } from "./kb-tenant-utils.js";
+import { AiHostingQuotaService } from "./quota.service.js";
 
 export const KB_DOC_TYPE_FAQ = 1;
 export const KB_DOC_TYPE_DOCUMENT = 2;
@@ -88,6 +90,7 @@ export class KbDocService {
     const kbNumericId = parseRequiredNumericId(request.kbId, "KB_NOT_FOUND", "知识库不存在");
 
     await this.assertKbExists(uid, kbNumericId);
+    await this.assertKbDocStorageQuotaAvailable(uid, request.docSize);
 
     const volcStrategyResourceId = resolveVolcStrategyResourceId({
       chunkParams: request.chunkParams,
@@ -99,6 +102,7 @@ export class KbDocService {
     const docId = await this.agentKbJavaClient.createKbDoc({
       description: request.description,
       docSuffix: normalizedSuffix,
+      docSize: request.docSize,
       docType: KB_DOC_TYPE_DOCUMENT,
       docUrl,
       kbId: kbNumericId,
@@ -137,6 +141,7 @@ export class KbDocService {
     const kbNumericId = parseRequiredNumericId(request.kbId, "KB_NOT_FOUND", "知识库不存在");
 
     await this.assertKbExists(uid, kbNumericId);
+    await this.assertKbDocStorageQuotaAvailable(uid, request.docSize);
 
     const docUrl = resolveKbDocUrlForJava(request.docUrl);
     const volcStrategyResourceId = resolveKbInitVolcStrategyResourceId();
@@ -144,6 +149,7 @@ export class KbDocService {
     const docId = await this.agentKbJavaClient.createKbDoc({
       description: request.description,
       docSuffix: normalizedSuffix,
+      docSize: request.docSize,
       docType: KB_DOC_TYPE_FAQ,
       docUrl,
       kbId: kbNumericId,
@@ -182,6 +188,7 @@ export class KbDocService {
     const kbNumericId = parseRequiredNumericId(request.kbId, "KB_NOT_FOUND", "知识库不存在");
 
     await this.assertKbExists(uid, kbNumericId);
+    await this.assertKbDocStorageQuotaAvailable(uid, request.docSize);
 
     const docUrl = resolveKbDocUrlForJava(request.docUrl);
     const volcStrategyResourceId = resolveKbInitVolcStrategyResourceId();
@@ -189,6 +196,7 @@ export class KbDocService {
     const docId = await this.agentKbJavaClient.createKbDoc({
       description: request.description.trim(),
       docSuffix: normalizedSuffix,
+      docSize: request.docSize,
       docType: KB_DOC_TYPE_IMAGE,
       docUrl,
       kbId: kbNumericId,
@@ -372,6 +380,21 @@ export class KbDocService {
 
     if (!row) {
       throw new NotFoundError("KB_DOC_NOT_FOUND", "知识不存在");
+    }
+  }
+
+  private async assertKbDocStorageQuotaAvailable(uid: number, incomingDocSize: number) {
+    const used = await new AiHostingQuotaService(this.db).sumKbDocStorageBytes(uid);
+
+    if (used + incomingDocSize > AI_HOSTING_KB_DOC_STORAGE_QUOTA_LIMIT) {
+      throw new BadRequestError(
+        "KB_DOC_QUOTA_EXCEEDED",
+        "知识库存储空间已达上限",
+        {
+          limit: AI_HOSTING_KB_DOC_STORAGE_QUOTA_LIMIT,
+          used,
+        },
+      );
     }
   }
 }

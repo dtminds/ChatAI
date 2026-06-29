@@ -47,14 +47,17 @@ export const KbListItemSchema = Type.Object({
   updatedAt: Type.String(),
 });
 
-export const KbListResponseSchema = Type.Object({
-  kbs: Type.Array(KbListItemSchema),
-  pagination: Type.Object({
-    page: Type.Number(),
-    pageSize: Type.Number(),
-    total: Type.Number(),
-  }),
-});
+export const KbListResponseSchema = Type.Object(
+  {
+    kbs: Type.Array(KbListItemSchema),
+    pagination: Type.Object({
+      page: Type.Number(),
+      pageSize: Type.Number(),
+      total: Type.Number(),
+    }),
+  },
+  { additionalProperties: false },
+);
 
 export const KbDocListItemSchema = Type.Object({
   createdAt: Type.String(),
@@ -78,14 +81,17 @@ export const KbDocDetailSchema = Type.Intersect([
   }),
 ]);
 
-export const KbDocListResponseSchema = Type.Object({
-  docs: Type.Array(KbDocListItemSchema),
-  pagination: Type.Object({
-    page: Type.Number(),
-    pageSize: Type.Number(),
-    total: Type.Number(),
-  }),
-});
+export const KbDocListResponseSchema = Type.Object(
+  {
+    docs: Type.Array(KbDocListItemSchema),
+    pagination: Type.Object({
+      page: Type.Number(),
+      pageSize: Type.Number(),
+      total: Type.Number(),
+    }),
+  },
+  { additionalProperties: false },
+);
 
 export const KbChunkListItemSchema = Type.Object({
   chunkId: Type.String(),

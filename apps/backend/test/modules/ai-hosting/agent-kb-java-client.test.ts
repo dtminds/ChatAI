@@ -31,6 +31,7 @@ describe("createAgentKbJavaClient", () => {
 
     const docId = await createAgentKbJavaClient().createKbDoc({
       docSuffix: "pdf",
+      docSize: 4096,
       docType: 2,
       docUrl: "kb-docs/demo.pdf",
       kbId: 88,
@@ -44,7 +45,7 @@ describe("createAgentKbJavaClient", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       "https://java.internal/third-internal/wap-embed-agent-kb-doc/create",
       expect.objectContaining({
-        body: "uid=9001&kbId=88&docType=2&docUrl=kb-docs%2Fdemo.pdf&docSuffix=pdf&name=%E4%BA%A7%E5%93%81%E6%89%8B%E5%86%8C&operatorId=101&volcStrategyResourceId=kb-strategy-233abb0cd67b8429",
+        body: "uid=9001&kbId=88&docType=2&docUrl=kb-docs%2Fdemo.pdf&docSuffix=pdf&docSize=4096&name=%E4%BA%A7%E5%93%81%E6%89%8B%E5%86%8C&operatorId=101&volcStrategyResourceId=kb-strategy-233abb0cd67b8429",
         headers: expect.objectContaining({
           "content-type": "application/x-www-form-urlencoded",
         }),
@@ -72,6 +73,7 @@ describe("createAgentKbJavaClient", () => {
 
     const docId = await createAgentKbJavaClient().createKbDoc({
       docSuffix: "faq.xlsx",
+      docSize: 8192,
       docType: 1,
       docUrl: "https://b5.bokr.com.cn/kb-faqs/demo.faq.xlsx",
       kbId: 88,
@@ -83,7 +85,7 @@ describe("createAgentKbJavaClient", () => {
 
     expect(docId).toBe("2002");
     expect(fetchMock.mock.calls[0]?.[1]?.body).toBe(
-      "uid=9001&kbId=88&docType=1&docUrl=https%3A%2F%2Fb5.bokr.com.cn%2Fkb-faqs%2Fdemo.faq.xlsx&docSuffix=faq.xlsx&name=%E5%BF%AB%E6%8D%B7%E8%AF%9D%E6%9C%AF%E5%AF%BC%E5%85%A5.faq&operatorId=101&volcStrategyResourceId=kb-strategy-def92e30c1456c07",
+      "uid=9001&kbId=88&docType=1&docUrl=https%3A%2F%2Fb5.bokr.com.cn%2Fkb-faqs%2Fdemo.faq.xlsx&docSuffix=faq.xlsx&docSize=8192&name=%E5%BF%AB%E6%8D%B7%E8%AF%9D%E6%9C%AF%E5%AF%BC%E5%85%A5.faq&operatorId=101&volcStrategyResourceId=kb-strategy-def92e30c1456c07",
     );
   });
 

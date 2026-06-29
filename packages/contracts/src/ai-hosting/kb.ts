@@ -1,5 +1,4 @@
 import { Type, type Static } from "@sinclair/typebox";
-import { AiHostingQuotaSchema } from "./dto.js";
 
 export const KB_SEARCH_QUERY_MAX_LENGTH = 32;
 
@@ -48,15 +47,17 @@ export const KbListItemSchema = Type.Object({
   updatedAt: Type.String(),
 });
 
-export const KbListResponseSchema = Type.Object({
-  kbs: Type.Array(KbListItemSchema),
-  pagination: Type.Object({
-    page: Type.Number(),
-    pageSize: Type.Number(),
-    total: Type.Number(),
-  }),
-  quota: AiHostingQuotaSchema,
-});
+export const KbListResponseSchema = Type.Object(
+  {
+    kbs: Type.Array(KbListItemSchema),
+    pagination: Type.Object({
+      page: Type.Number(),
+      pageSize: Type.Number(),
+      total: Type.Number(),
+    }),
+  },
+  { additionalProperties: false },
+);
 
 export const KbDocListItemSchema = Type.Object({
   createdAt: Type.String(),
@@ -80,15 +81,17 @@ export const KbDocDetailSchema = Type.Intersect([
   }),
 ]);
 
-export const KbDocListResponseSchema = Type.Object({
-  docs: Type.Array(KbDocListItemSchema),
-  pagination: Type.Object({
-    page: Type.Number(),
-    pageSize: Type.Number(),
-    total: Type.Number(),
-  }),
-  quota: AiHostingQuotaSchema,
-});
+export const KbDocListResponseSchema = Type.Object(
+  {
+    docs: Type.Array(KbDocListItemSchema),
+    pagination: Type.Object({
+      page: Type.Number(),
+      pageSize: Type.Number(),
+      total: Type.Number(),
+    }),
+  },
+  { additionalProperties: false },
+);
 
 export const KbChunkListItemSchema = Type.Object({
   chunkId: Type.String(),

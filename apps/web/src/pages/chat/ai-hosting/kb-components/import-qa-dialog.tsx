@@ -23,7 +23,13 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { isRequestError } from "@/lib/request";
+import { getAiHostingQuota } from "@/pages/chat/ai-hosting/agent-service";
 import { importKbQaDoc, getKbQaDocSuffix } from "@/pages/chat/ai-hosting/api/kb-doc-service";
+import {
+  AI_HOSTING_KB_DOC_STORAGE_QUOTA_REACHED_MESSAGE,
+  AI_HOSTING_QUOTA_CHECK_FAILED_MESSAGE,
+  wouldExceedQuota,
+} from "@/pages/chat/ai-hosting/quota";
 import { FileExtensionBadge } from "@/pages/chat/components/message/file";
 import { getFileExtension, stripFileExtension, useAsyncValidation } from "./shared";
 
@@ -125,6 +131,26 @@ export function ImportQaDialog({
 
       if (entries.length === 0) {
         setFileError("未解析到有效问答，请检查文件内容");
+        return;
+      }
+
+      try {
+        const quota = await getAiHostingQuota();
+
+        if (!isMountedRef.current) {
+          return;
+        }
+
+        if (wouldExceedQuota(quota.kbDocs, selectedFile.file.size)) {
+          toast.error(AI_HOSTING_KB_DOC_STORAGE_QUOTA_REACHED_MESSAGE);
+          return;
+        }
+      } catch {
+        if (!isMountedRef.current) {
+          return;
+        }
+
+        toast.error(AI_HOSTING_QUOTA_CHECK_FAILED_MESSAGE);
         return;
       }
 

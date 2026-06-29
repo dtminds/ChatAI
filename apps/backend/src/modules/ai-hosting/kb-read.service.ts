@@ -6,10 +6,6 @@ import type {
   KbDocType,
   KbListResponse,
 } from "@chatai/contracts";
-import {
-  AI_HOSTING_KB_DOC_QUOTA_LIMIT,
-  AI_HOSTING_KB_QUOTA_LIMIT,
-} from "@chatai/contracts";
 import type { Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
 import { BadRequestError, NotFoundError } from "../../shared/errors.js";
@@ -79,11 +75,9 @@ export class KbReadService {
       .offset((pagination.page - 1) * pagination.pageSize)
       .execute();
     const totalPromise = this.countKbs(uid, normalizedQuery);
-    const quotaUsedPromise = normalizedQuery ? this.countKbs(uid) : totalPromise;
-    const [rows, total, quotaUsed] = await Promise.all([
+    const [rows, total] = await Promise.all([
       rowsPromise,
       totalPromise,
-      quotaUsedPromise,
     ]);
 
     return {
@@ -92,10 +86,6 @@ export class KbReadService {
         page: pagination.page,
         pageSize: pagination.pageSize,
         total,
-      },
-      quota: {
-        limit: AI_HOSTING_KB_QUOTA_LIMIT,
-        used: quotaUsed,
       },
     };
   }
@@ -164,14 +154,9 @@ export class KbReadService {
       .offset((pagination.page - 1) * pagination.pageSize)
       .execute();
     const totalPromise = this.countKbDocs(uid, kbNumericId, normalizedQuery, options.docType);
-    const hasDocListFilter = Boolean(normalizedQuery) || Boolean(options.docType);
-    const quotaUsedPromise = hasDocListFilter
-      ? this.countKbDocs(uid, kbNumericId)
-      : totalPromise;
-    const [rows, total, quotaUsed] = await Promise.all([
+    const [rows, total] = await Promise.all([
       rowsPromise,
       totalPromise,
-      quotaUsedPromise,
     ]);
 
     return {
@@ -180,10 +165,6 @@ export class KbReadService {
         page: pagination.page,
         pageSize: pagination.pageSize,
         total,
-      },
-      quota: {
-        limit: AI_HOSTING_KB_DOC_QUOTA_LIMIT,
-        used: quotaUsed,
       },
     };
   }

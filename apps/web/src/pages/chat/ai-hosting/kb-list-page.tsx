@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Add01Icon, Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { KB_SEARCH_QUERY_MAX_LENGTH, type AiHostingQuota } from "@chatai/contracts";
+import { KB_SEARCH_QUERY_MAX_LENGTH } from "@chatai/contracts";
 import { Link } from "react-router-dom";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -30,12 +31,21 @@ import {
 } from "@/components/ui/table-pagination";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Textarea } from "@/components/ui/textarea";
-import { AiHostingLayout, AiHostingPageHeader } from "./ai-hosting-layout";
+import {
+  AiHostingLayout,
+  AiHostingPageHeader,
+  notifyAiHostingQuotaChanged,
+} from "./ai-hosting-layout";
 import { KbTableLoadingRow } from "./kb-components/kb-table-loading-row";
 import { TableOverflowTooltip } from "./kb-components/shared";
+import { getAiHostingQuota } from "./agent-service";
 import { createKb, listKbs, toKbListViewItem } from "./api/kb-service";
 import type { KbListViewItem } from "./kb-types";
-import { formatQuotaText, isQuotaReached } from "./quota-utils";
+import {
+  AI_HOSTING_KB_QUOTA_REACHED_MESSAGE,
+  AI_HOSTING_QUOTA_CHECK_FAILED_MESSAGE,
+  isQuotaReached,
+} from "./quota";
 
 type CreateFormState = {
   name: string;
@@ -60,7 +70,6 @@ function useDebouncedValue<T>(value: T, delayMs: number) {
 export function KbListPage() {
   const [items, setItems] = useState<KbListViewItem[]>([]);
   const [total, setTotal] = useState(0);
-  const [kbQuota, setKbQuota] = useState<AiHostingQuota | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const debouncedSearchQuery = useDebouncedValue(searchQuery, 300);
@@ -72,6 +81,7 @@ export function KbListPage() {
     description: "",
   });
   const [createSubmitting, setCreateSubmitting] = useState(false);
+  const [checkingQuota, setCheckingQuota] = useState(false);
   const [listReloadKey, setListReloadKey] = useState(0);
   const isMountedRef = useRef(false);
 
@@ -106,7 +116,6 @@ export function KbListPage() {
 
         setItems(response.kbs.map(toKbListViewItem));
         setTotal(response.pagination.total);
-        setKbQuota(response.quota);
       } finally {
         if (!cancelled) {
           setLoading(false);
@@ -127,19 +136,33 @@ export function KbListPage() {
     total,
   });
   const pagedItems = items;
-  const kbQuotaReached = isQuotaReached(kbQuota);
 
   function resetCreateForm() {
     setCreateForm({ name: "", description: "" });
   }
 
-  function handleOpenCreateDialog() {
-    if (kbQuotaReached) {
+  async function handleOpenCreateDialog() {
+    if (checkingQuota) {
       return;
     }
 
-    resetCreateForm();
-    setCreateDialogOpen(true);
+    setCheckingQuota(true);
+
+    try {
+      const quota = await getAiHostingQuota();
+
+      if (quota && isQuotaReached(quota.kbs)) {
+        toast.error(AI_HOSTING_KB_QUOTA_REACHED_MESSAGE);
+        return;
+      }
+
+      resetCreateForm();
+      setCreateDialogOpen(true);
+    } catch {
+      toast.error(AI_HOSTING_QUOTA_CHECK_FAILED_MESSAGE);
+    } finally {
+      setCheckingQuota(false);
+    }
   }
 
   function handleCloseCreateDialog() {
@@ -174,6 +197,7 @@ export function KbListPage() {
       resetCreateForm();
       setCurrentPage(1);
       setListReloadKey((value) => value + 1);
+      notifyAiHostingQuotaChanged();
     } finally {
       if (isMountedRef.current) {
         setCreateSubmitting(false);
@@ -210,15 +234,10 @@ export function KbListPage() {
             </div>
 
             <div className="flex flex-wrap items-center justify-end gap-3">
-              {kbQuota ? (
-                <span className="text-sm text-muted-foreground">
-                  {formatQuotaText(kbQuota, "个知识库")}
-                </span>
-              ) : null}
               <Button
                 className="h-10 px-4"
-                disabled={kbQuotaReached}
-                onClick={handleOpenCreateDialog}
+                disabled={checkingQuota}
+                onClick={() => void handleOpenCreateDialog()}
                 type="button"
               >
                 <HugeiconsIcon color="currentColor" icon={Add01Icon} size={17} strokeWidth={1.8} />
@@ -226,10 +245,6 @@ export function KbListPage() {
               </Button>
             </div>
           </div>
-
-          {kbQuotaReached ? (
-            <p className="text-sm text-muted-foreground">知识库数量已达上限</p>
-          ) : null}
 
           <div>
             <TooltipProvider>

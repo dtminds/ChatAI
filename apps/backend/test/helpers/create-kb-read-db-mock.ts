@@ -13,6 +13,7 @@ type QueryExecutionEvent = {
 
 type KbReadDbMockOptions = {
   beforeExecute?: (event: QueryExecutionEvent) => Promise<void> | void;
+  docSizeBytes?: number[];
   deletedDocCount?: number;
   deletedKbCount?: number;
   totalDocCount?: number;
@@ -113,6 +114,7 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
     {
       create_time: new Date("2026-06-18T15:22:22.000Z"),
       doc_process_time: null,
+      doc_size: options.docSizeBytes?.[0] ?? 12 * 1024 * 1024,
       doc_suffix: "doc",
       doc_type: 2,
       doc_update_time: null,
@@ -138,6 +140,7 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
     {
       create_time: new Date("2026-06-18T12:00:00.000Z"),
       doc_process_time: null,
+      doc_size: options.docSizeBytes?.[1] ?? 8 * 1024 * 1024,
       doc_suffix: "png",
       doc_type: 3,
       doc_update_time: null,
@@ -165,6 +168,7 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
     docs.push({
       create_time: new Date("2026-06-18T15:22:22.000Z"),
       doc_process_time: null,
+      doc_size: options.docSizeBytes?.[index] ?? 1024 * 1024,
       doc_suffix: "doc",
       doc_type: 2,
       doc_update_time: null,
@@ -192,6 +196,7 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
     docs.push({
       create_time: new Date("2026-06-18T15:22:22.000Z"),
       doc_process_time: null,
+      doc_size: 1024 * 1024,
       doc_suffix: "doc",
       doc_type: 2,
       doc_update_time: null,
@@ -335,6 +340,13 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
 
           return { total: rows.length };
         },
+        sumDocSizeResult: async () => {
+          const rows = table === "xy_wap_embed_agent_kb_doc" ? filterRows(docs) : [];
+
+          return {
+            used: rows.reduce((total, row) => total + Number(row.doc_size ?? 0), 0),
+          };
+        },
         execute: async () => {
           await options.beforeExecute?.({
             isCountQuery,
@@ -388,6 +400,10 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
             return builder.countResult();
           }
 
+          if (selectedColumns.includes("doc_size_sum")) {
+            return builder.sumDocSizeResult();
+          }
+
           const rows = await builder.execute();
           return rows[0];
         },
@@ -400,19 +416,25 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
         select: (selection?: unknown) => {
           if (typeof selection === "function") {
             isCountQuery = true;
-            selection({
+            const result = selection({
               fn: {
                 countAll: () => ({
                   as: () => undefined,
                 }),
               },
             });
+            if (Array.isArray(result)) {
+              selectedColumns = result.map((item) => String(item));
+            }
             return builder;
           }
 
           if (Array.isArray(selection)) {
             selectedAll = false;
             selectedColumns = selection.map(String);
+          } else if (table === "xy_wap_embed_agent_kb_doc" && typeof selection === "object") {
+            selectedAll = false;
+            selectedColumns = ["doc_size_sum"];
           }
 
           return builder;

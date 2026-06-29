@@ -9,7 +9,7 @@ import {
   Search01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { KB_SEARCH_QUERY_MAX_LENGTH, type AiHostingQuota } from "@chatai/contracts";
+import { KB_SEARCH_QUERY_MAX_LENGTH } from "@chatai/contracts";
 import { Link, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import {
@@ -50,13 +50,18 @@ import {
 } from "@/components/ui/table-pagination";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { FileExtensionBadge } from "@/pages/chat/components/message/file";
-import { AiHostingLayout, AiHostingPageHeader } from "./ai-hosting-layout";
+import {
+  AiHostingLayout,
+  AiHostingPageHeader,
+  notifyAiHostingQuotaChanged,
+} from "./ai-hosting-layout";
 import { KbTableLoadingRow } from "./kb-components/kb-table-loading-row";
 import { ImportDocumentDialog } from "./kb-components/import-document-dialog";
 import { ImportImageDialog } from "./kb-components/import-image-dialog";
 import { ImportQaDialog } from "./kb-components/import-qa-dialog";
 import { TableOverflowTooltip } from "./kb-components/shared";
 import { deleteKbDoc } from "./api/kb-doc-service";
+import { getAiHostingQuota } from "./agent-service";
 import {
   getKb,
   listKbDocs,
@@ -64,7 +69,11 @@ import {
   toKbListViewItem,
 } from "./api/kb-service";
 import type { KbDocViewItem, KbListViewItem, KbStatus } from "./kb-types";
-import { formatQuotaText, isQuotaReached } from "./quota-utils";
+import {
+  AI_HOSTING_KB_DOC_STORAGE_QUOTA_REACHED_MESSAGE,
+  AI_HOSTING_QUOTA_CHECK_FAILED_MESSAGE,
+  isQuotaReached,
+} from "./quota";
 
 const PAGE_SIZE = 10;
 
@@ -136,7 +145,6 @@ export function KbDetailPage() {
   const [knowledgeBase, setKnowledgeBase] = useState<KbListViewItem | null>(null);
   const [records, setRecords] = useState<KbDocViewItem[]>([]);
   const [total, setTotal] = useState(0);
-  const [knowledgeQuota, setKnowledgeQuota] = useState<AiHostingQuota | null>(null);
   const [loadingKb, setLoadingKb] = useState(true);
   const [loadingDocs, setLoadingDocs] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -147,6 +155,7 @@ export function KbDetailPage() {
   const [documentDialogOpen, setDocumentDialogOpen] = useState(false);
   const [deleteRecord, setDeleteRecord] = useState<KbDocViewItem | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [checkingKnowledgeQuota, setCheckingKnowledgeQuota] = useState(false);
   const requestVersionRef = useRef(0);
   const isMountedRef = useRef(false);
 
@@ -179,7 +188,6 @@ export function KbDetailPage() {
 
       setRecords(response.docs.map(toKbDocViewItem));
       setTotal(response.pagination.total);
-      setKnowledgeQuota(response.quota);
     } catch {
       if (version !== requestVersionRef.current) {
         return;
@@ -187,7 +195,6 @@ export function KbDetailPage() {
 
       setRecords([]);
       setTotal(0);
-      setKnowledgeQuota(null);
     } finally {
       if (version === requestVersionRef.current) {
         setLoadingDocs(false);
@@ -258,7 +265,6 @@ export function KbDetailPage() {
   });
   const pagedRecords = records;
   const recordsLoading = loadingKb || loadingDocs;
-  const knowledgeQuotaReached = isQuotaReached(knowledgeQuota);
 
   async function handleConfirmDelete() {
     if (!deleteRecord || deleting) {
@@ -277,6 +283,7 @@ export function KbDetailPage() {
       setDeleteRecord(null);
       toast.success("已删除");
       await loadDocs();
+      notifyAiHostingQuotaChanged();
     } catch {
       if (isMountedRef.current) {
         toast.error("删除失败，请稍后重试");
@@ -285,6 +292,39 @@ export function KbDetailPage() {
       if (isMountedRef.current) {
         setDeleting(false);
       }
+    }
+  }
+
+  async function handleAddKnowledgeSelect(optionType: AddKnowledgeOption["type"]) {
+    if (checkingKnowledgeQuota) {
+      return;
+    }
+
+    setCheckingKnowledgeQuota(true);
+
+    try {
+      const quota = await getAiHostingQuota();
+
+      if (quota && isQuotaReached(quota.kbDocs)) {
+        toast.error(AI_HOSTING_KB_DOC_STORAGE_QUOTA_REACHED_MESSAGE);
+        return;
+      }
+
+      if (optionType === "qa") {
+        setImportQaDialogOpen(true);
+      }
+
+      if (optionType === "image") {
+        setImageDialogOpen(true);
+      }
+
+      if (optionType === "document") {
+        setDocumentDialogOpen(true);
+      }
+    } catch {
+      toast.error(AI_HOSTING_QUOTA_CHECK_FAILED_MESSAGE);
+    } finally {
+      setCheckingKnowledgeQuota(false);
     }
   }
 
@@ -351,23 +391,12 @@ export function KbDetailPage() {
             </div>
 
             <div className="flex flex-wrap items-center justify-end gap-3">
-              {knowledgeQuota ? (
-                <span className="text-sm text-muted-foreground">
-                  {formatQuotaText(knowledgeQuota, "条知识")}
-                </span>
-              ) : null}
               <AddKnowledgeMenu
-                disabled={knowledgeQuotaReached}
-                onDocumentDialogOpen={() => setDocumentDialogOpen(true)}
-                onImageDialogOpen={() => setImageDialogOpen(true)}
-                onImportQaDialogOpen={() => setImportQaDialogOpen(true)}
+                disabled={checkingKnowledgeQuota}
+                onSelect={(type) => void handleAddKnowledgeSelect(type)}
               />
             </div>
           </div>
-
-          {knowledgeQuotaReached ? (
-            <p className="text-sm text-muted-foreground">当前知识库的知识数量已达上限</p>
-          ) : null}
 
           <div>
             <KnowledgeRecordsTable
@@ -390,6 +419,7 @@ export function KbDetailPage() {
         kbId={kbId}
         onImportComplete={() => {
           void loadDocs();
+          notifyAiHostingQuotaChanged();
         }}
         onOpenChange={setImportQaDialogOpen}
         open={importQaDialogOpen}
@@ -398,6 +428,7 @@ export function KbDetailPage() {
         kbId={kbId}
         onCreated={() => {
           void loadDocs();
+          notifyAiHostingQuotaChanged();
         }}
         onOpenChange={setImageDialogOpen}
         open={imageDialogOpen}
@@ -406,6 +437,7 @@ export function KbDetailPage() {
         kbId={kbId}
         onCreated={() => {
           void loadDocs();
+          notifyAiHostingQuotaChanged();
         }}
         onOpenChange={setDocumentDialogOpen}
         open={documentDialogOpen}
@@ -437,14 +469,10 @@ export function KbDetailPage() {
 
 function AddKnowledgeMenu({
   disabled = false,
-  onDocumentDialogOpen,
-  onImageDialogOpen,
-  onImportQaDialogOpen,
+  onSelect,
 }: {
   disabled?: boolean;
-  onDocumentDialogOpen: () => void;
-  onImageDialogOpen: () => void;
-  onImportQaDialogOpen: () => void;
+  onSelect: (type: AddKnowledgeOption["type"]) => void;
 }) {
   return (
     <DropdownMenu>
@@ -459,22 +487,14 @@ function AddKnowledgeMenu({
           高质量人工知识
         </DropdownMenuLabel>
         {addKnowledgeOptions.slice(0, 2).map((option) =>
-          renderAddKnowledgeOption(option, {
-            onImageDialogOpen,
-            onImportQaDialogOpen,
-            onDocumentDialogOpen,
-          }),
+          renderAddKnowledgeOption(option, { onSelect }),
         )}
         <DropdownMenuSeparator />
         <DropdownMenuLabel className="px-2.5 py-1 text-xs font-medium text-muted-foreground">
           原始文档
         </DropdownMenuLabel>
         {addKnowledgeOptions.slice(2).map((option) =>
-          renderAddKnowledgeOption(option, {
-            onImageDialogOpen,
-            onImportQaDialogOpen,
-            onDocumentDialogOpen,
-          }),
+          renderAddKnowledgeOption(option, { onSelect }),
         )}
       </DropdownMenuContent>
     </DropdownMenu>
@@ -483,32 +503,14 @@ function AddKnowledgeMenu({
 
 function renderAddKnowledgeOption(
   option: AddKnowledgeOption,
-  {
-    onDocumentDialogOpen,
-    onImageDialogOpen,
-    onImportQaDialogOpen,
-  }: {
-    onDocumentDialogOpen: () => void;
-    onImageDialogOpen: () => void;
-    onImportQaDialogOpen: () => void;
-  },
+  { onSelect }: { onSelect: (type: AddKnowledgeOption["type"]) => void },
 ) {
   return (
     <DropdownMenuItem
       className="h-auto items-start gap-3 px-2.5 py-2.5"
       key={option.label}
       onSelect={() => {
-        if (option.type === "qa") {
-          onImportQaDialogOpen();
-        }
-
-        if (option.type === "image") {
-          onImageDialogOpen();
-        }
-
-        if (option.type === "document") {
-          onDocumentDialogOpen();
-        }
+        onSelect(option.type);
       }}
     >
       <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-[8px] bg-muted">

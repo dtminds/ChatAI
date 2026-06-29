@@ -36,6 +36,7 @@ const updateKbChunkMock = vi.hoisted(() => vi.fn());
 const deleteKbChunkMock = vi.hoisted(() => vi.fn());
 const agentServiceMock = vi.hoisted(() => ({
   createAiHostingAgent: vi.fn(),
+  getAiHostingQuota: vi.fn(),
   getAiHostingAgent: vi.fn(),
   listAiHostingSettings: vi.fn(),
   listAiHostingAgents: vi.fn(),
@@ -268,9 +269,19 @@ describe("AI hosting pages", () => {
         pageSize: 10,
         total: mockAgents.length,
       },
-      quota: {
-        limit: 5,
+    });
+    vi.mocked(agentService.getAiHostingQuota).mockResolvedValue({
+      agents: {
+        limit: 20,
         used: mockAgents.length,
+      },
+      kbDocs: {
+        limit: 1024 * 1024 * 1024,
+        used: 20 * 1024 * 1024,
+      },
+      kbs: {
+        limit: 20,
+        used: 3,
       },
     });
     vi.mocked(agentService.listAiHostingModels).mockResolvedValue({ models: mockModels });
@@ -461,7 +472,12 @@ describe("AI hosting pages", () => {
     expect(screen.getByRole("table", { name: "Agent 列表" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Agent 列表区块" })).toBeInTheDocument();
     expect(await screen.findByText("共 2 条")).toBeInTheDocument();
-    expect(screen.getByText("已用 2/5 个 Agent")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "智能体用量" })).toHaveTextContent("Agent");
+    expect(screen.getByRole("region", { name: "智能体用量" })).toHaveTextContent("2/20");
+    expect(screen.getByRole("region", { name: "智能体用量" })).toHaveTextContent("知识库");
+    expect(screen.getByRole("region", { name: "智能体用量" })).toHaveTextContent("3/20");
+    expect(screen.getByRole("region", { name: "智能体用量" })).toHaveTextContent("文档容量");
+    expect(screen.getByRole("region", { name: "智能体用量" })).toHaveTextContent("20MB/1GB");
     expect(screen.queryByRole("tab", { name: "应用范围" })).not.toBeInTheDocument();
     expect(screen.getByRole("cell", { name: "护肤小助理" })).toBeInTheDocument();
     expect(screen.getByRole("cell", { name: "售后小助理" })).toBeInTheDocument();
@@ -473,10 +489,7 @@ describe("AI hosting pages", () => {
       "https://b5.bokr.com.cn/dist/llm/doubao-color.svg",
     );
     expect(screen.getAllByRole("cell", { name: "-" })).toHaveLength(2);
-    expect(screen.getByRole("link", { name: "添加 Agent" })).toHaveAttribute(
-      "href",
-      "/chat/ai-hosting/agents/new",
-    );
+    expect(screen.getByRole("button", { name: "添加 Agent" })).toBeInTheDocument();
     expect(agentService.listAiHostingAgents).toHaveBeenCalledWith({
       page: 1,
       pageSize: 10,
@@ -484,26 +497,77 @@ describe("AI hosting pages", () => {
     });
   });
 
-  it("prevents adding agents when the fixed agent quota is reached", async () => {
-    vi.mocked(agentService.listAiHostingAgents).mockResolvedValueOnce({
-      agents: mockAgents,
-      pagination: {
-        page: 1,
-        pageSize: 10,
-        total: mockAgents.length,
+  it("shows document storage below 1MB with one decimal place", async () => {
+    vi.mocked(agentService.getAiHostingQuota).mockResolvedValue({
+      agents: {
+        limit: 20,
+        used: 2,
       },
-      quota: {
-        limit: 5,
-        used: 5,
+      kbDocs: {
+        limit: 1024 * 1024 * 1024,
+        used: 512 * 1024,
+      },
+      kbs: {
+        limit: 20,
+        used: 3,
       },
     });
 
     renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
 
-    expect(await screen.findByText("已用 5/5 个 Agent")).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "添加 Agent" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "添加 Agent" })).toBeDisabled();
-    expect(screen.getByText("Agent 数量已达上限")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: "Agent 管理" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "智能体用量" })).toHaveTextContent("文档容量");
+    expect(screen.getByRole("region", { name: "智能体用量" })).toHaveTextContent("0.5MB/1GB");
+  });
+
+  it("shows document storage below 0.1MB as zero without a unit", async () => {
+    vi.mocked(agentService.getAiHostingQuota).mockResolvedValue({
+      agents: {
+        limit: 20,
+        used: 2,
+      },
+      kbDocs: {
+        limit: 1024 * 1024 * 1024,
+        used: 64 * 1024,
+      },
+      kbs: {
+        limit: 20,
+        used: 3,
+      },
+    });
+
+    renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
+
+    expect(await screen.findByRole("heading", { level: 1, name: "Agent 管理" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "智能体用量" })).toHaveTextContent("文档容量");
+    expect(screen.getByRole("region", { name: "智能体用量" })).toHaveTextContent("0/1GB");
+  });
+
+  it("prevents adding agents when the fixed agent quota is reached", async () => {
+    const user = userEvent.setup();
+    vi.mocked(agentService.getAiHostingQuota).mockResolvedValue({
+      agents: {
+        limit: 20,
+        used: 20,
+      },
+      kbDocs: {
+        limit: 1024 * 1024 * 1024,
+        used: 20 * 1024 * 1024,
+      },
+      kbs: {
+        limit: 20,
+        used: 3,
+      },
+    });
+
+    renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
+
+    await screen.findByText("共 2 条");
+    await user.click(screen.getByRole("button", { name: "添加 Agent" }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("Agent 数量已达上限");
+    });
   });
 
   it("keeps the agent table header visible while loading", async () => {
@@ -575,7 +639,7 @@ describe("AI hosting pages", () => {
 
     expect(await screen.findByRole("heading", { level: 1, name: "Agent 管理" })).toBeInTheDocument();
     expect(screen.getByText("当前账号仅可查看 Agent，管理操作需管理员权限")).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "添加 Agent" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "添加 Agent" })).not.toBeInTheDocument();
     expect(screen.getAllByRole("link", { name: "查看" })).toHaveLength(2);
     expect(screen.queryByRole("button", { name: "删除" })).not.toBeInTheDocument();
   });
@@ -1208,10 +1272,6 @@ describe("AI hosting pages", () => {
         pageSize: 200,
         total: 2,
       },
-      quota: {
-        limit: 20,
-        used: 2,
-      },
     });
 
     renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
@@ -1283,10 +1343,6 @@ describe("AI hosting pages", () => {
         pageSize: 200,
         total: 1,
       },
-      quota: {
-        limit: 20,
-        used: 1,
-      },
     });
 
     renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
@@ -1330,7 +1386,9 @@ describe("AI hosting pages", () => {
       "32",
     );
     expect(screen.getByRole("button", { name: "创建知识库" })).toBeInTheDocument();
-    expect(screen.getByText("已用 3/20 个知识库")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "智能体用量" })).toHaveTextContent("知识库");
+    expect(screen.getByRole("region", { name: "智能体用量" })).toHaveTextContent("3/20");
+    expect(screen.queryByText("已用 3/20 个知识库")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "华为产品知识" })).toHaveAttribute(
       "href",
       "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
@@ -1344,9 +1402,17 @@ describe("AI hosting pages", () => {
   });
 
   it("prevents creating knowledge bases when the fixed knowledge base quota is reached", async () => {
-    vi.mocked(kbService.listKbs).mockResolvedValueOnce({
-      ...createMockKbListResponse(),
-      quota: {
+    const user = userEvent.setup();
+    vi.mocked(agentService.getAiHostingQuota).mockResolvedValue({
+      agents: {
+        limit: 20,
+        used: 2,
+      },
+      kbDocs: {
+        limit: 1024 * 1024 * 1024,
+        used: 20 * 1024 * 1024,
+      },
+      kbs: {
         limit: 20,
         used: 20,
       },
@@ -1354,9 +1420,12 @@ describe("AI hosting pages", () => {
 
     renderWithRoute("/chat/ai-hosting/kb", <KbListPage />);
 
-    expect(await screen.findByText("已用 20/20 个知识库")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "创建知识库" })).toBeDisabled();
-    expect(screen.getByText("知识库数量已达上限")).toBeInTheDocument();
+    await screen.findByRole("heading", { level: 1, name: "知识库" });
+    await user.click(screen.getByRole("button", { name: "创建知识库" }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("知识库数量已达上限");
+    });
   });
 
   it("renders the knowledge base management page", async () => {
@@ -1411,22 +1480,28 @@ describe("AI hosting pages", () => {
     expect(screen.getByText("失败")).toBeInTheDocument();
     expect(screen.getByText("排队中")).toBeInTheDocument();
     expect(screen.getByText("共 6 条")).toBeInTheDocument();
-    expect(screen.getByText("已用 6/100 条知识")).toBeInTheDocument();
-    expect(screen.getByText("已用 6/100 条知识").closest("div")).toContainElement(
-      screen.getByRole("button", { name: "添加知识" }),
-    );
+    expect(screen.queryByText("已用 6/100 条知识")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "添加知识" })).toBeInTheDocument();
     expect(screen.getAllByRole("link", { name: "查看" })[0]).toHaveAttribute(
       "href",
       "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-1",
     );
   });
 
-  it("prevents adding knowledge when the fixed per-kb knowledge quota is reached", async () => {
-    vi.mocked(kbService.listKbDocs).mockResolvedValueOnce({
-      ...createMockKbDocsResponse("W7zU2fWkVSp65OTAjDd3-w"),
-      quota: {
-        limit: 100,
-        used: 100,
+  it("prevents adding knowledge when document storage quota is reached", async () => {
+    const user = userEvent.setup();
+    vi.mocked(agentService.getAiHostingQuota).mockResolvedValue({
+      agents: {
+        limit: 20,
+        used: 2,
+      },
+      kbDocs: {
+        limit: 1024 * 1024 * 1024,
+        used: 1024 * 1024 * 1024,
+      },
+      kbs: {
+        limit: 20,
+        used: 3,
       },
     });
 
@@ -1436,9 +1511,13 @@ describe("AI hosting pages", () => {
       "/chat/ai-hosting/kb/:kbId",
     );
 
-    expect(await screen.findByText("已用 100/100 条知识")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "添加知识" })).toBeDisabled();
-    expect(screen.getByText("当前知识库的知识数量已达上限")).toBeInTheDocument();
+    await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
+    await user.click(screen.getByRole("button", { name: "添加知识" }));
+    await user.click(screen.getByRole("menuitem", { name: /问答/ }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("知识库存储空间已达上限");
+    });
   });
 
   it("shows an empty state for unknown knowledge base ids", async () => {
@@ -1597,6 +1676,85 @@ describe("AI hosting pages", () => {
       expect(importKbQaDocMock).toHaveBeenCalledTimes(1);
     });
     expect(screen.queryByRole("dialog", { name: "批量导入问答" })).not.toBeInTheDocument();
+  });
+
+  it("prevents QA import when selected file exceeds the remaining storage quota", async () => {
+    const user = userEvent.setup();
+    vi.mocked(agentService.getAiHostingQuota)
+      .mockResolvedValueOnce({
+        agents: {
+          limit: 20,
+          used: 2,
+        },
+        kbDocs: {
+          limit: 1024 * 1024 * 1024,
+          used: 20 * 1024 * 1024,
+        },
+        kbs: {
+          limit: 20,
+          used: 3,
+        },
+      })
+      .mockResolvedValueOnce({
+        agents: {
+          limit: 20,
+          used: 2,
+        },
+        kbDocs: {
+          limit: 1024 * 1024 * 1024,
+          used: 20 * 1024 * 1024,
+        },
+        kbs: {
+          limit: 20,
+          used: 3,
+        },
+      })
+      .mockResolvedValueOnce({
+        agents: {
+          limit: 20,
+          used: 2,
+        },
+        kbDocs: {
+          limit: 1024 * 1024 * 1024,
+          used: 1024 * 1024 * 1024 - 8,
+        },
+        kbs: {
+          limit: 20,
+          used: 3,
+        },
+      });
+
+    readXlsxFileMock.mockResolvedValueOnce([
+      {
+        data: [
+          ["问题", "答案"],
+          ["晨间护肤怎么做", "先清洁再保湿"],
+        ],
+        sheet: "Sheet1",
+      },
+    ]);
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
+      "/chat/ai-hosting/kb/:kbId",
+    );
+
+    await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
+    await user.click(screen.getByRole("button", { name: "添加知识" }));
+    await user.click(screen.getByRole("menuitem", { name: /问答/ }));
+    await user.upload(
+      screen.getByLabelText("选择问答导入文件"),
+      new File(["question,answer"], "快捷话术导入.faq.xlsx", {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      }),
+    );
+    await user.click(screen.getByRole("button", { name: "导入文档" }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("知识库存储空间已达上限");
+    });
+    expect(importKbQaDocMock).not.toHaveBeenCalled();
   });
 
   it("shows an error when QA import resolves to zero valid rows", async () => {
@@ -1797,6 +1955,75 @@ describe("AI hosting pages", () => {
     expect(screen.queryByRole("dialog", { name: "导入文档" })).not.toBeInTheDocument();
   });
 
+  it("prevents document import when selected file exceeds the remaining storage quota", async () => {
+    const user = userEvent.setup();
+    vi.mocked(agentService.getAiHostingQuota)
+      .mockResolvedValueOnce({
+        agents: {
+          limit: 20,
+          used: 2,
+        },
+        kbDocs: {
+          limit: 1024 * 1024 * 1024,
+          used: 20 * 1024 * 1024,
+        },
+        kbs: {
+          limit: 20,
+          used: 3,
+        },
+      })
+      .mockResolvedValueOnce({
+        agents: {
+          limit: 20,
+          used: 2,
+        },
+        kbDocs: {
+          limit: 1024 * 1024 * 1024,
+          used: 20 * 1024 * 1024,
+        },
+        kbs: {
+          limit: 20,
+          used: 3,
+        },
+      })
+      .mockResolvedValueOnce({
+        agents: {
+          limit: 20,
+          used: 2,
+        },
+        kbDocs: {
+          limit: 1024 * 1024 * 1024,
+          used: 1024 * 1024 * 1024 - 4,
+        },
+        kbs: {
+          limit: 20,
+          used: 3,
+        },
+      });
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
+      "/chat/ai-hosting/kb/:kbId",
+    );
+
+    await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
+    await user.click(screen.getByRole("button", { name: "添加知识" }));
+    await user.click(screen.getByRole("menuitem", { name: /文档/ }));
+    await user.upload(
+      screen.getByLabelText("选择文档知识文件"),
+      new File(["document"], "产品手册.pptx", {
+        type: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      }),
+    );
+    await user.click(screen.getByRole("button", { name: "确认提交" }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("知识库存储空间已达上限");
+    });
+    expect(importKbDocMock).not.toHaveBeenCalled();
+  });
+
   it("shows an error when document files are rejected by the dropzone accept rule", async () => {
     const user = userEvent.setup();
 
@@ -1924,6 +2151,74 @@ describe("AI hosting pages", () => {
       expect(importKbImageDocMock).toHaveBeenCalledTimes(1);
     });
     expect(screen.queryByRole("dialog", { name: "添加图片知识" })).not.toBeInTheDocument();
+  });
+
+  it("prevents image import when selected file exceeds the remaining storage quota", async () => {
+    const user = userEvent.setup();
+    vi.mocked(agentService.getAiHostingQuota)
+      .mockResolvedValueOnce({
+        agents: {
+          limit: 20,
+          used: 2,
+        },
+        kbDocs: {
+          limit: 1024 * 1024 * 1024,
+          used: 20 * 1024 * 1024,
+        },
+        kbs: {
+          limit: 20,
+          used: 3,
+        },
+      })
+      .mockResolvedValueOnce({
+        agents: {
+          limit: 20,
+          used: 2,
+        },
+        kbDocs: {
+          limit: 1024 * 1024 * 1024,
+          used: 20 * 1024 * 1024,
+        },
+        kbs: {
+          limit: 20,
+          used: 3,
+        },
+      })
+      .mockResolvedValueOnce({
+        agents: {
+          limit: 20,
+          used: 2,
+        },
+        kbDocs: {
+          limit: 1024 * 1024 * 1024,
+          used: 1024 * 1024 * 1024 - 4,
+        },
+        kbs: {
+          limit: 20,
+          used: 3,
+        },
+      });
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
+      "/chat/ai-hosting/kb/:kbId",
+    );
+
+    await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
+    await user.click(screen.getByRole("button", { name: "添加知识" }));
+    await user.click(screen.getByRole("menuitem", { name: /图片/ }));
+    await user.upload(
+      screen.getByLabelText("选择图片知识文件"),
+      new File(["image"], "商品主图.png", { type: "image/png" }),
+    );
+    await user.type(screen.getByLabelText(/图片描述/), "晨间护肤套装商品主图");
+    await user.click(screen.getByRole("button", { name: "确认提交" }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("知识库存储空间已达上限");
+    });
+    expect(importKbImageDocMock).not.toHaveBeenCalled();
   });
 
   it("accepts image knowledge files with supported extensions when MIME type is empty", async () => {

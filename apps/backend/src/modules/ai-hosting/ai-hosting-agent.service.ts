@@ -77,12 +77,10 @@ export class AiHostingAgentService {
     const rowsPromise = this.listAgentRows(scope, pagination, normalizedQuery);
     const modelsPromise = this.listModelRows(scope);
     const totalPromise = this.countAgents(scope, normalizedQuery);
-    const quotaUsedPromise = normalizedQuery ? this.countAgents(scope) : totalPromise;
-    const [rows, models, total, quotaUsed] = await Promise.all([
+    const [rows, models, total] = await Promise.all([
       rowsPromise,
       modelsPromise,
       totalPromise,
-      quotaUsedPromise,
     ]);
     const modelMap = new Map(models.map((model) => [String(model.id), mapModelSummary(model)]));
 
@@ -92,10 +90,6 @@ export class AiHostingAgentService {
         page: pagination.page,
         pageSize: pagination.pageSize,
         total,
-      },
-      quota: {
-        limit: AI_HOSTING_AGENT_QUOTA_LIMIT,
-        used: quotaUsed,
       },
     };
   }

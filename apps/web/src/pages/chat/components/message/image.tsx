@@ -572,7 +572,7 @@ export function ImagePreviewDialog({
             className={cn(
               "border border-white/12 bg-neutral-950/86 text-white shadow-[0_10px_30px_var(--shadow-strong)] backdrop-blur hover:bg-neutral-900 hover:text-white",
               previewZoomMode === "fit" &&
-                "border-white/28 bg-black/90 shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_14px_36px_rgba(0,0,0,0.45)] backdrop-blur-md hover:bg-black/90",
+                "border-white/28 bg-black/90 backdrop-blur-md hover:bg-black/90",
             )}
             onClick={(event) => {
               event.stopPropagation();
@@ -595,7 +595,7 @@ export function ImagePreviewDialog({
             className={cn(
               "border border-white/12 bg-neutral-950/86 text-white shadow-[0_10px_30px_var(--shadow-strong)] backdrop-blur hover:bg-neutral-900 hover:text-white",
               previewZoomMode === "actual" &&
-                "border-white/28 bg-black/90 shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_14px_36px_rgba(0,0,0,0.45)] backdrop-blur-md hover:bg-black/90",
+                "border-white/28 bg-black/90 backdrop-blur-md hover:bg-black/90",
             )}
             onClick={(event) => {
               event.stopPropagation();

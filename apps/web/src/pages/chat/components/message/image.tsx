@@ -55,6 +55,9 @@ type ImageMessageCardProps = {
 
 const IMAGE_DOWNLOAD_TIMEOUT_MS = 5 * 60 * 1000;
 const IMAGE_PREVIEW_ACTUAL_ZOOM = 1;
+const IMAGE_PREVIEW_HORIZONTAL_PADDING = 32;
+const IMAGE_PREVIEW_OCR_PANEL_GAP = 12;
+const IMAGE_PREVIEW_OCR_PANEL_WIDTH = 352;
 type ImagePreviewLoadStatus = "error" | "loaded" | "loading";
 type ImagePreviewImageState = {
   size: {
@@ -1105,7 +1108,7 @@ function getPreviewFitZoomLevel(
     typeof window === "undefined" || window.innerHeight <= 0
       ? imageSize.height
       : window.innerHeight;
-  const availableWidth = Math.max(1, viewportWidth - (isOcrPanelOpen ? 400 : 32));
+  const availableWidth = getPreviewAvailableWidth(viewportWidth, isOcrPanelOpen);
   const availableHeight = Math.max(1, viewportHeight - 112);
   const fitZoomLevel = Math.min(
     availableWidth / imageSize.width,
@@ -1128,9 +1131,22 @@ function getPreviewActualZoomLevel(
     typeof window === "undefined" || window.innerWidth <= 0
       ? imageSize.width
       : window.innerWidth;
-  const availableWidth = Math.max(1, viewportWidth - (isOcrPanelOpen ? 400 : 32));
+  const availableWidth = getPreviewAvailableWidth(viewportWidth, isOcrPanelOpen);
 
   return Math.min(IMAGE_PREVIEW_ACTUAL_ZOOM, availableWidth / imageSize.width);
+}
+
+function getPreviewAvailableWidth(
+  viewportWidth: number,
+  isOcrPanelOpen: boolean,
+) {
+  const reservedWidth =
+    IMAGE_PREVIEW_HORIZONTAL_PADDING +
+    (isOcrPanelOpen
+      ? IMAGE_PREVIEW_OCR_PANEL_GAP + IMAGE_PREVIEW_OCR_PANEL_WIDTH
+      : 0);
+
+  return Math.max(1, viewportWidth - reservedWidth);
 }
 
 export function isEditableKeyboardTarget(element: Element | null) {

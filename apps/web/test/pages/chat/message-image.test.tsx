@@ -808,6 +808,66 @@ describe("MessageContentRenderer image messages", () => {
     ).toBeInTheDocument();
   });
 
+  it("fits the preview against the actual OCR panel width", async () => {
+    const user = userEvent.setup();
+    const originalInnerWidth = window.innerWidth;
+    const originalInnerHeight = window.innerHeight;
+    const naturalHeightSpy = vi
+      .spyOn(HTMLImageElement.prototype, "naturalHeight", "get")
+      .mockReturnValue(200);
+    const naturalWidthSpy = vi
+      .spyOn(HTMLImageElement.prototype, "naturalWidth", "get")
+      .mockReturnValue(1000);
+
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 1024,
+    });
+    Object.defineProperty(window, "innerHeight", {
+      configurable: true,
+      value: 1000,
+    });
+    vi.mocked(recognizeImageText).mockResolvedValue({
+      text: "识别结果",
+      regions: [],
+    });
+
+    try {
+      render(
+        <ImageMessageCard
+          content={createImageContent({
+            alt: "OCR 宽图",
+            height: 200,
+            imageUrl: "https://cdn.example.com/chat/ocr-wide-photo.jpg",
+            width: 1000,
+          })}
+        />,
+      );
+
+      await user.click(screen.getByRole("button", { name: "查看大图：OCR 宽图" }));
+      fireEvent.load(screen.getByTestId("image-preview-full"));
+
+      await user.click(screen.getByRole("button", { name: "提取图片文字" }));
+
+      expect(await screen.findByTestId("image-preview-ocr-panel")).toBeInTheDocument();
+      expect(screen.getByTestId("image-preview-full")).toHaveAttribute(
+        "data-zoom-level",
+        "0.63",
+      );
+    } finally {
+      Object.defineProperty(window, "innerWidth", {
+        configurable: true,
+        value: originalInnerWidth,
+      });
+      Object.defineProperty(window, "innerHeight", {
+        configurable: true,
+        value: originalInnerHeight,
+      });
+      naturalHeightSpy.mockRestore();
+      naturalWidthSpy.mockRestore();
+    }
+  });
+
   it("does not show browser OCR action for emotion image previews", async () => {
     const user = userEvent.setup();
 

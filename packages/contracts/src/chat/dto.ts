@@ -458,7 +458,7 @@ export type WorkbenchSmartReplySuggestionDto = {
   assistantName: string;
   content: string;
   failReason?: string;
-  /** Java 原始 genAnswer，send-answer 的 realAnswer 需原样回传 */
+  /** Java 原始 genAnswer */
   genAnswer?: string;
   generateStatus?: number | string;
   pollComplete?: boolean;
@@ -511,8 +511,6 @@ export type WorkbenchSmartReplyMakeShorterResponse = {
 export type WorkbenchSmartReplySendAnswerRequest = {
   conversationId: string;
   optNos: string[];
-  realAnswer: string;
-  realAttachIds: string[];
   recordId: string;
 };
 

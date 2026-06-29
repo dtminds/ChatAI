@@ -1733,7 +1733,7 @@ describe("createWorkbenchJavaClient", () => {
     );
   });
 
-  it("posts send-answer requests with real answer and attach ids", async () => {
+  it("posts send-answer requests with optNos and recordId", async () => {
     process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
@@ -1752,8 +1752,6 @@ describe("createWorkbenchJavaClient", () => {
     const client = createWorkbenchJavaClient(createLoggerMock());
     await client.sendRecommendAnswer({
       optNos: ["opt-88001", "opt-88002"],
-      realAnswer: "您好，这是发送的话术",
-      // realAttachIds: ["101", "102"],
       recordId: "88001",
       uid: 9001,
     });
@@ -1763,8 +1761,6 @@ describe("createWorkbenchJavaClient", () => {
       expect.objectContaining({
         body: JSON.stringify({
           optNos: ["opt-88001", "opt-88002"],
-          realAnswer: "您好，这是发送的话术",
-          // realAttachIds: ["101", "102"],
           recordId: 88001,
           uid: 9001,
         }),

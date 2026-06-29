@@ -1613,12 +1613,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     await this.assertSeatAccess(subUserId, conversation.seatId);
 
-    const realAnswer = request.realAnswer.trim();
     const recordId = request.recordId.trim();
-
-    if (!realAnswer) {
-      throw new BadRequestError("SMART_REPLY_CONTENT_EMPTY", "智能回复内容不能为空");
-    }
 
     if (!recordId) {
       throw new BadRequestError("SMART_REPLY_RECORD_INVALID", "智能回复记录无效");
@@ -1634,9 +1629,6 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     await this.javaClient.sendRecommendAnswer({
       optNos,
-      realAnswer,
-      // 新 send-answer 接口暂未启用附件 id，先不传 realAttachIds
-      // realAttachIds: request.realAttachIds,
       recordId,
       uid: conversation.uid,
     });

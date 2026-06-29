@@ -88,7 +88,6 @@ import {
   isSmartReplyPollComplete,
   isSmartReplyEligibleMessage,
   isSmartReplySupportedConversation,
-  resolveSmartReplyRealAnswer,
   SMART_REPLY_CONTENT_INCOMPLETE_SKIP_HINT,
   SMART_REPLY_CONTENT_INCOMPLETE_SKIP_MESSAGE,
   SMART_REPLY_BUSY_TIMEOUT_MS,
@@ -3765,14 +3764,6 @@ export function createWorkbenchStore() {
             await sendSmartReplyAnswer({
               conversationId,
               optNos,
-              realAnswer: resolveSmartReplyRealAnswer(
-                suggestion?.genAnswer,
-                payload.content,
-                suggestion?.content,
-              ),
-              // 新 send-answer 接口暂未启用附件 id，先不传 realAttachIds
-              // realAttachIds: buildSmartReplyRealAttachIds(payload.selectedAttachmentIds),
-              realAttachIds: [],
               recordId,
             });
           } catch {

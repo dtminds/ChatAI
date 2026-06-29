@@ -7,6 +7,10 @@ import {
   buildSmartReplyRealAttachIds,
   buildSmartReplySendSegments,
   buildJavaGenAnswerFromText,
+  extractSmartReplyGenAnswerInlineAttachments,
+  mergeSmartReplyRecommendedAttachments,
+  resolveSmartReplyAttachmentCount,
+  resolveSmartReplyAttachmentIds,
   resolveSmartReplyRealAnswer,
   collectNewSmartReplyPendingKeys,
   collectPendingSmartReplyPollMsgIds,
@@ -805,6 +809,127 @@ describe("smart-reply-adapter", () => {
       pollComplete: true,
       status: "ready",
     });
+  });
+
+  it("keeps text in content and excludes image segments from display text", () => {
+    const genAnswer =
+      '[{"msgtype":"text","text":"第一段"},{"msgtype":"text","text":"第二段"},{"msgtype":"image","alt":"推荐图"}]';
+
+    expect(
+      adaptSmartReplySuggestions([
+        {
+          assistantName: "护肤小助手",
+          content: genAnswer,
+          genAnswer,
+          generateStatus: 2,
+          messageId: "1090",
+          pollComplete: true,
+          status: "ready",
+        },
+      ])["1090"],
+    ).toMatchObject({
+      content: "第一段\n第二段",
+      genAnswer,
+    });
+  });
+
+  it("strips legacy media placeholders from plain content", () => {
+    expect(
+      adaptSmartReplySuggestions([
+        {
+          assistantName: "护肤小助手",
+          content: "建议回复\n[图片]",
+          generateStatus: 2,
+          messageId: "1090",
+          pollComplete: true,
+          status: "ready",
+        },
+      ])["1090"]?.content,
+    ).toBe("建议回复");
+  });
+
+  it("merges refAttachIds from genAnswer image segments", () => {
+    const genAnswer =
+      '[{"msgtype":"text","text":"第一段"},{"msgtype":"image","id":101,"fileUrl":"s5/msg/cover.png"}]';
+
+    expect(
+      adaptSmartReplySuggestions([
+        {
+          assistantName: "护肤小助手",
+          content: genAnswer,
+          genAnswer,
+          generateStatus: 2,
+          messageId: "1090",
+          pollComplete: true,
+          status: "ready",
+        },
+      ])["1090"],
+    ).toMatchObject({
+      content: "第一段",
+      refAttachIds: ["101"],
+    });
+  });
+
+  it("extracts inline genAnswer attachments for preview and send", () => {
+    const genAnswer =
+      '[{"msgtype":"text","text":"第一段"},{"msgtype":"image","fileUrl":"s5/msg/cover.png","alt":"产品图"}]';
+
+    expect(extractSmartReplyGenAnswerInlineAttachments(genAnswer)).toEqual([
+      {
+        content: undefined,
+        coverUrl: "s5/msg/cover.png",
+        defaultSelected: true,
+        fileName: "产品图",
+        fileType: "1",
+        id: "genanswer-image-1",
+        localPath: "s5/msg/cover.png",
+        slocalPath: undefined,
+      },
+    ]);
+    expect(
+      mergeSmartReplyRecommendedAttachments(
+        [
+          {
+            fileName: "产品图.png",
+            fileType: "1",
+            id: "101",
+          },
+        ],
+        extractSmartReplyGenAnswerInlineAttachments(genAnswer),
+      ),
+    ).toEqual([
+      {
+        fileName: "产品图.png",
+        fileType: "1",
+        id: "101",
+        defaultSelected: true,
+      },
+      {
+        content: undefined,
+        coverUrl: "s5/msg/cover.png",
+        defaultSelected: false,
+        fileName: "产品图",
+        fileType: "1",
+        id: "genanswer-image-1",
+        localPath: "s5/msg/cover.png",
+        slocalPath: undefined,
+      },
+    ]);
+  });
+
+  it("resolves attachment count from ids and inline attachments", () => {
+    expect(
+      resolveSmartReplyAttachmentCount({
+        genAnswer:
+          '[{"msgtype":"text","text":"第一段"},{"msgtype":"image","fileUrl":"s5/msg/cover.png"}]',
+      }),
+    ).toBe(1);
+    expect(
+      resolveSmartReplyAttachmentIds({
+        genAnswer:
+          '[{"msgtype":"text","text":"第一段"},{"msgtype":"image","id":101}]',
+      }),
+    ).toEqual(["101"]);
   });
 
   it("uses raw genAnswer for send-answer when content is unchanged", () => {

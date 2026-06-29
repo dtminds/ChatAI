@@ -3105,8 +3105,6 @@ describe("backend app", () => {
       payload: {
         conversationId: "conv-001",
         optNos: ["opt-readonly-001"],
-        realAnswer: "只读账号不能标记智能回复已发送",
-        realAttachIds: [],
         recordId: "1",
       },
       url: "/api/server/smart-reply/send-answer",

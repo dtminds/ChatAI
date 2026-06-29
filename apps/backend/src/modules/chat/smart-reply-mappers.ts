@@ -78,7 +78,7 @@ function parseJavaGenAnswerPayload(payload: unknown): string {
     const parts: string[] = [];
 
     for (const segment of payload) {
-      const part = parseJavaGenAnswerSegment(segment);
+      const part = parseJavaGenAnswerTextSegment(segment);
 
       if (part) {
         parts.push(part);
@@ -88,10 +88,10 @@ function parseJavaGenAnswerPayload(payload: unknown): string {
     return parts.join("\n");
   }
 
-  return parseJavaGenAnswerSegment(payload) ?? "";
+  return parseJavaGenAnswerTextSegment(payload) ?? "";
 }
 
-function parseJavaGenAnswerSegment(segment: unknown): string | undefined {
+function parseJavaGenAnswerTextSegment(segment: unknown): string | undefined {
   if (!isRecord(segment)) {
     return undefined;
   }
@@ -102,16 +102,8 @@ function parseJavaGenAnswerSegment(segment: unknown): string | undefined {
     return readString(segment.text);
   }
 
-  if (msgtype === "image") {
-    return readString(segment.alt) ?? "[图片]";
-  }
-
-  if (msgtype === "file") {
-    return readString(segment.fileName) ?? "[文件]";
-  }
-
-  if (msgtype === "video") {
-    return readString(segment.title) ?? readString(segment.alt) ?? "[视频]";
+  if (msgtype === "image" || msgtype === "file" || msgtype === "video") {
+    return undefined;
   }
 
   return readString(segment.text) ?? readString(segment.content);
@@ -133,7 +125,9 @@ type JavaSmartReplyAnswerItem = {
   questionIntent?: string;
   realAnswer?: string;
   recommendAnswer?: string;
-  refAttachIds?: string;
+  refAttachIds?: unknown;
+  refAttachIdList?: unknown;
+  attachIds?: unknown;
   status?: number | string;
   totalToken?: number | string;
 };
@@ -228,7 +222,7 @@ function mapJavaAnswerItem(
     generateStatus,
     messageId: msgId,
     pollComplete: pollComplete ? true : undefined,
-    refAttachIds: parseRefAttachIds(item.refAttachIds),
+    refAttachIds: readJavaRefAttachIds(item),
     status: mapSmartReplyStatus(generateStatus),
     recordId: readMessageId(item.id),
   };
@@ -361,6 +355,159 @@ function mapSmartReplyStatus(
   }
 
   return "ready";
+}
+
+function readJavaRefAttachIds(item: JavaSmartReplyAnswerItem) {
+  const merged = mergeRefAttachIds(
+    parseJavaRefAttachIds(item.refAttachIds),
+    parseJavaRefAttachIds(item.refAttachIdList),
+    parseJavaRefAttachIds(item.attachIds),
+    extractJavaGenAnswerAttachmentIds(item.genAnswer),
+  );
+
+  return merged.length > 0 ? merged : undefined;
+}
+
+function mergeRefAttachIds(...groups: Array<string[] | undefined>) {
+  const ids: string[] = [];
+  const seen = new Set<string>();
+
+  for (const group of groups) {
+    if (!group) {
+      continue;
+    }
+
+    for (const id of group) {
+      if (!seen.has(id)) {
+        seen.add(id);
+        ids.push(id);
+      }
+    }
+  }
+
+  return ids;
+}
+
+function extractJavaGenAnswerAttachmentIds(raw: unknown): string[] | undefined {
+  const payload = parseJavaGenAnswerJsonPayload(raw);
+
+  if (payload === undefined) {
+    return undefined;
+  }
+
+  const segments = Array.isArray(payload) ? payload : [payload];
+  const ids: string[] = [];
+  const seen = new Set<string>();
+
+  for (const segment of segments) {
+    if (!isRecord(segment)) {
+      continue;
+    }
+
+    const msgtype = readString(segment.msgtype)?.toLowerCase();
+
+    if (
+      msgtype !== "image" &&
+      msgtype !== "file" &&
+      msgtype !== "video" &&
+      msgtype !== "link" &&
+      msgtype !== "weapp" &&
+      msgtype !== "sphfeed"
+    ) {
+      continue;
+    }
+
+    const attachmentId = readJavaGenAnswerSegmentAttachmentId(segment);
+
+    if (attachmentId && !seen.has(attachmentId)) {
+      seen.add(attachmentId);
+      ids.push(attachmentId);
+    }
+  }
+
+  return ids.length > 0 ? ids : undefined;
+}
+
+function readJavaGenAnswerSegmentAttachmentId(segment: Record<string, unknown>) {
+  for (const key of [
+    "id",
+    "attachId",
+    "refAttachId",
+    "transMsgInfoId",
+    "msgInfoId",
+  ]) {
+    const normalized = normalizeJavaAttachmentId(segment[key]);
+
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  return undefined;
+}
+
+function parseJavaGenAnswerJsonPayload(raw: unknown): unknown | undefined {
+  if (raw == null) {
+    return undefined;
+  }
+
+  if (typeof raw !== "string") {
+    return raw;
+  }
+
+  const trimmed = raw.trim();
+
+  if (!trimmed) {
+    return undefined;
+  }
+
+  if (!trimmed.startsWith("[") && !trimmed.startsWith("{")) {
+    return undefined;
+  }
+
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return undefined;
+  }
+}
+
+function normalizeJavaAttachmentId(value: unknown) {
+  if (typeof value === "number" && Number.isSafeInteger(value) && value > 0) {
+    return String(value);
+  }
+
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+
+  return /^\d+$/.test(trimmed) ? trimmed : undefined;
+}
+
+function parseJavaRefAttachIds(value: unknown): string[] | undefined {
+  if (value == null) {
+    return undefined;
+  }
+
+  if (typeof value === "number" && Number.isSafeInteger(value) && value > 0) {
+    return [String(value)];
+  }
+
+  if (typeof value === "string") {
+    return parseRefAttachIds(value);
+  }
+
+  if (Array.isArray(value)) {
+    const ids = mergeRefAttachIds(
+      ...value.map((item) => parseJavaRefAttachIds(item)),
+    );
+
+    return ids.length > 0 ? ids : undefined;
+  }
+
+  return undefined;
 }
 
 function parseRefAttachIds(value: string | undefined) {

@@ -3282,8 +3282,6 @@ describe("useWorkbenchStore", () => {
       expect.objectContaining({
         conversationId: "conv-001",
         optNos: expect.arrayContaining([expect.stringMatching(/^opt-\d+$/)]),
-        realAnswer: '[{"msgtype":"text","text":"发送第一条推荐"}]',
-        realAttachIds: [],
         recordId: "record-9",
       }),
     );

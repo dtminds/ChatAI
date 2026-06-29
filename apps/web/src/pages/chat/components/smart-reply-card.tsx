@@ -3,13 +3,14 @@ import {
   type RefObject,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
 import {
   AiChat02Icon,
+  Attachment01Icon,
   InputCursorTextIcon,
-  MessageNotification01Icon,
   MoreHorizontalIcon,
   Cancel01Icon,
   RefreshIcon,
@@ -47,7 +48,12 @@ import {
   SMART_REPLY_THINKING_LABEL,
   type SmartReplySendPayload,
 } from "@/pages/chat/api/smart-reply-adapter";
-import { adaptSmartReplyViolationResult } from "@/pages/chat/api/smart-reply-adapter";
+import {
+  adaptSmartReplyViolationResult,
+  mergeSmartReplyRecommendedAttachments,
+  resolveSmartReplyAttachmentCount,
+  resolveSmartReplyRecommendedAttachmentsSource,
+} from "@/pages/chat/api/smart-reply-adapter";
 import {
   checkSmartReplyTextModeration,
   getSmartReplyKnowledgeConfig,
@@ -71,7 +77,7 @@ export type SmartReplySuggestion = {
   busyRequestId?: number;
   content: string;
   failReason?: string;
-  /** Java 原始 genAnswer，send-answer 的 realAnswer 需原样回传 */
+  /** Java 原始 genAnswer */
   genAnswer?: string;
   generateStatus?: number | string;
   pollComplete?: boolean;
@@ -101,6 +107,7 @@ export type SmartReplyCardProps = {
   onSend?: () => void;
   processingLabel?: string;
   refAttachIds?: string[];
+  attachmentCount?: number;
   dismissTargetRef?: RefObject<HTMLElement | null>;
   collapseContainerRef?: RefObject<HTMLDivElement | null>;
 };
@@ -125,9 +132,12 @@ export function SmartReplyCard({
   onSend,
   processingLabel,
   refAttachIds,
+  attachmentCount,
   dismissTargetRef,
   collapseContainerRef,
 }: SmartReplyCardProps) {
+  const resolvedAttachmentCount =
+    attachmentCount ?? refAttachIds?.length ?? 0;
   const cardRef = useRef<HTMLElement | null>(null);
   const dismissAnimationCleanupRef = useRef<(() => void) | null>(null);
   const [isDismissing, setIsDismissing] = useState(false);
@@ -279,7 +289,7 @@ export function SmartReplyCard({
           isThinking={isThinking}
           onRetry={onRegenerate}
           processingLabel={processingLabel}
-          refAttachIds={refAttachIds}
+          attachmentCount={resolvedAttachmentCount}
           onEdit={onEdit}
         />
       </article>
@@ -699,7 +709,15 @@ export function SmartReplyMessageAnchor({
   );
 
   const refAttachIds = suggestion?.refAttachIds;
-  const refAttachIdsKey = refAttachIds?.join(",") ?? "";
+  const attachmentSource = useMemo(
+    () =>
+      resolveSmartReplyRecommendedAttachmentsSource({
+        genAnswer: suggestion?.genAnswer,
+        refAttachIds,
+      }),
+    [refAttachIds, suggestion?.genAnswer],
+  );
+  const attachmentIdsKey = attachmentSource.attachmentIds.join(",");
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -714,26 +732,28 @@ export function SmartReplyMessageAnchor({
       return;
     }
 
-    if (!conversationId || !refAttachIdsKey) {
-      setRecommendedAttachments([]);
+    const inlineAttachments = attachmentSource.inlineAttachments;
+
+    if (!conversationId || attachmentSource.attachmentIds.length === 0) {
+      setRecommendedAttachments(inlineAttachments);
       setIsRecommendedAttachmentsLoading(false);
       return;
     }
 
-    const ids = refAttachIdsKey.split(",");
-
     let cancelled = false;
     setIsRecommendedAttachmentsLoading(true);
 
-    void listSmartReplyAttachments(conversationId, ids)
+    void listSmartReplyAttachments(conversationId, attachmentSource.attachmentIds)
       .then((attachments) => {
         if (!cancelled) {
-          setRecommendedAttachments(attachments);
+          setRecommendedAttachments(
+            mergeSmartReplyRecommendedAttachments(attachments, inlineAttachments),
+          );
         }
       })
       .catch(() => {
         if (!cancelled) {
-          setRecommendedAttachments([]);
+          setRecommendedAttachments(inlineAttachments);
         }
       })
       .finally(() => {
@@ -745,7 +765,7 @@ export function SmartReplyMessageAnchor({
     return () => {
       cancelled = true;
     };
-  }, [conversationId, isEditDialogOpen, refAttachIdsKey]);
+  }, [attachmentIdsKey, attachmentSource, conversationId, isEditDialogOpen]);
 
   useEffect(() => {
     if (!isEditDialogOpen) {
@@ -823,6 +843,7 @@ export function SmartReplyMessageAnchor({
   const isKnowledgeHit =
     !isKnowledgeMiss && !isGenerationFailed && !isContentIncompleteSkip;
   const canMakeShorter = canRequestSmartReplyMakeShorter(resolvedSuggestion);
+  const attachmentCount = resolveSmartReplyAttachmentCount(resolvedSuggestion);
 
   if (isContentIncompleteSkip) {
     return (
@@ -842,6 +863,7 @@ export function SmartReplyMessageAnchor({
         ref={collapseContainerRef}
       >
         <SmartReplyCard
+          attachmentCount={attachmentCount}
           refAttachIds={resolvedSuggestion.refAttachIds}
           assistantName={resolvedSuggestion.assistantName}
           canMakeShorter={canMakeShorter}
@@ -881,8 +903,7 @@ export function SmartReplyMessageAnchor({
               : undefined
           }
           onSend={
-            resolvedSuggestion.refAttachIds?.length &&
-            resolvedSuggestion.refAttachIds.length > 0
+            attachmentCount > 0
               ? openEditDialog
               : onSend
                 ? handleSendFromCard
@@ -1148,7 +1169,7 @@ function SmartReplyContentBody({
   onEdit,
   onRetry,
   processingLabel,
-  refAttachIds,
+  attachmentCount = 0,
 }: {
   content: string;
   failReason?: string;
@@ -1160,7 +1181,7 @@ function SmartReplyContentBody({
   onEdit?: () => void;
   onRetry?: () => void;
   processingLabel?: string;
-  refAttachIds?: string[];
+  attachmentCount?: number;
 }) {
   return (
     <div
@@ -1192,7 +1213,10 @@ function SmartReplyContentBody({
               {content}
             </p>
           </ScrollArea>
-          <SmartReplyReferences refAttachIds={refAttachIds} onEdit={onEdit} />
+          <SmartReplyReferences
+            attachmentCount={attachmentCount}
+            onEdit={onEdit}
+          />
         </>
       )}
     </div>
@@ -1273,32 +1297,30 @@ function SmartReplyReadonlyContent({
 }
 
 function SmartReplyReferences({
-  refAttachIds,
+  attachmentCount,
   onEdit,
 }: {
-  refAttachIds?: string[];
+  attachmentCount: number;
   onEdit?: () => void;
 }) {
-  const refAttachCount = refAttachIds?.length ?? 0;
-
-  if (refAttachCount <= 1) {
+  if (attachmentCount <= 0) {
     return null;
   }
 
   return (
     <div className="mt-[8px] flex min-w-0 cursor-pointer items-center px-[13px]">
       <div
-        aria-label={`推荐附件 ${refAttachCount} 个`}
+        aria-label={`推荐附件 ${attachmentCount} 个`}
         className="inline-flex items-center gap-1 text-[12px] leading-4 text-muted-foreground"
         onClick={onEdit}
       >
         <HugeiconsIcon
           aria-hidden
-          icon={MessageNotification01Icon}
+          icon={Attachment01Icon}
           size={14}
-          strokeWidth={2}
+          strokeWidth={1.8}
         />
-        <span>{refAttachCount}</span>
+        <span>{attachmentCount}</span>
       </div>
     </div>
   );

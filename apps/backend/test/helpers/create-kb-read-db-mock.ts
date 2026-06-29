@@ -341,14 +341,18 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
         rows.filter((row) => wheres.every((where) => matchesWhere(row, where)));
 
       const builder = {
-        executeTakeFirst: async () => {
+        execute: async () => {
           if (table === "xy_wap_embed_agent_kb_doc") {
             const matched = filterRows(docs);
             matched.forEach((row) => Object.assign(row, setValues));
-            return { numUpdatedRows: BigInt(matched.length) };
+            return [{ numUpdatedRows: BigInt(matched.length) }];
           }
 
           throw new Error(`Unsupported update table: ${table}`);
+        },
+        executeTakeFirst: async () => {
+          const [result] = await builder.execute();
+          return result;
         },
         set(values: Record<string, unknown>) {
           setValues = values;

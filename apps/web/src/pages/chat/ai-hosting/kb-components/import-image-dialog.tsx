@@ -148,6 +148,10 @@ export function ImportImageDialog({
         return;
       }
 
+      if (!isCurrentValidation(validationId)) {
+        return;
+      }
+
       setSelectedImage(file);
       setImageName(
         stripFileExtension(file.name).slice(0, IMAGE_KNOWLEDGE_NAME_MAX_LENGTH),

@@ -2156,6 +2156,41 @@ describe("AI hosting pages", () => {
     expect(screen.getByRole("button", { name: "确认提交" })).toBeDisabled();
   });
 
+  it("refreshes the image knowledge name when uploading a new image", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
+      "/chat/ai-hosting/kb/:kbId",
+    );
+
+    await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
+    await user.click(screen.getByRole("button", { name: "添加知识" }));
+    await user.click(screen.getByRole("menuitem", { name: /图片/ }));
+
+    const fileInput = screen.getByLabelText("选择图片知识文件");
+
+    await user.upload(
+      fileInput,
+      new File(["image"], "商品主图.png", { type: "image/png" }),
+    );
+    expect(screen.getByLabelText(/知识名称/)).toHaveValue("商品主图");
+
+    await user.clear(screen.getByLabelText(/知识名称/));
+    await user.type(screen.getByLabelText(/知识名称/), "手动修改名称");
+
+    await user.upload(
+      fileInput,
+      new File(["image"], "新品海报.webp", { type: "image/webp" }),
+    );
+
+    expect(screen.getByLabelText(/知识名称/)).toHaveValue("新品海报");
+    expect(screen.getByRole("region", { name: "已选择图片" })).toHaveTextContent(
+      "新品海报.webp",
+    );
+  });
+
   it("uploads image knowledge to COS and refreshes the list after submit", async () => {
     const user = userEvent.setup();
 

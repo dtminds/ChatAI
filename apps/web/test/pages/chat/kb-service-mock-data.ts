@@ -239,7 +239,7 @@ function toIsoTimestamp(value: string) {
     return value;
   }
 
-  return `${value.replace(" ", "T")}.000Z`;
+  return new Date(`${value.replace(" ", "T")}+08:00`).toISOString();
 }
 
 function toKbListItem(item: KbListViewItem): KbListItem {

@@ -202,10 +202,21 @@ function formatDisplayTime(value: string) {
     return value;
   }
 
-  return new Date(date.getTime() - date.getTimezoneOffset() * 60000)
-    .toISOString()
-    .replace("T", " ")
-    .slice(0, 19);
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    hour: "2-digit",
+    hour12: false,
+    minute: "2-digit",
+    month: "2-digit",
+    second: "2-digit",
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+  }).formatToParts(date);
+
+  const lookup = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? "00";
+
+  return `${lookup("year")}-${lookup("month")}-${lookup("day")} ${lookup("hour")}:${lookup("minute")}:${lookup("second")}`;
 }
 
 function getDocTypeLabel(docType: KbDocType, docSuffix: string) {

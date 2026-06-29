@@ -69,13 +69,15 @@ export class KbReadService {
       query = query.where("name", "like", buildContainsLikePattern(normalizedQuery));
     }
 
+    const rowsPromise = query
+      .orderBy("id", "desc")
+      .limit(pagination.pageSize)
+      .offset((pagination.page - 1) * pagination.pageSize)
+      .execute();
+    const totalPromise = this.countKbs(uid, normalizedQuery);
     const [rows, total] = await Promise.all([
-      query
-        .orderBy("id", "desc")
-        .limit(pagination.pageSize)
-        .offset((pagination.page - 1) * pagination.pageSize)
-        .execute(),
-      this.countKbs(uid, normalizedQuery),
+      rowsPromise,
+      totalPromise,
     ]);
 
     return {
@@ -146,13 +148,15 @@ export class KbReadService {
       query = query.where("name", "like", buildContainsLikePattern(normalizedQuery));
     }
 
+    const rowsPromise = query
+      .orderBy("id", "desc")
+      .limit(pagination.pageSize)
+      .offset((pagination.page - 1) * pagination.pageSize)
+      .execute();
+    const totalPromise = this.countKbDocs(uid, kbNumericId, normalizedQuery, options.docType);
     const [rows, total] = await Promise.all([
-      query
-        .orderBy("id", "desc")
-        .limit(pagination.pageSize)
-        .offset((pagination.page - 1) * pagination.pageSize)
-        .execute(),
-      this.countKbDocs(uid, kbNumericId, normalizedQuery, options.docType),
+      rowsPromise,
+      totalPromise,
     ]);
 
     return {

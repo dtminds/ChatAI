@@ -2621,6 +2621,7 @@ export interface XyWapEmbedAgentKbChunk {
 export interface XyWapEmbedAgentKbDoc {
   create_time: Generated<Date>;
   doc_process_time: Date | null;
+  doc_size: Generated<number>;
   doc_suffix: string;
   doc_type: number;
   doc_update_time: Date | null;

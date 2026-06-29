@@ -87,6 +87,43 @@ describe("AI hosting agent routes", () => {
     await app.close();
   });
 
+  it("returns quota overview with active rows and document storage usage", async () => {
+    const { app, authorization } = await createAiHostingApp(["admin"], {
+      activeAgentCount: 5,
+      activeKbCount: 3,
+      deletedAgentCount: 2,
+      deletedKbCount: 4,
+      docSizeBytes: [64 * 1024 * 1024, 128 * 1024 * 1024],
+    });
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/ai-hosting/quota",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      data: {
+        agents: {
+          limit: 20,
+          used: 5,
+        },
+        kbDocs: {
+          limit: 1024 * 1024 * 1024,
+          used: 192 * 1024 * 1024,
+        },
+        kbs: {
+          limit: 20,
+          used: 3,
+        },
+      },
+      success: true,
+    });
+
+    await app.close();
+  });
+
   it("escapes wildcard characters in agent name search", async () => {
     const { app, authorization, db } = await createAiHostingApp();
 
@@ -102,7 +139,7 @@ describe("AI hosting agent routes", () => {
     await app.close();
   });
 
-  it("runs agent list rows, count, and model queries in parallel", async () => {
+  it("does not query quota while listing agents", async () => {
     const probe = createBlockedAgentListProbe();
     const { app, authorization } = await createAiHostingApp(["admin"], {
       beforeExecute: probe.beforeExecute,
@@ -111,7 +148,7 @@ describe("AI hosting agent routes", () => {
     const responsePromise = app.inject({
       headers: { authorization },
       method: "GET",
-      url: "/api/server/ai-hosting/agents",
+      url: "/api/server/ai-hosting/agents?query=%25_",
     });
 
     try {
@@ -352,6 +389,45 @@ describe("AI hosting agent routes", () => {
         update_time: expect.any(Date),
       },
     });
+
+    await app.close();
+  });
+
+  it("rejects creating agents when the tenant has reached the fixed quota", async () => {
+    const { app, authorization, db } = await createAiHostingApp(["admin"], {
+      activeAgentCount: 20,
+      deletedAgentCount: 2,
+    });
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        modelId: "10",
+        name: "超额小助理",
+        promptConfig: {
+          availableKbIds: [],
+          conditionLogic: "",
+          replyStyle: {
+            length: "简洁",
+            styleInstruction: "亲切自然",
+          },
+          handoffRules: "退款投诉",
+          role: "你是售后客服",
+        },
+      },
+      url: "/api/server/ai-hosting/agents",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      error: {
+        code: "AGENT_QUOTA_EXCEEDED",
+        message: "Agent 数量已达上限",
+      },
+      success: false,
+    });
+    expect(db.insertedAgent).toBeUndefined();
 
     await app.close();
   });
@@ -761,8 +837,13 @@ type QueryExecutionEvent = {
 };
 
 type CreateAiHostingDbMockOptions = {
+  activeAgentCount?: number;
+  activeKbCount?: number;
   beforeExecute?: (event: QueryExecutionEvent) => Promise<void> | void;
   bulkHostingSeats?: boolean;
+  deletedAgentCount?: number;
+  deletedKbCount?: number;
+  docSizeBytes?: number[];
   uid?: number;
 };
 
@@ -853,6 +934,36 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
       update_time: new Date("2024-06-12T08:01:00Z"),
     },
   ];
+  for (let index = agents.length; index < (options.activeAgentCount ?? agents.length); index += 1) {
+    agents.push({
+      create_time: new Date("2024-06-13T08:00:00Z"),
+      id: 400 + index,
+      last_publish_time: 0,
+      last_operator_id: 1,
+      model_id: 11,
+      name: `配额测试小助理${index}`,
+      operator_id: 1,
+      prompt_config: buildPromptConfig(agentPrompt),
+      status: 1,
+      uid: 9001,
+      update_time: new Date("2024-06-13T08:01:00Z"),
+    });
+  }
+  for (let index = 0; index < (options.deletedAgentCount ?? 0); index += 1) {
+    agents.push({
+      create_time: new Date("2024-06-14T08:00:00Z"),
+      id: 500 + index,
+      last_publish_time: 0,
+      last_operator_id: 1,
+      model_id: 11,
+      name: `已删除小助理${index}`,
+      operator_id: 1,
+      prompt_config: buildPromptConfig(agentPrompt),
+      status: 0,
+      uid: 9001,
+      update_time: new Date("2024-06-14T08:01:00Z"),
+    });
+  }
   const histories = [
     {
       agent_id: 301,
@@ -928,6 +1039,26 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
         ]
       : []),
   ];
+  const kbs = Array.from({ length: options.activeKbCount ?? 1 }, (_, index) => ({
+    id: index + 1,
+    status: 1,
+    uid: 9001,
+  }));
+  for (let index = 0; index < (options.deletedKbCount ?? 0); index += 1) {
+    kbs.push({
+      id: 100 + index,
+      status: 0,
+      uid: 9001,
+    });
+  }
+  const docs = (options.docSizeBytes ?? [12 * 1024 * 1024, 8 * 1024 * 1024]).map(
+    (docSize, index) => ({
+      doc_size: docSize,
+      id: 1001 + index,
+      status: 1,
+      uid: 9001,
+    }),
+  );
   const state = {
     agentListWheres: [] as Array<[string, string, unknown]>,
     agentListLimitValues: [] as number[],
@@ -1008,6 +1139,14 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
               .sort((left, right) => right.id - left.id);
           }
 
+          if (table === "xy_wap_embed_agent_kb") {
+            return kbs;
+          }
+
+          if (table === "xy_wap_embed_agent_kb_doc") {
+            return docs;
+          }
+
           if (table === "xy_wap_embed_user_seat as seat") {
             state.seatListWheres = wheres;
             const uid = Number(wheres.find(([column]) => column === "seat.uid")?.[2]);
@@ -1077,6 +1216,24 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
                 (agent) =>
                   agent.status === 1 && (!Number.isFinite(uid) || agent.uid === uid),
               ).length,
+            };
+          }
+
+          if (table === "xy_wap_embed_agent_kb") {
+            const uid = Number(wheres.find(([column]) => column === "uid")?.[2]);
+            return {
+              total: kbs.filter(
+                (kb) => kb.status === 1 && (!Number.isFinite(uid) || kb.uid === uid),
+              ).length,
+            };
+          }
+
+          if (table === "xy_wap_embed_agent_kb_doc") {
+            const uid = Number(wheres.find(([column]) => column === "uid")?.[2]);
+            return {
+              used: docs
+                .filter((doc) => doc.status === 1 && (!Number.isFinite(uid) || doc.uid === uid))
+                .reduce((total, doc) => total + doc.doc_size, 0),
             };
           }
 

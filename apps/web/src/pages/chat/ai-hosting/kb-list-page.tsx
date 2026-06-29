@@ -3,6 +3,7 @@ import { Add01Icon, Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { KB_SEARCH_QUERY_MAX_LENGTH } from "@chatai/contracts";
 import { Link } from "react-router-dom";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -30,11 +31,21 @@ import {
 } from "@/components/ui/table-pagination";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Textarea } from "@/components/ui/textarea";
-import { AiHostingLayout, AiHostingPageHeader } from "./ai-hosting-layout";
+import {
+  AiHostingLayout,
+  AiHostingPageHeader,
+  notifyAiHostingQuotaChanged,
+} from "./ai-hosting-layout";
 import { KbTableLoadingRow } from "./kb-components/kb-table-loading-row";
 import { TableOverflowTooltip } from "./kb-components/shared";
+import { getAiHostingQuota } from "./agent-service";
 import { createKb, listKbs, toKbListViewItem } from "./api/kb-service";
 import type { KbListViewItem } from "./kb-types";
+import {
+  AI_HOSTING_KB_QUOTA_REACHED_MESSAGE,
+  AI_HOSTING_QUOTA_CHECK_FAILED_MESSAGE,
+  isQuotaReached,
+} from "./quota";
 
 type CreateFormState = {
   name: string;
@@ -70,6 +81,7 @@ export function KbListPage() {
     description: "",
   });
   const [createSubmitting, setCreateSubmitting] = useState(false);
+  const [checkingQuota, setCheckingQuota] = useState(false);
   const [listReloadKey, setListReloadKey] = useState(0);
   const isMountedRef = useRef(false);
 
@@ -129,9 +141,28 @@ export function KbListPage() {
     setCreateForm({ name: "", description: "" });
   }
 
-  function handleOpenCreateDialog() {
-    resetCreateForm();
-    setCreateDialogOpen(true);
+  async function handleOpenCreateDialog() {
+    if (checkingQuota) {
+      return;
+    }
+
+    setCheckingQuota(true);
+
+    try {
+      const quota = await getAiHostingQuota();
+
+      if (quota && isQuotaReached(quota.kbs)) {
+        toast.error(AI_HOSTING_KB_QUOTA_REACHED_MESSAGE);
+        return;
+      }
+
+      resetCreateForm();
+      setCreateDialogOpen(true);
+    } catch {
+      toast.error(AI_HOSTING_QUOTA_CHECK_FAILED_MESSAGE);
+    } finally {
+      setCheckingQuota(false);
+    }
   }
 
   function handleCloseCreateDialog() {
@@ -166,6 +197,7 @@ export function KbListPage() {
       resetCreateForm();
       setCurrentPage(1);
       setListReloadKey((value) => value + 1);
+      notifyAiHostingQuotaChanged();
     } finally {
       if (isMountedRef.current) {
         setCreateSubmitting(false);
@@ -201,10 +233,17 @@ export function KbListPage() {
               />
             </div>
 
-            <Button className="h-10 px-4" onClick={handleOpenCreateDialog} type="button">
-              <HugeiconsIcon color="currentColor" icon={Add01Icon} size={17} strokeWidth={1.8} />
-              <span>创建知识库</span>
-            </Button>
+            <div className="flex flex-wrap items-center justify-end gap-3">
+              <Button
+                className="h-10 px-4"
+                disabled={checkingQuota}
+                onClick={() => void handleOpenCreateDialog()}
+                type="button"
+              >
+                <HugeiconsIcon color="currentColor" icon={Add01Icon} size={17} strokeWidth={1.8} />
+                <span>创建知识库</span>
+              </Button>
+            </div>
           </div>
 
           <div>

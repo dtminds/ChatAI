@@ -9,6 +9,7 @@ export function createDatabase(databaseUrl: string) {
     connectionLimit: 10,
     queueLimit: 200,
     connectTimeout: 3000,
+    timezone: "+08:00",
   });
 
   return new Kysely<Database>({

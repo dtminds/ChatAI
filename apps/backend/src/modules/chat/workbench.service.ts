@@ -1279,6 +1279,19 @@ export class MysqlWorkbenchService implements WorkbenchService {
       uid: conversation.uid,
     });
 
+    if (request.enabled) {
+      await this.insertFullAutoEnabledSystemMessage({
+        conversationId: conversation.id,
+        operatorId: subUserNumericId,
+        platform: conversation.platform,
+        subUserId,
+        thirdExternalUserId: conversation.thirdExternalUserId,
+        thirdGroupId: conversation.thirdGroupId,
+        thirdUserId: conversation.thirdUserId,
+        uid: conversation.uid,
+      });
+    }
+
     return {
       conversationAIHostingSwitch: request.enabled,
       conversationId: conversation.id,
@@ -3694,6 +3707,55 @@ export class MysqlWorkbenchService implements WorkbenchService {
     await this.assertSeatAccess(subUserId, conversation.seatId);
 
     return conversation;
+  }
+
+  private async insertFullAutoEnabledSystemMessage(input: {
+    conversationId: string;
+    operatorId: number;
+    platform: number;
+    subUserId: string;
+    thirdExternalUserId?: string;
+    thirdGroupId?: string;
+    thirdUserId: string;
+    uid: number;
+  }) {
+    try {
+      const latestMessageType =
+        await this.repository.getLatestConversationMessageType({
+          platform: input.platform,
+          thirdExternalUserId: input.thirdExternalUserId,
+          thirdGroupId: input.thirdGroupId,
+          thirdUserId: input.thirdUserId,
+          uid: input.uid,
+        });
+
+      if (!latestMessageType || latestMessageType === "system") {
+        return;
+      }
+
+      const subUser = await this.repository.getSubUser(input.subUserId);
+      const operatorName = subUser?.displayName?.trim() || "客服";
+
+      await this.javaClient.insertSystemMessage({
+        content: `${operatorName} 开启了 AI 托管`,
+        conversationId: input.conversationId,
+        operatorId: input.operatorId,
+        platform: input.platform,
+        uid: input.uid,
+      });
+    } catch (error) {
+      this.logger.warn(
+        {
+          conversationId: input.conversationId,
+          error,
+          operation: "insert-full-auto-system-message",
+          platform: input.platform,
+          subUserId: input.subUserId,
+          uid: input.uid,
+        },
+        "插入 AI 托管系统消息失败",
+      );
+    }
   }
 
   private async getMaterialActor(subUserId: string) {

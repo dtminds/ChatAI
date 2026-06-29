@@ -2173,6 +2173,54 @@ describe("WorkbenchRepository", () => {
     await expect(repository.canAccessSeat("1", "not-a-seat")).resolves.toBe(false);
   });
 
+  it("loads the latest single conversation message type by conversation scope", async () => {
+    const queries: Array<{ query: ReturnType<typeof createQueryBuilder>; table: string }> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_msg_audit_info as message") {
+            const query = createQueryBuilder({ msgtype: "text" });
+            queries.push({ query, table });
+            return query;
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    await expect(
+      repository.getLatestConversationMessageType({
+        platform: 5,
+        thirdExternalUserId: "external-001",
+        thirdUserId: "seat-user-001",
+        uid: 9001,
+      }),
+    ).resolves.toBe("text");
+
+    expect(queries).toHaveLength(1);
+    expect(queries[0]?.query.wheres).toEqual([
+      ["message.uid", "=", 9001],
+      ["message.platform", "=", 5],
+      ["message.third_user_id", "=", "seat-user-001"],
+      ["message.third_external_id", "=", "external-001"],
+    ]);
+    expect(queries[0]?.query.orderBys).toEqual([["message.id", "desc"]]);
+    expect(queries[0]?.query.limits).toEqual([1]);
+  });
+
+  it("does not query latest conversation message without a conversation target", async () => {
+    const repository = new WorkbenchRepository(createFailingDb() as never);
+
+    await expect(
+      repository.getLatestConversationMessageType({
+        platform: 5,
+        thirdUserId: "seat-user-001",
+        uid: 9001,
+      }),
+    ).resolves.toBeUndefined();
+  });
+
   it("loads seats by joining relation and seat before conversation aggregation", async () => {
     const queries: Array<{ query: ReturnType<typeof createQueryBuilder>; table: string }> = [];
     const repository = new WorkbenchRepository(

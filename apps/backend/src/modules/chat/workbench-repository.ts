@@ -4030,6 +4030,38 @@ export class WorkbenchRepository {
     };
   }
 
+  async getLatestConversationMessageType(input: {
+    platform: number;
+    thirdExternalUserId?: string;
+    thirdGroupId?: string;
+    thirdUserId: string;
+    uid: number;
+  }): Promise<string | undefined> {
+    if (!input.thirdUserId || (!input.thirdGroupId && !input.thirdExternalUserId)) {
+      return undefined;
+    }
+
+    let query = this.db
+      .selectFrom("xy_wap_embed_msg_audit_info as message")
+      .select(["message.msgtype as msgtype"])
+      .where("message.uid", "=", input.uid)
+      .where("message.platform", "=", input.platform)
+      .where("message.third_user_id", "=", input.thirdUserId);
+
+    if (input.thirdGroupId) {
+      query = query.where("message.third_group_id", "=", input.thirdGroupId);
+    } else if (input.thirdExternalUserId) {
+      query = query.where("message.third_external_id", "=", input.thirdExternalUserId);
+    }
+
+    const row = await query
+      .orderBy("message.id", "desc")
+      .limit(1)
+      .executeTakeFirst();
+
+    return row?.msgtype ?? undefined;
+  }
+
   async listHistoryMessages(
     conversationId: string,
     options: WorkbenchHistoryMessageQuery = {},

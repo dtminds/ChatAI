@@ -35,6 +35,7 @@ import { KbTableLoadingRow } from "./kb-components/kb-table-loading-row";
 import { TableOverflowTooltip } from "./kb-components/shared";
 import { createKb, listKbs, toKbListViewItem } from "./api/kb-service";
 import type { KbListViewItem } from "./kb-types";
+import { formatQuotaText, isQuotaReached } from "./quota-utils";
 
 type CreateFormState = {
   name: string;
@@ -359,14 +360,6 @@ export function KbListPage() {
       </Dialog>
     </AiHostingLayout>
   );
-}
-
-function isQuotaReached(quota: AiHostingQuota | null) {
-  return quota != null && quota.used >= quota.limit;
-}
-
-function formatQuotaText(quota: AiHostingQuota, unit: string) {
-  return `已用 ${quota.used}/${quota.limit} ${unit}`;
 }
 
 function KnowledgeBaseDialogForm({

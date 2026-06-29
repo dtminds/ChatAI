@@ -43,6 +43,7 @@ import {
 } from "./agent-management-overview";
 import { canManageAiHostingAgents } from "./agent-permissions";
 import { AiHostingLayout, AiHostingPageHeader } from "./ai-hosting-layout";
+import { formatQuotaText, isQuotaReached } from "./quota-utils";
 
 type AgentRecord = AiHostingAgentListItem;
 
@@ -276,14 +277,6 @@ export function AgentManagementPage() {
       </AlertDialog>
     </AiHostingLayout>
   );
-}
-
-function isQuotaReached(quota: AiHostingQuota | null) {
-  return quota != null && quota.used >= quota.limit;
-}
-
-function formatQuotaText(quota: AiHostingQuota, unit: string) {
-  return `已用 ${quota.used}/${quota.limit} ${unit}`;
 }
 
 function AgentTable({

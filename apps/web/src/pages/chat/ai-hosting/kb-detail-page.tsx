@@ -64,6 +64,7 @@ import {
   toKbListViewItem,
 } from "./api/kb-service";
 import type { KbDocViewItem, KbListViewItem, KbStatus } from "./kb-types";
+import { formatQuotaText, isQuotaReached } from "./quota-utils";
 
 const PAGE_SIZE = 10;
 
@@ -476,14 +477,6 @@ function AddKnowledgeMenu({
       </DropdownMenuContent>
     </DropdownMenu>
   );
-}
-
-function isQuotaReached(quota: AiHostingQuota | null) {
-  return quota != null && quota.used >= quota.limit;
-}
-
-function formatQuotaText(quota: AiHostingQuota, unit: string) {
-  return `已用 ${quota.used}/${quota.limit} ${unit}`;
 }
 
 function renderAddKnowledgeOption(

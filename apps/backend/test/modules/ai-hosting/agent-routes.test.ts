@@ -91,6 +91,35 @@ describe("AI hosting agent routes", () => {
     await app.close();
   });
 
+  it("excludes deleted agents from list quota usage", async () => {
+    const { app, authorization } = await createAiHostingApp(["admin"], {
+      activeAgentCount: 5,
+      deletedAgentCount: 2,
+    });
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/ai-hosting/agents",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      data: {
+        pagination: {
+          total: 5,
+        },
+        quota: {
+          limit: 5,
+          used: 5,
+        },
+      },
+      success: true,
+    });
+
+    await app.close();
+  });
+
   it("escapes wildcard characters in agent name search", async () => {
     const { app, authorization, db } = await createAiHostingApp();
 

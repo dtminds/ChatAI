@@ -126,6 +126,21 @@ describe("KbReadService", () => {
     });
   });
 
+  it("excludes deleted kbs from list quota usage", async () => {
+    const { service } = createService(vi.fn(), {
+      deletedKbCount: 3,
+      totalKbCount: 20,
+    });
+
+    const response = await service.listKbs(tenant);
+
+    expect(response.pagination.total).toBe(20);
+    expect(response.quota).toEqual({
+      limit: 20,
+      used: 20,
+    });
+  });
+
   it("allows loading up to 200 kbs for local picker searches", async () => {
     const { service } = createService();
 
@@ -315,6 +330,21 @@ describe("KbReadService", () => {
         limit: 100,
         used: 2,
       },
+    });
+  });
+
+  it("excludes deleted kb docs from list quota usage", async () => {
+    const { service } = createService(vi.fn(), {
+      deletedDocCount: 5,
+      totalDocCount: 100,
+    });
+
+    const response = await service.listKbDocs(tenant, "1");
+
+    expect(response.pagination.total).toBe(100);
+    expect(response.quota).toEqual({
+      limit: 100,
+      used: 100,
     });
   });
 

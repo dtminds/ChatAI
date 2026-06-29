@@ -2537,8 +2537,11 @@ describe("AI hosting pages", () => {
     expect(addQaButton).not.toHaveAttribute("aria-haspopup", "menu");
     expect(screen.queryByRole("button", { name: "添加切片" })).not.toBeInTheDocument();
     expect(screen.getByRole("table", { name: "切片列表" })).toBeInTheDocument();
+    expect(screen.getByText("切片ID")).toBeInTheDocument();
     expect(screen.getByText("问题")).toBeInTheDocument();
     expect(screen.getByText("答案")).toBeInTheDocument();
+    expect(screen.getByText("更新时间")).toBeInTheDocument();
+    expect(screen.getByText("chunk-qa-1")).toBeInTheDocument();
     expect(screen.getByText("如何恢复出厂设置")).toBeInTheDocument();
     expect(screen.getByText("保修期多久")).toBeInTheDocument();
   });
@@ -2668,9 +2671,14 @@ describe("AI hosting pages", () => {
       "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
     );
     expect(screen.queryByText("文档 · 华为产品知识")).not.toBeInTheDocument();
-    expect(screen.getByText("切片标题")).toBeInTheDocument();
+    expect(screen.getByText("切片ID")).toBeInTheDocument();
     expect(screen.getByText("切片内容")).toBeInTheDocument();
-    expect(screen.getByText("第一章 产品介绍")).toBeInTheDocument();
+    expect(screen.getByText("更新时间")).toBeInTheDocument();
+    expect(screen.queryByText("切片标题")).not.toBeInTheDocument();
+    expect(screen.getByText("chunk-doc-1")).toBeInTheDocument();
+    expect(
+      screen.getByText("华为 Mate 系列主打影像与续航，适合商务与日常拍摄场景"),
+    ).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "编辑" })).toHaveLength(3);
 
     const addChunkButton = screen.getByRole("button", { name: "添加切片" });
@@ -2680,7 +2688,7 @@ describe("AI hosting pages", () => {
     await user.type(within(dialog).getByLabelText(/切片内容/), "原装充电器与数据线需单独购买");
     await user.click(within(dialog).getByRole("button", { name: "确定" }));
 
-    expect(await screen.findByText("第三章 配件说明")).toBeInTheDocument();
+    expect(await screen.findByText("原装充电器与数据线需单独购买")).toBeInTheDocument();
   });
 
   it("renders the image chunk detail page without add actions", async () => {
@@ -2719,7 +2727,7 @@ describe("AI hosting pages", () => {
       "/chat/ai-hosting/kb/:kbId/docs/:docId",
     );
 
-    await screen.findByText("第一章 产品介绍");
+    await screen.findByText("chunk-doc-1");
     await user.click(screen.getAllByRole("button", { name: "删除" })[0]);
     const dialog = screen.getByRole("alertdialog", { name: "确定删除该切片吗" });
     const confirmDeleteButton = within(dialog).getByRole("button", { name: "删除" });
@@ -2727,8 +2735,9 @@ describe("AI hosting pages", () => {
     expect(confirmDeleteButton).toHaveClass("bg-destructive");
     await user.click(confirmDeleteButton);
 
-    expect(screen.queryByText("第一章 产品介绍")).not.toBeInTheDocument();
-    expect(screen.getByText("第二章 售后政策")).toBeInTheDocument();
+    expect(screen.queryByText("chunk-doc-1")).not.toBeInTheDocument();
+    expect(screen.getByText("chunk-doc-2")).toBeInTheDocument();
+    expect(screen.getByText("全国联保一年，支持官方售后网点检测与维修")).toBeInTheDocument();
   });
 });
 

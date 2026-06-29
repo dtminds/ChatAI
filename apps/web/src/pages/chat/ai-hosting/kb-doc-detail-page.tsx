@@ -24,6 +24,7 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableCellContent,
   TableHead,
   TableHeader,
   TablePinnedCell,
@@ -559,23 +560,23 @@ function KnowledgeChunksTable({
   onEdit: (chunk: KbDocChunkViewItem) => void;
 }) {
   const isQa = docType === "qa";
+  const columnCount = isQa ? 5 : 4;
 
   return (
     <TooltipProvider>
       <Table aria-label="切片列表" className="min-w-[960px] table-fixed">
       <TableHeader>
         <TableRow className="hover:bg-transparent">
+          <TableHead className="h-11 w-[18%] px-4">切片ID</TableHead>
           {isQa ? (
             <>
-              <TableHead className="h-11 w-[34%] px-4">问题</TableHead>
-              <TableHead className="h-11 w-[46%] px-4">答案</TableHead>
+              <TableHead className="h-11 w-[24%] px-4">问题</TableHead>
+              <TableHead className="h-11 w-[34%] px-4">答案</TableHead>
             </>
           ) : (
-            <>
-              <TableHead className="h-11 w-[34%] px-4">切片标题</TableHead>
-              <TableHead className="h-11 w-[46%] px-4">切片内容</TableHead>
-            </>
+            <TableHead className="h-11 w-[42%] px-4">切片内容</TableHead>
           )}
+          <TableHead className="h-11 w-[20%] px-4">更新时间</TableHead>
           <TablePinnedHead className="h-11 w-[120px] whitespace-nowrap px-4 text-right">
             操作
           </TablePinnedHead>
@@ -583,10 +584,13 @@ function KnowledgeChunksTable({
       </TableHeader>
       <TableBody>
         {loading ? (
-          <KbTableLoadingRow colSpan={3} />
+          <KbTableLoadingRow colSpan={columnCount} />
         ) : chunks.length > 0 ? (
           chunks.map((chunk) => (
             <TableRow key={chunk.id}>
+              <TableCell className="px-4 py-4 text-muted-foreground">
+                <TableOverflowTooltip tooltip={chunk.id}>{chunk.id}</TableOverflowTooltip>
+              </TableCell>
               {isQa ? (
                 <>
                   <TableCell className="px-4 py-4">
@@ -604,20 +608,16 @@ function KnowledgeChunksTable({
                   </TableCell>
                 </>
               ) : (
-                <>
-                  <TableCell className="px-4 py-4">
-                    <TableOverflowTooltip
-                      className="font-medium text-foreground"
-                      tooltip={chunk.title}
-                    >
-                      {chunk.title}
-                    </TableOverflowTooltip>
-                  </TableCell>
-                  <TableCell className="px-4 py-4">
-                    <ChunkContentCell content={chunk.content} imageUrls={chunk.imageUrls} />
-                  </TableCell>
-                </>
+                <TableCell className="px-4 py-4">
+                  <ChunkContentCell content={chunk.content} imageUrls={chunk.imageUrls} />
+                </TableCell>
               )}
+              <TableCell
+                className="px-4 py-4 text-muted-foreground"
+                title={chunk.updatedAt}
+              >
+                <TableCellContent>{chunk.updatedAt}</TableCellContent>
+              </TableCell>
               <TablePinnedCell className="whitespace-nowrap px-4 py-4 text-right">
                 <div className="flex items-center justify-end gap-3">
                   <Button
@@ -642,7 +642,7 @@ function KnowledgeChunksTable({
           ))
         ) : (
           <TableRow>
-            <TableCell className="py-10 text-center text-sm text-muted-foreground" colSpan={3}>
+            <TableCell className="py-10 text-center text-sm text-muted-foreground" colSpan={columnCount}>
               暂无切片数据
             </TableCell>
           </TableRow>

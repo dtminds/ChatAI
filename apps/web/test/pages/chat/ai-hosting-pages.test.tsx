@@ -1412,6 +1412,9 @@ describe("AI hosting pages", () => {
     expect(screen.getByText("排队中")).toBeInTheDocument();
     expect(screen.getByText("共 6 条")).toBeInTheDocument();
     expect(screen.getByText("已用 6/100 条知识")).toBeInTheDocument();
+    expect(screen.getByText("已用 6/100 条知识").closest("div")).toContainElement(
+      screen.getByRole("button", { name: "添加知识" }),
+    );
     expect(screen.getAllByRole("link", { name: "查看" })[0]).toHaveAttribute(
       "href",
       "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-1",

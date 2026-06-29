@@ -350,22 +350,24 @@ export function KbDetailPage() {
               />
             </div>
 
-            <AddKnowledgeMenu
-              disabled={knowledgeQuotaReached}
-              onDocumentDialogOpen={() => setDocumentDialogOpen(true)}
-              onImageDialogOpen={() => setImageDialogOpen(true)}
-              onImportQaDialogOpen={() => setImportQaDialogOpen(true)}
-            />
+            <div className="flex flex-wrap items-center justify-end gap-3">
+              {knowledgeQuota ? (
+                <span className="text-sm text-muted-foreground">
+                  {formatQuotaText(knowledgeQuota, "条知识")}
+                </span>
+              ) : null}
+              <AddKnowledgeMenu
+                disabled={knowledgeQuotaReached}
+                onDocumentDialogOpen={() => setDocumentDialogOpen(true)}
+                onImageDialogOpen={() => setImageDialogOpen(true)}
+                onImportQaDialogOpen={() => setImportQaDialogOpen(true)}
+              />
+            </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-            {knowledgeQuota ? (
-              <span>{formatQuotaText(knowledgeQuota, "条知识")}</span>
-            ) : null}
-            {knowledgeQuotaReached ? (
-              <span>当前知识库的知识数量已达上限</span>
-            ) : null}
-          </div>
+          {knowledgeQuotaReached ? (
+            <p className="text-sm text-muted-foreground">当前知识库的知识数量已达上限</p>
+          ) : null}
 
           <div>
             <KnowledgeRecordsTable

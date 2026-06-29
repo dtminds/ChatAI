@@ -5605,6 +5605,7 @@ export function createWorkbenchStore() {
 
       if (
         !canUseConversationActions(state, account) ||
+        conversation.mode !== "single" ||
         account?.seatAIHostingEnabled !== true
       ) {
         return;

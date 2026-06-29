@@ -119,6 +119,39 @@ describe("resolveWorkbenchPermissions", () => {
         subUser: operator,
       }).conversationAIHostingEnabled,
     ).toBe(false);
+
+    expect(
+      resolveWorkbenchPermissions({
+        account: createAccount({
+          seatAIHostingAuth: true,
+          seatAIHostingEnabled: true,
+          takenOverEmployeeId: me.id,
+        }),
+        activeConversation: createConversation({
+          conversationAIHostingSwitch: true,
+          mode: "group",
+        }),
+        bootstrapStatus: "ready",
+        me,
+        subUser: operator,
+      }).conversationAIHostingEnabled,
+    ).toBe(false);
+    expect(
+      resolveWorkbenchPermissions({
+        account: createAccount({
+          seatAIHostingAuth: true,
+          seatAIHostingEnabled: true,
+          takenOverEmployeeId: me.id,
+        }),
+        activeConversation: createConversation({
+          conversationAIHostingSwitch: true,
+          mode: "group",
+        }),
+        bootstrapStatus: "ready",
+        me,
+        subUser: operator,
+      }).canToggleConversationAIHosting,
+    ).toBe(false);
   });
 
   it("blocks sending without showing a hosting placeholder for active full-auto conversations", () => {

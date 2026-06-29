@@ -64,6 +64,11 @@ describe("conversation view helpers", () => {
         mode: "group",
         unread: 1,
       }),
+      createConversation({
+        conversationAIHostingSwitch: true,
+        id: "group-ai-switch",
+        mode: "group",
+      }),
     ];
 
     expect(
@@ -80,7 +85,7 @@ describe("conversation view helpers", () => {
       filterConversationsByView(conversations, "group", "ai", true).map(
         (conversation) => conversation.id,
       ),
-    ).toEqual(["group-unread"]);
+    ).toEqual(["group-unread", "group-ai-switch"]);
     expect(
       filterConversationsByView(conversations, "group", "unread", true).map(
         (conversation) => conversation.id,

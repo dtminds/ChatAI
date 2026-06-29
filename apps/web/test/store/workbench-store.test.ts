@@ -411,6 +411,45 @@ describe("useWorkbenchStore", () => {
     expect(changeConversationFullAuto).not.toHaveBeenCalled();
   });
 
+  it("does not change full-auto for active group conversations", async () => {
+    const baseService = createMockWorkbenchService();
+    const changeConversationFullAuto = vi.fn();
+
+    setWorkbenchService({
+      ...baseService,
+      changeConversationFullAuto,
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              seatAIHostingAuth: true,
+              seatAIHostingEnabled: true,
+            }
+          : account,
+      ),
+      activeConversationId: "group-001",
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: [
+          ...(state.conversationListsByScope.drc ?? []),
+          {
+            ...state.conversationListsByScope.drc[0],
+            conversationAIHostingSwitch: false,
+            id: "group-001",
+            mode: "group",
+          },
+        ],
+      },
+    }));
+
+    await useWorkbenchStore.getState().changeActiveConversationFullAuto(true);
+
+    expect(changeConversationFullAuto).not.toHaveBeenCalled();
+  });
+
   it("changes the active account agent mode switch and patches local account state", async () => {
     const baseService = createMockWorkbenchService();
     const updateSeatAgentMode = vi.fn().mockResolvedValue({

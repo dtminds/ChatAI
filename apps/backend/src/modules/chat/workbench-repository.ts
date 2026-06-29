@@ -91,6 +91,7 @@ const GROUP_MEMBER_SORT_RANK = {
 } as const;
 
 export type ConversationLookup = {
+  chatType: number;
   id: string;
   platform: number;
   seatId: string;
@@ -3552,6 +3553,7 @@ export class WorkbenchRepository {
       )
       .select([
         "conversation.id as id",
+        "conversation.chat_type as chat_type",
         "conversation.platform as platform",
         "conversation.third_external_userid as third_external_userid",
         "conversation.third_group_id as third_group_id",
@@ -3590,6 +3592,7 @@ export class WorkbenchRepository {
 
     return row
       ? {
+          chatType: row.chat_type,
           id: String(row.id),
           platform: row.platform,
           seatId: String(row.seat_id),

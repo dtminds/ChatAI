@@ -6,6 +6,7 @@ export function isConversationAIHostingEnabled(
 ): boolean {
   return (
     seatAIHostingEnabled === true &&
+    conversation?.mode === "single" &&
     conversation?.conversationAIHostingSwitch === true
   );
 }

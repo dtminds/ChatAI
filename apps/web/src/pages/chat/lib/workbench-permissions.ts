@@ -76,6 +76,7 @@ export function resolveWorkbenchPermissions({
   const seatAIHostingEnabled = account?.seatAIHostingEnabled === true;
   const canToggleConversationAIHosting =
     isAccountTakenOverByCurrentUser &&
+    activeConversation?.mode === "single" &&
     seatAIHostingEnabled;
   const conversationAIHostingEnabled =
     isConversationAIHostingEnabled(activeConversation, seatAIHostingEnabled);

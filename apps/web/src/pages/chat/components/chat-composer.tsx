@@ -359,6 +359,7 @@ export function ChatComposer({
     canEditComposer && composerImageCount < MAX_COMPOSER_IMAGE_SEGMENTS;
   const canOpenCollectedFiles = canSendMessage && !isSending;
   const composerActionButtonClass = "size-8 p-0 shadow-none";
+  const showAgentDialogButton = !isGroupConversation;
 
   const registerEditor = useCallback(
     (editor: LexicalEditor | null) => {
@@ -719,119 +720,121 @@ export function ChatComposer({
               ref={fileInputRef}
               type="file"
             />
-            <Popover open={isAgentDialogOpen} onOpenChange={setIsAgentDialogOpen}>
-              <ComposerActionTooltip
-                disabled={isComposerActionDisabled}
-                label="AI 对话"
-              >
-                <PopoverTrigger asChild>
-                  <Button
-                    aria-label="AI 对话"
-                    className={composerActionButtonClass}
-                    disabled={isComposerActionDisabled}
-                    size="icon"
-                    type="button"
-                    variant="ghost"
-                  >
-                    <HugeiconsIcon icon={AiChat02Icon} size={18} strokeWidth={2} />
-                  </Button>
-                </PopoverTrigger>
-              </ComposerActionTooltip>
-              <PopoverContent align="end" className="w-96 p-0" side="top">
-                <div className="space-y-4 p-3.5">
-                  <div className="flex items-center gap-2">
-                    <Avatar className="size-8 rounded-[8px]">
-                      {accountAvatarUrl ? (
-                        <AvatarImage alt={accountName ?? "当前席位"} src={accountAvatarUrl} />
-                      ) : null}
-                      <AvatarFallback className="text-xs">
-                        {accountName?.slice(0, 1)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-popover-foreground">
-                        {accountName ?? "当前席位"}
-                      </p>
-                    </div>
-                  </div>
-
-                  <section className="space-y-2">
-                    <p className="text-xs font-medium text-muted-foreground">
-                      切换 AI 模式
-                    </p>
-                    <Select
-                      disabled={seatAgentModeActionPending}
-                      onValueChange={(value) => {
-                        onChangeSeatAgentMode(value as WorkbenchSeatAgentMode);
-                      }}
-                      value={seatAIMode}
-                    >
-                      <SelectTrigger
-                        aria-label="切换 AI 模式"
-                        className="h-auto w-full rounded-[8px] border border-border bg-accent/40 px-3 py-2.5 shadow-none focus:outline-none focus:ring-0 data-[state=open]:bg-accent/50 [&>span]:line-clamp-none"
-                      >
-                        <SeatAIModeOptionContent option={selectedSeatAIModeOption} />
-                      </SelectTrigger>
-                      <SelectContent align="end" className="w-[var(--radix-select-trigger-width)]">
-                        {SEAT_AI_MODE_OPTIONS.map((option) => (
-                          <SelectItem
-                            className="h-auto py-2 pl-8 pr-2.5"
-                            disabled={isSeatAIModeOptionDisabled(option.value)}
-                            key={option.value}
-                            value={option.value}
-                          >
-                            <SeatAIModeOptionContent option={option} />
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </section>
-
-                  <section className="space-y-2">
-                    <div>
-                      <p className="text-xs font-medium text-muted-foreground">
-                        会话托管
-                      </p>
-                      <p className="mt-1 text-xs leading-5 text-warning">
-                        仅影响此会话，开启后 Agent 将自动回复客户
-                      </p>
-                    </div>
+            {showAgentDialogButton ? (
+              <Popover open={isAgentDialogOpen} onOpenChange={setIsAgentDialogOpen}>
+                <ComposerActionTooltip
+                  disabled={isComposerActionDisabled}
+                  label="AI 对话"
+                >
+                  <PopoverTrigger asChild>
                     <Button
-                      className="w-full bg-neutral-strong text-neutral-strong-foreground shadow-none hover:bg-neutral-strong/90 hover:text-neutral-strong-foreground"
-                      disabled={!canUseCurrentConversationHosting || isFullAutoButtonPending}
-                      onClick={async () => {
-                        setIsFullAutoSubmitting(true);
-                        try {
-                          await onChangeFullAuto(!conversationAIHostingEnabled);
-                        } finally {
-                          setIsFullAutoSubmitting(false);
-                          setIsAgentDialogOpen(false);
-                        }
-                      }}
+                      aria-label="AI 对话"
+                      className={composerActionButtonClass}
+                      disabled={isComposerActionDisabled}
+                      size="icon"
                       type="button"
                       variant="ghost"
                     >
-                      {isFullAutoButtonPending ? (
-                        <Spinner
-                          aria-hidden="true"
-                          className="text-neutral-strong-foreground"
-                          size={14}
-                          variant="classic"
-                        />
-                      ) : conversationAIHostingEnabled ? null : (
-                        <HugeiconsIcon icon={AiSecurity02Icon} size={16} strokeWidth={1.8} />
-                      )}
-                      {conversationAIHostingEnabled ? "关闭当前会话托管" : "托管当前会话"}
+                      <HugeiconsIcon icon={AiChat02Icon} size={18} strokeWidth={2} />
                     </Button>
-                    {seatAIMode !== "autoReply" ? (
-                      <p className="text-center text-xs text-muted-foreground">
-                        切换 AI 模式为自动回复后，可托管此会话
+                  </PopoverTrigger>
+                </ComposerActionTooltip>
+                <PopoverContent align="end" className="w-96 p-0" side="top">
+                  <div className="space-y-4 p-3.5">
+                    <div className="flex items-center gap-2">
+                      <Avatar className="size-8 rounded-[8px]">
+                        {accountAvatarUrl ? (
+                          <AvatarImage alt={accountName ?? "当前席位"} src={accountAvatarUrl} />
+                        ) : null}
+                        <AvatarFallback className="text-xs">
+                          {accountName?.slice(0, 1)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-popover-foreground">
+                          {accountName ?? "当前席位"}
+                        </p>
+                      </div>
+                    </div>
+
+                    <section className="space-y-2">
+                      <p className="text-xs font-medium text-muted-foreground">
+                        切换 AI 模式
                       </p>
-                    ) : null}
-                  </section>
-                </div>
-              </PopoverContent>
-            </Popover>
+                      <Select
+                        disabled={seatAgentModeActionPending}
+                        onValueChange={(value) => {
+                          onChangeSeatAgentMode(value as WorkbenchSeatAgentMode);
+                        }}
+                        value={seatAIMode}
+                      >
+                        <SelectTrigger
+                          aria-label="切换 AI 模式"
+                          className="h-auto w-full rounded-[8px] border border-border bg-accent/40 px-3 py-2.5 shadow-none focus:outline-none focus:ring-0 data-[state=open]:bg-accent/50 [&>span]:line-clamp-none"
+                        >
+                          <SeatAIModeOptionContent option={selectedSeatAIModeOption} />
+                        </SelectTrigger>
+                        <SelectContent align="end" className="w-[var(--radix-select-trigger-width)]">
+                          {SEAT_AI_MODE_OPTIONS.map((option) => (
+                            <SelectItem
+                              className="h-auto py-2 pl-8 pr-2.5"
+                              disabled={isSeatAIModeOptionDisabled(option.value)}
+                              key={option.value}
+                              value={option.value}
+                            >
+                              <SeatAIModeOptionContent option={option} />
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </section>
+
+                    <section className="space-y-2">
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground">
+                          会话托管
+                        </p>
+                        <p className="mt-1 text-xs leading-5 text-warning">
+                          仅影响此会话，开启后 Agent 将自动回复客户
+                        </p>
+                      </div>
+                      <Button
+                        className="w-full bg-neutral-strong text-neutral-strong-foreground shadow-none hover:bg-neutral-strong/90 hover:text-neutral-strong-foreground"
+                        disabled={!canUseCurrentConversationHosting || isFullAutoButtonPending}
+                        onClick={async () => {
+                          setIsFullAutoSubmitting(true);
+                          try {
+                            await onChangeFullAuto(!conversationAIHostingEnabled);
+                          } finally {
+                            setIsFullAutoSubmitting(false);
+                            setIsAgentDialogOpen(false);
+                          }
+                        }}
+                        type="button"
+                        variant="ghost"
+                      >
+                        {isFullAutoButtonPending ? (
+                          <Spinner
+                            aria-hidden="true"
+                            className="text-neutral-strong-foreground"
+                            size={14}
+                            variant="classic"
+                          />
+                        ) : conversationAIHostingEnabled ? null : (
+                          <HugeiconsIcon icon={AiSecurity02Icon} size={16} strokeWidth={1.8} />
+                        )}
+                        {conversationAIHostingEnabled ? "关闭当前会话托管" : "托管当前会话"}
+                      </Button>
+                      {seatAIMode !== "autoReply" ? (
+                        <p className="text-center text-xs text-muted-foreground">
+                          切换 AI 模式为自动回复后，可托管此会话
+                        </p>
+                      ) : null}
+                    </section>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            ) : null}
             <ComposerActionTooltip label="聊天记录">
               <Button
                 aria-label="历史记录"

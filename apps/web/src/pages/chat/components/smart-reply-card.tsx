@@ -709,13 +709,14 @@ export function SmartReplyMessageAnchor({
   );
 
   const refAttachIds = suggestion?.refAttachIds;
+  const refAttachIdsKey = refAttachIds?.join(",") ?? "";
   const attachmentSource = useMemo(
     () =>
       resolveSmartReplyRecommendedAttachmentsSource({
         genAnswer: suggestion?.genAnswer,
         refAttachIds,
       }),
-    [refAttachIds, suggestion?.genAnswer],
+    [refAttachIdsKey, suggestion?.genAnswer],
   );
   const attachmentIdsKey = attachmentSource.attachmentIds.join(",");
 

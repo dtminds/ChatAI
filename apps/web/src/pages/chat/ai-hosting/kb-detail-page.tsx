@@ -630,7 +630,7 @@ function KnowledgeRecordsTable({
                     <Button
                       aria-label={`重试 ${record.name}`}
                       className="h-auto p-0 text-primary"
-                      disabled={retryingDocId === record.id}
+                      disabled={retryingDocId !== null}
                       onClick={() => {
                         void onRetry(record.id);
                       }}

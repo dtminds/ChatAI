@@ -205,7 +205,7 @@ function formatDisplayTime(value: string) {
   const parts = new Intl.DateTimeFormat("en-GB", {
     day: "2-digit",
     hour: "2-digit",
-    hour12: false,
+    hourCycle: "h23",
     minute: "2-digit",
     month: "2-digit",
     second: "2-digit",

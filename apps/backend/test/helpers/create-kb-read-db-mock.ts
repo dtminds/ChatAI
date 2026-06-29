@@ -163,6 +163,31 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
       volc_resource_id: null,
       volc_strategy_resource_id: null,
     },
+    {
+      create_time: new Date("2026-06-16T15:22:22.000Z"),
+      doc_process_time: null,
+      doc_suffix: "txt",
+      doc_type: 2,
+      doc_update_time: null,
+      doc_url: "kb-docs/failed.txt",
+      id: 1003,
+      kb_id: 1,
+      last_operator_id: 1,
+      last_sync_time: null,
+      name: "失败知识",
+      operator_id: 1,
+      point_num: null,
+      remark: null,
+      status: 1,
+      sync_error_msg: "解析失败",
+      sync_status: 1,
+      tokens: null,
+      uid: 9001,
+      update_time: new Date("2026-06-16T15:22:22.000Z"),
+      volc_doc_id: "volc-doc-3",
+      volc_resource_id: null,
+      volc_strategy_resource_id: null,
+    },
   ];
   for (let index = docs.length; index < (options.totalDocCount ?? docs.length); index += 1) {
     docs.push({
@@ -302,6 +327,46 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
         },
         values: (nextValues: Record<string, unknown>) => {
           values = nextValues;
+          return builder;
+        },
+      };
+
+      return builder;
+    },
+    updateTable(table: string) {
+      let setValues: Record<string, unknown> = {};
+      const wheres: WhereClause[] = [];
+
+      const filterRows = <TRow extends Record<string, unknown>>(rows: TRow[]) =>
+        rows.filter((row) => wheres.every((where) => matchesWhere(row, where)));
+
+      const builder = {
+        executeTakeFirst: async () => {
+          if (table === "xy_wap_embed_agent_kb_doc") {
+            const matched = filterRows(docs);
+            matched.forEach((row) => Object.assign(row, setValues));
+            return { numUpdatedRows: BigInt(matched.length) };
+          }
+
+          throw new Error(`Unsupported update table: ${table}`);
+        },
+        set(values: Record<string, unknown>) {
+          setValues = values;
+          return builder;
+        },
+        where(
+          columnOrFn:
+            | string
+            | ((eb: ReturnType<typeof createExpressionBuilder>) => WhereClause),
+          _operator?: string,
+          _value?: unknown,
+        ) {
+          if (typeof columnOrFn === "function") {
+            wheres.push(columnOrFn(createExpressionBuilder()));
+          } else {
+            wheres.push({ type: "eq", column: columnOrFn, value: _value });
+          }
+
           return builder;
         },
       };

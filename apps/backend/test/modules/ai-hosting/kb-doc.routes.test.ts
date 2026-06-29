@@ -306,6 +306,36 @@ describe("ai-hosting kb-doc routes", () => {
     fetchMock.mockRestore();
   });
 
+  it("retries a failed kb doc by resetting sync status to queued", async () => {
+    const context = await createAuthenticatedApp();
+    app = context.app;
+
+    const response = await app.inject({
+      headers: { authorization: context.authorization },
+      method: "POST",
+      url: "/api/server/ai-hosting/kb-docs/1003/retry",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      data: {
+        retried: true,
+      },
+      success: true,
+    });
+
+    const retriedDoc = await app.db
+      .selectFrom("xy_wap_embed_agent_kb_doc")
+      .select(["sync_error_msg", "sync_status"])
+      .where("id", "=", 1003)
+      .executeTakeFirst();
+
+    expect(retriedDoc).toEqual({
+      sync_error_msg: null,
+      sync_status: 2,
+    });
+  });
+
   it("rejects enhanced parsing for plain text documents", async () => {
     const context = await createAuthenticatedApp();
     app = context.app;

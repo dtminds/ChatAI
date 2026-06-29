@@ -320,6 +320,15 @@ export function addMockKbChunk(chunk: KbDocChunkViewItem) {
   mockKbChunkItems = [chunk, ...mockKbChunkItems];
 }
 
+export function updateMockKbDocStatus(
+  docId: string,
+  status: KbDocViewItem["status"],
+) {
+  mockKbDocItems = mockKbDocItems.map((doc) =>
+    doc.id === docId ? { ...doc, status } : doc,
+  );
+}
+
 export function updateMockKbChunk(
   chunkId: string,
   patch: Partial<Pick<KbDocChunkViewItem, "question" | "answer" | "title" | "content">>,

@@ -108,6 +108,26 @@ export async function registerAiHostingRoutes(app: FastifyInstance) {
       );
     },
   );
+
+  app.post<{ Params: KbDocParams }>(
+    "/api/server/ai-hosting/kb-docs/:docId/retry",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        params: KbDocParamsSchema,
+      },
+    },
+    async (request) => {
+      assertAiHostingWriteAccess(request);
+
+      return apiSuccess(
+        await getKbDocService(app).retryKbDoc(
+          getAgentKbTenant(request),
+          request.params.docId,
+        ),
+      );
+    },
+  );
 }
 
 function getKbDocService(app: FastifyInstance) {

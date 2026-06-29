@@ -30,6 +30,7 @@ import {
   type WorkbenchSearchResponseDto,
   type WorkbenchConversationSummaryDto,
   type WorkbenchFullAutoAnswerStatusResponse,
+  type WorkbenchSeatAgentMode,
   normalizeQuickReplyAttachments,
   type WorkbenchQuickReplyAttachment,
 } from "@chatai/contracts";
@@ -3759,8 +3760,7 @@ export class WorkbenchRepository {
   }
 
   async updateSeatAgentModeSwitch(input: {
-    enabled: boolean;
-    mode: "full" | "semi";
+    mode: WorkbenchSeatAgentMode;
     platform: number;
     seatId: string;
     uid: number;
@@ -3778,8 +3778,8 @@ export class WorkbenchRepository {
     await this.db
       .updateTable("xy_wap_embed_user_seat_agent")
       .set({
-        [input.mode === "full" ? "full_auto_switch" : "semi_auto_switch"]:
-          input.enabled ? 1 : 0,
+        full_auto_switch: input.mode === "autoReply" ? 1 : 0,
+        semi_auto_switch: input.mode === "off" ? 0 : 1,
         update_time: new Date(),
       })
       .where("uid", "=", input.uid)

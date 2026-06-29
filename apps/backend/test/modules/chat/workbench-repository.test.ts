@@ -5009,6 +5009,74 @@ describe("WorkbenchRepository", () => {
     ]);
   });
 
+  it("updates both seat agent switches in a single tenant-scoped write", async () => {
+    const updates: Array<{
+      table: string;
+      values?: Record<string, unknown>;
+      wheres: Array<[string, string, unknown]>;
+    }> = [];
+    const repository = new WorkbenchRepository(
+      {
+        updateTable(table: string) {
+          const wheres: Array<[string, string, unknown]> = [];
+          const update = { table, values: undefined, wheres } as {
+            table: string;
+            values?: Record<string, unknown>;
+            wheres: Array<[string, string, unknown]>;
+          };
+          updates.push(update);
+
+          return {
+            set(values: Record<string, unknown>) {
+              update.values = values;
+              return this;
+            },
+            where(column: string, operator: string, value: unknown) {
+              wheres.push([column, operator, value]);
+              return this;
+            },
+            execute() {
+              return Promise.resolve([]);
+            },
+          };
+        },
+        selectFrom(table: string) {
+          expect(table).toBe("xy_wap_embed_user_seat_agent");
+          return createQueryBuilder({
+            full_auto_switch: 1,
+            semi_auto_switch: 1,
+          });
+        },
+      } as never,
+    );
+
+    await expect(
+      repository.updateSeatAgentModeSwitch({
+        mode: "autoReply",
+        platform: 5,
+        seatId: "12",
+        uid: 9001,
+      }),
+    ).resolves.toEqual({
+      fullAutoSwitch: true,
+      seatId: "12",
+      semiAutoSwitch: true,
+    });
+
+    expect(updates).toHaveLength(1);
+    expect(updates[0]).toMatchObject({
+      table: "xy_wap_embed_user_seat_agent",
+      values: {
+        full_auto_switch: 1,
+        semi_auto_switch: 1,
+      },
+      wheres: [
+        ["uid", "=", 9001],
+        ["user_seat_id", "=", 12],
+      ],
+    });
+  });
+
   it("lists user-seat update events by tenant scope without parsing event content", async () => {
     const broadcastQueries: Array<ReturnType<typeof createQueryBuilder>> = [];
     const repository = new WorkbenchRepository(

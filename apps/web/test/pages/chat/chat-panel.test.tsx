@@ -3,12 +3,34 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { ChatPanel } from "@/pages/chat/components/chat-panel";
-import type { Conversation } from "@/pages/chat/chat-types";
+import type { Account, Conversation } from "@/pages/chat/chat-types";
+
+const account: Account = {
+  avatarUrl: "https://example.com/seat.png",
+  description: "",
+  fullAutoSwitch: true,
+  id: "seat-1",
+  metrics: {
+    activeCustomers: 0,
+    agents: 0,
+    stores: 0,
+    totalCustomers: 0,
+  },
+  name: "测试席位",
+  operator: "测试席位",
+  phone: "",
+  seatAIHostingAuth: true,
+  seatAIHostingEnabled: true,
+  semiAutoAuth: true,
+  semiAutoSwitch: true,
+  tone: "",
+};
 
 describe("ChatPanel", () => {
   it("keeps the customer side panel shell in the main layout width", () => {
     render(
       <ChatPanel
+        activeAccount={account}
         activeConversation={createConversation()}
         activeHistoryStatus="idle"
         canSendMessage
@@ -425,6 +447,7 @@ describe("ChatPanel", () => {
 
     render(
       <ChatPanel
+        activeAccount={account}
         activeConversation={{
           ...createConversation(),
           conversationAIHostingSwitch: true,
@@ -435,7 +458,6 @@ describe("ChatPanel", () => {
         canConfigureSeatSemiAuto
         canSendMessage
         seatAIHostingEnabled
-        seatSemiAutoEnabled
         conversationAIHostingEnabled
         composerPlaceholder="输入消息"
         customerPanelWidth={375}
@@ -490,16 +512,28 @@ describe("ChatPanel", () => {
 
     await user.click(aiDialogButton);
 
-    expect(screen.getByText("AI 对话配置")).toBeInTheDocument();
-    expect(screen.getByText("辅助模式")).toBeInTheDocument();
-    expect(screen.getByText("Agent 生成话术推荐，人工确认后发送")).toBeInTheDocument();
-    expect(screen.getByText("托管模式")).toBeInTheDocument();
+    expect(screen.getByText("测试席位")).toBeInTheDocument();
+    expect(screen.getByText("切换 AI 模式")).toBeInTheDocument();
+    expect(screen.getByText("会话托管")).toBeInTheDocument();
+    expect(screen.getByText("仅影响此会话，开启后 Agent 将自动回复客户")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "切换 AI 模式" })).toBeInTheDocument();
+    expect(screen.getByText("自动回复")).toBeInTheDocument();
     expect(screen.getByText("Agent 自动生成并发送消息，仅在必要时转人工")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "关闭当前会话托管" })).toBeEnabled();
 
-    await user.click(screen.getByRole("switch", { name: "辅助模式" }));
+    await user.click(screen.getByRole("combobox", { name: "切换 AI 模式" }));
+    expect(screen.getByRole("option", { name: /关闭/ })).toHaveTextContent(
+      "由人工客服独立承接，不开启 AI 辅助",
+    );
+    expect(screen.getByRole("option", { name: /话术推荐/ })).toHaveTextContent(
+      "Agent 生成话术推荐，人工确认后发送",
+    );
+    expect(screen.getByRole("option", { name: /自动回复/ })).toHaveTextContent(
+      "Agent 自动生成并发送消息，仅在必要时转人工",
+    );
+    await user.click(screen.getByRole("option", { name: /话术推荐/ }));
 
-    expect(onChangeSeatAgentMode).toHaveBeenCalledWith("semi", false);
+    expect(onChangeSeatAgentMode).toHaveBeenCalledWith("assistant");
   });
 
   it("keeps the AI dialog button visible when full-auto cannot be enabled", async () => {
@@ -509,6 +543,12 @@ describe("ChatPanel", () => {
 
     render(
       <ChatPanel
+        activeAccount={{
+          ...account,
+          fullAutoSwitch: false,
+          seatAIHostingEnabled: false,
+          semiAutoSwitch: true,
+        }}
         activeConversation={createConversation()}
         activeHistoryStatus="idle"
         canConfigureSeatAIHosting
@@ -516,7 +556,6 @@ describe("ChatPanel", () => {
         canConfigureSeatSemiAuto
         canSendMessage
         seatAIHostingEnabled={false}
-        seatSemiAutoEnabled
         composerPlaceholder="输入消息"
         customerPanelWidth={375}
         draft=""
@@ -566,9 +605,94 @@ describe("ChatPanel", () => {
 
     await user.click(screen.getByRole("button", { name: "AI 对话" }));
 
-    expect(screen.getByRole("switch", { name: "辅助模式" })).toBeEnabled();
-    expect(screen.getByRole("switch", { name: "托管模式" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "开启当前会话托管" })).toBeDisabled();
+    expect(screen.getByRole("combobox", { name: "切换 AI 模式" })).toBeEnabled();
+    expect(screen.getByText("话术推荐")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "托管当前会话" })).toBeDisabled();
+  });
+
+  it("keeps auto-reply selectable without semi-auto auth", async () => {
+    const user = userEvent.setup();
+    const onChangeSeatAgentMode = vi.fn();
+
+    render(
+      <ChatPanel
+        activeAccount={{
+          ...account,
+          fullAutoSwitch: false,
+          seatAIHostingAuth: true,
+          seatAIHostingEnabled: false,
+          semiAutoAuth: false,
+          semiAutoSwitch: false,
+        }}
+        activeConversation={createConversation()}
+        activeHistoryStatus="idle"
+        canConfigureSeatAIHosting
+        canToggleConversationAIHosting={false}
+        canConfigureSeatSemiAuto={false}
+        canSendMessage
+        seatAIHostingEnabled={false}
+        composerPlaceholder="输入消息"
+        customerPanelWidth={375}
+        draft=""
+        fileUploadQueue={[]}
+        groupMembers={[]}
+        hasMoreHistory={false}
+        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false, isOpen: false }}
+        inputEnterBehavior="send"
+        isHistoryPanelOpen={false}
+        isConversationLoading={false}
+        isEmojiPickerOpen={false}
+        isGroupMembersLoading={false}
+        isResizingCustomerPanel={false}
+        isSendingDraft={false}
+        messages={[]}
+        quotedMessage={null}
+        sidebarItems={[]}
+        composerRef={createRef()}
+        messageViewportRef={createRef()}
+        workbenchBodyRef={createRef()}
+        onChangeSeatAgentMode={onChangeSeatAgentMode}
+        onChangeFullAuto={vi.fn()}
+        onCancelFileUpload={vi.fn()}
+        onClearQuotedMessage={vi.fn()}
+        onComposerSegmentsChange={vi.fn()}
+        onCustomerPanelResizeStart={vi.fn()}
+        onDismissScopeTransitionError={vi.fn()}
+        onDraftChange={vi.fn()}
+        onEmojiPickerOpenChange={vi.fn()}
+        onEnterBehaviorChange={vi.fn()}
+        onFileSelect={vi.fn()}
+        onHistoryClose={vi.fn()}
+        onHistoryLoadMoreNext={vi.fn()}
+        onHistoryLoadMorePrev={vi.fn()}
+        onHistoryRefresh={vi.fn()}
+        onHistorySetDay={vi.fn()}
+        onHistorySetScope={vi.fn()}
+        onHistorySetSenderId={vi.fn()}
+        onLoadOlderMessages={vi.fn()}
+        onMessageViewportScroll={vi.fn()}
+        onOpenHistory={vi.fn()}
+        onRefreshGroupMembers={vi.fn()}
+        onRetryMessage={vi.fn()}
+        onSendDraft={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "AI 对话" }));
+    await user.click(screen.getByRole("combobox", { name: "切换 AI 模式" }));
+
+    expect(screen.getByRole("option", { name: /话术推荐/ })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    expect(screen.getByRole("option", { name: /自动回复/ })).not.toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+
+    await user.click(screen.getByRole("option", { name: /自动回复/ }));
+
+    expect(onChangeSeatAgentMode).toHaveBeenCalledWith("autoReply");
   });
 
   it("disables the AI dialog button when messages cannot be sent", async () => {
@@ -576,6 +700,7 @@ describe("ChatPanel", () => {
 
     render(
       <ChatPanel
+        activeAccount={account}
         activeConversation={createConversation()}
         activeHistoryStatus="idle"
         canConfigureSeatAIHosting
@@ -583,7 +708,6 @@ describe("ChatPanel", () => {
         canConfigureSeatSemiAuto
         canSendMessage={false}
         seatAIHostingEnabled
-        seatSemiAutoEnabled
         composerPlaceholder="输入消息"
         customerPanelWidth={375}
         draft=""
@@ -634,7 +758,7 @@ describe("ChatPanel", () => {
 
     expect(aiDialogButton).toBeDisabled();
     await user.click(aiDialogButton);
-    expect(screen.queryByText("AI 对话配置")).not.toBeInTheDocument();
+    expect(screen.queryByText("切换 AI 模式")).not.toBeInTheDocument();
   });
 
   it("requests full-auto enable from the AI dialog current conversation button", async () => {
@@ -643,6 +767,7 @@ describe("ChatPanel", () => {
 
     render(
       <ChatPanel
+        activeAccount={account}
         activeConversation={createConversation()}
         activeHistoryStatus="idle"
         canConfigureSeatAIHosting
@@ -650,7 +775,6 @@ describe("ChatPanel", () => {
         canConfigureSeatSemiAuto
         canSendMessage
         seatAIHostingEnabled
-        seatSemiAutoEnabled
         composerPlaceholder="输入消息"
         customerPanelWidth={375}
         draft=""
@@ -698,10 +822,10 @@ describe("ChatPanel", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "AI 对话" }));
-    await user.click(screen.getByRole("button", { name: "开启当前会话托管" }));
+    await user.click(screen.getByRole("button", { name: "托管当前会话" }));
 
     expect(onChangeFullAuto).toHaveBeenCalledWith(true);
-    expect(screen.queryByText("AI 对话配置")).not.toBeInTheDocument();
+    expect(screen.queryByText("切换 AI 模式")).not.toBeInTheDocument();
   });
 
   it("shows a spinner on the current conversation hosting button while a full-auto change is pending", async () => {
@@ -717,7 +841,6 @@ describe("ChatPanel", () => {
         canConfigureSeatSemiAuto
         canSendMessage
         seatAIHostingEnabled
-        seatSemiAutoEnabled
         composerPlaceholder="输入消息"
         customerPanelWidth={375}
         draft=""
@@ -769,7 +892,7 @@ describe("ChatPanel", () => {
 
     expect(aiDialogButton).toBeEnabled();
     await user.click(aiDialogButton);
-    const fullAutoButton = screen.getByRole("button", { name: "开启当前会话托管" });
+    const fullAutoButton = screen.getByRole("button", { name: "托管当前会话" });
     expect(fullAutoButton).toBeDisabled();
     expect(fullAutoButton.querySelector('[data-slot="spinner"]')).toBeInTheDocument();
     await user.click(fullAutoButton);
@@ -782,6 +905,7 @@ describe("ChatPanel", () => {
 
     render(
       <ChatPanel
+        activeAccount={account}
         activeConversation={{
           ...createConversation(),
           agentHostingStatus: "thinking",
@@ -793,7 +917,6 @@ describe("ChatPanel", () => {
         canConfigureSeatSemiAuto
         canSendMessage
         seatAIHostingEnabled
-        seatSemiAutoEnabled
         conversationAIHostingEnabled
         composerPlaceholder="输入消息"
         customerPanelWidth={375}

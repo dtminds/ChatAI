@@ -161,11 +161,31 @@ describe("KbReadService", () => {
     });
   });
 
-  it("runs kb list rows and total queries in parallel", async () => {
+  it("reuses the total count for kb quota when the kb list is unfiltered", async () => {
     const probe = createBlockedListProbe("xy_wap_embed_agent_kb");
     const { service } = createService(vi.fn(), probe.dbOptions);
 
     const responsePromise = service.listKbs(tenant);
+    await vi.waitFor(() => {
+      expect(probe.queryStarts).toEqual([
+        { isCountQuery: false, table: "xy_wap_embed_agent_kb" },
+        { isCountQuery: true, table: "xy_wap_embed_agent_kb" },
+      ]);
+    });
+    probe.releaseRowsQuery();
+
+    await expect(responsePromise).resolves.toMatchObject({
+      pagination: {
+        total: 1,
+      },
+    });
+  });
+
+  it("keeps a separate unfiltered kb quota count when searching kbs", async () => {
+    const probe = createBlockedListProbe("xy_wap_embed_agent_kb");
+    const { service } = createService(vi.fn(), probe.dbOptions);
+
+    const responsePromise = service.listKbs(tenant, { query: "华为" });
     await vi.waitFor(() => {
       expect(probe.queryStarts).toEqual([
         { isCountQuery: false, table: "xy_wap_embed_agent_kb" },
@@ -177,7 +197,11 @@ describe("KbReadService", () => {
 
     await expect(responsePromise).resolves.toMatchObject({
       pagination: {
-        total: 1,
+        total: 0,
+      },
+      quota: {
+        limit: 20,
+        used: 1,
       },
     });
   });
@@ -267,15 +291,38 @@ describe("KbReadService", () => {
     expect(queriedTables).toEqual([
       "xy_wap_embed_agent_kb_doc",
       "xy_wap_embed_agent_kb_doc",
-      "xy_wap_embed_agent_kb_doc",
     ]);
   });
 
-  it("runs kb doc list rows and total queries in parallel", async () => {
+  it("reuses the total count for kb doc quota when the doc list is unfiltered", async () => {
     const probe = createBlockedListProbe("xy_wap_embed_agent_kb_doc");
     const { service } = createService(vi.fn(), probe.dbOptions);
 
     const responsePromise = service.listKbDocs(tenant, "1");
+    await vi.waitFor(() => {
+      expect(probe.queryStarts).toEqual([
+        { isCountQuery: false, table: "xy_wap_embed_agent_kb_doc" },
+        { isCountQuery: true, table: "xy_wap_embed_agent_kb_doc" },
+      ]);
+    });
+    probe.releaseRowsQuery();
+
+    await expect(responsePromise).resolves.toMatchObject({
+      pagination: {
+        total: 2,
+      },
+      quota: {
+        limit: 100,
+        used: 2,
+      },
+    });
+  });
+
+  it("keeps a separate unfiltered kb doc quota count when filtering docs", async () => {
+    const probe = createBlockedListProbe("xy_wap_embed_agent_kb_doc");
+    const { service } = createService(vi.fn(), probe.dbOptions);
+
+    const responsePromise = service.listKbDocs(tenant, "1", { docType: "document" });
     await vi.waitFor(() => {
       expect(probe.queryStarts).toEqual([
         { isCountQuery: false, table: "xy_wap_embed_agent_kb_doc" },
@@ -287,7 +334,7 @@ describe("KbReadService", () => {
 
     await expect(responsePromise).resolves.toMatchObject({
       pagination: {
-        total: 2,
+        total: 1,
       },
       quota: {
         limit: 100,

@@ -74,11 +74,15 @@ export class AiHostingAgentService {
     const scope = normalizeAgentTenantScope(uid);
     const pagination = normalizePagination(options);
     const normalizedQuery = options.query?.trim();
+    const rowsPromise = this.listAgentRows(scope, pagination, normalizedQuery);
+    const modelsPromise = this.listModelRows(scope);
+    const totalPromise = this.countAgents(scope, normalizedQuery);
+    const quotaUsedPromise = normalizedQuery ? this.countAgents(scope) : totalPromise;
     const [rows, models, total, quotaUsed] = await Promise.all([
-      this.listAgentRows(scope, pagination, normalizedQuery),
-      this.listModelRows(scope),
-      this.countAgents(scope, normalizedQuery),
-      this.countAgents(scope),
+      rowsPromise,
+      modelsPromise,
+      totalPromise,
+      quotaUsedPromise,
     ]);
     const modelMap = new Map(models.map((model) => [String(model.id), mapModelSummary(model)]));
 

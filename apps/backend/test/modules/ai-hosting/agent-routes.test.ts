@@ -106,7 +106,7 @@ describe("AI hosting agent routes", () => {
     await app.close();
   });
 
-  it("runs agent list rows, count, and model queries in parallel", async () => {
+  it("reuses the total count for agent quota when the list is unfiltered", async () => {
     const probe = createBlockedAgentListProbe();
     const { app, authorization } = await createAiHostingApp(["admin"], {
       beforeExecute: probe.beforeExecute,
@@ -116,6 +116,36 @@ describe("AI hosting agent routes", () => {
       headers: { authorization },
       method: "GET",
       url: "/api/server/ai-hosting/agents",
+    });
+
+    try {
+      await vi.waitFor(() => {
+        expect(probe.queryStarts.map((query) => query.kind)).toContain("rows");
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(probe.queryStarts.map((query) => query.kind).sort()).toEqual([
+        "count",
+        "models",
+        "rows",
+      ]);
+    } finally {
+      probe.releaseRowsQuery();
+      await responsePromise;
+      await app.close();
+    }
+  });
+
+  it("keeps a separate unfiltered agent quota count when searching agents", async () => {
+    const probe = createBlockedAgentListProbe();
+    const { app, authorization } = await createAiHostingApp(["admin"], {
+      beforeExecute: probe.beforeExecute,
+    });
+
+    const responsePromise = app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/ai-hosting/agents?query=%25_",
     });
 
     try {

@@ -25,12 +25,14 @@ import {
   addMockKbListItem,
   deleteMockKbChunk,
   updateMockKbChunk,
+  updateMockKbDocStatus,
 } from "./kb-service-mock-data";
 
 const readXlsxFileMock = vi.hoisted(() => vi.fn());
 const importKbDocMock = vi.hoisted(() => vi.fn());
 const importKbQaDocMock = vi.hoisted(() => vi.fn());
 const importKbImageDocMock = vi.hoisted(() => vi.fn());
+const retryKbDocMock = vi.hoisted(() => vi.fn());
 const createKbChunkMock = vi.hoisted(() => vi.fn());
 const updateKbChunkMock = vi.hoisted(() => vi.fn());
 const deleteKbChunkMock = vi.hoisted(() => vi.fn());
@@ -77,6 +79,7 @@ vi.mock("@/pages/chat/ai-hosting/api/kb-doc-service", async (importOriginal) => 
     importKbDoc: importKbDocMock,
     importKbImageDoc: importKbImageDocMock,
     importKbQaDoc: importKbQaDocMock,
+    retryKbDoc: retryKbDocMock,
   };
 });
 
@@ -327,6 +330,10 @@ describe("AI hosting pages", () => {
     vi.mocked(kbService.listKbDocChunks).mockImplementation(async (docId, params) =>
       createMockKbDocChunksResponse(docId, params?.title),
     );
+    retryKbDocMock.mockImplementation(async (docId: string) => {
+      updateMockKbDocStatus(docId, "queued");
+      return { retried: true };
+    });
     mockImageDimensions = { height: 800, width: 800 };
     Object.defineProperty(URL, "createObjectURL", {
       configurable: true,
@@ -1357,12 +1364,33 @@ describe("AI hosting pages", () => {
     expect(screen.getAllByText("已完成")).toHaveLength(3);
     expect(screen.getByText("解析中")).toBeInTheDocument();
     expect(screen.getByText("失败")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "重试 文本知识集合" })).toBeInTheDocument();
     expect(screen.getByText("排队中")).toBeInTheDocument();
     expect(screen.getByText("共 6 条")).toBeInTheDocument();
     expect(screen.getAllByRole("link", { name: "查看" })[0]).toHaveAttribute(
       "href",
       "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-1",
     );
+  });
+
+  it("retries a failed knowledge record and refreshes the list status", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
+      "/chat/ai-hosting/kb/:kbId",
+    );
+
+    await screen.findByText("文本知识集合");
+    await user.click(screen.getByRole("button", { name: "重试 文本知识集合" }));
+
+    await waitFor(() => {
+      expect(retryKbDocMock).toHaveBeenCalledWith("knowledge-4");
+      expect(toast.success).toHaveBeenCalledWith("已提交重试");
+    });
+    expect(screen.queryByRole("button", { name: "重试 文本知识集合" })).not.toBeInTheDocument();
+    expect(screen.getAllByText("排队中")).toHaveLength(2);
   });
 
   it("shows an empty state for unknown knowledge base ids", async () => {

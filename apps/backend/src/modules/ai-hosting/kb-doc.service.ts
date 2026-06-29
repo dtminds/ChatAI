@@ -4,11 +4,16 @@ import type {
   KbDocCreateRequest,
   KbDocCreateResponse,
   KbDocDeleteResponse,
+  KbDocRetryResponse,
   KbDocUploadCredentialResponse,
 } from "@chatai/contracts";
 import type { Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
 import { BadRequestError, NotFoundError } from "../../shared/errors.js";
+import {
+  KB_DOC_DB_SYNC_STATUS_FAILED,
+  KB_DOC_DB_SYNC_STATUS_QUEUED,
+} from "./kb-read-mappers.js";
 import type { WorkbenchJavaClient } from "../chat/workbench-java-client.js";
 import type { AgentKbJavaClient } from "./agent-kb-java-client.js";
 import {
@@ -236,6 +241,50 @@ export class KbDocService {
     );
 
     return { deleted: true };
+  }
+
+  async retryKbDoc(tenant: AgentKbTenant, docId: string): Promise<KbDocRetryResponse> {
+    const uid = tenant.uid;
+    const docNumericId = parseRequiredNumericId(docId, "KB_DOC_NOT_FOUND", "知识不存在");
+
+    const doc = await this.db
+      .selectFrom("xy_wap_embed_agent_kb_doc")
+      .select(["id", "sync_status"])
+      .where("id", "=", docNumericId)
+      .where("uid", "=", uid)
+      .where("status", "=", dbActiveStatus)
+      .executeTakeFirst();
+
+    if (!doc) {
+      throw new NotFoundError("KB_DOC_NOT_FOUND", "知识不存在");
+    }
+
+    if (doc.sync_status !== KB_DOC_DB_SYNC_STATUS_FAILED) {
+      throw new BadRequestError("KB_DOC_RETRY_NOT_ALLOWED", "当前知识不可重试");
+    }
+
+    await this.db
+      .updateTable("xy_wap_embed_agent_kb_doc")
+      .set({
+        sync_error_msg: null,
+        sync_status: KB_DOC_DB_SYNC_STATUS_QUEUED,
+      })
+      .where("id", "=", docNumericId)
+      .where("uid", "=", uid)
+      .where("status", "=", dbActiveStatus)
+      .executeTakeFirst();
+
+    this.logger.info(
+      {
+        docId,
+        operation: "kb-doc-retry",
+        subUserId: tenant.subUserId,
+        uid,
+      },
+      "知识库文档重试成功",
+    );
+
+    return { retried: true };
   }
 
   private assertDocumentCreateRequest(request: KbDocCreateRequest) {

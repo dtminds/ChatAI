@@ -85,6 +85,11 @@ export const KbDocDeleteResponseSchema = Type.Object({
   deleted: Type.Boolean(),
 });
 
+export const KbDocRetryResponseSchema = Type.Object({
+  retried: Type.Boolean(),
+});
+
 export type KbDocCreateFaqRequest = Static<typeof KbDocCreateFaqRequestSchema>;
 export type KbDocCreateImageRequest = Static<typeof KbDocCreateImageRequestSchema>;
 export type KbDocDeleteResponse = Static<typeof KbDocDeleteResponseSchema>;
+export type KbDocRetryResponse = Static<typeof KbDocRetryResponseSchema>;

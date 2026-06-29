@@ -56,7 +56,7 @@ import { ImportDocumentDialog } from "./kb-components/import-document-dialog";
 import { ImportImageDialog } from "./kb-components/import-image-dialog";
 import { ImportQaDialog } from "./kb-components/import-qa-dialog";
 import { TableOverflowTooltip } from "./kb-components/shared";
-import { deleteKbDoc } from "./api/kb-doc-service";
+import { deleteKbDoc, retryKbDoc } from "./api/kb-doc-service";
 import {
   getKb,
   listKbDocs,
@@ -145,6 +145,7 @@ export function KbDetailPage() {
   const [documentDialogOpen, setDocumentDialogOpen] = useState(false);
   const [deleteRecord, setDeleteRecord] = useState<KbDocViewItem | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [retryingDocId, setRetryingDocId] = useState<string | null>(null);
   const requestVersionRef = useRef(0);
   const isMountedRef = useRef(false);
 
@@ -283,6 +284,33 @@ export function KbDetailPage() {
     }
   }
 
+  async function handleRetryDoc(docId: string) {
+    if (retryingDocId) {
+      return;
+    }
+
+    setRetryingDocId(docId);
+
+    try {
+      await retryKbDoc(docId);
+
+      if (!isMountedRef.current) {
+        return;
+      }
+
+      toast.success("已提交重试");
+      await loadDocs();
+    } catch {
+      if (isMountedRef.current) {
+        toast.error("重试失败，请稍后重试");
+      }
+    } finally {
+      if (isMountedRef.current) {
+        setRetryingDocId(null);
+      }
+    }
+  }
+
   if (!loadingKb && !knowledgeBase) {
     return (
       <AiHostingLayout title="知识库不存在">
@@ -357,7 +385,9 @@ export function KbDetailPage() {
               kbId={knowledgeBase?.id ?? kbId}
               loading={recordsLoading}
               onDelete={setDeleteRecord}
+              onRetry={handleRetryDoc}
               records={pagedRecords}
+              retryingDocId={retryingDocId}
             />
             <TablePagination
               onPageChange={setCurrentPage}
@@ -516,12 +546,16 @@ function KnowledgeRecordsTable({
   kbId,
   loading,
   onDelete,
+  onRetry,
   records,
+  retryingDocId,
 }: {
   kbId: string;
   loading: boolean;
   onDelete: (record: KbDocViewItem) => void;
+  onRetry: (docId: string) => void | Promise<void>;
   records: KbDocViewItem[];
+  retryingDocId: string | null;
 }) {
   return (
     <Table aria-label="知识列表" className="min-w-[1120px] table-fixed">
@@ -569,7 +603,23 @@ function KnowledgeRecordsTable({
                 {record.sliceCount ?? "-"}
               </TableCell>
               <TableCell className="px-4 py-4">
-                <KnowledgeStatusBadge status={record.status} />
+                <div className="flex items-center gap-2">
+                  <KnowledgeStatusBadge status={record.status} />
+                  {record.status === "failed" ? (
+                    <Button
+                      aria-label={`重试 ${record.name}`}
+                      className="h-auto p-0 text-primary"
+                      disabled={retryingDocId === record.id}
+                      onClick={() => {
+                        void onRetry(record.id);
+                      }}
+                      type="button"
+                      variant="link"
+                    >
+                      重试
+                    </Button>
+                  ) : null}
+                </div>
               </TableCell>
               <TableCell
                 className="px-4 py-4 text-muted-foreground"

@@ -280,7 +280,7 @@ export class KbDocService {
       .where("id", "=", docNumericId)
       .where("uid", "=", uid)
       .where("status", "=", dbActiveStatus)
-      .executeTakeFirst();
+      .execute();
 
     this.logger.info(
       {

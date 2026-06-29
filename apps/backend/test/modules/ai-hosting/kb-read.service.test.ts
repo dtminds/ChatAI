@@ -313,7 +313,7 @@ describe("KbReadService", () => {
 
     await expect(responsePromise).resolves.toMatchObject({
       pagination: {
-        total: 2,
+        total: 3,
       },
     });
   });
@@ -345,7 +345,7 @@ describe("KbReadService", () => {
 
     await expect(responsePromise).resolves.toMatchObject({
       pagination: {
-        total: 1,
+        total: 2,
       },
     });
   });

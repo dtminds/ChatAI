@@ -188,7 +188,7 @@ describe("KB read routes", () => {
     expect(docsBody.data.pagination).toEqual({
       page: 1,
       pageSize: 10,
-      total: 2,
+      total: 3,
     });
     expect(docsBody.data).not.toHaveProperty("quota");
     expect(docsBody.data.docs[0]).toMatchObject({

@@ -914,7 +914,7 @@ describe("material collection components", () => {
     expect(screen.getByRole("dialog", { name: "图片预览" })).toBeInTheDocument();
     expect(screen.getByTestId("image-preview-full")).toHaveAttribute(
       "src",
-      `${imageUrl}!w1100.webp`,
+      `${imageUrl}!tiny.webp`,
     );
     expect(screen.getByRole("button", { name: "提取图片文字" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "上一张图片" })).not.toBeInTheDocument();

@@ -144,7 +144,7 @@ describe("MessageContentRenderer image messages", () => {
 
     expect(screen.getByTestId("image-preview-full")).toHaveAttribute(
       "src",
-      `${imageUrl}!w1100.webp`,
+      `${imageUrl}!tiny.webp`,
     );
   });
 
@@ -170,11 +170,22 @@ describe("MessageContentRenderer image messages", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "查看大图：待识别图片" }));
+    fireEvent.load(screen.getByTestId("image-preview-full"));
+
+    expect(screen.getByTestId("image-preview-full")).toHaveAttribute(
+      "data-zoom-mode",
+      "fit",
+    );
+
     await user.click(screen.getByRole("button", { name: "提取图片文字" }));
 
+    expect(screen.getByTestId("image-preview-full")).toHaveAttribute(
+      "data-zoom-mode",
+      "fit",
+    );
     expect(recognizeImageText).toHaveBeenCalledWith(
       expect.objectContaining({
-        imageUrl: `${imageUrl}!w1100.webp`,
+        imageUrl: `${imageUrl}!tiny.webp`,
       }),
     );
 
@@ -186,11 +197,11 @@ describe("MessageContentRenderer image messages", () => {
       "https://b5.bokr.com.cn/s5/20260511/272/fa4ccebe1fa94d60997824dd1a22656b.jpg";
 
     expect(getOptimizedMessageImageUrl(imageUrl)).toBe(`${imageUrl}!w480.webp`);
-    expect(getPreviewMessageImageUrl(imageUrl)).toBe(`${imageUrl}!w1100.webp`);
+    expect(getPreviewMessageImageUrl(imageUrl)).toBe(`${imageUrl}!tiny.webp`);
     expect(getPreviewMessageImageUrl(`${imageUrl}!w480.webp`)).toBe(
-      `${imageUrl}!w1100.webp`,
+      `${imageUrl}!tiny.webp`,
     );
-    expect(getOptimizedMessageImageUrl(`${imageUrl}!w1100.webp`)).toBe(
+    expect(getOptimizedMessageImageUrl(`${imageUrl}!tiny.webp`)).toBe(
       `${imageUrl}!w480.webp`,
     );
   });
@@ -597,6 +608,148 @@ describe("MessageContentRenderer image messages", () => {
 
     expect(screen.getByTestId("image-preview-action-bar")).toContainElement(action);
     expect(screen.getByTestId("image-preview-image-frame")).not.toContainElement(action);
+  });
+
+  it("lets users zoom the preview image from the bottom action bar", async () => {
+    const user = userEvent.setup();
+    const naturalHeightSpy = vi
+      .spyOn(HTMLImageElement.prototype, "naturalHeight", "get")
+      .mockReturnValue(2400);
+    const naturalWidthSpy = vi
+      .spyOn(HTMLImageElement.prototype, "naturalWidth", "get")
+      .mockReturnValue(1200);
+
+    render(
+      <ImageMessageCard
+        content={createImageContent({
+          alt: "可缩放图片",
+          height: 1200,
+          imageUrl: "https://cdn.example.com/chat/long-photo.jpg",
+          width: 600,
+        })}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "查看大图：可缩放图片" }));
+
+    const preview = screen.getByTestId("image-preview-full");
+    const fitScreen = screen.getByRole("button", { name: "适合屏幕" });
+    const actualSize = screen.getByRole("button", { name: "实际大小" });
+
+    fireEvent.load(preview);
+
+    expect(screen.getByTestId("image-preview-action-bar")).toContainElement(fitScreen);
+    expect(screen.getByTestId("image-preview-action-bar")).toContainElement(actualSize);
+    const initialZoomLevel = Number(preview.getAttribute("data-zoom-level"));
+
+    expect(preview).toHaveAttribute("data-zoom-mode", "fit");
+    expect(initialZoomLevel).toBeGreaterThan(0);
+    expect(initialZoomLevel).toBeLessThan(1);
+    expect(fitScreen).toHaveAttribute("aria-pressed", "true");
+
+    await user.click(actualSize);
+
+    expect(preview).toHaveAttribute("data-zoom-mode", "actual");
+    const actualZoomLevel = Number(preview.getAttribute("data-zoom-level"));
+
+    expect(actualZoomLevel).toBeGreaterThan(initialZoomLevel);
+    expect(actualZoomLevel).toBeLessThanOrEqual(1);
+    expect(screen.getByTestId("image-preview-backdrop")).toHaveAttribute(
+      "data-scroll-mode",
+      "center",
+    );
+    expect(screen.getByTestId("image-preview-layout")).toHaveAttribute(
+      "data-scroll-mode",
+      "center",
+    );
+    expect(actualSize).toHaveAttribute("aria-pressed", "true");
+
+    await user.click(fitScreen);
+
+    expect(Number(preview.getAttribute("data-zoom-level"))).toBeCloseTo(
+      initialZoomLevel,
+      2,
+    );
+    expect(preview).toHaveAttribute("data-zoom-mode", "fit");
+    expect(fitScreen).toHaveAttribute("aria-pressed", "true");
+
+    naturalHeightSpy.mockRestore();
+    naturalWidthSpy.mockRestore();
+  });
+
+  it("keeps fit-to-screen images centered at viewport-boundary sizes", async () => {
+    const user = userEvent.setup();
+    const naturalHeightSpy = vi
+      .spyOn(HTMLImageElement.prototype, "naturalHeight", "get")
+      .mockReturnValue(1033);
+    const naturalWidthSpy = vi
+      .spyOn(HTMLImageElement.prototype, "naturalWidth", "get")
+      .mockReturnValue(360);
+
+    render(
+      <ImageMessageCard
+        content={createImageContent({
+          alt: "边界高度图片",
+          height: 1033,
+          imageUrl: "https://cdn.example.com/chat/borderline-photo.jpg",
+          width: 360,
+        })}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "查看大图：边界高度图片" }));
+    fireEvent.load(screen.getByTestId("image-preview-full"));
+
+    expect(screen.getByTestId("image-preview-full")).toHaveAttribute(
+      "data-zoom-mode",
+      "fit",
+    );
+    expect(screen.getByTestId("image-preview-layout")).toHaveAttribute(
+      "data-scroll-mode",
+      "center",
+    );
+
+    naturalHeightSpy.mockRestore();
+    naturalWidthSpy.mockRestore();
+  });
+
+  it("closes the OCR panel when switching the preview to actual size", async () => {
+    const user = userEvent.setup();
+    vi.mocked(recognizeImageText).mockResolvedValue({
+      text: "识别结果",
+      regions: [],
+    });
+
+    render(
+      <ImageMessageCard
+        content={createImageContent({
+          alt: "切换实际大小图片",
+          height: 292,
+          imageUrl: "https://cdn.example.com/chat/text-photo.jpg",
+          width: 668,
+        })}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "查看大图：切换实际大小图片" }));
+    await user.click(screen.getByRole("button", { name: "提取图片文字" }));
+
+    expect(await screen.findByTestId("image-preview-ocr-panel")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "实际大小" }));
+
+    expect(screen.getByTestId("image-preview-full")).toHaveAttribute(
+      "data-zoom-mode",
+      "actual",
+    );
+    expect(screen.queryByTestId("image-preview-ocr-panel")).not.toBeInTheDocument();
+    expect(screen.getByTestId("image-preview-layout")).toHaveAttribute(
+      "data-ocr-panel",
+      "closed",
+    );
+    expect(
+      screen.getByRole("button", { name: "提取图片文字" }),
+    ).toBeInTheDocument();
   });
 
   it("does not show browser OCR action for emotion image previews", async () => {
@@ -1356,26 +1509,79 @@ describe("Conversation image gallery", () => {
 
     await user.click(screen.getByRole("button", { name: "查看大图：第一张" }));
 
+    expect(screen.getByTestId("image-preview-loading")).toBeInTheDocument();
+
+    fireEvent.load(screen.getByTestId("image-preview-full"));
+
+    expect(screen.queryByTestId("image-preview-loading")).not.toBeInTheDocument();
     expect(screen.getByTestId("image-preview-full")).toHaveAttribute(
       "src",
       "https://cdn.example.com/chat/photo-1.jpg",
     );
     expect(screen.getByTestId("image-preview-gallery-counter")).toHaveTextContent("1 / 2");
+    expect(screen.getByTestId("image-preview-top-bar")).toContainElement(
+      screen.getByTestId("image-preview-gallery-counter"),
+    );
 
     await user.click(screen.getByRole("button", { name: "下一张图片" }));
 
+    expect(screen.getByTestId("image-preview-loading")).toBeInTheDocument();
     expect(screen.getByTestId("image-preview-full")).toHaveAttribute(
       "src",
       "https://cdn.example.com/chat/photo-2.jpg",
     );
     expect(screen.getByTestId("image-preview-gallery-counter")).toHaveTextContent("2 / 2");
 
+    fireEvent.load(screen.getByTestId("image-preview-full"));
+
+    expect(screen.queryByTestId("image-preview-loading")).not.toBeInTheDocument();
+
     await user.click(screen.getByRole("button", { name: "上一张图片" }));
 
+    expect(screen.getByTestId("image-preview-loading")).toBeInTheDocument();
     expect(screen.getByTestId("image-preview-full")).toHaveAttribute(
       "src",
       "https://cdn.example.com/chat/photo-1.jpg",
     );
+  });
+
+  it("shows an error state when the preview image fails to load", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ConversationImageGalleryProvider
+        conversationId="conv-image"
+        messages={[
+          createImageMessage({
+            alt: "加载失败图片",
+            height: 900,
+            imageUrl: "https://cdn.example.com/chat/broken-photo.jpg",
+            type: "image",
+            width: 1200,
+          }),
+        ]}
+      >
+        <MessageContentRenderer
+          isAgent={false}
+          message={createImageMessage({
+            alt: "加载失败图片",
+            height: 900,
+            imageUrl: "https://cdn.example.com/chat/broken-photo.jpg",
+            type: "image",
+            width: 1200,
+          })}
+        />
+      </ConversationImageGalleryProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "查看大图：加载失败图片" }));
+
+    expect(screen.getByTestId("image-preview-loading")).toBeInTheDocument();
+
+    fireEvent.error(screen.getByTestId("image-preview-full"));
+
+    expect(screen.queryByTestId("image-preview-loading")).not.toBeInTheDocument();
+    expect(screen.getByTestId("image-preview-error")).toHaveTextContent("图片加载失败");
   });
 
   it("supports keyboard navigation between conversation images", async () => {

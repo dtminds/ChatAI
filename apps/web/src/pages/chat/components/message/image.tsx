@@ -5,6 +5,8 @@ import {
   Cancel01Icon,
   Copy01Icon,
   ImageNotFound01Icon,
+  ZoomInAreaIcon,
+  ZoomOutAreaIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -19,6 +21,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { ShinyText } from "@/components/ui/shiny-text";
+import { cn } from "@/lib/utils";
 import {
   Dialog,
   DialogClose,
@@ -51,6 +54,9 @@ type ImageMessageCardProps = {
 };
 
 const IMAGE_DOWNLOAD_TIMEOUT_MS = 5 * 60 * 1000;
+const IMAGE_PREVIEW_ACTUAL_ZOOM = 1;
+type ImagePreviewLoadStatus = "error" | "loaded" | "loading";
+type ImagePreviewZoomMode = "actual" | "fit";
 
 export function ImageMessageCard({
   content,
@@ -277,6 +283,10 @@ export function ImagePreviewDialog({
   } | null>(null);
   const [ocrResult, setOcrResult] = useState<ImageOcrResult | null>(null);
   const [ocrError, setOcrError] = useState("");
+  const [previewZoomMode, setPreviewZoomMode] =
+    useState<ImagePreviewZoomMode>("fit");
+  const [previewLoadStatus, setPreviewLoadStatus] =
+    useState<ImagePreviewLoadStatus>("loading");
   const ocrRequestIdRef = useRef(0);
   const isMountedRef = useRef(false);
   const previewImageRef = useRef<HTMLImageElement | null>(null);
@@ -303,6 +313,8 @@ export function ImagePreviewDialog({
     setPreviewImageSize(null);
     setOcrResult(null);
     setOcrError("");
+    setPreviewZoomMode("fit");
+    setPreviewLoadStatus("loading");
   }, [isOpen]);
 
   useEffect(() => {
@@ -318,6 +330,8 @@ export function ImagePreviewDialog({
     setPreviewImageSize(null);
     setOcrResult(null);
     setOcrError("");
+    setPreviewZoomMode("fit");
+    setPreviewLoadStatus("loading");
   }, [isOpen, previewImageUrl]);
 
   useEffect(() => {
@@ -355,10 +369,22 @@ export function ImagePreviewDialog({
     onGalleryIndexChange,
   ]);
 
+  const closeOcrPanel = () => {
+    ocrRequestIdRef.current += 1;
+    setOcrStatus("idle");
+    setOcrPhase("loading-model");
+    setActiveOcrRegionId(null);
+    setScrollTargetOcrRegionId(null);
+    setOcrResult(null);
+    setOcrError("");
+  };
+
   const handleRecognizeText = async () => {
     if (ocrStatus === "loading") {
       return;
     }
+
+    setPreviewZoomMode("fit");
 
     const requestId = ocrRequestIdRef.current + 1;
 
@@ -402,14 +428,37 @@ export function ImagePreviewDialog({
   };
 
   const isOcrPanelOpen = ocrStatus === "loading" || ocrStatus === "success" || ocrStatus === "error";
+  const previewFitZoomLevel = getPreviewFitZoomLevel(previewImageSize, isOcrPanelOpen);
+  const previewActualZoomLevel = getPreviewActualZoomLevel(
+    previewImageSize,
+    isOcrPanelOpen,
+  );
+  const previewZoomLevel =
+    previewZoomMode === "actual" ? previewActualZoomLevel : previewFitZoomLevel;
+  const isPreviewImageLoading = previewLoadStatus === "loading";
+  const hasPreviewImageError = previewLoadStatus === "error";
   const handlePreviewImageLoad = (event: SyntheticEvent<HTMLImageElement>) => {
     const image = event.currentTarget;
-
-    setPreviewImageSize({
+    const imageSize = {
       height: image.naturalHeight,
       width: image.naturalWidth,
-    });
+    };
+
+    setPreviewImageSize(imageSize);
+    setPreviewLoadStatus("loaded");
   };
+  const handlePreviewImageError = () => {
+    setPreviewImageSize(null);
+    setPreviewLoadStatus("error");
+  };
+  const previewImageStyle = previewImageSize
+    ? {
+        height: "auto",
+        maxHeight: "none",
+        maxWidth: "none",
+        width: `${previewImageSize.width * previewZoomLevel}px`,
+      }
+    : undefined;
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
@@ -475,68 +524,152 @@ export function ImagePreviewDialog({
             </Button>
           </>
         ) : null}
-        {canShowGalleryNavigation ||
-        (previewOcrEnabled && (ocrStatus === "idle" || ocrStatus === "error")) ? (
+        {canShowGalleryNavigation ? (
           <div
-            className="fixed inset-x-0 bottom-4 z-[60] flex items-center justify-center gap-3 px-4"
-            data-testid="image-preview-action-bar"
+            className="fixed inset-x-0 top-4 z-[60] flex items-center justify-center px-16"
+            data-testid="image-preview-top-bar"
             onClick={(event) => event.stopPropagation()}
           >
-            {canShowGalleryNavigation ? (
-              <span
-                className="text-xs text-white/80"
-                data-testid="image-preview-gallery-counter"
-              >
-                {currentGalleryIndex + 1} / {gallery?.length ?? 0}
-              </span>
-            ) : null}
-            {previewOcrEnabled && (ocrStatus === "idle" || ocrStatus === "error") ? (
-              <Button
-                className="border border-white/12 bg-neutral-950/86 text-white shadow-[0_10px_30px_var(--shadow-strong)] backdrop-blur hover:bg-neutral-900 hover:text-white"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  void handleRecognizeText();
-                }}
-                size="sm"
-                type="button"
-                variant="ghost"
-              >
-                <HugeiconsIcon
-                  icon={AiScanIcon}
-                  size={16}
-                  strokeWidth={2}
-                />
-                提取图片文字
-              </Button>
-            ) : null}
+            <span
+              className="rounded-full border border-white/12 bg-neutral-950/72 px-3 py-1 text-xs text-white/80 shadow-[0_10px_30px_var(--shadow-strong)] backdrop-blur"
+              data-testid="image-preview-gallery-counter"
+            >
+              {currentGalleryIndex + 1} / {gallery?.length ?? 0}
+            </span>
           </div>
         ) : null}
         <div
-          className="relative flex h-full w-full items-center justify-center px-4 pb-16 pt-14"
+          className="fixed inset-x-0 bottom-4 z-[60] flex items-center justify-center gap-2 px-4"
+          data-testid="image-preview-action-bar"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <Button
+            aria-label="适合屏幕"
+            aria-pressed={previewZoomMode === "fit"}
+            className={cn(
+              "border border-white/12 bg-neutral-950/86 text-white shadow-[0_10px_30px_var(--shadow-strong)] backdrop-blur hover:bg-neutral-900 hover:text-white",
+              previewZoomMode === "fit" &&
+                "border-white/28 bg-black/90 shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_14px_36px_rgba(0,0,0,0.45)] backdrop-blur-md hover:bg-black/90",
+            )}
+            onClick={(event) => {
+              event.stopPropagation();
+              setPreviewZoomMode("fit");
+            }}
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
+            <HugeiconsIcon
+              icon={ZoomOutAreaIcon}
+              size={16}
+              strokeWidth={2}
+            />
+            适合屏幕
+          </Button>
+          <Button
+            aria-label="实际大小"
+            aria-pressed={previewZoomMode === "actual"}
+            className={cn(
+              "border border-white/12 bg-neutral-950/86 text-white shadow-[0_10px_30px_var(--shadow-strong)] backdrop-blur hover:bg-neutral-900 hover:text-white",
+              previewZoomMode === "actual" &&
+                "border-white/28 bg-black/90 shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_14px_36px_rgba(0,0,0,0.45)] backdrop-blur-md hover:bg-black/90",
+            )}
+            onClick={(event) => {
+              event.stopPropagation();
+              closeOcrPanel();
+              setPreviewZoomMode("actual");
+            }}
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
+            <HugeiconsIcon
+              icon={ZoomInAreaIcon}
+              size={16}
+              strokeWidth={2}
+            />
+            实际大小
+          </Button>
+          {previewOcrEnabled && (ocrStatus === "idle" || ocrStatus === "error") ? (
+            <Button
+              className="border border-white/12 bg-neutral-950/86 text-white shadow-[0_10px_30px_var(--shadow-strong)] backdrop-blur hover:bg-neutral-900 hover:text-white"
+              onClick={(event) => {
+                event.stopPropagation();
+                void handleRecognizeText();
+              }}
+              size="sm"
+              type="button"
+              variant="ghost"
+            >
+              <HugeiconsIcon
+                icon={AiScanIcon}
+                size={16}
+                strokeWidth={2}
+              />
+              提取图片文字
+            </Button>
+          ) : null}
+        </div>
+        <div
+          className="relative flex h-full w-full justify-center overflow-x-hidden overflow-y-auto px-4 pb-16 pt-14"
+          data-scroll-mode="center"
           data-testid="image-preview-backdrop"
           onClick={() => setIsOpen(false)}
         >
           <div
-            className="flex max-h-full max-w-full items-stretch gap-3"
+            className="my-auto flex max-w-full items-start justify-center gap-3"
             data-ocr-panel={isOcrPanelOpen ? "open" : "closed"}
+            data-scroll-mode="center"
             data-testid="image-preview-layout"
           >
             <div className="flex min-w-0 flex-col items-center justify-center">
               <div
-                className="relative flex min-h-0 items-center justify-center"
+                className={cn(
+                  "relative flex min-h-0 items-center justify-center",
+                  (isPreviewImageLoading || hasPreviewImageError) && "min-h-24 min-w-48",
+                )}
                 data-testid="image-preview-image-frame"
                 onClick={(event) => event.stopPropagation()}
               >
                 <img
                   alt={previewAlt}
-                  className="max-h-[calc(100dvh-7rem)] max-w-[min(calc(100vw-2rem),calc(100dvh-7rem))] rounded-[8px] object-contain shadow-[0_18px_60px_var(--shadow-strong)] data-[ocr-panel=open]:max-w-[min(calc(100vw-25rem),calc(100dvh-7rem))]"
+                  className={cn(
+                    "max-h-[calc(100dvh-7rem)] max-w-[min(calc(100vw-2rem),calc(100dvh-7rem))] rounded-[8px] object-contain shadow-[0_18px_60px_var(--shadow-strong)] data-[ocr-panel=open]:max-w-[min(calc(100vw-25rem),calc(100dvh-7rem))]",
+                    (isPreviewImageLoading || hasPreviewImageError) && "opacity-0",
+                  )}
                   data-ocr-panel={isOcrPanelOpen ? "open" : "closed"}
                   data-testid="image-preview-full"
+                  data-zoom-level={formatPreviewZoomLevel(previewZoomLevel)}
+                  data-zoom-mode={previewZoomMode}
                   key={previewDisplayUrl}
+                  onError={handlePreviewImageError}
                   onLoad={handlePreviewImageLoad}
                   ref={previewImageRef}
                   src={previewDisplayUrl}
+                  style={previewImageStyle}
                 />
+                {isPreviewImageLoading ? (
+                  <div
+                    className="absolute inset-0 flex items-center justify-center text-white"
+                    data-testid="image-preview-loading"
+                    role="status"
+                  >
+                    <Spinner
+                      className="text-white"
+                      size={28}
+                      strokeWidth={2.2}
+                    />
+                    <span className="sr-only">正在加载</span>
+                  </div>
+                ) : null}
+                {hasPreviewImageError ? (
+                  <div
+                    className="absolute inset-0 flex min-h-24 min-w-48 items-center justify-center rounded-[8px] border border-white/12 bg-neutral-950/72 px-4 py-3 text-sm text-white/72 shadow-[0_18px_60px_var(--shadow-strong)] backdrop-blur"
+                    data-testid="image-preview-error"
+                  >
+                    图片加载失败
+                  </div>
+                ) : null}
                 {ocrResult && previewImageSize ? (
                   <ImageOcrOverlay
                     activeRegionId={activeOcrRegionId}
@@ -927,6 +1060,54 @@ function clampGalleryIndex(index: number, length: number) {
   }
 
   return Math.min(Math.max(index, 0), length - 1);
+}
+
+function formatPreviewZoomLevel(zoomLevel: number) {
+  return Number(zoomLevel.toFixed(2)).toString();
+}
+
+function getPreviewFitZoomLevel(
+  imageSize: { height: number; width: number } | null,
+  isOcrPanelOpen: boolean,
+) {
+  if (!imageSize || imageSize.width <= 0 || imageSize.height <= 0) {
+    return IMAGE_PREVIEW_ACTUAL_ZOOM;
+  }
+
+  const viewportWidth =
+    typeof window === "undefined" || window.innerWidth <= 0
+      ? imageSize.width
+      : window.innerWidth;
+  const viewportHeight =
+    typeof window === "undefined" || window.innerHeight <= 0
+      ? imageSize.height
+      : window.innerHeight;
+  const availableWidth = Math.max(1, viewportWidth - (isOcrPanelOpen ? 400 : 32));
+  const availableHeight = Math.max(1, viewportHeight - 112);
+  const fitZoomLevel = Math.min(
+    availableWidth / imageSize.width,
+    availableHeight / imageSize.height,
+    IMAGE_PREVIEW_ACTUAL_ZOOM,
+  );
+
+  return Math.max(0.01, fitZoomLevel);
+}
+
+function getPreviewActualZoomLevel(
+  imageSize: { height: number; width: number } | null,
+  isOcrPanelOpen: boolean,
+) {
+  if (!imageSize || imageSize.width <= 0) {
+    return IMAGE_PREVIEW_ACTUAL_ZOOM;
+  }
+
+  const viewportWidth =
+    typeof window === "undefined" || window.innerWidth <= 0
+      ? imageSize.width
+      : window.innerWidth;
+  const availableWidth = Math.max(1, viewportWidth - (isOcrPanelOpen ? 400 : 32));
+
+  return Math.min(IMAGE_PREVIEW_ACTUAL_ZOOM, availableWidth / imageSize.width);
 }
 
 export function isEditableKeyboardTarget(element: Element | null) {

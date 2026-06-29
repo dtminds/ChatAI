@@ -56,6 +56,14 @@ type ImageMessageCardProps = {
 const IMAGE_DOWNLOAD_TIMEOUT_MS = 5 * 60 * 1000;
 const IMAGE_PREVIEW_ACTUAL_ZOOM = 1;
 type ImagePreviewLoadStatus = "error" | "loaded" | "loading";
+type ImagePreviewImageState = {
+  size: {
+    height: number;
+    width: number;
+  } | null;
+  status: ImagePreviewLoadStatus;
+  url: string;
+};
 type ImagePreviewZoomMode = "actual" | "fit";
 
 export function ImageMessageCard({
@@ -277,16 +285,16 @@ export function ImagePreviewDialog({
   const [scrollTargetOcrRegionId, setScrollTargetOcrRegionId] = useState<string | null>(
     null,
   );
-  const [previewImageSize, setPreviewImageSize] = useState<{
-    height: number;
-    width: number;
-  } | null>(null);
+  const [previewImageState, setPreviewImageState] =
+    useState<ImagePreviewImageState>({
+      size: null,
+      status: "loading",
+      url: "",
+    });
   const [ocrResult, setOcrResult] = useState<ImageOcrResult | null>(null);
   const [ocrError, setOcrError] = useState("");
   const [previewZoomMode, setPreviewZoomMode] =
     useState<ImagePreviewZoomMode>("fit");
-  const [previewLoadStatus, setPreviewLoadStatus] =
-    useState<ImagePreviewLoadStatus>("loading");
   const ocrRequestIdRef = useRef(0);
   const isMountedRef = useRef(false);
   const previewImageRef = useRef<HTMLImageElement | null>(null);
@@ -310,11 +318,14 @@ export function ImagePreviewDialog({
     setOcrPhase("loading-model");
     setActiveOcrRegionId(null);
     setScrollTargetOcrRegionId(null);
-    setPreviewImageSize(null);
+    setPreviewImageState({
+      size: null,
+      status: "loading",
+      url: "",
+    });
     setOcrResult(null);
     setOcrError("");
     setPreviewZoomMode("fit");
-    setPreviewLoadStatus("loading");
   }, [isOpen]);
 
   useEffect(() => {
@@ -327,12 +338,10 @@ export function ImagePreviewDialog({
     setOcrPhase("loading-model");
     setActiveOcrRegionId(null);
     setScrollTargetOcrRegionId(null);
-    setPreviewImageSize(null);
     setOcrResult(null);
     setOcrError("");
     setPreviewZoomMode("fit");
-    setPreviewLoadStatus("loading");
-  }, [isOpen, previewImageUrl]);
+  }, [isOpen, previewDisplayUrl]);
 
   useEffect(() => {
     if (!isOpen || !canShowGalleryNavigation) {
@@ -427,6 +436,14 @@ export function ImagePreviewDialog({
     }
   };
 
+  const isCurrentPreviewImageState =
+    previewImageState.url === previewDisplayUrl;
+  const previewImageSize = isCurrentPreviewImageState
+    ? previewImageState.size
+    : null;
+  const previewLoadStatus = isCurrentPreviewImageState
+    ? previewImageState.status
+    : "loading";
   const isOcrPanelOpen = ocrStatus === "loading" || ocrStatus === "success" || ocrStatus === "error";
   const previewFitZoomLevel = getPreviewFitZoomLevel(previewImageSize, isOcrPanelOpen);
   const previewActualZoomLevel = getPreviewActualZoomLevel(
@@ -444,12 +461,18 @@ export function ImagePreviewDialog({
       width: image.naturalWidth,
     };
 
-    setPreviewImageSize(imageSize);
-    setPreviewLoadStatus("loaded");
+    setPreviewImageState({
+      size: imageSize,
+      status: "loaded",
+      url: previewDisplayUrl,
+    });
   };
   const handlePreviewImageError = () => {
-    setPreviewImageSize(null);
-    setPreviewLoadStatus("error");
+    setPreviewImageState({
+      size: null,
+      status: "error",
+      url: previewDisplayUrl,
+    });
   };
   const previewImageStyle = previewImageSize
     ? {

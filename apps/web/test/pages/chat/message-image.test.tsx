@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useLayoutEffect } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { toast } from "sonner";
 import type { ChatMessage, ImageMessageContent } from "@/pages/chat/chat-types";
@@ -708,6 +709,61 @@ describe("MessageContentRenderer image messages", () => {
       "data-scroll-mode",
       "center",
     );
+
+    naturalHeightSpy.mockRestore();
+    naturalWidthSpy.mockRestore();
+  });
+
+  it("does not reuse the previous image size before a switched preview image loads", () => {
+    const naturalHeightSpy = vi
+      .spyOn(HTMLImageElement.prototype, "naturalHeight", "get")
+      .mockReturnValue(2400);
+    const naturalWidthSpy = vi
+      .spyOn(HTMLImageElement.prototype, "naturalWidth", "get")
+      .mockReturnValue(1200);
+    const snapshots: ImagePreviewLayoutSnapshot[] = [];
+    const recordSnapshot = (snapshot: ImagePreviewLayoutSnapshot) => {
+      snapshots.push(snapshot);
+    };
+
+    const { rerender } = render(
+      <ImagePreviewLayoutProbe
+        alt="第一张"
+        imageUrl="https://cdn.example.com/chat/photo-1.jpg"
+        onSnapshot={recordSnapshot}
+      />,
+    );
+
+    const firstPreview = screen.getByTestId("image-preview-full");
+
+    fireEvent.load(firstPreview);
+
+    const loadedWidth = firstPreview.style.width;
+
+    expect(loadedWidth).not.toBe("");
+
+    rerender(
+      <ImagePreviewLayoutProbe
+        alt="第二张"
+        imageUrl="https://cdn.example.com/chat/photo-2.jpg"
+        onSnapshot={recordSnapshot}
+      />,
+    );
+
+    const nextPreview = screen.getByTestId("image-preview-full");
+    const switchSnapshot = snapshots.at(-1);
+
+    expect(nextPreview).toHaveAttribute(
+      "src",
+      "https://cdn.example.com/chat/photo-2.jpg",
+    );
+    expect(switchSnapshot).toEqual({
+      isLoading: true,
+      src: "https://cdn.example.com/chat/photo-2.jpg",
+      width: "",
+      zoomLevel: "1",
+    });
+    expect(switchSnapshot?.width).not.toBe(loadedWidth);
 
     naturalHeightSpy.mockRestore();
     naturalWidthSpy.mockRestore();
@@ -1875,4 +1931,44 @@ function createImageContent({
     imageUrl,
     width,
   };
+}
+
+type ImagePreviewLayoutSnapshot = {
+  isLoading: boolean;
+  src: string | null;
+  width: string;
+  zoomLevel: string | null;
+};
+
+function ImagePreviewLayoutProbe({
+  alt,
+  imageUrl,
+  onSnapshot,
+}: {
+  alt: string;
+  imageUrl: string;
+  onSnapshot: (snapshot: ImagePreviewLayoutSnapshot) => void;
+}) {
+  useLayoutEffect(() => {
+    const preview = screen.queryByTestId("image-preview-full");
+
+    if (!(preview instanceof HTMLImageElement)) {
+      return;
+    }
+
+    onSnapshot({
+      isLoading: Boolean(screen.queryByTestId("image-preview-loading")),
+      src: preview.getAttribute("src"),
+      width: preview.style.width,
+      zoomLevel: preview.getAttribute("data-zoom-level"),
+    });
+  }, [imageUrl, onSnapshot]);
+
+  return (
+    <ImagePreviewDialog
+      alt={alt}
+      imageUrl={imageUrl}
+      open
+    />
+  );
 }

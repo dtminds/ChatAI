@@ -801,43 +801,6 @@ export function buildSmartReplyRealAttachIds(selectedAttachmentIds: string[]) {
     .filter((id) => id.length > 0);
 }
 
-export function adaptKnowledgeSetOptions(
-  items: Array<{ id: string; name: string }>,
-) {
-  return items.map((item) => ({
-    id: item.id,
-    name: item.name,
-  }));
-}
-
-export function adaptKnowledgeDocOptions(
-  list: Array<{ id: string; name: string }>,
-) {
-  return adaptKnowledgeSetOptions(list);
-}
-
-export function buildSmartReplyKnowledgeFaqAddRequest(input: {
-  conversationId: string;
-  docId: string;
-  question: string;
-  answer: string;
-  similarQuestions: string[];
-  attachIds: string[];
-}) {
-  return {
-    conversationId: input.conversationId,
-    docId: input.docId,
-    list: [
-      {
-        answer: input.answer,
-        attachIds: input.attachIds.length > 0 ? input.attachIds.join(",") : "",
-        question: input.question,
-        similarQuestion: input.similarQuestions.join("\n"),
-      },
-    ],
-  };
-}
-
 export function adaptSmartReplyViolationResult(
   response: WorkbenchSmartReplyTextModerationResponse,
 ): SmartReplyViolationResult | null {

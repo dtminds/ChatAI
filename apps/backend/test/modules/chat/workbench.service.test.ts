@@ -1504,7 +1504,10 @@ describe("MysqlWorkbenchService", () => {
 
   it("changes conversation full-auto through Java after operable conversation check", async () => {
     const javaClient = createJavaClient();
-    const getLatestConversationMessageType = vi.fn().mockResolvedValue("text");
+    const getLatestConversationMessageSummary = vi.fn().mockResolvedValue({
+      createdAt: Date.now(),
+      msgtype: "text",
+    });
     const service = new MysqlWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
@@ -1517,7 +1520,7 @@ describe("MysqlWorkbenchService", () => {
           thirdUserId: "seat-user-001",
           uid: 9001,
         }),
-        getLatestConversationMessageType,
+        getLatestConversationMessageSummary,
         getSubUser: vi.fn().mockResolvedValue({
           displayName: "客服一号",
           subUserId: "101",
@@ -1540,7 +1543,7 @@ describe("MysqlWorkbenchService", () => {
       platform: 5,
       uid: 9001,
     });
-    expect(getLatestConversationMessageType).toHaveBeenCalledWith({
+    expect(getLatestConversationMessageSummary).toHaveBeenCalledWith({
       platform: 5,
       thirdExternalUserId: "external-001",
       thirdGroupId: undefined,
@@ -1570,7 +1573,10 @@ describe("MysqlWorkbenchService", () => {
           thirdUserId: "seat-user-001",
           uid: 9001,
         }),
-        getLatestConversationMessageType: vi.fn().mockResolvedValue("system"),
+        getLatestConversationMessageSummary: vi.fn().mockResolvedValue({
+          createdAt: Date.now() - 60_000,
+          msgtype: "system",
+        }),
         getSubUser: vi.fn().mockResolvedValue({
           displayName: "客服一号",
           subUserId: "101",
@@ -1595,6 +1601,82 @@ describe("MysqlWorkbenchService", () => {
     expect(javaClient.insertSystemMessage).not.toHaveBeenCalled();
   });
 
+  it("inserts a full-auto system message when the latest system message is stale", async () => {
+    const javaClient = createJavaClient();
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "101",
+          thirdExternalUserId: "external-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+        }),
+        getLatestConversationMessageSummary: vi.fn().mockResolvedValue({
+          createdAt: Date.now() - 180_000,
+          msgtype: "system",
+        }),
+        getSubUser: vi.fn().mockResolvedValue({
+          displayName: "客服一号",
+          subUserId: "101",
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.changeConversationFullAuto("101", "88", { enabled: true }),
+    ).resolves.toMatchObject({
+      conversationAIHostingSwitch: true,
+      conversationId: "88",
+    });
+    expect(javaClient.insertSystemMessage).toHaveBeenCalledWith({
+      content: "客服一号 开启了 AI 托管",
+      conversationId: "88",
+      operatorId: 101,
+      platform: 5,
+      uid: 9001,
+    });
+  });
+
+  it("does not insert a full-auto system message when the latest system message time is invalid", async () => {
+    const javaClient = createJavaClient();
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          id: "88",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "101",
+          thirdExternalUserId: "external-001",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+        }),
+        getLatestConversationMessageSummary: vi.fn().mockResolvedValue({
+          createdAt: 0,
+          msgtype: "system",
+        }),
+        getSubUser: vi.fn().mockResolvedValue({
+          displayName: "客服一号",
+          subUserId: "101",
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.changeConversationFullAuto("101", "88", { enabled: true }),
+    ).resolves.toMatchObject({
+      conversationAIHostingSwitch: true,
+      conversationId: "88",
+    });
+    expect(javaClient.insertSystemMessage).not.toHaveBeenCalled();
+  });
+
   it("does not insert a full-auto system message when the latest message is unavailable", async () => {
     const javaClient = createJavaClient();
     const service = new MysqlWorkbenchService(
@@ -1609,7 +1691,7 @@ describe("MysqlWorkbenchService", () => {
           thirdUserId: "seat-user-001",
           uid: 9001,
         }),
-        getLatestConversationMessageType: vi.fn().mockResolvedValue(undefined),
+        getLatestConversationMessageSummary: vi.fn().mockResolvedValue(undefined),
         getSubUser: vi.fn(),
       } as unknown as WorkbenchRepository,
       javaClient,
@@ -1626,7 +1708,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("does not insert a system message when disabling full-auto", async () => {
     const javaClient = createJavaClient();
-    const getLatestConversationMessageType = vi.fn();
+    const getLatestConversationMessageSummary = vi.fn();
     const service = new MysqlWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
@@ -1639,7 +1721,7 @@ describe("MysqlWorkbenchService", () => {
           thirdUserId: "seat-user-001",
           uid: 9001,
         }),
-        getLatestConversationMessageType,
+        getLatestConversationMessageSummary,
         getSubUser: vi.fn(),
       } as unknown as WorkbenchRepository,
       javaClient,
@@ -1659,7 +1741,7 @@ describe("MysqlWorkbenchService", () => {
       platform: 5,
       uid: 9001,
     });
-    expect(getLatestConversationMessageType).not.toHaveBeenCalled();
+    expect(getLatestConversationMessageSummary).not.toHaveBeenCalled();
     expect(javaClient.insertSystemMessage).not.toHaveBeenCalled();
   });
 

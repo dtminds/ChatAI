@@ -4030,20 +4030,20 @@ export class WorkbenchRepository {
     };
   }
 
-  async getLatestConversationMessageType(input: {
+  async getLatestConversationMessageSummary(input: {
     platform: number;
     thirdExternalUserId?: string;
     thirdGroupId?: string;
     thirdUserId: string;
     uid: number;
-  }): Promise<string | undefined> {
+  }): Promise<{ createdAt: number; msgtype: string } | undefined> {
     if (!input.thirdUserId || (!input.thirdGroupId && !input.thirdExternalUserId)) {
       return undefined;
     }
 
     let query = this.db
       .selectFrom("xy_wap_embed_msg_audit_info as message")
-      .select(["message.msgtype as msgtype"])
+      .select(["message.create_time as create_time", "message.msgtype as msgtype"])
       .where("message.uid", "=", input.uid)
       .where("message.platform", "=", input.platform)
       .where("message.third_user_id", "=", input.thirdUserId);
@@ -4059,7 +4059,12 @@ export class WorkbenchRepository {
       .limit(1)
       .executeTakeFirst();
 
-    return row?.msgtype ?? undefined;
+    return row
+      ? {
+          createdAt: toTimestamp(row.create_time),
+          msgtype: row.msgtype,
+        }
+      : undefined;
   }
 
   async listHistoryMessages(

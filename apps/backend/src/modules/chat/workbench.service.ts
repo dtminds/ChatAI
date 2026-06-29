@@ -185,6 +185,7 @@ const POLL_SEAT_UPDATE_LIMIT = 200;
 const PLAYABLE_VOICE_HEAD_TIMEOUT_MS = 8000;
 const MESSAGE_REVOKE_WINDOW_MS = 180 * 1000;
 const MESSAGE_REVOKE_CLOCK_SKEW_TOLERANCE_MS = 5 * 1000;
+const FULL_AUTO_SYSTEM_MESSAGE_DEDUPE_WINDOW_MS = 120 * 1000;
 const SMART_REPLY_MESSAGE_PAGE_CANDIDATE_LIMIT = 5;
 const SMART_REPLY_TRIGGER_RAW_MSGTYPES = new Set(["text", "image", "voice"]);
 const MATERIAL_COLLECTION_GROUP_TITLE_MAX_LENGTH = 10;
@@ -3720,8 +3721,8 @@ export class MysqlWorkbenchService implements WorkbenchService {
     uid: number;
   }) {
     try {
-      const latestMessageType =
-        await this.repository.getLatestConversationMessageType({
+      const latestMessage =
+        await this.repository.getLatestConversationMessageSummary({
           platform: input.platform,
           thirdExternalUserId: input.thirdExternalUserId,
           thirdGroupId: input.thirdGroupId,
@@ -3729,7 +3730,18 @@ export class MysqlWorkbenchService implements WorkbenchService {
           uid: input.uid,
         });
 
-      if (!latestMessageType || latestMessageType === "system") {
+      if (!latestMessage) {
+        return;
+      }
+
+      const latestMessageAgeMs = Date.now() - latestMessage.createdAt;
+
+      if (
+        latestMessage.msgtype === "system" &&
+        (!Number.isFinite(latestMessage.createdAt) ||
+          latestMessage.createdAt <= 0 ||
+          latestMessageAgeMs < FULL_AUTO_SYSTEM_MESSAGE_DEDUPE_WINDOW_MS)
+      ) {
         return;
       }
 

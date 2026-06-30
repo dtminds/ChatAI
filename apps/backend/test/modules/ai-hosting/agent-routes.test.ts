@@ -111,6 +111,36 @@ describe("AI hosting agent routes", () => {
     await app.close();
   });
 
+  it("deduplicates referenced knowledge bases when listing tenant agents", async () => {
+    const { app, authorization, db } = await createAiHostingApp();
+
+    db.setAgentPromptConfig({
+      availableKbIds: [1, 3, 1],
+      conditionLogic: "如果客户咨询成分，那么说明功效",
+    });
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/ai-hosting/agents",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data.agents[0].kbList).toEqual([
+      {
+        id: "1",
+        name: "商品咨询知识库",
+      },
+      {
+        id: "3",
+        name: "活动政策知识库",
+      },
+    ]);
+    expect(db.kbListWheres).toContainEqual(["id", "in", [1, 3]]);
+
+    await app.close();
+  });
+
   it("returns quota overview with active rows and document storage usage", async () => {
     const { app, authorization } = await createAiHostingApp(["admin"], {
       activeAgentCount: 5,
@@ -1426,6 +1456,10 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
       agentPrompt = prompt;
       agents[0].prompt_config = buildPromptConfig(prompt);
     },
+    setAgentPromptConfig: (prompt: { availableKbIds: number[]; conditionLogic: string }) => {
+      agentPrompt = prompt.conditionLogic;
+      agents[0].prompt_config = buildPromptConfig(prompt.conditionLogic, prompt.availableKbIds);
+    },
     clearHistories: () => {
       histories.splice(0, histories.length);
     },
@@ -1813,9 +1847,9 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
   return state;
 }
 
-function buildPromptConfig(conditionLogic: string) {
+function buildPromptConfig(conditionLogic: string, availableKbIds = [1, 3]) {
   return JSON.stringify({
-    available_kb_ids: [1, 3],
+    available_kb_ids: availableKbIds,
     condition_logic: conditionLogic,
     reply_style: {
       length: "简洁",

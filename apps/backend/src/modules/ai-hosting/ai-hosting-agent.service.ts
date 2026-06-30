@@ -567,8 +567,8 @@ export class AiHostingAgentService {
   ): AiHostingAgentListItem {
     return {
       id: String(row.id),
-      kbList: parsePromptConfig(row.prompt_config)
-        .availableKbIds.map((kbId) => kbMap.get(kbId))
+      kbList: uniquePositiveIds(parsePromptConfig(row.prompt_config).availableKbIds)
+        .map((kbId) => kbMap.get(kbId))
         .filter((kb): kb is AiHostingAgentKbSummary => Boolean(kb)),
       model: modelMap.get(String(row.model_id)) ?? fallbackModelSummary(row.model_id),
       name: row.name,

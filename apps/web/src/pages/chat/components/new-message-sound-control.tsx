@@ -1,7 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
+  Clock01Icon,
+  Notification01Icon,
   PlayIcon,
   Settings03Icon,
+  Tick02Icon,
   VolumeHighIcon,
   VolumeMute01Icon,
 } from "@hugeicons/core-free-icons";
@@ -291,7 +294,11 @@ export function NewMessageSoundControl() {
         </PopoverAnchor>
         <PopoverContent
           align="end"
-          className={cn(activePopover === "reEnable" ? "w-80 p-4" : "w-72 p-3")}
+          className={cn(
+            activePopover === "reEnable"
+              ? "w-[380px] max-w-[calc(100vw-2rem)] p-5"
+              : "w-[360px] max-w-[calc(100vw-2rem)] p-5",
+          )}
           onInteractOutside={(event) => {
             if (activePopover === "reEnable") {
               event.preventDefault();
@@ -306,20 +313,30 @@ export function NewMessageSoundControl() {
         >
           {activePopover === "reEnable" ? (
             <>
-              <div className="space-y-2">
-                <p className="text-sm font-medium text-foreground">
-                  重新开启消息提示音
-                </p>
-                <p className="text-sm leading-6 text-muted-foreground">
-                  温馨提醒：浏览器刷新后需点击一次开启提示音，以免错过新消息哦
-                </p>
+              <div className="flex gap-3">
+                <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-[10px] bg-primary/10 text-primary">
+                  <HugeiconsIcon
+                    color="currentColor"
+                    icon={VolumeHighIcon}
+                    size={18}
+                    strokeWidth={1.8}
+                  />
+                </span>
+                <div className="min-w-0 space-y-2">
+                  <p className="text-sm font-medium text-foreground">
+                    重新开启消息提示音
+                  </p>
+                  <p className="text-sm leading-6 text-muted-foreground">
+                    温馨提醒：浏览器刷新后需点击一次开启提示音，以免错过新消息哦
+                  </p>
+                </div>
               </div>
               {reEnableError ? (
-                <p className="mt-3 text-xs text-destructive" role="alert">
+                <p className="mt-4 text-xs leading-5 text-destructive" role="alert">
                   {reEnableError}
                 </p>
               ) : null}
-              <div className="mt-4 flex justify-end gap-2">
+              <div className="mt-5 flex justify-end gap-3">
                 <Button
                   onClick={handleIgnoreReEnable}
                   size="sm"
@@ -335,11 +352,23 @@ export function NewMessageSoundControl() {
             </>
           ) : (
             <>
-              <div className="mb-2 flex items-center justify-between gap-3">
-                <p className="text-sm font-medium text-foreground">新消息提醒</p>
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-[9px] bg-primary/10 text-primary">
+                    <HugeiconsIcon
+                      color="currentColor"
+                      icon={Notification01Icon}
+                      size={16}
+                      strokeWidth={1.8}
+                    />
+                  </span>
+                  <p className="truncate text-sm font-medium text-foreground">
+                    新消息提醒
+                  </p>
+                </div>
                 <Button
                   aria-label="修改新消息提醒设置"
-                  className="size-7 rounded-[8px] p-0"
+                  className="size-8 rounded-[9px] p-0"
                   onClick={() => openSettingsDialog("edit")}
                   size="icon"
                   type="button"
@@ -353,12 +382,16 @@ export function NewMessageSoundControl() {
                   />
                 </Button>
               </div>
-              <div className="space-y-3 text-sm">
-                <SummaryRow label="提示音" value={soundLabel} />
-                <SummaryRow label="提示时机" value={triggerLabel} />
-                <SummaryRow label="状态" value={preference.enabled ? "开启" : "关闭"} />
+              <div className="space-y-3.5 text-sm">
+                <SummaryRow icon={VolumeHighIcon} label="提示音" value={soundLabel} />
+                <SummaryRow icon={Clock01Icon} label="提示时机" value={triggerLabel} />
+                <SummaryRow
+                  icon={preference.enabled ? Tick02Icon : VolumeMute01Icon}
+                  label="状态"
+                  value={preference.enabled ? "开启" : "关闭"}
+                />
                 {summaryError ? (
-                  <p className="text-xs text-destructive" role="alert">
+                  <p className="pt-1 text-xs leading-5 text-destructive" role="alert">
                     {summaryError}
                   </p>
                 ) : null}
@@ -376,15 +409,15 @@ export function NewMessageSoundControl() {
         }}
         open={settingsDialogMode !== null}
       >
-        <DialogContent className="sm:max-w-[420px]">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-[520px]">
+          <DialogHeader className="space-y-2 pr-8">
             <DialogTitle>新消息提醒</DialogTitle>
             <DialogDescription>
               设置工作台收到新消息时的本地提示音
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
-            <div className="grid gap-2">
+          <div className="space-y-5 py-1">
+            <div className="grid gap-2.5">
               <Label htmlFor="new-message-sound-select">提示音</Label>
               <Select
                 onValueChange={(value) => setFormSoundId(value as NewMessageSoundId)}
@@ -407,7 +440,7 @@ export function NewMessageSoundControl() {
               </Select>
             </div>
 
-            <div className="grid gap-2">
+            <div className="grid gap-2.5">
               <Label htmlFor="new-message-sound-trigger-select">提示时机</Label>
               <Select
                 onValueChange={(value) =>
@@ -434,12 +467,12 @@ export function NewMessageSoundControl() {
               </Select>
             </div>
             {settingsError ? (
-              <p className="text-xs text-destructive" role="alert">
+              <p className="text-xs leading-5 text-destructive" role="alert">
                 {settingsError}
               </p>
             ) : null}
           </div>
-          <DialogFooter className="gap-2">
+          <DialogFooter className="gap-3 pt-1 sm:space-x-0">
             <Button
               className="mr-auto"
               onClick={handlePreview}
@@ -471,11 +504,27 @@ export function NewMessageSoundControl() {
   );
 }
 
-function SummaryRow({ label, value }: { label: string; value: string }) {
+function SummaryRow({
+  icon,
+  label,
+  value,
+}: {
+  icon: typeof VolumeHighIcon;
+  label: string;
+  value: string;
+}) {
   return (
-    <div className="flex items-center justify-between gap-3">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="max-w-36 truncate text-right font-medium text-foreground">
+    <div className="flex min-h-9 items-center gap-3">
+      <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-[9px] bg-surface-muted text-muted-foreground">
+        <HugeiconsIcon
+          color="currentColor"
+          icon={icon}
+          size={16}
+          strokeWidth={1.8}
+        />
+      </span>
+      <span className="min-w-0 flex-1 text-muted-foreground">{label}</span>
+      <span className="max-w-40 truncate text-right font-medium text-foreground">
         {value}
       </span>
     </div>

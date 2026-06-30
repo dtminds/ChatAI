@@ -267,8 +267,10 @@ describe("ChatHeader", () => {
     await user.click(screen.getByRole("combobox", { name: "提示音" }));
     await user.click(await screen.findByRole("option", { name: "提示音 2" }));
 
-    await user.click(screen.getByRole("combobox", { name: "提示时机" }));
-    await user.click(await screen.findByRole("option", { name: "收到新消息时" }));
+    const alwaysTriggerButton = screen.getByRole("button", { name: /收到新消息时/ });
+    expect(alwaysTriggerButton).toHaveAttribute("aria-pressed", "false");
+    await user.click(alwaysTriggerButton);
+    expect(alwaysTriggerButton).toHaveAttribute("aria-pressed", "true");
 
     await user.click(screen.getByRole("button", { name: "试听" }));
     expect(audioInstances.at(-1)?.src).toBe("https://b5.bokr.com.cn/dist/sound/msg_sound2.mp3");

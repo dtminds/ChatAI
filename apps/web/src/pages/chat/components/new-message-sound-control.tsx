@@ -1,9 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   Clock01Icon,
+  Notification01Icon,
   PlayIcon,
   Settings03Icon,
   Tick02Icon,
+  ViewOffIcon,
   VolumeHighIcon,
   VolumeMute01Icon,
 } from "@hugeicons/core-free-icons";
@@ -33,7 +35,6 @@ import {
   getNewMessageSoundTriggerOption,
   isNewMessageSoundUnlocked,
   NEW_MESSAGE_SOUND_OPTIONS,
-  NEW_MESSAGE_SOUND_TRIGGER_OPTIONS,
   playNewMessageSoundPreview,
   subscribeNewMessageSoundUnlockChange,
   unlockNewMessageSound,
@@ -54,6 +55,25 @@ const DEFAULT_SOUND_PREFERENCE: NewMessageSoundPreference = {
   trigger: "unfocused_only",
 };
 const SOUND_PLAYBACK_ERROR = "无法播放提示音，请检查浏览器权限";
+const TRIGGER_SETTING_OPTIONS: Array<{
+  description: string;
+  icon: typeof VolumeHighIcon;
+  label: string;
+  value: NewMessageSoundTrigger;
+}> = [
+  {
+    description: "只在离开当前页面后播放",
+    icon: ViewOffIcon,
+    label: "页面未聚焦时",
+    value: "unfocused_only",
+  },
+  {
+    description: "工作台收到新消息就播放",
+    icon: Notification01Icon,
+    label: "收到新消息时",
+    value: "all_new_messages",
+  },
+];
 
 export function NewMessageSoundControl() {
   const [preference, setPreference] =
@@ -420,30 +440,21 @@ export function NewMessageSoundControl() {
             </div>
 
             <div className="grid gap-2.5">
-              <Label htmlFor="new-message-sound-trigger-select">提示时机</Label>
-              <Select
-                onValueChange={(value) =>
-                  setFormTrigger(value as NewMessageSoundTrigger)
-                }
-                value={formTrigger}
+              <Label>提示时机</Label>
+              <div
+                aria-label="提示时机"
+                className="grid gap-3 sm:grid-cols-2"
+                role="group"
               >
-                <SelectTrigger
-                  aria-label="提示时机"
-                  className="w-full"
-                  id="new-message-sound-trigger-select"
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {NEW_MESSAGE_SOUND_TRIGGER_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.value === "all_new_messages"
-                        ? "收到新消息时"
-                        : option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                {TRIGGER_SETTING_OPTIONS.map((option) => (
+                  <TriggerOptionButton
+                    key={option.value}
+                    onClick={() => setFormTrigger(option.value)}
+                    option={option}
+                    selected={formTrigger === option.value}
+                  />
+                ))}
+              </div>
             </div>
             {settingsError ? (
               <p className="text-xs leading-5 text-destructive" role="alert">
@@ -507,5 +518,69 @@ function SummaryRow({
         {value}
       </span>
     </div>
+  );
+}
+
+function TriggerOptionButton({
+  onClick,
+  option,
+  selected,
+}: {
+  onClick: () => void;
+  option: (typeof TRIGGER_SETTING_OPTIONS)[number];
+  selected: boolean;
+}) {
+  return (
+    <button
+      aria-pressed={selected}
+      className={cn(
+        "group flex min-h-[92px] items-start gap-3 rounded-[12px] border bg-background p-4 text-left outline-none transition-colors hover:border-primary/35 hover:bg-primary/5 focus-visible:ring-4 focus-visible:ring-ring/20",
+        selected
+          ? "border-primary/55 bg-primary/10 text-foreground shadow-xs"
+          : "border-border text-muted-foreground",
+      )}
+      onClick={onClick}
+      type="button"
+    >
+      <span
+        className={cn(
+          "mt-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-[10px] transition-colors",
+          selected
+            ? "bg-primary text-primary-foreground"
+            : "bg-surface-muted text-muted-foreground group-hover:text-foreground",
+        )}
+      >
+        <HugeiconsIcon
+          color="currentColor"
+          icon={option.icon}
+          size={16}
+          strokeWidth={1.8}
+        />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-medium text-foreground">
+          {option.label}
+        </span>
+        <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+          {option.description}
+        </span>
+      </span>
+      <span
+        className={cn(
+          "inline-flex size-5 shrink-0 items-center justify-center rounded-full border transition-colors",
+          selected
+            ? "border-primary bg-primary text-primary-foreground"
+            : "border-border text-transparent",
+        )}
+        aria-hidden="true"
+      >
+        <HugeiconsIcon
+          color="currentColor"
+          icon={Tick02Icon}
+          size={12}
+          strokeWidth={2}
+        />
+      </span>
+    </button>
   );
 }

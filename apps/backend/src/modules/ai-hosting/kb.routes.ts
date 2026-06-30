@@ -37,9 +37,11 @@ const KbDocParamsSchema = Type.Object({
 });
 
 const KbDocChunkListQuerySchema = Type.Object({
+  content: Type.Optional(Type.String({ maxLength: KB_SEARCH_QUERY_MAX_LENGTH })),
+  docType: KbDocTypeSchema,
   page: Type.Optional(NumericStringSchema),
   pageSize: Type.Optional(NumericStringSchema),
-  title: Type.Optional(Type.String()),
+  title: Type.Optional(Type.String({ maxLength: KB_SEARCH_QUERY_MAX_LENGTH })),
 });
 
 type KbListQuery = Static<typeof KbListQuerySchema>;
@@ -163,6 +165,8 @@ export async function registerKbRoutes(app: FastifyInstance) {
           {
             page: parseOptionalInteger(request.query.page),
             pageSize: parseOptionalInteger(request.query.pageSize),
+            content: request.query.content,
+            docType: request.query.docType,
             title: request.query.title,
           },
         ),

@@ -29,6 +29,8 @@ export type KbDocChunkViewItem = {
   content?: string;
   createdAt: string;
   docId: string;
+  displayChunkId?: string;
+  displayChunkIndex?: string;
   id: string;
   imageUrls?: string[];
   kbId: string;
@@ -37,4 +39,5 @@ export type KbDocChunkViewItem = {
   title?: string;
   type: KbDocType;
   updatedAt: string;
+  volcChunkId?: string;
 };

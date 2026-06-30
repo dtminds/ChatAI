@@ -35,6 +35,8 @@ export type ListKbDocsParams = {
 };
 
 export type ListKbDocChunksParams = {
+  content?: string;
+  docType: KbDocType;
   page?: number;
   pageSize?: number;
   title?: string;
@@ -81,7 +83,7 @@ export async function getKbDoc(docId: string) {
   return response.data;
 }
 
-export async function listKbDocChunks(docId: string, params: ListKbDocChunksParams = {}) {
+export async function listKbDocChunks(docId: string, params: ListKbDocChunksParams) {
   const response = await http.get<ApiSuccessEnvelope<KbChunkListResponse>>(
     `/server/ai-hosting/kb-docs/${docId}/chunks${buildQueryString(params)}`,
   );
@@ -121,8 +123,11 @@ export function toKbDocChunkViewItem(
   options?: { docUrl?: string },
 ): KbDocChunkViewItem {
   const imageUrls = resolveKbDocChunkImageUrls(item.imageUrls, docType, options?.docUrl);
+  const displayParts = resolveVolcChunkDisplayParts(item.volcChunkId);
   const chunk: KbDocChunkViewItem = {
     createdAt: formatDisplayTime(item.createdAt),
+    displayChunkId: displayParts?.displayChunkId,
+    displayChunkIndex: displayParts?.displayChunkIndex,
     docId: item.docId,
     id: item.chunkId,
     imageUrls,
@@ -130,6 +135,7 @@ export function toKbDocChunkViewItem(
     source: item.source,
     type: docType,
     updatedAt: formatDisplayTime(item.updatedAt),
+    volcChunkId: item.volcChunkId,
   };
 
   if (docType === "qa") {
@@ -141,6 +147,25 @@ export function toKbDocChunkViewItem(
   chunk.title = item.title ?? "";
   chunk.content = item.content;
   return chunk;
+}
+
+function resolveVolcChunkDisplayParts(volcChunkId?: string) {
+  const tail = volcChunkId?.split("_").pop()?.trim();
+
+  if (!tail) {
+    return undefined;
+  }
+
+  const separatorIndex = tail.lastIndexOf("-");
+
+  if (separatorIndex <= 0 || separatorIndex === tail.length - 1) {
+    return undefined;
+  }
+
+  return {
+    displayChunkId: tail.slice(0, separatorIndex),
+    displayChunkIndex: tail.slice(separatorIndex + 1),
+  };
 }
 
 export function resolveKbDocImageUrl(docUrl: string) {
@@ -202,10 +227,21 @@ function formatDisplayTime(value: string) {
     return value;
   }
 
-  return new Date(date.getTime() - date.getTimezoneOffset() * 60000)
-    .toISOString()
-    .replace("T", " ")
-    .slice(0, 19);
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    hour: "2-digit",
+    hourCycle: "h23",
+    minute: "2-digit",
+    month: "2-digit",
+    second: "2-digit",
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+  }).formatToParts(date);
+
+  const lookup = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? "00";
+
+  return `${lookup("year")}-${lookup("month")}-${lookup("day")} ${lookup("hour")}:${lookup("minute")}:${lookup("second")}`;
 }
 
 function getDocTypeLabel(docType: KbDocType, docSuffix: string) {

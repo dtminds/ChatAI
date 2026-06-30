@@ -91,6 +91,7 @@ const GROUP_MEMBER_SORT_RANK = {
 } as const;
 
 export type ConversationLookup = {
+  chatType: number;
   id: string;
   platform: number;
   seatId: string;
@@ -181,7 +182,10 @@ type ConversationPageRow = Omit<
 };
 
 type ConversationHydrationSources = {
-  bindRemarksByThirdExternalId: Map<string, string | null>;
+  bindRelationsByThirdExternalId: Map<
+    string,
+    { bindType: number | null; remark: string | null }
+  >;
   contactsByThirdExternalId: Map<
     string,
     {
@@ -3552,6 +3556,7 @@ export class WorkbenchRepository {
       )
       .select([
         "conversation.id as id",
+        "conversation.chat_type as chat_type",
         "conversation.platform as platform",
         "conversation.third_external_userid as third_external_userid",
         "conversation.third_group_id as third_group_id",
@@ -3590,6 +3595,7 @@ export class WorkbenchRepository {
 
     return row
       ? {
+          chatType: row.chat_type,
           id: String(row.id),
           platform: row.platform,
           seatId: String(row.seat_id),
@@ -4028,6 +4034,43 @@ export class WorkbenchRepository {
       scannedCount: rawRows.length,
       smartReplyScope,
     };
+  }
+
+  async getLatestConversationMessageSummary(input: {
+    platform: number;
+    thirdExternalUserId?: string;
+    thirdGroupId?: string;
+    thirdUserId: string;
+    uid: number;
+  }): Promise<{ createdAt: number; msgtype: string } | undefined> {
+    if (!input.thirdUserId || (!input.thirdGroupId && !input.thirdExternalUserId)) {
+      return undefined;
+    }
+
+    let query = this.db
+      .selectFrom("xy_wap_embed_msg_audit_info as message")
+      .select(["message.create_time as create_time", "message.msgtype as msgtype"])
+      .where("message.uid", "=", input.uid)
+      .where("message.platform", "=", input.platform)
+      .where("message.third_user_id", "=", input.thirdUserId);
+
+    if (input.thirdGroupId) {
+      query = query.where("message.third_group_id", "=", input.thirdGroupId);
+    } else if (input.thirdExternalUserId) {
+      query = query.where("message.third_external_id", "=", input.thirdExternalUserId);
+    }
+
+    const row = await query
+      .orderBy("message.id", "desc")
+      .limit(1)
+      .executeTakeFirst();
+
+    return row
+      ? {
+          createdAt: toTimestamp(row.create_time),
+          msgtype: row.msgtype,
+        }
+      : undefined;
   }
 
   async listHistoryMessages(
@@ -4549,7 +4592,7 @@ export class WorkbenchRepository {
       contactThirdExternalIds.length
         ? this.db
             .selectFrom("xy_wap_embed_customer_bind_relation")
-            .select(["third_external_userid", "remark"])
+            .select(["bind_type", "third_external_userid", "remark"])
             .where("uid", "=", uid)
             .where("platform", "=", platform)
             .where("third_userid", "=", seatThirdUserId)
@@ -4569,10 +4612,13 @@ export class WorkbenchRepository {
     ]);
 
     return {
-      bindRemarksByThirdExternalId: new Map(
+      bindRelationsByThirdExternalId: new Map(
         bindRelations.map((bindRelation) => [
           bindRelation.third_external_userid,
-          bindRelation.remark,
+          {
+            bindType: bindRelation.bind_type,
+            remark: bindRelation.remark,
+          },
         ]),
       ),
       contactsByThirdExternalId: new Map(
@@ -4625,7 +4671,9 @@ export class WorkbenchRepository {
         ? hydrationSources.lastMessagesById.get(String(row.last_audit_info_id))
         : undefined;
     const contact = hydrationSources.contactsByThirdExternalId.get(row.third_external_userid);
-    const bindRemark = hydrationSources.bindRemarksByThirdExternalId.get(row.third_external_userid);
+    const bindRelation = hydrationSources.bindRelationsByThirdExternalId.get(
+      row.third_external_userid,
+    );
     const group = hydrationSources.groupsByThirdGroupId.get(row.third_group_id);
 
     return mapConversationRow({
@@ -4635,7 +4683,8 @@ export class WorkbenchRepository {
           ? (group?.bizStatus ?? BIZ_STATUS_HIDDEN)
           : BIZ_STATUS_ACTIVE,
       customer_avatar: contact?.avatar ?? null,
-      customer_name: firstNonEmptyString(bindRemark, contact?.name) ?? null,
+      customer_bind_type: bindRelation?.bindType,
+      customer_name: firstNonEmptyString(bindRelation?.remark, contact?.name) ?? null,
       contact_original_name: firstNonEmptyString(contact?.name) ?? null,
       group_avatar: group?.avatar ?? null,
       group_name: firstNonEmptyString(group?.name) ?? null,

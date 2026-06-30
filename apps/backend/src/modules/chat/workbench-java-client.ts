@@ -155,6 +155,13 @@ export type WorkbenchJavaClient = {
     platform: number;
     uid: number;
   }): Promise<void>;
+  insertSystemMessage(input: {
+    content: string;
+    conversationId: string;
+    operatorId: number;
+    platform: number;
+    uid: number;
+  }): Promise<string>;
   listUserHistoryAnswers(input: {
     chatType: number;
     msgIds: number[];
@@ -203,7 +210,6 @@ export type WorkbenchJavaClient = {
   }): Promise<string>;
   sendRecommendAnswer(input: {
     optNos: string[];
-    realAnswer: string;
     recordId: string;
     uid: number;
   }): Promise<void>;
@@ -343,6 +349,22 @@ export function createWorkbenchJavaClient(
         logger,
         "change-conversation-full-auto",
       ).then(() => undefined);
+    },
+    insertSystemMessage(input) {
+      return postJavaEnvelope<number | string>(
+        baseUrl,
+        token,
+        "/third-internal/wap-embed/conversation/insert-system-message",
+        {
+          content: input.content,
+          conversationId: Number(input.conversationId),
+          operatorId: input.operatorId,
+          platform: input.platform,
+          uid: input.uid,
+        },
+        logger,
+        "insert-system-message",
+      ).then((messageId) => String(messageId));
     },
     listUserHistoryAnswers(input) {
       return postJavaEnvelope<unknown>(
@@ -514,12 +536,6 @@ export function createWorkbenchJavaClient(
         "/third-internal/wap-embed-agent-answer-record/send-answer",
         {
           optNos: input.optNos,
-          realAnswer: input.realAnswer,
-          // TODO: Confirm send-answer contract with Java backend. realAnswer currently
-          // records text-only content, but editing should not change whether the payload
-          // is text-only or full message segments.
-          // 新 send-answer 接口暂未启用附件 id，先不传 realAttachIds
-          // realAttachIds: input.realAttachIds,
           recordId: numericRecordId ?? input.recordId,
           uid: input.uid,
         },

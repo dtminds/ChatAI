@@ -331,7 +331,6 @@ export function SmartReplyEditDialog({
         </DialogContent>
       </Dialog>
       <SmartReplyAddToFaqDialog
-        conversationId={conversationId}
         initialAnswer={draftContent.trim()}
         initialQuestion={faqInitialQuestion}
         initialSelectedAttachmentIds={selectedAttachmentIds}

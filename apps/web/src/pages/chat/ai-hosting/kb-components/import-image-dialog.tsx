@@ -148,17 +148,14 @@ export function ImportImageDialog({
         return;
       }
 
-      setSelectedImage(file);
-      setImageName((currentName) => {
-        if (!isCurrentValidation(validationId) || currentName.trim()) {
-          return currentName;
-        }
+      if (!isCurrentValidation(validationId)) {
+        return;
+      }
 
-        return stripFileExtension(file.name).slice(
-          0,
-          IMAGE_KNOWLEDGE_NAME_MAX_LENGTH,
-        );
-      });
+      setSelectedImage(file);
+      setImageName(
+        stripFileExtension(file.name).slice(0, IMAGE_KNOWLEDGE_NAME_MAX_LENGTH),
+      );
     } catch {
       if (!isCurrentValidation(validationId)) {
         return;

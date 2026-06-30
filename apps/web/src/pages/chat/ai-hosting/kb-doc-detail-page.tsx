@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Add01Icon,
   ArrowLeft01Icon,
+  Delete02Icon,
+  Edit02Icon,
   Search01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -20,10 +22,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
 import {
   Table,
   TableBody,
   TableCell,
+  TableCellContent,
   TableHead,
   TableHeader,
   TablePinnedCell,
@@ -35,6 +39,7 @@ import {
   TablePagination,
 } from "@/components/ui/table-pagination";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import { FileExtensionBadge } from "@/pages/chat/components/message/file";
 import { AiHostingLayout, AiHostingPageHeader } from "./ai-hosting-layout";
 import { AddChunkDialog } from "./kb-components/add-chunk-dialog";
@@ -61,6 +66,20 @@ import type { KbDocChunkViewItem, KbDocType, KbDocViewItem } from "./kb-types";
 const DEFAULT_PAGE_SIZE = 10;
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const;
 const IMAGE_CHUNK_PAGE_SIZE = 100;
+
+function resolveChunkSearchField(docType: KbDocType | undefined) {
+  if (docType === "qa") {
+    return {
+      ariaLabel: "搜索问题",
+      placeholder: "搜索问题",
+    };
+  }
+
+  return {
+    ariaLabel: "搜索切片内容",
+    placeholder: "搜索切片内容",
+  };
+}
 
 function useDebouncedValue<T>(value: T, delayMs: number) {
   const [debouncedValue, setDebouncedValue] = useState(value);
@@ -117,9 +136,11 @@ export function KbDocDetailPage() {
       const isImageDoc = doc.type === "image";
       const page = options?.page ?? (isImageDoc ? 1 : currentPage);
       const response = await listKbDocChunks(docId, {
+        content: !isImageDoc && doc.type !== "qa" ? debouncedSearchQuery || undefined : undefined,
+        docType: doc.type,
         page: isImageDoc ? 1 : page,
         pageSize: isImageDoc ? IMAGE_CHUNK_PAGE_SIZE : pageSize,
-        title: isImageDoc ? undefined : debouncedSearchQuery || undefined,
+        title: doc.type === "qa" ? debouncedSearchQuery || undefined : undefined,
       });
 
       if (version !== requestVersionRef.current) {
@@ -365,6 +386,8 @@ export function KbDocDetailPage() {
     );
   }
 
+  const chunkSearchField = resolveChunkSearchField(doc?.type);
+
   return (
     <AiHostingLayout title={doc?.name ?? "文档"}>
       <div className="space-y-6">
@@ -400,13 +423,13 @@ export function KbDocDetailPage() {
                     strokeWidth={1.8}
                   />
                   <Input
-                    aria-label="搜索切片标题"
+                    aria-label={chunkSearchField.ariaLabel}
                     className="h-10 rounded-[8px] pl-9"
                     disabled={loadingPage || !doc || doc.status !== "completed"}
                     onChange={(event) => {
                       setSearchQuery(event.target.value);
                     }}
-                    placeholder="搜索切片标题"
+                    placeholder={chunkSearchField.placeholder}
                     value={searchQuery}
                   />
                 </div>
@@ -420,15 +443,24 @@ export function KbDocDetailPage() {
                 ) : null}
               </div>
 
-              <div>
-                <KnowledgeChunksTable
-                  chunks={chunks}
-                  docType={doc?.type ?? "document"}
-                  loading={loadingPage || loadingChunks}
-                  onDelete={setDeleteChunk}
-                  onEdit={setEditChunk}
-                />
+              <div className="space-y-4">
+                {doc?.type === "qa" ? (
+                  <KnowledgeChunksTable
+                    chunks={chunks}
+                    loading={loadingPage || loadingChunks}
+                    onDelete={setDeleteChunk}
+                    onEdit={setEditChunk}
+                  />
+                ) : (
+                  <KnowledgeDocumentChunkCards
+                    chunks={chunks}
+                    loading={loadingPage || loadingChunks}
+                    onDelete={setDeleteChunk}
+                    onEdit={setEditChunk}
+                  />
+                )}
                 <TablePagination
+                  className={doc?.type === "qa" ? undefined : "border-t-0 pt-0"}
                   onPageChange={setCurrentPage}
                   onPageSizeChange={handlePageSizeChange}
                   page={activePage}
@@ -458,6 +490,7 @@ export function KbDocDetailPage() {
         dialogTitle="添加切片"
         fieldIdPrefix="doc-chunk"
         firstFieldLabel="切片标题"
+        firstFieldRequired={false}
         onOpenChange={setAddDocDialogOpen}
         onSubmit={({ first, second }) =>
           handleCreateDocChunk({ title: first, content: second })
@@ -547,35 +580,26 @@ function AddChunkActions({
 
 function KnowledgeChunksTable({
   chunks,
-  docType,
   loading,
   onDelete,
   onEdit,
 }: {
   chunks: KbDocChunkViewItem[];
-  docType: KbDocType;
   loading: boolean;
   onDelete: (chunk: KbDocChunkViewItem) => void;
   onEdit: (chunk: KbDocChunkViewItem) => void;
 }) {
-  const isQa = docType === "qa";
+  const columnCount = 5;
 
   return (
     <TooltipProvider>
       <Table aria-label="切片列表" className="min-w-[960px] table-fixed">
       <TableHeader>
         <TableRow className="hover:bg-transparent">
-          {isQa ? (
-            <>
-              <TableHead className="h-11 w-[34%] px-4">问题</TableHead>
-              <TableHead className="h-11 w-[46%] px-4">答案</TableHead>
-            </>
-          ) : (
-            <>
-              <TableHead className="h-11 w-[34%] px-4">切片标题</TableHead>
-              <TableHead className="h-11 w-[46%] px-4">切片内容</TableHead>
-            </>
-          )}
+          <TableHead className="h-11 w-[18%] px-4">切片ID</TableHead>
+          <TableHead className="h-11 w-[24%] px-4">问题</TableHead>
+          <TableHead className="h-11 w-[38%] px-4">答案</TableHead>
+          <TableHead className="h-11 w-[16%] px-4">更新时间</TableHead>
           <TablePinnedHead className="h-11 w-[120px] whitespace-nowrap px-4 text-right">
             操作
           </TablePinnedHead>
@@ -583,41 +607,32 @@ function KnowledgeChunksTable({
       </TableHeader>
       <TableBody>
         {loading ? (
-          <KbTableLoadingRow colSpan={3} />
+          <KbTableLoadingRow colSpan={columnCount} />
         ) : chunks.length > 0 ? (
           chunks.map((chunk) => (
             <TableRow key={chunk.id}>
-              {isQa ? (
-                <>
-                  <TableCell className="px-4 py-4">
-                    <TableOverflowTooltip
-                      className="font-medium text-foreground"
-                      tooltip={chunk.question}
-                    >
-                      {chunk.question}
-                    </TableOverflowTooltip>
-                  </TableCell>
-                  <TableCell className="px-4 py-4">
-                    <TableOverflowTooltip className="text-muted-foreground" tooltip={chunk.answer}>
-                      {chunk.answer}
-                    </TableOverflowTooltip>
-                  </TableCell>
-                </>
-              ) : (
-                <>
-                  <TableCell className="px-4 py-4">
-                    <TableOverflowTooltip
-                      className="font-medium text-foreground"
-                      tooltip={chunk.title}
-                    >
-                      {chunk.title}
-                    </TableOverflowTooltip>
-                  </TableCell>
-                  <TableCell className="px-4 py-4">
-                    <ChunkContentCell content={chunk.content} imageUrls={chunk.imageUrls} />
-                  </TableCell>
-                </>
-              )}
+              <TableCell className="px-4 py-4 text-muted-foreground">
+                <TableOverflowTooltip tooltip={chunk.id}>{chunk.id}</TableOverflowTooltip>
+              </TableCell>
+              <TableCell className="px-4 py-4">
+                <TableOverflowTooltip
+                  className="font-medium text-foreground"
+                  tooltip={chunk.question}
+                >
+                  {chunk.question}
+                </TableOverflowTooltip>
+              </TableCell>
+              <TableCell className="px-4 py-4">
+                <TableOverflowTooltip className="text-muted-foreground" tooltip={chunk.answer}>
+                  {chunk.answer}
+                </TableOverflowTooltip>
+              </TableCell>
+              <TableCell
+                className="px-4 py-4 text-muted-foreground"
+                title={chunk.updatedAt}
+              >
+                <TableCellContent>{chunk.updatedAt}</TableCellContent>
+              </TableCell>
               <TablePinnedCell className="whitespace-nowrap px-4 py-4 text-right">
                 <div className="flex items-center justify-end gap-3">
                   <Button
@@ -642,7 +657,7 @@ function KnowledgeChunksTable({
           ))
         ) : (
           <TableRow>
-            <TableCell className="py-10 text-center text-sm text-muted-foreground" colSpan={3}>
+            <TableCell className="py-10 text-center text-sm text-muted-foreground" colSpan={columnCount}>
               暂无切片数据
             </TableCell>
           </TableRow>
@@ -653,37 +668,172 @@ function KnowledgeChunksTable({
   );
 }
 
-function ChunkContentCell({
-  content,
-  imageUrls,
+function KnowledgeDocumentChunkCards({
+  chunks,
+  loading,
+  onDelete,
+  onEdit,
 }: {
-  content?: string;
-  imageUrls?: string[];
+  chunks: KbDocChunkViewItem[];
+  loading: boolean;
+  onDelete: (chunk: KbDocChunkViewItem) => void;
+  onEdit: (chunk: KbDocChunkViewItem) => void;
 }) {
-  if (imageUrls && imageUrls.length > 0) {
+  if (loading) {
     return (
-      <div className="flex items-start gap-3">
-        <div className="flex shrink-0 items-start gap-2">
-          {imageUrls.map((imageUrl, index) => (
-            <ChunkImagePreview
-              key={`${imageUrl}-${index}`}
-              alt={content}
-              imageUrl={imageUrl}
-              size="sm"
-            />
-          ))}
-        </div>
-        <TableOverflowTooltip className="min-w-0 text-muted-foreground" tooltip={content}>
-          {content}
-        </TableOverflowTooltip>
+      <div
+        className="flex min-h-[180px] items-center justify-center rounded-[8px] border bg-card text-sm text-muted-foreground"
+        role="status"
+      >
+        <Spinner className="mr-2" size={16} />
+        <span>正在加载</span>
+      </div>
+    );
+  }
+
+  if (chunks.length === 0) {
+    return (
+      <div className="rounded-[8px] border bg-card py-10 text-center text-sm text-muted-foreground">
+        暂无切片数据
       </div>
     );
   }
 
   return (
-    <TableOverflowTooltip className="text-muted-foreground" tooltip={content}>
+    <ul aria-label="切片列表" className="grid gap-4 lg:grid-cols-2" role="list">
+      {chunks.map((chunk) => (
+        <KnowledgeDocumentChunkCard
+          chunk={chunk}
+          key={chunk.id}
+          onDelete={onDelete}
+          onEdit={onEdit}
+        />
+      ))}
+    </ul>
+  );
+}
+
+function KnowledgeDocumentChunkCard({
+  chunk,
+  onDelete,
+  onEdit,
+}: {
+  chunk: KbDocChunkViewItem;
+  onDelete: (chunk: KbDocChunkViewItem) => void;
+  onEdit: (chunk: KbDocChunkViewItem) => void;
+}) {
+  const title = chunk.title?.trim() ?? "";
+  const content = chunk.content ?? "";
+  const characterCount = `${title}${content}`.length;
+  const displayChunkId = chunk.displayChunkId || chunk.volcChunkId || chunk.id;
+
+  return (
+    <li className="group flex h-[204px] flex-col overflow-hidden rounded-[14px] border border-border/80 bg-card px-4 py-3.5 transition-shadow hover:shadow-[0_10px_24px_var(--shadow-soft)]">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          {chunk.displayChunkIndex ? (
+            <span className="shrink-0 rounded-[6px] bg-muted px-3 py-1.5 text-xs font-semibold leading-none text-foreground">
+              #{chunk.displayChunkIndex}
+            </span>
+          ) : null}
+          <span className="min-w-0 truncate rounded-[6px] bg-muted px-3 py-1.5 text-xs font-semibold leading-none text-foreground">
+            ID {displayChunkId}
+          </span>
+        </div>
+        <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+          <Button
+            aria-label={`编辑 ${chunk.id}`}
+            className="size-8 rounded-[6px] bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground"
+            onClick={() => onEdit(chunk)}
+            type="button"
+            variant="ghost"
+          >
+            <HugeiconsIcon color="currentColor" icon={Edit02Icon} size={16} strokeWidth={1.8} />
+          </Button>
+          <Button
+            aria-label={`删除 ${chunk.id}`}
+            className="size-8 rounded-[6px] bg-muted text-muted-foreground hover:bg-muted/80 hover:text-destructive"
+            onClick={() => onDelete(chunk)}
+            type="button"
+            variant="ghost"
+          >
+            <HugeiconsIcon color="currentColor" icon={Delete02Icon} size={16} strokeWidth={1.8} />
+          </Button>
+        </div>
+      </div>
+
+      <div className="mt-2 flex min-h-0 flex-1 gap-3 overflow-hidden">
+        {chunk.imageUrls?.[0] ? (
+          <div className="shrink-0">
+            <ChunkImagePreview
+              alt={content || title}
+              className="h-[92px] w-[132px] rounded-[4px] border-border/70 bg-muted/20"
+              imageUrl={chunk.imageUrls[0]}
+              size="list"
+            />
+          </div>
+        ) : null}
+        <div className="min-w-0 flex-1 space-y-1 overflow-hidden">
+          {title ? (
+            <button
+              className="line-clamp-1 block max-h-5 w-full break-words text-left text-[13px] font-medium leading-5 text-foreground focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/15"
+              onClick={() => onEdit(chunk)}
+              type="button"
+            >
+              {title}
+            </button>
+          ) : null}
+          <ChunkContentPreview
+            clampClassName={title ? "line-clamp-3" : "line-clamp-4"}
+            className={cn(
+              "text-[13px] leading-6 text-foreground",
+              title ? "max-h-[72px]" : "max-h-24",
+            )}
+            content={content}
+            onClick={() => onEdit(chunk)}
+          />
+        </div>
+      </div>
+
+      <div className="mt-3 flex items-center justify-between gap-3 text-xs text-muted-foreground">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <span className="shrink-0">字符</span>
+          <span className="shrink-0 font-semibold text-foreground">{characterCount}</span>
+        </div>
+        <span className="shrink-0">更新于 {chunk.updatedAt}</span>
+      </div>
+    </li>
+  );
+}
+
+function ChunkContentPreview({
+  clampClassName = "line-clamp-2",
+  className,
+  content,
+  onClick,
+}: {
+  clampClassName?: string;
+  className?: string;
+  content?: string;
+  onClick: () => void;
+}) {
+  if (!content) {
+    return <span className="text-muted-foreground">-</span>;
+  }
+
+  return (
+    <button
+      className={cn(
+        "w-full whitespace-pre-line break-words text-left text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/15",
+        clampClassName,
+        className,
+      )}
+      data-slot="chunk-content-preview"
+      onClick={onClick}
+      type="button"
+    >
       {content}
-    </TableOverflowTooltip>
+    </button>
   );
 }
 

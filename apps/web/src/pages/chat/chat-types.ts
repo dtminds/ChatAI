@@ -80,6 +80,8 @@ export type Conversation = {
   accountId: string;
   /** 关联客户绑定或群席位业务状态；非 1 表示会话对象已失效 */
   bizStatus?: number;
+  /** 客户绑定类型：1 普通客户，2 应用消息 */
+  customerBindType?: number;
   customerId: string;
   customerName: string;
   customerAvatarUrl: string;

@@ -105,6 +105,7 @@ export const KbChunkListItemSchema = Type.Object({
   source: KbChunkSourceSchema,
   title: Type.Optional(Type.String()),
   updatedAt: Type.String(),
+  volcChunkId: Type.Optional(Type.String()),
 });
 
 export const KbChunkListResponseSchema = Type.Object({

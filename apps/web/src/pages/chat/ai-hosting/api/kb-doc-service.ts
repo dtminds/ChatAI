@@ -7,6 +7,7 @@ import type {
   KbDocCreateRequest,
   KbDocCreateResponse,
   KbDocDeleteResponse,
+  KbDocRetryResponse,
   KbDocParseMode,
 } from "@chatai/contracts";
 import { request } from "@/lib/request";
@@ -57,6 +58,15 @@ export async function deleteKbDoc(docId: string) {
   const response = await request<ApiSuccessEnvelope<KbDocDeleteResponse>>({
     method: "POST",
     url: `/server/ai-hosting/kb-docs/${docId}/delete`,
+  });
+
+  return response.data;
+}
+
+export async function retryKbDoc(docId: string) {
+  const response = await request<ApiSuccessEnvelope<KbDocRetryResponse>>({
+    method: "POST",
+    url: `/server/ai-hosting/kb-docs/${docId}/retry`,
   });
 
   return response.data;

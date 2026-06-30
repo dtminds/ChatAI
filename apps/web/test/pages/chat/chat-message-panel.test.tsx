@@ -74,6 +74,7 @@ function enableSmartReplyDisplayContext(enabled = true) {
           bizStatus: 1,
           conversationAIHostingSwitch: false,
           customerAvatarUrl: "",
+          customerBindType: 1,
           customerId: "cust-001",
           customerName: "客户甲",
           id: "conv-001",

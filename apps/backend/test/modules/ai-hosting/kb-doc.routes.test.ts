@@ -306,6 +306,54 @@ describe("ai-hosting kb-doc routes", () => {
     fetchMock.mockRestore();
   });
 
+  it("retries a failed kb doc through the Java internal API", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: true,
+          error: 0,
+          errorMsg: "",
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+    const context = await createAuthenticatedApp();
+    app = context.app;
+
+    const response = await app.inject({
+      headers: { authorization: context.authorization },
+      method: "POST",
+      url: "/api/server/ai-hosting/kb-docs/1003/retry",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      data: {
+        retried: true,
+      },
+      success: true,
+    });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "https://java.internal/third-internal/wap-embed-agent-kb-doc/retry",
+    );
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+      body: JSON.stringify({
+        id: 1003,
+        operatorId: "101",
+        uid: 9001,
+      }),
+      headers: expect.objectContaining({
+        "content-type": "application/json",
+      }),
+      method: "POST",
+    });
+    fetchMock.mockRestore();
+  });
+
   it("rejects enhanced parsing for plain text documents", async () => {
     const context = await createAuthenticatedApp();
     app = context.app;

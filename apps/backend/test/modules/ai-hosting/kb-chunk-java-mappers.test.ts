@@ -85,6 +85,7 @@ describe("kb-chunk-java-mappers", () => {
           type: 3,
           uid: 272,
           updateTime: "2026-06-24T19:02:34",
+          volcChunkId: "volc-chunk-62",
         },
         "document",
       ),
@@ -97,6 +98,32 @@ describe("kb-chunk-java-mappers", () => {
       kbId: "3",
       source: "system",
       title: "切片标题",
+      volcChunkId: "volc-chunk-62",
+    });
+  });
+
+  it("maps FAQ chunks with an explicit parent doc type", () => {
+    expect(
+      mapJavaChunkPageItem(
+        {
+          content: "答案",
+          createTime: "2026-06-24T18:54:30",
+          docId: 32,
+          id: 64,
+          kbId: 3,
+          source: 1,
+          title: "问题",
+          type: 1,
+          uid: 272,
+          updateTime: "2026-06-24T19:02:34",
+        },
+        "qa",
+      ),
+    ).toMatchObject({
+      chunkId: "64",
+      chunkType: "faq",
+      content: "答案",
+      title: "问题",
     });
   });
 

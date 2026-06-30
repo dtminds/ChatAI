@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   PlayIcon,
   Settings03Icon,
@@ -73,7 +73,7 @@ export function NewMessageSoundControl() {
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [reEnableError, setReEnableError] = useState<string | null>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     isMountedRef.current = true;
     const savedPreference = getNewMessageSoundPreference();
     setPreference(savedPreference);
@@ -120,6 +120,11 @@ export function NewMessageSoundControl() {
     setPreference(nextPreference);
   }
 
+  function closeSettingsDialog() {
+    setSettingsDialogMode(null);
+    setSettingsError(null);
+  }
+
   function openSettingsDialog(mode: SettingsDialogMode) {
     setFormSoundId(preference.soundId);
     setFormTrigger(preference.trigger);
@@ -147,7 +152,7 @@ export function NewMessageSoundControl() {
       trigger: formTrigger,
     });
     setSettingsError(null);
-    setSettingsDialogMode(null);
+    closeSettingsDialog();
   }
 
   async function handlePreview() {
@@ -355,7 +360,7 @@ export function NewMessageSoundControl() {
       <Dialog
         onOpenChange={(open) => {
           if (!open) {
-            setSettingsDialogMode(null);
+            closeSettingsDialog();
           }
         }}
         open={settingsDialogMode !== null}
@@ -439,7 +444,7 @@ export function NewMessageSoundControl() {
               试听
             </Button>
             <Button
-              onClick={() => setSettingsDialogMode(null)}
+              onClick={closeSettingsDialog}
               type="button"
               variant="outline"
             >

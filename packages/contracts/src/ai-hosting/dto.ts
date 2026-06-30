@@ -42,9 +42,14 @@ export const AiHostingAgentModelSummarySchema = Type.Object({
   name: Type.String(),
 });
 
+export const AiHostingAgentKbSummarySchema = Type.Object({
+  id: Type.String(),
+  name: Type.String(),
+});
+
 export const AiHostingAgentListItemSchema = Type.Object({
   id: Type.String(),
-  knowledgeBases: Type.Array(Type.String()),
+  kbList: Type.Array(AiHostingAgentKbSummarySchema),
   model: AiHostingAgentModelSummarySchema,
   name: Type.String(),
   updatedAt: Type.Optional(Type.Number()),
@@ -166,6 +171,7 @@ export type AiHostingQuota = Static<typeof AiHostingQuotaSchema>;
 export type AiHostingQuotaOverview = Static<typeof AiHostingQuotaOverviewSchema>;
 export type AiHostingModel = Static<typeof AiHostingModelSchema>;
 export type AiHostingAgentModelSummary = Static<typeof AiHostingAgentModelSummarySchema>;
+export type AiHostingAgentKbSummary = Static<typeof AiHostingAgentKbSummarySchema>;
 export type AiHostingAgentListItem = Static<typeof AiHostingAgentListItemSchema>;
 export type AiHostingAgentDetail = Static<typeof AiHostingAgentDetailSchema>;
 export type AiHostingAgentListResponse = Static<typeof AiHostingAgentListResponseSchema>;

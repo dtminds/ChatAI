@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { buildMockedApp } from "../../helpers/build-mocked-app";
 
 describe("AI hosting agent routes", () => {
-  it("lists tenant agents and fallback models without joins", async () => {
+  it("lists tenant agents with referenced knowledge bases from one extra query", async () => {
     const { app, authorization, db } = await createAiHostingApp();
 
     const agents = await app.inject({
@@ -22,7 +22,16 @@ describe("AI hosting agent routes", () => {
         agents: [
           {
             id: "301",
-            knowledgeBases: [],
+            kbList: [
+              {
+                id: "1",
+                name: "商品咨询知识库",
+              },
+              {
+                id: "3",
+                name: "活动政策知识库",
+              },
+            ],
             model: {
               id: "11",
               label: "Doubao-2.0-lite",
@@ -34,7 +43,16 @@ describe("AI hosting agent routes", () => {
           },
           {
             id: "303",
-            knowledgeBases: [],
+            kbList: [
+              {
+                id: "1",
+                name: "商品咨询知识库",
+              },
+              {
+                id: "3",
+                name: "活动政策知识库",
+              },
+            ],
             model: {
               id: "11",
               label: "Doubao-2.0-lite",
@@ -79,7 +97,13 @@ describe("AI hosting agent routes", () => {
     });
     expect(db.joinCalls).toEqual([]);
     expect(db.agentListWheres).toContainEqual(["agent.uid", "=", 9001]);
-    expect(db.agentListSelects).not.toContain("agent.prompt_config as prompt_config");
+    expect(db.agentListSelects).toContain("agent.prompt_config as prompt_config");
+    expect(db.kbListExecuteCount).toBe(1);
+    expect(db.kbListWheres).toEqual([
+      ["uid", "=", 9001],
+      ["status", "=", 1],
+      ["id", "in", [1, 3]],
+    ]);
     expect(db.historyListExecuteCount).toBe(0);
     expect(db.modelListWheres).toContainEqual(["status", "=", 1]);
     expect(db.modelUidFilter).toEqual([9001, 0]);
@@ -1334,16 +1358,28 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
         ]
       : []),
   ];
-  const kbs = Array.from({ length: options.activeKbCount ?? 1 }, (_, index) => ({
+  const kbs = Array.from({ length: options.activeKbCount ?? 3 }, (_, index) => ({
+    create_time: new Date("2024-06-15T08:00:00Z"),
     id: index + 1,
+    last_operator_id: 1,
+    name: ["商品咨询知识库", "售后政策知识库", "活动政策知识库"][index] ?? `知识库${index + 1}`,
+    operator_id: 1,
+    remark: "",
     status: 1,
     uid: 9001,
+    update_time: new Date("2024-06-15T08:01:00Z"),
   }));
   for (let index = 0; index < (options.deletedKbCount ?? 0); index += 1) {
     kbs.push({
+      create_time: new Date("2024-06-16T08:00:00Z"),
       id: 100 + index,
+      last_operator_id: 1,
+      name: `已删除知识库${index}`,
+      operator_id: 1,
+      remark: "",
       status: 0,
       uid: 9001,
+      update_time: new Date("2024-06-16T08:01:00Z"),
     });
   }
   const docs = (options.docSizeBytes ?? [12 * 1024 * 1024, 8 * 1024 * 1024]).map(
@@ -1364,6 +1400,8 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
     insertedAgent: undefined as Record<string, unknown> | undefined,
     insertedHistories: [] as Array<Record<string, unknown>>,
     joinCalls: [] as string[],
+    kbListExecuteCount: 0,
+    kbListWheres: [] as Array<[string, string, unknown]>,
     historyListExecuteCount: 0,
     historyLatestLimitValues: [] as number[],
     hostingConfigListWheres: [] as Array<[string, string, unknown]>,
@@ -1435,7 +1473,20 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
           }
 
           if (table === "xy_wap_embed_agent_kb") {
-            return kbs;
+            state.kbListExecuteCount += 1;
+            state.kbListWheres = wheres;
+            const uid = Number(wheres.find(([column]) => column === "uid")?.[2]);
+            const status = Number(wheres.find(([column]) => column === "status")?.[2]);
+            const ids = wheres.find(([column]) => column === "id")?.[2] as
+              | number[]
+              | undefined;
+
+            return kbs.filter(
+              (kb) =>
+                (!Number.isFinite(uid) || kb.uid === uid) &&
+                (!Number.isFinite(status) || kb.status === status) &&
+                (!ids || ids.includes(kb.id)),
+            );
           }
 
           if (table === "xy_wap_embed_agent_kb_doc") {

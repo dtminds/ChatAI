@@ -132,7 +132,16 @@ const mockModels = [
 const mockAgents = [
   {
     id: "301",
-    knowledgeBases: [],
+    kbList: [
+      {
+        id: "1",
+        name: "商品咨询知识库",
+      },
+      {
+        id: "3",
+        name: "活动政策知识库",
+      },
+    ],
     model: {
       id: "11",
       label: "Doubao-2.0-lite",
@@ -144,7 +153,7 @@ const mockAgents = [
   },
   {
     id: "302",
-    knowledgeBases: [],
+    kbList: [],
     model: {
       id: "11",
       label: "Doubao-2.0-lite",
@@ -512,13 +521,59 @@ describe("AI hosting pages", () => {
       "src",
       "https://b5.bokr.com.cn/dist/llm/doubao-color.svg",
     );
-    expect(screen.getAllByRole("cell", { name: "-" })).toHaveLength(2);
+    expect(screen.getByText("商品咨询知识库")).toBeInTheDocument();
+    expect(screen.getByText("活动政策知识库")).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "未关联" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "添加 Agent" })).toBeInTheDocument();
     expect(agentService.listAiHostingAgents).toHaveBeenCalledWith({
       page: 1,
       pageSize: 10,
       query: "",
     });
+  });
+
+  it("shows overflowing agent knowledge bases in a bounded hover popover", async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(agentService.listAiHostingAgents).mockResolvedValue({
+      agents: [
+        {
+          ...mockAgents[0],
+          kbList: [
+            { id: "1", name: "商品咨询知识库" },
+            { id: "2", name: "售后政策知识库" },
+            { id: "3", name: "活动政策知识库" },
+            { id: "4", name: "直播话术知识库" },
+          ],
+        },
+      ],
+      pagination: {
+        page: 1,
+        pageSize: 10,
+        total: 1,
+      },
+    });
+
+    renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
+
+    const trigger = await screen.findByRole("button", {
+      name: "查看 护肤小助理 的全部关联知识库",
+    });
+
+    expect(trigger).toHaveTextContent("商品咨询知识库");
+    expect(trigger).toHaveTextContent("售后政策知识库");
+    expect(trigger).toHaveTextContent("等 4 个知识库");
+    expect(screen.queryByText("直播话术知识库")).not.toBeInTheDocument();
+
+    await user.hover(trigger);
+
+    const popover = await screen.findByRole("dialog");
+    expect(popover).toHaveTextContent("关联知识库 · 4");
+    expect(popover).toHaveTextContent("商品咨询知识库");
+    expect(popover).toHaveTextContent("售后政策知识库");
+    expect(popover).toHaveTextContent("活动政策知识库");
+    expect(popover).toHaveTextContent("直播话术知识库");
+    expect(within(popover).getByTestId("agent-kb-popover-scroll")).toHaveClass("h-[16rem]");
   });
 
   it("shows document storage below 1MB with one decimal place", async () => {

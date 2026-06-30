@@ -1,5 +1,6 @@
 import type {
   AiHostingAgentDetail,
+  AiHostingAgentKbSummary,
   AiHostingAgentListItem,
   AiHostingAgentListResponse,
   AiHostingAgentModelSummary,
@@ -57,6 +58,11 @@ type AiModelRow = {
   uid: number;
 };
 
+type AgentKbRow = {
+  id: number;
+  name: string;
+};
+
 const dbActiveStatus = 1;
 const dbDeletedStatus = 0;
 const defaultPage = 1;
@@ -83,9 +89,10 @@ export class AiHostingAgentService {
       totalPromise,
     ]);
     const modelMap = new Map(models.map((model) => [String(model.id), mapModelSummary(model)]));
+    const kbMap = await this.getAgentKbMap(scope, rows);
 
     return {
-      agents: rows.map((row) => this.mapAgentListItem(row, modelMap)),
+      agents: rows.map((row) => this.mapAgentListItem(row, modelMap, kbMap)),
       pagination: {
         page: pagination.page,
         pageSize: pagination.pageSize,
@@ -376,6 +383,7 @@ export class AiHostingAgentService {
         "agent.last_publish_time as last_publish_time",
         "agent.model_id as model_id",
         "agent.name as name",
+        "agent.prompt_config as prompt_config",
         "agent.update_time as update_time",
       ])
       .where("agent.uid", "=", scope.uid)
@@ -555,14 +563,48 @@ export class AiHostingAgentService {
   private mapAgentListItem(
     row: AgentRow,
     modelMap: Map<string, AiHostingAgentModelSummary>,
+    kbMap: Map<number, AiHostingAgentKbSummary>,
   ): AiHostingAgentListItem {
     return {
       id: String(row.id),
-      knowledgeBases: [],
+      kbList: parsePromptConfig(row.prompt_config)
+        .availableKbIds.map((kbId) => kbMap.get(kbId))
+        .filter((kb): kb is AiHostingAgentKbSummary => Boolean(kb)),
       model: modelMap.get(String(row.model_id)) ?? fallbackModelSummary(row.model_id),
       name: row.name,
       updatedAt: toOptionalTimestamp(row.update_time),
     };
+  }
+
+  private async getAgentKbMap(
+    scope: AgentTenantScope,
+    rows: AgentRow[],
+  ): Promise<Map<number, AiHostingAgentKbSummary>> {
+    const kbIds = uniquePositiveIds(
+      rows.flatMap((row) => parsePromptConfig(row.prompt_config).availableKbIds),
+    );
+
+    if (kbIds.length === 0) {
+      return new Map();
+    }
+
+    const kbRows = await this.db
+      .selectFrom("xy_wap_embed_agent_kb")
+      .select(["id", "name"])
+      .where("uid", "=", scope.uid)
+      .where("status", "=", dbActiveStatus)
+      .where("id", "in", kbIds)
+      .execute() as AgentKbRow[];
+
+    return new Map(
+      kbRows.map((kb) => [
+        kb.id,
+        {
+          id: String(kb.id),
+          name: kb.name,
+        },
+      ]),
+    );
   }
 }
 
@@ -776,4 +818,8 @@ function readNumberArray(value: unknown) {
   }
 
   return value.filter((item): item is number => Number.isSafeInteger(item) && item > 0);
+}
+
+function uniquePositiveIds(values: number[]) {
+  return Array.from(new Set(values.filter((value) => Number.isSafeInteger(value) && value > 0)));
 }

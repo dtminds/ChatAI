@@ -24,7 +24,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import {
   getNewMessageSoundOption,
@@ -72,6 +71,7 @@ export function NewMessageSoundControl() {
   const [unlockSignal, setUnlockSignal] = useState(0);
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [reEnableError, setReEnableError] = useState<string | null>(null);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
 
   useLayoutEffect(() => {
     isMountedRef.current = true;
@@ -130,6 +130,7 @@ export function NewMessageSoundControl() {
     setFormTrigger(preference.trigger);
     setSettingsError(null);
     setReEnableError(null);
+    setSummaryError(null);
     setSettingsDialogMode(mode);
     setActivePopover(null);
   }
@@ -165,14 +166,34 @@ export function NewMessageSoundControl() {
     setSettingsError(didPlay ? null : SOUND_PLAYBACK_ERROR);
   }
 
-  function handleSummarySwitchChange(checked: boolean) {
-    if (!checked) {
+  async function handleCapsuleClick() {
+    if (activePopover === "reEnable") {
+      return;
+    }
+
+    if (preference.enabled) {
       syncPreference({ ...preference, enabled: false });
+      setSummaryError(null);
       setActivePopover(null);
       return;
     }
 
-    openSettingsDialog("enable");
+    setSummaryError(null);
+    const requestId = ++requestIdRef.current;
+    const didUnlock = await unlockNewMessageSound(preference.soundId);
+    if (!isMountedRef.current || requestId !== requestIdRef.current) {
+      return;
+    }
+
+    if (!didUnlock) {
+      setSummaryError(SOUND_PLAYBACK_ERROR);
+      setActivePopover("summary");
+      return;
+    }
+
+    syncPreference({ ...preference, enabled: true });
+    setSummaryError(null);
+    setActivePopover("summary");
   }
 
   async function handleReEnable() {
@@ -194,6 +215,7 @@ export function NewMessageSoundControl() {
   function handleIgnoreReEnable() {
     syncPreference({ ...preference, enabled: false });
     setReEnableError(null);
+    setSummaryError(null);
     setActivePopover(null);
   }
 
@@ -239,13 +261,9 @@ export function NewMessageSoundControl() {
                 ? "text-foreground"
                 : "text-muted-foreground hover:text-foreground",
             )}
-            onClick={openSummaryPopover}
+            onClick={handleCapsuleClick}
             onMouseEnter={openSummaryPopover}
             onMouseLeave={scheduleCloseSummaryPopover}
-            onPointerDown={(event) => {
-              event.preventDefault();
-              openSummaryPopover();
-            }}
             type="button"
           >
             <span className="min-w-0 flex-1 truncate text-left">{statusLabel}</span>
@@ -338,14 +356,12 @@ export function NewMessageSoundControl() {
               <div className="space-y-3 text-sm">
                 <SummaryRow label="提示音" value={soundLabel} />
                 <SummaryRow label="提示时机" value={triggerLabel} />
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-muted-foreground">状态</span>
-                  <Switch
-                    aria-label="新消息提醒状态"
-                    checked={preference.enabled}
-                    onCheckedChange={handleSummarySwitchChange}
-                  />
-                </div>
+                <SummaryRow label="状态" value={preference.enabled ? "开启" : "关闭"} />
+                {summaryError ? (
+                  <p className="text-xs text-destructive" role="alert">
+                    {summaryError}
+                  </p>
+                ) : null}
               </div>
             </>
           )}

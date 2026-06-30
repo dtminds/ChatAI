@@ -35,6 +35,7 @@ describe("ChatHeader", () => {
     window.localStorage.clear();
     setSystemColorScheme(false);
     audioInstances = [];
+    AudioMock.reset();
     clearNewMessageSoundRuntimeState();
     vi.stubGlobal("Audio", AudioMock);
   });
@@ -192,28 +193,26 @@ describe("ChatHeader", () => {
     const capsule = screen.getByRole("button", { name: "新消息提醒已开启" });
     expect(capsule).toHaveTextContent("提示音开");
 
-    await user.click(capsule);
+    await user.hover(capsule);
 
     expect(getNewMessageSoundPreference().enabled).toBe(true);
     expect(screen.getByText("提示音")).toBeInTheDocument();
     expect(screen.getByText("提示音 1")).toBeInTheDocument();
     expect(screen.getByText("提示时机")).toBeInTheDocument();
     expect(screen.getByText("收到新消息时")).toBeInTheDocument();
-    expect(screen.getByRole("switch", { name: "新消息提醒状态" })).toBeChecked();
+    expect(screen.getByText("状态")).toBeInTheDocument();
+    expect(screen.getByText("开启")).toBeInTheDocument();
+    expect(screen.queryByRole("switch", { name: "新消息提醒状态" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "修改新消息提醒设置" })).toBeInTheDocument();
   });
 
-  it("uses the summary popover switch for quick enable and disable", async () => {
+  it("uses the capsule button for quick enable and disable", async () => {
     const user = userEvent.setup();
     render(<ChatHeader />);
 
     await user.click(screen.getByRole("button", { name: "新消息提醒未开启" }));
-    await user.click(screen.getByRole("switch", { name: "新消息提醒状态" }));
 
-    expect(screen.getByRole("dialog", { name: "新消息提醒" })).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "保存并开启" }));
-
+    expect(screen.queryByRole("dialog", { name: "新消息提醒" })).not.toBeInTheDocument();
     expect(getNewMessageSoundPreference()).toMatchObject({
       enabled: true,
       soundId: "msg_sound1",
@@ -225,7 +224,6 @@ describe("ChatHeader", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "新消息提醒已开启" }));
-    await user.click(screen.getByRole("switch", { name: "新消息提醒状态" }));
 
     expect(getNewMessageSoundPreference().enabled).toBe(false);
     expect(screen.getByRole("button", { name: "新消息提醒未开启" })).toHaveTextContent(
@@ -233,17 +231,15 @@ describe("ChatHeader", () => {
     );
   });
 
-  it("shows a playback error when saving settings cannot unlock sound", async () => {
+  it("shows a playback error when quick enable cannot unlock sound", async () => {
     const user = userEvent.setup();
     AudioMock.rejectNextPlay();
 
     render(<ChatHeader />);
 
     await user.click(screen.getByRole("button", { name: "新消息提醒未开启" }));
-    await user.click(screen.getByRole("switch", { name: "新消息提醒状态" }));
-    await user.click(screen.getByRole("button", { name: "保存并开启" }));
 
-    expect(screen.getByRole("dialog", { name: "新消息提醒" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "新消息提醒" })).not.toBeInTheDocument();
     expect(screen.getByRole("alert")).toHaveTextContent("无法播放提示音，请检查浏览器权限");
     expect(getNewMessageSoundPreference().enabled).toBe(false);
   });
@@ -262,7 +258,7 @@ describe("ChatHeader", () => {
 
     render(<ChatHeader />);
 
-    await user.click(screen.getByRole("button", { name: "新消息提醒已开启" }));
+    await user.hover(screen.getByRole("button", { name: "新消息提醒已开启" }));
     await user.click(screen.getByRole("button", { name: "修改新消息提醒设置" }));
 
     const dialog = screen.getByRole("dialog", { name: "新消息提醒" });
@@ -300,7 +296,7 @@ describe("ChatHeader", () => {
 
     render(<ChatHeader />);
 
-    await user.click(screen.getByRole("button", { name: "新消息提醒已开启" }));
+    await user.hover(screen.getByRole("button", { name: "新消息提醒已开启" }));
     await user.click(screen.getByRole("button", { name: "修改新消息提醒设置" }));
 
     await user.click(screen.getByRole("combobox", { name: "提示音" }));
@@ -481,5 +477,9 @@ class AudioMock {
 
   static rejectNextPlay() {
     AudioMock.pendingPlayRejections += 1;
+  }
+
+  static reset() {
+    AudioMock.pendingPlayRejections = 0;
   }
 }

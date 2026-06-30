@@ -163,6 +163,7 @@ import { JAVA_KNOWLEDGE_FAQ_SOURCE } from "./knowledge-faq-mappers.js";
 import { SMART_REPLY_MAKE_SHORTER_TEMPLATE_ID } from "./ai-helper-mappers.js";
 import { normalizeSmartReplyMsgIds } from "./smart-reply-mappers.js";
 import {
+  type ConversationLookup,
   decodeConversationListCursor,
   type MaterialCollectionScope,
   parseMySqlId,
@@ -185,6 +186,7 @@ const POLL_SEAT_UPDATE_LIMIT = 200;
 const PLAYABLE_VOICE_HEAD_TIMEOUT_MS = 8000;
 const MESSAGE_REVOKE_WINDOW_MS = 180 * 1000;
 const MESSAGE_REVOKE_CLOCK_SKEW_TOLERANCE_MS = 5 * 1000;
+const FULL_AUTO_SYSTEM_MESSAGE_DEDUPE_WINDOW_MS = 120 * 1000;
 const SMART_REPLY_MESSAGE_PAGE_CANDIDATE_LIMIT = 5;
 const SMART_REPLY_TRIGGER_RAW_MSGTYPES = new Set(["text", "image", "voice"]);
 const MATERIAL_COLLECTION_GROUP_TITLE_MAX_LENGTH = 10;
@@ -251,6 +253,30 @@ function collectSmartReplyMessagePageCandidateIds(messages: WorkbenchMessageDto[
   }
 
   return msgIds;
+}
+
+function assertSmartReplySingleConversation(conversation: ConversationLookup) {
+  if (conversation.chatType !== CHAT_TYPE.SINGLE) {
+    throw new BadRequestError(
+      "SMART_REPLY_SCOPE_INVALID",
+      "当前会话暂不支持智能回复",
+    );
+  }
+}
+
+function getSmartReplyThirdExternalId(conversation: ConversationLookup) {
+  assertSmartReplySingleConversation(conversation);
+
+  const thirdExternalId = conversation.thirdExternalUserId?.trim();
+
+  if (!thirdExternalId) {
+    throw new BadRequestError(
+      "SMART_REPLY_SCOPE_INVALID",
+      "当前会话缺少智能回复所需的外部标识",
+    );
+  }
+
+  return thirdExternalId;
 }
 
 export type WorkbenchService = {
@@ -1271,6 +1297,10 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     const conversation = await this.getOperableConversation(subUserId, conversationId);
 
+    if (request.enabled && conversation.chatType !== CHAT_TYPE.SINGLE) {
+      throw new BadRequestError("FULL_AUTO_GROUP_UNSUPPORTED", "群聊暂不支持 AI 托管");
+    }
+
     await this.javaClient.changeConversationFullAuto({
       change: request.enabled ? 1 : 2,
       conversationId: conversation.id,
@@ -1278,6 +1308,19 @@ export class MysqlWorkbenchService implements WorkbenchService {
       platform: conversation.platform,
       uid: conversation.uid,
     });
+
+    if (request.enabled) {
+      await this.insertFullAutoEnabledSystemMessage({
+        conversationId: conversation.id,
+        operatorId: subUserNumericId,
+        platform: conversation.platform,
+        subUserId,
+        thirdExternalUserId: conversation.thirdExternalUserId,
+        thirdGroupId: conversation.thirdGroupId,
+        thirdUserId: conversation.thirdUserId,
+        uid: conversation.uid,
+      });
+    }
 
     return {
       conversationAIHostingSwitch: request.enabled,
@@ -1437,6 +1480,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
     }
 
     await this.assertSeatAccess(subUserId, conversation.seatId);
+    assertSmartReplySingleConversation(conversation);
 
     const javaMsgIds = normalizeSmartReplyMsgIds(request.msgIds);
 
@@ -1444,19 +1488,10 @@ export class MysqlWorkbenchService implements WorkbenchService {
       return { suggestions: [] };
     }
 
-    const thirdExternalId = conversation.thirdGroupId
-      ? conversation.thirdGroupId
-      : conversation.thirdExternalUserId;
-
-    if (!thirdExternalId) {
-      throw new BadRequestError(
-        "SMART_REPLY_SCOPE_INVALID",
-        "当前会话缺少智能回复所需的外部标识",
-      );
-    }
+    const thirdExternalId = getSmartReplyThirdExternalId(conversation);
 
     const javaRequest = {
-      chatType: conversation.thirdGroupId ? CHAT_TYPE.GROUP : CHAT_TYPE.SINGLE,
+      chatType: CHAT_TYPE.SINGLE,
       msgIds: javaMsgIds,
       thirdExternalId,
       thirdUserId: conversation.thirdUserId,
@@ -1484,19 +1519,10 @@ export class MysqlWorkbenchService implements WorkbenchService {
       throw new BadRequestError("SMART_REPLY_MSG_INVALID", "消息序号无效");
     }
 
-    const thirdExternalId = conversation.thirdGroupId
-      ? conversation.thirdGroupId
-      : conversation.thirdExternalUserId;
-
-    if (!thirdExternalId) {
-      throw new BadRequestError(
-        "SMART_REPLY_SCOPE_INVALID",
-        "当前会话缺少智能回复所需的外部标识",
-      );
-    }
+    const thirdExternalId = getSmartReplyThirdExternalId(conversation);
 
     return this.javaClient.requestGeneralAnswer({
-      chatType: conversation.thirdGroupId ? CHAT_TYPE.GROUP : CHAT_TYPE.SINGLE,
+      chatType: CHAT_TYPE.SINGLE,
       msgId: request.msgId,
       questionImgs: request.questionImgs ?? [],
       thirdExternalId,
@@ -1523,21 +1549,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
       throw new BadRequestError("SMART_REPLY_MSG_INVALID", "消息序号无效");
     }
 
-    if (conversation.thirdGroupId) {
-      throw new BadRequestError(
-        "SMART_REPLY_SCOPE_INVALID",
-        "当前会话暂不支持智能回复",
-      );
-    }
-
-    const thirdExternalId = conversation.thirdExternalUserId?.trim();
-
-    if (!thirdExternalId) {
-      throw new BadRequestError(
-        "SMART_REPLY_SCOPE_INVALID",
-        "当前会话缺少智能回复所需的外部标识",
-      );
-    }
+    const thirdExternalId = getSmartReplyThirdExternalId(conversation);
 
     return this.javaClient.requestAutoGeneralAnswer({
       chatType: CHAT_TYPE.SINGLE,
@@ -1561,6 +1573,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
     }
 
     await this.assertSeatAccess(subUserId, conversation.seatId);
+    assertSmartReplySingleConversation(conversation);
 
     const content = request.content.trim();
 
@@ -1612,6 +1625,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
     }
 
     await this.assertSeatAccess(subUserId, conversation.seatId);
+    assertSmartReplySingleConversation(conversation);
 
     const realAnswer = request.realAnswer.trim();
     const recordId = request.recordId.trim();
@@ -1657,6 +1671,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
     }
 
     await this.assertSeatAccess(subUserId, conversation.seatId);
+    assertSmartReplySingleConversation(conversation);
 
     const ids = normalizeAttachmentIds(request.ids);
 
@@ -1689,6 +1704,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
     }
 
     await this.assertSeatAccess(subUserId, conversation.seatId);
+    assertSmartReplySingleConversation(conversation);
 
     return this.javaClient.checkTextModerationPlus({
       content,
@@ -1709,6 +1725,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
     }
 
     await this.assertSeatAccess(subUserId, conversation.seatId);
+    assertSmartReplySingleConversation(conversation);
 
     const response = await this.javaClient.listKnowledgePage({
       page: 1,
@@ -1743,6 +1760,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
     }
 
     await this.assertSeatAccess(subUserId, conversation.seatId);
+    assertSmartReplySingleConversation(conversation);
 
     return this.javaClient.getKnowledgeConfig({
       uid: conversation.uid,
@@ -1762,6 +1780,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
     }
 
     await this.assertSeatAccess(subUserId, conversation.seatId);
+    assertSmartReplySingleConversation(conversation);
 
     const knowledgeId = normalizeKnowledgeId(request.knowledgeId);
 
@@ -1813,6 +1832,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
     }
 
     await this.assertSeatAccess(subUserId, conversation.seatId);
+    assertSmartReplySingleConversation(conversation);
 
     const docId = normalizeKnowledgeId(request.docId);
 
@@ -3694,6 +3714,66 @@ export class MysqlWorkbenchService implements WorkbenchService {
     await this.assertSeatAccess(subUserId, conversation.seatId);
 
     return conversation;
+  }
+
+  private async insertFullAutoEnabledSystemMessage(input: {
+    conversationId: string;
+    operatorId: number;
+    platform: number;
+    subUserId: string;
+    thirdExternalUserId?: string;
+    thirdGroupId?: string;
+    thirdUserId: string;
+    uid: number;
+  }) {
+    try {
+      const latestMessage =
+        await this.repository.getLatestConversationMessageSummary({
+          platform: input.platform,
+          thirdExternalUserId: input.thirdExternalUserId,
+          thirdGroupId: input.thirdGroupId,
+          thirdUserId: input.thirdUserId,
+          uid: input.uid,
+        });
+
+      if (!latestMessage) {
+        return;
+      }
+
+      const latestMessageAgeMs = Date.now() - latestMessage.createdAt;
+
+      if (
+        latestMessage.msgtype === "system" &&
+        (!Number.isFinite(latestMessage.createdAt) ||
+          latestMessage.createdAt <= 0 ||
+          latestMessageAgeMs < FULL_AUTO_SYSTEM_MESSAGE_DEDUPE_WINDOW_MS)
+      ) {
+        return;
+      }
+
+      const subUser = await this.repository.getSubUser(input.subUserId);
+      const operatorName = subUser?.displayName?.trim() || "客服";
+
+      await this.javaClient.insertSystemMessage({
+        content: `${operatorName} 开启了 AI 托管`,
+        conversationId: input.conversationId,
+        operatorId: input.operatorId,
+        platform: input.platform,
+        uid: input.uid,
+      });
+    } catch (error) {
+      this.logger.warn(
+        {
+          conversationId: input.conversationId,
+          error,
+          operation: "insert-full-auto-system-message",
+          platform: input.platform,
+          subUserId: input.subUserId,
+          uid: input.uid,
+        },
+        "插入 AI 托管系统消息失败",
+      );
+    }
   }
 
   private async getMaterialActor(subUserId: string) {

@@ -295,6 +295,8 @@ export type WorkbenchSeatDto = {
 export type WorkbenchConversationSummaryDto = {
   /** 会话 AI 托管开关，对应 `xy_wap_embed_conversation.full_auto_switch` */
   conversationAIHostingSwitch?: boolean;
+  /** 客户绑定类型，对应 `xy_wap_embed_customer_bind_relation.bind_type`：1 普通客户，2 应用消息 */
+  customerBindType?: number;
   /** 关联联系人或群席位业务状态；0 表示该会话展示对象已失效 */
   bizStatus?: number;
   conversationId: string;

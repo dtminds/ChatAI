@@ -62,7 +62,10 @@ import { normalizeMediaAssetUrl } from "@/pages/chat/lib/media-asset-url";
 import { isValidMessageSeq } from "@/pages/chat/lib/message-seq";
 import { notifyPulledCustomerMessage } from "@/pages/chat/lib/new-message-title-alert";
 import { canUseWorkbenchConversationActions } from "@/pages/chat/lib/workbench-permissions";
-import { isConversationAIHostingEnabled } from "@/pages/chat/lib/conversation-ai-hosting";
+import {
+  isConversationAIFeatureSupported,
+  isConversationAIHostingEnabled,
+} from "@/pages/chat/lib/conversation-ai-hosting";
 import { seedCustomerProfiles } from "@/pages/chat/mock-data";
 import {
   CHAT_TYPE,
@@ -5605,6 +5608,7 @@ export function createWorkbenchStore() {
 
       if (
         !canUseConversationActions(state, account) ||
+        !isConversationAIFeatureSupported(conversation) ||
         account?.seatAIHostingEnabled !== true
       ) {
         return;

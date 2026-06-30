@@ -155,6 +155,13 @@ export type WorkbenchJavaClient = {
     platform: number;
     uid: number;
   }): Promise<void>;
+  insertSystemMessage(input: {
+    content: string;
+    conversationId: string;
+    operatorId: number;
+    platform: number;
+    uid: number;
+  }): Promise<string>;
   listUserHistoryAnswers(input: {
     chatType: number;
     msgIds: number[];
@@ -330,6 +337,22 @@ export function createWorkbenchJavaClient(
         logger,
         "change-conversation-full-auto",
       ).then(() => undefined);
+    },
+    insertSystemMessage(input) {
+      return postJavaEnvelope<number | string>(
+        baseUrl,
+        token,
+        "/third-internal/wap-embed/conversation/insert-system-message",
+        {
+          content: input.content,
+          conversationId: Number(input.conversationId),
+          operatorId: input.operatorId,
+          platform: input.platform,
+          uid: input.uid,
+        },
+        logger,
+        "insert-system-message",
+      ).then((messageId) => String(messageId));
     },
     listUserHistoryAnswers(input) {
       return postJavaEnvelope<unknown>(

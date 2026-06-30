@@ -535,7 +535,18 @@ describe("smart-reply-adapter", () => {
       role: "customer",
     } as ChatMessage;
 
-    expect(isSmartReplySupportedConversation({ mode: "single" } as Conversation)).toBe(true);
+    expect(
+      isSmartReplySupportedConversation({
+        customerBindType: 1,
+        mode: "single",
+      } as Conversation),
+    ).toBe(true);
+    expect(
+      isSmartReplySupportedConversation({
+        customerBindType: 2,
+        mode: "single",
+      } as Conversation),
+    ).toBe(false);
     expect(isSmartReplySupportedConversation({ mode: "group" } as Conversation)).toBe(false);
     expect(
       isSmartReplyEligibleMessage({

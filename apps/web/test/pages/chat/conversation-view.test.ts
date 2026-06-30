@@ -15,6 +15,7 @@ function createConversation(
     accountId: "account-1",
     conversationAIHostingSwitch: false,
     customerAvatarUrl: "",
+    customerBindType: mode === "single" ? 1 : undefined,
     customerId: `customer-${id}`,
     customerName: id,
     id,
@@ -64,6 +65,17 @@ describe("conversation view helpers", () => {
         mode: "group",
         unread: 1,
       }),
+      createConversation({
+        conversationAIHostingSwitch: true,
+        customerBindType: 2,
+        id: "single-app-message",
+        mode: "single",
+      }),
+      createConversation({
+        conversationAIHostingSwitch: true,
+        id: "group-ai-switch",
+        mode: "group",
+      }),
     ];
 
     expect(
@@ -75,12 +87,12 @@ describe("conversation view helpers", () => {
       filterConversationsByView(conversations, "single", "human", true).map(
         (conversation) => conversation.id,
       ),
-    ).toEqual(["single-human", "single-unknown", "single-unread"]);
+    ).toEqual(["single-human", "single-unknown", "single-unread", "single-app-message"]);
     expect(
       filterConversationsByView(conversations, "group", "ai", true).map(
         (conversation) => conversation.id,
       ),
-    ).toEqual(["group-unread"]);
+    ).toEqual(["group-unread", "group-ai-switch"]);
     expect(
       filterConversationsByView(conversations, "group", "unread", true).map(
         (conversation) => conversation.id,

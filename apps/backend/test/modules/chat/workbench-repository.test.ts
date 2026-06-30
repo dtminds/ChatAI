@@ -2173,6 +2173,58 @@ describe("WorkbenchRepository", () => {
     await expect(repository.canAccessSeat("1", "not-a-seat")).resolves.toBe(false);
   });
 
+  it("loads the latest single conversation message summary by conversation scope", async () => {
+    const createdAt = new Date("2026-06-29T10:00:00.000Z");
+    const queries: Array<{ query: ReturnType<typeof createQueryBuilder>; table: string }> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_msg_audit_info as message") {
+            const query = createQueryBuilder({ create_time: createdAt, msgtype: "text" });
+            queries.push({ query, table });
+            return query;
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    await expect(
+      repository.getLatestConversationMessageSummary({
+        platform: 5,
+        thirdExternalUserId: "external-001",
+        thirdUserId: "seat-user-001",
+        uid: 9001,
+      }),
+    ).resolves.toEqual({
+      createdAt: createdAt.getTime(),
+      msgtype: "text",
+    });
+
+    expect(queries).toHaveLength(1);
+    expect(queries[0]?.query.wheres).toEqual([
+      ["message.uid", "=", 9001],
+      ["message.platform", "=", 5],
+      ["message.third_user_id", "=", "seat-user-001"],
+      ["message.third_external_id", "=", "external-001"],
+    ]);
+    expect(queries[0]?.query.orderBys).toEqual([["message.id", "desc"]]);
+    expect(queries[0]?.query.limits).toEqual([1]);
+  });
+
+  it("does not query latest conversation message without a conversation target", async () => {
+    const repository = new WorkbenchRepository(createFailingDb() as never);
+
+    await expect(
+      repository.getLatestConversationMessageSummary({
+        platform: 5,
+        thirdUserId: "seat-user-001",
+        uid: 9001,
+      }),
+    ).resolves.toBeUndefined();
+  });
+
   it("loads seats by joining relation and seat before conversation aggregation", async () => {
     const queries: Array<{ query: ReturnType<typeof createQueryBuilder>; table: string }> = [];
     const repository = new WorkbenchRepository(
@@ -4301,6 +4353,74 @@ describe("WorkbenchRepository", () => {
     });
   });
 
+  it("keeps inactive bind remarks for conversation display names", async () => {
+    let bindQuery: ReturnType<typeof createQueryBuilder> | undefined;
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_user_seat") {
+            return createQueryBuilder({
+              id: 12,
+              platform: 5,
+              third_userid: "seat-user-001",
+              uid: 9001,
+            });
+          }
+
+          if (table === "xy_wap_embed_conversation as conversation") {
+            return createQueryBuilder([
+              createConversationRow({
+                id: 88,
+                third_external_userid: "external-001",
+              }),
+            ]);
+          }
+
+          if (table === "xy_wap_embed_contact") {
+            return createQueryBuilder({
+              avatar: "https://example.com/avatar.png",
+              biz_status: 1,
+              name: "客户名",
+              real_name: "客户实名",
+              third_external_userid: "external-001",
+            });
+          }
+
+          if (table === "xy_wap_embed_customer_bind_relation") {
+            bindQuery = createQueryBuilder({
+              bind_type: 1,
+              biz_status: 0,
+              remark: "失效绑定备注",
+              third_external_userid: "external-001",
+            });
+
+            return bindQuery;
+          }
+
+          if (
+            table === "xy_wap_embed_msg_audit_info" ||
+            table === "xy_wap_embed_group_seat"
+          ) {
+            return createQueryBuilder([]);
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    const page = await repository.listConversations("12", {
+      limit: 30,
+      mode: "single",
+    });
+
+    expect(bindQuery?.wheres).not.toContainEqual(["biz_status", "=", 1]);
+    expect(page.items[0]).toMatchObject({
+      customerBindType: 1,
+      customerName: "失效绑定备注",
+    });
+  });
+
   it("falls back across empty conversation display names", async () => {
     const repository = new WorkbenchRepository(
       {
@@ -5191,6 +5311,7 @@ describe("WorkbenchRepository", () => {
 
           if (table === "xy_wap_embed_conversation as conversation") {
             const query = createQueryBuilder({
+              chat_type: 1,
               id: 88,
               platform: 5,
               seat_id: 12,
@@ -5210,6 +5331,7 @@ describe("WorkbenchRepository", () => {
     );
 
     await expect(repository.getConversationLookup("88")).resolves.toEqual({
+      chatType: 1,
       id: "88",
       platform: 5,
       seatHostSubUserId: "101",

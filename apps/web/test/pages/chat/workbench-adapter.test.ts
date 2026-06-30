@@ -57,6 +57,17 @@ describe("workbench adapter", () => {
     });
   });
 
+  it("adapts conversation customer bind type for AI capability checks", () => {
+    expect(
+      adaptConversation({
+        ...conversationDto,
+        customerBindType: 2,
+      }),
+    ).toMatchObject({
+      customerBindType: 2,
+    });
+  });
+
   it("adapts AI hosting flags from workbench summary DTOs", () => {
     expect(
       adaptAccount({

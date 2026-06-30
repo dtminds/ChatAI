@@ -1922,7 +1922,10 @@ export function createMockWorkbenchService(): WorkbenchService {
         return {
           bizStatus: existingConversation.bizStatus ?? 1,
           conversationId: existingConversation.conversationId,
+          conversationAIHostingSwitch:
+            existingConversation.conversationAIHostingSwitch ?? false,
           customerAvatar: existingConversation.customerAvatar,
+          customerBindType: existingConversation.customerBindType,
           customerId: existingConversation.customerId,
           customerName: existingConversation.customerName,
           lastMessage: existingConversation.lastMessage,
@@ -1934,8 +1937,6 @@ export function createMockWorkbenchService(): WorkbenchService {
           thirdGroupId: existingConversation.thirdGroupId,
           thirdUserId: existingConversation.thirdUserId,
           unreadCount: existingConversation.unreadCount,
-          conversationAIHostingSwitch:
-            existingConversation.conversationAIHostingSwitch ?? false,
         };
       }
 
@@ -1945,7 +1946,9 @@ export function createMockWorkbenchService(): WorkbenchService {
       return {
         bizStatus: 1,
         conversationId,
+        conversationAIHostingSwitch: false,
         customerAvatar: "",
+        customerBindType: payload.chatType === 2 ? undefined : 1,
         customerId: payload.thirdExternalUserId ?? payload.thirdGroupId ?? conversationId,
         customerName: payload.chatType === 2 ? "未知群聊" : "未知客户",
         lastMessage: "",
@@ -1957,7 +1960,6 @@ export function createMockWorkbenchService(): WorkbenchService {
         thirdGroupId: payload.thirdGroupId,
         thirdUserId: `third-user-${payload.seatId}`,
         unreadCount: 0,
-        conversationAIHostingSwitch: false,
       };
     },
   };
@@ -2705,6 +2707,10 @@ function buildInitialState(): MockState {
           bizStatus: conversation.bizStatus ?? 1,
           conversationAIHostingSwitch: conversation.conversationAIHostingSwitch,
           customerAvatar: conversation.customerAvatarUrl,
+          customerBindType:
+            conversation.mode === "single"
+              ? conversation.customerBindType ?? 1
+              : undefined,
           customerId: conversation.customerId,
           customerName: conversation.customerName,
           lastMessage: conversation.preview,

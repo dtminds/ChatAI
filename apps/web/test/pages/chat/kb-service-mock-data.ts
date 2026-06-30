@@ -144,6 +144,7 @@ const INITIAL_MOCK_KB_CHUNKS: KbDocChunkViewItem[] = [
     docId: "knowledge-1",
     type: "document",
     source: "manual",
+    volcChunkId: "kb_doc_volc-chunk-doc-1",
     title: "第一章 产品介绍",
     content:
       "新建限时任务，任务有效期增加 勾选项【仅任务有效期内核销计入】\n1）如果勾选了，统计任务是否完成只会统计任务有效期内核销的物码数据\n2）如果未勾选，统计任务是否完成会统计历史累计核销物码的数据",
@@ -156,6 +157,7 @@ const INITIAL_MOCK_KB_CHUNKS: KbDocChunkViewItem[] = [
     docId: "knowledge-1",
     type: "document",
     source: "manual",
+    volcChunkId: "kb_doc_volc-chunk-warranty-2",
     title: "第二章 售后政策",
     content: "全国联保一年，支持官方售后网点检测与维修",
     createdAt: "2026-06-18 23:22:22",
@@ -167,6 +169,7 @@ const INITIAL_MOCK_KB_CHUNKS: KbDocChunkViewItem[] = [
     docId: "knowledge-1",
     type: "document",
     source: "system",
+    volcChunkId: "kb_doc_volc-chunk-doc-image-1",
     title: "产品外观图",
     content: "对该图片的解析文字，展示产品外观与配色信息",
     imageUrls: ["https://b5.bokr.com.cn/dist/word.png"],
@@ -289,6 +292,7 @@ function toKbChunkListItem(chunk: KbDocChunkViewItem): KbChunkListItem {
     source: chunk.source,
     title: chunk.question ?? chunk.title,
     updatedAt: toIsoTimestamp(chunk.updatedAt),
+    volcChunkId: chunk.volcChunkId,
   };
 }
 

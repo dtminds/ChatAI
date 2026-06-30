@@ -406,7 +406,9 @@ describe("KbReadService", () => {
     });
     const { agentKbJavaClient, service } = createService(listKbChunks);
 
-    const response = await service.listKbDocChunks(tenant, "1001");
+    const response = await service.listKbDocChunks(tenant, "1001", {
+      docType: "document",
+    });
 
     expect(agentKbJavaClient.listKbChunks).toHaveBeenCalledWith({
       docId: 1001,
@@ -423,7 +425,7 @@ describe("KbReadService", () => {
     });
   });
 
-  it("forwards document chunk query as a content filter to Java", async () => {
+  it("forwards chunk content filter to Java", async () => {
     const listKbChunks = vi.fn().mockResolvedValue({
       count: 1,
       list: [javaChunkPageItems[1]],
@@ -433,9 +435,10 @@ describe("KbReadService", () => {
     const { service } = createService(listKbChunks);
 
     const response = await service.listKbDocChunks(tenant, "1001", {
+      content: "系统",
+      docType: "document",
       page: 1,
       pageSize: 10,
-      query: "系统",
     });
 
     expect(listKbChunks).toHaveBeenCalledWith({
@@ -453,19 +456,20 @@ describe("KbReadService", () => {
     });
   });
 
-  it("forwards FAQ chunk query as a title filter to Java", async () => {
+  it("forwards chunk title filter to Java", async () => {
     const listKbChunks = vi.fn().mockResolvedValue({
       count: 1,
       list: [javaChunkPageItems[1]],
       page: 1,
       pageSize: 10,
     });
-    const { service } = createService(listKbChunks, { includeFaqDoc: true });
+    const { service } = createService(listKbChunks);
 
     const response = await service.listKbDocChunks(tenant, "1004", {
+      docType: "qa",
       page: 1,
       pageSize: 10,
-      query: "系统",
+      title: "系统",
     });
 
     expect(listKbChunks).toHaveBeenCalledWith({
@@ -476,6 +480,30 @@ describe("KbReadService", () => {
       uid: 9001,
     });
     expect(response.chunks).toHaveLength(1);
+  });
+
+  it("does not query the doc table when listing chunks", async () => {
+    const queriedTables: string[] = [];
+    const listKbChunks = vi.fn().mockResolvedValue({
+      count: 0,
+      list: [],
+      page: 1,
+      pageSize: 10,
+    });
+    const { service } = createService(listKbChunks, {
+      beforeExecute(event) {
+        queriedTables.push(event.table);
+      },
+    });
+
+    await service.listKbDocChunks(tenant, "1001", {
+      content: "系统",
+      docType: "document",
+      page: 1,
+      pageSize: 10,
+    });
+
+    expect(queriedTables).toEqual([]);
   });
 
   it("selects only kb doc detail fields for kb doc detail rows", async () => {

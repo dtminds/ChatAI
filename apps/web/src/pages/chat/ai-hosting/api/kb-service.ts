@@ -35,9 +35,11 @@ export type ListKbDocsParams = {
 };
 
 export type ListKbDocChunksParams = {
+  content?: string;
+  docType: KbDocType;
   page?: number;
   pageSize?: number;
-  query?: string;
+  title?: string;
 };
 
 export async function listKbs(params: ListKbsParams = {}) {
@@ -81,7 +83,7 @@ export async function getKbDoc(docId: string) {
   return response.data;
 }
 
-export async function listKbDocChunks(docId: string, params: ListKbDocChunksParams = {}) {
+export async function listKbDocChunks(docId: string, params: ListKbDocChunksParams) {
   const response = await http.get<ApiSuccessEnvelope<KbChunkListResponse>>(
     `/server/ai-hosting/kb-docs/${docId}/chunks${buildQueryString(params)}`,
   );
@@ -121,8 +123,11 @@ export function toKbDocChunkViewItem(
   options?: { docUrl?: string },
 ): KbDocChunkViewItem {
   const imageUrls = resolveKbDocChunkImageUrls(item.imageUrls, docType, options?.docUrl);
+  const displayParts = resolveVolcChunkDisplayParts(item.volcChunkId);
   const chunk: KbDocChunkViewItem = {
     createdAt: formatDisplayTime(item.createdAt),
+    displayChunkId: displayParts?.displayChunkId,
+    displayChunkIndex: displayParts?.displayChunkIndex,
     docId: item.docId,
     id: item.chunkId,
     imageUrls,
@@ -130,6 +135,7 @@ export function toKbDocChunkViewItem(
     source: item.source,
     type: docType,
     updatedAt: formatDisplayTime(item.updatedAt),
+    volcChunkId: item.volcChunkId,
   };
 
   if (docType === "qa") {
@@ -141,6 +147,25 @@ export function toKbDocChunkViewItem(
   chunk.title = item.title ?? "";
   chunk.content = item.content;
   return chunk;
+}
+
+function resolveVolcChunkDisplayParts(volcChunkId?: string) {
+  const tail = volcChunkId?.split("_").pop()?.trim();
+
+  if (!tail) {
+    return undefined;
+  }
+
+  const separatorIndex = tail.lastIndexOf("-");
+
+  if (separatorIndex <= 0 || separatorIndex === tail.length - 1) {
+    return undefined;
+  }
+
+  return {
+    displayChunkId: tail.slice(0, separatorIndex),
+    displayChunkIndex: tail.slice(separatorIndex + 1),
+  };
 }
 
 export function resolveKbDocImageUrl(docUrl: string) {

@@ -10,7 +10,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { KB_SEARCH_QUERY_MAX_LENGTH } from "@chatai/contracts";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -581,6 +581,8 @@ function KnowledgeRecordsTable({
   records: KbDocViewItem[];
   retryingDocId: string | null;
 }) {
+  const navigate = useNavigate();
+
   return (
     <Table aria-label="知识列表" className="min-w-[1120px] table-fixed">
       <TableHeader>
@@ -610,10 +612,22 @@ function KnowledgeRecordsTable({
                   />
                   <div className="min-w-0 flex-1">
                     <TableOverflowTooltip
-                      className="font-medium text-foreground"
+                      className="font-medium"
                       tooltip={record.name}
                     >
-                      {record.name}
+                      {record.status === "completed" ? (
+                        <button
+                          className="block max-w-full cursor-pointer truncate border-0 bg-transparent p-0 text-left font-medium text-foreground"
+                          onClick={() => navigate(`/chat/ai-hosting/kb/${kbId}/docs/${record.id}`)}
+                          type="button"
+                        >
+                          {record.name}
+                        </button>
+                      ) : (
+                        <span className="block truncate text-foreground">
+                          {record.name}
+                        </span>
+                      )}
                     </TableOverflowTooltip>
                   </div>
                 </div>

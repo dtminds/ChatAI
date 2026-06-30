@@ -230,7 +230,10 @@ function renderWithRoute(path: string, element: ReactElement, routePath = "*") {
     { initialEntries: [path] },
   );
 
-  return render(<RouterProvider router={router} />);
+  return {
+    ...render(<RouterProvider router={router} />),
+    router,
+  };
 }
 
 function createDropData(file: File) {
@@ -345,7 +348,7 @@ describe("AI hosting pages", () => {
       createMockKbDocDetail(docId),
     );
     vi.mocked(kbService.listKbDocChunks).mockImplementation(async (docId, params) =>
-      createMockKbDocChunksResponse(docId, params?.query),
+      createMockKbDocChunksResponse(docId, params?.title ?? params?.content),
     );
     retryKbDocMock.mockImplementation(async (docId: string) => {
       updateMockKbDocStatus(docId, "queued");
@@ -1438,10 +1441,10 @@ describe("AI hosting pages", () => {
   });
 
   it("renders the knowledge base management page", async () => {
-    renderWithRoute(
+    const { router } = renderWithRoute(
       "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
       <KbDetailPage />,
-      "/chat/ai-hosting/kb/:kbId",
+      "/chat/ai-hosting/kb/:kbId/*",
     );
 
     expect(await screen.findByRole("heading", { level: 1, name: "华为产品知识" })).toBeInTheDocument();
@@ -1470,7 +1473,11 @@ describe("AI hosting pages", () => {
     expect(screen.getAllByTestId("knowledge-add-option-icon")).toHaveLength(2);
     await userEvent.keyboard("{Escape}");
     expect(screen.getByRole("table", { name: "知识列表" })).toBeInTheDocument();
-    expect(screen.getByText("产品说明大全")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "产品说明大全" }));
+    expect(router.state.location.pathname).toBe(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-1",
+    );
+    expect(screen.queryByRole("button", { name: "文本知识集合" })).not.toBeInTheDocument();
     expect(screen.getByRole("img", { name: "Word 文件" })).toHaveAttribute(
       "src",
       "https://b5.bokr.com.cn/dist/word.png",
@@ -2568,6 +2575,12 @@ describe("AI hosting pages", () => {
       expect(screen.queryByText("如何恢复出厂设置")).not.toBeInTheDocument();
       expect(screen.queryByText("保修期多久")).not.toBeInTheDocument();
     });
+    expect(kbService.listKbDocChunks).toHaveBeenLastCalledWith("knowledge-3", {
+      docType: "qa",
+      page: 1,
+      pageSize: 10,
+      title: "物流",
+    });
   });
 
   it("does not filter QA chunks by answer content", async () => {
@@ -2713,20 +2726,31 @@ describe("AI hosting pages", () => {
       "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
     );
     expect(screen.queryByText("文档 · 华为产品知识")).not.toBeInTheDocument();
-    expect(screen.getByText("切片ID")).toBeInTheDocument();
-    expect(screen.getByText("切片内容")).toBeInTheDocument();
+    expect(screen.queryByRole("table", { name: "切片列表" })).not.toBeInTheDocument();
+    const chunkList = screen.getByRole("list", { name: "切片列表" });
     expect(screen.getByRole("textbox", { name: "搜索切片内容" })).toBeInTheDocument();
-    expect(screen.getByText("更新时间")).toBeInTheDocument();
     expect(screen.queryByText("切片标题")).not.toBeInTheDocument();
-    expect(screen.getByText("chunk-doc-1")).toBeInTheDocument();
+    expect(within(chunkList).queryByText("ID chunk-doc-1")).not.toBeInTheDocument();
+    const firstChunkCard = within(chunkList).getByText("ID volc-chunk-doc").closest("li");
+    expect(firstChunkCard).not.toBeNull();
+    expect(within(firstChunkCard as HTMLElement).getByText("#1")).toBeInTheDocument();
+    expect(within(firstChunkCard as HTMLElement).getByText("第一章 产品介绍")).toBeInTheDocument();
     const multilineChunkText =
       "新建限时任务，任务有效期增加 勾选项【仅任务有效期内核销计入】\n1）如果勾选了，统计任务是否完成只会统计任务有效期内核销的物码数据\n2）如果未勾选，统计任务是否完成会统计历史累计核销物码的数据";
     const multilineChunkContent = screen.getByText((_, element) =>
       element?.getAttribute("data-slot") === "chunk-content-preview" &&
       element.textContent === multilineChunkText,
     );
-    expect(multilineChunkContent).toHaveClass("line-clamp-2", "whitespace-pre-line");
-    await user.click(screen.getByRole("button", { name: multilineChunkText }));
+    expect(multilineChunkContent).toHaveClass("line-clamp-3", "max-h-[72px]", "whitespace-pre-line");
+    expect(within(firstChunkCard as HTMLElement).getByText("字符")).toBeInTheDocument();
+    expect(within(firstChunkCard as HTMLElement).getByText(String(("第一章 产品介绍" + multilineChunkText).length))).toBeInTheDocument();
+    expect(within(firstChunkCard as HTMLElement).getByText("更新于 2026-06-20 23:22:22")).toBeInTheDocument();
+    expect(
+      within(chunkList).getByRole("img", { name: "对该图片的解析文字，展示产品外观与配色信息" }),
+    ).toHaveAttribute("src", "https://b5.bokr.com.cn/dist/word.png");
+    expect(screen.getByRole("button", { name: "编辑 chunk-doc-1" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "删除 chunk-doc-1" })).toBeInTheDocument();
+    await user.click(multilineChunkContent);
     let dialog = screen.getByRole("dialog", { name: "编辑切片" });
     expect(within(dialog).getByText(chunkVectorizationTip)).toBeInTheDocument();
     const titleField = within(dialog).getByLabelText(/切片标题/);
@@ -2740,7 +2764,7 @@ describe("AI hosting pages", () => {
       title: "",
     });
     expect(screen.queryByRole("dialog", { name: "编辑切片" })).not.toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: "编辑" })).toHaveLength(3);
+    expect(screen.getAllByRole("button", { name: /^编辑 chunk-doc-/ })).toHaveLength(3);
 
     const addChunkButton = screen.getByRole("button", { name: "添加切片" });
     await user.click(addChunkButton);
@@ -2767,20 +2791,28 @@ describe("AI hosting pages", () => {
       "/chat/ai-hosting/kb/:kbId/docs/:docId",
     );
 
-    await screen.findByText("chunk-doc-1");
+    await screen.findByText("ID volc-chunk-doc");
     await user.type(screen.getByRole("textbox", { name: "搜索切片内容" }), "核销物码");
 
     await waitFor(() => {
-      expect(screen.getByText("chunk-doc-1")).toBeInTheDocument();
-      expect(screen.queryByText("chunk-doc-2")).not.toBeInTheDocument();
+      expect(screen.getByText("ID volc-chunk-doc")).toBeInTheDocument();
+      expect(screen.getByText("#1")).toBeInTheDocument();
+      expect(screen.queryByText("ID volc-chunk-warranty")).not.toBeInTheDocument();
+      expect(screen.queryByText("#2")).not.toBeInTheDocument();
+    });
+    expect(kbService.listKbDocChunks).toHaveBeenLastCalledWith("knowledge-1", {
+      content: "核销物码",
+      docType: "document",
+      page: 1,
+      pageSize: 10,
     });
 
     await user.clear(screen.getByRole("textbox", { name: "搜索切片内容" }));
     await user.type(screen.getByRole("textbox", { name: "搜索切片内容" }), "第二章");
 
     await waitFor(() => {
-      expect(screen.queryByText("chunk-doc-1")).not.toBeInTheDocument();
-      expect(screen.queryByText("chunk-doc-2")).not.toBeInTheDocument();
+      expect(screen.queryByText("ID volc-chunk-doc")).not.toBeInTheDocument();
+      expect(screen.queryByText("ID volc-chunk-warranty")).not.toBeInTheDocument();
       expect(screen.getByText("暂无切片数据")).toBeInTheDocument();
     });
   });
@@ -2821,16 +2853,17 @@ describe("AI hosting pages", () => {
       "/chat/ai-hosting/kb/:kbId/docs/:docId",
     );
 
-    await screen.findByText("chunk-doc-1");
-    await user.click(screen.getAllByRole("button", { name: "删除" })[0]);
+    await screen.findByText("ID volc-chunk-doc");
+    await user.click(screen.getByRole("button", { name: "删除 chunk-doc-1" }));
     const dialog = screen.getByRole("alertdialog", { name: "确定删除该切片吗" });
     const confirmDeleteButton = within(dialog).getByRole("button", { name: "删除" });
     expect(dialog).toBeInTheDocument();
     expect(confirmDeleteButton).toHaveClass("bg-destructive");
     await user.click(confirmDeleteButton);
 
-    expect(screen.queryByText("chunk-doc-1")).not.toBeInTheDocument();
-    expect(screen.getByText("chunk-doc-2")).toBeInTheDocument();
+    expect(screen.queryByText("ID volc-chunk-doc")).not.toBeInTheDocument();
+    expect(screen.getByText("ID volc-chunk-warranty")).toBeInTheDocument();
+    expect(screen.getByText("#2")).toBeInTheDocument();
     expect(screen.getByText("全国联保一年，支持官方售后网点检测与维修")).toBeInTheDocument();
   });
 });

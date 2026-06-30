@@ -179,7 +179,7 @@ describe("KB read routes", () => {
     const chunks = await app.inject({
       headers: { authorization: context.authorization },
       method: "GET",
-      url: "/api/server/ai-hosting/kb-docs/1001/chunks",
+      url: "/api/server/ai-hosting/kb-docs/1001/chunks?docType=document",
     });
 
     expect(docs.statusCode).toBe(200);
@@ -237,7 +237,7 @@ describe("KB read routes", () => {
     fetchMock.mockRestore();
   });
 
-  it("forwards document chunk query as content to Java", async () => {
+  it("forwards document chunk content filter to Java", async () => {
     const context = await createAuthenticatedKbApp();
     app = context.app;
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
@@ -260,7 +260,7 @@ describe("KB read routes", () => {
     const response = await app.inject({
       headers: { authorization: context.authorization },
       method: "GET",
-      url: "/api/server/ai-hosting/kb-docs/1001/chunks?query=%E7%B3%BB%E7%BB%9F",
+      url: "/api/server/ai-hosting/kb-docs/1001/chunks?docType=document&content=%E7%B3%BB%E7%BB%9F",
     });
 
     expect(response.statusCode).toBe(200);
@@ -274,8 +274,8 @@ describe("KB read routes", () => {
     fetchMock.mockRestore();
   });
 
-  it("forwards FAQ chunk query as title to Java", async () => {
-    const context = await createAuthenticatedKbApp({ includeFaqDoc: true });
+  it("forwards FAQ chunk title filter to Java", async () => {
+    const context = await createAuthenticatedKbApp();
     app = context.app;
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
@@ -297,7 +297,7 @@ describe("KB read routes", () => {
     const response = await app.inject({
       headers: { authorization: context.authorization },
       method: "GET",
-      url: "/api/server/ai-hosting/kb-docs/1004/chunks?query=%E7%89%A9%E6%B5%81",
+      url: "/api/server/ai-hosting/kb-docs/1004/chunks?docType=qa&title=%E7%89%A9%E6%B5%81",
     });
 
     expect(response.statusCode).toBe(200);

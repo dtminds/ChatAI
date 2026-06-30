@@ -14,7 +14,6 @@ import type { AgentKbJavaClient } from "./agent-kb-java-client.js";
 import { createAgentKbJavaClient } from "./agent-kb-java-client.js";
 import { mapJavaChunkPageItem } from "./kb-chunk-java-mappers.js";
 import {
-  mapDocType,
   mapDocTypeToDb,
   mapKbDocDetail,
   mapKbDocListItem,
@@ -195,7 +194,13 @@ export class KbReadService {
   async listKbDocChunks(
     tenant: AgentKbTenant,
     docId: string,
-    options: { page?: number; pageSize?: number; query?: string } = {},
+    options: {
+      content?: string;
+      docType: KbDocType;
+      page?: number;
+      pageSize?: number;
+      title?: string;
+    },
   ): Promise<KbChunkListResponse> {
     const uid = tenant.uid;
     const docNumericId = parsePositiveInteger(docId);
@@ -204,32 +209,20 @@ export class KbReadService {
       throw new NotFoundError("KB_DOC_NOT_FOUND", "知识不存在");
     }
 
-    const doc = await this.db
-      .selectFrom("xy_wap_embed_agent_kb_doc")
-      .select(["doc_type", "id"])
-      .where("id", "=", docNumericId)
-      .where("uid", "=", uid)
-      .where("status", "=", dbActiveStatus)
-      .executeTakeFirst();
-
-    if (!doc) {
-      throw new NotFoundError("KB_DOC_NOT_FOUND", "知识不存在");
-    }
-
-    const docType = mapDocType(doc.doc_type);
     const pagination = normalizePagination(options);
-    const normalizedQuery = normalizeSearchQuery(options.query);
+    const normalizedContent = normalizeSearchQuery(options.content);
+    const normalizedTitle = normalizeSearchQuery(options.title);
 
     const response = await this.agentKbJavaClient.listKbChunks({
-      content: docType === "qa" ? undefined : normalizedQuery,
+      content: normalizedContent,
       docId: docNumericId,
       page: pagination.page,
       pageSize: pagination.pageSize,
-      title: docType === "qa" ? normalizedQuery : undefined,
+      title: normalizedTitle,
       uid,
     });
 
-    const chunks = response.list.map((item) => mapJavaChunkPageItem(item, docType));
+    const chunks = response.list.map((item) => mapJavaChunkPageItem(item, options.docType));
 
     return {
       chunks,

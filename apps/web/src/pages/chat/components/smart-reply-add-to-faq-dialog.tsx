@@ -26,18 +26,13 @@ import {
   type SmartReplyRecommendedAttachment,
 } from "@/pages/chat/components/smart-reply-recommended-attachments";
 
-const FAQ_DIALOG_LIST_PAGE_SIZE = 9999;
+const FAQ_DIALOG_KB_LIST_PAGE_SIZE = 200;
+const FAQ_DIALOG_DOC_LIST_PAGE_SIZE = 100;
 
 export type SmartReplyFaqOption = {
+  disabled?: boolean;
   id: string;
   name: string;
-};
-
-export type SmartReplyAddToFaqPayload = {
-  kbId: string;
-  docId: string;
-  question: string;
-  answer: string;
 };
 
 export type SmartReplyAddToFaqDialogProps = {
@@ -99,7 +94,7 @@ export function SmartReplyAddToFaqDialog({
     let cancelled = false;
     setIsKnowledgeSetsLoading(true);
 
-    void listKbs({ page: 1, pageSize: FAQ_DIALOG_LIST_PAGE_SIZE })
+    void listKbs({ page: 1, pageSize: FAQ_DIALOG_KB_LIST_PAGE_SIZE })
       .then((response) => {
         if (cancelled) {
           return;
@@ -143,7 +138,7 @@ export function SmartReplyAddToFaqDialog({
     void listKbDocs(kbId, {
       docType: "qa",
       page: 1,
-      pageSize: FAQ_DIALOG_LIST_PAGE_SIZE,
+      pageSize: FAQ_DIALOG_DOC_LIST_PAGE_SIZE,
     })
       .then((response) => {
         if (cancelled) {
@@ -151,11 +146,12 @@ export function SmartReplyAddToFaqDialog({
         }
 
         const options = response.docs.map((item) => ({
+          disabled: item.status !== "completed",
           id: item.docId,
           name: item.name,
         }));
         setFaqOptions(options);
-        setDocId(options[0]?.id ?? "");
+        setDocId(options.find((option) => !option.disabled)?.id ?? "");
       })
       .catch(() => {
         if (!cancelled) {
@@ -363,7 +359,7 @@ function FaqSelectField({
         </SelectTrigger>
         <SelectContent>
           {options.map((option) => (
-            <SelectItem key={option.id} value={option.id}>
+            <SelectItem disabled={option.disabled} key={option.id} value={option.id}>
               {option.name}
             </SelectItem>
           ))}

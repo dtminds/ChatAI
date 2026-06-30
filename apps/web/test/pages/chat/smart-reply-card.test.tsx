@@ -811,7 +811,7 @@ describe("SmartReplyCard", () => {
     const user = userEvent.setup();
     vi.mocked(listKbs).mockResolvedValue({
       kbs: [{ createdAt: "", description: "", kbId: "11", name: "默认知识库", updatedAt: "" }],
-      pagination: { page: 1, pageSize: 9999, total: 1 },
+      pagination: { page: 1, pageSize: 200, total: 1 },
     });
     vi.mocked(listKbDocs).mockResolvedValue({
       docs: [
@@ -828,8 +828,9 @@ describe("SmartReplyCard", () => {
           updatedAt: "",
         },
       ],
-      pagination: { page: 1, pageSize: 9999, total: 1 },
+      pagination: { page: 1, pageSize: 100, total: 1 },
     });
+    vi.mocked(createKbChunk).mockResolvedValue({ chunkId: "501" });
     const message = {
       content: { text: "客户想了解敏感肌护理", type: "text" },
       uiMessageKey: "msg-1",
@@ -850,6 +851,17 @@ describe("SmartReplyCard", () => {
     await user.click(screen.getByRole("button", { name: "编辑" }));
     await user.click(screen.getByRole("button", { name: "添加到FAQ" }));
 
+    await waitFor(() => {
+      expect(listKbs).toHaveBeenCalledWith({ page: 1, pageSize: 200 });
+    });
+    await waitFor(() => {
+      expect(listKbDocs).toHaveBeenCalledWith("11", {
+        docType: "qa",
+        page: 1,
+        pageSize: 100,
+      });
+    });
+
     const faqDialog = screen.getByTestId("smart-reply-add-to-faq-dialog");
     expect(faqDialog).toBeInTheDocument();
     expect(faqDialog).toHaveTextContent("添加至FAQ");
@@ -862,6 +874,96 @@ describe("SmartReplyCard", () => {
     expect(screen.getByRole("textbox", { name: "答案" })).toHaveValue(
       "建议先确认是否敏感肌\n这款产品适合温和修护",
     );
+
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => {
+      expect(createKbChunk).toHaveBeenCalledWith({
+        chunkType: "faq",
+        content: "建议先确认是否敏感肌\n这款产品适合温和修护",
+        docId: "22",
+        title: "客户想了解敏感肌护理",
+      });
+    });
+  });
+
+  it("disables FAQ docs that are not completed when adding a smart reply to FAQ", async () => {
+    const user = userEvent.setup();
+    vi.mocked(listKbs).mockResolvedValue({
+      kbs: [{ createdAt: "", description: "", kbId: "11", name: "默认知识库", updatedAt: "" }],
+      pagination: { page: 1, pageSize: 200, total: 1 },
+    });
+    vi.mocked(listKbDocs).mockResolvedValue({
+      docs: [
+        {
+          createdAt: "",
+          docId: "21",
+          docSuffix: "faq.xlsx",
+          docType: "qa",
+          docUrl: "",
+          kbId: "11",
+          name: "同步失败 FAQ",
+          sliceCount: 0,
+          status: "failed",
+          updatedAt: "",
+        },
+        {
+          createdAt: "",
+          docId: "22",
+          docSuffix: "faq.xlsx",
+          docType: "qa",
+          docUrl: "",
+          kbId: "11",
+          name: "默认 FAQ",
+          sliceCount: 0,
+          status: "completed",
+          updatedAt: "",
+        },
+      ],
+      pagination: { page: 1, pageSize: 100, total: 2 },
+    });
+    vi.mocked(createKbChunk).mockResolvedValue({ chunkId: "501" });
+    const message = {
+      content: { text: "客户想了解敏感肌护理", type: "text" },
+      uiMessageKey: "msg-1",
+      role: "customer",
+    } as ChatMessage;
+
+    render(
+      <SmartReplyMessageAnchor
+        conversationId="conv-001"
+        message={message}
+        suggestion={{
+          assistantName: "护肤小助手",
+          content: "建议先确认是否敏感肌",
+        }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "编辑" }));
+    await user.click(screen.getByRole("button", { name: "添加到FAQ" }));
+    await user.click(await screen.findByRole("combobox", { name: "选择FAQ" }));
+
+    expect(await screen.findByRole("option", { name: "同步失败 FAQ" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    expect(screen.getByRole("option", { name: "默认 FAQ" })).not.toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => {
+      expect(createKbChunk).toHaveBeenCalledWith({
+        chunkType: "faq",
+        content: "建议先确认是否敏感肌",
+        docId: "22",
+        title: "客户想了解敏感肌护理",
+      });
+    });
   });
 
   it("normalizes relative recommended attachment preview URLs", () => {
@@ -892,7 +994,7 @@ describe("SmartReplyCard", () => {
     const saveRequest = createDeferred<{ chunkId: string }>();
     vi.mocked(listKbs).mockResolvedValue({
       kbs: [{ createdAt: "", description: "", kbId: "11", name: "默认知识库", updatedAt: "" }],
-      pagination: { page: 1, pageSize: 9999, total: 1 },
+      pagination: { page: 1, pageSize: 200, total: 1 },
     });
     vi.mocked(listKbDocs).mockResolvedValue({
       docs: [
@@ -909,7 +1011,7 @@ describe("SmartReplyCard", () => {
           updatedAt: "",
         },
       ],
-      pagination: { page: 1, pageSize: 9999, total: 1 },
+      pagination: { page: 1, pageSize: 100, total: 1 },
     });
     vi.mocked(createKbChunk).mockReturnValue(saveRequest.promise);
     const message = {

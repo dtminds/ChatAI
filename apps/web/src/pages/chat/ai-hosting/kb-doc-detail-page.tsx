@@ -63,6 +63,20 @@ const DEFAULT_PAGE_SIZE = 10;
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const;
 const IMAGE_CHUNK_PAGE_SIZE = 100;
 
+function resolveChunkSearchField(docType: KbDocType | undefined) {
+  if (docType === "qa") {
+    return {
+      ariaLabel: "搜索问题",
+      placeholder: "搜索问题",
+    };
+  }
+
+  return {
+    ariaLabel: "搜索切片内容",
+    placeholder: "搜索切片内容",
+  };
+}
+
 function useDebouncedValue<T>(value: T, delayMs: number) {
   const [debouncedValue, setDebouncedValue] = useState(value);
 
@@ -366,6 +380,8 @@ export function KbDocDetailPage() {
     );
   }
 
+  const chunkSearchField = resolveChunkSearchField(doc?.type);
+
   return (
     <AiHostingLayout title={doc?.name ?? "文档"}>
       <div className="space-y-6">
@@ -401,13 +417,13 @@ export function KbDocDetailPage() {
                     strokeWidth={1.8}
                   />
                   <Input
-                    aria-label="搜索切片标题"
+                    aria-label={chunkSearchField.ariaLabel}
                     className="h-10 rounded-[8px] pl-9"
                     disabled={loadingPage || !doc || doc.status !== "completed"}
                     onChange={(event) => {
                       setSearchQuery(event.target.value);
                     }}
-                    placeholder="搜索切片标题"
+                    placeholder={chunkSearchField.placeholder}
                     value={searchQuery}
                   />
                 </div>

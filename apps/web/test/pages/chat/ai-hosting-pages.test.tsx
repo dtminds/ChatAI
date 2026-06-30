@@ -2532,7 +2532,7 @@ describe("AI hosting pages", () => {
     );
     expect(screen.queryByText("FAQ · 华为产品知识")).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "返回知识列表" })).not.toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "搜索切片标题" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "搜索问题" })).toBeInTheDocument();
     const addQaButton = screen.getByRole("button", { name: "添加问答" });
     expect(addQaButton).not.toHaveAttribute("aria-haspopup", "menu");
     expect(screen.queryByRole("button", { name: "添加切片" })).not.toBeInTheDocument();
@@ -2556,7 +2556,7 @@ describe("AI hosting pages", () => {
     );
 
     await screen.findByText("如何恢复出厂设置");
-    await user.type(screen.getByRole("textbox", { name: "搜索切片标题" }), "物流");
+    await user.type(screen.getByRole("textbox", { name: "搜索问题" }), "物流");
 
     await waitFor(() => {
       expect(screen.getByText("如何查询物流")).toBeInTheDocument();
@@ -2673,6 +2673,7 @@ describe("AI hosting pages", () => {
     expect(screen.queryByText("文档 · 华为产品知识")).not.toBeInTheDocument();
     expect(screen.getByText("切片ID")).toBeInTheDocument();
     expect(screen.getByText("切片内容")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "搜索切片内容" })).toBeInTheDocument();
     expect(screen.getByText("更新时间")).toBeInTheDocument();
     expect(screen.queryByText("切片标题")).not.toBeInTheDocument();
     expect(screen.getByText("chunk-doc-1")).toBeInTheDocument();

@@ -910,6 +910,32 @@ describe("AI hosting pages", () => {
     expect(screen.getByLabelText("预览输入框")).toHaveValue("");
   });
 
+  it("clears the preview input immediately after sending a text message", async () => {
+    const user = userEvent.setup();
+    let resolveTest: ((value: Awaited<ReturnType<typeof agentService.testAiHostingAgent>>) => void) | undefined;
+
+    vi.mocked(agentService.testAiHostingAgent).mockReturnValue(
+      new Promise((resolve) => {
+        resolveTest = resolve;
+      }),
+    );
+
+    renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
+
+    await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
+    await user.type(screen.getByLabelText("预览输入框"), "测试消息{Enter}");
+
+    expect(screen.getByLabelText("预览输入框")).toHaveValue("");
+    expect(screen.getByText("测试消息")).toBeInTheDocument();
+
+    resolveTest?.({
+      action: "reply",
+      reply: [{ type: "text", content: "你好，我是 Agent" }],
+    });
+
+    expect(await screen.findByText("你好，我是 Agent")).toBeInTheDocument();
+  });
+
   it("sends selected images directly in the preview chat", async () => {
     const user = userEvent.setup();
     const imageFile = new File(["image"], "preview.png", { type: "image/png" });
@@ -968,6 +994,26 @@ describe("AI hosting pages", () => {
 
     expect(await screen.findByText("第一段回复")).toBeInTheDocument();
     expect(screen.getByText("第二段回复")).toBeInTheDocument();
+  });
+
+  it("shows feedback when the preview test returns no usable reply", async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(agentService.testAiHostingAgent).mockResolvedValue({
+      action: "reply",
+      reply: [],
+    });
+
+    renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
+
+    await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
+    await user.type(screen.getByLabelText("预览输入框"), "测试消息{Enter}");
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("Agent 暂无回复");
+    });
+    expect(screen.queryByText("测试消息", { selector: "p" })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("预览输入框")).toHaveValue("测试消息");
   });
 
   it("fills communication style from the template menu", async () => {

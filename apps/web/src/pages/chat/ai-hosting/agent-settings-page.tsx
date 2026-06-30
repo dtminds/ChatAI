@@ -16,6 +16,7 @@ import {
   ArrowLeft02Icon,
   Edit02Icon,
   Image01Icon,
+  Male02Icon,
   SentIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -405,10 +406,11 @@ export function AgentSettingsPage() {
       return;
     }
 
+    setPreviewInput("");
     const succeeded = await submitPreviewTest([{ type: "text", text: content }]);
 
-    if (succeeded) {
-      setPreviewInput("");
+    if (!succeeded) {
+      setPreviewInput(content);
     }
   }
 
@@ -495,10 +497,17 @@ export function AgentSettingsPage() {
         modelId: settingsPayload.modelId,
         promptConfig: settingsPayload.promptConfig,
       });
+      const previewReplies = mapTestResponseToPreviewMessages(response, nextMessageCount);
+
+      if (previewReplies.length === 0) {
+        setPreviewMessages((current) => current.slice(0, -2));
+        toast.error("Agent 暂无回复");
+        return false;
+      }
 
       setPreviewMessages((current) => {
         const withoutPending = current.slice(0, -1);
-        return [...withoutPending, ...mapTestResponseToPreviewMessages(response, nextMessageCount)];
+        return [...withoutPending, ...previewReplies];
       });
       return true;
     } catch (error) {
@@ -1044,48 +1053,46 @@ function AgentPreviewPanel({
             ))}
           </div>
 
-          <div className="p-4 pt-0">
-            <div className="rounded-[8px] border border-border bg-background px-3 py-2.5">
-              <Button
-                aria-label="上传图片"
-                className="mb-1 size-7 rounded-[6px] p-0 text-muted-foreground hover:bg-muted/40"
-                disabled={testing}
-                onClick={() => imageInputRef.current?.click()}
-                type="button"
-                variant="ghost"
-              >
-                <HugeiconsIcon icon={Image01Icon} size={18} strokeWidth={1.8} />
-              </Button>
-              <input
-                accept={COMPOSER_IMAGE_FILE_ACCEPT}
-                aria-label="选择图片"
-                className="sr-only"
-                disabled={testing}
-                multiple
-                onChange={(event) => {
-                  void onImageSelect(event.currentTarget.files);
-                  event.currentTarget.value = "";
-                }}
-                ref={imageInputRef}
-                type="file"
-              />
-              <Textarea
-                aria-label="预览输入框"
-                className="min-h-20 resize-none border-0 bg-transparent p-0 shadow-none focus-visible:ring-0"
-                disabled={testing}
-                onChange={(event) => onInputChange(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey) {
-                    event.preventDefault();
-                    if (inputValue.trim() && !testing) {
-                      void onSend();
-                    }
+          <div className="border-t border-border bg-background px-3 py-2">
+            <Button
+              aria-label="上传图片"
+              className="mb-1 size-7 rounded-[6px] p-0 text-muted-foreground hover:bg-muted/40"
+              disabled={testing}
+              onClick={() => imageInputRef.current?.click()}
+              type="button"
+              variant="ghost"
+            >
+              <HugeiconsIcon icon={Image01Icon} size={18} strokeWidth={1.8} />
+            </Button>
+            <input
+              accept={COMPOSER_IMAGE_FILE_ACCEPT}
+              aria-label="选择图片"
+              className="sr-only"
+              disabled={testing}
+              multiple
+              onChange={(event) => {
+                void onImageSelect(event.currentTarget.files);
+                event.currentTarget.value = "";
+              }}
+              ref={imageInputRef}
+              type="file"
+            />
+            <Textarea
+              aria-label="预览输入框"
+              className="min-h-16 resize-none border-0 bg-transparent p-0 shadow-none focus-visible:ring-0"
+              disabled={testing}
+              onChange={(event) => onInputChange(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  if (inputValue.trim() && !testing) {
+                    void onSend();
                   }
-                }}
-                placeholder="请输入消息"
-                value={inputValue}
-              />
-            </div>
+                }
+              }}
+              placeholder="请输入消息"
+              value={inputValue}
+            />
           </div>
         </div>
       </section>
@@ -1149,9 +1156,15 @@ function PreviewAgentAvatar() {
 
 function PreviewCustomerAvatar() {
   return (
-    <Avatar className="size-9 shrink-0 rounded-[8px]">
-      <AvatarFallback className="rounded-[8px] bg-secondary text-sm text-secondary-foreground">
-        客
+    <Avatar className="size-8 shrink-0 rounded-[6px] bg-surface">
+      <AvatarFallback className="rounded-[6px] text-sm">
+        <HugeiconsIcon
+          aria-hidden="true"
+          color="currentColor"
+          icon={Male02Icon}
+          size={16}
+          strokeWidth={1.8}
+        />
       </AvatarFallback>
     </Avatar>
   );

@@ -77,6 +77,30 @@ describe("mapJavaAgentTestResponse", () => {
     });
   });
 
+  it("maps stringified handoff payloads returned by Java", () => {
+    expect(
+      mapJavaAgentTestResponse(`{
+    "action": "handoff",
+    "reason": "客户明确表达转人工需求"
+}`),
+    ).toEqual({
+      action: "handoff",
+      reply: [{ type: "text", content: "已触发转人工" }],
+    });
+  });
+
+  it("preserves reply content returned with handoff actions", () => {
+    expect(
+      mapJavaAgentTestResponse({
+        action: "handoff",
+        reply: [{ type: "text", content: "转人工原因" }],
+      }),
+    ).toEqual({
+      action: "handoff",
+      reply: [{ type: "text", content: "转人工原因" }],
+    });
+  });
+
   it("parses reply text content that embeds a json payload", () => {
     expect(
       mapJavaAgentTestResponse({
@@ -94,6 +118,18 @@ describe("mapJavaAgentTestResponse", () => {
     ).toEqual({
       action: "reply",
       reply: [{ type: "text", content: "请问有什么可以帮助您的吗？" }],
+    });
+  });
+
+  it("maps empty reply payloads to an empty successful response", () => {
+    expect(
+      mapJavaAgentTestResponse({
+        action: "reply",
+        reply: [],
+      }),
+    ).toEqual({
+      action: "reply",
+      reply: [],
     });
   });
 });

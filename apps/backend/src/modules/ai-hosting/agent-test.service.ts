@@ -94,6 +94,7 @@ function parseModelId(value: string) {
 
 function serializePromptConfig(promptConfig: AiHostingAgentPromptConfig) {
   return JSON.stringify({
+    available_kb_ids: promptConfig.availableKbIds,
     condition_logic: promptConfig.conditionLogic,
     handoff_rules: promptConfig.handoffRules,
     reply_style: {

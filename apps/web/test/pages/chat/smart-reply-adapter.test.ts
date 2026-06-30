@@ -4,14 +4,11 @@ import {
   adaptSmartReplyAttachments,
   adaptSmartReplySuggestions,
   adaptSmartReplyViolationResult,
-  buildSmartReplyRealAttachIds,
   buildSmartReplySendSegments,
-  buildJavaGenAnswerFromText,
   extractSmartReplyGenAnswerInlineAttachments,
   mergeSmartReplyRecommendedAttachments,
   resolveSmartReplyAttachmentCount,
   resolveSmartReplyAttachmentIds,
-  resolveSmartReplyRealAnswer,
   collectNewSmartReplyPendingKeys,
   collectPendingSmartReplyPollMsgIds,
   collectQuestionImgs,
@@ -955,39 +952,6 @@ describe("smart-reply-adapter", () => {
     ).toEqual(["101"]);
   });
 
-  it("uses raw genAnswer for send-answer when content is unchanged", () => {
-    const genAnswer =
-      '[{"msgtype":"text","text":"麻烦您告知一下所在的城市，还有家里宠物的具体情况哦，我会给您介绍合适的上门服务哒~"}]';
-
-    expect(
-      resolveSmartReplyRealAnswer(
-        genAnswer,
-        "麻烦您告知一下所在的城市，还有家里宠物的具体情况哦，我会给您介绍合适的上门服务哒~",
-        "麻烦您告知一下所在的城市，还有家里宠物的具体情况哦，我会给您介绍合适的上门服务哒~",
-      ),
-    ).toBe(genAnswer);
-  });
-
-  it("builds genAnswer json when user edits smart reply content", () => {
-    expect(
-      resolveSmartReplyRealAnswer(
-        '[{"msgtype":"text","text":"原始话术"}]',
-        "编辑后话术",
-        "原始话术",
-      ),
-    ).toBe(buildJavaGenAnswerFromText("编辑后话术"));
-  });
-
-  it("builds empty genAnswer json when user clears edited smart reply content", () => {
-    expect(
-      resolveSmartReplyRealAnswer(
-        '[{"msgtype":"text","text":"原始话术"}]',
-        "",
-        "原始话术",
-      ),
-    ).toBe(buildJavaGenAnswerFromText(""));
-  });
-
   it("adapts attachment list into recommended attachments", () => {
     expect(
       adaptSmartReplyAttachments([
@@ -1141,11 +1105,6 @@ describe("smart-reply-adapter", () => {
         selectedAttachmentIds: ["101"],
       }),
     ).toEqual([]);
-  });
-
-  it("builds realAttachIds for send-answer requests", () => {
-    expect(buildSmartReplyRealAttachIds(["101", "102"])).toEqual(["101", "102"]);
-    expect(buildSmartReplyRealAttachIds([])).toEqual([]);
   });
 
   it("allows make shorter only for ready suggestions with content", () => {

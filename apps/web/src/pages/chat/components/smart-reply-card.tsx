@@ -718,7 +718,8 @@ export function SmartReplyMessageAnchor({
       }),
     [refAttachIdsKey, suggestion?.genAnswer],
   );
-  const attachmentIdsKey = attachmentSource.attachmentIds.join(",");
+  const attachmentIds = attachmentSource.attachmentIds;
+  const inlineAttachments = attachmentSource.inlineAttachments;
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -733,9 +734,7 @@ export function SmartReplyMessageAnchor({
       return;
     }
 
-    const inlineAttachments = attachmentSource.inlineAttachments;
-
-    if (!conversationId || attachmentSource.attachmentIds.length === 0) {
+    if (!conversationId || attachmentIds.length === 0) {
       setRecommendedAttachments(inlineAttachments);
       setIsRecommendedAttachmentsLoading(false);
       return;
@@ -744,7 +743,7 @@ export function SmartReplyMessageAnchor({
     let cancelled = false;
     setIsRecommendedAttachmentsLoading(true);
 
-    void listSmartReplyAttachments(conversationId, attachmentSource.attachmentIds)
+    void listSmartReplyAttachments(conversationId, attachmentIds)
       .then((attachments) => {
         if (!cancelled) {
           setRecommendedAttachments(
@@ -766,7 +765,7 @@ export function SmartReplyMessageAnchor({
     return () => {
       cancelled = true;
     };
-  }, [attachmentIdsKey, attachmentSource, conversationId, isEditDialogOpen]);
+  }, [attachmentIds, conversationId, inlineAttachments, isEditDialogOpen]);
 
   useEffect(() => {
     if (!isEditDialogOpen) {

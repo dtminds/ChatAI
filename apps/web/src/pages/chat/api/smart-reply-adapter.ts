@@ -547,16 +547,6 @@ export function getSmartReplyInlineState(
   return undefined;
 }
 
-export function buildJavaGenAnswerFromText(text: string) {
-  const trimmed = text.trim();
-
-  if (!trimmed) {
-    return "";
-  }
-
-  return JSON.stringify([{ msgtype: "text", text: trimmed }]);
-}
-
 const SMART_REPLY_MEDIA_PLACEHOLDER_PATTERN = /^\[(图片|文件|视频)\]$/;
 
 function parseSmartReplyJsonPayload(raw: unknown): unknown | undefined {
@@ -585,10 +575,7 @@ function parseSmartReplyJsonPayload(raw: unknown): unknown | undefined {
   }
 }
 
-function parseSmartReplyGenAnswerParts(raw: unknown): {
-  mediaCount: number;
-  textParts: string[];
-} | null {
+function parseSmartReplyGenAnswerTextParts(raw: unknown): string[] | null {
   const payload = parseSmartReplyJsonPayload(raw);
 
   if (payload === undefined) {
@@ -597,35 +584,25 @@ function parseSmartReplyGenAnswerParts(raw: unknown): {
 
   if (Array.isArray(payload)) {
     const textParts: string[] = [];
-    let mediaCount = 0;
 
     for (const segment of payload) {
       const parsed = classifySmartReplyGenAnswerSegment(segment);
 
       if (parsed.type === "text" && parsed.text) {
         textParts.push(parsed.text);
-        continue;
-      }
-
-      if (parsed.type === "media") {
-        mediaCount += 1;
       }
     }
 
-    return { mediaCount, textParts };
+    return textParts;
   }
 
   const parsed = classifySmartReplyGenAnswerSegment(payload);
 
   if (parsed.type === "text" && parsed.text) {
-    return { mediaCount: 0, textParts: [parsed.text] };
+    return [parsed.text];
   }
 
-  if (parsed.type === "media") {
-    return { mediaCount: 1, textParts: [] };
-  }
-
-  return { mediaCount: 0, textParts: [] };
+  return [];
 }
 
 function classifySmartReplyGenAnswerSegment(
@@ -655,10 +632,10 @@ function classifySmartReplyGenAnswerSegment(
 }
 
 export function parseSmartReplyTextContent(raw: unknown): string {
-  const parsed = parseSmartReplyGenAnswerParts(raw);
+  const parsed = parseSmartReplyGenAnswerTextParts(raw);
 
   if (parsed) {
-    return parsed.textParts.join("\n");
+    return parsed.join("\n");
   }
 
   if (typeof raw !== "string") {
@@ -676,10 +653,6 @@ export function parseSmartReplyTextContent(raw: unknown): string {
     .filter((line) => !SMART_REPLY_MEDIA_PLACEHOLDER_PATTERN.test(line.trim()))
     .join("\n")
     .trim();
-}
-
-export function countSmartReplyMediaSegments(raw: unknown): number {
-  return parseSmartReplyGenAnswerParts(raw)?.mediaCount ?? 0;
 }
 
 function normalizeSmartReplyAttachmentId(value: unknown): string | undefined {
@@ -758,6 +731,7 @@ function readSmartReplyGenAnswerSegmentFileType(
 export function extractSmartReplyGenAnswerAttachmentIds(
   genAnswer?: string,
 ): string[] {
+  // Keep Java genAnswer attachment field handling in sync with backend smart-reply-mappers.ts.
   const payload = parseSmartReplyJsonPayload(genAnswer);
 
   if (payload === undefined) {
@@ -970,30 +944,6 @@ function readString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
-export function resolveSmartReplyRealAnswer(
-  genAnswer: string | undefined,
-  editedContent: string,
-  originalContent: string | undefined,
-) {
-  const trimmedGenAnswer = genAnswer?.trim();
-  const trimmedEditedContent = editedContent.trim();
-  const trimmedOriginalContent = originalContent?.trim() ?? "";
-
-  if (!trimmedEditedContent) {
-    if (!trimmedOriginalContent) {
-      return trimmedGenAnswer ?? "";
-    }
-
-    return buildJavaGenAnswerFromText("");
-  }
-
-  if (trimmedGenAnswer && trimmedEditedContent === trimmedOriginalContent) {
-    return trimmedGenAnswer;
-  }
-
-  return buildJavaGenAnswerFromText(trimmedEditedContent);
-}
-
 function resolveSmartReplyDisplayContent(
   suggestion: WorkbenchSmartReplySuggestionDto,
 ) {
@@ -1146,12 +1096,6 @@ export type SmartReplySendPayload = {
   recommendedAttachments: SmartReplyRecommendedAttachment[];
   selectedAttachmentIds: string[];
 };
-
-export function buildSmartReplyRealAttachIds(selectedAttachmentIds: string[]) {
-  return selectedAttachmentIds
-    .map((id) => id.trim())
-    .filter((id) => id.length > 0);
-}
 
 export function adaptKnowledgeSetOptions(
   items: Array<{ id: string; name: string }>,

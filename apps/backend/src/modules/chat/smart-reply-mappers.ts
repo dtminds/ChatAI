@@ -368,6 +368,7 @@ function readJavaRefAttachIds(item: JavaSmartReplyAnswerItem) {
   return merged.length > 0 ? merged : undefined;
 }
 
+// Keep Java genAnswer attachment field handling in sync with web smart-reply-adapter.ts.
 function mergeRefAttachIds(...groups: Array<string[] | undefined>) {
   const ids: string[] = [];
   const seen = new Set<string>();

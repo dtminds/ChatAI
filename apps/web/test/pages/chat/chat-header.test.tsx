@@ -203,7 +203,7 @@ describe("ChatHeader", () => {
     expect(screen.getByText("状态")).toBeInTheDocument();
     expect(screen.getByText("开启")).toBeInTheDocument();
     expect(screen.queryByRole("switch", { name: "新消息提醒状态" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "修改新消息提醒设置" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "修改新消息提示音设置" })).toBeInTheDocument();
   });
 
   it("uses the capsule button for quick enable and disable", async () => {
@@ -212,7 +212,7 @@ describe("ChatHeader", () => {
 
     await user.click(screen.getByRole("button", { name: "新消息提醒未开启" }));
 
-    expect(screen.queryByRole("dialog", { name: "新消息提醒" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "新消息提示音" })).not.toBeInTheDocument();
     expect(getNewMessageSoundPreference()).toMatchObject({
       enabled: true,
       soundId: "msg_sound1",
@@ -239,7 +239,7 @@ describe("ChatHeader", () => {
 
     await user.click(screen.getByRole("button", { name: "新消息提醒未开启" }));
 
-    expect(screen.queryByRole("dialog", { name: "新消息提醒" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "新消息提示音" })).not.toBeInTheDocument();
     expect(screen.getByRole("alert")).toHaveTextContent("无法播放提示音，请检查浏览器权限");
     expect(getNewMessageSoundPreference().enabled).toBe(false);
   });
@@ -259,9 +259,9 @@ describe("ChatHeader", () => {
     render(<ChatHeader />);
 
     await user.hover(screen.getByRole("button", { name: "新消息提醒已开启" }));
-    await user.click(screen.getByRole("button", { name: "修改新消息提醒设置" }));
+    await user.click(screen.getByRole("button", { name: "修改新消息提示音设置" }));
 
-    const dialog = screen.getByRole("dialog", { name: "新消息提醒" });
+    const dialog = screen.getByRole("dialog", { name: "新消息提示音" });
     expect(dialog).toBeInTheDocument();
 
     await user.click(screen.getByRole("combobox", { name: "提示音" }));
@@ -299,13 +299,13 @@ describe("ChatHeader", () => {
     render(<ChatHeader />);
 
     await user.hover(screen.getByRole("button", { name: "新消息提醒已开启" }));
-    await user.click(screen.getByRole("button", { name: "修改新消息提醒设置" }));
+    await user.click(screen.getByRole("button", { name: "修改新消息提示音设置" }));
 
     await user.click(screen.getByRole("combobox", { name: "提示音" }));
     await user.click(await screen.findByRole("option", { name: "提示音 2" }));
     await user.click(screen.getByRole("button", { name: "试听" }));
 
-    expect(screen.getByRole("dialog", { name: "新消息提醒" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "新消息提示音" })).toBeInTheDocument();
     expect(screen.queryByText("重新开启消息提示音")).not.toBeInTheDocument();
   });
 

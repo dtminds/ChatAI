@@ -363,10 +363,10 @@ export function NewMessageSoundControl() {
             <>
               <div className="mb-3 flex items-center justify-between gap-3">
                 <p className="truncate text-sm font-medium text-foreground">
-                  新消息提醒
+                  新消息提示音
                 </p>
                 <Button
-                  aria-label="修改新消息提醒设置"
+                  aria-label="修改新消息提示音设置"
                   className="size-8 rounded-[9px] p-0"
                   onClick={() => openSettingsDialog("edit")}
                   size="icon"
@@ -410,7 +410,7 @@ export function NewMessageSoundControl() {
       >
         <DialogContent className="sm:max-w-[520px]">
           <DialogHeader className="space-y-2 pr-8">
-            <DialogTitle>新消息提醒</DialogTitle>
+            <DialogTitle>新消息提示音</DialogTitle>
             <DialogDescription>
               设置工作台收到新消息时的本地提示音
             </DialogDescription>
@@ -543,12 +543,7 @@ function TriggerOptionButton({
       type="button"
     >
       <span
-        className={cn(
-          "mt-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-[10px] transition-colors",
-          selected
-            ? "bg-primary text-primary-foreground"
-            : "bg-surface-muted text-muted-foreground group-hover:text-foreground",
-        )}
+        className="mt-0.5 inline-flex size-8 shrink-0 items-center justify-center text-muted-foreground transition-colors group-hover:text-foreground"
       >
         <HugeiconsIcon
           color="currentColor"

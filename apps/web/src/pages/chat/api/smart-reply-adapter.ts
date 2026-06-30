@@ -994,6 +994,15 @@ export function resolveSmartReplyRealAnswer(
   return buildJavaGenAnswerFromText(trimmedEditedContent);
 }
 
+function resolveSmartReplyDisplayContent(
+  suggestion: WorkbenchSmartReplySuggestionDto,
+) {
+  return (
+    parseSmartReplyTextContent(suggestion.genAnswer) ||
+    parseSmartReplyTextContent(suggestion.content)
+  );
+}
+
 export function adaptSmartReplySuggestions(
   suggestions: WorkbenchSmartReplySuggestionDto[],
 ): Record<string, SmartReplySuggestion> {
@@ -1002,9 +1011,7 @@ export function adaptSmartReplySuggestions(
       suggestion.messageId,
       {
         assistantName: suggestion.assistantName,
-        content: parseSmartReplyTextContent(
-          suggestion.genAnswer ?? suggestion.content,
-        ),
+        content: resolveSmartReplyDisplayContent(suggestion),
         failReason: suggestion.failReason,
         genAnswer: suggestion.genAnswer,
         generateStatus: suggestion.generateStatus,

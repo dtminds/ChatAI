@@ -870,6 +870,29 @@ describe("smart-reply-adapter", () => {
     });
   });
 
+  it("falls back to content text when genAnswer only contains attachments", () => {
+    const genAnswer =
+      '[{"msgtype":"image","id":101,"fileUrl":"s5/msg/cover.png","alt":"产品图"}]';
+
+    expect(
+      adaptSmartReplySuggestions([
+        {
+          assistantName: "护肤小助手",
+          content: "请查看这张产品图",
+          genAnswer,
+          generateStatus: 2,
+          messageId: "1090",
+          pollComplete: true,
+          status: "ready",
+        },
+      ])["1090"],
+    ).toMatchObject({
+      content: "请查看这张产品图",
+      genAnswer,
+      refAttachIds: ["101"],
+    });
+  });
+
   it("extracts inline genAnswer attachments for preview and send", () => {
     const genAnswer =
       '[{"msgtype":"text","text":"第一段"},{"msgtype":"image","fileUrl":"s5/msg/cover.png","alt":"产品图"}]';

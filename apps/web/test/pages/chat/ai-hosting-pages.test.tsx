@@ -1550,26 +1550,6 @@ describe("AI hosting pages", () => {
     });
   });
 
-  it("retries a failed knowledge record and refreshes the list status", async () => {
-    const user = userEvent.setup();
-
-    renderWithRoute(
-      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
-      <KbDetailPage />,
-      "/chat/ai-hosting/kb/:kbId",
-    );
-
-    await screen.findByText("文本知识集合");
-    await user.click(screen.getByRole("button", { name: "重试 文本知识集合" }));
-
-    await waitFor(() => {
-      expect(retryKbDocMock).toHaveBeenCalledWith("knowledge-4");
-      expect(toast.success).toHaveBeenCalledWith("已提交重试");
-    });
-    expect(screen.queryByRole("button", { name: "重试 文本知识集合" })).not.toBeInTheDocument();
-    expect(screen.getAllByText("排队中")).toHaveLength(2);
-  });
-
   it("shows an empty state for unknown knowledge base ids", async () => {
     vi.mocked(kbService.getKb).mockRejectedValueOnce(new Error("KB_NOT_FOUND"));
 

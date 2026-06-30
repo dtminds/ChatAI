@@ -58,6 +58,7 @@ let audioElement: HTMLAudioElement | undefined;
 let audioSoundId: NewMessageSoundId | undefined;
 let unlockedSoundId: NewMessageSoundId | undefined;
 let lastPlayedAt = Number.NEGATIVE_INFINITY;
+const unlockChangeListeners = new Set<() => void>();
 
 export function getNewMessageSoundPreference(): NewMessageSoundPreference {
   if (typeof window === "undefined") {
@@ -110,6 +111,14 @@ export function isNewMessageSoundUnlocked(
   return unlockedSoundId === soundId;
 }
 
+export function subscribeNewMessageSoundUnlockChange(listener: () => void) {
+  unlockChangeListeners.add(listener);
+
+  return () => {
+    unlockChangeListeners.delete(listener);
+  };
+}
+
 export async function unlockNewMessageSound(
   soundId = getNewMessageSoundPreference().soundId,
 ) {
@@ -123,11 +132,11 @@ export async function unlockNewMessageSound(
     await audio.play();
     audio.pause();
     audio.currentTime = 0;
-    unlockedSoundId = soundId;
+    setUnlockedSoundId(soundId);
     return true;
   } catch {
     if (unlockedSoundId === soundId) {
-      unlockedSoundId = undefined;
+      setUnlockedSoundId(undefined);
     }
     return false;
   }
@@ -143,11 +152,11 @@ export async function playNewMessageSoundPreview(soundId: NewMessageSoundId) {
 
   try {
     await audio.play();
-    unlockedSoundId = soundId;
+    setUnlockedSoundId(soundId);
     return true;
   } catch {
     if (unlockedSoundId === soundId) {
-      unlockedSoundId = undefined;
+      setUnlockedSoundId(undefined);
     }
     return false;
   }
@@ -174,7 +183,7 @@ export function notifyNewMessageSound() {
   audio.currentTime = 0;
   void audio.play().catch(() => {
     if (unlockedSoundId === preference.soundId) {
-      unlockedSoundId = undefined;
+      setUnlockedSoundId(undefined);
     }
   });
 }
@@ -183,8 +192,23 @@ export function clearNewMessageSoundRuntimeState() {
   audioElement?.pause();
   audioElement = undefined;
   audioSoundId = undefined;
-  unlockedSoundId = undefined;
+  setUnlockedSoundId(undefined);
   lastPlayedAt = Number.NEGATIVE_INFINITY;
+}
+
+function setUnlockedSoundId(soundId: NewMessageSoundId | undefined) {
+  if (unlockedSoundId === soundId) {
+    return;
+  }
+
+  unlockedSoundId = soundId;
+  notifyUnlockChangeListeners();
+}
+
+function notifyUnlockChangeListeners() {
+  [...unlockChangeListeners].forEach((listener) => {
+    listener();
+  });
 }
 
 function getAudioElement(soundId: NewMessageSoundId) {

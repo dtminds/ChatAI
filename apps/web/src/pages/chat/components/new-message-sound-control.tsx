@@ -34,6 +34,7 @@ import {
   NEW_MESSAGE_SOUND_OPTIONS,
   NEW_MESSAGE_SOUND_TRIGGER_OPTIONS,
   playNewMessageSoundPreview,
+  subscribeNewMessageSoundUnlockChange,
   unlockNewMessageSound,
   writeNewMessageSoundPreference,
   type NewMessageSoundId,
@@ -51,6 +52,7 @@ const DEFAULT_SOUND_PREFERENCE: NewMessageSoundPreference = {
   soundId: "msg_sound1",
   trigger: "unfocused_only",
 };
+const SOUND_PLAYBACK_ERROR = "无法播放提示音，请检查浏览器权限";
 
 export function NewMessageSoundControl() {
   const [preference, setPreference] =
@@ -67,6 +69,9 @@ export function NewMessageSoundControl() {
   const closeSummaryTimerRef = useRef<number | undefined>(undefined);
   const isMountedRef = useRef(false);
   const requestIdRef = useRef(0);
+  const [unlockSignal, setUnlockSignal] = useState(0);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [reEnableError, setReEnableError] = useState<string | null>(null);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -82,13 +87,23 @@ export function NewMessageSoundControl() {
   }, []);
 
   useEffect(() => {
-    if (preference.enabled && !isNewMessageSoundUnlocked()) {
+    if (settingsDialogMode !== null) {
+      return;
+    }
+
+    if (preference.enabled && !isNewMessageSoundUnlocked(preference.soundId)) {
       setActivePopover("reEnable");
       return;
     }
 
     setActivePopover((current) => (current === "reEnable" ? null : current));
-  }, [preference.enabled]);
+  }, [preference.enabled, preference.soundId, settingsDialogMode, unlockSignal]);
+
+  useEffect(() => (
+    subscribeNewMessageSoundUnlockChange(() => {
+      setUnlockSignal((current) => current + 1);
+    })
+  ), []);
 
   useEffect(() => () => {
     if (closeSummaryTimerRef.current) {
@@ -108,6 +123,8 @@ export function NewMessageSoundControl() {
   function openSettingsDialog(mode: SettingsDialogMode) {
     setFormSoundId(preference.soundId);
     setFormTrigger(preference.trigger);
+    setSettingsError(null);
+    setReEnableError(null);
     setSettingsDialogMode(mode);
     setActivePopover(null);
   }
@@ -120,6 +137,7 @@ export function NewMessageSoundControl() {
     }
 
     if (!didUnlock) {
+      setSettingsError(SOUND_PLAYBACK_ERROR);
       return;
     }
 
@@ -128,15 +146,18 @@ export function NewMessageSoundControl() {
       soundId: formSoundId,
       trigger: formTrigger,
     });
+    setSettingsError(null);
     setSettingsDialogMode(null);
   }
 
   async function handlePreview() {
     const requestId = ++requestIdRef.current;
-    await playNewMessageSoundPreview(formSoundId);
+    const didPlay = await playNewMessageSoundPreview(formSoundId);
     if (!isMountedRef.current || requestId !== requestIdRef.current) {
       return;
     }
+
+    setSettingsError(didPlay ? null : SOUND_PLAYBACK_ERROR);
   }
 
   function handleSummarySwitchChange(checked: boolean) {
@@ -152,13 +173,22 @@ export function NewMessageSoundControl() {
   async function handleReEnable() {
     const requestId = ++requestIdRef.current;
     const didUnlock = await unlockNewMessageSound(preference.soundId);
-    if (didUnlock && isMountedRef.current && requestId === requestIdRef.current) {
-      setActivePopover(null);
+    if (!isMountedRef.current || requestId !== requestIdRef.current) {
+      return;
     }
+
+    if (didUnlock) {
+      setReEnableError(null);
+      setActivePopover(null);
+      return;
+    }
+
+    setReEnableError(SOUND_PLAYBACK_ERROR);
   }
 
   function handleIgnoreReEnable() {
     syncPreference({ ...preference, enabled: false });
+    setReEnableError(null);
     setActivePopover(null);
   }
 
@@ -266,6 +296,11 @@ export function NewMessageSoundControl() {
                   温馨提醒：浏览器刷新后需点击一次开启提示音，以免错过新消息哦
                 </p>
               </div>
+              {reEnableError ? (
+                <p className="mt-3 text-xs text-destructive" role="alert">
+                  {reEnableError}
+                </p>
+              ) : null}
               <div className="mt-4 flex justify-end gap-2">
                 <Button
                   onClick={handleIgnoreReEnable}
@@ -382,6 +417,11 @@ export function NewMessageSoundControl() {
                 </SelectContent>
               </Select>
             </div>
+            {settingsError ? (
+              <p className="text-xs text-destructive" role="alert">
+                {settingsError}
+              </p>
+            ) : null}
           </div>
           <DialogFooter className="gap-2">
             <Button

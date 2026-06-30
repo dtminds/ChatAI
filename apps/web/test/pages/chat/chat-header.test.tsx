@@ -7,6 +7,7 @@ import {
   clearNewMessageSoundRuntimeState,
   getNewMessageSoundPreference,
   NEW_MESSAGE_SOUND_PREFERENCE_STORAGE_KEY,
+  notifyNewMessageSound,
   unlockNewMessageSound,
 } from "@/pages/chat/lib/new-message-sound-alert";
 import type { Conversation } from "@/pages/chat/chat-types";
@@ -232,6 +233,21 @@ describe("ChatHeader", () => {
     );
   });
 
+  it("shows a playback error when saving settings cannot unlock sound", async () => {
+    const user = userEvent.setup();
+    AudioMock.rejectNextPlay();
+
+    render(<ChatHeader />);
+
+    await user.click(screen.getByRole("button", { name: "新消息提醒未开启" }));
+    await user.click(screen.getByRole("switch", { name: "新消息提醒状态" }));
+    await user.click(screen.getByRole("button", { name: "保存并开启" }));
+
+    expect(screen.getByRole("dialog", { name: "新消息提醒" })).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("无法播放提示音，请检查浏览器权限");
+    expect(getNewMessageSoundPreference().enabled).toBe(false);
+  });
+
   it("opens the settings dialog from the summary popover gear and saves sound and trigger choices", async () => {
     const user = userEvent.setup();
     window.localStorage.setItem(
@@ -268,6 +284,31 @@ describe("ChatHeader", () => {
       soundId: "msg_sound2",
       trigger: "all_new_messages",
     });
+  });
+
+  it("does not interrupt the settings dialog with a re-enable popover while previewing another sound", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem(
+      NEW_MESSAGE_SOUND_PREFERENCE_STORAGE_KEY,
+      JSON.stringify({
+        enabled: true,
+        soundId: "msg_sound1",
+        trigger: "unfocused_only",
+      }),
+    );
+    await unlockNewMessageSound("msg_sound1");
+
+    render(<ChatHeader />);
+
+    await user.click(screen.getByRole("button", { name: "新消息提醒已开启" }));
+    await user.click(screen.getByRole("button", { name: "修改新消息提醒设置" }));
+
+    await user.click(screen.getByRole("combobox", { name: "提示音" }));
+    await user.click(await screen.findByRole("option", { name: "提示音 2" }));
+    await user.click(screen.getByRole("button", { name: "试听" }));
+
+    expect(screen.getByRole("dialog", { name: "新消息提醒" })).toBeInTheDocument();
+    expect(screen.queryByText("重新开启消息提示音")).not.toBeInTheDocument();
   });
 
   it("shows a separate re-enable popover after refresh and lets the user ignore it", async () => {
@@ -335,6 +376,50 @@ describe("ChatHeader", () => {
     expect(audioInstances[0].src).toBe("https://b5.bokr.com.cn/dist/sound/msg_sound2.mp3");
     expect(screen.queryByText("重新开启消息提示音")).not.toBeInTheDocument();
   });
+
+  it("shows a playback error when refresh re-enable cannot unlock sound", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem(
+      NEW_MESSAGE_SOUND_PREFERENCE_STORAGE_KEY,
+      JSON.stringify({
+        enabled: true,
+        soundId: "msg_sound1",
+        trigger: "unfocused_only",
+      }),
+    );
+    AudioMock.rejectNextPlay();
+
+    render(<ChatHeader />);
+
+    await user.click(await screen.findByRole("button", { name: "点此开启" }));
+
+    expect(screen.getByText("重新开启消息提示音")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("无法播放提示音，请检查浏览器权限");
+    expect(getNewMessageSoundPreference().enabled).toBe(true);
+  });
+
+  it("prompts the user to re-enable sound when runtime playback loses permission", async () => {
+    window.localStorage.setItem(
+      NEW_MESSAGE_SOUND_PREFERENCE_STORAGE_KEY,
+      JSON.stringify({
+        enabled: true,
+        soundId: "msg_sound1",
+        trigger: "all_new_messages",
+      }),
+    );
+    await unlockNewMessageSound("msg_sound1");
+
+    render(<ChatHeader />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "新消息提醒已开启" })).toBeInTheDocument();
+    });
+
+    AudioMock.rejectNextPlay();
+    notifyNewMessageSound();
+
+    expect(await screen.findByText("重新开启消息提示音")).toBeInTheDocument();
+  });
 });
 
 function setSystemColorScheme(matches: boolean) {
@@ -373,15 +458,28 @@ function setSystemColorScheme(matches: boolean) {
 }
 
 class AudioMock {
+  private static pendingPlayRejections = 0;
+
   currentTime = 0;
   preload = "";
   src: string;
   volume = 1;
   pause = vi.fn();
-  play = vi.fn(() => Promise.resolve());
+  play = vi.fn(() => {
+    if (AudioMock.pendingPlayRejections > 0) {
+      AudioMock.pendingPlayRejections -= 1;
+      return Promise.reject(new Error("blocked"));
+    }
+
+    return Promise.resolve();
+  });
 
   constructor(src: string) {
     this.src = src;
     audioInstances.push(this);
+  }
+
+  static rejectNextPlay() {
+    AudioMock.pendingPlayRejections += 1;
   }
 }

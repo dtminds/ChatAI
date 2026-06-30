@@ -6,6 +6,7 @@ import {
   NEW_MESSAGE_SOUND_PREFERENCE_STORAGE_KEY,
   notifyNewMessageSound,
   playNewMessageSoundPreview,
+  subscribeNewMessageSoundUnlockChange,
   unlockNewMessageSound,
   writeNewMessageSoundPreference,
 } from "@/pages/chat/lib/new-message-sound-alert";
@@ -153,6 +154,36 @@ describe("new message sound alert", () => {
 
     expect(() => notifyNewMessageSound()).not.toThrow();
   });
+
+  it("notifies subscribers when runtime playback loses the unlocked sound", async () => {
+    writeNewMessageSoundPreference({
+      enabled: true,
+      soundId: "msg_sound1",
+      trigger: "all_new_messages",
+    });
+    const listener = vi.fn();
+    const unsubscribe = subscribeNewMessageSoundUnlockChange(listener);
+
+    await unlockNewMessageSound("msg_sound1");
+
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    audioInstances[0].rejectNextPlay();
+    notifyNewMessageSound();
+    await Promise.resolve();
+
+    expect(isNewMessageSoundUnlocked("msg_sound1")).toBe(false);
+    expect(listener).toHaveBeenCalledTimes(2);
+
+    await unlockNewMessageSound("msg_sound1");
+    unsubscribe();
+    audioInstances[0].rejectNextPlay();
+    vi.advanceTimersByTime(3000);
+    notifyNewMessageSound();
+    await Promise.resolve();
+
+    expect(listener).toHaveBeenCalledTimes(3);
+  });
 });
 
 function setDocumentVisibility(value: DocumentVisibilityState) {
@@ -172,13 +203,25 @@ function setDocumentFocus(value: boolean) {
 class AudioMock {
   currentTime = 0;
   preload = "";
+  private playFailures = 0;
   src: string;
   volume = 1;
   pause = vi.fn();
-  play = vi.fn(() => Promise.resolve());
+  play = vi.fn(() => {
+    if (this.playFailures > 0) {
+      this.playFailures -= 1;
+      return Promise.reject(new Error("blocked"));
+    }
+
+    return Promise.resolve();
+  });
 
   constructor(src: string) {
     this.src = src;
     audioInstances.push(this);
+  }
+
+  rejectNextPlay() {
+    this.playFailures += 1;
   }
 }

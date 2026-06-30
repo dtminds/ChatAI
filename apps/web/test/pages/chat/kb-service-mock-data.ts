@@ -145,7 +145,8 @@ const INITIAL_MOCK_KB_CHUNKS: KbDocChunkViewItem[] = [
     type: "document",
     source: "manual",
     title: "第一章 产品介绍",
-    content: "华为 Mate 系列主打影像与续航，适合商务与日常拍摄场景",
+    content:
+      "新建限时任务，任务有效期增加 勾选项【仅任务有效期内核销计入】\n1）如果勾选了，统计任务是否完成只会统计任务有效期内核销的物码数据\n2）如果未勾选，统计任务是否完成会统计历史累计核销物码的数据",
     createdAt: "2026-06-18 23:22:22",
     updatedAt: "2026-06-20 23:22:22",
   },

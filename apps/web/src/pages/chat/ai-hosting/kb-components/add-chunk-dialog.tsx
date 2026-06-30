@@ -15,6 +15,7 @@ export function AddChunkDialog({
   dialogTitle,
   fieldIdPrefix,
   firstFieldLabel,
+  firstFieldRequired = true,
   onOpenChange,
   onSubmit,
   open,
@@ -23,6 +24,7 @@ export function AddChunkDialog({
   dialogTitle: string;
   fieldIdPrefix: string;
   firstFieldLabel: string;
+  firstFieldRequired?: boolean;
   onOpenChange: (open: boolean) => void;
   onSubmit: (values: { first: string; second: string }) => void | Promise<void>;
   open: boolean;
@@ -47,7 +49,7 @@ export function AddChunkDialog({
       const normalizedFirst = first.trim();
       const normalizedSecond = second.trim();
 
-      if (!normalizedFirst || !normalizedSecond) {
+      if ((firstFieldRequired && !normalizedFirst) || !normalizedSecond) {
         return false;
       }
 
@@ -68,7 +70,8 @@ export function AddChunkDialog({
         <div className="space-y-5 py-3">
           <div className="space-y-2">
             <Label htmlFor={firstFieldId}>
-              {firstFieldLabel} <span className="text-destructive">*</span>
+              {firstFieldLabel}
+              {firstFieldRequired ? <span className="text-destructive"> *</span> : null}
             </Label>
             <Textarea
               className="min-h-0 resize-none"
@@ -106,7 +109,7 @@ export function AddChunkDialog({
             取消
           </Button>
           <Button
-            disabled={submitting || !first.trim() || !second.trim()}
+            disabled={submitting || (firstFieldRequired && !first.trim()) || !second.trim()}
             onClick={handleSubmit}
             type="button"
           >

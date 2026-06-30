@@ -157,7 +157,6 @@ export function KbDetailPage() {
   const [deleting, setDeleting] = useState(false);
   const [retryingDocId, setRetryingDocId] = useState<string | null>(null);
   const [checkingKnowledgeQuota, setCheckingKnowledgeQuota] = useState(false);
-  const [retryingDocId, setRetryingDocId] = useState<string | null>(null);
   const requestVersionRef = useRef(0);
   const isMountedRef = useRef(false);
 
@@ -354,33 +353,6 @@ export function KbDetailPage() {
       toast.error(AI_HOSTING_QUOTA_CHECK_FAILED_MESSAGE);
     } finally {
       setCheckingKnowledgeQuota(false);
-    }
-  }
-
-  async function handleRetryDoc(docId: string) {
-    if (retryingDocId) {
-      return;
-    }
-
-    setRetryingDocId(docId);
-
-    try {
-      await retryKbDoc(docId);
-
-      if (!isMountedRef.current) {
-        return;
-      }
-
-      toast.success("已提交重试");
-      await loadDocs();
-    } catch {
-      if (isMountedRef.current) {
-        toast.error("重试失败，请稍后重试");
-      }
-    } finally {
-      if (isMountedRef.current) {
-        setRetryingDocId(null);
-      }
     }
   }
 

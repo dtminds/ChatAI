@@ -36,6 +36,8 @@ const retryKbDocMock = vi.hoisted(() => vi.fn());
 const createKbChunkMock = vi.hoisted(() => vi.fn());
 const updateKbChunkMock = vi.hoisted(() => vi.fn());
 const deleteKbChunkMock = vi.hoisted(() => vi.fn());
+const chunkVectorizationTip =
+  "保存编辑后的切片内容，需要重新向量化，并产生额外 tokens 消耗。";
 const agentServiceMock = vi.hoisted(() => ({
   createAiHostingAgent: vi.fn(),
   getAiHostingQuota: vi.fn(),
@@ -2605,6 +2607,24 @@ describe("AI hosting pages", () => {
     expect(await screen.findByText("支持 NFC 吗")).toBeInTheDocument();
   });
 
+  it("requires question when adding a QA chunk", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-3",
+      <KbDocDetailPage />,
+      "/chat/ai-hosting/kb/:kbId/docs/:docId",
+    );
+
+    await screen.findByRole("button", { name: "添加问答" });
+    await user.click(screen.getByRole("button", { name: "添加问答" }));
+
+    const dialog = screen.getByRole("dialog", { name: "添加问答" });
+    await user.type(within(dialog).getByLabelText(/答案/), "支持，可在设置中开启");
+
+    expect(within(dialog).getByRole("button", { name: "确定" })).toBeDisabled();
+  });
+
   it("keeps the add QA chunk dialog open when submit fails", async () => {
     const user = userEvent.setup();
     createKbChunkMock.mockRejectedValueOnce(new Error("submit failed"));
@@ -2645,6 +2665,7 @@ describe("AI hosting pages", () => {
     const dialog = screen.getByRole("dialog", { name: "编辑切片" });
     const questionField = within(dialog).getByLabelText(/问题/);
     expect(questionField.tagName).toBe("TEXTAREA");
+    expect(within(dialog).getByText(chunkVectorizationTip)).toBeInTheDocument();
     await user.clear(questionField);
     await user.type(questionField, "如何重置手机");
     await user.click(within(dialog).getByRole("button", { name: "保存" }));
@@ -2697,18 +2718,42 @@ describe("AI hosting pages", () => {
     expect(screen.getByText("更新时间")).toBeInTheDocument();
     expect(screen.queryByText("切片标题")).not.toBeInTheDocument();
     expect(screen.getByText("chunk-doc-1")).toBeInTheDocument();
-    expect(
-      screen.getByText("华为 Mate 系列主打影像与续航，适合商务与日常拍摄场景"),
-    ).toBeInTheDocument();
+    const multilineChunkText =
+      "新建限时任务，任务有效期增加 勾选项【仅任务有效期内核销计入】\n1）如果勾选了，统计任务是否完成只会统计任务有效期内核销的物码数据\n2）如果未勾选，统计任务是否完成会统计历史累计核销物码的数据";
+    const multilineChunkContent = screen.getByText((_, element) =>
+      element?.getAttribute("data-slot") === "chunk-content-preview" &&
+      element.textContent === multilineChunkText,
+    );
+    expect(multilineChunkContent).toHaveClass("line-clamp-2", "whitespace-pre-line");
+    await user.click(screen.getByRole("button", { name: multilineChunkText }));
+    let dialog = screen.getByRole("dialog", { name: "编辑切片" });
+    expect(within(dialog).getByText(chunkVectorizationTip)).toBeInTheDocument();
+    const titleField = within(dialog).getByLabelText(/切片标题/);
+    await user.clear(titleField);
+    await user.clear(within(dialog).getByLabelText(/切片内容/));
+    await user.type(within(dialog).getByLabelText(/切片内容/), "更新后的切片内容");
+    await user.click(within(dialog).getByRole("button", { name: "保存" }));
+
+    expect(updateKbChunkMock).toHaveBeenLastCalledWith("chunk-doc-1", {
+      content: "更新后的切片内容",
+      title: "",
+    });
+    expect(screen.queryByRole("dialog", { name: "编辑切片" })).not.toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "编辑" })).toHaveLength(3);
 
     const addChunkButton = screen.getByRole("button", { name: "添加切片" });
     await user.click(addChunkButton);
-    const dialog = screen.getByRole("dialog", { name: "添加切片" });
-    await user.type(within(dialog).getByLabelText(/切片标题/), "第三章 配件说明");
+    dialog = screen.getByRole("dialog", { name: "添加切片" });
+    expect(within(dialog).queryByText(chunkVectorizationTip)).not.toBeInTheDocument();
     await user.type(within(dialog).getByLabelText(/切片内容/), "原装充电器与数据线需单独购买");
     await user.click(within(dialog).getByRole("button", { name: "确定" }));
 
+    expect(createKbChunkMock).toHaveBeenLastCalledWith({
+      chunkType: "text",
+      content: "原装充电器与数据线需单独购买",
+      docId: "knowledge-1",
+      title: "",
+    });
     expect(await screen.findByText("原装充电器与数据线需单独购买")).toBeInTheDocument();
   });
 

@@ -475,6 +475,7 @@ export function KbDocDetailPage() {
         dialogTitle="添加切片"
         fieldIdPrefix="doc-chunk"
         firstFieldLabel="切片标题"
+        firstFieldRequired={false}
         onOpenChange={setAddDocDialogOpen}
         onSubmit={({ first, second }) =>
           handleCreateDocChunk({ title: first, content: second })
@@ -587,12 +588,12 @@ function KnowledgeChunksTable({
           {isQa ? (
             <>
               <TableHead className="h-11 w-[24%] px-4">问题</TableHead>
-              <TableHead className="h-11 w-[34%] px-4">答案</TableHead>
+              <TableHead className="h-11 w-[38%] px-4">答案</TableHead>
             </>
           ) : (
-            <TableHead className="h-11 w-[42%] px-4">切片内容</TableHead>
+            <TableHead className="h-11 w-[46%] px-4">切片内容</TableHead>
           )}
-          <TableHead className="h-11 w-[20%] px-4">更新时间</TableHead>
+          <TableHead className="h-11 w-[16%] px-4">更新时间</TableHead>
           <TablePinnedHead className="h-11 w-[120px] whitespace-nowrap px-4 text-right">
             操作
           </TablePinnedHead>
@@ -625,7 +626,11 @@ function KnowledgeChunksTable({
                 </>
               ) : (
                 <TableCell className="px-4 py-4">
-                  <ChunkContentCell content={chunk.content} imageUrls={chunk.imageUrls} />
+                  <ChunkContentCell
+                    content={chunk.content}
+                    imageUrls={chunk.imageUrls}
+                    onClick={() => onEdit(chunk)}
+                  />
                 </TableCell>
               )}
               <TableCell
@@ -672,9 +677,11 @@ function KnowledgeChunksTable({
 function ChunkContentCell({
   content,
   imageUrls,
+  onClick,
 }: {
   content?: string;
   imageUrls?: string[];
+  onClick: () => void;
 }) {
   if (imageUrls && imageUrls.length > 0) {
     return (
@@ -689,17 +696,36 @@ function ChunkContentCell({
             />
           ))}
         </div>
-        <TableOverflowTooltip className="min-w-0 text-muted-foreground" tooltip={content}>
-          {content}
-        </TableOverflowTooltip>
+        <ChunkContentPreview className="min-w-0" content={content} onClick={onClick} />
       </div>
     );
   }
 
+  return <ChunkContentPreview content={content} onClick={onClick} />;
+}
+
+function ChunkContentPreview({
+  className,
+  content,
+  onClick,
+}: {
+  className?: string;
+  content?: string;
+  onClick: () => void;
+}) {
+  if (!content) {
+    return <span className="text-muted-foreground">-</span>;
+  }
+
   return (
-    <TableOverflowTooltip className="text-muted-foreground" tooltip={content}>
+    <button
+      className={`line-clamp-2 w-full whitespace-pre-line break-words text-left text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/15 ${className ?? ""}`}
+      data-slot="chunk-content-preview"
+      onClick={onClick}
+      type="button"
+    >
       {content}
-    </TableOverflowTooltip>
+    </button>
   );
 }
 

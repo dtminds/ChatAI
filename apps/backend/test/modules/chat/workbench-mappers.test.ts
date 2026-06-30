@@ -59,6 +59,7 @@ describe("workbench MySQL mappers", () => {
         chat_type: 1,
         create_time: new Date("2026-05-15T08:00:00.000Z"),
         customer_avatar: "https://example.com/customer.png",
+        customer_bind_type: 1,
         customer_name: "客户备注",
         full_auto_switch: 1,
         group_avatar: "",
@@ -80,6 +81,7 @@ describe("workbench MySQL mappers", () => {
       conversationId: "88",
       conversationAIHostingSwitch: true,
       customerAvatar: "https://example.com/customer.png",
+      customerBindType: 1,
       customerId: "external-1",
       customerName: "客户备注",
       lastMessage: "最近一条文本",
@@ -91,6 +93,35 @@ describe("workbench MySQL mappers", () => {
     });
     expect(conversation.createdAt).toBe(1778832000000);
     expect(conversation.verified).toBe(false);
+  });
+
+  it("maps application-message bind type for single conversations", () => {
+    expect(
+      mapConversationRow({
+        chat_type: 1,
+        create_time: null,
+        customer_avatar: "",
+        customer_bind_type: 2,
+        customer_name: "",
+        group_avatar: "",
+        group_name: "",
+        id: 88,
+        last_message_content: "",
+        last_message_type: "text",
+        last_msgtime: null,
+        pinned_time: 0,
+        seat_id: 12,
+        third_external_userid: "external-1",
+        third_group_id: "",
+        third_userid: "third-user-1",
+        unread_cnt: 0,
+      }),
+    ).toMatchObject({
+      customerAvatar: "https://b5.bokr.com.cn/dist/app-avatar.png",
+      customerBindType: 2,
+      customerName: "应用消息",
+      mode: "single",
+    });
   });
 
   it("maps single chat original name as wechat nickname subtitle", () => {

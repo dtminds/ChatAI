@@ -13,6 +13,10 @@ function withDefaultAIHostingSwitch(conversations: SeedConversation[]): Conversa
   return conversations.map((conversation) => ({
     ...conversation,
     conversationAIHostingSwitch: conversation.conversationAIHostingSwitch ?? false,
+    customerBindType:
+      conversation.mode === "single"
+        ? conversation.customerBindType ?? 1
+        : undefined,
   }));
 }
 

@@ -106,6 +106,7 @@ type ChatComposerProps = {
   canConfigureSeatSemiAuto: boolean;
   canToggleConversationAIHosting: boolean;
   canSendMessage: boolean;
+  canUseConversationAIFeatures: boolean;
   accountAvatarUrl?: string;
   accountName?: string;
   collectedExpressions?: WorkbenchMaterialCollectionItemDto[];
@@ -180,6 +181,7 @@ export function ChatComposer({
   canConfigureSeatSemiAuto,
   canToggleConversationAIHosting,
   canSendMessage,
+  canUseConversationAIFeatures,
   accountAvatarUrl,
   accountName,
   collectedExpressions = [],
@@ -359,7 +361,7 @@ export function ChatComposer({
     canEditComposer && composerImageCount < MAX_COMPOSER_IMAGE_SEGMENTS;
   const canOpenCollectedFiles = canSendMessage && !isSending;
   const composerActionButtonClass = "size-8 p-0 shadow-none";
-  const showAgentDialogButton = !isGroupConversation;
+  const showAgentDialogButton = canUseConversationAIFeatures;
 
   const registerEditor = useCallback(
     (editor: LexicalEditor | null) => {

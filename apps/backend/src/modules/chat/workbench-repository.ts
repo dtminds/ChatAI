@@ -182,7 +182,10 @@ type ConversationPageRow = Omit<
 };
 
 type ConversationHydrationSources = {
-  bindRemarksByThirdExternalId: Map<string, string | null>;
+  bindRelationsByThirdExternalId: Map<
+    string,
+    { bindType: number | null; remark: string | null }
+  >;
   contactsByThirdExternalId: Map<
     string,
     {
@@ -4589,7 +4592,7 @@ export class WorkbenchRepository {
       contactThirdExternalIds.length
         ? this.db
             .selectFrom("xy_wap_embed_customer_bind_relation")
-            .select(["third_external_userid", "remark"])
+            .select(["bind_type", "third_external_userid", "remark"])
             .where("uid", "=", uid)
             .where("platform", "=", platform)
             .where("third_userid", "=", seatThirdUserId)
@@ -4609,10 +4612,13 @@ export class WorkbenchRepository {
     ]);
 
     return {
-      bindRemarksByThirdExternalId: new Map(
+      bindRelationsByThirdExternalId: new Map(
         bindRelations.map((bindRelation) => [
           bindRelation.third_external_userid,
-          bindRelation.remark,
+          {
+            bindType: bindRelation.bind_type,
+            remark: bindRelation.remark,
+          },
         ]),
       ),
       contactsByThirdExternalId: new Map(
@@ -4665,7 +4671,9 @@ export class WorkbenchRepository {
         ? hydrationSources.lastMessagesById.get(String(row.last_audit_info_id))
         : undefined;
     const contact = hydrationSources.contactsByThirdExternalId.get(row.third_external_userid);
-    const bindRemark = hydrationSources.bindRemarksByThirdExternalId.get(row.third_external_userid);
+    const bindRelation = hydrationSources.bindRelationsByThirdExternalId.get(
+      row.third_external_userid,
+    );
     const group = hydrationSources.groupsByThirdGroupId.get(row.third_group_id);
 
     return mapConversationRow({
@@ -4675,7 +4683,8 @@ export class WorkbenchRepository {
           ? (group?.bizStatus ?? BIZ_STATUS_HIDDEN)
           : BIZ_STATUS_ACTIVE,
       customer_avatar: contact?.avatar ?? null,
-      customer_name: firstNonEmptyString(bindRemark, contact?.name) ?? null,
+      customer_bind_type: bindRelation?.bindType,
+      customer_name: firstNonEmptyString(bindRelation?.remark, contact?.name) ?? null,
       contact_original_name: firstNonEmptyString(contact?.name) ?? null,
       group_avatar: group?.avatar ?? null,
       group_name: firstNonEmptyString(group?.name) ?? null,

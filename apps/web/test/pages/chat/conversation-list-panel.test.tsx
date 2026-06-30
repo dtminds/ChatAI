@@ -39,12 +39,14 @@ vi.mock("@/store/workbench-store", () => ({
 // ---------------------------------------------------------------------------
 function createConversation({
   conversationAIHostingSwitch = false,
+  customerBindType,
   id,
   customerName,
   mode,
   unread = 0,
 }: {
   conversationAIHostingSwitch?: boolean;
+  customerBindType?: number;
   id: string;
   customerName: string;
   mode: ChatMode;
@@ -54,6 +56,7 @@ function createConversation({
     accountId: "account-1",
     conversationAIHostingSwitch,
     customerAvatarUrl: `https://example.com/${id}.png`,
+    customerBindType: mode === "single" ? customerBindType ?? 1 : undefined,
     customerId: `customer-${id}`,
     customerName,
     id,

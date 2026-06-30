@@ -5,7 +5,10 @@ import type {
   EmployeeProfile,
 } from "@/pages/chat/chat-types";
 import { isChatReadOnlySubUser } from "@/pages/chat/hooks/use-auth-sub-user";
-import { isConversationAIHostingEnabled } from "@/pages/chat/lib/conversation-ai-hosting";
+import {
+  isConversationAIFeatureSupported,
+  isConversationAIHostingEnabled,
+} from "@/pages/chat/lib/conversation-ai-hosting";
 import {
   resolveSidebarIframeSendStatus,
   type SidebarIframeSendStatus,
@@ -76,7 +79,7 @@ export function resolveWorkbenchPermissions({
   const seatAIHostingEnabled = account?.seatAIHostingEnabled === true;
   const canToggleConversationAIHosting =
     isAccountTakenOverByCurrentUser &&
-    activeConversation?.mode === "single" &&
+    isConversationAIFeatureSupported(activeConversation) &&
     seatAIHostingEnabled;
   const conversationAIHostingEnabled =
     isConversationAIHostingEnabled(activeConversation, seatAIHostingEnabled);

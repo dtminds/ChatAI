@@ -72,6 +72,7 @@ function createCachedConversation(accountId: string): Conversation {
     accountId,
     conversationAIHostingSwitch: false,
     customerAvatarUrl: "",
+    customerBindType: 1,
     customerId: `${accountId}-customer`,
     customerName: `${accountId} 客户`,
     id: `${accountId}-conversation`,
@@ -442,6 +443,45 @@ describe("useWorkbenchStore", () => {
             mode: "group",
           },
         ],
+      },
+    }));
+
+    await useWorkbenchStore.getState().changeActiveConversationFullAuto(true);
+
+    expect(changeConversationFullAuto).not.toHaveBeenCalled();
+  });
+
+  it("does not change full-auto for application-message conversations", async () => {
+    const baseService = createMockWorkbenchService();
+    const changeConversationFullAuto = vi.fn();
+
+    setWorkbenchService({
+      ...baseService,
+      changeConversationFullAuto,
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              seatAIHostingAuth: true,
+              seatAIHostingEnabled: true,
+            }
+          : account,
+      ),
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-001"
+            ? {
+                ...conversation,
+                conversationAIHostingSwitch: false,
+                customerBindType: 2,
+                mode: "single",
+              }
+            : conversation,
+        ),
       },
     }));
 

@@ -128,6 +128,31 @@ describe("new message sound alert", () => {
     expect(audioInstances[0].pause).not.toHaveBeenCalled();
     expect(isNewMessageSoundUnlocked("msg_sound2")).toBe(true);
   });
+
+  it("pauses the existing audio before switching to another sound", async () => {
+    await playNewMessageSoundPreview("msg_sound1");
+
+    expect(audioInstances).toHaveLength(1);
+    expect(audioInstances[0].pause).not.toHaveBeenCalled();
+
+    await playNewMessageSoundPreview("msg_sound2");
+
+    expect(audioInstances).toHaveLength(2);
+    expect(audioInstances[0].pause).toHaveBeenCalledTimes(1);
+    expect(audioInstances[1].src).toBe("https://b5.bokr.com.cn/dist/sound/msg_sound2.mp3");
+  });
+
+  it("does not throw in non-document environments", async () => {
+    writeNewMessageSoundPreference({
+      enabled: true,
+      soundId: "msg_sound1",
+      trigger: "unfocused_only",
+    });
+    await unlockNewMessageSound("msg_sound1");
+    vi.stubGlobal("document", undefined);
+
+    expect(() => notifyNewMessageSound()).not.toThrow();
+  });
 });
 
 function setDocumentVisibility(value: DocumentVisibilityState) {

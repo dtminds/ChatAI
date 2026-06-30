@@ -118,6 +118,24 @@ describe("ChatHeader", () => {
     expect(matchMediaSpy).not.toHaveBeenCalled();
   });
 
+  it("does not render the saved sound preference before the client syncs storage", () => {
+    window.localStorage.setItem(
+      NEW_MESSAGE_SOUND_PREFERENCE_STORAGE_KEY,
+      JSON.stringify({
+        enabled: true,
+        soundId: "msg_sound2",
+        trigger: "all_new_messages",
+      }),
+    );
+
+    const markup = renderToString(
+      <ChatHeader />,
+    );
+
+    expect(markup).toContain("提示音关");
+    expect(markup).not.toContain("提示音开");
+  });
+
   it("restores the saved system mode preference", async () => {
     window.localStorage.setItem("chat-ai-theme", "system");
     setSystemColorScheme(true);

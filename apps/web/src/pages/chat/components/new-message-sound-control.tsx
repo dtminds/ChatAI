@@ -46,23 +46,39 @@ const SUMMARY_POPOVER_CLOSE_DELAY_MS = 120;
 type SettingsDialogMode = "enable" | "edit";
 type ActivePopover = "summary" | "reEnable";
 
+const DEFAULT_SOUND_PREFERENCE: NewMessageSoundPreference = {
+  enabled: false,
+  soundId: "msg_sound1",
+  trigger: "unfocused_only",
+};
+
 export function NewMessageSoundControl() {
-  const [preference, setPreference] = useState<NewMessageSoundPreference>(() =>
-    getNewMessageSoundPreference(),
-  );
+  const [preference, setPreference] =
+    useState<NewMessageSoundPreference>(DEFAULT_SOUND_PREFERENCE);
   const [activePopover, setActivePopover] = useState<ActivePopover | null>(null);
   const [settingsDialogMode, setSettingsDialogMode] =
     useState<SettingsDialogMode | null>(null);
   const [formSoundId, setFormSoundId] = useState<NewMessageSoundId>(
-    preference.soundId,
+    DEFAULT_SOUND_PREFERENCE.soundId,
   );
   const [formTrigger, setFormTrigger] = useState<NewMessageSoundTrigger>(
-    preference.trigger,
+    DEFAULT_SOUND_PREFERENCE.trigger,
   );
   const closeSummaryTimerRef = useRef<number | undefined>(undefined);
+  const isMountedRef = useRef(false);
+  const requestIdRef = useRef(0);
 
   useEffect(() => {
-    setPreference(getNewMessageSoundPreference());
+    isMountedRef.current = true;
+    const savedPreference = getNewMessageSoundPreference();
+    setPreference(savedPreference);
+    setFormSoundId(savedPreference.soundId);
+    setFormTrigger(savedPreference.trigger);
+
+    return () => {
+      isMountedRef.current = false;
+      requestIdRef.current += 1;
+    };
   }, []);
 
   useEffect(() => {
@@ -97,7 +113,12 @@ export function NewMessageSoundControl() {
   }
 
   async function handleSaveSettings() {
+    const requestId = ++requestIdRef.current;
     const didUnlock = await unlockNewMessageSound(formSoundId);
+    if (!isMountedRef.current || requestId !== requestIdRef.current) {
+      return;
+    }
+
     if (!didUnlock) {
       return;
     }
@@ -111,7 +132,11 @@ export function NewMessageSoundControl() {
   }
 
   async function handlePreview() {
+    const requestId = ++requestIdRef.current;
     await playNewMessageSoundPreview(formSoundId);
+    if (!isMountedRef.current || requestId !== requestIdRef.current) {
+      return;
+    }
   }
 
   function handleSummarySwitchChange(checked: boolean) {
@@ -125,8 +150,9 @@ export function NewMessageSoundControl() {
   }
 
   async function handleReEnable() {
+    const requestId = ++requestIdRef.current;
     const didUnlock = await unlockNewMessageSound(preference.soundId);
-    if (didUnlock) {
+    if (didUnlock && isMountedRef.current && requestId === requestIdRef.current) {
       setActivePopover(null);
     }
   }

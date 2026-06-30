@@ -189,6 +189,7 @@ export function clearNewMessageSoundRuntimeState() {
 
 function getAudioElement(soundId: NewMessageSoundId) {
   if (!audioElement || audioSoundId !== soundId) {
+    audioElement?.pause();
     audioElement = new Audio(getNewMessageSoundOption(soundId).url);
     audioElement.preload = "auto";
     audioElement.volume = SOUND_VOLUME;
@@ -239,5 +240,9 @@ function isNewMessageSoundTrigger(
 }
 
 function isCurrentTabActive() {
+  if (typeof document === "undefined") {
+    return false;
+  }
+
   return document.visibilityState === "visible" && document.hasFocus();
 }

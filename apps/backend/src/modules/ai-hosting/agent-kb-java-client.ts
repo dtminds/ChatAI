@@ -53,6 +53,12 @@ export type AgentKbJavaDeleteDocInput = {
   uid: number;
 };
 
+export type AgentKbJavaRetryDocInput = {
+  docId: number;
+  operatorId: string;
+  uid: number;
+};
+
 export type AgentKbJavaAddChunkInput = {
   chunkType: "text" | "faq";
   content: string;
@@ -96,6 +102,7 @@ export type AgentKbJavaClient = {
   createKbDoc(input: AgentKbJavaCreateDocInput): Promise<string>;
   deleteKbChunk(input: AgentKbJavaDeleteChunkInput): Promise<void>;
   deleteKbDoc(input: AgentKbJavaDeleteDocInput): Promise<void>;
+  retryKbDoc(input: AgentKbJavaRetryDocInput): Promise<void>;
   listKbChunks(input: AgentKbJavaListChunksInput): Promise<AgentKbJavaListChunksResponse>;
   updateKbChunk(input: AgentKbJavaUpdateChunkInput): Promise<void>;
 };
@@ -175,6 +182,21 @@ export function createAgentKbJavaClient(
         },
         logger,
         "agent-kb-doc-delete",
+        input,
+      );
+    },
+    async retryKbDoc(input) {
+      await postJavaJsonEnvelope<boolean>(
+        baseUrl,
+        token,
+        "/third-internal/wap-embed-agent-kb-doc/retry",
+        {
+          id: input.docId,
+          operatorId: input.operatorId,
+          uid: input.uid,
+        },
+        logger,
+        "agent-kb-doc-retry",
         input,
       );
     },
@@ -475,7 +497,10 @@ function mapAgentKbJavaBusinessError(response: JavaApiResponse<unknown>, operati
     token: extractAgentKbJavaErrorToken(errorMsg),
   };
 
-  if (operation === "agent-kb-doc-delete" && kind === "doc_not_found") {
+  if (
+    (operation === "agent-kb-doc-delete" || operation === "agent-kb-doc-retry") &&
+    kind === "doc_not_found"
+  ) {
     return new NotFoundError("KB_DOC_NOT_FOUND", "知识不存在");
   }
 

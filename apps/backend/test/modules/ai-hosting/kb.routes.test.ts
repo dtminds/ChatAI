@@ -48,11 +48,11 @@ describe("KB read routes", () => {
       data: {
         kbs: [
           {
-            createdAt: "2026-06-19T14:02:22.000Z",
+            createdAt: "2026-06-19T06:02:22.000Z",
             description: "华为各系列产品规格、功能与常见问题",
             kbId: "1",
             name: "华为产品知识",
-            updatedAt: "2026-06-20T14:02:22.000Z",
+            updatedAt: "2026-06-20T06:02:22.000Z",
           },
         ],
         pagination: {

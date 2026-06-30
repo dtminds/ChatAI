@@ -306,7 +306,21 @@ describe("ai-hosting kb-doc routes", () => {
     fetchMock.mockRestore();
   });
 
-  it("retries a failed kb doc by resetting sync status to queued", async () => {
+  it("retries a failed kb doc through the Java internal API", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: true,
+          error: 0,
+          errorMsg: "",
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
     const context = await createAuthenticatedApp();
     app = context.app;
 
@@ -323,17 +337,21 @@ describe("ai-hosting kb-doc routes", () => {
       },
       success: true,
     });
-
-    const retriedDoc = await app.db
-      .selectFrom("xy_wap_embed_agent_kb_doc")
-      .select(["sync_error_msg", "sync_status"])
-      .where("id", "=", 1003)
-      .executeTakeFirst();
-
-    expect(retriedDoc).toEqual({
-      sync_error_msg: null,
-      sync_status: 2,
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "https://java.internal/third-internal/wap-embed-agent-kb-doc/retry",
+    );
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+      body: JSON.stringify({
+        id: 1003,
+        operatorId: "101",
+        uid: 9001,
+      }),
+      headers: expect.objectContaining({
+        "content-type": "application/json",
+      }),
+      method: "POST",
     });
+    fetchMock.mockRestore();
   });
 
   it("rejects enhanced parsing for plain text documents", async () => {

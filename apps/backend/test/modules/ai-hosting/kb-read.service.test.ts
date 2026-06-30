@@ -62,6 +62,7 @@ function createService(
     createKbDoc: vi.fn(),
     deleteKbChunk: vi.fn(),
     deleteKbDoc: vi.fn(),
+    retryKbDoc: vi.fn(),
     listKbChunks,
     updateKbChunk: vi.fn(),
   } satisfies AgentKbJavaClient;

@@ -573,7 +573,7 @@ describe("AI hosting pages", () => {
     expect(popover).toHaveTextContent("售后政策知识库");
     expect(popover).toHaveTextContent("活动政策知识库");
     expect(popover).toHaveTextContent("直播话术知识库");
-    expect(within(popover).getByTestId("agent-kb-popover-scroll")).toHaveClass("h-[16rem]");
+    expect(within(popover).getByTestId("agent-kb-popover-scroll")).toHaveClass("max-h-[16rem]");
   });
 
   it("shows document storage below 1MB with one decimal place", async () => {

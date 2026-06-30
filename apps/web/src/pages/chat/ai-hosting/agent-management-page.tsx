@@ -492,7 +492,7 @@ function AgentKnowledgeBasePopoverContent({
         <div className="flex items-center justify-between gap-3 px-2.5">
           <p className="text-sm font-medium text-foreground">关联知识库 · {kbList.length}</p>
         </div>
-        <ScrollArea className="h-[16rem]" data-testid="agent-kb-popover-scroll">
+        <ScrollArea className="max-h-[16rem]" data-testid="agent-kb-popover-scroll">
           <div className="space-y-1 pr-2">
             {kbList.map((kb) => (
               <div

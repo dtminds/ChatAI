@@ -3,7 +3,15 @@ import userEvent from "@testing-library/user-event";
 import { renderToString } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatHeader } from "@/pages/chat/components/chat-header";
+import {
+  clearNewMessageSoundRuntimeState,
+  getNewMessageSoundPreference,
+  NEW_MESSAGE_SOUND_PREFERENCE_STORAGE_KEY,
+  unlockNewMessageSound,
+} from "@/pages/chat/lib/new-message-sound-alert";
 import type { Conversation } from "@/pages/chat/chat-types";
+
+let audioInstances: AudioMock[];
 
 const conversation: Conversation = {
   accountId: "account-1",
@@ -25,9 +33,14 @@ describe("ChatHeader", () => {
     document.documentElement.classList.remove("dark");
     window.localStorage.clear();
     setSystemColorScheme(false);
+    audioInstances = [];
+    clearNewMessageSoundRuntimeState();
+    vi.stubGlobal("Audio", AudioMock);
   });
 
   afterEach(() => {
+    clearNewMessageSoundRuntimeState();
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 
@@ -142,6 +155,168 @@ describe("ChatHeader", () => {
     getItemSpy.mockRestore();
     setItemSpy.mockRestore();
   });
+
+  it("shows the notification capsule and summary popover without directly toggling from the capsule", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem(
+      NEW_MESSAGE_SOUND_PREFERENCE_STORAGE_KEY,
+      JSON.stringify({
+        enabled: true,
+        soundId: "msg_sound1",
+        trigger: "all_new_messages",
+      }),
+    );
+    await unlockNewMessageSound("msg_sound1");
+
+    render(<ChatHeader />);
+
+    const capsule = screen.getByRole("button", { name: "新消息提醒已开启" });
+    expect(capsule).toHaveTextContent("提示音开");
+
+    await user.click(capsule);
+
+    expect(getNewMessageSoundPreference().enabled).toBe(true);
+    expect(screen.getByText("提示音")).toBeInTheDocument();
+    expect(screen.getByText("提示音 1")).toBeInTheDocument();
+    expect(screen.getByText("提示时机")).toBeInTheDocument();
+    expect(screen.getByText("收到新消息时")).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "新消息提醒状态" })).toBeChecked();
+    expect(screen.getByRole("button", { name: "修改新消息提醒设置" })).toBeInTheDocument();
+  });
+
+  it("uses the summary popover switch for quick enable and disable", async () => {
+    const user = userEvent.setup();
+    render(<ChatHeader />);
+
+    await user.click(screen.getByRole("button", { name: "新消息提醒未开启" }));
+    await user.click(screen.getByRole("switch", { name: "新消息提醒状态" }));
+
+    expect(screen.getByRole("dialog", { name: "新消息提醒" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "保存并开启" }));
+
+    expect(getNewMessageSoundPreference()).toMatchObject({
+      enabled: true,
+      soundId: "msg_sound1",
+      trigger: "unfocused_only",
+    });
+    expect(audioInstances[0].play).toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "新消息提醒已开启" })).toHaveTextContent(
+      "提示音开",
+    );
+
+    await user.click(screen.getByRole("button", { name: "新消息提醒已开启" }));
+    await user.click(screen.getByRole("switch", { name: "新消息提醒状态" }));
+
+    expect(getNewMessageSoundPreference().enabled).toBe(false);
+    expect(screen.getByRole("button", { name: "新消息提醒未开启" })).toHaveTextContent(
+      "提示音关",
+    );
+  });
+
+  it("opens the settings dialog from the summary popover gear and saves sound and trigger choices", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem(
+      NEW_MESSAGE_SOUND_PREFERENCE_STORAGE_KEY,
+      JSON.stringify({
+        enabled: true,
+        soundId: "msg_sound1",
+        trigger: "unfocused_only",
+      }),
+    );
+    await unlockNewMessageSound("msg_sound1");
+
+    render(<ChatHeader />);
+
+    await user.click(screen.getByRole("button", { name: "新消息提醒已开启" }));
+    await user.click(screen.getByRole("button", { name: "修改新消息提醒设置" }));
+
+    const dialog = screen.getByRole("dialog", { name: "新消息提醒" });
+    expect(dialog).toBeInTheDocument();
+
+    await user.click(screen.getByRole("combobox", { name: "提示音" }));
+    await user.click(await screen.findByRole("option", { name: "提示音 2" }));
+
+    await user.click(screen.getByRole("combobox", { name: "提示时机" }));
+    await user.click(await screen.findByRole("option", { name: "收到新消息时" }));
+
+    await user.click(screen.getByRole("button", { name: "试听" }));
+    expect(audioInstances.at(-1)?.src).toBe("https://b5.bokr.com.cn/dist/sound/msg_sound2.mp3");
+
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    expect(getNewMessageSoundPreference()).toMatchObject({
+      enabled: true,
+      soundId: "msg_sound2",
+      trigger: "all_new_messages",
+    });
+  });
+
+  it("shows a separate re-enable popover after refresh and lets the user ignore it", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem(
+      NEW_MESSAGE_SOUND_PREFERENCE_STORAGE_KEY,
+      JSON.stringify({
+        enabled: true,
+        soundId: "msg_sound1",
+        trigger: "unfocused_only",
+      }),
+    );
+
+    render(<ChatHeader />);
+
+    expect(await screen.findByText("重新开启消息提示音")).toBeInTheDocument();
+    expect(screen.getByText("温馨提醒：浏览器刷新后需点击一次开启提示音，以免错过新消息哦")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "忽略" }));
+
+    expect(getNewMessageSoundPreference().enabled).toBe(false);
+    expect(screen.queryByText("重新开启消息提示音")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "新消息提醒未开启" })).toHaveTextContent(
+      "提示音关",
+    );
+  });
+
+  it("keeps the refresh re-enable popover open until the user chooses an action", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem(
+      NEW_MESSAGE_SOUND_PREFERENCE_STORAGE_KEY,
+      JSON.stringify({
+        enabled: true,
+        soundId: "msg_sound1",
+        trigger: "unfocused_only",
+      }),
+    );
+
+    render(<ChatHeader />);
+
+    expect(await screen.findByText("重新开启消息提示音")).toBeInTheDocument();
+
+    await user.click(document.body);
+
+    expect(screen.getByText("重新开启消息提示音")).toBeInTheDocument();
+    expect(getNewMessageSoundPreference().enabled).toBe(true);
+  });
+
+  it("re-enables the saved sound from the separate refresh popover", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem(
+      NEW_MESSAGE_SOUND_PREFERENCE_STORAGE_KEY,
+      JSON.stringify({
+        enabled: true,
+        soundId: "msg_sound2",
+        trigger: "unfocused_only",
+      }),
+    );
+
+    render(<ChatHeader />);
+
+    await user.click(await screen.findByRole("button", { name: "点此开启" }));
+
+    expect(getNewMessageSoundPreference().enabled).toBe(true);
+    expect(audioInstances[0].src).toBe("https://b5.bokr.com.cn/dist/sound/msg_sound2.mp3");
+    expect(screen.queryByText("重新开启消息提示音")).not.toBeInTheDocument();
+  });
 });
 
 function setSystemColorScheme(matches: boolean) {
@@ -177,4 +352,18 @@ function setSystemColorScheme(matches: boolean) {
   window.matchMedia = vi.fn().mockReturnValue(mediaQuery);
 
   return mediaQuery;
+}
+
+class AudioMock {
+  currentTime = 0;
+  preload = "";
+  src: string;
+  volume = 1;
+  pause = vi.fn();
+  play = vi.fn(() => Promise.resolve());
+
+  constructor(src: string) {
+    this.src = src;
+    audioInstances.push(this);
+  }
 }

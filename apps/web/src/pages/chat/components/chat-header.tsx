@@ -17,6 +17,7 @@ import {
   writeThemePreference,
   type ThemePreference,
 } from "@/lib/theme-preference";
+import { NewMessageSoundControl } from "@/pages/chat/components/new-message-sound-control";
 import type { Conversation } from "@/pages/chat/chat-types";
 
 type ChatHeaderProps = {
@@ -76,37 +77,40 @@ export function ChatHeader({ activeConversation }: ChatHeaderProps) {
           ) : null}
         </div>
 
-        <SegmentedControl
-          aria-label="选择主题模式"
-          onValueChange={handleThemePreferenceChange}
-          type="single"
-          value={themePreference}
-        >
-          <SegmentedControlItem aria-label="浅色模式" value="light">
-            <HugeiconsIcon
-              color="currentColor"
-              icon={Sun02Icon}
-              size={16}
-              strokeWidth={1.8}
-            />
-          </SegmentedControlItem>
-          <SegmentedControlItem aria-label="深色模式" value="dark">
-            <HugeiconsIcon
-              color="currentColor"
-              icon={Moon02Icon}
-              size={16}
-              strokeWidth={1.8}
-            />
-          </SegmentedControlItem>
-          <SegmentedControlItem aria-label="跟随系统" value="system">
-            <HugeiconsIcon
-              color="currentColor"
-              icon={ModernTvIcon}
-              size={16}
-              strokeWidth={1.8}
-            />
-          </SegmentedControlItem>
-        </SegmentedControl>
+        <div className="flex shrink-0 items-center gap-2">
+          <NewMessageSoundControl />
+          <SegmentedControl
+            aria-label="选择主题模式"
+            onValueChange={handleThemePreferenceChange}
+            type="single"
+            value={themePreference}
+          >
+            <SegmentedControlItem aria-label="浅色模式" value="light">
+              <HugeiconsIcon
+                color="currentColor"
+                icon={Sun02Icon}
+                size={16}
+                strokeWidth={1.8}
+              />
+            </SegmentedControlItem>
+            <SegmentedControlItem aria-label="深色模式" value="dark">
+              <HugeiconsIcon
+                color="currentColor"
+                icon={Moon02Icon}
+                size={16}
+                strokeWidth={1.8}
+              />
+            </SegmentedControlItem>
+            <SegmentedControlItem aria-label="跟随系统" value="system">
+              <HugeiconsIcon
+                color="currentColor"
+                icon={ModernTvIcon}
+                size={16}
+                strokeWidth={1.8}
+              />
+            </SegmentedControlItem>
+          </SegmentedControl>
+        </div>
       </div>
     </div>
   );

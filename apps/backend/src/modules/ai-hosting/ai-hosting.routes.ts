@@ -2,16 +2,20 @@ import {
   AiHostingAgentRenameRequestSchema,
   AiHostingAgentSaveRequestSchema,
   AiHostingAgentSettingsSaveRequestSchema,
+  AiHostingAgentTestRequestSchema,
   AiHostingSettingsUpdateRequestSchema,
   apiSuccess,
   type AiHostingAgentRenameRequest,
   type AiHostingAgentSaveRequest,
   type AiHostingAgentSettingsSaveRequest,
+  type AiHostingAgentTestRequest,
   type AiHostingSettingsUpdateRequest,
 } from "@chatai/contracts";
 import { Type, type Static } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { ForbiddenError } from "../../shared/errors.js";
+import { createWorkbenchJavaClient } from "../chat/workbench-java-client.js";
+import { AgentTestService } from "./agent-test.service.js";
 import { createAiHostingAgentService } from "./ai-hosting-agent.service.js";
 import { createAiHostingQuotaService } from "./quota.service.js";
 import { createAiHostingSettingsService } from "./ai-hosting-settings.service.js";
@@ -225,6 +229,22 @@ export async function registerAiHostingRoutes(app: FastifyInstance) {
     },
   );
 
+  app.post<{ Body: AiHostingAgentTestRequest }>(
+    "/api/server/ai-hosting/agents/test",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: AiHostingAgentTestRequestSchema,
+      },
+    },
+    async (request) => {
+      assertAiHostingManage(request);
+      return apiSuccess(
+        await getAgentTestService(app).testAgent(getSubUserId(request), request.body),
+      );
+    },
+  );
+
   app.delete<{ Params: AgentParams }>(
     "/api/server/ai-hosting/agents/:agentId",
     {
@@ -258,6 +278,10 @@ function getAgentWriteContext(request: FastifyRequest) {
     operatorSubUserId: request.user.subUserId,
     uid: request.user.uid,
   };
+}
+
+function getAgentTestService(app: FastifyInstance) {
+  return new AgentTestService(app.db, createWorkbenchJavaClient(app.log));
 }
 
 function parseOptionalInteger(value: string | undefined) {

@@ -805,6 +805,301 @@ describe("AI hosting agent routes", () => {
 
     await app.close();
   });
+
+  it("proxies agent simulation tests to the Java test-agent endpoint", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: {
+            action: "reply",
+            reply: [{ type: "text", content: "你好，我是 Agent" }],
+          },
+          success: true,
+        }),
+        { status: 200 },
+      ),
+    );
+    const { app, authorization } = await createAiHostingApp();
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        messages: [
+          {
+            contents: [{ type: "text", text: "我想了解晨间护肤" }],
+            role: "user",
+          },
+        ],
+        modelId: "11",
+        promptConfig: {
+          availableKbIds: [1, 3],
+          conditionLogic: "如果客户咨询成分，那么说明功效",
+          replyStyle: {
+            length: "简洁",
+            styleInstruction: "亲切自然",
+          },
+          handoffRules: "客户要求真人",
+          role: "你是护肤顾问",
+        },
+      },
+      url: "/api/server/ai-hosting/agents/test",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      data: {
+        action: "reply",
+        reply: [{ type: "text", content: "你好，我是 Agent" }],
+      },
+      success: true,
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/wap-embed-agent/test-agent",
+      expect.objectContaining({
+        method: "POST",
+      }),
+    );
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      messages: [
+        {
+          contents: [{ text: "我想了解晨间护肤", type: "text" }],
+          role: "user",
+        },
+      ],
+      modelId: 11,
+      promptConfig: JSON.stringify({
+        available_kb_ids: [1, 3],
+        condition_logic: "如果客户咨询成分，那么说明功效",
+        handoff_rules: "客户要求真人",
+        reply_style: {
+          length: "简洁",
+          style_instruction: "亲切自然",
+        },
+        role: "你是护肤顾问",
+      }),
+      uid: 9001,
+    });
+
+    fetchMock.mockRestore();
+    await app.close();
+  });
+
+  it("maps Java handoff simulation results without returning a gateway error", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: `{
+    "action": "handoff",
+    "reason": "客户明确表达转人工需求"
+}`,
+          success: true,
+        }),
+        { status: 200 },
+      ),
+    );
+    const { app, authorization } = await createAiHostingApp();
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        messages: [
+          {
+            contents: [{ type: "text", text: "转人工" }],
+            role: "user",
+          },
+        ],
+        modelId: "11",
+        promptConfig: {
+          availableKbIds: [],
+          conditionLogic: "",
+          replyStyle: {
+            length: "简洁",
+            styleInstruction: "亲切自然",
+          },
+          handoffRules: "客户要求真人",
+          role: "你是护肤顾问",
+        },
+      },
+      url: "/api/server/ai-hosting/agents/test",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      data: {
+        action: "handoff",
+        reply: [{ type: "text", content: "已触发转人工" }],
+      },
+      success: true,
+    });
+
+    fetchMock.mockRestore();
+    await app.close();
+  });
+
+  it("returns a successful empty reply when Java test-agent data is not renderable", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: {
+            action: "reply",
+            reply: [],
+          },
+          success: true,
+        }),
+        { status: 200 },
+      ),
+    );
+    const { app, authorization } = await createAiHostingApp();
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        messages: [
+          {
+            contents: [{ type: "text", text: "测试" }],
+            role: "user",
+          },
+        ],
+        modelId: "11",
+        promptConfig: {
+          availableKbIds: [],
+          conditionLogic: "",
+          replyStyle: {
+            length: "简洁",
+            styleInstruction: "亲切自然",
+          },
+          handoffRules: "",
+          role: "你是护肤顾问",
+        },
+      },
+      url: "/api/server/ai-hosting/agents/test",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      data: {
+        action: "reply",
+        reply: [],
+      },
+      success: true,
+    });
+
+    fetchMock.mockRestore();
+    await app.close();
+  });
+
+  it("rejects agent simulation tests for non-manage roles", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: {
+            action: "reply",
+            reply: [{ type: "text", content: "不应调用" }],
+          },
+          success: true,
+        }),
+        { status: 200 },
+      ),
+    );
+    const { app, authorization } = await createAiHostingApp(["operator"]);
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        messages: [
+          {
+            contents: [{ type: "text", text: "我想测试 Agent" }],
+            role: "user",
+          },
+        ],
+        modelId: "11",
+        promptConfig: {
+          availableKbIds: [1],
+          conditionLogic: "",
+          replyStyle: {
+            length: "简洁",
+            styleInstruction: "亲切自然",
+          },
+          handoffRules: "",
+          role: "你是护肤顾问",
+        },
+      },
+      url: "/api/server/ai-hosting/agents/test",
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({
+      error: {
+        code: "FORBIDDEN",
+        message: "无权限访问",
+      },
+      success: false,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    fetchMock.mockRestore();
+    await app.close();
+  });
+
+  it("only forwards the latest 20 messages to the Java test-agent endpoint", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: {
+            action: "reply",
+            reply: [{ type: "text", content: "收到" }],
+          },
+          success: true,
+        }),
+        { status: 200 },
+      ),
+    );
+    const { app, authorization } = await createAiHostingApp();
+    const messages = Array.from({ length: 25 }, (_, index) => ({
+      contents: [{ type: "text", text: `消息 ${index + 1}` }],
+      role: index % 2 === 0 ? "user" : "assistant",
+    }));
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        messages,
+        modelId: "11",
+        promptConfig: {
+          availableKbIds: [],
+          conditionLogic: "",
+          replyStyle: {
+            length: "简洁",
+            styleInstruction: "亲切自然",
+          },
+          handoffRules: "",
+          role: "你是护肤顾问",
+        },
+      },
+      url: "/api/server/ai-hosting/agents/test",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)).messages).toEqual(
+      messages.slice(-20).map((message) => ({
+        contents: [{ text: message.contents[0]?.text, type: "text" }],
+        role: message.role,
+      })),
+    );
+
+    fetchMock.mockRestore();
+    await app.close();
+  });
 });
 
 async function createAiHostingApp(

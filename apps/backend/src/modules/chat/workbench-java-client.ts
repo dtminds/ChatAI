@@ -301,6 +301,19 @@ export type WorkbenchJavaClient = {
     thirdUserId: string;
     uid: number;
   }): Promise<void>;
+  testAgent(input: {
+    messages: Array<{
+      contents: Array<{
+        text?: string;
+        type: "audio" | "image" | "text";
+        url?: string;
+      }>;
+      role: "assistant" | "user";
+    }>;
+    modelId: number;
+    promptConfig: string;
+    uid: number;
+  }): Promise<unknown>;
   updateMessageContent(input: {
     content: string;
     platform: number;
@@ -740,6 +753,16 @@ export function createWorkbenchJavaClient(
         logger,
         "take-over-seat",
       ).then(() => undefined);
+    },
+    testAgent(input) {
+      return postJavaEnvelope<unknown>(
+        baseUrl,
+        token,
+        "/third-internal/wap-embed-agent/test-agent",
+        input,
+        logger,
+        "test-agent",
+      );
     },
     updateMessageContent(input) {
       return postJavaEnvelope<string>(

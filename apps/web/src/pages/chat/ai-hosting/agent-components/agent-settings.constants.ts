@@ -38,6 +38,7 @@ export const mockKnowledgeBaseOptions: KnowledgeBaseOption[] = [
 
 export const agentNameMaxLength = 50;
 export const agentLongTextMaxLength = 2000;
+export const agentPreviewTestMessageLimit = 20;
 
 export const agentModelOptions = [
   { label: "默认模型", model: "default-model", value: "0" },
@@ -130,16 +131,16 @@ export type AgentPreviewMessage = {
 };
 
 export const agentPreviewSeedMessages: AgentPreviewMessage[] = [
-  {
-    id: "preview-user-1",
-    role: "customer",
-    content: "我想了解下晨间护肤",
-  },
-  {
-    id: "preview-agent-1",
-    role: "agent",
-    content: "你好，请问有什么可以帮您？",
-  },
+  // {
+  //   id: "preview-user-1",
+  //   role: "customer",
+  //   content: "我想了解下晨间护肤",
+  // },
+  // {
+  //   id: "preview-agent-1",
+  //   role: "agent",
+  //   content: "你好，请问有什么可以帮您？",
+  // },
 ];
 
 export type AgentGenerateForm = {

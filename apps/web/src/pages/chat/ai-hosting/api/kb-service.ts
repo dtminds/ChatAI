@@ -164,8 +164,16 @@ function resolveVolcChunkDisplayParts(volcChunkId?: string) {
 
   return {
     displayChunkId: tail.slice(0, separatorIndex),
-    displayChunkIndex: tail.slice(separatorIndex + 1),
+    displayChunkIndex: formatVolcChunkIndex(tail.slice(separatorIndex + 1)),
   };
+}
+
+function formatVolcChunkIndex(chunkIndex: string) {
+  if (!/^\d+$/.test(chunkIndex)) {
+    return chunkIndex;
+  }
+
+  return String(Number(chunkIndex) + 1);
 }
 
 export function resolveKbDocImageUrl(docUrl: string) {

@@ -54,6 +54,7 @@ export function mapJavaChunkPageItem(
     source: mapChunkSource(item.source),
     title: item.title?.trim() || parsed.title || undefined,
     updatedAt: toIsoString(item.updateTime),
+    volcChunkId: item.volcChunkId?.trim() || undefined,
   };
 }
 

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { AiHostingAgentListItem } from "@chatai/contracts";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import { Add01Icon, Book04Icon, Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -31,6 +32,7 @@ import {
 import { isRequestError } from "@/lib/request";
 import { useAuthStore } from "@/store/auth-store";
 import {
+  getAiHostingQuota,
   listAiHostingAgents,
   removeAiHostingAgent,
 } from "./agent-service";
@@ -41,7 +43,16 @@ import {
   type AgentStatsPeriod,
 } from "./agent-management-overview";
 import { canManageAiHostingAgents } from "./agent-permissions";
-import { AiHostingLayout, AiHostingPageHeader } from "./ai-hosting-layout";
+import {
+  AiHostingLayout,
+  AiHostingPageHeader,
+  notifyAiHostingQuotaChanged,
+} from "./ai-hosting-layout";
+import {
+  AI_HOSTING_AGENT_QUOTA_REACHED_MESSAGE,
+  AI_HOSTING_QUOTA_CHECK_FAILED_MESSAGE,
+  isQuotaReached,
+} from "./quota";
 
 type AgentRecord = AiHostingAgentListItem;
 
@@ -67,6 +78,8 @@ export function AgentManagementPage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [removeTarget, setRemoveTarget] = useState<AgentRecord | null>(null);
   const [removing, setRemoving] = useState(false);
+  const [checkingQuota, setCheckingQuota] = useState(false);
+  const navigate = useNavigate();
   const canManage = canManageAiHostingAgents(role);
 
   const metrics = emptyAgentMetrics;
@@ -144,10 +157,34 @@ export function AgentManagementPage() {
       });
       setAgents(response.agents);
       setTotalAgents(response.pagination.total);
+      notifyAiHostingQuotaChanged();
     } catch (error) {
       setErrorMessage(isRequestError(error) ? error.message : "删除 Agent 失败");
     } finally {
       setRemoving(false);
+    }
+  }
+
+  async function handleAddAgent() {
+    if (!canManage || checkingQuota) {
+      return;
+    }
+
+    setCheckingQuota(true);
+
+    try {
+      const quota = await getAiHostingQuota();
+
+      if (quota && isQuotaReached(quota.agents)) {
+        toast.error(AI_HOSTING_AGENT_QUOTA_REACHED_MESSAGE);
+        return;
+      }
+
+      navigate("/chat/ai-hosting/agents/new");
+    } catch {
+      toast.error(AI_HOSTING_QUOTA_CHECK_FAILED_MESSAGE);
+    } finally {
+      setCheckingQuota(false);
     }
   }
 
@@ -189,14 +226,19 @@ export function AgentManagementPage() {
               />
             </div>
 
-            {canManage ? (
-              <Button asChild className="h-10 px-4" type="button">
-                <Link to="/chat/ai-hosting/agents/new">
+            <div className="flex flex-wrap items-center justify-end gap-3">
+              {canManage ? (
+                <Button
+                  className="h-10 px-4"
+                  disabled={checkingQuota}
+                  onClick={() => void handleAddAgent()}
+                  type="button"
+                >
                   <HugeiconsIcon color="currentColor" icon={Add01Icon} size={17} strokeWidth={1.8} />
                   <span>添加 Agent</span>
-                </Link>
-              </Button>
-            ) : null}
+                </Button>
+              ) : null}
+            </div>
           </div>
 
           <div className="mt-4">

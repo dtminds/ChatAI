@@ -24,7 +24,13 @@ import {
 } from "@/components/ui/file-upload";
 import { Progress } from "@/components/ui/progress";
 import { isRequestError } from "@/lib/request";
+import { getAiHostingQuota } from "@/pages/chat/ai-hosting/agent-service";
 import { importKbDoc } from "@/pages/chat/ai-hosting/api/kb-doc-service";
+import {
+  AI_HOSTING_KB_DOC_STORAGE_QUOTA_REACHED_MESSAGE,
+  AI_HOSTING_QUOTA_CHECK_FAILED_MESSAGE,
+  wouldExceedQuota,
+} from "@/pages/chat/ai-hosting/quota";
 import { FileExtensionBadge } from "@/pages/chat/components/message/file";
 import {
   getFileExtension,
@@ -181,6 +187,22 @@ export function ImportDocumentDialog({
       setUploadProgress(0);
 
       try {
+        const quota = await getAiHostingQuota();
+
+        if (wouldExceedQuota(quota.kbDocs, selectedFile.size)) {
+          toast.error(AI_HOSTING_KB_DOC_STORAGE_QUOTA_REACHED_MESSAGE);
+          return false;
+        }
+      } catch {
+        if (!isMountedRef.current) {
+          return false;
+        }
+
+        toast.error(AI_HOSTING_QUOTA_CHECK_FAILED_MESSAGE);
+        return false;
+      }
+
+      try {
         const result = await importKbDoc({
           chunkParams:
             chunkStrategy === "length"
@@ -214,7 +236,9 @@ export function ImportDocumentDialog({
           return false;
         }
 
-        toast.error(isRequestError(error) ? error.message : "文档导入失败");
+        toast.error(
+          isRequestError(error) ? error.message : "文档导入失败",
+        );
         return false;
       }
     });

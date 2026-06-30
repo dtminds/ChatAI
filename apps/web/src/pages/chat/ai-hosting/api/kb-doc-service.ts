@@ -7,6 +7,7 @@ import type {
   KbDocCreateRequest,
   KbDocCreateResponse,
   KbDocDeleteResponse,
+  KbDocRetryResponse,
   KbDocParseMode,
 } from "@chatai/contracts";
 import { request } from "@/lib/request";
@@ -62,6 +63,15 @@ export async function deleteKbDoc(docId: string) {
   return response.data;
 }
 
+export async function retryKbDoc(docId: string) {
+  const response = await request<ApiSuccessEnvelope<KbDocRetryResponse>>({
+    method: "POST",
+    url: `/server/ai-hosting/kb-docs/${docId}/retry`,
+  });
+
+  return response.data;
+}
+
 export async function uploadKbDocFile(
   file: File,
   options: {
@@ -107,6 +117,7 @@ export function buildKbDocCreateRequest(input: {
     chunkParams: input.chunkParams,
     chunkStrategy: input.chunkStrategy,
     description: input.description,
+    docSize: input.file.size,
     docSuffix,
     docUrl: input.docUrl,
     kbId: input.kbId,
@@ -149,6 +160,7 @@ export async function importKbQaDoc(input: {
   const docSuffix = getKbQaDocSuffix(input.file.name);
 
   return createKbFaqDoc({
+    docSize: input.file.size,
     docSuffix,
     docUrl: uploadResult.docUrl,
     kbId: input.kbId,
@@ -170,6 +182,7 @@ export async function importKbImageDoc(input: {
 
   return createKbImageDoc({
     description: input.description.trim(),
+    docSize: input.file.size,
     docSuffix,
     docUrl: uploadResult.docUrl,
     kbId: input.kbId,

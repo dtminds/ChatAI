@@ -39,6 +39,7 @@ import {
   resolveAgentHostingStatus,
   type AgentHostingStatus,
 } from "@/pages/chat/lib/chat-agent-hosting-status";
+import { isConversationAIFeatureSupported } from "@/pages/chat/lib/conversation-ai-hosting";
 import type { SmartReplySendPayload } from "@/pages/chat/api/smart-reply-adapter";
 
 type ChatPanelProps = {
@@ -264,6 +265,8 @@ export function ChatPanel({
       : resolvedAgentHostingStatus;
   const hasActiveFileUpload = fileUploadQueue.length > 0;
   const hasActiveConversation = activeConversation !== undefined;
+  const canUseConversationAIFeatures =
+    isConversationAIFeatureSupported(activeConversation);
 
   return (
     <section className="flex min-h-0 min-w-0 flex-col bg-surface">
@@ -359,6 +362,7 @@ export function ChatPanel({
                       canConfigureSeatSemiAuto={canConfigureSeatSemiAuto}
                       canToggleConversationAIHosting={canToggleConversationAIHosting}
                       canSendMessage={canSendMessage}
+                      canUseConversationAIFeatures={canUseConversationAIFeatures}
                       draft={draft}
                       fullAutoActionPending={fullAutoActionPending}
                       seatAgentModeActionPending={seatAgentModeActionPending}

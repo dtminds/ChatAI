@@ -62,7 +62,10 @@ import { normalizeMediaAssetUrl } from "@/pages/chat/lib/media-asset-url";
 import { isValidMessageSeq } from "@/pages/chat/lib/message-seq";
 import { notifyPulledCustomerMessage } from "@/pages/chat/lib/new-message-title-alert";
 import { canUseWorkbenchConversationActions } from "@/pages/chat/lib/workbench-permissions";
-import { isConversationAIHostingEnabled } from "@/pages/chat/lib/conversation-ai-hosting";
+import {
+  isConversationAIFeatureSupported,
+  isConversationAIHostingEnabled,
+} from "@/pages/chat/lib/conversation-ai-hosting";
 import { seedCustomerProfiles } from "@/pages/chat/mock-data";
 import {
   CHAT_TYPE,
@@ -88,7 +91,6 @@ import {
   isSmartReplyPollComplete,
   isSmartReplyEligibleMessage,
   isSmartReplySupportedConversation,
-  resolveSmartReplyRealAnswer,
   SMART_REPLY_CONTENT_INCOMPLETE_SKIP_HINT,
   SMART_REPLY_CONTENT_INCOMPLETE_SKIP_MESSAGE,
   SMART_REPLY_BUSY_TIMEOUT_MS,
@@ -3765,14 +3767,6 @@ export function createWorkbenchStore() {
             await sendSmartReplyAnswer({
               conversationId,
               optNos,
-              realAnswer: resolveSmartReplyRealAnswer(
-                suggestion?.genAnswer,
-                payload.content,
-                suggestion?.content,
-              ),
-              // 新 send-answer 接口暂未启用附件 id，先不传 realAttachIds
-              // realAttachIds: buildSmartReplyRealAttachIds(payload.selectedAttachmentIds),
-              realAttachIds: [],
               recordId,
             });
           } catch {
@@ -5605,6 +5599,7 @@ export function createWorkbenchStore() {
 
       if (
         !canUseConversationActions(state, account) ||
+        !isConversationAIFeatureSupported(conversation) ||
         account?.seatAIHostingEnabled !== true
       ) {
         return;

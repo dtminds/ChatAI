@@ -20,7 +20,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { isRequestError } from "@/lib/request";
+import { getAiHostingQuota } from "@/pages/chat/ai-hosting/agent-service";
 import { importKbImageDoc } from "@/pages/chat/ai-hosting/api/kb-doc-service";
+import {
+  AI_HOSTING_KB_DOC_STORAGE_QUOTA_REACHED_MESSAGE,
+  AI_HOSTING_QUOTA_CHECK_FAILED_MESSAGE,
+  wouldExceedQuota,
+} from "@/pages/chat/ai-hosting/quota";
 import {
   getFileExtension,
   RequiredLabel,
@@ -142,17 +148,14 @@ export function ImportImageDialog({
         return;
       }
 
-      setSelectedImage(file);
-      setImageName((currentName) => {
-        if (!isCurrentValidation(validationId) || currentName.trim()) {
-          return currentName;
-        }
+      if (!isCurrentValidation(validationId)) {
+        return;
+      }
 
-        return stripFileExtension(file.name).slice(
-          0,
-          IMAGE_KNOWLEDGE_NAME_MAX_LENGTH,
-        );
-      });
+      setSelectedImage(file);
+      setImageName(
+        stripFileExtension(file.name).slice(0, IMAGE_KNOWLEDGE_NAME_MAX_LENGTH),
+      );
     } catch {
       if (!isCurrentValidation(validationId)) {
         return;
@@ -185,6 +188,22 @@ export function ImportImageDialog({
     const trimmedName = imageName.trim();
 
     void runSubmit(async () => {
+      try {
+        const quota = await getAiHostingQuota();
+
+        if (wouldExceedQuota(quota.kbDocs, selectedImage.size)) {
+          toast.error(AI_HOSTING_KB_DOC_STORAGE_QUOTA_REACHED_MESSAGE);
+          return false;
+        }
+      } catch {
+        if (!isMountedRef.current) {
+          return false;
+        }
+
+        toast.error(AI_HOSTING_QUOTA_CHECK_FAILED_MESSAGE);
+        return false;
+      }
+
       abortControllerRef.current?.abort();
       abortControllerRef.current = new AbortController();
 

@@ -14,7 +14,6 @@ import type { AgentKbJavaClient } from "./agent-kb-java-client.js";
 import { createAgentKbJavaClient } from "./agent-kb-java-client.js";
 import { mapJavaChunkPageItem } from "./kb-chunk-java-mappers.js";
 import {
-  mapDocType,
   mapDocTypeToDb,
   mapKbDocDetail,
   mapKbDocListItem,
@@ -69,13 +68,15 @@ export class KbReadService {
       query = query.where("name", "like", buildContainsLikePattern(normalizedQuery));
     }
 
+    const rowsPromise = query
+      .orderBy("id", "desc")
+      .limit(pagination.pageSize)
+      .offset((pagination.page - 1) * pagination.pageSize)
+      .execute();
+    const totalPromise = this.countKbs(uid, normalizedQuery);
     const [rows, total] = await Promise.all([
-      query
-        .orderBy("id", "desc")
-        .limit(pagination.pageSize)
-        .offset((pagination.page - 1) * pagination.pageSize)
-        .execute(),
-      this.countKbs(uid, normalizedQuery),
+      rowsPromise,
+      totalPromise,
     ]);
 
     return {
@@ -146,13 +147,15 @@ export class KbReadService {
       query = query.where("name", "like", buildContainsLikePattern(normalizedQuery));
     }
 
+    const rowsPromise = query
+      .orderBy("id", "desc")
+      .limit(pagination.pageSize)
+      .offset((pagination.page - 1) * pagination.pageSize)
+      .execute();
+    const totalPromise = this.countKbDocs(uid, kbNumericId, normalizedQuery, options.docType);
     const [rows, total] = await Promise.all([
-      query
-        .orderBy("id", "desc")
-        .limit(pagination.pageSize)
-        .offset((pagination.page - 1) * pagination.pageSize)
-        .execute(),
-      this.countKbDocs(uid, kbNumericId, normalizedQuery, options.docType),
+      rowsPromise,
+      totalPromise,
     ]);
 
     return {
@@ -191,7 +194,13 @@ export class KbReadService {
   async listKbDocChunks(
     tenant: AgentKbTenant,
     docId: string,
-    options: { page?: number; pageSize?: number; title?: string } = {},
+    options: {
+      content?: string;
+      docType: KbDocType;
+      page?: number;
+      pageSize?: number;
+      title?: string;
+    },
   ): Promise<KbChunkListResponse> {
     const uid = tenant.uid;
     const docNumericId = parsePositiveInteger(docId);
@@ -200,23 +209,12 @@ export class KbReadService {
       throw new NotFoundError("KB_DOC_NOT_FOUND", "知识不存在");
     }
 
-    const doc = await this.db
-      .selectFrom("xy_wap_embed_agent_kb_doc")
-      .select(["doc_type", "id"])
-      .where("id", "=", docNumericId)
-      .where("uid", "=", uid)
-      .where("status", "=", dbActiveStatus)
-      .executeTakeFirst();
-
-    if (!doc) {
-      throw new NotFoundError("KB_DOC_NOT_FOUND", "知识不存在");
-    }
-
-    const docType = mapDocType(doc.doc_type);
     const pagination = normalizePagination(options);
-    const normalizedTitle = options.title?.trim();
+    const normalizedContent = normalizeSearchQuery(options.content);
+    const normalizedTitle = normalizeSearchQuery(options.title);
 
     const response = await this.agentKbJavaClient.listKbChunks({
+      content: normalizedContent,
       docId: docNumericId,
       page: pagination.page,
       pageSize: pagination.pageSize,
@@ -224,7 +222,7 @@ export class KbReadService {
       uid,
     });
 
-    const chunks = response.list.map((item) => mapJavaChunkPageItem(item, docType));
+    const chunks = response.list.map((item) => mapJavaChunkPageItem(item, options.docType));
 
     return {
       chunks,

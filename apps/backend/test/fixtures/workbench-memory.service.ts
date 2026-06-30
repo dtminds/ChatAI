@@ -1660,6 +1660,7 @@ function conversation(
     conversationId,
     conversationAIHostingSwitch: false,
     customerAvatar,
+    customerBindType: mode === "single" ? 1 : undefined,
     customerId,
     customerName,
     isPinned,

@@ -31,6 +31,7 @@ describe("createAgentKbJavaClient", () => {
 
     const docId = await createAgentKbJavaClient().createKbDoc({
       docSuffix: "pdf",
+      docSize: 4096,
       docType: 2,
       docUrl: "kb-docs/demo.pdf",
       kbId: 88,
@@ -44,7 +45,7 @@ describe("createAgentKbJavaClient", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       "https://java.internal/third-internal/wap-embed-agent-kb-doc/create",
       expect.objectContaining({
-        body: "uid=9001&kbId=88&docType=2&docUrl=kb-docs%2Fdemo.pdf&docSuffix=pdf&name=%E4%BA%A7%E5%93%81%E6%89%8B%E5%86%8C&operatorId=101&volcStrategyResourceId=kb-strategy-233abb0cd67b8429",
+        body: "uid=9001&kbId=88&docType=2&docUrl=kb-docs%2Fdemo.pdf&docSuffix=pdf&docSize=4096&name=%E4%BA%A7%E5%93%81%E6%89%8B%E5%86%8C&operatorId=101&volcStrategyResourceId=kb-strategy-233abb0cd67b8429",
         headers: expect.objectContaining({
           "content-type": "application/x-www-form-urlencoded",
         }),
@@ -72,6 +73,7 @@ describe("createAgentKbJavaClient", () => {
 
     const docId = await createAgentKbJavaClient().createKbDoc({
       docSuffix: "faq.xlsx",
+      docSize: 8192,
       docType: 1,
       docUrl: "https://b5.bokr.com.cn/kb-faqs/demo.faq.xlsx",
       kbId: 88,
@@ -83,7 +85,7 @@ describe("createAgentKbJavaClient", () => {
 
     expect(docId).toBe("2002");
     expect(fetchMock.mock.calls[0]?.[1]?.body).toBe(
-      "uid=9001&kbId=88&docType=1&docUrl=https%3A%2F%2Fb5.bokr.com.cn%2Fkb-faqs%2Fdemo.faq.xlsx&docSuffix=faq.xlsx&name=%E5%BF%AB%E6%8D%B7%E8%AF%9D%E6%9C%AF%E5%AF%BC%E5%85%A5.faq&operatorId=101&volcStrategyResourceId=kb-strategy-def92e30c1456c07",
+      "uid=9001&kbId=88&docType=1&docUrl=https%3A%2F%2Fb5.bokr.com.cn%2Fkb-faqs%2Fdemo.faq.xlsx&docSuffix=faq.xlsx&docSize=8192&name=%E5%BF%AB%E6%8D%B7%E8%AF%9D%E6%9C%AF%E5%AF%BC%E5%85%A5.faq&operatorId=101&volcStrategyResourceId=kb-strategy-def92e30c1456c07",
     );
   });
 
@@ -188,6 +190,42 @@ describe("createAgentKbJavaClient", () => {
     });
   });
 
+  it("submits chunk content filter as JSON", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          count: 0,
+          error: 0,
+          list: [],
+          page: 1,
+          pageSize: 10,
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    await createAgentKbJavaClient().listKbChunks({
+      content: "核销物码",
+      docId: 1001,
+      page: 1,
+      pageSize: 10,
+      uid: 9001,
+    });
+
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      content: "核销物码",
+      docId: 1001,
+      page: 1,
+      pageSize: 10,
+      uid: 9001,
+    });
+  });
+
   it("submits chunk update as JSON with id", async () => {
     process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
@@ -250,6 +288,45 @@ describe("createAgentKbJavaClient", () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       "https://java.internal/third-internal/wap-embed-agent-kb-doc/del",
+      expect.objectContaining({
+        body: JSON.stringify({
+          id: 27,
+          operatorId: "19",
+          uid: 9001,
+        }),
+        headers: expect.objectContaining({
+          "content-type": "application/json",
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("submits doc retry as JSON with id", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: true,
+          error: 0,
+          errorMsg: "",
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    await createAgentKbJavaClient().retryKbDoc({
+      docId: 27,
+      operatorId: "19",
+      uid: 9001,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/wap-embed-agent-kb-doc/retry",
       expect.objectContaining({
         body: JSON.stringify({
           id: 27,

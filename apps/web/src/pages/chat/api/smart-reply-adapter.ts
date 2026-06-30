@@ -7,6 +7,7 @@ import {
   SMART_REPLY_TERMINAL_GENERATE_STATUSES,
 } from "@chatai/contracts";
 import type { ChatMessage, Conversation, Message, MessageContent } from "@/pages/chat/chat-types";
+import { isConversationAIFeatureSupported } from "@/pages/chat/lib/conversation-ai-hosting";
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
 import type { SmartReplySuggestion } from "@/pages/chat/components/smart-reply-card";
 import type { SmartReplyRecommendedAttachment } from "@/pages/chat/components/smart-reply-edit-dialog";
@@ -152,9 +153,9 @@ export function createTriggeredSmartReplySuggestion(
 }
 
 export function isSmartReplySupportedConversation(
-  conversation?: Pick<Conversation, "mode"> | null,
+  conversation?: Pick<Conversation, "customerBindType" | "mode"> | null,
 ) {
-  return conversation?.mode === "single";
+  return isConversationAIFeatureSupported(conversation);
 }
 
 export function isSmartReplyEligibleMessage(message: ChatMessage) {
@@ -547,23 +548,99 @@ export function getSmartReplyInlineState(
   return undefined;
 }
 
-export function buildJavaGenAnswerFromText(text: string) {
-  const trimmed = text.trim();
+const SMART_REPLY_MEDIA_PLACEHOLDER_PATTERN = /^\[(图片|文件|视频)\]$/;
 
-  if (!trimmed) {
-    return "";
-  }
-
-  return JSON.stringify([{ msgtype: "text", text: trimmed }]);
-}
-
-function parseSmartReplyDisplayContent(raw: unknown): string {
+function parseSmartReplyJsonPayload(raw: unknown): unknown | undefined {
   if (raw == null) {
-    return "";
+    return undefined;
   }
 
   if (typeof raw !== "string") {
-    return parseSmartReplyDisplayPayload(raw);
+    return raw;
+  }
+
+  const trimmed = raw.trim();
+
+  if (!trimmed) {
+    return undefined;
+  }
+
+  if (!trimmed.startsWith("[") && !trimmed.startsWith("{")) {
+    return undefined;
+  }
+
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return undefined;
+  }
+}
+
+function parseSmartReplyGenAnswerTextParts(raw: unknown): string[] | null {
+  const payload = parseSmartReplyJsonPayload(raw);
+
+  if (payload === undefined) {
+    return null;
+  }
+
+  if (Array.isArray(payload)) {
+    const textParts: string[] = [];
+
+    for (const segment of payload) {
+      const parsed = classifySmartReplyGenAnswerSegment(segment);
+
+      if (parsed.type === "text" && parsed.text) {
+        textParts.push(parsed.text);
+      }
+    }
+
+    return textParts;
+  }
+
+  const parsed = classifySmartReplyGenAnswerSegment(payload);
+
+  if (parsed.type === "text" && parsed.text) {
+    return [parsed.text];
+  }
+
+  return [];
+}
+
+function classifySmartReplyGenAnswerSegment(
+  segment: unknown,
+): { type: "text"; text: string } | { type: "media" } | { type: "unknown" } {
+  if (!isRecord(segment)) {
+    return { type: "unknown" };
+  }
+
+  const msgtype = readString(segment.msgtype)?.toLowerCase();
+
+  if (msgtype === "text") {
+    return { type: "text", text: readString(segment.text) ?? "" };
+  }
+
+  if (msgtype === "image" || msgtype === "file" || msgtype === "video") {
+    return { type: "media" };
+  }
+
+  const fallbackText = readString(segment.text) ?? readString(segment.content);
+
+  if (fallbackText) {
+    return { type: "text", text: fallbackText };
+  }
+
+  return { type: "unknown" };
+}
+
+export function parseSmartReplyTextContent(raw: unknown): string {
+  const parsed = parseSmartReplyGenAnswerTextParts(raw);
+
+  if (parsed) {
+    return parsed.join("\n");
+  }
+
+  if (typeof raw !== "string") {
+    return "";
   }
 
   const trimmed = raw.trim();
@@ -572,58 +649,292 @@ function parseSmartReplyDisplayContent(raw: unknown): string {
     return "";
   }
 
-  if (!trimmed.startsWith("[") && !trimmed.startsWith("{")) {
-    return trimmed;
-  }
-
-  let parsedJson: unknown;
-
-  try {
-    parsedJson = JSON.parse(trimmed);
-  } catch {
-    return trimmed;
-  }
-
-  const parsed = parseSmartReplyDisplayPayload(parsedJson);
-
-  return parsed || trimmed;
+  return trimmed
+    .split("\n")
+    .filter((line) => !SMART_REPLY_MEDIA_PLACEHOLDER_PATTERN.test(line.trim()))
+    .join("\n")
+    .trim();
 }
 
-function parseSmartReplyDisplayPayload(payload: unknown): string {
-  if (Array.isArray(payload)) {
-    return payload
-      .map((segment) => parseSmartReplyDisplaySegment(segment))
-      .filter((part): part is string => Boolean(part))
-      .join("\n");
+function normalizeSmartReplyAttachmentId(value: unknown): string | undefined {
+  if (typeof value === "number" && Number.isSafeInteger(value) && value > 0) {
+    return String(value);
   }
 
-  return parseSmartReplyDisplaySegment(payload) ?? "";
-}
-
-function parseSmartReplyDisplaySegment(segment: unknown): string | undefined {
-  if (!isRecord(segment)) {
+  if (typeof value !== "string") {
     return undefined;
   }
 
-  const msgtype = readString(segment.msgtype)?.toLowerCase();
+  const trimmed = value.trim();
 
-  if (msgtype === "text") {
-    return readString(segment.text);
+  if (/^\d+$/.test(trimmed)) {
+    return trimmed;
   }
 
-  if (msgtype === "image") {
-    return readString(segment.alt) ?? "[图片]";
+  return undefined;
+}
+
+function readSmartReplyGenAnswerSegmentAttachmentId(
+  segment: Record<string, unknown>,
+): string | undefined {
+  for (const key of [
+    "id",
+    "attachId",
+    "refAttachId",
+    "transMsgInfoId",
+    "msgInfoId",
+  ]) {
+    const normalized = normalizeSmartReplyAttachmentId(segment[key]);
+
+    if (normalized) {
+      return normalized;
+    }
   }
 
+  return undefined;
+}
+
+function readSmartReplyGenAnswerSegmentPreviewPath(
+  segment: Record<string, unknown>,
+): string | undefined {
+  for (const key of [
+    "fileUrl",
+    "url",
+    "coverUrl",
+    "localPath",
+    "slocalPath",
+    "content",
+  ]) {
+    const value = readString(segment[key]);
+
+    if (value) {
+      return value;
+    }
+  }
+
+  return undefined;
+}
+
+function readSmartReplyGenAnswerSegmentFileType(
+  msgtype: string | undefined,
+): string {
   if (msgtype === "file") {
-    return readString(segment.fileName) ?? "[文件]";
+    return "5";
   }
 
   if (msgtype === "video") {
-    return readString(segment.title) ?? readString(segment.alt) ?? "[视频]";
+    return "3";
   }
 
-  return readString(segment.text) ?? readString(segment.content);
+  return "1";
+}
+
+export function extractSmartReplyGenAnswerAttachmentIds(
+  genAnswer?: string,
+): string[] {
+  // Keep Java genAnswer attachment field handling in sync with backend smart-reply-mappers.ts.
+  const payload = parseSmartReplyJsonPayload(genAnswer);
+
+  if (payload === undefined) {
+    return [];
+  }
+
+  const segments = Array.isArray(payload) ? payload : [payload];
+  const ids: string[] = [];
+  const seen = new Set<string>();
+
+  for (const segment of segments) {
+    if (!isRecord(segment)) {
+      continue;
+    }
+
+    const msgtype = readString(segment.msgtype)?.toLowerCase();
+
+    if (
+      msgtype !== "image" &&
+      msgtype !== "file" &&
+      msgtype !== "video" &&
+      msgtype !== "link" &&
+      msgtype !== "weapp" &&
+      msgtype !== "sphfeed"
+    ) {
+      continue;
+    }
+
+    const attachmentId = readSmartReplyGenAnswerSegmentAttachmentId(segment);
+
+    if (attachmentId && !seen.has(attachmentId)) {
+      seen.add(attachmentId);
+      ids.push(attachmentId);
+    }
+  }
+
+  return ids;
+}
+
+export function extractSmartReplyGenAnswerInlineAttachments(
+  genAnswer?: string,
+): SmartReplyRecommendedAttachment[] {
+  const payload = parseSmartReplyJsonPayload(genAnswer);
+
+  if (payload === undefined) {
+    return [];
+  }
+
+  const segments = Array.isArray(payload) ? payload : [payload];
+  const attachments: SmartReplyRecommendedAttachment[] = [];
+
+  segments.forEach((segment, index) => {
+    if (!isRecord(segment)) {
+      return;
+    }
+
+    const msgtype = readString(segment.msgtype)?.toLowerCase();
+
+    if (
+      msgtype !== "image" &&
+      msgtype !== "file" &&
+      msgtype !== "video" &&
+      msgtype !== "link" &&
+      msgtype !== "weapp" &&
+      msgtype !== "sphfeed"
+    ) {
+      return;
+    }
+
+    const attachmentId =
+      readSmartReplyGenAnswerSegmentAttachmentId(segment) ??
+      `genanswer-${msgtype}-${index}`;
+    const previewPath = readSmartReplyGenAnswerSegmentPreviewPath(segment);
+
+    if (!previewPath && readSmartReplyGenAnswerSegmentAttachmentId(segment) == null) {
+      return;
+    }
+
+    attachments.push({
+      content: readString(segment.content),
+      coverUrl: readString(segment.coverUrl) ?? previewPath,
+      defaultSelected: attachments.length === 0,
+      fileName:
+        readString(segment.fileName) ??
+        readString(segment.title) ??
+        readString(segment.alt) ??
+        (msgtype === "image" ? "图片" : msgtype === "file" ? "文件" : "附件"),
+      fileType: readSmartReplyGenAnswerSegmentFileType(msgtype),
+      id: attachmentId,
+      localPath: readString(segment.localPath) ?? readString(segment.fileUrl),
+      slocalPath: readString(segment.slocalPath),
+    });
+  });
+
+  return attachments;
+}
+
+function enrichSmartReplyRecommendedAttachment(
+  primary: SmartReplyRecommendedAttachment,
+  fallback: SmartReplyRecommendedAttachment,
+): SmartReplyRecommendedAttachment {
+  return {
+    ...primary,
+    content: primary.content ?? fallback.content,
+    coverUrl: primary.coverUrl ?? fallback.coverUrl,
+    fileName: primary.fileName || fallback.fileName,
+    localPath: primary.localPath ?? fallback.localPath,
+    slocalPath: primary.slocalPath ?? fallback.slocalPath,
+  };
+}
+
+export function mergeSmartReplyRecommendedAttachments(
+  fetched: SmartReplyRecommendedAttachment[],
+  inline: SmartReplyRecommendedAttachment[],
+): SmartReplyRecommendedAttachment[] {
+  if (fetched.length === 0) {
+    return normalizeSmartReplyRecommendedAttachments(inline);
+  }
+
+  const merged = fetched.map((attachment) => {
+    const inlineMatch = inline.find((item) => item.id === attachment.id);
+
+    return inlineMatch
+      ? enrichSmartReplyRecommendedAttachment(attachment, inlineMatch)
+      : attachment;
+  });
+  const mergedIds = new Set(merged.map((attachment) => attachment.id));
+
+  for (const attachment of inline) {
+    if (!mergedIds.has(attachment.id)) {
+      merged.push(attachment);
+    }
+  }
+
+  return normalizeSmartReplyRecommendedAttachments(
+    merged.map(({ defaultSelected: _defaultSelected, ...attachment }) => attachment),
+  );
+}
+
+function normalizeSmartReplyRecommendedAttachments(
+  attachments: SmartReplyRecommendedAttachment[],
+): SmartReplyRecommendedAttachment[] {
+  if (attachments.length === 0) {
+    return [];
+  }
+
+  if (attachments.some((attachment) => attachment.defaultSelected)) {
+    return attachments;
+  }
+
+  return attachments.map((attachment, index) => ({
+    ...attachment,
+    defaultSelected: index === 0,
+  }));
+}
+
+export function resolveSmartReplyAttachmentIds(
+  suggestion: Pick<SmartReplySuggestion, "genAnswer" | "refAttachIds">,
+): string[] {
+  const ids: string[] = [];
+  const seen = new Set<string>();
+
+  for (const id of suggestion.refAttachIds ?? []) {
+    const normalized = normalizeSmartReplyAttachmentId(id);
+
+    if (normalized && !seen.has(normalized)) {
+      seen.add(normalized);
+      ids.push(normalized);
+    }
+  }
+
+  for (const id of extractSmartReplyGenAnswerAttachmentIds(suggestion.genAnswer)) {
+    if (!seen.has(id)) {
+      seen.add(id);
+      ids.push(id);
+    }
+  }
+
+  return ids;
+}
+
+export function resolveSmartReplyRecommendedAttachmentsSource(
+  suggestion: Pick<SmartReplySuggestion, "genAnswer" | "refAttachIds">,
+) {
+  const attachmentIds = resolveSmartReplyAttachmentIds(suggestion);
+  const inlineAttachments = extractSmartReplyGenAnswerInlineAttachments(
+    suggestion.genAnswer,
+  );
+
+  return {
+    attachmentIds,
+    inlineAttachments,
+  };
+}
+
+export function resolveSmartReplyAttachmentCount(
+  suggestion: Pick<SmartReplySuggestion, "genAnswer" | "refAttachIds">,
+) {
+  const { attachmentIds, inlineAttachments } =
+    resolveSmartReplyRecommendedAttachmentsSource(suggestion);
+
+  return Math.max(attachmentIds.length, inlineAttachments.length);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -634,28 +945,13 @@ function readString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
-export function resolveSmartReplyRealAnswer(
-  genAnswer: string | undefined,
-  editedContent: string,
-  originalContent: string | undefined,
+function resolveSmartReplyDisplayContent(
+  suggestion: WorkbenchSmartReplySuggestionDto,
 ) {
-  const trimmedGenAnswer = genAnswer?.trim();
-  const trimmedEditedContent = editedContent.trim();
-  const trimmedOriginalContent = originalContent?.trim() ?? "";
-
-  if (!trimmedEditedContent) {
-    if (!trimmedOriginalContent) {
-      return trimmedGenAnswer ?? "";
-    }
-
-    return buildJavaGenAnswerFromText("");
-  }
-
-  if (trimmedGenAnswer && trimmedEditedContent === trimmedOriginalContent) {
-    return trimmedGenAnswer;
-  }
-
-  return buildJavaGenAnswerFromText(trimmedEditedContent);
+  return (
+    parseSmartReplyTextContent(suggestion.genAnswer) ||
+    parseSmartReplyTextContent(suggestion.content)
+  );
 }
 
 export function adaptSmartReplySuggestions(
@@ -666,12 +962,19 @@ export function adaptSmartReplySuggestions(
       suggestion.messageId,
       {
         assistantName: suggestion.assistantName,
-        content: parseSmartReplyDisplayContent(suggestion.content),
+        content: resolveSmartReplyDisplayContent(suggestion),
         failReason: suggestion.failReason,
         genAnswer: suggestion.genAnswer,
         generateStatus: suggestion.generateStatus,
         pollComplete: suggestion.pollComplete,
-        refAttachIds: suggestion.refAttachIds,
+        ...((): { refAttachIds?: string[] } => {
+          const refAttachIds = resolveSmartReplyAttachmentIds({
+            genAnswer: suggestion.genAnswer,
+            refAttachIds: suggestion.refAttachIds,
+          });
+
+          return refAttachIds.length > 0 ? { refAttachIds } : {};
+        })(),
         status: suggestion.status,
         recordId: suggestion.recordId,
       },

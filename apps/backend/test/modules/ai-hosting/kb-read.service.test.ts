@@ -62,6 +62,7 @@ function createService(
     createKbDoc: vi.fn(),
     deleteKbChunk: vi.fn(),
     deleteKbDoc: vi.fn(),
+    retryKbDoc: vi.fn(),
     listKbChunks,
     updateKbChunk: vi.fn(),
   } satisfies AgentKbJavaClient;
@@ -116,10 +117,23 @@ describe("KbReadService", () => {
 
     expect(response.kbs).toHaveLength(1);
     expect(response.pagination.total).toBe(1);
+    expect(response).not.toHaveProperty("quota");
     expect(response.kbs[0]).toMatchObject({
       kbId: "1",
       name: "华为产品知识",
     });
+  });
+
+  it("excludes deleted kbs from list totals", async () => {
+    const { service } = createService(vi.fn(), {
+      deletedKbCount: 3,
+      totalKbCount: 20,
+    });
+
+    const response = await service.listKbs(tenant);
+
+    expect(response.pagination.total).toBe(20);
+    expect(response).not.toHaveProperty("quota");
   });
 
   it("allows loading up to 200 kbs for local picker searches", async () => {
@@ -157,7 +171,7 @@ describe("KbReadService", () => {
     });
   });
 
-  it("runs kb list rows and total queries in parallel", async () => {
+  it("does not run an extra kb quota count when the kb list is unfiltered", async () => {
     const probe = createBlockedListProbe("xy_wap_embed_agent_kb");
     const { service } = createService(vi.fn(), probe.dbOptions);
 
@@ -173,6 +187,26 @@ describe("KbReadService", () => {
     await expect(responsePromise).resolves.toMatchObject({
       pagination: {
         total: 1,
+      },
+    });
+  });
+
+  it("does not run an unfiltered kb quota count when searching kbs", async () => {
+    const probe = createBlockedListProbe("xy_wap_embed_agent_kb");
+    const { service } = createService(vi.fn(), probe.dbOptions);
+
+    const responsePromise = service.listKbs(tenant, { query: "不存在" });
+    await vi.waitFor(() => {
+      expect(probe.queryStarts).toEqual([
+        { isCountQuery: false, table: "xy_wap_embed_agent_kb" },
+        { isCountQuery: true, table: "xy_wap_embed_agent_kb" },
+      ]);
+    });
+    probe.releaseRowsQuery();
+
+    await expect(responsePromise).resolves.toMatchObject({
+      pagination: {
+        total: 0,
       },
     });
   });
@@ -265,11 +299,43 @@ describe("KbReadService", () => {
     ]);
   });
 
-  it("runs kb doc list rows and total queries in parallel", async () => {
+  it("does not run an extra kb doc quota count when the doc list is unfiltered", async () => {
     const probe = createBlockedListProbe("xy_wap_embed_agent_kb_doc");
     const { service } = createService(vi.fn(), probe.dbOptions);
 
     const responsePromise = service.listKbDocs(tenant, "1");
+    await vi.waitFor(() => {
+      expect(probe.queryStarts).toEqual([
+        { isCountQuery: false, table: "xy_wap_embed_agent_kb_doc" },
+        { isCountQuery: true, table: "xy_wap_embed_agent_kb_doc" },
+      ]);
+    });
+    probe.releaseRowsQuery();
+
+    await expect(responsePromise).resolves.toMatchObject({
+      pagination: {
+        total: 3,
+      },
+    });
+  });
+
+  it("excludes deleted kb docs from list totals", async () => {
+    const { service } = createService(vi.fn(), {
+      deletedDocCount: 5,
+      totalDocCount: 100,
+    });
+
+    const response = await service.listKbDocs(tenant, "1");
+
+    expect(response.pagination.total).toBe(100);
+    expect(response).not.toHaveProperty("quota");
+  });
+
+  it("does not run an unfiltered kb doc quota count when filtering docs", async () => {
+    const probe = createBlockedListProbe("xy_wap_embed_agent_kb_doc");
+    const { service } = createService(vi.fn(), probe.dbOptions);
+
+    const responsePromise = service.listKbDocs(tenant, "1", { docType: "document" });
     await vi.waitFor(() => {
       expect(probe.queryStarts).toEqual([
         { isCountQuery: false, table: "xy_wap_embed_agent_kb_doc" },
@@ -340,7 +406,9 @@ describe("KbReadService", () => {
     });
     const { agentKbJavaClient, service } = createService(listKbChunks);
 
-    const response = await service.listKbDocChunks(tenant, "1001");
+    const response = await service.listKbDocChunks(tenant, "1001", {
+      docType: "document",
+    });
 
     expect(agentKbJavaClient.listKbChunks).toHaveBeenCalledWith({
       docId: 1001,
@@ -357,7 +425,7 @@ describe("KbReadService", () => {
     });
   });
 
-  it("forwards chunk title filter to Java", async () => {
+  it("forwards chunk content filter to Java", async () => {
     const listKbChunks = vi.fn().mockResolvedValue({
       count: 1,
       list: [javaChunkPageItems[1]],
@@ -367,16 +435,17 @@ describe("KbReadService", () => {
     const { service } = createService(listKbChunks);
 
     const response = await service.listKbDocChunks(tenant, "1001", {
+      content: "系统",
+      docType: "document",
       page: 1,
       pageSize: 10,
-      title: "系统",
     });
 
     expect(listKbChunks).toHaveBeenCalledWith({
+      content: "系统",
       docId: 1001,
       page: 1,
       pageSize: 10,
-      title: "系统",
       uid: 9001,
     });
     expect(response.chunks).toHaveLength(1);
@@ -385,6 +454,56 @@ describe("KbReadService", () => {
       chunkId: "502",
       title: "系统切片",
     });
+  });
+
+  it("forwards chunk title filter to Java", async () => {
+    const listKbChunks = vi.fn().mockResolvedValue({
+      count: 1,
+      list: [javaChunkPageItems[1]],
+      page: 1,
+      pageSize: 10,
+    });
+    const { service } = createService(listKbChunks);
+
+    const response = await service.listKbDocChunks(tenant, "1004", {
+      docType: "qa",
+      page: 1,
+      pageSize: 10,
+      title: "系统",
+    });
+
+    expect(listKbChunks).toHaveBeenCalledWith({
+      docId: 1004,
+      page: 1,
+      pageSize: 10,
+      title: "系统",
+      uid: 9001,
+    });
+    expect(response.chunks).toHaveLength(1);
+  });
+
+  it("does not query the doc table when listing chunks", async () => {
+    const queriedTables: string[] = [];
+    const listKbChunks = vi.fn().mockResolvedValue({
+      count: 0,
+      list: [],
+      page: 1,
+      pageSize: 10,
+    });
+    const { service } = createService(listKbChunks, {
+      beforeExecute(event) {
+        queriedTables.push(event.table);
+      },
+    });
+
+    await service.listKbDocChunks(tenant, "1001", {
+      content: "系统",
+      docType: "document",
+      page: 1,
+      pageSize: 10,
+    });
+
+    expect(queriedTables).toEqual([]);
   });
 
   it("selects only kb doc detail fields for kb doc detail rows", async () => {

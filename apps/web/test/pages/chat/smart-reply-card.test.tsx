@@ -16,6 +16,7 @@ import {
 import { SmartReplyRecommendedAttachmentsSection } from "@/pages/chat/components/smart-reply-recommended-attachments";
 import {
   checkSmartReplyTextModeration,
+  listSmartReplyAttachments,
 } from "@/pages/chat/api/workbench-gateway";
 import { createKbChunk } from "@/pages/chat/ai-hosting/api/kb-chunk-service";
 import { listKbDocs, listKbs } from "@/pages/chat/ai-hosting/api/kb-service";
@@ -41,6 +42,7 @@ vi.mock("@/pages/chat/api/workbench-gateway", async (importOriginal) => {
   return {
     ...actual,
     checkSmartReplyTextModeration: vi.fn(),
+    listSmartReplyAttachments: vi.fn(),
   };
 });
 
@@ -560,6 +562,7 @@ describe("SmartReplyCard", () => {
     render(
       <SmartReplyCard
         assistantName="护肤小助手"
+        attachmentCount={3}
         content="建议回复"
         refAttachIds={["101", "102", "103"]}
       />,
@@ -576,10 +579,11 @@ describe("SmartReplyCard", () => {
     );
   });
 
-  it("hides ref attach entry until more than one attachment is referenced", () => {
+  it("shows ref attach entry when one attachment is referenced", () => {
     const { rerender } = render(
       <SmartReplyCard
         assistantName="护肤小助手"
+        attachmentCount={0}
         content="建议回复"
         refAttachIds={[]}
       />,
@@ -590,12 +594,52 @@ describe("SmartReplyCard", () => {
     rerender(
       <SmartReplyCard
         assistantName="护肤小助手"
+        attachmentCount={1}
         content="建议回复"
         refAttachIds={["101"]}
       />,
     );
 
-    expect(screen.queryByLabelText("推荐附件 1 个")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("推荐附件 1 个")).toHaveTextContent("1");
+  });
+
+  it("loads recommended attachments in edit dialog when sending", async () => {
+    const user = userEvent.setup();
+    vi.mocked(listSmartReplyAttachments).mockResolvedValue([
+      {
+        coverUrl: "s5/msg/cover.png",
+        defaultSelected: true,
+        fileName: "产品图.png",
+        fileType: "1",
+        id: "101",
+      },
+    ]);
+    const message = {
+      content: { text: "客户想了解敏感肌护理", type: "text" },
+      uiMessageKey: "msg-1",
+      role: "customer",
+    } as ChatMessage;
+
+    render(
+      <SmartReplyMessageAnchor
+        conversationId="conv-001"
+        message={message}
+        suggestion={{
+          assistantName: "护肤小助手",
+          content: "建议先确认是否敏感肌",
+          genAnswer:
+            '[{"msgtype":"text","text":"建议先确认是否敏感肌"},{"msgtype":"image","id":101}]',
+          refAttachIds: ["101"],
+          status: "ready",
+        }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(await screen.findByText("推荐附件：")).toBeInTheDocument();
+    expect(screen.getByLabelText("选择附件 产品图.png")).toBeInTheDocument();
+    expect(document.querySelector('img[src*="s5/msg/cover.png"]')).toBeInTheDocument();
   });
 
   it("opens the secondary actions menu from the right button group", async () => {

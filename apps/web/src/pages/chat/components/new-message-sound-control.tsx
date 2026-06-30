@@ -46,7 +46,6 @@ import {
 
 const SUMMARY_POPOVER_CLOSE_DELAY_MS = 120;
 
-type SettingsDialogMode = "enable" | "edit";
 type ActivePopover = "summary" | "reEnable";
 
 const DEFAULT_SOUND_PREFERENCE: NewMessageSoundPreference = {
@@ -79,8 +78,7 @@ export function NewMessageSoundControl() {
   const [preference, setPreference] =
     useState<NewMessageSoundPreference>(DEFAULT_SOUND_PREFERENCE);
   const [activePopover, setActivePopover] = useState<ActivePopover | null>(null);
-  const [settingsDialogMode, setSettingsDialogMode] =
-    useState<SettingsDialogMode | null>(null);
+  const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
   const [formSoundId, setFormSoundId] = useState<NewMessageSoundId>(
     DEFAULT_SOUND_PREFERENCE.soundId,
   );
@@ -109,7 +107,7 @@ export function NewMessageSoundControl() {
   }, []);
 
   useEffect(() => {
-    if (settingsDialogMode !== null) {
+    if (settingsDialogOpen) {
       return;
     }
 
@@ -119,7 +117,7 @@ export function NewMessageSoundControl() {
     }
 
     setActivePopover((current) => (current === "reEnable" ? null : current));
-  }, [preference.enabled, preference.soundId, settingsDialogMode, unlockSignal]);
+  }, [preference.enabled, preference.soundId, settingsDialogOpen, unlockSignal]);
 
   useEffect(() => (
     subscribeNewMessageSoundUnlockChange(() => {
@@ -143,17 +141,17 @@ export function NewMessageSoundControl() {
   }
 
   function closeSettingsDialog() {
-    setSettingsDialogMode(null);
+    setSettingsDialogOpen(false);
     setSettingsError(null);
   }
 
-  function openSettingsDialog(mode: SettingsDialogMode) {
+  function openSettingsDialog() {
     setFormSoundId(preference.soundId);
     setFormTrigger(preference.trigger);
     setSettingsError(null);
     setReEnableError(null);
     setSummaryError(null);
-    setSettingsDialogMode(mode);
+    setSettingsDialogOpen(true);
     setActivePopover(null);
   }
 
@@ -170,7 +168,7 @@ export function NewMessageSoundControl() {
     }
 
     syncPreference({
-      enabled: settingsDialogMode === "enable" ? true : preference.enabled,
+      enabled: preference.enabled,
       soundId: formSoundId,
       trigger: formTrigger,
     });
@@ -368,7 +366,7 @@ export function NewMessageSoundControl() {
                 <Button
                   aria-label="修改新消息提示音设置"
                   className="size-8 rounded-[9px] p-0"
-                  onClick={() => openSettingsDialog("edit")}
+                  onClick={openSettingsDialog}
                   size="icon"
                   type="button"
                   variant="ghost"
@@ -406,7 +404,7 @@ export function NewMessageSoundControl() {
             closeSettingsDialog();
           }
         }}
-        open={settingsDialogMode !== null}
+        open={settingsDialogOpen}
       >
         <DialogContent className="sm:max-w-[520px]">
           <DialogHeader className="space-y-2 pr-8">
@@ -485,7 +483,7 @@ export function NewMessageSoundControl() {
               取消
             </Button>
             <Button onClick={handleSaveSettings} type="button">
-              {settingsDialogMode === "enable" ? "保存并开启" : "保存"}
+              保存
             </Button>
           </DialogFooter>
         </DialogContent>

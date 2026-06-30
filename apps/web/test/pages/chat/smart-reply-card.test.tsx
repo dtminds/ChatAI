@@ -15,12 +15,11 @@ import {
 } from "@/pages/chat/components/smart-reply-card";
 import { SmartReplyRecommendedAttachmentsSection } from "@/pages/chat/components/smart-reply-recommended-attachments";
 import {
-  addSmartReplyKnowledgeFaq,
   checkSmartReplyTextModeration,
-  listKnowledgeDocPage,
-  listKnowledgePage,
   listSmartReplyAttachments,
 } from "@/pages/chat/api/workbench-gateway";
+import { createKbChunk } from "@/pages/chat/ai-hosting/api/kb-chunk-service";
+import { listKbDocs, listKbs } from "@/pages/chat/ai-hosting/api/kb-service";
 import type { ChatMessage } from "@/pages/chat/chat-types";
 
 vi.mock("sonner", async (importOriginal) => {
@@ -42,13 +41,19 @@ vi.mock("@/pages/chat/api/workbench-gateway", async (importOriginal) => {
 
   return {
     ...actual,
-    addSmartReplyKnowledgeFaq: vi.fn(),
     checkSmartReplyTextModeration: vi.fn(),
-    listKnowledgeDocPage: vi.fn(),
-    listKnowledgePage: vi.fn(),
     listSmartReplyAttachments: vi.fn(),
   };
 });
+
+vi.mock("@/pages/chat/ai-hosting/api/kb-service", () => ({
+  listKbDocs: vi.fn(),
+  listKbs: vi.fn(),
+}));
+
+vi.mock("@/pages/chat/ai-hosting/api/kb-chunk-service", () => ({
+  createKbChunk: vi.fn(),
+}));
 
 const themeCss = readFileSync(join(process.cwd(), "src/styles/index.css"), "utf8");
 const appearanceThemeBlocks = [
@@ -82,10 +87,10 @@ function createDeferred<T = void>() {
 describe("SmartReplyCard", () => {
   afterEach(() => {
     vi.useRealTimers();
-    vi.mocked(addSmartReplyKnowledgeFaq).mockReset();
+    vi.mocked(createKbChunk).mockReset();
     vi.mocked(checkSmartReplyTextModeration).mockReset();
-    vi.mocked(listKnowledgeDocPage).mockReset();
-    vi.mocked(listKnowledgePage).mockReset();
+    vi.mocked(listKbDocs).mockReset();
+    vi.mocked(listKbs).mockReset();
     vi.mocked(toast.error).mockClear();
     vi.mocked(toast.success).mockClear();
   });
@@ -848,12 +853,28 @@ describe("SmartReplyCard", () => {
 
   it("opens add to faq dialog from edit dialog", async () => {
     const user = userEvent.setup();
-    vi.mocked(listKnowledgePage).mockResolvedValue({
-      list: [{ id: "11", name: "默认知识集" }],
+    vi.mocked(listKbs).mockResolvedValue({
+      kbs: [{ createdAt: "", description: "", kbId: "11", name: "默认知识库", updatedAt: "" }],
+      pagination: { page: 1, pageSize: 200, total: 1 },
     });
-    vi.mocked(listKnowledgeDocPage).mockResolvedValue({
-      list: [{ id: "22", name: "默认 FAQ" }],
+    vi.mocked(listKbDocs).mockResolvedValue({
+      docs: [
+        {
+          createdAt: "",
+          docId: "22",
+          docSuffix: "faq.xlsx",
+          docType: "qa",
+          docUrl: "",
+          kbId: "11",
+          name: "默认 FAQ",
+          sliceCount: 0,
+          status: "completed",
+          updatedAt: "",
+        },
+      ],
+      pagination: { page: 1, pageSize: 100, total: 1 },
     });
+    vi.mocked(createKbChunk).mockResolvedValue({ chunkId: "501" });
     const message = {
       content: { text: "客户想了解敏感肌护理", type: "text" },
       uiMessageKey: "msg-1",
@@ -874,12 +895,22 @@ describe("SmartReplyCard", () => {
     await user.click(screen.getByRole("button", { name: "编辑" }));
     await user.click(screen.getByRole("button", { name: "添加到FAQ" }));
 
+    await waitFor(() => {
+      expect(listKbs).toHaveBeenCalledWith({ page: 1, pageSize: 200 });
+    });
+    await waitFor(() => {
+      expect(listKbDocs).toHaveBeenCalledWith("11", {
+        docType: "qa",
+        page: 1,
+        pageSize: 100,
+      });
+    });
+
     const faqDialog = screen.getByTestId("smart-reply-add-to-faq-dialog");
     expect(faqDialog).toBeInTheDocument();
     expect(faqDialog).toHaveTextContent("添加至FAQ");
-    expect(screen.getByText("知识集")).toBeInTheDocument();
+    expect(screen.getByText("知识库")).toBeInTheDocument();
     expect(screen.getByText("选择FAQ")).toBeInTheDocument();
-    expect(screen.getByText("相似问法")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "保存" })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "问题" })).toHaveValue(
       "客户想了解敏感肌护理",
@@ -887,6 +918,96 @@ describe("SmartReplyCard", () => {
     expect(screen.getByRole("textbox", { name: "答案" })).toHaveValue(
       "建议先确认是否敏感肌\n这款产品适合温和修护",
     );
+
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => {
+      expect(createKbChunk).toHaveBeenCalledWith({
+        chunkType: "faq",
+        content: "建议先确认是否敏感肌\n这款产品适合温和修护",
+        docId: "22",
+        title: "客户想了解敏感肌护理",
+      });
+    });
+  });
+
+  it("disables FAQ docs that are not completed when adding a smart reply to FAQ", async () => {
+    const user = userEvent.setup();
+    vi.mocked(listKbs).mockResolvedValue({
+      kbs: [{ createdAt: "", description: "", kbId: "11", name: "默认知识库", updatedAt: "" }],
+      pagination: { page: 1, pageSize: 200, total: 1 },
+    });
+    vi.mocked(listKbDocs).mockResolvedValue({
+      docs: [
+        {
+          createdAt: "",
+          docId: "21",
+          docSuffix: "faq.xlsx",
+          docType: "qa",
+          docUrl: "",
+          kbId: "11",
+          name: "同步失败 FAQ",
+          sliceCount: 0,
+          status: "failed",
+          updatedAt: "",
+        },
+        {
+          createdAt: "",
+          docId: "22",
+          docSuffix: "faq.xlsx",
+          docType: "qa",
+          docUrl: "",
+          kbId: "11",
+          name: "默认 FAQ",
+          sliceCount: 0,
+          status: "completed",
+          updatedAt: "",
+        },
+      ],
+      pagination: { page: 1, pageSize: 100, total: 2 },
+    });
+    vi.mocked(createKbChunk).mockResolvedValue({ chunkId: "501" });
+    const message = {
+      content: { text: "客户想了解敏感肌护理", type: "text" },
+      uiMessageKey: "msg-1",
+      role: "customer",
+    } as ChatMessage;
+
+    render(
+      <SmartReplyMessageAnchor
+        conversationId="conv-001"
+        message={message}
+        suggestion={{
+          assistantName: "护肤小助手",
+          content: "建议先确认是否敏感肌",
+        }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "编辑" }));
+    await user.click(screen.getByRole("button", { name: "添加到FAQ" }));
+    await user.click(await screen.findByRole("combobox", { name: "选择FAQ" }));
+
+    expect(await screen.findByRole("option", { name: "同步失败 FAQ" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    expect(screen.getByRole("option", { name: "默认 FAQ" })).not.toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => {
+      expect(createKbChunk).toHaveBeenCalledWith({
+        chunkType: "faq",
+        content: "建议先确认是否敏感肌",
+        docId: "22",
+        title: "客户想了解敏感肌护理",
+      });
+    });
   });
 
   it("normalizes relative recommended attachment preview URLs", () => {
@@ -914,14 +1035,29 @@ describe("SmartReplyCard", () => {
 
   it("does not show stale FAQ save toast after unmounting during a request", async () => {
     const user = userEvent.setup();
-    const saveRequest = createDeferred<{ docId: string }>();
-    vi.mocked(listKnowledgePage).mockResolvedValue({
-      list: [{ id: "11", name: "默认知识集" }],
+    const saveRequest = createDeferred<{ chunkId: string }>();
+    vi.mocked(listKbs).mockResolvedValue({
+      kbs: [{ createdAt: "", description: "", kbId: "11", name: "默认知识库", updatedAt: "" }],
+      pagination: { page: 1, pageSize: 200, total: 1 },
     });
-    vi.mocked(listKnowledgeDocPage).mockResolvedValue({
-      list: [{ id: "22", name: "默认 FAQ" }],
+    vi.mocked(listKbDocs).mockResolvedValue({
+      docs: [
+        {
+          createdAt: "",
+          docId: "22",
+          docSuffix: "faq.xlsx",
+          docType: "qa",
+          docUrl: "",
+          kbId: "11",
+          name: "默认 FAQ",
+          sliceCount: 0,
+          status: "completed",
+          updatedAt: "",
+        },
+      ],
+      pagination: { page: 1, pageSize: 100, total: 1 },
     });
-    vi.mocked(addSmartReplyKnowledgeFaq).mockReturnValue(saveRequest.promise);
+    vi.mocked(createKbChunk).mockReturnValue(saveRequest.promise);
     const message = {
       content: { text: "客户想了解敏感肌护理", type: "text" },
       uiMessageKey: "msg-1",
@@ -948,7 +1084,7 @@ describe("SmartReplyCard", () => {
     await user.click(saveButton);
 
     unmount();
-    saveRequest.resolve({ docId: "22" });
+    saveRequest.resolve({ chunkId: "501" });
     await saveRequest.promise;
 
     expect(toast.success).not.toHaveBeenCalled();

@@ -234,10 +234,10 @@ export function NewMessageSoundControl() {
           <button
             aria-label={preference.enabled ? "新消息提醒已开启" : "新消息提醒未开启"}
             className={cn(
-              "group inline-flex h-[30px] min-w-[112px] items-center gap-2 rounded-[15px] border px-1.5 pl-3 text-xs font-medium outline-none transition-colors focus-visible:ring-4 focus-visible:ring-ring/20",
+              "group inline-flex h-[30px] min-w-[112px] items-center gap-2 rounded-[15px] border border-border bg-surface-muted px-1.5 pl-3 text-xs font-medium outline-none transition-colors hover:bg-surface-muted/80 focus-visible:ring-4 focus-visible:ring-ring/20",
               preference.enabled
-                ? "border-primary/28 bg-primary/8 text-foreground hover:bg-primary/10"
-                : "border-border bg-muted/45 text-muted-foreground hover:bg-muted/65 hover:text-foreground",
+                ? "text-foreground"
+                : "text-muted-foreground hover:text-foreground",
             )}
             onClick={openSummaryPopover}
             onMouseEnter={openSummaryPopover}

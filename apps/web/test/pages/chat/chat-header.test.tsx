@@ -108,7 +108,7 @@ describe("ChatHeader", () => {
   });
 
   it("does not read browser storage or media queries while rendering", () => {
-    const getItemSpy = vi.spyOn(Storage.prototype, "getItem");
+    const getItemSpy = vi.spyOn(window.localStorage, "getItem");
     const matchMediaSpy = vi.spyOn(window, "matchMedia");
 
     renderToString(
@@ -156,10 +156,10 @@ describe("ChatHeader", () => {
 
   it("still toggles the theme when localStorage is unavailable", async () => {
     const user = userEvent.setup();
-    const getItemSpy = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+    const getItemSpy = vi.spyOn(window.localStorage, "getItem").mockImplementation(() => {
       throw new Error("storage unavailable");
     });
-    const setItemSpy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+    const setItemSpy = vi.spyOn(window.localStorage, "setItem").mockImplementation(() => {
       throw new Error("storage unavailable");
     });
 

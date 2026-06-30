@@ -8,7 +8,8 @@ import {
   useState,
 } from "react";
 import {
-  AiMagicIcon,
+  AiChat02Icon,
+  AiSecurity02Icon,
   ArrowDown01Icon,
   ArrowUp02Icon,
   Cancel01Icon,
@@ -24,6 +25,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import {
   MATERIAL_COLLECTION_BIZ_TYPE,
   type WorkbenchMaterialCollectionItemDto,
+  type WorkbenchSeatAgentMode,
 } from "@chatai/contracts";
 import { Spinner } from "@/components/ui/spinner";
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
@@ -34,11 +36,14 @@ import type { LexicalEditor } from "lexical";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -47,6 +52,11 @@ import {
   SelectItem,
   SelectTrigger,
 } from "@/components/ui/select";
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from "@/components/ui/avatar";
 import {
   Tooltip,
   TooltipContent,
@@ -88,35 +98,45 @@ import {
 import { COMPOSER_FILE_ACCEPT } from "@/pages/chat/lib/composer-file-files";
 import { DISABLE_SPH_COLLECTION } from "@/pages/chat/chat-constants";
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
-import type { CustodyHostingStatus } from "@/pages/chat/lib/chat-custody-status";
 import { getWechatEmojiByName, type WechatEmojiName } from "@/pages/chat/wechat-emoji";
 import type { GroupMember, QuotedMessagePreviewContent } from "@/pages/chat/chat-types";
 
 type ChatComposerProps = {
+  canConfigureSeatAIHosting: boolean;
+  canConfigureSeatSemiAuto: boolean;
+  canToggleConversationAIHosting: boolean;
   canSendMessage: boolean;
+  accountAvatarUrl?: string;
+  accountName?: string;
   collectedExpressions?: WorkbenchMaterialCollectionItemDto[];
   draft: string;
   hasMoreCollectedExpressions?: boolean;
   hasActiveFileUpload: boolean;
   groupMembers: GroupMember[];
   currentSeatThirdUserId?: string;
-  custodyStatusPreview?: {
-    activeStatus: CustodyHostingStatus | null;
-    onSelectStatus: (status: CustodyHostingStatus) => void;
-  };
+  fullAutoActionPending?: boolean;
+  seatAgentModeActionPending?: boolean;
   inputEnterBehavior: InputEnterBehavior;
   isGroupConversation: boolean;
   isEmojiPickerOpen: boolean;
   isCollectedExpressionLoadingMore?: boolean;
+  hidePlaceholder?: boolean;
   sendingCollectedExpressionId?: string | null;
   isSending: boolean;
   isHistoryPanelOpen: boolean;
+  seatAIHostingAuth?: boolean;
+  seatSemiAutoAuth?: boolean;
+  conversationAIHostingEnabled?: boolean;
+  fullAutoSwitch?: boolean;
+  semiAutoSwitch?: boolean;
   onClearQuotedMessage: () => void;
   onDeleteCollectedExpression?: (item: WorkbenchMaterialCollectionItemDto) => void;
   onDraftChange: (draft: string) => void;
   onEmojiPickerOpenChange: (isOpen: boolean) => void;
   onEnterBehaviorChange: (behavior: InputEnterBehavior) => void;
   onFileSelect: (files: FileList | File[] | null) => void;
+  onChangeSeatAgentMode: (mode: WorkbenchSeatAgentMode) => void;
+  onChangeFullAuto: (enabled: boolean) => void | Promise<void>;
   onLoadMoreCollectedExpressions?: () => void;
   onOpenCollectedExpressions?: () => void;
   onOpenMaterialLibrary: (bizType: ComposerMaterialLibraryBizType) => void;
@@ -156,27 +176,41 @@ function createComposerImageClientId() {
 }
 
 export function ChatComposer({
+  canConfigureSeatAIHosting,
+  canConfigureSeatSemiAuto,
+  canToggleConversationAIHosting,
   canSendMessage,
+  accountAvatarUrl,
+  accountName,
   collectedExpressions = [],
   draft,
   hasMoreCollectedExpressions,
   hasActiveFileUpload,
   groupMembers,
   currentSeatThirdUserId,
-  custodyStatusPreview,
+  fullAutoActionPending = false,
+  seatAgentModeActionPending = false,
   inputEnterBehavior,
   isGroupConversation,
   isEmojiPickerOpen,
   isCollectedExpressionLoadingMore,
+  hidePlaceholder = false,
   sendingCollectedExpressionId,
   isSending,
   isHistoryPanelOpen,
+  seatAIHostingAuth = false,
+  seatSemiAutoAuth = false,
+  conversationAIHostingEnabled = false,
+  fullAutoSwitch = false,
+  semiAutoSwitch = false,
   onClearQuotedMessage,
   onDeleteCollectedExpression,
   onDraftChange,
   onEmojiPickerOpenChange,
   onEnterBehaviorChange,
   onFileSelect,
+  onChangeSeatAgentMode,
+  onChangeFullAuto,
   onLoadMoreCollectedExpressions,
   onOpenCollectedExpressions,
   onOpenMaterialLibrary,
@@ -197,6 +231,8 @@ export function ChatComposer({
   const [cursorPosition, setCursorPosition] = useState(draft.length);
   const [activeMentionIndex, setActiveMentionIndex] = useState(0);
   const [isMentionPickerDismissed, setIsMentionPickerDismissed] = useState(false);
+  const [isAgentDialogOpen, setIsAgentDialogOpen] = useState(false);
+  const [isFullAutoSubmitting, setIsFullAutoSubmitting] = useState(false);
   const editorConfig = useMemo(
     () => ({
       namespace: "ChatComposer",
@@ -215,6 +251,43 @@ export function ChatComposer({
     () => getMentionTrigger(draftText, cursorPosition),
     [cursorPosition, draftText],
   );
+  const isFullAutoButtonPending = fullAutoActionPending || isFullAutoSubmitting;
+  const seatAIMode = resolveSeatAIMode({
+    fullAutoSwitch,
+    semiAutoSwitch,
+  });
+  const selectedSeatAIModeOption = SEAT_AI_MODE_OPTIONS.find(
+    (option) => option.value === seatAIMode,
+  ) ?? SEAT_AI_MODE_OPTIONS[0];
+  const isSeatAIModeOptionDisabled = useCallback(
+    (mode: WorkbenchSeatAgentMode) => {
+      if (seatAgentModeActionPending) {
+        return true;
+      }
+
+      if (mode === "off") {
+        return false;
+      }
+
+      if (mode === "assistant") {
+        return !canConfigureSeatSemiAuto || !seatSemiAutoAuth;
+      }
+
+      return (
+        !canConfigureSeatAIHosting ||
+        !seatAIHostingAuth
+      );
+    },
+    [
+      canConfigureSeatAIHosting,
+      canConfigureSeatSemiAuto,
+      seatAgentModeActionPending,
+      seatAIHostingAuth,
+      seatSemiAutoAuth,
+    ],
+  );
+  const canUseCurrentConversationHosting =
+    canToggleConversationAIHosting && seatAIMode === "autoReply";
   const mentionableGroupMembers = useMemo(() => {
     if (!currentSeatThirdUserId) {
       return groupMembers;
@@ -278,6 +351,7 @@ export function ChatComposer({
   const canSubmitDraft = canSendMessage && !isSending && segments.length > 0;
   const canEditComposer = canSendMessage && !isSending;
   const canSelectFile = canEditComposer && !hasActiveFileUpload;
+  const isComposerActionDisabled = isSending || !canSendMessage;
   const composerImageCount = segments.filter(
     (segment) => segment.type === "image",
   ).length;
@@ -645,13 +719,119 @@ export function ChatComposer({
               ref={fileInputRef}
               type="file"
             />
-            {custodyStatusPreview ? (
-              <ComposerCustodyStatusPreviewMenu
-                activeStatus={custodyStatusPreview.activeStatus}
-                buttonClassName={composerActionButtonClass}
-                onSelectStatus={custodyStatusPreview.onSelectStatus}
-              />
-            ) : null}
+            <Popover open={isAgentDialogOpen} onOpenChange={setIsAgentDialogOpen}>
+              <ComposerActionTooltip
+                disabled={isComposerActionDisabled}
+                label="AI 对话"
+              >
+                <PopoverTrigger asChild>
+                  <Button
+                    aria-label="AI 对话"
+                    className={composerActionButtonClass}
+                    disabled={isComposerActionDisabled}
+                    size="icon"
+                    type="button"
+                    variant="ghost"
+                  >
+                    <HugeiconsIcon icon={AiChat02Icon} size={18} strokeWidth={2} />
+                  </Button>
+                </PopoverTrigger>
+              </ComposerActionTooltip>
+              <PopoverContent align="end" className="w-96 p-0" side="top">
+                <div className="space-y-4 p-3.5">
+                  <div className="flex items-center gap-2">
+                    <Avatar className="size-8 rounded-[8px]">
+                      {accountAvatarUrl ? (
+                        <AvatarImage alt={accountName ?? "当前席位"} src={accountAvatarUrl} />
+                      ) : null}
+                      <AvatarFallback className="text-xs">
+                        {accountName?.slice(0, 1)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-popover-foreground">
+                        {accountName ?? "当前席位"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <section className="space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground">
+                      切换 AI 模式
+                    </p>
+                    <Select
+                      disabled={seatAgentModeActionPending}
+                      onValueChange={(value) => {
+                        onChangeSeatAgentMode(value as WorkbenchSeatAgentMode);
+                      }}
+                      value={seatAIMode}
+                    >
+                      <SelectTrigger
+                        aria-label="切换 AI 模式"
+                        className="h-auto w-full rounded-[8px] border border-border bg-accent/40 px-3 py-2.5 shadow-none focus:outline-none focus:ring-0 data-[state=open]:bg-accent/50 [&>span]:line-clamp-none"
+                      >
+                        <SeatAIModeOptionContent option={selectedSeatAIModeOption} />
+                      </SelectTrigger>
+                      <SelectContent align="end" className="w-[var(--radix-select-trigger-width)]">
+                        {SEAT_AI_MODE_OPTIONS.map((option) => (
+                          <SelectItem
+                            className="h-auto py-2 pl-8 pr-2.5"
+                            disabled={isSeatAIModeOptionDisabled(option.value)}
+                            key={option.value}
+                            value={option.value}
+                          >
+                            <SeatAIModeOptionContent option={option} />
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </section>
+
+                  <section className="space-y-2">
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground">
+                        会话托管
+                      </p>
+                      <p className="mt-1 text-xs leading-5 text-warning">
+                        仅影响此会话，开启后 Agent 将自动回复客户
+                      </p>
+                    </div>
+                    <Button
+                      className="w-full bg-neutral-strong text-neutral-strong-foreground shadow-none hover:bg-neutral-strong/90 hover:text-neutral-strong-foreground"
+                      disabled={!canUseCurrentConversationHosting || isFullAutoButtonPending}
+                      onClick={async () => {
+                        setIsFullAutoSubmitting(true);
+                        try {
+                          await onChangeFullAuto(!conversationAIHostingEnabled);
+                        } finally {
+                          setIsFullAutoSubmitting(false);
+                          setIsAgentDialogOpen(false);
+                        }
+                      }}
+                      type="button"
+                      variant="ghost"
+                    >
+                      {isFullAutoButtonPending ? (
+                        <Spinner
+                          aria-hidden="true"
+                          className="text-neutral-strong-foreground"
+                          size={14}
+                          variant="classic"
+                        />
+                      ) : conversationAIHostingEnabled ? null : (
+                        <HugeiconsIcon icon={AiSecurity02Icon} size={16} strokeWidth={1.8} />
+                      )}
+                      {conversationAIHostingEnabled ? "关闭当前会话托管" : "托管当前会话"}
+                    </Button>
+                    {seatAIMode !== "autoReply" ? (
+                      <p className="text-center text-xs text-muted-foreground">
+                        切换 AI 模式为自动回复后，可托管此会话
+                      </p>
+                    ) : null}
+                  </section>
+                </div>
+              </PopoverContent>
+            </Popover>
             <ComposerActionTooltip label="聊天记录">
               <Button
                 aria-label="历史记录"
@@ -671,28 +851,30 @@ export function ChatComposer({
             </ComposerActionTooltip>
           </div>
           <div className="flex items-center gap-1">
-            <Select
-              onValueChange={(value) =>
-                onEnterBehaviorChange(value as InputEnterBehavior)
-              }
-              value={inputEnterBehavior}
-            >
-              <SelectTrigger
-                aria-label="选择 Enter 键行为"
-                className="h-7 min-w-0 border-0 text-[12px] bg-transparent px-1.5 text-muted-foreground shadow-none focus:ring-0"
-                disabled={isSending}
+            {canSendMessage ? (
+              <Select
+                onValueChange={(value) =>
+                  onEnterBehaviorChange(value as InputEnterBehavior)
+                }
+                value={inputEnterBehavior}
               >
-                <span>{INPUT_ENTER_BEHAVIOR_LABELS[inputEnterBehavior]}</span>
-              </SelectTrigger>
-              <SelectContent align="end">
-                <SelectItem value="send">
-                  {INPUT_ENTER_BEHAVIOR_DESCRIPTIONS.send}
-                </SelectItem>
-                <SelectItem value="newline">
-                  {INPUT_ENTER_BEHAVIOR_DESCRIPTIONS.newline}
-                </SelectItem>
-              </SelectContent>
-            </Select>
+                <SelectTrigger
+                  aria-label="选择 Enter 键行为"
+                  className="h-7 min-w-0 border-0 text-[12px] bg-transparent px-1.5 text-muted-foreground shadow-none focus:ring-0"
+                  disabled={isSending}
+                >
+                  <span>{INPUT_ENTER_BEHAVIOR_LABELS[inputEnterBehavior]}</span>
+                </SelectTrigger>
+                <SelectContent align="end">
+                  <SelectItem value="send">
+                    {INPUT_ENTER_BEHAVIOR_DESCRIPTIONS.send}
+                  </SelectItem>
+                  <SelectItem value="newline">
+                    {INPUT_ENTER_BEHAVIOR_DESCRIPTIONS.newline}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            ) : null}
 
             <Button
               aria-label="发送消息"
@@ -805,9 +987,11 @@ export function ChatComposer({
                 />
               }
               placeholder={
-                <div className="pointer-events-none absolute left-0 top-1 text-[14px] text-muted-foreground">
-                  {placeholder}
-                </div>
+                hidePlaceholder ? null : (
+                  <div className="pointer-events-none absolute left-0 top-1 text-[14px] text-muted-foreground">
+                    {placeholder}
+                  </div>
+                )
               }
               ErrorBoundary={LexicalErrorBoundary}
             />
@@ -829,56 +1013,6 @@ export function ChatComposer({
       </div>
     </div>
     </TooltipProvider>
-  );
-}
-
-const CUSTODY_STATUS_PREVIEW_OPTIONS: Array<{
-  label: string;
-  status: CustodyHostingStatus;
-}> = [
-  { label: "思考中", status: "thinking" },
-  { label: "重试中", status: "retrying" },
-  { label: "托管中", status: "active" },
-  { label: "已退出", status: "exited" },
-];
-
-function ComposerCustodyStatusPreviewMenu({
-  activeStatus,
-  buttonClassName,
-  onSelectStatus,
-}: {
-  activeStatus: CustodyHostingStatus | null;
-  buttonClassName: string;
-  onSelectStatus: (status: CustodyHostingStatus) => void;
-}) {
-  return (
-    <DropdownMenu>
-      <ComposerActionTooltip label="托管状态预览">
-        <DropdownMenuTrigger asChild>
-          <Button
-            aria-label="托管状态预览"
-            className={buttonClassName}
-            size="icon"
-            type="button"
-            variant="ghost"
-          >
-            <HugeiconsIcon icon={AiMagicIcon} size={18} strokeWidth={2} />
-          </Button>
-        </DropdownMenuTrigger>
-      </ComposerActionTooltip>
-      <DropdownMenuContent align="start" className="min-w-[8.5rem]" side="top">
-        <DropdownMenuRadioGroup
-          onValueChange={(status) => onSelectStatus(status as CustodyHostingStatus)}
-          value={activeStatus ?? ""}
-        >
-          {CUSTODY_STATUS_PREVIEW_OPTIONS.map(({ label, status }) => (
-            <DropdownMenuRadioItem key={status} value={status}>
-              {label}
-            </DropdownMenuRadioItem>
-          ))}
-        </DropdownMenuRadioGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
   );
 }
 
@@ -974,6 +1108,63 @@ function ComposerMaterialSplitButton({
         </DropdownMenu>
       </div>
     </ComposerActionTooltip>
+  );
+}
+
+const SEAT_AI_MODE_OPTIONS: Array<{
+  description: string;
+  label: string;
+  value: WorkbenchSeatAgentMode;
+}> = [
+  {
+    description: "由人工客服独立承接，不开启 AI 辅助",
+    label: "关闭",
+    value: "off",
+  },
+  {
+    description: "Agent 生成话术推荐，人工确认后发送",
+    label: "话术推荐",
+    value: "assistant",
+  },
+  {
+    description: "Agent 自动生成并发送消息，仅在必要时转人工",
+    label: "自动回复",
+    value: "autoReply",
+  },
+];
+
+function resolveSeatAIMode({
+  fullAutoSwitch,
+  semiAutoSwitch,
+}: {
+  fullAutoSwitch: boolean;
+  semiAutoSwitch: boolean;
+}): WorkbenchSeatAgentMode {
+  if (fullAutoSwitch) {
+    return "autoReply";
+  }
+
+  if (semiAutoSwitch) {
+    return "assistant";
+  }
+
+  return "off";
+}
+
+function SeatAIModeOptionContent({
+  option,
+}: {
+  option: (typeof SEAT_AI_MODE_OPTIONS)[number];
+}) {
+  return (
+    <div className="min-w-0 text-left">
+      <p className="truncate text-sm font-medium text-popover-foreground">
+        {option.label}
+      </p>
+      <p className="mt-0.5 truncate text-xs leading-5 text-muted-foreground">
+        {option.description}
+      </p>
+    </div>
   );
 }
 

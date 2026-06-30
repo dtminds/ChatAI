@@ -17,6 +17,7 @@ import { ForbiddenError } from "../../shared/errors.js";
 import { createWorkbenchJavaClient } from "../chat/workbench-java-client.js";
 import { AgentTestService } from "./agent-test.service.js";
 import { createAiHostingAgentService } from "./ai-hosting-agent.service.js";
+import { createAiHostingQuotaService } from "./quota.service.js";
 import { createAiHostingSettingsService } from "./ai-hosting-settings.service.js";
 
 const NumericStringSchema = Type.String({ pattern: "^[0-9]+$" });
@@ -35,6 +36,16 @@ type AgentListQuery = Static<typeof AgentListQuerySchema>;
 type AgentParams = Static<typeof AgentParamsSchema>;
 
 export async function registerAiHostingRoutes(app: FastifyInstance) {
+  app.get(
+    "/api/server/ai-hosting/quota",
+    {
+      preHandler: app.authenticate,
+    },
+    async (request) => {
+      return apiSuccess(await createAiHostingQuotaService(app.db).getQuotaOverview(getUid(request)));
+    },
+  );
+
   app.get<{ Querystring: AgentListQuery }>(
     "/api/server/ai-hosting/agents",
     {

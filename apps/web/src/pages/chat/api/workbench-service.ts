@@ -7,13 +7,14 @@ import {
 import { fetchWorkbenchSidebarIframeParams } from "@/pages/chat/api/sidebar-iframe-params";
 import { http } from "@/lib/request";
 import {
-  CONVERSATION_CUSTODY_MODE,
   type ApiSuccessEnvelope,
   type WorkbenchConversationDeleteResponse,
   type WorkbenchConversationListResponse,
   type WorkbenchSeatChangeDto,
   type WorkbenchSeatDto,
   type WorkbenchConversationChangeDto,
+  type WorkbenchConversationFullAutoResponse,
+  type WorkbenchFullAutoAnswerStatusResponse,
   type WorkbenchConversationPinResponse,
   type WorkbenchConversationReadResponse,
   type WorkbenchConversationUnpinResponse,
@@ -75,6 +76,8 @@ import {
   type WorkbenchTakeOverSeatResponse,
   type WorkbenchUploadCredentialResponse,
   type WorkbenchSearchResponseDto,
+  type WorkbenchSeatAgentModeSwitchRequest,
+  type WorkbenchSeatAgentModeSwitchResponse,
   type WorkbenchGetOrCreateConversationRequestDto,
   MATERIAL_COLLECTION_BIZ_TYPE,
   type MaterialCollectionBizType,
@@ -216,6 +219,17 @@ export type WorkbenchService = {
   markConversationRead: (conversationId: string) => Promise<WorkbenchConversationReadResponse>;
   markConversationUnread: (conversationId: string) => Promise<WorkbenchConversationUnreadResponse>;
   pinConversation: (conversationId: string) => Promise<WorkbenchConversationPinResponse>;
+  changeConversationFullAuto: (
+    conversationId: string,
+    request: { enabled: boolean },
+  ) => Promise<WorkbenchConversationFullAutoResponse>;
+  updateSeatAgentMode: (
+    seatId: string,
+    request: WorkbenchSeatAgentModeSwitchRequest,
+  ) => Promise<WorkbenchSeatAgentModeSwitchResponse>;
+  getFullAutoAnswerStatus: (
+    conversationId: string,
+  ) => Promise<WorkbenchFullAutoAnswerStatusResponse>;
   poll: (request: WorkbenchPollRequest) => Promise<WorkbenchPollResponse>;
   pollSmartReplies: (
     request: WorkbenchSmartReplyPollRequest,
@@ -1624,6 +1638,37 @@ export function createMockWorkbenchService(): WorkbenchService {
     async pinConversation(conversationId) {
       return setConversationPinned(state, conversationId, true);
     },
+    async changeConversationFullAuto(conversationId, request) {
+      return setConversationFullAuto(state, conversationId, request.enabled);
+    },
+    async updateSeatAgentMode(seatId, request) {
+      const seat = state.seats.find((item) => item.seatId === seatId);
+
+      if (!seat) {
+        return {
+          fullAutoSwitch: false,
+          seatId,
+          semiAutoSwitch: false,
+        };
+      }
+
+      seat.fullAutoSwitch = request.mode === "autoReply";
+      seat.semiAutoSwitch = request.mode !== "off";
+      seat.seatAIHostingEnabled =
+        seat.seatAIHostingAuth === true && seat.fullAutoSwitch === true;
+      seat.seatAIAssistantEnabled =
+        seat.semiAutoAuth === true && seat.semiAutoSwitch === true;
+      pushAccountEvent(state, seatId);
+
+      return {
+        fullAutoSwitch: seat.fullAutoSwitch === true,
+        seatId,
+        semiAutoSwitch: seat.semiAutoSwitch === true,
+      };
+    },
+    async getFullAutoAnswerStatus() {
+      return {};
+    },
     async unpinConversation(conversationId) {
       return setConversationPinned(state, conversationId, false);
     },
@@ -1889,8 +1934,8 @@ export function createMockWorkbenchService(): WorkbenchService {
           thirdGroupId: existingConversation.thirdGroupId,
           thirdUserId: existingConversation.thirdUserId,
           unreadCount: existingConversation.unreadCount,
-          custodyMode:
-            existingConversation.custodyMode ?? CONVERSATION_CUSTODY_MODE.SEMI,
+          conversationAIHostingSwitch:
+            existingConversation.conversationAIHostingSwitch ?? false,
         };
       }
 
@@ -1912,7 +1957,7 @@ export function createMockWorkbenchService(): WorkbenchService {
         thirdGroupId: payload.thirdGroupId,
         thirdUserId: `third-user-${payload.seatId}`,
         unreadCount: 0,
-        custodyMode: CONVERSATION_CUSTODY_MODE.SEMI,
+        conversationAIHostingSwitch: false,
       };
     },
   };
@@ -2348,6 +2393,23 @@ export function createHttpWorkbenchService(): WorkbenchService {
         `/server/conversations/${conversationId}/pin`,
       );
     },
+    changeConversationFullAuto(conversationId, request) {
+      return http.post<WorkbenchConversationFullAutoResponse, { enabled: boolean }>(
+        `/server/conversations/${conversationId}/full-auto`,
+        request,
+      );
+    },
+    updateSeatAgentMode(seatId, request) {
+      return http.patch<
+        WorkbenchSeatAgentModeSwitchResponse,
+        WorkbenchSeatAgentModeSwitchRequest
+      >(`/server/seats/${seatId}/agent-mode-switch`, request);
+    },
+    getFullAutoAnswerStatus(conversationId) {
+      return http.get<WorkbenchFullAutoAnswerStatusResponse>(
+        `/server/conversations/${conversationId}/full-auto/answer-status`,
+      );
+    },
     poll(request) {
       const activeConversationId = request.activeConversationId || undefined;
       return http.get<WorkbenchPollResponse>("/server/poll", {
@@ -2641,7 +2703,7 @@ function buildInitialState(): MockState {
           seatId: conversation.accountId,
           conversationId: conversation.id,
           bizStatus: conversation.bizStatus ?? 1,
-          custodyMode: conversation.custodyMode,
+          conversationAIHostingSwitch: conversation.conversationAIHostingSwitch,
           customerAvatar: conversation.customerAvatarUrl,
           customerId: conversation.customerId,
           customerName: conversation.customerName,
@@ -2670,6 +2732,9 @@ function buildInitialState(): MockState {
     operatorName: seat.operator,
     phone: seat.phone,
     hostSubUserId: seat.id === "drc" ? CURRENT_SUB_USER_ID : undefined,
+    semiAutoAuth: true,
+    semiAutoSwitch: true,
+    seatAIAssistantEnabled: true,
     unreadCount: seat.unreadCount ?? MOCK_SEAT_UNREAD_COUNTS[seat.id] ?? 0,
   }));
 
@@ -3357,6 +3422,33 @@ function setConversationPinned(
   return {
     conversationId,
     isPinned,
+    seatId: nextConversation.seatId,
+  };
+}
+
+function setConversationFullAuto(
+  state: MockState,
+  conversationId: string,
+  enabled: boolean,
+) {
+  const conversation = findConversation(state, conversationId);
+
+  if (!conversation) {
+    throw new Error("Conversation not found");
+  }
+
+  const nextConversation = {
+    ...conversation,
+    conversationAIHostingSwitch: enabled,
+    agentHostingStatus: enabled ? "thinking" : undefined,
+  };
+
+  upsertConversation(state, nextConversation);
+  pushConversationEvent(state, nextConversation);
+
+  return {
+    conversationAIHostingSwitch: enabled,
+    conversationId,
     seatId: nextConversation.seatId,
   };
 }

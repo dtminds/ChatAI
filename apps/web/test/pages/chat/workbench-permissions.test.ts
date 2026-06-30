@@ -38,6 +38,7 @@ describe("resolveWorkbenchPermissions", () => {
 
     expect(permissions).toMatchObject({
       canSendMessage: true,
+      canToggleConversationAIHosting: false,
       canTakeOverAccount: true,
       canUseConversationActions: true,
       composerPlaceholder: "请输入消息……",
@@ -45,10 +46,89 @@ describe("resolveWorkbenchPermissions", () => {
     });
   });
 
-  it("blocks sending and shows hosting placeholder for full custody conversations", () => {
+  it("allows enabling full-auto only when the taken-over account has seat hosting enabled", () => {
+    expect(
+      resolveWorkbenchPermissions({
+        account: createAccount({
+          seatAIHostingAuth: true,
+          seatAIHostingEnabled: true,
+          takenOverEmployeeId: me.id,
+        }),
+        activeConversation: createConversation(),
+        bootstrapStatus: "ready",
+        me,
+        subUser: operator,
+      }),
+    ).toMatchObject({
+      canToggleConversationAIHosting: true,
+      conversationAIHostingEnabled: false,
+    });
+
+    expect(
+      resolveWorkbenchPermissions({
+        account: createAccount({
+          seatAIHostingAuth: true,
+          seatAIHostingEnabled: true,
+        }),
+        activeConversation: createConversation(),
+        bootstrapStatus: "ready",
+        me,
+        subUser: operator,
+      }).canToggleConversationAIHosting,
+    ).toBe(false);
+
+    expect(
+      resolveWorkbenchPermissions({
+        account: createAccount({
+          seatAIHostingAuth: true,
+          seatAIHostingEnabled: false,
+          takenOverEmployeeId: me.id,
+        }),
+        activeConversation: createConversation(),
+        bootstrapStatus: "ready",
+        me,
+        subUser: operator,
+      }).canToggleConversationAIHosting,
+    ).toBe(false);
+  });
+
+  it("derives conversation AI hosting from seat hosting and conversation switch", () => {
+    expect(
+      resolveWorkbenchPermissions({
+        account: createAccount({
+          seatAIHostingAuth: true,
+          seatAIHostingEnabled: true,
+          takenOverEmployeeId: me.id,
+        }),
+        activeConversation: createConversation({ conversationAIHostingSwitch: true }),
+        bootstrapStatus: "ready",
+        me,
+        subUser: operator,
+      }).conversationAIHostingEnabled,
+    ).toBe(true);
+
+    expect(
+      resolveWorkbenchPermissions({
+        account: createAccount({
+          seatAIHostingAuth: true,
+          seatAIHostingEnabled: false,
+        }),
+        activeConversation: createConversation({ conversationAIHostingSwitch: true }),
+        bootstrapStatus: "ready",
+        me,
+        subUser: operator,
+      }).conversationAIHostingEnabled,
+    ).toBe(false);
+  });
+
+  it("blocks sending without showing a hosting placeholder for active full-auto conversations", () => {
     const permissions = resolveWorkbenchPermissions({
-      account: createAccount({ takenOverEmployeeId: me.id }),
-      activeConversation: createConversation({ custodyMode: "full" }),
+      account: createAccount({
+        seatAIHostingAuth: true,
+        seatAIHostingEnabled: true,
+        takenOverEmployeeId: me.id,
+      }),
+      activeConversation: createConversation({ conversationAIHostingSwitch: true }),
       bootstrapStatus: "ready",
       me,
       subUser: operator,
@@ -57,7 +137,46 @@ describe("resolveWorkbenchPermissions", () => {
     expect(permissions).toMatchObject({
       canSendMessage: false,
       canUseConversationActions: true,
-      composerPlaceholder: "AI正在托管中...",
+      composerPlaceholder: "请输入消息……",
+    });
+  });
+
+  it("keeps conversation hosting active while showing takeover copy when the account is not taken over", () => {
+    const permissions = resolveWorkbenchPermissions({
+      account: createAccount({
+        seatAIHostingAuth: true,
+        seatAIHostingEnabled: true,
+      }),
+      activeConversation: createConversation({ conversationAIHostingSwitch: true }),
+      bootstrapStatus: "ready",
+      me,
+      subUser: operator,
+    });
+
+    expect(permissions).toMatchObject({
+      canToggleConversationAIHosting: false,
+      canSendMessage: false,
+      composerPlaceholder: "当前账号未接管，暂时无法发送消息",
+      conversationAIHostingEnabled: true,
+    });
+  });
+
+  it("allows sending after a conversation exits AI hosting", () => {
+    const permissions = resolveWorkbenchPermissions({
+      account: createAccount({ takenOverEmployeeId: me.id }),
+      activeConversation: createConversation({
+        agentHostingStatus: "exited",
+        conversationAIHostingSwitch: false,
+      }),
+      bootstrapStatus: "ready",
+      me,
+      subUser: operator,
+    });
+
+    expect(permissions).toMatchObject({
+      canSendMessage: true,
+      canUseConversationActions: true,
+      composerPlaceholder: "请输入消息……",
     });
   });
 
@@ -284,7 +403,7 @@ function createConversation(overrides: Partial<Conversation> = {}): Conversation
     customerId: "customer-001",
     customerName: "客户一号",
     id: "conv-001",
-    custodyMode: "semi",
+    conversationAIHostingSwitch: false,
     mode: "single",
     preview: "",
     priority: "medium",

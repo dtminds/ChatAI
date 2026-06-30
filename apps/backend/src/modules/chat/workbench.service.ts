@@ -1,5 +1,6 @@
 import type {
   WorkbenchConversationDeleteResponse,
+  WorkbenchConversationFullAutoResponse,
   WorkbenchConversationListResponse,
   WorkbenchConversationPinResponse,
   WorkbenchConversationReadResponse,
@@ -42,6 +43,8 @@ import type {
   WorkbenchSmartReplySendAnswerRequest,
   WorkbenchSmartReplySendAnswerResponse,
   WorkbenchRevokeMessageResponse,
+  WorkbenchSeatAgentModeSwitchRequest,
+  WorkbenchSeatAgentModeSwitchResponse,
   WorkbenchSeatDto,
   WorkbenchSendMessagePayload,
   WorkbenchSendMessageResponse,
@@ -53,6 +56,7 @@ import type {
   WorkbenchSearchResponseDto,
   WorkbenchGetOrCreateConversationRequestDto,
   WorkbenchConversationSummaryDto,
+  WorkbenchFullAutoAnswerStatusResponse,
   WorkbenchVoicePlaybackConfirmRequest,
   WorkbenchVoicePlaybackConfirmResponse,
   WorkbenchVoiceTranscriptionRequest,
@@ -202,7 +206,6 @@ type NormalizedQuickReplyBatchItem = {
 };
 
 type SmartReplyMessagePageMetadata = {
-  smartReplyEnabled?: boolean;
   smartReplyScope?: {
     chatType: number;
     thirdExternalId: string;
@@ -251,6 +254,13 @@ function collectSmartReplyMessagePageCandidateIds(messages: WorkbenchMessageDto[
 }
 
 export type WorkbenchService = {
+  changeConversationFullAuto(
+    subUserId: string,
+    conversationId: string,
+    request: { enabled: boolean },
+  ):
+    | Promise<WorkbenchConversationFullAutoResponse>
+    | WorkbenchConversationFullAutoResponse;
   deleteConversation(
     subUserId: string,
     conversationId: string,
@@ -273,6 +283,12 @@ export type WorkbenchService = {
     conversationId: string,
     options?: { beforeSeq?: number; limit?: number },
   ): Promise<WorkbenchMessagePageDto> | WorkbenchMessagePageDto;
+  getFullAutoAnswerStatus(
+    subUserId: string,
+    conversationId: string,
+  ):
+    | Promise<WorkbenchFullAutoAnswerStatusResponse>
+    | WorkbenchFullAutoAnswerStatusResponse;
   getMessagesBySeqs(
     subUserId: string,
     conversationId: string,
@@ -436,6 +452,13 @@ export type WorkbenchService = {
     subUserId: string,
     seatId: string,
   ): Promise<WorkbenchTakeOverSeatResponse> | WorkbenchTakeOverSeatResponse;
+  updateSeatAgentModeSwitch(
+    subUserId: string,
+    seatId: string,
+    request: WorkbenchSeatAgentModeSwitchRequest,
+  ):
+    | Promise<WorkbenchSeatAgentModeSwitchResponse>
+    | WorkbenchSeatAgentModeSwitchResponse;
   unpinConversation(
     subUserId: string,
     conversationId: string,
@@ -803,26 +826,20 @@ export class MysqlWorkbenchService implements WorkbenchService {
       includeHiddenConversation: true,
       limit: options?.limit ?? 30,
     })) as MessagePageWithSmartReplyMetadata;
-    const { smartReplyEnabled, smartReplyScope, ...publicPage } = page;
+    const { smartReplyScope, ...publicPage } = page;
 
     if (options?.beforeSeq != null) {
       return publicPage;
     }
 
-    if (!smartReplyEnabled || !smartReplyScope) {
-      return {
-        ...publicPage,
-        smartReplyEnabled: false,
-      };
+    if (!smartReplyScope) {
+      return publicPage;
     }
 
     const msgIds = collectSmartReplyMessagePageCandidateIds(publicPage.messages);
 
     if (msgIds.length === 0) {
-      return {
-        ...publicPage,
-        smartReplyEnabled: true,
-      };
+      return publicPage;
     }
 
     try {
@@ -836,7 +853,6 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
       return {
         ...publicPage,
-        smartReplyEnabled: true,
         smartReplies: smartReplies.suggestions,
       };
     } catch (error) {
@@ -845,10 +861,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
         "Failed to load smart replies for message page",
       );
 
-      return {
-        ...publicPage,
-        smartReplyEnabled: true,
-      };
+      return publicPage;
     }
   }
 
@@ -1245,6 +1258,51 @@ export class MysqlWorkbenchService implements WorkbenchService {
     };
   }
 
+  async changeConversationFullAuto(
+    subUserId: string,
+    conversationId: string,
+    request: { enabled: boolean },
+  ): Promise<WorkbenchConversationFullAutoResponse> {
+    const subUserNumericId = parseMySqlId(subUserId);
+
+    if (subUserNumericId == null) {
+      throw new NotFoundError("SUB_USER_NOT_FOUND", "子账号不存在");
+    }
+
+    const conversation = await this.getOperableConversation(subUserId, conversationId);
+
+    await this.javaClient.changeConversationFullAuto({
+      change: request.enabled ? 1 : 2,
+      conversationId: conversation.id,
+      operatorId: subUserNumericId,
+      platform: conversation.platform,
+      uid: conversation.uid,
+    });
+
+    return {
+      conversationAIHostingSwitch: request.enabled,
+      conversationId: conversation.id,
+      seatId: conversation.seatId,
+    };
+  }
+
+  async getFullAutoAnswerStatus(
+    subUserId: string,
+    conversationId: string,
+  ): Promise<WorkbenchFullAutoAnswerStatusResponse> {
+    const conversation = await this.getAccessibleConversation(subUserId, conversationId);
+
+    if (conversation.thirdGroupId || !conversation.thirdExternalUserId) {
+      return {};
+    }
+
+    return this.repository.getLatestFullAutoAnswerStatus({
+      thirdExternalUserId: conversation.thirdExternalUserId,
+      thirdUserId: conversation.thirdUserId,
+      uid: conversation.uid,
+    });
+  }
+
   async poll(subUserId: string, request: WorkbenchPollRequest) {
     if (request.currentSeatId) {
       await this.assertSeatAccess(subUserId, request.currentSeatId);
@@ -1566,9 +1624,19 @@ export class MysqlWorkbenchService implements WorkbenchService {
       throw new BadRequestError("SMART_REPLY_RECORD_INVALID", "智能回复记录无效");
     }
 
+    const optNos = (request.optNos ?? [])
+      .map((optNo) => optNo.trim())
+      .filter((optNo) => optNo.length > 0);
+
+    if (optNos.length === 0) {
+      throw new BadRequestError("SMART_REPLY_OPT_NO_INVALID", "发送消息操作编号无效");
+    }
+
     await this.javaClient.sendRecommendAnswer({
+      optNos,
       realAnswer,
-      realAttachIds: request.realAttachIds,
+      // 新 send-answer 接口暂未启用附件 id，先不传 realAttachIds
+      // realAttachIds: request.realAttachIds,
       recordId,
       uid: conversation.uid,
     });
@@ -2030,6 +2098,45 @@ export class MysqlWorkbenchService implements WorkbenchService {
       hostSubUserId: subUserId,
       seatId: seat.seatId,
     };
+  }
+
+  async updateSeatAgentModeSwitch(
+    subUserId: string,
+    seatId: string,
+    request: WorkbenchSeatAgentModeSwitchRequest,
+  ): Promise<WorkbenchSeatAgentModeSwitchResponse> {
+    await this.assertSeatAccess(subUserId, seatId);
+
+    const seat = await this.repository.getSeatOperateScope(seatId);
+
+    if (!seat) {
+      throw new NotFoundError("SEAT_NOT_FOUND", "席位不存在");
+    }
+
+    if (seat.hostSubUserId !== subUserId) {
+      throw new ForbiddenError("SEAT_NOT_TAKEN_OVER", "账号未接管");
+    }
+
+    const canUseAgentMode =
+      request.mode === "off" ||
+      (request.mode === "assistant" && seat.semiAutoAuth === true) ||
+      (request.mode === "autoReply" &&
+        seat.semiAutoAuth === true &&
+        seat.seatAIHostingAuth === true);
+
+    if (!canUseAgentMode) {
+      throw new ForbiddenError(
+        "SEAT_AGENT_MODE_UNAUTHORIZED",
+        "当前账号未授权该 Agent 模式",
+      );
+    }
+
+    return this.repository.updateSeatAgentModeSwitch({
+      mode: request.mode,
+      platform: seat.platform,
+      seatId: seat.seatId,
+      uid: seat.uid,
+    });
   }
 
   async unpinConversation(subUserId: string, conversationId: string) {
@@ -3568,6 +3675,16 @@ export class MysqlWorkbenchService implements WorkbenchService {
   }
 
   private async getOperableConversation(subUserId: string, conversationId: string) {
+    const conversation = await this.getAccessibleConversation(subUserId, conversationId);
+
+    if (conversation.seatHostSubUserId !== subUserId) {
+      throw new ForbiddenError("SEAT_NOT_TAKEN_OVER", "当前账号尚未由你接管");
+    }
+
+    return conversation;
+  }
+
+  private async getAccessibleConversation(subUserId: string, conversationId: string) {
     const conversation = await this.repository.getConversationLookup(conversationId);
 
     if (!conversation) {
@@ -3575,10 +3692,6 @@ export class MysqlWorkbenchService implements WorkbenchService {
     }
 
     await this.assertSeatAccess(subUserId, conversation.seatId);
-
-    if (conversation.seatHostSubUserId !== subUserId) {
-      throw new ForbiddenError("SEAT_NOT_TAKEN_OVER", "当前账号尚未由你接管");
-    }
 
     return conversation;
   }

@@ -18,7 +18,6 @@ import {
   type ThemePreference,
 } from "@/lib/theme-preference";
 import type { Conversation } from "@/pages/chat/chat-types";
-import { SmartReplyAutoGenerateControl } from "./smart-reply-auto-generate-control";
 
 type ChatHeaderProps = {
   activeConversation?: Conversation;
@@ -77,9 +76,7 @@ export function ChatHeader({ activeConversation }: ChatHeaderProps) {
           ) : null}
         </div>
 
-        <div className="flex shrink-0 items-center gap-3">
-          <SmartReplyAutoGenerateControl />
-          <div aria-hidden className="h-6 w-px bg-divider" />
+        <div className="flex shrink-0 items-center">
           <SegmentedControl
             aria-label="选择主题模式"
             onValueChange={handleThemePreferenceChange}

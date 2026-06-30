@@ -12,6 +12,7 @@ import {
   MessageNotification01Icon,
   MoreHorizontalIcon,
   Cancel01Icon,
+  RefreshIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Spinner } from "@/components/ui/spinner";
@@ -39,7 +40,6 @@ import {
   isSmartReplyGenerationFailed,
   isSmartReplyKnowledgeMiss,
   isSmartReplyMediaContentType,
-  isSmartReplySent,
   resolveSmartReplyProcessingLabel,
   SMART_REPLY_BUSY_TIMEOUT_MS,
   SMART_REPLY_CONTENT_INCOMPLETE_SKIP_HINT,
@@ -71,8 +71,11 @@ export type SmartReplySuggestion = {
   busyRequestId?: number;
   content: string;
   failReason?: string;
+  /** Java 原始 genAnswer，send-answer 的 realAnswer 需原样回传 */
+  genAnswer?: string;
   generateStatus?: number | string;
   pollComplete?: boolean;
+  sent?: boolean;
   status?: "thinking" | "processing" | "ready";
   refAttachIds?: string[];
   recordId?: string;
@@ -87,7 +90,6 @@ export type SmartReplyCardProps = {
   isGenerationFailed?: boolean;
   isKnowledgeHit?: boolean;
   isKnowledgeMiss?: boolean;
-  isSent?: boolean;
   isSending?: boolean;
   canSendMessage?: boolean;
   onEdit?: () => void;
@@ -112,7 +114,6 @@ export function SmartReplyCard({
   isGenerationFailed = false,
   isKnowledgeHit = true,
   isKnowledgeMiss = false,
-  isSent = false,
   isSending = false,
   canSendMessage = true,
   onEdit,
@@ -821,7 +822,6 @@ export function SmartReplyMessageAnchor({
   const isGenerationFailed = isSmartReplyGenerationFailed(resolvedSuggestion);
   const isKnowledgeHit =
     !isKnowledgeMiss && !isGenerationFailed && !isContentIncompleteSkip;
-  const isSent = isSmartReplySent(resolvedSuggestion);
   const canMakeShorter = canRequestSmartReplyMakeShorter(resolvedSuggestion);
 
   if (isContentIncompleteSkip) {
@@ -853,7 +853,6 @@ export function SmartReplyMessageAnchor({
           isGenerationFailed={isGenerationFailed}
           isKnowledgeHit={isKnowledgeHit}
           isKnowledgeMiss={isKnowledgeMiss}
-          isSent={isSent}
           isSending={isSending}
           isThinking={isThinking}
           isProcessing={isProcessing}
@@ -1047,18 +1046,64 @@ export function SmartReplyTriggerIcon({
   );
 }
 
-export function SmartReplyInlineProcessingHint({ label }: { label: string }) {
+export function SmartReplyInlineProcessingHint({
+  animated = true,
+  label,
+  onDismiss,
+  onRegenerate,
+}: {
+  animated?: boolean;
+  label: string;
+  onDismiss?: () => void;
+  onRegenerate?: () => void;
+}) {
   return (
     <div
-      className="flex shrink-0 items-center text-muted-foreground"
+      className="flex shrink-0 items-center gap-1.5 text-muted-foreground"
       data-testid="smart-reply-inline-processing"
       role="status"
     >
       <p className="text-[13px] leading-5">
-        <ShinyText duration={1.15} shimmerWidth={44}>
-          {label}
-        </ShinyText>
+        {animated ? (
+          <ShinyText duration={1.15} shimmerWidth={44}>
+            {label}
+          </ShinyText>
+        ) : (
+          label
+        )}
       </p>
+      {onRegenerate ? (
+        <button
+          aria-label="重新生成"
+          className="inline-flex size-5 shrink-0 items-center justify-center rounded-[5px] text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/20"
+          onClick={onRegenerate}
+          title="重新生成"
+          type="button"
+        >
+          <HugeiconsIcon
+            aria-hidden="true"
+            icon={RefreshIcon}
+            size={14}
+            strokeWidth={2}
+          />
+        </button>
+      ) : null}
+      {onDismiss ? (
+        <button
+          aria-label="收起"
+          className="inline-flex size-5 shrink-0 items-center justify-center rounded-[5px] text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/20"
+          onClick={onDismiss}
+          title="收起"
+          type="button"
+        >
+          <HugeiconsIcon
+            aria-hidden="true"
+            icon={Cancel01Icon}
+            size={14}
+            strokeWidth={2}
+          />
+        </button>
+      ) : null}
     </div>
   );
 }

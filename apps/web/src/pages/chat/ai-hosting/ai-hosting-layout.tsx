@@ -1,3 +1,5 @@
+import { useCallback, useEffect, useState } from "react";
+import type { AiHostingQuota, AiHostingQuotaOverview } from "@chatai/contracts";
 import type { ReactNode } from "react";
 import { Link, NavLink } from "react-router-dom";
 import {
@@ -10,6 +12,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { getAiHostingQuota } from "./agent-service";
 
 const agentLogoUrl = "https://b5.bokr.com.cn/dist/agent-color.svg";
 
@@ -31,6 +34,12 @@ const aiHostingNavItems = [
   },
 ] as const;
 
+const quotaRefreshEventName = "ai-hosting:quota-refresh";
+
+export function notifyAiHostingQuotaChanged() {
+  window.dispatchEvent(new Event(quotaRefreshEventName));
+}
+
 export function AiHostingLayout({
   children,
   title,
@@ -38,6 +47,52 @@ export function AiHostingLayout({
   children: ReactNode;
   title: string;
 }) {
+  const [quota, setQuota] = useState<AiHostingQuotaOverview | null>(null);
+
+  const loadQuota = useCallback(async () => {
+    const nextQuota = await getAiHostingQuota();
+    setQuota(nextQuota);
+    return nextQuota;
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadInitialQuota() {
+      try {
+        const nextQuota = await getAiHostingQuota();
+
+        if (!cancelled) {
+          setQuota(nextQuota);
+        }
+      } catch {
+        if (!cancelled) {
+          setQuota(null);
+        }
+      }
+    }
+
+    void loadInitialQuota();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    function handleQuotaRefresh() {
+      void loadQuota().catch(() => {
+        setQuota(null);
+      });
+    }
+
+    window.addEventListener(quotaRefreshEventName, handleQuotaRefresh);
+
+    return () => {
+      window.removeEventListener(quotaRefreshEventName, handleQuotaRefresh);
+    };
+  }, [loadQuota]);
+
   return (
     <div className="fixed inset-0 overflow-hidden bg-sidebar text-foreground">
       <div className="grid h-full grid-cols-[13.5rem_minmax(0,1fr)] overflow-hidden max-lg:grid-cols-1">
@@ -48,13 +103,22 @@ export function AiHostingLayout({
             variant="ghost"
           >
             <Link aria-label="返回工作台" to="/chat">
-              <HugeiconsIcon icon={ArrowLeft02Icon} size={20} strokeWidth={1.8} />
+              <HugeiconsIcon
+                icon={ArrowLeft02Icon}
+                size={20}
+                strokeWidth={1.8}
+              />
               <span>返回工作台</span>
             </Link>
           </Button>
 
           <div className="mb-5 flex items-center gap-1.5 px-2">
-            <img alt="" aria-hidden="true" className="size-6 shrink-0" src={agentLogoUrl} />
+            <img
+              alt=""
+              aria-hidden="true"
+              className="size-6 shrink-0"
+              src={agentLogoUrl}
+            />
             <div className="min-w-0">
               <div className="text-sm font-semibold">智能体</div>
             </div>
@@ -79,16 +143,108 @@ export function AiHostingLayout({
               </NavLink>
             ))}
           </nav>
+
+          <AiHostingQuotaPanel quota={quota} />
         </aside>
 
         <main className="h-full min-h-0 overflow-hidden rounded-[14px_0_0_14px] bg-surface pl-0 shadow max-lg:rounded-none">
           <div className="h-full min-h-0 overflow-y-auto">
-            <div className="mx-auto w-full max-w-[1360px] px-8 py-8">{children}</div>
+            <div className="mx-auto w-full max-w-[1360px] px-8 py-8">
+              {children}
+            </div>
           </div>
         </main>
       </div>
     </div>
   );
+}
+
+function AiHostingQuotaPanel({ quota }: { quota: AiHostingQuotaOverview | null }) {
+  return (
+    <section
+      aria-label="智能体用量"
+      className="mt-auto rounded-[8px] border border-border/60 bg-background p-3"
+    >
+      <div className="space-y-3">
+        <div className="text-xs font-medium text-muted-foreground">用量</div>
+        {quota ? (
+          <div className="space-y-3">
+            <QuotaMeter
+              label="Agent"
+              quota={quota.agents}
+              valueLabel={formatCountQuota(quota.agents)}
+            />
+            <QuotaMeter
+              label="知识库"
+              quota={quota.kbs}
+              valueLabel={formatCountQuota(quota.kbs)}
+            />
+            <QuotaMeter
+              label="文档容量"
+              quota={quota.kbDocs}
+              valueLabel={formatStorageQuota(quota.kbDocs)}
+            />
+          </div>
+        ) : (
+          <div className="text-xs text-muted-foreground">正在加载</div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function QuotaMeter({
+  label,
+  quota,
+  valueLabel,
+}: {
+  label: string;
+  quota: AiHostingQuota;
+  valueLabel: string;
+}) {
+  const percentage =
+    quota.limit > 0 ? Math.min((quota.used / quota.limit) * 100, 100) : 0;
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between gap-2 text-xs">
+        <span className="text-sidebar-foreground">{label}</span>
+        <span className="shrink-0 text-muted-foreground">{valueLabel}</span>
+      </div>
+      <div className="h-1.5 overflow-hidden rounded-full bg-sidebar-accent">
+        <div
+          className="h-full rounded-full bg-primary"
+          style={{ width: `${percentage}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function formatCountQuota(quota: AiHostingQuota) {
+  return `${quota.used}/${quota.limit}`;
+}
+
+function formatStorageQuota(quota: AiHostingQuota) {
+  return `${formatStorageSize(quota.used)}/${formatStorageSize(quota.limit)}`;
+}
+
+function formatStorageSize(bytes: number) {
+  const megabytes = bytes / 1024 / 1024;
+
+  if (bytes >= 1024 * 1024 * 1024) {
+    return `${formatStorageNumber(bytes / 1024 / 1024 / 1024)}GB`;
+  }
+
+  if (megabytes >= 0.1) {
+    return `${formatStorageNumber(megabytes)}MB`;
+  }
+
+  return "0";
+}
+
+function formatStorageNumber(value: number) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
 export function AiHostingPageHeader({

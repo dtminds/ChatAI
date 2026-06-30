@@ -1,4 +1,8 @@
-import type { KbCreateRequest, KbCreateResponse } from "@chatai/contracts";
+import {
+  AI_HOSTING_KB_QUOTA_LIMIT,
+  type KbCreateRequest,
+  type KbCreateResponse,
+} from "@chatai/contracts";
 import type { Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
 import { BadRequestError, ServiceUnavailableError } from "../../shared/errors.js";
@@ -29,6 +33,8 @@ export class KbWriteService {
 
     const remark = payload.description?.trim() ?? "";
 
+    await this.assertKbQuotaAvailable(uid);
+
     const inserted = await this.db
       .insertInto("xy_wap_embed_agent_kb")
       .values({
@@ -48,6 +54,27 @@ export class KbWriteService {
     }
 
     return { kbId: String(kbId) };
+  }
+
+  private async assertKbQuotaAvailable(uid: number) {
+    const result = await this.db
+      .selectFrom("xy_wap_embed_agent_kb")
+      .select((eb) => eb.fn.countAll<number>().as("total"))
+      .where("uid", "=", uid)
+      .where("status", "=", dbActiveStatus)
+      .executeTakeFirst();
+    const used = Number(result?.total ?? 0);
+
+    if (used >= AI_HOSTING_KB_QUOTA_LIMIT) {
+      throw new BadRequestError(
+        "KB_QUOTA_EXCEEDED",
+        "知识库数量已达上限",
+        {
+          limit: AI_HOSTING_KB_QUOTA_LIMIT,
+          used,
+        },
+      );
+    }
   }
 }
 

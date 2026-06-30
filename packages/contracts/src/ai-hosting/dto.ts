@@ -1,6 +1,22 @@
 import { Type, type Static } from "@sinclair/typebox";
 
+export const AI_HOSTING_AGENT_QUOTA_LIMIT = 20;
+export const AI_HOSTING_KB_QUOTA_LIMIT = 20;
+export const AI_HOSTING_KB_DOC_STORAGE_QUOTA_LIMIT = 1024 * 1024 * 1024;
+
+export const AiHostingQuotaSchema = Type.Object({
+  limit: Type.Number(),
+  used: Type.Number(),
+});
+
+export const AiHostingQuotaOverviewSchema = Type.Object({
+  agents: AiHostingQuotaSchema,
+  kbDocs: AiHostingQuotaSchema,
+  kbs: AiHostingQuotaSchema,
+});
+
 export const AiHostingAgentPromptConfigSchema = Type.Object({
+  availableKbIds: Type.Array(Type.Number()),
   conditionLogic: Type.String(),
   handoffRules: Type.String({ maxLength: 2000 }),
   replyStyle: Type.Object({
@@ -45,14 +61,17 @@ export const AiHostingAgentDetailSchema = Type.Object({
   updatedAt: Type.Optional(Type.Number()),
 });
 
-export const AiHostingAgentListResponseSchema = Type.Object({
-  agents: Type.Array(AiHostingAgentListItemSchema),
-  pagination: Type.Object({
-    page: Type.Number(),
-    pageSize: Type.Number(),
-    total: Type.Number(),
-  }),
-});
+export const AiHostingAgentListResponseSchema = Type.Object(
+  {
+    agents: Type.Array(AiHostingAgentListItemSchema),
+    pagination: Type.Object({
+      page: Type.Number(),
+      pageSize: Type.Number(),
+      total: Type.Number(),
+    }),
+  },
+  { additionalProperties: false },
+);
 
 export const AiHostingModelListResponseSchema = Type.Object({
   models: Type.Array(AiHostingModelSchema),
@@ -143,6 +162,8 @@ export const AiHostingSettingsUpdateRequestSchema = Type.Object({
 }, { additionalProperties: false });
 
 export type AiHostingAgentPromptConfig = Static<typeof AiHostingAgentPromptConfigSchema>;
+export type AiHostingQuota = Static<typeof AiHostingQuotaSchema>;
+export type AiHostingQuotaOverview = Static<typeof AiHostingQuotaOverviewSchema>;
 export type AiHostingModel = Static<typeof AiHostingModelSchema>;
 export type AiHostingAgentModelSummary = Static<typeof AiHostingAgentModelSummarySchema>;
 export type AiHostingAgentListItem = Static<typeof AiHostingAgentListItemSchema>;

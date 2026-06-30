@@ -128,7 +128,13 @@ export function UiComponentDemoPage() {
       templateName: "售前欢迎语",
     },
   });
-  const animatedTexts = ["正在生成", "可以发送", "等待用户回复"] as const;
+  const animatedTexts = [
+    "Agent 正在查看消息",
+    "Agent 正在确认客户是否追加新消息",
+    "Agent 正在思考回复话术",
+    "Agent 回复已生成，正在发送",
+    "Agent 已就绪，正在等待用户消息",
+  ] as const;
   const animatedText = animatedTexts[animatedTextIndex];
 
   return (
@@ -568,12 +574,14 @@ export function UiComponentDemoPage() {
             <div className="mt-5 grid gap-4 md:grid-cols-2">
               <div className="rounded-[10px] border border-border p-4">
                 <h3 className="text-sm font-semibold text-foreground">带扫光</h3>
-                <div className="mt-4 inline-flex min-h-10 items-center rounded-full border border-border bg-background px-4 text-sm font-medium shadow-[0_10px_24px_var(--shadow-soft)]">
+                <div className="mt-4 flex min-h-10 w-full max-w-[20rem] items-center rounded-full border border-border bg-background px-4 text-sm font-medium shadow-[0_10px_24px_var(--shadow-soft)]">
                   <AnimatedTextSwitch
                     aria-label="文字切换示例"
+                    className="min-w-0"
                     shiny
                     shinyDuration={1.15}
                     shinyShimmerWidth={48}
+                    staggerMs={12}
                     value={animatedText}
                   />
                 </div>
@@ -581,8 +589,12 @@ export function UiComponentDemoPage() {
 
               <div className="rounded-[10px] border border-border p-4">
                 <h3 className="text-sm font-semibold text-foreground">纯切换</h3>
-                <div className="mt-4 inline-flex min-h-10 items-center rounded-full border border-border bg-background px-4 text-sm font-medium text-muted-foreground shadow-[0_10px_24px_var(--shadow-soft)]">
-                  <AnimatedTextSwitch value={animatedText} />
+                <div className="mt-4 flex min-h-10 w-full max-w-[20rem] items-center rounded-full border border-border bg-background px-4 text-sm font-medium text-muted-foreground shadow-[0_10px_24px_var(--shadow-soft)]">
+                  <AnimatedTextSwitch
+                    className="min-w-0"
+                    staggerMs={12}
+                    value={animatedText}
+                  />
                 </div>
               </div>
             </div>

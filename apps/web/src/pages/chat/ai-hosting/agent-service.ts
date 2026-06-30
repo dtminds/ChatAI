@@ -7,6 +7,7 @@ import type {
   AiHostingAgentSettingsSaveRequest,
   AiHostingAgentTestRequest,
   AiHostingAgentTestResponse,
+  AiHostingQuotaOverview,
   AiHostingSettingsResponse,
   AiHostingSettingsUpdateRequest,
   AiHostingModelListResponse,
@@ -19,6 +20,14 @@ export type ListAgentsParams = {
   pageSize?: number;
   query?: string;
 };
+
+export async function getAiHostingQuota() {
+  const response = await http.get<ApiSuccessEnvelope<AiHostingQuotaOverview>>(
+    "/server/ai-hosting/quota",
+  );
+
+  return response.data;
+}
 
 export async function listAiHostingAgents(params: ListAgentsParams = {}) {
   const searchParams = new URLSearchParams();

@@ -29,6 +29,8 @@ import {
   type WorkbenchSearchGroupResultDto,
   type WorkbenchSearchResponseDto,
   type WorkbenchConversationSummaryDto,
+  type WorkbenchFullAutoAnswerStatusResponse,
+  type WorkbenchSeatAgentMode,
   normalizeQuickReplyAttachments,
   type WorkbenchQuickReplyAttachment,
 } from "@chatai/contracts";
@@ -102,9 +104,18 @@ export type ConversationLookup = {
   unreadCount: number;
 };
 
+type FullAutoAnswerStatusScope = {
+  thirdExternalUserId: string;
+  thirdUserId: string;
+  uid: number;
+};
+
 export type SeatOperateScope = {
+  seatAIHostingAuth: boolean;
+  hostSubUserId?: string;
   platform: number;
   seatId: string;
+  semiAutoAuth: boolean;
   thirdUserId: string;
   uid: number;
 };
@@ -188,7 +199,6 @@ type ConversationHydrationSources = {
 };
 
 type SeatBaseRow = {
-  ai_hosting_enabled?: number | string | boolean | null;
   avatar: string | null;
   biz_status: number | string | null;
   expire_time: number | string | null;
@@ -198,10 +208,21 @@ type SeatBaseRow = {
   id: number | string;
   is_online: number | null;
   platform: number;
+  semi_auto_auth?: number | string | boolean | null;
+  semi_auto_switch?: number | string | boolean | null;
   third_user_name: string;
   third_userid: string;
   uid: number;
 };
+
+type SeatRecordRow = Pick<
+  SeatBaseRow,
+  | "host_sub_id"
+  | "id"
+  | "platform"
+  | "third_userid"
+  | "uid"
+>;
 
 type SeatSummaryRow = SeatBaseRow & {
   last_message_time: Date | number | string | null;
@@ -220,6 +241,22 @@ type SeatAccessSnapshot = {
   seatIds: string[];
   uid: number;
   version: 1;
+};
+
+type AgentAnswerRecordDb = Database & {
+  xy_wap_embed_agent_answer_record: {
+    analyse_msg_id: number | string | null;
+    create_time: Date | number | string | null;
+    gen_status: number | string | null;
+    id: number | string;
+    send_status: number | string | null;
+    third_external_userid: string;
+    third_group_id: string;
+    third_userid: string;
+    trigger_type: number | string;
+    uid: number | string;
+    update_time: Date | number | string | null;
+  };
 };
 
 type SeatConversationAggregateRow = {
@@ -2317,6 +2354,7 @@ export class WorkbenchRepository {
         "message.msgtime as msgtime",
         "message.opt_no as opt_no",
         "message.revoke_status as revoke_status",
+        "message.source as source",
         "message.status as status",
         "message.update_time as update_time",
       ])
@@ -2538,6 +2576,8 @@ export class WorkbenchRepository {
         "seat.host_sub_id as host_sub_id",
         "seat_agent.full_auto_auth as full_auto_auth",
         "seat_agent.full_auto_switch as full_auto_switch",
+        "seat_agent.semi_auto_auth as semi_auto_auth",
+        "seat_agent.semi_auto_switch as semi_auto_switch",
       ])
       .where("relation.sub_id", "=", subUserNumericId)
       .where("relation.uid", "=", scope.uid)
@@ -3154,6 +3194,8 @@ export class WorkbenchRepository {
         "xy_wap_embed_user_seat.host_sub_id as host_sub_id",
         "seat_agent.full_auto_auth as full_auto_auth",
         "seat_agent.full_auto_switch as full_auto_switch",
+        "seat_agent.semi_auto_auth as semi_auto_auth",
+        "seat_agent.semi_auto_switch as semi_auto_switch",
       ])
       .where("xy_wap_embed_user_seat.id", "=", seatNumericId)
       .executeTakeFirst() as SeatBaseRow | undefined;
@@ -3200,6 +3242,8 @@ export class WorkbenchRepository {
         "seat.host_sub_id as host_sub_id",
         "seat_agent.full_auto_auth as full_auto_auth",
         "seat_agent.full_auto_switch as full_auto_switch",
+        "seat_agent.semi_auto_auth as semi_auto_auth",
+        "seat_agent.semi_auto_switch as semi_auto_switch",
         expressionBuilder.fn
           .coalesce(
             expressionBuilder.fn.sum<number>("conversation.unread_cnt"),
@@ -3220,6 +3264,8 @@ export class WorkbenchRepository {
         "seat.host_sub_id",
         "seat_agent.full_auto_auth",
         "seat_agent.full_auto_switch",
+        "seat_agent.semi_auto_auth",
+        "seat_agent.semi_auto_switch",
       ])
       .execute();
 
@@ -3233,15 +3279,35 @@ export class WorkbenchRepository {
       return undefined;
     }
 
-    const seat = await this.getSeatRecord(seatNumericId);
+    const seat = await this.db
+      .selectFrom("xy_wap_embed_user_seat as seat")
+      .leftJoin("xy_wap_embed_user_seat_agent as seat_agent", (join) =>
+        join
+          .onRef("seat_agent.user_seat_id", "=", "seat.id")
+          .onRef("seat_agent.uid", "=", "seat.uid"),
+      )
+      .select([
+        "seat.id as id",
+        "seat.uid as uid",
+        "seat.platform as platform",
+        "seat.third_userid as third_userid",
+        "seat.host_sub_id as host_sub_id",
+        "seat_agent.full_auto_auth as full_auto_auth",
+        "seat_agent.semi_auto_auth as semi_auto_auth",
+      ])
+      .where("seat.id", "=", seatNumericId)
+      .executeTakeFirst();
 
     if (!seat) {
       return undefined;
     }
 
     return {
+      seatAIHostingAuth: readBooleanFlag(seat.full_auto_auth),
+      hostSubUserId: normalizeOptionalSeatId(seat.host_sub_id),
       platform: seat.platform,
       seatId: String(seat.id),
+      semiAutoAuth: readBooleanFlag(seat.semi_auto_auth),
       thirdUserId: seat.third_userid,
       uid: seat.uid,
     };
@@ -3544,6 +3610,43 @@ export class WorkbenchRepository {
       : undefined;
   }
 
+  async getLatestFullAutoAnswerStatus(
+    scope: FullAutoAnswerStatusScope,
+  ): Promise<WorkbenchFullAutoAnswerStatusResponse> {
+    const row = await (this.db as unknown as Kysely<AgentAnswerRecordDb>)
+      .selectFrom("xy_wap_embed_agent_answer_record")
+      .select([
+        "analyse_msg_id",
+        "create_time",
+        "gen_status",
+        "id",
+        "send_status",
+        "update_time",
+      ])
+      .where("uid", "=", scope.uid)
+      .where("third_userid", "=", scope.thirdUserId)
+      .where("third_external_userid", "=", scope.thirdExternalUserId)
+      .where("third_group_id", "=", "")
+      .where("trigger_type", "=", 1)
+      .orderBy("id", "desc")
+      .limit(1)
+      .executeTakeFirst();
+
+    if (!row) {
+      return {};
+    }
+
+    return {
+      analyseMsgId:
+        row.analyse_msg_id == null ? "" : String(row.analyse_msg_id),
+      createdAt: toTimestamp(row.create_time),
+      genStatus: Number(row.gen_status ?? 0),
+      recordId: String(row.id),
+      sendStatus: Number(row.send_status ?? 0),
+      updatedAt: toTimestamp(row.update_time),
+    };
+  }
+
   async getSeatUnreadCountAfterMarkRead(input: {
     conversationId: string;
     platform: number;
@@ -3656,6 +3759,47 @@ export class WorkbenchRepository {
       .execute();
   }
 
+  async updateSeatAgentModeSwitch(input: {
+    mode: WorkbenchSeatAgentMode;
+    platform: number;
+    seatId: string;
+    uid: number;
+  }) {
+    const seatNumericId = parseMySqlId(input.seatId);
+
+    if (seatNumericId == null) {
+      return {
+        fullAutoSwitch: false,
+        seatId: input.seatId,
+        semiAutoSwitch: false,
+      };
+    }
+
+    await this.db
+      .updateTable("xy_wap_embed_user_seat_agent")
+      .set({
+        full_auto_switch: input.mode === "autoReply" ? 1 : 0,
+        semi_auto_switch: input.mode === "off" ? 0 : 1,
+        update_time: new Date(),
+      })
+      .where("uid", "=", input.uid)
+      .where("user_seat_id", "=", seatNumericId)
+      .execute();
+
+    const config = await this.db
+      .selectFrom("xy_wap_embed_user_seat_agent")
+      .select(["full_auto_switch", "semi_auto_switch"])
+      .where("uid", "=", input.uid)
+      .where("user_seat_id", "=", seatNumericId)
+      .executeTakeFirst();
+
+    return {
+      fullAutoSwitch: readBooleanFlag(config?.full_auto_switch),
+      seatId: input.seatId,
+      semiAutoSwitch: readBooleanFlag(config?.semi_auto_switch),
+    };
+  }
+
   async listGroupMembers(conversationId: string): Promise<WorkbenchGroupMembersResponse | undefined> {
     const conversationNumericId = parseMySqlId(conversationId);
 
@@ -3724,7 +3868,6 @@ export class WorkbenchRepository {
     },
   ): Promise<
     WorkbenchMessagePageDto & {
-      smartReplyEnabled?: boolean;
       smartReplyScope?: {
         chatType: number;
         thirdExternalId: string;
@@ -3755,7 +3898,6 @@ export class WorkbenchRepository {
         "conversation.third_external_userid as conversation_external_id",
         "conversation.third_group_id as conversation_group_id",
         "conversation.third_userid as third_userid",
-        "seat.assistant_id as assistant_id",
         "seat.id as seat_id",
       ])
       .select((expressionBuilder) => [
@@ -3800,6 +3942,7 @@ export class WorkbenchRepository {
         "message.msgtime as msgtime",
         "message.opt_no as opt_no",
         "message.revoke_status as revoke_status",
+        "message.source as source",
         "message.status as status",
         "message.update_time as update_time",
       ])
@@ -3883,8 +4026,6 @@ export class WorkbenchRepository {
       ),
       nextBeforeSeq: rawRows.length > 0 ? toNumber(rawRows.at(-1)?.id) : undefined,
       scannedCount: rawRows.length,
-      smartReplyEnabled:
-        smartReplyScope != null && (toNumber(conversation.assistant_id) ?? 0) > 0,
       smartReplyScope,
     };
   }
@@ -3970,6 +4111,7 @@ export class WorkbenchRepository {
         "message.msgtime as msgtime",
         "message.opt_no as opt_no",
         "message.revoke_status as revoke_status",
+        "message.source as source",
         "message.status as status",
         "message.update_time as update_time",
       ])
@@ -4136,6 +4278,7 @@ export class WorkbenchRepository {
         "message.msgtype as msgtype",
         "message.msgtime as msgtime",
         "message.revoke_status as revoke_status",
+        "message.source as source",
         "message.status as status",
         "message.update_time as update_time",
       ])
@@ -4193,9 +4336,15 @@ export class WorkbenchRepository {
   private async getSeatRecord(seatId: number) {
     return this.db
       .selectFrom("xy_wap_embed_user_seat")
-      .select(["id", "uid", "platform", "third_userid"])
-      .where("id", "=", seatId)
-      .executeTakeFirst();
+      .select([
+        "xy_wap_embed_user_seat.id as id",
+        "xy_wap_embed_user_seat.uid as uid",
+        "xy_wap_embed_user_seat.platform as platform",
+        "xy_wap_embed_user_seat.third_userid as third_userid",
+        "xy_wap_embed_user_seat.host_sub_id as host_sub_id",
+      ])
+      .where("xy_wap_embed_user_seat.id", "=", seatId)
+      .executeTakeFirst() as Promise<SeatRecordRow | undefined>;
   }
 
   private async getSubUserTenantScope(subUserId: number) {
@@ -4696,11 +4845,17 @@ export class WorkbenchRepository {
 
     const seat = await this.db
       .selectFrom("xy_wap_embed_user_seat")
-      .select("id")
-      .where("uid", "=", uid)
-      .where("platform", "=", platform)
-      .where("third_userid", "=", seatThirdUserId)
-      .executeTakeFirst();
+      .select([
+        "xy_wap_embed_user_seat.id as id",
+        "xy_wap_embed_user_seat.uid as uid",
+        "xy_wap_embed_user_seat.platform as platform",
+        "xy_wap_embed_user_seat.third_userid as third_userid",
+        "xy_wap_embed_user_seat.host_sub_id as host_sub_id",
+      ])
+      .where("xy_wap_embed_user_seat.uid", "=", uid)
+      .where("xy_wap_embed_user_seat.platform", "=", platform)
+      .where("xy_wap_embed_user_seat.third_userid", "=", seatThirdUserId)
+      .executeTakeFirst() as SeatRecordRow | undefined;
 
     if (!seat) {
       return null;
@@ -4886,9 +5041,6 @@ function withSeatConversationAggregate(
 
   return {
     ...seat,
-    ai_hosting_enabled:
-      readBooleanFlag(seat.full_auto_auth) &&
-      readBooleanFlag(seat.full_auto_switch),
     last_message_time: aggregate?.lastMessageTime ?? null,
     unread_count: aggregate?.unreadCount ?? 0,
   };
@@ -5610,6 +5762,14 @@ function mapCustomerLastConversation(
 
 function buildCustomerKey(uid: number, platform: number, thirdExternalUserId: string) {
   return `${uid}:${platform}:${thirdExternalUserId}`;
+}
+
+function normalizeOptionalSeatId(value: number | string | null | undefined) {
+  if (value == null || value === "" || value === 0 || value === "0") {
+    return undefined;
+  }
+
+  return String(value);
 }
 
 function normalizeGroupMemberType(value: number | null): WorkbenchGroupMemberDto["type"] {

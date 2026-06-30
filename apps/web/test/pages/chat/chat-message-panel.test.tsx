@@ -1,5 +1,5 @@
 import { createRef } from "react";
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatMessagePanel } from "@/pages/chat/components/chat-message-panel";
 import type { ChatMessage } from "@/pages/chat/chat-types";
@@ -45,12 +45,57 @@ function renderPanel({
   );
 }
 
+function enableSmartReplyDisplayContext(enabled = true) {
+  useWorkbenchStore.setState((state) => ({
+    accounts: [
+      {
+        avatarUrl: "",
+        description: "",
+        id: "seat-001",
+        loginStatus: "online",
+        metrics: {
+          activeCustomers: 0,
+          agents: 0,
+          stores: 0,
+          totalCustomers: 0,
+        },
+        name: "席位",
+        operator: "客服",
+        phone: "",
+        seatAIAssistantEnabled: enabled,
+        takenOverEmployeeId: state.me?.id,
+        tone: "",
+      },
+    ],
+    conversationListsByScope: {
+      "seat-001": [
+        {
+          accountId: "seat-001",
+          bizStatus: 1,
+          conversationAIHostingSwitch: false,
+          customerAvatarUrl: "",
+          customerId: "cust-001",
+          customerName: "客户甲",
+          id: "conv-001",
+          mode: "single",
+          preview: "",
+          priority: "medium",
+          quietFor: "",
+          unread: 0,
+          updatedAt: "刚刚",
+        },
+      ],
+    },
+  }));
+}
+
 describe("ChatMessagePanel smart reply state", () => {
   beforeEach(() => {
     useWorkbenchStore.setState(useWorkbenchStore.getInitialState(), true);
   });
 
   it("shows visible smart replies for the current single conversation", () => {
+    enableSmartReplyDisplayContext();
     useWorkbenchStore.setState((state) => ({
       smartReplyByMessageIdByConversationId: {
         ...state.smartReplyByMessageIdByConversationId,
@@ -58,6 +103,7 @@ describe("ChatMessagePanel smart reply state", () => {
           "1": {
             assistantName: "智能助手",
             content: "可展示的话术",
+            generateStatus: 2,
             pollComplete: true,
             status: "ready",
           },
@@ -72,6 +118,7 @@ describe("ChatMessagePanel smart reply state", () => {
   });
 
   it("hides smart replies marked hidden for the current conversation", () => {
+    enableSmartReplyDisplayContext();
     useWorkbenchStore.setState((state) => ({
       smartReplyByMessageIdByConversationId: {
         ...state.smartReplyByMessageIdByConversationId,
@@ -79,6 +126,7 @@ describe("ChatMessagePanel smart reply state", () => {
           "1": {
             assistantName: "智能助手",
             content: "隐藏的话术",
+            generateStatus: 2,
             pollComplete: true,
             status: "ready",
           },
@@ -99,6 +147,7 @@ describe("ChatMessagePanel smart reply state", () => {
   });
 
   it("does not show smart replies in group conversations", () => {
+    enableSmartReplyDisplayContext();
     useWorkbenchStore.setState((state) => ({
       smartReplyByMessageIdByConversationId: {
         ...state.smartReplyByMessageIdByConversationId,
@@ -106,6 +155,7 @@ describe("ChatMessagePanel smart reply state", () => {
           "1": {
             assistantName: "智能助手",
             content: "群聊不展示的话术",
+            generateStatus: 2,
             pollComplete: true,
             status: "ready",
           },
@@ -125,5 +175,44 @@ describe("ChatMessagePanel smart reply state", () => {
 
     expect(screen.queryByTestId("smart-reply-card")).not.toBeInTheDocument();
     expect(screen.queryByText("群聊不展示的话术")).not.toBeInTheDocument();
+  });
+
+  it("hides cached smart replies immediately after seat AI assistant is disabled", () => {
+    enableSmartReplyDisplayContext();
+    useWorkbenchStore.setState((state) => ({
+      smartReplyByMessageIdByConversationId: {
+        ...state.smartReplyByMessageIdByConversationId,
+        "conv-001": {
+          "1": {
+            assistantName: "智能助手",
+            content: "关闭后不展示的话术",
+            generateStatus: 2,
+            pollComplete: true,
+            status: "ready",
+          },
+        },
+      },
+    }));
+
+    renderPanel();
+
+    expect(screen.getByTestId("smart-reply-card")).toBeInTheDocument();
+    expect(screen.getByText("关闭后不展示的话术")).toBeInTheDocument();
+
+    act(() => {
+      useWorkbenchStore.setState((state) => ({
+        accounts: state.accounts.map((account) =>
+          account.id === "seat-001"
+            ? {
+                ...account,
+                seatAIAssistantEnabled: false,
+              }
+            : account,
+        ),
+      }));
+    });
+
+    expect(screen.queryByTestId("smart-reply-card")).not.toBeInTheDocument();
+    expect(screen.queryByText("关闭后不展示的话术")).not.toBeInTheDocument();
   });
 });

@@ -148,6 +148,13 @@ type JavaRevokeMessageResponse = {
 };
 
 export type WorkbenchJavaClient = {
+  changeConversationFullAuto(input: {
+    change: 1 | 2;
+    conversationId: string;
+    operatorId: number;
+    platform: number;
+    uid: number;
+  }): Promise<void>;
   listUserHistoryAnswers(input: {
     chatType: number;
     msgIds: number[];
@@ -195,8 +202,8 @@ export type WorkbenchJavaClient = {
     uid: number;
   }): Promise<string>;
   sendRecommendAnswer(input: {
+    optNos: string[];
     realAnswer: string;
-    realAttachIds: string[];
     recordId: string;
     uid: number;
   }): Promise<void>;
@@ -321,11 +328,27 @@ export function createWorkbenchJavaClient(
   const token = process.env.JAVA_INTERNAL_API_TOKEN;
 
   return {
+    changeConversationFullAuto(input) {
+      return postJavaEnvelope<boolean>(
+        baseUrl,
+        token,
+        "/third-internal/wap-embed/conversation/change-full-auto",
+        {
+          change: input.change,
+          conversationId: Number(input.conversationId),
+          operatorId: input.operatorId,
+          platform: input.platform,
+          uid: input.uid,
+        },
+        logger,
+        "change-conversation-full-auto",
+      ).then(() => undefined);
+    },
     listUserHistoryAnswers(input) {
       return postJavaEnvelope<unknown>(
         baseUrl,
         token,
-        "/third-internal/wap-embed-msg-audit-recommend-answer/user-history-answer-list",
+        "/third-internal/wap-embed-agent-answer-record/user-history-answer-list",
         {
           chatType: input.chatType,
           msgIds: input.msgIds,
@@ -344,7 +367,7 @@ export function createWorkbenchJavaClient(
       return postJavaEnvelope<unknown>(
         baseUrl,
         token,
-        "/third-internal/wap-embed-msg-audit-recommend-answer/general-answer",
+        "/third-internal/wap-embed-agent-answer-record/general-answer",
         {
           chatType: input.chatType,
           msgId: input.msgId,
@@ -365,7 +388,7 @@ export function createWorkbenchJavaClient(
       return postJavaEnvelope<unknown>(
         baseUrl,
         token,
-        "/third-internal/wap-embed-msg-audit-recommend-answer/auto-general-answer",
+        "/third-internal/wap-embed-agent-answer-record/auto-general-answer",
         {
           chatType: input.chatType,
           msgId: input.msgId,
@@ -382,7 +405,7 @@ export function createWorkbenchJavaClient(
           logger.error(
             {
               operation: "request-auto-general-answer",
-              path: "/third-internal/wap-embed-msg-audit-recommend-answer/auto-general-answer",
+              path: "/third-internal/wap-embed-agent-answer-record/auto-general-answer",
               requestId: getLoggerRequestId(logger),
             },
             "上游接口响应异常",
@@ -488,10 +511,15 @@ export function createWorkbenchJavaClient(
       return postJavaEnvelope<boolean>(
         baseUrl,
         token,
-        "/third-internal/wap-embed-msg-audit-recommend-answer/send-answer",
+        "/third-internal/wap-embed-agent-answer-record/send-answer",
         {
+          optNos: input.optNos,
           realAnswer: input.realAnswer,
-          realAttachIds: input.realAttachIds,
+          // TODO: Confirm send-answer contract with Java backend. realAnswer currently
+          // records text-only content, but editing should not change whether the payload
+          // is text-only or full message segments.
+          // 新 send-answer 接口暂未启用附件 id，先不传 realAttachIds
+          // realAttachIds: input.realAttachIds,
           recordId: numericRecordId ?? input.recordId,
           uid: input.uid,
         },

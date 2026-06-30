@@ -1,11 +1,11 @@
 import {
-  CONVERSATION_CUSTODY_MODE,
   type WorkbenchConversationSummaryDto,
   WorkbenchMessageContentType,
   WorkbenchMessageDto,
   WorkbenchMessageFileDownloadStatus,
   WorkbenchQuotedMessagePreviewDto,
   WorkbenchSeatDto,
+  WORKBENCH_MESSAGE_SOURCE,
 } from "@chatai/contracts";
 import {
   isRecord,
@@ -17,14 +17,17 @@ import { readBooleanFlag } from "./workbench-flags.js";
 import { getPlayableMediaHost, toPlayableVoicePathname } from "./media-config.js";
 
 export type SeatRow = {
-  ai_hosting_enabled?: number | string | boolean | null;
   avatar: string | null;
   biz_status?: number | string | null;
   expire_time?: number | string | null;
+  full_auto_auth?: number | string | boolean | null;
+  full_auto_switch?: number | string | boolean | null;
   host_sub_id: number | string | null;
   id: number | string;
   is_online: number | null;
   last_message_time: Date | number | string | null;
+  semi_auto_auth?: number | string | boolean | null;
+  semi_auto_switch?: number | string | boolean | null;
   third_user_name: string;
   third_userid: string;
   unread_count: number | string | null;
@@ -71,6 +74,7 @@ export type MessageRow = {
   seat_id: number | string;
   sender_avatar?: string;
   sender_name?: string;
+  source?: number | string | null;
   status?: number | string | null;
   third_external_id: string | null | undefined;
   third_from_id: string | null | undefined;
@@ -115,13 +119,20 @@ const CHAT_RECORD_LOADING_WINDOW_MS = 15_000;
 export function mapSeatRow(row: SeatRow): WorkbenchSeatDto {
   const seatName = row.third_user_name || "未命名席位";
   const hostSubUserId = normalizeOptionalId(row.host_sub_id);
+  const seatAIHostingAuth = readBooleanFlag(row.full_auto_auth);
+  const fullAutoSwitch = readBooleanFlag(row.full_auto_switch);
+  const semiAutoAuth = readBooleanFlag(row.semi_auto_auth);
+  const semiAutoSwitch = readBooleanFlag(row.semi_auto_switch);
 
   return {
-    aiHostingEnabled: readBooleanFlag(row.ai_hosting_enabled),
+    seatAIHostingEnabled: seatAIHostingAuth && fullAutoSwitch,
+    seatAIAssistantEnabled: semiAutoAuth && semiAutoSwitch,
     avatar: row.avatar ?? "",
     bizStatus: row.biz_status == null ? 1 : toNumber(row.biz_status),
     description: "",
     expireTime: row.expire_time == null ? undefined : toNumber(row.expire_time),
+    seatAIHostingAuth,
+    fullAutoSwitch,
     hostSubUserId,
     lastMessageTime: toOptionalTimestamp(row.last_message_time),
     loginStatus: row.is_online === 1 ? "online" : "offline",
@@ -129,6 +140,8 @@ export function mapSeatRow(row: SeatRow): WorkbenchSeatDto {
     operatorName: seatName,
     phone: "",
     seatId: String(row.id),
+    semiAutoAuth,
+    semiAutoSwitch,
     thirdUserId: row.third_userid,
     unreadCount: toNumber(row.unread_count),
   };
@@ -166,10 +179,9 @@ export function mapConversationRow(
     mode === "group" ? row.group_avatar ?? "" : row.customer_avatar ?? "";
 
   return {
-    aiHosted: readBooleanFlag(row.full_auto_switch),
     bizStatus: row.biz_status == null ? 0 : toNumber(row.biz_status),
     conversationId: String(row.id),
-    custodyMode: CONVERSATION_CUSTODY_MODE.SEMI,
+    conversationAIHostingSwitch: readBooleanFlag(row.full_auto_switch),
     createdAt: toOptionalTimestamp(row.create_time),
     customerAvatar,
     customerId,
@@ -202,6 +214,7 @@ export function mapMessageRow(
     mode === "group"
       ? row.conversation_group_id || row.third_group_id || buildMissingCustomerId(row)
       : row.conversation_external_id || row.third_external_id || buildMissingCustomerId(row);
+  const messageSource = mapMessageSource(row.source);
 
   return {
     content: parseMessageContent(row, quotePreview),
@@ -218,6 +231,7 @@ export function mapMessageRow(
     senderName: row.sender_name,
     senderType: mapSenderType(row),
     seq: toNumber(row.id),
+    ...(messageSource == null ? {} : { source: messageSource }),
     status: mapMessageStatus(row.status),
     thirdExternalUserId,
     thirdFromId: row.third_from_id || undefined,
@@ -225,6 +239,21 @@ export function mapMessageRow(
     thirdUserId: row.third_user_id || undefined,
     updatedAt: toOptionalTimestamp(row.update_time),
   };
+}
+
+function mapMessageSource(source: MessageRow["source"]) {
+  if (source == null) {
+    return undefined;
+  }
+
+  const normalizedSource = toNumber(source);
+  const supportedSources: readonly number[] = Object.values(WORKBENCH_MESSAGE_SOURCE);
+
+  if (supportedSources.includes(normalizedSource)) {
+    return normalizedSource;
+  }
+
+  return undefined;
 }
 
 export function hydrateMessageRows(

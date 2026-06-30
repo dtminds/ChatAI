@@ -3,7 +3,6 @@ import {
   GROUP_MEMBER_TYPE,
   LoginStatusSchema,
   TakeoverStatusSchema,
-  type ConversationCustodyMode,
   type MaterialCollectionBizType,
 } from "./enums.js";
 import type {
@@ -264,7 +263,18 @@ export type WorkbenchSidebarIframeParamsDto = {
 };
 
 export type WorkbenchSeatDto = {
-  aiHostingEnabled?: boolean;
+  /** 席位是否具备 AI 托管授权，对应 `xy_wap_embed_user_seat_agent.full_auto_auth` */
+  seatAIHostingAuth?: boolean;
+  /** 席位 AI 托管能力是否开启，对应 `full_auto_auth && full_auto_switch` */
+  seatAIHostingEnabled?: boolean;
+  /** 席位全自动托管总开关，对应 `xy_wap_embed_user_seat_agent.full_auto_switch` */
+  fullAutoSwitch?: boolean;
+  /** 席位是否具备半自动辅助授权，对应 `xy_wap_embed_user_seat_agent.semi_auto_auth` */
+  semiAutoAuth?: boolean;
+  /** 席位半自动辅助总开关，对应 `xy_wap_embed_user_seat_agent.semi_auto_switch` */
+  semiAutoSwitch?: boolean;
+  /** 席位 AI 话术推荐能力是否开启，对应 `semi_auto_auth && semi_auto_switch` */
+  seatAIAssistantEnabled?: boolean;
   seatId: string;
   thirdUserId?: string;
   name: string;
@@ -283,13 +293,11 @@ export type WorkbenchSeatDto = {
 };
 
 export type WorkbenchConversationSummaryDto = {
-  /** 会话是否已切到全自动 AI 托管，前端需结合席位 AI 托管开关判断筛选可见性 */
-  aiHosted?: boolean;
+  /** 会话 AI 托管开关，对应 `xy_wap_embed_conversation.full_auto_switch` */
+  conversationAIHostingSwitch?: boolean;
   /** 关联联系人或群席位业务状态；0 表示该会话展示对象已失效 */
   bizStatus?: number;
   conversationId: string;
-  /** 会话托管模式：full 全托管，semi 半托管 */
-  custodyMode: ConversationCustodyMode;
   seatId: string;
   thirdUserId?: string;
   thirdExternalUserId?: string;
@@ -339,6 +347,7 @@ export type WorkbenchMessageBaseDto = {
   contentType: WorkbenchMessageContentType;
   rawMsgtype: string;
   status: WorkbenchMessageStatus;
+  source?: number;
   content: Record<string, unknown>;
   createdAt?: number;
   updatedAt?: number;
@@ -352,7 +361,6 @@ export type WorkbenchMessageDto = WorkbenchMessageBaseDto;
 
 export type WorkbenchMessagePageDto = {
   messages: WorkbenchMessageDto[];
-  smartReplyEnabled?: boolean;
   smartReplies?: WorkbenchSmartReplySuggestionDto[];
   nextBeforeSeq?: number;
   hasMore: boolean;
@@ -436,7 +444,7 @@ export type WorkbenchPollResponse = {
 };
 
 export const SMART_REPLY_MSG_IDS_LIMIT = 100;
-/** Java user-history-answer-list 终态：2 推荐成功、3 推荐失败、4 已发送 */
+/** Java user-history-answer-list 终态：2 生成成功、3 生成失败、4 转人工 */
 export const SMART_REPLY_TERMINAL_GENERATE_STATUSES = [2, 3, 4] as const;
 /** Java user-history-answer-list 失败原因：未命中知识集 */
 export const SMART_REPLY_FAIL_REASON_KNOWLEDGE_MISS = "knowledge_miss";
@@ -450,6 +458,8 @@ export type WorkbenchSmartReplySuggestionDto = {
   assistantName: string;
   content: string;
   failReason?: string;
+  /** Java 原始 genAnswer，send-answer 的 realAnswer 需原样回传 */
+  genAnswer?: string;
   generateStatus?: number | string;
   pollComplete?: boolean;
   refAttachIds?: string[];
@@ -500,6 +510,7 @@ export type WorkbenchSmartReplyMakeShorterResponse = {
 
 export type WorkbenchSmartReplySendAnswerRequest = {
   conversationId: string;
+  optNos: string[];
   realAnswer: string;
   realAttachIds: string[];
   recordId: string;
@@ -757,6 +768,33 @@ export type WorkbenchConversationPinResponse = {
 };
 
 export type WorkbenchConversationUnpinResponse = WorkbenchConversationPinResponse;
+
+export type WorkbenchConversationFullAutoResponse = {
+  conversationAIHostingSwitch: boolean;
+  conversationId: string;
+  seatId: string;
+};
+
+export type WorkbenchSeatAgentMode = "assistant" | "autoReply" | "off";
+
+export type WorkbenchSeatAgentModeSwitchRequest = {
+  mode: WorkbenchSeatAgentMode;
+};
+
+export type WorkbenchSeatAgentModeSwitchResponse = {
+  fullAutoSwitch: boolean;
+  seatId: string;
+  semiAutoSwitch: boolean;
+};
+
+export type WorkbenchFullAutoAnswerStatusResponse = {
+  analyseMsgId?: string;
+  createdAt?: number;
+  genStatus?: number;
+  recordId?: string;
+  sendStatus?: number;
+  updatedAt?: number;
+};
 
 export type WorkbenchConversationDeleteResponse = {
   conversationId: string;

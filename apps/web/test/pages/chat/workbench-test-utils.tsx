@@ -142,6 +142,7 @@ export function resetChatWorkbenchTestState() {
     subUserId: "sub-user-001",
     uid: 1,
   });
+  useWorkbenchStore.getState().resetWorkbenchRuntime();
   useWorkbenchStore.setState(useWorkbenchStore.getInitialState(), true);
   Object.defineProperty(document, "visibilityState", {
     configurable: true,

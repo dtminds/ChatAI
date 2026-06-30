@@ -8,7 +8,11 @@ import {
   AiHostingAgentTestRequestSchema,
   AiHostingAgentTestResponseSchema,
   AiHostingModelListResponseSchema,
+  AiHostingQuotaOverviewSchema,
+  KbDocCreateRequestSchema,
+  KbDocListResponseSchema,
   KbCreateResponseSchema,
+  KbListResponseSchema,
 } from "../src";
 
 describe("AI hosting DTOs", () => {
@@ -18,6 +22,7 @@ describe("AI hosting DTOs", () => {
         modelId: "11",
         name: "护肤小助理",
         promptConfig: {
+          availableKbIds: [1, 3],
           conditionLogic: "如果客户咨询成分，那么说明功效",
           replyStyle: {
             length: "简洁",
@@ -36,6 +41,7 @@ describe("AI hosting DTOs", () => {
       modelId: "11",
       name: "护肤小助理",
       promptConfig: {
+        availableKbIds: [1, 3],
         conditionLogic: "如果客户咨询成分，那么说明功效",
         replyStyle: {
           length: "简洁",
@@ -83,6 +89,7 @@ describe("AI hosting DTOs", () => {
       Value.Check(AiHostingAgentSettingsSaveRequestSchema, {
         modelId: "11",
         promptConfig: {
+          availableKbIds: [1, 3],
           conditionLogic: "如果客户咨询成分，那么说明功效",
           replyStyle: {
             length: "简洁",
@@ -99,6 +106,7 @@ describe("AI hosting DTOs", () => {
         modelId: "11",
         name: "护肤小助理",
         promptConfig: {
+          availableKbIds: [1, 3],
           conditionLogic: "",
           replyStyle: {
             length: "简洁",
@@ -127,6 +135,7 @@ describe("AI hosting DTOs", () => {
         modelId: "11",
         name: "护肤小助理",
         promptConfig: {
+          availableKbIds: [1, 3],
           conditionLogic: "如果客户咨询成分，那么说明功效",
           replyStyle: {
             length: "简洁",
@@ -176,6 +185,7 @@ describe("AI hosting DTOs", () => {
         ],
         modelId: "11",
         promptConfig: {
+          availableKbIds: [],
           conditionLogic: "如果客户咨询成分，那么说明功效",
           replyStyle: {
             length: "简洁",
@@ -211,5 +221,82 @@ describe("AI hosting DTOs", () => {
         updatedAt: "2026-06-27T08:00:00.000Z",
       }),
     ).toBe(false);
+  });
+
+  it("requires document size for quota checks when creating documents", () => {
+    const payload = {
+      chunkParams: { maxLength: 2000, strategy: "length" },
+      chunkStrategy: "length",
+      docSize: 1024,
+      docSuffix: "pdf",
+      docUrl: "kb-docs/demo.pdf",
+      kbId: "1",
+      name: "产品手册",
+      parseMode: "standard",
+    };
+
+    expect(Value.Check(KbDocCreateRequestSchema, payload)).toBe(true);
+    expect(Value.Check(KbDocCreateRequestSchema, { ...payload, docSize: -1 })).toBe(false);
+    expect(Value.Check(KbDocCreateRequestSchema, { ...payload, docSize: undefined })).toBe(false);
+  });
+
+  it("keeps list responses separate from quota usage", () => {
+    expect(
+      Value.Check(KbListResponseSchema, {
+        kbs: [],
+        pagination: {
+          page: 1,
+          pageSize: 10,
+          total: 0,
+        },
+      }),
+    ).toBe(true);
+    expect(
+      Value.Check(KbListResponseSchema, {
+        kbs: [],
+        pagination: {
+          page: 1,
+          pageSize: 10,
+          total: 0,
+        },
+        quota: {
+          limit: 20,
+          used: 0,
+        },
+      }),
+    ).toBe(false);
+    expect(
+      Value.Check(KbDocListResponseSchema, {
+        docs: [],
+        pagination: {
+          page: 1,
+          pageSize: 10,
+          total: 0,
+        },
+        quota: {
+          limit: 1024,
+          used: 0,
+        },
+      }),
+    ).toBe(false);
+  });
+
+  it("returns ai hosting quota overview for sidebar display", () => {
+    expect(
+      Value.Check(AiHostingQuotaOverviewSchema, {
+        agents: {
+          limit: 20,
+          used: 2,
+        },
+        kbDocs: {
+          limit: 1024 * 1024 * 1024,
+          used: 20 * 1024 * 1024,
+        },
+        kbs: {
+          limit: 20,
+          used: 3,
+        },
+      }),
+    ).toBe(true);
   });
 });

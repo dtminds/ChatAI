@@ -11,6 +11,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { AIHostingAvatarBadge } from "@/pages/chat/components/ai-hosting-avatar-badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,6 +32,7 @@ export function ConversationCard({
   conversation,
   isActionDisabled = false,
   isActive,
+  isAIHostingEnabled = false,
   onDelete,
   onMarkRead,
   onMarkUnread,
@@ -42,6 +44,7 @@ export function ConversationCard({
   conversation: Conversation;
   isActionDisabled?: boolean;
   isActive: boolean;
+  isAIHostingEnabled?: boolean;
   onDelete?: () => void;
   onMarkRead?: () => void;
   onMarkUnread?: () => void;
@@ -107,6 +110,9 @@ export function ConversationCard({
             <div className="absolute -right-1 -top-1 min-w-4 rounded-full bg-destructive px-1 py-0.5 text-center text-[10px] font-semibold leading-none text-destructive-foreground">
               {conversation.unread}
             </div>
+          ) : null}
+          {isAIHostingEnabled ? (
+            <AIHostingAvatarBadge />
           ) : null}
         </div>
 

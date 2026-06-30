@@ -1,3 +1,4 @@
+import { WORKBENCH_MESSAGE_SOURCE } from "@chatai/contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   getGroupMemberHydrationKey,
@@ -15,24 +16,30 @@ describe("workbench MySQL mappers", () => {
   it("maps a user seat row into the public seat DTO", () => {
     expect(
       mapSeatRow({
-        ai_hosting_enabled: 1,
         avatar: "https://example.com/avatar.png",
         biz_status: 0,
         expire_time: 1778240000,
+        full_auto_auth: 1,
+        full_auto_switch: 1,
         host_sub_id: 3,
         id: 12,
         is_online: 1,
         last_message_time: 1778240000000,
+        semi_auto_auth: 1,
+        semi_auto_switch: 0,
         third_user_name: "小可",
         third_userid: "third-user-1",
         unread_count: 5,
       }),
     ).toEqual({
-      aiHostingEnabled: true,
+      seatAIHostingEnabled: true,
+      seatAIAssistantEnabled: false,
       avatar: "https://example.com/avatar.png",
       bizStatus: 0,
       description: "",
       expireTime: 1778240000,
+      seatAIHostingAuth: true,
+      fullAutoSwitch: true,
       hostSubUserId: "3",
       lastMessageTime: 1778240000000,
       loginStatus: "online",
@@ -40,6 +47,8 @@ describe("workbench MySQL mappers", () => {
       operatorName: "小可",
       phone: "",
       seatId: "12",
+      semiAutoAuth: true,
+      semiAutoSwitch: false,
       thirdUserId: "third-user-1",
       unreadCount: 5,
     });
@@ -69,8 +78,7 @@ describe("workbench MySQL mappers", () => {
 
     expect(conversation).toMatchObject({
       conversationId: "88",
-      custodyMode: "semi",
-      aiHosted: true,
+      conversationAIHostingSwitch: true,
       customerAvatar: "https://example.com/customer.png",
       customerId: "external-1",
       customerName: "客户备注",
@@ -450,6 +458,52 @@ describe("workbench MySQL mappers", () => {
       thirdGroupId: undefined,
       thirdUserId: "third-user-1",
     });
+  });
+
+  it("maps audit message source for Agent-sent messages", () => {
+    expect(
+      mapMessageRow(messageRow({
+        from_type: 1,
+        source: String(WORKBENCH_MESSAGE_SOURCE.AGENT),
+      })),
+    ).toMatchObject({
+      senderType: "agent",
+      source: WORKBENCH_MESSAGE_SOURCE.AGENT,
+    });
+  });
+
+  it("maps known audit message source values", () => {
+    expect(
+      mapMessageRow(messageRow({
+        source: WORKBENCH_MESSAGE_SOURCE.DEFAULT,
+      })),
+    ).toMatchObject({
+      source: WORKBENCH_MESSAGE_SOURCE.DEFAULT,
+    });
+
+    expect(
+      mapMessageRow(messageRow({
+        source: String(WORKBENCH_MESSAGE_SOURCE.WORKBENCH),
+      })),
+    ).toMatchObject({
+      source: WORKBENCH_MESSAGE_SOURCE.WORKBENCH,
+    });
+
+    expect(
+      mapMessageRow(messageRow({
+        source: WORKBENCH_MESSAGE_SOURCE.SIDEBAR,
+      })),
+    ).toMatchObject({
+      source: WORKBENCH_MESSAGE_SOURCE.SIDEBAR,
+    });
+  });
+
+  it("omits unsupported audit message source values", () => {
+    expect(
+      mapMessageRow(messageRow({
+        source: 999,
+      })),
+    ).not.toHaveProperty("source");
   });
 
   it("keeps a recent empty chat record as loading content", () => {
@@ -1101,7 +1155,6 @@ describe("workbench MySQL mappers", () => {
   it("maps timestamp fields from Date objects and date strings", () => {
     expect(
       mapSeatRow({
-        ai_hosting_enabled: 0,
         avatar: "",
         host_sub_id: 0,
         id: 12,
@@ -1112,7 +1165,7 @@ describe("workbench MySQL mappers", () => {
         unread_count: 0,
       }),
     ).toMatchObject({
-      aiHostingEnabled: false,
+      seatAIHostingEnabled: false,
       lastMessageTime: 1778315400000,
     });
 
@@ -1136,7 +1189,7 @@ describe("workbench MySQL mappers", () => {
         unread_cnt: 0,
       }),
     ).toMatchObject({
-      aiHosted: false,
+      conversationAIHostingSwitch: false,
       lastMessageTime: 1778315460000,
     });
 

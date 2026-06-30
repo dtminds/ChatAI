@@ -11,6 +11,7 @@ import type {
   AiHostingModel,
   AiHostingModelListResponse,
 } from "@chatai/contracts";
+import { AI_HOSTING_AGENT_QUOTA_LIMIT } from "@chatai/contracts";
 import type { Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
 import {
@@ -73,10 +74,13 @@ export class AiHostingAgentService {
     const scope = normalizeAgentTenantScope(uid);
     const pagination = normalizePagination(options);
     const normalizedQuery = options.query?.trim();
+    const rowsPromise = this.listAgentRows(scope, pagination, normalizedQuery);
+    const modelsPromise = this.listModelRows(scope);
+    const totalPromise = this.countAgents(scope, normalizedQuery);
     const [rows, models, total] = await Promise.all([
-      this.listAgentRows(scope, pagination, normalizedQuery),
-      this.listModelRows(scope),
-      this.countAgents(scope, normalizedQuery),
+      rowsPromise,
+      modelsPromise,
+      totalPromise,
     ]);
     const modelMap = new Map(models.map((model) => [String(model.id), mapModelSummary(model)]));
 
@@ -120,6 +124,8 @@ export class AiHostingAgentService {
     if (operatorId == null) {
       throw new BadRequestError("INVALID_SUB_ACCOUNT", "当前账号无效");
     }
+
+    await this.assertAgentQuotaAvailable(scope);
 
     const inserted = await this.db
       .insertInto("xy_wap_embed_agent")
@@ -403,6 +409,21 @@ export class AiHostingAgentService {
     return parseCount((row as { total?: number | string | bigint } | undefined)?.total);
   }
 
+  private async assertAgentQuotaAvailable(scope: AgentTenantScope) {
+    const used = await this.countAgents(scope);
+
+    if (used >= AI_HOSTING_AGENT_QUOTA_LIMIT) {
+      throw new BadRequestError(
+        "AGENT_QUOTA_EXCEEDED",
+        "Agent 数量已达上限",
+        {
+          limit: AI_HOSTING_AGENT_QUOTA_LIMIT,
+          used,
+        },
+      );
+    }
+  }
+
   private listModelRows(scope: AgentTenantScope) {
     return this.db
       .selectFrom("xy_wap_embed_ai_model")
@@ -644,6 +665,7 @@ function normalizeAgentName(value: string) {
 
 function serializePromptConfig(promptConfig: AiHostingAgentPromptConfig) {
   return JSON.stringify({
+    available_kb_ids: promptConfig.availableKbIds,
     condition_logic: promptConfig.conditionLogic,
     handoff_rules: promptConfig.handoffRules,
     reply_style: {
@@ -656,6 +678,7 @@ function serializePromptConfig(promptConfig: AiHostingAgentPromptConfig) {
 
 function parsePromptConfig(value: string | null | undefined): AiHostingAgentPromptConfig {
   const fallback: AiHostingAgentPromptConfig = {
+    availableKbIds: [],
     conditionLogic: "",
     handoffRules: "",
     replyStyle: {
@@ -678,6 +701,7 @@ function parsePromptConfig(value: string | null | undefined): AiHostingAgentProm
       : "";
 
     return {
+      availableKbIds: readNumberArray(parsed.available_kb_ids),
       conditionLogic: readString(parsed.condition_logic),
       handoffRules: readString(parsed.handoff_rules) || readString(parsed.trans_manual),
       replyStyle: {
@@ -744,4 +768,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function readString(value: unknown) {
   return typeof value === "string" ? value : "";
+}
+
+function readNumberArray(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter((item): item is number => Number.isSafeInteger(item) && item > 0);
 }

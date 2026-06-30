@@ -7,7 +7,7 @@ import type { Conversation } from "@/pages/chat/chat-types";
 
 const conversation: Conversation = {
   accountId: "account-1",
-  custodyMode: "semi",
+  conversationAIHostingSwitch: false,
   customerAvatarUrl: "https://example.com/customer.png",
   customerId: "customer-1",
   customerName: "测试客户",
@@ -141,52 +141,6 @@ describe("ChatHeader", () => {
 
     getItemSpy.mockRestore();
     setItemSpy.mockRestore();
-  });
-
-  it("opens a confirmation dialog before enabling smart reply auto generation", async () => {
-    const user = userEvent.setup();
-
-    render(<ChatHeader activeConversation={conversation} />);
-
-    expect(screen.getByRole("switch", { name: "话术自动生成" })).not.toBeChecked();
-
-    await user.click(screen.getByRole("switch", { name: "话术自动生成" }));
-
-    const dialog = screen.getByRole("dialog", { name: "是否确认开启话术自动生成？" });
-
-    expect(dialog).toBeInTheDocument();
-    expect(dialog).toHaveTextContent("确认开启后，所有活跃会话都会自动生成推荐话术");
-    expect(dialog).toHaveTextContent("（AI全自动托管状态下不会自动生成）");
-
-    await user.click(screen.getByRole("button", { name: "取消" }));
-
-    expect(screen.queryByRole("dialog", { name: "是否确认开启话术自动生成？" })).not.toBeInTheDocument();
-    expect(screen.getByRole("switch", { name: "话术自动生成" })).not.toBeChecked();
-  });
-
-  it("enables smart reply auto generation after confirmation", async () => {
-    const user = userEvent.setup();
-
-    render(<ChatHeader activeConversation={conversation} />);
-
-    await user.click(screen.getByRole("switch", { name: "话术自动生成" }));
-    await user.click(screen.getByRole("button", { name: "确认开启" }));
-
-    expect(screen.queryByRole("dialog", { name: "是否确认开启话术自动生成？" })).not.toBeInTheDocument();
-    expect(screen.getByRole("switch", { name: "话术自动生成" })).toBeChecked();
-  });
-
-  it("turns off smart reply auto generation without a confirmation dialog", async () => {
-    const user = userEvent.setup();
-
-    render(<ChatHeader activeConversation={conversation} />);
-
-    await user.click(screen.getByRole("switch", { name: "话术自动生成" }));
-    await user.click(screen.getByRole("button", { name: "确认开启" }));
-    await user.click(screen.getByRole("switch", { name: "话术自动生成" }));
-
-    expect(screen.queryByRole("dialog", { name: "是否确认开启话术自动生成？" })).not.toBeInTheDocument();
-    expect(screen.getByRole("switch", { name: "话术自动生成" })).not.toBeChecked();
   });
 });
 

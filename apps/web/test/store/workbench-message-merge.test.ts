@@ -624,7 +624,7 @@ function createPolledConversation({
 }) {
   return {
     conversationId,
-    custodyMode: "semi",
+    conversationAIHostingSwitch: false,
     seatId: "drc",
     thirdUserId: "seat-third-user-id",
     thirdExternalUserId: `external-${conversationId}`,

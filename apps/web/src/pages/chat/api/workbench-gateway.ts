@@ -9,6 +9,8 @@ import type {
   SettingsSidebarItem,
   WorkbenchHistoryMessagePageDto,
   WorkbenchHistoryMessageQuery,
+  WorkbenchConversationFullAutoResponse,
+  WorkbenchFullAutoAnswerStatusResponse,
   WorkbenchConversationDeleteResponse,
   WorkbenchConversationPinResponse,
   WorkbenchConversationReadResponse,
@@ -19,6 +21,8 @@ import type {
   WorkbenchSendMessagePayload,
   WorkbenchSendMessageResponse,
   WorkbenchSeatDto,
+  WorkbenchSeatAgentModeSwitchRequest,
+  WorkbenchSeatAgentModeSwitchResponse,
   WorkbenchUploadCredentialResponse,
   WorkbenchMessageQueryBySeqsRequest,
   WorkbenchMessageUpdateEventDto,
@@ -76,7 +80,6 @@ export type WorkbenchConversationPage = {
   messages: Message[];
   nextBeforeSeq?: number;
   skippedHiddenCount: number;
-  smartReplyEnabled?: boolean;
   smartReplies: Record<string, SmartReplySuggestion>;
 };
 
@@ -345,7 +348,6 @@ export async function loadConversationMessagesPage(
     messages,
     nextBeforeSeq: page.nextBeforeSeq,
     skippedHiddenCount: page.filteredCount,
-    smartReplyEnabled: page.smartReplyEnabled,
     smartReplies: adaptSmartReplySuggestions(page.smartReplies ?? []),
   };
 }
@@ -462,6 +464,28 @@ export async function transcribeVoiceMessage(
 
 export async function takeOverAccount(accountId: string) {
   return getWorkbenchService().takeOverSeat(accountId);
+}
+
+export async function changeConversationFullAuto(
+  conversationId: string,
+  enabled: boolean,
+): Promise<WorkbenchConversationFullAutoResponse> {
+  return getWorkbenchService().changeConversationFullAuto(conversationId, {
+    enabled,
+  });
+}
+
+export async function updateSeatAgentMode(
+  seatId: string,
+  request: WorkbenchSeatAgentModeSwitchRequest,
+): Promise<WorkbenchSeatAgentModeSwitchResponse> {
+  return getWorkbenchService().updateSeatAgentMode(seatId, request);
+}
+
+export async function getFullAutoAnswerStatus(
+  conversationId: string,
+): Promise<WorkbenchFullAutoAnswerStatusResponse> {
+  return getWorkbenchService().getFullAutoAnswerStatus(conversationId);
 }
 
 export async function pollWorkbench(

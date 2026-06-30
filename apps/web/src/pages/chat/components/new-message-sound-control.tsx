@@ -259,12 +259,7 @@ export function NewMessageSoundControl() {
               )}
             >
               <span
-                className={cn(
-                  "inline-flex size-5 items-center justify-center rounded-full shadow-sm transition-colors",
-                  preference.enabled
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted text-muted-foreground",
-                )}
+                className="inline-flex size-5 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm transition-colors"
               >
                 <HugeiconsIcon
                   color="currentColor"

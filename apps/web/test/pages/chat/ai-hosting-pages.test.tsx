@@ -1458,16 +1458,16 @@ describe("AI hosting pages", () => {
     );
     await userEvent.click(screen.getByRole("button", { name: "添加知识" }));
     expect(screen.getByRole("menuitem", { name: /问答/ })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: /图片/ })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /图片/ })).not.toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: /文档/ })).toBeInTheDocument();
     expect(screen.getByText("高质量人工知识")).toBeInTheDocument();
     expect(screen.getByText("原始文档")).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: /纯文本/ })).not.toBeInTheDocument();
     expect(screen.getByText("上传问答表格，批量导入精准知识")).toBeInTheDocument();
-    expect(screen.getByText("上传图片并添加描述，按描述精准召回")).toBeInTheDocument();
+    expect(screen.queryByText("上传图片并添加描述，按描述精准召回")).not.toBeInTheDocument();
     expect(screen.getByText("自动解析文档内容，效果取决于文档质量")).toBeInTheDocument();
     expect(screen.queryByText("直接录入文本片段或说明")).not.toBeInTheDocument();
-    expect(screen.getAllByTestId("knowledge-add-option-icon")).toHaveLength(3);
+    expect(screen.getAllByTestId("knowledge-add-option-icon")).toHaveLength(2);
     await userEvent.keyboard("{Escape}");
     expect(screen.getByRole("table", { name: "知识列表" })).toBeInTheDocument();
     expect(screen.getByText("产品说明大全")).toBeInTheDocument();
@@ -2102,6 +2102,8 @@ describe("AI hosting pages", () => {
     expect(screen.getByRole("radio", { name: /增强解析/ })).toBeDisabled();
   });
 
+  // 图片添加入口暂时下线
+  describe.skip("image knowledge import", () => {
   it("opens the image knowledge dialog and fills the default image name", async () => {
     const user = userEvent.setup();
 
@@ -2516,6 +2518,7 @@ describe("AI hosting pages", () => {
     expect(await screen.findByText("图片宽高必须在 10 到 6000 像素范围内")).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "已选择图片" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "确认提交" })).toBeDisabled();
+  });
   });
 
   it("renders the QA chunk detail page", async () => {

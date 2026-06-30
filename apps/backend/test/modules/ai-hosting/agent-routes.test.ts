@@ -97,7 +97,10 @@ describe("AI hosting agent routes", () => {
     });
     expect(db.joinCalls).toEqual([]);
     expect(db.agentListWheres).toContainEqual(["agent.uid", "=", 9001]);
-    expect(db.agentListSelects).toContain("agent.prompt_config as prompt_config");
+    expect(db.agentListSelects).not.toContain("agent.prompt_config as prompt_config");
+    expect(db.agentListSelects).toContain(
+      "JSON_EXTRACT(agent.prompt_config, '$.available_kb_ids') as available_kb_ids",
+    );
     expect(db.kbListExecuteCount).toBe(1);
     expect(db.kbListWheres).toEqual([
       ["uid", "=", 9001],
@@ -1479,7 +1482,12 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
           if (table === "xy_wap_embed_agent" || table === "xy_wap_embed_agent as agent") {
             state.agentListWheres = wheres;
 
-            return agents;
+            return agents.map((agent) => ({
+              ...agent,
+              available_kb_ids: JSON.stringify(
+                JSON.parse(agent.prompt_config).available_kb_ids,
+              ),
+            }));
           }
 
           if (table === "xy_wap_embed_ai_model") {
@@ -1687,14 +1695,15 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
           orderByCalls.push([column, direction]);
           return builder;
         },
-        select: (selection: string | string[] | ((expressionBuilder: unknown) => unknown)) => {
+        select: (selection: unknown) => {
           if (typeof selection === "function") {
             isCountQuery = true;
             return builder;
           }
 
           if (table === "xy_wap_embed_agent as agent") {
-            state.agentListSelects = Array.isArray(selection) ? selection : [selection];
+            const selections = Array.isArray(selection) ? selection : [selection];
+            state.agentListSelects = selections.map(formatSelectExpression);
           }
 
           return builder;
@@ -1858,4 +1867,28 @@ function buildPromptConfig(conditionLogic: string, availableKbIds = [1, 3]) {
     handoff_rules: "客户要求真人",
     role: "你是护肤顾问",
   });
+}
+
+function formatSelectExpression(selection: unknown) {
+  if (typeof selection === "string") {
+    return selection;
+  }
+
+  if (
+    selection &&
+    typeof selection === "object" &&
+    "toOperationNode" in selection &&
+    typeof selection.toOperationNode === "function"
+  ) {
+    const node = selection.toOperationNode() as {
+      alias?: { name?: string };
+      node?: { sqlFragments?: string[] };
+    };
+    const sqlText = node.node?.sqlFragments?.join("?") ?? "raw";
+    const alias = node.alias?.name;
+
+    return alias ? `${sqlText} as ${alias}` : sqlText;
+  }
+
+  return String(selection);
 }

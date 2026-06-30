@@ -13,7 +13,7 @@ import type {
   AiHostingModelListResponse,
 } from "@chatai/contracts";
 import { AI_HOSTING_AGENT_QUOTA_LIMIT } from "@chatai/contracts";
-import type { Kysely } from "kysely";
+import { sql, type Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
 import {
   BadRequestError,
@@ -38,6 +38,15 @@ export type AgentRow = {
   model_id: number;
   name: string;
   prompt_config?: string | null;
+  update_time?: Date | number | string | null;
+};
+
+type AgentListRow = {
+  available_kb_ids?: string | number[] | null;
+  id: number;
+  last_publish_time?: number | string | null;
+  model_id: number;
+  name: string;
   update_time?: Date | number | string | null;
 };
 
@@ -383,7 +392,9 @@ export class AiHostingAgentService {
         "agent.last_publish_time as last_publish_time",
         "agent.model_id as model_id",
         "agent.name as name",
-        "agent.prompt_config as prompt_config",
+        sql<string | null>`JSON_EXTRACT(agent.prompt_config, '$.available_kb_ids')`.as(
+          "available_kb_ids",
+        ),
         "agent.update_time as update_time",
       ])
       .where("agent.uid", "=", scope.uid)
@@ -398,7 +409,7 @@ export class AiHostingAgentService {
       .orderBy("agent.id", "desc")
       .limit(pagination.pageSize)
       .offset((pagination.page - 1) * pagination.pageSize)
-      .execute() as Promise<AgentRow[]>;
+      .execute() as Promise<AgentListRow[]>;
   }
 
   private async countAgents(scope: AgentTenantScope, query?: string) {
@@ -561,13 +572,13 @@ export class AiHostingAgentService {
   }
 
   private mapAgentListItem(
-    row: AgentRow,
+    row: AgentListRow,
     modelMap: Map<string, AiHostingAgentModelSummary>,
     kbMap: Map<number, AiHostingAgentKbSummary>,
   ): AiHostingAgentListItem {
     return {
       id: String(row.id),
-      kbList: uniquePositiveIds(parsePromptConfig(row.prompt_config).availableKbIds)
+      kbList: uniquePositiveIds(parseAvailableKbIds(row.available_kb_ids))
         .map((kbId) => kbMap.get(kbId))
         .filter((kb): kb is AiHostingAgentKbSummary => Boolean(kb)),
       model: modelMap.get(String(row.model_id)) ?? fallbackModelSummary(row.model_id),
@@ -578,10 +589,10 @@ export class AiHostingAgentService {
 
   private async getAgentKbMap(
     scope: AgentTenantScope,
-    rows: AgentRow[],
+    rows: AgentListRow[],
   ): Promise<Map<number, AiHostingAgentKbSummary>> {
     const kbIds = uniquePositiveIds(
-      rows.flatMap((row) => parsePromptConfig(row.prompt_config).availableKbIds),
+      rows.flatMap((row) => parseAvailableKbIds(row.available_kb_ids)),
     );
 
     if (kbIds.length === 0) {
@@ -761,6 +772,22 @@ function parsePromptConfig(value: string | null | undefined): AiHostingAgentProm
     };
   } catch {
     return fallback;
+  }
+}
+
+function parseAvailableKbIds(value: number[] | string | null | undefined) {
+  if (Array.isArray(value)) {
+    return readNumberArray(value);
+  }
+
+  if (!value) {
+    return [];
+  }
+
+  try {
+    return readNumberArray(JSON.parse(value));
+  } catch {
+    return [];
   }
 }
 

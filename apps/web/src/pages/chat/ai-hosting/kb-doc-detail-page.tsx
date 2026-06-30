@@ -728,7 +728,7 @@ function KnowledgeDocumentChunkCard({
   const displayChunkId = chunk.displayChunkId || chunk.volcChunkId || chunk.id;
 
   return (
-    <li className="group flex h-[204px] flex-col overflow-hidden rounded-[14px] border border-border/80 bg-card px-4 py-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition-shadow hover:shadow-[0_10px_24px_var(--shadow-soft)]">
+    <li className="group flex h-[204px] flex-col overflow-hidden rounded-[14px] border border-border/80 bg-card px-4 py-3.5 transition-shadow hover:shadow-[0_10px_24px_var(--shadow-soft)]">
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
           {chunk.displayChunkIndex ? (

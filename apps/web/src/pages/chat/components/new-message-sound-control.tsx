@@ -1,7 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   Clock01Icon,
-  Notification01Icon,
   PlayIcon,
   Settings03Icon,
   Tick02Icon,
@@ -313,23 +312,13 @@ export function NewMessageSoundControl() {
         >
           {activePopover === "reEnable" ? (
             <>
-              <div className="flex gap-3">
-                <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-[10px] bg-primary/10 text-primary">
-                  <HugeiconsIcon
-                    color="currentColor"
-                    icon={VolumeHighIcon}
-                    size={18}
-                    strokeWidth={1.8}
-                  />
-                </span>
-                <div className="min-w-0 space-y-2">
-                  <p className="text-sm font-medium text-foreground">
-                    重新开启消息提示音
-                  </p>
-                  <p className="text-sm leading-6 text-muted-foreground">
-                    温馨提醒：浏览器刷新后需点击一次开启提示音，以免错过新消息哦
-                  </p>
-                </div>
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-foreground">
+                  重新开启消息提示音
+                </p>
+                <p className="text-sm leading-6 text-muted-foreground">
+                  温馨提醒：浏览器刷新后需点击一次开启提示音，以免错过新消息哦
+                </p>
               </div>
               {reEnableError ? (
                 <p className="mt-4 text-xs leading-5 text-destructive" role="alert">
@@ -352,20 +341,10 @@ export function NewMessageSoundControl() {
             </>
           ) : (
             <>
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <div className="flex min-w-0 items-center gap-2.5">
-                  <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-[9px] bg-primary/10 text-primary">
-                    <HugeiconsIcon
-                      color="currentColor"
-                      icon={Notification01Icon}
-                      size={16}
-                      strokeWidth={1.8}
-                    />
-                  </span>
-                  <p className="truncate text-sm font-medium text-foreground">
-                    新消息提醒
-                  </p>
-                </div>
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <p className="truncate text-sm font-medium text-foreground">
+                  新消息提醒
+                </p>
                 <Button
                   aria-label="修改新消息提醒设置"
                   className="size-8 rounded-[9px] p-0"
@@ -382,7 +361,7 @@ export function NewMessageSoundControl() {
                   />
                 </Button>
               </div>
-              <div className="space-y-3.5 text-sm">
+              <div className="space-y-2 text-sm">
                 <SummaryRow icon={VolumeHighIcon} label="提示音" value={soundLabel} />
                 <SummaryRow icon={Clock01Icon} label="提示时机" value={triggerLabel} />
                 <SummaryRow
@@ -514,12 +493,12 @@ function SummaryRow({
   value: string;
 }) {
   return (
-    <div className="flex min-h-9 items-center gap-3">
-      <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-[9px] bg-surface-muted text-muted-foreground">
+    <div className="flex min-h-7 items-center gap-2.5">
+      <span className="inline-flex size-5 shrink-0 items-center justify-center text-muted-foreground">
         <HugeiconsIcon
           color="currentColor"
           icon={icon}
-          size={16}
+          size={15}
           strokeWidth={1.8}
         />
       </span>

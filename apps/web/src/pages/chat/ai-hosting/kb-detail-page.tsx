@@ -155,6 +155,7 @@ export function KbDetailPage() {
   const [documentDialogOpen, setDocumentDialogOpen] = useState(false);
   const [deleteRecord, setDeleteRecord] = useState<KbDocViewItem | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [retryingDocId, setRetryingDocId] = useState<string | null>(null);
   const [checkingKnowledgeQuota, setCheckingKnowledgeQuota] = useState(false);
   const [retryingDocId, setRetryingDocId] = useState<string | null>(null);
   const requestVersionRef = useRef(0);
@@ -292,6 +293,33 @@ export function KbDetailPage() {
     } finally {
       if (isMountedRef.current) {
         setDeleting(false);
+      }
+    }
+  }
+
+  async function handleRetryDoc(docId: string) {
+    if (retryingDocId) {
+      return;
+    }
+
+    setRetryingDocId(docId);
+
+    try {
+      await retryKbDoc(docId);
+
+      if (!isMountedRef.current) {
+        return;
+      }
+
+      toast.success("已提交重试");
+      await loadDocs();
+    } catch {
+      if (isMountedRef.current) {
+        toast.error("重试失败，请稍后重试");
+      }
+    } finally {
+      if (isMountedRef.current) {
+        setRetryingDocId(null);
       }
     }
   }

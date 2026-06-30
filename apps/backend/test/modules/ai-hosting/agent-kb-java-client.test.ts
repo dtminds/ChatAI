@@ -190,6 +190,42 @@ describe("createAgentKbJavaClient", () => {
     });
   });
 
+  it("submits chunk content filter as JSON", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          count: 0,
+          error: 0,
+          list: [],
+          page: 1,
+          pageSize: 10,
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    await createAgentKbJavaClient().listKbChunks({
+      content: "核销物码",
+      docId: 1001,
+      page: 1,
+      pageSize: 10,
+      uid: 9001,
+    });
+
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      content: "核销物码",
+      docId: 1001,
+      page: 1,
+      pageSize: 10,
+      uid: 9001,
+    });
+  });
+
   it("submits chunk update as JSON with id", async () => {
     process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(

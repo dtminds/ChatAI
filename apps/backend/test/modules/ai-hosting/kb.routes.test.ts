@@ -48,11 +48,11 @@ describe("KB read routes", () => {
       data: {
         kbs: [
           {
-            createdAt: "2026-06-19T06:02:22.000Z",
+            createdAt: "2026-06-19T14:02:22.000Z",
             description: "华为各系列产品规格、功能与常见问题",
             kbId: "1",
             name: "华为产品知识",
-            updatedAt: "2026-06-20T06:02:22.000Z",
+            updatedAt: "2026-06-20T14:02:22.000Z",
           },
         ],
         pagination: {
@@ -234,6 +234,80 @@ describe("KB read routes", () => {
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
       "https://java.internal/third-internal/wap-embed-agent-kb-chunk/page",
     );
+    fetchMock.mockRestore();
+  });
+
+  it("forwards document chunk query as content to Java", async () => {
+    const context = await createAuthenticatedKbApp();
+    app = context.app;
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          count: 0,
+          error: 0,
+          list: [],
+          page: 1,
+          pageSize: 10,
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    const response = await app.inject({
+      headers: { authorization: context.authorization },
+      method: "GET",
+      url: "/api/server/ai-hosting/kb-docs/1001/chunks?query=%E7%B3%BB%E7%BB%9F",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      content: "系统",
+      docId: 1001,
+      page: 1,
+      pageSize: 10,
+      uid: 9001,
+    });
+    fetchMock.mockRestore();
+  });
+
+  it("forwards FAQ chunk query as title to Java", async () => {
+    const context = await createAuthenticatedKbApp({ includeFaqDoc: true });
+    app = context.app;
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          count: 0,
+          error: 0,
+          list: [],
+          page: 1,
+          pageSize: 10,
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    const response = await app.inject({
+      headers: { authorization: context.authorization },
+      method: "GET",
+      url: "/api/server/ai-hosting/kb-docs/1004/chunks?query=%E7%89%A9%E6%B5%81",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      docId: 1004,
+      page: 1,
+      pageSize: 10,
+      title: "物流",
+      uid: 9001,
+    });
     fetchMock.mockRestore();
   });
 

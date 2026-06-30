@@ -83,6 +83,7 @@ export type AgentKbJavaDeleteChunkInput = {
 };
 
 export type AgentKbJavaListChunksInput = {
+  content?: string;
   docId: number;
   page: number;
   pageSize: number;
@@ -223,7 +224,12 @@ export function createAgentKbJavaClient(
         uid: input.uid,
       };
 
+      const normalizedContent = input.content?.trim();
       const normalizedTitle = input.title?.trim();
+
+      if (normalizedContent) {
+        body.content = normalizedContent;
+      }
 
       if (normalizedTitle) {
         body.title = normalizedTitle;

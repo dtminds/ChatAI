@@ -16,6 +16,7 @@ type KbReadDbMockOptions = {
   docSizeBytes?: number[];
   deletedDocCount?: number;
   deletedKbCount?: number;
+  includeFaqDoc?: boolean;
   totalDocCount?: number;
   totalKbCount?: number;
 };
@@ -189,6 +190,34 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
       volc_strategy_resource_id: null,
     },
   ];
+  if (options.includeFaqDoc) {
+    docs.push({
+      create_time: new Date("2026-06-16T15:22:22.000Z"),
+      doc_process_time: null,
+      doc_size: 1024,
+      doc_suffix: "faq",
+      doc_type: 1,
+      doc_update_time: null,
+      doc_url: "kb-faq/example.faq",
+      id: 1004,
+      kb_id: 1,
+      last_operator_id: 1,
+      last_sync_time: null,
+      name: "常见问题解答",
+      operator_id: 1,
+      point_num: 3,
+      remark: null,
+      status: 1,
+      sync_error_msg: null,
+      sync_status: 0,
+      tokens: null,
+      uid: 9001,
+      update_time: new Date("2026-06-16T15:22:22.000Z"),
+      volc_doc_id: "volc-doc-4",
+      volc_resource_id: null,
+      volc_strategy_resource_id: null,
+    });
+  }
   for (let index = docs.length; index < (options.totalDocCount ?? docs.length); index += 1) {
     docs.push({
       create_time: new Date("2026-06-18T15:22:22.000Z"),

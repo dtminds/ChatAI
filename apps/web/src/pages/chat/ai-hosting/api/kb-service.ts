@@ -37,7 +37,7 @@ export type ListKbDocsParams = {
 export type ListKbDocChunksParams = {
   page?: number;
   pageSize?: number;
-  title?: string;
+  query?: string;
 };
 
 export async function listKbs(params: ListKbsParams = {}) {

@@ -327,28 +327,17 @@ function mysqlDatetimeToIso(value: string) {
   ).toISOString();
 }
 
-function dateAsShanghaiWallClockIso(value: Date) {
-  const year = value.getUTCFullYear();
-  const month = pad2(value.getUTCMonth() + 1);
-  const day = pad2(value.getUTCDate());
-  const hour = pad2(value.getUTCHours());
-  const minute = pad2(value.getUTCMinutes());
-  const second = pad2(value.getUTCSeconds());
-
-  return new Date(`${year}-${month}-${day}T${hour}:${minute}:${second}${SHANGHAI_UTC_OFFSET}`).toISOString();
-}
-
 function toIsoString(value: Date | number | string | null | undefined) {
   if (value == null) {
     return new Date(0).toISOString();
   }
 
   if (value instanceof Date) {
-    return dateAsShanghaiWallClockIso(value);
+    return value.toISOString();
   }
 
   if (typeof value === "number") {
-    return dateAsShanghaiWallClockIso(new Date(value));
+    return new Date(value).toISOString();
   }
 
   const mysqlIso = mysqlDatetimeToIso(value);

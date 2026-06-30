@@ -22,11 +22,11 @@ describe("kb-read-mappers", () => {
         update_time: new Date("2026-06-20T14:02:22.000Z"),
       }),
     ).toEqual({
-      createdAt: "2026-06-19T06:02:22.000Z",
+      createdAt: "2026-06-19T14:02:22.000Z",
       description: "退换货、维修、保修流程与话术",
       kbId: "88",
       name: "售后问题解答",
-      updatedAt: "2026-06-20T06:02:22.000Z",
+      updatedAt: "2026-06-20T14:02:22.000Z",
     });
   });
 
@@ -304,14 +304,33 @@ describe("kb-read-mappers", () => {
       chunkId: "503",
       chunkType: "image",
       content: "对该图片的解析文字",
-      createdAt: "2026-06-18T07:22:22.000Z",
+      createdAt: "2026-06-18T15:22:22.000Z",
       description: "对该图片的解析文字",
       docId: "1002",
       imageUrls: ["https://b5.bokr.com.cn/kb-images/example.png"],
       kbId: "1",
       source: "system",
       title: "产品宣传图",
-      updatedAt: "2026-06-18T07:22:22.000Z",
+      updatedAt: "2026-06-18T15:22:22.000Z",
+    });
+  });
+
+  it("does not reinterpret Date values as Shanghai wall clock", () => {
+    expect(
+      mapKbListItem({
+        create_time: new Date("2026-06-19T14:02:22.000Z"),
+        id: 88,
+        last_operator_id: 1,
+        name: "售后问题解答",
+        operator_id: 1,
+        remark: "退换货、维修、保修流程与话术",
+        status: 1,
+        uid: 9001,
+        update_time: new Date("2026-06-20T14:02:22.000Z"),
+      }),
+    ).toMatchObject({
+      createdAt: "2026-06-19T14:02:22.000Z",
+      updatedAt: "2026-06-20T14:02:22.000Z",
     });
   });
 

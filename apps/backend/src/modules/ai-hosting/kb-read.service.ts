@@ -195,7 +195,7 @@ export class KbReadService {
   async listKbDocChunks(
     tenant: AgentKbTenant,
     docId: string,
-    options: { page?: number; pageSize?: number; title?: string } = {},
+    options: { page?: number; pageSize?: number; query?: string } = {},
   ): Promise<KbChunkListResponse> {
     const uid = tenant.uid;
     const docNumericId = parsePositiveInteger(docId);
@@ -218,13 +218,14 @@ export class KbReadService {
 
     const docType = mapDocType(doc.doc_type);
     const pagination = normalizePagination(options);
-    const normalizedTitle = options.title?.trim();
+    const normalizedQuery = normalizeSearchQuery(options.query);
 
     const response = await this.agentKbJavaClient.listKbChunks({
+      content: docType === "qa" ? undefined : normalizedQuery,
       docId: docNumericId,
       page: pagination.page,
       pageSize: pagination.pageSize,
-      title: normalizedTitle,
+      title: docType === "qa" ? normalizedQuery : undefined,
       uid,
     });
 

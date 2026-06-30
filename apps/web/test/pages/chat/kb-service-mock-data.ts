@@ -428,20 +428,22 @@ export function createMockKbDocDetail(docId: string): KbDocDetail {
   };
 }
 
-export function createMockKbDocChunksResponse(docId: string, title?: string) {
-  const normalizedTitle = title?.trim().toLowerCase();
+export function createMockKbDocChunksResponse(docId: string, query?: string) {
+  const normalizedQuery = query?.trim().toLowerCase();
   const chunks = mockKbChunkItems.filter((chunk) => {
     if (chunk.docId !== docId) {
       return false;
     }
 
-    if (!normalizedTitle) {
+    if (!normalizedQuery) {
       return true;
     }
 
-    const chunkTitle = chunk.question ?? chunk.title ?? "";
+    if (chunk.type === "qa") {
+      return (chunk.question ?? "").toLowerCase().includes(normalizedQuery);
+    }
 
-    return chunkTitle.toLowerCase().includes(normalizedTitle);
+    return (chunk.content ?? "").toLowerCase().includes(normalizedQuery);
   });
 
   return {

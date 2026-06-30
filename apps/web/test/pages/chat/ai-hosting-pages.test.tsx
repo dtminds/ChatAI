@@ -345,7 +345,7 @@ describe("AI hosting pages", () => {
       createMockKbDocDetail(docId),
     );
     vi.mocked(kbService.listKbDocChunks).mockImplementation(async (docId, params) =>
-      createMockKbDocChunksResponse(docId, params?.title),
+      createMockKbDocChunksResponse(docId, params?.query),
     );
     retryKbDocMock.mockImplementation(async (docId: string) => {
       updateMockKbDocStatus(docId, "queued");
@@ -2567,6 +2567,24 @@ describe("AI hosting pages", () => {
     });
   });
 
+  it("does not filter QA chunks by answer content", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-3",
+      <KbDocDetailPage />,
+      "/chat/ai-hosting/kb/:kbId/docs/:docId",
+    );
+
+    await screen.findByText("如何恢复出厂设置");
+    await user.type(screen.getByRole("textbox", { name: "搜索问题" }), "订单详情页");
+
+    await waitFor(() => {
+      expect(screen.queryByText("如何查询物流")).not.toBeInTheDocument();
+      expect(screen.getByText("暂无切片数据")).toBeInTheDocument();
+    });
+  });
+
   it("adds a QA chunk manually", async () => {
     const user = userEvent.setup();
 
@@ -2735,6 +2753,33 @@ describe("AI hosting pages", () => {
       title: "",
     });
     expect(await screen.findByText("原装充电器与数据线需单独购买")).toBeInTheDocument();
+  });
+
+  it("filters document chunks by content only", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-1",
+      <KbDocDetailPage />,
+      "/chat/ai-hosting/kb/:kbId/docs/:docId",
+    );
+
+    await screen.findByText("chunk-doc-1");
+    await user.type(screen.getByRole("textbox", { name: "搜索切片内容" }), "核销物码");
+
+    await waitFor(() => {
+      expect(screen.getByText("chunk-doc-1")).toBeInTheDocument();
+      expect(screen.queryByText("chunk-doc-2")).not.toBeInTheDocument();
+    });
+
+    await user.clear(screen.getByRole("textbox", { name: "搜索切片内容" }));
+    await user.type(screen.getByRole("textbox", { name: "搜索切片内容" }), "第二章");
+
+    await waitFor(() => {
+      expect(screen.queryByText("chunk-doc-1")).not.toBeInTheDocument();
+      expect(screen.queryByText("chunk-doc-2")).not.toBeInTheDocument();
+      expect(screen.getByText("暂无切片数据")).toBeInTheDocument();
+    });
   });
 
   it("renders the image chunk detail page without add actions", async () => {

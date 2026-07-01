@@ -586,10 +586,6 @@ function ChatWorkbenchContent({
         isActiveSeatAIHostingEnabled,
       );
 
-      if (resolvedView === "unread") {
-        void loadUnreadConversations(activeMode);
-      }
-
       setConversationViewRetainedState(
         resolvedView === DEFAULT_CONVERSATION_VIEW
           ? null
@@ -643,7 +639,6 @@ function ChatWorkbenchContent({
       activeModeConversations,
       clearActiveConversation,
       isActiveSeatAIHostingEnabled,
-      loadUnreadConversations,
       setConversationView,
       setActiveConversation,
       visibleSearchableConversations,
@@ -882,6 +877,19 @@ function ChatWorkbenchContent({
     currentConversationView,
     resolvedConversationView,
     setConversationView,
+  ]);
+
+  useEffect(() => {
+    if (!activeAccountId || resolvedConversationView !== "unread") {
+      return;
+    }
+
+    void loadUnreadConversations(activeMode);
+  }, [
+    activeAccountId,
+    activeMode,
+    loadUnreadConversations,
+    resolvedConversationView,
   ]);
 
   useEffect(() => {

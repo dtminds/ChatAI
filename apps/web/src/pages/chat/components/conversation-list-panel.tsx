@@ -363,18 +363,17 @@ export function ConversationListPanel({
                       {modeConversations.length === 0 && !isConversationLoading ? (
                         <Empty
                           aria-label="暂无数据"
-                          className="min-h-40 gap-2 px-2 py-6 text-[13px] text-muted-foreground"
+                          className="min-h-40 gap-0 px-2 py-6 text-[13px] text-muted-foreground/40"
                           role="status"
                         >
                           <EmptyMedia
-                            className="bg-background text-muted-foreground"
+                            className="bg-background text-muted-foreground opacity-20"
                             variant="icon"
                           >
                             <HugeiconsIcon
                               color="currentColor"
                               icon={LicenseNoIcon}
                               size={22}
-                              strokeWidth={1.8}
                             />
                           </EmptyMedia>
                           <span>暂无数据</span>

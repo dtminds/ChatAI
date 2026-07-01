@@ -396,6 +396,33 @@ describe("ConversationListPanel", () => {
     ).toHaveTextContent("12");
   });
 
+  it("uses seat unread counts for mode badges even when hidden conversations are not visible", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ConversationListPanel
+        activeMode="single"
+        activeView="all"
+        conversations={[]}
+        unreadCountByMode={{ group: 0, single: 1 }}
+        onSelectConversation={vi.fn()}
+        onSelectMode={vi.fn()}
+        onSelectView={vi.fn()}
+        searchableConversations={[]}
+      />,
+    );
+
+    expect(screen.getByTestId("conversation-mode-unread-dot-single")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: "单聊视图" }));
+
+    expect(
+      within(screen.getByRole("menuitemradio", { name: "未读1" })).getByTestId(
+        "conversation-view-unread-count-single",
+      ),
+    ).toHaveTextContent("1");
+  });
+
   it("shows a refresh unread list button at the unread list bottom when server reports more unread conversations", () => {
     const onRefreshUnreadConversations = vi.fn();
 

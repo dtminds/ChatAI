@@ -78,6 +78,7 @@ export function ConversationCard({
           ? "rounded-[8px] border-transparent bg-conversation-active text-conversation-active-foreground"
           : "border-divider/60 bg-surface hover:bg-conversation-hover",
       )}
+      data-testid={`conversation-card-${conversation.id}`}
     >
       <Button
         className="grid h-auto w-full min-w-0 cursor-pointer grid-cols-[auto_minmax(0,1fr)] items-center justify-normal gap-2.5 whitespace-normal rounded-none p-0 text-left text-sm outline-none hover:bg-transparent hover:text-inherit focus-visible:ring-2 focus-visible:ring-ring/20"

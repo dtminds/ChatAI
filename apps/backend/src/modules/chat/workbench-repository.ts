@@ -3481,24 +3481,12 @@ export class WorkbenchRepository {
           : undefined,
       snapshotAt,
       unreadSummary: options?.unreadOnly
-        ? await this.getSeatUnreadSummary(seatId)
+        ? await this.getSeatUnreadSummary(seat)
         : undefined,
     };
   }
 
-  async getSeatUnreadSummary(seatId: string): Promise<SeatUnreadSummary> {
-    const seatNumericId = parseMySqlId(seatId);
-
-    if (seatNumericId == null) {
-      return { group: 0, single: 0, total: 0 };
-    }
-
-    const seat = await this.getSeatRecord(seatNumericId);
-
-    if (!seat) {
-      return { group: 0, single: 0, total: 0 };
-    }
-
+  async getSeatUnreadSummary(seat: SeatAggregateKeyRow): Promise<SeatUnreadSummary> {
     const row = await this.db
       .selectFrom("xy_wap_embed_conversation")
       .select((expressionBuilder) => [

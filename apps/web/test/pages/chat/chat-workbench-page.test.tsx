@@ -329,6 +329,48 @@ describe("ChatWorkbenchPage", () => {
     });
   });
 
+  it("loads unread conversations for the next account when the unread view is active", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const getConversations = vi.fn(baseService.getConversations);
+
+    window.localStorage.setItem(
+      "chatai.conversationView",
+      JSON.stringify({ group: "all", single: "unread" }),
+    );
+    setWorkbenchService({
+      ...baseService,
+      getConversations,
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await waitFor(() => {
+      expect(getConversations).toHaveBeenCalledWith(
+        "drc",
+        expect.objectContaining({
+          limit: 500,
+          mode: "single",
+          unreadOnly: true,
+        }),
+      );
+    });
+
+    await user.click(screen.getByTestId("account-sidebar-item-ndt"));
+
+    await waitFor(() => {
+      expect(getConversations).toHaveBeenCalledWith(
+        "ndt",
+        expect.objectContaining({
+          limit: 500,
+          mode: "single",
+          unreadOnly: true,
+        }),
+      );
+    });
+  });
+
   it("keeps the active conversation empty when the selected view has no conversations", async () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();
@@ -570,7 +612,12 @@ describe("ChatWorkbenchPage", () => {
     markConversationRead.mockClear();
     markConversationUnread.mockClear();
 
-    await user.click(screen.getByRole("button", { name: "会话操作" }));
+    await user.click(
+      within(screen.getByTestId("conversation-card-conv-002")).getByRole(
+        "button",
+        { name: "会话操作" },
+      ),
+    );
     await user.click(screen.getByRole("menuitem", { name: /标记未读/ }));
 
     await waitFor(() => {
@@ -730,7 +777,12 @@ describe("ChatWorkbenchPage", () => {
     markConversationRead.mockClear();
     markConversationUnread.mockClear();
 
-    await user.click(screen.getByRole("button", { name: "会话操作" }));
+    await user.click(
+      within(screen.getByTestId("conversation-card-conv-002")).getByRole(
+        "button",
+        { name: "会话操作" },
+      ),
+    );
     await user.click(screen.getByRole("menuitem", { name: /标记未读/ }));
 
     await waitFor(() => {

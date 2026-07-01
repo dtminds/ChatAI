@@ -2,6 +2,7 @@ import { Value } from "@sinclair/typebox/value";
 import { describe, expect, it } from "vitest";
 import {
   AiHostingAgentDetailSchema,
+  AiHostingAgentListResponseSchema,
   AiHostingAgentRenameRequestSchema,
   AiHostingAgentSaveRequestSchema,
   AiHostingAgentSettingsSaveRequestSchema,
@@ -165,6 +166,64 @@ describe("AI hosting DTOs", () => {
         ],
       }),
     ).toBe(true);
+  });
+
+  it("returns agent list knowledge bases as kbList id-name pairs", () => {
+    expect(
+      Value.Check(AiHostingAgentListResponseSchema, {
+        agents: [
+          {
+            id: "301",
+            kbList: [
+              {
+                id: "1",
+                name: "商品咨询知识库",
+              },
+              {
+                id: "3",
+                name: "活动政策知识库",
+              },
+            ],
+            model: {
+              id: "11",
+              label: "Doubao-2.0-lite",
+              model: "doubao-2.0-lite",
+              name: "Doubao-2.0-lite",
+            },
+            name: "护肤小助理",
+            updatedAt: 1_718_006_460_000,
+          },
+        ],
+        pagination: {
+          page: 1,
+          pageSize: 10,
+          total: 1,
+        },
+      }),
+    ).toBe(true);
+
+    expect(
+      Value.Check(AiHostingAgentListResponseSchema, {
+        agents: [
+          {
+            id: "301",
+            knowledgeBases: ["商品咨询知识库"],
+            model: {
+              id: "11",
+              label: "Doubao-2.0-lite",
+              model: "doubao-2.0-lite",
+              name: "Doubao-2.0-lite",
+            },
+            name: "护肤小助理",
+          },
+        ],
+        pagination: {
+          page: 1,
+          pageSize: 10,
+          total: 1,
+        },
+      }),
+    ).toBe(false);
   });
 
   it("accepts agent simulation test requests", () => {

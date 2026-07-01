@@ -79,6 +79,7 @@ export function adaptConversation(dto: WorkbenchConversationSummaryDto): Convers
     bizStatus: dto.bizStatus ?? 0,
     createdAtMs: createdAt,
     customerAvatarUrl: dto.customerAvatar,
+    customerBindType: dto.customerBindType,
     customerId: dto.customerId,
     customerName: dto.customerName,
     contactOriginalName: dto.contactOriginalName,

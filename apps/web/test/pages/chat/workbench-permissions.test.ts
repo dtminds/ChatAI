@@ -119,6 +119,59 @@ describe("resolveWorkbenchPermissions", () => {
         subUser: operator,
       }).conversationAIHostingEnabled,
     ).toBe(false);
+
+    expect(
+      resolveWorkbenchPermissions({
+        account: createAccount({
+          seatAIHostingAuth: true,
+          seatAIHostingEnabled: true,
+          takenOverEmployeeId: me.id,
+        }),
+        activeConversation: createConversation({
+          conversationAIHostingSwitch: true,
+          mode: "group",
+        }),
+        bootstrapStatus: "ready",
+        me,
+        subUser: operator,
+      }).conversationAIHostingEnabled,
+    ).toBe(false);
+    expect(
+      resolveWorkbenchPermissions({
+        account: createAccount({
+          seatAIHostingAuth: true,
+          seatAIHostingEnabled: true,
+          takenOverEmployeeId: me.id,
+        }),
+        activeConversation: createConversation({
+          conversationAIHostingSwitch: true,
+          mode: "group",
+        }),
+        bootstrapStatus: "ready",
+        me,
+        subUser: operator,
+      }).canToggleConversationAIHosting,
+    ).toBe(false);
+
+    expect(
+      resolveWorkbenchPermissions({
+        account: createAccount({
+          seatAIHostingAuth: true,
+          seatAIHostingEnabled: true,
+          takenOverEmployeeId: me.id,
+        }),
+        activeConversation: createConversation({
+          conversationAIHostingSwitch: true,
+          customerBindType: 2,
+        }),
+        bootstrapStatus: "ready",
+        me,
+        subUser: operator,
+      }),
+    ).toMatchObject({
+      canToggleConversationAIHosting: false,
+      conversationAIHostingEnabled: false,
+    });
   });
 
   it("blocks sending without showing a hosting placeholder for active full-auto conversations", () => {
@@ -400,6 +453,7 @@ function createConversation(overrides: Partial<Conversation> = {}): Conversation
     accountId: "drc",
     bizStatus: 1,
     customerAvatarUrl: "",
+    customerBindType: 1,
     customerId: "customer-001",
     customerName: "客户一号",
     id: "conv-001",

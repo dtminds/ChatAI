@@ -456,6 +456,40 @@ describe("createWorkbenchJavaClient", () => {
     );
   });
 
+  it("posts insert system message payload to the Java internal API", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ data: 1001, error: 0, errorMsg: "", success: true }), {
+        headers: { "content-type": "application/json" },
+        status: 200,
+      }),
+    );
+
+    await expect(
+      createWorkbenchJavaClient().insertSystemMessage({
+        content: "客服一号 开启了 AI 托管",
+        conversationId: "88",
+        operatorId: 101,
+        platform: 5,
+        uid: 9001,
+      }),
+    ).resolves.toBe("1001");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/wap-embed/conversation/insert-system-message",
+      expect.objectContaining({
+        body: JSON.stringify({
+          content: "客服一号 开启了 AI 托管",
+          conversationId: 88,
+          operatorId: 101,
+          platform: 5,
+          uid: 9001,
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
   it("posts message content update payload to the Java internal API using audit id as updateId", async () => {
     process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
@@ -1763,7 +1797,7 @@ describe("createWorkbenchJavaClient", () => {
     );
   });
 
-  it("posts send-answer requests with real answer and attach ids", async () => {
+  it("posts send-answer requests with optNos and recordId", async () => {
     process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
@@ -1782,8 +1816,6 @@ describe("createWorkbenchJavaClient", () => {
     const client = createWorkbenchJavaClient(createLoggerMock());
     await client.sendRecommendAnswer({
       optNos: ["opt-88001", "opt-88002"],
-      realAnswer: "您好，这是发送的话术",
-      // realAttachIds: ["101", "102"],
       recordId: "88001",
       uid: 9001,
     });
@@ -1793,8 +1825,6 @@ describe("createWorkbenchJavaClient", () => {
       expect.objectContaining({
         body: JSON.stringify({
           optNos: ["opt-88001", "opt-88002"],
-          realAnswer: "您好，这是发送的话术",
-          // realAttachIds: ["101", "102"],
           recordId: 88001,
           uid: 9001,
         }),

@@ -1,18 +1,10 @@
 import type { AiHostingAgentTestReplyItem, AiHostingAgentTestResponse } from "@chatai/contracts";
-import { BadGatewayError } from "../../shared/errors.js";
-import { WORKBENCH_INTERNAL_API_FAILED_CODE } from "../chat/workbench-java-client.js";
 
 export function mapJavaAgentTestResponse(data: unknown): AiHostingAgentTestResponse {
-  const response = extractAgentTestResponse(unwrapAgentTestPayload(data));
-
-  if (!response) {
-    throw new BadGatewayError(
-      WORKBENCH_INTERNAL_API_FAILED_CODE,
-      "服务繁忙，请稍后重试",
-    );
-  }
-
-  return response;
+  return extractAgentTestResponse(unwrapAgentTestPayload(data)) ?? {
+    action: "reply",
+    reply: [],
+  };
 }
 
 function unwrapAgentTestPayload(data: unknown): unknown {
@@ -52,11 +44,19 @@ function extractAgentTestResponse(data: unknown): AiHostingAgentTestResponse | n
     return null;
   }
 
+  const action = readString(data.action);
   const directReply = readReplyItems(data.reply);
   if (directReply.length > 0) {
     return {
-      action: readString(data.action) || "reply",
+      action: action || "reply",
       reply: directReply,
+    };
+  }
+
+  if (action === "handoff") {
+    return {
+      action,
+      reply: [{ type: "text", content: "已触发转人工" }],
     };
   }
 

@@ -236,7 +236,9 @@ export class AiHostingSettingsService {
   }
 
   private async countGroupChatsByThirdUserIds(scope: SettingsScope, thirdUserIds: string[]) {
-const uniqueThirdUserIds = [...new Set(thirdUserIds.map((id) => id ?? ""))].filter((id) => id.length > 0);
+    const uniqueThirdUserIds = [...new Set(thirdUserIds.map((id) => id ?? ""))].filter(
+      (id) => id.length > 0,
+    );
 
     if (uniqueThirdUserIds.length === 0) {
       return new Map<string, number>();

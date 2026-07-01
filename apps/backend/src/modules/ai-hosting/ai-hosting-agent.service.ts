@@ -1,5 +1,6 @@
 import type {
   AiHostingAgentDetail,
+  AiHostingAgentKbSummary,
   AiHostingAgentListItem,
   AiHostingAgentListResponse,
   AiHostingAgentModelSummary,
@@ -12,7 +13,7 @@ import type {
   AiHostingModelListResponse,
 } from "@chatai/contracts";
 import { AI_HOSTING_AGENT_QUOTA_LIMIT } from "@chatai/contracts";
-import type { Kysely } from "kysely";
+import { sql, type Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
 import {
   BadRequestError,
@@ -40,6 +41,15 @@ export type AgentRow = {
   update_time?: Date | number | string | null;
 };
 
+type AgentListRow = {
+  available_kb_ids?: string | number[] | null;
+  id: number;
+  last_publish_time?: number | string | null;
+  model_id: number;
+  name: string;
+  update_time?: Date | number | string | null;
+};
+
 type AgentHistoryRow = {
   agent_id: number;
   create_time?: Date | number | string | null;
@@ -55,6 +65,11 @@ type AiModelRow = {
   name: string;
   support_multimodal?: number | null;
   uid: number;
+};
+
+type AgentKbRow = {
+  id: number;
+  name: string;
 };
 
 const dbActiveStatus = 1;
@@ -83,9 +98,10 @@ export class AiHostingAgentService {
       totalPromise,
     ]);
     const modelMap = new Map(models.map((model) => [String(model.id), mapModelSummary(model)]));
+    const kbMap = await this.getAgentKbMap(scope, rows);
 
     return {
-      agents: rows.map((row) => this.mapAgentListItem(row, modelMap)),
+      agents: rows.map((row) => this.mapAgentListItem(row, modelMap, kbMap)),
       pagination: {
         page: pagination.page,
         pageSize: pagination.pageSize,
@@ -376,6 +392,9 @@ export class AiHostingAgentService {
         "agent.last_publish_time as last_publish_time",
         "agent.model_id as model_id",
         "agent.name as name",
+        sql<string | null>`JSON_EXTRACT(agent.prompt_config, '$.available_kb_ids')`.as(
+          "available_kb_ids",
+        ),
         "agent.update_time as update_time",
       ])
       .where("agent.uid", "=", scope.uid)
@@ -390,7 +409,7 @@ export class AiHostingAgentService {
       .orderBy("agent.id", "desc")
       .limit(pagination.pageSize)
       .offset((pagination.page - 1) * pagination.pageSize)
-      .execute() as Promise<AgentRow[]>;
+      .execute() as Promise<AgentListRow[]>;
   }
 
   private async countAgents(scope: AgentTenantScope, query?: string) {
@@ -553,16 +572,50 @@ export class AiHostingAgentService {
   }
 
   private mapAgentListItem(
-    row: AgentRow,
+    row: AgentListRow,
     modelMap: Map<string, AiHostingAgentModelSummary>,
+    kbMap: Map<number, AiHostingAgentKbSummary>,
   ): AiHostingAgentListItem {
     return {
       id: String(row.id),
-      knowledgeBases: [],
+      kbList: uniquePositiveIds(parseAvailableKbIds(row.available_kb_ids))
+        .map((kbId) => kbMap.get(kbId))
+        .filter((kb): kb is AiHostingAgentKbSummary => Boolean(kb)),
       model: modelMap.get(String(row.model_id)) ?? fallbackModelSummary(row.model_id),
       name: row.name,
       updatedAt: toOptionalTimestamp(row.update_time),
     };
+  }
+
+  private async getAgentKbMap(
+    scope: AgentTenantScope,
+    rows: AgentListRow[],
+  ): Promise<Map<number, AiHostingAgentKbSummary>> {
+    const kbIds = uniquePositiveIds(
+      rows.flatMap((row) => parseAvailableKbIds(row.available_kb_ids)),
+    );
+
+    if (kbIds.length === 0) {
+      return new Map();
+    }
+
+    const kbRows = await this.db
+      .selectFrom("xy_wap_embed_agent_kb")
+      .select(["id", "name"])
+      .where("uid", "=", scope.uid)
+      .where("status", "=", dbActiveStatus)
+      .where("id", "in", kbIds)
+      .execute() as AgentKbRow[];
+
+    return new Map(
+      kbRows.map((kb) => [
+        kb.id,
+        {
+          id: String(kb.id),
+          name: kb.name,
+        },
+      ]),
+    );
   }
 }
 
@@ -722,6 +775,22 @@ function parsePromptConfig(value: string | null | undefined): AiHostingAgentProm
   }
 }
 
+function parseAvailableKbIds(value: number[] | string | null | undefined) {
+  if (Array.isArray(value)) {
+    return readNumberArray(value);
+  }
+
+  if (!value) {
+    return [];
+  }
+
+  try {
+    return readNumberArray(JSON.parse(value));
+  } catch {
+    return [];
+  }
+}
+
 function normalizePromptConfigText(value: string | null | undefined) {
   return serializePromptConfig(parsePromptConfig(value));
 }
@@ -776,4 +845,8 @@ function readNumberArray(value: unknown) {
   }
 
   return value.filter((item): item is number => Number.isSafeInteger(item) && item > 0);
+}
+
+function uniquePositiveIds(values: number[]) {
+  return Array.from(new Set(values.filter((value) => Number.isSafeInteger(value) && value > 0)));
 }

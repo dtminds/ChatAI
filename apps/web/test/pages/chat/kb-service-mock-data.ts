@@ -144,8 +144,10 @@ const INITIAL_MOCK_KB_CHUNKS: KbDocChunkViewItem[] = [
     docId: "knowledge-1",
     type: "document",
     source: "manual",
+    volcChunkId: "kb_doc_volc-chunk-doc-0",
     title: "第一章 产品介绍",
-    content: "华为 Mate 系列主打影像与续航，适合商务与日常拍摄场景",
+    content:
+      "新建限时任务，任务有效期增加 勾选项【仅任务有效期内核销计入】\n1）如果勾选了，统计任务是否完成只会统计任务有效期内核销的物码数据\n2）如果未勾选，统计任务是否完成会统计历史累计核销物码的数据",
     createdAt: "2026-06-18 23:22:22",
     updatedAt: "2026-06-20 23:22:22",
   },
@@ -155,6 +157,7 @@ const INITIAL_MOCK_KB_CHUNKS: KbDocChunkViewItem[] = [
     docId: "knowledge-1",
     type: "document",
     source: "manual",
+    volcChunkId: "kb_doc_volc-chunk-warranty-1",
     title: "第二章 售后政策",
     content: "全国联保一年，支持官方售后网点检测与维修",
     createdAt: "2026-06-18 23:22:22",
@@ -166,6 +169,7 @@ const INITIAL_MOCK_KB_CHUNKS: KbDocChunkViewItem[] = [
     docId: "knowledge-1",
     type: "document",
     source: "system",
+    volcChunkId: "kb_doc_volc-chunk-doc-image-2",
     title: "产品外观图",
     content: "对该图片的解析文字，展示产品外观与配色信息",
     imageUrls: ["https://b5.bokr.com.cn/dist/word.png"],
@@ -239,7 +243,7 @@ function toIsoTimestamp(value: string) {
     return value;
   }
 
-  return `${value.replace(" ", "T")}.000Z`;
+  return new Date(`${value.replace(" ", "T")}+08:00`).toISOString();
 }
 
 function toKbListItem(item: KbListViewItem): KbListItem {
@@ -288,6 +292,7 @@ function toKbChunkListItem(chunk: KbDocChunkViewItem): KbChunkListItem {
     source: chunk.source,
     title: chunk.question ?? chunk.title,
     updatedAt: toIsoTimestamp(chunk.updatedAt),
+    volcChunkId: chunk.volcChunkId,
   };
 }
 
@@ -318,6 +323,15 @@ export function getMockKbChunksSnapshot() {
 
 export function addMockKbChunk(chunk: KbDocChunkViewItem) {
   mockKbChunkItems = [chunk, ...mockKbChunkItems];
+}
+
+export function updateMockKbDocStatus(
+  docId: string,
+  status: KbDocViewItem["status"],
+) {
+  mockKbDocItems = mockKbDocItems.map((doc) =>
+    doc.id === docId ? { ...doc, status } : doc,
+  );
 }
 
 export function updateMockKbChunk(
@@ -418,20 +432,22 @@ export function createMockKbDocDetail(docId: string): KbDocDetail {
   };
 }
 
-export function createMockKbDocChunksResponse(docId: string, title?: string) {
-  const normalizedTitle = title?.trim().toLowerCase();
+export function createMockKbDocChunksResponse(docId: string, query?: string) {
+  const normalizedQuery = query?.trim().toLowerCase();
   const chunks = mockKbChunkItems.filter((chunk) => {
     if (chunk.docId !== docId) {
       return false;
     }
 
-    if (!normalizedTitle) {
+    if (!normalizedQuery) {
       return true;
     }
 
-    const chunkTitle = chunk.question ?? chunk.title ?? "";
+    if (chunk.type === "qa") {
+      return (chunk.question ?? "").toLowerCase().includes(normalizedQuery);
+    }
 
-    return chunkTitle.toLowerCase().includes(normalizedTitle);
+    return (chunk.content ?? "").toLowerCase().includes(normalizedQuery);
   });
 
   return {

@@ -53,6 +53,12 @@ export type AgentKbJavaDeleteDocInput = {
   uid: number;
 };
 
+export type AgentKbJavaRetryDocInput = {
+  docId: number;
+  operatorId: string;
+  uid: number;
+};
+
 export type AgentKbJavaAddChunkInput = {
   chunkType: "text" | "faq";
   content: string;
@@ -77,6 +83,7 @@ export type AgentKbJavaDeleteChunkInput = {
 };
 
 export type AgentKbJavaListChunksInput = {
+  content?: string;
   docId: number;
   page: number;
   pageSize: number;
@@ -96,6 +103,7 @@ export type AgentKbJavaClient = {
   createKbDoc(input: AgentKbJavaCreateDocInput): Promise<string>;
   deleteKbChunk(input: AgentKbJavaDeleteChunkInput): Promise<void>;
   deleteKbDoc(input: AgentKbJavaDeleteDocInput): Promise<void>;
+  retryKbDoc(input: AgentKbJavaRetryDocInput): Promise<void>;
   listKbChunks(input: AgentKbJavaListChunksInput): Promise<AgentKbJavaListChunksResponse>;
   updateKbChunk(input: AgentKbJavaUpdateChunkInput): Promise<void>;
 };
@@ -178,6 +186,21 @@ export function createAgentKbJavaClient(
         input,
       );
     },
+    async retryKbDoc(input) {
+      await postJavaJsonEnvelope<boolean>(
+        baseUrl,
+        token,
+        "/third-internal/wap-embed-agent-kb-doc/retry",
+        {
+          id: input.docId,
+          operatorId: input.operatorId,
+          uid: input.uid,
+        },
+        logger,
+        "agent-kb-doc-retry",
+        input,
+      );
+    },
     async deleteKbChunk(input) {
       await postJavaJsonEnvelope<boolean>(
         baseUrl,
@@ -201,7 +224,12 @@ export function createAgentKbJavaClient(
         uid: input.uid,
       };
 
+      const normalizedContent = input.content?.trim();
       const normalizedTitle = input.title?.trim();
+
+      if (normalizedContent) {
+        body.content = normalizedContent;
+      }
 
       if (normalizedTitle) {
         body.title = normalizedTitle;
@@ -475,7 +503,10 @@ function mapAgentKbJavaBusinessError(response: JavaApiResponse<unknown>, operati
     token: extractAgentKbJavaErrorToken(errorMsg),
   };
 
-  if (operation === "agent-kb-doc-delete" && kind === "doc_not_found") {
+  if (
+    (operation === "agent-kb-doc-delete" || operation === "agent-kb-doc-retry") &&
+    kind === "doc_not_found"
+  ) {
     return new NotFoundError("KB_DOC_NOT_FOUND", "知识不存在");
   }
 

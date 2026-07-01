@@ -12,11 +12,13 @@ import { Textarea } from "@/components/ui/textarea";
 import type { KbDocChunkViewItem } from "../kb-types";
 import { ChunkContentEditor } from "./chunk-content-editor";
 import {
-  IMAGE_TITLE_MAX_LENGTH,
   QA_ANSWER_MAX_LENGTH,
   QA_QUESTION_MAX_LENGTH,
   useDialogSubmit,
 } from "./shared";
+
+const CHUNK_VECTORIZATION_TIP =
+  "保存编辑后的切片内容，需要重新向量化，并产生额外 tokens 消耗。";
 
 export function EditChunkDialog({
   chunk,
@@ -77,7 +79,7 @@ export function EditChunkDialog({
       const normalizedTitle = title.trim();
       const normalizedContent = content.trim();
 
-      if (!normalizedTitle || !normalizedContent) {
+      if (!normalizedContent) {
         return false;
       }
 
@@ -91,7 +93,7 @@ export function EditChunkDialog({
   const isValid =
     chunk?.type === "qa"
       ? question.trim().length > 0 && answer.trim().length > 0
-      : title.trim().length > 0 && content.trim().length > 0;
+      : content.trim().length > 0;
 
   return (
     <Dialog onOpenChange={handleOpenChange} open={open}>
@@ -133,18 +135,18 @@ export function EditChunkDialog({
                 placeholder="请输入"
                 value={answer}
               />
+              <ChunkVectorizationTip />
             </div>
           </div>
         ) : (
           <div className="space-y-5 py-3">
             <div className="space-y-2">
               <Label htmlFor="edit-chunk-title">
-                切片标题 <span className="text-destructive">*</span>
+                切片标题
               </Label>
               <Textarea
                 className="min-h-0 resize-none"
                 id="edit-chunk-title"
-                maxLength={chunk?.type === "image" ? IMAGE_TITLE_MAX_LENGTH : undefined}
                 onChange={(event) => setTitle(event.target.value)}
                 placeholder="请输入"
                 rows={2}
@@ -163,6 +165,7 @@ export function EditChunkDialog({
                 imageUrls={chunk?.imageUrls}
                 onContentChange={setContent}
               />
+              <ChunkVectorizationTip />
             </div>
           </div>
         )}
@@ -177,5 +180,13 @@ export function EditChunkDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function ChunkVectorizationTip() {
+  return (
+    <p className="rounded-[8px] bg-primary/8 px-3 py-2 text-sm leading-5 text-foreground">
+      {CHUNK_VECTORIZATION_TIP}
+    </p>
   );
 }

@@ -38,6 +38,7 @@ export type ConversationRow = {
   chat_type: number;
   create_time?: Date | number | string | null;
   customer_avatar: string | null;
+  customer_bind_type?: number | string | null;
   customer_name: string | null;
   contact_original_name: string | null;
   full_auto_switch?: number | string | boolean | null;
@@ -115,6 +116,7 @@ const WECHAT_NICKNAME_SUBTITLE_PREFIX = "微信昵称：";
 const UNSUPPORTED_MESSAGE_DISPLAY_TEXT = "[暂不支持显示该消息]";
 const UNSUPPORTED_CHAT_RECORD_DISPLAY_TEXT = "[暂不支持展示该聊天记录]";
 const CHAT_RECORD_LOADING_WINDOW_MS = 15_000;
+const APPLICATION_MESSAGE_AVATAR_URL = "https://b5.bokr.com.cn/dist/app-avatar.png";
 
 export function mapSeatRow(row: SeatRow): WorkbenchSeatDto {
   const seatName = row.third_user_name || "未命名席位";
@@ -151,6 +153,10 @@ export function mapConversationRow(
   row: ConversationRow,
 ): WorkbenchConversationSummaryDto {
   const mode = row.chat_type === 2 ? "group" : "single";
+  const customerBindType =
+    mode === "group" || row.customer_bind_type == null
+      ? undefined
+      : toNumber(row.customer_bind_type);
   const customerId =
     mode === "group" ? row.third_group_id : row.third_external_userid;
   const groupRemark = row.group_remark?.trim();
@@ -158,6 +164,8 @@ export function mapConversationRow(
   const customerName =
     mode === "group"
       ? groupRemark || groupName || "未知群聊"
+      : customerBindType === 2
+        ? "应用消息"
       : row.customer_name?.trim() || "未知客户";
   const groupOriginalName =
     mode === "group" && groupRemark && groupName && groupRemark !== groupName
@@ -176,7 +184,11 @@ export function mapConversationRow(
     ? undefined
     : contactOriginalNameSubtitle;
   const customerAvatar =
-    mode === "group" ? row.group_avatar ?? "" : row.customer_avatar ?? "";
+    mode === "group"
+      ? row.group_avatar ?? ""
+      : customerBindType === 2
+        ? APPLICATION_MESSAGE_AVATAR_URL
+        : row.customer_avatar ?? "";
 
   return {
     bizStatus: row.biz_status == null ? 0 : toNumber(row.biz_status),
@@ -184,6 +196,7 @@ export function mapConversationRow(
     conversationAIHostingSwitch: readBooleanFlag(row.full_auto_switch),
     createdAt: toOptionalTimestamp(row.create_time),
     customerAvatar,
+    customerBindType,
     customerId,
     customerName,
     contactOriginalName,

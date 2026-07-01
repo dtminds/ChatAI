@@ -10,7 +10,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { KB_SEARCH_QUERY_MAX_LENGTH } from "@chatai/contracts";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -57,10 +57,10 @@ import {
 } from "./ai-hosting-layout";
 import { KbTableLoadingRow } from "./kb-components/kb-table-loading-row";
 import { ImportDocumentDialog } from "./kb-components/import-document-dialog";
-import { ImportImageDialog } from "./kb-components/import-image-dialog";
+// import { ImportImageDialog } from "./kb-components/import-image-dialog";
 import { ImportQaDialog } from "./kb-components/import-qa-dialog";
 import { TableOverflowTooltip } from "./kb-components/shared";
-import { deleteKbDoc } from "./api/kb-doc-service";
+import { deleteKbDoc, retryKbDoc } from "./api/kb-doc-service";
 import { getAiHostingQuota } from "./agent-service";
 import {
   getKb,
@@ -95,12 +95,13 @@ const addKnowledgeOptions = [
     label: "问答",
     type: "qa",
   },
-  {
-    description: "上传图片并添加描述，按描述精准召回",
-    imgSrc: "https://b5.bokr.com.cn/dist/image.png",
-    label: "图片",
-    type: "image",
-  },
+  // 图片添加入口暂时下线
+  // {
+  //   description: "上传图片并添加描述，按描述精准召回",
+  //   imgSrc: "https://b5.bokr.com.cn/dist/image.png",
+  //   label: "图片",
+  //   type: "image",
+  // },
   {
     description: "自动解析文档内容，效果取决于文档质量",
     imgSrc: "https://b5.bokr.com.cn/dist/file.png",
@@ -151,10 +152,11 @@ export function KbDetailPage() {
   const debouncedSearchQuery = useDebouncedValue(searchQuery, 300);
   const [currentPage, setCurrentPage] = useState(1);
   const [importQaDialogOpen, setImportQaDialogOpen] = useState(false);
-  const [imageDialogOpen, setImageDialogOpen] = useState(false);
+  // const [imageDialogOpen, setImageDialogOpen] = useState(false);
   const [documentDialogOpen, setDocumentDialogOpen] = useState(false);
   const [deleteRecord, setDeleteRecord] = useState<KbDocViewItem | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [retryingDocId, setRetryingDocId] = useState<string | null>(null);
   const [checkingKnowledgeQuota, setCheckingKnowledgeQuota] = useState(false);
   const requestVersionRef = useRef(0);
   const isMountedRef = useRef(false);
@@ -295,6 +297,33 @@ export function KbDetailPage() {
     }
   }
 
+  async function handleRetryDoc(docId: string) {
+    if (retryingDocId) {
+      return;
+    }
+
+    setRetryingDocId(docId);
+
+    try {
+      await retryKbDoc(docId);
+
+      if (!isMountedRef.current) {
+        return;
+      }
+
+      toast.success("已提交重试");
+      await loadDocs();
+    } catch {
+      if (isMountedRef.current) {
+        toast.error("重试失败，请稍后重试");
+      }
+    } finally {
+      if (isMountedRef.current) {
+        setRetryingDocId(null);
+      }
+    }
+  }
+
   async function handleAddKnowledgeSelect(optionType: AddKnowledgeOption["type"]) {
     if (checkingKnowledgeQuota) {
       return;
@@ -314,9 +343,9 @@ export function KbDetailPage() {
         setImportQaDialogOpen(true);
       }
 
-      if (optionType === "image") {
-        setImageDialogOpen(true);
-      }
+      // if (optionType === "image") {
+      //   setImageDialogOpen(true);
+      // }
 
       if (optionType === "document") {
         setDocumentDialogOpen(true);
@@ -403,7 +432,9 @@ export function KbDetailPage() {
               kbId={knowledgeBase?.id ?? kbId}
               loading={recordsLoading}
               onDelete={setDeleteRecord}
+              onRetry={handleRetryDoc}
               records={pagedRecords}
+              retryingDocId={retryingDocId}
             />
             <TablePagination
               onPageChange={setCurrentPage}
@@ -424,6 +455,7 @@ export function KbDetailPage() {
         onOpenChange={setImportQaDialogOpen}
         open={importQaDialogOpen}
       />
+      {/* 图片添加入口暂时下线
       <ImportImageDialog
         kbId={kbId}
         onCreated={() => {
@@ -433,6 +465,7 @@ export function KbDetailPage() {
         onOpenChange={setImageDialogOpen}
         open={imageDialogOpen}
       />
+      */}
       <ImportDocumentDialog
         kbId={kbId}
         onCreated={() => {
@@ -486,16 +519,16 @@ function AddKnowledgeMenu({
         <DropdownMenuLabel className="px-2.5 py-1 text-xs font-medium text-muted-foreground">
           高质量人工知识
         </DropdownMenuLabel>
-        {addKnowledgeOptions.slice(0, 2).map((option) =>
-          renderAddKnowledgeOption(option, { onSelect }),
-        )}
+        {addKnowledgeOptions
+          .filter((option) => option.type !== "document")
+          .map((option) => renderAddKnowledgeOption(option, { onSelect }))}
         <DropdownMenuSeparator />
         <DropdownMenuLabel className="px-2.5 py-1 text-xs font-medium text-muted-foreground">
           原始文档
         </DropdownMenuLabel>
-        {addKnowledgeOptions.slice(2).map((option) =>
-          renderAddKnowledgeOption(option, { onSelect }),
-        )}
+        {addKnowledgeOptions
+          .filter((option) => option.type === "document")
+          .map((option) => renderAddKnowledgeOption(option, { onSelect }))}
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -537,13 +570,19 @@ function KnowledgeRecordsTable({
   kbId,
   loading,
   onDelete,
+  onRetry,
   records,
+  retryingDocId,
 }: {
   kbId: string;
   loading: boolean;
   onDelete: (record: KbDocViewItem) => void;
+  onRetry: (docId: string) => void | Promise<void>;
   records: KbDocViewItem[];
+  retryingDocId: string | null;
 }) {
+  const navigate = useNavigate();
+
   return (
     <Table aria-label="知识列表" className="min-w-[1120px] table-fixed">
       <TableHeader>
@@ -573,10 +612,22 @@ function KnowledgeRecordsTable({
                   />
                   <div className="min-w-0 flex-1">
                     <TableOverflowTooltip
-                      className="font-medium text-foreground"
+                      className="font-medium"
                       tooltip={record.name}
                     >
-                      {record.name}
+                      {record.status === "completed" ? (
+                        <button
+                          className="block max-w-full cursor-pointer truncate border-0 bg-transparent p-0 text-left font-medium text-foreground"
+                          onClick={() => navigate(`/chat/ai-hosting/kb/${kbId}/docs/${record.id}`)}
+                          type="button"
+                        >
+                          {record.name}
+                        </button>
+                      ) : (
+                        <span className="block truncate text-foreground">
+                          {record.name}
+                        </span>
+                      )}
                     </TableOverflowTooltip>
                   </div>
                 </div>
@@ -590,7 +641,23 @@ function KnowledgeRecordsTable({
                 {record.sliceCount ?? "-"}
               </TableCell>
               <TableCell className="px-4 py-4">
-                <KnowledgeStatusBadge status={record.status} />
+                <div className="flex items-center gap-2">
+                  <KnowledgeStatusBadge status={record.status} />
+                  {record.status === "failed" ? (
+                    <Button
+                      aria-label={`重试 ${record.name}`}
+                      className="h-auto p-0 text-primary"
+                      disabled={retryingDocId !== null}
+                      onClick={() => {
+                        void onRetry(record.id);
+                      }}
+                      type="button"
+                      variant="link"
+                    >
+                      重试
+                    </Button>
+                  ) : null}
+                </div>
               </TableCell>
               <TableCell
                 className="px-4 py-4 text-muted-foreground"

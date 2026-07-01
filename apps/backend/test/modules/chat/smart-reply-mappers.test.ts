@@ -39,6 +39,14 @@ describe("parseJavaGenAnswerContent", () => {
     ).toBe("第一段\n第二段");
   });
 
+  it("excludes image segments from display content", () => {
+    expect(
+      parseJavaGenAnswerContent(
+        '[{"msgtype":"text","text":"第一段"},{"msgtype":"image","alt":"推荐图"}]',
+      ),
+    ).toBe("第一段");
+  });
+
   it("returns plain text unchanged", () => {
     expect(parseJavaGenAnswerContent("您好，可以先告诉我肤质吗")).toBe(
       "您好，可以先告诉我肤质吗",
@@ -272,5 +280,20 @@ describe("mapJavaUserHistoryAnswerList", () => {
     ]);
 
     expect(response.suggestions[0]?.refAttachIds).toEqual(["101", "102"]);
+  });
+
+  it("parses array refAttachIds and genAnswer image ids", () => {
+    const response = mapJavaUserHistoryAnswerList([
+      {
+        analyseMsgId: 1121,
+        assistantName: "护肤小助手",
+        genAnswer:
+          '[{"msgtype":"text","text":"第一段"},{"msgtype":"image","id":103,"fileUrl":"s5/msg/cover.png"}]',
+        genStatus: 2,
+        refAttachIds: [101, "102"],
+      },
+    ]);
+
+    expect(response.suggestions[0]?.refAttachIds).toEqual(["101", "102", "103"]);
   });
 });

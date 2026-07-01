@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { AiHostingAgentListItem } from "@chatai/contracts";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -16,6 +16,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Table,
   TableBody,
@@ -30,6 +32,7 @@ import {
   TablePagination,
 } from "@/components/ui/table-pagination";
 import { isRequestError } from "@/lib/request";
+import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth-store";
 import {
   getAiHostingQuota,
@@ -57,6 +60,9 @@ import {
 type AgentRecord = AiHostingAgentListItem;
 
 const AGENT_PAGE_SIZE = 10;
+const MAX_INLINE_KB_COUNT = 2;
+const agentKnowledgeBaseChipClassName =
+  "inline-flex h-[22px] min-w-0 max-w-full items-center truncate rounded-[6px] bg-primary/10 px-1.5 text-[13px] font-normal leading-[22px] text-primary";
 
 const emptyAgentMetrics: AgentMetric[] = [
   { key: "totalSessions", label: "会话总数", value: 0, changePercent: 0 },
@@ -345,7 +351,7 @@ function AgentTable({
                   <AgentModelBadge label={agent.model.label} model={agent.model.model} />
                 </TableCell>
                 <TableCell className="py-4">
-                  <span className="text-muted-foreground">-</span>
+                  <AgentKnowledgeBasePreview agentName={agent.name} kbList={agent.kbList} />
                 </TableCell>
                 <TableCell className="py-4 text-right">
                   <div className="flex items-center justify-end gap-3">
@@ -372,5 +378,147 @@ function AgentTable({
         </TableBody>
       </Table>
     </>
+  );
+}
+
+function AgentKnowledgeBasePreview({
+  agentName,
+  kbList,
+}: {
+  agentName: string;
+  kbList: AgentRecord["kbList"];
+}) {
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [isOpen, setIsOpen] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      if (closeTimerRef.current) {
+        clearTimeout(closeTimerRef.current);
+      }
+    };
+  }, []);
+
+  if (kbList.length === 0) {
+    return <span className="text-sm text-muted-foreground">未关联</span>;
+  }
+
+  const visibleKbList = kbList.slice(0, MAX_INLINE_KB_COUNT);
+  const hasOverflow = kbList.length > MAX_INLINE_KB_COUNT;
+
+  function openPopover() {
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+
+    if (hasOverflow) {
+      setIsOpen(true);
+    }
+  }
+
+  function scheduleClosePopover() {
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
+    }
+
+    closeTimerRef.current = setTimeout(() => {
+      setIsOpen(false);
+    }, 120);
+  }
+
+  const content = (
+    <div className="flex max-w-full min-w-0 flex-wrap items-center gap-1.5">
+      {visibleKbList.map((kb) => (
+        <AgentKnowledgeBaseChip key={kb.id} name={kb.name} />
+      ))}
+      {hasOverflow ? (
+        <span className="shrink-0 text-sm text-muted-foreground">
+          等 {kbList.length} 个知识库
+        </span>
+      ) : null}
+    </div>
+  );
+
+  if (!hasOverflow) {
+    return content;
+  }
+
+  return (
+    <Popover open={isOpen} onOpenChange={setIsOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          aria-label={`查看 ${agentName} 的全部关联知识库`}
+          className="h-auto min-w-0 max-w-full justify-start whitespace-normal p-0 text-left font-normal hover:bg-transparent"
+          onBlur={scheduleClosePopover}
+          onFocus={openPopover}
+          onMouseEnter={openPopover}
+          onMouseLeave={scheduleClosePopover}
+          type="button"
+          variant="ghost"
+        >
+          {content}
+        </Button>
+      </PopoverTrigger>
+      <AgentKnowledgeBasePopoverContent
+        kbList={kbList}
+        onCloseRequest={scheduleClosePopover}
+        onOpenRequest={openPopover}
+      />
+    </Popover>
+  );
+}
+
+function AgentKnowledgeBasePopoverContent({
+  kbList,
+  onCloseRequest,
+  onOpenRequest,
+}: {
+  kbList: AgentRecord["kbList"];
+  onCloseRequest: () => void;
+  onOpenRequest: () => void;
+}) {
+  return (
+    <PopoverContent
+      align="start"
+      className="w-[20rem] p-3"
+      onBlur={onCloseRequest}
+      onCloseAutoFocus={(event) => event.preventDefault()}
+      onFocus={onOpenRequest}
+      onMouseEnter={onOpenRequest}
+      onMouseLeave={onCloseRequest}
+    >
+      <div className="space-y-3">
+        <div className="flex items-center justify-between gap-3 px-2.5">
+          <p className="text-sm font-medium text-foreground">关联知识库 · {kbList.length}</p>
+        </div>
+        <ScrollArea className="max-h-[16rem]" data-testid="agent-kb-popover-scroll">
+          <div className="space-y-1 pr-2">
+            {kbList.map((kb) => (
+              <div
+                className="flex min-h-10 items-center rounded-[8px] px-2.5 py-2"
+                key={kb.id}
+              >
+                <AgentKnowledgeBaseChip className="max-w-full" name={kb.name} />
+              </div>
+            ))}
+          </div>
+        </ScrollArea>
+      </div>
+    </PopoverContent>
+  );
+}
+
+function AgentKnowledgeBaseChip({
+  className,
+  name,
+}: {
+  className?: string;
+  name: string;
+}) {
+  return (
+    <span className={cn(agentKnowledgeBaseChipClassName, className)}>
+      <span className="truncate">{name}</span>
+    </span>
   );
 }

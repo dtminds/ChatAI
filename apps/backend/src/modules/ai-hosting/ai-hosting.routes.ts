@@ -270,6 +270,7 @@ export async function registerAiHostingRoutes(app: FastifyInstance) {
       },
     },
     async (request) => {
+      assertAiHostingManage(request);
       return apiSuccess(
         await getAgentTestService(app).testAgent(getSubUserId(request), request.body),
       );

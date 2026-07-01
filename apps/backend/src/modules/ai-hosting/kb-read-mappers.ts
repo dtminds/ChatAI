@@ -25,9 +25,12 @@ const KB_CHUNK_SOURCE_MANUAL = 1;
 const KB_CHUNK_SOURCE_SYSTEM = 2;
 const KB_CHUNK_SOURCE_SIDEBAR = 3;
 
-const SYNC_STATUS_QUEUED = new Set([-1, 2]);
+export const KB_DOC_DB_SYNC_STATUS_QUEUED = 2;
+export const KB_DOC_DB_SYNC_STATUS_FAILED = 1;
+
+const SYNC_STATUS_QUEUED = new Set([-1, KB_DOC_DB_SYNC_STATUS_QUEUED]);
 const SYNC_STATUS_COMPLETED = 0;
-const SYNC_STATUS_FAILED = 1;
+const SYNC_STATUS_FAILED = KB_DOC_DB_SYNC_STATUS_FAILED;
 const SYNC_STATUS_PARSING = new Set([3, 5, 6]);
 
 const STATUS_MESSAGE_MAX_LENGTH = 200;
@@ -301,6 +304,29 @@ function truncateStatusMessage(message: string | null | undefined) {
   return `${trimmed.slice(0, STATUS_MESSAGE_MAX_LENGTH)}…`;
 }
 
+const SHANGHAI_UTC_OFFSET = "+08:00";
+
+function pad2(value: number) {
+  return String(value).padStart(2, "0");
+}
+
+function mysqlDatetimeToIso(value: string) {
+  const trimmed = value.trim();
+  const match = trimmed.match(
+    /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})(?:\.\d+)?$/,
+  );
+
+  if (!match) {
+    return null;
+  }
+
+  const [, year, month, day, hour, minute, second] = match;
+
+  return new Date(
+    `${year}-${month}-${day}T${hour}:${minute}:${second}${SHANGHAI_UTC_OFFSET}`,
+  ).toISOString();
+}
+
 function toIsoString(value: Date | number | string | null | undefined) {
   if (value == null) {
     return new Date(0).toISOString();
@@ -308,6 +334,16 @@ function toIsoString(value: Date | number | string | null | undefined) {
 
   if (value instanceof Date) {
     return value.toISOString();
+  }
+
+  if (typeof value === "number") {
+    return new Date(value).toISOString();
+  }
+
+  const mysqlIso = mysqlDatetimeToIso(value);
+
+  if (mysqlIso) {
+    return mysqlIso;
   }
 
   const parsed = new Date(value);

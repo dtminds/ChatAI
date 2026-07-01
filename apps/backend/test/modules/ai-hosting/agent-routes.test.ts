@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { buildMockedApp } from "../../helpers/build-mocked-app";
 
 describe("AI hosting agent routes", () => {
-  it("lists tenant agents and fallback models without joins", async () => {
+  it("lists tenant agents with referenced knowledge bases from one extra query", async () => {
     const { app, authorization, db } = await createAiHostingApp();
 
     const agents = await app.inject({
@@ -22,7 +22,16 @@ describe("AI hosting agent routes", () => {
         agents: [
           {
             id: "301",
-            knowledgeBases: [],
+            kbList: [
+              {
+                id: "1",
+                name: "商品咨询知识库",
+              },
+              {
+                id: "3",
+                name: "活动政策知识库",
+              },
+            ],
             model: {
               id: "11",
               label: "Doubao-2.0-lite",
@@ -34,7 +43,16 @@ describe("AI hosting agent routes", () => {
           },
           {
             id: "303",
-            knowledgeBases: [],
+            kbList: [
+              {
+                id: "1",
+                name: "商品咨询知识库",
+              },
+              {
+                id: "3",
+                name: "活动政策知识库",
+              },
+            ],
             model: {
               id: "11",
               label: "Doubao-2.0-lite",
@@ -80,9 +98,48 @@ describe("AI hosting agent routes", () => {
     expect(db.joinCalls).toEqual([]);
     expect(db.agentListWheres).toContainEqual(["agent.uid", "=", 9001]);
     expect(db.agentListSelects).not.toContain("agent.prompt_config as prompt_config");
+    expect(db.agentListSelects).toContain(
+      "JSON_EXTRACT(agent.prompt_config, '$.available_kb_ids') as available_kb_ids",
+    );
+    expect(db.kbListExecuteCount).toBe(1);
+    expect(db.kbListWheres).toEqual([
+      ["uid", "=", 9001],
+      ["status", "=", 1],
+      ["id", "in", [1, 3]],
+    ]);
     expect(db.historyListExecuteCount).toBe(0);
     expect(db.modelListWheres).toContainEqual(["status", "=", 1]);
     expect(db.modelUidFilter).toEqual([9001, 0]);
+
+    await app.close();
+  });
+
+  it("deduplicates referenced knowledge bases when listing tenant agents", async () => {
+    const { app, authorization, db } = await createAiHostingApp();
+
+    db.setAgentPromptConfig({
+      availableKbIds: [1, 3, 1],
+      conditionLogic: "如果客户咨询成分，那么说明功效",
+    });
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/ai-hosting/agents",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data.agents[0].kbList).toEqual([
+      {
+        id: "1",
+        name: "商品咨询知识库",
+      },
+      {
+        id: "3",
+        name: "活动政策知识库",
+      },
+    ]);
+    expect(db.kbListWheres).toContainEqual(["id", "in", [1, 3]]);
 
     await app.close();
   });
@@ -882,7 +939,7 @@ describe("AI hosting agent routes", () => {
         ],
         modelId: "11",
         promptConfig: {
-          availableKbIds: [],
+          availableKbIds: [1, 3],
           conditionLogic: "如果客户咨询成分，那么说明功效",
           replyStyle: {
             length: "简洁",
@@ -918,6 +975,7 @@ describe("AI hosting agent routes", () => {
       ],
       modelId: 11,
       promptConfig: JSON.stringify({
+        available_kb_ids: [1, 3],
         condition_logic: "如果客户咨询成分，那么说明功效",
         handoff_rules: "客户要求真人",
         reply_style: {
@@ -928,6 +986,169 @@ describe("AI hosting agent routes", () => {
       }),
       uid: 9001,
     });
+
+    fetchMock.mockRestore();
+    await app.close();
+  });
+
+  it("maps Java handoff simulation results without returning a gateway error", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: `{
+    "action": "handoff",
+    "reason": "客户明确表达转人工需求"
+}`,
+          success: true,
+        }),
+        { status: 200 },
+      ),
+    );
+    const { app, authorization } = await createAiHostingApp();
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        messages: [
+          {
+            contents: [{ type: "text", text: "转人工" }],
+            role: "user",
+          },
+        ],
+        modelId: "11",
+        promptConfig: {
+          availableKbIds: [],
+          conditionLogic: "",
+          replyStyle: {
+            length: "简洁",
+            styleInstruction: "亲切自然",
+          },
+          handoffRules: "客户要求真人",
+          role: "你是护肤顾问",
+        },
+      },
+      url: "/api/server/ai-hosting/agents/test",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      data: {
+        action: "handoff",
+        reply: [{ type: "text", content: "已触发转人工" }],
+      },
+      success: true,
+    });
+
+    fetchMock.mockRestore();
+    await app.close();
+  });
+
+  it("returns a successful empty reply when Java test-agent data is not renderable", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: {
+            action: "reply",
+            reply: [],
+          },
+          success: true,
+        }),
+        { status: 200 },
+      ),
+    );
+    const { app, authorization } = await createAiHostingApp();
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        messages: [
+          {
+            contents: [{ type: "text", text: "测试" }],
+            role: "user",
+          },
+        ],
+        modelId: "11",
+        promptConfig: {
+          availableKbIds: [],
+          conditionLogic: "",
+          replyStyle: {
+            length: "简洁",
+            styleInstruction: "亲切自然",
+          },
+          handoffRules: "",
+          role: "你是护肤顾问",
+        },
+      },
+      url: "/api/server/ai-hosting/agents/test",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      data: {
+        action: "reply",
+        reply: [],
+      },
+      success: true,
+    });
+
+    fetchMock.mockRestore();
+    await app.close();
+  });
+
+  it("rejects agent simulation tests for non-manage roles", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: {
+            action: "reply",
+            reply: [{ type: "text", content: "不应调用" }],
+          },
+          success: true,
+        }),
+        { status: 200 },
+      ),
+    );
+    const { app, authorization } = await createAiHostingApp(["operator"]);
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        messages: [
+          {
+            contents: [{ type: "text", text: "我想测试 Agent" }],
+            role: "user",
+          },
+        ],
+        modelId: "11",
+        promptConfig: {
+          availableKbIds: [1],
+          conditionLogic: "",
+          replyStyle: {
+            length: "简洁",
+            styleInstruction: "亲切自然",
+          },
+          handoffRules: "",
+          role: "你是护肤顾问",
+        },
+      },
+      url: "/api/server/ai-hosting/agents/test",
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({
+      error: {
+        code: "FORBIDDEN",
+        message: "无权限访问",
+      },
+      success: false,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
 
     fetchMock.mockRestore();
     await app.close();
@@ -1252,16 +1473,28 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
         ]
       : []),
   ];
-  const kbs = Array.from({ length: options.activeKbCount ?? 1 }, (_, index) => ({
+  const kbs = Array.from({ length: options.activeKbCount ?? 3 }, (_, index) => ({
+    create_time: new Date("2024-06-15T08:00:00Z"),
     id: index + 1,
+    last_operator_id: 1,
+    name: ["商品咨询知识库", "售后政策知识库", "活动政策知识库"][index] ?? `知识库${index + 1}`,
+    operator_id: 1,
+    remark: "",
     status: 1,
     uid: 9001,
+    update_time: new Date("2024-06-15T08:01:00Z"),
   }));
   for (let index = 0; index < (options.deletedKbCount ?? 0); index += 1) {
     kbs.push({
+      create_time: new Date("2024-06-16T08:00:00Z"),
       id: 100 + index,
+      last_operator_id: 1,
+      name: `已删除知识库${index}`,
+      operator_id: 1,
+      remark: "",
       status: 0,
       uid: 9001,
+      update_time: new Date("2024-06-16T08:01:00Z"),
     });
   }
   const docs = (options.docSizeBytes ?? [12 * 1024 * 1024, 8 * 1024 * 1024]).map(
@@ -1282,6 +1515,8 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
     insertedAgent: undefined as Record<string, unknown> | undefined,
     insertedHistories: [] as Array<Record<string, unknown>>,
     joinCalls: [] as string[],
+    kbListExecuteCount: 0,
+    kbListWheres: [] as Array<[string, string, unknown]>,
     historyListExecuteCount: 0,
     historyLatestLimitValues: [] as number[],
     hostingConfigListWheres: [] as Array<[string, string, unknown]>,
@@ -1306,6 +1541,10 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
       agentPrompt = prompt;
       agents[0].prompt_config = buildPromptConfig(prompt);
     },
+    setAgentPromptConfig: (prompt: { availableKbIds: number[]; conditionLogic: string }) => {
+      agentPrompt = prompt.conditionLogic;
+      agents[0].prompt_config = buildPromptConfig(prompt.conditionLogic, prompt.availableKbIds);
+    },
     clearHistories: () => {
       histories.splice(0, histories.length);
     },
@@ -1326,7 +1565,12 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
           if (table === "xy_wap_embed_agent" || table === "xy_wap_embed_agent as agent") {
             state.agentListWheres = wheres;
 
-            return agents;
+            return agents.map((agent) => ({
+              ...agent,
+              available_kb_ids: JSON.stringify(
+                JSON.parse(agent.prompt_config).available_kb_ids,
+              ),
+            }));
           }
 
           if (table === "xy_wap_embed_ai_model") {
@@ -1354,7 +1598,20 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
           }
 
           if (table === "xy_wap_embed_agent_kb") {
-            return kbs;
+            state.kbListExecuteCount += 1;
+            state.kbListWheres = wheres;
+            const uid = Number(wheres.find(([column]) => column === "uid")?.[2]);
+            const status = Number(wheres.find(([column]) => column === "status")?.[2]);
+            const ids = wheres.find(([column]) => column === "id")?.[2] as
+              | number[]
+              | undefined;
+
+            return kbs.filter(
+              (kb) =>
+                (!Number.isFinite(uid) || kb.uid === uid) &&
+                (!Number.isFinite(status) || kb.status === status) &&
+                (!ids || ids.includes(kb.id)),
+            );
           }
 
           if (table === "xy_wap_embed_agent_kb_doc") {
@@ -1558,14 +1815,15 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
           orderByCalls.push([column, direction]);
           return builder;
         },
-        select: (selection: string | string[] | ((expressionBuilder: unknown) => unknown)) => {
+        select: (selection: unknown) => {
           if (typeof selection === "function") {
             isCountQuery = true;
             return builder;
           }
 
           if (table === "xy_wap_embed_agent as agent") {
-            state.agentListSelects = Array.isArray(selection) ? selection : [selection];
+            const selections = Array.isArray(selection) ? selection : [selection];
+            state.agentListSelects = selections.map(formatSelectExpression);
           }
 
           return builder;
@@ -1718,9 +1976,9 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
   return state;
 }
 
-function buildPromptConfig(conditionLogic: string) {
+function buildPromptConfig(conditionLogic: string, availableKbIds = [1, 3]) {
   return JSON.stringify({
-    available_kb_ids: [1, 3],
+    available_kb_ids: availableKbIds,
     condition_logic: conditionLogic,
     reply_style: {
       length: "简洁",
@@ -1729,4 +1987,28 @@ function buildPromptConfig(conditionLogic: string) {
     handoff_rules: "客户要求真人",
     role: "你是护肤顾问",
   });
+}
+
+function formatSelectExpression(selection: unknown) {
+  if (typeof selection === "string") {
+    return selection;
+  }
+
+  if (
+    selection &&
+    typeof selection === "object" &&
+    "toOperationNode" in selection &&
+    typeof selection.toOperationNode === "function"
+  ) {
+    const node = selection.toOperationNode() as {
+      alias?: { name?: string };
+      node?: { sqlFragments?: string[] };
+    };
+    const sqlText = node.node?.sqlFragments?.join("?") ?? "raw";
+    const alias = node.alias?.name;
+
+    return alias ? `${sqlText} as ${alias}` : sqlText;
+  }
+
+  return String(selection);
 }

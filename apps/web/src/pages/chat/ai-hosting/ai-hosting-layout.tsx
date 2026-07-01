@@ -6,6 +6,7 @@ import {
   AiGenerativeIcon,
   ArrowLeft02Icon,
   AiBookIcon,
+  Invoice01Icon,
   RoboticIcon,
   UserAiIcon,
 } from "@hugeicons/core-free-icons";
@@ -31,6 +32,11 @@ const aiHostingNavItems = [
     icon: UserAiIcon,
     label: "托管设置",
     to: "/chat/ai-hosting/hosting-settings",
+  },
+  {
+    icon: Invoice01Icon,
+    label: "订阅",
+    to: "/chat/ai-hosting/subscription",
   },
 ] as const;
 

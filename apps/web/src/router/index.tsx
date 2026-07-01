@@ -37,6 +37,13 @@ const AgentHostingSettingsPage = lazy(() =>
     }),
   ),
 );
+const AgentSubscriptionPage = lazy(() =>
+  import("@/pages/chat/ai-hosting/agent-subscription-page").then(
+    ({ AgentSubscriptionPage }) => ({
+      default: AgentSubscriptionPage,
+    }),
+  ),
+);
 const AgentSettingsPage = lazy(() =>
   import("@/pages/chat/ai-hosting/agent-settings-page").then(({ AgentSettingsPage }) => ({
     default: AgentSettingsPage,
@@ -234,6 +241,10 @@ export const routerConfig = [
       {
         path: "chat/ai-hosting/hosting-settings",
         element: withRouteSuspense(<AgentHostingSettingsPage />),
+      },
+      {
+        path: "chat/ai-hosting/subscription",
+        element: withRouteSuspense(<AgentSubscriptionPage />),
       },
     ],
   },

@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentManagementPage } from "@/pages/chat/ai-hosting/agent-management-page";
 import { AgentHostingSettingsPage } from "@/pages/chat/ai-hosting/agent-hosting-settings-page";
 import { AgentSettingsPage } from "@/pages/chat/ai-hosting/agent-settings-page";
+import { AgentSubscriptionPage } from "@/pages/chat/ai-hosting/agent-subscription-page";
 import { KbDetailPage } from "@/pages/chat/ai-hosting/kb-detail-page";
 import { KbDocDetailPage } from "@/pages/chat/ai-hosting/kb-doc-detail-page";
 import { KbListPage } from "@/pages/chat/ai-hosting/kb-list-page";
@@ -497,6 +498,10 @@ describe("AI hosting pages", () => {
       "href",
       "/chat/ai-hosting/hosting-settings",
     );
+    expect(screen.getByRole("link", { name: "订阅" })).toHaveAttribute(
+      "href",
+      "/chat/ai-hosting/subscription",
+    );
     expect(screen.getByRole("button", { name: "帮助手册" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "数据总览" })).toBeInTheDocument();
     expect(screen.getByText("会话总数")).toBeInTheDocument();
@@ -574,6 +579,41 @@ describe("AI hosting pages", () => {
     expect(popover).toHaveTextContent("活动政策知识库");
     expect(popover).toHaveTextContent("直播话术知识库");
     expect(within(popover).getByTestId("agent-kb-popover-scroll")).toHaveClass("max-h-[16rem]");
+  });
+
+  it("renders the static subscription page without loading usage data", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute("/chat/ai-hosting/subscription", <AgentSubscriptionPage />);
+
+    expect(screen.getByRole("heading", { level: 1, name: "订阅" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "订阅" })).toHaveAttribute(
+      "href",
+      "/chat/ai-hosting/subscription",
+    );
+    expect(screen.getByRole("region", { name: "当前套餐" })).toHaveTextContent("当前计划：团队版");
+    expect(screen.queryByRole("button", { name: "自动续费" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "管理套餐" })).toBeInTheDocument();
+    expect(screen.getByText("总积分")).toBeInTheDocument();
+    expect(screen.getAllByText("142,828")).toHaveLength(2);
+    expect(screen.getByText("/150,000")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "增购积分" })).toBeInTheDocument();
+
+    expect(screen.getByRole("heading", { level: 2, name: "全部用量" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "全部项目" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("table", { name: "用量消耗列表" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "名称" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "项目类型" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "最近使用时间" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "累计积分消耗" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "操作" })).toBeInTheDocument();
+    expect(screen.getByText("当前为内测期，暂不计费")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: "Agent" }));
+
+    expect(screen.getByRole("tab", { name: "Agent" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("当前为内测期，暂不计费")).toBeInTheDocument();
+    expect(agentService.listAiHostingAgents).not.toHaveBeenCalled();
   });
 
   it("shows document storage below 1MB with one decimal place", async () => {

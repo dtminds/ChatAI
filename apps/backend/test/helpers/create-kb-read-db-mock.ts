@@ -517,7 +517,10 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
             return builder.countResult();
           }
 
-          if (selectedColumns.includes("doc_size_sum")) {
+          if (
+            selectedColumns.includes("doc_size_sum")
+            || selectedColumns.includes("used")
+          ) {
             return builder.sumDocSizeResult();
           }
 

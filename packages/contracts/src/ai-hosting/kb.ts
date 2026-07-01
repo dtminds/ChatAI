@@ -60,12 +60,14 @@ export const KbListResponseSchema = Type.Object(
 );
 
 export const KbDocListItemSchema = Type.Object({
+  briefSummary: Type.Optional(Type.String()),
   createdAt: Type.String(),
   description: Type.Optional(Type.String()),
   docId: Type.String(),
+  docSize: Type.Number({ minimum: 0 }),
   docSuffix: Type.String(),
+  hasDocSummary: Type.Boolean(),
   docType: KbDocTypeSchema,
-  docUrl: Type.String(),
   kbId: Type.String(),
   name: Type.String(),
   sliceCount: Type.Union([Type.Number(), Type.Null()]),
@@ -77,6 +79,8 @@ export const KbDocListItemSchema = Type.Object({
 export const KbDocDetailSchema = Type.Intersect([
   KbDocListItemSchema,
   Type.Object({
+    docSummary: Type.Optional(Type.String()),
+    previewImageUrl: Type.Optional(Type.String()),
     volcDocId: Type.Optional(Type.String()),
   }),
 ]);

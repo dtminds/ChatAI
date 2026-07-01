@@ -148,9 +148,7 @@ export function KbDocDetailPage() {
       }
 
       setChunks(
-        response.chunks.map((chunk) =>
-          toKbDocChunkViewItem(chunk, doc.type, { docUrl: doc.docUrl }),
-        ),
+        response.chunks.map((chunk) => toKbDocChunkViewItem(chunk, doc.type)),
       );
       setTotal(response.pagination.total);
     } catch {
@@ -374,7 +372,7 @@ export function KbDocDetailPage() {
 
   if (!loadingPage && doc && doc.status !== "completed") {
     return (
-      <AiHostingLayout title={doc.name}>
+      <AiHostingLayout title={doc.nameWithExtension}>
         <div className="space-y-6">
           <BackToKnowledgeListButton kbId={knowledgeBase?.id ?? doc.kbId} />
           <div className="py-16 text-center">
@@ -389,7 +387,7 @@ export function KbDocDetailPage() {
   const chunkSearchField = resolveChunkSearchField(doc?.type);
 
   return (
-    <AiHostingLayout title={doc?.name ?? "文档"}>
+    <AiHostingLayout title={doc?.nameWithExtension ?? "文档"}>
       <div className="space-y-6">
         <div aria-label="文档切片头部" className="space-y-3">
           <BackToKnowledgeListButton
@@ -398,7 +396,7 @@ export function KbDocDetailPage() {
           />
           <AiHostingPageHeader
             title={doc ? <KnowledgeDocTitle doc={doc} /> : "文档"}
-            titleAriaLabel={doc?.name ?? "文档"}
+            titleAriaLabel={doc?.nameWithExtension ?? "文档"}
           />
         </div>
 
@@ -540,12 +538,24 @@ function KnowledgeDocTitle({ doc }: { doc: KbDocViewItem }) {
         className="size-7"
         extension={doc.fileExtension}
       />
-      <span className="min-w-0 truncate">{doc.name}</span>
+      <span className="min-w-0 truncate">{doc.nameWithExtension}</span>
       <Badge className="rounded-[6px] px-2 py-0.5 text-xs" variant="secondary">
-        {doc.typeLabel}
+        {getKnowledgeDocTitleTypeLabel(doc)}
       </Badge>
     </span>
   );
+}
+
+function getKnowledgeDocTitleTypeLabel(doc: KbDocViewItem) {
+  if (doc.type === "qa") {
+    return "FAQ";
+  }
+
+  if (doc.type === "image") {
+    return "图片";
+  }
+
+  return doc.fileExtension === "txt" || doc.fileExtension === "md" ? "纯文本" : "文件";
 }
 
 function AddChunkActions({

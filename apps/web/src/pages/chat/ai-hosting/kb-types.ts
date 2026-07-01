@@ -11,12 +11,17 @@ export type KbListViewItem = {
 };
 
 export type KbDocViewItem = {
+  briefSummary?: string;
   createdAt: string;
-  docUrl: string;
+  docSummary?: string;
+  fileSize: string;
   fileExtension: string;
+  hasDocSummary: boolean;
   id: string;
   kbId: string;
   name: string;
+  nameWithExtension: string;
+  previewImageUrl?: string;
   sliceCount: number | null;
   status: KbStatus;
   type: KbDocType;

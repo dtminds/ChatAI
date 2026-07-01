@@ -12,7 +12,6 @@ import type {
   KbListResponse,
 } from "@chatai/contracts";
 import { http } from "@/lib/request";
-import { buildMediaAssetUrl } from "@/lib/media-asset-url";
 import type {
   KbDocChunkViewItem,
   KbDocType as KbDocViewType,
@@ -101,14 +100,21 @@ export function toKbListViewItem(item: KbListItem): KbListViewItem {
   };
 }
 
-export function toKbDocViewItem(item: KbDocListItem): KbDocViewItem {
+export function toKbDocViewItem(item: KbDocDetail | KbDocListItem): KbDocViewItem {
+  const nameWithExtension = getDocNameWithExtension(item.name, item.docSuffix);
+
   return {
+    briefSummary: item.briefSummary,
     createdAt: formatDisplayTime(item.createdAt),
-    docUrl: item.docUrl,
+    docSummary: "docSummary" in item ? item.docSummary : undefined,
+    fileSize: formatKbDocSize(item.docSize),
     fileExtension: item.docSuffix,
+    hasDocSummary: item.hasDocSummary,
     id: item.docId,
     kbId: item.kbId,
     name: item.name,
+    nameWithExtension,
+    previewImageUrl: "previewImageUrl" in item ? item.previewImageUrl : undefined,
     sliceCount: item.sliceCount,
     status: item.status as KbStatus,
     type: item.docType as KbDocViewType,
@@ -117,12 +123,62 @@ export function toKbDocViewItem(item: KbDocListItem): KbDocViewItem {
   };
 }
 
+function getDocNameWithExtension(name: string, docSuffix: string) {
+  const normalizedName = name.trim();
+  const normalizedSuffix = docSuffix.trim().replace(/^\./u, "");
+
+  if (!normalizedName || !normalizedSuffix) {
+    return normalizedName || name;
+  }
+
+  if (normalizedName.toLowerCase().endsWith(`.${normalizedSuffix.toLowerCase()}`)) {
+    return normalizedName;
+  }
+
+  const suffixParts = normalizedSuffix.split(".");
+  if (
+    suffixParts.length > 1
+    && normalizedName.toLowerCase().endsWith(`.${suffixParts[0].toLowerCase()}`)
+  ) {
+    return `${normalizedName}.${suffixParts.slice(1).join(".")}`;
+  }
+
+  return `${normalizedName}.${normalizedSuffix}`;
+}
+
+function formatKbDocSize(size: number) {
+  if (!Number.isFinite(size) || size <= 0) {
+    return "-";
+  }
+
+  if (size < 1024) {
+    return `${Math.round(size)}B`;
+  }
+
+  const kb = size / 1024;
+
+  if (kb < 1024) {
+    return `${formatKbDocSizeNumber(kb)}KB`;
+  }
+
+  const mb = kb / 1024;
+
+  if (mb < 1024) {
+    return `${formatKbDocSizeNumber(mb)}MB`;
+  }
+
+  return `${formatKbDocSizeNumber(mb / 1024)}GB`;
+}
+
+function formatKbDocSizeNumber(value: number) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(2);
+}
+
 export function toKbDocChunkViewItem(
   item: KbChunkListItem,
   docType: KbDocViewType,
-  options?: { docUrl?: string },
 ): KbDocChunkViewItem {
-  const imageUrls = resolveKbDocChunkImageUrls(item.imageUrls, docType, options?.docUrl);
+  const imageUrls = resolveKbDocChunkImageUrls(item.imageUrls);
   const displayParts = resolveVolcChunkDisplayParts(item.volcChunkId);
   const chunk: KbDocChunkViewItem = {
     createdAt: formatDisplayTime(item.createdAt),
@@ -176,40 +232,12 @@ function formatVolcChunkIndex(chunkIndex: string) {
   return String(Number(chunkIndex) + 1);
 }
 
-export function resolveKbDocImageUrl(docUrl: string) {
-  const normalizedDocUrl = docUrl.trim();
-
-  if (!normalizedDocUrl) {
-    return "";
-  }
-
-  if (/^https?:\/\//iu.test(normalizedDocUrl)) {
-    return normalizedDocUrl;
-  }
-
-  return buildMediaAssetUrl(normalizedDocUrl);
-}
-
-function resolveKbDocChunkImageUrls(
-  imageUrls: string[] | undefined,
-  docType: KbDocViewType,
-  docUrl?: string,
-) {
+function resolveKbDocChunkImageUrls(imageUrls: string[] | undefined) {
   if (imageUrls?.length) {
     return imageUrls;
   }
 
-  if (docType !== "image" || !docUrl?.trim()) {
-    return undefined;
-  }
-
-  const normalizedDocUrl = docUrl.trim();
-
-  if (/^https?:\/\//iu.test(normalizedDocUrl)) {
-    return [normalizedDocUrl];
-  }
-
-  return [buildMediaAssetUrl(normalizedDocUrl)];
+  return undefined;
 }
 
 function buildQueryString(params: Record<string, string | number | undefined>) {

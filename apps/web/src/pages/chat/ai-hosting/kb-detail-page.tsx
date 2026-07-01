@@ -178,6 +178,7 @@ export function KbDetailPage() {
   const [retryingDocId, setRetryingDocId] = useState<string | null>(null);
   const [checkingKnowledgeQuota, setCheckingKnowledgeQuota] = useState(false);
   const requestVersionRef = useRef(0);
+  const summaryRequestVersionRef = useRef(0);
   const isMountedRef = useRef(false);
 
   useEffect(() => {
@@ -224,6 +225,7 @@ export function KbDetailPage() {
   }, [currentPage, debouncedSearchQuery, kbId]);
 
   const handleShowSummary = useCallback(async (record: KbDocViewItem) => {
+    const version = ++summaryRequestVersionRef.current;
     setSummaryRecord(record);
     setLoadingSummary(true);
     setSummaryError(false);
@@ -231,10 +233,22 @@ export function KbDetailPage() {
     try {
       const detail = toKbDocViewItem(await getKbDoc(record.id));
 
+      if (!isMountedRef.current || version !== summaryRequestVersionRef.current) {
+        return;
+      }
+
       setSummaryRecord((current) => (current?.id === record.id ? detail : current));
     } catch {
+      if (!isMountedRef.current || version !== summaryRequestVersionRef.current) {
+        return;
+      }
+
       setSummaryError(true);
     } finally {
+      if (!isMountedRef.current || version !== summaryRequestVersionRef.current) {
+        return;
+      }
+
       setLoadingSummary(false);
     }
   }, []);
@@ -537,6 +551,7 @@ export function KbDetailPage() {
       <KnowledgeDocSummarySheet
         onOpenChange={(open) => {
           if (!open) {
+            summaryRequestVersionRef.current += 1;
             setSummaryRecord(null);
             setLoadingSummary(false);
             setSummaryError(false);
@@ -915,7 +930,7 @@ function KnowledgeMarkdown({ content }: { content: string }) {
     <div className="space-y-5 text-foreground">
       <ReactMarkdown
         components={{
-          a: ({ children, ...props }) => (
+          a: ({ children, node: _node, ...props }) => (
             <a
               className="text-primary underline-offset-4 hover:underline"
               rel="noreferrer"
@@ -925,7 +940,7 @@ function KnowledgeMarkdown({ content }: { content: string }) {
               {children}
             </a>
           ),
-          code: ({ children, ...props }) => (
+          code: ({ children, node: _node, ...props }) => (
             <code className="rounded bg-muted px-1 py-0.5 text-[0.92em]" {...props}>
               {children}
             </code>

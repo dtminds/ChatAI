@@ -97,8 +97,8 @@ describe("useWorkbenchPolling", () => {
     expect(WORKBENCH_MAX_SYNC_GAP_MS).toBe(30 * 60 * 1000);
   });
 
-  it("pauses hidden tabs after 18 hours in the background even when sync succeeds", () => {
-    expect(WORKBENCH_MAX_BACKGROUND_ELAPSED_MS).toBe(18 * 60 * 60 * 1000);
+  it("pauses hidden tabs after 4 hours in the background even when sync succeeds", () => {
+    expect(WORKBENCH_MAX_BACKGROUND_ELAPSED_MS).toBe(4 * 60 * 60 * 1000);
   });
 
   it("polls immediately when the visible workbench becomes ready", async () => {

@@ -4,7 +4,7 @@ import { useWorkbenchPollingLease } from "@/pages/chat/hooks/use-workbench-polli
 
 export const WORKBENCH_POLL_HIDDEN_INTERVAL_MS = 10000;
 export const WORKBENCH_MAX_SYNC_GAP_MS = 30 * 60 * 1000;
-export const WORKBENCH_MAX_BACKGROUND_ELAPSED_MS = 18 * 60 * 60 * 1000;
+export const WORKBENCH_MAX_BACKGROUND_ELAPSED_MS = 4 * 60 * 60 * 1000;
 export const WORKBENCH_SEAT_SUMMARY_REFRESH_INTERVAL_MS = 30 * 1000;
 
 export type PollingPauseReason = "sync-gap" | "background-timeout" | "other-tab";

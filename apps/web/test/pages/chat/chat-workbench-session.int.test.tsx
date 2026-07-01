@@ -424,7 +424,7 @@ describe("ChatWorkbenchPage session flows", () => {
     await useWorkbenchStore.getState().pollWorkbench();
 
     expect(await screen.findByRole("alertdialog")).toBeInTheDocument();
-    expect(screen.getByText("消息同步已过期")).toBeInTheDocument();
+    expect(screen.getByText("消息同步已暂停")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "刷新页面" })).toBeInTheDocument();
   });
 
@@ -460,6 +460,6 @@ describe("ChatWorkbenchPage session flows", () => {
     });
 
     expect(screen.getByText("实时同步已被其他页面占用")).toBeInTheDocument();
-    expect(screen.queryByText("消息同步已过期")).not.toBeInTheDocument();
+    expect(screen.queryByText("消息同步已暂停")).not.toBeInTheDocument();
   });
 });

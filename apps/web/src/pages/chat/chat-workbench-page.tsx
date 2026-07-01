@@ -2143,7 +2143,7 @@ function getPollingPausedDialogCopy(reason: PollingPauseReason | null) {
   if (reason === "sync-gap") {
     return {
       description: "当前页面同步断档较久，为避免一次性拉取过多消息，请刷新页面",
-      title: "消息同步已过期",
+      title: "消息同步已暂停",
     };
   }
 

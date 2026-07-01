@@ -721,14 +721,12 @@ function ChatWorkbenchContent({
   }, [isSendingDraft]);
 
   useEffect(() => {
-    if (pollingPauseReason !== null || pollStatus !== "paused") {
+    if (pollStatus !== "paused" || pollPauseReason !== "cursor-invalidated") {
       return;
     }
 
-    if (pollPauseReason === "cursor-invalidated") {
-      setPollingPauseReason("sync-gap");
-    }
-  }, [pollPauseReason, pollStatus, pollingPauseReason]);
+    setPollingPauseReason((current) => current ?? "sync-gap");
+  }, [pollPauseReason, pollStatus]);
 
   useWorkbenchPolling({
     activeAccountId,

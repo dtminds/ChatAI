@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMockWorkbenchService, setWorkbenchService } from "@/pages/chat/api/workbench-service";
 import { useAuthStore } from "@/store/auth-store";
@@ -426,5 +426,40 @@ describe("ChatWorkbenchPage session flows", () => {
     expect(await screen.findByRole("alertdialog")).toBeInTheDocument();
     expect(screen.getByText("消息同步已过期")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "刷新页面" })).toBeInTheDocument();
+  });
+
+  it("does not replace an existing polling pause dialog with cursor invalidation copy", async () => {
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+
+    fireEvent(
+      window,
+      new StorageEvent("storage", {
+        key: "chatai.workbench.pollOwner",
+        newValue: JSON.stringify({
+          ownerTabId: "newer-tab",
+          ownerUserId: "sub-user-001",
+          expiresAt: Date.now() + 15000,
+          updatedAt: Date.now(),
+        }),
+      }),
+    );
+
+    expect(await screen.findByRole("alertdialog")).toBeInTheDocument();
+    expect(screen.getByText("实时同步已被其他页面占用")).toBeInTheDocument();
+
+    act(() => {
+      useWorkbenchStore.setState((state) => ({
+        pollState: {
+          ...state.pollState,
+          pauseReason: "cursor-invalidated",
+          status: "paused",
+        },
+      }));
+    });
+
+    expect(screen.getByText("实时同步已被其他页面占用")).toBeInTheDocument();
+    expect(screen.queryByText("消息同步已过期")).not.toBeInTheDocument();
   });
 });

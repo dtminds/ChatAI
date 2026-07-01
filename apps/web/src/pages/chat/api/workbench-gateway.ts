@@ -16,6 +16,7 @@ import type {
   WorkbenchConversationReadResponse,
   WorkbenchConversationUnpinResponse,
   WorkbenchConversationUnreadResponse,
+  WorkbenchUnreadSummaryDto,
   WorkbenchMessageFileDownloadStatusResponse,
   WorkbenchRevokeMessageResponse,
   WorkbenchSendMessagePayload,
@@ -114,7 +115,9 @@ export type WorkbenchAccountScopeResult = {
 
 export type WorkbenchConversationLoadResult = {
   conversations: Conversation[];
+  hasMore?: boolean;
   pollBaseline: number;
+  unreadSummary?: WorkbenchUnreadSummaryDto;
 };
 
 export type WorkbenchConversationChange =
@@ -146,6 +149,10 @@ export const CONVERSATION_MODE_CACHE_TTL_MS = 60 * 1000;
 export const CONVERSATION_MODE_LIMITS = {
   group: 100,
   single: 1000,
+} as const satisfies Record<ChatMode, number>;
+export const UNREAD_CONVERSATION_MODE_LIMITS = {
+  group: 100,
+  single: 500,
 } as const satisfies Record<ChatMode, number>;
 
 export async function bootstrapWorkbench(
@@ -321,7 +328,26 @@ export async function loadAccountConversationsByMode(
 
   return {
     conversations: conversationDtos.items.map(adaptConversation),
+    hasMore: conversationDtos.hasMore,
     pollBaseline: conversationDtos.snapshotAt,
+  };
+}
+
+export async function loadUnreadAccountConversationsByMode(
+  accountId: string,
+  mode: ChatMode,
+): Promise<WorkbenchConversationLoadResult> {
+  const conversationDtos = await getWorkbenchService().getConversations(accountId, {
+    limit: UNREAD_CONVERSATION_MODE_LIMITS[mode],
+    mode,
+    unreadOnly: true,
+  });
+
+  return {
+    conversations: conversationDtos.items.map(adaptConversation),
+    hasMore: conversationDtos.hasMore,
+    pollBaseline: conversationDtos.snapshotAt,
+    unreadSummary: conversationDtos.unreadSummary,
   };
 }
 

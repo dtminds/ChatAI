@@ -23,6 +23,41 @@ describe("createWorkbenchService", () => {
     });
   });
 
+  it("passes unread-only conversation params to the workbench API", async () => {
+    const service = createHttpWorkbenchService();
+    mock.onGet("/server/conversations").reply((config) => [
+      200,
+      {
+        hasMore: false,
+        items: [],
+        receivedParams: config.params,
+        snapshotAt: 1_778_500_000_000,
+      },
+    ]);
+
+    await expect(
+      service.getConversations("seat-1", {
+        limit: 500,
+        mode: "single",
+        unreadOnly: true,
+      }),
+    ).resolves.toMatchObject({
+      receivedParams: {
+        limit: 500,
+        mode: "single",
+        seatId: "seat-1",
+        unread_only: "1",
+      },
+    });
+    expect(mock.history.get[0]?.params).toEqual({
+      cursor: undefined,
+      limit: 500,
+      mode: "single",
+      seatId: "seat-1",
+      unread_only: "1",
+    });
+  });
+
   it("fetches my customers with seat filters", async () => {
     const service = createHttpWorkbenchService();
     mock.onGet("/server/customers").reply((config) => [

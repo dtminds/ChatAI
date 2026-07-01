@@ -54,6 +54,19 @@ describe("ConversationCard", () => {
     expect(screen.getByText("3")).toBeInTheDocument();
   });
 
+  it("caps numeric unread badges at 99+", () => {
+    render(
+      <ConversationCard
+        conversation={{ ...conversation, unread: 120 }}
+        isActive
+        onSelect={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("99+")).toBeInTheDocument();
+    expect(screen.queryByText("120")).not.toBeInTheDocument();
+  });
+
   it("does not render an epoch date when a conversation has no message time", () => {
     render(
       <ConversationCard

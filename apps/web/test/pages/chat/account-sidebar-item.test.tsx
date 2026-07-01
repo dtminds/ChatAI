@@ -54,7 +54,7 @@ describe("AccountSidebarItem", () => {
     vi.restoreAllMocks();
   });
 
-  it("hides unread indicators for the active seat without clearing unread state", () => {
+  it("shows unread count for the active taken-over seat", () => {
     render(
       <AccountSidebarItem
         account={baseAccount}
@@ -65,11 +65,11 @@ describe("AccountSidebarItem", () => {
       />,
     );
 
-    expect(screen.queryByLabelText("lsave 有未读消息")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("account-unread-dot-account-1")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("lsave 有 7 条未读消息")).toHaveTextContent("7");
+    expect(screen.getByTestId("account-unread-count-account-1")).toBeInTheDocument();
   });
 
-  it("shows a red dot for non-active taken-over seats with unread activity", () => {
+  it("shows unread count for non-active taken-over seats with unread activity", () => {
     render(
       <AccountSidebarItem
         account={baseAccount}
@@ -80,11 +80,25 @@ describe("AccountSidebarItem", () => {
       />,
     );
 
-    expect(screen.getByLabelText("lsave 有未读消息")).toHaveAttribute(
+    expect(screen.getByLabelText("lsave 有 7 条未读消息")).toHaveAttribute(
       "data-testid",
-      "account-unread-dot-account-1",
+      "account-unread-count-account-1",
     );
-    expect(screen.getByTestId("account-unread-dot-account-1")).toBeInTheDocument();
+    expect(screen.getByTestId("account-unread-count-account-1")).toHaveTextContent("7");
+  });
+
+  it("shows unread count for seats that are not taken over", () => {
+    render(
+      <AccountSidebarItem
+        account={{ ...baseAccount, takenOverEmployeeId: undefined }}
+        currentEmployeeId="emp-001"
+        isActive={false}
+        onClick={vi.fn()}
+        takeoverStatus="idle"
+      />,
+    );
+
+    expect(screen.getByLabelText("lsave 有 7 条未读消息")).toHaveTextContent("7");
   });
 
   it("keeps the takeover confirmation open with a loading action until takeover finishes", async () => {

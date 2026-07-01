@@ -47,7 +47,6 @@ type KbDocListRow = Pick<
   | "doc_size"
   | "doc_suffix"
   | "doc_type"
-  | "doc_url"
   | "id"
   | "kb_id"
   | "name"
@@ -86,7 +85,6 @@ export function mapKbDocListItem(row: KbDocListRow): KbDocListItem {
     docSuffix: row.doc_suffix,
     hasDocSummary: Boolean(Number(row.has_doc_summary ?? 0)),
     docType: mapDocType(row.doc_type),
-    docUrl: row.doc_url,
     kbId: String(row.kb_id),
     name: row.name,
     sliceCount: row.point_num,

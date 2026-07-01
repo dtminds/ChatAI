@@ -37,7 +37,6 @@ const kbDocListColumns = [
   "doc_size",
   "doc_suffix",
   "doc_type",
-  "doc_url",
   "point_num",
   "sync_error_msg",
   "sync_status",

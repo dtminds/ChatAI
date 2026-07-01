@@ -15,7 +15,6 @@ export type KbDocViewItem = {
   createdAt: string;
   docSummary?: string;
   fileSize: string;
-  docUrl: string;
   fileExtension: string;
   hasDocSummary: boolean;
   id: string;

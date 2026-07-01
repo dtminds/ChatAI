@@ -12,7 +12,6 @@ import type {
   KbListResponse,
 } from "@chatai/contracts";
 import { http } from "@/lib/request";
-import { buildMediaAssetUrl } from "@/lib/media-asset-url";
 import type {
   KbDocChunkViewItem,
   KbDocType as KbDocViewType,
@@ -109,7 +108,6 @@ export function toKbDocViewItem(item: KbDocDetail | KbDocListItem): KbDocViewIte
     createdAt: formatDisplayTime(item.createdAt),
     docSummary: "docSummary" in item ? item.docSummary : undefined,
     fileSize: formatKbDocSize(item.docSize),
-    docUrl: item.docUrl,
     fileExtension: item.docSuffix,
     hasDocSummary: item.hasDocSummary,
     id: item.docId,
@@ -178,9 +176,8 @@ function formatKbDocSizeNumber(value: number) {
 export function toKbDocChunkViewItem(
   item: KbChunkListItem,
   docType: KbDocViewType,
-  options?: { docUrl?: string },
 ): KbDocChunkViewItem {
-  const imageUrls = resolveKbDocChunkImageUrls(item.imageUrls, docType, options?.docUrl);
+  const imageUrls = resolveKbDocChunkImageUrls(item.imageUrls);
   const displayParts = resolveVolcChunkDisplayParts(item.volcChunkId);
   const chunk: KbDocChunkViewItem = {
     createdAt: formatDisplayTime(item.createdAt),
@@ -234,40 +231,12 @@ function formatVolcChunkIndex(chunkIndex: string) {
   return String(Number(chunkIndex) + 1);
 }
 
-export function resolveKbDocImageUrl(docUrl: string) {
-  const normalizedDocUrl = docUrl.trim();
-
-  if (!normalizedDocUrl) {
-    return "";
-  }
-
-  if (/^https?:\/\//iu.test(normalizedDocUrl)) {
-    return normalizedDocUrl;
-  }
-
-  return buildMediaAssetUrl(normalizedDocUrl);
-}
-
-function resolveKbDocChunkImageUrls(
-  imageUrls: string[] | undefined,
-  docType: KbDocViewType,
-  docUrl?: string,
-) {
+function resolveKbDocChunkImageUrls(imageUrls: string[] | undefined) {
   if (imageUrls?.length) {
     return imageUrls;
   }
 
-  if (docType !== "image" || !docUrl?.trim()) {
-    return undefined;
-  }
-
-  const normalizedDocUrl = docUrl.trim();
-
-  if (/^https?:\/\//iu.test(normalizedDocUrl)) {
-    return [normalizedDocUrl];
-  }
-
-  return [buildMediaAssetUrl(normalizedDocUrl)];
+  return undefined;
 }
 
 function buildQueryString(params: Record<string, string | number | undefined>) {

@@ -148,9 +148,7 @@ export function KbDocDetailPage() {
       }
 
       setChunks(
-        response.chunks.map((chunk) =>
-          toKbDocChunkViewItem(chunk, doc.type, { docUrl: doc.docUrl }),
-        ),
+        response.chunks.map((chunk) => toKbDocChunkViewItem(chunk, doc.type)),
       );
       setTotal(response.pagination.total);
     } catch {

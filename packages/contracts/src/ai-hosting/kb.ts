@@ -68,7 +68,6 @@ export const KbDocListItemSchema = Type.Object({
   docSuffix: Type.String(),
   hasDocSummary: Type.Boolean(),
   docType: KbDocTypeSchema,
-  docUrl: Type.String(),
   kbId: Type.String(),
   name: Type.String(),
   sliceCount: Type.Union([Type.Number(), Type.Null()]),

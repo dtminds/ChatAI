@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
-import { resolveKbDocImageUrl } from "../api/kb-service";
 import type { KbDocChunkViewItem, KbDocViewItem } from "../kb-types";
 import { IMAGE_CHUNK_WORKSPACE_SHELL } from "./image-chunk-layout";
 import { ImageDocSourcePanel } from "./image-doc-source-panel";
@@ -15,7 +14,7 @@ export function ImageKnowledgeChunkWorkspace({
   doc: KbDocViewItem;
   loading: boolean;
 }) {
-  const docImageUrl = resolveKbDocImageUrl(doc.docUrl);
+  const docImageUrl = chunks.find((chunk) => chunk.imageUrls?.[0])?.imageUrls?.[0] ?? "";
   const leftPanelRef = useRef<HTMLElement>(null);
   const [matchedHeight, setMatchedHeight] = useState<number>();
 

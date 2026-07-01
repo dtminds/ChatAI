@@ -94,7 +94,6 @@ describe("kb-read-mappers", () => {
         doc_suffix: "doc",
         doc_type: 2,
         doc_update_time: null,
-        doc_url: "kb-docs/example.doc",
         has_doc_summary: 1,
         id: 1001,
         kb_id: 88,

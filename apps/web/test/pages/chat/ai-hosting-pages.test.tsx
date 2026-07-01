@@ -2790,7 +2790,7 @@ describe("AI hosting pages", () => {
       "/chat/ai-hosting/kb/:kbId/docs/:docId",
     );
 
-    expect(await screen.findByRole("heading", { level: 1, name: "常见问题解答" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: "常见问题解答.faq" })).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "文件" })).toBeInTheDocument();
     expect(screen.getByText("FAQ")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "华为产品知识" })).toHaveAttribute(
@@ -2973,9 +2973,10 @@ describe("AI hosting pages", () => {
       "/chat/ai-hosting/kb/:kbId/docs/:docId",
     );
 
-    await screen.findByRole("heading", { level: 1, name: "产品说明大全" });
+    await screen.findByRole("heading", { level: 1, name: "产品说明大全.doc" });
     expect(screen.getByRole("img", { name: "Word 文件" })).toBeInTheDocument();
-    expect(screen.getByText("文件（.doc）")).toBeInTheDocument();
+    expect(screen.getByText("文件")).toBeInTheDocument();
+    expect(screen.queryByText("文件（.doc）")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "华为产品知识" })).toHaveAttribute(
       "href",
       "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
@@ -3079,10 +3080,11 @@ describe("AI hosting pages", () => {
       "/chat/ai-hosting/kb/:kbId/docs/:docId",
     );
 
-    await screen.findByRole("heading", { level: 1, name: "产品宣传图" });
+    await screen.findByRole("heading", { level: 1, name: "产品宣传图.png" });
     expect(screen.getByRole("img", { name: "产品宣传图" })).toBeInTheDocument();
     expect(screen.queryByPlaceholderText("搜索切片 ID")).not.toBeInTheDocument();
-    expect(screen.getByText("图片（.png）")).toBeInTheDocument();
+    expect(screen.getByText("图片")).toBeInTheDocument();
+    expect(screen.queryByText("图片（.png）")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "华为产品知识" })).toHaveAttribute(
       "href",
       "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",

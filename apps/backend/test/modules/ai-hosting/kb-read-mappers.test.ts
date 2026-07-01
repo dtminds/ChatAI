@@ -276,7 +276,7 @@ describe("kb-read-mappers", () => {
       mapKbChunkListItem(
         {
           content: "kb-images/example.png",
-          create_time: new Date("2026-06-18T15:22:22.000Z"),
+          create_time: "2026-06-18 15:22:22",
           description: "对该图片的解析文字",
           doc_id: 1002,
           html_content: null,
@@ -293,7 +293,7 @@ describe("kb-read-mappers", () => {
           tokens: null,
           type: "image",
           uid: 9001,
-          update_time: new Date("2026-06-18T15:22:22.000Z"),
+          update_time: "2026-06-18 15:22:22",
           volc_chunk_id: null,
           volc_doc_id: null,
           volc_resource_id: null,
@@ -304,21 +304,21 @@ describe("kb-read-mappers", () => {
       chunkId: "503",
       chunkType: "image",
       content: "对该图片的解析文字",
-      createdAt: "2026-06-18T15:22:22.000Z",
+      createdAt: "2026-06-18T07:22:22.000Z",
       description: "对该图片的解析文字",
       docId: "1002",
       imageUrls: ["https://b5.bokr.com.cn/kb-images/example.png"],
       kbId: "1",
       source: "system",
       title: "产品宣传图",
-      updatedAt: "2026-06-18T15:22:22.000Z",
+      updatedAt: "2026-06-18T07:22:22.000Z",
     });
   });
 
   it("normalizes mysql Date values as Shanghai wall clock on UTC hosts", () => {
     expect(
       mapKbListItem({
-        create_time: "2026-06-29 10:07:09",
+        create_time: new Date(Date.UTC(2026, 5, 29, 10, 7, 9)),
         id: 88,
         last_operator_id: 1,
         name: "售后问题解答",

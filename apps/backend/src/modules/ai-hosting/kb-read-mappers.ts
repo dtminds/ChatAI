@@ -306,10 +306,6 @@ function truncateStatusMessage(message: string | null | undefined) {
 
 const SHANGHAI_UTC_OFFSET = "+08:00";
 
-function pad2(value: number) {
-  return String(value).padStart(2, "0");
-}
-
 function mysqlDatetimeToIso(value: string) {
   const trimmed = value.trim();
   const match = trimmed.match(
@@ -327,8 +323,10 @@ function mysqlDatetimeToIso(value: string) {
   ).toISOString();
 }
 
-function dateToMysqlDatetimeString(value: Date) {
-  return `${value.getFullYear()}-${pad2(value.getMonth() + 1)}-${pad2(value.getDate())} ${pad2(value.getHours())}:${pad2(value.getMinutes())}:${pad2(value.getSeconds())}`;
+function mysqlDateToIso(value: Date) {
+  const wallClockUtcMs = value.getTime() - value.getTimezoneOffset() * 60_000;
+
+  return new Date(wallClockUtcMs - 8 * 60 * 60_000).toISOString();
 }
 
 function toIsoString(value: Date | number | string | null | undefined) {
@@ -337,11 +335,11 @@ function toIsoString(value: Date | number | string | null | undefined) {
   }
 
   if (value instanceof Date) {
-    return mysqlDatetimeToIso(dateToMysqlDatetimeString(value)) ?? value.toISOString();
+    return mysqlDateToIso(value);
   }
 
   if (typeof value === "number") {
-    return new Date(value).toISOString();
+    return mysqlDateToIso(new Date(value));
   }
 
   const mysqlIso = mysqlDatetimeToIso(value);

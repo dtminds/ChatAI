@@ -332,7 +332,18 @@ describe("ChatWorkbenchPage", () => {
   it("loads unread conversations for the next account when the unread view is active", async () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();
-    const getConversations = vi.fn(baseService.getConversations);
+    const ndtSingleBaselineGate = createDeferred();
+    const getConversations = vi.fn(async (seatId, options) => {
+      if (
+        seatId === "ndt" &&
+        options?.mode === "single" &&
+        !options.unreadOnly
+      ) {
+        await ndtSingleBaselineGate.promise;
+      }
+
+      return baseService.getConversations(seatId, options);
+    });
 
     window.localStorage.setItem(
       "chatai.conversationView",
@@ -358,6 +369,26 @@ describe("ChatWorkbenchPage", () => {
     });
 
     await user.click(screen.getByTestId("account-sidebar-item-ndt"));
+
+    await waitFor(() => {
+      expect(getConversations).toHaveBeenCalledWith(
+        "ndt",
+        expect.objectContaining({
+          limit: 1000,
+          mode: "single",
+        }),
+      );
+    });
+    expect(getConversations).not.toHaveBeenCalledWith(
+      "ndt",
+      expect.objectContaining({
+        limit: 500,
+        mode: "single",
+        unreadOnly: true,
+      }),
+    );
+
+    ndtSingleBaselineGate.resolve();
 
     await waitFor(() => {
       expect(getConversations).toHaveBeenCalledWith(

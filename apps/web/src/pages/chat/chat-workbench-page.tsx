@@ -880,7 +880,11 @@ function ChatWorkbenchContent({
   ]);
 
   useEffect(() => {
-    if (!activeAccountId || resolvedConversationView !== "unread") {
+    if (
+      !activeAccountId ||
+      resolvedConversationView !== "unread" ||
+      isConversationLoading
+    ) {
       return;
     }
 
@@ -888,6 +892,7 @@ function ChatWorkbenchContent({
   }, [
     activeAccountId,
     activeMode,
+    isConversationLoading,
     loadUnreadConversations,
     resolvedConversationView,
   ]);

@@ -511,6 +511,53 @@ describe("useWorkbenchPolling", () => {
     expect(onPollingPaused).toHaveBeenCalledWith("sync-gap");
   });
 
+  it("resets the sync gap timer when the active account changes", async () => {
+    vi.useFakeTimers();
+    setVisibilityState("visible");
+    const pollWorkbench = vi
+      .fn()
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValue(false);
+    const onPollingPaused = vi.fn();
+    const { rerender } = render(
+      <PollingHarness
+        activeAccountId="acct-001"
+        intervalMs={WORKBENCH_MAX_SYNC_GAP_MS * 2}
+        onPollingPaused={onPollingPaused}
+        pollWorkbench={pollWorkbench}
+      />,
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(WORKBENCH_MAX_SYNC_GAP_MS - 1);
+    });
+
+    rerender(
+      <PollingHarness
+        activeAccountId="acct-002"
+        intervalMs={WORKBENCH_MAX_SYNC_GAP_MS * 2}
+        onPollingPaused={onPollingPaused}
+        pollWorkbench={pollWorkbench}
+      />,
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+
+    expect(onPollingPaused).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(WORKBENCH_MAX_SYNC_GAP_MS - 1);
+    });
+
+    expect(onPollingPaused).toHaveBeenCalledWith("sync-gap");
+  });
+
   it("pauses after the background timeout elapses even when hidden polls succeed", async () => {
     vi.useFakeTimers();
     setVisibilityState("hidden");

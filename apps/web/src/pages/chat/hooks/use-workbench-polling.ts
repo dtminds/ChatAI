@@ -34,6 +34,7 @@ export function useWorkbenchPolling({
   const isRefreshingSeatSummariesRef = useRef(false);
   const pauseReasonRef = useRef<PollingPauseReason | undefined>(undefined);
   const lastSuccessfulPollAtRef = useRef(Date.now());
+  const syncScopeKeyRef = useRef<string | undefined>(undefined);
   const hiddenSinceRef = useRef<number | undefined>(
     typeof document !== "undefined" && document.visibilityState === "hidden"
       ? Date.now()
@@ -109,6 +110,12 @@ export function useWorkbenchPolling({
     let syncGapTimeoutId: number | undefined;
     let backgroundTimeoutId: number | undefined;
     let cancelled = false;
+    const syncScopeKey = `${currentUserId}:${activeAccountId}`;
+
+    if (syncScopeKeyRef.current !== syncScopeKey) {
+      syncScopeKeyRef.current = syncScopeKey;
+      lastSuccessfulPollAtRef.current = Date.now();
+    }
 
     const clearScheduledPoll = () => {
       if (timeoutId == null) {

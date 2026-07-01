@@ -37,7 +37,7 @@ export function MessageForwardSelectedMessagesDialog({
                 key={message.uiMessageKey}
               >
                 <p className="mb-1 text-xs text-muted-foreground">
-                  {message.senderDisplayName || message.sender.name || message.author}
+                  {message.senderDisplayName || message.sender?.name || message.author}
                 </p>
                 <MessageForwardPreviewContent message={message} />
               </div>

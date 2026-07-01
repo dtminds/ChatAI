@@ -83,6 +83,7 @@ function setVisibilityState(visibilityState: DocumentVisibilityState) {
 
 describe("useWorkbenchPolling", () => {
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.useRealTimers();
     setVisibilityState("visible");
     Object.defineProperty(document, "hasFocus", {
@@ -434,6 +435,41 @@ describe("useWorkbenchPolling", () => {
     expect(onPollingPaused).toHaveBeenCalledWith("sync-gap");
   });
 
+  it("reschedules the sync gap timer if it fires before the threshold", async () => {
+    vi.useFakeTimers();
+    setVisibilityState("visible");
+    const pollWorkbench = vi.fn().mockResolvedValue(false);
+    const onPollingPaused = vi.fn();
+    const startedAt = Date.now();
+    const nowSpy = vi.spyOn(Date, "now");
+
+    render(
+      <PollingHarness
+        intervalMs={WORKBENCH_MAX_SYNC_GAP_MS * 2}
+        onPollingPaused={onPollingPaused}
+        pollWorkbench={pollWorkbench}
+      />,
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    nowSpy.mockReturnValue(startedAt + WORKBENCH_MAX_SYNC_GAP_MS - 1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(WORKBENCH_MAX_SYNC_GAP_MS);
+    });
+
+    expect(onPollingPaused).not.toHaveBeenCalled();
+
+    nowSpy.mockReturnValue(startedAt + WORKBENCH_MAX_SYNC_GAP_MS);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+
+    expect(onPollingPaused).toHaveBeenCalledWith("sync-gap");
+  });
+
   it("pauses after the background timeout elapses even when hidden polls succeed", async () => {
     vi.useFakeTimers();
     setVisibilityState("hidden");
@@ -466,6 +502,44 @@ describe("useWorkbenchPolling", () => {
     });
 
     expect(pollWorkbench).toHaveBeenCalledTimes(callCountAfterPause);
+  });
+
+  it("reschedules the background timer if it fires before the threshold", async () => {
+    vi.useFakeTimers();
+    setVisibilityState("hidden");
+    const onPollingPaused = vi.fn();
+    const startedAt = Date.now();
+    const pollWorkbench = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <PollingHarness
+        onPollingPaused={onPollingPaused}
+        pollWorkbench={pollWorkbench}
+      />,
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(WORKBENCH_MAX_BACKGROUND_ELAPSED_MS - 1);
+    });
+
+    expect(onPollingPaused).not.toHaveBeenCalled();
+
+    const nowSpy = vi
+      .spyOn(Date, "now")
+      .mockReturnValue(startedAt + WORKBENCH_MAX_BACKGROUND_ELAPSED_MS - 1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+
+    expect(onPollingPaused).not.toHaveBeenCalled();
+
+    nowSpy.mockRestore();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+
+    expect(onPollingPaused).toHaveBeenCalledWith("background-timeout");
   });
 
   it("runs seat summary refresh on a slower cadence than active polling", async () => {

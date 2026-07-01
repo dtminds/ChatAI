@@ -237,7 +237,9 @@ export function useWorkbenchPolling({
       );
 
       syncGapTimeoutId = window.setTimeout(() => {
-        pauseIfSyncGapTimedOut();
+        if (!pauseIfSyncGapTimedOut()) {
+          scheduleSyncGapTimer();
+        }
       }, remainingMs);
     };
 
@@ -254,7 +256,9 @@ export function useWorkbenchPolling({
       );
 
       backgroundTimeoutId = window.setTimeout(() => {
-        pauseIfBackgroundTimedOut();
+        if (!pauseIfBackgroundTimedOut()) {
+          scheduleBackgroundTimer();
+        }
       }, remainingMs);
     };
 

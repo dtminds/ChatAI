@@ -42,7 +42,9 @@ type KbListRow = Pick<
 
 type KbDocListRow = Pick<
   Selectable<XyWapEmbedAgentKbDoc>,
+  | "brief_summary"
   | "create_time"
+  | "doc_size"
   | "doc_suffix"
   | "doc_type"
   | "doc_url"
@@ -54,10 +56,12 @@ type KbDocListRow = Pick<
   | "sync_error_msg"
   | "sync_status"
   | "update_time"
->;
+> & {
+  has_doc_summary?: number | string | boolean | null;
+};
 
 type KbDocDetailRow = KbDocListRow &
-  Pick<Selectable<XyWapEmbedAgentKbDoc>, "volc_doc_id">;
+  Pick<Selectable<XyWapEmbedAgentKbDoc>, "doc_summary" | "volc_doc_id">;
 
 export function mapKbListItem(row: KbListRow): KbListItem {
   return {
@@ -74,10 +78,13 @@ export function mapKbDocListItem(row: KbDocListRow): KbDocListItem {
   const statusMessage = truncateStatusMessage(row.sync_error_msg);
 
   return {
+    briefSummary: normalizeOptionalText(row.brief_summary),
     createdAt: toIsoString(row.create_time),
     description: row.remark ?? undefined,
     docId: String(row.id),
+    docSize: Number(row.doc_size ?? 0),
     docSuffix: row.doc_suffix,
+    hasDocSummary: Boolean(Number(row.has_doc_summary ?? 0)),
     docType: mapDocType(row.doc_type),
     docUrl: row.doc_url,
     kbId: String(row.kb_id),
@@ -89,9 +96,17 @@ export function mapKbDocListItem(row: KbDocListRow): KbDocListItem {
   };
 }
 
+function normalizeOptionalText(value: string | null | undefined) {
+  const normalized = value?.trim();
+
+  return normalized ? normalized : undefined;
+}
+
 export function mapKbDocDetail(row: KbDocDetailRow): KbDocDetail {
   return {
     ...mapKbDocListItem(row),
+    docSummary: normalizeOptionalText(row.doc_summary),
+    hasDocSummary: Boolean(normalizeOptionalText(row.doc_summary)),
     volcDocId: row.volc_doc_id ?? undefined,
   };
 }

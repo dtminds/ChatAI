@@ -101,20 +101,78 @@ export function toKbListViewItem(item: KbListItem): KbListViewItem {
   };
 }
 
-export function toKbDocViewItem(item: KbDocListItem): KbDocViewItem {
+export function toKbDocViewItem(item: KbDocDetail | KbDocListItem): KbDocViewItem {
+  const nameWithExtension = getDocNameWithExtension(item.name, item.docSuffix);
+
   return {
+    briefSummary: item.briefSummary,
     createdAt: formatDisplayTime(item.createdAt),
+    docSummary: "docSummary" in item ? item.docSummary : undefined,
+    fileSize: formatKbDocSize(item.docSize),
     docUrl: item.docUrl,
     fileExtension: item.docSuffix,
+    hasDocSummary: item.hasDocSummary,
     id: item.docId,
     kbId: item.kbId,
     name: item.name,
+    nameWithExtension,
     sliceCount: item.sliceCount,
     status: item.status as KbStatus,
     type: item.docType as KbDocViewType,
     typeLabel: getDocTypeLabel(item.docType, item.docSuffix),
     updatedAt: formatDisplayTime(item.updatedAt),
   };
+}
+
+function getDocNameWithExtension(name: string, docSuffix: string) {
+  const normalizedName = name.trim();
+  const normalizedSuffix = docSuffix.trim().replace(/^\./u, "");
+
+  if (!normalizedName || !normalizedSuffix) {
+    return normalizedName || name;
+  }
+
+  if (normalizedName.toLowerCase().endsWith(`.${normalizedSuffix.toLowerCase()}`)) {
+    return normalizedName;
+  }
+
+  const suffixParts = normalizedSuffix.split(".");
+  if (
+    suffixParts.length > 1
+    && normalizedName.toLowerCase().endsWith(`.${suffixParts[0].toLowerCase()}`)
+  ) {
+    return `${normalizedName}.${suffixParts.slice(1).join(".")}`;
+  }
+
+  return `${normalizedName}.${normalizedSuffix}`;
+}
+
+function formatKbDocSize(size: number) {
+  if (!Number.isFinite(size) || size <= 0) {
+    return "-";
+  }
+
+  if (size < 1024) {
+    return `${Math.round(size)}B`;
+  }
+
+  const kb = size / 1024;
+
+  if (kb < 1024) {
+    return `${formatKbDocSizeNumber(kb)}KB`;
+  }
+
+  const mb = kb / 1024;
+
+  if (mb < 1024) {
+    return `${formatKbDocSizeNumber(mb)}MB`;
+  }
+
+  return `${formatKbDocSizeNumber(mb / 1024)}GB`;
+}
+
+function formatKbDocSizeNumber(value: number) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(2);
 }
 
 export function toKbDocChunkViewItem(

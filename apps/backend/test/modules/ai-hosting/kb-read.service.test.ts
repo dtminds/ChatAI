@@ -39,10 +39,12 @@ const tenant = {
 
 const kbListColumns = ["id", "name", "remark", "create_time", "update_time"];
 const kbDocListColumns = [
+  "brief_summary",
   "id",
   "kb_id",
   "name",
   "remark",
+  "doc_size",
   "doc_suffix",
   "doc_type",
   "doc_url",
@@ -51,6 +53,25 @@ const kbDocListColumns = [
   "sync_status",
   "create_time",
   "update_time",
+  "has_doc_summary",
+];
+const kbDocDetailColumns = [
+  "brief_summary",
+  "id",
+  "kb_id",
+  "name",
+  "remark",
+  "doc_size",
+  "doc_suffix",
+  "doc_type",
+  "doc_url",
+  "point_num",
+  "sync_error_msg",
+  "sync_status",
+  "create_time",
+  "update_time",
+  "doc_summary",
+  "volc_doc_id",
 ];
 
 function createService(
@@ -528,7 +549,7 @@ describe("KbReadService", () => {
     expect(selectedDetailQueries).toEqual([
       {
         selectedAll: false,
-        selectedColumns: [...kbDocListColumns, "volc_doc_id"],
+        selectedColumns: kbDocDetailColumns,
       },
     ]);
   });

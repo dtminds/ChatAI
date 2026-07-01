@@ -540,7 +540,7 @@ function KnowledgeDocTitle({ doc }: { doc: KbDocViewItem }) {
         className="size-7"
         extension={doc.fileExtension}
       />
-      <span className="min-w-0 truncate">{doc.name}</span>
+      <span className="min-w-0 truncate">{doc.nameWithExtension}</span>
       <Badge className="rounded-[6px] px-2 py-0.5 text-xs" variant="secondary">
         {doc.typeLabel}
       </Badge>

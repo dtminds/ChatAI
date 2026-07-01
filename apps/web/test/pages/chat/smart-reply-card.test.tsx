@@ -862,7 +862,9 @@ describe("SmartReplyCard", () => {
         {
           createdAt: "",
           docId: "22",
+          docSize: 0,
           docSuffix: "faq.xlsx",
+          hasDocSummary: false,
           docType: "qa",
           docUrl: "",
           kbId: "11",
@@ -942,7 +944,9 @@ describe("SmartReplyCard", () => {
         {
           createdAt: "",
           docId: "21",
+          docSize: 0,
           docSuffix: "faq.xlsx",
+          hasDocSummary: false,
           docType: "qa",
           docUrl: "",
           kbId: "11",
@@ -954,7 +958,9 @@ describe("SmartReplyCard", () => {
         {
           createdAt: "",
           docId: "22",
+          docSize: 0,
           docSuffix: "faq.xlsx",
+          hasDocSummary: false,
           docType: "qa",
           docUrl: "",
           kbId: "11",
@@ -1045,7 +1051,9 @@ describe("SmartReplyCard", () => {
         {
           createdAt: "",
           docId: "22",
+          docSize: 0,
           docSuffix: "faq.xlsx",
+          hasDocSummary: false,
           docType: "qa",
           docUrl: "",
           kbId: "11",

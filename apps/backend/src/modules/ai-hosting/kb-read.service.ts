@@ -6,7 +6,7 @@ import type {
   KbDocType,
   KbListResponse,
 } from "@chatai/contracts";
-import type { Kysely } from "kysely";
+import { sql, type Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
 import { BadRequestError, NotFoundError } from "../../shared/errors.js";
 import type { RequestAwareLogger } from "../../shared/logger.js";
@@ -29,10 +29,12 @@ const maxPageSize = 100;
 const maxKbListPageSize = 200;
 const kbListColumns = ["id", "name", "remark", "create_time", "update_time"] as const;
 const kbDocListColumns = [
+  "brief_summary",
   "id",
   "kb_id",
   "name",
   "remark",
+  "doc_size",
   "doc_suffix",
   "doc_type",
   "doc_url",
@@ -42,7 +44,7 @@ const kbDocListColumns = [
   "create_time",
   "update_time",
 ] as const;
-const kbDocDetailColumns = [...kbDocListColumns, "volc_doc_id"] as const;
+const kbDocDetailColumns = [...kbDocListColumns, "doc_summary", "volc_doc_id"] as const;
 
 export class KbReadService {
   constructor(
@@ -135,6 +137,7 @@ export class KbReadService {
     let query = this.db
       .selectFrom("xy_wap_embed_agent_kb_doc")
       .select(kbDocListColumns)
+      .select(sql<number>`case when doc_summary is null or trim(doc_summary) = '' then 0 else 1 end`.as("has_doc_summary"))
       .where("uid", "=", uid)
       .where("kb_id", "=", kbNumericId)
       .where("status", "=", dbActiveStatus);

@@ -32,11 +32,16 @@ const MOCK_KB_LIST: KbListViewItem[] = [
 
 const INITIAL_MOCK_KB_DOCS: KbDocViewItem[] = [
   {
+    briefSummary: "覆盖产品规格、售后政策和常见咨询场景",
     docUrl: "kb-docs/knowledge-1.doc",
+    docSummary: "## 文档概览\n\n本文档覆盖产品规格和售后政策。\n\n### 核心内容\n\n- 产品参数\n- 售后流程",
+    fileSize: "12MB",
     fileExtension: "doc",
+    hasDocSummary: true,
     id: "knowledge-1",
     kbId: "W7zU2fWkVSp65OTAjDd3-w",
     name: "产品说明大全",
+    nameWithExtension: "产品说明大全.doc",
     type: "document",
     typeLabel: "文件（.doc）",
     sliceCount: 20,
@@ -46,10 +51,13 @@ const INITIAL_MOCK_KB_DOCS: KbDocViewItem[] = [
   },
   {
     docUrl: "kb-images/knowledge-2.png",
+    fileSize: "8MB",
     fileExtension: "png",
+    hasDocSummary: false,
     id: "knowledge-2",
     kbId: "W7zU2fWkVSp65OTAjDd3-w",
     name: "图片解析大全",
+    nameWithExtension: "图片解析大全.png",
     type: "image",
     typeLabel: "图片（.png）",
     sliceCount: null,
@@ -59,10 +67,13 @@ const INITIAL_MOCK_KB_DOCS: KbDocViewItem[] = [
   },
   {
     docUrl: "kb-faq/knowledge-3.faq",
+    fileSize: "1KB",
     fileExtension: "faq",
+    hasDocSummary: false,
     id: "knowledge-3",
     kbId: "W7zU2fWkVSp65OTAjDd3-w",
     name: "常见问题解答",
+    nameWithExtension: "常见问题解答.faq",
     type: "qa",
     typeLabel: "FAQ",
     sliceCount: 45,
@@ -72,10 +83,13 @@ const INITIAL_MOCK_KB_DOCS: KbDocViewItem[] = [
   },
   {
     docUrl: "kb-docs/knowledge-4.txt",
+    fileSize: "1KB",
     fileExtension: "txt",
+    hasDocSummary: false,
     id: "knowledge-4",
     kbId: "W7zU2fWkVSp65OTAjDd3-w",
     name: "文本知识集合",
+    nameWithExtension: "文本知识集合.txt",
     type: "document",
     typeLabel: "纯文本",
     sliceCount: null,
@@ -85,10 +99,13 @@ const INITIAL_MOCK_KB_DOCS: KbDocViewItem[] = [
   },
   {
     docUrl: "kb-docs/knowledge-5.pdf",
+    fileSize: "1MB",
     fileExtension: "pdf",
+    hasDocSummary: false,
     id: "knowledge-5",
     kbId: "W7zU2fWkVSp65OTAjDd3-w",
     name: "售前场景话术",
+    nameWithExtension: "售前场景话术.pdf",
     type: "document",
     typeLabel: "文件（.pdf）",
     sliceCount: null,
@@ -98,10 +115,13 @@ const INITIAL_MOCK_KB_DOCS: KbDocViewItem[] = [
   },
   {
     docUrl: "kb-docs/knowledge-6.doc",
+    fileSize: "1MB",
     fileExtension: "doc",
+    hasDocSummary: false,
     id: "knowledge-6",
     kbId: "88",
     name: "售后政策说明",
+    nameWithExtension: "售后政策说明.doc",
     type: "document",
     typeLabel: "文件（.doc）",
     sliceCount: 18,
@@ -111,10 +131,13 @@ const INITIAL_MOCK_KB_DOCS: KbDocViewItem[] = [
   },
   {
     docUrl: "kb-faq/knowledge-7.faq",
+    fileSize: "1KB",
     fileExtension: "faq",
+    hasDocSummary: false,
     id: "knowledge-7",
     kbId: "89",
     name: "续费 FAQ",
+    nameWithExtension: "续费 FAQ.faq",
     type: "qa",
     typeLabel: "FAQ",
     sliceCount: 12,
@@ -124,10 +147,13 @@ const INITIAL_MOCK_KB_DOCS: KbDocViewItem[] = [
   },
   {
     docUrl: "kb-images/knowledge-8.png",
+    fileSize: "1MB",
     fileExtension: "png",
+    hasDocSummary: false,
     id: "knowledge-8",
     kbId: "W7zU2fWkVSp65OTAjDd3-w",
     name: "产品宣传图",
+    nameWithExtension: "产品宣传图.png",
     type: "image",
     typeLabel: "图片（.png）",
     sliceCount: 1,
@@ -258,8 +284,11 @@ function toKbListItem(item: KbListViewItem): KbListItem {
 
 function toKbDocListItem(record: KbDocViewItem): KbDocListItem {
   return {
+    briefSummary: record.briefSummary,
     createdAt: toIsoTimestamp(record.createdAt),
     docId: record.id,
+    docSize: parseMockFileSize(record.fileSize),
+    hasDocSummary: record.hasDocSummary,
     docSuffix: record.fileExtension,
     docType: record.type,
     docUrl: record.docUrl,
@@ -269,6 +298,38 @@ function toKbDocListItem(record: KbDocViewItem): KbDocListItem {
     status: record.status,
     updatedAt: toIsoTimestamp(record.updatedAt),
   };
+}
+
+function toKbDocDetail(record: KbDocViewItem): KbDocDetail {
+  return {
+    ...toKbDocListItem(record),
+    docSummary: record.docSummary,
+  };
+}
+
+function parseMockFileSize(fileSize: string) {
+  const match = fileSize.match(/^(\d+(?:\.\d+)?)(B|KB|MB|GB)$/u);
+
+  if (!match) {
+    return 0;
+  }
+
+  const value = Number(match[1]);
+  const unit = match[2];
+
+  if (unit === "GB") {
+    return value * 1024 * 1024 * 1024;
+  }
+
+  if (unit === "MB") {
+    return value * 1024 * 1024;
+  }
+
+  if (unit === "KB") {
+    return value * 1024;
+  }
+
+  return value;
 }
 
 function toKbChunkListItem(chunk: KbDocChunkViewItem): KbChunkListItem {
@@ -427,7 +488,7 @@ export function createMockKbDocDetail(docId: string): KbDocDetail {
   }
 
   return {
-    ...toKbDocListItem(record),
+    ...toKbDocDetail(record),
     volcDocId: `volc-${record.id}`,
   };
 }

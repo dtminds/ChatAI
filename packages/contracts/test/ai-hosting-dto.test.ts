@@ -11,6 +11,7 @@ import {
   AiHostingModelListResponseSchema,
   AiHostingQuotaOverviewSchema,
   KbDocCreateRequestSchema,
+  KbDocDetailSchema,
   KbDocListResponseSchema,
   KbCreateResponseSchema,
   KbListResponseSchema,
@@ -340,6 +341,35 @@ describe("AI hosting DTOs", () => {
     ).toBe(false);
   });
 
+  it("returns summary preview fields for kb document lists", () => {
+    expect(
+      Value.Check(KbDocListResponseSchema, {
+        docs: [
+          {
+            briefSummary: "这是一份产品知识概览",
+            createdAt: "2026-06-18T15:22:22.000Z",
+            docId: "1001",
+            docSize: 4096,
+            docSuffix: "pdf",
+            hasDocSummary: true,
+            docType: "document",
+            docUrl: "kb-docs/demo.pdf",
+            kbId: "1",
+            name: "产品手册",
+            sliceCount: 20,
+            status: "completed",
+            updatedAt: "2026-06-20T15:22:22.000Z",
+          },
+        ],
+        pagination: {
+          page: 1,
+          pageSize: 10,
+          total: 1,
+        },
+      }),
+    ).toBe(true);
+  });
+
   it("returns ai hosting quota overview for sidebar display", () => {
     expect(
       Value.Check(AiHostingQuotaOverviewSchema, {
@@ -355,6 +385,28 @@ describe("AI hosting DTOs", () => {
           limit: 20,
           used: 3,
         },
+      }),
+    ).toBe(true);
+  });
+
+  it("returns full document summary only for kb document details", () => {
+    expect(
+      Value.Check(KbDocDetailSchema, {
+        briefSummary: "这是一份产品知识概览",
+        createdAt: "2026-06-18T15:22:22.000Z",
+        docId: "1001",
+        docSize: 4096,
+        docSuffix: "pdf",
+        docSummary: "## 文档概览\n\n- 核心内容",
+        docType: "document",
+        docUrl: "kb-docs/demo.pdf",
+        hasDocSummary: true,
+        kbId: "1",
+        name: "产品手册",
+        sliceCount: 20,
+        status: "completed",
+        updatedAt: "2026-06-20T15:22:22.000Z",
+        volcDocId: "volc-doc-1",
       }),
     ).toBe(true);
   });

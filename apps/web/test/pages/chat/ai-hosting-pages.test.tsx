@@ -1675,11 +1675,15 @@ describe("AI hosting pages", () => {
     expect(screen.getAllByTestId("knowledge-add-option-icon")).toHaveLength(2);
     await userEvent.keyboard("{Escape}");
     expect(screen.getByRole("table", { name: "知识列表" })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "产品说明大全" }));
+    expect(screen.queryByRole("columnheader", { name: "类型" })).not.toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "文件大小" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "产品说明大全.doc" })).toBeInTheDocument();
+    expect(screen.getByText("12MB")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "产品说明大全.doc" }));
     expect(router.state.location.pathname).toBe(
       "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-1",
     );
-    expect(screen.queryByRole("button", { name: "文本知识集合" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "文本知识集合.txt" })).not.toBeInTheDocument();
     expect(screen.getByRole("img", { name: "Word 文件" })).toHaveAttribute(
       "src",
       "https://b5.bokr.com.cn/dist/word.png",
@@ -1692,7 +1696,7 @@ describe("AI hosting pages", () => {
       "src",
       "https://b5.bokr.com.cn/dist/file.png",
     );
-    expect(screen.getByText("文件（.doc）")).toBeInTheDocument();
+    expect(screen.queryByText("文件（.doc）")).not.toBeInTheDocument();
     expect(screen.getAllByText("已完成")).toHaveLength(3);
     expect(screen.getByText("解析中")).toBeInTheDocument();
     expect(screen.getByText("失败")).toBeInTheDocument();
@@ -1707,6 +1711,55 @@ describe("AI hosting pages", () => {
     );
   });
 
+  it("shows document summaries from the knowledge name hover card", async () => {
+    const user = userEvent.setup();
+    const { router } = renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
+      "/chat/ai-hosting/kb/:kbId/*",
+    );
+
+    const knowledgeName = await screen.findByRole("button", { name: "产品说明大全.doc" });
+    expect(knowledgeName).not.toHaveAttribute("title");
+
+    await user.hover(knowledgeName);
+
+    const summaryPopover = await screen.findByRole("dialog", {
+      name: "产品说明大全.doc 摘要",
+    });
+    expect(summaryPopover).toHaveTextContent("覆盖产品规格、售后政策和常见咨询场景");
+    expect(within(summaryPopover).getByRole("button", { name: "全文摘要" })).toBeInTheDocument();
+    expect(within(summaryPopover).getByRole("button", { name: "切片详情" })).toBeInTheDocument();
+
+    await user.click(within(summaryPopover).getByRole("button", { name: "全文摘要" }));
+
+    const summarySheet = await screen.findByRole("dialog", { name: "全文摘要" });
+    expect(kbService.getKbDoc).toHaveBeenCalledWith("knowledge-1");
+    expect(summarySheet).toHaveTextContent("产品说明大全.doc");
+    expect(within(summarySheet).getByRole("heading", { level: 2, name: "文档概览" })).toBeInTheDocument();
+    expect(within(summarySheet).getByRole("heading", { level: 3, name: "核心内容" })).toBeInTheDocument();
+    expect(within(summarySheet).getByText("产品参数")).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+    );
+
+    await user.keyboard("{Escape}");
+    const knowledgeNameWithoutSummary = screen.getByText("常见问题解答.faq");
+    expect(knowledgeNameWithoutSummary).toHaveAttribute("title", "常见问题解答.faq");
+    await user.hover(knowledgeNameWithoutSummary);
+    expect(screen.queryByRole("dialog", { name: "常见问题解答.faq 摘要" })).not.toBeInTheDocument();
+
+    await user.hover(knowledgeName);
+    await user.click(
+      within(await screen.findByRole("dialog", { name: "产品说明大全.doc 摘要" })).getByRole("button", {
+        name: "切片详情",
+      }),
+    );
+    expect(router.state.location.pathname).toBe(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-1",
+    );
+  });
+
   it("retries a failed knowledge record and refreshes the list status", async () => {
     const user = userEvent.setup();
 
@@ -1716,7 +1769,7 @@ describe("AI hosting pages", () => {
       "/chat/ai-hosting/kb/:kbId",
     );
 
-    await screen.findByText("文本知识集合");
+    await screen.findByText("文本知识集合.txt");
     await user.click(screen.getByRole("button", { name: "重试 文本知识集合" }));
 
     await waitFor(() => {

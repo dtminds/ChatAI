@@ -55,7 +55,9 @@ export class AiHostingSettingsService {
     const configsBySeatId = new Map(configs.map((config) => [config.user_seat_id, config]));
 
     return {
-      accounts: seats.map((seat) => mapHostingSettingsAccount(seat, configsBySeatId.get(seat.id))),
+      accounts: seats.map((seat) =>
+        mapHostingSettingsAccount(seat, configsBySeatId.get(seat.id)),
+      ),
       agents: agents.map(mapHostingSettingsAgent),
       fullAutoAuthAvailable: isFullAutoAuthAvailable(scope.uid),
     };

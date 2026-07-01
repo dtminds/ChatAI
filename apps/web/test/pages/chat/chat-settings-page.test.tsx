@@ -172,6 +172,7 @@ describe("Chat settings pages", () => {
         managedAccounts: [
           {
             avatarUrl: "https://example.com/drc.png",
+            groupChatCount: 3,
             id: "101",
             name: "德瑞可",
             onlineStatus: "offline",
@@ -225,6 +226,7 @@ describe("Chat settings pages", () => {
           },
           {
             avatarUrl: "https://example.com/ndt.png",
+            groupChatCount: 5,
             id: "102",
             name: "念都堂",
             onlineStatus: "online",
@@ -423,6 +425,7 @@ describe("Chat settings pages", () => {
       data: {
         managedAccounts: [
           {
+            groupChatCount: 0,
             id: "seat-1",
             name: "德瑞可",
             onlineStatus: "online",
@@ -1065,6 +1068,7 @@ describe("Chat settings pages", () => {
       {
         data: {
           avatarUrl: "https://example.com/drc.png",
+          groupChatCount: 3,
           id: "101",
           name: "德瑞可",
           onlineStatus: "offline",
@@ -1101,6 +1105,9 @@ describe("Chat settings pages", () => {
     renderRoute("/chat/settings");
 
     expect(await screen.findByRole("table", { name: "托管账号列表" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "开通群聊数" })).toBeInTheDocument();
+    expect(screen.getByText("3")).toBeInTheDocument();
+    expect(screen.getByText("5")).toBeInTheDocument();
     expect(
       await screen.findByText("客服一号（接管中），主账号，客服二号等5人"),
     ).toBeInTheDocument();
@@ -1161,6 +1168,30 @@ describe("Chat settings pages", () => {
     expect(JSON.parse(mock.history.put[0]?.data ?? "{}")).toEqual({
       subAccountIds: ["1", "12", "13", "14"],
     });
+  });
+
+  it("syncs seat groups from the managed accounts table", async () => {
+    const user = userEvent.setup();
+    mock.onPost("/server/settings/managed-accounts/102/sync-seat-groups").reply(200, {
+      data: { synced: true },
+      success: true,
+    });
+
+    renderRoute("/chat/settings");
+
+    await screen.findByRole("table", { name: "托管账号列表" });
+    await user.click(screen.getByRole("button", { name: "同步念都堂群聊" }));
+
+    await waitFor(() => {
+      expect(mock.history.post).toHaveLength(1);
+    });
+    expect(mock.history.post[0]?.url).toBe(
+      "/server/settings/managed-accounts/102/sync-seat-groups",
+    );
+    expect(JSON.parse(mock.history.post[0]?.data ?? "{}")).toEqual({
+      syncMembers: true,
+    });
+    expect(toast.success).toHaveBeenCalledWith("群聊同步已触发");
   });
 
   it("marks the main account and disables destructive row actions", async () => {
@@ -1375,6 +1406,7 @@ describe("Chat settings pages", () => {
       data: {
         managedAccounts: Array.from({ length: 11 }, (_, index) => ({
           avatarUrl: "",
+          groupChatCount: 0,
           id: String(index + 1),
           name: `托管${index + 1}`,
           onlineStatus: "offline",

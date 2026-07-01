@@ -4,6 +4,7 @@ import {
   createSubAccount,
   deleteSubAccount,
   listSubAccounts,
+  syncManagedAccountSeatGroups,
   updateSubAccount,
   updateSubAccountStatus,
 } from "@/pages/chat/settings/settings-service";
@@ -72,5 +73,21 @@ describe("settings service", () => {
     expect(mock.history.put[0]?.url).toBe("/server/settings/sub-accounts/11");
     expect(mock.history.patch[0]?.url).toBe("/server/settings/sub-accounts/11/status");
     expect(mock.history.delete[0]?.url).toBe("/server/settings/sub-accounts/11");
+  });
+
+  it("uses public /server settings endpoints for managed-account seat group sync", async () => {
+    mock.onPost("/server/settings/managed-accounts/102/sync-seat-groups").reply(200, {
+      data: { synced: true },
+      success: true,
+    });
+
+    await syncManagedAccountSeatGroups("102", { syncMembers: true });
+
+    expect(mock.history.post[0]?.url).toBe(
+      "/server/settings/managed-accounts/102/sync-seat-groups",
+    );
+    expect(JSON.parse(mock.history.post[0]?.data ?? "{}")).toEqual({
+      syncMembers: true,
+    });
   });
 });

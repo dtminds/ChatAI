@@ -27,6 +27,7 @@ type ChatMessagePanelProps = {
   bottomOverlay?: ReactNode;
   canCollectMaterialActions?: boolean;
   canUseMessageActions?: boolean;
+  canUseMessageForward?: boolean;
   hasBottomOverlay?: boolean;
   hasMoreHistory: boolean;
   historyLoadLabel?: string;
@@ -34,8 +35,12 @@ type ChatMessagePanelProps = {
   conversationId: string;
   conversationMode: ChatMode;
   messages: Message[];
+  multiSelectMode?: boolean;
+  selectedMessageKeys?: ReadonlySet<string>;
   onCollectMaterial?: (message: ChatMessage) => void;
   onDownloadMessageFile?: (message: ChatMessage) => void;
+  onEnterMultiSelectMode?: () => void;
+  onForwardMessage?: (message: ChatMessage) => void;
   onMentionMessage?: (message: ChatMessage) => void;
   onLoadOlderMessages: () => void;
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
@@ -51,6 +56,7 @@ type ChatMessagePanelProps = {
     message: ChatMessage,
     options?: { force?: boolean },
   ) => void;
+  onToggleMessageSelection?: (message: ChatMessage) => void;
   onVoicePlaybackReady?: (
     message: ChatMessage,
     payload: { playbackUrl: string },
@@ -65,6 +71,7 @@ export function ChatMessagePanel({
   bottomOverlay,
   canCollectMaterialActions = true,
   canUseMessageActions = true,
+  canUseMessageForward = false,
   hasBottomOverlay = false,
   hasMoreHistory,
   historyLoadLabel,
@@ -72,8 +79,12 @@ export function ChatMessagePanel({
   conversationId,
   conversationMode,
   messages,
+  multiSelectMode = false,
+  selectedMessageKeys,
   onCollectMaterial,
   onDownloadMessageFile,
+  onEnterMultiSelectMode,
+  onForwardMessage,
   onMentionMessage,
   onLoadOlderMessages,
   onOpenQuotedMessage,
@@ -86,6 +97,7 @@ export function ChatMessagePanel({
   onDismissSmartReply,
   onMakeShorterSmartReply,
   onTriggerSmartReply,
+  onToggleMessageSelection,
   onVoicePlaybackReady,
   onTranscribeVoice,
   retryingMessageIds,
@@ -160,13 +172,16 @@ export function ChatMessagePanel({
         data-testid="message-scroll-area"
       >
         <div
-          className="chat-message-viewport-scrollbar flex h-full min-h-0 flex-col-reverse overflow-y-auto"
+          className={cn(
+            "chat-message-viewport-scrollbar flex h-full min-h-0 flex-col-reverse overflow-y-auto",
+            multiSelectMode && "overflow-x-hidden",
+          )}
           data-testid="message-viewport"
           onScroll={onMessageViewportScroll}
           ref={messageViewportRef}
           style={{ overflowAnchor: "none" }}
         >
-          <div className={cn("px-5 py-5", hasBottomOverlay && "pb-12")}>
+          <div className={cn("min-w-0 px-5 py-5", hasBottomOverlay && "pb-12")}>
             <div
               aria-hidden={isConversationLoading ? "true" : undefined}
               className={
@@ -193,10 +208,15 @@ export function ChatMessagePanel({
               <ChatMessageList
                 canCollectMaterialActions={canCollectMaterialActions}
                 canUseMessageActions={canUseMessageActions}
+                canUseMessageForward={canUseMessageForward}
                 conversationId={conversationId}
                 messages={messages}
+                multiSelectMode={multiSelectMode}
+                selectedMessageKeys={selectedMessageKeys}
                 onCollectMaterial={onCollectMaterial}
                 onDownloadMessageFile={onDownloadMessageFile}
+                onEnterMultiSelectMode={onEnterMultiSelectMode}
+                onForwardMessage={onForwardMessage}
                 onMentionMessage={onMentionMessage}
                 onOpenQuotedMessage={onOpenQuotedMessage}
                 onQuoteMessage={onQuoteMessage}
@@ -207,6 +227,7 @@ export function ChatMessagePanel({
                 onTriggerSmartReply={
                   canUseSmartReplyActions ? onTriggerSmartReply : undefined
                 }
+                onToggleMessageSelection={onToggleMessageSelection}
                 onRevokeMessage={onRevokeMessage}
                 onTranscribeVoice={onTranscribeVoice}
                 onVoicePlaybackReady={onVoicePlaybackReady}

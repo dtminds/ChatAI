@@ -59,6 +59,7 @@ type ChatPanelProps = {
   canToggleConversationAIHosting?: boolean;
   canCollectMaterialActions?: boolean;
   canSendMessage: boolean;
+  canUseMessageForward?: boolean;
   fullAutoActionPending?: boolean;
   seatAgentModeActionPending?: boolean;
   fullAutoDisplayStatus?: AgentHostingStatus;
@@ -82,7 +83,10 @@ type ChatPanelProps = {
   isSendingDraft: boolean;
   isResizingCustomerPanel: boolean;
   messages: Message[];
+  multiSelectMode?: boolean;
+  multiSelectToolbar?: ReactNode;
   quotedMessage: QuotedMessagePreviewContent | null;
+  selectedMessageKeys?: ReadonlySet<string>;
   hasMoreHistory: boolean;
   historyLoadLabel?: string;
   historyPanel?: {
@@ -119,6 +123,8 @@ type ChatPanelProps = {
   isCollectedExpressionLoadingMore?: boolean;
   sendingCollectedExpressionId?: string | null;
   onCollectMaterial?: (message: ChatMessage) => void;
+  onEnterMultiSelectMode?: () => void;
+  onForwardMessage?: (message: ChatMessage) => void;
   onDeleteCollectedExpression?: (item: WorkbenchMaterialCollectionItemDto) => void;
   onLoadMoreCollectedExpressions?: () => void;
   onOpenCollectedExpressions?: () => void;
@@ -153,6 +159,7 @@ type ChatPanelProps = {
     message: ChatMessage,
     options?: { force?: boolean },
   ) => void;
+  onToggleMessageSelection?: (message: ChatMessage) => void;
   onVoicePlaybackReady?: (
     message: ChatMessage,
     payload: { playbackUrl: string },
@@ -181,6 +188,7 @@ export function ChatPanel({
   canToggleConversationAIHosting = false,
   canCollectMaterialActions = true,
   canSendMessage,
+  canUseMessageForward = false,
   fullAutoActionPending = false,
   seatAgentModeActionPending = false,
   fullAutoDisplayStatus,
@@ -202,7 +210,10 @@ export function ChatPanel({
   isSendingDraft,
   isResizingCustomerPanel,
   messages,
+  multiSelectMode = false,
+  multiSelectToolbar,
   quotedMessage,
+  selectedMessageKeys,
   hasMoreHistory,
   historyLoadLabel,
   historyPanel,
@@ -222,6 +233,8 @@ export function ChatPanel({
   isCollectedExpressionLoadingMore,
   sendingCollectedExpressionId,
   onCollectMaterial,
+  onEnterMultiSelectMode,
+  onForwardMessage,
   onDeleteCollectedExpression,
   onLoadMoreCollectedExpressions,
   onOpenCollectedExpressions,
@@ -253,6 +266,7 @@ export function ChatPanel({
   onDismissSmartReply,
   onMakeShorterSmartReply,
   onTriggerSmartReply,
+  onToggleMessageSelection,
   onVoicePlaybackReady,
   retryingMessageIds,
   onSendDraft,
@@ -369,6 +383,7 @@ export function ChatPanel({
                 }
                 canCollectMaterialActions={canCollectMaterialActions}
                 canUseMessageActions={canSendMessage}
+                canUseMessageForward={canUseMessageForward}
                 hasBottomOverlay={hasActiveFileUpload}
                 hasMoreHistory={hasMoreHistory}
                 historyLoadLabel={historyLoadLabel}
@@ -376,8 +391,12 @@ export function ChatPanel({
                 conversationId={activeConversation.id}
                 conversationMode={activeConversation.mode}
                 messages={messages}
+                multiSelectMode={multiSelectMode}
+                selectedMessageKeys={selectedMessageKeys}
                 messageViewportRef={messageViewportRef}
                 onCollectMaterial={onCollectMaterial}
+                onEnterMultiSelectMode={onEnterMultiSelectMode}
+                onForwardMessage={onForwardMessage}
                 onDownloadMessageFile={onDownloadMessageFile}
                 onMentionMessage={onMentionMessage}
                 onLoadOlderMessages={onLoadOlderMessages}
@@ -388,6 +407,7 @@ export function ChatPanel({
                 onDismissSmartReply={onDismissSmartReply}
                 onMakeShorterSmartReply={onMakeShorterSmartReply}
                 onTriggerSmartReply={onTriggerSmartReply}
+                onToggleMessageSelection={onToggleMessageSelection}
                 onRevokeMessage={onRevokeMessage}
                 onMessageViewportScroll={onMessageViewportScroll}
                 onRetryMessage={onRetryMessage}
@@ -435,8 +455,14 @@ export function ChatPanel({
                       />
                     </div>
                   ) : null}
-                  <div className="px-4 pt-3">
-                    <ChatComposer
+                  <div
+                    className={cn(
+                      "relative px-4 pt-3",
+                      multiSelectMode && "z-40",
+                    )}
+                  >
+                    <div className={cn(multiSelectMode && "pointer-events-none")}>
+                      <ChatComposer
                       canConfigureSeatAIHosting={canConfigureSeatAIHosting}
                       canConfigureSeatSemiAuto={canConfigureSeatSemiAuto}
                       canToggleConversationAIHosting={canToggleConversationAIHosting}
@@ -490,6 +516,15 @@ export function ChatPanel({
                       quotedMessage={quotedMessage}
                       composerRef={composerRef}
                     />
+                    </div>
+                    {multiSelectMode && multiSelectToolbar ? (
+                      <div
+                        className="absolute inset-0 z-10 flex items-center justify-center bg-background"
+                        data-testid="message-multi-select-composer-overlay"
+                      >
+                        {multiSelectToolbar}
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               </div>

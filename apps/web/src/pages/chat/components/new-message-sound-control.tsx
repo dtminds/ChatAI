@@ -288,7 +288,7 @@ export function NewMessageSoundControl() {
             <span
               aria-hidden="true"
               className={cn(
-                "relative inline-flex h-6 w-10 shrink-0 items-center rounded-full border p-0.5 transition-colors",
+                "relative inline-flex h-[22px] w-[38px] shrink-0 items-center rounded-full border p-0.5 transition-colors",
                 preference.enabled
                   ? "justify-end border-success bg-success"
                   : "justify-start border-destructive bg-destructive",
@@ -296,15 +296,15 @@ export function NewMessageSoundControl() {
             >
               <span
                 className={cn(
-                  "inline-flex size-5 items-center justify-center rounded-full bg-white shadow-sm transition-colors",
+                  "inline-flex size-[18px] items-center justify-center rounded-full bg-white shadow-sm transition-colors",
                   preference.enabled ? "text-success" : "text-destructive",
                 )}
               >
                 <HugeiconsIcon
                   color="currentColor"
                   icon={preference.enabled ? Notification01Icon : NotificationOff01Icon}
-                  size={12}
-                  strokeWidth={1.8}
+                  size={11}
+                  strokeWidth={2.2}
                 />
               </span>
             </span>

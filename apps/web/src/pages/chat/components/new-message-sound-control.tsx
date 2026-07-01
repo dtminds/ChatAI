@@ -2,12 +2,10 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   Clock01Icon,
   Notification01Icon,
+  NotificationOff01Icon,
   PlayIcon,
-  Settings03Icon,
   Tick02Icon,
   ViewOffIcon,
-  VolumeHighIcon,
-  VolumeMute01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@/components/ui/button";
@@ -56,7 +54,7 @@ const DEFAULT_SOUND_PREFERENCE: NewMessageSoundPreference = {
 const SOUND_PLAYBACK_ERROR = "无法播放提示音，请检查浏览器权限";
 const TRIGGER_SETTING_OPTIONS: Array<{
   description: string;
-  icon: typeof VolumeHighIcon;
+  icon: typeof Notification01Icon;
   label: string;
   value: NewMessageSoundTrigger;
 }> = [
@@ -292,16 +290,19 @@ export function NewMessageSoundControl() {
               className={cn(
                 "relative inline-flex h-6 w-10 shrink-0 items-center rounded-full border p-0.5 transition-colors",
                 preference.enabled
-                  ? "justify-end border-primary/25 bg-background"
-                  : "justify-start border-border/80 bg-background/70",
+                  ? "justify-end border-success bg-success"
+                  : "justify-start border-destructive bg-destructive",
               )}
             >
               <span
-                className="inline-flex size-5 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm transition-colors"
+                className={cn(
+                  "inline-flex size-5 items-center justify-center rounded-full bg-white shadow-sm transition-colors",
+                  preference.enabled ? "text-success" : "text-destructive",
+                )}
               >
                 <HugeiconsIcon
                   color="currentColor"
-                  icon={preference.enabled ? VolumeHighIcon : VolumeMute01Icon}
+                  icon={preference.enabled ? Notification01Icon : NotificationOff01Icon}
                   size={12}
                   strokeWidth={1.8}
                 />
@@ -331,11 +332,11 @@ export function NewMessageSoundControl() {
           {activePopover === "reEnable" ? (
             <>
               <div className="space-y-2">
-                <p className="text-sm font-medium text-foreground">
+                <p className="text-base font-medium text-foreground">
                   重新开启消息提示音
                 </p>
-                <p className="text-sm leading-6 text-muted-foreground">
-                  温馨提醒：浏览器刷新后需点击一次开启提示音，以免错过新消息哦
+                <p className="text-sm leading-6 text-warning">
+                  温馨提示：因浏览器权限约束，每次刷新页面后，需要点击一次开启提示音，以免错过新消息哦
                 </p>
               </div>
               {reEnableError ? (
@@ -353,6 +354,12 @@ export function NewMessageSoundControl() {
                   忽略
                 </Button>
                 <Button onClick={handleReEnable} size="sm" type="button">
+                  <HugeiconsIcon
+                    color="currentColor"
+                    icon={Notification01Icon}
+                    size={14}
+                    strokeWidth={1.8}
+                  />
                   点此开启
                 </Button>
               </div>
@@ -364,26 +371,20 @@ export function NewMessageSoundControl() {
                   新消息提示音
                 </p>
                 <Button
-                  aria-label="修改新消息提示音设置"
-                  className="size-8 rounded-[9px] p-0"
+                  className="h-8 rounded-[8px] px-2.5 text-xs"
                   onClick={openSettingsDialog}
-                  size="icon"
+                  size="sm"
                   type="button"
                   variant="ghost"
                 >
-                  <HugeiconsIcon
-                    color="currentColor"
-                    icon={Settings03Icon}
-                    size={15}
-                    strokeWidth={1.8}
-                  />
+                  设置
                 </Button>
               </div>
               <div className="space-y-2 text-sm">
-                <SummaryRow icon={VolumeHighIcon} label="提示音" value={soundLabel} />
+                <SummaryRow icon={Notification01Icon} label="提示音" value={soundLabel} />
                 <SummaryRow icon={Clock01Icon} label="提示时机" value={triggerLabel} />
                 <SummaryRow
-                  icon={preference.enabled ? Tick02Icon : VolumeMute01Icon}
+                  icon={preference.enabled ? Tick02Icon : NotificationOff01Icon}
                   label="状态"
                   value={preference.enabled ? "开启" : "关闭"}
                 />
@@ -497,7 +498,7 @@ function SummaryRow({
   label,
   value,
 }: {
-  icon: typeof VolumeHighIcon;
+  icon: typeof Notification01Icon;
   label: string;
   value: string;
 }) {

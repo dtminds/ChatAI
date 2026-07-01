@@ -203,7 +203,7 @@ describe("ChatHeader", () => {
     expect(screen.getByText("状态")).toBeInTheDocument();
     expect(screen.getByText("开启")).toBeInTheDocument();
     expect(screen.queryByRole("switch", { name: "新消息提醒状态" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "修改新消息提示音设置" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "设置" })).toBeInTheDocument();
   });
 
   it("uses the capsule button for quick enable and disable", async () => {
@@ -259,7 +259,7 @@ describe("ChatHeader", () => {
     render(<ChatHeader />);
 
     await user.hover(screen.getByRole("button", { name: "新消息提醒已开启" }));
-    await user.click(screen.getByRole("button", { name: "修改新消息提示音设置" }));
+    await user.click(screen.getByRole("button", { name: "设置" }));
 
     const dialog = screen.getByRole("dialog", { name: "新消息提示音" });
     expect(dialog).toBeInTheDocument();
@@ -299,7 +299,7 @@ describe("ChatHeader", () => {
     render(<ChatHeader />);
 
     await user.hover(screen.getByRole("button", { name: "新消息提醒已开启" }));
-    await user.click(screen.getByRole("button", { name: "修改新消息提示音设置" }));
+    await user.click(screen.getByRole("button", { name: "设置" }));
 
     await user.click(screen.getByRole("combobox", { name: "提示音" }));
     await user.click(await screen.findByRole("option", { name: "提示音 2" }));
@@ -323,7 +323,7 @@ describe("ChatHeader", () => {
     render(<ChatHeader />);
 
     expect(await screen.findByText("重新开启消息提示音")).toBeInTheDocument();
-    expect(screen.getByText("温馨提醒：浏览器刷新后需点击一次开启提示音，以免错过新消息哦")).toBeInTheDocument();
+    expect(screen.getByText("温馨提示：因浏览器权限约束，每次刷新页面后，需要点击一次开启提示音，以免错过新消息哦")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "忽略" }));
 

@@ -789,7 +789,7 @@ function MessageActionAvatar({
   triggerRef?: RefObject<HTMLButtonElement | null>;
   onMentionMessage?: (message: ChatMessage) => void;
   onCollectMaterial?: (message: ChatMessage) => void;
-  onEnterMultiSelectMode?: () => void;
+  onEnterMultiSelectMode?: (message?: ChatMessage) => void;
   onForwardMessage?: (message: ChatMessage) => void;
   onQuoteMessage?: (message: ChatMessage) => void;
   onRevokeMessage?: (message: ChatMessage) => void;

@@ -3,10 +3,11 @@ import { useEffect, useEffectEvent, useRef } from "react";
 import { useWorkbenchPollingLease } from "@/pages/chat/hooks/use-workbench-polling-lease";
 
 export const WORKBENCH_POLL_HIDDEN_INTERVAL_MS = 10000;
-export const WORKBENCH_POLL_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
+export const WORKBENCH_MAX_SYNC_GAP_MS = 30 * 60 * 1000;
+export const WORKBENCH_MAX_BACKGROUND_ELAPSED_MS = 4 * 60 * 60 * 1000;
 export const WORKBENCH_SEAT_SUMMARY_REFRESH_INTERVAL_MS = 30 * 1000;
 
-export type PollingPauseReason = "idle" | "other-tab";
+export type PollingPauseReason = "sync-gap" | "background-timeout" | "other-tab";
 
 type UseWorkbenchPollingOptions = {
   activeAccountId?: string;
@@ -16,7 +17,7 @@ type UseWorkbenchPollingOptions = {
   jitterMs: number;
   onPollingPaused?: (reason: PollingPauseReason) => void;
   refreshSeatSummaries?: () => Promise<void>;
-  pollWorkbench: () => Promise<void>;
+  pollWorkbench: () => Promise<boolean | void>;
 };
 
 export function useWorkbenchPolling({
@@ -32,6 +33,8 @@ export function useWorkbenchPolling({
   const isPollingRef = useRef(false);
   const isRefreshingSeatSummariesRef = useRef(false);
   const pauseReasonRef = useRef<PollingPauseReason | undefined>(undefined);
+  const lastSuccessfulPollAtRef = useRef(Date.now());
+  const syncScopeKeyRef = useRef<string | undefined>(undefined);
   const hiddenSinceRef = useRef<number | undefined>(
     typeof document !== "undefined" && document.visibilityState === "hidden"
       ? Date.now()
@@ -59,13 +62,20 @@ export function useWorkbenchPolling({
 
   const runPollCycle = useEffectEvent(async () => {
     if (isPollingRef.current) {
-      return;
+      return false;
     }
 
     isPollingRef.current = true;
 
     try {
-      await pollWorkbench();
+      const didSync = await pollWorkbench();
+
+      if (didSync === false) {
+        return false;
+      }
+
+      lastSuccessfulPollAtRef.current = Date.now();
+      return true;
     } finally {
       isPollingRef.current = false;
     }
@@ -97,8 +107,15 @@ export function useWorkbenchPolling({
     }
 
     let timeoutId: number | undefined;
-    let idleTimeoutId: number | undefined;
+    let syncGapTimeoutId: number | undefined;
+    let backgroundTimeoutId: number | undefined;
     let cancelled = false;
+    const syncScopeKey = `${currentUserId}:${activeAccountId}`;
+
+    if (syncScopeKeyRef.current !== syncScopeKey) {
+      syncScopeKeyRef.current = syncScopeKey;
+      lastSuccessfulPollAtRef.current = Date.now();
+    }
 
     const clearScheduledPoll = () => {
       if (timeoutId == null) {
@@ -117,10 +134,8 @@ export function useWorkbenchPolling({
       pauseReasonRef.current = reason;
       hiddenSinceRef.current = undefined;
       clearScheduledPoll();
-      if (idleTimeoutId != null) {
-        window.clearTimeout(idleTimeoutId);
-        idleTimeoutId = undefined;
-      }
+      clearSyncGapTimer();
+      clearBackgroundTimer();
       notifyPollingPaused(reason);
     };
 
@@ -143,25 +158,43 @@ export function useWorkbenchPolling({
       return Date.now() - hiddenSinceRef.current;
     };
 
-    const pauseIfHiddenTimedOut = () => {
-      if (
-        document.visibilityState === "hidden" &&
-        getHiddenElapsedMs() >= WORKBENCH_POLL_IDLE_TIMEOUT_MS
-      ) {
-        pauseForReason("idle");
+    const pauseIfSyncGapTimedOut = () => {
+      if (Date.now() - lastSuccessfulPollAtRef.current >= WORKBENCH_MAX_SYNC_GAP_MS) {
+        pauseForReason("sync-gap");
         return true;
       }
 
       return false;
     };
 
-    const clearIdleTimer = () => {
-      if (idleTimeoutId == null) {
+    const pauseIfBackgroundTimedOut = () => {
+      if (
+        document.visibilityState === "hidden" &&
+        getHiddenElapsedMs() >= WORKBENCH_MAX_BACKGROUND_ELAPSED_MS
+      ) {
+        pauseForReason("background-timeout");
+        return true;
+      }
+
+      return false;
+    };
+
+    const clearSyncGapTimer = () => {
+      if (syncGapTimeoutId == null) {
         return;
       }
 
-      window.clearTimeout(idleTimeoutId);
-      idleTimeoutId = undefined;
+      window.clearTimeout(syncGapTimeoutId);
+      syncGapTimeoutId = undefined;
+    };
+
+    const clearBackgroundTimer = () => {
+      if (backgroundTimeoutId == null) {
+        return;
+      }
+
+      window.clearTimeout(backgroundTimeoutId);
+      backgroundTimeoutId = undefined;
     };
 
     const scheduleNextPoll = () => {
@@ -180,7 +213,7 @@ export function useWorkbenchPolling({
       timeoutId = window.setTimeout(async () => {
         timeoutId = undefined;
 
-        if (pauseIfHiddenTimedOut()) {
+        if (pauseIfSyncGapTimedOut() || pauseIfBackgroundTimedOut()) {
           return;
         }
 
@@ -188,23 +221,52 @@ export function useWorkbenchPolling({
           return;
         }
 
-        await runPollCycle();
+        const didSync = await runPollCycle();
 
         if (!cancelled && pauseReasonRef.current == null) {
+          if (didSync) {
+            scheduleSyncGapTimer();
+          }
           scheduleNextPoll();
         }
       }, baseInterval + jitter);
     };
 
-    const scheduleIdleTimer = () => {
+    const scheduleSyncGapTimer = () => {
       if (pauseReasonRef.current != null) {
         return;
       }
 
-      clearIdleTimer();
-      idleTimeoutId = window.setTimeout(() => {
-        pauseForReason("idle");
-      }, WORKBENCH_POLL_IDLE_TIMEOUT_MS);
+      clearSyncGapTimer();
+      const remainingMs = Math.max(
+        0,
+        WORKBENCH_MAX_SYNC_GAP_MS - (Date.now() - lastSuccessfulPollAtRef.current),
+      );
+
+      syncGapTimeoutId = window.setTimeout(() => {
+        if (!pauseIfSyncGapTimedOut()) {
+          scheduleSyncGapTimer();
+        }
+      }, remainingMs);
+    };
+
+    const scheduleBackgroundTimer = () => {
+      if (pauseReasonRef.current != null || document.visibilityState !== "hidden") {
+        return;
+      }
+
+      clearBackgroundTimer();
+      hiddenSinceRef.current ??= Date.now();
+      const remainingMs = Math.max(
+        0,
+        WORKBENCH_MAX_BACKGROUND_ELAPSED_MS - getHiddenElapsedMs(),
+      );
+
+      backgroundTimeoutId = window.setTimeout(() => {
+        if (!pauseIfBackgroundTimedOut()) {
+          scheduleBackgroundTimer();
+        }
+      }, remainingMs);
     };
 
     const pollNowAndReschedule = async () => {
@@ -213,16 +275,19 @@ export function useWorkbenchPolling({
       }
 
       clearScheduledPoll();
-      if (pauseIfHiddenTimedOut()) {
+      if (pauseIfSyncGapTimedOut() || pauseIfBackgroundTimedOut()) {
         return;
       }
       if (pauseIfAnotherTabOwnsLease()) {
         return;
       }
 
-      await runPollCycle();
+      const didSync = await runPollCycle();
 
       if (!cancelled && pauseReasonRef.current == null) {
+        if (didSync) {
+          scheduleSyncGapTimer();
+        }
         scheduleNextPoll();
       }
     };
@@ -233,24 +298,25 @@ export function useWorkbenchPolling({
       }
 
       if (document.visibilityState === "visible") {
-        if (getHiddenElapsedMs() >= WORKBENCH_POLL_IDLE_TIMEOUT_MS) {
-          pauseForReason("idle");
+        if (getHiddenElapsedMs() >= WORKBENCH_MAX_BACKGROUND_ELAPSED_MS) {
+          pauseForReason("background-timeout");
           return;
         }
 
         hiddenSinceRef.current = undefined;
-        clearIdleTimer();
+        clearBackgroundTimer();
         void pollNowAndReschedule();
         return;
       }
 
       hiddenSinceRef.current = Date.now();
-      scheduleIdleTimer();
+      scheduleBackgroundTimer();
       scheduleNextPoll();
     };
 
+    scheduleSyncGapTimer();
     if (document.visibilityState === "hidden") {
-      scheduleIdleTimer();
+      scheduleBackgroundTimer();
       scheduleNextPoll();
     } else {
       void pollNowAndReschedule();
@@ -260,7 +326,8 @@ export function useWorkbenchPolling({
     return () => {
       cancelled = true;
       clearScheduledPoll();
-      clearIdleTimer();
+      clearSyncGapTimer();
+      clearBackgroundTimer();
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [

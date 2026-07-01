@@ -4738,23 +4738,17 @@ describe("useWorkbenchStore", () => {
     expect(sendMessage).not.toHaveBeenCalled();
   });
 
-  it("recovers by reloading the current scope when the poll cursor is invalidated", async () => {
+  it("pauses polling when the poll cursor is invalidated", async () => {
     const baseService = createMockWorkbenchService();
-    let shouldInvalidateCursor = true;
 
     setWorkbenchService({
       ...baseService,
-      async poll(request) {
-        if (shouldInvalidateCursor) {
-          shouldInvalidateCursor = false;
-          throw {
-            code: "WORKBENCH_CURSOR_INVALIDATED",
-            message: "cursor invalidated",
-            status: 409,
-          };
-        }
-
-        return baseService.poll(request);
+      async poll() {
+        throw {
+          code: "WORKBENCH_CURSOR_INVALIDATED",
+          message: "cursor invalidated",
+          status: 409,
+        };
       },
     });
 
@@ -4763,10 +4757,94 @@ describe("useWorkbenchStore", () => {
 
     const state = useWorkbenchStore.getState();
 
-    expect(state.pollState.status).toBe("idle");
+    expect(state.pollState.status).toBe("paused");
+    expect(state.pollState.pauseReason).toBe("cursor-invalidated");
     expect(state.activeConversationId).toBe("conv-001");
     expect(state.messagesByConversationId["conv-001"].length).toBeGreaterThan(0);
     expect(state.sinceVersion).toBeGreaterThan(0);
+  });
+
+  it("does not call poll while polling is paused", async () => {
+    const baseService = createMockWorkbenchService();
+    const poll = vi.fn(baseService.poll);
+
+    setWorkbenchService({
+      ...baseService,
+      poll,
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      pollState: {
+        ...state.pollState,
+        pauseReason: "cursor-invalidated",
+        status: "paused",
+      },
+    }));
+
+    const result = await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(result).toBe(false);
+    expect(poll).not.toHaveBeenCalled();
+  });
+
+  it("does not clear a paused poll state after an in-flight poll succeeds", async () => {
+    const baseService = createMockWorkbenchService();
+    const deferredPoll = createDeferred<WorkbenchPollResponse>();
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        await deferredPoll.promise;
+        return baseService.poll(request);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    const pollPromise = useWorkbenchStore.getState().pollWorkbench();
+
+    useWorkbenchStore.setState((state) => ({
+      pollState: {
+        ...state.pollState,
+        pauseReason: "cursor-invalidated",
+        status: "paused",
+      },
+    }));
+    deferredPoll.resolve({
+      activeConversationMessages: [],
+      conversationChanges: [],
+      messageUpdateEvents: [],
+      nextVersion: useWorkbenchStore.getState().sinceVersion + 1,
+      seatChanges: [],
+    });
+
+    await pollPromise;
+
+    const state = useWorkbenchStore.getState();
+    expect(state.pollState.status).toBe("paused");
+    expect(state.pollState.pauseReason).toBe("cursor-invalidated");
+  });
+
+  it("treats 409 poll errors without the cursor invalidation code as poll errors", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async poll() {
+        throw {
+          message: "conflict",
+          status: 409,
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    const state = useWorkbenchStore.getState();
+    expect(state.pollState.status).toBe("error");
+    expect(state.pollState.pauseReason).toBeUndefined();
+    expect(state.pollState.errorMessage).toBe("轮询失败");
   });
 
   it("reloads message details in batch for poll message update events", async () => {
@@ -5602,23 +5680,17 @@ describe("useWorkbenchStore", () => {
     );
   });
 
-  it("preserves the current conversation and unrelated pending messages during cursor recovery", async () => {
+  it("does not mutate the current conversation or pending messages after cursor invalidation", async () => {
     const baseService = createMockWorkbenchService();
-    let shouldInvalidateCursor = true;
 
     setWorkbenchService({
       ...baseService,
-      async poll(request) {
-        if (shouldInvalidateCursor) {
-          shouldInvalidateCursor = false;
-          throw {
-            code: "WORKBENCH_CURSOR_INVALIDATED",
-            message: "cursor invalidated",
-            status: 409,
-          };
-        }
-
-        return baseService.poll(request);
+      async poll() {
+        throw {
+          code: "WORKBENCH_CURSOR_INVALIDATED",
+          message: "cursor invalidated",
+          status: 409,
+        };
       },
     });
 
@@ -5632,55 +5704,39 @@ describe("useWorkbenchStore", () => {
 
     const state = useWorkbenchStore.getState();
 
+    expect(state.pollState.status).toBe("paused");
+    expect(state.pollState.pauseReason).toBe("cursor-invalidated");
     expect(state.activeConversationId).toBe("conv-002");
     expect(state.pendingMessages).toEqual(pendingBeforeRecovery);
     expect(state.sinceVersion).toBeGreaterThan(0);
   });
 
-  it("drops stale cursor recovery results after the active account changes", async () => {
+  it("does not start a scope reload when the poll cursor is invalidated", async () => {
     const baseService = createMockWorkbenchService();
-    let shouldInvalidateCursor = true;
-    const recoveryGate = createDeferred();
+    const getConversations = vi.fn(baseService.getConversations);
 
     setWorkbenchService({
       ...baseService,
-      async getConversations(accountId, options) {
-        if (accountId === "drc" && !shouldInvalidateCursor) {
-          await recoveryGate.promise;
-        }
-
-        return baseService.getConversations(accountId, options);
-      },
-      async poll(request) {
-        if (shouldInvalidateCursor) {
-          shouldInvalidateCursor = false;
-          throw {
-            code: "WORKBENCH_CURSOR_INVALIDATED",
-            message: "cursor invalidated",
-            status: 409,
-          };
-        }
-
-        return baseService.poll(request);
+      getConversations,
+      async poll() {
+        throw {
+          code: "WORKBENCH_CURSOR_INVALIDATED",
+          message: "cursor invalidated",
+          status: 409,
+        };
       },
     });
 
     await useWorkbenchStore.getState().initializeWorkbench();
-    useWorkbenchStore.setState((state) => ({
-      ...state,
-      seatUpdateCursor: 1_778_840_030_000,
-    }));
+    getConversations.mockClear();
 
-    const recoveryPromise = useWorkbenchStore.getState().pollWorkbench();
-    await useWorkbenchStore.getState().setActiveAccount("ndt");
-    recoveryGate.resolve();
-    await recoveryPromise;
+    await useWorkbenchStore.getState().pollWorkbench();
 
     const state = useWorkbenchStore.getState();
 
-    expect(state.activeAccountId).toBe("ndt");
-    expect(state.activeConversationId).toBe("conv-005");
-    expect(state.seatUpdateCursor).toBe(1_778_840_030_000);
+    expect(getConversations).not.toHaveBeenCalled();
+    expect(state.pollState.status).toBe("paused");
+    expect(state.pollState.pauseReason).toBe("cursor-invalidated");
   });
 
   it("loads the full seed page when the default message page covers all history", async () => {

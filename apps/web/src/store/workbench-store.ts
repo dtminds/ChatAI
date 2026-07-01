@@ -20,7 +20,6 @@ import {
   loadAccountConversationsWithBaseline,
   loadConversationHistoryMessagesPage,
   loadGroupMembers,
-  loadAccountScope,
   loadConversationMessagesPage,
   loadMessagesBySeqs,
   loadSeats,
@@ -148,10 +147,11 @@ type MessagePaginationState = {
 };
 
 type PollState = {
-  status: "idle" | "error";
+  status: "idle" | "error" | "paused";
   intervalMs: number;
   jitterMs: number;
   errorMessage?: string;
+  pauseReason?: "cursor-invalidated";
 };
 
 type HistoryPanelMode = "all" | "file" | "media" | "h5" | "mini-program";
@@ -281,7 +281,7 @@ type WorkbenchState = {
   setHistoryPanelSenderId: (senderId?: string) => Promise<void>;
   loadHistoryMessages: (options?: { cursor?: string; direction?: "next" | "prev" }) => Promise<void>;
   refreshSeatSummaries: () => Promise<void>;
-  pollWorkbench: () => Promise<void>;
+  pollWorkbench: () => Promise<boolean>;
   dismissSmartReply: (message: ChatMessage) => void;
   requestSmartReplyGeneralAnswer: (
     message: ChatMessage,
@@ -1788,10 +1788,7 @@ function isCursorInvalidationError(error: unknown) {
 
   const candidate = error as { code?: string; status?: number };
 
-  return (
-    candidate.code === "WORKBENCH_CURSOR_INVALIDATED" ||
-    candidate.status === 409
-  );
+  return candidate.code === "WORKBENCH_CURSOR_INVALIDATED";
 }
 
 function applyReadResult(
@@ -3899,9 +3896,10 @@ export function createWorkbenchStore() {
       if (
         state.bootstrapStatus !== "ready" ||
         !state.activeAccountId ||
+        state.pollState.status === "paused" ||
         isPollWorkbenchRunning
       ) {
-        return;
+        return false;
       }
 
       isPollWorkbenchRunning = true;
@@ -3932,7 +3930,7 @@ export function createWorkbenchStore() {
         });
 
         if (!isReadyScopeRequest(requestId, get())) {
-          return;
+          return false;
         }
 
         const messageUpdateSeqsByConversationId = (response.messageUpdateEvents ?? []).reduce(
@@ -3970,7 +3968,7 @@ export function createWorkbenchStore() {
         ) as Record<string, Message[]>;
 
         if (!isReadyScopeRequest(requestId, get())) {
-          return;
+          return false;
         }
 
         const polledConversationId = response.request.activeConversationId;
@@ -4189,11 +4187,12 @@ export function createWorkbenchStore() {
               ? currentState.pendingMessages
               : filteredPendingMessages;
           const nextPollState =
-            currentState.pollState.status !== "idle" ||
+            currentState.pollState.status === "error" ||
             currentState.pollState.errorMessage != null
               ? {
                   ...currentState.pollState,
                   errorMessage: undefined,
+                  pauseReason: undefined,
                   status: "idle" as const,
                 }
               : currentState.pollState;
@@ -4237,7 +4236,7 @@ export function createWorkbenchStore() {
         });
 
         if (!isReadyScopeRequest(requestId, get())) {
-          return;
+          return false;
         }
 
         if (shouldNotifyPulledCustomerMessage) {
@@ -4288,124 +4287,30 @@ export function createWorkbenchStore() {
             );
           }
         }
+
+        return true;
       } catch (error) {
         if (!isCurrentScopeRequest(requestId)) {
-          return;
-        }
-
-        if (isCursorInvalidationError(error)) {
-          try {
-            const latestState = get();
-            const accountId = latestState.activeAccountId;
-
-            if (!accountId) {
-              throw error;
-            }
-
-            const scopeResult = await loadAccountScope(
-              accountId,
-              latestState.activeMode,
-              {
-                accounts: latestState.accounts,
-                customerProfilesById: latestState.customerProfilesById,
-                me: latestState.me,
-              },
-              MESSAGE_PAGE_SIZE,
-              latestState.activeConversationId,
-            );
-
-            if (!isReadyScopeRequest(requestId, get())) {
-              return;
-            }
-
-            const conversationPage = scopeResult.conversationPage;
-            const loadedAt = Date.now();
-
-            set((currentState) => {
-              if (!isReadyScopeRequest(requestId, currentState)) {
-                return currentState;
-              }
-
-              const nextMessagesByConversationId = conversationPage
-                ? {
-                    ...currentState.messagesByConversationId,
-                    [conversationPage.conversationId]: upsertMessageList(
-                      [],
-                      conversationPage.messages,
-                    ),
-                  }
-                : currentState.messagesByConversationId;
-              const nextHistoryByConversationId = conversationPage
-                ? {
-                    ...currentState.hasMoreHistoryByConversationId,
-                    [conversationPage.conversationId]: conversationPage.hasMoreHistory,
-                  }
-                : currentState.hasMoreHistoryByConversationId;
-              const nextPaginationByConversationId = conversationPage
-                ? {
-                    ...currentState.messagePaginationByConversationId,
-                    [conversationPage.conversationId]: buildMessagePaginationState(conversationPage),
-                  }
-                : currentState.messagePaginationByConversationId;
-              const nextState: Partial<WorkbenchStore> = {
-                conversationListsByScope: {
-                  ...currentState.conversationListsByScope,
-                  [accountId]: scopeResult.conversations,
-                },
-                conversationModeLoadedAtByScope: markAllConversationModesLoaded(
-                  currentState.conversationModeLoadedAtByScope,
-                  accountId,
-                  loadedAt,
-                ),
-                hasMoreHistoryByConversationId: nextHistoryByConversationId,
-                messagePaginationByConversationId: nextPaginationByConversationId,
-                messagesByConversationId: nextMessagesByConversationId,
-                pollState: {
-                  ...currentState.pollState,
-                  errorMessage: undefined,
-                  status: "idle",
-                },
-              };
-
-              if (currentState.activeAccountId !== accountId) {
-                return nextState;
-              }
-
-              const nextActiveConversationId = scopeResult.conversations.some(
-                (conversation) => conversation.id === currentState.activeConversationId,
-              )
-                ? currentState.activeConversationId
-                : scopeResult.nextConversationId;
-
-            return {
-              ...nextState,
-              activeConversationId: nextActiveConversationId,
-              activeMessageSeq: getActiveMessageSeq(
-                nextMessagesByConversationId,
-                nextActiveConversationId,
-              ),
-              messageUpdateCursor: undefined,
-              pendingMessages: currentState.pendingMessages.filter(
-                (message) => message.conversationId !== state.activeConversationId,
-              ),
-              isPollBaselineFresh: true,
-                sinceVersion: scopeResult.pollBaseline,
-              };
-            });
-
-            return;
-          } catch {
-            // Fall through to the normal error state if the compensating reload fails.
-          }
+          return false;
         }
 
         set((currentState) => ({
-          pollState: {
-            ...currentState.pollState,
-            errorMessage: error instanceof Error ? error.message : "轮询失败",
-            status: "error",
-          },
+          pollState: isCursorInvalidationError(error)
+            ? {
+                ...currentState.pollState,
+                errorMessage: undefined,
+                pauseReason: "cursor-invalidated",
+                status: "paused",
+              }
+            : {
+                ...currentState.pollState,
+                errorMessage: error instanceof Error ? error.message : "轮询失败",
+                pauseReason: undefined,
+                status: "error",
+              },
         }));
+
+        return false;
       } finally {
         if (runningPollRunId === pollRunId) {
           runningPollRunId = undefined;

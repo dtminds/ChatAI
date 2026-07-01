@@ -155,7 +155,7 @@ function mapConversationToSearchContact(
   const originalName = conversation.contactOriginalName?.trim() || displayName;
 
   return {
-    avatar: conversation.customerAvatarUrl,
+    avatar: conversation.customerAvatarUrl ?? "",
     conversationId: conversation.id,
     name: originalName,
     realName: originalName,

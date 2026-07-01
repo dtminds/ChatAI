@@ -92,7 +92,7 @@ function ForwardCompactImagePreview({
   content: ImageMessageContent;
   message: ChatMessage;
 }) {
-  const imageUrl = content.imageUrl.trim();
+  const imageUrl = content.imageUrl?.trim() ?? "";
   const isEmotion = content.variant === "emotion";
 
   if (content.downloadStatus !== "finished" || !imageUrl) {

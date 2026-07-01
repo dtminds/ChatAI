@@ -417,7 +417,7 @@ export function MessageRow({
   showTimestamp?: boolean;
   onDownloadMessageFile?: (message: ChatMessage) => void;
   onCollectMaterial?: (message: ChatMessage) => void;
-  onEnterMultiSelectMode?: () => void;
+  onEnterMultiSelectMode?: (message?: ChatMessage) => void;
   onForwardMessage?: (message: ChatMessage) => void;
   onMentionMessage?: (message: ChatMessage) => void;
   onOpenQuotedMessage?: (quoteMsgId: string) => void;

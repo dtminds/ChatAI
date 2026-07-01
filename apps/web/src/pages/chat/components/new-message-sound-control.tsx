@@ -372,7 +372,7 @@ export function NewMessageSoundControl() {
                   新消息提示音
                 </p>
                 <Button
-                  className="h-8 rounded-[8px] px-2.5 text-xs"
+                  className="h-8 rounded-[8px] bg-surface-muted px-2.5 text-xs hover:bg-surface-muted/80"
                   onClick={openSettingsDialog}
                   size="sm"
                   type="button"

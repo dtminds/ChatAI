@@ -63,6 +63,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { normalizeAvatarUrl } from "@/lib/avatar-url";
 import { cn } from "@/lib/utils";
 import {
   type InputEnterBehavior,
@@ -1217,7 +1218,7 @@ function MentionMemberAvatar({
         className="size-full object-cover"
         data-testid="mention-member-avatar"
         onError={() => setImageErrored(true)}
-        src={member.avatarUrl}
+        src={normalizeAvatarUrl(member.avatarUrl)}
       />
     </span>
   );

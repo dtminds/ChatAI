@@ -2,6 +2,7 @@ import * as AvatarPrimitive from "@radix-ui/react-avatar";
 import { UserIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { ComponentPropsWithoutRef } from "react";
+import { normalizeAvatarUrl } from "@/lib/avatar-url";
 import { cn } from "@/lib/utils";
 
 type AvatarProps = ComponentPropsWithoutRef<typeof AvatarPrimitive.Root>;
@@ -20,11 +21,15 @@ export function Avatar({ className, ...props }: AvatarProps) {
 
 export function AvatarImage({
   className,
+  src,
   ...props
 }: ComponentPropsWithoutRef<typeof AvatarPrimitive.Image>) {
+  const normalizedSrc = normalizeAvatarUrl(src);
+
   return (
     <AvatarPrimitive.Image
       className={cn("aspect-square size-full rounded-[inherit] object-cover", className)}
+      src={normalizedSrc || undefined}
       {...props}
     />
   );

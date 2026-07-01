@@ -8,7 +8,7 @@ import type {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -49,7 +49,6 @@ import {
   useSettingsLocalPagination,
 } from "@/pages/chat/settings/shared";
 import { useSettingsPermissions } from "@/pages/chat/settings/use-settings-permissions";
-import { normalizeAvatarUrl } from "@/lib/avatar-url";
 import { cn } from "@/lib/utils";
 
 type DialogState = {
@@ -687,11 +686,7 @@ function ManagedAccountAvatar({
       title={account.name}
     >
       {account.avatarUrl ? (
-        <img
-          alt={account.name}
-          className="absolute inset-0 size-full rounded-[inherit] object-cover"
-          src={normalizeAvatarUrl(account.avatarUrl)}
-        />
+        <AvatarImage alt={account.name} src={account.avatarUrl} />
       ) : null}
       <AvatarFallback className="rounded-full bg-primary/15 text-xs text-primary">
         {getInitial(account.name)}

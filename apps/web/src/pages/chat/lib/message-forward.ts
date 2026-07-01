@@ -177,7 +177,7 @@ function mapConversationToSearchGroup(
   const originalName = conversation.groupOriginalName?.trim() || displayName;
 
   return {
-    avatar: conversation.customerAvatarUrl,
+    avatar: conversation.customerAvatarUrl ?? "",
     conversationId: conversation.id,
     name: originalName,
     remark: displayName !== originalName ? displayName : undefined,

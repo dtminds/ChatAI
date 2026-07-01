@@ -1,3 +1,5 @@
+import { notifyNewMessageSound } from "@/pages/chat/lib/new-message-sound-alert";
+
 export const WORKBENCH_DEFAULT_TITLE = "ChatAI 客服工作台";
 export const WORKBENCH_NEW_MESSAGE_TITLE = "【新消息】ChatAI 客服工作台";
 export const WORKBENCH_EMPTY_MESSAGE_TITLE = "【　　　】ChatAI 客服工作台";
@@ -12,6 +14,8 @@ export function notifyPulledCustomerMessage() {
   if (typeof document === "undefined" || typeof window === "undefined") {
     return;
   }
+
+  notifyNewMessageSound();
 
   if (isCurrentTabActive()) {
     resetWorkbenchTitleAlert();

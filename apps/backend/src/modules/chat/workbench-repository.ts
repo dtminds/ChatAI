@@ -135,6 +135,12 @@ export type ChangedConversationListResult = {
   nextVersion: number;
 };
 
+export type SeatUnreadSummary = {
+  total: number;
+  single: number;
+  group: number;
+};
+
 export type MessageUpdateEventListResult = Array<
   WorkbenchMessageUpdateEventDto & {
     eventTime: number;
@@ -229,7 +235,9 @@ type SeatRecordRow = Pick<
 >;
 
 type SeatSummaryRow = SeatBaseRow & {
+  group_unread_count: number | string | null;
   last_message_time: Date | number | string | null;
+  single_unread_count: number | string | null;
   unread_count: number | string | null;
 };
 
@@ -264,6 +272,7 @@ type AgentAnswerRecordDb = Database & {
 };
 
 type SeatConversationAggregateRow = {
+  chat_type: number;
   last_msgtime: Date | number | string | null;
   platform: number;
   third_userid: string;
@@ -3254,6 +3263,32 @@ export class WorkbenchRepository {
             expressionBuilder.val(0),
           )
           .as("unread_count"),
+        expressionBuilder.fn
+          .coalesce(
+            expressionBuilder.fn.sum<number>(
+              expressionBuilder
+                .case()
+                .when("conversation.chat_type", "=", CHAT_TYPE_SINGLE)
+                .then(expressionBuilder.ref("conversation.unread_cnt"))
+                .else(0)
+                .end(),
+            ),
+            expressionBuilder.val(0),
+          )
+          .as("single_unread_count"),
+        expressionBuilder.fn
+          .coalesce(
+            expressionBuilder.fn.sum<number>(
+              expressionBuilder
+                .case()
+                .when("conversation.chat_type", "=", CHAT_TYPE_GROUP)
+                .then(expressionBuilder.ref("conversation.unread_cnt"))
+                .else(0)
+                .end(),
+            ),
+            expressionBuilder.val(0),
+          )
+          .as("group_unread_count"),
         expressionBuilder.fn.max("conversation.last_msgtime").as("last_message_time"),
       ])
       .where("seat.id", "in", normalizedSeatIds)
@@ -3336,6 +3371,7 @@ export class WorkbenchRepository {
       cursor?: ConversationListCursor;
       limit?: number;
       mode?: "single" | "group";
+      unreadOnly?: boolean;
     },
   ): Promise<WorkbenchConversationListResponse> {
     const seatNumericId = parseMySqlId(seatId);
@@ -3384,6 +3420,10 @@ export class WorkbenchRepository {
         "=",
         options.mode === "group" ? CHAT_TYPE_GROUP : CHAT_TYPE_SINGLE,
       );
+    }
+
+    if (options?.unreadOnly) {
+      query = query.where("conversation.unread_cnt", ">", 0);
     }
 
     if (cursor) {
@@ -3440,6 +3480,68 @@ export class WorkbenchRepository {
             })
           : undefined,
       snapshotAt,
+      unreadSummary: options?.unreadOnly
+        ? await this.getSeatUnreadSummary(seatId)
+        : undefined,
+    };
+  }
+
+  async getSeatUnreadSummary(seatId: string): Promise<SeatUnreadSummary> {
+    const seatNumericId = parseMySqlId(seatId);
+
+    if (seatNumericId == null) {
+      return { group: 0, single: 0, total: 0 };
+    }
+
+    const seat = await this.getSeatRecord(seatNumericId);
+
+    if (!seat) {
+      return { group: 0, single: 0, total: 0 };
+    }
+
+    const row = await this.db
+      .selectFrom("xy_wap_embed_conversation")
+      .select((expressionBuilder) => [
+        expressionBuilder.fn
+          .coalesce(expressionBuilder.fn.sum<number>("unread_cnt"), expressionBuilder.val(0))
+          .as("total_unread_count"),
+        expressionBuilder.fn
+          .coalesce(
+            expressionBuilder.fn.sum<number>(
+              expressionBuilder
+                .case()
+                .when("chat_type", "=", CHAT_TYPE_SINGLE)
+                .then(expressionBuilder.ref("unread_cnt"))
+                .else(0)
+                .end(),
+            ),
+            expressionBuilder.val(0),
+          )
+          .as("single_unread_count"),
+        expressionBuilder.fn
+          .coalesce(
+            expressionBuilder.fn.sum<number>(
+              expressionBuilder
+                .case()
+                .when("chat_type", "=", CHAT_TYPE_GROUP)
+                .then(expressionBuilder.ref("unread_cnt"))
+                .else(0)
+                .end(),
+            ),
+            expressionBuilder.val(0),
+          )
+          .as("group_unread_count"),
+      ])
+      .where("uid", "=", seat.uid)
+      .where("platform", "=", seat.platform)
+      .where("third_userid", "=", seat.third_userid)
+      .where("biz_status", "=", BIZ_STATUS_ACTIVE)
+      .executeTakeFirst();
+
+    return {
+      group: Number(row?.group_unread_count ?? 0),
+      single: Number(row?.single_unread_count ?? 0),
+      total: Number(row?.total_unread_count ?? 0),
     };
   }
 
@@ -4495,7 +4597,7 @@ export class WorkbenchRepository {
         ({ platform, thirdUserIds, uid }) =>
           this.db
             .selectFrom("xy_wap_embed_conversation")
-            .select(["uid", "platform", "third_userid"])
+            .select(["uid", "platform", "third_userid", "chat_type"])
             .select((expressionBuilder) => [
               expressionBuilder.fn
                 .coalesce(
@@ -4509,7 +4611,7 @@ export class WorkbenchRepository {
             .where("platform", "=", platform)
             .where("third_userid", "in", thirdUserIds)
             .where("biz_status", "=", BIZ_STATUS_ACTIVE)
-            .groupBy(["uid", "platform", "third_userid"])
+            .groupBy(["uid", "platform", "third_userid", "chat_type"])
             .execute() as Promise<SeatConversationAggregateRow[]>,
       ),
     );
@@ -5066,13 +5168,38 @@ function toNumber(value: number | string | null | undefined) {
 function groupSeatConversationAggregates(rows: SeatConversationAggregateRow[]) {
   const aggregatesBySeatThirdUserId = new Map<
     string,
-    { lastMessageTime: Date | number | string | null; unreadCount: number }
+    {
+      groupUnreadCount: number;
+      lastMessageTime: Date | number | string | null;
+      singleUnreadCount: number;
+      unreadCount: number;
+    }
   >();
 
   for (const row of rows) {
-    aggregatesBySeatThirdUserId.set(getSeatAggregateKey(row), {
-      lastMessageTime: row.last_msgtime,
-      unreadCount: toNumber(row.unread_cnt) ?? 0,
+    const key = getSeatAggregateKey(row);
+    const current = aggregatesBySeatThirdUserId.get(key) ?? {
+      groupUnreadCount: 0,
+      lastMessageTime: null,
+      singleUnreadCount: 0,
+      unreadCount: 0,
+    };
+    const unreadCount = toNumber(row.unread_cnt) ?? 0;
+
+    aggregatesBySeatThirdUserId.set(key, {
+      groupUnreadCount:
+        row.chat_type === CHAT_TYPE_GROUP
+          ? current.groupUnreadCount + unreadCount
+          : current.groupUnreadCount,
+      lastMessageTime:
+        compareTimestamps(row.last_msgtime, current.lastMessageTime) > 0
+          ? row.last_msgtime
+          : current.lastMessageTime,
+      singleUnreadCount:
+        row.chat_type === CHAT_TYPE_SINGLE
+          ? current.singleUnreadCount + unreadCount
+          : current.singleUnreadCount,
+      unreadCount: current.unreadCount + unreadCount,
     });
   }
 
@@ -5083,14 +5210,21 @@ function withSeatConversationAggregate(
   seat: SeatBaseRow,
   aggregatesBySeatThirdUserId: Map<
     string,
-    { lastMessageTime: Date | number | string | null; unreadCount: number }
+    {
+      groupUnreadCount: number;
+      lastMessageTime: Date | number | string | null;
+      singleUnreadCount: number;
+      unreadCount: number;
+    }
   >,
 ): SeatSummaryRow {
   const aggregate = aggregatesBySeatThirdUserId.get(getSeatAggregateKey(seat));
 
   return {
     ...seat,
+    group_unread_count: aggregate?.groupUnreadCount ?? 0,
     last_message_time: aggregate?.lastMessageTime ?? null,
+    single_unread_count: aggregate?.singleUnreadCount ?? 0,
     unread_count: aggregate?.unreadCount ?? 0,
   };
 }

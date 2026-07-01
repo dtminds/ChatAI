@@ -30,6 +30,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { AvatarUnreadCountBadge } from "@/pages/chat/components/unread-count-badge";
 import { cn } from "@/lib/utils";
 import { isExpiredAccountSeat } from "@/pages/chat/lib/workbench-permissions";
 import type { Account } from "@/pages/chat/chat-types";
@@ -478,15 +479,12 @@ export function AccountSidebarItem({
 
 function AccountUnreadBadge({ account }: { account: Account }) {
   const unreadCount = account.unreadCount ?? 0;
-  const displayCount = unreadCount > 99 ? "99+" : String(unreadCount);
 
   return (
-    <span
-      aria-label={`${account.name} 有 ${unreadCount} 条未读消息`}
-      className="absolute -right-1.5 -top-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full border border-background bg-destructive px-1 text-[10px] font-semibold leading-none text-destructive-foreground"
-      data-testid={`account-unread-count-${account.id}`}
-    >
-      {displayCount}
-    </span>
+    <AvatarUnreadCountBadge
+      ariaLabel={`${account.name} 有 ${unreadCount} 条未读消息`}
+      count={unreadCount}
+      testId={`account-unread-count-${account.id}`}
+    />
   );
 }

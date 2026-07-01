@@ -179,18 +179,26 @@ export function createMemoryWorkbenchService() {
     getConversations(
       _subUserId: string,
       seatId: string,
-      options?: { cursor?: string; limit?: number; mode?: "single" | "group" },
+      options?: {
+        cursor?: string;
+        limit?: number;
+        mode?: "single" | "group";
+        unreadOnly?: boolean;
+      },
     ): WorkbenchConversationListResponse {
       const snapshotAt = Date.now();
       const limit = options?.limit ?? 500;
       const conversations = sortConversations(state.conversationsBySeat[seatId] ?? [])
         .filter((conversation) => options?.mode == null || conversation.mode === options.mode)
-        .slice(0, limit);
+        .filter((conversation) => !options?.unreadOnly || conversation.unreadCount > 0);
 
       return {
-        hasMore: false,
-        items: clone(conversations),
+        hasMore: conversations.length > limit,
+        items: clone(conversations.slice(0, limit)),
         snapshotAt,
+        unreadSummary: options?.unreadOnly
+          ? getSeatUnreadSummary(state, seatId)
+          : undefined,
       };
     },
     getMe(_subUserId: string) {
@@ -1638,6 +1646,8 @@ function seat(
     operatorName,
     phone,
     hostSubUserId,
+    groupUnreadCount: getModeUnreadCountValue(conversations, "group"),
+    singleUnreadCount: getModeUnreadCountValue(conversations, "single"),
     unreadCount,
   };
 }
@@ -2038,6 +2048,31 @@ function getSeatUnreadCountValue(state: MemoryWorkbenchState, seatId: string) {
   return findSeat(state, seatId)?.unreadCount ?? 0;
 }
 
+function getModeUnreadCountValue(
+  conversations: WorkbenchConversationSummaryDto[],
+  mode: WorkbenchConversationSummaryDto["mode"],
+) {
+  return conversations.reduce(
+    (total, conversation) =>
+      conversation.mode === mode
+        ? total + Math.max(0, conversation.unreadCount)
+        : total,
+    0,
+  );
+}
+
+function getSeatUnreadSummary(state: MemoryWorkbenchState, seatId: string) {
+  const conversations = state.conversationsBySeat[seatId] ?? [];
+  const single = getModeUnreadCountValue(conversations, "single");
+  const group = getModeUnreadCountValue(conversations, "group");
+
+  return {
+    group,
+    single,
+    total: single + group,
+  };
+}
+
 function setSeatUnreadCount(
   state: MemoryWorkbenchState,
   seatId: string,
@@ -2050,6 +2085,14 @@ function setSeatUnreadCount(
   }
 
   seat.unreadCount = unreadCount;
+  seat.singleUnreadCount = getModeUnreadCountValue(
+    state.conversationsBySeat[seatId] ?? [],
+    "single",
+  );
+  seat.groupUnreadCount = getModeUnreadCountValue(
+    state.conversationsBySeat[seatId] ?? [],
+    "group",
+  );
 }
 
 function syncSeatLastMessageTime(state: MemoryWorkbenchState, seatId: string) {
@@ -2073,9 +2116,17 @@ function pushSeatEvent(state: MemoryWorkbenchState, seatId: string) {
   state.version += 1;
   state.events.push({
     payload: {
-      hostSubUserId: seat.hostSubUserId ?? null,
-      seatId,
+      avatar: seat.avatar,
+      description: seat.description,
+      groupUnreadCount: seat.groupUnreadCount,
+      hostSubUserId: seat.hostSubUserId,
       lastMessageTime: seat.lastMessageTime,
+      loginStatus: seat.loginStatus,
+      name: seat.name,
+      operatorName: seat.operatorName,
+      phone: seat.phone,
+      seatId,
+      singleUnreadCount: seat.singleUnreadCount,
       unreadCount: seat.unreadCount,
     },
     type: "seat",

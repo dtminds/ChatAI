@@ -56,6 +56,7 @@ const ConversationListQuerySchema = Type.Object({
   limit: Type.Optional(NumericStringSchema),
   mode: Type.Optional(Type.Union([Type.Literal("single"), Type.Literal("group")])),
   seatId: Type.Optional(Type.String()),
+  unread_only: Type.Optional(Type.Union([Type.Literal("0"), Type.Literal("1")])),
 });
 
 const ConversationParamsSchema = Type.Object({
@@ -855,6 +856,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
           cursor: request.query.cursor,
           limit: parseOptionalInteger(request.query.limit),
           mode: request.query.mode,
+          unreadOnly: request.query.unread_only === "1",
         },
       );
     },

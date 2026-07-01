@@ -35,6 +35,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { ConversationCard } from "@/pages/chat/components/conversation-card";
+import { formatUnreadCount } from "@/pages/chat/components/unread-count-badge";
 import type { ChatMode, Conversation } from "@/pages/chat/chat-types";
 import { isConversationAIHostingEnabled } from "@/pages/chat/lib/conversation-ai-hosting";
 import type { ConversationComposerDraft } from "@/pages/chat/lib/conversation-composer-draft";
@@ -71,12 +72,15 @@ type ConversationListPanelProps = {
   onMarkConversationUnread?: (conversationId: string) => void | Promise<void>;
   onDeleteConversation?: (conversationId: string) => void | Promise<void>;
   onPinConversation?: (conversationId: string) => void | Promise<void>;
+  onRefreshUnreadConversations?: (mode: ChatMode) => void | Promise<void>;
   onSelectConversation: (conversationId: string) => void | Promise<void>;
   onSelectMode: (mode: ChatMode) => void | Promise<void>;
   onSelectView?: (view: ConversationView) => void | Promise<void>;
   onUnpinConversation?: (conversationId: string) => void | Promise<void>;
   retainedConversationIds?: ReadonlySet<string>;
   searchableConversations?: Conversation[];
+  hasMoreUnreadByMode?: Partial<Record<ChatMode, boolean>>;
+  unreadCountByMode?: Partial<Record<ChatMode, number>>;
 };
 
 export function ConversationListPanel({
@@ -93,12 +97,15 @@ export function ConversationListPanel({
   onMarkConversationUnread,
   onDeleteConversation,
   onPinConversation,
+  onRefreshUnreadConversations,
   onSelectConversation,
   onSelectMode,
   onSelectView,
   onUnpinConversation,
   retainedConversationIds,
   searchableConversations = conversations,
+  hasMoreUnreadByMode,
+  unreadCountByMode: unreadCountByModeProp,
 }: ConversationListPanelProps) {
   const {
     searchKeyword,
@@ -161,13 +168,17 @@ export function ConversationListPanel({
       viewsByMode.single,
     ],
   );
-  const unreadCountByMode = useMemo(
+  const loadedUnreadCountByMode = useMemo(
     () => ({
       group: getUnreadCountByMode(conversations, "group"),
       single: getUnreadCountByMode(conversations, "single"),
     }),
     [conversations],
   );
+  const unreadCountByMode = {
+    group: unreadCountByModeProp?.group ?? loadedUnreadCountByMode.group,
+    single: unreadCountByModeProp?.single ?? loadedUnreadCountByMode.single,
+  };
 
   useEffect(() => {
     setMountedModes((currentModes) => {
@@ -406,6 +417,20 @@ export function ConversationListPanel({
                           }}
                         />
                       ))}
+                      {viewsByMode[mode] === "unread" && hasMoreUnreadByMode?.[mode] ? (
+                        <div className="px-2 py-3">
+                          <Button
+                            className="h-8 w-full text-xs"
+                            onClick={() => {
+                              void onRefreshUnreadConversations?.(mode);
+                            }}
+                            type="button"
+                            variant="outline"
+                          >
+                            刷新未读列表
+                          </Button>
+                        </div>
+                      ) : null}
                     </div>
                   </ScrollArea>
                 ) : null}
@@ -503,14 +528,12 @@ function ConversationViewUnreadBadge({
   mode: ChatMode;
   unreadCount: number;
 }) {
-  const displayCount = unreadCount > 99 ? "99+" : String(unreadCount);
-
   return (
     <span
       className="ml-auto inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold leading-none text-destructive-foreground tabular-nums"
       data-testid={`conversation-view-unread-count-${mode}`}
     >
-      {displayCount}
+      {formatUnreadCount(unreadCount)}
     </span>
   );
 }

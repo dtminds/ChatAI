@@ -332,6 +332,7 @@ describe("ConversationListPanel", () => {
         activeMode="single"
         activeView="all"
         conversations={viewConversations}
+        unreadCountByMode={{ group: 4, single: 125 }}
         isSeatAIHostingEnabled
         onSelectConversation={vi.fn()}
         onSelectMode={vi.fn()}
@@ -359,6 +360,70 @@ describe("ConversationListPanel", () => {
     expect(screen.getByRole("menuitemradio", { name: "全部" })).not.toHaveTextContent("99+");
     expect(screen.getByRole("menuitemradio", { name: "AI托管" })).not.toHaveTextContent("99+");
     expect(screen.getByRole("menuitemradio", { name: "人工接待" })).not.toHaveTextContent("99+");
+  });
+
+  it("uses seat unread counts even when loaded conversations do not contain all unread items", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ConversationListPanel
+        activeMode="single"
+        activeView="all"
+        conversations={[
+          createConversation({
+            id: "single-loaded-read",
+            customerName: "已加载已读客户",
+            mode: "single",
+            unread: 0,
+          }),
+        ]}
+        unreadCountByMode={{ group: 0, single: 12 }}
+        onSelectConversation={vi.fn()}
+        onSelectMode={vi.fn()}
+        onSelectView={vi.fn()}
+        searchableConversations={conversations}
+      />,
+    );
+
+    expect(screen.getByTestId("conversation-mode-unread-dot-single")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: "单聊视图" }));
+
+    expect(
+      within(screen.getByRole("menuitemradio", { name: "未读12" })).getByTestId(
+        "conversation-view-unread-count-single",
+      ),
+    ).toHaveTextContent("12");
+  });
+
+  it("shows a refresh unread list button at the unread list bottom when server reports more unread conversations", () => {
+    const onRefreshUnreadConversations = vi.fn();
+
+    render(
+      <ConversationListPanel
+        activeMode="single"
+        activeView="unread"
+        conversations={[
+          createConversation({
+            id: "single-unread-loaded",
+            customerName: "已加载未读客户",
+            mode: "single",
+            unread: 1,
+          }),
+        ]}
+        hasMoreUnreadByMode={{ group: false, single: true }}
+        onRefreshUnreadConversations={onRefreshUnreadConversations}
+        onSelectConversation={vi.fn()}
+        onSelectMode={vi.fn()}
+        searchableConversations={conversations}
+      />,
+    );
+
+    const refreshButton = screen.getByRole("button", { name: "刷新未读列表" });
+
+    expect(refreshButton).toBeInTheDocument();
+    refreshButton.click();
+    expect(onRefreshUnreadConversations).toHaveBeenCalledWith("single");
   });
 
   it("filters each mounted mode with its own selected view", () => {

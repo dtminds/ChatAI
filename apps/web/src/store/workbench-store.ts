@@ -20,6 +20,7 @@ import {
   getVisibleConversations,
   loadAccountConversationsByMode,
   loadAccountConversationsWithBaseline,
+  loadUnreadAccountConversationsByMode,
   loadConversationHistoryMessagesPage,
   loadGroupMembers,
   loadAccountScope,
@@ -207,6 +208,7 @@ type WorkbenchState = {
   conversationListCacheSeatOrder: string[];
   conversationListsByScope: Record<string, Conversation[]>;
   conversationModeLoadedAtByScope: Record<string, Partial<Record<ChatMode, number>>>;
+  hasMoreUnreadByScope: Record<string, Partial<Record<ChatMode, boolean>>>;
   customerProfilesById: Record<string, CustomerProfile>;
   groupMembersLoadedAtByConversationId: Record<string, number>;
   groupMembersLoadingByConversationId: Record<string, boolean>;
@@ -280,6 +282,7 @@ type WorkbenchState = {
     options?: { preserveConversation?: Conversation },
   ) => Promise<void>;
   loadActiveGroupMembers: (options?: { force?: boolean }) => Promise<void>;
+  loadUnreadConversations: (mode?: ChatMode) => Promise<void>;
   markConversationUnread: (conversationId: string) => Promise<void>;
   sendAgentMessageSegments: (
     segments: ComposerSegment[],
@@ -392,6 +395,7 @@ function createInitialState(): Omit<
   | "setActiveConversation"
   | "setActiveMode"
   | "loadActiveGroupMembers"
+  | "loadUnreadConversations"
   | "markConversationUnread"
   | "sendAgentMessageSegments"
   | "sendAgentTextMessage"
@@ -443,6 +447,7 @@ function createInitialState(): Omit<
     conversationListCacheSeatOrder: [],
     conversationListsByScope: {},
     conversationModeLoadedAtByScope: {},
+    hasMoreUnreadByScope: {},
     customerProfilesById: defaultCustomerProfiles,
     groupMembersLoadedAtByConversationId: {},
     groupMembersLoadingByConversationId: {},
@@ -609,49 +614,35 @@ function markAllConversationModesLoaded(
   );
 }
 
-function areAllConversationModesLoaded(
-  loadedAtByScope: WorkbenchState["conversationModeLoadedAtByScope"],
-  accountId: string,
-) {
-  const loadedAtByMode = loadedAtByScope[accountId];
-
-  return CONVERSATION_MODES.every((mode) => loadedAtByMode?.[mode] != null);
-}
-
-function getLoadedConversationUnreadCount(
-  conversationListsByScope: WorkbenchState["conversationListsByScope"],
-  accountId: string,
-) {
-  return (conversationListsByScope[accountId] ?? []).reduce(
-    (total, conversation) => total + Math.max(0, conversation.unread),
-    0,
-  );
-}
-
-function deriveLoadedAccountUnreadCounts(
+function applyAccountUnreadSummary(
   accounts: Account[],
-  conversationListsByScope: WorkbenchState["conversationListsByScope"],
-  conversationModeLoadedAtByScope: WorkbenchState["conversationModeLoadedAtByScope"],
+  accountId: string,
+  unreadSummary: { group: number; single: number; total: number } | undefined,
 ) {
+  if (!unreadSummary) {
+    return accounts;
+  }
+
   let changed = false;
   const nextAccounts = accounts.map((account) => {
-    if (!areAllConversationModesLoaded(conversationModeLoadedAtByScope, account.id)) {
+    if (account.id !== accountId) {
       return account;
     }
 
-    const unreadCount = getLoadedConversationUnreadCount(
-      conversationListsByScope,
-      account.id,
-    );
-
-    if (account.unreadCount === unreadCount) {
+    if (
+      account.unreadCount === unreadSummary.total &&
+      account.singleUnreadCount === unreadSummary.single &&
+      account.groupUnreadCount === unreadSummary.group
+    ) {
       return account;
     }
 
     changed = true;
     return {
       ...account,
-      unreadCount,
+      groupUnreadCount: unreadSummary.group,
+      singleUnreadCount: unreadSummary.single,
+      unreadCount: unreadSummary.total,
     };
   });
 
@@ -729,6 +720,16 @@ function mergeConversationList(
     conversation,
     ...currentList.filter((item) => item.id !== conversation.id),
   ]);
+}
+
+function mergeConversationLists(
+  currentList: Conversation[],
+  conversations: Conversation[],
+) {
+  return conversations.reduce(
+    (nextList, conversation) => mergeConversationList(nextList, conversation),
+    currentList,
+  );
 }
 
 function findNextConversationIdAfterRemove(
@@ -1927,6 +1928,14 @@ function applyReadResult(
       account.id === accountId
         ? {
             ...account,
+            groupUnreadCount:
+              currentConversation?.mode === "group"
+                ? Math.max(0, (account.groupUnreadCount ?? 0) - currentUnreadCount)
+                : account.groupUnreadCount,
+            singleUnreadCount:
+              currentConversation?.mode === "single"
+                ? Math.max(0, (account.singleUnreadCount ?? 0) - currentUnreadCount)
+                : account.singleUnreadCount,
             unreadCount: Math.max(
               0,
               (account.unreadCount ?? 0) - currentUnreadCount,
@@ -1965,6 +1974,14 @@ function applyUnreadResult(
       account.id === accountId
         ? {
             ...account,
+            groupUnreadCount:
+              currentConversation?.mode === "group"
+                ? Math.max(0, (account.groupUnreadCount ?? 0) + 1 - currentUnreadCount)
+                : account.groupUnreadCount,
+            singleUnreadCount:
+              currentConversation?.mode === "single"
+                ? Math.max(0, (account.singleUnreadCount ?? 0) + 1 - currentUnreadCount)
+                : account.singleUnreadCount,
             unreadCount: Math.max(
               0,
               (account.unreadCount ?? 0) + 1 - currentUnreadCount,
@@ -2437,6 +2454,7 @@ export function createWorkbenchStore() {
   let latestScopeRequestId = 0;
   let latestTakeoverRequestId = 0;
   let latestGroupMembersRequestId = 0;
+  let latestUnreadRequestId = 0;
   let latestPollRunId = 0;
   let runningPollRunId: number | undefined;
   let isPollWorkbenchRunning = false;
@@ -2454,6 +2472,7 @@ export function createWorkbenchStore() {
   const smartReplyTimeoutsByKey = new Map<string, ReturnType<typeof setTimeout>>();
   const latestTakeoverRequestIdByAccountId: Record<string, number> = {};
   const latestGroupMembersRequestIdByConversationId: Record<string, number> = {};
+  const latestUnreadRequestIdByScope: Record<string, number> = {};
   const revokePendingTimeoutsByMessageId = new Map<string, ReturnType<typeof setTimeout>>();
   const pendingRevokeRequestMessageIds = new Set<string>();
 
@@ -2476,6 +2495,20 @@ export function createWorkbenchStore() {
 
   function isReadyScopeRequest(requestId: number, state: WorkbenchStore) {
     return isCurrentScopeRequest(requestId) && state.bootstrapStatus === "ready";
+  }
+
+  function issueUnreadRequestId(accountId: string, mode: ChatMode) {
+    latestUnreadRequestId += 1;
+    latestUnreadRequestIdByScope[`${accountId}:${mode}`] = latestUnreadRequestId;
+    return latestUnreadRequestId;
+  }
+
+  function isCurrentUnreadRequest(
+    accountId: string,
+    mode: ChatMode,
+    requestId: number,
+  ) {
+    return latestUnreadRequestIdByScope[`${accountId}:${mode}`] === requestId;
   }
 
   function issueTakeoverRequestId(accountId: string) {
@@ -3177,11 +3210,7 @@ export function createWorkbenchStore() {
         };
 
         return {
-          accounts: deriveLoadedAccountUnreadCounts(
-            currentState.accounts,
-            conversationListsByScope,
-            conversationModeLoadedAtByScope,
-          ),
+          accounts: currentState.accounts,
           conversationModeLoadedAtByScope,
           conversationListsByScope,
           isPollBaselineFresh:
@@ -3943,6 +3972,14 @@ export function createWorkbenchStore() {
               item.id === account.id
                 ? {
                     ...item,
+                    groupUnreadCount:
+                      conversation.mode === "group"
+                        ? Math.max(0, (item.groupUnreadCount ?? 0) - conversation.unread)
+                        : item.groupUnreadCount,
+                    singleUnreadCount:
+                      conversation.mode === "single"
+                        ? Math.max(0, (item.singleUnreadCount ?? 0) - conversation.unread)
+                        : item.singleUnreadCount,
                     unreadCount: Math.max(
                       0,
                       (item.unreadCount ?? 0) - conversation.unread,
@@ -4187,11 +4224,7 @@ export function createWorkbenchStore() {
           );
 
           set({
-            accounts: deriveLoadedAccountUnreadCounts(
-              bootstrapResult.accounts,
-              prunedConversationListCache.conversationListsByScope,
-              prunedConversationListCache.conversationModeLoadedAtByScope,
-            ),
+            accounts: bootstrapResult.accounts,
             activeAccountId: bootstrapResult.activeAccountId,
             activeConversationId: bootstrapResult.activeConversationId,
             activeMessageSeq: getActiveMessageSeq(
@@ -4670,11 +4703,7 @@ export function createWorkbenchStore() {
               : currentState.pollState;
 
           return {
-            accounts: deriveLoadedAccountUnreadCounts(
-              nextAccounts,
-              nextConversationLists,
-              currentState.conversationModeLoadedAtByScope,
-            ),
+            accounts: nextAccounts,
             activeMessageSeq: getActiveMessageSeq(
               nextMessagesByConversationId,
               requestedActiveConversationId,
@@ -5735,11 +5764,7 @@ export function createWorkbenchStore() {
           });
 
           return {
-            accounts: deriveLoadedAccountUnreadCounts(
-              mergedAccounts,
-              currentState.conversationListsByScope,
-              currentState.conversationModeLoadedAtByScope,
-            ),
+            accounts: mergedAccounts,
           };
         });
       } catch {
@@ -5825,11 +5850,7 @@ export function createWorkbenchStore() {
 
           return {
             ...clearedMessageState,
-            accounts: deriveLoadedAccountUnreadCounts(
-              currentState.accounts,
-              prunedConversationListCache.conversationListsByScope,
-              prunedConversationListCache.conversationModeLoadedAtByScope,
-            ),
+            accounts: currentState.accounts,
             groupMembersLoadedAtByConversationId: omitByKeys(
               currentState.groupMembersLoadedAtByConversationId,
               evictedConversationIds,
@@ -6178,6 +6199,61 @@ export function createWorkbenchStore() {
         }
       }
     },
+    async loadUnreadConversations(mode) {
+      const state = get();
+      const accountId = state.activeAccountId;
+      const targetMode = mode ?? state.activeMode;
+
+      if (!accountId) {
+        return;
+      }
+
+      const requestId = issueUnreadRequestId(accountId, targetMode);
+
+      try {
+        const result = await loadUnreadAccountConversationsByMode(accountId, targetMode);
+
+        if (
+          !isCurrentUnreadRequest(accountId, targetMode, requestId) ||
+          get().activeAccountId !== accountId
+        ) {
+          return;
+        }
+
+        set((currentState) => {
+          const nextConversationListsByScope = {
+            ...currentState.conversationListsByScope,
+            [accountId]: mergeConversationLists(
+              currentState.conversationListsByScope[accountId] ?? [],
+              result.conversations,
+            ),
+          };
+
+          return {
+            accounts: applyAccountUnreadSummary(
+              currentState.accounts,
+              accountId,
+              result.unreadSummary,
+            ),
+            conversationListsByScope: nextConversationListsByScope,
+            hasMoreUnreadByScope: {
+              ...currentState.hasMoreUnreadByScope,
+              [accountId]: {
+                ...currentState.hasMoreUnreadByScope[accountId],
+                [targetMode]: result.hasMore ?? false,
+              },
+            },
+            isPollBaselineFresh:
+              result.pollBaseline < currentState.sinceVersion
+                ? true
+                : currentState.isPollBaselineFresh,
+            sinceVersion: Math.min(currentState.sinceVersion, result.pollBaseline),
+          };
+        });
+      } catch {
+        // The unread refresh is a best-effort补漏动作；失败时保留当前列表与计数。
+      }
+    },
     async setActiveMode(mode, options) {
       const state = get();
       const preserveConversation = options?.preserveConversation;
@@ -6249,11 +6325,7 @@ export function createWorkbenchStore() {
             });
 
             return {
-              accounts: deriveLoadedAccountUnreadCounts(
-                currentState.accounts,
-                prunedConversationListCache.conversationListsByScope,
-                prunedConversationListCache.conversationModeLoadedAtByScope,
-              ),
+              accounts: currentState.accounts,
               conversationListCacheSeatOrder:
                 prunedConversationListCache.conversationListCacheSeatOrder,
               conversationListsByScope:

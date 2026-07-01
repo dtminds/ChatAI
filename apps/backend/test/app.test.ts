@@ -2513,6 +2513,35 @@ describe("backend app", () => {
     await app.close();
   });
 
+  it("returns unread-only conversations with seat unread summary", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+
+    const conversations = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/conversations?seatId=drc&mode=single&limit=1&unread_only=1",
+    });
+
+    expect(conversations.statusCode).toBe(200);
+    expect(conversations.json()).toMatchObject({
+      hasMore: true,
+      items: [
+        expect.objectContaining({
+          conversationId: "conv-001",
+          mode: "single",
+          unreadCount: 2,
+        }),
+      ],
+      unreadSummary: {
+        group: 7,
+        single: 6,
+        total: 13,
+      },
+    });
+
+    await app.close();
+  });
+
   it("updates read state and emits poll changes after marking a conversation read", async () => {
     const { app, authorization } = await createAuthenticatedApp();
 

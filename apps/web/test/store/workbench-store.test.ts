@@ -783,12 +783,7 @@ describe("useWorkbenchStore", () => {
       id: "conv-001",
       unread: 0,
     });
-    expect(state.accounts.find((account) => account.id === "drc")?.unreadCount).toBe(
-      state.conversationListsByScope.drc.reduce(
-        (total, conversation) => total + conversation.unread,
-        0,
-      ),
-    );
+    expect(state.accounts.find((account) => account.id === "drc")?.unreadCount).toBe(11);
   });
 
   it("clears user-scoped workbench data before another login initializes the workbench", async () => {
@@ -1002,7 +997,7 @@ describe("useWorkbenchStore", () => {
     expect(useWorkbenchStore.getState().accounts.find((account) => account.id === "ndt")?.unreadCount).toBe(1);
   });
 
-  it("keeps loaded seat unread derived from loaded conversations while refreshing unloaded seats from summaries", async () => {
+  it("keeps seat unread from seat summaries instead of deriving from loaded conversations", async () => {
     const baseService = createMockWorkbenchService();
 
     setWorkbenchService({
@@ -1023,14 +1018,7 @@ describe("useWorkbenchStore", () => {
     await useWorkbenchStore.getState().refreshSeatSummaries();
 
     const state = useWorkbenchStore.getState();
-    const loadedDrcUnread = state.conversationListsByScope.drc.reduce(
-      (total, conversation) => total + conversation.unread,
-      0,
-    );
-
-    expect(state.accounts.find((account) => account.id === "drc")?.unreadCount).toBe(
-      loadedDrcUnread,
-    );
+    expect(state.accounts.find((account) => account.id === "drc")?.unreadCount).toBe(97);
     expect(state.accounts.find((account) => account.id === "ndt")?.unreadCount).toBe(42);
   });
 
@@ -4200,7 +4188,7 @@ describe("useWorkbenchStore", () => {
       operator: "小可更新",
       phone: "13296712906",
       takenOverEmployeeId: "sub-user-002",
-      unreadCount: 41,
+      unreadCount: 3,
     });
   });
 
@@ -4253,7 +4241,7 @@ describe("useWorkbenchStore", () => {
     expect(account).toMatchObject({
       bizStatus: 1,
       loginStatus: "online",
-      unreadCount: 41,
+      unreadCount: 0,
     });
     expect(account?.expireTime).toBeUndefined();
     expect(account?.takenOverEmployeeId).toBeUndefined();
@@ -4485,7 +4473,7 @@ describe("useWorkbenchStore", () => {
     vi.useRealTimers();
   });
 
-  it("recomputes loaded seat unread when switching modes reloads a stale list", async () => {
+  it("keeps seat unread summary when switching modes reloads a stale list", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-18T10:00:00+08:00"));
     const baseService = createMockWorkbenchService();
@@ -4529,15 +4517,93 @@ describe("useWorkbenchStore", () => {
 
     const state = useWorkbenchStore.getState();
 
-    expect(state.accounts.find((account) => account.id === "drc")?.unreadCount).toBe(
-      state.conversationListsByScope.drc.reduce(
-        (total, conversation) => total + conversation.unread,
-        0,
-      ),
-    );
-    expect(state.accounts.find((account) => account.id === "drc")?.unreadCount).not.toBe(99);
+    expect(state.accounts.find((account) => account.id === "drc")?.unreadCount).toBe(73);
 
     vi.useRealTimers();
+  });
+
+  it("loads unread conversations from server and applies the returned seat unread summary", async () => {
+    const baseService = createMockWorkbenchService();
+    const getConversations = vi.fn(async (accountId, options) => {
+      const result = await baseService.getConversations(accountId, options);
+
+      if (accountId === "drc" && options?.mode === "single" && options.unreadOnly) {
+        return {
+          ...result,
+          hasMore: true,
+          items: [
+            {
+              conversationAIHostingSwitch: false,
+              conversationId: "server-unread-single",
+              customerAvatar: "",
+              customerId: "customer-server-unread",
+              customerName: "服务端补齐未读",
+              lastMessage: "还有未读",
+              lastMessageTime: 1_778_500_000_000,
+              mode: "single" as const,
+              priority: "medium" as const,
+              seatId: "drc",
+              unreadCount: 5,
+            },
+          ],
+          unreadSummary: {
+            group: 4,
+            single: 12,
+            total: 16,
+          },
+        };
+      }
+
+      return result;
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      getConversations,
+      async getSeats() {
+        const seats = await baseService.getSeats();
+
+        return seats.map((seat) =>
+          seat.seatId === "drc"
+            ? {
+                ...seat,
+                groupUnreadCount: 2,
+                singleUnreadCount: 3,
+                unreadCount: 5,
+              }
+            : seat,
+        );
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().loadUnreadConversations("single");
+
+    const state = useWorkbenchStore.getState();
+    const activeAccount = state.accounts.find((account) => account.id === "drc");
+
+    expect(getConversations).toHaveBeenCalledWith(
+      "drc",
+      expect.objectContaining({
+        limit: 500,
+        mode: "single",
+        unreadOnly: true,
+      }),
+    );
+    expect(activeAccount).toMatchObject({
+      groupUnreadCount: 4,
+      singleUnreadCount: 12,
+      unreadCount: 16,
+    });
+    expect(state.conversationListsByScope.drc).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "server-unread-single",
+          unread: 5,
+        }),
+      ]),
+    );
+    expect(state.hasMoreUnreadByScope.drc?.single).toBe(true);
   });
 
   it("clears group member cache when bootstrapping a fresh workbench snapshot", async () => {
@@ -7644,12 +7710,7 @@ describe("useWorkbenchStore", () => {
 
     expect(state.activeAccountId).toBe("ndt");
     expect(state.accounts.find((account) => account.id === "ndt")?.unreadCount).toBe(1);
-    expect(state.accounts.find((account) => account.id === "drc")?.unreadCount).toBe(
-      state.conversationListsByScope.drc.reduce(
-        (total, conversation) => total + conversation.unread,
-        0,
-      ),
-    );
+    expect(state.accounts.find((account) => account.id === "drc")?.unreadCount).toBe(15);
     expect(state.conversationListsByScope.ndt[0].unread).toBe(1);
   });
 
@@ -7966,12 +8027,7 @@ describe("useWorkbenchStore", () => {
     expect(state.conversationListsByScope.drc.find((conversation) => conversation.id === "conv-002")).toMatchObject({
       unread: 1,
     });
-    expect(state.accounts.find((account) => account.id === "drc")?.unreadCount).toBe(
-      state.conversationListsByScope.drc.reduce(
-        (total, conversation) => total + conversation.unread,
-        0,
-      ),
-    );
+    expect(state.accounts.find((account) => account.id === "drc")?.unreadCount).toBe(12);
   });
 
   it("skips mark-unread when the active account is not taken over by the current user", async () => {
@@ -8030,7 +8086,7 @@ describe("useWorkbenchStore", () => {
     });
   });
 
-  it("recomputes loaded seat unread after pin reloads conversations", async () => {
+  it("keeps seat unread summary after pin reloads conversations", async () => {
     const baseService = createMockWorkbenchService();
 
     setWorkbenchService({
@@ -8057,12 +8113,7 @@ describe("useWorkbenchStore", () => {
 
     const state = useWorkbenchStore.getState();
 
-    expect(state.accounts.find((account) => account.id === "drc")?.unreadCount).toBe(
-      state.conversationListsByScope.drc.reduce(
-        (total, conversation) => total + conversation.unread,
-        0,
-      ),
-    );
+    expect(state.accounts.find((account) => account.id === "drc")?.unreadCount).toBe(13);
     expect(
       state.conversationListsByScope.drc.find((conversation) => conversation.id === "conv-002")
         ?.unread,

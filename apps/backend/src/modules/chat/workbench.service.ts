@@ -301,7 +301,12 @@ export type WorkbenchService = {
   getConversations(
     subUserId: string,
     seatId: string,
-    options?: { cursor?: string; limit?: number; mode?: "single" | "group" },
+    options?: {
+      cursor?: string;
+      limit?: number;
+      mode?: "single" | "group";
+      unreadOnly?: boolean;
+    },
   ): Promise<WorkbenchConversationListResponse> | WorkbenchConversationListResponse;
   getMe(subUserId: string): Promise<WorkbenchSubUserDto> | WorkbenchSubUserDto;
   getMessages(
@@ -816,7 +821,12 @@ export class MysqlWorkbenchService implements WorkbenchService {
   async getConversations(
     subUserId: string,
     seatId: string,
-    options?: { cursor?: string; limit?: number; mode?: "single" | "group" },
+    options?: {
+      cursor?: string;
+      limit?: number;
+      mode?: "single" | "group";
+      unreadOnly?: boolean;
+    },
   ) {
     await this.assertSeatAccess(subUserId, seatId);
     const cursor = options?.cursor
@@ -831,6 +841,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
       cursor,
       limit: options?.limit,
       mode: options?.mode,
+      unreadOnly: options?.unreadOnly,
     });
   }
 

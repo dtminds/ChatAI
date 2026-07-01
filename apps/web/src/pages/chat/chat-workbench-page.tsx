@@ -267,6 +267,7 @@ function ChatWorkbenchContent({
     deleteConversation,
     dismissFullAutoActionError,
     groupMembersLoadingByConversationId,
+    hasMoreUnreadByScope,
     groupMembersByConversationId,
     dismissScopeTransitionError,
     dismissReadReceiptError,
@@ -282,6 +283,7 @@ function ChatWorkbenchContent({
     initializeWorkbench,
     isConversationLoading,
     loadActiveGroupMembers,
+    loadUnreadConversations,
     loadOlderMessages,
     refreshSeatSummaries,
     markConversationRead,
@@ -355,6 +357,7 @@ function ChatWorkbenchContent({
       groupMembersByConversationId: state.groupMembersByConversationId,
       groupMembersLoadingByConversationId:
         state.groupMembersLoadingByConversationId,
+      hasMoreUnreadByScope: state.hasMoreUnreadByScope,
       hasMoreHistoryByConversationId: state.hasMoreHistoryByConversationId,
       historyPanelByConversationId: state.historyPanelByConversationId,
       historyPanelErrorByConversationId:
@@ -374,6 +377,7 @@ function ChatWorkbenchContent({
       initializeWorkbench: state.initializeWorkbench,
       isConversationLoading: state.isConversationLoading,
       loadActiveGroupMembers: state.loadActiveGroupMembers,
+      loadUnreadConversations: state.loadUnreadConversations,
       loadHistoryMessages: state.loadHistoryMessages,
       loadOlderMessages: state.loadOlderMessages,
       markConversationRead: state.markConversationRead,
@@ -582,6 +586,10 @@ function ChatWorkbenchContent({
         isActiveSeatAIHostingEnabled,
       );
 
+      if (resolvedView === "unread") {
+        void loadUnreadConversations(activeMode);
+      }
+
       setConversationViewRetainedState(
         resolvedView === DEFAULT_CONVERSATION_VIEW
           ? null
@@ -635,6 +643,7 @@ function ChatWorkbenchContent({
       activeModeConversations,
       clearActiveConversation,
       isActiveSeatAIHostingEnabled,
+      loadUnreadConversations,
       setConversationView,
       setActiveConversation,
       visibleSearchableConversations,
@@ -2063,12 +2072,18 @@ function ChatWorkbenchContent({
                   onMarkConversationRead={handleMarkConversationRead}
                   onMarkConversationUnread={handleMarkConversationUnread}
                   onPinConversation={pinConversation}
+                  onRefreshUnreadConversations={loadUnreadConversations}
                   onSelectConversation={handleSelectConversation}
                   onSelectMode={handleSelectMode}
                   onSelectView={handleSelectConversationView}
                   onUnpinConversation={unpinConversation}
                   retainedConversationIds={activeViewRetainedConversationIds}
                   searchableConversations={visibleSearchableConversations}
+                  hasMoreUnreadByMode={hasMoreUnreadByScope[activeAccountId]}
+                  unreadCountByMode={{
+                    group: activeAccount?.groupUnreadCount,
+                    single: activeAccount?.singleUnreadCount,
+                  }}
                 />
 
                 <ChatPanel

@@ -794,20 +794,20 @@ function KnowledgeNameWithSummary({
       <HoverCardContent
         align="start"
         aria-label={`${name} 摘要`}
-        className="w-[min(27rem,calc(100vw-2rem))] rounded-[12px] p-0 shadow-[0_16px_40px_var(--shadow-medium)]"
+        className="w-[min(24rem,calc(100vw-2rem))] rounded-[10px] p-0 shadow-[0_16px_40px_var(--shadow-medium)]"
         role="dialog"
         side="right"
-        sideOffset={12}
+        sideOffset={10}
       >
-        <div className="space-y-4 p-5">
-          <div className="flex min-w-0 items-center gap-2.5">
-            <FileExtensionBadge className="size-7" extension={record.fileExtension} />
-            <p className="min-w-0 truncate text-sm font-semibold text-foreground" title={name}>
+        <div className="space-y-3 p-4">
+          <div className="flex min-w-0 items-center gap-2">
+            <FileExtensionBadge className="size-6" extension={record.fileExtension} />
+            <p className="min-w-0 truncate text-[13px] font-semibold leading-5 text-foreground" title={name}>
               {name}
             </p>
           </div>
           <div className="border-t border-border" />
-          <div className="space-y-4">
+          <div className="space-y-3">
             <p className="text-[13px] leading-6 text-foreground">
               <span className="mr-2 inline-flex h-6 items-center gap-1.5 rounded-[4px] bg-primary/8 px-2 align-top text-[13px] font-medium leading-6 text-primary">
                 <HugeiconsIcon
@@ -824,7 +824,7 @@ function KnowledgeNameWithSummary({
             <div className="flex flex-wrap gap-2">
               {record.hasDocSummary ? (
                 <Button
-                  className="h-9 rounded-[8px] px-4"
+                  className="h-8 rounded-[6px] px-3 text-[13px]"
                   onClick={() => {
                     setIsSummaryPreviewOpen(false);
                     onShowSummary();
@@ -836,7 +836,7 @@ function KnowledgeNameWithSummary({
                 </Button>
               ) : null}
               <Button
-                className="h-9 rounded-[8px] px-4"
+                className="h-8 rounded-[6px] px-3 text-[13px]"
                 disabled={!canOpenDetail}
                 onClick={onOpenDetail}
                 type="button"

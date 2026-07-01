@@ -113,9 +113,11 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
 
   const docs = [
     {
+      brief_summary: "覆盖产品规格、售后政策和常见咨询场景",
       create_time: "2026-06-18 15:22:22",
       doc_process_time: null,
       doc_size: options.docSizeBytes?.[0] ?? 12 * 1024 * 1024,
+      doc_summary: "## 文档概览\n\n- 产品规格\n- 售后政策",
       doc_suffix: "doc",
       doc_type: 2,
       doc_update_time: null,
@@ -139,9 +141,11 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
       volc_strategy_resource_id: null,
     },
     {
+      brief_summary: null,
       create_time: "2026-06-18 12:00:00",
       doc_process_time: null,
       doc_size: options.docSizeBytes?.[1] ?? 8 * 1024 * 1024,
+      doc_summary: null,
       doc_suffix: "png",
       doc_type: 3,
       doc_update_time: null,
@@ -165,8 +169,11 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
       volc_strategy_resource_id: null,
     },
     {
+      brief_summary: null,
       create_time: "2026-06-16 15:22:22",
       doc_process_time: null,
+      doc_size: 1024,
+      doc_summary: null,
       doc_suffix: "txt",
       doc_type: 2,
       doc_update_time: null,
@@ -192,9 +199,11 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
   ];
   if (options.includeFaqDoc) {
     docs.push({
+      brief_summary: null,
       create_time: "2026-06-16 15:22:22",
       doc_process_time: null,
       doc_size: 1024,
+      doc_summary: null,
       doc_suffix: "faq",
       doc_type: 1,
       doc_update_time: null,
@@ -220,9 +229,11 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
   }
   for (let index = docs.length; index < (options.totalDocCount ?? docs.length); index += 1) {
     docs.push({
+      brief_summary: null,
       create_time: "2026-06-18 15:22:22",
       doc_process_time: null,
       doc_size: options.docSizeBytes?.[index] ?? 1024 * 1024,
+      doc_summary: null,
       doc_suffix: "doc",
       doc_type: 2,
       doc_update_time: null,
@@ -248,9 +259,11 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
   }
   for (let index = 0; index < (options.deletedDocCount ?? 0); index += 1) {
     docs.push({
+      brief_summary: null,
       create_time: "2026-06-18 15:22:22",
       doc_process_time: null,
       doc_size: 1024 * 1024,
+      doc_summary: null,
       doc_suffix: "doc",
       doc_type: 2,
       doc_update_time: null,
@@ -420,9 +433,15 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
           return rows;
         }
 
-        return rows.map((row) =>
-          Object.fromEntries(selectedColumns.map((column) => [column, row[column]])),
-        );
+        return rows.map((row) => {
+          const projected = Object.fromEntries(selectedColumns.map((column) => [column, row[column]]));
+
+          if (selectedColumns.includes("has_doc_summary")) {
+            projected.has_doc_summary = String(row.doc_summary ?? "").trim() ? 1 : 0;
+          }
+
+          return projected;
+        });
       };
 
       const builder = {
@@ -498,7 +517,10 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
             return builder.countResult();
           }
 
-          if (selectedColumns.includes("doc_size_sum")) {
+          if (
+            selectedColumns.includes("doc_size_sum")
+            || selectedColumns.includes("used")
+          ) {
             return builder.sumDocSizeResult();
           }
 
@@ -529,10 +551,15 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
 
           if (Array.isArray(selection)) {
             selectedAll = false;
-            selectedColumns = selection.map(String);
+            selectedColumns = [...selectedColumns, ...selection.map(String)];
           } else if (table === "xy_wap_embed_agent_kb_doc" && typeof selection === "object") {
             selectedAll = false;
-            selectedColumns = ["doc_size_sum"];
+            selectedColumns = [
+              ...selectedColumns,
+              typeof (selection as { alias?: unknown }).alias === "string"
+                ? (selection as { alias: string }).alias
+                : "doc_size_sum",
+            ];
           }
 
           return builder;

@@ -678,7 +678,6 @@ describe("AI hosting agent routes", () => {
             agentId: "301",
             avatarUrl: "https://example.com/seat-102.png",
             fullAutoAuth: true,
-            groupChatCount: 3,
             id: "102",
             name: "小助理2",
             semiAutoAuth: false,
@@ -687,7 +686,6 @@ describe("AI hosting agent routes", () => {
             agentId: null,
             avatarUrl: "",
             fullAutoAuth: false,
-            groupChatCount: 1,
             id: "101",
             name: "小助理1",
             semiAutoAuth: false,
@@ -713,57 +711,11 @@ describe("AI hosting agent routes", () => {
     expect(db.seatListWheres).toContainEqual(["seat.uid", "=", 9001]);
     expect(db.seatListWheres).toContainEqual(["seat.platform", "=", 5]);
     expect(db.queriedTables).toContain("xy_wap_embed_sub_user");
-    expect(db.queriedTables).toContain("xy_wap_embed_group_seat");
     expect(db.seatListLimitValues).toContain(200);
     expect(db.hostingConfigListWheres).toContainEqual(["uid", "=", 9001]);
     expect(db.hostingConfigListWheres).toContainEqual(["user_seat_id", "in", [102, 101]]);
     expect(db.historyListExecuteCount).toBe(0);
 
-    await app.close();
-  });
-
-  it("syncs seat groups through the Java internal API", async () => {
-    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
-    process.env.JAVA_INTERNAL_API_TOKEN = "internal-token";
-    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ data: true, error: 0, errorMsg: "", success: true }), {
-        headers: { "content-type": "application/json" },
-        status: 200,
-      }),
-    );
-
-    const { app, authorization } = await createAiHostingApp(["admin"]);
-
-    const response = await app.inject({
-      headers: { authorization },
-      method: "POST",
-      payload: {
-        syncMembers: true,
-      },
-      url: "/api/server/ai-hosting/hosting-settings/102/sync-seat-groups",
-    });
-
-    expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({
-      data: {
-        synced: true,
-      },
-      success: true,
-    });
-    expect(fetchMock).toHaveBeenCalledWith(
-      "https://java.internal/third-internal/wap-embed/user-seat/sync-seat-groups",
-      expect.objectContaining({
-        body: JSON.stringify({
-          platform: 5,
-          seatId: 102,
-          syncMembers: true,
-          uid: 9001,
-        }),
-        method: "POST",
-      }),
-    );
-
-    fetchMock.mockRestore();
     await app.close();
   });
 

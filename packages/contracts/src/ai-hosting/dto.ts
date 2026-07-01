@@ -143,7 +143,6 @@ export const AiHostingSettingsAccountSchema = Type.Object({
   agentId: Type.Union([Type.String(), Type.Null()]),
   avatarUrl: Type.String(),
   fullAutoAuth: Type.Boolean(),
-  groupChatCount: Type.Integer({ minimum: 0 }),
   id: Type.String(),
   name: Type.String(),
   semiAutoAuth: Type.Boolean(),
@@ -166,14 +165,6 @@ export const AiHostingSettingsUpdateRequestSchema = Type.Object({
   semiAutoAuth: Type.Boolean(),
   userSeatIds: Type.Array(Type.String(), { minItems: 1 }),
 }, { additionalProperties: false });
-
-export const AiHostingSettingsSyncSeatGroupsRequestSchema = Type.Object({
-  syncMembers: Type.Optional(Type.Boolean()),
-}, { additionalProperties: false });
-
-export const AiHostingSettingsSyncSeatGroupsResponseSchema = Type.Object({
-  synced: Type.Boolean(),
-});
 
 export type AiHostingAgentPromptConfig = Static<typeof AiHostingAgentPromptConfigSchema>;
 export type AiHostingQuota = Static<typeof AiHostingQuotaSchema>;
@@ -201,7 +192,3 @@ export type AiHostingSettingsAgentOption = Static<typeof AiHostingSettingsAgentO
 export type AiHostingSettingsResponse = Static<typeof AiHostingSettingsResponseSchema>;
 export type AiHostingSettingsUpdateRequest =
   Static<typeof AiHostingSettingsUpdateRequestSchema>;
-export type AiHostingSettingsSyncSeatGroupsRequest =
-  Static<typeof AiHostingSettingsSyncSeatGroupsRequestSchema>;
-export type AiHostingSettingsSyncSeatGroupsResponse =
-  Static<typeof AiHostingSettingsSyncSeatGroupsResponseSchema>;

@@ -48,6 +48,7 @@ export const SettingsManagedAccountSubAccountSchema = Type.Object({
 
 export const SettingsManagedAccountSchema = Type.Object({
   avatarUrl: Type.String(),
+  groupChatCount: Type.Integer({ minimum: 0 }),
   id: Type.String(),
   name: Type.String(),
   onlineStatus: SettingsManagedAccountOnlineStatusSchema,
@@ -62,6 +63,14 @@ export const SettingsManagedAccountsResponseSchema = Type.Object({
 export const SettingsManagedAccountSubAccountsUpdateRequestSchema = Type.Object({
   subAccountIds: Type.Array(Type.String()),
 }, { additionalProperties: false });
+
+export const SettingsManagedAccountSyncSeatGroupsRequestSchema = Type.Object({
+  syncMembers: Type.Optional(Type.Boolean()),
+}, { additionalProperties: false });
+
+export const SettingsManagedAccountSyncSeatGroupsResponseSchema = Type.Object({
+  synced: Type.Boolean(),
+});
 
 export const SettingsSubAccountCreateRequestSchema = Type.Object({
   account: Type.String({ minLength: 1 }),
@@ -150,6 +159,12 @@ export type SettingsManagedAccountsResponse = Static<
 >;
 export type SettingsManagedAccountSubAccountsUpdateRequest = Static<
   typeof SettingsManagedAccountSubAccountsUpdateRequestSchema
+>;
+export type SettingsManagedAccountSyncSeatGroupsRequest = Static<
+  typeof SettingsManagedAccountSyncSeatGroupsRequestSchema
+>;
+export type SettingsManagedAccountSyncSeatGroupsResponse = Static<
+  typeof SettingsManagedAccountSyncSeatGroupsResponseSchema
 >;
 export type SettingsSubAccountCreateRequest = Static<
   typeof SettingsSubAccountCreateRequestSchema

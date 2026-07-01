@@ -6,7 +6,6 @@ import type {
 import { MoreHorizontalIcon, Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useNavigate } from "react-router-dom";
-import { toast } from "sonner";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -40,7 +39,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { isRequestError } from "@/lib/request";
 import { cn } from "@/lib/utils";
-import { listAiHostingSettings, syncAiHostingSeatGroups, updateAiHostingSettings } from "./agent-service";
+import { listAiHostingSettings, updateAiHostingSettings } from "./agent-service";
 import { AiHostingLayout, AiHostingPageHeader } from "./ai-hosting-layout";
 
 type HostingAccount = AiHostingSettingsAccount;
@@ -62,7 +61,6 @@ export function AgentHostingSettingsPage() {
   const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([]);
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
   const [settingsTargetAccountIds, setSettingsTargetAccountIds] = useState<string[]>([]);
-  const [syncingAccountIds, setSyncingAccountIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -152,27 +150,6 @@ export function AgentHostingSettingsPage() {
     setSettingsDialogOpen(true);
   }
 
-  async function handleSyncSeatGroups(accountId: string) {
-    if (syncingAccountIds.includes(accountId)) {
-      return;
-    }
-
-    setSyncingAccountIds((current) => [...current, accountId]);
-
-    try {
-      await syncAiHostingSeatGroups(accountId, { syncMembers: true });
-      const response = await listAiHostingSettings();
-      setAccounts(response.accounts);
-      setAgents(response.agents);
-      setErrorMessage("");
-      toast.success("群聊同步已触发");
-    } catch (error) {
-      toast.error(isRequestError(error) ? error.message : "群聊同步失败");
-    } finally {
-      setSyncingAccountIds((current) => current.filter((id) => id !== accountId));
-    }
-  }
-
   async function handleSaveSettings(accountIds: string[], draft: HostingSettingsDraft) {
     try {
       const response = await updateAiHostingSettings({
@@ -253,11 +230,9 @@ export function AgentHostingSettingsPage() {
               headerCheckboxState={headerCheckboxState}
               loading={loading}
               onOpenSettings={openSettingsDialog}
-              onSyncSeatGroups={handleSyncSeatGroups}
               onToggleAccount={toggleAccountSelection}
               onToggleAll={toggleAllAccounts}
               selectedAccountIds={selectedAccountIds}
-              syncingAccountIds={syncingAccountIds}
             />
           </div>
         </section>
@@ -556,27 +531,22 @@ function HostingSettingsTable({
   headerCheckboxState,
   loading,
   onOpenSettings,
-  onSyncSeatGroups,
   onToggleAccount,
   onToggleAll,
   selectedAccountIds,
-  syncingAccountIds,
 }: {
   accounts: HostingAccount[];
   agents: HostingAgent[];
   headerCheckboxState: boolean | "indeterminate";
   loading: boolean;
   onOpenSettings: (accountIds: string[]) => void;
-  onSyncSeatGroups: (accountId: string) => void | Promise<void>;
   onToggleAccount: (accountId: string) => void;
   onToggleAll: (checked: boolean) => void;
   selectedAccountIds: string[];
-  syncingAccountIds: string[];
 }) {
   const selectedAccountIdSet = new Set(selectedAccountIds);
-  const syncingAccountIdSet = new Set(syncingAccountIds);
   const agentNameById = new Map(agents.map((agent) => [agent.id, agent.name]));
-  const tableColumnCount = 7;
+  const tableColumnCount = 6;
 
   return (
     <>
@@ -595,7 +565,6 @@ function HostingSettingsTable({
             <TableHead className="h-11 w-[16%]">关联 Agent</TableHead>
             <TableHead className="h-11 w-[18%]">允许开启 AI 回复</TableHead>
             <TableHead className="h-11 w-[16%]">允许话术推荐</TableHead>
-            <TableHead className="h-11 w-[12%]">开通群聊数</TableHead>
             <TableHead className="h-11 w-[140px] text-right">操作</TableHead>
           </TableRow>
         </TableHeader>
@@ -643,37 +612,15 @@ function HostingSettingsTable({
                 <TableCell className="py-4">
                   <FeatureStatus enabled={account.semiAutoAuth} />
                 </TableCell>
-                <TableCell className="py-4 text-muted-foreground">
-                  {account.groupChatCount}
-                </TableCell>
                 <TableCell className="py-4 text-right">
-                  <div className="flex items-center justify-end gap-3">
-                    <Button
-                      aria-label={`同步${account.name}群聊`}
-                      className="h-auto p-0 text-primary"
-                      disabled={syncingAccountIdSet.has(account.id)}
-                      onClick={() => void onSyncSeatGroups(account.id)}
-                      type="button"
-                      variant="link"
-                    >
-                      {syncingAccountIdSet.has(account.id) ? (
-                        <>
-                          <Spinner aria-hidden="true" size={14} />
-                          <span>同步中</span>
-                        </>
-                      ) : (
-                        "同步群"
-                      )}
-                    </Button>
-                    <Button
-                      className="h-auto p-0 text-primary"
-                      onClick={() => onOpenSettings([account.id])}
-                      type="button"
-                      variant="link"
-                    >
-                      设置
-                    </Button>
-                  </div>
+                  <Button
+                    className="h-auto p-0 text-primary"
+                    onClick={() => onOpenSettings([account.id])}
+                    type="button"
+                    variant="link"
+                  >
+                    设置
+                  </Button>
                 </TableCell>
               </TableRow>
             ))

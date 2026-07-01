@@ -3,14 +3,12 @@ import {
   AiHostingAgentSaveRequestSchema,
   AiHostingAgentSettingsSaveRequestSchema,
   AiHostingAgentTestRequestSchema,
-  AiHostingSettingsSyncSeatGroupsRequestSchema,
   AiHostingSettingsUpdateRequestSchema,
   apiSuccess,
   type AiHostingAgentRenameRequest,
   type AiHostingAgentSaveRequest,
   type AiHostingAgentSettingsSaveRequest,
   type AiHostingAgentTestRequest,
-  type AiHostingSettingsSyncSeatGroupsRequest,
   type AiHostingSettingsUpdateRequest,
 } from "@chatai/contracts";
 import { Type, type Static } from "@sinclair/typebox";
@@ -34,13 +32,8 @@ const AgentParamsSchema = Type.Object({
   agentId: NumericStringSchema,
 });
 
-const UserSeatParamsSchema = Type.Object({
-  userSeatId: NumericStringSchema,
-});
-
 type AgentListQuery = Static<typeof AgentListQuerySchema>;
 type AgentParams = Static<typeof AgentParamsSchema>;
-type UserSeatParams = Static<typeof UserSeatParamsSchema>;
 
 export async function registerAiHostingRoutes(app: FastifyInstance) {
   app.get(
@@ -108,31 +101,6 @@ export async function registerAiHostingRoutes(app: FastifyInstance) {
         await createAiHostingSettingsService(app.db).updateHostingSettings(
           getSubUserId(request),
           request.body,
-        ),
-      );
-    },
-  );
-
-  app.post<{
-    Body: AiHostingSettingsSyncSeatGroupsRequest;
-    Params: UserSeatParams;
-  }>(
-    "/api/server/ai-hosting/hosting-settings/:userSeatId/sync-seat-groups",
-    {
-      preHandler: app.authenticate,
-      schema: {
-        body: AiHostingSettingsSyncSeatGroupsRequestSchema,
-        params: UserSeatParamsSchema,
-      },
-    },
-    async (request) => {
-      assertAiHostingManage(request);
-      return apiSuccess(
-        await createAiHostingSettingsService(app.db).syncSeatGroups(
-          getSubUserId(request),
-          request.params.userSeatId,
-          request.body,
-          createWorkbenchJavaClient(app.log),
         ),
       );
     },

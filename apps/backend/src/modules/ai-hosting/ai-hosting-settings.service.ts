@@ -1,8 +1,6 @@
 import type {
   AiHostingSettingsAccount,
   AiHostingSettingsResponse,
-  AiHostingSettingsSyncSeatGroupsRequest,
-  AiHostingSettingsSyncSeatGroupsResponse,
   AiHostingSettingsUpdateRequest,
 } from "@chatai/contracts";
 import type { Insertable, Kysely } from "kysely";
@@ -14,7 +12,6 @@ import {
   isPublishedAgent,
 } from "./ai-hosting-agent.service.js";
 import { normalizeIdList, parseMySqlId } from "./ai-hosting-id-utils.js";
-import type { WorkbenchJavaClient } from "../chat/workbench-java-client.js";
 
 type SettingsScope = {
   platform: number;
@@ -54,50 +51,15 @@ export class AiHostingSettingsService {
       this.agentService.listAllAgentRows(scope.uid),
     ]);
     const seatIds = seats.map((seat) => seat.id);
-    const [configs, groupChatCountByThirdUserId] = await Promise.all([
-      this.listUserSeatAgentRows(scope, seatIds),
-      this.countGroupChatsByThirdUserIds(
-        scope,
-        seats.map((seat) => seat.third_userid).filter((id): id is string => Boolean(id)),
-      ),
-    ]);
+    const configs = await this.listUserSeatAgentRows(scope, seatIds);
     const configsBySeatId = new Map(configs.map((config) => [config.user_seat_id, config]));
 
     return {
       accounts: seats.map((seat) =>
-        mapHostingSettingsAccount(
-          seat,
-          configsBySeatId.get(seat.id),
-          groupChatCountByThirdUserId.get(seat.third_userid ?? "") ?? 0,
-        ),
+        mapHostingSettingsAccount(seat, configsBySeatId.get(seat.id)),
       ),
       agents: agents.map(mapHostingSettingsAgent),
     };
-  }
-
-  async syncSeatGroups(
-    currentSubUserId: string,
-    userSeatId: string,
-    payload: AiHostingSettingsSyncSeatGroupsRequest,
-    javaClient: WorkbenchJavaClient,
-  ): Promise<AiHostingSettingsSyncSeatGroupsResponse> {
-    const scope = await this.getSettingsScope(currentSubUserId);
-    const seatId = parseMySqlId(userSeatId);
-
-    if (seatId == null) {
-      throw new BadRequestError("INVALID_USER_SEAT", "企微账号不存在");
-    }
-
-    await this.assertUserSeatsInScope(scope, [seatId]);
-
-    await javaClient.syncSeatGroups({
-      platform: scope.platform,
-      seatId,
-      syncMembers: payload.syncMembers,
-      uid: scope.uid,
-    });
-
-    return { synced: true };
   }
 
   async updateHostingSettings(
@@ -234,31 +196,6 @@ export class AiHostingSettingsService {
       throw new BadRequestError("INVALID_USER_SEAT", "企微账号不存在");
     }
   }
-
-  private async countGroupChatsByThirdUserIds(scope: SettingsScope, thirdUserIds: string[]) {
-    const uniqueThirdUserIds = [...new Set(thirdUserIds.map((id) => id ?? ""))].filter(
-      (id) => id.length > 0,
-    );
-
-    if (uniqueThirdUserIds.length === 0) {
-      return new Map<string, number>();
-    }
-
-    const rows = await this.db
-      .selectFrom("xy_wap_embed_group_seat")
-      .select("third_userid")
-      .select((expressionBuilder) => expressionBuilder.fn.count<number>("id").as("group_count"))
-      .where("uid", "=", scope.uid)
-      .where("platform", "=", scope.platform)
-      .where("biz_status", "=", dbActiveStatus)
-      .where("third_userid", "in", uniqueThirdUserIds)
-      .groupBy("third_userid")
-      .execute();
-
-    return new Map(
-      rows.map((row) => [row.third_userid, Number(row.group_count)]),
-    );
-  }
 }
 
 export function createAiHostingSettingsService(db: Kysely<Database>) {
@@ -268,13 +205,11 @@ export function createAiHostingSettingsService(db: Kysely<Database>) {
 function mapHostingSettingsAccount(
   seat: HostingSettingsSeatRow,
   config: UserSeatAgentRow | undefined,
-  groupChatCount: number,
 ): AiHostingSettingsAccount {
   return {
     agentId: config && config.agent_id > 0 ? String(config.agent_id) : null,
     avatarUrl: seat.avatarUrl || "",
     fullAutoAuth: config?.full_auto_auth === 1,
-    groupChatCount,
     id: String(seat.id),
     name: seat.third_user_name || "未命名托管账号",
     semiAutoAuth: config?.semi_auto_auth === 1,

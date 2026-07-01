@@ -3,6 +3,8 @@ import type {
   SettingsManagedAccount,
   SettingsManagedAccountsResponse,
   SettingsManagedAccountSubAccountsUpdateRequest,
+  SettingsManagedAccountSyncSeatGroupsRequest,
+  SettingsManagedAccountSyncSeatGroupsResponse,
   SettingsSidebarItem,
   SettingsSidebarItemCreateRequest,
   SettingsSidebarItemsResponse,
@@ -43,6 +45,18 @@ export async function updateManagedAccountSubAccounts(
     ApiSuccessEnvelope<SettingsManagedAccount>,
     SettingsManagedAccountSubAccountsUpdateRequest
   >(`/server/settings/managed-accounts/${managedAccountId}/sub-accounts`, payload);
+
+  return response.data;
+}
+
+export async function syncManagedAccountSeatGroups(
+  managedAccountId: string,
+  payload: SettingsManagedAccountSyncSeatGroupsRequest = {},
+) {
+  const response = await http.post<
+    ApiSuccessEnvelope<SettingsManagedAccountSyncSeatGroupsResponse>,
+    SettingsManagedAccountSyncSeatGroupsRequest
+  >(`/server/settings/managed-accounts/${managedAccountId}/sync-seat-groups`, payload);
 
   return response.data;
 }

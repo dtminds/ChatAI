@@ -4764,6 +4764,89 @@ describe("useWorkbenchStore", () => {
     expect(state.sinceVersion).toBeGreaterThan(0);
   });
 
+  it("does not call poll while polling is paused", async () => {
+    const baseService = createMockWorkbenchService();
+    const poll = vi.fn(baseService.poll);
+
+    setWorkbenchService({
+      ...baseService,
+      poll,
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      pollState: {
+        ...state.pollState,
+        pauseReason: "cursor-invalidated",
+        status: "paused",
+      },
+    }));
+
+    const result = await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(result).toBe(false);
+    expect(poll).not.toHaveBeenCalled();
+  });
+
+  it("does not clear a paused poll state after an in-flight poll succeeds", async () => {
+    const baseService = createMockWorkbenchService();
+    const deferredPoll = createDeferred<WorkbenchPollResponse>();
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        await deferredPoll.promise;
+        return baseService.poll(request);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    const pollPromise = useWorkbenchStore.getState().pollWorkbench();
+
+    useWorkbenchStore.setState((state) => ({
+      pollState: {
+        ...state.pollState,
+        pauseReason: "cursor-invalidated",
+        status: "paused",
+      },
+    }));
+    deferredPoll.resolve({
+      activeConversationMessages: [],
+      conversationChanges: [],
+      messageUpdateEvents: [],
+      nextVersion: useWorkbenchStore.getState().sinceVersion + 1,
+      seatChanges: [],
+    });
+
+    await pollPromise;
+
+    const state = useWorkbenchStore.getState();
+    expect(state.pollState.status).toBe("paused");
+    expect(state.pollState.pauseReason).toBe("cursor-invalidated");
+  });
+
+  it("treats 409 poll errors without the cursor invalidation code as poll errors", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async poll() {
+        throw {
+          message: "conflict",
+          status: 409,
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    const state = useWorkbenchStore.getState();
+    expect(state.pollState.status).toBe("error");
+    expect(state.pollState.pauseReason).toBeUndefined();
+    expect(state.pollState.errorMessage).toBe("轮询失败");
+  });
+
   it("reloads message details in batch for poll message update events", async () => {
     const baseService = createMockWorkbenchService();
     const observedMessageSeqBatches: Array<number[]> = [];

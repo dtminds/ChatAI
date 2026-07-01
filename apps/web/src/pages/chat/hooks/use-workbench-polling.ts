@@ -307,7 +307,6 @@ export function useWorkbenchPolling({
       scheduleNextPoll();
     };
 
-    lastSuccessfulPollAtRef.current = Date.now();
     scheduleSyncGapTimer();
     if (document.visibilityState === "hidden") {
       scheduleBackgroundTimer();

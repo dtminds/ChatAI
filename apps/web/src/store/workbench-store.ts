@@ -1788,10 +1788,7 @@ function isCursorInvalidationError(error: unknown) {
 
   const candidate = error as { code?: string; status?: number };
 
-  return (
-    candidate.code === "WORKBENCH_CURSOR_INVALIDATED" ||
-    candidate.status === 409
-  );
+  return candidate.code === "WORKBENCH_CURSOR_INVALIDATED";
 }
 
 function applyReadResult(
@@ -3899,6 +3896,7 @@ export function createWorkbenchStore() {
       if (
         state.bootstrapStatus !== "ready" ||
         !state.activeAccountId ||
+        state.pollState.status === "paused" ||
         isPollWorkbenchRunning
       ) {
         return false;
@@ -4189,7 +4187,7 @@ export function createWorkbenchStore() {
               ? currentState.pendingMessages
               : filteredPendingMessages;
           const nextPollState =
-            currentState.pollState.status !== "idle" ||
+            currentState.pollState.status === "error" ||
             currentState.pollState.errorMessage != null
               ? {
                   ...currentState.pollState,

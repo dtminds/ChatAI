@@ -470,6 +470,47 @@ describe("useWorkbenchPolling", () => {
     expect(onPollingPaused).toHaveBeenCalledWith("sync-gap");
   });
 
+  it("keeps the sync gap timer across polling effect remounts", async () => {
+    vi.useFakeTimers();
+    setVisibilityState("visible");
+    const pollWorkbench = vi
+      .fn()
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValue(false);
+    const onPollingPaused = vi.fn();
+    const { rerender } = render(
+      <PollingHarness
+        intervalMs={WORKBENCH_MAX_SYNC_GAP_MS * 2}
+        onPollingPaused={onPollingPaused}
+        pollWorkbench={pollWorkbench}
+      />,
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(WORKBENCH_MAX_SYNC_GAP_MS - 1);
+    });
+
+    expect(onPollingPaused).not.toHaveBeenCalled();
+
+    rerender(
+      <PollingHarness
+        intervalMs={WORKBENCH_MAX_SYNC_GAP_MS * 2 + 1}
+        onPollingPaused={onPollingPaused}
+        pollWorkbench={pollWorkbench}
+      />,
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+
+    expect(onPollingPaused).toHaveBeenCalledWith("sync-gap");
+  });
+
   it("pauses after the background timeout elapses even when hidden polls succeed", async () => {
     vi.useFakeTimers();
     setVisibilityState("hidden");

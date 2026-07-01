@@ -73,7 +73,7 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
 
   const kbs = [
     {
-      create_time: new Date("2026-06-19T14:02:22.000Z"),
+      create_time: "2026-06-19 14:02:22",
       id: 1,
       last_operator_id: 1,
       name: "华为产品知识",
@@ -81,12 +81,12 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
       remark: "华为各系列产品规格、功能与常见问题",
       status: 1,
       uid: 9001,
-      update_time: new Date("2026-06-20T14:02:22.000Z"),
+      update_time: "2026-06-20 14:02:22",
     },
   ];
   for (let index = kbs.length; index < (options.totalKbCount ?? kbs.length); index += 1) {
     kbs.push({
-      create_time: new Date("2026-06-19T14:02:22.000Z"),
+      create_time: "2026-06-19 14:02:22",
       id: index + 1,
       last_operator_id: 1,
       name: `配额测试知识库${index + 1}`,
@@ -94,12 +94,12 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
       remark: "配额测试",
       status: 1,
       uid: 9001,
-      update_time: new Date("2026-06-20T14:02:22.000Z"),
+      update_time: "2026-06-20 14:02:22",
     });
   }
   for (let index = 0; index < (options.deletedKbCount ?? 0); index += 1) {
     kbs.push({
-      create_time: new Date("2026-06-19T14:02:22.000Z"),
+      create_time: "2026-06-19 14:02:22",
       id: 100 + index,
       last_operator_id: 1,
       name: `已删除知识库${index + 1}`,
@@ -107,13 +107,13 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
       remark: "配额测试",
       status: 0,
       uid: 9001,
-      update_time: new Date("2026-06-20T14:02:22.000Z"),
+      update_time: "2026-06-20 14:02:22",
     });
   }
 
   const docs = [
     {
-      create_time: new Date("2026-06-18T15:22:22.000Z"),
+      create_time: "2026-06-18 15:22:22",
       doc_process_time: null,
       doc_size: options.docSizeBytes?.[0] ?? 12 * 1024 * 1024,
       doc_suffix: "doc",
@@ -133,13 +133,13 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
       sync_status: 0,
       tokens: null,
       uid: 9001,
-      update_time: new Date("2026-06-20T15:22:22.000Z"),
+      update_time: "2026-06-20 15:22:22",
       volc_doc_id: "volc-doc-1",
       volc_resource_id: null,
       volc_strategy_resource_id: null,
     },
     {
-      create_time: new Date("2026-06-18T12:00:00.000Z"),
+      create_time: "2026-06-18 12:00:00",
       doc_process_time: null,
       doc_size: options.docSizeBytes?.[1] ?? 8 * 1024 * 1024,
       doc_suffix: "png",
@@ -159,13 +159,13 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
       sync_status: 0,
       tokens: null,
       uid: 9001,
-      update_time: new Date("2026-06-19T12:00:00.000Z"),
+      update_time: "2026-06-19 12:00:00",
       volc_doc_id: "volc-doc-2",
       volc_resource_id: null,
       volc_strategy_resource_id: null,
     },
     {
-      create_time: new Date("2026-06-16T15:22:22.000Z"),
+      create_time: "2026-06-16 15:22:22",
       doc_process_time: null,
       doc_suffix: "txt",
       doc_type: 2,
@@ -184,7 +184,7 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
       sync_status: 1,
       tokens: null,
       uid: 9001,
-      update_time: new Date("2026-06-16T15:22:22.000Z"),
+      update_time: "2026-06-16 15:22:22",
       volc_doc_id: "volc-doc-3",
       volc_resource_id: null,
       volc_strategy_resource_id: null,
@@ -192,7 +192,7 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
   ];
   if (options.includeFaqDoc) {
     docs.push({
-      create_time: new Date("2026-06-16T15:22:22.000Z"),
+      create_time: "2026-06-16 15:22:22",
       doc_process_time: null,
       doc_size: 1024,
       doc_suffix: "faq",
@@ -212,7 +212,7 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
       sync_status: 0,
       tokens: null,
       uid: 9001,
-      update_time: new Date("2026-06-16T15:22:22.000Z"),
+      update_time: "2026-06-16 15:22:22",
       volc_doc_id: "volc-doc-4",
       volc_resource_id: null,
       volc_strategy_resource_id: null,
@@ -220,7 +220,7 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
   }
   for (let index = docs.length; index < (options.totalDocCount ?? docs.length); index += 1) {
     docs.push({
-      create_time: new Date("2026-06-18T15:22:22.000Z"),
+      create_time: "2026-06-18 15:22:22",
       doc_process_time: null,
       doc_size: options.docSizeBytes?.[index] ?? 1024 * 1024,
       doc_suffix: "doc",
@@ -240,7 +240,7 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
       sync_status: 0,
       tokens: null,
       uid: 9001,
-      update_time: new Date("2026-06-20T15:22:22.000Z"),
+      update_time: "2026-06-20 15:22:22",
       volc_doc_id: `volc-doc-quota-${index}`,
       volc_resource_id: null,
       volc_strategy_resource_id: null,
@@ -248,7 +248,7 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
   }
   for (let index = 0; index < (options.deletedDocCount ?? 0); index += 1) {
     docs.push({
-      create_time: new Date("2026-06-18T15:22:22.000Z"),
+      create_time: "2026-06-18 15:22:22",
       doc_process_time: null,
       doc_size: 1024 * 1024,
       doc_suffix: "doc",
@@ -268,7 +268,7 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
       sync_status: 0,
       tokens: null,
       uid: 9001,
-      update_time: new Date("2026-06-20T15:22:22.000Z"),
+      update_time: "2026-06-20 15:22:22",
       volc_doc_id: `volc-doc-deleted-${index}`,
       volc_resource_id: null,
       volc_strategy_resource_id: null,
@@ -278,7 +278,7 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
   const chunks = [
     {
       content: "切片正文",
-      create_time: new Date("2026-06-18T15:22:22.000Z"),
+      create_time: "2026-06-18 15:22:22",
       description: null,
       doc_id: 1001,
       html_content: null,
@@ -295,14 +295,14 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
       tokens: null,
       type: "text",
       uid: 9001,
-      update_time: new Date("2026-06-18T15:22:22.000Z"),
+      update_time: "2026-06-18 15:22:22",
       volc_chunk_id: null,
       volc_doc_id: null,
       volc_resource_id: null,
     },
     {
       content: "系统切片正文",
-      create_time: new Date("2026-06-18T15:22:22.000Z"),
+      create_time: "2026-06-18 15:22:22",
       description: null,
       doc_id: 1001,
       html_content: null,
@@ -319,7 +319,7 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
       tokens: null,
       type: "text",
       uid: 9001,
-      update_time: new Date("2026-06-18T15:22:22.000Z"),
+      update_time: "2026-06-18 15:22:22",
       volc_chunk_id: null,
       volc_doc_id: null,
       volc_resource_id: null,

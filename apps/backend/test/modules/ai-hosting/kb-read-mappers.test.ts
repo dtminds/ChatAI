@@ -11,7 +11,7 @@ describe("kb-read-mappers", () => {
   it("maps kb list item fields", () => {
     expect(
       mapKbListItem({
-        create_time: new Date("2026-06-19T14:02:22.000Z"),
+        create_time: "2026-06-19 14:02:22",
         id: 88,
         last_operator_id: 1,
         name: "售后问题解答",
@@ -19,14 +19,14 @@ describe("kb-read-mappers", () => {
         remark: "退换货、维修、保修流程与话术",
         status: 1,
         uid: 9001,
-        update_time: new Date("2026-06-20T14:02:22.000Z"),
+        update_time: "2026-06-20 14:02:22",
       }),
     ).toEqual({
-      createdAt: "2026-06-19T14:02:22.000Z",
+      createdAt: "2026-06-19T06:02:22.000Z",
       description: "退换货、维修、保修流程与话术",
       kbId: "88",
       name: "售后问题解答",
-      updatedAt: "2026-06-20T14:02:22.000Z",
+      updatedAt: "2026-06-20T06:02:22.000Z",
     });
   });
 
@@ -315,10 +315,10 @@ describe("kb-read-mappers", () => {
     });
   });
 
-  it("does not reinterpret Date values as Shanghai wall clock", () => {
+  it("normalizes mysql Date values as Shanghai wall clock on UTC hosts", () => {
     expect(
       mapKbListItem({
-        create_time: new Date("2026-06-19T14:02:22.000Z"),
+        create_time: "2026-06-29 10:07:09",
         id: 88,
         last_operator_id: 1,
         name: "售后问题解答",
@@ -326,11 +326,11 @@ describe("kb-read-mappers", () => {
         remark: "退换货、维修、保修流程与话术",
         status: 1,
         uid: 9001,
-        update_time: new Date("2026-06-20T14:02:22.000Z"),
+        update_time: "2026-06-29 10:07:09",
       }),
     ).toMatchObject({
-      createdAt: "2026-06-19T14:02:22.000Z",
-      updatedAt: "2026-06-20T14:02:22.000Z",
+      createdAt: "2026-06-29T02:07:09.000Z",
+      updatedAt: "2026-06-29T02:07:09.000Z",
     });
   });
 

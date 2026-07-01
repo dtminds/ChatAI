@@ -327,13 +327,17 @@ function mysqlDatetimeToIso(value: string) {
   ).toISOString();
 }
 
+function dateToMysqlDatetimeString(value: Date) {
+  return `${value.getFullYear()}-${pad2(value.getMonth() + 1)}-${pad2(value.getDate())} ${pad2(value.getHours())}:${pad2(value.getMinutes())}:${pad2(value.getSeconds())}`;
+}
+
 function toIsoString(value: Date | number | string | null | undefined) {
   if (value == null) {
     return new Date(0).toISOString();
   }
 
   if (value instanceof Date) {
-    return value.toISOString();
+    return mysqlDatetimeToIso(dateToMysqlDatetimeString(value)) ?? value.toISOString();
   }
 
   if (typeof value === "number") {

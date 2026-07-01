@@ -968,7 +968,7 @@ function MessageActionAvatar({
                     return;
                   }
 
-                  onEnterMultiSelectMode?.();
+                  onEnterMultiSelectMode?.(message);
                 }}
               >
                 <HugeiconsIcon

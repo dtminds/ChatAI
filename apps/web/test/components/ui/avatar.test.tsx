@@ -1,6 +1,17 @@
+import type { ComponentPropsWithoutRef } from "react";
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { describe, expect, it, vi } from "vitest";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+
+vi.mock("@radix-ui/react-avatar", () => ({
+  Root: ({ children, ...props }: ComponentPropsWithoutRef<"span">) => (
+    <span {...props}>{children}</span>
+  ),
+  Image: (props: ComponentPropsWithoutRef<"img">) => <img {...props} />,
+  Fallback: ({ children, ...props }: ComponentPropsWithoutRef<"span">) => (
+    <span {...props}>{children}</span>
+  ),
+}));
 
 describe("Avatar", () => {
   it("uses a user icon by default for customer avatars", () => {
@@ -30,5 +41,18 @@ describe("Avatar", () => {
 
     expect(screen.getByText("客")).toBeInTheDocument();
     expect(screen.getByText("客").querySelector("svg")).not.toBeInTheDocument();
+  });
+
+  it("normalizes avatar image URLs before rendering", () => {
+    render(
+      <Avatar>
+        <AvatarImage alt="企微头像" src="https://wework.qpic.cn/wwpic/abc/0" />
+      </Avatar>,
+    );
+
+    expect(screen.getByAltText("企微头像")).toHaveAttribute(
+      "src",
+      "https://wework.qpic.cn/wwpic/abc/60",
+    );
   });
 });

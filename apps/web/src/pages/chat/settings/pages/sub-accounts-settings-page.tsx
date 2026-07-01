@@ -99,6 +99,7 @@ import {
   useSettingsLocalPagination,
 } from "@/pages/chat/settings/shared";
 import { useSettingsPermissions } from "@/pages/chat/settings/use-settings-permissions";
+import { normalizeAvatarUrl } from "@/lib/avatar-url";
 import { cn } from "@/lib/utils";
 
 const presetRoles: Array<{ label: string; value: AccountRole }> = [
@@ -734,7 +735,7 @@ function SeatAvatar({
         <img
           alt={seat.name}
           className="absolute inset-0 size-full rounded-[inherit] object-cover"
-          src={seat.avatarUrl}
+          src={normalizeAvatarUrl(seat.avatarUrl)}
         />
       ) : null}
       <AvatarFallback className="rounded-full bg-primary/15 text-xs text-primary">

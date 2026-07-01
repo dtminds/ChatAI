@@ -1,5 +1,6 @@
 import { UserIcon, WechatIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { normalizeAvatarUrl } from "@/lib/avatar-url";
 import type { ContactCardMessageContent } from "@/pages/chat/chat-types";
 
 type ContactCardMessageCardProps = {
@@ -38,7 +39,7 @@ export function ContactCardMessageCard({ content }: ContactCardMessageCardProps)
               className="block object-cover"
               height={48}
               loading="lazy"
-              src={content.avatarUrl}
+              src={normalizeAvatarUrl(content.avatarUrl)}
               style={{ height: "48px", width: "48px" }}
               width={48}
             />

@@ -49,6 +49,7 @@ import {
   useSettingsLocalPagination,
 } from "@/pages/chat/settings/shared";
 import { useSettingsPermissions } from "@/pages/chat/settings/use-settings-permissions";
+import { normalizeAvatarUrl } from "@/lib/avatar-url";
 import { cn } from "@/lib/utils";
 
 type DialogState = {
@@ -689,7 +690,7 @@ function ManagedAccountAvatar({
         <img
           alt={account.name}
           className="absolute inset-0 size-full rounded-[inherit] object-cover"
-          src={account.avatarUrl}
+          src={normalizeAvatarUrl(account.avatarUrl)}
         />
       ) : null}
       <AvatarFallback className="rounded-full bg-primary/15 text-xs text-primary">

@@ -783,7 +783,12 @@ describe("useWorkbenchStore", () => {
       id: "conv-001",
       unread: 0,
     });
-    expect(state.accounts.find((account) => account.id === "drc")?.unreadCount).toBe(11);
+    expect(state.accounts.find((account) => account.id === "drc")?.unreadCount).toBe(
+      state.conversationListsByScope.drc.reduce(
+        (total, conversation) => total + conversation.unread,
+        0,
+      ),
+    );
   });
 
   it("clears user-scoped workbench data before another login initializes the workbench", async () => {
@@ -995,6 +1000,38 @@ describe("useWorkbenchStore", () => {
       bootstrapStatus: "ready",
     });
     expect(useWorkbenchStore.getState().accounts.find((account) => account.id === "ndt")?.unreadCount).toBe(1);
+  });
+
+  it("keeps loaded seat unread derived from loaded conversations while refreshing unloaded seats from summaries", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async getSeats() {
+        return (await baseService.getSeats()).map((seat) => ({
+          ...seat,
+          unreadCount: seat.seatId === "drc"
+            ? 99
+            : seat.seatId === "ndt"
+              ? 42
+              : seat.unreadCount,
+        }));
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().refreshSeatSummaries();
+
+    const state = useWorkbenchStore.getState();
+    const loadedDrcUnread = state.conversationListsByScope.drc.reduce(
+      (total, conversation) => total + conversation.unread,
+      0,
+    );
+
+    expect(state.accounts.find((account) => account.id === "drc")?.unreadCount).toBe(
+      loadedDrcUnread,
+    );
+    expect(state.accounts.find((account) => account.id === "ndt")?.unreadCount).toBe(42);
   });
 
   it("requests 50 messages for initial and switched conversation pages", async () => {
@@ -4163,7 +4200,7 @@ describe("useWorkbenchStore", () => {
       operator: "小可更新",
       phone: "13296712906",
       takenOverEmployeeId: "sub-user-002",
-      unreadCount: 3,
+      unreadCount: 41,
     });
   });
 
@@ -4216,7 +4253,7 @@ describe("useWorkbenchStore", () => {
     expect(account).toMatchObject({
       bizStatus: 1,
       loginStatus: "online",
-      unreadCount: 0,
+      unreadCount: 41,
     });
     expect(account?.expireTime).toBeUndefined();
     expect(account?.takenOverEmployeeId).toBeUndefined();
@@ -4444,6 +4481,61 @@ describe("useWorkbenchStore", () => {
     await useWorkbenchStore.getState().setActiveMode("group");
 
     expect(requestCount).toBe(2);
+
+    vi.useRealTimers();
+  });
+
+  it("recomputes loaded seat unread when switching modes reloads a stale list", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-18T10:00:00+08:00"));
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async getSeats() {
+        const seats = await baseService.getSeats();
+
+        return seats.map((seat) =>
+          seat.seatId === "drc"
+            ? {
+                ...seat,
+                unreadCount: 99,
+              }
+            : seat,
+        );
+      },
+      async getConversations(accountId, options) {
+        const result = await baseService.getConversations(accountId, options);
+
+        if (accountId === "drc" && options?.mode === "group") {
+          return {
+            ...result,
+            items: result.items.map((conversation) => ({
+              ...conversation,
+              unreadCount: conversation.conversationId === "conv-004" ? 12 : 0,
+            })),
+          };
+        }
+
+        return result;
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().setActiveMode("group");
+    await useWorkbenchStore.getState().setActiveMode("single");
+    vi.setSystemTime(Date.now() + 5 * 60 * 1000 + 1);
+    await useWorkbenchStore.getState().setActiveMode("group");
+
+    const state = useWorkbenchStore.getState();
+
+    expect(state.accounts.find((account) => account.id === "drc")?.unreadCount).toBe(
+      state.conversationListsByScope.drc.reduce(
+        (total, conversation) => total + conversation.unread,
+        0,
+      ),
+    );
+    expect(state.accounts.find((account) => account.id === "drc")?.unreadCount).not.toBe(99);
 
     vi.useRealTimers();
   });
@@ -7552,7 +7644,12 @@ describe("useWorkbenchStore", () => {
 
     expect(state.activeAccountId).toBe("ndt");
     expect(state.accounts.find((account) => account.id === "ndt")?.unreadCount).toBe(1);
-    expect(state.accounts.find((account) => account.id === "drc")?.unreadCount).toBe(15);
+    expect(state.accounts.find((account) => account.id === "drc")?.unreadCount).toBe(
+      state.conversationListsByScope.drc.reduce(
+        (total, conversation) => total + conversation.unread,
+        0,
+      ),
+    );
     expect(state.conversationListsByScope.ndt[0].unread).toBe(1);
   });
 
@@ -7869,7 +7966,12 @@ describe("useWorkbenchStore", () => {
     expect(state.conversationListsByScope.drc.find((conversation) => conversation.id === "conv-002")).toMatchObject({
       unread: 1,
     });
-    expect(state.accounts.find((account) => account.id === "drc")?.unreadCount).toBe(12);
+    expect(state.accounts.find((account) => account.id === "drc")?.unreadCount).toBe(
+      state.conversationListsByScope.drc.reduce(
+        (total, conversation) => total + conversation.unread,
+        0,
+      ),
+    );
   });
 
   it("skips mark-unread when the active account is not taken over by the current user", async () => {
@@ -7926,6 +8028,45 @@ describe("useWorkbenchStore", () => {
     expect(state.conversationListsByScope.drc.find((conversation) => conversation.id === "conv-002")).toMatchObject({
       isPinned: true,
     });
+  });
+
+  it("recomputes loaded seat unread after pin reloads conversations", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async getConversations(accountId, options) {
+        const result = await baseService.getConversations(accountId, options);
+
+        if (accountId === "drc" && options?.mode === "single") {
+          return {
+            ...result,
+            items: result.items.map((conversation) => ({
+              ...conversation,
+              unreadCount: conversation.conversationId === "conv-002" ? 18 : 0,
+            })),
+          };
+        }
+
+        return result;
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().pinConversation("conv-002");
+
+    const state = useWorkbenchStore.getState();
+
+    expect(state.accounts.find((account) => account.id === "drc")?.unreadCount).toBe(
+      state.conversationListsByScope.drc.reduce(
+        (total, conversation) => total + conversation.unread,
+        0,
+      ),
+    );
+    expect(
+      state.conversationListsByScope.drc.find((conversation) => conversation.id === "conv-002")
+        ?.unread,
+    ).toBe(18);
   });
 
   it("keeps pin reload results when the user switches accounts before reload finishes", async () => {

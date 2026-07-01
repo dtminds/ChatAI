@@ -57,6 +57,8 @@ export function ConversationCard({
     composerDraft && hasConversationComposerDraftContent(composerDraft)
       ? getConversationComposerDraftPreviewParts(composerDraft)
       : null;
+  const unreadDisplayCount =
+    conversation.unread > 99 ? "99+" : String(conversation.unread);
   const conversationMenuItems = [
     {
       label: conversation.isPinned ? "取消置顶" : "置顶",
@@ -108,7 +110,7 @@ export function ConversationCard({
           </Avatar>
           {conversation.unread > 0 ? (
             <div className="absolute -right-1 -top-1 min-w-4 rounded-full bg-destructive px-1 py-0.5 text-center text-[10px] font-semibold leading-none text-destructive-foreground">
-              {conversation.unread}
+              {unreadDisplayCount}
             </div>
           ) : null}
           {isAIHostingEnabled ? (

@@ -609,6 +609,55 @@ function markAllConversationModesLoaded(
   );
 }
 
+function areAllConversationModesLoaded(
+  loadedAtByScope: WorkbenchState["conversationModeLoadedAtByScope"],
+  accountId: string,
+) {
+  const loadedAtByMode = loadedAtByScope[accountId];
+
+  return CONVERSATION_MODES.every((mode) => loadedAtByMode?.[mode] != null);
+}
+
+function getLoadedConversationUnreadCount(
+  conversationListsByScope: WorkbenchState["conversationListsByScope"],
+  accountId: string,
+) {
+  return (conversationListsByScope[accountId] ?? []).reduce(
+    (total, conversation) => total + Math.max(0, conversation.unread),
+    0,
+  );
+}
+
+function deriveLoadedAccountUnreadCounts(
+  accounts: Account[],
+  conversationListsByScope: WorkbenchState["conversationListsByScope"],
+  conversationModeLoadedAtByScope: WorkbenchState["conversationModeLoadedAtByScope"],
+) {
+  let changed = false;
+  const nextAccounts = accounts.map((account) => {
+    if (!areAllConversationModesLoaded(conversationModeLoadedAtByScope, account.id)) {
+      return account;
+    }
+
+    const unreadCount = getLoadedConversationUnreadCount(
+      conversationListsByScope,
+      account.id,
+    );
+
+    if (account.unreadCount === unreadCount) {
+      return account;
+    }
+
+    changed = true;
+    return {
+      ...account,
+      unreadCount,
+    };
+  });
+
+  return changed ? nextAccounts : accounts;
+}
+
 function isConversationModeCacheFresh(
   state: WorkbenchState,
   accountId: string,
@@ -3116,25 +3165,35 @@ export function createWorkbenchStore() {
       const result = await loadAccountConversationsWithBaseline(accountId);
       const loadedAt = Date.now();
 
-      set((currentState) => ({
-        conversationModeLoadedAtByScope: markAllConversationModesLoaded(
+      set((currentState) => {
+        const conversationModeLoadedAtByScope = markAllConversationModesLoaded(
           currentState.conversationModeLoadedAtByScope,
           accountId,
           loadedAt,
-        ),
-        conversationListsByScope: {
+        );
+        const conversationListsByScope = {
           ...currentState.conversationListsByScope,
           [accountId]: result.conversations,
-        },
-        isPollBaselineFresh:
-          currentState.activeAccountId === accountId
-            ? true
-            : currentState.isPollBaselineFresh,
-        sinceVersion:
-          currentState.activeAccountId === accountId
-            ? result.pollBaseline
-            : currentState.sinceVersion,
-      }));
+        };
+
+        return {
+          accounts: deriveLoadedAccountUnreadCounts(
+            currentState.accounts,
+            conversationListsByScope,
+            conversationModeLoadedAtByScope,
+          ),
+          conversationModeLoadedAtByScope,
+          conversationListsByScope,
+          isPollBaselineFresh:
+            currentState.activeAccountId === accountId
+              ? true
+              : currentState.isPollBaselineFresh,
+          sinceVersion:
+            currentState.activeAccountId === accountId
+              ? result.pollBaseline
+              : currentState.sinceVersion,
+        };
+      });
     }
 
     async function setConversationPinned(
@@ -4128,73 +4187,77 @@ export function createWorkbenchStore() {
           );
 
           set({
-            accounts: bootstrapResult.accounts,
+            accounts: deriveLoadedAccountUnreadCounts(
+              bootstrapResult.accounts,
+              prunedConversationListCache.conversationListsByScope,
+              prunedConversationListCache.conversationModeLoadedAtByScope,
+            ),
             activeAccountId: bootstrapResult.activeAccountId,
             activeConversationId: bootstrapResult.activeConversationId,
-          activeMessageSeq: getActiveMessageSeq(
-            conversationPage
+            activeMessageSeq: getActiveMessageSeq(
+              conversationPage
+                ? {
+                    [conversationPage.conversationId]: conversationPage.messages,
+                  }
+                : {},
+              bootstrapResult.activeConversationId,
+            ),
+            activeMode: bootstrapResult.activeMode,
+            bootstrapStatus: "ready",
+            conversationListCacheSeatOrder:
+              prunedConversationListCache.conversationListCacheSeatOrder,
+            conversationListsByScope:
+              prunedConversationListCache.conversationListsByScope,
+            conversationModeLoadedAtByScope:
+              prunedConversationListCache.conversationModeLoadedAtByScope,
+            groupMembersLoadedAtByConversationId: {},
+            groupMembersByConversationId: {},
+            groupMembersLoadingByConversationId: {},
+            hasMoreHistoryByConversationId: conversationPage
               ? {
-                  [conversationPage.conversationId]: conversationPage.messages,
+                  [conversationPage.conversationId]: conversationPage.hasMoreHistory,
                 }
               : {},
-            bootstrapResult.activeConversationId,
-          ),
-          activeMode: bootstrapResult.activeMode,
-          bootstrapStatus: "ready",
-          conversationListCacheSeatOrder:
-            prunedConversationListCache.conversationListCacheSeatOrder,
-          conversationListsByScope:
-            prunedConversationListCache.conversationListsByScope,
-          conversationModeLoadedAtByScope:
-            prunedConversationListCache.conversationModeLoadedAtByScope,
-          groupMembersLoadedAtByConversationId: {},
-          groupMembersByConversationId: {},
-          groupMembersLoadingByConversationId: {},
-          hasMoreHistoryByConversationId: conversationPage
-            ? {
-                [conversationPage.conversationId]: conversationPage.hasMoreHistory,
-              }
-            : {},
-          messagePaginationByConversationId: conversationPage
-            ? {
-                [conversationPage.conversationId]: buildMessagePaginationState(conversationPage),
-              }
-            : {},
-          me: bootstrapResult.me,
-          messagesByConversationId: conversationPage
-            ? {
-                [conversationPage.conversationId]: upsertMessageList(
-                  [],
-                  conversationPage.messages,
-                ),
-              }
-            : {},
-          smartReplyPendingMessageKeysByConversationId: conversationPage
-            ? {
-                [conversationPage.conversationId]: bootstrapSmartReplyPending,
-              }
-            : {},
-          smartReplyByMessageIdByConversationId: conversationPage
-            ? {
-                [conversationPage.conversationId]: bootstrapSmartReplyByMessageId,
-              }
-            : {},
-          smartReplyHiddenMessageKeysByConversationId: conversationPage
-            ? {
-                [conversationPage.conversationId]: bootstrapSmartReplyHidden,
-              }
-            : {},
-          sidebarItems: bootstrapResult.sidebarItems,
-          isPollBaselineFresh: true,
-          messageUpdateCursor: undefined,
-          pollState: {
-            ...get().pollState,
-            errorMessage: undefined,
-            status: "idle",
-          },
-          seatUpdateCursor: undefined,
-          sinceVersion: bootstrapResult.pollBaseline,
-        });
+            messagePaginationByConversationId: conversationPage
+              ? {
+                  [conversationPage.conversationId]: buildMessagePaginationState(conversationPage),
+                }
+              : {},
+            me: bootstrapResult.me,
+            messagesByConversationId: conversationPage
+              ? {
+                  [conversationPage.conversationId]: upsertMessageList(
+                    [],
+                    conversationPage.messages,
+                  ),
+                }
+              : {},
+            smartReplyPendingMessageKeysByConversationId: conversationPage
+              ? {
+                  [conversationPage.conversationId]: bootstrapSmartReplyPending,
+                }
+              : {},
+            smartReplyByMessageIdByConversationId: conversationPage
+              ? {
+                  [conversationPage.conversationId]: bootstrapSmartReplyByMessageId,
+                }
+              : {},
+            smartReplyHiddenMessageKeysByConversationId: conversationPage
+              ? {
+                  [conversationPage.conversationId]: bootstrapSmartReplyHidden,
+                }
+              : {},
+            sidebarItems: bootstrapResult.sidebarItems,
+            isPollBaselineFresh: true,
+            messageUpdateCursor: undefined,
+            pollState: {
+              ...get().pollState,
+              errorMessage: undefined,
+              status: "idle",
+            },
+            seatUpdateCursor: undefined,
+            sinceVersion: bootstrapResult.pollBaseline,
+          });
 
         const bootstrapActiveConversation = bootstrapResult.conversationListsByScope[
           bootstrapResult.activeAccountId
@@ -4607,7 +4670,11 @@ export function createWorkbenchStore() {
               : currentState.pollState;
 
           return {
-            accounts: nextAccounts,
+            accounts: deriveLoadedAccountUnreadCounts(
+              nextAccounts,
+              nextConversationLists,
+              currentState.conversationModeLoadedAtByScope,
+            ),
             activeMessageSeq: getActiveMessageSeq(
               nextMessagesByConversationId,
               requestedActiveConversationId,
@@ -5657,16 +5724,24 @@ export function createWorkbenchStore() {
           return;
         }
 
-        set((currentState) => ({
-          accounts: currentState.accounts.map((account) => {
+        set((currentState) => {
+          const mergedAccounts = currentState.accounts.map((account) => {
             if (account.id === currentState.activeAccountId) {
               return account;
             }
 
             const nextAccount = nextAccounts.find((item) => item.id === account.id);
             return nextAccount ?? account;
-          }),
-        }));
+          });
+
+          return {
+            accounts: deriveLoadedAccountUnreadCounts(
+              mergedAccounts,
+              currentState.conversationListsByScope,
+              currentState.conversationModeLoadedAtByScope,
+            ),
+          };
+        });
       } catch {
         // Keep current seat summaries if the refresh fails.
       }
@@ -5750,6 +5825,11 @@ export function createWorkbenchStore() {
 
           return {
             ...clearedMessageState,
+            accounts: deriveLoadedAccountUnreadCounts(
+              currentState.accounts,
+              prunedConversationListCache.conversationListsByScope,
+              prunedConversationListCache.conversationModeLoadedAtByScope,
+            ),
             groupMembersLoadedAtByConversationId: omitByKeys(
               currentState.groupMembersLoadedAtByConversationId,
               evictedConversationIds,
@@ -6169,6 +6249,11 @@ export function createWorkbenchStore() {
             });
 
             return {
+              accounts: deriveLoadedAccountUnreadCounts(
+                currentState.accounts,
+                prunedConversationListCache.conversationListsByScope,
+                prunedConversationListCache.conversationModeLoadedAtByScope,
+              ),
               conversationListCacheSeatOrder:
                 prunedConversationListCache.conversationListCacheSeatOrder,
               conversationListsByScope:

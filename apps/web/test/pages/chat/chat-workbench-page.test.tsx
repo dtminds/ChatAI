@@ -421,7 +421,7 @@ describe("ChatWorkbenchPage", () => {
     });
 
     await user.click(screen.getByRole("tab", { name: "单聊视图" }));
-    await user.click(screen.getByRole("menuitemradio", { name: "未读" }));
+    await user.click(screen.getByRole("menuitemradio", { name: /^未读/ }));
 
     act(() => {
       useWorkbenchStore.setState((state) => ({
@@ -533,7 +533,7 @@ describe("ChatWorkbenchPage", () => {
     });
 
     await user.click(screen.getByRole("tab", { name: "单聊视图" }));
-    await user.click(screen.getByRole("menuitemradio", { name: "未读" }));
+    await user.click(screen.getByRole("menuitemradio", { name: /^未读/ }));
 
     await waitFor(() => {
       expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-002");
@@ -697,7 +697,7 @@ describe("ChatWorkbenchPage", () => {
     });
 
     await user.click(screen.getByRole("tab", { name: "单聊视图" }));
-    await user.click(screen.getByRole("menuitemradio", { name: "未读" }));
+    await user.click(screen.getByRole("menuitemradio", { name: /^未读/ }));
 
     await waitFor(() => {
       expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-002");

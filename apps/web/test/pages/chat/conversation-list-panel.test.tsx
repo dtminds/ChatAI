@@ -299,6 +299,68 @@ describe("ConversationListPanel", () => {
     expect(screen.getByLabelText("AI托管")).toBeInTheDocument();
   });
 
+  it("shows mode unread dots and puts the unread total only in the unread menu item", async () => {
+    const user = userEvent.setup();
+    const viewConversations = [
+      createConversation({
+        id: "single-unread-a",
+        customerName: "未读客户 A",
+        mode: "single",
+        unread: 80,
+      }),
+      createConversation({
+        id: "single-unread-b",
+        customerName: "未读客户 B",
+        mode: "single",
+        unread: 45,
+      }),
+      createConversation({
+        id: "single-read",
+        customerName: "已读客户",
+        mode: "single",
+      }),
+      createConversation({
+        id: "group-unread",
+        customerName: "群聊未读",
+        mode: "group",
+        unread: 4,
+      }),
+    ];
+
+    render(
+      <ConversationListPanel
+        activeMode="single"
+        activeView="all"
+        conversations={viewConversations}
+        isSeatAIHostingEnabled
+        onSelectConversation={vi.fn()}
+        onSelectMode={vi.fn()}
+        onSelectView={vi.fn()}
+        searchableConversations={viewConversations}
+      />,
+    );
+
+    expect(screen.getByTestId("conversation-mode-unread-dot-single")).toBeInTheDocument();
+    expect(screen.getByTestId("conversation-mode-unread-dot-group")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "单聊视图" })).not.toHaveTextContent("125");
+    expect(
+      screen
+        .getByTestId("conversation-mode-unread-dot-single")
+        .closest('[data-testid="conversation-mode-dropdown-icon-single"]'),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: "单聊视图" }));
+
+    const unreadItem = screen.getByRole("menuitemradio", { name: "未读99+" });
+    const unreadBadge = within(unreadItem).getByTestId("conversation-view-unread-count-single");
+    expect(unreadBadge).toHaveTextContent("99+");
+    expect(unreadBadge).toHaveClass("bg-destructive", "text-destructive-foreground");
+    expect(within(unreadItem).getByTestId("conversation-view-label-single-unread")).toHaveClass("w-16");
+    expect(screen.getByRole("menuitemradio", { name: "全部" })).not.toHaveTextContent("99+");
+    expect(screen.getByRole("menuitemradio", { name: "AI托管" })).not.toHaveTextContent("99+");
+    expect(screen.getByRole("menuitemradio", { name: "人工接待" })).not.toHaveTextContent("99+");
+  });
+
   it("filters each mounted mode with its own selected view", () => {
     const viewConversations = [
       createConversation({

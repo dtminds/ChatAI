@@ -261,7 +261,7 @@ export function MessageForwardRecipientDialog({
                 contacts={searchResults?.contacts ?? []}
                 disabled={isSending}
                 expandedSection={expandedListSection}
-                isLoading={isSearchLoading}
+                isLoading={isSearchLoading || searchResults === null}
                 keyword={normalizedKeyword}
                 onCollapse={() => setExpandedListSection(null)}
                 onExpand={setExpandedListSection}

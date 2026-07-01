@@ -24,7 +24,8 @@ export function normalizeAvatarUrl(url: string | null | undefined) {
 
 function getUrlHostname(value: string) {
   try {
-    return new URL(value).hostname;
+    const parseableValue = value.startsWith("//") ? `https:${value}` : value;
+    return new URL(parseableValue).hostname;
   } catch {
     return "";
   }

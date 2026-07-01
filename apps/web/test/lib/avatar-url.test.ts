@@ -15,6 +15,9 @@ describe("normalizeAvatarUrl", () => {
     expect(normalizeAvatarUrl("http://wx.qlogo.cn/mmhead/avatar/0")).toBe(
       "http://wx.qlogo.cn/mmhead/avatar/64",
     );
+    expect(normalizeAvatarUrl("//wx.qlogo.cn/mmhead/avatar/0")).toBe(
+      "//wx.qlogo.cn/mmhead/avatar/64",
+    );
   });
 
   it("preserves query strings and hashes when replacing the trailing size", () => {

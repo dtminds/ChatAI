@@ -425,6 +425,9 @@ describe("ChatWorkbenchPage session flows", () => {
 
     expect(await screen.findByRole("alertdialog")).toBeInTheDocument();
     expect(screen.getByText("消息同步已暂停")).toBeInTheDocument();
+    expect(
+      screen.getByText("消息同步遇到了问题，请刷新页面后继续使用"),
+    ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "刷新页面" })).toBeInTheDocument();
   });
 

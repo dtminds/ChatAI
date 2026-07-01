@@ -2142,14 +2142,14 @@ function isTransportFailureMessage(message: string) {
 function getPollingPausedDialogCopy(reason: PollingPauseReason | null) {
   if (reason === "sync-gap") {
     return {
-      description: "当前页面同步断档较久，为避免一次性拉取过多消息，请刷新页面",
+      description: "消息同步遇到了问题，请刷新页面后继续使用",
       title: "消息同步已暂停",
     };
   }
 
   if (reason === "background-timeout") {
     return {
-      description: "检测到页面已在后台较长时间，已暂停消息同步。",
+      description: "检测到你已离开页面一段时间，已暂停消息同步。",
       title: "已暂停新消息同步",
     };
   }

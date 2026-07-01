@@ -391,7 +391,7 @@ export class ManagedAccountSettingsService {
       .execute();
 
     return new Map(
-      rows.map((row) => [row.third_userid, Number(row.group_count)]),
+      rows.map((row) => [row.third_userid ?? "", Number(row.group_count)]),
     );
   }
 }

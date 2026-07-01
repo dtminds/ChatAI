@@ -213,6 +213,8 @@ function ChatWorkbenchContent({
     messagesByConversationId,
     pollIntervalMs,
     pollJitterMs,
+    pollPauseReason,
+    pollStatus,
     pollWorkbench,
     dismissSmartReply,
     requestSmartReplyGeneralAnswer,
@@ -296,6 +298,8 @@ function ChatWorkbenchContent({
       pinConversation: state.pinConversation,
       pollIntervalMs: state.pollState.intervalMs,
       pollJitterMs: state.pollState.jitterMs,
+      pollPauseReason: state.pollState.pauseReason,
+      pollStatus: state.pollState.status,
       pollWorkbench: state.pollWorkbench,
       readReceiptError: state.readReceiptError,
       resetWorkbenchSession: state.resetWorkbenchSession,
@@ -716,9 +720,19 @@ function ChatWorkbenchContent({
     editor?.focus();
   }, [isSendingDraft]);
 
+  useEffect(() => {
+    if (pollingPauseReason !== null || pollStatus !== "paused") {
+      return;
+    }
+
+    if (pollPauseReason === "cursor-invalidated") {
+      setPollingPauseReason("sync-gap");
+    }
+  }, [pollPauseReason, pollStatus, pollingPauseReason]);
+
   useWorkbenchPolling({
     activeAccountId,
-    bootstrapStatus,
+    bootstrapStatus: pollStatus === "paused" ? "idle" : bootstrapStatus,
     currentUserId: me?.id,
     intervalMs: pollIntervalMs,
     jitterMs: pollJitterMs,
@@ -2128,9 +2142,16 @@ function isTransportFailureMessage(message: string) {
 }
 
 function getPollingPausedDialogCopy(reason: PollingPauseReason | null) {
-  if (reason === "idle") {
+  if (reason === "sync-gap") {
     return {
-      description: "检测到你已离开页面一段时间，已暂停消息同步。",
+      description: "当前页面同步断档较久，为避免一次性拉取过多消息，请刷新页面",
+      title: "消息同步已过期",
+    };
+  }
+
+  if (reason === "background-timeout") {
+    return {
+      description: "检测到页面已在后台较长时间，已暂停消息同步。",
       title: "已暂停新消息同步",
     };
   }

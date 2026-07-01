@@ -2,8 +2,9 @@ import { act, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  WORKBENCH_MAX_BACKGROUND_ELAPSED_MS,
+  WORKBENCH_MAX_SYNC_GAP_MS,
   WORKBENCH_POLL_HIDDEN_INTERVAL_MS,
-  WORKBENCH_POLL_IDLE_TIMEOUT_MS,
   WORKBENCH_SEAT_SUMMARY_REFRESH_INTERVAL_MS,
   useWorkbenchPolling,
 } from "@/pages/chat/hooks/use-workbench-polling";
@@ -33,9 +34,9 @@ function PollingHarness({
   currentUserId?: string;
   intervalMs?: number;
   jitterMs?: number;
-  onPollingPaused?: (reason: "idle" | "other-tab") => void;
+  onPollingPaused?: (reason: "sync-gap" | "background-timeout" | "other-tab") => void;
   refreshSeatSummaries?: () => Promise<void>;
-  pollWorkbench: () => Promise<void>;
+  pollWorkbench: () => Promise<boolean | void>;
 }) {
   useWorkbenchPolling({
     activeAccountId,
@@ -54,7 +55,7 @@ function PollingHarness({
 function PausingPollingHarness({
   pollWorkbench,
 }: {
-  pollWorkbench: () => Promise<void>;
+  pollWorkbench: () => Promise<boolean | void>;
 }) {
   const [isPaused, setIsPaused] = useState(false);
 
@@ -91,8 +92,12 @@ describe("useWorkbenchPolling", () => {
     window.localStorage.clear();
   });
 
-  it("keeps hidden tabs polling for 30 minutes before idle pause", () => {
-    expect(WORKBENCH_POLL_IDLE_TIMEOUT_MS).toBe(30 * 60 * 1000);
+  it("keeps hidden tabs polling unless successful syncs stop for 30 minutes", () => {
+    expect(WORKBENCH_MAX_SYNC_GAP_MS).toBe(30 * 60 * 1000);
+  });
+
+  it("pauses hidden tabs after 18 hours in the background even when sync succeeds", () => {
+    expect(WORKBENCH_MAX_BACKGROUND_ELAPSED_MS).toBe(18 * 60 * 60 * 1000);
   });
 
   it("polls immediately when the visible workbench becomes ready", async () => {
@@ -140,7 +145,7 @@ describe("useWorkbenchPolling", () => {
     expect(pollWorkbench).toHaveBeenCalledTimes(3);
   });
 
-  it("uses the slower hidden poll cadence before the idle timeout", async () => {
+  it("uses the slower hidden poll cadence without pausing after 30 minutes when polls succeed", async () => {
     vi.useFakeTimers();
     setVisibilityState("hidden");
     const pollWorkbench = vi.fn().mockResolvedValue(undefined);
@@ -155,16 +160,10 @@ describe("useWorkbenchPolling", () => {
     pollWorkbench.mockClear();
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(WORKBENCH_POLL_HIDDEN_INTERVAL_MS - 1);
-    });
-    expect(pollWorkbench).not.toHaveBeenCalled();
-    expect(onPollingPaused).not.toHaveBeenCalled();
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1);
+      await vi.advanceTimersByTimeAsync(WORKBENCH_MAX_SYNC_GAP_MS + 1);
     });
 
-    expect(pollWorkbench).toHaveBeenCalledTimes(1);
+    expect(pollWorkbench.mock.calls.length).toBeGreaterThan(1);
     expect(onPollingPaused).not.toHaveBeenCalled();
   });
 
@@ -349,7 +348,93 @@ describe("useWorkbenchPolling", () => {
     expect(pollWorkbench).toHaveBeenCalledTimes(1);
   });
 
-  it("pauses after the hidden idle timeout elapses", async () => {
+  it("pauses when successful syncs stop for 30 minutes", async () => {
+    vi.useFakeTimers();
+    setVisibilityState("hidden");
+    const pollWorkbench = vi
+      .fn()
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(undefined)
+      .mockImplementation(() => new Promise<void>(() => {}));
+    const onPollingPaused = vi.fn();
+
+    render(
+      <PollingHarness
+        onPollingPaused={onPollingPaused}
+        pollWorkbench={pollWorkbench}
+      />,
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(WORKBENCH_POLL_HIDDEN_INTERVAL_MS);
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(WORKBENCH_POLL_HIDDEN_INTERVAL_MS);
+    });
+
+    expect(pollWorkbench).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(WORKBENCH_MAX_SYNC_GAP_MS - 1);
+    });
+
+    expect(onPollingPaused).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2);
+    });
+
+    expect(onPollingPaused).toHaveBeenCalledWith("sync-gap");
+
+    const callCountAfterPause = pollWorkbench.mock.calls.length;
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30000);
+    });
+
+    expect(pollWorkbench).toHaveBeenCalledTimes(callCountAfterPause);
+  });
+
+  it("does not refresh the sync gap timer when poll reports failure", async () => {
+    vi.useFakeTimers();
+    setVisibilityState("hidden");
+    const pollWorkbench = vi
+      .fn()
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValue(false);
+    const onPollingPaused = vi.fn();
+
+    render(
+      <PollingHarness
+        onPollingPaused={onPollingPaused}
+        pollWorkbench={pollWorkbench}
+      />,
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(WORKBENCH_POLL_HIDDEN_INTERVAL_MS);
+      await vi.advanceTimersByTimeAsync(WORKBENCH_POLL_HIDDEN_INTERVAL_MS);
+    });
+
+    expect(pollWorkbench).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(
+        WORKBENCH_MAX_SYNC_GAP_MS - WORKBENCH_POLL_HIDDEN_INTERVAL_MS - 1,
+      );
+    });
+
+    expect(onPollingPaused).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2);
+    });
+
+    expect(onPollingPaused).toHaveBeenCalledWith("sync-gap");
+  });
+
+  it("pauses after the background timeout elapses even when hidden polls succeed", async () => {
     vi.useFakeTimers();
     setVisibilityState("hidden");
     const pollWorkbench = vi.fn().mockResolvedValue(undefined);
@@ -363,7 +448,7 @@ describe("useWorkbenchPolling", () => {
     );
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(WORKBENCH_POLL_IDLE_TIMEOUT_MS - 1);
+      await vi.advanceTimersByTimeAsync(WORKBENCH_MAX_BACKGROUND_ELAPSED_MS - 1);
     });
 
     expect(onPollingPaused).not.toHaveBeenCalled();
@@ -372,7 +457,7 @@ describe("useWorkbenchPolling", () => {
       await vi.advanceTimersByTimeAsync(2);
     });
 
-    expect(onPollingPaused).toHaveBeenCalledWith("idle");
+    expect(onPollingPaused).toHaveBeenCalledWith("background-timeout");
 
     const callCountAfterPause = pollWorkbench.mock.calls.length;
 

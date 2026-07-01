@@ -403,4 +403,28 @@ describe("ChatWorkbenchPage session flows", () => {
       screen.getByTestId("polling-paused-illustration"),
     ).toHaveAttribute("src", "https://b5.bokr.com.cn/dist/pause_poll.png");
   });
+
+  it("shows a refresh dialog when poll cursor invalidation pauses sync", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async poll() {
+        throw {
+          code: "WORKBENCH_CURSOR_INVALIDATED",
+          message: "cursor invalidated",
+          status: 409,
+        };
+      },
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(await screen.findByRole("alertdialog")).toBeInTheDocument();
+    expect(screen.getByText("消息同步已过期")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "刷新页面" })).toBeInTheDocument();
+  });
 });

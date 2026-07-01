@@ -1,18 +1,29 @@
 import type {
+  WorkbenchOutgoingMessageSegment,
   WorkbenchSearchContactResultDto,
   WorkbenchSearchGroupResultDto,
 } from "@chatai/contracts";
 import type { ChatMessage, ChatMode, Conversation } from "@/pages/chat/chat-types";
 import { canCollectMaterial } from "@/pages/chat/lib/message-collect-material";
 import { sortConversations } from "@/pages/chat/lib/conversation-order";
+import { isValidMessageSeq } from "@/pages/chat/lib/message-seq";
 
 export const MESSAGE_FORWARD_RECENT_CONTACT_LIMIT = 30;
 export const MESSAGE_FORWARD_RECENT_GROUP_LIMIT = 30;
 export const MESSAGE_FORWARD_MAX_RECIPIENTS = 9;
 export const MESSAGE_FORWARD_MAX_MESSAGES = 20;
+export const MESSAGE_FORWARD_SEND_INTERVAL_MIN_MS = 1000;
+export const MESSAGE_FORWARD_SEND_INTERVAL_MAX_MS = 5000;
 
 export const MESSAGE_FORWARD_SEND_HINT =
   "转发的每条消息会自动间隔1-5秒，每个转发对象轮流发送";
+
+export function resolveForwardSendDelayMs() {
+  const min = MESSAGE_FORWARD_SEND_INTERVAL_MIN_MS;
+  const max = MESSAGE_FORWARD_SEND_INTERVAL_MAX_MS;
+
+  return min + Math.floor(Math.random() * (max - min + 1));
+}
 
 export type MessageForwardRecipient = {
   avatar: string;
@@ -25,6 +36,12 @@ export type MessageForwardRecipient = {
 };
 
 export type MessageForwardMode = "single" | "batch";
+
+function readForwardMessageInfoId(message: ChatMessage) {
+  const seq = message.seq;
+
+  return isValidMessageSeq(seq) ? String(seq) : undefined;
+}
 
 export function getMessageForwardPreview(message: ChatMessage) {
   switch (message.content.type) {
@@ -77,6 +94,133 @@ export function canForwardMessage(message: ChatMessage) {
   }
 
   return canCollectMaterial(message);
+}
+
+export function buildForwardSegmentFromMessage(
+  message: ChatMessage,
+): WorkbenchOutgoingMessageSegment | null {
+  const msgInfoId = readForwardMessageInfoId(message);
+  const content = message.content;
+
+  switch (content.type) {
+    case "text":
+      return content.text.trim()
+        ? {
+            text: content.text,
+            type: "text",
+          }
+        : null;
+    case "quote":
+      return content.text.trim()
+        ? {
+            text: content.text,
+            type: "text",
+          }
+        : null;
+    case "image": {
+      const imageUrl = content.imageUrl?.trim();
+
+      if (!imageUrl) {
+        return null;
+      }
+
+      if (content.variant === "emotion") {
+        return {
+          alt: content.alt || "[表情]",
+          imageUrl,
+          type: "image",
+          url: imageUrl,
+        };
+      }
+
+      if (content.downloadStatus !== "finished") {
+        return null;
+      }
+
+      return {
+        alt: content.alt || "[图片]",
+        imageUrl,
+        type: "image",
+        url: imageUrl,
+        ...(content.height != null ? { height: content.height } : {}),
+        ...(content.width != null ? { width: content.width } : {}),
+      };
+    }
+    case "file": {
+      const fileUrl = content.fileUrl?.trim();
+      const fileName = content.fileName?.trim();
+
+      if (!fileUrl || !fileName) {
+        return null;
+      }
+
+      return {
+        extension: content.extension,
+        fileName,
+        fileSizeLabel: content.fileSizeLabel,
+        type: "file",
+        url: fileUrl,
+      };
+    }
+    case "h5": {
+      const href = content.url?.trim();
+      const title = content.title?.trim();
+
+      if (!href || !title) {
+        return null;
+      }
+
+      return {
+        coverUrl: content.previewImageUrl,
+        desc: content.description,
+        href,
+        title,
+        type: "h5",
+      };
+    }
+    case "mini-program":
+      if (!msgInfoId) {
+        return null;
+      }
+
+      return {
+        appName: content.appName,
+        coverImageUrl: content.coverImageUrl,
+        logoUrl: content.logoUrl,
+        msgInfoId,
+        sourceLabel: content.sourceLabel,
+        title: content.title,
+        type: "weapp",
+      };
+    case "sphfeed":
+      if (!msgInfoId) {
+        return null;
+      }
+
+      return {
+        description: content.description,
+        imageUrl: content.imageUrl,
+        msgInfoId,
+        sourceLabel: content.sourceLabel,
+        title: content.title,
+        type: "sphfeed",
+        url: content.url,
+      };
+    case "video":
+      if (!msgInfoId) {
+        return null;
+      }
+
+      return {
+        coverUrl: content.coverImageUrl,
+        msgInfoId,
+        title: content.alt,
+        type: "video",
+        url: content.videoUrl,
+      };
+    default:
+      return null;
+  }
 }
 
 export function buildMessageForwardRecipientId(input: {

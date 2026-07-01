@@ -146,6 +146,7 @@ const INITIAL_MOCK_KB_DOCS: KbDocViewItem[] = [
     kbId: "W7zU2fWkVSp65OTAjDd3-w",
     name: "产品宣传图",
     nameWithExtension: "产品宣传图.png",
+    previewImageUrl: "https://b5.bokr.com.cn/dist/word.png",
     type: "image",
     typeLabel: "图片（.png）",
     sliceCount: 1,
@@ -235,7 +236,6 @@ const INITIAL_MOCK_KB_CHUNKS: KbDocChunkViewItem[] = [
     source: "system",
     title: "产品宣传图",
     content: "Mate 系列旗舰机型外观与核心卖点展示",
-    imageUrls: ["https://b5.bokr.com.cn/dist/word.png"],
     createdAt: "2026-06-18 12:00:00",
     updatedAt: "2026-06-19 12:00:00",
   },
@@ -295,6 +295,7 @@ function toKbDocDetail(record: KbDocViewItem): KbDocDetail {
   return {
     ...toKbDocListItem(record),
     docSummary: record.docSummary,
+    previewImageUrl: record.previewImageUrl,
   };
 }
 

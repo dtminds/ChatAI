@@ -14,7 +14,8 @@ export function ImageKnowledgeChunkWorkspace({
   doc: KbDocViewItem;
   loading: boolean;
 }) {
-  const docImageUrl = chunks.find((chunk) => chunk.imageUrls?.[0])?.imageUrls?.[0] ?? "";
+  const docImageUrl =
+    doc.previewImageUrl ?? chunks.find((chunk) => chunk.imageUrls?.[0])?.imageUrls?.[0] ?? "";
   const leftPanelRef = useRef<HTMLElement>(null);
   const [matchedHeight, setMatchedHeight] = useState<number>();
 

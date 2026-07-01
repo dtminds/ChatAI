@@ -407,5 +407,22 @@ describe("AI hosting DTOs", () => {
         volcDocId: "volc-doc-1",
       }),
     ).toBe(true);
+
+    expect(
+      Value.Check(KbDocDetailSchema, {
+        createdAt: "2026-06-18T15:22:22.000Z",
+        docId: "1002",
+        docSize: 2048,
+        docSuffix: "png",
+        docType: "image",
+        hasDocSummary: false,
+        kbId: "1",
+        name: "产品宣传图",
+        previewImageUrl: "https://b5.bokr.com.cn/kb-images/demo.png",
+        sliceCount: 1,
+        status: "completed",
+        updatedAt: "2026-06-20T15:22:22.000Z",
+      }),
+    ).toBe(true);
   });
 });

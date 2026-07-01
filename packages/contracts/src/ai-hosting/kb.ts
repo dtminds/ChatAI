@@ -80,6 +80,7 @@ export const KbDocDetailSchema = Type.Intersect([
   KbDocListItemSchema,
   Type.Object({
     docSummary: Type.Optional(Type.String()),
+    previewImageUrl: Type.Optional(Type.String()),
     volcDocId: Type.Optional(Type.String()),
   }),
 ]);

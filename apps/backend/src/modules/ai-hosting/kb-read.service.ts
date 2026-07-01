@@ -43,7 +43,7 @@ const kbDocListColumns = [
   "create_time",
   "update_time",
 ] as const;
-const kbDocDetailColumns = [...kbDocListColumns, "doc_summary", "volc_doc_id"] as const;
+const kbDocDetailColumns = [...kbDocListColumns, "doc_summary", "doc_url", "volc_doc_id"] as const;
 
 export class KbReadService {
   constructor(

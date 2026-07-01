@@ -116,7 +116,45 @@ describe("kb-read-mappers", () => {
     ).toMatchObject({
       docSummary: "## 文档概览\n\n- 产品规格",
       hasDocSummary: true,
+      previewImageUrl: undefined,
       volcDocId: "volc-doc-1",
+    });
+  });
+
+  it("maps image doc detail preview url", () => {
+    expect(
+      mapKbDocDetail({
+        brief_summary: null,
+        create_time: new Date("2026-06-18T15:22:22.000Z"),
+        doc_process_time: null,
+        doc_size: 2048,
+        doc_summary: null,
+        doc_suffix: "png",
+        doc_type: 3,
+        doc_update_time: null,
+        doc_url: "kb-images/example.png",
+        has_doc_summary: 0,
+        id: 1002,
+        kb_id: 88,
+        last_operator_id: 1,
+        last_sync_time: null,
+        name: "产品宣传图",
+        operator_id: 1,
+        point_num: 1,
+        remark: null,
+        status: 1,
+        sync_error_msg: null,
+        sync_status: 0,
+        tokens: null,
+        uid: 9001,
+        update_time: new Date("2026-06-20T15:22:22.000Z"),
+        volc_doc_id: null,
+        volc_resource_id: null,
+        volc_strategy_resource_id: null,
+      }),
+    ).toMatchObject({
+      docType: "image",
+      previewImageUrl: "https://b5.bokr.com.cn/kb-images/example.png",
     });
   });
 

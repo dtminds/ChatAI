@@ -21,6 +21,7 @@ export type KbDocViewItem = {
   kbId: string;
   name: string;
   nameWithExtension: string;
+  previewImageUrl?: string;
   sliceCount: number | null;
   status: KbStatus;
   type: KbDocType;

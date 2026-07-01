@@ -69,6 +69,7 @@ const kbDocDetailColumns = [
   "create_time",
   "update_time",
   "doc_summary",
+  "doc_url",
   "volc_doc_id",
 ];
 

@@ -114,6 +114,7 @@ export function toKbDocViewItem(item: KbDocDetail | KbDocListItem): KbDocViewIte
     kbId: item.kbId,
     name: item.name,
     nameWithExtension,
+    previewImageUrl: "previewImageUrl" in item ? item.previewImageUrl : undefined,
     sliceCount: item.sliceCount,
     status: item.status as KbStatus,
     type: item.docType as KbDocViewType,

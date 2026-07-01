@@ -60,7 +60,7 @@ type KbDocListRow = Pick<
 };
 
 type KbDocDetailRow = KbDocListRow &
-  Pick<Selectable<XyWapEmbedAgentKbDoc>, "doc_summary" | "volc_doc_id">;
+  Pick<Selectable<XyWapEmbedAgentKbDoc>, "doc_summary" | "doc_url" | "volc_doc_id">;
 
 export function mapKbListItem(row: KbListRow): KbListItem {
   return {
@@ -101,10 +101,14 @@ function normalizeOptionalText(value: string | null | undefined) {
 }
 
 export function mapKbDocDetail(row: KbDocDetailRow): KbDocDetail {
+  const docType = mapDocType(row.doc_type);
+
   return {
     ...mapKbDocListItem(row),
     docSummary: normalizeOptionalText(row.doc_summary),
     hasDocSummary: Boolean(normalizeOptionalText(row.doc_summary)),
+    previewImageUrl:
+      docType === "image" ? normalizeOptionalText(normalizeMediaAssetUrl(row.doc_url)) : undefined,
     volcDocId: row.volc_doc_id ?? undefined,
   };
 }

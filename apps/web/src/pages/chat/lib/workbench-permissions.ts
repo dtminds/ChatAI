@@ -35,6 +35,7 @@ export type WorkbenchPermissions = {
   canConfigureSeatSemiAuto: boolean;
   canToggleConversationAIHosting: boolean;
   canSendMessage: boolean;
+  canUseMessageForward: boolean;
   canTakeOverAccount: boolean;
   canUseChatSend: boolean;
   canUseConversationActions: boolean;
@@ -88,12 +89,17 @@ export function resolveWorkbenchPermissions({
     !!activeConversation &&
     !isConversationBizInactive &&
     !conversationAIHostingEnabled;
+  const canUseMessageForward =
+    canUseConversationActions &&
+    !!activeConversation &&
+    !isConversationBizInactive;
 
   return {
     canConfigureSeatAIHosting,
     canConfigureSeatSemiAuto,
     canToggleConversationAIHosting,
     canSendMessage,
+    canUseMessageForward,
     canTakeOverAccount,
     canUseChatSend,
     canUseConversationActions,

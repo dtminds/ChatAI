@@ -2,8 +2,10 @@ import {
   AtIcon,
   AiChat02Icon,
   ArrowTurnBackwardIcon,
+  ArrowTurnForwardIcon,
   Bug02Icon,
   ChatFavouriteIcon,
+  CheckListIcon,
   ExclamationMarkIcon,
   Male02Icon,
   MoreHorizontalIcon,
@@ -12,6 +14,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Spinner } from "@/components/ui/spinner";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   type RefObject,
   useEffect,
@@ -60,7 +63,6 @@ import {
   type SmartReplySuggestion,
 } from "@/pages/chat/components/smart-reply-card";
 import {
-  DISABLE_SPH_COLLECTION,
   MESSAGE_REVOKE_WINDOW_MS,
 } from "@/pages/chat/chat-constants";
 import type { ChatMessage, Message } from "@/pages/chat/chat-types";
@@ -70,6 +72,8 @@ import {
   parseWorkbenchDate,
 } from "@/pages/chat/lib/chat-time";
 import { isValidMessageSeq } from "@/pages/chat/lib/message-seq";
+import { canCollectMaterial } from "@/pages/chat/lib/message-collect-material";
+import { canForwardMessage } from "@/pages/chat/lib/message-forward";
 
 const TIMESTAMP_BREAK_MS = 5 * 60 * 1000;
 export const MESSAGE_SENT_AT_HOVER_DELAY_MS = 400;
@@ -77,12 +81,17 @@ export const MESSAGE_SENT_AT_HOVER_DELAY_MS = 400;
 type ChatMessageListProps = {
   canCollectMaterialActions?: boolean;
   canUseMessageActions?: boolean;
+  canUseMessageForward?: boolean;
   conversationId: string;
   messages: Message[];
+  multiSelectMode?: boolean;
+  selectedMessageKeys?: ReadonlySet<string>;
   showTimeDividers?: boolean;
   showTimestamps?: boolean;
   onCollectMaterial?: (message: ChatMessage) => void;
   onDownloadMessageFile?: (message: ChatMessage) => void;
+  onEnterMultiSelectMode?: () => void;
+  onForwardMessage?: (message: ChatMessage) => void;
   onMentionMessage?: (message: ChatMessage) => void;
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
   onQuoteMessage?: (message: ChatMessage) => void;
@@ -96,6 +105,7 @@ type ChatMessageListProps = {
     message: ChatMessage,
     options?: { force?: boolean },
   ) => void;
+  onToggleMessageSelection?: (message: ChatMessage) => void;
   onVoicePlaybackReady?: (
     message: ChatMessage,
     payload: { playbackUrl: string },
@@ -122,12 +132,17 @@ type FeedItem =
 export function ChatMessageList({
   canCollectMaterialActions = true,
   canUseMessageActions = true,
+  canUseMessageForward = false,
   conversationId,
   messages,
+  multiSelectMode = false,
+  selectedMessageKeys,
   showTimeDividers = true,
   showTimestamps = false,
   onDownloadMessageFile,
   onCollectMaterial,
+  onEnterMultiSelectMode,
+  onForwardMessage,
   onMentionMessage,
   onOpenQuotedMessage,
   onQuoteMessage,
@@ -138,6 +153,7 @@ export function ChatMessageList({
   onDismissSmartReply,
   onMakeShorterSmartReply,
   onTriggerSmartReply,
+  onToggleMessageSelection,
   onVoicePlaybackReady,
   onTranscribeVoice,
   retryingMessageIds,
@@ -256,12 +272,19 @@ export function ChatMessageList({
                 message={item.message}
                 canCollectMaterialActions={canCollectMaterialActions}
                 canUseMessageActions={canUseMessageActions}
+                canUseMessageForward={canUseMessageForward}
+                isMessageSelected={
+                  selectedMessageKeys?.has(getMessageFeedItemKey(item.message)) ?? false
+                }
+                multiSelectMode={multiSelectMode}
                 shouldAnimate={
                   shouldAnimateMessageByKey.get(getMessageFeedItemKey(item.message)) ?? false
                 }
                 showTimestamp={showTimestamps}
                 onDownloadMessageFile={onDownloadMessageFile}
                 onCollectMaterial={onCollectMaterial}
+                onEnterMultiSelectMode={onEnterMultiSelectMode}
+                onForwardMessage={onForwardMessage}
                 onMentionMessage={onMentionMessage}
                 onOpenQuotedMessage={onOpenQuotedMessage}
                 onQuoteMessage={onQuoteMessage}
@@ -272,6 +295,7 @@ export function ChatMessageList({
                 onDismissSmartReply={onDismissSmartReply}
                 onMakeShorterSmartReply={onMakeShorterSmartReply}
                 onTriggerSmartReply={onTriggerSmartReply}
+                onToggleMessageSelection={onToggleMessageSelection}
                 onTranscribeVoice={onTranscribeVoice}
                 onVoicePlaybackReady={onVoicePlaybackReady}
                 isRetryingMessage={retryingMessageIds?.has(item.message.uiMessageKey) ?? false}
@@ -346,10 +370,15 @@ export function MessageRow({
   message,
   canCollectMaterialActions = true,
   canUseMessageActions = true,
+  canUseMessageForward = false,
+  isMessageSelected = false,
+  multiSelectMode = false,
   showTimestamp = false,
   shouldAnimate = false,
   onDownloadMessageFile,
   onCollectMaterial,
+  onEnterMultiSelectMode,
+  onForwardMessage,
   onMentionMessage,
   onOpenQuotedMessage,
   onQuoteMessage,
@@ -360,6 +389,7 @@ export function MessageRow({
   onDismissSmartReply,
   onMakeShorterSmartReply,
   onTriggerSmartReply,
+  onToggleMessageSelection,
   onVoicePlaybackReady,
   onTranscribeVoice,
   isRetryingMessage = false,
@@ -371,13 +401,18 @@ export function MessageRow({
   message: Message;
   canUseMessageActions?: boolean;
   canCollectMaterialActions?: boolean;
+  canUseMessageForward?: boolean;
+  isMessageSelected?: boolean;
   isRetryingMessage?: boolean;
   isSmartReplyAutoPending?: boolean;
   isSmartReplyPending?: boolean;
+  multiSelectMode?: boolean;
   shouldAnimate?: boolean;
   showTimestamp?: boolean;
   onDownloadMessageFile?: (message: ChatMessage) => void;
   onCollectMaterial?: (message: ChatMessage) => void;
+  onEnterMultiSelectMode?: () => void;
+  onForwardMessage?: (message: ChatMessage) => void;
   onMentionMessage?: (message: ChatMessage) => void;
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
   onQuoteMessage?: (message: ChatMessage) => void;
@@ -391,6 +426,7 @@ export function MessageRow({
     message: ChatMessage,
     options?: { force?: boolean },
   ) => void;
+  onToggleMessageSelection?: (message: ChatMessage) => void;
   onVoicePlaybackReady?: (
     message: ChatMessage,
     payload: { playbackUrl: string },
@@ -456,34 +492,53 @@ export function MessageRow({
     shouldAnimate,
   );
   const dismissTargetRef = useRef<HTMLButtonElement | null>(null);
-  const messageActions = (
+  const canSelectForwardMessage =
+    canUseMessageForward && canForwardMessage(message) && !message.isRevoked;
+  const messageActions = multiSelectMode ? null : (
     <MessageActionAvatar
       message={message}
       canCollectMaterialActions={canCollectMaterialActions}
       canUseMessageActions={canUseMessageActions}
+      canUseMessageForward={canUseMessageForward}
       triggerRef={dismissTargetRef}
-      onMentionMessage={onMentionMessage}
       onCollectMaterial={onCollectMaterial}
+      onEnterMultiSelectMode={onEnterMultiSelectMode}
+      onForwardMessage={onForwardMessage}
+      onMentionMessage={onMentionMessage}
       onQuoteMessage={onQuoteMessage}
       onRevokeMessage={onRevokeMessage}
       onTriggerSmartReply={onTriggerSmartReply}
       showSmartReplyRecommendation={showSmartReplyTriggerIcon}
     />
   );
+  const selectionCheckbox = multiSelectMode ? (
+    <div className="flex shrink-0 items-center">
+      <Checkbox
+        aria-label="选择消息"
+        checked={isMessageSelected}
+        disabled={!canSelectForwardMessage}
+        onCheckedChange={() => onToggleMessageSelection?.(message)}
+      />
+    </div>
+  ) : null;
 
   return (
     <div
       className={cn(
-        "group/message flex items-start",
-        isAgent ? "justify-end" : "justify-start",
+        "group/message flex gap-2",
+        multiSelectMode
+          ? "w-full min-w-0 max-w-full items-center overflow-hidden"
+          : cn("items-start", isAgent ? "justify-end" : "justify-start"),
       )}
       data-testid="message-row"
       onMouseEnter={handleSentAtPreviewMouseEnter}
       onMouseLeave={handleSentAtPreviewMouseLeave}
     >
+      {multiSelectMode ? selectionCheckbox : null}
       <div
         className={cn(
-          "flex min-w-0 max-w-[90%] flex-col",
+          "flex min-w-0 flex-col",
+          multiSelectMode ? "min-w-0 flex-1 overflow-hidden" : "max-w-[90%]",
           isAgent ? "items-end" : "items-start",
         )}
         data-testid="message-row-group"
@@ -492,7 +547,13 @@ export function MessageRow({
           <div
             className={cn(
               "flex h-4 w-full shrink-0 items-center",
-              isAgent ? "mr-10 justify-end" : "ml-10 justify-start",
+              isAgent
+                ? multiSelectMode
+                  ? "justify-end"
+                  : "mr-10 justify-end"
+                : multiSelectMode
+                  ? "justify-start"
+                  : "ml-10 justify-start",
             )}
             data-testid="text-message-sent-at-slot"
           >
@@ -510,7 +571,8 @@ export function MessageRow({
         ) : null}
         <div
           className={cn(
-            "flex min-w-0 w-full items-start gap-2",
+            "flex min-w-0 items-start gap-2",
+            multiSelectMode ? "flex-1" : "w-full",
             isAgent ? "justify-end" : "justify-start",
           )}
           data-testid="message-row-body"
@@ -520,12 +582,13 @@ export function MessageRow({
           <div className={cn("flex min-w-0 flex-col", isAgent ? "items-end" : "items-start")}>
             <div
               className={cn(
-                "flex min-w-0 w-fit max-w-full items-end gap-2",
+                "flex min-w-0 max-w-full items-end gap-2",
+                multiSelectMode ? "w-full" : "w-fit",
                 isAgent ? "flex-row" : "flex-row-reverse",
               )}
               data-testid="message-inline-content-row"
             >
-              {isAgent && message.content.type !== "quote" ? (
+              {isAgent && message.content.type !== "quote" && !multiSelectMode ? (
                 <MessageInlineStatusSlot
                   canRetryMessage={canUseMessageActions}
                   isRetryingMessage={isRetryingMessage}
@@ -624,7 +687,7 @@ export function MessageRow({
                 ) : null}
               </div>
             </div>
-            {isAgent && !inlineDeliveryState ? (
+            {isAgent && !inlineDeliveryState && !multiSelectMode ? (
               <MessageDeliveryState message={message}/>
             ) : null}
           </div>
@@ -702,9 +765,12 @@ function MessageActionAvatar({
   message,
   canCollectMaterialActions,
   canUseMessageActions,
+  canUseMessageForward,
   triggerRef,
   onMentionMessage,
   onCollectMaterial,
+  onEnterMultiSelectMode,
+  onForwardMessage,
   onQuoteMessage,
   onRevokeMessage,
   onTriggerSmartReply,
@@ -713,9 +779,12 @@ function MessageActionAvatar({
   message: ChatMessage;
   canCollectMaterialActions: boolean;
   canUseMessageActions: boolean;
+  canUseMessageForward: boolean;
   triggerRef?: RefObject<HTMLButtonElement | null>;
   onMentionMessage?: (message: ChatMessage) => void;
   onCollectMaterial?: (message: ChatMessage) => void;
+  onEnterMultiSelectMode?: () => void;
+  onForwardMessage?: (message: ChatMessage) => void;
   onQuoteMessage?: (message: ChatMessage) => void;
   onRevokeMessage?: (message: ChatMessage) => void;
   onTriggerSmartReply?: (
@@ -740,6 +809,13 @@ function MessageActionAvatar({
     message.content.type !== "contact-card";
   const canCollectMessage = Boolean(onCollectMaterial) && canCollectMaterial(message);
   const canSelectCollectMessage = canCollectMaterialActions && !message.isRevoked;
+  const canForwardMessageAction =
+    canUseMessageForward && Boolean(onForwardMessage) && canForwardMessage(message);
+  const canSelectForwardMessage =
+    canUseMessageForward && canForwardMessage(message) && !message.isRevoked;
+  const canMultiSelectMessage =
+    canUseMessageForward && Boolean(onEnterMultiSelectMode);
+  const canSelectMultiSelectMessage = canUseMessageForward;
   const canRevokeMessage =
     canUseMessageActions &&
     Boolean(onRevokeMessage) &&
@@ -854,6 +930,48 @@ function MessageActionAvatar({
                   strokeWidth={2}
                 />
                 收录
+              </DropdownMenuItem>
+            ) : null}
+            {canForwardMessageAction ? (
+              <DropdownMenuItem
+                disabled={!canSelectForwardMessage}
+                onSelect={(event) => {
+                  if (!canSelectForwardMessage) {
+                    event.preventDefault();
+                    return;
+                  }
+
+                  onForwardMessage?.(message);
+                }}
+              >
+                <HugeiconsIcon
+                  aria-hidden="true"
+                  icon={ArrowTurnForwardIcon}
+                  size={15}
+                  strokeWidth={2}
+                />
+                转发
+              </DropdownMenuItem>
+            ) : null}
+            {canMultiSelectMessage ? (
+              <DropdownMenuItem
+                disabled={!canSelectMultiSelectMessage}
+                onSelect={(event) => {
+                  if (!canSelectMultiSelectMessage) {
+                    event.preventDefault();
+                    return;
+                  }
+
+                  onEnterMultiSelectMode?.();
+                }}
+              >
+                <HugeiconsIcon
+                  aria-hidden="true"
+                  icon={CheckListIcon}
+                  size={15}
+                  strokeWidth={2}
+                />
+                多选
               </DropdownMenuItem>
             ) : null}
             {canRevokeMessage ? (
@@ -1120,34 +1238,7 @@ function canShowRevokeMessageAction(message: ChatMessage, now = Date.now()) {
   return sentAt != null && now - sentAt.getTime() < MESSAGE_REVOKE_WINDOW_MS;
 }
 
-export function canCollectMaterial(message: ChatMessage) {
-  if (message.content.type === "image") {
-    if (message.content.variant === "emotion") {
-      return true;
-    }
-
-    return (
-      message.content.downloadStatus === "finished" &&
-      message.content.imageUrl.trim().length > 0
-    );
-  }
-
-  if (message.content.type === "video") {
-    return (
-      message.role === "agent" &&
-      message.content.downloadStatus === "finished" &&
-      message.content.coverImageUrl.trim().length > 0 &&
-      message.content.videoUrl.trim().length > 0
-    );
-  }
-
-  return (
-    message.content.type === "file" ||
-    message.content.type === "mini-program" ||
-    message.content.type === "h5" ||
-    (!DISABLE_SPH_COLLECTION && message.content.type === "sphfeed")
-  );
-}
+export { canCollectMaterial } from "@/pages/chat/lib/message-collect-material";
 
 export function MessageAvatar({ message }: { message: ChatMessage }) {
   return (

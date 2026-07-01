@@ -1549,6 +1549,49 @@ describe("message sent time preview", () => {
       vi.useRealTimers();
     }
   });
+
+  it("shows forward and multi-select actions when message forward is enabled", async () => {
+    const user = userEvent.setup();
+    const onEnterMultiSelectMode = vi.fn();
+    const onForwardMessage = vi.fn();
+    const message = {
+      ...createTextMessage("可转发消息"),
+      seq: 1001,
+    };
+
+    render(
+      <MessageRow
+        canUseMessageForward
+        message={message}
+        onEnterMultiSelectMode={onEnterMultiSelectMode}
+        onForwardMessage={onForwardMessage}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "转发" }));
+
+    expect(onForwardMessage).toHaveBeenCalledWith(message);
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "多选" }));
+
+    expect(onEnterMultiSelectMode).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders multi-select checkbox when multi-select mode is active", () => {
+    render(
+      <MessageRow
+        canUseMessageForward
+        isMessageSelected
+        message={createTextMessage("多选消息")}
+        multiSelectMode
+        onToggleMessageSelection={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("checkbox", { name: "选择消息" })).toBeChecked();
+  });
 });
 
 type AudioMockInstance = {

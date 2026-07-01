@@ -31,6 +31,7 @@ const readXlsxFileMock = vi.hoisted(() => vi.fn());
 const importKbDocMock = vi.hoisted(() => vi.fn());
 const importKbQaDocMock = vi.hoisted(() => vi.fn());
 const importKbImageDocMock = vi.hoisted(() => vi.fn());
+const uploadKbImageMock = vi.hoisted(() => vi.fn());
 const createKbChunkMock = vi.hoisted(() => vi.fn());
 const updateKbChunkMock = vi.hoisted(() => vi.fn());
 const deleteKbChunkMock = vi.hoisted(() => vi.fn());
@@ -46,6 +47,7 @@ const agentServiceMock = vi.hoisted(() => ({
   restoreAiHostingAgent: vi.fn(),
   renameAiHostingAgent: vi.fn(),
   syncAiHostingSeatGroups: vi.fn(),
+  testAiHostingAgent: vi.fn(),
   updateAiHostingSettings: vi.fn(),
   updateAiHostingAgent: vi.fn(),
 }));
@@ -79,6 +81,7 @@ vi.mock("@/pages/chat/ai-hosting/api/kb-doc-service", async (importOriginal) => 
     importKbDoc: importKbDocMock,
     importKbImageDoc: importKbImageDocMock,
     importKbQaDoc: importKbQaDocMock,
+    uploadKbImage: uploadKbImageMock,
   };
 });
 
@@ -310,6 +313,10 @@ describe("AI hosting pages", () => {
       name: "新品小助理",
     });
     vi.mocked(agentService.updateAiHostingAgent).mockResolvedValue(mockAgentDetail);
+    vi.mocked(agentService.testAiHostingAgent).mockResolvedValue({
+      action: "reply",
+      reply: [{ type: "text", content: "你好，我是 Agent" }],
+    });
     vi.mocked(agentService.publishAiHostingAgent).mockResolvedValue({
       ...mockAgentDetail,
       hasUnpublishedChanges: false,
@@ -398,6 +405,11 @@ describe("AI hosting pages", () => {
     importKbQaDocMock.mockResolvedValue({ docId: "mock-qa-created" });
     importKbImageDocMock.mockReset();
     importKbImageDocMock.mockResolvedValue({ docId: "mock-image-created" });
+    uploadKbImageMock.mockReset();
+    uploadKbImageMock.mockResolvedValue({
+      docUrl: "kb-docs/demo/preview.png",
+      url: "https://cdn.example.com/kb-docs/demo/preview.png",
+    });
     createKbChunkMock.mockReset();
     createKbChunkMock.mockImplementation(async (payload) => {
       const docDetail = createMockKbDocDetail(payload.docId);
@@ -891,7 +903,96 @@ describe("AI hosting pages", () => {
     expect(screen.getByText("转人工条件")).toBeInTheDocument();
     expect(await screen.findByTitle("模型图标：默认模型")).toBeInTheDocument();
     expect(screen.getByLabelText("Agent 模拟测试")).toBeInTheDocument();
-    expect(screen.getByText("我想了解下晨间护肤")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "清空" })).toBeInTheDocument();
+    expect(screen.getByLabelText("选择图片")).toBeInTheDocument();
+  });
+
+  it("clears preview chat messages and input draft", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
+
+    await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
+    await user.type(screen.getByLabelText("预览输入框"), "测试消息{Enter}");
+
+    expect(await screen.findByText("你好，我是 Agent")).toBeInTheDocument();
+    expect(agentService.testAiHostingAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messages: [
+          {
+            contents: [{ type: "text", text: "测试消息" }],
+            role: "user",
+          },
+        ],
+        modelId: "10",
+      }),
+    );
+
+    await user.click(screen.getByRole("button", { name: "清空" }));
+
+    expect(screen.queryByText("测试消息")).not.toBeInTheDocument();
+    expect(screen.queryByText("你好，我是 Agent")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("预览输入框")).toHaveValue("");
+  });
+
+  it("sends selected images directly in the preview chat", async () => {
+    const user = userEvent.setup();
+    const imageFile = new File(["image"], "preview.png", { type: "image/png" });
+
+    vi.mocked(uploadKbImageMock).mockResolvedValue({
+      docUrl: "kb-docs/demo/preview.png",
+      url: "https://cdn.example.com/kb-docs/demo/preview.png",
+    });
+
+    renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
+
+    await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
+    await user.upload(screen.getByLabelText("选择图片"), imageFile);
+
+    expect(uploadKbImageMock).toHaveBeenCalledWith(imageFile);
+    expect(await screen.findByText("你好，我是 Agent")).toBeInTheDocument();
+    expect(agentService.testAiHostingAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messages: [
+          {
+            contents: [
+              {
+                type: "image",
+                url: "https://cdn.example.com/kb-docs/demo/preview.png",
+              },
+            ],
+            role: "user",
+          },
+        ],
+      }),
+    );
+
+    const previewPanel = screen.getByRole("region", { name: "Agent 模拟测试" });
+
+    expect(within(previewPanel).getByRole("presentation")).toHaveAttribute(
+      "src",
+      "https://cdn.example.com/kb-docs/demo/preview.png",
+    );
+  });
+
+  it("renders multiple agent replies from the test response", async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(agentService.testAiHostingAgent).mockResolvedValue({
+      action: "reply",
+      reply: [
+        { type: "text", content: "第一段回复" },
+        { type: "text", content: "第二段回复" },
+      ],
+    });
+
+    renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
+
+    await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
+    await user.type(screen.getByLabelText("预览输入框"), "测试消息{Enter}");
+
+    expect(await screen.findByText("第一段回复")).toBeInTheDocument();
+    expect(screen.getByText("第二段回复")).toBeInTheDocument();
   });
 
   it("fills communication style from the template menu", async () => {

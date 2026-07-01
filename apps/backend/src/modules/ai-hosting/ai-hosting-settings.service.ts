@@ -25,7 +25,7 @@ type HostingSettingsSeatRow = {
   avatarUrl: string | null;
   id: number;
   third_user_name: string | null;
-  third_userid: string;
+  third_userid: string | null;
 };
 
 type UserSeatAgentRow = {
@@ -58,7 +58,7 @@ export class AiHostingSettingsService {
       this.listUserSeatAgentRows(scope, seatIds),
       this.countGroupChatsByThirdUserIds(
         scope,
-        seats.map((seat) => seat.third_userid),
+        seats.map((seat) => seat.third_userid).filter((id): id is string => Boolean(id)),
       ),
     ]);
     const configsBySeatId = new Map(configs.map((config) => [config.user_seat_id, config]));
@@ -68,7 +68,7 @@ export class AiHostingSettingsService {
         mapHostingSettingsAccount(
           seat,
           configsBySeatId.get(seat.id),
-          groupChatCountByThirdUserId.get(seat.third_userid) ?? 0,
+          groupChatCountByThirdUserId.get(seat.third_userid ?? "") ?? 0,
         ),
       ),
       agents: agents.map(mapHostingSettingsAgent),

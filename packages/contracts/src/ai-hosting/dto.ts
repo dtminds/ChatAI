@@ -96,6 +96,44 @@ export const AiHostingAgentRemoveResponseSchema = Type.Object({
   deleted: Type.Boolean(),
 });
 
+export const AiHostingAgentTestMessageContentSchema = Type.Object({
+  text: Type.Optional(Type.String()),
+  type: Type.Union([
+    Type.Literal("text"),
+    Type.Literal("image"),
+    Type.Literal("audio"),
+  ]),
+  url: Type.Optional(Type.String()),
+}, { additionalProperties: false });
+
+export const AiHostingAgentTestMessageSchema = Type.Object({
+  contents: Type.Array(AiHostingAgentTestMessageContentSchema, { minItems: 1 }),
+  role: Type.Union([
+    Type.Literal("user"),
+    Type.Literal("assistant"),
+  ]),
+}, { additionalProperties: false });
+
+export const AiHostingAgentTestRequestSchema = Type.Object({
+  messages: Type.Array(AiHostingAgentTestMessageSchema, { minItems: 1 }),
+  modelId: Type.String({ minLength: 1 }),
+  promptConfig: AiHostingAgentPromptConfigSchema,
+}, { additionalProperties: false });
+
+export const AiHostingAgentTestReplyItemSchema = Type.Object({
+  content: Type.String(),
+  type: Type.Union([
+    Type.Literal("text"),
+    Type.Literal("image"),
+    Type.Literal("audio"),
+  ]),
+}, { additionalProperties: false });
+
+export const AiHostingAgentTestResponseSchema = Type.Object({
+  action: Type.String(),
+  reply: Type.Array(AiHostingAgentTestReplyItemSchema),
+}, { additionalProperties: false });
+
 export const AiHostingSettingsAccountSchema = Type.Object({
   agentId: Type.Union([Type.String(), Type.Null()]),
   avatarUrl: Type.String(),
@@ -146,6 +184,12 @@ export type AiHostingAgentSettingsSaveRequest =
   Static<typeof AiHostingAgentSettingsSaveRequestSchema>;
 export type AiHostingAgentRenameRequest = Static<typeof AiHostingAgentRenameRequestSchema>;
 export type AiHostingAgentRemoveResponse = Static<typeof AiHostingAgentRemoveResponseSchema>;
+export type AiHostingAgentTestMessageContent =
+  Static<typeof AiHostingAgentTestMessageContentSchema>;
+export type AiHostingAgentTestMessage = Static<typeof AiHostingAgentTestMessageSchema>;
+export type AiHostingAgentTestRequest = Static<typeof AiHostingAgentTestRequestSchema>;
+export type AiHostingAgentTestReplyItem = Static<typeof AiHostingAgentTestReplyItemSchema>;
+export type AiHostingAgentTestResponse = Static<typeof AiHostingAgentTestResponseSchema>;
 export type AiHostingSettingsAccount = Static<typeof AiHostingSettingsAccountSchema>;
 export type AiHostingSettingsAgentOption = Static<typeof AiHostingSettingsAgentOptionSchema>;
 export type AiHostingSettingsResponse = Static<typeof AiHostingSettingsResponseSchema>;

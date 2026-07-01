@@ -5,6 +5,8 @@ import {
   AiHostingAgentRenameRequestSchema,
   AiHostingAgentSaveRequestSchema,
   AiHostingAgentSettingsSaveRequestSchema,
+  AiHostingAgentTestRequestSchema,
+  AiHostingAgentTestResponseSchema,
   AiHostingModelListResponseSchema,
   AiHostingQuotaOverviewSchema,
   KbDocCreateRequestSchema,
@@ -160,6 +162,49 @@ describe("AI hosting DTOs", () => {
             name: "默认模型",
             supportMultimodal: false,
           },
+        ],
+      }),
+    ).toBe(true);
+  });
+
+  it("accepts agent simulation test requests", () => {
+    expect(
+      Value.Check(AiHostingAgentTestRequestSchema, {
+        messages: [
+          {
+            contents: [
+              { type: "text", text: "我想了解晨间护肤" },
+              { type: "image", url: "https://cdn.example.com/demo.png" },
+            ],
+            role: "user",
+          },
+          {
+            contents: [{ type: "text", text: "你好" }],
+            role: "assistant",
+          },
+        ],
+        modelId: "11",
+        promptConfig: {
+          availableKbIds: [],
+          conditionLogic: "如果客户咨询成分，那么说明功效",
+          replyStyle: {
+            length: "简洁",
+            styleInstruction: "亲切自然",
+          },
+          handoffRules: "客户要求真人",
+          role: "你是护肤顾问",
+        },
+      }),
+    ).toBe(true);
+  });
+
+  it("accepts agent simulation test responses with multiple reply items", () => {
+    expect(
+      Value.Check(AiHostingAgentTestResponseSchema, {
+        action: "reply",
+        reply: [
+          { type: "text", content: "第一段回复" },
+          { type: "text", content: "第二段回复" },
         ],
       }),
     ).toBe(true);

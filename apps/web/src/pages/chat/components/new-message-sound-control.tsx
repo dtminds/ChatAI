@@ -1,11 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
+  BlurIcon,
   Clock01Icon,
+  MessageNotification02Icon,
   Notification01Icon,
   NotificationOff01Icon,
   PlayIcon,
   Tick02Icon,
-  ViewOffIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@/components/ui/button";
@@ -60,13 +61,13 @@ const TRIGGER_SETTING_OPTIONS: Array<{
 }> = [
   {
     description: "只在离开当前页面后播放",
-    icon: ViewOffIcon,
+    icon: BlurIcon,
     label: "页面未聚焦时",
     value: "unfocused_only",
   },
   {
     description: "工作台收到新消息就播放",
-    icon: Notification01Icon,
+    icon: MessageNotification02Icon,
     label: "收到新消息时",
     value: "all_new_messages",
   },

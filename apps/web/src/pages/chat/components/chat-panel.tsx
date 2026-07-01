@@ -382,7 +382,10 @@ export function ChatPanel({
                       multiSelectMode && "z-40",
                     )}
                   >
-                    <div className={cn(multiSelectMode && "pointer-events-none")}>
+                    <div
+                      className={cn(multiSelectMode && "pointer-events-none")}
+                      inert={multiSelectMode ? "" : undefined}
+                    >
                       <ChatComposer
                       canConfigureSeatAIHosting={canConfigureSeatAIHosting}
                       canConfigureSeatSemiAuto={canConfigureSeatSemiAuto}

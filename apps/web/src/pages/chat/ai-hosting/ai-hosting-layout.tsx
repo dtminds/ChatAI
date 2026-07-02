@@ -6,8 +6,8 @@ import {
   AiGenerativeIcon,
   ArrowLeft02Icon,
   AiBookIcon,
-  Invoice01Icon,
   RoboticIcon,
+  TokenCircleIcon,
   UserAiIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -34,7 +34,7 @@ const aiHostingNavItems = [
     to: "/chat/ai-hosting/hosting-settings",
   },
   {
-    icon: Invoice01Icon,
+    icon: TokenCircleIcon,
     label: "订阅",
     to: "/chat/ai-hosting/subscription",
   },

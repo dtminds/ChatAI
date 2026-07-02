@@ -526,13 +526,7 @@ export function getSmartReplyInlineState(
       canDismiss: true,
       canRegenerate: true,
       isLoading: false,
-      label: isSmartReplyKnowledgeMiss(suggestion)
-        ? "未命中知识集，暂无推荐话术"
-        : isSmartReplyContentIncompleteSkip(suggestion)
-          ? SMART_REPLY_CONTENT_INCOMPLETE_SKIP_HINT
-          : failReason
-            ? `生成失败：${failReason}`
-            : "生成失败",
+      label: failReason ? `生成失败：${failReason}` : "生成失败",
     };
   }
 

@@ -1171,6 +1171,23 @@ describe("smart-reply-adapter", () => {
     });
   });
 
+  it("uses the generic failure label for gen status 3 fail reasons", () => {
+    expect(
+      getSmartReplyInlineState({
+        assistantName: "智能助手",
+        content: "",
+        failReason: "knowledge_miss",
+        generateStatus: 3,
+        pollComplete: true,
+      }),
+    ).toMatchObject({
+      canDismiss: true,
+      canRegenerate: true,
+      isLoading: false,
+      label: "生成失败：knowledge_miss",
+    });
+  });
+
   it("creates make shorter suggestions that stop polling", () => {
     expect(
       createMakeShorterSmartReplySuggestion(

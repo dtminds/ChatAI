@@ -4,17 +4,24 @@ import type { ChatMessage } from "@/pages/chat/chat-types";
 import {
   canForwardMessage,
   MESSAGE_FORWARD_MAX_MESSAGES,
+  MESSAGE_FORWARD_MAX_RECIPIENTS,
   type MessageForwardMode,
+  type MessageForwardRecipient,
 } from "@/pages/chat/lib/message-forward";
 import { getMessageFeedItemKey } from "@/pages/chat/components/message-feed";
 
-export function useMessageForward() {
+type UseMessageForwardOptions = {
+  seatId?: string;
+};
+
+export function useMessageForward({ seatId }: UseMessageForwardOptions = {}) {
   const [multiSelectMode, setMultiSelectMode] = useState(false);
   const [selectedMessageKeys, setSelectedMessageKeys] = useState<string[]>([]);
   const [forwardDialogOpen, setForwardDialogOpen] = useState(false);
   const [forwardMode, setForwardMode] = useState<MessageForwardMode>("single");
   const [pendingMessages, setPendingMessages] = useState<ChatMessage[]>([]);
   const [selectedMessagesDialogOpen, setSelectedMessagesDialogOpen] = useState(false);
+  const [isSendingForward, setIsSendingForward] = useState(false);
 
   const selectedMessageKeySet = useMemo(
     () => new Set(selectedMessageKeys),
@@ -96,6 +103,36 @@ export function useMessageForward() {
     });
   }, []);
 
+  const handleSendForward = useCallback(
+    async (input: {
+      comment?: string;
+      recipients: MessageForwardRecipient[];
+    }) => {
+      if (!seatId || pendingMessages.length === 0 || input.recipients.length === 0) {
+        return;
+      }
+
+      if (input.recipients.length > MESSAGE_FORWARD_MAX_RECIPIENTS) {
+        toast.warning(`最多选择 ${MESSAGE_FORWARD_MAX_RECIPIENTS} 个聊天`);
+        return;
+      }
+
+      if (pendingMessages.length > MESSAGE_FORWARD_MAX_MESSAGES) {
+        toast.warning(`最多选择 ${MESSAGE_FORWARD_MAX_MESSAGES} 条消息`);
+        return;
+      }
+
+      setIsSendingForward(true);
+
+      try {
+        return;
+      } finally {
+        setIsSendingForward(false);
+      }
+    },
+    [pendingMessages, seatId],
+  );
+
   return {
     enterMultiSelectMode,
     exitMultiSelectMode,
@@ -103,6 +140,8 @@ export function useMessageForward() {
     forwardMode,
     handleForwardMessage,
     handleOpenBatchForwardDialog,
+    handleSendForward,
+    isSendingForward,
     multiSelectMode,
     pendingMessages,
     resetForwardState,

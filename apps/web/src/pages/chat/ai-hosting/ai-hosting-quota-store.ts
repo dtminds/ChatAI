@@ -53,6 +53,7 @@ export function fetchAiHostingQuota(options?: {
 }): Promise<AiHostingQuotaOverview | null>;
 export async function fetchAiHostingQuota(options: { force?: boolean } = {}) {
   ensureCurrentOwner();
+  const requestOwnerKey = cacheOwnerKey;
 
   if (!options.force && cachedQuota) {
     return cachedQuota;
@@ -70,6 +71,10 @@ export async function fetchAiHostingQuota(options: { force?: boolean } = {}) {
 
   const request = getAiHostingQuota()
     .then((quota) => {
+      if (requestOwnerKey !== cacheOwnerKey) {
+        return quota;
+      }
+
       cachedQuota = quota;
       emitQuotaChange();
       return quota;

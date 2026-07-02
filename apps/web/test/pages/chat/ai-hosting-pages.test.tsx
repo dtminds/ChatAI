@@ -783,6 +783,87 @@ describe("AI hosting pages", () => {
     expect(screen.getByRole("region", { name: "智能体用量" })).toHaveTextContent("64MB/1GB");
   });
 
+  it("ignores stale sidebar quota responses after the account owner changes", async () => {
+    let resolveFirstQuota: (
+      quota: Awaited<ReturnType<typeof agentService.getAiHostingQuota>>,
+    ) => void = () => undefined;
+    let resolveSecondQuota: (
+      quota: Awaited<ReturnType<typeof agentService.getAiHostingQuota>>,
+    ) => void = () => undefined;
+
+    vi.mocked(agentService.getAiHostingQuota)
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveFirstQuota = resolve;
+        }),
+      )
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveSecondQuota = resolve;
+        }),
+      );
+
+    renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
+
+    expect(await screen.findByText("共 2 条")).toBeInTheDocument();
+
+    act(() => {
+      useAuthStore.getState().setSession({
+        accountType: "sub",
+        displayName: "客服二号",
+        permissions: ["chat.access", "chat.send", "chat.takeover"],
+        role: "admin",
+        subUserId: "202",
+        uid: 1,
+      });
+    });
+
+    await waitFor(() => {
+      expect(agentService.getAiHostingQuota).toHaveBeenCalledTimes(2);
+    });
+
+    await act(async () => {
+      resolveSecondQuota({
+        agents: {
+          limit: 20,
+          used: 7,
+        },
+        kbDocs: {
+          limit: 1024 * 1024 * 1024,
+          used: 64 * 1024 * 1024,
+        },
+        kbs: {
+          limit: 20,
+          used: 9,
+        },
+      });
+    });
+
+    expect(screen.getByRole("region", { name: "智能体用量" })).toHaveTextContent("7/20");
+    expect(screen.getByRole("region", { name: "智能体用量" })).toHaveTextContent("64MB/1GB");
+
+    await act(async () => {
+      resolveFirstQuota({
+        agents: {
+          limit: 20,
+          used: 2,
+        },
+        kbDocs: {
+          limit: 1024 * 1024 * 1024,
+          used: 20 * 1024 * 1024,
+        },
+        kbs: {
+          limit: 20,
+          used: 3,
+        },
+      });
+    });
+
+    expect(screen.getByRole("region", { name: "智能体用量" })).toHaveTextContent("7/20");
+    expect(screen.getByRole("region", { name: "智能体用量" })).toHaveTextContent("64MB/1GB");
+    expect(screen.getByRole("region", { name: "智能体用量" })).not.toHaveTextContent("20MB/1GB");
+  });
+
   it("prevents adding agents when the fixed agent quota is reached", async () => {
     const user = userEvent.setup();
     vi.mocked(agentService.getAiHostingQuota).mockResolvedValue({

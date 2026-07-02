@@ -16,7 +16,6 @@ import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth-store";
 import {
   fetchAiHostingQuota,
-  getAiHostingQuotaOwnerKey,
   getCachedAiHostingQuota,
   subscribeAiHostingQuota,
 } from "./ai-hosting-quota-store";
@@ -59,7 +58,11 @@ export function AiHostingLayout({
   children: ReactNode;
   title: string;
 }) {
-  const quotaOwnerKey = useAuthStore(() => getAiHostingQuotaOwnerKey());
+  const quotaOwnerKey = useAuthStore((state) => {
+    const subUser = state.subUser;
+
+    return subUser ? `${subUser.uid}:${subUser.subUserId}` : "anonymous";
+  });
   const previousQuotaOwnerKeyRef = useRef(quotaOwnerKey);
   const [quota, setQuota] = useState<AiHostingQuotaOverview | null>(() =>
     getCachedAiHostingQuota(),

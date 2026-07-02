@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 import type { ChatMessage } from "@/pages/chat/chat-types";
+import { forwardMessagesToRecipients } from "@/pages/chat/lib/forward-messages";
 import {
   canForwardMessage,
   MESSAGE_FORWARD_MAX_MESSAGES,
@@ -14,7 +15,7 @@ type UseMessageForwardOptions = {
   seatId?: string;
 };
 
-export function useMessageForward({ seatId }: UseMessageForwardOptions = {}) {
+export function useMessageForward({ seatId }: UseMessageForwardOptions) {
   const [multiSelectMode, setMultiSelectMode] = useState(false);
   const [selectedMessageKeys, setSelectedMessageKeys] = useState<string[]>([]);
   const [forwardDialogOpen, setForwardDialogOpen] = useState(false);
@@ -125,12 +126,32 @@ export function useMessageForward({ seatId }: UseMessageForwardOptions = {}) {
       setIsSendingForward(true);
 
       try {
-        return;
+        const result = await forwardMessagesToRecipients({
+          comment: input.comment,
+          messages: pendingMessages,
+          recipients: input.recipients,
+          seatId,
+        });
+
+        if (result.sentCount === 0 && result.failedCount > 0) {
+          toast.warning("转发失败，请稍后重试");
+          return;
+        }
+
+        if (result.failedCount > 0 || result.skippedCount > 0) {
+          toast.warning("部分消息转发失败");
+        } else {
+          toast.success("转发成功");
+        }
+
+        exitMultiSelectMode();
+      } catch {
+        toast.warning("转发失败，请稍后重试");
       } finally {
         setIsSendingForward(false);
       }
     },
-    [pendingMessages, seatId],
+    [exitMultiSelectMode, pendingMessages, seatId],
   );
 
   return {

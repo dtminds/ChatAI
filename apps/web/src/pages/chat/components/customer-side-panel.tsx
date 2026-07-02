@@ -40,7 +40,7 @@ type SidebarIframeParamsPayload = {
 };
 
 type ScopedSidebarIframeParams = {
-  scopeKey: string;
+  refreshKey: string;
   value: SidebarIframeParamsPayload | null;
 };
 
@@ -49,6 +49,13 @@ function buildSidebarIframeParamsScopeKey(input: {
   seatId?: string;
 }): string {
   return [input.seatId ?? "", input.conversationId ?? ""].join("\0");
+}
+
+function buildSidebarIframeParamsRefreshKey(
+  scopeKey: string,
+  activeSidebarValue: string,
+): string {
+  return `${scopeKey}\0${activeSidebarValue}`;
 }
 
 type CustomerSidePanelProps = {
@@ -122,113 +129,8 @@ export function CustomerSidePanel({
     [sidebarIframeConversationId, sidebarIframeSeatId],
   );
 
-  const [sidebarIframeParams, setSidebarIframeParams] =
-    useState<ScopedSidebarIframeParams | null>(null);
-  const [isSidebarIframeParamsReady, setIsSidebarIframeParamsReady] =
-    useState(true);
-
-  const sidebarIframeParamsForScope = useMemo(() => {
-    if (sidebarIframeParams?.scopeKey !== sidebarIframeParamsScopeKey) {
-      return null;
-    }
-
-    return sidebarIframeParams.value;
-  }, [sidebarIframeParams, sidebarIframeParamsScopeKey]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    if (!needsSidebarIframeParams) {
-      setIsSidebarIframeParamsReady(true);
-      setSidebarIframeParams(null);
-
-      return;
-    }
-
-    const scopeKey = sidebarIframeParamsScopeKey;
-
-    setIsSidebarIframeParamsReady(false);
-    setSidebarIframeParams(null);
-
-    void (async () => {
-      try {
-        const dto = await fetchWorkbenchSidebarIframeParams({
-          conversationId: sidebarIframeConversationId!,
-          seatId: sidebarIframeSeatId!,
-        });
-
-        if (!cancelled) {
-          setSidebarIframeParams({
-            scopeKey,
-            value: dto
-              ? {
-                  ...(dto.rd ? { rd: dto.rd } : {}),
-                  ...(dto.fsw ? { fsw: dto.fsw } : {}),
-                  ts: dto.ts,
-                  ...(dto.mid ? { mid: dto.mid } : {}),
-                  ...(dto.thirdGroupId
-                    ? {
-                        thirdGroupId: dto.thirdGroupId,
-                        thirdGroupName: dto.thirdGroupName ?? "未知群聊",
-                      }
-                    : {}),
-                }
-              : null,
-          });
-        }
-      } catch {
-        console.error("Failed to fetch sidebar iframe params");
-        if (!cancelled) {
-          setSidebarIframeParams({ scopeKey, value: null });
-        }
-      } finally {
-        if (!cancelled) {
-          setIsSidebarIframeParamsReady(true);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    needsSidebarIframeParams,
-    sidebarIframeConversationId,
-    sidebarIframeParamsScopeKey,
-    sidebarIframeSeatId,
-  ]);
-
-  const canRenderSidebarIframeSrc = useMemo(() => {
-    if (!needsSidebarIframeParams) {
-      return true;
-    }
-
-    if (!isSidebarIframeParamsReady) {
-      return false;
-    }
-
-    return sidebarIframeParams?.scopeKey === sidebarIframeParamsScopeKey;
-  }, [
-    isSidebarIframeParamsReady,
-    needsSidebarIframeParams,
-    sidebarIframeParams,
-    sidebarIframeParamsScopeKey,
-  ]);
-
-  const sidebarIframeSrcForUrl = useMemo(
-    () => (url: string) =>
-      buildSidebarIframeSrc(url, {
-        ...(sidebarIframeParamsForScope ?? {}),
-        ...(sidebarIframeTos ? { tos: sidebarIframeTos } : {}),
-        ...(sidebarIframeSendStatus ? { sendStatus: sidebarIframeSendStatus } : {}),
-      }),
-    [sidebarIframeParamsForScope, sidebarIframeSendStatus, sidebarIframeTos],
-  );
   const activeSidebarItems = sortSidebarItems(scopedSidebarItems).filter(
     (item) => item.status === "active",
-  );
-  const [isSidebarExpanded, setIsSidebarExpanded] = useState(
-    readSidebarExpandedPreference,
   );
   const defaultSidebarValue = isGroupConversation ? "system" : "quick-reply";
   const sidebarEntries = [
@@ -256,13 +158,6 @@ export function CustomerSidePanel({
       value: getSidebarTabValue(item),
     })),
   ];
-  const hasOverflowSidebarEntries =
-    sidebarEntries.length > collapsedSidebarEntryCount;
-  const visibleSidebarEntries = isSidebarExpanded
-    ? sidebarEntries
-    : sidebarEntries.slice(0, collapsedSidebarEntryCount);
-  const shouldShowSingleConversationEmptyState =
-    !isGroupConversation && sidebarEntries.length === 0;
   const [activeSidebarValue, setActiveSidebarValue] =
     useState(defaultSidebarValue);
   const previousDefaultSidebarValueRef = useRef(defaultSidebarValue);
@@ -281,6 +176,128 @@ export function CustomerSidePanel({
       return defaultSidebarValue;
     });
   }, [defaultSidebarValue, sidebarEntries]);
+
+  const sidebarIframeParamsRefreshKey = useMemo(
+    () =>
+      buildSidebarIframeParamsRefreshKey(
+        sidebarIframeParamsScopeKey,
+        activeSidebarValue,
+      ),
+    [activeSidebarValue, sidebarIframeParamsScopeKey],
+  );
+
+  const [sidebarIframeParams, setSidebarIframeParams] =
+    useState<ScopedSidebarIframeParams | null>(null);
+  const [isSidebarIframeParamsReady, setIsSidebarIframeParamsReady] =
+    useState(true);
+
+  const sidebarIframeParamsForScope = useMemo(() => {
+    if (sidebarIframeParams?.refreshKey !== sidebarIframeParamsRefreshKey) {
+      return null;
+    }
+
+    return sidebarIframeParams.value;
+  }, [sidebarIframeParams, sidebarIframeParamsRefreshKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!needsSidebarIframeParams) {
+      setIsSidebarIframeParamsReady(true);
+      setSidebarIframeParams(null);
+
+      return;
+    }
+
+    const refreshKey = sidebarIframeParamsRefreshKey;
+
+    setIsSidebarIframeParamsReady(false);
+    setSidebarIframeParams(null);
+
+    void (async () => {
+      try {
+        const dto = await fetchWorkbenchSidebarIframeParams({
+          conversationId: sidebarIframeConversationId!,
+          seatId: sidebarIframeSeatId!,
+        });
+
+        if (!cancelled) {
+          setSidebarIframeParams({
+            refreshKey,
+            value: dto
+              ? {
+                  ...(dto.rd ? { rd: dto.rd } : {}),
+                  ...(dto.fsw ? { fsw: dto.fsw } : {}),
+                  ts: dto.ts,
+                  ...(dto.mid ? { mid: dto.mid } : {}),
+                  ...(dto.thirdGroupId
+                    ? {
+                        thirdGroupId: dto.thirdGroupId,
+                        thirdGroupName: dto.thirdGroupName ?? "未知群聊",
+                      }
+                    : {}),
+                }
+              : null,
+          });
+        }
+      } catch {
+        console.error("Failed to fetch sidebar iframe params");
+        if (!cancelled) {
+          setSidebarIframeParams({ refreshKey, value: null });
+        }
+      } finally {
+        if (!cancelled) {
+          setIsSidebarIframeParamsReady(true);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    needsSidebarIframeParams,
+    sidebarIframeConversationId,
+    sidebarIframeParamsRefreshKey,
+    sidebarIframeSeatId,
+  ]);
+
+  const canRenderSidebarIframeSrc = useMemo(() => {
+    if (!needsSidebarIframeParams) {
+      return true;
+    }
+
+    if (!isSidebarIframeParamsReady) {
+      return false;
+    }
+
+    return sidebarIframeParams?.refreshKey === sidebarIframeParamsRefreshKey;
+  }, [
+    isSidebarIframeParamsReady,
+    needsSidebarIframeParams,
+    sidebarIframeParams,
+    sidebarIframeParamsRefreshKey,
+  ]);
+
+  const sidebarIframeSrcForUrl = useMemo(
+    () => (url: string) =>
+      buildSidebarIframeSrc(url, {
+        ...(sidebarIframeParamsForScope ?? {}),
+        ...(sidebarIframeTos ? { tos: sidebarIframeTos } : {}),
+        ...(sidebarIframeSendStatus ? { sendStatus: sidebarIframeSendStatus } : {}),
+      }),
+    [sidebarIframeParamsForScope, sidebarIframeSendStatus, sidebarIframeTos],
+  );
+  const [isSidebarExpanded, setIsSidebarExpanded] = useState(
+    readSidebarExpandedPreference,
+  );
+  const hasOverflowSidebarEntries =
+    sidebarEntries.length > collapsedSidebarEntryCount;
+  const visibleSidebarEntries = isSidebarExpanded
+    ? sidebarEntries
+    : sidebarEntries.slice(0, collapsedSidebarEntryCount);
+  const shouldShowSingleConversationEmptyState =
+    !isGroupConversation && sidebarEntries.length === 0;
 
   useEffect(() => {
     onQuickReplyActiveChange?.(activeSidebarValue === "quick-reply");
@@ -383,7 +400,7 @@ export function CustomerSidePanel({
                 <CustomSidebarIframe
                   isSrcPending={!canRenderSidebarIframeSrc}
                   itemName={item.name}
-                  loadKey={`${item.id}:${sidebarIframeParamsScopeKey}:${sidebarIframeTos ?? ""}:${sidebarIframeParamsForScope?.thirdGroupId ?? ""}:${sidebarIframeParamsForScope?.thirdGroupName ?? ""}`}
+                  loadKey={`${item.id}:${sidebarIframeParamsRefreshKey}:${sidebarIframeTos ?? ""}:${sidebarIframeParamsForScope?.ts ?? ""}:${sidebarIframeParamsForScope?.thirdGroupId ?? ""}:${sidebarIframeParamsForScope?.thirdGroupName ?? ""}`}
                   src={
                     canRenderSidebarIframeSrc
                       ? sidebarIframeSrcForUrl(item.url)

@@ -303,6 +303,10 @@ describe("CustomerSidePanel", () => {
     vi.mocked(fetchWorkbenchSidebarIframeParams)
       .mockResolvedValueOnce({
         ...sidebarIframeParamsFixture,
+        rd: "rd-initial",
+      })
+      .mockResolvedValueOnce({
+        ...sidebarIframeParamsFixture,
         rd: "rd-first",
       })
       .mockResolvedValueOnce({
@@ -349,6 +353,80 @@ describe("CustomerSidePanel", () => {
       conversationId: "conv-2",
       seatId: "seat-1",
     });
+  });
+
+  it("refetches iframe params when switching sidebar tabs in the same conversation", async () => {
+    const user = userEvent.setup();
+    const { fetchWorkbenchSidebarIframeParams } = await import(
+      "@/pages/chat/api/sidebar-iframe-params"
+    );
+
+    vi.mocked(fetchWorkbenchSidebarIframeParams)
+      .mockResolvedValueOnce({
+        ...sidebarIframeParamsFixture,
+        ts: "ts-on-mount",
+      })
+      .mockResolvedValueOnce({
+        ...sidebarIframeParamsFixture,
+        ts: "ts-on-custom-tab",
+      })
+      .mockResolvedValueOnce({
+        ...sidebarIframeParamsFixture,
+        ts: "ts-on-quick-reply",
+      })
+      .mockResolvedValueOnce({
+        ...sidebarIframeParamsFixture,
+        ts: "ts-on-custom-tab-again",
+      });
+
+    render(
+      <CustomerSidePanel
+        {...defaultProps}
+        conversationMode="single"
+        sidebarIframeConversationId="conv-1"
+        sidebarIframeSeatId="seat-1"
+        sidebarItems={[
+          {
+            bindTypes: ["1", "2"],
+            id: "1",
+            name: "素材中心",
+            sort: 1,
+            status: "active",
+            url: "https://example.com/assets",
+          },
+        ]}
+      />,
+    );
+
+    expect(fetchWorkbenchSidebarIframeParams).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole("tab", { name: "素材中心" }));
+
+    await waitFor(() => {
+      expect(
+        new URL(screen.getByTitle("素材中心扩展页").getAttribute("src") ?? "").searchParams.get(
+          "ts",
+        ),
+      ).toBe("ts-on-custom-tab");
+    });
+    expect(fetchWorkbenchSidebarIframeParams).toHaveBeenCalledTimes(2);
+
+    await user.click(screen.getByRole("tab", { name: "快捷话术" }));
+
+    await waitFor(() => {
+      expect(fetchWorkbenchSidebarIframeParams).toHaveBeenCalledTimes(3);
+    });
+
+    await user.click(screen.getByRole("tab", { name: "素材中心" }));
+
+    await waitFor(() => {
+      expect(
+        new URL(screen.getByTitle("素材中心扩展页").getAttribute("src") ?? "").searchParams.get(
+          "ts",
+        ),
+      ).toBe("ts-on-custom-tab-again");
+    });
+    expect(fetchWorkbenchSidebarIframeParams).toHaveBeenCalledTimes(4);
   });
 
   it("appends server-issued iframe params to custom iframe src", async () => {

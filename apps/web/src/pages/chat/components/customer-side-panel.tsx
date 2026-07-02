@@ -179,10 +179,12 @@ export function CustomerSidePanel({
 
   const sidebarIframeParamsRefreshKey = useMemo(
     () =>
-      buildSidebarIframeParamsRefreshKey(
-        sidebarIframeParamsScopeKey,
-        activeSidebarValue,
-      ),
+      activeSidebarValue.startsWith("sidebar:")
+        ? buildSidebarIframeParamsRefreshKey(
+            sidebarIframeParamsScopeKey,
+            activeSidebarValue,
+          )
+        : "",
     [activeSidebarValue, sidebarIframeParamsScopeKey],
   );
 

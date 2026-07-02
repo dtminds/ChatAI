@@ -1585,6 +1585,53 @@ describe("AI hosting pages", () => {
     });
   });
 
+  it("keeps long conditional logic knowledge base names inside the fixed picker width", async () => {
+    const user = userEvent.setup();
+    const longKnowledgeBaseName = "测试超长测试超长测试超长测试超长测试超长测试超长";
+
+    vi.mocked(kbService.listKbs).mockResolvedValue({
+      kbs: [
+        {
+          createdAt: "2026-06-20T08:00:00.000Z",
+          description: "",
+          kbId: "kb-long-name",
+          name: longKnowledgeBaseName,
+          updatedAt: "2026-06-20T08:00:00.000Z",
+        },
+      ],
+      pagination: {
+        page: 1,
+        pageSize: 200,
+        total: 1,
+      },
+    });
+
+    renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
+
+    await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
+    await user.click(screen.getByRole("button", { name: "添加关联知识库" }));
+
+    const listbox = await screen.findByRole("listbox", { name: "选择知识库" });
+    const option = within(listbox).getByRole("option", {
+      name: longKnowledgeBaseName,
+    });
+    const optionName = within(option).getByText(longKnowledgeBaseName);
+
+    expect(screen.getByRole("dialog")).toHaveClass("w-[280px]");
+    expect(listbox.querySelector("[data-slot='scroll-area-viewport']")?.parentElement)
+      .toHaveClass(
+        "w-full",
+        "min-w-0",
+        "max-w-full",
+        "[&_[data-slot=scroll-area-viewport]>div]:!block",
+        "[&_[data-slot=scroll-area-viewport]>div]:w-full",
+        "[&_[data-slot=scroll-area-viewport]>div]:min-w-0",
+        "[&_[data-slot=scroll-area-viewport]>div]:max-w-full",
+      );
+    expect(option).toHaveClass("min-w-0", "max-w-full", "overflow-hidden");
+    expect(optionName).toHaveClass("min-w-0", "truncate");
+  });
+
   it("closes the conditional logic knowledge base popover when clicking outside", async () => {
     const user = userEvent.setup();
 

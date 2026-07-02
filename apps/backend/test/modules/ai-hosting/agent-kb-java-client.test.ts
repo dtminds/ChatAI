@@ -139,7 +139,7 @@ describe("createAgentKbJavaClient", () => {
           list: [
             {
               content: "切片正文",
-              createTime: "2026-06-18T15:22:22.000Z",
+              createTime: "2026-06-18 15:22:22",
               docId: 1001,
               id: 501,
               kbId: 1,
@@ -147,7 +147,7 @@ describe("createAgentKbJavaClient", () => {
               title: "切片标题",
               type: 2,
               uid: 9001,
-              updateTime: "2026-06-18T15:22:22.000Z",
+              updateTime: "2026-06-18 15:22:22",
             },
           ],
           page: 1,

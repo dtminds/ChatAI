@@ -48,11 +48,11 @@ describe("KB read routes", () => {
       data: {
         kbs: [
           {
-            createdAt: "2026-06-19T14:02:22.000Z",
+            createdAt: "2026-06-19T06:02:22.000Z",
             description: "华为各系列产品规格、功能与常见问题",
             kbId: "1",
             name: "华为产品知识",
-            updatedAt: "2026-06-20T14:02:22.000Z",
+            updatedAt: "2026-06-20T06:02:22.000Z",
           },
         ],
         pagination: {
@@ -137,7 +137,7 @@ describe("KB read routes", () => {
           list: [
             {
               content: "切片正文",
-              createTime: "2026-06-18T15:22:22.000Z",
+              createTime: "2026-06-18 15:22:22",
               docId: 1001,
               id: 501,
               kbId: 1,
@@ -145,11 +145,11 @@ describe("KB read routes", () => {
               title: "切片标题",
               type: 2,
               uid: 9001,
-              updateTime: "2026-06-18T15:22:22.000Z",
+              updateTime: "2026-06-18 15:22:22",
             },
             {
               content: "系统切片正文",
-              createTime: "2026-06-18T15:22:22.000Z",
+              createTime: "2026-06-18 15:22:22",
               docId: 1001,
               id: 502,
               kbId: 1,
@@ -157,7 +157,7 @@ describe("KB read routes", () => {
               title: "系统切片",
               type: 2,
               uid: 9001,
-              updateTime: "2026-06-18T15:22:22.000Z",
+              updateTime: "2026-06-18 15:22:22",
             },
           ],
           page: 1,
@@ -204,23 +204,23 @@ describe("KB read routes", () => {
             chunkId: "501",
             chunkType: "text",
             content: "切片正文",
-            createdAt: "2026-06-18T15:22:22.000Z",
+            createdAt: "2026-06-18 15:22:22",
             docId: "1001",
             kbId: "1",
             source: "manual",
             title: "切片标题",
-            updatedAt: "2026-06-18T15:22:22.000Z",
+            updatedAt: "2026-06-18 15:22:22",
           },
           {
             chunkId: "502",
             chunkType: "text",
             content: "系统切片正文",
-            createdAt: "2026-06-18T15:22:22.000Z",
+            createdAt: "2026-06-18 15:22:22",
             docId: "1001",
             kbId: "1",
             source: "system",
             title: "系统切片",
-            updatedAt: "2026-06-18T15:22:22.000Z",
+            updatedAt: "2026-06-18 15:22:22",
           },
         ],
         pagination: {

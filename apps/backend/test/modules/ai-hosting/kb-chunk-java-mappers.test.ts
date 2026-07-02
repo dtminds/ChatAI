@@ -93,12 +93,58 @@ describe("kb-chunk-java-mappers", () => {
       chunkId: "62",
       chunkType: "image",
       content: "解析文字",
+      createdAt: "2026-06-24 18:54:30",
       docId: "30",
       imageUrls: ["https://knowledgebase-image.tos-cn-beijing.volces.com/demo.png"],
       kbId: "3",
       source: "system",
       title: "切片标题",
+      updatedAt: "2026-06-24 19:02:34",
       volcChunkId: "volc-chunk-62",
+    });
+  });
+
+  it("normalizes Java chunk display time edge cases", () => {
+    expect(
+      mapJavaChunkPageItem(
+        {
+          content: "正文",
+          createTime: "",
+          docId: 30,
+          id: 62,
+          kbId: 3,
+          source: 2,
+          title: "切片标题",
+          type: 2,
+          uid: 272,
+          updateTime: "2026-06-24 18:54:30",
+        },
+        "document",
+      ),
+    ).toMatchObject({
+      createdAt: "",
+      updatedAt: "2026-06-24 18:54:30",
+    });
+
+    expect(
+      mapJavaChunkPageItem(
+        {
+          content: "正文",
+          createTime: "  2026/06/24 18:54:30  ",
+          docId: 30,
+          id: 62,
+          kbId: 3,
+          source: 2,
+          title: "切片标题",
+          type: 2,
+          uid: 272,
+          updateTime: "invalid time",
+        },
+        "document",
+      ),
+    ).toMatchObject({
+      createdAt: "2026/06/24 18:54:30",
+      updatedAt: "invalid time",
     });
   });
 

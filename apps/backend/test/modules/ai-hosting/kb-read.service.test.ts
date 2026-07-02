@@ -8,7 +8,7 @@ import { createKbReadDbMock } from "../../helpers/create-kb-read-db-mock.js";
 const javaChunkPageItems = [
   {
     content: "切片正文",
-    createTime: "2026-06-18T15:22:22.000Z",
+    createTime: "2026-06-18 15:22:22",
     docId: 1001,
     id: 501,
     kbId: 1,
@@ -16,11 +16,11 @@ const javaChunkPageItems = [
     title: "切片标题",
     type: 2,
     uid: 9001,
-    updateTime: "2026-06-18T15:22:22.000Z",
+    updateTime: "2026-06-18 15:22:22",
   },
   {
     content: "系统切片正文",
-    createTime: "2026-06-18T15:22:22.000Z",
+    createTime: "2026-06-18 15:22:22",
     docId: 1001,
     id: 502,
     kbId: 1,
@@ -28,7 +28,7 @@ const javaChunkPageItems = [
     title: "系统切片",
     type: 2,
     uid: 9001,
-    updateTime: "2026-06-18T15:22:22.000Z",
+    updateTime: "2026-06-18 15:22:22",
   },
 ];
 

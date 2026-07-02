@@ -20,6 +20,28 @@ describe("kb-service time formatting", () => {
       lastUpdatedAt: "2026-06-20 22:02:22",
     });
   });
+
+  it("keeps Java chunk naive timestamps as display wall clock", () => {
+    expect(
+      toKbDocChunkViewItem(
+        {
+          chunkId: "501",
+          chunkType: "text",
+          content: "切片正文",
+          createdAt: "2026-06-24 18:54:30",
+          docId: "1001",
+          kbId: "1",
+          source: "manual",
+          title: "切片标题",
+          updatedAt: "2026-06-24 19:02:34",
+        },
+        "document",
+      ),
+    ).toMatchObject({
+      createdAt: "2026-06-24 18:54:30",
+      updatedAt: "2026-06-24 19:02:34",
+    });
+  });
 });
 
 describe("kb-service chunk display mapping", () => {

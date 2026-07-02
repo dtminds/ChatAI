@@ -24,7 +24,8 @@ import { toast } from "sonner";
 import { AgentConditionalLogicField } from "./agent-components/agent-conditional-logic-field";
 import { AgentSettingsPublishDialog } from "./agent-components/agent-settings-publish-dialog";
 import { AgentSettingsRestoreDialog } from "./agent-components/agent-settings-restore-dialog";
-import { AgentGenerateGradientButton } from "./agent-generate-gradient-button";
+// 先注释按钮，不要删除。智能生成入口隐藏期间保留 import 位置。
+// import { AgentGenerateGradientButton } from "./agent-generate-gradient-button";
 import { AgentSettingsGenerateDialog } from "./agent-settings-generate-dialog";
 import {
   AlertDialog,
@@ -175,7 +176,6 @@ export function AgentSettingsPage() {
   );
   const selectedModel = modelOptions.find((option) => option.id === form.model);
 
-  const previewTitle = form.name.trim() || "美妆小助手";
   const pageTitle = isEditing ? (agentDetail?.name || form.name || "Agent") : "创建 Agent";
 
   useEffect(() => {
@@ -254,7 +254,7 @@ export function AgentSettingsPage() {
     }));
   }
 
-  async function handleSave() {
+  async function handleSave({ silentSuccess = false }: { silentSuccess?: boolean } = {}) {
     if (!canManage) {
       return null;
     }
@@ -275,6 +275,9 @@ export function AgentSettingsPage() {
 
         setAgentDetail(saved);
         setForm(mapAgentDetailToForm(saved));
+        if (!silentSuccess) {
+          toast.success("保存成功");
+        }
 
         return saved;
       } catch (error) {
@@ -318,7 +321,7 @@ export function AgentSettingsPage() {
       return;
     }
 
-    const saved = await handleSave();
+    const saved = await handleSave({ silentSuccess: true });
 
     if (!saved) {
       return;
@@ -332,6 +335,7 @@ export function AgentSettingsPage() {
       setAgentDetail(published);
       setForm(mapAgentDetailToForm(published));
       setPublishDialogOpen(false);
+      toast.success("发布成功");
     } catch (error) {
       setPublishDialogOpen(false);
       showOperationError("发布 Agent 失败", error, "发布 Agent 失败");
@@ -355,6 +359,7 @@ export function AgentSettingsPage() {
       setCreatedDraftDialogOpen(false);
       setCreatedDraftAgentId(null);
       navigate(`/chat/ai-hosting/agents/${published.id}`, { replace: true });
+      toast.success("发布成功");
     } catch (error) {
       setCreatedDraftDialogOpen(false);
       showOperationError("发布 Agent 失败", error, "发布 Agent 失败");
@@ -606,13 +611,23 @@ export function AgentSettingsPage() {
 
           {canManage ? (
             <div className="flex flex-wrap items-center gap-2">
-              <Button disabled={submitting || loading} onClick={handleSave} type="button" variant="outline">
+              <Button
+                disabled={submitting || loading}
+                onClick={() => {
+                  void handleSave();
+                }}
+                type="button"
+                variant="outline"
+              >
                 {submitting ? <ButtonSpinner label="保存中" /> : null}
                 保存
               </Button>
-              <AgentGenerateGradientButton onClick={() => setGenerateDialogOpen(true)}>
-                智能生成
-              </AgentGenerateGradientButton>
+              {/*
+                先注释按钮，不要删除。智能生成暂未接实际生成逻辑，入口先隐藏。
+                <AgentGenerateGradientButton onClick={() => setGenerateDialogOpen(true)}>
+                  智能生成
+                </AgentGenerateGradientButton>
+              */}
               {isEditing ? (
                 <Button
                   disabled={submitting || loading || !canPublish}
@@ -842,7 +857,6 @@ export function AgentSettingsPage() {
             onInputChange={setPreviewInput}
             onSend={handlePreviewSend}
             testing={previewTesting}
-            title={previewTitle}
           />
         </div>
       </div>
@@ -1021,7 +1035,6 @@ function AgentPreviewPanel({
   onInputChange,
   onSend,
   testing,
-  title,
 }: {
   inputValue: string;
   messages: PreviewMessage[];
@@ -1030,7 +1043,6 @@ function AgentPreviewPanel({
   onInputChange: (value: string) => void;
   onSend: () => void | Promise<void>;
   testing: boolean;
-  title: string;
 }) {
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const messageViewportRef = useRef<HTMLDivElement | null>(null);
@@ -1068,10 +1080,7 @@ function AgentPreviewPanel({
             <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-[8px] bg-background text-primary shadow-xs">
               <HugeiconsIcon icon={AiChat02Icon} size={16} strokeWidth={1.8} />
             </span>
-            <h2 className="truncate text-base font-semibold text-foreground">{title}</h2>
-            <span className="rounded-[6px] bg-background px-2 py-1 text-xs text-muted-foreground">
-              模拟测试
-            </span>
+            <h2 className="truncate text-base font-semibold text-foreground">模拟测试</h2>
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <Button

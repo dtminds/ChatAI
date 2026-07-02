@@ -22,6 +22,7 @@ type HostingSettingsSeatRow = {
   avatarUrl: string | null;
   id: number;
   third_user_name: string | null;
+  third_userid: string | null;
 };
 
 type UserSeatAgentRow = {
@@ -54,7 +55,9 @@ export class AiHostingSettingsService {
     const configsBySeatId = new Map(configs.map((config) => [config.user_seat_id, config]));
 
     return {
-      accounts: seats.map((seat) => mapHostingSettingsAccount(seat, configsBySeatId.get(seat.id))),
+      accounts: seats.map((seat) =>
+        mapHostingSettingsAccount(seat, configsBySeatId.get(seat.id)),
+      ),
       agents: agents.map(mapHostingSettingsAgent),
     };
   }
@@ -154,6 +157,7 @@ export class AiHostingSettingsService {
         "seat.third_avatar as avatarUrl",
         "seat.id",
         "seat.third_user_name",
+        "seat.third_userid",
       ])
       .where("seat.uid", "=", scope.uid)
       .where("seat.platform", "=", scope.platform);

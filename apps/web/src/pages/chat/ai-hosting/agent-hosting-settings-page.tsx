@@ -546,6 +546,7 @@ function HostingSettingsTable({
 }) {
   const selectedAccountIdSet = new Set(selectedAccountIds);
   const agentNameById = new Map(agents.map((agent) => [agent.id, agent.name]));
+  const tableColumnCount = 6;
 
   return (
     <>
@@ -564,13 +565,13 @@ function HostingSettingsTable({
             <TableHead className="h-11 w-[16%]">关联 Agent</TableHead>
             <TableHead className="h-11 w-[18%]">允许开启 AI 回复</TableHead>
             <TableHead className="h-11 w-[16%]">允许话术推荐</TableHead>
-            <TableHead className="h-11 w-[100px] text-right">操作</TableHead>
+            <TableHead className="h-11 w-[140px] text-right">操作</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {loading ? (
             <TableRow>
-              <TableCell className="py-10 text-center" colSpan={6}>
+              <TableCell className="py-10 text-center" colSpan={tableColumnCount}>
                 <div
                   aria-label="正在加载"
                   className="inline-flex items-center gap-2 text-sm text-muted-foreground"
@@ -583,7 +584,7 @@ function HostingSettingsTable({
             </TableRow>
           ) : accounts.length === 0 ? (
             <TableRow>
-              <TableCell className="py-10 text-center text-sm text-muted-foreground" colSpan={6}>
+              <TableCell className="py-10 text-center text-sm text-muted-foreground" colSpan={tableColumnCount}>
                 暂无数据
               </TableCell>
             </TableRow>

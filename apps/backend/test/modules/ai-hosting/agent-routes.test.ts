@@ -1334,6 +1334,7 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
       platform: 5,
       third_avatar: "https://example.com/seat-102.png",
       third_user_name: "小助理2",
+      third_userid: "user-102",
       uid: 9001,
     },
     {
@@ -1342,6 +1343,7 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
       platform: 5,
       third_avatar: "",
       third_user_name: "小助理1",
+      third_userid: "user-101",
       uid: 9001,
     },
     ...(options.bulkHostingSeats
@@ -1352,6 +1354,7 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
             platform: 5,
             third_avatar: "https://example.com/seat-104.png",
             third_user_name: "小助理4",
+            third_userid: "user-104",
             uid: 9001,
           },
           {
@@ -1360,10 +1363,41 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
             platform: 5,
             third_avatar: "https://example.com/seat-103.png",
             third_user_name: "小助理3",
+            third_userid: "user-103",
             uid: 9001,
           },
         ]
       : []),
+  ];
+  const groupSeats = [
+    {
+      biz_status: 1,
+      id: 1,
+      platform: 5,
+      third_userid: "user-102",
+      uid: 9001,
+    },
+    {
+      biz_status: 1,
+      id: 2,
+      platform: 5,
+      third_userid: "user-102",
+      uid: 9001,
+    },
+    {
+      biz_status: 1,
+      id: 3,
+      platform: 5,
+      third_userid: "user-102",
+      uid: 9001,
+    },
+    {
+      biz_status: 1,
+      id: 4,
+      platform: 5,
+      third_userid: "user-101",
+      uid: 9001,
+    },
   ];
   const hostingConfigs = [
     {
@@ -1469,6 +1503,7 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
     selectFrom(table: string) {
       const wheres: Array<[string, string, unknown]> = [];
       const orderByCalls: Array<[string, string | undefined]> = [];
+      let groupByColumns: string[] = [];
       let isCountQuery = false;
       const builder = {
         execute: async () => {
@@ -1549,6 +1584,39 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
                 seat.platform === platform &&
                 (!seatIds || seatIds.includes(seat.id)),
             );
+          }
+
+          if (table === "xy_wap_embed_group_seat") {
+            const uid = Number(wheres.find(([column]) => column === "uid")?.[2]);
+            const platform = Number(wheres.find(([column]) => column === "platform")?.[2]);
+            const thirdUserIds = wheres.find(([column]) => column === "third_userid")?.[2] as
+              | string[]
+              | undefined;
+            const filtered = groupSeats.filter(
+              (groupSeat) =>
+                groupSeat.uid === uid &&
+                groupSeat.platform === platform &&
+                groupSeat.biz_status === 1 &&
+                (!thirdUserIds || thirdUserIds.includes(groupSeat.third_userid)),
+            );
+
+            if (groupByColumns.includes("third_userid")) {
+              const counts = new Map<string, number>();
+
+              for (const groupSeat of filtered) {
+                counts.set(
+                  groupSeat.third_userid,
+                  (counts.get(groupSeat.third_userid) ?? 0) + 1,
+                );
+              }
+
+              return [...counts.entries()].map(([third_userid, group_count]) => ({
+                group_count,
+                third_userid,
+              }));
+            }
+
+            return filtered;
           }
 
           if (table === "xy_wap_embed_user_seat_agent") {
@@ -1677,6 +1745,10 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
         },
         innerJoin: (tableName: string) => {
           state.joinCalls.push(tableName);
+          return builder;
+        },
+        groupBy: (column: string) => {
+          groupByColumns = [column];
           return builder;
         },
         limit: (value: number) => {

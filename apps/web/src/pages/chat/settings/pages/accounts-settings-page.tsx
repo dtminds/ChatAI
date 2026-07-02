@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/dialog";
 import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
 import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
 import {
   Popover,
   PopoverAnchor,
@@ -40,6 +41,7 @@ import {
 } from "@/components/ui/table";
 import {
   listManagedAccounts,
+  syncManagedAccountSeatGroups,
   updateManagedAccountSubAccounts,
 } from "@/pages/chat/settings/settings-service";
 import {
@@ -67,6 +69,7 @@ export function AccountsSettingsPage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [pendingAccountId, setPendingAccountId] = useState<string | null>(null);
+  const [syncingAccountIds, setSyncingAccountIds] = useState<string[]>([]);
   const [query, setQuery] = useState("");
 
   useEffect(() => {
@@ -142,6 +145,26 @@ export function AccountsSettingsPage() {
     }
   }
 
+  async function handleSyncSeatGroups(accountId: string) {
+    if (syncingAccountIds.includes(accountId)) {
+      return;
+    }
+
+    setSyncingAccountIds((current) => [...current, accountId]);
+
+    try {
+      await syncManagedAccountSeatGroups(accountId, { syncMembers: true });
+      const response = await listManagedAccounts();
+      setData(response);
+      setErrorMessage("");
+      toast.success("群聊同步已触发");
+    } catch (error) {
+      toast.error(getErrorMessage(error));
+    } finally {
+      setSyncingAccountIds((current) => current.filter((id) => id !== accountId));
+    }
+  }
+
   return (
     <>
       <PageHeader
@@ -182,15 +205,16 @@ export function AccountsSettingsPage() {
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[32%] px-5 py-4">托管账号</TableHead>
-                <TableHead className="w-[16%] px-5 py-4">在线状态</TableHead>
-                <TableHead className="w-[34%] px-5 py-4">关联子账号</TableHead>
+                <TableHead className="w-[14%] px-5 py-4">在线状态</TableHead>
+                <TableHead className="w-[28%] px-5 py-4">关联子账号</TableHead>
+                <TableHead className="w-[12%] px-5 py-4">开通群聊数</TableHead>
                 <TableHead className="px-5 py-4">操作</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell className="px-5 py-10" colSpan={4}>
+                  <TableCell className="px-5 py-10" colSpan={5}>
                     <div
                       aria-label="正在加载托管账号"
                       className="flex items-center justify-center gap-3 text-sm text-muted-foreground"
@@ -212,13 +236,15 @@ export function AccountsSettingsPage() {
                     account={account}
                     canManage={canManageManagedAccounts}
                     isSubmitting={pendingAccountId === account.id}
+                    isSyncing={syncingAccountIds.includes(account.id)}
                     key={account.id}
                     onAssign={() => setDialogState({ managedAccount: account })}
+                    onSyncSeatGroups={() => void handleSyncSeatGroups(account.id)}
                   />
                 ))
               ) : (
                 <TableRow>
-                  <TableCell className="px-5 py-8 text-sm text-muted-foreground" colSpan={4}>
+                  <TableCell className="px-5 py-8 text-sm text-muted-foreground" colSpan={5}>
                     暂无托管账号
                   </TableCell>
                 </TableRow>
@@ -257,12 +283,16 @@ function ManagedAccountRow({
   account,
   canManage,
   isSubmitting,
+  isSyncing,
   onAssign,
+  onSyncSeatGroups,
 }: {
   account: SettingsManagedAccount;
   canManage: boolean;
   isSubmitting: boolean;
+  isSyncing: boolean;
   onAssign: () => void;
+  onSyncSeatGroups: () => void;
 }) {
   const isOnline = account.onlineStatus === "online";
 
@@ -287,16 +317,38 @@ function ManagedAccountRow({
           subAccounts={account.subAccounts}
         />
       </TableCell>
+      <TableCell className="px-5 py-5 text-sm text-muted-foreground">
+        {account.groupChatCount}
+      </TableCell>
       <TableCell className="px-5 py-5">
-        <Button
-          className="h-8 px-3 text-primary"
-          disabled={!canManage || isSubmitting}
-          onClick={onAssign}
-          type="button"
-          variant="ghost"
-        >
-          关联子账号
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button
+            aria-label={`同步${account.name}群聊`}
+            className="h-8 px-3 text-primary"
+            disabled={!canManage || isSubmitting || isSyncing}
+            onClick={onSyncSeatGroups}
+            type="button"
+            variant="ghost"
+          >
+            {isSyncing ? (
+              <>
+                <Spinner aria-hidden="true" size={14} />
+                <span>同步中</span>
+              </>
+            ) : (
+              "同步群"
+            )}
+          </Button>
+          <Button
+            className="h-8 px-3 text-primary"
+            disabled={!canManage || isSubmitting || isSyncing}
+            onClick={onAssign}
+            type="button"
+            variant="ghost"
+          >
+            关联子账号
+          </Button>
+        </div>
       </TableCell>
     </TableRow>
   );

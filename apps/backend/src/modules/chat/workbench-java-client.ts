@@ -301,6 +301,12 @@ export type WorkbenchJavaClient = {
     thirdUserId: string;
     uid: number;
   }): Promise<void>;
+  syncSeatGroups(input: {
+    platform: number;
+    seatId: number;
+    syncMembers?: boolean;
+    uid: number;
+  }): Promise<void>;
   testAgent(input: {
     messages: Array<{
       contents: Array<{
@@ -752,6 +758,21 @@ export function createWorkbenchJavaClient(
         input,
         logger,
         "take-over-seat",
+      ).then(() => undefined);
+    },
+    syncSeatGroups(input) {
+      return postJavaEnvelope<boolean>(
+        baseUrl,
+        token,
+        "/third-internal/wap-embed/user-seat/sync-seat-groups",
+        {
+          platform: input.platform,
+          seatId: input.seatId,
+          syncMembers: input.syncMembers ?? true,
+          uid: input.uid,
+        },
+        logger,
+        "sync-seat-groups",
       ).then(() => undefined);
     },
     testAgent(input) {

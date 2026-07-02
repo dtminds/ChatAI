@@ -1,6 +1,7 @@
 import {
   apiSuccess,
   SettingsManagedAccountSubAccountsUpdateRequestSchema,
+  SettingsManagedAccountSyncSeatGroupsRequestSchema,
   SettingsSidebarItemCreateRequestSchema,
   SettingsSidebarItemsSortUpdateRequestSchema,
   SettingsSidebarItemStatusUpdateRequestSchema,
@@ -9,6 +10,7 @@ import {
   SettingsSubAccountStatusUpdateRequestSchema,
   SettingsSubAccountUpdateRequestSchema,
   type SettingsManagedAccountSubAccountsUpdateRequest,
+  type SettingsManagedAccountSyncSeatGroupsRequest,
   type SettingsSidebarItemCreateRequest,
   type SettingsSidebarItemsSortUpdateRequest,
   type SettingsSidebarItemStatusUpdateRequest,
@@ -20,6 +22,7 @@ import {
 import { Type, type Static } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { ForbiddenError } from "../../shared/errors.js";
+import { createWorkbenchJavaClient } from "../chat/workbench-java-client.js";
 import { createManagedAccountSettingsService } from "./managed-accounts.service.js";
 import { createSidebarItemsSettingsService } from "./sidebar-items.service.js";
 import { createSubAccountSettingsService } from "./sub-accounts.service.js";
@@ -68,6 +71,31 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
           getSubUserId(request),
           request.params.managedAccountId,
           request.body,
+        ),
+      );
+    },
+  );
+
+  app.post<{
+    Body: SettingsManagedAccountSyncSeatGroupsRequest;
+    Params: ManagedAccountParams;
+  }>(
+    "/api/server/settings/managed-accounts/:managedAccountId/sync-seat-groups",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: SettingsManagedAccountSyncSeatGroupsRequestSchema,
+        params: ManagedAccountParamsSchema,
+      },
+    },
+    async (request) => {
+      assertSettingsManage(request);
+      return apiSuccess(
+        await createManagedAccountSettingsService(app.db, app.cache, app.cacheKeys).syncSeatGroups(
+          getSubUserId(request),
+          request.params.managedAccountId,
+          request.body,
+          createWorkbenchJavaClient(app.log),
         ),
       );
     },

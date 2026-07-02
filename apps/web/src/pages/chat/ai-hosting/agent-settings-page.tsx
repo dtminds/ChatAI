@@ -26,6 +26,15 @@ import { AgentSettingsPublishDialog } from "./agent-components/agent-settings-pu
 import { AgentSettingsRestoreDialog } from "./agent-components/agent-settings-restore-dialog";
 import { AgentGenerateGradientButton } from "./agent-generate-gradient-button";
 import { AgentSettingsGenerateDialog } from "./agent-settings-generate-dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -90,7 +99,7 @@ import {
 } from "./agent-components/agent-settings.constants";
 import { AgentModelBadge } from "./agent-model-badge";
 import { canManageAiHostingAgents } from "./agent-permissions";
-import { AiHostingLayout } from "./ai-hosting-layout";
+import { AiHostingLayout, notifyAiHostingQuotaChanged } from "./ai-hosting-layout";
 import { aiHostingSettingsModuleSurface } from "./ai-hosting-palette";
 
 type PreviewMessage = {
@@ -106,6 +115,11 @@ type ModelOption = {
   label: string;
   model: string;
 };
+
+type OperationErrorDialogState = {
+  message: string;
+  title: string;
+} | null;
 
 const agentSettingsModuleSurfaceClassName = "rounded-[12px] border border-border bg-card shadow-xs";
 
@@ -134,6 +148,8 @@ export function AgentSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [operationErrorDialog, setOperationErrorDialog] =
+    useState<OperationErrorDialogState>(null);
   const hasUnpublishedDraft = Boolean(agentDetail?.hasUnpublishedChanges);
   const hasPublishedVersion = Boolean(agentDetail?.publishedAt);
   const canManage = canManageAiHostingAgents(role);
@@ -213,6 +229,13 @@ export function AgentSettingsPage() {
     setForm((current) => ({ ...current, [key]: value }));
   }
 
+  function showOperationError(title: string, error: unknown, fallback: string) {
+    setOperationErrorDialog({
+      message: isRequestError(error) ? error.message : fallback,
+      title,
+    });
+  }
+
   function applyCommunicationStyleTemplate(value: AgentToneStyle) {
     if (!canManage) {
       return;
@@ -255,7 +278,7 @@ export function AgentSettingsPage() {
 
         return saved;
       } catch (error) {
-        setErrorMessage(isRequestError(error) ? error.message : "保存 Agent 失败");
+        showOperationError("保存 Agent 失败", error, "保存 Agent 失败");
         return null;
       } finally {
         setSubmitting(false);
@@ -279,10 +302,11 @@ export function AgentSettingsPage() {
       setForm(mapAgentDetailToForm(saved));
       setCreatedDraftAgentId(saved.id);
       setCreatedDraftDialogOpen(true);
+      notifyAiHostingQuotaChanged();
 
       return saved;
     } catch (error) {
-      setErrorMessage(isRequestError(error) ? error.message : "保存 Agent 失败");
+      showOperationError("保存 Agent 失败", error, "保存 Agent 失败");
       return null;
     } finally {
       setSubmitting(false);
@@ -309,7 +333,8 @@ export function AgentSettingsPage() {
       setForm(mapAgentDetailToForm(published));
       setPublishDialogOpen(false);
     } catch (error) {
-      setErrorMessage(isRequestError(error) ? error.message : "发布 Agent 失败");
+      setPublishDialogOpen(false);
+      showOperationError("发布 Agent 失败", error, "发布 Agent 失败");
     } finally {
       setSubmitting(false);
     }
@@ -331,7 +356,8 @@ export function AgentSettingsPage() {
       setCreatedDraftAgentId(null);
       navigate(`/chat/ai-hosting/agents/${published.id}`, { replace: true });
     } catch (error) {
-      setErrorMessage(isRequestError(error) ? error.message : "发布 Agent 失败");
+      setCreatedDraftDialogOpen(false);
+      showOperationError("发布 Agent 失败", error, "发布 Agent 失败");
     } finally {
       setSubmitting(false);
     }
@@ -373,7 +399,8 @@ export function AgentSettingsPage() {
       setForm(mapAgentDetailToForm(renamed));
       setRenameDialogOpen(false);
     } catch (error) {
-      setErrorMessage(isRequestError(error) ? error.message : "保存 Agent 名称失败");
+      setRenameDialogOpen(false);
+      showOperationError("保存 Agent 名称失败", error, "保存 Agent 名称失败");
     } finally {
       setSubmitting(false);
     }
@@ -393,7 +420,8 @@ export function AgentSettingsPage() {
       setForm(mapAgentDetailToForm(restored));
       setRestoreDialogOpen(false);
     } catch (error) {
-      setErrorMessage(isRequestError(error) ? error.message : "还原正式版失败");
+      setRestoreDialogOpen(false);
+      showOperationError("还原正式版失败", error, "还原正式版失败");
     } finally {
       setSubmitting(false);
     }
@@ -633,6 +661,25 @@ export function AgentSettingsPage() {
           onOpenChange={setGenerateDialogOpen}
           open={generateDialogOpen}
         />
+
+        <AlertDialog
+          onOpenChange={(open) => {
+            if (!open) {
+              setOperationErrorDialog(null);
+            }
+          }}
+          open={operationErrorDialog !== null}
+        >
+          <AlertDialogContent size="sm">
+            <AlertDialogHeader>
+              <AlertDialogTitle>{operationErrorDialog?.title}</AlertDialogTitle>
+              <AlertDialogDescription>{operationErrorDialog?.message}</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogAction>知道了</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         {errorMessage ? (
           <p className="text-sm text-destructive" role="alert">

@@ -7,12 +7,19 @@ import {
   ArrowLeft02Icon,
   AiBookIcon,
   RoboticIcon,
+  TokenCircleIcon,
   UserAiIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { getAiHostingQuota } from "./agent-service";
+import { useAuthStore } from "@/store/auth-store";
+import {
+  fetchAiHostingQuota,
+  formatAiHostingQuotaOwnerKey,
+  getCachedAiHostingQuota,
+  subscribeAiHostingQuota,
+} from "./ai-hosting-quota-store";
 
 const agentLogoUrl = "https://b5.bokr.com.cn/dist/agent-color.svg";
 
@@ -32,6 +39,11 @@ const aiHostingNavItems = [
     label: "托管设置",
     to: "/chat/ai-hosting/hosting-settings",
   },
+  {
+    icon: TokenCircleIcon,
+    label: "订阅",
+    to: "/chat/ai-hosting/subscription",
+  },
 ] as const;
 
 const quotaRefreshEventName = "ai-hosting:quota-refresh";
@@ -47,42 +59,30 @@ export function AiHostingLayout({
   children: ReactNode;
   title: string;
 }) {
-  const [quota, setQuota] = useState<AiHostingQuotaOverview | null>(null);
+  const quotaOwnerKey = useAuthStore((state) => formatAiHostingQuotaOwnerKey(state.subUser));
+  const [quota, setQuota] = useState<AiHostingQuotaOverview | null>(() =>
+    getCachedAiHostingQuota(),
+  );
 
-  const loadQuota = useCallback(async () => {
-    const nextQuota = await getAiHostingQuota();
-    setQuota(nextQuota);
-    return nextQuota;
-  }, []);
+  const refreshQuota = useCallback(
+    () => fetchAiHostingQuota({ force: true }),
+    [quotaOwnerKey],
+  );
 
   useEffect(() => {
-    let cancelled = false;
+    const unsubscribe = subscribeAiHostingQuota(setQuota);
 
-    async function loadInitialQuota() {
-      try {
-        const nextQuota = await getAiHostingQuota();
+    void fetchAiHostingQuota().catch(() => {
+      // Initial load failures keep the last subscribed quota state.
+    });
 
-        if (!cancelled) {
-          setQuota(nextQuota);
-        }
-      } catch {
-        if (!cancelled) {
-          setQuota(null);
-        }
-      }
-    }
-
-    void loadInitialQuota();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    return unsubscribe;
+  }, [quotaOwnerKey]);
 
   useEffect(() => {
     function handleQuotaRefresh() {
-      void loadQuota().catch(() => {
-        setQuota(null);
+      void refreshQuota().catch(() => {
+        // Keep the current cached quota visible when a background refresh fails.
       });
     }
 
@@ -91,7 +91,7 @@ export function AiHostingLayout({
     return () => {
       window.removeEventListener(quotaRefreshEventName, handleQuotaRefresh);
     };
-  }, [loadQuota]);
+  }, [refreshQuota]);
 
   return (
     <div className="fixed inset-0 overflow-hidden bg-sidebar text-foreground">

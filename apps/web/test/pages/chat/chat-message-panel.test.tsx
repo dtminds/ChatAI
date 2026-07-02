@@ -1,5 +1,6 @@
 import { createRef } from "react";
 import { act, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatMessagePanel } from "@/pages/chat/components/chat-message-panel";
 import type { ChatMessage } from "@/pages/chat/chat-types";
@@ -25,9 +26,11 @@ function createCustomerMessage(overrides: Partial<ChatMessage> = {}) {
 function renderPanel({
   conversationMode = "single",
   messages = [createCustomerMessage()],
+  onTriggerSmartReply,
 }: {
   conversationMode?: "single" | "group";
   messages?: ChatMessage[];
+  onTriggerSmartReply?: (message: ChatMessage, options?: { force?: boolean }) => void;
 } = {}) {
   return render(
     <ChatMessagePanel
@@ -41,6 +44,7 @@ function renderPanel({
       onLoadOlderMessages={vi.fn()}
       onMessageViewportScroll={vi.fn()}
       onRetryMessage={vi.fn()}
+      onTriggerSmartReply={onTriggerSmartReply}
     />,
   );
 }
@@ -215,5 +219,23 @@ describe("ChatMessagePanel smart reply state", () => {
 
     expect(screen.queryByTestId("smart-reply-card")).not.toBeInTheDocument();
     expect(screen.queryByText("关闭后不展示的话术")).not.toBeInTheDocument();
+  });
+
+  it("disables the smart reply action when seat AI assistant is unavailable", async () => {
+    const user = userEvent.setup();
+    const onTriggerSmartReply = vi.fn();
+    enableSmartReplyDisplayContext(false);
+
+    renderPanel({ onTriggerSmartReply });
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+
+    const smartReplyAction = screen.getByRole("menuitem", { name: "话术推荐" });
+
+    expect(smartReplyAction).toHaveAttribute("data-disabled");
+
+    await user.click(smartReplyAction);
+
+    expect(onTriggerSmartReply).not.toHaveBeenCalled();
   });
 });

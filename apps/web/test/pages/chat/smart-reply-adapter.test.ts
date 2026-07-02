@@ -22,6 +22,7 @@ import {
   createSentSmartReplySuggestion,
   createTriggeredSmartReplySuggestion,
   getSmartReplyCustomerQuestion,
+  getSmartReplyInlineState,
   getSmartReplyLookupKey,
   getSmartReplyProcessingLabel,
   isSmartReplyContentIncompleteSkip,
@@ -1151,6 +1152,23 @@ describe("smart-reply-adapter", () => {
         status: "processing",
       }),
     ).toBe(false);
+  });
+
+  it("uses fail reason in the handoff inline state", () => {
+    expect(
+      getSmartReplyInlineState({
+        assistantName: "智能助手",
+        content: "",
+        failReason: "命中人工处理规则",
+        generateStatus: 4,
+        pollComplete: true,
+      }),
+    ).toMatchObject({
+      canDismiss: true,
+      canRegenerate: false,
+      isLoading: false,
+      label: "已跳过话术推荐：命中人工处理规则",
+    });
   });
 
   it("creates make shorter suggestions that stop polling", () => {

@@ -19,7 +19,7 @@ export const SMART_REPLY_THINKING_LABEL = "思考中..";
 export const SMART_REPLY_CONTENT_INCOMPLETE_SKIP_MESSAGE = "content_incomplete_skip";
 export const SMART_REPLY_CONTENT_INCOMPLETE_SKIP_HINT =
   "这条消息信息不足，已跳过话术推荐";
-export const SMART_REPLY_HANDOFF_HINT = "已转人工";
+export const SMART_REPLY_HANDOFF_HINT = "已跳过话术推荐";
 export const SMART_REPLY_INLINE_LOADING_HINT = "正在生成话术推荐";
 
 const SMART_REPLY_TRIGGER_RAW_MSGTYPES = new Set(["text", "image", "voice"]);
@@ -537,11 +537,15 @@ export function getSmartReplyInlineState(
   }
 
   if (generateStatus === 4) {
+    const failReason = suggestion.failReason?.trim();
+
     return {
       canDismiss: true,
       canRegenerate: false,
       isLoading: false,
-      label: SMART_REPLY_HANDOFF_HINT,
+      label: failReason
+        ? `${SMART_REPLY_HANDOFF_HINT}：${failReason}`
+        : SMART_REPLY_HANDOFF_HINT,
     };
   }
 

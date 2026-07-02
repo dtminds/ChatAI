@@ -130,6 +130,8 @@ export function ChatMessagePanel({
     smartReplyHiddenMessageKeys,
     smartReplySuggestionsByMessageId,
   ]) satisfies Record<string, SmartReplySuggestion>;
+  const canUseSmartReplyActions =
+    conversationMode === "single" && smartReplyCanDisplay;
 
   return (
     <section className="relative min-h-0 flex-1 bg-surface">
@@ -183,7 +185,9 @@ export function ChatMessagePanel({
                 onFillSmartReplyComposer={onFillSmartReplyComposer}
                 onDismissSmartReply={onDismissSmartReply}
                 onMakeShorterSmartReply={onMakeShorterSmartReply}
-                onTriggerSmartReply={onTriggerSmartReply}
+                onTriggerSmartReply={
+                  canUseSmartReplyActions ? onTriggerSmartReply : undefined
+                }
                 onRevokeMessage={onRevokeMessage}
                 onTranscribeVoice={onTranscribeVoice}
                 onVoicePlaybackReady={onVoicePlaybackReady}

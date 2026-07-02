@@ -144,6 +144,7 @@ export type WorkbenchConversationListOptions = {
   cursor?: string;
   limit?: number;
   mode?: ChatMode;
+  unreadOnly?: boolean;
 };
 
 export type WorkbenchService = {
@@ -483,15 +484,19 @@ export function createMockWorkbenchService(): WorkbenchService {
       const conversations = state.conversationsByAccount[seatId] ?? [];
       const snapshotAt = Date.now();
       state.version = Math.max(state.version, snapshotAt);
+      const filteredConversations = sortConversations(conversations)
+        .filter((conversation) => options?.mode == null || conversation.mode === options.mode)
+        .filter((conversation) => !options?.unreadOnly || conversation.unreadCount > 0);
 
       return {
-        hasMore: false,
+        hasMore: filteredConversations.length > (options?.limit ?? filteredConversations.length),
         items: clone(
-          sortConversations(conversations)
-            .filter((conversation) => options?.mode == null || conversation.mode === options.mode)
-            .slice(0, options?.limit),
+          filteredConversations.slice(0, options?.limit),
         ),
         snapshotAt,
+        unreadSummary: options?.unreadOnly
+          ? getAccountUnreadSummary(state, seatId)
+          : undefined,
       };
     },
     async getMe() {
@@ -1982,6 +1987,7 @@ export function createHttpWorkbenchService(): WorkbenchService {
           limit: options?.limit,
           mode: options?.mode,
           seatId,
+          unread_only: options?.unreadOnly ? "1" : undefined,
         },
       });
     },
@@ -3503,6 +3509,33 @@ function setAccountUnreadCount(
   }
 
   seat.unreadCount = unreadCount;
+  seat.singleUnreadCount = getModeUnreadCountValue(state, seatId, "single");
+  seat.groupUnreadCount = getModeUnreadCountValue(state, seatId, "group");
+}
+
+function getModeUnreadCountValue(
+  state: MockState,
+  seatId: string,
+  mode: ChatMode,
+) {
+  return (state.conversationsByAccount[seatId] ?? []).reduce(
+    (total, conversation) =>
+      conversation.mode === mode
+        ? total + Math.max(0, conversation.unreadCount)
+        : total,
+    0,
+  );
+}
+
+function getAccountUnreadSummary(state: MockState, seatId: string) {
+  const single = getModeUnreadCountValue(state, seatId, "single");
+  const group = getModeUnreadCountValue(state, seatId, "group");
+
+  return {
+    group,
+    single,
+    total: single + group,
+  };
 }
 
 function syncAccountLastMessageTime(state: MockState, seatId: string) {

@@ -283,6 +283,8 @@ export type WorkbenchSeatDto = {
   description: string;
   phone: string;
   unreadCount: number;
+  singleUnreadCount?: number;
+  groupUnreadCount?: number;
   lastMessageTime?: number;
   loginStatus: "online" | "offline";
   hostSubUserId?: string;
@@ -327,11 +329,18 @@ export type WorkbenchConversationCursorDto = {
   snapshotAt: number;
 };
 
+export type WorkbenchUnreadSummaryDto = {
+  total: number;
+  single: number;
+  group: number;
+};
+
 export type WorkbenchConversationListResponse = {
   hasMore: boolean;
   items: WorkbenchConversationSummaryDto[];
   nextCursor?: string;
   snapshotAt: number;
+  unreadSummary?: WorkbenchUnreadSummaryDto;
 };
 
 export type WorkbenchMessageBaseDto = {

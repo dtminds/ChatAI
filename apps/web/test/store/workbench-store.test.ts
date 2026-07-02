@@ -997,6 +997,31 @@ describe("useWorkbenchStore", () => {
     expect(useWorkbenchStore.getState().accounts.find((account) => account.id === "ndt")?.unreadCount).toBe(1);
   });
 
+  it("keeps seat unread from seat summaries instead of deriving from loaded conversations", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async getSeats() {
+        return (await baseService.getSeats()).map((seat) => ({
+          ...seat,
+          unreadCount: seat.seatId === "drc"
+            ? 99
+            : seat.seatId === "ndt"
+              ? 42
+              : seat.unreadCount,
+        }));
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().refreshSeatSummaries();
+
+    const state = useWorkbenchStore.getState();
+    expect(state.accounts.find((account) => account.id === "drc")?.unreadCount).toBe(97);
+    expect(state.accounts.find((account) => account.id === "ndt")?.unreadCount).toBe(42);
+  });
+
   it("requests 50 messages for initial and switched conversation pages", async () => {
     const baseService = createMockWorkbenchService();
     const observedLimits: Array<number | undefined> = [];
@@ -4446,6 +4471,139 @@ describe("useWorkbenchStore", () => {
     expect(requestCount).toBe(2);
 
     vi.useRealTimers();
+  });
+
+  it("keeps seat unread summary when switching modes reloads a stale list", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-18T10:00:00+08:00"));
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async getSeats() {
+        const seats = await baseService.getSeats();
+
+        return seats.map((seat) =>
+          seat.seatId === "drc"
+            ? {
+                ...seat,
+                unreadCount: 99,
+              }
+            : seat,
+        );
+      },
+      async getConversations(accountId, options) {
+        const result = await baseService.getConversations(accountId, options);
+
+        if (accountId === "drc" && options?.mode === "group") {
+          return {
+            ...result,
+            items: result.items.map((conversation) => ({
+              ...conversation,
+              unreadCount: conversation.conversationId === "conv-004" ? 12 : 0,
+            })),
+          };
+        }
+
+        return result;
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().setActiveMode("group");
+    await useWorkbenchStore.getState().setActiveMode("single");
+    vi.setSystemTime(Date.now() + 5 * 60 * 1000 + 1);
+    await useWorkbenchStore.getState().setActiveMode("group");
+
+    const state = useWorkbenchStore.getState();
+
+    expect(state.accounts.find((account) => account.id === "drc")?.unreadCount).toBe(73);
+
+    vi.useRealTimers();
+  });
+
+  it("loads unread conversations from server and applies the returned seat unread summary", async () => {
+    const baseService = createMockWorkbenchService();
+    const getConversations = vi.fn(async (accountId, options) => {
+      const result = await baseService.getConversations(accountId, options);
+
+      if (accountId === "drc" && options?.mode === "single" && options.unreadOnly) {
+        return {
+          ...result,
+          hasMore: true,
+          items: [
+            {
+              conversationAIHostingSwitch: false,
+              conversationId: "server-unread-single",
+              customerAvatar: "",
+              customerId: "customer-server-unread",
+              customerName: "服务端补齐未读",
+              lastMessage: "还有未读",
+              lastMessageTime: 1_778_500_000_000,
+              mode: "single" as const,
+              priority: "medium" as const,
+              seatId: "drc",
+              unreadCount: 5,
+            },
+          ],
+          unreadSummary: {
+            group: 4,
+            single: 12,
+            total: 16,
+          },
+        };
+      }
+
+      return result;
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      getConversations,
+      async getSeats() {
+        const seats = await baseService.getSeats();
+
+        return seats.map((seat) =>
+          seat.seatId === "drc"
+            ? {
+                ...seat,
+                groupUnreadCount: 2,
+                singleUnreadCount: 3,
+                unreadCount: 5,
+              }
+            : seat,
+        );
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().loadUnreadConversations("single");
+
+    const state = useWorkbenchStore.getState();
+    const activeAccount = state.accounts.find((account) => account.id === "drc");
+
+    expect(getConversations).toHaveBeenCalledWith(
+      "drc",
+      expect.objectContaining({
+        limit: 500,
+        mode: "single",
+        unreadOnly: true,
+      }),
+    );
+    expect(activeAccount).toMatchObject({
+      groupUnreadCount: 4,
+      singleUnreadCount: 12,
+      unreadCount: 16,
+    });
+    expect(state.conversationListsByScope.drc).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "server-unread-single",
+          unread: 5,
+        }),
+      ]),
+    );
+    expect(state.hasMoreUnreadByScope.drc?.single).toBe(true);
   });
 
   it("clears group member cache when bootstrapping a fresh workbench snapshot", async () => {
@@ -7926,6 +8084,40 @@ describe("useWorkbenchStore", () => {
     expect(state.conversationListsByScope.drc.find((conversation) => conversation.id === "conv-002")).toMatchObject({
       isPinned: true,
     });
+  });
+
+  it("keeps seat unread summary after pin reloads conversations", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async getConversations(accountId, options) {
+        const result = await baseService.getConversations(accountId, options);
+
+        if (accountId === "drc" && options?.mode === "single") {
+          return {
+            ...result,
+            items: result.items.map((conversation) => ({
+              ...conversation,
+              unreadCount: conversation.conversationId === "conv-002" ? 18 : 0,
+            })),
+          };
+        }
+
+        return result;
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().pinConversation("conv-002");
+
+    const state = useWorkbenchStore.getState();
+
+    expect(state.accounts.find((account) => account.id === "drc")?.unreadCount).toBe(13);
+    expect(
+      state.conversationListsByScope.drc.find((conversation) => conversation.id === "conv-002")
+        ?.unread,
+    ).toBe(18);
   });
 
   it("keeps pin reload results when the user switches accounts before reload finishes", async () => {

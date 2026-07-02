@@ -26,8 +26,10 @@ export type SeatRow = {
   id: number | string;
   is_online: number | null;
   last_message_time: Date | number | string | null;
+  group_unread_count?: number | string | null;
   semi_auto_auth?: number | string | boolean | null;
   semi_auto_switch?: number | string | boolean | null;
+  single_unread_count?: number | string | null;
   third_user_name: string;
   third_userid: string;
   unread_count: number | string | null;
@@ -144,6 +146,8 @@ export function mapSeatRow(row: SeatRow): WorkbenchSeatDto {
     seatId: String(row.id),
     semiAutoAuth,
     semiAutoSwitch,
+    groupUnreadCount: toNumber(row.group_unread_count),
+    singleUnreadCount: toNumber(row.single_unread_count),
     thirdUserId: row.third_userid,
     unreadCount: toNumber(row.unread_count),
   };

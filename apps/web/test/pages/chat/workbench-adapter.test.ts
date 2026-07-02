@@ -114,6 +114,28 @@ describe("workbench adapter", () => {
     });
   });
 
+  it("adapts seat unread breakdown from workbench summary DTOs", () => {
+    expect(
+      adaptAccount({
+        avatar: "",
+        description: "",
+        groupUnreadCount: 3,
+        loginStatus: "online",
+        name: "测试席位",
+        operatorName: "测试席位",
+        phone: "",
+        seatId: "seat-1",
+        singleUnreadCount: 7,
+        thirdUserId: "third-user-1",
+        unreadCount: 10,
+      }),
+    ).toMatchObject({
+      groupUnreadCount: 3,
+      singleUnreadCount: 7,
+      unreadCount: 10,
+    });
+  });
+
   it("adapts AI assistant enablement from DTO value or semi-auto fallback", () => {
     expect(
       adaptAccount({

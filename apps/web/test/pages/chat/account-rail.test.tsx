@@ -457,7 +457,7 @@ describe("AccountRail", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows unread dots only for non-active taken-over accounts", () => {
+  it("shows numeric unread badges for taken-over accounts", () => {
     const takenOverAccounts = [
       accounts[0],
       {
@@ -475,15 +475,17 @@ describe("AccountRail", () => {
       />,
     );
 
-    expect(screen.queryByLabelText("lsave 未读消息 7")).not.toBeInTheDocument();
+    const activeBadge = screen.getByLabelText("lsave 有 7 条未读消息");
 
-    const badge = screen.getByLabelText("support 有未读消息");
+    expect(activeBadge).toHaveAttribute("data-testid", "account-unread-count-account-1");
 
-    expect(badge).toHaveAttribute("data-testid", "account-unread-dot-account-2");
+    const badge = screen.getByLabelText("support 有 2 条未读消息");
+
+    expect(badge).toHaveAttribute("data-testid", "account-unread-count-account-2");
     expect(badge.parentElement).toHaveAttribute("data-testid", "account-avatar-wrap-account-2");
   });
 
-  it("hides unread badges for accounts that are not taken over", () => {
+  it("shows unread badges for accounts that are not taken over", () => {
     render(
       <AccountRail
         accounts={accounts}
@@ -493,7 +495,10 @@ describe("AccountRail", () => {
       />,
     );
 
-    expect(screen.queryByText("2")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("support 有 2 条未读消息")).toHaveAttribute(
+      "data-testid",
+      "account-unread-count-account-2",
+    );
   });
 
   it("keeps compact account status badges and takeover popovers", async () => {

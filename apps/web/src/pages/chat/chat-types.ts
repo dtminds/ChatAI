@@ -48,6 +48,8 @@ export type Account = {
   };
   tone: string;
   unreadCount?: number;
+  singleUnreadCount?: number;
+  groupUnreadCount?: number;
   lastMessageTime?: number;
   loginStatus?: "online" | "offline";
   takenOverEmployeeId?: string;

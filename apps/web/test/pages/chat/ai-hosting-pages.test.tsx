@@ -506,10 +506,8 @@ describe("AI hosting pages", () => {
       "/chat/ai-hosting/subscription",
     );
     expect(screen.getByRole("button", { name: "帮助手册" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "数据总览" })).toBeInTheDocument();
-    expect(screen.getByText("会话总数")).toBeInTheDocument();
-    expect(screen.getAllByText("0")[0]).toBeInTheDocument();
-    expect(screen.getByText("人工发送消息数")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "数据总览" })).not.toBeInTheDocument();
+    expect(screen.queryByText("会话总数")).not.toBeInTheDocument();
     expect(screen.getByRole("table", { name: "Agent 列表" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Agent 列表区块" })).toBeInTheDocument();
     expect(await screen.findByText("共 2 条")).toBeInTheDocument();
@@ -1309,10 +1307,7 @@ describe("AI hosting pages", () => {
 
     expect(await screen.findByRole("heading", { level: 1, name: "创建 Agent" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "保存" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "智能生成" })).toHaveAttribute(
-      "data-agent-generate-gradient-button",
-      "true",
-    );
+    expect(screen.queryByRole("button", { name: "智能生成" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "发布正式版" })).not.toBeInTheDocument();
     expect(screen.getByText("基本设置")).toBeInTheDocument();
     expect(screen.queryByText("回复基调")).not.toBeInTheDocument();
@@ -1533,7 +1528,7 @@ describe("AI hosting pages", () => {
     expect(screen.getByRole("option", { name: "Doubao-2.0-lite" })).toBeInTheDocument();
   });
 
-  it("opens generate dialog from the generate button", async () => {
+  it.skip("opens generate dialog from the generate button", async () => {
     const user = userEvent.setup();
 
     renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
@@ -1555,7 +1550,7 @@ describe("AI hosting pages", () => {
     expect(screen.getByRole("button", { name: "开始生成" })).toBeDisabled();
   });
 
-  it("shows generation progress after starting generate", async () => {
+  it.skip("shows generation progress after starting generate", async () => {
     const user = userEvent.setup();
 
     renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
@@ -1674,6 +1669,10 @@ describe("AI hosting pages", () => {
       id: "303",
       name: "新品小助理",
     });
+
+    await waitFor(() => {
+      expect(toast.success).toHaveBeenCalledWith("发布成功");
+    });
   });
 
   it("opens restore draft dialog from the draft banner", async () => {
@@ -1691,6 +1690,17 @@ describe("AI hosting pages", () => {
     expect(dialog).toHaveTextContent("确认还原后，将无法恢复当前草稿内容");
     expect(screen.getByRole("button", { name: "取消" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "还原" })).toBeInTheDocument();
+  });
+
+  it("keeps the preview chat title generic on the agent detail page", async () => {
+    renderWithRoute("/chat/ai-hosting/agents/301", <AgentSettingsPage />, "/chat/ai-hosting/agents/:agentId");
+
+    await screen.findByRole("heading", { level: 1, name: "护肤小助理" });
+
+    const previewPanel = screen.getByRole("region", { name: "Agent 模拟测试" });
+
+    expect(within(previewPanel).getByRole("heading", { level: 2, name: "模拟测试" })).toBeInTheDocument();
+    expect(within(previewPanel).queryByRole("heading", { level: 2, name: "护肤小助理" })).not.toBeInTheDocument();
   });
 
   it("shows a non-restorable draft hint before the first publish", async () => {
@@ -1732,6 +1742,7 @@ describe("AI hosting pages", () => {
         },
       );
     });
+    expect(toast.success).toHaveBeenCalledWith("保存成功");
 
     await user.click(screen.getByRole("button", { name: "发布正式版" }));
     await user.click(screen.getByRole("button", { name: "发布" }));
@@ -1748,6 +1759,11 @@ describe("AI hosting pages", () => {
       ...mockAgentDetail,
       hasUnpublishedChanges: false,
     });
+
+    await waitFor(() => {
+      expect(toast.success).toHaveBeenCalledWith("发布成功");
+    });
+    expect(toast.success).toHaveBeenCalledTimes(2);
   });
 
   it("renames an existing agent from the title edit dialog", async () => {

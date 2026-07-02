@@ -39,11 +39,6 @@ import {
   removeAiHostingAgent,
 } from "./agent-service";
 import { AgentModelBadge } from "./agent-model-badge";
-import {
-  AgentOverviewSection,
-  type AgentMetric,
-  type AgentStatsPeriod,
-} from "./agent-management-overview";
 import { canManageAiHostingAgents } from "./agent-permissions";
 import {
   AiHostingLayout,
@@ -64,17 +59,8 @@ const MAX_INLINE_KB_COUNT = 2;
 const agentKnowledgeBaseChipClassName =
   "inline-flex h-[22px] min-w-0 max-w-full items-center truncate rounded-[6px] bg-primary/10 px-1.5 text-[13px] font-normal leading-[22px] text-primary";
 
-const emptyAgentMetrics: AgentMetric[] = [
-  { key: "totalSessions", label: "会话总数", value: 0, changePercent: 0 },
-  { key: "aiIndependentSessions", label: "AI 独立接待会话数", value: 0, changePercent: 0 },
-  { key: "totalMessages", label: "发送消息总数", value: 0, changePercent: 0 },
-  { key: "aiMessages", label: "AI 发送消息数", value: 0, changePercent: 0 },
-  { key: "humanMessages", label: "人工发送消息数", value: 0, changePercent: 0 },
-];
-
 export function AgentManagementPage() {
   const role = useAuthStore((state) => state.subUser?.role);
-  const [statsPeriod, setStatsPeriod] = useState<AgentStatsPeriod>("today");
   const [agents, setAgents] = useState<AgentRecord[]>([]);
   const [agentSearchQuery, setAgentSearchQuery] = useState("");
   const [debouncedAgentSearchQuery, setDebouncedAgentSearchQuery] = useState("");
@@ -89,7 +75,6 @@ export function AgentManagementPage() {
   const navigate = useNavigate();
   const canManage = canManageAiHostingAgents(role);
 
-  const metrics = emptyAgentMetrics;
   const { activePage, totalPages } = resolveTablePagination({
     page: currentPage,
     pageSize: AGENT_PAGE_SIZE,
@@ -209,8 +194,6 @@ export function AgentManagementPage() {
           description="创建和管理负责客户接待的智能体"
           title="Agent 管理"
         />
-
-        <AgentOverviewSection metrics={metrics} onPeriodChange={setStatsPeriod} period={statsPeriod} />
 
         <section aria-label="Agent 列表区块">
           <div className="flex flex-wrap items-center justify-between gap-3">

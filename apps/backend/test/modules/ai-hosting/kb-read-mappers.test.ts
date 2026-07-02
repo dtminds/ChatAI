@@ -416,10 +416,10 @@ describe("kb-read-mappers", () => {
     });
   });
 
-  it("treats mysql datetime strings as Asia/Shanghai wall clock", () => {
+  it("serializes mysql2 Date values without additional timezone adjustment", () => {
     expect(
       mapKbListItem({
-        create_time: "2026-06-19 14:02:22",
+        create_time: new Date("2026-06-19T06:02:22.789Z"),
         id: 88,
         last_operator_id: 1,
         name: "售后问题解答",
@@ -427,14 +427,14 @@ describe("kb-read-mappers", () => {
         remark: "退换货、维修、保修流程与话术",
         status: 1,
         uid: 9001,
-        update_time: "2026-06-20 14:02:22",
+        update_time: new Date("2026-06-20T06:02:22.456Z"),
       }),
     ).toEqual({
-      createdAt: "2026-06-19T06:02:22.000Z",
+      createdAt: "2026-06-19T06:02:22.789Z",
       description: "退换货、维修、保修流程与话术",
       kbId: "88",
       name: "售后问题解答",
-      updatedAt: "2026-06-20T06:02:22.000Z",
+      updatedAt: "2026-06-20T06:02:22.456Z",
     });
   });
 });

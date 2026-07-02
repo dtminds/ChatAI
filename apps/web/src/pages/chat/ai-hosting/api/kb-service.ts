@@ -257,6 +257,14 @@ function buildQueryString(params: Record<string, string | number | undefined>) {
 }
 
 function formatDisplayTime(value: string) {
+  const naiveDatetime = value.match(
+    /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}:\d{2})(?:\.\d+)?$/,
+  );
+
+  if (naiveDatetime) {
+    return `${naiveDatetime[1]} ${naiveDatetime[2]}`;
+  }
+
   const date = new Date(value);
 
   if (Number.isNaN(date.getTime())) {

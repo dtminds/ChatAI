@@ -321,29 +321,6 @@ function truncateStatusMessage(message: string | null | undefined) {
   return `${trimmed.slice(0, STATUS_MESSAGE_MAX_LENGTH)}…`;
 }
 
-const SHANGHAI_UTC_OFFSET = "+08:00";
-
-function pad2(value: number) {
-  return String(value).padStart(2, "0");
-}
-
-function mysqlDatetimeToIso(value: string) {
-  const trimmed = value.trim();
-  const match = trimmed.match(
-    /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})(?:\.\d+)?$/,
-  );
-
-  if (!match) {
-    return null;
-  }
-
-  const [, year, month, day, hour, minute, second] = match;
-
-  return new Date(
-    `${year}-${month}-${day}T${hour}:${minute}:${second}${SHANGHAI_UTC_OFFSET}`,
-  ).toISOString();
-}
-
 function toIsoString(value: Date | number | string | null | undefined) {
   if (value == null) {
     return new Date(0).toISOString();
@@ -357,12 +334,8 @@ function toIsoString(value: Date | number | string | null | undefined) {
     return new Date(value).toISOString();
   }
 
-  const mysqlIso = mysqlDatetimeToIso(value);
-
-  if (mysqlIso) {
-    return mysqlIso;
-  }
-
+  // Database DATETIME timezone semantics are handled by mysql2 at the connection layer.
+  // String inputs here are only a generic non-DB fallback.
   const parsed = new Date(value);
 
   if (Number.isNaN(parsed.getTime())) {

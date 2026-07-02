@@ -41,7 +41,7 @@ export function mapJavaChunkPageItem(
       parsed,
       rawIsJson,
     ),
-    createdAt: toIsoString(item.createTime),
+    createdAt: normalizeJavaChunkDisplayTime(item.createTime),
     docId: String(item.docId),
     imageUrls: resolveKbChunkImageUrls(
       { content: item.content },
@@ -53,27 +53,27 @@ export function mapJavaChunkPageItem(
     kbId: String(item.kbId),
     source: mapChunkSource(item.source),
     title: item.title?.trim() || parsed.title || undefined,
-    updatedAt: toIsoString(item.updateTime),
+    updatedAt: normalizeJavaChunkDisplayTime(item.updateTime),
     volcChunkId: item.volcChunkId?.trim() || undefined,
   };
 }
 
 export const parseJavaChunkContent = parseKbChunkContent;
 
-function toIsoString(value: Date | number | string | null | undefined) {
-  if (value == null) {
-    return new Date(0).toISOString();
+function normalizeJavaChunkDisplayTime(value: string | null | undefined) {
+  if (!value) {
+    return "";
   }
 
-  if (value instanceof Date) {
-    return value.toISOString();
+  // The Java chunk API returns wall-clock strings without timezone semantics.
+  // Keep them display-oriented and do not parse them as Date instants.
+  const naiveDatetime = value.trim().match(
+    /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}:\d{2})(?:\.\d+)?$/,
+  );
+
+  if (!naiveDatetime) {
+    return value.trim();
   }
 
-  const parsed = new Date(value);
-
-  if (Number.isNaN(parsed.getTime())) {
-    return String(value);
-  }
-
-  return parsed.toISOString();
+  return `${naiveDatetime[1]} ${naiveDatetime[2]}`;
 }

@@ -197,6 +197,28 @@ describe("mapJavaUserHistoryAnswerList", () => {
     ]);
   });
 
+  it("maps waiting-for-next-message status with Java create time", () => {
+    expect(
+      mapJavaUserHistoryAnswerList([
+        {
+          analyseMsgId: 1004,
+          assistantName: "客服助手",
+          createTime: "2026-07-02T08:00:00.000Z",
+          genStatus: 5,
+        },
+      ]).suggestions,
+    ).toEqual([
+      {
+        assistantName: "客服助手",
+        content: "",
+        createdAt: Date.parse("2026-07-02T08:00:00.000Z"),
+        generateStatus: 5,
+        messageId: "1004",
+        status: "processing",
+      },
+    ]);
+  });
+
   it("falls back to legacy recommendAnswer/status fields", () => {
     const response = mapJavaUserHistoryAnswerList([
       {

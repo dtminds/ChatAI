@@ -195,7 +195,7 @@ pnpm backend:db:codegen -- table_name
 
 - **`tos`**：`0` 表示当前子账号尚未接管该席位，`1` 表示已由当前登录子账号接管。
 - **`qd`**：仅在当前会话为**群聊**且后端返回了三方群 ID（`thirdGroupId`）时追加，供嵌入页识别群会话。
-- **`rd` / `fsw` / `ts` / `mid`**：在配置了涂色密钥时，由后端 `POST /api/server/sidebar-iframe-params` 按当前席位与会话（服务端查库）签发并拼入 URL；前端不持有 `secret` / `iv`。仅用于 URL 脱敏与既有嵌入页协议，**不是**对嵌入页的身份防伪边界。
+- **`rd` / `fsw` / `ts` / `mid`**：在配置了涂色密钥时，由后端 `POST /api/server/sidebar-iframe-params` 按当前席位与会话（服务端查库）签发并拼入 URL；**切换会话或侧栏 Tab 时会重新请求**，从而刷新 `ts`。前端不持有 `secret` / `iv`。仅用于 URL 脱敏与既有嵌入页协议，**不是**对嵌入页的身份防伪边界。
 
 ## 关键文件
 

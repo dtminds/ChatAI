@@ -1,6 +1,6 @@
 /**
  * 将当前工作台上下文合并进侧栏自定义页 iframe 地址，便于嵌入页用查询参数读取。
- * third*：配置密钥后由后端 `/server/sidebar-iframe-params` 按当前席位与会话签发 rd、fsw、ts（均为 AES 密文；ts 明文为当前 Unix 秒十进制字符串）。
+ * third*：配置密钥后由后端 `/server/sidebar-iframe-params` 按当前席位、会话与侧栏 Tab 切换签发 rd、fsw、ts（均为 AES 密文；ts 明文为当前 Unix 秒十进制字符串）。切换会话或侧栏 Tab 时都会重新请求并刷新 `ts`。
  * `mid` 与 rd/fsw/ts 同源，由服务端签发。仅用于 URL 脱敏与既有嵌入页协议，不是对嵌入页的身份防伪边界。
  * `tos`：`0` 当前坐席未接管该账号，`1` 已接管；`qd`：群会话时的三方群 ID（明文，兼容旧嵌入页）。
  * 群聊时 `thirdGroupId` / `thirdGroupName` 为服务端签发的 AES 密文，语义对齐 `fsw`。

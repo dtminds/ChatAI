@@ -830,7 +830,8 @@ describe("message feed row actions", () => {
     },
     {
       createdAt: Date.now() - 10_000,
-      expectedLabel: "语义不完整，继续等待下一条消息",
+      expectedLabel: "客户可能还没说完",
+      failReason: "客户可能还没说完",
       generateStatus: 5,
       status: "processing" as const,
     },
@@ -906,6 +907,49 @@ describe("message feed row actions", () => {
     await user.click(screen.getByRole("button", { name: "重新生成" }));
 
     expect(onTriggerSmartReply).toHaveBeenCalledWith(message, { force: true });
+  });
+
+  it("dismisses expired semantic-wait inline smart replies without offering regeneration", async () => {
+    const user = userEvent.setup();
+    const onDismissSmartReply = vi.fn();
+    const onTriggerSmartReply = vi.fn();
+    const message = {
+      content: { text: "客户想了解产品", type: "text" },
+      conversationId: "conv-1",
+      uiMessageKey: "msg-customer-1",
+      rawMsgtype: "text",
+      role: "customer",
+      sender: { id: "cus-1", name: "客户甲" },
+      sentAt: "2026-05-25T10:00:00+08:00",
+      seq: 12,
+      status: "sent",
+    } as ChatMessage;
+
+    render(
+      <MessageRow
+        message={message}
+        onDismissSmartReply={onDismissSmartReply}
+        onTriggerSmartReply={onTriggerSmartReply}
+        smartReply={{
+          assistantName: "护肤小助手",
+          content: "",
+          createdAt: Date.now() - 21_000,
+          generateStatus: 5,
+          pollComplete: false,
+          status: "processing",
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "语义不完整，已跳过话术推荐",
+    );
+    expect(screen.queryByRole("button", { name: "重新生成" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "收起" }));
+
+    expect(onDismissSmartReply).toHaveBeenCalledWith(message);
+    expect(onTriggerSmartReply).not.toHaveBeenCalled();
   });
 
   it("dismisses the smart reply card so the avatar recommendation action can be used again", async () => {

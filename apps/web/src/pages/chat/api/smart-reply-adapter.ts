@@ -552,14 +552,15 @@ export function getSmartReplyInlineState(
 
   if (generateStatus === 5) {
     const expired = isSmartReplySemanticWaitExpired(suggestion);
+    const failReason = suggestion.failReason?.trim();
 
     return {
-      canDismiss: false,
+      canDismiss: expired,
       canRegenerate: false,
       isLoading: !expired,
       label: expired
         ? SMART_REPLY_SEMANTIC_WAIT_TIMEOUT_HINT
-        : SMART_REPLY_SEMANTIC_WAIT_HINT,
+        : failReason || SMART_REPLY_SEMANTIC_WAIT_HINT,
     };
   }
 

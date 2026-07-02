@@ -1196,6 +1196,21 @@ describe("smart-reply-adapter", () => {
         assistantName: "智能助手",
         content: "",
         createdAt: Date.now() - 10_000,
+        failReason: "客户可能还没说完",
+        generateStatus: 5,
+      }),
+    ).toMatchObject({
+      canDismiss: false,
+      canRegenerate: false,
+      isLoading: true,
+      label: "客户可能还没说完",
+    });
+    expect(
+      getSmartReplyInlineState({
+        assistantName: "智能助手",
+        content: "",
+        createdAt: Date.now() - 10_000,
+        failReason: " ",
         generateStatus: 5,
       }),
     ).toMatchObject({
@@ -1212,7 +1227,7 @@ describe("smart-reply-adapter", () => {
         generateStatus: 5,
       }),
     ).toMatchObject({
-      canDismiss: false,
+      canDismiss: true,
       canRegenerate: false,
       isLoading: false,
       label: "语义不完整，已跳过话术推荐",

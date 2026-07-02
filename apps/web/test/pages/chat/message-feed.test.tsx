@@ -828,9 +828,21 @@ describe("message feed row actions", () => {
       generateStatus: 4,
       status: "ready" as const,
     },
+    {
+      createdAt: Date.now() - 10_000,
+      expectedLabel: "语义不完整，继续等待下一条消息",
+      generateStatus: 5,
+      status: "processing" as const,
+    },
+    {
+      createdAt: Date.now() - 21_000,
+      expectedLabel: "语义不完整，已跳过话术推荐",
+      generateStatus: 5,
+      status: "processing" as const,
+    },
   ])(
     "shows inline smart reply state instead of a card for gen_status $generateStatus",
-    ({ expectedLabel, failReason, generateStatus, status }) => {
+    ({ createdAt, expectedLabel, failReason, generateStatus, status }) => {
       render(
         <MessageRow
           message={{
@@ -847,6 +859,7 @@ describe("message feed row actions", () => {
           smartReply={{
             assistantName: "护肤小助手",
             content: generateStatus === 4 ? "转人工原因" : "",
+            createdAt,
             failReason,
             generateStatus,
             pollComplete: generateStatus === 3 || generateStatus === 4,

@@ -21,6 +21,11 @@ export const SMART_REPLY_CONTENT_INCOMPLETE_SKIP_HINT =
   "这条消息信息不足，已跳过话术推荐";
 export const SMART_REPLY_HANDOFF_HINT = "已跳过话术推荐";
 export const SMART_REPLY_INLINE_LOADING_HINT = "正在生成话术推荐";
+export const SMART_REPLY_SEMANTIC_WAIT_HINT =
+  "语义不完整，继续等待下一条消息";
+export const SMART_REPLY_SEMANTIC_WAIT_TIMEOUT_HINT =
+  "语义不完整，已跳过话术推荐";
+export const SMART_REPLY_SEMANTIC_WAIT_TIMEOUT_MS = 20_000;
 
 const SMART_REPLY_TRIGGER_RAW_MSGTYPES = new Set(["text", "image", "voice"]);
 
@@ -43,6 +48,14 @@ function isSmartReplyQuestionImageContent(
 
 function readSmartReplyGenerateStatus(suggestion?: SmartReplySuggestion | null) {
   return readNonNegativeInteger(suggestion?.generateStatus);
+}
+
+function readSmartReplyCreatedAt(suggestion?: SmartReplySuggestion | null) {
+  const createdAt = suggestion?.createdAt;
+
+  return typeof createdAt === "number" && Number.isFinite(createdAt) && createdAt > 0
+    ? createdAt
+    : undefined;
 }
 
 export function hasSmartReplyTriggerRawMsgtype(message: Pick<ChatMessage, "rawMsgtype">) {
@@ -228,6 +241,29 @@ export function isSmartReplyBusy(
   return (
     suggestion?.status === "thinking" || suggestion?.status === "processing"
   );
+}
+
+export function isSmartReplySemanticWait(
+  suggestion?: SmartReplySuggestion | null,
+) {
+  return readSmartReplyGenerateStatus(suggestion) === 5;
+}
+
+export function isSmartReplySemanticWaitExpired(
+  suggestion?: SmartReplySuggestion | null,
+  now = Date.now(),
+) {
+  if (!isSmartReplySemanticWait(suggestion)) {
+    return false;
+  }
+
+  const createdAt = readSmartReplyCreatedAt(suggestion);
+
+  if (createdAt == null) {
+    return false;
+  }
+
+  return now - createdAt >= SMART_REPLY_SEMANTIC_WAIT_TIMEOUT_MS;
 }
 
 export function isSmartReplyKnowledgeMiss(
@@ -477,6 +513,10 @@ export function isSmartReplyPollComplete(suggestion?: SmartReplySuggestion | nul
     return true;
   }
 
+  if (isSmartReplySemanticWaitExpired(suggestion)) {
+    return true;
+  }
+
   return isSmartReplyTerminalGenerateStatus(suggestion.generateStatus);
 }
 
@@ -509,6 +549,19 @@ export function getSmartReplyInlineState(
   }
 
   const generateStatus = readSmartReplyGenerateStatus(suggestion);
+
+  if (generateStatus === 5) {
+    const expired = isSmartReplySemanticWaitExpired(suggestion);
+
+    return {
+      canDismiss: false,
+      canRegenerate: false,
+      isLoading: !expired,
+      label: expired
+        ? SMART_REPLY_SEMANTIC_WAIT_TIMEOUT_HINT
+        : SMART_REPLY_SEMANTIC_WAIT_HINT,
+    };
+  }
 
   if (generateStatus === 0 || generateStatus === 1 || isSmartReplyBusy(suggestion)) {
     return {
@@ -961,6 +1014,7 @@ export function adaptSmartReplySuggestions(
       {
         assistantName: suggestion.assistantName,
         content: resolveSmartReplyDisplayContent(suggestion),
+        createdAt: suggestion.createdAt,
         failReason: suggestion.failReason,
         genAnswer: suggestion.genAnswer,
         generateStatus: suggestion.generateStatus,

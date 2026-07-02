@@ -7,7 +7,12 @@ import {
 import { cn } from "@/lib/utils";
 import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
 import { ChatMessageList } from "@/pages/chat/components/message-feed";
-import type { SmartReplySendPayload } from "@/pages/chat/api/smart-reply-adapter";
+import {
+  getSmartReplyLookupKey,
+  isSmartReplyEligibleMessage,
+  isSmartReplySemanticWait,
+  type SmartReplySendPayload,
+} from "@/pages/chat/api/smart-reply-adapter";
 import type { SmartReplySuggestion } from "@/pages/chat/components/smart-reply-card";
 import type { ChatMessage, Message } from "@/pages/chat/chat-types";
 import type { ChatMode } from "@/pages/chat/chat-types";
@@ -118,14 +123,28 @@ export function ChatMessagePanel({
     }
 
     const hidden = smartReplyHiddenMessageKeys ?? {};
+    let latestEligibleKey: string | undefined;
+
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index];
+
+      if (message.role !== "system" && isSmartReplyEligibleMessage(message)) {
+        latestEligibleKey = getSmartReplyLookupKey(message);
+        break;
+      }
+    }
 
     return Object.fromEntries(
       Object.entries(smartReplySuggestionsByMessageId).filter(
-        ([lookupKey]) => !hidden[lookupKey],
+        ([lookupKey, suggestion]) =>
+          !hidden[lookupKey] &&
+          (!isSmartReplySemanticWait(suggestion) ||
+            lookupKey === latestEligibleKey),
       ),
     );
   }, [
     conversationMode,
+    messages,
     smartReplyCanDisplay,
     smartReplyHiddenMessageKeys,
     smartReplySuggestionsByMessageId,

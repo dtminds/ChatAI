@@ -779,6 +779,7 @@ describe("smart-reply-adapter", () => {
       {
         assistantName: "护肤小助手",
         content: "建议回复",
+        createdAt: 1_783_000_000_000,
         genAnswer: '[{"msgtype":"text","text":"建议回复"}]',
         messageId: "1090",
         refAttachIds: ["101", "102"],
@@ -789,6 +790,7 @@ describe("smart-reply-adapter", () => {
     expect(map["1090"]).toEqual({
       assistantName: "护肤小助手",
       content: "建议回复",
+      createdAt: 1_783_000_000_000,
       genAnswer: '[{"msgtype":"text","text":"建议回复"}]',
       refAttachIds: ["101", "102"],
       status: "ready",
@@ -1185,6 +1187,35 @@ describe("smart-reply-adapter", () => {
       canRegenerate: true,
       isLoading: false,
       label: "生成失败：knowledge_miss",
+    });
+  });
+
+  it("shows waiting and skipped labels for incomplete semantic status", () => {
+    expect(
+      getSmartReplyInlineState({
+        assistantName: "智能助手",
+        content: "",
+        createdAt: Date.now() - 10_000,
+        generateStatus: 5,
+      }),
+    ).toMatchObject({
+      canDismiss: false,
+      canRegenerate: false,
+      isLoading: true,
+      label: "语义不完整，继续等待下一条消息",
+    });
+    expect(
+      getSmartReplyInlineState({
+        assistantName: "智能助手",
+        content: "",
+        createdAt: Date.now() - 21_000,
+        generateStatus: 5,
+      }),
+    ).toMatchObject({
+      canDismiss: false,
+      canRegenerate: false,
+      isLoading: false,
+      label: "语义不完整，已跳过话术推荐",
     });
   });
 

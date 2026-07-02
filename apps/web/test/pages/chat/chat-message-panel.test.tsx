@@ -221,6 +221,74 @@ describe("ChatMessagePanel smart reply state", () => {
     expect(screen.queryByText("关闭后不展示的话术")).not.toBeInTheDocument();
   });
 
+  it("hides semantic-wait smart replies that are no longer for the latest customer message", () => {
+    enableSmartReplyDisplayContext();
+    useWorkbenchStore.setState((state) => ({
+      smartReplyByMessageIdByConversationId: {
+        ...state.smartReplyByMessageIdByConversationId,
+        "conv-001": {
+          "1": {
+            assistantName: "智能助手",
+            content: "",
+            createdAt: Date.now() - 1_000,
+            generateStatus: 5,
+            pollComplete: false,
+            status: "processing",
+          },
+        },
+      },
+    }));
+
+    renderPanel({
+      messages: [
+        createCustomerMessage(),
+        createCustomerMessage({
+          msgid: "msg-002",
+          seq: 2,
+          uiMessageKey: "2",
+        }),
+      ],
+    });
+
+    expect(
+      screen.queryByText("语义不完整，继续等待下一条消息"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows semantic-wait smart replies for the latest customer message", () => {
+    enableSmartReplyDisplayContext();
+    useWorkbenchStore.setState((state) => ({
+      smartReplyByMessageIdByConversationId: {
+        ...state.smartReplyByMessageIdByConversationId,
+        "conv-001": {
+          "2": {
+            assistantName: "智能助手",
+            content: "",
+            createdAt: Date.now() - 1_000,
+            generateStatus: 5,
+            pollComplete: false,
+            status: "processing",
+          },
+        },
+      },
+    }));
+
+    renderPanel({
+      messages: [
+        createCustomerMessage(),
+        createCustomerMessage({
+          msgid: "msg-002",
+          seq: 2,
+          uiMessageKey: "2",
+        }),
+      ],
+    });
+
+    expect(
+      screen.getByText("语义不完整，继续等待下一条消息"),
+    ).toBeInTheDocument();
+  });
+
   it("disables the smart reply action when seat AI assistant is unavailable", async () => {
     const user = userEvent.setup();
     const onTriggerSmartReply = vi.fn();

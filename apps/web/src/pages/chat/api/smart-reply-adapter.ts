@@ -350,7 +350,9 @@ export function collectNewSmartReplyPendingKeys(
   }
 
   const previousKeys = new Set(
-    previousMessages.map((message) => getSmartReplyLookupKey(message)),
+    previousMessages
+      .filter((message): message is Message => Boolean(message))
+      .map((message) => getSmartReplyLookupKey(message)),
   );
   const unansweredKeys = new Set(
     collectUnansweredSmartReplyPendingKeys([
@@ -370,6 +372,10 @@ export function collectNewSmartReplyPendingKeys(
   const pendingKeys: string[] = [];
 
   for (const message of incomingMessages) {
+    if (!message) {
+      continue;
+    }
+
     if (message.role === "system" || !isSmartReplyEligibleMessage(message)) {
       continue;
     }
@@ -422,7 +428,9 @@ function collectUnansweredSmartReplyMessages(messages: Message[]) {
     .slice(lastAgentMessageIndex + 1)
     .filter(
       (message): message is ChatMessage =>
-        message.role !== "system" && isSmartReplyEligibleMessage(message),
+        Boolean(message) &&
+        message.role !== "system" &&
+        isSmartReplyEligibleMessage(message),
     );
 }
 
@@ -1083,6 +1091,10 @@ export function collectPendingSmartReplyPollMsgIds(
   const msgIds: number[] = [];
 
   for (const message of messages) {
+    if (!message) {
+      continue;
+    }
+
     const lookupKey = getSmartReplyLookupKey(message);
 
     if (

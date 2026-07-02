@@ -128,7 +128,7 @@ export function ChatMessagePanel({
     for (let index = messages.length - 1; index >= 0; index -= 1) {
       const message = messages[index];
 
-      if (message.role !== "system" && isSmartReplyEligibleMessage(message)) {
+      if (message && message.role !== "system" && isSmartReplyEligibleMessage(message)) {
         latestEligibleKey = getSmartReplyLookupKey(message);
         break;
       }

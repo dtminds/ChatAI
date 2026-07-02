@@ -97,6 +97,7 @@ import {
   SMART_REPLY_CONTENT_INCOMPLETE_SKIP_HINT,
   SMART_REPLY_CONTENT_INCOMPLETE_SKIP_MESSAGE,
   SMART_REPLY_BUSY_TIMEOUT_MS,
+  SMART_REPLY_SEMANTIC_WAIT_TIMEOUT_MS,
   type SmartReplySendPayload,
 } from "@/pages/chat/api/smart-reply-adapter";
 import type { SmartReplySuggestion } from "@/pages/chat/components/smart-reply-card";
@@ -380,7 +381,7 @@ const MESSAGE_PAGE_SIZE = 50;
 const FULL_AUTO_ANSWER_POLL_INTERVAL_MS = 1000;
 const FULL_AUTO_RECENT_CUSTOMER_MESSAGE_WINDOW_MS = 2 * 60 * 1000;
 const FULL_AUTO_TERMINAL_STATUS_RESET_MS = 5000;
-const FULL_AUTO_SEMANTIC_WAIT_TIMEOUT_MS = 20_000;
+const FULL_AUTO_SEMANTIC_WAIT_TIMEOUT_MS = SMART_REPLY_SEMANTIC_WAIT_TIMEOUT_MS;
 const CONVERSATION_MODES = ["single", "group"] as const satisfies readonly ChatMode[];
 const GROUP_MEMBERS_CACHE_TTL_MS = 5 * 60 * 1000;
 const REVOKE_PENDING_TIMEOUT_MS = 10 * 1000;
@@ -964,7 +965,9 @@ function getPageSmartReplies(page: WorkbenchConversationPage) {
     page.messages
       .filter(
         (message): message is ChatMessage =>
-          message.role !== "system" && hasSmartReplyTriggerRawMsgtype(message),
+          Boolean(message) &&
+          message.role !== "system" &&
+          hasSmartReplyTriggerRawMsgtype(message),
       )
       .map((message) => getSmartReplyLookupKey(message)),
   );
@@ -1034,7 +1037,7 @@ function pruneSmartReplyStateToExistingMessages(input: {
 }) {
   const retainedKeys = new Set(
     input.messages
-      .filter((message) => message.role !== "system")
+      .filter((message) => message && message.role !== "system")
       .map((message) => getSmartReplyLookupKey(message)),
   );
 
@@ -1094,7 +1097,7 @@ function getLatestSmartReplyEligibleMessageKey(messages: Message[]) {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
 
-    if (message?.role !== "system" && isSmartReplyEligibleMessage(message)) {
+    if (message && message.role !== "system" && isSmartReplyEligibleMessage(message)) {
       return getSmartReplyLookupKey(message);
     }
   }

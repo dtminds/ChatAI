@@ -341,6 +341,37 @@ describe("smart-reply-adapter", () => {
     ).toEqual(["11"]);
   });
 
+  it("ignores sparse message slots when collecting new smart reply pending keys", () => {
+    expect(
+      collectNewSmartReplyPendingKeys(
+        [
+          {
+            content: { text: "旧消息", type: "text" },
+            uiMessageKey: "msg-1",
+            rawMsgtype: "text",
+            role: "customer",
+            sender: { id: "cus-1", name: "客户" },
+            sentAt: "2026-05-25T10:00:00+08:00",
+            seq: 10,
+          },
+          undefined,
+        ] as unknown as Message[],
+        [
+          undefined,
+          {
+            content: { text: "新消息", type: "text" },
+            uiMessageKey: "msg-2",
+            rawMsgtype: "text",
+            role: "customer",
+            sender: { id: "cus-1", name: "客户" },
+            sentAt: "2026-05-25T10:01:00+08:00",
+            seq: 11,
+          },
+        ] as unknown as Message[],
+      ),
+    ).toEqual(["11"]);
+  });
+
   it("collects new smart reply pending keys from large histories without spreading seq values", () => {
     const previousMessages = Array.from({ length: 150_000 }, (_, index) => ({
       content: { text: `旧消息 ${index + 1}`, type: "text" as const },
@@ -490,6 +521,23 @@ describe("smart-reply-adapter", () => {
         },
       ] as Message[]),
     ).toEqual([]);
+  });
+
+  it("ignores sparse message slots when collecting unanswered smart reply candidates", () => {
+    const messages = [
+      {
+        content: { text: "客户问题", type: "text" },
+        uiMessageKey: "msg-customer",
+        rawMsgtype: "text",
+        role: "customer",
+        sender: { id: "cus-1", name: "客户" },
+        sentAt: "2026-05-25T10:00:00+08:00",
+        seq: 1,
+      },
+      undefined,
+    ] as unknown as Message[];
+
+    expect(collectUnansweredSmartReplyPendingKeys(messages)).toEqual(["1"]);
   });
 
   it("does not add a new customer message to pending when an agent replies after it in the same poll", () => {
@@ -1323,6 +1371,29 @@ describe("smart-reply-adapter", () => {
         {
           "1": true,
           "2": true,
+        },
+      ),
+    ).toEqual([1]);
+  });
+
+  it("ignores sparse message slots when collecting pending poll msg ids", () => {
+    expect(
+      collectPendingSmartReplyPollMsgIds(
+        [
+          undefined,
+          {
+            content: { text: "待推荐", type: "text" },
+            uiMessageKey: "msg-1",
+            rawMsgtype: "text",
+            role: "customer",
+            sender: { id: "cus-1", name: "客户" },
+            sentAt: "2026-05-25T10:01:00+08:00",
+            seq: 1,
+          },
+        ] as unknown as Message[],
+        {},
+        {
+          "1": true,
         },
       ),
     ).toEqual([1]);

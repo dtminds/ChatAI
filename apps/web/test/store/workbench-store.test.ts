@@ -1635,6 +1635,134 @@ describe("useWorkbenchStore", () => {
     });
   });
 
+  it("ignores sparse message slots when pruning semantic-wait pending keys", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedSmartReplyRequests: WorkbenchSmartReplyPollRequest[] = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async pollSmartReplies(request) {
+        observedSmartReplyRequests.push(request);
+
+        return { suggestions: [] };
+      },
+    });
+
+    useWorkbenchStore.setState((state) => ({
+      activeAccountId: "drc",
+      activeConversationId: "conv-001",
+      accounts: [
+        {
+          avatarUrl: "",
+          description: "",
+          id: "drc",
+          loginStatus: "online",
+          metrics: {
+            activeCustomers: 0,
+            agents: 0,
+            stores: 0,
+            totalCustomers: 0,
+          },
+          name: "席位",
+          operator: "客服",
+          phone: "",
+          seatAIAssistantEnabled: true,
+          takenOverEmployeeId: "sub-user-001",
+          tone: "",
+        },
+      ],
+      hasChatSendPermission: true,
+      me: {
+        avatarUrl: "",
+        displayName: "林洒",
+        id: "sub-user-001",
+        name: "林洒",
+      },
+      conversationListsByScope: {
+        drc: [
+          {
+            accountId: "drc",
+            bizStatus: 1,
+            conversationAIHostingSwitch: false,
+            customerAvatarUrl: "",
+            customerBindType: 1,
+            customerId: "cust-001",
+            customerName: "客户甲",
+            id: "conv-001",
+            mode: "single",
+            preview: "",
+            priority: "medium",
+            quietFor: "",
+            unread: 0,
+            updatedAt: "刚刚",
+          },
+        ],
+      },
+      messagesByConversationId: {
+        "conv-001": [
+          {
+            author: "客户甲",
+            content: { text: "继续补充", type: "text" },
+            conversationId: "conv-001",
+            msgid: "msg-latest",
+            rawMsgtype: "text",
+            role: "customer",
+            sender: { id: "cust-001", name: "客户甲" },
+            sentAt: "2026-07-02T12:00:00+08:00",
+            seq: 10,
+            status: "sent",
+            uiMessageKey: "10",
+          } satisfies ChatMessage,
+          undefined,
+        ] as unknown as Message[],
+      },
+      smartReplyByMessageIdByConversationId: {
+        "conv-001": {
+          "10": {
+            assistantName: "智能助手",
+            content: "",
+            createdAt: Date.now() - 5_000,
+            generateStatus: 5,
+            status: "processing",
+          },
+          "9": {
+            assistantName: "智能助手",
+            content: "",
+            createdAt: Date.now() - 5_000,
+            generateStatus: 5,
+            status: "processing",
+          },
+        },
+      },
+      smartReplyPendingMessageKeysByConversationId: {
+        "conv-001": {
+          "9": true,
+        },
+      },
+    }));
+    const latestMessage =
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"]?.[0];
+
+    await expect(
+      latestMessage?.role === "system"
+        ? Promise.resolve()
+        : useWorkbenchStore.getState().requestSmartReplyGeneralAnswer(latestMessage!),
+    ).resolves.toBeUndefined();
+
+    expect(
+      useWorkbenchStore.getState().smartReplyPendingMessageKeysByConversationId[
+        "conv-001"
+      ],
+    ).not.toHaveProperty("9");
+
+    expect(observedSmartReplyRequests).toEqual([
+      {
+        conversationId: "conv-001",
+        msgIds: [10],
+      },
+    ]);
+  });
+
   it("clears semantic-wait pending keys when they expire before the next poll request", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-02T12:00:00+08:00"));

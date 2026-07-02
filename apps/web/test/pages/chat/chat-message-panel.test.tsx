@@ -289,6 +289,41 @@ describe("ChatMessagePanel smart reply state", () => {
     ).toBeInTheDocument();
   });
 
+  it("ignores sparse message slots when finding the latest semantic-wait message", () => {
+    enableSmartReplyDisplayContext();
+    useWorkbenchStore.setState((state) => ({
+      smartReplyByMessageIdByConversationId: {
+        ...state.smartReplyByMessageIdByConversationId,
+        "conv-001": {
+          "2": {
+            assistantName: "智能助手",
+            content: "",
+            createdAt: Date.now() - 1_000,
+            generateStatus: 5,
+            pollComplete: false,
+            status: "processing",
+          },
+        },
+      },
+    }));
+
+    renderPanel({
+      messages: [
+        createCustomerMessage(),
+        createCustomerMessage({
+          msgid: "msg-002",
+          seq: 2,
+          uiMessageKey: "2",
+        }),
+        undefined,
+      ] as unknown as ChatMessage[],
+    });
+
+    expect(
+      screen.getByText("语义不完整，继续等待下一条消息"),
+    ).toBeInTheDocument();
+  });
+
   it("disables the smart reply action when seat AI assistant is unavailable", async () => {
     const user = userEvent.setup();
     const onTriggerSmartReply = vi.fn();

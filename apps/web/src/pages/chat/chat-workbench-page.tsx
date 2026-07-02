@@ -45,6 +45,8 @@ import { useAuthStore } from "@/store/auth-store";
 import { AccountRail } from "@/pages/chat/components/account-rail";
 import { ChatPanel } from "@/pages/chat/components/chat-panel";
 import { ConversationListPanel } from "@/pages/chat/components/conversation-list-panel";
+import { MessageMultiSelectToolbar } from "@/pages/chat/components/message-forward/message-multi-select-toolbar";
+import { getMessageFeedItemKey } from "@/pages/chat/components/message-feed";
 import { CustomerPage } from "@/pages/chat/customer-page";
 import type { InputEnterBehavior } from "@/pages/chat/components/input-enter-behavior";
 import {
@@ -67,6 +69,7 @@ import {
 import { useConversationRevealTimer } from "@/pages/chat/hooks/use-conversation-reveal-timer";
 import { useSmartReplyState } from "@/pages/chat/hooks/use-smart-reply-state";
 import { useMaterialCollection } from "@/pages/chat/hooks/use-material-collection";
+import { useMessageForward } from "@/pages/chat/hooks/use-message-forward";
 import { useQuickReplies } from "@/pages/chat/hooks/use-quick-replies";
 import { useWorkbenchPolling } from "@/pages/chat/hooks/use-workbench-polling";
 import type { PollingPauseReason } from "@/pages/chat/hooks/use-workbench-polling";
@@ -697,6 +700,7 @@ function ChatWorkbenchContent({
     canTakeOverAccount,
     canUseChatSend,
     canUseConversationActions,
+    canUseMessageForward,
     composerPlaceholder,
     conversationAIHostingEnabled,
     seatAIHostingEnabled,
@@ -705,6 +709,16 @@ function ChatWorkbenchContent({
     sidebarIframeSendStatus,
   } = workbenchPermissions;
   const canCollectMaterialActions = Boolean(subUser && subUser.role !== "viewer");
+  const messageForward = useMessageForward();
+  const selectedForwardMessages = useMemo(
+    () =>
+      activeMessages.filter(
+        (message): message is ChatMessage =>
+          message.role !== "system" &&
+          messageForward.selectedMessageKeySet.has(getMessageFeedItemKey(message)),
+      ),
+    [activeMessages, messageForward.selectedMessageKeySet],
+  );
   const sidebarIframeTos: "0" | "1" = isAccountTakenOverByCurrentUser ? "1" : "0";
   const firstUnreadMessageKey = useMemo(
     () =>
@@ -1122,6 +1136,10 @@ function ChatWorkbenchContent({
     setMentionRetryDialogState(null);
     setIsRefreshingMentionTarget(false);
   }, [activeConversation?.id]);
+
+  useEffect(() => {
+    messageForward.exitMultiSelectMode();
+  }, [activeConversation?.id, messageForward.exitMultiSelectMode]);
 
   useEffect(() => {
     if (isSendingDraft || !shouldRestoreComposerFocusRef.current) {
@@ -2110,6 +2128,7 @@ function ChatWorkbenchContent({
                   canToggleConversationAIHosting={canToggleConversationAIHosting}
                   canCollectMaterialActions={canCollectMaterialActions}
                   canSendMessage={canSendMessage}
+                  canUseMessageForward={canUseMessageForward}
                   composerPlaceholder={composerPlaceholder}
                   customer={activeCustomer}
                   sidebarIframeTos={sidebarIframeTos}
@@ -2138,8 +2157,23 @@ function ChatWorkbenchContent({
                   }
                   sendingCollectedExpressionId={sendingMaterialId}
                   messages={activeMessages}
+                  multiSelectMode={messageForward.multiSelectMode}
+                  multiSelectToolbar={
+                    messageForward.multiSelectMode ? (
+                      <MessageMultiSelectToolbar
+                        onCancel={messageForward.exitMultiSelectMode}
+                        onForward={() =>
+                          messageForward.handleOpenBatchForwardDialog(
+                            selectedForwardMessages,
+                          )
+                        }
+                        selectedCount={selectedForwardMessages.length}
+                      />
+                    ) : null
+                  }
                   messageViewportRef={messageViewportRef}
                   quotedMessage={quotedMessage}
+                  selectedMessageKeys={messageForward.selectedMessageKeySet}
                   sidebarItems={sidebarItems}
                   onCustomerPanelResizeStart={handleCustomerPanelResizeStart}
                   onComposerSegmentsChange={handleComposerSegmentsChange}
@@ -2149,6 +2183,8 @@ function ChatWorkbenchContent({
                   onChangeFullAuto={handleChangeFullAuto}
                   onClearQuotedMessage={() => setQuotedMessage(null)}
                   onCollectMaterial={handleCollectMaterial}
+                  onEnterMultiSelectMode={messageForward.enterMultiSelectMode}
+                  onForwardMessage={messageForward.handleForwardMessage}
                   onDeleteCollectedExpression={handleDeleteCollectedExpression}
                   onDownloadMessageFile={handleDownloadMessageFile}
                   onTranscribeVoice={handleTranscribeVoice}
@@ -2219,6 +2255,7 @@ function ChatWorkbenchContent({
                   onDismissSmartReply={handleDismissSmartReply}
                   onMakeShorterSmartReply={handleMakeShorterSmartReply}
                   onTriggerSmartReply={handleTriggerSmartReply}
+                  onToggleMessageSelection={messageForward.toggleMessageSelection}
                   onRevokeMessage={handleRevokeMessage}
                   onMessageViewportScroll={handleMessageViewportScroll}
                   onRetryMessage={handleRetryFailedMessage}

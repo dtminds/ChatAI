@@ -425,6 +425,50 @@ describe("resolveWorkbenchPermissions", () => {
       isConversationActionDisabled: true,
     });
   });
+
+  it("enables message forward when taken over and the composer can send", () => {
+    const permissions = resolveWorkbenchPermissions({
+      account: createAccount({
+        fullAutoSwitch: true,
+        seatAIHostingEnabled: true,
+        takenOverEmployeeId: me.id,
+      }),
+      activeConversation: createConversation({
+        conversationAIHostingSwitch: false,
+      }),
+      bootstrapStatus: "ready",
+      me,
+      subUser: operator,
+    });
+
+    expect(permissions).toMatchObject({
+      canSendMessage: true,
+      canUseMessageForward: true,
+      isAccountTakenOverByCurrentUser: true,
+    });
+  });
+
+  it("allows message forward while conversation AI hosting is active when taken over", () => {
+    const permissions = resolveWorkbenchPermissions({
+      account: createAccount({
+        fullAutoSwitch: true,
+        seatAIHostingEnabled: true,
+        takenOverEmployeeId: me.id,
+      }),
+      activeConversation: createConversation({
+        conversationAIHostingSwitch: true,
+      }),
+      bootstrapStatus: "ready",
+      me,
+      subUser: operator,
+    });
+
+    expect(permissions).toMatchObject({
+      canSendMessage: false,
+      canUseMessageForward: true,
+      conversationAIHostingEnabled: true,
+    });
+  });
 });
 
 function createAccount(overrides: Partial<Account> = {}): Account {

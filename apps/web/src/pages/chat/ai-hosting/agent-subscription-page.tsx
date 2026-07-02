@@ -9,7 +9,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AiHostingLayout } from "./ai-hosting-layout";
+import { AiHostingLayout, AiHostingPageHeader } from "./ai-hosting-layout";
 
 const usageTabs = [
   { label: "全部项目", value: "all" },
@@ -22,9 +22,9 @@ export function AgentSubscriptionPage() {
   return (
     <AiHostingLayout title="订阅">
       <div className="space-y-6">
-        <section aria-label="当前套餐" className="space-y-4">
-          <h1 className="text-[22px] font-semibold leading-tight text-foreground">订阅</h1>
+        <AiHostingPageHeader title="订阅" />
 
+        <section aria-label="当前套餐">
           <div className="rounded-[14px] border border-border bg-background p-6">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="space-y-5">
@@ -62,7 +62,7 @@ export function AgentSubscriptionPage() {
         </section>
 
         <section aria-label="全部用量" className="space-y-4">
-          <h2 className="text-[22px] font-semibold leading-tight text-foreground">全部用量</h2>
+          <h2 className="text-base font-semibold leading-tight text-foreground">全部用量</h2>
           <Tabs defaultValue="all">
             <TabsList className="h-11 rounded-[10px]">
               {usageTabs.map((tab) => (

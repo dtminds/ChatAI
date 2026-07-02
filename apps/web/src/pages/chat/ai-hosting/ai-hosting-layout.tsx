@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { AiHostingQuota, AiHostingQuotaOverview } from "@chatai/contracts";
 import type { ReactNode } from "react";
 import { Link, NavLink } from "react-router-dom";
@@ -13,7 +13,13 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { getAiHostingQuota } from "./agent-service";
+import { useAuthStore } from "@/store/auth-store";
+import {
+  fetchAiHostingQuota,
+  getAiHostingQuotaOwnerKey,
+  getCachedAiHostingQuota,
+  subscribeAiHostingQuota,
+} from "./ai-hosting-quota-store";
 
 const agentLogoUrl = "https://b5.bokr.com.cn/dist/agent-color.svg";
 
@@ -53,20 +59,24 @@ export function AiHostingLayout({
   children: ReactNode;
   title: string;
 }) {
-  const [quota, setQuota] = useState<AiHostingQuotaOverview | null>(null);
+  const quotaOwnerKey = useAuthStore(() => getAiHostingQuotaOwnerKey());
+  const previousQuotaOwnerKeyRef = useRef(quotaOwnerKey);
+  const [quota, setQuota] = useState<AiHostingQuotaOverview | null>(() =>
+    getCachedAiHostingQuota(),
+  );
 
   const loadQuota = useCallback(async () => {
-    const nextQuota = await getAiHostingQuota();
+    const nextQuota = await fetchAiHostingQuota({ force: true });
     setQuota(nextQuota);
     return nextQuota;
-  }, []);
+  }, [quotaOwnerKey]);
 
   useEffect(() => {
     let cancelled = false;
 
     async function loadInitialQuota() {
       try {
-        const nextQuota = await getAiHostingQuota();
+        const nextQuota = await fetchAiHostingQuota();
 
         if (!cancelled) {
           setQuota(nextQuota);
@@ -78,12 +88,23 @@ export function AiHostingLayout({
       }
     }
 
+    if (previousQuotaOwnerKeyRef.current !== quotaOwnerKey) {
+      previousQuotaOwnerKeyRef.current = quotaOwnerKey;
+      setQuota(null);
+    }
+
+    const unsubscribe = subscribeAiHostingQuota((nextQuota) => {
+      if (!cancelled) {
+        setQuota(nextQuota);
+      }
+    });
     void loadInitialQuota();
 
     return () => {
       cancelled = true;
+      unsubscribe();
     };
-  }, []);
+  }, [quotaOwnerKey]);
 
   useEffect(() => {
     function handleQuotaRefresh() {

@@ -35,7 +35,6 @@ import { isRequestError } from "@/lib/request";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth-store";
 import {
-  getAiHostingQuota,
   listAiHostingAgents,
   removeAiHostingAgent,
 } from "./agent-service";
@@ -51,6 +50,7 @@ import {
   AiHostingPageHeader,
   notifyAiHostingQuotaChanged,
 } from "./ai-hosting-layout";
+import { fetchAiHostingQuota } from "./ai-hosting-quota-store";
 import {
   AI_HOSTING_AGENT_QUOTA_REACHED_MESSAGE,
   AI_HOSTING_QUOTA_CHECK_FAILED_MESSAGE,
@@ -82,6 +82,7 @@ export function AgentManagementPage() {
   const [totalAgents, setTotalAgents] = useState(0);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
+  const [removeErrorMessage, setRemoveErrorMessage] = useState("");
   const [removeTarget, setRemoveTarget] = useState<AgentRecord | null>(null);
   const [removing, setRemoving] = useState(false);
   const [checkingQuota, setCheckingQuota] = useState(false);
@@ -165,7 +166,8 @@ export function AgentManagementPage() {
       setTotalAgents(response.pagination.total);
       notifyAiHostingQuotaChanged();
     } catch (error) {
-      setErrorMessage(isRequestError(error) ? error.message : "删除 Agent 失败");
+      setRemoveTarget(null);
+      setRemoveErrorMessage(isRequestError(error) ? error.message : "删除 Agent 失败");
     } finally {
       setRemoving(false);
     }
@@ -179,7 +181,7 @@ export function AgentManagementPage() {
     setCheckingQuota(true);
 
     try {
-      const quota = await getAiHostingQuota();
+      const quota = await fetchAiHostingQuota({ force: true });
 
       if (quota && isQuotaReached(quota.agents)) {
         toast.error(AI_HOSTING_AGENT_QUOTA_REACHED_MESSAGE);
@@ -291,9 +293,28 @@ export function AgentManagementPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={removing}>取消</AlertDialogCancel>
-            <AlertDialogAction disabled={removing} onClick={handleRemoveConfirm}>
-              确认
+            <AlertDialogAction disabled={removing} onClick={handleRemoveConfirm} variant="destructive">
+              确认删除
             </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        onOpenChange={(open) => {
+          if (!open) {
+            setRemoveErrorMessage("");
+          }
+        }}
+        open={Boolean(removeErrorMessage)}
+      >
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>删除 Agent 失败</AlertDialogTitle>
+            <AlertDialogDescription>{removeErrorMessage}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction>知道了</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

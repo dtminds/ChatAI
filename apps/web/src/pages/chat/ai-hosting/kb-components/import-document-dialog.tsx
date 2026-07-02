@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/file-upload";
 import { Progress } from "@/components/ui/progress";
 import { isRequestError } from "@/lib/request";
-import { getAiHostingQuota } from "@/pages/chat/ai-hosting/agent-service";
+import { fetchAiHostingQuota } from "@/pages/chat/ai-hosting/ai-hosting-quota-store";
 import { importKbDoc } from "@/pages/chat/ai-hosting/api/kb-doc-service";
 import {
   AI_HOSTING_KB_DOC_STORAGE_QUOTA_REACHED_MESSAGE,
@@ -187,7 +187,7 @@ export function ImportDocumentDialog({
       setUploadProgress(0);
 
       try {
-        const quota = await getAiHostingQuota();
+        const quota = await fetchAiHostingQuota({ force: true });
 
         if (wouldExceedQuota(quota.kbDocs, selectedFile.size)) {
           toast.error(AI_HOSTING_KB_DOC_STORAGE_QUOTA_REACHED_MESSAGE);

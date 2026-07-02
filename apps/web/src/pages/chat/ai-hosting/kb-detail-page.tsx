@@ -76,7 +76,7 @@ import { ImportDocumentDialog } from "./kb-components/import-document-dialog";
 import { ImportQaDialog } from "./kb-components/import-qa-dialog";
 import { TableOverflowTooltip } from "./kb-components/shared";
 import { deleteKbDoc, retryKbDoc } from "./api/kb-doc-service";
-import { getAiHostingQuota } from "./agent-service";
+import { fetchAiHostingQuota } from "./ai-hosting-quota-store";
 import {
   getKbDoc,
   getKb,
@@ -381,7 +381,7 @@ export function KbDetailPage() {
     setCheckingKnowledgeQuota(true);
 
     try {
-      const quota = await getAiHostingQuota();
+      const quota = await fetchAiHostingQuota({ force: true });
 
       if (quota && isQuotaReached(quota.kbDocs)) {
         toast.error(AI_HOSTING_KB_DOC_STORAGE_QUOTA_REACHED_MESSAGE);

@@ -38,7 +38,7 @@ import {
 } from "./ai-hosting-layout";
 import { KbTableLoadingRow } from "./kb-components/kb-table-loading-row";
 import { TableOverflowTooltip } from "./kb-components/shared";
-import { getAiHostingQuota } from "./agent-service";
+import { fetchAiHostingQuota } from "./ai-hosting-quota-store";
 import { createKb, listKbs, toKbListViewItem } from "./api/kb-service";
 import type { KbListViewItem } from "./kb-types";
 import {
@@ -149,7 +149,7 @@ export function KbListPage() {
     setCheckingQuota(true);
 
     try {
-      const quota = await getAiHostingQuota();
+      const quota = await fetchAiHostingQuota({ force: true });
 
       if (quota && isQuotaReached(quota.kbs)) {
         toast.error(AI_HOSTING_KB_QUOTA_REACHED_MESSAGE);

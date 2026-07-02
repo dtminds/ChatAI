@@ -8,6 +8,7 @@ export const WRITABLE_TABLES = [
   "xy_wap_embed_agent",
   "xy_wap_embed_agent_history",
   "xy_wap_embed_agent_kb",
+  "xy_wap_embed_agent_kb_doc",
   "xy_wap_embed_sub_user",
   "xy_wap_embed_sub_user_session",
   "xy_wap_embed_user_seat",

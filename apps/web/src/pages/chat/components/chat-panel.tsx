@@ -463,7 +463,7 @@ export function ChatPanel({
                   >
                     <div
                       className={cn(multiSelectMode && "pointer-events-none")}
-                      inert={multiSelectMode ? "" : undefined}
+                      inert={multiSelectMode || undefined}
                     >
                       <ChatComposer
                       canConfigureSeatAIHosting={canConfigureSeatAIHosting}

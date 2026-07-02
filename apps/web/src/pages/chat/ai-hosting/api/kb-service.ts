@@ -183,7 +183,6 @@ export function toKbDocChunkViewItem(
   const chunk: KbDocChunkViewItem = {
     createdAt: formatDisplayTime(item.createdAt),
     displayChunkId: displayParts?.displayChunkId,
-    displayChunkIndex: displayParts?.displayChunkIndex,
     docId: item.docId,
     id: item.chunkId,
     imageUrls,
@@ -212,24 +211,9 @@ function resolveVolcChunkDisplayParts(volcChunkId?: string) {
     return undefined;
   }
 
-  const separatorIndex = tail.lastIndexOf("-");
-
-  if (separatorIndex <= 0 || separatorIndex === tail.length - 1) {
-    return undefined;
-  }
-
   return {
-    displayChunkId: tail.slice(0, separatorIndex),
-    displayChunkIndex: formatVolcChunkIndex(tail.slice(separatorIndex + 1)),
+    displayChunkId: tail,
   };
-}
-
-function formatVolcChunkIndex(chunkIndex: string) {
-  if (!/^\d+$/.test(chunkIndex)) {
-    return chunkIndex;
-  }
-
-  return String(Number(chunkIndex) + 1);
 }
 
 function resolveKbDocChunkImageUrls(imageUrls: string[] | undefined) {

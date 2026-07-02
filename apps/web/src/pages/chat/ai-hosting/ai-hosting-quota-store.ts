@@ -1,4 +1,4 @@
-import type { AiHostingQuotaOverview } from "@chatai/contracts";
+import type { AiHostingQuotaOverview, AuthSubUser } from "@chatai/contracts";
 import { useAuthStore } from "@/store/auth-store";
 import { getAiHostingQuota } from "./agent-service";
 
@@ -8,12 +8,19 @@ let cachedQuota: AiHostingQuotaOverview | null = null;
 let cacheOwnerKey: string | null = null;
 let initialLoadAttempted = false;
 let inFlightQuotaRequest: Promise<AiHostingQuotaOverview> | null = null;
+let requestGeneration = 0;
 const listeners = new Set<QuotaListener>();
 
-export function getAiHostingQuotaOwnerKey() {
-  const subUser = useAuthStore.getState().subUser;
-
+export function formatAiHostingQuotaOwnerKey(subUser?: AuthSubUser) {
   return subUser ? `${subUser.uid}:${subUser.subUserId}` : "anonymous";
+}
+
+function getAiHostingQuotaOwnerKey() {
+  return formatAiHostingQuotaOwnerKey(useAuthStore.getState().subUser);
+}
+
+function shouldApplyRequestResult(generation: number, requestOwnerKey: string | null) {
+  return generation === requestGeneration && requestOwnerKey === cacheOwnerKey;
 }
 
 function emitQuotaChange() {
@@ -28,6 +35,7 @@ function ensureCurrentOwner() {
     cachedQuota = null;
     initialLoadAttempted = false;
     inFlightQuotaRequest = null;
+    requestGeneration += 1;
     emitQuotaChange();
   }
 }
@@ -68,24 +76,17 @@ export async function fetchAiHostingQuota(options: { force?: boolean } = {}) {
   }
 
   initialLoadAttempted = true;
+  const generation = ++requestGeneration;
 
   const request = getAiHostingQuota()
     .then((quota) => {
-      if (requestOwnerKey !== cacheOwnerKey) {
+      if (!shouldApplyRequestResult(generation, requestOwnerKey)) {
         return quota;
       }
 
       cachedQuota = quota;
       emitQuotaChange();
       return quota;
-    })
-    .catch((error) => {
-      if (options.force) {
-        cachedQuota = null;
-        emitQuotaChange();
-      }
-
-      throw error;
     })
     .finally(() => {
       if (inFlightQuotaRequest === request) {
@@ -102,5 +103,6 @@ export function resetAiHostingQuotaCacheForTest() {
   cacheOwnerKey = null;
   initialLoadAttempted = false;
   inFlightQuotaRequest = null;
+  requestGeneration = 0;
   emitQuotaChange();
 }

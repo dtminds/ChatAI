@@ -12,6 +12,7 @@ import { KbDetailPage } from "@/pages/chat/ai-hosting/kb-detail-page";
 import { KbDocDetailPage } from "@/pages/chat/ai-hosting/kb-doc-detail-page";
 import { KbListPage } from "@/pages/chat/ai-hosting/kb-list-page";
 import { resetAiHostingQuotaCacheForTest } from "@/pages/chat/ai-hosting/ai-hosting-quota-store";
+import { notifyAiHostingQuotaChanged } from "@/pages/chat/ai-hosting/ai-hosting-layout";
 import { resetMockKbData } from "./kb-service-mock-data";
 import * as agentService from "@/pages/chat/ai-hosting/agent-service";
 import * as kbService from "@/pages/chat/ai-hosting/api/kb-service";
@@ -862,6 +863,132 @@ describe("AI hosting pages", () => {
     expect(screen.getByRole("region", { name: "智能体用量" })).toHaveTextContent("7/20");
     expect(screen.getByRole("region", { name: "智能体用量" })).toHaveTextContent("64MB/1GB");
     expect(screen.getByRole("region", { name: "智能体用量" })).not.toHaveTextContent("20MB/1GB");
+  });
+
+  it("ignores out-of-order force quota refreshes for the same account owner", async () => {
+    let resolveFirstRefresh: (
+      quota: Awaited<ReturnType<typeof agentService.getAiHostingQuota>>,
+    ) => void = () => undefined;
+    let resolveSecondRefresh: (
+      quota: Awaited<ReturnType<typeof agentService.getAiHostingQuota>>,
+    ) => void = () => undefined;
+
+    vi.mocked(agentService.getAiHostingQuota)
+      .mockResolvedValueOnce({
+        agents: {
+          limit: 20,
+          used: 2,
+        },
+        kbDocs: {
+          limit: 1024 * 1024 * 1024,
+          used: 20 * 1024 * 1024,
+        },
+        kbs: {
+          limit: 20,
+          used: 3,
+        },
+      })
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveFirstRefresh = resolve;
+        }),
+      )
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveSecondRefresh = resolve;
+        }),
+      );
+
+    renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
+
+    expect(await screen.findByText("共 2 条")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "智能体用量" })).toHaveTextContent("20MB/1GB");
+
+    act(() => {
+      notifyAiHostingQuotaChanged();
+      notifyAiHostingQuotaChanged();
+    });
+
+    await waitFor(() => {
+      expect(agentService.getAiHostingQuota).toHaveBeenCalledTimes(3);
+    });
+
+    await act(async () => {
+      resolveSecondRefresh({
+        agents: {
+          limit: 20,
+          used: 5,
+        },
+        kbDocs: {
+          limit: 1024 * 1024 * 1024,
+          used: 50 * 1024 * 1024,
+        },
+        kbs: {
+          limit: 20,
+          used: 6,
+        },
+      });
+    });
+
+    expect(screen.getByRole("region", { name: "智能体用量" })).toHaveTextContent("5/20");
+    expect(screen.getByRole("region", { name: "智能体用量" })).toHaveTextContent("50MB/1GB");
+
+    await act(async () => {
+      resolveFirstRefresh({
+        agents: {
+          limit: 20,
+          used: 2,
+        },
+        kbDocs: {
+          limit: 1024 * 1024 * 1024,
+          used: 20 * 1024 * 1024,
+        },
+        kbs: {
+          limit: 20,
+          used: 3,
+        },
+      });
+    });
+
+    expect(screen.getByRole("region", { name: "智能体用量" })).toHaveTextContent("5/20");
+    expect(screen.getByRole("region", { name: "智能体用量" })).toHaveTextContent("50MB/1GB");
+    expect(screen.getByRole("region", { name: "智能体用量" })).not.toHaveTextContent("20MB/1GB");
+  });
+
+  it("keeps the sidebar quota when a quota refresh event fails", async () => {
+    vi.mocked(agentService.getAiHostingQuota)
+      .mockResolvedValueOnce({
+        agents: {
+          limit: 20,
+          used: 2,
+        },
+        kbDocs: {
+          limit: 1024 * 1024 * 1024,
+          used: 20 * 1024 * 1024,
+        },
+        kbs: {
+          limit: 20,
+          used: 3,
+        },
+      })
+      .mockRejectedValueOnce(new Error("quota failed"));
+
+    renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
+
+    expect(await screen.findByText("共 2 条")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "智能体用量" })).toHaveTextContent("2/20");
+    expect(screen.getByRole("region", { name: "智能体用量" })).toHaveTextContent("20MB/1GB");
+
+    act(() => {
+      notifyAiHostingQuotaChanged();
+    });
+
+    await waitFor(() => {
+      expect(agentService.getAiHostingQuota).toHaveBeenCalledTimes(2);
+    });
+
+    expect(screen.getByRole("region", { name: "智能体用量" })).toHaveTextContent("2/20");
+    expect(screen.getByRole("region", { name: "智能体用量" })).toHaveTextContent("20MB/1GB");
   });
 
   it("prevents adding agents when the fixed agent quota is reached", async () => {
@@ -3211,7 +3338,10 @@ describe("AI hosting pages", () => {
     expect(screen.getByText("问题")).toBeInTheDocument();
     expect(screen.getByText("答案")).toBeInTheDocument();
     expect(screen.getByText("更新时间")).toBeInTheDocument();
-    expect(screen.getByText("chunk-qa-1")).toBeInTheDocument();
+    expect(screen.getByText("20260630131921038-3")).toBeInTheDocument();
+    expect(screen.queryByText("ID 20260630131921038-3")).not.toBeInTheDocument();
+    expect(screen.queryByText("#1")).not.toBeInTheDocument();
+    expect(screen.queryByText("chunk-qa-1")).not.toBeInTheDocument();
     expect(screen.getByText("如何恢复出厂设置")).toBeInTheDocument();
     expect(screen.getByText("保修期多久")).toBeInTheDocument();
   });
@@ -3390,7 +3520,7 @@ describe("AI hosting pages", () => {
     expect(screen.getByRole("textbox", { name: "搜索切片内容" })).toBeInTheDocument();
     expect(screen.queryByText("切片标题")).not.toBeInTheDocument();
     expect(within(chunkList).queryByText("ID chunk-doc-1")).not.toBeInTheDocument();
-    const firstChunkCard = within(chunkList).getByText("ID volc-chunk-doc").closest("li");
+    const firstChunkCard = within(chunkList).getByText("ID 20260630131921038-3").closest("li");
     expect(firstChunkCard).not.toBeNull();
     expect(within(firstChunkCard as HTMLElement).getByText("#1")).toBeInTheDocument();
     expect(within(firstChunkCard as HTMLElement).getByText("第一章 产品介绍")).toBeInTheDocument();
@@ -3450,11 +3580,11 @@ describe("AI hosting pages", () => {
       "/chat/ai-hosting/kb/:kbId/docs/:docId",
     );
 
-    await screen.findByText("ID volc-chunk-doc");
+    await screen.findByText("ID 20260630131921038-3");
     await user.type(screen.getByRole("textbox", { name: "搜索切片内容" }), "核销物码");
 
     await waitFor(() => {
-      expect(screen.getByText("ID volc-chunk-doc")).toBeInTheDocument();
+      expect(screen.getByText("ID 20260630131921038-3")).toBeInTheDocument();
       expect(screen.getByText("#1")).toBeInTheDocument();
       expect(screen.queryByText("ID volc-chunk-warranty")).not.toBeInTheDocument();
       expect(screen.queryByText("#2")).not.toBeInTheDocument();
@@ -3470,7 +3600,7 @@ describe("AI hosting pages", () => {
     await user.type(screen.getByRole("textbox", { name: "搜索切片内容" }), "第二章");
 
     await waitFor(() => {
-      expect(screen.queryByText("ID volc-chunk-doc")).not.toBeInTheDocument();
+      expect(screen.queryByText("ID 20260630131921038-3")).not.toBeInTheDocument();
       expect(screen.queryByText("ID volc-chunk-warranty")).not.toBeInTheDocument();
       expect(screen.getByText("暂无切片数据")).toBeInTheDocument();
     });
@@ -3513,7 +3643,7 @@ describe("AI hosting pages", () => {
       "/chat/ai-hosting/kb/:kbId/docs/:docId",
     );
 
-    await screen.findByText("ID volc-chunk-doc");
+    await screen.findByText("ID 20260630131921038-3");
     await user.click(screen.getByRole("button", { name: "删除 chunk-doc-1" }));
     const dialog = screen.getByRole("alertdialog", { name: "确定删除该切片吗" });
     const confirmDeleteButton = within(dialog).getByRole("button", { name: "删除" });
@@ -3521,9 +3651,9 @@ describe("AI hosting pages", () => {
     expect(confirmDeleteButton).toHaveClass("bg-destructive");
     await user.click(confirmDeleteButton);
 
-    expect(screen.queryByText("ID volc-chunk-doc")).not.toBeInTheDocument();
-    expect(screen.getByText("ID volc-chunk-warranty")).toBeInTheDocument();
-    expect(screen.getByText("#2")).toBeInTheDocument();
+    expect(screen.queryByText("ID 20260630131921038-3")).not.toBeInTheDocument();
+    expect(screen.getByText("ID volc-chunk-warranty-1")).toBeInTheDocument();
+    expect(screen.getByText("#1")).toBeInTheDocument();
     expect(screen.getByText("全国联保一年，支持官方售后网点检测与维修")).toBeInTheDocument();
   });
 });

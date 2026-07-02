@@ -452,6 +452,7 @@ export function KbDocDetailPage() {
                 ) : (
                   <KnowledgeDocumentChunkCards
                     chunks={chunks}
+                    itemStartIndex={(activePage - 1) * pageSize}
                     loading={loadingPage || loadingChunks}
                     onDelete={setDeleteChunk}
                     onEdit={setEditChunk}
@@ -588,6 +589,10 @@ function AddChunkActions({
   );
 }
 
+function resolveChunkDisplayId(chunk: KbDocChunkViewItem) {
+  return chunk.displayChunkId || chunk.volcChunkId || chunk.id;
+}
+
 function KnowledgeChunksTable({
   chunks,
   loading,
@@ -621,8 +626,13 @@ function KnowledgeChunksTable({
         ) : chunks.length > 0 ? (
           chunks.map((chunk) => (
             <TableRow key={chunk.id}>
-              <TableCell className="px-4 py-4 text-muted-foreground">
-                <TableOverflowTooltip tooltip={chunk.id}>{chunk.id}</TableOverflowTooltip>
+              <TableCell className="px-4 py-4">
+                <TableOverflowTooltip
+                  className="inline-block rounded-[6px] bg-muted px-3 py-1.5 text-xs font-semibold leading-none text-foreground"
+                  tooltip={resolveChunkDisplayId(chunk)}
+                >
+                  {resolveChunkDisplayId(chunk)}
+                </TableOverflowTooltip>
               </TableCell>
               <TableCell className="px-4 py-4">
                 <TableOverflowTooltip
@@ -680,11 +690,13 @@ function KnowledgeChunksTable({
 
 function KnowledgeDocumentChunkCards({
   chunks,
+  itemStartIndex,
   loading,
   onDelete,
   onEdit,
 }: {
   chunks: KbDocChunkViewItem[];
+  itemStartIndex: number;
   loading: boolean;
   onDelete: (chunk: KbDocChunkViewItem) => void;
   onEdit: (chunk: KbDocChunkViewItem) => void;
@@ -711,9 +723,10 @@ function KnowledgeDocumentChunkCards({
 
   return (
     <ul aria-label="切片列表" className="grid gap-4 lg:grid-cols-2" role="list">
-      {chunks.map((chunk) => (
+      {chunks.map((chunk, index) => (
         <KnowledgeDocumentChunkCard
           chunk={chunk}
+          displayIndex={itemStartIndex + index + 1}
           key={chunk.id}
           onDelete={onDelete}
           onEdit={onEdit}
@@ -725,27 +738,27 @@ function KnowledgeDocumentChunkCards({
 
 function KnowledgeDocumentChunkCard({
   chunk,
+  displayIndex,
   onDelete,
   onEdit,
 }: {
   chunk: KbDocChunkViewItem;
+  displayIndex: number;
   onDelete: (chunk: KbDocChunkViewItem) => void;
   onEdit: (chunk: KbDocChunkViewItem) => void;
 }) {
   const title = chunk.title?.trim() ?? "";
   const content = chunk.content ?? "";
   const characterCount = `${title}${content}`.length;
-  const displayChunkId = chunk.displayChunkId || chunk.volcChunkId || chunk.id;
+  const displayChunkId = resolveChunkDisplayId(chunk);
 
   return (
     <li className="group flex h-[204px] flex-col overflow-hidden rounded-[14px] border border-border/80 bg-card px-4 py-3.5 transition-shadow hover:shadow-[0_10px_24px_var(--shadow-soft)]">
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
-          {chunk.displayChunkIndex ? (
-            <span className="shrink-0 rounded-[6px] bg-muted px-3 py-1.5 text-xs font-semibold leading-none text-foreground">
-              #{chunk.displayChunkIndex}
-            </span>
-          ) : null}
+          <span className="shrink-0 rounded-[6px] bg-muted px-3 py-1.5 text-xs font-semibold leading-none text-foreground">
+            #{displayIndex}
+          </span>
           <span className="min-w-0 truncate rounded-[6px] bg-muted px-3 py-1.5 text-xs font-semibold leading-none text-foreground">
             ID {displayChunkId}
           </span>

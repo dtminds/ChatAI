@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { AiHostingQuota, AiHostingQuotaOverview } from "@chatai/contracts";
 import type { ReactNode } from "react";
 import { Link, NavLink } from "react-router-dom";
@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth-store";
 import {
   fetchAiHostingQuota,
+  formatAiHostingQuotaOwnerKey,
   getCachedAiHostingQuota,
   subscribeAiHostingQuota,
 } from "./ai-hosting-quota-store";
@@ -58,61 +59,30 @@ export function AiHostingLayout({
   children: ReactNode;
   title: string;
 }) {
-  const quotaOwnerKey = useAuthStore((state) => {
-    const subUser = state.subUser;
-
-    return subUser ? `${subUser.uid}:${subUser.subUserId}` : "anonymous";
-  });
-  const previousQuotaOwnerKeyRef = useRef(quotaOwnerKey);
+  const quotaOwnerKey = useAuthStore((state) => formatAiHostingQuotaOwnerKey(state.subUser));
   const [quota, setQuota] = useState<AiHostingQuotaOverview | null>(() =>
     getCachedAiHostingQuota(),
   );
 
-  const loadQuota = useCallback(async () => {
-    const nextQuota = await fetchAiHostingQuota({ force: true });
-    setQuota(nextQuota);
-    return nextQuota;
-  }, [quotaOwnerKey]);
+  const refreshQuota = useCallback(
+    () => fetchAiHostingQuota({ force: true }),
+    [quotaOwnerKey],
+  );
 
   useEffect(() => {
-    let cancelled = false;
+    const unsubscribe = subscribeAiHostingQuota(setQuota);
 
-    async function loadInitialQuota() {
-      try {
-        const nextQuota = await fetchAiHostingQuota();
-
-        if (!cancelled) {
-          setQuota(nextQuota);
-        }
-      } catch {
-        if (!cancelled) {
-          setQuota(null);
-        }
-      }
-    }
-
-    if (previousQuotaOwnerKeyRef.current !== quotaOwnerKey) {
-      previousQuotaOwnerKeyRef.current = quotaOwnerKey;
-      setQuota(null);
-    }
-
-    const unsubscribe = subscribeAiHostingQuota((nextQuota) => {
-      if (!cancelled) {
-        setQuota(nextQuota);
-      }
+    void fetchAiHostingQuota().catch(() => {
+      // Initial load failures keep the last subscribed quota state.
     });
-    void loadInitialQuota();
 
-    return () => {
-      cancelled = true;
-      unsubscribe();
-    };
+    return unsubscribe;
   }, [quotaOwnerKey]);
 
   useEffect(() => {
     function handleQuotaRefresh() {
-      void loadQuota().catch(() => {
-        setQuota(null);
+      void refreshQuota().catch(() => {
+        // Keep the current cached quota visible when a background refresh fails.
       });
     }
 
@@ -121,7 +91,7 @@ export function AiHostingLayout({
     return () => {
       window.removeEventListener(quotaRefreshEventName, handleQuotaRefresh);
     };
-  }, [loadQuota]);
+  }, [refreshQuota]);
 
   return (
     <div className="fixed inset-0 overflow-hidden bg-sidebar text-foreground">

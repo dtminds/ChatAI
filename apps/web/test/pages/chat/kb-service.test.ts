@@ -23,7 +23,7 @@ describe("kb-service time formatting", () => {
 });
 
 describe("kb-service chunk display mapping", () => {
-  it("displays volc chunk indexes as one-based labels", () => {
+  it("uses the volc chunk tail as the display chunk id", () => {
     expect(
       toKbDocChunkViewItem(
         {
@@ -41,12 +41,11 @@ describe("kb-service chunk display mapping", () => {
         "document",
       ),
     ).toMatchObject({
-      displayChunkId: "volc-chunk-doc",
-      displayChunkIndex: "1",
+      displayChunkId: "volc-chunk-doc-0",
     });
   });
 
-  it("does not increment non-decimal volc chunk indexes", () => {
+  it("preserves stable volc chunk tail suffixes in display chunk ids", () => {
     expect(
       toKbDocChunkViewItem(
         {
@@ -64,8 +63,7 @@ describe("kb-service chunk display mapping", () => {
         "document",
       ),
     ).toMatchObject({
-      displayChunkId: "volc-chunk-doc",
-      displayChunkIndex: "1e2",
+      displayChunkId: "volc-chunk-doc-1e2",
     });
   });
 });

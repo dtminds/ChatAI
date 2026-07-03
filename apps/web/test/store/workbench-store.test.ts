@@ -5325,6 +5325,7 @@ describe("useWorkbenchStore", () => {
           location: "any",
           memberIds: ["member-001", "member-001", "member-002"],
         },
+        atOriginText: "hello @小林 world @小林 @小陈 看一下",
         segment: {
           text: `hello ${JAVA_MENTION_PLACEHOLDER} world ${JAVA_MENTION_PLACEHOLDER} ${JAVA_MENTION_PLACEHOLDER} 看一下`,
           type: "text",
@@ -5405,6 +5406,7 @@ describe("useWorkbenchStore", () => {
           location: "any",
           memberIds: ["member-001"],
         },
+        atOriginText: "@小林 文字",
         segment: {
           text: `${JAVA_MENTION_PLACEHOLDER} 文字`,
           type: "text",
@@ -5427,6 +5429,7 @@ describe("useWorkbenchStore", () => {
           location: "any",
           memberIds: ["member-002"],
         },
+        atOriginText: "@小陈",
         segment: {
           text: JAVA_MENTION_PLACEHOLDER,
           type: "text",

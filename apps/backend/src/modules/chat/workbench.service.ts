@@ -5123,6 +5123,9 @@ function buildJavaSendMessageData(
           : JAVA_MENTION_LOCATION.START;
     message.atWxSerialNos = mentionMemberIds;
     message.isHit = JAVA_MENTION_HIT_TYPE.MEMBER;
+    if (payload.atOriginText?.trim()) {
+      message.atOriginText = payload.atOriginText;
+    }
   }
 
   return message;

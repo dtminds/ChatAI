@@ -3303,6 +3303,7 @@ describe("MysqlWorkbenchService", () => {
           location: "any",
           memberIds: ["member-user", "member-rui"],
         },
+        atOriginText: "hello @张三 world @李四",
         seatId: "12",
         segment: {
           text: "hello @$$ world @$$",
@@ -3319,6 +3320,7 @@ describe("MysqlWorkbenchService", () => {
         atWxSerialNos: ["member-user", "member-rui"],
         isHit: 2,
         msgtype: "text",
+        atOriginText: "hello @张三 world @李四",
         text: "hello @$$ world @$$",
       },
       platform: 5,

@@ -84,6 +84,7 @@ type JavaMentionFields = {
   atLocation?: number;
   atWxSerialNos?: string[];
   isHit?: number;
+  atOriginText?: string;
 };
 
 export type JavaSendMessageData =

@@ -5144,6 +5144,10 @@ export function createWorkbenchStore() {
             segmentForSend.type === "text" && originalSegment.type === "text"
               ? buildMentionPayloadForSegment(originalSegment, options?.mention)
               : undefined;
+          const atOriginText =
+            mentionForSegment?.memberIds.length && originalSegment.type === "text"
+              ? originalSegment.text
+              : undefined;
           const quoteForSegment: SendQuotePayload =
             !hasSentQuote && segmentForSend.type === "text" ? options?.quote : undefined;
           hasSentQuote = hasSentQuote || Boolean(quoteForSegment);
@@ -5152,6 +5156,7 @@ export function createWorkbenchStore() {
             failMsgId: options?.failMsgId,
             mention: mentionForSegment,
             quote: quoteForSegment,
+            atOriginText,
             seatId: activeAccountId,
             segment: payloadSegment,
           });

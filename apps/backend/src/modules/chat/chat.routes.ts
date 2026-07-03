@@ -264,6 +264,7 @@ const SendMessageBodySchema = Type.Object({
       memberIds: Type.Array(Type.String()),
     }),
   ),
+  atOriginText: Type.Optional(Type.String()),
   quote: Type.Optional(
     Type.Object({
       quoteMsgId: Type.String(),

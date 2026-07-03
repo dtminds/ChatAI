@@ -745,6 +745,7 @@ export type WorkbenchSendMessagePayload = {
     location: "start" | "end" | "any";
     memberIds: string[];
   };
+  atOriginText?: string;
   quote?: {
     quoteMsgId: string;
     quotedMessage?: WorkbenchQuotedMessagePreviewDto;

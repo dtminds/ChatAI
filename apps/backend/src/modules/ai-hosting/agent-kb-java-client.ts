@@ -38,7 +38,7 @@ export type AgentKbJavaCreateDocInput = {
   description?: string;
   docSuffix: string;
   docSize: number;
-  docType: 1 | 2 | 3;
+  docType: 1 | 2 | 3 | 4;
   docUrl: string;
   kbId: number;
   name: string;
@@ -60,6 +60,8 @@ export type AgentKbJavaRetryDocInput = {
 };
 
 export type AgentKbJavaAddChunkInput = {
+  attachmentContent?: Record<string, unknown>;
+  attachmentType?: number;
   chunkType: "text" | "faq";
   content: string;
   docId: number;
@@ -69,6 +71,8 @@ export type AgentKbJavaAddChunkInput = {
 };
 
 export type AgentKbJavaUpdateChunkInput = {
+  attachmentContent?: Record<string, unknown>;
+  attachmentType?: number;
   chunkId: number;
   content: string;
   operatorId: string;
@@ -83,6 +87,7 @@ export type AgentKbJavaDeleteChunkInput = {
 };
 
 export type AgentKbJavaListChunksInput = {
+  attachmentType?: number;
   content?: string;
   docId: number;
   page: number;
@@ -116,7 +121,7 @@ export function createAgentKbJavaClient(
 
   return {
     async addKbChunk(input) {
-      const body: Record<string, string | number> = {
+      const body: Record<string, unknown> = {
         chunkType: input.chunkType,
         content: input.content,
         docId: input.docId,
@@ -128,7 +133,15 @@ export function createAgentKbJavaClient(
         body.title = input.title.trim();
       }
 
-      const chunkId = await postJavaJsonEnvelope<number | string>(
+      if (input.attachmentType != null) {
+        body.attachmentType = input.attachmentType;
+      }
+
+      if (input.attachmentContent != null) {
+        body.attachmentContent = input.attachmentContent;
+      }
+
+      const chunkId = await postJavaJsonEnvelopeObject<number | string>(
         baseUrl,
         token,
         "/third-internal/wap-embed-agent-kb-chunk/add",
@@ -235,6 +248,10 @@ export function createAgentKbJavaClient(
         body.title = normalizedTitle;
       }
 
+      if (input.attachmentType != null) {
+        body.attachmentType = input.attachmentType;
+      }
+
       const response = await postJavaJson<JavaChunkPageResponse>(
         baseUrl,
         token,
@@ -257,7 +274,7 @@ export function createAgentKbJavaClient(
       };
     },
     async updateKbChunk(input) {
-      const body: Record<string, string | number> = {
+      const body: Record<string, unknown> = {
         content: input.content,
         id: input.chunkId,
         operatorId: input.operatorId,
@@ -268,7 +285,15 @@ export function createAgentKbJavaClient(
         body.title = input.title.trim();
       }
 
-      await postJavaJsonEnvelope<boolean>(
+      if (input.attachmentType != null) {
+        body.attachmentType = input.attachmentType;
+      }
+
+      if (input.attachmentContent != null) {
+        body.attachmentContent = input.attachmentContent;
+      }
+
+      await postJavaJsonEnvelopeObject<boolean>(
         baseUrl,
         token,
         "/third-internal/wap-embed-agent-kb-chunk/update",
@@ -307,6 +332,32 @@ async function postJavaFormEnvelope<T>(
   return response.data as T;
 }
 
+async function postJavaJsonEnvelopeObject<T>(
+  baseUrl: string | undefined,
+  token: string | undefined,
+  path: string,
+  body: Record<string, unknown>,
+  logger: AppLogger,
+  operation: string,
+  logContext: Record<string, unknown>,
+): Promise<T> {
+  const response = await postJavaJsonObject<JavaApiResponse<T>>(
+    baseUrl,
+    token,
+    path,
+    body,
+    logger,
+    operation,
+    logContext,
+  );
+
+  if (!isJavaEnvelopeSuccessful(response)) {
+    throw mapAgentKbJavaBusinessError(response, operation);
+  }
+
+  return response.data as T;
+}
+
 async function postJavaJsonEnvelope<T>(
   baseUrl: string | undefined,
   token: string | undefined,
@@ -331,6 +382,27 @@ async function postJavaJsonEnvelope<T>(
   }
 
   return response.data as T;
+}
+
+async function postJavaJsonObject<T>(
+  baseUrl: string | undefined,
+  token: string | undefined,
+  path: string,
+  body: Record<string, unknown>,
+  logger: AppLogger,
+  operation: string,
+  logContext: Record<string, unknown>,
+): Promise<T> {
+  return postJavaRequest<T>({
+    baseUrl,
+    body: JSON.stringify(body),
+    contentType: "application/json",
+    logContext,
+    logger,
+    operation,
+    path,
+    token,
+  });
 }
 
 async function postJavaJson<T>(

@@ -1,6 +1,7 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Add01Icon,
+  AlertCircleIcon,
   File01Icon,
   Image01Icon,
   PlayIcon,
@@ -8,6 +9,7 @@ import {
   Video01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { toast } from "sonner";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -20,18 +22,38 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
+import {
+  resolveTablePagination,
+  TablePagination,
+} from "@/components/ui/table-pagination";
 import { cn } from "@/lib/utils";
 import { MiniProgramMark } from "@/pages/chat/components/message/miniapp";
+import { getKbDoc } from "@/pages/chat/ai-hosting/api/kb-service";
+import { retryKbDoc } from "@/pages/chat/ai-hosting/api/kb-doc-service";
+import {
+  buildKbAttachmentCreateRequest,
+  buildKbAttachmentUpdateRequest,
+  createKbAttachment,
+  deleteKbAttachment,
+  initKbAttachments,
+  isKbAttachmentNotInitialized,
+  listKbAttachments,
+  toKbAttachmentItem,
+  updateKbAttachment,
+} from "@/pages/chat/ai-hosting/api/kb-attachment-service";
 import { KbAddAttachmentDialog } from "./kb-add-attachment-dialog";
 import { KbAttachmentsTable } from "./kb-attachments-table";
 import {
+  getKbAttachmentTitle,
   kbAttachmentTypeFilters,
   KB_ATTACHMENT_TYPE,
   type KbAttachmentItem,
   type KbAttachmentType,
 } from "./kb-attachment-types";
 
-const kbAttachmentInitStorageKey = (kbId: string) => `kb-attachments-init:${kbId}`;
+const PAGE_SIZE = 20;
+const DOC_POLL_INTERVAL_MS = 5000;
 
 const kbAttachmentInitIllustrationUrl =
   "https://b5.bokr.com.cn/dist/ui/attachment_bg_1.png";
@@ -54,58 +76,348 @@ const kbAttachmentExampleTagRows = [
   ],
 ] as const;
 
+type AttachmentPhase =
+  | "loading"
+  | "uninitialized"
+  | "syncing"
+  | "failed"
+  | "ready";
+
+function useDebouncedValue<T>(value: T, delayMs: number) {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedValue(value), delayMs);
+    return () => window.clearTimeout(timer);
+  }, [delayMs, value]);
+
+  return debouncedValue;
+}
+
 export function KbAttachmentsTab({ kbId }: { kbId: string }) {
-  const [initialized, setInitialized] = useState(() => readInitializedState(kbId));
+  const [phase, setPhase] = useState<AttachmentPhase>("loading");
+  const [attachmentDocId, setAttachmentDocId] = useState<string | null>(null);
   const [activeType, setActiveType] = useState<KbAttachmentType>(KB_ATTACHMENT_TYPE.IMAGE);
   const [attachments, setAttachments] = useState<KbAttachmentItem[]>([]);
+  const [total, setTotal] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [loadingList, setLoadingList] = useState(true);
+  const [initializing, setInitializing] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearchQuery = useDebouncedValue(searchQuery.trim(), 300);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<KbAttachmentItem | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<"batch" | string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const requestVersionRef = useRef(0);
+  const pollTimerRef = useRef<number | null>(null);
+  const isMountedRef = useRef(false);
+  const skipNextListLoadRef = useRef(false);
 
-  const filteredAttachments = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
+  useEffect(() => {
+    isMountedRef.current = true;
 
-    return attachments.filter((item) => {
-      if (item.attachmentType !== activeType) {
-        return false;
-      }
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
-      if (!query) {
-        return true;
-      }
+  const clearPollTimer = useCallback(() => {
+    if (pollTimerRef.current != null) {
+      window.clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+  }, []);
 
-      return [item.title, item.description].some((value) =>
-        value.toLowerCase().includes(query),
-      );
-    });
-  }, [activeType, attachments, searchQuery]);
-
-  const selectedCount = selectedIds.length;
-
-  const handleInitialize = () => {
-    setInitialized(true);
-    writeInitializedState(kbId, true);
-  };
-
-  const handleAddAttachment = (item: KbAttachmentItem) => {
-    setAttachments((current) => [item, ...current]);
-  };
-
-  const handleUpdateAttachment = (item: KbAttachmentItem) => {
-    setAttachments((current) =>
-      current.map((attachment) => (attachment.id === item.id ? item : attachment)),
-    );
-  };
-
-  const handleAttachmentDialogSubmit = (item: KbAttachmentItem) => {
-    if (editingItem) {
-      handleUpdateAttachment(item);
+  const loadAttachments = useCallback(async (options?: { page?: number }) => {
+    if (!kbId) {
       return;
     }
 
-    handleAddAttachment(item);
+    const version = ++requestVersionRef.current;
+    setLoadingList(true);
+
+    try {
+      const response = await listKbAttachments(kbId, {
+        attachmentType: activeType,
+        page: options?.page ?? currentPage,
+        pageSize: PAGE_SIZE,
+        query: debouncedSearchQuery || undefined,
+      });
+
+      if (version !== requestVersionRef.current || !isMountedRef.current) {
+        return;
+      }
+
+      setAttachments(response.attachments.map(toKbAttachmentItem));
+      setTotal(response.pagination.total);
+      setPhase("ready");
+    } catch (error) {
+      if (version !== requestVersionRef.current || !isMountedRef.current) {
+        return;
+      }
+
+      if (isKbAttachmentNotInitialized(error)) {
+        setAttachments([]);
+        setTotal(0);
+        setPhase("uninitialized");
+        return;
+      }
+
+      setAttachments([]);
+      setTotal(0);
+      toast.error("加载失败，请稍后重试");
+    } finally {
+      if (version === requestVersionRef.current && isMountedRef.current) {
+        setLoadingList(false);
+      }
+    }
+  }, [activeType, currentPage, debouncedSearchQuery, kbId]);
+
+  const loadAttachmentsRef = useRef(loadAttachments);
+  loadAttachmentsRef.current = loadAttachments;
+
+  const pollAttachmentDocStatus = useCallback(async (docId: string) => {
+    try {
+      const doc = await getKbDoc(docId);
+
+      if (!isMountedRef.current) {
+        return;
+      }
+
+      if (doc.status === "completed") {
+        clearPollTimer();
+        setPhase("ready");
+        await loadAttachmentsRef.current({ page: 1 });
+        return;
+      }
+
+      if (doc.status === "failed") {
+        clearPollTimer();
+        setPhase("failed");
+      }
+    } catch {
+      if (!isMountedRef.current) {
+        return;
+      }
+    }
+  }, [clearPollTimer]);
+
+  const startDocStatusPolling = useCallback((docId: string) => {
+    clearPollTimer();
+    setAttachmentDocId(docId);
+    setPhase("syncing");
+
+    void pollAttachmentDocStatus(docId);
+
+    pollTimerRef.current = window.setInterval(() => {
+      void pollAttachmentDocStatus(docId);
+    }, DOC_POLL_INTERVAL_MS);
+  }, [clearPollTimer, pollAttachmentDocStatus]);
+
+  const startDocStatusPollingRef = useRef(startDocStatusPolling);
+  startDocStatusPollingRef.current = startDocStatusPolling;
+
+  const probeInitialState = useCallback(async () => {
+    if (!kbId) {
+      setPhase("uninitialized");
+      setLoadingList(false);
+      return;
+    }
+
+    setPhase("loading");
+    setLoadingList(true);
+
+    let enteredSyncing = false;
+
+    try {
+      const response = await listKbAttachments(kbId, {
+        attachmentType: KB_ATTACHMENT_TYPE.IMAGE,
+        page: 1,
+        pageSize: PAGE_SIZE,
+      });
+
+      if (!isMountedRef.current) {
+        return;
+      }
+
+      setAttachments(response.attachments.map(toKbAttachmentItem));
+      setTotal(response.pagination.total);
+      setCurrentPage(1);
+      setPhase("ready");
+      skipNextListLoadRef.current = true;
+    } catch (error) {
+      if (!isMountedRef.current) {
+        return;
+      }
+
+      if (isKbAttachmentNotInitialized(error)) {
+        setPhase("uninitialized");
+        return;
+      }
+
+      try {
+        const initResult = await initKbAttachments(kbId);
+
+        if (!isMountedRef.current) {
+          return;
+        }
+
+        setAttachmentDocId(initResult.docId);
+
+        if (initResult.status === "completed") {
+          setPhase("ready");
+          setCurrentPage(1);
+          return;
+        }
+
+        if (initResult.status === "failed") {
+          setPhase("failed");
+          return;
+        }
+
+        startDocStatusPollingRef.current(initResult.docId);
+        enteredSyncing = true;
+      } catch {
+        if (isMountedRef.current) {
+          setPhase("uninitialized");
+        }
+      }
+    } finally {
+      if (isMountedRef.current && !enteredSyncing) {
+        setLoadingList(false);
+      }
+    }
+  }, [kbId]);
+
+  useEffect(() => {
+    void probeInitialState();
+
+    return () => {
+      requestVersionRef.current++;
+      skipNextListLoadRef.current = false;
+      clearPollTimer();
+    };
+  }, [clearPollTimer, kbId, probeInitialState]);
+
+  useEffect(() => {
+    if (phase !== "ready") {
+      return;
+    }
+
+    setCurrentPage(1);
+    setSelectedIds([]);
+  }, [activeType, debouncedSearchQuery, phase]);
+
+  useEffect(() => {
+    if (phase !== "ready" || !kbId) {
+      return;
+    }
+
+    if (skipNextListLoadRef.current) {
+      skipNextListLoadRef.current = false;
+      return;
+    }
+
+    void loadAttachments();
+  }, [activeType, currentPage, debouncedSearchQuery, kbId, loadAttachments, phase]);
+
+  const handleInitialize = async () => {
+    if (!kbId || initializing) {
+      return;
+    }
+
+    setInitializing(true);
+
+    try {
+      const initResult = await initKbAttachments(kbId);
+
+      if (!isMountedRef.current) {
+        return;
+      }
+
+      setAttachmentDocId(initResult.docId);
+
+      if (initResult.status === "completed") {
+        setPhase("ready");
+        setCurrentPage(1);
+        await loadAttachments({ page: 1 });
+        return;
+      }
+
+      if (initResult.status === "failed") {
+        setPhase("failed");
+        return;
+      }
+
+      startDocStatusPolling(initResult.docId);
+    } catch {
+      if (isMountedRef.current) {
+        toast.error("初始化失败，请稍后重试");
+      }
+    } finally {
+      if (isMountedRef.current) {
+        setInitializing(false);
+      }
+    }
+  };
+
+  const handleRetrySync = async () => {
+    if (!attachmentDocId || retrying) {
+      return;
+    }
+
+    setRetrying(true);
+
+    try {
+      await retryKbDoc(attachmentDocId);
+
+      if (!isMountedRef.current) {
+        return;
+      }
+
+      startDocStatusPolling(attachmentDocId);
+    } catch {
+      if (isMountedRef.current) {
+        toast.error("重试失败，请稍后重试");
+      }
+    } finally {
+      if (isMountedRef.current) {
+        setRetrying(false);
+      }
+    }
+  };
+
+  const handleAttachmentDialogSubmit = async (item: KbAttachmentItem) => {
+    if (!kbId) {
+      return;
+    }
+
+    if (editingItem) {
+      const request = await buildKbAttachmentUpdateRequest({
+        description: item.description,
+        nextPayload: item.payload,
+        previousPayload: editingItem.payload,
+        title: getKbAttachmentTitle(item.payload),
+      });
+
+      await updateKbAttachment(editingItem.id, request);
+      await loadAttachments();
+      return;
+    }
+
+    const request = await buildKbAttachmentCreateRequest({
+      attachmentType: item.attachmentType,
+      description: item.description,
+      payload: item.payload,
+      title: getKbAttachmentTitle(item.payload),
+    });
+
+    await createKbAttachment(kbId, request);
+    setCurrentPage(1);
+    await loadAttachments({ page: 1 });
   };
 
   const handleAttachmentDialogOpenChange = (open: boolean) => {
@@ -118,23 +430,39 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
     setAddDialogOpen(true);
   };
 
-  const handleConfirmDelete = () => {
-    if (deleteTarget === "batch") {
-      setAttachments((current) =>
-        current.filter((item) => !selectedIds.includes(item.id)),
-      );
-      setSelectedIds([]);
-    } else if (deleteTarget) {
-      setAttachments((current) => current.filter((item) => item.id !== deleteTarget));
-      setSelectedIds((current) => current.filter((id) => id !== deleteTarget));
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget || deleteTarget === "batch" || deleting) {
+      setDeleteTarget(null);
+      return;
     }
 
-    setDeleteTarget(null);
+    setDeleting(true);
+
+    try {
+      await deleteKbAttachment(deleteTarget);
+
+      if (!isMountedRef.current) {
+        return;
+      }
+
+      setDeleteTarget(null);
+      setSelectedIds((current) => current.filter((id) => id !== deleteTarget));
+      toast.success("已删除");
+      await loadAttachments();
+    } catch {
+      if (isMountedRef.current) {
+        toast.error("删除失败，请稍后重试");
+      }
+    } finally {
+      if (isMountedRef.current) {
+        setDeleting(false);
+      }
+    }
   };
 
   const toggleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedIds(filteredAttachments.map((item) => item.id));
+      setSelectedIds(attachments.map((item) => item.id));
       return;
     }
 
@@ -151,8 +479,35 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
     });
   };
 
-  if (!initialized) {
-    return <KbAttachmentsInitState onInitialize={handleInitialize} />;
+  const selectedCount = selectedIds.length;
+  const { activePage, totalPages } = resolveTablePagination({
+    page: currentPage,
+    pageSize: PAGE_SIZE,
+    total,
+  });
+  const isListLoading = loadingList;
+  const showListTable = isListLoading || attachments.length > 0;
+
+  if (phase === "uninitialized") {
+    return (
+      <KbAttachmentsInitState
+        initializing={initializing}
+        onInitialize={() => void handleInitialize()}
+      />
+    );
+  }
+
+  if (phase === "syncing") {
+    return <KbAttachmentsSyncingState />;
+  }
+
+  if (phase === "failed") {
+    return (
+      <KbAttachmentsFailedState
+        onRetry={() => void handleRetrySync()}
+        retrying={retrying}
+      />
+    );
   }
 
   return (
@@ -223,16 +578,27 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
         </div>
       </div>
 
-      {filteredAttachments.length > 0 ? (
-        <KbAttachmentsTable
-          activeType={activeType}
-          items={filteredAttachments}
-          onDelete={setDeleteTarget}
-          onEdit={setEditingItem}
-          onToggleSelectAll={toggleSelectAll}
-          onToggleSelectItem={toggleSelectItem}
-          selectedIds={selectedIds}
-        />
+      {showListTable ? (
+        <>
+          <KbAttachmentsTable
+            activeType={activeType}
+            items={attachments}
+            loading={isListLoading}
+            onDelete={setDeleteTarget}
+            onEdit={setEditingItem}
+            onToggleSelectAll={toggleSelectAll}
+            onToggleSelectItem={toggleSelectItem}
+            selectedIds={selectedIds}
+          />
+          {!isListLoading && totalPages > 1 ? (
+            <TablePagination
+              onPageChange={setCurrentPage}
+              page={activePage}
+              total={total}
+              totalPages={totalPages}
+            />
+          ) : null}
+        </>
       ) : (
         <KbAttachmentsEmptyState />
       )}
@@ -251,22 +617,21 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
             setDeleteTarget(null);
           }
         }}
-        open={deleteTarget !== null}
+        open={deleteTarget !== null && deleteTarget !== "batch"}
       >
         <AlertDialogContent className="max-w-[400px]">
           <AlertDialogHeader>
-            <AlertDialogTitle>
-              {deleteTarget === "batch" ? "是否确认批量删除" : "是否确认删除"}
-            </AlertDialogTitle>
+            <AlertDialogTitle>是否确认删除</AlertDialogTitle>
             <AlertDialogDescription className="sr-only">
               删除后无法恢复
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleting}>取消</AlertDialogCancel>
             <AlertDialogAction
               className="border-destructive bg-background text-destructive hover:bg-destructive/5"
-              onClick={handleConfirmDelete}
+              disabled={deleting}
+              onClick={() => void handleConfirmDelete()}
             >
               确定
             </AlertDialogAction>
@@ -277,7 +642,13 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
   );
 }
 
-function KbAttachmentsInitState({ onInitialize }: { onInitialize: () => void }) {
+function KbAttachmentsInitState({
+  initializing,
+  onInitialize,
+}: {
+  initializing: boolean;
+  onInitialize: () => void;
+}) {
   return (
     <div className="flex min-h-[420px] flex-col items-center justify-center px-6 py-10 text-center">
       <img
@@ -291,11 +662,55 @@ function KbAttachmentsInitState({ onInitialize }: { onInitialize: () => void }) 
       </p>
       <Button
         className="mt-6 h-10 px-6"
+        disabled={initializing}
         onClick={onInitialize}
         type="button"
         variant="outline"
       >
-        开始初始化
+        {initializing ? "正在初始化" : "开始初始化"}
+      </Button>
+    </div>
+  );
+}
+
+function KbAttachmentsSyncingState() {
+  return (
+    <div
+      className="flex min-h-[420px] flex-col items-center justify-center gap-3 px-6 py-10 text-center"
+      role="status"
+    >
+      <Spinner className="size-6" />
+      <p className="text-sm text-muted-foreground">附件库正在同步</p>
+    </div>
+  );
+}
+
+function KbAttachmentsFailedState({
+  onRetry,
+  retrying,
+}: {
+  onRetry: () => void;
+  retrying: boolean;
+}) {
+  return (
+    <div className="flex min-h-[420px] flex-col items-center justify-center gap-3 px-6 py-10 text-center">
+      <HugeiconsIcon
+        aria-hidden="true"
+        className="text-destructive"
+        color="currentColor"
+        icon={AlertCircleIcon}
+        size={28}
+        strokeWidth={1.8}
+      />
+      <p className="text-sm text-muted-foreground">附件库同步失败</p>
+      <Button
+        className="h-10 px-6"
+        disabled={retrying}
+        onClick={onRetry}
+        type="button"
+        variant="outline"
+      >
+        {retrying ? "正在重试" : "重试"}
       </Button>
     </div>
   );
@@ -404,24 +819,5 @@ function KbAttachmentExampleBrandIcon({
     <span className="inline-flex size-5 items-center justify-center rounded-full bg-[#ff2442] text-[10px] font-semibold leading-none text-white">
       红
     </span>
-  );
-}
-
-function readInitializedState(kbId: string) {
-  if (!kbId || typeof window === "undefined") {
-    return false;
-  }
-
-  return window.localStorage.getItem(kbAttachmentInitStorageKey(kbId)) === "1";
-}
-
-function writeInitializedState(kbId: string, initialized: boolean) {
-  if (!kbId || typeof window === "undefined") {
-    return;
-  }
-
-  window.localStorage.setItem(
-    kbAttachmentInitStorageKey(kbId),
-    initialized ? "1" : "0",
   );
 }

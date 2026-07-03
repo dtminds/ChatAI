@@ -13,6 +13,7 @@ import {
 import { cn } from "@/lib/utils";
 import { FileExtensionBadge } from "@/pages/chat/components/message/file";
 import { MiniProgramMark } from "@/pages/chat/components/message/miniapp";
+import { KbTableLoadingRow } from "./kb-table-loading-row";
 import {
   formatKbAttachmentCreatedAt,
   getKbAttachmentDeleteActionLabel,
@@ -28,6 +29,7 @@ import {
 type KbAttachmentsTableProps = {
   activeType: KbAttachmentType;
   items: KbAttachmentItem[];
+  loading?: boolean;
   onDelete: (id: string) => void;
   onEdit: (item: KbAttachmentItem) => void;
   onToggleSelectAll: (checked: boolean) => void;
@@ -38,6 +40,7 @@ type KbAttachmentsTableProps = {
 export function KbAttachmentsTable({
   activeType,
   items,
+  loading = false,
   onDelete,
   onEdit,
   onToggleSelectAll,
@@ -47,6 +50,7 @@ export function KbAttachmentsTable({
   const combinedDescription = usesCombinedDescriptionColumn(activeType);
   const primaryColumnLabel = getKbAttachmentPrimaryColumnLabel(activeType);
   const deleteActionLabel = getKbAttachmentDeleteActionLabel(activeType);
+  const columnCount = combinedDescription ? 4 : 5;
   const allSelected = items.length > 0 && items.every((item) => selectedIds.includes(item.id));
 
   return (
@@ -78,7 +82,11 @@ export function KbAttachmentsTable({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {items.map((item) => (
+          {loading ? (
+            <KbTableLoadingRow colSpan={columnCount} />
+          ) : null}
+          {!loading
+            ? items.map((item) => (
             <TableRow className="hover:bg-muted/20" key={item.id}>
               <TableCell className="px-4 py-4 align-middle">
                 <Checkbox
@@ -132,7 +140,8 @@ export function KbAttachmentsTable({
                 </div>
               </TableCell>
             </TableRow>
-          ))}
+          ))
+            : null}
         </TableBody>
       </Table>
     </div>

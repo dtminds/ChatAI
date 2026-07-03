@@ -129,6 +129,62 @@ describe("createAgentKbJavaClient", () => {
     });
   });
 
+  it("submits attachment chunk add with attachmentContent object", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: 601,
+          error: 0,
+          errorMsg: "",
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    await createAgentKbJavaClient().addKbChunk({
+      attachmentContent: {
+        content: {
+          fileName: "产品说明书.pdf",
+          fileUrl: "https://example.com/manual.pdf",
+        },
+        materialCollectionId: "mc-1",
+        msgInfoId: "msg-1",
+        type: "file",
+      },
+      attachmentType: 3,
+      chunkType: "text",
+      content: "附件描述",
+      docId: 26,
+      operatorId: "19",
+      title: "产品说明书.pdf",
+      uid: 9001,
+    });
+
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      attachmentContent: {
+        content: {
+          fileName: "产品说明书.pdf",
+          fileUrl: "https://example.com/manual.pdf",
+        },
+        materialCollectionId: "mc-1",
+        msgInfoId: "msg-1",
+        type: "file",
+      },
+      attachmentType: 3,
+      chunkType: "text",
+      content: "附件描述",
+      docId: 26,
+      operatorId: "19",
+      title: "产品说明书.pdf",
+      uid: 9001,
+    });
+  });
+
   it("submits chunk page query as JSON", async () => {
     process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
@@ -219,6 +275,42 @@ describe("createAgentKbJavaClient", () => {
 
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
       content: "核销物码",
+      docId: 1001,
+      page: 1,
+      pageSize: 10,
+      uid: 9001,
+    });
+  });
+
+  it("submits attachmentType filter on chunk page query", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          count: 0,
+          error: 0,
+          list: [],
+          page: 1,
+          pageSize: 10,
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    await createAgentKbJavaClient().listKbChunks({
+      attachmentType: 3,
+      docId: 1001,
+      page: 1,
+      pageSize: 10,
+      uid: 9001,
+    });
+
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      attachmentType: 3,
       docId: 1001,
       page: 1,
       pageSize: 10,

@@ -3,9 +3,11 @@ import type { WorkbenchService } from "@/pages/chat/api/workbench-service";
 import {
   bootstrapWorkbench,
   CONVERSATION_MODE_LIMITS,
+  UNREAD_CONVERSATION_MODE_LIMITS,
   getVisibleConversations,
   loadGroupMembers,
   loadAccountConversations,
+  loadUnreadAccountConversationsByMode,
   loadAccountScope,
   confirmVoicePlaybackReady,
   transcribeVoiceMessage,
@@ -117,6 +119,54 @@ describe("workbench gateway message paging", () => {
         limit: CONVERSATION_MODE_LIMITS.group,
         mode: "group",
         seatId: "drc",
+      },
+    ]);
+  });
+
+  it("loads unread conversations with unread-only mode limits and keeps unread summary", async () => {
+    const observedConversationRequests: Array<{
+      limit?: number;
+      mode?: string;
+      seatId: string;
+      unreadOnly?: boolean;
+    }> = [];
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async getConversations(seatId, options) {
+        observedConversationRequests.push({
+          limit: options?.limit,
+          mode: options?.mode,
+          seatId,
+          unreadOnly: options?.unreadOnly,
+        });
+
+        return {
+          ...(await baseService.getConversations(seatId, options)),
+          unreadSummary: {
+            group: 4,
+            single: 12,
+            total: 16,
+          },
+        };
+      },
+    });
+
+    await expect(loadUnreadAccountConversationsByMode("drc", "single")).resolves.toMatchObject({
+      unreadSummary: {
+        group: 4,
+        single: 12,
+        total: 16,
+      },
+    });
+
+    expect(observedConversationRequests).toEqual([
+      {
+        limit: UNREAD_CONVERSATION_MODE_LIMITS.single,
+        mode: "single",
+        seatId: "drc",
+        unreadOnly: true,
       },
     ]);
   });

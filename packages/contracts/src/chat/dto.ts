@@ -283,6 +283,8 @@ export type WorkbenchSeatDto = {
   description: string;
   phone: string;
   unreadCount: number;
+  singleUnreadCount?: number;
+  groupUnreadCount?: number;
   lastMessageTime?: number;
   loginStatus: "online" | "offline";
   hostSubUserId?: string;
@@ -327,11 +329,18 @@ export type WorkbenchConversationCursorDto = {
   snapshotAt: number;
 };
 
+export type WorkbenchUnreadSummaryDto = {
+  total: number;
+  single: number;
+  group: number;
+};
+
 export type WorkbenchConversationListResponse = {
   hasMore: boolean;
   items: WorkbenchConversationSummaryDto[];
   nextCursor?: string;
   snapshotAt: number;
+  unreadSummary?: WorkbenchUnreadSummaryDto;
 };
 
 export type WorkbenchMessageBaseDto = {
@@ -446,7 +455,7 @@ export type WorkbenchPollResponse = {
 };
 
 export const SMART_REPLY_MSG_IDS_LIMIT = 100;
-/** Java user-history-answer-list 终态：2 生成成功、3 生成失败、4 转人工 */
+/** Java user-history-answer-list 终态：2 生成成功、3 生成失败、4 转人工；5 语义不完整等待下一条消息，非终态 */
 export const SMART_REPLY_TERMINAL_GENERATE_STATUSES = [2, 3, 4] as const;
 /** Java user-history-answer-list 失败原因：未命中知识集 */
 export const SMART_REPLY_FAIL_REASON_KNOWLEDGE_MISS = "knowledge_miss";
@@ -459,6 +468,8 @@ export type WorkbenchSmartReplySuggestionDto = {
   messageId: string;
   assistantName: string;
   content: string;
+  /** Java recommend-answer 记录创建时间，毫秒时间戳 */
+  createdAt?: number;
   failReason?: string;
   /** Java 原始 genAnswer */
   genAnswer?: string;
@@ -731,9 +742,10 @@ export type WorkbenchSendMessagePayload = {
   content?: string;
   mention?: {
     all?: boolean;
-    location: "start" | "end";
+    location: "start" | "end" | "any";
     memberIds: string[];
   };
+  atOriginText?: string;
   quote?: {
     quoteMsgId: string;
     quotedMessage?: WorkbenchQuotedMessagePreviewDto;
@@ -751,6 +763,11 @@ export type WorkbenchSendMessageResponse = {
   optNo: string;
   status: "accepted";
   messages?: WorkbenchSentMessageAck[];
+};
+
+export type WorkbenchRetryMessageRequest = {
+  conversationId: string;
+  messageSeq: number;
 };
 
 export type WorkbenchConversationReadResponse = {

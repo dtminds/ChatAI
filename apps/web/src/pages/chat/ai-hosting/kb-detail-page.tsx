@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Add01Icon,
   AlertCircleIcon,
+  AiMagicIcon,
   ArrowLeft01Icon,
   CheckmarkCircle02Icon,
   Clock04Icon,
@@ -10,7 +11,9 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { KB_SEARCH_QUERY_MAX_LENGTH } from "@chatai/contracts";
+import ReactMarkdown from "react-markdown";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import remarkGfm from "remark-gfm";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -22,8 +25,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,7 +35,19 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "@/components/ui/hover-card";
 import { Input } from "@/components/ui/input";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import {
   Table,
   TableBody,
@@ -61,8 +76,9 @@ import { ImportDocumentDialog } from "./kb-components/import-document-dialog";
 import { ImportQaDialog } from "./kb-components/import-qa-dialog";
 import { TableOverflowTooltip } from "./kb-components/shared";
 import { deleteKbDoc, retryKbDoc } from "./api/kb-doc-service";
-import { getAiHostingQuota } from "./agent-service";
+import { fetchAiHostingQuota } from "./ai-hosting-quota-store";
 import {
+  getKbDoc,
   getKb,
   listKbDocs,
   toKbDocViewItem,
@@ -155,10 +171,14 @@ export function KbDetailPage() {
   // const [imageDialogOpen, setImageDialogOpen] = useState(false);
   const [documentDialogOpen, setDocumentDialogOpen] = useState(false);
   const [deleteRecord, setDeleteRecord] = useState<KbDocViewItem | null>(null);
+  const [summaryRecord, setSummaryRecord] = useState<KbDocViewItem | null>(null);
+  const [loadingSummary, setLoadingSummary] = useState(false);
+  const [summaryError, setSummaryError] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [retryingDocId, setRetryingDocId] = useState<string | null>(null);
   const [checkingKnowledgeQuota, setCheckingKnowledgeQuota] = useState(false);
   const requestVersionRef = useRef(0);
+  const summaryRequestVersionRef = useRef(0);
   const isMountedRef = useRef(false);
 
   useEffect(() => {
@@ -203,6 +223,35 @@ export function KbDetailPage() {
       }
     }
   }, [currentPage, debouncedSearchQuery, kbId]);
+
+  const handleShowSummary = useCallback(async (record: KbDocViewItem) => {
+    const version = ++summaryRequestVersionRef.current;
+    setSummaryRecord(record);
+    setLoadingSummary(true);
+    setSummaryError(false);
+
+    try {
+      const detail = toKbDocViewItem(await getKbDoc(record.id));
+
+      if (!isMountedRef.current || version !== summaryRequestVersionRef.current) {
+        return;
+      }
+
+      setSummaryRecord((current) => (current?.id === record.id ? detail : current));
+    } catch {
+      if (!isMountedRef.current || version !== summaryRequestVersionRef.current) {
+        return;
+      }
+
+      setSummaryError(true);
+    } finally {
+      if (!isMountedRef.current || version !== summaryRequestVersionRef.current) {
+        return;
+      }
+
+      setLoadingSummary(false);
+    }
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -332,7 +381,7 @@ export function KbDetailPage() {
     setCheckingKnowledgeQuota(true);
 
     try {
-      const quota = await getAiHostingQuota();
+      const quota = await fetchAiHostingQuota({ force: true });
 
       if (quota && isQuotaReached(quota.kbDocs)) {
         toast.error(AI_HOSTING_KB_DOC_STORAGE_QUOTA_REACHED_MESSAGE);
@@ -433,6 +482,9 @@ export function KbDetailPage() {
               loading={recordsLoading}
               onDelete={setDeleteRecord}
               onRetry={handleRetryDoc}
+              onShowSummary={(record) => {
+                void handleShowSummary(record);
+              }}
               records={pagedRecords}
               retryingDocId={retryingDocId}
             />
@@ -496,6 +548,19 @@ export function KbDetailPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <KnowledgeDocSummarySheet
+        onOpenChange={(open) => {
+          if (!open) {
+            summaryRequestVersionRef.current += 1;
+            setSummaryRecord(null);
+            setLoadingSummary(false);
+            setSummaryError(false);
+          }
+        }}
+        error={summaryError}
+        loading={loadingSummary}
+        record={summaryRecord}
+      />
     </AiHostingLayout>
   );
 }
@@ -571,6 +636,7 @@ function KnowledgeRecordsTable({
   loading,
   onDelete,
   onRetry,
+  onShowSummary,
   records,
   retryingDocId,
 }: {
@@ -578,6 +644,7 @@ function KnowledgeRecordsTable({
   loading: boolean;
   onDelete: (record: KbDocViewItem) => void;
   onRetry: (docId: string) => void | Promise<void>;
+  onShowSummary: (record: KbDocViewItem) => void;
   records: KbDocViewItem[];
   retryingDocId: string | null;
 }) {
@@ -587,8 +654,8 @@ function KnowledgeRecordsTable({
     <Table aria-label="知识列表" className="min-w-[1120px] table-fixed">
       <TableHeader>
         <TableRow className="hover:bg-transparent">
-          <TableHead className="h-11 w-[24%] px-4">知识名称</TableHead>
-          <TableHead className="h-11 w-[14%] px-4">类型</TableHead>
+          <TableHead className="h-11 w-[30%] px-4">知识名称</TableHead>
+          <TableHead className="h-11 w-[10%] px-4">文件大小</TableHead>
           <TableHead className="h-11 w-[12%] px-4">切片数量</TableHead>
           <TableHead className="h-11 w-[14%] px-4">状态</TableHead>
           <TableHead className="h-11 w-[17%] whitespace-nowrap px-4">创建时间</TableHead>
@@ -611,31 +678,16 @@ function KnowledgeRecordsTable({
                     extension={record.fileExtension}
                   />
                   <div className="min-w-0 flex-1">
-                    <TableOverflowTooltip
-                      className="font-medium"
-                      tooltip={record.name}
-                    >
-                      {record.status === "completed" ? (
-                        <button
-                          className="block max-w-full cursor-pointer truncate border-0 bg-transparent p-0 text-left font-medium text-foreground"
-                          onClick={() => navigate(`/chat/ai-hosting/kb/${kbId}/docs/${record.id}`)}
-                          type="button"
-                        >
-                          {record.name}
-                        </button>
-                      ) : (
-                        <span className="block truncate text-foreground">
-                          {record.name}
-                        </span>
-                      )}
-                    </TableOverflowTooltip>
+                    <KnowledgeNameWithSummary
+                      onOpenDetail={() => navigate(`/chat/ai-hosting/kb/${kbId}/docs/${record.id}`)}
+                      onShowSummary={() => onShowSummary(record)}
+                      record={record}
+                    />
                   </div>
                 </div>
               </TableCell>
-              <TableCell className="px-4 py-4">
-                <Badge className="rounded-[6px] px-2 py-0.5" variant="secondary">
-                  {record.typeLabel}
-                </Badge>
+              <TableCell className="px-4 py-4 text-muted-foreground">
+                {record.fileSize}
               </TableCell>
               <TableCell className="px-4 py-4 text-muted-foreground">
                 {record.sliceCount ?? "-"}
@@ -709,6 +761,221 @@ function KnowledgeRecordsTable({
         )}
       </TableBody>
     </Table>
+  );
+}
+
+function KnowledgeNameWithSummary({
+  onOpenDetail,
+  onShowSummary,
+  record,
+}: {
+  onOpenDetail: () => void;
+  onShowSummary: () => void;
+  record: KbDocViewItem;
+}) {
+  const canOpenDetail = record.status === "completed";
+  const [isSummaryPreviewOpen, setIsSummaryPreviewOpen] = useState(false);
+  const name = record.nameWithExtension;
+  const nameTitle = record.briefSummary ? undefined : name;
+  const nameContent = canOpenDetail ? (
+    <button
+      className="block max-w-full cursor-pointer truncate border-0 bg-transparent p-0 text-left font-medium text-foreground hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
+      onClick={onOpenDetail}
+      title={nameTitle}
+      type="button"
+    >
+      {name}
+    </button>
+  ) : (
+    <span className="block truncate text-foreground" title={nameTitle}>
+      {name}
+    </span>
+  );
+
+  if (!record.briefSummary) {
+    return nameContent;
+  }
+
+  return (
+    <HoverCard
+      closeDelay={120}
+      onOpenChange={setIsSummaryPreviewOpen}
+      open={isSummaryPreviewOpen}
+      openDelay={120}
+    >
+      <HoverCardTrigger asChild>
+        {nameContent}
+      </HoverCardTrigger>
+      <HoverCardContent
+        align="start"
+        aria-label={`${name} 摘要`}
+        className="w-[min(24rem,calc(100vw-2rem))] rounded-[10px] p-0 shadow-[0_16px_40px_var(--shadow-medium)]"
+        role="dialog"
+        side="right"
+        sideOffset={10}
+      >
+        <div className="space-y-3 p-4">
+          <div className="flex min-w-0 items-center gap-2">
+            <FileExtensionBadge className="size-6" extension={record.fileExtension} />
+            <p className="min-w-0 truncate text-[13px] font-semibold leading-5 text-foreground" title={name}>
+              {name}
+            </p>
+          </div>
+          <div className="border-t border-border" />
+          <div className="space-y-3">
+            <p className="text-[13px] leading-6 text-foreground">
+              <span className="mr-2 inline-flex h-6 items-center gap-1.5 rounded-[4px] bg-primary/8 px-2 align-top text-[13px] font-medium leading-6 text-primary">
+                <HugeiconsIcon
+                  aria-hidden
+                  color="currentColor"
+                  icon={AiMagicIcon}
+                  size={14}
+                  strokeWidth={1.8}
+                />
+                文章速览
+              </span>
+              {record.briefSummary}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {record.hasDocSummary ? (
+                <Button
+                  className="h-8 rounded-[6px] px-3 text-[13px]"
+                  onClick={() => {
+                    setIsSummaryPreviewOpen(false);
+                    onShowSummary();
+                  }}
+                  type="button"
+                  variant="secondary"
+                >
+                  <span>全文摘要</span>
+                </Button>
+              ) : null}
+              <Button
+                className="h-8 rounded-[6px] px-3 text-[13px]"
+                disabled={!canOpenDetail}
+                onClick={onOpenDetail}
+                type="button"
+                variant="secondary"
+              >
+                <span>切片详情</span>
+              </Button>
+            </div>
+          </div>
+        </div>
+      </HoverCardContent>
+    </HoverCard>
+  );
+}
+
+function KnowledgeDocSummarySheet({
+  error,
+  loading,
+  onOpenChange,
+  record,
+}: {
+  error: boolean;
+  loading: boolean;
+  onOpenChange: (open: boolean) => void;
+  record: KbDocViewItem | null;
+}) {
+  return (
+    <Sheet onOpenChange={onOpenChange} open={Boolean(record)}>
+      <SheetContent className="w-full overflow-hidden sm:max-w-[min(720px,calc(100vw-48px))]">
+        <SheetHeader className="border-b px-6 py-5">
+          <SheetTitle>全文摘要</SheetTitle>
+          <SheetDescription className="sr-only">
+            查看知识文档全文摘要
+          </SheetDescription>
+          {record ? (
+            <div className="mt-4 flex min-w-0 items-center gap-3 rounded-[10px] border border-border bg-background px-4 py-3">
+              <FileExtensionBadge className="size-8" extension={record.fileExtension} />
+              <span className="min-w-0 truncate text-sm font-medium text-foreground">
+                {record.nameWithExtension}
+              </span>
+            </div>
+          ) : null}
+        </SheetHeader>
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
+          {loading ? (
+            <div
+              className="flex min-h-[160px] items-center justify-center gap-2 text-sm text-muted-foreground"
+              role="status"
+            >
+              <Spinner aria-hidden="true" size={14} />
+              正在加载
+            </div>
+          ) : error ? (
+            <p className="text-sm text-muted-foreground">加载失败</p>
+          ) : record?.docSummary ? (
+            <KnowledgeMarkdown content={record.docSummary} />
+          ) : (
+            <p className="text-sm text-muted-foreground">暂无数据</p>
+          )}
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function KnowledgeMarkdown({ content }: { content: string }) {
+  if (!content.trim()) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        暂无数据
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-5 text-foreground">
+      <ReactMarkdown
+        components={{
+          a: ({ children, node: _node, ...props }) => (
+            <a
+              className="text-primary underline-offset-4 hover:underline"
+              rel="noreferrer"
+              target="_blank"
+              {...props}
+            >
+              {children}
+            </a>
+          ),
+          code: ({ children, node: _node, ...props }) => (
+            <code className="rounded bg-muted px-1 py-0.5 text-[0.92em]" {...props}>
+              {children}
+            </code>
+          ),
+          h1: ({ children }) => (
+            <h1 className="text-xl font-semibold leading-8 text-foreground">{children}</h1>
+          ),
+          h2: ({ children }) => (
+            <h2 className="text-lg font-semibold leading-8 text-foreground">{children}</h2>
+          ),
+          h3: ({ children }) => (
+            <h3 className="text-base font-semibold leading-7 text-foreground">{children}</h3>
+          ),
+          li: ({ children }) => <li className="pl-1">{children}</li>,
+          ol: ({ children }) => (
+            <ol className="ml-5 list-decimal space-y-2 text-sm leading-7">{children}</ol>
+          ),
+          p: ({ children }) => (
+            <p className="whitespace-pre-wrap text-sm leading-7 text-foreground">{children}</p>
+          ),
+          pre: ({ children }) => (
+            <pre className="overflow-x-auto rounded-[8px] bg-muted p-3 text-sm leading-6">
+              {children}
+            </pre>
+          ),
+          strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+          ul: ({ children }) => (
+            <ul className="ml-5 list-disc space-y-2 text-sm leading-7">{children}</ul>
+          ),
+        }}
+        remarkPlugins={[remarkGfm]}
+      >
+        {content}
+      </ReactMarkdown>
+    </div>
   );
 }
 

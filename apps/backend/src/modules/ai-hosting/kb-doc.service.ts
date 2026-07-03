@@ -7,7 +7,11 @@ import type {
   KbDocRetryResponse,
   KbDocUploadCredentialResponse,
 } from "@chatai/contracts";
-import { AI_HOSTING_KB_DOC_STORAGE_QUOTA_LIMIT } from "@chatai/contracts";
+import {
+  AI_HOSTING_KB_DOC_STORAGE_QUOTA_LIMIT,
+  formatKbDocFileSizeLimit,
+  getKbDocFileSizeLimit,
+} from "@chatai/contracts";
 import type { Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
 import { BadRequestError, NotFoundError } from "../../shared/errors.js";
@@ -314,6 +318,8 @@ export class KbDocService {
       throw new BadRequestError("INVALID_KB_DOC_NAME", "知识名称不能为空");
     }
 
+    assertKbDocFileSizeWithinLimit(normalizedSuffix, request.docSize);
+
     return normalizedSuffix;
   }
 
@@ -327,6 +333,8 @@ export class KbDocService {
     if (!request.name.trim()) {
       throw new BadRequestError("INVALID_KB_DOC_NAME", "知识名称不能为空");
     }
+
+    assertKbDocFileSizeWithinLimit(normalizedSuffix, request.docSize);
 
     return normalizedSuffix;
   }
@@ -395,4 +403,18 @@ export class KbDocService {
 
 function normalizeDocSuffix(value: string) {
   return value.trim().toLowerCase().replace(/^\./, "");
+}
+
+function assertKbDocFileSizeWithinLimit(docSuffix: string, docSize: number) {
+  const limit = getKbDocFileSizeLimit(docSuffix);
+
+  if (docSize > limit) {
+    throw new BadRequestError(
+      "KB_DOC_FILE_SIZE_EXCEEDED",
+      `文件大小不能超过 ${formatKbDocFileSizeLimit(limit)}`,
+      {
+        limit,
+      },
+    );
+  }
 }

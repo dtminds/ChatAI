@@ -63,6 +63,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { normalizeAvatarUrl } from "@/lib/avatar-url";
 import { cn } from "@/lib/utils";
 import {
   type InputEnterBehavior,
@@ -87,6 +88,7 @@ import { SphFeedMark } from "@/pages/chat/components/message/sphfeed";
 import {
   $insertComposerMention,
   $insertComposerText,
+  $exportComposerSegments,
   $removeComposerTextRange,
 } from "@/pages/chat/components/composer/lexical-utils";
 import { WechatEmojiPicker } from "@/pages/chat/components/wechat-emoji-picker";
@@ -539,7 +541,11 @@ export function ChatComposer({
       return;
     }
 
-    onSendDraft(segments);
+    let exportedSegments: ComposerSegment[] = [];
+    composerRef.current?.getEditorState().read(() => {
+      exportedSegments = $exportComposerSegments();
+    });
+    onSendDraft(exportedSegments);
   };
 
   const handleSegmentsChange = useCallback(
@@ -1217,7 +1223,7 @@ function MentionMemberAvatar({
         className="size-full object-cover"
         data-testid="mention-member-avatar"
         onError={() => setImageErrored(true)}
-        src={member.avatarUrl}
+        src={normalizeAvatarUrl(member.avatarUrl)}
       />
     </span>
   );

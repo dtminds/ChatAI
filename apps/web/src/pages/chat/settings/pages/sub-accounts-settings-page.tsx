@@ -39,7 +39,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -731,11 +731,7 @@ function SeatAvatar({
       title={seat.name}
     >
       {seat.avatarUrl ? (
-        <img
-          alt={seat.name}
-          className="absolute inset-0 size-full rounded-[inherit] object-cover"
-          src={seat.avatarUrl}
-        />
+        <AvatarImage alt={seat.name} src={seat.avatarUrl} />
       ) : null}
       <AvatarFallback className="rounded-full bg-primary/15 text-xs text-primary">
         {getSeatInitial(seat.name)}

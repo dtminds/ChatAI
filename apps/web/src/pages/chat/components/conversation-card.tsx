@@ -12,6 +12,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { AIHostingAvatarBadge } from "@/pages/chat/components/ai-hosting-avatar-badge";
+import { AvatarUnreadCountBadge } from "@/pages/chat/components/unread-count-badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -77,6 +78,7 @@ export function ConversationCard({
           ? "rounded-[8px] border-transparent bg-conversation-active text-conversation-active-foreground"
           : "border-divider/60 bg-surface hover:bg-conversation-hover",
       )}
+      data-testid={`conversation-card-${conversation.id}`}
     >
       <Button
         className="grid h-auto w-full min-w-0 cursor-pointer grid-cols-[auto_minmax(0,1fr)] items-center justify-normal gap-2.5 whitespace-normal rounded-none p-0 text-left text-sm outline-none hover:bg-transparent hover:text-inherit focus-visible:ring-2 focus-visible:ring-ring/20"
@@ -106,11 +108,11 @@ export function ConversationCard({
               />
             </AvatarFallback>
           </Avatar>
-          {conversation.unread > 0 ? (
-            <div className="absolute -right-1 -top-1 min-w-4 rounded-full bg-destructive px-1 py-0.5 text-center text-[10px] font-semibold leading-none text-destructive-foreground">
-              {conversation.unread}
-            </div>
-          ) : null}
+          <AvatarUnreadCountBadge
+            ariaLabel={`${conversation.customerName} 有 ${conversation.unread} 条未读消息`}
+            count={conversation.unread}
+            testId={`conversation-unread-count-${conversation.id}`}
+          />
           {isAIHostingEnabled ? (
             <AIHostingAvatarBadge />
           ) : null}

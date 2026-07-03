@@ -5,7 +5,7 @@ import type {
 } from "@chatai/contracts";
 import type { Insertable, Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
-import { BadRequestError, NotFoundError } from "../../shared/errors.js";
+import { BadRequestError, ForbiddenError, NotFoundError } from "../../shared/errors.js";
 import {
   type AgentRow,
   AiHostingAgentService,
@@ -36,6 +36,7 @@ type UserSeatAgentInsert = Insertable<Database["xy_wap_embed_user_seat_agent"]>;
 
 const dbActiveStatus = 1;
 const hostingSettingsSeatLimit = 200;
+const fullAutoAuthUnavailableMessage = "该功能内测中，如需开通请联系客服";
 
 export class AiHostingSettingsService {
   private readonly agentService: AiHostingAgentService;
@@ -59,6 +60,7 @@ export class AiHostingSettingsService {
         mapHostingSettingsAccount(seat, configsBySeatId.get(seat.id)),
       ),
       agents: agents.map(mapHostingSettingsAgent),
+      fullAutoAuthAvailable: isFullAutoAuthAvailable(scope.uid),
     };
   }
 
@@ -82,6 +84,7 @@ export class AiHostingSettingsService {
     await this.assertUserSeatsInScope(scope, userSeatIds);
 
     const currentConfigs = await this.listUserSeatAgentRows(scope, userSeatIds);
+    assertFullAutoAuthUpdateAllowed(scope.uid, payload, userSeatIds, currentConfigs);
     const existingSeatIds = new Set(currentConfigs.map((config) => config.user_seat_id));
     const insertRows: UserSeatAgentInsert[] = [];
     const updateSeatIds: number[] = [];
@@ -222,4 +225,36 @@ function mapHostingSettingsAgent(agent: AgentRow) {
     isPublished: isPublishedAgent(agent),
     name: agent.name,
   };
+}
+
+function assertFullAutoAuthUpdateAllowed(
+  uid: number,
+  payload: AiHostingSettingsUpdateRequest,
+  userSeatIds: number[],
+  currentConfigs: UserSeatAgentRow[],
+) {
+  if (!payload.fullAutoAuth || isFullAutoAuthAvailable(uid)) {
+    return;
+  }
+
+  const enabledSeatIds = new Set(
+    currentConfigs
+      .filter((config) => config.full_auto_auth === 1)
+      .map((config) => config.user_seat_id),
+  );
+
+  if (userSeatIds.some((userSeatId) => !enabledSeatIds.has(userSeatId))) {
+    throw new ForbiddenError(
+      "AI_HOSTING_FULL_AUTO_NOT_AVAILABLE",
+      fullAutoAuthUnavailableMessage,
+    );
+  }
+}
+
+function isFullAutoAuthAvailable(uid: number) {
+  return getFullAutoAuthAllowlist().has(uid);
+}
+
+function getFullAutoAuthAllowlist() {
+  return new Set(process.env.NODE_ENV === "production" ? [101] : [272]);
 }

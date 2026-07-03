@@ -1792,6 +1792,20 @@ export interface XyWapEmbedMsgAuditInfoExtend {
   update_time: Generated<Date>;
 }
 
+export interface XyWapEmbedAsyncOperation {
+  create_time: Generated<Date>;
+  fail_reason: string;
+  id: Generated<number>;
+  opt_no: string;
+  opt_params: string | null;
+  opt_type: number;
+  origin_op_type: string;
+  platform: Generated<number>;
+  status: Generated<number>;
+  uid: number;
+  update_time: Generated<Date>;
+}
+
 export interface XyWapEmbedSessionActionItem {
   /**
    * 行动项类型，当前固定follow_up：跟进
@@ -2619,9 +2633,11 @@ export interface XyWapEmbedAgentKbChunk {
 }
 
 export interface XyWapEmbedAgentKbDoc {
+  brief_summary: string | null;
   create_time: Generated<Date>;
   doc_process_time: Date | null;
   doc_size: Generated<number>;
+  doc_summary: string | null;
   doc_suffix: string;
   doc_type: number;
   doc_update_time: Date | null;
@@ -2646,6 +2662,7 @@ export interface XyWapEmbedAgentKbDoc {
 }
 
 export interface DB {
+  xy_wap_embed_async_operation: XyWapEmbedAsyncOperation;
   xy_wap_embed_analysis_run: XyWapEmbedAnalysisRun;
   xy_wap_embed_agent: XyWapEmbedAgent;
   xy_wap_embed_agent_history: XyWapEmbedAgentHistory;

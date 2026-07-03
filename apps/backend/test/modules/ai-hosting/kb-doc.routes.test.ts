@@ -221,6 +221,69 @@ describe("ai-hosting kb-doc routes", () => {
     fetchMock.mockRestore();
   });
 
+  it("rejects creating docs when the file exceeds the suffix size limit", async () => {
+    const fetchMock = mockJavaKbDocCreateFetch(3010);
+    const context = await createAuthenticatedApp();
+    app = context.app;
+
+    const response = await app.inject({
+      headers: { authorization: context.authorization },
+      method: "POST",
+      payload: {
+        chunkParams: { maxLength: 2000, strategy: "length" },
+        chunkStrategy: "length",
+        docSize: 200 * 1024 * 1024 + 1,
+        docSuffix: "pdf",
+        docUrl: "kb-docs/over-size.pdf",
+        kbId: "1",
+        name: "超大文档",
+        parseMode: "standard",
+      },
+      url: "/api/server/ai-hosting/kb-docs/create",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      error: {
+        code: "KB_DOC_FILE_SIZE_EXCEEDED",
+        message: "文件大小不能超过 200MB",
+      },
+      success: false,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    fetchMock.mockRestore();
+  });
+
+  it("rejects creating FAQ docs over the xlsx size limit", async () => {
+    const fetchMock = mockJavaKbDocCreateFetch(3011);
+    const context = await createAuthenticatedApp();
+    app = context.app;
+
+    const response = await app.inject({
+      headers: { authorization: context.authorization },
+      method: "POST",
+      payload: {
+        docSize: 100 * 1024 * 1024 + 1,
+        docSuffix: "faq.xlsx",
+        docUrl: "kb-docs/over-size.faq.xlsx",
+        kbId: "1",
+        name: "超大问答",
+      },
+      url: "/api/server/ai-hosting/kb-docs/create-faq",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      error: {
+        code: "KB_DOC_FILE_SIZE_EXCEEDED",
+        message: "文件大小不能超过 100MB",
+      },
+      success: false,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    fetchMock.mockRestore();
+  });
+
   it("creates image docs with the init strategy id", async () => {
     const fetchMock = mockJavaKbDocCreateFetch(3003);
     const context = await createAuthenticatedApp();

@@ -11,7 +11,9 @@ import {
   AiHostingModelListResponseSchema,
   AiHostingQuotaOverviewSchema,
   KbDocCreateRequestSchema,
+  KbDocDetailSchema,
   KbDocListResponseSchema,
+  getKbDocFileSizeLimit,
   KbCreateResponseSchema,
   KbListResponseSchema,
 } from "../src";
@@ -299,6 +301,17 @@ describe("AI hosting DTOs", () => {
     expect(Value.Check(KbDocCreateRequestSchema, { ...payload, docSize: undefined })).toBe(false);
   });
 
+  it("resolves per-suffix kb document file size limits", () => {
+    expect(getKbDocFileSizeLimit("pdf")).toBe(200 * 1024 * 1024);
+    expect(getKbDocFileSizeLimit(".DOCX")).toBe(200 * 1024 * 1024);
+    expect(getKbDocFileSizeLimit("ppt")).toBe(200 * 1024 * 1024);
+    expect(getKbDocFileSizeLimit("md")).toBe(10 * 1024 * 1024);
+    expect(getKbDocFileSizeLimit("txt")).toBe(10 * 1024 * 1024);
+    expect(getKbDocFileSizeLimit("xlsx")).toBe(100 * 1024 * 1024);
+    expect(getKbDocFileSizeLimit("faq.xlsx")).toBe(100 * 1024 * 1024);
+    expect(getKbDocFileSizeLimit("fallback")).toBe(10 * 1024 * 1024);
+  });
+
   it("keeps list responses separate from quota usage", () => {
     expect(
       Value.Check(KbListResponseSchema, {
@@ -340,6 +353,34 @@ describe("AI hosting DTOs", () => {
     ).toBe(false);
   });
 
+  it("returns summary preview fields for kb document lists", () => {
+    expect(
+      Value.Check(KbDocListResponseSchema, {
+        docs: [
+          {
+            briefSummary: "这是一份产品知识概览",
+            createdAt: "2026-06-18T15:22:22.000Z",
+            docId: "1001",
+            docSize: 4096,
+            docSuffix: "pdf",
+            hasDocSummary: true,
+            docType: "document",
+            kbId: "1",
+            name: "产品手册",
+            sliceCount: 20,
+            status: "completed",
+            updatedAt: "2026-06-20T15:22:22.000Z",
+          },
+        ],
+        pagination: {
+          page: 1,
+          pageSize: 10,
+          total: 1,
+        },
+      }),
+    ).toBe(true);
+  });
+
   it("returns ai hosting quota overview for sidebar display", () => {
     expect(
       Value.Check(AiHostingQuotaOverviewSchema, {
@@ -355,6 +396,44 @@ describe("AI hosting DTOs", () => {
           limit: 20,
           used: 3,
         },
+      }),
+    ).toBe(true);
+  });
+
+  it("returns full document summary only for kb document details", () => {
+    expect(
+      Value.Check(KbDocDetailSchema, {
+        briefSummary: "这是一份产品知识概览",
+        createdAt: "2026-06-18T15:22:22.000Z",
+        docId: "1001",
+        docSize: 4096,
+        docSuffix: "pdf",
+        docSummary: "## 文档概览\n\n- 核心内容",
+        docType: "document",
+        hasDocSummary: true,
+        kbId: "1",
+        name: "产品手册",
+        sliceCount: 20,
+        status: "completed",
+        updatedAt: "2026-06-20T15:22:22.000Z",
+        volcDocId: "volc-doc-1",
+      }),
+    ).toBe(true);
+
+    expect(
+      Value.Check(KbDocDetailSchema, {
+        createdAt: "2026-06-18T15:22:22.000Z",
+        docId: "1002",
+        docSize: 2048,
+        docSuffix: "png",
+        docType: "image",
+        hasDocSummary: false,
+        kbId: "1",
+        name: "产品宣传图",
+        previewImageUrl: "https://b5.bokr.com.cn/kb-images/demo.png",
+        sliceCount: 1,
+        status: "completed",
+        updatedAt: "2026-06-20T15:22:22.000Z",
       }),
     ).toBe(true);
   });

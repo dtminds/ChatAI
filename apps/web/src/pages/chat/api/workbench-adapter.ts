@@ -63,6 +63,8 @@ export function adaptAccount(dto: WorkbenchSeatDto, unreadCount = dto.unreadCoun
     phone: dto.phone,
     semiAutoAuth: dto.semiAutoAuth,
     semiAutoSwitch: dto.semiAutoSwitch,
+    groupUnreadCount: dto.groupUnreadCount,
+    singleUnreadCount: dto.singleUnreadCount,
     takenOverEmployeeId: dto.hostSubUserId,
     tone: buildAccountTone(dto.seatId),
     unreadCount,

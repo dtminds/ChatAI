@@ -12,11 +12,18 @@ type QueryExecutionEvent = {
 };
 
 type KbReadDbMockOptions = {
+  agents?: Array<{
+    id: number;
+    prompt_config: string;
+    status?: number;
+    uid?: number;
+  }>;
   beforeExecute?: (event: QueryExecutionEvent) => Promise<void> | void;
   docSizeBytes?: number[];
   deletedDocCount?: number;
   deletedKbCount?: number;
   includeFaqDoc?: boolean;
+  includeSecondKbWithoutDocs?: boolean;
   totalDocCount?: number;
   totalKbCount?: number;
 };
@@ -65,6 +72,10 @@ function matchesColumn(
   return true;
 }
 
+function mysqlDatetime(value: string) {
+  return new Date(`${value.replace(" ", "T")}+08:00`);
+}
+
 export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
   const subUser = {
     id: 101,
@@ -73,7 +84,7 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
 
   const kbs = [
     {
-      create_time: new Date("2026-06-19T14:02:22.000Z"),
+      create_time: mysqlDatetime("2026-06-19 14:02:22"),
       id: 1,
       last_operator_id: 1,
       name: "华为产品知识",
@@ -81,12 +92,25 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
       remark: "华为各系列产品规格、功能与常见问题",
       status: 1,
       uid: 9001,
-      update_time: new Date("2026-06-20T14:02:22.000Z"),
+      update_time: mysqlDatetime("2026-06-20 14:02:22"),
     },
   ];
+  if (options.includeSecondKbWithoutDocs) {
+    kbs.push({
+      create_time: mysqlDatetime("2026-06-19 14:02:22"),
+      id: 2,
+      last_operator_id: 1,
+      name: "空知识库",
+      operator_id: 1,
+      remark: "无文档知识库",
+      status: 1,
+      uid: 9001,
+      update_time: mysqlDatetime("2026-06-20 14:02:22"),
+    });
+  }
   for (let index = kbs.length; index < (options.totalKbCount ?? kbs.length); index += 1) {
     kbs.push({
-      create_time: new Date("2026-06-19T14:02:22.000Z"),
+      create_time: mysqlDatetime("2026-06-19 14:02:22"),
       id: index + 1,
       last_operator_id: 1,
       name: `配额测试知识库${index + 1}`,
@@ -94,12 +118,12 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
       remark: "配额测试",
       status: 1,
       uid: 9001,
-      update_time: new Date("2026-06-20T14:02:22.000Z"),
+      update_time: mysqlDatetime("2026-06-20 14:02:22"),
     });
   }
   for (let index = 0; index < (options.deletedKbCount ?? 0); index += 1) {
     kbs.push({
-      create_time: new Date("2026-06-19T14:02:22.000Z"),
+      create_time: mysqlDatetime("2026-06-19 14:02:22"),
       id: 100 + index,
       last_operator_id: 1,
       name: `已删除知识库${index + 1}`,
@@ -107,15 +131,17 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
       remark: "配额测试",
       status: 0,
       uid: 9001,
-      update_time: new Date("2026-06-20T14:02:22.000Z"),
+      update_time: mysqlDatetime("2026-06-20 14:02:22"),
     });
   }
 
   const docs = [
     {
-      create_time: new Date("2026-06-18T15:22:22.000Z"),
+      brief_summary: "覆盖产品规格、售后政策和常见咨询场景",
+      create_time: mysqlDatetime("2026-06-18 15:22:22"),
       doc_process_time: null,
       doc_size: options.docSizeBytes?.[0] ?? 12 * 1024 * 1024,
+      doc_summary: "## 文档概览\n\n- 产品规格\n- 售后政策",
       doc_suffix: "doc",
       doc_type: 2,
       doc_update_time: null,
@@ -133,15 +159,17 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
       sync_status: 0,
       tokens: null,
       uid: 9001,
-      update_time: new Date("2026-06-20T15:22:22.000Z"),
+      update_time: mysqlDatetime("2026-06-20 15:22:22"),
       volc_doc_id: "volc-doc-1",
       volc_resource_id: null,
       volc_strategy_resource_id: null,
     },
     {
-      create_time: new Date("2026-06-18T12:00:00.000Z"),
+      brief_summary: null,
+      create_time: mysqlDatetime("2026-06-18 12:00:00"),
       doc_process_time: null,
       doc_size: options.docSizeBytes?.[1] ?? 8 * 1024 * 1024,
+      doc_summary: null,
       doc_suffix: "png",
       doc_type: 3,
       doc_update_time: null,
@@ -159,14 +187,17 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
       sync_status: 0,
       tokens: null,
       uid: 9001,
-      update_time: new Date("2026-06-19T12:00:00.000Z"),
+      update_time: mysqlDatetime("2026-06-19 12:00:00"),
       volc_doc_id: "volc-doc-2",
       volc_resource_id: null,
       volc_strategy_resource_id: null,
     },
     {
-      create_time: new Date("2026-06-16T15:22:22.000Z"),
+      brief_summary: null,
+      create_time: mysqlDatetime("2026-06-16 15:22:22"),
       doc_process_time: null,
+      doc_size: 1024,
+      doc_summary: null,
       doc_suffix: "txt",
       doc_type: 2,
       doc_update_time: null,
@@ -184,7 +215,7 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
       sync_status: 1,
       tokens: null,
       uid: 9001,
-      update_time: new Date("2026-06-16T15:22:22.000Z"),
+      update_time: mysqlDatetime("2026-06-16 15:22:22"),
       volc_doc_id: "volc-doc-3",
       volc_resource_id: null,
       volc_strategy_resource_id: null,
@@ -192,9 +223,11 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
   ];
   if (options.includeFaqDoc) {
     docs.push({
-      create_time: new Date("2026-06-16T15:22:22.000Z"),
+      brief_summary: null,
+      create_time: mysqlDatetime("2026-06-16 15:22:22"),
       doc_process_time: null,
       doc_size: 1024,
+      doc_summary: null,
       doc_suffix: "faq",
       doc_type: 1,
       doc_update_time: null,
@@ -212,7 +245,7 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
       sync_status: 0,
       tokens: null,
       uid: 9001,
-      update_time: new Date("2026-06-16T15:22:22.000Z"),
+      update_time: mysqlDatetime("2026-06-16 15:22:22"),
       volc_doc_id: "volc-doc-4",
       volc_resource_id: null,
       volc_strategy_resource_id: null,
@@ -220,9 +253,11 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
   }
   for (let index = docs.length; index < (options.totalDocCount ?? docs.length); index += 1) {
     docs.push({
-      create_time: new Date("2026-06-18T15:22:22.000Z"),
+      brief_summary: null,
+      create_time: mysqlDatetime("2026-06-18 15:22:22"),
       doc_process_time: null,
       doc_size: options.docSizeBytes?.[index] ?? 1024 * 1024,
+      doc_summary: null,
       doc_suffix: "doc",
       doc_type: 2,
       doc_update_time: null,
@@ -240,7 +275,7 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
       sync_status: 0,
       tokens: null,
       uid: 9001,
-      update_time: new Date("2026-06-20T15:22:22.000Z"),
+      update_time: mysqlDatetime("2026-06-20 15:22:22"),
       volc_doc_id: `volc-doc-quota-${index}`,
       volc_resource_id: null,
       volc_strategy_resource_id: null,
@@ -248,9 +283,11 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
   }
   for (let index = 0; index < (options.deletedDocCount ?? 0); index += 1) {
     docs.push({
-      create_time: new Date("2026-06-18T15:22:22.000Z"),
+      brief_summary: null,
+      create_time: mysqlDatetime("2026-06-18 15:22:22"),
       doc_process_time: null,
       doc_size: 1024 * 1024,
+      doc_summary: null,
       doc_suffix: "doc",
       doc_type: 2,
       doc_update_time: null,
@@ -268,17 +305,24 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
       sync_status: 0,
       tokens: null,
       uid: 9001,
-      update_time: new Date("2026-06-20T15:22:22.000Z"),
+      update_time: mysqlDatetime("2026-06-20 15:22:22"),
       volc_doc_id: `volc-doc-deleted-${index}`,
       volc_resource_id: null,
       volc_strategy_resource_id: null,
     });
   }
 
+  const agents = (options.agents ?? []).map((agent) => ({
+    id: agent.id,
+    prompt_config: agent.prompt_config,
+    status: agent.status ?? 1,
+    uid: agent.uid ?? 9001,
+  }));
+
   const chunks = [
     {
       content: "切片正文",
-      create_time: new Date("2026-06-18T15:22:22.000Z"),
+      create_time: mysqlDatetime("2026-06-18 15:22:22"),
       description: null,
       doc_id: 1001,
       html_content: null,
@@ -295,14 +339,14 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
       tokens: null,
       type: "text",
       uid: 9001,
-      update_time: new Date("2026-06-18T15:22:22.000Z"),
+      update_time: mysqlDatetime("2026-06-18 15:22:22"),
       volc_chunk_id: null,
       volc_doc_id: null,
       volc_resource_id: null,
     },
     {
       content: "系统切片正文",
-      create_time: new Date("2026-06-18T15:22:22.000Z"),
+      create_time: mysqlDatetime("2026-06-18 15:22:22"),
       description: null,
       doc_id: 1001,
       html_content: null,
@@ -319,7 +363,7 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
       tokens: null,
       type: "text",
       uid: 9001,
-      update_time: new Date("2026-06-18T15:22:22.000Z"),
+      update_time: mysqlDatetime("2026-06-18 15:22:22"),
       volc_chunk_id: null,
       volc_doc_id: null,
       volc_resource_id: null,
@@ -420,9 +464,15 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
           return rows;
         }
 
-        return rows.map((row) =>
-          Object.fromEntries(selectedColumns.map((column) => [column, row[column]])),
-        );
+        return rows.map((row) => {
+          const projected = Object.fromEntries(selectedColumns.map((column) => [column, row[column]]));
+
+          if (selectedColumns.includes("has_doc_summary")) {
+            projected.has_doc_summary = String(row.doc_summary ?? "").trim() ? 1 : 0;
+          }
+
+          return projected;
+        });
       };
 
       const builder = {
@@ -434,6 +484,8 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
             rows = filterRows(docs);
           } else if (table === "xy_wap_embed_agent_kb_chunk") {
             rows = filterRows(chunks);
+          } else if (table === "xy_wap_embed_agent") {
+            rows = filterRows(agents);
           }
 
           return { total: rows.length };
@@ -467,6 +519,10 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
             return projectRows(filterRows(chunks));
           }
 
+          if (table === "xy_wap_embed_agent") {
+            return projectRows(filterRows(agents));
+          }
+
           return [];
         },
         executeTakeFirst: async () => {
@@ -498,7 +554,10 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
             return builder.countResult();
           }
 
-          if (selectedColumns.includes("doc_size_sum")) {
+          if (
+            selectedColumns.includes("doc_size_sum")
+            || selectedColumns.includes("used")
+          ) {
             return builder.sumDocSizeResult();
           }
 
@@ -529,10 +588,15 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
 
           if (Array.isArray(selection)) {
             selectedAll = false;
-            selectedColumns = selection.map(String);
+            selectedColumns = [...selectedColumns, ...selection.map(String)];
           } else if (table === "xy_wap_embed_agent_kb_doc" && typeof selection === "object") {
             selectedAll = false;
-            selectedColumns = ["doc_size_sum"];
+            selectedColumns = [
+              ...selectedColumns,
+              typeof (selection as { alias?: unknown }).alias === "string"
+                ? (selection as { alias: string }).alias
+                : "doc_size_sum",
+            ];
           }
 
           return builder;

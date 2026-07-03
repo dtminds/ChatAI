@@ -1,5 +1,9 @@
 import type { Sheet } from "read-excel-file/browser";
 import { useEffect, useRef, useState } from "react";
+import {
+  formatKbDocFileSizeLimit,
+  getKbDocFileSizeLimit,
+} from "@chatai/contracts";
 import { AlertCircleIcon, Download01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { toast } from "sonner";
@@ -23,7 +27,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { isRequestError } from "@/lib/request";
-import { getAiHostingQuota } from "@/pages/chat/ai-hosting/agent-service";
+import { fetchAiHostingQuota } from "@/pages/chat/ai-hosting/ai-hosting-quota-store";
 import { importKbQaDoc, getKbQaDocSuffix } from "@/pages/chat/ai-hosting/api/kb-doc-service";
 import {
   AI_HOSTING_KB_DOC_STORAGE_QUOTA_REACHED_MESSAGE,
@@ -135,7 +139,7 @@ export function ImportQaDialog({
       }
 
       try {
-        const quota = await getAiHostingQuota();
+        const quota = await fetchAiHostingQuota({ force: true });
 
         if (!isMountedRef.current) {
           return;
@@ -223,6 +227,17 @@ export function ImportQaDialog({
       }
 
       setFileError("仅支持 .faq.xlsx 文件");
+      setIsCheckingFile(false);
+      return;
+    }
+
+    const fileSizeLimit = getKbDocFileSizeLimit("faq.xlsx");
+    if (file.size > fileSizeLimit) {
+      if (!isCurrentValidation(validationId)) {
+        return;
+      }
+
+      setFileError(`文件大小不能超过 ${formatKbDocFileSizeLimit(fileSizeLimit)}`);
       setIsCheckingFile(false);
       return;
     }

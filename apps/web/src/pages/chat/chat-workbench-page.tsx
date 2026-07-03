@@ -267,6 +267,7 @@ function ChatWorkbenchContent({
     deleteConversation,
     dismissFullAutoActionError,
     groupMembersLoadingByConversationId,
+    hasMoreUnreadByScope,
     groupMembersByConversationId,
     dismissScopeTransitionError,
     dismissReadReceiptError,
@@ -282,6 +283,7 @@ function ChatWorkbenchContent({
     initializeWorkbench,
     isConversationLoading,
     loadActiveGroupMembers,
+    loadUnreadConversations,
     loadOlderMessages,
     refreshSeatSummaries,
     markConversationRead,
@@ -355,6 +357,7 @@ function ChatWorkbenchContent({
       groupMembersByConversationId: state.groupMembersByConversationId,
       groupMembersLoadingByConversationId:
         state.groupMembersLoadingByConversationId,
+      hasMoreUnreadByScope: state.hasMoreUnreadByScope,
       hasMoreHistoryByConversationId: state.hasMoreHistoryByConversationId,
       historyPanelByConversationId: state.historyPanelByConversationId,
       historyPanelErrorByConversationId:
@@ -374,6 +377,7 @@ function ChatWorkbenchContent({
       initializeWorkbench: state.initializeWorkbench,
       isConversationLoading: state.isConversationLoading,
       loadActiveGroupMembers: state.loadActiveGroupMembers,
+      loadUnreadConversations: state.loadUnreadConversations,
       loadHistoryMessages: state.loadHistoryMessages,
       loadOlderMessages: state.loadOlderMessages,
       markConversationRead: state.markConversationRead,
@@ -873,6 +877,24 @@ function ChatWorkbenchContent({
     currentConversationView,
     resolvedConversationView,
     setConversationView,
+  ]);
+
+  useEffect(() => {
+    if (
+      !activeAccountId ||
+      resolvedConversationView !== "unread" ||
+      isConversationLoading
+    ) {
+      return;
+    }
+
+    void loadUnreadConversations(activeMode);
+  }, [
+    activeAccountId,
+    activeMode,
+    isConversationLoading,
+    loadUnreadConversations,
+    resolvedConversationView,
   ]);
 
   useEffect(() => {
@@ -1396,11 +1418,12 @@ function ChatWorkbenchContent({
     const sendConversationId = activeConversation?.id;
     const normalizedSegments = segments.length > 0 ? segments : [];
     const mentionState = extractComposerMentionState(segments);
+    const hasMention = mentionState.memberIds.length > 0 || mentionState.mentionAll;
     const mention =
-      mentionState.memberIds.length > 0 || mentionState.mentionAll
+      hasMention
         ? {
             all: mentionState.mentionAll || undefined,
-            location: "start" as const,
+            location: mentionState.mentionAll ? "start" as const : "any" as const,
             memberIds: mentionState.memberIds,
           }
         : undefined;
@@ -2063,12 +2086,18 @@ function ChatWorkbenchContent({
                   onMarkConversationRead={handleMarkConversationRead}
                   onMarkConversationUnread={handleMarkConversationUnread}
                   onPinConversation={pinConversation}
+                  onRefreshUnreadConversations={loadUnreadConversations}
                   onSelectConversation={handleSelectConversation}
                   onSelectMode={handleSelectMode}
                   onSelectView={handleSelectConversationView}
                   onUnpinConversation={unpinConversation}
                   retainedConversationIds={activeViewRetainedConversationIds}
                   searchableConversations={visibleSearchableConversations}
+                  hasMoreUnreadByMode={hasMoreUnreadByScope[activeAccountId]}
+                  unreadCountByMode={{
+                    group: activeAccount?.groupUnreadCount,
+                    single: activeAccount?.singleUnreadCount,
+                  }}
                 />
 
                 <ChatPanel

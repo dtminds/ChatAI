@@ -24,8 +24,18 @@ import { toast } from "sonner";
 import { AgentConditionalLogicField } from "./agent-components/agent-conditional-logic-field";
 import { AgentSettingsPublishDialog } from "./agent-components/agent-settings-publish-dialog";
 import { AgentSettingsRestoreDialog } from "./agent-components/agent-settings-restore-dialog";
-import { AgentGenerateGradientButton } from "./agent-generate-gradient-button";
+// 先注释按钮，不要删除。智能生成入口隐藏期间保留 import 位置。
+// import { AgentGenerateGradientButton } from "./agent-generate-gradient-button";
 import { AgentSettingsGenerateDialog } from "./agent-settings-generate-dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -90,7 +100,7 @@ import {
 } from "./agent-components/agent-settings.constants";
 import { AgentModelBadge } from "./agent-model-badge";
 import { canManageAiHostingAgents } from "./agent-permissions";
-import { AiHostingLayout } from "./ai-hosting-layout";
+import { AiHostingLayout, notifyAiHostingQuotaChanged } from "./ai-hosting-layout";
 import { aiHostingSettingsModuleSurface } from "./ai-hosting-palette";
 
 type PreviewMessage = {
@@ -106,6 +116,11 @@ type ModelOption = {
   label: string;
   model: string;
 };
+
+type OperationErrorDialogState = {
+  message: string;
+  title: string;
+} | null;
 
 const agentSettingsModuleSurfaceClassName = "rounded-[12px] border border-border bg-card shadow-xs";
 
@@ -134,6 +149,8 @@ export function AgentSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [operationErrorDialog, setOperationErrorDialog] =
+    useState<OperationErrorDialogState>(null);
   const hasUnpublishedDraft = Boolean(agentDetail?.hasUnpublishedChanges);
   const hasPublishedVersion = Boolean(agentDetail?.publishedAt);
   const canManage = canManageAiHostingAgents(role);
@@ -159,7 +176,6 @@ export function AgentSettingsPage() {
   );
   const selectedModel = modelOptions.find((option) => option.id === form.model);
 
-  const previewTitle = form.name.trim() || "美妆小助手";
   const pageTitle = isEditing ? (agentDetail?.name || form.name || "Agent") : "创建 Agent";
 
   useEffect(() => {
@@ -213,6 +229,13 @@ export function AgentSettingsPage() {
     setForm((current) => ({ ...current, [key]: value }));
   }
 
+  function showOperationError(title: string, error: unknown, fallback: string) {
+    setOperationErrorDialog({
+      message: isRequestError(error) ? error.message : fallback,
+      title,
+    });
+  }
+
   function applyCommunicationStyleTemplate(value: AgentToneStyle) {
     if (!canManage) {
       return;
@@ -231,7 +254,7 @@ export function AgentSettingsPage() {
     }));
   }
 
-  async function handleSave() {
+  async function handleSave({ silentSuccess = false }: { silentSuccess?: boolean } = {}) {
     if (!canManage) {
       return null;
     }
@@ -252,10 +275,13 @@ export function AgentSettingsPage() {
 
         setAgentDetail(saved);
         setForm(mapAgentDetailToForm(saved));
+        if (!silentSuccess) {
+          toast.success("保存成功");
+        }
 
         return saved;
       } catch (error) {
-        setErrorMessage(isRequestError(error) ? error.message : "保存 Agent 失败");
+        showOperationError("保存 Agent 失败", error, "保存 Agent 失败");
         return null;
       } finally {
         setSubmitting(false);
@@ -279,10 +305,11 @@ export function AgentSettingsPage() {
       setForm(mapAgentDetailToForm(saved));
       setCreatedDraftAgentId(saved.id);
       setCreatedDraftDialogOpen(true);
+      notifyAiHostingQuotaChanged();
 
       return saved;
     } catch (error) {
-      setErrorMessage(isRequestError(error) ? error.message : "保存 Agent 失败");
+      showOperationError("保存 Agent 失败", error, "保存 Agent 失败");
       return null;
     } finally {
       setSubmitting(false);
@@ -294,7 +321,7 @@ export function AgentSettingsPage() {
       return;
     }
 
-    const saved = await handleSave();
+    const saved = await handleSave({ silentSuccess: true });
 
     if (!saved) {
       return;
@@ -308,8 +335,10 @@ export function AgentSettingsPage() {
       setAgentDetail(published);
       setForm(mapAgentDetailToForm(published));
       setPublishDialogOpen(false);
+      toast.success("发布成功");
     } catch (error) {
-      setErrorMessage(isRequestError(error) ? error.message : "发布 Agent 失败");
+      setPublishDialogOpen(false);
+      showOperationError("发布 Agent 失败", error, "发布 Agent 失败");
     } finally {
       setSubmitting(false);
     }
@@ -330,8 +359,10 @@ export function AgentSettingsPage() {
       setCreatedDraftDialogOpen(false);
       setCreatedDraftAgentId(null);
       navigate(`/chat/ai-hosting/agents/${published.id}`, { replace: true });
+      toast.success("发布成功");
     } catch (error) {
-      setErrorMessage(isRequestError(error) ? error.message : "发布 Agent 失败");
+      setCreatedDraftDialogOpen(false);
+      showOperationError("发布 Agent 失败", error, "发布 Agent 失败");
     } finally {
       setSubmitting(false);
     }
@@ -373,7 +404,8 @@ export function AgentSettingsPage() {
       setForm(mapAgentDetailToForm(renamed));
       setRenameDialogOpen(false);
     } catch (error) {
-      setErrorMessage(isRequestError(error) ? error.message : "保存 Agent 名称失败");
+      setRenameDialogOpen(false);
+      showOperationError("保存 Agent 名称失败", error, "保存 Agent 名称失败");
     } finally {
       setSubmitting(false);
     }
@@ -393,7 +425,8 @@ export function AgentSettingsPage() {
       setForm(mapAgentDetailToForm(restored));
       setRestoreDialogOpen(false);
     } catch (error) {
-      setErrorMessage(isRequestError(error) ? error.message : "还原正式版失败");
+      setRestoreDialogOpen(false);
+      showOperationError("还原正式版失败", error, "还原正式版失败");
     } finally {
       setSubmitting(false);
     }
@@ -578,13 +611,23 @@ export function AgentSettingsPage() {
 
           {canManage ? (
             <div className="flex flex-wrap items-center gap-2">
-              <Button disabled={submitting || loading} onClick={handleSave} type="button" variant="outline">
+              <Button
+                disabled={submitting || loading}
+                onClick={() => {
+                  void handleSave();
+                }}
+                type="button"
+                variant="outline"
+              >
                 {submitting ? <ButtonSpinner label="保存中" /> : null}
                 保存
               </Button>
-              <AgentGenerateGradientButton onClick={() => setGenerateDialogOpen(true)}>
-                智能生成
-              </AgentGenerateGradientButton>
+              {/*
+                先注释按钮，不要删除。智能生成暂未接实际生成逻辑，入口先隐藏。
+                <AgentGenerateGradientButton onClick={() => setGenerateDialogOpen(true)}>
+                  智能生成
+                </AgentGenerateGradientButton>
+              */}
               {isEditing ? (
                 <Button
                   disabled={submitting || loading || !canPublish}
@@ -633,6 +676,25 @@ export function AgentSettingsPage() {
           onOpenChange={setGenerateDialogOpen}
           open={generateDialogOpen}
         />
+
+        <AlertDialog
+          onOpenChange={(open) => {
+            if (!open) {
+              setOperationErrorDialog(null);
+            }
+          }}
+          open={operationErrorDialog !== null}
+        >
+          <AlertDialogContent size="sm">
+            <AlertDialogHeader>
+              <AlertDialogTitle>{operationErrorDialog?.title}</AlertDialogTitle>
+              <AlertDialogDescription>{operationErrorDialog?.message}</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogAction>知道了</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         {errorMessage ? (
           <p className="text-sm text-destructive" role="alert">
@@ -795,7 +857,6 @@ export function AgentSettingsPage() {
             onInputChange={setPreviewInput}
             onSend={handlePreviewSend}
             testing={previewTesting}
-            title={previewTitle}
           />
         </div>
       </div>
@@ -974,7 +1035,6 @@ function AgentPreviewPanel({
   onInputChange,
   onSend,
   testing,
-  title,
 }: {
   inputValue: string;
   messages: PreviewMessage[];
@@ -983,7 +1043,6 @@ function AgentPreviewPanel({
   onInputChange: (value: string) => void;
   onSend: () => void | Promise<void>;
   testing: boolean;
-  title: string;
 }) {
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const messageViewportRef = useRef<HTMLDivElement | null>(null);
@@ -1021,10 +1080,7 @@ function AgentPreviewPanel({
             <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-[8px] bg-background text-primary shadow-xs">
               <HugeiconsIcon icon={AiChat02Icon} size={16} strokeWidth={1.8} />
             </span>
-            <h2 className="truncate text-base font-semibold text-foreground">{title}</h2>
-            <span className="rounded-[6px] bg-background px-2 py-1 text-xs text-muted-foreground">
-              模拟测试
-            </span>
+            <h2 className="truncate text-base font-semibold text-foreground">模拟测试</h2>
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <Button

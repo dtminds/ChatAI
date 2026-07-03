@@ -1,5 +1,6 @@
 import type {
   WorkbenchPollRequest,
+  WorkbenchRetryMessageRequest,
   WorkbenchSendMessagePayload,
   WorkbenchGetOrCreateConversationRequestDto,
   WorkbenchSmartReplyAttachmentsRequest,
@@ -56,6 +57,7 @@ const ConversationListQuerySchema = Type.Object({
   limit: Type.Optional(NumericStringSchema),
   mode: Type.Optional(Type.Union([Type.Literal("single"), Type.Literal("group")])),
   seatId: Type.Optional(Type.String()),
+  unread_only: Type.Optional(Type.Union([Type.Literal("0"), Type.Literal("1")])),
 });
 
 const ConversationParamsSchema = Type.Object({
@@ -133,6 +135,11 @@ const MessageChatRecordQuerySchema = Type.Object({
 
 const MessageRevokeBodySchema = Type.Object({
   conversationId: Type.String(),
+});
+
+const MessageRetryBodySchema = Type.Object({
+  conversationId: Type.String(),
+  messageSeq: Type.Integer({ minimum: 1 }),
 });
 
 const MessageDownloadStatusBodySchema = Type.Object({
@@ -255,10 +262,15 @@ const SendMessageBodySchema = Type.Object({
   mention: Type.Optional(
     Type.Object({
       all: Type.Optional(Type.Boolean()),
-      location: Type.Union([Type.Literal("start"), Type.Literal("end")]),
+      location: Type.Union([
+        Type.Literal("start"),
+        Type.Literal("end"),
+        Type.Literal("any"),
+      ]),
       memberIds: Type.Array(Type.String()),
     }),
   ),
+  atOriginText: Type.Optional(Type.String()),
   quote: Type.Optional(
     Type.Object({
       quoteMsgId: Type.String(),
@@ -855,6 +867,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
           cursor: request.query.cursor,
           limit: parseOptionalInteger(request.query.limit),
           mode: request.query.mode,
+          unreadOnly: request.query.unread_only === "1",
         },
       );
     },
@@ -1914,6 +1927,23 @@ export async function registerChatRoutes(app: FastifyInstance) {
       return getWorkbenchService(app, request).sendMessage(
         getSubUserId(request),
         request.body satisfies WorkbenchSendMessagePayload,
+      );
+    },
+  );
+
+  app.post<{ Body: Static<typeof MessageRetryBodySchema> }>(
+    "/api/server/messages/retry",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: MessageRetryBodySchema,
+      },
+    },
+    async (request) => {
+      assertChatSendAccess(request);
+      return getWorkbenchService(app, request).retryMessage(
+        getSubUserId(request),
+        request.body satisfies WorkbenchRetryMessageRequest,
       );
     },
   );

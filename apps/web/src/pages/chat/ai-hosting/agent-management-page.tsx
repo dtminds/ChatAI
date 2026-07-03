@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { AiHostingAgentListItem } from "@chatai/contracts";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { Add01Icon, Book04Icon, Search01Icon } from "@hugeicons/core-free-icons";
+import { Add01Icon, AiBookIcon, Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   AlertDialog,
@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Table,
@@ -35,22 +35,17 @@ import { isRequestError } from "@/lib/request";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth-store";
 import {
-  getAiHostingQuota,
   listAiHostingAgents,
   removeAiHostingAgent,
 } from "./agent-service";
 import { AgentModelBadge } from "./agent-model-badge";
-import {
-  AgentOverviewSection,
-  type AgentMetric,
-  type AgentStatsPeriod,
-} from "./agent-management-overview";
 import { canManageAiHostingAgents } from "./agent-permissions";
 import {
   AiHostingLayout,
   AiHostingPageHeader,
   notifyAiHostingQuotaChanged,
 } from "./ai-hosting-layout";
+import { fetchAiHostingQuota } from "./ai-hosting-quota-store";
 import {
   AI_HOSTING_AGENT_QUOTA_REACHED_MESSAGE,
   AI_HOSTING_QUOTA_CHECK_FAILED_MESSAGE,
@@ -61,20 +56,12 @@ type AgentRecord = AiHostingAgentListItem;
 
 const AGENT_PAGE_SIZE = 10;
 const MAX_INLINE_KB_COUNT = 2;
+const MAX_INLINE_KB_NAME_LENGTH = 10;
 const agentKnowledgeBaseChipClassName =
   "inline-flex h-[22px] min-w-0 max-w-full items-center truncate rounded-[6px] bg-primary/10 px-1.5 text-[13px] font-normal leading-[22px] text-primary";
 
-const emptyAgentMetrics: AgentMetric[] = [
-  { key: "totalSessions", label: "会话总数", value: 0, changePercent: 0 },
-  { key: "aiIndependentSessions", label: "AI 独立接待会话数", value: 0, changePercent: 0 },
-  { key: "totalMessages", label: "发送消息总数", value: 0, changePercent: 0 },
-  { key: "aiMessages", label: "AI 发送消息数", value: 0, changePercent: 0 },
-  { key: "humanMessages", label: "人工发送消息数", value: 0, changePercent: 0 },
-];
-
 export function AgentManagementPage() {
   const role = useAuthStore((state) => state.subUser?.role);
-  const [statsPeriod, setStatsPeriod] = useState<AgentStatsPeriod>("today");
   const [agents, setAgents] = useState<AgentRecord[]>([]);
   const [agentSearchQuery, setAgentSearchQuery] = useState("");
   const [debouncedAgentSearchQuery, setDebouncedAgentSearchQuery] = useState("");
@@ -82,13 +69,13 @@ export function AgentManagementPage() {
   const [totalAgents, setTotalAgents] = useState(0);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
+  const [removeErrorMessage, setRemoveErrorMessage] = useState("");
   const [removeTarget, setRemoveTarget] = useState<AgentRecord | null>(null);
   const [removing, setRemoving] = useState(false);
   const [checkingQuota, setCheckingQuota] = useState(false);
   const navigate = useNavigate();
   const canManage = canManageAiHostingAgents(role);
 
-  const metrics = emptyAgentMetrics;
   const { activePage, totalPages } = resolveTablePagination({
     page: currentPage,
     pageSize: AGENT_PAGE_SIZE,
@@ -165,7 +152,8 @@ export function AgentManagementPage() {
       setTotalAgents(response.pagination.total);
       notifyAiHostingQuotaChanged();
     } catch (error) {
-      setErrorMessage(isRequestError(error) ? error.message : "删除 Agent 失败");
+      setRemoveTarget(null);
+      setRemoveErrorMessage(isRequestError(error) ? error.message : "删除 Agent 失败");
     } finally {
       setRemoving(false);
     }
@@ -179,7 +167,7 @@ export function AgentManagementPage() {
     setCheckingQuota(true);
 
     try {
-      const quota = await getAiHostingQuota();
+      const quota = await fetchAiHostingQuota({ force: true });
 
       if (quota && isQuotaReached(quota.agents)) {
         toast.error(AI_HOSTING_AGENT_QUOTA_REACHED_MESSAGE);
@@ -198,17 +186,9 @@ export function AgentManagementPage() {
     <AiHostingLayout title="Agent 管理">
       <div className="space-y-6">
         <AiHostingPageHeader
-          actions={
-            <Button className="h-9 rounded-[8px] px-3 text-sm" type="button" variant="outline">
-              <HugeiconsIcon icon={Book04Icon} size={16} strokeWidth={1.8} />
-              <span>帮助手册</span>
-            </Button>
-          }
           description="创建和管理负责客户接待的智能体"
           title="Agent 管理"
         />
-
-        <AgentOverviewSection metrics={metrics} onPeriodChange={setStatsPeriod} period={statsPeriod} />
 
         <section aria-label="Agent 列表区块">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -291,9 +271,28 @@ export function AgentManagementPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={removing}>取消</AlertDialogCancel>
-            <AlertDialogAction disabled={removing} onClick={handleRemoveConfirm}>
-              确认
+            <AlertDialogAction disabled={removing} onClick={handleRemoveConfirm} variant="destructive">
+              确认删除
             </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        onOpenChange={(open) => {
+          if (!open) {
+            setRemoveErrorMessage("");
+          }
+        }}
+        open={Boolean(removeErrorMessage)}
+      >
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>删除 Agent 失败</AlertDialogTitle>
+            <AlertDialogDescription>{removeErrorMessage}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction>知道了</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -430,11 +429,15 @@ function AgentKnowledgeBasePreview({
   const content = (
     <div className="flex max-w-full min-w-0 flex-wrap items-center gap-1.5">
       {visibleKbList.map((kb) => (
-        <AgentKnowledgeBaseChip key={kb.id} name={kb.name} />
+        <AgentKnowledgeBaseChip
+          key={kb.id}
+          name={formatInlineKnowledgeBaseName(kb.name)}
+          to={getKnowledgeBaseDetailPath(kb.id)}
+        />
       ))}
       {hasOverflow ? (
         <span className="shrink-0 text-sm text-muted-foreground">
-          等 {kbList.length} 个知识库
+          等 {kbList.length} 个
         </span>
       ) : null}
     </div>
@@ -446,20 +449,19 @@ function AgentKnowledgeBasePreview({
 
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
-      <PopoverTrigger asChild>
-        <Button
+      <PopoverAnchor asChild>
+        <div
           aria-label={`查看 ${agentName} 的全部关联知识库`}
-          className="h-auto min-w-0 max-w-full justify-start whitespace-normal p-0 text-left font-normal hover:bg-transparent"
+          className="min-w-0 max-w-full"
           onBlur={scheduleClosePopover}
           onFocus={openPopover}
           onMouseEnter={openPopover}
           onMouseLeave={scheduleClosePopover}
-          type="button"
-          variant="ghost"
+          role="group"
         >
           {content}
-        </Button>
-      </PopoverTrigger>
+        </div>
+      </PopoverAnchor>
       <AgentKnowledgeBasePopoverContent
         kbList={kbList}
         onCloseRequest={scheduleClosePopover}
@@ -481,26 +483,32 @@ function AgentKnowledgeBasePopoverContent({
   return (
     <PopoverContent
       align="start"
-      className="w-[20rem] p-3"
+      className="w-[18rem] p-2.5"
       onBlur={onCloseRequest}
       onCloseAutoFocus={(event) => event.preventDefault()}
       onFocus={onOpenRequest}
       onMouseEnter={onOpenRequest}
       onMouseLeave={onCloseRequest}
     >
-      <div className="space-y-3">
-        <div className="flex items-center justify-between gap-3 px-2.5">
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-3 px-1.5">
           <p className="text-sm font-medium text-foreground">关联知识库 · {kbList.length}</p>
         </div>
-        <ScrollArea className="max-h-[16rem]" data-testid="agent-kb-popover-scroll">
-          <div className="space-y-1 pr-2">
-            {kbList.map((kb) => (
-              <div
-                className="flex min-h-10 items-center rounded-[8px] px-2.5 py-2"
+        <ScrollArea
+          className="max-h-[12rem]"
+          data-testid="agent-kb-popover-scroll"
+          viewportProps={{
+            className: "[&>div]:!block [&>div]:!min-w-0 [&>div]:!w-full",
+          }}
+        >
+          <div className="w-full min-w-0 space-y-1 pr-1">
+            {kbList.map((kb, index) => (
+              <AgentKnowledgeBasePopoverItem
+                dataTestId={`agent-kb-popover-item-${index + 1}`}
                 key={kb.id}
-              >
-                <AgentKnowledgeBaseChip className="max-w-full" name={kb.name} />
-              </div>
+                name={kb.name}
+                to={getKnowledgeBaseDetailPath(kb.id)}
+              />
             ))}
           </div>
         </ScrollArea>
@@ -509,16 +517,83 @@ function AgentKnowledgeBasePopoverContent({
   );
 }
 
-function AgentKnowledgeBaseChip({
-  className,
+function AgentKnowledgeBasePopoverItem({
+  dataTestId,
   name,
+  to,
 }: {
-  className?: string;
+  dataTestId?: string;
   name: string;
+  to: string;
 }) {
   return (
-    <span className={cn(agentKnowledgeBaseChipClassName, className)}>
-      <span className="truncate">{name}</span>
+    <Link
+      className="flex h-9 w-full min-w-0 items-center gap-2 rounded-[8px] px-2 text-sm text-foreground outline-none transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:ring-2 focus-visible:ring-ring/30"
+      data-testid={dataTestId}
+      title={name}
+      to={to}
+    >
+      <span
+        aria-hidden="true"
+        className="inline-flex size-5 shrink-0 items-center justify-center rounded-[6px] bg-primary/10 text-primary"
+        title="知识库图标"
+      >
+        <HugeiconsIcon
+          aria-hidden="true"
+          icon={AiBookIcon}
+          size={13}
+          strokeWidth={1.8}
+        />
+      </span>
+      <span className="min-w-0 flex-1 truncate">{name}</span>
+    </Link>
+  );
+}
+
+function AgentKnowledgeBaseChip({
+  className,
+  dataTestId,
+  name,
+  title,
+  to,
+}: {
+  className?: string;
+  dataTestId?: string;
+  name: string;
+  title?: string;
+  to?: string;
+}) {
+  const content = (
+    <span className="min-w-0 flex-1 truncate" title={title}>
+      {name}
     </span>
   );
+
+  if (to) {
+    return (
+      <Link
+        className={cn(agentKnowledgeBaseChipClassName, className)}
+        data-testid={dataTestId}
+        to={to}
+      >
+        {content}
+      </Link>
+    );
+  }
+
+  return (
+    <span className={cn(agentKnowledgeBaseChipClassName, className)} data-testid={dataTestId}>
+      {content}
+    </span>
+  );
+}
+
+function formatInlineKnowledgeBaseName(name: string) {
+  return name.length > MAX_INLINE_KB_NAME_LENGTH
+    ? `${name.slice(0, MAX_INLINE_KB_NAME_LENGTH)}..`
+    : name;
+}
+
+function getKnowledgeBaseDetailPath(kbId: string) {
+  return `/chat/ai-hosting/kb/${kbId}`;
 }

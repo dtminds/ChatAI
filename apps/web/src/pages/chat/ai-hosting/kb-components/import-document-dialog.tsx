@@ -1,4 +1,8 @@
 import { useEffect, useRef, useState } from "react";
+import {
+  formatKbDocFileSizeLimit,
+  getKbDocFileSizeLimit,
+} from "@chatai/contracts";
 import { AlertCircleIcon, ThumbsUpIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { toast } from "sonner";
@@ -22,9 +26,18 @@ import {
   FileUploadDropzone,
   FileUploadSelectedFile,
 } from "@/components/ui/file-upload";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Progress } from "@/components/ui/progress";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { isRequestError } from "@/lib/request";
-import { getAiHostingQuota } from "@/pages/chat/ai-hosting/agent-service";
+import { fetchAiHostingQuota } from "@/pages/chat/ai-hosting/ai-hosting-quota-store";
 import { importKbDoc } from "@/pages/chat/ai-hosting/api/kb-doc-service";
 import {
   AI_HOSTING_KB_DOC_STORAGE_QUOTA_REACHED_MESSAGE,
@@ -97,6 +110,13 @@ const SUPPORTED_DOCUMENT_EXTENSIONS = new Set([
   "md",
   "txt",
 ]);
+const DOCUMENT_FILE_SIZE_LIMIT_ROWS = [
+  { extensions: ".pdf", suffix: "pdf" },
+  { extensions: ".doc / .docx", suffix: "doc" },
+  { extensions: ".ppt / .pptx", suffix: "ppt" },
+  { extensions: ".md", suffix: "md" },
+  { extensions: ".txt", suffix: "txt" },
+] as const;
 
 export function ImportDocumentDialog({
   kbId,
@@ -160,6 +180,13 @@ export function ImportDocumentDialog({
       return;
     }
 
+    const fileSizeLimit = getKbDocFileSizeLimit(getFileExtension(file.name));
+    if (file.size > fileSizeLimit) {
+      setSelectedFile(null);
+      setFileError(`文件大小不能超过 ${formatKbDocFileSizeLimit(fileSizeLimit)}`);
+      return;
+    }
+
     setSelectedFile(file);
     setFileError("");
 
@@ -187,7 +214,7 @@ export function ImportDocumentDialog({
       setUploadProgress(0);
 
       try {
-        const quota = await getAiHostingQuota();
+        const quota = await fetchAiHostingQuota({ force: true });
 
         if (wouldExceedQuota(quota.kbDocs, selectedFile.size)) {
           toast.error(AI_HOSTING_KB_DOC_STORAGE_QUOTA_REACHED_MESSAGE);
@@ -260,8 +287,11 @@ export function ImportDocumentDialog({
           event.preventDefault();
         }}
       >
-        <DialogHeader>
-          <DialogTitle>导入文档</DialogTitle>
+        <DialogHeader className="space-y-0 text-left">
+          <div className="flex min-w-0 items-start justify-between gap-4">
+            <DialogTitle>导入文档</DialogTitle>
+            <DocumentFileSizeLimitPopover />
+          </div>
           <DialogDescription className="sr-only">
             上传文档并配置解析模式和切片策略
           </DialogDescription>
@@ -412,6 +442,57 @@ export function ImportDocumentDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function DocumentFileSizeLimitPopover() {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          className="h-auto shrink-0 px-0 text-xs font-normal"
+          type="button"
+          variant="link"
+        >
+          文件大小限制
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
+        className="w-[360px] p-0"
+        side="bottom"
+        sideOffset={10}
+      >
+        <Table aria-label="文档文件大小限制" className="table-fixed text-sm">
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
+              <TableHead className="h-11 px-4 text-sm font-medium text-foreground">
+                文档格式
+              </TableHead>
+              <TableHead className="h-11 px-4 text-sm font-medium text-foreground">
+                大小限制
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {DOCUMENT_FILE_SIZE_LIMIT_ROWS.map((row) => {
+              const limit = getKbDocFileSizeLimit(row.suffix);
+
+              return (
+                <TableRow className="hover:bg-transparent" key={row.extensions}>
+                  <TableCell className="px-4 py-3 text-muted-foreground">
+                    {row.extensions}
+                  </TableCell>
+                  <TableCell className="px-4 py-3 text-muted-foreground">
+                    {formatKbDocFileSizeLimit(limit)}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </PopoverContent>
+    </Popover>
   );
 }
 

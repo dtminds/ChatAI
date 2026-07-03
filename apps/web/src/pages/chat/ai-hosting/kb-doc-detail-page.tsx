@@ -148,9 +148,7 @@ export function KbDocDetailPage() {
       }
 
       setChunks(
-        response.chunks.map((chunk) =>
-          toKbDocChunkViewItem(chunk, doc.type, { docUrl: doc.docUrl }),
-        ),
+        response.chunks.map((chunk) => toKbDocChunkViewItem(chunk, doc.type)),
       );
       setTotal(response.pagination.total);
     } catch {
@@ -374,7 +372,7 @@ export function KbDocDetailPage() {
 
   if (!loadingPage && doc && doc.status !== "completed") {
     return (
-      <AiHostingLayout title={doc.name}>
+      <AiHostingLayout title={doc.nameWithExtension}>
         <div className="space-y-6">
           <BackToKnowledgeListButton kbId={knowledgeBase?.id ?? doc.kbId} />
           <div className="py-16 text-center">
@@ -389,7 +387,7 @@ export function KbDocDetailPage() {
   const chunkSearchField = resolveChunkSearchField(doc?.type);
 
   return (
-    <AiHostingLayout title={doc?.name ?? "文档"}>
+    <AiHostingLayout title={doc?.nameWithExtension ?? "文档"}>
       <div className="space-y-6">
         <div aria-label="文档切片头部" className="space-y-3">
           <BackToKnowledgeListButton
@@ -398,7 +396,7 @@ export function KbDocDetailPage() {
           />
           <AiHostingPageHeader
             title={doc ? <KnowledgeDocTitle doc={doc} /> : "文档"}
-            titleAriaLabel={doc?.name ?? "文档"}
+            titleAriaLabel={doc?.nameWithExtension ?? "文档"}
           />
         </div>
 
@@ -454,6 +452,7 @@ export function KbDocDetailPage() {
                 ) : (
                   <KnowledgeDocumentChunkCards
                     chunks={chunks}
+                    itemStartIndex={(activePage - 1) * pageSize}
                     loading={loadingPage || loadingChunks}
                     onDelete={setDeleteChunk}
                     onEdit={setEditChunk}
@@ -540,12 +539,24 @@ function KnowledgeDocTitle({ doc }: { doc: KbDocViewItem }) {
         className="size-7"
         extension={doc.fileExtension}
       />
-      <span className="min-w-0 truncate">{doc.name}</span>
+      <span className="min-w-0 truncate">{doc.nameWithExtension}</span>
       <Badge className="rounded-[6px] px-2 py-0.5 text-xs" variant="secondary">
-        {doc.typeLabel}
+        {getKnowledgeDocTitleTypeLabel(doc)}
       </Badge>
     </span>
   );
+}
+
+function getKnowledgeDocTitleTypeLabel(doc: KbDocViewItem) {
+  if (doc.type === "qa") {
+    return "FAQ";
+  }
+
+  if (doc.type === "image") {
+    return "图片";
+  }
+
+  return doc.fileExtension === "txt" || doc.fileExtension === "md" ? "纯文本" : "文件";
 }
 
 function AddChunkActions({
@@ -576,6 +587,10 @@ function AddChunkActions({
       <span>添加切片</span>
     </Button>
   );
+}
+
+function resolveChunkDisplayId(chunk: KbDocChunkViewItem) {
+  return chunk.displayChunkId || chunk.volcChunkId || chunk.id;
 }
 
 function KnowledgeChunksTable({
@@ -611,8 +626,13 @@ function KnowledgeChunksTable({
         ) : chunks.length > 0 ? (
           chunks.map((chunk) => (
             <TableRow key={chunk.id}>
-              <TableCell className="px-4 py-4 text-muted-foreground">
-                <TableOverflowTooltip tooltip={chunk.id}>{chunk.id}</TableOverflowTooltip>
+              <TableCell className="px-4 py-4">
+                <TableOverflowTooltip
+                  className="inline-block rounded-[6px] bg-muted px-3 py-1.5 text-xs font-semibold leading-none text-foreground"
+                  tooltip={resolveChunkDisplayId(chunk)}
+                >
+                  {resolveChunkDisplayId(chunk)}
+                </TableOverflowTooltip>
               </TableCell>
               <TableCell className="px-4 py-4">
                 <TableOverflowTooltip
@@ -670,11 +690,13 @@ function KnowledgeChunksTable({
 
 function KnowledgeDocumentChunkCards({
   chunks,
+  itemStartIndex,
   loading,
   onDelete,
   onEdit,
 }: {
   chunks: KbDocChunkViewItem[];
+  itemStartIndex: number;
   loading: boolean;
   onDelete: (chunk: KbDocChunkViewItem) => void;
   onEdit: (chunk: KbDocChunkViewItem) => void;
@@ -701,9 +723,10 @@ function KnowledgeDocumentChunkCards({
 
   return (
     <ul aria-label="切片列表" className="grid gap-4 lg:grid-cols-2" role="list">
-      {chunks.map((chunk) => (
+      {chunks.map((chunk, index) => (
         <KnowledgeDocumentChunkCard
           chunk={chunk}
+          displayIndex={itemStartIndex + index + 1}
           key={chunk.id}
           onDelete={onDelete}
           onEdit={onEdit}
@@ -715,27 +738,27 @@ function KnowledgeDocumentChunkCards({
 
 function KnowledgeDocumentChunkCard({
   chunk,
+  displayIndex,
   onDelete,
   onEdit,
 }: {
   chunk: KbDocChunkViewItem;
+  displayIndex: number;
   onDelete: (chunk: KbDocChunkViewItem) => void;
   onEdit: (chunk: KbDocChunkViewItem) => void;
 }) {
   const title = chunk.title?.trim() ?? "";
   const content = chunk.content ?? "";
   const characterCount = `${title}${content}`.length;
-  const displayChunkId = chunk.displayChunkId || chunk.volcChunkId || chunk.id;
+  const displayChunkId = resolveChunkDisplayId(chunk);
 
   return (
     <li className="group flex h-[204px] flex-col overflow-hidden rounded-[14px] border border-border/80 bg-card px-4 py-3.5 transition-shadow hover:shadow-[0_10px_24px_var(--shadow-soft)]">
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
-          {chunk.displayChunkIndex ? (
-            <span className="shrink-0 rounded-[6px] bg-muted px-3 py-1.5 text-xs font-semibold leading-none text-foreground">
-              #{chunk.displayChunkIndex}
-            </span>
-          ) : null}
+          <span className="shrink-0 rounded-[6px] bg-muted px-3 py-1.5 text-xs font-semibold leading-none text-foreground">
+            #{displayIndex}
+          </span>
           <span className="min-w-0 truncate rounded-[6px] bg-muted px-3 py-1.5 text-xs font-semibold leading-none text-foreground">
             ID {displayChunkId}
           </span>

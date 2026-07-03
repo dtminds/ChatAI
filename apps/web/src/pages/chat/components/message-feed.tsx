@@ -145,9 +145,13 @@ export function ChatMessageList({
   smartReplyByMessageId,
   smartReplyPendingByMessageId,
 }: ChatMessageListProps) {
+  const renderableMessages = useMemo(
+    () => messages.filter((message): message is Message => Boolean(message)),
+    [messages],
+  );
   const items = useMemo(
-    () => buildFeedItems(messages, showTimeDividers),
-    [messages, showTimeDividers],
+    () => buildFeedItems(renderableMessages, showTimeDividers),
+    [renderableMessages, showTimeDividers],
   );
   const previousConversationIdRef = useRef<string | null>(null);
   const previousTailMessageKeyRef = useRef<string | null>(null);
@@ -160,17 +164,17 @@ export function ChatMessageList({
   const previousTailMessageKey = previousTailMessageKeyRef.current;
   const isSameConversation = previousConversationId === conversationId;
   const appendStartIndex = getAppendStartIndex(
-    messages,
+    renderableMessages,
     isSameConversation ? previousTailMessageKey : null,
   );
   const hasAppendedMessages =
     isSameConversation &&
     appendStartIndex >= 0 &&
-    appendStartIndex < messages.length;
+    appendStartIndex < renderableMessages.length;
   const activeAppendAnimation = activeAppendAnimationRef.current;
   const shouldAnimateMessageByKey = new Map<string, boolean>();
 
-  messages.forEach((message, index) => {
+  renderableMessages.forEach((message, index) => {
     shouldAnimateMessageByKey.set(
       getMessageFeedItemKey(message),
       Boolean(message.isNew) &&
@@ -217,13 +221,15 @@ export function ChatMessageList({
 
     previousConversationIdRef.current = conversationId;
     previousTailMessageKeyRef.current =
-      messages.length > 0 ? getMessageFeedItemKey(messages[messages.length - 1]) : null;
+      renderableMessages.length > 0
+        ? getMessageFeedItemKey(renderableMessages[renderableMessages.length - 1])
+        : null;
   }, [
     appendStartIndex,
     conversationId,
     hasAppendedMessages,
     isSameConversation,
-    messages,
+    renderableMessages,
   ]);
 
   useEffect(() => {
@@ -984,7 +990,11 @@ function MessageInlineStatusSlot({
   }
 
   if (state === "failed") {
-    const canRetry = canRetryMessage && Boolean(onRetryMessage) && !isRetryingMessage;
+    const canRetry =
+      canRetryMessage &&
+      Boolean(onRetryMessage) &&
+      !isRetryingMessage &&
+      canRetryFailedMessage(message);
 
     return (
       <div
@@ -1045,6 +1055,18 @@ function MessageInlineStatusSlot({
   }
 
   return null;
+}
+
+function canRetryFailedMessage(message: ChatMessage) {
+  return (
+    isValidMessageSeq(message.seq) &&
+    (
+      message.content.type === "text" ||
+      message.content.type === "quote" ||
+      message.content.type === "image" ||
+      message.content.type === "file"
+    )
+  );
 }
 
 function MessageRevokedState() {

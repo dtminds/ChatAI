@@ -76,6 +76,7 @@ function mockAuthenticatedSession(role = "admin") {
 
 describe("Chat settings pages", () => {
   beforeAll(async () => {
+    installLoadedImageMock();
     await Promise.all([
       import("@/pages/chat/chat-workbench-page"),
       import("@/pages/chat/settings/chat-settings-page"),
@@ -1575,6 +1576,24 @@ describe("Chat settings pages", () => {
     expect(screen.getByText("启用后会优先沿用最近一次服务关系。")).toBeInTheDocument();
   });
 });
+
+function installLoadedImageMock() {
+  class LoadedImageMock extends EventTarget {
+    crossOrigin: string | null = null;
+    referrerPolicy = "";
+    src = "";
+
+    get complete() {
+      return true;
+    }
+
+    get naturalWidth() {
+      return 1;
+    }
+  }
+
+  vi.stubGlobal("Image", LoadedImageMock);
+}
 
 function setSystemColorScheme(matches: boolean) {
   let currentMatches = matches;

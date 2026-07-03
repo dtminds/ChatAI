@@ -64,6 +64,7 @@ import {
   type WorkbenchSmartReplyTextModerationResponse,
   type WorkbenchRevokeMessageRequest,
   type WorkbenchRevokeMessageResponse,
+  type WorkbenchRetryMessageRequest,
   type WorkbenchVoicePlaybackConfirmRequest,
   type WorkbenchVoicePlaybackConfirmResponse,
   type WorkbenchVoiceTranscriptionRequest,
@@ -144,6 +145,7 @@ export type WorkbenchConversationListOptions = {
   cursor?: string;
   limit?: number;
   mode?: ChatMode;
+  unreadOnly?: boolean;
 };
 
 export type WorkbenchService = {
@@ -268,6 +270,9 @@ export type WorkbenchService = {
     request: WorkbenchSmartHeartbeatRequest,
   ) => Promise<WorkbenchSmartHeartbeatResponse>;
   sendMessage: (payload: WorkbenchSendMessagePayload) => Promise<WorkbenchSendMessageResponse>;
+  retryMessage: (
+    request: WorkbenchRetryMessageRequest,
+  ) => Promise<WorkbenchSendMessageResponse>;
   takeOverSeat: (seatId: string) => Promise<WorkbenchTakeOverSeatResponse>;
   unpinConversation: (conversationId: string) => Promise<WorkbenchConversationUnpinResponse>;
   search: (seatId: string, keyword: string) => Promise<WorkbenchSearchResponseDto>;
@@ -483,15 +488,19 @@ export function createMockWorkbenchService(): WorkbenchService {
       const conversations = state.conversationsByAccount[seatId] ?? [];
       const snapshotAt = Date.now();
       state.version = Math.max(state.version, snapshotAt);
+      const filteredConversations = sortConversations(conversations)
+        .filter((conversation) => options?.mode == null || conversation.mode === options.mode)
+        .filter((conversation) => !options?.unreadOnly || conversation.unreadCount > 0);
 
       return {
-        hasMore: false,
+        hasMore: filteredConversations.length > (options?.limit ?? filteredConversations.length),
         items: clone(
-          sortConversations(conversations)
-            .filter((conversation) => options?.mode == null || conversation.mode === options.mode)
-            .slice(0, options?.limit),
+          filteredConversations.slice(0, options?.limit),
         ),
         snapshotAt,
+        unreadSummary: options?.unreadOnly
+          ? getAccountUnreadSummary(state, seatId)
+          : undefined,
       };
     },
     async getMe() {
@@ -1882,6 +1891,24 @@ export function createMockWorkbenchService(): WorkbenchService {
         status: "accepted",
       };
     },
+    async retryMessage(request) {
+      const message = findMessageByIdOrSeq(
+        state,
+        request.conversationId,
+        undefined,
+        request.messageSeq,
+      );
+
+      if (!message) {
+        throw new Error("重发失败");
+      }
+
+      const retryOptNo = buildMockOptNo(state.nextId++);
+      return {
+        optNo: retryOptNo,
+        status: "accepted",
+      };
+    },
     async takeOverSeat(seatId) {
       const seat = findAccount(state, seatId);
 
@@ -1982,6 +2009,7 @@ export function createHttpWorkbenchService(): WorkbenchService {
           limit: options?.limit,
           mode: options?.mode,
           seatId,
+          unread_only: options?.unreadOnly ? "1" : undefined,
         },
       });
     },
@@ -2505,6 +2533,12 @@ export function createHttpWorkbenchService(): WorkbenchService {
       return http.post<WorkbenchSendMessageResponse, WorkbenchSendMessagePayload>(
         "/server/messages/send",
         payload,
+      );
+    },
+    retryMessage(request) {
+      return http.post<WorkbenchSendMessageResponse, WorkbenchRetryMessageRequest>(
+        "/server/messages/retry",
+        request,
       );
     },
     takeOverSeat(seatId) {
@@ -3503,6 +3537,33 @@ function setAccountUnreadCount(
   }
 
   seat.unreadCount = unreadCount;
+  seat.singleUnreadCount = getModeUnreadCountValue(state, seatId, "single");
+  seat.groupUnreadCount = getModeUnreadCountValue(state, seatId, "group");
+}
+
+function getModeUnreadCountValue(
+  state: MockState,
+  seatId: string,
+  mode: ChatMode,
+) {
+  return (state.conversationsByAccount[seatId] ?? []).reduce(
+    (total, conversation) =>
+      conversation.mode === mode
+        ? total + Math.max(0, conversation.unreadCount)
+        : total,
+    0,
+  );
+}
+
+function getAccountUnreadSummary(state: MockState, seatId: string) {
+  const single = getModeUnreadCountValue(state, seatId, "single");
+  const group = getModeUnreadCountValue(state, seatId, "group");
+
+  return {
+    group,
+    single,
+    total: single + group,
+  };
 }
 
 function syncAccountLastMessageTime(state: MockState, seatId: string) {

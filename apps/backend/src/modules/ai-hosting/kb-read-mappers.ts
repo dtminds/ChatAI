@@ -42,10 +42,11 @@ type KbListRow = Pick<
 
 type KbDocListRow = Pick<
   Selectable<XyWapEmbedAgentKbDoc>,
+  | "brief_summary"
   | "create_time"
+  | "doc_size"
   | "doc_suffix"
   | "doc_type"
-  | "doc_url"
   | "id"
   | "kb_id"
   | "name"
@@ -54,10 +55,12 @@ type KbDocListRow = Pick<
   | "sync_error_msg"
   | "sync_status"
   | "update_time"
->;
+> & {
+  has_doc_summary?: number | string | boolean | null;
+};
 
 type KbDocDetailRow = KbDocListRow &
-  Pick<Selectable<XyWapEmbedAgentKbDoc>, "volc_doc_id">;
+  Pick<Selectable<XyWapEmbedAgentKbDoc>, "doc_summary" | "doc_url" | "volc_doc_id">;
 
 export function mapKbListItem(row: KbListRow): KbListItem {
   return {
@@ -74,12 +77,14 @@ export function mapKbDocListItem(row: KbDocListRow): KbDocListItem {
   const statusMessage = truncateStatusMessage(row.sync_error_msg);
 
   return {
+    briefSummary: normalizeOptionalText(row.brief_summary),
     createdAt: toIsoString(row.create_time),
     description: row.remark ?? undefined,
     docId: String(row.id),
+    docSize: Number(row.doc_size ?? 0),
     docSuffix: row.doc_suffix,
+    hasDocSummary: Boolean(Number(row.has_doc_summary ?? 0)),
     docType: mapDocType(row.doc_type),
-    docUrl: row.doc_url,
     kbId: String(row.kb_id),
     name: row.name,
     sliceCount: row.point_num,
@@ -89,9 +94,21 @@ export function mapKbDocListItem(row: KbDocListRow): KbDocListItem {
   };
 }
 
+function normalizeOptionalText(value: string | null | undefined) {
+  const normalized = value?.trim();
+
+  return normalized ? normalized : undefined;
+}
+
 export function mapKbDocDetail(row: KbDocDetailRow): KbDocDetail {
+  const docType = mapDocType(row.doc_type);
+
   return {
     ...mapKbDocListItem(row),
+    docSummary: normalizeOptionalText(row.doc_summary),
+    hasDocSummary: Boolean(normalizeOptionalText(row.doc_summary)),
+    previewImageUrl:
+      docType === "image" ? normalizeOptionalText(normalizeMediaAssetUrl(row.doc_url)) : undefined,
     volcDocId: row.volc_doc_id ?? undefined,
   };
 }
@@ -304,29 +321,6 @@ function truncateStatusMessage(message: string | null | undefined) {
   return `${trimmed.slice(0, STATUS_MESSAGE_MAX_LENGTH)}…`;
 }
 
-const SHANGHAI_UTC_OFFSET = "+08:00";
-
-function pad2(value: number) {
-  return String(value).padStart(2, "0");
-}
-
-function mysqlDatetimeToIso(value: string) {
-  const trimmed = value.trim();
-  const match = trimmed.match(
-    /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})(?:\.\d+)?$/,
-  );
-
-  if (!match) {
-    return null;
-  }
-
-  const [, year, month, day, hour, minute, second] = match;
-
-  return new Date(
-    `${year}-${month}-${day}T${hour}:${minute}:${second}${SHANGHAI_UTC_OFFSET}`,
-  ).toISOString();
-}
-
 function toIsoString(value: Date | number | string | null | undefined) {
   if (value == null) {
     return new Date(0).toISOString();
@@ -340,12 +334,8 @@ function toIsoString(value: Date | number | string | null | undefined) {
     return new Date(value).toISOString();
   }
 
-  const mysqlIso = mysqlDatetimeToIso(value);
-
-  if (mysqlIso) {
-    return mysqlIso;
-  }
-
+  // Database DATETIME timezone semantics are handled by mysql2 at the connection layer.
+  // String inputs here are only a generic non-DB fallback.
   const parsed = new Date(value);
 
   if (Number.isNaN(parsed.getTime())) {

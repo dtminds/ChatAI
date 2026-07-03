@@ -11,6 +11,20 @@ describe("KB read routes", () => {
   });
 
   it("creates a kb for the current tenant", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: 88,
+          error: 0,
+          errorMsg: "",
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
     const context = await createAuthenticatedKbApp();
     app = context.app;
 
@@ -27,10 +41,176 @@ describe("KB read routes", () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({
       data: {
-        kbId: "2",
+        kbId: "88",
       },
       success: true,
     });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "https://java.internal/third-internal/wap-embed-agent-kb/create",
+    );
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+      headers: expect.objectContaining({
+        "content-type": "application/json",
+      }),
+      method: "POST",
+    });
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      name: "新品培训知识",
+      operatorId: "101",
+      remark: "用于新品上市培训",
+      uid: 9001,
+    });
+    fetchMock.mockRestore();
+  });
+
+  it("updates a kb for the current tenant", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: true,
+          error: 0,
+          errorMsg: "",
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+    const context = await createAuthenticatedKbApp();
+    app = context.app;
+
+    const response = await app.inject({
+      headers: { authorization: context.authorization },
+      method: "POST",
+      payload: {
+        description: "更新后的描述",
+        name: "更新后的知识库",
+      },
+      url: "/api/server/ai-hosting/kbs/1/update",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      data: {
+        updated: true,
+      },
+      success: true,
+    });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "https://java.internal/third-internal/wap-embed-agent-kb/update",
+    );
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+      headers: expect.objectContaining({
+        "content-type": "application/json",
+      }),
+      method: "POST",
+    });
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      id: 1,
+      lastOperatorId: "101",
+      name: "更新后的知识库",
+      remark: "更新后的描述",
+      uid: 9001,
+    });
+    fetchMock.mockRestore();
+  });
+
+  it("reports when a kb still has documents before delete", async () => {
+    const context = await createAuthenticatedKbApp();
+    app = context.app;
+
+    const response = await app.inject({
+      headers: { authorization: context.authorization },
+      method: "GET",
+      url: "/api/server/ai-hosting/kbs/1/delete-check",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      data: {
+        hasDocuments: true,
+        linkedAgentCount: 0,
+      },
+      success: true,
+    });
+  });
+
+  it("rejects deleting a kb that still has documents", async () => {
+    const context = await createAuthenticatedKbApp();
+    app = context.app;
+
+    const response = await app.inject({
+      headers: { authorization: context.authorization },
+      method: "POST",
+      url: "/api/server/ai-hosting/kbs/1/delete",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      error: {
+        code: "KB_DELETE_HAS_DOCUMENTS",
+        message: "请先删除所有文档后，再删除知识库",
+      },
+      success: false,
+    });
+  });
+
+  it("deletes an empty kb through the Java internal API", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: true,
+          error: 0,
+          errorMsg: "",
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+    const context = await createAuthenticatedKbApp({ includeSecondKbWithoutDocs: true });
+    app = context.app;
+
+    const checkResponse = await app.inject({
+      headers: { authorization: context.authorization },
+      method: "GET",
+      url: "/api/server/ai-hosting/kbs/2/delete-check",
+    });
+
+    expect(checkResponse.statusCode).toBe(200);
+    expect(checkResponse.json()).toEqual({
+      data: {
+        hasDocuments: false,
+        linkedAgentCount: 0,
+      },
+      success: true,
+    });
+
+    const response = await app.inject({
+      headers: { authorization: context.authorization },
+      method: "POST",
+      url: "/api/server/ai-hosting/kbs/2/delete",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      data: {
+        deleted: true,
+      },
+      success: true,
+    });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "https://java.internal/third-internal/wap-embed-agent-kb/del",
+    );
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      id: 2,
+      uid: 9001,
+    });
+    fetchMock.mockRestore();
   });
 
   it("lists kbs scoped by uid", async () => {
@@ -48,11 +228,11 @@ describe("KB read routes", () => {
       data: {
         kbs: [
           {
-            createdAt: "2026-06-19T14:02:22.000Z",
+            createdAt: "2026-06-19T06:02:22.000Z",
             description: "华为各系列产品规格、功能与常见问题",
             kbId: "1",
             name: "华为产品知识",
-            updatedAt: "2026-06-20T14:02:22.000Z",
+            updatedAt: "2026-06-20T06:02:22.000Z",
           },
         ],
         pagination: {
@@ -137,7 +317,7 @@ describe("KB read routes", () => {
           list: [
             {
               content: "切片正文",
-              createTime: "2026-06-18T15:22:22.000Z",
+              createTime: "2026-06-18 15:22:22",
               docId: 1001,
               id: 501,
               kbId: 1,
@@ -145,11 +325,11 @@ describe("KB read routes", () => {
               title: "切片标题",
               type: 2,
               uid: 9001,
-              updateTime: "2026-06-18T15:22:22.000Z",
+              updateTime: "2026-06-18 15:22:22",
             },
             {
               content: "系统切片正文",
-              createTime: "2026-06-18T15:22:22.000Z",
+              createTime: "2026-06-18 15:22:22",
               docId: 1001,
               id: 502,
               kbId: 1,
@@ -157,7 +337,7 @@ describe("KB read routes", () => {
               title: "系统切片",
               type: 2,
               uid: 9001,
-              updateTime: "2026-06-18T15:22:22.000Z",
+              updateTime: "2026-06-18 15:22:22",
             },
           ],
           page: 1,
@@ -204,23 +384,23 @@ describe("KB read routes", () => {
             chunkId: "501",
             chunkType: "text",
             content: "切片正文",
-            createdAt: "2026-06-18T15:22:22.000Z",
+            createdAt: "2026-06-18 15:22:22",
             docId: "1001",
             kbId: "1",
             source: "manual",
             title: "切片标题",
-            updatedAt: "2026-06-18T15:22:22.000Z",
+            updatedAt: "2026-06-18 15:22:22",
           },
           {
             chunkId: "502",
             chunkType: "text",
             content: "系统切片正文",
-            createdAt: "2026-06-18T15:22:22.000Z",
+            createdAt: "2026-06-18 15:22:22",
             docId: "1001",
             kbId: "1",
             source: "system",
             title: "系统切片",
-            updatedAt: "2026-06-18T15:22:22.000Z",
+            updatedAt: "2026-06-18 15:22:22",
           },
         ],
         pagination: {

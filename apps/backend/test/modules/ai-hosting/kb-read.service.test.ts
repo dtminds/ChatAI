@@ -8,7 +8,7 @@ import { createKbReadDbMock } from "../../helpers/create-kb-read-db-mock.js";
 const javaChunkPageItems = [
   {
     content: "切片正文",
-    createTime: "2026-06-18T15:22:22.000Z",
+    createTime: "2026-06-18 15:22:22",
     docId: 1001,
     id: 501,
     kbId: 1,
@@ -16,11 +16,11 @@ const javaChunkPageItems = [
     title: "切片标题",
     type: 2,
     uid: 9001,
-    updateTime: "2026-06-18T15:22:22.000Z",
+    updateTime: "2026-06-18 15:22:22",
   },
   {
     content: "系统切片正文",
-    createTime: "2026-06-18T15:22:22.000Z",
+    createTime: "2026-06-18 15:22:22",
     docId: 1001,
     id: 502,
     kbId: 1,
@@ -28,7 +28,7 @@ const javaChunkPageItems = [
     title: "系统切片",
     type: 2,
     uid: 9001,
-    updateTime: "2026-06-18T15:22:22.000Z",
+    updateTime: "2026-06-18 15:22:22",
   },
 ];
 
@@ -39,18 +39,38 @@ const tenant = {
 
 const kbListColumns = ["id", "name", "remark", "create_time", "update_time"];
 const kbDocListColumns = [
+  "brief_summary",
   "id",
   "kb_id",
   "name",
   "remark",
+  "doc_size",
   "doc_suffix",
   "doc_type",
-  "doc_url",
   "point_num",
   "sync_error_msg",
   "sync_status",
   "create_time",
   "update_time",
+  "has_doc_summary",
+];
+const kbDocDetailColumns = [
+  "brief_summary",
+  "id",
+  "kb_id",
+  "name",
+  "remark",
+  "doc_size",
+  "doc_suffix",
+  "doc_type",
+  "point_num",
+  "sync_error_msg",
+  "sync_status",
+  "create_time",
+  "update_time",
+  "doc_summary",
+  "doc_url",
+  "volc_doc_id",
 ];
 
 function createService(
@@ -528,7 +548,7 @@ describe("KbReadService", () => {
     expect(selectedDetailQueries).toEqual([
       {
         selectedAll: false,
-        selectedColumns: [...kbDocListColumns, "volc_doc_id"],
+        selectedColumns: kbDocDetailColumns,
       },
     ]);
   });

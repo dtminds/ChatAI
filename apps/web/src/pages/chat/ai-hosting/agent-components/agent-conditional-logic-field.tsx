@@ -201,11 +201,11 @@ export function AgentConditionalLogicField({
 
           <PopoverContent
             align="start"
-            className="w-[280px] rounded-[8px] p-0"
+            className="w-[280px] max-w-[280px] overflow-hidden rounded-[8px] p-0"
             onOpenAutoFocus={(event) => event.preventDefault()}
             sideOffset={8}
           >
-            <div aria-label="选择知识库" role="listbox">
+            <div aria-label="选择知识库" className="min-w-0 max-w-full" role="listbox">
               <div className="border-b border-border p-2">
                 <div className="relative">
                   <HugeiconsIcon
@@ -224,8 +224,8 @@ export function AgentConditionalLogicField({
                 </div>
               </div>
 
-              <ScrollArea className="max-h-72">
-                <div className="p-1">
+              <ScrollArea className="max-h-72 w-full min-w-0 max-w-full [&_[data-slot=scroll-area-viewport]>div]:!block [&_[data-slot=scroll-area-viewport]>div]:w-full [&_[data-slot=scroll-area-viewport]>div]:min-w-0 [&_[data-slot=scroll-area-viewport]>div]:max-w-full">
+                <div className="w-full min-w-0 max-w-full p-1">
                   {knowledgeBasesLoading ? (
                     <div
                       aria-label="正在加载"
@@ -317,7 +317,7 @@ function KnowledgeBaseOptionRow({
     <button
       aria-label={knowledgeBase.name}
       className={cn(
-        "flex w-full cursor-pointer items-center gap-2 rounded-[8px] px-2 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted/40",
+        "flex w-full min-w-0 max-w-full cursor-pointer items-center gap-2 overflow-hidden rounded-[8px] px-2 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted/40",
       )}
       onClick={onSelect}
       onMouseDown={(event) => {
@@ -327,12 +327,14 @@ function KnowledgeBaseOptionRow({
       type="button"
     >
       <HugeiconsIcon
-        className="text-muted-foreground"
+        className="shrink-0 text-muted-foreground"
         icon={AiBookIcon}
         size={15}
         strokeWidth={1.8}
       />
-      <span className="min-w-0 flex-1 truncate">{knowledgeBase.name}</span>
+      <span className="min-w-0 flex-1 truncate" title={knowledgeBase.name}>
+        {knowledgeBase.name}
+      </span>
     </button>
   );
 }

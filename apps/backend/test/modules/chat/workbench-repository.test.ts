@@ -352,6 +352,22 @@ function createQueryBuilder(result: unknown) {
         return undefined;
       },
     },
+    case() {
+      return {
+        else() {
+          return this;
+        },
+        end() {
+          return undefined;
+        },
+        then() {
+          return this;
+        },
+        when() {
+          return this;
+        },
+      };
+    },
     val() {
       return {
         as() {
@@ -2345,6 +2361,7 @@ describe("WorkbenchRepository", () => {
       "uid",
       "platform",
       "third_userid",
+      "chat_type",
     ]);
   });
 
@@ -3679,6 +3696,7 @@ describe("WorkbenchRepository", () => {
         expireTime: undefined,
         seatAIHostingAuth: true,
         fullAutoSwitch: true,
+        groupUnreadCount: 0,
         hostSubUserId: "101",
         lastMessageTime: new Date("2026-05-21T06:15:21.000Z").getTime(),
         loginStatus: "online",
@@ -3688,6 +3706,7 @@ describe("WorkbenchRepository", () => {
         semiAutoAuth: false,
         semiAutoSwitch: false,
         seatId: "12",
+        singleUnreadCount: 0,
         thirdUserId: "seat-third-user-1",
         unreadCount: 7,
       },
@@ -3700,6 +3719,7 @@ describe("WorkbenchRepository", () => {
         expireTime: undefined,
         seatAIHostingAuth: false,
         fullAutoSwitch: false,
+        groupUnreadCount: 0,
         hostSubUserId: "202",
         lastMessageTime: new Date("2026-05-21T06:16:21.000Z").getTime(),
         loginStatus: "offline",
@@ -3709,6 +3729,7 @@ describe("WorkbenchRepository", () => {
         semiAutoAuth: false,
         semiAutoSwitch: false,
         seatId: "13",
+        singleUnreadCount: 0,
         thirdUserId: "seat-third-user-2",
         unreadCount: 2,
       },
@@ -3843,6 +3864,72 @@ describe("WorkbenchRepository", () => {
     });
 
     expect(conversationQueryBuilders[0].joins).toEqual([]);
+  });
+
+  it("reuses the loaded seat when returning unread conversation summaries", async () => {
+    let seatQueryCount = 0;
+    const conversationQueryBuilders: Array<ReturnType<typeof createQueryBuilder>> = [];
+    const summaryQueryBuilders: Array<ReturnType<typeof createQueryBuilder>> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_user_seat") {
+            seatQueryCount += 1;
+
+            return createQueryBuilder({
+              id: 12,
+              platform: 5,
+              third_userid: "seat-user-001",
+              uid: 9001,
+            });
+          }
+
+          if (table === "xy_wap_embed_conversation as conversation") {
+            const query = createQueryBuilder([]);
+            conversationQueryBuilders.push(query);
+
+            return query;
+          }
+
+          if (table === "xy_wap_embed_conversation") {
+            const query = createQueryBuilder({
+              group_unread_count: 2,
+              single_unread_count: 3,
+              total_unread_count: 5,
+            });
+            summaryQueryBuilders.push(query);
+
+            return query;
+          }
+
+          return createQueryBuilder([]);
+        },
+      } as never,
+    );
+
+    const page = await repository.listConversations("12", {
+      limit: 30,
+      mode: "single",
+      unreadOnly: true,
+    });
+
+    expect(seatQueryCount).toBe(1);
+    expect(conversationQueryBuilders[0].wheres).toContainEqual([
+      "conversation.unread_cnt",
+      ">",
+      0,
+    ]);
+    expect(summaryQueryBuilders[0].wheres).toEqual([
+      ["uid", "=", 9001],
+      ["platform", "=", 5],
+      ["third_userid", "=", "seat-user-001"],
+      ["biz_status", "=", 1],
+    ]);
+    expect(page.unreadSummary).toEqual({
+      group: 2,
+      single: 3,
+      total: 5,
+    });
   });
 
   it("does not snapshot-filter the initial conversation list by last message time", async () => {
@@ -5618,6 +5705,134 @@ describe("WorkbenchRepository", () => {
         ["platform", "=", 5],
         ["third_user_id", "=", "seat-user-001"],
         ["third_external_id", "=", "external-001"],
+      ],
+    });
+  });
+
+  it("finds retry message opt no only within the failed conversation message scope", async () => {
+    const queries: Array<{ table: string; wheres: Array<[string, string, unknown]> }> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          expect(table).toBe("xy_wap_embed_msg_audit_info as message");
+          const query = createQueryBuilder({
+            chat_type: 2,
+            from_type: null,
+            id: 538,
+            opt_no: "failed-opt-538",
+            third_from_id: "seat-user-001",
+            third_user_id: "seat-user-001",
+          });
+          queries.push({ table, wheres: query.wheres });
+
+          return query;
+        },
+      } as never,
+    );
+
+    await expect(
+      repository.findRetryMessage({
+        conversationId: "conv-001",
+        messageSeq: 538,
+        platform: 5,
+        thirdGroupId: "group-001",
+        thirdUserId: "seat-user-001",
+        uid: 9001,
+      }),
+    ).resolves.toEqual({
+      id: 538,
+      optNo: "failed-opt-538",
+      senderType: "agent",
+    });
+    expect(queries).toHaveLength(1);
+    expect(queries[0]).toMatchObject({
+      table: "xy_wap_embed_msg_audit_info as message",
+      wheres: [
+        ["message.uid", "=", 9001],
+        ["message.platform", "=", 5],
+        ["message.third_user_id", "=", "seat-user-001"],
+        ["message.id", "=", 538],
+        ["message.status", "=", 0],
+        ["message.third_group_id", "=", "group-001"],
+      ],
+    });
+  });
+
+  it("maps retry message sender from platform sender fields", async () => {
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          expect(table).toBe("xy_wap_embed_msg_audit_info as message");
+          return createQueryBuilder({
+            chat_type: 2,
+            from_type: null,
+            id: 539,
+            opt_no: "failed-opt-539",
+            third_from_id: "customer-member-001",
+            third_user_id: "seat-user-001",
+          });
+        },
+      } as never,
+    );
+
+    await expect(
+      repository.findRetryMessage({
+        conversationId: "conv-001",
+        messageSeq: 539,
+        platform: 5,
+        thirdGroupId: "group-001",
+        thirdUserId: "seat-user-001",
+        uid: 9001,
+      }),
+    ).resolves.toEqual({
+      id: 539,
+      optNo: "failed-opt-539",
+      senderType: "customer",
+    });
+  });
+
+  it("finds async operation opt params in tenant and platform scope", async () => {
+    const queries: Array<{ table: string; wheres: Array<[string, string, unknown]> }> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          expect(table).toBe("xy_wap_embed_async_operation");
+          const query = createQueryBuilder({
+            opt_params: JSON.stringify({
+              msgData: {
+                msgtype: "text",
+                text: "hello",
+              },
+            }),
+          });
+          queries.push({ table, wheres: query.wheres });
+
+          return query;
+        },
+      } as never,
+    );
+
+    await expect(
+      repository.findAsyncOperationByOptNo({
+        optNo: "failed-opt-538",
+        platform: 5,
+        uid: 9001,
+      }),
+    ).resolves.toEqual({
+      optParams: JSON.stringify({
+        msgData: {
+          msgtype: "text",
+          text: "hello",
+        },
+      }),
+    });
+    expect(queries).toHaveLength(1);
+    expect(queries[0]).toMatchObject({
+      table: "xy_wap_embed_async_operation",
+      wheres: [
+        ["opt_no", "=", "failed-opt-538"],
+        ["uid", "=", 9001],
+        ["platform", "=", 5],
       ],
     });
   });

@@ -149,6 +149,24 @@ describe("KbWriteService", () => {
     });
   });
 
+  it("rejects deleting a kb linked to agents", async () => {
+    const db = createKbReadDbMock({
+      agents: [
+        {
+          id: 1,
+          prompt_config: JSON.stringify({ available_kb_ids: [2] }),
+        },
+      ],
+      includeSecondKbWithoutDocs: true,
+    }) as unknown as Kysely<Database>;
+    const service = createService(db, { createKb: vi.fn(), deleteKb: vi.fn(), updateKb: vi.fn() });
+
+    await expect(service.deleteKb(tenant, "2")).rejects.toMatchObject({
+      code: "KB_DELETE_HAS_LINKED_AGENTS",
+      message: "当前知识库已关联1个Agent，不支持删除",
+    });
+  });
+
   it("deletes an empty kb through the Java internal API", async () => {
     const deleteKb = vi.fn().mockResolvedValue(undefined);
     const db = createKbReadDbMock({ includeSecondKbWithoutDocs: true }) as unknown as Kysely<Database>;

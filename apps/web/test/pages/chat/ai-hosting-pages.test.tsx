@@ -2232,7 +2232,7 @@ describe("AI hosting pages", () => {
     expect(screen.getByRole("button", { name: "删除 华为产品知识" })).toBeInTheDocument();
   });
 
-  it("shows linked agent warning before deleting a knowledge base", async () => {
+  it("blocks deleting a knowledge base linked to agents", async () => {
     const user = userEvent.setup();
     vi.mocked(kbService.checkKbDelete).mockResolvedValueOnce({
       hasDocuments: false,
@@ -2245,8 +2245,10 @@ describe("AI hosting pages", () => {
     await user.click(screen.getByRole("button", { name: "删除 华为产品知识" }));
 
     expect(
-      await screen.findByText("当前知识库已关联8个Agent，是否确认删除？"),
+      await screen.findByText("当前知识库已关联8个Agent，不支持删除"),
     ).toBeInTheDocument();
+    expect(screen.queryByText("是否确认删除？")).not.toBeInTheDocument();
+    expect(kbService.deleteKb).not.toHaveBeenCalled();
   });
 
   it("prevents creating knowledge bases when the fixed knowledge base quota is reached", async () => {

@@ -71,6 +71,10 @@ const KB_DELETE_DIALOG_CLASSNAME =
   "box-border flex h-[128px] w-[400px] max-w-[400px] flex-col justify-between gap-0 p-6";
 const KB_DELETE_DIALOG_MESSAGE_CLASSNAME =
   "text-left text-sm font-normal text-foreground";
+
+function buildKbDeleteLinkedAgentsBlockedMessage(linkedAgentCount: number) {
+  return `当前知识库已关联${linkedAgentCount}个Agent，不支持删除`;
+}
 const kbIntroSteps = [
   {
     description: "按特定场景/领域管理知识库，支持结构化和非结构化类型知识",
@@ -127,8 +131,8 @@ export function KbListPage() {
   const [deleting, setDeleting] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<KbListViewItem | null>(null);
   const [blockedDeleteOpen, setBlockedDeleteOpen] = useState(false);
+  const [blockedDeleteMessage, setBlockedDeleteMessage] = useState(KB_DELETE_BLOCKED_MESSAGE);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
-  const [deleteLinkedAgentCount, setDeleteLinkedAgentCount] = useState(0);
   const [listReloadKey, setListReloadKey] = useState(0);
   const isMountedRef = useRef(false);
 
@@ -278,8 +282,8 @@ export function KbListPage() {
   function resetDeleteDialogState() {
     setDeleteTarget(null);
     setBlockedDeleteOpen(false);
+    setBlockedDeleteMessage(KB_DELETE_BLOCKED_MESSAGE);
     setConfirmDeleteOpen(false);
-    setDeleteLinkedAgentCount(0);
   }
 
   async function handleDeleteClick(item: KbListViewItem) {
@@ -297,12 +301,20 @@ export function KbListPage() {
         return;
       }
 
-      if (result.hasDocuments) {
+      if (result.linkedAgentCount > 0) {
+        setBlockedDeleteMessage(
+          buildKbDeleteLinkedAgentsBlockedMessage(result.linkedAgentCount),
+        );
         setBlockedDeleteOpen(true);
         return;
       }
 
-      setDeleteLinkedAgentCount(result.linkedAgentCount);
+      if (result.hasDocuments) {
+        setBlockedDeleteMessage(KB_DELETE_BLOCKED_MESSAGE);
+        setBlockedDeleteOpen(true);
+        return;
+      }
+
       setConfirmDeleteOpen(true);
     } catch {
       if (isMountedRef.current) {
@@ -552,7 +564,7 @@ export function KbListPage() {
         <AlertDialogContent className={KB_DELETE_DIALOG_CLASSNAME}>
           <AlertDialogHeader className="space-y-0 text-left">
             <AlertDialogDescription className={KB_DELETE_DIALOG_MESSAGE_CLASSNAME}>
-              {KB_DELETE_BLOCKED_MESSAGE}
+              {blockedDeleteMessage}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -576,9 +588,7 @@ export function KbListPage() {
         <AlertDialogContent className={KB_DELETE_DIALOG_CLASSNAME}>
           <AlertDialogHeader className="space-y-0 text-left">
             <AlertDialogDescription className={KB_DELETE_DIALOG_MESSAGE_CLASSNAME}>
-              {deleteLinkedAgentCount > 0
-                ? `当前知识库已关联${deleteLinkedAgentCount}个Agent，是否确认删除？`
-                : "是否确认删除？"}
+              是否确认删除？
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

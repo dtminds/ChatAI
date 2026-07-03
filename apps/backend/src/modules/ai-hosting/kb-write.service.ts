@@ -107,8 +107,8 @@ export class KbWriteService {
     await this.assertKbExists(uid, kbNumericId);
 
     return {
-      hasDocuments: await this.hasKbDocuments(uid, kbNumericId),
       linkedAgentCount: await this.countLinkedAgents(uid, kbNumericId),
+      hasDocuments: await this.hasKbDocuments(uid, kbNumericId),
     };
   }
 
@@ -117,6 +117,15 @@ export class KbWriteService {
     const kbNumericId = parseRequiredNumericId(kbId, "KB_NOT_FOUND", "知识库不存在");
 
     await this.assertKbExists(uid, kbNumericId);
+
+    const linkedAgentCount = await this.countLinkedAgents(uid, kbNumericId);
+
+    if (linkedAgentCount > 0) {
+      throw new BadRequestError(
+        "KB_DELETE_HAS_LINKED_AGENTS",
+        `当前知识库已关联${linkedAgentCount}个Agent，不支持删除`,
+      );
+    }
 
     if (await this.hasKbDocuments(uid, kbNumericId)) {
       throw new BadRequestError(

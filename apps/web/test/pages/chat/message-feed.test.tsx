@@ -1216,7 +1216,7 @@ describe("message feed row actions", () => {
     expect(screen.queryByRole("menuitem", { name: "撤回消息" })).not.toBeInTheDocument();
   });
 
-  it("disables retry for failed messages without a seq", async () => {
+  it("delegates retry for failed messages without a seq to the page handler", async () => {
     const user = userEvent.setup();
     const onRetryMessage = vi.fn();
 
@@ -1233,13 +1233,13 @@ describe("message feed row actions", () => {
     );
 
     const retryButton = screen.getByRole("button", { name: "重试发送" });
-    expect(retryButton).toBeDisabled();
+    expect(retryButton).toBeEnabled();
 
     await user.click(retryButton);
-    expect(onRetryMessage).not.toHaveBeenCalled();
+    expect(onRetryMessage).toHaveBeenCalledWith(expect.any(String));
   });
 
-  it("disables retry for failed messages with invalid seq", async () => {
+  it("delegates retry for failed messages with invalid seq to the page handler", async () => {
     const user = userEvent.setup();
     const onRetryMessage = vi.fn();
 
@@ -1255,13 +1255,13 @@ describe("message feed row actions", () => {
     );
 
     const retryButton = screen.getByRole("button", { name: "重试发送" });
-    expect(retryButton).toBeDisabled();
+    expect(retryButton).toBeEnabled();
 
     await user.click(retryButton);
-    expect(onRetryMessage).not.toHaveBeenCalled();
+    expect(onRetryMessage).toHaveBeenCalledWith(expect.any(String));
   });
 
-  it("disables retry for unsupported failed message content", async () => {
+  it("delegates retry for unsupported failed message content to the page handler", async () => {
     const user = userEvent.setup();
     const onRetryMessage = vi.fn();
 
@@ -1282,10 +1282,10 @@ describe("message feed row actions", () => {
     );
 
     const retryButton = screen.getByRole("button", { name: "重试发送" });
-    expect(retryButton).toBeDisabled();
+    expect(retryButton).toBeEnabled();
 
     await user.click(retryButton);
-    expect(onRetryMessage).not.toHaveBeenCalled();
+    expect(onRetryMessage).toHaveBeenCalledWith(expect.any(String));
   });
 
   it("keeps the feed item key stable after optimistic messages are reconciled", () => {

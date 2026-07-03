@@ -157,6 +157,7 @@ export const AiHostingSettingsAgentOptionSchema = Type.Object({
 export const AiHostingSettingsResponseSchema = Type.Object({
   accounts: Type.Array(AiHostingSettingsAccountSchema),
   agents: Type.Array(AiHostingSettingsAgentOptionSchema),
+  fullAutoAuthAvailable: Type.Boolean(),
 });
 
 export const AiHostingSettingsUpdateRequestSchema = Type.Object({

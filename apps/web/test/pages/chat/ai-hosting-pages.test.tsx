@@ -237,6 +237,7 @@ const mockHostingSettings: AiHostingSettingsResponse = {
       name: "未发布小助理",
     },
   ],
+  fullAutoAuthAvailable: true,
 };
 
 function renderWithRoute(path: string, element: ReactElement, routePath = "*") {
@@ -270,6 +271,15 @@ function createDropData(file: File) {
       types: ["Files"],
     },
   };
+}
+
+function createFileWithSize(content: string, name: string, size: number, options?: FilePropertyBag) {
+  const file = new File([content], name, options);
+  Object.defineProperty(file, "size", {
+    configurable: true,
+    value: size,
+  });
+  return file;
 }
 
 function mockSession(role: AccountRole = "admin") {
@@ -1312,6 +1322,36 @@ describe("AI hosting pages", () => {
     expect(screen.queryByRole("dialog", { name: "设置" })).not.toBeInTheDocument();
     expect(screen.getAllByText("启用")).toHaveLength(5);
     expect(screen.getAllByText("关闭")).toHaveLength(1);
+  });
+
+  it("blocks enabling full-auto auth when it is unavailable but still allows disabling enabled accounts", async () => {
+    const user = userEvent.setup();
+    vi.mocked(agentService.listAiHostingSettings).mockResolvedValueOnce({
+      ...mockHostingSettings,
+      fullAutoAuthAvailable: false,
+    });
+
+    renderWithRoute("/chat/ai-hosting/hosting-settings", <AgentHostingSettingsPage />);
+
+    await screen.findByRole("heading", { level: 1, name: "托管设置" });
+    await user.click(screen.getAllByRole("button", { name: "设置" })[0]);
+
+    const disabledSwitch = screen.getByRole("switch", { name: "允许开启 AI 回复" });
+
+    expect(disabledSwitch).toBeDisabled();
+    await user.hover(disabledSwitch);
+    expect(await screen.findAllByText("该功能内测中，如需开通请联系客服")).not.toHaveLength(0);
+    await user.click(disabledSwitch);
+    expect(disabledSwitch).not.toBeChecked();
+
+    await user.click(screen.getByRole("button", { name: "取消" }));
+    await user.click(screen.getAllByRole("button", { name: "设置" })[1]);
+
+    const enabledDialog = screen.getByRole("dialog", { name: "设置" });
+    const enabledSwitch = within(enabledDialog).getByRole("switch", { name: "允许开启 AI 回复" });
+
+    expect(enabledSwitch).toBeEnabled();
+    expect(enabledSwitch).toBeChecked();
   });
 
   it("keeps save errors inside the hosting settings dialog", async () => {
@@ -2750,6 +2790,36 @@ describe("AI hosting pages", () => {
     expect(screen.getByRole("button", { name: "导入文档" })).toBeDisabled();
   });
 
+  it("rejects QA import files larger than 100MB before parsing", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
+      "/chat/ai-hosting/kb/:kbId",
+    );
+
+    await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
+    await user.click(screen.getByRole("button", { name: "添加知识" }));
+    await user.click(screen.getByRole("menuitem", { name: /问答/ }));
+    await user.upload(
+      screen.getByLabelText("选择问答导入文件"),
+      createFileWithSize(
+        "question,answer",
+        "超大问答.faq.xlsx",
+        100 * 1024 * 1024 + 1,
+        {
+          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        },
+      ),
+    );
+
+    expect(await screen.findByText("文件大小不能超过 100MB")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "已选择文件" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "导入文档" })).toBeDisabled();
+    expect(readXlsxFileMock).not.toHaveBeenCalled();
+  });
+
   it("shows an error when QA files are rejected by the dropzone accept rule", async () => {
     const user = userEvent.setup();
 
@@ -2883,6 +2953,34 @@ describe("AI hosting pages", () => {
     expect(screen.queryByRole("dialog", { name: "导入文档" })).not.toBeInTheDocument();
   });
 
+  it("shows document upload file size limits in a popover table", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
+      "/chat/ai-hosting/kb/:kbId",
+    );
+
+    await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
+    await user.click(screen.getByRole("button", { name: "添加知识" }));
+    await user.click(screen.getByRole("menuitem", { name: /文档/ }));
+
+    expect(screen.getByRole("button", { name: "文件大小限制" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "文件大小限制" }));
+
+    const limitTable = await screen.findByRole("table", { name: "文档文件大小限制" });
+
+    expect(within(limitTable).getByRole("columnheader", { name: "文档格式" })).toBeInTheDocument();
+    expect(within(limitTable).getByRole("columnheader", { name: "大小限制" })).toBeInTheDocument();
+    expect(within(limitTable).getByRole("row", { name: ".pdf 200MB" })).toBeInTheDocument();
+    expect(within(limitTable).getByRole("row", { name: ".doc / .docx 200MB" })).toBeInTheDocument();
+    expect(within(limitTable).getByRole("row", { name: ".ppt / .pptx 200MB" })).toBeInTheDocument();
+    expect(within(limitTable).getByRole("row", { name: ".md 10MB" })).toBeInTheDocument();
+    expect(within(limitTable).getByRole("row", { name: ".txt 10MB" })).toBeInTheDocument();
+  });
+
   it("prevents document import when selected file exceeds the remaining storage quota", async () => {
     const user = userEvent.setup();
     vi.mocked(agentService.getAiHostingQuota)
@@ -2971,6 +3069,41 @@ describe("AI hosting pages", () => {
     );
 
     expect(await screen.findByText("仅支持 PDF、Word、PPT、Markdown、TXT 文档")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "已选择文档" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "确认提交" })).toBeDisabled();
+  });
+
+  it("rejects document files that exceed their suffix size limit", async () => {
+    const user = userEvent.setup();
+
+    renderWithRoute(
+      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
+      <KbDetailPage />,
+      "/chat/ai-hosting/kb/:kbId",
+    );
+
+    await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
+    await user.click(screen.getByRole("button", { name: "添加知识" }));
+    await user.click(screen.getByRole("menuitem", { name: /文档/ }));
+    await user.upload(
+      screen.getByLabelText("选择文档知识文件"),
+      createFileWithSize("pdf", "超大手册.pdf", 200 * 1024 * 1024 + 1, {
+        type: "application/pdf",
+      }),
+    );
+
+    expect(await screen.findByText("文件大小不能超过 200MB")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "已选择文档" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "确认提交" })).toBeDisabled();
+
+    await user.upload(
+      screen.getByLabelText("选择文档知识文件"),
+      createFileWithSize("plain text", "超大说明.txt", 10 * 1024 * 1024 + 1, {
+        type: "text/plain",
+      }),
+    );
+
+    expect(await screen.findByText("文件大小不能超过 10MB")).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "已选择文档" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "确认提交" })).toBeDisabled();
   });

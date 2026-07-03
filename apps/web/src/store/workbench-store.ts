@@ -91,10 +91,13 @@ import {
   isSmartReplyKnowledgeMiss,
   isSmartReplyPollComplete,
   isSmartReplyEligibleMessage,
+  isSmartReplySemanticWait,
+  isSmartReplySemanticWaitExpired,
   isSmartReplySupportedConversation,
   SMART_REPLY_CONTENT_INCOMPLETE_SKIP_HINT,
   SMART_REPLY_CONTENT_INCOMPLETE_SKIP_MESSAGE,
   SMART_REPLY_BUSY_TIMEOUT_MS,
+  SMART_REPLY_SEMANTIC_WAIT_TIMEOUT_MS,
   type SmartReplySendPayload,
 } from "@/pages/chat/api/smart-reply-adapter";
 import type { SmartReplySuggestion } from "@/pages/chat/components/smart-reply-card";
@@ -378,6 +381,7 @@ const MESSAGE_PAGE_SIZE = 50;
 const FULL_AUTO_ANSWER_POLL_INTERVAL_MS = 1000;
 const FULL_AUTO_RECENT_CUSTOMER_MESSAGE_WINDOW_MS = 2 * 60 * 1000;
 const FULL_AUTO_TERMINAL_STATUS_RESET_MS = 5000;
+const FULL_AUTO_SEMANTIC_WAIT_TIMEOUT_MS = SMART_REPLY_SEMANTIC_WAIT_TIMEOUT_MS;
 const CONVERSATION_MODES = ["single", "group"] as const satisfies readonly ChatMode[];
 const GROUP_MEMBERS_CACHE_TTL_MS = 5 * 60 * 1000;
 const REVOKE_PENDING_TIMEOUT_MS = 10 * 1000;
@@ -961,7 +965,9 @@ function getPageSmartReplies(page: WorkbenchConversationPage) {
     page.messages
       .filter(
         (message): message is ChatMessage =>
-          message.role !== "system" && hasSmartReplyTriggerRawMsgtype(message),
+          Boolean(message) &&
+          message.role !== "system" &&
+          hasSmartReplyTriggerRawMsgtype(message),
       )
       .map((message) => getSmartReplyLookupKey(message)),
   );
@@ -1031,7 +1037,7 @@ function pruneSmartReplyStateToExistingMessages(input: {
 }) {
   const retainedKeys = new Set(
     input.messages
-      .filter((message) => message.role !== "system")
+      .filter((message) => message && message.role !== "system")
       .map((message) => getSmartReplyLookupKey(message)),
   );
 
@@ -1087,6 +1093,62 @@ function shouldAutoGenerateSmartReply(input: {
   return message;
 }
 
+function getLatestSmartReplyEligibleMessageKey(messages: Message[]) {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+
+    if (message && message.role !== "system" && isSmartReplyEligibleMessage(message)) {
+      return getSmartReplyLookupKey(message);
+    }
+  }
+
+  return undefined;
+}
+
+function pruneSemanticWaitSmartReplyPendingKeys(input: {
+  messages: Message[];
+  pending: Record<string, true>;
+  requestedMsgIds: number[];
+  suggestions: Record<string, SmartReplySuggestion>;
+}) {
+  const nextPending = { ...input.pending };
+  const latestEligibleKey = getLatestSmartReplyEligibleMessageKey(input.messages);
+
+  for (const msgId of input.requestedMsgIds) {
+    const lookupKey = String(msgId);
+    const suggestion = input.suggestions[lookupKey];
+
+    if (!isSmartReplySemanticWait(suggestion)) {
+      continue;
+    }
+
+    if (isSmartReplySemanticWaitExpired(suggestion) || lookupKey !== latestEligibleKey) {
+      delete nextPending[lookupKey];
+    }
+  }
+
+  return nextPending;
+}
+
+function collectSmartReplyPendingMsgIds(pending: Record<string, true>) {
+  return Object.keys(pending)
+    .map((key) => Number(key))
+    .filter((msgId) => Number.isSafeInteger(msgId) && msgId > 0);
+}
+
+function areSmartReplyPendingRecordsEqual(
+  left: Record<string, true>,
+  right: Record<string, true>,
+) {
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+
+  return (
+    leftKeys.length === rightKeys.length &&
+    leftKeys.every((key) => right[key] === true)
+  );
+}
+
 function mergeSmartReplyPollResult(
   previousSuggestions: Record<string, SmartReplySuggestion>,
   previousPending: Record<string, true>,
@@ -1132,7 +1194,12 @@ function mergeSmartReplyPollResult(
   }
 
   return {
-    pending: nextPending,
+    pending: pruneSemanticWaitSmartReplyPendingKeys({
+      messages,
+      pending: nextPending,
+      requestedMsgIds,
+      suggestions: mergedSuggestions,
+    }),
     suggestions: mergedSuggestions,
   };
 }
@@ -1237,17 +1304,54 @@ function scheduleSmartReplyPoll(
     state.smartReplyByMessageIdByConversationId[conversationId] ?? {};
   const pending =
     state.smartReplyPendingMessageKeysByConversationId[conversationId] ?? {};
+  const prunedPending = pruneSemanticWaitSmartReplyPendingKeys({
+    messages,
+    pending,
+    requestedMsgIds: collectSmartReplyPendingMsgIds(pending),
+    suggestions,
+  });
+
+  if (!areSmartReplyPendingRecordsEqual(pending, prunedPending)) {
+    set((currentState) => {
+      const currentPending =
+        currentState.smartReplyPendingMessageKeysByConversationId[conversationId] ??
+        {};
+      const currentPrunedPending = pruneSemanticWaitSmartReplyPendingKeys({
+        messages: currentState.messagesByConversationId[conversationId] ?? [],
+        pending: currentPending,
+        requestedMsgIds: collectSmartReplyPendingMsgIds(currentPending),
+        suggestions:
+          currentState.smartReplyByMessageIdByConversationId[conversationId] ?? {},
+      });
+
+      if (areSmartReplyPendingRecordsEqual(currentPending, currentPrunedPending)) {
+        return currentState;
+      }
+
+      return {
+        smartReplyPendingMessageKeysByConversationId: {
+          ...currentState.smartReplyPendingMessageKeysByConversationId,
+          [conversationId]: currentPrunedPending,
+        },
+      };
+    });
+  }
+
   const hidden =
     state.smartReplyHiddenMessageKeysByConversationId[conversationId] ?? {};
   const msgIds = collectPendingSmartReplyPollMsgIds(
     messages,
     suggestions,
-    pending,
+    prunedPending,
     undefined,
-    { allowKeys: new Set(Object.keys(pending).filter((key) => !hidden[key])) },
+    {
+      allowKeys: new Set(
+        Object.keys(prunedPending).filter((key) => !hidden[key]),
+      ),
+    },
   );
 
-  options?.syncRuntimeTimers?.(conversationId, pending);
+  options?.syncRuntimeTimers?.(conversationId, prunedPending);
 
   if (msgIds.length === 0) {
     options?.clearPollTimer?.(conversationId);
@@ -2276,6 +2380,18 @@ function resolveFullAutoAnswerStatus(
 
   if (status.genStatus === 4) {
     return { isTerminal: true, status: "handoff" };
+  }
+
+  if (status.genStatus === 5) {
+    if (
+      typeof status.createdAt === "number" &&
+      Number.isFinite(status.createdAt) &&
+      Date.now() - status.createdAt >= FULL_AUTO_SEMANTIC_WAIT_TIMEOUT_MS
+    ) {
+      return { isTerminal: true, status: "active" };
+    }
+
+    return { isTerminal: false, status: "waiting" };
   }
 
   if (status.genStatus === 3) {

@@ -1574,6 +1574,354 @@ describe("useWorkbenchStore", () => {
     });
   });
 
+  it("stops polling expired semantic-wait smart replies and keeps the skipped state", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          smartReplies: [
+            {
+              assistantName: "智能助手",
+              content: "",
+              createdAt: Date.now() - 21_000,
+              generateStatus: 5,
+              messageId: "9",
+              status: "processing",
+            },
+          ],
+        };
+      },
+      async pollSmartReplies(request) {
+        return {
+          suggestions: [
+            {
+              assistantName: "智能助手",
+              content: "",
+              createdAt: Date.now() - 21_000,
+              generateStatus: 5,
+              messageId: String(request.msgIds[0]),
+              status: "processing",
+            },
+          ],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    await waitForStoreAssertion(() => {
+      expect(
+        useWorkbenchStore.getState().smartReplyPendingMessageKeysByConversationId[
+          "conv-001"
+        ],
+      ).not.toHaveProperty("9");
+    });
+    expect(
+      useWorkbenchStore.getState().smartReplyByMessageIdByConversationId["conv-001"]?.[
+        "9"
+      ],
+    ).toMatchObject({
+      createdAt: expect.any(Number),
+      generateStatus: 5,
+    });
+  });
+
+  it("ignores sparse message slots when pruning semantic-wait pending keys", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedSmartReplyRequests: WorkbenchSmartReplyPollRequest[] = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async pollSmartReplies(request) {
+        observedSmartReplyRequests.push(request);
+
+        return { suggestions: [] };
+      },
+    });
+
+    useWorkbenchStore.setState((state) => ({
+      activeAccountId: "drc",
+      activeConversationId: "conv-001",
+      accounts: [
+        {
+          avatarUrl: "",
+          description: "",
+          id: "drc",
+          loginStatus: "online",
+          metrics: {
+            activeCustomers: 0,
+            agents: 0,
+            stores: 0,
+            totalCustomers: 0,
+          },
+          name: "席位",
+          operator: "客服",
+          phone: "",
+          seatAIAssistantEnabled: true,
+          takenOverEmployeeId: "sub-user-001",
+          tone: "",
+        },
+      ],
+      hasChatSendPermission: true,
+      me: {
+        avatarUrl: "",
+        displayName: "林洒",
+        id: "sub-user-001",
+        name: "林洒",
+      },
+      conversationListsByScope: {
+        drc: [
+          {
+            accountId: "drc",
+            bizStatus: 1,
+            conversationAIHostingSwitch: false,
+            customerAvatarUrl: "",
+            customerBindType: 1,
+            customerId: "cust-001",
+            customerName: "客户甲",
+            id: "conv-001",
+            mode: "single",
+            preview: "",
+            priority: "medium",
+            quietFor: "",
+            unread: 0,
+            updatedAt: "刚刚",
+          },
+        ],
+      },
+      messagesByConversationId: {
+        "conv-001": [
+          {
+            author: "客户甲",
+            content: { text: "继续补充", type: "text" },
+            conversationId: "conv-001",
+            msgid: "msg-latest",
+            rawMsgtype: "text",
+            role: "customer",
+            sender: { id: "cust-001", name: "客户甲" },
+            sentAt: "2026-07-02T12:00:00+08:00",
+            seq: 10,
+            status: "sent",
+            uiMessageKey: "10",
+          } satisfies ChatMessage,
+          undefined,
+        ] as unknown as Message[],
+      },
+      smartReplyByMessageIdByConversationId: {
+        "conv-001": {
+          "10": {
+            assistantName: "智能助手",
+            content: "",
+            createdAt: Date.now() - 5_000,
+            generateStatus: 5,
+            status: "processing",
+          },
+          "9": {
+            assistantName: "智能助手",
+            content: "",
+            createdAt: Date.now() - 5_000,
+            generateStatus: 5,
+            status: "processing",
+          },
+        },
+      },
+      smartReplyPendingMessageKeysByConversationId: {
+        "conv-001": {
+          "9": true,
+        },
+      },
+    }));
+    const latestMessage =
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"]?.[0];
+
+    await expect(
+      latestMessage?.role === "system"
+        ? Promise.resolve()
+        : useWorkbenchStore.getState().requestSmartReplyGeneralAnswer(latestMessage!),
+    ).resolves.toBeUndefined();
+
+    expect(
+      useWorkbenchStore.getState().smartReplyPendingMessageKeysByConversationId[
+        "conv-001"
+      ],
+    ).not.toHaveProperty("9");
+
+    expect(observedSmartReplyRequests).toEqual([
+      {
+        conversationId: "conv-001",
+        msgIds: [10],
+      },
+    ]);
+  });
+
+  it("clears semantic-wait pending keys when they expire before the next poll request", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-02T12:00:00+08:00"));
+    const baseService = createMockWorkbenchService();
+    const observedSmartReplyRequests: WorkbenchSmartReplyPollRequest[] = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          smartReplies: [
+            {
+              assistantName: "智能助手",
+              content: "",
+              createdAt: Date.now() - 19_000,
+              generateStatus: 5,
+              messageId: "9",
+              status: "processing",
+            },
+          ],
+        };
+      },
+      async pollSmartReplies(request) {
+        observedSmartReplyRequests.push(request);
+
+        return {
+          suggestions: [
+            {
+              assistantName: "智能助手",
+              content: "",
+              createdAt: Date.now() - 19_000,
+              generateStatus: 5,
+              messageId: String(request.msgIds[0]),
+              status: "processing",
+            },
+          ],
+        };
+      },
+    });
+
+    try {
+      await useWorkbenchStore.getState().initializeWorkbench();
+      await Promise.resolve();
+
+      expect(observedSmartReplyRequests).toEqual([
+        {
+          conversationId: "conv-001",
+          msgIds: [9],
+        },
+      ]);
+      expect(
+        useWorkbenchStore.getState().smartReplyPendingMessageKeysByConversationId[
+          "conv-001"
+        ],
+      ).toHaveProperty("9");
+
+      await vi.advanceTimersByTimeAsync(2_000);
+
+      expect(observedSmartReplyRequests).toHaveLength(1);
+      expect(
+        useWorkbenchStore.getState().smartReplyPendingMessageKeysByConversationId[
+          "conv-001"
+        ],
+      ).not.toHaveProperty("9");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops polling semantic-wait smart replies that are no longer the latest customer message", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedAutoRequests: Array<{ conversationId: string; msgId: number }> = [];
+    const observedSmartReplyRequests: WorkbenchSmartReplyPollRequest[] = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          messages: [
+            createSmartReplyTextMessageDto({
+              id: "msg-incomplete",
+              seq: 9,
+              text: "我想问一下",
+            }),
+            createSmartReplyTextMessageDto({
+              id: "msg-follow-up",
+              seq: 10,
+              text: "还有价格是多少",
+            }),
+          ],
+          smartReplies: [
+            {
+              assistantName: "智能助手",
+              content: "",
+              createdAt: Date.now() - 5_000,
+              generateStatus: 5,
+              messageId: "9",
+              status: "processing",
+            },
+          ],
+        };
+      },
+      async requestSmartReplyAutoGeneralAnswer(request) {
+        observedAutoRequests.push(request);
+
+        return { id: "auto-10" };
+      },
+      async pollSmartReplies(request) {
+        observedSmartReplyRequests.push(request);
+
+        return {
+          suggestions: [
+            {
+              assistantName: "智能助手",
+              content: "",
+              createdAt: Date.now() - 5_000,
+              generateStatus: 5,
+              messageId: String(request.msgIds[0]),
+              status: "processing",
+            },
+          ],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    await waitForStoreAssertion(() => {
+      expect(observedAutoRequests).toEqual([
+        {
+          conversationId: "conv-001",
+          msgId: 10,
+        },
+      ]);
+      expect(
+        useWorkbenchStore.getState().smartReplyPendingMessageKeysByConversationId[
+          "conv-001"
+        ],
+      ).not.toHaveProperty("9");
+    });
+    expect(
+      observedSmartReplyRequests.some((request) => request.msgIds.includes(9)),
+    ).toBe(false);
+  });
+
   it("automatically creates a smart reply task for the latest customer message without a recommendation", async () => {
     const baseService = createMockWorkbenchService();
     const observedAutoRequests: Array<{ conversationId: string; msgId: number }> = [];
@@ -2090,6 +2438,160 @@ describe("useWorkbenchStore", () => {
       useWorkbenchStore.getState().fullAutoStatusByConversationId["conv-001"]?.status,
     ).toBeUndefined();
     expect(observedStatusRequests).toEqual(["conv-001", "conv-001"]);
+
+    vi.useRealTimers();
+  });
+
+  it("maps full-auto semantic-wait status to waiting without ending the poll", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-02T12:00:00+08:00"));
+    const baseService = createMockWorkbenchService();
+    const observedStatusRequests: string[] = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async getFullAutoAnswerStatus(conversationId) {
+        observedStatusRequests.push(conversationId);
+
+        return {
+          analyseMsgId: "20",
+          createdAt: Date.now() - 1_000,
+          genStatus: 5,
+          recordId: "27",
+          sendStatus: 0,
+        };
+      },
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          messages: [
+            ...page.messages,
+            createSmartReplyTextMessageDto({
+              id: "full-auto-customer",
+              seq: 20,
+              text: "我可能还没说完",
+              createdAt: Date.now(),
+            }),
+          ],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              seatAIHostingAuth: true,
+              seatAIHostingEnabled: true,
+              fullAutoSwitch: true,
+            }
+          : account,
+      ),
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-001"
+            ? {
+                ...conversation,
+                conversationAIHostingSwitch: true,
+              }
+            : conversation,
+        ),
+      },
+    }));
+
+    await useWorkbenchStore.getState().syncFullAutoAgentStatus();
+
+    expect(
+      useWorkbenchStore.getState().fullAutoStatusByConversationId["conv-001"]?.status,
+    ).toBe("waiting");
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(observedStatusRequests).toEqual(["conv-001", "conv-001"]);
+
+    vi.useRealTimers();
+  });
+
+  it("restores full-auto status to active when semantic wait exceeds twenty seconds", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-02T12:00:00+08:00"));
+    const baseService = createMockWorkbenchService();
+    const observedStatusRequests: string[] = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async getFullAutoAnswerStatus(conversationId) {
+        observedStatusRequests.push(conversationId);
+
+        return {
+          analyseMsgId: "20",
+          createdAt: Date.now() - 21_000,
+          genStatus: 5,
+          recordId: "27",
+          sendStatus: 0,
+        };
+      },
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          messages: [
+            ...page.messages,
+            createSmartReplyTextMessageDto({
+              id: "full-auto-customer",
+              seq: 20,
+              text: "我可能还没说完",
+              createdAt: Date.now(),
+            }),
+          ],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              seatAIHostingAuth: true,
+              seatAIHostingEnabled: true,
+              fullAutoSwitch: true,
+            }
+          : account,
+      ),
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-001"
+            ? {
+                ...conversation,
+                conversationAIHostingSwitch: true,
+              }
+            : conversation,
+        ),
+      },
+    }));
+
+    await useWorkbenchStore.getState().syncFullAutoAgentStatus();
+
+    expect(
+      useWorkbenchStore.getState().fullAutoStatusByConversationId["conv-001"]?.status,
+    ).toBe("active");
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(observedStatusRequests).toEqual(["conv-001"]);
 
     vi.useRealTimers();
   });

@@ -19,11 +19,16 @@ export function getSafeMessageUrl(url: string | undefined) {
 
 const B5_MEDIA_HOST = "b5.bokr.com.cn";
 const B5_IMAGE_THUMBNAIL_SUFFIX = "!w480.webp";
-const B5_IMAGE_PREVIEW_SUFFIX = "!w1100.webp";
+const B5_IMAGE_LEGACY_PREVIEW_SUFFIX = "!w1100.webp";
+const B5_IMAGE_PREVIEW_SUFFIX = "!tiny.webp";
 
 function getB5ImageBaseUrl(url: string) {
   if (url.endsWith(B5_IMAGE_THUMBNAIL_SUFFIX)) {
     return url.slice(0, -B5_IMAGE_THUMBNAIL_SUFFIX.length);
+  }
+
+  if (url.endsWith(B5_IMAGE_LEGACY_PREVIEW_SUFFIX)) {
+    return url.slice(0, -B5_IMAGE_LEGACY_PREVIEW_SUFFIX.length);
   }
 
   if (url.endsWith(B5_IMAGE_PREVIEW_SUFFIX)) {

@@ -17,6 +17,7 @@ import {
   writeThemePreference,
   type ThemePreference,
 } from "@/lib/theme-preference";
+import { NewMessageSoundControl } from "@/pages/chat/components/new-message-sound-control";
 import type { Conversation } from "@/pages/chat/chat-types";
 
 type ChatHeaderProps = {
@@ -76,7 +77,8 @@ export function ChatHeader({ activeConversation }: ChatHeaderProps) {
           ) : null}
         </div>
 
-        <div className="flex shrink-0 items-center">
+        <div className="flex shrink-0 items-center gap-2">
+          <NewMessageSoundControl />
           <SegmentedControl
             aria-label="选择主题模式"
             onValueChange={handleThemePreferenceChange}

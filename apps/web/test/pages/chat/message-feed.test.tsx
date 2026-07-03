@@ -1216,76 +1216,79 @@ describe("message feed row actions", () => {
     expect(screen.queryByRole("menuitem", { name: "撤回消息" })).not.toBeInTheDocument();
   });
 
-  it("disables retry for failed messages without a seq", async () => {
+  it("allows retry click for failed messages without a seq", async () => {
     const user = userEvent.setup();
     const onRetryMessage = vi.fn();
+    const message = {
+      ...createTextMessage("尚未落库失败"),
+      msgid: undefined,
+      seq: undefined,
+      status: "failed" as const,
+    };
 
     render(
       <MessageRow
-        message={{
-          ...createTextMessage("尚未落库失败"),
-          msgid: undefined,
-          seq: undefined,
-          status: "failed",
-        }}
+        message={message}
         onRetryMessage={onRetryMessage}
       />,
     );
 
     const retryButton = screen.getByRole("button", { name: "重试发送" });
-    expect(retryButton).toBeDisabled();
+    expect(retryButton).not.toBeDisabled();
 
     await user.click(retryButton);
-    expect(onRetryMessage).not.toHaveBeenCalled();
+    expect(onRetryMessage).toHaveBeenCalledWith(message.uiMessageKey);
   });
 
-  it("disables retry for failed messages with invalid seq", async () => {
+  it("allows retry click for failed messages with invalid seq", async () => {
     const user = userEvent.setup();
     const onRetryMessage = vi.fn();
+    const message = {
+      ...createTextMessage("异常序号失败"),
+      seq: 0,
+      status: "failed" as const,
+    };
 
     render(
       <MessageRow
-        message={{
-          ...createTextMessage("异常序号失败"),
-          seq: 0,
-          status: "failed",
-        }}
+        message={message}
         onRetryMessage={onRetryMessage}
       />,
     );
 
     const retryButton = screen.getByRole("button", { name: "重试发送" });
-    expect(retryButton).toBeDisabled();
+    expect(retryButton).not.toBeDisabled();
 
     await user.click(retryButton);
-    expect(onRetryMessage).not.toHaveBeenCalled();
+    expect(onRetryMessage).toHaveBeenCalledWith(message.uiMessageKey);
   });
 
-  it("disables retry for unsupported failed message content", async () => {
+  it("allows retry click for unsupported failed message content", async () => {
     const user = userEvent.setup();
     const onRetryMessage = vi.fn();
+    const message = {
+      ...createTextMessage("语音失败"),
+      content: {
+        audioUrl: "https://cdn.example.com/voice.amr",
+        durationLabel: "0:05",
+        type: "voice" as const,
+      },
+      rawMsgtype: "voice",
+      status: "failed" as const,
+    };
 
     render(
       <MessageRow
-        message={{
-          ...createTextMessage("语音失败"),
-          content: {
-            audioUrl: "https://cdn.example.com/voice.amr",
-            durationLabel: "0:05",
-            type: "voice",
-          },
-          rawMsgtype: "voice",
-          status: "failed",
-        }}
+        message={message}
         onRetryMessage={onRetryMessage}
       />,
     );
 
     const retryButton = screen.getByRole("button", { name: "重试发送" });
-    expect(retryButton).toBeDisabled();
+    expect(retryButton).not.toBeDisabled();
 
     await user.click(retryButton);
-    expect(onRetryMessage).not.toHaveBeenCalled();
+    expect(onRetryMessage).toHaveBeenCalledWith(message.uiMessageKey);
   });
 
   it("keeps the feed item key stable after optimistic messages are reconciled", () => {

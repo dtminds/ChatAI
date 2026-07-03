@@ -990,11 +990,10 @@ function MessageInlineStatusSlot({
   }
 
   if (state === "failed") {
-    const canRetry =
+    const canInvokeRetry =
       canRetryMessage &&
       Boolean(onRetryMessage) &&
-      !isRetryingMessage &&
-      canRetryFailedMessage(message);
+      !isRetryingMessage;
 
     return (
       <div
@@ -1010,9 +1009,9 @@ function MessageInlineStatusSlot({
               ? "bg-transparent text-muted-foreground"
               : "bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:hover:bg-destructive",
           )}
-          disabled={!canRetry}
+          disabled={!canInvokeRetry}
           onClick={() => {
-            if (!canRetry) {
+            if (!canInvokeRetry) {
               return;
             }
 
@@ -1055,18 +1054,6 @@ function MessageInlineStatusSlot({
   }
 
   return null;
-}
-
-function canRetryFailedMessage(message: ChatMessage) {
-  return (
-    isValidMessageSeq(message.seq) &&
-    (
-      message.content.type === "text" ||
-      message.content.type === "quote" ||
-      message.content.type === "image" ||
-      message.content.type === "file"
-    )
-  );
 }
 
 function MessageRevokedState() {

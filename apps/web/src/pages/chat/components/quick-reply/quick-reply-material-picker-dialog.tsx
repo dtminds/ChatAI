@@ -41,8 +41,10 @@ type QuickReplyMaterialPickerDialogProps = {
 export type QuickReplyAttachmentMaterialBizType =
   | typeof MATERIAL_COLLECTION_BIZ_TYPE.FILE
   | typeof MATERIAL_COLLECTION_BIZ_TYPE.H5
+  | typeof MATERIAL_COLLECTION_BIZ_TYPE.IMAGE
   | typeof MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM
-  | typeof MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED;
+  | typeof MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED
+  | typeof MATERIAL_COLLECTION_BIZ_TYPE.VIDEO;
 
 export function QuickReplyMaterialPickerDialog({
   bizType,
@@ -636,6 +638,14 @@ function getLibraryTitle(bizType: MaterialCollectionBizType | null) {
     return "收录的文件";
   }
 
+  if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.IMAGE) {
+    return "收录的图片";
+  }
+
+  if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO) {
+    return "收录的视频";
+  }
+
   if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM) {
     return "收录的小程序";
   }
@@ -649,6 +659,8 @@ function getLibraryTitle(bizType: MaterialCollectionBizType | null) {
 
 function getLibraryDialogStyle(bizType: MaterialCollectionBizType | null) {
   if (
+    bizType === MATERIAL_COLLECTION_BIZ_TYPE.IMAGE ||
+    bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO ||
     bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM ||
     bizType === MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED
   ) {
@@ -666,6 +678,8 @@ function getLibraryDialogStyle(bizType: MaterialCollectionBizType | null) {
 
 function isCardLibraryBizType(bizType: MaterialCollectionBizType | null) {
   return (
+    bizType === MATERIAL_COLLECTION_BIZ_TYPE.IMAGE ||
+    bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO ||
     bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM ||
     bizType === MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED
   );

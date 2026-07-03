@@ -59,6 +59,7 @@ import {
   TablePinnedHead,
   TableRow,
 } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   resolveTablePagination,
   TablePagination,
@@ -74,6 +75,7 @@ import { KbTableLoadingRow } from "./kb-components/kb-table-loading-row";
 import { ImportDocumentDialog } from "./kb-components/import-document-dialog";
 // import { ImportImageDialog } from "./kb-components/import-image-dialog";
 import { ImportQaDialog } from "./kb-components/import-qa-dialog";
+import { KbAttachmentsTab } from "./kb-components/kb-attachments-tab";
 import { TableOverflowTooltip } from "./kb-components/shared";
 import { deleteKbDoc, retryKbDoc } from "./api/kb-doc-service";
 import { fetchAiHostingQuota } from "./ai-hosting-quota-store";
@@ -177,6 +179,7 @@ export function KbDetailPage() {
   const [deleting, setDeleting] = useState(false);
   const [retryingDocId, setRetryingDocId] = useState<string | null>(null);
   const [checkingKnowledgeQuota, setCheckingKnowledgeQuota] = useState(false);
+  const [detailTab, setDetailTab] = useState("knowledge");
   const requestVersionRef = useRef(0);
   const summaryRequestVersionRef = useRef(0);
   const isMountedRef = useRef(false);
@@ -445,6 +448,23 @@ export function KbDetailPage() {
           />
         </div>
 
+        <Tabs className="gap-5" onValueChange={setDetailTab} value={detailTab}>
+          <TabsList className="h-auto w-full justify-start gap-5 rounded-none bg-transparent p-0">
+            <TabsTrigger
+              className="relative min-w-0 justify-start rounded-none bg-transparent px-0 py-2.5 text-base font-medium text-foreground shadow-none after:absolute after:bottom-0 after:left-1/2 after:h-[3px] after:w-6 after:-translate-x-1/2 after:rounded-full after:bg-primary after:opacity-0 after:content-[''] data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none data-[state=active]:after:opacity-100"
+              value="knowledge"
+            >
+              知识
+            </TabsTrigger>
+            <TabsTrigger
+              className="relative min-w-0 justify-start rounded-none bg-transparent px-0 py-2.5 text-base font-medium text-foreground shadow-none after:absolute after:bottom-0 after:left-1/2 after:h-[3px] after:w-6 after:-translate-x-1/2 after:rounded-full after:bg-primary after:opacity-0 after:content-[''] data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none data-[state=active]:after:opacity-100"
+              value="attachments"
+            >
+              附件
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="knowledge">
         <section aria-label="知识列表区块" className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="relative w-[280px] max-w-full">
@@ -496,6 +516,12 @@ export function KbDetailPage() {
             />
           </div>
         </section>
+          </TabsContent>
+
+          <TabsContent value="attachments">
+            <KbAttachmentsTab kbId={kbId} />
+          </TabsContent>
+        </Tabs>
       </div>
       </TooltipProvider>
       <ImportQaDialog

@@ -45,6 +45,8 @@ import { useAuthStore } from "@/store/auth-store";
 import { AccountRail } from "@/pages/chat/components/account-rail";
 import { ChatPanel } from "@/pages/chat/components/chat-panel";
 import { ConversationListPanel } from "@/pages/chat/components/conversation-list-panel";
+import { MessageForwardRecipientDialog } from "@/pages/chat/components/message-forward/message-forward-recipient-dialog";
+import { MessageForwardSelectedMessagesDialog } from "@/pages/chat/components/message-forward/message-forward-selected-messages-dialog";
 import { MessageMultiSelectToolbar } from "@/pages/chat/components/message-forward/message-multi-select-toolbar";
 import { getMessageFeedItemKey } from "@/pages/chat/components/message-feed";
 import { CustomerPage } from "@/pages/chat/customer-page";
@@ -722,7 +724,7 @@ function ChatWorkbenchContent({
     sidebarIframeSendStatus,
   } = workbenchPermissions;
   const canCollectMaterialActions = Boolean(subUser && subUser.role !== "viewer");
-  const messageForward = useMessageForward();
+  const messageForward = useMessageForward({ seatId: activeAccountId });
   const selectedForwardMessages = useMemo(
     () =>
       activeMessages.filter(
@@ -2125,6 +2127,7 @@ function ChatWorkbenchContent({
       multiSelectToolbar={
         messageForward.multiSelectMode ? (
           <MessageMultiSelectToolbar
+            disabled={messageForward.isSendingForward}
             onCancel={messageForward.exitMultiSelectMode}
             onForward={() =>
               messageForward.handleOpenBatchForwardDialog(
@@ -2393,6 +2396,25 @@ function ChatWorkbenchContent({
           </div>
         </div>
       )}
+      <MessageForwardRecipientDialog
+        excludeConversationId={activeConversation?.id}
+        isSending={messageForward.isSendingForward}
+        messages={messageForward.pendingMessages}
+        mode={messageForward.forwardMode}
+        onOpenChange={messageForward.setForwardDialogOpen}
+        onOpenSelectedMessages={() =>
+          messageForward.setSelectedMessagesDialogOpen(true)
+        }
+        onSend={messageForward.handleSendForward}
+        open={messageForward.forwardDialogOpen}
+        recentConversations={visibleSearchableConversations}
+        seatId={activeAccountId}
+      />
+      <MessageForwardSelectedMessagesDialog
+        messages={messageForward.pendingMessages}
+        onOpenChange={messageForward.setSelectedMessagesDialogOpen}
+        open={messageForward.selectedMessagesDialogOpen}
+      />
       <AlertDialog open={pollingPauseReason !== null}>
         <AlertDialogContent
           className="overflow-hidden p-0"

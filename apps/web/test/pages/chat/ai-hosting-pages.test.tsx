@@ -379,6 +379,7 @@ describe("AI hosting pages", () => {
       const docs = await kbService.listKbDocs(kbId, { page: 1, pageSize: 1 });
       return {
         hasDocuments: docs.pagination.total > 0,
+        linkedAgentCount: 0,
       };
     });
     vi.mocked(kbService.deleteKb).mockImplementation(async (kbId) => {
@@ -2186,6 +2187,23 @@ describe("AI hosting pages", () => {
     );
     expect(screen.getByRole("button", { name: "编辑 华为产品知识" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "删除 华为产品知识" })).toBeInTheDocument();
+  });
+
+  it("shows linked agent warning before deleting a knowledge base", async () => {
+    const user = userEvent.setup();
+    vi.mocked(kbService.checkKbDelete).mockResolvedValueOnce({
+      hasDocuments: false,
+      linkedAgentCount: 8,
+    });
+
+    renderWithRoute("/chat/ai-hosting/kb", <KbListPage />);
+
+    await screen.findByRole("heading", { level: 1, name: "知识库" });
+    await user.click(screen.getByRole("button", { name: "删除 华为产品知识" }));
+
+    expect(
+      await screen.findByText("当前知识库已关联8个Agent，是否确认删除？"),
+    ).toBeInTheDocument();
   });
 
   it("prevents creating knowledge bases when the fixed knowledge base quota is reached", async () => {

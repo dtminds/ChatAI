@@ -108,6 +108,7 @@ export class KbWriteService {
 
     return {
       hasDocuments: await this.hasKbDocuments(uid, kbNumericId),
+      linkedAgentCount: await this.countLinkedAgents(uid, kbNumericId),
     };
   }
 
@@ -168,6 +169,20 @@ export class KbWriteService {
     return Number(result?.total ?? 0) > 0;
   }
 
+  private async countLinkedAgents(uid: number, kbNumericId: number) {
+    const agents = await this.db
+      .selectFrom("xy_wap_embed_agent")
+      .select(["prompt_config"])
+      .where("uid", "=", uid)
+      .where("status", "=", dbActiveStatus)
+      .limit(100)
+      .execute();
+
+    return agents.filter((agent) =>
+      parsePromptConfigAvailableKbIds(agent.prompt_config).includes(kbNumericId),
+    ).length;
+  }
+
   private async assertKbQuotaAvailable(uid: number) {
     const result = await this.db
       .selectFrom("xy_wap_embed_agent_kb")
@@ -195,4 +210,24 @@ export function createKbWriteService(
   logger: RequestAwareLogger = noopLogger,
 ) {
   return new KbWriteService(db, createAgentKbJavaClient(logger), logger);
+}
+
+function parsePromptConfigAvailableKbIds(value: string | null | undefined) {
+  if (!value) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(value) as { available_kb_ids?: unknown };
+
+    if (!Array.isArray(parsed.available_kb_ids)) {
+      return [];
+    }
+
+    return parsed.available_kb_ids
+      .map((kbId) => Number(kbId))
+      .filter((kbId) => Number.isInteger(kbId) && kbId > 0);
+  } catch {
+    return [];
+  }
 }

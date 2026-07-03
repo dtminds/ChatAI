@@ -109,6 +109,33 @@ describe("KbWriteService", () => {
 
     await expect(service.checkKbDelete(tenant, "1")).resolves.toEqual({
       hasDocuments: true,
+      linkedAgentCount: 0,
+    });
+  });
+
+  it("reports linked agent count when deleting a kb", async () => {
+    const db = createKbReadDbMock({
+      agents: [
+        {
+          id: 1,
+          prompt_config: JSON.stringify({ available_kb_ids: [2] }),
+        },
+        {
+          id: 2,
+          prompt_config: JSON.stringify({ available_kb_ids: [2, 3] }),
+        },
+        {
+          id: 3,
+          prompt_config: JSON.stringify({ available_kb_ids: [5] }),
+        },
+      ],
+      includeSecondKbWithoutDocs: true,
+    }) as unknown as Kysely<Database>;
+    const service = createService(db, { createKb: vi.fn(), deleteKb: vi.fn(), updateKb: vi.fn() });
+
+    await expect(service.checkKbDelete(tenant, "2")).resolves.toEqual({
+      hasDocuments: false,
+      linkedAgentCount: 2,
     });
   });
 
@@ -129,6 +156,7 @@ describe("KbWriteService", () => {
 
     await expect(service.checkKbDelete(tenant, "2")).resolves.toEqual({
       hasDocuments: false,
+      linkedAgentCount: 0,
     });
 
     const deleted = await service.deleteKb(tenant, "2");

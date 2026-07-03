@@ -12,6 +12,12 @@ type QueryExecutionEvent = {
 };
 
 type KbReadDbMockOptions = {
+  agents?: Array<{
+    id: number;
+    prompt_config: string;
+    status?: number;
+    uid?: number;
+  }>;
   beforeExecute?: (event: QueryExecutionEvent) => Promise<void> | void;
   docSizeBytes?: number[];
   deletedDocCount?: number;
@@ -306,6 +312,13 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
     });
   }
 
+  const agents = (options.agents ?? []).map((agent) => ({
+    id: agent.id,
+    prompt_config: agent.prompt_config,
+    status: agent.status ?? 1,
+    uid: agent.uid ?? 9001,
+  }));
+
   const chunks = [
     {
       content: "切片正文",
@@ -471,6 +484,8 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
             rows = filterRows(docs);
           } else if (table === "xy_wap_embed_agent_kb_chunk") {
             rows = filterRows(chunks);
+          } else if (table === "xy_wap_embed_agent") {
+            rows = filterRows(agents);
           }
 
           return { total: rows.length };
@@ -502,6 +517,10 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
 
           if (table === "xy_wap_embed_agent_kb_chunk") {
             return projectRows(filterRows(chunks));
+          }
+
+          if (table === "xy_wap_embed_agent") {
+            return projectRows(filterRows(agents));
           }
 
           return [];

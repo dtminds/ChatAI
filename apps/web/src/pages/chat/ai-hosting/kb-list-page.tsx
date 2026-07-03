@@ -13,7 +13,6 @@ import {
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
-  AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
   Dialog,
@@ -106,6 +105,7 @@ export function KbListPage() {
   const [deleteTarget, setDeleteTarget] = useState<KbListViewItem | null>(null);
   const [blockedDeleteOpen, setBlockedDeleteOpen] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [deleteLinkedAgentCount, setDeleteLinkedAgentCount] = useState(0);
   const [listReloadKey, setListReloadKey] = useState(0);
   const isMountedRef = useRef(false);
 
@@ -256,6 +256,7 @@ export function KbListPage() {
     setDeleteTarget(null);
     setBlockedDeleteOpen(false);
     setConfirmDeleteOpen(false);
+    setDeleteLinkedAgentCount(0);
   }
 
   async function handleDeleteClick(item: KbListViewItem) {
@@ -278,6 +279,7 @@ export function KbListPage() {
         return;
       }
 
+      setDeleteLinkedAgentCount(result.linkedAgentCount);
       setConfirmDeleteOpen(true);
     } catch {
       if (isMountedRef.current) {
@@ -548,7 +550,11 @@ export function KbListPage() {
       >
         <AlertDialogContent className={KB_DELETE_DIALOG_CLASSNAME}>
           <AlertDialogHeader className="space-y-0 text-left">
-            <AlertDialogTitle className="text-left">是否确认删除？</AlertDialogTitle>
+            <AlertDialogDescription className={KB_DELETE_DIALOG_MESSAGE_CLASSNAME}>
+              {deleteLinkedAgentCount > 0
+                ? `当前知识库已关联${deleteLinkedAgentCount}个Agent，是否确认删除？`
+                : "是否确认删除？"}
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={deleting}>取消</AlertDialogCancel>

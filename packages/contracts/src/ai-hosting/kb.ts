@@ -54,6 +54,7 @@ export const KbUpdateResponseSchema = Type.Object(
 export const KbDeleteCheckResponseSchema = Type.Object(
   {
     hasDocuments: Type.Boolean(),
+    linkedAgentCount: Type.Number({ minimum: 0 }),
   },
   { additionalProperties: false },
 );

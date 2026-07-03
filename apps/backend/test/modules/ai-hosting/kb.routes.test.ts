@@ -131,6 +131,7 @@ describe("KB read routes", () => {
     expect(response.json()).toEqual({
       data: {
         hasDocuments: true,
+        linkedAgentCount: 0,
       },
       success: true,
     });
@@ -184,6 +185,7 @@ describe("KB read routes", () => {
     expect(checkResponse.json()).toEqual({
       data: {
         hasDocuments: false,
+        linkedAgentCount: 0,
       },
       success: true,
     });

@@ -581,6 +581,9 @@ describe("ChatWorkbenchPage composer flows", () => {
     expect(sentPayload.segment.text).toMatch(
       new RegExp(`^hello ${escapeRegExp(JAVA_MENTION_PLACEHOLDER)}\\s+world ${escapeRegExp(JAVA_MENTION_PLACEHOLDER)}$`),
     );
+    expect(sentPayload.atOriginText).toMatch(
+      /^hello @小林\s+world @缪勇飞 群昵称111$/,
+    );
   });
 
   it("inserts a selected mention at a middle caret position", async () => {

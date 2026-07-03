@@ -742,9 +742,10 @@ export type WorkbenchSendMessagePayload = {
   content?: string;
   mention?: {
     all?: boolean;
-    location: "start" | "end";
+    location: "start" | "end" | "any";
     memberIds: string[];
   };
+  atOriginText?: string;
   quote?: {
     quoteMsgId: string;
     quotedMessage?: WorkbenchQuotedMessagePreviewDto;
@@ -762,6 +763,11 @@ export type WorkbenchSendMessageResponse = {
   optNo: string;
   status: "accepted";
   messages?: WorkbenchSentMessageAck[];
+};
+
+export type WorkbenchRetryMessageRequest = {
+  conversationId: string;
+  messageSeq: number;
 };
 
 export type WorkbenchConversationReadResponse = {

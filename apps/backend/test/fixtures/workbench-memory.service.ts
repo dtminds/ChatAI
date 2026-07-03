@@ -1421,6 +1421,25 @@ export function createMemoryWorkbenchService() {
     ): WorkbenchRevokeMessageResponse {
       return revokeMessage(state, conversationId, messageSeq);
     },
+    retryMessage(
+      _subUserId: string,
+      payload: { conversationId: string; messageSeq: number },
+    ): WorkbenchSendMessageResponse {
+      const message = findMemoryMessageBySeq(
+        state,
+        payload.conversationId,
+        payload.messageSeq,
+      );
+
+      if (!message) {
+        throw new BadRequestError("RETRY_MESSAGE_FAILED", "重发失败");
+      }
+
+      return {
+        optNo: buildMockOptNo(state.nextId++),
+        status: "accepted",
+      };
+    },
     takeOverSeat(_subUserId: string, seatId: string): WorkbenchTakeOverSeatResponse {
       const seat = findSeat(state, seatId);
 
@@ -1983,6 +2002,16 @@ function removeConversation(
     conversationId,
     seatId: conversation.seatId,
   };
+}
+
+function findMemoryMessageBySeq(
+  state: MemoryWorkbenchState,
+  conversationId: string,
+  messageSeq: number,
+) {
+  return (state.messagesByConversationId[conversationId] ?? []).find(
+    (message) => message.seq === messageSeq,
+  );
 }
 
 function revokeMessage(

@@ -64,6 +64,7 @@ import {
   type WorkbenchSmartReplyTextModerationResponse,
   type WorkbenchRevokeMessageRequest,
   type WorkbenchRevokeMessageResponse,
+  type WorkbenchRetryMessageRequest,
   type WorkbenchVoicePlaybackConfirmRequest,
   type WorkbenchVoicePlaybackConfirmResponse,
   type WorkbenchVoiceTranscriptionRequest,
@@ -269,6 +270,9 @@ export type WorkbenchService = {
     request: WorkbenchSmartHeartbeatRequest,
   ) => Promise<WorkbenchSmartHeartbeatResponse>;
   sendMessage: (payload: WorkbenchSendMessagePayload) => Promise<WorkbenchSendMessageResponse>;
+  retryMessage: (
+    request: WorkbenchRetryMessageRequest,
+  ) => Promise<WorkbenchSendMessageResponse>;
   takeOverSeat: (seatId: string) => Promise<WorkbenchTakeOverSeatResponse>;
   unpinConversation: (conversationId: string) => Promise<WorkbenchConversationUnpinResponse>;
   search: (seatId: string, keyword: string) => Promise<WorkbenchSearchResponseDto>;
@@ -1887,6 +1891,24 @@ export function createMockWorkbenchService(): WorkbenchService {
         status: "accepted",
       };
     },
+    async retryMessage(request) {
+      const message = findMessageByIdOrSeq(
+        state,
+        request.conversationId,
+        undefined,
+        request.messageSeq,
+      );
+
+      if (!message) {
+        throw new Error("重发失败");
+      }
+
+      const retryOptNo = buildMockOptNo(state.nextId++);
+      return {
+        optNo: retryOptNo,
+        status: "accepted",
+      };
+    },
     async takeOverSeat(seatId) {
       const seat = findAccount(state, seatId);
 
@@ -2511,6 +2533,12 @@ export function createHttpWorkbenchService(): WorkbenchService {
       return http.post<WorkbenchSendMessageResponse, WorkbenchSendMessagePayload>(
         "/server/messages/send",
         payload,
+      );
+    },
+    retryMessage(request) {
+      return http.post<WorkbenchSendMessageResponse, WorkbenchRetryMessageRequest>(
+        "/server/messages/retry",
+        request,
       );
     },
     takeOverSeat(seatId) {

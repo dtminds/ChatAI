@@ -43,6 +43,7 @@ import type {
   WorkbenchSmartReplySendAnswerRequest,
   WorkbenchSmartReplySendAnswerResponse,
   WorkbenchRevokeMessageResponse,
+  WorkbenchRetryMessageRequest,
   WorkbenchSeatAgentModeSwitchRequest,
   WorkbenchSeatAgentModeSwitchResponse,
   WorkbenchSeatDto,
@@ -478,6 +479,10 @@ export type WorkbenchService = {
   sendMessage(
     subUserId: string,
     payload: WorkbenchSendMessagePayload,
+  ): Promise<WorkbenchSendMessageResponse> | WorkbenchSendMessageResponse;
+  retryMessage(
+    subUserId: string,
+    payload: WorkbenchRetryMessageRequest,
   ): Promise<WorkbenchSendMessageResponse> | WorkbenchSendMessageResponse;
   takeOverSeat(
     subUserId: string,
@@ -1937,6 +1942,77 @@ export class MysqlWorkbenchService implements WorkbenchService {
         uid: conversation.uid,
       },
       "工作台消息发送已受理",
+    );
+
+    return response;
+  }
+
+  async retryMessage(subUserId: string, payload: WorkbenchRetryMessageRequest) {
+    const conversation = await this.getOperableConversation(
+      subUserId,
+      payload.conversationId,
+    );
+
+    if (!Number.isSafeInteger(payload.messageSeq) || payload.messageSeq <= 0) {
+      throw new BadRequestError("INVALID_MESSAGE_SEQ", "消息序号无效");
+    }
+
+    const failedMessage = await this.repository.findRetryMessage({
+      conversationId: conversation.id,
+      messageSeq: payload.messageSeq,
+      platform: conversation.platform,
+      ...(conversation.thirdExternalUserId
+        ? { thirdExternalUserId: conversation.thirdExternalUserId }
+        : {}),
+      ...(conversation.thirdGroupId ? { thirdGroupId: conversation.thirdGroupId } : {}),
+      thirdUserId: conversation.thirdUserId,
+      uid: conversation.uid,
+    });
+
+    if (!failedMessage?.optNo) {
+      throw new BadRequestError("RETRY_MESSAGE_FAILED", "重发失败");
+    }
+
+    if (failedMessage.senderType !== "agent") {
+      throw new BadRequestError("UNSUPPORTED_RETRY_MESSAGE", "暂不支持重发该消息");
+    }
+
+    const operation = await this.repository.findAsyncOperationByOptNo({
+      optNo: failedMessage.optNo,
+      platform: conversation.platform,
+      uid: conversation.uid,
+    });
+    const msgData = buildRetryJavaMessageData(operation?.optParams);
+
+    const response = await this.javaClient.sendMessage({
+      failMsgId: failedMessage.id,
+      msgData,
+      platform: conversation.platform,
+      sendType: conversation.thirdGroupId ? JAVA_SEND_TYPE.GROUP : JAVA_SEND_TYPE.SINGLE,
+      source: JAVA_MESSAGE_SOURCE.WORKBENCH,
+      ...(conversation.thirdExternalUserId
+        ? { thirdExternalUserid: conversation.thirdExternalUserId }
+        : {}),
+      ...(conversation.thirdGroupId ? { thirdGroupId: conversation.thirdGroupId } : {}),
+      thirdUserId: conversation.thirdUserId,
+      uid: conversation.uid,
+    });
+
+    this.logger.info(
+      {
+        conversationId: conversation.id,
+        messageSeq: payload.messageSeq,
+        operation: "retry-message",
+        optNo: response.optNo,
+        platform: conversation.platform,
+        retryOptNo: failedMessage.optNo,
+        seatId: conversation.seatId,
+        sendType: conversation.thirdGroupId ? "group" : "single",
+        status: response.status,
+        subUserId,
+        uid: conversation.uid,
+      },
+      "工作台失败消息重发已受理",
     );
 
     return response;
@@ -5116,14 +5192,71 @@ function buildJavaSendMessageData(
     message.isHit = 1;
   } else if (mentionMemberIds.length > 0) {
     message.atLocation =
-      payload.mention?.location === "end"
-        ? JAVA_MENTION_LOCATION.END
-        : JAVA_MENTION_LOCATION.START;
+      payload.mention?.location === "any"
+        ? JAVA_MENTION_LOCATION.ANY
+        : payload.mention?.location === "end"
+          ? JAVA_MENTION_LOCATION.END
+          : JAVA_MENTION_LOCATION.START;
     message.atWxSerialNos = mentionMemberIds;
     message.isHit = JAVA_MENTION_HIT_TYPE.MEMBER;
+    if (payload.atOriginText?.trim()) {
+      message.atOriginText = payload.atOriginText;
+    }
   }
 
   return message;
+}
+
+function buildRetryJavaMessageData(rawOptParams: string | null | undefined): JavaSendMessageData {
+  if (!rawOptParams?.trim()) {
+    throw new BadRequestError("RETRY_MESSAGE_FAILED", "重发失败");
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawOptParams);
+  } catch {
+    throw new BadRequestError("RETRY_MESSAGE_FAILED", "重发失败");
+  }
+
+  if (!isRecord(parsed) || !isRecord(parsed.msgData)) {
+    throw new BadRequestError("RETRY_MESSAGE_FAILED", "重发失败");
+  }
+
+  const msgData = parsed.msgData;
+
+  switch (msgData.msgtype) {
+    case "text":
+      if (typeof msgData.text !== "string") {
+        throw new BadRequestError("RETRY_MESSAGE_FAILED", "重发失败");
+      }
+      return msgData as JavaSendMessageData;
+    case "quote":
+      if (
+        typeof msgData.text !== "string" ||
+        !Number.isSafeInteger(msgData.quoteMsgId)
+      ) {
+        throw new BadRequestError("RETRY_MESSAGE_FAILED", "重发失败");
+      }
+      return msgData as JavaSendMessageData;
+    case "image":
+      if (typeof msgData.fileUrl !== "string" || !msgData.fileUrl.trim()) {
+        throw new BadRequestError("RETRY_MESSAGE_FAILED", "重发失败");
+      }
+      return msgData as JavaSendMessageData;
+    case "file":
+      if (
+        typeof msgData.fileName !== "string" ||
+        typeof msgData.fileUrl !== "string" ||
+        !msgData.fileName.trim() ||
+        !msgData.fileUrl.trim()
+      ) {
+        throw new BadRequestError("RETRY_MESSAGE_FAILED", "重发失败");
+      }
+      return msgData as JavaSendMessageData;
+    default:
+      throw new BadRequestError("UNSUPPORTED_RETRY_MESSAGE", "暂不支持重发该消息");
+  }
 }
 
 function buildEmotionJavaSendMessageData(content: string): JavaSendMessageData {

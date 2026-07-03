@@ -155,6 +155,16 @@ export type RevokeMessageLookup = {
   status: "failed" | "sent";
 };
 
+export type RetryMessageLookup = {
+  id: number;
+  optNo: string | null;
+  senderType: "agent" | "customer" | "system";
+};
+
+export type AsyncOperationLookup = {
+  optParams: string | null;
+};
+
 export type SeatUpdateEventListResult = Array<
   {
     eventTime: number;
@@ -2148,6 +2158,86 @@ export class WorkbenchRepository {
       seq,
       status: toNumber(row.status) === 0 ? "failed" : "sent",
     };
+  }
+
+  async findRetryMessage(input: {
+    conversationId: string;
+    messageSeq: number;
+    platform: number;
+    thirdExternalUserId?: string;
+    thirdGroupId?: string;
+    thirdUserId: string;
+    uid: number;
+  }): Promise<RetryMessageLookup | undefined> {
+    if (!Number.isSafeInteger(input.messageSeq) || input.messageSeq <= 0) {
+      return undefined;
+    }
+
+    let query = this.db
+      .selectFrom("xy_wap_embed_msg_audit_info as message")
+      .select([
+        "message.id as id",
+        "message.chat_type as chat_type",
+        "message.from_type as from_type",
+        "message.opt_no as opt_no",
+        "message.third_from_id as third_from_id",
+        "message.third_user_id as third_user_id",
+      ])
+      .where("message.uid", "=", input.uid)
+      .where("message.platform", "=", input.platform)
+      .where("message.third_user_id", "=", input.thirdUserId)
+      .where("message.id", "=", input.messageSeq)
+      .where("message.status", "=", 0);
+
+    if (input.thirdGroupId) {
+      query = query.where("message.third_group_id", "=", input.thirdGroupId);
+    } else if (input.thirdExternalUserId) {
+      query = query.where("message.third_external_id", "=", input.thirdExternalUserId);
+    } else {
+      return undefined;
+    }
+
+    const row = await query.executeTakeFirst();
+    const id = toNumber(row?.id);
+
+    if (id == null) {
+      return undefined;
+    }
+
+    return {
+      id,
+      optNo: row?.opt_no ?? null,
+      senderType: mapRevokeSenderType({
+        chatType: toNumber(row?.chat_type) ?? 0,
+        fromType: toNumber(row?.from_type) ?? null,
+        thirdFromId: row?.third_from_id ?? undefined,
+        thirdUserId: row?.third_user_id ?? undefined,
+      }),
+    };
+  }
+
+  async findAsyncOperationByOptNo(input: {
+    optNo: string;
+    platform: number;
+    uid: number;
+  }): Promise<AsyncOperationLookup | undefined> {
+    if (!input.optNo.trim()) {
+      return undefined;
+    }
+
+    const row = await this.db
+      .selectFrom("xy_wap_embed_async_operation")
+      .select(["opt_params"])
+      .where("opt_no", "=", input.optNo)
+      .where("uid", "=", input.uid)
+      .where("platform", "=", input.platform)
+      .executeTakeFirst();
+
+    return row
+      ? {
+          optParams: row.opt_params ?? null,
+        }
+      : undefined;
   }
 
   async listMessageUpdateEvents(

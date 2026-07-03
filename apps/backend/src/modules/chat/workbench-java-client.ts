@@ -64,6 +64,7 @@ export const JAVA_MESSAGE_SOURCE = {
 } as const;
 
 export const JAVA_MENTION_LOCATION = {
+  ANY: 2,
   END: 1,
   START: 0,
 } as const;
@@ -81,8 +82,10 @@ type JavaApiResponse<T> = {
 
 type JavaMentionFields = {
   atLocation?: number;
+  atOriginText?: string;
   atWxSerialNos?: string[];
   isHit?: number;
+  quoteOriginText?: string;
 };
 
 export type JavaSendMessageData =

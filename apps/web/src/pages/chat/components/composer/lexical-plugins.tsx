@@ -288,9 +288,11 @@ export function ComposerRuntimePlugin({
           return true;
         }
 
+        let exportedSegments: ComposerSegment[] = [];
         editor.getEditorState().read(() => {
-          onSendSegments($exportComposerSegments());
+          exportedSegments = $exportComposerSegments();
         });
+        onSendSegments(exportedSegments);
         return true;
       },
       COMMAND_PRIORITY_HIGH,

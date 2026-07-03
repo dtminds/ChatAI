@@ -37,6 +37,7 @@ import {
   requestSmartReplyMakeShorter as requestSmartReplyMakeShorterApi,
   sendSmartReplyAnswer,
   confirmVoicePlaybackReady as confirmVoicePlaybackReadyRequest,
+  retryMessage as retryMessageRequest,
   revokeMessage as revokeMessageRequest,
   sendTextMessage,
   takeOverAccount as takeOverAccountRequest,
@@ -2252,71 +2253,29 @@ function buildOptimisticMessageContent(
   };
 }
 
-function getRetrySendInputFromMessage(message: ChatMessage): {
-  quote?: SendQuotePayload;
-  segment: ComposerSegment;
-} | undefined {
-  if (message.content.type === "text") {
-    return {
-      segment: {
-        text: message.content.text,
-        type: "text",
-      },
-    };
-  }
+function canRetryMessageContent(message: ChatMessage) {
+  return (
+    message.content.type === "text" ||
+    message.content.type === "quote" ||
+    message.content.type === "image" ||
+    message.content.type === "file"
+  );
+}
 
-  if (message.content.type === "quote") {
-    return {
-      quote: {
-        quoteMsgId: message.content.quoteMsgId,
-        quotedMessage: message.content.quotedMessage,
-      },
-      segment: {
-        text: message.content.text,
-        type: "text",
-      },
-    };
+function getRetryPreviewText(message: ChatMessage) {
+  if (message.content.type === "text" || message.content.type === "quote") {
+    return message.content.text;
   }
 
   if (message.content.type === "image") {
-    const imageUrl = message.content.imageUrl?.trim();
-
-    if (!imageUrl) {
-      return undefined;
-    }
-
-    return {
-      segment: {
-        alt: message.content.alt,
-        height: message.content.height,
-        type: "image",
-        url: imageUrl,
-        width: message.content.width,
-      },
-    };
+    return "[图片]";
   }
 
   if (message.content.type === "file") {
-    const fileUrl = message.content.fileUrl?.trim();
-
-    if (!fileUrl) {
-      return undefined;
-    }
-
-    return {
-      segment: {
-        extension: message.content.extension,
-        fileName: message.content.fileName,
-        ...(message.content.fileSizeLabel
-          ? { fileSizeLabel: message.content.fileSizeLabel }
-          : {}),
-        type: "file",
-        url: fileUrl,
-      },
-    };
+    return message.content.fileName || "[文件]";
   }
 
-  return undefined;
+  return "";
 }
 
 function canUseConversationActions(state: WorkbenchState, account: Account | undefined) {
@@ -2612,6 +2571,78 @@ export function createWorkbenchStore() {
 
   function isReadyScopeRequest(requestId: number, state: WorkbenchStore) {
     return isCurrentScopeRequest(requestId) && state.bootstrapStatus === "ready";
+  }
+
+  function buildAcceptedOptimisticMessageState(
+    currentState: WorkbenchStore,
+    input: {
+      activeAccountId?: string;
+      activeConversationId: string;
+      optimisticMessage: Message;
+      preview: string;
+      previewTimestamp: number;
+      minimumActiveMessageSeq?: number;
+      removeMessageKeys?: string[];
+    },
+  ) {
+    const currentMessages =
+      currentState.messagesByConversationId[input.activeConversationId] ?? [];
+    const shouldRemoveMessage = input.removeMessageKeys?.length
+      ? (message: Message) =>
+          input.removeMessageKeys?.some((key) => matchesMessageKey(message, key)) ??
+          false
+      : undefined;
+    const nextMessages = [
+      ...(shouldRemoveMessage
+        ? currentMessages.filter((message) => !shouldRemoveMessage(message))
+        : currentMessages),
+      input.optimisticMessage,
+    ];
+    const currentConversations = input.activeAccountId
+      ? currentState.conversationListsByScope[input.activeAccountId] ?? []
+      : [];
+
+    const nextActiveMessageSeq = getActiveMessageSeq(
+      {
+        ...currentState.messagesByConversationId,
+        [input.activeConversationId]: nextMessages,
+      },
+      input.activeConversationId,
+    );
+
+    return {
+      activeMessageSeq: Math.max(
+        nextActiveMessageSeq,
+        currentState.activeMessageSeq,
+        input.minimumActiveMessageSeq ?? 0,
+      ),
+      ...(input.activeAccountId
+        ? {
+            conversationListsByScope: {
+              ...currentState.conversationListsByScope,
+              [input.activeAccountId]: updateConversationPreview(
+                currentConversations,
+                input.activeConversationId,
+                input.preview,
+                input.optimisticMessage.sentAt,
+                input.previewTimestamp,
+              ),
+            },
+          }
+        : {}),
+      messagesByConversationId: {
+        ...currentState.messagesByConversationId,
+        [input.activeConversationId]: nextMessages,
+      },
+      pendingMessages: [
+        ...(shouldRemoveMessage
+          ? currentState.pendingMessages.filter(
+              (message) => !shouldRemoveMessage(message),
+            )
+          : currentState.pendingMessages),
+        input.optimisticMessage,
+      ],
+    };
   }
 
   function issueUnreadRequestId(accountId: string, mode: ChatMode) {
@@ -4821,9 +4852,12 @@ export function createWorkbenchStore() {
 
           return {
             accounts: nextAccounts,
-            activeMessageSeq: getActiveMessageSeq(
-              nextMessagesByConversationId,
-              requestedActiveConversationId,
+            activeMessageSeq: Math.max(
+              currentState.activeMessageSeq,
+              getActiveMessageSeq(
+                nextMessagesByConversationId,
+                requestedActiveConversationId,
+              ),
             ),
             conversationListsByScope: nextConversationLists,
             isPollBaselineFresh: false,
@@ -5191,52 +5225,18 @@ export function createWorkbenchStore() {
           } satisfies Message;
           const preview = getComposerSegmentsPreview([originalSegment]);
 
-          set((currentState) => {
-            const currentMessages =
-              currentState.messagesByConversationId[activeConversationId] ?? [];
-            const currentMessagesWithoutAcceptedRemoval = options?.removeMessageIdOnAccepted
-              ? currentMessages.filter(
-                  (message) =>
-                    !matchesMessageKey(message, options.removeMessageIdOnAccepted ?? ""),
-                )
-              : currentMessages;
-            const nextMessages = [...currentMessagesWithoutAcceptedRemoval, optimisticMessage];
-            const currentConversations =
-              currentState.conversationListsByScope[activeAccountId] ?? [];
-
-            return {
-              activeMessageSeq: getActiveMessageSeq(
-                {
-                  ...currentState.messagesByConversationId,
-                  [activeConversationId]: nextMessages,
-                },
-                activeConversationId,
-              ),
-              conversationListsByScope: {
-                ...currentState.conversationListsByScope,
-                [activeAccountId]: updateConversationPreview(
-                  currentConversations,
-                  activeConversationId,
-                  preview,
-                  optimisticMessage.sentAt,
-                  timestamp + index,
-                ),
-              },
-              messagesByConversationId: {
-                ...currentState.messagesByConversationId,
-                [activeConversationId]: nextMessages,
-              },
-              pendingMessages: [
-                ...(options?.removeMessageIdOnAccepted
-                  ? currentState.pendingMessages.filter(
-                      (message) =>
-                        !matchesMessageKey(message, options.removeMessageIdOnAccepted ?? ""),
-                    )
-                  : currentState.pendingMessages),
-                optimisticMessage,
-              ],
-            };
-          });
+          set((currentState) =>
+            buildAcceptedOptimisticMessageState(currentState, {
+              activeAccountId,
+              activeConversationId,
+              optimisticMessage,
+              preview,
+              previewTimestamp: timestamp + index,
+              removeMessageKeys: options?.removeMessageIdOnAccepted
+                ? [options.removeMessageIdOnAccepted]
+                : undefined,
+            }),
+          );
         }
 
         set((currentState) => ({
@@ -5294,22 +5294,119 @@ export function createWorkbenchStore() {
         };
       }
 
-      const retryInput = getRetrySendInputFromMessage(failedMessage);
-
-      if (!retryInput) {
+      if (!canRetryMessageContent(failedMessage) || !isValidMessageSeq(failedMessage.seq)) {
         return {
-          errorCode: "UNSUPPORTED_RETRY_MESSAGE",
+          errorCode: !isValidMessageSeq(failedMessage.seq)
+            ? "MESSAGE_NOT_RETRYABLE"
+            : "UNSUPPORTED_RETRY_MESSAGE",
           errorMessage: "暂不支持重发该消息",
           reason: "unavailable",
           ok: false,
         };
       }
 
-      return get().sendAgentMessageSegments([retryInput.segment], {
-        failMsgId: failedMessage.seq != null ? String(failedMessage.seq) : undefined,
-        removeMessageIdOnAccepted: failedMessage.uiMessageKey,
-        quote: retryInput.quote,
-      });
+      const activeConversationId = state.activeConversationId;
+      const activeAccountId = state.activeAccountId;
+      const account = state.accounts.find((item) => item.id === activeAccountId);
+      const activeConversation = activeAccountId
+        ? (state.conversationListsByScope[activeAccountId] ?? []).find(
+            (conversation) => conversation.id === activeConversationId,
+          )
+        : undefined;
+
+      if (
+        !activeAccountId ||
+        !activeConversationId ||
+        !activeConversation ||
+        activeConversation.bizStatus !== 1 ||
+        !canUseConversationActions(state, account)
+      ) {
+        return {
+          errorCode: "UNAVAILABLE",
+          errorMessage: "当前无法发送消息",
+          reason: "unavailable",
+          ok: false,
+        };
+      }
+
+      const timestamp = Date.now();
+
+      set((currentState) => ({
+        sendStatusByConversationId: {
+          ...currentState.sendStatusByConversationId,
+          [activeConversationId]: "sending",
+        },
+      }));
+
+      try {
+        const response = await retryMessageRequest({
+          conversationId: activeConversationId,
+          messageSeq: failedMessage.seq,
+        });
+        const {
+          failReason: _failedReason,
+          msgid: _failedMsgid,
+          seq: _failedSeq,
+          ...retryMessageBase
+        } = failedMessage;
+        const optimisticMessage = {
+          ...retryMessageBase,
+          author: account
+            ? `${account.name}-${account.operator}`
+            : failedMessage.author,
+          isNew: true,
+          optNo: response.optNo,
+          status: "accepted" as const,
+          uiMessageKey: response.optNo,
+          sentAt: formatWorkbenchTimestamp(timestamp),
+        } satisfies Message;
+        const preview = getRetryPreviewText(failedMessage);
+        const retryRemovalKeys = uniqueMessageKeys([
+          uiMessageKey,
+          failedMessage.uiMessageKey,
+          failedMessage.optNo,
+          isValidMessageSeq(failedMessage.seq) ? String(failedMessage.seq) : undefined,
+        ]);
+
+        set((currentState) =>
+          buildAcceptedOptimisticMessageState(currentState, {
+            activeAccountId,
+            activeConversationId,
+            optimisticMessage,
+            preview,
+            previewTimestamp: timestamp,
+            minimumActiveMessageSeq: failedMessage.seq,
+            removeMessageKeys: retryRemovalKeys,
+          }),
+        );
+
+        set((currentState) => ({
+          sendStatusByConversationId: {
+            ...currentState.sendStatusByConversationId,
+            [activeConversationId]: "idle",
+          },
+        }));
+
+        return {
+          didConsumeQuote: false,
+          ok: true,
+          optNos: [response.optNo],
+        };
+      } catch (error) {
+        set((currentState) => ({
+          sendStatusByConversationId: {
+            ...currentState.sendStatusByConversationId,
+            [activeConversationId]: "idle",
+          },
+        }));
+
+        return {
+          errorCode: getRequestErrorCode(error),
+          errorMessage: getRequestApiErrorMessage(error),
+          reason: "send",
+          ok: false,
+        };
+      }
     },
     async revokeMessage(uiMessageKey) {
       const state = get();

@@ -1,5 +1,6 @@
 import type {
   WorkbenchPollRequest,
+  WorkbenchRetryMessageRequest,
   WorkbenchSendMessagePayload,
   WorkbenchGetOrCreateConversationRequestDto,
   WorkbenchSmartReplyAttachmentsRequest,
@@ -134,6 +135,11 @@ const MessageChatRecordQuerySchema = Type.Object({
 
 const MessageRevokeBodySchema = Type.Object({
   conversationId: Type.String(),
+});
+
+const MessageRetryBodySchema = Type.Object({
+  conversationId: Type.String(),
+  messageSeq: Type.Integer({ minimum: 1 }),
 });
 
 const MessageDownloadStatusBodySchema = Type.Object({
@@ -1921,6 +1927,23 @@ export async function registerChatRoutes(app: FastifyInstance) {
       return getWorkbenchService(app, request).sendMessage(
         getSubUserId(request),
         request.body satisfies WorkbenchSendMessagePayload,
+      );
+    },
+  );
+
+  app.post<{ Body: Static<typeof MessageRetryBodySchema> }>(
+    "/api/server/messages/retry",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: MessageRetryBodySchema,
+      },
+    },
+    async (request) => {
+      assertChatSendAccess(request);
+      return getWorkbenchService(app, request).retryMessage(
+        getSubUserId(request),
+        request.body satisfies WorkbenchRetryMessageRequest,
       );
     },
   );

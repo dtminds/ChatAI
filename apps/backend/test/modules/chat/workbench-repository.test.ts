@@ -5709,6 +5709,134 @@ describe("WorkbenchRepository", () => {
     });
   });
 
+  it("finds retry message opt no only within the failed conversation message scope", async () => {
+    const queries: Array<{ table: string; wheres: Array<[string, string, unknown]> }> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          expect(table).toBe("xy_wap_embed_msg_audit_info as message");
+          const query = createQueryBuilder({
+            chat_type: 2,
+            from_type: null,
+            id: 538,
+            opt_no: "failed-opt-538",
+            third_from_id: "seat-user-001",
+            third_user_id: "seat-user-001",
+          });
+          queries.push({ table, wheres: query.wheres });
+
+          return query;
+        },
+      } as never,
+    );
+
+    await expect(
+      repository.findRetryMessage({
+        conversationId: "conv-001",
+        messageSeq: 538,
+        platform: 5,
+        thirdGroupId: "group-001",
+        thirdUserId: "seat-user-001",
+        uid: 9001,
+      }),
+    ).resolves.toEqual({
+      id: 538,
+      optNo: "failed-opt-538",
+      senderType: "agent",
+    });
+    expect(queries).toHaveLength(1);
+    expect(queries[0]).toMatchObject({
+      table: "xy_wap_embed_msg_audit_info as message",
+      wheres: [
+        ["message.uid", "=", 9001],
+        ["message.platform", "=", 5],
+        ["message.third_user_id", "=", "seat-user-001"],
+        ["message.id", "=", 538],
+        ["message.status", "=", 0],
+        ["message.third_group_id", "=", "group-001"],
+      ],
+    });
+  });
+
+  it("maps retry message sender from platform sender fields", async () => {
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          expect(table).toBe("xy_wap_embed_msg_audit_info as message");
+          return createQueryBuilder({
+            chat_type: 2,
+            from_type: null,
+            id: 539,
+            opt_no: "failed-opt-539",
+            third_from_id: "customer-member-001",
+            third_user_id: "seat-user-001",
+          });
+        },
+      } as never,
+    );
+
+    await expect(
+      repository.findRetryMessage({
+        conversationId: "conv-001",
+        messageSeq: 539,
+        platform: 5,
+        thirdGroupId: "group-001",
+        thirdUserId: "seat-user-001",
+        uid: 9001,
+      }),
+    ).resolves.toEqual({
+      id: 539,
+      optNo: "failed-opt-539",
+      senderType: "customer",
+    });
+  });
+
+  it("finds async operation opt params in tenant and platform scope", async () => {
+    const queries: Array<{ table: string; wheres: Array<[string, string, unknown]> }> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          expect(table).toBe("xy_wap_embed_async_operation");
+          const query = createQueryBuilder({
+            opt_params: JSON.stringify({
+              msgData: {
+                msgtype: "text",
+                text: "hello",
+              },
+            }),
+          });
+          queries.push({ table, wheres: query.wheres });
+
+          return query;
+        },
+      } as never,
+    );
+
+    await expect(
+      repository.findAsyncOperationByOptNo({
+        optNo: "failed-opt-538",
+        platform: 5,
+        uid: 9001,
+      }),
+    ).resolves.toEqual({
+      optParams: JSON.stringify({
+        msgData: {
+          msgtype: "text",
+          text: "hello",
+        },
+      }),
+    });
+    expect(queries).toHaveLength(1);
+    expect(queries[0]).toMatchObject({
+      table: "xy_wap_embed_async_operation",
+      wheres: [
+        ["opt_no", "=", "failed-opt-538"],
+        ["uid", "=", 9001],
+        ["platform", "=", 5],
+      ],
+    });
+  });
+
   it("updates conversation pinned time in tenant scope", async () => {
     const updates: Array<Record<string, unknown>> = [];
     const wheres: Array<[string, string, unknown]> = [];

@@ -82,9 +82,10 @@ type JavaApiResponse<T> = {
 
 type JavaMentionFields = {
   atLocation?: number;
+  atOriginText?: string;
   atWxSerialNos?: string[];
   isHit?: number;
-  atOriginText?: string;
+  quoteOriginText?: string;
 };
 
 export type JavaSendMessageData =

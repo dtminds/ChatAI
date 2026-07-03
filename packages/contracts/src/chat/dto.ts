@@ -765,6 +765,11 @@ export type WorkbenchSendMessageResponse = {
   messages?: WorkbenchSentMessageAck[];
 };
 
+export type WorkbenchRetryMessageRequest = {
+  conversationId: string;
+  messageSeq: number;
+};
+
 export type WorkbenchConversationReadResponse = {
   conversationId: string;
   seatId: string;

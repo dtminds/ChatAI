@@ -19,6 +19,7 @@ import type {
   WorkbenchUnreadSummaryDto,
   WorkbenchMessageFileDownloadStatusResponse,
   WorkbenchRevokeMessageResponse,
+  WorkbenchRetryMessageRequest,
   WorkbenchSendMessagePayload,
   WorkbenchSendMessageResponse,
   WorkbenchSeatDto,
@@ -453,6 +454,12 @@ export async function sendTextMessage(
   payload: WorkbenchSendMessagePayload,
 ): Promise<WorkbenchSendMessageResponse> {
   return getWorkbenchService().sendMessage(payload);
+}
+
+export async function retryMessage(
+  payload: WorkbenchRetryMessageRequest,
+): Promise<WorkbenchSendMessageResponse> {
+  return getWorkbenchService().retryMessage(payload);
 }
 
 export async function revokeMessage(input: {

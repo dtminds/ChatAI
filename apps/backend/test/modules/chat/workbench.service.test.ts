@@ -7271,6 +7271,312 @@ describe("MysqlWorkbenchService", () => {
       statusCode: 404,
     });
   });
+
+  it("retries a failed group text message from async operation msgData", async () => {
+    const javaClient = createJavaClient();
+    vi.mocked(javaClient.sendMessage).mockResolvedValue({
+      optNo: "retry-opt-001",
+      status: "accepted",
+    });
+    const repository = createMaterialRepository({
+      findRetryMessage: vi.fn().mockResolvedValue({
+        id: 538,
+        optNo: "failed-opt-538",
+        senderType: "agent",
+      }),
+      findAsyncOperationByOptNo: vi.fn().mockResolvedValue({
+        optParams: JSON.stringify({
+          msgData: {
+            atLocation: 2,
+            atWxSerialNos: ["member-serial-1", "member-serial-2"],
+            isHit: 2,
+            msgtype: "text",
+            quoteOriginText: "hello @张三 world @李四",
+            text: "hello @$$ world @$$",
+          },
+          msgtime: 1783048444904,
+          platform: 5,
+          sendType: 2,
+          source: 1,
+          thirdGroupId: "stale-group",
+          thirdUserId: "stale-user",
+          uid: 272,
+        }),
+      }),
+      getConversationLookup: vi.fn().mockResolvedValue({
+        id: "conv-group",
+        platform: 5,
+        seatHostSubUserId: "101",
+        seatId: "12",
+        thirdGroupId: "current-group",
+        thirdUserId: "current-user",
+        uid: 272,
+      }),
+    });
+    const service = new MysqlWorkbenchService(repository, javaClient);
+
+    await expect(
+      service.retryMessage("101", {
+        conversationId: "conv-group",
+        messageSeq: 538,
+      }),
+    ).resolves.toEqual({
+      optNo: "retry-opt-001",
+      status: "accepted",
+    });
+
+    expect(repository.findRetryMessage).toHaveBeenCalledWith({
+      conversationId: "conv-group",
+      messageSeq: 538,
+      platform: 5,
+      thirdGroupId: "current-group",
+      thirdUserId: "current-user",
+      uid: 272,
+    });
+    expect(repository.findAsyncOperationByOptNo).toHaveBeenCalledWith({
+      optNo: "failed-opt-538",
+      platform: 5,
+      uid: 272,
+    });
+    expect(javaClient.sendMessage).toHaveBeenCalledWith({
+      failMsgId: 538,
+      msgData: {
+        atLocation: 2,
+        atWxSerialNos: ["member-serial-1", "member-serial-2"],
+        isHit: 2,
+        msgtype: "text",
+        quoteOriginText: "hello @张三 world @李四",
+        text: "hello @$$ world @$$",
+      },
+      platform: 5,
+      sendType: 2,
+      source: 1,
+      thirdGroupId: "current-group",
+      thirdUserId: "current-user",
+      uid: 272,
+    });
+  });
+
+  it("reports retry failure when the async operation record is missing", async () => {
+    const repository = createMaterialRepository({
+      findRetryMessage: vi.fn().mockResolvedValue({
+        id: 538,
+        optNo: "failed-opt-538",
+        senderType: "agent",
+      }),
+      findAsyncOperationByOptNo: vi.fn().mockResolvedValue(undefined),
+      getConversationLookup: vi.fn().mockResolvedValue({
+        id: "conv-001",
+        platform: 5,
+        seatHostSubUserId: "101",
+        seatId: "12",
+        thirdExternalUserId: "external-001",
+        thirdUserId: "seat-user-001",
+        uid: 272,
+      }),
+    });
+    const javaClient = createJavaClient();
+    const service = new MysqlWorkbenchService(repository, javaClient);
+
+    await expect(
+      service.retryMessage("101", {
+        conversationId: "conv-001",
+        messageSeq: 538,
+      }),
+    ).rejects.toMatchObject({
+      code: "RETRY_MESSAGE_FAILED",
+      message: "重发失败",
+      statusCode: 400,
+    });
+    expect(javaClient.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("rejects retry for failed non-agent messages", async () => {
+    const repository = createMaterialRepository({
+      findRetryMessage: vi.fn().mockResolvedValue({
+        id: 538,
+        optNo: "failed-opt-538",
+        senderType: "customer",
+      }),
+      findAsyncOperationByOptNo: vi.fn().mockResolvedValue({
+        optParams: JSON.stringify({
+          msgData: {
+            msgtype: "text",
+            text: "hello",
+          },
+        }),
+      }),
+      getConversationLookup: vi.fn().mockResolvedValue({
+        id: "conv-001",
+        platform: 5,
+        seatHostSubUserId: "101",
+        seatId: "12",
+        thirdExternalUserId: "external-001",
+        thirdUserId: "seat-user-001",
+        uid: 272,
+      }),
+    });
+    const javaClient = createJavaClient();
+    const service = new MysqlWorkbenchService(repository, javaClient);
+
+    await expect(
+      service.retryMessage("101", {
+        conversationId: "conv-001",
+        messageSeq: 538,
+      }),
+    ).rejects.toMatchObject({
+      code: "UNSUPPORTED_RETRY_MESSAGE",
+      statusCode: 400,
+    });
+    expect(repository.findAsyncOperationByOptNo).not.toHaveBeenCalled();
+    expect(javaClient.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("rejects retry when async operation msgData type is unsupported", async () => {
+    const repository = createMaterialRepository({
+      findRetryMessage: vi.fn().mockResolvedValue({
+        id: 538,
+        optNo: "failed-opt-538",
+        senderType: "agent",
+      }),
+      findAsyncOperationByOptNo: vi.fn().mockResolvedValue({
+        optParams: JSON.stringify({
+          msgData: {
+            msgtype: "weapp",
+            transMsgInfoId: 123,
+          },
+        }),
+      }),
+      getConversationLookup: vi.fn().mockResolvedValue({
+        id: "conv-001",
+        platform: 5,
+        seatHostSubUserId: "101",
+        seatId: "12",
+        thirdExternalUserId: "external-001",
+        thirdUserId: "seat-user-001",
+        uid: 272,
+      }),
+    });
+    const javaClient = createJavaClient();
+    const service = new MysqlWorkbenchService(repository, javaClient);
+
+    await expect(
+      service.retryMessage("101", {
+        conversationId: "conv-001",
+        messageSeq: 538,
+      }),
+    ).rejects.toMatchObject({
+      code: "UNSUPPORTED_RETRY_MESSAGE",
+      statusCode: 400,
+    });
+    expect(javaClient.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      label: "quote",
+      msgData: {
+        msgtype: "quote",
+        quoteMsgId: 321,
+        text: "引用回复",
+      },
+    },
+    {
+      label: "image",
+      msgData: {
+        fileUrl: "https://cdn.example.com/image.jpg",
+        msgtype: "image",
+      },
+    },
+    {
+      label: "file",
+      msgData: {
+        fileName: "报价.pdf",
+        fileUrl: "https://cdn.example.com/quote.pdf",
+        msgtype: "file",
+      },
+    },
+  ])("replays retry %s msgData from async operation params", async ({ msgData }) => {
+    const javaClient = createJavaClient();
+    vi.mocked(javaClient.sendMessage).mockResolvedValue({
+      optNo: "retry-opt-001",
+      status: "accepted",
+    });
+    const repository = createMaterialRepository({
+      findRetryMessage: vi.fn().mockResolvedValue({
+        id: 538,
+        optNo: "failed-opt-538",
+        senderType: "agent",
+      }),
+      findAsyncOperationByOptNo: vi.fn().mockResolvedValue({
+        optParams: JSON.stringify({ msgData }),
+      }),
+      getConversationLookup: vi.fn().mockResolvedValue({
+        id: "conv-001",
+        platform: 5,
+        seatHostSubUserId: "101",
+        seatId: "12",
+        thirdExternalUserId: "external-001",
+        thirdUserId: "seat-user-001",
+        uid: 272,
+      }),
+    });
+    const service = new MysqlWorkbenchService(repository, javaClient);
+
+    await service.retryMessage("101", {
+      conversationId: "conv-001",
+      messageSeq: 538,
+    });
+
+    expect(javaClient.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        failMsgId: 538,
+        msgData,
+        sendType: 1,
+        thirdExternalUserid: "external-001",
+        thirdUserId: "seat-user-001",
+      }),
+    );
+  });
+
+  it.each([
+    ["invalid json", "{"],
+    ["missing msgData", JSON.stringify({})],
+    ["empty text", JSON.stringify({ msgData: { msgtype: "text" } })],
+  ])("reports retry failure for %s async operation params", async (_label, optParams) => {
+    const repository = createMaterialRepository({
+      findRetryMessage: vi.fn().mockResolvedValue({
+        id: 538,
+        optNo: "failed-opt-538",
+        senderType: "agent",
+      }),
+      findAsyncOperationByOptNo: vi.fn().mockResolvedValue({
+        optParams,
+      }),
+      getConversationLookup: vi.fn().mockResolvedValue({
+        id: "conv-001",
+        platform: 5,
+        seatHostSubUserId: "101",
+        seatId: "12",
+        thirdExternalUserId: "external-001",
+        thirdUserId: "seat-user-001",
+        uid: 272,
+      }),
+    });
+    const javaClient = createJavaClient();
+    const service = new MysqlWorkbenchService(repository, javaClient);
+
+    await expect(
+      service.retryMessage("101", {
+        conversationId: "conv-001",
+        messageSeq: 538,
+      }),
+    ).rejects.toMatchObject({
+      code: "RETRY_MESSAGE_FAILED",
+      statusCode: 400,
+    });
+    expect(javaClient.sendMessage).not.toHaveBeenCalled();
+  });
 });
 
 function createMaterialRepository(overrides: Partial<WorkbenchRepository> = {}) {

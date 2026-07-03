@@ -2165,6 +2165,25 @@ describe("AI hosting pages", () => {
     renderWithRoute("/chat/ai-hosting/kb", <KbListPage />);
 
     expect(await screen.findByRole("heading", { level: 1, name: "知识库" })).toBeInTheDocument();
+    const introGuide = screen.getByRole("region", { name: "知识库使用引导" });
+    expect(within(introGuide).getByText("第 1 步")).toBeInTheDocument();
+    expect(within(introGuide).getByText("创建知识库")).toBeInTheDocument();
+    expect(within(introGuide).getByText("第 2 步")).toBeInTheDocument();
+    expect(within(introGuide).getByText("上传文档")).toBeInTheDocument();
+    expect(within(introGuide).getByText("第 3 步")).toBeInTheDocument();
+    expect(within(introGuide).getByText("Agent 集成")).toBeInTheDocument();
+    expect(within(introGuide).getByAltText("创建知识库示意图")).toHaveAttribute(
+      "src",
+      "https://b5.bokr.com.cn/dist/ui/kb_f1.png",
+    );
+    expect(within(introGuide).getByAltText("上传文档示意图")).toHaveAttribute(
+      "src",
+      "https://b5.bokr.com.cn/dist/ui/kb_f2.png",
+    );
+    expect(within(introGuide).getByAltText("Agent 集成示意图")).toHaveAttribute(
+      "src",
+      "https://b5.bokr.com.cn/dist/ui/kb_f3.png",
+    );
     expect(screen.getByRole("textbox", { name: "搜索知识库" })).toHaveAttribute(
       "maxLength",
       "32",

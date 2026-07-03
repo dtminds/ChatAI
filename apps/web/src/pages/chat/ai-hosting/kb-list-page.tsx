@@ -55,6 +55,29 @@ type CreateFormState = {
 const PAGE_SIZE = 10;
 const KNOWLEDGE_BASE_NAME_MAX_LENGTH = 30;
 const KNOWLEDGE_BASE_DESCRIPTION_MAX_LENGTH = 1000;
+const kbIntroSteps = [
+  {
+    description: "按特定场景/领域管理知识库，支持结构化和非结构化类型知识",
+    imageAlt: "创建知识库示意图",
+    imageUrl: "https://b5.bokr.com.cn/dist/ui/kb_f1.png",
+    step: "第 1 步",
+    title: "创建知识库",
+  },
+  {
+    description: "Excel、PDF、Markdown 等多种文档格式，支持图片 OCR",
+    imageAlt: "上传文档示意图",
+    imageUrl: "https://b5.bokr.com.cn/dist/ui/kb_f2.png",
+    step: "第 2 步",
+    title: "上传文档",
+  },
+  {
+    description: "在 Agent 中关联知识库，提升回答的准确性",
+    imageAlt: "Agent 集成示意图",
+    imageUrl: "https://b5.bokr.com.cn/dist/ui/kb_f3.png",
+    step: "第 3 步",
+    title: "Agent 集成",
+  },
+] as const;
 
 function useDebouncedValue<T>(value: T, delayMs: number) {
   const [debouncedValue, setDebouncedValue] = useState(value);
@@ -212,6 +235,8 @@ export function KbListPage() {
           description="为智能体补充私有知识，智能体在生成回答前会先从知识库检索相关内容，从而提升回答的准确性"
           title="知识库"
         />
+
+        <KbIntroGuide />
 
         <section className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -374,6 +399,42 @@ export function KbListPage() {
         </DialogContent>
       </Dialog>
     </AiHostingLayout>
+  );
+}
+
+function KbIntroGuide() {
+  return (
+    <section
+      aria-label="知识库使用引导"
+      className="overflow-hidden rounded-[8px] bg-primary/6 dark:bg-muted"
+    >
+      <div className="grid min-h-[176px] grid-cols-3">
+        {kbIntroSteps.map((item) => (
+          <div
+            className="grid min-h-[176px] min-w-0 grid-cols-[minmax(0,1fr)_minmax(160px,42%)] items-end gap-4 overflow-hidden pl-6 pr-4 pt-8 max-xl:min-h-0 max-xl:grid-cols-1 max-xl:px-6 max-xl:py-5 max-md:px-5"
+            key={item.title}
+          >
+            <div className="min-w-0 self-start max-xl:max-w-none">
+              <div className="text-sm font-medium text-muted-foreground">{item.step}</div>
+              <h2 className="mt-2 text-base font-semibold text-foreground">{item.title}</h2>
+              <p
+                className="mt-3 line-clamp-2 max-w-[240px] text-xs leading-6 text-muted-foreground"
+                title={item.description}
+              >
+                {item.description}
+              </p>
+            </div>
+
+            <img
+              alt={item.imageAlt}
+              className="h-auto w-full max-w-[250px] self-end justify-self-end max-xl:hidden"
+              draggable={false}
+              src={item.imageUrl}
+            />
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 

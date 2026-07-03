@@ -3755,7 +3755,7 @@ describe("AI hosting pages", () => {
     );
     expect(screen.queryByText("文档 · 华为产品知识")).not.toBeInTheDocument();
     expect(screen.queryByRole("table", { name: "切片列表" })).not.toBeInTheDocument();
-    const chunkList = screen.getByRole("list", { name: "切片列表" });
+    const chunkList = await screen.findByRole("list", { name: "切片列表" });
     expect(screen.getByRole("textbox", { name: "搜索切片内容" })).toBeInTheDocument();
     expect(screen.queryByText("切片标题")).not.toBeInTheDocument();
     expect(within(chunkList).queryByText("ID chunk-doc-1")).not.toBeInTheDocument();

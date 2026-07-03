@@ -1623,13 +1623,13 @@ describe("ChatWorkbenchPage", () => {
   it("shows a retry icon before failed messages and retries on click", async () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();
-    const retryGate = createDeferred<Awaited<ReturnType<typeof baseService.retryMessage>>>();
+    const retryMessageGate =
+      createDeferred<Awaited<ReturnType<typeof baseService.retryMessage>>>();
 
     setWorkbenchService({
       ...baseService,
-      async retryMessage(payload) {
-        void payload;
-        return retryGate.promise;
+      async retryMessage() {
+        return retryMessageGate.promise;
       },
     });
 
@@ -1676,7 +1676,7 @@ describe("ChatWorkbenchPage", () => {
     expect(retryingButton).toBeDisabled();
     expect(retryingButton).toHaveAttribute("aria-busy", "true");
 
-    retryGate.resolve({
+    retryMessageGate.resolve({
       optNo: "retry-opt-001",
       status: "accepted",
     });

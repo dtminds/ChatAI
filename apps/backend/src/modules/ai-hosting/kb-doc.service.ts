@@ -13,7 +13,6 @@ import type { Database } from "../../db/schema.js";
 import { BadRequestError, NotFoundError } from "../../shared/errors.js";
 import {
   KB_DOC_DB_SYNC_STATUS_FAILED,
-  KB_DOC_DB_SYNC_STATUS_QUEUED,
 } from "./kb-read-mappers.js";
 import type { WorkbenchJavaClient } from "../chat/workbench-java-client.js";
 import type { AgentKbJavaClient } from "./agent-kb-java-client.js";
@@ -271,18 +270,11 @@ export class KbDocService {
       throw new BadRequestError("KB_DOC_RETRY_NOT_ALLOWED", "当前知识不可重试");
     }
 
-    // Java `wap-embed-agent-kb-doc/retry` is not available in all environments yet.
-    // Reset failed docs to queued locally until the platform endpoint is deployed.
-    await this.db
-      .updateTable("xy_wap_embed_agent_kb_doc")
-      .set({
-        sync_error_msg: null,
-        sync_status: KB_DOC_DB_SYNC_STATUS_QUEUED,
-      })
-      .where("id", "=", docNumericId)
-      .where("uid", "=", uid)
-      .where("status", "=", dbActiveStatus)
-      .execute();
+    await this.agentKbJavaClient.retryKbDoc({
+      docId: docNumericId,
+      operatorId: tenant.subUserId,
+      uid,
+    });
 
     this.logger.info(
       {

@@ -39,6 +39,32 @@ export const KbCreateResponseSchema = Type.Object(
   { additionalProperties: false },
 );
 
+export const KbUpdateRequestSchema = Type.Object({
+  description: Type.Optional(Type.String({ maxLength: 1000 })),
+  name: Type.String({ minLength: 1, maxLength: 30 }),
+});
+
+export const KbUpdateResponseSchema = Type.Object(
+  {
+    updated: Type.Boolean(),
+  },
+  { additionalProperties: false },
+);
+
+export const KbDeleteCheckResponseSchema = Type.Object(
+  {
+    hasDocuments: Type.Boolean(),
+  },
+  { additionalProperties: false },
+);
+
+export const KbDeleteResponseSchema = Type.Object(
+  {
+    deleted: Type.Boolean(),
+  },
+  { additionalProperties: false },
+);
+
 export const KbListItemSchema = Type.Object({
   createdAt: Type.String(),
   description: Type.String(),
@@ -123,6 +149,10 @@ export const KbChunkListResponseSchema = Type.Object({
 
 export type KbCreateRequest = Static<typeof KbCreateRequestSchema>;
 export type KbCreateResponse = Static<typeof KbCreateResponseSchema>;
+export type KbUpdateRequest = Static<typeof KbUpdateRequestSchema>;
+export type KbUpdateResponse = Static<typeof KbUpdateResponseSchema>;
+export type KbDeleteCheckResponse = Static<typeof KbDeleteCheckResponseSchema>;
+export type KbDeleteResponse = Static<typeof KbDeleteResponseSchema>;
 export type KbDocType = Static<typeof KbDocTypeSchema>;
 export type KbDocStatus = Static<typeof KbDocStatusSchema>;
 export type KbChunkType = Static<typeof KbChunkTypeSchema>;

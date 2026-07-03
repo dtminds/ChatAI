@@ -34,6 +34,26 @@ type JavaChunkPageResponse = JavaApiResponse<unknown> & {
   pageSize?: number;
 };
 
+export type AgentKbJavaCreateKbInput = {
+  name: string;
+  operatorId: string;
+  remark?: string;
+  uid: number;
+};
+
+export type AgentKbJavaUpdateKbInput = {
+  kbId: number;
+  lastOperatorId: string;
+  name: string;
+  remark?: string;
+  uid: number;
+};
+
+export type AgentKbJavaDeleteKbInput = {
+  kbId: number;
+  uid: number;
+};
+
 export type AgentKbJavaCreateDocInput = {
   description?: string;
   docSuffix: string;
@@ -100,11 +120,14 @@ export type AgentKbJavaListChunksResponse = {
 
 export type AgentKbJavaClient = {
   addKbChunk(input: AgentKbJavaAddChunkInput): Promise<string>;
+  createKb(input: AgentKbJavaCreateKbInput): Promise<string>;
   createKbDoc(input: AgentKbJavaCreateDocInput): Promise<string>;
+  deleteKb(input: AgentKbJavaDeleteKbInput): Promise<void>;
   deleteKbChunk(input: AgentKbJavaDeleteChunkInput): Promise<void>;
   deleteKbDoc(input: AgentKbJavaDeleteDocInput): Promise<void>;
   retryKbDoc(input: AgentKbJavaRetryDocInput): Promise<void>;
   listKbChunks(input: AgentKbJavaListChunksInput): Promise<AgentKbJavaListChunksResponse>;
+  updateKb(input: AgentKbJavaUpdateKbInput): Promise<void>;
   updateKbChunk(input: AgentKbJavaUpdateChunkInput): Promise<void>;
 };
 
@@ -139,6 +162,43 @@ export function createAgentKbJavaClient(
       );
 
       return normalizeJavaChunkId(chunkId);
+    },
+    async createKb(input) {
+      const body: Record<string, string | number> = {
+        name: input.name,
+        operatorId: input.operatorId,
+        uid: input.uid,
+      };
+
+      if (input.remark?.trim()) {
+        body.remark = input.remark.trim();
+      }
+
+      const kbId = await postJavaJsonEnvelope<number | string>(
+        baseUrl,
+        token,
+        "/third-internal/wap-embed-agent-kb/create",
+        body,
+        logger,
+        "agent-kb-create",
+        input,
+      );
+
+      return normalizeJavaDocId(kbId);
+    },
+    async deleteKb(input) {
+      await postJavaJsonEnvelope<boolean>(
+        baseUrl,
+        token,
+        "/third-internal/wap-embed-agent-kb/del",
+        {
+          id: input.kbId,
+          uid: input.uid,
+        },
+        logger,
+        "agent-kb-delete",
+        input,
+      );
     },
     async createKbDoc(input) {
       const form = new URLSearchParams();
@@ -255,6 +315,28 @@ export function createAgentKbJavaClient(
         page: Number(response.page ?? input.page),
         pageSize: Number(response.pageSize ?? input.pageSize),
       };
+    },
+    async updateKb(input) {
+      const body: Record<string, string | number> = {
+        id: input.kbId,
+        lastOperatorId: input.lastOperatorId,
+        name: input.name,
+        uid: input.uid,
+      };
+
+      if (input.remark?.trim()) {
+        body.remark = input.remark.trim();
+      }
+
+      await postJavaJsonEnvelope<boolean>(
+        baseUrl,
+        token,
+        "/third-internal/wap-embed-agent-kb/update",
+        body,
+        logger,
+        "agent-kb-update",
+        input,
+      );
     },
     async updateKbChunk(input) {
       const body: Record<string, string | number> = {
@@ -508,6 +590,14 @@ function mapAgentKbJavaBusinessError(response: JavaApiResponse<unknown>, operati
     kind === "doc_not_found"
   ) {
     return new NotFoundError("KB_DOC_NOT_FOUND", "知识不存在");
+  }
+
+  if (operation === "agent-kb-update" && kind === "kb_not_found") {
+    return new NotFoundError("KB_NOT_FOUND", "知识库不存在");
+  }
+
+  if (operation === "agent-kb-delete" && kind === "kb_not_found") {
+    return new NotFoundError("KB_NOT_FOUND", "知识库不存在");
   }
 
   if (operation === "agent-kb-chunk-delete" && (kind === "chunk_not_found" || kind === "doc_not_found")) {

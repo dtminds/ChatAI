@@ -10,6 +10,10 @@ import type {
   KbDocType,
   KbListItem,
   KbListResponse,
+  KbUpdateRequest,
+  KbUpdateResponse,
+  KbDeleteCheckResponse,
+  KbDeleteResponse,
 } from "@chatai/contracts";
 import { http } from "@/lib/request";
 import type {
@@ -53,6 +57,31 @@ export async function createKb(payload: KbCreateRequest) {
   const response = await http.post<ApiSuccessEnvelope<KbCreateResponse>>(
     "/server/ai-hosting/kbs",
     payload,
+  );
+
+  return response.data;
+}
+
+export async function updateKb(kbId: string, payload: KbUpdateRequest) {
+  const response = await http.post<ApiSuccessEnvelope<KbUpdateResponse>>(
+    `/server/ai-hosting/kbs/${kbId}/update`,
+    payload,
+  );
+
+  return response.data;
+}
+
+export async function checkKbDelete(kbId: string) {
+  const response = await http.get<ApiSuccessEnvelope<KbDeleteCheckResponse>>(
+    `/server/ai-hosting/kbs/${kbId}/delete-check`,
+  );
+
+  return response.data;
+}
+
+export async function deleteKb(kbId: string) {
+  const response = await http.post<ApiSuccessEnvelope<KbDeleteResponse>>(
+    `/server/ai-hosting/kbs/${kbId}/delete`,
   );
 
   return response.data;

@@ -17,6 +17,7 @@ type KbReadDbMockOptions = {
   deletedDocCount?: number;
   deletedKbCount?: number;
   includeFaqDoc?: boolean;
+  includeSecondKbWithoutDocs?: boolean;
   totalDocCount?: number;
   totalKbCount?: number;
 };
@@ -88,6 +89,19 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
       update_time: mysqlDatetime("2026-06-20 14:02:22"),
     },
   ];
+  if (options.includeSecondKbWithoutDocs) {
+    kbs.push({
+      create_time: mysqlDatetime("2026-06-19 14:02:22"),
+      id: 2,
+      last_operator_id: 1,
+      name: "空知识库",
+      operator_id: 1,
+      remark: "无文档知识库",
+      status: 1,
+      uid: 9001,
+      update_time: mysqlDatetime("2026-06-20 14:02:22"),
+    });
+  }
   for (let index = kbs.length; index < (options.totalKbCount ?? kbs.length); index += 1) {
     kbs.push({
       create_time: mysqlDatetime("2026-06-19 14:02:22"),

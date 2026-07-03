@@ -371,6 +371,27 @@ export function addMockKbListItem(input: Pick<KbListViewItem, "name" | "descript
   return item;
 }
 
+export function updateMockKbListItem(
+  kbId: string,
+  patch: Pick<KbListViewItem, "name" | "description">,
+) {
+  const now = new Date().toISOString().replace("T", " ").slice(0, 19);
+
+  mockKbListItems = mockKbListItems.map((item) =>
+    item.id === kbId
+      ? {
+          ...item,
+          ...patch,
+          lastUpdatedAt: now,
+        }
+      : item,
+  );
+}
+
+export function deleteMockKbListItem(kbId: string) {
+  mockKbListItems = mockKbListItems.filter((item) => item.id !== kbId);
+}
+
 export function getMockKbChunksSnapshot() {
   return mockKbChunkItems;
 }

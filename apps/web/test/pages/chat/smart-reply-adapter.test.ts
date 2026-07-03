@@ -22,6 +22,7 @@ import {
   createSentSmartReplySuggestion,
   createTriggeredSmartReplySuggestion,
   getSmartReplyCustomerQuestion,
+  getSmartReplyInlineState,
   getSmartReplyLookupKey,
   getSmartReplyProcessingLabel,
   isSmartReplyContentIncompleteSkip,
@@ -340,6 +341,37 @@ describe("smart-reply-adapter", () => {
     ).toEqual(["11"]);
   });
 
+  it("ignores sparse message slots when collecting new smart reply pending keys", () => {
+    expect(
+      collectNewSmartReplyPendingKeys(
+        [
+          {
+            content: { text: "旧消息", type: "text" },
+            uiMessageKey: "msg-1",
+            rawMsgtype: "text",
+            role: "customer",
+            sender: { id: "cus-1", name: "客户" },
+            sentAt: "2026-05-25T10:00:00+08:00",
+            seq: 10,
+          },
+          undefined,
+        ] as unknown as Message[],
+        [
+          undefined,
+          {
+            content: { text: "新消息", type: "text" },
+            uiMessageKey: "msg-2",
+            rawMsgtype: "text",
+            role: "customer",
+            sender: { id: "cus-1", name: "客户" },
+            sentAt: "2026-05-25T10:01:00+08:00",
+            seq: 11,
+          },
+        ] as unknown as Message[],
+      ),
+    ).toEqual(["11"]);
+  });
+
   it("collects new smart reply pending keys from large histories without spreading seq values", () => {
     const previousMessages = Array.from({ length: 150_000 }, (_, index) => ({
       content: { text: `旧消息 ${index + 1}`, type: "text" as const },
@@ -489,6 +521,23 @@ describe("smart-reply-adapter", () => {
         },
       ] as Message[]),
     ).toEqual([]);
+  });
+
+  it("ignores sparse message slots when collecting unanswered smart reply candidates", () => {
+    const messages = [
+      {
+        content: { text: "客户问题", type: "text" },
+        uiMessageKey: "msg-customer",
+        rawMsgtype: "text",
+        role: "customer",
+        sender: { id: "cus-1", name: "客户" },
+        sentAt: "2026-05-25T10:00:00+08:00",
+        seq: 1,
+      },
+      undefined,
+    ] as unknown as Message[];
+
+    expect(collectUnansweredSmartReplyPendingKeys(messages)).toEqual(["1"]);
   });
 
   it("does not add a new customer message to pending when an agent replies after it in the same poll", () => {
@@ -778,6 +827,7 @@ describe("smart-reply-adapter", () => {
       {
         assistantName: "护肤小助手",
         content: "建议回复",
+        createdAt: 1_783_000_000_000,
         genAnswer: '[{"msgtype":"text","text":"建议回复"}]',
         messageId: "1090",
         refAttachIds: ["101", "102"],
@@ -788,6 +838,7 @@ describe("smart-reply-adapter", () => {
     expect(map["1090"]).toEqual({
       assistantName: "护肤小助手",
       content: "建议回复",
+      createdAt: 1_783_000_000_000,
       genAnswer: '[{"msgtype":"text","text":"建议回复"}]',
       refAttachIds: ["101", "102"],
       status: "ready",
@@ -1153,6 +1204,84 @@ describe("smart-reply-adapter", () => {
     ).toBe(false);
   });
 
+  it("uses fail reason in the handoff inline state", () => {
+    expect(
+      getSmartReplyInlineState({
+        assistantName: "智能助手",
+        content: "",
+        failReason: "命中人工处理规则",
+        generateStatus: 4,
+        pollComplete: true,
+      }),
+    ).toMatchObject({
+      canDismiss: true,
+      canRegenerate: false,
+      isLoading: false,
+      label: "已跳过话术推荐：命中人工处理规则",
+    });
+  });
+
+  it("uses the generic failure label for gen status 3 fail reasons", () => {
+    expect(
+      getSmartReplyInlineState({
+        assistantName: "智能助手",
+        content: "",
+        failReason: "knowledge_miss",
+        generateStatus: 3,
+        pollComplete: true,
+      }),
+    ).toMatchObject({
+      canDismiss: true,
+      canRegenerate: true,
+      isLoading: false,
+      label: "生成失败：knowledge_miss",
+    });
+  });
+
+  it("shows waiting and skipped labels for incomplete semantic status", () => {
+    expect(
+      getSmartReplyInlineState({
+        assistantName: "智能助手",
+        content: "",
+        createdAt: Date.now() - 10_000,
+        failReason: "客户可能还没说完",
+        generateStatus: 5,
+      }),
+    ).toMatchObject({
+      canDismiss: false,
+      canRegenerate: false,
+      isLoading: true,
+      label: "客户可能还没说完",
+    });
+    expect(
+      getSmartReplyInlineState({
+        assistantName: "智能助手",
+        content: "",
+        createdAt: Date.now() - 10_000,
+        failReason: " ",
+        generateStatus: 5,
+      }),
+    ).toMatchObject({
+      canDismiss: false,
+      canRegenerate: false,
+      isLoading: true,
+      label: "语义不完整，继续等待下一条消息",
+    });
+    expect(
+      getSmartReplyInlineState({
+        assistantName: "智能助手",
+        content: "",
+        createdAt: Date.now() - 21_000,
+        generateStatus: 5,
+      }),
+    ).toMatchObject({
+      canDismiss: true,
+      canRegenerate: false,
+      isLoading: false,
+      label: "语义不完整，已跳过话术推荐",
+    });
+  });
+
   it("creates make shorter suggestions that stop polling", () => {
     expect(
       createMakeShorterSmartReplySuggestion(
@@ -1242,6 +1371,29 @@ describe("smart-reply-adapter", () => {
         {
           "1": true,
           "2": true,
+        },
+      ),
+    ).toEqual([1]);
+  });
+
+  it("ignores sparse message slots when collecting pending poll msg ids", () => {
+    expect(
+      collectPendingSmartReplyPollMsgIds(
+        [
+          undefined,
+          {
+            content: { text: "待推荐", type: "text" },
+            uiMessageKey: "msg-1",
+            rawMsgtype: "text",
+            role: "customer",
+            sender: { id: "cus-1", name: "客户" },
+            sentAt: "2026-05-25T10:01:00+08:00",
+            seq: 1,
+          },
+        ] as unknown as Message[],
+        {},
+        {
+          "1": true,
         },
       ),
     ).toEqual([1]);

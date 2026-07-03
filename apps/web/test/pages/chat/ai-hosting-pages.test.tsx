@@ -533,7 +533,7 @@ describe("AI hosting pages", () => {
       "href",
       "/chat/ai-hosting/subscription",
     );
-    expect(screen.getByRole("button", { name: "帮助手册" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "帮助手册" })).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "数据总览" })).not.toBeInTheDocument();
     expect(screen.queryByText("会话总数")).not.toBeInTheDocument();
     expect(screen.getByRole("table", { name: "Agent 列表" })).toBeInTheDocument();
@@ -575,7 +575,7 @@ describe("AI hosting pages", () => {
           ...mockAgents[0],
           kbList: [
             { id: "1", name: "商品咨询知识库" },
-            { id: "2", name: "售后政策知识库" },
+            { id: "2", name: "测试超长测试超长测试知识库" },
             { id: "3", name: "活动政策知识库" },
             { id: "4", name: "直播话术知识库" },
           ],
@@ -590,24 +590,48 @@ describe("AI hosting pages", () => {
 
     renderWithRoute("/chat/ai-hosting/agents", <AgentManagementPage />);
 
-    const trigger = await screen.findByRole("button", {
-      name: "查看 护肤小助理 的全部关联知识库",
-    });
+    const trigger = await screen.findByLabelText("查看 护肤小助理 的全部关联知识库");
 
     expect(trigger).toHaveTextContent("商品咨询知识库");
-    expect(trigger).toHaveTextContent("售后政策知识库");
-    expect(trigger).toHaveTextContent("等 4 个知识库");
+    expect(trigger).toHaveTextContent("测试超长测试超长测试..");
+    expect(trigger).toHaveTextContent("等 4 个");
+    expect(
+      screen.getByRole("link", { name: "商品咨询知识库" }),
+    ).toHaveAttribute("href", "/chat/ai-hosting/kb/1");
+    expect(
+      screen.getByRole("link", { name: "测试超长测试超长测试.." }),
+    ).toHaveAttribute("href", "/chat/ai-hosting/kb/2");
     expect(screen.queryByText("直播话术知识库")).not.toBeInTheDocument();
+    expect(screen.queryByText("测试超长测试超长测试知识库")).not.toBeInTheDocument();
 
     await user.hover(trigger);
 
     const popover = await screen.findByRole("dialog");
     expect(popover).toHaveTextContent("关联知识库 · 4");
     expect(popover).toHaveTextContent("商品咨询知识库");
-    expect(popover).toHaveTextContent("售后政策知识库");
+    expect(popover).toHaveTextContent("测试超长测试超长测试知识库");
     expect(popover).toHaveTextContent("活动政策知识库");
     expect(popover).toHaveTextContent("直播话术知识库");
-    expect(within(popover).getByTestId("agent-kb-popover-scroll")).toHaveClass("max-h-[16rem]");
+    expect(
+      within(popover).getByRole("link", { name: "测试超长测试超长测试知识库" }),
+    ).toHaveAttribute("href", "/chat/ai-hosting/kb/2");
+    expect(
+      within(popover).getByRole("link", { name: "直播话术知识库" }),
+    ).toHaveAttribute("href", "/chat/ai-hosting/kb/4");
+    expect(popover).toHaveClass("w-[18rem]", "p-2.5");
+    expect(within(popover).getByTestId("agent-kb-popover-scroll")).toHaveClass("max-h-[12rem]");
+    expect(within(popover).getAllByTitle("知识库图标")).toHaveLength(4);
+    expect(
+      within(popover)
+        .getByTestId("agent-kb-popover-scroll")
+        .querySelector("[data-slot='scroll-area-viewport']"),
+    ).toHaveClass("[&>div]:!block", "[&>div]:!min-w-0", "[&>div]:!w-full");
+    expect(
+      within(popover).getByTestId("agent-kb-popover-item-2"),
+    ).toHaveClass("w-full", "min-w-0", "hover:bg-accent");
+    expect(
+      within(popover).getByTitle("测试超长测试超长测试知识库"),
+    ).toHaveAttribute("href", "/chat/ai-hosting/kb/2");
   });
 
   it("renders the static subscription page without loading usage data", async () => {
@@ -2169,6 +2193,25 @@ describe("AI hosting pages", () => {
     renderWithRoute("/chat/ai-hosting/kb", <KbListPage />);
 
     expect(await screen.findByRole("heading", { level: 1, name: "知识库" })).toBeInTheDocument();
+    const introGuide = screen.getByRole("region", { name: "知识库使用引导" });
+    expect(within(introGuide).getByText("第 1 步")).toBeInTheDocument();
+    expect(within(introGuide).getByText("创建知识库")).toBeInTheDocument();
+    expect(within(introGuide).getByText("第 2 步")).toBeInTheDocument();
+    expect(within(introGuide).getByText("上传文档")).toBeInTheDocument();
+    expect(within(introGuide).getByText("第 3 步")).toBeInTheDocument();
+    expect(within(introGuide).getByText("Agent 集成")).toBeInTheDocument();
+    expect(within(introGuide).getByAltText("创建知识库示意图")).toHaveAttribute(
+      "src",
+      "https://b5.bokr.com.cn/dist/ui/kb_f1.png",
+    );
+    expect(within(introGuide).getByAltText("上传文档示意图")).toHaveAttribute(
+      "src",
+      "https://b5.bokr.com.cn/dist/ui/kb_f2.png",
+    );
+    expect(within(introGuide).getByAltText("Agent 集成示意图")).toHaveAttribute(
+      "src",
+      "https://b5.bokr.com.cn/dist/ui/kb_f3.png",
+    );
     expect(screen.getByRole("textbox", { name: "搜索知识库" })).toHaveAttribute(
       "maxLength",
       "32",

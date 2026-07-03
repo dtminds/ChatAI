@@ -76,6 +76,7 @@ export type SmartReplySuggestion = {
   assistantName: string;
   busyRequestId?: number;
   content: string;
+  createdAt?: number;
   failReason?: string;
   /** Java 原始 genAnswer */
   genAnswer?: string;

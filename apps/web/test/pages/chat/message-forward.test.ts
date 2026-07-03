@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
 import type { ChatMessage, Conversation } from "@/pages/chat/chat-types";
 import {
+  buildForwardSegmentFromMessage,
   buildRecentForwardSearchResults,
   canForwardMessage,
   getMessageForwardPreview,
   MESSAGE_FORWARD_MAX_MESSAGES,
   MESSAGE_FORWARD_MAX_RECIPIENTS,
+  MESSAGE_FORWARD_SEND_INTERVAL_MAX_MS,
+  MESSAGE_FORWARD_SEND_INTERVAL_MIN_MS,
   MESSAGE_FORWARD_SEND_HINT,
+  resolveForwardSendDelayMs,
 } from "@/pages/chat/lib/message-forward";
 
 function createTextMessage(text: string): ChatMessage {
@@ -24,22 +28,32 @@ function createTextMessage(text: string): ChatMessage {
 }
 
 describe("message-forward", () => {
-  it("exposes forward limits and dialog hint", () => {
+  it("exposes forward limits and send delay range", () => {
     expect(MESSAGE_FORWARD_MAX_RECIPIENTS).toBe(9);
     expect(MESSAGE_FORWARD_MAX_MESSAGES).toBe(20);
+    expect(MESSAGE_FORWARD_SEND_INTERVAL_MIN_MS).toBe(1000);
+    expect(MESSAGE_FORWARD_SEND_INTERVAL_MAX_MS).toBe(5000);
     expect(MESSAGE_FORWARD_SEND_HINT).toBe(
       "转发的每条消息会自动间隔1-5秒，每个转发对象轮流发送",
     );
+
+    const delays = Array.from({ length: 20 }, () => resolveForwardSendDelayMs());
+
+    expect(delays.every((delay) => delay >= 1000 && delay <= 5000)).toBe(true);
   });
 
-  it("builds preview text for forwardable messages", () => {
+  it("builds text segment for forwardable text messages", () => {
     const message = createTextMessage("你好");
 
     expect(canForwardMessage(message)).toBe(true);
+    expect(buildForwardSegmentFromMessage(message)).toEqual({
+      text: "你好",
+      type: "text",
+    });
     expect(getMessageForwardPreview(message)).toBe("你好");
   });
 
-  it("uses title for mini-program preview", () => {
+  it("uses msgInfoId for mini-program forward segments", () => {
     const message: ChatMessage = {
       ...createTextMessage(""),
       content: {
@@ -51,6 +65,10 @@ describe("message-forward", () => {
     };
 
     expect(canForwardMessage(message)).toBe(true);
+    expect(buildForwardSegmentFromMessage(message)).toMatchObject({
+      msgInfoId: "12345",
+      type: "weapp",
+    });
     expect(getMessageForwardPreview(message)).toBe("商品详情");
   });
 

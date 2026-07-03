@@ -1,0 +1,511 @@
+import type {
+  KbAttachmentCreateRequest,
+  KbAttachmentCreateResponse,
+  KbAttachmentDeleteResponse,
+  KbAttachmentInitResponse,
+  KbAttachmentListResponse,
+  KbAttachmentType,
+  KbAttachmentUpdateRequest,
+  KbAttachmentUpdateResponse,
+} from "@chatai/contracts";
+import { KB_SEARCH_QUERY_MAX_LENGTH } from "@chatai/contracts";
+import type { Kysely } from "kysely";
+import type { Database } from "../../db/schema.js";
+import { AppError, BadRequestError, ForbiddenError, NotFoundError } from "../../shared/errors.js";
+import type { AgentKbJavaClient } from "./agent-kb-java-client.js";
+import {
+  KB_ATTACHMENT_DOC_NAME,
+  KB_ATTACHMENT_DOC_SUFFIX,
+  KB_ATTACHMENT_DOC_URL,
+  KB_DOC_TYPE_ATTACHMENT,
+} from "./kb-attachment.constants.js";
+import {
+  deriveKbAttachmentTitle,
+  mapJavaChunkToKbAttachmentListItem,
+} from "./kb-attachment-mappers.js";
+import { validateKbAttachmentContent } from "./kb-attachment-validation.js";
+import { KB_INIT_VOLC_STRATEGY_RESOURCE_ID } from "./kb-doc-strategy-mappers.js";
+import { mapSyncStatus } from "./kb-read-mappers.js";
+import { type AgentKbTenant, parseRequiredNumericId } from "./kb-tenant-utils.js";
+
+const KB_CHUNK_SOURCE_MANUAL = 1;
+const KB_CHUNK_TITLE_MAX_LENGTH = 256;
+const dbActiveStatus = 1;
+const defaultAttachmentPage = 1;
+const defaultAttachmentPageSize = 20;
+const maxAttachmentPageSize = 100;
+
+type KbAttachmentServiceLogger = {
+  info: (payload: Record<string, unknown>, message: string) => void;
+};
+
+type AttachmentDocRow = {
+  id: number;
+  sync_status: number;
+};
+
+type AttachmentDocPollConfig = {
+  attempts: number;
+  delayMs: number;
+};
+
+const defaultAttachmentDocPollConfig: AttachmentDocPollConfig = {
+  attempts: 10,
+  delayMs: 500,
+};
+
+export class KbAttachmentService {
+  constructor(
+    private readonly db: Kysely<Database>,
+    private readonly logger: KbAttachmentServiceLogger,
+    private readonly agentKbJavaClient: AgentKbJavaClient,
+    private readonly attachmentDocPollConfig: AttachmentDocPollConfig = defaultAttachmentDocPollConfig,
+  ) {}
+
+  async initAttachments(tenant: AgentKbTenant, kbId: string): Promise<KbAttachmentInitResponse> {
+    const uid = tenant.uid;
+    const subUserId = tenant.subUserId;
+    const kbNumericId = parseRequiredNumericId(kbId, "KB_NOT_FOUND", "知识库不存在");
+
+    await this.assertKbExists(uid, kbNumericId);
+
+    const existingDoc = await this.findAttachmentDoc(uid, kbNumericId);
+
+    if (existingDoc) {
+      return {
+        docId: String(existingDoc.id),
+        initialized: true,
+        status: mapSyncStatus(existingDoc.sync_status),
+      };
+    }
+
+    const docId = await this.agentKbJavaClient.createKbDoc({
+      docSize: 0,
+      docSuffix: KB_ATTACHMENT_DOC_SUFFIX,
+      docType: KB_DOC_TYPE_ATTACHMENT,
+      docUrl: KB_ATTACHMENT_DOC_URL,
+      kbId: kbNumericId,
+      name: KB_ATTACHMENT_DOC_NAME,
+      operatorId: subUserId,
+      uid,
+      volcStrategyResourceId: KB_INIT_VOLC_STRATEGY_RESOURCE_ID,
+    });
+
+    const createdDoc = await this.waitForAttachmentDocAfterCreate(
+      uid,
+      kbNumericId,
+      Number(docId),
+    );
+
+    this.logger.info(
+      {
+        docId,
+        kbId,
+        operation: "kb-attachment-init",
+        subUserId,
+        uid,
+      },
+      "知识库附件库初始化成功",
+    );
+
+    return {
+      docId: String(createdDoc.id),
+      initialized: true,
+      status: mapSyncStatus(createdDoc.sync_status),
+    };
+  }
+
+  async listAttachments(
+    tenant: AgentKbTenant,
+    kbId: string,
+    options: {
+      attachmentType: KbAttachmentType;
+      page?: number;
+      pageSize?: number;
+      query?: string;
+    },
+  ): Promise<KbAttachmentListResponse> {
+    const uid = tenant.uid;
+    const kbNumericId = parseRequiredNumericId(kbId, "KB_NOT_FOUND", "知识库不存在");
+    const attachmentDoc = await this.requireReadyAttachmentDoc(uid, kbNumericId);
+    const pagination = normalizeAttachmentPagination(options);
+    const normalizedQuery = normalizeAttachmentSearchQuery(options.query);
+
+    const response = await this.agentKbJavaClient.listKbChunks({
+      attachmentType: options.attachmentType,
+      content: normalizedQuery,
+      docId: attachmentDoc.id,
+      page: pagination.page,
+      pageSize: pagination.pageSize,
+      uid,
+    });
+
+    const attachments = response.list
+      .map((item) => mapJavaChunkToKbAttachmentListItem(item))
+      .filter((item): item is NonNullable<typeof item> => item != null);
+
+    return {
+      attachments,
+      pagination: {
+        page: response.page,
+        pageSize: response.pageSize,
+        total: response.count,
+      },
+    };
+  }
+
+  async createAttachment(
+    tenant: AgentKbTenant,
+    kbId: string,
+    request: KbAttachmentCreateRequest,
+  ): Promise<KbAttachmentCreateResponse> {
+    const uid = tenant.uid;
+    const subUserId = tenant.subUserId;
+    const kbNumericId = parseRequiredNumericId(kbId, "KB_NOT_FOUND", "知识库不存在");
+    const attachmentDoc = await this.requireReadyAttachmentDoc(uid, kbNumericId);
+    const description = assertWritableDescription(request.description);
+
+    validateKbAttachmentContent(request.attachmentType, request.attachmentContent);
+
+    const title = resolveWritableTitle(
+      request.title?.trim() || deriveKbAttachmentTitle(undefined, request.attachmentContent),
+    );
+
+    const chunkId = await this.agentKbJavaClient.addKbChunk({
+      attachmentContent: request.attachmentContent,
+      attachmentType: request.attachmentType,
+      chunkType: "text",
+      content: description,
+      docId: attachmentDoc.id,
+      operatorId: subUserId,
+      title,
+      uid,
+    });
+
+    this.logger.info(
+      {
+        attachmentType: request.attachmentType,
+        chunkId,
+        docId: attachmentDoc.id,
+        kbId,
+        operation: "kb-attachment-create",
+        subUserId,
+        uid,
+      },
+      "知识库附件创建成功",
+    );
+
+    return { chunkId };
+  }
+
+  async updateAttachment(
+    tenant: AgentKbTenant,
+    chunkId: string,
+    request: KbAttachmentUpdateRequest,
+  ): Promise<KbAttachmentUpdateResponse> {
+    const uid = tenant.uid;
+    const subUserId = tenant.subUserId;
+    const chunkNumericId = parseRequiredNumericId(chunkId, "KB_CHUNK_NOT_FOUND", "附件不存在");
+    const chunk = await this.getKbChunkRow(uid, chunkNumericId);
+
+    if (!chunk) {
+      throw new NotFoundError("KB_CHUNK_NOT_FOUND", "附件不存在");
+    }
+
+    await this.assertAttachmentChunkEditable(uid, chunk.doc_id, chunk.source);
+
+    const description = assertWritableDescription(request.description);
+    const normalizedTitle = request.title?.trim();
+
+    if (normalizedTitle && normalizedTitle.length > KB_CHUNK_TITLE_MAX_LENGTH) {
+      throw new BadRequestError("INVALID_KB_CHUNK_TITLE", "切片标题过长");
+    }
+
+    let attachmentType: number | undefined;
+    let attachmentContent: KbAttachmentUpdateRequest["attachmentContent"];
+
+    if (request.attachmentContent) {
+      const javaChunk = await this.findJavaAttachmentChunk(uid, chunk.doc_id, chunkNumericId);
+
+      if (javaChunk?.attachmentType == null || !isKbAttachmentType(javaChunk.attachmentType)) {
+        throw new NotFoundError("KB_CHUNK_NOT_FOUND", "附件不存在");
+      }
+
+      validateKbAttachmentContent(javaChunk.attachmentType, request.attachmentContent);
+      attachmentType = javaChunk.attachmentType;
+      attachmentContent = request.attachmentContent;
+    }
+
+    await this.agentKbJavaClient.updateKbChunk({
+      ...(attachmentContent && attachmentType != null
+        ? {
+            attachmentContent,
+            attachmentType,
+          }
+        : {}),
+      chunkId: chunkNumericId,
+      content: description,
+      operatorId: subUserId,
+      title: normalizedTitle,
+      uid,
+    });
+
+    this.logger.info(
+      {
+        chunkId,
+        operation: "kb-attachment-update",
+        subUserId,
+        uid,
+      },
+      "知识库附件更新成功",
+    );
+
+    return { updated: true };
+  }
+
+  async deleteAttachment(
+    tenant: AgentKbTenant,
+    chunkId: string,
+  ): Promise<KbAttachmentDeleteResponse> {
+    const uid = tenant.uid;
+    const subUserId = tenant.subUserId;
+    const chunkNumericId = parseRequiredNumericId(chunkId, "KB_CHUNK_NOT_FOUND", "附件不存在");
+    const chunk = await this.getKbChunkRow(uid, chunkNumericId);
+
+    if (!chunk) {
+      throw new NotFoundError("KB_CHUNK_NOT_FOUND", "附件不存在");
+    }
+
+    await this.assertAttachmentChunkEditable(uid, chunk.doc_id, chunk.source);
+
+    await this.agentKbJavaClient.deleteKbChunk({
+      chunkId: chunkNumericId,
+      operatorId: subUserId,
+      uid,
+    });
+
+    this.logger.info(
+      {
+        chunkId,
+        operation: "kb-attachment-delete",
+        subUserId,
+        uid,
+      },
+      "知识库附件删除成功",
+    );
+
+    return { deleted: true };
+  }
+
+  private async requireReadyAttachmentDoc(uid: number, kbId: number) {
+    const attachmentDoc = await this.findAttachmentDoc(uid, kbId);
+
+    if (!attachmentDoc) {
+      throw new NotFoundError("KB_ATTACHMENT_NOT_INITIALIZED", "请先初始化附件库");
+    }
+
+    const status = mapSyncStatus(attachmentDoc.sync_status);
+
+    if (status !== "completed") {
+      throw new AppError("KB_ATTACHMENT_NOT_READY", "附件库同步中，请稍后重试", 409);
+    }
+
+    return attachmentDoc;
+  }
+
+  private async assertAttachmentChunkEditable(uid: number, docId: number, source: number) {
+    const doc = await this.getAttachmentDocById(uid, undefined, docId);
+
+    if (!doc || !isAttachmentDocRow(doc)) {
+      throw new NotFoundError("KB_ATTACHMENT_DOC_NOT_FOUND", "附件库异常，请稍后重试");
+    }
+
+    if (source !== KB_CHUNK_SOURCE_MANUAL) {
+      throw new ForbiddenError("KB_CHUNK_NOT_EDITABLE", "系统切片不可编辑");
+    }
+  }
+
+  private async findAttachmentDoc(uid: number, kbId: number): Promise<AttachmentDocRow | undefined> {
+    return this.db
+      .selectFrom("xy_wap_embed_agent_kb_doc")
+      .select(["id", "sync_status"])
+      .where("uid", "=", uid)
+      .where("kb_id", "=", kbId)
+      .where("status", "=", dbActiveStatus)
+      .where((eb) =>
+        eb.or([
+          eb("doc_type", "=", KB_DOC_TYPE_ATTACHMENT),
+          eb("name", "=", KB_ATTACHMENT_DOC_NAME),
+        ]),
+      )
+      .executeTakeFirst();
+  }
+
+  private async waitForAttachmentDocAfterCreate(uid: number, kbId: number, docId: number) {
+    const maxAttempts = this.attachmentDocPollConfig.attempts;
+    const delayMs = this.attachmentDocPollConfig.delayMs;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const attachmentDoc = await this.findAttachmentDoc(uid, kbId);
+
+      if (attachmentDoc && attachmentDoc.id === docId) {
+        return attachmentDoc;
+      }
+
+      const docById = await this.getAttachmentDocById(uid, kbId, docId);
+
+      if (docById && isAttachmentDocRow(docById)) {
+        return {
+          id: docById.id,
+          sync_status: docById.sync_status,
+        };
+      }
+
+      if (attempt < maxAttempts - 1) {
+        await sleep(delayMs);
+      }
+    }
+
+    throw new NotFoundError("KB_ATTACHMENT_DOC_NOT_FOUND", "附件库异常，请稍后重试");
+  }
+
+  private async getAttachmentDocById(uid: number, kbId: number | undefined, docId: number) {
+    let query = this.db
+      .selectFrom("xy_wap_embed_agent_kb_doc")
+      .select(["doc_type", "id", "name", "sync_status"])
+      .where("uid", "=", uid)
+      .where("id", "=", docId)
+      .where("status", "=", dbActiveStatus);
+
+    if (kbId != null) {
+      query = query.where("kb_id", "=", kbId);
+    }
+
+    return query.executeTakeFirst();
+  }
+
+  private async getKbChunkRow(uid: number, chunkId: number) {
+    return this.db
+      .selectFrom("xy_wap_embed_agent_kb_chunk")
+      .select(["doc_id", "source"])
+      .where("id", "=", chunkId)
+      .where("uid", "=", uid)
+      .where("status", "=", dbActiveStatus)
+      .executeTakeFirst();
+  }
+
+  private async findJavaAttachmentChunk(uid: number, docId: number, chunkId: number) {
+    let page = 1;
+    const pageSize = 100;
+
+    while (true) {
+      const response = await this.agentKbJavaClient.listKbChunks({
+        docId,
+        page,
+        pageSize,
+        uid,
+      });
+      const item = response.list.find((entry) => entry.id === chunkId);
+
+      if (item) {
+        return item;
+      }
+
+      if (page * pageSize >= response.count || response.list.length === 0) {
+        return undefined;
+      }
+
+      page += 1;
+    }
+  }
+
+  private async assertKbExists(uid: number, kbId: number) {
+    const row = await this.db
+      .selectFrom("xy_wap_embed_agent_kb")
+      .select(["id"])
+      .where("id", "=", kbId)
+      .where("uid", "=", uid)
+      .where("status", "=", dbActiveStatus)
+      .executeTakeFirst();
+
+    if (!row) {
+      throw new NotFoundError("KB_NOT_FOUND", "知识库不存在");
+    }
+  }
+}
+
+function isKbAttachmentType(value: number): value is KbAttachmentType {
+  return value === 1 || value === 2 || value === 3 || value === 4 || value === 5;
+}
+
+function isAttachmentDocRow(doc: { doc_type: number; name?: string | null }) {
+  return doc.doc_type === KB_DOC_TYPE_ATTACHMENT || doc.name === KB_ATTACHMENT_DOC_NAME;
+}
+
+function sleep(delayMs: number) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, delayMs);
+  });
+}
+
+function assertWritableDescription(description: string) {
+  const normalizedDescription = description.trim();
+
+  if (!normalizedDescription) {
+    throw new BadRequestError("INVALID_KB_CHUNK_CONTENT", "切片内容不能为空");
+  }
+
+  return normalizedDescription;
+}
+
+function resolveWritableTitle(title: string) {
+  const normalizedTitle = title.trim();
+
+  if (!normalizedTitle) {
+    throw new BadRequestError("INVALID_KB_CHUNK_TITLE", "切片标题不能为空");
+  }
+
+  if (normalizedTitle.length > KB_CHUNK_TITLE_MAX_LENGTH) {
+    throw new BadRequestError("INVALID_KB_CHUNK_TITLE", "切片标题过长");
+  }
+
+  return normalizedTitle;
+}
+
+function normalizeAttachmentPagination(input: { page?: number; pageSize?: number }) {
+  const page =
+    Number.isInteger(input.page) && input.page && input.page > 0
+      ? input.page
+      : defaultAttachmentPage;
+  const pageSize =
+    Number.isInteger(input.pageSize) && input.pageSize && input.pageSize > 0
+      ? Math.min(input.pageSize, maxAttachmentPageSize)
+      : defaultAttachmentPageSize;
+
+  return { page, pageSize };
+}
+
+function normalizeAttachmentSearchQuery(query?: string) {
+  const normalizedQuery = query?.trim();
+
+  if (!normalizedQuery) {
+    return undefined;
+  }
+
+  if (normalizedQuery.length > KB_SEARCH_QUERY_MAX_LENGTH) {
+    throw new BadRequestError(
+      "INVALID_KB_QUERY",
+      `搜索关键词不能超过 ${KB_SEARCH_QUERY_MAX_LENGTH} 个字符`,
+    );
+  }
+
+  return normalizedQuery;
+}
+
+export function createKbAttachmentService(
+  db: Kysely<Database>,
+  logger: KbAttachmentServiceLogger,
+  agentKbJavaClient: AgentKbJavaClient,
+) {
+  return new KbAttachmentService(db, logger, agentKbJavaClient);
+}

@@ -1,5 +1,6 @@
 export * from "./ai-hosting/dto.js";
 export * from "./ai-hosting/kb.js";
+export * from "./ai-hosting/kb-attachment.js";
 export * from "./ai-hosting/kb-chunk.js";
 export * from "./ai-hosting/kb-doc.js";
 export * from "./auth/dto.js";

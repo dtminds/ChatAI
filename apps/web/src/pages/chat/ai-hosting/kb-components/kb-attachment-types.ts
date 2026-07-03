@@ -1,5 +1,7 @@
 import {
   MATERIAL_COLLECTION_BIZ_TYPE,
+  type KbAttachmentContent,
+  type KbAttachmentListItem,
   type WorkbenchMaterialCollectionItemDto,
 } from "@chatai/contracts";
 import type { QuickReplyDraftAttachment } from "@/pages/chat/components/quick-reply/quick-reply-attachment-picker";
@@ -129,8 +131,13 @@ export function buildKbAttachmentPayloadFromMaterial(
   }
 
   if (type === KB_ATTACHMENT_TYPE.VIDEO && item.bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO) {
+    const fileName = readString(item.content.fileName) || item.title.trim() || "视频";
+
     return {
-      content: item.content,
+      content: {
+        ...item.content,
+        fileName,
+      },
       materialCollectionId: item.id,
       msgInfoId: item.msgInfoId,
       type: "file",
@@ -250,6 +257,81 @@ export function getKbAttachmentFileExtension(payload: QuickReplyDraftAttachment)
   const index = fileName.lastIndexOf(".");
 
   return index >= 0 ? fileName.slice(index + 1).toLowerCase() : "";
+}
+
+export function toKbAttachmentItem(item: KbAttachmentListItem): KbAttachmentItem {
+  return {
+    attachmentType: item.attachmentType,
+    createdAt: parseKbAttachmentTimestamp(item.createdAt),
+    description: item.description,
+    fileSizeLabel: item.fileSizeLabel,
+    id: item.chunkId,
+    payload: toQuickReplyDraftAttachment(item.attachmentContent),
+    subtitle: item.subtitle,
+    title: item.title,
+  };
+}
+
+export function toQuickReplyDraftAttachment(
+  content: KbAttachmentContent,
+): QuickReplyDraftAttachment {
+  return {
+    content: content.content,
+    materialCollectionId: content.materialCollectionId,
+    msgInfoId: content.msgInfoId,
+    msgid: content.msgid,
+    type: content.type,
+  };
+}
+
+export function toKbAttachmentContent(
+  payload: QuickReplyDraftAttachment,
+): KbAttachmentContent {
+  const attachmentType = resolveKbAttachmentContentType(payload.type);
+  const content: KbAttachmentContent = {
+    content: payload.content,
+    type: attachmentType,
+  };
+
+  if (payload.materialCollectionId) {
+    content.materialCollectionId = payload.materialCollectionId;
+  }
+
+  if (payload.msgInfoId) {
+    content.msgInfoId = payload.msgInfoId;
+  }
+
+  if (payload.msgid) {
+    content.msgid = payload.msgid;
+  }
+
+  return content;
+}
+
+export function isSameKbAttachmentPayload(
+  left: QuickReplyDraftAttachment,
+  right: QuickReplyDraftAttachment,
+) {
+  return (
+    JSON.stringify(toKbAttachmentContent(left))
+    === JSON.stringify(toKbAttachmentContent(right))
+  );
+}
+
+function parseKbAttachmentTimestamp(value: string) {
+  const date = new Date(value);
+
+  return Number.isNaN(date.getTime()) ? Date.now() : date.getTime();
+}
+
+function resolveKbAttachmentContentType(
+  type: QuickReplyDraftAttachment["type"],
+): KbAttachmentContent["type"] {
+  if (type === "image" || type === "file" || type === "h5" || type === "weapp") {
+    return type;
+  }
+
+  throw new Error(`Unsupported KB attachment type: ${type}`);
 }
 
 export function formatKbAttachmentCreatedAt(timestamp: number) {

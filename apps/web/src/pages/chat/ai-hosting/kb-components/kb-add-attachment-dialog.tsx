@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   Cancel01Icon,
   FileImageIcon,
+  PlayIcon,
   PlusSignIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -21,6 +22,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 import {
   QuickReplyMaterialPickerDialog,
   type QuickReplyAttachmentMaterialBizType,
@@ -32,7 +34,9 @@ import {
   extractKbAttachmentMeta,
   getKbAttachmentDescriptionLabel,
   getKbAttachmentDialogTitle,
+  getKbAttachmentPreviewUrl,
   getKbAttachmentSelectLabel,
+  getKbAttachmentTitle,
   getKbMaterialBizType,
   KB_ATTACHMENT_TYPE,
   type KbAttachmentItem,
@@ -49,7 +53,7 @@ type KbAddAttachmentDialogProps = {
   attachmentType: KbAttachmentType;
   editingItem?: KbAttachmentItem | null;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (item: KbAttachmentItem) => void;
+  onSubmit: (item: KbAttachmentItem) => void | Promise<void>;
   open: boolean;
 };
 
@@ -95,37 +99,44 @@ export function KbAddAttachmentDialog({
 
   const canSubmit = Boolean(description.trim() && (selectedPayload || editingItem));
 
-  const handleSubmit = () => {
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async () => {
     const nextPayload = selectedPayload ?? editingItem?.payload;
 
-    if (!nextPayload || !description.trim()) {
+    if (!nextPayload || !description.trim() || submitting) {
       return;
     }
 
-    if (editingItem) {
-      onSubmit({
-        ...editingItem,
-        description: description.trim(),
-        payload: nextPayload,
-        ...extractKbAttachmentMeta(nextPayload),
-        title: getAttachmentDisplayTitle(nextPayload),
-      });
+    const item = editingItem
+      ? {
+          ...editingItem,
+          description: description.trim(),
+          payload: nextPayload,
+          ...extractKbAttachmentMeta(nextPayload),
+          title: getAttachmentDisplayTitle(nextPayload),
+        }
+      : {
+          attachmentType,
+          createdAt: Date.now(),
+          description: description.trim(),
+          id: createLocalDocId(),
+          payload: nextPayload,
+          ...extractKbAttachmentMeta(nextPayload),
+          title: getAttachmentDisplayTitle(nextPayload),
+        };
+
+    setSubmitting(true);
+
+    try {
+      await onSubmit(item);
       onOpenChange(false);
-      toast.success("附件已更新");
-      return;
+      toast.success(editingItem ? "附件已更新" : "附件已添加");
+    } catch {
+      toast.error(editingItem ? "更新失败，请稍后重试" : "添加失败，请稍后重试");
+    } finally {
+      setSubmitting(false);
     }
-
-    onSubmit({
-      attachmentType,
-      createdAt: Date.now(),
-      description: description.trim(),
-      id: createLocalDocId(),
-      payload: nextPayload,
-      ...extractKbAttachmentMeta(nextPayload),
-      title: getAttachmentDisplayTitle(nextPayload),
-    });
-    onOpenChange(false);
-    toast.success("附件已添加");
   };
 
   const handleMaterialSelect = (item: WorkbenchMaterialCollectionItemDto) => {
@@ -182,6 +193,7 @@ export function KbAddAttachmentDialog({
               />
             ) : (
               <MaterialAttachmentField
+                attachmentType={attachmentType}
                 label={getKbAttachmentSelectLabel(attachmentType)}
                 onOpenPicker={() => setMaterialPickerOpen(true)}
                 selectedPayload={selectedPayload}
@@ -212,7 +224,7 @@ export function KbAddAttachmentDialog({
                 取消
               </Button>
             </DialogClose>
-            <Button disabled={!canSubmit} onClick={handleSubmit} type="button">
+            <Button disabled={!canSubmit || submitting} onClick={() => void handleSubmit()} type="button">
               确认并提交
             </Button>
           </DialogFooter>
@@ -345,6 +357,7 @@ function ImageAttachmentFields({
         </div>
       ) : (
         <MaterialAttachmentField
+          attachmentType={KB_ATTACHMENT_TYPE.IMAGE}
           label="选择图片"
           onClearSelection={onClearSelection}
           onOpenPicker={onOpenMaterialPicker}
@@ -356,11 +369,13 @@ function ImageAttachmentFields({
 }
 
 function MaterialAttachmentField({
+  attachmentType,
   label,
   onClearSelection,
   onOpenPicker,
   selectedPayload,
 }: {
+  attachmentType: KbAttachmentType;
   label: string;
   onClearSelection: () => void;
   onOpenPicker: () => void;
@@ -373,7 +388,10 @@ function MaterialAttachmentField({
       {selectedPayload ? (
         <div className="flex min-w-0 items-center gap-3 rounded-[8px] border bg-background px-3 py-2.5">
           <div className="min-w-0 flex-1">
-            <QuickReplyAttachmentPreview attachment={selectedPayload} />
+            <KbAttachmentPayloadPreview
+              attachmentType={attachmentType}
+              payload={selectedPayload}
+            />
           </div>
           <Button
             aria-label="移除已选择素材"
@@ -404,6 +422,54 @@ function MaterialAttachmentField({
       )}
     </div>
   );
+}
+
+function KbAttachmentPayloadPreview({
+  attachmentType,
+  payload,
+}: {
+  attachmentType: KbAttachmentType;
+  payload: QuickReplyDraftAttachment;
+}) {
+  if (attachmentType === KB_ATTACHMENT_TYPE.VIDEO && payload.type === "file") {
+    const previewUrl = getKbAttachmentPreviewUrl(payload);
+
+    return (
+      <div className="flex min-w-0 items-center gap-3">
+        <div
+          className={cn(
+            "relative size-14 shrink-0 overflow-hidden rounded-[8px] bg-muted",
+            !previewUrl && "border border-border",
+          )}
+        >
+          {previewUrl ? (
+            <img
+              alt=""
+              aria-hidden="true"
+              className="size-full object-cover"
+              src={previewUrl}
+            />
+          ) : null}
+          <span className="absolute inset-0 flex items-center justify-center bg-black/10">
+            <span className="flex size-7 items-center justify-center rounded-full bg-black/45 text-white">
+              <HugeiconsIcon
+                aria-hidden="true"
+                color="currentColor"
+                icon={PlayIcon}
+                size={14}
+                strokeWidth={1.8}
+              />
+            </span>
+          </span>
+        </div>
+        <p className="min-w-0 flex-1 truncate text-sm text-foreground">
+          {getKbAttachmentTitle(payload)}
+        </p>
+      </div>
+    );
+  }
+
+  return <QuickReplyAttachmentPreview attachment={payload} />;
 }
 
 function getAttachmentDisplayTitle(payload: QuickReplyDraftAttachment) {

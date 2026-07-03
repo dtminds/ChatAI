@@ -5047,6 +5047,15 @@ export function createWorkbenchStore() {
         return { didConsumeQuote: false, ok: true, optNos: [] };
       }
 
+      if (hasMemberMentionSegments(normalizedSegments) && !options?.mention) {
+        return {
+          errorCode: "MENTION_PAYLOAD_MISSING",
+          errorMessage: "消息发送失败，请重新编辑后发送",
+          reason: "send",
+          ok: false,
+        };
+      }
+
       const state = get();
       const { activeAccountId, activeConversationId, me } = state;
 
@@ -6836,6 +6845,13 @@ function buildMentionPayloadForSegment(
     location: "any",
     memberIds,
   };
+}
+
+function hasMemberMentionSegments(segments: ComposerSegment[]) {
+  return segments.some(
+    (segment) =>
+      segment.type === "text" && (segment.mentionMemberIds?.length ?? 0) > 0,
+  );
 }
 
 function buildSendableComposerSegments(segments: ComposerSegment[]): ComposerSegment[] {

@@ -5342,6 +5342,36 @@ describe("useWorkbenchStore", () => {
     });
   });
 
+  it("fails before replacing member mentions when mention payload is missing", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    const result = await useWorkbenchStore.getState().sendAgentMessageSegments([
+      {
+        text: "hello ",
+        type: "text",
+      },
+      {
+        mentionMemberIds: ["member-001"],
+        text: "@小林",
+        type: "text",
+      },
+    ]);
+
+    expect(result).toMatchObject({
+      errorCode: "MENTION_PAYLOAD_MISSING",
+      ok: false,
+      reason: "send",
+    });
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
+
   it("sends per-segment member mention payloads when media splits composer text", async () => {
     const baseService = createMockWorkbenchService();
     const sendMessage = vi.fn(baseService.sendMessage);

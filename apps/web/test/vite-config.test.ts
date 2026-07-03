@@ -11,6 +11,8 @@ import {
   createViteConfig,
   getRepoRoot,
   getViteDevServerConfig,
+  resolveCosDevProxyTarget,
+  rewriteCosDevProxyPath,
 } from "../vite.config";
 
 function createEnvDir() {
@@ -43,6 +45,7 @@ describe("vite config env", () => {
     expect(config.proxy?.["/api"]).toMatchObject({
       target: "http://127.0.0.1:3001",
     });
+    expect(config.proxy?.["/__cos"]).toBeUndefined();
   });
 
   it("can disable TLS verification for self-signed API targets", () => {
@@ -113,6 +116,27 @@ describe("vite config env", () => {
     );
     expect(() => getViteDevServerConfig({ VITE_DEV_SERVER_PORT: "0" })).toThrow(
       "Invalid VITE_DEV_SERVER_PORT: 0",
+    );
+  });
+
+  it("registers the cos dev proxy plugin for local development server", () => {
+    const config = createViteConfig("development");
+
+    expect(config.plugins?.some((plugin) => {
+      return typeof plugin === "object" && plugin !== null && "name" in plugin
+        && plugin.name === "cos-dev-proxy";
+    })).toBe(true);
+  });
+
+  it("rewrites cos dev proxy paths and resolves bucket targets", () => {
+    const pathname =
+      "/__cos/scrm-msg-audit-1304132716.cos.ap-shanghai.myqcloud.com/?uploads&prefix=s5%2Fupload%2F";
+
+    expect(rewriteCosDevProxyPath(pathname)).toBe(
+      "/?uploads&prefix=s5%2Fupload%2F",
+    );
+    expect(resolveCosDevProxyTarget(pathname)).toBe(
+      "https://scrm-msg-audit-1304132716.cos.ap-shanghai.myqcloud.com",
     );
   });
 });

@@ -15,6 +15,7 @@ describe("createWorkbenchJavaClient", () => {
     delete process.env.JAVA_INTERNAL_API_TOKEN;
     delete process.env.JAVA_INTERNAL_API_STREAM_IDLE_TIMEOUT_MS;
     delete process.env.JAVA_INTERNAL_API_TRANS_MSG_FILE_TIMEOUT_MS;
+    delete process.env.JAVA_INTERNAL_API_AGENT_TEST_TIMEOUT_MS;
     delete process.env.JAVA_INTERNAL_API_TIMEOUT_MS;
   });
 
@@ -182,6 +183,57 @@ describe("createWorkbenchJavaClient", () => {
       }),
     );
 
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses a dedicated timeout for agent simulation tests", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    process.env.JAVA_INTERNAL_API_TIMEOUT_MS = "1";
+    process.env.JAVA_INTERNAL_API_AGENT_TEST_TIMEOUT_MS = "60000";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(
+      async (_url, init) => {
+        expect((init?.signal as AbortSignal).aborted).toBe(false);
+        return new Response(
+          JSON.stringify({
+            data: {
+              action: "reply",
+              reply: [{ content: "你好", type: "text" }],
+            },
+            error: 0,
+            errorMsg: "",
+            success: true,
+          }),
+          {
+            headers: { "content-type": "application/json" },
+            status: 200,
+          },
+        );
+      },
+    );
+
+    await expect(
+      createWorkbenchJavaClient().testAgent({
+        messages: [
+          {
+            contents: [{ text: "你好", type: "text" }],
+            role: "user",
+          },
+        ],
+        modelId: 11,
+        promptConfig: "{}",
+        uid: 9001,
+      }),
+    ).resolves.toEqual({
+      action: "reply",
+      reply: [{ content: "你好", type: "text" }],
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/wap-embed-agent/test-agent",
+      expect.objectContaining({
+        signal: expect.any(AbortSignal),
+      }),
+    );
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -386,6 +438,72 @@ describe("createWorkbenchJavaClient", () => {
       expect.objectContaining({
         body: JSON.stringify({
           conversationId: 88,
+          platform: 5,
+          uid: 9001,
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("posts conversation full-auto change payload to the Java internal API", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ data: true, error: 0, errorMsg: "", success: true }), {
+        headers: { "content-type": "application/json" },
+        status: 200,
+      }),
+    );
+
+    await createWorkbenchJavaClient().changeConversationFullAuto({
+      change: 1,
+      conversationId: "88",
+      operatorId: 101,
+      platform: 5,
+      uid: 9001,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/wap-embed/conversation/change-full-auto",
+      expect.objectContaining({
+        body: JSON.stringify({
+          change: 1,
+          conversationId: 88,
+          operatorId: 101,
+          platform: 5,
+          uid: 9001,
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("posts insert system message payload to the Java internal API", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ data: 1001, error: 0, errorMsg: "", success: true }), {
+        headers: { "content-type": "application/json" },
+        status: 200,
+      }),
+    );
+
+    await expect(
+      createWorkbenchJavaClient().insertSystemMessage({
+        content: "客服一号 开启了 AI 托管",
+        conversationId: "88",
+        operatorId: 101,
+        platform: 5,
+        uid: 9001,
+      }),
+    ).resolves.toBe("1001");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/wap-embed/conversation/insert-system-message",
+      expect.objectContaining({
+        body: JSON.stringify({
+          content: "客服一号 开启了 AI 托管",
+          conversationId: 88,
+          operatorId: 101,
           platform: 5,
           uid: 9001,
         }),
@@ -1068,8 +1186,8 @@ describe("createWorkbenchJavaClient", () => {
             {
               analyseMsgId: 1001,
               assistantName: "护肤小助手",
-              recommendAnswer: "您好",
-              status: 2,
+              genAnswer: "您好",
+              genStatus: 2,
             },
           ],
           error: 0,
@@ -1095,6 +1213,7 @@ describe("createWorkbenchJavaClient", () => {
         {
           assistantName: "护肤小助手",
           content: "您好",
+          genAnswer: "您好",
           generateStatus: 2,
           messageId: "1001",
           pollComplete: true,
@@ -1104,7 +1223,7 @@ describe("createWorkbenchJavaClient", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://java.internal/third-internal/wap-embed-msg-audit-recommend-answer/user-history-answer-list",
+      "https://java.internal/third-internal/wap-embed-agent-answer-record/user-history-answer-list",
       expect.objectContaining({
         body: JSON.stringify({
           chatType: 1,
@@ -1154,8 +1273,8 @@ describe("createWorkbenchJavaClient", () => {
           data: {
             analyseMsgId: 1121,
             assistantName: "护肤小助手",
-            recommendAnswer: "您好",
-            status: 0,
+            genAnswer: "您好",
+            genStatus: 0,
           },
           error: 0,
           success: true,
@@ -1180,6 +1299,7 @@ describe("createWorkbenchJavaClient", () => {
       suggestion: {
         assistantName: "护肤小助手",
         content: "您好",
+        genAnswer: "您好",
         generateStatus: 0,
         messageId: "1121",
         status: "thinking",
@@ -1187,7 +1307,7 @@ describe("createWorkbenchJavaClient", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://java.internal/third-internal/wap-embed-msg-audit-recommend-answer/general-answer",
+      "https://java.internal/third-internal/wap-embed-agent-answer-record/general-answer",
       expect.objectContaining({
         body: JSON.stringify({
           chatType: 1,
@@ -1269,7 +1389,7 @@ describe("createWorkbenchJavaClient", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://java.internal/third-internal/wap-embed-msg-audit-recommend-answer/auto-general-answer",
+      "https://java.internal/third-internal/wap-embed-agent-answer-record/auto-general-answer",
       expect.objectContaining({
         body: JSON.stringify({
           chatType: 1,
@@ -1699,7 +1819,7 @@ describe("createWorkbenchJavaClient", () => {
     );
   });
 
-  it("posts send-answer requests with real answer and attach ids", async () => {
+  it("posts send-answer requests with optNos and recordId", async () => {
     process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
@@ -1717,18 +1837,16 @@ describe("createWorkbenchJavaClient", () => {
 
     const client = createWorkbenchJavaClient(createLoggerMock());
     await client.sendRecommendAnswer({
-      realAnswer: "您好，这是发送的话术",
-      realAttachIds: ["101", "102"],
+      optNos: ["opt-88001", "opt-88002"],
       recordId: "88001",
       uid: 9001,
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://java.internal/third-internal/wap-embed-msg-audit-recommend-answer/send-answer",
+      "https://java.internal/third-internal/wap-embed-agent-answer-record/send-answer",
       expect.objectContaining({
         body: JSON.stringify({
-          realAnswer: "您好，这是发送的话术",
-          realAttachIds: ["101", "102"],
+          optNos: ["opt-88001", "opt-88002"],
           recordId: 88001,
           uid: 9001,
         }),

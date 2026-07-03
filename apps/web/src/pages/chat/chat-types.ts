@@ -3,8 +3,6 @@ import type {
   WorkbenchMessageContentType,
 } from "@chatai/contracts";
 
-import type { ConversationCustodyMode } from "@chatai/contracts";
-
 export type ChatMode = "single" | "group";
 
 export type MessageRole = "customer" | "agent" | "system";
@@ -31,6 +29,11 @@ export type GroupMember = {
 };
 
 export type Account = {
+  seatAIHostingEnabled?: boolean;
+  seatAIHostingAuth?: boolean;
+  fullAutoSwitch?: boolean;
+  semiAutoAuth?: boolean;
+  semiAutoSwitch?: boolean;
   id: string;
   name: string;
   avatarUrl: string;
@@ -45,9 +48,13 @@ export type Account = {
   };
   tone: string;
   unreadCount?: number;
+  singleUnreadCount?: number;
+  groupUnreadCount?: number;
   lastMessageTime?: number;
   loginStatus?: "online" | "offline";
   takenOverEmployeeId?: string;
+  /** 席位 AI 话术推荐能力是否开启，对应 `semiAutoAuth && semiAutoSwitch` */
+  seatAIAssistantEnabled?: boolean;
   /** 席位业务状态：1 已绑定，0 已注销 */
   bizStatus?: number;
   /** 过期时间戳，单位：秒 */
@@ -56,11 +63,27 @@ export type Account = {
 
 export type Conversation = {
   id: string;
-  /** 会话托管模式：full 全托管，semi 半托管 */
-  custodyMode: ConversationCustodyMode;
+  /** 会话 AI 托管开关，对应 `xy_wap_embed_conversation.full_auto_switch` */
+  conversationAIHostingSwitch?: boolean;
+  /** 托管状态栏展示状态 */
+  agentHostingStatus?:
+    | "active"
+    | "exited"
+    | "failed"
+    | "generating"
+    | "handoff"
+    | "retrying"
+    | "sendFailed"
+    | "sendPartialFailed"
+    | "sending"
+    | "sent"
+    | "thinking"
+    | "waiting";
   accountId: string;
   /** 关联客户绑定或群席位业务状态；非 1 表示会话对象已失效 */
   bizStatus?: number;
+  /** 客户绑定类型：1 普通客户，2 应用消息 */
+  customerBindType?: number;
   customerId: string;
   customerName: string;
   customerAvatarUrl: string;
@@ -274,6 +297,7 @@ type BaseMessage = {
   uiMessageKey: string;
   msgid?: string;
   conversationId: string;
+  createdAtMs?: number;
   role: MessageRole;
   author: string;
   sentAt: string;
@@ -297,6 +321,7 @@ export type ChatMessage = BaseMessage & {
   role: "customer" | "agent";
   sender: MessageSender;
   isGroupConversation?: boolean;
+  isAgentMessage?: boolean;
   isOwnMessage?: boolean;
   senderDisplayName?: string;
   content:

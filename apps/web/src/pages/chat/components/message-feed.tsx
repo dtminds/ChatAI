@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { AIHostingAvatarBadge } from "@/pages/chat/components/ai-hosting-avatar-badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -47,8 +48,10 @@ import { QuoteMessagePreview } from "@/pages/chat/components/message/quote";
 import { TextMessageBubble } from "@/pages/chat/components/message/text";
 import {
   getSmartReplyLookupKey,
+  getSmartReplyInlineState,
   shouldShowSmartReplyCard,
   shouldShowSmartReplyTriggerIcon,
+  SMART_REPLY_INLINE_LOADING_HINT,
   type SmartReplySendPayload,
 } from "@/pages/chat/api/smart-reply-adapter";
 import {
@@ -101,6 +104,7 @@ type ChatMessageListProps = {
   retryingMessageIds?: ReadonlySet<string>;
   smartReplyAutoPendingByMessageId?: Record<string, true>;
   smartReplyByMessageId?: Record<string, SmartReplySuggestion>;
+  smartReplyPendingByMessageId?: Record<string, true>;
 };
 
 
@@ -139,10 +143,15 @@ export function ChatMessageList({
   retryingMessageIds,
   smartReplyAutoPendingByMessageId,
   smartReplyByMessageId,
+  smartReplyPendingByMessageId,
 }: ChatMessageListProps) {
+  const renderableMessages = useMemo(
+    () => messages.filter((message): message is Message => Boolean(message)),
+    [messages],
+  );
   const items = useMemo(
-    () => buildFeedItems(messages, showTimeDividers),
-    [messages, showTimeDividers],
+    () => buildFeedItems(renderableMessages, showTimeDividers),
+    [renderableMessages, showTimeDividers],
   );
   const previousConversationIdRef = useRef<string | null>(null);
   const previousTailMessageKeyRef = useRef<string | null>(null);
@@ -155,17 +164,17 @@ export function ChatMessageList({
   const previousTailMessageKey = previousTailMessageKeyRef.current;
   const isSameConversation = previousConversationId === conversationId;
   const appendStartIndex = getAppendStartIndex(
-    messages,
+    renderableMessages,
     isSameConversation ? previousTailMessageKey : null,
   );
   const hasAppendedMessages =
     isSameConversation &&
     appendStartIndex >= 0 &&
-    appendStartIndex < messages.length;
+    appendStartIndex < renderableMessages.length;
   const activeAppendAnimation = activeAppendAnimationRef.current;
   const shouldAnimateMessageByKey = new Map<string, boolean>();
 
-  messages.forEach((message, index) => {
+  renderableMessages.forEach((message, index) => {
     shouldAnimateMessageByKey.set(
       getMessageFeedItemKey(message),
       Boolean(message.isNew) &&
@@ -212,13 +221,15 @@ export function ChatMessageList({
 
     previousConversationIdRef.current = conversationId;
     previousTailMessageKeyRef.current =
-      messages.length > 0 ? getMessageFeedItemKey(messages[messages.length - 1]) : null;
+      renderableMessages.length > 0
+        ? getMessageFeedItemKey(renderableMessages[renderableMessages.length - 1])
+        : null;
   }, [
     appendStartIndex,
     conversationId,
     hasAppendedMessages,
     isSameConversation,
-    messages,
+    renderableMessages,
   ]);
 
   useEffect(() => {
@@ -273,6 +284,13 @@ export function ChatMessageList({
                 isSmartReplyAutoPending={
                   Boolean(
                     smartReplyAutoPendingByMessageId?.[
+                      getSmartReplyLookupKey(item.message)
+                    ],
+                  )
+                }
+                isSmartReplyPending={
+                  Boolean(
+                    smartReplyPendingByMessageId?.[
                       getSmartReplyLookupKey(item.message)
                     ],
                   )
@@ -352,6 +370,7 @@ export function MessageRow({
   onTranscribeVoice,
   isRetryingMessage = false,
   isSmartReplyAutoPending = false,
+  isSmartReplyPending = false,
   smartReply,
 }: {
   conversationId?: string;
@@ -360,6 +379,7 @@ export function MessageRow({
   canCollectMaterialActions?: boolean;
   isRetryingMessage?: boolean;
   isSmartReplyAutoPending?: boolean;
+  isSmartReplyPending?: boolean;
   shouldAnimate?: boolean;
   showTimestamp?: boolean;
   onDownloadMessageFile?: (message: ChatMessage) => void;
@@ -427,7 +447,13 @@ export function MessageRow({
   const showSentAtHoverSlot = Boolean(formattedSentAt) && !showSentAtAfterSenderName;
   const inlineDeliveryState = getInlineDeliveryState(message);
   const showSmartReplyCard = shouldShowSmartReplyCard(smartReply);
-  const showSmartReplyInlineProcessing = isSmartReplyAutoPending && !showSmartReplyCard;
+  const smartReplyInlineState =
+    !showSmartReplyCard && smartReply
+      ? getSmartReplyInlineState(smartReply)
+      : undefined;
+  const showSmartReplyInlineProcessing =
+    !showSmartReplyCard &&
+    (isSmartReplyAutoPending || isSmartReplyPending || smartReplyInlineState != null);
   const showSmartReplyTriggerIcon =
     !showSmartReplyInlineProcessing &&
     shouldShowSmartReplyTriggerIcon(message, smartReply);
@@ -582,7 +608,20 @@ export function MessageRow({
                   />
                 ) : null}
                 {showSmartReplyInlineProcessing ? (
-                  <SmartReplyInlineProcessingHint label="正在生成话术推荐" />
+                  <SmartReplyInlineProcessingHint
+                    animated={smartReplyInlineState?.isLoading ?? true}
+                    label={smartReplyInlineState?.label ?? SMART_REPLY_INLINE_LOADING_HINT}
+                    onDismiss={
+                      smartReplyInlineState?.canDismiss && onDismissSmartReply
+                        ? () => onDismissSmartReply(message)
+                        : undefined
+                    }
+                    onRegenerate={
+                      smartReplyInlineState?.canRegenerate && onTriggerSmartReply
+                        ? () => onTriggerSmartReply(message, { force: true })
+                        : undefined
+                    }
+                  />
                 ) : null}
                 {showTimestamp ? (
                   <p className="px-1 text-[11px] leading-4 text-muted-foreground/80">
@@ -951,7 +990,10 @@ function MessageInlineStatusSlot({
   }
 
   if (state === "failed") {
-    const canRetry = canRetryMessage && Boolean(onRetryMessage) && !isRetryingMessage;
+    const canRetry =
+      canRetryMessage &&
+      Boolean(onRetryMessage) &&
+      !isRetryingMessage;
 
     return (
       <div
@@ -1118,20 +1160,23 @@ export function canCollectMaterial(message: ChatMessage) {
 
 export function MessageAvatar({ message }: { message: ChatMessage }) {
   return (
-    <Avatar className="size-8 rounded-[6px] bg-surface">
-      {message.sender.avatarUrl ? (
-        <AvatarImage alt={message.sender.name} src={message.sender.avatarUrl} />
-      ) : null}
-      <AvatarFallback className="rounded-[6px] text-sm">
-        <HugeiconsIcon
-          aria-hidden="true"
-          color="currentColor"
-          icon={Male02Icon}
-          size={16}
-          strokeWidth={1.8}
-        />
-      </AvatarFallback>
-    </Avatar>
+    <div className="relative">
+      <Avatar className="size-8 rounded-[6px] bg-surface">
+        {message.sender.avatarUrl ? (
+          <AvatarImage alt={message.sender.name} src={message.sender.avatarUrl} />
+        ) : null}
+        <AvatarFallback className="rounded-[6px] text-sm">
+          <HugeiconsIcon
+            aria-hidden="true"
+            color="currentColor"
+            icon={Male02Icon}
+            size={16}
+            strokeWidth={1.8}
+          />
+        </AvatarFallback>
+      </Avatar>
+      {message.isAgentMessage ? <AIHostingAvatarBadge /> : null}
+    </div>
   );
 }
 

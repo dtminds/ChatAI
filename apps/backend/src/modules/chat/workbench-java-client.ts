@@ -42,6 +42,7 @@ import {
 
 const DEFAULT_JAVA_INTERNAL_API_TIMEOUT_MS = 8000;
 const DEFAULT_JAVA_INTERNAL_API_TRANS_MSG_FILE_TIMEOUT_MS = 120000;
+const DEFAULT_JAVA_INTERNAL_API_AGENT_TEST_TIMEOUT_MS = 60000;
 const DEFAULT_JAVA_INTERNAL_API_STREAM_IDLE_TIMEOUT_MS = 60000;
 export const JAVA_INTERNAL_API_USER_MESSAGE = "服务繁忙，请稍后重试";
 export const WORKBENCH_INTERNAL_API_NOT_CONFIGURED_CODE =
@@ -63,6 +64,7 @@ export const JAVA_MESSAGE_SOURCE = {
 } as const;
 
 export const JAVA_MENTION_LOCATION = {
+  ANY: 2,
   END: 1,
   START: 0,
 } as const;
@@ -80,8 +82,10 @@ type JavaApiResponse<T> = {
 
 type JavaMentionFields = {
   atLocation?: number;
+  atOriginText?: string;
   atWxSerialNos?: string[];
   isHit?: number;
+  quoteOriginText?: string;
 };
 
 export type JavaSendMessageData =
@@ -148,6 +152,20 @@ type JavaRevokeMessageResponse = {
 };
 
 export type WorkbenchJavaClient = {
+  changeConversationFullAuto(input: {
+    change: 1 | 2;
+    conversationId: string;
+    operatorId: number;
+    platform: number;
+    uid: number;
+  }): Promise<void>;
+  insertSystemMessage(input: {
+    content: string;
+    conversationId: string;
+    operatorId: number;
+    platform: number;
+    uid: number;
+  }): Promise<string>;
   listUserHistoryAnswers(input: {
     chatType: number;
     msgIds: number[];
@@ -195,8 +213,7 @@ export type WorkbenchJavaClient = {
     uid: number;
   }): Promise<string>;
   sendRecommendAnswer(input: {
-    realAnswer: string;
-    realAttachIds: string[];
+    optNos: string[];
     recordId: string;
     uid: number;
   }): Promise<void>;
@@ -255,6 +272,7 @@ export type WorkbenchJavaClient = {
     uid: number;
   }): Promise<string>;
   getUploadCredential(input: {
+    type?: string;
     uid: number;
   }): Promise<WorkbenchUploadCredentialResponse>;
   markConversationRead(input: {
@@ -287,6 +305,19 @@ export type WorkbenchJavaClient = {
     thirdUserId: string;
     uid: number;
   }): Promise<void>;
+  testAgent(input: {
+    messages: Array<{
+      contents: Array<{
+        text?: string;
+        type: "audio" | "image" | "text";
+        url?: string;
+      }>;
+      role: "assistant" | "user";
+    }>;
+    modelId: number;
+    promptConfig: string;
+    uid: number;
+  }): Promise<unknown>;
   updateMessageContent(input: {
     content: string;
     platform: number;
@@ -307,11 +338,43 @@ export function createWorkbenchJavaClient(
   const token = process.env.JAVA_INTERNAL_API_TOKEN;
 
   return {
+    changeConversationFullAuto(input) {
+      return postJavaEnvelope<boolean>(
+        baseUrl,
+        token,
+        "/third-internal/wap-embed/conversation/change-full-auto",
+        {
+          change: input.change,
+          conversationId: Number(input.conversationId),
+          operatorId: input.operatorId,
+          platform: input.platform,
+          uid: input.uid,
+        },
+        logger,
+        "change-conversation-full-auto",
+      ).then(() => undefined);
+    },
+    insertSystemMessage(input) {
+      return postJavaEnvelope<number | string>(
+        baseUrl,
+        token,
+        "/third-internal/wap-embed/conversation/insert-system-message",
+        {
+          content: input.content,
+          conversationId: Number(input.conversationId),
+          operatorId: input.operatorId,
+          platform: input.platform,
+          uid: input.uid,
+        },
+        logger,
+        "insert-system-message",
+      ).then((messageId) => String(messageId));
+    },
     listUserHistoryAnswers(input) {
       return postJavaEnvelope<unknown>(
         baseUrl,
         token,
-        "/third-internal/wap-embed-msg-audit-recommend-answer/user-history-answer-list",
+        "/third-internal/wap-embed-agent-answer-record/user-history-answer-list",
         {
           chatType: input.chatType,
           msgIds: input.msgIds,
@@ -330,7 +393,7 @@ export function createWorkbenchJavaClient(
       return postJavaEnvelope<unknown>(
         baseUrl,
         token,
-        "/third-internal/wap-embed-msg-audit-recommend-answer/general-answer",
+        "/third-internal/wap-embed-agent-answer-record/general-answer",
         {
           chatType: input.chatType,
           msgId: input.msgId,
@@ -351,7 +414,7 @@ export function createWorkbenchJavaClient(
       return postJavaEnvelope<unknown>(
         baseUrl,
         token,
-        "/third-internal/wap-embed-msg-audit-recommend-answer/auto-general-answer",
+        "/third-internal/wap-embed-agent-answer-record/auto-general-answer",
         {
           chatType: input.chatType,
           msgId: input.msgId,
@@ -368,7 +431,7 @@ export function createWorkbenchJavaClient(
           logger.error(
             {
               operation: "request-auto-general-answer",
-              path: "/third-internal/wap-embed-msg-audit-recommend-answer/auto-general-answer",
+              path: "/third-internal/wap-embed-agent-answer-record/auto-general-answer",
               requestId: getLoggerRequestId(logger),
             },
             "上游接口响应异常",
@@ -474,10 +537,9 @@ export function createWorkbenchJavaClient(
       return postJavaEnvelope<boolean>(
         baseUrl,
         token,
-        "/third-internal/wap-embed-msg-audit-recommend-answer/send-answer",
+        "/third-internal/wap-embed-agent-answer-record/send-answer",
         {
-          realAnswer: input.realAnswer,
-          realAttachIds: input.realAttachIds,
+          optNos: input.optNos,
           recordId: numericRecordId ?? input.recordId,
           uid: input.uid,
         },
@@ -695,6 +757,17 @@ export function createWorkbenchJavaClient(
         logger,
         "take-over-seat",
       ).then(() => undefined);
+    },
+    testAgent(input) {
+      return postJavaEnvelope<unknown>(
+        baseUrl,
+        token,
+        "/third-internal/wap-embed-agent/test-agent",
+        input,
+        logger,
+        "test-agent",
+        { timeoutMs: readJavaApiAgentTestTimeoutMs() },
+      );
     },
     updateMessageContent(input) {
       return postJavaEnvelope<string>(
@@ -1172,6 +1245,14 @@ function readJavaApiTransMsgFileTimeoutMs() {
   return Number.isSafeInteger(value) && value > 0
     ? value
     : DEFAULT_JAVA_INTERNAL_API_TRANS_MSG_FILE_TIMEOUT_MS;
+}
+
+function readJavaApiAgentTestTimeoutMs() {
+  const value = Number.parseInt(process.env.JAVA_INTERNAL_API_AGENT_TEST_TIMEOUT_MS ?? "", 10);
+
+  return Number.isSafeInteger(value) && value > 0
+    ? value
+    : DEFAULT_JAVA_INTERNAL_API_AGENT_TEST_TIMEOUT_MS;
 }
 
 function readJavaApiStreamIdleTimeoutMs() {

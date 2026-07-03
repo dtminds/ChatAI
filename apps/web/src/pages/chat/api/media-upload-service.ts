@@ -1,4 +1,8 @@
 import type COS from "cos-js-sdk-v5";
+import {
+  createCosClientOptions,
+} from "@/lib/cos-dev-proxy";
+import { buildMediaAssetUrl } from "@/lib/media-asset-url";
 import { getUploadCredential } from "@/pages/chat/api/workbench-gateway";
 import {
   formatFileSize,
@@ -18,7 +22,6 @@ import type { WorkbenchUploadCredentialResponse } from "@chatai/contracts";
 const DEFAULT_IMAGE_UPLOAD_PREFIX = "chat-images/";
 const DEFAULT_FILE_UPLOAD_PREFIX = "chat-files/";
 const DEFAULT_FALLBACK_EXTENSION = "bin";
-const MEDIA_ASSET_BASE_URL = "https://b5.bokr.com.cn";
 const UPLOAD_SLICE_SIZE = 1024 * 1024;
 
 type CosConstructor = typeof COS;
@@ -205,14 +208,7 @@ async function createCosClient(
 ): Promise<CosClient> {
   const COS = await loadCosConstructor();
 
-  return new COS({
-    ExpiredTime: credential.expiredTime,
-    SecretId: credential.credentials.tmpSecretId,
-    SecretKey: credential.credentials.tmpSecretKey,
-    SecurityToken:
-      credential.credentials.sessionToken || credential.credentials.token,
-    StartTime: credential.startTime,
-  });
+  return new COS(createCosClientOptions(COS, credential));
 }
 
 async function loadCosConstructor() {
@@ -370,11 +366,7 @@ function getImageExtension(contentType: string) {
 }
 
 function buildObjectUrl(key: string) {
-  return `${MEDIA_ASSET_BASE_URL}/${encodeCosKey(key)}`;
-}
-
-function encodeCosKey(key: string) {
-  return key.split("/").map(encodeURIComponent).join("/");
+  return buildMediaAssetUrl(key);
 }
 
 function getAllowedUploadPrefixes(credential: WorkbenchUploadCredentialResponse) {

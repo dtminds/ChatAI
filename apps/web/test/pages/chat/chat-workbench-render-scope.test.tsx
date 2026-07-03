@@ -12,6 +12,7 @@ import {
 } from "./workbench-test-utils";
 
 const chatPanelRenderMock = vi.hoisted(() => vi.fn());
+const conversationListPanelRenderMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/pages/chat/components/chat-panel", () => ({
   ChatPanel: (props: { activeConversation?: { id: string } }) => {
@@ -25,12 +26,27 @@ vi.mock("@/pages/chat/components/chat-panel", () => ({
   },
 }));
 
+vi.mock("@/pages/chat/components/conversation-list-panel", () => ({
+  ConversationListPanel: (props: {
+    conversations: unknown[];
+    searchableConversations: unknown[];
+  }) => {
+    conversationListPanelRenderMock({
+      conversations: props.conversations,
+      searchableConversations: props.searchableConversations,
+    });
+
+    return <div data-testid="mock-conversation-list-panel" />;
+  },
+}));
+
 describe("ChatWorkbenchPage render scope", () => {
   beforeEach(() => {
     vi.useRealTimers();
     resetChatWorkbenchTestState();
     installChatWorkbenchTestEnvironment();
     chatPanelRenderMock.mockClear();
+    conversationListPanelRenderMock.mockClear();
   });
 
   it.each([
@@ -116,9 +132,9 @@ describe("ChatWorkbenchPage render scope", () => {
     await waitFor(() => expect(chatPanelRenderMock).toHaveBeenCalled());
     act(() => {
       useWorkbenchStore.setState((state) => ({
-        smartReplyEnabledByConversationId: {
-          ...state.smartReplyEnabledByConversationId,
-          "conv-001": false,
+        smartReplyLastPolledAtByConversationId: {
+          ...state.smartReplyLastPolledAtByConversationId,
+          "conv-001": Date.now(),
         },
       }));
     });
@@ -129,5 +145,31 @@ describe("ChatWorkbenchPage render scope", () => {
     });
 
     expect(chatPanelRenderMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps visible conversation references stable across unrelated page renders", async () => {
+    renderChatWorkbenchPage();
+
+    await screen.findByTestId("mock-conversation-list-panel");
+    await waitFor(() => expect(conversationListPanelRenderMock).toHaveBeenCalled());
+    const firstProps = conversationListPanelRenderMock.mock.lastCall?.[0];
+
+    act(() => {
+      useWorkbenchStore.setState({
+        readReceiptError: "已读状态同步失败",
+      });
+    });
+
+    await waitFor(() =>
+      expect(conversationListPanelRenderMock.mock.calls.length).toBeGreaterThan(
+        1,
+      ),
+    );
+    const nextProps = conversationListPanelRenderMock.mock.lastCall?.[0];
+
+    expect(nextProps.conversations).toBe(firstProps.conversations);
+    expect(nextProps.searchableConversations).toBe(
+      firstProps.searchableConversations,
+    );
   });
 });

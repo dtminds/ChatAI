@@ -26,7 +26,7 @@ describe("ContactCardMessageCard", () => {
     expect(screen.getByText("个人名片")).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "binarywang" })).toHaveAttribute(
       "src",
-      "http://wx.qlogo.cn/mmhead/avatar/0",
+      "http://wx.qlogo.cn/mmhead/avatar/64",
     );
     expect(screen.getByTestId("contact-card-avatar-frame")).toHaveStyle({
       height: "48px",

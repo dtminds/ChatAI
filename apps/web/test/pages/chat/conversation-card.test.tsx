@@ -6,7 +6,7 @@ import type { Conversation } from "@/pages/chat/chat-types";
 
 const conversation: Conversation = {
   accountId: "account-1",
-  custodyMode: "semi",
+  conversationAIHostingSwitch: false,
   customerAvatarUrl: "https://example.com/customer.png",
   customerId: "customer-1",
   customerName: "测试客户",
@@ -52,6 +52,19 @@ describe("ConversationCard", () => {
     );
 
     expect(screen.getByText("3")).toBeInTheDocument();
+  });
+
+  it("caps numeric unread badges at 99+", () => {
+    render(
+      <ConversationCard
+        conversation={{ ...conversation, unread: 120 }}
+        isActive
+        onSelect={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("99+")).toBeInTheDocument();
+    expect(screen.queryByText("120")).not.toBeInTheDocument();
   });
 
   it("does not render an epoch date when a conversation has no message time", () => {
@@ -137,6 +150,23 @@ describe("ConversationCard", () => {
     expect(avatarFallback).toBeInTheDocument();
     expect(avatarFallback).toHaveTextContent("");
     expect(avatarFallback?.querySelector("svg")).toBeInTheDocument();
+  });
+
+  it("shows an AI badge on hosted conversations", () => {
+    const { container } = render(
+      <ConversationCard
+        conversation={conversation}
+        isActive={false}
+        isAIHostingEnabled
+        onSelect={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByLabelText("AI托管")).toBeInTheDocument();
+    expect(container.querySelector("[aria-label='AI托管'] svg")).toBeInTheDocument();
+    expect(
+      container.querySelector("[aria-label='AI托管'] [class*='mask-image']"),
+    ).not.toBeInTheDocument();
   });
 
   it("shows mark-read for unread conversations and mark-unread for read conversations", async () => {

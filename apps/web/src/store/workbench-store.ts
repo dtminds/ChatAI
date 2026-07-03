@@ -13,11 +13,14 @@ import {
 import { getWorkbenchService } from "@/pages/chat/api/workbench-service";
 import {
   bootstrapWorkbench,
+  changeConversationFullAuto,
   CONVERSATION_MODE_CACHE_TTL_MS,
   deleteConversation as deleteConversationRequest,
+  getFullAutoAnswerStatus,
   getVisibleConversations,
   loadAccountConversationsByMode,
   loadAccountConversationsWithBaseline,
+  loadUnreadAccountConversationsByMode,
   loadConversationHistoryMessagesPage,
   loadGroupMembers,
   loadConversationMessagesPage,
@@ -33,15 +36,18 @@ import {
   requestSmartReplyMakeShorter as requestSmartReplyMakeShorterApi,
   sendSmartReplyAnswer,
   confirmVoicePlaybackReady as confirmVoicePlaybackReadyRequest,
+  retryMessage as retryMessageRequest,
   revokeMessage as revokeMessageRequest,
   sendTextMessage,
   takeOverAccount as takeOverAccountRequest,
   transcribeVoiceMessage as transcribeVoiceMessageRequest,
   unpinConversation,
+  updateSeatAgentMode,
 } from "@/pages/chat/api/workbench-gateway";
 import type { WorkbenchConversationPage } from "@/pages/chat/api/workbench-gateway";
 import {
   getComposerSegmentsPreview,
+  JAVA_MENTION_PLACEHOLDER,
   normalizeComposerSegments,
   type ComposerSegment,
   type ComposerTextSegment,
@@ -53,19 +59,25 @@ import {
   buildConversationComposerDraft,
   type ConversationComposerDraft,
 } from "@/pages/chat/lib/conversation-composer-draft";
+import type { AgentHostingStatus } from "@/pages/chat/lib/chat-agent-hosting-status";
 import { normalizeMediaAssetUrl } from "@/pages/chat/lib/media-asset-url";
 import { isValidMessageSeq } from "@/pages/chat/lib/message-seq";
 import { notifyPulledCustomerMessage } from "@/pages/chat/lib/new-message-title-alert";
 import { canUseWorkbenchConversationActions } from "@/pages/chat/lib/workbench-permissions";
+import {
+  isConversationAIFeatureSupported,
+  isConversationAIHostingEnabled,
+} from "@/pages/chat/lib/conversation-ai-hosting";
 import { seedCustomerProfiles } from "@/pages/chat/mock-data";
 import {
   CHAT_TYPE,
   SMART_REPLY_POLL_INTERVAL_MS,
+  type WorkbenchFullAutoAnswerStatusResponse,
+  type WorkbenchSeatAgentMode,
   type SettingsSidebarItem,
   type WorkbenchSendMessagePayload,
 } from "@chatai/contracts";
 import {
-  buildSmartReplyRealAttachIds,
   buildSmartReplySendSegments,
   collectPendingSmartReplyPollMsgIds,
   collectSmartReplyPendingKeysFromSuggestions,
@@ -80,10 +92,13 @@ import {
   isSmartReplyKnowledgeMiss,
   isSmartReplyPollComplete,
   isSmartReplyEligibleMessage,
+  isSmartReplySemanticWait,
+  isSmartReplySemanticWaitExpired,
   isSmartReplySupportedConversation,
   SMART_REPLY_CONTENT_INCOMPLETE_SKIP_HINT,
   SMART_REPLY_CONTENT_INCOMPLETE_SKIP_MESSAGE,
   SMART_REPLY_BUSY_TIMEOUT_MS,
+  SMART_REPLY_SEMANTIC_WAIT_TIMEOUT_MS,
   type SmartReplySendPayload,
 } from "@/pages/chat/api/smart-reply-adapter";
 import type { SmartReplySuggestion } from "@/pages/chat/components/smart-reply-card";
@@ -104,12 +119,22 @@ type AsyncStatus = "idle" | "loading" | "ready" | "error";
 type HistoryStatus = "idle" | "loading";
 type SendStatus = "idle" | "sending";
 type TakeoverStatus = "idle" | "taking-over";
+type FullAutoStatusState = {
+  lastCustomerMessageAt: number;
+  lastCustomerMessageId: string;
+  status: AgentHostingStatus;
+};
+type FullAutoFinishedMessage = {
+  messageAt: number;
+  messageId: string;
+};
 type SendMentionPayload = WorkbenchSendMessagePayload["mention"];
 type SendQuotePayload = WorkbenchSendMessagePayload["quote"];
 
 type SendMessageResult =
   | {
       didConsumeQuote?: boolean;
+      optNos?: string[];
       ok: true;
     }
   | {
@@ -188,6 +213,7 @@ type WorkbenchState = {
   conversationListCacheSeatOrder: string[];
   conversationListsByScope: Record<string, Conversation[]>;
   conversationModeLoadedAtByScope: Record<string, Partial<Record<ChatMode, number>>>;
+  hasMoreUnreadByScope: Record<string, Partial<Record<ChatMode, boolean>>>;
   customerProfilesById: Record<string, CustomerProfile>;
   groupMembersLoadedAtByConversationId: Record<string, number>;
   groupMembersLoadingByConversationId: Record<string, boolean>;
@@ -204,7 +230,6 @@ type WorkbenchState = {
     string,
     Record<string, true>
   >;
-  smartReplyEnabledByConversationId: Record<string, boolean>;
   smartReplyHiddenMessageKeysByConversationId: Record<string, Record<string, true>>;
   smartReplyPendingMessageKeysByConversationId: Record<string, Record<string, true>>;
   smartReplyLastPolledAtByConversationId: Record<string, number>;
@@ -213,6 +238,9 @@ type WorkbenchState = {
   activeMode: ChatMode;
   bootstrapStatus: AsyncStatus;
   bootstrapError?: string;
+  fullAutoActionError?: string;
+  fullAutoStatusByConversationId: Record<string, FullAutoStatusState>;
+  seatAgentModeActionPending: boolean;
   isConversationLoading: boolean;
   readReceiptError?: string;
   scopeTransitionError?: string;
@@ -223,6 +251,7 @@ type WorkbenchState = {
   historyPanelErrorByConversationId: Record<string, string | undefined>;
   historyPanelScrollModeByConversationId: Record<string, HistoryPanelScrollMode | undefined>;
   historyPanelOpenConversationId?: string;
+  fullAutoActionPending: boolean;
   groupMembersByConversationId: Record<string, GroupMember[]>;
   hasMoreHistoryByConversationId: Record<string, boolean>;
   messagePaginationByConversationId: Record<string, MessagePaginationState>;
@@ -238,9 +267,14 @@ type WorkbenchState = {
   pendingMessages: Message[];
   revokeMessage: (uiMessageKey: string) => Promise<RevokeMessageResult>;
   sidebarItems: SettingsSidebarItem[];
+  changeActiveSeatAgentMode: (mode: WorkbenchSeatAgentMode) => Promise<void>;
+  changeActiveConversationFullAuto: (enabled: boolean) => Promise<void>;
+  syncFullAutoAgentStatus: () => Promise<void>;
+  resetWorkbenchRuntime: () => void;
   clearActiveConversation: () => void;
   resetWorkbenchSession: () => void;
   deleteConversation: (conversationId: string) => Promise<void>;
+  dismissFullAutoActionError: () => void;
   dismissScopeTransitionError: () => void;
   dismissReadReceiptError: () => void;
   initializeWorkbench: () => Promise<void>;
@@ -253,6 +287,7 @@ type WorkbenchState = {
     options?: { preserveConversation?: Conversation },
   ) => Promise<void>;
   loadActiveGroupMembers: (options?: { force?: boolean }) => Promise<void>;
+  loadUnreadConversations: (mode?: ChatMode) => Promise<void>;
   markConversationUnread: (conversationId: string) => Promise<void>;
   sendAgentMessageSegments: (
     segments: ComposerSegment[],
@@ -345,6 +380,10 @@ type VoiceTranscriptionContentPatch = {
 
 const defaultCustomerProfiles = seedCustomerProfiles;
 const MESSAGE_PAGE_SIZE = 50;
+const FULL_AUTO_ANSWER_POLL_INTERVAL_MS = 1000;
+const FULL_AUTO_RECENT_CUSTOMER_MESSAGE_WINDOW_MS = 2 * 60 * 1000;
+const FULL_AUTO_TERMINAL_STATUS_RESET_MS = 5000;
+const FULL_AUTO_SEMANTIC_WAIT_TIMEOUT_MS = SMART_REPLY_SEMANTIC_WAIT_TIMEOUT_MS;
 const CONVERSATION_MODES = ["single", "group"] as const satisfies readonly ChatMode[];
 const GROUP_MEMBERS_CACHE_TTL_MS = 5 * 60 * 1000;
 const REVOKE_PENDING_TIMEOUT_MS = 10 * 1000;
@@ -362,6 +401,7 @@ function createInitialState(): Omit<
   | "setActiveConversation"
   | "setActiveMode"
   | "loadActiveGroupMembers"
+  | "loadUnreadConversations"
   | "markConversationUnread"
   | "sendAgentMessageSegments"
   | "sendAgentTextMessage"
@@ -387,6 +427,11 @@ function createInitialState(): Omit<
   | "updateMessageDownloadContent"
   | "confirmVoicePlaybackReady"
   | "transcribeVoiceMessage"
+  | "changeActiveSeatAgentMode"
+  | "changeActiveConversationFullAuto"
+  | "syncFullAutoAgentStatus"
+  | "dismissFullAutoActionError"
+  | "resetWorkbenchRuntime"
   | "dismissScopeTransitionError"
   | "dismissReadReceiptError"
   | "setSearchKeyword"
@@ -408,6 +453,7 @@ function createInitialState(): Omit<
     conversationListCacheSeatOrder: [],
     conversationListsByScope: {},
     conversationModeLoadedAtByScope: {},
+    hasMoreUnreadByScope: {},
     customerProfilesById: defaultCustomerProfiles,
     groupMembersLoadedAtByConversationId: {},
     groupMembersLoadingByConversationId: {},
@@ -427,7 +473,6 @@ function createInitialState(): Omit<
     smartReplyAutoPendingMessageKeysByConversationId: {},
     smartReplyAutoSkippedMessageKeysByConversationId: {},
     smartReplyByMessageIdByConversationId: {},
-    smartReplyEnabledByConversationId: {},
     smartReplyHiddenMessageKeysByConversationId: {},
     smartReplyPendingMessageKeysByConversationId: {},
     smartReplyLastPolledAtByConversationId: {},
@@ -437,6 +482,10 @@ function createInitialState(): Omit<
       jitterMs: 350,
       status: "idle",
     },
+    fullAutoActionError: undefined,
+    fullAutoActionPending: false,
+    fullAutoStatusByConversationId: {},
+    seatAgentModeActionPending: false,
     readReceiptError: undefined,
     scopeTransitionError: undefined,
     sendStatusByConversationId: {},
@@ -571,6 +620,41 @@ function markAllConversationModesLoaded(
   );
 }
 
+function applyAccountUnreadSummary(
+  accounts: Account[],
+  accountId: string,
+  unreadSummary: { group: number; single: number; total: number } | undefined,
+) {
+  if (!unreadSummary) {
+    return accounts;
+  }
+
+  let changed = false;
+  const nextAccounts = accounts.map((account) => {
+    if (account.id !== accountId) {
+      return account;
+    }
+
+    if (
+      account.unreadCount === unreadSummary.total &&
+      account.singleUnreadCount === unreadSummary.single &&
+      account.groupUnreadCount === unreadSummary.group
+    ) {
+      return account;
+    }
+
+    changed = true;
+    return {
+      ...account,
+      groupUnreadCount: unreadSummary.group,
+      singleUnreadCount: unreadSummary.single,
+      unreadCount: unreadSummary.total,
+    };
+  });
+
+  return changed ? nextAccounts : accounts;
+}
+
 function isConversationModeCacheFresh(
   state: WorkbenchState,
   accountId: string,
@@ -642,6 +726,16 @@ function mergeConversationList(
     conversation,
     ...currentList.filter((item) => item.id !== conversation.id),
   ]);
+}
+
+function mergeConversationLists(
+  currentList: Conversation[],
+  conversations: Conversation[],
+) {
+  return conversations.reduce(
+    (nextList, conversation) => mergeConversationList(nextList, conversation),
+    currentList,
+  );
 }
 
 function findNextConversationIdAfterRemove(
@@ -869,20 +963,29 @@ function omitSmartReplyHiddenKey(
 }
 
 function getPageSmartReplies(page: WorkbenchConversationPage) {
-  if (page.smartReplyEnabled === false) {
-    return {};
-  }
-
   const eligibleMessageKeys = new Set(
     page.messages
       .filter(
         (message): message is ChatMessage =>
-          message.role !== "system" && hasSmartReplyTriggerRawMsgtype(message),
+          Boolean(message) &&
+          message.role !== "system" &&
+          hasSmartReplyTriggerRawMsgtype(message),
       )
       .map((message) => getSmartReplyLookupKey(message)),
   );
 
   return filterSmartReplyRecordByKeys(page.smartReplies, eligibleMessageKeys);
+}
+
+function getPageSmartRepliesForConversation(
+  state: WorkbenchState,
+  page: WorkbenchConversationPage,
+) {
+  if (!canDisplaySmartReplyForConversation(state, page.conversationId)) {
+    return {};
+  }
+
+  return getPageSmartReplies(page);
 }
 
 function getSmartReplyTimerKey(conversationId: string, lookupKey: string) {
@@ -936,7 +1039,7 @@ function pruneSmartReplyStateToExistingMessages(input: {
 }) {
   const retainedKeys = new Set(
     input.messages
-      .filter((message) => message.role !== "system")
+      .filter((message) => message && message.role !== "system")
       .map((message) => getSmartReplyLookupKey(message)),
   );
 
@@ -992,6 +1095,62 @@ function shouldAutoGenerateSmartReply(input: {
   return message;
 }
 
+function getLatestSmartReplyEligibleMessageKey(messages: Message[]) {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+
+    if (message && message.role !== "system" && isSmartReplyEligibleMessage(message)) {
+      return getSmartReplyLookupKey(message);
+    }
+  }
+
+  return undefined;
+}
+
+function pruneSemanticWaitSmartReplyPendingKeys(input: {
+  messages: Message[];
+  pending: Record<string, true>;
+  requestedMsgIds: number[];
+  suggestions: Record<string, SmartReplySuggestion>;
+}) {
+  const nextPending = { ...input.pending };
+  const latestEligibleKey = getLatestSmartReplyEligibleMessageKey(input.messages);
+
+  for (const msgId of input.requestedMsgIds) {
+    const lookupKey = String(msgId);
+    const suggestion = input.suggestions[lookupKey];
+
+    if (!isSmartReplySemanticWait(suggestion)) {
+      continue;
+    }
+
+    if (isSmartReplySemanticWaitExpired(suggestion) || lookupKey !== latestEligibleKey) {
+      delete nextPending[lookupKey];
+    }
+  }
+
+  return nextPending;
+}
+
+function collectSmartReplyPendingMsgIds(pending: Record<string, true>) {
+  return Object.keys(pending)
+    .map((key) => Number(key))
+    .filter((msgId) => Number.isSafeInteger(msgId) && msgId > 0);
+}
+
+function areSmartReplyPendingRecordsEqual(
+  left: Record<string, true>,
+  right: Record<string, true>,
+) {
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+
+  return (
+    leftKeys.length === rightKeys.length &&
+    leftKeys.every((key) => right[key] === true)
+  );
+}
+
 function mergeSmartReplyPollResult(
   previousSuggestions: Record<string, SmartReplySuggestion>,
   previousPending: Record<string, true>,
@@ -1037,7 +1196,12 @@ function mergeSmartReplyPollResult(
   }
 
   return {
-    pending: nextPending,
+    pending: pruneSemanticWaitSmartReplyPendingKeys({
+      messages,
+      pending: nextPending,
+      requestedMsgIds,
+      suggestions: mergedSuggestions,
+    }),
     suggestions: mergedSuggestions,
   };
 }
@@ -1055,9 +1219,7 @@ function canUseSmartReplyForConversation(
   state: WorkbenchState,
   conversationId: string,
 ) {
-  const pageEnabled = state.smartReplyEnabledByConversationId[conversationId];
-
-  if (pageEnabled !== true) {
+  if (!canDisplaySmartReplyForConversation(state, conversationId)) {
     return false;
   }
 
@@ -1066,26 +1228,43 @@ function canUseSmartReplyForConversation(
     conversationId,
   );
 
+  if (!conversation) {
+    return false;
+  }
+
+  const account = state.accounts.find(
+    (item) => item.id === conversation.accountId,
+  );
+
+  return canUseConversationActions(state, account);
+}
+
+export function canDisplaySmartReplyForConversation(
+  state: WorkbenchState,
+  conversationId: string,
+) {
+  const conversation = findConversationById(
+    state.conversationListsByScope,
+    conversationId,
+  );
+
   if (conversation) {
+    if (isConversationAIHostingEnabledInState(state, conversation)) {
+      return false;
+    }
+
     const account = state.accounts.find(
       (item) => item.id === conversation.accountId,
     );
 
     return (
       isSmartReplySupportedConversation(conversation) &&
-      canUseConversationActions(state, account) &&
+      account?.seatAIAssistantEnabled === true &&
       conversation.bizStatus === 1
     );
   }
 
-  const messages = state.messagesByConversationId[conversationId] ?? [];
-
-  return (
-    state.hasChatSendPermission &&
-    !messages.some(
-      (message) => message.role !== "system" && message.isGroupConversation,
-    )
-  );
+  return false;
 }
 
 function scheduleSmartReplyPoll(
@@ -1127,17 +1306,54 @@ function scheduleSmartReplyPoll(
     state.smartReplyByMessageIdByConversationId[conversationId] ?? {};
   const pending =
     state.smartReplyPendingMessageKeysByConversationId[conversationId] ?? {};
+  const prunedPending = pruneSemanticWaitSmartReplyPendingKeys({
+    messages,
+    pending,
+    requestedMsgIds: collectSmartReplyPendingMsgIds(pending),
+    suggestions,
+  });
+
+  if (!areSmartReplyPendingRecordsEqual(pending, prunedPending)) {
+    set((currentState) => {
+      const currentPending =
+        currentState.smartReplyPendingMessageKeysByConversationId[conversationId] ??
+        {};
+      const currentPrunedPending = pruneSemanticWaitSmartReplyPendingKeys({
+        messages: currentState.messagesByConversationId[conversationId] ?? [],
+        pending: currentPending,
+        requestedMsgIds: collectSmartReplyPendingMsgIds(currentPending),
+        suggestions:
+          currentState.smartReplyByMessageIdByConversationId[conversationId] ?? {},
+      });
+
+      if (areSmartReplyPendingRecordsEqual(currentPending, currentPrunedPending)) {
+        return currentState;
+      }
+
+      return {
+        smartReplyPendingMessageKeysByConversationId: {
+          ...currentState.smartReplyPendingMessageKeysByConversationId,
+          [conversationId]: currentPrunedPending,
+        },
+      };
+    });
+  }
+
   const hidden =
     state.smartReplyHiddenMessageKeysByConversationId[conversationId] ?? {};
   const msgIds = collectPendingSmartReplyPollMsgIds(
     messages,
     suggestions,
-    pending,
+    prunedPending,
     undefined,
-    { allowKeys: new Set(Object.keys(pending).filter((key) => !hidden[key])) },
+    {
+      allowKeys: new Set(
+        Object.keys(prunedPending).filter((key) => !hidden[key]),
+      ),
+    },
   );
 
-  options?.syncRuntimeTimers?.(conversationId, pending);
+  options?.syncRuntimeTimers?.(conversationId, prunedPending);
 
   if (msgIds.length === 0) {
     options?.clearPollTimer?.(conversationId);
@@ -1815,6 +2031,14 @@ function applyReadResult(
       account.id === accountId
         ? {
             ...account,
+            groupUnreadCount:
+              currentConversation?.mode === "group"
+                ? Math.max(0, (account.groupUnreadCount ?? 0) - currentUnreadCount)
+                : account.groupUnreadCount,
+            singleUnreadCount:
+              currentConversation?.mode === "single"
+                ? Math.max(0, (account.singleUnreadCount ?? 0) - currentUnreadCount)
+                : account.singleUnreadCount,
             unreadCount: Math.max(
               0,
               (account.unreadCount ?? 0) - currentUnreadCount,
@@ -1853,6 +2077,14 @@ function applyUnreadResult(
       account.id === accountId
         ? {
             ...account,
+            groupUnreadCount:
+              currentConversation?.mode === "group"
+                ? Math.max(0, (account.groupUnreadCount ?? 0) + 1 - currentUnreadCount)
+                : account.groupUnreadCount,
+            singleUnreadCount:
+              currentConversation?.mode === "single"
+                ? Math.max(0, (account.singleUnreadCount ?? 0) + 1 - currentUnreadCount)
+                : account.singleUnreadCount,
             unreadCount: Math.max(
               0,
               (account.unreadCount ?? 0) + 1 - currentUnreadCount,
@@ -1864,6 +2096,34 @@ function applyUnreadResult(
       ...state.conversationListsByScope,
       [accountId]: nextConversations,
     },
+  };
+}
+
+function applyConversationAIHostingSwitchResult(
+  state: WorkbenchStore,
+  conversationId: string,
+  accountId: string,
+  enabled: boolean,
+) {
+  return {
+    conversationListsByScope: {
+      ...state.conversationListsByScope,
+      [accountId]: (state.conversationListsByScope[accountId] ?? []).map(
+        (conversation): Conversation =>
+          conversation.id === conversationId
+            ? {
+                ...conversation,
+                conversationAIHostingSwitch: enabled,
+                agentHostingStatus: enabled
+                  ? undefined
+                  : "exited",
+              }
+            : conversation,
+      ),
+    },
+    fullAutoStatusByConversationId: enabled
+      ? state.fullAutoStatusByConversationId
+      : omitByKeys(state.fullAutoStatusByConversationId, [conversationId]),
   };
 }
 
@@ -1990,71 +2250,29 @@ function buildOptimisticMessageContent(
   };
 }
 
-function getRetrySendInputFromMessage(message: ChatMessage): {
-  quote?: SendQuotePayload;
-  segment: ComposerSegment;
-} | undefined {
-  if (message.content.type === "text") {
-    return {
-      segment: {
-        text: message.content.text,
-        type: "text",
-      },
-    };
-  }
+function canRetryMessageContent(message: ChatMessage) {
+  return (
+    message.content.type === "text" ||
+    message.content.type === "quote" ||
+    message.content.type === "image" ||
+    message.content.type === "file"
+  );
+}
 
-  if (message.content.type === "quote") {
-    return {
-      quote: {
-        quoteMsgId: message.content.quoteMsgId,
-        quotedMessage: message.content.quotedMessage,
-      },
-      segment: {
-        text: message.content.text,
-        type: "text",
-      },
-    };
+function getRetryPreviewText(message: ChatMessage) {
+  if (message.content.type === "text" || message.content.type === "quote") {
+    return message.content.text;
   }
 
   if (message.content.type === "image") {
-    const imageUrl = message.content.imageUrl?.trim();
-
-    if (!imageUrl) {
-      return undefined;
-    }
-
-    return {
-      segment: {
-        alt: message.content.alt,
-        height: message.content.height,
-        type: "image",
-        url: imageUrl,
-        width: message.content.width,
-      },
-    };
+    return "[图片]";
   }
 
   if (message.content.type === "file") {
-    const fileUrl = message.content.fileUrl?.trim();
-
-    if (!fileUrl) {
-      return undefined;
-    }
-
-    return {
-      segment: {
-        extension: message.content.extension,
-        fileName: message.content.fileName,
-        ...(message.content.fileSizeLabel
-          ? { fileSizeLabel: message.content.fileSizeLabel }
-          : {}),
-        type: "file",
-        url: fileUrl,
-      },
-    };
+    return message.content.fileName || "[文件]";
   }
 
-  return undefined;
+  return "";
 }
 
 function canUseConversationActions(state: WorkbenchState, account: Account | undefined) {
@@ -2063,6 +2281,97 @@ function canUseConversationActions(state: WorkbenchState, account: Account | und
     hasSendPermission: state.hasChatSendPermission,
     me: state.me,
   });
+}
+
+function isConversationAIHostingEnabledInState(
+  state: WorkbenchState,
+  conversation: Conversation | undefined,
+) {
+  const account = state.accounts.find(
+    (item) => item.id === conversation?.accountId,
+  );
+
+  return isConversationAIHostingEnabled(
+    conversation,
+    account?.seatAIHostingEnabled === true,
+  );
+}
+
+function getLatestCustomerMessage(messages: Message[]) {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+
+    if (message?.role === "customer") {
+      return message;
+    }
+
+    if (message?.role === "agent") {
+      return undefined;
+    }
+  }
+
+  return undefined;
+}
+
+function isFullAutoAnswerRecordForMessage(
+  answerStatus: WorkbenchFullAutoAnswerStatusResponse,
+  messageId: string,
+) {
+  return (
+    answerStatus.recordId == null ||
+    (answerStatus.analyseMsgId != null &&
+      String(answerStatus.analyseMsgId) === messageId)
+  );
+}
+
+function resolveFullAutoAnswerStatus(
+  status: WorkbenchFullAutoAnswerStatusResponse,
+): { isTerminal: boolean; status: AgentHostingStatus } {
+  if (status.sendStatus === 2) {
+    return { isTerminal: true, status: "sendFailed" };
+  }
+
+  if (status.sendStatus === 3) {
+    return { isTerminal: true, status: "sendPartialFailed" };
+  }
+
+  if (status.genStatus === 4) {
+    return { isTerminal: true, status: "handoff" };
+  }
+
+  if (status.genStatus === 5) {
+    if (
+      typeof status.createdAt === "number" &&
+      Number.isFinite(status.createdAt) &&
+      Date.now() - status.createdAt >= FULL_AUTO_SEMANTIC_WAIT_TIMEOUT_MS
+    ) {
+      return { isTerminal: true, status: "active" };
+    }
+
+    return { isTerminal: false, status: "waiting" };
+  }
+
+  if (status.genStatus === 3) {
+    return { isTerminal: true, status: "failed" };
+  }
+
+  if (status.genStatus === 2 && status.sendStatus === 1) {
+    return { isTerminal: true, status: "sent" };
+  }
+
+  if (status.genStatus === 2 && status.sendStatus === 0) {
+    return { isTerminal: false, status: "sending" };
+  }
+
+  if (status.genStatus === 1) {
+    return { isTerminal: false, status: "generating" };
+  }
+
+  if (status.genStatus === 0) {
+    return { isTerminal: false, status: "waiting" };
+  }
+
+  return { isTerminal: false, status: "thinking" };
 }
 
 function omitByKeys<T>(record: Record<string, T>, keys: Iterable<string>) {
@@ -2131,6 +2440,10 @@ function clearConversationMessageState(
       state.messagesByConversationId,
       clearedConversationIds,
     ),
+    fullAutoStatusByConversationId: omitByKeys(
+      state.fullAutoStatusByConversationId,
+      clearedConversationIds,
+    ),
     smartReplyAutoPendingMessageKeysByConversationId: omitByKeys(
       state.smartReplyAutoPendingMessageKeysByConversationId,
       smartReplyClearedConversationIds,
@@ -2141,10 +2454,6 @@ function clearConversationMessageState(
     ),
     smartReplyByMessageIdByConversationId: omitByKeys(
       state.smartReplyByMessageIdByConversationId,
-      smartReplyClearedConversationIds,
-    ),
-    smartReplyEnabledByConversationId: omitByKeys(
-      state.smartReplyEnabledByConversationId,
       smartReplyClearedConversationIds,
     ),
     smartReplyHiddenMessageKeysByConversationId: omitByKeys(
@@ -2189,7 +2498,6 @@ function getMessageStateConversationIds(state: WorkbenchStore) {
     ...Object.keys(state.messagesByConversationId),
     ...Object.keys(state.messagePaginationByConversationId),
     ...Object.keys(state.hasMoreHistoryByConversationId),
-    ...Object.keys(state.smartReplyEnabledByConversationId),
     ...Object.keys(state.smartReplyHiddenMessageKeysByConversationId),
     ...Object.keys(state.historyStatusByConversationId),
     ...Object.keys(state.historyPanelByConversationId),
@@ -2219,16 +2527,25 @@ export function createWorkbenchStore() {
   let latestScopeRequestId = 0;
   let latestTakeoverRequestId = 0;
   let latestGroupMembersRequestId = 0;
+  let latestUnreadRequestId = 0;
   let latestPollRunId = 0;
   let runningPollRunId: number | undefined;
   let isPollWorkbenchRunning = false;
   let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  const fullAutoPollInFlightConversationIds = new Set<string>();
+  const fullAutoFinishedMessageByConversationId = new Map<
+    string,
+    FullAutoFinishedMessage
+  >();
+  const fullAutoPollTimersByConversationId = new Map<string, ReturnType<typeof setTimeout>>();
+  const fullAutoResetTimersByConversationId = new Map<string, ReturnType<typeof setTimeout>>();
   const pendingVoicePlaybackConfirmKeys = new Set<string>();
   const smartReplyPollTimersByConversationId = new Map<string, ReturnType<typeof setTimeout>>();
   const smartReplyAutoPreviewTimeoutsByKey = new Map<string, ReturnType<typeof setTimeout>>();
   const smartReplyTimeoutsByKey = new Map<string, ReturnType<typeof setTimeout>>();
   const latestTakeoverRequestIdByAccountId: Record<string, number> = {};
   const latestGroupMembersRequestIdByConversationId: Record<string, number> = {};
+  const latestUnreadRequestIdByScope: Record<string, number> = {};
   const revokePendingTimeoutsByMessageId = new Map<string, ReturnType<typeof setTimeout>>();
   const pendingRevokeRequestMessageIds = new Set<string>();
 
@@ -2251,6 +2568,92 @@ export function createWorkbenchStore() {
 
   function isReadyScopeRequest(requestId: number, state: WorkbenchStore) {
     return isCurrentScopeRequest(requestId) && state.bootstrapStatus === "ready";
+  }
+
+  function buildAcceptedOptimisticMessageState(
+    currentState: WorkbenchStore,
+    input: {
+      activeAccountId?: string;
+      activeConversationId: string;
+      optimisticMessage: Message;
+      preview: string;
+      previewTimestamp: number;
+      minimumActiveMessageSeq?: number;
+      removeMessageKeys?: string[];
+    },
+  ) {
+    const currentMessages =
+      currentState.messagesByConversationId[input.activeConversationId] ?? [];
+    const shouldRemoveMessage = input.removeMessageKeys?.length
+      ? (message: Message) =>
+          input.removeMessageKeys?.some((key) => matchesMessageKey(message, key)) ??
+          false
+      : undefined;
+    const nextMessages = [
+      ...(shouldRemoveMessage
+        ? currentMessages.filter((message) => !shouldRemoveMessage(message))
+        : currentMessages),
+      input.optimisticMessage,
+    ];
+    const currentConversations = input.activeAccountId
+      ? currentState.conversationListsByScope[input.activeAccountId] ?? []
+      : [];
+
+    const nextActiveMessageSeq = getActiveMessageSeq(
+      {
+        ...currentState.messagesByConversationId,
+        [input.activeConversationId]: nextMessages,
+      },
+      input.activeConversationId,
+    );
+
+    return {
+      activeMessageSeq: Math.max(
+        nextActiveMessageSeq,
+        currentState.activeMessageSeq,
+        input.minimumActiveMessageSeq ?? 0,
+      ),
+      ...(input.activeAccountId
+        ? {
+            conversationListsByScope: {
+              ...currentState.conversationListsByScope,
+              [input.activeAccountId]: updateConversationPreview(
+                currentConversations,
+                input.activeConversationId,
+                input.preview,
+                input.optimisticMessage.sentAt,
+                input.previewTimestamp,
+              ),
+            },
+          }
+        : {}),
+      messagesByConversationId: {
+        ...currentState.messagesByConversationId,
+        [input.activeConversationId]: nextMessages,
+      },
+      pendingMessages: [
+        ...(shouldRemoveMessage
+          ? currentState.pendingMessages.filter(
+              (message) => !shouldRemoveMessage(message),
+            )
+          : currentState.pendingMessages),
+        input.optimisticMessage,
+      ],
+    };
+  }
+
+  function issueUnreadRequestId(accountId: string, mode: ChatMode) {
+    latestUnreadRequestId += 1;
+    latestUnreadRequestIdByScope[`${accountId}:${mode}`] = latestUnreadRequestId;
+    return latestUnreadRequestId;
+  }
+
+  function isCurrentUnreadRequest(
+    accountId: string,
+    mode: ChatMode,
+    requestId: number,
+  ) {
+    return latestUnreadRequestIdByScope[`${accountId}:${mode}`] === requestId;
   }
 
   function issueTakeoverRequestId(accountId: string) {
@@ -2298,6 +2701,30 @@ export function createWorkbenchStore() {
       clearTimeout(timer);
       smartReplyPollTimersByConversationId.delete(conversationId);
     }
+  }
+
+  function clearFullAutoPollTimer(conversationId: string) {
+    const timer = fullAutoPollTimersByConversationId.get(conversationId);
+
+    if (timer) {
+      clearTimeout(timer);
+      fullAutoPollTimersByConversationId.delete(conversationId);
+    }
+  }
+
+  function clearFullAutoResetTimer(conversationId: string) {
+    const timer = fullAutoResetTimersByConversationId.get(conversationId);
+
+    if (timer) {
+      clearTimeout(timer);
+      fullAutoResetTimersByConversationId.delete(conversationId);
+    }
+  }
+
+  function clearFullAutoRuntime(conversationId: string) {
+    clearFullAutoPollTimer(conversationId);
+    clearFullAutoResetTimer(conversationId);
+    fullAutoPollInFlightConversationIds.delete(conversationId);
   }
 
   function clearSmartReplyTimeout(conversationId: string, lookupKey: string) {
@@ -2358,6 +2785,18 @@ export function createWorkbenchStore() {
     }
     smartReplyPollTimersByConversationId.clear();
 
+    for (const timer of fullAutoPollTimersByConversationId.values()) {
+      clearTimeout(timer);
+    }
+    fullAutoPollTimersByConversationId.clear();
+
+    for (const timer of fullAutoResetTimersByConversationId.values()) {
+      clearTimeout(timer);
+    }
+    fullAutoResetTimersByConversationId.clear();
+    fullAutoPollInFlightConversationIds.clear();
+    fullAutoFinishedMessageByConversationId.clear();
+
     for (const timer of smartReplyAutoPreviewTimeoutsByKey.values()) {
       clearTimeout(timer);
     }
@@ -2403,6 +2842,193 @@ export function createWorkbenchStore() {
   }
 
   return create<WorkbenchStore>((set, get) => {
+    function scheduleFullAutoStatusReset(conversationId: string) {
+      clearFullAutoResetTimer(conversationId);
+
+      const timeoutId = setTimeout(() => {
+        fullAutoResetTimersByConversationId.delete(conversationId);
+        set((state) => ({
+          fullAutoStatusByConversationId: omitByKeys(
+            state.fullAutoStatusByConversationId,
+            [conversationId],
+          ),
+        }));
+      }, FULL_AUTO_TERMINAL_STATUS_RESET_MS);
+
+      fullAutoResetTimersByConversationId.set(conversationId, timeoutId);
+    }
+
+    async function pollFullAutoAnswerStatus(
+      conversationId: string,
+      lastCustomerMessageId: string,
+      lastCustomerMessageAt: number,
+    ) {
+      if (fullAutoPollInFlightConversationIds.has(conversationId)) {
+        return;
+      }
+
+      const currentState = get();
+      const conversation = getConversationById(currentState, conversationId);
+
+      if (
+        currentState.activeConversationId !== conversationId ||
+        !isConversationAIHostingEnabledInState(currentState, conversation) ||
+        conversation?.mode !== "single" ||
+        Date.now() - lastCustomerMessageAt > FULL_AUTO_RECENT_CUSTOMER_MESSAGE_WINDOW_MS
+      ) {
+        clearFullAutoRuntime(conversationId);
+        set((state) => ({
+          fullAutoStatusByConversationId: omitByKeys(
+            state.fullAutoStatusByConversationId,
+            [conversationId],
+          ),
+        }));
+        return;
+      }
+
+      fullAutoPollInFlightConversationIds.add(conversationId);
+
+      try {
+        const answerStatus = await getFullAutoAnswerStatus(conversationId);
+
+        if (
+          get().activeConversationId !== conversationId ||
+          Date.now() - lastCustomerMessageAt > FULL_AUTO_RECENT_CUSTOMER_MESSAGE_WINDOW_MS
+        ) {
+          return;
+        }
+
+        const nextStatus = isFullAutoAnswerRecordForMessage(
+          answerStatus,
+          lastCustomerMessageId,
+        )
+          ? resolveFullAutoAnswerStatus(answerStatus)
+          : { isTerminal: false, status: "thinking" as const };
+
+        set((state) => ({
+          fullAutoStatusByConversationId: {
+            ...state.fullAutoStatusByConversationId,
+            [conversationId]: {
+              lastCustomerMessageAt,
+              lastCustomerMessageId,
+              status: nextStatus.status,
+            },
+          },
+        }));
+
+        if (nextStatus.isTerminal) {
+          clearFullAutoPollTimer(conversationId);
+          fullAutoFinishedMessageByConversationId.set(conversationId, {
+            messageAt: lastCustomerMessageAt,
+            messageId: lastCustomerMessageId,
+          });
+          scheduleFullAutoStatusReset(conversationId);
+          return;
+        }
+
+        clearFullAutoPollTimer(conversationId);
+        const timeoutId = setTimeout(() => {
+          fullAutoPollTimersByConversationId.delete(conversationId);
+          void pollFullAutoAnswerStatus(
+            conversationId,
+            lastCustomerMessageId,
+            lastCustomerMessageAt,
+          );
+        }, FULL_AUTO_ANSWER_POLL_INTERVAL_MS);
+        fullAutoPollTimersByConversationId.set(conversationId, timeoutId);
+      } finally {
+        fullAutoPollInFlightConversationIds.delete(conversationId);
+      }
+    }
+
+    async function syncFullAutoAgentStatusForCurrentState() {
+      const state = get();
+      const conversationId = state.activeConversationId;
+
+      if (!conversationId) {
+        return;
+      }
+
+      const conversation = getConversationById(state, conversationId);
+
+      if (
+        !isConversationAIHostingEnabledInState(state, conversation) ||
+        conversation?.mode !== "single"
+      ) {
+        clearFullAutoRuntime(conversationId);
+        set((currentState) => ({
+          fullAutoStatusByConversationId: omitByKeys(
+            currentState.fullAutoStatusByConversationId,
+            [conversationId],
+          ),
+        }));
+        return;
+      }
+
+      const latestCustomerMessage = getLatestCustomerMessage(
+        state.messagesByConversationId[conversationId] ?? [],
+      );
+      const lastCustomerMessageId =
+        latestCustomerMessage?.seq != null
+          ? String(latestCustomerMessage.seq)
+          : latestCustomerMessage?.uiMessageKey;
+      const lastCustomerMessageAt = latestCustomerMessage?.createdAtMs;
+
+      if (
+        !lastCustomerMessageId ||
+        !lastCustomerMessageAt ||
+        Date.now() - lastCustomerMessageAt > FULL_AUTO_RECENT_CUSTOMER_MESSAGE_WINDOW_MS
+      ) {
+        clearFullAutoRuntime(conversationId);
+        set((currentState) => ({
+          fullAutoStatusByConversationId: omitByKeys(
+            currentState.fullAutoStatusByConversationId,
+            [conversationId],
+          ),
+        }));
+        return;
+      }
+
+      const currentFullAutoStatus =
+        state.fullAutoStatusByConversationId[conversationId];
+
+      const finishedMessage =
+        fullAutoFinishedMessageByConversationId.get(conversationId);
+
+      if (
+        finishedMessage?.messageAt === lastCustomerMessageAt &&
+        finishedMessage.messageId === lastCustomerMessageId
+      ) {
+        return;
+      }
+
+      if (
+        currentFullAutoStatus?.lastCustomerMessageAt === lastCustomerMessageAt &&
+        currentFullAutoStatus.lastCustomerMessageId === lastCustomerMessageId
+      ) {
+        return;
+      }
+
+      clearFullAutoRuntime(conversationId);
+      fullAutoFinishedMessageByConversationId.delete(conversationId);
+      set((currentState) => ({
+        fullAutoStatusByConversationId: {
+          ...currentState.fullAutoStatusByConversationId,
+          [conversationId]: {
+            lastCustomerMessageAt,
+            lastCustomerMessageId,
+            status: "thinking",
+          },
+        },
+      }));
+
+      await pollFullAutoAnswerStatus(
+        conversationId,
+        lastCustomerMessageId,
+        lastCustomerMessageAt,
+      );
+    }
+
     function scheduleSmartReplyAutoPreviewTimeout(
       conversationId: string,
       lookupKey: string,
@@ -2717,25 +3343,31 @@ export function createWorkbenchStore() {
       const result = await loadAccountConversationsWithBaseline(accountId);
       const loadedAt = Date.now();
 
-      set((currentState) => ({
-        conversationModeLoadedAtByScope: markAllConversationModesLoaded(
+      set((currentState) => {
+        const conversationModeLoadedAtByScope = markAllConversationModesLoaded(
           currentState.conversationModeLoadedAtByScope,
           accountId,
           loadedAt,
-        ),
-        conversationListsByScope: {
+        );
+        const conversationListsByScope = {
           ...currentState.conversationListsByScope,
           [accountId]: result.conversations,
-        },
-        isPollBaselineFresh:
-          currentState.activeAccountId === accountId
-            ? true
-            : currentState.isPollBaselineFresh,
-        sinceVersion:
-          currentState.activeAccountId === accountId
-            ? result.pollBaseline
-            : currentState.sinceVersion,
-      }));
+        };
+
+        return {
+          accounts: currentState.accounts,
+          conversationModeLoadedAtByScope,
+          conversationListsByScope,
+          isPollBaselineFresh:
+            currentState.activeAccountId === accountId
+              ? true
+              : currentState.isPollBaselineFresh,
+          sinceVersion:
+            currentState.activeAccountId === accountId
+              ? result.pollBaseline
+              : currentState.sinceVersion,
+        };
+      });
     }
 
     async function setConversationPinned(
@@ -2814,7 +3446,10 @@ export function createWorkbenchStore() {
           return;
         }
 
-        const pageSmartReplyByMessageId = getPageSmartReplies(page);
+        const pageSmartReplyByMessageId = getPageSmartRepliesForConversation(
+          get(),
+          page,
+        );
         const pageSmartReplyHidden = buildSmartReplyHiddenKeys(
           page.messages,
           pageSmartReplyByMessageId,
@@ -2856,10 +3491,6 @@ export function createWorkbenchStore() {
           smartReplyHiddenMessageKeysByConversationId: {
             ...currentState.smartReplyHiddenMessageKeysByConversationId,
             [conversationId]: pageSmartReplyHidden,
-          },
-          smartReplyEnabledByConversationId: {
-            ...currentState.smartReplyEnabledByConversationId,
-            [conversationId]: page.smartReplyEnabled ?? true,
           },
           scopeTransitionError: undefined,
         }));
@@ -3121,16 +3752,7 @@ export function createWorkbenchStore() {
           // 单次历史查询失败不展示错误卡片，继续走原生成链路。
         }
 
-        const optimisticSuggestion = createTriggeredSmartReplySuggestion(message);
-
         set((currentState) => ({
-          smartReplyByMessageIdByConversationId: {
-            ...currentState.smartReplyByMessageIdByConversationId,
-            [conversationId]: {
-              ...(currentState.smartReplyByMessageIdByConversationId[conversationId] ?? {}),
-              [lookupKey]: optimisticSuggestion,
-            },
-          },
           smartReplyPendingMessageKeysByConversationId: {
             ...currentState.smartReplyPendingMessageKeysByConversationId,
             [conversationId]: {
@@ -3202,7 +3824,7 @@ export function createWorkbenchStore() {
                   ...(currentState.smartReplyByMessageIdByConversationId[conversationId] ??
                     {}),
                   [lookupKey]: {
-                    ...optimisticSuggestion,
+                    ...createTriggeredSmartReplySuggestion(message),
                     failReason: errorMessage,
                     generateStatus: 3,
                     pollComplete: true,
@@ -3363,26 +3985,27 @@ export function createWorkbenchStore() {
           };
         }
 
-        try {
-          await sendSmartReplyAnswer({
-            conversationId,
-            realAnswer: payload.content.trim(),
-            realAttachIds: buildSmartReplyRealAttachIds(payload.selectedAttachmentIds),
-            recordId,
-          });
-        } catch (error) {
-          return {
-            errorCode: "SMART_REPLY_SEND_ANSWER_FAILED",
-            errorMessage: getRequestApiErrorMessage(error) ?? "智能回复发送失败",
-            reason: "send",
-            ok: false,
-          };
+        const sendResult = await get().sendAgentMessageSegments(segments);
+
+        if (!sendResult.ok) {
+          return sendResult;
         }
 
-        const result = await get().sendAgentMessageSegments(segments);
+        const optNos = (sendResult.optNos ?? [])
+          .map((optNo) => optNo?.trim())
+          .filter((optNo): optNo is string => Boolean(optNo));
 
-        if (!result.ok) {
-          return result;
+        if (optNos.length > 0) {
+          try {
+            await sendSmartReplyAnswer({
+              conversationId,
+              optNos,
+              recordId,
+            });
+          } catch {
+            // send-answer only marks the recommendation as adopted. The message
+            // has already been sent, so marker failures must not surface as send failures.
+          }
         }
 
         set((currentState) => {
@@ -3430,7 +4053,7 @@ export function createWorkbenchStore() {
           };
         });
 
-        return result;
+        return sendResult;
       },
       setSidebarItems(items) {
         set({ sidebarItems: items });
@@ -3494,6 +4117,14 @@ export function createWorkbenchStore() {
               item.id === account.id
                 ? {
                     ...item,
+                    groupUnreadCount:
+                      conversation.mode === "group"
+                        ? Math.max(0, (item.groupUnreadCount ?? 0) - conversation.unread)
+                        : item.groupUnreadCount,
+                    singleUnreadCount:
+                      conversation.mode === "single"
+                        ? Math.max(0, (item.singleUnreadCount ?? 0) - conversation.unread)
+                        : item.singleUnreadCount,
                     unreadCount: Math.max(
                       0,
                       (item.unreadCount ?? 0) - conversation.unread,
@@ -3524,6 +4155,12 @@ export function createWorkbenchStore() {
       },
       dismissReadReceiptError() {
         set({ readReceiptError: undefined });
+      },
+      dismissFullAutoActionError() {
+        set({ fullAutoActionError: undefined });
+      },
+      async syncFullAutoAgentStatus() {
+        await syncFullAutoAgentStatusForCurrentState();
       },
       async markConversationUnread(conversationId) {
         const state = get();
@@ -3707,8 +4344,18 @@ export function createWorkbenchStore() {
           seatOrder: conversationListCacheSeatOrder,
         });
 
+          const bootstrapSmartReplyState = {
+            ...get(),
+            accounts: bootstrapResult.accounts,
+            conversationListsByScope:
+              prunedConversationListCache.conversationListsByScope,
+            me: bootstrapResult.me,
+          };
           const bootstrapSmartReplyByMessageId = conversationPage
-            ? getPageSmartReplies(conversationPage)
+            ? getPageSmartRepliesForConversation(
+                bootstrapSmartReplyState,
+                conversationPage,
+              )
             : {};
           const bootstrapSmartReplyHidden = conversationPage
             ? buildSmartReplyHiddenKeys(
@@ -3725,82 +4372,78 @@ export function createWorkbenchStore() {
             accounts: bootstrapResult.accounts,
             activeAccountId: bootstrapResult.activeAccountId,
             activeConversationId: bootstrapResult.activeConversationId,
-          activeMessageSeq: getActiveMessageSeq(
-            conversationPage
+            activeMessageSeq: getActiveMessageSeq(
+              conversationPage
+                ? {
+                    [conversationPage.conversationId]: conversationPage.messages,
+                  }
+                : {},
+              bootstrapResult.activeConversationId,
+            ),
+            activeMode: bootstrapResult.activeMode,
+            bootstrapStatus: "ready",
+            conversationListCacheSeatOrder:
+              prunedConversationListCache.conversationListCacheSeatOrder,
+            conversationListsByScope:
+              prunedConversationListCache.conversationListsByScope,
+            conversationModeLoadedAtByScope:
+              prunedConversationListCache.conversationModeLoadedAtByScope,
+            groupMembersLoadedAtByConversationId: {},
+            groupMembersByConversationId: {},
+            groupMembersLoadingByConversationId: {},
+            hasMoreHistoryByConversationId: conversationPage
               ? {
-                  [conversationPage.conversationId]: conversationPage.messages,
+                  [conversationPage.conversationId]: conversationPage.hasMoreHistory,
                 }
               : {},
-            bootstrapResult.activeConversationId,
-          ),
-          activeMode: bootstrapResult.activeMode,
-          bootstrapStatus: "ready",
-          conversationListCacheSeatOrder:
-            prunedConversationListCache.conversationListCacheSeatOrder,
-          conversationListsByScope:
-            prunedConversationListCache.conversationListsByScope,
-          conversationModeLoadedAtByScope:
-            prunedConversationListCache.conversationModeLoadedAtByScope,
-          groupMembersLoadedAtByConversationId: {},
-          groupMembersByConversationId: {},
-          groupMembersLoadingByConversationId: {},
-          hasMoreHistoryByConversationId: conversationPage
-            ? {
-                [conversationPage.conversationId]: conversationPage.hasMoreHistory,
-              }
-            : {},
-          messagePaginationByConversationId: conversationPage
-            ? {
-                [conversationPage.conversationId]: buildMessagePaginationState(conversationPage),
-              }
-            : {},
-          me: bootstrapResult.me,
-          messagesByConversationId: conversationPage
-            ? {
-                [conversationPage.conversationId]: upsertMessageList(
-                  [],
-                  conversationPage.messages,
-                ),
-              }
-            : {},
-          smartReplyPendingMessageKeysByConversationId: conversationPage
-            ? {
-                [conversationPage.conversationId]: bootstrapSmartReplyPending,
-              }
-            : {},
-          smartReplyByMessageIdByConversationId: conversationPage
-            ? {
-                [conversationPage.conversationId]: bootstrapSmartReplyByMessageId,
-              }
-            : {},
-          smartReplyHiddenMessageKeysByConversationId: conversationPage
-            ? {
-                [conversationPage.conversationId]: bootstrapSmartReplyHidden,
-              }
-            : {},
-          smartReplyEnabledByConversationId: conversationPage
-            ? {
-                [conversationPage.conversationId]:
-                  conversationPage.smartReplyEnabled ?? true,
-              }
-            : {},
-          sidebarItems: bootstrapResult.sidebarItems,
-          isPollBaselineFresh: true,
-          messageUpdateCursor: undefined,
-          pollState: {
-            ...get().pollState,
-            errorMessage: undefined,
-            status: "idle",
-          },
-          seatUpdateCursor: undefined,
-          sinceVersion: bootstrapResult.pollBaseline,
-        });
+            messagePaginationByConversationId: conversationPage
+              ? {
+                  [conversationPage.conversationId]: buildMessagePaginationState(conversationPage),
+                }
+              : {},
+            me: bootstrapResult.me,
+            messagesByConversationId: conversationPage
+              ? {
+                  [conversationPage.conversationId]: upsertMessageList(
+                    [],
+                    conversationPage.messages,
+                  ),
+                }
+              : {},
+            smartReplyPendingMessageKeysByConversationId: conversationPage
+              ? {
+                  [conversationPage.conversationId]: bootstrapSmartReplyPending,
+                }
+              : {},
+            smartReplyByMessageIdByConversationId: conversationPage
+              ? {
+                  [conversationPage.conversationId]: bootstrapSmartReplyByMessageId,
+                }
+              : {},
+            smartReplyHiddenMessageKeysByConversationId: conversationPage
+              ? {
+                  [conversationPage.conversationId]: bootstrapSmartReplyHidden,
+                }
+              : {},
+            sidebarItems: bootstrapResult.sidebarItems,
+            isPollBaselineFresh: true,
+            messageUpdateCursor: undefined,
+            pollState: {
+              ...get().pollState,
+              errorMessage: undefined,
+              status: "idle",
+            },
+            seatUpdateCursor: undefined,
+            sinceVersion: bootstrapResult.pollBaseline,
+          });
 
         const bootstrapActiveConversation = bootstrapResult.conversationListsByScope[
           bootstrapResult.activeAccountId
         ]?.find(
           (conversation) => conversation.id === bootstrapResult.activeConversationId,
         );
+
+        await syncFullAutoAgentStatusForCurrentState();
 
         if (bootstrapActiveConversation?.mode === "group") {
           set((currentState) => ({
@@ -3966,6 +4609,14 @@ export function createWorkbenchStore() {
             ),
           ),
         ) as Record<string, Message[]>;
+        const hasRefreshedMessageEntries = Object.values(
+          refreshedMessagesByConversationId,
+        ).some((messages) => messages.length > 0);
+        const shouldSyncFullAutoAgentStatus =
+          response.activeConversationMessages.length > 0 ||
+          hasRefreshedMessageEntries ||
+          response.conversationChanges.length > 0 ||
+          response.accountChanges.length > 0;
 
         if (!isReadyScopeRequest(requestId, get())) {
           return false;
@@ -3973,6 +4624,7 @@ export function createWorkbenchStore() {
 
         const polledConversationId = response.request.activeConversationId;
         let shouldNotifyPulledCustomerMessage = false;
+        let shouldAutoGenerateForPulledCustomerMessage = false;
 
         set((currentState) => {
           if (!isReadyScopeRequest(requestId, currentState)) {
@@ -4056,9 +4708,6 @@ export function createWorkbenchStore() {
           const hasActiveConversationMessages =
             response.activeConversationMessages.length > 0 &&
             Boolean(polledConversationId);
-          const hasRefreshedMessageEntries = Object.values(
-            refreshedMessagesByConversationId,
-          ).some((messages) => messages.length > 0);
           const shouldPatchMessageState =
             hasActiveConversationMessages ||
             hasRefreshedMessageEntries ||
@@ -4087,10 +4736,13 @@ export function createWorkbenchStore() {
           ) {
             const currentMessages =
               nextMessagesByConversationId[polledConversationId] ?? [];
-            shouldNotifyPulledCustomerMessage ||= hasNewCustomerMessage(
+            const hasPulledNewCustomerMessage = hasNewCustomerMessage(
               currentMessages,
               response.activeConversationMessages,
             );
+            shouldNotifyPulledCustomerMessage ||= hasPulledNewCustomerMessage;
+            shouldAutoGenerateForPulledCustomerMessage ||=
+              hasPulledNewCustomerMessage;
             nextMessagesByConversationId[polledConversationId] = upsertMessageList(
               currentMessages,
               response.activeConversationMessages,
@@ -4199,9 +4851,12 @@ export function createWorkbenchStore() {
 
           return {
             accounts: nextAccounts,
-            activeMessageSeq: getActiveMessageSeq(
-              nextMessagesByConversationId,
-              requestedActiveConversationId,
+            activeMessageSeq: Math.max(
+              currentState.activeMessageSeq,
+              getActiveMessageSeq(
+                nextMessagesByConversationId,
+                requestedActiveConversationId,
+              ),
             ),
             conversationListsByScope: nextConversationLists,
             isPollBaselineFresh: false,
@@ -4239,6 +4894,10 @@ export function createWorkbenchStore() {
           return false;
         }
 
+        if (shouldSyncFullAutoAgentStatus) {
+          await syncFullAutoAgentStatusForCurrentState();
+        }
+
         if (shouldNotifyPulledCustomerMessage) {
           notifyPulledCustomerMessage();
         }
@@ -4247,7 +4906,9 @@ export function createWorkbenchStore() {
           scheduleSmartReplyPollForConversation(polledConversationId, {
             force: false,
           });
+        }
 
+        if (polledConversationId && shouldAutoGenerateForPulledCustomerMessage) {
           const autoGenerateMessage = shouldAutoGenerateSmartReply({
             autoPending:
               get().smartReplyAutoPendingMessageKeysByConversationId[
@@ -4322,7 +4983,16 @@ export function createWorkbenchStore() {
       const normalizedSegments = normalizeComposerSegments(segments);
 
       if (normalizedSegments.length === 0) {
-        return { didConsumeQuote: false, ok: true };
+        return { didConsumeQuote: false, ok: true, optNos: [] };
+      }
+
+      if (hasMemberMentionSegments(normalizedSegments) && !options?.mention) {
+        return {
+          errorCode: "MENTION_PAYLOAD_MISSING",
+          errorMessage: "消息发送失败，请重新编辑后发送",
+          reason: "send",
+          ok: false,
+        };
       }
 
       const state = get();
@@ -4363,7 +5033,7 @@ export function createWorkbenchStore() {
         },
       }));
 
-      const sendableSegments = stripComposerMentionMetadata(normalizedSegments);
+      const sendableSegments = buildSendableComposerSegments(segments);
       let segmentsForSend = sendableSegments;
 
       try {
@@ -4398,35 +5068,53 @@ export function createWorkbenchStore() {
         };
       }
 
+      if (import.meta.env.DEV && segmentsForSend.length !== normalizedSegments.length) {
+        console.warn(
+          "Composer segment count mismatch before sending",
+          segmentsForSend.length,
+          normalizedSegments.length,
+        );
+      }
+
       try {
-        let hasSentMention = false;
         let hasSentQuote = false;
+        const optNos: string[] = [];
         for (let index = 0; index < segmentsForSend.length; index += 1) {
           const segmentForSend = segmentsForSend[index];
-          const originalSegment = sendableSegments[index] ?? segmentForSend;
           const payloadSegment = toWorkbenchSendSegment(segmentForSend);
-          const mentionForSegment: SendMentionPayload =
-            !hasSentMention && segmentForSend.type === "text"
-              ? options?.mention
+          // Sendable and normalized segments share media boundaries, so indexes identify the same outbound message.
+          const originalSegment = normalizedSegments[index] ?? segmentForSend;
+          const optimisticSegment =
+            segmentForSend.type === "text" && originalSegment.type === "text"
+              ? originalSegment
+              : segmentForSend;
+          const mentionForSegment =
+            segmentForSend.type === "text" && originalSegment.type === "text"
+              ? buildMentionPayloadForSegment(originalSegment, options?.mention)
+              : undefined;
+          const atOriginText =
+            mentionForSegment?.memberIds.length && originalSegment.type === "text"
+              ? originalSegment.text
               : undefined;
           const quoteForSegment: SendQuotePayload =
             !hasSentQuote && segmentForSend.type === "text" ? options?.quote : undefined;
-          hasSentMention = hasSentMention || Boolean(mentionForSegment);
           hasSentQuote = hasSentQuote || Boolean(quoteForSegment);
           const response = await sendTextMessage({
             conversationId: activeConversationId,
             failMsgId: options?.failMsgId,
             mention: mentionForSegment,
             quote: quoteForSegment,
+            atOriginText,
             seatId: activeAccountId,
             segment: payloadSegment,
           });
+          optNos.push(response.optNo);
           const optimisticMessage = {
             author: account ? `${account.name}-${account.operator}` : me.displayName,
             isGroupConversation: activeConversation.mode === "group",
             isOwnMessage: true,
             isNew: true,
-            content: buildOptimisticMessageContent(originalSegment, quoteForSegment),
+            content: buildOptimisticMessageContent(optimisticSegment, quoteForSegment),
             conversationId: activeConversationId,
             uiMessageKey: response.optNo,
             optNo: response.optNo,
@@ -4442,52 +5130,18 @@ export function createWorkbenchStore() {
           } satisfies Message;
           const preview = getComposerSegmentsPreview([originalSegment]);
 
-          set((currentState) => {
-            const currentMessages =
-              currentState.messagesByConversationId[activeConversationId] ?? [];
-            const currentMessagesWithoutAcceptedRemoval = options?.removeMessageIdOnAccepted
-              ? currentMessages.filter(
-                  (message) =>
-                    !matchesMessageKey(message, options.removeMessageIdOnAccepted ?? ""),
-                )
-              : currentMessages;
-            const nextMessages = [...currentMessagesWithoutAcceptedRemoval, optimisticMessage];
-            const currentConversations =
-              currentState.conversationListsByScope[activeAccountId] ?? [];
-
-            return {
-              activeMessageSeq: getActiveMessageSeq(
-                {
-                  ...currentState.messagesByConversationId,
-                  [activeConversationId]: nextMessages,
-                },
-                activeConversationId,
-              ),
-              conversationListsByScope: {
-                ...currentState.conversationListsByScope,
-                [activeAccountId]: updateConversationPreview(
-                  currentConversations,
-                  activeConversationId,
-                  preview,
-                  optimisticMessage.sentAt,
-                  timestamp + index,
-                ),
-              },
-              messagesByConversationId: {
-                ...currentState.messagesByConversationId,
-                [activeConversationId]: nextMessages,
-              },
-              pendingMessages: [
-                ...(options?.removeMessageIdOnAccepted
-                  ? currentState.pendingMessages.filter(
-                      (message) =>
-                        !matchesMessageKey(message, options.removeMessageIdOnAccepted ?? ""),
-                    )
-                  : currentState.pendingMessages),
-                optimisticMessage,
-              ],
-            };
-          });
+          set((currentState) =>
+            buildAcceptedOptimisticMessageState(currentState, {
+              activeAccountId,
+              activeConversationId,
+              optimisticMessage,
+              preview,
+              previewTimestamp: timestamp + index,
+              removeMessageKeys: options?.removeMessageIdOnAccepted
+                ? [options.removeMessageIdOnAccepted]
+                : undefined,
+            }),
+          );
         }
 
         set((currentState) => ({
@@ -4497,7 +5151,7 @@ export function createWorkbenchStore() {
           },
         }));
 
-        return { didConsumeQuote: hasSentQuote, ok: true };
+        return { didConsumeQuote: hasSentQuote, ok: true, optNos };
       } catch (error) {
         set((currentState) => ({
           sendStatusByConversationId: {
@@ -4545,22 +5199,119 @@ export function createWorkbenchStore() {
         };
       }
 
-      const retryInput = getRetrySendInputFromMessage(failedMessage);
-
-      if (!retryInput) {
+      if (!canRetryMessageContent(failedMessage) || !isValidMessageSeq(failedMessage.seq)) {
         return {
-          errorCode: "UNSUPPORTED_RETRY_MESSAGE",
+          errorCode: !isValidMessageSeq(failedMessage.seq)
+            ? "MESSAGE_NOT_RETRYABLE"
+            : "UNSUPPORTED_RETRY_MESSAGE",
           errorMessage: "暂不支持重发该消息",
           reason: "unavailable",
           ok: false,
         };
       }
 
-      return get().sendAgentMessageSegments([retryInput.segment], {
-        failMsgId: failedMessage.seq != null ? String(failedMessage.seq) : undefined,
-        removeMessageIdOnAccepted: failedMessage.uiMessageKey,
-        quote: retryInput.quote,
-      });
+      const activeConversationId = state.activeConversationId;
+      const activeAccountId = state.activeAccountId;
+      const account = state.accounts.find((item) => item.id === activeAccountId);
+      const activeConversation = activeAccountId
+        ? (state.conversationListsByScope[activeAccountId] ?? []).find(
+            (conversation) => conversation.id === activeConversationId,
+          )
+        : undefined;
+
+      if (
+        !activeAccountId ||
+        !activeConversationId ||
+        !activeConversation ||
+        activeConversation.bizStatus !== 1 ||
+        !canUseConversationActions(state, account)
+      ) {
+        return {
+          errorCode: "UNAVAILABLE",
+          errorMessage: "当前无法发送消息",
+          reason: "unavailable",
+          ok: false,
+        };
+      }
+
+      const timestamp = Date.now();
+
+      set((currentState) => ({
+        sendStatusByConversationId: {
+          ...currentState.sendStatusByConversationId,
+          [activeConversationId]: "sending",
+        },
+      }));
+
+      try {
+        const response = await retryMessageRequest({
+          conversationId: activeConversationId,
+          messageSeq: failedMessage.seq,
+        });
+        const {
+          failReason: _failedReason,
+          msgid: _failedMsgid,
+          seq: _failedSeq,
+          ...retryMessageBase
+        } = failedMessage;
+        const optimisticMessage = {
+          ...retryMessageBase,
+          author: account
+            ? `${account.name}-${account.operator}`
+            : failedMessage.author,
+          isNew: true,
+          optNo: response.optNo,
+          status: "accepted" as const,
+          uiMessageKey: response.optNo,
+          sentAt: formatWorkbenchTimestamp(timestamp),
+        } satisfies Message;
+        const preview = getRetryPreviewText(failedMessage);
+        const retryRemovalKeys = uniqueMessageKeys([
+          uiMessageKey,
+          failedMessage.uiMessageKey,
+          failedMessage.optNo,
+          isValidMessageSeq(failedMessage.seq) ? String(failedMessage.seq) : undefined,
+        ]);
+
+        set((currentState) =>
+          buildAcceptedOptimisticMessageState(currentState, {
+            activeAccountId,
+            activeConversationId,
+            optimisticMessage,
+            preview,
+            previewTimestamp: timestamp,
+            minimumActiveMessageSeq: failedMessage.seq,
+            removeMessageKeys: retryRemovalKeys,
+          }),
+        );
+
+        set((currentState) => ({
+          sendStatusByConversationId: {
+            ...currentState.sendStatusByConversationId,
+            [activeConversationId]: "idle",
+          },
+        }));
+
+        return {
+          didConsumeQuote: false,
+          ok: true,
+          optNos: [response.optNo],
+        };
+      } catch (error) {
+        set((currentState) => ({
+          sendStatusByConversationId: {
+            ...currentState.sendStatusByConversationId,
+            [activeConversationId]: "idle",
+          },
+        }));
+
+        return {
+          errorCode: getRequestErrorCode(error),
+          errorMessage: getRequestApiErrorMessage(error),
+          reason: "send",
+          ok: false,
+        };
+      }
     },
     async revokeMessage(uiMessageKey) {
       const state = get();
@@ -4989,18 +5740,146 @@ export function createWorkbenchStore() {
       }
     },
     clearActiveConversation() {
+      const previousConversationId = get().activeConversationId;
+
+      if (previousConversationId) {
+        clearFullAutoRuntime(previousConversationId);
+      }
+
       set({
         activeConversationId: "",
         activeMessageSeq: 0,
+        fullAutoStatusByConversationId: previousConversationId
+          ? omitByKeys(get().fullAutoStatusByConversationId, [previousConversationId])
+          : get().fullAutoStatusByConversationId,
         historyPanelOpenConversationId: undefined,
         isConversationLoading: false,
         messageUpdateCursor: undefined,
         scopeTransitionError: undefined,
       });
     },
+    async changeActiveSeatAgentMode(mode) {
+      const state = get();
+      const { activeAccountId } = state;
+
+      if (!activeAccountId || state.seatAgentModeActionPending) {
+        return;
+      }
+
+      const account = state.accounts.find((item) => item.id === activeAccountId);
+
+      const canConfigureMode =
+        mode === "off" ||
+        (mode === "assistant" && account?.semiAutoAuth === true) ||
+        (mode === "autoReply" && account?.seatAIHostingAuth === true);
+
+      if (!canUseConversationActions(state, account) || !canConfigureMode) {
+        return;
+      }
+
+      set({ seatAgentModeActionPending: true });
+
+      try {
+        const response = await updateSeatAgentMode(activeAccountId, {
+          mode,
+        });
+        set((currentState) => {
+          const nextAccount = currentState.accounts.find(
+            (item) => item.id === response.seatId,
+          );
+          const nextSeatAIHostingEnabled =
+            nextAccount?.seatAIHostingAuth === true &&
+            response.fullAutoSwitch === true;
+          const nextSeatAIAssistantEnabled =
+            nextAccount?.semiAutoAuth === true &&
+            response.semiAutoSwitch === true;
+
+          return {
+            accounts: currentState.accounts.map((item) =>
+              item.id === response.seatId
+                ? {
+                    ...item,
+                    fullAutoSwitch: response.fullAutoSwitch,
+                    seatAIAssistantEnabled: nextSeatAIAssistantEnabled,
+                    seatAIHostingEnabled: nextSeatAIHostingEnabled,
+                    semiAutoSwitch: response.semiAutoSwitch,
+                  }
+                : item,
+            ),
+          };
+        });
+        set({ fullAutoActionError: undefined, seatAgentModeActionPending: false });
+      } catch (error) {
+        set({
+          fullAutoActionError: getRequestErrorMessage(
+            error,
+            "更新 AI 辅助模式失败",
+          ),
+          seatAgentModeActionPending: false,
+        });
+      }
+    },
+    async changeActiveConversationFullAuto(enabled) {
+      const state = get();
+      const { activeConversationId } = state;
+
+      if (!activeConversationId || state.fullAutoActionPending) {
+        return;
+      }
+
+      const conversation = getConversationById(state, activeConversationId);
+
+      if (!conversation) {
+        return;
+      }
+
+      const account = state.accounts.find(
+        (item) => item.id === conversation.accountId,
+      );
+
+      if (
+        !canUseConversationActions(state, account) ||
+        !isConversationAIFeatureSupported(conversation) ||
+        account?.seatAIHostingEnabled !== true
+      ) {
+        return;
+      }
+
+      set({ fullAutoActionPending: true });
+
+      try {
+        const response = await changeConversationFullAuto(activeConversationId, enabled);
+        const nextConversationAIHostingSwitch =
+          response.conversationAIHostingSwitch === true;
+        if (!nextConversationAIHostingSwitch) {
+          clearFullAutoRuntime(activeConversationId);
+        }
+        set((currentState) => ({
+          ...applyConversationAIHostingSwitchResult(
+            currentState,
+            activeConversationId,
+            conversation.accountId,
+            nextConversationAIHostingSwitch,
+          ),
+          fullAutoActionError: undefined,
+          fullAutoActionPending: false,
+        }));
+      } catch (error) {
+        set({
+          fullAutoActionError: getRequestErrorMessage(
+            error,
+            enabled ? "开启托管失败" : "取消托管失败",
+          ),
+          fullAutoActionPending: false,
+        });
+      }
+    },
     resetWorkbenchSession() {
       clearAllRuntimeState();
       set(createInitialState());
+    },
+    resetWorkbenchRuntime() {
+      clearAllRuntimeState();
     },
     async refreshSeatSummaries() {
       const state = get();
@@ -5018,16 +5897,20 @@ export function createWorkbenchStore() {
           return;
         }
 
-        set((currentState) => ({
-          accounts: currentState.accounts.map((account) => {
+        set((currentState) => {
+          const mergedAccounts = currentState.accounts.map((account) => {
             if (account.id === currentState.activeAccountId) {
               return account;
             }
 
             const nextAccount = nextAccounts.find((item) => item.id === account.id);
             return nextAccount ?? account;
-          }),
-        }));
+          });
+
+          return {
+            accounts: mergedAccounts,
+          };
+        });
       } catch {
         // Keep current seat summaries if the refresh fails.
       }
@@ -5111,6 +5994,7 @@ export function createWorkbenchStore() {
 
           return {
             ...clearedMessageState,
+            accounts: currentState.accounts,
             groupMembersLoadedAtByConversationId: omitByKeys(
               currentState.groupMembersLoadedAtByConversationId,
               evictedConversationIds,
@@ -5166,7 +6050,7 @@ export function createWorkbenchStore() {
         }
 
         const accountSwitchSmartReplyByMessageId =
-          getPageSmartReplies(conversationPage);
+          getPageSmartRepliesForConversation(get(), conversationPage);
         const accountSwitchSmartReplyHidden = buildSmartReplyHiddenKeys(
           conversationPage.messages,
           accountSwitchSmartReplyByMessageId,
@@ -5213,11 +6097,6 @@ export function createWorkbenchStore() {
             smartReplyHiddenMessageKeysByConversationId: {
               ...currentState.smartReplyHiddenMessageKeysByConversationId,
               [conversationPage.conversationId]: accountSwitchSmartReplyHidden,
-            },
-            smartReplyEnabledByConversationId: {
-              ...currentState.smartReplyEnabledByConversationId,
-              [conversationPage.conversationId]:
-                conversationPage.smartReplyEnabled ?? true,
             },
             smartReplyPendingMessageKeysByConversationId: {
               ...currentState.smartReplyPendingMessageKeysByConversationId,
@@ -5310,6 +6189,8 @@ export function createWorkbenchStore() {
       const currentConversation = getConversationById(state, conversationId);
       clearSmartReplyRuntimeTimers(state.activeConversationId);
       clearSmartReplyRuntimeTimers(conversationId);
+      clearFullAutoRuntime(state.activeConversationId);
+      clearFullAutoRuntime(conversationId);
 
       set({
         activeConversationId: conversationId,
@@ -5352,7 +6233,10 @@ export function createWorkbenchStore() {
           return;
         }
 
-        const pageSmartReplyByMessageId = getPageSmartReplies(page);
+        const pageSmartReplyByMessageId = getPageSmartRepliesForConversation(
+          get(),
+          page,
+        );
         const pageSmartReplyHidden = buildSmartReplyHiddenKeys(
           page.messages,
           pageSmartReplyByMessageId,
@@ -5405,13 +6289,11 @@ export function createWorkbenchStore() {
               ...clearedMessageState.smartReplyHiddenMessageKeysByConversationId,
               [conversationId]: pageSmartReplyHidden,
             },
-            smartReplyEnabledByConversationId: {
-              ...clearedMessageState.smartReplyEnabledByConversationId,
-              [conversationId]: page.smartReplyEnabled ?? true,
-            },
             scopeTransitionError: undefined,
           };
         });
+
+        await syncFullAutoAgentStatusForCurrentState();
 
         await loadGroupMembersForConversation(conversationId, requestId);
 
@@ -5459,6 +6341,61 @@ export function createWorkbenchStore() {
               error instanceof Error ? error.message : "切换会话失败",
           });
         }
+      }
+    },
+    async loadUnreadConversations(mode) {
+      const state = get();
+      const accountId = state.activeAccountId;
+      const targetMode = mode ?? state.activeMode;
+
+      if (!accountId) {
+        return;
+      }
+
+      const requestId = issueUnreadRequestId(accountId, targetMode);
+
+      try {
+        const result = await loadUnreadAccountConversationsByMode(accountId, targetMode);
+
+        if (
+          !isCurrentUnreadRequest(accountId, targetMode, requestId) ||
+          get().activeAccountId !== accountId
+        ) {
+          return;
+        }
+
+        set((currentState) => {
+          const nextConversationListsByScope = {
+            ...currentState.conversationListsByScope,
+            [accountId]: mergeConversationLists(
+              currentState.conversationListsByScope[accountId] ?? [],
+              result.conversations,
+            ),
+          };
+
+          return {
+            accounts: applyAccountUnreadSummary(
+              currentState.accounts,
+              accountId,
+              result.unreadSummary,
+            ),
+            conversationListsByScope: nextConversationListsByScope,
+            hasMoreUnreadByScope: {
+              ...currentState.hasMoreUnreadByScope,
+              [accountId]: {
+                ...currentState.hasMoreUnreadByScope[accountId],
+                [targetMode]: result.hasMore ?? false,
+              },
+            },
+            isPollBaselineFresh:
+              result.pollBaseline < currentState.sinceVersion
+                ? true
+                : currentState.isPollBaselineFresh,
+            sinceVersion: Math.min(currentState.sinceVersion, result.pollBaseline),
+          };
+        });
+      } catch {
+        // The unread refresh is a best-effort补漏动作；失败时保留当前列表与计数。
       }
     },
     async setActiveMode(mode, options) {
@@ -5532,6 +6469,7 @@ export function createWorkbenchStore() {
             });
 
             return {
+              accounts: currentState.accounts,
               conversationListCacheSeatOrder:
                 prunedConversationListCache.conversationListCacheSeatOrder,
               conversationListsByScope:
@@ -5571,12 +6509,6 @@ export function createWorkbenchStore() {
                     [previousConversationId],
                   )
                 : get().smartReplyByMessageIdByConversationId,
-              smartReplyEnabledByConversationId: previousConversationId
-                ? omitByKeys(
-                    get().smartReplyEnabledByConversationId,
-                    [previousConversationId],
-                  )
-                : get().smartReplyEnabledByConversationId,
               smartReplyPendingMessageKeysByConversationId: previousConversationId
                 ? omitByKeys(
                     get().smartReplyPendingMessageKeysByConversationId,
@@ -5629,12 +6561,6 @@ export function createWorkbenchStore() {
                 [state.activeConversationId],
               )
             : get().smartReplyByMessageIdByConversationId,
-          smartReplyEnabledByConversationId: state.activeConversationId
-            ? omitByKeys(
-                get().smartReplyEnabledByConversationId,
-                [state.activeConversationId],
-              )
-            : get().smartReplyEnabledByConversationId,
           smartReplyPendingMessageKeysByConversationId: state.activeConversationId
             ? omitByKeys(
                 get().smartReplyPendingMessageKeysByConversationId,
@@ -5894,17 +6820,86 @@ export function createWorkbenchStore() {
   });
 }
 
-function stripComposerMentionMetadata(segments: ComposerSegment[]): ComposerSegment[] {
-  return segments.map((segment) => {
-    if (segment.type !== "text") {
-      return segment;
+function buildMentionPayloadForSegment(
+  segment: ComposerTextSegment,
+  mention?: SendMentionPayload,
+): SendMentionPayload {
+  if (!mention) {
+    return undefined;
+  }
+
+  if (segment.mentionAll) {
+    // @所有人 owns the whole text segment; member mentions in the same segment are sent as plain text.
+    return {
+      all: true,
+      location: "start",
+      memberIds: [],
+    };
+  }
+
+  const memberIds = segment.mentionMemberIds?.filter(Boolean) ?? [];
+
+  if (memberIds.length === 0) {
+    return undefined;
+  }
+
+  return {
+    location: "any",
+    memberIds,
+  };
+}
+
+function hasMemberMentionSegments(segments: ComposerSegment[]) {
+  return segments.some(
+    (segment) =>
+      segment.type === "text" && (segment.mentionMemberIds?.length ?? 0) > 0,
+  );
+}
+
+function buildSendableComposerSegments(segments: ComposerSegment[]): ComposerSegment[] {
+  const sendableSegments: ComposerSegment[] = [];
+  let textSegmentsBuffer: ComposerTextSegment[] = [];
+
+  const flushTextSegmentsBuffer = () => {
+    if (textSegmentsBuffer.length === 0) {
+      return;
     }
 
-    return {
-      text: segment.text,
-      type: "text",
-    } satisfies ComposerTextSegment;
-  });
+    const hasMentionAll = textSegmentsBuffer.some((segment) => segment.mentionAll);
+    const text = textSegmentsBuffer
+      .map((segment) => {
+        if (hasMentionAll || (segment.mentionMemberIds?.length ?? 0) === 0) {
+          return segment.text;
+        }
+
+        return JAVA_MENTION_PLACEHOLDER;
+      })
+      .join("")
+      .trim();
+
+    if (text) {
+      sendableSegments.push({
+        text,
+        type: "text",
+      });
+    }
+
+    textSegmentsBuffer = [];
+  };
+
+  for (const segment of segments) {
+    if (segment.type === "text") {
+      textSegmentsBuffer.push(segment);
+      continue;
+    }
+
+    flushTextSegmentsBuffer();
+    sendableSegments.push(segment);
+  }
+
+  flushTextSegmentsBuffer();
+
+  return sendableSegments;
 }
 
 function toWorkbenchSendSegment(

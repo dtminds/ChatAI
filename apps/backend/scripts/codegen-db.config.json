@@ -13,6 +13,7 @@
     "xy_wap_embed_sub_user_session",
     "xy_wap_embed_user_relation",
     "xy_wap_embed_user_seat",
+    "xy_wap_embed_user_seat_agent",
     "xy_wap_embed_user_seat_sub_relation",
     "xy_wap_embed_broadcast_event",
     "xy_wap_embed_material_collection",
@@ -44,6 +45,9 @@
     "xy_wap_embed_insight_label_config",
     "xy_wap_embed_insight_intent_config",
     "xy_wap_embed_insight_qa_rule_config",
-    "xy_wap_embed_insight_entity_dictionary"
+    "xy_wap_embed_insight_entity_dictionary",
+    "xy_wap_embed_agent_kb",
+    "xy_wap_embed_agent_kb_doc",
+    "xy_wap_embed_agent_kb_chunk"
   ]
 }

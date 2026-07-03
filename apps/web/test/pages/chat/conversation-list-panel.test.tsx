@@ -38,18 +38,25 @@ vi.mock("@/store/workbench-store", () => ({
 // Helpers
 // ---------------------------------------------------------------------------
 function createConversation({
+  conversationAIHostingSwitch = false,
+  customerBindType,
   id,
   customerName,
   mode,
+  unread = 0,
 }: {
+  conversationAIHostingSwitch?: boolean;
+  customerBindType?: number;
   id: string;
   customerName: string;
   mode: ChatMode;
+  unread?: number;
 }): Conversation {
   return {
     accountId: "account-1",
-    custodyMode: "semi",
+    conversationAIHostingSwitch,
     customerAvatarUrl: `https://example.com/${id}.png`,
+    customerBindType: mode === "single" ? customerBindType ?? 1 : undefined,
     customerId: `customer-${id}`,
     customerName,
     id,
@@ -57,7 +64,7 @@ function createConversation({
     preview: mode === "group" ? "包含：星云客户、运营客服" : "客户成功部 / 运营客服",
     priority: "medium",
     quietFor: "刚刚",
-    unread: 0,
+    unread,
     updatedAt: "2026-05-07 09:00:00",
   };
 }
@@ -203,6 +210,357 @@ describe("ConversationListPanel", () => {
     expect(screen.getByText("星云客户 1")).toBeVisible();
     expect(screen.getByText("星云群聊 1")).not.toBeVisible();
     expect(screen.getByText("星云群聊 1").closest(".group")).toBe(groupCard);
+  });
+
+  it("keeps the active tab underline when the tab also opens the view menu", () => {
+    render(
+      <ConversationListPanel
+        activeMode="single"
+        conversations={conversations}
+        onSelectConversation={vi.fn()}
+        onSelectMode={vi.fn()}
+        searchableConversations={conversations}
+      />,
+    );
+
+    expect(screen.getByRole("tab", { name: "单聊视图" })).toHaveClass(
+      "border-primary",
+    );
+  });
+
+  it("filters single conversations from the compact view menu", async () => {
+    const user = userEvent.setup();
+    const onSelectView = vi.fn();
+    const viewConversations = [
+      createConversation({
+        conversationAIHostingSwitch: true,
+        id: "single-ai",
+        customerName: "AI托管客户",
+        mode: "single",
+        unread: 2,
+      }),
+      createConversation({
+        id: "single-human",
+        customerName: "人工接待客户",
+        mode: "single",
+      }),
+      createConversation({
+        id: "single-read",
+        customerName: "已读客户",
+        mode: "single",
+      }),
+      createConversation({
+        id: "group-unread",
+        customerName: "群聊未读",
+        mode: "group",
+        unread: 3,
+      }),
+    ];
+
+    const { rerender } = render(
+      <ConversationListPanel
+        activeMode="single"
+        activeView="all"
+        conversations={viewConversations}
+        isSeatAIHostingEnabled
+        onSelectConversation={vi.fn()}
+        onSelectMode={vi.fn()}
+        onSelectView={onSelectView}
+        searchableConversations={conversations}
+      />,
+    );
+
+    expect(screen.getByText("AI托管客户")).toBeVisible();
+    expect(screen.getByText("人工接待客户")).toBeVisible();
+    expect(screen.getByText("已读客户")).toBeVisible();
+
+    await user.click(screen.getByRole("tab", { name: "单聊视图" }));
+    await user.click(screen.getByRole("menuitemradio", { name: "AI托管" }));
+
+    expect(onSelectView).toHaveBeenCalledWith("ai");
+
+    rerender(
+      <ConversationListPanel
+        activeMode="single"
+        activeView="ai"
+        conversations={viewConversations}
+        isSeatAIHostingEnabled
+        onSelectConversation={vi.fn()}
+        onSelectMode={vi.fn()}
+        onSelectView={onSelectView}
+        searchableConversations={conversations}
+      />,
+    );
+
+    expect(screen.getByText("AI托管客户")).toBeVisible();
+    expect(screen.queryByText("人工接待客户")).not.toBeInTheDocument();
+    expect(screen.queryByText("已读客户")).not.toBeInTheDocument();
+    expect(screen.getByText("单聊 · AI托管")).toBeInTheDocument();
+    expect(screen.getByLabelText("AI托管")).toBeInTheDocument();
+  });
+
+  it("shows mode unread dots and puts the unread total only in the unread menu item", async () => {
+    const user = userEvent.setup();
+    const viewConversations = [
+      createConversation({
+        id: "single-unread-a",
+        customerName: "未读客户 A",
+        mode: "single",
+        unread: 80,
+      }),
+      createConversation({
+        id: "single-unread-b",
+        customerName: "未读客户 B",
+        mode: "single",
+        unread: 45,
+      }),
+      createConversation({
+        id: "single-read",
+        customerName: "已读客户",
+        mode: "single",
+      }),
+      createConversation({
+        id: "group-unread",
+        customerName: "群聊未读",
+        mode: "group",
+        unread: 4,
+      }),
+    ];
+
+    render(
+      <ConversationListPanel
+        activeMode="single"
+        activeView="all"
+        conversations={viewConversations}
+        unreadCountByMode={{ group: 4, single: 125 }}
+        isSeatAIHostingEnabled
+        onSelectConversation={vi.fn()}
+        onSelectMode={vi.fn()}
+        onSelectView={vi.fn()}
+        searchableConversations={viewConversations}
+      />,
+    );
+
+    expect(screen.getByTestId("conversation-mode-unread-dot-single")).toBeInTheDocument();
+    expect(screen.getByTestId("conversation-mode-unread-dot-group")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "单聊视图" })).not.toHaveTextContent("125");
+    expect(
+      screen
+        .getByTestId("conversation-mode-unread-dot-single")
+        .closest('[data-testid="conversation-mode-dropdown-icon-single"]'),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: "单聊视图" }));
+
+    const unreadItem = screen.getByRole("menuitemradio", { name: "未读99+" });
+    const unreadBadge = within(unreadItem).getByTestId("conversation-view-unread-count-single");
+    expect(unreadBadge).toHaveTextContent("99+");
+    expect(unreadBadge).toHaveClass("bg-destructive", "text-destructive-foreground");
+    expect(within(unreadItem).getByTestId("conversation-view-label-single-unread")).toHaveClass("w-16");
+    expect(screen.getByRole("menuitemradio", { name: "全部" })).not.toHaveTextContent("99+");
+    expect(screen.getByRole("menuitemradio", { name: "AI托管" })).not.toHaveTextContent("99+");
+    expect(screen.getByRole("menuitemradio", { name: "人工接待" })).not.toHaveTextContent("99+");
+  });
+
+  it("uses seat unread counts even when loaded conversations do not contain all unread items", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ConversationListPanel
+        activeMode="single"
+        activeView="all"
+        conversations={[
+          createConversation({
+            id: "single-loaded-read",
+            customerName: "已加载已读客户",
+            mode: "single",
+            unread: 0,
+          }),
+        ]}
+        unreadCountByMode={{ group: 0, single: 12 }}
+        onSelectConversation={vi.fn()}
+        onSelectMode={vi.fn()}
+        onSelectView={vi.fn()}
+        searchableConversations={conversations}
+      />,
+    );
+
+    expect(screen.getByTestId("conversation-mode-unread-dot-single")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: "单聊视图" }));
+
+    expect(
+      within(screen.getByRole("menuitemradio", { name: "未读12" })).getByTestId(
+        "conversation-view-unread-count-single",
+      ),
+    ).toHaveTextContent("12");
+  });
+
+  it("uses seat unread counts for mode badges even when hidden conversations are not visible", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ConversationListPanel
+        activeMode="single"
+        activeView="all"
+        conversations={[]}
+        unreadCountByMode={{ group: 0, single: 1 }}
+        onSelectConversation={vi.fn()}
+        onSelectMode={vi.fn()}
+        onSelectView={vi.fn()}
+        searchableConversations={[]}
+      />,
+    );
+
+    expect(screen.getByTestId("conversation-mode-unread-dot-single")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: "单聊视图" }));
+
+    expect(
+      within(screen.getByRole("menuitemradio", { name: "未读1" })).getByTestId(
+        "conversation-view-unread-count-single",
+      ),
+    ).toHaveTextContent("1");
+  });
+
+  it("shows a refresh unread list button at the unread list bottom when server reports more unread conversations", () => {
+    const onRefreshUnreadConversations = vi.fn();
+
+    render(
+      <ConversationListPanel
+        activeMode="single"
+        activeView="unread"
+        conversations={[
+          createConversation({
+            id: "single-unread-loaded",
+            customerName: "已加载未读客户",
+            mode: "single",
+            unread: 1,
+          }),
+        ]}
+        hasMoreUnreadByMode={{ group: false, single: true }}
+        onRefreshUnreadConversations={onRefreshUnreadConversations}
+        onSelectConversation={vi.fn()}
+        onSelectMode={vi.fn()}
+        searchableConversations={conversations}
+      />,
+    );
+
+    const refreshButton = screen.getByRole("button", { name: "刷新未读列表" });
+
+    expect(refreshButton).toBeInTheDocument();
+    refreshButton.click();
+    expect(onRefreshUnreadConversations).toHaveBeenCalledWith("single");
+  });
+
+  it("filters each mounted mode with its own selected view", () => {
+    const viewConversations = [
+      createConversation({
+        conversationAIHostingSwitch: true,
+        id: "single-ai",
+        customerName: "AI托管客户",
+        mode: "single",
+      }),
+      createConversation({
+        id: "single-human",
+        customerName: "人工接待客户",
+        mode: "single",
+      }),
+      createConversation({
+        id: "group-read",
+        customerName: "已读群聊",
+        mode: "group",
+      }),
+      createConversation({
+        id: "group-unread",
+        customerName: "未读群聊",
+        mode: "group",
+        unread: 3,
+      }),
+    ];
+
+    const { rerender } = render(
+      <ConversationListPanel
+        activeMode="single"
+        activeView="ai"
+        conversationViews={{ group: "unread", single: "ai" }}
+        conversations={viewConversations}
+        isSeatAIHostingEnabled
+        onSelectConversation={vi.fn()}
+        onSelectMode={vi.fn()}
+        searchableConversations={viewConversations}
+      />,
+    );
+
+    expect(screen.getByText("AI托管客户")).toBeVisible();
+    expect(screen.queryByText("人工接待客户")).not.toBeInTheDocument();
+    expect(screen.queryByText("未读群聊")).not.toBeInTheDocument();
+
+    rerender(
+      <ConversationListPanel
+        activeMode="group"
+        activeView="unread"
+        conversationViews={{ group: "unread", single: "ai" }}
+        conversations={viewConversations}
+        isSeatAIHostingEnabled
+        onSelectConversation={vi.fn()}
+        onSelectMode={vi.fn()}
+        searchableConversations={viewConversations}
+      />,
+    );
+
+    expect(screen.getByText("AI托管客户")).not.toBeVisible();
+    expect(screen.queryByText("人工接待客户")).not.toBeInTheDocument();
+    expect(screen.getByText("未读群聊")).toBeVisible();
+    expect(screen.queryByText("已读群聊")).not.toBeInTheDocument();
+  });
+
+  it("omits AI hosting views when the active seat has not enabled hosting", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ConversationListPanel
+        activeMode="single"
+        activeView="all"
+        conversations={conversations}
+        isSeatAIHostingEnabled={false}
+        onSelectConversation={vi.fn()}
+        onSelectMode={vi.fn()}
+        onSelectView={vi.fn()}
+        searchableConversations={conversations}
+      />,
+    );
+
+    await user.click(screen.getByRole("tab", { name: "单聊视图" }));
+
+    expect(screen.getByRole("menuitemradio", { name: "全部" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitemradio", { name: "未读" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitemradio", { name: "AI托管" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitemradio", { name: "人工接待" })).not.toBeInTheDocument();
+  });
+
+  it("keeps group views limited to all and unread", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ConversationListPanel
+        activeMode="group"
+        activeView="all"
+        conversations={conversations}
+        isSeatAIHostingEnabled
+        onSelectConversation={vi.fn()}
+        onSelectMode={vi.fn()}
+        onSelectView={vi.fn()}
+        searchableConversations={conversations}
+      />,
+    );
+
+    await user.click(screen.getByRole("tab", { name: "群聊视图" }));
+
+    expect(screen.getByRole("menuitemradio", { name: "全部" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitemradio", { name: "未读" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitemradio", { name: "AI托管" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitemradio", { name: "人工接待" })).not.toBeInTheDocument();
   });
 
   it("closes search results when clicking outside the dropdown", async () => {

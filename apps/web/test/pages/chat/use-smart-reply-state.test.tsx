@@ -13,8 +13,9 @@ type SmartReplyStateOptions = Parameters<typeof useSmartReplyState>[0];
 
 const singleConversation = {
   accountId: "drc",
-  custodyMode: "semi",
+  conversationAIHostingSwitch: false,
   customerAvatarUrl: "",
+  customerBindType: 1,
   customerId: "cust-001",
   customerName: "客户",
   id: "conv-001",

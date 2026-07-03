@@ -6,6 +6,10 @@ import type {
 } from "@/pages/chat/chat-types";
 import { isChatReadOnlySubUser } from "@/pages/chat/hooks/use-auth-sub-user";
 import {
+  isConversationAIFeatureSupported,
+  isConversationAIHostingEnabled,
+} from "@/pages/chat/lib/conversation-ai-hosting";
+import {
   resolveSidebarIframeSendStatus,
   type SidebarIframeSendStatus,
 } from "@/pages/chat/lib/sidebar-iframe-url";
@@ -27,6 +31,9 @@ type CanUseWorkbenchConversationActionsInput = {
 };
 
 export type WorkbenchPermissions = {
+  canConfigureSeatAIHosting: boolean;
+  canConfigureSeatSemiAuto: boolean;
+  canToggleConversationAIHosting: boolean;
   canSendMessage: boolean;
   canTakeOverAccount: boolean;
   canUseChatSend: boolean;
@@ -35,6 +42,9 @@ export type WorkbenchPermissions = {
   isAccountSeatExpired: boolean;
   isAccountOffline: boolean;
   isAccountTakenOverByCurrentUser: boolean;
+  conversationAIHostingEnabled: boolean;
+  seatAIHostingEnabled: boolean;
+  seatAIAssistantEnabled: boolean;
   isConversationActionDisabled: boolean;
   isConversationBizInactive: boolean;
   sidebarIframeSendStatus: SidebarIframeSendStatus;
@@ -60,12 +70,29 @@ export function resolveWorkbenchPermissions({
     hasSendPermission: canUseChatSend,
     me,
   });
+  const canConfigureSeatAIHosting =
+    isAccountTakenOverByCurrentUser &&
+    account?.seatAIHostingAuth === true;
+  const canConfigureSeatSemiAuto =
+    isAccountTakenOverByCurrentUser &&
+    account?.semiAutoAuth === true;
+  const seatAIHostingEnabled = account?.seatAIHostingEnabled === true;
+  const canToggleConversationAIHosting =
+    isAccountTakenOverByCurrentUser &&
+    isConversationAIFeatureSupported(activeConversation) &&
+    seatAIHostingEnabled;
+  const conversationAIHostingEnabled =
+    isConversationAIHostingEnabled(activeConversation, seatAIHostingEnabled);
   const canSendMessage =
     canUseConversationActions &&
     !!activeConversation &&
-    !isConversationBizInactive;
+    !isConversationBizInactive &&
+    !conversationAIHostingEnabled;
 
   return {
+    canConfigureSeatAIHosting,
+    canConfigureSeatSemiAuto,
+    canToggleConversationAIHosting,
     canSendMessage,
     canTakeOverAccount,
     canUseChatSend,
@@ -79,10 +106,14 @@ export function resolveWorkbenchPermissions({
       isAccountSeatExpired,
       isAccountTakenOverByCurrentUser,
       isConversationBizInactive,
+      conversationAIHostingEnabled,
     }),
     isAccountSeatExpired,
     isAccountOffline,
     isAccountTakenOverByCurrentUser,
+    conversationAIHostingEnabled,
+    seatAIHostingEnabled,
+    seatAIAssistantEnabled: account?.seatAIAssistantEnabled === true,
     isConversationActionDisabled: !canUseConversationActions,
     isConversationBizInactive,
     sidebarIframeSendStatus: resolveSidebarIframeSendStatus({
@@ -123,6 +154,7 @@ function resolveComposerPlaceholder({
   isAccountSeatExpired,
   isAccountTakenOverByCurrentUser,
   isConversationBizInactive,
+  conversationAIHostingEnabled,
 }: Pick<
   WorkbenchPermissions,
   | "canSendMessage"
@@ -130,12 +162,16 @@ function resolveComposerPlaceholder({
   | "isAccountSeatExpired"
   | "isAccountTakenOverByCurrentUser"
   | "isConversationBizInactive"
+  | "conversationAIHostingEnabled"
 > & {
   activeConversation?: Conversation;
   bootstrapStatus: WorkbenchBootstrapStatus;
   canUseChatSend: boolean;
 }) {
-  if (canSendMessage) {
+  if (
+    canSendMessage ||
+    (conversationAIHostingEnabled && isAccountTakenOverByCurrentUser)
+  ) {
     return "请输入消息……";
   }
 

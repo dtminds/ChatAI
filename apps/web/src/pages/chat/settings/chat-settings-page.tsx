@@ -125,17 +125,17 @@ function SettingsSidebar({
     <aside className="flex h-full min-h-0 flex-col bg-sidebar px-4 py-5 text-sidebar-foreground">
       <Button
         asChild
-        className="mb-6 h-10 justify-start rounded-[8px] px-2 text-[14px] font-normal text-muted-foreground hover:text-foreground"
+        className="mb-6 h-10 justify-start rounded-[8px] px-2 text-[14px] font-normal text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
         variant="ghost"
       >
-        <Link aria-label="返回应用" to="/chat">
+        <Link aria-label="返回工作台" to="/chat">
           <HugeiconsIcon
             color="currentColor"
             icon={ArrowLeft02Icon}
             size={20}
             strokeWidth={1.8}
           />
-          <span>返回应用</span>
+          <span>返回工作台</span>
         </Link>
       </Button>
 

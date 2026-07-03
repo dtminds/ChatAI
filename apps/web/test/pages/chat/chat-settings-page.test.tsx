@@ -76,6 +76,7 @@ function mockAuthenticatedSession(role = "admin") {
 
 describe("Chat settings pages", () => {
   beforeAll(async () => {
+    installLoadedImageMock();
     await Promise.all([
       import("@/pages/chat/chat-workbench-page"),
       import("@/pages/chat/settings/chat-settings-page"),
@@ -341,7 +342,7 @@ describe("Chat settings pages", () => {
     expect(screen.queryByRole("button", { name: "德仁堂 接管中" })).not.toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "托管账号" })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("link", { name: "返回应用" }));
+    await user.click(screen.getByRole("link", { name: "返回工作台" }));
 
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/chat");
@@ -1524,6 +1525,10 @@ describe("Chat settings pages", () => {
     expect(screen.getByText("同步失败：企微素材库暂时不可用")).toBeInTheDocument();
     expect(screen.getByText("导入进度")).toBeInTheDocument();
     expect(screen.getByText("加载占位")).toBeInTheDocument();
+    expect(screen.getByText("文字切换")).toBeInTheDocument();
+    expect(screen.getByLabelText("文字切换示例")).toHaveTextContent(
+      "Agent 正在查看消息",
+    );
     expect(screen.getByRole("navigation", { name: "设置路径" })).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "分页" })).toBeInTheDocument();
     expect(screen.getByRole("slider", { name: "质检抽样比例" })).toBeInTheDocument();
@@ -1539,6 +1544,24 @@ describe("Chat settings pages", () => {
     expect(screen.getByText("启用后会优先沿用最近一次服务关系。")).toBeInTheDocument();
   });
 });
+
+function installLoadedImageMock() {
+  class LoadedImageMock extends EventTarget {
+    crossOrigin: string | null = null;
+    referrerPolicy = "";
+    src = "";
+
+    get complete() {
+      return true;
+    }
+
+    get naturalWidth() {
+      return 1;
+    }
+  }
+
+  vi.stubGlobal("Image", LoadedImageMock);
+}
 
 function setSystemColorScheme(matches: boolean) {
   let currentMatches = matches;

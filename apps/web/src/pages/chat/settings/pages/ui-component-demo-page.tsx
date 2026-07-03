@@ -7,6 +7,7 @@ import {
   HelpCircleIcon,
   Image01Icon,
   Notification03Icon,
+  SparklesIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import * as React from "react";
@@ -14,6 +15,7 @@ import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { AnimatedTextSwitch } from "@/components/ui/animated-text-switch";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -119,12 +121,21 @@ export function UiComponentDemoPage() {
   const [selectedDate, setSelectedDate] = React.useState<Date | undefined>(
     new Date(2026, 4, 7),
   );
+  const [animatedTextIndex, setAnimatedTextIndex] = React.useState(0);
   const [isRuleOpen, setIsRuleOpen] = React.useState(false);
   const form = useForm({
     defaultValues: {
       templateName: "售前欢迎语",
     },
   });
+  const animatedTexts = [
+    "Agent 正在查看消息",
+    "Agent 正在确认客户是否追加新消息",
+    "Agent 正在思考回复话术",
+    "Agent 回复已生成，正在发送",
+    "Agent 已就绪，正在等待用户消息",
+  ] as const;
+  const animatedText = animatedTexts[animatedTextIndex];
 
   return (
     <>
@@ -529,6 +540,62 @@ export function UiComponentDemoPage() {
                     </PaginationItem>
                   </PaginationContent>
                 </Pagination>
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-[10px] border border-border p-5">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <h2 className="text-base font-semibold text-foreground">文字切换</h2>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  用于 AI 状态、推荐文案和输入提示：旧文案快速淡出，新文案逐字进入，稳定后可开启扫光效果。
+                </p>
+              </div>
+              <Button
+                onClick={() => {
+                  setAnimatedTextIndex(
+                    (animatedTextIndex + 1) % animatedTexts.length,
+                  );
+                }}
+                type="button"
+                variant="outline"
+              >
+                <HugeiconsIcon
+                  color="currentColor"
+                  icon={SparklesIcon}
+                  size={17}
+                  strokeWidth={1.8}
+                />
+                切换文案
+              </Button>
+            </div>
+
+            <div className="mt-5 grid gap-4 md:grid-cols-2">
+              <div className="rounded-[10px] border border-border p-4">
+                <h3 className="text-sm font-semibold text-foreground">带扫光</h3>
+                <div className="mt-4 flex min-h-10 w-full max-w-[20rem] items-center rounded-full border border-border bg-background px-4 text-sm font-medium shadow-[0_10px_24px_var(--shadow-soft)]">
+                  <AnimatedTextSwitch
+                    aria-label="文字切换示例"
+                    className="min-w-0"
+                    shiny
+                    shinyDuration={1.15}
+                    shinyShimmerWidth={48}
+                    staggerMs={12}
+                    value={animatedText}
+                  />
+                </div>
+              </div>
+
+              <div className="rounded-[10px] border border-border p-4">
+                <h3 className="text-sm font-semibold text-foreground">纯切换</h3>
+                <div className="mt-4 flex min-h-10 w-full max-w-[20rem] items-center rounded-full border border-border bg-background px-4 text-sm font-medium text-muted-foreground shadow-[0_10px_24px_var(--shadow-soft)]">
+                  <AnimatedTextSwitch
+                    className="min-w-0"
+                    staggerMs={12}
+                    value={animatedText}
+                  />
+                </div>
               </div>
             </div>
           </section>

@@ -9,6 +9,12 @@ import {
   type UserConfig,
 } from "vite";
 import { resolveOcrRuntimeUrls } from "./src/pages/chat/lib/ocr-runtime-manifest";
+import {
+  cosDevProxyPlugin,
+  parseCosDevProxyRequest,
+  resolveCosDevProxyTarget,
+  rewriteCosDevProxyPath,
+} from "./vite.cos-dev-proxy";
 
 type ViteDevEnv = Record<string, string | undefined>;
 
@@ -38,6 +44,8 @@ function readEnv(input: ViteDevEnv, mode: string, envDir: string) {
     ...input,
   };
 }
+
+export { parseCosDevProxyRequest, resolveCosDevProxyTarget, rewriteCosDevProxyPath };
 
 export function buildDevProxyConfig(env: ViteDevEnv = {}) {
   const target = env.VITE_DEV_API_PROXY_TARGET ?? "http://127.0.0.1:3001";
@@ -89,7 +97,7 @@ export function createViteConfig(mode = "development"): UserConfig {
       },
     },
     envDir: repoRoot,
-    plugins: [react(), tailwindcss()],
+    plugins: [react(), tailwindcss(), cosDevProxyPlugin()],
     server: getViteDevServerConfig({}, mode, repoRoot),
     resolve: {
       dedupe: ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime"],

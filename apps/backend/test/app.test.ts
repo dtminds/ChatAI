@@ -17,6 +17,7 @@ async function createAuthenticatedApp() {
     sessionId: "501",
     sessionVersion: 1,
     subUserId: "101",
+    uid: 9001,
   });
   app.db = createSessionDbMock({
     id: "501",
@@ -39,6 +40,7 @@ async function createAuthenticatedAppWithRole(role: "admin" | "operator" | "view
     sessionId: "501",
     sessionVersion: 1,
     subUserId: "101",
+    uid: 9001,
   });
   app.db = createSessionDbMock({
     id: "501",
@@ -63,6 +65,7 @@ async function createAuthenticatedSettingsApp(
     sessionId: "501",
     sessionVersion: 1,
     subUserId: "101",
+    uid: 9001,
   });
   app.db = createSettingsDbMock({
     account: "agent001",
@@ -379,6 +382,7 @@ describe("backend app", () => {
       sessionId: "501",
       sessionVersion: 1,
       subUserId: "101",
+      uid: 9001,
     });
 
     await app.close();
@@ -392,6 +396,7 @@ describe("backend app", () => {
       sessionId: "501",
       sessionVersion: 1,
       subUserId: "101",
+      uid: 9001,
     });
     app.db = createSessionDbMock({
       id: "501",
@@ -663,6 +668,7 @@ describe("backend app", () => {
       sessionId: "501",
       sessionVersion: 1,
       subUserId: "101",
+      uid: 9001,
     });
 
     await app.close();
@@ -717,6 +723,7 @@ describe("backend app", () => {
       sessionId: "501",
       sessionVersion: 2,
       subUserId: "101",
+      uid: 9001,
     });
 
     const oldAccess = await app.inject({
@@ -2506,6 +2513,35 @@ describe("backend app", () => {
     await app.close();
   });
 
+  it("returns unread-only conversations with seat unread summary", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+
+    const conversations = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/conversations?seatId=drc&mode=single&limit=1&unread_only=1",
+    });
+
+    expect(conversations.statusCode).toBe(200);
+    expect(conversations.json()).toMatchObject({
+      hasMore: true,
+      items: [
+        expect.objectContaining({
+          conversationId: "conv-001",
+          mode: "single",
+          unreadCount: 2,
+        }),
+      ],
+      unreadSummary: {
+        group: 7,
+        single: 6,
+        total: 13,
+      },
+    });
+
+    await app.close();
+  });
+
   it("updates read state and emits poll changes after marking a conversation read", async () => {
     const { app, authorization } = await createAuthenticatedApp();
 
@@ -3043,6 +3079,36 @@ describe("backend app", () => {
     await app.close();
   });
 
+  it("routes failed message retry requests through the workbench service", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+    const retryMessage = vi.spyOn(app.workbenchService, "retryMessage").mockResolvedValue({
+      optNo: "retry-opt-001",
+      status: "accepted",
+    });
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        conversationId: "conv-001",
+        messageSeq: 2,
+      },
+      url: "/api/server/messages/retry",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      optNo: "retry-opt-001",
+      status: "accepted",
+    });
+    expect(retryMessage).toHaveBeenCalledWith("101", {
+      conversationId: "conv-001",
+      messageSeq: 2,
+    });
+
+    await app.close();
+  });
+
   it("rejects chat writes for viewer role sessions", async () => {
     const { app, authorization } = await createAuthenticatedAppWithRole("viewer");
 
@@ -3092,13 +3158,21 @@ describe("backend app", () => {
       },
       url: "/api/server/messages/2/revoke",
     });
+    const retry = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        conversationId: "conv-001",
+        messageSeq: 2,
+      },
+      url: "/api/server/messages/retry",
+    });
     const smartReplySendAnswer = await app.inject({
       headers: { authorization },
       method: "POST",
       payload: {
         conversationId: "conv-001",
-        realAnswer: "只读账号不能标记智能回复已发送",
-        realAttachIds: [],
+        optNos: ["opt-readonly-001"],
         recordId: "1",
       },
       url: "/api/server/smart-reply/send-answer",
@@ -3127,6 +3201,7 @@ describe("backend app", () => {
       markRead,
       uploadCredential,
       revoke,
+      retry,
       smartReplySendAnswer,
       knowledgeFaqAdd,
     ]) {
@@ -3534,6 +3609,7 @@ function createSettingsDbMock(currentSubUser: {
           return result;
         },
         innerJoin: () => builder,
+        limit: () => builder,
         orderBy: () => builder,
         select: () => builder,
         where: (column: string, operator: string, value: unknown) => {

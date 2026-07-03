@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  adaptAccount,
   adaptConversation,
   adaptMessage,
 } from "@/pages/chat/api/workbench-adapter";
@@ -7,6 +8,7 @@ import type {
   WorkbenchConversationSummaryDto,
   WorkbenchMessageDto,
 } from "@chatai/contracts";
+import { WORKBENCH_MESSAGE_SOURCE } from "@chatai/contracts";
 import type { Account, CustomerProfile, EmployeeProfile } from "@/pages/chat/chat-types";
 
 describe("workbench adapter", () => {
@@ -34,14 +36,14 @@ describe("workbench adapter", () => {
     expect(conversation.isVerified).toBe(false);
   });
 
-  it("maps conversation custody mode from the workbench DTO", () => {
-    expect(adaptConversation(conversationDto).custodyMode).toBe("semi");
+  it("maps conversation AI hosting switch from the workbench DTO", () => {
+    expect(adaptConversation(conversationDto).conversationAIHostingSwitch).toBe(false);
     expect(
       adaptConversation({
         ...conversationDto,
-        custodyMode: "full",
-      }).custodyMode,
-    ).toBe("full");
+        conversationAIHostingSwitch: true,
+      }).conversationAIHostingSwitch,
+    ).toBe(true);
   });
 
   it("adapts conversation biz status for send availability", () => {
@@ -52,6 +54,142 @@ describe("workbench adapter", () => {
       }),
     ).toMatchObject({
       bizStatus: 2,
+    });
+  });
+
+  it("adapts conversation customer bind type for AI capability checks", () => {
+    expect(
+      adaptConversation({
+        ...conversationDto,
+        customerBindType: 2,
+      }),
+    ).toMatchObject({
+      customerBindType: 2,
+    });
+  });
+
+  it("adapts AI hosting flags from workbench summary DTOs", () => {
+    expect(
+      adaptAccount({
+        avatar: "",
+        description: "",
+        fullAutoSwitch: true,
+        loginStatus: "online",
+        name: "测试席位",
+        operatorName: "测试席位",
+        phone: "",
+        seatAIHostingAuth: true,
+        seatId: "seat-1",
+        thirdUserId: "third-user-1",
+        unreadCount: 0,
+      }),
+    ).toMatchObject({
+      seatAIHostingEnabled: true,
+    });
+
+    expect(
+      adaptAccount({
+        avatar: "",
+        description: "",
+        loginStatus: "online",
+        name: "测试席位",
+        operatorName: "测试席位",
+        phone: "",
+        seatAIHostingEnabled: true,
+        seatId: "seat-1",
+        thirdUserId: "third-user-1",
+        unreadCount: 0,
+      }),
+    ).toMatchObject({
+      seatAIHostingEnabled: true,
+    });
+
+    expect(
+      adaptConversation({
+        ...conversationDto,
+        conversationAIHostingSwitch: true,
+      }),
+    ).toMatchObject({
+      conversationAIHostingSwitch: true,
+    });
+  });
+
+  it("adapts seat unread breakdown from workbench summary DTOs", () => {
+    expect(
+      adaptAccount({
+        avatar: "",
+        description: "",
+        groupUnreadCount: 3,
+        loginStatus: "online",
+        name: "测试席位",
+        operatorName: "测试席位",
+        phone: "",
+        seatId: "seat-1",
+        singleUnreadCount: 7,
+        thirdUserId: "third-user-1",
+        unreadCount: 10,
+      }),
+    ).toMatchObject({
+      groupUnreadCount: 3,
+      singleUnreadCount: 7,
+      unreadCount: 10,
+    });
+  });
+
+  it("adapts AI assistant enablement from DTO value or semi-auto fallback", () => {
+    expect(
+      adaptAccount({
+        avatar: "",
+        description: "",
+        loginStatus: "online",
+        name: "测试席位",
+        operatorName: "测试席位",
+        phone: "",
+        seatAIAssistantEnabled: true,
+        seatId: "seat-1",
+        semiAutoAuth: true,
+        semiAutoSwitch: false,
+        thirdUserId: "third-user-1",
+        unreadCount: 0,
+      }),
+    ).toMatchObject({
+      seatAIAssistantEnabled: true,
+    });
+
+    expect(
+      adaptAccount({
+        avatar: "",
+        description: "",
+        loginStatus: "online",
+        name: "测试席位",
+        operatorName: "测试席位",
+        phone: "",
+        seatId: "seat-1",
+        semiAutoAuth: true,
+        semiAutoSwitch: true,
+        thirdUserId: "third-user-1",
+        unreadCount: 0,
+      }),
+    ).toMatchObject({
+      seatAIAssistantEnabled: true,
+    });
+
+    expect(
+      adaptAccount({
+        avatar: "",
+        description: "",
+        loginStatus: "online",
+        name: "测试席位",
+        operatorName: "测试席位",
+        phone: "",
+        seatId: "seat-1",
+        semiAutoAuth: true,
+        semiAutoSwitch: false,
+        thirdUserId: "third-user-1",
+        unreadCount: 0,
+      }),
+    ).toMatchObject({
+      seatAIAssistantEnabled: false,
     });
   });
 
@@ -107,6 +245,38 @@ describe("adaptMessage", () => {
       tasks: [],
     },
   };
+
+  it("marks messages sent by Agent source", () => {
+    expect(
+      adaptMessage(
+        {
+          ...messageDto,
+          senderType: "agent",
+          source: WORKBENCH_MESSAGE_SOURCE.AGENT,
+        } as WorkbenchMessageDto,
+        customerProfilesById,
+        accountsById,
+        me,
+      ),
+    ).toMatchObject({
+      isAgentMessage: true,
+    });
+
+    expect(
+      adaptMessage(
+        {
+          ...messageDto,
+          senderType: "agent",
+          source: 1,
+        } as WorkbenchMessageDto,
+        customerProfilesById,
+        accountsById,
+        me,
+      ),
+    ).not.toMatchObject({
+      isAgentMessage: true,
+    });
+  });
 
   it("does not format zero message timestamps as epoch dates", () => {
     expect(
@@ -861,7 +1031,7 @@ describe("adaptMessage", () => {
 
 const conversationDto: WorkbenchConversationSummaryDto = {
   conversationId: "conversation-1",
-  custodyMode: "semi",
+  conversationAIHostingSwitch: false,
   customerAvatar: "",
   customerId: "group-1",
   customerName: "测试群002",

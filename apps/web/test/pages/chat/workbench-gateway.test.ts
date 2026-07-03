@@ -3,9 +3,11 @@ import type { WorkbenchService } from "@/pages/chat/api/workbench-service";
 import {
   bootstrapWorkbench,
   CONVERSATION_MODE_LIMITS,
+  UNREAD_CONVERSATION_MODE_LIMITS,
   getVisibleConversations,
   loadGroupMembers,
   loadAccountConversations,
+  loadUnreadAccountConversationsByMode,
   loadAccountScope,
   confirmVoicePlaybackReady,
   transcribeVoiceMessage,
@@ -117,6 +119,54 @@ describe("workbench gateway message paging", () => {
         limit: CONVERSATION_MODE_LIMITS.group,
         mode: "group",
         seatId: "drc",
+      },
+    ]);
+  });
+
+  it("loads unread conversations with unread-only mode limits and keeps unread summary", async () => {
+    const observedConversationRequests: Array<{
+      limit?: number;
+      mode?: string;
+      seatId: string;
+      unreadOnly?: boolean;
+    }> = [];
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async getConversations(seatId, options) {
+        observedConversationRequests.push({
+          limit: options?.limit,
+          mode: options?.mode,
+          seatId,
+          unreadOnly: options?.unreadOnly,
+        });
+
+        return {
+          ...(await baseService.getConversations(seatId, options)),
+          unreadSummary: {
+            group: 4,
+            single: 12,
+            total: 16,
+          },
+        };
+      },
+    });
+
+    await expect(loadUnreadAccountConversationsByMode("drc", "single")).resolves.toMatchObject({
+      unreadSummary: {
+        group: 4,
+        single: 12,
+        total: 16,
+      },
+    });
+
+    expect(observedConversationRequests).toEqual([
+      {
+        limit: UNREAD_CONVERSATION_MODE_LIMITS.single,
+        mode: "single",
+        seatId: "drc",
+        unreadOnly: true,
       },
     ]);
   });
@@ -283,6 +333,7 @@ describe("workbench gateway message paging", () => {
         bizStatus: 1,
         description: "私域客户管理",
         expireTime: undefined,
+        fullAutoSwitch: undefined,
         id: "drc",
         lastMessageTime: 1_778_840_020_000,
         loginStatus: "offline",
@@ -295,7 +346,12 @@ describe("workbench gateway message paging", () => {
         name: "德瑞可",
         operator: "小可",
         phone: "13296712905",
+        seatAIAssistantEnabled: false,
+        seatAIHostingAuth: undefined,
+        seatAIHostingEnabled: false,
         seatId: "drc",
+        semiAutoAuth: undefined,
+        semiAutoSwitch: undefined,
         takenOverEmployeeId: "202",
         tone: "linear-gradient(135deg, var(--muted-foreground), var(--primary))",
         unreadCount: 3,
@@ -316,7 +372,7 @@ describe("workbench gateway message paging", () => {
             items: [
               {
                 conversationId: "recent-unpinned",
-                custodyMode: "semi",
+                conversationAIHostingSwitch: false,
                 customerAvatar: "",
                 customerId: "customer-recent",
                 customerName: "最近未置顶",
@@ -337,7 +393,7 @@ describe("workbench gateway message paging", () => {
           items: [
             {
               conversationId: "old-pinned",
-              custodyMode: "semi",
+              conversationAIHostingSwitch: false,
               customerAvatar: "",
               customerId: "customer-pinned",
               customerName: "较早置顶",
@@ -506,7 +562,7 @@ describe("temporary conversation visibility", () => {
       {
         accountId: "drc",
         createdAtMs: now - 60_000,
-        custodyMode: "semi" as const,
+        conversationAIHostingSwitch: false,
         customerAvatarUrl: "",
         customerId: "customer-pending",
         customerName: "识别中的客户",
@@ -523,7 +579,7 @@ describe("temporary conversation visibility", () => {
       {
         accountId: "drc",
         createdAtMs: now - 181_000,
-        custodyMode: "semi" as const,
+        conversationAIHostingSwitch: false,
         customerAvatarUrl: "",
         customerId: "customer-expired",
         customerName: "超过等待窗口的客户",
@@ -540,7 +596,7 @@ describe("temporary conversation visibility", () => {
       {
         accountId: "drc",
         createdAtMs: now - 30_000,
-        custodyMode: "semi" as const,
+        conversationAIHostingSwitch: false,
         customerAvatarUrl: "",
         customerId: "customer-verified",
         customerName: "已识别客户",

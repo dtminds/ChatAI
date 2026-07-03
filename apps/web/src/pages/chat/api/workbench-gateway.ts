@@ -9,16 +9,22 @@ import type {
   SettingsSidebarItem,
   WorkbenchHistoryMessagePageDto,
   WorkbenchHistoryMessageQuery,
+  WorkbenchConversationFullAutoResponse,
+  WorkbenchFullAutoAnswerStatusResponse,
   WorkbenchConversationDeleteResponse,
   WorkbenchConversationPinResponse,
   WorkbenchConversationReadResponse,
   WorkbenchConversationUnpinResponse,
   WorkbenchConversationUnreadResponse,
+  WorkbenchUnreadSummaryDto,
   WorkbenchMessageFileDownloadStatusResponse,
   WorkbenchRevokeMessageResponse,
+  WorkbenchRetryMessageRequest,
   WorkbenchSendMessagePayload,
   WorkbenchSendMessageResponse,
   WorkbenchSeatDto,
+  WorkbenchSeatAgentModeSwitchRequest,
+  WorkbenchSeatAgentModeSwitchResponse,
   WorkbenchUploadCredentialResponse,
   WorkbenchMessageQueryBySeqsRequest,
   WorkbenchMessageUpdateEventDto,
@@ -76,7 +82,6 @@ export type WorkbenchConversationPage = {
   messages: Message[];
   nextBeforeSeq?: number;
   skippedHiddenCount: number;
-  smartReplyEnabled?: boolean;
   smartReplies: Record<string, SmartReplySuggestion>;
 };
 
@@ -111,7 +116,9 @@ export type WorkbenchAccountScopeResult = {
 
 export type WorkbenchConversationLoadResult = {
   conversations: Conversation[];
+  hasMore?: boolean;
   pollBaseline: number;
+  unreadSummary?: WorkbenchUnreadSummaryDto;
 };
 
 export type WorkbenchConversationChange =
@@ -143,6 +150,10 @@ export const CONVERSATION_MODE_CACHE_TTL_MS = 60 * 1000;
 export const CONVERSATION_MODE_LIMITS = {
   group: 100,
   single: 1000,
+} as const satisfies Record<ChatMode, number>;
+export const UNREAD_CONVERSATION_MODE_LIMITS = {
+  group: 100,
+  single: 500,
 } as const satisfies Record<ChatMode, number>;
 
 export async function bootstrapWorkbench(
@@ -318,7 +329,26 @@ export async function loadAccountConversationsByMode(
 
   return {
     conversations: conversationDtos.items.map(adaptConversation),
+    hasMore: conversationDtos.hasMore,
     pollBaseline: conversationDtos.snapshotAt,
+  };
+}
+
+export async function loadUnreadAccountConversationsByMode(
+  accountId: string,
+  mode: ChatMode,
+): Promise<WorkbenchConversationLoadResult> {
+  const conversationDtos = await getWorkbenchService().getConversations(accountId, {
+    limit: UNREAD_CONVERSATION_MODE_LIMITS[mode],
+    mode,
+    unreadOnly: true,
+  });
+
+  return {
+    conversations: conversationDtos.items.map(adaptConversation),
+    hasMore: conversationDtos.hasMore,
+    pollBaseline: conversationDtos.snapshotAt,
+    unreadSummary: conversationDtos.unreadSummary,
   };
 }
 
@@ -345,7 +375,6 @@ export async function loadConversationMessagesPage(
     messages,
     nextBeforeSeq: page.nextBeforeSeq,
     skippedHiddenCount: page.filteredCount,
-    smartReplyEnabled: page.smartReplyEnabled,
     smartReplies: adaptSmartReplySuggestions(page.smartReplies ?? []),
   };
 }
@@ -427,6 +456,12 @@ export async function sendTextMessage(
   return getWorkbenchService().sendMessage(payload);
 }
 
+export async function retryMessage(
+  payload: WorkbenchRetryMessageRequest,
+): Promise<WorkbenchSendMessageResponse> {
+  return getWorkbenchService().retryMessage(payload);
+}
+
 export async function revokeMessage(input: {
   conversationId: string;
   messageSeq: number;
@@ -462,6 +497,28 @@ export async function transcribeVoiceMessage(
 
 export async function takeOverAccount(accountId: string) {
   return getWorkbenchService().takeOverSeat(accountId);
+}
+
+export async function changeConversationFullAuto(
+  conversationId: string,
+  enabled: boolean,
+): Promise<WorkbenchConversationFullAutoResponse> {
+  return getWorkbenchService().changeConversationFullAuto(conversationId, {
+    enabled,
+  });
+}
+
+export async function updateSeatAgentMode(
+  seatId: string,
+  request: WorkbenchSeatAgentModeSwitchRequest,
+): Promise<WorkbenchSeatAgentModeSwitchResponse> {
+  return getWorkbenchService().updateSeatAgentMode(seatId, request);
+}
+
+export async function getFullAutoAnswerStatus(
+  conversationId: string,
+): Promise<WorkbenchFullAutoAnswerStatusResponse> {
+  return getWorkbenchService().getFullAutoAnswerStatus(conversationId);
 }
 
 export async function pollWorkbench(

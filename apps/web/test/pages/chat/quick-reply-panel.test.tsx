@@ -994,7 +994,14 @@ describe("QuickReplyPanel", () => {
 
     expect(screen.queryByRole("button", { name: "企业话术" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "个人话术" })).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "个人" }));
+    expect(screen.getByRole("tab", { name: "企业", selected: true })).toHaveClass(
+      "data-[state=active]:bg-[var(--tabs-trigger-active-bg)]",
+      "data-[state=active]:shadow-[var(--tabs-trigger-active-shadow)]",
+    );
+    expect(screen.getByRole("tablist")).toHaveClass("h-9");
+    expect(screen.getByPlaceholderText("搜索话术")).toHaveClass("h-9");
+    expect(screen.getByRole("button", { name: "更多操作" })).toHaveClass("size-9");
+    await user.click(screen.getByRole("tab", { name: "个人" }));
     fireEvent.change(screen.getByPlaceholderText("搜索话术"), {
       target: { value: "退款" },
     });

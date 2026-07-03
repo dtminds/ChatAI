@@ -8,9 +8,12 @@ import {
   TableBody,
   TableCaption,
   TableCell,
+  TableCellContent,
   TableFooter,
   TableHead,
   TableHeader,
+  TablePinnedCell,
+  TablePinnedHead,
   TableRow,
 } from "@/components/ui/table";
 
@@ -93,5 +96,36 @@ describe("UI primitive refs", () => {
     expect(document.querySelector("[data-slot='table-cell']")).not.toHaveClass(
       "whitespace-nowrap",
     );
+  });
+
+  it("renders pinned table columns with clipped cell content", () => {
+    render(
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>账号</TableHead>
+            <TablePinnedHead side="right">操作</TablePinnedHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          <TableRow>
+            <TableCell>
+              <TableCellContent>护肤小助理</TableCellContent>
+            </TableCell>
+            <TablePinnedCell side="right">设置</TablePinnedCell>
+          </TableRow>
+        </TableBody>
+      </Table>,
+    );
+
+    const container = document.querySelector("[data-slot='table-container']");
+    const content = document.querySelector("[data-slot='table-cell-content']");
+    const pinnedHead = document.querySelector("[data-slot='table-pinned-head']");
+    const pinnedCell = document.querySelector("[data-slot='table-pinned-cell']");
+
+    expect(container).toBeInstanceOf(HTMLDivElement);
+    expect(content).toHaveClass("min-w-0", "truncate");
+    expect(pinnedHead).toHaveClass("sticky", "right-0", "bg-surface");
+    expect(pinnedCell).toHaveClass("sticky", "right-0", "bg-surface");
   });
 });

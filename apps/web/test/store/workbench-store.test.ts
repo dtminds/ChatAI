@@ -3,7 +3,9 @@ import {
   createMockWorkbenchService,
   setWorkbenchService,
 } from "@/pages/chat/api/workbench-service";
+import { adaptMessage } from "@/pages/chat/api/workbench-adapter";
 import { resolveImageSegmentsForSend } from "@/pages/chat/api/media-upload-service";
+import { JAVA_MENTION_PLACEHOLDER } from "@/pages/chat/lib/composer-segments";
 import { seedMessages } from "@/pages/chat/mock-data";
 import {
   createWorkbenchStore,
@@ -13,6 +15,7 @@ import {
 import type { ChatMessage, Conversation, Message } from "@/pages/chat/chat-types";
 import type {
   WorkbenchConversationSummaryDto,
+  WorkbenchFullAutoAnswerStatusResponse,
   WorkbenchHistoryMessagePageDto,
   WorkbenchMessageDto,
   WorkbenchPollResponse,
@@ -68,8 +71,9 @@ function getSeedMessageIdAt(conversationId: string, index: number) {
 function createCachedConversation(accountId: string): Conversation {
   return {
     accountId,
-    custodyMode: "semi",
+    conversationAIHostingSwitch: false,
     customerAvatarUrl: "",
+    customerBindType: 1,
     customerId: `${accountId}-customer`,
     customerName: `${accountId} 客户`,
     id: `${accountId}-conversation`,
@@ -142,6 +146,7 @@ function createDownloadFileMessageDto({
 
 function createSmartReplyTextMessageDto({
   conversationId = "conv-001",
+  createdAt,
   id,
   isRevoked = false,
   senderType = "customer",
@@ -149,6 +154,7 @@ function createSmartReplyTextMessageDto({
   text,
 }: {
   conversationId?: string;
+  createdAt?: number;
   id: string;
   isRevoked?: boolean;
   senderType?: "customer" | "agent";
@@ -159,7 +165,7 @@ function createSmartReplyTextMessageDto({
     content: { text },
     contentType: "text",
     conversationId,
-    createdAt: 1_778_400_000_000 + seq * 1_000,
+    createdAt: createdAt ?? 1_778_400_000_000 + seq * 1_000,
     customerId: "cust-001",
     msgid: id,
     rawMsgtype: "text",
@@ -213,6 +219,552 @@ describe("useWorkbenchStore", () => {
     expect(createFreshWorkbenchStoreForTest().getState().hasChatSendPermission).toBe(
       false,
     );
+  });
+
+  it("changes active conversation full-auto through the workbench service", async () => {
+    const baseService = createMockWorkbenchService();
+    const changeConversationFullAuto = vi.fn().mockResolvedValue({
+      conversationAIHostingSwitch: false,
+      conversationId: "conv-001",
+      seatId: "drc",
+    });
+    const getConversations = vi.fn(baseService.getConversations);
+
+    setWorkbenchService({
+      ...baseService,
+      changeConversationFullAuto,
+      getConversations,
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    getConversations.mockClear();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              seatAIHostingAuth: true,
+              seatAIHostingEnabled: true,
+            }
+          : account,
+      ),
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-001"
+            ? {
+                ...conversation,
+                conversationAIHostingSwitch: true,
+                agentHostingStatus: "thinking",
+              }
+            : conversation,
+        ),
+      },
+    }));
+
+    await useWorkbenchStore.getState().changeActiveConversationFullAuto(false);
+
+    expect(changeConversationFullAuto).toHaveBeenCalledWith("conv-001", {
+      enabled: false,
+    });
+    expect(getConversations).not.toHaveBeenCalled();
+    expect(
+      useWorkbenchStore
+        .getState()
+        .conversationListsByScope.drc.find((conversation) => conversation.id === "conv-001")
+        ?.conversationAIHostingSwitch,
+    ).toBe(false);
+  });
+
+  it("patches active conversation full-auto from API response instead of request input", async () => {
+    const baseService = createMockWorkbenchService();
+    const changeConversationFullAuto = vi.fn().mockResolvedValue({
+      conversationAIHostingSwitch: false,
+      conversationId: "conv-001",
+      seatId: "drc",
+    });
+    const getConversations = vi.fn(baseService.getConversations);
+
+    setWorkbenchService({
+      ...baseService,
+      changeConversationFullAuto,
+      getConversations,
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    getConversations.mockClear();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              seatAIHostingAuth: true,
+              seatAIHostingEnabled: true,
+            }
+          : account,
+      ),
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-001"
+            ? {
+                ...conversation,
+                agentHostingStatus: "exited",
+                conversationAIHostingSwitch: false,
+              }
+            : conversation,
+        ),
+      },
+    }));
+
+    await useWorkbenchStore.getState().changeActiveConversationFullAuto(true);
+
+    const conversation = useWorkbenchStore
+      .getState()
+      .conversationListsByScope.drc.find((item) => item.id === "conv-001");
+
+    expect(changeConversationFullAuto).toHaveBeenCalledWith("conv-001", {
+      enabled: true,
+    });
+    expect(getConversations).not.toHaveBeenCalled();
+    expect(conversation).toMatchObject({
+      conversationAIHostingSwitch: false,
+      agentHostingStatus: "exited",
+    });
+  });
+
+  it("locally re-enters active conversation full-auto without keeping exited status", async () => {
+    const baseService = createMockWorkbenchService();
+    const changeConversationFullAuto = vi.fn().mockResolvedValue({
+      conversationAIHostingSwitch: true,
+      conversationId: "conv-001",
+      seatId: "drc",
+    });
+    const getConversations = vi.fn(baseService.getConversations);
+
+    setWorkbenchService({
+      ...baseService,
+      changeConversationFullAuto,
+      getConversations,
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    getConversations.mockClear();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              seatAIHostingAuth: true,
+              seatAIHostingEnabled: true,
+            }
+          : account,
+      ),
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-001"
+            ? {
+                ...conversation,
+                agentHostingStatus: "exited",
+                conversationAIHostingSwitch: false,
+              }
+            : conversation,
+        ),
+      },
+    }));
+
+    await useWorkbenchStore.getState().changeActiveConversationFullAuto(true);
+
+    const conversation = useWorkbenchStore
+      .getState()
+      .conversationListsByScope.drc.find((item) => item.id === "conv-001");
+
+    expect(changeConversationFullAuto).toHaveBeenCalledWith("conv-001", {
+      enabled: true,
+    });
+    expect(getConversations).not.toHaveBeenCalled();
+    expect(conversation).toMatchObject({
+      conversationAIHostingSwitch: true,
+    });
+    expect(conversation?.agentHostingStatus).toBeUndefined();
+  });
+
+  it("does not change full-auto when the active account cannot enable full-auto", async () => {
+    const baseService = createMockWorkbenchService();
+    const changeConversationFullAuto = vi.fn();
+
+    setWorkbenchService({
+      ...baseService,
+      changeConversationFullAuto,
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              seatAIHostingAuth: false,
+              seatAIHostingEnabled: false,
+            }
+          : account,
+      ),
+    }));
+
+    await useWorkbenchStore.getState().changeActiveConversationFullAuto(true);
+
+    expect(changeConversationFullAuto).not.toHaveBeenCalled();
+  });
+
+  it("does not change full-auto for active group conversations", async () => {
+    const baseService = createMockWorkbenchService();
+    const changeConversationFullAuto = vi.fn();
+
+    setWorkbenchService({
+      ...baseService,
+      changeConversationFullAuto,
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              seatAIHostingAuth: true,
+              seatAIHostingEnabled: true,
+            }
+          : account,
+      ),
+      activeConversationId: "group-001",
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: [
+          ...(state.conversationListsByScope.drc ?? []),
+          {
+            ...state.conversationListsByScope.drc[0],
+            conversationAIHostingSwitch: false,
+            id: "group-001",
+            mode: "group",
+          },
+        ],
+      },
+    }));
+
+    await useWorkbenchStore.getState().changeActiveConversationFullAuto(true);
+
+    expect(changeConversationFullAuto).not.toHaveBeenCalled();
+  });
+
+  it("does not change full-auto for application-message conversations", async () => {
+    const baseService = createMockWorkbenchService();
+    const changeConversationFullAuto = vi.fn();
+
+    setWorkbenchService({
+      ...baseService,
+      changeConversationFullAuto,
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              seatAIHostingAuth: true,
+              seatAIHostingEnabled: true,
+            }
+          : account,
+      ),
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-001"
+            ? {
+                ...conversation,
+                conversationAIHostingSwitch: false,
+                customerBindType: 2,
+                mode: "single",
+              }
+            : conversation,
+        ),
+      },
+    }));
+
+    await useWorkbenchStore.getState().changeActiveConversationFullAuto(true);
+
+    expect(changeConversationFullAuto).not.toHaveBeenCalled();
+  });
+
+  it("changes the active account agent mode switch and patches local account state", async () => {
+    const baseService = createMockWorkbenchService();
+    const updateSeatAgentMode = vi.fn().mockResolvedValue({
+      fullAutoSwitch: true,
+      seatId: "drc",
+      semiAutoSwitch: true,
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      updateSeatAgentMode,
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              seatAIHostingAuth: true,
+              semiAutoAuth: true,
+            }
+          : account,
+      ),
+    }));
+
+    await useWorkbenchStore.getState().changeActiveSeatAgentMode("autoReply");
+
+    expect(updateSeatAgentMode).toHaveBeenCalledWith("drc", {
+      mode: "autoReply",
+    });
+    expect(useWorkbenchStore.getState().accounts.find((account) => account.id === "drc")).toMatchObject({
+      fullAutoSwitch: true,
+      seatAIAssistantEnabled: true,
+      seatAIHostingEnabled: true,
+      semiAutoSwitch: true,
+    });
+  });
+
+  it("allows auto-reply mode when the account only has full-auto auth", async () => {
+    const baseService = createMockWorkbenchService();
+    const updateSeatAgentMode = vi.fn().mockResolvedValue({
+      fullAutoSwitch: true,
+      seatId: "drc",
+      semiAutoSwitch: true,
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      updateSeatAgentMode,
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              seatAIHostingAuth: true,
+              semiAutoAuth: false,
+            }
+          : account,
+      ),
+    }));
+
+    await useWorkbenchStore.getState().changeActiveSeatAgentMode("autoReply");
+
+    expect(updateSeatAgentMode).toHaveBeenCalledWith("drc", {
+      mode: "autoReply",
+    });
+    expect(useWorkbenchStore.getState().accounts.find((account) => account.id === "drc")).toMatchObject({
+      fullAutoSwitch: true,
+      seatAIAssistantEnabled: false,
+      seatAIHostingEnabled: true,
+      semiAutoSwitch: true,
+    });
+  });
+
+  it("does not change active account agent mode when the account lacks mode auth", async () => {
+    const baseService = createMockWorkbenchService();
+    const updateSeatAgentMode = vi.fn();
+
+    setWorkbenchService({
+      ...baseService,
+      updateSeatAgentMode,
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              seatAIHostingAuth: false,
+              semiAutoAuth: false,
+            }
+          : account,
+      ),
+    }));
+
+    await useWorkbenchStore.getState().changeActiveSeatAgentMode("autoReply");
+    await useWorkbenchStore.getState().changeActiveSeatAgentMode("assistant");
+
+    expect(updateSeatAgentMode).not.toHaveBeenCalled();
+  });
+
+  it("allows turning off active account agent mode without agent mode auth", async () => {
+    const baseService = createMockWorkbenchService();
+    const updateSeatAgentMode = vi.fn().mockResolvedValue({
+      fullAutoSwitch: false,
+      seatId: "drc",
+      semiAutoSwitch: false,
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      updateSeatAgentMode,
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              seatAIHostingAuth: false,
+              semiAutoAuth: false,
+            }
+          : account,
+      ),
+    }));
+
+    await useWorkbenchStore.getState().changeActiveSeatAgentMode("off");
+
+    expect(updateSeatAgentMode).toHaveBeenCalledWith("drc", {
+      mode: "off",
+    });
+  });
+
+  it("reports active account agent mode switch failures", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async updateSeatAgentMode() {
+        throw new Error("托管模式更新失败");
+      },
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              seatAIHostingAuth: true,
+              semiAutoAuth: true,
+            }
+          : account,
+      ),
+    }));
+
+    await useWorkbenchStore.getState().changeActiveSeatAgentMode("autoReply");
+
+    expect(useWorkbenchStore.getState().seatAgentModeActionPending).toBe(false);
+    expect(useWorkbenchStore.getState().fullAutoActionError).toBe("托管模式更新失败");
+  });
+
+  it("ignores duplicate active account agent mode switch changes while pending", async () => {
+    const baseService = createMockWorkbenchService();
+    const seatAgentModeChange = createDeferred<Awaited<ReturnType<typeof baseService.updateSeatAgentMode>>>();
+    const updateSeatAgentMode = vi.fn(() => seatAgentModeChange.promise);
+
+    setWorkbenchService({
+      ...baseService,
+      updateSeatAgentMode,
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              seatAIHostingAuth: true,
+              semiAutoAuth: true,
+            }
+          : account,
+      ),
+    }));
+
+    const firstRequest = useWorkbenchStore
+      .getState()
+      .changeActiveSeatAgentMode("autoReply");
+    await waitForStoreAssertion(() => {
+      expect(useWorkbenchStore.getState().seatAgentModeActionPending).toBe(true);
+    });
+    const secondRequest = useWorkbenchStore
+      .getState()
+      .changeActiveSeatAgentMode("assistant");
+
+    expect(updateSeatAgentMode).toHaveBeenCalledTimes(1);
+    seatAgentModeChange.resolve({
+      fullAutoSwitch: false,
+      seatId: "drc",
+      semiAutoSwitch: true,
+    });
+    await Promise.all([firstRequest, secondRequest]);
+    expect(useWorkbenchStore.getState().seatAgentModeActionPending).toBe(false);
+  });
+
+  it("ignores duplicate full-auto changes while a request is pending", async () => {
+    const baseService = createMockWorkbenchService();
+    const fullAutoChange = createDeferred<Awaited<ReturnType<typeof baseService.changeConversationFullAuto>>>();
+    const changeConversationFullAuto = vi.fn(() => fullAutoChange.promise);
+
+    setWorkbenchService({
+      ...baseService,
+      changeConversationFullAuto,
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              seatAIHostingAuth: true,
+              seatAIHostingEnabled: true,
+            }
+          : account,
+      ),
+    }));
+
+    const firstRequest = useWorkbenchStore
+      .getState()
+      .changeActiveConversationFullAuto(true);
+    await waitForStoreAssertion(() => {
+      expect(useWorkbenchStore.getState().fullAutoActionPending).toBe(true);
+    });
+    const secondRequest = useWorkbenchStore
+      .getState()
+      .changeActiveConversationFullAuto(true);
+
+    expect(changeConversationFullAuto).toHaveBeenCalledTimes(1);
+    fullAutoChange.resolve({
+      conversationAIHostingSwitch: true,
+      conversationId: "conv-001",
+      seatId: "drc",
+    });
+    await Promise.all([firstRequest, secondRequest]);
+    expect(useWorkbenchStore.getState().fullAutoActionPending).toBe(false);
+  });
+
+  it("keeps full-auto action errors separate from read receipt errors", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async changeConversationFullAuto() {
+        throw new Error("取消托管失败");
+      },
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              seatAIHostingAuth: true,
+              seatAIHostingEnabled: true,
+            }
+          : account,
+      ),
+      readReceiptError: "标记已读失败",
+    }));
+
+    await useWorkbenchStore.getState().changeActiveConversationFullAuto(false);
+
+    expect(useWorkbenchStore.getState().readReceiptError).toBe("标记已读失败");
+    expect(useWorkbenchStore.getState().fullAutoActionError).toBe("取消托管失败");
   });
 
   it("bootstraps the first account, conversation, and read state", async () => {
@@ -444,6 +996,31 @@ describe("useWorkbenchStore", () => {
       bootstrapStatus: "ready",
     });
     expect(useWorkbenchStore.getState().accounts.find((account) => account.id === "ndt")?.unreadCount).toBe(1);
+  });
+
+  it("keeps seat unread from seat summaries instead of deriving from loaded conversations", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async getSeats() {
+        return (await baseService.getSeats()).map((seat) => ({
+          ...seat,
+          unreadCount: seat.seatId === "drc"
+            ? 99
+            : seat.seatId === "ndt"
+              ? 42
+              : seat.unreadCount,
+        }));
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().refreshSeatSummaries();
+
+    const state = useWorkbenchStore.getState();
+    expect(state.accounts.find((account) => account.id === "drc")?.unreadCount).toBe(97);
+    expect(state.accounts.find((account) => account.id === "ndt")?.unreadCount).toBe(42);
   });
 
   it("requests 50 messages for initial and switched conversation pages", async () => {
@@ -998,6 +1575,354 @@ describe("useWorkbenchStore", () => {
     });
   });
 
+  it("stops polling expired semantic-wait smart replies and keeps the skipped state", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          smartReplies: [
+            {
+              assistantName: "智能助手",
+              content: "",
+              createdAt: Date.now() - 21_000,
+              generateStatus: 5,
+              messageId: "9",
+              status: "processing",
+            },
+          ],
+        };
+      },
+      async pollSmartReplies(request) {
+        return {
+          suggestions: [
+            {
+              assistantName: "智能助手",
+              content: "",
+              createdAt: Date.now() - 21_000,
+              generateStatus: 5,
+              messageId: String(request.msgIds[0]),
+              status: "processing",
+            },
+          ],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    await waitForStoreAssertion(() => {
+      expect(
+        useWorkbenchStore.getState().smartReplyPendingMessageKeysByConversationId[
+          "conv-001"
+        ],
+      ).not.toHaveProperty("9");
+    });
+    expect(
+      useWorkbenchStore.getState().smartReplyByMessageIdByConversationId["conv-001"]?.[
+        "9"
+      ],
+    ).toMatchObject({
+      createdAt: expect.any(Number),
+      generateStatus: 5,
+    });
+  });
+
+  it("ignores sparse message slots when pruning semantic-wait pending keys", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedSmartReplyRequests: WorkbenchSmartReplyPollRequest[] = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async pollSmartReplies(request) {
+        observedSmartReplyRequests.push(request);
+
+        return { suggestions: [] };
+      },
+    });
+
+    useWorkbenchStore.setState((state) => ({
+      activeAccountId: "drc",
+      activeConversationId: "conv-001",
+      accounts: [
+        {
+          avatarUrl: "",
+          description: "",
+          id: "drc",
+          loginStatus: "online",
+          metrics: {
+            activeCustomers: 0,
+            agents: 0,
+            stores: 0,
+            totalCustomers: 0,
+          },
+          name: "席位",
+          operator: "客服",
+          phone: "",
+          seatAIAssistantEnabled: true,
+          takenOverEmployeeId: "sub-user-001",
+          tone: "",
+        },
+      ],
+      hasChatSendPermission: true,
+      me: {
+        avatarUrl: "",
+        displayName: "林洒",
+        id: "sub-user-001",
+        name: "林洒",
+      },
+      conversationListsByScope: {
+        drc: [
+          {
+            accountId: "drc",
+            bizStatus: 1,
+            conversationAIHostingSwitch: false,
+            customerAvatarUrl: "",
+            customerBindType: 1,
+            customerId: "cust-001",
+            customerName: "客户甲",
+            id: "conv-001",
+            mode: "single",
+            preview: "",
+            priority: "medium",
+            quietFor: "",
+            unread: 0,
+            updatedAt: "刚刚",
+          },
+        ],
+      },
+      messagesByConversationId: {
+        "conv-001": [
+          {
+            author: "客户甲",
+            content: { text: "继续补充", type: "text" },
+            conversationId: "conv-001",
+            msgid: "msg-latest",
+            rawMsgtype: "text",
+            role: "customer",
+            sender: { id: "cust-001", name: "客户甲" },
+            sentAt: "2026-07-02T12:00:00+08:00",
+            seq: 10,
+            status: "sent",
+            uiMessageKey: "10",
+          } satisfies ChatMessage,
+          undefined,
+        ] as unknown as Message[],
+      },
+      smartReplyByMessageIdByConversationId: {
+        "conv-001": {
+          "10": {
+            assistantName: "智能助手",
+            content: "",
+            createdAt: Date.now() - 5_000,
+            generateStatus: 5,
+            status: "processing",
+          },
+          "9": {
+            assistantName: "智能助手",
+            content: "",
+            createdAt: Date.now() - 5_000,
+            generateStatus: 5,
+            status: "processing",
+          },
+        },
+      },
+      smartReplyPendingMessageKeysByConversationId: {
+        "conv-001": {
+          "9": true,
+        },
+      },
+    }));
+    const latestMessage =
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"]?.[0];
+
+    await expect(
+      latestMessage?.role === "system"
+        ? Promise.resolve()
+        : useWorkbenchStore.getState().requestSmartReplyGeneralAnswer(latestMessage!),
+    ).resolves.toBeUndefined();
+
+    expect(
+      useWorkbenchStore.getState().smartReplyPendingMessageKeysByConversationId[
+        "conv-001"
+      ],
+    ).not.toHaveProperty("9");
+
+    expect(observedSmartReplyRequests).toEqual([
+      {
+        conversationId: "conv-001",
+        msgIds: [10],
+      },
+    ]);
+  });
+
+  it("clears semantic-wait pending keys when they expire before the next poll request", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-02T12:00:00+08:00"));
+    const baseService = createMockWorkbenchService();
+    const observedSmartReplyRequests: WorkbenchSmartReplyPollRequest[] = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          smartReplies: [
+            {
+              assistantName: "智能助手",
+              content: "",
+              createdAt: Date.now() - 19_000,
+              generateStatus: 5,
+              messageId: "9",
+              status: "processing",
+            },
+          ],
+        };
+      },
+      async pollSmartReplies(request) {
+        observedSmartReplyRequests.push(request);
+
+        return {
+          suggestions: [
+            {
+              assistantName: "智能助手",
+              content: "",
+              createdAt: Date.now() - 19_000,
+              generateStatus: 5,
+              messageId: String(request.msgIds[0]),
+              status: "processing",
+            },
+          ],
+        };
+      },
+    });
+
+    try {
+      await useWorkbenchStore.getState().initializeWorkbench();
+      await Promise.resolve();
+
+      expect(observedSmartReplyRequests).toEqual([
+        {
+          conversationId: "conv-001",
+          msgIds: [9],
+        },
+      ]);
+      expect(
+        useWorkbenchStore.getState().smartReplyPendingMessageKeysByConversationId[
+          "conv-001"
+        ],
+      ).toHaveProperty("9");
+
+      await vi.advanceTimersByTimeAsync(2_000);
+
+      expect(observedSmartReplyRequests).toHaveLength(1);
+      expect(
+        useWorkbenchStore.getState().smartReplyPendingMessageKeysByConversationId[
+          "conv-001"
+        ],
+      ).not.toHaveProperty("9");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops polling semantic-wait smart replies that are no longer the latest customer message", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedAutoRequests: Array<{ conversationId: string; msgId: number }> = [];
+    const observedSmartReplyRequests: WorkbenchSmartReplyPollRequest[] = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          messages: [
+            createSmartReplyTextMessageDto({
+              id: "msg-incomplete",
+              seq: 9,
+              text: "我想问一下",
+            }),
+            createSmartReplyTextMessageDto({
+              id: "msg-follow-up",
+              seq: 10,
+              text: "还有价格是多少",
+            }),
+          ],
+          smartReplies: [
+            {
+              assistantName: "智能助手",
+              content: "",
+              createdAt: Date.now() - 5_000,
+              generateStatus: 5,
+              messageId: "9",
+              status: "processing",
+            },
+          ],
+        };
+      },
+      async requestSmartReplyAutoGeneralAnswer(request) {
+        observedAutoRequests.push(request);
+
+        return { id: "auto-10" };
+      },
+      async pollSmartReplies(request) {
+        observedSmartReplyRequests.push(request);
+
+        return {
+          suggestions: [
+            {
+              assistantName: "智能助手",
+              content: "",
+              createdAt: Date.now() - 5_000,
+              generateStatus: 5,
+              messageId: String(request.msgIds[0]),
+              status: "processing",
+            },
+          ],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    await waitForStoreAssertion(() => {
+      expect(observedAutoRequests).toEqual([
+        {
+          conversationId: "conv-001",
+          msgId: 10,
+        },
+      ]);
+      expect(
+        useWorkbenchStore.getState().smartReplyPendingMessageKeysByConversationId[
+          "conv-001"
+        ],
+      ).not.toHaveProperty("9");
+    });
+    expect(
+      observedSmartReplyRequests.some((request) => request.msgIds.includes(9)),
+    ).toBe(false);
+  });
+
   it("automatically creates a smart reply task for the latest customer message without a recommendation", async () => {
     const baseService = createMockWorkbenchService();
     const observedAutoRequests: Array<{ conversationId: string; msgId: number }> = [];
@@ -1117,13 +2042,27 @@ describe("useWorkbenchStore", () => {
     ).toEqual({});
   });
 
-  it("does not auto-generate or poll smart replies when the latest page disables the feature", async () => {
+  it("does not auto-generate or poll smart replies when seat AI assistant is disabled", async () => {
     const baseService = createMockWorkbenchService();
     const observedAutoRequests: Array<{ conversationId: string; msgId: number }> = [];
     const observedSmartReplyRequests: WorkbenchSmartReplyPollRequest[] = [];
 
     setWorkbenchService({
       ...baseService,
+      async getSeats() {
+        const seats = await baseService.getSeats();
+
+        return seats.map((seat) =>
+          seat.seatId === "drc"
+            ? {
+                ...seat,
+                seatAIAssistantEnabled: false,
+                semiAutoAuth: true,
+                semiAutoSwitch: false,
+              }
+            : seat,
+        );
+      },
       async getMessages(conversationId, options) {
         const page = await baseService.getMessages(conversationId, options);
 
@@ -1133,13 +2072,12 @@ describe("useWorkbenchStore", () => {
 
         return {
           ...page,
-          smartReplyEnabled: false,
           smartReplies: [
             {
               assistantName: "智能助手",
-              content: "",
+              content: "不应展示的推荐",
               messageId: "9",
-              status: "processing",
+              pollComplete: true,
             },
           ],
         };
@@ -1166,6 +2104,678 @@ describe("useWorkbenchStore", () => {
     expect(
       useWorkbenchStore.getState().smartReplyByMessageIdByConversationId["conv-001"],
     ).toEqual({});
+  });
+
+  it("does not keep page smart replies before the active conversation enters the list", async () => {
+    const customerMessageDto = createSmartReplyTextMessageDto({
+      id: "msg-009",
+      seq: 9,
+      text: "需要推荐",
+    });
+
+    useWorkbenchStore.setState((state) => ({
+      accounts: [
+        {
+          ...state.accounts[0],
+          avatarUrl: "",
+          description: "",
+          id: "drc",
+          loginStatus: "online",
+          metrics: {
+            activeCustomers: 0,
+            agents: 0,
+            stores: 0,
+            totalCustomers: 0,
+          },
+          name: "席位",
+          operator: "客服",
+          phone: "",
+          seatAIAssistantEnabled: true,
+          takenOverEmployeeId: state.me?.id,
+          tone: "",
+        },
+      ],
+      activeAccountId: "drc",
+      activeConversationId: "",
+      conversationListsByScope: {},
+    }));
+
+    const baseService = createMockWorkbenchService();
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        return {
+          ...page,
+          messages: [customerMessageDto],
+          smartReplies: [
+            {
+              assistantName: "智能助手",
+              content: "竞态下不应保留的推荐",
+              messageId: "9",
+              pollComplete: true,
+            },
+          ],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().setActiveConversation("conv-001");
+
+    expect(
+      useWorkbenchStore.getState().smartReplyByMessageIdByConversationId["conv-001"],
+    ).toEqual({});
+  });
+
+  it("does not display or auto-generate smart replies for active full-auto conversations", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedAutoRequests: Array<{ conversationId: string; msgId: number }> = [];
+    const observedSmartReplyRequests: WorkbenchSmartReplyPollRequest[] = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async getSeats() {
+        const seats = await baseService.getSeats();
+
+        return seats.map((seat) =>
+          seat.seatId === "drc"
+              ? {
+                  ...seat,
+                  seatAIHostingAuth: true,
+                  seatAIHostingEnabled: true,
+                  fullAutoSwitch: true,
+                }
+              : seat,
+        );
+      },
+      async getConversations(seatId, options) {
+        const response = await baseService.getConversations(seatId, options);
+
+        return {
+          ...response,
+          items: response.items.map((conversation) =>
+            conversation.conversationId === "conv-001"
+              ? {
+                  ...conversation,
+                  conversationAIHostingSwitch: true,
+                }
+              : conversation,
+          ),
+        };
+      },
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          smartReplies: [
+            {
+              assistantName: "智能助手",
+              content: "推荐回复",
+              messageId: "9",
+              pollComplete: true,
+            },
+          ],
+        };
+      },
+      async requestSmartReplyAutoGeneralAnswer(request) {
+        observedAutoRequests.push(request);
+
+        return { id: "88" };
+      },
+      async pollSmartReplies(request) {
+        observedSmartReplyRequests.push(request);
+
+        return { suggestions: [] };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    expect(
+      useWorkbenchStore.getState().smartReplyByMessageIdByConversationId["conv-001"],
+    ).toEqual({});
+    expect(
+      useWorkbenchStore.getState().smartReplyPendingMessageKeysByConversationId["conv-001"],
+    ).toEqual({});
+    expect(observedAutoRequests).toEqual([]);
+    expect(observedSmartReplyRequests).toEqual([]);
+  });
+
+  it("does not auto-generate smart replies after disabling full-auto without a new customer message", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedAutoRequests: Array<{ conversationId: string; msgId: number }> = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async getSeats() {
+        const seats = await baseService.getSeats();
+
+        return seats.map((seat) =>
+          seat.seatId === "drc"
+            ? {
+                ...seat,
+                fullAutoSwitch: true,
+                seatAIHostingAuth: true,
+                seatAIHostingEnabled: true,
+              }
+            : seat,
+        );
+      },
+      async getConversations(seatId, options) {
+        const response = await baseService.getConversations(seatId, options);
+
+        return {
+          ...response,
+          items: response.items.map((conversation) =>
+            conversation.conversationId === "conv-001"
+              ? {
+                  ...conversation,
+                  conversationAIHostingSwitch: true,
+                }
+              : conversation,
+          ),
+        };
+      },
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          messages: [
+            createSmartReplyTextMessageDto({
+              id: "msg-customer-9",
+              seq: 9,
+              text: "已有客户问题",
+            }),
+          ],
+          smartReplies: [
+            {
+              assistantName: "智能助手",
+              content: "已有推荐回复",
+              messageId: "9",
+              pollComplete: true,
+            },
+          ],
+        };
+      },
+      async changeConversationFullAuto(conversationId, request) {
+        return {
+          conversationAIHostingSwitch: request.enabled,
+          conversationId,
+          seatId: "drc",
+        };
+      },
+      async poll(request) {
+        const conversation = (
+          await baseService.getConversations("drc", {
+            mode: "single",
+          })
+        ).items.find((item) => item.conversationId === "conv-001")!;
+
+        return {
+          activeConversationMessages: [],
+          conversationChanges: [
+            {
+              ...conversation,
+              conversationAIHostingSwitch: false,
+              type: "upsert",
+            },
+          ],
+          nextVersion: request.sinceVersion + 1,
+          seatChanges: [],
+        };
+      },
+      async requestSmartReplyAutoGeneralAnswer(request) {
+        observedAutoRequests.push(request);
+
+        return { id: "88" };
+      },
+      async pollSmartReplies() {
+        return { suggestions: [] };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    expect(observedAutoRequests).toEqual([]);
+
+    await useWorkbenchStore.getState().changeActiveConversationFullAuto(false);
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(observedAutoRequests).toEqual([]);
+  });
+
+  it("polls full-auto answer status for a recent customer message and returns to active after terminal status", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-26T12:00:00+08:00"));
+    const baseService = createMockWorkbenchService();
+    const answerStatuses: WorkbenchFullAutoAnswerStatusResponse[] = [
+      { analyseMsgId: "20", genStatus: 2, recordId: "27", sendStatus: 0 },
+      { analyseMsgId: "20", genStatus: 2, recordId: "27", sendStatus: 1 },
+    ];
+    const observedStatusRequests: string[] = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async getFullAutoAnswerStatus(conversationId) {
+        observedStatusRequests.push(conversationId);
+
+        return (
+          answerStatuses.shift() ?? {
+            analyseMsgId: "20",
+            genStatus: 2,
+            recordId: "27",
+            sendStatus: 1,
+          }
+        );
+      },
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          messages: [
+            ...page.messages,
+            createSmartReplyTextMessageDto({
+              id: "full-auto-customer",
+              seq: 20,
+              text: "请帮我看下",
+              createdAt: Date.now(),
+            }),
+          ],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              seatAIHostingAuth: true,
+              seatAIHostingEnabled: true,
+            }
+          : account,
+      ),
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-001"
+            ? {
+                ...conversation,
+                conversationAIHostingSwitch: true,
+              }
+            : conversation,
+        ),
+      },
+    }));
+
+    await useWorkbenchStore.getState().syncFullAutoAgentStatus();
+
+    expect(
+      useWorkbenchStore.getState().fullAutoStatusByConversationId["conv-001"]?.status,
+    ).toBe("sending");
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(
+      useWorkbenchStore.getState().fullAutoStatusByConversationId["conv-001"]?.status,
+    ).toBe("sent");
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(
+      useWorkbenchStore.getState().fullAutoStatusByConversationId["conv-001"]?.status,
+    ).toBeUndefined();
+    expect(observedStatusRequests).toEqual(["conv-001", "conv-001"]);
+
+    vi.useRealTimers();
+  });
+
+  it("maps full-auto semantic-wait status to waiting without ending the poll", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-02T12:00:00+08:00"));
+    const baseService = createMockWorkbenchService();
+    const observedStatusRequests: string[] = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async getFullAutoAnswerStatus(conversationId) {
+        observedStatusRequests.push(conversationId);
+
+        return {
+          analyseMsgId: "20",
+          createdAt: Date.now() - 1_000,
+          genStatus: 5,
+          recordId: "27",
+          sendStatus: 0,
+        };
+      },
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          messages: [
+            ...page.messages,
+            createSmartReplyTextMessageDto({
+              id: "full-auto-customer",
+              seq: 20,
+              text: "我可能还没说完",
+              createdAt: Date.now(),
+            }),
+          ],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              seatAIHostingAuth: true,
+              seatAIHostingEnabled: true,
+              fullAutoSwitch: true,
+            }
+          : account,
+      ),
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-001"
+            ? {
+                ...conversation,
+                conversationAIHostingSwitch: true,
+              }
+            : conversation,
+        ),
+      },
+    }));
+
+    await useWorkbenchStore.getState().syncFullAutoAgentStatus();
+
+    expect(
+      useWorkbenchStore.getState().fullAutoStatusByConversationId["conv-001"]?.status,
+    ).toBe("waiting");
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(observedStatusRequests).toEqual(["conv-001", "conv-001"]);
+
+    vi.useRealTimers();
+  });
+
+  it("restores full-auto status to active when semantic wait exceeds twenty seconds", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-02T12:00:00+08:00"));
+    const baseService = createMockWorkbenchService();
+    const observedStatusRequests: string[] = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async getFullAutoAnswerStatus(conversationId) {
+        observedStatusRequests.push(conversationId);
+
+        return {
+          analyseMsgId: "20",
+          createdAt: Date.now() - 21_000,
+          genStatus: 5,
+          recordId: "27",
+          sendStatus: 0,
+        };
+      },
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          messages: [
+            ...page.messages,
+            createSmartReplyTextMessageDto({
+              id: "full-auto-customer",
+              seq: 20,
+              text: "我可能还没说完",
+              createdAt: Date.now(),
+            }),
+          ],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              seatAIHostingAuth: true,
+              seatAIHostingEnabled: true,
+              fullAutoSwitch: true,
+            }
+          : account,
+      ),
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-001"
+            ? {
+                ...conversation,
+                conversationAIHostingSwitch: true,
+              }
+            : conversation,
+        ),
+      },
+    }));
+
+    await useWorkbenchStore.getState().syncFullAutoAgentStatus();
+
+    expect(
+      useWorkbenchStore.getState().fullAutoStatusByConversationId["conv-001"]?.status,
+    ).toBe("active");
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(observedStatusRequests).toEqual(["conv-001"]);
+
+    vi.useRealTimers();
+  });
+
+  it("keeps full-auto thinking when the latest answer record belongs to an older customer message", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-26T12:00:00+08:00"));
+    const baseService = createMockWorkbenchService();
+    const observedStatusRequests: string[] = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async getFullAutoAnswerStatus(conversationId) {
+        observedStatusRequests.push(conversationId);
+
+        return {
+          analyseMsgId: "19",
+          genStatus: 2,
+          recordId: "27",
+          sendStatus: 1,
+        };
+      },
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          messages: [
+            ...page.messages,
+            createSmartReplyTextMessageDto({
+              id: "full-auto-customer",
+              seq: 20,
+              text: "请帮我看下",
+              createdAt: Date.now(),
+            }),
+          ],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              seatAIHostingAuth: true,
+              seatAIHostingEnabled: true,
+              fullAutoSwitch: true,
+            }
+          : account,
+      ),
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-001"
+            ? {
+                ...conversation,
+                conversationAIHostingSwitch: true,
+              }
+            : conversation,
+        ),
+      },
+    }));
+
+    await useWorkbenchStore.getState().syncFullAutoAgentStatus();
+
+    expect(
+      useWorkbenchStore.getState().fullAutoStatusByConversationId["conv-001"]?.status,
+    ).toBe("thinking");
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(
+      useWorkbenchStore.getState().fullAutoStatusByConversationId["conv-001"]?.status,
+    ).toBe("thinking");
+    expect(observedStatusRequests).toEqual(["conv-001", "conv-001"]);
+
+    vi.useRealTimers();
+  });
+
+  it("restarts full-auto status polling for a new customer message with the same timestamp", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-26T12:00:00+08:00"));
+    const baseService = createMockWorkbenchService();
+    let latestCustomerSeq = 20;
+    const observedStatusRequests: string[] = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async getFullAutoAnswerStatus(conversationId) {
+        observedStatusRequests.push(conversationId);
+
+        return {
+          analyseMsgId: String(latestCustomerSeq),
+          genStatus: 2,
+          recordId: `record-${latestCustomerSeq}`,
+          sendStatus: 1,
+        };
+      },
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          messages: [
+            ...page.messages,
+            createSmartReplyTextMessageDto({
+              id: "full-auto-customer",
+              seq: 20,
+              text: "第一条",
+              createdAt: Date.now(),
+            }),
+          ],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              seatAIHostingAuth: true,
+              seatAIHostingEnabled: true,
+              fullAutoSwitch: true,
+            }
+          : account,
+      ),
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-001"
+            ? {
+                ...conversation,
+                conversationAIHostingSwitch: true,
+              }
+            : conversation,
+        ),
+      },
+    }));
+
+    await useWorkbenchStore.getState().syncFullAutoAgentStatus();
+    expect(
+      useWorkbenchStore.getState().fullAutoStatusByConversationId["conv-001"]?.status,
+    ).toBe("sent");
+
+    latestCustomerSeq = 21;
+    useWorkbenchStore.setState((state) => ({
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        "conv-001": [
+          ...(state.messagesByConversationId["conv-001"] ?? []),
+          adaptMessage(
+            createSmartReplyTextMessageDto({
+              id: "full-auto-customer-2",
+              seq: 21,
+              text: "第二条",
+              createdAt: Date.now(),
+            }),
+            state.customerProfilesById,
+            Object.fromEntries(state.accounts.map((account) => [account.id, account])),
+            state.me,
+          ),
+        ],
+      },
+    }));
+
+    await useWorkbenchStore.getState().syncFullAutoAgentStatus();
+
+    expect(observedStatusRequests).toEqual(["conv-001", "conv-001"]);
+    expect(
+      useWorkbenchStore.getState().fullAutoStatusByConversationId["conv-001"]?.status,
+    ).toBe("sent");
+
+    vi.useRealTimers();
   });
 
   it("auto-generates a smart reply task for a newly loaded customer message", async () => {
@@ -1637,6 +3247,68 @@ describe("useWorkbenchStore", () => {
       conversationId: "conv-001",
       msgIds: [8],
     });
+  });
+
+  it("keeps manual smart reply generation as pending before the trigger request resolves", async () => {
+    const baseService = createMockWorkbenchService();
+    const generalAnswer = createDeferred<{
+      suggestion: {
+        assistantName: string;
+        content: string;
+        messageId: string;
+        status: "processing";
+      } | null;
+    }>();
+
+    setWorkbenchService({
+      ...baseService,
+      async pollSmartReplies() {
+        return { suggestions: [] };
+      },
+      async requestSmartReplyGeneralAnswer() {
+        return generalAnswer.promise;
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    const message = useWorkbenchStore
+      .getState()
+      .messagesByConversationId["conv-001"].find(
+        (item): item is Message & { role: "customer" } =>
+          item.role === "customer" && item.seq === 8,
+      );
+
+    expect(message).toBeDefined();
+
+    const requestPromise =
+      useWorkbenchStore.getState().requestSmartReplyGeneralAnswer(message!, {
+        force: true,
+      });
+    await Promise.resolve();
+
+    expect(
+      useWorkbenchStore.getState().smartReplyPendingMessageKeysByConversationId[
+        "conv-001"
+      ],
+    ).toMatchObject({
+      "8": true,
+    });
+    expect(
+      useWorkbenchStore.getState().smartReplyByMessageIdByConversationId[
+        "conv-001"
+      ]?.["8"],
+    ).toBeUndefined();
+
+    generalAnswer.resolve({
+      suggestion: {
+        assistantName: "智能助手",
+        content: "",
+        messageId: "8",
+        status: "processing",
+      },
+    });
+    await requestPromise;
   });
 
   it("reveals an existing hidden smart reply without requesting generation", async () => {
@@ -2213,12 +3885,13 @@ describe("useWorkbenchStore", () => {
     const state = useWorkbenchStore.getState();
 
     expect(result.ok).toBe(true);
-    expect(sendSmartReplyAnswer).toHaveBeenCalledWith({
-      conversationId: "conv-001",
-      realAnswer: "发送第一条推荐",
-      realAttachIds: [],
-      recordId: "record-9",
-    });
+    expect(sendSmartReplyAnswer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: "conv-001",
+        optNos: expect.arrayContaining([expect.stringMatching(/^opt-\d+$/)]),
+        recordId: "record-9",
+      }),
+    );
     expect(state.smartReplyHiddenMessageKeysByConversationId["conv-001"]).toEqual({
       "9": true,
     });
@@ -2233,6 +3906,120 @@ describe("useWorkbenchStore", () => {
     expect(state.smartReplyPendingMessageKeysByConversationId["conv-001"]).toEqual({
       "8": true,
     });
+  });
+
+  it("treats smart reply adoption marker failures as non-blocking after message send succeeds", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendSmartReplyAnswer = vi.fn(async () => {
+      throw new Error("采纳记录接口失败");
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      sendSmartReplyAnswer,
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    const messages = useWorkbenchStore.getState().messagesByConversationId["conv-001"];
+    const firstMessage = messages.find((message) => message.seq === 9);
+
+    if (!isChatMessage(firstMessage)) {
+      throw new Error("Expected smart reply test message to be a chat message");
+    }
+
+    useWorkbenchStore.setState((state) => ({
+      smartReplyByMessageIdByConversationId: {
+        ...state.smartReplyByMessageIdByConversationId,
+        "conv-001": {
+          "9": {
+            assistantName: "智能助手",
+            content: "第一条推荐",
+            recordId: "record-9",
+            status: "ready",
+          },
+        },
+      },
+      smartReplyPendingMessageKeysByConversationId: {
+        ...state.smartReplyPendingMessageKeysByConversationId,
+        "conv-001": {
+          "9": true,
+        },
+      },
+    }));
+
+    const result = await useWorkbenchStore.getState().sendSmartReply(firstMessage, {
+      content: "发送第一条推荐",
+      recommendedAttachments: [],
+      selectedAttachmentIds: [],
+    });
+
+    const state = useWorkbenchStore.getState();
+
+    expect(result.ok).toBe(true);
+    expect(sendSmartReplyAnswer).toHaveBeenCalledTimes(1);
+    expect(state.smartReplyHiddenMessageKeysByConversationId["conv-001"]).toEqual({
+      "9": true,
+    });
+    expect(state.smartReplyByMessageIdByConversationId["conv-001"]?.["9"]).toMatchObject({
+      content: "发送第一条推荐",
+      pollComplete: true,
+      sent: true,
+    });
+    expect(
+      state.smartReplyByMessageIdByConversationId["conv-001"]?.["9"]?.generateStatus,
+    ).not.toBe(4);
+  });
+
+  it("ignores blank or missing optNos before marking a smart reply answer", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendSmartReplyAnswer = vi.fn(baseService.sendSmartReplyAnswer);
+
+    setWorkbenchService({
+      ...baseService,
+      sendSmartReplyAnswer,
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    const messages = useWorkbenchStore.getState().messagesByConversationId["conv-001"];
+    const firstMessage = messages.find((message) => message.seq === 9);
+
+    if (!isChatMessage(firstMessage)) {
+      throw new Error("Expected smart reply test message to be a chat message");
+    }
+
+    useWorkbenchStore.setState((state) => ({
+      sendAgentMessageSegments: vi.fn(async () => ({
+        didConsumeQuote: false,
+        ok: true as const,
+        optNos: [" ", undefined, " opt-keep-001 "] as unknown as string[],
+      })),
+      smartReplyByMessageIdByConversationId: {
+        ...state.smartReplyByMessageIdByConversationId,
+        "conv-001": {
+          "9": {
+            assistantName: "智能助手",
+            content: "第一条推荐",
+            recordId: "record-9",
+            status: "ready",
+          },
+        },
+      },
+    }));
+
+    const result = await useWorkbenchStore.getState().sendSmartReply(firstMessage, {
+      content: "发送第一条推荐",
+      recommendedAttachments: [],
+      selectedAttachmentIds: [],
+    });
+
+    expect(result.ok).toBe(true);
+    expect(sendSmartReplyAnswer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        optNos: ["opt-keep-001"],
+      }),
+    );
   });
 
   it("continues polling smart replies after a transient poll failure", async () => {
@@ -3189,6 +4976,139 @@ describe("useWorkbenchStore", () => {
     vi.useRealTimers();
   });
 
+  it("keeps seat unread summary when switching modes reloads a stale list", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-18T10:00:00+08:00"));
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async getSeats() {
+        const seats = await baseService.getSeats();
+
+        return seats.map((seat) =>
+          seat.seatId === "drc"
+            ? {
+                ...seat,
+                unreadCount: 99,
+              }
+            : seat,
+        );
+      },
+      async getConversations(accountId, options) {
+        const result = await baseService.getConversations(accountId, options);
+
+        if (accountId === "drc" && options?.mode === "group") {
+          return {
+            ...result,
+            items: result.items.map((conversation) => ({
+              ...conversation,
+              unreadCount: conversation.conversationId === "conv-004" ? 12 : 0,
+            })),
+          };
+        }
+
+        return result;
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().setActiveMode("group");
+    await useWorkbenchStore.getState().setActiveMode("single");
+    vi.setSystemTime(Date.now() + 5 * 60 * 1000 + 1);
+    await useWorkbenchStore.getState().setActiveMode("group");
+
+    const state = useWorkbenchStore.getState();
+
+    expect(state.accounts.find((account) => account.id === "drc")?.unreadCount).toBe(73);
+
+    vi.useRealTimers();
+  });
+
+  it("loads unread conversations from server and applies the returned seat unread summary", async () => {
+    const baseService = createMockWorkbenchService();
+    const getConversations = vi.fn(async (accountId, options) => {
+      const result = await baseService.getConversations(accountId, options);
+
+      if (accountId === "drc" && options?.mode === "single" && options.unreadOnly) {
+        return {
+          ...result,
+          hasMore: true,
+          items: [
+            {
+              conversationAIHostingSwitch: false,
+              conversationId: "server-unread-single",
+              customerAvatar: "",
+              customerId: "customer-server-unread",
+              customerName: "服务端补齐未读",
+              lastMessage: "还有未读",
+              lastMessageTime: 1_778_500_000_000,
+              mode: "single" as const,
+              priority: "medium" as const,
+              seatId: "drc",
+              unreadCount: 5,
+            },
+          ],
+          unreadSummary: {
+            group: 4,
+            single: 12,
+            total: 16,
+          },
+        };
+      }
+
+      return result;
+    });
+
+    setWorkbenchService({
+      ...baseService,
+      getConversations,
+      async getSeats() {
+        const seats = await baseService.getSeats();
+
+        return seats.map((seat) =>
+          seat.seatId === "drc"
+            ? {
+                ...seat,
+                groupUnreadCount: 2,
+                singleUnreadCount: 3,
+                unreadCount: 5,
+              }
+            : seat,
+        );
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().loadUnreadConversations("single");
+
+    const state = useWorkbenchStore.getState();
+    const activeAccount = state.accounts.find((account) => account.id === "drc");
+
+    expect(getConversations).toHaveBeenCalledWith(
+      "drc",
+      expect.objectContaining({
+        limit: 500,
+        mode: "single",
+        unreadOnly: true,
+      }),
+    );
+    expect(activeAccount).toMatchObject({
+      groupUnreadCount: 4,
+      singleUnreadCount: 12,
+      unreadCount: 16,
+    });
+    expect(state.conversationListsByScope.drc).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "server-unread-single",
+          unread: 5,
+        }),
+      ]),
+    );
+    expect(state.hasMoreUnreadByScope.drc?.single).toBe(true);
+  });
+
   it("clears group member cache when bootstrapping a fresh workbench snapshot", async () => {
     await useWorkbenchStore.getState().initializeWorkbench();
     await useWorkbenchStore.getState().setActiveMode("group");
@@ -3344,6 +5264,354 @@ describe("useWorkbenchStore", () => {
     expect(state.pendingMessages).toHaveLength(3);
     expect(state.conversationListsByScope[state.activeAccountId][0].preview).toBe(
       "第二段[强]",
+    );
+  });
+
+  it("sends member mention text as ordered Java placeholder tokens", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentMessageSegments(
+      [
+        {
+          text: "hello ",
+          type: "text",
+        },
+        {
+          mentionMemberIds: ["member-001"],
+          text: "@小林",
+          type: "text",
+        },
+        {
+          text: " world ",
+          type: "text",
+        },
+        {
+          mentionMemberIds: ["member-001"],
+          text: "@小林",
+          type: "text",
+        },
+        {
+          text: " ",
+          type: "text",
+        },
+        {
+          mentionMemberIds: ["member-002"],
+          text: "@小陈",
+          type: "text",
+        },
+        {
+          text: " 看一下",
+          type: "text",
+        },
+      ],
+      {
+        mention: {
+          location: "any",
+          memberIds: ["member-001", "member-001", "member-002"],
+        },
+      },
+    );
+
+    expect(sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mention: {
+          location: "any",
+          memberIds: ["member-001", "member-001", "member-002"],
+        },
+        atOriginText: "hello @小林 world @小林 @小陈 看一下",
+        segment: {
+          text: `hello ${JAVA_MENTION_PLACEHOLDER} world ${JAVA_MENTION_PLACEHOLDER} ${JAVA_MENTION_PLACEHOLDER} 看一下`,
+          type: "text",
+        },
+      }),
+    );
+    expect(
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1),
+    ).toMatchObject({
+      content: {
+        text: "hello @小林 world @小林 @小陈 看一下",
+        type: "text",
+      },
+    });
+  });
+
+  it("fails before replacing member mentions when mention payload is missing", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    const result = await useWorkbenchStore.getState().sendAgentMessageSegments([
+      {
+        text: "hello ",
+        type: "text",
+      },
+      {
+        mentionMemberIds: ["member-001"],
+        text: "@小林",
+        type: "text",
+      },
+    ]);
+
+    expect(result).toMatchObject({
+      errorCode: "MENTION_PAYLOAD_MISSING",
+      ok: false,
+      reason: "send",
+    });
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("sends per-segment member mention payloads when media splits composer text", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+    vi.mocked(resolveImageSegmentsForSend).mockResolvedValue([
+      {
+        text: `${JAVA_MENTION_PLACEHOLDER} 文字`,
+        type: "text",
+      },
+      {
+        alt: "截图",
+        fileId: "chat-images/conv-001/a.png",
+        type: "image",
+        url: "https://mock-bucket.cos.ap-guangzhou.myqcloud.com/chat-images/conv-001/a.png",
+      },
+      {
+        text: JAVA_MENTION_PLACEHOLDER,
+        type: "text",
+      },
+    ]);
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentMessageSegments(
+      [
+        {
+          mentionMemberIds: ["member-001"],
+          text: "@小林",
+          type: "text",
+        },
+        {
+          text: " 文字",
+          type: "text",
+        },
+        {
+          alt: "截图",
+          localUrl: "data:image/png;base64,aaa",
+          type: "image",
+        },
+        {
+          mentionMemberIds: ["member-002"],
+          text: "@小陈",
+          type: "text",
+        },
+      ],
+      {
+        mention: {
+          location: "any",
+          memberIds: ["member-001", "member-002"],
+        },
+      },
+    );
+
+    expect(sendMessage).toHaveBeenCalledTimes(3);
+    expect(sendMessage).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        mention: {
+          location: "any",
+          memberIds: ["member-001"],
+        },
+        atOriginText: "@小林 文字",
+        segment: {
+          text: `${JAVA_MENTION_PLACEHOLDER} 文字`,
+          type: "text",
+        },
+      }),
+    );
+    expect(sendMessage).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        mention: undefined,
+        segment: expect.objectContaining({
+          type: "image",
+        }),
+      }),
+    );
+    expect(sendMessage).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        mention: {
+          location: "any",
+          memberIds: ["member-002"],
+        },
+        atOriginText: "@小陈",
+        segment: {
+          text: JAVA_MENTION_PLACEHOLDER,
+          type: "text",
+        },
+      }),
+    );
+  });
+
+  it("keeps mention-all segment text intact and ignores member mentions in the same segment", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentMessageSegments(
+      [
+        {
+          mentionAll: true,
+          text: "@所有人",
+          type: "text",
+        },
+        {
+          text: " ",
+          type: "text",
+        },
+        {
+          mentionMemberIds: ["member-001"],
+          text: "@小林",
+          type: "text",
+        },
+        {
+          text: " 看一下",
+          type: "text",
+        },
+      ],
+      {
+        mention: {
+          all: true,
+          location: "start",
+          memberIds: ["member-001"],
+        },
+      },
+    );
+
+    expect(sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mention: {
+          all: true,
+          location: "start",
+          memberIds: [],
+        },
+        segment: {
+          text: "@所有人 @小林 看一下",
+          type: "text",
+        },
+      }),
+    );
+  });
+
+  it("handles mention-all and member mentions independently across media-split segments", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+    vi.mocked(resolveImageSegmentsForSend).mockResolvedValue([
+      {
+        text: "@所有人",
+        type: "text",
+      },
+      {
+        alt: "截图",
+        fileId: "chat-images/conv-001/a.png",
+        type: "image",
+        url: "https://mock-bucket.cos.ap-guangzhou.myqcloud.com/chat-images/conv-001/a.png",
+      },
+      {
+        text: JAVA_MENTION_PLACEHOLDER,
+        type: "text",
+      },
+    ]);
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentMessageSegments(
+      [
+        {
+          mentionAll: true,
+          text: "@所有人",
+          type: "text",
+        },
+        {
+          alt: "截图",
+          localUrl: "data:image/png;base64,aaa",
+          type: "image",
+        },
+        {
+          mentionMemberIds: ["member-001"],
+          text: "@小林",
+          type: "text",
+        },
+      ],
+      {
+        mention: {
+          all: true,
+          location: "start",
+          memberIds: ["member-001"],
+        },
+      },
+    );
+
+    expect(sendMessage).toHaveBeenCalledTimes(3);
+    expect(sendMessage).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        mention: {
+          all: true,
+          location: "start",
+          memberIds: [],
+        },
+        segment: {
+          text: "@所有人",
+          type: "text",
+        },
+      }),
+    );
+    expect(sendMessage).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        mention: undefined,
+        segment: expect.objectContaining({
+          type: "image",
+        }),
+      }),
+    );
+    expect(sendMessage).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        mention: {
+          location: "any",
+          memberIds: ["member-001"],
+        },
+        segment: {
+          text: JAVA_MENTION_PLACEHOLDER,
+          type: "text",
+        },
+      }),
     );
   });
 
@@ -3848,6 +6116,7 @@ describe("useWorkbenchStore", () => {
     expect(result).toEqual({
       didConsumeQuote: false,
       ok: true,
+      optNos: ["opt-1"],
     });
     expect(sendMessage).toHaveBeenCalledWith({
       conversationId: expect.any(String),
@@ -4234,12 +6503,17 @@ describe("useWorkbenchStore", () => {
     expect(latestMessage?.uiMessageKey).not.toBe(failedMessage?.uiMessageKey);
   });
 
-  it("passes the failed message id when retrying a failed text message", async () => {
+  it("calls the retry API with the failed message seq", async () => {
     const baseService = createMockWorkbenchService();
+    const retryMessage = vi.fn(async () => ({
+      optNo: "retry-opt-538",
+      status: "accepted" as const,
+    }));
     const sendMessage = vi.fn(baseService.sendMessage);
 
     setWorkbenchService({
       ...baseService,
+      retryMessage,
       sendMessage,
     });
 
@@ -4271,23 +6545,24 @@ describe("useWorkbenchStore", () => {
 
     await useWorkbenchStore.getState().retryFailedMessage(failedMessage!.uiMessageKey);
 
-    expect(sendMessage).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        failMsgId: "538",
-        segment: {
-          text: "这条消息会失败 [fail]",
-          type: "text",
-        },
-      }),
-    );
+    expect(retryMessage).toHaveBeenCalledWith({
+      conversationId: "conv-001",
+      messageSeq: 538,
+    });
+    expect(sendMessage).toHaveBeenCalledTimes(1);
   });
 
   it("retries a reconciled failed message when called with the previous optNo key", async () => {
     const baseService = createMockWorkbenchService();
+    const retryMessage = vi.fn(async () => ({
+      optNo: "retry-opt-538",
+      status: "accepted" as const,
+    }));
     const sendMessage = vi.fn(baseService.sendMessage);
 
     setWorkbenchService({
       ...baseService,
+      retryMessage,
       sendMessage,
     });
 
@@ -4330,15 +6605,11 @@ describe("useWorkbenchStore", () => {
 
     expect(messages).toHaveLength(beforeRetryCount);
     expect(messages.some((message) => message.uiMessageKey === "538")).toBe(false);
-    expect(sendMessage).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        failMsgId: "538",
-        segment: {
-          text: "已落库失败消息",
-          type: "text",
-        },
-      }),
-    );
+    expect(retryMessage).toHaveBeenCalledWith({
+      conversationId: "conv-001",
+      messageSeq: 538,
+    });
+    expect(sendMessage).not.toHaveBeenCalled();
     expect(messages.at(-1)).toMatchObject({
       content: {
         text: "已落库失败消息",
@@ -4349,12 +6620,71 @@ describe("useWorkbenchStore", () => {
     });
   });
 
-  it("omits failMsgId when retrying a failed message without seq", async () => {
+  it("removes the failed message by retry aliases when its ui key is invalid", async () => {
     const baseService = createMockWorkbenchService();
-    const sendMessage = vi.fn(baseService.sendMessage);
+    const retryMessage = vi.fn(async () => ({
+      optNo: "retry-opt-invalid-key",
+      status: "accepted" as const,
+    }));
 
     setWorkbenchService({
       ...baseService,
+      retryMessage,
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    useWorkbenchStore.setState((state) => ({
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        "conv-001": [
+          ...(state.messagesByConversationId["conv-001"] ?? []),
+          {
+            author: "客服一号",
+            content: {
+              text: "本地 key 异常的失败消息",
+              type: "text",
+            },
+            conversationId: "conv-001",
+            failReason: "模拟发送失败",
+            optNo: "opt-failed-invalid-key",
+            uiMessageKey: "invalid-message:failed-retry",
+            role: "agent",
+            sender: {
+              id: "agent-001",
+              name: "客服一号",
+            },
+            sentAt: "2026-05-20 10:00:00",
+            seq: 543,
+            status: "failed",
+          },
+        ],
+      },
+    }));
+
+    await useWorkbenchStore.getState().retryFailedMessage("opt-failed-invalid-key");
+
+    const messages = useWorkbenchStore.getState().messagesByConversationId["conv-001"];
+
+    expect(messages.some((message) => message.uiMessageKey === "invalid-message:failed-retry")).toBe(false);
+    expect(messages.at(-1)).toMatchObject({
+      content: {
+        text: "本地 key 异常的失败消息",
+        type: "text",
+      },
+      optNo: "retry-opt-invalid-key",
+      status: "accepted",
+    });
+  });
+
+  it("does not retry a failed message with an invalid seq", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+    const retryMessage = vi.fn(baseService.retryMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      retryMessage,
       sendMessage,
     });
 
@@ -4376,28 +6706,38 @@ describe("useWorkbenchStore", () => {
             ? {
                 ...message,
                 msgid: "remote-msgid-001",
-                seq: undefined,
+                seq: 0,
               }
             : message,
         ),
       },
     }));
 
-    await useWorkbenchStore.getState().retryFailedMessage(failedMessage!.uiMessageKey);
+    const result = await useWorkbenchStore
+      .getState()
+      .retryFailedMessage(failedMessage!.uiMessageKey);
 
-    expect(sendMessage).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        failMsgId: undefined,
-      }),
-    );
+    expect(result).toEqual({
+      errorCode: "MESSAGE_NOT_RETRYABLE",
+      errorMessage: "暂不支持重发该消息",
+      reason: "unavailable",
+      ok: false,
+    });
+    expect(retryMessage).not.toHaveBeenCalled();
+    expect(sendMessage).toHaveBeenCalledTimes(1);
   });
 
-  it("does not invent fileSize when retrying a failed file message", async () => {
+  it("retries a failed file message through the retry API without rebuilding a send segment", async () => {
     const baseService = createMockWorkbenchService();
     const sendMessage = vi.fn(baseService.sendMessage);
+    const retryMessage = vi.fn(async () => ({
+      optNo: "retry-file-opt-001",
+      status: "accepted" as const,
+    }));
 
     setWorkbenchService({
       ...baseService,
+      retryMessage,
       sendMessage,
     });
 
@@ -4435,31 +6775,20 @@ describe("useWorkbenchStore", () => {
 
     await useWorkbenchStore.getState().retryFailedMessage("failed-file-message");
 
-    expect(sendMessage).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        segment: expect.not.objectContaining({
-          fileSize: expect.any(Number),
-        }),
-      }),
-    );
+    expect(retryMessage).toHaveBeenCalledWith({
+      conversationId: "conv-001",
+      messageSeq: 539,
+    });
+    expect(sendMessage).not.toHaveBeenCalled();
   });
 
   it("keeps the failed message visible until retry send is accepted", async () => {
     const baseService = createMockWorkbenchService();
-    const sendGate = createDeferred<Awaited<ReturnType<typeof baseService.sendMessage>>>();
-    let sendCount = 0;
+    const retryGate = createDeferred<Awaited<ReturnType<typeof baseService.retryMessage>>>();
 
     setWorkbenchService({
       ...baseService,
-      async sendMessage(payload) {
-        sendCount += 1;
-
-        if (sendCount === 2) {
-          return sendGate.promise;
-        }
-
-        return baseService.sendMessage(payload);
-      },
+      retryMessage: vi.fn(() => retryGate.promise),
     });
 
     await useWorkbenchStore.getState().initializeWorkbench();
@@ -4477,7 +6806,7 @@ describe("useWorkbenchStore", () => {
         .messagesByConversationId["conv-001"].some((message) => message.uiMessageKey === failedMessage!.uiMessageKey),
     ).toBe(true);
 
-    sendGate.resolve({
+    retryGate.resolve({
       optNo: "retry-opt-001",
       status: "accepted",
     });
@@ -4491,6 +6820,214 @@ describe("useWorkbenchStore", () => {
       status: "accepted",
     });
     expect(messages.at(-1)?.msgid).toBeUndefined();
+  });
+
+  it("marks the active conversation as sending while retry is pending", async () => {
+    const baseService = createMockWorkbenchService();
+    const retryGate = createDeferred<Awaited<ReturnType<typeof baseService.retryMessage>>>();
+
+    setWorkbenchService({
+      ...baseService,
+      retryMessage: vi.fn(() => retryGate.promise),
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentTextMessage("这条消息会失败 [fail]");
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    const failedMessage =
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1);
+
+    const retryPromise = useWorkbenchStore
+      .getState()
+      .retryFailedMessage(failedMessage!.uiMessageKey);
+
+    expect(useWorkbenchStore.getState().sendStatusByConversationId["conv-001"]).toBe("sending");
+
+    retryGate.resolve({
+      optNo: "retry-opt-sending",
+      status: "accepted",
+    });
+    await retryPromise;
+
+    expect(useWorkbenchStore.getState().sendStatusByConversationId["conv-001"]).toBe("idle");
+  });
+
+  it("does not move the poll message seq cursor backwards after retry removes a failed message", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedPollRequests: Array<Parameters<typeof baseService.poll>[0]> = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        observedPollRequests.push(request);
+        return baseService.poll(request);
+      },
+      retryMessage: vi.fn(async () => ({
+        optNo: "retry-opt-cursor",
+        status: "accepted" as const,
+      })),
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentTextMessage("这条消息会失败 [fail]");
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    const failedMessage =
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1);
+
+    expect(failedMessage).toMatchObject({
+      seq: expect.any(Number),
+      status: "failed",
+    });
+
+    await useWorkbenchStore.getState().retryFailedMessage(failedMessage!.uiMessageKey);
+
+    observedPollRequests.length = 0;
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(observedPollRequests.at(-1)?.activeMessageSeq).toBeGreaterThanOrEqual(
+      failedMessage!.seq!,
+    );
+  });
+
+  it("does not move the poll message seq cursor backwards after an empty poll response", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedPollRequests: Array<Parameters<typeof baseService.poll>[0]> = [];
+    let useEmptyPollResponse = false;
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        observedPollRequests.push(request);
+        if (!useEmptyPollResponse) {
+          return baseService.poll(request);
+        }
+
+        return {
+          activeConversationMessages: [],
+          conversationChanges: [],
+          nextVersion: Date.now(),
+          seatChanges: [],
+        };
+      },
+      retryMessage: vi.fn(async () => ({
+        optNo: "retry-opt-empty-poll",
+        status: "accepted" as const,
+      })),
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentTextMessage("这条消息会失败 [fail]");
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    const failedMessage =
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1);
+
+    expect(failedMessage).toMatchObject({
+      seq: expect.any(Number),
+      status: "failed",
+    });
+
+    await useWorkbenchStore.getState().retryFailedMessage(failedMessage!.uiMessageKey);
+
+    observedPollRequests.length = 0;
+    useEmptyPollResponse = true;
+    await useWorkbenchStore.getState().pollWorkbench();
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(observedPollRequests).toHaveLength(2);
+    expect(observedPollRequests[0]?.activeMessageSeq).toBeGreaterThanOrEqual(
+      failedMessage!.seq!,
+    );
+    expect(observedPollRequests[1]?.activeMessageSeq).toBeGreaterThanOrEqual(
+      failedMessage!.seq!,
+    );
+  });
+
+  it("keeps the poll message seq cursor monotonic after retrying older failed messages", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedPollRequests: Array<Parameters<typeof baseService.poll>[0]> = [];
+    let retryIndex = 0;
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        observedPollRequests.push(request);
+        return {
+          activeConversationMessages: [],
+          conversationChanges: [],
+          nextVersion: Date.now(),
+          seatChanges: [],
+        };
+      },
+      retryMessage: vi.fn(async () => {
+        retryIndex += 1;
+
+        return {
+          optNo: `retry-opt-cursor-${retryIndex}`,
+          status: "accepted" as const,
+        };
+      }),
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    useWorkbenchStore.setState((state) => ({
+      activeMessageSeq: 101,
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        "conv-001": [
+          ...(state.messagesByConversationId["conv-001"] ?? []),
+          {
+            author: "客服一号",
+            content: {
+              text: "前一条失败消息",
+              type: "text",
+            },
+            conversationId: "conv-001",
+            failReason: "模拟发送失败",
+            optNo: "opt-failed-100",
+            uiMessageKey: "failed-100",
+            role: "agent",
+            sender: {
+              id: "agent-001",
+              name: "客服一号",
+            },
+            sentAt: "2026-05-20 10:00:00",
+            seq: 100,
+            status: "failed",
+          },
+          {
+            author: "客服一号",
+            content: {
+              text: "最后一条失败消息",
+              type: "text",
+            },
+            conversationId: "conv-001",
+            failReason: "模拟发送失败",
+            optNo: "opt-failed-101",
+            uiMessageKey: "failed-101",
+            role: "agent",
+            sender: {
+              id: "agent-001",
+              name: "客服一号",
+            },
+            sentAt: "2026-05-20 10:00:01",
+            seq: 101,
+            status: "failed",
+          },
+        ],
+      },
+    }));
+
+    await useWorkbenchStore.getState().retryFailedMessage("failed-101");
+    await useWorkbenchStore.getState().retryFailedMessage("failed-100");
+
+    observedPollRequests.length = 0;
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(observedPollRequests.at(-1)?.activeMessageSeq).toBe(101);
   });
 
   it("keeps pending messages when poll has no server receipt", async () => {
@@ -4539,19 +7076,12 @@ describe("useWorkbenchStore", () => {
 
   it("keeps the failed message when retry send is rejected", async () => {
     const baseService = createMockWorkbenchService();
-    let sendCount = 0;
 
     setWorkbenchService({
       ...baseService,
-      async sendMessage(payload) {
-        sendCount += 1;
-
-        if (sendCount === 2) {
-          throw new Error("重试接口失败");
-        }
-
-        return baseService.sendMessage(payload);
-      },
+      retryMessage: vi.fn(async () => {
+        throw new Error("重试接口失败");
+      }),
     });
 
     await useWorkbenchStore.getState().initializeWorkbench();
@@ -4581,9 +7111,11 @@ describe("useWorkbenchStore", () => {
   it("does not retry unsupported failed message types", async () => {
     const baseService = createMockWorkbenchService();
     const sendMessage = vi.fn(baseService.sendMessage);
+    const retryMessage = vi.fn(baseService.retryMessage);
 
     setWorkbenchService({
       ...baseService,
+      retryMessage,
       sendMessage,
     });
 
@@ -4610,6 +7142,7 @@ describe("useWorkbenchStore", () => {
               name: "客服一号",
             },
             sentAt: "2026-05-20 10:00:00",
+            seq: 540,
             status: "failed",
           },
         ],
@@ -4627,6 +7160,7 @@ describe("useWorkbenchStore", () => {
       ok: false,
     });
     expect(sendMessage).not.toHaveBeenCalled();
+    expect(retryMessage).not.toHaveBeenCalled();
     expect(
       useWorkbenchStore
         .getState()
@@ -4636,12 +7170,17 @@ describe("useWorkbenchStore", () => {
     ).toBe(true);
   });
 
-  it("does not crash when retrying a failed image message without imageUrl", async () => {
+  it("retries a failed image message without imageUrl through the retry API", async () => {
     const baseService = createMockWorkbenchService();
     const sendMessage = vi.fn(baseService.sendMessage);
+    const retryMessage = vi.fn(async () => ({
+      optNo: "retry-image-opt-001",
+      status: "accepted" as const,
+    }));
 
     setWorkbenchService({
       ...baseService,
+      retryMessage,
       sendMessage,
     });
 
@@ -4667,6 +7206,7 @@ describe("useWorkbenchStore", () => {
               name: "客服一号",
             },
             sentAt: "2026-05-20 10:00:00",
+            seq: 541,
             status: "failed",
           } as Message,
         ],
@@ -4677,21 +7217,28 @@ describe("useWorkbenchStore", () => {
       .getState()
       .retryFailedMessage("failed-image-without-url");
 
-    expect(result).toEqual({
-      errorCode: "UNSUPPORTED_RETRY_MESSAGE",
-      errorMessage: "暂不支持重发该消息",
-      reason: "unavailable",
-      ok: false,
+    expect(result).toMatchObject({
+      ok: true,
+      optNos: ["retry-image-opt-001"],
+    });
+    expect(retryMessage).toHaveBeenCalledWith({
+      conversationId: "conv-001",
+      messageSeq: 541,
     });
     expect(sendMessage).not.toHaveBeenCalled();
   });
 
-  it("does not retry failed file messages without a sendable url", async () => {
+  it("retries failed file messages without a sendable url through the retry API", async () => {
     const baseService = createMockWorkbenchService();
     const sendMessage = vi.fn(baseService.sendMessage);
+    const retryMessage = vi.fn(async () => ({
+      optNo: "retry-file-without-url-opt-001",
+      status: "accepted" as const,
+    }));
 
     setWorkbenchService({
       ...baseService,
+      retryMessage,
       sendMessage,
     });
 
@@ -4719,6 +7266,7 @@ describe("useWorkbenchStore", () => {
               name: "客服一号",
             },
             sentAt: "2026-05-20 10:00:00",
+            seq: 542,
             status: "failed",
           },
         ],
@@ -4729,11 +7277,13 @@ describe("useWorkbenchStore", () => {
       .getState()
       .retryFailedMessage("failed-file-without-url");
 
-    expect(result).toEqual({
-      errorCode: "UNSUPPORTED_RETRY_MESSAGE",
-      errorMessage: "暂不支持重发该消息",
-      reason: "unavailable",
-      ok: false,
+    expect(result).toMatchObject({
+      ok: true,
+      optNos: ["retry-file-without-url-opt-001"],
+    });
+    expect(retryMessage).toHaveBeenCalledWith({
+      conversationId: "conv-001",
+      messageSeq: 542,
     });
     expect(sendMessage).not.toHaveBeenCalled();
   });
@@ -6724,6 +9274,40 @@ describe("useWorkbenchStore", () => {
     });
   });
 
+  it("keeps seat unread summary after pin reloads conversations", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async getConversations(accountId, options) {
+        const result = await baseService.getConversations(accountId, options);
+
+        if (accountId === "drc" && options?.mode === "single") {
+          return {
+            ...result,
+            items: result.items.map((conversation) => ({
+              ...conversation,
+              unreadCount: conversation.conversationId === "conv-002" ? 18 : 0,
+            })),
+          };
+        }
+
+        return result;
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().pinConversation("conv-002");
+
+    const state = useWorkbenchStore.getState();
+
+    expect(state.accounts.find((account) => account.id === "drc")?.unreadCount).toBe(13);
+    expect(
+      state.conversationListsByScope.drc.find((conversation) => conversation.id === "conv-002")
+        ?.unread,
+    ).toBe(18);
+  });
+
   it("keeps pin reload results when the user switches accounts before reload finishes", async () => {
     const baseService = createMockWorkbenchService();
     const reloadRequested = createDeferred();
@@ -7010,7 +9594,7 @@ describe("useWorkbenchStore", () => {
       priority: "medium",
       thirdExternalUserId: "external-search-001",
       thirdUserId: "third-user-drc",
-      custodyMode: "semi",
+      conversationAIHostingSwitch: false,
     };
     const observedPayloads: unknown[] = [];
 
@@ -7068,7 +9652,7 @@ describe("useWorkbenchStore", () => {
         quietFor: "",
         unread: 0,
         updatedAt: "",
-        custodyMode: "semi",
+        conversationAIHostingSwitch: false,
       },
     });
 
@@ -7118,7 +9702,7 @@ describe("useWorkbenchStore", () => {
       thirdExternalUserId: "external-search-stale",
       thirdUserId: "third-user-drc",
       unreadCount: 0,
-      custodyMode: "semi",
+      conversationAIHostingSwitch: false,
     });
     await selectPromise;
 
@@ -7219,7 +9803,7 @@ describe("useWorkbenchStore", () => {
         quietFor: "",
         unread: 0,
         updatedAt: "",
-        custodyMode: "semi",
+        conversationAIHostingSwitch: false,
       },
     });
 
@@ -7251,7 +9835,7 @@ describe("useWorkbenchStore", () => {
       thirdGroupId: "group-search-001",
       thirdUserId: "third-user-drc",
       unreadCount: 0,
-      custodyMode: "semi",
+      conversationAIHostingSwitch: false,
     };
 
     setWorkbenchService({
@@ -7323,7 +9907,7 @@ describe("useWorkbenchStore", () => {
         quietFor: "",
         unread: 0,
         updatedAt: "",
-        custodyMode: "semi",
+        conversationAIHostingSwitch: false,
       },
     });
 

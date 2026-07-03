@@ -1,6 +1,4 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { Add01Icon } from "@hugeicons/core-free-icons";
-import { HugeiconsIcon } from "@hugeicons/react";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -20,39 +18,26 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  adaptKnowledgeDocOptions,
-  adaptKnowledgeSetOptions,
-  buildSmartReplyKnowledgeFaqAddRequest,
-} from "@/pages/chat/api/smart-reply-adapter";
-import {
-  addSmartReplyKnowledgeFaq,
-  listKnowledgeDocPage,
-  listKnowledgePage,
-} from "@/pages/chat/api/workbench-gateway";
 import { isRequestError } from "@/lib/request";
+import { createKbChunk } from "@/pages/chat/ai-hosting/api/kb-chunk-service";
+import { listKbDocs, listKbs } from "@/pages/chat/ai-hosting/api/kb-service";
 import {
   SmartReplyRecommendedAttachmentsSection,
   type SmartReplyRecommendedAttachment,
 } from "@/pages/chat/components/smart-reply-recommended-attachments";
 
+const FAQ_DIALOG_KB_LIST_PAGE_SIZE = 200;
+const FAQ_DIALOG_DOC_LIST_PAGE_SIZE = 100;
+
 export type SmartReplyFaqOption = {
+  disabled?: boolean;
   id: string;
   name: string;
-};
-
-export type SmartReplyAddToFaqPayload = {
-  knowledgeSetId: string;
-  faqId: string;
-  question: string;
-  similarQuestions: string[];
-  answer: string;
 };
 
 export type SmartReplyAddToFaqDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  conversationId?: string;
   initialQuestion?: string;
   initialAnswer?: string;
   recommendedAttachments?: SmartReplyRecommendedAttachment[];
@@ -64,7 +49,6 @@ export type SmartReplyAddToFaqDialogProps = {
 export function SmartReplyAddToFaqDialog({
   open,
   onOpenChange,
-  conversationId,
   initialQuestion = "",
   initialAnswer = "",
   recommendedAttachments = [],
@@ -75,13 +59,12 @@ export function SmartReplyAddToFaqDialog({
   const isMountedRef = useRef(false);
   const [knowledgeSets, setKnowledgeSets] = useState<SmartReplyFaqOption[]>([]);
   const [isKnowledgeSetsLoading, setIsKnowledgeSetsLoading] = useState(false);
-  const [knowledgeSetId, setKnowledgeSetId] = useState("");
+  const [kbId, setKbId] = useState("");
   const [faqOptions, setFaqOptions] = useState<SmartReplyFaqOption[]>([]);
   const [isFaqsLoading, setIsFaqsLoading] = useState(false);
-  const [faqId, setFaqId] = useState("");
+  const [docId, setDocId] = useState("");
   const [question, setQuestion] = useState(initialQuestion);
   const [answer, setAnswer] = useState(initialAnswer);
-  const [similarQuestions, setSimilarQuestions] = useState<string[]>([""]);
   const [selectedAttachmentIds, setSelectedAttachmentIds] = useState<string[]>(
     initialSelectedAttachmentIds,
   );
@@ -102,37 +85,32 @@ export function SmartReplyAddToFaqDialog({
 
     setQuestion(initialQuestion);
     setAnswer(initialAnswer);
-    setSimilarQuestions([""]);
     setSelectedAttachmentIds(initialSelectedAttachmentIds);
     setKnowledgeSets([]);
-    setKnowledgeSetId("");
+    setKbId("");
     setFaqOptions([]);
-    setFaqId("");
-
-    if (!conversationId) {
-      setKnowledgeSets([]);
-      setKnowledgeSetId("");
-      setIsKnowledgeSetsLoading(false);
-      return;
-    }
+    setDocId("");
 
     let cancelled = false;
     setIsKnowledgeSetsLoading(true);
 
-    void listKnowledgePage(conversationId)
+    void listKbs({ page: 1, pageSize: FAQ_DIALOG_KB_LIST_PAGE_SIZE })
       .then((response) => {
         if (cancelled) {
           return;
         }
 
-        const options = adaptKnowledgeSetOptions(response.list);
+        const options = response.kbs.map((item) => ({
+          id: item.kbId,
+          name: item.name,
+        }));
         setKnowledgeSets(options);
-        setKnowledgeSetId(options[0]?.id ?? "");
+        setKbId(options[0]?.id ?? "");
       })
       .catch(() => {
         if (!cancelled) {
           setKnowledgeSets([]);
-          setKnowledgeSetId("");
+          setKbId("");
         }
       })
       .finally(() => {
@@ -144,12 +122,12 @@ export function SmartReplyAddToFaqDialog({
     return () => {
       cancelled = true;
     };
-  }, [conversationId, initialAnswer, initialQuestion, initialSelectedAttachmentIds, open]);
+  }, [initialAnswer, initialQuestion, initialSelectedAttachmentIds, open]);
 
   useEffect(() => {
-    if (!open || !conversationId || !knowledgeSetId) {
+    if (!open || !kbId) {
       setFaqOptions([]);
-      setFaqId("");
+      setDocId("");
       setIsFaqsLoading(false);
       return;
     }
@@ -157,20 +135,28 @@ export function SmartReplyAddToFaqDialog({
     let cancelled = false;
     setIsFaqsLoading(true);
 
-    void listKnowledgeDocPage(conversationId, knowledgeSetId)
+    void listKbDocs(kbId, {
+      docType: "qa",
+      page: 1,
+      pageSize: FAQ_DIALOG_DOC_LIST_PAGE_SIZE,
+    })
       .then((response) => {
         if (cancelled) {
           return;
         }
 
-        const options = adaptKnowledgeDocOptions(response.list);
+        const options = response.docs.map((item) => ({
+          disabled: item.status !== "completed",
+          id: item.docId,
+          name: item.name,
+        }));
         setFaqOptions(options);
-        setFaqId(options[0]?.id ?? "");
+        setDocId(options.find((option) => !option.disabled)?.id ?? "");
       })
       .catch(() => {
         if (!cancelled) {
           setFaqOptions([]);
-          setFaqId("");
+          setDocId("");
         }
       })
       .finally(() => {
@@ -182,17 +168,7 @@ export function SmartReplyAddToFaqDialog({
     return () => {
       cancelled = true;
     };
-  }, [conversationId, knowledgeSetId, open]);
-
-  const handleAddSimilarQuestion = useCallback(() => {
-    setSimilarQuestions((current) => [...current, ""]);
-  }, []);
-
-  const handleSimilarQuestionChange = useCallback((index: number, value: string) => {
-    setSimilarQuestions((current) =>
-      current.map((item, itemIndex) => (itemIndex === index ? value : item)),
-    );
-  }, []);
+  }, [kbId, open]);
 
   const handleToggleAttachment = useCallback((attachmentId: string, checked: boolean) => {
     setSelectedAttachmentIds((current) => {
@@ -210,24 +186,18 @@ export function SmartReplyAddToFaqDialog({
     const trimmedQuestion = question.trim();
     const trimmedAnswer = answer.trim();
 
-    if (!conversationId || !faqId || !trimmedQuestion || !trimmedAnswer || isSaving) {
+    if (!docId || !trimmedQuestion || !trimmedAnswer || isSaving) {
       return;
     }
 
     setIsSaving(true);
 
-    void addSmartReplyKnowledgeFaq(
-      buildSmartReplyKnowledgeFaqAddRequest({
-        attachIds: selectedAttachmentIds,
-        answer: trimmedAnswer,
-        conversationId,
-        docId: faqId,
-        question: trimmedQuestion,
-        similarQuestions: similarQuestions
-          .map((item) => item.trim())
-          .filter(Boolean),
-      }),
-    )
+    void createKbChunk({
+      chunkType: "faq",
+      content: trimmedAnswer,
+      docId,
+      title: trimmedQuestion,
+    })
       .then(() => {
         if (!isMountedRef.current) {
           return;
@@ -252,8 +222,7 @@ export function SmartReplyAddToFaqDialog({
   };
 
   const canSave =
-    Boolean(conversationId) &&
-    Boolean(faqId) &&
+    Boolean(docId) &&
     Boolean(question.trim()) &&
     Boolean(answer.trim()) &&
     !isKnowledgeSetsLoading &&
@@ -278,21 +247,21 @@ export function SmartReplyAddToFaqDialog({
             <div className="space-y-4">
               <FaqSelectField
                 isLoading={isKnowledgeSetsLoading}
-                label="知识集"
-                loadingLabel="正在加载知识集"
-                onValueChange={setKnowledgeSetId}
+                label="知识库"
+                loadingLabel="正在加载"
+                onValueChange={setKbId}
                 options={knowledgeSets}
                 required
-                value={knowledgeSetId}
+                value={kbId}
               />
               <FaqSelectField
                 isLoading={isFaqsLoading}
                 label="选择FAQ"
-                loadingLabel="正在加载 FAQ"
-                onValueChange={setFaqId}
+                loadingLabel="正在加载"
+                onValueChange={setDocId}
                 options={faqOptions}
                 required
-                value={faqId}
+                value={docId}
               />
             </div>
             <div className="min-w-0 space-y-4">
@@ -302,11 +271,6 @@ export function SmartReplyAddToFaqDialog({
                 required
                 rows={2}
                 value={question}
-              />
-              <SimilarQuestionsField
-                onAdd={handleAddSimilarQuestion}
-                onChange={handleSimilarQuestionChange}
-                values={similarQuestions}
               />
               <FaqTextareaField
                 label="答案"
@@ -395,7 +359,7 @@ function FaqSelectField({
         </SelectTrigger>
         <SelectContent>
           {options.map((option) => (
-            <SelectItem key={option.id} value={option.id}>
+            <SelectItem disabled={option.disabled} key={option.id} value={option.id}>
               {option.name}
             </SelectItem>
           ))}
@@ -431,47 +395,6 @@ function FaqTextareaField({
         rows={rows}
         value={value}
       />
-    </div>
-  );
-}
-
-function SimilarQuestionsField({
-  values,
-  onChange,
-  onAdd,
-}: {
-  values: string[];
-  onChange: (index: number, value: string) => void;
-  onAdd: () => void;
-}) {
-  return (
-    <div className="space-y-2">
-      <FaqFieldLabel label="相似问法" />
-      <div className="space-y-3">
-        {values.map((value, index) => {
-          const fieldId = `similar-question-${index}`;
-          return (
-            <Textarea
-              className="min-h-0 resize-none rounded-[8px] px-3 py-2 text-[13px] leading-[22px] shadow-none focus-visible:ring-2 focus-visible:ring-ring/20"
-              id={fieldId}
-              key={fieldId}
-              onChange={(event) => onChange(index, event.target.value)}
-              placeholder="请输入相似问法"
-              rows={1}
-              value={value}
-            />
-          );
-        })}
-      </div>
-      <Button
-        className="h-auto gap-1 p-0 text-[13px] text-primary hover:bg-transparent hover:text-primary/85"
-        onClick={onAdd}
-        type="button"
-        variant="ghost"
-      >
-        <HugeiconsIcon icon={Add01Icon} size={14} strokeWidth={2} />
-        添加相似问法
-      </Button>
     </div>
   );
 }

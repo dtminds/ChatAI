@@ -7,13 +7,14 @@ import {
 import { fetchWorkbenchSidebarIframeParams } from "@/pages/chat/api/sidebar-iframe-params";
 import { http } from "@/lib/request";
 import {
-  CONVERSATION_CUSTODY_MODE,
   type ApiSuccessEnvelope,
   type WorkbenchConversationDeleteResponse,
   type WorkbenchConversationListResponse,
   type WorkbenchSeatChangeDto,
   type WorkbenchSeatDto,
   type WorkbenchConversationChangeDto,
+  type WorkbenchConversationFullAutoResponse,
+  type WorkbenchFullAutoAnswerStatusResponse,
   type WorkbenchConversationPinResponse,
   type WorkbenchConversationReadResponse,
   type WorkbenchConversationUnpinResponse,
@@ -63,6 +64,7 @@ import {
   type WorkbenchSmartReplyTextModerationResponse,
   type WorkbenchRevokeMessageRequest,
   type WorkbenchRevokeMessageResponse,
+  type WorkbenchRetryMessageRequest,
   type WorkbenchVoicePlaybackConfirmRequest,
   type WorkbenchVoicePlaybackConfirmResponse,
   type WorkbenchVoiceTranscriptionRequest,
@@ -75,6 +77,8 @@ import {
   type WorkbenchTakeOverSeatResponse,
   type WorkbenchUploadCredentialResponse,
   type WorkbenchSearchResponseDto,
+  type WorkbenchSeatAgentModeSwitchRequest,
+  type WorkbenchSeatAgentModeSwitchResponse,
   type WorkbenchGetOrCreateConversationRequestDto,
   MATERIAL_COLLECTION_BIZ_TYPE,
   type MaterialCollectionBizType,
@@ -141,6 +145,7 @@ export type WorkbenchConversationListOptions = {
   cursor?: string;
   limit?: number;
   mode?: ChatMode;
+  unreadOnly?: boolean;
 };
 
 export type WorkbenchService = {
@@ -216,6 +221,17 @@ export type WorkbenchService = {
   markConversationRead: (conversationId: string) => Promise<WorkbenchConversationReadResponse>;
   markConversationUnread: (conversationId: string) => Promise<WorkbenchConversationUnreadResponse>;
   pinConversation: (conversationId: string) => Promise<WorkbenchConversationPinResponse>;
+  changeConversationFullAuto: (
+    conversationId: string,
+    request: { enabled: boolean },
+  ) => Promise<WorkbenchConversationFullAutoResponse>;
+  updateSeatAgentMode: (
+    seatId: string,
+    request: WorkbenchSeatAgentModeSwitchRequest,
+  ) => Promise<WorkbenchSeatAgentModeSwitchResponse>;
+  getFullAutoAnswerStatus: (
+    conversationId: string,
+  ) => Promise<WorkbenchFullAutoAnswerStatusResponse>;
   poll: (request: WorkbenchPollRequest) => Promise<WorkbenchPollResponse>;
   pollSmartReplies: (
     request: WorkbenchSmartReplyPollRequest,
@@ -254,6 +270,9 @@ export type WorkbenchService = {
     request: WorkbenchSmartHeartbeatRequest,
   ) => Promise<WorkbenchSmartHeartbeatResponse>;
   sendMessage: (payload: WorkbenchSendMessagePayload) => Promise<WorkbenchSendMessageResponse>;
+  retryMessage: (
+    request: WorkbenchRetryMessageRequest,
+  ) => Promise<WorkbenchSendMessageResponse>;
   takeOverSeat: (seatId: string) => Promise<WorkbenchTakeOverSeatResponse>;
   unpinConversation: (conversationId: string) => Promise<WorkbenchConversationUnpinResponse>;
   search: (seatId: string, keyword: string) => Promise<WorkbenchSearchResponseDto>;
@@ -469,15 +488,19 @@ export function createMockWorkbenchService(): WorkbenchService {
       const conversations = state.conversationsByAccount[seatId] ?? [];
       const snapshotAt = Date.now();
       state.version = Math.max(state.version, snapshotAt);
+      const filteredConversations = sortConversations(conversations)
+        .filter((conversation) => options?.mode == null || conversation.mode === options.mode)
+        .filter((conversation) => !options?.unreadOnly || conversation.unreadCount > 0);
 
       return {
-        hasMore: false,
+        hasMore: filteredConversations.length > (options?.limit ?? filteredConversations.length),
         items: clone(
-          sortConversations(conversations)
-            .filter((conversation) => options?.mode == null || conversation.mode === options.mode)
-            .slice(0, options?.limit),
+          filteredConversations.slice(0, options?.limit),
         ),
         snapshotAt,
+        unreadSummary: options?.unreadOnly
+          ? getAccountUnreadSummary(state, seatId)
+          : undefined,
       };
     },
     async getMe() {
@@ -1624,6 +1647,37 @@ export function createMockWorkbenchService(): WorkbenchService {
     async pinConversation(conversationId) {
       return setConversationPinned(state, conversationId, true);
     },
+    async changeConversationFullAuto(conversationId, request) {
+      return setConversationFullAuto(state, conversationId, request.enabled);
+    },
+    async updateSeatAgentMode(seatId, request) {
+      const seat = state.seats.find((item) => item.seatId === seatId);
+
+      if (!seat) {
+        return {
+          fullAutoSwitch: false,
+          seatId,
+          semiAutoSwitch: false,
+        };
+      }
+
+      seat.fullAutoSwitch = request.mode === "autoReply";
+      seat.semiAutoSwitch = request.mode !== "off";
+      seat.seatAIHostingEnabled =
+        seat.seatAIHostingAuth === true && seat.fullAutoSwitch === true;
+      seat.seatAIAssistantEnabled =
+        seat.semiAutoAuth === true && seat.semiAutoSwitch === true;
+      pushAccountEvent(state, seatId);
+
+      return {
+        fullAutoSwitch: seat.fullAutoSwitch === true,
+        seatId,
+        semiAutoSwitch: seat.semiAutoSwitch === true,
+      };
+    },
+    async getFullAutoAnswerStatus() {
+      return {};
+    },
     async unpinConversation(conversationId) {
       return setConversationPinned(state, conversationId, false);
     },
@@ -1837,6 +1891,24 @@ export function createMockWorkbenchService(): WorkbenchService {
         status: "accepted",
       };
     },
+    async retryMessage(request) {
+      const message = findMessageByIdOrSeq(
+        state,
+        request.conversationId,
+        undefined,
+        request.messageSeq,
+      );
+
+      if (!message) {
+        throw new Error("重发失败");
+      }
+
+      const retryOptNo = buildMockOptNo(state.nextId++);
+      return {
+        optNo: retryOptNo,
+        status: "accepted",
+      };
+    },
     async takeOverSeat(seatId) {
       const seat = findAccount(state, seatId);
 
@@ -1877,7 +1949,10 @@ export function createMockWorkbenchService(): WorkbenchService {
         return {
           bizStatus: existingConversation.bizStatus ?? 1,
           conversationId: existingConversation.conversationId,
+          conversationAIHostingSwitch:
+            existingConversation.conversationAIHostingSwitch ?? false,
           customerAvatar: existingConversation.customerAvatar,
+          customerBindType: existingConversation.customerBindType,
           customerId: existingConversation.customerId,
           customerName: existingConversation.customerName,
           lastMessage: existingConversation.lastMessage,
@@ -1889,8 +1964,6 @@ export function createMockWorkbenchService(): WorkbenchService {
           thirdGroupId: existingConversation.thirdGroupId,
           thirdUserId: existingConversation.thirdUserId,
           unreadCount: existingConversation.unreadCount,
-          custodyMode:
-            existingConversation.custodyMode ?? CONVERSATION_CUSTODY_MODE.SEMI,
         };
       }
 
@@ -1900,7 +1973,9 @@ export function createMockWorkbenchService(): WorkbenchService {
       return {
         bizStatus: 1,
         conversationId,
+        conversationAIHostingSwitch: false,
         customerAvatar: "",
+        customerBindType: payload.chatType === 2 ? undefined : 1,
         customerId: payload.thirdExternalUserId ?? payload.thirdGroupId ?? conversationId,
         customerName: payload.chatType === 2 ? "未知群聊" : "未知客户",
         lastMessage: "",
@@ -1912,7 +1987,6 @@ export function createMockWorkbenchService(): WorkbenchService {
         thirdGroupId: payload.thirdGroupId,
         thirdUserId: `third-user-${payload.seatId}`,
         unreadCount: 0,
-        custodyMode: CONVERSATION_CUSTODY_MODE.SEMI,
       };
     },
   };
@@ -1935,6 +2009,7 @@ export function createHttpWorkbenchService(): WorkbenchService {
           limit: options?.limit,
           mode: options?.mode,
           seatId,
+          unread_only: options?.unreadOnly ? "1" : undefined,
         },
       });
     },
@@ -2348,6 +2423,23 @@ export function createHttpWorkbenchService(): WorkbenchService {
         `/server/conversations/${conversationId}/pin`,
       );
     },
+    changeConversationFullAuto(conversationId, request) {
+      return http.post<WorkbenchConversationFullAutoResponse, { enabled: boolean }>(
+        `/server/conversations/${conversationId}/full-auto`,
+        request,
+      );
+    },
+    updateSeatAgentMode(seatId, request) {
+      return http.patch<
+        WorkbenchSeatAgentModeSwitchResponse,
+        WorkbenchSeatAgentModeSwitchRequest
+      >(`/server/seats/${seatId}/agent-mode-switch`, request);
+    },
+    getFullAutoAnswerStatus(conversationId) {
+      return http.get<WorkbenchFullAutoAnswerStatusResponse>(
+        `/server/conversations/${conversationId}/full-auto/answer-status`,
+      );
+    },
     poll(request) {
       const activeConversationId = request.activeConversationId || undefined;
       return http.get<WorkbenchPollResponse>("/server/poll", {
@@ -2441,6 +2533,12 @@ export function createHttpWorkbenchService(): WorkbenchService {
       return http.post<WorkbenchSendMessageResponse, WorkbenchSendMessagePayload>(
         "/server/messages/send",
         payload,
+      );
+    },
+    retryMessage(request) {
+      return http.post<WorkbenchSendMessageResponse, WorkbenchRetryMessageRequest>(
+        "/server/messages/retry",
+        request,
       );
     },
     takeOverSeat(seatId) {
@@ -2641,8 +2739,12 @@ function buildInitialState(): MockState {
           seatId: conversation.accountId,
           conversationId: conversation.id,
           bizStatus: conversation.bizStatus ?? 1,
-          custodyMode: conversation.custodyMode,
+          conversationAIHostingSwitch: conversation.conversationAIHostingSwitch,
           customerAvatar: conversation.customerAvatarUrl,
+          customerBindType:
+            conversation.mode === "single"
+              ? conversation.customerBindType ?? 1
+              : undefined,
           customerId: conversation.customerId,
           customerName: conversation.customerName,
           lastMessage: conversation.preview,
@@ -2670,6 +2772,9 @@ function buildInitialState(): MockState {
     operatorName: seat.operator,
     phone: seat.phone,
     hostSubUserId: seat.id === "drc" ? CURRENT_SUB_USER_ID : undefined,
+    semiAutoAuth: true,
+    semiAutoSwitch: true,
+    seatAIAssistantEnabled: true,
     unreadCount: seat.unreadCount ?? MOCK_SEAT_UNREAD_COUNTS[seat.id] ?? 0,
   }));
 
@@ -3361,6 +3466,33 @@ function setConversationPinned(
   };
 }
 
+function setConversationFullAuto(
+  state: MockState,
+  conversationId: string,
+  enabled: boolean,
+) {
+  const conversation = findConversation(state, conversationId);
+
+  if (!conversation) {
+    throw new Error("Conversation not found");
+  }
+
+  const nextConversation = {
+    ...conversation,
+    conversationAIHostingSwitch: enabled,
+    agentHostingStatus: enabled ? "thinking" : undefined,
+  };
+
+  upsertConversation(state, nextConversation);
+  pushConversationEvent(state, nextConversation);
+
+  return {
+    conversationAIHostingSwitch: enabled,
+    conversationId,
+    seatId: nextConversation.seatId,
+  };
+}
+
 function removeConversation(
   state: MockState,
   conversationId: string,
@@ -3405,6 +3537,33 @@ function setAccountUnreadCount(
   }
 
   seat.unreadCount = unreadCount;
+  seat.singleUnreadCount = getModeUnreadCountValue(state, seatId, "single");
+  seat.groupUnreadCount = getModeUnreadCountValue(state, seatId, "group");
+}
+
+function getModeUnreadCountValue(
+  state: MockState,
+  seatId: string,
+  mode: ChatMode,
+) {
+  return (state.conversationsByAccount[seatId] ?? []).reduce(
+    (total, conversation) =>
+      conversation.mode === mode
+        ? total + Math.max(0, conversation.unreadCount)
+        : total,
+    0,
+  );
+}
+
+function getAccountUnreadSummary(state: MockState, seatId: string) {
+  const single = getModeUnreadCountValue(state, seatId, "single");
+  const group = getModeUnreadCountValue(state, seatId, "group");
+
+  return {
+    group,
+    single,
+    total: single + group,
+  };
 }
 
 function syncAccountLastMessageTime(state: MockState, seatId: string) {

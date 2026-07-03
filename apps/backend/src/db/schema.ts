@@ -106,6 +106,147 @@ export interface XyWapEmbedAnalysisRun {
   update_time: Generated<Date>;
 }
 
+export interface XyWapEmbedAgent {
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date | null>;
+  /**
+   * 主键id
+   */
+  id: Generated<number>;
+  /**
+   * 最近一次操作人（子账号id）
+   */
+  last_operator_id: Generated<number>;
+  /**
+   * 最近一次发布时间，毫秒时间戳；0 表示未发布
+   */
+  last_publish_time: Generated<number>;
+  /**
+   * 关联模型（xy_wap_embed_ai_model.id）
+   */
+  model_id: Generated<number>;
+  /**
+   * agent名称
+   */
+  name: string;
+  /**
+   * 创建操作人（子账号id）
+   */
+  operator_id: Generated<number>;
+  /**
+   * 提示词配置（基调、角色、沟通风格等）
+   */
+  prompt_config: string | null;
+  /**
+   * 状态 0：已删除 1：有效
+   */
+  status: Generated<number>;
+  /**
+   * 租户id
+   */
+  uid: Generated<number>;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date | null>;
+}
+
+export interface XyWapEmbedAgentHistory {
+  /**
+   * 关联agent（xy_wap_embed_agent.id）
+   */
+  agent_id: Generated<number>;
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date | null>;
+  /**
+   * 主键id
+   */
+  id: Generated<number>;
+  /**
+   * 关联模型（xy_wap_embed_ai_model.id）
+   */
+  model_id: Generated<number>;
+  /**
+   * 创建操作人（子账号id）
+   */
+  operator_id: Generated<number>;
+  /**
+   * 提示词配置（基调、角色、沟通风格等）
+   */
+  prompt_config: string | null;
+  /**
+   * 租户id
+   */
+  uid: Generated<number>;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date | null>;
+}
+
+export interface XyWapEmbedAiModel {
+  /**
+   * 算粒/百万Token，放大100倍的值
+   */
+  credit: Generated<number>;
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date | null>;
+  /**
+   * 模型描述
+   */
+  description: Generated<string>;
+  /**
+   * 选择接入点
+   */
+  endpoint: Generated<string>;
+  /**
+   * 主键id
+   */
+  id: Generated<number>;
+  /**
+   * 选择模型id
+   */
+  model: Generated<string>;
+  /**
+   * 模型名称
+   */
+  model_name: Generated<string>;
+  /**
+   * 模型版本
+   */
+  model_version: Generated<string>;
+  /**
+   * 模型名称
+   */
+  name: string;
+  /**
+   * 状态 0：已删除 1：有效
+   */
+  status: Generated<number>;
+  /**
+   * 多模态，0：不支持，1：支持
+   */
+  support_multimodal: Generated<number>;
+  /**
+   * 思考模式
+   */
+  thinking_type: Generated<string>;
+  /**
+   * 租户id，0：UID兜底
+   */
+  uid: Generated<number>;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date | null>;
+}
+
 export interface XyWapEmbedBroadcastEvent {
   /**
    * 事件分类：conversation-会话
@@ -198,6 +339,10 @@ export interface XyWapEmbedConversation {
    * 创建时间
    */
   create_time: Generated<Date>;
+  /**
+   * 全自动-全托管开关（默认关闭）
+   */
+  full_auto_switch: Generated<number>;
   /**
    * id
    */
@@ -1647,6 +1792,20 @@ export interface XyWapEmbedMsgAuditInfoExtend {
   update_time: Generated<Date>;
 }
 
+export interface XyWapEmbedAsyncOperation {
+  create_time: Generated<Date>;
+  fail_reason: string;
+  id: Generated<number>;
+  opt_no: string;
+  opt_params: string | null;
+  opt_type: number;
+  origin_op_type: string;
+  platform: Generated<number>;
+  status: Generated<number>;
+  uid: number;
+  update_time: Generated<Date>;
+}
+
 export interface XyWapEmbedSessionActionItem {
   /**
    * 行动项类型，当前固定follow_up：跟进
@@ -2365,6 +2524,49 @@ export interface XyWapEmbedUserSeat {
   user_id: number | null;
 }
 
+export interface XyWapEmbedUserSeatAgent {
+  /**
+   * 关联agent（xy_wap_embed_agent.id）
+   */
+  agent_id: Generated<number>;
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date | null>;
+  /**
+   * 全自动-全托管权限（默认无）
+   */
+  full_auto_auth: Generated<number>;
+  /**
+   * 全自动-全托管开关（默认关闭，有权限时，开关才起效）
+   */
+  full_auto_switch: Generated<number>;
+  /**
+   * 主键id
+   */
+  id: Generated<number>;
+  /**
+   * 半自动-话术推荐权限（默认无）
+   */
+  semi_auto_auth: Generated<number>;
+  /**
+   * 半自动-话术推荐开关（默认关闭，有权限时，开关才起效）
+   */
+  semi_auto_switch: Generated<number>;
+  /**
+   * 租户id
+   */
+  uid: number;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date | null>;
+  /**
+   * 关联成员席位（xy_wap_embed_user_seat.id）
+   */
+  user_seat_id: number;
+}
+
 export interface XyWapEmbedUserSeatSubRelation {
   /**
    * 创建时间
@@ -2393,8 +2595,81 @@ export interface XyWapEmbedUserSeatSubRelation {
   user_seat_id: Generated<number>;
 }
 
+export interface XyWapEmbedAgentKb {
+  create_time: Generated<Date>;
+  id: Generated<number>;
+  last_operator_id: Generated<number>;
+  name: string;
+  operator_id: Generated<number>;
+  remark: string;
+  status: Generated<number>;
+  uid: number;
+  update_time: Generated<Date>;
+}
+
+export interface XyWapEmbedAgentKbChunk {
+  content: string | null;
+  create_time: Generated<Date>;
+  description: string | null;
+  doc_id: number;
+  html_content: string | null;
+  id: Generated<number>;
+  kb_id: number;
+  last_sync_time: Date | null;
+  md_content: string | null;
+  point_process_time: Date | null;
+  point_update_time: Date | null;
+  source: number;
+  status: Generated<number>;
+  sync_status: number;
+  title: string | null;
+  tokens: number | null;
+  type: number | string;
+  uid: number;
+  update_time: Generated<Date>;
+  volc_chunk_id: string | null;
+  volc_doc_id: string | null;
+  volc_resource_id: string | null;
+}
+
+export interface XyWapEmbedAgentKbDoc {
+  brief_summary: string | null;
+  create_time: Generated<Date>;
+  doc_process_time: Date | null;
+  doc_size: Generated<number>;
+  doc_summary: string | null;
+  doc_suffix: string;
+  doc_type: number;
+  doc_update_time: Date | null;
+  doc_url: string;
+  id: Generated<number>;
+  kb_id: number;
+  last_operator_id: Generated<number>;
+  last_sync_time: Date | null;
+  name: string;
+  operator_id: Generated<number>;
+  point_num: number | null;
+  remark: string | null;
+  status: Generated<number>;
+  sync_error_msg: string | null;
+  sync_status: number;
+  tokens: number | null;
+  uid: number;
+  update_time: Generated<Date>;
+  volc_doc_id: string | null;
+  volc_resource_id: string | null;
+  volc_strategy_resource_id: string | null;
+}
+
 export interface DB {
+  xy_wap_embed_async_operation: XyWapEmbedAsyncOperation;
   xy_wap_embed_analysis_run: XyWapEmbedAnalysisRun;
+  xy_wap_embed_agent: XyWapEmbedAgent;
+  xy_wap_embed_agent_history: XyWapEmbedAgentHistory;
+  xy_wap_embed_agent_kb: XyWapEmbedAgentKb;
+  xy_wap_embed_agent_kb_chunk: XyWapEmbedAgentKbChunk;
+  xy_wap_embed_agent_kb_doc: XyWapEmbedAgentKbDoc;
+  xy_wap_embed_ai_model: XyWapEmbedAiModel;
   xy_wap_embed_broadcast_event: XyWapEmbedBroadcastEvent;
   xy_wap_embed_contact: XyWapEmbedContact;
   xy_wap_embed_conversation: XyWapEmbedConversation;
@@ -2438,6 +2713,7 @@ export interface DB {
   xy_wap_embed_sub_user_session: XyWapEmbedSubUserSession;
   xy_wap_embed_user_relation: XyWapEmbedUserRelation;
   xy_wap_embed_user_seat: XyWapEmbedUserSeat;
+  xy_wap_embed_user_seat_agent: XyWapEmbedUserSeatAgent;
   xy_wap_embed_user_seat_sub_relation: XyWapEmbedUserSeatSubRelation;
 }
 

@@ -35,6 +35,7 @@ import {
 import { cn } from "@/lib/utils";
 import {
   MATERIAL_COLLECTION_BIZ_TYPE,
+  type WorkbenchSeatAgentMode,
   type WorkbenchQuickReplyCategoryDto,
   type WorkbenchQuickReplyDto,
 } from "@chatai/contracts";
@@ -74,6 +75,7 @@ import { useWorkbenchStore } from "@/store/workbench-store";
 import type {
   ChatMessage,
   ChatMode,
+  Conversation,
   FileUploadQueueItem,
   QuotedMessagePreviewContent,
 } from "@/pages/chat/chat-types";
@@ -84,6 +86,13 @@ import {
 import { uploadWorkbenchFile } from "@/pages/chat/api/media-upload-service";
 import { getVisibleConversations } from "@/pages/chat/api/workbench-gateway";
 import { downloadMessageFile } from "@/pages/chat/api/workbench-gateway";
+import {
+  DEFAULT_CONVERSATION_VIEW,
+  filterConversationsByView,
+  getConversationIdsInView,
+  resolveConversationView,
+  type ConversationView,
+} from "@/pages/chat/lib/conversation-view";
 import {
   isComposerFileSizeAllowed,
   isSupportedComposerFile,
@@ -111,6 +120,17 @@ import {
 } from "@/pages/chat/lib/panel-width";
 
 const ACCOUNT_RAIL_COLLAPSED_STORAGE_KEY = "chatai.accountRailCollapsed";
+const CONVERSATION_VIEW_STORAGE_KEY = "chatai.conversationView";
+const EMPTY_CONVERSATIONS: Conversation[] = [];
+
+type ConversationViewState = Record<ChatMode, ConversationView>;
+type ConversationViewRetainedState = {
+  accountId: string;
+  ids: ReadonlySet<string>;
+  isSeatAIHostingEnabled: boolean;
+  mode: ChatMode;
+  view: ConversationView;
+};
 
 type MentionRetryDialogState = {
   conversationId: string;
@@ -138,6 +158,62 @@ function writeAccountRailCollapsed(isCollapsed: boolean) {
   } catch {
     // Keep the UI usable when storage is unavailable.
   }
+}
+
+function isConversationView(value: string | null | undefined): value is ConversationView {
+  return value === "all" || value === "unread" || value === "human" || value === "ai";
+}
+
+function getInitialConversationViewState(): ConversationViewState {
+  try {
+    const value = window.localStorage.getItem(CONVERSATION_VIEW_STORAGE_KEY);
+
+    if (isConversationView(value)) {
+      return {
+        group: DEFAULT_CONVERSATION_VIEW,
+        single: value,
+      };
+    }
+
+    const parsed = value ? JSON.parse(value) as Partial<Record<ChatMode, string>> : {};
+
+    return {
+      group: isConversationView(parsed.group) ? parsed.group : DEFAULT_CONVERSATION_VIEW,
+      single: isConversationView(parsed.single) ? parsed.single : DEFAULT_CONVERSATION_VIEW,
+    };
+  } catch {
+    return {
+      group: DEFAULT_CONVERSATION_VIEW,
+      single: DEFAULT_CONVERSATION_VIEW,
+    };
+  }
+}
+
+function writeConversationViewState(viewState: ConversationViewState) {
+  try {
+    window.localStorage.setItem(CONVERSATION_VIEW_STORAGE_KEY, JSON.stringify(viewState));
+  } catch {
+    // Keep the workbench usable when storage is unavailable.
+  }
+}
+
+function escapeCssAttributeValue(value: string) {
+  return value.replace(/["\\]/g, "\\$&");
+}
+
+function isElementVisibleInsideViewport(
+  element: Element,
+  viewport: HTMLElement,
+) {
+  const elementRect = element.getBoundingClientRect();
+  const viewportRect = viewport.getBoundingClientRect();
+
+  return (
+    elementRect.bottom > viewportRect.top &&
+    elementRect.top < viewportRect.bottom &&
+    elementRect.right > viewportRect.left &&
+    elementRect.left < viewportRect.right
+  );
 }
 
 export function ChatWorkbenchPage() {
@@ -189,7 +265,9 @@ function ChatWorkbenchContent({
     conversationListsByScope,
     customerProfilesById,
     deleteConversation,
+    dismissFullAutoActionError,
     groupMembersLoadingByConversationId,
+    hasMoreUnreadByScope,
     groupMembersByConversationId,
     dismissScopeTransitionError,
     dismissReadReceiptError,
@@ -201,9 +279,11 @@ function ChatWorkbenchContent({
     historyPanelLoadingByConversationId,
     historyPanelScrollModeByConversationId,
     historyPanelOpenConversationId,
+    fullAutoActionError,
     initializeWorkbench,
     isConversationLoading,
     loadActiveGroupMembers,
+    loadUnreadConversations,
     loadOlderMessages,
     refreshSeatSummaries,
     markConversationRead,
@@ -227,6 +307,8 @@ function ChatWorkbenchContent({
     saveComposerDraft,
     setChatSendPermission,
     closeHistoryPanel,
+    changeActiveSeatAgentMode,
+    changeActiveConversationFullAuto,
     clearActiveConversation,
     clearComposerDraft,
     composerDraftsByConversationId,
@@ -249,6 +331,9 @@ function ChatWorkbenchContent({
     updateMessageDownloadContent,
     confirmVoicePlaybackReady,
     transcribeVoiceMessage,
+    fullAutoActionPending,
+    seatAgentModeActionPending,
+    fullAutoStatusByConversationId,
   } = useWorkbenchStore(
     useShallow((state) => ({
       accounts: state.accounts,
@@ -257,6 +342,8 @@ function ChatWorkbenchContent({
       activeMode: state.activeMode,
       bootstrapError: state.bootstrapError,
       bootstrapStatus: state.bootstrapStatus,
+      changeActiveConversationFullAuto: state.changeActiveConversationFullAuto,
+      changeActiveSeatAgentMode: state.changeActiveSeatAgentMode,
       clearActiveConversation: state.clearActiveConversation,
       clearComposerDraft: state.clearComposerDraft,
       closeHistoryPanel: state.closeHistoryPanel,
@@ -265,12 +352,14 @@ function ChatWorkbenchContent({
       conversationListsByScope: state.conversationListsByScope,
       customerProfilesById: state.customerProfilesById,
       deleteConversation: state.deleteConversation,
+      dismissFullAutoActionError: state.dismissFullAutoActionError,
       dismissReadReceiptError: state.dismissReadReceiptError,
       dismissScopeTransitionError: state.dismissScopeTransitionError,
       dismissSmartReply: state.dismissSmartReply,
       groupMembersByConversationId: state.groupMembersByConversationId,
       groupMembersLoadingByConversationId:
         state.groupMembersLoadingByConversationId,
+      hasMoreUnreadByScope: state.hasMoreUnreadByScope,
       hasMoreHistoryByConversationId: state.hasMoreHistoryByConversationId,
       historyPanelByConversationId: state.historyPanelByConversationId,
       historyPanelErrorByConversationId:
@@ -283,9 +372,14 @@ function ChatWorkbenchContent({
       historyPanelScrollModeByConversationId:
         state.historyPanelScrollModeByConversationId,
       historyStatusByConversationId: state.historyStatusByConversationId,
+      fullAutoActionError: state.fullAutoActionError,
+      fullAutoActionPending: state.fullAutoActionPending,
+      seatAgentModeActionPending: state.seatAgentModeActionPending,
+      fullAutoStatusByConversationId: state.fullAutoStatusByConversationId,
       initializeWorkbench: state.initializeWorkbench,
       isConversationLoading: state.isConversationLoading,
       loadActiveGroupMembers: state.loadActiveGroupMembers,
+      loadUnreadConversations: state.loadUnreadConversations,
       loadHistoryMessages: state.loadHistoryMessages,
       loadOlderMessages: state.loadOlderMessages,
       markConversationRead: state.markConversationRead,
@@ -359,6 +453,13 @@ function ChatWorkbenchContent({
   );
   const [pollingPauseReason, setPollingPauseReason] =
     useState<PollingPauseReason | null>(null);
+  const [conversationViewState, setConversationViewState] = useState<ConversationViewState>(
+    getInitialConversationViewState,
+  );
+  const [shouldPersistConversationViewState, setShouldPersistConversationViewState] =
+    useState(false);
+  const [conversationViewRetainedState, setConversationViewRetainedState] =
+    useState<ConversationViewRetainedState | null>(null);
   const handlePollingPaused = useCallback((reason: PollingPauseReason) => {
     setPollingPauseReason(reason);
   }, []);
@@ -392,6 +493,9 @@ function ChatWorkbenchContent({
   const shouldRestoreComposerFocusRef = useRef(false);
   const isMountedRef = useRef(true);
   const activeConversationIdRef = useRef<string | undefined>(activeConversationId);
+  const manuallyMarkedUnreadCountByConversationIdRef = useRef(
+    new Map<string, number>(),
+  );
   const composerDraftHydratedConversationIdRef = useRef<string | undefined>(
     undefined,
   );
@@ -430,19 +534,124 @@ function ChatWorkbenchContent({
     writeAccountRailCollapsed(nextIsCollapsed);
   };
 
+  const setConversationView = useCallback((mode: ChatMode, view: ConversationView) => {
+    setConversationViewState((currentViewState) => {
+      return {
+        ...currentViewState,
+        [mode]: view,
+      };
+    });
+    setShouldPersistConversationViewState(true);
+  }, []);
+
   const activeAccount =
     accounts.find((account) => account.id === activeAccountId) ?? accounts[0];
-  const allConversations = conversationListsByScope[activeAccountId] ?? [];
-  const visibleSearchableConversations =
-    getVisibleConversations(allConversations);
-  const visibleConversations = visibleSearchableConversations.filter(
+  const allConversations =
+    conversationListsByScope[activeAccountId] ?? EMPTY_CONVERSATIONS;
+  const conversationRevealTick = useConversationRevealTimer(allConversations);
+  const visibleSearchableConversations = useMemo(
+    () => getVisibleConversations(allConversations),
+    [allConversations, conversationRevealTick],
+  );
+  const currentConversationView = conversationViewState[activeMode];
+  const resolvedConversationView = resolveConversationView(
+    currentConversationView,
+    activeMode,
+    activeAccount?.seatAIHostingEnabled === true,
+  );
+  const isActiveSeatAIHostingEnabled = activeAccount?.seatAIHostingEnabled === true;
+  const activeViewRetainedConversationIds =
+    resolvedConversationView !== DEFAULT_CONVERSATION_VIEW &&
+    conversationViewRetainedState?.accountId === activeAccountId &&
+    conversationViewRetainedState.mode === activeMode &&
+    conversationViewRetainedState.view === resolvedConversationView &&
+    conversationViewRetainedState.isSeatAIHostingEnabled === isActiveSeatAIHostingEnabled
+      ? conversationViewRetainedState.ids
+      : undefined;
+  const activeModeConversations = visibleSearchableConversations.filter(
     (conversation) => conversation.mode === activeMode,
   );
-  const firstVisibleConversationId = visibleConversations[0]?.id;
+  const activeViewConversations = filterConversationsByView(
+    visibleSearchableConversations,
+    activeMode,
+    resolvedConversationView,
+    isActiveSeatAIHostingEnabled,
+    activeViewRetainedConversationIds,
+  );
+  const firstActiveViewConversationId = activeViewConversations[0]?.id;
+  const hasActiveConversationInView = activeViewConversations.some(
+    (conversation) => conversation.id === activeConversationId,
+  );
+  const handleSelectConversationView = useCallback(
+    (view: ConversationView) => {
+      const resolvedView = resolveConversationView(
+        view,
+        activeMode,
+        isActiveSeatAIHostingEnabled,
+      );
+
+      setConversationViewRetainedState(
+        resolvedView === DEFAULT_CONVERSATION_VIEW
+          ? null
+          : {
+              accountId: activeAccountId,
+              ids: new Set(
+                getConversationIdsInView(
+                  visibleSearchableConversations,
+                  activeMode,
+                  resolvedView,
+                  isActiveSeatAIHostingEnabled,
+                ),
+              ),
+              isSeatAIHostingEnabled: isActiveSeatAIHostingEnabled,
+              mode: activeMode,
+              view: resolvedView,
+            },
+      );
+      const nextConversationIds =
+        resolvedView === DEFAULT_CONVERSATION_VIEW
+          ? activeModeConversations.map((conversation) => conversation.id)
+          : getConversationIdsInView(
+              visibleSearchableConversations,
+              activeMode,
+              resolvedView,
+              isActiveSeatAIHostingEnabled,
+            );
+
+      if (
+        activeConversationId &&
+        nextConversationIds.includes(activeConversationId)
+      ) {
+        setConversationView(activeMode, view);
+        return;
+      }
+
+      const nextConversationId = nextConversationIds[0];
+
+      if (nextConversationId) {
+        void setActiveConversation(nextConversationId);
+      } else if (activeConversationId) {
+        clearActiveConversation();
+      }
+
+      setConversationView(activeMode, view);
+    },
+    [
+      activeAccountId,
+      activeConversationId,
+      activeMode,
+      activeModeConversations,
+      clearActiveConversation,
+      isActiveSeatAIHostingEnabled,
+      setConversationView,
+      setActiveConversation,
+      visibleSearchableConversations,
+    ],
+  );
   const activeConversation =
-    visibleConversations.find(
+    activeViewConversations.find(
       (conversation) => conversation.id === activeConversationId,
-    ) ?? (activeView === "chat" ? visibleConversations[0] : undefined);
+    );
   const isHistoryPanelOpen =
     historyPanelOpenConversationId === activeConversation?.id;
   const activeMessages =
@@ -462,6 +671,9 @@ function ChatWorkbenchContent({
   const hasMoreHistory = activeConversation
     ? hasMoreHistoryByConversationId[activeConversation.id] === true
     : false;
+  const fullAutoDisplayStatus = activeConversation
+    ? fullAutoStatusByConversationId[activeConversation.id]?.status
+    : undefined;
   const skippedHiddenCount = activeConversation
     ? (messagePaginationByConversationId[activeConversation.id]
         ?.skippedHiddenCount ?? 0)
@@ -474,8 +686,6 @@ function ChatWorkbenchContent({
     (activeConversation &&
       customerProfilesById[activeConversation.customerId]) ??
     undefined;
-
-  useConversationRevealTimer(allConversations);
   const workbenchPermissions = resolveWorkbenchPermissions({
     account: activeAccount,
     activeConversation,
@@ -485,10 +695,15 @@ function ChatWorkbenchContent({
   });
   const {
     canSendMessage,
+    canConfigureSeatAIHosting,
+    canConfigureSeatSemiAuto,
+    canToggleConversationAIHosting,
     canTakeOverAccount,
     canUseChatSend,
     canUseConversationActions,
     composerPlaceholder,
+    conversationAIHostingEnabled,
+    seatAIHostingEnabled,
     isAccountTakenOverByCurrentUser,
     isConversationActionDisabled,
     sidebarIframeSendStatus,
@@ -503,6 +718,53 @@ function ChatWorkbenchContent({
       ),
     [activeConversation?.unread, activeMessages],
   );
+  const handleMarkConversationUnread = useCallback(
+    async (conversationId: string) => {
+      manuallyMarkedUnreadCountByConversationIdRef.current.set(conversationId, 1);
+      try {
+        await markConversationUnread(conversationId);
+      } finally {
+        const latestState = useWorkbenchStore.getState();
+        const conversation = (
+          latestState.conversationListsByScope[activeAccountId] ?? []
+        ).find(
+          (item) => item.id === conversationId,
+        );
+
+        if (!conversation || conversation.unread <= 0) {
+          manuallyMarkedUnreadCountByConversationIdRef.current.delete(
+            conversationId,
+          );
+        }
+      }
+    },
+    [activeAccountId, markConversationUnread],
+  );
+  const handleMarkConversationRead = useCallback(
+    async (conversationId: string) => {
+      manuallyMarkedUnreadCountByConversationIdRef.current.delete(conversationId);
+      await markConversationRead(conversationId);
+    },
+    [markConversationRead],
+  );
+  const shouldSuppressAutoRead = useCallback(
+    (conversationId: string, unreadCount: number) => {
+      const manuallyMarkedUnreadCount =
+        manuallyMarkedUnreadCountByConversationIdRef.current.get(conversationId);
+
+      if (!manuallyMarkedUnreadCount) {
+        return false;
+      }
+
+      if (unreadCount <= manuallyMarkedUnreadCount) {
+        return true;
+      }
+
+      manuallyMarkedUnreadCountByConversationIdRef.current.delete(conversationId);
+      return false;
+    },
+    [],
+  );
   const requestActiveConversationRead = useVisibleUnreadConversationRead({
     activeConversationId: activeConversation?.id,
     activeMessages,
@@ -510,8 +772,9 @@ function ChatWorkbenchContent({
     canUseConversationActions,
     firstUnreadMessageKey,
     isConversationLoading,
-    markConversationRead,
+    markConversationRead: handleMarkConversationRead,
     messageViewportRef,
+    shouldSuppressAutoRead,
     unreadCount: activeConversation?.unread ?? 0,
   });
 
@@ -531,7 +794,10 @@ function ChatWorkbenchContent({
     });
   };
 
-  const { handleLoadOlderMessages, handleMessageViewportScroll } =
+  const {
+    handleLoadOlderMessages,
+    handleMessageViewportScroll: handleMessageViewportScrollRestoration,
+  } =
     useMessageScrollRestoration({
       activeConversationId: activeConversation?.id,
       activeHistoryStatus,
@@ -541,6 +807,31 @@ function ChatWorkbenchContent({
       messageCount: activeMessages.length,
       messageViewportRef,
     });
+  const handleMessageViewportScroll = useCallback(() => {
+    handleMessageViewportScrollRestoration();
+
+    const viewport = messageViewportRef.current;
+
+    if (!viewport || !firstUnreadMessageKey) {
+      return;
+    }
+
+    const firstUnreadMessageElement = viewport.querySelector(
+      `[data-ui-message-key="${escapeCssAttributeValue(firstUnreadMessageKey)}"]`,
+    );
+
+    if (
+      firstUnreadMessageElement &&
+      isElementVisibleInsideViewport(firstUnreadMessageElement, viewport)
+    ) {
+      void requestActiveConversationRead({ force: true });
+    }
+  }, [
+    firstUnreadMessageKey,
+    handleMessageViewportScrollRestoration,
+    messageViewportRef,
+    requestActiveConversationRead,
+  ]);
 
   useEffect(() => {
     if (bootstrapStatus !== "idle") {
@@ -572,17 +863,122 @@ function ChatWorkbenchContent({
   }, [activeConversationId]);
 
   useEffect(() => {
+    if (!shouldPersistConversationViewState) {
+      return;
+    }
+
+    writeConversationViewState(conversationViewState);
+  }, [conversationViewState, shouldPersistConversationViewState]);
+
+  useEffect(() => {
+    if (currentConversationView === resolvedConversationView) {
+      return;
+    }
+
+    setConversationView(activeMode, resolvedConversationView);
+  }, [
+    activeMode,
+    currentConversationView,
+    resolvedConversationView,
+    setConversationView,
+  ]);
+
+  useEffect(() => {
+    if (
+      !activeAccountId ||
+      resolvedConversationView !== "unread" ||
+      isConversationLoading
+    ) {
+      return;
+    }
+
+    void loadUnreadConversations(activeMode);
+  }, [
+    activeAccountId,
+    activeMode,
+    isConversationLoading,
+    loadUnreadConversations,
+    resolvedConversationView,
+  ]);
+
+  useEffect(() => {
+    if (resolvedConversationView === DEFAULT_CONVERSATION_VIEW) {
+      setConversationViewRetainedState(null);
+      return;
+    }
+
+    const currentMatchingIds = getConversationIdsInView(
+      visibleSearchableConversations,
+      activeMode,
+      resolvedConversationView,
+      isActiveSeatAIHostingEnabled,
+    );
+
+    setConversationViewRetainedState((currentState) => {
+      const shouldReset =
+        currentState?.accountId !== activeAccountId ||
+        currentState.mode !== activeMode ||
+        currentState.view !== resolvedConversationView ||
+        currentState.isSeatAIHostingEnabled !== isActiveSeatAIHostingEnabled;
+
+      if (shouldReset) {
+        return {
+          accountId: activeAccountId,
+          ids: new Set(currentMatchingIds),
+          isSeatAIHostingEnabled: isActiveSeatAIHostingEnabled,
+          mode: activeMode,
+          view: resolvedConversationView,
+        };
+      }
+
+      const nextIds = new Set(currentState.ids);
+      let didChange = false;
+
+      for (const conversationId of currentMatchingIds) {
+        if (!nextIds.has(conversationId)) {
+          nextIds.add(conversationId);
+          didChange = true;
+        }
+      }
+
+      if (!didChange) {
+        return currentState;
+      }
+
+      return {
+        ...currentState,
+        ids: nextIds,
+      };
+    });
+  }, [
+    activeAccountId,
+    activeMode,
+    isActiveSeatAIHostingEnabled,
+    resolvedConversationView,
+    visibleSearchableConversations,
+  ]);
+
+  useEffect(() => {
     if (activeView !== "chat") {
       return;
     }
 
-    if (!activeConversationId && firstVisibleConversationId) {
-      void setActiveConversation(firstVisibleConversationId);
+    if (!firstActiveViewConversationId) {
+      if (activeConversationId) {
+        clearActiveConversation();
+      }
+      return;
+    }
+
+    if (!activeConversationId || !hasActiveConversationInView) {
+      void setActiveConversation(firstActiveViewConversationId);
     }
   }, [
     activeConversationId,
     activeView,
-    firstVisibleConversationId,
+    clearActiveConversation,
+    firstActiveViewConversationId,
+    hasActiveConversationInView,
     setActiveConversation,
   ]);
 
@@ -598,6 +994,15 @@ function ChatWorkbenchContent({
     toast.warning(readReceiptError);
     dismissReadReceiptError();
   }, [dismissReadReceiptError, readReceiptError]);
+
+  useEffect(() => {
+    if (!fullAutoActionError) {
+      return;
+    }
+
+    toast.warning(fullAutoActionError);
+    dismissFullAutoActionError();
+  }, [dismissFullAutoActionError, fullAutoActionError]);
 
   const handleTakeOverAccount = useCallback(
     async (accountId: string) => {
@@ -615,6 +1020,19 @@ function ChatWorkbenchContent({
       toast.warning(result.errorMessage);
     },
     [canTakeOverAccount, takeOverAccount],
+  );
+
+  const handleChangeFullAuto = useCallback(
+    (enabled: boolean) => {
+      return changeActiveConversationFullAuto(enabled);
+    },
+    [changeActiveConversationFullAuto],
+  );
+  const handleChangeSeatAgentMode = useCallback(
+    (mode: WorkbenchSeatAgentMode) => {
+      void changeActiveSeatAgentMode(mode);
+    },
+    [changeActiveSeatAgentMode],
   );
 
   const handleStartCustomerChat = useCallback(
@@ -1012,11 +1430,12 @@ function ChatWorkbenchContent({
     const sendConversationId = activeConversation?.id;
     const normalizedSegments = segments.length > 0 ? segments : [];
     const mentionState = extractComposerMentionState(segments);
+    const hasMention = mentionState.memberIds.length > 0 || mentionState.mentionAll;
     const mention =
-      mentionState.memberIds.length > 0 || mentionState.mentionAll
+      hasMention
         ? {
             all: mentionState.mentionAll || undefined,
-            location: "start" as const,
+            location: mentionState.mentionAll ? "start" as const : "any" as const,
             memberIds: mentionState.memberIds,
           }
         : undefined;
@@ -1090,7 +1509,7 @@ function ChatWorkbenchContent({
         keepQuote: quotedMessage !== null && !result.didConsumeQuote,
       });
       scrollMessageViewportToBottom();
-      void requestActiveConversationRead();
+      void requestActiveConversationRead({ force: true });
     } finally {
       isSendingDraftRef.current = false;
       if (isMountedRef.current) {
@@ -1668,25 +2087,40 @@ function ChatWorkbenchContent({
                 <ConversationListPanel
                   activeConversation={activeConversation}
                   activeMode={activeMode}
+                  activeView={resolvedConversationView}
+                  conversationViews={conversationViewState}
                   composerDraftsByConversationId={composerDraftsByConversationId}
                   conversations={visibleSearchableConversations}
+                  isSeatAIHostingEnabled={activeAccount?.seatAIHostingEnabled === true}
                   isConversationActionDisabled={isConversationActionDisabled}
                   isConversationLoading={isConversationLoading}
                   onDeleteConversation={deleteConversation}
-                  onMarkConversationRead={markConversationRead}
-                  onMarkConversationUnread={markConversationUnread}
+                  onMarkConversationRead={handleMarkConversationRead}
+                  onMarkConversationUnread={handleMarkConversationUnread}
                   onPinConversation={pinConversation}
+                  onRefreshUnreadConversations={loadUnreadConversations}
                   onSelectConversation={handleSelectConversation}
                   onSelectMode={handleSelectMode}
+                  onSelectView={handleSelectConversationView}
                   onUnpinConversation={unpinConversation}
+                  retainedConversationIds={activeViewRetainedConversationIds}
                   searchableConversations={visibleSearchableConversations}
+                  hasMoreUnreadByMode={hasMoreUnreadByScope[activeAccountId]}
+                  unreadCountByMode={{
+                    group: activeAccount?.groupUnreadCount,
+                    single: activeAccount?.singleUnreadCount,
+                  }}
                 />
 
                 <ChatPanel
                   accountName={activeAccount?.name}
                   accountAvatarUrl={activeAccount?.avatarUrl}
+                  activeAccount={activeAccount}
                   activeConversation={activeConversation}
                   activeHistoryStatus={activeHistoryStatus}
+                  canConfigureSeatAIHosting={canConfigureSeatAIHosting}
+                  canConfigureSeatSemiAuto={canConfigureSeatSemiAuto}
+                  canToggleConversationAIHosting={canToggleConversationAIHosting}
                   canCollectMaterialActions={canCollectMaterialActions}
                   canSendMessage={canSendMessage}
                   composerPlaceholder={composerPlaceholder}
@@ -1695,12 +2129,17 @@ function ChatWorkbenchContent({
                   sidebarIframeSendStatus={sidebarIframeSendStatus}
                   customerPanelWidth={customerPanelWidth}
                   draft={draft}
+                  fullAutoDisplayStatus={fullAutoDisplayStatus}
                   groupMembers={activeGroupMembers}
+                  fullAutoActionPending={fullAutoActionPending}
+                  seatAgentModeActionPending={seatAgentModeActionPending}
                   isGroupMembersLoading={isActiveGroupMembersLoading}
                   inputEnterBehavior={inputEnterBehavior}
                   isConversationLoading={isConversationLoading}
+                  seatAIHostingEnabled={seatAIHostingEnabled}
                   isEmojiPickerOpen={isEmojiPickerOpen}
                   isSendingDraft={isSendingDraft}
+                  conversationAIHostingEnabled={conversationAIHostingEnabled}
                   isResizingCustomerPanel={isResizingCustomerPanel}
                   fileUploadQueue={fileUploadQueue}
                   collectedExpressions={collectedExpressions}
@@ -1718,6 +2157,9 @@ function ChatWorkbenchContent({
                   onCustomerPanelResizeStart={handleCustomerPanelResizeStart}
                   onComposerSegmentsChange={handleComposerSegmentsChange}
                   onCancelFileUpload={handleCancelFileUpload}
+                  onCancelAgentHosting={() => handleChangeFullAuto(false)}
+                  onChangeSeatAgentMode={handleChangeSeatAgentMode}
+                  onChangeFullAuto={handleChangeFullAuto}
                   onClearQuotedMessage={() => setQuotedMessage(null)}
                   onCollectMaterial={handleCollectMaterial}
                   onDeleteCollectedExpression={handleDeleteCollectedExpression}

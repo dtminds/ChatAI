@@ -57,7 +57,9 @@ type UseMaterialCollectionOptions = {
     reason: "file-upload" | "image-upload" | "send" | "unavailable";
   }) => void;
   onSent: () => void;
-  requestActiveConversationRead: () => Promise<void> | void;
+  requestActiveConversationRead: (
+    options?: { force?: boolean },
+  ) => Promise<void> | void;
   resolvedActiveConversationId?: string;
   sendAgentMessageSegments: (
     segments: ComposerSegment[],
@@ -1097,7 +1099,7 @@ export function useMaterialCollection({
 
         resetMaterialLibrary();
         onSent();
-        void requestActiveConversationRead();
+        void requestActiveConversationRead({ force: true });
       } finally {
         if (isMountedRef.current) {
           setIsMaterialLibrarySending(false);

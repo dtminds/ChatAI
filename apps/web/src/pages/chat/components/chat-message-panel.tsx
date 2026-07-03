@@ -7,11 +7,19 @@ import {
 import { cn } from "@/lib/utils";
 import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
 import { ChatMessageList } from "@/pages/chat/components/message-feed";
-import type { SmartReplySendPayload } from "@/pages/chat/api/smart-reply-adapter";
+import {
+  getSmartReplyLookupKey,
+  isSmartReplyEligibleMessage,
+  isSmartReplySemanticWait,
+  type SmartReplySendPayload,
+} from "@/pages/chat/api/smart-reply-adapter";
 import type { SmartReplySuggestion } from "@/pages/chat/components/smart-reply-card";
 import type { ChatMessage, Message } from "@/pages/chat/chat-types";
 import type { ChatMode } from "@/pages/chat/chat-types";
-import { useWorkbenchStore } from "@/store/workbench-store";
+import {
+  canDisplaySmartReplyForConversation,
+  useWorkbenchStore,
+} from "@/store/workbench-store";
 import { useShallow } from "zustand/react/shallow";
 
 type ChatMessagePanelProps = {
@@ -85,35 +93,64 @@ export function ChatMessagePanel({
 }: ChatMessagePanelProps) {
   const {
     smartReplyAutoPendingByMessageId,
+    smartReplyCanDisplay,
     smartReplyHiddenMessageKeys,
+    smartReplyPendingByMessageId,
     smartReplySuggestionsByMessageId,
   } = useWorkbenchStore(
     useShallow((state) => ({
       smartReplyAutoPendingByMessageId:
         state.smartReplyAutoPendingMessageKeysByConversationId[conversationId],
+      smartReplyCanDisplay: canDisplaySmartReplyForConversation(
+        state,
+        conversationId,
+      ),
       smartReplyHiddenMessageKeys:
         state.smartReplyHiddenMessageKeysByConversationId[conversationId],
+      smartReplyPendingByMessageId:
+        state.smartReplyPendingMessageKeysByConversationId[conversationId],
       smartReplySuggestionsByMessageId:
         state.smartReplyByMessageIdByConversationId[conversationId],
     })),
   );
   const smartReplyByMessageId = useMemo(() => {
-    if (conversationMode !== "single" || !smartReplySuggestionsByMessageId) {
+    if (
+      conversationMode !== "single" ||
+      !smartReplyCanDisplay ||
+      !smartReplySuggestionsByMessageId
+    ) {
       return {};
     }
 
     const hidden = smartReplyHiddenMessageKeys ?? {};
+    let latestEligibleKey: string | undefined;
+
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index];
+
+      if (message && message.role !== "system" && isSmartReplyEligibleMessage(message)) {
+        latestEligibleKey = getSmartReplyLookupKey(message);
+        break;
+      }
+    }
 
     return Object.fromEntries(
       Object.entries(smartReplySuggestionsByMessageId).filter(
-        ([lookupKey]) => !hidden[lookupKey],
+        ([lookupKey, suggestion]) =>
+          !hidden[lookupKey] &&
+          (!isSmartReplySemanticWait(suggestion) ||
+            lookupKey === latestEligibleKey),
       ),
     );
   }, [
     conversationMode,
+    messages,
+    smartReplyCanDisplay,
     smartReplyHiddenMessageKeys,
     smartReplySuggestionsByMessageId,
   ]) satisfies Record<string, SmartReplySuggestion>;
+  const canUseSmartReplyActions =
+    conversationMode === "single" && smartReplyCanDisplay;
 
   return (
     <section className="relative min-h-0 flex-1 bg-surface">
@@ -167,7 +204,9 @@ export function ChatMessagePanel({
                 onFillSmartReplyComposer={onFillSmartReplyComposer}
                 onDismissSmartReply={onDismissSmartReply}
                 onMakeShorterSmartReply={onMakeShorterSmartReply}
-                onTriggerSmartReply={onTriggerSmartReply}
+                onTriggerSmartReply={
+                  canUseSmartReplyActions ? onTriggerSmartReply : undefined
+                }
                 onRevokeMessage={onRevokeMessage}
                 onTranscribeVoice={onTranscribeVoice}
                 onVoicePlaybackReady={onVoicePlaybackReady}
@@ -177,8 +216,15 @@ export function ChatMessagePanel({
                   });
                 }}
                 retryingMessageIds={retryingMessageIds}
-                smartReplyAutoPendingByMessageId={smartReplyAutoPendingByMessageId}
+                smartReplyAutoPendingByMessageId={
+                  smartReplyCanDisplay
+                    ? smartReplyAutoPendingByMessageId
+                    : undefined
+                }
                 smartReplyByMessageId={smartReplyByMessageId}
+                smartReplyPendingByMessageId={
+                  smartReplyCanDisplay ? smartReplyPendingByMessageId : undefined
+                }
               />
             </div>
           </div>

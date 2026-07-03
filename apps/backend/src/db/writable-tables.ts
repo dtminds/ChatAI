@@ -5,9 +5,12 @@
  */
 export const WRITABLE_TABLES = [
   "xy_wap_embed_analysis_run",
+  "xy_wap_embed_agent",
+  "xy_wap_embed_agent_history",
   "xy_wap_embed_sub_user",
   "xy_wap_embed_sub_user_session",
   "xy_wap_embed_user_seat",
+  "xy_wap_embed_user_seat_agent",
   "xy_wap_embed_user_seat_sub_relation",
   "xy_wap_embed_conversation",
   "xy_wap_embed_insight_analysis_policy",

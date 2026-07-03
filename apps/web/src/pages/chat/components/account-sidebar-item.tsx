@@ -30,6 +30,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { AvatarUnreadCountBadge } from "@/pages/chat/components/unread-count-badge";
 import { cn } from "@/lib/utils";
 import { isExpiredAccountSeat } from "@/pages/chat/lib/workbench-permissions";
 import type { Account } from "@/pages/chat/chat-types";
@@ -72,8 +73,7 @@ export function AccountSidebarItem({
         : "未接管";
   const canShowTakeoverPopover = !isExpired && !isOffline && !isTakenOverByCurrentUser;
   const canTakeOver = canTakeOverAccount && canShowTakeoverPopover && !isTakingOver;
-  const shouldShowUnreadDot =
-    !isExpired && !isActive && isTakenOverByCurrentUser && !!account.unreadCount;
+  const shouldShowUnreadCount = !isExpired && (account.unreadCount ?? 0) > 0;
   const compactStatusLabel =
     isExpired
       ? "席位已失效"
@@ -204,14 +204,7 @@ export function AccountSidebarItem({
           </AvatarFallback>
           {compactStatusBadge}
         </Avatar>
-        {shouldShowUnreadDot ? (
-          <span
-            aria-label={`${account.name} 有未读消息`}
-            className="absolute -right-1 -top-1 size-2 rounded-full border border-background bg-destructive"
-            data-testid={`account-unread-dot-${account.id}`}
-          >
-          </span>
-        ) : null}
+        {shouldShowUnreadCount ? <AccountUnreadBadge account={account} /> : null}
       </button>
     );
 
@@ -369,14 +362,7 @@ export function AccountSidebarItem({
                 {account.name.slice(0, 1)}
               </AvatarFallback>
             </Avatar>
-            {shouldShowUnreadDot ? (
-              <span
-                aria-label={`${account.name} 有未读消息`}
-                className="absolute -right-1 -top-1 size-2 rounded-full border border-background bg-destructive"
-                data-testid={`account-unread-dot-${account.id}`}
-              >
-              </span>
-            ) : null}
+            {shouldShowUnreadCount ? <AccountUnreadBadge account={account} /> : null}
           </div>
 
           <div className="min-w-0 flex-1">
@@ -488,5 +474,17 @@ export function AccountSidebarItem({
         </AlertDialogContent>
       </AlertDialog>
     </Popover>
+  );
+}
+
+function AccountUnreadBadge({ account }: { account: Account }) {
+  const unreadCount = account.unreadCount ?? 0;
+
+  return (
+    <AvatarUnreadCountBadge
+      ariaLabel={`${account.name} 有 ${unreadCount} 条未读消息`}
+      count={unreadCount}
+      testId={`account-unread-count-${account.id}`}
+    />
   );
 }

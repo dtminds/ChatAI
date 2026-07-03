@@ -1,4 +1,3 @@
-import { CONVERSATION_CUSTODY_MODE } from "@chatai/contracts";
 import type {
   Account,
   Conversation,
@@ -7,12 +6,17 @@ import type {
   Message,
 } from "@/pages/chat/chat-types";
 
-type SeedConversation = Omit<Conversation, "custodyMode">;
+type SeedConversation = Omit<Conversation, "conversationAIHostingSwitch"> &
+  Partial<Pick<Conversation, "conversationAIHostingSwitch">>;
 
-function withDefaultCustodyMode(conversations: SeedConversation[]): Conversation[] {
+function withDefaultAIHostingSwitch(conversations: SeedConversation[]): Conversation[] {
   return conversations.map((conversation) => ({
     ...conversation,
-    custodyMode: CONVERSATION_CUSTODY_MODE.SEMI,
+    conversationAIHostingSwitch: conversation.conversationAIHostingSwitch ?? false,
+    customerBindType:
+      conversation.mode === "single"
+        ? conversation.customerBindType ?? 1
+        : undefined,
   }));
 }
 
@@ -228,7 +232,7 @@ const rawSeedConversations: Record<string, SeedConversation[]> = {
 export const seedConversations: Record<string, Conversation[]> = Object.fromEntries(
   Object.entries(rawSeedConversations).map(([accountId, conversations]) => [
     accountId,
-    withDefaultCustodyMode(conversations),
+    withDefaultAIHostingSwitch(conversations),
   ]),
 );
 

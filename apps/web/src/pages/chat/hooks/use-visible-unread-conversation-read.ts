@@ -8,6 +8,10 @@ import type { Message } from "@/pages/chat/chat-types";
 
 const ACTIVE_CONVERSATION_READ_THROTTLE_MS = 800;
 
+type RequestActiveConversationReadOptions = {
+  force?: boolean;
+};
+
 export function getFirstUnreadCustomerMessageKey(
   messages: Message[],
   unreadCount: number,
@@ -44,6 +48,7 @@ export function useVisibleUnreadConversationRead({
   isConversationLoading,
   markConversationRead,
   messageViewportRef,
+  shouldSuppressAutoRead,
   unreadCount,
 }: {
   activeConversationId?: string;
@@ -54,6 +59,10 @@ export function useVisibleUnreadConversationRead({
   isConversationLoading: boolean;
   markConversationRead: (conversationId: string) => Promise<void>;
   messageViewportRef: RefObject<HTMLDivElement | null>;
+  shouldSuppressAutoRead?: (
+    conversationId: string,
+    unreadCount: number,
+  ) => boolean;
   unreadCount: number;
 }) {
   const inFlightReadConversationIdsRef = useRef(new Set<string>());
@@ -75,7 +84,7 @@ export function useVisibleUnreadConversationRead({
   };
 
   const requestActiveConversationRead = useCallback(
-    async () => {
+    async (options: RequestActiveConversationReadOptions = {}) => {
       const context = readContextRef.current;
       const conversationId = context.activeConversationId;
 
@@ -85,6 +94,8 @@ export function useVisibleUnreadConversationRead({
         !context.canUseConversationActions ||
         context.isConversationLoading ||
         context.unreadCount <= 0 ||
+        (!options.force &&
+          shouldSuppressAutoRead?.(conversationId, context.unreadCount)) ||
         inFlightReadConversationIdsRef.current.has(conversationId)
       ) {
         return;
@@ -110,7 +121,7 @@ export function useVisibleUnreadConversationRead({
         inFlightReadConversationIdsRef.current.delete(conversationId);
       }
     },
-    [markConversationRead],
+    [markConversationRead, shouldSuppressAutoRead],
   );
 
   useEffect(() => {

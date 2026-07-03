@@ -1,5 +1,6 @@
 import type {
   WorkbenchPollRequest,
+  WorkbenchRetryMessageRequest,
   WorkbenchSendMessagePayload,
   WorkbenchGetOrCreateConversationRequestDto,
   WorkbenchSmartReplyAttachmentsRequest,
@@ -36,6 +37,7 @@ import type {
   WorkbenchQuickReplyMoveRequest,
   WorkbenchQuickReplySortRequest,
   WorkbenchQuickReplyUpdateRequest,
+  WorkbenchSeatAgentModeSwitchRequest,
 } from "@chatai/contracts";
 import {
   QUICK_REPLY_CATEGORY_CONTENT_ITEM_LIMIT,
@@ -55,11 +57,29 @@ const ConversationListQuerySchema = Type.Object({
   limit: Type.Optional(NumericStringSchema),
   mode: Type.Optional(Type.Union([Type.Literal("single"), Type.Literal("group")])),
   seatId: Type.Optional(Type.String()),
+  unread_only: Type.Optional(Type.Union([Type.Literal("0"), Type.Literal("1")])),
 });
 
 const ConversationParamsSchema = Type.Object({
   conversationId: Type.String(),
 });
+
+const ConversationFullAutoRequestSchema = Type.Object({
+  enabled: Type.Boolean(),
+});
+
+type ConversationFullAutoRequest = Static<typeof ConversationFullAutoRequestSchema>;
+
+const SeatAgentModeSwitchRequestSchema = Type.Object({
+  mode: Type.Union([
+    Type.Literal("assistant"),
+    Type.Literal("autoReply"),
+    Type.Literal("off"),
+  ]),
+});
+
+type SeatAgentModeSwitchRequest = Static<typeof SeatAgentModeSwitchRequestSchema> &
+  WorkbenchSeatAgentModeSwitchRequest;
 
 const ConversationMessagesQuerySchema = Type.Object({
   before_seq: Type.Optional(NumericStringSchema),
@@ -117,6 +137,11 @@ const MessageRevokeBodySchema = Type.Object({
   conversationId: Type.String(),
 });
 
+const MessageRetryBodySchema = Type.Object({
+  conversationId: Type.String(),
+  messageSeq: Type.Integer({ minimum: 1 }),
+});
+
 const MessageDownloadStatusBodySchema = Type.Object({
   conversationId: Type.String(),
   messageSeq: Type.Number(),
@@ -155,8 +180,7 @@ const SmartReplyMakeShorterBodySchema = Type.Object({
 
 const SmartReplySendAnswerBodySchema = Type.Object({
   conversationId: Type.String(),
-  realAnswer: Type.String({ minLength: 1 }),
-  realAttachIds: Type.Array(Type.String()),
+  optNos: Type.Array(Type.String({ minLength: 1 }), { minItems: 1 }),
   recordId: Type.String({ minLength: 1 }),
 });
 
@@ -238,10 +262,15 @@ const SendMessageBodySchema = Type.Object({
   mention: Type.Optional(
     Type.Object({
       all: Type.Optional(Type.Boolean()),
-      location: Type.Union([Type.Literal("start"), Type.Literal("end")]),
+      location: Type.Union([
+        Type.Literal("start"),
+        Type.Literal("end"),
+        Type.Literal("any"),
+      ]),
       memberIds: Type.Array(Type.String()),
     }),
   ),
+  atOriginText: Type.Optional(Type.String()),
   quote: Type.Optional(
     Type.Object({
       quoteMsgId: Type.String(),
@@ -838,6 +867,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
           cursor: request.query.cursor,
           limit: parseOptionalInteger(request.query.limit),
           mode: request.query.mode,
+          unreadOnly: request.query.unread_only === "1",
         },
       );
     },
@@ -996,6 +1026,40 @@ export async function registerChatRoutes(app: FastifyInstance) {
         request.params.conversationId,
       );
     },
+  );
+
+  app.post<{ Body: ConversationFullAutoRequest; Params: ConversationParams }>(
+    "/api/server/conversations/:conversationId/full-auto",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: ConversationFullAutoRequestSchema,
+        params: ConversationParamsSchema,
+      },
+    },
+    async (request) => {
+      assertChatWriteAccess(request);
+      return getWorkbenchService(app, request).changeConversationFullAuto(
+        getSubUserId(request),
+        request.params.conversationId,
+        request.body,
+      );
+    },
+  );
+
+  app.get<{ Params: ConversationParams }>(
+    "/api/server/conversations/:conversationId/full-auto/answer-status",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        params: ConversationParamsSchema,
+      },
+    },
+    async (request) =>
+      getWorkbenchService(app, request).getFullAutoAnswerStatus(
+        getSubUserId(request),
+        request.params.conversationId,
+      ),
   );
 
   app.post<{ Params: ConversationParams }>(
@@ -1867,6 +1931,23 @@ export async function registerChatRoutes(app: FastifyInstance) {
     },
   );
 
+  app.post<{ Body: Static<typeof MessageRetryBodySchema> }>(
+    "/api/server/messages/retry",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: MessageRetryBodySchema,
+      },
+    },
+    async (request) => {
+      assertChatSendAccess(request);
+      return getWorkbenchService(app, request).retryMessage(
+        getSubUserId(request),
+        request.body satisfies WorkbenchRetryMessageRequest,
+      );
+    },
+  );
+
   app.post<{
     Body: MessageDownloadBody;
   }>(
@@ -1939,6 +2020,25 @@ export async function registerChatRoutes(app: FastifyInstance) {
       return getWorkbenchService(app, request).takeOverSeat(
         getSubUserId(request),
         request.params.seatId,
+      );
+    },
+  );
+
+  app.patch<{ Body: SeatAgentModeSwitchRequest; Params: SeatParams }>(
+    "/api/server/seats/:seatId/agent-mode-switch",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: SeatAgentModeSwitchRequestSchema,
+        params: SeatParamsSchema,
+      },
+    },
+    async (request) => {
+      assertChatWriteAccess(request);
+      return getWorkbenchService(app, request).updateSeatAgentModeSwitch(
+        getSubUserId(request),
+        request.params.seatId,
+        request.body,
       );
     },
   );

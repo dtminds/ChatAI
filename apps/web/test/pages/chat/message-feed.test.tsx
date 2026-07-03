@@ -762,6 +762,7 @@ describe("message feed row actions", () => {
         smartReply={{
           assistantName: "护肤小助手",
           content: "建议先确认肤质",
+          generateStatus: 2,
           status: "ready",
         }}
       />,
@@ -794,6 +795,163 @@ describe("message feed row actions", () => {
     expect(screen.queryByTestId("smart-reply-card")).not.toBeInTheDocument();
   });
 
+  it("shows a compact inline spinner instead of a card while manual smart reply is pending", () => {
+    render(
+      <MessageRow
+        isSmartReplyPending
+        message={{
+          content: { text: "客户想了解产品", type: "text" },
+          conversationId: "conv-1",
+          uiMessageKey: "msg-customer-1",
+          rawMsgtype: "text",
+          role: "customer",
+          sender: { id: "cus-1", name: "客户甲" },
+          sentAt: "2026-05-25T10:00:00+08:00",
+          seq: 12,
+          status: "sent",
+        } as ChatMessage}
+      />,
+    );
+
+    expect(screen.getByTestId("smart-reply-inline-processing")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("正在生成话术推荐");
+    expect(screen.queryByTestId("smart-reply-card")).not.toBeInTheDocument();
+  });
+
+  it.each([
+    { expectedLabel: "正在生成话术推荐", generateStatus: 0, status: "thinking" as const },
+    { expectedLabel: "正在生成话术推荐", generateStatus: 1, status: "processing" as const },
+    { expectedLabel: "生成失败：model_error", failReason: "model_error", generateStatus: 3 },
+    {
+      expectedLabel: "已跳过话术推荐：命中人工处理规则",
+      failReason: "命中人工处理规则",
+      generateStatus: 4,
+      status: "ready" as const,
+    },
+    {
+      createdAt: Date.now() - 10_000,
+      expectedLabel: "客户可能还没说完",
+      failReason: "客户可能还没说完",
+      generateStatus: 5,
+      status: "processing" as const,
+    },
+    {
+      createdAt: Date.now() - 21_000,
+      expectedLabel: "语义不完整，已跳过话术推荐",
+      generateStatus: 5,
+      status: "processing" as const,
+    },
+  ])(
+    "shows inline smart reply state instead of a card for gen_status $generateStatus",
+    ({ createdAt, expectedLabel, failReason, generateStatus, status }) => {
+      render(
+        <MessageRow
+          message={{
+            content: { text: "客户想了解产品", type: "text" },
+            conversationId: "conv-1",
+            uiMessageKey: "msg-customer-1",
+            rawMsgtype: "text",
+            role: "customer",
+            sender: { id: "cus-1", name: "客户甲" },
+            sentAt: "2026-05-25T10:00:00+08:00",
+            seq: 12,
+            status: "sent",
+          } as ChatMessage}
+          smartReply={{
+            assistantName: "护肤小助手",
+            content: generateStatus === 4 ? "转人工原因" : "",
+            createdAt,
+            failReason,
+            generateStatus,
+            pollComplete: generateStatus === 3 || generateStatus === 4,
+            status,
+          }}
+        />,
+      );
+
+      expect(screen.getByTestId("smart-reply-inline-processing")).toBeInTheDocument();
+      expect(screen.getByRole("status")).toHaveTextContent(expectedLabel);
+      expect(screen.queryByTestId("smart-reply-card")).not.toBeInTheDocument();
+    },
+  );
+
+  it("regenerates failed inline smart replies from the refresh action", async () => {
+    const user = userEvent.setup();
+    const onTriggerSmartReply = vi.fn();
+    const message = {
+      content: { text: "客户想了解产品", type: "text" },
+      conversationId: "conv-1",
+      uiMessageKey: "msg-customer-1",
+      rawMsgtype: "text",
+      role: "customer",
+      sender: { id: "cus-1", name: "客户甲" },
+      sentAt: "2026-05-25T10:00:00+08:00",
+      seq: 12,
+      status: "sent",
+    } as ChatMessage;
+
+    render(
+      <MessageRow
+        message={message}
+        onTriggerSmartReply={onTriggerSmartReply}
+        smartReply={{
+          assistantName: "护肤小助手",
+          content: "",
+          failReason: "model_error",
+          generateStatus: 3,
+          pollComplete: true,
+        }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "重新生成" }));
+
+    expect(onTriggerSmartReply).toHaveBeenCalledWith(message, { force: true });
+  });
+
+  it("dismisses expired semantic-wait inline smart replies without offering regeneration", async () => {
+    const user = userEvent.setup();
+    const onDismissSmartReply = vi.fn();
+    const onTriggerSmartReply = vi.fn();
+    const message = {
+      content: { text: "客户想了解产品", type: "text" },
+      conversationId: "conv-1",
+      uiMessageKey: "msg-customer-1",
+      rawMsgtype: "text",
+      role: "customer",
+      sender: { id: "cus-1", name: "客户甲" },
+      sentAt: "2026-05-25T10:00:00+08:00",
+      seq: 12,
+      status: "sent",
+    } as ChatMessage;
+
+    render(
+      <MessageRow
+        message={message}
+        onDismissSmartReply={onDismissSmartReply}
+        onTriggerSmartReply={onTriggerSmartReply}
+        smartReply={{
+          assistantName: "护肤小助手",
+          content: "",
+          createdAt: Date.now() - 21_000,
+          generateStatus: 5,
+          pollComplete: false,
+          status: "processing",
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "语义不完整，已跳过话术推荐",
+    );
+    expect(screen.queryByRole("button", { name: "重新生成" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "收起" }));
+
+    expect(onDismissSmartReply).toHaveBeenCalledWith(message);
+    expect(onTriggerSmartReply).not.toHaveBeenCalled();
+  });
+
   it("dismisses the smart reply card so the avatar recommendation action can be used again", async () => {
     const user = userEvent.setup();
     const onDismissSmartReply = vi.fn();
@@ -815,6 +973,7 @@ describe("message feed row actions", () => {
         smartReply={{
           assistantName: "护肤小助手",
           content: "建议先确认肤质",
+          generateStatus: 2,
           status: "ready",
         }}
       />,
@@ -861,6 +1020,7 @@ describe("message feed row actions", () => {
         smartReply={{
           assistantName: "护肤小助手",
           content: "建议先确认肤质",
+          generateStatus: 2,
           status: "ready",
         }}
       />,
@@ -1056,6 +1216,78 @@ describe("message feed row actions", () => {
     expect(screen.queryByRole("menuitem", { name: "撤回消息" })).not.toBeInTheDocument();
   });
 
+  it("delegates retry for failed messages without a seq to the page handler", async () => {
+    const user = userEvent.setup();
+    const onRetryMessage = vi.fn();
+
+    render(
+      <MessageRow
+        message={{
+          ...createTextMessage("尚未落库失败"),
+          msgid: undefined,
+          seq: undefined,
+          status: "failed",
+        }}
+        onRetryMessage={onRetryMessage}
+      />,
+    );
+
+    const retryButton = screen.getByRole("button", { name: "重试发送" });
+    expect(retryButton).toBeEnabled();
+
+    await user.click(retryButton);
+    expect(onRetryMessage).toHaveBeenCalledWith(expect.any(String));
+  });
+
+  it("delegates retry for failed messages with invalid seq to the page handler", async () => {
+    const user = userEvent.setup();
+    const onRetryMessage = vi.fn();
+
+    render(
+      <MessageRow
+        message={{
+          ...createTextMessage("异常序号失败"),
+          seq: 0,
+          status: "failed",
+        }}
+        onRetryMessage={onRetryMessage}
+      />,
+    );
+
+    const retryButton = screen.getByRole("button", { name: "重试发送" });
+    expect(retryButton).toBeEnabled();
+
+    await user.click(retryButton);
+    expect(onRetryMessage).toHaveBeenCalledWith(expect.any(String));
+  });
+
+  it("delegates retry for unsupported failed message content to the page handler", async () => {
+    const user = userEvent.setup();
+    const onRetryMessage = vi.fn();
+
+    render(
+      <MessageRow
+        message={{
+          ...createTextMessage("语音失败"),
+          content: {
+            audioUrl: "https://cdn.example.com/voice.amr",
+            durationLabel: "0:05",
+            type: "voice",
+          },
+          rawMsgtype: "voice",
+          status: "failed",
+        }}
+        onRetryMessage={onRetryMessage}
+      />,
+    );
+
+    const retryButton = screen.getByRole("button", { name: "重试发送" });
+    expect(retryButton).toBeEnabled();
+
+    await user.click(retryButton);
+    expect(onRetryMessage).toHaveBeenCalledWith(expect.any(String));
+  });
+
   it("keeps the feed item key stable after optimistic messages are reconciled", () => {
     const optimisticMessage = {
       ...createTextMessage("已确认消息"),
@@ -1073,6 +1305,25 @@ describe("message feed row actions", () => {
     expect(getMessageFeedItemKey(optimisticMessage)).toBe(
       getMessageFeedItemKey(reconciledMessage),
     );
+  });
+
+  it("marks agent-hosted outbound messages on the avatar", () => {
+    render(
+      <MessageRow
+        message={{
+          ...createTextMessage("Agent 自动回复"),
+          isAgentMessage: true,
+        }}
+      />,
+    );
+
+    expect(screen.getByLabelText("AI托管")).toBeInTheDocument();
+  });
+
+  it("does not mark regular outbound messages as agent-hosted", () => {
+    render(<MessageRow message={createTextMessage("人工回复")} />);
+
+    expect(screen.queryByLabelText("AI托管")).not.toBeInTheDocument();
   });
 
   it("adds directional entrance animation only to appended new messages", () => {

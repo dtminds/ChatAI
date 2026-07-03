@@ -1418,11 +1418,12 @@ function ChatWorkbenchContent({
     const sendConversationId = activeConversation?.id;
     const normalizedSegments = segments.length > 0 ? segments : [];
     const mentionState = extractComposerMentionState(segments);
+    const hasMention = mentionState.memberIds.length > 0 || mentionState.mentionAll;
     const mention =
-      mentionState.memberIds.length > 0 || mentionState.mentionAll
+      hasMention
         ? {
             all: mentionState.mentionAll || undefined,
-            location: "start" as const,
+            location: mentionState.mentionAll ? "start" as const : "any" as const,
             memberIds: mentionState.memberIds,
           }
         : undefined;

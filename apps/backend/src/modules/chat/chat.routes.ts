@@ -256,7 +256,11 @@ const SendMessageBodySchema = Type.Object({
   mention: Type.Optional(
     Type.Object({
       all: Type.Optional(Type.Boolean()),
-      location: Type.Union([Type.Literal("start"), Type.Literal("end")]),
+      location: Type.Union([
+        Type.Literal("start"),
+        Type.Literal("end"),
+        Type.Literal("any"),
+      ]),
       memberIds: Type.Array(Type.String()),
     }),
   ),

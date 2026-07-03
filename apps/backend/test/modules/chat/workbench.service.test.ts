@@ -3273,7 +3273,7 @@ describe("MysqlWorkbenchService", () => {
     expect(javaClient.revokeMessage).not.toHaveBeenCalled();
   });
 
-  it("maps a group text send with mentions to the Java send-message payload", async () => {
+  it("maps a group text send with any-position mentions to the Java send-message payload", async () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.sendMessage).mockResolvedValue({
       optNo: "opt-001",
@@ -3300,12 +3300,12 @@ describe("MysqlWorkbenchService", () => {
       service.sendMessage("101", {
         conversationId: "88",
         mention: {
-          location: "end",
+          location: "any",
           memberIds: ["member-user", "member-rui"],
         },
         seatId: "12",
         segment: {
-          text: "今天统一看群公告",
+          text: "hello @$$ world @$$",
           type: "text",
         },
       }),
@@ -3315,11 +3315,11 @@ describe("MysqlWorkbenchService", () => {
     });
     expect(javaClient.sendMessage).toHaveBeenCalledWith({
       msgData: {
-        atLocation: 1,
+        atLocation: 2,
         atWxSerialNos: ["member-user", "member-rui"],
         isHit: 2,
         msgtype: "text",
-        text: "今天统一看群公告",
+        text: "hello @$$ world @$$",
       },
       platform: 5,
       sendType: 2,

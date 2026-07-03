@@ -12,11 +12,18 @@ type QueryExecutionEvent = {
 };
 
 type KbReadDbMockOptions = {
+  agents?: Array<{
+    id: number;
+    prompt_config: string;
+    status?: number;
+    uid?: number;
+  }>;
   beforeExecute?: (event: QueryExecutionEvent) => Promise<void> | void;
   docSizeBytes?: number[];
   deletedDocCount?: number;
   deletedKbCount?: number;
   includeFaqDoc?: boolean;
+  includeSecondKbWithoutDocs?: boolean;
   totalDocCount?: number;
   totalKbCount?: number;
 };
@@ -88,6 +95,19 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
       update_time: mysqlDatetime("2026-06-20 14:02:22"),
     },
   ];
+  if (options.includeSecondKbWithoutDocs) {
+    kbs.push({
+      create_time: mysqlDatetime("2026-06-19 14:02:22"),
+      id: 2,
+      last_operator_id: 1,
+      name: "空知识库",
+      operator_id: 1,
+      remark: "无文档知识库",
+      status: 1,
+      uid: 9001,
+      update_time: mysqlDatetime("2026-06-20 14:02:22"),
+    });
+  }
   for (let index = kbs.length; index < (options.totalKbCount ?? kbs.length); index += 1) {
     kbs.push({
       create_time: mysqlDatetime("2026-06-19 14:02:22"),
@@ -292,6 +312,13 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
     });
   }
 
+  const agents = (options.agents ?? []).map((agent) => ({
+    id: agent.id,
+    prompt_config: agent.prompt_config,
+    status: agent.status ?? 1,
+    uid: agent.uid ?? 9001,
+  }));
+
   const chunks = [
     {
       content: "切片正文",
@@ -457,6 +484,8 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
             rows = filterRows(docs);
           } else if (table === "xy_wap_embed_agent_kb_chunk") {
             rows = filterRows(chunks);
+          } else if (table === "xy_wap_embed_agent") {
+            rows = filterRows(agents);
           }
 
           return { total: rows.length };
@@ -488,6 +517,10 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
 
           if (table === "xy_wap_embed_agent_kb_chunk") {
             return projectRows(filterRows(chunks));
+          }
+
+          if (table === "xy_wap_embed_agent") {
+            return projectRows(filterRows(agents));
           }
 
           return [];

@@ -3,8 +3,10 @@ import {
   KB_SEARCH_QUERY_MAX_LENGTH,
   KbCreateRequestSchema,
   KbDocTypeSchema,
+  KbUpdateRequestSchema,
   type KbCreateRequest,
   type KbDocType,
+  type KbUpdateRequest,
 } from "@chatai/contracts";
 import { Type, type Static } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
@@ -63,7 +65,69 @@ export async function registerKbRoutes(app: FastifyInstance) {
       assertAiHostingWriteAccess(request);
 
       return apiSuccess(
-        await createKbWriteService(app.db).createKb(getAgentKbTenant(request), request.body),
+        await createKbWriteService(app.db, app.log).createKb(getAgentKbTenant(request), request.body),
+      );
+    },
+  );
+
+  app.post<{ Params: KbParams; Body: KbUpdateRequest }>(
+    "/api/server/ai-hosting/kbs/:kbId/update",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: KbUpdateRequestSchema,
+        params: KbParamsSchema,
+      },
+    },
+    async (request) => {
+      assertAiHostingWriteAccess(request);
+
+      return apiSuccess(
+        await createKbWriteService(app.db, app.log).updateKb(
+          getAgentKbTenant(request),
+          request.params.kbId,
+          request.body,
+        ),
+      );
+    },
+  );
+
+  app.get<{ Params: KbParams }>(
+    "/api/server/ai-hosting/kbs/:kbId/delete-check",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        params: KbParamsSchema,
+      },
+    },
+    async (request) => {
+      assertAiHostingWriteAccess(request);
+
+      return apiSuccess(
+        await createKbWriteService(app.db, app.log).checkKbDelete(
+          getAgentKbTenant(request),
+          request.params.kbId,
+        ),
+      );
+    },
+  );
+
+  app.post<{ Params: KbParams }>(
+    "/api/server/ai-hosting/kbs/:kbId/delete",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        params: KbParamsSchema,
+      },
+    },
+    async (request) => {
+      assertAiHostingWriteAccess(request);
+
+      return apiSuccess(
+        await createKbWriteService(app.db, app.log).deleteKb(
+          getAgentKbTenant(request),
+          request.params.kbId,
+        ),
       );
     },
   );

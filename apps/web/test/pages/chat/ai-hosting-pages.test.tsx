@@ -27,7 +27,9 @@ import {
   addMockKbChunk,
   addMockKbListItem,
   deleteMockKbChunk,
+  deleteMockKbListItem,
   updateMockKbChunk,
+  updateMockKbListItem,
   updateMockKbDocStatus,
 } from "./kb-service-mock-data";
 
@@ -58,12 +60,15 @@ const agentServiceMock = vi.hoisted(() => ({
   updateAiHostingAgent: vi.fn(),
 }));
 const kbServiceMock = vi.hoisted(() => ({
+  checkKbDelete: vi.fn(),
   createKb: vi.fn(),
+  deleteKb: vi.fn(),
   getKb: vi.fn(),
   getKbDoc: vi.fn(),
   listKbDocChunks: vi.fn(),
   listKbDocs: vi.fn(),
   listKbs: vi.fn(),
+  updateKb: vi.fn(),
 }));
 
 vi.mock("read-excel-file/browser", () => ({
@@ -358,6 +363,29 @@ describe("AI hosting pages", () => {
 
       return {
         kbId: created.id,
+      };
+    });
+    vi.mocked(kbService.updateKb).mockImplementation(async (kbId, payload) => {
+      updateMockKbListItem(kbId, {
+        description: payload.description ?? "",
+        name: payload.name,
+      });
+
+      return {
+        updated: true,
+      };
+    });
+    vi.mocked(kbService.checkKbDelete).mockImplementation(async (kbId) => {
+      const docs = await kbService.listKbDocs(kbId, { page: 1, pageSize: 1 });
+      return {
+        hasDocuments: docs.pagination.total > 0,
+        linkedAgentCount: 0,
+      };
+    });
+    vi.mocked(kbService.deleteKb).mockImplementation(async (kbId) => {
+      deleteMockKbListItem(kbId);
+      return {
+        deleted: true,
       };
     });
     vi.mocked(kbService.getKb).mockImplementation(async (kbId) => createMockKbItem(kbId));
@@ -2200,8 +2228,27 @@ describe("AI hosting pages", () => {
       "href",
       "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
     );
-    expect(screen.queryByRole("button", { name: "编辑" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "删除" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "编辑 华为产品知识" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "删除 华为产品知识" })).toBeInTheDocument();
+  });
+
+  it("blocks deleting a knowledge base linked to agents", async () => {
+    const user = userEvent.setup();
+    vi.mocked(kbService.checkKbDelete).mockResolvedValueOnce({
+      hasDocuments: false,
+      linkedAgentCount: 8,
+    });
+
+    renderWithRoute("/chat/ai-hosting/kb", <KbListPage />);
+
+    await screen.findByRole("heading", { level: 1, name: "知识库" });
+    await user.click(screen.getByRole("button", { name: "删除 华为产品知识" }));
+
+    expect(
+      await screen.findByText("当前知识库已关联8个Agent，不支持删除"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("是否确认删除？")).not.toBeInTheDocument();
+    expect(kbService.deleteKb).not.toHaveBeenCalled();
   });
 
   it("prevents creating knowledge bases when the fixed knowledge base quota is reached", async () => {

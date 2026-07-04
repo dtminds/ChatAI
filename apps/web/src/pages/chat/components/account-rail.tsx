@@ -185,22 +185,36 @@ export function AccountRail({
   if (isCollapsed) {
     return (
       <section className="flex h-full min-h-0 flex-col items-center bg-sidebar px-2 py-4 text-sidebar-foreground">
-        <Button
-          aria-label={toggleLabel}
-          aria-pressed={isCollapsed}
-          className="mb-4 size-9 rounded-[10px] p-0 text-sidebar-foreground shadow-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-          onClick={() => onCollapseChange?.(false)}
-          size="icon"
-          type="button"
-          variant="ghost"
-        >
-          <HugeiconsIcon
-            color="currentColor"
-            icon={toggleIcon}
-            size={18}
-            strokeWidth={1.9}
-          />
-        </Button>
+        {onCollapseChange ? (
+          <Button
+            aria-label={toggleLabel}
+            aria-pressed={isCollapsed}
+            className="mb-4 size-9 rounded-[10px] p-0 text-sidebar-foreground shadow-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            onClick={() => onCollapseChange(false)}
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
+            <HugeiconsIcon
+              color="currentColor"
+              icon={toggleIcon}
+              size={18}
+              strokeWidth={1.9}
+            />
+          </Button>
+        ) : (
+          <div
+            aria-hidden="true"
+            className="mb-4 flex size-9 items-center justify-center rounded-[10px] text-sidebar-foreground"
+          >
+            <HugeiconsIcon
+              color="currentColor"
+              icon={toggleIcon}
+              size={18}
+              strokeWidth={1.9}
+            />
+          </div>
+        )}
 
         <TooltipProvider>
           <nav

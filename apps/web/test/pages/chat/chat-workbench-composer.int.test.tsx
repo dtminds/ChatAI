@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
@@ -18,6 +18,10 @@ import {
   resetChatWorkbenchTestState,
   workbenchToastWarningMock,
 } from "./workbench-test-utils";
+import {
+  mockViewportMediaQuery,
+  restoreViewportMediaQuery,
+} from "./media-query-test-utils";
 
 function createDeferred<T = void>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
@@ -72,6 +76,18 @@ function placeContentEditableCaretAtTextOffset(element: HTMLElement, offset: num
   }
 
   element.focus();
+}
+
+function getConversationCardMainButton(conversationId: string) {
+  const card = screen.getByTestId(`conversation-card-${conversationId}`);
+  const title = within(card).getByText("丹阳草莓，得利市大樱桃");
+  const button = title.closest("button");
+
+  if (!button) {
+    throw new Error(`Conversation ${conversationId} main button not found`);
+  }
+
+  return button;
 }
 
 async function expectLatestConversationMessage(
@@ -217,6 +233,10 @@ describe("ChatWorkbenchPage composer flows", () => {
     installChatWorkbenchTestEnvironment();
   });
 
+  afterEach(() => {
+    restoreViewportMediaQuery();
+  });
+
   it("sends a message from the composer", async () => {
     const user = userEvent.setup();
 
@@ -242,6 +262,37 @@ describe("ChatWorkbenchPage composer flows", () => {
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
     expect(screen.getByRole("button", { name: "发送消息" })).toBeInTheDocument();
+  });
+
+  it("keeps only emoji, AI, more, and send actions visible in the mobile composer", async () => {
+    mockViewportMediaQuery({ width: 390 });
+    const user = userEvent.setup();
+
+    renderChatWorkbenchPage();
+
+    await screen.findByTestId("conversation-card-conv-001");
+    await user.click(getConversationCardMainButton("conv-001"));
+
+    const composerToolbar = await screen.findByTestId("chat-composer-mobile-toolbar");
+    expect(within(composerToolbar).getByRole("button", { name: "微信表情" })).toBeInTheDocument();
+    expect(within(composerToolbar).getByRole("button", { name: "AI 对话" })).toBeInTheDocument();
+    expect(within(composerToolbar).getByRole("button", { name: "更多发送功能" })).toBeInTheDocument();
+    expect(within(composerToolbar).getByRole("button", { name: "发送消息" })).toBeInTheDocument();
+    expect(within(composerToolbar).queryByRole("button", { name: "收录视频" })).not.toBeInTheDocument();
+    expect(within(composerToolbar).queryByRole("button", { name: "收藏小程序" })).not.toBeInTheDocument();
+    expect(within(composerToolbar).queryByRole("button", { name: "历史记录" })).not.toBeInTheDocument();
+
+    await user.click(within(composerToolbar).getByRole("button", { name: "更多发送功能" }));
+
+    const moreMenu = await screen.findByRole("menu", { name: "更多发送功能" });
+    expect(within(moreMenu).getByRole("menuitem", { name: "收录视频" })).toBeInTheDocument();
+    expect(within(moreMenu).getByRole("menuitem", { name: "收藏小程序" })).toBeInTheDocument();
+    expect(within(moreMenu).getByRole("menuitem", { name: "收藏H5" })).toBeInTheDocument();
+    expect(within(moreMenu).getByRole("menuitem", { name: "历史记录" })).toBeInTheDocument();
+
+    await user.click(within(moreMenu).getByRole("menuitem", { name: "历史记录" }));
+
+    expect(await screen.findByRole("complementary", { name: "聊天记录" })).toBeInTheDocument();
   });
 
   it("fills composer from a quick reply with text and an H5 attachment", async () => {

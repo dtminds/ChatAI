@@ -1,10 +1,12 @@
 import { useLayoutEffect, useState } from "react";
 import {
+  ArrowLeft01Icon,
   ModernTvIcon,
   Moon02Icon,
   Sun02Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { Button } from "@/components/ui/button";
 import {
   SegmentedControl,
   SegmentedControlItem,
@@ -22,9 +24,10 @@ import type { Conversation } from "@/pages/chat/chat-types";
 
 type ChatHeaderProps = {
   activeConversation?: Conversation;
+  onBack?: () => void;
 };
 
-export function ChatHeader({ activeConversation }: ChatHeaderProps) {
+export function ChatHeader({ activeConversation, onBack }: ChatHeaderProps) {
   const [themePreference, setThemePreference] = useState<ThemePreference>("system");
   const [isSystemDarkMode, setIsSystemDarkMode] = useState(false);
 
@@ -64,17 +67,39 @@ export function ChatHeader({ activeConversation }: ChatHeaderProps) {
   return (
     <div className="flex min-h-[69px] items-center border-b border-divider px-5 py-3">
       <div className="flex w-full items-center justify-between gap-4">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <p className="truncate text-[17px] font-semibold text-foreground">
-              {activeConversation?.customerName ?? "请选择会话"}
-            </p>
-          </div>
-          {activeConversation?.groupOriginalName || activeConversation?.contactOriginalName ? (
-            <p className="truncate text-[12px] text-muted-foreground">
-              {activeConversation?.groupOriginalName ?? activeConversation?.contactOriginalName}
-            </p>
+        <div className="flex min-w-0 items-center gap-2">
+          {onBack ? (
+            <Button
+              aria-label="返回会话列表"
+              className="size-9 shrink-0 rounded-[10px] p-0 shadow-none"
+              onClick={onBack}
+              size="icon"
+              type="button"
+              variant="ghost"
+            >
+              <HugeiconsIcon
+                aria-hidden="true"
+                color="currentColor"
+                icon={ArrowLeft01Icon}
+                size={18}
+                strokeWidth={1.8}
+              />
+            </Button>
           ) : null}
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <p className="truncate text-[17px] font-semibold text-foreground">
+                {activeConversation?.customerName ?? "请选择会话"}
+              </p>
+            </div>
+            {activeConversation?.groupOriginalName ||
+            activeConversation?.contactOriginalName ? (
+              <p className="truncate text-[12px] text-muted-foreground">
+                {activeConversation?.groupOriginalName ??
+                  activeConversation?.contactOriginalName}
+              </p>
+            ) : null}
+          </div>
         </div>
 
         <div className="flex shrink-0 items-center gap-2">

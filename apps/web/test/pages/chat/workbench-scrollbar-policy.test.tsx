@@ -78,6 +78,22 @@ describe("workbench scrollbar policy", () => {
     expect(await screen.findByRole("textbox", { name: "请输入消息……" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "返回会话列表" })).toBeInTheDocument();
     expect(screen.queryByTestId("chat-mobile-list-layout")).not.toBeInTheDocument();
+    expect(screen.getByTestId("chat-mobile-detail-layout")).toHaveClass(
+      "h-full",
+      "min-h-0",
+      "overflow-hidden",
+    );
+    expect(screen.getByTestId("chat-mobile-detail-layout").firstElementChild).toHaveClass(
+      "h-full",
+      "min-h-0",
+      "flex",
+      "flex-col",
+    );
+    expect(within(screen.getByTestId("chat-mobile-detail-layout")).getByTestId("message-viewport")).toHaveClass(
+      "h-full",
+      "min-h-0",
+      "overflow-y-auto",
+    );
 
     await user.click(screen.getByRole("button", { name: "返回会话列表" }));
 

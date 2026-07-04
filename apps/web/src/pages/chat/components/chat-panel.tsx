@@ -298,7 +298,7 @@ export function ChatPanel({
   ) : null;
 
   return (
-    <section className="flex min-h-0 min-w-0 flex-col bg-surface">
+    <section className="flex h-full min-h-0 min-w-0 flex-col bg-surface">
       <ChatHeader
         activeConversation={activeConversation}
         onBack={isMobileLayout ? onBackToConversationList : undefined}

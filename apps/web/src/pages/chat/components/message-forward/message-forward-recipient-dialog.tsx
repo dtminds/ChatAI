@@ -212,7 +212,7 @@ export function MessageForwardRecipientDialog({
           选择转发对象并发送消息
         </DialogDescription>
 
-        <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <div className="grid min-h-0 flex-1 grid-cols-[minmax(20rem,0.9fr)_minmax(0,1.1fr)]">
           <section className="flex min-h-0 flex-col border-r border-divider">
             <div className="border-b border-divider px-4 py-3">
               <div className="relative">
@@ -300,7 +300,7 @@ export function MessageForwardRecipientDialog({
                   return (
                     <TabsContent
                       className={cn(
-                        "mt-0 min-h-0 flex-1",
+                        "mt-0 flex min-h-0 flex-1 flex-col overflow-hidden",
                         mode !== activeMode && "hidden",
                       )}
                       key={mode}
@@ -385,7 +385,7 @@ export function MessageForwardRecipientDialog({
               />
             </div>
 
-            <div className="flex shrink-0 justify-end gap-2 border-t border-divider px-4 py-3">
+            <div className="flex shrink-0 justify-end gap-2 px-4 py-3">
               <Button
                 disabled={isSending}
                 onClick={() => handleOpenChange(false)}
@@ -579,7 +579,7 @@ function ForwardRecipientSearchPanel({
   }
 
   return (
-    <ScrollArea aria-label="搜索结果" className="min-h-0 flex-1" role="region">
+    <ScrollArea aria-label="搜索结果" className="h-full min-h-0 flex-1" role="region">
       <div>
         {isShowingCustomers && contacts.length > 0 ? (
           <section className="py-3">
@@ -685,7 +685,7 @@ function ForwardRecipientRecentPanel({
   return (
     <ScrollArea
       aria-label={`最近${getForwardRecipientModeLabel(mode)}`}
-      className="min-h-0 flex-1"
+      className="h-full min-h-0 flex-1"
       role="region"
     >
       <div className="space-y-1 py-2">
@@ -855,7 +855,7 @@ function ForwardRecipientPickerItem({
     <Button
       aria-pressed={isSelected}
       className={cn(
-        "grid h-auto w-full grid-cols-[auto_auto_minmax(0,1fr)] items-center justify-normal gap-3 rounded-none px-4 py-2 text-left hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-ring/20",
+        "grid h-auto w-full grid-cols-[auto_auto_minmax(0,1fr)] items-center justify-normal gap-3 rounded-none px-4 py-1.5 text-left hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-ring/20",
         isSelected && "bg-surface-muted hover:bg-surface-muted",
         selectionDisabled && "opacity-50",
       )}
@@ -870,14 +870,14 @@ function ForwardRecipientPickerItem({
         className="pointer-events-none"
         tabIndex={-1}
       />
-      <Avatar className="size-10 rounded-[8px]">
+      <Avatar className="size-8 rounded-[7px]">
         <AvatarImage alt={label} src={avatar} />
-        <AvatarFallback className="rounded-[8px]">
+        <AvatarFallback className="rounded-[7px]">
           <HugeiconsIcon
             aria-hidden="true"
             color="currentColor"
             icon={Male02Icon}
-            size={18}
+            size={16}
             strokeWidth={1.8}
           />
         </AvatarFallback>

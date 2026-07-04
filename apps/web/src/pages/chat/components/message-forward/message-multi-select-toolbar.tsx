@@ -22,7 +22,7 @@ export function MessageMultiSelectToolbar({
   return (
     <div
       className={cn(
-        "flex items-center rounded-full bg-background py-1 pl-3 pr-1 shadow-[0_2px_12px_var(--shadow-medium)]",
+        "flex items-center rounded-full bg-background px-3 py-1 shadow-[0_2px_12px_var(--shadow-medium)]",
         className,
       )}
       data-testid="message-multi-select-toolbar"

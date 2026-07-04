@@ -9,7 +9,6 @@ import {
   MESSAGE_FORWARD_MAX_RECIPIENTS,
   MESSAGE_FORWARD_SEND_INTERVAL_MAX_MS,
   MESSAGE_FORWARD_SEND_INTERVAL_MIN_MS,
-  MESSAGE_FORWARD_SEND_HINT,
   resolveForwardSendDelayMs,
 } from "@/pages/chat/lib/message-forward";
 
@@ -33,9 +32,6 @@ describe("message-forward", () => {
     expect(MESSAGE_FORWARD_MAX_MESSAGES).toBe(20);
     expect(MESSAGE_FORWARD_SEND_INTERVAL_MIN_MS).toBe(1000);
     expect(MESSAGE_FORWARD_SEND_INTERVAL_MAX_MS).toBe(5000);
-    expect(MESSAGE_FORWARD_SEND_HINT).toBe(
-      "转发的每条消息会自动间隔1-5秒，每个转发对象轮流发送",
-    );
 
     const delays = Array.from({ length: 20 }, () => resolveForwardSendDelayMs());
 
@@ -144,6 +140,23 @@ describe("message-forward", () => {
       conversationId: "conv-group-1",
       name: "群聊一",
       thirdGroupId: "group-1",
+    });
+  });
+
+  it("keeps recent forward contact nickname compact", () => {
+    const results = buildRecentForwardSearchResults([
+      createConversation({
+        contactOriginalName: "微信昵称：客户原始昵称",
+        customerName: "客户备注",
+        id: "conv-single-1",
+        mode: "single",
+        thirdExternalUserId: "ext-1",
+      }),
+    ]);
+
+    expect(results.contacts[0]).toMatchObject({
+      name: "客户原始昵称",
+      remark: "客户备注",
     });
   });
 });

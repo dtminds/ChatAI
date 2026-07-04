@@ -16,7 +16,7 @@ export const MESSAGE_FORWARD_SEND_INTERVAL_MIN_MS = 1000;
 export const MESSAGE_FORWARD_SEND_INTERVAL_MAX_MS = 5000;
 
 export const MESSAGE_FORWARD_SEND_HINT =
-  "转发的每条消息会自动间隔1-5秒，每个转发对象轮流发送";
+  "轮流发送每条消息来实现转发，消息间隔1-5秒，需要较长时间";
 
 export function resolveForwardSendDelayMs() {
   const min = MESSAGE_FORWARD_SEND_INTERVAL_MIN_MS;
@@ -296,7 +296,9 @@ function mapConversationToSearchContact(
   }
 
   const displayName = conversation.customerName?.trim() || "未知客户";
-  const originalName = conversation.contactOriginalName?.trim() || displayName;
+  const originalName =
+    normalizeForwardContactOriginalName(conversation.contactOriginalName) ||
+    displayName;
 
   return {
     avatar: conversation.customerAvatarUrl ?? "",
@@ -306,6 +308,16 @@ function mapConversationToSearchContact(
     remark: displayName !== originalName ? displayName : undefined,
     thirdExternalUserId,
   };
+}
+
+function normalizeForwardContactOriginalName(name?: string) {
+  const trimmedName = name?.trim();
+
+  if (!trimmedName) {
+    return "";
+  }
+
+  return trimmedName.replace(/^微信昵称[:：]\s*/, "").trim();
 }
 
 function mapConversationToSearchGroup(

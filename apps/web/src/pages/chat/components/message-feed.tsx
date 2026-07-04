@@ -518,7 +518,7 @@ export function MessageRow({
     />
   );
   const selectionCheckbox = multiSelectMode ? (
-    <div className="flex shrink-0 items-center">
+    <div className="mt-4 flex h-8 shrink-0 items-center">
       <Checkbox
         aria-label="选择消息"
         checked={isMessageSelected}
@@ -533,7 +533,7 @@ export function MessageRow({
       className={cn(
         "group/message flex gap-2",
         multiSelectMode
-          ? "w-full min-w-0 max-w-full items-center overflow-hidden"
+          ? "w-full min-w-0 max-w-full items-start overflow-hidden"
           : cn("items-start", isAgent ? "justify-end" : "justify-start"),
       )}
       data-testid="message-row"

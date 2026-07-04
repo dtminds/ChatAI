@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Spinner } from "@/components/ui/spinner";
+import { cn } from "@/lib/utils";
 import { MaterialCard } from "@/pages/chat/components/material-collection/material-card";
 import { MaterialLibraryFooter } from "@/pages/chat/components/material-collection/material-library-footer";
 import type {
@@ -19,6 +20,7 @@ type MaterialCardGridProps = {
   hasMoreItems: boolean;
   isBusy: boolean;
   isLoadingMoreItems: boolean;
+  isMobileLayout?: boolean;
   isSending?: boolean;
   items: MaterialCollectionItem[];
   onCancel: () => void;
@@ -36,6 +38,7 @@ export function MaterialCardGrid({
   hasMoreItems,
   isBusy,
   isLoadingMoreItems,
+  isMobileLayout = false,
   isSending = false,
   items,
   onCancel,
@@ -56,19 +59,30 @@ export function MaterialCardGrid({
         className="min-h-0 flex-1 h-full"
         role="region"
       >
-        <div className="mx-auto p-8" style={getLibraryBodyStyle(bizType)}>
+        <div
+          className={cn("mx-auto", isMobileLayout ? "w-full p-4" : "p-8")}
+          style={isMobileLayout ? undefined : getLibraryBodyStyle(bizType)}
+        >
           <div
             aria-label="收录内容列表"
-            className="grid items-start gap-4"
-            style={getLibraryGridStyle(bizType)}
+            className={cn(
+              "grid items-start gap-4",
+              isMobileLayout && getMobileLibraryGridClassName(bizType),
+            )}
+            style={isMobileLayout ? undefined : getLibraryGridStyle(bizType)}
           >
             {items.map((item) => (
               <div className="max-w-full" key={item.id}>
                 <MaterialCard
                   className={
-                    isCardLibraryBizType(bizType) ? getCardLibraryItemClassName(bizType) : undefined
+                    isMobileLayout
+                      ? "w-full"
+                      : isCardLibraryBizType(bizType)
+                        ? getCardLibraryItemClassName(bizType)
+                        : undefined
                   }
                   groups={groups}
+                  isMobileLayout={isMobileLayout}
                   item={item}
                   onDelete={onDeleteMaterial}
                   onEdit={onEditMaterial}
@@ -77,6 +91,7 @@ export function MaterialCardGrid({
                   onTop={onTopMaterial}
                   selected={selectedItemId === item.id}
                   selectionMode="toggle"
+                  showActionsButton={isMobileLayout}
                 />
               </div>
             ))}
@@ -103,6 +118,7 @@ export function MaterialCardGrid({
       <MaterialLibraryFooter
         canSend={selectedItem != null}
         isBusy={isBusy}
+        isMobileLayout={isMobileLayout}
         isSending={isSending}
         onCancel={onCancel}
         onSend={() => {
@@ -133,6 +149,16 @@ function getCardLibraryItemClassName(
   }
 
   return "w-[210px]";
+}
+
+function getMobileLibraryGridClassName(
+  bizType: WorkbenchMaterialCollectionGroupCreateRequest["bizType"],
+) {
+  if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.H5) {
+    return "grid-cols-1";
+  }
+
+  return "grid-cols-[repeat(auto-fill,minmax(10rem,1fr))]";
 }
 
 function getLibraryBodyStyle(

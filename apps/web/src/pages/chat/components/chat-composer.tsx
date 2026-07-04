@@ -8,7 +8,6 @@ import {
   useState,
 } from "react";
 import {
-  Add01Icon,
   AiChat02Icon,
   AiSecurity02Icon,
   ArrowDown01Icon,
@@ -20,7 +19,9 @@ import {
   Image01Icon,
   Link01Icon,
   PlayListIcon,
+  ShapeCollectionIcon,
   SmileIcon,
+  Upload05Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -45,6 +46,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -624,6 +626,159 @@ export function ChatComposer({
                 ) : null}
               </div>
 
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    aria-label="本地上传"
+                    className={mobileToolbarButtonClass}
+                    disabled={!canAddComposerImage && !canSelectFile}
+                    size="icon"
+                    type="button"
+                    variant="ghost"
+                  >
+                    <HugeiconsIcon
+                      icon={Upload05Icon}
+                      size={18}
+                      strokeWidth={2}
+                    />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="start"
+                  aria-label="本地上传"
+                  className="min-w-40"
+                  side="top"
+                >
+                  <DropdownMenuItem
+                    disabled={!canAddComposerImage}
+                    onSelect={() => imageInputRef.current?.click()}
+                  >
+                    <HugeiconsIcon
+                      icon={Image01Icon}
+                      size={16}
+                      strokeWidth={1.8}
+                    />
+                    本地图片
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={!canSelectFile}
+                    onSelect={() => fileInputRef.current?.click()}
+                  >
+                    <HugeiconsIcon
+                      icon={Folder01Icon}
+                      size={16}
+                      strokeWidth={1.8}
+                    />
+                    本地文件
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    aria-label="从收录发送"
+                    className={mobileToolbarButtonClass}
+                    disabled={isSending || !canSendMessage}
+                    size="icon"
+                    type="button"
+                    variant="ghost"
+                  >
+                    <HugeiconsIcon
+                      icon={ShapeCollectionIcon}
+                      size={18}
+                      strokeWidth={2}
+                    />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="start"
+                  aria-label="从收录发送"
+                  className="min-w-40"
+                  side="top"
+                >
+                  <DropdownMenuLabel className="px-2.5 py-1 text-xs font-medium text-muted-foreground">
+                    从收录发送
+                  </DropdownMenuLabel>
+                  <DropdownMenuItem
+                    disabled={isSending || !canSendMessage}
+                    onSelect={() =>
+                      onOpenMaterialLibrary(MATERIAL_COLLECTION_BIZ_TYPE.IMAGE)
+                    }
+                  >
+                    <HugeiconsIcon
+                      icon={Image01Icon}
+                      size={16}
+                      strokeWidth={1.8}
+                    />
+                    图片
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={isSending || !canSendMessage}
+                    onSelect={() =>
+                      onOpenMaterialLibrary(
+                        MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM,
+                      )
+                    }
+                  >
+                    <MiniProgramMark className="size-4" />
+                    小程序
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={isSending || !canSendMessage}
+                    onSelect={() =>
+                      onOpenMaterialLibrary(MATERIAL_COLLECTION_BIZ_TYPE.H5)
+                    }
+                  >
+                    <HugeiconsIcon
+                      icon={Link01Icon}
+                      size={16}
+                      strokeWidth={1.8}
+                    />
+                    H5
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={isSending || !canSendMessage}
+                    onSelect={() =>
+                      onOpenMaterialLibrary(MATERIAL_COLLECTION_BIZ_TYPE.VIDEO)
+                    }
+                  >
+                    <HugeiconsIcon
+                      icon={PlayListIcon}
+                      size={16}
+                      strokeWidth={1.8}
+                    />
+                    视频
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={!canOpenCollectedFiles}
+                    onSelect={() =>
+                      onOpenMaterialLibrary(MATERIAL_COLLECTION_BIZ_TYPE.FILE)
+                    }
+                  >
+                    <HugeiconsIcon
+                      icon={FolderFavouriteIcon}
+                      size={16}
+                      strokeWidth={1.8}
+                    />
+                    文件
+                  </DropdownMenuItem>
+                  {DISABLE_SPH_COLLECTION ? null : (
+                    <DropdownMenuItem
+                      disabled={isSending || !canSendMessage}
+                      onSelect={() =>
+                        onOpenMaterialLibrary(
+                          MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED,
+                        )
+                      }
+                    >
+                      <SphFeedMark className="size-4" />
+                      视频号
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+
               {showAgentDialogButton ? (
                 <Popover
                   open={isAgentDialogOpen}
@@ -674,126 +829,6 @@ export function ChatComposer({
                   strokeWidth={2}
                 />
               </Button>
-
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    aria-label="更多发送功能"
-                    className={mobileToolbarButtonClass}
-                    disabled={isSending || !canSendMessage}
-                    size="icon"
-                    type="button"
-                    variant="ghost"
-                  >
-                    <HugeiconsIcon icon={Add01Icon} size={18} strokeWidth={2} />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  align="start"
-                  aria-label="更多发送功能"
-                  className="min-w-40"
-                  side="top"
-                >
-                  <DropdownMenuItem
-                    disabled={!canAddComposerImage}
-                    onSelect={() => imageInputRef.current?.click()}
-                  >
-                    <HugeiconsIcon
-                      icon={Image01Icon}
-                      size={16}
-                      strokeWidth={1.8}
-                    />
-                    本地图片
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    disabled={isSending || !canSendMessage}
-                    onSelect={() =>
-                      onOpenMaterialLibrary(MATERIAL_COLLECTION_BIZ_TYPE.IMAGE)
-                    }
-                  >
-                    <HugeiconsIcon
-                      icon={FolderFavouriteIcon}
-                      size={16}
-                      strokeWidth={1.8}
-                    />
-                    收录的图片
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    disabled={isSending || !canSendMessage}
-                    onSelect={() =>
-                      onOpenMaterialLibrary(MATERIAL_COLLECTION_BIZ_TYPE.VIDEO)
-                    }
-                  >
-                    <HugeiconsIcon
-                      icon={PlayListIcon}
-                      size={16}
-                      strokeWidth={1.8}
-                    />
-                    收录视频
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    disabled={isSending || !canSendMessage}
-                    onSelect={() =>
-                      onOpenMaterialLibrary(
-                        MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM,
-                      )
-                    }
-                  >
-                    <MiniProgramMark className="size-4" />
-                    收藏小程序
-                  </DropdownMenuItem>
-                  {DISABLE_SPH_COLLECTION ? null : (
-                    <DropdownMenuItem
-                      disabled={isSending || !canSendMessage}
-                      onSelect={() =>
-                        onOpenMaterialLibrary(
-                          MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED,
-                        )
-                      }
-                    >
-                      <SphFeedMark className="size-4" />
-                      收藏视频号
-                    </DropdownMenuItem>
-                  )}
-                  <DropdownMenuItem
-                    disabled={isSending || !canSendMessage}
-                    onSelect={() =>
-                      onOpenMaterialLibrary(MATERIAL_COLLECTION_BIZ_TYPE.H5)
-                    }
-                  >
-                    <HugeiconsIcon
-                      icon={Link01Icon}
-                      size={16}
-                      strokeWidth={1.8}
-                    />
-                    收藏H5
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    disabled={!canSelectFile}
-                    onSelect={() => fileInputRef.current?.click()}
-                  >
-                    <HugeiconsIcon
-                      icon={Folder01Icon}
-                      size={16}
-                      strokeWidth={1.8}
-                    />
-                    本地文件
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    disabled={!canOpenCollectedFiles}
-                    onSelect={() =>
-                      onOpenMaterialLibrary(MATERIAL_COLLECTION_BIZ_TYPE.FILE)
-                    }
-                  >
-                    <HugeiconsIcon
-                      icon={FolderFavouriteIcon}
-                      size={16}
-                      strokeWidth={1.8}
-                    />
-                    收录的文件
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
 
               <input
                 accept={COMPOSER_IMAGE_FILE_ACCEPT}
@@ -900,7 +935,7 @@ export function ChatComposer({
                 }}
                 onSelectLocal={() => imageInputRef.current?.click()}
                 primaryIcon={Image01Icon}
-                primaryLabel="选择收录图片"
+                primaryLabel="收录的图片"
                 tooltipLabel="图片"
               />
               <input
@@ -922,7 +957,7 @@ export function ChatComposer({
                 label="视频"
               >
                 <Button
-                  aria-label="收录视频"
+                  aria-label="收录的视频"
                   className={composerActionButtonClass}
                   disabled={isSending || !canSendMessage}
                   onClick={() =>
@@ -945,7 +980,7 @@ export function ChatComposer({
                 label="小程序"
               >
                 <Button
-                  aria-label="收藏小程序"
+                  aria-label="收录的小程序"
                   className={composerActionButtonClass}
                   disabled={isSending || !canSendMessage}
                   onClick={() =>
@@ -967,7 +1002,7 @@ export function ChatComposer({
                   label="视频号"
                 >
                   <Button
-                    aria-label="收藏视频号"
+                    aria-label="收录的视频号"
                     className={composerActionButtonClass}
                     disabled={isSending || !canSendMessage}
                     onClick={() =>
@@ -987,7 +1022,7 @@ export function ChatComposer({
                 label="H5链接"
               >
                 <Button
-                  aria-label="收藏H5"
+                  aria-label="收录的H5"
                   className={composerActionButtonClass}
                   disabled={isSending || !canSendMessage}
                   onClick={() =>
@@ -1013,7 +1048,7 @@ export function ChatComposer({
                 }
                 onSelectLocal={() => fileInputRef.current?.click()}
                 primaryIcon={Folder01Icon}
-                primaryLabel="收藏文件"
+                primaryLabel="收录的文件"
                 tooltipLabel="文件"
               />
               <input

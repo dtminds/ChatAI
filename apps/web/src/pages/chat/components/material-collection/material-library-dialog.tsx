@@ -58,6 +58,7 @@ type MaterialLibraryDialogProps = {
   isGroupsLoading?: boolean;
   isItemsLoading?: boolean;
   isLoadingMoreItems?: boolean;
+  isMobileLayout?: boolean;
   isSending?: boolean;
   items: MaterialCollectionItem[];
   onCreateGroup: (title: string) => void;
@@ -87,6 +88,7 @@ export function MaterialLibraryDialog({
   isGroupsLoading = false,
   isItemsLoading = false,
   isLoadingMoreItems = false,
+  isMobileLayout = false,
   isSending = false,
   items,
   onCreateGroup,
@@ -114,6 +116,11 @@ export function MaterialLibraryDialog({
   const isGroupLimitReached = isMaterialCollectionGroupLimitReached(groups.length);
   const isFileLibrary = bizType === MATERIAL_COLLECTION_BIZ_TYPE.FILE;
   const isImageLibrary = bizType === MATERIAL_COLLECTION_BIZ_TYPE.IMAGE;
+  const libraryHint = isMobileLayout
+    ? "选择素材后发送，更多菜单可管理素材"
+    : isFileLibrary
+      ? "选择文件后发送，右键菜单可调整排序或删除素材"
+      : "选择素材后发送，右键菜单可调整排序或删除素材";
 
   function handleSubmitGroupTitle(title: string) {
     if (groupDialogState?.mode === "edit") {
@@ -136,101 +143,193 @@ export function MaterialLibraryDialog({
   return (
     <Dialog onOpenChange={handleOpenChange} open={open}>
       <DialogContent
-        className="h-[min(44rem,calc(100vh-3rem))] max-h-[calc(100vh-3rem)] max-w-none gap-0 overflow-visible p-0"
+        className={cn(
+          "gap-0 p-0",
+          isMobileLayout
+            ? "left-0 top-0 flex h-svh max-h-svh w-screen max-w-none translate-x-0 translate-y-0 flex-col overflow-hidden rounded-none border-0"
+            : "h-[min(44rem,calc(100vh-3rem))] max-h-[calc(100vh-3rem)] max-w-none overflow-visible",
+        )}
         closeButtonDisabled={isSending}
-        closeButtonClassName="right-0 -top-10 bg-transparent text-white opacity-100 shadow-none hover:bg-transparent hover:text-white focus:ring-0 data-[state=open]:bg-transparent data-[state=open]:text-white"
-        style={getLibraryDialogStyle(bizType)}
+        closeButtonClassName={
+          isMobileLayout
+            ? "right-3 top-[calc(env(safe-area-inset-top)+0.75rem)] opacity-100"
+            : "right-0 -top-10 bg-transparent text-white opacity-100 shadow-none hover:bg-transparent hover:text-white focus:ring-0 data-[state=open]:bg-transparent data-[state=open]:text-white"
+        }
+        style={isMobileLayout ? undefined : getLibraryDialogStyle(bizType)}
       >
-        <DialogTitle className="sr-only">{libraryTitle}</DialogTitle>
-        <DialogDescription className="sr-only">
-          从分组中选择已收录内容
-        </DialogDescription>
-        {items.length > 0 ? (
+        <div
+          className={cn(
+            isMobileLayout
+              ? "shrink-0 border-b border-divider bg-background px-4 pb-3 pr-12 pt-[calc(env(safe-area-inset-top)+1rem)]"
+              : "contents",
+          )}
+        >
+          <DialogTitle
+            className={cn(
+              isMobileLayout
+                ? "truncate text-[17px] font-semibold leading-6 text-foreground"
+                : "sr-only",
+            )}
+          >
+            {libraryTitle}
+          </DialogTitle>
+          <DialogDescription
+            className={cn(
+              isMobileLayout
+                ? "mt-1 truncate text-[12px] leading-5 text-muted-foreground"
+                : "sr-only",
+            )}
+          >
+            {isMobileLayout ? libraryHint : "从分组中选择已收录内容"}
+          </DialogDescription>
+        </div>
+        {items.length > 0 && !isMobileLayout ? (
           <p className="pointer-events-none absolute -top-9 left-1/2 -translate-x-1/2 whitespace-nowrap text-[13px] leading-5 text-white/90">
-            {isFileLibrary
-              ? "选择文件后发送，右键菜单可调整排序或删除素材"
-              : "选择素材后发送，右键菜单可调整排序或删除素材"}
+            {libraryHint}
           </p>
         ) : null}
 
-        <div className="grid h-full min-h-0 grid-cols-[15rem_minmax(0,1fr)] overflow-hidden rounded-xl bg-sidebar">
-          <aside className="flex h-full min-h-0 flex-col py-5 text-sidebar-foreground">
-            <div className="mb-5 px-6">
-              <div className="truncate text-sm font-semibold leading-6 text-foreground">
-                {libraryTitle}
-              </div>
-            </div>
-
-            <ScrollArea
+        <div
+          className={cn(
+            "h-full min-h-0 overflow-hidden bg-sidebar",
+            isMobileLayout
+              ? "flex flex-1 flex-col rounded-none"
+              : "grid grid-cols-[15rem_minmax(0,1fr)] rounded-xl",
+          )}
+        >
+          {isMobileLayout ? (
+            <div
               aria-label="素材分组列表"
-              className="h-full min-h-0 flex-1"
+              className="shrink-0 overflow-x-auto border-b border-divider bg-sidebar px-4 py-3 text-sidebar-foreground"
               role="region"
             >
               {isGroupsLoading ? (
-                <LoadingState label="正在加载分组" />
-              ) : groups.length > 0 ? (
-                <div className="space-y-1 px-4 pb-3">
-                  {groups.map((group) => (
-                    <GroupButton
-                      active={activeGroupId === group.id}
-                      disabled={isBusy}
-                      group={group}
-                      key={group.id}
-                      onDelete={onDeleteGroup}
-                      onClick={() => onSelectGroup(group.id)}
-                      onEdit={(groupToEdit) =>
-                        setGroupDialogState({ group: groupToEdit, mode: "edit" })}
-                      onTop={onTopGroup}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <div className="px-6 py-2 text-[13px] text-muted-foreground">
-                  暂无分组
-                </div>
-              )}
-            </ScrollArea>
-
-            <div className="px-4 pt-3">
-              {isGroupLimitReached ? (
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span className="inline-flex w-full">
-                        <Button
-                          aria-label="新建分组"
-                          className="h-9 w-full justify-start gap-2 rounded-[8px] px-3 text-[14px] font-normal text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                          disabled
-                          type="button"
-                          variant="ghost"
-                        >
-                          <HugeiconsIcon icon={Add01Icon} size={15} strokeWidth={1.8} />
-                          新建分组
-                        </Button>
-                      </span>
-                    </TooltipTrigger>
-                    <TooltipContent side="top" sideOffset={6}>
-                      分组数量已达上限
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              ) : (
-                <Button
-                  aria-label="新建分组"
-                  className="h-9 w-full justify-start gap-2 rounded-[8px] px-3 text-[14px] font-normal text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                  disabled={isBusy}
-                  onClick={() => setGroupDialogState({ mode: "create" })}
-                  type="button"
-                  variant="ghost"
+                <div
+                  className="flex h-10 items-center gap-2 text-[13px] text-muted-foreground"
+                  role="status"
                 >
-                  <HugeiconsIcon icon={Add01Icon} size={15} strokeWidth={1.8} />
-                  新建分组
-                </Button>
+                  <Spinner size={16} />
+                  正在加载分组
+                </div>
+              ) : (
+                <div className="flex min-w-max items-center gap-2">
+                  {groups.length > 0 ? (
+                    groups.map((group) => (
+                      <MobileGroupButton
+                        active={activeGroupId === group.id}
+                        disabled={isBusy}
+                        group={group}
+                        key={group.id}
+                        onClick={() => onSelectGroup(group.id)}
+                      />
+                    ))
+                  ) : (
+                    <span className="inline-flex h-10 items-center text-[13px] text-muted-foreground">
+                      暂无分组
+                    </span>
+                  )}
+                  <Button
+                    aria-label="新建分组"
+                    className="h-10 shrink-0 gap-2 rounded-[10px] px-3 text-[13px]"
+                    disabled={isBusy || isGroupLimitReached}
+                    onClick={() => setGroupDialogState({ mode: "create" })}
+                    type="button"
+                    variant="ghost"
+                  >
+                    <HugeiconsIcon icon={Add01Icon} size={15} strokeWidth={1.8} />
+                    新建分组
+                  </Button>
+                </div>
               )}
             </div>
-          </aside>
+          ) : (
+            <aside className="flex h-full min-h-0 flex-col py-5 text-sidebar-foreground">
+              <div className="mb-5 px-6">
+                <div className="truncate text-sm font-semibold leading-6 text-foreground">
+                  {libraryTitle}
+                </div>
+              </div>
 
-          <section className="flex h-full min-h-0 min-w-0 flex-col rounded-[14px_0_0_14px] bg-background shadow">
+              <ScrollArea
+                aria-label="素材分组列表"
+                className="h-full min-h-0 flex-1"
+                role="region"
+              >
+                {isGroupsLoading ? (
+                  <LoadingState label="正在加载分组" />
+                ) : groups.length > 0 ? (
+                  <div className="space-y-1 px-4 pb-3">
+                    {groups.map((group) => (
+                      <GroupButton
+                        active={activeGroupId === group.id}
+                        disabled={isBusy}
+                        group={group}
+                        key={group.id}
+                        onDelete={onDeleteGroup}
+                        onClick={() => onSelectGroup(group.id)}
+                        onEdit={(groupToEdit) =>
+                          setGroupDialogState({ group: groupToEdit, mode: "edit" })}
+                        onTop={onTopGroup}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="px-6 py-2 text-[13px] text-muted-foreground">
+                    暂无分组
+                  </div>
+                )}
+              </ScrollArea>
+
+              <div className="px-4 pt-3">
+                {isGroupLimitReached ? (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="inline-flex w-full">
+                          <Button
+                            aria-label="新建分组"
+                            className="h-9 w-full justify-start gap-2 rounded-[8px] px-3 text-[14px] font-normal text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                            disabled
+                            type="button"
+                            variant="ghost"
+                          >
+                            <HugeiconsIcon
+                              icon={Add01Icon}
+                              size={15}
+                              strokeWidth={1.8}
+                            />
+                            新建分组
+                          </Button>
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" sideOffset={6}>
+                        分组数量已达上限
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                ) : (
+                  <Button
+                    aria-label="新建分组"
+                    className="h-9 w-full justify-start gap-2 rounded-[8px] px-3 text-[14px] font-normal text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                    disabled={isBusy}
+                    onClick={() => setGroupDialogState({ mode: "create" })}
+                    type="button"
+                    variant="ghost"
+                  >
+                    <HugeiconsIcon icon={Add01Icon} size={15} strokeWidth={1.8} />
+                    新建分组
+                  </Button>
+                )}
+              </div>
+            </aside>
+          )}
+
+          <section
+            className={cn(
+              "flex h-full min-h-0 min-w-0 flex-col bg-background shadow",
+              isMobileLayout ? "flex-1 rounded-none" : "rounded-[14px_0_0_14px]",
+            )}
+          >
             {isItemsLoading ? (
               <LoadingState label="正在加载素材" />
             ) : items.length > 0 ? (
@@ -240,6 +339,7 @@ export function MaterialLibraryDialog({
                   hasMoreItems={hasMoreItems}
                   isBusy={isBusy}
                   isLoadingMoreItems={isLoadingMoreItems}
+                  isMobileLayout={isMobileLayout}
                   isSending={isSending}
                   items={items}
                   onCancel={() => onOpenChange(false)}
@@ -256,6 +356,7 @@ export function MaterialLibraryDialog({
                   hasMoreItems={hasMoreItems}
                   isBusy={isBusy}
                   isLoadingMoreItems={isLoadingMoreItems}
+                  isMobileLayout={isMobileLayout}
                   isSending={isSending}
                   items={items}
                   onCancel={() => onOpenChange(false)}
@@ -272,6 +373,7 @@ export function MaterialLibraryDialog({
                   hasMoreItems={hasMoreItems}
                   isBusy={isBusy}
                   isLoadingMoreItems={isLoadingMoreItems}
+                  isMobileLayout={isMobileLayout}
                   isSending={isSending}
                   items={items}
                   onCancel={() => onOpenChange(false)}
@@ -404,6 +506,40 @@ function GroupButton({
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
+  );
+}
+
+function MobileGroupButton({
+  active,
+  disabled,
+  group,
+  onClick,
+}: {
+  active: boolean;
+  disabled: boolean;
+  group: MaterialCollectionGroup;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      className={cn(
+        "inline-flex h-10 max-w-[11rem] shrink-0 items-center gap-2 rounded-[10px] px-3 text-left text-[13px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/25 disabled:cursor-not-allowed disabled:opacity-50",
+        active
+          ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+          : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+      )}
+      disabled={disabled}
+      onClick={onClick}
+      type="button"
+    >
+      <HugeiconsIcon
+        className="shrink-0"
+        icon={Folder01Icon}
+        size={15}
+        strokeWidth={1.8}
+      />
+      <span className="min-w-0 truncate">{group.title}</span>
+    </button>
   );
 }
 

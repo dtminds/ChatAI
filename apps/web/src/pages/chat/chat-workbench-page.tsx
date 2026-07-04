@@ -2541,6 +2541,7 @@ function ChatWorkbenchContent({
         isGroupsLoading={isMaterialLibraryGroupsLoading}
         isItemsLoading={isMaterialLibraryItemsLoading}
         isLoadingMoreItems={isMaterialLibraryLoadingMore}
+        isMobileLayout={isMobileWorkbenchLayout}
         isSending={isMaterialLibrarySending}
         items={materialLibraryItems}
         onCreateGroup={handleCreateMaterialGroup}

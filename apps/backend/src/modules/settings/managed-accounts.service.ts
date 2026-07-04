@@ -3,12 +3,15 @@ import type {
   SettingsManagedAccountSubAccount,
   SettingsManagedAccountsResponse,
   SettingsManagedAccountSubAccountsUpdateRequest,
+  SettingsManagedAccountSyncSeatGroupsRequest,
+  SettingsManagedAccountSyncSeatGroupsResponse,
 } from "@chatai/contracts";
 import type { Kysely } from "kysely";
 import type { CachePort } from "../../cache/cache-port.js";
 import { invalidateSeatAccessBatch } from "../../cache/invalidation.js";
 import { buildCacheKeys } from "../../cache/keys.js";
 import type { Database } from "../../db/schema.js";
+import type { WorkbenchJavaClient } from "../chat/workbench-java-client.js";
 import { BadRequestError, NotFoundError } from "../../shared/errors.js";
 import { uniquePositiveNumbers } from "../../shared/id-utils.js";
 import { hydrateRelationRows } from "./relation-hydration.js";
@@ -24,6 +27,7 @@ type ManagedAccountRow = {
   id: number;
   is_online: number | null;
   third_user_name: string | null;
+  third_userid: string | null;
 };
 
 type SubAccountRow = {
@@ -59,6 +63,7 @@ const dbSubAccountType = {
   sub: 0,
 } as const;
 
+const dbActiveStatus = 1;
 const managedAccountListLimit = 200;
 
 export class ManagedAccountSettingsService {
@@ -83,10 +88,18 @@ export class ManagedAccountSettingsService {
     const relationsBySeatId = groupRelationsBySeatId(
       hydrateManagedAccountRelationRows(relationLinks, subAccountsById),
     );
+    const groupChatCountByThirdUserId = await this.countGroupChatsByThirdUserIds(
+      scope,
+      managedAccounts.map((account) => account.third_userid).filter((id): id is string => Boolean(id)),
+    );
 
     return {
       managedAccounts: managedAccounts.map((account) =>
-        mapManagedAccount(account, relationsBySeatId.get(account.id) ?? []),
+        mapManagedAccount(
+          account,
+          relationsBySeatId.get(account.id) ?? [],
+          groupChatCountByThirdUserId.get(account.third_userid ?? "") ?? 0,
+        ),
       ),
       subAccounts: subAccounts.map((subAccount) =>
         mapSubAccount(subAccount, false),
@@ -122,6 +135,31 @@ export class ManagedAccountSettingsService {
     return this.getManagedAccountOrThrow(scope, numericManagedAccountId);
   }
 
+  async syncSeatGroups(
+    currentSubUserId: string,
+    managedAccountId: string,
+    payload: SettingsManagedAccountSyncSeatGroupsRequest,
+    javaClient: WorkbenchJavaClient,
+  ): Promise<SettingsManagedAccountSyncSeatGroupsResponse> {
+    const scope = await this.getTenantScope(currentSubUserId);
+    const seatId = parseMySqlId(managedAccountId);
+
+    if (seatId == null) {
+      throw new BadRequestError("INVALID_MANAGED_ACCOUNT", "托管账号不存在");
+    }
+
+    await this.assertManagedAccountInScope(scope, seatId);
+
+    await javaClient.syncSeatGroups({
+      platform: scope.platform,
+      seatId,
+      syncMembers: payload.syncMembers,
+      uid: scope.uid,
+    });
+
+    return { synced: true };
+  }
+
   private async getTenantScope(currentSubUserId: string): Promise<TenantScope> {
     const numericSubUserId = parseMySqlId(currentSubUserId);
 
@@ -155,6 +193,7 @@ export class ManagedAccountSettingsService {
         "seat.id",
         "seat.is_online",
         "seat.third_user_name",
+        "seat.third_userid",
       ])
       .where("seat.uid", "=", scope.uid)
       .where("seat.platform", "=", scope.platform)
@@ -292,6 +331,7 @@ export class ManagedAccountSettingsService {
           "seat.id",
           "seat.is_online",
           "seat.third_user_name",
+          "seat.third_userid",
         ])
         .where("seat.id", "=", managedAccountId)
         .where("seat.uid", "=", scope.uid)
@@ -316,6 +356,42 @@ export class ManagedAccountSettingsService {
     return mapManagedAccount(
       managedAccount,
       hydrateManagedAccountRelationRows(relationLinks, subAccountsById),
+      await this.getGroupChatCountForSeat(scope, managedAccount),
+    );
+  }
+
+  private async getGroupChatCountForSeat(scope: TenantScope, managedAccount: ManagedAccountRow) {
+    if (!managedAccount.third_userid) {
+      return 0;
+    }
+
+    const counts = await this.countGroupChatsByThirdUserIds(scope, [managedAccount.third_userid]);
+
+    return counts.get(managedAccount.third_userid) ?? 0;
+  }
+
+  private async countGroupChatsByThirdUserIds(scope: TenantScope, thirdUserIds: string[]) {
+    const uniqueThirdUserIds = [...new Set(thirdUserIds.map((id) => id ?? ""))].filter(
+      (id) => id.length > 0,
+    );
+
+    if (uniqueThirdUserIds.length === 0) {
+      return new Map<string, number>();
+    }
+
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_group_seat")
+      .select("third_userid")
+      .select((expressionBuilder) => expressionBuilder.fn.count<number>("id").as("group_count"))
+      .where("uid", "=", scope.uid)
+      .where("platform", "=", scope.platform)
+      .where("biz_status", "=", dbActiveStatus)
+      .where("third_userid", "in", uniqueThirdUserIds)
+      .groupBy("third_userid")
+      .execute();
+
+    return new Map(
+      rows.map((row) => [row.third_userid ?? "", Number(row.group_count)]),
     );
   }
 }
@@ -363,9 +439,11 @@ function hydrateManagedAccountRelationRows(
 function mapManagedAccount(
   row: ManagedAccountRow,
   relations: RelationRow[],
+  groupChatCount: number,
 ): SettingsManagedAccount {
   return {
     avatarUrl: row.avatarUrl || "",
+    groupChatCount,
     id: String(row.id),
     name: row.third_user_name || "未命名托管账号",
     onlineStatus: row.is_online === 1 ? "online" : "offline",

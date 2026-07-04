@@ -28,6 +28,7 @@ describe("settings managed-account routes", () => {
         managedAccounts: [
           {
             avatarUrl: "https://example.com/drc.png",
+            groupChatCount: 1,
             id: "101",
             name: "德瑞可",
             onlineStatus: "offline",
@@ -60,6 +61,7 @@ describe("settings managed-account routes", () => {
           },
           {
             avatarUrl: "https://example.com/ndt.png",
+            groupChatCount: 0,
             id: "102",
             name: "念都堂",
             onlineStatus: "online",
@@ -144,6 +146,51 @@ describe("settings managed-account routes", () => {
 
     await app.close();
   });
+
+  it("syncs seat groups through the Java internal API", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    process.env.JAVA_INTERNAL_API_TOKEN = "internal-token";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ data: true, error: 0, errorMsg: "", success: true }), {
+        headers: { "content-type": "application/json" },
+        status: 200,
+      }),
+    );
+
+    const { app, authorization } = await createSettingsApp();
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        syncMembers: true,
+      },
+      url: "/api/server/settings/managed-accounts/102/sync-seat-groups",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      data: {
+        synced: true,
+      },
+      success: true,
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/wap-embed/user-seat/sync-seat-groups",
+      expect.objectContaining({
+        body: JSON.stringify({
+          platform: 5,
+          seatId: 102,
+          syncMembers: true,
+          uid: 9001,
+        }),
+        method: "POST",
+      }),
+    );
+
+    fetchMock.mockRestore();
+    await app.close();
+  });
 });
 
 async function createSettingsApp() {
@@ -215,6 +262,7 @@ function createSettingsDbMock() {
       platform: 5,
       third_avatar: "https://example.com/drc.png",
       third_user_name: "德瑞可",
+      third_userid: "user-101",
       uid: 9001,
     },
     {
@@ -224,6 +272,16 @@ function createSettingsDbMock() {
       platform: 5,
       third_avatar: "https://example.com/ndt.png",
       third_user_name: "念都堂",
+      third_userid: "user-102",
+      uid: 9001,
+    },
+  ];
+  const groupSeats = [
+    {
+      biz_status: 1,
+      id: 1,
+      platform: 5,
+      third_userid: "user-101",
       uid: 9001,
     },
   ];
@@ -256,6 +314,61 @@ function createSettingsDbMock() {
     relationListWheres: [] as Array<[string, string, unknown]>,
     subAccountValidationWheres: [] as Array<[string, string, unknown]>,
     selectFrom(table: string) {
+      if (table === "xy_wap_embed_group_seat") {
+        const wheres: Array<[string, string, unknown]> = [];
+        const groupByColumns: string[] = [];
+        const groupSeatBuilder = {
+          execute: async () => {
+            const thirdUserIds = wheres.find(([column]) => column === "third_userid")?.[2] as
+              | string[]
+              | undefined;
+
+            const filtered = groupSeats.filter(
+              (groupSeat) =>
+                groupSeat.uid === 9001 &&
+                groupSeat.platform === 5 &&
+                groupSeat.biz_status === 1 &&
+                (!thirdUserIds || thirdUserIds.includes(groupSeat.third_userid)),
+            );
+
+            if (groupByColumns.includes("third_userid")) {
+              const counts = new Map<string, number>();
+
+              for (const groupSeat of filtered) {
+                counts.set(
+                  groupSeat.third_userid,
+                  (counts.get(groupSeat.third_userid) ?? 0) + 1,
+                );
+              }
+
+              return [...counts.entries()].map(([third_userid, group_count]) => ({
+                group_count,
+                third_userid,
+              }));
+            }
+
+            return filtered;
+          },
+          groupBy: (...columns: string[]) => {
+            groupByColumns.push(...columns);
+            return groupSeatBuilder;
+          },
+          select: (...args: unknown[]) => {
+            if (typeof args[0] === "function") {
+              return groupSeatBuilder;
+            }
+
+            return groupSeatBuilder;
+          },
+          where: (...whereArgs: [string, string, unknown]) => {
+            wheres.push(whereArgs);
+            return groupSeatBuilder;
+          },
+        };
+
+        return groupSeatBuilder;
+      }
+
       const wheres: Array<[string, string, unknown]> = [];
       const builder = {
         execute: async () => {
@@ -273,6 +386,7 @@ function createSettingsDbMock() {
                 id: seat.id,
                 is_online: seat.is_online,
                 third_user_name: seat.third_user_name,
+                third_userid: seat.third_userid,
               }));
           }
 

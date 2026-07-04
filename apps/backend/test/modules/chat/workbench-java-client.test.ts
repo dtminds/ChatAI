@@ -120,6 +120,36 @@ describe("createWorkbenchJavaClient", () => {
     });
   });
 
+  it("posts seat group sync payload to the Java internal API", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ data: true, error: 0, errorMsg: "", success: true }), {
+        headers: { "content-type": "application/json" },
+        status: 200,
+      }),
+    );
+
+    await createWorkbenchJavaClient().syncSeatGroups({
+      platform: 5,
+      seatId: 102,
+      syncMembers: true,
+      uid: 9001,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/wap-embed/user-seat/sync-seat-groups",
+      expect.objectContaining({
+        body: JSON.stringify({
+          platform: 5,
+          seatId: 102,
+          syncMembers: true,
+          uid: 9001,
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
   it("passes an abort signal to Java internal API requests", async () => {
     process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
     process.env.JAVA_INTERNAL_API_TOKEN = "internal-token";

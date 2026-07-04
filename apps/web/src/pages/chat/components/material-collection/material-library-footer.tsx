@@ -1,8 +1,10 @@
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 
 type MaterialLibraryFooterProps = {
   canSend: boolean;
+  isMobileLayout?: boolean;
   isBusy?: boolean;
   isSending?: boolean;
   onCancel: () => void;
@@ -11,15 +13,23 @@ type MaterialLibraryFooterProps = {
 
 export function MaterialLibraryFooter({
   canSend,
+  isMobileLayout = false,
   isBusy = false,
   isSending = false,
   onCancel,
   onSend,
 }: MaterialLibraryFooterProps) {
   return (
-    <div className="flex shrink-0 justify-end gap-3 border-t border-divider px-8 py-4">
+    <div
+      className={cn(
+        "flex shrink-0 justify-end gap-3 border-t border-divider",
+        isMobileLayout
+          ? "px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-3"
+          : "px-8 py-4",
+      )}
+    >
       <Button
-        className="min-w-28"
+        className={cn(isMobileLayout ? "h-11 min-w-0 flex-1" : "min-w-28")}
         disabled={isBusy || isSending}
         onClick={onCancel}
         type="button"
@@ -29,7 +39,7 @@ export function MaterialLibraryFooter({
       </Button>
       <Button
         aria-busy={isSending}
-        className="min-w-28 gap-2"
+        className={cn(isMobileLayout ? "h-11 min-w-0 flex-1 gap-2" : "min-w-28 gap-2")}
         disabled={isBusy || isSending || !canSend}
         onClick={onSend}
         type="button"

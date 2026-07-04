@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { PlayIcon } from "@hugeicons/core-free-icons";
+import { MoreHorizontalIcon, PlayIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
   readMaterialDescription,
@@ -41,8 +42,10 @@ type MaterialCardProps = {
   onSelect?: (item: MaterialCollectionItem) => void;
   onToggleSelect?: () => void;
   onTop?: (item: MaterialCollectionItem) => void;
+  showActionsButton?: boolean;
   selected?: boolean;
   selectionMode?: "immediate" | "toggle";
+  isMobileLayout?: boolean;
 };
 
 export function MaterialCard({
@@ -55,8 +58,10 @@ export function MaterialCard({
   onSelect,
   onToggleSelect,
   onTop,
+  showActionsButton = false,
   selected = false,
   selectionMode = "immediate",
+  isMobileLayout = false,
 }: MaterialCardProps) {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(
     null,
@@ -103,13 +108,40 @@ export function MaterialCard({
             selected
           />
         ) : null}
-        <MaterialCardContent item={item} />
+        <MaterialCardContent isMobileLayout={isMobileLayout} item={item} />
       </button>
+
+      {showActionsButton ? (
+        <Button
+          aria-label={`打开 ${item.title} 操作菜单`}
+          className={cn(
+            "absolute z-20 rounded-[8px] bg-background/90 p-0 text-foreground shadow-sm backdrop-blur hover:bg-background",
+            getMaterialActionsButtonLayoutClassName(item, isMobileLayout),
+          )}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const rect = event.currentTarget.getBoundingClientRect();
+            setContextMenu({
+              x: rect.left,
+              y: rect.bottom + 4,
+            });
+          }}
+          size="icon"
+          type="button"
+          variant="ghost"
+        >
+          <HugeiconsIcon icon={MoreHorizontalIcon} size={16} strokeWidth={1.8} />
+        </Button>
+      ) : null}
 
       {videoPlayUrl ? (
         <button
           aria-label={`播放视频：${videoAlt}`}
-          className="absolute bottom-2 right-2 inline-flex size-7 items-center justify-center rounded-[8px] bg-background/90 p-0 text-foreground opacity-0 shadow-sm backdrop-blur transition-opacity hover:bg-background focus-visible:opacity-100 group-hover/material:opacity-100"
+          className={cn(
+            "absolute bottom-2 right-2 inline-flex size-7 items-center justify-center rounded-[8px] bg-background/90 p-0 text-foreground shadow-sm backdrop-blur transition-opacity hover:bg-background focus-visible:opacity-100 group-hover/material:opacity-100",
+            isMobileLayout ? "opacity-100" : "opacity-0",
+          )}
           onClick={(event) => {
             event.preventDefault();
             event.stopPropagation();
@@ -140,7 +172,36 @@ export function MaterialCard({
   );
 }
 
-function MaterialCardContent({ item }: { item: MaterialCollectionItem }) {
+function getMaterialActionsButtonLayoutClassName(
+  item: MaterialCollectionItem,
+  isMobileLayout: boolean,
+) {
+  if (!isMobileLayout) {
+    return "left-2 top-2 size-8";
+  }
+
+  if (item.contentType === "video") {
+    return "bottom-2 right-11 size-7";
+  }
+
+  if (item.contentType === "h5") {
+    return "bottom-2 left-2 size-7";
+  }
+
+  if (item.contentType === "mini-program") {
+    return "bottom-2 right-2 size-7";
+  }
+
+  return "left-2 top-2 size-8";
+}
+
+function MaterialCardContent({
+  isMobileLayout,
+  item,
+}: {
+  isMobileLayout: boolean;
+  item: MaterialCollectionItem;
+}) {
   if (item.contentType === "emotion") {
     return (
       <ImageMessageCard
@@ -189,7 +250,7 @@ function MaterialCardContent({ item }: { item: MaterialCollectionItem }) {
   }
 
   if (item.contentType === "video") {
-    return <MaterialVideoCoverCard item={item} />;
+    return <MaterialVideoCoverCard isMobileLayout={isMobileLayout} item={item} />;
   }
 
   return (
@@ -275,15 +336,24 @@ const MATERIAL_VIDEO_COVER_STYLE = {
   width: "210px",
 } as const;
 
-function MaterialVideoCoverCard({ item }: { item: MaterialCollectionItem }) {
+function MaterialVideoCoverCard({
+  isMobileLayout,
+  item,
+}: {
+  isMobileLayout: boolean;
+  item: MaterialCollectionItem;
+}) {
   const alt = item.title || "视频";
   const coverUrl = readString(item.content.coverUrl);
   const durationLabel = readString(item.content.durationLabel);
 
   return (
     <div
-      className="relative isolate overflow-hidden rounded-[8px] bg-neutral-950 shadow-sm"
-      style={MATERIAL_VIDEO_COVER_STYLE}
+      className={cn(
+        "relative isolate overflow-hidden rounded-[8px] bg-neutral-950 shadow-sm",
+        isMobileLayout && "aspect-[3/4] w-full",
+      )}
+      style={isMobileLayout ? undefined : MATERIAL_VIDEO_COVER_STYLE}
     >
       {coverUrl ? (
         <LoadableMessageImage

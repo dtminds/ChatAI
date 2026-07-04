@@ -228,6 +228,67 @@ describe("ChatPanel", () => {
     expect(historyPanel.className).not.toContain("shadow");
   });
 
+  it("renders mobile history as a chat-detail overlay without the customer side shell", () => {
+    render(
+      <ChatPanel
+        activeConversation={createConversation()}
+        activeHistoryStatus="idle"
+        canSendMessage
+        composerPlaceholder="输入消息"
+        customerPanelWidth={375}
+        draft=""
+        fileUploadQueue={[]}
+        groupMembers={[]}
+        hasMoreHistory={false}
+        historyPanel={{
+          activeHistory: { hasNext: false, hasPrev: false, messages: [] },
+          activeHistoryFilters: { scope: "all" },
+          activeHistoryLoading: false,
+          isOpen: true,
+        }}
+        inputEnterBehavior="send"
+        isHistoryPanelOpen
+        isConversationLoading={false}
+        isEmojiPickerOpen={false}
+        isGroupMembersLoading={false}
+        isMobileLayout
+        isResizingCustomerPanel={false}
+        isSendingDraft={false}
+        messages={[]}
+        quotedMessage={null}
+        sidebarItems={[]}
+        composerRef={createRef()}
+        messageViewportRef={createRef()}
+        workbenchBodyRef={createRef()}
+        onCancelFileUpload={vi.fn()}
+        onClearQuotedMessage={vi.fn()}
+        onComposerSegmentsChange={vi.fn()}
+        onCustomerPanelResizeStart={vi.fn()}
+        onDismissScopeTransitionError={vi.fn()}
+        onDraftChange={vi.fn()}
+        onEmojiPickerOpenChange={vi.fn()}
+        onEnterBehaviorChange={vi.fn()}
+        onFileSelect={vi.fn()}
+        onHistoryClose={vi.fn()}
+        onHistoryLoadMoreNext={vi.fn()}
+        onHistoryLoadMorePrev={vi.fn()}
+        onHistoryRefresh={vi.fn()}
+        onHistorySetDay={vi.fn()}
+        onHistorySetScope={vi.fn()}
+        onHistorySetSenderId={vi.fn()}
+        onLoadOlderMessages={vi.fn()}
+        onMessageViewportScroll={vi.fn()}
+        onOpenHistory={vi.fn()}
+        onRefreshGroupMembers={vi.fn()}
+        onRetryMessage={vi.fn()}
+        onSendDraft={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByTestId("customer-side-panel-shell")).not.toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "聊天记录" })).toBeInTheDocument();
+  });
+
   it("shows a blank work area when no conversation is active", () => {
     render(
       <ChatPanel

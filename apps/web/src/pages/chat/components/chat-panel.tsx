@@ -3,10 +3,17 @@ import type {
   ReactNode,
   RefObject,
 } from "react";
+import { useEffect, useState } from "react";
 import { Cancel01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { LexicalEditor } from "lexical";
 import { Separator } from "@/components/ui/separator";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import {
   ChatComposer,
@@ -71,6 +78,7 @@ type ChatPanelProps = {
   inputEnterBehavior: InputEnterBehavior;
   isConversationLoading: boolean;
   isEmojiPickerOpen: boolean;
+  isMobileLayout?: boolean;
   isSendingDraft: boolean;
   isResizingCustomerPanel: boolean;
   messages: Message[];
@@ -119,6 +127,7 @@ type ChatPanelProps = {
   onTopCollectedExpression?: (item: WorkbenchMaterialCollectionItemDto) => void;
   onDownloadMessageFile?: (message: ChatMessage) => void;
   onFileSelect: (files: FileList | File[] | null) => void;
+  onBackToConversationList?: () => void;
   onOpenHistory: () => void;
   onHistoryClose: () => void;
   onHistoryLoadMoreNext: () => void;
@@ -189,6 +198,7 @@ export function ChatPanel({
   inputEnterBehavior,
   isConversationLoading,
   isEmojiPickerOpen,
+  isMobileLayout = false,
   isSendingDraft,
   isResizingCustomerPanel,
   messages,
@@ -220,6 +230,7 @@ export function ChatPanel({
   onTopCollectedExpression,
   onDownloadMessageFile,
   onFileSelect,
+  onBackToConversationList,
   onOpenHistory,
   onHistoryClose,
   onHistoryLoadMoreNext,
@@ -256,6 +267,7 @@ export function ChatPanel({
   composerRef,
   workbenchBodyRef,
 }: ChatPanelProps) {
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const resolvedAgentHostingStatus =
     fullAutoDisplayStatus ??
     resolveAgentHostingStatus(activeConversation, conversationAIHostingEnabled);
@@ -267,17 +279,84 @@ export function ChatPanel({
   const hasActiveConversation = activeConversation !== undefined;
   const canUseConversationAIFeatures =
     isConversationAIFeatureSupported(activeConversation);
+  const sidebarPanelLabel = activeConversation?.mode === "group"
+    ? "群成员信息栏"
+    : "客户信息栏";
+  const historyPanelNode = historyPanel ? (
+    <MessageHistorySidePanel
+      accountAvatarUrl={accountAvatarUrl}
+      accountName={accountName}
+      activeConversation={activeConversation}
+      activeHistory={historyPanel.activeHistory}
+      activeHistoryError={historyPanel.activeHistoryError}
+      activeHistoryFilters={historyPanel.activeHistoryFilters}
+      activeHistoryLoading={historyPanel.activeHistoryLoading}
+      onDownloadMessageFile={onDownloadMessageFile}
+      onTranscribeVoice={onTranscribeVoice}
+      onVoicePlaybackReady={onVoicePlaybackReady}
+      scrollMode={historyPanel.scrollMode}
+      customer={customer}
+      groupMembers={groupMembers}
+      isOpen={historyPanel.isOpen}
+      onClose={onHistoryClose}
+      onLoadMoreNext={onHistoryLoadMoreNext}
+      onLoadMorePrev={onHistoryLoadMorePrev}
+      onRefresh={onHistoryRefresh}
+      onSetDay={onHistorySetDay}
+      onSetScope={onHistorySetScope}
+      onSetSenderId={onHistorySetSenderId}
+    />
+  ) : null;
+  const customerSidePanelNode = activeConversation ? (
+    <CustomerSidePanel
+      accountName={accountName}
+      conversationMode={activeConversation.mode}
+      customer={customer}
+      groupMembers={groupMembers}
+      isGroupMembersLoading={isGroupMembersLoading}
+      isResizing={isResizingCustomerPanel}
+      onRefreshGroupMembers={onRefreshGroupMembers}
+      onResizeStart={onCustomerPanelResizeStart}
+      onQuickReplyActiveChange={onQuickReplyActiveChange}
+      panelWidth={isMobileLayout ? undefined : customerPanelWidth}
+      quickReplyPanel={quickReplyPanel}
+      showResizeHandle={!isMobileLayout}
+      sidebarIframeConversationId={activeConversation.id}
+      sidebarIframeSeatId={activeConversation.accountId}
+      sidebarIframeTos={sidebarIframeTos}
+      sidebarIframeSendStatus={sidebarIframeSendStatus}
+      sidebarItems={sidebarItems}
+      className={isMobileLayout ? "h-full w-full pt-12" : undefined}
+    />
+  ) : null;
+
+  useEffect(() => {
+    setIsMobileSidebarOpen(false);
+  }, [activeConversation?.id, isMobileLayout]);
+
+  useEffect(() => {
+    if (isMobileLayout && !isMobileSidebarOpen) {
+      onQuickReplyActiveChange?.(false);
+    }
+  }, [isMobileLayout, isMobileSidebarOpen, onQuickReplyActiveChange]);
 
   return (
-    <section className="flex min-h-0 min-w-0 flex-col bg-surface">
+    <section className="flex h-full min-h-0 min-w-0 flex-col bg-surface">
       <ChatHeader
         activeConversation={activeConversation}
+        isMobileLayout={isMobileLayout}
+        onBack={isMobileLayout ? onBackToConversationList : undefined}
+        onOpenSidebar={
+          isMobileLayout && hasActiveConversation
+            ? () => setIsMobileSidebarOpen(true)
+            : undefined
+        }
       />
 
       <div className="flex min-h-0 min-w-0 flex-1" ref={workbenchBodyRef}>
         {hasActiveConversation ? (
           <>
-            <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-surface">
+            <div className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-surface">
               <ChatMessagePanel
                 activeHistoryStatus={activeHistoryStatus}
                 bottomOverlay={
@@ -373,6 +452,7 @@ export function ChatPanel({
                       isGroupConversation={activeConversation.mode === "group"}
                       inputEnterBehavior={inputEnterBehavior}
                       isEmojiPickerOpen={isEmojiPickerOpen}
+                      isMobileLayout={isMobileLayout}
                       isSending={isSendingDraft}
                       isHistoryPanelOpen={isHistoryPanelOpen}
                       accountAvatarUrl={activeAccount?.avatarUrl ?? accountAvatarUrl}
@@ -413,65 +493,45 @@ export function ChatPanel({
                   </div>
                 </div>
               </div>
+              {isMobileLayout ? historyPanelNode : null}
             </div>
 
-            <div
-              className="relative flex h-full min-h-0 min-w-0 shrink-0"
-              data-testid="customer-side-panel-shell"
-              style={{ width: `${customerPanelWidth + 4}px` }}
-            >
-              <div
-                className={cn(
-                  "flex h-full min-h-0 shrink-0",
-                  historyPanel?.isOpen ? "invisible pointer-events-none" : "visible",
-                )}
-                data-testid="customer-side-panel-layout"
+            {isMobileLayout ? (
+              <Sheet
+                onOpenChange={setIsMobileSidebarOpen}
+                open={isMobileSidebarOpen}
               >
-                <CustomerSidePanel
-                  accountName={accountName}
-                  conversationMode={activeConversation.mode}
-                  customer={customer}
-                  sidebarIframeConversationId={activeConversation.id}
-                  sidebarIframeSeatId={activeConversation.accountId}
-                  sidebarIframeTos={sidebarIframeTos}
-                  sidebarIframeSendStatus={sidebarIframeSendStatus}
-                  groupMembers={groupMembers}
-                  isGroupMembersLoading={isGroupMembersLoading}
-                  isResizing={isResizingCustomerPanel}
-                  onRefreshGroupMembers={onRefreshGroupMembers}
-                  onResizeStart={onCustomerPanelResizeStart}
-                  onQuickReplyActiveChange={onQuickReplyActiveChange}
-                  panelWidth={customerPanelWidth}
-                  quickReplyPanel={quickReplyPanel}
-                  sidebarItems={sidebarItems}
-                />
+                <SheetContent
+                  className="w-[min(24rem,calc(100vw-1rem))] max-w-none overflow-hidden p-0"
+                  side="right"
+                >
+                  <SheetTitle className="sr-only">{sidebarPanelLabel}</SheetTitle>
+                  <SheetDescription className="sr-only">
+                    查看当前会话的客户信息、快捷话术和扩展侧边栏
+                  </SheetDescription>
+                  {customerSidePanelNode}
+                </SheetContent>
+              </Sheet>
+            ) : (
+              <div
+                className="relative flex h-full min-h-0 min-w-0 shrink-0"
+                data-testid="customer-side-panel-shell"
+                style={{ width: `${customerPanelWidth + 4}px` }}
+              >
+                <div
+                  className={cn(
+                    "flex h-full min-h-0 shrink-0",
+                    historyPanel?.isOpen
+                      ? "invisible pointer-events-none"
+                      : "visible",
+                  )}
+                  data-testid="customer-side-panel-layout"
+                >
+                  {customerSidePanelNode}
+                </div>
+                {historyPanelNode}
               </div>
-              {historyPanel ? (
-                <MessageHistorySidePanel
-                  accountAvatarUrl={accountAvatarUrl}
-                  accountName={accountName}
-                  activeConversation={activeConversation}
-                  activeHistory={historyPanel.activeHistory}
-                  activeHistoryError={historyPanel.activeHistoryError}
-                  activeHistoryFilters={historyPanel.activeHistoryFilters}
-                  activeHistoryLoading={historyPanel.activeHistoryLoading}
-                  onDownloadMessageFile={onDownloadMessageFile}
-                  onTranscribeVoice={onTranscribeVoice}
-                  onVoicePlaybackReady={onVoicePlaybackReady}
-                  scrollMode={historyPanel.scrollMode}
-                  customer={customer}
-                  groupMembers={groupMembers}
-                  isOpen={historyPanel.isOpen}
-                  onClose={onHistoryClose}
-                  onLoadMoreNext={onHistoryLoadMoreNext}
-                  onLoadMorePrev={onHistoryLoadMorePrev}
-                  onRefresh={onHistoryRefresh}
-                  onSetDay={onHistorySetDay}
-                  onSetScope={onHistorySetScope}
-                  onSetSenderId={onHistorySetSenderId}
-                />
-              ) : null}
-            </div>
+            )}
           </>
         ) : (
           <div className="flex min-h-0 min-w-0 flex-1 bg-surface" />

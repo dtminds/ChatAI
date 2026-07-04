@@ -81,6 +81,33 @@ describe("ChatHeader", () => {
     });
   });
 
+  it("uses compact mobile controls without the new message sound entry", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ChatHeader
+        activeConversation={conversation}
+        isMobileLayout
+        onBack={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "返回会话列表" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /新消息提醒/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: "浅色模式" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: "深色模式" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: "跟随系统" })).not.toBeInTheDocument();
+
+    const themeButton = screen.getByRole("button", { name: "切换深色模式" });
+    expect(themeButton).toHaveClass("text-muted-foreground");
+
+    await user.click(themeButton);
+
+    expect(document.documentElement).toHaveClass("dark");
+    expect(window.localStorage.getItem("chat-ai-theme")).toBe("dark");
+    expect(screen.getByRole("button", { name: "切换浅色模式" })).toBeInTheDocument();
+  });
+
   it("does not show internal sync cursor details in the header", () => {
     render(
       <ChatHeader

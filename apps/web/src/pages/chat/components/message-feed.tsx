@@ -74,6 +74,7 @@ import {
 import { isValidMessageSeq } from "@/pages/chat/lib/message-seq";
 import { canCollectMaterial } from "@/pages/chat/lib/message-collect-material";
 import { canForwardMessage } from "@/pages/chat/lib/message-forward";
+import { getMessageFeedItemKey } from "@/pages/chat/lib/message-feed-key";
 
 const TIMESTAMP_BREAK_MS = 5 * 60 * 1000;
 export const MESSAGE_SENT_AT_HOVER_DELAY_MS = 400;
@@ -327,10 +328,6 @@ export function ChatMessageList({
       </div>
     </ConversationImageGalleryProvider>
   );
-}
-
-export function getMessageFeedItemKey(message: Message) {
-  return message.optNo ?? message.uiMessageKey;
 }
 
 function getAppendStartIndex(
@@ -820,8 +817,8 @@ function MessageActionAvatar({
   const canSelectForwardMessage =
     canUseMessageForward && canForwardMessage(message) && !message.isRevoked;
   const canMultiSelectMessage =
-    canUseMessageForward && Boolean(onEnterMultiSelectMode);
-  const canSelectMultiSelectMessage = canUseMessageForward;
+    canUseMessageForward && Boolean(onEnterMultiSelectMode) && canForwardMessage(message);
+  const canSelectMultiSelectMessage = canMultiSelectMessage;
   const canRevokeMessage =
     canUseMessageActions &&
     Boolean(onRevokeMessage) &&

@@ -68,9 +68,18 @@ describe("message-forward", () => {
     expect(getMessageForwardPreview(message)).toBe("商品详情");
   });
 
-  it("allows text messages and collectable material messages", () => {
+  it("allows only messages that can build a forward segment", () => {
     const textMessage = createTextMessage("你好");
     const fileMessage: ChatMessage = {
+      ...createTextMessage(""),
+      content: {
+        extension: "pdf",
+        fileName: "说明.pdf",
+        fileUrl: "https://example.com/file.pdf",
+        type: "file",
+      },
+    };
+    const incompleteFileMessage: ChatMessage = {
       ...createTextMessage(""),
       content: {
         extension: "pdf",
@@ -89,7 +98,15 @@ describe("message-forward", () => {
 
     expect(canForwardMessage(textMessage)).toBe(true);
     expect(canForwardMessage(fileMessage)).toBe(true);
+    expect(canForwardMessage(incompleteFileMessage)).toBe(false);
     expect(canForwardMessage(voiceMessage)).toBe(false);
+  });
+
+  it("does not allow failed messages to be forwarded", () => {
+    expect(canForwardMessage({
+      ...createTextMessage("发送失败"),
+      status: "failed",
+    })).toBe(false);
   });
 
   it("builds recent forward targets from loaded conversations", () => {
@@ -157,6 +174,26 @@ describe("message-forward", () => {
     expect(results.contacts[0]).toMatchObject({
       name: "客户原始昵称",
       remark: "客户备注",
+    });
+  });
+
+  it("keeps all loaded recent forward contacts", () => {
+    const conversations = Array.from({ length: 35 }, (_, index) =>
+      createConversation({
+        customerName: `客户${index + 1}`,
+        id: `conv-single-${index + 1}`,
+        mode: "single",
+        thirdExternalUserId: `ext-${index + 1}`,
+        updatedAtMs: 1000 - index,
+      }),
+    );
+
+    const results = buildRecentForwardSearchResults(conversations);
+
+    expect(results.contacts).toHaveLength(35);
+    expect(results.contacts.at(-1)).toMatchObject({
+      conversationId: "conv-single-35",
+      thirdExternalUserId: "ext-35",
     });
   });
 });

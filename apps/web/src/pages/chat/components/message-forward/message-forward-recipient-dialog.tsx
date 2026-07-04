@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { Cancel01Icon, Male02Icon, Search01Icon } from "@hugeicons/core-free-icons";
+import {
+  Cancel01Icon,
+  Male02Icon,
+  Search01Icon,
+  Tick02Icon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { toast } from "sonner";
 import type {
@@ -15,7 +20,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -864,12 +868,22 @@ function ForwardRecipientPickerItem({
       type="button"
       variant="ghost"
     >
-      <Checkbox
+      <span
         aria-hidden="true"
-        checked={isSelected}
-        className="pointer-events-none"
-        tabIndex={-1}
-      />
+        className={cn(
+          "grid size-4 shrink-0 place-content-center rounded-[4px] border border-input bg-transparent text-primary-foreground shadow-xs",
+          isSelected && "border-primary bg-primary",
+        )}
+      >
+        {isSelected ? (
+          <HugeiconsIcon
+            color="currentColor"
+            icon={Tick02Icon}
+            size={12}
+            strokeWidth={2}
+          />
+        ) : null}
+      </span>
       <Avatar className="size-8 rounded-[7px]">
         <AvatarImage alt={label} src={avatar} />
         <AvatarFallback className="rounded-[7px]">

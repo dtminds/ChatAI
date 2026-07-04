@@ -48,8 +48,8 @@ import { ConversationListPanel } from "@/pages/chat/components/conversation-list
 import { MessageForwardRecipientDialog } from "@/pages/chat/components/message-forward/message-forward-recipient-dialog";
 import { MessageForwardSelectedMessagesDialog } from "@/pages/chat/components/message-forward/message-forward-selected-messages-dialog";
 import { MessageMultiSelectToolbar } from "@/pages/chat/components/message-forward/message-multi-select-toolbar";
-import { getMessageFeedItemKey } from "@/pages/chat/components/message-feed";
 import { CustomerPage } from "@/pages/chat/customer-page";
+import { getMessageFeedItemKey } from "@/pages/chat/lib/message-feed-key";
 import type { InputEnterBehavior } from "@/pages/chat/components/input-enter-behavior";
 import {
   MaterialGroupSelectDialog,

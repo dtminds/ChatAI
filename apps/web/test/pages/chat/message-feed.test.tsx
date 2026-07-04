@@ -6,9 +6,9 @@ import {
   ChatMessageList,
   MessageRow,
   MESSAGE_SENT_AT_HOVER_DELAY_MS,
-  getMessageFeedItemKey,
 } from "@/pages/chat/components/message-feed";
 import type { ChatMessage } from "@/pages/chat/chat-types";
+import { getMessageFeedItemKey } from "@/pages/chat/lib/message-feed-key";
 
 vi.mock("sonner", async (importOriginal) => {
   const actual = await importOriginal<typeof import("sonner")>();
@@ -1711,6 +1711,27 @@ describe("message sent time preview", () => {
     await user.click(screen.getByRole("menuitem", { name: "多选" }));
 
     expect(onEnterMultiSelectMode).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides forward and multi-select actions for failed messages", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <MessageRow
+        canUseMessageForward
+        message={{
+          ...createTextMessage("发送失败"),
+          status: "failed",
+        }}
+        onEnterMultiSelectMode={vi.fn()}
+        onForwardMessage={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+
+    expect(screen.queryByRole("menuitem", { name: "转发" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "多选" })).not.toBeInTheDocument();
   });
 
   it("renders multi-select checkbox when multi-select mode is active", () => {

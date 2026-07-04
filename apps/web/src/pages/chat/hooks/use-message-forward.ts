@@ -9,7 +9,7 @@ import {
   type MessageForwardMode,
   type MessageForwardRecipient,
 } from "@/pages/chat/lib/message-forward";
-import { getMessageFeedItemKey } from "@/pages/chat/components/message-feed";
+import { getMessageFeedItemKey } from "@/pages/chat/lib/message-feed-key";
 
 type UseMessageForwardOptions = {
   seatId?: string;
@@ -42,9 +42,11 @@ export function useMessageForward({ seatId }: UseMessageForwardOptions) {
     resetForwardState();
   }, [resetForwardState]);
 
-  const enterMultiSelectMode = useCallback(() => {
+  const enterMultiSelectMode = useCallback((message?: ChatMessage) => {
     setMultiSelectMode(true);
-    setSelectedMessageKeys([]);
+    setSelectedMessageKeys(
+      message && canForwardMessage(message) ? [getMessageFeedItemKey(message)] : [],
+    );
     resetForwardState();
   }, [resetForwardState]);
 

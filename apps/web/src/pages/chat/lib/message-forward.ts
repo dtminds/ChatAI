@@ -4,12 +4,9 @@ import type {
   WorkbenchSearchGroupResultDto,
 } from "@chatai/contracts";
 import type { ChatMessage, ChatMode, Conversation } from "@/pages/chat/chat-types";
-import { canCollectMaterial } from "@/pages/chat/lib/message-collect-material";
 import { sortConversations } from "@/pages/chat/lib/conversation-order";
 import { isValidMessageSeq } from "@/pages/chat/lib/message-seq";
 
-export const MESSAGE_FORWARD_RECENT_CONTACT_LIMIT = 30;
-export const MESSAGE_FORWARD_RECENT_GROUP_LIMIT = 30;
 export const MESSAGE_FORWARD_MAX_RECIPIENTS = 9;
 export const MESSAGE_FORWARD_MAX_MESSAGES = 20;
 export const MESSAGE_FORWARD_SEND_INTERVAL_MIN_MS = 1000;
@@ -81,19 +78,11 @@ export function getMessageForwardPreview(message: ChatMessage) {
 }
 
 export function canForwardMessage(message: ChatMessage) {
-  if (message.isRevoked) {
+  if (message.isRevoked || message.status === "failed") {
     return false;
   }
 
-  if (message.content.type === "text") {
-    return message.content.text.trim().length > 0;
-  }
-
-  if (message.content.type === "quote") {
-    return message.content.text.trim().length > 0;
-  }
-
-  return canCollectMaterial(message);
+  return buildForwardSegmentFromMessage(message) !== null;
 }
 
 export function buildForwardSegmentFromMessage(
@@ -239,12 +228,8 @@ export function buildRecentForwardSearchResults(
   conversations: Conversation[],
   options?: {
     excludeConversationId?: string;
-    contactLimit?: number;
-    groupLimit?: number;
   },
 ) {
-  const contactLimit = options?.contactLimit ?? MESSAGE_FORWARD_RECENT_CONTACT_LIMIT;
-  const groupLimit = options?.groupLimit ?? MESSAGE_FORWARD_RECENT_GROUP_LIMIT;
   const eligibleConversations = sortConversations(conversations).filter((conversation) => {
     if (
       conversation.bizStatus != null &&
@@ -273,13 +258,11 @@ export function buildRecentForwardSearchResults(
 
   const contacts = eligibleConversations
     .filter((conversation) => conversation.mode === "single")
-    .slice(0, contactLimit)
     .map((conversation) => mapConversationToSearchContact(conversation))
     .filter((contact): contact is WorkbenchSearchContactResultDto => contact !== null);
 
   const groups = eligibleConversations
     .filter((conversation) => conversation.mode === "group")
-    .slice(0, groupLimit)
     .map((conversation) => mapConversationToSearchGroup(conversation))
     .filter((group): group is WorkbenchSearchGroupResultDto => group !== null);
 

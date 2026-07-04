@@ -1,4 +1,4 @@
-import { Search01Icon } from "@hugeicons/core-free-icons";
+import { MoreHorizontalIcon, Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type {
   SettingsManagedAccount,
@@ -22,6 +22,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -321,34 +327,46 @@ function ManagedAccountRow({
         {account.groupChatCount}
       </TableCell>
       <TableCell className="px-5 py-5">
-        <div className="flex items-center gap-3">
-          <Button
-            aria-label={`同步${account.name}群聊`}
-            className="h-8 px-3 text-primary"
-            disabled={!canManage || isSubmitting || isSyncing}
-            onClick={onSyncSeatGroups}
-            type="button"
-            variant="ghost"
-          >
-            {isSyncing ? (
-              <>
-                <Spinner aria-hidden="true" size={14} />
-                <span>同步中</span>
-              </>
-            ) : (
-              "同步群"
-            )}
-          </Button>
-          <Button
-            className="h-8 px-3 text-primary"
-            disabled={!canManage || isSubmitting || isSyncing}
-            onClick={onAssign}
-            type="button"
-            variant="ghost"
-          >
-            关联子账号
-          </Button>
-        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              aria-label={`打开 ${account.name} 操作菜单`}
+              className="size-8 rounded-[8px]"
+              disabled={!canManage || isSubmitting || isSyncing}
+              size="icon"
+              type="button"
+              variant="ghost"
+            >
+              <HugeiconsIcon
+                color="currentColor"
+                icon={MoreHorizontalIcon}
+                size={16}
+                strokeWidth={1.8}
+              />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="min-w-[116px]">
+            <DropdownMenuItem
+              disabled={!canManage || isSubmitting || isSyncing}
+              onSelect={() => onSyncSeatGroups()}
+            >
+              {isSyncing ? (
+                <>
+                  <Spinner aria-hidden="true" size={14} />
+                  <span>同步中</span>
+                </>
+              ) : (
+                "同步群"
+              )}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={!canManage || isSubmitting || isSyncing}
+              onSelect={() => onAssign()}
+            >
+              关联子账号
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </TableCell>
     </TableRow>
   );

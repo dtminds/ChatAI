@@ -365,7 +365,8 @@ describe("Chat settings pages", () => {
     expect(
       screen.getByText("客服一号（接管中），主账号，客服二号等5人"),
     ).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: "关联子账号" })).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "打开 德瑞可 操作菜单" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "打开 念都堂 操作菜单" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "新增账号" })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("link", { name: "子账号管理" }));
@@ -453,7 +454,7 @@ describe("Chat settings pages", () => {
     renderRoute("/chat/settings");
 
     expect(await screen.findByText("德瑞可")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "关联子账号" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "打开 德瑞可 操作菜单" })).toBeDisabled();
 
     await user.click(screen.getByRole("link", { name: "子账号管理" }));
 
@@ -1137,7 +1138,8 @@ describe("Chat settings pages", () => {
     ).not.toBeInTheDocument();
 
     await user.unhover(screen.getByRole("button", { name: "查看 德瑞可 的全部关联子账号" }));
-    await user.click(screen.getAllByRole("button", { name: "关联子账号" })[0]);
+    await user.click(screen.getByRole("button", { name: "打开 德瑞可 操作菜单" }));
+    await user.click(screen.getByRole("menuitem", { name: "关联子账号" }));
     const dialog = screen.getByRole("dialog", { name: "关联子账号" });
 
     expect(dialog).toBeInTheDocument();
@@ -1180,7 +1182,8 @@ describe("Chat settings pages", () => {
     renderRoute("/chat/settings");
 
     await screen.findByRole("table", { name: "托管账号列表" });
-    await user.click(screen.getByRole("button", { name: "同步念都堂群聊" }));
+    await user.click(screen.getByRole("button", { name: "打开 念都堂 操作菜单" }));
+    await user.click(screen.getByRole("menuitem", { name: "同步群" }));
 
     await waitFor(() => {
       expect(mock.history.post).toHaveLength(1);

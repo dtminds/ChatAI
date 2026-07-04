@@ -655,6 +655,26 @@ export function ChatComposer({
                 </Popover>
               ) : null}
 
+              <Button
+                aria-label="历史记录"
+                aria-pressed={isHistoryPanelOpen}
+                className={cn(
+                  mobileToolbarButtonClass,
+                  isHistoryPanelOpen &&
+                    "bg-accent text-accent-foreground hover:bg-accent hover:text-accent-foreground",
+                )}
+                onClick={onOpenHistory}
+                size="icon"
+                type="button"
+                variant="ghost"
+              >
+                <HugeiconsIcon
+                  icon={ChatDelayIcon}
+                  size={18}
+                  strokeWidth={2}
+                />
+              </Button>
+
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -771,14 +791,6 @@ export function ChatComposer({
                       strokeWidth={1.8}
                     />
                     收录的文件
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={onOpenHistory}>
-                    <HugeiconsIcon
-                      icon={ChatDelayIcon}
-                      size={16}
-                      strokeWidth={1.8}
-                    />
-                    历史记录
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>

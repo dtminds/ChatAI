@@ -1,4 +1,4 @@
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ChatWorkbenchPage } from "@/pages/chat/chat-workbench-page";
@@ -77,6 +77,11 @@ describe("workbench scrollbar policy", () => {
 
     expect(await screen.findByRole("textbox", { name: "请输入消息……" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "返回会话列表" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /新消息提醒/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: "浅色模式" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: "深色模式" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /切换[深浅]色模式/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "打开侧边栏" })).toBeInTheDocument();
     expect(screen.queryByTestId("chat-mobile-list-layout")).not.toBeInTheDocument();
     expect(screen.getByTestId("chat-mobile-detail-layout")).toHaveClass(
       "h-full",
@@ -94,6 +99,17 @@ describe("workbench scrollbar policy", () => {
       "min-h-0",
       "overflow-y-auto",
     );
+    expect(screen.queryByTestId("customer-side-panel-shell")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "打开侧边栏" }));
+
+    expect(await screen.findByRole("dialog", { name: "客户信息栏" })).toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "客户信息栏" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "关闭" }));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "客户信息栏" })).not.toBeInTheDocument();
+    });
 
     await user.click(screen.getByRole("button", { name: "返回会话列表" }));
 

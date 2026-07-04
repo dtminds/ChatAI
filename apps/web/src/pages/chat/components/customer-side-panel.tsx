@@ -60,6 +60,7 @@ function buildSidebarIframeParamsRefreshKey(
 
 type CustomerSidePanelProps = {
   accountName?: string;
+  className?: string;
   conversationMode?: ChatMode;
   /** 当前席位 ID，用于服务端签发侧栏 iframe 参数 */
   sidebarIframeSeatId?: string;
@@ -73,9 +74,10 @@ type CustomerSidePanelProps = {
   groupMembers: GroupMember[];
   isGroupMembersLoading: boolean;
   isResizing: boolean;
-  panelWidth: number;
+  panelWidth?: number;
   quickReplyPanel?: ReactNode;
   sidebarItems?: SettingsSidebarItem[];
+  showResizeHandle?: boolean;
   onQuickReplyActiveChange?: (isActive: boolean) => void;
   onRefreshGroupMembers: () => void;
   onResizeStart: (event: ReactPointerEvent<HTMLButtonElement>) => void;
@@ -83,6 +85,7 @@ type CustomerSidePanelProps = {
 
 export function CustomerSidePanel({
   accountName,
+  className,
   conversationMode,
   customer,
   sidebarIframeConversationId,
@@ -95,6 +98,7 @@ export function CustomerSidePanel({
   panelWidth,
   quickReplyPanel,
   sidebarItems = [],
+  showResizeHandle = true,
   onQuickReplyActiveChange,
   onRefreshGroupMembers,
   onResizeStart,
@@ -307,27 +311,29 @@ export function CustomerSidePanel({
 
   return (
     <>
-      <button
-        aria-label="调整客户信息栏宽度"
-        className={cn(
-          "relative flex w-1 shrink-0 cursor-col-resize items-stretch justify-center bg-surface",
-          isResizing ? "bg-accent" : "hover:bg-surface-hover",
-        )}
-        onPointerDown={onResizeStart}
-        type="button"
-      >
-        <span
+      {showResizeHandle ? (
+        <button
+          aria-label="调整客户信息栏宽度"
           className={cn(
-            "h-full w-px bg-divider",
-            isResizing && "bg-primary/45",
+            "relative flex w-1 shrink-0 cursor-col-resize items-stretch justify-center bg-surface",
+            isResizing ? "bg-accent" : "hover:bg-surface-hover",
           )}
-        />
-      </button>
+          onPointerDown={onResizeStart}
+          type="button"
+        >
+          <span
+            className={cn(
+              "h-full w-px bg-divider",
+              isResizing && "bg-primary/45",
+            )}
+          />
+        </button>
+      ) : null}
 
       <aside
         aria-label={isGroupConversation ? "群成员信息栏" : "客户信息栏"}
-        className="flex min-h-0 min-w-0 flex-col bg-surface"
-        style={{ width: `${panelWidth}px` }}
+        className={cn("flex min-h-0 min-w-0 flex-col bg-surface", className)}
+        style={panelWidth ? { width: `${panelWidth}px` } : undefined}
       >
         {shouldShowSingleConversationEmptyState ? (
           <SidebarEmptyState />

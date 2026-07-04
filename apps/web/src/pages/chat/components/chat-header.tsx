@@ -3,6 +3,7 @@ import {
   ArrowLeft01Icon,
   ModernTvIcon,
   Moon02Icon,
+  SidebarRightIcon,
   Sun02Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -24,10 +25,17 @@ import type { Conversation } from "@/pages/chat/chat-types";
 
 type ChatHeaderProps = {
   activeConversation?: Conversation;
+  isMobileLayout?: boolean;
   onBack?: () => void;
+  onOpenSidebar?: () => void;
 };
 
-export function ChatHeader({ activeConversation, onBack }: ChatHeaderProps) {
+export function ChatHeader({
+  activeConversation,
+  isMobileLayout = false,
+  onBack,
+  onOpenSidebar,
+}: ChatHeaderProps) {
   const [themePreference, setThemePreference] = useState<ThemePreference>("system");
   const [isSystemDarkMode, setIsSystemDarkMode] = useState(false);
 
@@ -63,6 +71,10 @@ export function ChatHeader({ activeConversation, onBack }: ChatHeaderProps) {
     writeThemePreference(nextThemePreference);
     setThemePreference(nextThemePreference);
   };
+  const isDarkThemeActive =
+    themePreference === "dark" ||
+    (themePreference === "system" && isSystemDarkMode);
+  const mobileThemeToggleLabel = isDarkThemeActive ? "切换浅色模式" : "切换深色模式";
 
   return (
     <div className="flex min-h-[69px] items-center border-b border-divider px-5 py-3">
@@ -103,38 +115,79 @@ export function ChatHeader({ activeConversation, onBack }: ChatHeaderProps) {
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
-          <NewMessageSoundControl />
-          <SegmentedControl
-            aria-label="选择主题模式"
-            onValueChange={handleThemePreferenceChange}
-            type="single"
-            value={themePreference}
-          >
-            <SegmentedControlItem aria-label="浅色模式" value="light">
-              <HugeiconsIcon
-                color="currentColor"
-                icon={Sun02Icon}
-                size={16}
-                strokeWidth={1.8}
-              />
-            </SegmentedControlItem>
-            <SegmentedControlItem aria-label="深色模式" value="dark">
-              <HugeiconsIcon
-                color="currentColor"
-                icon={Moon02Icon}
-                size={16}
-                strokeWidth={1.8}
-              />
-            </SegmentedControlItem>
-            <SegmentedControlItem aria-label="跟随系统" value="system">
-              <HugeiconsIcon
-                color="currentColor"
-                icon={ModernTvIcon}
-                size={16}
-                strokeWidth={1.8}
-              />
-            </SegmentedControlItem>
-          </SegmentedControl>
+          {isMobileLayout ? null : <NewMessageSoundControl />}
+          {isMobileLayout ? (
+            <>
+              <Button
+                aria-label={mobileThemeToggleLabel}
+                className="size-9 shrink-0 rounded-[10px] p-0 text-muted-foreground shadow-none hover:text-foreground"
+                onClick={() => {
+                  handleThemePreferenceChange(isDarkThemeActive ? "light" : "dark");
+                }}
+                size="icon"
+                type="button"
+                variant="ghost"
+              >
+                <HugeiconsIcon
+                  aria-hidden="true"
+                  color="currentColor"
+                  icon={isDarkThemeActive ? Sun02Icon : Moon02Icon}
+                  size={16}
+                  strokeWidth={1.8}
+                />
+              </Button>
+              {onOpenSidebar ? (
+                <Button
+                  aria-label="打开侧边栏"
+                  className="size-9 shrink-0 rounded-[10px] p-0 text-muted-foreground shadow-none hover:text-foreground"
+                  onClick={onOpenSidebar}
+                  size="icon"
+                  type="button"
+                  variant="ghost"
+                >
+                  <HugeiconsIcon
+                    aria-hidden="true"
+                    color="currentColor"
+                    icon={SidebarRightIcon}
+                    size={16}
+                    strokeWidth={1.8}
+                  />
+                </Button>
+              ) : null}
+            </>
+          ) : (
+            <SegmentedControl
+              aria-label="选择主题模式"
+              onValueChange={handleThemePreferenceChange}
+              type="single"
+              value={themePreference}
+            >
+              <SegmentedControlItem aria-label="浅色模式" value="light">
+                <HugeiconsIcon
+                  color="currentColor"
+                  icon={Sun02Icon}
+                  size={16}
+                  strokeWidth={1.8}
+                />
+              </SegmentedControlItem>
+              <SegmentedControlItem aria-label="深色模式" value="dark">
+                <HugeiconsIcon
+                  color="currentColor"
+                  icon={Moon02Icon}
+                  size={16}
+                  strokeWidth={1.8}
+                />
+              </SegmentedControlItem>
+              <SegmentedControlItem aria-label="跟随系统" value="system">
+                <HugeiconsIcon
+                  color="currentColor"
+                  icon={ModernTvIcon}
+                  size={16}
+                  strokeWidth={1.8}
+                />
+              </SegmentedControlItem>
+            </SegmentedControl>
+          )}
         </div>
       </div>
     </div>

@@ -264,7 +264,7 @@ describe("ChatWorkbenchPage composer flows", () => {
     expect(screen.getByRole("button", { name: "发送消息" })).toBeInTheDocument();
   });
 
-  it("keeps only emoji, AI, more, and send actions visible in the mobile composer", async () => {
+  it("keeps history visible while folding secondary actions in the mobile composer", async () => {
     mockViewportMediaQuery({ width: 390 });
     const user = userEvent.setup();
 
@@ -276,11 +276,11 @@ describe("ChatWorkbenchPage composer flows", () => {
     const composerToolbar = await screen.findByTestId("chat-composer-mobile-toolbar");
     expect(within(composerToolbar).getByRole("button", { name: "微信表情" })).toBeInTheDocument();
     expect(within(composerToolbar).getByRole("button", { name: "AI 对话" })).toBeInTheDocument();
+    expect(within(composerToolbar).getByRole("button", { name: "历史记录" })).toBeInTheDocument();
     expect(within(composerToolbar).getByRole("button", { name: "更多发送功能" })).toBeInTheDocument();
     expect(within(composerToolbar).getByRole("button", { name: "发送消息" })).toBeInTheDocument();
     expect(within(composerToolbar).queryByRole("button", { name: "收录视频" })).not.toBeInTheDocument();
     expect(within(composerToolbar).queryByRole("button", { name: "收藏小程序" })).not.toBeInTheDocument();
-    expect(within(composerToolbar).queryByRole("button", { name: "历史记录" })).not.toBeInTheDocument();
 
     await user.click(within(composerToolbar).getByRole("button", { name: "更多发送功能" }));
 
@@ -288,9 +288,10 @@ describe("ChatWorkbenchPage composer flows", () => {
     expect(within(moreMenu).getByRole("menuitem", { name: "收录视频" })).toBeInTheDocument();
     expect(within(moreMenu).getByRole("menuitem", { name: "收藏小程序" })).toBeInTheDocument();
     expect(within(moreMenu).getByRole("menuitem", { name: "收藏H5" })).toBeInTheDocument();
-    expect(within(moreMenu).getByRole("menuitem", { name: "历史记录" })).toBeInTheDocument();
+    expect(within(moreMenu).queryByRole("menuitem", { name: "历史记录" })).not.toBeInTheDocument();
 
-    await user.click(within(moreMenu).getByRole("menuitem", { name: "历史记录" }));
+    await user.keyboard("{Escape}");
+    await user.click(within(composerToolbar).getByRole("button", { name: "历史记录" }));
 
     expect(await screen.findByRole("complementary", { name: "聊天记录" })).toBeInTheDocument();
   });

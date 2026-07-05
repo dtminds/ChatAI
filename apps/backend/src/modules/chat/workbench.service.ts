@@ -3895,20 +3895,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
   }
 
   private async getMaterialActor(subUserId: string) {
-    const me = await this.getMe(subUserId);
-
-    if (me.uid == null) {
-      throw new BadRequestError("INVALID_SUB_USER", "子账号无效");
-    }
-
-    if (me.platform == null) {
-      throw new BadRequestError("INVALID_SUB_USER", "子账号无效");
-    }
-
-    return {
-      uid: me.uid,
-      platform: me.platform,
-    };
+    return this.getAuthenticatedWorkbenchScope(subUserId);
   }
 
   private async prepareMaterialCollectionContent(

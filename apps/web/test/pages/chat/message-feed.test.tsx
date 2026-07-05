@@ -1782,9 +1782,10 @@ describe("message sent time preview", () => {
     } satisfies ChatMessage;
 
     render(
-      <MessageRow
+      <ChatMessageList
         canUseMessageForward
-        message={message}
+        conversationId="conv-layout"
+        messages={[message]}
         multiSelectMode
         onToggleMessageSelection={vi.fn()}
       />,

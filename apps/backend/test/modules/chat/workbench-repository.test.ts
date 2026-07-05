@@ -509,6 +509,45 @@ function createQueryBuilder(result: unknown) {
   };
 }
 
+function createFilteredRowsQueryBuilder<T extends Record<string, unknown>>(
+  rows: T[],
+  columnAliases: Record<string, keyof T & string>,
+) {
+  const query = createQueryBuilder(rows);
+
+  query.execute = async () =>
+    rows.filter((row) => matchesWhereFilters(row, query.wheres, columnAliases));
+  query.executeTakeFirst = async () => (await query.execute())[0];
+
+  return query;
+}
+
+function matchesWhereFilters<T extends Record<string, unknown>>(
+  row: T,
+  wheres: Array<[string, string, unknown]>,
+  columnAliases: Record<string, keyof T & string>,
+) {
+  for (const [column, operator, value] of wheres) {
+    const rowKey = columnAliases[column];
+
+    if (!rowKey) {
+      continue;
+    }
+
+    const rowValue = row[rowKey];
+
+    if (operator === "=" && rowValue !== value) {
+      return false;
+    }
+
+    if (operator === "in" && (!Array.isArray(value) || !value.includes(rowValue))) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 function createCacheMock(initial: Record<string, string> = {}) {
   const store = new Map(Object.entries(initial));
 
@@ -2306,6 +2345,98 @@ describe("WorkbenchRepository", () => {
     expect(queries[0]?.query.wheres).toContainEqual(["relation.platform", "=", 5]);
   });
 
+  it("filters seat list rows to the authenticated workbench platform", async () => {
+    const queries: Array<{ query: ReturnType<typeof createQueryBuilder>; table: string }> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_user_seat_sub_relation as relation") {
+            const query = createFilteredRowsQueryBuilder(
+              [
+                {
+                  avatar: "https://example.com/drc.png",
+                  biz_status: 1,
+                  expire_time: null,
+                  host_sub_id: 11,
+                  id: 101,
+                  is_online: 0,
+                  platform: 5,
+                  relation_sub_id: 11,
+                  third_user_name: "德瑞可",
+                  third_userid: "seat-user-001",
+                  uid: 9001,
+                },
+                {
+                  avatar: "https://example.com/other-platform.png",
+                  biz_status: 1,
+                  expire_time: null,
+                  host_sub_id: 11,
+                  id: 201,
+                  is_online: 1,
+                  platform: 6,
+                  relation_sub_id: 11,
+                  third_user_name: "跨平台席位",
+                  third_userid: "seat-user-platform-6",
+                  uid: 9001,
+                },
+              ],
+              {
+                "relation.platform": "platform",
+                "relation.sub_id": "relation_sub_id",
+                "relation.uid": "uid",
+              },
+            );
+            queries.push({ query, table });
+            return query;
+          }
+
+          if (table === "xy_wap_embed_conversation") {
+            const query = createFilteredRowsQueryBuilder(
+              [
+                {
+                  chat_type: 1,
+                  last_msgtime: 1_778_839_950_000,
+                  platform: 5,
+                  third_userid: "seat-user-001",
+                  uid: 9001,
+                  unread_cnt: 4,
+                },
+                {
+                  chat_type: 1,
+                  last_msgtime: 1_778_839_960_000,
+                  platform: 6,
+                  third_userid: "seat-user-platform-6",
+                  uid: 9001,
+                  unread_cnt: 9,
+                },
+              ],
+              {
+                platform: "platform",
+                third_userid: "third_userid",
+                uid: "uid",
+              },
+            );
+            queries.push({ query, table });
+            return query;
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    const seats = await repository.listSeats({
+      platform: 5,
+      subUserId: "11",
+      uid: 9001,
+    } as never);
+
+    expect(seats.map((seat) => seat.seatId)).toEqual(["101"]);
+    expect(seats.map((seat) => seat.unreadCount)).toEqual([4]);
+    expect(queries[0]?.query.wheres).toContainEqual(["relation.platform", "=", 5]);
+    expect(queries[1]?.query.wheres).toContainEqual(["platform", "=", 5]);
+  });
+
   it("loads sidebar tuse secrets from explicit workbench scope without querying sub-user platform", async () => {
     const observedTables: string[] = [];
     const relationQueries: Array<ReturnType<typeof createQueryBuilder>> = [];
@@ -3658,19 +3789,36 @@ describe("WorkbenchRepository", () => {
       {
         selectFrom(table: string) {
           if (table === "xy_wap_embed_contact as contact") {
-            const query = createQueryBuilder([
+            const query = createFilteredRowsQueryBuilder(
+              [
+                {
+                  avatar: "",
+                  biz_status: 1,
+                  gender: null,
+                  name: "客户B",
+                  platform: 5,
+                  real_name: "",
+                  third_external_userid: "external-b",
+                  uid: 9001,
+                  update_time: new Date("2026-05-20T10:00:00.000Z"),
+                },
+                {
+                  avatar: "",
+                  biz_status: 1,
+                  gender: null,
+                  name: "跨平台客户",
+                  platform: 6,
+                  real_name: "",
+                  third_external_userid: "external-platform-6",
+                  uid: 9001,
+                  update_time: new Date("2026-05-21T10:00:00.000Z"),
+                },
+              ],
               {
-                avatar: "",
-                biz_status: 1,
-                gender: null,
-                name: "客户B",
-                platform: 5,
-                real_name: "",
-                third_external_userid: "external-b",
-                uid: 9001,
-                update_time: new Date("2026-05-20T10:00:00.000Z"),
+                "contact.platform": "platform",
+                "contact.uid": "uid",
               },
-            ]);
+            );
             queries.push({ table, query });
             return query;
           }
@@ -3707,13 +3855,14 @@ describe("WorkbenchRepository", () => {
       } as never,
     );
 
-    await expect(
-      repository.listCustomers({
-        platform: 5,
-        scope: "all",
-        uid: 9001,
-      }),
-    ).resolves.toMatchObject({
+    const result = await repository.listCustomers({
+      platform: 5,
+      scope: "all",
+      uid: 9001,
+    });
+
+    expect(result.items.map((item) => item.thirdExternalUserId)).toEqual(["external-b"]);
+    expect(result).toMatchObject({
       hasMore: false,
       items: [
         {

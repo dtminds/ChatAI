@@ -5435,7 +5435,7 @@ describe("MysqlWorkbenchService", () => {
     expect(repository.createMaterialCollection).not.toHaveBeenCalled();
   });
 
-  it("material: transfers external video files when current sub user has no platform", async () => {
+  it("material: transfers external video files with workbench platform scope", async () => {
     const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_779_700_002_500);
     const javaClient = createJavaClient();
     vi.mocked(javaClient.transMsgFile).mockResolvedValue(

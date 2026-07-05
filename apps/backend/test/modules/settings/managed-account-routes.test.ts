@@ -12,6 +12,7 @@ describe("settings managed-account routes", () => {
     });
 
     expect(response.statusCode).toBe(200);
+    const body = response.json();
     expect(db.scopeLookupCount).toBe(0);
     expect(db.joinCalls).toEqual([]);
     expect(db.limitCalls).toContainEqual({
@@ -24,7 +25,10 @@ describe("settings managed-account routes", () => {
       "in",
       [101, 102],
     ]);
-    expect(response.json()).toEqual({
+    expect(
+      body.data.managedAccounts.map((account: { id: string }) => account.id),
+    ).not.toContain("103");
+    expect(body).toEqual({
       data: {
         managedAccounts: [
           {
@@ -276,6 +280,16 @@ function createSettingsDbMock() {
       third_avatar: "https://example.com/ndt.png",
       third_user_name: "念都堂",
       third_userid: "user-102",
+      uid: 9001,
+    },
+    {
+      host_sub_id: 11,
+      id: 103,
+      is_online: 1,
+      platform: 6,
+      third_avatar: "https://example.com/cross-platform.png",
+      third_user_name: "跨平台托管账号",
+      third_userid: "user-103",
       uid: 9001,
     },
   ];

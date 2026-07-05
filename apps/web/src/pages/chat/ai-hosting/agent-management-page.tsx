@@ -45,6 +45,7 @@ import {
   AiHostingPageHeader,
   notifyAiHostingQuotaChanged,
 } from "./ai-hosting-layout";
+import { AiHostingIntroGuide } from "./ai-hosting-intro-guide";
 import { fetchAiHostingQuota } from "./ai-hosting-quota-store";
 import {
   AI_HOSTING_AGENT_QUOTA_REACHED_MESSAGE,
@@ -59,6 +60,29 @@ const MAX_INLINE_KB_COUNT = 2;
 const MAX_INLINE_KB_NAME_LENGTH = 10;
 const agentKnowledgeBaseChipClassName =
   "inline-flex h-[22px] min-w-0 max-w-full items-center truncate rounded-[6px] bg-primary/10 px-1.5 text-[13px] font-normal leading-[22px] text-primary";
+const agentIntroSteps = [
+  {
+    description: "定义 Agent 在对话中的身份、服务边界和风格",
+    imageAlt: "创建 Agent 示意图",
+    imageUrl: "https://b5.bokr.com.cn/dist/ui/agent_f1.png",
+    step: "第 1 步",
+    title: "创建 Agent",
+  },
+  {
+    description: "设定 Agent 在不同业务场景和会话状态下的处理逻辑",
+    imageAlt: "训练调优示意图",
+    imageUrl: "https://b5.bokr.com.cn/dist/ui/agent_f2.png",
+    step: "第 2 步",
+    title: "训练调优",
+  },
+  {
+    description: "开启托管账号的话术推荐或自动回复",
+    imageAlt: "对话辅助示意图",
+    imageUrl: "https://b5.bokr.com.cn/dist/ui/agent_f3.png",
+    step: "第 3 步",
+    title: "开启辅助",
+  },
+] as const;
 
 export function AgentManagementPage() {
   const role = useAuthStore((state) => state.subUser?.role);
@@ -189,6 +213,8 @@ export function AgentManagementPage() {
           description="创建和管理负责客户接待的智能体"
           title="Agent 管理"
         />
+
+        <AiHostingIntroGuide ariaLabel="Agent 使用引导" steps={agentIntroSteps} />
 
         <section aria-label="Agent 列表区块">
           <div className="flex flex-wrap items-center justify-between gap-3">

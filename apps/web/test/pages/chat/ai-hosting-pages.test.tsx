@@ -526,6 +526,13 @@ describe("AI hosting pages", () => {
     expect(
       screen.getByText("创建和管理负责客户接待的智能体"),
     ).toBeInTheDocument();
+    const introGuide = screen.getByRole("region", { name: "Agent 使用引导" });
+    expect(within(introGuide).getAllByRole("heading", { level: 2 })).toHaveLength(3);
+    expect(within(introGuide).getAllByRole("img").map((image) => image.getAttribute("src"))).toEqual([
+      "https://b5.bokr.com.cn/dist/ui/agent_f1.png",
+      "https://b5.bokr.com.cn/dist/ui/agent_f2.png",
+      "https://b5.bokr.com.cn/dist/ui/agent_f3.png",
+    ]);
     expect(screen.getByRole("navigation", { name: "智能体导航" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Agent 管理" })).toHaveAttribute(
       "href",

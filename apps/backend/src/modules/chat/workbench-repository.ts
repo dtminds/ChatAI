@@ -265,22 +265,6 @@ type SeatAccessSnapshot = {
   version: 1;
 };
 
-type AgentAnswerRecordDb = Database & {
-  xy_wap_embed_agent_answer_record: {
-    analyse_msg_id: number | string | null;
-    create_time: Date | number | string | null;
-    gen_status: number | string | null;
-    id: number | string;
-    send_status: number | string | null;
-    third_external_userid: string;
-    third_group_id: string;
-    third_userid: string;
-    trigger_type: number | string;
-    uid: number | string;
-    update_time: Date | number | string | null;
-  };
-};
-
 type SeatConversationAggregateRow = {
   chat_type: number;
   last_msgtime: Date | number | string | null;
@@ -3807,7 +3791,7 @@ export class WorkbenchRepository {
   async getLatestFullAutoAnswerStatus(
     scope: FullAutoAnswerStatusScope,
   ): Promise<WorkbenchFullAutoAnswerStatusResponse> {
-    const row = await (this.db as unknown as Kysely<AgentAnswerRecordDb>)
+    const row = await this.db
       .selectFrom("xy_wap_embed_agent_answer_record")
       .select([
         "analyse_msg_id",

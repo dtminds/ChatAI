@@ -48,6 +48,8 @@ type MaterialLibraryMutationRefresh =
   | "groups"
   | "groups-and-items-if-active-removed";
 
+const MATERIAL_LIBRARY_SEARCH_DEBOUNCE_MS = 300;
+
 type UseMaterialCollectionOptions = {
   bootstrapStatus: "idle" | "loading" | "ready" | "error";
   isMountedRef: RefObject<boolean>;
@@ -119,6 +121,7 @@ export function useMaterialCollection({
     useRef<ComposerMaterialBizType | null>(null);
   const activeMaterialLibraryGroupIdRef = useRef<string | null>(null);
   const materialLibrarySearchKeywordRef = useRef("");
+  const materialLibrarySearchDebounceTimerRef = useRef<number | null>(null);
   const resolvedActiveConversationIdRef = useRef<string | undefined>(
     resolvedActiveConversationId,
   );
@@ -127,6 +130,20 @@ export function useMaterialCollection({
   activeMaterialLibraryGroupIdRef.current = activeMaterialLibraryGroupId;
   materialLibrarySearchKeywordRef.current = materialLibrarySearchKeyword;
   resolvedActiveConversationIdRef.current = resolvedActiveConversationId;
+
+  const clearPendingMaterialLibrarySearch = useCallback(() => {
+    if (materialLibrarySearchDebounceTimerRef.current !== null) {
+      window.clearTimeout(materialLibrarySearchDebounceTimerRef.current);
+      materialLibrarySearchDebounceTimerRef.current = null;
+    }
+  }, []);
+
+  useEffect(
+    () => () => {
+      clearPendingMaterialLibrarySearch();
+    },
+    [clearPendingMaterialLibrarySearch],
+  );
 
   const refreshCollectedExpressions = useCallback(async () => {
     try {
@@ -240,6 +257,7 @@ export function useMaterialCollection({
 
   const loadMaterialLibrary = useCallback(
     async (bizType: ComposerMaterialBizType) => {
+      clearPendingMaterialLibrarySearch();
       const requestSeq = materialLibraryRequestSeqRef.current + 1;
 
       materialLibraryRequestSeqRef.current = requestSeq;
@@ -305,7 +323,7 @@ export function useMaterialCollection({
         }
       }
     },
-    [isMountedRef, loadMaterialLibraryItems],
+    [clearPendingMaterialLibrarySearch, isMountedRef, loadMaterialLibraryItems],
   );
 
   const reloadActiveMaterialLibraryItems = useCallback(
@@ -405,6 +423,7 @@ export function useMaterialCollection({
           shouldReloadItemsBecauseActiveGroupRemoved ||
           shouldActivateInitialGroup
         ) {
+          clearPendingMaterialLibrarySearch();
           setActiveMaterialLibraryGroupId(nextGroupId);
           setMaterialLibrarySearchKeyword("");
           setMaterialLibraryItems([]);
@@ -442,7 +461,7 @@ export function useMaterialCollection({
         }
       }
     },
-    [isMountedRef, loadMaterialLibraryItems],
+    [clearPendingMaterialLibrarySearch, isMountedRef, loadMaterialLibraryItems],
   );
 
   const refreshMaterialList = useCallback(
@@ -680,6 +699,7 @@ export function useMaterialCollection({
         return;
       }
 
+      clearPendingMaterialLibrarySearch();
       const requestSeq = materialLibraryRequestSeqRef.current + 1;
 
       materialLibraryRequestSeqRef.current = requestSeq;
@@ -718,14 +738,29 @@ export function useMaterialCollection({
         }
       }
     },
-    [activeMaterialLibraryBizType, isMountedRef, loadMaterialLibraryItems],
+    [
+      activeMaterialLibraryBizType,
+      clearPendingMaterialLibrarySearch,
+      isMountedRef,
+      loadMaterialLibraryItems,
+    ],
   );
 
-  const handleSearchMaterialLibraryKeyword = useCallback(
-    async (keyword: string) => {
-      setMaterialLibrarySearchKeyword(keyword);
-
-      if (!activeMaterialLibraryBizType || !activeMaterialLibraryGroupId) {
+  const runMaterialLibrarySearch = useCallback(
+    async ({
+      bizType,
+      groupId,
+      keyword,
+    }: {
+      bizType: ComposerMaterialBizType;
+      groupId: string;
+      keyword: string;
+    }) => {
+      if (
+        activeMaterialLibraryBizTypeRef.current !== bizType ||
+        activeMaterialLibraryGroupIdRef.current !== groupId ||
+        materialLibrarySearchKeywordRef.current !== keyword
+      ) {
         return;
       }
 
@@ -741,8 +776,8 @@ export function useMaterialCollection({
 
       try {
         await loadMaterialLibraryItems({
-          bizType: activeMaterialLibraryBizType,
-          groupId: activeMaterialLibraryGroupId,
+          bizType,
+          groupId,
           keyword,
           mode: "replace",
           page: 1,
@@ -765,11 +800,35 @@ export function useMaterialCollection({
         }
       }
     },
+    [isMountedRef, loadMaterialLibraryItems],
+  );
+
+  const handleSearchMaterialLibraryKeyword = useCallback(
+    (keyword: string) => {
+      setMaterialLibrarySearchKeyword(keyword);
+      clearPendingMaterialLibrarySearch();
+      materialLibraryRequestSeqRef.current += 1;
+      setHasMoreMaterialLibraryItems(false);
+      setIsMaterialLibraryLoadingMore(false);
+
+      if (!activeMaterialLibraryBizType || !activeMaterialLibraryGroupId) {
+        return;
+      }
+
+      materialLibrarySearchDebounceTimerRef.current = window.setTimeout(() => {
+        materialLibrarySearchDebounceTimerRef.current = null;
+        void runMaterialLibrarySearch({
+          bizType: activeMaterialLibraryBizType,
+          groupId: activeMaterialLibraryGroupId,
+          keyword,
+        });
+      }, MATERIAL_LIBRARY_SEARCH_DEBOUNCE_MS);
+    },
     [
       activeMaterialLibraryBizType,
       activeMaterialLibraryGroupId,
-      isMountedRef,
-      loadMaterialLibraryItems,
+      clearPendingMaterialLibrarySearch,
+      runMaterialLibrarySearch,
     ],
   );
 
@@ -1090,6 +1149,7 @@ export function useMaterialCollection({
   }, []);
 
   const resetMaterialLibrary = useCallback(() => {
+    clearPendingMaterialLibrarySearch();
     materialLibraryRequestSeqRef.current += 1;
     setActiveMaterialLibraryBizType(null);
     setActiveMaterialLibraryGroupId(null);
@@ -1103,7 +1163,7 @@ export function useMaterialCollection({
     setIsMaterialLibraryLoadingMore(false);
     setIsMaterialLibrarySending(false);
     setSendingMaterialId(null);
-  }, []);
+  }, [clearPendingMaterialLibrarySearch]);
 
   const resetMaterialSessionState = useCallback(() => {
     resetMaterialLibrary();
@@ -1265,11 +1325,14 @@ function getCollectFormValuesFromMessage(
   }
 
   if (message.content.type === "mini-program") {
+    const title = (message.content.title ?? "").trim();
+    const appName = (message.content.appName ?? "").trim();
+
     return {
       description: "",
       fileExtension: "",
       fileName: "",
-      title: message.content.title.trim() || message.content.appName.trim(),
+      title: title || appName,
     };
   }
 

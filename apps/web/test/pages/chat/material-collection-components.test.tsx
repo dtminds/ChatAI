@@ -207,13 +207,9 @@ describe("material collection components", () => {
     );
     expect(
       screen.getByText(
-        "受接口能力限制， 仅支持收录由该企微账号直接发送的视频，原视频大小需在30MB以内，以保障发送成功率。",
+        "受接口能力限制，仅支持收录由该企微账号直接发送的视频，原视频大小需在30MB以内，以保障发送成功率",
       ),
     ).toBeInTheDocument();
-    expect(screen.getByRole("alert")).toHaveClass(
-      "border-warning/30",
-      "bg-warning-muted",
-    );
     const collectButton = screen.getByRole("button", { name: "收录" });
     expect(collectButton).toBeDisabled();
     expect(collectButton).toHaveAttribute("aria-busy", "true");
@@ -404,7 +400,7 @@ describe("material collection components", () => {
     expect(screen.getByRole("button", { name: "新建分组" })).toBeDisabled();
   });
 
-  it("renders title search for searchable material libraries", async () => {
+  it("renders search for searchable material libraries", async () => {
     const user = userEvent.setup();
     const handleSearch = vi.fn();
 
@@ -431,7 +427,7 @@ describe("material collection components", () => {
       />,
     );
 
-    const searchInput = screen.getByRole("textbox", { name: "搜索标题" });
+    const searchInput = screen.getByRole("textbox", { name: "搜索素材" });
     expect(searchInput).toHaveValue("报价");
     expect(screen.getByText("未找到匹配素材")).toBeInTheDocument();
 
@@ -988,8 +984,6 @@ describe("material collection components", () => {
 
     expect(screen.getByRole("dialog", { name: "收录的视频" }))
       .toHaveClass("h-svh", "w-screen", "translate-x-0", "translate-y-0");
-    expect(screen.getByText("选择素材后发送，更多菜单可管理素材"))
-      .toBeInTheDocument();
     expect(screen.queryByText(/右键菜单/)).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "素材分组列表" }))
       .toHaveClass("shrink-0", "overflow-x-auto");

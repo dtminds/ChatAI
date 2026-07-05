@@ -195,6 +195,7 @@ describe("useMaterialCollection", () => {
   afterEach(() => {
     resetWorkbenchService();
     vi.clearAllMocks();
+    vi.useRealTimers();
   });
 
   it("clears pending collection state when active conversation changes", async () => {
@@ -813,11 +814,23 @@ describe("useMaterialCollection", () => {
       expect(result.current.activeMaterialLibraryGroupId).toBe("group-file-a");
     });
 
-    await act(async () => {
-      await result.current.handleSearchMaterialLibraryKeyword(" 报价 ");
+    vi.useFakeTimers();
+    const callsBeforeSearch = listMaterialCollections.mock.calls.length;
+
+    act(() => {
+      result.current.handleSearchMaterialLibraryKeyword(" 报 ");
+      result.current.handleSearchMaterialLibraryKeyword(" 报价 ");
     });
 
     expect(result.current.materialLibrarySearchKeyword).toBe(" 报价 ");
+    expect(listMaterialCollections).toHaveBeenCalledTimes(callsBeforeSearch);
+
+    await act(() => vi.advanceTimersByTimeAsync(299));
+
+    expect(listMaterialCollections).toHaveBeenCalledTimes(callsBeforeSearch);
+
+    await act(() => vi.advanceTimersByTimeAsync(1));
+
     expect(listMaterialCollections).toHaveBeenLastCalledWith({
       bizType: 2,
       groupId: "group-file-a",
@@ -838,11 +851,18 @@ describe("useMaterialCollection", () => {
       pageSize: 100,
     });
 
-    await act(async () => {
-      await result.current.handleSearchMaterialLibraryKeyword(" 合同 ");
+    const callsBeforeSecondSearch = listMaterialCollections.mock.calls.length;
+
+    act(() => {
+      result.current.handleSearchMaterialLibraryKeyword(" 合 ");
+      result.current.handleSearchMaterialLibraryKeyword(" 合同 ");
     });
 
     expect(result.current.materialLibrarySearchKeyword).toBe(" 合同 ");
+    expect(listMaterialCollections).toHaveBeenCalledTimes(callsBeforeSecondSearch);
+
+    await act(() => vi.advanceTimersByTimeAsync(300));
+
     expect(listMaterialCollections).toHaveBeenLastCalledWith({
       bizType: 2,
       groupId: "group-file-b",
@@ -850,6 +870,8 @@ describe("useMaterialCollection", () => {
       page: 1,
       pageSize: 100,
     });
+
+    vi.useRealTimers();
 
     act(() => {
       result.current.handleDeleteMaterialGroup(groupFileB);
@@ -879,6 +901,26 @@ describe("useMaterialCollection", () => {
 
     expect(result.current.pendingMaterialCollection?.formValues).toMatchObject({
       title: "客户跟进小程序",
+    });
+  });
+
+  it("opens mini-program collection with an empty title when title fields are missing", async () => {
+    const malformedMiniProgramMessage = {
+      ...miniProgramMessage,
+      content: {
+        type: "mini-program",
+      },
+    } as unknown as ChatMessage;
+    const { result } = renderHook(() =>
+      useMaterialCollection(createDefaultOptions()),
+    );
+
+    await act(async () => {
+      await result.current.handleCollectMaterial(malformedMiniProgramMessage);
+    });
+
+    expect(result.current.pendingMaterialCollection?.formValues).toMatchObject({
+      title: "",
     });
   });
 

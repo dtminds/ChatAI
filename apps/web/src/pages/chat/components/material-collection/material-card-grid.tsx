@@ -18,6 +18,7 @@ type MaterialCardGridProps = {
   bizType: WorkbenchMaterialCollectionGroupCreateRequest["bizType"];
   groups: MaterialCollectionGroup[];
   hasMoreItems: boolean;
+  hasSearchHeader?: boolean;
   isBusy: boolean;
   isLoadingMoreItems: boolean;
   isMobileLayout?: boolean;
@@ -36,6 +37,7 @@ export function MaterialCardGrid({
   bizType,
   groups,
   hasMoreItems,
+  hasSearchHeader = false,
   isBusy,
   isLoadingMoreItems,
   isMobileLayout = false,
@@ -60,7 +62,10 @@ export function MaterialCardGrid({
         role="region"
       >
         <div
-          className={cn("mx-auto", isMobileLayout ? "w-full p-4" : "p-8")}
+          className={cn(
+            isMobileLayout ? "w-full px-4 pb-4" : "px-6 pb-8",
+            hasSearchHeader ? "pt-3" : isMobileLayout ? "pt-4" : "pt-8",
+          )}
           style={isMobileLayout ? undefined : getLibraryBodyStyle(bizType)}
         >
           <div

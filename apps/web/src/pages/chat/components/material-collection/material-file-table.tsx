@@ -26,6 +26,7 @@ import { useNullableMaterialSelection } from "@/pages/chat/components/material-c
 type MaterialFileTableProps = {
   groups: MaterialCollectionGroup[];
   hasMoreItems: boolean;
+  hasSearchHeader?: boolean;
   isBusy: boolean;
   isLoadingMoreItems: boolean;
   isMobileLayout?: boolean;
@@ -43,6 +44,7 @@ type MaterialFileTableProps = {
 export function MaterialFileTable({
   groups,
   hasMoreItems,
+  hasSearchHeader = false,
   isBusy,
   isLoadingMoreItems,
   isMobileLayout = false,
@@ -71,7 +73,12 @@ export function MaterialFileTable({
           className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto"
           role="region"
         >
-          <div className="min-w-0 max-w-full space-y-2 overflow-hidden p-4">
+          <div
+            className={cn(
+              "min-w-0 max-w-full space-y-2 overflow-hidden px-4 pb-4",
+              hasSearchHeader ? "pt-3" : "pt-4",
+            )}
+          >
             {items.map((item) => {
               const file = getFileTableContent(item);
               const selected = selectedItemId === item.id;
@@ -176,7 +183,7 @@ export function MaterialFileTable({
           className="min-h-0 flex-1"
           role="region"
         >
-          <div className="px-6 pb-5 pt-5">
+          <div className={cn("px-6 pb-5", hasSearchHeader ? "pt-3" : "pt-5")}>
             <Table
               aria-label="收录文件列表"
               className="table-fixed border-separate border-spacing-y-1"

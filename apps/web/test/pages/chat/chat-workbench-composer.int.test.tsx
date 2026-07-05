@@ -334,8 +334,6 @@ describe("ChatWorkbenchPage composer flows", () => {
 
     expect(await screen.findByRole("dialog", { name: "收录的视频" }))
       .toHaveClass("h-svh", "w-screen", "translate-x-0", "translate-y-0");
-    expect(screen.getByText("选择素材后发送，更多菜单可管理素材"))
-      .toBeInTheDocument();
     expect(screen.queryByText(/右键菜单/)).not.toBeInTheDocument();
   });
 

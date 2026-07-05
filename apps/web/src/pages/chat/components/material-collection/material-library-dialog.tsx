@@ -126,11 +126,9 @@ export function MaterialLibraryDialog({
   const isImageLibrary = bizType === MATERIAL_COLLECTION_BIZ_TYPE.IMAGE;
   const isSearchSupported = isMaterialLibrarySearchSupported(bizType);
   const isSearching = isSearchSupported && searchKeyword.trim().length > 0;
-  const libraryHint = isMobileLayout
-    ? "选择素材后发送，更多菜单可管理素材"
-    : isFileLibrary
-      ? "选择文件后发送，右键菜单可调整排序或删除素材"
-      : "选择素材后发送，右键菜单可调整排序或删除素材";
+  const libraryHint = isFileLibrary
+    ? "选择文件后发送，右键菜单可调整排序或删除素材"
+    : "选择素材后发送，右键菜单可调整排序或删除素材";
 
   function handleSubmitGroupTitle(title: string) {
     if (groupDialogState?.mode === "edit") {
@@ -183,14 +181,8 @@ export function MaterialLibraryDialog({
           >
             {libraryTitle}
           </DialogTitle>
-          <DialogDescription
-            className={cn(
-              isMobileLayout
-                ? "mt-1 truncate text-[12px] leading-5 text-muted-foreground"
-                : "sr-only",
-            )}
-          >
-            {isMobileLayout ? libraryHint : "从分组中选择已收录内容"}
+          <DialogDescription className="sr-only">
+            从分组中选择已收录内容
           </DialogDescription>
         </div>
         {items.length > 0 && !isMobileLayout ? (
@@ -341,23 +333,33 @@ export function MaterialLibraryDialog({
             )}
           >
             {isSearchSupported ? (
-              <div className="shrink-0 border-b border-divider px-4 py-3">
-                <div className="relative">
+              <div
+                className={cn(
+                  "shrink-0 pt-3",
+                  isMobileLayout ? "px-4" : "px-6",
+                )}
+              >
+                <div
+                  className={cn(
+                    "relative",
+                    isMobileLayout ? "w-full" : "w-full max-w-64",
+                  )}
+                >
                   <HugeiconsIcon
-                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                    className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
                     icon={Search01Icon}
-                    size={15}
+                    size={14}
                     strokeWidth={1.8}
                   />
                   <Input
-                    aria-label="搜索标题"
-                    className="h-9 rounded-[9px] pl-9"
+                    aria-label="搜索素材"
+                    className="h-8 rounded-[8px] pl-8 text-sm"
                     disabled={isGroupsLoading}
                     maxLength={MATERIAL_LIBRARY_SEARCH_KEYWORD_MAX_LENGTH}
                     onChange={(event) =>
                       onSearchKeywordChange?.(event.target.value)
                     }
-                    placeholder="搜索标题"
+                    placeholder="搜索素材"
                     value={searchKeyword}
                   />
                 </div>
@@ -375,6 +377,7 @@ export function MaterialLibraryDialog({
                     isLoadingMoreItems={isLoadingMoreItems}
                     isMobileLayout={isMobileLayout}
                     isSending={isSending}
+                    hasSearchHeader={isSearchSupported}
                     items={items}
                     onCancel={() => onOpenChange(false)}
                     onDelete={onDeleteMaterial}
@@ -407,6 +410,7 @@ export function MaterialLibraryDialog({
                     hasMoreItems={hasMoreItems}
                     isBusy={isBusy}
                     isLoadingMoreItems={isLoadingMoreItems}
+                    hasSearchHeader={isSearchSupported}
                     isMobileLayout={isMobileLayout}
                     isSending={isSending}
                     items={items}

@@ -18,9 +18,14 @@ export type MaterialImageCollectFields = {
   fileUrl: string;
 };
 
+export type MaterialMiniProgramCollectFields = {
+  title: string;
+};
+
 export type MaterialVideoCollectFields = {
   coverUrl: string;
   fileUrl: string;
+  title: string;
 };
 
 export type MaterialCollectFieldError = {
@@ -233,8 +238,37 @@ export function resolveMaterialImageCollectFields(
   return { fileUrl };
 }
 
+export function resolveMaterialMiniProgramCollectFields(
+  rawContent: string | null | undefined,
+  overrides?: { title?: string },
+): MaterialMiniProgramCollectFields | MaterialCollectFieldError {
+  const content = parseMaterialRawContent(rawContent);
+  const hasTitleOverride =
+    overrides != null && Object.hasOwn(overrides, "title");
+  const titleSource = hasTitleOverride
+    ? (overrides.title ?? "")
+    : readMaterialRawString(content, "title") ||
+      readMaterialRawString(content, "appName");
+  const titleResult = validateBoundedMaterialText(
+    titleSource,
+    MATERIAL_COLLECTION_TITLE_MAX_LENGTH,
+    "小程序标题",
+  );
+
+  if (isMaterialCollectFieldError(titleResult)) {
+    return titleResult;
+  }
+
+  if (!titleResult) {
+    return { errorMsg: "小程序标题不能为空" };
+  }
+
+  return { title: titleResult };
+}
+
 export function resolveMaterialVideoCollectFields(
   rawContent: string | null | undefined,
+  overrides?: { title?: string },
 ): MaterialVideoCollectFields | MaterialCollectFieldError {
   const content = parseMaterialRawContent(rawContent);
   const fileUrl = readMaterialRawString(content, "fileUrl");
@@ -249,7 +283,17 @@ export function resolveMaterialVideoCollectFields(
     return { errorMsg: "视频缺少封面，无法收录" };
   }
 
-  return { coverUrl, fileUrl };
+  const titleResult = validateBoundedMaterialText(
+    overrides?.title ?? "",
+    MATERIAL_COLLECTION_TITLE_MAX_LENGTH,
+    "视频标题",
+  );
+
+  if (isMaterialCollectFieldError(titleResult)) {
+    return titleResult;
+  }
+
+  return { coverUrl, fileUrl, title: titleResult };
 }
 
 export function buildMaterialFileContentJson(
@@ -296,15 +340,29 @@ export function buildMaterialImageContentJson(
   return JSON.stringify(content);
 }
 
+export function buildMaterialMiniProgramContentJson(
+  rawContent: string | null | undefined,
+  fields: MaterialMiniProgramCollectFields,
+) {
+  const content = {
+    ...parseMaterialRawContent(rawContent),
+    title: fields.title,
+  };
+
+  return JSON.stringify(content);
+}
+
 export function buildMaterialVideoContentJson(
   rawContent: string | null | undefined,
   fields: MaterialVideoCollectFields,
 ) {
-  const content = {
+  const content: Record<string, unknown> = {
     ...parseMaterialRawContent(rawContent),
     coverUrl: fields.coverUrl,
     fileUrl: fields.fileUrl,
   };
+
+  delete content.title;
 
   return JSON.stringify(content);
 }
@@ -341,10 +399,44 @@ export function patchMaterialH5ContentJson(
   };
 }
 
+export function patchMaterialMiniProgramContentJson(
+  rawContent: string | null | undefined,
+  title: string,
+) {
+  const resolved = resolveMaterialMiniProgramCollectFields(rawContent, { title });
+
+  if ("errorMsg" in resolved) {
+    return resolved;
+  }
+
+  return {
+    content: buildMaterialMiniProgramContentJson(rawContent, resolved),
+    title: resolved.title,
+  };
+}
+
+export function patchMaterialVideoContentJson(
+  rawContent: string | null | undefined,
+  title?: string,
+) {
+  const resolved = resolveMaterialVideoCollectFields(rawContent, { title });
+
+  if ("errorMsg" in resolved) {
+    return resolved;
+  }
+
+  return {
+    content: buildMaterialVideoContentJson(rawContent, resolved),
+    title: resolved.title,
+  };
+}
+
 export function canEditMaterialCollectionItem(bizType: number) {
   return (
     bizType === MATERIAL_COLLECTION_BIZ_TYPE.FILE ||
-    bizType === MATERIAL_COLLECTION_BIZ_TYPE.H5
+    bizType === MATERIAL_COLLECTION_BIZ_TYPE.H5 ||
+    bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM ||
+    bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO
   );
 }
 

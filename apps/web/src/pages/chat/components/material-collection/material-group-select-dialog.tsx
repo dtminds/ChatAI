@@ -100,6 +100,8 @@ export function MaterialGroupSelectDialog({
       ? hasMaterialFileNameBase(formValues.fileName, formValues.fileExtension)
       : bizType === MATERIAL_COLLECTION_BIZ_TYPE.H5
         ? formValues.title.trim().length > 0
+        : bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM
+          ? formValues.title.trim().length > 0
         : true;
   const canSubmit =
     Boolean(selectedGroupId) &&
@@ -139,7 +141,9 @@ export function MaterialGroupSelectDialog({
           ? formValues.fileName
           : undefined,
       title:
-        bizType === MATERIAL_COLLECTION_BIZ_TYPE.H5
+        bizType === MATERIAL_COLLECTION_BIZ_TYPE.H5 ||
+        bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM ||
+        bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO
           ? formValues.title
           : undefined,
     });

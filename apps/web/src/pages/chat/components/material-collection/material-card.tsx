@@ -71,7 +71,9 @@ export function MaterialCard({
     item.contentType === "video"
       ? normalizeMediaAssetUrl(readString(item.content.fileUrl))
       : "";
-  const videoAlt = item.title || "视频";
+  const materialLabel = getMaterialAccessibleLabel(item);
+  const videoAlt =
+    item.contentType === "video" ? materialLabel : item.title || "视频";
 
   return (
     <div
@@ -81,7 +83,7 @@ export function MaterialCard({
       )}
     >
       <button
-        aria-label={`选择素材 ${item.title}`}
+        aria-label={`选择素材 ${materialLabel}`}
         aria-pressed={isToggleMode ? selected : undefined}
         className="relative block w-full max-w-full rounded-[8px] text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
         onClick={() => {
@@ -113,7 +115,7 @@ export function MaterialCard({
 
       {showActionsButton ? (
         <Button
-          aria-label={`打开 ${item.title} 操作菜单`}
+          aria-label={`打开 ${materialLabel} 操作菜单`}
           className={cn(
             "absolute z-20 rounded-[8px] bg-background/90 p-0 text-foreground shadow-sm backdrop-blur hover:bg-background",
             getMaterialActionsButtonLayoutClassName(item, isMobileLayout),
@@ -193,6 +195,36 @@ function getMaterialActionsButtonLayoutClassName(
   }
 
   return "left-2 top-2 size-8";
+}
+
+function getMaterialAccessibleLabel(item: MaterialCollectionItem) {
+  const title = item.title.trim();
+
+  if (title) {
+    return title;
+  }
+
+  if (item.contentType === "video") {
+    return "视频";
+  }
+
+  if (item.contentType === "mini-program") {
+    return (
+      readString(item.content.title) ||
+      readString(item.content.appName) ||
+      "小程序"
+    );
+  }
+
+  if (item.contentType === "image") {
+    return readString(item.content.alt) || "图片";
+  }
+
+  if (item.contentType === "file") {
+    return readString(item.content.fileName) || "文件";
+  }
+
+  return "素材";
 }
 
 function MaterialCardContent({

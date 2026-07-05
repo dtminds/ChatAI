@@ -93,6 +93,7 @@ export type WorkbenchMaterialCollectionItemDto = {
 export type WorkbenchMaterialCollectionListRequest = {
   bizType: MaterialCollectionBizType;
   groupId?: string | 0;
+  keyword?: string;
   page?: number;
   pageSize?: number;
 };

@@ -111,17 +111,21 @@ export function useMaterialCollection({
     useState(false);
   const [isMaterialLibraryLoadingMore, setIsMaterialLibraryLoadingMore] =
     useState(false);
+  const [materialLibrarySearchKeyword, setMaterialLibrarySearchKeyword] =
+    useState("");
 
   const materialLibraryRequestSeqRef = useRef(0);
   const activeMaterialLibraryBizTypeRef =
     useRef<ComposerMaterialBizType | null>(null);
   const activeMaterialLibraryGroupIdRef = useRef<string | null>(null);
+  const materialLibrarySearchKeywordRef = useRef("");
   const resolvedActiveConversationIdRef = useRef<string | undefined>(
     resolvedActiveConversationId,
   );
 
   activeMaterialLibraryBizTypeRef.current = activeMaterialLibraryBizType;
   activeMaterialLibraryGroupIdRef.current = activeMaterialLibraryGroupId;
+  materialLibrarySearchKeywordRef.current = materialLibrarySearchKeyword;
   resolvedActiveConversationIdRef.current = resolvedActiveConversationId;
 
   const refreshCollectedExpressions = useCallback(async () => {
@@ -192,19 +196,23 @@ export function useMaterialCollection({
     async ({
       bizType,
       groupId,
+      keyword,
       mode,
       page,
       requestSeq,
     }: {
       bizType: ComposerMaterialBizType;
       groupId: string;
+      keyword?: string;
       mode: "append" | "replace";
       page: number;
       requestSeq: number;
     }) => {
+      const normalizedKeyword = normalizeMaterialLibrarySearchKeyword(keyword);
       const response = await getWorkbenchService().listMaterialCollections({
         bizType,
         groupId,
+        ...(normalizedKeyword ? { keyword: normalizedKeyword } : {}),
         page,
         pageSize: 100,
       });
@@ -244,6 +252,7 @@ export function useMaterialCollection({
       setMaterialLibraryItems([]);
       setMaterialLibraryPage(1);
       setHasMoreMaterialLibraryItems(false);
+      setMaterialLibrarySearchKeyword("");
 
       try {
         const groupsResponse = await getWorkbenchService().listMaterialGroups({
@@ -272,6 +281,7 @@ export function useMaterialCollection({
         await loadMaterialLibraryItems({
           bizType,
           groupId: firstGroupId,
+          keyword: "",
           mode: "replace",
           page: 1,
           requestSeq,
@@ -324,6 +334,7 @@ export function useMaterialCollection({
         await loadMaterialLibraryItems({
           bizType,
           groupId,
+          keyword: materialLibrarySearchKeywordRef.current,
           mode: "replace",
           page: 1,
           requestSeq,
@@ -395,6 +406,7 @@ export function useMaterialCollection({
           shouldActivateInitialGroup
         ) {
           setActiveMaterialLibraryGroupId(nextGroupId);
+          setMaterialLibrarySearchKeyword("");
           setMaterialLibraryItems([]);
           setMaterialLibraryPage(1);
           setHasMoreMaterialLibraryItems(false);
@@ -404,6 +416,7 @@ export function useMaterialCollection({
             await loadMaterialLibraryItems({
               bizType,
               groupId: nextGroupId,
+              keyword: "",
               mode: "replace",
               page: 1,
               requestSeq,
@@ -671,6 +684,7 @@ export function useMaterialCollection({
 
       materialLibraryRequestSeqRef.current = requestSeq;
       setActiveMaterialLibraryGroupId(groupId);
+      setMaterialLibrarySearchKeyword("");
       setMaterialLibraryItems([]);
       setMaterialLibraryPage(1);
       setHasMoreMaterialLibraryItems(false);
@@ -682,6 +696,7 @@ export function useMaterialCollection({
         await loadMaterialLibraryItems({
           bizType: activeMaterialLibraryBizType,
           groupId,
+          keyword: "",
           mode: "replace",
           page: 1,
           requestSeq,
@@ -706,6 +721,58 @@ export function useMaterialCollection({
     [activeMaterialLibraryBizType, isMountedRef, loadMaterialLibraryItems],
   );
 
+  const handleSearchMaterialLibraryKeyword = useCallback(
+    async (keyword: string) => {
+      setMaterialLibrarySearchKeyword(keyword);
+
+      if (!activeMaterialLibraryBizType || !activeMaterialLibraryGroupId) {
+        return;
+      }
+
+      const requestSeq = materialLibraryRequestSeqRef.current + 1;
+
+      materialLibraryRequestSeqRef.current = requestSeq;
+      setMaterialLibraryItems([]);
+      setMaterialLibraryPage(1);
+      setHasMoreMaterialLibraryItems(false);
+      setIsMaterialLibraryBusy(true);
+      setIsMaterialLibraryItemsLoading(true);
+      setIsMaterialLibraryLoadingMore(false);
+
+      try {
+        await loadMaterialLibraryItems({
+          bizType: activeMaterialLibraryBizType,
+          groupId: activeMaterialLibraryGroupId,
+          keyword,
+          mode: "replace",
+          page: 1,
+          requestSeq,
+        });
+      } catch (error) {
+        if (
+          isMountedRef.current &&
+          materialLibraryRequestSeqRef.current === requestSeq
+        ) {
+          toast.warning(getMaterialErrorMessage(error, "素材加载失败"));
+        }
+      } finally {
+        if (
+          isMountedRef.current &&
+          materialLibraryRequestSeqRef.current === requestSeq
+        ) {
+          setIsMaterialLibraryBusy(false);
+          setIsMaterialLibraryItemsLoading(false);
+        }
+      }
+    },
+    [
+      activeMaterialLibraryBizType,
+      activeMaterialLibraryGroupId,
+      isMountedRef,
+      loadMaterialLibraryItems,
+    ],
+  );
+
   const handleLoadMoreMaterialLibraryItems = useCallback(async () => {
     if (
       !activeMaterialLibraryBizType ||
@@ -726,6 +793,7 @@ export function useMaterialCollection({
       await loadMaterialLibraryItems({
         bizType: activeMaterialLibraryBizType,
         groupId: activeMaterialLibraryGroupId,
+        keyword: materialLibrarySearchKeyword,
         mode: "append",
         page: nextPage,
         requestSeq,
@@ -753,6 +821,7 @@ export function useMaterialCollection({
     isMaterialLibraryLoadingMore,
     isMountedRef,
     loadMaterialLibraryItems,
+    materialLibrarySearchKeyword,
     materialLibraryPage,
   ]);
 
@@ -982,7 +1051,9 @@ export function useMaterialCollection({
             ? values.fileName
             : undefined,
         title:
-          item.bizType === MATERIAL_COLLECTION_BIZ_TYPE.H5
+          item.bizType === MATERIAL_COLLECTION_BIZ_TYPE.H5 ||
+          item.bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM ||
+          item.bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO
             ? values.title
             : undefined,
       });
@@ -1025,6 +1096,7 @@ export function useMaterialCollection({
     setMaterialLibraryGroups([]);
     setMaterialLibraryItems([]);
     setMaterialLibraryPage(1);
+    setMaterialLibrarySearchKeyword("");
     setHasMoreMaterialLibraryItems(false);
     setIsMaterialLibraryGroupsLoading(false);
     setIsMaterialLibraryItemsLoading(false);
@@ -1138,6 +1210,7 @@ export function useMaterialCollection({
     materialCollectionGroups,
     materialLibraryGroups,
     materialLibraryItems,
+    materialLibrarySearchKeyword,
     pendingMaterialCollection,
     handleCollectMaterial,
     handleCreateMaterialGroup,
@@ -1152,6 +1225,7 @@ export function useMaterialCollection({
     handleOpenCollectedExpressions,
     handleOpenMaterialLibrary,
     handleRenameMaterialGroup,
+    handleSearchMaterialLibraryKeyword,
     handleSelectMaterial,
     handleSelectMaterialLibraryGroup,
     handleSubmitMaterialCollection,
@@ -1190,12 +1264,34 @@ function getCollectFormValuesFromMessage(
     };
   }
 
+  if (message.content.type === "mini-program") {
+    return {
+      description: "",
+      fileExtension: "",
+      fileName: "",
+      title: message.content.title.trim() || message.content.appName.trim(),
+    };
+  }
+
+  if (message.content.type === "video") {
+    return {
+      description: "",
+      fileExtension: "",
+      fileName: "",
+      title: "",
+    };
+  }
+
   return {
     description: "",
     fileExtension: "",
     fileName: "",
     title: "",
   };
+}
+
+function normalizeMaterialLibrarySearchKeyword(keyword: string | undefined) {
+  return keyword?.trim() || "";
 }
 
 function getMaterialBizTypeForMessage(

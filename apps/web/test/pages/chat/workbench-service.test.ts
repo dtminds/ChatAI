@@ -238,6 +238,7 @@ describe("createWorkbenchService", () => {
       service.listMaterialCollections({
         bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
         groupId: "9",
+        keyword: "报价",
         page: 1,
         pageSize: 100,
       }),
@@ -245,6 +246,7 @@ describe("createWorkbenchService", () => {
       receivedParams: {
         biz_type: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
         group_id: "9",
+        keyword: "报价",
         page: 1,
         page_size: 100,
       },

@@ -2,6 +2,20 @@
 
 Manual database changes for the backend should be recorded here.
 
+## 2026-07-05
+
+- Cleared the old system-generated title for video material collections. New unnamed video collections store an empty title, so title search and edit dialogs do not treat the default `视频` label as user input.
+
+Manual migration for existing databases:
+
+```sql
+UPDATE xy_wap_embed_material_collection
+SET title = ''
+WHERE biz_type = 7
+  AND title = '视频'
+  AND biz_status = 1;
+```
+
 ## 2026-06-27
 
 - Added `xy_wap_embed_agent.last_publish_time` as the denormalized publish-state source for AI hosting settings. `0` means unpublished; positive values are millisecond timestamps.

@@ -551,6 +551,7 @@ export class WorkbenchRepository {
   async listMaterialCollections(input: {
     bizType: number;
     groupId: string | 0;
+    keyword?: string;
     limit: number;
     offset: number;
     subUserId: string;
@@ -565,13 +566,20 @@ export class WorkbenchRepository {
       };
     }
 
-    const baseQuery = this.db
+    let baseQuery = this.db
       .selectFrom("xy_wap_embed_material_collection")
       .where("uid", "=", input.uid)
       .where("biz_type", "=", input.bizType)
       .where("biz_status", "=", BIZ_STATUS_ACTIVE)
       .where("sub_uid", "in", getMaterialVisibleSubUids(input.bizType, input.subUserId))
       .where("group_id", "=", groupNumericId);
+    const keyword = input.keyword?.trim();
+
+    if (keyword) {
+      const pattern = `%${escapeLikeKeyword(keyword)}%`;
+      baseQuery = baseQuery.where((eb) => eb("title", "like", pattern));
+    }
+
     const [rows, totalRow] = await Promise.all([
       baseQuery
         .selectAll()

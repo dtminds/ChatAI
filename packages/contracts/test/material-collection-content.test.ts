@@ -3,14 +3,19 @@ import {
   buildMaterialImageContentJson,
   buildMaterialH5ContentJson,
   buildMaterialVideoContentJson,
+  canEditMaterialCollectionItem,
   isOwnVideoMaterialUrl,
+  patchMaterialMiniProgramContentJson,
+  patchMaterialVideoContentJson,
   readMaterialDescription,
   readMaterialLinkUrl,
+  resolveMaterialMiniProgramCollectFields,
   resolveMaterialImageCollectFields,
   resolveMaterialH5CollectFields,
   resolveMaterialVideoCollectFields,
   validateMaterialCollectionSubmitFields,
 } from "../src/chat/material-collection-content.js";
+import { MATERIAL_COLLECTION_BIZ_TYPE } from "../src/chat/enums.js";
 
 describe("material collection H5 content helpers", () => {
   it("reads linkUrl from legacy stored content", () => {
@@ -109,11 +114,13 @@ describe("material collection H5 content helpers", () => {
         fileUrl: " https://cdn.example.com/video.mp4 ",
         videoUrl: "https://example.com/ignored-display-url.mp4",
       }),
+      { title: " 产品视频 " },
     );
 
     expect(resolved).toEqual({
       coverUrl: "s5/msg/20260514/272/video-cover.jpg",
       fileUrl: "https://cdn.example.com/video.mp4",
+      title: "产品视频",
     });
 
     const content = JSON.parse(
@@ -167,6 +174,56 @@ describe("material collection H5 content helpers", () => {
         }),
       ),
     ).toEqual({ errorMsg: "视频缺少封面，无法收录" });
+  });
+
+  it("requires mini-program title and stores it in content", () => {
+    const rawContent = JSON.stringify({
+      appName: "商城",
+      title: "旧标题",
+    });
+    const resolved = resolveMaterialMiniProgramCollectFields(rawContent, {
+      title: " 新标题 ",
+    });
+
+    expect(resolved).toEqual({ title: "新标题" });
+    expect(
+      JSON.parse(
+        patchMaterialMiniProgramContentJson(rawContent, " 新标题 ").content,
+      ),
+    ).toMatchObject({
+      appName: "商城",
+      title: "新标题",
+    });
+    expect(
+      resolveMaterialMiniProgramCollectFields(rawContent, { title: " " }),
+    ).toEqual({ errorMsg: "小程序标题不能为空" });
+  });
+
+  it("allows blank video title while keeping video content title-free", () => {
+    const rawContent = JSON.stringify({
+      coverUrl: "s5/msg/20260514/272/video-cover.jpg",
+      fileUrl: "https://cdn.example.com/video.mp4",
+      title: "不应写入内容",
+    });
+
+    const blankTitlePatch = patchMaterialVideoContentJson(rawContent, " ");
+    const customTitlePatch = patchMaterialVideoContentJson(rawContent, " 产品视频 ");
+
+    expect(blankTitlePatch).toMatchObject({ title: "" });
+    expect(JSON.parse(blankTitlePatch.content)).toEqual({
+      coverUrl: "s5/msg/20260514/272/video-cover.jpg",
+      fileUrl: "https://cdn.example.com/video.mp4",
+    });
+    expect(customTitlePatch.title).toBe("产品视频");
+  });
+
+  it("marks file, h5, mini-program and video material items editable", () => {
+    expect(canEditMaterialCollectionItem(MATERIAL_COLLECTION_BIZ_TYPE.FILE)).toBe(true);
+    expect(canEditMaterialCollectionItem(MATERIAL_COLLECTION_BIZ_TYPE.H5)).toBe(true);
+    expect(canEditMaterialCollectionItem(MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM)).toBe(true);
+    expect(canEditMaterialCollectionItem(MATERIAL_COLLECTION_BIZ_TYPE.VIDEO)).toBe(true);
+    expect(canEditMaterialCollectionItem(MATERIAL_COLLECTION_BIZ_TYPE.IMAGE)).toBe(false);
+    expect(canEditMaterialCollectionItem(MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED)).toBe(false);
   });
 
   it("rejects material submit fields over collection limits", () => {

@@ -754,6 +754,33 @@ describe("WorkbenchRepository", () => {
     });
   });
 
+  it("adds title keyword filters to material collection list and count queries", async () => {
+    const db = createMaterialDb({
+      xy_wap_embed_material_collection: [],
+    });
+    const repository = new WorkbenchRepository(db as never);
+
+    await repository.listMaterialCollections({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+      groupId: "9",
+      keyword: "a\\b%_",
+      limit: 20,
+      offset: 20,
+      subUserId: "88",
+      uid: 9001,
+    });
+
+    expect(db.selects[0].whereExpressions).toContainEqual({
+      column: "title",
+      operator: "like",
+      value: "%a\\\\b\\%\\_%",
+    });
+    expect(db.selects[0]).toMatchObject({
+      limits: [20],
+      offsets: [20],
+    });
+  });
+
   it("lists material collections with string default group id", async () => {
     const db = createMaterialDb({
       xy_wap_embed_material_collection: [

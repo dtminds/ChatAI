@@ -6,9 +6,9 @@ import {
   ChatMessageList,
   MessageRow,
   MESSAGE_SENT_AT_HOVER_DELAY_MS,
-  getMessageFeedItemKey,
 } from "@/pages/chat/components/message-feed";
 import type { ChatMessage } from "@/pages/chat/chat-types";
+import { getMessageFeedItemKey } from "@/pages/chat/lib/message-feed-key";
 
 vi.mock("sonner", async (importOriginal) => {
   const actual = await importOriginal<typeof import("sonner")>();
@@ -1682,6 +1682,71 @@ describe("message sent time preview", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("shows forward and multi-select actions when message forward is enabled", async () => {
+    const user = userEvent.setup();
+    const onEnterMultiSelectMode = vi.fn();
+    const onForwardMessage = vi.fn();
+    const message = {
+      ...createTextMessage("可转发消息"),
+      seq: 1001,
+    };
+
+    render(
+      <MessageRow
+        canUseMessageForward
+        message={message}
+        onEnterMultiSelectMode={onEnterMultiSelectMode}
+        onForwardMessage={onForwardMessage}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "转发" }));
+
+    expect(onForwardMessage).toHaveBeenCalledWith(message);
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "多选" }));
+
+    expect(onEnterMultiSelectMode).toHaveBeenCalledTimes(1);
+    expect(onEnterMultiSelectMode).toHaveBeenCalledWith(message);
+  });
+
+  it("hides forward and multi-select actions for failed messages", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <MessageRow
+        canUseMessageForward
+        message={{
+          ...createTextMessage("发送失败"),
+          status: "failed",
+        }}
+        onEnterMultiSelectMode={vi.fn()}
+        onForwardMessage={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+
+    expect(screen.queryByRole("menuitem", { name: "转发" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "多选" })).not.toBeInTheDocument();
+  });
+
+  it("renders multi-select checkbox when multi-select mode is active", () => {
+    render(
+      <MessageRow
+        canUseMessageForward
+        isMessageSelected
+        message={createTextMessage("多选消息")}
+        multiSelectMode
+        onToggleMessageSelection={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("checkbox", { name: "选择消息" })).toBeChecked();
   });
 });
 

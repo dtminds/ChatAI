@@ -23,7 +23,7 @@ export function AgentModelBadge({ className, label, model }: AgentModelBadgeProp
   const shouldUseImage = Boolean(iconConfig.iconUrl && !imageFailed);
 
   return (
-    <span className={cn("inline-flex min-w-0 items-center gap-2", className)}>
+    <span className={cn("inline-flex min-w-0 items-center gap-1", className)}>
       <span
         aria-hidden="true"
         className="flex size-5 shrink-0 items-center justify-center text-muted-foreground"

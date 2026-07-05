@@ -1369,12 +1369,10 @@ export class MysqlWorkbenchService implements WorkbenchService {
   }
 
   async poll(subUserId: string, request: WorkbenchPollRequest) {
-    const scope = this.getSeatAccessWorkbenchScope();
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
 
     if (request.currentSeatId) {
       await this.assertSeatAccess(subUserId, request.currentSeatId, scope);
-    } else {
-      await this.getMe(subUserId);
     }
 
     const activeConversationMessages =
@@ -1383,6 +1381,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
             subUserId,
             request.activeConversationId,
             request.activeMessageSeq,
+            scope,
           )
         : [];
     const messageUpdateCursor = request.messageUpdateCursor ?? request.sinceVersion;
@@ -3794,6 +3793,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
     subUserId: string,
     conversationId: string,
     activeMessageSeq: number,
+    scope: AuthenticatedWorkbenchScope,
   ) {
     const conversation = await this.repository.getConversationLookup(conversationId);
 
@@ -3801,7 +3801,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
       throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
     }
 
-    await this.assertSeatAccess(subUserId, conversation.seatId);
+    await this.assertSeatAccess(subUserId, conversation.seatId, scope);
 
     const page = await this.repository.listMessages(conversationId, {
       beforeSeq: undefined,

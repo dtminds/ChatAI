@@ -2550,6 +2550,7 @@ describe("MysqlWorkbenchService", () => {
           uid: 9001,
         }),
         getSeatsByIds,
+        getSubUser: vi.fn().mockResolvedValue(createActiveSubUser()),
         listMessages,
         listChangedConversations,
       } as unknown as WorkbenchRepository,
@@ -2592,6 +2593,36 @@ describe("MysqlWorkbenchService", () => {
     expect(getSeatsByIds).toHaveBeenCalledWith(["12"]);
   });
 
+  it("validates the sub user before polling a current seat", async () => {
+    const javaClient = createJavaClient();
+    const canAccessSeat = vi.fn().mockResolvedValue(true);
+    const listChangedConversations = vi.fn().mockResolvedValue({
+      hasMore: false,
+      items: [],
+      nextVersion: 1_778_840_000_000,
+    });
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat,
+        getSeatsByIds: vi.fn().mockResolvedValue([]),
+        getSubUser: vi.fn().mockResolvedValue(undefined),
+        listChangedConversations,
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.poll("101", {
+        currentSeatId: "12",
+        sinceVersion: 1_778_840_000_000,
+      }),
+    ).rejects.toMatchObject({
+      statusCode: 401,
+    });
+    expect(canAccessSeat).not.toHaveBeenCalled();
+    expect(listChangedConversations).not.toHaveBeenCalled();
+  });
+
   it("polls user-seat update events and refreshes changed seats", async () => {
     const javaClient = createJavaClient();
     const getSeatsByIds = vi.fn(async (seatIds: string[]) =>
@@ -2623,6 +2654,7 @@ describe("MysqlWorkbenchService", () => {
     const service = new MysqlWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
+        getSubUser: vi.fn().mockResolvedValue(createActiveSubUser()),
         getSeatEventScope: vi.fn().mockResolvedValue({
           platform: 5,
           seatIds: ["12", "13"],
@@ -2695,6 +2727,7 @@ describe("MysqlWorkbenchService", () => {
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getSeatsByIds: vi.fn().mockResolvedValue([]),
+        getSubUser: vi.fn().mockResolvedValue(createActiveSubUser()),
         getSeatEventScope: vi.fn().mockResolvedValue({
           platform: 5,
           seatIds: ["12"],
@@ -2780,6 +2813,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("polls active conversation messages through the shared message page query", async () => {
     const javaClient = createJavaClient();
+    const canAccessSeat = vi.fn().mockResolvedValue(true);
     const getConversationLookup = vi.fn().mockResolvedValue({
       id: "88",
       platform: 5,
@@ -2823,9 +2857,10 @@ describe("MysqlWorkbenchService", () => {
     });
     const service = new MysqlWorkbenchService(
       {
-        canAccessSeat: vi.fn().mockResolvedValue(true),
+        canAccessSeat,
         getConversationLookup,
         getSeatsByIds: vi.fn().mockResolvedValue([]),
+        getSubUser: vi.fn().mockResolvedValue(createActiveSubUser()),
         listMessages,
         listChangedConversations: vi.fn().mockResolvedValue({
           hasMore: false,
@@ -2861,6 +2896,15 @@ describe("MysqlWorkbenchService", () => {
       includeHiddenConversation: true,
       limit: 50,
     });
+    expect(canAccessSeat).toHaveBeenNthCalledWith(
+      2,
+      {
+        platform: 5,
+        subUserId: "101",
+        uid: 9001,
+      },
+      "12",
+    );
   });
 
   it("returns message update events only for the active conversation", async () => {
@@ -2884,6 +2928,7 @@ describe("MysqlWorkbenchService", () => {
           uid: 9001,
         }),
         getSeatsByIds: vi.fn().mockResolvedValue([]),
+        getSubUser: vi.fn().mockResolvedValue(createActiveSubUser()),
         listChangedConversations: vi.fn().mockResolvedValue({
           hasMore: false,
           items: [],
@@ -2919,6 +2964,7 @@ describe("MysqlWorkbenchService", () => {
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getSeatsByIds: vi.fn().mockResolvedValue([]),
+        getSubUser: vi.fn().mockResolvedValue(createActiveSubUser()),
         listChangedConversations: vi.fn().mockResolvedValue({
           hasMore: false,
           items: [],
@@ -2948,6 +2994,7 @@ describe("MysqlWorkbenchService", () => {
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getSeatsByIds: vi.fn().mockResolvedValue([]),
+        getSubUser: vi.fn().mockResolvedValue(createActiveSubUser()),
         listChangedConversations: vi.fn().mockResolvedValue({
           hasMore: false,
           items: [],
@@ -2988,6 +3035,7 @@ describe("MysqlWorkbenchService", () => {
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getSeatsByIds: vi.fn().mockResolvedValue([]),
+        getSubUser: vi.fn().mockResolvedValue(createActiveSubUser()),
         listChangedConversations,
       } as unknown as WorkbenchRepository,
       javaClient,
@@ -3011,6 +3059,7 @@ describe("MysqlWorkbenchService", () => {
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getSeatsByIds: vi.fn().mockResolvedValue([]),
+        getSubUser: vi.fn().mockResolvedValue(createActiveSubUser()),
         listChangedConversations: vi.fn().mockResolvedValue({
           hasMore: false,
           items: [],
@@ -3037,6 +3086,7 @@ describe("MysqlWorkbenchService", () => {
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getSeatsByIds: vi.fn().mockResolvedValue([]),
+        getSubUser: vi.fn().mockResolvedValue(createActiveSubUser()),
         listChangedConversations: vi.fn().mockResolvedValue({
           hasMore: false,
           items: [
@@ -3083,6 +3133,7 @@ describe("MysqlWorkbenchService", () => {
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getSeat: vi.fn(),
+        getSubUser: vi.fn().mockResolvedValue(createActiveSubUser()),
         listChangedConversations: vi.fn().mockResolvedValue({
           hasMore: true,
           items: [],
@@ -7904,6 +7955,15 @@ function createMessageDto(input: {
     senderType: input.senderType,
     seq: input.seq,
     status: "sent" as const,
+  };
+}
+
+function createActiveSubUser() {
+  return {
+    displayName: "客服一号",
+    platform: 6,
+    subUserId: "101",
+    uid: 9001,
   };
 }
 

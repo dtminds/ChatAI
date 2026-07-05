@@ -18,6 +18,27 @@ describe("MysqlWorkbenchService", () => {
     vi.unstubAllEnvs();
   });
 
+  it("does not expose sub-user platform from the public me response", async () => {
+    const javaClient = createJavaClient();
+    const service = new MysqlWorkbenchService(
+      {
+        getSubUser: vi.fn().mockResolvedValue({
+          displayName: "客服一号",
+          platform: 6,
+          subUserId: "101",
+          uid: 9001,
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(service.getMe("101")).resolves.toEqual({
+      displayName: "客服一号",
+      subUserId: "101",
+      uid: 9001,
+    });
+  });
+
   it("lists seats with the authenticated workbench scope", async () => {
     const javaClient = createJavaClient();
     const listSeats = vi.fn().mockResolvedValue([]);

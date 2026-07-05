@@ -711,7 +711,11 @@ export class MysqlWorkbenchService implements WorkbenchService {
       throw new UnauthorizedError();
     }
 
-    return subUser;
+    return {
+      displayName: subUser.displayName,
+      subUserId: subUser.subUserId,
+      uid: subUser.uid,
+    };
   }
 
   async getSidebarIframeParams(

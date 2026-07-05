@@ -237,7 +237,6 @@ export type WorkbenchMessageFileDownloadRequest = {
 export type WorkbenchSubUserDto = {
   subUserId: string;
   displayName: string;
-  platform?: number;
   uid?: number;
 };
 

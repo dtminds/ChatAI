@@ -767,6 +767,36 @@ describe("useMaterialCollection", () => {
     expect(result.current.pendingMaterialCollection).toBeNull();
   });
 
+  it("shows a success toast after saving edited material", async () => {
+    const baseService = createMockWorkbenchService();
+    const updateMaterialCollection = vi.fn(async () => ({ ok: true as const }));
+
+    setWorkbenchService({
+      ...baseService,
+      updateMaterialCollection,
+    });
+
+    const { result } = renderHook(() =>
+      useMaterialCollection(createDefaultOptions()),
+    );
+
+    act(() => {
+      result.current.handleEditMaterial(createMiniProgramMaterialItem(), {
+        description: "",
+        fileExtension: "",
+        fileName: "",
+        title: "更新后的小程序",
+      });
+    });
+
+    await waitFor(() => {
+      expect(updateMaterialCollection).toHaveBeenCalledWith("material-mini", {
+        title: "更新后的小程序",
+      });
+    });
+    expect(toast.success).toHaveBeenCalledWith("已保存");
+  });
+
   it("searches material titles in the active group and clears search on group switch", async () => {
     const baseService = createMockWorkbenchService();
     const groupFileA = {

@@ -1,6 +1,6 @@
 import { MATERIAL_COLLECTION_BIZ_TYPE } from "./enums.js";
 
-export const MATERIAL_COLLECTION_TITLE_MAX_LENGTH = 32;
+export const MATERIAL_COLLECTION_TITLE_MAX_LENGTH = 64;
 export const MATERIAL_COLLECTION_DESCRIPTION_MAX_LENGTH = 64;
 
 export type MaterialFileCollectFields = {

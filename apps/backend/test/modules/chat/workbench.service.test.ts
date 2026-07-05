@@ -5351,7 +5351,7 @@ describe("MysqlWorkbenchService", () => {
   });
 
   it("material: rejects generated material title over collection limit", async () => {
-    const longFileName = `${"超".repeat(40)}.pdf`;
+    const longFileName = `${"超".repeat(70)}.pdf`;
     const repository = createMaterialRepository({
       findMaterialMessage: vi.fn().mockResolvedValue({
         content: JSON.stringify({
@@ -5373,7 +5373,7 @@ describe("MysqlWorkbenchService", () => {
       }),
     ).resolves.toEqual({
       success: false,
-      errorMsg: "文件名称不能超过 32 个字符",
+      errorMsg: "文件名称不能超过 64 个字符",
     });
 
     expect(repository.createMaterialCollection).not.toHaveBeenCalled();

@@ -932,6 +932,7 @@ export function useMaterialCollection({
       action: (bizType: ComposerMaterialBizType) => Promise<unknown>,
       fallbackMessage: string,
       refresh: MaterialLibraryMutationRefresh = "items",
+      successMessage?: string,
     ) => {
       setIsMaterialLibraryBusy(true);
 
@@ -950,6 +951,10 @@ export function useMaterialCollection({
           await reloadMaterialLibraryGroups(bizType, {
             reloadItemsIfActiveGroupRemoved: true,
           });
+        }
+
+        if (successMessage) {
+          toast.success(successMessage);
         }
       } catch (error) {
         if (isMountedRef.current) {
@@ -1133,6 +1138,8 @@ export function useMaterialCollection({
         () =>
           getWorkbenchService().updateMaterialCollection(item.id, validated),
         "编辑素材失败",
+        "items",
+        "已保存",
       );
     },
     [runMaterialLibraryMutation],

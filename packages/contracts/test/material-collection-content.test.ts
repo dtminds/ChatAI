@@ -230,11 +230,11 @@ describe("material collection H5 content helpers", () => {
     expect(
       validateMaterialCollectionSubmitFields({
         description: "d".repeat(65),
-        fileName: "f".repeat(33),
-        title: "t".repeat(33),
+        fileName: "f".repeat(65),
+        title: "t".repeat(65),
       }),
     ).toEqual({
-      errorMsg: "文件名称不能超过 32 个字符",
+      errorMsg: "文件名称不能超过 64 个字符",
     });
   });
 
@@ -242,13 +242,13 @@ describe("material collection H5 content helpers", () => {
     expect(
       validateMaterialCollectionSubmitFields({
         description: " 描述 ",
-        fileName: " 文件.pdf ",
-        title: " 标题 ",
+        fileName: ` ${"文".repeat(64)} `,
+        title: ` ${"标".repeat(64)} `,
       }),
     ).toEqual({
       description: "描述",
-      fileName: "文件.pdf",
-      title: "标题",
+      fileName: "文".repeat(64),
+      title: "标".repeat(64),
     });
   });
 

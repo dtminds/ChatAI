@@ -45,6 +45,7 @@ import {
   AiHostingPageHeader,
   notifyAiHostingQuotaChanged,
 } from "./ai-hosting-layout";
+import { AiHostingIntroGuide } from "./ai-hosting-intro-guide";
 import { KbTableLoadingRow } from "./kb-components/kb-table-loading-row";
 import { TableOverflowTooltip } from "./kb-components/shared";
 import { fetchAiHostingQuota } from "./ai-hosting-quota-store";
@@ -365,7 +366,7 @@ export function KbListPage() {
           title="知识库"
         />
 
-        <KbIntroGuide />
+        <AiHostingIntroGuide ariaLabel="知识库使用引导" steps={kbIntroSteps} />
 
         <section className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -604,42 +605,6 @@ export function KbListPage() {
         </AlertDialogContent>
       </AlertDialog>
     </AiHostingLayout>
-  );
-}
-
-function KbIntroGuide() {
-  return (
-    <section
-      aria-label="知识库使用引导"
-      className="overflow-hidden rounded-[8px] bg-primary/6 dark:bg-muted"
-    >
-      <div className="grid min-h-[176px] grid-cols-3">
-        {kbIntroSteps.map((item) => (
-          <div
-            className="grid min-h-[176px] min-w-0 grid-cols-[minmax(0,1fr)_minmax(160px,42%)] items-end gap-4 overflow-hidden pl-6 pr-4 pt-8 max-xl:min-h-0 max-xl:grid-cols-1 max-xl:px-6 max-xl:py-5 max-md:px-5"
-            key={item.title}
-          >
-            <div className="min-w-0 self-start max-xl:max-w-none">
-              <div className="text-sm font-medium text-muted-foreground">{item.step}</div>
-              <h2 className="mt-2 text-base font-semibold text-foreground">{item.title}</h2>
-              <p
-                className="mt-3 line-clamp-2 max-w-[240px] text-xs leading-6 text-muted-foreground"
-                title={item.description}
-              >
-                {item.description}
-              </p>
-            </div>
-
-            <img
-              alt={item.imageAlt}
-              className="h-auto w-full max-w-[250px] self-end justify-self-end max-xl:hidden"
-              draggable={false}
-              src={item.imageUrl}
-            />
-          </div>
-        ))}
-      </div>
-    </section>
   );
 }
 

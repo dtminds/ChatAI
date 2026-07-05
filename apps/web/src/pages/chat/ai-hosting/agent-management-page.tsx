@@ -69,7 +69,7 @@ const agentIntroSteps = [
     title: "创建 Agent",
   },
   {
-    description: "配置 Agent 在不同客户问题、业务场景或会话状态下的处理方式",
+    description: "设定 Agent 在不同业务场景和会话状态下的处理逻辑",
     imageAlt: "训练调优示意图",
     imageUrl: "https://b5.bokr.com.cn/dist/ui/agent_f2.png",
     step: "第 2 步",
@@ -80,7 +80,7 @@ const agentIntroSteps = [
     imageAlt: "对话辅助示意图",
     imageUrl: "https://b5.bokr.com.cn/dist/ui/agent_f3.png",
     step: "第 3 步",
-    title: "对话辅助",
+    title: "开启辅助",
   },
 ] as const;
 

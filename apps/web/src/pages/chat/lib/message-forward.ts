@@ -181,32 +181,6 @@ export function buildForwardSegmentFromMessage(
         title: content.title,
         type: "weapp",
       };
-    case "sphfeed":
-      if (!msgInfoId) {
-        return null;
-      }
-
-      return {
-        description: content.description,
-        imageUrl: content.imageUrl,
-        msgInfoId,
-        sourceLabel: content.sourceLabel,
-        title: content.title,
-        type: "sphfeed",
-        url: content.url,
-      };
-    case "video":
-      if (!msgInfoId) {
-        return null;
-      }
-
-      return {
-        coverUrl: content.coverImageUrl,
-        msgInfoId,
-        title: content.alt,
-        type: "video",
-        url: content.videoUrl,
-      };
     default:
       return null;
   }

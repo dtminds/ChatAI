@@ -2,11 +2,11 @@ import {
   AtIcon,
   AiChat02Icon,
   ArrowTurnBackwardIcon,
-  ArrowTurnForwardIcon,
   Bug02Icon,
   ChatFavouriteIcon,
   CheckListIcon,
   ExclamationMarkIcon,
+  LinkForwardIcon,
   Male02Icon,
   MoreHorizontalIcon,
   QuoteUpSquareIcon,
@@ -44,6 +44,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { MessageContentRenderer } from "@/pages/chat/components/message";
 import { ConversationImageGalleryProvider } from "@/pages/chat/components/message/conversation-image-gallery";
@@ -495,8 +501,7 @@ export function MessageRow({
     shouldAnimate,
   );
   const dismissTargetRef = useRef<HTMLButtonElement | null>(null);
-  const canSelectForwardMessage =
-    canUseMessageForward && canForwardMessage(message) && !message.isRevoked;
+  const canSelectForwardMessage = canUseMessageForward && canForwardMessage(message);
   const messageActions = multiSelectMode ? null : (
     <MessageActionAvatar
       message={message}
@@ -514,14 +519,32 @@ export function MessageRow({
       showSmartReplyRecommendation={showSmartReplyTriggerIcon}
     />
   );
+  const checkboxControl = (
+    <Checkbox
+      aria-label="选择消息"
+      checked={isMessageSelected}
+      disabled={!canSelectForwardMessage}
+      onCheckedChange={() => onToggleMessageSelection?.(message)}
+    />
+  );
   const selectionCheckbox = multiSelectMode ? (
     <div className="mt-4 flex h-8 shrink-0 items-center">
-      <Checkbox
-        aria-label="选择消息"
-        checked={isMessageSelected}
-        disabled={!canSelectForwardMessage}
-        onCheckedChange={() => onToggleMessageSelection?.(message)}
-      />
+      {canSelectForwardMessage ? (
+        checkboxControl
+      ) : (
+        <TooltipProvider delayDuration={300}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="inline-flex cursor-not-allowed">
+                {checkboxControl}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="top" sideOffset={6}>
+              该消息暂不支持转发
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      )}
     </div>
   ) : null;
 
@@ -814,11 +837,8 @@ function MessageActionAvatar({
   const canSelectCollectMessage = canCollectMaterialActions && !message.isRevoked;
   const canForwardMessageAction =
     canUseMessageForward && Boolean(onForwardMessage) && canForwardMessage(message);
-  const canSelectForwardMessage =
-    canUseMessageForward && canForwardMessage(message) && !message.isRevoked;
   const canMultiSelectMessage =
-    canUseMessageForward && Boolean(onEnterMultiSelectMode) && canForwardMessage(message);
-  const canSelectMultiSelectMessage = canMultiSelectMessage;
+    canForwardMessageAction && Boolean(onEnterMultiSelectMode);
   const canRevokeMessage =
     canUseMessageActions &&
     Boolean(onRevokeMessage) &&
@@ -937,9 +957,9 @@ function MessageActionAvatar({
             ) : null}
             {canForwardMessageAction ? (
               <DropdownMenuItem
-                disabled={!canSelectForwardMessage}
+                disabled={!canForwardMessageAction}
                 onSelect={(event) => {
-                  if (!canSelectForwardMessage) {
+                  if (!canForwardMessageAction) {
                     event.preventDefault();
                     return;
                   }
@@ -949,7 +969,7 @@ function MessageActionAvatar({
               >
                 <HugeiconsIcon
                   aria-hidden="true"
-                  icon={ArrowTurnForwardIcon}
+                  icon={LinkForwardIcon}
                   size={15}
                   strokeWidth={2}
                 />
@@ -958,9 +978,9 @@ function MessageActionAvatar({
             ) : null}
             {canMultiSelectMessage ? (
               <DropdownMenuItem
-                disabled={!canSelectMultiSelectMessage}
+                disabled={!canMultiSelectMessage}
                 onSelect={(event) => {
-                  if (!canSelectMultiSelectMessage) {
+                  if (!canMultiSelectMessage) {
                     event.preventDefault();
                     return;
                   }

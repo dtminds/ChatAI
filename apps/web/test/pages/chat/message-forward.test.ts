@@ -109,6 +109,42 @@ describe("message-forward", () => {
     })).toBe(false);
   });
 
+  it("does not allow video messages to be forwarded", () => {
+    const message: ChatMessage = {
+      ...createTextMessage(""),
+      content: {
+        alt: "视频",
+        coverImageUrl: "https://example.com/video-cover.jpg",
+        downloadStatus: "finished",
+        durationLabel: "",
+        type: "video",
+        videoUrl: "https://example.com/video.mp4",
+      },
+      seq: 12345,
+    };
+
+    expect(canForwardMessage(message)).toBe(false);
+    expect(buildForwardSegmentFromMessage(message)).toBeNull();
+  });
+
+  it("does not allow sphfeed messages to be forwarded", () => {
+    const message: ChatMessage = {
+      ...createTextMessage(""),
+      content: {
+        description: "视频号描述",
+        imageUrl: "https://example.com/sphfeed.jpg",
+        sourceLabel: "视频号",
+        title: "视频号内容",
+        type: "sphfeed",
+        url: "https://example.com/sphfeed",
+      },
+      seq: 12345,
+    };
+
+    expect(canForwardMessage(message)).toBe(false);
+    expect(buildForwardSegmentFromMessage(message)).toBeNull();
+  });
+
   it("builds recent forward targets from loaded conversations", () => {
     const conversations: Conversation[] = [
       createConversation({

@@ -2,6 +2,62 @@ import { describe, expect, it } from "vitest";
 import { buildMockedApp } from "../../helpers/build-mocked-app";
 
 describe("settings sidebar item routes", () => {
+  it("does not leak platform 6 sidebar items with the same uid", async () => {
+    const { app, authorization, db } = await createSettingsApp();
+    db.setSidebarItems([
+      {
+        biz_status: 1,
+        id: 201,
+        name: "企业名片",
+        platform: 5,
+        show: 1,
+        sort: 1,
+        uid: 9001,
+        url: "https://example.com/card",
+      },
+      {
+        biz_status: 1,
+        id: 299,
+        name: "跨平台入口",
+        platform: 6,
+        show: 1,
+        sort: 2,
+        uid: 9001,
+        url: "https://example.com/platform-6",
+      },
+    ]);
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/settings/sidebar-items",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      data: {
+        items: [
+          {
+            bindTypes: ["1", "2"],
+            id: "201",
+            name: "企业名片",
+            sort: 1,
+            status: "active",
+            url: "https://example.com/card",
+          },
+        ],
+      },
+      success: true,
+    });
+    expect(
+      response.json().data.items.map((item: { name: string }) => item.name),
+    ).not.toContain("跨平台入口");
+    expect(db.sidebarListWheres).toContainEqual(["uid", "=", 9001]);
+    expect(db.sidebarListWheres).toContainEqual(["platform", "=", 5]);
+
+    await app.close();
+  });
+
   it("performs CRUD and sorting in the current tenant", async () => {
     const { app, authorization, db } = await createSettingsApp();
 

@@ -1735,7 +1735,35 @@ describe("message sent time preview", () => {
     expect(screen.queryByRole("menuitem", { name: "多选" })).not.toBeInTheDocument();
   });
 
-  it("hides multi-select action when the forward action is unavailable", async () => {
+  it("hides forward and multi-select actions for video messages", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <MessageRow
+        canUseMessageForward
+        message={{
+          ...createTextMessage("视频消息"),
+          content: {
+            alt: "视频",
+            coverImageUrl: "https://example.com/video-cover.jpg",
+            downloadStatus: "finished",
+            durationLabel: "",
+            type: "video",
+            videoUrl: "https://example.com/video.mp4",
+          },
+        }}
+        onEnterMultiSelectMode={vi.fn()}
+        onForwardMessage={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+
+    expect(screen.queryByRole("menuitem", { name: "转发" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "多选" })).not.toBeInTheDocument();
+  });
+
+  it("hides multi-select action when onForwardMessage is not provided", async () => {
     const user = userEvent.setup();
 
     render(

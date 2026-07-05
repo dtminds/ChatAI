@@ -15,6 +15,7 @@ import { Type, type Static } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { ForbiddenError } from "../../shared/errors.js";
 import { createWorkbenchJavaClient } from "../chat/workbench-java-client.js";
+import { getAuthenticatedWorkbenchScope } from "../workbench-platform-scope.js";
 import { AgentTestService } from "./agent-test.service.js";
 import { createAiHostingAgentService } from "./ai-hosting-agent.service.js";
 import { createAiHostingQuotaService } from "./quota.service.js";
@@ -82,7 +83,9 @@ export async function registerAiHostingRoutes(app: FastifyInstance) {
     },
     async (request) => {
       return apiSuccess(
-        await createAiHostingSettingsService(app.db).listHostingSettings(getSubUserId(request)),
+        await createAiHostingSettingsService(app.db).listHostingSettings(
+          getAuthenticatedWorkbenchScope(request.user),
+        ),
       );
     },
   );
@@ -99,7 +102,7 @@ export async function registerAiHostingRoutes(app: FastifyInstance) {
       assertAiHostingManage(request);
       return apiSuccess(
         await createAiHostingSettingsService(app.db).updateHostingSettings(
-          getSubUserId(request),
+          getAuthenticatedWorkbenchScope(request.user),
           request.body,
         ),
       );

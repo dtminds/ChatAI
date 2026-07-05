@@ -14,12 +14,10 @@ import type { Database } from "../../db/schema.js";
 import type { WorkbenchJavaClient } from "../chat/workbench-java-client.js";
 import { BadRequestError, NotFoundError } from "../../shared/errors.js";
 import { uniquePositiveNumbers } from "../../shared/id-utils.js";
+import type { AuthenticatedWorkbenchScope } from "../workbench-platform-scope.js";
 import { hydrateRelationRows } from "./relation-hydration.js";
 
-type TenantScope = {
-  platform: number;
-  uid: number;
-};
+type TenantScope = AuthenticatedWorkbenchScope;
 
 type ManagedAccountRow = {
   avatarUrl: string | null;
@@ -73,8 +71,7 @@ export class ManagedAccountSettingsService {
     private readonly cacheKeys: ReturnType<typeof buildCacheKeys> = buildCacheKeys("chatai:"),
   ) {}
 
-  async list(currentSubUserId: string): Promise<SettingsManagedAccountsResponse> {
-    const scope = await this.getTenantScope(currentSubUserId);
+  async list(scope: TenantScope): Promise<SettingsManagedAccountsResponse> {
     const [managedAccounts, subAccounts] = await Promise.all([
       this.listManagedAccountRows(scope, { limit: managedAccountListLimit }),
       this.listAssignableSubAccountRows(scope),
@@ -108,11 +105,10 @@ export class ManagedAccountSettingsService {
   }
 
   async updateSubAccounts(
-    currentSubUserId: string,
+    scope: TenantScope,
     managedAccountId: string,
     payload: SettingsManagedAccountSubAccountsUpdateRequest,
   ): Promise<SettingsManagedAccount> {
-    const scope = await this.getTenantScope(currentSubUserId);
     const numericManagedAccountId = parseMySqlId(managedAccountId);
 
     if (numericManagedAccountId == null) {
@@ -136,12 +132,11 @@ export class ManagedAccountSettingsService {
   }
 
   async syncSeatGroups(
-    currentSubUserId: string,
+    scope: TenantScope,
     managedAccountId: string,
     payload: SettingsManagedAccountSyncSeatGroupsRequest,
     javaClient: WorkbenchJavaClient,
   ): Promise<SettingsManagedAccountSyncSeatGroupsResponse> {
-    const scope = await this.getTenantScope(currentSubUserId);
     const seatId = parseMySqlId(managedAccountId);
 
     if (seatId == null) {
@@ -158,30 +153,6 @@ export class ManagedAccountSettingsService {
     });
 
     return { synced: true };
-  }
-
-  private async getTenantScope(currentSubUserId: string): Promise<TenantScope> {
-    const numericSubUserId = parseMySqlId(currentSubUserId);
-
-    if (numericSubUserId == null) {
-      throw new BadRequestError("INVALID_SUB_ACCOUNT", "当前账号无效");
-    }
-
-    const currentSubUser = await this.db
-      .selectFrom("xy_wap_embed_sub_user")
-      .select(["platform", "uid"])
-      .where("id", "=", numericSubUserId)
-      .where("status", "=", dbSubAccountStatus.active)
-      .executeTakeFirst();
-
-    if (!currentSubUser) {
-      throw new NotFoundError("SUB_ACCOUNT_NOT_FOUND", "当前账号不存在");
-    }
-
-    return {
-      platform: currentSubUser.platform,
-      uid: currentSubUser.uid,
-    };
   }
 
   private listManagedAccountRows(scope: TenantScope, options: { limit?: number } = {}) {
@@ -217,7 +188,6 @@ export class ManagedAccountSettingsService {
         "sub_user.type",
       ])
       .where("sub_user.uid", "=", scope.uid)
-      .where("sub_user.platform", "=", scope.platform)
       .where("sub_user.status", "!=", dbSubAccountStatus.deleted);
 
     if (subAccountIds !== undefined) {

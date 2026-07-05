@@ -172,6 +172,7 @@ import {
   decodeConversationListCursor,
   type MaterialCollectionScope,
   parseMySqlId,
+  type WorkbenchSeatAccessScope,
   type WorkbenchRepository,
 } from "./workbench-repository.js";
 import {
@@ -183,6 +184,11 @@ import {
   toPlayableVoicePathname,
 } from "./media-config.js";
 import { normalizeMediaAssetUrl } from "./workbench-content-utils.js";
+import {
+  getCurrentWorkbenchPlatformScope,
+  type AuthenticatedWorkbenchScope,
+  type WorkbenchPlatformScope,
+} from "../workbench-platform-scope.js";
 
 const POLL_CONVERSATION_CHANGE_LIMIT = 500;
 const POLL_LAST_MESSAGE_OVERLAP_MS = 1;
@@ -674,6 +680,8 @@ export class MysqlWorkbenchService implements WorkbenchService {
     private readonly logger: AppLogger = noopLogger,
     private readonly playableVoiceExists: PlayableVoiceExistsChecker =
       checkPlayableVoiceExists,
+    private readonly workbenchScope: WorkbenchPlatformScope & { uid?: number } =
+      getCurrentWorkbenchPlatformScope(),
   ) {}
 
   async deleteConversation(subUserId: string, conversationId: string) {
@@ -710,8 +718,8 @@ export class MysqlWorkbenchService implements WorkbenchService {
     subUserId: string,
     input: WorkbenchSidebarIframeParamsRequest,
   ): Promise<WorkbenchSidebarIframeParamsDto> {
-    await this.getMe(subUserId);
-    await this.assertSeatAccess(subUserId, input.seatId);
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
+    await this.assertSeatAccess(subUserId, input.seatId, scope);
 
     const conversation = await this.repository.getConversationLookup(input.conversationId);
 
@@ -723,7 +731,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
       throw new BadRequestError("CONVERSATION_SEAT_MISMATCH", "会话与席位不匹配");
     }
 
-    const secrets = await this.repository.getEmbedUserRelationTuseSecrets(subUserId);
+    const secrets = await this.repository.getEmbedUserRelationTuseSecrets(scope);
 
     if (!secrets) {
       throw new NotFoundError(
@@ -749,9 +757,9 @@ export class MysqlWorkbenchService implements WorkbenchService {
   }
 
   async getSeats(subUserId: string) {
-    await this.getMe(subUserId);
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
 
-    return this.repository.listSeats(subUserId);
+    return this.repository.listSeats(toSeatAccessScope(scope, subUserId));
   }
 
   async getCustomers(
@@ -764,16 +772,16 @@ export class MysqlWorkbenchService implements WorkbenchService {
       seatIds?: string[];
     },
   ): Promise<WorkbenchCustomerListResponse> {
-    const subUser = await this.getMe(subUserId);
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
 
     if (options.scope === "all") {
       return this.repository.listCustomers({
         cursor: options.cursor,
         keyword: options.keyword,
         limit: options.limit,
-        platform: subUser.platform,
+        platform: scope.platform,
         scope: "all",
-        uid: subUser.uid,
+        uid: scope.uid,
       });
     }
 
@@ -781,9 +789,11 @@ export class MysqlWorkbenchService implements WorkbenchService {
       cursor: options.cursor,
       keyword: options.keyword,
       limit: options.limit,
+      platform: scope.platform,
       scope: "mine",
       seatIds: options.seatIds,
       subUserId,
+      uid: scope.uid,
     });
   }
 
@@ -791,17 +801,13 @@ export class MysqlWorkbenchService implements WorkbenchService {
     subUserId: string,
     thirdExternalUserId: string,
   ): Promise<WorkbenchCustomerLastConversationResponse> {
-    const subUser = await this.getMe(subUserId);
-
-    if (subUser.uid == null || subUser.platform == null) {
-      return {};
-    }
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
 
     return {
       lastConversation: await this.repository.getCustomerLastConversation({
-        platform: subUser.platform,
+        platform: scope.platform,
         thirdExternalUserId,
-        uid: subUser.uid,
+        uid: scope.uid,
       }),
     };
   }
@@ -811,18 +817,14 @@ export class MysqlWorkbenchService implements WorkbenchService {
     thirdExternalUserId: string,
     thirdUserIds: string[],
   ): Promise<WorkbenchCustomerRelationConversationsResponse> {
-    const subUser = await this.getMe(subUserId);
-
-    if (subUser.uid == null || subUser.platform == null) {
-      return { items: [] };
-    }
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
 
     return {
       items: await this.repository.listCustomerRelationConversations({
-        platform: subUser.platform,
+        platform: scope.platform,
         thirdExternalUserId,
         thirdUserIds,
-        uid: subUser.uid,
+        uid: scope.uid,
       }),
     };
   }
@@ -1367,8 +1369,10 @@ export class MysqlWorkbenchService implements WorkbenchService {
   }
 
   async poll(subUserId: string, request: WorkbenchPollRequest) {
+    const scope = this.getSeatAccessWorkbenchScope();
+
     if (request.currentSeatId) {
-      await this.assertSeatAccess(subUserId, request.currentSeatId);
+      await this.assertSeatAccess(subUserId, request.currentSeatId, scope);
     } else {
       await this.getMe(subUserId);
     }
@@ -1393,7 +1397,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
         : [];
     const seatEventScope =
       typeof this.repository.getSeatEventScope === "function"
-        ? await this.repository.getSeatEventScope(subUserId)
+        ? await this.repository.getSeatEventScope(toSeatAccessScope(scope, subUserId))
         : undefined;
     const seatUpdateEvents =
       seatEventScope && typeof this.repository.listSeatUpdateEvents === "function"
@@ -3747,12 +3751,43 @@ export class MysqlWorkbenchService implements WorkbenchService {
     return { ok: true };
   }
 
-  private async assertSeatAccess(subUserId: string, seatId: string) {
-    const canAccess = await this.repository.canAccessSeat(subUserId, seatId);
+  private async assertSeatAccess(
+    subUserId: string,
+    seatId: string,
+    scope?: AuthenticatedWorkbenchScope,
+  ) {
+    const resolvedScope = scope ?? this.getSeatAccessWorkbenchScope();
+    const canAccess = await this.repository.canAccessSeat(
+      toSeatAccessScope(resolvedScope, subUserId),
+      seatId,
+    );
 
     if (!canAccess) {
       throw new NotFoundError("SEAT_NOT_FOUND", "席位不存在");
     }
+  }
+
+  private async getAuthenticatedWorkbenchScope(
+    subUserId: string,
+  ): Promise<AuthenticatedWorkbenchScope> {
+    const me = await this.getMe(subUserId);
+    const uid = this.workbenchScope.uid ?? me.uid;
+
+    if (!Number.isSafeInteger(uid) || uid <= 0) {
+      throw new UnauthorizedError();
+    }
+
+    return {
+      platform: this.workbenchScope.platform,
+      uid,
+    };
+  }
+
+  private getSeatAccessWorkbenchScope(): AuthenticatedWorkbenchScope {
+    return {
+      platform: this.workbenchScope.platform,
+      uid: this.workbenchScope.uid ?? 0,
+    };
   }
 
   private async getActiveConversationMessages(
@@ -5361,6 +5396,17 @@ function hasSameExactOrder(currentIds: string[], submittedIds: string[]) {
     currentIds.length === submittedIds.length &&
     currentIds.every((id, index) => id === submittedIds[index])
   );
+}
+
+function toSeatAccessScope(
+  scope: AuthenticatedWorkbenchScope,
+  subUserId: string,
+): WorkbenchSeatAccessScope {
+  return {
+    platform: scope.platform,
+    subUserId,
+    uid: scope.uid,
+  };
 }
 
 function buildFileJavaSendMessageData(content: string): JavaSendMessageData {

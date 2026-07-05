@@ -717,7 +717,7 @@ describe("AI hosting agent routes", () => {
     expect(db.agentListLimitValues).toContain(100);
     expect(db.seatListWheres).toContainEqual(["seat.uid", "=", 9001]);
     expect(db.seatListWheres).toContainEqual(["seat.platform", "=", 5]);
-    expect(db.queriedTables).toContain("xy_wap_embed_sub_user");
+    expect(db.queriedTables).not.toContain("xy_wap_embed_sub_user");
     expect(db.seatListLimitValues).toContain(200);
     expect(db.hostingConfigListWheres).toContainEqual(["uid", "=", 9001]);
     expect(db.hostingConfigListWheres).toContainEqual(["user_seat_id", "in", [102, 101]]);

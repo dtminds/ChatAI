@@ -49,6 +49,7 @@ import type { WorkbenchService } from "./workbench.service.js";
 import { checkPlayableVoiceAsset } from "./media-proxy.service.js";
 import { BadRequestError, ForbiddenError } from "../../shared/errors.js";
 import { withRequestId } from "../../shared/logger.js";
+import { getAuthenticatedWorkbenchScope } from "../workbench-platform-scope.js";
 
 const NumericStringSchema = Type.String({ pattern: "^[0-9]+$" });
 
@@ -2197,7 +2198,10 @@ function getWorkbenchService(
   request?: FastifyRequest,
 ): WorkbenchService {
   if (request) {
-    return app.createWorkbenchService?.(withRequestId(request.log, request.id))
+    return app.createWorkbenchService?.(
+      withRequestId(request.log, request.id),
+      getAuthenticatedWorkbenchScope(request.user),
+    )
       ?? app.workbenchService;
   }
 

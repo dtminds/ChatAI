@@ -22,12 +22,10 @@ import { BadRequestError, NotFoundError } from "../../shared/errors.js";
 import { uniquePositiveNumbers } from "../../shared/id-utils.js";
 import { deriveAccountRole, normalizeAccountRole } from "../auth/permissions.js";
 import { hashPassword } from "../auth/password.service.js";
+import type { AuthenticatedWorkbenchScope } from "../workbench-platform-scope.js";
 import { hydrateRelationRows } from "./relation-hydration.js";
 
-type TenantScope = {
-  platform: number;
-  uid: number;
-};
+type TenantScope = AuthenticatedWorkbenchScope;
 
 type SubAccountRow = {
   account: string;
@@ -74,8 +72,7 @@ export class SubAccountSettingsService {
     private readonly cacheKeys: ReturnType<typeof buildCacheKeys> = buildCacheKeys("chatai:"),
   ) {}
 
-  async list(currentSubUserId: string): Promise<SettingsSubAccountsResponse> {
-    const scope = await this.getTenantScope(currentSubUserId);
+  async list(scope: TenantScope): Promise<SettingsSubAccountsResponse> {
     const [subAccounts, seats, relationLinks] = await Promise.all([
       this.listSubAccountRows(scope),
       this.listSeatRows(scope),
@@ -98,10 +95,9 @@ export class SubAccountSettingsService {
   }
 
   async create(
-    currentSubUserId: string,
+    scope: TenantScope,
     payload: SettingsSubAccountCreateRequest,
   ): Promise<SettingsSubAccount> {
-    const scope = await this.getTenantScope(currentSubUserId);
     const normalizedAccount = payload.account.trim();
     const normalizedName = payload.name.trim();
 
@@ -123,7 +119,6 @@ export class SubAccountSettingsService {
         account: normalizedAccount,
         name: normalizedName,
         password_hash: await hashPassword(normalizedPassword),
-        platform: scope.platform,
         role: payload.role,
         status: dbSubAccountStatus.active,
         type: dbSubAccountType.sub,
@@ -141,11 +136,10 @@ export class SubAccountSettingsService {
   }
 
   async update(
-    currentSubUserId: string,
+    scope: TenantScope,
     subAccountId: string,
     payload: SettingsSubAccountUpdateRequest,
   ): Promise<SettingsSubAccount> {
-    const scope = await this.getTenantScope(currentSubUserId);
     const numericSubAccountId = parseMySqlId(subAccountId);
     const normalizedName = payload.name.trim();
 
@@ -203,7 +197,6 @@ export class SubAccountSettingsService {
       .set(updateValues)
       .where("id", "=", numericSubAccountId)
       .where("uid", "=", scope.uid)
-      .where("platform", "=", scope.platform)
       .where("status", "!=", dbSubAccountStatus.deleted)
       .execute();
 
@@ -221,11 +214,10 @@ export class SubAccountSettingsService {
   }
 
   async updateStatus(
-    currentSubUserId: string,
+    scope: TenantScope,
     subAccountId: string,
     status: SettingsSubAccountStatus,
   ): Promise<SettingsSubAccount> {
-    const scope = await this.getTenantScope(currentSubUserId);
     const numericSubAccountId = parseMySqlId(subAccountId);
 
     if (numericSubAccountId == null) {
@@ -241,7 +233,6 @@ export class SubAccountSettingsService {
       })
       .where("id", "=", numericSubAccountId)
       .where("uid", "=", scope.uid)
-      .where("platform", "=", scope.platform)
       .where("status", "!=", dbSubAccountStatus.deleted)
       .execute();
 
@@ -253,8 +244,7 @@ export class SubAccountSettingsService {
     return this.getSubAccountOrThrow(scope, numericSubAccountId);
   }
 
-  async remove(currentSubUserId: string, subAccountId: string) {
-    const scope = await this.getTenantScope(currentSubUserId);
+  async remove(scope: TenantScope, subAccountId: string) {
     const numericSubAccountId = parseMySqlId(subAccountId);
 
     if (numericSubAccountId == null) {
@@ -270,7 +260,6 @@ export class SubAccountSettingsService {
       })
       .where("id", "=", numericSubAccountId)
       .where("uid", "=", scope.uid)
-      .where("platform", "=", scope.platform)
       .where("type", "=", dbSubAccountType.sub)
       .execute();
 
@@ -295,30 +284,6 @@ export class SubAccountSettingsService {
     return { deleted: true };
   }
 
-  private async getTenantScope(currentSubUserId: string): Promise<TenantScope> {
-    const numericSubUserId = parseMySqlId(currentSubUserId);
-
-    if (numericSubUserId == null) {
-      throw new BadRequestError("INVALID_SUB_ACCOUNT", "当前账号无效");
-    }
-
-    const currentSubUser = await this.db
-      .selectFrom("xy_wap_embed_sub_user")
-      .select(["platform", "uid"])
-      .where("id", "=", numericSubUserId)
-      .where("status", "=", dbSubAccountStatus.active)
-      .executeTakeFirst();
-
-    if (!currentSubUser) {
-      throw new NotFoundError("SUB_ACCOUNT_NOT_FOUND", "当前账号不存在");
-    }
-
-    return {
-      platform: currentSubUser.platform,
-      uid: currentSubUser.uid,
-    };
-  }
-
   private listSubAccountRows(scope: TenantScope) {
     return this.db
       .selectFrom("xy_wap_embed_sub_user as sub_user")
@@ -331,7 +296,6 @@ export class SubAccountSettingsService {
         "sub_user.type",
       ])
       .where("sub_user.uid", "=", scope.uid)
-      .where("sub_user.platform", "=", scope.platform)
       .where("sub_user.status", "!=", dbSubAccountStatus.deleted)
       .orderBy("sub_user.id", "desc")
       .execute() as Promise<SubAccountRow[]>;
@@ -387,7 +351,6 @@ export class SubAccountSettingsService {
       .select(["id", "role", "type"])
       .where("id", "=", subAccountId)
       .where("uid", "=", scope.uid)
-      .where("platform", "=", scope.platform)
       .where("status", "!=", dbSubAccountStatus.deleted)
       .executeTakeFirst();
 
@@ -402,7 +365,6 @@ export class SubAccountSettingsService {
       .select(["id", "role", "type"])
       .where("id", "=", subAccountId)
       .where("uid", "=", scope.uid)
-      .where("platform", "=", scope.platform)
       .where("status", "!=", dbSubAccountStatus.deleted)
       .executeTakeFirst();
 
@@ -533,7 +495,6 @@ export class SubAccountSettingsService {
       ])
       .where("sub_user.id", "=", subAccountId)
       .where("sub_user.uid", "=", scope.uid)
-      .where("sub_user.platform", "=", scope.platform)
       .where("sub_user.status", "!=", dbSubAccountStatus.deleted)
       .executeTakeFirst() as Promise<SubAccountRow | undefined>;
   }

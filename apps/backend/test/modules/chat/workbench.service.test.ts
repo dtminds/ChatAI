@@ -18,6 +18,33 @@ describe("MysqlWorkbenchService", () => {
     vi.unstubAllEnvs();
   });
 
+  it("lists seats with the authenticated workbench scope", async () => {
+    const javaClient = createJavaClient();
+    const listSeats = vi.fn().mockResolvedValue([]);
+    const service = new MysqlWorkbenchService(
+      {
+        getSubUser: vi.fn().mockResolvedValue({
+          displayName: "客服一号",
+          platform: 6,
+          subUserId: "101",
+          uid: 9001,
+        }),
+        listSeats,
+      } as unknown as WorkbenchRepository,
+      javaClient,
+      undefined,
+      undefined,
+      { platform: 5, uid: 9001 } as never,
+    );
+
+    await expect(service.getSeats("101")).resolves.toEqual([]);
+    expect(listSeats).toHaveBeenCalledWith({
+      platform: 5,
+      subUserId: "101",
+      uid: 9001,
+    });
+  });
+
   it("lists my customers with visible seat filters", async () => {
     const javaClient = createJavaClient();
     const listCustomers = vi.fn().mockResolvedValue({
@@ -29,24 +56,31 @@ describe("MysqlWorkbenchService", () => {
       {
         getSubUser: vi.fn().mockResolvedValue({
           displayName: "客服一号",
+          platform: 6,
           subUserId: "101",
+          uid: 9001,
         }),
         listCustomers,
       } as unknown as WorkbenchRepository,
       javaClient,
+      undefined,
+      undefined,
+      { platform: 5, uid: 9001 } as never,
     );
 
     await expect(
       service.getCustomers("101", { scope: "mine", seatIds: ["12", "13"] }),
     ).resolves.toEqual({ hasMore: false, items: [], total: 0 });
     expect(listCustomers).toHaveBeenCalledWith({
+      platform: 5,
       scope: "mine",
       seatIds: ["12", "13"],
       subUserId: "101",
+      uid: 9001,
     });
   });
 
-  it("lists all customers without seat filters", async () => {
+  it("lists all customers from the authenticated workbench scope without seat filters", async () => {
     const javaClient = createJavaClient();
     const listCustomers = vi.fn().mockResolvedValue({
       hasMore: false,
@@ -57,13 +91,16 @@ describe("MysqlWorkbenchService", () => {
       {
         getSubUser: vi.fn().mockResolvedValue({
           displayName: "客服一号",
-          platform: 5,
+          platform: 6,
           subUserId: "101",
-          uid: 9001,
+          uid: 7777,
         }),
         listCustomers,
       } as unknown as WorkbenchRepository,
       javaClient,
+      undefined,
+      undefined,
+      { platform: 5, uid: 9001 } as never,
     );
 
     await expect(
@@ -93,12 +130,15 @@ describe("MysqlWorkbenchService", () => {
         getCustomerLastConversation,
         getSubUser: vi.fn().mockResolvedValue({
           displayName: "客服一号",
-          platform: 5,
+          platform: 6,
           subUserId: "101",
-          uid: 9001,
+          uid: 7777,
         }),
       } as unknown as WorkbenchRepository,
       javaClient,
+      undefined,
+      undefined,
+      { platform: 5, uid: 9001 } as never,
     );
 
     await expect(
@@ -131,13 +171,16 @@ describe("MysqlWorkbenchService", () => {
       {
         getSubUser: vi.fn().mockResolvedValue({
           displayName: "客服一号",
-          platform: 5,
+          platform: 6,
           subUserId: "101",
-          uid: 9001,
+          uid: 7777,
         }),
         listCustomerRelationConversations,
       } as unknown as WorkbenchRepository,
       javaClient,
+      undefined,
+      undefined,
+      { platform: 5, uid: 9001 } as never,
     );
 
     await expect(
@@ -594,7 +637,14 @@ describe("MysqlWorkbenchService", () => {
       messageSeq: 830,
       messages: [],
     });
-    expect(canAccessSeat).toHaveBeenCalledWith("101", "12");
+    expect(canAccessSeat).toHaveBeenCalledWith(
+      {
+        platform: 5,
+        subUserId: "101",
+        uid: 0,
+      },
+      "12",
+    );
     expect(getChatRecordDetail).toHaveBeenCalledWith(
       9001,
       5,
@@ -913,6 +963,9 @@ describe("MysqlWorkbenchService", () => {
         }),
       } as unknown as WorkbenchRepository,
       javaClient,
+      undefined,
+      undefined,
+      { platform: 5, uid: 9001 } as never,
     );
 
     await expect(
@@ -925,6 +978,10 @@ describe("MysqlWorkbenchService", () => {
     });
 
     expect(getConversationLookup).toHaveBeenCalledWith("88");
+    expect(getEmbedUserRelationTuseSecrets).toHaveBeenCalledWith({
+      platform: 5,
+      uid: 9001,
+    });
   });
 
   it("rejects invalid conversation list cursors before querying conversations", async () => {
@@ -2704,7 +2761,14 @@ describe("MysqlWorkbenchService", () => {
       messages: [],
     });
 
-    expect(canAccessSeat).toHaveBeenCalledWith("101", "12");
+    expect(canAccessSeat).toHaveBeenCalledWith(
+      {
+        platform: 5,
+        subUserId: "101",
+        uid: 0,
+      },
+      "12",
+    );
     expect(listHistoryMessages).toHaveBeenCalledWith("88", {
       cursor: "history-cursor",
       day: "2026-05-19",

@@ -2,11 +2,11 @@ import {
   AtIcon,
   AiChat02Icon,
   ArrowTurnBackwardIcon,
-  ArrowTurnForwardIcon,
   Bug02Icon,
   ChatFavouriteIcon,
   CheckListIcon,
   ExclamationMarkIcon,
+  LinkForwardIcon,
   Male02Icon,
   MoreHorizontalIcon,
   QuoteUpSquareIcon,
@@ -44,6 +44,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { MessageContentRenderer } from "@/pages/chat/components/message";
 import { ConversationImageGalleryProvider } from "@/pages/chat/components/message/conversation-image-gallery";
@@ -262,70 +268,72 @@ export function ChatMessageList({
       conversationId={conversationId}
       messages={messages}
     >
-      <div className="space-y-3">
-        {items.map((item) =>
-          item.type === "divider" ? (
-            <div data-scroll-anchor={item.id} key={item.id}>
-              <MessageTimeDivider label={item.label} />
-            </div>
-          ) : (
-            <div
-              data-ui-message-key={item.message.uiMessageKey}
-              data-scroll-anchor={item.message.uiMessageKey}
-              key={getMessageFeedItemKey(item.message)}
-            >
-              <MessageRow
-                conversationId={conversationId}
-                message={item.message}
-                canCollectMaterialActions={canCollectMaterialActions}
-                canUseMessageActions={canUseMessageActions}
-                canUseMessageForward={canUseMessageForward}
-                isMessageSelected={
-                  selectedMessageKeys?.has(getMessageFeedItemKey(item.message)) ?? false
-                }
-                multiSelectMode={multiSelectMode}
-                shouldAnimate={
-                  shouldAnimateMessageByKey.get(getMessageFeedItemKey(item.message)) ?? false
-                }
-                showTimestamp={showTimestamps}
-                onDownloadMessageFile={onDownloadMessageFile}
-                onCollectMaterial={onCollectMaterial}
-                onEnterMultiSelectMode={onEnterMultiSelectMode}
-                onForwardMessage={onForwardMessage}
-                onMentionMessage={onMentionMessage}
-                onOpenQuotedMessage={onOpenQuotedMessage}
-                onQuoteMessage={onQuoteMessage}
-                onRevokeMessage={onRevokeMessage}
-                onRetryMessage={onRetryMessage}
-                onSendSmartReply={onSendSmartReply}
-                onFillSmartReplyComposer={onFillSmartReplyComposer}
-                onDismissSmartReply={onDismissSmartReply}
-                onMakeShorterSmartReply={onMakeShorterSmartReply}
-                onTriggerSmartReply={onTriggerSmartReply}
-                onToggleMessageSelection={onToggleMessageSelection}
-                onTranscribeVoice={onTranscribeVoice}
-                onVoicePlaybackReady={onVoicePlaybackReady}
-                isRetryingMessage={retryingMessageIds?.has(item.message.uiMessageKey) ?? false}
-                isSmartReplyAutoPending={
-                  Boolean(
-                    smartReplyAutoPendingByMessageId?.[
-                      getSmartReplyLookupKey(item.message)
-                    ],
-                  )
-                }
-                isSmartReplyPending={
-                  Boolean(
-                    smartReplyPendingByMessageId?.[
-                      getSmartReplyLookupKey(item.message)
-                    ],
-                  )
-                }
-                smartReply={smartReplyByMessageId?.[getSmartReplyLookupKey(item.message)]}
-              />
-            </div>
-          ),
-        )}
-      </div>
+      <TooltipProvider delayDuration={300}>
+        <div className="space-y-3">
+          {items.map((item) =>
+            item.type === "divider" ? (
+              <div data-scroll-anchor={item.id} key={item.id}>
+                <MessageTimeDivider label={item.label} />
+              </div>
+            ) : (
+              <div
+                data-ui-message-key={item.message.uiMessageKey}
+                data-scroll-anchor={item.message.uiMessageKey}
+                key={getMessageFeedItemKey(item.message)}
+              >
+                <MessageRow
+                  conversationId={conversationId}
+                  message={item.message}
+                  canCollectMaterialActions={canCollectMaterialActions}
+                  canUseMessageActions={canUseMessageActions}
+                  canUseMessageForward={canUseMessageForward}
+                  isMessageSelected={
+                    selectedMessageKeys?.has(getMessageFeedItemKey(item.message)) ?? false
+                  }
+                  multiSelectMode={multiSelectMode}
+                  shouldAnimate={
+                    shouldAnimateMessageByKey.get(getMessageFeedItemKey(item.message)) ?? false
+                  }
+                  showTimestamp={showTimestamps}
+                  onDownloadMessageFile={onDownloadMessageFile}
+                  onCollectMaterial={onCollectMaterial}
+                  onEnterMultiSelectMode={onEnterMultiSelectMode}
+                  onForwardMessage={onForwardMessage}
+                  onMentionMessage={onMentionMessage}
+                  onOpenQuotedMessage={onOpenQuotedMessage}
+                  onQuoteMessage={onQuoteMessage}
+                  onRevokeMessage={onRevokeMessage}
+                  onRetryMessage={onRetryMessage}
+                  onSendSmartReply={onSendSmartReply}
+                  onFillSmartReplyComposer={onFillSmartReplyComposer}
+                  onDismissSmartReply={onDismissSmartReply}
+                  onMakeShorterSmartReply={onMakeShorterSmartReply}
+                  onTriggerSmartReply={onTriggerSmartReply}
+                  onToggleMessageSelection={onToggleMessageSelection}
+                  onTranscribeVoice={onTranscribeVoice}
+                  onVoicePlaybackReady={onVoicePlaybackReady}
+                  isRetryingMessage={retryingMessageIds?.has(item.message.uiMessageKey) ?? false}
+                  isSmartReplyAutoPending={
+                    Boolean(
+                      smartReplyAutoPendingByMessageId?.[
+                        getSmartReplyLookupKey(item.message)
+                      ],
+                    )
+                  }
+                  isSmartReplyPending={
+                    Boolean(
+                      smartReplyPendingByMessageId?.[
+                        getSmartReplyLookupKey(item.message)
+                      ],
+                    )
+                  }
+                  smartReply={smartReplyByMessageId?.[getSmartReplyLookupKey(item.message)]}
+                />
+              </div>
+            ),
+          )}
+        </div>
+      </TooltipProvider>
     </ConversationImageGalleryProvider>
   );
 }
@@ -495,8 +503,7 @@ export function MessageRow({
     shouldAnimate,
   );
   const dismissTargetRef = useRef<HTMLButtonElement | null>(null);
-  const canSelectForwardMessage =
-    canUseMessageForward && canForwardMessage(message) && !message.isRevoked;
+  const canSelectForwardMessage = canUseMessageForward && canForwardMessage(message);
   const messageActions = multiSelectMode ? null : (
     <MessageActionAvatar
       message={message}
@@ -514,14 +521,30 @@ export function MessageRow({
       showSmartReplyRecommendation={showSmartReplyTriggerIcon}
     />
   );
+  const checkboxControl = (
+    <Checkbox
+      aria-label="选择消息"
+      checked={isMessageSelected}
+      disabled={!canSelectForwardMessage}
+      onCheckedChange={() => onToggleMessageSelection?.(message)}
+    />
+  );
   const selectionCheckbox = multiSelectMode ? (
     <div className="mt-4 flex h-8 shrink-0 items-center">
-      <Checkbox
-        aria-label="选择消息"
-        checked={isMessageSelected}
-        disabled={!canSelectForwardMessage}
-        onCheckedChange={() => onToggleMessageSelection?.(message)}
-      />
+      {canSelectForwardMessage ? (
+        checkboxControl
+      ) : (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-flex cursor-not-allowed">
+              {checkboxControl}
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="top" sideOffset={6}>
+            该消息暂不支持转发
+          </TooltipContent>
+        </Tooltip>
+      )}
     </div>
   ) : null;
 
@@ -814,11 +837,8 @@ function MessageActionAvatar({
   const canSelectCollectMessage = canCollectMaterialActions && !message.isRevoked;
   const canForwardMessageAction =
     canUseMessageForward && Boolean(onForwardMessage) && canForwardMessage(message);
-  const canSelectForwardMessage =
-    canUseMessageForward && canForwardMessage(message) && !message.isRevoked;
   const canMultiSelectMessage =
-    canUseMessageForward && Boolean(onEnterMultiSelectMode) && canForwardMessage(message);
-  const canSelectMultiSelectMessage = canMultiSelectMessage;
+    canForwardMessageAction && Boolean(onEnterMultiSelectMode);
   const canRevokeMessage =
     canUseMessageActions &&
     Boolean(onRevokeMessage) &&
@@ -937,19 +957,13 @@ function MessageActionAvatar({
             ) : null}
             {canForwardMessageAction ? (
               <DropdownMenuItem
-                disabled={!canSelectForwardMessage}
-                onSelect={(event) => {
-                  if (!canSelectForwardMessage) {
-                    event.preventDefault();
-                    return;
-                  }
-
+                onSelect={() => {
                   onForwardMessage?.(message);
                 }}
               >
                 <HugeiconsIcon
                   aria-hidden="true"
-                  icon={ArrowTurnForwardIcon}
+                  icon={LinkForwardIcon}
                   size={15}
                   strokeWidth={2}
                 />
@@ -958,13 +972,7 @@ function MessageActionAvatar({
             ) : null}
             {canMultiSelectMessage ? (
               <DropdownMenuItem
-                disabled={!canSelectMultiSelectMessage}
-                onSelect={(event) => {
-                  if (!canSelectMultiSelectMessage) {
-                    event.preventDefault();
-                    return;
-                  }
-
+                onSelect={() => {
                   onEnterMultiSelectMode?.(message);
                 }}
               >

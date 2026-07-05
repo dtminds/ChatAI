@@ -1735,6 +1735,54 @@ describe("message sent time preview", () => {
     expect(screen.queryByRole("menuitem", { name: "多选" })).not.toBeInTheDocument();
   });
 
+  it("hides forward and multi-select actions for video messages", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <MessageRow
+        canUseMessageForward
+        message={{
+          ...createTextMessage("视频消息"),
+          content: {
+            alt: "视频",
+            coverImageUrl: "https://example.com/video-cover.jpg",
+            downloadStatus: "finished",
+            durationLabel: "",
+            type: "video",
+            videoUrl: "https://example.com/video.mp4",
+          },
+        }}
+        onEnterMultiSelectMode={vi.fn()}
+        onForwardMessage={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+
+    expect(screen.queryByRole("menuitem", { name: "转发" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "多选" })).not.toBeInTheDocument();
+  });
+
+  it("hides multi-select action when onForwardMessage is not provided", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <MessageRow
+        canUseMessageForward
+        message={{
+          ...createTextMessage("可转发消息"),
+          seq: 1001,
+        }}
+        onEnterMultiSelectMode={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+
+    expect(screen.queryByRole("menuitem", { name: "转发" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "多选" })).not.toBeInTheDocument();
+  });
+
   it("renders multi-select checkbox when multi-select mode is active", () => {
     render(
       <MessageRow
@@ -1747,6 +1795,39 @@ describe("message sent time preview", () => {
     );
 
     expect(screen.getByRole("checkbox", { name: "选择消息" })).toBeChecked();
+  });
+
+  it("explains why a message cannot be selected in multi-select mode", async () => {
+    const user = userEvent.setup();
+    const message = {
+      ...createTextMessage("语音消息"),
+      content: {
+        audioUrl: "https://cdn.example.com/voice.amr",
+        durationLabel: "0:05",
+        type: "voice" as const,
+      },
+      rawMsgtype: "voice",
+    } satisfies ChatMessage;
+
+    render(
+      <ChatMessageList
+        canUseMessageForward
+        conversationId="conv-layout"
+        messages={[message]}
+        multiSelectMode
+        onToggleMessageSelection={vi.fn()}
+      />,
+    );
+
+    const checkbox = screen.getByRole("checkbox", { name: "选择消息" });
+
+    expect(checkbox).toBeDisabled();
+
+    await user.hover(checkbox.parentElement!);
+
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      "该消息暂不支持转发",
+    );
   });
 });
 

@@ -124,12 +124,12 @@ describe("settings sub-account routes", () => {
       account: "agent003",
       name: "客服三号",
       password_hash: "hashed-password",
+      platform: 5,
       role: "operator",
       status: 1,
       type: 0,
       uid: 9001,
     });
-    expect(db.insertedSubAccount).not.toHaveProperty("platform");
     expect(db.insertedRelations).toEqual([
       {
         platform: 5,

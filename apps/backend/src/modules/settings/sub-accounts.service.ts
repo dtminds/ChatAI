@@ -119,6 +119,7 @@ export class SubAccountSettingsService {
         account: normalizedAccount,
         name: normalizedName,
         password_hash: await hashPassword(normalizedPassword),
+        platform: scope.platform,
         role: payload.role,
         status: dbSubAccountStatus.active,
         type: dbSubAccountType.sub,

@@ -1711,6 +1711,7 @@ describe("message sent time preview", () => {
     await user.click(screen.getByRole("menuitem", { name: "多选" }));
 
     expect(onEnterMultiSelectMode).toHaveBeenCalledTimes(1);
+    expect(onEnterMultiSelectMode).toHaveBeenCalledWith(message);
   });
 
   it("hides forward and multi-select actions for failed messages", async () => {

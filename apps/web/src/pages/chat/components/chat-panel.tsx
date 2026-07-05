@@ -123,7 +123,7 @@ type ChatPanelProps = {
   isCollectedExpressionLoadingMore?: boolean;
   sendingCollectedExpressionId?: string | null;
   onCollectMaterial?: (message: ChatMessage) => void;
-  onEnterMultiSelectMode?: () => void;
+  onEnterMultiSelectMode?: (message?: ChatMessage) => void;
   onForwardMessage?: (message: ChatMessage) => void;
   onDeleteCollectedExpression?: (item: WorkbenchMaterialCollectionItemDto) => void;
   onLoadMoreCollectedExpressions?: () => void;

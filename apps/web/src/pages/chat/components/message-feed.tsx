@@ -91,7 +91,7 @@ type ChatMessageListProps = {
   showTimestamps?: boolean;
   onCollectMaterial?: (message: ChatMessage) => void;
   onDownloadMessageFile?: (message: ChatMessage) => void;
-  onEnterMultiSelectMode?: () => void;
+  onEnterMultiSelectMode?: (message?: ChatMessage) => void;
   onForwardMessage?: (message: ChatMessage) => void;
   onMentionMessage?: (message: ChatMessage) => void;
   onOpenQuotedMessage?: (quoteMsgId: string) => void;

@@ -39,7 +39,7 @@ type ChatMessagePanelProps = {
   selectedMessageKeys?: ReadonlySet<string>;
   onCollectMaterial?: (message: ChatMessage) => void;
   onDownloadMessageFile?: (message: ChatMessage) => void;
-  onEnterMultiSelectMode?: () => void;
+  onEnterMultiSelectMode?: (message?: ChatMessage) => void;
   onForwardMessage?: (message: ChatMessage) => void;
   onMentionMessage?: (message: ChatMessage) => void;
   onLoadOlderMessages: () => void;

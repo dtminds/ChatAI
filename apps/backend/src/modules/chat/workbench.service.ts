@@ -123,6 +123,7 @@ import {
   buildMaterialFileContentJson,
   buildMaterialH5ContentJson,
   buildMaterialImageContentJson,
+  buildMaterialMiniProgramContentJson,
   buildMaterialVideoContentJson,
   canEditMaterialCollectionItem,
   isOwnVideoMaterialUrl,
@@ -130,9 +131,12 @@ import {
   normalizeQuickReplyAttachments,
   patchMaterialFileContentJson,
   patchMaterialH5ContentJson,
+  patchMaterialMiniProgramContentJson,
+  patchMaterialVideoContentJson,
   resolveMaterialFileCollectFields,
   resolveMaterialH5CollectFields,
   resolveMaterialImageCollectFields,
+  resolveMaterialMiniProgramCollectFields,
   resolveMaterialVideoCollectFields,
   validateQuickReplyPayload,
 } from "@chatai/contracts";
@@ -2278,9 +2282,11 @@ export class MysqlWorkbenchService implements WorkbenchService {
     const requiredGroupId = groupId ?? 0;
     const page = normalizeMaterialPage(request.page);
     const pageSize = normalizeMaterialPageSize(request.pageSize);
+    const keyword = request.keyword?.trim();
     const result = await this.repository.listMaterialCollections({
       bizType,
       groupId: requiredGroupId,
+      ...(keyword ? { keyword } : {}),
       limit: pageSize,
       offset: (page - 1) * pageSize,
       subUserId,
@@ -2496,13 +2502,11 @@ export class MysqlWorkbenchService implements WorkbenchService {
       throw new NotFoundError("MATERIAL_COLLECTION_NOT_FOUND", "素材不存在");
     }
 
-    const patchResult =
-      scope.bizType === MATERIAL_COLLECTION_BIZ_TYPE.FILE
-        ? patchMaterialFileContentJson(record.content, request.fileName ?? "")
-        : patchMaterialH5ContentJson(record.content, {
-            description: request.description,
-            title: request.title ?? "",
-          });
+    const patchResult = buildMaterialCollectionPatch(
+      scope.bizType,
+      record.content,
+      request,
+    );
 
     if ("errorMsg" in patchResult) {
       throw new BadRequestError("MATERIAL_COLLECTION_INVALID", patchResult.errorMsg);
@@ -4836,6 +4840,21 @@ function normalizeMaterialCollectionPayload(
     };
   }
 
+  if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM) {
+    const resolved = resolveMaterialMiniProgramCollectFields(rawContent, {
+      title: overrides.title,
+    });
+
+    if ("errorMsg" in resolved) {
+      return resolved;
+    }
+
+    return {
+      content: buildMaterialMiniProgramContentJson(rawContent, resolved),
+      title: resolved.title,
+    };
+  }
+
   if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.IMAGE) {
     const resolved = resolveMaterialImageCollectFields(rawContent);
 
@@ -4850,7 +4869,9 @@ function normalizeMaterialCollectionPayload(
   }
 
   if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO) {
-    const resolved = resolveMaterialVideoCollectFields(rawContent);
+    const resolved = resolveMaterialVideoCollectFields(rawContent, {
+      title: overrides.title,
+    });
 
     if ("errorMsg" in resolved) {
       return resolved;
@@ -4858,7 +4879,7 @@ function normalizeMaterialCollectionPayload(
 
     return {
       content: buildMaterialVideoContentJson(rawContent, resolved),
-      title: "视频",
+      title: resolved.title,
     };
   }
 
@@ -4866,6 +4887,33 @@ function normalizeMaterialCollectionPayload(
     content: rawContent ?? "",
     title: readMaterialTitle(rawContent, contentType, msgInfoId),
   };
+}
+
+function buildMaterialCollectionPatch(
+  bizType: MaterialCollectionBizType,
+  rawContent: string | null | undefined,
+  request: WorkbenchMaterialCollectionUpdateRequest,
+) {
+  if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.FILE) {
+    return patchMaterialFileContentJson(rawContent, request.fileName ?? "");
+  }
+
+  if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.H5) {
+    return patchMaterialH5ContentJson(rawContent, {
+      description: request.description,
+      title: request.title ?? "",
+    });
+  }
+
+  if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM) {
+    return patchMaterialMiniProgramContentJson(rawContent, request.title ?? "");
+  }
+
+  if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO) {
+    return patchMaterialVideoContentJson(rawContent, request.title ?? "");
+  }
+
+  return { errorMsg: "当前素材不支持编辑" };
 }
 
 function readMaterialTitle(

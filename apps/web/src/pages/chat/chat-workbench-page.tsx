@@ -1363,6 +1363,7 @@ function ChatWorkbenchContent({
     materialCollectionGroups,
     materialLibraryGroups,
     materialLibraryItems,
+    materialLibrarySearchKeyword,
     pendingMaterialCollection,
     handleCollectMaterial,
     handleCreateMaterialGroup,
@@ -1377,6 +1378,7 @@ function ChatWorkbenchContent({
     handleOpenCollectedExpressions,
     handleOpenMaterialLibrary,
     handleRenameMaterialGroup,
+    handleSearchMaterialLibraryKeyword,
     handleSelectMaterial,
     handleSelectMaterialLibraryGroup,
     handleSubmitMaterialCollection,
@@ -2617,6 +2619,9 @@ function ChatWorkbenchContent({
           }
         }}
         onRenameGroup={handleRenameMaterialGroup}
+        onSearchKeywordChange={(keyword) => {
+          void handleSearchMaterialLibraryKeyword(keyword);
+        }}
         onSelectGroup={(groupId) => {
           void handleSelectMaterialLibraryGroup(groupId);
         }}
@@ -2624,6 +2629,7 @@ function ChatWorkbenchContent({
         onTopGroup={handleTopMaterialGroup}
         onTopMaterial={handleTopMaterial}
         open={activeMaterialLibraryBizType !== null}
+        searchKeyword={materialLibrarySearchKeyword}
       />
     </div>
   );

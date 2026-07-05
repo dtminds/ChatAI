@@ -492,6 +492,7 @@ const MaterialGroupBizTypeSchema = Type.Union([
 const MaterialCollectionsQuerySchema = Type.Object({
   biz_type: NumericStringSchema,
   group_id: Type.Optional(Type.String({ maxLength: 64, minLength: 1 })),
+  keyword: Type.Optional(Type.String({ maxLength: 100 })),
   page: Type.Optional(NumericStringSchema),
   page_size: Type.Optional(NumericStringSchema),
 });
@@ -1125,6 +1126,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
         {
           bizType: parseMaterialBizTypeQuery(request.query.biz_type),
           groupId: parseMaterialGroupIdQuery(request.query.group_id),
+          keyword: request.query.keyword,
           page: parsePositiveIntegerQuery(request.query.page) ?? 1,
           pageSize: Math.min(
             parsePositiveIntegerQuery(request.query.page_size) ?? 100,

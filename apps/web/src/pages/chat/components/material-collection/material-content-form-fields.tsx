@@ -178,6 +178,28 @@ export function MaterialContentFormFields({
     );
   }
 
+  if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM) {
+    return renderTitleField({
+      disabled,
+      id: "material-mini-program-title",
+      label: "小程序标题",
+      onChange,
+      placeholder: "请输入小程序标题",
+      values,
+    });
+  }
+
+  if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO) {
+    return renderTitleField({
+      disabled,
+      id: "material-video-title",
+      label: "视频标题",
+      onChange,
+      placeholder: "请输入视频标题",
+      values,
+    });
+  }
+
   return null;
 }
 
@@ -186,7 +208,9 @@ export function hasMaterialContentFormFields(
 ) {
   return (
     bizType === MATERIAL_COLLECTION_BIZ_TYPE.FILE ||
-    bizType === MATERIAL_COLLECTION_BIZ_TYPE.H5
+    bizType === MATERIAL_COLLECTION_BIZ_TYPE.H5 ||
+    bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM ||
+    bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO
   );
 }
 
@@ -211,5 +235,73 @@ export function getMaterialContentFormValidationError(
     return "errorMsg" in validated ? validated.errorMsg : null;
   }
 
+  if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM) {
+    const title = values.title.trim();
+
+    if (!title) {
+      return "小程序标题不能为空";
+    }
+
+    if (title.length > MATERIAL_COLLECTION_TITLE_MAX_LENGTH) {
+      return `小程序标题不能超过 ${MATERIAL_COLLECTION_TITLE_MAX_LENGTH} 个字符`;
+    }
+
+    return null;
+  }
+
+  if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO) {
+    return values.title.trim().length > MATERIAL_COLLECTION_TITLE_MAX_LENGTH
+      ? `视频标题不能超过 ${MATERIAL_COLLECTION_TITLE_MAX_LENGTH} 个字符`
+      : null;
+  }
+
   return null;
+}
+
+function renderTitleField({
+  disabled,
+  id,
+  label,
+  onChange,
+  placeholder,
+  values,
+}: {
+  disabled: boolean;
+  id: string;
+  label: string;
+  onChange: (values: MaterialContentFormValues) => void;
+  placeholder: string;
+  values: MaterialContentFormValues;
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-3">
+        <Label htmlFor={id}>{label}</Label>
+        <span
+          className={cn(
+            "text-xs",
+            values.title.length > MATERIAL_COLLECTION_TITLE_MAX_LENGTH
+              ? "text-destructive"
+              : "text-muted-foreground",
+          )}
+        >
+          {values.title.length}/{MATERIAL_COLLECTION_TITLE_MAX_LENGTH}
+        </span>
+      </div>
+      <Input
+        aria-label={label}
+        disabled={disabled}
+        id={id}
+        maxLength={MATERIAL_COLLECTION_TITLE_MAX_LENGTH}
+        onChange={(event) =>
+          onChange({
+            ...values,
+            title: event.target.value,
+          })
+        }
+        placeholder={placeholder}
+        value={values.title}
+      />
+    </div>
+  );
 }

@@ -48,6 +48,8 @@ type MaterialLibraryMutationRefresh =
   | "groups"
   | "groups-and-items-if-active-removed";
 
+const MATERIAL_LIBRARY_SEARCH_DEBOUNCE_MS = 300;
+
 type UseMaterialCollectionOptions = {
   bootstrapStatus: "idle" | "loading" | "ready" | "error";
   isMountedRef: RefObject<boolean>;
@@ -111,18 +113,37 @@ export function useMaterialCollection({
     useState(false);
   const [isMaterialLibraryLoadingMore, setIsMaterialLibraryLoadingMore] =
     useState(false);
+  const [materialLibrarySearchKeyword, setMaterialLibrarySearchKeyword] =
+    useState("");
 
   const materialLibraryRequestSeqRef = useRef(0);
   const activeMaterialLibraryBizTypeRef =
     useRef<ComposerMaterialBizType | null>(null);
   const activeMaterialLibraryGroupIdRef = useRef<string | null>(null);
+  const materialLibrarySearchKeywordRef = useRef("");
+  const materialLibrarySearchDebounceTimerRef = useRef<number | null>(null);
   const resolvedActiveConversationIdRef = useRef<string | undefined>(
     resolvedActiveConversationId,
   );
 
   activeMaterialLibraryBizTypeRef.current = activeMaterialLibraryBizType;
   activeMaterialLibraryGroupIdRef.current = activeMaterialLibraryGroupId;
+  materialLibrarySearchKeywordRef.current = materialLibrarySearchKeyword;
   resolvedActiveConversationIdRef.current = resolvedActiveConversationId;
+
+  const clearPendingMaterialLibrarySearch = useCallback(() => {
+    if (materialLibrarySearchDebounceTimerRef.current !== null) {
+      window.clearTimeout(materialLibrarySearchDebounceTimerRef.current);
+      materialLibrarySearchDebounceTimerRef.current = null;
+    }
+  }, []);
+
+  useEffect(
+    () => () => {
+      clearPendingMaterialLibrarySearch();
+    },
+    [clearPendingMaterialLibrarySearch],
+  );
 
   const refreshCollectedExpressions = useCallback(async () => {
     try {
@@ -192,19 +213,23 @@ export function useMaterialCollection({
     async ({
       bizType,
       groupId,
+      keyword,
       mode,
       page,
       requestSeq,
     }: {
       bizType: ComposerMaterialBizType;
       groupId: string;
+      keyword?: string;
       mode: "append" | "replace";
       page: number;
       requestSeq: number;
     }) => {
+      const normalizedKeyword = normalizeMaterialLibrarySearchKeyword(keyword);
       const response = await getWorkbenchService().listMaterialCollections({
         bizType,
         groupId,
+        ...(normalizedKeyword ? { keyword: normalizedKeyword } : {}),
         page,
         pageSize: 100,
       });
@@ -232,6 +257,7 @@ export function useMaterialCollection({
 
   const loadMaterialLibrary = useCallback(
     async (bizType: ComposerMaterialBizType) => {
+      clearPendingMaterialLibrarySearch();
       const requestSeq = materialLibraryRequestSeqRef.current + 1;
 
       materialLibraryRequestSeqRef.current = requestSeq;
@@ -244,6 +270,7 @@ export function useMaterialCollection({
       setMaterialLibraryItems([]);
       setMaterialLibraryPage(1);
       setHasMoreMaterialLibraryItems(false);
+      setMaterialLibrarySearchKeyword("");
 
       try {
         const groupsResponse = await getWorkbenchService().listMaterialGroups({
@@ -272,6 +299,7 @@ export function useMaterialCollection({
         await loadMaterialLibraryItems({
           bizType,
           groupId: firstGroupId,
+          keyword: "",
           mode: "replace",
           page: 1,
           requestSeq,
@@ -295,7 +323,7 @@ export function useMaterialCollection({
         }
       }
     },
-    [isMountedRef, loadMaterialLibraryItems],
+    [clearPendingMaterialLibrarySearch, isMountedRef, loadMaterialLibraryItems],
   );
 
   const reloadActiveMaterialLibraryItems = useCallback(
@@ -324,6 +352,7 @@ export function useMaterialCollection({
         await loadMaterialLibraryItems({
           bizType,
           groupId,
+          keyword: materialLibrarySearchKeywordRef.current,
           mode: "replace",
           page: 1,
           requestSeq,
@@ -394,7 +423,9 @@ export function useMaterialCollection({
           shouldReloadItemsBecauseActiveGroupRemoved ||
           shouldActivateInitialGroup
         ) {
+          clearPendingMaterialLibrarySearch();
           setActiveMaterialLibraryGroupId(nextGroupId);
+          setMaterialLibrarySearchKeyword("");
           setMaterialLibraryItems([]);
           setMaterialLibraryPage(1);
           setHasMoreMaterialLibraryItems(false);
@@ -404,6 +435,7 @@ export function useMaterialCollection({
             await loadMaterialLibraryItems({
               bizType,
               groupId: nextGroupId,
+              keyword: "",
               mode: "replace",
               page: 1,
               requestSeq,
@@ -429,7 +461,7 @@ export function useMaterialCollection({
         }
       }
     },
-    [isMountedRef, loadMaterialLibraryItems],
+    [clearPendingMaterialLibrarySearch, isMountedRef, loadMaterialLibraryItems],
   );
 
   const refreshMaterialList = useCallback(
@@ -667,10 +699,12 @@ export function useMaterialCollection({
         return;
       }
 
+      clearPendingMaterialLibrarySearch();
       const requestSeq = materialLibraryRequestSeqRef.current + 1;
 
       materialLibraryRequestSeqRef.current = requestSeq;
       setActiveMaterialLibraryGroupId(groupId);
+      setMaterialLibrarySearchKeyword("");
       setMaterialLibraryItems([]);
       setMaterialLibraryPage(1);
       setHasMoreMaterialLibraryItems(false);
@@ -682,6 +716,7 @@ export function useMaterialCollection({
         await loadMaterialLibraryItems({
           bizType: activeMaterialLibraryBizType,
           groupId,
+          keyword: "",
           mode: "replace",
           page: 1,
           requestSeq,
@@ -703,7 +738,98 @@ export function useMaterialCollection({
         }
       }
     },
-    [activeMaterialLibraryBizType, isMountedRef, loadMaterialLibraryItems],
+    [
+      activeMaterialLibraryBizType,
+      clearPendingMaterialLibrarySearch,
+      isMountedRef,
+      loadMaterialLibraryItems,
+    ],
+  );
+
+  const runMaterialLibrarySearch = useCallback(
+    async ({
+      bizType,
+      groupId,
+      keyword,
+    }: {
+      bizType: ComposerMaterialBizType;
+      groupId: string;
+      keyword: string;
+    }) => {
+      if (
+        activeMaterialLibraryBizTypeRef.current !== bizType ||
+        activeMaterialLibraryGroupIdRef.current !== groupId ||
+        materialLibrarySearchKeywordRef.current !== keyword
+      ) {
+        return;
+      }
+
+      const requestSeq = materialLibraryRequestSeqRef.current + 1;
+
+      materialLibraryRequestSeqRef.current = requestSeq;
+      setMaterialLibraryItems([]);
+      setMaterialLibraryPage(1);
+      setHasMoreMaterialLibraryItems(false);
+      setIsMaterialLibraryBusy(true);
+      setIsMaterialLibraryItemsLoading(true);
+      setIsMaterialLibraryLoadingMore(false);
+
+      try {
+        await loadMaterialLibraryItems({
+          bizType,
+          groupId,
+          keyword,
+          mode: "replace",
+          page: 1,
+          requestSeq,
+        });
+      } catch (error) {
+        if (
+          isMountedRef.current &&
+          materialLibraryRequestSeqRef.current === requestSeq
+        ) {
+          toast.warning(getMaterialErrorMessage(error, "素材加载失败"));
+        }
+      } finally {
+        if (
+          isMountedRef.current &&
+          materialLibraryRequestSeqRef.current === requestSeq
+        ) {
+          setIsMaterialLibraryBusy(false);
+          setIsMaterialLibraryItemsLoading(false);
+        }
+      }
+    },
+    [isMountedRef, loadMaterialLibraryItems],
+  );
+
+  const handleSearchMaterialLibraryKeyword = useCallback(
+    (keyword: string) => {
+      setMaterialLibrarySearchKeyword(keyword);
+      clearPendingMaterialLibrarySearch();
+      materialLibraryRequestSeqRef.current += 1;
+      setHasMoreMaterialLibraryItems(false);
+      setIsMaterialLibraryLoadingMore(false);
+
+      if (!activeMaterialLibraryBizType || !activeMaterialLibraryGroupId) {
+        return;
+      }
+
+      materialLibrarySearchDebounceTimerRef.current = window.setTimeout(() => {
+        materialLibrarySearchDebounceTimerRef.current = null;
+        void runMaterialLibrarySearch({
+          bizType: activeMaterialLibraryBizType,
+          groupId: activeMaterialLibraryGroupId,
+          keyword,
+        });
+      }, MATERIAL_LIBRARY_SEARCH_DEBOUNCE_MS);
+    },
+    [
+      activeMaterialLibraryBizType,
+      activeMaterialLibraryGroupId,
+      clearPendingMaterialLibrarySearch,
+      runMaterialLibrarySearch,
+    ],
   );
 
   const handleLoadMoreMaterialLibraryItems = useCallback(async () => {
@@ -726,6 +852,7 @@ export function useMaterialCollection({
       await loadMaterialLibraryItems({
         bizType: activeMaterialLibraryBizType,
         groupId: activeMaterialLibraryGroupId,
+        keyword: materialLibrarySearchKeyword,
         mode: "append",
         page: nextPage,
         requestSeq,
@@ -753,6 +880,7 @@ export function useMaterialCollection({
     isMaterialLibraryLoadingMore,
     isMountedRef,
     loadMaterialLibraryItems,
+    materialLibrarySearchKeyword,
     materialLibraryPage,
   ]);
 
@@ -804,6 +932,7 @@ export function useMaterialCollection({
       action: (bizType: ComposerMaterialBizType) => Promise<unknown>,
       fallbackMessage: string,
       refresh: MaterialLibraryMutationRefresh = "items",
+      successMessage?: string,
     ) => {
       setIsMaterialLibraryBusy(true);
 
@@ -822,6 +951,10 @@ export function useMaterialCollection({
           await reloadMaterialLibraryGroups(bizType, {
             reloadItemsIfActiveGroupRemoved: true,
           });
+        }
+
+        if (successMessage) {
+          toast.success(successMessage);
         }
       } catch (error) {
         if (isMountedRef.current) {
@@ -982,7 +1115,9 @@ export function useMaterialCollection({
             ? values.fileName
             : undefined,
         title:
-          item.bizType === MATERIAL_COLLECTION_BIZ_TYPE.H5
+          item.bizType === MATERIAL_COLLECTION_BIZ_TYPE.H5 ||
+          item.bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM ||
+          item.bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO
             ? values.title
             : undefined,
       });
@@ -1003,6 +1138,8 @@ export function useMaterialCollection({
         () =>
           getWorkbenchService().updateMaterialCollection(item.id, validated),
         "编辑素材失败",
+        "items",
+        "已保存",
       );
     },
     [runMaterialLibraryMutation],
@@ -1019,19 +1156,21 @@ export function useMaterialCollection({
   }, []);
 
   const resetMaterialLibrary = useCallback(() => {
+    clearPendingMaterialLibrarySearch();
     materialLibraryRequestSeqRef.current += 1;
     setActiveMaterialLibraryBizType(null);
     setActiveMaterialLibraryGroupId(null);
     setMaterialLibraryGroups([]);
     setMaterialLibraryItems([]);
     setMaterialLibraryPage(1);
+    setMaterialLibrarySearchKeyword("");
     setHasMoreMaterialLibraryItems(false);
     setIsMaterialLibraryGroupsLoading(false);
     setIsMaterialLibraryItemsLoading(false);
     setIsMaterialLibraryLoadingMore(false);
     setIsMaterialLibrarySending(false);
     setSendingMaterialId(null);
-  }, []);
+  }, [clearPendingMaterialLibrarySearch]);
 
   const resetMaterialSessionState = useCallback(() => {
     resetMaterialLibrary();
@@ -1138,6 +1277,7 @@ export function useMaterialCollection({
     materialCollectionGroups,
     materialLibraryGroups,
     materialLibraryItems,
+    materialLibrarySearchKeyword,
     pendingMaterialCollection,
     handleCollectMaterial,
     handleCreateMaterialGroup,
@@ -1152,6 +1292,7 @@ export function useMaterialCollection({
     handleOpenCollectedExpressions,
     handleOpenMaterialLibrary,
     handleRenameMaterialGroup,
+    handleSearchMaterialLibraryKeyword,
     handleSelectMaterial,
     handleSelectMaterialLibraryGroup,
     handleSubmitMaterialCollection,
@@ -1190,12 +1331,37 @@ function getCollectFormValuesFromMessage(
     };
   }
 
+  if (message.content.type === "mini-program") {
+    const title = (message.content.title ?? "").trim();
+    const appName = (message.content.appName ?? "").trim();
+
+    return {
+      description: "",
+      fileExtension: "",
+      fileName: "",
+      title: title || appName,
+    };
+  }
+
+  if (message.content.type === "video") {
+    return {
+      description: "",
+      fileExtension: "",
+      fileName: "",
+      title: "",
+    };
+  }
+
   return {
     description: "",
     fileExtension: "",
     fileName: "",
     title: "",
   };
+}
+
+function normalizeMaterialLibrarySearchKeyword(keyword: string | undefined) {
+  return keyword?.trim() || "";
 }
 
 function getMaterialBizTypeForMessage(

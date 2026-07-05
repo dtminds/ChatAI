@@ -206,7 +206,7 @@ describe("material collection mappers", () => {
       contentType: "video",
       groupId: "77",
       msgInfoId: "9007",
-      title: "视频",
+      title: "",
     });
   });
 

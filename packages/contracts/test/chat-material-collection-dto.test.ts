@@ -158,6 +158,7 @@ describe("chat material collection DTOs", () => {
     const listRequest: WorkbenchMaterialCollectionListRequest = {
       bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
       groupId: "group-1",
+      keyword: "报价",
       page: 1,
       pageSize: 100,
     };
@@ -235,6 +236,7 @@ describe("chat material collection DTOs", () => {
     };
 
     expect(listRequest.bizType).toBe(2);
+    expect(listRequest.keyword).toBe("报价");
     expect(listResponse.pagination.pageSize).toBe(100);
     expect(groupListRequest.bizType).toBe(2);
     expect(groupListResponse.groups).toHaveLength(1);

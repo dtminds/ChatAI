@@ -4929,7 +4929,7 @@ describe("MysqlWorkbenchService", () => {
         opSubUserId: "101",
         sort: 1_779_700_002_500,
         subUid: 0,
-        title: "视频",
+        title: "",
         uid: 9001,
       }),
     );
@@ -5101,7 +5101,7 @@ describe("MysqlWorkbenchService", () => {
         }),
         groupId: "9",
         msgInfoId: "9109",
-        title: "视频",
+        title: "",
       }),
     );
     nowSpy.mockRestore();
@@ -5198,7 +5198,7 @@ describe("MysqlWorkbenchService", () => {
         }),
         groupId: "9",
         msgInfoId: "9111",
-        title: "视频",
+        title: "",
       }),
     );
   });
@@ -5245,7 +5245,7 @@ describe("MysqlWorkbenchService", () => {
         }),
         groupId: "9",
         msgInfoId: "9114",
-        title: "视频",
+        title: "",
       }),
     );
   });
@@ -5351,7 +5351,7 @@ describe("MysqlWorkbenchService", () => {
   });
 
   it("material: rejects generated material title over collection limit", async () => {
-    const longFileName = `${"超".repeat(40)}.pdf`;
+    const longFileName = `${"超".repeat(70)}.pdf`;
     const repository = createMaterialRepository({
       findMaterialMessage: vi.fn().mockResolvedValue({
         content: JSON.stringify({
@@ -5373,7 +5373,7 @@ describe("MysqlWorkbenchService", () => {
       }),
     ).resolves.toEqual({
       success: false,
-      errorMsg: "文件名称不能超过 32 个字符",
+      errorMsg: "文件名称不能超过 64 个字符",
     });
 
     expect(repository.createMaterialCollection).not.toHaveBeenCalled();
@@ -5415,6 +5415,90 @@ describe("MysqlWorkbenchService", () => {
 
     expect(repository.findMaterialMessage).not.toHaveBeenCalled();
     expect(repository.createMaterialCollection).not.toHaveBeenCalled();
+  });
+
+  it("material: trims and forwards keyword when listing grouped collections", async () => {
+    const repository = createMaterialRepository({
+      listMaterialCollections: vi.fn().mockResolvedValue({
+        items: [createMaterialItem({ title: "报价文件" })],
+        total: 1,
+      }),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.listMaterialCollections("101", {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+        groupId: "9",
+        keyword: " 报价 ",
+        page: 2,
+        pageSize: 20,
+      }),
+    ).resolves.toMatchObject({
+      items: [expect.objectContaining({ title: "报价文件" })],
+      pagination: {
+        hasMore: false,
+        page: 2,
+        pageSize: 20,
+        total: 1,
+      },
+    });
+
+    expect(repository.listMaterialCollections).toHaveBeenCalledWith({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+      groupId: "9",
+      keyword: "报价",
+      limit: 20,
+      offset: 20,
+      subUserId: "101",
+      uid: 9001,
+    });
+  });
+
+  it("material: collects mini-program with submitted title", async () => {
+    const repository = createMaterialRepository({
+      createMaterialCollection: vi.fn().mockResolvedValue("188"),
+      findMaterialMessage: vi.fn().mockResolvedValue({
+        content: JSON.stringify({
+          appName: "商城",
+          fileUrl: "mini-program/cover.png",
+          title: "旧小程序标题",
+        }),
+        id: 9108,
+        msgid: "msg-mini-program-1",
+        msgtype: "weapp",
+        uid: 9001,
+      }),
+    });
+    const service = new MysqlWorkbenchService(repository, createJavaClient());
+
+    await expect(
+      service.collectMaterial("101", {
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM,
+        groupId: "9",
+        msgInfoId: "9108",
+        title: " 新小程序标题 ",
+      }),
+    ).resolves.toEqual({ success: true });
+
+    expect(repository.createMaterialCollection).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM,
+        groupId: "9",
+        msgInfoId: "9108",
+        subUid: 0,
+        title: "新小程序标题",
+      }),
+    );
+    expect(
+      JSON.parse(
+        vi.mocked(repository.createMaterialCollection).mock.calls[0]?.[0].content ??
+          "{}",
+      ),
+    ).toMatchObject({
+      appName: "商城",
+      title: "新小程序标题",
+    });
   });
 
   it("material: collects sphfeed messages into tenant materials", async () => {
@@ -5929,6 +6013,78 @@ describe("MysqlWorkbenchService", () => {
       id: "77",
       subUid: 0,
       title: "新标题",
+      uid: 9001,
+    });
+  });
+
+  it("material: updates mini-program and video collection titles when edited", async () => {
+    const miniProgramRepository = createMaterialRepository({
+      findMaterialCollectionRecord: vi.fn().mockResolvedValue({
+        content: JSON.stringify({
+          appName: "商城",
+          fileUrl: "mini-program/cover.png",
+          title: "旧小程序标题",
+        }),
+        id: "88",
+      }),
+      findMaterialCollectionScope: vi.fn().mockResolvedValue({
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM,
+        subUid: 0,
+      }),
+    });
+    const miniProgramService = new MysqlWorkbenchService(
+      miniProgramRepository,
+      createJavaClient(),
+    );
+
+    await expect(
+      miniProgramService.updateMaterialCollection("101", "88", {
+        title: " 新小程序标题 ",
+      }),
+    ).resolves.toEqual({ ok: true });
+
+    expect(miniProgramRepository.updateMaterialCollectionContent).toHaveBeenCalledWith({
+      content: JSON.stringify({
+        appName: "商城",
+        fileUrl: "mini-program/cover.png",
+        title: "新小程序标题",
+      }),
+      id: "88",
+      subUid: 0,
+      title: "新小程序标题",
+      uid: 9001,
+    });
+
+    const videoRepository = createMaterialRepository({
+      findMaterialCollectionRecord: vi.fn().mockResolvedValue({
+        content: JSON.stringify({
+          coverUrl: "s5/msg/20260514/272/video-cover.jpg",
+          fileUrl: "s5/msg/20260514/272/video.mp4",
+          title: "旧视频标题",
+        }),
+        id: "99",
+      }),
+      findMaterialCollectionScope: vi.fn().mockResolvedValue({
+        bizType: MATERIAL_COLLECTION_BIZ_TYPE.VIDEO,
+        subUid: 0,
+      }),
+    });
+    const videoService = new MysqlWorkbenchService(videoRepository, createJavaClient());
+
+    await expect(
+      videoService.updateMaterialCollection("101", "99", {
+        title: " ",
+      }),
+    ).resolves.toEqual({ ok: true });
+
+    expect(videoRepository.updateMaterialCollectionContent).toHaveBeenCalledWith({
+      content: JSON.stringify({
+        coverUrl: "s5/msg/20260514/272/video-cover.jpg",
+        fileUrl: "s5/msg/20260514/272/video.mp4",
+      }),
+      id: "99",
+      subUid: 0,
+      title: "",
       uid: 9001,
     });
   });

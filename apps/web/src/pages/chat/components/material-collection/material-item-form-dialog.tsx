@@ -54,7 +54,9 @@ export function MaterialItemFormDialog({
       ? hasMaterialFileNameBase(values.fileName, values.fileExtension)
       : bizType === MATERIAL_COLLECTION_BIZ_TYPE.H5
         ? values.title.trim().length > 0
-        : false;
+        : bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM
+          ? values.title.trim().length > 0
+          : bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO;
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
@@ -117,6 +119,14 @@ function getEditTitle(
 ) {
   if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.FILE) {
     return "编辑文件";
+  }
+
+  if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM) {
+    return "编辑小程序";
+  }
+
+  if (bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO) {
+    return "编辑视频";
   }
 
   return "编辑链接";

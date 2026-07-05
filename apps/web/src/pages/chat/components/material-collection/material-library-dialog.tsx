@@ -6,6 +6,7 @@ import {
   Folder01Icon,
   MoreHorizontalIcon,
   PinIcon,
+  Search01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -13,6 +14,7 @@ import {
   type WorkbenchMaterialCollectionGroupCreateRequest,
 } from "@chatai/contracts";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -49,6 +51,8 @@ import {
 import { MaterialItemFormDialog } from "@/pages/chat/components/material-collection/material-item-form-dialog";
 import type { MaterialContentFormValues } from "@/pages/chat/components/material-collection/material-content-form-fields";
 
+const MATERIAL_LIBRARY_SEARCH_KEYWORD_MAX_LENGTH = 100;
+
 type MaterialLibraryDialogProps = {
   activeGroupId: string | null;
   bizType: WorkbenchMaterialCollectionGroupCreateRequest["bizType"];
@@ -72,11 +76,13 @@ type MaterialLibraryDialogProps = {
   onMoveMaterial: (item: MaterialCollectionItem, groupId: string) => void;
   onOpenChange: (open: boolean) => void;
   onRenameGroup: (group: MaterialCollectionGroup, title: string) => void;
+  onSearchKeywordChange?: (keyword: string) => void;
   onSelectGroup: (groupId: string) => void;
   onSelectMaterial: (item: MaterialCollectionItem) => void;
   onTopGroup: (group: MaterialCollectionGroup) => void;
   onTopMaterial: (item: MaterialCollectionItem) => void;
   open: boolean;
+  searchKeyword?: string;
 };
 
 export function MaterialLibraryDialog({
@@ -99,11 +105,13 @@ export function MaterialLibraryDialog({
   onMoveMaterial,
   onOpenChange,
   onRenameGroup,
+  onSearchKeywordChange,
   onSelectGroup,
   onSelectMaterial,
   onTopGroup,
   onTopMaterial,
   open,
+  searchKeyword = "",
 }: MaterialLibraryDialogProps) {
   const [groupDialogState, setGroupDialogState] = useState<
     | { mode: "create" }
@@ -116,11 +124,11 @@ export function MaterialLibraryDialog({
   const isGroupLimitReached = isMaterialCollectionGroupLimitReached(groups.length);
   const isFileLibrary = bizType === MATERIAL_COLLECTION_BIZ_TYPE.FILE;
   const isImageLibrary = bizType === MATERIAL_COLLECTION_BIZ_TYPE.IMAGE;
-  const libraryHint = isMobileLayout
-    ? "选择素材后发送，更多菜单可管理素材"
-    : isFileLibrary
-      ? "选择文件后发送，右键菜单可调整排序或删除素材"
-      : "选择素材后发送，右键菜单可调整排序或删除素材";
+  const isSearchSupported = isMaterialLibrarySearchSupported(bizType);
+  const isSearching = isSearchSupported && searchKeyword.trim().length > 0;
+  const libraryHint = isFileLibrary
+    ? "选择文件后发送，右键菜单可调整排序或删除素材"
+    : "选择素材后发送，右键菜单可调整排序或删除素材";
 
   function handleSubmitGroupTitle(title: string) {
     if (groupDialogState?.mode === "edit") {
@@ -173,14 +181,8 @@ export function MaterialLibraryDialog({
           >
             {libraryTitle}
           </DialogTitle>
-          <DialogDescription
-            className={cn(
-              isMobileLayout
-                ? "mt-1 truncate text-[12px] leading-5 text-muted-foreground"
-                : "sr-only",
-            )}
-          >
-            {isMobileLayout ? libraryHint : "从分组中选择已收录内容"}
+          <DialogDescription className="sr-only">
+            从分组中选择已收录内容
           </DialogDescription>
         </div>
         {items.length > 0 && !isMobileLayout ? (
@@ -330,66 +332,103 @@ export function MaterialLibraryDialog({
               isMobileLayout ? "flex-1 rounded-none" : "rounded-[14px_0_0_14px]",
             )}
           >
-            {isItemsLoading ? (
-              <LoadingState label="正在加载素材" />
-            ) : items.length > 0 ? (
-              isFileLibrary ? (
-                <MaterialFileTable
-                  groups={groups}
-                  hasMoreItems={hasMoreItems}
-                  isBusy={isBusy}
-                  isLoadingMoreItems={isLoadingMoreItems}
-                  isMobileLayout={isMobileLayout}
-                  isSending={isSending}
-                  items={items}
-                  onCancel={() => onOpenChange(false)}
-                  onDelete={onDeleteMaterial}
-                  onEdit={setEditingMaterialItem}
-                  onLoadMoreItems={onLoadMoreItems}
-                  onMove={onMoveMaterial}
-                  onSelect={onSelectMaterial}
-                  onTop={onTopMaterial}
-                />
-              ) : isImageLibrary ? (
-                <MaterialImageGrid
-                  groups={groups}
-                  hasMoreItems={hasMoreItems}
-                  isBusy={isBusy}
-                  isLoadingMoreItems={isLoadingMoreItems}
-                  isMobileLayout={isMobileLayout}
-                  isSending={isSending}
-                  items={items}
-                  onCancel={() => onOpenChange(false)}
-                  onDeleteMaterial={onDeleteMaterial}
-                  onLoadMoreItems={onLoadMoreItems}
-                  onMoveMaterial={onMoveMaterial}
-                  onSendMaterial={onSelectMaterial}
-                  onTopMaterial={onTopMaterial}
-                />
-              ) : (
-                <MaterialCardGrid
-                  bizType={bizType}
-                  groups={groups}
-                  hasMoreItems={hasMoreItems}
-                  isBusy={isBusy}
-                  isLoadingMoreItems={isLoadingMoreItems}
-                  isMobileLayout={isMobileLayout}
-                  isSending={isSending}
-                  items={items}
-                  onCancel={() => onOpenChange(false)}
-                  onDeleteMaterial={onDeleteMaterial}
-                  onEditMaterial={setEditingMaterialItem}
-                  onLoadMoreItems={onLoadMoreItems}
-                  onMoveMaterial={onMoveMaterial}
-                  onSendMaterial={onSelectMaterial}
-                  onTopMaterial={onTopMaterial}
-                />
-              )
-            ) : (
-              <div className="flex min-h-[28rem] items-center justify-center text-sm text-muted-foreground">
-                暂无数据
+            {isSearchSupported ? (
+              <div
+                className={cn(
+                  "shrink-0 pt-3",
+                  isMobileLayout ? "px-4" : "px-6",
+                )}
+              >
+                <div
+                  className={cn(
+                    "relative",
+                    isMobileLayout ? "w-full" : "w-full max-w-64",
+                  )}
+                >
+                  <HugeiconsIcon
+                    className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+                    icon={Search01Icon}
+                    size={14}
+                    strokeWidth={1.8}
+                  />
+                  <Input
+                    aria-label="搜索素材"
+                    className="h-8 rounded-[8px] pl-8 text-sm"
+                    disabled={isGroupsLoading}
+                    maxLength={MATERIAL_LIBRARY_SEARCH_KEYWORD_MAX_LENGTH}
+                    onChange={(event) =>
+                      onSearchKeywordChange?.(event.target.value)
+                    }
+                    placeholder="搜索素材"
+                    value={searchKeyword}
+                  />
+                </div>
               </div>
-            )}
+            ) : null}
+            <div className="min-h-0 flex-1">
+              {isItemsLoading ? (
+                <LoadingState label="正在加载素材" />
+              ) : items.length > 0 ? (
+                isFileLibrary ? (
+                  <MaterialFileTable
+                    groups={groups}
+                    hasMoreItems={hasMoreItems}
+                    isBusy={isBusy}
+                    isLoadingMoreItems={isLoadingMoreItems}
+                    isMobileLayout={isMobileLayout}
+                    isSending={isSending}
+                    hasSearchHeader={isSearchSupported}
+                    items={items}
+                    onCancel={() => onOpenChange(false)}
+                    onDelete={onDeleteMaterial}
+                    onEdit={setEditingMaterialItem}
+                    onLoadMoreItems={onLoadMoreItems}
+                    onMove={onMoveMaterial}
+                    onSelect={onSelectMaterial}
+                    onTop={onTopMaterial}
+                  />
+                ) : isImageLibrary ? (
+                  <MaterialImageGrid
+                    groups={groups}
+                    hasMoreItems={hasMoreItems}
+                    isBusy={isBusy}
+                    isLoadingMoreItems={isLoadingMoreItems}
+                    isMobileLayout={isMobileLayout}
+                    isSending={isSending}
+                    items={items}
+                    onCancel={() => onOpenChange(false)}
+                    onDeleteMaterial={onDeleteMaterial}
+                    onLoadMoreItems={onLoadMoreItems}
+                    onMoveMaterial={onMoveMaterial}
+                    onSendMaterial={onSelectMaterial}
+                    onTopMaterial={onTopMaterial}
+                  />
+                ) : (
+                  <MaterialCardGrid
+                    bizType={bizType}
+                    groups={groups}
+                    hasMoreItems={hasMoreItems}
+                    isBusy={isBusy}
+                    isLoadingMoreItems={isLoadingMoreItems}
+                    hasSearchHeader={isSearchSupported}
+                    isMobileLayout={isMobileLayout}
+                    isSending={isSending}
+                    items={items}
+                    onCancel={() => onOpenChange(false)}
+                    onDeleteMaterial={onDeleteMaterial}
+                    onEditMaterial={setEditingMaterialItem}
+                    onLoadMoreItems={onLoadMoreItems}
+                    onMoveMaterial={onMoveMaterial}
+                    onSendMaterial={onSelectMaterial}
+                    onTopMaterial={onTopMaterial}
+                  />
+                )
+              ) : (
+                <div className="flex min-h-[28rem] items-center justify-center text-sm text-muted-foreground">
+                  {isSearching ? "未找到匹配素材" : "暂无数据"}
+                </div>
+              )}
+            </div>
           </section>
         </div>
         <MaterialGroupFormDialog
@@ -579,6 +618,17 @@ function getBizTypeLabel(
   }
 
   return "收录的H5";
+}
+
+function isMaterialLibrarySearchSupported(
+  bizType: WorkbenchMaterialCollectionGroupCreateRequest["bizType"],
+) {
+  return (
+    bizType === MATERIAL_COLLECTION_BIZ_TYPE.FILE ||
+    bizType === MATERIAL_COLLECTION_BIZ_TYPE.H5 ||
+    bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM ||
+    bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO
+  );
 }
 
 function getLibraryDialogStyle(

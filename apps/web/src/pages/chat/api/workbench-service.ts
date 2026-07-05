@@ -120,13 +120,17 @@ import {
   buildMaterialFileContentJson,
   buildMaterialH5ContentJson,
   buildMaterialImageContentJson,
+  buildMaterialMiniProgramContentJson,
   buildMaterialVideoContentJson,
   isOwnVideoMaterialUrl,
   patchMaterialFileContentJson,
   patchMaterialH5ContentJson,
+  patchMaterialMiniProgramContentJson,
+  patchMaterialVideoContentJson,
   resolveMaterialFileCollectFields,
   resolveMaterialH5CollectFields,
   resolveMaterialImageCollectFields,
+  resolveMaterialMiniProgramCollectFields,
   resolveMaterialVideoCollectFields,
   isQuickReplyLabelColor,
   normalizeQuickReplyAttachments,
@@ -522,11 +526,13 @@ export function createMockWorkbenchService(): WorkbenchService {
     async listMaterialCollections(request) {
       const page = request.page ?? 1;
       const pageSize = request.pageSize ?? 100;
+      const keyword = request.keyword?.trim();
       const matchingItems = state.materialItems
         .filter(
           (item) =>
             item.bizType === request.bizType &&
-            item.groupId === request.groupId,
+            item.groupId === request.groupId &&
+            (!keyword || item.title.includes(keyword)),
         )
         .sort(sortMaterialItems);
 
@@ -659,7 +665,11 @@ export function createMockWorkbenchService(): WorkbenchService {
                 description: request.description,
                 title: request.title ?? "",
               })
-            : null;
+            : item.bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM
+              ? patchMaterialMiniProgramContentJson(rawContent, request.title ?? "")
+              : item.bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO
+                ? patchMaterialVideoContentJson(rawContent, request.title ?? "")
+                : null;
 
       if (!patchResult) {
         return { ok: true };
@@ -2052,6 +2062,7 @@ export function createHttpWorkbenchService(): WorkbenchService {
           params: {
             biz_type: request.bizType,
             group_id: request.groupId,
+            keyword: request.keyword,
             page: request.page,
             page_size: request.pageSize,
           },
@@ -3140,6 +3151,23 @@ function resolveMockMaterialCollect(
     };
   }
 
+  if (request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM) {
+    const resolved = resolveMaterialMiniProgramCollectFields(rawContent, {
+      title: request.title,
+    });
+
+    if ("errorMsg" in resolved) {
+      return resolved;
+    }
+
+    return {
+      content: JSON.parse(
+        buildMaterialMiniProgramContentJson(rawContent, resolved),
+      ) as WorkbenchMaterialCollectionItemDto["content"],
+      title: resolved.title,
+    };
+  }
+
   if (request.bizType === MATERIAL_COLLECTION_BIZ_TYPE.IMAGE) {
     const resolved = resolveMaterialImageCollectFields(rawContent);
 
@@ -3160,7 +3188,9 @@ function resolveMockMaterialCollect(
       ? getMockMaterialSourceContentRecord(message, request.bizType)
       : {};
     let rawContentForCollection = rawContent;
-    let resolvedForCollection = resolveMaterialVideoCollectFields(rawContent);
+    let resolvedForCollection = resolveMaterialVideoCollectFields(rawContent, {
+      title: request.title,
+    });
 
     if (readString(contentRecord.downloadStatus) !== "finished") {
       return { errorMsg: "视频下载未完成，无法收录" };
@@ -3176,7 +3206,10 @@ function resolveMockMaterialCollect(
       }
 
       rawContentForCollection = buildMockTransferredVideoContent(rawContent);
-      resolvedForCollection = resolveMaterialVideoCollectFields(rawContentForCollection);
+      resolvedForCollection = resolveMaterialVideoCollectFields(
+        rawContentForCollection,
+        { title: request.title },
+      );
     }
 
     if ("errorMsg" in resolvedForCollection) {
@@ -3187,7 +3220,7 @@ function resolveMockMaterialCollect(
       content: JSON.parse(
         buildMaterialVideoContentJson(rawContentForCollection, resolvedForCollection),
       ) as WorkbenchMaterialCollectionItemDto["content"],
-      title: "视频",
+      title: resolvedForCollection.title,
     };
   }
 
@@ -3209,7 +3242,7 @@ function getMaterialTitle(message: WorkbenchMessageDto) {
   }
 
   if (message.contentType === "video") {
-    return "视频";
+    return "";
   }
 
   return (
@@ -3251,6 +3284,7 @@ function buildMockTransferredVideoContent(rawContent: string) {
   return buildMaterialVideoContentJson(rawContent, {
     coverUrl: resolved.coverUrl,
     fileUrl: "s5/msg/mock/transferred-video.mp4",
+    title: resolved.title,
   });
 }
 

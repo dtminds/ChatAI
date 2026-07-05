@@ -52,6 +52,66 @@ describe("material collection components", () => {
     expect(screen.getByRole("textbox", { name: "文件名称" })).toHaveValue("新名称");
   });
 
+  it("edits mini-program and video material titles", async () => {
+    const user = userEvent.setup();
+    const handleSubmit = vi.fn();
+    const { rerender } = render(
+      <MaterialItemFormDialog
+        bizType={MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM}
+        initialValues={{
+          description: "",
+          fileExtension: "",
+          fileName: "",
+          title: "客户跟进小程序",
+        }}
+        onOpenChange={() => undefined}
+        onSubmit={handleSubmit}
+        open
+      />,
+    );
+
+    expect(screen.getByRole("dialog", { name: "编辑小程序" })).toBeInTheDocument();
+    const miniTitleInput = screen.getByRole("textbox", { name: "小程序标题" });
+    await user.clear(miniTitleInput);
+    expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
+    await user.type(miniTitleInput, "新小程序标题");
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    expect(handleSubmit).toHaveBeenCalledWith({
+      description: "",
+      fileExtension: "",
+      fileName: "",
+      title: "新小程序标题",
+    });
+
+    rerender(
+      <MaterialItemFormDialog
+        bizType={MATERIAL_COLLECTION_BIZ_TYPE.VIDEO}
+        initialValues={{
+          description: "",
+          fileExtension: "",
+          fileName: "",
+          title: "产品视频",
+        }}
+        onOpenChange={() => undefined}
+        onSubmit={handleSubmit}
+        open
+      />,
+    );
+
+    expect(screen.getByRole("dialog", { name: "编辑视频" })).toBeInTheDocument();
+    const videoTitleInput = screen.getByRole("textbox", { name: "视频标题" });
+    await user.clear(videoTitleInput);
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    expect(handleSubmit).toHaveBeenLastCalledWith({
+      description: "",
+      fileExtension: "",
+      fileName: "",
+      title: "",
+    });
+  });
+
   it("submits the selected material group", async () => {
     const user = userEvent.setup();
     const handleSubmit = vi.fn();
@@ -147,17 +207,81 @@ describe("material collection components", () => {
     );
     expect(
       screen.getByText(
-        "受接口能力限制， 仅支持收录由该企微账号直接发送的视频，原视频大小需在30MB以内，以保障发送成功率。",
+        "受接口能力限制，仅支持收录由该企微账号直接发送的视频，原视频大小需在30MB以内，以保障发送成功率",
       ),
     ).toBeInTheDocument();
-    expect(screen.getByRole("alert")).toHaveClass(
-      "border-warning/30",
-      "bg-warning-muted",
-    );
     const collectButton = screen.getByRole("button", { name: "收录" });
     expect(collectButton).toBeDisabled();
     expect(collectButton).toHaveAttribute("aria-busy", "true");
     expect(collectButton.querySelector('[data-slot="spinner"]')).toBeInTheDocument();
+  });
+
+  it("collects mini-program and video title fields", async () => {
+    const user = userEvent.setup();
+    const handleMiniSubmit = vi.fn();
+    const handleVideoSubmit = vi.fn();
+    const view = render(
+      <MaterialGroupSelectDialog
+        bizType={MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM}
+        groups={[createGroup({ id: "group-mini", title: "小程序素材" })]}
+        initialValues={{
+          description: "",
+          fileExtension: "",
+          fileName: "",
+          title: "客户跟进小程序",
+        }}
+        isSaving={false}
+        onCreateGroup={async () => undefined}
+        onOpenChange={() => undefined}
+        onSubmit={handleMiniSubmit}
+        open
+      />,
+    );
+
+    const miniTitleInput = screen.getByRole("textbox", { name: "小程序标题" });
+    expect(miniTitleInput).toHaveValue("客户跟进小程序");
+    await user.clear(miniTitleInput);
+    expect(screen.getByRole("button", { name: "收录" })).toBeDisabled();
+    await user.type(miniTitleInput, "新的小程序标题");
+    await user.click(screen.getByRole("combobox", { name: "选择分组" }));
+    await user.click(await screen.findByRole("option", { name: "小程序素材" }));
+    await user.click(screen.getByRole("button", { name: "收录" }));
+
+    expect(handleMiniSubmit).toHaveBeenCalledWith({
+      groupId: "group-mini",
+      title: "新的小程序标题",
+    });
+
+    view.unmount();
+    render(
+      <MaterialGroupSelectDialog
+        bizType={MATERIAL_COLLECTION_BIZ_TYPE.VIDEO}
+        groups={[createGroup({ id: "group-video", title: "视频素材" })]}
+        initialValues={{
+          description: "",
+          fileExtension: "",
+          fileName: "",
+          title: "",
+        }}
+        isSaving={false}
+        onCreateGroup={async () => undefined}
+        onOpenChange={() => undefined}
+        onSubmit={handleVideoSubmit}
+        open
+      />,
+    );
+
+    const videoTitleInput = screen.getByRole("textbox", { name: "视频标题" });
+    expect(videoTitleInput).toHaveValue("");
+    await user.type(videoTitleInput, "产品视频");
+    await user.click(screen.getByRole("combobox", { name: "选择分组" }));
+    await user.click(await screen.findByRole("option", { name: "视频素材" }));
+    await user.click(screen.getByRole("button", { name: "收录" }));
+
+    expect(handleVideoSubmit).toHaveBeenCalledWith({
+      groupId: "group-video",
+      title: "产品视频",
+    });
   });
 
   it("limits material group names to 10 characters", async () => {
@@ -274,6 +398,42 @@ describe("material collection components", () => {
     );
 
     expect(screen.getByRole("button", { name: "新建分组" })).toBeDisabled();
+  });
+
+  it("renders search for searchable material libraries", async () => {
+    const user = userEvent.setup();
+    const handleSearch = vi.fn();
+
+    render(
+      <MaterialLibraryDialog
+        activeGroupId="group-file"
+        bizType={MATERIAL_COLLECTION_BIZ_TYPE.FILE}
+        groups={[createGroup({ id: "group-file", title: "常用文件" })]}
+        items={[]}
+        onCreateGroup={() => undefined}
+        onDeleteGroup={() => undefined}
+        onDeleteMaterial={() => undefined}
+        onEditMaterial={() => undefined}
+        onMoveMaterial={() => undefined}
+        onOpenChange={() => undefined}
+        onRenameGroup={() => undefined}
+        onSearchKeywordChange={handleSearch}
+        onSelectGroup={() => undefined}
+        onSelectMaterial={() => undefined}
+        onTopGroup={() => undefined}
+        onTopMaterial={() => undefined}
+        open
+        searchKeyword="报价"
+      />,
+    );
+
+    const searchInput = screen.getByRole("textbox", { name: "搜索素材" });
+    expect(searchInput).toHaveValue("报价");
+    expect(screen.getByText("未找到匹配素材")).toBeInTheDocument();
+
+    await user.type(searchInput, "单");
+
+    expect(handleSearch).toHaveBeenLastCalledWith("报价单");
   });
 
   it("renders collected material with existing message card components", () => {
@@ -824,8 +984,6 @@ describe("material collection components", () => {
 
     expect(screen.getByRole("dialog", { name: "收录的视频" }))
       .toHaveClass("h-svh", "w-screen", "translate-x-0", "translate-y-0");
-    expect(screen.getByText("选择素材后发送，更多菜单可管理素材"))
-      .toBeInTheDocument();
     expect(screen.queryByText(/右键菜单/)).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "素材分组列表" }))
       .toHaveClass("shrink-0", "overflow-x-auto");

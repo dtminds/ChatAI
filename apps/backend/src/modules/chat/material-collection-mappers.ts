@@ -173,7 +173,7 @@ function resolveTitle(
   }
 
   if (contentType === "video") {
-    return "视频";
+    return "";
   }
 
   return (

@@ -190,28 +190,25 @@ function MaterialImageTile({
           selected={selected}
         />
       </button>
-      <Button
-        aria-label={`打开 ${image.alt} 操作菜单`}
-        className={cn(
-          "absolute size-7 rounded-[8px] bg-background/90 p-0 text-foreground shadow-sm backdrop-blur transition-opacity hover:bg-background focus-visible:opacity-100 group-hover/image:opacity-100",
-          isMobileLayout
-            ? "bottom-2 right-11 opacity-100"
-            : "left-2 top-2 opacity-0",
-        )}
-        onClick={(event) => {
-          event.stopPropagation();
-          const rect = event.currentTarget.getBoundingClientRect();
-          setContextMenu({
-            x: rect.left,
-            y: rect.bottom + 4,
-          });
-        }}
-        size="icon"
-        type="button"
-        variant="ghost"
-      >
-        <HugeiconsIcon icon={MoreHorizontalIcon} size={15} strokeWidth={1.8} />
-      </Button>
+      {isMobileLayout ? (
+        <Button
+          aria-label={`打开 ${image.alt} 操作菜单`}
+          className="absolute bottom-2 right-11 size-7 rounded-[8px] bg-background/90 p-0 text-foreground shadow-sm backdrop-blur hover:bg-background"
+          onClick={(event) => {
+            event.stopPropagation();
+            const rect = event.currentTarget.getBoundingClientRect();
+            setContextMenu({
+              x: rect.left,
+              y: rect.bottom + 4,
+            });
+          }}
+          size="icon"
+          type="button"
+          variant="ghost"
+        >
+          <HugeiconsIcon icon={MoreHorizontalIcon} size={15} strokeWidth={1.8} />
+        </Button>
+      ) : null}
       <Button
         aria-label={`查看大图 ${image.alt}`}
         className={cn(

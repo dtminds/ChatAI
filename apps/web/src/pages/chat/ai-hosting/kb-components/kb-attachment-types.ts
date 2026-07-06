@@ -30,18 +30,14 @@ export type KbAttachmentItem = {
 
 export function getKbAttachmentPrimaryColumnLabel(type: KbAttachmentType) {
   const labels: Record<KbAttachmentType, string> = {
-    [KB_ATTACHMENT_TYPE.IMAGE]: "描述",
-    [KB_ATTACHMENT_TYPE.VIDEO]: "描述",
+    [KB_ATTACHMENT_TYPE.IMAGE]: "图片",
+    [KB_ATTACHMENT_TYPE.VIDEO]: "视频",
     [KB_ATTACHMENT_TYPE.FILE]: "文件",
     [KB_ATTACHMENT_TYPE.LINK]: "链接",
     [KB_ATTACHMENT_TYPE.MINI_PROGRAM]: "小程序",
   };
 
   return labels[type];
-}
-
-export function usesCombinedDescriptionColumn(type: KbAttachmentType) {
-  return type === KB_ATTACHMENT_TYPE.IMAGE || type === KB_ATTACHMENT_TYPE.VIDEO;
 }
 
 export function getKbAttachmentDeleteActionLabel(type: KbAttachmentType) {

@@ -26,7 +26,6 @@ import {
   KB_ATTACHMENT_TYPE,
   type KbAttachmentItem,
   type KbAttachmentType,
-  usesCombinedDescriptionColumn,
 } from "./kb-attachment-types";
 
 const PRIMARY_COLUMN_MAX_WIDTH_CLASS = "max-w-60";
@@ -52,42 +51,38 @@ export function KbAttachmentsTable({
   onToggleSelectItem,
   selectedIds,
 }: KbAttachmentsTableProps) {
-  const combinedDescription = usesCombinedDescriptionColumn(activeType);
   const primaryColumnLabel = getKbAttachmentPrimaryColumnLabel(activeType);
   const deleteActionLabel = getKbAttachmentDeleteActionLabel(activeType);
-  const columnCount = combinedDescription ? 4 : 5;
+  const columnCount = 5;
   const allSelected = items.length > 0 && items.every((item) => selectedIds.includes(item.id));
 
   return (
     <TooltipProvider>
-      <div className="overflow-hidden rounded-[8px] border border-border bg-background">
-        <Table aria-label="附件列表" className="table-fixed">
-          <TableHeader>
-            <TableRow className="hover:bg-transparent">
-              <TableHead className="h-11 w-12 px-4">
-                <Checkbox
-                  aria-label="全选附件"
-                  checked={allSelected}
-                  onCheckedChange={(checked) => onToggleSelectAll(checked === true)}
-                />
-              </TableHead>
-              <TableHead
-                className={cn(
-                  "h-11 px-4 text-sm font-medium text-muted-foreground",
-                  PRIMARY_COLUMN_MAX_WIDTH_CLASS,
-                )}
-              >
-                {primaryColumnLabel}
-              </TableHead>
-            {!combinedDescription ? (
-              <TableHead className="h-11 px-4 text-sm font-medium text-muted-foreground">
-                描述
-              </TableHead>
-            ) : null}
-            <TableHead className="h-11 w-44 px-4 text-sm font-medium text-muted-foreground">
+      <Table aria-label="附件列表" className="table-fixed">
+        <TableHeader>
+          <TableRow className="hover:bg-transparent">
+            <TableHead className="h-11 w-12 px-4">
+              <Checkbox
+                aria-label="全选附件"
+                checked={allSelected}
+                onCheckedChange={(checked) => onToggleSelectAll(checked === true)}
+              />
+            </TableHead>
+            <TableHead
+              className={cn(
+                "h-11 px-4",
+                PRIMARY_COLUMN_MAX_WIDTH_CLASS,
+              )}
+            >
+              {primaryColumnLabel}
+            </TableHead>
+            <TableHead className="h-11 px-4">
+              描述
+            </TableHead>
+            <TableHead className="h-11 w-44 px-4">
               创建时间
             </TableHead>
-            <TableHead className="h-11 w-28 px-4 text-right text-sm font-medium text-muted-foreground">
+            <TableHead className="h-11 w-28 px-4 text-right">
               操作
             </TableHead>
           </TableRow>
@@ -110,27 +105,20 @@ export function KbAttachmentsTable({
               </TableCell>
               <TableCell
                 className={cn(
-                  "px-4 py-4",
+                  "px-4 py-4 align-top",
                   PRIMARY_COLUMN_MAX_WIDTH_CLASS,
-                  combinedDescription ? "align-middle" : "align-top",
                 )}
               >
-                {combinedDescription ? (
-                  <KbAttachmentCombinedDescriptionCell item={item} />
-                ) : (
-                  <KbAttachmentPrimaryCell item={item} />
-                )}
+                <KbAttachmentPrimaryCell item={item} />
               </TableCell>
-              {!combinedDescription ? (
-                <TableCell className="px-4 py-4 align-middle">
-                  <TableOverflowTooltip
-                    className="line-clamp-4 text-sm leading-6 text-muted-foreground"
-                    tooltip={item.description}
-                  >
-                    {item.description}
-                  </TableOverflowTooltip>
-                </TableCell>
-              ) : null}
+              <TableCell className="px-4 py-4 align-middle">
+                <TableOverflowTooltip
+                  className="line-clamp-4 text-sm leading-6 text-muted-foreground"
+                  tooltip={item.description}
+                >
+                  {item.description}
+                </TableOverflowTooltip>
+              </TableCell>
               <TableCell className="px-4 py-4 align-middle text-sm text-foreground">
                 {formatKbAttachmentCreatedAt(item.createdAt)}
               </TableCell>
@@ -159,26 +147,18 @@ export function KbAttachmentsTable({
             : null}
         </TableBody>
       </Table>
-    </div>
     </TooltipProvider>
   );
 }
 
-function KbAttachmentCombinedDescriptionCell({ item }: { item: KbAttachmentItem }) {
-  return (
-    <div className="flex min-w-0 max-w-full items-center gap-3">
-      <KbAttachmentThumbnail item={item} />
-      <TableOverflowTooltip
-        className="min-w-0 flex-1 line-clamp-4 text-sm leading-6 text-muted-foreground"
-        tooltip={item.description}
-      >
-        {item.description}
-      </TableOverflowTooltip>
-    </div>
-  );
-}
-
 function KbAttachmentPrimaryCell({ item }: { item: KbAttachmentItem }) {
+  if (
+    item.attachmentType === KB_ATTACHMENT_TYPE.IMAGE ||
+    item.attachmentType === KB_ATTACHMENT_TYPE.VIDEO
+  ) {
+    return <KbAttachmentThumbnail item={item} />;
+  }
+
   if (item.attachmentType === KB_ATTACHMENT_TYPE.FILE) {
     return (
       <div className="flex min-w-0 items-start gap-3">
@@ -206,7 +186,7 @@ function KbAttachmentPrimaryCell({ item }: { item: KbAttachmentItem }) {
       <div className="flex min-w-0 max-w-full items-start gap-3">
         <KbAttachmentThumbnail item={item} />
         <TableOverflowTooltip
-          className="min-w-0 flex-1 truncate text-sm font-medium text-foreground"
+          className="min-w-0 flex-1 whitespace-normal line-clamp-2 text-sm font-medium leading-5 text-foreground"
           tooltip={getKbAttachmentTitle(item.payload)}
         >
           {getKbAttachmentTitle(item.payload)}
@@ -222,7 +202,7 @@ function KbAttachmentPrimaryCell({ item }: { item: KbAttachmentItem }) {
       <KbAttachmentThumbnail item={item} />
       <div className="min-w-0 max-w-full flex-1">
         <TableOverflowTooltip
-          className="truncate text-sm font-medium text-foreground"
+          className="whitespace-normal line-clamp-2 text-sm font-medium leading-5 text-foreground"
           tooltip={title}
         >
           {title}

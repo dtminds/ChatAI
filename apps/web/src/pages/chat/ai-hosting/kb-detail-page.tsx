@@ -9,7 +9,9 @@ import {
   Clock04Icon,
   CustomerService01Icon,
   DeliveryReturn02Icon,
+  Knowledge02Icon,
   Loading03Icon,
+  MessagePreview01Icon,
   MessageSearch02Icon,
   Search01Icon,
   ShippingTruck01Icon,
@@ -488,15 +490,29 @@ export function KbDetailPage() {
           <div className="flex flex-wrap items-center gap-5">
             <TabsList className="h-10 w-fit justify-start gap-0 rounded-[10px] bg-muted p-1">
               <TabsTrigger
-                className="h-8 min-w-[4.5rem] rounded-[8px] px-4 text-sm text-foreground shadow-none data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
+                className="h-8 min-w-[4.5rem] gap-1.5 rounded-[8px] px-4 text-sm text-foreground shadow-none data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
                 value="knowledge"
               >
+                <HugeiconsIcon
+                  aria-hidden="true"
+                  color="currentColor"
+                  icon={Knowledge02Icon}
+                  size={15}
+                  strokeWidth={1.8}
+                />
                 知识
               </TabsTrigger>
               <TabsTrigger
-                className="h-8 min-w-[4.5rem] rounded-[8px] px-4 text-sm text-foreground shadow-none data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
+                className="h-8 min-w-[4.5rem] gap-1.5 rounded-[8px] px-4 text-sm text-foreground shadow-none data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
                 value="attachments"
               >
+                <HugeiconsIcon
+                  aria-hidden="true"
+                  color="currentColor"
+                  icon={MessagePreview01Icon}
+                  size={15}
+                  strokeWidth={1.8}
+                />
                 附件
               </TabsTrigger>
             </TabsList>

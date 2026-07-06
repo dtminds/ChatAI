@@ -20,7 +20,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
@@ -42,7 +41,6 @@ import {
   getKbAttachmentSelectLabel,
   getKbAttachmentTitle,
   getKbMaterialBizType,
-  isKbLocalUploadedImageMaterial,
   KB_ATTACHMENT_DESCRIPTION_HINT_EMPHASIS,
   KB_ATTACHMENT_TYPE,
   type KbAttachmentItem,
@@ -52,8 +50,6 @@ import { RequiredLabel, createLocalDocId } from "./shared";
 
 const IMAGE_ATTACHMENT_ACCEPT =
   "image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp";
-
-type ImageUploadSource = "local" | "material";
 
 type KbAddAttachmentDialogProps = {
   attachmentType: KbAttachmentType;
@@ -75,7 +71,6 @@ export function KbAddAttachmentDialog({
   const isMountedRef = useRef(true);
   const localObjectUrlRef = useRef<string | null>(null);
   const [description, setDescription] = useState("");
-  const [imageSource, setImageSource] = useState<ImageUploadSource>("local");
   const [selectedPayload, setSelectedPayload] = useState<QuickReplyDraftAttachment | null>(
     null,
   );
@@ -107,7 +102,6 @@ export function KbAddAttachmentDialog({
     if (!open) {
       revokeLocalObjectUrl();
       setDescription("");
-      setImageSource("local");
       setSelectedPayload(null);
       setMaterialPickerOpen(false);
       setEditEchoLoading(false);
@@ -126,7 +120,6 @@ export function KbAddAttachmentDialog({
 
     setDescription(editingItem.description);
     setSelectedPayload(editingItem.payload);
-    setImageSource(resolveImageUploadSource(editingItem.payload));
     setEditEchoLoading(
       needsEditAttachmentPreviewLoad(attachmentType, editingItem.payload),
     );
@@ -226,8 +219,6 @@ export function KbAddAttachmentDialog({
             ) : attachmentType === KB_ATTACHMENT_TYPE.IMAGE ? (
               <ImageAttachmentFields
                 imageInputRef={imageInputRef}
-                imageSource={imageSource}
-                onImageSourceChange={setImageSource}
                 onOpenMaterialPicker={() => setMaterialPickerOpen(true)}
                 onSelectLocalImage={(file) => {
                   revokeLocalObjectUrl();
@@ -327,17 +318,13 @@ function EditAttachmentEchoLoadingState() {
 
 function ImageAttachmentFields({
   imageInputRef,
-  imageSource,
   onClearSelection,
-  onImageSourceChange,
   onOpenMaterialPicker,
   onSelectLocalImage,
   selectedPayload,
 }: {
   imageInputRef: React.RefObject<HTMLInputElement | null>;
-  imageSource: ImageUploadSource;
   onClearSelection: () => void;
-  onImageSourceChange: (source: ImageUploadSource) => void;
   onOpenMaterialPicker: () => void;
   onSelectLocalImage: (file: File) => void;
   selectedPayload: QuickReplyDraftAttachment | null;
@@ -352,110 +339,89 @@ function ImageAttachmentFields({
       : undefined;
 
   return (
-    <div className="space-y-4">
-      <RadioGroup
-        className="flex flex-wrap gap-6"
-        onValueChange={(value) => {
-          onImageSourceChange(value as ImageUploadSource);
-          onClearSelection();
+    <div className="space-y-2">
+      <Label>从收录的素材中选择</Label>
+      <input
+        accept={IMAGE_ATTACHMENT_ACCEPT}
+        aria-label="上传图片"
+        className="sr-only"
+        onChange={(event) => {
+          const file = event.currentTarget.files?.[0];
+
+          if (file) {
+            onSelectLocalImage(file);
+          }
         }}
-        value={imageSource}
-      >
-        <div className="flex items-center gap-2">
-          <RadioGroupItem id="kb-image-source-local" value="local" />
-          <Label className="font-normal" htmlFor="kb-image-source-local">
-            本地上传
-          </Label>
-        </div>
-        <div className="flex items-center gap-2">
-          <RadioGroupItem id="kb-image-source-material" value="material" />
-          <Label className="font-normal" htmlFor="kb-image-source-material">
-            从采集素材库选择
-          </Label>
-        </div>
-      </RadioGroup>
+        ref={imageInputRef}
+        type="file"
+      />
 
-      {imageSource === "local" ? (
-        <div className="space-y-2">
-          <input
-            accept={IMAGE_ATTACHMENT_ACCEPT}
-            aria-label="上传图片"
-            className="sr-only"
-            onChange={(event) => {
-              const file = event.currentTarget.files?.[0];
-
-              if (file) {
-                onSelectLocalImage(file);
-              }
-            }}
-            ref={imageInputRef}
-            type="file"
-          />
-
-          {localFile ? (
-            <div className="flex min-w-0 items-center gap-3 rounded-[8px] border bg-background px-3 py-2.5">
-              <span className="flex size-10 shrink-0 items-center justify-center rounded-[8px] bg-primary/10 text-primary">
-                <HugeiconsIcon
-                  color="currentColor"
-                  icon={FileImageIcon}
-                  size={19}
-                  strokeWidth={1.8}
-                />
-              </span>
-              <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
-                {localFile.name}（{formatFileSize(localFile.size)}）
-              </span>
-              <Button
-                aria-label="移除已选择图片"
-                className="size-8 shrink-0"
-                onClick={onClearSelection}
-                size="icon"
-                type="button"
-                variant="ghost"
-              >
-                <HugeiconsIcon
-                  color="currentColor"
-                  icon={Cancel01Icon}
-                  size={16}
-                  strokeWidth={1.8}
-                />
-              </Button>
-            </div>
-          ) : localPreviewUrl ? (
-            <KbAttachmentPayloadPreview
-              attachmentType={KB_ATTACHMENT_TYPE.IMAGE}
-              onClear={onClearSelection}
-              payload={selectedPayload!}
+      {localFile ? (
+        <div className="flex min-w-0 items-center gap-3 rounded-[8px] border bg-background px-3 py-2.5">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-[8px] bg-primary/10 text-primary">
+            <HugeiconsIcon
+              color="currentColor"
+              icon={FileImageIcon}
+              size={19}
+              strokeWidth={1.8}
             />
-          ) : (
-            <button
-              className="flex size-28 flex-col items-center justify-center gap-2 rounded-[8px] border border-dashed border-border bg-muted/30 text-sm text-muted-foreground transition-colors hover:border-primary/60 hover:bg-primary/[0.03] hover:text-foreground focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/20"
-              onClick={() => imageInputRef.current?.click()}
-              type="button"
-            >
-              <HugeiconsIcon
-                color="currentColor"
-                icon={PlusSignIcon}
-                size={24}
-                strokeWidth={1.8}
-              />
-              上传图片
-            </button>
-          )}
-
-          <p className="text-xs leading-5 text-muted-foreground">
-            仅支持上传 jpg、jpeg、png、webp 格式的图片
-          </p>
+          </span>
+          <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
+            {localFile.name}（{formatFileSize(localFile.size)}）
+          </span>
+          <Button
+            aria-label="移除已选择图片"
+            className="size-8 shrink-0"
+            onClick={onClearSelection}
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
+            <HugeiconsIcon
+              color="currentColor"
+              icon={Cancel01Icon}
+              size={16}
+              strokeWidth={1.8}
+            />
+          </Button>
         </div>
-      ) : (
-        <MaterialAttachmentField
+      ) : localPreviewUrl ? (
+        <KbAttachmentPayloadPreview
           attachmentType={KB_ATTACHMENT_TYPE.IMAGE}
-          label="选择图片"
-          onClearSelection={onClearSelection}
-          onOpenPicker={onOpenMaterialPicker}
-          selectedPayload={selectedPayload}
+          onClear={onClearSelection}
+          payload={selectedPayload!}
         />
+      ) : (
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            className="h-10 gap-2"
+            onClick={onOpenMaterialPicker}
+            type="button"
+            variant="outline"
+          >
+            <HugeiconsIcon
+              color="currentColor"
+              icon={PlusSignIcon}
+              size={16}
+              strokeWidth={1.8}
+            />
+            选择图片
+          </Button>
+          <span className="text-sm text-muted-foreground">或</span>
+          <Button
+            className="h-10 px-0 text-sm"
+            onClick={() => imageInputRef.current?.click()}
+            type="button"
+            variant="link"
+          >
+            本地上传
+          </Button>
+        </div>
       )}
+
+      <p className="text-xs leading-5 text-muted-foreground">
+        仅支持上传 jpg、jpeg、png、webp 格式的图片
+      </p>
     </div>
   );
 }
@@ -475,7 +441,7 @@ function MaterialAttachmentField({
 }) {
   return (
     <div className="space-y-2">
-      <Label>从采集素材库选择</Label>
+      <Label>从收录的素材中选择</Label>
 
       {selectedPayload ? (
         <KbAttachmentPayloadPreview
@@ -585,38 +551,33 @@ function KbAttachmentPayloadPreview({
 
   if (attachmentType === KB_ATTACHMENT_TYPE.VIDEO && payload.type === "file") {
     return (
-      <div className="inline-flex min-w-0 max-w-full items-center gap-3">
-        <MaterialPreviewShell clearLabel="移除已选择视频" onClear={onClear}>
-          <div
-            className={cn(
-              "relative size-16 overflow-hidden rounded-[8px] border border-border bg-muted",
-              !previewUrl && "border-dashed",
-            )}
-          >
-            {previewUrl ? (
-              <RemotePreviewImage
-                className="size-full object-cover"
-                onPreviewReady={onPreviewReady}
-                previewUrl={previewUrl}
+      <MaterialPreviewShell clearLabel="移除已选择视频" onClear={onClear}>
+        <div
+          className={cn(
+            "relative size-16 overflow-hidden rounded-[8px] border border-border bg-muted",
+            !previewUrl && "border-dashed",
+          )}
+        >
+          {previewUrl ? (
+            <RemotePreviewImage
+              className="size-full object-cover"
+              onPreviewReady={onPreviewReady}
+              previewUrl={previewUrl}
+            />
+          ) : null}
+          <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/10">
+            <span className="flex size-7 items-center justify-center rounded-full bg-black/45 text-white">
+              <HugeiconsIcon
+                aria-hidden="true"
+                color="currentColor"
+                icon={PlayIcon}
+                size={14}
+                strokeWidth={1.8}
               />
-            ) : null}
-            <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/10">
-              <span className="flex size-7 items-center justify-center rounded-full bg-black/45 text-white">
-                <HugeiconsIcon
-                  aria-hidden="true"
-                  color="currentColor"
-                  icon={PlayIcon}
-                  size={14}
-                  strokeWidth={1.8}
-                />
-              </span>
             </span>
-          </div>
-        </MaterialPreviewShell>
-        <p className="min-w-0 max-w-60 truncate text-sm text-foreground">
-          {getKbAttachmentTitle(payload)}
-        </p>
-      </div>
+          </span>
+        </div>
+      </MaterialPreviewShell>
     );
   }
 
@@ -782,20 +743,4 @@ function getAttachmentDisplayTitle(payload: QuickReplyDraftAttachment) {
 
 function readString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
-}
-
-function resolveImageUploadSource(payload: QuickReplyDraftAttachment): ImageUploadSource {
-  if (payload.type !== "image") {
-    return "local";
-  }
-
-  if ("localFile" in payload || isKbLocalUploadedImageMaterial(payload.msgInfoId)) {
-    return "local";
-  }
-
-  if (payload.msgInfoId || payload.materialCollectionId) {
-    return "material";
-  }
-
-  return "local";
 }

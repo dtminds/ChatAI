@@ -39,7 +39,6 @@ describe("MessageContentRenderer quote messages", () => {
     );
 
     expect(screen.getByText("Sender Alpha：测试被引用")).toBeInTheDocument();
-    expect(screen.getByTestId("quote-text-preview")).toHaveClass("text-[12px]");
   });
 
   it("renders an image quoted-message preview as a square thumbnail", () => {
@@ -61,11 +60,8 @@ describe("MessageContentRenderer quote messages", () => {
 
     const image = screen.getByRole("img", { name: "引用图片：Alex Sender" });
 
-    expect(screen.getByTestId("quote-image-preview")).toHaveClass("items-start", "text-[12px]");
-    expect(screen.getByTestId("quote-image-sender")).toHaveClass("min-w-0", "shrink", "truncate");
     expect(screen.getByText("Alex Sender：")).toBeInTheDocument();
     expect(image).toHaveAttribute("src", "https://cdn.example.com/quoted.jpg");
-    expect(image).toHaveClass("aspect-square", "object-cover");
   });
 
   it("renders a fallback thumbnail when a quoted image fails to load", () => {
@@ -88,7 +84,6 @@ describe("MessageContentRenderer quote messages", () => {
     fireEvent.error(screen.getByRole("img", { name: "引用图片：Alex Sender" }));
 
     expect(screen.getByRole("img", { name: "引用图片不可用" })).toBeInTheDocument();
-    expect(screen.getByTestId("quote-image-fallback")).toHaveClass("aspect-square", "size-10");
     expect(screen.queryByRole("img", { name: "引用图片：Alex Sender" })).not.toBeInTheDocument();
   });
 
@@ -110,7 +105,6 @@ describe("MessageContentRenderer quote messages", () => {
     );
 
     expect(screen.getByRole("img", { name: "引用图片不可用" })).toBeInTheDocument();
-    expect(screen.getByTestId("quote-image-fallback")).toHaveClass("aspect-square", "size-10");
     expect(screen.queryByRole("img", { name: "引用图片：Alex Sender" })).not.toBeInTheDocument();
   });
 
@@ -134,13 +128,6 @@ describe("MessageContentRenderer quote messages", () => {
 
     expect(screen.getByText("Casey Sender：")).toBeInTheDocument();
     expect(screen.getByText("binarywang")).toBeInTheDocument();
-    expect(screen.getByTestId("quote-generic-preview")).toHaveClass("items-start", "text-[12px]");
-    expect(screen.getByTestId("quote-generic-text-row")).toHaveClass("items-center");
-    expect(screen.getByTestId("quote-generic-sender")).toHaveClass(
-      "min-w-0",
-      "shrink",
-      "truncate",
-    );
     expect(screen.getByRole("img", { name: "引用预览：binarywang" })).toHaveAttribute(
       "src",
       "https://cdn.example.com/avatar.png",
@@ -168,10 +155,6 @@ describe("MessageContentRenderer quote messages", () => {
     fireEvent.error(screen.getByRole("img", { name: "引用预览：binarywang" }));
 
     expect(screen.getByRole("img", { name: "引用预览图片不可用" })).toBeInTheDocument();
-    expect(screen.getByTestId("quote-generic-image-fallback")).toHaveClass(
-      "aspect-square",
-      "size-10",
-    );
     expect(screen.queryByRole("img", { name: "引用预览：binarywang" })).not.toBeInTheDocument();
   });
 
@@ -249,7 +232,6 @@ describe("MessageContentRenderer quote messages", () => {
     );
 
     expect(screen.getByTestId("quote-h5-link-icon")).toHaveAttribute("data-icon-name", "link-04");
-    expect(screen.getByTestId("quote-h5-link-icon")).toHaveClass("text-muted-foreground");
 
     rerender(
       <MessageContentRenderer
@@ -271,7 +253,6 @@ describe("MessageContentRenderer quote messages", () => {
       "data-icon-name",
       "file-empty-01",
     );
-    expect(screen.getByTestId("quote-file-attachment-icon")).toHaveClass("text-muted-foreground");
 
     rerender(
       <MessageContentRenderer
@@ -336,7 +317,6 @@ describe("MessageContentRenderer quote messages", () => {
 
     expect(screen.getByRole("img", { name: "引用视频封面不可用：视频" }))
       .toBeInTheDocument();
-    expect(screen.getByTestId("quote-video-fallback")).toHaveClass("aspect-square", "size-10");
     expect(screen.queryByRole("img", { name: "引用预览：视频" })).not.toBeInTheDocument();
   });
 

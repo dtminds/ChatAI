@@ -61,6 +61,27 @@ const fileMessage = {
   uiMessageKey: "7001",
 } satisfies ChatMessage;
 
+const miniProgramMessage = {
+  author: "客户",
+  content: {
+    appName: "企微助手",
+    coverImageUrl: "https://example.com/mini-cover.png",
+    title: "客户跟进小程序",
+    type: "mini-program",
+  },
+  conversationId: "conv-001",
+  msgid: "msg-mini-001",
+  role: "customer",
+  sender: {
+    id: "customer-001",
+    name: "客户",
+  },
+  sentAt: "2026-06-14 10:01:00",
+  seq: 7002,
+  status: "sent",
+  uiMessageKey: "7002",
+} satisfies ChatMessage;
+
 function createDefaultOptions(
   overrides: Partial<MaterialCollectionOptions> = {},
 ): MaterialCollectionOptions {
@@ -174,6 +195,7 @@ describe("useMaterialCollection", () => {
   afterEach(() => {
     resetWorkbenchService();
     vi.clearAllMocks();
+    vi.useRealTimers();
   });
 
   it("clears pending collection state when active conversation changes", async () => {
@@ -743,6 +765,193 @@ describe("useMaterialCollection", () => {
       pageSize: 100,
     });
     expect(result.current.pendingMaterialCollection).toBeNull();
+  });
+
+  it("shows a success toast after saving edited material", async () => {
+    const baseService = createMockWorkbenchService();
+    const updateMaterialCollection = vi.fn(async () => ({ ok: true as const }));
+
+    setWorkbenchService({
+      ...baseService,
+      updateMaterialCollection,
+    });
+
+    const { result } = renderHook(() =>
+      useMaterialCollection(createDefaultOptions()),
+    );
+
+    act(() => {
+      result.current.handleEditMaterial(createMiniProgramMaterialItem(), {
+        description: "",
+        fileExtension: "",
+        fileName: "",
+        title: "更新后的小程序",
+      });
+    });
+
+    await waitFor(() => {
+      expect(updateMaterialCollection).toHaveBeenCalledWith("material-mini", {
+        title: "更新后的小程序",
+      });
+    });
+    expect(toast.success).toHaveBeenCalledWith("已保存");
+  });
+
+  it("searches material titles in the active group and clears search on group switch", async () => {
+    const baseService = createMockWorkbenchService();
+    const groupFileA = {
+      bizType: 2 as const,
+      id: "group-file-a",
+      sort: 2,
+      title: "文件A",
+    };
+    const groupFileB = {
+      bizType: 2 as const,
+      id: "group-file-b",
+      sort: 1,
+      title: "文件B",
+    };
+    const listMaterialCollections = vi.fn(async (request) => ({
+      items: [],
+      pagination: {
+        hasMore: false,
+        page: request.page ?? 1,
+        pageSize: request.pageSize ?? 100,
+        total: 0,
+      },
+    }));
+    const listMaterialGroups = vi
+      .fn()
+      .mockResolvedValueOnce({ groups: [groupFileA, groupFileB] })
+      .mockResolvedValue({ groups: [groupFileA] });
+
+    setWorkbenchService({
+      ...baseService,
+      deleteMaterialGroup: vi.fn(async () => ({ ok: true as const })),
+      listMaterialCollections,
+      listMaterialGroups,
+    });
+
+    const { result } = renderHook(() =>
+      useMaterialCollection(createDefaultOptions()),
+    );
+
+    act(() => {
+      result.current.handleOpenMaterialLibrary(2);
+    });
+
+    await waitFor(() => {
+      expect(result.current.activeMaterialLibraryGroupId).toBe("group-file-a");
+    });
+
+    vi.useFakeTimers();
+    const callsBeforeSearch = listMaterialCollections.mock.calls.length;
+
+    act(() => {
+      result.current.handleSearchMaterialLibraryKeyword(" 报 ");
+      result.current.handleSearchMaterialLibraryKeyword(" 报价 ");
+    });
+
+    expect(result.current.materialLibrarySearchKeyword).toBe(" 报价 ");
+    expect(listMaterialCollections).toHaveBeenCalledTimes(callsBeforeSearch);
+
+    await act(() => vi.advanceTimersByTimeAsync(299));
+
+    expect(listMaterialCollections).toHaveBeenCalledTimes(callsBeforeSearch);
+
+    await act(() => vi.advanceTimersByTimeAsync(1));
+
+    expect(listMaterialCollections).toHaveBeenLastCalledWith({
+      bizType: 2,
+      groupId: "group-file-a",
+      keyword: "报价",
+      page: 1,
+      pageSize: 100,
+    });
+
+    await act(async () => {
+      await result.current.handleSelectMaterialLibraryGroup("group-file-b");
+    });
+
+    expect(result.current.materialLibrarySearchKeyword).toBe("");
+    expect(listMaterialCollections).toHaveBeenLastCalledWith({
+      bizType: 2,
+      groupId: "group-file-b",
+      page: 1,
+      pageSize: 100,
+    });
+
+    const callsBeforeSecondSearch = listMaterialCollections.mock.calls.length;
+
+    act(() => {
+      result.current.handleSearchMaterialLibraryKeyword(" 合 ");
+      result.current.handleSearchMaterialLibraryKeyword(" 合同 ");
+    });
+
+    expect(result.current.materialLibrarySearchKeyword).toBe(" 合同 ");
+    expect(listMaterialCollections).toHaveBeenCalledTimes(callsBeforeSecondSearch);
+
+    await act(() => vi.advanceTimersByTimeAsync(300));
+
+    expect(listMaterialCollections).toHaveBeenLastCalledWith({
+      bizType: 2,
+      groupId: "group-file-b",
+      keyword: "合同",
+      page: 1,
+      pageSize: 100,
+    });
+
+    vi.useRealTimers();
+
+    act(() => {
+      result.current.handleDeleteMaterialGroup(groupFileB);
+    });
+
+    await waitFor(() => {
+      expect(result.current.activeMaterialLibraryGroupId).toBe("group-file-a");
+    });
+
+    expect(result.current.materialLibrarySearchKeyword).toBe("");
+    expect(listMaterialCollections).toHaveBeenLastCalledWith({
+      bizType: 2,
+      groupId: "group-file-a",
+      page: 1,
+      pageSize: 100,
+    });
+  });
+
+  it("prefills mini-program collection title from message title", async () => {
+    const { result } = renderHook(() =>
+      useMaterialCollection(createDefaultOptions()),
+    );
+
+    await act(async () => {
+      await result.current.handleCollectMaterial(miniProgramMessage);
+    });
+
+    expect(result.current.pendingMaterialCollection?.formValues).toMatchObject({
+      title: "客户跟进小程序",
+    });
+  });
+
+  it("opens mini-program collection with an empty title when title fields are missing", async () => {
+    const malformedMiniProgramMessage = {
+      ...miniProgramMessage,
+      content: {
+        type: "mini-program",
+      },
+    } as unknown as ChatMessage;
+    const { result } = renderHook(() =>
+      useMaterialCollection(createDefaultOptions()),
+    );
+
+    await act(async () => {
+      await result.current.handleCollectMaterial(malformedMiniProgramMessage);
+    });
+
+    expect(result.current.pendingMaterialCollection?.formValues).toMatchObject({
+      title: "",
+    });
   });
 
   it("clears material library and pending collection state on session reset", async () => {

@@ -5,6 +5,7 @@ import {
 } from "@/pages/chat/api/workbench-service";
 import { adaptMessage } from "@/pages/chat/api/workbench-adapter";
 import { resolveImageSegmentsForSend } from "@/pages/chat/api/media-upload-service";
+import { JAVA_MENTION_PLACEHOLDER } from "@/pages/chat/lib/composer-segments";
 import { seedMessages } from "@/pages/chat/mock-data";
 import {
   createWorkbenchStore,
@@ -1574,6 +1575,354 @@ describe("useWorkbenchStore", () => {
     });
   });
 
+  it("stops polling expired semantic-wait smart replies and keeps the skipped state", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          smartReplies: [
+            {
+              assistantName: "智能助手",
+              content: "",
+              createdAt: Date.now() - 21_000,
+              generateStatus: 5,
+              messageId: "9",
+              status: "processing",
+            },
+          ],
+        };
+      },
+      async pollSmartReplies(request) {
+        return {
+          suggestions: [
+            {
+              assistantName: "智能助手",
+              content: "",
+              createdAt: Date.now() - 21_000,
+              generateStatus: 5,
+              messageId: String(request.msgIds[0]),
+              status: "processing",
+            },
+          ],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    await waitForStoreAssertion(() => {
+      expect(
+        useWorkbenchStore.getState().smartReplyPendingMessageKeysByConversationId[
+          "conv-001"
+        ],
+      ).not.toHaveProperty("9");
+    });
+    expect(
+      useWorkbenchStore.getState().smartReplyByMessageIdByConversationId["conv-001"]?.[
+        "9"
+      ],
+    ).toMatchObject({
+      createdAt: expect.any(Number),
+      generateStatus: 5,
+    });
+  });
+
+  it("ignores sparse message slots when pruning semantic-wait pending keys", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedSmartReplyRequests: WorkbenchSmartReplyPollRequest[] = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async pollSmartReplies(request) {
+        observedSmartReplyRequests.push(request);
+
+        return { suggestions: [] };
+      },
+    });
+
+    useWorkbenchStore.setState((state) => ({
+      activeAccountId: "drc",
+      activeConversationId: "conv-001",
+      accounts: [
+        {
+          avatarUrl: "",
+          description: "",
+          id: "drc",
+          loginStatus: "online",
+          metrics: {
+            activeCustomers: 0,
+            agents: 0,
+            stores: 0,
+            totalCustomers: 0,
+          },
+          name: "席位",
+          operator: "客服",
+          phone: "",
+          seatAIAssistantEnabled: true,
+          takenOverEmployeeId: "sub-user-001",
+          tone: "",
+        },
+      ],
+      hasChatSendPermission: true,
+      me: {
+        avatarUrl: "",
+        displayName: "林洒",
+        id: "sub-user-001",
+        name: "林洒",
+      },
+      conversationListsByScope: {
+        drc: [
+          {
+            accountId: "drc",
+            bizStatus: 1,
+            conversationAIHostingSwitch: false,
+            customerAvatarUrl: "",
+            customerBindType: 1,
+            customerId: "cust-001",
+            customerName: "客户甲",
+            id: "conv-001",
+            mode: "single",
+            preview: "",
+            priority: "medium",
+            quietFor: "",
+            unread: 0,
+            updatedAt: "刚刚",
+          },
+        ],
+      },
+      messagesByConversationId: {
+        "conv-001": [
+          {
+            author: "客户甲",
+            content: { text: "继续补充", type: "text" },
+            conversationId: "conv-001",
+            msgid: "msg-latest",
+            rawMsgtype: "text",
+            role: "customer",
+            sender: { id: "cust-001", name: "客户甲" },
+            sentAt: "2026-07-02T12:00:00+08:00",
+            seq: 10,
+            status: "sent",
+            uiMessageKey: "10",
+          } satisfies ChatMessage,
+          undefined,
+        ] as unknown as Message[],
+      },
+      smartReplyByMessageIdByConversationId: {
+        "conv-001": {
+          "10": {
+            assistantName: "智能助手",
+            content: "",
+            createdAt: Date.now() - 5_000,
+            generateStatus: 5,
+            status: "processing",
+          },
+          "9": {
+            assistantName: "智能助手",
+            content: "",
+            createdAt: Date.now() - 5_000,
+            generateStatus: 5,
+            status: "processing",
+          },
+        },
+      },
+      smartReplyPendingMessageKeysByConversationId: {
+        "conv-001": {
+          "9": true,
+        },
+      },
+    }));
+    const latestMessage =
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"]?.[0];
+
+    await expect(
+      latestMessage?.role === "system"
+        ? Promise.resolve()
+        : useWorkbenchStore.getState().requestSmartReplyGeneralAnswer(latestMessage!),
+    ).resolves.toBeUndefined();
+
+    expect(
+      useWorkbenchStore.getState().smartReplyPendingMessageKeysByConversationId[
+        "conv-001"
+      ],
+    ).not.toHaveProperty("9");
+
+    expect(observedSmartReplyRequests).toEqual([
+      {
+        conversationId: "conv-001",
+        msgIds: [10],
+      },
+    ]);
+  });
+
+  it("clears semantic-wait pending keys when they expire before the next poll request", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-02T12:00:00+08:00"));
+    const baseService = createMockWorkbenchService();
+    const observedSmartReplyRequests: WorkbenchSmartReplyPollRequest[] = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          smartReplies: [
+            {
+              assistantName: "智能助手",
+              content: "",
+              createdAt: Date.now() - 19_000,
+              generateStatus: 5,
+              messageId: "9",
+              status: "processing",
+            },
+          ],
+        };
+      },
+      async pollSmartReplies(request) {
+        observedSmartReplyRequests.push(request);
+
+        return {
+          suggestions: [
+            {
+              assistantName: "智能助手",
+              content: "",
+              createdAt: Date.now() - 19_000,
+              generateStatus: 5,
+              messageId: String(request.msgIds[0]),
+              status: "processing",
+            },
+          ],
+        };
+      },
+    });
+
+    try {
+      await useWorkbenchStore.getState().initializeWorkbench();
+      await Promise.resolve();
+
+      expect(observedSmartReplyRequests).toEqual([
+        {
+          conversationId: "conv-001",
+          msgIds: [9],
+        },
+      ]);
+      expect(
+        useWorkbenchStore.getState().smartReplyPendingMessageKeysByConversationId[
+          "conv-001"
+        ],
+      ).toHaveProperty("9");
+
+      await vi.advanceTimersByTimeAsync(2_000);
+
+      expect(observedSmartReplyRequests).toHaveLength(1);
+      expect(
+        useWorkbenchStore.getState().smartReplyPendingMessageKeysByConversationId[
+          "conv-001"
+        ],
+      ).not.toHaveProperty("9");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops polling semantic-wait smart replies that are no longer the latest customer message", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedAutoRequests: Array<{ conversationId: string; msgId: number }> = [];
+    const observedSmartReplyRequests: WorkbenchSmartReplyPollRequest[] = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          messages: [
+            createSmartReplyTextMessageDto({
+              id: "msg-incomplete",
+              seq: 9,
+              text: "我想问一下",
+            }),
+            createSmartReplyTextMessageDto({
+              id: "msg-follow-up",
+              seq: 10,
+              text: "还有价格是多少",
+            }),
+          ],
+          smartReplies: [
+            {
+              assistantName: "智能助手",
+              content: "",
+              createdAt: Date.now() - 5_000,
+              generateStatus: 5,
+              messageId: "9",
+              status: "processing",
+            },
+          ],
+        };
+      },
+      async requestSmartReplyAutoGeneralAnswer(request) {
+        observedAutoRequests.push(request);
+
+        return { id: "auto-10" };
+      },
+      async pollSmartReplies(request) {
+        observedSmartReplyRequests.push(request);
+
+        return {
+          suggestions: [
+            {
+              assistantName: "智能助手",
+              content: "",
+              createdAt: Date.now() - 5_000,
+              generateStatus: 5,
+              messageId: String(request.msgIds[0]),
+              status: "processing",
+            },
+          ],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    await waitForStoreAssertion(() => {
+      expect(observedAutoRequests).toEqual([
+        {
+          conversationId: "conv-001",
+          msgId: 10,
+        },
+      ]);
+      expect(
+        useWorkbenchStore.getState().smartReplyPendingMessageKeysByConversationId[
+          "conv-001"
+        ],
+      ).not.toHaveProperty("9");
+    });
+    expect(
+      observedSmartReplyRequests.some((request) => request.msgIds.includes(9)),
+    ).toBe(false);
+  });
+
   it("automatically creates a smart reply task for the latest customer message without a recommendation", async () => {
     const baseService = createMockWorkbenchService();
     const observedAutoRequests: Array<{ conversationId: string; msgId: number }> = [];
@@ -2090,6 +2439,160 @@ describe("useWorkbenchStore", () => {
       useWorkbenchStore.getState().fullAutoStatusByConversationId["conv-001"]?.status,
     ).toBeUndefined();
     expect(observedStatusRequests).toEqual(["conv-001", "conv-001"]);
+
+    vi.useRealTimers();
+  });
+
+  it("maps full-auto semantic-wait status to waiting without ending the poll", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-02T12:00:00+08:00"));
+    const baseService = createMockWorkbenchService();
+    const observedStatusRequests: string[] = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async getFullAutoAnswerStatus(conversationId) {
+        observedStatusRequests.push(conversationId);
+
+        return {
+          analyseMsgId: "20",
+          createdAt: Date.now() - 1_000,
+          genStatus: 5,
+          recordId: "27",
+          sendStatus: 0,
+        };
+      },
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          messages: [
+            ...page.messages,
+            createSmartReplyTextMessageDto({
+              id: "full-auto-customer",
+              seq: 20,
+              text: "我可能还没说完",
+              createdAt: Date.now(),
+            }),
+          ],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              seatAIHostingAuth: true,
+              seatAIHostingEnabled: true,
+              fullAutoSwitch: true,
+            }
+          : account,
+      ),
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-001"
+            ? {
+                ...conversation,
+                conversationAIHostingSwitch: true,
+              }
+            : conversation,
+        ),
+      },
+    }));
+
+    await useWorkbenchStore.getState().syncFullAutoAgentStatus();
+
+    expect(
+      useWorkbenchStore.getState().fullAutoStatusByConversationId["conv-001"]?.status,
+    ).toBe("waiting");
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(observedStatusRequests).toEqual(["conv-001", "conv-001"]);
+
+    vi.useRealTimers();
+  });
+
+  it("restores full-auto status to active when semantic wait exceeds twenty seconds", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-02T12:00:00+08:00"));
+    const baseService = createMockWorkbenchService();
+    const observedStatusRequests: string[] = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async getFullAutoAnswerStatus(conversationId) {
+        observedStatusRequests.push(conversationId);
+
+        return {
+          analyseMsgId: "20",
+          createdAt: Date.now() - 21_000,
+          genStatus: 5,
+          recordId: "27",
+          sendStatus: 0,
+        };
+      },
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          messages: [
+            ...page.messages,
+            createSmartReplyTextMessageDto({
+              id: "full-auto-customer",
+              seq: 20,
+              text: "我可能还没说完",
+              createdAt: Date.now(),
+            }),
+          ],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "drc"
+          ? {
+              ...account,
+              seatAIHostingAuth: true,
+              seatAIHostingEnabled: true,
+              fullAutoSwitch: true,
+            }
+          : account,
+      ),
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-001"
+            ? {
+                ...conversation,
+                conversationAIHostingSwitch: true,
+              }
+            : conversation,
+        ),
+      },
+    }));
+
+    await useWorkbenchStore.getState().syncFullAutoAgentStatus();
+
+    expect(
+      useWorkbenchStore.getState().fullAutoStatusByConversationId["conv-001"]?.status,
+    ).toBe("active");
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(observedStatusRequests).toEqual(["conv-001"]);
 
     vi.useRealTimers();
   });
@@ -4764,6 +5267,354 @@ describe("useWorkbenchStore", () => {
     );
   });
 
+  it("sends member mention text as ordered Java placeholder tokens", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentMessageSegments(
+      [
+        {
+          text: "hello ",
+          type: "text",
+        },
+        {
+          mentionMemberIds: ["member-001"],
+          text: "@小林",
+          type: "text",
+        },
+        {
+          text: " world ",
+          type: "text",
+        },
+        {
+          mentionMemberIds: ["member-001"],
+          text: "@小林",
+          type: "text",
+        },
+        {
+          text: " ",
+          type: "text",
+        },
+        {
+          mentionMemberIds: ["member-002"],
+          text: "@小陈",
+          type: "text",
+        },
+        {
+          text: " 看一下",
+          type: "text",
+        },
+      ],
+      {
+        mention: {
+          location: "any",
+          memberIds: ["member-001", "member-001", "member-002"],
+        },
+      },
+    );
+
+    expect(sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mention: {
+          location: "any",
+          memberIds: ["member-001", "member-001", "member-002"],
+        },
+        atOriginText: "hello @小林 world @小林 @小陈 看一下",
+        segment: {
+          text: `hello ${JAVA_MENTION_PLACEHOLDER} world ${JAVA_MENTION_PLACEHOLDER} ${JAVA_MENTION_PLACEHOLDER} 看一下`,
+          type: "text",
+        },
+      }),
+    );
+    expect(
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1),
+    ).toMatchObject({
+      content: {
+        text: "hello @小林 world @小林 @小陈 看一下",
+        type: "text",
+      },
+    });
+  });
+
+  it("fails before replacing member mentions when mention payload is missing", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    const result = await useWorkbenchStore.getState().sendAgentMessageSegments([
+      {
+        text: "hello ",
+        type: "text",
+      },
+      {
+        mentionMemberIds: ["member-001"],
+        text: "@小林",
+        type: "text",
+      },
+    ]);
+
+    expect(result).toMatchObject({
+      errorCode: "MENTION_PAYLOAD_MISSING",
+      ok: false,
+      reason: "send",
+    });
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("sends per-segment member mention payloads when media splits composer text", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+    vi.mocked(resolveImageSegmentsForSend).mockResolvedValue([
+      {
+        text: `${JAVA_MENTION_PLACEHOLDER} 文字`,
+        type: "text",
+      },
+      {
+        alt: "截图",
+        fileId: "chat-images/conv-001/a.png",
+        type: "image",
+        url: "https://mock-bucket.cos.ap-guangzhou.myqcloud.com/chat-images/conv-001/a.png",
+      },
+      {
+        text: JAVA_MENTION_PLACEHOLDER,
+        type: "text",
+      },
+    ]);
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentMessageSegments(
+      [
+        {
+          mentionMemberIds: ["member-001"],
+          text: "@小林",
+          type: "text",
+        },
+        {
+          text: " 文字",
+          type: "text",
+        },
+        {
+          alt: "截图",
+          localUrl: "data:image/png;base64,aaa",
+          type: "image",
+        },
+        {
+          mentionMemberIds: ["member-002"],
+          text: "@小陈",
+          type: "text",
+        },
+      ],
+      {
+        mention: {
+          location: "any",
+          memberIds: ["member-001", "member-002"],
+        },
+      },
+    );
+
+    expect(sendMessage).toHaveBeenCalledTimes(3);
+    expect(sendMessage).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        mention: {
+          location: "any",
+          memberIds: ["member-001"],
+        },
+        atOriginText: "@小林 文字",
+        segment: {
+          text: `${JAVA_MENTION_PLACEHOLDER} 文字`,
+          type: "text",
+        },
+      }),
+    );
+    expect(sendMessage).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        mention: undefined,
+        segment: expect.objectContaining({
+          type: "image",
+        }),
+      }),
+    );
+    expect(sendMessage).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        mention: {
+          location: "any",
+          memberIds: ["member-002"],
+        },
+        atOriginText: "@小陈",
+        segment: {
+          text: JAVA_MENTION_PLACEHOLDER,
+          type: "text",
+        },
+      }),
+    );
+  });
+
+  it("keeps mention-all segment text intact and ignores member mentions in the same segment", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentMessageSegments(
+      [
+        {
+          mentionAll: true,
+          text: "@所有人",
+          type: "text",
+        },
+        {
+          text: " ",
+          type: "text",
+        },
+        {
+          mentionMemberIds: ["member-001"],
+          text: "@小林",
+          type: "text",
+        },
+        {
+          text: " 看一下",
+          type: "text",
+        },
+      ],
+      {
+        mention: {
+          all: true,
+          location: "start",
+          memberIds: ["member-001"],
+        },
+      },
+    );
+
+    expect(sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mention: {
+          all: true,
+          location: "start",
+          memberIds: [],
+        },
+        segment: {
+          text: "@所有人 @小林 看一下",
+          type: "text",
+        },
+      }),
+    );
+  });
+
+  it("handles mention-all and member mentions independently across media-split segments", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+    vi.mocked(resolveImageSegmentsForSend).mockResolvedValue([
+      {
+        text: "@所有人",
+        type: "text",
+      },
+      {
+        alt: "截图",
+        fileId: "chat-images/conv-001/a.png",
+        type: "image",
+        url: "https://mock-bucket.cos.ap-guangzhou.myqcloud.com/chat-images/conv-001/a.png",
+      },
+      {
+        text: JAVA_MENTION_PLACEHOLDER,
+        type: "text",
+      },
+    ]);
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentMessageSegments(
+      [
+        {
+          mentionAll: true,
+          text: "@所有人",
+          type: "text",
+        },
+        {
+          alt: "截图",
+          localUrl: "data:image/png;base64,aaa",
+          type: "image",
+        },
+        {
+          mentionMemberIds: ["member-001"],
+          text: "@小林",
+          type: "text",
+        },
+      ],
+      {
+        mention: {
+          all: true,
+          location: "start",
+          memberIds: ["member-001"],
+        },
+      },
+    );
+
+    expect(sendMessage).toHaveBeenCalledTimes(3);
+    expect(sendMessage).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        mention: {
+          all: true,
+          location: "start",
+          memberIds: [],
+        },
+        segment: {
+          text: "@所有人",
+          type: "text",
+        },
+      }),
+    );
+    expect(sendMessage).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        mention: undefined,
+        segment: expect.objectContaining({
+          type: "image",
+        }),
+      }),
+    );
+    expect(sendMessage).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        mention: {
+          location: "any",
+          memberIds: ["member-001"],
+        },
+        segment: {
+          text: JAVA_MENTION_PLACEHOLDER,
+          type: "text",
+        },
+      }),
+    );
+  });
+
   it("resolves image segments before sending them to the message API", async () => {
     const baseService = createMockWorkbenchService();
     const sendMessage = vi.fn(baseService.sendMessage);
@@ -5652,12 +6503,17 @@ describe("useWorkbenchStore", () => {
     expect(latestMessage?.uiMessageKey).not.toBe(failedMessage?.uiMessageKey);
   });
 
-  it("passes the failed message id when retrying a failed text message", async () => {
+  it("calls the retry API with the failed message seq", async () => {
     const baseService = createMockWorkbenchService();
+    const retryMessage = vi.fn(async () => ({
+      optNo: "retry-opt-538",
+      status: "accepted" as const,
+    }));
     const sendMessage = vi.fn(baseService.sendMessage);
 
     setWorkbenchService({
       ...baseService,
+      retryMessage,
       sendMessage,
     });
 
@@ -5689,23 +6545,24 @@ describe("useWorkbenchStore", () => {
 
     await useWorkbenchStore.getState().retryFailedMessage(failedMessage!.uiMessageKey);
 
-    expect(sendMessage).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        failMsgId: "538",
-        segment: {
-          text: "这条消息会失败 [fail]",
-          type: "text",
-        },
-      }),
-    );
+    expect(retryMessage).toHaveBeenCalledWith({
+      conversationId: "conv-001",
+      messageSeq: 538,
+    });
+    expect(sendMessage).toHaveBeenCalledTimes(1);
   });
 
   it("retries a reconciled failed message when called with the previous optNo key", async () => {
     const baseService = createMockWorkbenchService();
+    const retryMessage = vi.fn(async () => ({
+      optNo: "retry-opt-538",
+      status: "accepted" as const,
+    }));
     const sendMessage = vi.fn(baseService.sendMessage);
 
     setWorkbenchService({
       ...baseService,
+      retryMessage,
       sendMessage,
     });
 
@@ -5748,15 +6605,11 @@ describe("useWorkbenchStore", () => {
 
     expect(messages).toHaveLength(beforeRetryCount);
     expect(messages.some((message) => message.uiMessageKey === "538")).toBe(false);
-    expect(sendMessage).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        failMsgId: "538",
-        segment: {
-          text: "已落库失败消息",
-          type: "text",
-        },
-      }),
-    );
+    expect(retryMessage).toHaveBeenCalledWith({
+      conversationId: "conv-001",
+      messageSeq: 538,
+    });
+    expect(sendMessage).not.toHaveBeenCalled();
     expect(messages.at(-1)).toMatchObject({
       content: {
         text: "已落库失败消息",
@@ -5767,12 +6620,71 @@ describe("useWorkbenchStore", () => {
     });
   });
 
-  it("omits failMsgId when retrying a failed message without seq", async () => {
+  it("removes the failed message by retry aliases when its ui key is invalid", async () => {
     const baseService = createMockWorkbenchService();
-    const sendMessage = vi.fn(baseService.sendMessage);
+    const retryMessage = vi.fn(async () => ({
+      optNo: "retry-opt-invalid-key",
+      status: "accepted" as const,
+    }));
 
     setWorkbenchService({
       ...baseService,
+      retryMessage,
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    useWorkbenchStore.setState((state) => ({
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        "conv-001": [
+          ...(state.messagesByConversationId["conv-001"] ?? []),
+          {
+            author: "客服一号",
+            content: {
+              text: "本地 key 异常的失败消息",
+              type: "text",
+            },
+            conversationId: "conv-001",
+            failReason: "模拟发送失败",
+            optNo: "opt-failed-invalid-key",
+            uiMessageKey: "invalid-message:failed-retry",
+            role: "agent",
+            sender: {
+              id: "agent-001",
+              name: "客服一号",
+            },
+            sentAt: "2026-05-20 10:00:00",
+            seq: 543,
+            status: "failed",
+          },
+        ],
+      },
+    }));
+
+    await useWorkbenchStore.getState().retryFailedMessage("opt-failed-invalid-key");
+
+    const messages = useWorkbenchStore.getState().messagesByConversationId["conv-001"];
+
+    expect(messages.some((message) => message.uiMessageKey === "invalid-message:failed-retry")).toBe(false);
+    expect(messages.at(-1)).toMatchObject({
+      content: {
+        text: "本地 key 异常的失败消息",
+        type: "text",
+      },
+      optNo: "retry-opt-invalid-key",
+      status: "accepted",
+    });
+  });
+
+  it("does not retry a failed message with an invalid seq", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+    const retryMessage = vi.fn(baseService.retryMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      retryMessage,
       sendMessage,
     });
 
@@ -5794,28 +6706,38 @@ describe("useWorkbenchStore", () => {
             ? {
                 ...message,
                 msgid: "remote-msgid-001",
-                seq: undefined,
+                seq: 0,
               }
             : message,
         ),
       },
     }));
 
-    await useWorkbenchStore.getState().retryFailedMessage(failedMessage!.uiMessageKey);
+    const result = await useWorkbenchStore
+      .getState()
+      .retryFailedMessage(failedMessage!.uiMessageKey);
 
-    expect(sendMessage).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        failMsgId: undefined,
-      }),
-    );
+    expect(result).toEqual({
+      errorCode: "MESSAGE_NOT_RETRYABLE",
+      errorMessage: "暂不支持重发该消息",
+      reason: "unavailable",
+      ok: false,
+    });
+    expect(retryMessage).not.toHaveBeenCalled();
+    expect(sendMessage).toHaveBeenCalledTimes(1);
   });
 
-  it("does not invent fileSize when retrying a failed file message", async () => {
+  it("retries a failed file message through the retry API without rebuilding a send segment", async () => {
     const baseService = createMockWorkbenchService();
     const sendMessage = vi.fn(baseService.sendMessage);
+    const retryMessage = vi.fn(async () => ({
+      optNo: "retry-file-opt-001",
+      status: "accepted" as const,
+    }));
 
     setWorkbenchService({
       ...baseService,
+      retryMessage,
       sendMessage,
     });
 
@@ -5853,31 +6775,20 @@ describe("useWorkbenchStore", () => {
 
     await useWorkbenchStore.getState().retryFailedMessage("failed-file-message");
 
-    expect(sendMessage).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        segment: expect.not.objectContaining({
-          fileSize: expect.any(Number),
-        }),
-      }),
-    );
+    expect(retryMessage).toHaveBeenCalledWith({
+      conversationId: "conv-001",
+      messageSeq: 539,
+    });
+    expect(sendMessage).not.toHaveBeenCalled();
   });
 
   it("keeps the failed message visible until retry send is accepted", async () => {
     const baseService = createMockWorkbenchService();
-    const sendGate = createDeferred<Awaited<ReturnType<typeof baseService.sendMessage>>>();
-    let sendCount = 0;
+    const retryGate = createDeferred<Awaited<ReturnType<typeof baseService.retryMessage>>>();
 
     setWorkbenchService({
       ...baseService,
-      async sendMessage(payload) {
-        sendCount += 1;
-
-        if (sendCount === 2) {
-          return sendGate.promise;
-        }
-
-        return baseService.sendMessage(payload);
-      },
+      retryMessage: vi.fn(() => retryGate.promise),
     });
 
     await useWorkbenchStore.getState().initializeWorkbench();
@@ -5895,7 +6806,7 @@ describe("useWorkbenchStore", () => {
         .messagesByConversationId["conv-001"].some((message) => message.uiMessageKey === failedMessage!.uiMessageKey),
     ).toBe(true);
 
-    sendGate.resolve({
+    retryGate.resolve({
       optNo: "retry-opt-001",
       status: "accepted",
     });
@@ -5909,6 +6820,214 @@ describe("useWorkbenchStore", () => {
       status: "accepted",
     });
     expect(messages.at(-1)?.msgid).toBeUndefined();
+  });
+
+  it("marks the active conversation as sending while retry is pending", async () => {
+    const baseService = createMockWorkbenchService();
+    const retryGate = createDeferred<Awaited<ReturnType<typeof baseService.retryMessage>>>();
+
+    setWorkbenchService({
+      ...baseService,
+      retryMessage: vi.fn(() => retryGate.promise),
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentTextMessage("这条消息会失败 [fail]");
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    const failedMessage =
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1);
+
+    const retryPromise = useWorkbenchStore
+      .getState()
+      .retryFailedMessage(failedMessage!.uiMessageKey);
+
+    expect(useWorkbenchStore.getState().sendStatusByConversationId["conv-001"]).toBe("sending");
+
+    retryGate.resolve({
+      optNo: "retry-opt-sending",
+      status: "accepted",
+    });
+    await retryPromise;
+
+    expect(useWorkbenchStore.getState().sendStatusByConversationId["conv-001"]).toBe("idle");
+  });
+
+  it("does not move the poll message seq cursor backwards after retry removes a failed message", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedPollRequests: Array<Parameters<typeof baseService.poll>[0]> = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        observedPollRequests.push(request);
+        return baseService.poll(request);
+      },
+      retryMessage: vi.fn(async () => ({
+        optNo: "retry-opt-cursor",
+        status: "accepted" as const,
+      })),
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentTextMessage("这条消息会失败 [fail]");
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    const failedMessage =
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1);
+
+    expect(failedMessage).toMatchObject({
+      seq: expect.any(Number),
+      status: "failed",
+    });
+
+    await useWorkbenchStore.getState().retryFailedMessage(failedMessage!.uiMessageKey);
+
+    observedPollRequests.length = 0;
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(observedPollRequests.at(-1)?.activeMessageSeq).toBeGreaterThanOrEqual(
+      failedMessage!.seq!,
+    );
+  });
+
+  it("does not move the poll message seq cursor backwards after an empty poll response", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedPollRequests: Array<Parameters<typeof baseService.poll>[0]> = [];
+    let useEmptyPollResponse = false;
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        observedPollRequests.push(request);
+        if (!useEmptyPollResponse) {
+          return baseService.poll(request);
+        }
+
+        return {
+          activeConversationMessages: [],
+          conversationChanges: [],
+          nextVersion: Date.now(),
+          seatChanges: [],
+        };
+      },
+      retryMessage: vi.fn(async () => ({
+        optNo: "retry-opt-empty-poll",
+        status: "accepted" as const,
+      })),
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().sendAgentTextMessage("这条消息会失败 [fail]");
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    const failedMessage =
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"].at(-1);
+
+    expect(failedMessage).toMatchObject({
+      seq: expect.any(Number),
+      status: "failed",
+    });
+
+    await useWorkbenchStore.getState().retryFailedMessage(failedMessage!.uiMessageKey);
+
+    observedPollRequests.length = 0;
+    useEmptyPollResponse = true;
+    await useWorkbenchStore.getState().pollWorkbench();
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(observedPollRequests).toHaveLength(2);
+    expect(observedPollRequests[0]?.activeMessageSeq).toBeGreaterThanOrEqual(
+      failedMessage!.seq!,
+    );
+    expect(observedPollRequests[1]?.activeMessageSeq).toBeGreaterThanOrEqual(
+      failedMessage!.seq!,
+    );
+  });
+
+  it("keeps the poll message seq cursor monotonic after retrying older failed messages", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedPollRequests: Array<Parameters<typeof baseService.poll>[0]> = [];
+    let retryIndex = 0;
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        observedPollRequests.push(request);
+        return {
+          activeConversationMessages: [],
+          conversationChanges: [],
+          nextVersion: Date.now(),
+          seatChanges: [],
+        };
+      },
+      retryMessage: vi.fn(async () => {
+        retryIndex += 1;
+
+        return {
+          optNo: `retry-opt-cursor-${retryIndex}`,
+          status: "accepted" as const,
+        };
+      }),
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    useWorkbenchStore.setState((state) => ({
+      activeMessageSeq: 101,
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        "conv-001": [
+          ...(state.messagesByConversationId["conv-001"] ?? []),
+          {
+            author: "客服一号",
+            content: {
+              text: "前一条失败消息",
+              type: "text",
+            },
+            conversationId: "conv-001",
+            failReason: "模拟发送失败",
+            optNo: "opt-failed-100",
+            uiMessageKey: "failed-100",
+            role: "agent",
+            sender: {
+              id: "agent-001",
+              name: "客服一号",
+            },
+            sentAt: "2026-05-20 10:00:00",
+            seq: 100,
+            status: "failed",
+          },
+          {
+            author: "客服一号",
+            content: {
+              text: "最后一条失败消息",
+              type: "text",
+            },
+            conversationId: "conv-001",
+            failReason: "模拟发送失败",
+            optNo: "opt-failed-101",
+            uiMessageKey: "failed-101",
+            role: "agent",
+            sender: {
+              id: "agent-001",
+              name: "客服一号",
+            },
+            sentAt: "2026-05-20 10:00:01",
+            seq: 101,
+            status: "failed",
+          },
+        ],
+      },
+    }));
+
+    await useWorkbenchStore.getState().retryFailedMessage("failed-101");
+    await useWorkbenchStore.getState().retryFailedMessage("failed-100");
+
+    observedPollRequests.length = 0;
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(observedPollRequests.at(-1)?.activeMessageSeq).toBe(101);
   });
 
   it("keeps pending messages when poll has no server receipt", async () => {
@@ -5957,19 +7076,12 @@ describe("useWorkbenchStore", () => {
 
   it("keeps the failed message when retry send is rejected", async () => {
     const baseService = createMockWorkbenchService();
-    let sendCount = 0;
 
     setWorkbenchService({
       ...baseService,
-      async sendMessage(payload) {
-        sendCount += 1;
-
-        if (sendCount === 2) {
-          throw new Error("重试接口失败");
-        }
-
-        return baseService.sendMessage(payload);
-      },
+      retryMessage: vi.fn(async () => {
+        throw new Error("重试接口失败");
+      }),
     });
 
     await useWorkbenchStore.getState().initializeWorkbench();
@@ -5999,9 +7111,11 @@ describe("useWorkbenchStore", () => {
   it("does not retry unsupported failed message types", async () => {
     const baseService = createMockWorkbenchService();
     const sendMessage = vi.fn(baseService.sendMessage);
+    const retryMessage = vi.fn(baseService.retryMessage);
 
     setWorkbenchService({
       ...baseService,
+      retryMessage,
       sendMessage,
     });
 
@@ -6028,6 +7142,7 @@ describe("useWorkbenchStore", () => {
               name: "客服一号",
             },
             sentAt: "2026-05-20 10:00:00",
+            seq: 540,
             status: "failed",
           },
         ],
@@ -6045,6 +7160,7 @@ describe("useWorkbenchStore", () => {
       ok: false,
     });
     expect(sendMessage).not.toHaveBeenCalled();
+    expect(retryMessage).not.toHaveBeenCalled();
     expect(
       useWorkbenchStore
         .getState()
@@ -6054,12 +7170,17 @@ describe("useWorkbenchStore", () => {
     ).toBe(true);
   });
 
-  it("does not crash when retrying a failed image message without imageUrl", async () => {
+  it("retries a failed image message without imageUrl through the retry API", async () => {
     const baseService = createMockWorkbenchService();
     const sendMessage = vi.fn(baseService.sendMessage);
+    const retryMessage = vi.fn(async () => ({
+      optNo: "retry-image-opt-001",
+      status: "accepted" as const,
+    }));
 
     setWorkbenchService({
       ...baseService,
+      retryMessage,
       sendMessage,
     });
 
@@ -6085,6 +7206,7 @@ describe("useWorkbenchStore", () => {
               name: "客服一号",
             },
             sentAt: "2026-05-20 10:00:00",
+            seq: 541,
             status: "failed",
           } as Message,
         ],
@@ -6095,21 +7217,28 @@ describe("useWorkbenchStore", () => {
       .getState()
       .retryFailedMessage("failed-image-without-url");
 
-    expect(result).toEqual({
-      errorCode: "UNSUPPORTED_RETRY_MESSAGE",
-      errorMessage: "暂不支持重发该消息",
-      reason: "unavailable",
-      ok: false,
+    expect(result).toMatchObject({
+      ok: true,
+      optNos: ["retry-image-opt-001"],
+    });
+    expect(retryMessage).toHaveBeenCalledWith({
+      conversationId: "conv-001",
+      messageSeq: 541,
     });
     expect(sendMessage).not.toHaveBeenCalled();
   });
 
-  it("does not retry failed file messages without a sendable url", async () => {
+  it("retries failed file messages without a sendable url through the retry API", async () => {
     const baseService = createMockWorkbenchService();
     const sendMessage = vi.fn(baseService.sendMessage);
+    const retryMessage = vi.fn(async () => ({
+      optNo: "retry-file-without-url-opt-001",
+      status: "accepted" as const,
+    }));
 
     setWorkbenchService({
       ...baseService,
+      retryMessage,
       sendMessage,
     });
 
@@ -6137,6 +7266,7 @@ describe("useWorkbenchStore", () => {
               name: "客服一号",
             },
             sentAt: "2026-05-20 10:00:00",
+            seq: 542,
             status: "failed",
           },
         ],
@@ -6147,32 +7277,28 @@ describe("useWorkbenchStore", () => {
       .getState()
       .retryFailedMessage("failed-file-without-url");
 
-    expect(result).toEqual({
-      errorCode: "UNSUPPORTED_RETRY_MESSAGE",
-      errorMessage: "暂不支持重发该消息",
-      reason: "unavailable",
-      ok: false,
+    expect(result).toMatchObject({
+      ok: true,
+      optNos: ["retry-file-without-url-opt-001"],
+    });
+    expect(retryMessage).toHaveBeenCalledWith({
+      conversationId: "conv-001",
+      messageSeq: 542,
     });
     expect(sendMessage).not.toHaveBeenCalled();
   });
 
-  it("recovers by reloading the current scope when the poll cursor is invalidated", async () => {
+  it("pauses polling when the poll cursor is invalidated", async () => {
     const baseService = createMockWorkbenchService();
-    let shouldInvalidateCursor = true;
 
     setWorkbenchService({
       ...baseService,
-      async poll(request) {
-        if (shouldInvalidateCursor) {
-          shouldInvalidateCursor = false;
-          throw {
-            code: "WORKBENCH_CURSOR_INVALIDATED",
-            message: "cursor invalidated",
-            status: 409,
-          };
-        }
-
-        return baseService.poll(request);
+      async poll() {
+        throw {
+          code: "WORKBENCH_CURSOR_INVALIDATED",
+          message: "cursor invalidated",
+          status: 409,
+        };
       },
     });
 
@@ -6181,10 +7307,94 @@ describe("useWorkbenchStore", () => {
 
     const state = useWorkbenchStore.getState();
 
-    expect(state.pollState.status).toBe("idle");
+    expect(state.pollState.status).toBe("paused");
+    expect(state.pollState.pauseReason).toBe("cursor-invalidated");
     expect(state.activeConversationId).toBe("conv-001");
     expect(state.messagesByConversationId["conv-001"].length).toBeGreaterThan(0);
     expect(state.sinceVersion).toBeGreaterThan(0);
+  });
+
+  it("does not call poll while polling is paused", async () => {
+    const baseService = createMockWorkbenchService();
+    const poll = vi.fn(baseService.poll);
+
+    setWorkbenchService({
+      ...baseService,
+      poll,
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      pollState: {
+        ...state.pollState,
+        pauseReason: "cursor-invalidated",
+        status: "paused",
+      },
+    }));
+
+    const result = await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(result).toBe(false);
+    expect(poll).not.toHaveBeenCalled();
+  });
+
+  it("does not clear a paused poll state after an in-flight poll succeeds", async () => {
+    const baseService = createMockWorkbenchService();
+    const deferredPoll = createDeferred<WorkbenchPollResponse>();
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        await deferredPoll.promise;
+        return baseService.poll(request);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    const pollPromise = useWorkbenchStore.getState().pollWorkbench();
+
+    useWorkbenchStore.setState((state) => ({
+      pollState: {
+        ...state.pollState,
+        pauseReason: "cursor-invalidated",
+        status: "paused",
+      },
+    }));
+    deferredPoll.resolve({
+      activeConversationMessages: [],
+      conversationChanges: [],
+      messageUpdateEvents: [],
+      nextVersion: useWorkbenchStore.getState().sinceVersion + 1,
+      seatChanges: [],
+    });
+
+    await pollPromise;
+
+    const state = useWorkbenchStore.getState();
+    expect(state.pollState.status).toBe("paused");
+    expect(state.pollState.pauseReason).toBe("cursor-invalidated");
+  });
+
+  it("treats 409 poll errors without the cursor invalidation code as poll errors", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async poll() {
+        throw {
+          message: "conflict",
+          status: 409,
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    const state = useWorkbenchStore.getState();
+    expect(state.pollState.status).toBe("error");
+    expect(state.pollState.pauseReason).toBeUndefined();
+    expect(state.pollState.errorMessage).toBe("轮询失败");
   });
 
   it("reloads message details in batch for poll message update events", async () => {
@@ -7020,23 +8230,17 @@ describe("useWorkbenchStore", () => {
     );
   });
 
-  it("preserves the current conversation and unrelated pending messages during cursor recovery", async () => {
+  it("does not mutate the current conversation or pending messages after cursor invalidation", async () => {
     const baseService = createMockWorkbenchService();
-    let shouldInvalidateCursor = true;
 
     setWorkbenchService({
       ...baseService,
-      async poll(request) {
-        if (shouldInvalidateCursor) {
-          shouldInvalidateCursor = false;
-          throw {
-            code: "WORKBENCH_CURSOR_INVALIDATED",
-            message: "cursor invalidated",
-            status: 409,
-          };
-        }
-
-        return baseService.poll(request);
+      async poll() {
+        throw {
+          code: "WORKBENCH_CURSOR_INVALIDATED",
+          message: "cursor invalidated",
+          status: 409,
+        };
       },
     });
 
@@ -7050,55 +8254,39 @@ describe("useWorkbenchStore", () => {
 
     const state = useWorkbenchStore.getState();
 
+    expect(state.pollState.status).toBe("paused");
+    expect(state.pollState.pauseReason).toBe("cursor-invalidated");
     expect(state.activeConversationId).toBe("conv-002");
     expect(state.pendingMessages).toEqual(pendingBeforeRecovery);
     expect(state.sinceVersion).toBeGreaterThan(0);
   });
 
-  it("drops stale cursor recovery results after the active account changes", async () => {
+  it("does not start a scope reload when the poll cursor is invalidated", async () => {
     const baseService = createMockWorkbenchService();
-    let shouldInvalidateCursor = true;
-    const recoveryGate = createDeferred();
+    const getConversations = vi.fn(baseService.getConversations);
 
     setWorkbenchService({
       ...baseService,
-      async getConversations(accountId, options) {
-        if (accountId === "drc" && !shouldInvalidateCursor) {
-          await recoveryGate.promise;
-        }
-
-        return baseService.getConversations(accountId, options);
-      },
-      async poll(request) {
-        if (shouldInvalidateCursor) {
-          shouldInvalidateCursor = false;
-          throw {
-            code: "WORKBENCH_CURSOR_INVALIDATED",
-            message: "cursor invalidated",
-            status: 409,
-          };
-        }
-
-        return baseService.poll(request);
+      getConversations,
+      async poll() {
+        throw {
+          code: "WORKBENCH_CURSOR_INVALIDATED",
+          message: "cursor invalidated",
+          status: 409,
+        };
       },
     });
 
     await useWorkbenchStore.getState().initializeWorkbench();
-    useWorkbenchStore.setState((state) => ({
-      ...state,
-      seatUpdateCursor: 1_778_840_030_000,
-    }));
+    getConversations.mockClear();
 
-    const recoveryPromise = useWorkbenchStore.getState().pollWorkbench();
-    await useWorkbenchStore.getState().setActiveAccount("ndt");
-    recoveryGate.resolve();
-    await recoveryPromise;
+    await useWorkbenchStore.getState().pollWorkbench();
 
     const state = useWorkbenchStore.getState();
 
-    expect(state.activeAccountId).toBe("ndt");
-    expect(state.activeConversationId).toBe("conv-005");
-    expect(state.seatUpdateCursor).toBe(1_778_840_030_000);
+    expect(getConversations).not.toHaveBeenCalled();
+    expect(state.pollState.status).toBe("paused");
+    expect(state.pollState.pauseReason).toBe("cursor-invalidated");
   });
 
   it("loads the full seed page when the default message page covers all history", async () => {

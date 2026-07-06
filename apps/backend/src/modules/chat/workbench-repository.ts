@@ -155,6 +155,16 @@ export type RevokeMessageLookup = {
   status: "failed" | "sent";
 };
 
+export type RetryMessageLookup = {
+  id: number;
+  optNo: string | null;
+  senderType: "agent" | "customer" | "system";
+};
+
+export type AsyncOperationLookup = {
+  optParams: string | null;
+};
+
 export type SeatUpdateEventListResult = Array<
   {
     eventTime: number;
@@ -243,11 +253,6 @@ type SeatSummaryRow = SeatBaseRow & {
 
 type SeatAggregateKeyRow = Pick<SeatBaseRow, "platform" | "third_userid" | "uid">;
 
-type TenantScope = {
-  platform: number;
-  uid: number;
-};
-
 type SeatAccessSnapshot = {
   platform: number;
   seatIds: string[];
@@ -255,20 +260,10 @@ type SeatAccessSnapshot = {
   version: 1;
 };
 
-type AgentAnswerRecordDb = Database & {
-  xy_wap_embed_agent_answer_record: {
-    analyse_msg_id: number | string | null;
-    create_time: Date | number | string | null;
-    gen_status: number | string | null;
-    id: number | string;
-    send_status: number | string | null;
-    third_external_userid: string;
-    third_group_id: string;
-    third_userid: string;
-    trigger_type: number | string;
-    uid: number | string;
-    update_time: Date | number | string | null;
-  };
+export type WorkbenchSeatAccessScope = {
+  platform: number;
+  subUserId: string;
+  uid: number;
 };
 
 type SeatConversationAggregateRow = {
@@ -293,9 +288,11 @@ type CustomerListScope =
       cursor?: string;
       keyword?: string;
       limit?: number;
+      platform: number;
       scope: "mine";
       seatIds?: string[];
       subUserId: string;
+      uid: number;
     };
 
 type CustomerRow = {
@@ -541,6 +538,7 @@ export class WorkbenchRepository {
   async listMaterialCollections(input: {
     bizType: number;
     groupId: string | 0;
+    keyword?: string;
     limit: number;
     offset: number;
     subUserId: string;
@@ -555,13 +553,20 @@ export class WorkbenchRepository {
       };
     }
 
-    const baseQuery = this.db
+    let baseQuery = this.db
       .selectFrom("xy_wap_embed_material_collection")
       .where("uid", "=", input.uid)
       .where("biz_type", "=", input.bizType)
       .where("biz_status", "=", BIZ_STATUS_ACTIVE)
       .where("sub_uid", "in", getMaterialVisibleSubUids(input.bizType, input.subUserId))
       .where("group_id", "=", groupNumericId);
+    const keyword = input.keyword?.trim();
+
+    if (keyword) {
+      const pattern = `%${escapeLikeKeyword(keyword)}%`;
+      baseQuery = baseQuery.where((eb) => eb("title", "like", pattern));
+    }
+
     const [rows, totalRow] = await Promise.all([
       baseQuery
         .selectAll()
@@ -1968,26 +1973,14 @@ export class WorkbenchRepository {
     return getAffectedRows(result) > 0;
   }
 
-  /**
-   * 按子账号租户与平台关联 `xy_wap_embed_user_relation`，取涂色侧栏 AES 密钥与 IV。
-   */
-  async getEmbedUserRelationTuseSecrets(subUserId: string) {
-    const subUserNumericId = parseMySqlId(subUserId);
-
-    if (subUserNumericId == null) {
-      return undefined;
-    }
-
+  async getEmbedUserRelationTuseSecrets(scope: { platform: number; uid: number }) {
     const row = await this.db
-      .selectFrom("xy_wap_embed_sub_user as sub")
-      .innerJoin("xy_wap_embed_user_relation as rel", (join) =>
-        join.onRef("rel.uid", "=", "sub.uid").onRef("rel.platform", "=", "sub.platform"),
-      )
-      .select(["rel.appid as appid", "rel.secret as secret", "rel.iv_parameter as iv_parameter"])
-      .where("sub.id", "=", subUserNumericId)
-      .where("sub.status", "=", 1)
-      .where("rel.biz_status", "=", 1)
-      .orderBy("rel.id", "asc")
+      .selectFrom("xy_wap_embed_user_relation")
+      .select(["appid", "secret", "iv_parameter"])
+      .where("uid", "=", scope.uid)
+      .where("platform", "=", scope.platform)
+      .where("biz_status", "=", 1)
+      .orderBy("id", "asc")
       .executeTakeFirst();
 
     const secret = row?.secret?.trim();
@@ -2010,7 +2003,7 @@ export class WorkbenchRepository {
 
     const subUser = await this.db
       .selectFrom("xy_wap_embed_sub_user")
-      .select(["id", "name", "platform", "uid"])
+      .select(["id", "name", "uid"])
       .where("id", "=", subUserNumericId)
       .where("status", "=", 1)
       .executeTakeFirst();
@@ -2021,7 +2014,6 @@ export class WorkbenchRepository {
 
     return {
       displayName: subUser.name,
-      platform: subUser.platform,
       subUserId: String(subUser.id),
       uid: subUser.uid,
     };
@@ -2148,6 +2140,86 @@ export class WorkbenchRepository {
       seq,
       status: toNumber(row.status) === 0 ? "failed" : "sent",
     };
+  }
+
+  async findRetryMessage(input: {
+    conversationId: string;
+    messageSeq: number;
+    platform: number;
+    thirdExternalUserId?: string;
+    thirdGroupId?: string;
+    thirdUserId: string;
+    uid: number;
+  }): Promise<RetryMessageLookup | undefined> {
+    if (!Number.isSafeInteger(input.messageSeq) || input.messageSeq <= 0) {
+      return undefined;
+    }
+
+    let query = this.db
+      .selectFrom("xy_wap_embed_msg_audit_info as message")
+      .select([
+        "message.id as id",
+        "message.chat_type as chat_type",
+        "message.from_type as from_type",
+        "message.opt_no as opt_no",
+        "message.third_from_id as third_from_id",
+        "message.third_user_id as third_user_id",
+      ])
+      .where("message.uid", "=", input.uid)
+      .where("message.platform", "=", input.platform)
+      .where("message.third_user_id", "=", input.thirdUserId)
+      .where("message.id", "=", input.messageSeq)
+      .where("message.status", "=", 0);
+
+    if (input.thirdGroupId) {
+      query = query.where("message.third_group_id", "=", input.thirdGroupId);
+    } else if (input.thirdExternalUserId) {
+      query = query.where("message.third_external_id", "=", input.thirdExternalUserId);
+    } else {
+      return undefined;
+    }
+
+    const row = await query.executeTakeFirst();
+    const id = toNumber(row?.id);
+
+    if (id == null) {
+      return undefined;
+    }
+
+    return {
+      id,
+      optNo: row?.opt_no ?? null,
+      senderType: mapRevokeSenderType({
+        chatType: toNumber(row?.chat_type) ?? 0,
+        fromType: toNumber(row?.from_type) ?? null,
+        thirdFromId: row?.third_from_id ?? undefined,
+        thirdUserId: row?.third_user_id ?? undefined,
+      }),
+    };
+  }
+
+  async findAsyncOperationByOptNo(input: {
+    optNo: string;
+    platform: number;
+    uid: number;
+  }): Promise<AsyncOperationLookup | undefined> {
+    if (!input.optNo.trim()) {
+      return undefined;
+    }
+
+    const row = await this.db
+      .selectFrom("xy_wap_embed_async_operation")
+      .select(["opt_params"])
+      .where("opt_no", "=", input.optNo)
+      .where("uid", "=", input.uid)
+      .where("platform", "=", input.platform)
+      .executeTakeFirst();
+
+    return row
+      ? {
+          optParams: row.opt_params ?? null,
+        }
+      : undefined;
   }
 
   async listMessageUpdateEvents(
@@ -2282,14 +2354,10 @@ export class WorkbenchRepository {
       );
   }
 
-  async getSeatEventScope(subUserId: string): Promise<SeatEventScope | undefined> {
-    const subUserNumericId = parseMySqlId(subUserId);
-
-    if (subUserNumericId == null) {
-      return undefined;
-    }
-
-    const snapshot = await this.getSeatAccessSnapshot(subUserNumericId);
+  async getSeatEventScope(
+    scope: WorkbenchSeatAccessScope,
+  ): Promise<SeatEventScope | undefined> {
+    const snapshot = await this.getSeatAccessSnapshot(scope);
 
     if (!snapshot) {
       return undefined;
@@ -2550,16 +2618,10 @@ export class WorkbenchRepository {
     };
   }
 
-  async listSeats(subUserId: string) {
-    const subUserNumericId = parseMySqlId(subUserId);
+  async listSeats(scope: WorkbenchSeatAccessScope) {
+    const subUserNumericId = parseMySqlId(scope.subUserId);
 
     if (subUserNumericId == null) {
-      return [];
-    }
-
-    const scope = await this.getSubUserTenantScope(subUserNumericId);
-
-    if (!scope) {
       return [];
     }
 
@@ -2633,8 +2695,10 @@ export class WorkbenchRepository {
         cursor: input.cursor,
         keyword: input.keyword,
         limit: input.limit,
+        platform: input.platform,
         seatIds,
         subUserId: scopedSubUserId,
+        uid: input.uid,
       });
     }
 
@@ -2645,16 +2709,18 @@ export class WorkbenchRepository {
     cursor?: string;
     keyword?: string;
     limit?: number;
+    platform: number;
     seatIds: number[];
     subUserId: number;
+    uid: number;
   }): Promise<WorkbenchCustomerListResponse> {
     const limit = normalizeCustomerListLimit(input.limit);
     const keyword = input.keyword?.trim();
     const cursor = input.cursor ? decodeMineCustomerListCursor(input.cursor) : undefined;
     const visibleSeats =
       input.seatIds.length > 0
-        ? await this.listAccessibleSeatContexts(input.subUserId, input.seatIds)
-        : await this.listAccessibleSeatContexts(input.subUserId);
+        ? await this.listAccessibleSeatContexts(input, input.seatIds)
+        : await this.listAccessibleSeatContexts(input);
 
     if (visibleSeats.length === 0) {
       return emptyCustomerListPage();
@@ -2862,13 +2928,20 @@ export class WorkbenchRepository {
   }
 
   private async listAccessibleSeatContexts(
-    subUserId: number,
+    scope: {
+      platform: number;
+      subUserId: number;
+      uid: number;
+    },
     seatIds?: number[],
   ): Promise<CustomerSeatContext[]> {
     let seatQuery = this.db
       .selectFrom("xy_wap_embed_user_seat as seat")
       .innerJoin("xy_wap_embed_user_seat_sub_relation as relation", (join) =>
-        join.onRef("relation.user_seat_id", "=", "seat.id"),
+        join
+          .onRef("relation.user_seat_id", "=", "seat.id")
+          .onRef("relation.uid", "=", "seat.uid")
+          .onRef("relation.platform", "=", "seat.platform"),
       )
       .select([
         "seat.id as id",
@@ -2878,7 +2951,9 @@ export class WorkbenchRepository {
         "seat.third_avatar as third_avatar",
         "seat.third_user_name as third_user_name",
       ])
-      .where("relation.sub_id", "=", subUserId);
+      .where("relation.sub_id", "=", scope.subUserId)
+      .where("relation.uid", "=", scope.uid)
+      .where("relation.platform", "=", scope.platform);
 
     if (seatIds && seatIds.length > 0) {
       seatQuery = seatQuery.where(
@@ -3352,15 +3427,14 @@ export class WorkbenchRepository {
     };
   }
 
-  async canAccessSeat(subUserId: string, seatId: string) {
-    const subUserNumericId = parseMySqlId(subUserId);
+  async canAccessSeat(scope: WorkbenchSeatAccessScope, seatId: string) {
     const seatNumericId = parseMySqlId(seatId);
 
-    if (subUserNumericId == null || seatNumericId == null) {
+    if (parseMySqlId(scope.subUserId) == null || seatNumericId == null) {
       return false;
     }
 
-    const snapshot = await this.getSeatAccessSnapshot(subUserNumericId);
+    const snapshot = await this.getSeatAccessSnapshot(scope);
 
     return snapshot?.seatIds.includes(String(seatNumericId)) ?? false;
   }
@@ -3709,7 +3783,7 @@ export class WorkbenchRepository {
   async getLatestFullAutoAnswerStatus(
     scope: FullAutoAnswerStatusScope,
   ): Promise<WorkbenchFullAutoAnswerStatusResponse> {
-    const row = await (this.db as unknown as Kysely<AgentAnswerRecordDb>)
+    const row = await this.db
       .selectFrom("xy_wap_embed_agent_answer_record")
       .select([
         "analyse_msg_id",
@@ -4480,27 +4554,20 @@ export class WorkbenchRepository {
       .executeTakeFirst() as Promise<SeatRecordRow | undefined>;
   }
 
-  private async getSubUserTenantScope(subUserId: number) {
-    return this.db
-      .selectFrom("xy_wap_embed_sub_user")
-      .select(["uid", "platform"])
-      .where("id", "=", subUserId)
-      .where("status", "=", 1)
-      .executeTakeFirst() as Promise<TenantScope | undefined>;
-  }
+  private async getSeatAccessSnapshot(
+    scope: WorkbenchSeatAccessScope,
+  ): Promise<SeatAccessSnapshot | undefined> {
+    const subUserId = parseMySqlId(scope.subUserId);
 
-  private async getSeatAccessSnapshot(subUserId: number): Promise<SeatAccessSnapshot | undefined> {
+    if (subUserId == null) {
+      return undefined;
+    }
+
     const cacheKey = this.cacheKeys.seatAccess(subUserId);
-    const cached = await this.readSeatAccessSnapshot(cacheKey);
+    const cached = await this.readSeatAccessSnapshot(cacheKey, scope);
 
     if (cached) {
       return cached;
-    }
-
-    const scope = await this.getSubUserTenantScope(subUserId);
-
-    if (!scope) {
-      return undefined;
     }
 
     const rows = await this.db
@@ -4530,7 +4597,7 @@ export class WorkbenchRepository {
     return snapshot;
   }
 
-  private async readSeatAccessSnapshot(key: string) {
+  private async readSeatAccessSnapshot(key: string, scope: { platform: number; uid: number }) {
     let cached: string | null | undefined;
 
     try {
@@ -4554,8 +4621,10 @@ export class WorkbenchRepository {
         value.version === 1 &&
         typeof value.uid === "number" &&
         Number.isFinite(value.uid) &&
+        value.uid === scope.uid &&
         typeof value.platform === "number" &&
         Number.isFinite(value.platform) &&
+        value.platform === scope.platform &&
         Array.isArray(value.seatIds) &&
         value.seatIds.every((seatId) => typeof seatId === "string")
       ) {

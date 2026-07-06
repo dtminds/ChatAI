@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { AiHostingAgentListItem } from "@chatai/contracts";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { Add01Icon, Book04Icon, Search01Icon } from "@hugeicons/core-free-icons";
+import { Add01Icon, AiBookIcon, Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   AlertDialog,
@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Table,
@@ -45,6 +45,7 @@ import {
   AiHostingPageHeader,
   notifyAiHostingQuotaChanged,
 } from "./ai-hosting-layout";
+import { AiHostingIntroGuide } from "./ai-hosting-intro-guide";
 import { fetchAiHostingQuota } from "./ai-hosting-quota-store";
 import {
   AI_HOSTING_AGENT_QUOTA_REACHED_MESSAGE,
@@ -56,8 +57,32 @@ type AgentRecord = AiHostingAgentListItem;
 
 const AGENT_PAGE_SIZE = 10;
 const MAX_INLINE_KB_COUNT = 2;
+const MAX_INLINE_KB_NAME_LENGTH = 10;
 const agentKnowledgeBaseChipClassName =
   "inline-flex h-[22px] min-w-0 max-w-full items-center truncate rounded-[6px] bg-primary/10 px-1.5 text-[13px] font-normal leading-[22px] text-primary";
+const agentIntroSteps = [
+  {
+    description: "定义 Agent 在对话中的身份、服务边界和风格",
+    imageAlt: "创建 Agent 示意图",
+    imageUrl: "https://b5.bokr.com.cn/dist/ui/agent_f1.png",
+    step: "第 1 步",
+    title: "创建 Agent",
+  },
+  {
+    description: "设定 Agent 在不同业务场景和会话状态下的处理逻辑",
+    imageAlt: "训练调优示意图",
+    imageUrl: "https://b5.bokr.com.cn/dist/ui/agent_f2.png",
+    step: "第 2 步",
+    title: "训练调优",
+  },
+  {
+    description: "开启托管账号的话术推荐或自动回复",
+    imageAlt: "对话辅助示意图",
+    imageUrl: "https://b5.bokr.com.cn/dist/ui/agent_f3.png",
+    step: "第 3 步",
+    title: "开启辅助",
+  },
+] as const;
 
 export function AgentManagementPage() {
   const role = useAuthStore((state) => state.subUser?.role);
@@ -185,15 +210,11 @@ export function AgentManagementPage() {
     <AiHostingLayout title="Agent 管理">
       <div className="space-y-6">
         <AiHostingPageHeader
-          actions={
-            <Button className="h-9 rounded-[8px] px-3 text-sm" type="button" variant="outline">
-              <HugeiconsIcon icon={Book04Icon} size={16} strokeWidth={1.8} />
-              <span>帮助手册</span>
-            </Button>
-          }
           description="创建和管理负责客户接待的智能体"
           title="Agent 管理"
         />
+
+        <AiHostingIntroGuide ariaLabel="Agent 使用引导" steps={agentIntroSteps} />
 
         <section aria-label="Agent 列表区块">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -434,11 +455,15 @@ function AgentKnowledgeBasePreview({
   const content = (
     <div className="flex max-w-full min-w-0 flex-wrap items-center gap-1.5">
       {visibleKbList.map((kb) => (
-        <AgentKnowledgeBaseChip key={kb.id} name={kb.name} />
+        <AgentKnowledgeBaseChip
+          key={kb.id}
+          name={formatInlineKnowledgeBaseName(kb.name)}
+          to={getKnowledgeBaseDetailPath(kb.id)}
+        />
       ))}
       {hasOverflow ? (
         <span className="shrink-0 text-sm text-muted-foreground">
-          等 {kbList.length} 个知识库
+          等 {kbList.length} 个
         </span>
       ) : null}
     </div>
@@ -450,20 +475,19 @@ function AgentKnowledgeBasePreview({
 
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
-      <PopoverTrigger asChild>
-        <Button
+      <PopoverAnchor asChild>
+        <div
           aria-label={`查看 ${agentName} 的全部关联知识库`}
-          className="h-auto min-w-0 max-w-full justify-start whitespace-normal p-0 text-left font-normal hover:bg-transparent"
+          className="min-w-0 max-w-full"
           onBlur={scheduleClosePopover}
           onFocus={openPopover}
           onMouseEnter={openPopover}
           onMouseLeave={scheduleClosePopover}
-          type="button"
-          variant="ghost"
+          role="group"
         >
           {content}
-        </Button>
-      </PopoverTrigger>
+        </div>
+      </PopoverAnchor>
       <AgentKnowledgeBasePopoverContent
         kbList={kbList}
         onCloseRequest={scheduleClosePopover}
@@ -485,26 +509,32 @@ function AgentKnowledgeBasePopoverContent({
   return (
     <PopoverContent
       align="start"
-      className="w-[20rem] p-3"
+      className="w-[18rem] p-2.5"
       onBlur={onCloseRequest}
       onCloseAutoFocus={(event) => event.preventDefault()}
       onFocus={onOpenRequest}
       onMouseEnter={onOpenRequest}
       onMouseLeave={onCloseRequest}
     >
-      <div className="space-y-3">
-        <div className="flex items-center justify-between gap-3 px-2.5">
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-3 px-1.5">
           <p className="text-sm font-medium text-foreground">关联知识库 · {kbList.length}</p>
         </div>
-        <ScrollArea className="max-h-[16rem]" data-testid="agent-kb-popover-scroll">
-          <div className="space-y-1 pr-2">
-            {kbList.map((kb) => (
-              <div
-                className="flex min-h-10 items-center rounded-[8px] px-2.5 py-2"
+        <ScrollArea
+          className="max-h-[12rem]"
+          data-testid="agent-kb-popover-scroll"
+          viewportProps={{
+            className: "[&>div]:!block [&>div]:!min-w-0 [&>div]:!w-full",
+          }}
+        >
+          <div className="w-full min-w-0 space-y-1 pr-1">
+            {kbList.map((kb, index) => (
+              <AgentKnowledgeBasePopoverItem
+                dataTestId={`agent-kb-popover-item-${index + 1}`}
                 key={kb.id}
-              >
-                <AgentKnowledgeBaseChip className="max-w-full" name={kb.name} />
-              </div>
+                name={kb.name}
+                to={getKnowledgeBaseDetailPath(kb.id)}
+              />
             ))}
           </div>
         </ScrollArea>
@@ -513,16 +543,83 @@ function AgentKnowledgeBasePopoverContent({
   );
 }
 
-function AgentKnowledgeBaseChip({
-  className,
+function AgentKnowledgeBasePopoverItem({
+  dataTestId,
   name,
+  to,
 }: {
-  className?: string;
+  dataTestId?: string;
   name: string;
+  to: string;
 }) {
   return (
-    <span className={cn(agentKnowledgeBaseChipClassName, className)}>
-      <span className="truncate">{name}</span>
+    <Link
+      className="flex h-9 w-full min-w-0 items-center gap-2 rounded-[8px] px-2 text-sm text-foreground outline-none transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:ring-2 focus-visible:ring-ring/30"
+      data-testid={dataTestId}
+      title={name}
+      to={to}
+    >
+      <span
+        aria-hidden="true"
+        className="inline-flex size-5 shrink-0 items-center justify-center rounded-[6px] bg-primary/10 text-primary"
+        title="知识库图标"
+      >
+        <HugeiconsIcon
+          aria-hidden="true"
+          icon={AiBookIcon}
+          size={13}
+          strokeWidth={1.8}
+        />
+      </span>
+      <span className="min-w-0 flex-1 truncate">{name}</span>
+    </Link>
+  );
+}
+
+function AgentKnowledgeBaseChip({
+  className,
+  dataTestId,
+  name,
+  title,
+  to,
+}: {
+  className?: string;
+  dataTestId?: string;
+  name: string;
+  title?: string;
+  to?: string;
+}) {
+  const content = (
+    <span className="min-w-0 flex-1 truncate" title={title}>
+      {name}
     </span>
   );
+
+  if (to) {
+    return (
+      <Link
+        className={cn(agentKnowledgeBaseChipClassName, className)}
+        data-testid={dataTestId}
+        to={to}
+      >
+        {content}
+      </Link>
+    );
+  }
+
+  return (
+    <span className={cn(agentKnowledgeBaseChipClassName, className)} data-testid={dataTestId}>
+      {content}
+    </span>
+  );
+}
+
+function formatInlineKnowledgeBaseName(name: string) {
+  return name.length > MAX_INLINE_KB_NAME_LENGTH
+    ? `${name.slice(0, MAX_INLINE_KB_NAME_LENGTH)}..`
+    : name;
+}
+
+function getKnowledgeBaseDetailPath(kbId: string) {
+  return `/chat/ai-hosting/kb/${kbId}`;
 }

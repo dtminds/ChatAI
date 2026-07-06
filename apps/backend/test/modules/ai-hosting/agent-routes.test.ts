@@ -1,7 +1,13 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildMockedApp } from "../../helpers/build-mocked-app";
 
 describe("AI hosting agent routes", () => {
+  const originalNodeEnv = process.env.NODE_ENV;
+
+  afterEach(() => {
+    process.env.NODE_ENV = originalNodeEnv;
+  });
+
   it("lists tenant agents with referenced knowledge bases from one extra query", async () => {
     const { app, authorization, db } = await createAiHostingApp();
 
@@ -703,6 +709,7 @@ describe("AI hosting agent routes", () => {
             name: "未发布小助理",
           },
         ],
+        fullAutoAuthAvailable: false,
       },
       success: true,
     });
@@ -710,7 +717,7 @@ describe("AI hosting agent routes", () => {
     expect(db.agentListLimitValues).toContain(100);
     expect(db.seatListWheres).toContainEqual(["seat.uid", "=", 9001]);
     expect(db.seatListWheres).toContainEqual(["seat.platform", "=", 5]);
-    expect(db.queriedTables).toContain("xy_wap_embed_sub_user");
+    expect(db.queriedTables).not.toContain("xy_wap_embed_sub_user");
     expect(db.seatListLimitValues).toContain(200);
     expect(db.hostingConfigListWheres).toContainEqual(["uid", "=", 9001]);
     expect(db.hostingConfigListWheres).toContainEqual(["user_seat_id", "in", [102, 101]]);
@@ -722,6 +729,8 @@ describe("AI hosting agent routes", () => {
   it("saves hosting settings with bulk writes after checking existing seat-agent rows", async () => {
     const { app, authorization, db } = await createAiHostingApp(["admin"], {
       bulkHostingSeats: true,
+      dataUid: 272,
+      uid: 272,
     });
 
     const response = await app.inject({
@@ -768,7 +777,7 @@ describe("AI hosting agent routes", () => {
       },
       success: true,
     });
-    expect(db.hostingConfigLookupWheres).toContainEqual(["uid", "=", 9001]);
+    expect(db.hostingConfigLookupWheres).toContainEqual(["uid", "=", 272]);
     expect(db.hostingConfigLookupWheres).toContainEqual([
       "user_seat_id",
       "in",
@@ -780,14 +789,14 @@ describe("AI hosting agent routes", () => {
           agent_id: 301,
           full_auto_auth: 1,
           semi_auto_auth: 1,
-          uid: 9001,
+          uid: 272,
           user_seat_id: 101,
         },
         {
           agent_id: 301,
           full_auto_auth: 1,
           semi_auto_auth: 1,
-          uid: 9001,
+          uid: 272,
           user_seat_id: 103,
         },
       ],
@@ -810,6 +819,133 @@ describe("AI hosting agent routes", () => {
     expect(db.updatedHostingConfigs[0]?.values).not.toHaveProperty("semi_auto_switch");
 
     await app.close();
+  });
+
+  it("blocks non-allowlisted tenants from enabling full-auto hosting auth", async () => {
+    process.env.NODE_ENV = "development";
+    const { app, authorization, db } = await createAiHostingApp(["admin"], {
+      bulkHostingSeats: true,
+    });
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "PUT",
+      payload: {
+        agentId: "301",
+        fullAutoAuth: true,
+        semiAutoAuth: true,
+        userSeatIds: ["101"],
+      },
+      url: "/api/server/ai-hosting/hosting-settings",
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({
+      error: {
+        code: "AI_HOSTING_FULL_AUTO_NOT_AVAILABLE",
+        message: "该功能内测中，如需开通请联系客服",
+      },
+      success: false,
+    });
+    expect(db.insertedHostingConfigs).toEqual([]);
+    expect(db.updatedHostingConfigs).toEqual([]);
+
+    await app.close();
+  });
+
+  it("allows non-allowlisted tenants to keep or disable existing full-auto hosting auth", async () => {
+    process.env.NODE_ENV = "development";
+    const { app, authorization, db } = await createAiHostingApp();
+
+    const keepEnabled = await app.inject({
+      headers: { authorization },
+      method: "PUT",
+      payload: {
+        agentId: "301",
+        fullAutoAuth: true,
+        semiAutoAuth: true,
+        userSeatIds: ["102"],
+      },
+      url: "/api/server/ai-hosting/hosting-settings",
+    });
+
+    expect(keepEnabled.statusCode).toBe(200);
+    expect(db.updatedHostingConfigs.at(-1)).toMatchObject({
+      userSeatIds: [102],
+      values: {
+        full_auto_auth: 1,
+        semi_auto_auth: 1,
+      },
+    });
+
+    const disableEnabled = await app.inject({
+      headers: { authorization },
+      method: "PUT",
+      payload: {
+        agentId: "301",
+        fullAutoAuth: false,
+        semiAutoAuth: true,
+        userSeatIds: ["102"],
+      },
+      url: "/api/server/ai-hosting/hosting-settings",
+    });
+
+    expect(disableEnabled.statusCode).toBe(200);
+    expect(db.updatedHostingConfigs.at(-1)).toMatchObject({
+      userSeatIds: [102],
+      values: {
+        full_auto_auth: 0,
+        semi_auto_auth: 1,
+      },
+    });
+
+    await app.close();
+  });
+
+  it("allows development uid 272 and production uid 101 to enable full-auto hosting auth", async () => {
+    process.env.NODE_ENV = "development";
+    const developmentApp = await createAiHostingApp(["admin"], {
+      dataUid: 272,
+      uid: 272,
+    });
+
+    const developmentResponse = await developmentApp.app.inject({
+      headers: { authorization: developmentApp.authorization },
+      method: "PUT",
+      payload: {
+        agentId: "301",
+        fullAutoAuth: true,
+        semiAutoAuth: true,
+        userSeatIds: ["101"],
+      },
+      url: "/api/server/ai-hosting/hosting-settings",
+    });
+
+    expect(developmentResponse.statusCode).toBe(200);
+    expect(developmentResponse.json().data.fullAutoAuthAvailable).toBe(true);
+    await developmentApp.app.close();
+
+    process.env.NODE_ENV = "production";
+    const productionApp = await createAiHostingApp(["admin"], {
+      dataUid: 101,
+      uid: 101,
+    });
+
+    const productionResponse = await productionApp.app.inject({
+      headers: { authorization: productionApp.authorization },
+      method: "PUT",
+      payload: {
+        agentId: "301",
+        fullAutoAuth: true,
+        semiAutoAuth: true,
+        userSeatIds: ["101"],
+      },
+      url: "/api/server/ai-hosting/hosting-settings",
+    });
+
+    expect(productionResponse.statusCode).toBe(200);
+    expect(productionResponse.json().data.fullAutoAuthAvailable).toBe(true);
+    await productionApp.app.close();
   });
 
   it("rejects hosting settings saves for unpublished agents", async () => {
@@ -1193,6 +1329,7 @@ type CreateAiHostingDbMockOptions = {
   activeKbCount?: number;
   beforeExecute?: (event: QueryExecutionEvent) => Promise<void> | void;
   bulkHostingSeats?: boolean;
+  dataUid?: number;
   deletedAgentCount?: number;
   deletedKbCount?: number;
   docSizeBytes?: number[];
@@ -1229,12 +1366,14 @@ function createBlockedAgentListProbe() {
 }
 
 function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
+  const uid = options.uid ?? 9001;
+  const dataUid = options.dataUid ?? 9001;
   const subUsers = [
     {
       id: 1,
       platform: 5,
       status: 1,
-      uid: options.uid ?? 9001,
+      uid: dataUid,
     },
   ];
   const models = [
@@ -1254,7 +1393,7 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
       name: "Doubao-2.0-lite",
       status: 1,
       support_multimodal: 1,
-      uid: 9001,
+      uid: dataUid,
     },
   ];
   let agentPrompt = "如何客户咨询成分，那么说明功效";
@@ -1269,7 +1408,7 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
       operator_id: 1,
       prompt_config: buildPromptConfig(agentPrompt),
       status: 1,
-      uid: 9001,
+      uid: dataUid,
       update_time: new Date("2024-06-10T08:01:00Z"),
     },
     {
@@ -1282,7 +1421,7 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
       operator_id: 1,
       prompt_config: buildPromptConfig(agentPrompt),
       status: 1,
-      uid: 9001,
+      uid: dataUid,
       update_time: new Date("2024-06-12T08:01:00Z"),
     },
   ];
@@ -1297,7 +1436,7 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
       operator_id: 1,
       prompt_config: buildPromptConfig(agentPrompt),
       status: 1,
-      uid: 9001,
+      uid: dataUid,
       update_time: new Date("2024-06-13T08:01:00Z"),
     });
   }
@@ -1312,7 +1451,7 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
       operator_id: 1,
       prompt_config: buildPromptConfig(agentPrompt),
       status: 0,
-      uid: 9001,
+      uid: dataUid,
       update_time: new Date("2024-06-14T08:01:00Z"),
     });
   }
@@ -1324,7 +1463,7 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
       model_id: 11,
       operator_id: 1,
       prompt_config: buildPromptConfig(agentPrompt),
-      uid: 9001,
+      uid: dataUid,
     },
   ];
   const seats = [
@@ -1334,7 +1473,7 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
       platform: 5,
       third_avatar: "https://example.com/seat-102.png",
       third_user_name: "小助理2",
-      uid: 9001,
+      uid: dataUid,
     },
     {
       avatarUrl: "",
@@ -1342,7 +1481,7 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
       platform: 5,
       third_avatar: "",
       third_user_name: "小助理1",
-      uid: 9001,
+      uid: dataUid,
     },
     ...(options.bulkHostingSeats
       ? [
@@ -1352,7 +1491,7 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
             platform: 5,
             third_avatar: "https://example.com/seat-104.png",
             third_user_name: "小助理4",
-            uid: 9001,
+            uid: dataUid,
           },
           {
             avatarUrl: "https://example.com/seat-103.png",
@@ -1360,7 +1499,7 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
             platform: 5,
             third_avatar: "https://example.com/seat-103.png",
             third_user_name: "小助理3",
-            uid: 9001,
+            uid: dataUid,
           },
         ]
       : []),
@@ -1373,7 +1512,7 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
       id: 801,
       semi_auto_auth: 0,
       semi_auto_switch: 1,
-      uid: 9001,
+      uid: dataUid,
       user_seat_id: 102,
     },
     ...(options.bulkHostingSeats
@@ -1385,7 +1524,7 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
             id: 802,
             semi_auto_auth: 1,
             semi_auto_switch: 0,
-            uid: 9001,
+            uid: dataUid,
             user_seat_id: 104,
           },
         ]
@@ -1399,7 +1538,7 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
     operator_id: 1,
     remark: "",
     status: 1,
-    uid: 9001,
+    uid: dataUid,
     update_time: new Date("2024-06-15T08:01:00Z"),
   }));
   for (let index = 0; index < (options.deletedKbCount ?? 0); index += 1) {
@@ -1411,7 +1550,7 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
       operator_id: 1,
       remark: "",
       status: 0,
-      uid: 9001,
+      uid: dataUid,
       update_time: new Date("2024-06-16T08:01:00Z"),
     });
   }
@@ -1420,7 +1559,7 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
       doc_size: docSize,
       id: 1001 + index,
       status: 1,
-      uid: 9001,
+      uid: dataUid,
     }),
   );
   const state = {

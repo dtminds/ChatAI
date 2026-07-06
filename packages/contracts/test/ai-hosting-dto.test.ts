@@ -13,6 +13,7 @@ import {
   KbDocCreateRequestSchema,
   KbDocDetailSchema,
   KbDocListResponseSchema,
+  getKbDocFileSizeLimit,
   KbCreateResponseSchema,
   KbListResponseSchema,
 } from "../src";
@@ -298,6 +299,17 @@ describe("AI hosting DTOs", () => {
     expect(Value.Check(KbDocCreateRequestSchema, payload)).toBe(true);
     expect(Value.Check(KbDocCreateRequestSchema, { ...payload, docSize: -1 })).toBe(false);
     expect(Value.Check(KbDocCreateRequestSchema, { ...payload, docSize: undefined })).toBe(false);
+  });
+
+  it("resolves per-suffix kb document file size limits", () => {
+    expect(getKbDocFileSizeLimit("pdf")).toBe(200 * 1024 * 1024);
+    expect(getKbDocFileSizeLimit(".DOCX")).toBe(200 * 1024 * 1024);
+    expect(getKbDocFileSizeLimit("ppt")).toBe(200 * 1024 * 1024);
+    expect(getKbDocFileSizeLimit("md")).toBe(10 * 1024 * 1024);
+    expect(getKbDocFileSizeLimit("txt")).toBe(10 * 1024 * 1024);
+    expect(getKbDocFileSizeLimit("xlsx")).toBe(100 * 1024 * 1024);
+    expect(getKbDocFileSizeLimit("faq.xlsx")).toBe(100 * 1024 * 1024);
+    expect(getKbDocFileSizeLimit("fallback")).toBe(10 * 1024 * 1024);
   });
 
   it("keeps list responses separate from quota usage", () => {

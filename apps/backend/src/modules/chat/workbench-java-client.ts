@@ -42,6 +42,7 @@ import {
 
 const DEFAULT_JAVA_INTERNAL_API_TIMEOUT_MS = 8000;
 const DEFAULT_JAVA_INTERNAL_API_TRANS_MSG_FILE_TIMEOUT_MS = 120000;
+const DEFAULT_JAVA_INTERNAL_API_AGENT_TEST_TIMEOUT_MS = 60000;
 const DEFAULT_JAVA_INTERNAL_API_STREAM_IDLE_TIMEOUT_MS = 60000;
 export const JAVA_INTERNAL_API_USER_MESSAGE = "服务繁忙，请稍后重试";
 export const WORKBENCH_INTERNAL_API_NOT_CONFIGURED_CODE =
@@ -63,6 +64,7 @@ export const JAVA_MESSAGE_SOURCE = {
 } as const;
 
 export const JAVA_MENTION_LOCATION = {
+  ANY: 2,
   END: 1,
   START: 0,
 } as const;
@@ -80,8 +82,10 @@ type JavaApiResponse<T> = {
 
 type JavaMentionFields = {
   atLocation?: number;
+  atOriginText?: string;
   atWxSerialNos?: string[];
   isHit?: number;
+  quoteOriginText?: string;
 };
 
 export type JavaSendMessageData =
@@ -299,6 +303,12 @@ export type WorkbenchJavaClient = {
     platform: number;
     subId: number;
     thirdUserId: string;
+    uid: number;
+  }): Promise<void>;
+  syncSeatGroups(input: {
+    platform: number;
+    seatId: number;
+    syncMembers?: boolean;
     uid: number;
   }): Promise<void>;
   testAgent(input: {
@@ -754,6 +764,21 @@ export function createWorkbenchJavaClient(
         "take-over-seat",
       ).then(() => undefined);
     },
+    syncSeatGroups(input) {
+      return postJavaEnvelope<boolean>(
+        baseUrl,
+        token,
+        "/third-internal/wap-embed/user-seat/sync-seat-groups",
+        {
+          platform: input.platform,
+          seatId: input.seatId,
+          syncMembers: input.syncMembers ?? true,
+          uid: input.uid,
+        },
+        logger,
+        "sync-seat-groups",
+      ).then(() => undefined);
+    },
     testAgent(input) {
       return postJavaEnvelope<unknown>(
         baseUrl,
@@ -762,6 +787,7 @@ export function createWorkbenchJavaClient(
         input,
         logger,
         "test-agent",
+        { timeoutMs: readJavaApiAgentTestTimeoutMs() },
       );
     },
     updateMessageContent(input) {
@@ -1240,6 +1266,14 @@ function readJavaApiTransMsgFileTimeoutMs() {
   return Number.isSafeInteger(value) && value > 0
     ? value
     : DEFAULT_JAVA_INTERNAL_API_TRANS_MSG_FILE_TIMEOUT_MS;
+}
+
+function readJavaApiAgentTestTimeoutMs() {
+  const value = Number.parseInt(process.env.JAVA_INTERNAL_API_AGENT_TEST_TIMEOUT_MS ?? "", 10);
+
+  return Number.isSafeInteger(value) && value > 0
+    ? value
+    : DEFAULT_JAVA_INTERNAL_API_AGENT_TEST_TIMEOUT_MS;
 }
 
 function readJavaApiStreamIdleTimeoutMs() {

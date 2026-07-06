@@ -37,6 +37,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Spinner } from "@/components/ui/spinner";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { isRequestError } from "@/lib/request";
 import { cn } from "@/lib/utils";
 import { listAiHostingSettings, updateAiHostingSettings } from "./agent-service";
@@ -52,6 +58,7 @@ type HostingSettingsDraft = {
 };
 
 const SELECTED_ACCOUNT_PREVIEW_LIMIT = 5;
+const fullAutoAuthUnavailableMessage = "该功能内测中，如需开通请联系客服";
 
 export function AgentHostingSettingsPage() {
   const navigate = useNavigate();
@@ -61,6 +68,7 @@ export function AgentHostingSettingsPage() {
   const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([]);
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
   const [settingsTargetAccountIds, setSettingsTargetAccountIds] = useState<string[]>([]);
+  const [fullAutoAuthAvailable, setFullAutoAuthAvailable] = useState(false);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -77,6 +85,7 @@ export function AgentHostingSettingsPage() {
         if (!ignore) {
           setAccounts(response.accounts);
           setAgents(response.agents);
+          setFullAutoAuthAvailable(response.fullAutoAuthAvailable);
         }
       } catch (error) {
         if (!ignore) {
@@ -161,6 +170,7 @@ export function AgentHostingSettingsPage() {
 
       setAccounts(response.accounts);
       setAgents(response.agents);
+      setFullAutoAuthAvailable(response.fullAutoAuthAvailable);
       setSelectedAccountIds((current) => current.filter((id) => !accountIds.includes(id)));
       setSettingsDialogOpen(false);
       setErrorMessage("");
@@ -240,6 +250,7 @@ export function AgentHostingSettingsPage() {
         <HostingSettingsDialog
           accounts={accounts}
           agents={agents}
+          fullAutoAuthAvailable={fullAutoAuthAvailable}
           onGoToAddAgent={handleGoToAddAgent}
           onOpenChange={setSettingsDialogOpen}
           onSave={handleSaveSettings}
@@ -254,6 +265,7 @@ export function AgentHostingSettingsPage() {
 function HostingSettingsDialog({
   accounts,
   agents,
+  fullAutoAuthAvailable,
   onGoToAddAgent,
   onOpenChange,
   onSave,
@@ -262,6 +274,7 @@ function HostingSettingsDialog({
 }: {
   accounts: HostingAccount[];
   agents: HostingAgent[];
+  fullAutoAuthAvailable: boolean;
   onGoToAddAgent: () => void;
   onOpenChange: (open: boolean) => void;
   onSave: (accountIds: string[], draft: HostingSettingsDraft) => void | Promise<void>;
@@ -279,6 +292,7 @@ function HostingSettingsDialog({
     [accounts, targetAccountIds],
   );
   const dialogTitle = targetAccounts.length === 1 ? "设置" : "批量设置";
+  const fullAutoAuthDisabled = !fullAutoAuthAvailable && !fullAutoAuth;
 
   useEffect(() => {
     if (!open || targetAccounts.length === 0) {
@@ -378,9 +392,11 @@ function HostingSettingsDialog({
               <PermissionSettingRow
                 checked={fullAutoAuth}
                 description="客服可开启 AI 回复， Agent 将自动回复客户的消息"
+                disabled={fullAutoAuthDisabled}
                 id="hosting-settings-auto-hosting"
                 onCheckedChange={setFullAutoAuth}
                 title="允许开启 AI 回复"
+                tooltip={fullAutoAuthDisabled ? fullAutoAuthUnavailableMessage : undefined}
               />
               <PermissionSettingRow
                 checked={semiAutoAuth}
@@ -418,16 +434,29 @@ function HostingSettingsDialog({
 function PermissionSettingRow({
   checked,
   description,
+  disabled = false,
   id,
   onCheckedChange,
   title,
+  tooltip,
 }: {
   checked: boolean;
   description: string;
+  disabled?: boolean;
   id: string;
   onCheckedChange: (checked: boolean) => void;
   title: string;
+  tooltip?: string;
 }) {
+  const switchControl = (
+    <Switch
+      checked={checked}
+      disabled={disabled}
+      id={id}
+      onCheckedChange={onCheckedChange}
+    />
+  );
+
   return (
     <div className="flex items-center justify-between gap-4 border-b border-border px-4 py-3.5 last:border-b-0">
       <div className="min-w-0 space-y-1">
@@ -436,7 +465,20 @@ function PermissionSettingRow({
         </Label>
         <p className="text-xs text-muted-foreground">{description}</p>
       </div>
-      <Switch checked={checked} id={id} onCheckedChange={onCheckedChange} />
+      {tooltip ? (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="inline-flex" tabIndex={0}>
+                {switchControl}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>{tooltip}</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      ) : (
+        switchControl
+      )}
     </div>
   );
 }
@@ -546,6 +588,7 @@ function HostingSettingsTable({
 }) {
   const selectedAccountIdSet = new Set(selectedAccountIds);
   const agentNameById = new Map(agents.map((agent) => [agent.id, agent.name]));
+  const tableColumnCount = 6;
 
   return (
     <>
@@ -564,13 +607,13 @@ function HostingSettingsTable({
             <TableHead className="h-11 w-[16%]">关联 Agent</TableHead>
             <TableHead className="h-11 w-[18%]">允许开启 AI 回复</TableHead>
             <TableHead className="h-11 w-[16%]">允许话术推荐</TableHead>
-            <TableHead className="h-11 w-[100px] text-right">操作</TableHead>
+            <TableHead className="h-11 w-[140px] text-right">操作</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {loading ? (
             <TableRow>
-              <TableCell className="py-10 text-center" colSpan={6}>
+              <TableCell className="py-10 text-center" colSpan={tableColumnCount}>
                 <div
                   aria-label="正在加载"
                   className="inline-flex items-center gap-2 text-sm text-muted-foreground"
@@ -583,7 +626,7 @@ function HostingSettingsTable({
             </TableRow>
           ) : accounts.length === 0 ? (
             <TableRow>
-              <TableCell className="py-10 text-center text-sm text-muted-foreground" colSpan={6}>
+              <TableCell className="py-10 text-center text-sm text-muted-foreground" colSpan={tableColumnCount}>
                 暂无数据
               </TableCell>
             </TableRow>

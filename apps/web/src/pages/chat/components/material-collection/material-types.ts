@@ -50,6 +50,24 @@ export function getMaterialContentFormValues(
     };
   }
 
+  if (item.contentType === "mini-program") {
+    return {
+      description: "",
+      fileExtension: "",
+      fileName: "",
+      title: readString(item.content.title) || item.title,
+    };
+  }
+
+  if (item.contentType === "video") {
+    return {
+      description: "",
+      fileExtension: "",
+      fileName: "",
+      title: item.title,
+    };
+  }
+
   return {
     description: "",
     fileExtension: "",

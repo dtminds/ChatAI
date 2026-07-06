@@ -15,6 +15,7 @@ describe("createWorkbenchJavaClient", () => {
     delete process.env.JAVA_INTERNAL_API_TOKEN;
     delete process.env.JAVA_INTERNAL_API_STREAM_IDLE_TIMEOUT_MS;
     delete process.env.JAVA_INTERNAL_API_TRANS_MSG_FILE_TIMEOUT_MS;
+    delete process.env.JAVA_INTERNAL_API_AGENT_TEST_TIMEOUT_MS;
     delete process.env.JAVA_INTERNAL_API_TIMEOUT_MS;
   });
 
@@ -119,6 +120,36 @@ describe("createWorkbenchJavaClient", () => {
     });
   });
 
+  it("posts seat group sync payload to the Java internal API", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ data: true, error: 0, errorMsg: "", success: true }), {
+        headers: { "content-type": "application/json" },
+        status: 200,
+      }),
+    );
+
+    await createWorkbenchJavaClient().syncSeatGroups({
+      platform: 5,
+      seatId: 102,
+      syncMembers: true,
+      uid: 9001,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/wap-embed/user-seat/sync-seat-groups",
+      expect.objectContaining({
+        body: JSON.stringify({
+          platform: 5,
+          seatId: 102,
+          syncMembers: true,
+          uid: 9001,
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
   it("passes an abort signal to Java internal API requests", async () => {
     process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
     process.env.JAVA_INTERNAL_API_TOKEN = "internal-token";
@@ -182,6 +213,57 @@ describe("createWorkbenchJavaClient", () => {
       }),
     );
 
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses a dedicated timeout for agent simulation tests", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    process.env.JAVA_INTERNAL_API_TIMEOUT_MS = "1";
+    process.env.JAVA_INTERNAL_API_AGENT_TEST_TIMEOUT_MS = "60000";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(
+      async (_url, init) => {
+        expect((init?.signal as AbortSignal).aborted).toBe(false);
+        return new Response(
+          JSON.stringify({
+            data: {
+              action: "reply",
+              reply: [{ content: "你好", type: "text" }],
+            },
+            error: 0,
+            errorMsg: "",
+            success: true,
+          }),
+          {
+            headers: { "content-type": "application/json" },
+            status: 200,
+          },
+        );
+      },
+    );
+
+    await expect(
+      createWorkbenchJavaClient().testAgent({
+        messages: [
+          {
+            contents: [{ text: "你好", type: "text" }],
+            role: "user",
+          },
+        ],
+        modelId: 11,
+        promptConfig: "{}",
+        uid: 9001,
+      }),
+    ).resolves.toEqual({
+      action: "reply",
+      reply: [{ content: "你好", type: "text" }],
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/wap-embed-agent/test-agent",
+      expect.objectContaining({
+        signal: expect.any(AbortSignal),
+      }),
+    );
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 

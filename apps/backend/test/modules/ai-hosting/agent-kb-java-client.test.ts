@@ -394,6 +394,131 @@ describe("createAgentKbJavaClient", () => {
     );
   });
 
+  it("submits kb create as JSON with uid and operatorId", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: 88,
+          error: 0,
+          errorMsg: "",
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    const kbId = await createAgentKbJavaClient().createKb({
+      name: "新品培训知识",
+      operatorId: "19",
+      remark: "用于新品上市培训",
+      uid: 9001,
+    });
+
+    expect(kbId).toBe("88");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/wap-embed-agent-kb/create",
+      expect.objectContaining({
+        body: expect.any(String),
+        headers: expect.objectContaining({
+          "content-type": "application/json",
+        }),
+        method: "POST",
+      }),
+    );
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      name: "新品培训知识",
+      operatorId: "19",
+      remark: "用于新品上市培训",
+      uid: 9001,
+    });
+  });
+
+  it("submits kb update as JSON with lastOperatorId", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: true,
+          error: 0,
+          errorMsg: "",
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    await createAgentKbJavaClient().updateKb({
+      kbId: 1,
+      lastOperatorId: "19",
+      name: "更新后的知识库",
+      remark: "更新后的描述",
+      uid: 9001,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/wap-embed-agent-kb/update",
+      expect.objectContaining({
+        body: expect.any(String),
+        headers: expect.objectContaining({
+          "content-type": "application/json",
+        }),
+        method: "POST",
+      }),
+    );
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      id: 1,
+      lastOperatorId: "19",
+      name: "更新后的知识库",
+      remark: "更新后的描述",
+      uid: 9001,
+    });
+  });
+
+  it("submits kb delete as JSON with id and uid", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: true,
+          error: 0,
+          errorMsg: "",
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    await createAgentKbJavaClient().deleteKb({
+      kbId: 2,
+      uid: 9001,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/wap-embed-agent-kb/del",
+      expect.objectContaining({
+        body: expect.any(String),
+        headers: expect.objectContaining({
+          "content-type": "application/json",
+        }),
+        method: "POST",
+      }),
+    );
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      id: 2,
+      uid: 9001,
+    });
+  });
+
   it("submits doc retry as JSON with id", async () => {
     process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
@@ -422,45 +547,6 @@ describe("createAgentKbJavaClient", () => {
       expect.objectContaining({
         body: JSON.stringify({
           id: 27,
-          operatorId: "19",
-          uid: 9001,
-        }),
-        headers: expect.objectContaining({
-          "content-type": "application/json",
-        }),
-        method: "POST",
-      }),
-    );
-  });
-
-  it("submits chunk delete as JSON with id", async () => {
-    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
-    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          data: true,
-          error: 0,
-          errorMsg: "",
-          success: true,
-        }),
-        {
-          headers: { "content-type": "application/json" },
-          status: 200,
-        },
-      ),
-    );
-
-    await createAgentKbJavaClient().deleteKbChunk({
-      chunkId: 37,
-      operatorId: "19",
-      uid: 9001,
-    });
-
-    expect(fetchMock).toHaveBeenCalledWith(
-      "https://java.internal/third-internal/wap-embed-agent-kb-chunk/del",
-      expect.objectContaining({
-        body: JSON.stringify({
-          id: 37,
           operatorId: "19",
           uid: 9001,
         }),
@@ -508,6 +594,45 @@ describe("createAgentKbJavaClient", () => {
       expect.objectContaining({
         body: JSON.stringify({
           ids: [37, 38],
+          operatorId: "19",
+          uid: 9001,
+        }),
+        headers: expect.objectContaining({
+          "content-type": "application/json",
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("submits chunk delete as JSON with id", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: true,
+          error: 0,
+          errorMsg: "",
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    await createAgentKbJavaClient().deleteKbChunk({
+      chunkId: 37,
+      operatorId: "19",
+      uid: 9001,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/wap-embed-agent-kb-chunk/del",
+      expect.objectContaining({
+        body: JSON.stringify({
+          id: 37,
           operatorId: "19",
           uid: 9001,
         }),

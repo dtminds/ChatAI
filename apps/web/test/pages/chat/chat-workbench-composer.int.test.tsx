@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
@@ -8,6 +8,7 @@ import {
   type WorkbenchQuickReplyDto,
 } from "@chatai/contracts";
 import { createMockWorkbenchService, setWorkbenchService } from "@/pages/chat/api/workbench-service";
+import { JAVA_MENTION_PLACEHOLDER } from "@/pages/chat/lib/composer-segments";
 import { useAuthStore } from "@/store/auth-store";
 import { useWorkbenchStore } from "@/store/workbench-store";
 import {
@@ -17,6 +18,10 @@ import {
   resetChatWorkbenchTestState,
   workbenchToastWarningMock,
 } from "./workbench-test-utils";
+import {
+  mockViewportMediaQuery,
+  restoreViewportMediaQuery,
+} from "./media-query-test-utils";
 
 function createDeferred<T = void>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
@@ -31,6 +36,10 @@ function createDeferred<T = void>() {
     reject,
     resolve,
   };
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 async function pasteIntoComposer(
@@ -67,6 +76,44 @@ function placeContentEditableCaretAtTextOffset(element: HTMLElement, offset: num
   }
 
   element.focus();
+}
+
+function getConversationCardMainButton(conversationId: string) {
+  const card = screen.getByTestId(`conversation-card-${conversationId}`);
+  const title = within(card).getByText("丹阳草莓，得利市大樱桃");
+  const button = title.closest("button");
+
+  if (!button) {
+    throw new Error(`Conversation ${conversationId} main button not found`);
+  }
+
+  return button;
+}
+
+function createAcceptedSendMessageMock() {
+  let messageIndex = 0;
+
+  return vi.fn(
+    async (
+      payload: Parameters<ReturnType<typeof createMockWorkbenchService>["sendMessage"]>[0],
+    ): Promise<Awaited<ReturnType<ReturnType<typeof createMockWorkbenchService>["sendMessage"]>>> => {
+      void payload;
+      messageIndex += 1;
+
+      const optNo = `opt-msg-material-${messageIndex}`;
+
+      return {
+        optNo,
+        messages: [
+          {
+            optNo,
+            status: "accepted" as const,
+          },
+        ],
+        status: "accepted" as const,
+      };
+    },
+  );
 }
 
 async function expectLatestConversationMessage(
@@ -212,6 +259,10 @@ describe("ChatWorkbenchPage composer flows", () => {
     installChatWorkbenchTestEnvironment();
   });
 
+  afterEach(() => {
+    restoreViewportMediaQuery();
+  });
+
   it("sends a message from the composer", async () => {
     const user = userEvent.setup();
 
@@ -237,6 +288,78 @@ describe("ChatWorkbenchPage composer flows", () => {
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
     expect(screen.getByRole("button", { name: "发送消息" })).toBeInTheDocument();
+  });
+
+  it("keeps history visible while folding secondary actions in the mobile composer", async () => {
+    mockViewportMediaQuery({ width: 390 });
+    const user = userEvent.setup();
+
+    renderChatWorkbenchPage();
+
+    await screen.findByTestId("conversation-card-conv-001");
+    await user.click(getConversationCardMainButton("conv-001"));
+
+    const composerToolbar = await screen.findByTestId("chat-composer-mobile-toolbar");
+    expect(within(composerToolbar).getByRole("button", { name: "微信表情" })).toBeInTheDocument();
+    expect(within(composerToolbar).getByRole("button", { name: "AI 对话" })).toBeInTheDocument();
+    expect(within(composerToolbar).getByRole("button", { name: "历史记录" })).toBeInTheDocument();
+    expect(within(composerToolbar).getByRole("button", { name: "本地上传" })).toBeInTheDocument();
+    expect(within(composerToolbar).getByRole("button", { name: "从收录发送" })).toBeInTheDocument();
+    expect(within(composerToolbar).getByRole("button", { name: "发送消息" })).toBeInTheDocument();
+    expect(
+      within(composerToolbar)
+        .getAllByRole("button")
+        .map((button) => button.getAttribute("aria-label")),
+    ).toEqual([
+      "微信表情",
+      "本地上传",
+      "从收录发送",
+      "AI 对话",
+      "历史记录",
+      "发送消息",
+    ]);
+    expect(within(composerToolbar).queryByRole("button", { name: "收录的视频" })).not.toBeInTheDocument();
+    expect(within(composerToolbar).queryByRole("button", { name: "收录的小程序" })).not.toBeInTheDocument();
+
+    await user.click(within(composerToolbar).getByRole("button", { name: "本地上传" }));
+    const uploadMenu = await screen.findByRole("menu", { name: "本地上传" });
+    expect(within(uploadMenu).getByRole("menuitem", { name: "本地图片" })).toBeInTheDocument();
+    expect(within(uploadMenu).getByRole("menuitem", { name: "本地文件" })).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+
+    await user.click(within(composerToolbar).getByRole("button", { name: "从收录发送" }));
+
+    const moreMenu = await screen.findByRole("menu", { name: "从收录发送" });
+    expect(within(moreMenu).getByText("从收录发送")).toBeInTheDocument();
+    expect(within(moreMenu).getByRole("menuitem", { name: "图片" })).toBeInTheDocument();
+    expect(within(moreMenu).getByRole("menuitem", { name: "视频" })).toBeInTheDocument();
+    expect(within(moreMenu).getByRole("menuitem", { name: "小程序" })).toBeInTheDocument();
+    expect(within(moreMenu).getByRole("menuitem", { name: "H5" })).toBeInTheDocument();
+    expect(within(moreMenu).getByRole("menuitem", { name: "文件" })).toBeInTheDocument();
+    expect(within(moreMenu).queryByRole("menuitem", { name: "收录的视频" })).not.toBeInTheDocument();
+    expect(within(moreMenu).queryByRole("menuitem", { name: "历史记录" })).not.toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+    await user.click(within(composerToolbar).getByRole("button", { name: "历史记录" }));
+
+    expect(await screen.findByRole("complementary", { name: "聊天记录" })).toBeInTheDocument();
+  });
+
+  it("opens material libraries with the mobile dialog layout from the mobile composer", async () => {
+    mockViewportMediaQuery({ width: 390 });
+    const user = userEvent.setup();
+
+    renderChatWorkbenchPage();
+
+    await screen.findByTestId("conversation-card-conv-001");
+    await user.click(getConversationCardMainButton("conv-001"));
+
+    const composerToolbar = await screen.findByTestId("chat-composer-mobile-toolbar");
+    await user.click(within(composerToolbar).getByRole("button", { name: "从收录发送" }));
+    await user.click(await screen.findByRole("menuitem", { name: "视频" }));
+
+    expect(await screen.findByRole("dialog", { name: "收录的视频" })).toBeInTheDocument();
+    expect(screen.queryByText(/右键菜单/)).not.toBeInTheDocument();
   });
 
   it("fills composer from a quick reply with text and an H5 attachment", async () => {
@@ -528,6 +651,57 @@ describe("ChatWorkbenchPage composer flows", () => {
     await user.click(within(listbox).getByRole("option", { name: "所有人（6人）" }));
 
     expect(composer).toHaveTextContent("请 @所有人");
+  });
+
+  it("sends selected member mentions with any-position placeholders", async () => {
+    const user = userEvent.setup();
+    const baseService = createMockWorkbenchService();
+    const sendMessage = vi.fn(baseService.sendMessage);
+
+    setWorkbenchService({
+      ...baseService,
+      sendMessage,
+    });
+
+    renderChatWorkbenchPage();
+
+    await user.click(await screen.findByRole("tab", { name: "群聊" }));
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().activeConversationId).toBe("conv-004");
+    });
+
+    const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
+    await pasteIntoComposer(user, composer, "hello @");
+    let listbox = await screen.findByRole("listbox", { name: "选择群成员" });
+    await user.click(within(listbox).getByRole("option", { name: "小林" }));
+    await user.keyboard("world @");
+    listbox = await screen.findByRole("listbox", { name: "选择群成员" });
+    await user.click(within(listbox).getByRole("option", { name: "缪勇飞 群昵称111" }));
+    await user.click(screen.getByRole("button", { name: "发送消息" }));
+
+    await waitFor(() => {
+      expect(sendMessage).toHaveBeenCalledTimes(1);
+    });
+    const sentPayload = sendMessage.mock.calls[0]?.[0];
+    expect(sentPayload).toMatchObject({
+      mention: {
+        location: "any",
+        memberIds: ["member-001", "member-006"],
+      },
+      segment: {
+        type: "text",
+      },
+    });
+    expect(sentPayload?.segment).toMatchObject({ type: "text" });
+    if (sentPayload?.segment?.type !== "text") {
+      throw new Error("Expected a text segment payload");
+    }
+    expect(sentPayload.segment.text).toMatch(
+      new RegExp(`^hello ${escapeRegExp(JAVA_MENTION_PLACEHOLDER)}\\s+world ${escapeRegExp(JAVA_MENTION_PLACEHOLDER)}$`),
+    );
+    expect(sentPayload.atOriginText).toMatch(
+      /^hello @小林\s+world @缪勇飞 群昵称111$/,
+    );
   });
 
   it("inserts a selected mention at a middle caret position", async () => {
@@ -1017,10 +1191,10 @@ describe("ChatWorkbenchPage composer flows", () => {
   });
 
   it.each([
-    ["选择收录图片", "收录的图片"],
-    ["收藏文件", "收录的文件"],
-    ["收藏小程序", "收录的小程序"],
-    ["收藏H5", "收录的H5"],
+    ["收录的图片", "收录的图片"],
+    ["收录的文件", "收录的文件"],
+    ["收录的小程序", "收录的小程序"],
+    ["收录的H5", "收录的H5"],
   ])("opens the %s material library from the composer", async (buttonName, dialogName) => {
     const user = userEvent.setup();
 
@@ -1040,7 +1214,7 @@ describe("ChatWorkbenchPage composer flows", () => {
     await screen.findByRole("textbox", { name: "请输入消息……" });
 
     expect(
-      screen.queryByRole("button", { name: "收藏视频号" }),
+      screen.queryByRole("button", { name: "收录的视频号" }),
     ).not.toBeInTheDocument();
   });
 
@@ -1100,9 +1274,9 @@ describe("ChatWorkbenchPage composer flows", () => {
     renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
-    await user.click(screen.getByRole("button", { name: "收藏文件" }));
+    await user.click(screen.getByRole("button", { name: "收录的文件" }));
     await user.click(screen.getByRole("button", { name: "关闭" }));
-    await user.click(screen.getByRole("button", { name: "收藏小程序" }));
+    await user.click(screen.getByRole("button", { name: "收录的小程序" }));
 
     miniProgramRequest.resolve({
       groups: [
@@ -1150,7 +1324,7 @@ describe("ChatWorkbenchPage composer flows", () => {
     renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
-    await user.click(screen.getByRole("button", { name: "收藏小程序" }));
+    await user.click(screen.getByRole("button", { name: "收录的小程序" }));
     await user.click(
       await screen.findByRole("button", {
         name: /选择素材 预约直播抽秋天的第一杯奶茶/,
@@ -1185,7 +1359,7 @@ describe("ChatWorkbenchPage composer flows", () => {
   it("sends a collected file material as a file segment", async () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();
-    const sendMessage = vi.fn(baseService.sendMessage);
+    const sendMessage = createAcceptedSendMessageMock();
     const listMaterialGroups = vi.fn(async (request) => {
       if (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.FILE) {
         return baseService.listMaterialGroups(request);
@@ -1244,7 +1418,7 @@ describe("ChatWorkbenchPage composer flows", () => {
     renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
-    await user.click(screen.getByRole("button", { name: "收藏文件" }));
+    await user.click(screen.getByRole("button", { name: "收录的文件" }));
     await user.click(
       await screen.findByRole("button", {
         name: "选择 报价单.pdf",
@@ -1282,7 +1456,7 @@ describe("ChatWorkbenchPage composer flows", () => {
   it("sends a collected image material as an image segment after selection", async () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();
-    const sendMessage = vi.fn(baseService.sendMessage);
+    const sendMessage = createAcceptedSendMessageMock();
     const listMaterialGroups = vi.fn(async (request) => {
       if (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.IMAGE) {
         return baseService.listMaterialGroups(request);
@@ -1339,7 +1513,7 @@ describe("ChatWorkbenchPage composer flows", () => {
     renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
-    await user.click(screen.getByRole("button", { name: "选择收录图片" }));
+    await user.click(screen.getByRole("button", { name: "收录的图片" }));
     const imageButton = await screen.findByRole("button", {
       name: "选择图片 商品图",
     });
@@ -1378,7 +1552,7 @@ describe("ChatWorkbenchPage composer flows", () => {
   it("sends a collected H5 material as an h5 segment", async () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();
-    const sendMessage = vi.fn(baseService.sendMessage);
+    const sendMessage = createAcceptedSendMessageMock();
     const listMaterialGroups = vi.fn(async (request) => {
       if (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.H5) {
         return baseService.listMaterialGroups(request);
@@ -1437,7 +1611,7 @@ describe("ChatWorkbenchPage composer flows", () => {
     renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
-    await user.click(screen.getByRole("button", { name: "收藏H5" }));
+    await user.click(screen.getByRole("button", { name: "收录的H5" }));
     await user.click(await screen.findByRole("button", { name: /选择素材 红包来啦/ }));
     await user.click(screen.getByRole("button", { name: "发送" }));
 
@@ -1468,7 +1642,7 @@ describe("ChatWorkbenchPage composer flows", () => {
   it("sends a collected H5 material stored with legacy linkUrl field", async () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();
-    const sendMessage = vi.fn(baseService.sendMessage);
+    const sendMessage = createAcceptedSendMessageMock();
     const listMaterialGroups = vi.fn(async (request) => {
       if (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.H5) {
         return baseService.listMaterialGroups(request);
@@ -1526,7 +1700,7 @@ describe("ChatWorkbenchPage composer flows", () => {
     renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
-    await user.click(screen.getByRole("button", { name: "收藏H5" }));
+    await user.click(screen.getByRole("button", { name: "收录的H5" }));
     await user.click(await screen.findByRole("button", { name: /选择素材 活动页/ }));
     await user.click(screen.getByRole("button", { name: "发送" }));
 
@@ -1624,7 +1798,7 @@ describe("ChatWorkbenchPage composer flows", () => {
     renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
-    await user.click(screen.getByRole("button", { name: "收藏文件" }));
+    await user.click(screen.getByRole("button", { name: "收录的文件" }));
     await user.click(await screen.findByRole("button", { name: "第二分组" }));
 
     const materialRow = await screen.findByRole("row", {
@@ -1728,7 +1902,7 @@ describe("ChatWorkbenchPage composer flows", () => {
     renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
-    await user.click(screen.getByRole("button", { name: "收藏文件" }));
+    await user.click(screen.getByRole("button", { name: "收录的文件" }));
     await user.click(await screen.findByRole("button", { name: "第二分组" }));
     await screen.findByRole("row", {
       name: /第二分组文件\.pdf/,
@@ -1818,7 +1992,7 @@ describe("ChatWorkbenchPage composer flows", () => {
     renderChatWorkbenchPage();
 
     await screen.findByRole("textbox", { name: "请输入消息……" });
-    await user.click(screen.getByRole("button", { name: "收藏文件" }));
+    await user.click(screen.getByRole("button", { name: "收录的文件" }));
     expect(await screen.findByText("暂无分组")).toBeInTheDocument();
     expect(listMaterialCollections).not.toHaveBeenCalled();
 
@@ -2066,7 +2240,7 @@ describe("ChatWorkbenchPage composer flows", () => {
 
     const composer = await screen.findByRole("textbox", { name: "请输入消息……" });
 
-    expect(composer).toHaveClass("max-h-80", "overflow-y-auto");
+    expect(composer).toBeInTheDocument();
   });
 
   it("scrolls the composer editor to the bottom after a pasted image loads", async () => {

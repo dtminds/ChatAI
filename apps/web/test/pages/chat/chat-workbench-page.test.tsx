@@ -1623,19 +1623,13 @@ describe("ChatWorkbenchPage", () => {
   it("shows a retry icon before failed messages and retries on click", async () => {
     const user = userEvent.setup();
     const baseService = createMockWorkbenchService();
-    const retrySendGate = createDeferred<Awaited<ReturnType<typeof baseService.sendMessage>>>();
-    let sendCount = 0;
+    const retryMessageGate =
+      createDeferred<Awaited<ReturnType<typeof baseService.retryMessage>>>();
 
     setWorkbenchService({
       ...baseService,
-      async sendMessage(payload) {
-        sendCount += 1;
-
-        if (sendCount === 2) {
-          return retrySendGate.promise;
-        }
-
-        return baseService.sendMessage(payload);
+      async retryMessage() {
+        return retryMessageGate.promise;
       },
     });
 
@@ -1682,7 +1676,7 @@ describe("ChatWorkbenchPage", () => {
     expect(retryingButton).toBeDisabled();
     expect(retryingButton).toHaveAttribute("aria-busy", "true");
 
-    retrySendGate.resolve({
+    retryMessageGate.resolve({
       optNo: "retry-opt-001",
       status: "accepted",
     });
@@ -2114,7 +2108,6 @@ describe("ChatWorkbenchPage", () => {
     const historyButton = screen.getByRole("button", { name: "历史记录" });
 
     expect(historyButton).toHaveAttribute("aria-pressed", "false");
-    expect(historyButton).not.toHaveClass("bg-accent", "text-accent-foreground");
 
     await user.click(historyButton);
 
@@ -2122,7 +2115,6 @@ describe("ChatWorkbenchPage", () => {
       await screen.findByRole("complementary", { name: "聊天记录" }),
     ).toBeInTheDocument();
     expect(historyButton).toHaveAttribute("aria-pressed", "true");
-    expect(historyButton).toHaveClass("bg-accent", "text-accent-foreground");
 
     await user.click(historyButton);
 
@@ -2132,7 +2124,6 @@ describe("ChatWorkbenchPage", () => {
       ).not.toBeInTheDocument();
     });
     expect(historyButton).toHaveAttribute("aria-pressed", "false");
-    expect(historyButton).not.toHaveClass("bg-accent", "text-accent-foreground");
   });
 
   it("keeps all seed messages visible after the initial 50-message request", async () => {

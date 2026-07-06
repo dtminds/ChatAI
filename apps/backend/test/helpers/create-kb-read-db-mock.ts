@@ -12,6 +12,12 @@ type QueryExecutionEvent = {
 };
 
 type KbReadDbMockOptions = {
+  agents?: Array<{
+    id: number;
+    prompt_config: string;
+    status?: number;
+    uid?: number;
+  }>;
   attachmentDocSyncStatus?: number;
   attachmentDocType?: number;
   beforeExecute?: (event: QueryExecutionEvent) => Promise<void> | void;
@@ -20,6 +26,7 @@ type KbReadDbMockOptions = {
   deletedKbCount?: number;
   includeAttachmentDoc?: boolean;
   includeFaqDoc?: boolean;
+  includeSecondKbWithoutDocs?: boolean;
   totalDocCount?: number;
   totalKbCount?: number;
 };
@@ -95,6 +102,19 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
       update_time: mysqlDatetime("2026-06-20 14:02:22"),
     },
   ];
+  if (options.includeSecondKbWithoutDocs) {
+    kbs.push({
+      create_time: mysqlDatetime("2026-06-19 14:02:22"),
+      id: 2,
+      last_operator_id: 1,
+      name: "空知识库",
+      operator_id: 1,
+      remark: "无文档知识库",
+      status: 1,
+      uid: 9001,
+      update_time: mysqlDatetime("2026-06-20 14:02:22"),
+    });
+  }
   for (let index = kbs.length; index < (options.totalKbCount ?? kbs.length); index += 1) {
     kbs.push({
       create_time: mysqlDatetime("2026-06-19 14:02:22"),
@@ -329,6 +349,13 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
     });
   }
 
+  const agents = (options.agents ?? []).map((agent) => ({
+    id: agent.id,
+    prompt_config: agent.prompt_config,
+    status: agent.status ?? 1,
+    uid: agent.uid ?? 9001,
+  }));
+
   const chunks = [
     {
       content: "切片正文",
@@ -378,55 +405,59 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
       volc_doc_id: null,
       volc_resource_id: null,
     },
-    {
-      content: "附件描述",
-      create_time: mysqlDatetime("2026-06-18 15:22:22"),
-      description: null,
-      doc_id: 1005,
-      html_content: null,
-      id: 503,
-      kb_id: 1,
-      last_sync_time: null,
-      md_content: null,
-      point_process_time: null,
-      point_update_time: null,
-      source: 1,
-      status: 1,
-      sync_status: 0,
-      title: "产品说明书.pdf",
-      tokens: null,
-      type: "text",
-      uid: 9001,
-      update_time: mysqlDatetime("2026-06-18 15:22:22"),
-      volc_chunk_id: null,
-      volc_doc_id: null,
-      volc_resource_id: null,
-    },
-    {
-      content: "系统附件描述",
-      create_time: mysqlDatetime("2026-06-18 15:22:22"),
-      description: null,
-      doc_id: 1005,
-      html_content: null,
-      id: 504,
-      kb_id: 1,
-      last_sync_time: null,
-      md_content: null,
-      point_process_time: null,
-      point_update_time: null,
-      source: 2,
-      status: 1,
-      sync_status: 0,
-      title: "系统附件",
-      tokens: null,
-      type: "text",
-      uid: 9001,
-      update_time: mysqlDatetime("2026-06-18 15:22:22"),
-      volc_chunk_id: null,
-      volc_doc_id: null,
-      volc_resource_id: null,
-    },
   ];
+  if (options.includeAttachmentDoc) {
+    chunks.push(
+      {
+        content: "附件描述",
+        create_time: mysqlDatetime("2026-06-18 15:22:22"),
+        description: null,
+        doc_id: 1005,
+        html_content: null,
+        id: 503,
+        kb_id: 1,
+        last_sync_time: null,
+        md_content: null,
+        point_process_time: null,
+        point_update_time: null,
+        source: 1,
+        status: 1,
+        sync_status: 0,
+        title: "产品说明书.pdf",
+        tokens: null,
+        type: "text",
+        uid: 9001,
+        update_time: mysqlDatetime("2026-06-18 15:22:22"),
+        volc_chunk_id: null,
+        volc_doc_id: null,
+        volc_resource_id: null,
+      },
+      {
+        content: "系统附件描述",
+        create_time: mysqlDatetime("2026-06-18 15:22:22"),
+        description: null,
+        doc_id: 1005,
+        html_content: null,
+        id: 504,
+        kb_id: 1,
+        last_sync_time: null,
+        md_content: null,
+        point_process_time: null,
+        point_update_time: null,
+        source: 2,
+        status: 1,
+        sync_status: 0,
+        title: "系统附件",
+        tokens: null,
+        type: "text",
+        uid: 9001,
+        update_time: mysqlDatetime("2026-06-18 15:22:22"),
+        volc_chunk_id: null,
+        volc_doc_id: null,
+        volc_resource_id: null,
+      },
+    );
+  }
 
   return {
     insertInto(table: string) {
@@ -542,6 +573,8 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
             rows = filterRows(docs);
           } else if (table === "xy_wap_embed_agent_kb_chunk") {
             rows = filterRows(chunks);
+          } else if (table === "xy_wap_embed_agent") {
+            rows = filterRows(agents);
           }
 
           return { total: rows.length };
@@ -573,6 +606,10 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
 
           if (table === "xy_wap_embed_agent_kb_chunk") {
             return projectRows(filterRows(chunks));
+          }
+
+          if (table === "xy_wap_embed_agent") {
+            return projectRows(filterRows(agents));
           }
 
           return [];

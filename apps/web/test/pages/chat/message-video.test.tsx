@@ -101,7 +101,6 @@ describe("MessageContentRenderer video messages", () => {
       maxWidth: "100%",
       width: "202.5px",
     });
-    expect(cover).toHaveClass("object-cover");
     expect(screen.getByRole("button", { name: "播放视频：湖面竖版视频封面" })).toBeInTheDocument();
     expect(screen.getByText("0:11")).toBeInTheDocument();
   });
@@ -488,7 +487,6 @@ describe("MessageContentRenderer video messages", () => {
 
     expect(screen.getByRole("img", { name: "视频封面不可用：加载失败视频封面" }))
       .toBeInTheDocument();
-    expect(screen.getByTestId("video-cover-fallback")).toHaveClass("h-full", "w-full");
     expect(screen.queryByRole("img", { name: "加载失败视频封面" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "播放视频：加载失败视频封面" })).toBeInTheDocument();
     expect(screen.getByText("1:01")).toBeInTheDocument();

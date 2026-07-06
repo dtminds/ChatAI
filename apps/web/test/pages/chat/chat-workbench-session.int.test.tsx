@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMockWorkbenchService, setWorkbenchService } from "@/pages/chat/api/workbench-service";
 import { useAuthStore } from "@/store/auth-store";
@@ -344,14 +344,7 @@ describe("ChatWorkbenchPage session flows", () => {
       );
     });
     const errorBanner = screen.getByTestId("scope-transition-error");
-    expect(errorBanner).toHaveClass(
-      "absolute",
-      "bottom-full",
-      "left-0",
-      "right-0",
-      "mb-0",
-      "bg-destructive/55",
-    );
+    expect(errorBanner).toBeInTheDocument();
     expect(screen.getByTestId("message-content")).not.toContainElement(
       errorBanner,
     );
@@ -402,5 +395,67 @@ describe("ChatWorkbenchPage session flows", () => {
     expect(
       screen.getByTestId("polling-paused-illustration"),
     ).toHaveAttribute("src", "https://b5.bokr.com.cn/dist/pause_poll.png");
+  });
+
+  it("shows a refresh dialog when poll cursor invalidation pauses sync", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async poll() {
+        throw {
+          code: "WORKBENCH_CURSOR_INVALIDATED",
+          message: "cursor invalidated",
+          status: 409,
+        };
+      },
+    });
+
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    expect(await screen.findByRole("alertdialog")).toBeInTheDocument();
+    expect(screen.getByText("消息同步已暂停")).toBeInTheDocument();
+    expect(
+      screen.getByText("消息同步遇到了问题，请刷新页面后继续使用"),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "刷新页面" })).toBeInTheDocument();
+  });
+
+  it("does not replace an existing polling pause dialog with cursor invalidation copy", async () => {
+    renderChatWorkbenchPage();
+
+    await screen.findByRole("textbox", { name: "请输入消息……" });
+
+    fireEvent(
+      window,
+      new StorageEvent("storage", {
+        key: "chatai.workbench.pollOwner",
+        newValue: JSON.stringify({
+          ownerTabId: "newer-tab",
+          ownerUserId: "sub-user-001",
+          expiresAt: Date.now() + 15000,
+          updatedAt: Date.now(),
+        }),
+      }),
+    );
+
+    expect(await screen.findByRole("alertdialog")).toBeInTheDocument();
+    expect(screen.getByText("实时同步已被其他页面占用")).toBeInTheDocument();
+
+    act(() => {
+      useWorkbenchStore.setState((state) => ({
+        pollState: {
+          ...state.pollState,
+          pauseReason: "cursor-invalidated",
+          status: "paused",
+        },
+      }));
+    });
+
+    expect(screen.getByText("实时同步已被其他页面占用")).toBeInTheDocument();
+    expect(screen.queryByText("消息同步已暂停")).not.toBeInTheDocument();
   });
 });

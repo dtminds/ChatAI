@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ZoomInAreaIcon } from "@hugeicons/core-free-icons";
+import { MoreHorizontalIcon, ZoomInAreaIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -21,6 +21,7 @@ type MaterialImageGridProps = {
   hasMoreItems: boolean;
   isBusy: boolean;
   isLoadingMoreItems: boolean;
+  isMobileLayout?: boolean;
   isSending?: boolean;
   items: MaterialCollectionItem[];
   onCancel: () => void;
@@ -36,6 +37,7 @@ export function MaterialImageGrid({
   hasMoreItems,
   isBusy,
   isLoadingMoreItems,
+  isMobileLayout = false,
   isSending = false,
   items,
   onCancel,
@@ -56,10 +58,15 @@ export function MaterialImageGrid({
         className="min-h-0 flex-1"
         role="region"
       >
-        <div className="mx-auto w-full max-w-[43rem] p-8">
+        <div className={cn("mx-auto w-full max-w-[43rem]", isMobileLayout ? "p-4" : "p-8")}>
           <div
             aria-label="收录图片列表"
-            className="grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] gap-4"
+            className={cn(
+              "grid gap-4",
+              isMobileLayout
+                ? "grid-cols-[repeat(auto-fill,minmax(7.5rem,1fr))]"
+                : "grid-cols-[repeat(auto-fill,minmax(9rem,1fr))]",
+            )}
           >
             {items.map((item) => (
               <MaterialImageTile
@@ -71,6 +78,7 @@ export function MaterialImageGrid({
                 onPreview={() => setPreviewItem(item)}
                 onToggleSelect={() => toggleItemSelection(item.id)}
                 onTop={onTopMaterial}
+                isMobileLayout={isMobileLayout}
                 selected={selectedItemId === item.id}
               />
             ))}
@@ -97,6 +105,7 @@ export function MaterialImageGrid({
       <MaterialLibraryFooter
         canSend={selectedItem != null}
         isBusy={isBusy}
+        isMobileLayout={isMobileLayout}
         isSending={isSending}
         onCancel={onCancel}
         onSend={() => {
@@ -120,6 +129,7 @@ export function MaterialImageGrid({
 
 function MaterialImageTile({
   groups,
+  isMobileLayout,
   item,
   onDelete,
   onMove,
@@ -129,6 +139,7 @@ function MaterialImageTile({
   selected,
 }: {
   groups: MaterialCollectionGroup[];
+  isMobileLayout: boolean;
   item: MaterialCollectionItem;
   onDelete: (item: MaterialCollectionItem) => void;
   onMove: (item: MaterialCollectionItem, groupId: string) => void;
@@ -179,9 +190,31 @@ function MaterialImageTile({
           selected={selected}
         />
       </button>
+      {isMobileLayout ? (
+        <Button
+          aria-label={`打开 ${image.alt} 操作菜单`}
+          className="absolute bottom-2 right-11 size-7 rounded-[8px] bg-background/90 p-0 text-foreground shadow-sm backdrop-blur hover:bg-background"
+          onClick={(event) => {
+            event.stopPropagation();
+            const rect = event.currentTarget.getBoundingClientRect();
+            setContextMenu({
+              x: rect.left,
+              y: rect.bottom + 4,
+            });
+          }}
+          size="icon"
+          type="button"
+          variant="ghost"
+        >
+          <HugeiconsIcon icon={MoreHorizontalIcon} size={15} strokeWidth={1.8} />
+        </Button>
+      ) : null}
       <Button
         aria-label={`查看大图 ${image.alt}`}
-        className="absolute bottom-2 right-2 size-7 rounded-[8px] bg-background/90 p-0 text-foreground opacity-0 shadow-sm backdrop-blur transition-opacity hover:bg-background focus-visible:opacity-100 group-hover/image:opacity-100"
+        className={cn(
+          "absolute bottom-2 right-2 size-7 rounded-[8px] bg-background/90 p-0 text-foreground shadow-sm backdrop-blur transition-opacity hover:bg-background focus-visible:opacity-100 group-hover/image:opacity-100",
+          isMobileLayout ? "opacity-100" : "opacity-0",
+        )}
         disabled={!image.imageUrl}
         onClick={(event) => {
           event.stopPropagation();

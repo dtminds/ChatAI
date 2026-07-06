@@ -23,6 +23,539 @@ export type JsonPrimitive = boolean | number | string | null;
 
 export type JsonValue = JsonArray | JsonObject | JsonPrimitive;
 
+export interface XyWapEmbedAgent {
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date | null>;
+  /**
+   * 主键id
+   */
+  id: Generated<number>;
+  /**
+   * 最近一次操作人（子账号id）
+   */
+  last_operator_id: Generated<number>;
+  /**
+   * 最近一次发布时间，毫秒时间戳，0表示未发布
+   */
+  last_publish_time: Generated<number>;
+  /**
+   * 关联模型（xy_wap_embed_ai_model.id）
+   */
+  model_id: Generated<number>;
+  /**
+   * agent名称
+   */
+  name: string;
+  /**
+   * 创建操作人（子账号id）
+   */
+  operator_id: Generated<number>;
+  /**
+   * 提示词配置（基调、角色、沟通风格等）
+   */
+  prompt_config: string | null;
+  /**
+   * 状态 0：已删除 1：有效
+   */
+  status: Generated<number>;
+  /**
+   * 租户id
+   */
+  uid: Generated<number>;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date | null>;
+}
+
+export interface XyWapEmbedAgentAnswerRecord {
+  /**
+   * 关联AI Agent(xy_wap_embed_agent_history.id)
+   */
+  agent_history_id: Generated<number>;
+  /**
+   * 关联AI Agent(xy_wap_embed_agent.id)
+   */
+  agent_id: Generated<number>;
+  /**
+   * 分析会话消息id
+   */
+  analyse_msg_id: Generated<number>;
+  /**
+   * 聊天类型：1、单聊，2、群聊，100、测试
+   */
+  chat_type: Generated<number>;
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date | null>;
+  /**
+   * 生成回答
+   */
+  gen_answer: string | null;
+  /**
+   * 生成错误原因
+   */
+  gen_fail_reason: Generated<string>;
+  /**
+   * 生成状态 0：初始化 1：生成中 2：生成成功 3：生成失败 4:转人工
+   */
+  gen_status: Generated<number>;
+  /**
+   * 是否命中知识集
+   */
+  hit_knowledge: Generated<number>;
+  /**
+   * 主键id
+   */
+  id: Generated<number>;
+  /**
+   * 提问内容
+   */
+  question_content: string | null;
+  /**
+   * 提问多模态内容
+   */
+  question_multi_content: string | null;
+  /**
+   * 答案参考切片（,分割）
+   */
+  ref_chunk_ids: Generated<string>;
+  /**
+   * 参考内容快照
+   */
+  ref_chunk_info: string | null;
+  /**
+   * 关联消息ids（,分割）
+   */
+  relate_msg_ids: string | null;
+  /**
+   * 发送回答时间
+   */
+  send_answer_time: Generated<number>;
+  /**
+   * 发送错误原因
+   */
+  send_fail_reason: Generated<string>;
+  /**
+   * 发送操作id（,分割）
+   */
+  send_opt_ids: Generated<string>;
+  /**
+   * 发送状态 0：未发送 1：发送成功 2：发送失败 3:部分失败
+   */
+  send_status: Generated<number>;
+  /**
+   * 关联子账号ID(xy_wap_embed_sub_user.id)
+   */
+  sub_id: Generated<number>;
+  /**
+   * 第三方外部联系人id
+   */
+  third_external_userid: Generated<string>;
+  /**
+   * 第三方群id
+   */
+  third_group_id: Generated<string>;
+  /**
+   * 第三方成员ID
+   */
+  third_userid: string;
+  /**
+   * 总消耗tokens
+   */
+  total_token: Generated<number>;
+  /**
+   * 触发类型：1、全托管，2、半托管
+   */
+  trigger_type: Generated<number>;
+  /**
+   * 租户id
+   */
+  uid: Generated<number>;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date | null>;
+}
+
+export interface XyWapEmbedAgentHistory {
+  /**
+   * 关联agent（xy_wap_embed_agent.id）
+   */
+  agent_id: Generated<number>;
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date | null>;
+  /**
+   * 主键id
+   */
+  id: Generated<number>;
+  /**
+   * 关联模型（xy_wap_embed_ai_model.id）
+   */
+  model_id: Generated<number>;
+  /**
+   * 创建操作人（子账号id）
+   */
+  operator_id: Generated<number>;
+  /**
+   * 提示词配置（基调、角色、沟通风格等）
+   */
+  prompt_config: string | null;
+  /**
+   * 租户id
+   */
+  uid: Generated<number>;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date | null>;
+}
+
+export interface XyWapEmbedAgentKb {
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date | null>;
+  /**
+   * 主键id
+   */
+  id: Generated<number>;
+  /**
+   * 最近一次操作人（子账号id）
+   */
+  last_operator_id: Generated<number>;
+  /**
+   * 知识库名称
+   */
+  name: string;
+  /**
+   * 创建操作人（子账号id）
+   */
+  operator_id: Generated<number>;
+  /**
+   * 备注
+   */
+  remark: Generated<string>;
+  /**
+   * 状态 0：已删除 1：有效
+   */
+  status: Generated<number>;
+  /**
+   * 租户id
+   */
+  uid: Generated<number>;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date | null>;
+}
+
+export interface XyWapEmbedAgentKbChunk {
+  /**
+   * 附件内容
+   */
+  attachment_content: string | null;
+  /**
+   * 附件类型 1：图片 2：视频 3：文件 4：链接 5：小程序
+   */
+  attachment_type: Generated<number>;
+  /**
+   * 切片内容1、非结构化文件：content 返回切片原文内容 2、faq 文件：content 返回答案字段内容
+   */
+  content: string | null;
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date>;
+  /**
+   * 图片描述或视频画面总结
+   */
+  description: string | null;
+  /**
+   * 归属知识文档id xy_wap_embed_agent_kb_doc.id
+   */
+  doc_id: Generated<number>;
+  /**
+   * html 格式的解析结果 通过 chunk_type == table 判断
+   */
+  html_content: string | null;
+  /**
+   * 主键id
+   */
+  id: Generated<number>;
+  /**
+   * 归属知识集id xy_wap_embed_agent_kb.id
+   */
+  kb_id: Generated<number>;
+  /**
+   * 更新人ID（子账号ID）
+   */
+  last_operator_id: Generated<number>;
+  /**
+   * 上一次同步时间
+   */
+  last_sync_time: Generated<Date | null>;
+  /**
+   * markdown 格式的解析结果 通过 chunk_type == table 判断
+   */
+  md_content: string | null;
+  /**
+   * 创建人ID（子账号ID）
+   */
+  operator_id: Generated<number>;
+  /**
+   * 知识处理完成的时刻（Unix 时间戳，秒）
+   */
+  point_process_time: Generated<Date | null>;
+  /**
+   * 切片更新的时刻（Unix 时间戳，秒）
+   */
+  point_update_time: Generated<Date | null>;
+  /**
+   * 添加来源：1：手动添加 2：批量上传/文档解析 3：聊天侧边栏添加
+   */
+  source: number;
+  /**
+   * 状态 0：已删除 1：有效
+   */
+  status: Generated<number>;
+  /**
+   * 同步状态 -1：未同步 0：成功 1：失败 2：排队中 3：更新中 5：删除中 6：处理中
+   */
+  sync_status: Generated<number>;
+  /**
+   * 问题/标题 同chunk_title
+   */
+  title: Generated<string>;
+  /**
+   * 切片向量化和文档生成摘要所消耗的 tokens，手动提交时候需要有
+   */
+  tokens: Generated<number>;
+  /**
+   * 类型 同chunk_type 返回值类型有：doc-image、image、video、audio、table、text、structured、faq、mixed-table等
+   */
+  type: Generated<number>;
+  /**
+   * 租户id
+   */
+  uid: Generated<number>;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date>;
+  /**
+   * 火山引擎切片唯一 id
+   */
+  volc_chunk_id: string;
+  /**
+   * 火山引擎知识库中对应的文档id:  chat_uid_年月日时分秒毫秒
+   */
+  volc_doc_id: string;
+  /**
+   * 火山引擎知识库唯一 id
+   */
+  volc_resource_id: string;
+}
+
+export interface XyWapEmbedAgentKbDoc {
+  /**
+   * 文档导入方式
+   */
+  add_type: string | null;
+  /**
+   * 音频大纲信息
+   */
+  audio_outline: string | null;
+  /**
+   * 文档精简摘要
+   */
+  brief_summary: string | null;
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date>;
+  /**
+   * 文档创建时间（Unix 时间戳，秒）
+   */
+  doc_process_time: Generated<Date | null>;
+  /**
+   * 文档大小（字节）
+   */
+  doc_size: Generated<number>;
+  /**
+   * 文档后缀
+   */
+  doc_suffix: string;
+  /**
+   * 文档全文摘要
+   */
+  doc_summary: string | null;
+  /**
+   * 文档类型：1：faq 2：文档 3：图片 4：attachment
+   */
+  doc_type: number;
+  /**
+   * 文档更新时间（Unix 时间戳，秒）
+   */
+  doc_update_time: Generated<Date | null>;
+  /**
+   * tos文档地址
+   */
+  doc_url: Generated<string>;
+  /**
+   * 文档所在目录路径
+   */
+  full_directory_path: string | null;
+  /**
+   * 主键id
+   */
+  id: Generated<number>;
+  /**
+   * 归属知识集id xy_wap_embed_agent_kb.id
+   */
+  kb_id: Generated<number>;
+  /**
+   * 最近一次操作人（子账号id）
+   */
+  last_operator_id: Generated<number>;
+  /**
+   * 上一次同步时间
+   */
+  last_sync_time: Generated<Date | null>;
+  /**
+   * 文档元信息对象json
+   */
+  meta_json: string | null;
+  /**
+   * 名称
+   */
+  name: string;
+  /**
+   * 创建操作人（子账号id）
+   */
+  operator_id: Generated<number>;
+  /**
+   * 分片数
+   */
+  point_num: Generated<number>;
+  /**
+   * 描述
+   */
+  remark: Generated<string>;
+  /**
+   * 文档统计信息对象json
+   */
+  statistics: string | null;
+  /**
+   * 状态 0：已删除 1：有效
+   */
+  status: Generated<number>;
+  /**
+   * 同步失败信息
+   */
+  sync_error_msg: Generated<string>;
+  /**
+   * 同步状态 -1：未同步 0：成功 1：失败 2：排队中 3：更新中 5：删除中 6：处理中
+   */
+  sync_status: Generated<number>;
+  /**
+   * 文档向量化和文档生成摘要所消耗的 tokens
+   */
+  tokens: Generated<number>;
+  /**
+   * 租户id
+   */
+  uid: Generated<number>;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date>;
+  /**
+   * 音频片段信息
+   */
+  video_frame: string | null;
+  /**
+   * 视频大纲信息
+   */
+  video_outline: string | null;
+  /**
+   * 火山引擎知识库中对应的文档id:  chat_uid_年月日时分秒毫秒
+   */
+  volc_doc_id: string;
+  /**
+   * 火山引擎知识库唯一 id
+   */
+  volc_resource_id: string;
+  /**
+   * 指定处理策略ID 来源火山引擎知识库解析策略
+   */
+  volc_strategy_resource_id: string;
+}
+
+export interface XyWapEmbedAiModel {
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date | null>;
+  /**
+   * 算粒/百万Token，放大100倍的值
+   */
+  credit: Generated<number>;
+  /**
+   * 模型描述
+   */
+  description: Generated<string>;
+  /**
+   * 选择接入点
+   */
+  endpoint: Generated<string>;
+  /**
+   * 主键id
+   */
+  id: Generated<number>;
+  /**
+   * 选择模型id
+   */
+  model: Generated<string>;
+  /**
+   * 模型名称
+   */
+  model_name: Generated<string>;
+  /**
+   * 模型版本
+   */
+  model_version: Generated<string>;
+  /**
+   * 模型名称
+   */
+  name: string;
+  /**
+   * 状态 0：已删除 1：有效
+   */
+  status: Generated<number>;
+  /**
+   * 多模态，0：不支持，1：支持
+   */
+  support_multimodal: Generated<number>;
+  /**
+   * 思考模式
+   */
+  thinking_type: Generated<string>;
+  /**
+   * 租户id，0：UID兜底
+   */
+  uid: Generated<number>;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date | null>;
+}
+
 export interface XyWapEmbedAnalysisRun {
   /**
    * 分析范围，all：全部，qaFindings：质检，classification：分类
@@ -106,145 +639,48 @@ export interface XyWapEmbedAnalysisRun {
   update_time: Generated<Date>;
 }
 
-export interface XyWapEmbedAgent {
+export interface XyWapEmbedAsyncOperation {
   /**
    * 创建时间
    */
-  create_time: Generated<Date | null>;
+  create_time: Generated<Date>;
   /**
-   * 主键id
+   * 失败原因
    */
+  fail_reason: Generated<string>;
   id: Generated<number>;
   /**
-   * 最近一次操作人（子账号id）
+   * 操作编号，唯一标识
    */
-  last_operator_id: Generated<number>;
+  opt_no: string;
   /**
-   * 最近一次发布时间，毫秒时间戳；0 表示未发布
+   * 操作参数
    */
-  last_publish_time: Generated<number>;
+  opt_params: string | null;
   /**
-   * 关联模型（xy_wap_embed_ai_model.id）
+   * 操作类型：1、发送私聊消息，2、发送群聊消息
    */
-  model_id: Generated<number>;
+  opt_type: Generated<number>;
   /**
-   * agent名称
+   * 第三方原始操作类型
    */
-  name: string;
+  origin_op_type: Generated<string>;
   /**
-   * 创建操作人（子账号id）
+   * 接入平台 5、比邻
    */
-  operator_id: Generated<number>;
+  platform: Generated<number>;
   /**
-   * 提示词配置（基调、角色、沟通风格等）
-   */
-  prompt_config: string | null;
-  /**
-   * 状态 0：已删除 1：有效
+   * 操作状态：0、进行中，1、成功，2、失败
    */
   status: Generated<number>;
   /**
    * 租户id
    */
-  uid: Generated<number>;
+  uid: number;
   /**
    * 更新时间
    */
-  update_time: Generated<Date | null>;
-}
-
-export interface XyWapEmbedAgentHistory {
-  /**
-   * 关联agent（xy_wap_embed_agent.id）
-   */
-  agent_id: Generated<number>;
-  /**
-   * 创建时间
-   */
-  create_time: Generated<Date | null>;
-  /**
-   * 主键id
-   */
-  id: Generated<number>;
-  /**
-   * 关联模型（xy_wap_embed_ai_model.id）
-   */
-  model_id: Generated<number>;
-  /**
-   * 创建操作人（子账号id）
-   */
-  operator_id: Generated<number>;
-  /**
-   * 提示词配置（基调、角色、沟通风格等）
-   */
-  prompt_config: string | null;
-  /**
-   * 租户id
-   */
-  uid: Generated<number>;
-  /**
-   * 更新时间
-   */
-  update_time: Generated<Date | null>;
-}
-
-export interface XyWapEmbedAiModel {
-  /**
-   * 算粒/百万Token，放大100倍的值
-   */
-  credit: Generated<number>;
-  /**
-   * 创建时间
-   */
-  create_time: Generated<Date | null>;
-  /**
-   * 模型描述
-   */
-  description: Generated<string>;
-  /**
-   * 选择接入点
-   */
-  endpoint: Generated<string>;
-  /**
-   * 主键id
-   */
-  id: Generated<number>;
-  /**
-   * 选择模型id
-   */
-  model: Generated<string>;
-  /**
-   * 模型名称
-   */
-  model_name: Generated<string>;
-  /**
-   * 模型版本
-   */
-  model_version: Generated<string>;
-  /**
-   * 模型名称
-   */
-  name: string;
-  /**
-   * 状态 0：已删除 1：有效
-   */
-  status: Generated<number>;
-  /**
-   * 多模态，0：不支持，1：支持
-   */
-  support_multimodal: Generated<number>;
-  /**
-   * 思考模式
-   */
-  thinking_type: Generated<string>;
-  /**
-   * 租户id，0：UID兜底
-   */
-  uid: Generated<number>;
-  /**
-   * 更新时间
-   */
-  update_time: Generated<Date | null>;
+  update_time: Generated<Date>;
 }
 
 export interface XyWapEmbedBroadcastEvent {
@@ -340,7 +776,7 @@ export interface XyWapEmbedConversation {
    */
   create_time: Generated<Date>;
   /**
-   * 全自动-全托管开关（默认关闭）
+   * 全自动-全托管开关（默认开启，有权限且席位开启时，开关才起效）
    */
   full_auto_switch: Generated<number>;
   /**
@@ -1394,17 +1830,13 @@ export interface XyWapEmbedMaterialCollection {
    */
   biz_status: Generated<number>;
   /**
-   * 业务类型
+   * 业务类型，1-自定义表情、2-文件、3-小程序、4-H5、5-视频号、6-图片、7-视频
    */
   biz_type: Generated<number>;
   /**
    * 内容
    */
   content: string | null;
-  /**
-   * xy_wap_embed_msg_audit_info.id
-   */
-  msg_info_id: number;
   /**
    * 插入时间
    */
@@ -1417,6 +1849,14 @@ export interface XyWapEmbedMaterialCollection {
    * id
    */
   id: Generated<number>;
+  /**
+   * xy_wap_embed_msg_audit_info.id
+   */
+  msg_info_id: Generated<number>;
+  /**
+   * 消息ID，第三方消息ID
+   */
+  msgid: Generated<string>;
   /**
    * 收藏人ID，xy_wap_embed_sub_user.id
    */
@@ -1449,7 +1889,7 @@ export interface XyWapEmbedMaterialCollectionGroup {
    */
   biz_status: Generated<number>;
   /**
-   * 业务类型
+   * 业务类型，1-自定义表情、2-文件、3-小程序、4-H5、5-视频号、6-图片、7-视频
    */
   biz_type: Generated<number>;
   /**
@@ -1486,112 +1926,6 @@ export interface XyWapEmbedMaterialCollectionGroup {
   update_time: Generated<Date>;
 }
 
-export interface XyWapEmbedQuickReply {
-  /**
-   * 附件JSON，最多5个
-   */
-  attachments: Json | null;
-  /**
-   * 状态，0：已删除，1：正常
-   */
-  biz_status: Generated<number>;
-  /**
-   * 分类ID，0表示未分类
-   */
-  category_id: Generated<number>;
-  /**
-   * 主文本
-   */
-  content_text: string | null;
-  /**
-   * 插入时间
-   */
-  create_time: Generated<Date>;
-  /**
-   * id
-   */
-  id: Generated<number>;
-  /**
-   * 徽标颜色key
-   */
-  label_color: Generated<string>;
-  /**
-   * 徽标文字
-   */
-  label_text: Generated<string>;
-  /**
-   * 操作人ID，xy_wap_embed_sub_user.id
-   */
-  op_sub_uid: Generated<number>;
-  /**
-   * 话术范围：1企业话术，2个人话术
-   */
-  scope_type: Generated<number>;
-  /**
-   * 排序值
-   */
-  sort: Generated<number>;
-  /**
-   * 控制可见性，0：全员可见，其他：对应子账号可见，xy_wap_embed_sub_user.id
-   */
-  sub_uid: Generated<number>;
-  /**
-   * 租户id
-   */
-  uid: number;
-  /**
-   * 更新时间
-   */
-  update_time: Generated<Date>;
-}
-
-export interface XyWapEmbedQuickReplyCategory {
-  /**
-   * 状态，0：已删除，1：正常
-   */
-  biz_status: Generated<number>;
-  /**
-   * 插入时间
-   */
-  create_time: Generated<Date>;
-  /**
-   * id
-   */
-  id: Generated<number>;
-  /**
-   * 操作人ID，xy_wap_embed_sub_user.id
-   */
-  op_sub_uid: Generated<number>;
-  /**
-   * 父分类ID，0表示一级分类
-   */
-  parent_id: Generated<number>;
-  /**
-   * 话术范围：1企业话术，2个人话术
-   */
-  scope_type: Generated<number>;
-  /**
-   * 排序值
-   */
-  sort: Generated<number>;
-  /**
-   * 控制可见性，0：全员可见，其他：对应子账号可见，xy_wap_embed_sub_user.id
-   */
-  sub_uid: Generated<number>;
-  /**
-   * 分类名称
-   */
-  title: Generated<string>;
-  /**
-   * 租户id
-   */
-  uid: number;
-  /**
-   * 更新时间
-   */
-  update_time: Generated<Date>;
-}
-
 export interface XyWapEmbedMsgAuditChatRecord {
   /**
    * 头像
@@ -1611,13 +1945,13 @@ export interface XyWapEmbedMsgAuditChatRecord {
   create_time: Generated<Date>;
   id: Generated<number>;
   /**
+   * xy_wap_embed_msg_audit_info.id
+   */
+  msg_info_id: Generated<number | null>;
+  /**
    * 消息id，消息的唯一标识
    */
   msgid: string;
-  /**
-   * xy_wap_embed_msg_audit_info.id
-   */
-  msg_info_id: number;
   /**
    * 消息发送时间戳，utc时间，ms单位
    */
@@ -1771,6 +2105,10 @@ export interface XyWapEmbedMsgAuditInfoExtend {
   create_time: Generated<Date>;
   id: Generated<number>;
   /**
+   * xy_wap_embed_msg_audit_info.id
+   */
+  msg_info_id: Generated<number | null>;
+  /**
    * 消息id，消息的唯一标识
    */
   msgid: string;
@@ -1782,6 +2120,112 @@ export interface XyWapEmbedMsgAuditInfoExtend {
    * 接入平台 5、比邻
    */
   platform: Generated<number>;
+  /**
+   * 租户id
+   */
+  uid: number;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date>;
+}
+
+export interface XyWapEmbedQuickReply {
+  /**
+   * 附件JSON，最多5个
+   */
+  attachments: Json | null;
+  /**
+   * 状态，0：已删除，1：正常
+   */
+  biz_status: Generated<number>;
+  /**
+   * 分类ID，0表示未分类
+   */
+  category_id: Generated<number>;
+  /**
+   * 主文本
+   */
+  content_text: string | null;
+  /**
+   * 插入时间
+   */
+  create_time: Generated<Date>;
+  /**
+   * id
+   */
+  id: Generated<number>;
+  /**
+   * 徽标颜色key
+   */
+  label_color: Generated<string>;
+  /**
+   * 徽标文字
+   */
+  label_text: Generated<string>;
+  /**
+   * 操作人ID，xy_wap_embed_sub_user.id
+   */
+  op_sub_uid: Generated<number>;
+  /**
+   * 话术范围：1企业话术，2个人话术
+   */
+  scope_type: Generated<number>;
+  /**
+   * 排序值
+   */
+  sort: Generated<number>;
+  /**
+   * 控制可见性，0：全员可见，其他：对应子账号可见，xy_wap_embed_sub_user.id
+   */
+  sub_uid: Generated<number>;
+  /**
+   * 租户id
+   */
+  uid: number;
+  /**
+   * 更新时间
+   */
+  update_time: Generated<Date>;
+}
+
+export interface XyWapEmbedQuickReplyCategory {
+  /**
+   * 状态，0：已删除，1：正常
+   */
+  biz_status: Generated<number>;
+  /**
+   * 插入时间
+   */
+  create_time: Generated<Date>;
+  /**
+   * id
+   */
+  id: Generated<number>;
+  /**
+   * 操作人ID，xy_wap_embed_sub_user.id
+   */
+  op_sub_uid: Generated<number>;
+  /**
+   * 父分类ID，0表示一级分类
+   */
+  parent_id: Generated<number>;
+  /**
+   * 话术范围：1企业话术，2个人话术
+   */
+  scope_type: Generated<number>;
+  /**
+   * 排序值
+   */
+  sort: Generated<number>;
+  /**
+   * 控制可见性，0：全员可见，其他：对应子账号可见，xy_wap_embed_sub_user.id
+   */
+  sub_uid: Generated<number>;
+  /**
+   * 分类名称
+   */
+  title: Generated<string>;
   /**
    * 租户id
    */
@@ -2542,7 +2986,7 @@ export interface XyWapEmbedUserSeatAgent {
   /**
    * 租户id
    */
-  uid: number;
+  uid: Generated<number>;
   /**
    * 更新时间
    */
@@ -2550,7 +2994,7 @@ export interface XyWapEmbedUserSeatAgent {
   /**
    * 关联成员席位（xy_wap_embed_user_seat.id）
    */
-  user_seat_id: number;
+  user_seat_id: Generated<number>;
 }
 
 export interface XyWapEmbedUserSeatSubRelation {
@@ -2581,80 +3025,16 @@ export interface XyWapEmbedUserSeatSubRelation {
   user_seat_id: Generated<number>;
 }
 
-export interface XyWapEmbedAgentKb {
-  create_time: Generated<Date>;
-  id: Generated<number>;
-  last_operator_id: Generated<number>;
-  name: string;
-  operator_id: Generated<number>;
-  remark: string;
-  status: Generated<number>;
-  uid: number;
-  update_time: Generated<Date>;
-}
-
-export interface XyWapEmbedAgentKbChunk {
-  content: string | null;
-  create_time: Generated<Date>;
-  description: string | null;
-  doc_id: number;
-  html_content: string | null;
-  id: Generated<number>;
-  kb_id: number;
-  last_sync_time: Date | null;
-  md_content: string | null;
-  point_process_time: Date | null;
-  point_update_time: Date | null;
-  source: number;
-  status: Generated<number>;
-  sync_status: number;
-  title: string | null;
-  tokens: number | null;
-  type: number | string;
-  uid: number;
-  update_time: Generated<Date>;
-  volc_chunk_id: string | null;
-  volc_doc_id: string | null;
-  volc_resource_id: string | null;
-}
-
-export interface XyWapEmbedAgentKbDoc {
-  brief_summary: string | null;
-  create_time: Generated<Date>;
-  doc_process_time: Date | null;
-  doc_size: Generated<number>;
-  doc_summary: string | null;
-  doc_suffix: string;
-  doc_type: number;
-  doc_update_time: Date | null;
-  doc_url: string;
-  id: Generated<number>;
-  kb_id: number;
-  last_operator_id: Generated<number>;
-  last_sync_time: Date | null;
-  name: string;
-  operator_id: Generated<number>;
-  point_num: number | null;
-  remark: string | null;
-  status: Generated<number>;
-  sync_error_msg: string | null;
-  sync_status: number;
-  tokens: number | null;
-  uid: number;
-  update_time: Generated<Date>;
-  volc_doc_id: string | null;
-  volc_resource_id: string | null;
-  volc_strategy_resource_id: string | null;
-}
-
 export interface DB {
-  xy_wap_embed_analysis_run: XyWapEmbedAnalysisRun;
   xy_wap_embed_agent: XyWapEmbedAgent;
+  xy_wap_embed_agent_answer_record: XyWapEmbedAgentAnswerRecord;
   xy_wap_embed_agent_history: XyWapEmbedAgentHistory;
   xy_wap_embed_agent_kb: XyWapEmbedAgentKb;
   xy_wap_embed_agent_kb_chunk: XyWapEmbedAgentKbChunk;
   xy_wap_embed_agent_kb_doc: XyWapEmbedAgentKbDoc;
   xy_wap_embed_ai_model: XyWapEmbedAiModel;
+  xy_wap_embed_analysis_run: XyWapEmbedAnalysisRun;
+  xy_wap_embed_async_operation: XyWapEmbedAsyncOperation;
   xy_wap_embed_broadcast_event: XyWapEmbedBroadcastEvent;
   xy_wap_embed_contact: XyWapEmbedContact;
   xy_wap_embed_conversation: XyWapEmbedConversation;

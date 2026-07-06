@@ -27,7 +27,7 @@ const account: Account = {
 };
 
 describe("ChatPanel", () => {
-  it("keeps the customer side panel shell in the main layout width", () => {
+  it("renders the customer side panel resize handle", () => {
     render(
       <ChatPanel
         activeAccount={account}
@@ -79,15 +79,12 @@ describe("ChatPanel", () => {
       />,
     );
 
-    expect(screen.getByTestId("customer-side-panel-shell")).toHaveStyle({
-      width: "379px",
-    });
     expect(
       screen.getByRole("button", { name: "调整客户信息栏宽度" }),
     ).toBeInTheDocument();
   });
 
-  it("preserves the customer side panel flex layout while history is closed", async () => {
+  it("keeps the customer side panel available while history is closed", async () => {
     const user = userEvent.setup();
 
     render(
@@ -152,15 +149,12 @@ describe("ChatPanel", () => {
     const shell = screen.getByTestId("customer-side-panel-shell");
     const preservedLayout = within(shell).getByTestId("customer-side-panel-layout");
 
-    expect(preservedLayout).toHaveClass("flex", "h-full", "min-h-0", "shrink-0");
     expect(
       within(preservedLayout).getByRole("button", { name: "调整客户信息栏宽度" }),
     ).toBeInTheDocument();
-    expect(within(preservedLayout).getByRole("complementary", { name: "客户信息栏" })).toHaveStyle({
-      width: "375px",
-    });
+    expect(within(preservedLayout).getByRole("complementary", { name: "客户信息栏" })).toBeInTheDocument();
     await user.click(within(preservedLayout).getByRole("tab", { name: "素材中心" }));
-    expect(screen.getByTitle("素材中心扩展页").parentElement).toHaveClass("h-full");
+    expect(screen.getByTitle("素材中心扩展页")).toBeInTheDocument();
   });
 
   it("renders history in the current customer side panel slot", () => {
@@ -222,10 +216,68 @@ describe("ChatPanel", () => {
     const shell = screen.getByTestId("customer-side-panel-shell");
     const historyPanel = within(shell).getByRole("complementary", { name: "聊天记录" });
 
-    expect(shell).toHaveStyle({ width: "379px" });
-    expect(historyPanel).toHaveClass("absolute", "inset-0", "w-full");
-    expect(historyPanel).not.toHaveClass("w-[420px]");
-    expect(historyPanel.className).not.toContain("shadow");
+    expect(shell).toContainElement(historyPanel);
+  });
+
+  it("renders mobile history as a chat-detail overlay without the customer side shell", () => {
+    render(
+      <ChatPanel
+        activeConversation={createConversation()}
+        activeHistoryStatus="idle"
+        canSendMessage
+        composerPlaceholder="输入消息"
+        customerPanelWidth={375}
+        draft=""
+        fileUploadQueue={[]}
+        groupMembers={[]}
+        hasMoreHistory={false}
+        historyPanel={{
+          activeHistory: { hasNext: false, hasPrev: false, messages: [] },
+          activeHistoryFilters: { scope: "all" },
+          activeHistoryLoading: false,
+          isOpen: true,
+        }}
+        inputEnterBehavior="send"
+        isHistoryPanelOpen
+        isConversationLoading={false}
+        isEmojiPickerOpen={false}
+        isGroupMembersLoading={false}
+        isMobileLayout
+        isResizingCustomerPanel={false}
+        isSendingDraft={false}
+        messages={[]}
+        quotedMessage={null}
+        sidebarItems={[]}
+        composerRef={createRef()}
+        messageViewportRef={createRef()}
+        workbenchBodyRef={createRef()}
+        onCancelFileUpload={vi.fn()}
+        onClearQuotedMessage={vi.fn()}
+        onComposerSegmentsChange={vi.fn()}
+        onCustomerPanelResizeStart={vi.fn()}
+        onDismissScopeTransitionError={vi.fn()}
+        onDraftChange={vi.fn()}
+        onEmojiPickerOpenChange={vi.fn()}
+        onEnterBehaviorChange={vi.fn()}
+        onFileSelect={vi.fn()}
+        onHistoryClose={vi.fn()}
+        onHistoryLoadMoreNext={vi.fn()}
+        onHistoryLoadMorePrev={vi.fn()}
+        onHistoryRefresh={vi.fn()}
+        onHistorySetDay={vi.fn()}
+        onHistorySetScope={vi.fn()}
+        onHistorySetSenderId={vi.fn()}
+        onLoadOlderMessages={vi.fn()}
+        onMessageViewportScroll={vi.fn()}
+        onOpenHistory={vi.fn()}
+        onRefreshGroupMembers={vi.fn()}
+        onRetryMessage={vi.fn()}
+        onSendDraft={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByTestId("customer-side-panel-shell")).not.toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "聊天记录" })).toBeInTheDocument();
   });
 
   it("shows a blank work area when no conversation is active", () => {

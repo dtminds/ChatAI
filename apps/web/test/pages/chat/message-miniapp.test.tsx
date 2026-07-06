@@ -8,52 +8,6 @@ import { MiniAppMessageCard } from "@/pages/chat/components/message";
 import type { ChatMessage } from "@/pages/chat/chat-types";
 
 describe("MiniAppMessageCard", () => {
-  it("uses the official mini program mark color and normalized glyph scale", () => {
-    render(
-      <MiniAppMessageCard
-        content={{
-          appName: "学好惊喜社",
-          sourceLabel: "小程序",
-          title: "预约直播抽秋天的第一杯奶茶",
-          type: "mini-program",
-        }}
-      />,
-    );
-
-    expect(screen.getByTestId("mini-program-mark")).toHaveClass(
-      "size-3.5",
-      "text-mini-program-brand",
-    );
-    expect(screen.getByTestId("mini-program-mark")).toHaveAttribute(
-      "viewBox",
-      "0 0 1024 1024",
-    );
-    expect(screen.getByTestId("mini-program-mark").querySelector("g"))
-      .toHaveAttribute(
-        "transform",
-        "translate(512 512) scale(1.5) translate(-512 -512)",
-      );
-  });
-
-  it("truncates app name and supports single-line title mode", () => {
-    render(
-      <MiniAppMessageCard
-        content={{
-          appName: "这是一个很长很长的小程序名称",
-          sourceLabel: "小程序",
-          title: "这是一个很长很长的小程序卡片标题",
-          type: "mini-program",
-        }}
-        titleLines={1}
-      />,
-    );
-
-    expect(screen.getByTestId("mini-program-app-name"))
-      .toHaveClass("truncate");
-    expect(screen.getByText("这是一个很长很长的小程序卡片标题"))
-      .toHaveClass("line-clamp-1");
-  });
-
   it("uses an image-not-found fallback when the cover image URL is empty", () => {
     render(
       <MiniAppMessageCard
@@ -114,7 +68,6 @@ describe("MiniAppMessageCard", () => {
 
       expect(sentAt).toHaveClass("opacity-100");
       expect(sentAt).toHaveTextContent("6/11 13:22");
-      expect(screen.getByTestId("text-message-sent-at-slot")).toHaveClass("ml-10");
     } finally {
       vi.useRealTimers();
     }

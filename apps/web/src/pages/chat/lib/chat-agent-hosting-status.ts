@@ -26,7 +26,7 @@ const agentHostingStatusLabels: Record<AgentHostingStatus, string> = {
   sending: "Agent 回复已生成，正在发送",
   sent: "Agent 已发送回复，本轮对话结束",
   thinking: "Agent 正在查看消息",
-  waiting: "Agent 正在确认客户是否追加新消息",
+  waiting: "Agent 正在等待客户补充消息",
 };
 
 export function resolveAgentHostingStatus(

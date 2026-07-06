@@ -1,5 +1,38 @@
 import { Type, type Static } from "@sinclair/typebox";
 
+const KB_DOC_MB = 1024 * 1024;
+
+export const KB_DOC_FILE_SIZE_LIMIT_10_MB = 10 * KB_DOC_MB;
+export const KB_DOC_FILE_SIZE_LIMIT_100_MB = 100 * KB_DOC_MB;
+export const KB_DOC_FILE_SIZE_LIMIT_200_MB = 200 * KB_DOC_MB;
+
+export const KB_DOC_FALLBACK_FILE_SIZE_LIMIT = KB_DOC_FILE_SIZE_LIMIT_10_MB;
+
+const KB_DOC_FILE_SIZE_LIMIT_BY_SUFFIX: Record<string, number> = {
+  doc: KB_DOC_FILE_SIZE_LIMIT_200_MB,
+  docx: KB_DOC_FILE_SIZE_LIMIT_200_MB,
+  "faq.xlsx": KB_DOC_FILE_SIZE_LIMIT_100_MB,
+  md: KB_DOC_FILE_SIZE_LIMIT_10_MB,
+  pdf: KB_DOC_FILE_SIZE_LIMIT_200_MB,
+  ppt: KB_DOC_FILE_SIZE_LIMIT_200_MB,
+  pptx: KB_DOC_FILE_SIZE_LIMIT_200_MB,
+  txt: KB_DOC_FILE_SIZE_LIMIT_10_MB,
+  xlsx: KB_DOC_FILE_SIZE_LIMIT_100_MB,
+};
+
+export function getKbDocFileSizeLimit(docSuffix: string) {
+  const normalizedSuffix = normalizeKbDocFileSuffix(docSuffix);
+  return KB_DOC_FILE_SIZE_LIMIT_BY_SUFFIX[normalizedSuffix] ?? KB_DOC_FALLBACK_FILE_SIZE_LIMIT;
+}
+
+export function formatKbDocFileSizeLimit(limit: number) {
+  return `${Math.round(limit / KB_DOC_MB)}MB`;
+}
+
+function normalizeKbDocFileSuffix(docSuffix: string) {
+  return docSuffix.trim().toLowerCase().replace(/^\.+/, "");
+}
+
 export const KbDocParseModeSchema = Type.Union([
   Type.Literal("standard"),
   Type.Literal("enhanced"),

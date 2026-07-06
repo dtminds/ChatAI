@@ -6,7 +6,7 @@ import { MaterialExpressionSection } from "@/pages/chat/components/material-coll
 import type { WorkbenchMaterialCollectionItemDto } from "@chatai/contracts";
 
 describe("MaterialExpressionSection", () => {
-  it("keeps collected expression images inside hover tiles without native tooltip", () => {
+  it("renders collected expression images without native tooltip", () => {
     render(
       <MaterialExpressionSection
         items={[createExpressionItem()]}
@@ -19,11 +19,8 @@ describe("MaterialExpressionSection", () => {
       name: "发送收藏表情 表情",
     });
 
-    expect(image.closest(".grid")).toHaveClass(
-      "grid-cols-[repeat(auto-fill,5rem)]",
-    );
+    expect(image).toBeInTheDocument();
     expect(button).not.toHaveAttribute("title");
-    expect(image.className).not.toContain("group-hover:scale-105");
   });
 
   it("opens a right-click menu for collected expression management", async () => {

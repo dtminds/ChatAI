@@ -203,6 +203,7 @@ function mapJavaAnswerItem(
   const generateStatus = readJavaGenerateStatus(item);
   const content = readJavaAnswerContent(item);
   const pollComplete = isSmartReplyPollTerminalGenerateStatus(generateStatus);
+  const createdAt = readJavaAnswerCreatedAt(item);
 
   if (!content.trim() && !pollComplete) {
     const status = mapSmartReplyStatus(generateStatus);
@@ -217,6 +218,7 @@ function mapJavaAnswerItem(
   return {
     assistantName: readString(item.assistantName) ?? "智能助手",
     content: content.trim(),
+    ...(createdAt != null ? { createdAt } : {}),
     failReason: readJavaAnswerFailReason(item),
     ...(rawGenAnswer ? { genAnswer: rawGenAnswer } : {}),
     generateStatus,
@@ -295,6 +297,18 @@ function readJavaAnswerFailReason(item: JavaSmartReplyAnswerItem) {
   return readString(item.genFailReason) ?? readString(item.failReason);
 }
 
+function readJavaAnswerCreatedAt(item: JavaSmartReplyAnswerItem) {
+  const createTime = item.createTime;
+
+  if (typeof createTime !== "string") {
+    return undefined;
+  }
+
+  const timestamp = Date.parse(createTime.trim());
+
+  return Number.isFinite(timestamp) ? timestamp : undefined;
+}
+
 function readJavaAnswerMessageId(item: JavaSmartReplyAnswerItem) {
   return (
     readMessageId(item.analyseMsgId) ??
@@ -347,6 +361,10 @@ function mapSmartReplyStatus(
   }
 
   if (numericStatus === 1) {
+    return "processing";
+  }
+
+  if (numericStatus === 5) {
     return "processing";
   }
 

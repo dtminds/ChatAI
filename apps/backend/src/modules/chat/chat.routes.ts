@@ -1,5 +1,6 @@
 import type {
   WorkbenchPollRequest,
+  WorkbenchRetryMessageRequest,
   WorkbenchSendMessagePayload,
   WorkbenchGetOrCreateConversationRequestDto,
   WorkbenchSmartReplyAttachmentsRequest,
@@ -48,6 +49,7 @@ import type { WorkbenchService } from "./workbench.service.js";
 import { checkPlayableVoiceAsset } from "./media-proxy.service.js";
 import { BadRequestError, ForbiddenError } from "../../shared/errors.js";
 import { withRequestId } from "../../shared/logger.js";
+import { getAuthenticatedWorkbenchScope } from "../workbench-platform-scope.js";
 
 const NumericStringSchema = Type.String({ pattern: "^[0-9]+$" });
 
@@ -134,6 +136,11 @@ const MessageChatRecordQuerySchema = Type.Object({
 
 const MessageRevokeBodySchema = Type.Object({
   conversationId: Type.String(),
+});
+
+const MessageRetryBodySchema = Type.Object({
+  conversationId: Type.String(),
+  messageSeq: Type.Integer({ minimum: 1 }),
 });
 
 const MessageDownloadStatusBodySchema = Type.Object({
@@ -256,10 +263,15 @@ const SendMessageBodySchema = Type.Object({
   mention: Type.Optional(
     Type.Object({
       all: Type.Optional(Type.Boolean()),
-      location: Type.Union([Type.Literal("start"), Type.Literal("end")]),
+      location: Type.Union([
+        Type.Literal("start"),
+        Type.Literal("end"),
+        Type.Literal("any"),
+      ]),
       memberIds: Type.Array(Type.String()),
     }),
   ),
+  atOriginText: Type.Optional(Type.String()),
   quote: Type.Optional(
     Type.Object({
       quoteMsgId: Type.String(),
@@ -481,6 +493,7 @@ const MaterialGroupBizTypeSchema = Type.Union([
 const MaterialCollectionsQuerySchema = Type.Object({
   biz_type: NumericStringSchema,
   group_id: Type.Optional(Type.String({ maxLength: 64, minLength: 1 })),
+  keyword: Type.Optional(Type.String({ maxLength: 100 })),
   page: Type.Optional(NumericStringSchema),
   page_size: Type.Optional(NumericStringSchema),
 });
@@ -1114,6 +1127,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
         {
           bizType: parseMaterialBizTypeQuery(request.query.biz_type),
           groupId: parseMaterialGroupIdQuery(request.query.group_id),
+          keyword: request.query.keyword,
           page: parsePositiveIntegerQuery(request.query.page) ?? 1,
           pageSize: Math.min(
             parsePositiveIntegerQuery(request.query.page_size) ?? 100,
@@ -1920,6 +1934,23 @@ export async function registerChatRoutes(app: FastifyInstance) {
     },
   );
 
+  app.post<{ Body: Static<typeof MessageRetryBodySchema> }>(
+    "/api/server/messages/retry",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: MessageRetryBodySchema,
+      },
+    },
+    async (request) => {
+      assertChatSendAccess(request);
+      return getWorkbenchService(app, request).retryMessage(
+        getSubUserId(request),
+        request.body satisfies WorkbenchRetryMessageRequest,
+      );
+    },
+  );
+
   app.post<{
     Body: MessageDownloadBody;
   }>(
@@ -2167,7 +2198,10 @@ function getWorkbenchService(
   request?: FastifyRequest,
 ): WorkbenchService {
   if (request) {
-    return app.createWorkbenchService?.(withRequestId(request.log, request.id))
+    return app.createWorkbenchService?.(
+      withRequestId(request.log, request.id),
+      getAuthenticatedWorkbenchScope(request.user),
+    )
       ?? app.workbenchService;
   }
 

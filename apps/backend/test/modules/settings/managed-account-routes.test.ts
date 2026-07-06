@@ -12,6 +12,8 @@ describe("settings managed-account routes", () => {
     });
 
     expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(db.scopeLookupCount).toBe(0);
     expect(db.joinCalls).toEqual([]);
     expect(db.limitCalls).toContainEqual({
       table: "xy_wap_embed_user_seat as seat",
@@ -23,11 +25,15 @@ describe("settings managed-account routes", () => {
       "in",
       [101, 102],
     ]);
-    expect(response.json()).toEqual({
+    expect(
+      body.data.managedAccounts.map((account: { id: string }) => account.id),
+    ).not.toContain("103");
+    expect(body).toEqual({
       data: {
         managedAccounts: [
           {
             avatarUrl: "https://example.com/drc.png",
+            groupChatCount: 1,
             id: "101",
             name: "德瑞可",
             onlineStatus: "offline",
@@ -60,6 +66,7 @@ describe("settings managed-account routes", () => {
           },
           {
             avatarUrl: "https://example.com/ndt.png",
+            groupChatCount: 0,
             id: "102",
             name: "念都堂",
             onlineStatus: "online",
@@ -113,6 +120,8 @@ describe("settings managed-account routes", () => {
     expect(response.statusCode).toBe(200);
     expect(db.joinCalls).toEqual([]);
     expect(db.managedAccountSeatWheres).not.toContainEqual(["seat.biz_status", "=", 1]);
+    expect(db.managedAccountSeatWheres).toContainEqual(["seat.platform", "=", 5]);
+    expect(db.subAccountValidationWheres).not.toContainEqual(["sub_user.platform", "=", 5]);
     expect(db.subAccountValidationWheres).toContainEqual(["sub_user.id", "in", [12]]);
     expect(db.deletedRelationSeatIds).toEqual([101]);
     expect(app.cache.del).toHaveBeenCalledWith(
@@ -142,6 +151,51 @@ describe("settings managed-account routes", () => {
       success: true,
     });
 
+    await app.close();
+  });
+
+  it("syncs seat groups through the Java internal API", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    process.env.JAVA_INTERNAL_API_TOKEN = "internal-token";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ data: true, error: 0, errorMsg: "", success: true }), {
+        headers: { "content-type": "application/json" },
+        status: 200,
+      }),
+    );
+
+    const { app, authorization } = await createSettingsApp();
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        syncMembers: true,
+      },
+      url: "/api/server/settings/managed-accounts/102/sync-seat-groups",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      data: {
+        synced: true,
+      },
+      success: true,
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/wap-embed/user-seat/sync-seat-groups",
+      expect.objectContaining({
+        body: JSON.stringify({
+          platform: 5,
+          seatId: 102,
+          syncMembers: true,
+          uid: 9001,
+        }),
+        method: "POST",
+      }),
+    );
+
+    fetchMock.mockRestore();
     await app.close();
   });
 });
@@ -183,7 +237,7 @@ function createSettingsDbMock() {
       account: "owner",
       id: 1,
       name: "主账号",
-      platform: 5,
+      platform: 6,
       status: 1,
       type: 1,
       uid: 9001,
@@ -215,6 +269,7 @@ function createSettingsDbMock() {
       platform: 5,
       third_avatar: "https://example.com/drc.png",
       third_user_name: "德瑞可",
+      third_userid: "user-101",
       uid: 9001,
     },
     {
@@ -224,6 +279,26 @@ function createSettingsDbMock() {
       platform: 5,
       third_avatar: "https://example.com/ndt.png",
       third_user_name: "念都堂",
+      third_userid: "user-102",
+      uid: 9001,
+    },
+    {
+      host_sub_id: 11,
+      id: 103,
+      is_online: 1,
+      platform: 6,
+      third_avatar: "https://example.com/cross-platform.png",
+      third_user_name: "跨平台托管账号",
+      third_userid: "user-103",
+      uid: 9001,
+    },
+  ];
+  const groupSeats = [
+    {
+      biz_status: 1,
+      id: 1,
+      platform: 5,
+      third_userid: "user-101",
       uid: 9001,
     },
   ];
@@ -255,7 +330,63 @@ function createSettingsDbMock() {
     managedAccountSeatWheres: [] as Array<[string, string, unknown]>,
     relationListWheres: [] as Array<[string, string, unknown]>,
     subAccountValidationWheres: [] as Array<[string, string, unknown]>,
+    scopeLookupCount: 0,
     selectFrom(table: string) {
+      if (table === "xy_wap_embed_group_seat") {
+        const wheres: Array<[string, string, unknown]> = [];
+        const groupByColumns: string[] = [];
+        const groupSeatBuilder = {
+          execute: async () => {
+            const thirdUserIds = wheres.find(([column]) => column === "third_userid")?.[2] as
+              | string[]
+              | undefined;
+
+            const filtered = groupSeats.filter(
+              (groupSeat) =>
+                groupSeat.uid === 9001 &&
+                groupSeat.platform === 5 &&
+                groupSeat.biz_status === 1 &&
+                (!thirdUserIds || thirdUserIds.includes(groupSeat.third_userid)),
+            );
+
+            if (groupByColumns.includes("third_userid")) {
+              const counts = new Map<string, number>();
+
+              for (const groupSeat of filtered) {
+                counts.set(
+                  groupSeat.third_userid,
+                  (counts.get(groupSeat.third_userid) ?? 0) + 1,
+                );
+              }
+
+              return [...counts.entries()].map(([third_userid, group_count]) => ({
+                group_count,
+                third_userid,
+              }));
+            }
+
+            return filtered;
+          },
+          groupBy: (...columns: string[]) => {
+            groupByColumns.push(...columns);
+            return groupSeatBuilder;
+          },
+          select: (...args: unknown[]) => {
+            if (typeof args[0] === "function") {
+              return groupSeatBuilder;
+            }
+
+            return groupSeatBuilder;
+          },
+          where: (...whereArgs: [string, string, unknown]) => {
+            wheres.push(whereArgs);
+            return groupSeatBuilder;
+          },
+        };
+
+        return groupSeatBuilder;
+      }
+
       const wheres: Array<[string, string, unknown]> = [];
       const builder = {
         execute: async () => {
@@ -264,6 +395,16 @@ function createSettingsDbMock() {
             return seats
               .filter((seat) => {
                 const id = wheres.find(([column]) => column === "seat.id")?.[2];
+                const uid = wheres.find(([column]) => column === "seat.uid")?.[2];
+                const platform = wheres.find(([column]) => column === "seat.platform")?.[2];
+
+                if (uid !== undefined && seat.uid !== uid) {
+                  return false;
+                }
+
+                if (platform !== undefined && seat.platform !== platform) {
+                  return false;
+                }
 
                 return id ? seat.id === id : true;
               })
@@ -273,6 +414,7 @@ function createSettingsDbMock() {
                 id: seat.id,
                 is_online: seat.is_online,
                 third_user_name: seat.third_user_name,
+                third_userid: seat.third_userid,
               }));
           }
 
@@ -286,7 +428,17 @@ function createSettingsDbMock() {
                 }
 
                 const idFilter = wheres.find(([column]) => column === "sub_user.id")?.[2];
+                const uidFilter = wheres.find(([column]) => column === "sub_user.uid")?.[2];
+                const platformFilter = wheres.find(([column]) => column === "sub_user.platform")?.[2];
                 const typeFilter = wheres.find(([column]) => column === "sub_user.type")?.[2];
+
+                if (uidFilter !== undefined && subUser.uid !== uidFilter) {
+                  return false;
+                }
+
+                if (platformFilter !== undefined && subUser.platform !== platformFilter) {
+                  return false;
+                }
 
                 if (
                   Array.isArray(idFilter) &&
@@ -309,6 +461,8 @@ function createSettingsDbMock() {
           if (table === "xy_wap_embed_user_seat_sub_relation as relation") {
             state.relationListWheres = wheres;
             const seatId = wheres.find(([column]) => column === "relation.user_seat_id")?.[2];
+            const uid = wheres.find(([column]) => column === "relation.uid")?.[2];
+            const platform = wheres.find(([column]) => column === "relation.platform")?.[2];
 
             return [
               ...relations.filter((relation) =>
@@ -317,6 +471,14 @@ function createSettingsDbMock() {
               ...state.insertedRelations,
             ]
               .filter((relation) => {
+                if (uid !== undefined && relation.uid !== uid) {
+                  return false;
+                }
+
+                if (platform !== undefined && relation.platform !== platform) {
+                  return false;
+                }
+
                 if (seatId === undefined) {
                   return true;
                 }
@@ -346,6 +508,7 @@ function createSettingsDbMock() {
           }
 
           if (table === "xy_wap_embed_sub_user") {
+            state.scopeLookupCount += 1;
             const id = wheres.find(([column]) => column === "id")?.[2];
 
             return id
@@ -354,6 +517,7 @@ function createSettingsDbMock() {
           }
 
           if (table === "xy_wap_embed_user_seat as seat") {
+            state.managedAccountSeatWheres = wheres;
             const id = wheres.find(([column]) => column === "seat.id")?.[2];
             const seat = seats.find((item) => item.id === id);
 

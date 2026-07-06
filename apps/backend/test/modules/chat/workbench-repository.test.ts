@@ -509,6 +509,45 @@ function createQueryBuilder(result: unknown) {
   };
 }
 
+function createFilteredRowsQueryBuilder<T extends Record<string, unknown>>(
+  rows: T[],
+  columnAliases: Record<string, keyof T & string>,
+) {
+  const query = createQueryBuilder(rows);
+
+  query.execute = async () =>
+    rows.filter((row) => matchesWhereFilters(row, query.wheres, columnAliases));
+  query.executeTakeFirst = async () => (await query.execute())[0];
+
+  return query;
+}
+
+function matchesWhereFilters<T extends Record<string, unknown>>(
+  row: T,
+  wheres: Array<[string, string, unknown]>,
+  columnAliases: Record<string, keyof T & string>,
+) {
+  for (const [column, operator, value] of wheres) {
+    const rowKey = columnAliases[column];
+
+    if (!rowKey) {
+      continue;
+    }
+
+    const rowValue = row[rowKey];
+
+    if (operator === "=" && rowValue !== value) {
+      return false;
+    }
+
+    if (operator === "in" && (!Array.isArray(value) || !value.includes(rowValue))) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 function createCacheMock(initial: Record<string, string> = {}) {
   const store = new Map(Object.entries(initial));
 
@@ -751,6 +790,33 @@ describe("WorkbenchRepository", () => {
         ["sub_uid", "in", [0]],
         ["group_id", "=", 9],
       ],
+    });
+  });
+
+  it("adds title keyword filters to material collection list and count queries", async () => {
+    const db = createMaterialDb({
+      xy_wap_embed_material_collection: [],
+    });
+    const repository = new WorkbenchRepository(db as never);
+
+    await repository.listMaterialCollections({
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.FILE,
+      groupId: "9",
+      keyword: "a\\b%_",
+      limit: 20,
+      offset: 20,
+      subUserId: "88",
+      uid: 9001,
+    });
+
+    expect(db.selects[0].whereExpressions).toContainEqual({
+      column: "title",
+      operator: "like",
+      value: "%a\\\\b\\%\\_%",
+    });
+    expect(db.selects[0]).toMatchObject({
+      limits: [20],
+      offsets: [20],
     });
   });
 
@@ -2151,8 +2217,23 @@ describe("WorkbenchRepository", () => {
     const repository = new WorkbenchRepository(createFailingDb() as never);
 
     await expect(repository.getSubUser("sub-user-001")).resolves.toBeUndefined();
-    await expect(repository.listSeats("sub-user-001")).resolves.toEqual([]);
-    await expect(repository.canAccessSeat("sub-user-001", "1")).resolves.toBe(false);
+    await expect(
+      repository.listSeats({
+        platform: 5,
+        subUserId: "sub-user-001",
+        uid: 9001,
+      } as never),
+    ).resolves.toEqual([]);
+    await expect(
+      repository.canAccessSeat(
+        {
+          platform: 5,
+          subUserId: "sub-user-001",
+          uid: 9001,
+        } as never,
+        "1",
+      ),
+    ).resolves.toBe(false);
   });
 
   it("does not send NaN to MySQL when route ids are invalid", async () => {
@@ -2186,7 +2267,270 @@ describe("WorkbenchRepository", () => {
       hasPrev: false,
       messages: [],
     });
-    await expect(repository.canAccessSeat("1", "not-a-seat")).resolves.toBe(false);
+    await expect(
+      repository.canAccessSeat(
+        {
+          platform: 5,
+          subUserId: "1",
+          uid: 9001,
+        } as never,
+        "not-a-seat",
+      ),
+    ).resolves.toBe(false);
+  });
+
+  it("loads seats from explicit workbench scope without querying sub-user platform", async () => {
+    const queries: Array<{ query: ReturnType<typeof createQueryBuilder>; table: string }> = [];
+    const observedTables: string[] = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          observedTables.push(table);
+
+          if (table === "xy_wap_embed_sub_user") {
+            throw new Error("sub_user must not be queried for workbench platform scope");
+          }
+
+          if (table === "xy_wap_embed_user_seat_sub_relation as relation") {
+            const query = createQueryBuilder([
+              {
+                avatar: "https://example.com/drc.png",
+                host_sub_id: 11,
+                id: 101,
+                is_online: 0,
+                platform: 5,
+                third_user_name: "德瑞可",
+                third_userid: "seat-user-001",
+                uid: 9001,
+              },
+            ]);
+            queries.push({ query, table });
+            return query;
+          }
+
+          if (table === "xy_wap_embed_conversation") {
+            const query = createQueryBuilder([
+              {
+                last_msgtime: 1_778_839_950_000,
+                platform: 5,
+                third_userid: "seat-user-001",
+                uid: 9001,
+                unread_cnt: 4,
+              },
+            ]);
+            queries.push({ query, table });
+            return query;
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    await expect(
+      repository.listSeats({
+        platform: 5,
+        subUserId: "11",
+        uid: 9001,
+      } as never),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        seatId: "101",
+      }),
+    ]);
+
+    expect(observedTables).not.toContain("xy_wap_embed_sub_user");
+    expect(queries[0]?.query.wheres).toContainEqual(["relation.sub_id", "=", 11]);
+    expect(queries[0]?.query.wheres).toContainEqual(["relation.uid", "=", 9001]);
+    expect(queries[0]?.query.wheres).toContainEqual(["relation.platform", "=", 5]);
+  });
+
+  it("filters seat list rows to the authenticated workbench platform", async () => {
+    const queries: Array<{ query: ReturnType<typeof createQueryBuilder>; table: string }> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_user_seat_sub_relation as relation") {
+            const query = createFilteredRowsQueryBuilder(
+              [
+                {
+                  avatar: "https://example.com/drc.png",
+                  biz_status: 1,
+                  expire_time: null,
+                  host_sub_id: 11,
+                  id: 101,
+                  is_online: 0,
+                  platform: 5,
+                  relation_sub_id: 11,
+                  third_user_name: "德瑞可",
+                  third_userid: "seat-user-001",
+                  uid: 9001,
+                },
+                {
+                  avatar: "https://example.com/other-platform.png",
+                  biz_status: 1,
+                  expire_time: null,
+                  host_sub_id: 11,
+                  id: 201,
+                  is_online: 1,
+                  platform: 6,
+                  relation_sub_id: 11,
+                  third_user_name: "跨平台席位",
+                  third_userid: "seat-user-platform-6",
+                  uid: 9001,
+                },
+              ],
+              {
+                "relation.platform": "platform",
+                "relation.sub_id": "relation_sub_id",
+                "relation.uid": "uid",
+              },
+            );
+            queries.push({ query, table });
+            return query;
+          }
+
+          if (table === "xy_wap_embed_conversation") {
+            const query = createFilteredRowsQueryBuilder(
+              [
+                {
+                  chat_type: 1,
+                  last_msgtime: 1_778_839_950_000,
+                  platform: 5,
+                  third_userid: "seat-user-001",
+                  uid: 9001,
+                  unread_cnt: 4,
+                },
+                {
+                  chat_type: 1,
+                  last_msgtime: 1_778_839_960_000,
+                  platform: 6,
+                  third_userid: "seat-user-platform-6",
+                  uid: 9001,
+                  unread_cnt: 9,
+                },
+              ],
+              {
+                platform: "platform",
+                third_userid: "third_userid",
+                uid: "uid",
+              },
+            );
+            queries.push({ query, table });
+            return query;
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    const seats = await repository.listSeats({
+      platform: 5,
+      subUserId: "11",
+      uid: 9001,
+    } as never);
+
+    expect(seats.map((seat) => seat.seatId)).toEqual(["101"]);
+    expect(seats.map((seat) => seat.unreadCount)).toEqual([4]);
+    expect(queries[0]?.query.wheres).toContainEqual(["relation.platform", "=", 5]);
+    expect(queries[1]?.query.wheres).toContainEqual(["platform", "=", 5]);
+  });
+
+  it("loads sidebar tuse secrets from explicit workbench scope without querying sub-user platform", async () => {
+    const observedTables: string[] = [];
+    const relationQueries: Array<ReturnType<typeof createQueryBuilder>> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          observedTables.push(table);
+
+          if (table === "xy_wap_embed_sub_user") {
+            throw new Error("sub_user must not be queried for tuse scope");
+          }
+
+          if (table === "xy_wap_embed_user_relation") {
+            const query = createQueryBuilder({
+              appid: "mid-001",
+              iv_parameter: "1234567890abcdef",
+              secret: "abcdef1234567890",
+            });
+            relationQueries.push(query);
+            return query;
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    await expect(
+      repository.getEmbedUserRelationTuseSecrets({
+        platform: 5,
+        uid: 9001,
+      } as never),
+    ).resolves.toEqual({
+      appId: "mid-001",
+      ivParameter: "1234567890abcdef",
+      secret: "abcdef1234567890",
+    });
+
+    expect(observedTables).not.toContain("xy_wap_embed_sub_user");
+    expect(relationQueries[0]?.wheres).toContainEqual(["uid", "=", 9001]);
+    expect(relationQueries[0]?.wheres).toContainEqual(["platform", "=", 5]);
+    expect(relationQueries[0]?.wheres).toContainEqual(["biz_status", "=", 1]);
+  });
+
+  it("loads the latest single conversation message summary by conversation scope", async () => {
+    const createdAt = new Date("2026-06-29T10:00:00.000Z");
+    const queries: Array<{ query: ReturnType<typeof createQueryBuilder>; table: string }> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_msg_audit_info as message") {
+            const query = createQueryBuilder({ create_time: createdAt, msgtype: "text" });
+            queries.push({ query, table });
+            return query;
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    await expect(
+      repository.getLatestConversationMessageSummary({
+        platform: 5,
+        thirdExternalUserId: "external-001",
+        thirdUserId: "seat-user-001",
+        uid: 9001,
+      }),
+    ).resolves.toEqual({
+      createdAt: createdAt.getTime(),
+      msgtype: "text",
+    });
+
+    expect(queries).toHaveLength(1);
+    expect(queries[0]?.query.wheres).toEqual([
+      ["message.uid", "=", 9001],
+      ["message.platform", "=", 5],
+      ["message.third_user_id", "=", "seat-user-001"],
+      ["message.third_external_id", "=", "external-001"],
+    ]);
+    expect(queries[0]?.query.orderBys).toEqual([["message.id", "desc"]]);
+    expect(queries[0]?.query.limits).toEqual([1]);
+  });
+
+  it("does not query latest conversation message without a conversation target", async () => {
+    const repository = new WorkbenchRepository(createFailingDb() as never);
+
+    await expect(
+      repository.getLatestConversationMessageSummary({
+        platform: 5,
+        thirdUserId: "seat-user-001",
+        uid: 9001,
+      }),
+    ).resolves.toBeUndefined();
   });
 
   it("loads the latest single conversation message summary by conversation scope", async () => {
@@ -2313,7 +2657,13 @@ describe("WorkbenchRepository", () => {
       } as never,
     );
 
-    await expect(repository.listSeats("11")).resolves.toEqual([
+    await expect(
+      repository.listSeats({
+        platform: 5,
+        subUserId: "11",
+        uid: 9001,
+      } as never),
+    ).resolves.toEqual([
       expect.objectContaining({
         seatId: "101",
         unreadCount: 4,
@@ -2492,7 +2842,13 @@ describe("WorkbenchRepository", () => {
       } as never,
     );
 
-    await expect(repository.listSeats("11")).resolves.toEqual([
+    await expect(
+      repository.listSeats({
+        platform: 5,
+        subUserId: "11",
+        uid: 9001,
+      } as never),
+    ).resolves.toEqual([
       expect.objectContaining({
         seatId: "9007199254740993",
       }),
@@ -2535,7 +2891,16 @@ describe("WorkbenchRepository", () => {
       } as never,
     );
 
-    await expect(repository.canAccessSeat("11", "101")).resolves.toBe(true);
+    await expect(
+      repository.canAccessSeat(
+        {
+          platform: 5,
+          subUserId: "11",
+          uid: 9001,
+        } as never,
+        "101",
+      ),
+    ).resolves.toBe(true);
 
     expect(queryBuilders).toEqual([
       {
@@ -2550,6 +2915,54 @@ describe("WorkbenchRepository", () => {
     ]);
   });
 
+  it("checks seat access from explicit workbench scope without querying sub-user platform", async () => {
+    const observedTables: string[] = [];
+    const relationQueries: Array<ReturnType<typeof createQueryBuilder>> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          observedTables.push(table);
+
+          if (table === "xy_wap_embed_sub_user") {
+            throw new Error("sub_user must not be queried for seat access scope");
+          }
+
+          if (table === "xy_wap_embed_user_seat_sub_relation as relation") {
+            const query = createQueryBuilder([
+              {
+                platform: 5,
+                seat_id: 101,
+                uid: 9001,
+              },
+            ]);
+            relationQueries.push(query);
+            return query;
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    await expect(
+      repository.canAccessSeat(
+        {
+          platform: 5,
+          subUserId: "11",
+          uid: 9001,
+        } as never,
+        "101",
+      ),
+    ).resolves.toBe(true);
+
+    expect(observedTables).not.toContain("xy_wap_embed_sub_user");
+    expect(relationQueries[0]?.wheres).toEqual([
+      ["relation.sub_id", "=", 11],
+      ["relation.uid", "=", 9001],
+      ["relation.platform", "=", 5],
+    ]);
+  });
+
   it("checks seat access from cached seat-access snapshot without querying DB", async () => {
     const cache = createCacheMock({
       "chatai:seat-access:11": JSON.stringify({
@@ -2561,8 +2974,26 @@ describe("WorkbenchRepository", () => {
     });
     const repository = new WorkbenchRepository(createFailingDb() as never, cache);
 
-    await expect(repository.canAccessSeat("11", "101")).resolves.toBe(true);
-    await expect(repository.canAccessSeat("11", "103")).resolves.toBe(false);
+    await expect(
+      repository.canAccessSeat(
+        {
+          platform: 5,
+          subUserId: "11",
+          uid: 9001,
+        } as never,
+        "101",
+      ),
+    ).resolves.toBe(true);
+    await expect(
+      repository.canAccessSeat(
+        {
+          platform: 5,
+          subUserId: "11",
+          uid: 9001,
+        } as never,
+        "103",
+      ),
+    ).resolves.toBe(false);
     expect(cache.get).toHaveBeenCalledWith("chatai:seat-access:11");
   });
 
@@ -2595,7 +3026,16 @@ describe("WorkbenchRepository", () => {
       cache,
     );
 
-    await expect(repository.canAccessSeat("11", "101")).resolves.toBe(true);
+    await expect(
+      repository.canAccessSeat(
+        {
+          platform: 5,
+          subUserId: "11",
+          uid: 9001,
+        } as never,
+        "101",
+      ),
+    ).resolves.toBe(true);
     expect(cache.set).toHaveBeenCalledWith(
       "chatai:seat-access:11",
       JSON.stringify({
@@ -2638,7 +3078,16 @@ describe("WorkbenchRepository", () => {
       cache,
     );
 
-    await expect(repository.canAccessSeat("11", "101")).resolves.toBe(true);
+    await expect(
+      repository.canAccessSeat(
+        {
+          platform: 5,
+          subUserId: "11",
+          uid: 9001,
+        } as never,
+        "101",
+      ),
+    ).resolves.toBe(true);
     expect(cache.set).toHaveBeenCalledWith(
       "chatai:seat-access:11",
       JSON.stringify({
@@ -2687,7 +3136,13 @@ describe("WorkbenchRepository", () => {
       cache,
     );
 
-    await expect(repository.getSeatEventScope("11")).resolves.toEqual({
+    await expect(
+      repository.getSeatEventScope({
+        platform: 5,
+        subUserId: "11",
+        uid: 9001,
+      } as never),
+    ).resolves.toEqual({
       platform: 5,
       seatIds: ["101", "102"],
       uid: 9001,
@@ -2709,7 +3164,61 @@ describe("WorkbenchRepository", () => {
     ]);
   });
 
-  it("caches empty seat-access snapshots from the sub-user tenant scope", async () => {
+  it("reads active seat event scope from explicit workbench scope without querying sub-user platform", async () => {
+    const observedTables: string[] = [];
+    const relationQueries: Array<ReturnType<typeof createQueryBuilder>> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          observedTables.push(table);
+
+          if (table === "xy_wap_embed_sub_user") {
+            throw new Error("sub_user must not be queried for seat event scope");
+          }
+
+          if (table === "xy_wap_embed_user_seat_sub_relation as relation") {
+            const query = createQueryBuilder([
+              {
+                platform: 5,
+                seat_id: 12,
+                uid: 272,
+              },
+              {
+                platform: 5,
+                seat_id: 13,
+                uid: 272,
+              },
+            ]);
+            relationQueries.push(query);
+
+            return query;
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    await expect(
+      repository.getSeatEventScope({
+        platform: 5,
+        subUserId: "101",
+        uid: 272,
+      } as never),
+    ).resolves.toEqual({
+      platform: 5,
+      seatIds: ["12", "13"],
+      uid: 272,
+    });
+    expect(observedTables).not.toContain("xy_wap_embed_sub_user");
+    expect(relationQueries[0]?.wheres).toEqual([
+      ["relation.sub_id", "=", 101],
+      ["relation.uid", "=", 272],
+      ["relation.platform", "=", 5],
+    ]);
+  });
+
+  it("caches empty seat-access snapshots from the explicit workbench scope", async () => {
     const cache = createCacheMock();
     const repository = new WorkbenchRepository(
       {
@@ -2731,12 +3240,27 @@ describe("WorkbenchRepository", () => {
       cache,
     );
 
-    await expect(repository.getSeatEventScope("11")).resolves.toEqual({
+    await expect(
+      repository.getSeatEventScope({
+        platform: 5,
+        subUserId: "11",
+        uid: 9001,
+      } as never),
+    ).resolves.toEqual({
       platform: 5,
       seatIds: [],
       uid: 9001,
     });
-    await expect(repository.canAccessSeat("11", "101")).resolves.toBe(false);
+    await expect(
+      repository.canAccessSeat(
+        {
+          platform: 5,
+          subUserId: "11",
+          uid: 9001,
+        } as never,
+        "101",
+      ),
+    ).resolves.toBe(false);
     expect(cache.set).toHaveBeenCalledWith(
       "chatai:seat-access:11",
       JSON.stringify({
@@ -2749,7 +3273,7 @@ describe("WorkbenchRepository", () => {
     );
   });
 
-  it("does not cache a seat-access snapshot when sub-user tenant scope is missing", async () => {
+  it("caches an empty seat-access snapshot without reading sub-user tenant scope", async () => {
     const cache = createCacheMock();
     const repository = new WorkbenchRepository(
       {
@@ -2768,9 +3292,37 @@ describe("WorkbenchRepository", () => {
       cache,
     );
 
-    await expect(repository.getSeatEventScope("11")).resolves.toBeUndefined();
-    await expect(repository.canAccessSeat("11", "101")).resolves.toBe(false);
-    expect(cache.set).not.toHaveBeenCalled();
+    await expect(
+      repository.getSeatEventScope({
+        platform: 5,
+        subUserId: "11",
+        uid: 9001,
+      } as never),
+    ).resolves.toEqual({
+      platform: 5,
+      seatIds: [],
+      uid: 9001,
+    });
+    await expect(
+      repository.canAccessSeat(
+        {
+          platform: 5,
+          subUserId: "11",
+          uid: 9001,
+        } as never,
+        "101",
+      ),
+    ).resolves.toBe(false);
+    expect(cache.set).toHaveBeenCalledWith(
+      "chatai:seat-access:11",
+      JSON.stringify({
+        platform: 5,
+        seatIds: [],
+        uid: 9001,
+        version: 1,
+      }),
+      600,
+    );
   });
 
   it("lists my customers grouped by contact identity and scoped by visible seats", async () => {
@@ -2879,9 +3431,11 @@ describe("WorkbenchRepository", () => {
 
     await expect(
       repository.listCustomers({
+        platform: 5,
         scope: "mine",
         seatIds: ["12"],
         subUserId: "101",
+        uid: 9001,
       }),
     ).resolves.toEqual({
       hasMore: false,
@@ -2921,11 +3475,17 @@ describe("WorkbenchRepository", () => {
     )?.query;
     expect(accessibleSeatQuery?.joins).toEqual(["innerJoin"]);
     expect(accessibleSeatQuery?.joinConditions).toContainEqual({
-      conditions: [["relation.user_seat_id", "=", "seat.id"]],
+      conditions: [
+        ["relation.user_seat_id", "=", "seat.id"],
+        ["relation.uid", "=", "seat.uid"],
+        ["relation.platform", "=", "seat.platform"],
+      ],
       table: "xy_wap_embed_user_seat_sub_relation as relation",
       type: "innerJoin",
     });
     expect(accessibleSeatQuery?.wheres).toContainEqual(["relation.sub_id", "=", 101]);
+    expect(accessibleSeatQuery?.wheres).toContainEqual(["relation.uid", "=", 9001]);
+    expect(accessibleSeatQuery?.wheres).toContainEqual(["relation.platform", "=", 5]);
     expect(accessibleSeatQuery?.wheres).not.toContainEqual(["seat.biz_status", "=", 1]);
     expect(bindQuery?.joins).toEqual([]);
     expect(bindQuery?.wheres).toContainEqual(["bind.uid", "=", 9001]);
@@ -2935,6 +3495,62 @@ describe("WorkbenchRepository", () => {
       ["bind.add_time", "desc"],
       ["bind.id", "desc"],
     ]);
+  });
+
+  it("limits my customer visible seat contexts to the explicit workbench scope", async () => {
+    const queries: Array<{ table: string; query: ReturnType<typeof createQueryBuilder> }> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_user_seat as seat") {
+            const query = createQueryBuilder([
+              {
+                id: 12,
+                platform: 5,
+                third_avatar: "",
+                third_user_name: "销售一号",
+                third_userid: "seat-user-12",
+                uid: 9001,
+              },
+            ]);
+            queries.push({ table, query });
+            return query;
+          }
+
+          if (table === "xy_wap_embed_customer_bind_relation as bind") {
+            const query = createQueryBuilder([]);
+            queries.push({ table, query });
+            return query;
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    await repository.listCustomers({
+      platform: 5,
+      scope: "mine",
+      seatIds: [],
+      subUserId: "101",
+      uid: 9001,
+    } as never);
+
+    const accessibleSeatQuery = queries.find(
+      (item) => item.table === "xy_wap_embed_user_seat as seat",
+    )?.query;
+    expect(accessibleSeatQuery?.wheres).toContainEqual(["relation.sub_id", "=", 101]);
+    expect(accessibleSeatQuery?.wheres).toContainEqual(["relation.uid", "=", 9001]);
+    expect(accessibleSeatQuery?.wheres).toContainEqual(["relation.platform", "=", 5]);
+    expect(accessibleSeatQuery?.joinConditions).toContainEqual({
+      conditions: [
+        ["relation.user_seat_id", "=", "seat.id"],
+        ["relation.uid", "=", "seat.uid"],
+        ["relation.platform", "=", "seat.platform"],
+      ],
+      table: "xy_wap_embed_user_seat_sub_relation as relation",
+      type: "innerJoin",
+    });
   });
 
   it("applies keyword and limit to my customer seat lists", async () => {
@@ -2987,9 +3603,11 @@ describe("WorkbenchRepository", () => {
     await repository.listCustomers({
       keyword: "张三",
       limit: 50,
+      platform: 5,
       scope: "mine",
       seatIds: ["12"],
       subUserId: "101",
+      uid: 9001,
     });
 
     const bindQuery = queries.find(
@@ -3091,9 +3709,11 @@ describe("WorkbenchRepository", () => {
     const result = await repository.listCustomers({
       cursor,
       limit: 1,
+      platform: 5,
       scope: "mine",
       seatIds: ["12"],
       subUserId: "101",
+      uid: 9001,
     });
 
     const bindQuery = queries.find(
@@ -3193,9 +3813,11 @@ describe("WorkbenchRepository", () => {
     await repository.listCustomers({
       keyword: "张三",
       limit: 50,
+      platform: 5,
       scope: "mine",
       seatIds: [],
       subUserId: "101",
+      uid: 9001,
     });
 
     const bindQuery = queries.find(
@@ -3219,19 +3841,36 @@ describe("WorkbenchRepository", () => {
       {
         selectFrom(table: string) {
           if (table === "xy_wap_embed_contact as contact") {
-            const query = createQueryBuilder([
+            const query = createFilteredRowsQueryBuilder(
+              [
+                {
+                  avatar: "",
+                  biz_status: 1,
+                  gender: null,
+                  name: "客户B",
+                  platform: 5,
+                  real_name: "",
+                  third_external_userid: "external-b",
+                  uid: 9001,
+                  update_time: new Date("2026-05-20T10:00:00.000Z"),
+                },
+                {
+                  avatar: "",
+                  biz_status: 1,
+                  gender: null,
+                  name: "跨平台客户",
+                  platform: 6,
+                  real_name: "",
+                  third_external_userid: "external-platform-6",
+                  uid: 9001,
+                  update_time: new Date("2026-05-21T10:00:00.000Z"),
+                },
+              ],
               {
-                avatar: "",
-                biz_status: 1,
-                gender: null,
-                name: "客户B",
-                platform: 5,
-                real_name: "",
-                third_external_userid: "external-b",
-                uid: 9001,
-                update_time: new Date("2026-05-20T10:00:00.000Z"),
+                "contact.platform": "platform",
+                "contact.uid": "uid",
               },
-            ]);
+            );
             queries.push({ table, query });
             return query;
           }
@@ -3268,13 +3907,14 @@ describe("WorkbenchRepository", () => {
       } as never,
     );
 
-    await expect(
-      repository.listCustomers({
-        platform: 5,
-        scope: "all",
-        uid: 9001,
-      }),
-    ).resolves.toMatchObject({
+    const result = await repository.listCustomers({
+      platform: 5,
+      scope: "all",
+      uid: 9001,
+    });
+
+    expect(result.items.map((item) => item.thirdExternalUserId)).toEqual(["external-b"]);
+    expect(result).toMatchObject({
       hasMore: false,
       items: [
         {
@@ -5364,7 +6004,13 @@ describe("WorkbenchRepository", () => {
       } as never,
     );
 
-    await expect(repository.getSeatEventScope("101")).resolves.toEqual({
+    await expect(
+      repository.getSeatEventScope({
+        platform: 5,
+        subUserId: "101",
+        uid: 272,
+      } as never),
+    ).resolves.toEqual({
       platform: 5,
       seatIds: ["12", "13"],
       uid: 272,
@@ -5705,6 +6351,134 @@ describe("WorkbenchRepository", () => {
         ["platform", "=", 5],
         ["third_user_id", "=", "seat-user-001"],
         ["third_external_id", "=", "external-001"],
+      ],
+    });
+  });
+
+  it("finds retry message opt no only within the failed conversation message scope", async () => {
+    const queries: Array<{ table: string; wheres: Array<[string, string, unknown]> }> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          expect(table).toBe("xy_wap_embed_msg_audit_info as message");
+          const query = createQueryBuilder({
+            chat_type: 2,
+            from_type: null,
+            id: 538,
+            opt_no: "failed-opt-538",
+            third_from_id: "seat-user-001",
+            third_user_id: "seat-user-001",
+          });
+          queries.push({ table, wheres: query.wheres });
+
+          return query;
+        },
+      } as never,
+    );
+
+    await expect(
+      repository.findRetryMessage({
+        conversationId: "conv-001",
+        messageSeq: 538,
+        platform: 5,
+        thirdGroupId: "group-001",
+        thirdUserId: "seat-user-001",
+        uid: 9001,
+      }),
+    ).resolves.toEqual({
+      id: 538,
+      optNo: "failed-opt-538",
+      senderType: "agent",
+    });
+    expect(queries).toHaveLength(1);
+    expect(queries[0]).toMatchObject({
+      table: "xy_wap_embed_msg_audit_info as message",
+      wheres: [
+        ["message.uid", "=", 9001],
+        ["message.platform", "=", 5],
+        ["message.third_user_id", "=", "seat-user-001"],
+        ["message.id", "=", 538],
+        ["message.status", "=", 0],
+        ["message.third_group_id", "=", "group-001"],
+      ],
+    });
+  });
+
+  it("maps retry message sender from platform sender fields", async () => {
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          expect(table).toBe("xy_wap_embed_msg_audit_info as message");
+          return createQueryBuilder({
+            chat_type: 2,
+            from_type: null,
+            id: 539,
+            opt_no: "failed-opt-539",
+            third_from_id: "customer-member-001",
+            third_user_id: "seat-user-001",
+          });
+        },
+      } as never,
+    );
+
+    await expect(
+      repository.findRetryMessage({
+        conversationId: "conv-001",
+        messageSeq: 539,
+        platform: 5,
+        thirdGroupId: "group-001",
+        thirdUserId: "seat-user-001",
+        uid: 9001,
+      }),
+    ).resolves.toEqual({
+      id: 539,
+      optNo: "failed-opt-539",
+      senderType: "customer",
+    });
+  });
+
+  it("finds async operation opt params in tenant and platform scope", async () => {
+    const queries: Array<{ table: string; wheres: Array<[string, string, unknown]> }> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          expect(table).toBe("xy_wap_embed_async_operation");
+          const query = createQueryBuilder({
+            opt_params: JSON.stringify({
+              msgData: {
+                msgtype: "text",
+                text: "hello",
+              },
+            }),
+          });
+          queries.push({ table, wheres: query.wheres });
+
+          return query;
+        },
+      } as never,
+    );
+
+    await expect(
+      repository.findAsyncOperationByOptNo({
+        optNo: "failed-opt-538",
+        platform: 5,
+        uid: 9001,
+      }),
+    ).resolves.toEqual({
+      optParams: JSON.stringify({
+        msgData: {
+          msgtype: "text",
+          text: "hello",
+        },
+      }),
+    });
+    expect(queries).toHaveLength(1);
+    expect(queries[0]).toMatchObject({
+      table: "xy_wap_embed_async_operation",
+      wheres: [
+        ["opt_no", "=", "failed-opt-538"],
+        ["uid", "=", 9001],
+        ["platform", "=", 5],
       ],
     });
   });

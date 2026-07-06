@@ -48,8 +48,38 @@ jobs:
               - "tsconfig*.json"
               - "tsconfig.base.json"
 
-  frontend:
-    name: Frontend
+  frontend-unit:
+    name: Frontend Unit (${{ matrix.shard }})
+    needs: changes
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard:
+          - "1/2"
+          - "2/2"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Enable pnpm
+        run: corepack enable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Test frontend (unit)
+        run: pnpm --filter @chatai/web test:unit --shard=${{ matrix.shard }}
+
+  frontend-verify:
+    name: Frontend Verify
     needs: changes
     if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
@@ -72,11 +102,26 @@ jobs:
       - name: Typecheck frontend
         run: pnpm --filter @chatai/web typecheck
 
-      - name: Test frontend (unit)
-        run: pnpm --filter @chatai/web test:unit
-
       - name: Test frontend (integration)
         run: pnpm --filter @chatai/web test:integration
 
       - name: Build frontend
         run: pnpm --filter @chatai/web build
+
+  frontend:
+    name: Frontend
+    needs:
+      - changes
+      - frontend-unit
+      - frontend-verify
+    if: ${{ always() && (github.event_name == 'workflow_dispatch' || needs.changes.outputs.frontend == 'true') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check frontend jobs
+        run: |
+          echo "Frontend Unit: ${{ needs.frontend-unit.result }}"
+          echo "Frontend Verify: ${{ needs.frontend-verify.result }}"
+
+          if [[ "${{ needs.frontend-unit.result }}" != "success" || "${{ needs.frontend-verify.result }}" != "success" ]]; then
+            exit 1
+          fi

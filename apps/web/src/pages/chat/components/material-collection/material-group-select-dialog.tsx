@@ -100,6 +100,8 @@ export function MaterialGroupSelectDialog({
       ? hasMaterialFileNameBase(formValues.fileName, formValues.fileExtension)
       : bizType === MATERIAL_COLLECTION_BIZ_TYPE.H5
         ? formValues.title.trim().length > 0
+        : bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM
+          ? formValues.title.trim().length > 0
         : true;
   const canSubmit =
     Boolean(selectedGroupId) &&
@@ -139,7 +141,9 @@ export function MaterialGroupSelectDialog({
           ? formValues.fileName
           : undefined,
       title:
-        bizType === MATERIAL_COLLECTION_BIZ_TYPE.H5
+        bizType === MATERIAL_COLLECTION_BIZ_TYPE.H5 ||
+        bizType === MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM ||
+        bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO
           ? formValues.title
           : undefined,
     });
@@ -183,14 +187,6 @@ export function MaterialGroupSelectDialog({
             <p className="text-sm text-destructive" role="alert">
               {formError ?? formValidationError}
             </p>
-          ) : null}
-
-          {bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO ? (
-            <Alert className="border-warning/30 bg-warning-muted text-warning">
-              <AlertDescription className="text-warning">
-                受接口能力限制， 仅支持收录由该企微账号直接发送的视频，原视频大小需在30MB以内，以保障发送成功率。
-              </AlertDescription>
-            </Alert>
           ) : null}
 
           <div className="space-y-2">
@@ -241,6 +237,14 @@ export function MaterialGroupSelectDialog({
               </SelectContent>
             </Select>
           </div>
+
+          {bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO ? (
+            <Alert className="border-warning/30 bg-warning-muted text-warning">
+              <AlertDescription className="text-warning">
+                受接口能力限制，仅支持收录由该企微账号直接发送的视频，原视频大小需在30MB以内，以保障发送成功率
+              </AlertDescription>
+            </Alert>
+          ) : null}
 
           {bizType === MATERIAL_COLLECTION_BIZ_TYPE.VIDEO && isSaving ? (
             <p className="text-sm text-muted-foreground" role="status">

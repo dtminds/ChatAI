@@ -6,10 +6,21 @@ import {
   WORKBENCH_EMPTY_MESSAGE_TITLE,
   WORKBENCH_NEW_MESSAGE_TITLE,
 } from "@/pages/chat/lib/new-message-title-alert";
+import {
+  clearNewMessageSoundRuntimeState,
+  unlockNewMessageSound,
+  writeNewMessageSoundPreference,
+} from "@/pages/chat/lib/new-message-sound-alert";
+
+let audioInstances: AudioMock[];
 
 describe("new message title alert", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    audioInstances = [];
+    clearNewMessageSoundRuntimeState();
+    window.localStorage.clear();
+    vi.stubGlobal("Audio", AudioMock);
     setDocumentVisibility("visible");
     setDocumentFocus(true);
     document.title = WORKBENCH_DEFAULT_TITLE;
@@ -17,6 +28,8 @@ describe("new message title alert", () => {
 
   afterEach(() => {
     resetWorkbenchTitleAlert();
+    clearNewMessageSoundRuntimeState();
+    vi.unstubAllGlobals();
     vi.useRealTimers();
     setDocumentVisibility("visible");
     setDocumentFocus(true);
@@ -82,6 +95,20 @@ describe("new message title alert", () => {
     expect(document.title).toBe(WORKBENCH_DEFAULT_TITLE);
   });
 
+  it("plays the configured sound for new messages when the trigger allows focused tabs", async () => {
+    writeNewMessageSoundPreference({
+      enabled: true,
+      soundId: "msg_sound1",
+      trigger: "all_new_messages",
+    });
+    await unlockNewMessageSound();
+
+    notifyPulledCustomerMessage();
+
+    expect(document.title).toBe(WORKBENCH_DEFAULT_TITLE);
+    expect(audioInstances[0].play).toHaveBeenCalledTimes(2);
+  });
+
   it("does not overwrite an external title when no alert is active", () => {
     document.title = "其他页面";
 
@@ -118,4 +145,18 @@ function setDocumentFocus(value: boolean) {
     configurable: true,
     value: vi.fn(() => value),
   });
+}
+
+class AudioMock {
+  currentTime = 0;
+  preload = "";
+  src: string;
+  volume = 1;
+  pause = vi.fn();
+  play = vi.fn(() => Promise.resolve());
+
+  constructor(src: string) {
+    this.src = src;
+    audioInstances.push(this);
+  }
 }

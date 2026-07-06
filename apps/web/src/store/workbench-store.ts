@@ -23,7 +23,6 @@ import {
   loadUnreadAccountConversationsByMode,
   loadConversationHistoryMessagesPage,
   loadGroupMembers,
-  loadAccountScope,
   loadConversationMessagesPage,
   loadMessagesBySeqs,
   loadSeats,
@@ -37,6 +36,7 @@ import {
   requestSmartReplyMakeShorter as requestSmartReplyMakeShorterApi,
   sendSmartReplyAnswer,
   confirmVoicePlaybackReady as confirmVoicePlaybackReadyRequest,
+  retryMessage as retryMessageRequest,
   revokeMessage as revokeMessageRequest,
   sendTextMessage,
   takeOverAccount as takeOverAccountRequest,
@@ -47,6 +47,7 @@ import {
 import type { WorkbenchConversationPage } from "@/pages/chat/api/workbench-gateway";
 import {
   getComposerSegmentsPreview,
+  JAVA_MENTION_PLACEHOLDER,
   normalizeComposerSegments,
   type ComposerSegment,
   type ComposerTextSegment,
@@ -91,10 +92,13 @@ import {
   isSmartReplyKnowledgeMiss,
   isSmartReplyPollComplete,
   isSmartReplyEligibleMessage,
+  isSmartReplySemanticWait,
+  isSmartReplySemanticWaitExpired,
   isSmartReplySupportedConversation,
   SMART_REPLY_CONTENT_INCOMPLETE_SKIP_HINT,
   SMART_REPLY_CONTENT_INCOMPLETE_SKIP_MESSAGE,
   SMART_REPLY_BUSY_TIMEOUT_MS,
+  SMART_REPLY_SEMANTIC_WAIT_TIMEOUT_MS,
   type SmartReplySendPayload,
 } from "@/pages/chat/api/smart-reply-adapter";
 import type { SmartReplySuggestion } from "@/pages/chat/components/smart-reply-card";
@@ -168,10 +172,11 @@ type MessagePaginationState = {
 };
 
 type PollState = {
-  status: "idle" | "error";
+  status: "idle" | "error" | "paused";
   intervalMs: number;
   jitterMs: number;
   errorMessage?: string;
+  pauseReason?: "cursor-invalidated";
 };
 
 type HistoryPanelMode = "all" | "file" | "media" | "h5" | "mini-program";
@@ -311,7 +316,7 @@ type WorkbenchState = {
   setHistoryPanelSenderId: (senderId?: string) => Promise<void>;
   loadHistoryMessages: (options?: { cursor?: string; direction?: "next" | "prev" }) => Promise<void>;
   refreshSeatSummaries: () => Promise<void>;
-  pollWorkbench: () => Promise<void>;
+  pollWorkbench: () => Promise<boolean>;
   dismissSmartReply: (message: ChatMessage) => void;
   requestSmartReplyGeneralAnswer: (
     message: ChatMessage,
@@ -378,6 +383,7 @@ const MESSAGE_PAGE_SIZE = 50;
 const FULL_AUTO_ANSWER_POLL_INTERVAL_MS = 1000;
 const FULL_AUTO_RECENT_CUSTOMER_MESSAGE_WINDOW_MS = 2 * 60 * 1000;
 const FULL_AUTO_TERMINAL_STATUS_RESET_MS = 5000;
+const FULL_AUTO_SEMANTIC_WAIT_TIMEOUT_MS = SMART_REPLY_SEMANTIC_WAIT_TIMEOUT_MS;
 const CONVERSATION_MODES = ["single", "group"] as const satisfies readonly ChatMode[];
 const GROUP_MEMBERS_CACHE_TTL_MS = 5 * 60 * 1000;
 const REVOKE_PENDING_TIMEOUT_MS = 10 * 1000;
@@ -961,7 +967,9 @@ function getPageSmartReplies(page: WorkbenchConversationPage) {
     page.messages
       .filter(
         (message): message is ChatMessage =>
-          message.role !== "system" && hasSmartReplyTriggerRawMsgtype(message),
+          Boolean(message) &&
+          message.role !== "system" &&
+          hasSmartReplyTriggerRawMsgtype(message),
       )
       .map((message) => getSmartReplyLookupKey(message)),
   );
@@ -1031,7 +1039,7 @@ function pruneSmartReplyStateToExistingMessages(input: {
 }) {
   const retainedKeys = new Set(
     input.messages
-      .filter((message) => message.role !== "system")
+      .filter((message) => message && message.role !== "system")
       .map((message) => getSmartReplyLookupKey(message)),
   );
 
@@ -1087,6 +1095,62 @@ function shouldAutoGenerateSmartReply(input: {
   return message;
 }
 
+function getLatestSmartReplyEligibleMessageKey(messages: Message[]) {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+
+    if (message && message.role !== "system" && isSmartReplyEligibleMessage(message)) {
+      return getSmartReplyLookupKey(message);
+    }
+  }
+
+  return undefined;
+}
+
+function pruneSemanticWaitSmartReplyPendingKeys(input: {
+  messages: Message[];
+  pending: Record<string, true>;
+  requestedMsgIds: number[];
+  suggestions: Record<string, SmartReplySuggestion>;
+}) {
+  const nextPending = { ...input.pending };
+  const latestEligibleKey = getLatestSmartReplyEligibleMessageKey(input.messages);
+
+  for (const msgId of input.requestedMsgIds) {
+    const lookupKey = String(msgId);
+    const suggestion = input.suggestions[lookupKey];
+
+    if (!isSmartReplySemanticWait(suggestion)) {
+      continue;
+    }
+
+    if (isSmartReplySemanticWaitExpired(suggestion) || lookupKey !== latestEligibleKey) {
+      delete nextPending[lookupKey];
+    }
+  }
+
+  return nextPending;
+}
+
+function collectSmartReplyPendingMsgIds(pending: Record<string, true>) {
+  return Object.keys(pending)
+    .map((key) => Number(key))
+    .filter((msgId) => Number.isSafeInteger(msgId) && msgId > 0);
+}
+
+function areSmartReplyPendingRecordsEqual(
+  left: Record<string, true>,
+  right: Record<string, true>,
+) {
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+
+  return (
+    leftKeys.length === rightKeys.length &&
+    leftKeys.every((key) => right[key] === true)
+  );
+}
+
 function mergeSmartReplyPollResult(
   previousSuggestions: Record<string, SmartReplySuggestion>,
   previousPending: Record<string, true>,
@@ -1132,7 +1196,12 @@ function mergeSmartReplyPollResult(
   }
 
   return {
-    pending: nextPending,
+    pending: pruneSemanticWaitSmartReplyPendingKeys({
+      messages,
+      pending: nextPending,
+      requestedMsgIds,
+      suggestions: mergedSuggestions,
+    }),
     suggestions: mergedSuggestions,
   };
 }
@@ -1237,17 +1306,54 @@ function scheduleSmartReplyPoll(
     state.smartReplyByMessageIdByConversationId[conversationId] ?? {};
   const pending =
     state.smartReplyPendingMessageKeysByConversationId[conversationId] ?? {};
+  const prunedPending = pruneSemanticWaitSmartReplyPendingKeys({
+    messages,
+    pending,
+    requestedMsgIds: collectSmartReplyPendingMsgIds(pending),
+    suggestions,
+  });
+
+  if (!areSmartReplyPendingRecordsEqual(pending, prunedPending)) {
+    set((currentState) => {
+      const currentPending =
+        currentState.smartReplyPendingMessageKeysByConversationId[conversationId] ??
+        {};
+      const currentPrunedPending = pruneSemanticWaitSmartReplyPendingKeys({
+        messages: currentState.messagesByConversationId[conversationId] ?? [],
+        pending: currentPending,
+        requestedMsgIds: collectSmartReplyPendingMsgIds(currentPending),
+        suggestions:
+          currentState.smartReplyByMessageIdByConversationId[conversationId] ?? {},
+      });
+
+      if (areSmartReplyPendingRecordsEqual(currentPending, currentPrunedPending)) {
+        return currentState;
+      }
+
+      return {
+        smartReplyPendingMessageKeysByConversationId: {
+          ...currentState.smartReplyPendingMessageKeysByConversationId,
+          [conversationId]: currentPrunedPending,
+        },
+      };
+    });
+  }
+
   const hidden =
     state.smartReplyHiddenMessageKeysByConversationId[conversationId] ?? {};
   const msgIds = collectPendingSmartReplyPollMsgIds(
     messages,
     suggestions,
-    pending,
+    prunedPending,
     undefined,
-    { allowKeys: new Set(Object.keys(pending).filter((key) => !hidden[key])) },
+    {
+      allowKeys: new Set(
+        Object.keys(prunedPending).filter((key) => !hidden[key]),
+      ),
+    },
   );
 
-  options?.syncRuntimeTimers?.(conversationId, pending);
+  options?.syncRuntimeTimers?.(conversationId, prunedPending);
 
   if (msgIds.length === 0) {
     options?.clearPollTimer?.(conversationId);
@@ -1898,10 +2004,7 @@ function isCursorInvalidationError(error: unknown) {
 
   const candidate = error as { code?: string; status?: number };
 
-  return (
-    candidate.code === "WORKBENCH_CURSOR_INVALIDATED" ||
-    candidate.status === 409
-  );
+  return candidate.code === "WORKBENCH_CURSOR_INVALIDATED";
 }
 
 function applyReadResult(
@@ -2147,71 +2250,29 @@ function buildOptimisticMessageContent(
   };
 }
 
-function getRetrySendInputFromMessage(message: ChatMessage): {
-  quote?: SendQuotePayload;
-  segment: ComposerSegment;
-} | undefined {
-  if (message.content.type === "text") {
-    return {
-      segment: {
-        text: message.content.text,
-        type: "text",
-      },
-    };
-  }
+function canRetryMessageContent(message: ChatMessage) {
+  return (
+    message.content.type === "text" ||
+    message.content.type === "quote" ||
+    message.content.type === "image" ||
+    message.content.type === "file"
+  );
+}
 
-  if (message.content.type === "quote") {
-    return {
-      quote: {
-        quoteMsgId: message.content.quoteMsgId,
-        quotedMessage: message.content.quotedMessage,
-      },
-      segment: {
-        text: message.content.text,
-        type: "text",
-      },
-    };
+function getRetryPreviewText(message: ChatMessage) {
+  if (message.content.type === "text" || message.content.type === "quote") {
+    return message.content.text;
   }
 
   if (message.content.type === "image") {
-    const imageUrl = message.content.imageUrl?.trim();
-
-    if (!imageUrl) {
-      return undefined;
-    }
-
-    return {
-      segment: {
-        alt: message.content.alt,
-        height: message.content.height,
-        type: "image",
-        url: imageUrl,
-        width: message.content.width,
-      },
-    };
+    return "[图片]";
   }
 
   if (message.content.type === "file") {
-    const fileUrl = message.content.fileUrl?.trim();
-
-    if (!fileUrl) {
-      return undefined;
-    }
-
-    return {
-      segment: {
-        extension: message.content.extension,
-        fileName: message.content.fileName,
-        ...(message.content.fileSizeLabel
-          ? { fileSizeLabel: message.content.fileSizeLabel }
-          : {}),
-        type: "file",
-        url: fileUrl,
-      },
-    };
+    return message.content.fileName || "[文件]";
   }
 
-  return undefined;
+  return "";
 }
 
 function canUseConversationActions(state: WorkbenchState, account: Account | undefined) {
@@ -2276,6 +2337,18 @@ function resolveFullAutoAnswerStatus(
 
   if (status.genStatus === 4) {
     return { isTerminal: true, status: "handoff" };
+  }
+
+  if (status.genStatus === 5) {
+    if (
+      typeof status.createdAt === "number" &&
+      Number.isFinite(status.createdAt) &&
+      Date.now() - status.createdAt >= FULL_AUTO_SEMANTIC_WAIT_TIMEOUT_MS
+    ) {
+      return { isTerminal: true, status: "active" };
+    }
+
+    return { isTerminal: false, status: "waiting" };
   }
 
   if (status.genStatus === 3) {
@@ -2495,6 +2568,78 @@ export function createWorkbenchStore() {
 
   function isReadyScopeRequest(requestId: number, state: WorkbenchStore) {
     return isCurrentScopeRequest(requestId) && state.bootstrapStatus === "ready";
+  }
+
+  function buildAcceptedOptimisticMessageState(
+    currentState: WorkbenchStore,
+    input: {
+      activeAccountId?: string;
+      activeConversationId: string;
+      optimisticMessage: Message;
+      preview: string;
+      previewTimestamp: number;
+      minimumActiveMessageSeq?: number;
+      removeMessageKeys?: string[];
+    },
+  ) {
+    const currentMessages =
+      currentState.messagesByConversationId[input.activeConversationId] ?? [];
+    const shouldRemoveMessage = input.removeMessageKeys?.length
+      ? (message: Message) =>
+          input.removeMessageKeys?.some((key) => matchesMessageKey(message, key)) ??
+          false
+      : undefined;
+    const nextMessages = [
+      ...(shouldRemoveMessage
+        ? currentMessages.filter((message) => !shouldRemoveMessage(message))
+        : currentMessages),
+      input.optimisticMessage,
+    ];
+    const currentConversations = input.activeAccountId
+      ? currentState.conversationListsByScope[input.activeAccountId] ?? []
+      : [];
+
+    const nextActiveMessageSeq = getActiveMessageSeq(
+      {
+        ...currentState.messagesByConversationId,
+        [input.activeConversationId]: nextMessages,
+      },
+      input.activeConversationId,
+    );
+
+    return {
+      activeMessageSeq: Math.max(
+        nextActiveMessageSeq,
+        currentState.activeMessageSeq,
+        input.minimumActiveMessageSeq ?? 0,
+      ),
+      ...(input.activeAccountId
+        ? {
+            conversationListsByScope: {
+              ...currentState.conversationListsByScope,
+              [input.activeAccountId]: updateConversationPreview(
+                currentConversations,
+                input.activeConversationId,
+                input.preview,
+                input.optimisticMessage.sentAt,
+                input.previewTimestamp,
+              ),
+            },
+          }
+        : {}),
+      messagesByConversationId: {
+        ...currentState.messagesByConversationId,
+        [input.activeConversationId]: nextMessages,
+      },
+      pendingMessages: [
+        ...(shouldRemoveMessage
+          ? currentState.pendingMessages.filter(
+              (message) => !shouldRemoveMessage(message),
+            )
+          : currentState.pendingMessages),
+        input.optimisticMessage,
+      ],
+    };
   }
 
   function issueUnreadRequestId(accountId: string, mode: ChatMode) {
@@ -4394,9 +4539,10 @@ export function createWorkbenchStore() {
       if (
         state.bootstrapStatus !== "ready" ||
         !state.activeAccountId ||
+        state.pollState.status === "paused" ||
         isPollWorkbenchRunning
       ) {
-        return;
+        return false;
       }
 
       isPollWorkbenchRunning = true;
@@ -4427,7 +4573,7 @@ export function createWorkbenchStore() {
         });
 
         if (!isReadyScopeRequest(requestId, get())) {
-          return;
+          return false;
         }
 
         const messageUpdateSeqsByConversationId = (response.messageUpdateEvents ?? []).reduce(
@@ -4473,7 +4619,7 @@ export function createWorkbenchStore() {
           response.accountChanges.length > 0;
 
         if (!isReadyScopeRequest(requestId, get())) {
-          return;
+          return false;
         }
 
         const polledConversationId = response.request.activeConversationId;
@@ -4693,20 +4839,24 @@ export function createWorkbenchStore() {
               ? currentState.pendingMessages
               : filteredPendingMessages;
           const nextPollState =
-            currentState.pollState.status !== "idle" ||
+            currentState.pollState.status === "error" ||
             currentState.pollState.errorMessage != null
               ? {
                   ...currentState.pollState,
                   errorMessage: undefined,
+                  pauseReason: undefined,
                   status: "idle" as const,
                 }
               : currentState.pollState;
 
           return {
             accounts: nextAccounts,
-            activeMessageSeq: getActiveMessageSeq(
-              nextMessagesByConversationId,
-              requestedActiveConversationId,
+            activeMessageSeq: Math.max(
+              currentState.activeMessageSeq,
+              getActiveMessageSeq(
+                nextMessagesByConversationId,
+                requestedActiveConversationId,
+              ),
             ),
             conversationListsByScope: nextConversationLists,
             isPollBaselineFresh: false,
@@ -4741,7 +4891,11 @@ export function createWorkbenchStore() {
         });
 
         if (!isReadyScopeRequest(requestId, get())) {
-          return;
+          return false;
+        }
+
+        if (shouldSyncFullAutoAgentStatus) {
+          await syncFullAutoAgentStatusForCurrentState();
         }
 
         if (shouldSyncFullAutoAgentStatus) {
@@ -4798,124 +4952,30 @@ export function createWorkbenchStore() {
             );
           }
         }
+
+        return true;
       } catch (error) {
         if (!isCurrentScopeRequest(requestId)) {
-          return;
-        }
-
-        if (isCursorInvalidationError(error)) {
-          try {
-            const latestState = get();
-            const accountId = latestState.activeAccountId;
-
-            if (!accountId) {
-              throw error;
-            }
-
-            const scopeResult = await loadAccountScope(
-              accountId,
-              latestState.activeMode,
-              {
-                accounts: latestState.accounts,
-                customerProfilesById: latestState.customerProfilesById,
-                me: latestState.me,
-              },
-              MESSAGE_PAGE_SIZE,
-              latestState.activeConversationId,
-            );
-
-            if (!isReadyScopeRequest(requestId, get())) {
-              return;
-            }
-
-            const conversationPage = scopeResult.conversationPage;
-            const loadedAt = Date.now();
-
-            set((currentState) => {
-              if (!isReadyScopeRequest(requestId, currentState)) {
-                return currentState;
-              }
-
-              const nextMessagesByConversationId = conversationPage
-                ? {
-                    ...currentState.messagesByConversationId,
-                    [conversationPage.conversationId]: upsertMessageList(
-                      [],
-                      conversationPage.messages,
-                    ),
-                  }
-                : currentState.messagesByConversationId;
-              const nextHistoryByConversationId = conversationPage
-                ? {
-                    ...currentState.hasMoreHistoryByConversationId,
-                    [conversationPage.conversationId]: conversationPage.hasMoreHistory,
-                  }
-                : currentState.hasMoreHistoryByConversationId;
-              const nextPaginationByConversationId = conversationPage
-                ? {
-                    ...currentState.messagePaginationByConversationId,
-                    [conversationPage.conversationId]: buildMessagePaginationState(conversationPage),
-                  }
-                : currentState.messagePaginationByConversationId;
-              const nextState: Partial<WorkbenchStore> = {
-                conversationListsByScope: {
-                  ...currentState.conversationListsByScope,
-                  [accountId]: scopeResult.conversations,
-                },
-                conversationModeLoadedAtByScope: markAllConversationModesLoaded(
-                  currentState.conversationModeLoadedAtByScope,
-                  accountId,
-                  loadedAt,
-                ),
-                hasMoreHistoryByConversationId: nextHistoryByConversationId,
-                messagePaginationByConversationId: nextPaginationByConversationId,
-                messagesByConversationId: nextMessagesByConversationId,
-                pollState: {
-                  ...currentState.pollState,
-                  errorMessage: undefined,
-                  status: "idle",
-                },
-              };
-
-              if (currentState.activeAccountId !== accountId) {
-                return nextState;
-              }
-
-              const nextActiveConversationId = scopeResult.conversations.some(
-                (conversation) => conversation.id === currentState.activeConversationId,
-              )
-                ? currentState.activeConversationId
-                : scopeResult.nextConversationId;
-
-            return {
-              ...nextState,
-              activeConversationId: nextActiveConversationId,
-              activeMessageSeq: getActiveMessageSeq(
-                nextMessagesByConversationId,
-                nextActiveConversationId,
-              ),
-              messageUpdateCursor: undefined,
-              pendingMessages: currentState.pendingMessages.filter(
-                (message) => message.conversationId !== state.activeConversationId,
-              ),
-              isPollBaselineFresh: true,
-                sinceVersion: scopeResult.pollBaseline,
-              };
-            });
-
-            return;
-          } catch {
-            // Fall through to the normal error state if the compensating reload fails.
-          }
+          return false;
         }
 
         set((currentState) => ({
-          pollState: {
-            ...currentState.pollState,
-            errorMessage: error instanceof Error ? error.message : "轮询失败",
-            status: "error",
-          },
+          pollState: isCursorInvalidationError(error)
+            ? {
+                ...currentState.pollState,
+                errorMessage: undefined,
+                pauseReason: "cursor-invalidated",
+                status: "paused",
+              }
+            : {
+                ...currentState.pollState,
+                errorMessage: error instanceof Error ? error.message : "轮询失败",
+                pauseReason: undefined,
+                status: "error",
+              },
         }));
+
+        return false;
       } finally {
         if (runningPollRunId === pollRunId) {
           runningPollRunId = undefined;
@@ -4928,6 +4988,15 @@ export function createWorkbenchStore() {
 
       if (normalizedSegments.length === 0) {
         return { didConsumeQuote: false, ok: true, optNos: [] };
+      }
+
+      if (hasMemberMentionSegments(normalizedSegments) && !options?.mention) {
+        return {
+          errorCode: "MENTION_PAYLOAD_MISSING",
+          errorMessage: "消息发送失败，请重新编辑后发送",
+          reason: "send",
+          ok: false,
+        };
       }
 
       const state = get();
@@ -4968,7 +5037,7 @@ export function createWorkbenchStore() {
         },
       }));
 
-      const sendableSegments = stripComposerMentionMetadata(normalizedSegments);
+      const sendableSegments = buildSendableComposerSegments(segments);
       let segmentsForSend = sendableSegments;
 
       try {
@@ -5003,27 +5072,43 @@ export function createWorkbenchStore() {
         };
       }
 
+      if (import.meta.env.DEV && segmentsForSend.length !== normalizedSegments.length) {
+        console.warn(
+          "Composer segment count mismatch before sending",
+          segmentsForSend.length,
+          normalizedSegments.length,
+        );
+      }
+
       try {
-        let hasSentMention = false;
         let hasSentQuote = false;
         const optNos: string[] = [];
         for (let index = 0; index < segmentsForSend.length; index += 1) {
           const segmentForSend = segmentsForSend[index];
-          const originalSegment = sendableSegments[index] ?? segmentForSend;
           const payloadSegment = toWorkbenchSendSegment(segmentForSend);
-          const mentionForSegment: SendMentionPayload =
-            !hasSentMention && segmentForSend.type === "text"
-              ? options?.mention
+          // Sendable and normalized segments share media boundaries, so indexes identify the same outbound message.
+          const originalSegment = normalizedSegments[index] ?? segmentForSend;
+          const optimisticSegment =
+            segmentForSend.type === "text" && originalSegment.type === "text"
+              ? originalSegment
+              : segmentForSend;
+          const mentionForSegment =
+            segmentForSend.type === "text" && originalSegment.type === "text"
+              ? buildMentionPayloadForSegment(originalSegment, options?.mention)
+              : undefined;
+          const atOriginText =
+            mentionForSegment?.memberIds.length && originalSegment.type === "text"
+              ? originalSegment.text
               : undefined;
           const quoteForSegment: SendQuotePayload =
             !hasSentQuote && segmentForSend.type === "text" ? options?.quote : undefined;
-          hasSentMention = hasSentMention || Boolean(mentionForSegment);
           hasSentQuote = hasSentQuote || Boolean(quoteForSegment);
           const response = await sendTextMessage({
             conversationId: activeConversationId,
             failMsgId: options?.failMsgId,
             mention: mentionForSegment,
             quote: quoteForSegment,
+            atOriginText,
             seatId: activeAccountId,
             segment: payloadSegment,
           });
@@ -5033,7 +5118,7 @@ export function createWorkbenchStore() {
             isGroupConversation: activeConversation.mode === "group",
             isOwnMessage: true,
             isNew: true,
-            content: buildOptimisticMessageContent(originalSegment, quoteForSegment),
+            content: buildOptimisticMessageContent(optimisticSegment, quoteForSegment),
             conversationId: activeConversationId,
             uiMessageKey: response.optNo,
             optNo: response.optNo,
@@ -5049,52 +5134,18 @@ export function createWorkbenchStore() {
           } satisfies Message;
           const preview = getComposerSegmentsPreview([originalSegment]);
 
-          set((currentState) => {
-            const currentMessages =
-              currentState.messagesByConversationId[activeConversationId] ?? [];
-            const currentMessagesWithoutAcceptedRemoval = options?.removeMessageIdOnAccepted
-              ? currentMessages.filter(
-                  (message) =>
-                    !matchesMessageKey(message, options.removeMessageIdOnAccepted ?? ""),
-                )
-              : currentMessages;
-            const nextMessages = [...currentMessagesWithoutAcceptedRemoval, optimisticMessage];
-            const currentConversations =
-              currentState.conversationListsByScope[activeAccountId] ?? [];
-
-            return {
-              activeMessageSeq: getActiveMessageSeq(
-                {
-                  ...currentState.messagesByConversationId,
-                  [activeConversationId]: nextMessages,
-                },
-                activeConversationId,
-              ),
-              conversationListsByScope: {
-                ...currentState.conversationListsByScope,
-                [activeAccountId]: updateConversationPreview(
-                  currentConversations,
-                  activeConversationId,
-                  preview,
-                  optimisticMessage.sentAt,
-                  timestamp + index,
-                ),
-              },
-              messagesByConversationId: {
-                ...currentState.messagesByConversationId,
-                [activeConversationId]: nextMessages,
-              },
-              pendingMessages: [
-                ...(options?.removeMessageIdOnAccepted
-                  ? currentState.pendingMessages.filter(
-                      (message) =>
-                        !matchesMessageKey(message, options.removeMessageIdOnAccepted ?? ""),
-                    )
-                  : currentState.pendingMessages),
-                optimisticMessage,
-              ],
-            };
-          });
+          set((currentState) =>
+            buildAcceptedOptimisticMessageState(currentState, {
+              activeAccountId,
+              activeConversationId,
+              optimisticMessage,
+              preview,
+              previewTimestamp: timestamp + index,
+              removeMessageKeys: options?.removeMessageIdOnAccepted
+                ? [options.removeMessageIdOnAccepted]
+                : undefined,
+            }),
+          );
         }
 
         set((currentState) => ({
@@ -5152,22 +5203,119 @@ export function createWorkbenchStore() {
         };
       }
 
-      const retryInput = getRetrySendInputFromMessage(failedMessage);
-
-      if (!retryInput) {
+      if (!canRetryMessageContent(failedMessage) || !isValidMessageSeq(failedMessage.seq)) {
         return {
-          errorCode: "UNSUPPORTED_RETRY_MESSAGE",
+          errorCode: !isValidMessageSeq(failedMessage.seq)
+            ? "MESSAGE_NOT_RETRYABLE"
+            : "UNSUPPORTED_RETRY_MESSAGE",
           errorMessage: "暂不支持重发该消息",
           reason: "unavailable",
           ok: false,
         };
       }
 
-      return get().sendAgentMessageSegments([retryInput.segment], {
-        failMsgId: failedMessage.seq != null ? String(failedMessage.seq) : undefined,
-        removeMessageIdOnAccepted: failedMessage.uiMessageKey,
-        quote: retryInput.quote,
-      });
+      const activeConversationId = state.activeConversationId;
+      const activeAccountId = state.activeAccountId;
+      const account = state.accounts.find((item) => item.id === activeAccountId);
+      const activeConversation = activeAccountId
+        ? (state.conversationListsByScope[activeAccountId] ?? []).find(
+            (conversation) => conversation.id === activeConversationId,
+          )
+        : undefined;
+
+      if (
+        !activeAccountId ||
+        !activeConversationId ||
+        !activeConversation ||
+        activeConversation.bizStatus !== 1 ||
+        !canUseConversationActions(state, account)
+      ) {
+        return {
+          errorCode: "UNAVAILABLE",
+          errorMessage: "当前无法发送消息",
+          reason: "unavailable",
+          ok: false,
+        };
+      }
+
+      const timestamp = Date.now();
+
+      set((currentState) => ({
+        sendStatusByConversationId: {
+          ...currentState.sendStatusByConversationId,
+          [activeConversationId]: "sending",
+        },
+      }));
+
+      try {
+        const response = await retryMessageRequest({
+          conversationId: activeConversationId,
+          messageSeq: failedMessage.seq,
+        });
+        const {
+          failReason: _failedReason,
+          msgid: _failedMsgid,
+          seq: _failedSeq,
+          ...retryMessageBase
+        } = failedMessage;
+        const optimisticMessage = {
+          ...retryMessageBase,
+          author: account
+            ? `${account.name}-${account.operator}`
+            : failedMessage.author,
+          isNew: true,
+          optNo: response.optNo,
+          status: "accepted" as const,
+          uiMessageKey: response.optNo,
+          sentAt: formatWorkbenchTimestamp(timestamp),
+        } satisfies Message;
+        const preview = getRetryPreviewText(failedMessage);
+        const retryRemovalKeys = uniqueMessageKeys([
+          uiMessageKey,
+          failedMessage.uiMessageKey,
+          failedMessage.optNo,
+          isValidMessageSeq(failedMessage.seq) ? String(failedMessage.seq) : undefined,
+        ]);
+
+        set((currentState) =>
+          buildAcceptedOptimisticMessageState(currentState, {
+            activeAccountId,
+            activeConversationId,
+            optimisticMessage,
+            preview,
+            previewTimestamp: timestamp,
+            minimumActiveMessageSeq: failedMessage.seq,
+            removeMessageKeys: retryRemovalKeys,
+          }),
+        );
+
+        set((currentState) => ({
+          sendStatusByConversationId: {
+            ...currentState.sendStatusByConversationId,
+            [activeConversationId]: "idle",
+          },
+        }));
+
+        return {
+          didConsumeQuote: false,
+          ok: true,
+          optNos: [response.optNo],
+        };
+      } catch (error) {
+        set((currentState) => ({
+          sendStatusByConversationId: {
+            ...currentState.sendStatusByConversationId,
+            [activeConversationId]: "idle",
+          },
+        }));
+
+        return {
+          errorCode: getRequestErrorCode(error),
+          errorMessage: getRequestApiErrorMessage(error),
+          reason: "send",
+          ok: false,
+        };
+      }
     },
     async revokeMessage(uiMessageKey) {
       const state = get();
@@ -6676,17 +6824,86 @@ export function createWorkbenchStore() {
   });
 }
 
-function stripComposerMentionMetadata(segments: ComposerSegment[]): ComposerSegment[] {
-  return segments.map((segment) => {
-    if (segment.type !== "text") {
-      return segment;
+function buildMentionPayloadForSegment(
+  segment: ComposerTextSegment,
+  mention?: SendMentionPayload,
+): SendMentionPayload {
+  if (!mention) {
+    return undefined;
+  }
+
+  if (segment.mentionAll) {
+    // @所有人 owns the whole text segment; member mentions in the same segment are sent as plain text.
+    return {
+      all: true,
+      location: "start",
+      memberIds: [],
+    };
+  }
+
+  const memberIds = segment.mentionMemberIds?.filter(Boolean) ?? [];
+
+  if (memberIds.length === 0) {
+    return undefined;
+  }
+
+  return {
+    location: "any",
+    memberIds,
+  };
+}
+
+function hasMemberMentionSegments(segments: ComposerSegment[]) {
+  return segments.some(
+    (segment) =>
+      segment.type === "text" && (segment.mentionMemberIds?.length ?? 0) > 0,
+  );
+}
+
+function buildSendableComposerSegments(segments: ComposerSegment[]): ComposerSegment[] {
+  const sendableSegments: ComposerSegment[] = [];
+  let textSegmentsBuffer: ComposerTextSegment[] = [];
+
+  const flushTextSegmentsBuffer = () => {
+    if (textSegmentsBuffer.length === 0) {
+      return;
     }
 
-    return {
-      text: segment.text,
-      type: "text",
-    } satisfies ComposerTextSegment;
-  });
+    const hasMentionAll = textSegmentsBuffer.some((segment) => segment.mentionAll);
+    const text = textSegmentsBuffer
+      .map((segment) => {
+        if (hasMentionAll || (segment.mentionMemberIds?.length ?? 0) === 0) {
+          return segment.text;
+        }
+
+        return JAVA_MENTION_PLACEHOLDER;
+      })
+      .join("")
+      .trim();
+
+    if (text) {
+      sendableSegments.push({
+        text,
+        type: "text",
+      });
+    }
+
+    textSegmentsBuffer = [];
+  };
+
+  for (const segment of segments) {
+    if (segment.type === "text") {
+      textSegmentsBuffer.push(segment);
+      continue;
+    }
+
+    flushTextSegmentsBuffer();
+    sendableSegments.push(segment);
+  }
+
+  flushTextSegmentsBuffer();
+
+  return sendableSegments;
 }
 
 function toWorkbenchSendSegment(

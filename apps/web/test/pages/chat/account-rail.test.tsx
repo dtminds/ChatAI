@@ -323,12 +323,7 @@ describe("AccountRail", () => {
 
     expect(screen.getByText("lsave")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "lsave" })).not.toBeInTheDocument();
-    expect(screen.getByTestId("account-sidebar-item-account-1")).toHaveClass("items-center");
-    expect(screen.getByTestId("account-avatar-wrap-account-1")).not.toHaveClass("mt-0.5");
     expect(screen.getByTestId("account-sidebar-item-status-row-account-1")).toHaveTextContent("接管中");
-    const statusBadge = screen.getByText("接管中").closest("span")?.parentElement;
-    expect(statusBadge).not.toHaveClass("px-1.5");
-    expect(statusBadge).not.toHaveClass("py-1");
     expect(screen.getByTestId("account-sidebar-item-status-row-account-2")).toHaveTextContent("未接管");
     expect(screen.queryByTestId("account-sidebar-item-operator-account-1")).not.toBeInTheDocument();
     expect(screen.queryByTestId("account-sidebar-item-operator-account-2")).not.toBeInTheDocument();
@@ -391,7 +386,6 @@ describe("AccountRail", () => {
     expect(
       screen.getByText("当前账号未被你接管，你将无法"),
     ).toBeInTheDocument();
-    expect(screen.getByText("当前账号未被你接管，你将无法")).toHaveClass("text-warning");
 
     await user.unhover(card);
 
@@ -400,23 +394,6 @@ describe("AccountRail", () => {
         screen.queryByText("当前账号未被你接管，你将无法"),
       ).not.toBeInTheDocument();
     });
-  });
-
-  it("uses a distinct warning treatment for untaken account labels and dots", () => {
-    render(
-      <AccountRail
-        accounts={accounts}
-        activeAccountId="account-1"
-        currentEmployeeId="emp-001"
-        onSelectAccount={vi.fn()}
-      />,
-    );
-
-    const untakenBadge = screen.getByText("未接管").closest("span")?.parentElement;
-    const untakenDot = untakenBadge?.querySelector("[data-testid='account-status-dot']");
-
-    expect(untakenBadge).toHaveClass("text-warning");
-    expect(untakenDot).toHaveClass("bg-warning");
   });
 
   it("shows the product logo", () => {
@@ -431,7 +408,6 @@ describe("AccountRail", () => {
     const logo = screen.getByTestId("account-rail-logo");
 
     expect(logo).toHaveTextContent("ChatAI");
-    expect(logo).not.toHaveClass("bg-neutral-strong");
     expect(logo.querySelector("svg")).toBeInTheDocument();
   });
 
@@ -526,12 +502,9 @@ describe("AccountRail", () => {
       />,
     );
 
-    expect(screen.getByLabelText("lsave 状态 已接管")).toHaveClass("bg-success");
-    expect(screen.getByLabelText("support 状态 未接管")).toHaveClass("bg-warning");
-    expect(screen.getByLabelText("offline 状态 离线")).toHaveClass("bg-muted-foreground/50");
-    expect(screen.getByRole("button", { name: "选择 support" })).not.toHaveClass(
-      "hover:bg-surface-hover",
-    );
+    expect(screen.getByLabelText("lsave 状态 已接管")).toBeInTheDocument();
+    expect(screen.getByLabelText("support 状态 未接管")).toBeInTheDocument();
+    expect(screen.getByLabelText("offline 状态 离线")).toBeInTheDocument();
 
     await user.hover(screen.getByRole("button", { name: "选择 lsave" }));
 

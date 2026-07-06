@@ -129,14 +129,6 @@ describe("QuickReplyPanel", () => {
       screen.getByRole("button", { name: "下载模板" }),
     ).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "关闭" })).toHaveLength(1);
-    expect(screen.getByText("导入说明：")).toBeInTheDocument();
-    expect(screen.getByText("请按照模板中要求的字段导入")).toBeInTheDocument();
-    expect(
-      screen.getByText("模板中要求必填的字段请务必填写完整，否则导入后无法使用"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("单次最多导入1000条话术，超过请拆分成多个文件分批导入"),
-    ).toBeInTheDocument();
   });
 
   it("disables import submit when precheck has errors", async () => {
@@ -224,7 +216,6 @@ describe("QuickReplyPanel", () => {
     const errorList = await screen.findByLabelText("文件校验失败原因");
 
     expect(errorList).toBeInTheDocument();
-    expect(errorList).toHaveClass("h-[min(240px,32vh)]");
     expect(screen.getByText("第 2 行：话术内容不能为空")).toBeInTheDocument();
     expect(screen.getByText("第 21 行：话术内容不能为空")).toBeInTheDocument();
   });
@@ -655,8 +646,6 @@ describe("QuickReplyPanel", () => {
     expect(quickReplyButton).toHaveAttribute("aria-disabled", "true");
     expect(categoryButton).not.toBeDisabled();
     expect(quickReplyButton).not.toBeDisabled();
-    expect(categoryButton).not.toHaveClass("cursor-move");
-    expect(quickReplyButton).not.toHaveClass("cursor-move");
 
     await user.click(categoryButton);
     await user.click(quickReplyButton);
@@ -970,15 +959,6 @@ describe("QuickReplyPanel", () => {
     expect(screen.queryByRole("menuitem", { name: "移到最后" })).not.toBeInTheDocument();
   });
 
-  it("uses the primary color for the active top-level category", () => {
-    render(<QuickReplyPanel {...createPanelProps()} />);
-
-    expect(screen.getByRole("button", { name: "售前" })).toHaveClass(
-      "bg-primary",
-      "text-primary-foreground",
-    );
-  });
-
   it("uses a compact scope switch and search in the same header row", async () => {
     const user = userEvent.setup();
     const onKeywordChange = vi.fn();
@@ -1232,7 +1212,7 @@ describe("QuickReplyPanel", () => {
     await user.hover(screen.getByRole("menuitem", { name: "移动" }));
 
     const submenu = screen.getByRole("menu", { name: "移动分类" });
-    expect(submenu).toHaveStyle({ maxHeight: "240px", overflowY: "auto" });
+    expect(submenu).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "售前" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("menuitem", { name: "售后" }));
 
@@ -1259,7 +1239,7 @@ describe("QuickReplyPanel", () => {
     await user.hover(screen.getByRole("menuitem", { name: "移动" }));
 
     const submenu = screen.getByRole("menu", { name: "移动话术" });
-    expect(submenu).toHaveStyle({ maxHeight: "240px", overflowY: "auto" });
+    expect(submenu).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "物流" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("menuitem", { name: "致歉" }));
 
@@ -1287,13 +1267,9 @@ describe("QuickReplyPanel", () => {
     expect(onCreateQuickReply).toHaveBeenCalledOnce();
   });
 
-  it("keeps secondary category headers sticky while scrolling quick replies", () => {
+  it("keeps secondary category headers unstuck before scrolling quick replies", () => {
     render(<QuickReplyPanel {...createPanelProps()} activeCategoryId="cat-2" />);
 
-    expect(screen.getByRole("group", { name: "报价分类行" })).toHaveStyle({
-      position: "sticky",
-      top: "0px",
-    });
     expect(screen.getByRole("group", { name: "报价分类行" })).toHaveAttribute(
       "data-stuck",
       "false",

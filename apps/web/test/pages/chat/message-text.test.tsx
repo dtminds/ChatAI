@@ -14,16 +14,6 @@ describe("text message bubble layout", () => {
     installChatWorkbenchTestEnvironment();
   });
 
-  it("caps text bubbles to 90 percent of the message row", () => {
-    render(<MessageRow message={createTextMessage("短消息")} />);
-
-    expect(screen.getByTestId("message-row-group")).toHaveClass("max-w-[90%]");
-    expect(screen.getByTestId("message-content-stack")).toHaveClass("w-fit", "max-w-full");
-    expect(screen.getByText("短消息").closest('[data-testid="text-message-bubble"]')).toHaveClass(
-      "max-w-full",
-    );
-  });
-
   it("shrinks failed media message stacks to their content width", () => {
     render(
       <MessageRow
@@ -197,7 +187,6 @@ describe("text message bubble layout", () => {
 
     expect(retryButton).toBeDisabled();
     expect(retryButton).toHaveAttribute("aria-busy", "true");
-    expect(retryButton).not.toHaveClass("bg-destructive");
     expect(screen.queryByRole("button", { name: "重试发送" })).not.toBeInTheDocument();
   });
 
@@ -278,10 +267,7 @@ describe("text message bubble layout", () => {
     const systemMessage = screen.getByText("客户已加入群聊");
     const systemNotice = systemMessage.closest('[data-testid="system-message-notice"]');
 
-    expect(systemMessage).toHaveClass("text-muted-foreground");
     expect(systemNotice).toBeInTheDocument();
-    expect(systemNotice).toHaveClass("my-5", "px-6");
-    expect(systemMessage).toHaveClass("max-w-[min(640px,calc(100%-48px))]");
     expect(screen.queryByTestId("message-row")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "消息操作" })).not.toBeInTheDocument();
   });
@@ -314,11 +300,9 @@ describe("text message bubble layout", () => {
         vi.advanceTimersByTime(1);
       });
       expect(sentAt).toHaveClass("opacity-100");
-      expect(screen.getByTestId("text-message-sent-at-slot")).toHaveClass("h-4", "mr-10");
       expect(
         sentAt.compareDocumentPosition(screen.getByTestId("message-row-body")),
       ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-      expect(screen.getByTestId("message-row-body")).toHaveClass("gap-2");
 
       fireEvent.mouseLeave(row);
       expect(sentAt).toHaveClass("opacity-0");

@@ -2,6 +2,62 @@ import { describe, expect, it } from "vitest";
 import { buildMockedApp } from "../../helpers/build-mocked-app";
 
 describe("settings sidebar item routes", () => {
+  it("does not leak platform 6 sidebar items with the same uid", async () => {
+    const { app, authorization, db } = await createSettingsApp();
+    db.setSidebarItems([
+      {
+        biz_status: 1,
+        id: 201,
+        name: "企业名片",
+        platform: 5,
+        show: 1,
+        sort: 1,
+        uid: 9001,
+        url: "https://example.com/card",
+      },
+      {
+        biz_status: 1,
+        id: 299,
+        name: "跨平台入口",
+        platform: 6,
+        show: 1,
+        sort: 2,
+        uid: 9001,
+        url: "https://example.com/platform-6",
+      },
+    ]);
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "GET",
+      url: "/api/server/settings/sidebar-items",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      data: {
+        items: [
+          {
+            bindTypes: ["1", "2"],
+            id: "201",
+            name: "企业名片",
+            sort: 1,
+            status: "active",
+            url: "https://example.com/card",
+          },
+        ],
+      },
+      success: true,
+    });
+    expect(
+      response.json().data.items.map((item: { name: string }) => item.name),
+    ).not.toContain("跨平台入口");
+    expect(db.sidebarListWheres).toContainEqual(["uid", "=", 9001]);
+    expect(db.sidebarListWheres).toContainEqual(["platform", "=", 5]);
+
+    await app.close();
+  });
+
   it("performs CRUD and sorting in the current tenant", async () => {
     const { app, authorization, db } = await createSettingsApp();
 
@@ -12,6 +68,7 @@ describe("settings sidebar item routes", () => {
     });
 
     expect(list.statusCode).toBe(200);
+    expect(db.scopeLookupCount).toBe(0);
     expect(list.json()).toEqual({
       data: {
         items: [
@@ -36,6 +93,7 @@ describe("settings sidebar item routes", () => {
       success: true,
     });
     expect(db.sidebarListWheres).toContainEqual(["uid", "=", 9001]);
+    expect(db.sidebarListWheres).toContainEqual(["platform", "=", 5]);
 
     const create = await app.inject({
       headers: { authorization },
@@ -319,7 +377,7 @@ function createSettingsDbMock() {
   const subUsers = [
     {
       id: 1,
-      platform: 5,
+      platform: 6,
       status: 1,
       uid: 9001,
     },
@@ -350,6 +408,7 @@ function createSettingsDbMock() {
     insertedSidebarItem: undefined as Record<string, unknown> | undefined,
     nextInsertId: 203 as bigint | number,
     sidebarListWheres: [] as Array<[string, string, unknown]>,
+    scopeLookupCount: 0,
     updatedSidebarItems: [] as Array<{
       id: number | undefined;
       values: Record<string, unknown>;
@@ -364,9 +423,25 @@ function createSettingsDbMock() {
         execute: async () => {
           if (table === "xy_wap_embed_sider_bar_config") {
             state.sidebarListWheres = wheres;
+            const uid = wheres.find(([column]) => column === "uid")?.[2];
+            const platform = wheres.find(([column]) => column === "platform")?.[2];
 
             return sidebarItems
-              .filter((item) => item.biz_status !== 0)
+              .filter((item) => {
+                if (item.biz_status === 0) {
+                  return false;
+                }
+
+                if (uid !== undefined && item.uid !== uid) {
+                  return false;
+                }
+
+                if (platform !== undefined && item.platform !== platform) {
+                  return false;
+                }
+
+                return true;
+              })
               .sort((left, right) => left.sort - right.sort || left.id - right.id);
           }
 
@@ -385,12 +460,23 @@ function createSettingsDbMock() {
           }
 
           if (table === "xy_wap_embed_sub_user") {
+            state.scopeLookupCount += 1;
             return subUsers[0];
           }
 
           if (table === "xy_wap_embed_sider_bar_config") {
             const id = wheres.find(([column]) => column === "id")?.[2];
+            const uid = wheres.find(([column]) => column === "uid")?.[2];
+            const platform = wheres.find(([column]) => column === "platform")?.[2];
             const item = sidebarItems.find((sidebarItem) => sidebarItem.id === id);
+
+            if (item && uid !== undefined && item.uid !== uid) {
+              return undefined;
+            }
+
+            if (item && platform !== undefined && item.platform !== platform) {
+              return undefined;
+            }
 
             return item?.biz_status === 0 ? undefined : item;
           }

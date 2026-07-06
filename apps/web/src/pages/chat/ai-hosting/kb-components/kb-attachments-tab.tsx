@@ -24,6 +24,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
+import { Spinner } from "@/components/ui/spinner";
 import {
   resolveTablePagination,
   TablePagination,
@@ -62,7 +63,7 @@ const kbAttachmentEmptyIllustrationUrl =
   "https://b5.bokr.com.cn/dist/ui/attachment_bg_3.png";
 
 const kbAttachmentInitLoadingIllustrationUrl =
-  "https://b5.bokr.com.cn/dist/ui/attachment_bg_3.png";
+  "https://b5.bokr.com.cn/dist/ui/attachment_bg_4.gif";
 
 const ATTACHMENT_INIT_PROGRESS_MIN = 15;
 const ATTACHMENT_INIT_PROGRESS_MAX = 85;
@@ -86,6 +87,7 @@ const kbAttachmentExampleTagRows = [
 type AttachmentPhase =
   | "loading"
   | "uninitialized"
+  | "initializing"
   | "failed"
   | "ready";
 
@@ -133,7 +135,6 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
   const [total, setTotal] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [loadingList, setLoadingList] = useState(true);
-  const [initializing, setInitializing] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const debouncedSearchQuery = useDebouncedValue(searchQuery.trim(), 300);
@@ -147,6 +148,8 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
   const skipNextListLoadRef = useRef(false);
   const activeTypeRef = useRef(activeType);
   activeTypeRef.current = activeType;
+  const phaseRef = useRef(phase);
+  phaseRef.current = phase;
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -156,7 +159,7 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
     };
   }, []);
 
-  const loadAttachments = useCallback(async (options?: { page?: number }) => {
+  const loadAttachments = useCallback(async (options?: { page?: number; silent?: boolean }) => {
     if (!kbId) {
       return;
     }
@@ -198,7 +201,9 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
         setTotal(corrected.pagination.total);
         skipNextListLoadRef.current = true;
         setCurrentPage(resolvedPage);
-        setPhase("ready");
+        if (phaseRef.current !== "initializing") {
+          setPhase("ready");
+        }
         return;
       }
 
@@ -208,7 +213,9 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
         skipNextListLoadRef.current = true;
         setCurrentPage(resolvedPage);
       }
-      setPhase("ready");
+      if (phaseRef.current !== "initializing") {
+        setPhase("ready");
+      }
     } catch (error) {
       if (version !== requestVersionRef.current || !isMountedRef.current) {
         return;
@@ -217,13 +224,22 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
       if (isKbAttachmentNotInitialized(error)) {
         setAttachments([]);
         setTotal(0);
-        setPhase("uninitialized");
+        if (phaseRef.current !== "initializing") {
+          setPhase("uninitialized");
+        }
+        if (options?.silent) {
+          throw error;
+        }
         return;
       }
 
       setAttachments([]);
       setTotal(0);
-      toast.error("加载失败，请稍后重试");
+      if (!options?.silent) {
+        toast.error("加载失败，请稍后重试");
+      } else {
+        throw error;
+      }
     } finally {
       if (version === requestVersionRef.current && isMountedRef.current) {
         setLoadingList(false);
@@ -319,11 +335,11 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
   }, [activeType, currentPage, debouncedSearchQuery, kbId, loadAttachments, phase]);
 
   const handleInitialize = async () => {
-    if (!kbId || initializing) {
+    if (!kbId || phase === "initializing") {
       return;
     }
 
-    setInitializing(true);
+    setPhase("initializing");
 
     try {
       const initResult = await initKbAttachments(kbId);
@@ -339,16 +355,14 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
         return;
       }
 
-      setPhase("ready");
       setCurrentPage(1);
-      await loadAttachments({ page: 1 });
+      skipNextListLoadRef.current = true;
+      await loadAttachments({ page: 1, silent: true });
+      setPhase("ready");
     } catch {
       if (isMountedRef.current) {
+        setPhase("uninitialized");
         toast.error("初始化失败，请稍后重试");
-      }
-    } finally {
-      if (isMountedRef.current) {
-        setInitializing(false);
       }
     }
   };
@@ -359,6 +373,7 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
     }
 
     setRetrying(true);
+    setPhase("initializing");
 
     try {
       await retryKbDoc(attachmentDocId);
@@ -367,11 +382,13 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
         return;
       }
 
-      setPhase("ready");
       setCurrentPage(1);
-      await loadAttachments({ page: 1 });
+      skipNextListLoadRef.current = true;
+      await loadAttachments({ page: 1, silent: true });
+      setPhase("ready");
     } catch {
       if (isMountedRef.current) {
+        setPhase("failed");
         toast.error("重试失败，请稍后重试");
       }
     } finally {
@@ -507,10 +524,10 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
     isListLoading || attachments.length > 0 || debouncedSearchQuery.length > 0;
 
   if (phase === "loading") {
-    return <div aria-hidden="true" className="min-h-[420px]" />;
+    return <KbAttachmentsTabLoadingState />;
   }
 
-  if (initializing) {
+  if (phase === "initializing") {
     return <KbAttachmentsInitLoadingState />;
   }
 
@@ -665,6 +682,23 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
         </AlertDialogContent>
       </AlertDialog>
     </section>
+  );
+}
+
+function KbAttachmentsTabLoadingState() {
+  return (
+    <div
+      className="flex min-h-[420px] flex-col items-center justify-center px-6 py-10"
+      role="status"
+    >
+      <div
+        aria-label="正在加载"
+        className="inline-flex items-center gap-2 text-sm text-muted-foreground"
+      >
+        <Spinner aria-hidden="true" size={14} />
+        <span>正在加载</span>
+      </div>
+    </div>
   );
 }
 

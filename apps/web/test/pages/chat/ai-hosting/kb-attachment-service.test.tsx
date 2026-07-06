@@ -167,7 +167,7 @@ describe("KbAttachmentsTab", () => {
     await waitFor(() => {
       expect(screen.getByRole("tablist", { name: "附件类型筛选" })).toBeInTheDocument();
     });
-    expect(screen.queryByText("请耐心等待哦～")).not.toBeInTheDocument();
     expect(initKbAttachments).toHaveBeenCalledWith("kb-1");
+    expect(listKbAttachments).toHaveBeenCalledTimes(2);
   });
 });

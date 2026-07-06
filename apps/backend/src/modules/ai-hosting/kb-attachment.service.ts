@@ -360,12 +360,6 @@ export class KbAttachmentService {
       throw new NotFoundError("KB_ATTACHMENT_NOT_INITIALIZED", "请先初始化附件库");
     }
 
-    const status = mapSyncStatus(attachmentDoc.sync_status);
-
-    if (status !== "completed") {
-      throw new AppError("KB_ATTACHMENT_NOT_READY", "附件库同步中，请稍后重试", 409);
-    }
-
     return attachmentDoc;
   }
 

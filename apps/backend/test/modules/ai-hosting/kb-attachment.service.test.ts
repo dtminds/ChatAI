@@ -118,7 +118,7 @@ describe("KbAttachmentService", () => {
       count: 0,
       list: [],
       page: 1,
-      pageSize: 20,
+      pageSize: 10,
     });
     const { service } = createService({ listKbChunks }, {
       attachmentDocType: 2,
@@ -153,7 +153,7 @@ describe("KbAttachmentService", () => {
         },
       ],
       page: 1,
-      pageSize: 20,
+      pageSize: 10,
     });
     const { client, service } = createService({ listKbChunks }, { includeAttachmentDoc: true });
 
@@ -167,7 +167,7 @@ describe("KbAttachmentService", () => {
       content: "产品",
       docId: 1005,
       page: 1,
-      pageSize: 20,
+      pageSize: 10,
       uid: 9001,
     });
     expect(response.attachments).toHaveLength(1);

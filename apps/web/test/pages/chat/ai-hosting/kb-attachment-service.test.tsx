@@ -139,16 +139,21 @@ describe("KbAttachmentsTab", () => {
     expect(await screen.findByRole("button", { name: "开始初始化" })).toBeInTheDocument();
   });
 
-  it("enters syncing state after init when doc status is parsing", async () => {
+  it("enters list after init even when doc status is parsing", async () => {
     const user = userEvent.setup();
 
-    vi.mocked(listKbAttachments).mockRejectedValue(
-      new RequestNormalizedError({
-        code: "KB_ATTACHMENT_NOT_INITIALIZED",
-        message: "请先初始化附件库",
-        status: 404,
-      }),
-    );
+    vi.mocked(listKbAttachments)
+      .mockRejectedValueOnce(
+        new RequestNormalizedError({
+          code: "KB_ATTACHMENT_NOT_INITIALIZED",
+          message: "请先初始化附件库",
+          status: 404,
+        }),
+      )
+      .mockResolvedValue({
+        attachments: [],
+        pagination: { page: 1, pageSize: 10, total: 0 },
+      });
     vi.mocked(initKbAttachments).mockResolvedValue({
       docId: "doc-attachment-1",
       initialized: true,
@@ -160,8 +165,9 @@ describe("KbAttachmentsTab", () => {
     await user.click(await screen.findByRole("button", { name: "开始初始化" }));
 
     await waitFor(() => {
-      expect(screen.getByText("附件库正在同步")).toBeInTheDocument();
+      expect(screen.getByRole("tablist", { name: "附件类型筛选" })).toBeInTheDocument();
     });
+    expect(screen.queryByText("请耐心等待哦～")).not.toBeInTheDocument();
     expect(initKbAttachments).toHaveBeenCalledWith("kb-1");
   });
 });

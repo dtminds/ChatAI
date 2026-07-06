@@ -123,7 +123,7 @@ describe("ai-hosting kb-attachment routes", () => {
         },
       ],
       page: 1,
-      pageSize: 20,
+      pageSize: 10,
       success: true,
     });
     const context = await createAuthenticatedApp("viewer", { includeAttachmentDoc: true });
@@ -149,7 +149,7 @@ describe("ai-hosting kb-attachment routes", () => {
         ],
         pagination: {
           page: 1,
-          pageSize: 20,
+          pageSize: 10,
           total: 1,
         },
       },
@@ -160,7 +160,7 @@ describe("ai-hosting kb-attachment routes", () => {
       content: "产品",
       docId: 1005,
       page: 1,
-      pageSize: 20,
+      pageSize: 10,
       uid: 9001,
     });
     fetchMock.mockRestore();

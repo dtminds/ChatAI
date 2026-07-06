@@ -870,7 +870,7 @@ function KbAttachmentExampleBrandIcon({
 }) {
   if (type === "mini-program") {
     return (
-      <span className="inline-flex size-5 items-center justify-center rounded-full bg-[#7b61ff] text-white">
+      <span className="inline-flex size-5 items-center justify-center rounded-full bg-mini-program-brand text-white">
         <MiniProgramMark className="size-3! text-white" />
       </span>
     );

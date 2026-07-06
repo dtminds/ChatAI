@@ -1,5 +1,6 @@
 import type {
   ApiSuccessEnvelope,
+  KbAttachmentBatchDeleteResponse,
   KbAttachmentCreateRequest,
   KbAttachmentCreateResponse,
   KbAttachmentDeleteResponse,
@@ -63,6 +64,15 @@ export async function updateKbAttachment(chunkId: string, payload: KbAttachmentU
 export async function deleteKbAttachment(chunkId: string) {
   const response = await http.post<ApiSuccessEnvelope<KbAttachmentDeleteResponse>>(
     `/server/ai-hosting/kb-attachments/${chunkId}/delete`,
+  );
+
+  return response.data;
+}
+
+export async function batchDeleteKbAttachments(chunkIds: string[]) {
+  const response = await http.post<ApiSuccessEnvelope<KbAttachmentBatchDeleteResponse>>(
+    "/server/ai-hosting/kb-attachments/batch-delete",
+    { chunkIds },
   );
 
   return response.data;

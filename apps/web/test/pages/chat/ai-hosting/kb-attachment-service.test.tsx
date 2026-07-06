@@ -26,6 +26,7 @@ vi.mock("@/pages/chat/ai-hosting/api/kb-attachment-service", async (importOrigin
     createKbAttachment: vi.fn(),
     updateKbAttachment: vi.fn(),
     deleteKbAttachment: vi.fn(),
+    batchDeleteKbAttachments: vi.fn(),
     buildKbAttachmentCreateRequest: vi.fn(),
     buildKbAttachmentUpdateRequest: vi.fn(),
   };
@@ -71,6 +72,30 @@ describe("kb attachment mappers", () => {
 
     expect(content).toEqual(listItem.attachmentContent);
     expect(toQuickReplyDraftAttachment(listItem.attachmentContent)).toEqual(viewItem.payload);
+  });
+
+  it("maps link list item title from attachment content instead of chunk title", () => {
+    const viewItem = toKbAttachmentItem({
+      attachmentContent: {
+        content: {
+          coverUrl: "https://example.com/cover.png",
+          href: "https://example.com/article",
+          title: "私域操盘手专访",
+        },
+        materialCollectionId: "mc-1",
+        msgInfoId: "msg-1",
+        type: "h5",
+      },
+      attachmentType: 4,
+      chunkId: "chunk-2",
+      createdAt: "2026-07-03 12:00:00",
+      description: "这是用户填写的链接描述",
+      title: "这是用户填写的链接描述",
+      updatedAt: "2026-07-03 12:00:00",
+    });
+
+    expect(viewItem.title).toBe("私域操盘手专访");
+    expect(viewItem.description).toBe("这是用户填写的链接描述");
   });
 });
 

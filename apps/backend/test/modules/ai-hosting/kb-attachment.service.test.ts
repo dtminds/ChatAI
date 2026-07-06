@@ -34,6 +34,7 @@ function createService(
     addKbChunk: vi.fn(),
     createKbDoc: vi.fn(),
     deleteKbChunk: vi.fn(),
+    batchDeleteKbChunks: vi.fn(),
     deleteKbDoc: vi.fn(),
     listKbChunks: vi.fn(),
     retryKbDoc: vi.fn(),
@@ -263,5 +264,38 @@ describe("KbAttachmentService", () => {
       operatorId: "101",
       uid: 9001,
     });
+  });
+
+  it("batch deletes manual attachment chunks via Java", async () => {
+    const batchDeleteKbChunks = vi.fn().mockResolvedValue({
+      failCount: 0,
+      successCount: 1,
+    });
+    const { client, service } = createService({ batchDeleteKbChunks }, { includeAttachmentDoc: true });
+
+    const response = await service.batchDeleteAttachments(tenant, ["503", "503"]);
+
+    expect(response).toEqual({
+      failCount: 0,
+      successCount: 1,
+    });
+    expect(client.batchDeleteKbChunks).toHaveBeenCalledWith({
+      chunkIds: [503],
+      operatorId: "101",
+      uid: 9001,
+    });
+  });
+
+  it("rejects batch delete when any chunk is not editable", async () => {
+    const batchDeleteKbChunks = vi.fn();
+    const { client, service } = createService({ batchDeleteKbChunks }, { includeAttachmentDoc: true });
+
+    await expect(
+      service.batchDeleteAttachments(tenant, ["504"]),
+    ).rejects.toMatchObject({
+      code: "KB_CHUNK_NOT_EDITABLE",
+      statusCode: 403,
+    });
+    expect(client.batchDeleteKbChunks).not.toHaveBeenCalled();
   });
 });

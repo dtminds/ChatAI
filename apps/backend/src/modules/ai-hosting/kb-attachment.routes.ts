@@ -1,9 +1,11 @@
 import {
   apiSuccess,
   KB_SEARCH_QUERY_MAX_LENGTH,
+  KbAttachmentBatchDeleteRequestSchema,
   KbAttachmentCreateRequestSchema,
   KbAttachmentTypeSchema,
   KbAttachmentUpdateRequestSchema,
+  type KbAttachmentBatchDeleteRequest,
   type KbAttachmentCreateRequest,
   type KbAttachmentType,
   type KbAttachmentUpdateRequest,
@@ -121,6 +123,26 @@ export async function registerKbAttachmentRoutes(app: FastifyInstance) {
           getAgentKbTenant(request),
           request.params.chunkId,
           request.body,
+        ),
+      );
+    },
+  );
+
+  app.post<{ Body: KbAttachmentBatchDeleteRequest }>(
+    "/api/server/ai-hosting/kb-attachments/batch-delete",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: KbAttachmentBatchDeleteRequestSchema,
+      },
+    },
+    async (request) => {
+      assertAiHostingWriteAccess(request);
+
+      return apiSuccess(
+        await getKbAttachmentService(app).batchDeleteAttachments(
+          getAgentKbTenant(request),
+          request.body.chunkIds,
         ),
       );
     },

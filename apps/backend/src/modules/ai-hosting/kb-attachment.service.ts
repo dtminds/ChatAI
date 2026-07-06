@@ -1,4 +1,5 @@
 import type {
+  KbAttachmentBatchDeleteResponse,
   KbAttachmentCreateRequest,
   KbAttachmentCreateResponse,
   KbAttachmentDeleteResponse,
@@ -17,6 +18,7 @@ import {
   KB_ATTACHMENT_DOC_NAME,
   KB_ATTACHMENT_DOC_SUFFIX,
   KB_ATTACHMENT_DOC_URL,
+  KB_ATTACHMENT_BATCH_DELETE_MAX,
   KB_DOC_TYPE_ATTACHMENT,
 } from "./kb-attachment.constants.js";
 import {
@@ -295,6 +297,60 @@ export class KbAttachmentService {
     );
 
     return { deleted: true };
+  }
+
+  async batchDeleteAttachments(
+    tenant: AgentKbTenant,
+    chunkIds: string[],
+  ): Promise<KbAttachmentBatchDeleteResponse> {
+    const uid = tenant.uid;
+    const subUserId = tenant.subUserId;
+    const uniqueChunkIds = [...new Set(chunkIds.map((chunkId) => chunkId.trim()).filter(Boolean))];
+
+    if (uniqueChunkIds.length === 0) {
+      throw new BadRequestError("INVALID_KB_ATTACHMENT_BATCH_DELETE", "请选择要删除的附件");
+    }
+
+    if (uniqueChunkIds.length > KB_ATTACHMENT_BATCH_DELETE_MAX) {
+      throw new BadRequestError(
+        "INVALID_KB_ATTACHMENT_BATCH_DELETE",
+        `单次最多删除 ${KB_ATTACHMENT_BATCH_DELETE_MAX} 个附件`,
+      );
+    }
+
+    const chunkNumericIds: number[] = [];
+
+    for (const chunkId of uniqueChunkIds) {
+      const chunkNumericId = parseRequiredNumericId(chunkId, "KB_CHUNK_NOT_FOUND", "附件不存在");
+      const chunk = await this.getKbChunkRow(uid, chunkNumericId);
+
+      if (!chunk) {
+        throw new NotFoundError("KB_CHUNK_NOT_FOUND", "附件不存在");
+      }
+
+      await this.assertAttachmentChunkEditable(uid, chunk.doc_id, chunk.source);
+      chunkNumericIds.push(chunkNumericId);
+    }
+
+    const result = await this.agentKbJavaClient.batchDeleteKbChunks({
+      chunkIds: chunkNumericIds,
+      operatorId: subUserId,
+      uid,
+    });
+
+    this.logger.info(
+      {
+        chunkIds: uniqueChunkIds,
+        failCount: result.failCount,
+        operation: "kb-attachment-batch-delete",
+        subUserId,
+        successCount: result.successCount,
+        uid,
+      },
+      "知识库附件批量删除完成",
+    );
+
+    return result;
   }
 
   private async requireReadyAttachmentDoc(uid: number, kbId: number) {

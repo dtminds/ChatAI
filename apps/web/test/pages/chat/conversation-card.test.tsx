@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { ConversationCard } from "@/pages/chat/components/conversation-card";
@@ -37,6 +37,59 @@ describe("ConversationCard", () => {
     expect(screen.getByTestId("conversation-preview")).toHaveTextContent(
       "[草稿]还没发出去",
     );
+  });
+
+  it("renders takeover reminder previews with a separate label and body", () => {
+    render(
+      <ConversationCard
+        conversation={{
+          ...conversation,
+          preview: "[接管提醒]请及时接管",
+          previewParts: [
+            {
+              kind: "takeover-reminder",
+              text: "[接管提醒]",
+              tone: "danger",
+            },
+            {
+              text: "请及时接管",
+            },
+          ],
+        }}
+        isActive={false}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    const preview = screen.getByTestId("conversation-preview");
+
+    expect(
+      within(preview).getByTestId("conversation-preview-part-takeover-reminder"),
+    ).toHaveTextContent("[接管提醒]");
+    expect(
+      within(preview).getByTestId("conversation-preview-part-1"),
+    ).toHaveTextContent("请及时接管");
+    expect(preview).toHaveTextContent("[接管提醒]请及时接管");
+  });
+
+  it("does not render takeover reminder labels without the preview marker", () => {
+    render(
+      <ConversationCard
+        conversation={{
+          ...conversation,
+          preview: "[接管提醒]，请及时接管",
+        }}
+        isActive={false}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId("conversation-preview")).toHaveTextContent(
+      "[接管提醒]，请及时接管",
+    );
+    expect(
+      screen.queryByTestId("conversation-preview-part-takeover-reminder"),
+    ).not.toBeInTheDocument();
   });
 
   it("keeps showing unread badges for active conversations until unread reaches zero", () => {

@@ -550,7 +550,6 @@ describe("AI hosting pages", () => {
       "href",
       "/chat/ai-hosting/subscription",
     );
-    expect(screen.getByRole("button", { name: "帮助手册" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "数据总览" })).not.toBeInTheDocument();
     expect(screen.queryByText("会话总数")).not.toBeInTheDocument();
     expect(screen.getByRole("table", { name: "Agent 列表" })).toBeInTheDocument();

@@ -1217,7 +1217,7 @@ describe("smart-reply-adapter", () => {
       canDismiss: true,
       canRegenerate: false,
       isLoading: false,
-      label: "已跳过话术推荐：命中人工处理规则",
+      label: "已转人工：命中人工处理规则",
     });
   });
 
@@ -1234,7 +1234,7 @@ describe("smart-reply-adapter", () => {
       canDismiss: true,
       canRegenerate: true,
       isLoading: false,
-      label: "生成失败：knowledge_miss",
+      label: "未命中知识集，暂无推荐话术",
     });
   });
 

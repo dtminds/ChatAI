@@ -60,7 +60,7 @@ describe("chat agent hosting status helpers", () => {
 
   it("labels full-auto answer progress statuses", () => {
     expect(getAgentHostingStatusLabel("waiting")).toBe(
-      "Agent 正在确认客户是否追加新消息",
+      "Agent 正在等待客户补充消息",
     );
     expect(getAgentHostingStatusLabel("generating")).toBe("Agent 正在思考回复话术");
     expect(getAgentHostingStatusLabel("sending")).toBe("Agent 回复已生成，正在发送");

@@ -823,7 +823,7 @@ describe("message feed row actions", () => {
     { expectedLabel: "正在生成话术推荐", generateStatus: 1, status: "processing" as const },
     { expectedLabel: "生成失败：model_error", failReason: "model_error", generateStatus: 3 },
     {
-      expectedLabel: "已跳过话术推荐：命中人工处理规则",
+      expectedLabel: "已转人工：命中人工处理规则",
       failReason: "命中人工处理规则",
       generateStatus: 4,
       status: "ready" as const,

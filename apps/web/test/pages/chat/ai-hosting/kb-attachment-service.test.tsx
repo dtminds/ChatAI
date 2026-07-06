@@ -166,7 +166,7 @@ describe("KbAttachmentsTab", () => {
     expect(await screen.findByRole("button", { name: "开始初始化" })).toBeInTheDocument();
   });
 
-  it("enters list after init even when doc status is parsing", async () => {
+  it("shows init loading when doc status is parsing", async () => {
     const user = userEvent.setup();
 
     vi.mocked(listKbAttachments)
@@ -191,10 +191,10 @@ describe("KbAttachmentsTab", () => {
 
     await user.click(await screen.findByRole("button", { name: "开始初始化" }));
 
-    await waitFor(() => {
-      expect(screen.getByRole("tablist", { name: "附件类型筛选" })).toBeInTheDocument();
-    });
+    expect(
+      screen.getByRole("progressbar", { name: "附件库初始化进度" }),
+    ).toBeInTheDocument();
     expect(initKbAttachments).toHaveBeenCalledWith("kb-1");
-    expect(listKbAttachments).toHaveBeenCalledTimes(2);
+    expect(listKbAttachments).toHaveBeenCalledTimes(1);
   });
 });

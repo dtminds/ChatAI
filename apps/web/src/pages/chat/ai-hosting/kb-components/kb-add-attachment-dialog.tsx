@@ -72,6 +72,8 @@ export function KbAddAttachmentDialog({
 }: KbAddAttachmentDialogProps) {
   const isEditMode = editingItem != null;
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const isMountedRef = useRef(true);
+  const localObjectUrlRef = useRef<string | null>(null);
   const [description, setDescription] = useState("");
   const [imageSource, setImageSource] = useState<ImageUploadSource>("local");
   const [selectedPayload, setSelectedPayload] = useState<QuickReplyDraftAttachment | null>(
@@ -85,8 +87,25 @@ export function KbAddAttachmentDialog({
     setEditEchoLoading(false);
   }, []);
 
+  const revokeLocalObjectUrl = useCallback(() => {
+    if (localObjectUrlRef.current) {
+      URL.revokeObjectURL(localObjectUrlRef.current);
+      localObjectUrlRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    return () => {
+      isMountedRef.current = false;
+      revokeLocalObjectUrl();
+    };
+  }, [revokeLocalObjectUrl]);
+
   useLayoutEffect(() => {
     if (!open) {
+      revokeLocalObjectUrl();
       setDescription("");
       setImageSource("local");
       setSelectedPayload(null);
@@ -150,12 +169,19 @@ export function KbAddAttachmentDialog({
 
     try {
       await onSubmit(item);
-      onOpenChange(false);
-      toast.success(editingItem ? "附件已更新" : "附件已添加");
+
+      if (isMountedRef.current) {
+        onOpenChange(false);
+        toast.success(editingItem ? "附件已更新" : "附件已添加");
+      }
     } catch {
-      toast.error(editingItem ? "更新失败，请稍后重试" : "添加失败，请稍后重试");
+      if (isMountedRef.current) {
+        toast.error(editingItem ? "更新失败，请稍后重试" : "添加失败，请稍后重试");
+      }
     } finally {
-      setSubmitting(false);
+      if (isMountedRef.current) {
+        setSubmitting(false);
+      }
     }
   };
 
@@ -204,7 +230,9 @@ export function KbAddAttachmentDialog({
                 onImageSourceChange={setImageSource}
                 onOpenMaterialPicker={() => setMaterialPickerOpen(true)}
                 onSelectLocalImage={(file) => {
+                  revokeLocalObjectUrl();
                   const localUrl = URL.createObjectURL(file);
+                  localObjectUrlRef.current = localUrl;
 
                   setSelectedPayload({
                     content: {
@@ -217,6 +245,7 @@ export function KbAddAttachmentDialog({
                 }}
                 selectedPayload={selectedPayload}
                 onClearSelection={() => {
+                  revokeLocalObjectUrl();
                   setSelectedPayload(null);
 
                   if (imageInputRef.current) {

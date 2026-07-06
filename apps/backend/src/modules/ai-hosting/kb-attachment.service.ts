@@ -346,18 +346,40 @@ export class KbAttachmentService {
       );
     }
 
-    const chunkNumericIds: number[] = [];
+    const chunkNumericIds = uniqueChunkIds.map((chunkId) =>
+      parseRequiredNumericId(chunkId, "KB_CHUNK_NOT_FOUND", "附件不存在"),
+    );
 
-    for (const chunkId of uniqueChunkIds) {
-      const chunkNumericId = parseRequiredNumericId(chunkId, "KB_CHUNK_NOT_FOUND", "附件不存在");
-      const chunk = await this.getKbChunkRow(uid, chunkNumericId);
+    const chunks = await this.db
+      .selectFrom("xy_wap_embed_agent_kb_chunk")
+      .select(["doc_id", "id", "source"])
+      .where("id", "in", chunkNumericIds)
+      .where("uid", "=", uid)
+      .where("status", "=", dbActiveStatus)
+      .execute();
 
-      if (!chunk) {
+    const chunkById = new Map(chunks.map((chunk) => [Number(chunk.id), chunk]));
+
+    for (const chunkNumericId of chunkNumericIds) {
+      if (!chunkById.has(chunkNumericId)) {
         throw new NotFoundError("KB_CHUNK_NOT_FOUND", "附件不存在");
       }
+    }
 
-      await this.assertAttachmentChunkEditable(uid, chunk.doc_id, chunk.source);
-      chunkNumericIds.push(chunkNumericId);
+    const uniqueDocIds = [...new Set(chunks.map((chunk) => chunk.doc_id))];
+
+    for (const docId of uniqueDocIds) {
+      const doc = await this.getAttachmentDocById(uid, undefined, docId);
+
+      if (!doc || !isAttachmentDocRow(doc)) {
+        throw new NotFoundError("KB_ATTACHMENT_DOC_NOT_FOUND", "附件库异常，请稍后重试");
+      }
+    }
+
+    for (const chunk of chunks) {
+      if (chunk.source !== KB_CHUNK_SOURCE_MANUAL) {
+        throw new ForbiddenError("KB_CHUNK_NOT_EDITABLE", "系统切片不可编辑");
+      }
     }
 
     const result = await this.agentKbJavaClient.batchDeleteKbChunks({
@@ -450,12 +472,6 @@ export class KbAttachmentService {
     const delayMs = this.attachmentDocPollConfig.delayMs;
 
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-      const attachmentDoc = await this.findAttachmentDoc(uid, kbId);
-
-      if (attachmentDoc && attachmentDoc.id === docId) {
-        return attachmentDoc;
-      }
-
       const docById = await this.getAttachmentDocById(uid, kbId, docId);
 
       if (docById && isAttachmentDocRow(docById)) {

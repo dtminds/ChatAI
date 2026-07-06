@@ -68,6 +68,7 @@ const kbAttachmentInitLoadingIllustrationUrl =
 const ATTACHMENT_INIT_PROGRESS_MIN = 15;
 const ATTACHMENT_INIT_PROGRESS_MAX = 85;
 const ATTACHMENT_INIT_PROGRESS_STEP_MS = 400;
+const ATTACHMENT_SYNC_POLL_MS = 5000;
 
 const kbAttachmentExampleTagRows = [
   [
@@ -145,19 +146,30 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
   const [deleting, setDeleting] = useState(false);
   const requestVersionRef = useRef(0);
   const isMountedRef = useRef(false);
+  const kbIdRef = useRef(kbId);
+  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const skipNextListLoadRef = useRef(false);
   const activeTypeRef = useRef(activeType);
   activeTypeRef.current = activeType;
   const phaseRef = useRef(phase);
   phaseRef.current = phase;
+  kbIdRef.current = kbId;
+
+  const clearPollTimer = useCallback(() => {
+    if (pollTimerRef.current) {
+      clearTimeout(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     isMountedRef.current = true;
 
     return () => {
       isMountedRef.current = false;
+      clearPollTimer();
     };
-  }, []);
+  }, [clearPollTimer]);
 
   const loadAttachments = useCallback(async (options?: { page?: number; silent?: boolean }) => {
     if (!kbId) {
@@ -303,12 +315,14 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
 
   useEffect(() => {
     void probeInitialState();
+    clearPollTimer();
 
     return () => {
       requestVersionRef.current++;
       skipNextListLoadRef.current = false;
+      clearPollTimer();
     };
-  }, [kbId, probeInitialState]);
+  }, [clearPollTimer, kbId, probeInitialState]);
 
   useEffect(() => {
     if (phase !== "ready") {
@@ -334,33 +348,106 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
     void loadAttachments();
   }, [activeType, currentPage, debouncedSearchQuery, kbId, loadAttachments, phase]);
 
+  const finishAttachmentSync = useCallback(async (currentKbId: string) => {
+    setCurrentPage(1);
+    skipNextListLoadRef.current = true;
+    await loadAttachments({ page: 1, silent: true });
+
+    if (isMountedRef.current && kbIdRef.current === currentKbId) {
+      setPhase("ready");
+    }
+  }, [loadAttachments]);
+
+  const pollAttachmentSyncStatus = useCallback((
+    currentKbId: string,
+    pollError: {
+      errorMessage: string;
+      failurePhase: Extract<AttachmentPhase, "failed" | "uninitialized">;
+    },
+  ) => {
+    clearPollTimer();
+
+    const poll = async () => {
+      try {
+        const result = await initKbAttachments(currentKbId);
+
+        if (!isMountedRef.current || kbIdRef.current !== currentKbId) {
+          return;
+        }
+
+        setAttachmentDocId(result.docId);
+
+        if (result.status === "queued" || result.status === "parsing") {
+          pollTimerRef.current = setTimeout(() => {
+            void poll();
+          }, ATTACHMENT_SYNC_POLL_MS);
+          return;
+        }
+
+        if (result.status === "failed") {
+          setPhase("failed");
+          return;
+        }
+
+        await finishAttachmentSync(currentKbId);
+      } catch {
+        if (isMountedRef.current && kbIdRef.current === currentKbId) {
+          setPhase(pollError.failurePhase);
+          toast.error(pollError.errorMessage);
+        }
+      }
+    };
+
+    pollTimerRef.current = setTimeout(() => {
+      void poll();
+    }, ATTACHMENT_SYNC_POLL_MS);
+  }, [clearPollTimer, finishAttachmentSync]);
+
+  const handleAttachmentSyncResult = useCallback(async (
+    currentKbId: string,
+    initResult: Awaited<ReturnType<typeof initKbAttachments>>,
+    pollError: {
+      errorMessage: string;
+      failurePhase: Extract<AttachmentPhase, "failed" | "uninitialized">;
+    },
+  ) => {
+    setAttachmentDocId(initResult.docId);
+
+    if (initResult.status === "failed") {
+      setPhase("failed");
+      return;
+    }
+
+    if (initResult.status === "queued" || initResult.status === "parsing") {
+      pollAttachmentSyncStatus(currentKbId, pollError);
+      return;
+    }
+
+    await finishAttachmentSync(currentKbId);
+  }, [finishAttachmentSync, pollAttachmentSyncStatus]);
+
   const handleInitialize = async () => {
     if (!kbId || phase === "initializing") {
       return;
     }
 
+    const currentKbId = kbId;
+    clearPollTimer();
     setPhase("initializing");
 
     try {
       const initResult = await initKbAttachments(kbId);
 
-      if (!isMountedRef.current) {
+      if (!isMountedRef.current || kbIdRef.current !== currentKbId) {
         return;
       }
 
-      setAttachmentDocId(initResult.docId);
-
-      if (initResult.status === "failed") {
-        setPhase("failed");
-        return;
-      }
-
-      setCurrentPage(1);
-      skipNextListLoadRef.current = true;
-      await loadAttachments({ page: 1, silent: true });
-      setPhase("ready");
+      await handleAttachmentSyncResult(currentKbId, initResult, {
+        errorMessage: "初始化失败，请稍后重试",
+        failurePhase: "uninitialized",
+      });
     } catch {
-      if (isMountedRef.current) {
+      if (isMountedRef.current && kbIdRef.current === currentKbId) {
         setPhase("uninitialized");
         toast.error("初始化失败，请稍后重试");
       }
@@ -368,31 +455,39 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
   };
 
   const handleRetrySync = async () => {
-    if (!attachmentDocId || retrying) {
+    if (!attachmentDocId || retrying || !kbId) {
       return;
     }
 
+    const currentKbId = kbId;
+    clearPollTimer();
     setRetrying(true);
     setPhase("initializing");
 
     try {
       await retryKbDoc(attachmentDocId);
 
-      if (!isMountedRef.current) {
+      if (!isMountedRef.current || kbIdRef.current !== currentKbId) {
         return;
       }
 
-      setCurrentPage(1);
-      skipNextListLoadRef.current = true;
-      await loadAttachments({ page: 1, silent: true });
-      setPhase("ready");
+      const initResult = await initKbAttachments(kbId);
+
+      if (!isMountedRef.current || kbIdRef.current !== currentKbId) {
+        return;
+      }
+
+      await handleAttachmentSyncResult(currentKbId, initResult, {
+        errorMessage: "重试失败，请稍后重试",
+        failurePhase: "failed",
+      });
     } catch {
-      if (isMountedRef.current) {
+      if (isMountedRef.current && kbIdRef.current === currentKbId) {
         setPhase("failed");
         toast.error("重试失败，请稍后重试");
       }
     } finally {
-      if (isMountedRef.current) {
+      if (isMountedRef.current && kbIdRef.current === currentKbId) {
         setRetrying(false);
       }
     }
@@ -402,6 +497,8 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
     if (!kbId) {
       return;
     }
+
+    const currentKbId = kbId;
 
     if (editingItem) {
       const request = await buildKbAttachmentUpdateRequest({
@@ -413,7 +510,11 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
       });
 
       await updateKbAttachment(editingItem.id, request);
-      await loadAttachments();
+
+      if (isMountedRef.current && kbIdRef.current === currentKbId) {
+        await loadAttachments();
+      }
+
       return;
     }
 
@@ -426,8 +527,11 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
     });
 
     await createKbAttachment(kbId, request);
-    setCurrentPage(1);
-    await loadAttachments({ page: 1 });
+
+    if (isMountedRef.current && kbIdRef.current === currentKbId) {
+      setCurrentPage(1);
+      await loadAttachments({ page: 1 });
+    }
   };
 
   const handleAttachmentDialogOpenChange = (open: boolean) => {

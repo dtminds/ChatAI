@@ -123,25 +123,25 @@ export function deriveKbAttachmentTitleFromContent(attachmentContent: KbAttachme
   const content = attachmentContent.content;
 
   if (attachmentContent.type === "file") {
-    return readString(content.fileName) || "文件";
+    return readString(content["fileName"]) || "文件";
   }
 
   if (attachmentContent.type === "h5") {
-    return readString(content.title) || "链接";
+    return readString(content["title"]) || "链接";
   }
 
   if (attachmentContent.type === "weapp") {
-    return readString(content.title) || "小程序";
+    return readString(content["title"]) || "小程序";
   }
 
-  return readString(content.alt) || readString(content.fileName) || "图片";
+  return readString(content["alt"]) || readString(content["fileName"]) || "图片";
 }
 
 function deriveKbAttachmentMeta(attachmentContent: KbAttachmentContent) {
   const content = attachmentContent.content;
 
   if (attachmentContent.type === "file") {
-    const fileSizeLabel = readString(content.fileSizeLabel);
+    const fileSizeLabel = readString(content["fileSizeLabel"]);
 
     return {
       fileSizeLabel: fileSizeLabel || undefined,
@@ -149,7 +149,7 @@ function deriveKbAttachmentMeta(attachmentContent: KbAttachmentContent) {
   }
 
   if (attachmentContent.type === "weapp") {
-    const subtitle = readString(content.appName);
+    const subtitle = readString(content["appName"]);
 
     return {
       subtitle: subtitle || "小程序名称",

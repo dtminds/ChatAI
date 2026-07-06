@@ -98,6 +98,6 @@ describe("forwardMessagesToRecipients", () => {
       { getSendDelayMs: () => 500, sleep },
     );
 
-    expect(sendTextMessageMock).toHaveBeenCalledTimes(9 * 20);
+    expect(sendTextMessageMock).toHaveBeenCalledTimes(1 * 20);
   });
 });

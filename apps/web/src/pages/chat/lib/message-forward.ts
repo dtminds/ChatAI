@@ -7,7 +7,7 @@ import type { ChatMessage, ChatMode, Conversation } from "@/pages/chat/chat-type
 import { sortConversations } from "@/pages/chat/lib/conversation-order";
 import { isValidMessageSeq } from "@/pages/chat/lib/message-seq";
 
-export const MESSAGE_FORWARD_MAX_RECIPIENTS = 9;
+export const MESSAGE_FORWARD_MAX_RECIPIENTS = 1;
 export const MESSAGE_FORWARD_MAX_MESSAGES = 20;
 export const MESSAGE_FORWARD_SEND_INTERVAL_MIN_MS = 1000;
 export const MESSAGE_FORWARD_SEND_INTERVAL_MAX_MS = 5000;

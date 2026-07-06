@@ -738,7 +738,8 @@ function formatSystemMessagePreview(text: string) {
 function getAgentHandoffPreviewBody(text: string) {
   return text
     .slice(AGENT_HANDOFF_SYSTEM_PREVIEW_PREFIX.length)
-    .replace(/^\s*[:：]\s*/, "");
+    .replace(/^\s*[:：]\s*/, "")
+    .trim();
 }
 
 function readSystemMessageText(parsed: unknown, rawContent: string | null) {

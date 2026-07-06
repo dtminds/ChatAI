@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { PlayIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@/components/ui/button";
@@ -12,7 +13,10 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { FileExtensionBadge } from "@/pages/chat/components/message/file";
+import { ImagePreviewDialog } from "@/pages/chat/components/message/image";
 import { MiniProgramMark } from "@/pages/chat/components/message/miniapp";
+import { getSafeMessageUrl } from "@/pages/chat/components/message/url";
+import { normalizeMediaAssetUrl } from "@/pages/chat/lib/media-asset-url";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { KbTableLoadingRow } from "./kb-table-loading-row";
 import { TableOverflowTooltip } from "./shared";
@@ -20,6 +24,9 @@ import {
   formatKbAttachmentCreatedAt,
   getKbAttachmentDeleteActionLabel,
   getKbAttachmentFileExtension,
+  getKbAttachmentFileUrl,
+  getKbAttachmentImageUrl,
+  getKbAttachmentLinkUrl,
   getKbAttachmentPreviewUrl,
   getKbAttachmentPrimaryColumnLabel,
   getKbAttachmentTitle,
@@ -29,6 +36,8 @@ import {
 } from "./kb-attachment-types";
 
 const PRIMARY_COLUMN_MAX_WIDTH_CLASS = "max-w-60";
+const LINKABLE_TEXT_CLASS =
+  "underline-offset-2 transition-colors hover:text-primary hover:underline";
 
 type KbAttachmentsTableProps = {
   activeType: KbAttachmentType;
@@ -51,6 +60,10 @@ export function KbAttachmentsTable({
   onToggleSelectItem,
   selectedIds,
 }: KbAttachmentsTableProps) {
+  const [previewImage, setPreviewImage] = useState<{
+    alt: string;
+    imageUrl: string;
+  } | null>(null);
   const primaryColumnLabel = getKbAttachmentPrimaryColumnLabel(activeType);
   const deleteActionLabel = getKbAttachmentDeleteActionLabel(activeType);
   const columnCount = 5;
@@ -109,7 +122,7 @@ export function KbAttachmentsTable({
                   PRIMARY_COLUMN_MAX_WIDTH_CLASS,
                 )}
               >
-                <KbAttachmentPrimaryCell item={item} />
+                <KbAttachmentPrimaryCell item={item} onPreviewImage={setPreviewImage} />
               </TableCell>
               <TableCell className="px-4 py-4 align-middle">
                 <TableOverflowTooltip
@@ -147,28 +160,71 @@ export function KbAttachmentsTable({
             : null}
         </TableBody>
       </Table>
+      {previewImage ? (
+        <ImagePreviewDialog
+          alt={previewImage.alt}
+          imageUrl={previewImage.imageUrl}
+          onOpenChange={(open) => {
+            if (!open) {
+              setPreviewImage(null);
+            }
+          }}
+          open
+        />
+      ) : null}
     </TooltipProvider>
   );
 }
 
-function KbAttachmentPrimaryCell({ item }: { item: KbAttachmentItem }) {
-  if (
-    item.attachmentType === KB_ATTACHMENT_TYPE.IMAGE ||
-    item.attachmentType === KB_ATTACHMENT_TYPE.VIDEO
-  ) {
-    return <KbAttachmentThumbnail item={item} />;
+function KbAttachmentPrimaryCell({
+  item,
+  onPreviewImage,
+}: {
+  item: KbAttachmentItem;
+  onPreviewImage: (image: { alt: string; imageUrl: string }) => void;
+}) {
+  if (item.attachmentType === KB_ATTACHMENT_TYPE.IMAGE) {
+    return (
+      <KbAttachmentThumbnail
+        item={item}
+        onClick={() => {
+          const imageUrl = normalizeKbAttachmentMediaUrl(
+            getKbAttachmentImageUrl(item.payload),
+          );
+
+          if (imageUrl) {
+            onPreviewImage({ alt: item.title || "图片", imageUrl });
+          }
+        }}
+      />
+    );
+  }
+
+  if (item.attachmentType === KB_ATTACHMENT_TYPE.VIDEO) {
+    const videoUrl = getKbAttachmentOpenUrl(item);
+
+    return (
+      <KbAttachmentThumbnail
+        item={item}
+        onClick={videoUrl ? () => openAttachmentUrl(videoUrl) : undefined}
+      />
+    );
   }
 
   if (item.attachmentType === KB_ATTACHMENT_TYPE.FILE) {
-    return (
-      <div className="flex min-w-0 items-start gap-3">
+    const fileUrl = getKbAttachmentOpenUrl(item);
+    const fileContent = (
+      <>
         <FileExtensionBadge
           className="size-10"
           extension={getKbAttachmentFileExtension(item.payload)}
         />
         <div className="min-w-0 max-w-full">
           <TableOverflowTooltip
-            className="truncate text-sm font-medium text-foreground"
+            className={cn(
+              "truncate text-sm font-medium text-foreground",
+              fileUrl && LINKABLE_TEXT_CLASS,
+            )}
             tooltip={item.title}
           >
             {item.title}
@@ -177,21 +233,56 @@ function KbAttachmentPrimaryCell({ item }: { item: KbAttachmentItem }) {
             <div className="mt-1 text-sm text-muted-foreground">{item.fileSizeLabel}</div>
           ) : null}
         </div>
-      </div>
+      </>
+    );
+
+    if (!fileUrl) {
+      return <div className="flex min-w-0 items-start gap-3">{fileContent}</div>;
+    }
+
+    return (
+      <button
+        aria-label={`打开文件 ${item.title}`}
+        className="flex min-w-0 items-start gap-3 rounded-[6px] text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+        onClick={() => openAttachmentUrl(fileUrl)}
+        type="button"
+      >
+        {fileContent}
+      </button>
     );
   }
 
   if (item.attachmentType === KB_ATTACHMENT_TYPE.LINK) {
-    return (
-      <div className="flex min-w-0 max-w-full items-start gap-3">
+    const linkUrl = getKbAttachmentOpenUrl(item);
+    const title = getKbAttachmentTitle(item.payload);
+    const content = (
+      <>
         <KbAttachmentThumbnail item={item} />
         <TableOverflowTooltip
-          className="min-w-0 flex-1 whitespace-normal line-clamp-2 text-sm font-medium leading-5 text-foreground"
-          tooltip={getKbAttachmentTitle(item.payload)}
+          className={cn(
+            "min-w-0 flex-1 whitespace-normal line-clamp-2 text-sm font-medium leading-5 text-foreground",
+            linkUrl && LINKABLE_TEXT_CLASS,
+          )}
+          tooltip={title}
         >
-          {getKbAttachmentTitle(item.payload)}
+          {title}
         </TableOverflowTooltip>
-      </div>
+      </>
+    );
+
+    if (!linkUrl) {
+      return <div className="flex min-w-0 max-w-full items-start gap-3">{content}</div>;
+    }
+
+    return (
+      <button
+        aria-label={`打开链接 ${title}`}
+        className="flex min-w-0 max-w-full items-start gap-3 rounded-[6px] text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+        onClick={() => openAttachmentUrl(linkUrl)}
+        type="button"
+      >
+        {content}
+      </button>
     );
   }
 
@@ -220,17 +311,19 @@ function KbAttachmentPrimaryCell({ item }: { item: KbAttachmentItem }) {
   );
 }
 
-function KbAttachmentThumbnail({ item }: { item: KbAttachmentItem }) {
-  const previewUrl = getKbAttachmentPreviewUrl(item.payload);
+function KbAttachmentThumbnail({
+  item,
+  onClick,
+}: {
+  item: KbAttachmentItem;
+  onClick?: () => void;
+}) {
+  const previewUrl = normalizeKbAttachmentMediaUrl(
+    getKbAttachmentPreviewUrl(item.payload),
+  );
   const isVideo = item.attachmentType === KB_ATTACHMENT_TYPE.VIDEO;
-
-  return (
-    <div
-      className={cn(
-        "relative size-14 shrink-0 overflow-hidden rounded-[8px] bg-muted",
-        !previewUrl && "border border-border",
-      )}
-    >
+  const content = (
+    <>
       {previewUrl ? (
         <img
           alt=""
@@ -252,6 +345,60 @@ function KbAttachmentThumbnail({ item }: { item: KbAttachmentItem }) {
           </span>
         </span>
       ) : null}
-    </div>
+    </>
   );
+  const className = cn(
+    "relative size-14 shrink-0 overflow-hidden rounded-[8px] bg-muted",
+    !previewUrl && "border border-border",
+    onClick && "outline-none transition hover:brightness-95 focus-visible:ring-2 focus-visible:ring-ring/30",
+  );
+
+  if (onClick) {
+    return (
+      <button
+        aria-label={isVideo ? `播放视频 ${item.title}` : `查看图片 ${item.title}`}
+        className={className}
+        onClick={onClick}
+        type="button"
+      >
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <div className={className}>{content}</div>
+  );
+}
+
+function getKbAttachmentOpenUrl(item: KbAttachmentItem) {
+  if (item.attachmentType === KB_ATTACHMENT_TYPE.FILE || item.attachmentType === KB_ATTACHMENT_TYPE.VIDEO) {
+    const fileUrl = getKbAttachmentFileUrl(item.payload);
+
+    return normalizeKbAttachmentMediaUrl(fileUrl);
+  }
+
+  if (item.attachmentType === KB_ATTACHMENT_TYPE.LINK) {
+    return getSafeMessageUrl(getKbAttachmentLinkUrl(item.payload));
+  }
+
+  return undefined;
+}
+
+function openAttachmentUrl(url: string) {
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+
+function normalizeKbAttachmentMediaUrl(url: string | undefined) {
+  const trimmedUrl = url?.trim() ?? "";
+
+  if (!trimmedUrl) {
+    return "";
+  }
+
+  if (trimmedUrl.startsWith("blob:") || trimmedUrl.startsWith("data:image/")) {
+    return trimmedUrl;
+  }
+
+  return normalizeMediaAssetUrl(trimmedUrl) || getSafeMessageUrl(trimmedUrl) || "";
 }

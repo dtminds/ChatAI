@@ -130,13 +130,13 @@ function useAttachmentInitProgress(active: boolean) {
 type KbAttachmentsTabProps = {
   activeType: KbAttachmentType;
   kbId: string;
-  onInitializedChange?: (initialized: boolean) => void;
+  onActiveTypeChange: (type: KbAttachmentType) => void;
 };
 
 export function KbAttachmentsTab({
   activeType,
   kbId,
-  onInitializedChange,
+  onActiveTypeChange,
 }: KbAttachmentsTabProps) {
   const [phase, setPhase] = useState<AttachmentPhase>("loading");
   const [attachmentDocId, setAttachmentDocId] = useState<string | null>(null);
@@ -259,7 +259,6 @@ export function KbAttachmentsTab({
     if (!kbId) {
       setPhase("uninitialized");
       setLoadingList(false);
-      onInitializedChange?.(false);
       return;
     }
 
@@ -278,12 +277,10 @@ export function KbAttachmentsTab({
         setAttachments([]);
         setTotal(0);
         setPhase("uninitialized");
-        onInitializedChange?.(false);
         return;
       }
 
       setAttachmentDocId(status.docId);
-      onInitializedChange?.(true);
 
       setAttachments([]);
       setTotal(0);
@@ -299,14 +296,13 @@ export function KbAttachmentsTab({
       setAttachments([]);
       setTotal(0);
       setPhase("uninitialized");
-      onInitializedChange?.(false);
       toast.error("加载失败，请稍后重试");
     } finally {
       if (isMountedRef.current) {
         setLoadingList(false);
       }
     }
-  }, [kbId, onInitializedChange]);
+  }, [kbId]);
 
   useEffect(() => {
     void probeInitialState();
@@ -355,9 +351,8 @@ export function KbAttachmentsTab({
 
     if (isMountedRef.current && kbIdRef.current === currentKbId) {
       setPhase("ready");
-      onInitializedChange?.(true);
     }
-  }, [loadAttachments, onInitializedChange]);
+  }, [loadAttachments]);
 
   const pollAttachmentSyncStatus = useCallback((
     currentKbId: string,
@@ -435,7 +430,6 @@ export function KbAttachmentsTab({
     const currentKbId = kbId;
     clearPollTimer();
     setPhase("initializing");
-    onInitializedChange?.(false);
 
     try {
       const initResult = await initKbAttachments(kbId);
@@ -655,23 +649,29 @@ export function KbAttachmentsTab({
   }
 
   return (
-    <section aria-label="附件列表区块" className="space-y-4">
+    <section aria-label="附件列表区块" className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="relative w-[280px] max-w-full">
-          <HugeiconsIcon
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-            color="currentColor"
-            icon={Search01Icon}
-            size={17}
-            strokeWidth={1.8}
+        <div className="flex min-w-0 flex-wrap items-center gap-3">
+          <KbAttachmentTypeTabs
+            activeType={activeType}
+            onActiveTypeChange={onActiveTypeChange}
           />
-          <Input
-            aria-label="搜索附件"
-            className="h-10 rounded-[8px] pl-9"
-            onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder="搜索附件"
-            value={searchQuery}
-          />
+          <div className="relative w-[280px] max-w-full">
+            <HugeiconsIcon
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+              color="currentColor"
+              icon={Search01Icon}
+              size={17}
+              strokeWidth={1.8}
+            />
+            <Input
+              aria-label="搜索附件"
+              className="h-10 rounded-[8px] pl-9"
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="搜索附件"
+              value={searchQuery}
+            />
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
@@ -769,17 +769,17 @@ export function KbAttachmentTypeTabs({
   return (
     <div
       aria-label="附件类型筛选"
-      className="inline-flex h-10 -translate-y-0.5 items-center gap-5"
+      className="inline-flex h-10 items-center gap-1 rounded-[8px] bg-muted p-1"
       role="tablist"
     >
       {kbAttachmentTypeFilters.map((filter) => (
         <button
           aria-selected={activeType === filter.value}
           className={cn(
-            "relative inline-flex h-10 min-w-0 items-center justify-center px-0 text-sm font-medium leading-none transition-colors after:absolute after:bottom-0.5 after:left-1/2 after:h-[3px] after:w-6 after:-translate-x-1/2 after:rounded-full after:bg-primary after:opacity-0 after:content-['']",
+            "inline-flex h-8 min-w-[3.5rem] items-center justify-center rounded-[6px] px-3 text-sm font-medium leading-none transition-colors",
             activeType === filter.value
-              ? "text-primary after:opacity-100"
-              : "text-foreground hover:text-foreground",
+              ? "bg-background text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground",
           )}
           key={filter.value}
           onClick={() => onActiveTypeChange(filter.value)}

@@ -83,10 +83,7 @@ import { KbTableLoadingRow } from "./kb-components/kb-table-loading-row";
 import { ImportDocumentDialog } from "./kb-components/import-document-dialog";
 // import { ImportImageDialog } from "./kb-components/import-image-dialog";
 import { ImportQaDialog } from "./kb-components/import-qa-dialog";
-import {
-  KbAttachmentsTab,
-  KbAttachmentTypeTabs,
-} from "./kb-components/kb-attachments-tab";
+import { KbAttachmentsTab } from "./kb-components/kb-attachments-tab";
 import {
   KB_ATTACHMENT_TYPE,
   type KbAttachmentType,
@@ -215,7 +212,6 @@ export function KbDetailPage() {
   const [activeAttachmentType, setActiveAttachmentType] = useState<KbAttachmentType>(
     KB_ATTACHMENT_TYPE.IMAGE,
   );
-  const [attachmentsInitialized, setAttachmentsInitialized] = useState(false);
   const requestVersionRef = useRef(0);
   const summaryRequestVersionRef = useRef(0);
   const isMountedRef = useRef(false);
@@ -516,12 +512,6 @@ export function KbDetailPage() {
                 附件
               </TabsTrigger>
             </TabsList>
-            {detailTab === "attachments" && attachmentsInitialized ? (
-              <KbAttachmentTypeTabs
-                activeType={activeAttachmentType}
-                onActiveTypeChange={setActiveAttachmentType}
-              />
-            ) : null}
           </div>
 
           <TabsContent value="knowledge">
@@ -586,7 +576,7 @@ export function KbDetailPage() {
             <KbAttachmentsTab
               activeType={activeAttachmentType}
               kbId={kbId}
-              onInitializedChange={setAttachmentsInitialized}
+              onActiveTypeChange={setActiveAttachmentType}
             />
           </TabsContent>
         </Tabs>

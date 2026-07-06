@@ -7,12 +7,14 @@ import {
   initKbAttachments,
 } from "@/pages/chat/ai-hosting/api/kb-attachment-service";
 import { KbAttachmentsTab } from "@/pages/chat/ai-hosting/kb-components/kb-attachments-tab";
+import { KbAttachmentsTable } from "@/pages/chat/ai-hosting/kb-components/kb-attachments-table";
 import {
   KB_ATTACHMENT_TYPE,
   isKbLocalUploadedImageMaterial,
   toKbAttachmentContent,
   toKbAttachmentItem,
   toQuickReplyDraftAttachment,
+  type KbAttachmentItem,
 } from "@/pages/chat/ai-hosting/kb-components/kb-attachment-types";
 
 vi.mock("@/pages/chat/ai-hosting/api/kb-attachment-service", async (importOriginal) => {
@@ -36,6 +38,10 @@ vi.mock("@/pages/chat/ai-hosting/api/kb-attachment-service", async (importOrigin
 
 vi.mock("@/pages/chat/ai-hosting/api/kb-service", () => ({
   getKbDoc: vi.fn(),
+}));
+
+vi.mock("@/pages/chat/lib/image-ocr", () => ({
+  recognizeImageText: vi.fn(),
 }));
 
 describe("kb attachment mappers", () => {
@@ -127,32 +133,129 @@ describe("kb attachment mappers", () => {
   });
 });
 
+describe("KbAttachmentsTable", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("opens image attachments in the preview dialog", async () => {
+    const user = userEvent.setup();
+
+    renderKbAttachmentsTable({
+      activeType: KB_ATTACHMENT_TYPE.IMAGE,
+      items: [
+        createKbAttachmentItem({
+          attachmentType: KB_ATTACHMENT_TYPE.IMAGE,
+          payload: {
+            content: {
+              alt: "产品图",
+              fileUrl: "https://example.com/product.png",
+            },
+            type: "image",
+          },
+          title: "产品图",
+        }),
+      ],
+    });
+
+    await user.click(screen.getByRole("button", { name: "查看图片 产品图" }));
+
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByText("图片预览")).toBeInTheDocument();
+  });
+
+  it("opens video, link, and file attachments in a new window", async () => {
+    const user = userEvent.setup();
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+
+    renderKbAttachmentsTable({
+      activeType: KB_ATTACHMENT_TYPE.VIDEO,
+      items: [
+        createKbAttachmentItem({
+          attachmentType: KB_ATTACHMENT_TYPE.VIDEO,
+          payload: {
+            content: {
+              coverUrl: "https://example.com/video-cover.png",
+              fileName: "安装视频.mp4",
+              fileUrl: "s5/msg/20260706/video.mp4",
+            },
+            type: "file",
+          },
+          title: "安装视频.mp4",
+        }),
+        createKbAttachmentItem({
+          attachmentType: KB_ATTACHMENT_TYPE.LINK,
+          payload: {
+            content: {
+              href: "https://example.com/article",
+              title: "活动链接",
+            },
+            type: "h5",
+          },
+          title: "活动链接",
+        }),
+        createKbAttachmentItem({
+          attachmentType: KB_ATTACHMENT_TYPE.FILE,
+          payload: {
+            content: {
+              fileName: "产品手册.pdf",
+              fileUrl: "https://example.com/manual.pdf",
+            },
+            type: "file",
+          },
+          title: "产品手册.pdf",
+        }),
+      ],
+    });
+
+    await user.click(screen.getByRole("button", { name: "播放视频 安装视频.mp4" }));
+    await user.click(screen.getByRole("button", { name: "打开链接 活动链接" }));
+    await user.click(screen.getByRole("button", { name: "打开文件 产品手册.pdf" }));
+
+    expect(openSpy).toHaveBeenNthCalledWith(
+      1,
+      "https://b5.bokr.com.cn/s5/msg/20260706/video.mp4",
+      "_blank",
+      "noopener,noreferrer",
+    );
+    expect(openSpy).toHaveBeenNthCalledWith(
+      2,
+      "https://example.com/article",
+      "_blank",
+      "noopener,noreferrer",
+    );
+    expect(openSpy).toHaveBeenNthCalledWith(
+      3,
+      "https://example.com/manual.pdf",
+      "_blank",
+      "noopener,noreferrer",
+    );
+  });
+});
+
 describe("KbAttachmentsTab", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("shows init state and reports disabled when attachment status is uninitialized", async () => {
-    const onInitializedChange = vi.fn();
+  it("shows init state when attachment status is uninitialized", async () => {
     vi.mocked(getKbAttachmentStatus).mockResolvedValue({ initialized: false });
 
     render(
       <KbAttachmentsTab
         activeType={KB_ATTACHMENT_TYPE.IMAGE}
         kbId="kb-1"
-        onInitializedChange={onInitializedChange}
+        onActiveTypeChange={vi.fn()}
       />,
     );
 
     expect(await screen.findByRole("button", { name: "立即启用" })).toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: "图片" })).not.toBeInTheDocument();
-    expect(onInitializedChange).toHaveBeenLastCalledWith(false);
     expect(listKbAttachments).not.toHaveBeenCalled();
   });
 
   it("shows init loading when doc status is parsing", async () => {
     const user = userEvent.setup();
-    const onInitializedChange = vi.fn();
 
     vi.mocked(getKbAttachmentStatus).mockResolvedValue({ initialized: false });
     vi.mocked(listKbAttachments).mockResolvedValue({
@@ -169,7 +272,7 @@ describe("KbAttachmentsTab", () => {
       <KbAttachmentsTab
         activeType={KB_ATTACHMENT_TYPE.IMAGE}
         kbId="kb-1"
-        onInitializedChange={onInitializedChange}
+        onActiveTypeChange={vi.fn()}
       />,
     );
 
@@ -179,7 +282,37 @@ describe("KbAttachmentsTab", () => {
       screen.getByRole("progressbar", { name: "附件库初始化进度" }),
     ).toBeInTheDocument();
     expect(initKbAttachments).toHaveBeenCalledWith("kb-1");
-    expect(onInitializedChange).toHaveBeenLastCalledWith(false);
     expect(listKbAttachments).not.toHaveBeenCalled();
   });
 });
+
+function renderKbAttachmentsTable({
+  activeType,
+  items,
+}: {
+  activeType: KbAttachmentItem["attachmentType"];
+  items: KbAttachmentItem[];
+}) {
+  return render(
+    <KbAttachmentsTable
+      activeType={activeType}
+      items={items}
+      onDelete={vi.fn()}
+      onEdit={vi.fn()}
+      onToggleSelectAll={vi.fn()}
+      onToggleSelectItem={vi.fn()}
+      selectedIds={[]}
+    />,
+  );
+}
+
+function createKbAttachmentItem(
+  overrides: Partial<KbAttachmentItem> & Pick<KbAttachmentItem, "attachmentType" | "payload" | "title">,
+): KbAttachmentItem {
+  return {
+    createdAt: new Date("2026-07-06T10:00:00+08:00").getTime(),
+    description: "附件描述",
+    id: `chunk-${overrides.title}`,
+    ...overrides,
+  };
+}

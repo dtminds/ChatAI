@@ -230,13 +230,7 @@ export function getKbAttachmentPreviewUrl(payload: QuickReplyDraftAttachment) {
   const content = payload.content;
 
   if (payload.type === "image") {
-    return (
-      readString(content.localUrl)
-      || readString(content.imageUrl)
-      || readString(content.fileUrl)
-      || readString(content.url)
-      || undefined
-    );
+    return getKbAttachmentImageUrl(payload);
   }
 
   if (payload.type === "file") {
@@ -254,6 +248,35 @@ export function getKbAttachmentPreviewUrl(payload: QuickReplyDraftAttachment) {
   }
 
   return readString(content.coverUrl) || readString(content.fileUrl) || undefined;
+}
+
+export function getKbAttachmentImageUrl(payload: QuickReplyDraftAttachment) {
+  const content = payload.content;
+
+  return (
+    readString(content.localUrl)
+    || readString(content.imageUrl)
+    || readString(content.fileUrl)
+    || readString(content.url)
+    || undefined
+  );
+}
+
+export function getKbAttachmentFileUrl(payload: QuickReplyDraftAttachment) {
+  const content = payload.content;
+
+  return readString(content.fileUrl) || readString(content.url) || undefined;
+}
+
+export function getKbAttachmentLinkUrl(payload: QuickReplyDraftAttachment) {
+  const content = payload.content;
+
+  return (
+    readString(content.href)
+    || readString(content.linkUrl)
+    || readString(content.url)
+    || undefined
+  );
 }
 
 export function getKbAttachmentFileExtension(payload: QuickReplyDraftAttachment) {

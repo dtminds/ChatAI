@@ -1,4 +1,5 @@
 import type {
+  WorkbenchConversationPreviewPart,
   WorkbenchGroupMemberType,
   WorkbenchMessageContentType,
 } from "@chatai/contracts";
@@ -93,6 +94,7 @@ export type Conversation = {
   groupOriginalName?: string;
   createdAtMs?: number;
   preview: string;
+  previewParts?: WorkbenchConversationPreviewPart[];
   updatedAt: string;
   quietFor: string;
   unread: number;

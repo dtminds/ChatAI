@@ -84,6 +84,25 @@ export function getKbAttachmentDescriptionLabel(type: KbAttachmentType) {
   return labels[type];
 }
 
+export const KB_ATTACHMENT_DESCRIPTION_HINT_EMPHASIS = "命中后会作为附件发送。";
+
+export function getKbAttachmentDescriptionHint(type: KbAttachmentType) {
+  const hints: Record<KbAttachmentType, string> = {
+    [KB_ATTACHMENT_TYPE.IMAGE]:
+      "描述会参与对图片的检索，如电商场景下，描述可以用于存放图片对应的直播预告海报、活动海报、产品使用说明等，",
+    [KB_ATTACHMENT_TYPE.VIDEO]:
+      "描述会参与对视频的检索，如产品安装视频、使用教程等，",
+    [KB_ATTACHMENT_TYPE.FILE]:
+      "描述会参与对文件的检索，如产品安装说明、使用教程等，",
+    [KB_ATTACHMENT_TYPE.LINK]:
+      "描述会参与对链接的检索，如直播活动链接、公众号文章、外部链接，",
+    [KB_ATTACHMENT_TYPE.MINI_PROGRAM]:
+      "描述会参与对小程序的检索，如私域商城商品、营销活动、直播预告，",
+  };
+
+  return hints[type];
+}
+
 export function getKbMaterialBizType(type: KbAttachmentType) {
   switch (type) {
     case KB_ATTACHMENT_TYPE.IMAGE:
@@ -235,7 +254,13 @@ export function getKbAttachmentPreviewUrl(payload: QuickReplyDraftAttachment) {
   }
 
   if (payload.type === "h5" || payload.type === "weapp") {
-    return readString(content.coverImageUrl) || readString(content.coverUrl) || undefined;
+    return (
+      readString(content.previewImageUrl)
+      || readString(content.imageUrl)
+      || readString(content.coverImageUrl)
+      || readString(content.coverUrl)
+      || undefined
+    );
   }
 
   return readString(content.coverUrl) || readString(content.fileUrl) || undefined;
@@ -260,16 +285,33 @@ export function getKbAttachmentFileExtension(payload: QuickReplyDraftAttachment)
 }
 
 export function toKbAttachmentItem(item: KbAttachmentListItem): KbAttachmentItem {
+  const payload = toQuickReplyDraftAttachment(item.attachmentContent);
+
   return {
     attachmentType: item.attachmentType,
     createdAt: parseKbAttachmentTimestamp(item.createdAt),
     description: item.description,
     fileSizeLabel: item.fileSizeLabel,
     id: item.chunkId,
-    payload: toQuickReplyDraftAttachment(item.attachmentContent),
+    payload,
     subtitle: item.subtitle,
-    title: item.title,
+    title: resolveKbAttachmentDisplayTitle(item.attachmentType, item.title, payload),
   };
+}
+
+function resolveKbAttachmentDisplayTitle(
+  attachmentType: KbAttachmentType,
+  listTitle: string,
+  payload: QuickReplyDraftAttachment,
+) {
+  if (
+    attachmentType === KB_ATTACHMENT_TYPE.LINK
+    || attachmentType === KB_ATTACHMENT_TYPE.MINI_PROGRAM
+  ) {
+    return getKbAttachmentTitle(payload);
+  }
+
+  return listTitle;
 }
 
 export function toQuickReplyDraftAttachment(

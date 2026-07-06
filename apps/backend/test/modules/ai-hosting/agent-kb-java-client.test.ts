@@ -472,6 +472,53 @@ describe("createAgentKbJavaClient", () => {
     );
   });
 
+  it("submits chunk batch delete as JSON with ids", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: {
+            failCount: 0,
+            successCount: 2,
+          },
+          error: 0,
+          errorMsg: "",
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    const result = await createAgentKbJavaClient().batchDeleteKbChunks({
+      chunkIds: [37, 38],
+      operatorId: "19",
+      uid: 9001,
+    });
+
+    expect(result).toEqual({
+      failCount: 0,
+      successCount: 2,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/wap-embed-agent-kb-chunk/delBatch",
+      expect.objectContaining({
+        body: JSON.stringify({
+          ids: [37, 38],
+          operatorId: "19",
+          uid: 9001,
+        }),
+        headers: expect.objectContaining({
+          "content-type": "application/json",
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
   it("maps delete not found to KB_DOC_NOT_FOUND", async () => {
     process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
 

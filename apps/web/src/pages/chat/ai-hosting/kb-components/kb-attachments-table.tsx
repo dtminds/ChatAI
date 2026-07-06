@@ -20,6 +20,7 @@ import {
   getKbAttachmentFileExtension,
   getKbAttachmentPreviewUrl,
   getKbAttachmentPrimaryColumnLabel,
+  getKbAttachmentTitle,
   KB_ATTACHMENT_TYPE,
   type KbAttachmentItem,
   type KbAttachmentType,
@@ -181,8 +182,8 @@ function KbAttachmentPrimaryCell({ item }: { item: KbAttachmentItem }) {
     return (
       <div className="flex min-w-0 items-start gap-3">
         <KbAttachmentThumbnail item={item} />
-        <p className="line-clamp-2 min-w-0 flex-1 text-sm leading-6 text-foreground">
-          {item.title}
+        <p className="line-clamp-2 min-w-0 flex-1 text-sm font-medium leading-6 text-foreground">
+          {getKbAttachmentTitle(item.payload)}
         </p>
       </div>
     );
@@ -192,7 +193,9 @@ function KbAttachmentPrimaryCell({ item }: { item: KbAttachmentItem }) {
     <div className="flex min-w-0 items-start gap-3">
       <KbAttachmentThumbnail item={item} />
       <div className="min-w-0 flex-1">
-        <p className="line-clamp-2 text-sm leading-6 text-foreground">{item.title}</p>
+        <p className="line-clamp-2 text-sm font-medium leading-6 text-foreground">
+          {getKbAttachmentTitle(item.payload)}
+        </p>
         {item.subtitle ? (
           <div className="mt-1 inline-flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
             <MiniProgramMark className="size-3.5! shrink-0" />

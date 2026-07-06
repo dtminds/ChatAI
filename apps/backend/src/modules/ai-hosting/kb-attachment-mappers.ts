@@ -35,6 +35,10 @@ export function deriveKbAttachmentTitle(
   chunkTitle: string | null | undefined,
   attachmentContent: KbAttachmentContent,
 ) {
+  if (attachmentContent.type === "h5" || attachmentContent.type === "weapp") {
+    return deriveKbAttachmentTitleFromContent(attachmentContent);
+  }
+
   const normalizedChunkTitle = chunkTitle?.trim();
 
   if (normalizedChunkTitle) {

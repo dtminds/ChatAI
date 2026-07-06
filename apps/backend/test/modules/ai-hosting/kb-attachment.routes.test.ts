@@ -161,7 +161,6 @@ describe("ai-hosting kb-attachment routes", () => {
       docId: 1005,
       page: 1,
       pageSize: 20,
-      title: "产品",
       uid: 9001,
     });
     fetchMock.mockRestore();
@@ -280,6 +279,47 @@ describe("ai-hosting kb-attachment routes", () => {
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
       "https://java.internal/third-internal/wap-embed-agent-kb-chunk/del",
     );
+    fetchMock.mockRestore();
+  });
+
+  it("batch deletes attachments via Java", async () => {
+    const fetchMock = mockJavaFetch({
+      data: {
+        failCount: 0,
+        successCount: 1,
+      },
+      error: 0,
+      errorMsg: "",
+      success: true,
+    });
+    const context = await createAuthenticatedApp("admin", { includeAttachmentDoc: true });
+    app = context.app;
+
+    const response = await app.inject({
+      headers: { authorization: context.authorization },
+      method: "POST",
+      payload: {
+        chunkIds: ["503"],
+      },
+      url: "/api/server/ai-hosting/kb-attachments/batch-delete",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      data: {
+        failCount: 0,
+        successCount: 1,
+      },
+      success: true,
+    });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "https://java.internal/third-internal/wap-embed-agent-kb-chunk/delBatch",
+    );
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      ids: [503],
+      operatorId: "101",
+      uid: 9001,
+    });
     fetchMock.mockRestore();
   });
 });

@@ -93,6 +93,21 @@ export const KbAttachmentDeleteResponseSchema = Type.Object(
   { additionalProperties: false },
 );
 
+export const KbAttachmentBatchDeleteRequestSchema = Type.Object({
+  chunkIds: Type.Array(Type.String({ pattern: "^[0-9]+$" }), {
+    maxItems: 20,
+    minItems: 1,
+  }),
+});
+
+export const KbAttachmentBatchDeleteResponseSchema = Type.Object(
+  {
+    failCount: Type.Integer({ minimum: 0 }),
+    successCount: Type.Integer({ minimum: 0 }),
+  },
+  { additionalProperties: false },
+);
+
 export type KbAttachmentType = Static<typeof KbAttachmentTypeSchema>;
 export type KbAttachmentContent = Static<typeof KbAttachmentContentSchema>;
 export type KbAttachmentInitResponse = Static<typeof KbAttachmentInitResponseSchema>;
@@ -103,3 +118,5 @@ export type KbAttachmentCreateResponse = Static<typeof KbAttachmentCreateRespons
 export type KbAttachmentUpdateRequest = Static<typeof KbAttachmentUpdateRequestSchema>;
 export type KbAttachmentUpdateResponse = Static<typeof KbAttachmentUpdateResponseSchema>;
 export type KbAttachmentDeleteResponse = Static<typeof KbAttachmentDeleteResponseSchema>;
+export type KbAttachmentBatchDeleteRequest = Static<typeof KbAttachmentBatchDeleteRequestSchema>;
+export type KbAttachmentBatchDeleteResponse = Static<typeof KbAttachmentBatchDeleteResponseSchema>;

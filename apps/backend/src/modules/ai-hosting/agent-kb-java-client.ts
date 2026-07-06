@@ -86,6 +86,17 @@ export type AgentKbJavaDeleteChunkInput = {
   uid: number;
 };
 
+export type AgentKbJavaBatchDeleteChunksInput = {
+  chunkIds: number[];
+  operatorId: string;
+  uid: number;
+};
+
+export type AgentKbJavaBatchDeleteChunksResponse = {
+  failCount: number;
+  successCount: number;
+};
+
 export type AgentKbJavaListChunksInput = {
   attachmentType?: number;
   content?: string;
@@ -107,6 +118,9 @@ export type AgentKbJavaClient = {
   addKbChunk(input: AgentKbJavaAddChunkInput): Promise<string>;
   createKbDoc(input: AgentKbJavaCreateDocInput): Promise<string>;
   deleteKbChunk(input: AgentKbJavaDeleteChunkInput): Promise<void>;
+  batchDeleteKbChunks(
+    input: AgentKbJavaBatchDeleteChunksInput,
+  ): Promise<AgentKbJavaBatchDeleteChunksResponse>;
   deleteKbDoc(input: AgentKbJavaDeleteDocInput): Promise<void>;
   retryKbDoc(input: AgentKbJavaRetryDocInput): Promise<void>;
   listKbChunks(input: AgentKbJavaListChunksInput): Promise<AgentKbJavaListChunksResponse>;
@@ -228,6 +242,23 @@ export function createAgentKbJavaClient(
         "agent-kb-chunk-delete",
         input,
       );
+    },
+    async batchDeleteKbChunks(input) {
+      const result = await postJavaJsonEnvelopeObject<AgentKbJavaBatchDeleteChunksResponse>(
+        baseUrl,
+        token,
+        "/third-internal/wap-embed-agent-kb-chunk/delBatch",
+        {
+          ids: input.chunkIds,
+          operatorId: input.operatorId,
+          uid: input.uid,
+        },
+        logger,
+        "agent-kb-chunk-batch-delete",
+        input,
+      );
+
+      return normalizeJavaBatchDeleteChunksResponse(result);
     },
     async listKbChunks(input) {
       const body: Record<string, number | string> = {
@@ -678,6 +709,27 @@ function isJavaEnvelopeSuccessful(response: JavaApiResponse<unknown>) {
   }
 
   return response.error === 0;
+}
+
+function normalizeJavaBatchDeleteChunksResponse(
+  value: AgentKbJavaBatchDeleteChunksResponse,
+): AgentKbJavaBatchDeleteChunksResponse {
+  return {
+    failCount: normalizeNonNegativeInteger(value.failCount),
+    successCount: normalizeNonNegativeInteger(value.successCount),
+  };
+}
+
+function normalizeNonNegativeInteger(value: unknown) {
+  if (typeof value === "number" && Number.isInteger(value) && value >= 0) {
+    return value;
+  }
+
+  if (typeof value === "string" && /^\d+$/.test(value.trim())) {
+    return Number(value.trim());
+  }
+
+  return 0;
 }
 
 function normalizeJavaChunkId(value: number | string) {

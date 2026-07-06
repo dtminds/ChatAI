@@ -4,9 +4,15 @@ import {
   AlertCircleIcon,
   AiMagicIcon,
   ArrowLeft01Icon,
+  Book04Icon,
   CheckmarkCircle02Icon,
   Clock04Icon,
+  File01Icon,
+  HelpCircleIcon,
   Loading03Icon,
+  Location01Icon,
+  Message01Icon,
+  RefreshIcon,
   Search01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -94,6 +100,23 @@ import {
 } from "./quota";
 
 const PAGE_SIZE = 10;
+
+const kbKnowledgeEmptyIllustrationUrl =
+  "https://b5.bokr.com.cn/dist/ui/attachment_bg_2.png";
+
+const kbKnowledgeExampleTagRows = [
+  [
+    { icon: "product" as const, label: "商品知识" },
+    { icon: "rules" as const, label: "活动规则说明" },
+    { icon: "qa" as const, label: "订单售后问答" },
+  ],
+  [
+    { icon: "faq" as const, label: "常见问题FAQ" },
+    { icon: "return" as const, label: "退换货政策" },
+    { icon: "delivery" as const, label: "物流发货政策" },
+    { icon: "more" as const, label: "..." },
+  ],
+] as const;
 
 function useDebouncedValue<T>(value: T, delayMs: number) {
   const [debouncedValue, setDebouncedValue] = useState(value);
@@ -319,6 +342,8 @@ export function KbDetailPage() {
   });
   const pagedRecords = records;
   const recordsLoading = loadingKb || loadingDocs;
+  const showKnowledgeList =
+    recordsLoading || total > 0 || debouncedSearchQuery.length > 0;
 
   async function handleConfirmDelete() {
     if (!deleteRecord || deleting) {
@@ -496,25 +521,29 @@ export function KbDetailPage() {
             </div>
           </div>
 
-          <div>
-            <KnowledgeRecordsTable
-              kbId={knowledgeBase?.id ?? kbId}
-              loading={recordsLoading}
-              onDelete={setDeleteRecord}
-              onRetry={handleRetryDoc}
-              onShowSummary={(record) => {
-                void handleShowSummary(record);
-              }}
-              records={pagedRecords}
-              retryingDocId={retryingDocId}
-            />
-            <TablePagination
-              onPageChange={setCurrentPage}
-              page={activePage}
-              total={total}
-              totalPages={totalPages}
-            />
-          </div>
+          {showKnowledgeList ? (
+            <div>
+              <KnowledgeRecordsTable
+                kbId={knowledgeBase?.id ?? kbId}
+                loading={recordsLoading}
+                onDelete={setDeleteRecord}
+                onRetry={handleRetryDoc}
+                onShowSummary={(record) => {
+                  void handleShowSummary(record);
+                }}
+                records={pagedRecords}
+                retryingDocId={retryingDocId}
+              />
+              <TablePagination
+                onPageChange={setCurrentPage}
+                page={activePage}
+                total={total}
+                totalPages={totalPages}
+              />
+            </div>
+          ) : (
+            <KbKnowledgeEmptyState />
+          )}
         </section>
           </TabsContent>
 
@@ -654,6 +683,82 @@ function renderAddKnowledgeOption(
         </span>
       </span>
     </DropdownMenuItem>
+  );
+}
+
+function KbKnowledgeEmptyState() {
+  return (
+    <div className="flex min-h-[420px] flex-col items-center justify-center px-6 py-10 text-center">
+      <img
+        alt=""
+        aria-hidden="true"
+        className="mb-6 h-40 w-40 object-contain"
+        src={kbKnowledgeEmptyIllustrationUrl}
+      />
+
+      <div
+        aria-hidden="true"
+        className="flex max-w-3xl flex-col items-center gap-3"
+      >
+        {kbKnowledgeExampleTagRows.map((row, rowIndex) => (
+          <div
+            className="flex flex-wrap items-center justify-center gap-2"
+            key={rowIndex}
+          >
+            {row.map((tag) => (
+              <span
+                className="inline-flex h-9 items-center gap-2 rounded-[8px] bg-muted/70 px-3 text-sm text-muted-foreground"
+                key={tag.label}
+              >
+                {tag.icon === "more" ? (
+                  "..."
+                ) : (
+                  <>
+                    <KbKnowledgeExampleOutlineIcon type={tag.icon} />
+                    {tag.label}
+                  </>
+                )}
+              </span>
+            ))}
+          </div>
+        ))}
+      </div>
+
+      <p className="mt-6 max-w-xl text-sm leading-6 text-muted-foreground">
+        你可以添加各类知识，用于在 Agent 做话术推荐和自动回复的时候做召回用，Agent 会参考召回的知识内容组织回复话术
+      </p>
+    </div>
+  );
+}
+
+function KbKnowledgeExampleOutlineIcon({
+  type,
+}: {
+  type: "delivery" | "faq" | "product" | "qa" | "return" | "rules";
+}) {
+  const icon =
+    type === "product"
+      ? Book04Icon
+      : type === "rules"
+        ? File01Icon
+        : type === "qa"
+          ? Message01Icon
+          : type === "faq"
+            ? HelpCircleIcon
+            : type === "return"
+              ? RefreshIcon
+              : Location01Icon;
+
+  return (
+    <span className="inline-flex size-5 items-center justify-center text-muted-foreground/80">
+      <HugeiconsIcon
+        aria-hidden="true"
+        color="currentColor"
+        icon={icon}
+        size={15}
+        strokeWidth={1.8}
+      />
+    </span>
   );
 }
 

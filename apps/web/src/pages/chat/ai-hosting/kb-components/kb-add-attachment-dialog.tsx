@@ -23,6 +23,7 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { FileExtensionBadge } from "@/pages/chat/components/message/file";
 import {
   QuickReplyMaterialPickerDialog,
   type QuickReplyAttachmentMaterialBizType,
@@ -32,12 +33,15 @@ import { QuickReplyAttachmentPreview } from "@/pages/chat/components/quick-reply
 import {
   buildKbAttachmentPayloadFromMaterial,
   extractKbAttachmentMeta,
+  getKbAttachmentDescriptionHint,
   getKbAttachmentDescriptionLabel,
   getKbAttachmentDialogTitle,
+  getKbAttachmentFileExtension,
   getKbAttachmentPreviewUrl,
   getKbAttachmentSelectLabel,
   getKbAttachmentTitle,
   getKbMaterialBizType,
+  KB_ATTACHMENT_DESCRIPTION_HINT_EMPHASIS,
   KB_ATTACHMENT_TYPE,
   type KbAttachmentItem,
   type KbAttachmentType,
@@ -205,16 +209,19 @@ export function KbAddAttachmentDialog({
               <RequiredLabel htmlFor="kb-attachment-description">
                 {getKbAttachmentDescriptionLabel(attachmentType)}
               </RequiredLabel>
+              <p className="text-xs leading-5 text-muted-foreground">
+                {getKbAttachmentDescriptionHint(attachmentType)}
+                <span className="font-medium text-foreground">
+                  {KB_ATTACHMENT_DESCRIPTION_HINT_EMPHASIS}
+                </span>
+              </p>
               <Textarea
                 className="min-h-24 resize-none"
                 id="kb-attachment-description"
                 onChange={(event) => setDescription(event.target.value)}
-                placeholder="请输入描述"
+                placeholder="请输入"
                 value={description}
               />
-              <p className="text-xs leading-5 text-muted-foreground">
-                描述会作为发送附件时的消息文案
-              </p>
             </div>
           </div>
 
@@ -386,29 +393,11 @@ function MaterialAttachmentField({
       <Label>从采集素材库选择</Label>
 
       {selectedPayload ? (
-        <div className="flex min-w-0 items-center gap-3 rounded-[8px] border bg-background px-3 py-2.5">
-          <div className="min-w-0 flex-1">
-            <KbAttachmentPayloadPreview
-              attachmentType={attachmentType}
-              payload={selectedPayload}
-            />
-          </div>
-          <Button
-            aria-label="移除已选择素材"
-            className="size-8 shrink-0"
-            onClick={onClearSelection}
-            size="icon"
-            type="button"
-            variant="ghost"
-          >
-            <HugeiconsIcon
-              color="currentColor"
-              icon={Cancel01Icon}
-              size={16}
-              strokeWidth={1.8}
-            />
-          </Button>
-        </div>
+        <KbAttachmentPayloadPreview
+          attachmentType={attachmentType}
+          onClear={onClearSelection}
+          payload={selectedPayload}
+        />
       ) : (
         <Button
           className="h-10 gap-2"
@@ -424,47 +413,204 @@ function MaterialAttachmentField({
   );
 }
 
+function MaterialPreviewClearButton({
+  label,
+  onClear,
+}: {
+  label: string;
+  onClear: () => void;
+}) {
+  return (
+    <button
+      aria-label={label}
+      className="absolute -right-0.5 -top-0.5 z-10 inline-flex size-[18px] items-center justify-center rounded-full bg-black/55 text-white shadow-sm transition-colors hover:bg-black/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onClear();
+      }}
+      type="button"
+    >
+      <HugeiconsIcon
+        aria-hidden="true"
+        color="currentColor"
+        icon={Cancel01Icon}
+        size={10}
+        strokeWidth={2}
+      />
+    </button>
+  );
+}
+
+function MaterialPreviewShell({
+  children,
+  clearLabel,
+  onClear,
+}: {
+  children: React.ReactNode;
+  clearLabel: string;
+  onClear?: () => void;
+}) {
+  return (
+    <div className="relative inline-block w-fit max-w-full">
+      {children}
+      {onClear ? <MaterialPreviewClearButton label={clearLabel} onClear={onClear} /> : null}
+    </div>
+  );
+}
+
 function KbAttachmentPayloadPreview({
   attachmentType,
+  onClear,
   payload,
 }: {
   attachmentType: KbAttachmentType;
+  onClear?: () => void;
   payload: QuickReplyDraftAttachment;
 }) {
+  if (attachmentType === KB_ATTACHMENT_TYPE.IMAGE && payload.type === "image") {
+    const previewUrl = getKbAttachmentPreviewUrl(payload);
+
+    return (
+      <MaterialPreviewShell clearLabel="移除已选择图片" onClear={onClear}>
+        {previewUrl ? (
+          <img
+            alt=""
+            aria-hidden="true"
+            className="block max-h-44 max-w-60 rounded-[8px] border border-border object-contain"
+            src={previewUrl}
+          />
+        ) : (
+          <div className="flex size-28 items-center justify-center rounded-[8px] border border-dashed border-border bg-muted/30 text-sm text-muted-foreground">
+            图片
+          </div>
+        )}
+      </MaterialPreviewShell>
+    );
+  }
+
   if (attachmentType === KB_ATTACHMENT_TYPE.VIDEO && payload.type === "file") {
     const previewUrl = getKbAttachmentPreviewUrl(payload);
 
     return (
-      <div className="flex min-w-0 items-center gap-3">
-        <div
-          className={cn(
-            "relative size-14 shrink-0 overflow-hidden rounded-[8px] bg-muted",
-            !previewUrl && "border border-border",
-          )}
-        >
-          {previewUrl ? (
-            <img
-              alt=""
-              aria-hidden="true"
-              className="size-full object-cover"
-              src={previewUrl}
-            />
-          ) : null}
-          <span className="absolute inset-0 flex items-center justify-center bg-black/10">
-            <span className="flex size-7 items-center justify-center rounded-full bg-black/45 text-white">
-              <HugeiconsIcon
+      <div className="inline-flex min-w-0 max-w-full items-center gap-3">
+        <MaterialPreviewShell clearLabel="移除已选择视频" onClear={onClear}>
+          <div
+            className={cn(
+              "relative size-16 overflow-hidden rounded-[8px] border border-border bg-muted",
+              !previewUrl && "border-dashed",
+            )}
+          >
+            {previewUrl ? (
+              <img
+                alt=""
                 aria-hidden="true"
-                color="currentColor"
-                icon={PlayIcon}
-                size={14}
-                strokeWidth={1.8}
+                className="size-full object-cover"
+                src={previewUrl}
               />
+            ) : null}
+            <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/10">
+              <span className="flex size-7 items-center justify-center rounded-full bg-black/45 text-white">
+                <HugeiconsIcon
+                  aria-hidden="true"
+                  color="currentColor"
+                  icon={PlayIcon}
+                  size={14}
+                  strokeWidth={1.8}
+                />
+              </span>
             </span>
-          </span>
-        </div>
-        <p className="min-w-0 flex-1 truncate text-sm text-foreground">
+          </div>
+        </MaterialPreviewShell>
+        <p className="min-w-0 max-w-60 truncate text-sm text-foreground">
           {getKbAttachmentTitle(payload)}
         </p>
+      </div>
+    );
+  }
+
+  if (attachmentType === KB_ATTACHMENT_TYPE.FILE && payload.type === "file") {
+    return (
+      <MaterialPreviewShell clearLabel="移除已选择文件" onClear={onClear}>
+        <div className="flex min-w-0 max-w-full items-center gap-3 rounded-[8px] border border-border bg-surface py-2 pl-2 pr-3">
+          <FileExtensionBadge
+            className="size-10"
+            extension={getKbAttachmentFileExtension(payload)}
+          />
+          <span className="min-w-0 max-w-60 truncate text-sm text-foreground">
+            {getKbAttachmentTitle(payload)}
+          </span>
+        </div>
+      </MaterialPreviewShell>
+    );
+  }
+
+  if (attachmentType === KB_ATTACHMENT_TYPE.LINK && payload.type === "h5") {
+    const previewUrl = getKbAttachmentPreviewUrl(payload);
+
+    return (
+      <div className="inline-flex min-w-0 max-w-full items-start gap-3">
+        <MaterialPreviewShell clearLabel="移除已选择链接" onClear={onClear}>
+          <div
+            className={cn(
+              "size-16 overflow-hidden rounded-[8px] border border-border bg-muted",
+              !previewUrl && "border-dashed",
+            )}
+          >
+            {previewUrl ? (
+              <img
+                alt=""
+                aria-hidden="true"
+                className="size-full object-cover"
+                src={previewUrl}
+              />
+            ) : (
+              <div className="flex size-full items-center justify-center text-xs text-muted-foreground">
+                链接
+              </div>
+            )}
+          </div>
+        </MaterialPreviewShell>
+        <p className="min-w-0 max-w-60 line-clamp-2 text-sm leading-6 text-foreground">
+          {getKbAttachmentTitle(payload)}
+        </p>
+      </div>
+    );
+  }
+
+  if (attachmentType === KB_ATTACHMENT_TYPE.MINI_PROGRAM && payload.type === "weapp") {
+    const previewUrl = getKbAttachmentPreviewUrl(payload);
+    const subtitle = readString(payload.content.appName) || "小程序";
+
+    return (
+      <div className="inline-flex min-w-0 max-w-full items-start gap-3">
+        <MaterialPreviewShell clearLabel="移除已选择小程序" onClear={onClear}>
+          <div
+            className={cn(
+              "size-16 overflow-hidden rounded-[8px] border border-border bg-muted",
+              !previewUrl && "border-dashed",
+            )}
+          >
+            {previewUrl ? (
+              <img
+                alt=""
+                aria-hidden="true"
+                className="size-full object-cover"
+                src={previewUrl}
+              />
+            ) : (
+              <div className="flex size-full items-center justify-center text-xs text-muted-foreground">
+                小程序
+              </div>
+            )}
+          </div>
+        </MaterialPreviewShell>
+        <div className="min-w-0 max-w-60">
+          <p className="line-clamp-2 text-sm leading-6 text-foreground">
+            {getKbAttachmentTitle(payload)}
+          </p>
+          <p className="mt-0.5 truncate text-xs text-muted-foreground">{subtitle}</p>
+        </div>
       </div>
     );
   }

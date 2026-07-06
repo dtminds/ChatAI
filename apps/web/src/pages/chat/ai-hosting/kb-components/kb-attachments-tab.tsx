@@ -32,6 +32,7 @@ import { MiniProgramMark } from "@/pages/chat/components/message/miniapp";
 import { getKbDoc } from "@/pages/chat/ai-hosting/api/kb-service";
 import { retryKbDoc } from "@/pages/chat/ai-hosting/api/kb-doc-service";
 import {
+  batchDeleteKbAttachments,
   buildKbAttachmentCreateRequest,
   buildKbAttachmentUpdateRequest,
   createKbAttachment,
@@ -115,6 +116,8 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
   const pollTimerRef = useRef<number | null>(null);
   const isMountedRef = useRef(false);
   const skipNextListLoadRef = useRef(false);
+  const activeTypeRef = useRef(activeType);
+  activeTypeRef.current = activeType;
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -243,11 +246,16 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
         return;
       }
 
-      setAttachments(response.attachments.map(toKbAttachmentItem));
-      setTotal(response.pagination.total);
+      const requestedType = activeTypeRef.current;
+      const isImageProbe = requestedType === KB_ATTACHMENT_TYPE.IMAGE;
+
+      setAttachments(
+        isImageProbe ? response.attachments.map(toKbAttachmentItem) : [],
+      );
+      setTotal(isImageProbe ? response.pagination.total : 0);
       setCurrentPage(1);
       setPhase("ready");
-      skipNextListLoadRef.current = true;
+      skipNextListLoadRef.current = isImageProbe;
     } catch (error) {
       if (!isMountedRef.current) {
         return;
@@ -318,7 +326,9 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
 
     if (skipNextListLoadRef.current) {
       skipNextListLoadRef.current = false;
-      return;
+      if (activeType === KB_ATTACHMENT_TYPE.IMAGE) {
+        return;
+      }
     }
 
     void loadAttachments();
@@ -431,7 +441,7 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
   };
 
   const handleConfirmDelete = async () => {
-    if (!deleteTarget || deleteTarget === "batch" || deleting) {
+    if (!deleteTarget || deleting) {
       setDeleteTarget(null);
       return;
     }
@@ -439,6 +449,31 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
     setDeleting(true);
 
     try {
+      if (deleteTarget === "batch") {
+        if (selectedIds.length === 0) {
+          setDeleteTarget(null);
+          return;
+        }
+
+        const result = await batchDeleteKbAttachments(selectedIds);
+
+        if (!isMountedRef.current) {
+          return;
+        }
+
+        setDeleteTarget(null);
+        setSelectedIds([]);
+        if (result.failCount > 0 && result.successCount === 0) {
+          toast.error("删除失败，请稍后重试");
+        } else if (result.failCount > 0) {
+          toast.warning(`已删除 ${result.successCount} 个，${result.failCount} 个失败`);
+        } else {
+          toast.success("已删除");
+        }
+        await loadAttachments();
+        return;
+      }
+
       await deleteKbAttachment(deleteTarget);
 
       if (!isMountedRef.current) {
@@ -480,13 +515,15 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
   };
 
   const selectedCount = selectedIds.length;
+  const isBatchDelete = deleteTarget === "batch";
   const { activePage, totalPages } = resolveTablePagination({
     page: currentPage,
     pageSize: PAGE_SIZE,
     total,
   });
   const isListLoading = loadingList;
-  const showListTable = isListLoading || attachments.length > 0;
+  const showListTable =
+    isListLoading || attachments.length > 0 || debouncedSearchQuery.length > 0;
 
   if (phase === "uninitialized") {
     return (
@@ -528,8 +565,15 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
             )}
             key={filter.value}
             onClick={() => {
+              if (filter.value === activeType) {
+                return;
+              }
+
               setActiveType(filter.value);
               setSelectedIds([]);
+              setAttachments([]);
+              setTotal(0);
+              setLoadingList(true);
             }}
             role="tab"
             type="button"
@@ -617,11 +661,13 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
             setDeleteTarget(null);
           }
         }}
-        open={deleteTarget !== null && deleteTarget !== "batch"}
+        open={deleteTarget !== null}
       >
         <AlertDialogContent className="max-w-[400px]">
           <AlertDialogHeader>
-            <AlertDialogTitle>是否确认删除</AlertDialogTitle>
+            <AlertDialogTitle>
+              {isBatchDelete ? `是否确认删除 ${selectedCount} 个附件` : "是否确认删除"}
+            </AlertDialogTitle>
             <AlertDialogDescription className="sr-only">
               删除后无法恢复
             </AlertDialogDescription>
@@ -740,12 +786,18 @@ function KbAttachmentsEmptyState() {
                 className="inline-flex h-9 items-center gap-2 rounded-[8px] bg-muted/70 px-3 text-sm text-muted-foreground"
                 key={tag.label}
               >
-                {"icon" in tag ? (
-                  <KbAttachmentExampleOutlineIcon type={tag.icon} />
+                {"brand" in tag && tag.brand === "more" ? (
+                  "..."
                 ) : (
-                  <KbAttachmentExampleBrandIcon type={tag.brand} />
+                  <>
+                    {"icon" in tag ? (
+                      <KbAttachmentExampleOutlineIcon type={tag.icon} />
+                    ) : (
+                      <KbAttachmentExampleBrandIcon type={tag.brand} />
+                    )}
+                    {tag.label}
+                  </>
                 )}
-                {tag.label}
               </span>
             ))}
           </div>
@@ -789,16 +841,8 @@ function KbAttachmentExampleOutlineIcon({
 function KbAttachmentExampleBrandIcon({
   type,
 }: {
-  type: "mini-program" | "more" | "wechat" | "xiaohongshu";
+  type: "mini-program" | "wechat" | "xiaohongshu";
 }) {
-  if (type === "more") {
-    return (
-      <span className="inline-flex size-5 items-center justify-center text-sm leading-none text-muted-foreground">
-        ...
-      </span>
-    );
-  }
-
   if (type === "mini-program") {
     return (
       <span className="inline-flex size-5 items-center justify-center rounded-full bg-[#7b61ff] text-white">

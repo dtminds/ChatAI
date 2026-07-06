@@ -2,11 +2,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Add01Icon,
   AlertCircleIcon,
-  File01Icon,
-  Image01Icon,
-  PlayIcon,
+  Album02Icon,
+  File02Icon,
+  Link04Icon,
   Search01Icon,
   Video01Icon,
+  VideoAiIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { toast } from "sonner";
@@ -22,14 +23,13 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Spinner } from "@/components/ui/spinner";
+import { Progress } from "@/components/ui/progress";
 import {
   resolveTablePagination,
   TablePagination,
 } from "@/components/ui/table-pagination";
 import { cn } from "@/lib/utils";
 import { MiniProgramMark } from "@/pages/chat/components/message/miniapp";
-import { getKbDoc } from "@/pages/chat/ai-hosting/api/kb-service";
 import { retryKbDoc } from "@/pages/chat/ai-hosting/api/kb-doc-service";
 import {
   batchDeleteKbAttachments,
@@ -53,14 +53,20 @@ import {
   type KbAttachmentType,
 } from "./kb-attachment-types";
 
-const PAGE_SIZE = 20;
-const DOC_POLL_INTERVAL_MS = 5000;
+const PAGE_SIZE = 10;
 
 const kbAttachmentInitIllustrationUrl =
   "https://b5.bokr.com.cn/dist/ui/attachment_bg_1.png";
 
 const kbAttachmentEmptyIllustrationUrl =
   "https://b5.bokr.com.cn/dist/ui/attachment_bg_3.png";
+
+const kbAttachmentInitLoadingIllustrationUrl =
+  "https://b5.bokr.com.cn/dist/ui/attachment_bg_3.png";
+
+const ATTACHMENT_INIT_PROGRESS_MIN = 15;
+const ATTACHMENT_INIT_PROGRESS_MAX = 85;
+const ATTACHMENT_INIT_PROGRESS_STEP_MS = 400;
 
 const kbAttachmentExampleTagRows = [
   [
@@ -80,7 +86,6 @@ const kbAttachmentExampleTagRows = [
 type AttachmentPhase =
   | "loading"
   | "uninitialized"
-  | "syncing"
   | "failed"
   | "ready";
 
@@ -93,6 +98,31 @@ function useDebouncedValue<T>(value: T, delayMs: number) {
   }, [delayMs, value]);
 
   return debouncedValue;
+}
+
+function useAttachmentInitProgress(active: boolean) {
+  const [progress, setProgress] = useState(ATTACHMENT_INIT_PROGRESS_MIN);
+
+  useEffect(() => {
+    if (!active) {
+      setProgress(ATTACHMENT_INIT_PROGRESS_MIN);
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      setProgress((current) => {
+        if (current >= ATTACHMENT_INIT_PROGRESS_MAX) {
+          return ATTACHMENT_INIT_PROGRESS_MIN;
+        }
+
+        return current + 5;
+      });
+    }, ATTACHMENT_INIT_PROGRESS_STEP_MS);
+
+    return () => window.clearInterval(timer);
+  }, [active]);
+
+  return progress;
 }
 
 export function KbAttachmentsTab({ kbId }: { kbId: string }) {
@@ -113,7 +143,6 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
   const [deleteTarget, setDeleteTarget] = useState<"batch" | string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const requestVersionRef = useRef(0);
-  const pollTimerRef = useRef<number | null>(null);
   const isMountedRef = useRef(false);
   const skipNextListLoadRef = useRef(false);
   const activeTypeRef = useRef(activeType);
@@ -127,13 +156,6 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
     };
   }, []);
 
-  const clearPollTimer = useCallback(() => {
-    if (pollTimerRef.current != null) {
-      window.clearInterval(pollTimerRef.current);
-      pollTimerRef.current = null;
-    }
-  }, []);
-
   const loadAttachments = useCallback(async (options?: { page?: number }) => {
     if (!kbId) {
       return;
@@ -143,9 +165,10 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
     setLoadingList(true);
 
     try {
+      const requestedPage = options?.page ?? currentPage;
       const response = await listKbAttachments(kbId, {
         attachmentType: activeType,
-        page: options?.page ?? currentPage,
+        page: requestedPage,
         pageSize: PAGE_SIZE,
         query: debouncedSearchQuery || undefined,
       });
@@ -154,8 +177,37 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
         return;
       }
 
+      const newTotal = response.pagination.total;
+      const newTotalPages = Math.max(1, Math.ceil(newTotal / PAGE_SIZE));
+      const resolvedPage =
+        newTotal === 0 ? 1 : Math.min(Math.max(1, requestedPage), newTotalPages);
+
+      if (resolvedPage !== requestedPage && newTotal > 0) {
+        const corrected = await listKbAttachments(kbId, {
+          attachmentType: activeType,
+          page: resolvedPage,
+          pageSize: PAGE_SIZE,
+          query: debouncedSearchQuery || undefined,
+        });
+
+        if (version !== requestVersionRef.current || !isMountedRef.current) {
+          return;
+        }
+
+        setAttachments(corrected.attachments.map(toKbAttachmentItem));
+        setTotal(corrected.pagination.total);
+        skipNextListLoadRef.current = true;
+        setCurrentPage(resolvedPage);
+        setPhase("ready");
+        return;
+      }
+
       setAttachments(response.attachments.map(toKbAttachmentItem));
-      setTotal(response.pagination.total);
+      setTotal(newTotal);
+      if (resolvedPage !== currentPage) {
+        skipNextListLoadRef.current = true;
+        setCurrentPage(resolvedPage);
+      }
       setPhase("ready");
     } catch (error) {
       if (version !== requestVersionRef.current || !isMountedRef.current) {
@@ -179,50 +231,6 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
     }
   }, [activeType, currentPage, debouncedSearchQuery, kbId]);
 
-  const loadAttachmentsRef = useRef(loadAttachments);
-  loadAttachmentsRef.current = loadAttachments;
-
-  const pollAttachmentDocStatus = useCallback(async (docId: string) => {
-    try {
-      const doc = await getKbDoc(docId);
-
-      if (!isMountedRef.current) {
-        return;
-      }
-
-      if (doc.status === "completed") {
-        clearPollTimer();
-        setPhase("ready");
-        await loadAttachmentsRef.current({ page: 1 });
-        return;
-      }
-
-      if (doc.status === "failed") {
-        clearPollTimer();
-        setPhase("failed");
-      }
-    } catch {
-      if (!isMountedRef.current) {
-        return;
-      }
-    }
-  }, [clearPollTimer]);
-
-  const startDocStatusPolling = useCallback((docId: string) => {
-    clearPollTimer();
-    setAttachmentDocId(docId);
-    setPhase("syncing");
-
-    void pollAttachmentDocStatus(docId);
-
-    pollTimerRef.current = window.setInterval(() => {
-      void pollAttachmentDocStatus(docId);
-    }, DOC_POLL_INTERVAL_MS);
-  }, [clearPollTimer, pollAttachmentDocStatus]);
-
-  const startDocStatusPollingRef = useRef(startDocStatusPolling);
-  startDocStatusPollingRef.current = startDocStatusPolling;
-
   const probeInitialState = useCallback(async () => {
     if (!kbId) {
       setPhase("uninitialized");
@@ -232,8 +240,6 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
 
     setPhase("loading");
     setLoadingList(true);
-
-    let enteredSyncing = false;
 
     try {
       const response = await listKbAttachments(kbId, {
@@ -262,39 +268,18 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
       }
 
       if (isKbAttachmentNotInitialized(error)) {
+        setAttachments([]);
+        setTotal(0);
         setPhase("uninitialized");
         return;
       }
 
-      try {
-        const initResult = await initKbAttachments(kbId);
-
-        if (!isMountedRef.current) {
-          return;
-        }
-
-        setAttachmentDocId(initResult.docId);
-
-        if (initResult.status === "completed") {
-          setPhase("ready");
-          setCurrentPage(1);
-          return;
-        }
-
-        if (initResult.status === "failed") {
-          setPhase("failed");
-          return;
-        }
-
-        startDocStatusPollingRef.current(initResult.docId);
-        enteredSyncing = true;
-      } catch {
-        if (isMountedRef.current) {
-          setPhase("uninitialized");
-        }
-      }
+      setAttachments([]);
+      setTotal(0);
+      setPhase("ready");
+      toast.error("加载失败，请稍后重试");
     } finally {
-      if (isMountedRef.current && !enteredSyncing) {
+      if (isMountedRef.current) {
         setLoadingList(false);
       }
     }
@@ -306,9 +291,8 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
     return () => {
       requestVersionRef.current++;
       skipNextListLoadRef.current = false;
-      clearPollTimer();
     };
-  }, [clearPollTimer, kbId, probeInitialState]);
+  }, [kbId, probeInitialState]);
 
   useEffect(() => {
     if (phase !== "ready") {
@@ -350,19 +334,14 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
 
       setAttachmentDocId(initResult.docId);
 
-      if (initResult.status === "completed") {
-        setPhase("ready");
-        setCurrentPage(1);
-        await loadAttachments({ page: 1 });
-        return;
-      }
-
       if (initResult.status === "failed") {
         setPhase("failed");
         return;
       }
 
-      startDocStatusPolling(initResult.docId);
+      setPhase("ready");
+      setCurrentPage(1);
+      await loadAttachments({ page: 1 });
     } catch {
       if (isMountedRef.current) {
         toast.error("初始化失败，请稍后重试");
@@ -388,7 +367,9 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
         return;
       }
 
-      startDocStatusPolling(attachmentDocId);
+      setPhase("ready");
+      setCurrentPage(1);
+      await loadAttachments({ page: 1 });
     } catch {
       if (isMountedRef.current) {
         toast.error("重试失败，请稍后重试");
@@ -525,17 +506,18 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
   const showListTable =
     isListLoading || attachments.length > 0 || debouncedSearchQuery.length > 0;
 
-  if (phase === "uninitialized") {
-    return (
-      <KbAttachmentsInitState
-        initializing={initializing}
-        onInitialize={() => void handleInitialize()}
-      />
-    );
+  if (phase === "loading") {
+    return <div aria-hidden="true" className="min-h-[420px]" />;
   }
 
-  if (phase === "syncing") {
-    return <KbAttachmentsSyncingState />;
+  if (initializing) {
+    return <KbAttachmentsInitLoadingState />;
+  }
+
+  if (phase === "uninitialized") {
+    return (
+      <KbAttachmentsInitState onInitialize={() => void handleInitialize()} />
+    );
   }
 
   if (phase === "failed") {
@@ -623,7 +605,7 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
       </div>
 
       {showListTable ? (
-        <>
+        <div>
           <KbAttachmentsTable
             activeType={activeType}
             items={attachments}
@@ -634,15 +616,13 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
             onToggleSelectItem={toggleSelectItem}
             selectedIds={selectedIds}
           />
-          {!isListLoading && totalPages > 1 ? (
-            <TablePagination
-              onPageChange={setCurrentPage}
-              page={activePage}
-              total={total}
-              totalPages={totalPages}
-            />
-          ) : null}
-        </>
+          <TablePagination
+            onPageChange={setCurrentPage}
+            page={activePage}
+            total={total}
+            totalPages={totalPages}
+          />
+        </div>
       ) : (
         <KbAttachmentsEmptyState />
       )}
@@ -689,10 +669,8 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
 }
 
 function KbAttachmentsInitState({
-  initializing,
   onInitialize,
 }: {
-  initializing: boolean;
   onInitialize: () => void;
 }) {
   return (
@@ -708,25 +686,38 @@ function KbAttachmentsInitState({
       </p>
       <Button
         className="mt-6 h-10 px-6"
-        disabled={initializing}
         onClick={onInitialize}
         type="button"
         variant="outline"
       >
-        {initializing ? "正在初始化" : "开始初始化"}
+        开始初始化
       </Button>
     </div>
   );
 }
 
-function KbAttachmentsSyncingState() {
+function KbAttachmentsInitLoadingState() {
+  const progress = useAttachmentInitProgress(true);
+
   return (
     <div
-      className="flex min-h-[420px] flex-col items-center justify-center gap-3 px-6 py-10 text-center"
+      className="flex min-h-[420px] flex-col items-center justify-center px-6 py-10 text-center"
       role="status"
     >
-      <Spinner className="size-6" />
-      <p className="text-sm text-muted-foreground">附件库正在同步</p>
+      <img
+        alt=""
+        aria-hidden="true"
+        className="mb-8 h-40 w-40 object-contain"
+        src={kbAttachmentInitLoadingIllustrationUrl}
+      />
+      <div className="w-full max-w-[280px]">
+        <Progress
+          aria-label="附件库初始化进度"
+          className="h-2 bg-muted"
+          value={progress}
+        />
+      </div>
+      <p className="mt-4 text-sm text-muted-foreground">请耐心等待哦～</p>
     </div>
   );
 }
@@ -818,12 +809,12 @@ function KbAttachmentExampleOutlineIcon({
 }) {
   const icon =
     type === "file"
-      ? File01Icon
+      ? File02Icon
       : type === "image"
-        ? Image01Icon
+        ? Album02Icon
         : type === "poster"
           ? Video01Icon
-          : PlayIcon;
+          : VideoAiIcon;
 
   return (
     <span className="inline-flex size-5 items-center justify-center text-muted-foreground/80">
@@ -851,17 +842,17 @@ function KbAttachmentExampleBrandIcon({
     );
   }
 
-  if (type === "wechat") {
-    return (
-      <span className="inline-flex size-5 items-center justify-center rounded-full bg-[#07c160] text-[10px] font-semibold leading-none text-white">
-        公
-      </span>
-    );
-  }
+  const icon = type === "wechat" ? File02Icon : Link04Icon;
 
   return (
-    <span className="inline-flex size-5 items-center justify-center rounded-full bg-[#ff2442] text-[10px] font-semibold leading-none text-white">
-      红
+    <span className="inline-flex size-5 items-center justify-center text-muted-foreground/80">
+      <HugeiconsIcon
+        aria-hidden="true"
+        color="currentColor"
+        icon={icon}
+        size={15}
+        strokeWidth={1.8}
+      />
     </span>
   );
 }

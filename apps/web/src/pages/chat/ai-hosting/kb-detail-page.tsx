@@ -4,16 +4,16 @@ import {
   AlertCircleIcon,
   AiMagicIcon,
   ArrowLeft01Icon,
-  Book04Icon,
   CheckmarkCircle02Icon,
+  ClipboardListIcon,
   Clock04Icon,
-  File01Icon,
-  HelpCircleIcon,
+  CustomerService01Icon,
+  DeliveryReturn02Icon,
   Loading03Icon,
-  Location01Icon,
-  Message01Icon,
-  RefreshIcon,
+  MessageSearch02Icon,
   Search01Icon,
+  ShippingTruck01Icon,
+  ShoppingBag01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { KB_SEARCH_QUERY_MAX_LENGTH } from "@chatai/contracts";
@@ -738,16 +738,16 @@ function KbKnowledgeExampleOutlineIcon({
 }) {
   const icon =
     type === "product"
-      ? Book04Icon
+      ? ShoppingBag01Icon
       : type === "rules"
-        ? File01Icon
+        ? ClipboardListIcon
         : type === "qa"
-          ? Message01Icon
+          ? CustomerService01Icon
           : type === "faq"
-            ? HelpCircleIcon
+            ? MessageSearch02Icon
             : type === "return"
-              ? RefreshIcon
-              : Location01Icon;
+              ? DeliveryReturn02Icon
+              : ShippingTruck01Icon;
 
   return (
     <span className="inline-flex size-5 items-center justify-center text-muted-foreground/80">

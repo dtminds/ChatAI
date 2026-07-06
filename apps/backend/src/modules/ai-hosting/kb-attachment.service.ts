@@ -34,7 +34,7 @@ const KB_CHUNK_SOURCE_MANUAL = 1;
 const KB_CHUNK_TITLE_MAX_LENGTH = 256;
 const dbActiveStatus = 1;
 const defaultAttachmentPage = 1;
-const defaultAttachmentPageSize = 20;
+const defaultAttachmentPageSize = 10;
 const maxAttachmentPageSize = 100;
 
 type KbAttachmentServiceLogger = {

@@ -17,6 +17,7 @@ describe("settings sub-account routes", () => {
     });
 
     expect(response.statusCode).toBe(200);
+    expect(db.scopeLookupCount).toBe(0);
     expect(db.joinCalls).toEqual([]);
     expect(response.json()).toEqual({
       data: {
@@ -71,6 +72,8 @@ describe("settings sub-account routes", () => {
       success: true,
     });
     expect(db.getSubAccountListWheres()).toContainEqual(["sub_user.uid", "=", 9001]);
+    expect(db.getSubAccountListWheres()).not.toContainEqual(["sub_user.platform", "=", 5]);
+    expect(db.seatListWheres).toContainEqual(["platform", "=", 5]);
 
     await app.close();
   });
@@ -406,7 +409,7 @@ function createSettingsDbMock() {
       account: "owner",
       id: 1,
       name: "主账号",
-      platform: 5,
+      platform: 6,
       role: "operator",
       status: 1,
       type: 1,
@@ -467,6 +470,7 @@ function createSettingsDbMock() {
     releasedHostSubUserIds: [] as number[],
     revokedSessionSubUserIds: [] as number[],
     seatListWheres: [] as Array<[string, string, unknown]>,
+    scopeLookupCount: 0,
     statusUpdates: [] as number[],
     subAccountListWheres: [] as Array<[string, string, unknown]>,
     updatedSubAccount: undefined as Record<string, unknown> | undefined,
@@ -483,6 +487,16 @@ function createSettingsDbMock() {
             return seats
               .filter((seat) => {
                 const seatIdFilter = wheres.find(([column]) => column === "id");
+                const uidFilter = wheres.find(([column]) => column === "uid")?.[2];
+                const platformFilter = wheres.find(([column]) => column === "platform")?.[2];
+
+                if (uidFilter !== undefined && seat.uid !== uidFilter) {
+                  return false;
+                }
+
+                if (platformFilter !== undefined && seat.platform !== platformFilter) {
+                  return false;
+                }
 
                 if (!seatIdFilter) {
                   return true;
@@ -509,9 +523,25 @@ function createSettingsDbMock() {
 
           if (table === "xy_wap_embed_user_seat_sub_relation as relation") {
             const subId = wheres.find(([column]) => column === "relation.sub_id")?.[2];
+            const uidFilter = wheres.find(([column]) => column === "relation.uid")?.[2];
+            const platformFilter = wheres.find(([column]) => column === "relation.platform")?.[2];
 
             return [...relations, ...state.insertedRelations]
-              .filter((relation) => subId === undefined || relation.sub_id === subId)
+              .filter((relation) => {
+                if (subId !== undefined && relation.sub_id !== subId) {
+                  return false;
+                }
+
+                if (uidFilter !== undefined && relation.uid !== uidFilter) {
+                  return false;
+                }
+
+                if (platformFilter !== undefined && relation.platform !== platformFilter) {
+                  return false;
+                }
+
+                return true;
+              })
               .map((relation) => {
                 const seat = seats.find((item) => item.id === relation.user_seat_id);
 
@@ -534,6 +564,16 @@ function createSettingsDbMock() {
                 }
 
                 const id = wheres.find(([column]) => column === "sub_user.id")?.[2];
+                const uid = wheres.find(([column]) => column === "sub_user.uid")?.[2];
+                const platform = wheres.find(([column]) => column === "sub_user.platform")?.[2];
+
+                if (uid !== undefined && subUser.uid !== uid) {
+                  return false;
+                }
+
+                if (platform !== undefined && subUser.platform !== platform) {
+                  return false;
+                }
 
                 return id ? subUser.id === id : true;
               })
@@ -562,6 +602,7 @@ function createSettingsDbMock() {
           }
 
           if (table === "xy_wap_embed_sub_user") {
+            state.scopeLookupCount += 1;
             if (wheres.some(([column]) => column === "account")) {
               const account = wheres.find(([column]) => column === "account")?.[2];
 
@@ -630,7 +671,7 @@ function createSettingsDbMock() {
               account: String(state.insertedSubAccount.account),
               id: 13,
               name: String(state.insertedSubAccount.name),
-              platform: Number(state.insertedSubAccount.platform),
+              platform: Number(state.insertedSubAccount.platform ?? 5),
               role: String(state.insertedSubAccount.role),
               status: Number(state.insertedSubAccount.status),
               type: Number(state.insertedSubAccount.type),

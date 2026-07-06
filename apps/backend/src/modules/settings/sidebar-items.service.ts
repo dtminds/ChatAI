@@ -14,11 +14,9 @@ import {
   NotFoundError,
   ServiceUnavailableError,
 } from "../../shared/errors.js";
+import type { AuthenticatedWorkbenchScope } from "../workbench-platform-scope.js";
 
-type TenantScope = {
-  platform: number;
-  uid: number;
-};
+type TenantScope = AuthenticatedWorkbenchScope;
 
 type SidebarItemRow = {
   bind_types?: string | null;
@@ -42,19 +40,16 @@ const maxSidebarItemNameWeight = 8;
 export class SidebarItemsSettingsService {
   constructor(private readonly db: Kysely<Database>) {}
 
-  async list(currentSubUserId: string): Promise<SettingsSidebarItemsResponse> {
-    const scope = await this.getTenantScope(currentSubUserId);
-
+  async list(scope: TenantScope): Promise<SettingsSidebarItemsResponse> {
     return {
       items: (await this.listRows(scope)).map(mapSidebarItem),
     };
   }
 
   async create(
-    currentSubUserId: string,
+    scope: TenantScope,
     payload: SettingsSidebarItemCreateRequest,
   ): Promise<SettingsSidebarItem> {
-    const scope = await this.getTenantScope(currentSubUserId);
     const normalized = normalizeSidebarPayload(payload);
     const bindTypes = normalizeSidebarBindTypesRequest(payload.bindTypes);
     const currentItems = await this.listRows(scope);
@@ -94,11 +89,10 @@ export class SidebarItemsSettingsService {
   }
 
   async update(
-    currentSubUserId: string,
+    scope: TenantScope,
     sidebarItemId: string,
     payload: SettingsSidebarItemUpdateRequest,
   ): Promise<SettingsSidebarItem> {
-    const scope = await this.getTenantScope(currentSubUserId);
     const numericSidebarItemId = parseMySqlId(sidebarItemId);
     const normalized = normalizeSidebarPayload(payload);
     const bindTypes = normalizeSidebarBindTypesRequest(payload.bindTypes);
@@ -126,11 +120,10 @@ export class SidebarItemsSettingsService {
   }
 
   async updateStatus(
-    currentSubUserId: string,
+    scope: TenantScope,
     sidebarItemId: string,
     status: SettingsSidebarItemStatus,
   ): Promise<SettingsSidebarItem> {
-    const scope = await this.getTenantScope(currentSubUserId);
     const numericSidebarItemId = parseMySqlId(sidebarItemId);
 
     if (numericSidebarItemId == null) {
@@ -154,10 +147,9 @@ export class SidebarItemsSettingsService {
   }
 
   async updateSort(
-    currentSubUserId: string,
+    scope: TenantScope,
     payload: SettingsSidebarItemsSortUpdateRequest,
   ): Promise<SettingsSidebarItemsResponse> {
-    const scope = await this.getTenantScope(currentSubUserId);
     const itemIds = normalizeSidebarItemIds(payload.itemIds);
 
     if (itemIds.length !== payload.itemIds.length || itemIds.length === 0) {
@@ -191,11 +183,10 @@ export class SidebarItemsSettingsService {
       );
     });
 
-    return this.list(currentSubUserId);
+    return this.list(scope);
   }
 
-  async remove(currentSubUserId: string, sidebarItemId: string) {
-    const scope = await this.getTenantScope(currentSubUserId);
+  async remove(scope: TenantScope, sidebarItemId: string) {
     const numericSidebarItemId = parseMySqlId(sidebarItemId);
 
     if (numericSidebarItemId == null) {
@@ -216,30 +207,6 @@ export class SidebarItemsSettingsService {
       .execute();
 
     return { deleted: true };
-  }
-
-  private async getTenantScope(currentSubUserId: string): Promise<TenantScope> {
-    const numericSubUserId = parseMySqlId(currentSubUserId);
-
-    if (numericSubUserId == null) {
-      throw new BadRequestError("INVALID_SUB_ACCOUNT", "当前账号无效");
-    }
-
-    const currentSubUser = await this.db
-      .selectFrom("xy_wap_embed_sub_user")
-      .select(["platform", "uid"])
-      .where("id", "=", numericSubUserId)
-      .where("status", "=", dbActiveStatus)
-      .executeTakeFirst();
-
-    if (!currentSubUser) {
-      throw new NotFoundError("SUB_ACCOUNT_NOT_FOUND", "当前账号不存在");
-    }
-
-    return {
-      platform: currentSubUser.platform,
-      uid: currentSubUser.uid,
-    };
   }
 
   private listRows(scope: TenantScope) {

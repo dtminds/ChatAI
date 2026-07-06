@@ -6,6 +6,7 @@ import type {
 import type { Insertable, Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
 import { BadRequestError, ForbiddenError, NotFoundError } from "../../shared/errors.js";
+import type { AuthenticatedWorkbenchScope } from "../workbench-platform-scope.js";
 import {
   type AgentRow,
   AiHostingAgentService,
@@ -13,10 +14,7 @@ import {
 } from "./ai-hosting-agent.service.js";
 import { normalizeIdList, parseMySqlId } from "./ai-hosting-id-utils.js";
 
-type SettingsScope = {
-  platform: number;
-  uid: number;
-};
+type SettingsScope = AuthenticatedWorkbenchScope;
 
 type HostingSettingsSeatRow = {
   avatarUrl: string | null;
@@ -33,7 +31,6 @@ type UserSeatAgentRow = {
 
 type UserSeatAgentInsert = Insertable<Database["xy_wap_embed_user_seat_agent"]>;
 
-const dbActiveStatus = 1;
 const hostingSettingsSeatLimit = 200;
 const fullAutoAuthUnavailableMessage = "该功能内测中，如需开通请联系客服";
 
@@ -44,8 +41,7 @@ export class AiHostingSettingsService {
     this.agentService = new AiHostingAgentService(db);
   }
 
-  async listHostingSettings(currentSubUserId: string): Promise<AiHostingSettingsResponse> {
-    const scope = await this.getSettingsScope(currentSubUserId);
+  async listHostingSettings(scope: SettingsScope): Promise<AiHostingSettingsResponse> {
     const [seats, agents] = await Promise.all([
       this.listHostingSettingSeats(scope),
       this.agentService.listAllAgentRows(scope.uid),
@@ -64,10 +60,9 @@ export class AiHostingSettingsService {
   }
 
   async updateHostingSettings(
-    currentSubUserId: string,
+    scope: SettingsScope,
     payload: AiHostingSettingsUpdateRequest,
   ): Promise<AiHostingSettingsResponse> {
-    const scope = await this.getSettingsScope(currentSubUserId);
     const agentId = parseMySqlId(payload.agentId);
     const userSeatIds = normalizeIdList(payload.userSeatIds);
 
@@ -125,31 +120,7 @@ export class AiHostingSettingsService {
         .execute();
     }
 
-    return this.listHostingSettings(currentSubUserId);
-  }
-
-  private async getSettingsScope(currentSubUserId: string): Promise<SettingsScope> {
-    const numericSubUserId = parseMySqlId(currentSubUserId);
-
-    if (numericSubUserId == null) {
-      throw new BadRequestError("INVALID_SUB_ACCOUNT", "当前账号无效");
-    }
-
-    const currentSubUser = await this.db
-      .selectFrom("xy_wap_embed_sub_user")
-      .select(["platform", "uid"])
-      .where("id", "=", numericSubUserId)
-      .where("status", "=", dbActiveStatus)
-      .executeTakeFirst();
-
-    if (!currentSubUser) {
-      throw new NotFoundError("SUB_ACCOUNT_NOT_FOUND", "当前账号不存在");
-    }
-
-    return {
-      platform: currentSubUser.platform,
-      uid: currentSubUser.uid,
-    };
+    return this.listHostingSettings(scope);
   }
 
   private listHostingSettingSeats(scope: SettingsScope, seatIds?: number[]) {

@@ -22,6 +22,7 @@ import {
 import { Type, type Static } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { ForbiddenError } from "../../shared/errors.js";
+import { getAuthenticatedWorkbenchScope } from "../workbench-platform-scope.js";
 import { createWorkbenchJavaClient } from "../chat/workbench-java-client.js";
 import { createManagedAccountSettingsService } from "./managed-accounts.service.js";
 import { createSidebarItemsSettingsService } from "./sidebar-items.service.js";
@@ -48,7 +49,9 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
     preHandler: app.authenticate,
   }, async (request) => {
     return apiSuccess(
-      await createManagedAccountSettingsService(app.db, app.cache, app.cacheKeys).list(getSubUserId(request)),
+      await createManagedAccountSettingsService(app.db, app.cache, app.cacheKeys).list(
+        getAuthenticatedWorkbenchScope(request.user),
+      ),
     );
   });
 
@@ -68,7 +71,7 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
       assertSettingsManage(request);
       return apiSuccess(
         await createManagedAccountSettingsService(app.db, app.cache, app.cacheKeys).updateSubAccounts(
-          getSubUserId(request),
+          getAuthenticatedWorkbenchScope(request.user),
           request.params.managedAccountId,
           request.body,
         ),
@@ -92,7 +95,7 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
       assertSettingsManage(request);
       return apiSuccess(
         await createManagedAccountSettingsService(app.db, app.cache, app.cacheKeys).syncSeatGroups(
-          getSubUserId(request),
+          getAuthenticatedWorkbenchScope(request.user),
           request.params.managedAccountId,
           request.body,
           createWorkbenchJavaClient(app.log),
@@ -105,7 +108,9 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
     preHandler: app.authenticate,
   }, async (request) => {
     return apiSuccess(
-      await createSubAccountSettingsService(app.db, app.cache, app.cacheKeys).list(getSubUserId(request)),
+      await createSubAccountSettingsService(app.db, app.cache, app.cacheKeys).list(
+        getAuthenticatedWorkbenchScope(request.user),
+      ),
     );
   });
 
@@ -113,7 +118,9 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
     preHandler: app.authenticate,
   }, async (request) => {
     return apiSuccess(
-      await createSidebarItemsSettingsService(app.db).list(getSubUserId(request)),
+      await createSidebarItemsSettingsService(app.db).list(
+        getAuthenticatedWorkbenchScope(request.user),
+      ),
     );
   });
 
@@ -129,7 +136,7 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
       assertSettingsManage(request);
       return apiSuccess(
         await createSidebarItemsSettingsService(app.db).create(
-          getSubUserId(request),
+          getAuthenticatedWorkbenchScope(request.user),
           request.body,
         ),
       );
@@ -150,7 +157,7 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
       assertSettingsManage(request);
       return apiSuccess(
         await createSidebarItemsSettingsService(app.db).updateSort(
-          getSubUserId(request),
+          getAuthenticatedWorkbenchScope(request.user),
           request.body,
         ),
       );
@@ -173,7 +180,7 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
       assertSettingsManage(request);
       return apiSuccess(
         await createSidebarItemsSettingsService(app.db).update(
-          getSubUserId(request),
+          getAuthenticatedWorkbenchScope(request.user),
           request.params.sidebarItemId,
           request.body,
         ),
@@ -197,7 +204,7 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
       assertSettingsManage(request);
       return apiSuccess(
         await createSidebarItemsSettingsService(app.db).updateStatus(
-          getSubUserId(request),
+          getAuthenticatedWorkbenchScope(request.user),
           request.params.sidebarItemId,
           request.body.status,
         ),
@@ -217,7 +224,7 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
       assertSettingsManage(request);
       return apiSuccess(
         await createSidebarItemsSettingsService(app.db).remove(
-          getSubUserId(request),
+          getAuthenticatedWorkbenchScope(request.user),
           request.params.sidebarItemId,
         ),
       );
@@ -236,7 +243,7 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
       assertSettingsManage(request);
       return apiSuccess(
         await createSubAccountSettingsService(app.db, app.cache, app.cacheKeys).create(
-          getSubUserId(request),
+          getAuthenticatedWorkbenchScope(request.user),
           request.body,
         ),
       );
@@ -259,7 +266,7 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
       assertSettingsManage(request);
       return apiSuccess(
         await createSubAccountSettingsService(app.db, app.cache, app.cacheKeys).update(
-          getSubUserId(request),
+          getAuthenticatedWorkbenchScope(request.user),
           request.params.subAccountId,
           request.body,
         ),
@@ -283,7 +290,7 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
       assertSettingsManage(request);
       return apiSuccess(
         await createSubAccountSettingsService(app.db, app.cache, app.cacheKeys).updateStatus(
-          getSubUserId(request),
+          getAuthenticatedWorkbenchScope(request.user),
           request.params.subAccountId,
           request.body.status,
         ),
@@ -303,16 +310,12 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
       assertSettingsManage(request);
       return apiSuccess(
         await createSubAccountSettingsService(app.db, app.cache, app.cacheKeys).remove(
-          getSubUserId(request),
+          getAuthenticatedWorkbenchScope(request.user),
           request.params.subAccountId,
         ),
       );
     },
   );
-}
-
-function getSubUserId(request: { user?: { subUserId: string } }) {
-  return request.user?.subUserId ?? "";
 }
 
 function assertSettingsAccess(request: FastifyRequest) {

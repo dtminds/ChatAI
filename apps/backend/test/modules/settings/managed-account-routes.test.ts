@@ -12,6 +12,8 @@ describe("settings managed-account routes", () => {
     });
 
     expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(db.scopeLookupCount).toBe(0);
     expect(db.joinCalls).toEqual([]);
     expect(db.limitCalls).toContainEqual({
       table: "xy_wap_embed_user_seat as seat",
@@ -23,7 +25,10 @@ describe("settings managed-account routes", () => {
       "in",
       [101, 102],
     ]);
-    expect(response.json()).toEqual({
+    expect(
+      body.data.managedAccounts.map((account: { id: string }) => account.id),
+    ).not.toContain("103");
+    expect(body).toEqual({
       data: {
         managedAccounts: [
           {
@@ -115,6 +120,8 @@ describe("settings managed-account routes", () => {
     expect(response.statusCode).toBe(200);
     expect(db.joinCalls).toEqual([]);
     expect(db.managedAccountSeatWheres).not.toContainEqual(["seat.biz_status", "=", 1]);
+    expect(db.managedAccountSeatWheres).toContainEqual(["seat.platform", "=", 5]);
+    expect(db.subAccountValidationWheres).not.toContainEqual(["sub_user.platform", "=", 5]);
     expect(db.subAccountValidationWheres).toContainEqual(["sub_user.id", "in", [12]]);
     expect(db.deletedRelationSeatIds).toEqual([101]);
     expect(app.cache.del).toHaveBeenCalledWith(
@@ -230,7 +237,7 @@ function createSettingsDbMock() {
       account: "owner",
       id: 1,
       name: "主账号",
-      platform: 5,
+      platform: 6,
       status: 1,
       type: 1,
       uid: 9001,
@@ -275,6 +282,16 @@ function createSettingsDbMock() {
       third_userid: "user-102",
       uid: 9001,
     },
+    {
+      host_sub_id: 11,
+      id: 103,
+      is_online: 1,
+      platform: 6,
+      third_avatar: "https://example.com/cross-platform.png",
+      third_user_name: "跨平台托管账号",
+      third_userid: "user-103",
+      uid: 9001,
+    },
   ];
   const groupSeats = [
     {
@@ -313,6 +330,7 @@ function createSettingsDbMock() {
     managedAccountSeatWheres: [] as Array<[string, string, unknown]>,
     relationListWheres: [] as Array<[string, string, unknown]>,
     subAccountValidationWheres: [] as Array<[string, string, unknown]>,
+    scopeLookupCount: 0,
     selectFrom(table: string) {
       if (table === "xy_wap_embed_group_seat") {
         const wheres: Array<[string, string, unknown]> = [];
@@ -377,6 +395,16 @@ function createSettingsDbMock() {
             return seats
               .filter((seat) => {
                 const id = wheres.find(([column]) => column === "seat.id")?.[2];
+                const uid = wheres.find(([column]) => column === "seat.uid")?.[2];
+                const platform = wheres.find(([column]) => column === "seat.platform")?.[2];
+
+                if (uid !== undefined && seat.uid !== uid) {
+                  return false;
+                }
+
+                if (platform !== undefined && seat.platform !== platform) {
+                  return false;
+                }
 
                 return id ? seat.id === id : true;
               })
@@ -400,7 +428,17 @@ function createSettingsDbMock() {
                 }
 
                 const idFilter = wheres.find(([column]) => column === "sub_user.id")?.[2];
+                const uidFilter = wheres.find(([column]) => column === "sub_user.uid")?.[2];
+                const platformFilter = wheres.find(([column]) => column === "sub_user.platform")?.[2];
                 const typeFilter = wheres.find(([column]) => column === "sub_user.type")?.[2];
+
+                if (uidFilter !== undefined && subUser.uid !== uidFilter) {
+                  return false;
+                }
+
+                if (platformFilter !== undefined && subUser.platform !== platformFilter) {
+                  return false;
+                }
 
                 if (
                   Array.isArray(idFilter) &&
@@ -423,6 +461,8 @@ function createSettingsDbMock() {
           if (table === "xy_wap_embed_user_seat_sub_relation as relation") {
             state.relationListWheres = wheres;
             const seatId = wheres.find(([column]) => column === "relation.user_seat_id")?.[2];
+            const uid = wheres.find(([column]) => column === "relation.uid")?.[2];
+            const platform = wheres.find(([column]) => column === "relation.platform")?.[2];
 
             return [
               ...relations.filter((relation) =>
@@ -431,6 +471,14 @@ function createSettingsDbMock() {
               ...state.insertedRelations,
             ]
               .filter((relation) => {
+                if (uid !== undefined && relation.uid !== uid) {
+                  return false;
+                }
+
+                if (platform !== undefined && relation.platform !== platform) {
+                  return false;
+                }
+
                 if (seatId === undefined) {
                   return true;
                 }
@@ -460,6 +508,7 @@ function createSettingsDbMock() {
           }
 
           if (table === "xy_wap_embed_sub_user") {
+            state.scopeLookupCount += 1;
             const id = wheres.find(([column]) => column === "id")?.[2];
 
             return id
@@ -468,6 +517,7 @@ function createSettingsDbMock() {
           }
 
           if (table === "xy_wap_embed_user_seat as seat") {
+            state.managedAccountSeatWheres = wheres;
             const id = wheres.find(([column]) => column === "seat.id")?.[2];
             const seat = seats.find((item) => item.id === id);
 

@@ -18,6 +18,54 @@ describe("MysqlWorkbenchService", () => {
     vi.unstubAllEnvs();
   });
 
+  it("does not expose sub-user platform from the public me response", async () => {
+    const javaClient = createJavaClient();
+    const service = createWorkbenchService(
+      {
+        getSubUser: vi.fn().mockResolvedValue({
+          displayName: "客服一号",
+          platform: 6,
+          subUserId: "101",
+          uid: 9001,
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(service.getMe("101")).resolves.toEqual({
+      displayName: "客服一号",
+      subUserId: "101",
+      uid: 9001,
+    });
+  });
+
+  it("lists seats with the authenticated workbench scope", async () => {
+    const javaClient = createJavaClient();
+    const listSeats = vi.fn().mockResolvedValue([]);
+    const service = createWorkbenchService(
+      {
+        getSubUser: vi.fn().mockResolvedValue({
+          displayName: "客服一号",
+          platform: 6,
+          subUserId: "101",
+          uid: 9001,
+        }),
+        listSeats,
+      } as unknown as WorkbenchRepository,
+      javaClient,
+      undefined,
+      undefined,
+      { platform: 5, uid: 9001 } as never,
+    );
+
+    await expect(service.getSeats("101")).resolves.toEqual([]);
+    expect(listSeats).toHaveBeenCalledWith({
+      platform: 5,
+      subUserId: "101",
+      uid: 9001,
+    });
+  });
+
   it("lists my customers with visible seat filters", async () => {
     const javaClient = createJavaClient();
     const listCustomers = vi.fn().mockResolvedValue({
@@ -25,45 +73,55 @@ describe("MysqlWorkbenchService", () => {
       items: [],
       total: 0,
     });
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         getSubUser: vi.fn().mockResolvedValue({
           displayName: "客服一号",
-          subUserId: "101",
-        }),
-        listCustomers,
-      } as unknown as WorkbenchRepository,
-      javaClient,
-    );
-
-    await expect(
-      service.getCustomers("101", { scope: "mine", seatIds: ["12", "13"] }),
-    ).resolves.toEqual({ hasMore: false, items: [], total: 0 });
-    expect(listCustomers).toHaveBeenCalledWith({
-      scope: "mine",
-      seatIds: ["12", "13"],
-      subUserId: "101",
-    });
-  });
-
-  it("lists all customers without seat filters", async () => {
-    const javaClient = createJavaClient();
-    const listCustomers = vi.fn().mockResolvedValue({
-      hasMore: false,
-      items: [],
-      total: 0,
-    });
-    const service = new MysqlWorkbenchService(
-      {
-        getSubUser: vi.fn().mockResolvedValue({
-          displayName: "客服一号",
-          platform: 5,
+          platform: 6,
           subUserId: "101",
           uid: 9001,
         }),
         listCustomers,
       } as unknown as WorkbenchRepository,
       javaClient,
+      undefined,
+      undefined,
+      { platform: 5, uid: 9001 } as never,
+    );
+
+    await expect(
+      service.getCustomers("101", { scope: "mine", seatIds: ["12", "13"] }),
+    ).resolves.toEqual({ hasMore: false, items: [], total: 0 });
+    expect(listCustomers).toHaveBeenCalledWith({
+      platform: 5,
+      scope: "mine",
+      seatIds: ["12", "13"],
+      subUserId: "101",
+      uid: 9001,
+    });
+  });
+
+  it("lists all customers from the authenticated workbench scope without seat filters", async () => {
+    const javaClient = createJavaClient();
+    const listCustomers = vi.fn().mockResolvedValue({
+      hasMore: false,
+      items: [],
+      total: 0,
+    });
+    const service = createWorkbenchService(
+      {
+        getSubUser: vi.fn().mockResolvedValue({
+          displayName: "客服一号",
+          platform: 6,
+          subUserId: "101",
+          uid: 7777,
+        }),
+        listCustomers,
+      } as unknown as WorkbenchRepository,
+      javaClient,
+      undefined,
+      undefined,
+      { platform: 5, uid: 9001 } as never,
     );
 
     await expect(
@@ -88,17 +146,20 @@ describe("MysqlWorkbenchService", () => {
       seatId: "12",
       seatName: "销售一号",
     });
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         getCustomerLastConversation,
         getSubUser: vi.fn().mockResolvedValue({
           displayName: "客服一号",
-          platform: 5,
+          platform: 6,
           subUserId: "101",
-          uid: 9001,
+          uid: 7777,
         }),
       } as unknown as WorkbenchRepository,
       javaClient,
+      undefined,
+      undefined,
+      { platform: 5, uid: 9001 } as never,
     );
 
     await expect(
@@ -127,17 +188,20 @@ describe("MysqlWorkbenchService", () => {
         thirdUserId: "seat-user-12",
       },
     ]);
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         getSubUser: vi.fn().mockResolvedValue({
           displayName: "客服一号",
-          platform: 5,
+          platform: 6,
           subUserId: "101",
-          uid: 9001,
+          uid: 7777,
         }),
         listCustomerRelationConversations,
       } as unknown as WorkbenchRepository,
       javaClient,
+      undefined,
+      undefined,
+      { platform: 5, uid: 9001 } as never,
     );
 
     await expect(
@@ -160,6 +224,29 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
+  it("rejects seat-scoped access when the service has no authenticated request uid", async () => {
+    const javaClient = createJavaClient();
+    const canAccessSeat = vi.fn().mockResolvedValue(true);
+    const service = new MysqlWorkbenchService(
+      {
+        canAccessSeat,
+        getSubUser: vi.fn().mockResolvedValue(createActiveSubUser()),
+        listConversations: vi.fn().mockResolvedValue({
+          hasMore: false,
+          items: [],
+          nextCursor: null,
+        }),
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(service.getConversations("101", "12")).rejects.toMatchObject({
+      code: "UNAUTHORIZED",
+      statusCode: 401,
+    });
+    expect(canAccessSeat).not.toHaveBeenCalled();
+  });
+
   it("delegates get-or-create conversation decisions to Java before hydrating", async () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.createConversation).mockResolvedValue({
@@ -176,7 +263,7 @@ describe("MysqlWorkbenchService", () => {
       seatId: "12",
       unreadCount: 0,
     });
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getHydratedConversation,
@@ -235,7 +322,7 @@ describe("MysqlWorkbenchService", () => {
       messages: [],
       scannedCount: 0,
     });
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup,
@@ -267,7 +354,7 @@ describe("MysqlWorkbenchService", () => {
       ],
     });
     const getSeatsByIds = vi.fn();
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -334,7 +421,7 @@ describe("MysqlWorkbenchService", () => {
         },
       ],
     });
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -381,7 +468,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("loads page smart replies only for raw message types that can trigger recommendations", async () => {
     const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -429,7 +516,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("treats missing page smart reply raw message types as unsupported", async () => {
     const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -476,7 +563,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("does not load smart replies for historical pages", async () => {
     const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -521,7 +608,7 @@ describe("MysqlWorkbenchService", () => {
         },
       ],
     });
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -573,7 +660,7 @@ describe("MysqlWorkbenchService", () => {
       messageSeq: 830,
       messages: [],
     });
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat,
         getChatRecordDetail,
@@ -594,7 +681,14 @@ describe("MysqlWorkbenchService", () => {
       messageSeq: 830,
       messages: [],
     });
-    expect(canAccessSeat).toHaveBeenCalledWith("101", "12");
+    expect(canAccessSeat).toHaveBeenCalledWith(
+      {
+        platform: 5,
+        subUserId: "101",
+        uid: 9001,
+      },
+      "12",
+    );
     expect(getChatRecordDetail).toHaveBeenCalledWith(
       9001,
       5,
@@ -613,7 +707,7 @@ describe("MysqlWorkbenchService", () => {
     vi.mocked(javaClient.listUserHistoryAnswers).mockRejectedValue(
       new Error("java unavailable"),
     );
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -661,7 +755,7 @@ describe("MysqlWorkbenchService", () => {
   it("creates an automatic smart reply generation task through Java", async () => {
     const javaClient = createJavaClient();
     vi.mocked(javaClient.requestAutoGeneralAnswer).mockResolvedValue({ id: "567" });
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -695,7 +789,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("rejects smart reply polling for group conversations", async () => {
     const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -735,7 +829,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("rejects manual smart reply generation for group conversations", async () => {
     const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -766,7 +860,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("rejects automatic smart reply generation for group conversations", async () => {
     const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -797,7 +891,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("rejects smart reply auxiliary actions for group conversations", async () => {
     const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -902,7 +996,7 @@ describe("MysqlWorkbenchService", () => {
       ivParameter: "1234567890abcdef",
       secret: "abcdef1234567890",
     });
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup,
@@ -913,6 +1007,9 @@ describe("MysqlWorkbenchService", () => {
         }),
       } as unknown as WorkbenchRepository,
       javaClient,
+      undefined,
+      undefined,
+      { platform: 5, uid: 9001 } as never,
     );
 
     await expect(
@@ -925,12 +1022,16 @@ describe("MysqlWorkbenchService", () => {
     });
 
     expect(getConversationLookup).toHaveBeenCalledWith("88");
+    expect(getEmbedUserRelationTuseSecrets).toHaveBeenCalledWith({
+      platform: 5,
+      uid: 9001,
+    });
   });
 
   it("rejects invalid conversation list cursors before querying conversations", async () => {
     const javaClient = createJavaClient();
     const listConversations = vi.fn();
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         listConversations,
@@ -955,7 +1056,7 @@ describe("MysqlWorkbenchService", () => {
     const javaClient = createJavaClient();
     const getSeat = vi.fn();
     const updateSeatHostSubUser = vi.fn().mockResolvedValue(undefined);
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getSeat,
@@ -991,7 +1092,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("rejects takeover when the sub-user cannot access the seat", async () => {
     const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(false),
         getSeatOperateScope: vi.fn(),
@@ -1009,7 +1110,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("rejects takeover when the seat id cannot be found", async () => {
     const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getSeatOperateScope: vi.fn().mockResolvedValue(undefined),
@@ -1029,7 +1130,7 @@ describe("MysqlWorkbenchService", () => {
     "rejects takeover when the sub-user id is not a strict MySQL id: %s",
     async (subUserId) => {
     const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         getSeatOperateScope: vi.fn().mockResolvedValue({
           platform: 5,
@@ -1052,7 +1153,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("rejects mark-read when the conversation seat is not taken over by the current sub-user", async () => {
     const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -1082,7 +1183,7 @@ describe("MysqlWorkbenchService", () => {
       seatHostSubUserId: "101",
       uid: 9001,
     });
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup,
@@ -1116,7 +1217,7 @@ describe("MysqlWorkbenchService", () => {
       transVoiceText: "",
     }));
     const playableVoiceExists = vi.fn().mockResolvedValue(true);
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -1172,7 +1273,7 @@ describe("MysqlWorkbenchService", () => {
       transFileUrl: "",
       transVoiceText: "已经识别过的文本",
     }));
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -1209,7 +1310,7 @@ describe("MysqlWorkbenchService", () => {
       transFileUrl: "",
       transVoiceText: "",
     }));
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -1263,7 +1364,7 @@ describe("MysqlWorkbenchService", () => {
     vi.mocked(javaClient.recognizeSentence).mockResolvedValue(
       null as unknown as string,
     );
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -1297,7 +1398,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("rejects voice transcription when the target message is not a voice message", async () => {
     const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -1329,7 +1430,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("rejects confirmed voice playback URLs outside playable voice storage", async () => {
     const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -1367,7 +1468,7 @@ describe("MysqlWorkbenchService", () => {
     vi.stubEnv("PLAYABLE_MEDIA_HOST", "media.example.com:8443");
     const javaClient = createJavaClient();
     const playableVoiceExists = vi.fn().mockResolvedValue(true);
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -1402,7 +1503,7 @@ describe("MysqlWorkbenchService", () => {
   it("rejects confirmed voice playback URLs that do not belong to the current message file", async () => {
     const javaClient = createJavaClient();
     const playableVoiceExists = vi.fn().mockResolvedValue(true);
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -1439,7 +1540,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("rejects confirmed voice playback when the converted WAV does not exist", async () => {
     const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -1476,7 +1577,7 @@ describe("MysqlWorkbenchService", () => {
   it("reports converted WAV check failures as bad gateway errors", async () => {
     const originalFetch = globalThis.fetch;
     const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -1521,7 +1622,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("rejects mark-unread when the conversation seat is not taken over by the current sub-user", async () => {
     const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -1544,7 +1645,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("marks a taken-over conversation unread without calculating seat unread", async () => {
     const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -1574,7 +1675,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("rejects pin when the conversation seat is not taken over by the current sub-user", async () => {
     const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -1598,7 +1699,7 @@ describe("MysqlWorkbenchService", () => {
   it("pins a taken-over conversation through Java", async () => {
     const javaClient = createJavaClient();
     const updateConversationPinned = vi.fn().mockResolvedValue(undefined);
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -1634,7 +1735,7 @@ describe("MysqlWorkbenchService", () => {
   it("unpins a taken-over conversation through Java", async () => {
     const javaClient = createJavaClient();
     const updateConversationPinned = vi.fn().mockResolvedValue(undefined);
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -1673,7 +1774,7 @@ describe("MysqlWorkbenchService", () => {
       createdAt: Date.now(),
       msgtype: "text",
     });
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -1727,7 +1828,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("does not insert a full-auto system message when the latest message is system", async () => {
     const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -1770,7 +1871,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("inserts a full-auto system message when the latest system message is stale", async () => {
     const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -1812,7 +1913,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("does not insert a full-auto system message when the latest system message time is invalid", async () => {
     const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -1848,7 +1949,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("does not insert a full-auto system message when the latest message is unavailable", async () => {
     const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -1862,7 +1963,6 @@ describe("MysqlWorkbenchService", () => {
           uid: 9001,
         }),
         getLatestConversationMessageSummary: vi.fn().mockResolvedValue(undefined),
-        getSubUser: vi.fn(),
       } as unknown as WorkbenchRepository,
       javaClient,
     );
@@ -1879,7 +1979,7 @@ describe("MysqlWorkbenchService", () => {
   it("does not insert a system message when disabling full-auto", async () => {
     const javaClient = createJavaClient();
     const getLatestConversationMessageSummary = vi.fn();
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -1892,7 +1992,6 @@ describe("MysqlWorkbenchService", () => {
           uid: 9001,
         }),
         getLatestConversationMessageSummary,
-        getSubUser: vi.fn(),
       } as unknown as WorkbenchRepository,
       javaClient,
     );
@@ -1917,7 +2016,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("rejects full-auto changes for group conversations", async () => {
     const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -1931,7 +2030,6 @@ describe("MysqlWorkbenchService", () => {
           uid: 9001,
         }),
         getLatestConversationMessageSummary: vi.fn(),
-        getSubUser: vi.fn(),
       } as unknown as WorkbenchRepository,
       javaClient,
     );
@@ -1953,7 +2051,7 @@ describe("MysqlWorkbenchService", () => {
       seatId: "12",
       semiAutoSwitch: true,
     });
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getSeatOperateScope: vi.fn().mockResolvedValue({
@@ -1989,7 +2087,7 @@ describe("MysqlWorkbenchService", () => {
   it("rejects seat agent mode switch changes when the seat is not taken over", async () => {
     const javaClient = createJavaClient();
     const updateSeatAgentModeSwitch = vi.fn();
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getSeatOperateScope: vi.fn().mockResolvedValue({
@@ -2017,7 +2115,7 @@ describe("MysqlWorkbenchService", () => {
   it("rejects seat agent mode switch changes when the mode is not authorized", async () => {
     const javaClient = createJavaClient();
     const updateSeatAgentModeSwitch = vi.fn();
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getSeatOperateScope: vi.fn().mockResolvedValue({
@@ -2059,7 +2157,7 @@ describe("MysqlWorkbenchService", () => {
       seatId: "12",
       semiAutoSwitch: false,
     });
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getSeatOperateScope: vi.fn().mockResolvedValue({
@@ -2094,7 +2192,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("rejects full-auto changes when the conversation seat is not taken over by the current sub-user", async () => {
     const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -2124,7 +2222,7 @@ describe("MysqlWorkbenchService", () => {
       recordId: "27",
       sendStatus: 0,
     });
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -2156,7 +2254,7 @@ describe("MysqlWorkbenchService", () => {
   it("does not load full-auto answer status for group conversations", async () => {
     const javaClient = createJavaClient();
     const getLatestFullAutoAnswerStatus = vi.fn();
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -2179,7 +2277,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("rejects delete when the conversation seat is not taken over by the current sub-user", async () => {
     const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -2203,7 +2301,7 @@ describe("MysqlWorkbenchService", () => {
   it("deletes a taken-over conversation through Java and hides it locally", async () => {
     const javaClient = createJavaClient();
     const hideConversation = vi.fn().mockResolvedValue(undefined);
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -2252,7 +2350,7 @@ describe("MysqlWorkbenchService", () => {
       startTime: 1778670000,
     };
     vi.mocked(javaClient.getUploadCredential).mockResolvedValue(uploadCredential);
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -2290,7 +2388,7 @@ describe("MysqlWorkbenchService", () => {
       requestId: "request-001",
       startTime: 1778670000,
     });
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -2335,7 +2433,7 @@ describe("MysqlWorkbenchService", () => {
         JAVA_INTERNAL_API_USER_MESSAGE,
       ),
     );
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -2361,7 +2459,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("starts message file transfer with the audit message id in an accessible conversation", async () => {
     const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -2390,7 +2488,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("starts message file transfer without requiring the current sub-user to host the seat", async () => {
     const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -2419,7 +2517,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("rejects message file transfer when msgInfoId is invalid", async () => {
     const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -2482,7 +2580,7 @@ describe("MysqlWorkbenchService", () => {
       ],
       nextVersion: 1_778_840_001_000,
     });
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -2493,6 +2591,7 @@ describe("MysqlWorkbenchService", () => {
           uid: 9001,
         }),
         getSeatsByIds,
+        getSubUser: vi.fn().mockResolvedValue(createActiveSubUser()),
         listMessages,
         listChangedConversations,
       } as unknown as WorkbenchRepository,
@@ -2535,6 +2634,36 @@ describe("MysqlWorkbenchService", () => {
     expect(getSeatsByIds).toHaveBeenCalledWith(["12"]);
   });
 
+  it("validates the sub user before polling a current seat", async () => {
+    const javaClient = createJavaClient();
+    const canAccessSeat = vi.fn().mockResolvedValue(true);
+    const listChangedConversations = vi.fn().mockResolvedValue({
+      hasMore: false,
+      items: [],
+      nextVersion: 1_778_840_000_000,
+    });
+    const service = createWorkbenchService(
+      {
+        canAccessSeat,
+        getSeatsByIds: vi.fn().mockResolvedValue([]),
+        getSubUser: vi.fn().mockResolvedValue(undefined),
+        listChangedConversations,
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.poll("101", {
+        currentSeatId: "12",
+        sinceVersion: 1_778_840_000_000,
+      }),
+    ).rejects.toMatchObject({
+      statusCode: 401,
+    });
+    expect(canAccessSeat).not.toHaveBeenCalled();
+    expect(listChangedConversations).not.toHaveBeenCalled();
+  });
+
   it("polls user-seat update events and refreshes changed seats", async () => {
     const javaClient = createJavaClient();
     const getSeatsByIds = vi.fn(async (seatIds: string[]) =>
@@ -2563,9 +2692,10 @@ describe("MysqlWorkbenchService", () => {
         seatId: "13",
       },
     ]);
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
+        getSubUser: vi.fn().mockResolvedValue(createActiveSubUser()),
         getSeatEventScope: vi.fn().mockResolvedValue({
           platform: 5,
           seatIds: ["12", "13"],
@@ -2634,10 +2764,11 @@ describe("MysqlWorkbenchService", () => {
 
   it("keeps the seat update cursor unchanged when no update events are returned", async () => {
     const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getSeatsByIds: vi.fn().mockResolvedValue([]),
+        getSubUser: vi.fn().mockResolvedValue(createActiveSubUser()),
         getSeatEventScope: vi.fn().mockResolvedValue({
           platform: 5,
           seatIds: ["12"],
@@ -2673,7 +2804,7 @@ describe("MysqlWorkbenchService", () => {
       hasPrev: false,
       messages: [],
     });
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat,
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -2704,7 +2835,14 @@ describe("MysqlWorkbenchService", () => {
       messages: [],
     });
 
-    expect(canAccessSeat).toHaveBeenCalledWith("101", "12");
+    expect(canAccessSeat).toHaveBeenCalledWith(
+      {
+        platform: 5,
+        subUserId: "101",
+        uid: 9001,
+      },
+      "12",
+    );
     expect(listHistoryMessages).toHaveBeenCalledWith("88", {
       cursor: "history-cursor",
       day: "2026-05-19",
@@ -2716,6 +2854,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("polls active conversation messages through the shared message page query", async () => {
     const javaClient = createJavaClient();
+    const canAccessSeat = vi.fn().mockResolvedValue(true);
     const getConversationLookup = vi.fn().mockResolvedValue({
       id: "88",
       platform: 5,
@@ -2757,11 +2896,12 @@ describe("MysqlWorkbenchService", () => {
       ],
       scannedCount: 2,
     });
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
-        canAccessSeat: vi.fn().mockResolvedValue(true),
+        canAccessSeat,
         getConversationLookup,
         getSeatsByIds: vi.fn().mockResolvedValue([]),
+        getSubUser: vi.fn().mockResolvedValue(createActiveSubUser()),
         listMessages,
         listChangedConversations: vi.fn().mockResolvedValue({
           hasMore: false,
@@ -2797,6 +2937,15 @@ describe("MysqlWorkbenchService", () => {
       includeHiddenConversation: true,
       limit: 50,
     });
+    expect(canAccessSeat).toHaveBeenNthCalledWith(
+      2,
+      {
+        platform: 5,
+        subUserId: "101",
+        uid: 9001,
+      },
+      "12",
+    );
   });
 
   it("returns message update events only for the active conversation", async () => {
@@ -2809,7 +2958,7 @@ describe("MysqlWorkbenchService", () => {
         messageSeq: 829,
       },
     ]);
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -2820,6 +2969,7 @@ describe("MysqlWorkbenchService", () => {
           uid: 9001,
         }),
         getSeatsByIds: vi.fn().mockResolvedValue([]),
+        getSubUser: vi.fn().mockResolvedValue(createActiveSubUser()),
         listChangedConversations: vi.fn().mockResolvedValue({
           hasMore: false,
           items: [],
@@ -2851,10 +3001,11 @@ describe("MysqlWorkbenchService", () => {
 
   it("keeps the message update cursor unchanged when no update events are returned", async () => {
     const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getSeatsByIds: vi.fn().mockResolvedValue([]),
+        getSubUser: vi.fn().mockResolvedValue(createActiveSubUser()),
         listChangedConversations: vi.fn().mockResolvedValue({
           hasMore: false,
           items: [],
@@ -2880,10 +3031,11 @@ describe("MysqlWorkbenchService", () => {
 
   it("advances the message update cursor to the latest returned event time", async () => {
     const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getSeatsByIds: vi.fn().mockResolvedValue([]),
+        getSubUser: vi.fn().mockResolvedValue(createActiveSubUser()),
         listChangedConversations: vi.fn().mockResolvedValue({
           hasMore: false,
           items: [],
@@ -2920,10 +3072,11 @@ describe("MysqlWorkbenchService", () => {
       items: [],
       nextVersion: 1_778_840_002_000,
     });
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getSeatsByIds: vi.fn().mockResolvedValue([]),
+        getSubUser: vi.fn().mockResolvedValue(createActiveSubUser()),
         listChangedConversations,
       } as unknown as WorkbenchRepository,
       javaClient,
@@ -2943,10 +3096,11 @@ describe("MysqlWorkbenchService", () => {
 
   it("keeps the poll cursor unchanged when no conversations changed", async () => {
     const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getSeatsByIds: vi.fn().mockResolvedValue([]),
+        getSubUser: vi.fn().mockResolvedValue(createActiveSubUser()),
         listChangedConversations: vi.fn().mockResolvedValue({
           hasMore: false,
           items: [],
@@ -2969,10 +3123,11 @@ describe("MysqlWorkbenchService", () => {
 
   it("advances the poll cursor by 1ms when changes stay on the same timestamp boundary", async () => {
     const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getSeatsByIds: vi.fn().mockResolvedValue([]),
+        getSubUser: vi.fn().mockResolvedValue(createActiveSubUser()),
         listChangedConversations: vi.fn().mockResolvedValue({
           hasMore: false,
           items: [
@@ -3015,10 +3170,11 @@ describe("MysqlWorkbenchService", () => {
   it("logs poll cursor invalidation context before rejecting", async () => {
     const javaClient = createJavaClient();
     const logger = createLoggerMock();
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getSeat: vi.fn(),
+        getSubUser: vi.fn().mockResolvedValue(createActiveSubUser()),
         listChangedConversations: vi.fn().mockResolvedValue({
           hasMore: true,
           items: [],
@@ -3059,7 +3215,7 @@ describe("MysqlWorkbenchService", () => {
       fileSerialNo: "serial-file-001",
       fileUrl: "https://b5.bokr.com.cn/chat-files/quote.pdf",
     });
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -3097,7 +3253,7 @@ describe("MysqlWorkbenchService", () => {
       senderType: "agent",
       status: "sent",
     });
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -3138,7 +3294,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("rejects revoke for messages at the 180 second boundary", async () => {
     const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -3171,7 +3327,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("allows revoke when database createdAt is slightly ahead of the app clock", async () => {
     const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -3209,7 +3365,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("rejects revoke when database createdAt is far ahead of the app clock", async () => {
     const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -3242,7 +3398,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("rejects revoke for customer messages", async () => {
     const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -3288,7 +3444,7 @@ describe("MysqlWorkbenchService", () => {
       thirdUserId: "seat-user-001",
       uid: 9001,
     });
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup,
@@ -3339,7 +3495,7 @@ describe("MysqlWorkbenchService", () => {
       optNo: "opt-all-001",
       status: "accepted",
     });
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -3391,7 +3547,7 @@ describe("MysqlWorkbenchService", () => {
       optNo: "opt-retry-001",
       status: "accepted",
     });
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -3438,7 +3594,7 @@ describe("MysqlWorkbenchService", () => {
       optNo: "opt-quote-001",
       status: "accepted",
     });
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -3487,7 +3643,7 @@ describe("MysqlWorkbenchService", () => {
       optNo: "opt-image-001",
       status: "accepted",
     });
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -3533,7 +3689,7 @@ describe("MysqlWorkbenchService", () => {
       optNo: "opt-image-url-001",
       status: "accepted",
     });
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -3597,7 +3753,7 @@ describe("MysqlWorkbenchService", () => {
         uid: 9001,
       }),
     } as unknown as WorkbenchRepository;
-    const service = new MysqlWorkbenchService(repository, javaClient);
+    const service = createWorkbenchService(repository, javaClient);
 
     await service.sendMessage("101", {
       conversationId: "88",
@@ -3633,7 +3789,7 @@ describe("MysqlWorkbenchService", () => {
       optNo: "opt-image-quote-001",
       status: "accepted",
     });
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -3697,7 +3853,7 @@ describe("MysqlWorkbenchService", () => {
         uid: 9001,
       }),
     } as unknown as WorkbenchRepository;
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       repository,
       javaClient,
     );
@@ -3750,7 +3906,7 @@ describe("MysqlWorkbenchService", () => {
         uid: 9001,
       }),
     } as unknown as WorkbenchRepository;
-    const service = new MysqlWorkbenchService(repository, javaClient);
+    const service = createWorkbenchService(repository, javaClient);
 
     await service.sendMessage("101", {
       conversationId: "88",
@@ -3804,7 +3960,7 @@ describe("MysqlWorkbenchService", () => {
         uid: 9001,
       }),
     } as unknown as WorkbenchRepository;
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       repository,
       javaClient,
     );
@@ -3859,7 +4015,7 @@ describe("MysqlWorkbenchService", () => {
         uid: 9001,
       }),
     } as unknown as WorkbenchRepository;
-    const service = new MysqlWorkbenchService(repository, javaClient);
+    const service = createWorkbenchService(repository, javaClient);
 
     await service.sendMessage("101", {
       conversationId: "88",
@@ -3897,7 +4053,7 @@ describe("MysqlWorkbenchService", () => {
       optNo: "opt-h5-default-cover-001",
       status: "accepted",
     });
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -3965,7 +4121,7 @@ describe("MysqlWorkbenchService", () => {
         uid: 9001,
       }),
     } as unknown as WorkbenchRepository;
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       repository,
       javaClient,
     );
@@ -4019,7 +4175,7 @@ describe("MysqlWorkbenchService", () => {
         uid: 9001,
       }),
     } as unknown as WorkbenchRepository;
-    const service = new MysqlWorkbenchService(repository, javaClient);
+    const service = createWorkbenchService(repository, javaClient);
 
     await expect(
       service.sendMessage("101", {
@@ -4058,7 +4214,7 @@ describe("MysqlWorkbenchService", () => {
         uid: 9001,
       }),
     } as unknown as WorkbenchRepository;
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       repository,
       javaClient,
     );
@@ -4110,7 +4266,7 @@ describe("MysqlWorkbenchService", () => {
         uid: 9001,
       }),
     } as unknown as WorkbenchRepository;
-    const service = new MysqlWorkbenchService(repository, javaClient);
+    const service = createWorkbenchService(repository, javaClient);
 
     await service.sendMessage("101", {
       conversationId: "88",
@@ -4158,7 +4314,7 @@ describe("MysqlWorkbenchService", () => {
         uid: 9001,
       }),
     } as unknown as WorkbenchRepository;
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       repository,
       javaClient,
     );
@@ -4212,7 +4368,7 @@ describe("MysqlWorkbenchService", () => {
         uid: 9001,
       }),
     } as unknown as WorkbenchRepository;
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       repository,
       javaClient,
     );
@@ -4264,7 +4420,7 @@ describe("MysqlWorkbenchService", () => {
         uid: 9001,
       }),
     } as unknown as WorkbenchRepository;
-    const service = new MysqlWorkbenchService(repository, javaClient);
+    const service = createWorkbenchService(repository, javaClient);
 
     await service.sendMessage("101", {
       conversationId: "88",
@@ -4292,7 +4448,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("rejects forward sends when the material collection is not visible", async () => {
     const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         findMaterialCollectionForForward: vi.fn().mockResolvedValue(undefined),
@@ -4327,7 +4483,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("rejects forward sends when the stored source message info id is blank", async () => {
     const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         findMaterialCollectionForForward: vi.fn().mockResolvedValue({
@@ -4368,7 +4524,7 @@ describe("MysqlWorkbenchService", () => {
       optNo: "opt-file-quote-001",
       status: "accepted",
     });
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -4412,7 +4568,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("rejects image send without a sendable URL before calling Java", async () => {
     const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -4446,7 +4602,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("rejects multi-segment payloads before calling Java", async () => {
     const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -4486,7 +4642,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("forwards smart heartbeat for an operable single chat conversation", async () => {
     const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -4518,7 +4674,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("rejects smart heartbeat for group conversations", async () => {
     const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -4548,7 +4704,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("rejects smart heartbeat when customer external id is missing", async () => {
     const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       {
         canAccessSeat: vi.fn().mockResolvedValue(true),
         getConversationLookup: vi.fn().mockResolvedValue({
@@ -4584,7 +4740,7 @@ describe("MysqlWorkbenchService", () => {
       ]),
       sortQuickReplyCategories: vi.fn().mockResolvedValue(true),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.sortQuickReplyCategories("101", {
@@ -4614,7 +4770,7 @@ describe("MysqlWorkbenchService", () => {
         .mockResolvedValue([{ id: "21", sort: 2000 }, { id: "22", sort: 1000 }]),
       sortQuickReplyCategories: vi.fn().mockResolvedValue(true),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.sortQuickReplyCategories("101", {
@@ -4639,7 +4795,7 @@ describe("MysqlWorkbenchService", () => {
       ]),
       sortQuickReplyCategories: vi.fn().mockResolvedValue(true),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.sortQuickReplyCategories("101", {
@@ -4662,7 +4818,7 @@ describe("MysqlWorkbenchService", () => {
       ]),
       sortQuickReplies: vi.fn().mockResolvedValue(true),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.sortQuickReplies("101", {
@@ -4694,7 +4850,7 @@ describe("MysqlWorkbenchService", () => {
       ]),
       sortQuickReplies: vi.fn().mockResolvedValue(true),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.sortQuickReplies("101", {
@@ -4718,7 +4874,7 @@ describe("MysqlWorkbenchService", () => {
         uid: 9001,
       }),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.collectMaterial("101", {
@@ -4757,7 +4913,7 @@ describe("MysqlWorkbenchService", () => {
         uid: 9001,
       }),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.collectMaterial("101", {
@@ -4797,7 +4953,7 @@ describe("MysqlWorkbenchService", () => {
         uid: 9001,
       }),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.collectMaterial("101", {
@@ -4828,7 +4984,7 @@ describe("MysqlWorkbenchService", () => {
         uid: 9001,
       }),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.collectMaterial("101", {
@@ -4873,7 +5029,7 @@ describe("MysqlWorkbenchService", () => {
         uid: 9001,
       }),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.collectMaterial("101", {
@@ -4911,7 +5067,7 @@ describe("MysqlWorkbenchService", () => {
         uid: 9001,
       }),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.collectMaterial("101", {
@@ -4965,7 +5121,7 @@ describe("MysqlWorkbenchService", () => {
         uid: 9001,
       }),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.collectMaterial("101", {
@@ -4996,7 +5152,7 @@ describe("MysqlWorkbenchService", () => {
         uid: 9001,
       }),
     });
-    const downloadingService = new MysqlWorkbenchService(
+    const downloadingService = createWorkbenchService(
       downloadingRepository,
       createJavaClient(),
     );
@@ -5026,7 +5182,7 @@ describe("MysqlWorkbenchService", () => {
         uid: 9001,
       }),
     });
-    const missingCoverService = new MysqlWorkbenchService(
+    const missingCoverService = createWorkbenchService(
       missingCoverRepository,
       createJavaClient(),
     );
@@ -5074,8 +5230,20 @@ describe("MysqlWorkbenchService", () => {
         msgtype: "video",
         uid: 9001,
       }),
+      getSubUser: vi.fn().mockResolvedValue({
+        displayName: "客服一号",
+        platform: 6,
+        subUserId: "101",
+        uid: 9001,
+      }),
     });
-    const service = new MysqlWorkbenchService(repository, javaClient);
+    const service = createWorkbenchService(
+      repository,
+      javaClient,
+      undefined,
+      undefined,
+      { platform: 5, uid: 9001 } as never,
+    );
 
     await expect(
       service.collectMaterial("101", {
@@ -5134,7 +5302,7 @@ describe("MysqlWorkbenchService", () => {
         uid: 9001,
       }),
     });
-    const service = new MysqlWorkbenchService(repository, javaClient);
+    const service = createWorkbenchService(repository, javaClient);
 
     await expect(
       service.collectMaterial("101", {
@@ -5176,7 +5344,7 @@ describe("MysqlWorkbenchService", () => {
         uid: 9001,
       }),
     });
-    const service = new MysqlWorkbenchService(repository, javaClient);
+    const service = createWorkbenchService(repository, javaClient);
 
     await expect(
       service.collectMaterial("101", {
@@ -5223,7 +5391,7 @@ describe("MysqlWorkbenchService", () => {
         uid: 9001,
       }),
     });
-    const service = new MysqlWorkbenchService(repository, javaClient);
+    const service = createWorkbenchService(repository, javaClient);
 
     await expect(
       service.collectMaterial("101", {
@@ -5270,7 +5438,7 @@ describe("MysqlWorkbenchService", () => {
       }),
     });
     const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(repository, javaClient);
+    const service = createWorkbenchService(repository, javaClient);
 
     await expect(
       service.collectMaterial("101", {
@@ -5287,16 +5455,43 @@ describe("MysqlWorkbenchService", () => {
     expect(repository.createMaterialCollection).not.toHaveBeenCalled();
   });
 
-  it("material: rejects video transfer when current sub user has no platform", async () => {
+  it("material: transfers external video files with workbench platform scope", async () => {
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_779_700_002_500);
     const javaClient = createJavaClient();
+    vi.mocked(javaClient.transMsgFile).mockResolvedValue(
+      JSON.stringify({
+        coverUrl: "https://b5.bokr.com.cn/materials/video-cover.jpg",
+        downloadStatus: "finished",
+        fileSerialNo: "serial-video-004",
+        fileUrl: "https://b5.bokr.com.cn/materials/video.mp4",
+        optSerNo: "20260520161942296211617558035",
+      }),
+    );
     const repository = createMaterialRepository({
+      createMaterialCollection: vi.fn().mockResolvedValue("186"),
+      findMaterialMessage: vi.fn().mockResolvedValue({
+        chatType: 1,
+        content: JSON.stringify({
+          coverUrl: "https://b5.bokr.com.cn/materials/video-cover.jpg",
+          downloadStatus: "finished",
+          fileSerialNo: "serial-video-004",
+          fileUrl: "https://cdn.example.com/video.mp4",
+          fileUrlExpireTime: 1_779_700_099_999,
+          optSerNo: "20260520161942296211617558035",
+        }),
+        fromType: 1,
+        id: "9115",
+        msgid: "msg-video-5",
+        msgtype: "video",
+        uid: 9001,
+      }),
       getSubUser: vi.fn().mockResolvedValue({
         displayName: "客服一号",
         subUserId: "101",
         uid: 9001,
       }),
     });
-    const service = new MysqlWorkbenchService(repository, javaClient);
+    const service = createWorkbenchService(repository, javaClient);
 
     await expect(
       service.collectMaterial("101", {
@@ -5304,14 +5499,28 @@ describe("MysqlWorkbenchService", () => {
         groupId: "9",
         msgInfoId: "9115",
       }),
-    ).rejects.toMatchObject({
-      code: "INVALID_SUB_USER",
-      message: "子账号无效",
-      statusCode: 400,
-    });
+    ).resolves.toEqual({ success: true });
 
-    expect(javaClient.transMsgFile).not.toHaveBeenCalled();
-    expect(repository.findMaterialMessage).not.toHaveBeenCalled();
+    expect(javaClient.transMsgFile).toHaveBeenCalledWith({
+      msgInfoId: 9115,
+      platform: 5,
+      uid: 9001,
+    });
+    expect(repository.createMaterialCollection).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: JSON.stringify({
+          coverUrl: "https://b5.bokr.com.cn/materials/video-cover.jpg",
+          downloadStatus: "finished",
+          fileSerialNo: "serial-video-004",
+          fileUrl: "https://b5.bokr.com.cn/materials/video.mp4",
+          optSerNo: "20260520161942296211617558035",
+        }),
+        groupId: "9",
+        msgInfoId: "9115",
+        title: "",
+      }),
+    );
+    nowSpy.mockRestore();
   });
 
   it("material: rejects external video files without expire time before collecting them", async () => {
@@ -5333,7 +5542,7 @@ describe("MysqlWorkbenchService", () => {
       }),
     });
     const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(repository, javaClient);
+    const service = createWorkbenchService(repository, javaClient);
 
     await expect(
       service.collectMaterial("101", {
@@ -5363,7 +5572,7 @@ describe("MysqlWorkbenchService", () => {
         uid: 9001,
       }),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.collectMaterial("101", {
@@ -5381,7 +5590,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("material: requires a real group before collecting tenant materials", async () => {
     const repository = createMaterialRepository();
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.collectMaterial("101", {
@@ -5424,7 +5633,7 @@ describe("MysqlWorkbenchService", () => {
         total: 1,
       }),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.listMaterialCollections("101", {
@@ -5470,7 +5679,7 @@ describe("MysqlWorkbenchService", () => {
         uid: 9001,
       }),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.collectMaterial("101", {
@@ -5517,7 +5726,7 @@ describe("MysqlWorkbenchService", () => {
         uid: 9001,
       }),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.collectMaterial("101", {
@@ -5541,7 +5750,7 @@ describe("MysqlWorkbenchService", () => {
     const repository = createMaterialRepository({
       hasActiveMaterialGroup: vi.fn().mockResolvedValue(false),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.collectMaterial("101", {
@@ -5580,7 +5789,7 @@ describe("MysqlWorkbenchService", () => {
         uid: 9001,
       }),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.collectMaterial("101", {
@@ -5611,7 +5820,7 @@ describe("MysqlWorkbenchService", () => {
         uid: 9001,
       }),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.collectMaterial("101", {
@@ -5644,7 +5853,7 @@ describe("MysqlWorkbenchService", () => {
         uid: 9001,
       }),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.collectMaterial("101", {
@@ -5681,7 +5890,7 @@ describe("MysqlWorkbenchService", () => {
         uid: 9001,
       }),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.collectMaterial("101", {
@@ -5729,7 +5938,7 @@ describe("MysqlWorkbenchService", () => {
         uid: 9001,
       }),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.collectMaterial("101", {
@@ -5766,7 +5975,7 @@ describe("MysqlWorkbenchService", () => {
   });
 
   it("material: rejects expression group creation", async () => {
-    const service = new MysqlWorkbenchService(
+    const service = createWorkbenchService(
       createMaterialRepository(),
       createJavaClient(),
     );
@@ -5787,7 +5996,7 @@ describe("MysqlWorkbenchService", () => {
       countMaterialGroups: vi.fn().mockResolvedValue(20),
       createMaterialGroup: vi.fn().mockResolvedValue("88"),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.createMaterialGroup("101", {
@@ -5807,7 +6016,7 @@ describe("MysqlWorkbenchService", () => {
     const repository = createMaterialRepository({
       createMaterialGroup: vi.fn().mockResolvedValue("88"),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.createMaterialGroup("101", {
@@ -5835,7 +6044,7 @@ describe("MysqlWorkbenchService", () => {
     const repository = createMaterialRepository({
       createMaterialGroup: vi.fn().mockResolvedValue(undefined),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.createMaterialGroup("101", {
@@ -5850,7 +6059,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("material: rejects material group names over 10 characters", async () => {
     const repository = createMaterialRepository();
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.createMaterialGroup("101", {
@@ -5877,7 +6086,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("material: rejects blank material group names after trimming", async () => {
     const repository = createMaterialRepository();
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.createMaterialGroup("101", {
@@ -5910,7 +6119,7 @@ describe("MysqlWorkbenchService", () => {
         subUid: 0,
       }),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(service.deleteMaterialCollection("101", "66")).resolves.toEqual({
       ok: true,
@@ -5957,7 +6166,7 @@ describe("MysqlWorkbenchService", () => {
         subUid: 0,
       }),
     });
-    const fileService = new MysqlWorkbenchService(fileRepository, createJavaClient());
+    const fileService = createWorkbenchService(fileRepository, createJavaClient());
 
     await expect(
       fileService.updateMaterialCollection("101", "66", {
@@ -5995,7 +6204,7 @@ describe("MysqlWorkbenchService", () => {
         subUid: 0,
       }),
     });
-    const h5Service = new MysqlWorkbenchService(h5Repository, createJavaClient());
+    const h5Service = createWorkbenchService(h5Repository, createJavaClient());
 
     await expect(
       h5Service.updateMaterialCollection("101", "77", {
@@ -6032,7 +6241,7 @@ describe("MysqlWorkbenchService", () => {
         subUid: 0,
       }),
     });
-    const miniProgramService = new MysqlWorkbenchService(
+    const miniProgramService = createWorkbenchService(
       miniProgramRepository,
       createJavaClient(),
     );
@@ -6069,7 +6278,7 @@ describe("MysqlWorkbenchService", () => {
         subUid: 0,
       }),
     });
-    const videoService = new MysqlWorkbenchService(videoRepository, createJavaClient());
+    const videoService = createWorkbenchService(videoRepository, createJavaClient());
 
     await expect(
       videoService.updateMaterialCollection("101", "99", {
@@ -6096,7 +6305,7 @@ describe("MysqlWorkbenchService", () => {
         subUid: 202,
       }),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(service.deleteMaterialCollection("101", "66")).rejects.toMatchObject({
       code: "MATERIAL_COLLECTION_NOT_FOUND",
@@ -6114,7 +6323,7 @@ describe("MysqlWorkbenchService", () => {
       }),
       hasActiveMaterialGroup: vi.fn().mockResolvedValue(false),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.moveMaterialCollection("101", "66", { groupId: "9" }),
@@ -6134,7 +6343,7 @@ describe("MysqlWorkbenchService", () => {
   it("material: renames and tops material groups", async () => {
     const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_779_700_006_000);
     const repository = createMaterialRepository();
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.renameMaterialGroup("101", "9", MATERIAL_COLLECTION_BIZ_TYPE.FILE, {
@@ -6170,7 +6379,7 @@ describe("MysqlWorkbenchService", () => {
         uid: 9001,
       }),
     });
-    const unsupportedService = new MysqlWorkbenchService(
+    const unsupportedService = createWorkbenchService(
       unsupportedRepository,
       createJavaClient(),
     );
@@ -6196,7 +6405,7 @@ describe("MysqlWorkbenchService", () => {
         uid: 9001,
       }),
     });
-    const mismatchedService = new MysqlWorkbenchService(
+    const mismatchedService = createWorkbenchService(
       mismatchedRepository,
       createJavaClient(),
     );
@@ -6218,7 +6427,7 @@ describe("MysqlWorkbenchService", () => {
     const repository = createMaterialRepository({
       isMaterialGroupEmpty: vi.fn().mockResolvedValue(false),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.deleteMaterialGroup("101", "9", MATERIAL_COLLECTION_BIZ_TYPE.FILE),
@@ -6233,7 +6442,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("quick reply: rejects saving an empty quick reply", async () => {
     const repository = createMaterialRepository();
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.createQuickReply("101", {
@@ -6251,7 +6460,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("quick reply: rejects unsupported attachments instead of silently dropping them", async () => {
     const repository = createMaterialRepository();
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.createQuickReply("101", {
@@ -6281,7 +6490,7 @@ describe("MysqlWorkbenchService", () => {
         total: 0,
       }),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.listQuickReplies("101", {
@@ -6317,7 +6526,7 @@ describe("MysqlWorkbenchService", () => {
         total: 0,
       }),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await service.listQuickReplies("101", {
       page: 1,
@@ -6379,7 +6588,7 @@ describe("MysqlWorkbenchService", () => {
         },
       }),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.listQuickReplyCategoryContent("101", {
@@ -6423,7 +6632,7 @@ describe("MysqlWorkbenchService", () => {
       hasActiveQuickReplyCategory: vi.fn().mockResolvedValue(true),
       isChildQuickReplyCategory: vi.fn().mockResolvedValue(true),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.createQuickReply("101", {
@@ -6490,7 +6699,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("quick reply: rejects saving replies without a second-level category", async () => {
     const repository = createMaterialRepository();
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.createQuickReply("101", {
@@ -6514,7 +6723,7 @@ describe("MysqlWorkbenchService", () => {
       hasActiveQuickReplyCategory: vi.fn().mockResolvedValue(true),
       isChildQuickReplyCategory: vi.fn().mockResolvedValue(false),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.updateQuickReply("101", "21", {
@@ -6549,7 +6758,7 @@ describe("MysqlWorkbenchService", () => {
       createQuickReplyCategory: vi.fn().mockResolvedValue("301"),
       findQuickReplyCategorySortBoundary: vi.fn().mockResolvedValue(60),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.createQuickReplyCategory("101", {
@@ -6606,7 +6815,7 @@ describe("MysqlWorkbenchService", () => {
         },
       ]),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.ensureQuickReplyCategories("101", {
@@ -6660,7 +6869,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("quick reply import: returns validation errors for invalid category titles", async () => {
     const repository = createMaterialRepository();
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.ensureQuickReplyCategories("101", {
@@ -6697,7 +6906,7 @@ describe("MysqlWorkbenchService", () => {
         })),
       ),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.ensureQuickReplyCategories("101", {
@@ -6736,7 +6945,7 @@ describe("MysqlWorkbenchService", () => {
         })),
       ]),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.ensureQuickReplyCategories("101", {
@@ -6758,7 +6967,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("quick reply: rejects category titles longer than ten characters", async () => {
     const repository = createMaterialRepository();
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.createQuickReplyCategory("101", {
@@ -6796,7 +7005,7 @@ describe("MysqlWorkbenchService", () => {
       countChildQuickReplyCategories: vi.fn().mockResolvedValue(50),
       createQuickReplyCategory: vi.fn().mockResolvedValue("301"),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.createQuickReplyCategory("101", {
@@ -6821,7 +7030,7 @@ describe("MysqlWorkbenchService", () => {
       hasActiveQuickReplyCategory: vi.fn().mockResolvedValue(true),
       isChildQuickReplyCategory: vi.fn().mockResolvedValue(true),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.createQuickReply("101", {
@@ -6843,7 +7052,7 @@ describe("MysqlWorkbenchService", () => {
       countQuickRepliesUnderTopCategory: vi.fn().mockResolvedValue(4_999),
       findQuickReplyCategoryScope: vi.fn().mockResolvedValue({ parentId: "10" }),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.batchCreateQuickReplies("101", {
@@ -6900,7 +7109,7 @@ describe("MysqlWorkbenchService", () => {
         .mockResolvedValueOnce(80)
         .mockResolvedValueOnce(120),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.batchCreateQuickReplies("101", {
@@ -6975,7 +7184,7 @@ describe("MysqlWorkbenchService", () => {
     const repository = createMaterialRepository({
       findQuickReplyCategoryScope: vi.fn().mockResolvedValue({ parentId: "10" }),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.batchCreateQuickReplies("101", {
@@ -7004,7 +7213,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("quick reply import: rejects batch create requests over one hundred items", async () => {
     const repository = createMaterialRepository();
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.batchCreateQuickReplies("101", {
@@ -7041,7 +7250,7 @@ describe("MysqlWorkbenchService", () => {
       hasActiveQuickReplyCategory: vi.fn().mockResolvedValue(true),
       isChildQuickReplyCategory: vi.fn().mockResolvedValue(true),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.createQuickReplyCategory("101", {
@@ -7086,7 +7295,7 @@ describe("MysqlWorkbenchService", () => {
       topQuickReply: vi.fn().mockResolvedValue(true),
       topQuickReplyCategory: vi.fn().mockResolvedValue(true),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.topQuickReplyCategory("101", "11", QUICK_REPLY_SCOPE_TYPE.PERSONAL),
@@ -7141,7 +7350,7 @@ describe("MysqlWorkbenchService", () => {
       findQuickReplyCategorySortBoundary: vi.fn().mockResolvedValue(80),
       moveQuickReplyCategory: vi.fn().mockResolvedValue(true),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.moveQuickReplyCategory("101", "11", QUICK_REPLY_SCOPE_TYPE.ENTERPRISE, {
@@ -7188,7 +7397,7 @@ describe("MysqlWorkbenchService", () => {
         .mockResolvedValueOnce({ parentId: 0 }),
       moveQuickReplyCategory: vi.fn().mockResolvedValue(true),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.moveQuickReplyCategory("101", "11", QUICK_REPLY_SCOPE_TYPE.ENTERPRISE, {
@@ -7224,7 +7433,7 @@ describe("MysqlWorkbenchService", () => {
         .mockResolvedValueOnce({ parentId: 0 }),
       moveQuickReplyCategory: vi.fn().mockResolvedValue(true),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.moveQuickReplyCategory("101", "11", QUICK_REPLY_SCOPE_TYPE.ENTERPRISE, {
@@ -7249,7 +7458,7 @@ describe("MysqlWorkbenchService", () => {
       findQuickReplySortBoundary: vi.fn().mockResolvedValue(180),
       moveQuickReply: vi.fn().mockResolvedValue(true),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.moveQuickReply("101", "21", QUICK_REPLY_SCOPE_TYPE.ENTERPRISE, {
@@ -7294,7 +7503,7 @@ describe("MysqlWorkbenchService", () => {
       findQuickReplyScope: vi.fn().mockResolvedValue({ categoryId: "11" }),
       moveQuickReply: vi.fn().mockResolvedValue(true),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.moveQuickReply("101", "21", QUICK_REPLY_SCOPE_TYPE.ENTERPRISE, {
@@ -7314,7 +7523,7 @@ describe("MysqlWorkbenchService", () => {
       hasActiveQuickReplyCategory: vi.fn().mockResolvedValue(true),
       isChildQuickReplyCategory: vi.fn().mockResolvedValue(true),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.createQuickReplyCategory("101", {
@@ -7334,7 +7543,7 @@ describe("MysqlWorkbenchService", () => {
     const repository = createMaterialRepository({
       countChildQuickReplyCategories: vi.fn().mockResolvedValue(1),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.deleteQuickReplyCategory("101", "11", QUICK_REPLY_SCOPE_TYPE.ENTERPRISE),
@@ -7352,7 +7561,7 @@ describe("MysqlWorkbenchService", () => {
       countChildQuickReplyCategories: vi.fn().mockResolvedValue(0),
       countQuickRepliesInCategory: vi.fn().mockResolvedValue(1),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.deleteQuickReplyCategory("101", "11", QUICK_REPLY_SCOPE_TYPE.ENTERPRISE),
@@ -7366,7 +7575,7 @@ describe("MysqlWorkbenchService", () => {
 
   it("quick reply: renames categories in the requested scope", async () => {
     const repository = createMaterialRepository();
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.renameQuickReplyCategory(
@@ -7392,7 +7601,7 @@ describe("MysqlWorkbenchService", () => {
     const repository = createMaterialRepository({
       renameQuickReplyCategory: vi.fn().mockResolvedValue(false),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.renameQuickReplyCategory(
@@ -7414,7 +7623,7 @@ describe("MysqlWorkbenchService", () => {
       isChildQuickReplyCategory: vi.fn().mockResolvedValue(true),
       updateQuickReply: vi.fn().mockResolvedValue(false),
     });
-    const service = new MysqlWorkbenchService(repository, createJavaClient());
+    const service = createWorkbenchService(repository, createJavaClient());
 
     await expect(
       service.updateQuickReply("101", "21", {
@@ -7469,7 +7678,7 @@ describe("MysqlWorkbenchService", () => {
         uid: 272,
       }),
     });
-    const service = new MysqlWorkbenchService(repository, javaClient);
+    const service = createWorkbenchService(repository, javaClient);
 
     await expect(
       service.retryMessage("101", {
@@ -7532,7 +7741,7 @@ describe("MysqlWorkbenchService", () => {
       }),
     });
     const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(repository, javaClient);
+    const service = createWorkbenchService(repository, javaClient);
 
     await expect(
       service.retryMessage("101", {
@@ -7573,7 +7782,7 @@ describe("MysqlWorkbenchService", () => {
       }),
     });
     const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(repository, javaClient);
+    const service = createWorkbenchService(repository, javaClient);
 
     await expect(
       service.retryMessage("101", {
@@ -7614,7 +7823,7 @@ describe("MysqlWorkbenchService", () => {
       }),
     });
     const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(repository, javaClient);
+    const service = createWorkbenchService(repository, javaClient);
 
     await expect(
       service.retryMessage("101", {
@@ -7677,7 +7886,7 @@ describe("MysqlWorkbenchService", () => {
         uid: 272,
       }),
     });
-    const service = new MysqlWorkbenchService(repository, javaClient);
+    const service = createWorkbenchService(repository, javaClient);
 
     await service.retryMessage("101", {
       conversationId: "conv-001",
@@ -7720,7 +7929,7 @@ describe("MysqlWorkbenchService", () => {
       }),
     });
     const javaClient = createJavaClient();
-    const service = new MysqlWorkbenchService(repository, javaClient);
+    const service = createWorkbenchService(repository, javaClient);
 
     await expect(
       service.retryMessage("101", {
@@ -7734,6 +7943,30 @@ describe("MysqlWorkbenchService", () => {
     expect(javaClient.sendMessage).not.toHaveBeenCalled();
   });
 });
+
+function createWorkbenchService(
+  repository: WorkbenchRepository,
+  javaClient: WorkbenchJavaClient,
+  logger?: ConstructorParameters<typeof MysqlWorkbenchService>[2],
+  playableVoiceExists?: ConstructorParameters<typeof MysqlWorkbenchService>[3],
+  scope: ConstructorParameters<typeof MysqlWorkbenchService>[4] = {
+    platform: 5,
+    uid: 9001,
+  },
+) {
+  const repositoryWithActiveSubUser = {
+    getSubUser: vi.fn().mockResolvedValue(createActiveSubUser()),
+    ...repository,
+  } as WorkbenchRepository;
+
+  return new MysqlWorkbenchService(
+    repositoryWithActiveSubUser,
+    javaClient,
+    logger,
+    playableVoiceExists,
+    scope,
+  );
+}
 
 function createMaterialRepository(overrides: Partial<WorkbenchRepository> = {}) {
   return {
@@ -7840,6 +8073,15 @@ function createMessageDto(input: {
     senderType: input.senderType,
     seq: input.seq,
     status: "sent" as const,
+  };
+}
+
+function createActiveSubUser() {
+  return {
+    displayName: "客服一号",
+    platform: 6,
+    subUserId: "101",
+    uid: 9001,
   };
 }
 

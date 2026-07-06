@@ -172,6 +172,7 @@ import {
   decodeConversationListCursor,
   type MaterialCollectionScope,
   parseMySqlId,
+  type WorkbenchSeatAccessScope,
   type WorkbenchRepository,
 } from "./workbench-repository.js";
 import {
@@ -183,6 +184,11 @@ import {
   toPlayableVoicePathname,
 } from "./media-config.js";
 import { normalizeMediaAssetUrl } from "./workbench-content-utils.js";
+import {
+  getCurrentWorkbenchPlatformScope,
+  type AuthenticatedWorkbenchScope,
+  type WorkbenchPlatformScope,
+} from "../workbench-platform-scope.js";
 
 const POLL_CONVERSATION_CHANGE_LIMIT = 500;
 const POLL_LAST_MESSAGE_OVERLAP_MS = 1;
@@ -674,10 +680,17 @@ export class MysqlWorkbenchService implements WorkbenchService {
     private readonly logger: AppLogger = noopLogger,
     private readonly playableVoiceExists: PlayableVoiceExistsChecker =
       checkPlayableVoiceExists,
+    private readonly workbenchScope: WorkbenchPlatformScope & { uid?: number } =
+      getCurrentWorkbenchPlatformScope(),
   ) {}
 
   async deleteConversation(subUserId: string, conversationId: string) {
-    const conversation = await this.getOperableConversation(subUserId, conversationId);
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
+    const conversation = await this.getOperableConversation(
+      subUserId,
+      conversationId,
+      scope,
+    );
 
     await this.javaClient.deleteConversation({
       conversationId: conversation.id,
@@ -703,15 +716,19 @@ export class MysqlWorkbenchService implements WorkbenchService {
       throw new UnauthorizedError();
     }
 
-    return subUser;
+    return {
+      displayName: subUser.displayName,
+      subUserId: subUser.subUserId,
+      uid: subUser.uid,
+    };
   }
 
   async getSidebarIframeParams(
     subUserId: string,
     input: WorkbenchSidebarIframeParamsRequest,
   ): Promise<WorkbenchSidebarIframeParamsDto> {
-    await this.getMe(subUserId);
-    await this.assertSeatAccess(subUserId, input.seatId);
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
+    await this.assertSeatAccess(subUserId, input.seatId, scope);
 
     const conversation = await this.repository.getConversationLookup(input.conversationId);
 
@@ -723,7 +740,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
       throw new BadRequestError("CONVERSATION_SEAT_MISMATCH", "会话与席位不匹配");
     }
 
-    const secrets = await this.repository.getEmbedUserRelationTuseSecrets(subUserId);
+    const secrets = await this.repository.getEmbedUserRelationTuseSecrets(scope);
 
     if (!secrets) {
       throw new NotFoundError(
@@ -749,9 +766,9 @@ export class MysqlWorkbenchService implements WorkbenchService {
   }
 
   async getSeats(subUserId: string) {
-    await this.getMe(subUserId);
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
 
-    return this.repository.listSeats(subUserId);
+    return this.repository.listSeats(toSeatAccessScope(scope, subUserId));
   }
 
   async getCustomers(
@@ -764,16 +781,16 @@ export class MysqlWorkbenchService implements WorkbenchService {
       seatIds?: string[];
     },
   ): Promise<WorkbenchCustomerListResponse> {
-    const subUser = await this.getMe(subUserId);
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
 
     if (options.scope === "all") {
       return this.repository.listCustomers({
         cursor: options.cursor,
         keyword: options.keyword,
         limit: options.limit,
-        platform: subUser.platform,
+        platform: scope.platform,
         scope: "all",
-        uid: subUser.uid,
+        uid: scope.uid,
       });
     }
 
@@ -781,9 +798,11 @@ export class MysqlWorkbenchService implements WorkbenchService {
       cursor: options.cursor,
       keyword: options.keyword,
       limit: options.limit,
+      platform: scope.platform,
       scope: "mine",
       seatIds: options.seatIds,
       subUserId,
+      uid: scope.uid,
     });
   }
 
@@ -791,17 +810,13 @@ export class MysqlWorkbenchService implements WorkbenchService {
     subUserId: string,
     thirdExternalUserId: string,
   ): Promise<WorkbenchCustomerLastConversationResponse> {
-    const subUser = await this.getMe(subUserId);
-
-    if (subUser.uid == null || subUser.platform == null) {
-      return {};
-    }
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
 
     return {
       lastConversation: await this.repository.getCustomerLastConversation({
-        platform: subUser.platform,
+        platform: scope.platform,
         thirdExternalUserId,
-        uid: subUser.uid,
+        uid: scope.uid,
       }),
     };
   }
@@ -811,18 +826,14 @@ export class MysqlWorkbenchService implements WorkbenchService {
     thirdExternalUserId: string,
     thirdUserIds: string[],
   ): Promise<WorkbenchCustomerRelationConversationsResponse> {
-    const subUser = await this.getMe(subUserId);
-
-    if (subUser.uid == null || subUser.platform == null) {
-      return { items: [] };
-    }
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
 
     return {
       items: await this.repository.listCustomerRelationConversations({
-        platform: subUser.platform,
+        platform: scope.platform,
         thirdExternalUserId,
         thirdUserIds,
-        uid: subUser.uid,
+        uid: scope.uid,
       }),
     };
   }
@@ -837,7 +848,8 @@ export class MysqlWorkbenchService implements WorkbenchService {
       unreadOnly?: boolean;
     },
   ) {
-    await this.assertSeatAccess(subUserId, seatId);
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
+    await this.assertSeatAccess(subUserId, seatId, scope);
     const cursor = options?.cursor
       ? decodeConversationListCursor(options.cursor)
       : undefined;
@@ -859,13 +871,12 @@ export class MysqlWorkbenchService implements WorkbenchService {
     conversationId: string,
     options?: { beforeSeq?: number; limit?: number },
   ) {
-    const conversation = await this.repository.getConversationLookup(conversationId);
-
-    if (!conversation) {
-      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
-    }
-
-    await this.assertSeatAccess(subUserId, conversation.seatId);
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
+    const conversation = await this.getAccessibleConversation(
+      subUserId,
+      conversationId,
+      scope,
+    );
 
     const page = (await this.repository.listMessages(conversationId, {
       beforeSeq: options?.beforeSeq,
@@ -916,13 +927,8 @@ export class MysqlWorkbenchService implements WorkbenchService {
     conversationId: string,
     messageSeqs: number[],
   ) {
-    const conversation = await this.repository.getConversationLookup(conversationId);
-
-    if (!conversation) {
-      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
-    }
-
-    await this.assertSeatAccess(subUserId, conversation.seatId);
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
+    await this.getAccessibleConversation(subUserId, conversationId, scope);
 
     return this.repository.listMessagesBySeqs(conversationId, messageSeqs);
   }
@@ -932,13 +938,12 @@ export class MysqlWorkbenchService implements WorkbenchService {
     conversationId: string,
     msgInfoId: number,
   ) {
-    const conversation = await this.repository.getConversationLookup(conversationId);
-
-    if (!conversation) {
-      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
-    }
-
-    await this.assertSeatAccess(subUserId, conversation.seatId);
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
+    const conversation = await this.getAccessibleConversation(
+      subUserId,
+      conversationId,
+      scope,
+    );
 
     const detail = await this.repository.getChatRecordDetail(
       conversation.uid,
@@ -959,13 +964,8 @@ export class MysqlWorkbenchService implements WorkbenchService {
     conversationId: string,
     options: WorkbenchHistoryMessageQuery = {},
   ) {
-    const conversation = await this.repository.getConversationLookup(conversationId);
-
-    if (!conversation) {
-      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
-    }
-
-    await this.assertSeatAccess(subUserId, conversation.seatId);
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
+    await this.getAccessibleConversation(subUserId, conversationId, scope);
 
     return this.repository.listHistoryMessages(conversationId, {
       cursor: options.cursor,
@@ -977,13 +977,8 @@ export class MysqlWorkbenchService implements WorkbenchService {
   }
 
   async getGroupMembers(subUserId: string, conversationId: string) {
-    const conversation = await this.repository.getConversationLookup(conversationId);
-
-    if (!conversation) {
-      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
-    }
-
-    await this.assertSeatAccess(subUserId, conversation.seatId);
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
+    await this.getAccessibleConversation(subUserId, conversationId, scope);
 
     const groupMembers = await this.repository.listGroupMembers(conversationId);
 
@@ -995,13 +990,12 @@ export class MysqlWorkbenchService implements WorkbenchService {
   }
 
   async getUploadCredential(subUserId: string, conversationId: string) {
-    const conversation = await this.repository.getConversationLookup(conversationId);
-
-    if (!conversation) {
-      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
-    }
-
-    await this.assertSeatAccess(subUserId, conversation.seatId);
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
+    const conversation = await this.getAccessibleConversation(
+      subUserId,
+      conversationId,
+      scope,
+    );
 
     const credential = await this.javaClient.getUploadCredential({
       uid: conversation.uid,
@@ -1029,13 +1023,12 @@ export class MysqlWorkbenchService implements WorkbenchService {
     conversationId: string,
     msgInfoId: number,
   ) {
-    const conversation = await this.repository.getConversationLookup(conversationId);
-
-    if (!conversation) {
-      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
-    }
-
-    await this.assertSeatAccess(subUserId, conversation.seatId);
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
+    const conversation = await this.getAccessibleConversation(
+      subUserId,
+      conversationId,
+      scope,
+    );
 
     if (!Number.isSafeInteger(msgInfoId) || msgInfoId <= 0) {
       throw new BadRequestError("INVALID_MESSAGE_ID", "消息 ID 不能为空");
@@ -1071,13 +1064,12 @@ export class MysqlWorkbenchService implements WorkbenchService {
     conversationId: string,
     messageSeq: number,
   ) {
-    const conversation = await this.repository.getConversationLookup(conversationId);
-
-    if (!conversation) {
-      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
-    }
-
-    await this.assertSeatAccess(subUserId, conversation.seatId);
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
+    const conversation = await this.getAccessibleConversation(
+      subUserId,
+      conversationId,
+      scope,
+    );
 
     if (!Number.isSafeInteger(messageSeq) || messageSeq <= 0) {
       throw new BadRequestError("INVALID_MESSAGE_SEQ", "消息序号无效");
@@ -1111,13 +1103,12 @@ export class MysqlWorkbenchService implements WorkbenchService {
     subUserId: string,
     input: WorkbenchVoicePlaybackConfirmRequest,
   ): Promise<WorkbenchVoicePlaybackConfirmResponse> {
-    const conversation = await this.repository.getConversationLookup(input.conversationId);
-
-    if (!conversation) {
-      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
-    }
-
-    await this.assertSeatAccess(subUserId, conversation.seatId);
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
+    const conversation = await this.getAccessibleConversation(
+      subUserId,
+      input.conversationId,
+      scope,
+    );
 
     if (!Number.isSafeInteger(input.messageSeq) || input.messageSeq <= 0) {
       throw new BadRequestError("INVALID_MESSAGE_SEQ", "消息序号无效");
@@ -1178,13 +1169,12 @@ export class MysqlWorkbenchService implements WorkbenchService {
     subUserId: string,
     input: WorkbenchVoiceTranscriptionRequest,
   ): Promise<WorkbenchVoiceTranscriptionResponse> {
-    const conversation = await this.repository.getConversationLookup(input.conversationId);
-
-    if (!conversation) {
-      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
-    }
-
-    await this.assertSeatAccess(subUserId, conversation.seatId);
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
+    const conversation = await this.getAccessibleConversation(
+      subUserId,
+      input.conversationId,
+      scope,
+    );
 
     if (!Number.isSafeInteger(input.messageSeq) || input.messageSeq <= 0) {
       throw new BadRequestError("INVALID_MESSAGE_SEQ", "消息序号无效");
@@ -1251,7 +1241,12 @@ export class MysqlWorkbenchService implements WorkbenchService {
   }
 
   async markConversationRead(subUserId: string, conversationId: string) {
-    const conversation = await this.getOperableConversation(subUserId, conversationId);
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
+    const conversation = await this.getOperableConversation(
+      subUserId,
+      conversationId,
+      scope,
+    );
 
     await this.javaClient.markConversationRead({
       conversationId: conversation.id,
@@ -1267,7 +1262,12 @@ export class MysqlWorkbenchService implements WorkbenchService {
   }
 
   async markConversationUnread(subUserId: string, conversationId: string) {
-    const conversation = await this.getOperableConversation(subUserId, conversationId);
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
+    const conversation = await this.getOperableConversation(
+      subUserId,
+      conversationId,
+      scope,
+    );
 
     await this.javaClient.markConversationUnread({
       conversationId: conversation.id,
@@ -1283,7 +1283,12 @@ export class MysqlWorkbenchService implements WorkbenchService {
   }
 
   async pinConversation(subUserId: string, conversationId: string) {
-    const conversation = await this.getOperableConversation(subUserId, conversationId);
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
+    const conversation = await this.getOperableConversation(
+      subUserId,
+      conversationId,
+      scope,
+    );
 
     await this.javaClient.pinConversation({
       conversationId: conversation.id,
@@ -1315,7 +1320,12 @@ export class MysqlWorkbenchService implements WorkbenchService {
       throw new NotFoundError("SUB_USER_NOT_FOUND", "子账号不存在");
     }
 
-    const conversation = await this.getOperableConversation(subUserId, conversationId);
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
+    const conversation = await this.getOperableConversation(
+      subUserId,
+      conversationId,
+      scope,
+    );
 
     if (request.enabled && conversation.chatType !== CHAT_TYPE.SINGLE) {
       throw new BadRequestError("FULL_AUTO_GROUP_UNSUPPORTED", "群聊暂不支持 AI 托管");
@@ -1353,7 +1363,12 @@ export class MysqlWorkbenchService implements WorkbenchService {
     subUserId: string,
     conversationId: string,
   ): Promise<WorkbenchFullAutoAnswerStatusResponse> {
-    const conversation = await this.getAccessibleConversation(subUserId, conversationId);
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
+    const conversation = await this.getAccessibleConversation(
+      subUserId,
+      conversationId,
+      scope,
+    );
 
     if (conversation.thirdGroupId || !conversation.thirdExternalUserId) {
       return {};
@@ -1367,10 +1382,10 @@ export class MysqlWorkbenchService implements WorkbenchService {
   }
 
   async poll(subUserId: string, request: WorkbenchPollRequest) {
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
+
     if (request.currentSeatId) {
-      await this.assertSeatAccess(subUserId, request.currentSeatId);
-    } else {
-      await this.getMe(subUserId);
+      await this.assertSeatAccess(subUserId, request.currentSeatId, scope);
     }
 
     const activeConversationMessages =
@@ -1379,6 +1394,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
             subUserId,
             request.activeConversationId,
             request.activeMessageSeq,
+            scope,
           )
         : [];
     const messageUpdateCursor = request.messageUpdateCursor ?? request.sinceVersion;
@@ -1393,7 +1409,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
         : [];
     const seatEventScope =
       typeof this.repository.getSeatEventScope === "function"
-        ? await this.repository.getSeatEventScope(subUserId)
+        ? await this.repository.getSeatEventScope(toSeatAccessScope(scope, subUserId))
         : undefined;
     const seatUpdateEvents =
       seatEventScope && typeof this.repository.listSeatUpdateEvents === "function"
@@ -1491,15 +1507,12 @@ export class MysqlWorkbenchService implements WorkbenchService {
     subUserId: string,
     request: WorkbenchSmartReplyPollRequest,
   ) {
-    const conversation = await this.repository.getConversationLookup(
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
+    const conversation = await this.getAccessibleConversation(
+      subUserId,
       request.conversationId,
+      scope,
     );
-
-    if (!conversation) {
-      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
-    }
-
-    await this.assertSeatAccess(subUserId, conversation.seatId);
     assertSmartReplySingleConversation(conversation);
 
     const javaMsgIds = normalizeSmartReplyMsgIds(request.msgIds);
@@ -1525,15 +1538,12 @@ export class MysqlWorkbenchService implements WorkbenchService {
     subUserId: string,
     request: WorkbenchSmartReplyGeneralAnswerRequest,
   ) {
-    const conversation = await this.repository.getConversationLookup(
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
+    const conversation = await this.getAccessibleConversation(
+      subUserId,
       request.conversationId,
+      scope,
     );
-
-    if (!conversation) {
-      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
-    }
-
-    await this.assertSeatAccess(subUserId, conversation.seatId);
 
     if (!Number.isSafeInteger(request.msgId) || request.msgId <= 0) {
       throw new BadRequestError("SMART_REPLY_MSG_INVALID", "消息序号无效");
@@ -1555,15 +1565,12 @@ export class MysqlWorkbenchService implements WorkbenchService {
     subUserId: string,
     request: WorkbenchSmartReplyAutoGeneralAnswerRequest,
   ) {
-    const conversation = await this.repository.getConversationLookup(
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
+    const conversation = await this.getAccessibleConversation(
+      subUserId,
       request.conversationId,
+      scope,
     );
-
-    if (!conversation) {
-      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
-    }
-
-    await this.assertSeatAccess(subUserId, conversation.seatId);
 
     if (!Number.isSafeInteger(request.msgId) || request.msgId <= 0) {
       throw new BadRequestError("SMART_REPLY_MSG_INVALID", "消息序号无效");
@@ -1584,15 +1591,12 @@ export class MysqlWorkbenchService implements WorkbenchService {
     subUserId: string,
     request: WorkbenchSmartReplyMakeShorterRequest,
   ) {
-    const conversation = await this.repository.getConversationLookup(
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
+    const conversation = await this.getAccessibleConversation(
+      subUserId,
       request.conversationId,
+      scope,
     );
-
-    if (!conversation) {
-      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
-    }
-
-    await this.assertSeatAccess(subUserId, conversation.seatId);
     assertSmartReplySingleConversation(conversation);
 
     const content = request.content.trim();
@@ -1636,15 +1640,12 @@ export class MysqlWorkbenchService implements WorkbenchService {
     subUserId: string,
     request: WorkbenchSmartReplySendAnswerRequest,
   ) {
-    const conversation = await this.repository.getConversationLookup(
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
+    const conversation = await this.getAccessibleConversation(
+      subUserId,
       request.conversationId,
+      scope,
     );
-
-    if (!conversation) {
-      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
-    }
-
-    await this.assertSeatAccess(subUserId, conversation.seatId);
     assertSmartReplySingleConversation(conversation);
 
     const recordId = request.recordId.trim();
@@ -1674,15 +1675,12 @@ export class MysqlWorkbenchService implements WorkbenchService {
     subUserId: string,
     request: WorkbenchSmartReplyAttachmentsRequest,
   ) {
-    const conversation = await this.repository.getConversationLookup(
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
+    const conversation = await this.getAccessibleConversation(
+      subUserId,
       request.conversationId,
+      scope,
     );
-
-    if (!conversation) {
-      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
-    }
-
-    await this.assertSeatAccess(subUserId, conversation.seatId);
     assertSmartReplySingleConversation(conversation);
 
     const ids = normalizeAttachmentIds(request.ids);
@@ -1707,15 +1705,12 @@ export class MysqlWorkbenchService implements WorkbenchService {
       throw new BadRequestError("TEXT_MODERATION_CONTENT_EMPTY", "检测内容不能为空");
     }
 
-    const conversation = await this.repository.getConversationLookup(
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
+    const conversation = await this.getAccessibleConversation(
+      subUserId,
       request.conversationId,
+      scope,
     );
-
-    if (!conversation) {
-      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
-    }
-
-    await this.assertSeatAccess(subUserId, conversation.seatId);
     assertSmartReplySingleConversation(conversation);
 
     return this.javaClient.checkTextModerationPlus({
@@ -1728,15 +1723,12 @@ export class MysqlWorkbenchService implements WorkbenchService {
     subUserId: string,
     request: WorkbenchKnowledgePageRequest,
   ) {
-    const conversation = await this.repository.getConversationLookup(
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
+    const conversation = await this.getAccessibleConversation(
+      subUserId,
       request.conversationId,
+      scope,
     );
-
-    if (!conversation) {
-      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
-    }
-
-    await this.assertSeatAccess(subUserId, conversation.seatId);
     assertSmartReplySingleConversation(conversation);
 
     const response = await this.javaClient.listKnowledgePage({
@@ -1763,15 +1755,12 @@ export class MysqlWorkbenchService implements WorkbenchService {
     subUserId: string,
     request: WorkbenchKnowledgeConfigRequest,
   ) {
-    const conversation = await this.repository.getConversationLookup(
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
+    const conversation = await this.getAccessibleConversation(
+      subUserId,
       request.conversationId,
+      scope,
     );
-
-    if (!conversation) {
-      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
-    }
-
-    await this.assertSeatAccess(subUserId, conversation.seatId);
     assertSmartReplySingleConversation(conversation);
 
     return this.javaClient.getKnowledgeConfig({
@@ -1783,15 +1772,12 @@ export class MysqlWorkbenchService implements WorkbenchService {
     subUserId: string,
     request: WorkbenchKnowledgeDocPageRequest,
   ) {
-    const conversation = await this.repository.getConversationLookup(
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
+    const conversation = await this.getAccessibleConversation(
+      subUserId,
       request.conversationId,
+      scope,
     );
-
-    if (!conversation) {
-      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
-    }
-
-    await this.assertSeatAccess(subUserId, conversation.seatId);
     assertSmartReplySingleConversation(conversation);
 
     const knowledgeId = normalizeKnowledgeId(request.knowledgeId);
@@ -1835,15 +1821,12 @@ export class MysqlWorkbenchService implements WorkbenchService {
     subUserId: string,
     request: WorkbenchKnowledgeFaqAddRequest,
   ) {
-    const conversation = await this.repository.getConversationLookup(
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
+    const conversation = await this.getAccessibleConversation(
+      subUserId,
       request.conversationId,
+      scope,
     );
-
-    if (!conversation) {
-      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
-    }
-
-    await this.assertSeatAccess(subUserId, conversation.seatId);
     assertSmartReplySingleConversation(conversation);
 
     const docId = normalizeKnowledgeId(request.docId);
@@ -1873,9 +1856,11 @@ export class MysqlWorkbenchService implements WorkbenchService {
     subUserId: string,
     request: WorkbenchSmartHeartbeatRequest,
   ) {
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
     const conversation = await this.getOperableConversation(
       subUserId,
       request.conversationId,
+      scope,
     );
 
     if (conversation.thirdGroupId) {
@@ -1905,7 +1890,12 @@ export class MysqlWorkbenchService implements WorkbenchService {
   }
 
   async sendMessage(subUserId: string, payload: WorkbenchSendMessagePayload) {
-    const conversation = await this.getOperableConversation(subUserId, payload.conversationId);
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
+    const conversation = await this.getOperableConversation(
+      subUserId,
+      payload.conversationId,
+      scope,
+    );
 
     if (conversation.seatId !== payload.seatId) {
       throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
@@ -1952,9 +1942,11 @@ export class MysqlWorkbenchService implements WorkbenchService {
   }
 
   async retryMessage(subUserId: string, payload: WorkbenchRetryMessageRequest) {
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
     const conversation = await this.getOperableConversation(
       subUserId,
       payload.conversationId,
+      scope,
     );
 
     if (!Number.isSafeInteger(payload.messageSeq) || payload.messageSeq <= 0) {
@@ -2103,7 +2095,12 @@ export class MysqlWorkbenchService implements WorkbenchService {
     conversationId: string,
     messageSeq: number,
   ): Promise<WorkbenchRevokeMessageResponse> {
-    const conversation = await this.getOperableConversation(subUserId, conversationId);
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
+    const conversation = await this.getOperableConversation(
+      subUserId,
+      conversationId,
+      scope,
+    );
 
     if (!Number.isSafeInteger(messageSeq) || messageSeq <= 0) {
       throw new BadRequestError("INVALID_MESSAGE_SEQ", "消息序号无效");
@@ -2176,7 +2173,8 @@ export class MysqlWorkbenchService implements WorkbenchService {
       throw new NotFoundError("SUB_USER_NOT_FOUND", "子账号不存在");
     }
 
-    await this.assertSeatAccess(subUserId, seatId);
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
+    await this.assertSeatAccess(subUserId, seatId, scope);
 
     const seat = await this.repository.getSeatOperateScope(seatId);
 
@@ -2208,7 +2206,8 @@ export class MysqlWorkbenchService implements WorkbenchService {
     seatId: string,
     request: WorkbenchSeatAgentModeSwitchRequest,
   ): Promise<WorkbenchSeatAgentModeSwitchResponse> {
-    await this.assertSeatAccess(subUserId, seatId);
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
+    await this.assertSeatAccess(subUserId, seatId, scope);
 
     const seat = await this.repository.getSeatOperateScope(seatId);
 
@@ -2243,7 +2242,12 @@ export class MysqlWorkbenchService implements WorkbenchService {
   }
 
   async unpinConversation(subUserId: string, conversationId: string) {
-    const conversation = await this.getOperableConversation(subUserId, conversationId);
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
+    const conversation = await this.getOperableConversation(
+      subUserId,
+      conversationId,
+      scope,
+    );
 
     await this.javaClient.unpinConversation({
       conversationId: conversation.id,
@@ -3747,18 +3751,42 @@ export class MysqlWorkbenchService implements WorkbenchService {
     return { ok: true };
   }
 
-  private async assertSeatAccess(subUserId: string, seatId: string) {
-    const canAccess = await this.repository.canAccessSeat(subUserId, seatId);
+  private async assertSeatAccess(
+    subUserId: string,
+    seatId: string,
+    scope: AuthenticatedWorkbenchScope,
+  ) {
+    const canAccess = await this.repository.canAccessSeat(
+      toSeatAccessScope(scope, subUserId),
+      seatId,
+    );
 
     if (!canAccess) {
       throw new NotFoundError("SEAT_NOT_FOUND", "席位不存在");
     }
   }
 
+  private async getAuthenticatedWorkbenchScope(
+    subUserId: string,
+  ): Promise<AuthenticatedWorkbenchScope> {
+    await this.getMe(subUserId);
+    const uid = this.workbenchScope.uid;
+
+    if (uid == null || !Number.isSafeInteger(uid) || uid <= 0) {
+      throw new UnauthorizedError();
+    }
+
+    return {
+      platform: this.workbenchScope.platform,
+      uid,
+    };
+  }
+
   private async getActiveConversationMessages(
     subUserId: string,
     conversationId: string,
     activeMessageSeq: number,
+    scope: AuthenticatedWorkbenchScope,
   ) {
     const conversation = await this.repository.getConversationLookup(conversationId);
 
@@ -3766,7 +3794,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
       throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
     }
 
-    await this.assertSeatAccess(subUserId, conversation.seatId);
+    await this.assertSeatAccess(subUserId, conversation.seatId, scope);
 
     const page = await this.repository.listMessages(conversationId, {
       beforeSeq: undefined,
@@ -3777,8 +3805,16 @@ export class MysqlWorkbenchService implements WorkbenchService {
     return page.messages.filter((message) => message.seq > activeMessageSeq);
   }
 
-  private async getOperableConversation(subUserId: string, conversationId: string) {
-    const conversation = await this.getAccessibleConversation(subUserId, conversationId);
+  private async getOperableConversation(
+    subUserId: string,
+    conversationId: string,
+    scope: AuthenticatedWorkbenchScope,
+  ) {
+    const conversation = await this.getAccessibleConversation(
+      subUserId,
+      conversationId,
+      scope,
+    );
 
     if (conversation.seatHostSubUserId !== subUserId) {
       throw new ForbiddenError("SEAT_NOT_TAKEN_OVER", "当前账号尚未由你接管");
@@ -3787,14 +3823,18 @@ export class MysqlWorkbenchService implements WorkbenchService {
     return conversation;
   }
 
-  private async getAccessibleConversation(subUserId: string, conversationId: string) {
+  private async getAccessibleConversation(
+    subUserId: string,
+    conversationId: string,
+    scope: AuthenticatedWorkbenchScope,
+  ) {
     const conversation = await this.repository.getConversationLookup(conversationId);
 
     if (!conversation) {
       throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
     }
 
-    await this.assertSeatAccess(subUserId, conversation.seatId);
+    await this.assertSeatAccess(subUserId, conversation.seatId, scope);
 
     return conversation;
   }
@@ -3860,20 +3900,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
   }
 
   private async getMaterialActor(subUserId: string) {
-    const me = await this.getMe(subUserId);
-
-    if (me.uid == null) {
-      throw new BadRequestError("INVALID_SUB_USER", "子账号无效");
-    }
-
-    if (me.platform == null) {
-      throw new BadRequestError("INVALID_SUB_USER", "子账号无效");
-    }
-
-    return {
-      uid: me.uid,
-      platform: me.platform,
-    };
+    return this.getAuthenticatedWorkbenchScope(subUserId);
   }
 
   private async prepareMaterialCollectionContent(
@@ -4078,8 +4105,8 @@ export class MysqlWorkbenchService implements WorkbenchService {
     seatId: string,
     keyword: string,
   ): Promise<WorkbenchSearchResponseDto> {
-    await this.getMe(subUserId);
-    await this.assertSeatAccess(subUserId, seatId);
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
+    await this.assertSeatAccess(subUserId, seatId, scope);
 
     const seatNumericId = parseMySqlId(seatId);
     if (seatNumericId == null) {
@@ -4103,8 +4130,8 @@ export class MysqlWorkbenchService implements WorkbenchService {
     subUserId: string,
     payload: WorkbenchGetOrCreateConversationRequestDto,
   ): Promise<WorkbenchConversationSummaryDto> {
-    await this.getMe(subUserId);
-    await this.assertSeatAccess(subUserId, payload.seatId);
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
+    await this.assertSeatAccess(subUserId, payload.seatId, scope);
 
     const seatNumericId = parseMySqlId(payload.seatId);
     if (seatNumericId == null) {
@@ -5361,6 +5388,17 @@ function hasSameExactOrder(currentIds: string[], submittedIds: string[]) {
     currentIds.length === submittedIds.length &&
     currentIds.every((id, index) => id === submittedIds[index])
   );
+}
+
+function toSeatAccessScope(
+  scope: AuthenticatedWorkbenchScope,
+  subUserId: string,
+): WorkbenchSeatAccessScope {
+  return {
+    platform: scope.platform,
+    subUserId,
+    uid: scope.uid,
+  };
 }
 
 function buildFileJavaSendMessageData(content: string): JavaSendMessageData {

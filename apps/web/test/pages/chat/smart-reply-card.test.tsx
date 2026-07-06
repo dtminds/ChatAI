@@ -108,7 +108,6 @@ describe("SmartReplyCard", () => {
     );
 
     expect(screen.getByTestId("smart-reply-card")).toBeInTheDocument();
-    expect(screen.getByTestId("smart-reply-card")).toHaveClass("max-w-[640px]");
     expect(
       screen
         .getByTestId("smart-reply-card-header")
@@ -125,15 +124,6 @@ describe("SmartReplyCard", () => {
     expect(
       screen.getByRole("button", { name: "更多智能回复操作" }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "填入输入框" })).toHaveClass(
-      "border",
-      "bg-conversation-active-foreground/10",
-    );
-    expect(screen.getByRole("button", { name: "收起" })).toHaveClass(
-      "border",
-      "bg-conversation-active-foreground/10",
-      "text-conversation-active-foreground",
-    );
     expect(screen.getByRole("button", { name: "编辑" })).toHaveTextContent("编辑");
     expect(screen.getByRole("button", { name: "发送" })).toHaveTextContent("发送");
     expect(
@@ -243,11 +233,8 @@ describe("SmartReplyCard", () => {
     await user.click(screen.getByRole("button", { name: "收起" }));
 
     expect(card).toHaveAttribute("data-dismissing", "true");
-    expect(card).toHaveStyle({ height: "128px", width: "440px" });
     expect(screen.getByTestId("smart-reply-card-animation-layer")).toBeInTheDocument();
-    expect(screen.getByTestId("smart-reply-card-animation-mini-icon")).toHaveStyle({
-      opacity: "1",
-    });
+    expect(screen.getByTestId("smart-reply-card-animation-mini-icon")).toBeInTheDocument();
     const collapseFrames = animate.mock.calls[0]?.[0] as Keyframe[];
     expect(collapseFrames.map((frame) => frame.transform)).toEqual([
       "translate(0, 0)",
@@ -1193,11 +1180,6 @@ describe("SmartReplyCard", () => {
     const status = screen.getByRole("status");
     expect(status).toHaveTextContent("思考中..");
     expect(screen.getByTestId("dot-matrix-loader")).toBeInTheDocument();
-    expect(
-      screen.getByTestId("dot-matrix-loader").querySelector(".dmx-root"),
-    ).toHaveStyle({ height: "14px", width: "14px" });
-    expect(status).toHaveClass("text-[13px]");
-    expect(status).not.toHaveClass("text-primary");
   });
 
   it("switches media processing text to generating text after the hint duration", () => {

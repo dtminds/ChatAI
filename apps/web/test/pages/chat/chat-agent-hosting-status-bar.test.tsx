@@ -54,40 +54,13 @@ describe("ChatAgentHostingStatusBar", () => {
       "data-size",
       "line",
     );
-    expect(screen.getByTestId("agent-hosting-border-beam")).toHaveClass("rounded-full");
-    expect(screen.getByTestId("chat-agent-hosting-status-bar")).toHaveClass("rounded-full");
-    expect(screen.getByTestId("chat-agent-hosting-status-bar")).toHaveClass(
-      "border",
-    );
-    expect(screen.getByTestId("chat-agent-hosting-status-bar")).not.toHaveClass(
-      "bg-background/85",
-    );
-    expect(screen.getByTestId("chat-agent-hosting-status-bar-surface")).toHaveClass(
-      "absolute",
-      "inset-0",
-      "rounded-full",
-    );
-    expect(screen.getByTestId("chat-agent-hosting-status-bar-content")).toHaveClass(
-      "relative",
-      "z-10",
-    );
     expect(screen.getByTestId("chat-agent-hosting-status-bar")).toBeInTheDocument();
     const statusText = screen.getByLabelText("Agent 已就绪，正在等待用户消息");
     expect(statusText).toHaveAttribute("data-slot", "animated-text-switch");
-    expect(statusText).toHaveClass("text-xs", "text-muted-foreground");
     expect(statusText.querySelector("[data-phase='enter']")).toHaveClass("shiny-text");
     expect(screen.getByTestId("dot-matrix-loader")).toHaveAttribute(
       "data-loader-type",
       "circular-8",
-    );
-    expect(activeLoaderMatrixWidth()).toBeLessThanOrEqual(activeLoaderSize());
-    expect(screen.getByRole("button", { name: "取消托管" })).toHaveClass(
-      "bg-neutral-strong",
-      "text-neutral-strong-foreground",
-      "hover:bg-neutral-strong/90",
-    );
-    expect(screen.getByRole("button", { name: "取消托管" })).not.toHaveClass(
-      "bg-primary",
     );
 
     await user.click(screen.getByRole("button", { name: "取消托管" }));
@@ -103,13 +76,6 @@ describe("ChatAgentHostingStatusBar", () => {
     expect(statusText).toHaveAttribute("data-slot", "animated-text-switch");
     expect(statusText.querySelector("[data-phase='enter']")).toHaveClass("shiny-text");
     expect(screen.getByTestId("dot-matrix-loader")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "取消托管" })).toHaveClass(
-      "bg-neutral-strong",
-      "text-neutral-strong-foreground",
-    );
-    expect(screen.getByRole("button", { name: "取消托管" })).not.toHaveClass(
-      "bg-primary",
-    );
     expect(screen.getByTestId("agent-hosting-border-beam")).toHaveAttribute(
       "data-active",
       "true",
@@ -154,20 +120,3 @@ describe("ChatAgentHostingStatusBar", () => {
     expect(screen.queryByTestId("agent-hosting-border-beam")).not.toBeInTheDocument();
   });
 });
-
-function activeLoaderSize() {
-  return Number.parseFloat(screen.getByLabelText("AI托管中").style.width);
-}
-
-function activeLoaderMatrixWidth() {
-  const loader = screen.getByLabelText("AI托管中");
-  const grid = loader.querySelector(".dmx-grid");
-  const dot = grid?.querySelector(".dmx-dot");
-
-  if (!(grid instanceof HTMLElement) || !(dot instanceof HTMLElement)) {
-    throw new Error("Expected active dot matrix loader structure");
-  }
-
-  return Number.parseFloat(dot.style.width) * 5
-    + Number.parseFloat(grid.style.gap) * 4;
-}

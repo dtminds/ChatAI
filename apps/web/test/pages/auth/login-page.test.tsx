@@ -54,7 +54,6 @@ describe("LoginPage", () => {
     });
     expect(altchaWidget).toBeInTheDocument();
     expect(altchaWidget).toHaveAttribute("data-altcha-theme", "business");
-    expect(altchaWidget).toHaveStyle({ "--altcha-max-width": "100%" });
     expect(JSON.parse(getAltchaConfiguration(altchaWidget))).toEqual({
       hideFooter: true,
       hideLogo: true,

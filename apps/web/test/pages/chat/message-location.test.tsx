@@ -24,10 +24,6 @@ describe("LocationMessageCard", () => {
 
     expect(screen.getByText("杭州智慧谷移动互联网大厦")).toBeInTheDocument();
     expect(screen.getByText("浙江省杭州市钱塘区学府街515号智慧谷一栋")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /杭州智慧谷移动互联网大厦/ })).toHaveStyle({
-      height: "82px",
-      width: "303px",
-    });
     expect(screen.getByTestId("location-map")).toHaveStyle({
       backgroundImage: "url(\"https://b5.bokr.com.cn/dist/location_bg.png\")",
     });

@@ -120,16 +120,6 @@ describe("FileMessageCard", () => {
     expect(card.firstElementChild).not.toContainElement(screen.getByText("2 KB"));
   });
 
-  it("reserves two title lines so file size does not change card height", () => {
-    render(
-      <FileMessageCard
-        content={createFileContent()}
-      />,
-    );
-
-    expect(screen.getByText("报价单.pdf")).toHaveClass("min-h-10", "line-clamp-2");
-  });
-
   it("keeps file size in the bottom metadata row when download is hidden", () => {
     render(
       <FileMessageCard

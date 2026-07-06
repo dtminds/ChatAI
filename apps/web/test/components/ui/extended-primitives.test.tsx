@@ -1,7 +1,6 @@
 import { act, render, screen } from "@testing-library/react";
 import { useForm } from "react-hook-form";
 import { describe, expect, it, vi } from "vitest";
-import { Button } from "@/components/ui/button";
 import {
   Form,
   FormControl,
@@ -18,11 +17,6 @@ import {
 } from "@/components/ui/resizable";
 import { ShinyText } from "@/components/ui/shiny-text";
 import { Slider } from "@/components/ui/slider";
-import {
-  Tabs,
-  TabsList,
-  TabsTrigger,
-} from "@/components/ui/tabs";
 import {
   Field,
   PreferenceOption,
@@ -60,18 +54,6 @@ function DemoForm() {
 }
 
 describe("extended UI primitives", () => {
-  it("does not force child icon dimensions from the button primitive", () => {
-    render(
-      <Button aria-label="微信表情" size="icon" variant="ghost">
-        <svg aria-hidden="true" height="18" viewBox="0 0 18 18" width="18" />
-      </Button>,
-    );
-
-    expect(screen.getByRole("button", { name: "微信表情" })).not.toHaveClass(
-      "[&_svg]:size-4",
-    );
-  });
-
   it("labels the slider thumb when using aria-label and aria-labelledby", () => {
     render(
       <>
@@ -304,40 +286,6 @@ describe("extended UI primitives", () => {
       "正在发送",
     );
     vi.useRealTimers();
-  });
-
-  it("uses source-matched active shadow without forcing underline tabs", () => {
-    render(
-      <>
-        <Tabs defaultValue="open">
-          <TabsList aria-label="默认标签">
-            <TabsTrigger value="open">待处理</TabsTrigger>
-          </TabsList>
-        </Tabs>
-        <Tabs defaultValue="underline">
-          <TabsList className="rounded-none bg-transparent p-0">
-            <TabsTrigger
-              className="rounded-none border-b-2 border-transparent bg-transparent shadow-none data-[state=active]:bg-transparent data-[state=active]:shadow-none"
-              value="underline"
-            >
-              普通
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
-      </>,
-    );
-
-    expect(screen.getByRole("tablist", { name: "默认标签" })).toHaveClass(
-      "bg-secondary/90",
-    );
-    expect(screen.getByRole("tab", { name: "待处理" })).toHaveClass(
-      "data-[state=active]:bg-[var(--tabs-trigger-active-bg)]",
-      "data-[state=active]:shadow-[var(--tabs-trigger-active-shadow)]",
-    );
-    expect(screen.getByRole("tab", { name: "普通" })).toHaveClass(
-      "data-[state=active]:bg-transparent",
-      "data-[state=active]:shadow-none",
-    );
   });
 
   it("supports distinct labels for range slider thumbs", () => {

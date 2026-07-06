@@ -212,22 +212,6 @@ describe("ConversationListPanel", () => {
     expect(screen.getByText("星云群聊 1").closest(".group")).toBe(groupCard);
   });
 
-  it("keeps the active tab underline when the tab also opens the view menu", () => {
-    render(
-      <ConversationListPanel
-        activeMode="single"
-        conversations={conversations}
-        onSelectConversation={vi.fn()}
-        onSelectMode={vi.fn()}
-        searchableConversations={conversations}
-      />,
-    );
-
-    expect(screen.getByRole("tab", { name: "单聊视图" })).toHaveClass(
-      "border-primary",
-    );
-  });
-
   it("filters single conversations from the compact view menu", async () => {
     const user = userEvent.setup();
     const onSelectView = vi.fn();
@@ -355,8 +339,6 @@ describe("ConversationListPanel", () => {
     const unreadItem = screen.getByRole("menuitemradio", { name: "未读99+" });
     const unreadBadge = within(unreadItem).getByTestId("conversation-view-unread-count-single");
     expect(unreadBadge).toHaveTextContent("99+");
-    expect(unreadBadge).toHaveClass("bg-destructive", "text-destructive-foreground");
-    expect(within(unreadItem).getByTestId("conversation-view-label-single-unread")).toHaveClass("w-16");
     expect(screen.getByRole("menuitemradio", { name: "全部" })).not.toHaveTextContent("99+");
     expect(screen.getByRole("menuitemradio", { name: "AI托管" })).not.toHaveTextContent("99+");
     expect(screen.getByRole("menuitemradio", { name: "人工接待" })).not.toHaveTextContent("99+");

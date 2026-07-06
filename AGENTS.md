@@ -1,9 +1,5 @@
 # AGENTS
 
-## Mission
-
-这个仓库用于承载“AI 客服工作台”的前端、Node 后端和共享契约。当前阶段以 `/chat` 聚合聊天工作台为核心入口，优先把工作台状态模型、API 接入点、Node backend 替换边界和后续 MySQL 接入基础搭稳。
-
 ## Repository Shape
 
 - `apps/web`: Vite + React 前端应用。
@@ -22,10 +18,6 @@
 - Tests：Vitest、Testing Library
 
 ## Design References
-
-- 工作台设计：[docs/superpowers/specs/2026-04-19-chat-workbench-design.md](docs/superpowers/specs/2026-04-19-chat-workbench-design.md)
-- Backend 架构：[docs/superpowers/specs/2026-05-08-backend-architecture-design.md](docs/superpowers/specs/2026-05-08-backend-architecture-design.md)
-- 当前目标页面：`/chat`
 - 当前公开 API 前缀：`/api/server/*`
 
 ## Architecture Agreements
@@ -34,15 +26,13 @@
 - 公开业务接口统一使用 `/api/server/*`，不要在 URL 中暴露内部实现命名。
 - 前端业务请求统一从 `apps/web/src/lib/request.ts` 出口发起，不直接在页面里裸写 `fetch`。
 - 前后端共享 DTO 和响应结构优先放到 `packages/contracts`，不要在 web/backend 两边复制类型。
-- 当前 backend 的工作台数据仍是内存服务，后续替换 MySQL 查询时保持路由契约稳定。
-- Redis 不是当前阶段必需依赖；除非功能确实需要，不要提前引入 Redis 强依赖。
 - 鉴权使用 Bearer token；所有环境都必须走正常登录、JWT 和 session 校验，不再提供开发绕过。
 
 ## Web Working Agreements
 
 - 新页面优先沿用 `shadcn/ui` 组件，避免混入第二套 UI 体系。
 - 本项目登录态页面不要尝试使用浏览器自动化验证改动；优先通过代码路径核对、相关 Vitest 用例和对应 build 命令验证。
-- 交互控件优先使用 `apps/web/src/components/ui` 中已有基础组件，如 `Button`、`Input`、`DropdownMenu`。只有在封装基础组件或现有组件无法表达语义/交互时才使用原生元素，并同步处理可访问性、键盘行为和 `focus-visible`。
+- 交互控件优先使用 `apps/web/src/components/ui` 中已有基础组件，如 `Button`、`Input`、`DropdownMenu`。只有在封装基础组件或现有组件无法表达语义/交互时才使用原生元素。
 - 做 UI 改动前必须先查同模块相邻页面和 `apps/web/src/components/ui` 的既有实现，优先复用现有组件、状态行、弹窗结构和文案模式；不要在未检索前手写临时 UI。
 - 本项目不以完整 WCAG 合规作为当前目标，但前端代码仍需保持基础语义和组件可用性：优先使用原生语义元素和现有 shadcn/ui 组件；图标按钮、无文本交互控件需要有清晰的可访问名称；弹窗、菜单、下拉等交互优先依赖现有基础组件自带的键盘和焦点行为，不额外手写复杂焦点管理；不要为了无障碍目标引入额外产品复杂度、冗余 DOM、重复 aria 或大范围重构；Review 时不要把“未完整支持无障碍/WCAG”作为问题提出，除非它同时造成真实交互、语义、测试或组件行为缺陷。
 - 图标统一使用 Hugeicons，不再引入 Lucide 或其他图标集。
@@ -55,7 +45,8 @@
 - 加载中状态优先使用 `apps/web/src/components/ui/spinner.tsx` 的 `Spinner` 组件，不手写临时 spinner 样式；加载文案保持克制，默认使用「正在加载」，不要拼接页面名、模块名或数据对象名（如“正在加载 Agent 列表”“正在加载托管设置”）。
 - 工作台状态优先收敛到 `apps/web/src/store/workbench-store.ts`，避免页面局部状态失控。
 - `apps/web/src/pages/chat/api` 是前端工作台服务适配层；UI 组件不要直接拼后端 URL。
-- 组件测试优先覆盖用户可感知行为、可访问语义、状态流转和关键数据契约；不要断言 Tailwind class、字号、间距、宽高、阴影、圆角等易变视觉实现细节，除非这些样式本身就是公开 API 或明确要求锁定的设计 token。UI 微调测试只覆盖真实行为、状态切换、可访问名称、关键文案和数据契约；不要为了颜色、间距、圆角、字号、截图观感补凑数测试。
+- 组件测试优先覆盖用户可感知行为、可访问语义、状态流转和关键数据契约；不要断言 Tailwind class、字号、间距、宽高、阴影、圆角等易变视觉实现细节，除非这些样式本身就是公开 API 或明确要求锁定的设计 token。也不要断言文案，文案是易变的。UI 微调测试只覆盖真实行为、状态切换、可访问名称、数据契约；不要为了颜色、间距、圆角、字号、截图观感、文案补凑数测试。
+- 简单样式微调不要求遵循 TDD，例如调整已有元素的间距、颜色、对齐、字号、圆角、hover 视觉或图标尺寸，且不改变 DOM 结构、交互行为、可访问名称、数据渲染或状态流转时，可以直接修改代码，再运行相关现有测试、build 和 `git diff --check` 验证。若样式调整引入新组件结构、新状态、新交互、响应式分支或影响可访问语义，则仍需先补行为测试或更新现有测试。
 
 ## Backend Working Agreements
 
@@ -122,9 +113,3 @@
 - 跨 `packages/contracts`、`apps/backend`、`apps/web` 的接口或 DTO 改动，提交前必须至少跑 contracts build、backend build、web build，以及相关契约/适配层测试。
 - 如果因环境、依赖或外部服务导致上述命令无法运行，提交或 PR 说明里必须明确写出未运行的命令、失败原因和风险；不能省略。
 - 每次提交前必须运行：`git diff --check`。
-
-## Naming and Domain Notes
-
-- 当前业务是账号维度的接管、账号 unread、会话 unread、会话消息和轮询同步。
-- `markConversationRead` 和会话级 unread 是当前可接受语义。
-- 不要在文档、类型或 mock 中引入不存在的历史接口或已否决概念。

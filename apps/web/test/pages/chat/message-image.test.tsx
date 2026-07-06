@@ -67,7 +67,6 @@ describe("MessageContentRenderer image messages", () => {
     );
 
     const trigger = screen.getByRole("button", { name: "查看大图：客户发来的现场照片" });
-    expect(trigger).toHaveClass("border", "border-border/40");
     expect(screen.getByRole("img", { name: "客户发来的现场照片" })).toHaveAttribute(
       "src",
       "https://cdn.example.com/chat/photo.jpg",
@@ -495,10 +494,6 @@ describe("MessageContentRenderer image messages", () => {
 
     expect(screen.getByRole("img", { name: "图片不可用：加载失败图片" }))
       .toBeInTheDocument();
-    expect(screen.getByTestId("image-message-fallback")).toHaveClass(
-      "h-[120px]",
-      "w-[120px]",
-    );
     expect(screen.queryByRole("img", { name: "加载失败图片" })).not.toBeInTheDocument();
   });
 

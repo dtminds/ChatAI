@@ -130,8 +130,6 @@ describe("material collection components", () => {
 
     const dialog = screen.getByRole("dialog", { name: "收录文件" });
     expect(dialog).toBeInTheDocument();
-    expect(dialog).toHaveClass("max-w-lg");
-    expect(dialog.querySelector(".min-h-\\[13rem\\]")).toBeInTheDocument();
     expect(screen.queryByText("默认分组不会新建分组记录")).not.toBeInTheDocument();
     expect(screen.queryByText("默认分组")).not.toBeInTheDocument();
     expect(
@@ -174,7 +172,6 @@ describe("material collection components", () => {
 
     await user.click(screen.getByRole("combobox", { name: "选择分组" }));
     const createGroupOption = await screen.findByRole("option", { name: "新建分组" });
-    expect(createGroupOption).toHaveClass("mt-1", "text-primary");
     await user.click(createGroupOption);
     expect(screen.getByRole("dialog", { name: "新建分组" })).toBeInTheDocument();
     await user.type(screen.getByRole("textbox", { name: "分组名称" }), "售后文件");
@@ -458,16 +455,7 @@ describe("material collection components", () => {
     expect(screen.getByText("报价单.pdf")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "下载文件：报价单.pdf" }))
       .not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "选择素材 报价单.pdf" }).parentElement)
-      .toHaveClass("w-full");
-    expect(screen.getByRole("button", { name: "选择素材 报价单.pdf" }))
-      .toHaveClass("w-full");
-    expect(screen.getByRole("button", { name: "选择素材 报价单.pdf" }).parentElement)
-      .not.toHaveClass("hover:border-border");
-    expect(screen.getByTestId("file-message-card"))
-      .toHaveClass("w-full");
-    expect(screen.getByTestId("file-message-card"))
-      .not.toHaveClass("h-32");
+    expect(screen.getByRole("button", { name: "选择素材 报价单.pdf" })).toBeInTheDocument();
   });
 
   it("renders h5 materials from raw message content fields without nested links", () => {
@@ -567,17 +555,10 @@ describe("material collection components", () => {
     );
 
     expect(screen.getByRole("dialog", { name: "收录的文件" })).toBeInTheDocument();
-    expect(screen.getByRole("dialog", { name: "收录的文件" }))
-      .toHaveStyle({
-        maxWidth: "calc(100vw - 2rem)",
-        width: "60rem",
-      });
     expect(screen.getAllByText("收录的文件", { selector: "div" })).toHaveLength(1);
     expect(screen.getAllByText("常用文件")).toHaveLength(1);
-    expect(screen.getByText("选择文件后发送，右键菜单可调整排序或删除素材"))
-      .toHaveClass("absolute", "-top-9", "text-white/90");
-    expect(screen.getByRole("button", { name: "常用文件" }))
-      .toHaveClass("text-left");
+    expect(screen.getByText("选择文件后发送，右键菜单可调整排序或删除素材")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "常用文件" })).toBeInTheDocument();
     expect(screen.getByRole("table", { name: "收录文件列表" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "名称" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "收录时间" })).toBeInTheDocument();
@@ -588,8 +569,7 @@ describe("material collection components", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("2 KB")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "关闭" }))
-      .toHaveClass("right-0", "-top-10", "bg-transparent", "text-white", "focus:ring-0");
+    expect(screen.getByRole("button", { name: "关闭" })).toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "新建分组名称" }))
       .not.toBeInTheDocument();
 
@@ -723,58 +703,6 @@ describe("material collection components", () => {
     expect(screen.getByText("暂无分组")).toBeInTheDocument();
   });
 
-  it("constrains material library content to scroll inside the dialog", () => {
-    render(
-      <MaterialLibraryDialog
-        activeGroupId="group-1"
-        bizType={MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM}
-        groups={Array.from({ length: 20 }, (_, index) =>
-          createGroup({ id: `group-${index + 1}`, title: `Test${index + 1}` }),
-        )}
-        items={Array.from({ length: 20 }, (_, index) =>
-          createItem({
-            bizType: MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM,
-            content: {
-              appName: "麦当劳",
-              sourceLabel: "小程序",
-              title: `小程序${index + 1}`,
-            },
-            contentType: "mini-program",
-            groupId: "group-1",
-            id: `mini-${index + 1}`,
-            title: `小程序${index + 1}`,
-          }),
-        )}
-        onCreateGroup={() => undefined}
-        onDeleteGroup={() => undefined}
-        onDeleteMaterial={() => undefined}
-        onEditMaterial={() => undefined}
-        onMoveMaterial={() => undefined}
-        onOpenChange={() => undefined}
-        onRenameGroup={() => undefined}
-        onSelectGroup={() => undefined}
-        onSelectMaterial={() => undefined}
-        onTopGroup={() => undefined}
-        onTopMaterial={() => undefined}
-        open
-      />,
-    );
-
-    expect(screen.getByRole("dialog", { name: "收录的小程序" }))
-      .toHaveClass(
-        "h-[min(44rem,calc(100vh-3rem))]",
-        "max-h-[calc(100vh-3rem)]",
-      );
-    expect(screen.getByRole("region", { name: "素材分组列表" }))
-      .toHaveClass("h-full", "min-h-0");
-    expect(screen.getByRole("region", { name: "素材分组列表" }))
-      .not.toHaveClass("px-4");
-    expect(screen.getByRole("button", { name: "Test1" }).closest(".space-y-1"))
-      .toHaveClass("px-4");
-    expect(screen.getByRole("region", { name: "素材内容列表" }))
-      .toHaveClass("h-full", "min-h-0");
-  });
-
   it("selects mini-program material from library footer send action", async () => {
     const user = userEvent.setup();
     const handleSelect = vi.fn();
@@ -892,280 +820,6 @@ describe("material collection components", () => {
     expect(handleOpenChange).not.toHaveBeenCalled();
   });
 
-  it("uses mini-program library width for four collected mini-program cards", () => {
-    render(
-      <MaterialLibraryDialog
-        activeGroupId="group-mini"
-        bizType={MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM}
-        groups={[createGroup({ id: "group-mini", title: "常用小程序" })]}
-        items={[
-          createItem({
-            bizType: MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM,
-            content: {
-              appName: "麦当劳",
-              sourceLabel: "小程序",
-              title: "麦当劳自助点餐",
-            },
-            contentType: "mini-program",
-            groupId: "group-mini",
-            id: "mini-1",
-            title: "麦当劳自助点餐",
-          }),
-        ]}
-        onCreateGroup={() => undefined}
-        onDeleteGroup={() => undefined}
-        onDeleteMaterial={() => undefined}
-        onEditMaterial={() => undefined}
-        onMoveMaterial={() => undefined}
-        onOpenChange={() => undefined}
-        onRenameGroup={() => undefined}
-        onSelectGroup={() => undefined}
-        onSelectMaterial={() => undefined}
-        onTopGroup={() => undefined}
-        onTopMaterial={() => undefined}
-        open
-      />,
-    );
-
-    expect(screen.getByRole("dialog", { name: "收录的小程序" }))
-      .toHaveStyle({
-        maxWidth: "calc(100vw - 2rem)",
-        width: "74.5rem",
-      });
-    expect(screen.getByLabelText("收录内容列表"))
-      .toHaveStyle({
-        gap: "16px",
-        gridTemplateColumns: "repeat(4, 210px)",
-        width: "888px",
-      });
-    expect(screen.getByRole("button", { name: "选择素材 麦当劳自助点餐" }).parentElement)
-      .toHaveClass("w-[210px]");
-    expect(screen.getByText("麦当劳自助点餐"))
-      .toHaveClass("line-clamp-1");
-  });
-
-  it("uses a single-column mobile material library layout", () => {
-    render(
-      <MaterialLibraryDialog
-        activeGroupId="group-video"
-        bizType={MATERIAL_COLLECTION_BIZ_TYPE.VIDEO}
-        groups={[
-          createGroup({ id: "group-video", title: "视频分组" }),
-          createGroup({ id: "group-archive", title: "重复收录" }),
-        ]}
-        isMobileLayout
-        items={[
-          createItem({
-            bizType: MATERIAL_COLLECTION_BIZ_TYPE.VIDEO,
-            content: {
-              coverUrl: "https://b5.bokr.com.cn/video-cover.jpg",
-              fileUrl: "s5/msg/20260514/272/video.mp4",
-            },
-            contentType: "video",
-            groupId: "group-video",
-            id: "video-1",
-            title: "视频",
-          }),
-        ]}
-        onCreateGroup={() => undefined}
-        onDeleteGroup={() => undefined}
-        onDeleteMaterial={() => undefined}
-        onEditMaterial={() => undefined}
-        onMoveMaterial={() => undefined}
-        onOpenChange={() => undefined}
-        onRenameGroup={() => undefined}
-        onSelectGroup={() => undefined}
-        onSelectMaterial={() => undefined}
-        onTopGroup={() => undefined}
-        onTopMaterial={() => undefined}
-        open
-      />,
-    );
-
-    expect(screen.getByRole("dialog", { name: "收录的视频" }))
-      .toHaveClass("h-svh", "w-screen", "translate-x-0", "translate-y-0");
-    expect(screen.queryByText(/右键菜单/)).not.toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "素材分组列表" }))
-      .toHaveClass("shrink-0", "overflow-x-auto");
-    expect(screen.getByLabelText("收录内容列表"))
-      .toHaveClass("grid-cols-[repeat(auto-fill,minmax(10rem,1fr))]");
-    expect(screen.getByRole("button", { name: "选择素材 视频" }).parentElement)
-      .toHaveClass("w-full");
-    expect(screen.getByRole("button", { name: "打开 视频 操作菜单" }))
-      .toHaveClass("bottom-2", "right-11");
-    expect(screen.getByRole("button", { name: "新建分组" }))
-      .toHaveClass("h-10", "shrink-0");
-  });
-
-  it("keeps mobile file rows within the dialog width", () => {
-    render(
-      <MaterialLibraryDialog
-        activeGroupId="group-file"
-        bizType={MATERIAL_COLLECTION_BIZ_TYPE.FILE}
-        groups={[createGroup({ id: "group-file", title: "常用文件" })]}
-        isMobileLayout
-        items={[
-          createItem({
-            content: {
-              extension: "mp3",
-              fileName: "Melody（2026年泸州老窖超级银河左岸.mp3",
-              fileSizeLabel: "3.74 MB",
-            },
-            groupId: "group-file",
-            id: "file-long-name",
-            title: "Melody（2026年泸州老窖超级银河左岸.mp3",
-          }),
-        ]}
-        onCreateGroup={() => undefined}
-        onDeleteGroup={() => undefined}
-        onDeleteMaterial={() => undefined}
-        onEditMaterial={() => undefined}
-        onMoveMaterial={() => undefined}
-        onOpenChange={() => undefined}
-        onRenameGroup={() => undefined}
-        onSelectGroup={() => undefined}
-        onSelectMaterial={() => undefined}
-        onTopGroup={() => undefined}
-        onTopMaterial={() => undefined}
-        open
-      />,
-    );
-
-    expect(screen.getByRole("region", { name: "收录文件列表区域" }))
-      .not.toHaveAttribute("data-scrollbar-visibility");
-    expect(screen.getByRole("region", { name: "收录文件列表区域" }))
-      .toHaveClass("overflow-x-hidden");
-    const fileRow = screen
-      .getByRole("button", { name: /选择 Melody/ })
-      .closest("div");
-
-    expect(fileRow).toHaveClass("w-full", "max-w-full", "overflow-hidden");
-  });
-
-  it("renders H5 materials as one item per row on mobile", () => {
-    render(
-      <MaterialLibraryDialog
-        activeGroupId="group-h5"
-        bizType={MATERIAL_COLLECTION_BIZ_TYPE.H5}
-        groups={[createGroup({ id: "group-h5", title: "H5分组" })]}
-        isMobileLayout
-        items={[
-          createItem({
-            bizType: MATERIAL_COLLECTION_BIZ_TYPE.H5,
-            content: {
-              desc: "活动说明",
-              href: "https://example.com/activity",
-              title: "活动页",
-            },
-            contentType: "h5",
-            groupId: "group-h5",
-            id: "h5-1",
-            title: "活动页",
-          }),
-        ]}
-        onCreateGroup={() => undefined}
-        onDeleteGroup={() => undefined}
-        onDeleteMaterial={() => undefined}
-        onEditMaterial={() => undefined}
-        onMoveMaterial={() => undefined}
-        onOpenChange={() => undefined}
-        onRenameGroup={() => undefined}
-        onSelectGroup={() => undefined}
-        onSelectMaterial={() => undefined}
-        onTopGroup={() => undefined}
-        onTopMaterial={() => undefined}
-        open
-      />,
-    );
-
-    expect(screen.getByLabelText("收录内容列表")).toHaveClass("grid-cols-1");
-    expect(screen.getByRole("button", { name: "选择素材 活动页" }).parentElement)
-      .toHaveClass("w-full");
-    expect(screen.getByRole("button", { name: "打开 活动页 操作菜单" }))
-      .toHaveClass("bottom-2", "left-2");
-  });
-
-  it("places the mobile mini-program action in the bottom-right corner", () => {
-    render(
-      <MaterialLibraryDialog
-        activeGroupId="group-mini"
-        bizType={MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM}
-        groups={[createGroup({ id: "group-mini", title: "常用小程序" })]}
-        isMobileLayout
-        items={[
-          createItem({
-            bizType: MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM,
-            content: {
-              appName: "麦当劳",
-              sourceLabel: "小程序",
-              title: "麦当劳自助点餐",
-            },
-            contentType: "mini-program",
-            groupId: "group-mini",
-            id: "mini-1",
-            title: "麦当劳自助点餐",
-          }),
-        ]}
-        onCreateGroup={() => undefined}
-        onDeleteGroup={() => undefined}
-        onDeleteMaterial={() => undefined}
-        onEditMaterial={() => undefined}
-        onMoveMaterial={() => undefined}
-        onOpenChange={() => undefined}
-        onRenameGroup={() => undefined}
-        onSelectGroup={() => undefined}
-        onSelectMaterial={() => undefined}
-        onTopGroup={() => undefined}
-        onTopMaterial={() => undefined}
-        open
-      />,
-    );
-
-    expect(screen.getByRole("button", { name: "打开 麦当劳自助点餐 操作菜单" }))
-      .toHaveClass("bottom-2", "right-2");
-  });
-
-  it("places the mobile image action beside the preview action", () => {
-    render(
-      <MaterialLibraryDialog
-        activeGroupId="group-image"
-        bizType={MATERIAL_COLLECTION_BIZ_TYPE.IMAGE}
-        groups={[createGroup({ id: "group-image", title: "常用图片" })]}
-        isMobileLayout
-        items={[
-          createItem({
-            bizType: MATERIAL_COLLECTION_BIZ_TYPE.IMAGE,
-            content: {
-              alt: "商品图",
-              fileUrl: "https://b5.bokr.com.cn/product.png",
-            },
-            contentType: "image",
-            groupId: "group-image",
-            id: "image-1",
-            title: "图片",
-          }),
-        ]}
-        onCreateGroup={() => undefined}
-        onDeleteGroup={() => undefined}
-        onDeleteMaterial={() => undefined}
-        onEditMaterial={() => undefined}
-        onMoveMaterial={() => undefined}
-        onOpenChange={() => undefined}
-        onRenameGroup={() => undefined}
-        onSelectGroup={() => undefined}
-        onSelectMaterial={() => undefined}
-        onTopGroup={() => undefined}
-        onTopMaterial={() => undefined}
-        open
-      />,
-    );
-
-    expect(screen.getByRole("button", { name: "打开 商品图 操作菜单" }))
-      .toHaveClass("bottom-2", "right-11");
-    expect(screen.getByRole("button", { name: "查看大图 商品图" }))
-      .toHaveClass("bottom-2", "right-2");
-  });
-
   it("renders sphfeed materials with the sphfeed card", () => {
     render(
       <MaterialCard
@@ -1192,52 +846,6 @@ describe("material collection components", () => {
       "https://finder.video.qq.com/cover.jpg",
     );
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
-  });
-
-  it("uses sphfeed library width for collected sphfeed cards", () => {
-    render(
-      <MaterialLibraryDialog
-        activeGroupId="group-sphfeed"
-        bizType={MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED}
-        groups={[createGroup({ id: "group-sphfeed", title: "常用视频号" })]}
-        items={[
-          createItem({
-            bizType: MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED,
-            content: {
-              description: "杭州高架惊现鸵鸟飞奔",
-              imageUrl: "https://finder.video.qq.com/cover.jpg",
-              sourceLabel: "视频号",
-              title: "都市快报",
-              url: "https://channels.weixin.qq.com/web/pages/feed?eid=export",
-            },
-            contentType: "sphfeed",
-            groupId: "group-sphfeed",
-            id: "sphfeed-1",
-            title: "都市快报",
-          }),
-        ]}
-        onCreateGroup={() => undefined}
-        onDeleteGroup={() => undefined}
-        onDeleteMaterial={() => undefined}
-        onEditMaterial={() => undefined}
-        onMoveMaterial={() => undefined}
-        onOpenChange={() => undefined}
-        onRenameGroup={() => undefined}
-        onSelectGroup={() => undefined}
-        onSelectMaterial={() => undefined}
-        onTopGroup={() => undefined}
-        onTopMaterial={() => undefined}
-        open
-      />,
-    );
-
-    expect(screen.getByRole("dialog", { name: "收录的视频号" }))
-      .toHaveStyle({
-        maxWidth: "calc(100vw - 2rem)",
-        width: "74.5rem",
-      });
-    expect(screen.getByRole("button", { name: "选择素材 都市快报" }).parentElement)
-      .toHaveClass("w-[217px]");
   });
 
   it("renders image materials in a selectable gallery with a preview action", async () => {
@@ -1357,15 +965,7 @@ describe("material collection components", () => {
       "src",
       `${coverUrl}!w480.webp`,
     );
-    expect(videoCover.parentElement).toHaveStyle({
-      aspectRatio: "3 / 4",
-      height: "280px",
-      width: "210px",
-    });
-    expect(videoCover.parentElement).toHaveClass("bg-neutral-950");
-    expect(videoCover).toHaveClass("object-contain");
     const playButton = screen.getByRole("button", { name: "播放视频：视频" });
-    expect(playButton).toHaveClass("bottom-2", "right-2");
 
     await user.click(playButton);
 
@@ -1407,7 +1007,7 @@ describe("material collection components", () => {
     await user.click(screen.getByRole("button", { name: "发送收藏表情 表情" }));
 
     expect(screen.queryByText("收藏的表情")).not.toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "表情" })).toHaveClass("size-18");
+    expect(screen.getByRole("img", { name: "表情" })).toBeInTheDocument();
     expect(handleSelect).toHaveBeenCalledWith(item);
   });
 });

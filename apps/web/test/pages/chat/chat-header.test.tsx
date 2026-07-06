@@ -99,7 +99,6 @@ describe("ChatHeader", () => {
     expect(screen.queryByRole("radio", { name: "跟随系统" })).not.toBeInTheDocument();
 
     const themeButton = screen.getByRole("button", { name: "切换深色模式" });
-    expect(themeButton).toHaveClass("text-muted-foreground");
 
     await user.click(themeButton);
 

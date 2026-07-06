@@ -26,25 +26,6 @@ describe("LinkMessageCard", () => {
     expect(link).toHaveAttribute("rel", "noopener noreferrer");
   });
 
-  it("separates the title from the body and top-aligns the description with the image", () => {
-    render(
-      <LinkMessageCard
-        content={{
-          description: "这是一段比较长的副标题，用于验证最多两行并且顶部与图片对齐",
-          previewImageUrl: "https://cdn.example.com/order.png",
-          title: "订单详情",
-          type: "h5",
-          url: "https://example.com/orders/123",
-        }}
-      />,
-    );
-
-    expect(screen.getByTestId("link-card-content")).toHaveClass("gap-2");
-    expect(screen.getByTestId("link-card-body")).toHaveClass("items-start");
-    expect(screen.getByText("这是一段比较长的副标题，用于验证最多两行并且顶部与图片对齐"))
-      .toHaveClass("line-clamp-2");
-  });
-
   it("does not render unsafe link URLs as anchors", () => {
     render(
       <LinkMessageCard
@@ -61,7 +42,7 @@ describe("LinkMessageCard", () => {
     expect(screen.getByText("风险链接")).toBeInTheDocument();
   });
 
-  it("renders a neutral fallback thumbnail when the preview image URL is empty", () => {
+  it("renders a fallback thumbnail when the preview image URL is empty", () => {
     render(
       <LinkMessageCard
         content={{
@@ -76,16 +57,11 @@ describe("LinkMessageCard", () => {
 
     const fallback = screen.getByRole("img", { name: "链接封面不可用：无图链接" });
 
-    expect(fallback).toHaveClass("bg-muted-foreground/5", "text-muted-foreground/30");
-    expect(fallback).not.toHaveClass("bg-primary/10", "text-primary");
-    expect(screen.getByTestId("link-preview-fallback-icon")).toHaveAttribute(
-      "data-icon-name",
-      "image-not-found-01",
-    );
+    expect(fallback).toBeInTheDocument();
     expect(screen.queryByRole("img", { name: "无图链接" })).not.toBeInTheDocument();
   });
 
-  it("renders a neutral fallback thumbnail when the preview image fails to load", () => {
+  it("renders a fallback thumbnail when the preview image fails to load", () => {
     render(
       <LinkMessageCard
         content={{
@@ -102,7 +78,7 @@ describe("LinkMessageCard", () => {
 
     const fallback = screen.getByRole("img", { name: "链接封面不可用：坏图链接" });
 
-    expect(fallback).toHaveClass("bg-muted-foreground/5", "text-muted-foreground/30");
+    expect(fallback).toBeInTheDocument();
     expect(screen.queryByRole("img", { name: "坏图链接" })).not.toBeInTheDocument();
   });
 

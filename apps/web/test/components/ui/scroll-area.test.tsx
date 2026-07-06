@@ -41,15 +41,4 @@ describe("ScrollArea", () => {
     );
   });
 
-  it("does not add custom hover visibility outside Radix behavior", () => {
-    render(
-      <ScrollArea data-testid="scroll-area" type="scroll">
-        <div>Scrollable content</div>
-      </ScrollArea>,
-    );
-
-    expect(
-      screen.getByTestId("scroll-area").querySelector('[data-orientation="vertical"]'),
-    ).not.toHaveClass("group-hover/scroll-area:opacity-100");
-  });
 });

@@ -28,9 +28,5 @@ describe("ContactCardMessageCard", () => {
       "src",
       "http://wx.qlogo.cn/mmhead/avatar/64",
     );
-    expect(screen.getByTestId("contact-card-avatar-frame")).toHaveStyle({
-      height: "48px",
-      width: "48px",
-    });
   });
 });

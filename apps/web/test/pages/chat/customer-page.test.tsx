@@ -201,7 +201,6 @@ describe("CustomerPage", () => {
     expect(scrollViewport).toBeInTheDocument();
     expect(scrollViewport).not.toContainElement(screen.getByLabelText("席位筛选"));
     expect(scrollViewport).not.toContainElement(screen.getByLabelText("搜索客户"));
-    expect(scrollViewport?.parentElement).toHaveClass("flex-1", "min-h-0");
   });
 
   it("searches all managed accounts and expands seat relations", async () => {
@@ -732,7 +731,6 @@ describe("CustomerPage", () => {
 
     const loadMoreButton = screen.getByRole("button", { name: "加载更多客户" });
     expect(loadMoreButton).toBeDisabled();
-    expect(loadMoreButton.querySelector("svg")).toHaveClass("animate-spin");
 
     resolveNextPage?.(nextCustomerResponse);
     expect(await screen.findByText("客户B（李四）")).toBeInTheDocument();
@@ -903,9 +901,6 @@ describe("CustomerPage", () => {
 
     expect(await screen.findByRole("heading", { name: "客户" })).toBeInTheDocument();
     expect(screen.getByTestId("chat-workbench-shell")).toBeInTheDocument();
-    expect(screen.getByTestId("account-sidebar-item-drc")).not.toHaveClass(
-      "bg-sidebar-accent",
-    );
 
     await user.click(screen.getByRole("button", { name: "选择 念都堂" }));
 

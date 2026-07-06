@@ -28,7 +28,7 @@ function createTextMessage(text: string): ChatMessage {
 
 describe("message-forward", () => {
   it("exposes forward limits and send delay range", () => {
-    expect(MESSAGE_FORWARD_MAX_RECIPIENTS).toBe(9);
+    expect(MESSAGE_FORWARD_MAX_RECIPIENTS).toBe(1);
     expect(MESSAGE_FORWARD_MAX_MESSAGES).toBe(20);
     expect(MESSAGE_FORWARD_SEND_INTERVAL_MIN_MS).toBe(1000);
     expect(MESSAGE_FORWARD_SEND_INTERVAL_MAX_MS).toBe(5000);

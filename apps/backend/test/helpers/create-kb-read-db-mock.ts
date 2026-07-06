@@ -364,6 +364,7 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
 
   const chunks = [
     {
+      attachment_type: 0,
       content: "切片正文",
       create_time: mysqlDatetime("2026-06-18 15:22:22"),
       description: null,
@@ -388,6 +389,7 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
       volc_resource_id: null,
     },
     {
+      attachment_type: 0,
       content: "系统切片正文",
       create_time: mysqlDatetime("2026-06-18 15:22:22"),
       description: null,
@@ -412,6 +414,7 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
       volc_resource_id: null,
     },
     {
+      attachment_type: 2,
       content: "附件描述",
       create_time: mysqlDatetime("2026-06-18 15:22:22"),
       description: null,
@@ -436,6 +439,7 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
       volc_resource_id: null,
     },
     {
+      attachment_type: 2,
       content: "系统附件描述",
       create_time: mysqlDatetime("2026-06-18 15:22:22"),
       description: null,

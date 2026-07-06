@@ -31,7 +31,6 @@ import {
 } from "./kb-attachment-material.repository.js";
 import {
   readPrimaryKbAttachmentMaterialId,
-  readPrimaryKbAttachmentType,
 } from "./kb-attachment-material-utils.js";
 import {
   deriveKbAttachmentTitle,
@@ -57,22 +56,11 @@ type AttachmentDocRow = {
   sync_status: number;
 };
 
-type AttachmentDocPollConfig = {
-  attempts: number;
-  delayMs: number;
-};
-
-const defaultAttachmentDocPollConfig: AttachmentDocPollConfig = {
-  attempts: 10,
-  delayMs: 500,
-};
-
 export class KbAttachmentService {
   constructor(
     private readonly db: Kysely<Database>,
     private readonly logger: KbAttachmentServiceLogger,
     private readonly agentKbJavaClient: AgentKbJavaClient,
-    private readonly attachmentDocPollConfig: AttachmentDocPollConfig = defaultAttachmentDocPollConfig,
   ) {}
 
   async initAttachments(tenant: AgentKbTenant, kbId: string): Promise<KbAttachmentInitResponse> {
@@ -104,12 +92,6 @@ export class KbAttachmentService {
       volcStrategyResourceId: KB_INIT_VOLC_STRATEGY_RESOURCE_ID,
     });
 
-    const createdDoc = await this.waitForAttachmentDocAfterCreate(
-      uid,
-      kbNumericId,
-      Number(docId),
-    );
-
     this.logger.info(
       {
         docId,
@@ -122,9 +104,9 @@ export class KbAttachmentService {
     );
 
     return {
-      docId: String(createdDoc.id),
+      docId: String(docId),
       initialized: true,
-      status: mapSyncStatus(createdDoc.sync_status),
+      status: "queued",
     };
   }
 
@@ -159,12 +141,18 @@ export class KbAttachmentService {
     },
   ): Promise<KbAttachmentListResponse> {
     const uid = tenant.uid;
-    parseRequiredNumericId(kbId, "KB_NOT_FOUND", "知识库不存在");
+    const kbNumericId = parseRequiredNumericId(kbId, "KB_NOT_FOUND", "知识库不存在");
     const attachmentDocId = parseRequiredNumericId(
       options.docId,
       "KB_ATTACHMENT_DOC_NOT_FOUND",
       "附件库异常，请稍后重试",
     );
+    const attachmentDoc = await this.getAttachmentDocById(uid, kbNumericId, attachmentDocId);
+
+    if (!attachmentDoc || !isAttachmentDocRow(attachmentDoc)) {
+      throw new NotFoundError("KB_ATTACHMENT_DOC_NOT_FOUND", "附件库异常，请稍后重试");
+    }
+
     const pagination = normalizeAttachmentPagination(options);
     const normalizedQuery = normalizeAttachmentSearchQuery(options.query);
 
@@ -274,8 +262,7 @@ export class KbAttachmentService {
     let attachmentIds: number[] | undefined;
 
     if (request.materialCollectionId) {
-      const javaChunk = await this.findJavaAttachmentChunk(uid, chunk.doc_id, chunkNumericId);
-      const attachmentType = readPrimaryKbAttachmentType(javaChunk?.attachmentTypes);
+      const attachmentType = toKbAttachmentType(Number(chunk.attachment_type));
 
       if (attachmentType == null) {
         throw new NotFoundError("KB_CHUNK_NOT_FOUND", "附件不存在");
@@ -392,11 +379,21 @@ export class KbAttachmentService {
     }
 
     const uniqueDocIds = [...new Set(chunks.map((chunk) => chunk.doc_id))];
+    const docs = await this.db
+      .selectFrom("xy_wap_embed_agent_kb_doc")
+      .select(["doc_type", "id", "name"])
+      .where("id", "in", uniqueDocIds)
+      .where("uid", "=", uid)
+      .where("status", "=", dbActiveStatus)
+      .execute();
+    const attachmentDocIds = new Set(
+      docs
+        .filter((doc) => isAttachmentDocRow(doc))
+        .map((doc) => Number(doc.id)),
+    );
 
     for (const docId of uniqueDocIds) {
-      const doc = await this.getAttachmentDocById(uid, undefined, docId);
-
-      if (!doc || !isAttachmentDocRow(doc)) {
+      if (!attachmentDocIds.has(Number(docId))) {
         throw new NotFoundError("KB_ATTACHMENT_DOC_NOT_FOUND", "附件库异常，请稍后重试");
       }
     }
@@ -492,28 +489,6 @@ export class KbAttachmentService {
       .executeTakeFirst();
   }
 
-  private async waitForAttachmentDocAfterCreate(uid: number, kbId: number, docId: number) {
-    const maxAttempts = this.attachmentDocPollConfig.attempts;
-    const delayMs = this.attachmentDocPollConfig.delayMs;
-
-    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-      const docById = await this.getAttachmentDocById(uid, kbId, docId);
-
-      if (docById && isAttachmentDocRow(docById)) {
-        return {
-          id: docById.id,
-          sync_status: docById.sync_status,
-        };
-      }
-
-      if (attempt < maxAttempts - 1) {
-        await sleep(delayMs);
-      }
-    }
-
-    throw new NotFoundError("KB_ATTACHMENT_DOC_NOT_FOUND", "附件库异常，请稍后重试");
-  }
-
   private async getAttachmentDocById(uid: number, kbId: number | undefined, docId: number) {
     let query = this.db
       .selectFrom("xy_wap_embed_agent_kb_doc")
@@ -532,36 +507,11 @@ export class KbAttachmentService {
   private async getKbChunkRow(uid: number, chunkId: number) {
     return this.db
       .selectFrom("xy_wap_embed_agent_kb_chunk")
-      .select(["doc_id", "source"])
+      .select(["attachment_type", "doc_id", "source"])
       .where("id", "=", chunkId)
       .where("uid", "=", uid)
       .where("status", "=", dbActiveStatus)
       .executeTakeFirst();
-  }
-
-  private async findJavaAttachmentChunk(uid: number, docId: number, chunkId: number) {
-    let page = 1;
-    const pageSize = 100;
-
-    while (true) {
-      const response = await this.agentKbJavaClient.listKbChunks({
-        docId,
-        page,
-        pageSize,
-        uid,
-      });
-      const item = response.list.find((entry) => entry.id === chunkId);
-
-      if (item) {
-        return item;
-      }
-
-      if (page * pageSize >= response.count || response.list.length === 0) {
-        return undefined;
-      }
-
-      page += 1;
-    }
   }
 
   private async assertKbExists(uid: number, kbId: number) {
@@ -583,10 +533,12 @@ function isAttachmentDocRow(doc: { doc_type: number; name?: string | null }) {
   return doc.doc_type === KB_DOC_TYPE_ATTACHMENT || doc.name === KB_ATTACHMENT_DOC_NAME;
 }
 
-function sleep(delayMs: number) {
-  return new Promise((resolve) => {
-    setTimeout(resolve, delayMs);
-  });
+function toKbAttachmentType(value: number): KbAttachmentType | undefined {
+  if (value === 2 || value === 3 || value === 4 || value === 6 || value === 7) {
+    return value;
+  }
+
+  return undefined;
 }
 
 function assertWritableDescription(description: string) {

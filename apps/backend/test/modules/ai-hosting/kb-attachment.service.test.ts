@@ -59,7 +59,6 @@ function createService(
       createKbReadDbMock(dbOptions) as unknown as Kysely<Database>,
       { info: vi.fn() },
       client,
-      { attempts: 1, delayMs: 0 },
     ),
   };
 }
@@ -105,8 +104,10 @@ describe("KbAttachmentService", () => {
     const createKbDoc = vi.fn().mockResolvedValue("1005");
     const { client, service } = createService({ createKbDoc });
 
-    await expect(service.initAttachments(tenant, "1")).rejects.toMatchObject({
-      code: "KB_ATTACHMENT_DOC_NOT_FOUND",
+    await expect(service.initAttachments(tenant, "1")).resolves.toEqual({
+      docId: "1005",
+      initialized: true,
+      status: "queued",
     });
     expect(client.createKbDoc).toHaveBeenCalledWith({
       docSize: 0,
@@ -193,7 +194,7 @@ describe("KbAttachmentService", () => {
     });
   });
 
-  it("lists attachments with provided doc id without attachment doc lookup", async () => {
+  it("validates attachment doc ownership before listing attachments", async () => {
     const listKbChunks = vi.fn().mockResolvedValue({
       count: 0,
       list: [],
@@ -206,6 +207,7 @@ describe("KbAttachmentService", () => {
       type: string;
     }> = [];
     const { client, service } = createService({ listKbChunks }, {
+      includeAttachmentDoc: true,
       beforeExecute: (event) => {
         queries.push({
           selectedColumns: event.selectedColumns,
@@ -234,8 +236,30 @@ describe("KbAttachmentService", () => {
         (event) =>
           event.table === "xy_wap_embed_agent_kb_doc"
           && event.type === "executeTakeFirst"
+          && event.selectedColumns.includes("doc_type")
+          && event.selectedColumns.includes("id")
+          && event.selectedColumns.includes("sync_status")
       ),
-    ).toBe(false);
+    ).toBe(true);
+  });
+
+  it("rejects attachment doc from another kb when listing attachments", async () => {
+    const listKbChunks = vi.fn();
+    const { service } = createService({ listKbChunks }, {
+      includeAttachmentDoc: true,
+      includeSecondKbWithoutDocs: true,
+    });
+
+    await expect(
+      service.listAttachments(tenant, "2", {
+        attachmentType: 2,
+        docId: "1005",
+      }),
+    ).rejects.toMatchObject({
+      code: "KB_ATTACHMENT_DOC_NOT_FOUND",
+      statusCode: 404,
+    });
+    expect(listKbChunks).not.toHaveBeenCalled();
   });
 
   it("creates attachment chunk via Java", async () => {
@@ -289,6 +313,32 @@ describe("KbAttachmentService", () => {
 
     expect(response).toEqual({ updated: true });
     expect(client.updateKbChunk).toHaveBeenCalledWith({
+      chunkId: 503,
+      content: "更新后的描述",
+      operatorId: "101",
+      title: undefined,
+      uid: 9001,
+    });
+  });
+
+  it("updates attachment material without scanning Java chunk pages", async () => {
+    const listKbChunks = vi.fn();
+    const updateKbChunk = vi.fn().mockResolvedValue(undefined);
+    const { client, service } = createService({ listKbChunks, updateKbChunk }, {
+      includeAttachmentDoc: true,
+      materialCollections: [fileMaterialRow],
+    });
+
+    const response = await service.updateAttachment(tenant, "503", {
+      description: "更新后的描述",
+      materialCollectionId: "1",
+    });
+
+    expect(response).toEqual({ updated: true });
+    expect(client.listKbChunks).not.toHaveBeenCalled();
+    expect(client.updateKbChunk).toHaveBeenCalledWith({
+      attachmentIds: [1],
+      attachmentTypes: [2],
       chunkId: 503,
       content: "更新后的描述",
       operatorId: "101",

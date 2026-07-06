@@ -90,6 +90,7 @@ type AttachmentPhase =
   | "initializing"
   | "failed"
   | "ready";
+type AttachmentSyncStatus = "completed" | "failed" | "parsing" | "queued";
 
 function useDebouncedValue<T>(value: T, delayMs: number) {
   const [debouncedValue, setDebouncedValue] = useState(value);
@@ -331,6 +332,7 @@ export function KbAttachmentsTab({
 
     if (skipNextListLoadRef.current) {
       skipNextListLoadRef.current = false;
+      return;
     }
 
     void loadAttachments();
@@ -365,22 +367,29 @@ export function KbAttachmentsTab({
 
     const poll = async () => {
       try {
-        const result = await initKbAttachments(currentKbId);
+        const result = await getKbAttachmentStatus(currentKbId);
 
         if (!isMountedRef.current || kbIdRef.current !== currentKbId) {
           return;
         }
 
-        setAttachmentDocId(result.docId);
+        if (!result.initialized || !result.docId) {
+          setPhase(pollError.failurePhase);
+          toast.error(pollError.errorMessage);
+          return;
+        }
 
-        if (result.status === "queued" || result.status === "parsing") {
+        setAttachmentDocId(result.docId);
+        const status = resolveAttachmentSyncStatus(result.syncStatus);
+
+        if (status === "queued" || status === "parsing") {
           pollTimerRef.current = setTimeout(() => {
             void poll();
           }, ATTACHMENT_SYNC_POLL_MS);
           return;
         }
 
-        if (result.status === "failed") {
+        if (status === "failed") {
           setPhase("failed");
           return;
         }
@@ -467,13 +476,7 @@ export function KbAttachmentsTab({
         return;
       }
 
-      const initResult = await initKbAttachments(kbId);
-
-      if (!isMountedRef.current || kbIdRef.current !== currentKbId) {
-        return;
-      }
-
-      await handleAttachmentSyncResult(currentKbId, initResult, {
+      pollAttachmentSyncStatus(currentKbId, {
         errorMessage: "重试失败，请稍后重试",
         failurePhase: "failed",
       });
@@ -969,6 +972,22 @@ function KbAttachmentExampleOutlineIcon({
       />
     </span>
   );
+}
+
+function resolveAttachmentSyncStatus(syncStatus: number | undefined): AttachmentSyncStatus {
+  if (syncStatus === 0) {
+    return "completed";
+  }
+
+  if (syncStatus === 1) {
+    return "failed";
+  }
+
+  if (syncStatus === 3 || syncStatus === 5 || syncStatus === 6) {
+    return "parsing";
+  }
+
+  return "queued";
 }
 
 function KbAttachmentExampleBrandIcon({

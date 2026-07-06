@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -284,6 +284,90 @@ describe("KbAttachmentsTab", () => {
     expect(initKbAttachments).toHaveBeenCalledWith("kb-1");
     expect(listKbAttachments).not.toHaveBeenCalled();
   });
+
+  it("polls attachment status instead of init while attachment doc is syncing", async () => {
+    vi.mocked(getKbAttachmentStatus)
+      .mockResolvedValueOnce({ initialized: false })
+      .mockResolvedValueOnce({
+        docId: "doc-attachment-1",
+        initialized: true,
+        syncStatus: 3,
+      });
+    vi.mocked(initKbAttachments).mockResolvedValue({
+      docId: "doc-attachment-1",
+      initialized: true,
+      status: "parsing",
+    });
+
+    render(
+      <KbAttachmentsTab
+        activeType={KB_ATTACHMENT_TYPE.IMAGE}
+        kbId="kb-1"
+        onActiveTypeChange={vi.fn()}
+      />,
+    );
+
+    const initializeButton = await screen.findByRole("button", { name: "立即启用" });
+    vi.useFakeTimers();
+
+    try {
+      await act(async () => {
+        fireEvent.click(initializeButton);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5000);
+      });
+
+      expect(initKbAttachments).toHaveBeenCalledTimes(1);
+      expect(getKbAttachmentStatus).toHaveBeenCalledTimes(2);
+      expect(getKbAttachmentStatus).toHaveBeenLastCalledWith("kb-1");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not reload again after correcting an out-of-range page", async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(getKbAttachmentStatus).mockResolvedValue({
+      docId: "doc-attachment-1",
+      initialized: true,
+      syncStatus: 0,
+    });
+    vi.mocked(listKbAttachments)
+      .mockResolvedValueOnce({
+        attachments: [
+          createKbAttachmentListItem({
+            chunkId: "chunk-page-1",
+            description: "第一页附件",
+            title: "第一页附件",
+          }),
+        ],
+        pagination: { page: 1, pageSize: 10, total: 11 },
+      })
+      .mockResolvedValueOnce({
+        attachments: [],
+        pagination: { page: 2, pageSize: 10, total: 0 },
+      });
+
+    render(
+      <KbAttachmentsTab
+        activeType={KB_ATTACHMENT_TYPE.IMAGE}
+        kbId="kb-1"
+        onActiveTypeChange={vi.fn()}
+      />,
+    );
+
+    await screen.findByRole("button", { name: "下一页" });
+    await user.click(screen.getByRole("button", { name: "下一页" }));
+
+    expect(listKbAttachments).toHaveBeenCalledTimes(2);
+    expect(listKbAttachments).toHaveBeenNthCalledWith(
+      2,
+      "kb-1",
+      expect.objectContaining({ page: 2 }),
+    );
+  });
 });
 
 function renderKbAttachmentsTable({
@@ -314,5 +398,30 @@ function createKbAttachmentItem(
     description: "附件描述",
     id: `chunk-${overrides.title}`,
     ...overrides,
+  };
+}
+
+function createKbAttachmentListItem(overrides: {
+  chunkId: string;
+  description: string;
+  title: string;
+}) {
+  return {
+    attachmentContent: {
+      content: {
+        alt: overrides.title,
+        fileUrl: "https://example.com/product.png",
+      },
+      materialCollectionId: "mc-1",
+      msgInfoId: "msg-1",
+      type: "image" as const,
+    },
+    attachmentType: KB_ATTACHMENT_TYPE.IMAGE,
+    chunkId: overrides.chunkId,
+    createdAt: "2026-07-03 12:00:00",
+    description: overrides.description,
+    materialCollectionId: "mc-1",
+    title: overrides.title,
+    updatedAt: "2026-07-03 12:00:00",
   };
 }

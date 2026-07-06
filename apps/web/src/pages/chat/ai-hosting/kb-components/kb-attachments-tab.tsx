@@ -91,6 +91,14 @@ type AttachmentPhase =
   | "failed"
   | "ready";
 type AttachmentSyncStatus = "completed" | "failed" | "parsing" | "queued";
+type PollAttachmentSyncStatus = (
+  currentKbId: string,
+  pollError: {
+    errorMessage: string;
+    failurePhase: Extract<AttachmentPhase, "failed" | "uninitialized">;
+  },
+  options?: { immediate?: boolean; knownDocId?: string },
+) => void;
 
 function useDebouncedValue<T>(value: T, delayMs: number) {
   const [debouncedValue, setDebouncedValue] = useState(value);
@@ -159,6 +167,7 @@ export function KbAttachmentsTab({
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const skipNextListLoadRef = useRef(false);
   const phaseRef = useRef(phase);
+  const pollAttachmentSyncStatusRef = useRef<PollAttachmentSyncStatus | null>(null);
   phaseRef.current = phase;
   kbIdRef.current = kbId;
 
@@ -178,8 +187,14 @@ export function KbAttachmentsTab({
     };
   }, [clearPollTimer]);
 
-  const loadAttachments = useCallback(async (options?: { page?: number; silent?: boolean }) => {
-    if (!kbId || !attachmentDocId) {
+  const loadAttachments = useCallback(async (options?: {
+    docId?: string;
+    page?: number;
+    silent?: boolean;
+  }) => {
+    const resolvedDocId = options?.docId ?? attachmentDocId;
+
+    if (!kbId || !resolvedDocId) {
       return;
     }
 
@@ -190,7 +205,7 @@ export function KbAttachmentsTab({
       const requestedPage = options?.page ?? currentPage;
       const response = await listKbAttachments(kbId, {
         attachmentType: activeType,
-        docId: attachmentDocId,
+        docId: resolvedDocId,
         page: requestedPage,
         pageSize: PAGE_SIZE,
         query: debouncedSearchQuery || undefined,
@@ -208,7 +223,7 @@ export function KbAttachmentsTab({
       if (resolvedPage !== requestedPage && newTotal > 0) {
         const corrected = await listKbAttachments(kbId, {
           attachmentType: activeType,
-          docId: attachmentDocId,
+          docId: resolvedDocId,
           page: resolvedPage,
           pageSize: PAGE_SIZE,
           query: debouncedSearchQuery || undefined,
@@ -256,6 +271,82 @@ export function KbAttachmentsTab({
     }
   }, [activeType, attachmentDocId, currentPage, debouncedSearchQuery, kbId]);
 
+  const finishAttachmentSync = useCallback(async (currentKbId: string, docId: string) => {
+    setCurrentPage(1);
+    skipNextListLoadRef.current = true;
+    await loadAttachments({ docId, page: 1, silent: true });
+
+    if (isMountedRef.current && kbIdRef.current === currentKbId) {
+      setPhase("ready");
+    }
+  }, [loadAttachments]);
+
+  const pollAttachmentSyncStatus = useCallback((
+    currentKbId: string,
+    pollError: {
+      errorMessage: string;
+      failurePhase: Extract<AttachmentPhase, "failed" | "uninitialized">;
+    },
+    options?: { immediate?: boolean; knownDocId?: string },
+  ) => {
+    clearPollTimer();
+
+    const scheduleNextPoll = () => {
+      pollTimerRef.current = setTimeout(() => {
+        void poll();
+      }, ATTACHMENT_SYNC_POLL_MS);
+    };
+
+    const poll = async () => {
+      try {
+        const result = await getKbAttachmentStatus(currentKbId);
+
+        if (!isMountedRef.current || kbIdRef.current !== currentKbId) {
+          return;
+        }
+
+        if (!result.initialized || !result.docId) {
+          if (options?.knownDocId) {
+            scheduleNextPoll();
+            return;
+          }
+
+          setPhase(pollError.failurePhase);
+          toast.error(pollError.errorMessage);
+          return;
+        }
+
+        setAttachmentDocId(result.docId);
+        const status = resolveAttachmentSyncStatus(result.syncStatus);
+
+        if (status === "queued" || status === "parsing") {
+          scheduleNextPoll();
+          return;
+        }
+
+        if (status === "failed") {
+          setPhase("failed");
+          return;
+        }
+
+        await finishAttachmentSync(currentKbId, result.docId);
+      } catch {
+        if (isMountedRef.current && kbIdRef.current === currentKbId) {
+          setPhase(pollError.failurePhase);
+          toast.error(pollError.errorMessage);
+        }
+      }
+    };
+
+    if (options?.immediate) {
+      void poll();
+      return;
+    }
+
+    scheduleNextPoll();
+  }, [clearPollTimer, finishAttachmentSync]);
+  pollAttachmentSyncStatusRef.current = pollAttachmentSyncStatus;
+
   const probeInitialState = useCallback(async () => {
     if (!kbId) {
       setPhase("uninitialized");
@@ -286,8 +377,27 @@ export function KbAttachmentsTab({
       setAttachments([]);
       setTotal(0);
       setCurrentPage(1);
-      setPhase("ready");
       skipNextListLoadRef.current = false;
+
+      const syncStatus = resolveAttachmentSyncStatus(status.syncStatus);
+
+      if (syncStatus === "failed") {
+        setPhase("failed");
+        return;
+      }
+
+      if (syncStatus === "queued" || syncStatus === "parsing") {
+        setPhase("initializing");
+        pollAttachmentSyncStatusRef.current?.(kbId, {
+          errorMessage: "加载失败，请稍后重试",
+          failurePhase: "failed",
+        }, {
+          knownDocId: status.docId,
+        });
+        return;
+      }
+
+      setPhase("ready");
     } catch {
       if (!isMountedRef.current) {
         return;
@@ -306,8 +416,8 @@ export function KbAttachmentsTab({
   }, [kbId]);
 
   useEffect(() => {
-    void probeInitialState();
     clearPollTimer();
+    void probeInitialState();
 
     return () => {
       requestVersionRef.current++;
@@ -346,68 +456,6 @@ export function KbAttachmentsTab({
     phase,
   ]);
 
-  const finishAttachmentSync = useCallback(async (currentKbId: string) => {
-    setCurrentPage(1);
-    skipNextListLoadRef.current = true;
-    await loadAttachments({ page: 1, silent: true });
-
-    if (isMountedRef.current && kbIdRef.current === currentKbId) {
-      setPhase("ready");
-    }
-  }, [loadAttachments]);
-
-  const pollAttachmentSyncStatus = useCallback((
-    currentKbId: string,
-    pollError: {
-      errorMessage: string;
-      failurePhase: Extract<AttachmentPhase, "failed" | "uninitialized">;
-    },
-  ) => {
-    clearPollTimer();
-
-    const poll = async () => {
-      try {
-        const result = await getKbAttachmentStatus(currentKbId);
-
-        if (!isMountedRef.current || kbIdRef.current !== currentKbId) {
-          return;
-        }
-
-        if (!result.initialized || !result.docId) {
-          setPhase(pollError.failurePhase);
-          toast.error(pollError.errorMessage);
-          return;
-        }
-
-        setAttachmentDocId(result.docId);
-        const status = resolveAttachmentSyncStatus(result.syncStatus);
-
-        if (status === "queued" || status === "parsing") {
-          pollTimerRef.current = setTimeout(() => {
-            void poll();
-          }, ATTACHMENT_SYNC_POLL_MS);
-          return;
-        }
-
-        if (status === "failed") {
-          setPhase("failed");
-          return;
-        }
-
-        await finishAttachmentSync(currentKbId);
-      } catch {
-        if (isMountedRef.current && kbIdRef.current === currentKbId) {
-          setPhase(pollError.failurePhase);
-          toast.error(pollError.errorMessage);
-        }
-      }
-    };
-
-    pollTimerRef.current = setTimeout(() => {
-      void poll();
-    }, ATTACHMENT_SYNC_POLL_MS);
-  }, [clearPollTimer, finishAttachmentSync]);
-
   const handleAttachmentSyncResult = useCallback(async (
     currentKbId: string,
     initResult: Awaited<ReturnType<typeof initKbAttachments>>,
@@ -424,11 +472,14 @@ export function KbAttachmentsTab({
     }
 
     if (initResult.status === "queued" || initResult.status === "parsing") {
-      pollAttachmentSyncStatus(currentKbId, pollError);
+      pollAttachmentSyncStatus(currentKbId, pollError, {
+        immediate: true,
+        knownDocId: initResult.docId,
+      });
       return;
     }
 
-    await finishAttachmentSync(currentKbId);
+    await finishAttachmentSync(currentKbId, initResult.docId);
   }, [finishAttachmentSync, pollAttachmentSyncStatus]);
 
   const handleInitialize = async () => {
@@ -476,10 +527,14 @@ export function KbAttachmentsTab({
         return;
       }
 
-      pollAttachmentSyncStatus(currentKbId, {
-        errorMessage: "重试失败，请稍后重试",
-        failurePhase: "failed",
-      });
+      pollAttachmentSyncStatus(
+        currentKbId,
+        {
+          errorMessage: "重试失败，请稍后重试",
+          failurePhase: "failed",
+        },
+        { immediate: true, knownDocId: attachmentDocId },
+      );
     } catch {
       if (isMountedRef.current && kbIdRef.current === currentKbId) {
         setPhase("failed");

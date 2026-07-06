@@ -285,8 +285,78 @@ describe("KbAttachmentsTab", () => {
     expect(listKbAttachments).not.toHaveBeenCalled();
   });
 
+  it("continues polling when existing attachment doc is still parsing on first load", async () => {
+    vi.mocked(getKbAttachmentStatus)
+      .mockResolvedValueOnce({
+        docId: "doc-attachment-1",
+        initialized: true,
+        syncStatus: 3,
+      })
+      .mockResolvedValueOnce({
+        docId: "doc-attachment-1",
+        initialized: true,
+        syncStatus: 0,
+      });
+    vi.mocked(listKbAttachments).mockResolvedValue({
+      attachments: [],
+      pagination: { page: 1, pageSize: 10, total: 0 },
+    });
+    vi.useFakeTimers();
+
+    try {
+      render(
+        <KbAttachmentsTab
+          activeType={KB_ATTACHMENT_TYPE.IMAGE}
+          kbId="kb-1"
+          onActiveTypeChange={vi.fn()}
+        />,
+      );
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(
+        screen.getByRole("progressbar", { name: "附件库初始化进度" }),
+      ).toBeInTheDocument();
+      expect(listKbAttachments).not.toHaveBeenCalled();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5000);
+      });
+
+      expect(getKbAttachmentStatus).toHaveBeenCalledTimes(2);
+      expect(getKbAttachmentStatus).toHaveBeenLastCalledWith("kb-1");
+      expect(listKbAttachments).toHaveBeenCalledWith("kb-1", expect.objectContaining({
+        docId: "doc-attachment-1",
+      }));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("shows retry state when existing attachment doc failed on first load", async () => {
+    vi.mocked(getKbAttachmentStatus).mockResolvedValue({
+      docId: "doc-attachment-1",
+      initialized: true,
+      syncStatus: 1,
+    });
+
+    render(
+      <KbAttachmentsTab
+        activeType={KB_ATTACHMENT_TYPE.IMAGE}
+        kbId="kb-1"
+        onActiveTypeChange={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByRole("button", { name: "重试" })).toBeInTheDocument();
+    expect(listKbAttachments).not.toHaveBeenCalled();
+  });
+
   it("polls attachment status instead of init while attachment doc is syncing", async () => {
     vi.mocked(getKbAttachmentStatus)
+      .mockResolvedValueOnce({ initialized: false })
       .mockResolvedValueOnce({ initialized: false })
       .mockResolvedValueOnce({
         docId: "doc-attachment-1",
@@ -314,12 +384,16 @@ describe("KbAttachmentsTab", () => {
       await act(async () => {
         fireEvent.click(initializeButton);
       });
+
+      expect(initKbAttachments).toHaveBeenCalledTimes(1);
+      expect(getKbAttachmentStatus).toHaveBeenCalledTimes(2);
+
       await act(async () => {
         await vi.advanceTimersByTimeAsync(5000);
       });
 
       expect(initKbAttachments).toHaveBeenCalledTimes(1);
-      expect(getKbAttachmentStatus).toHaveBeenCalledTimes(2);
+      expect(getKbAttachmentStatus).toHaveBeenCalledTimes(3);
       expect(getKbAttachmentStatus).toHaveBeenLastCalledWith("kb-1");
     } finally {
       vi.useRealTimers();

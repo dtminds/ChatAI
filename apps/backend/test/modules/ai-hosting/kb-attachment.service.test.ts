@@ -99,18 +99,22 @@ describe("KbAttachmentService", () => {
     });
   });
 
-  it("rejects attachment list when attachment doc is not ready", async () => {
-    const { service } = createService(undefined, {
+  it("lists attachments even when attachment doc sync is still in progress", async () => {
+    const listKbChunks = vi.fn().mockResolvedValue({
+      count: 0,
+      list: [],
+      page: 1,
+      pageSize: 10,
+    });
+    const { service } = createService({ listKbChunks }, {
       attachmentDocSyncStatus: 2,
       includeAttachmentDoc: true,
     });
 
-    await expect(
-      service.listAttachments(tenant, "1", { attachmentType: 3 }),
-    ).rejects.toMatchObject({
-      code: "KB_ATTACHMENT_NOT_READY",
-      statusCode: 409,
-    });
+    const response = await service.listAttachments(tenant, "1", { attachmentType: 3 });
+
+    expect(response.attachments).toEqual([]);
+    expect(listKbChunks).toHaveBeenCalled();
   });
 
   it("lists attachments when attachment doc is identified by fixed name", async () => {

@@ -7,17 +7,19 @@ import type {
   KbAttachmentImageMaterialCreateResponse,
   KbAttachmentInitResponse,
   KbAttachmentListResponse,
+  KbAttachmentStatusResponse,
   KbAttachmentType,
   KbAttachmentUpdateRequest,
   KbAttachmentUpdateResponse,
 } from "@chatai/contracts";
-import { http, isRequestError, RequestNormalizedError } from "@/lib/request";
+import { http } from "@/lib/request";
 import type { QuickReplyDraftAttachment } from "@/pages/chat/components/quick-reply/quick-reply-attachment-picker";
 import { toKbAttachmentItem } from "@/pages/chat/ai-hosting/kb-components/kb-attachment-types";
 import { uploadKbImageToCos } from "@/pages/chat/ai-hosting/api/kb-upload-service";
 
 export type ListKbAttachmentsParams = {
   attachmentType: KbAttachmentType;
+  docId: string;
   page?: number;
   pageSize?: number;
   query?: string;
@@ -28,6 +30,14 @@ export { toKbAttachmentItem };
 export async function initKbAttachments(kbId: string) {
   const response = await http.post<ApiSuccessEnvelope<KbAttachmentInitResponse>>(
     `/server/ai-hosting/kbs/${kbId}/attachments/init`,
+  );
+
+  return response.data;
+}
+
+export async function getKbAttachmentStatus(kbId: string) {
+  const response = await http.get<ApiSuccessEnvelope<KbAttachmentStatusResponse>>(
+    `/server/ai-hosting/kbs/${kbId}/attachments/status`,
   );
 
   return response.data;
@@ -185,24 +195,6 @@ export async function buildKbAttachmentUpdateRequest(input: {
   }
 
   return request;
-}
-
-export function isKbAttachmentNotInitialized(error: unknown) {
-  if (error instanceof RequestNormalizedError) {
-    return (
-      error.status === 404
-      && error.code === "KB_ATTACHMENT_NOT_INITIALIZED"
-    );
-  }
-
-  if (isRequestError(error)) {
-    return (
-      error.status === 404
-      && error.code === "KB_ATTACHMENT_NOT_INITIALIZED"
-    );
-  }
-
-  return false;
 }
 
 function buildQueryString(params: Record<string, string | number | undefined>) {

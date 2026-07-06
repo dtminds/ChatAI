@@ -38,8 +38,8 @@ import {
   buildKbAttachmentUpdateRequest,
   createKbAttachment,
   deleteKbAttachment,
+  getKbAttachmentStatus,
   initKbAttachments,
-  isKbAttachmentNotInitialized,
   listKbAttachments,
   toKbAttachmentItem,
   updateKbAttachment,
@@ -49,7 +49,6 @@ import { KbAttachmentsTable } from "./kb-attachments-table";
 import {
   getKbAttachmentTitle,
   kbAttachmentTypeFilters,
-  KB_ATTACHMENT_TYPE,
   type KbAttachmentItem,
   type KbAttachmentType,
 } from "./kb-attachment-types";
@@ -128,10 +127,19 @@ function useAttachmentInitProgress(active: boolean) {
   return progress;
 }
 
-export function KbAttachmentsTab({ kbId }: { kbId: string }) {
+type KbAttachmentsTabProps = {
+  activeType: KbAttachmentType;
+  kbId: string;
+  onInitializedChange?: (initialized: boolean) => void;
+};
+
+export function KbAttachmentsTab({
+  activeType,
+  kbId,
+  onInitializedChange,
+}: KbAttachmentsTabProps) {
   const [phase, setPhase] = useState<AttachmentPhase>("loading");
   const [attachmentDocId, setAttachmentDocId] = useState<string | null>(null);
-  const [activeType, setActiveType] = useState<KbAttachmentType>(KB_ATTACHMENT_TYPE.IMAGE);
   const [attachments, setAttachments] = useState<KbAttachmentItem[]>([]);
   const [total, setTotal] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
@@ -149,8 +157,6 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
   const kbIdRef = useRef(kbId);
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const skipNextListLoadRef = useRef(false);
-  const activeTypeRef = useRef(activeType);
-  activeTypeRef.current = activeType;
   const phaseRef = useRef(phase);
   phaseRef.current = phase;
   kbIdRef.current = kbId;
@@ -172,7 +178,7 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
   }, [clearPollTimer]);
 
   const loadAttachments = useCallback(async (options?: { page?: number; silent?: boolean }) => {
-    if (!kbId) {
+    if (!kbId || !attachmentDocId) {
       return;
     }
 
@@ -183,6 +189,7 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
       const requestedPage = options?.page ?? currentPage;
       const response = await listKbAttachments(kbId, {
         attachmentType: activeType,
+        docId: attachmentDocId,
         page: requestedPage,
         pageSize: PAGE_SIZE,
         query: debouncedSearchQuery || undefined,
@@ -200,6 +207,7 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
       if (resolvedPage !== requestedPage && newTotal > 0) {
         const corrected = await listKbAttachments(kbId, {
           attachmentType: activeType,
+          docId: attachmentDocId,
           page: resolvedPage,
           pageSize: PAGE_SIZE,
           query: debouncedSearchQuery || undefined,
@@ -233,18 +241,6 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
         return;
       }
 
-      if (isKbAttachmentNotInitialized(error)) {
-        setAttachments([]);
-        setTotal(0);
-        if (phaseRef.current !== "initializing") {
-          setPhase("uninitialized");
-        }
-        if (options?.silent) {
-          throw error;
-        }
-        return;
-      }
-
       setAttachments([]);
       setTotal(0);
       if (!options?.silent) {
@@ -257,12 +253,13 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
         setLoadingList(false);
       }
     }
-  }, [activeType, currentPage, debouncedSearchQuery, kbId]);
+  }, [activeType, attachmentDocId, currentPage, debouncedSearchQuery, kbId]);
 
   const probeInitialState = useCallback(async () => {
     if (!kbId) {
       setPhase("uninitialized");
       setLoadingList(false);
+      onInitializedChange?.(false);
       return;
     }
 
@@ -270,48 +267,46 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
     setLoadingList(true);
 
     try {
-      const response = await listKbAttachments(kbId, {
-        attachmentType: KB_ATTACHMENT_TYPE.IMAGE,
-        page: 1,
-        pageSize: PAGE_SIZE,
-      });
+      const status = await getKbAttachmentStatus(kbId);
 
       if (!isMountedRef.current) {
         return;
       }
 
-      const requestedType = activeTypeRef.current;
-      const isImageProbe = requestedType === KB_ATTACHMENT_TYPE.IMAGE;
-
-      setAttachments(
-        isImageProbe ? response.attachments.map(toKbAttachmentItem) : [],
-      );
-      setTotal(isImageProbe ? response.pagination.total : 0);
-      setCurrentPage(1);
-      setPhase("ready");
-      skipNextListLoadRef.current = isImageProbe;
-    } catch (error) {
-      if (!isMountedRef.current) {
-        return;
-      }
-
-      if (isKbAttachmentNotInitialized(error)) {
+      if (!status.initialized || !status.docId) {
+        setAttachmentDocId(null);
         setAttachments([]);
         setTotal(0);
         setPhase("uninitialized");
+        onInitializedChange?.(false);
         return;
       }
 
+      setAttachmentDocId(status.docId);
+      onInitializedChange?.(true);
+
       setAttachments([]);
       setTotal(0);
+      setCurrentPage(1);
       setPhase("ready");
+      skipNextListLoadRef.current = false;
+    } catch {
+      if (!isMountedRef.current) {
+        return;
+      }
+
+      setAttachmentDocId(null);
+      setAttachments([]);
+      setTotal(0);
+      setPhase("uninitialized");
+      onInitializedChange?.(false);
       toast.error("加载失败，请稍后重试");
     } finally {
       if (isMountedRef.current) {
         setLoadingList(false);
       }
     }
-  }, [kbId]);
+  }, [kbId, onInitializedChange]);
 
   useEffect(() => {
     void probeInitialState();
@@ -334,19 +329,24 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
   }, [activeType, debouncedSearchQuery, phase]);
 
   useEffect(() => {
-    if (phase !== "ready" || !kbId) {
+    if (phase !== "ready" || !kbId || !attachmentDocId) {
       return;
     }
 
     if (skipNextListLoadRef.current) {
       skipNextListLoadRef.current = false;
-      if (activeType === KB_ATTACHMENT_TYPE.IMAGE) {
-        return;
-      }
     }
 
     void loadAttachments();
-  }, [activeType, currentPage, debouncedSearchQuery, kbId, loadAttachments, phase]);
+  }, [
+    activeType,
+    attachmentDocId,
+    currentPage,
+    debouncedSearchQuery,
+    kbId,
+    loadAttachments,
+    phase,
+  ]);
 
   const finishAttachmentSync = useCallback(async (currentKbId: string) => {
     setCurrentPage(1);
@@ -355,8 +355,9 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
 
     if (isMountedRef.current && kbIdRef.current === currentKbId) {
       setPhase("ready");
+      onInitializedChange?.(true);
     }
-  }, [loadAttachments]);
+  }, [loadAttachments, onInitializedChange]);
 
   const pollAttachmentSyncStatus = useCallback((
     currentKbId: string,
@@ -434,6 +435,7 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
     const currentKbId = kbId;
     clearPollTimer();
     setPhase("initializing");
+    onInitializedChange?.(false);
 
     try {
       const initResult = await initKbAttachments(kbId);
@@ -654,40 +656,6 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
 
   return (
     <section aria-label="附件列表区块" className="space-y-4">
-      <div
-        aria-label="附件类型筛选"
-        className="inline-flex h-10 items-center rounded-[10px] bg-muted p-1"
-        role="tablist"
-      >
-        {kbAttachmentTypeFilters.map((filter) => (
-          <button
-            aria-selected={activeType === filter.value}
-            className={cn(
-              "inline-flex h-8 min-w-[4.5rem] items-center justify-center rounded-[8px] px-4 text-sm transition-[background-color,box-shadow,color]",
-              activeType === filter.value
-                ? "bg-background font-medium text-foreground shadow-sm"
-                : "text-foreground hover:text-foreground",
-            )}
-            key={filter.value}
-            onClick={() => {
-              if (filter.value === activeType) {
-                return;
-              }
-
-              setActiveType(filter.value);
-              setSelectedIds([]);
-              setAttachments([]);
-              setTotal(0);
-              setLoadingList(true);
-            }}
-            role="tab"
-            type="button"
-          >
-            {filter.label}
-          </button>
-        ))}
-      </div>
-
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="relative w-[280px] max-w-full">
           <HugeiconsIcon
@@ -791,6 +759,40 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
   );
 }
 
+export function KbAttachmentTypeTabs({
+  activeType,
+  onActiveTypeChange,
+}: {
+  activeType: KbAttachmentType;
+  onActiveTypeChange: (type: KbAttachmentType) => void;
+}) {
+  return (
+    <div
+      aria-label="附件类型筛选"
+      className="inline-flex h-10 -translate-y-0.5 items-center gap-5"
+      role="tablist"
+    >
+      {kbAttachmentTypeFilters.map((filter) => (
+        <button
+          aria-selected={activeType === filter.value}
+          className={cn(
+            "relative inline-flex h-10 min-w-0 items-center justify-center px-0 text-sm font-medium leading-none transition-colors after:absolute after:bottom-0.5 after:left-1/2 after:h-[3px] after:w-6 after:-translate-x-1/2 after:rounded-full after:bg-primary after:opacity-0 after:content-['']",
+            activeType === filter.value
+              ? "text-primary after:opacity-100"
+              : "text-foreground hover:text-foreground",
+          )}
+          key={filter.value}
+          onClick={() => onActiveTypeChange(filter.value)}
+          role="tab"
+          type="button"
+        >
+          {filter.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function KbAttachmentsTabLoadingState() {
   return (
     <div
@@ -822,7 +824,7 @@ function KbAttachmentsInitState({
         src={kbAttachmentInitIllustrationUrl}
       />
       <p className="max-w-md text-sm leading-6 text-muted-foreground">
-        附件库需要初始化来完整一些准备工作，如需使用，请点击以下按钮
+        暂未启用附件库，开启后，可统一管理图片、链接、小程序等附件，Agent 在回答时会引用并发送
       </p>
       <Button
         className="mt-6 h-10 px-6"
@@ -830,7 +832,7 @@ function KbAttachmentsInitState({
         type="button"
         variant="outline"
       >
-        开始初始化
+        立即启用
       </Button>
     </div>
   );

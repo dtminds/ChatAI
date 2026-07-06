@@ -65,6 +65,28 @@ function createService(
 }
 
 describe("KbAttachmentService", () => {
+  it("returns attachment status without Java list call when doc exists", async () => {
+    const listKbChunks = vi.fn();
+    const { service } = createService({ listKbChunks }, { includeAttachmentDoc: true });
+
+    const response = await service.getAttachmentStatus(tenant, "1");
+
+    expect(response).toEqual({
+      docId: "1005",
+      initialized: true,
+      syncStatus: 0,
+    });
+    expect(listKbChunks).not.toHaveBeenCalled();
+  });
+
+  it("returns uninitialized attachment status when doc is missing", async () => {
+    const { service } = createService();
+
+    await expect(service.getAttachmentStatus(tenant, "1")).resolves.toEqual({
+      initialized: false,
+    });
+  });
+
   it("returns existing attachment doc on init without creating again", async () => {
     const createKbDoc = vi.fn();
     const { client, service } = createService({ createKbDoc }, { includeAttachmentDoc: true });
@@ -99,17 +121,6 @@ describe("KbAttachmentService", () => {
     });
   });
 
-  it("rejects attachment list when attachment doc is missing", async () => {
-    const { service } = createService();
-
-    await expect(
-      service.listAttachments(tenant, "1", { attachmentType: 2 }),
-    ).rejects.toMatchObject({
-      code: "KB_ATTACHMENT_NOT_INITIALIZED",
-      statusCode: 404,
-    });
-  });
-
   it("lists attachments even when attachment doc sync is still in progress", async () => {
     const listKbChunks = vi.fn().mockResolvedValue({
       count: 0,
@@ -122,30 +133,13 @@ describe("KbAttachmentService", () => {
       includeAttachmentDoc: true,
     });
 
-    const response = await service.listAttachments(tenant, "1", { attachmentType: 2 });
+    const response = await service.listAttachments(tenant, "1", {
+      attachmentType: 2,
+      docId: "1005",
+    });
 
     expect(response.attachments).toEqual([]);
     expect(listKbChunks).toHaveBeenCalled();
-  });
-
-  it("lists attachments when attachment doc is identified by fixed name", async () => {
-    const listKbChunks = vi.fn().mockResolvedValue({
-      count: 0,
-      list: [],
-      page: 1,
-      pageSize: 10,
-    });
-    const { service } = createService({ listKbChunks }, {
-      attachmentDocType: 2,
-      includeAttachmentDoc: true,
-    });
-
-    const response = await service.listAttachments(tenant, "1", {
-      attachmentType: 2,
-    });
-
-    expect(response.attachments).toEqual([]);
-    expect(response.pagination.total).toBe(0);
   });
 
   it("lists attachments via Java with attachmentType filter", async () => {
@@ -177,6 +171,7 @@ describe("KbAttachmentService", () => {
 
     const response = await service.listAttachments(tenant, "1", {
       attachmentType: 2,
+      docId: "1005",
       query: "产品",
     });
 
@@ -196,6 +191,51 @@ describe("KbAttachmentService", () => {
       materialCollectionId: "1",
       title: "产品说明书.pdf",
     });
+  });
+
+  it("lists attachments with provided doc id without attachment doc lookup", async () => {
+    const listKbChunks = vi.fn().mockResolvedValue({
+      count: 0,
+      list: [],
+      page: 1,
+      pageSize: 10,
+    });
+    const queries: Array<{
+      selectedColumns: string[];
+      table: string;
+      type: string;
+    }> = [];
+    const { client, service } = createService({ listKbChunks }, {
+      beforeExecute: (event) => {
+        queries.push({
+          selectedColumns: event.selectedColumns,
+          table: event.table,
+          type: event.type,
+        });
+      },
+    });
+
+    const response = await service.listAttachments(tenant, "1", {
+      attachmentType: 2,
+      docId: "1005",
+    });
+
+    expect(response.attachments).toEqual([]);
+    expect(client.listKbChunks).toHaveBeenCalledWith({
+      attachmentType: 2,
+      content: undefined,
+      docId: 1005,
+      page: 1,
+      pageSize: 10,
+      uid: 9001,
+    });
+    expect(
+      queries.some(
+        (event) =>
+          event.table === "xy_wap_embed_agent_kb_doc"
+          && event.type === "executeTakeFirst"
+      ),
+    ).toBe(false);
   });
 
   it("creates attachment chunk via Java", async () => {

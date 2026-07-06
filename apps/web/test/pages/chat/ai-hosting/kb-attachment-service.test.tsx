@@ -1,14 +1,14 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { RequestNormalizedError } from "@/lib/request";
 import {
-  isKbAttachmentNotInitialized,
+  getKbAttachmentStatus,
   listKbAttachments,
   initKbAttachments,
 } from "@/pages/chat/ai-hosting/api/kb-attachment-service";
 import { KbAttachmentsTab } from "@/pages/chat/ai-hosting/kb-components/kb-attachments-tab";
 import {
+  KB_ATTACHMENT_TYPE,
   isKbLocalUploadedImageMaterial,
   toKbAttachmentContent,
   toKbAttachmentItem,
@@ -22,6 +22,7 @@ vi.mock("@/pages/chat/ai-hosting/api/kb-attachment-service", async (importOrigin
 
   return {
     ...actual,
+    getKbAttachmentStatus: vi.fn(),
     initKbAttachments: vi.fn(),
     listKbAttachments: vi.fn(),
     createKbAttachment: vi.fn(),
@@ -126,75 +127,59 @@ describe("kb attachment mappers", () => {
   });
 });
 
-describe("isKbAttachmentNotInitialized", () => {
-  it("detects the not initialized error code", () => {
-    const error = new RequestNormalizedError({
-      code: "KB_ATTACHMENT_NOT_INITIALIZED",
-      message: "请先初始化附件库",
-      status: 404,
-    });
-
-    expect(isKbAttachmentNotInitialized(error)).toBe(true);
-    expect(
-      isKbAttachmentNotInitialized(
-        new RequestNormalizedError({
-          code: "KB_CHUNK_NOT_FOUND",
-          message: "附件不存在",
-          status: 404,
-        }),
-      ),
-    ).toBe(false);
-  });
-});
-
 describe("KbAttachmentsTab", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("shows init state when attachment list returns not initialized", async () => {
-    vi.mocked(listKbAttachments).mockRejectedValue(
-      new RequestNormalizedError({
-        code: "KB_ATTACHMENT_NOT_INITIALIZED",
-        message: "请先初始化附件库",
-        status: 404,
-      }),
+  it("shows init state and reports disabled when attachment status is uninitialized", async () => {
+    const onInitializedChange = vi.fn();
+    vi.mocked(getKbAttachmentStatus).mockResolvedValue({ initialized: false });
+
+    render(
+      <KbAttachmentsTab
+        activeType={KB_ATTACHMENT_TYPE.IMAGE}
+        kbId="kb-1"
+        onInitializedChange={onInitializedChange}
+      />,
     );
 
-    render(<KbAttachmentsTab kbId="kb-1" />);
-
-    expect(await screen.findByRole("button", { name: "开始初始化" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "立即启用" })).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "图片" })).not.toBeInTheDocument();
+    expect(onInitializedChange).toHaveBeenLastCalledWith(false);
+    expect(listKbAttachments).not.toHaveBeenCalled();
   });
 
   it("shows init loading when doc status is parsing", async () => {
     const user = userEvent.setup();
+    const onInitializedChange = vi.fn();
 
-    vi.mocked(listKbAttachments)
-      .mockRejectedValueOnce(
-        new RequestNormalizedError({
-          code: "KB_ATTACHMENT_NOT_INITIALIZED",
-          message: "请先初始化附件库",
-          status: 404,
-        }),
-      )
-      .mockResolvedValue({
-        attachments: [],
-        pagination: { page: 1, pageSize: 10, total: 0 },
-      });
+    vi.mocked(getKbAttachmentStatus).mockResolvedValue({ initialized: false });
+    vi.mocked(listKbAttachments).mockResolvedValue({
+      attachments: [],
+      pagination: { page: 1, pageSize: 10, total: 0 },
+    });
     vi.mocked(initKbAttachments).mockResolvedValue({
       docId: "doc-attachment-1",
       initialized: true,
       status: "parsing",
     });
 
-    render(<KbAttachmentsTab kbId="kb-1" />);
+    render(
+      <KbAttachmentsTab
+        activeType={KB_ATTACHMENT_TYPE.IMAGE}
+        kbId="kb-1"
+        onInitializedChange={onInitializedChange}
+      />,
+    );
 
-    await user.click(await screen.findByRole("button", { name: "开始初始化" }));
+    await user.click(await screen.findByRole("button", { name: "立即启用" }));
 
     expect(
       screen.getByRole("progressbar", { name: "附件库初始化进度" }),
     ).toBeInTheDocument();
     expect(initKbAttachments).toHaveBeenCalledWith("kb-1");
-    expect(listKbAttachments).toHaveBeenCalledTimes(1);
+    expect(onInitializedChange).toHaveBeenLastCalledWith(false);
+    expect(listKbAttachments).not.toHaveBeenCalled();
   });
 });

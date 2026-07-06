@@ -81,7 +81,14 @@ import { KbTableLoadingRow } from "./kb-components/kb-table-loading-row";
 import { ImportDocumentDialog } from "./kb-components/import-document-dialog";
 // import { ImportImageDialog } from "./kb-components/import-image-dialog";
 import { ImportQaDialog } from "./kb-components/import-qa-dialog";
-import { KbAttachmentsTab } from "./kb-components/kb-attachments-tab";
+import {
+  KbAttachmentsTab,
+  KbAttachmentTypeTabs,
+} from "./kb-components/kb-attachments-tab";
+import {
+  KB_ATTACHMENT_TYPE,
+  type KbAttachmentType,
+} from "./kb-components/kb-attachment-types";
 import { TableOverflowTooltip } from "./kb-components/shared";
 import { deleteKbDoc, retryKbDoc } from "./api/kb-doc-service";
 import { fetchAiHostingQuota } from "./ai-hosting-quota-store";
@@ -203,6 +210,10 @@ export function KbDetailPage() {
   const [retryingDocId, setRetryingDocId] = useState<string | null>(null);
   const [checkingKnowledgeQuota, setCheckingKnowledgeQuota] = useState(false);
   const [detailTab, setDetailTab] = useState("knowledge");
+  const [activeAttachmentType, setActiveAttachmentType] = useState<KbAttachmentType>(
+    KB_ATTACHMENT_TYPE.IMAGE,
+  );
+  const [attachmentsInitialized, setAttachmentsInitialized] = useState(false);
   const requestVersionRef = useRef(0);
   const summaryRequestVersionRef = useRef(0);
   const isMountedRef = useRef(false);
@@ -474,20 +485,28 @@ export function KbDetailPage() {
         </div>
 
         <Tabs className="gap-5" onValueChange={setDetailTab} value={detailTab}>
-          <TabsList className="h-auto w-full justify-start gap-5 rounded-none bg-transparent p-0">
-            <TabsTrigger
-              className="relative min-w-0 justify-start rounded-none bg-transparent px-0 py-2.5 text-base font-medium text-foreground shadow-none after:absolute after:bottom-0 after:left-1/2 after:h-[3px] after:w-6 after:-translate-x-1/2 after:rounded-full after:bg-primary after:opacity-0 after:content-[''] data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none data-[state=active]:after:opacity-100"
-              value="knowledge"
-            >
-              知识
-            </TabsTrigger>
-            <TabsTrigger
-              className="relative min-w-0 justify-start rounded-none bg-transparent px-0 py-2.5 text-base font-medium text-foreground shadow-none after:absolute after:bottom-0 after:left-1/2 after:h-[3px] after:w-6 after:-translate-x-1/2 after:rounded-full after:bg-primary after:opacity-0 after:content-[''] data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none data-[state=active]:after:opacity-100"
-              value="attachments"
-            >
-              附件
-            </TabsTrigger>
-          </TabsList>
+          <div className="flex flex-wrap items-center gap-5">
+            <TabsList className="h-10 w-fit justify-start gap-0 rounded-[10px] bg-muted p-1">
+              <TabsTrigger
+                className="h-8 min-w-[4.5rem] rounded-[8px] px-4 text-sm text-foreground shadow-none data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
+                value="knowledge"
+              >
+                知识
+              </TabsTrigger>
+              <TabsTrigger
+                className="h-8 min-w-[4.5rem] rounded-[8px] px-4 text-sm text-foreground shadow-none data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
+                value="attachments"
+              >
+                附件
+              </TabsTrigger>
+            </TabsList>
+            {detailTab === "attachments" && attachmentsInitialized ? (
+              <KbAttachmentTypeTabs
+                activeType={activeAttachmentType}
+                onActiveTypeChange={setActiveAttachmentType}
+              />
+            ) : null}
+          </div>
 
           <TabsContent value="knowledge">
         <section aria-label="知识列表区块" className="space-y-4">
@@ -548,7 +567,11 @@ export function KbDetailPage() {
           </TabsContent>
 
           <TabsContent value="attachments">
-            <KbAttachmentsTab kbId={kbId} />
+            <KbAttachmentsTab
+              activeType={activeAttachmentType}
+              kbId={kbId}
+              onInitializedChange={setAttachmentsInitialized}
+            />
           </TabsContent>
         </Tabs>
       </div>

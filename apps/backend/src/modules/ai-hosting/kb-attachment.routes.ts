@@ -31,6 +31,7 @@ const KbAttachmentParamsSchema = Type.Object({
 
 const KbAttachmentListQuerySchema = Type.Object({
   attachmentType: KbAttachmentTypeSchema,
+  docId: NumericStringSchema,
   page: Type.Optional(NumericStringSchema),
   pageSize: Type.Optional(NumericStringSchema),
   query: Type.Optional(Type.String({ maxLength: KB_SEARCH_QUERY_MAX_LENGTH })),
@@ -61,6 +62,24 @@ export async function registerKbAttachmentRoutes(app: FastifyInstance) {
     },
   );
 
+  app.get<{ Params: KbParams }>(
+    "/api/server/ai-hosting/kbs/:kbId/attachments/status",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        params: KbParamsSchema,
+      },
+    },
+    async (request) => {
+      return apiSuccess(
+        await getKbAttachmentService(app).getAttachmentStatus(
+          getAgentKbTenant(request),
+          request.params.kbId,
+        ),
+      );
+    },
+  );
+
   app.get<{ Params: KbParams; Querystring: KbAttachmentListQuery }>(
     "/api/server/ai-hosting/kbs/:kbId/attachments",
     {
@@ -77,6 +96,7 @@ export async function registerKbAttachmentRoutes(app: FastifyInstance) {
           request.params.kbId,
           {
             attachmentType: request.query.attachmentType as KbAttachmentType,
+            docId: request.query.docId,
             page: parseOptionalInteger(request.query.page),
             pageSize: parseOptionalInteger(request.query.pageSize),
             query: request.query.query,

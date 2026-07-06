@@ -7,6 +7,7 @@ import type {
   KbAttachmentImageMaterialCreateResponse,
   KbAttachmentInitResponse,
   KbAttachmentListResponse,
+  KbAttachmentStatusResponse,
   KbAttachmentType,
   KbAttachmentUpdateRequest,
   KbAttachmentUpdateResponse,
@@ -127,26 +128,50 @@ export class KbAttachmentService {
     };
   }
 
+  async getAttachmentStatus(
+    tenant: AgentKbTenant,
+    kbId: string,
+  ): Promise<KbAttachmentStatusResponse> {
+    const uid = tenant.uid;
+    const kbNumericId = parseRequiredNumericId(kbId, "KB_NOT_FOUND", "知识库不存在");
+    const attachmentDoc = await this.findAttachmentDoc(uid, kbNumericId);
+
+    if (!attachmentDoc) {
+      return { initialized: false };
+    }
+
+    return {
+      docId: String(attachmentDoc.id),
+      initialized: true,
+      syncStatus: attachmentDoc.sync_status,
+    };
+  }
+
   async listAttachments(
     tenant: AgentKbTenant,
     kbId: string,
     options: {
       attachmentType: KbAttachmentType;
+      docId: string;
       page?: number;
       pageSize?: number;
       query?: string;
     },
   ): Promise<KbAttachmentListResponse> {
     const uid = tenant.uid;
-    const kbNumericId = parseRequiredNumericId(kbId, "KB_NOT_FOUND", "知识库不存在");
-    const attachmentDoc = await this.requireReadyAttachmentDoc(uid, kbNumericId);
+    parseRequiredNumericId(kbId, "KB_NOT_FOUND", "知识库不存在");
+    const attachmentDocId = parseRequiredNumericId(
+      options.docId,
+      "KB_ATTACHMENT_DOC_NOT_FOUND",
+      "附件库异常，请稍后重试",
+    );
     const pagination = normalizeAttachmentPagination(options);
     const normalizedQuery = normalizeAttachmentSearchQuery(options.query);
 
     const response = await this.agentKbJavaClient.listKbChunks({
       attachmentType: options.attachmentType,
       content: normalizedQuery,
-      docId: attachmentDoc.id,
+      docId: attachmentDocId,
       page: pagination.page,
       pageSize: pagination.pageSize,
       uid,

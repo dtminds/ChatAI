@@ -96,8 +96,58 @@ describe("ai-hosting kb-attachment routes", () => {
     fetchMock.mockRestore();
   });
 
-  it("returns not initialized for attachment list without attachment doc", async () => {
-    const context = await createAuthenticatedApp();
+  it("returns attachment status without calling Java list", async () => {
+    const fetchMock = mockJavaFetch({
+      count: 0,
+      error: 0,
+      list: [],
+      page: 1,
+      pageSize: 10,
+      success: true,
+    });
+    const context = await createAuthenticatedApp("viewer", { includeAttachmentDoc: true });
+    app = context.app;
+
+    const response = await app.inject({
+      headers: { authorization: context.authorization },
+      method: "GET",
+      url: "/api/server/ai-hosting/kbs/1/attachments/status",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      data: {
+        docId: "1005",
+        initialized: true,
+        syncStatus: 0,
+      },
+      success: true,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    fetchMock.mockRestore();
+  });
+
+  it("returns uninitialized attachment status without attachment doc", async () => {
+    const context = await createAuthenticatedApp("viewer");
+    app = context.app;
+
+    const response = await app.inject({
+      headers: { authorization: context.authorization },
+      method: "GET",
+      url: "/api/server/ai-hosting/kbs/1/attachments/status",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      data: {
+        initialized: false,
+      },
+      success: true,
+    });
+  });
+
+  it("rejects attachment list without doc id", async () => {
+    const context = await createAuthenticatedApp("viewer");
     app = context.app;
 
     const response = await app.inject({
@@ -106,10 +156,10 @@ describe("ai-hosting kb-attachment routes", () => {
       url: "/api/server/ai-hosting/kbs/1/attachments?attachmentType=2",
     });
 
-    expect(response.statusCode).toBe(404);
+    expect(response.statusCode).toBe(400);
     expect(response.json()).toMatchObject({
       error: {
-        code: "KB_ATTACHMENT_NOT_INITIALIZED",
+        code: "BAD_REQUEST",
       },
       success: false,
     });
@@ -148,7 +198,7 @@ describe("ai-hosting kb-attachment routes", () => {
     const response = await app.inject({
       headers: { authorization: context.authorization },
       method: "GET",
-      url: "/api/server/ai-hosting/kbs/1/attachments?attachmentType=2&query=产品",
+      url: "/api/server/ai-hosting/kbs/1/attachments?attachmentType=2&docId=1005&query=产品",
     });
 
     expect(response.statusCode).toBe(200);

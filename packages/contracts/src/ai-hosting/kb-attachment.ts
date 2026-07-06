@@ -35,6 +35,15 @@ export const KbAttachmentInitResponseSchema = Type.Object(
   { additionalProperties: false },
 );
 
+export const KbAttachmentStatusResponseSchema = Type.Object(
+  {
+    docId: Type.Optional(Type.String()),
+    initialized: Type.Boolean(),
+    syncStatus: Type.Optional(Type.Number()),
+  },
+  { additionalProperties: false },
+);
+
 export const KbAttachmentListItemSchema = Type.Object({
   attachmentContent: KbAttachmentContentSchema,
   attachmentType: KbAttachmentTypeSchema,
@@ -124,6 +133,7 @@ export const KbAttachmentImageMaterialCreateResponseSchema = Type.Object(
 export type KbAttachmentType = Static<typeof KbAttachmentTypeSchema>;
 export type KbAttachmentContent = Static<typeof KbAttachmentContentSchema>;
 export type KbAttachmentInitResponse = Static<typeof KbAttachmentInitResponseSchema>;
+export type KbAttachmentStatusResponse = Static<typeof KbAttachmentStatusResponseSchema>;
 export type KbAttachmentListItem = Static<typeof KbAttachmentListItemSchema>;
 export type KbAttachmentListResponse = Static<typeof KbAttachmentListResponseSchema>;
 export type KbAttachmentCreateRequest = Static<typeof KbAttachmentCreateRequestSchema>;

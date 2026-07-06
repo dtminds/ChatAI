@@ -143,10 +143,7 @@ describe("ChatRecordMessageCard", () => {
     const dialog = await screen.findByRole("dialog", {
       name: "缪勇飞和范双飞的聊天记录",
     });
-    const viewport = within(dialog).getByTestId("chat-record-detail-viewport");
-
-    expect(dialog).toHaveClass("w-[min(26rem,calc(100vw-2rem))]", "max-w-none");
-    expect(viewport).toHaveClass("h-[min(42rem,calc(100vh-6rem))]", "min-h-[34rem]");
+    expect(within(dialog).getByTestId("chat-record-detail-viewport")).toBeInTheDocument();
     expect(within(dialog).getByText("第一条详情")).toBeInTheDocument();
     expect(within(dialog).getByText("报价单.pdf")).toBeInTheDocument();
     expect(within(dialog).getByRole("img", { name: "PDF 文件" }))

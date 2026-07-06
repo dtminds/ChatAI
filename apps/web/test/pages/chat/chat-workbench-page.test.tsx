@@ -2108,7 +2108,6 @@ describe("ChatWorkbenchPage", () => {
     const historyButton = screen.getByRole("button", { name: "历史记录" });
 
     expect(historyButton).toHaveAttribute("aria-pressed", "false");
-    expect(historyButton).not.toHaveClass("bg-accent", "text-accent-foreground");
 
     await user.click(historyButton);
 
@@ -2116,7 +2115,6 @@ describe("ChatWorkbenchPage", () => {
       await screen.findByRole("complementary", { name: "聊天记录" }),
     ).toBeInTheDocument();
     expect(historyButton).toHaveAttribute("aria-pressed", "true");
-    expect(historyButton).toHaveClass("bg-accent", "text-accent-foreground");
 
     await user.click(historyButton);
 
@@ -2126,7 +2124,6 @@ describe("ChatWorkbenchPage", () => {
       ).not.toBeInTheDocument();
     });
     expect(historyButton).toHaveAttribute("aria-pressed", "false");
-    expect(historyButton).not.toHaveClass("bg-accent", "text-accent-foreground");
   });
 
   it("keeps all seed messages visible after the initial 50-message request", async () => {

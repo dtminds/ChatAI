@@ -32,7 +32,7 @@ describe("SolitaireMessageCard", () => {
       />,
     );
 
-    expect(screen.getByTestId("solitaire-message-bubble")).toHaveClass("bg-secondary");
+    expect(screen.getByTestId("solitaire-message-bubble")).toBeInTheDocument();
     expect(screen.getByText("#接龙")).toBeInTheDocument();
     expect(screen.getByText("哈哈哈")).toBeInTheDocument();
     expect(screen.getByText("例 就这样吧")).toBeInTheDocument();

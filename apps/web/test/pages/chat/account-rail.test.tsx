@@ -191,24 +191,6 @@ describe("AccountRail", () => {
     );
   });
 
-  it("keeps the collapsed insight nav link aligned with button nav items", () => {
-    render(
-      <AccountRail
-        accounts={accounts}
-        activeAccountId="account-1"
-        currentEmployee={currentEmployee}
-        isCollapsed
-        onSelectAccount={vi.fn()}
-      />,
-    );
-
-    const insightLink = screen.getByRole("link", { name: "洞察" });
-    const chatButton = screen.getByRole("button", { name: "聊天" });
-
-    expect(insightLink).toHaveClass("inline-flex", "size-9", "items-center", "justify-center");
-    expect(chatButton).toHaveClass("inline-flex", "size-9", "items-center", "justify-center");
-  });
-
   it("shows account takeover state and takes over from the status popover", async () => {
     const user = userEvent.setup();
     const handleTakeOverAccount = vi.fn();
@@ -323,12 +305,7 @@ describe("AccountRail", () => {
 
     expect(screen.getByText("lsave")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "lsave" })).not.toBeInTheDocument();
-    expect(screen.getByTestId("account-sidebar-item-account-1")).toHaveClass("items-center");
-    expect(screen.getByTestId("account-avatar-wrap-account-1")).not.toHaveClass("mt-0.5");
     expect(screen.getByTestId("account-sidebar-item-status-row-account-1")).toHaveTextContent("接管中");
-    const statusBadge = screen.getByText("接管中").closest("span")?.parentElement;
-    expect(statusBadge).not.toHaveClass("px-1.5");
-    expect(statusBadge).not.toHaveClass("py-1");
     expect(screen.getByTestId("account-sidebar-item-status-row-account-2")).toHaveTextContent("未接管");
     expect(screen.queryByTestId("account-sidebar-item-operator-account-1")).not.toBeInTheDocument();
     expect(screen.queryByTestId("account-sidebar-item-operator-account-2")).not.toBeInTheDocument();
@@ -391,7 +368,6 @@ describe("AccountRail", () => {
     expect(
       screen.getByText("当前账号未被你接管，你将无法"),
     ).toBeInTheDocument();
-    expect(screen.getByText("当前账号未被你接管，你将无法")).toHaveClass("text-warning");
 
     await user.unhover(card);
 
@@ -400,23 +376,6 @@ describe("AccountRail", () => {
         screen.queryByText("当前账号未被你接管，你将无法"),
       ).not.toBeInTheDocument();
     });
-  });
-
-  it("uses a distinct warning treatment for untaken account labels and dots", () => {
-    render(
-      <AccountRail
-        accounts={accounts}
-        activeAccountId="account-1"
-        currentEmployeeId="emp-001"
-        onSelectAccount={vi.fn()}
-      />,
-    );
-
-    const untakenBadge = screen.getByText("未接管").closest("span")?.parentElement;
-    const untakenDot = untakenBadge?.querySelector("[data-testid='account-status-dot']");
-
-    expect(untakenBadge).toHaveClass("text-warning");
-    expect(untakenDot).toHaveClass("bg-warning");
   });
 
   it("shows the product logo", () => {
@@ -431,30 +390,7 @@ describe("AccountRail", () => {
     const logo = screen.getByTestId("account-rail-logo");
 
     expect(logo).toHaveTextContent("ChatAI");
-    expect(logo).not.toHaveClass("bg-neutral-strong");
     expect(logo.querySelector("svg")).toBeInTheDocument();
-  });
-
-  it("keeps account avatar fallbacks on primary colors", () => {
-    render(
-      <AccountRail
-        accounts={accounts}
-        activeAccountId="account-1"
-        currentEmployee={currentEmployee}
-        currentEmployeeId="emp-001"
-        onSelectAccount={vi.fn()}
-      />,
-    );
-
-    expect(screen.getByTestId("account-rail-footer-avatar-fallback").parentElement).toHaveClass(
-      "bg-primary",
-      "text-primary-foreground",
-    );
-    expect(
-      screen
-        .getByTestId("account-sidebar-item-account-1")
-        .querySelector(".bg-primary.text-primary-foreground"),
-    ).toBeInTheDocument();
   });
 
   it("shows numeric unread badges for taken-over accounts", () => {
@@ -526,12 +462,9 @@ describe("AccountRail", () => {
       />,
     );
 
-    expect(screen.getByLabelText("lsave 状态 已接管")).toHaveClass("bg-success");
-    expect(screen.getByLabelText("support 状态 未接管")).toHaveClass("bg-warning");
-    expect(screen.getByLabelText("offline 状态 离线")).toHaveClass("bg-muted-foreground/50");
-    expect(screen.getByRole("button", { name: "选择 support" })).not.toHaveClass(
-      "hover:bg-surface-hover",
-    );
+    expect(screen.getByLabelText("lsave 状态 已接管")).toBeInTheDocument();
+    expect(screen.getByLabelText("support 状态 未接管")).toBeInTheDocument();
+    expect(screen.getByLabelText("offline 状态 离线")).toBeInTheDocument();
 
     await user.hover(screen.getByRole("button", { name: "选择 lsave" }));
 

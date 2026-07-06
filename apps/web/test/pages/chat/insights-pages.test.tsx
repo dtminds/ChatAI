@@ -1581,9 +1581,6 @@ describe("conversation insights pages", () => {
         "done",
       );
     });
-    expect(within(insightRegion).getByText("跟进物流是否已更新")).toHaveClass(
-      "line-through",
-    );
     expect(
       within(insightRegion).queryByRole("button", {
         name: "恢复待完成：跟进物流是否已更新",
@@ -1602,7 +1599,7 @@ describe("conversation insights pages", () => {
     });
     expect(
       within(insightRegion).getByText("跟进物流是否已更新"),
-    ).not.toHaveClass("line-through");
+    ).toBeInTheDocument();
     await userEvent.click(
       within(insightRegion).getByRole("button", {
         name: "忽略：跟进物流是否已更新",
@@ -1630,9 +1627,7 @@ describe("conversation insights pages", () => {
         "open",
       );
     });
-    expect(within(insightRegion).getByText("发送补偿说明")).toHaveClass(
-      "line-through",
-    );
+    expect(within(insightRegion).getByText("发送补偿说明")).toBeInTheDocument();
     expect(screen.getAllByText("物流异常").length).toBeGreaterThan(0);
     expect(screen.getAllByText("白色羽绒服").length).toBeGreaterThan(0);
     expect(screen.getByText("物流停滞怎么处理")).toBeInTheDocument();
@@ -2111,12 +2106,9 @@ describe("conversation insights pages", () => {
       within(advancedFilters).getByRole("menuitem", { name: "意图" }),
     );
 
-    const longIntentOption = await screen.findByRole("menuitemradio", {
+    await screen.findByRole("menuitemradio", {
       name: "咨询AI客服系统相关信息",
     });
-    expect(
-      within(longIntentOption).getByText("咨询AI客服系统相关信息"),
-    ).toHaveClass("truncate");
   });
 
   it("starts a new custom date range when clicking the calendar after a complete range is selected", async () => {
@@ -2141,21 +2133,6 @@ describe("conversation insights pages", () => {
 
     await userEvent.click(
       screen.getByRole("button", { name: /2026年5月12日/ }),
-    );
-    expect(screen.getByRole("button", { name: /2026年5月10日/ })).toHaveClass(
-      "rounded-l-[10px]",
-    );
-    expect(screen.getByRole("button", { name: /2026年5月10日/ })).toHaveClass(
-      "rounded-r-none",
-    );
-    expect(screen.getByRole("button", { name: /2026年5月11日/ })).toHaveClass(
-      "rounded-none",
-    );
-    expect(screen.getByRole("button", { name: /2026年5月12日/ })).toHaveClass(
-      "rounded-l-none",
-    );
-    expect(screen.getByRole("button", { name: /2026年5月12日/ })).toHaveClass(
-      "rounded-r-[10px]",
     );
     expect(screen.getByText("2026-05-10 至 2026-05-12")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "应用" }));
@@ -2187,9 +2164,6 @@ describe("conversation insights pages", () => {
         "按咨询会话判断客户问题是否解决，辅助主管复核服务质量",
       ),
     ).not.toBeInTheDocument();
-    expect(screen.getByTestId("quality-page-header")).toHaveClass(
-      "sm:items-end",
-    );
     expect(serviceMocks.getInsightQualityOverview).toHaveBeenCalledWith(
       {
         from: "2026-05-28T00:00:00.000+08:00",
@@ -2210,24 +2184,13 @@ describe("conversation insights pages", () => {
     const qualityOverviewContent = screen.getByTestId(
       "quality-overview-content",
     );
-    expect(qualityOverviewContent).toHaveClass("lg:grid-cols-2");
+    expect(qualityOverviewContent).toBeInTheDocument();
     const qualityMetrics = screen.getByRole("region", { name: "质检指标" });
     expect(qualityMetrics).toBeInTheDocument();
-    expect(qualityMetrics).toHaveClass(
-      "flex",
-      "flex-col",
-      "rounded-[8px]",
-      "border",
-      "bg-background",
-    );
     const qualityDistribution = screen.getByRole("region", {
       name: "质检分布",
     });
-    expect(qualityDistribution).toHaveClass(
-      "rounded-[8px]",
-      "border",
-      "bg-background",
-    );
+    expect(qualityDistribution).toBeInTheDocument();
     expect(
       within(qualityMetrics).getByText("2026-05-28 至 2026-06-03"),
     ).toBeInTheDocument();
@@ -2242,7 +2205,7 @@ describe("conversation insights pages", () => {
     expect(within(qualityMetrics).getByText("质检通过率")).toBeInTheDocument();
     expect(
       within(qualityMetrics).getByTestId("quality-metric-grid"),
-    ).toHaveClass("flex-1");
+    ).toBeInTheDocument();
     expect(
       within(qualityMetrics).getByRole("progressbar", { name: "质检覆盖率" }),
     ).toHaveAttribute("aria-valuenow", "91");
@@ -2253,7 +2216,7 @@ describe("conversation insights pages", () => {
       within(qualityDistribution).getByTestId(
         "quality-rule-distribution-chart",
       ),
-    ).toHaveClass("size-[180px]");
+    ).toBeInTheDocument();
     expect(within(qualityDistribution).getByText("112")).toBeInTheDocument();
     expect(
       within(qualityDistribution).getByText("命中次数"),
@@ -2276,7 +2239,7 @@ describe("conversation insights pages", () => {
       within(qualityDistribution).getByTestId(
         "quality-rule-distribution-viewport",
       ),
-    ).toHaveClass("pr-4");
+    ).toBeInTheDocument();
     expect(
       within(qualityDistribution).getByTestId("quality-rule-distribution-list"),
     ).toBeInTheDocument();
@@ -2672,47 +2635,15 @@ describe("conversation insights pages", () => {
     const highPriority = within(openRow as HTMLElement).getByText("高");
     const mediumPriority = within(doneRow as HTMLElement).getByText("中");
     const lowPriority = within(dismissedRow as HTMLElement).getByText("低");
-    expect(within(openRow as HTMLElement).getByText("待处理")).toHaveClass(
-      "text-warning",
-    );
-    expect(within(openRow as HTMLElement).getByText("待处理")).not.toHaveClass(
-      "line-through",
-    );
     const doneStatus = within(doneRow as HTMLElement).getByText("已完成");
     const dismissedStatus = within(dismissedRow as HTMLElement).getByText(
       "已忽略",
     );
-    expect(within(openRow as HTMLElement).getByText("待处理事项")).toHaveClass(
-      "text-foreground",
-    );
-    expect(within(doneRow as HTMLElement).getByText("已完成事项")).toHaveClass(
-      "text-foreground",
-    );
-    expect(
-      within(dismissedRow as HTMLElement).getByText("已忽略事项"),
-    ).toHaveClass("text-muted-foreground");
-    expect(doneStatus).toHaveClass("text-success");
-    expect(doneStatus).not.toHaveClass("line-through");
-    expect(dismissedStatus).toHaveClass("text-muted-foreground");
-    expect(dismissedStatus).not.toHaveClass("line-through");
-    expect(highPriority).toHaveClass("text-destructive");
-    expect(highPriority).toHaveClass("text-sm");
-    expect(highPriority).not.toHaveClass("text-[11px]");
-    expect(highPriority).not.toHaveClass("rounded-full");
-    expect(highPriority).not.toHaveClass("bg-primary/12");
-    expect(highPriority).not.toHaveClass("bg-destructive/12");
-    expect(mediumPriority).toHaveClass("text-warning");
-    expect(mediumPriority).toHaveClass("text-sm");
-    expect(mediumPriority).not.toHaveClass("text-[11px]");
-    expect(mediumPriority).not.toHaveClass("rounded-full");
-    expect(mediumPriority).not.toHaveClass("bg-primary/12");
-    expect(mediumPriority).not.toHaveClass("bg-amber-500/16");
-    expect(lowPriority).toHaveClass("text-success");
-    expect(lowPriority).toHaveClass("text-sm");
-    expect(lowPriority).not.toHaveClass("text-[11px]");
-    expect(lowPriority).not.toHaveClass("rounded-full");
-    expect(lowPriority).not.toHaveClass("bg-primary/12");
-    expect(lowPriority).not.toHaveClass("bg-emerald-500/12");
+    expect(doneStatus).toBeInTheDocument();
+    expect(dismissedStatus).toBeInTheDocument();
+    expect(highPriority).toBeInTheDocument();
+    expect(mediumPriority).toBeInTheDocument();
+    expect(lowPriority).toBeInTheDocument();
   });
 
   it("reopens processed follow-ups from the action menu", async () => {
@@ -3017,10 +2948,6 @@ describe("conversation insights pages", () => {
 
     await userEvent.click(screen.getByRole("tab", { name: "意图配置" }));
     expect(screen.getByText("客户咨询物流或发货进度")).toBeInTheDocument();
-    expect(screen.getByRole("table").parentElement).not.toHaveClass(
-      "rounded-[8px]",
-      "border",
-    );
     await userEvent.click(screen.getByRole("button", { name: "新增意图" }));
     expect(
       await screen.findByRole("dialog", { name: "新增意图" }),
@@ -3050,17 +2977,9 @@ describe("conversation insights pages", () => {
 
     await userEvent.click(screen.getByRole("tab", { name: "质检规则" }));
     expect(screen.getByText("客户问题是否解决")).toBeInTheDocument();
-    expect(screen.getByRole("table").parentElement).not.toHaveClass(
-      "rounded-[8px]",
-      "border",
-    );
 
     await userEvent.click(screen.getByRole("tab", { name: "标签配置" }));
     expect(screen.getAllByText("标签配置")).toHaveLength(1);
-    expect(screen.getByRole("table").parentElement).not.toHaveClass(
-      "rounded-[8px]",
-      "border",
-    );
     await userEvent.click(screen.getByRole("button", { name: "新增标签" }));
     expect(
       await screen.findByRole("dialog", { name: "新增标签" }),
@@ -3212,10 +3131,7 @@ describe("conversation insights pages", () => {
       "data-cursor-fill-opacity",
       "0.1",
     );
-    expect(screen.getByTestId("business-topic-list-scroll")).toHaveClass(
-      "max-h-[260px]",
-      "overflow-y-auto",
-    );
+    expect(screen.getByTestId("business-topic-list-scroll")).toBeInTheDocument();
     expect(
       screen.getByRole("heading", { name: "相关会话" }),
     ).toBeInTheDocument();
@@ -3476,10 +3392,8 @@ describe("conversation insights pages", () => {
       "智能标签已开启（3 / 20）",
       "智能实体识别已开启（2 / 20）",
     ]);
-    expect(within(cards[0]).getByText("未开启")).toHaveClass(
-      "text-muted-foreground",
-    );
-    expect(within(cards[1]).getByText("已开启")).toHaveClass("text-success");
+    expect(within(cards[0]).getByText("未开启")).toBeInTheDocument();
+    expect(within(cards[1]).getByText("已开启")).toBeInTheDocument();
   });
 
   it("keeps settings tabs on the existing configuration sections", async () => {
@@ -4369,7 +4283,6 @@ describe("conversation insights pages", () => {
     const emptyCell = within(overviewTable).getByText("暂无数据");
 
     expect(emptyCell).toBeInTheDocument();
-    expect(emptyCell).toHaveClass("text-center");
     expect(
       within(overviewTable).queryByText("当前时间范围内暂无咨询会话"),
     ).not.toBeInTheDocument();

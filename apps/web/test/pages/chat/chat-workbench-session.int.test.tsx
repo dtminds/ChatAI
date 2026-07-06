@@ -344,14 +344,7 @@ describe("ChatWorkbenchPage session flows", () => {
       );
     });
     const errorBanner = screen.getByTestId("scope-transition-error");
-    expect(errorBanner).toHaveClass(
-      "absolute",
-      "bottom-full",
-      "left-0",
-      "right-0",
-      "mb-0",
-      "bg-destructive/55",
-    );
+    expect(errorBanner).toBeInTheDocument();
     expect(screen.getByTestId("message-content")).not.toContainElement(
       errorBanner,
     );

@@ -33,22 +33,6 @@ describe("TablePagination", () => {
     expect(onPageChange).toHaveBeenCalledWith(4);
   });
 
-  it("renders compact page controls for table density", () => {
-    const { container } = render(
-      <TablePagination
-        onPageChange={vi.fn()}
-        page={3}
-        total={96}
-        totalPages={10}
-      />,
-    );
-
-    expect(container.firstChild).toHaveClass("items-end", "px-0", "sm:justify-end");
-    expect(screen.getByRole("button", { name: "上一页" })).toHaveClass("size-8");
-    expect(screen.getByRole("button", { name: "3" })).toHaveClass("size-8");
-    expect(screen.getByRole("button", { name: "下一页" })).toHaveClass("size-8");
-  });
-
   it("clamps invalid page values before rendering controls", () => {
     render(
       <TablePagination

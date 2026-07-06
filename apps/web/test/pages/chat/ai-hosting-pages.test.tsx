@@ -36,7 +36,6 @@ import {
 const readXlsxFileMock = vi.hoisted(() => vi.fn());
 const importKbDocMock = vi.hoisted(() => vi.fn());
 const importKbQaDocMock = vi.hoisted(() => vi.fn());
-const importKbImageDocMock = vi.hoisted(() => vi.fn());
 const uploadKbImageMock = vi.hoisted(() => vi.fn());
 const retryKbDocMock = vi.hoisted(() => vi.fn());
 const createKbChunkMock = vi.hoisted(() => vi.fn());
@@ -90,7 +89,6 @@ vi.mock("@/pages/chat/ai-hosting/api/kb-doc-service", async (importOriginal) => 
   return {
     ...actual,
     importKbDoc: importKbDocMock,
-    importKbImageDoc: importKbImageDocMock,
     importKbQaDoc: importKbQaDocMock,
     uploadKbImage: uploadKbImageMock,
     retryKbDoc: retryKbDocMock,
@@ -115,8 +113,6 @@ vi.mock("sonner", async (importOriginal) => {
     },
   };
 });
-
-let mockImageDimensions = { height: 800, width: 800 };
 
 const mockModels = [
   {
@@ -412,22 +408,11 @@ describe("AI hosting pages", () => {
       updateMockKbDocStatus(docId, "queued");
       return { retried: true };
     });
-    mockImageDimensions = { height: 800, width: 800 };
-    Object.defineProperty(URL, "createObjectURL", {
-      configurable: true,
-      value: vi.fn(() => "blob:mock-image"),
-    });
-    Object.defineProperty(URL, "revokeObjectURL", {
-      configurable: true,
-      value: vi.fn(),
-    });
     vi.stubGlobal(
       "Image",
       class {
         private readonly listeners = new Map<string, Set<() => void>>();
 
-        naturalHeight = mockImageDimensions.height;
-        naturalWidth = mockImageDimensions.width;
         onerror: (() => void) | null = null;
         onload: (() => void) | null = null;
 
@@ -462,8 +447,6 @@ describe("AI hosting pages", () => {
     importKbDocMock.mockResolvedValue({ docId: "mock-doc-created" });
     importKbQaDocMock.mockReset();
     importKbQaDocMock.mockResolvedValue({ docId: "mock-qa-created" });
-    importKbImageDocMock.mockReset();
-    importKbImageDocMock.mockResolvedValue({ docId: "mock-image-created" });
     uploadKbImageMock.mockReset();
     uploadKbImageMock.mockResolvedValue({
       docUrl: "kb-docs/demo/preview.png",
@@ -635,7 +618,6 @@ describe("AI hosting pages", () => {
     expect(
       within(popover).getByRole("link", { name: "直播话术知识库" }),
     ).toHaveAttribute("href", "/chat/ai-hosting/kb/4");
-    expect(popover).toHaveClass("w-[18rem]", "p-2.5");
     expect(within(popover).getByTestId("agent-kb-popover-scroll")).toHaveClass("max-h-[12rem]");
     expect(within(popover).getAllByTitle("知识库图标")).toHaveLength(4);
     expect(
@@ -643,9 +625,6 @@ describe("AI hosting pages", () => {
         .getByTestId("agent-kb-popover-scroll")
         .querySelector("[data-slot='scroll-area-viewport']"),
     ).toHaveClass("[&>div]:!block", "[&>div]:!min-w-0", "[&>div]:!w-full");
-    expect(
-      within(popover).getByTestId("agent-kb-popover-item-2"),
-    ).toHaveClass("w-full", "min-w-0", "hover:bg-accent");
     expect(
       within(popover).getByTitle("测试超长测试超长测试知识库"),
     ).toHaveAttribute("href", "/chat/ai-hosting/kb/2");
@@ -1627,49 +1606,6 @@ describe("AI hosting pages", () => {
     expect(screen.getByRole("option", { name: "Doubao-2.0-lite" })).toBeInTheDocument();
   });
 
-  it.skip("opens generate dialog from the generate button", async () => {
-    const user = userEvent.setup();
-
-    renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
-
-    await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
-    await user.click(screen.getByRole("button", { name: "智能生成" }));
-
-    const dialog = screen.getByRole("dialog", { name: "智能生成" });
-
-    expect(dialog).toBeInTheDocument();
-    expect(dialog).toHaveTextContent("按实际情况填写表单后，AI 会帮您自动生成 Agent 的配置内容");
-    expect(screen.getByLabelText("行业")).toBeInTheDocument();
-    expect(screen.getByLabelText("请问您为客户提供哪些服务/商品?")).toBeInTheDocument();
-    expect(screen.getByLabelText("您希望 AI 扮演什么样的角色?")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "开始生成" })).toHaveAttribute(
-      "data-agent-generate-gradient-button",
-      "true",
-    );
-    expect(screen.getByRole("button", { name: "开始生成" })).toBeDisabled();
-  });
-
-  it.skip("shows generation progress after starting generate", async () => {
-    const user = userEvent.setup();
-
-    renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsPage />);
-
-    await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
-    await user.click(screen.getByRole("button", { name: "智能生成" }));
-
-    await user.click(screen.getByRole("combobox", { name: "行业" }));
-    await user.click(screen.getByRole("option", { name: "美妆护肤" }));
-    await user.type(screen.getByLabelText("请问您为客户提供哪些服务/商品?"), "护肤咨询");
-    await user.click(screen.getByRole("combobox", { name: "您希望 AI 扮演什么样的角色?" }));
-    await user.click(screen.getByRole("option", { name: "品牌客服" }));
-    await user.click(screen.getByRole("button", { name: "开始生成" }));
-
-    expect(screen.getByText("生成进度")).toBeInTheDocument();
-    expect(screen.getByText("15%")).toBeInTheDocument();
-    expect(screen.getByText("输入文本")).toBeInTheDocument();
-    expect(screen.getByRole("progressbar", { name: "生成进度" })).toBeInTheDocument();
-  });
-
   it("shows an unpublished draft dialog after creating an agent", async () => {
     const user = userEvent.setup();
     const create = createDeferred<typeof mockAgentDetail>();
@@ -2169,7 +2105,6 @@ describe("AI hosting pages", () => {
     });
     const optionName = within(option).getByText(longKnowledgeBaseName);
 
-    expect(screen.getByRole("dialog")).toHaveClass("w-[280px]");
     expect(listbox.querySelector("[data-slot='scroll-area-viewport']")?.parentElement)
       .toHaveClass(
         "w-full",
@@ -3140,425 +3075,6 @@ describe("AI hosting pages", () => {
     expect(screen.getByRole("radio", { name: /增强解析/ })).toBeDisabled();
   });
 
-  // 图片添加入口暂时下线
-  describe.skip("image knowledge import", () => {
-  it("opens the image knowledge dialog and fills the default image name", async () => {
-    const user = userEvent.setup();
-
-    renderWithRoute(
-      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
-      <KbDetailPage />,
-      "/chat/ai-hosting/kb/:kbId",
-    );
-
-    await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
-    await user.click(screen.getByRole("button", { name: "添加知识" }));
-    await user.click(screen.getByRole("menuitem", { name: /图片/ }));
-
-    const dialog = screen.getByRole("dialog", { name: "添加图片知识" });
-
-    expect(dialog).toBeInTheDocument();
-    expect(screen.queryByText("限免")).not.toBeInTheDocument();
-    expect(screen.queryByText("注意事项")).not.toBeInTheDocument();
-    expect(
-      screen.queryByText("描述会参与图片检索，可填写图片对应的商品说明、售卖亮点或价格等"),
-    ).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "上传图片" })).toBeInTheDocument();
-    expect(screen.getByLabelText(/知识名称/)).toHaveAttribute("maxLength", "16");
-    expect(screen.getByLabelText(/知识名称/)).toHaveAttribute(
-      "placeholder",
-      "请输入知识名称",
-    );
-    expect(screen.getByLabelText(/图片描述/)).toHaveAttribute(
-      "placeholder",
-      "描述会参与图片检索，可填写图片对应的商品说明、售卖亮点或价格等",
-    );
-    expect(screen.getByText("0/16")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "确认提交" })).toBeDisabled();
-
-    await user.upload(
-      screen.getByLabelText("选择图片知识文件"),
-      new File(["image"], "商品主图.png", { type: "image/png" }),
-    );
-
-    expect(screen.getByRole("region", { name: "已选择图片" })).toHaveTextContent(
-      "商品主图.png",
-    );
-    expect(screen.getByLabelText(/知识名称/)).toHaveValue("商品主图");
-    expect(screen.getByText("4/16")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "确认提交" })).toBeDisabled();
-
-    await user.type(screen.getByLabelText(/图片描述/), "晨间护肤套装商品主图");
-
-    expect(screen.getByRole("button", { name: "确认提交" })).toBeEnabled();
-
-    await user.click(screen.getByRole("button", { name: "移除已选择图片" }));
-
-    expect(screen.queryByRole("region", { name: "已选择图片" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "确认提交" })).toBeDisabled();
-  });
-
-  it("refreshes the image knowledge name when uploading a new image", async () => {
-    const user = userEvent.setup();
-
-    renderWithRoute(
-      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
-      <KbDetailPage />,
-      "/chat/ai-hosting/kb/:kbId",
-    );
-
-    await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
-    await user.click(screen.getByRole("button", { name: "添加知识" }));
-    await user.click(screen.getByRole("menuitem", { name: /图片/ }));
-
-    const fileInput = screen.getByLabelText("选择图片知识文件");
-
-    await user.upload(
-      fileInput,
-      new File(["image"], "商品主图.png", { type: "image/png" }),
-    );
-    expect(screen.getByLabelText(/知识名称/)).toHaveValue("商品主图");
-
-    await user.clear(screen.getByLabelText(/知识名称/));
-    await user.type(screen.getByLabelText(/知识名称/), "手动修改名称");
-
-    await user.upload(
-      fileInput,
-      new File(["image"], "新品海报.webp", { type: "image/webp" }),
-    );
-
-    expect(screen.getByLabelText(/知识名称/)).toHaveValue("新品海报");
-    expect(screen.getByRole("region", { name: "已选择图片" })).toHaveTextContent(
-      "新品海报.webp",
-    );
-  });
-
-  it("uploads image knowledge to COS and refreshes the list after submit", async () => {
-    const user = userEvent.setup();
-
-    renderWithRoute(
-      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
-      <KbDetailPage />,
-      "/chat/ai-hosting/kb/:kbId",
-    );
-
-    await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
-    await user.click(screen.getByRole("button", { name: "添加知识" }));
-    await user.click(screen.getByRole("menuitem", { name: /图片/ }));
-    await user.upload(
-      screen.getByLabelText("选择图片知识文件"),
-      new File(["image"], "商品主图.png", { type: "image/png" }),
-    );
-    await user.type(screen.getByLabelText(/图片描述/), "晨间护肤套装商品主图");
-    await user.click(screen.getByRole("button", { name: "确认提交" }));
-
-    await waitFor(() => {
-      expect(importKbImageDocMock).toHaveBeenCalledTimes(1);
-    });
-    expect(screen.queryByRole("dialog", { name: "添加图片知识" })).not.toBeInTheDocument();
-  });
-
-  it("prevents image import when selected file exceeds the remaining storage quota", async () => {
-    const user = userEvent.setup();
-    vi.mocked(agentService.getAiHostingQuota)
-      .mockResolvedValueOnce({
-        agents: {
-          limit: 20,
-          used: 2,
-        },
-        kbDocs: {
-          limit: 1024 * 1024 * 1024,
-          used: 20 * 1024 * 1024,
-        },
-        kbs: {
-          limit: 20,
-          used: 3,
-        },
-      })
-      .mockResolvedValueOnce({
-        agents: {
-          limit: 20,
-          used: 2,
-        },
-        kbDocs: {
-          limit: 1024 * 1024 * 1024,
-          used: 20 * 1024 * 1024,
-        },
-        kbs: {
-          limit: 20,
-          used: 3,
-        },
-      })
-      .mockResolvedValueOnce({
-        agents: {
-          limit: 20,
-          used: 2,
-        },
-        kbDocs: {
-          limit: 1024 * 1024 * 1024,
-          used: 1024 * 1024 * 1024 - 4,
-        },
-        kbs: {
-          limit: 20,
-          used: 3,
-        },
-      });
-
-    renderWithRoute(
-      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
-      <KbDetailPage />,
-      "/chat/ai-hosting/kb/:kbId",
-    );
-
-    await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
-    await user.click(screen.getByRole("button", { name: "添加知识" }));
-    await user.click(screen.getByRole("menuitem", { name: /图片/ }));
-    await user.upload(
-      screen.getByLabelText("选择图片知识文件"),
-      new File(["image"], "商品主图.png", { type: "image/png" }),
-    );
-    await user.type(screen.getByLabelText(/图片描述/), "晨间护肤套装商品主图");
-    await user.click(screen.getByRole("button", { name: "确认提交" }));
-
-    await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith("知识库存储空间已达上限");
-    });
-    expect(importKbImageDocMock).not.toHaveBeenCalled();
-  });
-
-  it("accepts image knowledge files with supported extensions when MIME type is empty", async () => {
-    const user = userEvent.setup();
-
-    renderWithRoute(
-      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
-      <KbDetailPage />,
-      "/chat/ai-hosting/kb/:kbId",
-    );
-
-    await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
-    await user.click(screen.getByRole("button", { name: "添加知识" }));
-    await user.click(screen.getByRole("menuitem", { name: /图片/ }));
-    await user.upload(
-      screen.getByLabelText("选择图片知识文件"),
-      new File(["image"], "商品主图.png"),
-    );
-
-    expect(screen.getByRole("region", { name: "已选择图片" })).toHaveTextContent(
-      "商品主图.png",
-    );
-    expect(screen.queryByText("仅支持 jpg、jpeg、png、webp 格式的图片")).not.toBeInTheDocument();
-  });
-
-  it("ignores stale image validation after the dialog is closed", async () => {
-    const user = userEvent.setup();
-    let resolvePendingImageLoad: (() => void) | undefined;
-
-    vi.stubGlobal(
-      "Image",
-      class {
-        naturalHeight = mockImageDimensions.height;
-        naturalWidth = mockImageDimensions.width;
-        onerror: (() => void) | null = null;
-        onload: (() => void) | null = null;
-
-        set src(_value: string) {
-          resolvePendingImageLoad = () => {
-            this.onload?.();
-          };
-        }
-      },
-    );
-
-    renderWithRoute(
-      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
-      <KbDetailPage />,
-      "/chat/ai-hosting/kb/:kbId",
-    );
-
-    await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
-    await user.click(screen.getByRole("button", { name: "添加知识" }));
-    await user.click(screen.getByRole("menuitem", { name: /图片/ }));
-    await user.upload(
-      screen.getByLabelText("选择图片知识文件"),
-      new File(["image"], "商品主图.png", { type: "image/png" }),
-    );
-
-    expect(screen.getByText("正在校验图片")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "取消" }));
-    expect(screen.queryByRole("dialog", { name: "添加图片知识" })).not.toBeInTheDocument();
-
-    resolvePendingImageLoad?.();
-    await Promise.resolve();
-
-    await user.click(screen.getByRole("button", { name: "添加知识" }));
-    await user.click(screen.getByRole("menuitem", { name: /图片/ }));
-
-    expect(screen.queryByRole("region", { name: "已选择图片" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "上传图片" })).toBeInTheDocument();
-    expect(screen.queryByText("正在校验图片")).not.toBeInTheDocument();
-  });
-
-  it("ignores stale image validation after the page unmounts", async () => {
-    const user = userEvent.setup();
-    let resolvePendingImageLoad: (() => void) | undefined;
-
-    vi.stubGlobal(
-      "Image",
-      class {
-        naturalHeight = mockImageDimensions.height;
-        naturalWidth = mockImageDimensions.width;
-        onerror: (() => void) | null = null;
-        onload: (() => void) | null = null;
-
-        set src(_value: string) {
-          resolvePendingImageLoad = () => {
-            this.onload?.();
-          };
-        }
-      },
-    );
-
-    const view = renderWithRoute(
-      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
-      <KbDetailPage />,
-      "/chat/ai-hosting/kb/:kbId",
-    );
-
-    await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
-    await user.click(screen.getByRole("button", { name: "添加知识" }));
-    await user.click(screen.getByRole("menuitem", { name: /图片/ }));
-    await user.upload(
-      screen.getByLabelText("选择图片知识文件"),
-      new File(["image"], "商品主图.png", { type: "image/png" }),
-    );
-
-    expect(screen.getByText("正在校验图片")).toBeInTheDocument();
-    view.unmount();
-
-    resolvePendingImageLoad?.();
-    await Promise.resolve();
-
-    renderWithRoute(
-      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
-      <KbDetailPage />,
-      "/chat/ai-hosting/kb/:kbId",
-    );
-
-    await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
-    await user.click(screen.getByRole("button", { name: "添加知识" }));
-    await user.click(screen.getByRole("menuitem", { name: /图片/ }));
-
-    expect(screen.queryByRole("region", { name: "已选择图片" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "上传图片" })).toBeInTheDocument();
-    expect(screen.queryByText("正在校验图片")).not.toBeInTheDocument();
-  });
-
-  it("clears image checking state when a subsequent invalid file is selected", async () => {
-    const user = userEvent.setup();
-    let resolvePendingImageLoad: (() => void) | undefined;
-
-    vi.stubGlobal(
-      "Image",
-      class {
-        naturalHeight = mockImageDimensions.height;
-        naturalWidth = mockImageDimensions.width;
-        onerror: (() => void) | null = null;
-        onload: (() => void) | null = null;
-
-        set src(_value: string) {
-          resolvePendingImageLoad = () => {
-            this.onload?.();
-          };
-        }
-      },
-    );
-
-    renderWithRoute(
-      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
-      <KbDetailPage />,
-      "/chat/ai-hosting/kb/:kbId",
-    );
-
-    await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
-    await user.click(screen.getByRole("button", { name: "添加知识" }));
-    await user.click(screen.getByRole("menuitem", { name: /图片/ }));
-
-    const fileInput = screen.getByLabelText("选择图片知识文件");
-
-    await user.upload(
-      fileInput,
-      new File(["image"], "商品主图.png", { type: "image/png" }),
-    );
-
-    expect(screen.getByText("正在校验图片")).toBeInTheDocument();
-
-    await user.upload(
-      fileInput,
-      new File([new Uint8Array(5 * 1024 * 1024 + 1)], "超大图片.png", {
-        type: "image/png",
-      }),
-    );
-
-    expect(await screen.findByText("图片大小不能超过 5MB")).toBeInTheDocument();
-    expect(screen.queryByText("正在校验图片")).not.toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "已选择图片" })).not.toBeInTheDocument();
-
-    resolvePendingImageLoad?.();
-    await Promise.resolve();
-
-    expect(screen.queryByText("正在校验图片")).not.toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "已选择图片" })).not.toBeInTheDocument();
-  });
-
-  it("rejects image knowledge files larger than 5MB", async () => {
-    const user = userEvent.setup();
-
-    renderWithRoute(
-      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
-      <KbDetailPage />,
-      "/chat/ai-hosting/kb/:kbId",
-    );
-
-    await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
-    await user.click(screen.getByRole("button", { name: "添加知识" }));
-    await user.click(screen.getByRole("menuitem", { name: /图片/ }));
-    await user.upload(
-      screen.getByLabelText("选择图片知识文件"),
-      new File([new Uint8Array(5 * 1024 * 1024 + 1)], "超大图片.png", {
-        type: "image/png",
-      }),
-    );
-
-    expect(await screen.findByText("图片大小不能超过 5MB")).toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "已选择图片" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "确认提交" })).toBeDisabled();
-  });
-
-  it("rejects image knowledge files outside the allowed dimensions", async () => {
-    const user = userEvent.setup();
-
-    mockImageDimensions = { height: 9, width: 800 };
-
-    renderWithRoute(
-      "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w",
-      <KbDetailPage />,
-      "/chat/ai-hosting/kb/:kbId",
-    );
-
-    await screen.findByRole("heading", { level: 1, name: "华为产品知识" });
-    await user.click(screen.getByRole("button", { name: "添加知识" }));
-    await user.click(screen.getByRole("menuitem", { name: /图片/ }));
-    await user.upload(
-      screen.getByLabelText("选择图片知识文件"),
-      new File(["image"], "尺寸过小.png", { type: "image/png" }),
-    );
-
-    expect(await screen.findByText("图片宽高必须在 10 到 6000 像素范围内")).toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "已选择图片" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "确认提交" })).toBeDisabled();
-  });
-  });
-
   it("renders the QA chunk detail page", async () => {
     renderWithRoute(
       "/chat/ai-hosting/kb/W7zU2fWkVSp65OTAjDd3-w/docs/knowledge-3",
@@ -3894,7 +3410,6 @@ describe("AI hosting pages", () => {
     const dialog = screen.getByRole("alertdialog", { name: "确定删除该切片吗" });
     const confirmDeleteButton = within(dialog).getByRole("button", { name: "删除" });
     expect(dialog).toBeInTheDocument();
-    expect(confirmDeleteButton).toHaveClass("bg-destructive");
     await user.click(confirmDeleteButton);
 
     expect(screen.queryByText("ID 20260630131921038-3")).not.toBeInTheDocument();

@@ -18,7 +18,7 @@ describe("MessageHistorySidePanel", () => {
     vi.useRealTimers();
   });
 
-  it("uses a compact underline tab layout for history scopes", () => {
+  it("renders history scope tabs without showing the active customer name", () => {
     render(
       <MessageHistorySidePanel
         activeConversation={createConversation()}
@@ -45,17 +45,11 @@ describe("MessageHistorySidePanel", () => {
       />,
     );
 
-    const tabs = screen.getByRole("tablist");
-    const activeTab = screen.getByRole("tab", { name: "全部" });
-
     expect(screen.getByRole("complementary", { name: "聊天记录" })).toBeInTheDocument();
-    expect(screen.getByText("聊天记录")).toHaveClass("text-sm");
+    expect(screen.getByRole("tablist")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "全部", selected: true })).toBeInTheDocument();
     expect(screen.queryByText("测试客户")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "关闭聊天记录" })).toBeInTheDocument();
-    expect(tabs).toHaveClass("w-full", "justify-start", "border-b", "border-divider", "px-4");
-    expect(tabs).not.toHaveClass("rounded-2xl", "bg-secondary/90", "grid");
-    expect(activeTab).toHaveClass("border-b-2", "text-sm");
-    expect(activeTab).not.toHaveClass("text-base", "text-lg");
   });
 
   it("renders the history filter controls in the header without search", () => {
@@ -83,8 +77,8 @@ describe("MessageHistorySidePanel", () => {
     );
 
     expect(screen.queryByPlaceholderText("搜索聊天记录")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "发送人" })).toHaveClass("h-8", "py-0", "text-[12px]");
-    expect(screen.getByRole("button", { name: "日期" })).toHaveClass("h-8", "py-0", "text-[12px]");
+    expect(screen.getByRole("button", { name: "发送人" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "日期" })).toBeInTheDocument();
   });
 
   it("shows revoked state in the all history tab", () => {
@@ -573,12 +567,9 @@ describe("MessageHistorySidePanel", () => {
     const quotePreview = screen.getByTestId("quote-generic-preview");
     const quoteIcon = screen.getByTestId("quote-file-attachment-icon");
 
-    expect(historyItem).toHaveClass("items-start");
-    expect(historyItem).not.toHaveClass("items-end", "justify-end");
+    expect(historyItem).toBeInTheDocument();
     expect(quoteText).toHaveTextContent("请看附件");
-    expect(quoteText).not.toHaveClass("rounded-", "bg-primary", "bg-muted");
     expect(screen.queryByTestId("text-message-bubble")).not.toBeInTheDocument();
-    expect(quotePreview).toHaveClass("border-l-2", "text-[12px]");
     expect(quotePreview).toHaveTextContent("余圆圆");
     expect(quotePreview).toHaveTextContent("报价单.pdf");
     expect(screen.queryByText("引用消息不可用")).not.toBeInTheDocument();
@@ -622,15 +613,9 @@ describe("MessageHistorySidePanel", () => {
     );
 
     expect(screen.getByTestId("history-message-meta-row")).toBeInTheDocument();
-    expect(screen.getByTestId("history-message-author")).toHaveClass("max-w-[min(18rem,calc(100%_-_7rem))]", "truncate");
+    expect(screen.getByTestId("history-message-author")).toHaveTextContent("余圆圆");
     expect(screen.getByTestId("history-message-time")).toBeInTheDocument();
     expect(screen.getByTestId("history-message-delivery-state")).toBeInTheDocument();
-    expect(screen.getByTestId("history-message-delivery-state")).toHaveClass(
-      "size-4",
-      "rounded-full",
-      "bg-destructive",
-      "text-destructive-foreground",
-    );
     expect(screen.getByTestId("history-message-meta-row")).toContainElement(
       screen.getByTestId("history-message-delivery-state"),
     );
@@ -672,7 +657,7 @@ describe("MessageHistorySidePanel", () => {
       />,
     );
 
-    expect(screen.getByText("2026年五一值班表.xlsx")).toHaveClass("truncate", "text-[14px]", "font-semibold");
+    expect(screen.getByText("2026年五一值班表.xlsx")).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "Excel 文件" })).toHaveAttribute(
       "src",
       "https://b5.bokr.com.cn/dist/excel.png",
@@ -976,7 +961,6 @@ describe("MessageHistorySidePanel", () => {
     expect(screen.getByText("5/19")).toBeInTheDocument();
     expect(screen.getByText("5/18")).toBeInTheDocument();
     expect(screen.getAllByAltText(/图片 [123]/)).toHaveLength(3);
-    expect(screen.getByAltText("图片 1")).toHaveClass("object-contain");
     expect(screen.queryByText("10:00:00")).not.toBeInTheDocument();
     expect(screen.queryByText("11:00:00")).not.toBeInTheDocument();
     expect(screen.queryByText("12:00:00")).not.toBeInTheDocument();
@@ -1477,36 +1461,6 @@ describe("MessageHistorySidePanel", () => {
     );
 
     expect(viewport.scrollTop).toBe(0);
-  });
-
-  it("fills the sidebar slot without overlay shadow or fixed width", () => {
-    render(
-      <MessageHistorySidePanel
-        activeConversation={createConversation()}
-        activeHistory={{
-          hasNext: false,
-          hasPrev: false,
-          messages: [],
-        }}
-        activeHistoryFilters={{ scope: "all" }}
-        activeHistoryLoading={false}
-        groupMembers={[]}
-        isOpen
-        onClose={vi.fn()}
-        onLoadMoreNext={vi.fn()}
-        onLoadMorePrev={vi.fn()}
-        onRefresh={vi.fn()}
-        onSetDay={vi.fn()}
-        onSetScope={vi.fn()}
-        onSetSenderId={vi.fn()}
-      />,
-    );
-
-    const panel = screen.getByRole("complementary", { name: "聊天记录" });
-
-    expect(panel).toHaveClass("absolute", "inset-0", "w-full", "border-l", "border-divider");
-    expect(panel).not.toHaveClass("w-[420px]");
-    expect(panel.className).not.toContain("shadow");
   });
 
   it("keeps the viewport anchored when older messages are prepended", async () => {

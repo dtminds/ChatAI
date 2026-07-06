@@ -27,6 +27,7 @@ type KbReadDbMockOptions = {
   includeAttachmentDoc?: boolean;
   includeFaqDoc?: boolean;
   includeSecondKbWithoutDocs?: boolean;
+  materialCollections?: Array<Record<string, unknown>>;
   totalDocCount?: number;
   totalKbCount?: number;
 };
@@ -74,6 +75,11 @@ function matchesColumn(
   if (clause.operator === "like") {
     const pattern = String(clause.value).replace(/^%/, "").replace(/%$/, "");
     return String(row[clause.column] ?? "").includes(pattern);
+  }
+
+  if (clause.operator === "in") {
+    const values = Array.isArray(clause.value) ? clause.value : [clause.value];
+    return values.includes(row[clause.column]);
   }
 
   return true;
@@ -455,6 +461,8 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
     },
   ];
 
+  const materialCollections = options.materialCollections ?? [];
+
   return {
     insertInto(table: string) {
       let values: Record<string, unknown> = {};
@@ -606,6 +614,10 @@ export function createKbReadDbMock(options: KbReadDbMockOptions = {}) {
 
           if (table === "xy_wap_embed_agent") {
             return projectRows(filterRows(agents));
+          }
+
+          if (table === "xy_wap_embed_material_collection") {
+            return projectRows(filterRows(materialCollections));
           }
 
           return [];

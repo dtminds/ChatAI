@@ -6,11 +6,11 @@ import {
 import { BadRequestError } from "../../shared/errors.js";
 
 const ATTACHMENT_TYPE_TO_CONTENT_TYPE = {
-  1: "image",
   2: "file",
-  3: "file",
+  3: "weapp",
   4: "h5",
-  5: "weapp",
+  6: "image",
+  7: "file",
 } as const satisfies Record<KbAttachmentType, WorkbenchQuickReplyAttachment["type"]>;
 
 export function validateKbAttachmentContent(

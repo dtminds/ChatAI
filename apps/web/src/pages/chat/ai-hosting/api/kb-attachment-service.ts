@@ -4,6 +4,7 @@ import type {
   KbAttachmentCreateRequest,
   KbAttachmentCreateResponse,
   KbAttachmentDeleteResponse,
+  KbAttachmentImageMaterialCreateResponse,
   KbAttachmentInitResponse,
   KbAttachmentListResponse,
   KbAttachmentType,
@@ -12,10 +13,7 @@ import type {
 } from "@chatai/contracts";
 import { http, isRequestError, RequestNormalizedError } from "@/lib/request";
 import type { QuickReplyDraftAttachment } from "@/pages/chat/components/quick-reply/quick-reply-attachment-picker";
-import {
-  toKbAttachmentContent,
-  toKbAttachmentItem,
-} from "@/pages/chat/ai-hosting/kb-components/kb-attachment-types";
+import { toKbAttachmentItem } from "@/pages/chat/ai-hosting/kb-components/kb-attachment-types";
 import { uploadKbImageToCos } from "@/pages/chat/ai-hosting/api/kb-upload-service";
 
 export type ListKbAttachmentsParams = {
@@ -52,6 +50,18 @@ export async function createKbAttachment(kbId: string, payload: KbAttachmentCrea
   return response.data;
 }
 
+export async function createKbAttachmentImageMaterial(
+  kbId: string,
+  payload: { alt?: string; fileUrl: string },
+) {
+  const response = await http.post<ApiSuccessEnvelope<KbAttachmentImageMaterialCreateResponse>>(
+    `/server/ai-hosting/kbs/${kbId}/attachments/materials/image`,
+    payload,
+  );
+
+  return response.data;
+}
+
 export async function updateKbAttachment(chunkId: string, payload: KbAttachmentUpdateRequest) {
   const response = await http.post<ApiSuccessEnvelope<KbAttachmentUpdateResponse>>(
     `/server/ai-hosting/kb-attachments/${chunkId}/update`,
@@ -78,7 +88,34 @@ export async function batchDeleteKbAttachments(chunkIds: string[]) {
   return response.data;
 }
 
+export async function resolveKbAttachmentMaterialId(
+  kbId: string,
+  payload: QuickReplyDraftAttachment,
+): Promise<string> {
+  if (payload.materialCollectionId?.trim()) {
+    return payload.materialCollectionId.trim();
+  }
+
+  if (payload.type === "image") {
+    const fileUrl = readImageUploadUrl(payload);
+
+    if (!fileUrl) {
+      throw new Error("图片缺少上传地址");
+    }
+
+    const material = await createKbAttachmentImageMaterial(kbId, {
+      alt: readString(payload.content.alt) || undefined,
+      fileUrl,
+    });
+
+    return material.materialCollectionId;
+  }
+
+  throw new Error("请选择素材");
+}
+
 export async function resolveKbAttachmentDraftPayload(
+  _kbId: string,
   payload: QuickReplyDraftAttachment,
 ): Promise<QuickReplyDraftAttachment> {
   if (payload.type === "image" && "localFile" in payload) {
@@ -99,21 +136,27 @@ export async function resolveKbAttachmentDraftPayload(
 export async function buildKbAttachmentCreateRequest(input: {
   attachmentType: KbAttachmentType;
   description: string;
+  kbId: string;
   payload: QuickReplyDraftAttachment;
   title?: string;
 }): Promise<KbAttachmentCreateRequest> {
-  const resolvedPayload = await resolveKbAttachmentDraftPayload(input.payload);
+  const resolvedPayload = await resolveKbAttachmentDraftPayload(input.kbId, input.payload);
+  const materialCollectionId = await resolveKbAttachmentMaterialId(
+    input.kbId,
+    resolvedPayload,
+  );
 
   return {
-    attachmentContent: toKbAttachmentContent(resolvedPayload),
     attachmentType: input.attachmentType,
     description: input.description,
+    materialCollectionId,
     title: input.title,
   };
 }
 
 export async function buildKbAttachmentUpdateRequest(input: {
   description: string;
+  kbId: string;
   nextPayload: QuickReplyDraftAttachment;
   previousPayload: QuickReplyDraftAttachment;
   title?: string;
@@ -123,14 +166,22 @@ export async function buildKbAttachmentUpdateRequest(input: {
     title: input.title,
   };
 
-  const resolvedPayload = await resolveKbAttachmentDraftPayload(input.nextPayload);
-  const resolvedPreviousPayload = await resolveKbAttachmentDraftPayload(input.previousPayload);
+  const resolvedNextPayload = await resolveKbAttachmentDraftPayload(
+    input.kbId,
+    input.nextPayload,
+  );
+  const resolvedPreviousPayload = await resolveKbAttachmentDraftPayload(
+    input.kbId,
+    input.previousPayload,
+  );
+  const nextMaterialId = await resolveKbAttachmentMaterialId(
+    input.kbId,
+    resolvedNextPayload,
+  );
+  const previousMaterialId = resolvedPreviousPayload.materialCollectionId?.trim() || "";
 
-  if (
-    JSON.stringify(toKbAttachmentContent(resolvedPayload))
-    !== JSON.stringify(toKbAttachmentContent(resolvedPreviousPayload))
-  ) {
-    request.attachmentContent = toKbAttachmentContent(resolvedPayload);
+  if (nextMaterialId !== previousMaterialId) {
+    request.materialCollectionId = nextMaterialId;
   }
 
   return request;
@@ -168,6 +219,18 @@ function buildQueryString(params: Record<string, string | number | undefined>) {
   const queryString = searchParams.toString();
 
   return queryString ? `?${queryString}` : "";
+}
+
+function readImageUploadUrl(payload: QuickReplyDraftAttachment) {
+  if (payload.type !== "image") {
+    return "";
+  }
+
+  return (
+    readString(payload.content.fileUrl)
+    || readString(payload.content.imageUrl)
+    || readString(payload.content.url)
+  );
 }
 
 function readString(value: unknown) {

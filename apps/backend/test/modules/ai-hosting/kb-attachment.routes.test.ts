@@ -31,6 +31,28 @@ async function createAuthenticatedApp(
   };
 }
 
+const fileMaterialRow = {
+  biz_status: 1,
+  biz_type: 2,
+  content: JSON.stringify({
+    fileName: "产品说明书.pdf",
+    fileSizeLabel: "2.00 MB",
+    fileUrl: "https://example.com/manual.pdf",
+  }),
+  create_time: new Date("2026-06-18T15:22:22+08:00"),
+  group_id: 0,
+  id: 1,
+  msg_info_id: 1,
+  msgid: "",
+  op_sub_uid: 101,
+  sort: 1,
+  source_type: 0,
+  sub_uid: 0,
+  title: "产品说明书.pdf",
+  uid: 9001,
+  update_time: new Date("2026-06-18T15:22:22+08:00"),
+};
+
 describe("ai-hosting kb-attachment routes", () => {
   let app: Awaited<ReturnType<typeof buildMockedApp>> | undefined;
 
@@ -81,7 +103,7 @@ describe("ai-hosting kb-attachment routes", () => {
     const response = await app.inject({
       headers: { authorization: context.authorization },
       method: "GET",
-      url: "/api/server/ai-hosting/kbs/1/attachments?attachmentType=3",
+      url: "/api/server/ai-hosting/kbs/1/attachments?attachmentType=2",
     });
 
     expect(response.statusCode).toBe(404);
@@ -99,17 +121,8 @@ describe("ai-hosting kb-attachment routes", () => {
       error: 0,
       list: [
         {
-          attachmentContent: {
-            content: {
-              fileName: "产品说明书.pdf",
-              fileSizeLabel: "2.00 MB",
-              fileUrl: "https://example.com/manual.pdf",
-            },
-            materialCollectionId: "mc-1",
-            msgInfoId: "msg-1",
-            type: "file",
-          },
-          attachmentType: 3,
+          attachmentIds: [1],
+          attachmentTypes: [2],
           content: "附件描述",
           createTime: "2026-06-18 15:22:22",
           docId: 1005,
@@ -126,13 +139,16 @@ describe("ai-hosting kb-attachment routes", () => {
       pageSize: 10,
       success: true,
     });
-    const context = await createAuthenticatedApp("viewer", { includeAttachmentDoc: true });
+    const context = await createAuthenticatedApp("viewer", {
+      includeAttachmentDoc: true,
+      materialCollections: [fileMaterialRow],
+    });
     app = context.app;
 
     const response = await app.inject({
       headers: { authorization: context.authorization },
       method: "GET",
-      url: "/api/server/ai-hosting/kbs/1/attachments?attachmentType=3&query=产品",
+      url: "/api/server/ai-hosting/kbs/1/attachments?attachmentType=2&query=产品",
     });
 
     expect(response.statusCode).toBe(200);
@@ -140,10 +156,10 @@ describe("ai-hosting kb-attachment routes", () => {
       data: {
         attachments: [
           expect.objectContaining({
-            attachmentType: 3,
+            attachmentType: 2,
             chunkId: "503",
             description: "附件描述",
-            fileSizeLabel: "2.00 MB",
+            materialCollectionId: "1",
             title: "产品说明书.pdf",
           }),
         ],
@@ -156,7 +172,7 @@ describe("ai-hosting kb-attachment routes", () => {
       success: true,
     });
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
-      attachmentType: 3,
+      attachmentType: 2,
       content: "产品",
       docId: 1005,
       page: 1,
@@ -166,32 +182,26 @@ describe("ai-hosting kb-attachment routes", () => {
     fetchMock.mockRestore();
   });
 
-  it("creates attachment via Java with attachmentContent object", async () => {
+  it("creates attachment via Java with attachmentIds", async () => {
     const fetchMock = mockJavaFetch({
       data: 503,
       error: 0,
       errorMsg: "",
       success: true,
     });
-    const context = await createAuthenticatedApp("admin", { includeAttachmentDoc: true });
+    const context = await createAuthenticatedApp("admin", {
+      includeAttachmentDoc: true,
+      materialCollections: [fileMaterialRow],
+    });
     app = context.app;
 
     const response = await app.inject({
       headers: { authorization: context.authorization },
       method: "POST",
       payload: {
-        attachmentContent: {
-          content: {
-            fileName: "产品说明书.pdf",
-            fileSizeLabel: "2.00 MB",
-            fileUrl: "https://example.com/manual.pdf",
-          },
-          materialCollectionId: "mc-1",
-          msgInfoId: "msg-1",
-          type: "file",
-        },
-        attachmentType: 3,
+        attachmentType: 2,
         description: "附件描述",
+        materialCollectionId: "1",
       },
       url: "/api/server/ai-hosting/kbs/1/attachments",
     });
@@ -202,17 +212,8 @@ describe("ai-hosting kb-attachment routes", () => {
       success: true,
     });
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
-      attachmentContent: {
-        content: {
-          fileName: "产品说明书.pdf",
-          fileSizeLabel: "2.00 MB",
-          fileUrl: "https://example.com/manual.pdf",
-        },
-        materialCollectionId: "mc-1",
-        msgInfoId: "msg-1",
-        type: "file",
-      },
-      attachmentType: 3,
+      attachmentIds: [1],
+      attachmentTypes: [2],
       chunkType: "text",
       content: "附件描述",
       docId: 1005,
@@ -231,17 +232,9 @@ describe("ai-hosting kb-attachment routes", () => {
       headers: { authorization: context.authorization },
       method: "POST",
       payload: {
-        attachmentContent: {
-          content: {
-            fileName: "产品说明书.pdf",
-            fileUrl: "https://example.com/manual.pdf",
-          },
-          materialCollectionId: "mc-1",
-          msgInfoId: "msg-1",
-          type: "file",
-        },
-        attachmentType: 3,
+        attachmentType: 2,
         description: "附件描述",
+        materialCollectionId: "1",
       },
       url: "/api/server/ai-hosting/kbs/1/attachments",
     });

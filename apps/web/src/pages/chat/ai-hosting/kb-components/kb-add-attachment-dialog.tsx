@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   Cancel01Icon,
   FileImageIcon,
@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { FileExtensionBadge } from "@/pages/chat/components/message/file";
@@ -41,6 +42,7 @@ import {
   getKbAttachmentSelectLabel,
   getKbAttachmentTitle,
   getKbMaterialBizType,
+  isKbLocalUploadedImageMaterial,
   KB_ATTACHMENT_DESCRIPTION_HINT_EMPHASIS,
   KB_ATTACHMENT_TYPE,
   type KbAttachmentItem,
@@ -76,14 +78,20 @@ export function KbAddAttachmentDialog({
     null,
   );
   const [materialPickerOpen, setMaterialPickerOpen] = useState(false);
+  const [editEchoLoading, setEditEchoLoading] = useState(false);
   const materialBizType = getKbMaterialBizType(attachmentType);
 
-  useEffect(() => {
+  const handleEditPreviewReady = useCallback(() => {
+    setEditEchoLoading(false);
+  }, []);
+
+  useLayoutEffect(() => {
     if (!open) {
       setDescription("");
       setImageSource("local");
       setSelectedPayload(null);
       setMaterialPickerOpen(false);
+      setEditEchoLoading(false);
 
       if (imageInputRef.current) {
         imageInputRef.current.value = "";
@@ -93,15 +101,23 @@ export function KbAddAttachmentDialog({
     }
 
     if (!editingItem) {
+      setEditEchoLoading(false);
       return;
     }
 
     setDescription(editingItem.description);
     setSelectedPayload(editingItem.payload);
     setImageSource(resolveImageUploadSource(editingItem.payload));
-  }, [editingItem, open]);
+    setEditEchoLoading(
+      needsEditAttachmentPreviewLoad(attachmentType, editingItem.payload),
+    );
+  }, [attachmentType, editingItem, open]);
 
-  const canSubmit = Boolean(description.trim() && (selectedPayload || editingItem));
+  const canSubmit = Boolean(
+    description.trim()
+    && (selectedPayload || editingItem)
+    && !editEchoLoading,
+  );
 
   const [submitting, setSubmitting] = useState(false);
 
@@ -168,7 +184,20 @@ export function KbAddAttachmentDialog({
           </DialogHeader>
 
           <div className="space-y-5">
-            {attachmentType === KB_ATTACHMENT_TYPE.IMAGE ? (
+            {editEchoLoading ? (
+              <>
+                <EditAttachmentEchoLoadingState />
+                {editingItem ? (
+                  <div aria-hidden="true" className="sr-only">
+                    <KbAttachmentPayloadPreview
+                      attachmentType={attachmentType}
+                      onPreviewReady={handleEditPreviewReady}
+                      payload={editingItem.payload}
+                    />
+                  </div>
+                ) : null}
+              </>
+            ) : attachmentType === KB_ATTACHMENT_TYPE.IMAGE ? (
               <ImageAttachmentFields
                 imageInputRef={imageInputRef}
                 imageSource={imageSource}
@@ -217,6 +246,7 @@ export function KbAddAttachmentDialog({
               </p>
               <Textarea
                 className="min-h-24 resize-none"
+                disabled={editEchoLoading}
                 id="kb-attachment-description"
                 onChange={(event) => setDescription(event.target.value)}
                 placeholder="请输入"
@@ -227,11 +257,15 @@ export function KbAddAttachmentDialog({
 
           <DialogFooter>
             <DialogClose asChild>
-              <Button type="button" variant="outline">
+              <Button disabled={editEchoLoading} type="button" variant="outline">
                 取消
               </Button>
             </DialogClose>
-            <Button disabled={!canSubmit || submitting} onClick={() => void handleSubmit()} type="button">
+            <Button
+              disabled={!canSubmit || submitting || editEchoLoading}
+              onClick={() => void handleSubmit()}
+              type="button"
+            >
               确认并提交
             </Button>
           </DialogFooter>
@@ -247,6 +281,18 @@ export function KbAddAttachmentDialog({
         />
       ) : null}
     </>
+  );
+}
+
+function EditAttachmentEchoLoadingState() {
+  return (
+    <div
+      className="flex min-h-[12rem] items-center justify-center gap-2 text-sm text-muted-foreground"
+      role="status"
+    >
+      <Spinner size={16} />
+      正在加载
+    </div>
   );
 }
 
@@ -270,6 +316,10 @@ function ImageAttachmentFields({
   const localFile =
     selectedPayload?.type === "image" && "localFile" in selectedPayload
       ? selectedPayload.localFile
+      : undefined;
+  const localPreviewUrl =
+    selectedPayload?.type === "image" && !localFile
+      ? getKbAttachmentPreviewUrl(selectedPayload)
       : undefined;
 
   return (
@@ -342,6 +392,12 @@ function ImageAttachmentFields({
                 />
               </Button>
             </div>
+          ) : localPreviewUrl ? (
+            <KbAttachmentPayloadPreview
+              attachmentType={KB_ATTACHMENT_TYPE.IMAGE}
+              onClear={onClearSelection}
+              payload={selectedPayload!}
+            />
           ) : (
             <button
               className="flex size-28 flex-col items-center justify-center gap-2 rounded-[8px] border border-dashed border-border bg-muted/30 text-sm text-muted-foreground transition-colors hover:border-primary/60 hover:bg-primary/[0.03] hover:text-foreground focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/20"
@@ -462,23 +518,32 @@ function MaterialPreviewShell({
 function KbAttachmentPayloadPreview({
   attachmentType,
   onClear,
+  onPreviewReady,
   payload,
 }: {
   attachmentType: KbAttachmentType;
   onClear?: () => void;
+  onPreviewReady?: () => void;
   payload: QuickReplyDraftAttachment;
 }) {
-  if (attachmentType === KB_ATTACHMENT_TYPE.IMAGE && payload.type === "image") {
-    const previewUrl = getKbAttachmentPreviewUrl(payload);
+  const previewUrl = resolveKbAttachmentRemotePreviewUrl(attachmentType, payload);
 
+  useEffect(() => {
+    if (!onPreviewReady || previewUrl) {
+      return;
+    }
+
+    onPreviewReady();
+  }, [onPreviewReady, previewUrl]);
+
+  if (attachmentType === KB_ATTACHMENT_TYPE.IMAGE && payload.type === "image") {
     return (
       <MaterialPreviewShell clearLabel="移除已选择图片" onClear={onClear}>
         {previewUrl ? (
-          <img
-            alt=""
-            aria-hidden="true"
+          <RemotePreviewImage
             className="block max-h-44 max-w-60 rounded-[8px] border border-border object-contain"
-            src={previewUrl}
+            onPreviewReady={onPreviewReady}
+            previewUrl={previewUrl}
           />
         ) : (
           <div className="flex size-28 items-center justify-center rounded-[8px] border border-dashed border-border bg-muted/30 text-sm text-muted-foreground">
@@ -490,8 +555,6 @@ function KbAttachmentPayloadPreview({
   }
 
   if (attachmentType === KB_ATTACHMENT_TYPE.VIDEO && payload.type === "file") {
-    const previewUrl = getKbAttachmentPreviewUrl(payload);
-
     return (
       <div className="inline-flex min-w-0 max-w-full items-center gap-3">
         <MaterialPreviewShell clearLabel="移除已选择视频" onClear={onClear}>
@@ -502,11 +565,10 @@ function KbAttachmentPayloadPreview({
             )}
           >
             {previewUrl ? (
-              <img
-                alt=""
-                aria-hidden="true"
+              <RemotePreviewImage
                 className="size-full object-cover"
-                src={previewUrl}
+                onPreviewReady={onPreviewReady}
+                previewUrl={previewUrl}
               />
             ) : null}
             <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/10">
@@ -546,8 +608,6 @@ function KbAttachmentPayloadPreview({
   }
 
   if (attachmentType === KB_ATTACHMENT_TYPE.LINK && payload.type === "h5") {
-    const previewUrl = getKbAttachmentPreviewUrl(payload);
-
     return (
       <div className="inline-flex min-w-0 max-w-full items-start gap-3">
         <MaterialPreviewShell clearLabel="移除已选择链接" onClear={onClear}>
@@ -558,11 +618,10 @@ function KbAttachmentPayloadPreview({
             )}
           >
             {previewUrl ? (
-              <img
-                alt=""
-                aria-hidden="true"
+              <RemotePreviewImage
                 className="size-full object-cover"
-                src={previewUrl}
+                onPreviewReady={onPreviewReady}
+                previewUrl={previewUrl}
               />
             ) : (
               <div className="flex size-full items-center justify-center text-xs text-muted-foreground">
@@ -579,7 +638,6 @@ function KbAttachmentPayloadPreview({
   }
 
   if (attachmentType === KB_ATTACHMENT_TYPE.MINI_PROGRAM && payload.type === "weapp") {
-    const previewUrl = getKbAttachmentPreviewUrl(payload);
     const subtitle = readString(payload.content.appName) || "小程序";
 
     return (
@@ -592,11 +650,10 @@ function KbAttachmentPayloadPreview({
             )}
           >
             {previewUrl ? (
-              <img
-                alt=""
-                aria-hidden="true"
+              <RemotePreviewImage
                 className="size-full object-cover"
-                src={previewUrl}
+                onPreviewReady={onPreviewReady}
+                previewUrl={previewUrl}
               />
             ) : (
               <div className="flex size-full items-center justify-center text-xs text-muted-foreground">
@@ -616,6 +673,60 @@ function KbAttachmentPayloadPreview({
   }
 
   return <QuickReplyAttachmentPreview attachment={payload} />;
+}
+
+function RemotePreviewImage({
+  className,
+  onPreviewReady,
+  previewUrl,
+}: {
+  className?: string;
+  onPreviewReady?: () => void;
+  previewUrl: string;
+}) {
+  const notifiedRef = useRef(false);
+
+  const notifyPreviewReady = useCallback(() => {
+    if (!onPreviewReady || notifiedRef.current) {
+      return;
+    }
+
+    notifiedRef.current = true;
+    onPreviewReady();
+  }, [onPreviewReady]);
+
+  useEffect(() => {
+    notifiedRef.current = false;
+  }, [previewUrl]);
+
+  return (
+    <img
+      alt=""
+      aria-hidden="true"
+      className={className}
+      onError={notifyPreviewReady}
+      onLoad={notifyPreviewReady}
+      src={previewUrl}
+    />
+  );
+}
+
+function resolveKbAttachmentRemotePreviewUrl(
+  attachmentType: KbAttachmentType,
+  payload: QuickReplyDraftAttachment,
+) {
+  if (attachmentType === KB_ATTACHMENT_TYPE.FILE) {
+    return undefined;
+  }
+
+  return getKbAttachmentPreviewUrl(payload);
+}
+
+function needsEditAttachmentPreviewLoad(
+  attachmentType: KbAttachmentType,
+  payload: QuickReplyDraftAttachment,
+) {
+  return Boolean(resolveKbAttachmentRemotePreviewUrl(attachmentType, payload));
 }
 
 function getAttachmentDisplayTitle(payload: QuickReplyDraftAttachment) {
@@ -645,11 +756,15 @@ function readString(value: unknown) {
 }
 
 function resolveImageUploadSource(payload: QuickReplyDraftAttachment): ImageUploadSource {
-  if (payload.type === "image" && "localFile" in payload) {
+  if (payload.type !== "image") {
     return "local";
   }
 
-  if (payload.type === "image" && payload.materialCollectionId) {
+  if ("localFile" in payload || isKbLocalUploadedImageMaterial(payload.msgInfoId)) {
+    return "local";
+  }
+
+  if (payload.msgInfoId || payload.materialCollectionId) {
     return "material";
   }
 

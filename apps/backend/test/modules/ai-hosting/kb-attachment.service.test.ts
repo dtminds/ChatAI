@@ -15,15 +15,26 @@ const tenant = {
   uid: 9001,
 };
 
-const fileAttachmentContent = {
-  content: {
+const fileMaterialRow = {
+  biz_status: 1,
+  biz_type: 2,
+  content: JSON.stringify({
     fileName: "产品说明书.pdf",
     fileSizeLabel: "2.00 MB",
     fileUrl: "https://example.com/manual.pdf",
-  },
-  materialCollectionId: "mc-1",
-  msgInfoId: "msg-1",
-  type: "file" as const,
+  }),
+  create_time: new Date("2026-06-18T15:22:22+08:00"),
+  group_id: 0,
+  id: 1,
+  msg_info_id: 1,
+  msgid: "",
+  op_sub_uid: 101,
+  sort: 1,
+  source_type: 0,
+  sub_uid: 0,
+  title: "产品说明书.pdf",
+  uid: 9001,
+  update_time: new Date("2026-06-18T15:22:22+08:00"),
 };
 
 function createService(
@@ -92,7 +103,7 @@ describe("KbAttachmentService", () => {
     const { service } = createService();
 
     await expect(
-      service.listAttachments(tenant, "1", { attachmentType: 3 }),
+      service.listAttachments(tenant, "1", { attachmentType: 2 }),
     ).rejects.toMatchObject({
       code: "KB_ATTACHMENT_NOT_INITIALIZED",
       statusCode: 404,
@@ -111,7 +122,7 @@ describe("KbAttachmentService", () => {
       includeAttachmentDoc: true,
     });
 
-    const response = await service.listAttachments(tenant, "1", { attachmentType: 3 });
+    const response = await service.listAttachments(tenant, "1", { attachmentType: 2 });
 
     expect(response.attachments).toEqual([]);
     expect(listKbChunks).toHaveBeenCalled();
@@ -130,7 +141,7 @@ describe("KbAttachmentService", () => {
     });
 
     const response = await service.listAttachments(tenant, "1", {
-      attachmentType: 3,
+      attachmentType: 2,
     });
 
     expect(response.attachments).toEqual([]);
@@ -142,8 +153,8 @@ describe("KbAttachmentService", () => {
       count: 1,
       list: [
         {
-          attachmentContent: fileAttachmentContent,
-          attachmentType: 3,
+          attachmentIds: [1],
+          attachmentTypes: [2],
           content: "附件描述",
           createTime: "2026-06-18 15:22:22",
           docId: 1005,
@@ -159,15 +170,18 @@ describe("KbAttachmentService", () => {
       page: 1,
       pageSize: 10,
     });
-    const { client, service } = createService({ listKbChunks }, { includeAttachmentDoc: true });
+    const { client, service } = createService({ listKbChunks }, {
+      includeAttachmentDoc: true,
+      materialCollections: [fileMaterialRow],
+    });
 
     const response = await service.listAttachments(tenant, "1", {
-      attachmentType: 3,
+      attachmentType: 2,
       query: "产品",
     });
 
     expect(client.listKbChunks).toHaveBeenCalledWith({
-      attachmentType: 3,
+      attachmentType: 2,
       content: "产品",
       docId: 1005,
       page: 1,
@@ -176,28 +190,31 @@ describe("KbAttachmentService", () => {
     });
     expect(response.attachments).toHaveLength(1);
     expect(response.attachments[0]).toMatchObject({
-      attachmentType: 3,
+      attachmentType: 2,
       chunkId: "503",
       description: "附件描述",
-      fileSizeLabel: "2.00 MB",
+      materialCollectionId: "1",
       title: "产品说明书.pdf",
     });
   });
 
   it("creates attachment chunk via Java", async () => {
     const addKbChunk = vi.fn().mockResolvedValue("503");
-    const { client, service } = createService({ addKbChunk }, { includeAttachmentDoc: true });
+    const { client, service } = createService({ addKbChunk }, {
+      includeAttachmentDoc: true,
+      materialCollections: [fileMaterialRow],
+    });
 
     const response = await service.createAttachment(tenant, "1", {
-      attachmentContent: fileAttachmentContent,
-      attachmentType: 3,
+      attachmentType: 2,
       description: "附件描述",
+      materialCollectionId: "1",
     });
 
     expect(response).toEqual({ chunkId: "503" });
     expect(client.addKbChunk).toHaveBeenCalledWith({
-      attachmentContent: fileAttachmentContent,
-      attachmentType: 3,
+      attachmentIds: [1],
+      attachmentTypes: [2],
       chunkType: "text",
       content: "附件描述",
       docId: 1005,
@@ -207,17 +224,14 @@ describe("KbAttachmentService", () => {
     });
   });
 
-  it("rejects invalid attachment payload", async () => {
+  it("rejects invalid material id", async () => {
     const { service } = createService(undefined, { includeAttachmentDoc: true });
 
     await expect(
       service.createAttachment(tenant, "1", {
-        attachmentContent: {
-          content: {},
-          type: "file",
-        },
-        attachmentType: 3,
+        attachmentType: 2,
         description: "附件描述",
+        materialCollectionId: "999",
       }),
     ).rejects.toMatchObject({
       code: "KB_ATTACHMENT_INVALID",
@@ -225,7 +239,7 @@ describe("KbAttachmentService", () => {
     });
   });
 
-  it("updates attachment description only without attachmentContent", async () => {
+  it("updates attachment description only without materialCollectionId", async () => {
     const updateKbChunk = vi.fn().mockResolvedValue(undefined);
     const { client, service } = createService({ updateKbChunk }, { includeAttachmentDoc: true });
 

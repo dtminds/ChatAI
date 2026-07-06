@@ -1,11 +1,11 @@
 import { Type, type Static } from "@sinclair/typebox";
 
 export const KbAttachmentTypeSchema = Type.Union([
-  Type.Literal(1),
   Type.Literal(2),
   Type.Literal(3),
   Type.Literal(4),
-  Type.Literal(5),
+  Type.Literal(6),
+  Type.Literal(7),
 ]);
 
 export const KbAttachmentContentSchema = Type.Object({
@@ -42,6 +42,7 @@ export const KbAttachmentListItemSchema = Type.Object({
   createdAt: Type.String(),
   description: Type.String(),
   fileSizeLabel: Type.Optional(Type.String()),
+  materialCollectionId: Type.String(),
   subtitle: Type.Optional(Type.String()),
   title: Type.String(),
   updatedAt: Type.String(),
@@ -60,9 +61,9 @@ export const KbAttachmentListResponseSchema = Type.Object(
 );
 
 export const KbAttachmentCreateRequestSchema = Type.Object({
-  attachmentContent: KbAttachmentContentSchema,
   attachmentType: KbAttachmentTypeSchema,
   description: Type.String({ minLength: 1 }),
+  materialCollectionId: Type.String({ pattern: "^[0-9]+$" }),
   title: Type.Optional(Type.String({ maxLength: 256 })),
 });
 
@@ -74,8 +75,8 @@ export const KbAttachmentCreateResponseSchema = Type.Object(
 );
 
 export const KbAttachmentUpdateRequestSchema = Type.Object({
-  attachmentContent: Type.Optional(KbAttachmentContentSchema),
   description: Type.String({ minLength: 1 }),
+  materialCollectionId: Type.Optional(Type.String({ pattern: "^[0-9]+$" })),
   title: Type.Optional(Type.String({ maxLength: 256 })),
 });
 
@@ -108,6 +109,18 @@ export const KbAttachmentBatchDeleteResponseSchema = Type.Object(
   { additionalProperties: false },
 );
 
+export const KbAttachmentImageMaterialCreateRequestSchema = Type.Object({
+  alt: Type.Optional(Type.String({ maxLength: 256 })),
+  fileUrl: Type.String({ minLength: 1 }),
+});
+
+export const KbAttachmentImageMaterialCreateResponseSchema = Type.Object(
+  {
+    materialCollectionId: Type.String(),
+  },
+  { additionalProperties: false },
+);
+
 export type KbAttachmentType = Static<typeof KbAttachmentTypeSchema>;
 export type KbAttachmentContent = Static<typeof KbAttachmentContentSchema>;
 export type KbAttachmentInitResponse = Static<typeof KbAttachmentInitResponseSchema>;
@@ -120,3 +133,9 @@ export type KbAttachmentUpdateResponse = Static<typeof KbAttachmentUpdateRespons
 export type KbAttachmentDeleteResponse = Static<typeof KbAttachmentDeleteResponseSchema>;
 export type KbAttachmentBatchDeleteRequest = Static<typeof KbAttachmentBatchDeleteRequestSchema>;
 export type KbAttachmentBatchDeleteResponse = Static<typeof KbAttachmentBatchDeleteResponseSchema>;
+export type KbAttachmentImageMaterialCreateRequest = Static<
+  typeof KbAttachmentImageMaterialCreateRequestSchema
+>;
+export type KbAttachmentImageMaterialCreateResponse = Static<
+  typeof KbAttachmentImageMaterialCreateResponseSchema
+>;

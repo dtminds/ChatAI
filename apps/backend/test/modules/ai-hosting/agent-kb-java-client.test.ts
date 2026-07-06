@@ -129,7 +129,7 @@ describe("createAgentKbJavaClient", () => {
     });
   });
 
-  it("submits attachment chunk add with attachmentContent object", async () => {
+  it("submits attachment chunk add with attachmentIds and attachmentTypes", async () => {
     process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
@@ -147,16 +147,8 @@ describe("createAgentKbJavaClient", () => {
     );
 
     await createAgentKbJavaClient().addKbChunk({
-      attachmentContent: {
-        content: {
-          fileName: "产品说明书.pdf",
-          fileUrl: "https://example.com/manual.pdf",
-        },
-        materialCollectionId: "mc-1",
-        msgInfoId: "msg-1",
-        type: "file",
-      },
-      attachmentType: 3,
+      attachmentIds: [1],
+      attachmentTypes: [2],
       chunkType: "text",
       content: "附件描述",
       docId: 26,
@@ -166,16 +158,8 @@ describe("createAgentKbJavaClient", () => {
     });
 
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
-      attachmentContent: {
-        content: {
-          fileName: "产品说明书.pdf",
-          fileUrl: "https://example.com/manual.pdf",
-        },
-        materialCollectionId: "mc-1",
-        msgInfoId: "msg-1",
-        type: "file",
-      },
-      attachmentType: 3,
+      attachmentIds: [1],
+      attachmentTypes: [2],
       chunkType: "text",
       content: "附件描述",
       docId: 26,
@@ -302,7 +286,7 @@ describe("createAgentKbJavaClient", () => {
     );
 
     await createAgentKbJavaClient().listKbChunks({
-      attachmentType: 3,
+      attachmentType: 2,
       docId: 1001,
       page: 1,
       pageSize: 10,
@@ -310,7 +294,7 @@ describe("createAgentKbJavaClient", () => {
     });
 
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
-      attachmentType: 3,
+      attachmentType: 2,
       docId: 1001,
       page: 1,
       pageSize: 10,

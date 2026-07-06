@@ -3,10 +3,12 @@ import {
   KB_SEARCH_QUERY_MAX_LENGTH,
   KbAttachmentBatchDeleteRequestSchema,
   KbAttachmentCreateRequestSchema,
+  KbAttachmentImageMaterialCreateRequestSchema,
   KbAttachmentTypeSchema,
   KbAttachmentUpdateRequestSchema,
   type KbAttachmentBatchDeleteRequest,
   type KbAttachmentCreateRequest,
+  type KbAttachmentImageMaterialCreateRequest,
   type KbAttachmentType,
   type KbAttachmentUpdateRequest,
 } from "@chatai/contracts";
@@ -98,6 +100,28 @@ export async function registerKbAttachmentRoutes(app: FastifyInstance) {
 
       return apiSuccess(
         await getKbAttachmentService(app).createAttachment(
+          getAgentKbTenant(request),
+          request.params.kbId,
+          request.body,
+        ),
+      );
+    },
+  );
+
+  app.post<{ Body: KbAttachmentImageMaterialCreateRequest; Params: KbParams }>(
+    "/api/server/ai-hosting/kbs/:kbId/attachments/materials/image",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: KbAttachmentImageMaterialCreateRequestSchema,
+        params: KbParamsSchema,
+      },
+    },
+    async (request) => {
+      assertAiHostingWriteAccess(request);
+
+      return apiSuccess(
+        await getKbAttachmentService(app).createImageMaterial(
           getAgentKbTenant(request),
           request.params.kbId,
           request.body,

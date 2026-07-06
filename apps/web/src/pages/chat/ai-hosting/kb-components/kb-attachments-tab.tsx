@@ -406,6 +406,7 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
     if (editingItem) {
       const request = await buildKbAttachmentUpdateRequest({
         description: item.description,
+        kbId,
         nextPayload: item.payload,
         previousPayload: editingItem.payload,
         title: getKbAttachmentTitle(item.payload),
@@ -419,6 +420,7 @@ export function KbAttachmentsTab({ kbId }: { kbId: string }) {
     const request = await buildKbAttachmentCreateRequest({
       attachmentType: item.attachmentType,
       description: item.description,
+      kbId,
       payload: item.payload,
       title: getKbAttachmentTitle(item.payload),
     });

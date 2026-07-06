@@ -9,8 +9,8 @@ import {
 } from "./kb-read-mappers.js";
 
 export type AgentKbJavaChunkPageItem = {
-  attachmentContent?: Record<string, unknown> | null;
-  attachmentType?: number | null;
+  attachmentIds?: number[] | null;
+  attachmentTypes?: number[] | null;
   content: string | null;
   createTime: string;
   docId: number;

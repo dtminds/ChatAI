@@ -80,8 +80,8 @@ export type AgentKbJavaRetryDocInput = {
 };
 
 export type AgentKbJavaAddChunkInput = {
-  attachmentContent?: Record<string, unknown>;
-  attachmentType?: number;
+  attachmentIds?: number[];
+  attachmentTypes?: number[];
   chunkType: "text" | "faq";
   content: string;
   docId: number;
@@ -91,8 +91,8 @@ export type AgentKbJavaAddChunkInput = {
 };
 
 export type AgentKbJavaUpdateChunkInput = {
-  attachmentContent?: Record<string, unknown>;
-  attachmentType?: number;
+  attachmentIds?: number[];
+  attachmentTypes?: number[];
   chunkId: number;
   content: string;
   operatorId: string;
@@ -170,12 +170,12 @@ export function createAgentKbJavaClient(
         body.title = input.title.trim();
       }
 
-      if (input.attachmentType != null) {
-        body.attachmentType = input.attachmentType;
+      if (input.attachmentTypes?.length) {
+        body.attachmentTypes = input.attachmentTypes;
       }
 
-      if (input.attachmentContent != null) {
-        body.attachmentContent = input.attachmentContent;
+      if (input.attachmentIds?.length) {
+        body.attachmentIds = input.attachmentIds;
       }
 
       const chunkId = await postJavaJsonEnvelopeObject<number | string>(
@@ -398,12 +398,12 @@ export function createAgentKbJavaClient(
         body.title = input.title.trim();
       }
 
-      if (input.attachmentType != null) {
-        body.attachmentType = input.attachmentType;
+      if (input.attachmentTypes?.length) {
+        body.attachmentTypes = input.attachmentTypes;
       }
 
-      if (input.attachmentContent != null) {
-        body.attachmentContent = input.attachmentContent;
+      if (input.attachmentIds?.length) {
+        body.attachmentIds = input.attachmentIds;
       }
 
       await postJavaJsonEnvelopeObject<boolean>(

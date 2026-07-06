@@ -1,21 +1,42 @@
-import type { KbAttachmentContent, KbAttachmentListItem, KbAttachmentType } from "@chatai/contracts";
+import type {
+  KbAttachmentContent,
+  KbAttachmentListItem,
+  KbAttachmentType,
+  WorkbenchMaterialCollectionItemDto,
+} from "@chatai/contracts";
+import { mapMaterialCollectionItem } from "../chat/material-collection-mappers.js";
+import type { MaterialCollectionRow } from "../chat/material-collection-mappers.js";
 import { normalizeJavaChunkDisplayTime } from "./kb-chunk-java-mappers.js";
 import type { AgentKbJavaChunkPageItem } from "./kb-chunk-java-mappers.js";
+import {
+  readPrimaryKbAttachmentMaterialId,
+  readPrimaryKbAttachmentType,
+} from "./kb-attachment-material-utils.js";
 
 export function mapJavaChunkToKbAttachmentListItem(
   item: AgentKbJavaChunkPageItem,
+  materialById: ReadonlyMap<number, MaterialCollectionRow>,
 ): KbAttachmentListItem | null {
-  if (
-    item.attachmentType == null
-    || item.attachmentContent == null
-    || !isKbAttachmentContent(item.attachmentContent)
-    || !isKbAttachmentType(item.attachmentType)
-  ) {
+  const attachmentType = readPrimaryKbAttachmentType(item.attachmentTypes);
+  const materialId = readPrimaryKbAttachmentMaterialId(item.attachmentIds);
+
+  if (attachmentType == null || materialId == null) {
     return null;
   }
 
-  const attachmentContent = item.attachmentContent;
-  const attachmentType = item.attachmentType;
+  const materialRow = materialById.get(materialId);
+
+  if (!materialRow) {
+    return null;
+  }
+
+  const materialItem = mapMaterialCollectionItem(materialRow);
+  const attachmentContent = mapMaterialItemToKbAttachmentContent(materialItem);
+
+  if (!attachmentContent) {
+    return null;
+  }
+
   const title = deriveKbAttachmentTitle(item.title, attachmentContent);
   const meta = deriveKbAttachmentMeta(attachmentContent);
 
@@ -25,10 +46,60 @@ export function mapJavaChunkToKbAttachmentListItem(
     chunkId: String(item.id),
     createdAt: normalizeJavaChunkDisplayTime(item.createTime),
     description: item.content?.trim() ?? "",
+    materialCollectionId: String(materialId),
     title,
     updatedAt: normalizeJavaChunkDisplayTime(item.updateTime),
     ...meta,
   };
+}
+
+export function mapMaterialItemToKbAttachmentContent(
+  item: WorkbenchMaterialCollectionItemDto,
+): KbAttachmentContent | null {
+  if (
+    !item.msgInfoId
+    || (item.msgInfoId === "0" && item.contentType !== "image")
+  ) {
+    return null;
+  }
+
+  if (item.contentType === "image") {
+    return {
+      content: item.content,
+      materialCollectionId: item.id,
+      msgInfoId: item.msgInfoId,
+      type: "image",
+    };
+  }
+
+  if (item.contentType === "video" || item.contentType === "file") {
+    return {
+      content: item.content,
+      materialCollectionId: item.id,
+      msgInfoId: item.msgInfoId,
+      type: "file",
+    };
+  }
+
+  if (item.contentType === "h5") {
+    return {
+      content: item.content,
+      materialCollectionId: item.id,
+      msgInfoId: item.msgInfoId,
+      type: "h5",
+    };
+  }
+
+  if (item.contentType === "mini-program") {
+    return {
+      content: item.content,
+      materialCollectionId: item.id,
+      msgInfoId: item.msgInfoId,
+      type: "weapp",
+    };
+  }
+
+  return null;
 }
 
 export function deriveKbAttachmentTitle(
@@ -86,29 +157,6 @@ function deriveKbAttachmentMeta(attachmentContent: KbAttachmentContent) {
   }
 
   return {};
-}
-
-function isKbAttachmentType(value: number): value is KbAttachmentType {
-  return value === 1 || value === 2 || value === 3 || value === 4 || value === 5;
-}
-
-function isKbAttachmentContent(value: unknown): value is KbAttachmentContent {
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  const type = readString(value.type);
-
-  return (
-    type === "image"
-    || type === "file"
-    || type === "h5"
-    || type === "weapp"
-  ) && isRecord(value.content);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function readString(value: unknown) {

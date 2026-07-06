@@ -7,11 +7,11 @@ import {
 import type { QuickReplyDraftAttachment } from "@/pages/chat/components/quick-reply/quick-reply-attachment-picker";
 
 export const KB_ATTACHMENT_TYPE = {
-  IMAGE: 1,
-  VIDEO: 2,
-  FILE: 3,
+  FILE: 2,
+  MINI_PROGRAM: 3,
   LINK: 4,
-  MINI_PROGRAM: 5,
+  IMAGE: 6,
+  VIDEO: 7,
 } as const;
 
 export type KbAttachmentType =
@@ -104,20 +104,11 @@ export function getKbAttachmentDescriptionHint(type: KbAttachmentType) {
 }
 
 export function getKbMaterialBizType(type: KbAttachmentType) {
-  switch (type) {
-    case KB_ATTACHMENT_TYPE.IMAGE:
-      return MATERIAL_COLLECTION_BIZ_TYPE.IMAGE;
-    case KB_ATTACHMENT_TYPE.VIDEO:
-      return MATERIAL_COLLECTION_BIZ_TYPE.VIDEO;
-    case KB_ATTACHMENT_TYPE.FILE:
-      return MATERIAL_COLLECTION_BIZ_TYPE.FILE;
-    case KB_ATTACHMENT_TYPE.LINK:
-      return MATERIAL_COLLECTION_BIZ_TYPE.H5;
-    case KB_ATTACHMENT_TYPE.MINI_PROGRAM:
-      return MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM;
-    default:
-      return undefined;
-  }
+  return type;
+}
+
+export function isKbLocalUploadedImageMaterial(msgInfoId: string | undefined) {
+  return msgInfoId === "0";
 }
 
 export function getKbAttachmentSelectLabel(type: KbAttachmentType) {
@@ -136,7 +127,10 @@ export function buildKbAttachmentPayloadFromMaterial(
   type: KbAttachmentType,
   item: WorkbenchMaterialCollectionItemDto,
 ): QuickReplyDraftAttachment | undefined {
-  if (!item.msgInfoId) {
+  if (
+    !item.msgInfoId
+    || (item.msgInfoId === "0" && type !== KB_ATTACHMENT_TYPE.IMAGE)
+  ) {
     return undefined;
   }
 

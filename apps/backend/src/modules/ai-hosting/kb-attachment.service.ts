@@ -3,6 +3,8 @@ import type {
   KbAttachmentCreateRequest,
   KbAttachmentCreateResponse,
   KbAttachmentDeleteResponse,
+  KbAttachmentImageMaterialCreateRequest,
+  KbAttachmentImageMaterialCreateResponse,
   KbAttachmentInitResponse,
   KbAttachmentListResponse,
   KbAttachmentType,
@@ -12,7 +14,7 @@ import type {
 import { KB_SEARCH_QUERY_MAX_LENGTH } from "@chatai/contracts";
 import type { Kysely } from "kysely";
 import type { Database } from "../../db/schema.js";
-import { AppError, BadRequestError, ForbiddenError, NotFoundError } from "../../shared/errors.js";
+import { BadRequestError, ForbiddenError, NotFoundError } from "../../shared/errors.js";
 import type { AgentKbJavaClient } from "./agent-kb-java-client.js";
 import {
   KB_ATTACHMENT_DOC_NAME,
@@ -22,10 +24,18 @@ import {
   KB_DOC_TYPE_ATTACHMENT,
 } from "./kb-attachment.constants.js";
 import {
+  createKbAttachmentImageMaterial,
+  findKbAttachmentMaterialsByIds,
+  requireKbAttachmentMaterial,
+} from "./kb-attachment-material.repository.js";
+import {
+  readPrimaryKbAttachmentMaterialId,
+  readPrimaryKbAttachmentType,
+} from "./kb-attachment-material-utils.js";
+import {
   deriveKbAttachmentTitle,
   mapJavaChunkToKbAttachmentListItem,
 } from "./kb-attachment-mappers.js";
-import { validateKbAttachmentContent } from "./kb-attachment-validation.js";
 import { KB_INIT_VOLC_STRATEGY_RESOURCE_ID } from "./kb-doc-strategy-mappers.js";
 import { mapSyncStatus } from "./kb-read-mappers.js";
 import { type AgentKbTenant, parseRequiredNumericId } from "./kb-tenant-utils.js";
@@ -142,8 +152,15 @@ export class KbAttachmentService {
       uid,
     });
 
+    const materialIds = response.list.flatMap((item) => {
+      const materialId = readPrimaryKbAttachmentMaterialId(item.attachmentIds);
+
+      return materialId == null ? [] : [materialId];
+    });
+    const materialById = await findKbAttachmentMaterialsByIds(this.db, uid, materialIds);
+
     const attachments = response.list
-      .map((item) => mapJavaChunkToKbAttachmentListItem(item))
+      .map((item) => mapJavaChunkToKbAttachmentListItem(item, materialById))
       .filter((item): item is NonNullable<typeof item> => item != null);
 
     return {
@@ -166,16 +183,21 @@ export class KbAttachmentService {
     const kbNumericId = parseRequiredNumericId(kbId, "KB_NOT_FOUND", "知识库不存在");
     const attachmentDoc = await this.requireReadyAttachmentDoc(uid, kbNumericId);
     const description = assertWritableDescription(request.description);
-
-    validateKbAttachmentContent(request.attachmentType, request.attachmentContent);
+    const material = await requireKbAttachmentMaterial(
+      this.db,
+      uid,
+      request.materialCollectionId,
+      request.attachmentType,
+    );
 
     const title = resolveWritableTitle(
-      request.title?.trim() || deriveKbAttachmentTitle(undefined, request.attachmentContent),
+      request.title?.trim()
+        || deriveKbAttachmentTitle(undefined, material.attachmentContent),
     );
 
     const chunkId = await this.agentKbJavaClient.addKbChunk({
-      attachmentContent: request.attachmentContent,
-      attachmentType: request.attachmentType,
+      attachmentIds: [material.materialId],
+      attachmentTypes: [request.attachmentType],
       chunkType: "text",
       content: description,
       docId: attachmentDoc.id,
@@ -223,26 +245,32 @@ export class KbAttachmentService {
       throw new BadRequestError("INVALID_KB_CHUNK_TITLE", "切片标题过长");
     }
 
-    let attachmentType: number | undefined;
-    let attachmentContent: KbAttachmentUpdateRequest["attachmentContent"];
+    let attachmentTypes: number[] | undefined;
+    let attachmentIds: number[] | undefined;
 
-    if (request.attachmentContent) {
+    if (request.materialCollectionId) {
       const javaChunk = await this.findJavaAttachmentChunk(uid, chunk.doc_id, chunkNumericId);
+      const attachmentType = readPrimaryKbAttachmentType(javaChunk?.attachmentTypes);
 
-      if (javaChunk?.attachmentType == null || !isKbAttachmentType(javaChunk.attachmentType)) {
+      if (attachmentType == null) {
         throw new NotFoundError("KB_CHUNK_NOT_FOUND", "附件不存在");
       }
 
-      validateKbAttachmentContent(javaChunk.attachmentType, request.attachmentContent);
-      attachmentType = javaChunk.attachmentType;
-      attachmentContent = request.attachmentContent;
+      const material = await requireKbAttachmentMaterial(
+        this.db,
+        uid,
+        request.materialCollectionId,
+        attachmentType,
+      );
+      attachmentTypes = [attachmentType];
+      attachmentIds = [material.materialId];
     }
 
     await this.agentKbJavaClient.updateKbChunk({
-      ...(attachmentContent && attachmentType != null
+      ...(attachmentIds && attachmentTypes
         ? {
-            attachmentContent,
-            attachmentType,
+            attachmentIds,
+            attachmentTypes,
           }
         : {}),
       chunkId: chunkNumericId,
@@ -351,6 +379,32 @@ export class KbAttachmentService {
     );
 
     return result;
+  }
+
+  async createImageMaterial(
+    tenant: AgentKbTenant,
+    kbId: string,
+    request: KbAttachmentImageMaterialCreateRequest,
+  ): Promise<KbAttachmentImageMaterialCreateResponse> {
+    const uid = tenant.uid;
+    const subUserId = tenant.subUserId;
+    const kbNumericId = parseRequiredNumericId(kbId, "KB_NOT_FOUND", "知识库不存在");
+
+    await this.assertKbExists(uid, kbNumericId);
+    await this.requireReadyAttachmentDoc(uid, kbNumericId);
+
+    const subUserNumericId = parseRequiredNumericId(
+      subUserId,
+      "KB_ATTACHMENT_INVALID",
+      "操作人无效",
+    );
+
+    return createKbAttachmentImageMaterial(this.db, {
+      opSubUserId: subUserId,
+      request,
+      subUserNumericId,
+      uid,
+    });
   }
 
   private async requireReadyAttachmentDoc(uid: number, kbId: number) {
@@ -482,10 +536,6 @@ export class KbAttachmentService {
       throw new NotFoundError("KB_NOT_FOUND", "知识库不存在");
     }
   }
-}
-
-function isKbAttachmentType(value: number): value is KbAttachmentType {
-  return value === 1 || value === 2 || value === 3 || value === 4 || value === 5;
 }
 
 function isAttachmentDocRow(doc: { doc_type: number; name?: string | null }) {

@@ -9,6 +9,7 @@ import {
 } from "@/pages/chat/ai-hosting/api/kb-attachment-service";
 import { KbAttachmentsTab } from "@/pages/chat/ai-hosting/kb-components/kb-attachments-tab";
 import {
+  isKbLocalUploadedImageMaterial,
   toKbAttachmentContent,
   toKbAttachmentItem,
   toQuickReplyDraftAttachment,
@@ -48,7 +49,8 @@ describe("kb attachment mappers", () => {
         msgInfoId: "msg-1",
         type: "file" as const,
       },
-      attachmentType: 3 as const,
+      materialCollectionId: "mc-1",
+      attachmentType: 2 as const,
       chunkId: "chunk-1",
       createdAt: "2026-07-03 12:00:00",
       description: "安装说明",
@@ -60,7 +62,7 @@ describe("kb attachment mappers", () => {
     const viewItem = toKbAttachmentItem(listItem);
 
     expect(viewItem).toMatchObject({
-      attachmentType: 3,
+      attachmentType: 2,
       description: "安装说明",
       fileSizeLabel: "2MB",
       id: "chunk-1",
@@ -72,6 +74,30 @@ describe("kb attachment mappers", () => {
 
     expect(content).toEqual(listItem.attachmentContent);
     expect(toQuickReplyDraftAttachment(listItem.attachmentContent)).toEqual(viewItem.payload);
+  });
+
+  it("detects local kb image by msgInfoId 0", () => {
+    expect(isKbLocalUploadedImageMaterial("0")).toBe(true);
+    expect(isKbLocalUploadedImageMaterial("9001")).toBe(false);
+    expect(isKbLocalUploadedImageMaterial(undefined)).toBe(false);
+  });
+
+  it("preserves msgInfoId 0 in attachment content roundtrip", () => {
+    const payload = toQuickReplyDraftAttachment({
+      content: {
+        fileUrl: "https://example.com/poster.png",
+      },
+      materialCollectionId: "mc-local",
+      msgInfoId: "0",
+      type: "image",
+    });
+
+    expect(isKbLocalUploadedImageMaterial(payload.msgInfoId)).toBe(true);
+    expect(toKbAttachmentContent(payload)).toMatchObject({
+      materialCollectionId: "mc-local",
+      msgInfoId: "0",
+      type: "image",
+    });
   });
 
   it("maps link list item title from attachment content instead of chunk title", () => {
@@ -90,6 +116,7 @@ describe("kb attachment mappers", () => {
       chunkId: "chunk-2",
       createdAt: "2026-07-03 12:00:00",
       description: "这是用户填写的链接描述",
+      materialCollectionId: "mc-1",
       title: "这是用户填写的链接描述",
       updatedAt: "2026-07-03 12:00:00",
     });

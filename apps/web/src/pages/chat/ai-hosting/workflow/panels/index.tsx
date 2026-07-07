@@ -1,6 +1,6 @@
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import {
+  baseNodeConfigSections,
+} from "../node-config-schema";
 import type {
   InspectorTab,
   MarketingNodeData,
@@ -8,12 +8,12 @@ import type {
   NodeRunRecord,
 } from "../types";
 import { BasePanel } from "./base-panel";
-import { FieldGroup } from "./field-group";
 import {
   LastRunPanel,
   NodeVariablesPanel,
 } from "./inspector-tabs";
 import { PanelComponentMap } from "./registry";
+import { NodeConfigSchemaSections } from "./schema-fields";
 import type { NodeSettingsProps } from "./types";
 
 export function NodeConfigPanel({
@@ -65,33 +65,11 @@ function NodeSettingsForm({ node, onNodeChange }: NodeSettingsProps) {
 
   return (
     <>
-      <FieldGroup title="基础信息">
-        <div className="space-y-2">
-          <Label htmlFor="workflow-node-title">节点名称</Label>
-          <Input
-            id="workflow-node-title"
-            onChange={(event) =>
-              onNodeChange({
-                title: event.target.value,
-              })
-            }
-            value={node.data.title}
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="workflow-node-summary">节点说明</Label>
-          <Textarea
-            className="min-h-20 resize-none"
-            id="workflow-node-summary"
-            onChange={(event) =>
-              onNodeChange({
-                summary: event.target.value,
-              })
-            }
-            value={node.data.summary}
-          />
-        </div>
-      </FieldGroup>
+      <NodeConfigSchemaSections
+        data={node.data}
+        onNodeChange={onNodeChange}
+        sections={baseNodeConfigSections}
+      />
 
       <SettingsPanel node={node} onNodeChange={onNodeChange} />
     </>

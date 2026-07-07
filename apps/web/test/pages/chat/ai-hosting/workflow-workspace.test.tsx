@@ -1,6 +1,10 @@
 import { act, renderHook } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useWorkflowWorkspace } from "@/pages/chat/ai-hosting/workflow/use-workflow-workspace";
+import {
+  getWorkflowDocument,
+  resetWorkflowDocumentsForTest,
+} from "@/pages/chat/ai-hosting/workflow/workflow-draft-service";
 
 vi.mock("@xyflow/react", async () => {
   const actual = await vi.importActual<typeof import("@xyflow/react")>("@xyflow/react");
@@ -35,6 +39,10 @@ vi.mock("@xyflow/react", async () => {
 });
 
 describe("useWorkflowWorkspace", () => {
+  beforeEach(() => {
+    resetWorkflowDocumentsForTest();
+  });
+
   it("selects nodes and opens the inspector while closing checks", () => {
     const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
 
@@ -97,6 +105,29 @@ describe("useWorkflowWorkspace", () => {
 
     expect(result.current.checks.isOpen).toBe(true);
     expect(result.current.topBar.saveState).toBe("saving");
+  });
+
+  it("persists node config drafts through the workspace save boundary", async () => {
+    vi.useFakeTimers();
+
+    try {
+      const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+
+      act(() => {
+        result.current.inspector.onNodeChange({ title: "保存后的动作节点" });
+      });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
+      });
+
+      expect(getWorkflowDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "action-message")?.data.title)
+        .toBe("保存后的动作节点");
+      expect(result.current.topBar.saveState).toBe("saved");
+    }
+    finally {
+      vi.useRealTimers();
+    }
   });
 
   it("opens variables through canvas controls and clears canvas menus", () => {

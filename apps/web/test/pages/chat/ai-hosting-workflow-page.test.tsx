@@ -20,6 +20,7 @@ import {
 import { NodeComponentMap } from "@/pages/chat/ai-hosting/workflow/nodes/registry";
 import { PanelComponentMap } from "@/pages/chat/ai-hosting/workflow/panels/registry";
 import type { MarketingNodeKind } from "@/pages/chat/ai-hosting/workflow/types";
+import { resetWorkflowDocumentsForTest } from "@/pages/chat/ai-hosting/workflow/workflow-draft-service";
 import { useAuthStore } from "@/store/auth-store";
 
 const agentServiceMock = vi.hoisted(() => ({
@@ -322,6 +323,7 @@ function setupCanvasUser() {
 describe("Agent workflow page", () => {
   beforeEach(() => {
     vi.useRealTimers();
+    resetWorkflowDocumentsForTest();
     reactFlowControlMock.fitView.mockClear();
     reactFlowControlMock.zoomIn.mockClear();
     reactFlowControlMock.zoomOut.mockClear();

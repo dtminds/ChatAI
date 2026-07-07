@@ -9,6 +9,7 @@ import type {
   MarketingNodeData,
   MarketingNodeKind,
   MarketingWorkflowRenderNode,
+  WorkflowDraft,
 } from "./types";
 import { useWorkflowController } from "./use-workflow-controller";
 import { useWorkflowRenderElements } from "./use-workflow-render-elements";
@@ -108,19 +109,25 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
       return;
     }
 
-    controller.updateNodeData(selectedNodeId, patch);
-    markDirty();
+    const result = controller.updateNodeData(selectedNodeId, patch);
+    if (result) {
+      markDirty(result.draft);
+    }
   }
 
   function undoWorkflowChange() {
-    controller.undo();
-    markDirty();
+    const result = controller.undo();
+    if (result) {
+      markDirty(result.draft);
+    }
     closeCanvasMenus();
   }
 
   function redoWorkflowChange() {
-    controller.redo();
-    markDirty();
+    const result = controller.redo();
+    if (result) {
+      markDirty(result.draft);
+    }
     closeCanvasMenus();
   }
 
@@ -152,7 +159,7 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
     const result = controller.connectNodes(connection);
 
     if (result) {
-      markDirty();
+      markDirty(result.draft);
       closeCanvasMenus();
       setIsChecksOpen(false);
     }
@@ -166,7 +173,7 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
     }
 
     closeCanvasMenus();
-    markDirty();
+    markDirty(result.draft);
     setIsChecksOpen(false);
   }
 
@@ -183,7 +190,7 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
     }
 
     setSelectedEdgeId(null);
-    markDirty();
+    markDirty(result.draft);
     closeCanvasMenus();
     setIsChecksOpen(false);
   }
@@ -209,8 +216,12 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
     handleDuplicateNode(selectedNodeId);
   }
 
-  function handleWorkflowEditResult(result?: { nodeId?: string }) {
-    markDirty();
+  function handleWorkflowEditResult(result?: { draft: WorkflowDraft; nodeId?: string }) {
+    if (!result) {
+      return;
+    }
+
+    markDirty(result.draft);
 
     if (result?.nodeId) {
       setSelectedNodeId(result.nodeId);
@@ -262,14 +273,18 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
   }
 
   function handleNodesChange(changes: NodeChange<MarketingWorkflowRenderNode>[]) {
-    controller.onNodesChange(changes);
+    const result = controller.onNodesChange(changes);
     controller.markDraftDirty();
-    markDirty();
+    if (result) {
+      markDirty(result.draft);
+    }
   }
 
   function arrangeNodes() {
-    controller.arrangeNodes();
-    markDirty();
+    const result = controller.arrangeNodes();
+    if (result) {
+      markDirty(result.draft);
+    }
   }
 
   return {

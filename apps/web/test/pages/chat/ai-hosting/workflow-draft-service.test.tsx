@@ -1,13 +1,20 @@
 import { act, renderHook } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getWorkflowDocument,
   getWorkflowName,
   listWorkflowDocuments,
+  resetWorkflowDocumentsForTest,
+  saveWorkflowDraft,
   useWorkflowDocument,
 } from "@/pages/chat/ai-hosting/workflow/workflow-draft-service";
+import { createInitialEdges, createInitialNodes } from "@/pages/chat/ai-hosting/workflow/graph";
 
 describe("workflow draft service", () => {
+  beforeEach(() => {
+    resetWorkflowDocumentsForTest();
+  });
+
   it("returns cloned workflow documents by route id", () => {
     const document = getWorkflowDocument("vip-reactivation");
     const clonedDocument = getWorkflowDocument("vip-reactivation");
@@ -31,8 +38,23 @@ describe("workflow draft service", () => {
 
       expect(result.current.saveState).toBe("saved");
 
+      const nextDraft = {
+        edges: createInitialEdges(),
+        nodes: createInitialNodes().map((node) =>
+          node.id === "trigger"
+            ? {
+                ...node,
+                data: {
+                  ...node.data,
+                  audience: "已保存的人群",
+                },
+              }
+            : node,
+        ),
+      };
+
       act(() => {
-        result.current.markDirty();
+        result.current.markDirty(nextDraft);
       });
       expect(result.current.saveState).toBe("saving");
 
@@ -42,9 +64,40 @@ describe("workflow draft service", () => {
 
       expect(result.current.saveState).toBe("saved");
       expect(result.current.document.updatedAt).toBe("刚刚");
+      expect(getWorkflowDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "trigger")?.data.audience)
+        .toBe("已保存的人群");
     }
     finally {
       vi.useRealTimers();
     }
+  });
+
+  it("saves sanitized draft snapshots through the mock repository", () => {
+    const draft = {
+      edges: createInitialEdges(),
+      nodes: createInitialNodes().map((node) =>
+        node.id === "action-message"
+          ? {
+              ...node,
+              data: {
+                ...node.data,
+                onDelete: () => undefined,
+                selected: true,
+                title: "已持久化动作",
+              },
+              selected: true,
+            }
+          : node,
+      ),
+    };
+
+    const savedDocument = saveWorkflowDraft("live-follow-up", draft);
+    const savedNode = savedDocument.draft.nodes.find((node) => node.id === "action-message");
+
+    expect(savedNode?.data.title).toBe("已持久化动作");
+    expect(savedNode?.selected).toBe(false);
+    expect(savedNode?.data.onDelete).toBeUndefined();
+    expect(getWorkflowDocument("live-follow-up").draft.nodes.find((node) => node.id === "action-message")?.data.title)
+      .toBe("已持久化动作");
   });
 });

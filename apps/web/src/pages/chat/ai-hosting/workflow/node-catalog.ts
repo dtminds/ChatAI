@@ -11,6 +11,9 @@ import type {
   MarketingNodeData,
   MarketingNodeKind,
   MarketingNodeStatus,
+  MarketingWorkflowNode,
+  WorkflowNodeValidationContext,
+  WorkflowNodeValidationIssue,
 } from "./types";
 import {
   defaultActionOption,
@@ -49,6 +52,10 @@ export type WorkflowNodeCatalogEntry = {
   kind: MarketingNodeKind;
   paletteLabel?: string;
   sort: number;
+  validate?: (
+    node: MarketingWorkflowNode,
+    context: WorkflowNodeValidationContext,
+  ) => WorkflowNodeValidationIssue[];
   visual: NodeVisual;
 };
 
@@ -104,6 +111,11 @@ export const workflowNodeCatalog: Record<MarketingNodeKind, WorkflowNodeCatalogE
     kind: "action",
     paletteLabel: "营销动作",
     sort: 30,
+    validate: (node) => (
+      hasText(node.data.actionType)
+        ? []
+        : [{ message: "营销动作需要选择动作类型" }]
+    ),
     visual: nodeVisuals.action,
   },
   ai: {
@@ -125,6 +137,11 @@ export const workflowNodeCatalog: Record<MarketingNodeKind, WorkflowNodeCatalogE
     kind: "ai",
     paletteLabel: "AI 接待",
     sort: 40,
+    validate: (node) => (
+      hasText(node.data.agentName)
+        ? []
+        : [{ message: "AI 接待需要绑定 Agent" }]
+    ),
     visual: nodeVisuals.ai,
   },
   branch: {
@@ -165,6 +182,11 @@ export const workflowNodeCatalog: Record<MarketingNodeKind, WorkflowNodeCatalogE
     kind: "branch",
     paletteLabel: "条件分支",
     sort: 20,
+    validate: (node) => (
+      hasText(node.data.branchRule)
+        ? []
+        : [{ message: "条件分支需要配置条件表达式" }]
+    ),
     visual: nodeVisuals.branch,
   },
   goal: {
@@ -202,6 +224,11 @@ export const workflowNodeCatalog: Record<MarketingNodeKind, WorkflowNodeCatalogE
     insertable: false,
     kind: "goal",
     sort: 100,
+    validate: (node) => (
+      typeof node.data.conversion === "number"
+        ? []
+        : [{ message: "目标节点需要配置转化指标" }]
+    ),
     visual: nodeVisuals.goal,
   },
   trigger: {
@@ -239,6 +266,11 @@ export const workflowNodeCatalog: Record<MarketingNodeKind, WorkflowNodeCatalogE
     insertable: false,
     kind: "trigger",
     sort: 0,
+    validate: (node) => (
+      hasText(node.data.audience)
+        ? []
+        : [{ message: "触发节点需要选择进入人群" }]
+    ),
     visual: nodeVisuals.trigger,
   },
   wait: {
@@ -279,6 +311,11 @@ export const workflowNodeCatalog: Record<MarketingNodeKind, WorkflowNodeCatalogE
     kind: "wait",
     paletteLabel: "等待",
     sort: 10,
+    validate: (node) => (
+      typeof node.data.delayDays === "number" && node.data.delayDays >= 0
+        ? []
+        : [{ message: "等待节点需要配置等待天数" }]
+    ),
     visual: nodeVisuals.wait,
   },
 };
@@ -333,4 +370,8 @@ function isInsertableWorkflowNodeCatalogEntry(
     && definition.paletteLabel !== undefined
     && definition.kind !== "goal"
     && definition.kind !== "trigger";
+}
+
+function hasText(value: unknown) {
+  return typeof value === "string" && value.trim().length > 0;
 }

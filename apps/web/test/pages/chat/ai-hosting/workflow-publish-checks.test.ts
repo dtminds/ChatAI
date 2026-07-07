@@ -42,6 +42,27 @@ describe("buildPublishChecks", () => {
     expect(checks.find((check) => check.id === "config")?.description).toBe("1 个节点仍需补全配置");
   });
 
+  it("uses catalog validation rules instead of only node status", () => {
+    const nodes = createInitialNodes().map((node) =>
+      node.id === "trigger"
+        ? {
+            ...node,
+            data: {
+              ...node.data,
+              audience: "",
+              status: "running" as const,
+            },
+          }
+        : node,
+    );
+    const checks = buildPublishChecks(nodes, createInitialEdges());
+
+    expect(checks.find((check) => check.id === "trigger")?.status).toBe("warning");
+    expect(checks.find((check) => check.id === "trigger")?.description).toBe(
+      "触发节点需要选择进入人群",
+    );
+  });
+
   it("marks AI strategy ready only when an AI node is configured", () => {
     const nodes = [
       ...createInitialNodes(),
@@ -68,6 +89,21 @@ describe("buildPublishChecks", () => {
     const checks = buildPublishChecks(nodes, edges);
 
     expect(checks.find((check) => check.id === "ai")?.status).toBe("ready");
+  });
+
+  it("treats nodes behind a detached chain as disconnected", () => {
+    const nodes = createInitialNodes();
+    const edges = createInitialEdges().map((edge) =>
+      edge.source === "trigger"
+        ? {
+            ...edge,
+            source: "detached-node",
+          }
+        : edge,
+    );
+    const checks = buildPublishChecks(nodes, edges);
+
+    expect(checks.find((check) => check.id === "connectivity")?.status).toBe("warning");
   });
 });
 

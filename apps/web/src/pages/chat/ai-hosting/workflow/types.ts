@@ -93,3 +93,12 @@ export type WorkflowPublishCheck = {
   status: "ready" | "warning";
   title: string;
 };
+
+export type WorkflowNodeValidationIssue = {
+  message: string;
+};
+
+export type WorkflowNodeValidationContext = {
+  edges: MarketingWorkflowEdge[];
+  nodes: MarketingWorkflowNode[];
+};

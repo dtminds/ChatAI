@@ -4,6 +4,7 @@ import type {
   MarketingWorkflowNode,
   WorkflowPublishCheck,
 } from "../types";
+import { validateWorkflowDraft } from "../validation/workflow-validation";
 
 export function useWorkflowPublishChecks(
   nodes: MarketingWorkflowNode[],
@@ -28,23 +29,23 @@ export function buildPublishChecks(
   nodes: MarketingWorkflowNode[],
   edges: MarketingWorkflowEdge[],
 ): WorkflowPublishCheck[] {
-  const trigger = nodes.find((node) => node.data.kind === "trigger");
-  const goal = nodes.find((node) => node.data.kind === "goal");
-  const warningNodes = nodes.filter((node) => node.data.status === "warning");
-  const hasDisconnectedNode = nodes.some(
-    (node) =>
-      node.data.kind !== "trigger" &&
-      !edges.some((edge) => edge.target === node.id),
+  const validation = validateWorkflowDraft(nodes, edges);
+  const triggerIssue = validation.nodeIssues.find(
+    (item) => item.node.id === validation.triggerNode?.id,
   );
-  const hasAiAction = nodes.some((node) => node.data.kind === "ai" && node.data.agentName);
+  const configIssues = validation.nodeIssues.filter(
+    (item) => item.node.id !== validation.triggerNode?.id,
+  );
+  const hasDisconnectedNode = validation.disconnectedNodes.length > 0;
+  const hasAiAction = validation.configuredAiNodes.length > 0;
 
   return [
     {
-      description: trigger?.data.audience
-        ? `当前人群：${trigger.data.audience}`
-        : "触发节点需要选择进入人群",
+      description: validation.triggerNode && !triggerIssue
+        ? `当前人群：${validation.triggerNode.data.audience}`
+        : triggerIssue?.issues[0]?.message ?? "缺少触发节点",
       id: "trigger",
-      status: trigger?.data.audience ? "ready" : "warning",
+      status: validation.triggerNode && !triggerIssue ? "ready" : "warning",
       title: "触发人群",
     },
     {
@@ -54,11 +55,11 @@ export function buildPublishChecks(
       title: "链路连通性",
     },
     {
-      description: warningNodes.length
-        ? `${warningNodes.length} 个节点仍需补全配置`
+      description: configIssues.length
+        ? `${configIssues.length} 个节点仍需补全配置`
         : "所有节点已完成关键配置",
       id: "config",
-      status: warningNodes.length ? "warning" : "ready",
+      status: configIssues.length ? "warning" : "ready",
       title: "节点配置",
     },
     {
@@ -70,9 +71,9 @@ export function buildPublishChecks(
       title: "AI 接待策略",
     },
     {
-      description: goal ? "已配置退出目标和转化指标" : "缺少目标节点",
+      description: validation.goalNode ? "已配置退出目标和转化指标" : "缺少目标节点",
       id: "goal",
-      status: goal ? "ready" : "warning",
+      status: validation.goalNode ? "ready" : "warning",
       title: "目标退出",
     },
   ];

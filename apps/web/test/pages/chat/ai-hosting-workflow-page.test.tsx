@@ -75,6 +75,9 @@ vi.mock("@xyflow/react", async () => {
       Right: "right",
       Top: "top",
     },
+    SelectionMode: {
+      Partial: "partial",
+    },
     ReactFlow: ({
       children,
       edgeTypes,

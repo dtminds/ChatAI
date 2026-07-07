@@ -41,7 +41,7 @@ export function WaitConfig({ node, onNodeChange }: NodeSettingsProps) {
         sections={getNodeConfigSections("wait")}
       />
       <div className="rounded-[10px] border bg-card p-3 text-xs leading-5 text-muted-foreground">
-        真实执行层会把等待写入持久化 job；当前前端先使用 mock 数据验证配置体验
+        客户进入等待后，将在设定时间结束时继续执行下一步
       </div>
     </>
   );

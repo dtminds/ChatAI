@@ -1,6 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  createInMemoryWorkflowDraftRepository,
   getWorkflowDocument,
   getWorkflowName,
   listWorkflowDocuments,
@@ -190,5 +191,31 @@ describe("workflow draft service", () => {
     expect(savedNode?.data.onDelete).toBeUndefined();
     expect(getWorkflowDocument("live-follow-up").draft.nodes.find((node) => node.id === "action-message")?.data.title)
       .toBe("已持久化动作");
+  });
+
+  it("keeps draft repositories isolated behind the persistence boundary", () => {
+    const firstRepository = createInMemoryWorkflowDraftRepository();
+    const secondRepository = createInMemoryWorkflowDraftRepository();
+    const draft = {
+      edges: createInitialEdges(),
+      nodes: createInitialNodes().map((node) =>
+        node.id === "trigger"
+          ? {
+              ...node,
+              data: {
+                ...node.data,
+                audience: "独立仓库保存的人群",
+              },
+            }
+          : node,
+      ),
+    };
+
+    firstRepository.saveDraft("newcomer-conversion", draft);
+
+    expect(firstRepository.getDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "trigger")?.data.audience)
+      .toBe("独立仓库保存的人群");
+    expect(secondRepository.getDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "trigger")?.data.audience)
+      .toBe("近 30 天新入会且未首购客户");
   });
 });

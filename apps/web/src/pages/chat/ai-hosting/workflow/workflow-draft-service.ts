@@ -27,19 +27,23 @@ export type WorkflowDocument = WorkflowListItem & {
 
 export type WorkflowDraftSaveStatus = "dirty" | "error" | "saved" | "saving";
 
+export type WorkflowDraftRepository = {
+  getDocument: (workflowId: string | undefined) => WorkflowDocument;
+  listDocuments: () => WorkflowListItem[];
+  reset: () => void;
+  saveDraft: (workflowId: string | undefined, draft: WorkflowDraft) => WorkflowDocument;
+};
+
 const WORKFLOW_SAVE_DEBOUNCE_MS = 500;
 
-let workflowDocuments: WorkflowDocument[] = createWorkflowDocuments();
+const workflowDraftRepository = createInMemoryWorkflowDraftRepository();
 
 export function listWorkflowDocuments(): WorkflowListItem[] {
-  return workflowDocuments.map(({ draft: _draft, savedAt: _savedAt, ...workflow }) => workflow);
+  return workflowDraftRepository.listDocuments();
 }
 
 export function getWorkflowDocument(workflowId: string | undefined): WorkflowDocument {
-  return cloneWorkflowDocument(
-    workflowDocuments.find((workflow) => workflow.id === workflowId)
-      ?? workflowDocuments[0],
-  );
+  return workflowDraftRepository.getDocument(workflowId);
 }
 
 export function getWorkflowName(workflowId: string | undefined) {
@@ -50,25 +54,11 @@ export function saveWorkflowDraft(
   workflowId: string | undefined,
   draft: WorkflowDraft,
 ): WorkflowDocument {
-  const documentIndex = getWorkflowDocumentIndex(workflowId);
-  const currentDocument = workflowDocuments[documentIndex];
-  const nextDraft = cloneWorkflowDraft(draft);
-  const nextDocument: WorkflowDocument = {
-    ...currentDocument,
-    conversion: getWorkflowConversion(nextDraft) ?? currentDocument.conversion,
-    draft: nextDraft,
-    nodes: nextDraft.nodes.length,
-    savedAt: "刚刚",
-    trigger: getWorkflowTrigger(nextDraft) ?? currentDocument.trigger,
-    updatedAt: "刚刚",
-  };
-
-  workflowDocuments[documentIndex] = nextDocument;
-  return cloneWorkflowDocument(nextDocument);
+  return workflowDraftRepository.saveDraft(workflowId, draft);
 }
 
 export function resetWorkflowDocumentsForTest() {
-  workflowDocuments = createWorkflowDocuments();
+  workflowDraftRepository.reset();
 }
 
 export function useWorkflowDocument(workflowId: string | undefined) {
@@ -187,11 +177,6 @@ function cloneWorkflowDraft(draft: WorkflowDraft): WorkflowDraft {
   };
 }
 
-function getWorkflowDocumentIndex(workflowId: string | undefined) {
-  const documentIndex = workflowDocuments.findIndex((workflow) => workflow.id === workflowId);
-  return documentIndex >= 0 ? documentIndex : 0;
-}
-
 function getWorkflowTrigger(draft: WorkflowDraft) {
   return draft.nodes.find((node) => node.data.kind === "trigger")?.data.audience;
 }
@@ -199,6 +184,42 @@ function getWorkflowTrigger(draft: WorkflowDraft) {
 function getWorkflowConversion(draft: WorkflowDraft) {
   const conversion = draft.nodes.find((node) => node.data.kind === "goal")?.data.conversion;
   return typeof conversion === "number" ? `${conversion}%` : undefined;
+}
+
+export function createInMemoryWorkflowDraftRepository(): WorkflowDraftRepository {
+  let workflowDocuments = createWorkflowDocuments();
+
+  function getWorkflowDocumentIndex(workflowId: string | undefined) {
+    const documentIndex = workflowDocuments.findIndex((workflow) => workflow.id === workflowId);
+    return documentIndex >= 0 ? documentIndex : 0;
+  }
+
+  return {
+    getDocument: (workflowId) => cloneWorkflowDocument(
+      workflowDocuments[getWorkflowDocumentIndex(workflowId)],
+    ),
+    listDocuments: () => workflowDocuments.map(({ draft: _draft, savedAt: _savedAt, ...workflow }) => workflow),
+    reset: () => {
+      workflowDocuments = createWorkflowDocuments();
+    },
+    saveDraft: (workflowId, draft) => {
+      const documentIndex = getWorkflowDocumentIndex(workflowId);
+      const currentDocument = workflowDocuments[documentIndex];
+      const nextDraft = cloneWorkflowDraft(draft);
+      const nextDocument: WorkflowDocument = {
+        ...currentDocument,
+        conversion: getWorkflowConversion(nextDraft) ?? currentDocument.conversion,
+        draft: nextDraft,
+        nodes: nextDraft.nodes.length,
+        savedAt: "刚刚",
+        trigger: getWorkflowTrigger(nextDraft) ?? currentDocument.trigger,
+        updatedAt: "刚刚",
+      };
+
+      workflowDocuments[documentIndex] = nextDocument;
+      return cloneWorkflowDocument(nextDocument);
+    },
+  };
 }
 
 function createWorkflowDocuments(): WorkflowDocument[] {

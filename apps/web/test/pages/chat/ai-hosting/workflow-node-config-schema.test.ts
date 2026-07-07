@@ -19,10 +19,10 @@ describe("workflow node config schema", () => {
   });
 
   it("maps simple node settings to node data patches", () => {
-    const waitField = getNodeConfigSections("wait")[0].fields[0] as NodeConfigNumberField;
-    const branchField = getNodeConfigSections("branch")[0].fields[0] as NodeConfigTextareaField;
-    const goalField = getNodeConfigSections("goal")[0].fields[0] as NodeConfigNumberField;
-    const triggerField = getNodeConfigSections("trigger")[0].fields[0] as NodeConfigTextField;
+    const waitField = getNodeConfigSections("wait")[0]!.fields[0] as NodeConfigNumberField;
+    const branchField = getNodeConfigSections("branch")[0]!.fields[0] as NodeConfigTextareaField;
+    const goalField = getNodeConfigSections("goal")[0]!.fields[0] as NodeConfigNumberField;
+    const triggerField = getNodeConfigSections("trigger")[0]!.fields[0] as NodeConfigTextField;
 
     expect(waitField.toPatch(3, createDefaultNodeData("wait"))).toEqual({
       delayDays: 3,

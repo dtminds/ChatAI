@@ -1,5 +1,10 @@
 import { useRef, useState } from "react";
-import type { Connection, IsValidConnection, NodeChange } from "@xyflow/react";
+import type {
+  Connection,
+  EdgeChange,
+  IsValidConnection,
+  NodeChange,
+} from "@xyflow/react";
 import { useWorkflowPublishChecks } from "./checks/publish-checks";
 import { useWorkflowRun } from "./run/use-workflow-run";
 import { useWorkflowShortcuts } from "./shortcuts";
@@ -372,6 +377,21 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
     }
   }
 
+  function handleEdgesChange(changes: EdgeChange<WorkflowRenderEdge>[]) {
+    const result = controller.onEdgesChange(changes);
+
+    if (!result) {
+      return;
+    }
+
+    markDirty(result.draft);
+    closeCanvasMenus();
+    setIsChecksOpen(false);
+    if (result.edgeId && selectedEdgeId === result.edgeId) {
+      setSelectedEdgeId(null);
+    }
+  }
+
   function arrangeNodes() {
     const result = controller.arrangeNodes();
     if (result) {
@@ -398,7 +418,7 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
       onAddNode: addNode,
       onArrange: arrangeNodes,
       onConnect: connectNodes,
-      onEdgesChange: controller.onEdgesChange,
+      onEdgesChange: handleEdgesChange,
       onIsValidConnection: isValidCanvasConnection,
       onNodeHoverEnd: handleNodeHoverEnd,
       onNodeHoverStart: handleNodeHoverStart,

@@ -344,14 +344,12 @@ function WorkflowZoomControls({
         -
       </button>
       <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button
-            aria-label={`当前缩放 ${zoomLabel}，打开缩放菜单`}
-            className="workflow-operator-button workflow-operator-zoom-label"
-            type="button"
-          >
-            {zoomLabel}
-          </button>
+        <DropdownMenuTrigger
+          aria-label={`当前缩放 ${zoomLabel}，打开缩放菜单`}
+          className="workflow-operator-button workflow-operator-zoom-label"
+          type="button"
+        >
+          {zoomLabel}
         </DropdownMenuTrigger>
         <DropdownMenuContent align="center" className="min-w-[132px]" side="top">
           {workflowZoomOptions.map((option) => (

@@ -15,7 +15,21 @@ vi.mock("@xyflow/react", async () => {
 
   return {
     ...actual,
-    applyEdgeChanges: (_changes: unknown, edges: unknown) => edges,
+    applyEdgeChanges: (
+      changes: Array<{
+        id: string;
+        type: string;
+      }>,
+      edges: Array<{
+        id: string;
+      }>,
+    ) => {
+      const removedEdgeIds = new Set(changes
+        .filter((change) => change.type === "remove")
+        .map((change) => change.id));
+
+      return edges.filter((edge) => !removedEdgeIds.has(edge.id));
+    },
     applyNodeChanges: (
       changes: Array<{
         id: string;
@@ -110,6 +124,37 @@ describe("useWorkflowWorkspace", () => {
 
     expect(result.current.canvas.edges.some((edge) => edge.id === "edge-action-message-goal")).toBe(false);
     expect(result.current.canvas.nodes.some((node) => node.id === "action-message")).toBe(true);
+  });
+
+  it("persists edge removals from React Flow changes and supports undo", async () => {
+    vi.useFakeTimers();
+
+    try {
+      const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+
+      act(() => {
+        result.current.canvas.onEdgesChange([{ id: "edge-action-message-goal", type: "remove" }]);
+      });
+
+      expect(result.current.canvas.edges.some((edge) => edge.id === "edge-action-message-goal")).toBe(false);
+      expect(result.current.canvas.canUndo).toBe(true);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
+      });
+
+      expect(getWorkflowDocument("newcomer-conversion").draft.edges.some((edge) => edge.id === "edge-action-message-goal"))
+        .toBe(false);
+
+      act(() => {
+        result.current.canvas.onUndo();
+      });
+
+      expect(result.current.canvas.edges.some((edge) => edge.id === "edge-action-message-goal")).toBe(true);
+    }
+    finally {
+      vi.useRealTimers();
+    }
   });
 
   it("copies and pastes the selected node through shortcuts with undo and redo support", () => {

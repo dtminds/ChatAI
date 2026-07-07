@@ -115,15 +115,13 @@ function NodeActionMenu({
       )}
     >
       <DropdownMenu modal={false} open={actionMenuOpen} onOpenChange={setActionMenuOpen}>
-        <DropdownMenuTrigger asChild>
-          <button
-            aria-label={`更多操作：${data.title}`}
-            className="workflow-node-actionbar-button"
-            onClick={(event) => event.stopPropagation()}
-            type="button"
-          >
-            <HugeiconsIcon icon={MoreHorizontalIcon} size={14} strokeWidth={1.8} />
-          </button>
+        <DropdownMenuTrigger
+          aria-label={`更多操作：${data.title}`}
+          className="workflow-node-actionbar-button"
+          onClick={(event) => event.stopPropagation()}
+          type="button"
+        >
+          <HugeiconsIcon icon={MoreHorizontalIcon} size={14} strokeWidth={1.8} />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="min-w-[132px]" side="bottom">
           <DropdownMenuItem

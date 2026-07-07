@@ -3,7 +3,6 @@ import type {
   Connection,
   EdgeChange,
   NodeChange,
-  OnEdgesChange,
 } from "@xyflow/react";
 import {
   applyEdgeChanges,
@@ -208,15 +207,39 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
     flushConfigHistory();
   }, [flushConfigHistory]);
 
-  const onEdgesChange: OnEdgesChange<WorkflowRenderEdge> = useCallback(
+  const onEdgesChange = useCallback(
     (changes: EdgeChange<WorkflowRenderEdge>[]) => {
       flushConfigHistory();
-      replaceDraft((draft) => ({
-        ...draft,
-        edges: applyEdgeChanges(changes as EdgeChange<WorkflowEdge>[], draft.edges),
-      }));
+      const nextDraft = sanitizeDraft({
+        ...currentDraft,
+        edges: applyEdgeChanges(changes as EdgeChange<WorkflowEdge>[], currentDraft.edges),
+      });
+      const currentEdgeIds = new Set(currentDraft.edges.map((edge) => edge.id));
+      const removedEdgeIds = changes
+        .filter((change): change is EdgeChange<WorkflowRenderEdge> & { id: string; type: "remove" } =>
+          change.type === "remove" && "id" in change && typeof change.id === "string",
+        )
+        .map((change) => change.id)
+        .filter((edgeId) => currentEdgeIds.has(edgeId));
+
+      if (removedEdgeIds.length > 0) {
+        commitFromDrafts(
+          "edge:delete",
+          currentDraft,
+          nextDraft,
+          removedEdgeIds.length === 1 ? { edgeId: removedEdgeIds[0] } : undefined,
+        );
+
+        return {
+          draft: nextDraft,
+          edgeId: removedEdgeIds[0],
+        };
+      }
+
+      replaceDraft(() => nextDraft);
+      return undefined;
     },
-    [flushConfigHistory, replaceDraft],
+    [commitFromDrafts, currentDraft, flushConfigHistory, replaceDraft],
   );
 
   const updateNodeData = useCallback((

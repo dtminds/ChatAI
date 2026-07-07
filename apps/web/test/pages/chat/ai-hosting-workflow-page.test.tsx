@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent, { PointerEventsCheckLevel } from "@testing-library/user-event";
 import type React from "react";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
@@ -221,6 +221,13 @@ function workflowNodeX(nodeId: string) {
   return Number(screen.getByTestId(`workflow-node-${nodeId}`).dataset.positionX);
 }
 
+function workflowNodeYByButtonName(canvas: HTMLElement, name: RegExp) {
+  const node = within(canvas).getByRole("button", { name });
+  const wrapper = node.closest("[data-testid^='workflow-node-']");
+
+  return Number((wrapper as HTMLElement | null)?.dataset.positionY);
+}
+
 function closestWorkflowNodeX(element: HTMLElement) {
   const wrapper = element.closest("[data-testid^='workflow-node-']");
 
@@ -350,6 +357,19 @@ describe("Agent workflow demo page", () => {
       "售后小助理",
     );
     expect(panel).toHaveTextContent("售后小助理");
+  });
+
+  it("does not create workflow history entries for unchanged layout results", async () => {
+    const user = setupCanvasUser();
+
+    renderWorkflowPage();
+
+    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    expect(within(canvas).getByRole("button", { name: "撤销" })).toBeDisabled();
+
+    await user.click(within(canvas).getByRole("button", { name: "自动整理画布" }));
+
+    expect(within(canvas).getByRole("button", { name: "撤销" })).toBeDisabled();
   });
 
   it("keeps the selected workflow node above neighboring nodes after pane clicks", async () => {
@@ -527,6 +547,50 @@ describe("Agent workflow demo page", () => {
     expect(within(canvas).getByRole("button", { name: /^AI 接待 / })).toBeInTheDocument();
   });
 
+  it("supports undo and redo keyboard shortcuts outside editable fields", async () => {
+    const user = userEvent.setup();
+
+    renderWorkflowPage();
+
+    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    await user.click(within(canvas).getByRole("button", { name: "打开节点库" }));
+    const palette = await screen.findByRole("region", { name: "节点库" });
+    await user.click(within(palette).getByRole("button", { name: "添加 AI 接待节点" }));
+
+    const undoEvent = new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      key: "z",
+      metaKey: true,
+    });
+    const undoPreventDefault = vi.spyOn(undoEvent, "preventDefault");
+    fireEvent(window, undoEvent);
+
+    expect(undoPreventDefault).toHaveBeenCalled();
+    await waitFor(() => {
+      expect(within(canvas).queryByRole("button", { name: /^AI 接待 / })).not.toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(window, { key: "y", metaKey: true });
+    expect(await within(canvas).findByRole("button", { name: /^AI 接待 / })).toBeInTheDocument();
+  });
+
+  it("does not run workflow history shortcuts from editable fields", async () => {
+    const user = userEvent.setup();
+
+    renderWorkflowPage();
+
+    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    await user.click(within(canvas).getByRole("button", { name: "打开节点库" }));
+    const palette = await screen.findByRole("region", { name: "节点库" });
+    await user.click(within(palette).getByRole("button", { name: "添加 AI 接待节点" }));
+
+    const searchInput = within(palette).getByRole("textbox", { name: "搜索节点" });
+    fireEvent.keyDown(searchInput, { key: "z", metaKey: true });
+
+    expect(within(canvas).getByRole("button", { name: /^AI 接待 / })).toBeInTheDocument();
+  });
+
   it("keeps canvas selection out of workflow undo history", async () => {
     const user = userEvent.setup();
 
@@ -638,6 +702,28 @@ describe("Agent workflow demo page", () => {
     expect(aiX).toBeLessThan(actionX);
   });
 
+  it("arranges branch paths by handle order instead of insertion order", async () => {
+    const user = setupCanvasUser();
+
+    renderWorkflowPage();
+
+    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    await user.click(within(canvas).getByRole("button", { name: "在意向判断的默认路径分支后添加节点" }));
+    await user.click(within(canvas).getByRole("menuitem", { name: /AI 接待/ }));
+    await user.click(within(canvas).getByRole("button", { name: "在意向判断的普通客户分支后添加节点" }));
+    await user.click(within(canvas).getByRole("menuitem", { name: /等待/ }));
+    await user.click(within(canvas).getByRole("button", { name: "在意向判断的高意向客户分支后添加节点" }));
+    await user.click(within(canvas).getByRole("menuitem", { name: /营销动作/ }));
+    await user.click(within(canvas).getByRole("button", { name: "自动整理画布" }));
+
+    const highY = workflowNodeYByButtonName(canvas, /^发优惠券 /);
+    const normalY = workflowNodeYByButtonName(canvas, /^等待 /);
+    const defaultY = workflowNodeYByButtonName(canvas, /^AI 接待 /);
+
+    expect(highY).toBeLessThan(normalY);
+    expect(normalY).toBeLessThan(defaultY);
+  });
+
   it("highlights incoming and outgoing edges when hovering a workflow node", async () => {
     const user = userEvent.setup();
 
@@ -681,6 +767,86 @@ describe("Agent workflow demo page", () => {
     const reopenedActionMenu = await screen.findByRole("menu");
     await user.click(within(reopenedActionMenu).getByRole("menuitem", { name: "添加后续节点" }));
     expect(within(canvas).getByRole("menu", { name: "选择要添加的节点" })).toBeInTheDocument();
+  });
+
+  it("deletes non-terminal nodes from the action menu and records the change in history", async () => {
+    const user = userEvent.setup();
+
+    renderWorkflowPage();
+
+    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    await user.click(within(canvas).getByRole("button", { name: "更多操作：发送欢迎消息" }));
+    const actionMenu = await screen.findByRole("menu");
+    await user.click(within(actionMenu).getByRole("menuitem", { name: "删除节点" }));
+
+    expect(within(canvas).queryByRole("button", { name: /^发送欢迎消息 / })).not.toBeInTheDocument();
+    expect(screen.queryByTestId("workflow-edge-edge-branch-intent-branch-high-action-message")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("workflow-edge-edge-action-message-goal")).not.toBeInTheDocument();
+    expect(within(canvas).getByRole("button", { name: "撤销" })).toBeEnabled();
+
+    await user.click(within(canvas).getByRole("button", { name: "撤销" }));
+
+    expect(within(canvas).getByRole("button", { name: /^发送欢迎消息 / })).toBeInTheDocument();
+    expect(screen.getByTestId("workflow-edge-edge-branch-intent-branch-high-action-message")).toBeInTheDocument();
+    expect(screen.getByTestId("workflow-edge-edge-action-message-goal")).toBeInTheDocument();
+  });
+
+  it("deletes the selected node with keyboard shortcuts and records the change in history", async () => {
+    const user = userEvent.setup();
+
+    renderWorkflowPage();
+
+    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    await user.click(within(canvas).getByRole("button", { name: /^观察期 / }));
+    fireEvent.keyDown(window, { key: "Delete" });
+
+    expect(within(canvas).queryByRole("button", { name: /^观察期 / })).not.toBeInTheDocument();
+    expect(screen.queryByTestId("workflow-edge-edge-trigger-wait-2d")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("workflow-edge-edge-wait-2d-branch-intent")).not.toBeInTheDocument();
+
+    await user.click(within(canvas).getByRole("button", { name: "撤销" }));
+
+    expect(within(canvas).getByRole("button", { name: /^观察期 / })).toBeInTheDocument();
+    expect(screen.getByTestId("workflow-edge-edge-trigger-wait-2d")).toBeInTheDocument();
+    expect(screen.getByTestId("workflow-edge-edge-wait-2d-branch-intent")).toBeInTheDocument();
+  });
+
+  it("does not delete protected nodes or editable-field content with delete shortcuts", async () => {
+    const user = userEvent.setup();
+
+    renderWorkflowPage();
+
+    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    await user.click(within(canvas).getByRole("button", { name: /^新人入会触发 / }));
+    fireEvent.keyDown(window, { key: "Delete" });
+
+    expect(within(canvas).getByRole("button", { name: /^新人入会触发 / })).toBeInTheDocument();
+    expect(within(canvas).getByRole("button", { name: "撤销" })).toBeDisabled();
+
+    await user.click(within(canvas).getByRole("button", { name: /^观察期 / }));
+    await user.click(within(canvas).getByRole("button", { name: "打开节点库" }));
+    const palette = await screen.findByRole("region", { name: "节点库" });
+    fireEvent.keyDown(within(palette).getByRole("textbox", { name: "搜索节点" }), { key: "Backspace" });
+
+    expect(within(canvas).getByRole("button", { name: /^观察期 / })).toBeInTheDocument();
+  });
+
+  it("keeps trigger and goal nodes protected from deletion", async () => {
+    const user = userEvent.setup();
+
+    renderWorkflowPage();
+
+    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    await user.click(within(canvas).getByRole("button", { name: /^新人入会触发 / }));
+    await user.click(within(canvas).getByRole("button", { name: "更多操作：新人入会触发" }));
+
+    expect(screen.queryByRole("menuitem", { name: "删除节点" })).not.toBeInTheDocument();
+
+    await user.click(within(canvas).getByRole("button", { name: "点击画布空白处" }));
+    await user.click(within(canvas).getByRole("button", { name: /^首单转化 / }));
+    await user.click(within(canvas).getByRole("button", { name: "更多操作：首单转化" }));
+
+    expect(screen.queryByRole("menuitem", { name: "删除节点" })).not.toBeInTheDocument();
   });
 
   it("lets users create a manual connection between nodes", async () => {

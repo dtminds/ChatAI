@@ -28,6 +28,7 @@ export type MarketingNodeRuntimeData = {
     kind: InsertableMarketingNodeKind,
     sourceHandle?: string,
   ) => void;
+  onDelete?: (nodeId: string) => void;
   onToggleInsertMenu?: (nodeId: string, sourceHandle?: string) => void;
   onSelect?: (nodeId: string) => void;
   selected?: boolean;

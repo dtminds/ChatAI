@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useReducer } from "react";
 import type {
   MarketingEdgeData,
   MarketingNodeData,
@@ -12,6 +12,7 @@ export type WorkflowHistoryEvent =
   | "node:config-change"
   | "edge:connect"
   | "node:insert"
+  | "node:delete"
   | "layout:organize";
 
 export type WorkflowHistoryEventMeta = {
@@ -27,10 +28,35 @@ export type WorkflowHistoryState = WorkflowDraft & {
 
 const WORKFLOW_HISTORY_LIMIT = 50;
 
+type WorkflowHistoryReducerState = {
+  currentDraft: WorkflowDraft;
+  futureStates: WorkflowHistoryState[];
+  pastStates: WorkflowHistoryState[];
+};
+
+type WorkflowHistoryReducerAction =
+  | {
+    event: WorkflowHistoryEvent;
+    meta?: WorkflowHistoryEventMeta;
+    type: "commit";
+    updateDraft: (draft: WorkflowDraft) => WorkflowDraft;
+  }
+  | {
+    type: "replace";
+    updateDraft: (draft: WorkflowDraft) => WorkflowDraft;
+  }
+  | {
+    type: "undo";
+  }
+  | {
+    type: "redo";
+  };
+
 function sanitizeNodeData(data: MarketingNodeData): MarketingNodeData {
   const {
     insertMenuOpen: _insertMenuOpen,
     insertMenuSourceHandle: _insertMenuSourceHandle,
+    onDelete: _onDelete,
     onInsertAfter: _onInsertAfter,
     onSelect: _onSelect,
     onToggleInsertMenu: _onToggleInsertMenu,
@@ -88,80 +114,115 @@ function sanitizeDraft(draft: WorkflowDraft): WorkflowDraft {
   };
 }
 
+function isWorkflowDraftEqual(firstDraft: WorkflowDraft, secondDraft: WorkflowDraft) {
+  if (firstDraft.nodes.length !== secondDraft.nodes.length || firstDraft.edges.length !== secondDraft.edges.length) {
+    return false;
+  }
+
+  return JSON.stringify(firstDraft) === JSON.stringify(secondDraft);
+}
+
+function workflowHistoryReducer(
+  state: WorkflowHistoryReducerState,
+  action: WorkflowHistoryReducerAction,
+): WorkflowHistoryReducerState {
+  if (action.type === "commit") {
+    const previousHistoryState = createHistoryState(state.currentDraft, action.event, action.meta);
+    const nextDraft = sanitizeDraft(action.updateDraft(state.currentDraft));
+
+    if (isWorkflowDraftEqual(state.currentDraft, nextDraft)) {
+      return state;
+    }
+
+    return {
+      currentDraft: nextDraft,
+      futureStates: [],
+      pastStates: [
+        ...state.pastStates.slice(-(WORKFLOW_HISTORY_LIMIT - 1)),
+        previousHistoryState,
+      ],
+    };
+  }
+
+  if (action.type === "replace") {
+    return {
+      ...state,
+      currentDraft: sanitizeDraft(action.updateDraft(state.currentDraft)),
+    };
+  }
+
+  if (action.type === "undo") {
+    const previousState = state.pastStates.at(-1);
+
+    if (!previousState) {
+      return state;
+    }
+
+    return {
+      currentDraft: {
+        edges: previousState.edges,
+        nodes: previousState.nodes,
+      },
+      futureStates: [
+        createHistoryState(state.currentDraft, previousState.event, previousState.meta),
+        ...state.futureStates.slice(0, WORKFLOW_HISTORY_LIMIT - 1),
+      ],
+      pastStates: state.pastStates.slice(0, -1),
+    };
+  }
+
+  if (action.type === "redo") {
+    const nextState = state.futureStates[0];
+
+    if (!nextState) {
+      return state;
+    }
+
+    return {
+      currentDraft: {
+        edges: nextState.edges,
+        nodes: nextState.nodes,
+      },
+      futureStates: state.futureStates.slice(1),
+      pastStates: [
+        ...state.pastStates.slice(-(WORKFLOW_HISTORY_LIMIT - 1)),
+        createHistoryState(state.currentDraft, nextState.event, nextState.meta),
+      ],
+    };
+  }
+
+  return state;
+}
+
 export function useWorkflowHistory(initialDraft: () => WorkflowDraft) {
-  const [currentDraft, setCurrentDraft] = useState<WorkflowDraft>(() => sanitizeDraft(initialDraft()));
-  const [pastStates, setPastStates] = useState<WorkflowHistoryState[]>([]);
-  const [futureStates, setFutureStates] = useState<WorkflowHistoryState[]>([]);
+  const [{ currentDraft, futureStates, pastStates }, dispatch] = useReducer(
+    workflowHistoryReducer,
+    undefined,
+    () => ({
+      currentDraft: sanitizeDraft(initialDraft()),
+      futureStates: [],
+      pastStates: [],
+    }),
+  );
 
   const commitDraft = useCallback((
     event: WorkflowHistoryEvent,
     updateDraft: (draft: WorkflowDraft) => WorkflowDraft,
     meta?: WorkflowHistoryEventMeta,
   ) => {
-    setCurrentDraft((previousDraft) => {
-      const previousHistoryState = createHistoryState(previousDraft, event, meta);
-      const nextDraft = createHistoryState(updateDraft(previousDraft), event, meta);
-
-      setPastStates((currentPastStates) => [
-        ...currentPastStates.slice(-(WORKFLOW_HISTORY_LIMIT - 1)),
-        previousHistoryState,
-      ]);
-      setFutureStates([]);
-
-      return sanitizeDraft(nextDraft);
-    });
+    dispatch({ event, meta, type: "commit", updateDraft });
   }, []);
 
   const replaceDraft = useCallback((updateDraft: (draft: WorkflowDraft) => WorkflowDraft) => {
-    setCurrentDraft((previousDraft) => sanitizeDraft(updateDraft(previousDraft)));
+    dispatch({ type: "replace", updateDraft });
   }, []);
 
   const undo = useCallback(() => {
-    setPastStates((currentPastStates) => {
-      const previousState = currentPastStates.at(-1);
-
-      if (!previousState) {
-        return currentPastStates;
-      }
-
-      setCurrentDraft((currentDraft) => {
-        setFutureStates((currentFutureStates) => [
-          createHistoryState(currentDraft, previousState.event, previousState.meta),
-          ...currentFutureStates.slice(0, WORKFLOW_HISTORY_LIMIT - 1),
-        ]);
-
-        return {
-          edges: previousState.edges,
-          nodes: previousState.nodes,
-        };
-      });
-
-      return currentPastStates.slice(0, -1);
-    });
+    dispatch({ type: "undo" });
   }, []);
 
   const redo = useCallback(() => {
-    setFutureStates((currentFutureStates) => {
-      const nextState = currentFutureStates[0];
-
-      if (!nextState) {
-        return currentFutureStates;
-      }
-
-      setCurrentDraft((currentDraft) => {
-        setPastStates((currentPastStates) => [
-          ...currentPastStates.slice(-(WORKFLOW_HISTORY_LIMIT - 1)),
-          createHistoryState(currentDraft, nextState.event, nextState.meta),
-        ]);
-
-        return {
-          edges: nextState.edges,
-          nodes: nextState.nodes,
-        };
-      });
-
-      return currentFutureStates.slice(1);
-    });
+    dispatch({ type: "redo" });
   }, []);
 
   return {

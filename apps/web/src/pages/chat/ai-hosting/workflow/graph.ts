@@ -205,13 +205,13 @@ export function findLastActionNodeId(nodes: MarketingWorkflowNode[], edges: Mark
   return nonGoalNodes[nonGoalNodes.length - 1]?.id ?? "trigger";
 }
 
-export function getBranchHandleIndex(sourceHandle?: string) {
+export function getBranchHandleIndex(sourceHandle?: string | null) {
   const index = branchHandleOptions.findIndex((branch) => branch.id === sourceHandle);
 
   return index >= 0 ? index : 0;
 }
 
-export function getBranchHandleLabel(sourceHandle?: string) {
+export function getBranchHandleLabel(sourceHandle?: string | null) {
   return branchHandleOptions.find((branch) => branch.id === sourceHandle)?.label;
 }
 
@@ -285,21 +285,22 @@ export function arrangeWorkflowNodes(
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
   const originalIndexById = new Map(nodes.map((node, index) => [node.id, index]));
   const incomingCountById = new Map(nodes.map((node) => [node.id, 0]));
-  const outgoingById = new Map(nodes.map((node) => [node.id, [] as string[]]));
+  const outgoingById = new Map(nodes.map((node) => [node.id, [] as MarketingWorkflowEdge[]]));
+  const layoutOrderById = new Map(nodes.map((node) => [node.id, 0]));
 
   edges.forEach((edge) => {
     if (!nodeById.has(edge.source) || !nodeById.has(edge.target)) {
       return;
     }
 
-    outgoingById.get(edge.source)?.push(edge.target);
+    outgoingById.get(edge.source)?.push(edge);
     incomingCountById.set(edge.target, (incomingCountById.get(edge.target) ?? 0) + 1);
   });
 
   const depthById = new Map(nodes.map((node) => [node.id, 0]));
   const queue = nodes
     .filter((node) => incomingCountById.get(node.id) === 0)
-    .sort(compareNodesForLayout(originalIndexById));
+    .sort(compareNodesForLayout(originalIndexById, layoutOrderById));
   const arrangedIds = new Set<string>();
 
   while (queue.length > 0) {
@@ -311,10 +312,18 @@ export function arrangeWorkflowNodes(
 
     arrangedIds.add(node.id);
 
-    (outgoingById.get(node.id) ?? []).forEach((targetId) => {
+    (outgoingById.get(node.id) ?? []).forEach((edge) => {
+      const targetId = edge.target;
+      const nextDepth = (depthById.get(node.id) ?? 0) + 1;
+      const nextLayoutOrder = getLayoutOrder(node.id, edge.sourceHandle, layoutOrderById);
+
       depthById.set(
         targetId,
-        Math.max(depthById.get(targetId) ?? 0, (depthById.get(node.id) ?? 0) + 1),
+        Math.max(depthById.get(targetId) ?? 0, nextDepth),
+      );
+      layoutOrderById.set(
+        targetId,
+        Math.max(layoutOrderById.get(targetId) ?? 0, nextLayoutOrder),
       );
       incomingCountById.set(targetId, (incomingCountById.get(targetId) ?? 1) - 1);
 
@@ -323,7 +332,7 @@ export function arrangeWorkflowNodes(
 
         if (targetNode) {
           queue.push(targetNode);
-          queue.sort(compareNodesForLayout(originalIndexById));
+          queue.sort(compareNodesForLayout(originalIndexById, layoutOrderById));
         }
       }
     });
@@ -345,7 +354,7 @@ export function arrangeWorkflowNodes(
   const yById = new Map<string, number>();
 
   nodesByDepth.forEach((nodesInDepth) => {
-    const sortedNodes = [...nodesInDepth].sort(compareNodesForLayout(originalIndexById));
+    const sortedNodes = [...nodesInDepth].sort(compareNodesForLayout(originalIndexById, layoutOrderById));
 
     if (sortedNodes.length === 1) {
       yById.set(sortedNodes[0].id, sortedNodes[0].position.y);
@@ -369,7 +378,18 @@ export function arrangeWorkflowNodes(
   }));
 }
 
-function compareNodesForLayout(originalIndexById: Map<string, number>) {
+function getLayoutOrder(
+  sourceNodeId: string,
+  sourceHandle: string | null | undefined,
+  layoutOrderById: Map<string, number>,
+) {
+  return (layoutOrderById.get(sourceNodeId) ?? 0) + getBranchHandleIndex(sourceHandle) - 1;
+}
+
+function compareNodesForLayout(
+  originalIndexById: Map<string, number>,
+  layoutOrderById: Map<string, number> = new Map(),
+) {
   return (first: MarketingWorkflowNode, second: MarketingWorkflowNode) => {
     if (first.id === "trigger") {
       return -1;
@@ -379,7 +399,8 @@ function compareNodesForLayout(originalIndexById: Map<string, number>) {
       return 1;
     }
 
-    return first.position.y - second.position.y
+    return (layoutOrderById.get(first.id) ?? 0) - (layoutOrderById.get(second.id) ?? 0)
+      || first.position.y - second.position.y
       || first.position.x - second.position.x
       || (originalIndexById.get(first.id) ?? 0) - (originalIndexById.get(second.id) ?? 0);
   };
@@ -438,4 +459,3 @@ export function buildPublishChecks(
     },
   ];
 }
-

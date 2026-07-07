@@ -1,8 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type {
   Connection,
-  EdgeChange,
-  NodeChange,
   OnEdgesChange,
   OnNodesChange,
 } from "@xyflow/react";
@@ -11,8 +9,6 @@ import {
   MiniMap,
   ReactFlow,
   ReactFlowProvider,
-  applyEdgeChanges,
-  applyNodeChanges,
   useReactFlow,
   useViewport,
 } from "@xyflow/react";
@@ -47,7 +43,6 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { AiHostingLayout } from "./ai-hosting-layout";
 import {
-  WORKFLOW_LAYOUT_X_GAP,
   WORKFLOW_MAX_ZOOM,
   WORKFLOW_MIN_ZOOM,
   workflowZoomOptions,
@@ -55,36 +50,25 @@ import {
 import { MarketingBezierEdge } from "./workflow/canvas/marketing-edge";
 import { paletteItems } from "./workflow/node-definitions";
 import {
-  arrangeWorkflowNodes,
   buildPublishChecks,
-  createEdge,
-  createInitialEdges,
-  createInitialNodes,
-  createNodeFromKind,
-  findLastActionNodeId,
-  getAfterNodesInSameBranch,
-  getBranchHandleLabel,
-  getBranchInsertY,
-  getNodeIdSet,
-  shiftNodesRight,
 } from "./workflow/graph";
-import { useWorkflowHistory } from "./workflow/history";
 import { getInsertMenuTop, getWorkflowNodeWidth } from "./workflow/layout";
 import { MarketingNodeCard } from "./workflow/nodes";
 import { NodeConfigPanel } from "./workflow/panels";
+import { useWorkflowShortcuts } from "./workflow/shortcuts";
 import type {
   InsertableMarketingNodeKind,
   InspectorTab,
   MarketingEdgeHighlightState,
   MarketingNodeData,
   MarketingNodeKind,
-  MarketingWorkflowEdge,
   MarketingWorkflowNode,
   MarketingWorkflowRenderEdge,
   MarketingWorkflowRenderNode,
   NodeRunRecord,
   QuickInsertTarget,
 } from "./workflow/types";
+import { useWorkflowController } from "./workflow/use-workflow-controller";
 import "@xyflow/react/dist/style.css";
 import "./agent-workflow-page.css";
 
@@ -269,21 +253,25 @@ function WorkflowWorkspaceContent({
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState("");
   const {
+    addNode: addWorkflowNode,
+    arrangeNodes,
     canRedo,
     canUndo,
-    commitDraft,
-    currentDraft,
+    connectNodes: connectWorkflowNodes,
+    deleteNode,
+    edges,
+    insertNodeAfter,
+    insertNodeBetween,
+    nodes,
+    onEdgesChange,
+    onNodesChange,
     redo,
-    replaceDraft,
     undo,
-  } = useWorkflowHistory(() => ({
-    edges: createInitialEdges(),
-    nodes: createInitialNodes(),
-  }));
+    updateNodeData,
+  } = useWorkflowController();
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [runRecords, setRunRecords] = useState<Record<string, NodeRunRecord>>({});
   const [publishAttempted, setPublishAttempted] = useState(false);
-  const { edges, nodes } = currentDraft;
   const selectedNode = nodes.find((node) => node.id === selectedNodeId) ?? nodes[0];
   const checks = useMemo(() => buildPublishChecks(nodes, edges), [nodes, edges]);
   const readyChecks = checks.filter((check) => check.status === "ready").length;
@@ -315,10 +303,10 @@ function WorkflowWorkspaceContent({
         data: {
           ...edge.data,
           highlightState: getEdgeHighlightState(edge.id, hoveredEdgeIds),
-          onInsertBetween: insertNodeBetween,
+          onInsertBetween: handleInsertNodeBetween,
         },
       })),
-    [edges, hoveredEdgeIds, nodes],
+    [edges, hoveredEdgeIds],
   );
 
   const decoratedNodes = useMemo<MarketingWorkflowRenderNode[]>(
@@ -336,7 +324,8 @@ function WorkflowWorkspaceContent({
             insertMenuSourceHandle: node.id === quickInsertTarget?.nodeId
               ? quickInsertTarget.sourceHandle
               : undefined,
-            onInsertAfter: insertNodeAfter,
+            onDelete: handleDeleteNode,
+            onInsertAfter: handleInsertNodeAfter,
             onSelect: selectWorkflowNode,
             onToggleInsertMenu: (nodeId: string, sourceHandle?: string) => {
               setQuickInsertTarget((currentTarget) =>
@@ -349,8 +338,16 @@ function WorkflowWorkspaceContent({
           },
         };
       }),
-    [edges, nodes, quickInsertTarget, selectedNodeId],
+    [nodes, quickInsertTarget, selectedNodeId],
   );
+
+  useWorkflowShortcuts({
+    canRedo,
+    canUndo,
+    onDeleteSelection: deleteSelectedNode,
+    onRedo: redoWorkflowChange,
+    onUndo: undoWorkflowChange,
+  });
 
   function selectWorkflowNode(nodeId: string) {
     setSelectedNodeId(nodeId);
@@ -359,48 +356,8 @@ function WorkflowWorkspaceContent({
     setQuickInsertTarget(null);
   }
 
-  const onNodesChange: OnNodesChange<MarketingWorkflowRenderNode> = useCallback(
-    (changes: NodeChange<MarketingWorkflowRenderNode>[]) => {
-      replaceDraft((draft) => ({
-        ...draft,
-        nodes: applyNodeChanges(changes as NodeChange<MarketingWorkflowNode>[], draft.nodes),
-      }));
-    },
-    [replaceDraft],
-  );
-
-  const onEdgesChange: OnEdgesChange<MarketingWorkflowRenderEdge> = useCallback(
-    (changes: EdgeChange<MarketingWorkflowRenderEdge>[]) => {
-      replaceDraft((draft) => ({
-        ...draft,
-        edges: applyEdgeChanges(changes as EdgeChange<MarketingWorkflowEdge>[], draft.edges),
-      }));
-    },
-    [replaceDraft],
-  );
-
   function updateSelectedNode(patch: Partial<MarketingNodeData>) {
-    commitDraft(
-      "node:config-change",
-      (draft) => ({
-        ...draft,
-        nodes: draft.nodes.map((node) =>
-          node.id === selectedNodeId
-            ? {
-                ...node,
-                data: {
-                  ...node.data,
-                  ...patch,
-                },
-              }
-            : node,
-        ),
-      }),
-      {
-        nodeId: selectedNodeId,
-        nodeTitle: selectedNode?.data.title,
-      },
-    );
+    updateNodeData(selectedNodeId, patch);
   }
 
   function undoWorkflowChange() {
@@ -414,157 +371,62 @@ function WorkflowWorkspaceContent({
   }
 
   function addNode(kind: MarketingNodeKind) {
-    if (kind === "trigger" || kind === "goal") {
-      return;
-    }
-
-    insertNodeAfter(findLastActionNodeId(nodes, edges), kind);
-    setPaletteOpen(false);
+    const result = addWorkflowNode(kind);
+    handleWorkflowEditResult(result);
   }
 
-  function insertNodeAfter(
+  function handleInsertNodeAfter(
     previousNodeId: string,
     kind: InsertableMarketingNodeKind,
     sourceHandle?: string,
   ) {
-    const nodeId = `${kind}-${Date.now()}`;
-    const previousNode = nodes.find((node) => node.id === previousNodeId);
-    const replacedEdge = edges.find((edge) =>
-      edge.source === previousNodeId
-      && (sourceHandle ? edge.sourceHandle === sourceHandle : !edge.sourceHandle),
-    );
-    const nextNodeId = replacedEdge?.target ?? "goal";
-    const nextNode = nodes.find((node) => node.id === nextNodeId);
-    const nodesToShift = replacedEdge
-      ? getAfterNodesInSameBranch(nodes, edges, nextNodeId)
-      : [];
-    const shiftedNodeIds = getNodeIdSet(nodesToShift);
-    const node = {
-      ...createNodeFromKind(kind, nodeId, nodes.length),
-      position: {
-        x: nextNode?.position.x ?? (previousNode?.position.x ?? 0) + WORKFLOW_LAYOUT_X_GAP,
-        y:
-          nextNode?.position.y
-          ?? (previousNode?.data.kind === "branch"
-            ? getBranchInsertY(previousNode.position.y, sourceHandle)
-            : previousNode?.position.y ?? 0),
-      },
-    };
-
-    commitDraft(
-      replacedEdge ? "node:insert" : "node:add",
-      (draft) => ({
-        edges: [
-          ...draft.edges.filter(
-            (edge) => edge.id !== replacedEdge?.id,
-          ),
-          createEdge(previousNodeId, nodeId, replacedEdge?.data?.label ?? getBranchHandleLabel(sourceHandle), {
-            sourceHandle: replacedEdge?.sourceHandle ?? sourceHandle,
-          }),
-          createEdge(nodeId, nextNodeId, undefined, {
-            targetHandle: replacedEdge?.targetHandle,
-          }),
-        ],
-        nodes: [...shiftNodesRight(draft.nodes, shiftedNodeIds), node],
-      }),
-      {
-        nodeId,
-        nodeTitle: node.data.title,
-      },
-    );
-    setSelectedNodeId(nodeId);
-    setIsInspectorOpen(true);
-    setQuickInsertTarget(null);
-    setPaletteOpen(false);
-    setIsChecksOpen(false);
+    const result = insertNodeAfter(previousNodeId, kind, sourceHandle);
+    handleWorkflowEditResult(result);
   }
 
-  function insertNodeBetween(
+  function handleInsertNodeBetween(
     edgeId: string,
     sourceNodeId: string,
     targetNodeId: string,
     kind: InsertableMarketingNodeKind,
   ) {
-    const nodeId = `${kind}-${Date.now()}`;
-    const sourceNode = nodes.find((node) => node.id === sourceNodeId);
-    const targetNode = nodes.find((node) => node.id === targetNodeId);
-    const replacedEdge = edges.find((edge) => edge.id === edgeId);
-    const nodesToShift = getAfterNodesInSameBranch(nodes, edges, targetNodeId);
-    const shiftedNodeIds = getNodeIdSet(nodesToShift);
-    const node = {
-      ...createNodeFromKind(kind, nodeId, nodes.length),
-      position: {
-        x: targetNode?.position.x ?? (sourceNode?.position.x ?? 0) + WORKFLOW_LAYOUT_X_GAP,
-        y: targetNode?.position.y ?? sourceNode?.position.y ?? 0,
-      },
-    };
-
-    commitDraft(
-      "node:insert",
-      (draft) => ({
-        edges: [
-          ...draft.edges.filter((edge) => edge.id !== edgeId),
-          createEdge(sourceNodeId, nodeId, replacedEdge?.data?.label, {
-            sourceHandle: replacedEdge?.sourceHandle,
-            targetHandle: replacedEdge?.targetHandle,
-          }),
-          createEdge(nodeId, targetNodeId),
-        ],
-        nodes: [...shiftNodesRight(draft.nodes, shiftedNodeIds), node],
-      }),
-      {
-        edgeId,
-        nodeId,
-        nodeTitle: node.data.title,
-      },
-    );
-    setSelectedNodeId(nodeId);
-    setIsInspectorOpen(true);
-    setQuickInsertTarget(null);
-    setPaletteOpen(false);
-    setIsChecksOpen(false);
+    const result = insertNodeBetween(edgeId, sourceNodeId, targetNodeId, kind);
+    handleWorkflowEditResult(result);
   }
 
   function connectNodes(connection: Connection) {
-    const { source, sourceHandle, target, targetHandle } = connection;
+    const result = connectWorkflowNodes(connection);
 
-    if (!source || !target || source === target) {
+    if (result) {
+      setQuickInsertTarget(null);
+      setIsChecksOpen(false);
+    }
+  }
+
+  function handleDeleteNode(nodeId: string) {
+    const result = deleteNode(nodeId);
+
+    if (!result) {
       return;
     }
 
-    if (
-      edges.some((edge) =>
-        edge.source === source
-        && edge.sourceHandle === (sourceHandle ?? undefined)
-        && edge.target === target
-        && edge.targetHandle === (targetHandle ?? undefined),
-      )
-    ) {
-      return;
-    }
-
-    commitDraft(
-      "edge:connect",
-      (draft) => ({
-        ...draft,
-        edges: [
-          ...draft.edges,
-          createEdge(source, target, undefined, { sourceHandle, targetHandle }),
-        ],
-      }),
-      {
-        nodeId: source,
-      },
-    );
     setQuickInsertTarget(null);
     setIsChecksOpen(false);
   }
 
-  function arrangeNodes() {
-    commitDraft("layout:organize", (draft) => ({
-      ...draft,
-      nodes: arrangeWorkflowNodes(draft.nodes, draft.edges),
-    }));
+  function deleteSelectedNode() {
+    handleDeleteNode(selectedNodeId);
+  }
+
+  function handleWorkflowEditResult(result?: { nodeId?: string }) {
+    if (result?.nodeId) {
+      setSelectedNodeId(result.nodeId);
+      setIsInspectorOpen(true);
+    }
+
+    setQuickInsertTarget(null);
+    setPaletteOpen(false);
+    setIsChecksOpen(false);
   }
 
   function runSelectedNode() {

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { MoreHorizontalIcon } from "@hugeicons/core-free-icons";
+import { Delete02Icon, MoreHorizontalIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   DropdownMenu,
@@ -141,6 +141,18 @@ function NodeActionMenu({
               }}
             >
               添加后续节点
+            </DropdownMenuItem>
+          ) : null}
+          {data.kind !== "trigger" && data.kind !== "goal" ? (
+            <DropdownMenuItem
+              onClick={(event) => {
+                event.stopPropagation();
+                data.onDelete?.(id);
+                setActionMenuOpen(false);
+              }}
+            >
+              <HugeiconsIcon icon={Delete02Icon} size={14} strokeWidth={1.8} />
+              删除节点
             </DropdownMenuItem>
           ) : null}
         </DropdownMenuContent>

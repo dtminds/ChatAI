@@ -13,6 +13,7 @@ import type { SmartReplySuggestion } from "@/pages/chat/components/smart-reply-c
 import type { SmartReplyRecommendedAttachment } from "@/pages/chat/components/smart-reply-edit-dialog";
 import type { SmartReplyViolationResult } from "@/pages/chat/components/smart-reply-edit-dialog";
 import type { WorkbenchSmartReplyTextModerationResponse } from "@chatai/contracts";
+import { resolveMediaAssetUrl } from "@/lib/media-asset-url";
 
 const DEFAULT_SMART_REPLY_ASSISTANT_NAME = "智能助手";
 export const SMART_REPLY_THINKING_LABEL = "思考中..";
@@ -1149,14 +1150,6 @@ export function getSmartReplyLookupKey(message: { uiMessageKey?: string; seq?: n
   return message.seq != null ? String(message.seq) : (message.uiMessageKey ?? "");
 }
 
-const SMART_REPLY_ATTACHMENT_MEDIA_CDN_PREFIX = "https://b1.dtminds.com";
-
-function joinSmartReplyMediaCdnUrl(path: string) {
-  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-
-  return SMART_REPLY_ATTACHMENT_MEDIA_CDN_PREFIX + normalizedPath;
-}
-
 export type SmartReplySendPayload = {
   content: string;
   recommendedAttachments: SmartReplyRecommendedAttachment[];
@@ -1264,17 +1257,7 @@ function parseSmartReplyAttachmentFileType(fileType: string) {
 }
 
 function resolveSmartReplyMediaUrl(path?: string) {
-  const trimmed = path?.trim();
-
-  if (!trimmed) {
-    return undefined;
-  }
-
-  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
-    return trimmed;
-  }
-
-  return joinSmartReplyMediaCdnUrl(trimmed);
+  return resolveMediaAssetUrl(path);
 }
 
 function resolveSmartReplyAttachmentImageUrl(

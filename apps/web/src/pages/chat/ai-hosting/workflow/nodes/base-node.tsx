@@ -14,7 +14,7 @@ import { nodeVisuals } from "../node-definitions";
 import type { MarketingNodeRenderData, MarketingNodeKind } from "../types";
 import { WorkflowTargetHandle } from "./node-handles";
 
-export function MarketingBaseNode({
+export function WorkflowBaseNode({
   body,
   data,
   id,

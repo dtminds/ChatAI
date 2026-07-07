@@ -3,7 +3,7 @@ import { branchHandleOptions } from "../constants";
 import { getBranchHandleTop } from "../layout";
 import { nodeVisuals } from "../node-definitions";
 import type { MarketingWorkflowRenderNode } from "../types";
-import { MarketingBaseNode } from "./base-node";
+import { WorkflowBaseNode } from "./base-node";
 import { WorkflowSourceHandle } from "./node-handles";
 import { NodeComponentMap } from "./registry";
 
@@ -11,7 +11,7 @@ export function MarketingNodeCard({ data, id }: NodeProps<MarketingWorkflowRende
   const NodeComponent = NodeComponentMap[data.kind];
 
   return (
-    <MarketingBaseNode
+    <WorkflowBaseNode
       body={<NodeComponent data={data} visual={nodeVisuals[data.kind]} />}
       data={data}
       id={id}

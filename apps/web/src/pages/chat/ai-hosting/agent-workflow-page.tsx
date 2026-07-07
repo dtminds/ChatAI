@@ -1,54 +1,35 @@
 import { useCallback, useMemo, useState } from "react";
 import type {
   Connection,
-  Edge,
   EdgeChange,
-  EdgeProps,
-  Node,
   NodeChange,
-  NodeProps,
   OnEdgesChange,
   OnNodesChange,
 } from "@xyflow/react";
 import {
   Background,
-  BaseEdge,
-  EdgeLabelRenderer,
-  Handle,
   MiniMap,
-  Position,
   ReactFlow,
   ReactFlowProvider,
   ViewportPortal,
   applyEdgeChanges,
   applyNodeChanges,
-  getBezierPath,
   useReactFlow,
   useViewport,
 } from "@xyflow/react";
 import {
   Add01Icon,
-  AiChat02Icon,
   AlertCircleIcon,
   ArrowLeft02Icon,
   ArrangeIcon,
   Cancel01Icon,
   CheckmarkCircle02Icon,
-  Clock01Icon,
-  Coupon01Icon,
   FlowConnectionIcon,
-  GitBranchIcon,
-  Message01Icon,
-  MoreHorizontalIcon,
   PlayIcon,
   Redo03Icon,
-  Rocket01Icon,
   Search01Icon,
   Settings02Icon,
-  TagsIcon,
-  Target01Icon,
   Undo03Icon,
-  UserSwitchIcon,
   WorkflowSquare01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -64,121 +45,52 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
-import { SegmentedControl, SegmentedControlItem } from "@/components/ui/segmented-control";
-import { Separator } from "@/components/ui/separator";
-import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { AiHostingLayout } from "./ai-hosting-layout";
+import {
+  WORKFLOW_LAYOUT_X_GAP,
+  WORKFLOW_MAX_ZOOM,
+  WORKFLOW_MIN_ZOOM,
+  workflowZoomOptions,
+} from "./workflow/constants";
+import { MarketingBezierEdge } from "./workflow/canvas/marketing-edge";
+import { paletteItems } from "./workflow/node-definitions";
+import {
+  arrangeWorkflowNodes,
+  buildPublishChecks,
+  createEdge,
+  createInitialEdges,
+  createInitialNodes,
+  createNodeFromKind,
+  findLastActionNodeId,
+  getAfterNodesInSameBranch,
+  getBranchHandleLabel,
+  getBranchInsertY,
+  getNodeIdSet,
+  shiftNodesRight,
+} from "./workflow/graph";
+import { getInsertMenuTop, getWorkflowNodeWidth } from "./workflow/layout";
+import { MarketingNodeCard } from "./workflow/nodes";
+import { NodeConfigPanel } from "./workflow/panels";
+import type {
+  InsertableMarketingNodeKind,
+  InspectorTab,
+  MarketingEdgeHighlightState,
+  MarketingNodeData,
+  MarketingNodeKind,
+  MarketingWorkflowEdge,
+  MarketingWorkflowNode,
+  MarketingWorkflowRenderEdge,
+  MarketingWorkflowRenderNode,
+  NodeRunRecord,
+  QuickInsertTarget,
+  WorkflowView,
+  WorkflowSnapshot,
+} from "./workflow/types";
 import "@xyflow/react/dist/style.css";
 import "./agent-workflow-page.css";
-
-type WorkflowView = "canvas" | "preview" | "checks";
-type InspectorTab = "settings" | "run" | "variables";
-type MarketingNodeKind = "trigger" | "wait" | "branch" | "action" | "ai" | "goal";
-type MarketingNodeStatus = "ready" | "running" | "warning";
-type InsertableMarketingNodeKind = Exclude<MarketingNodeKind, "trigger" | "goal">;
-
-type MarketingNodeData = Record<string, unknown> & {
-  actionType?: "message" | "coupon" | "tag" | "handoff" | "ai";
-  agentName?: string;
-  audience?: string;
-  branchRule?: string;
-  conversion?: number;
-  delayDays?: number;
-  kind: MarketingNodeKind;
-  label: string;
-  metric: string;
-  insertMenuOpen?: boolean;
-  onInsertAfter?: (nodeId: string, kind: InsertableMarketingNodeKind) => void;
-  onToggleInsertMenu?: (nodeId: string) => void;
-  onSelect?: (nodeId: string) => void;
-  selected?: boolean;
-  status: MarketingNodeStatus;
-  summary: string;
-  title: string;
-};
-
-type MarketingWorkflowNode = Node<MarketingNodeData, "marketing">;
-type MarketingEdgeData = Record<string, unknown> & {
-  label?: string;
-  onInsertBetween?: (
-    edgeId: string,
-    sourceNodeId: string,
-    targetNodeId: string,
-    kind: InsertableMarketingNodeKind,
-  ) => void;
-};
-type MarketingWorkflowEdge = Edge<MarketingEdgeData, "marketing">;
-type WorkflowSnapshot = {
-  edges: MarketingWorkflowEdge[];
-  label: string;
-  nodes: MarketingWorkflowNode[];
-  selectedNodeId: string;
-};
-type NodeRunRecord = {
-  durationMs: number;
-  finishedAt: string;
-  input: string;
-  logs: string[];
-  output: string;
-  status: "succeeded" | "waiting";
-};
-
-const WORKFLOW_MIN_ZOOM = 0.25;
-const WORKFLOW_MAX_ZOOM = 2;
-const WORKFLOW_NODE_WIDTH = 240;
-const WORKFLOW_NODE_ESTIMATED_HEIGHT = 176;
-const WORKFLOW_NODE_HANDLE_TOP = 16;
-const workflowZoomOptions = [
-  { label: "200%", value: 2 },
-  { label: "100%", value: 1 },
-  { label: "75%", value: 0.75 },
-  { label: "50%", value: 0.5 },
-  { label: "25%", value: 0.25 },
-] as const;
-
-const nodeVisuals: Record<
-  MarketingNodeKind,
-  {
-    accentClassName: string;
-    icon: typeof Rocket01Icon;
-    label: string;
-  }
-> = {
-  action: {
-    accentClassName: "bg-sky-500/12 text-sky-700 ring-sky-500/20",
-    icon: Message01Icon,
-    label: "动作",
-  },
-  ai: {
-    accentClassName: "bg-violet-500/12 text-violet-700 ring-violet-500/20",
-    icon: AiChat02Icon,
-    label: "AI",
-  },
-  branch: {
-    accentClassName: "bg-amber-500/12 text-amber-700 ring-amber-500/20",
-    icon: GitBranchIcon,
-    label: "条件",
-  },
-  goal: {
-    accentClassName: "bg-emerald-500/12 text-emerald-700 ring-emerald-500/20",
-    icon: Target01Icon,
-    label: "目标",
-  },
-  trigger: {
-    accentClassName: "bg-rose-500/12 text-rose-700 ring-rose-500/20",
-    icon: Rocket01Icon,
-    label: "触发",
-  },
-  wait: {
-    accentClassName: "bg-indigo-500/12 text-indigo-700 ring-indigo-500/20",
-    icon: Clock01Icon,
-    label: "等待",
-  },
-};
 
 const nodeTypes = {
   marketing: MarketingNodeCard,
@@ -187,56 +99,6 @@ const nodeTypes = {
 const edgeTypes = {
   marketing: MarketingBezierEdge,
 };
-
-const agentOptions = [
-  {
-    description: "商品咨询、活动解释、搭配推荐",
-    knowledge: "护肤知识库、活动政策",
-    name: "护肤小助理",
-  },
-  {
-    description: "订单异常、退换货、投诉安抚",
-    knowledge: "售后知识库、服务规则",
-    name: "售后小助理",
-  },
-  {
-    description: "高意向客户识别、优惠引导",
-    knowledge: "直播活动、会员权益",
-    name: "转化小助理",
-  },
-] as const;
-
-const paletteItems = [
-  {
-    description: "按天、小时或固定窗口延迟触达",
-    icon: Clock01Icon,
-    id: "wait",
-    label: "等待",
-  },
-  {
-    description: "按标签、行为、会话意图分支",
-    icon: GitBranchIcon,
-    id: "branch",
-    label: "条件分支",
-  },
-  {
-    description: "发送私域消息、优惠券或打标签",
-    icon: Coupon01Icon,
-    id: "action",
-    label: "营销动作",
-  },
-  {
-    description: "启用指定 Agent，接管后续会话",
-    icon: AiChat02Icon,
-    id: "ai",
-    label: "AI 接待",
-  },
-] as const satisfies Array<{
-  description: string;
-  icon: typeof Rocket01Icon;
-  id: InsertableMarketingNodeKind;
-  label: string;
-}>;
 
 const journeyPeople = [
   {
@@ -440,65 +302,91 @@ function WorkflowWorkspaceContent({
   const [activeView, setActiveView] = useState<WorkflowView>("canvas");
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("settings");
   const [selectedNodeId, setSelectedNodeId] = useState("action-message");
-  const [quickInsertNodeId, setQuickInsertNodeId] = useState<string | null>(null);
+  const [isInspectorOpen, setIsInspectorOpen] = useState(true);
+  const [quickInsertTarget, setQuickInsertTarget] = useState<QuickInsertTarget | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState("");
   const [nodes, setNodes] = useState<MarketingWorkflowNode[]>(() => createInitialNodes());
   const [edges, setEdges] = useState<MarketingWorkflowEdge[]>(() => createInitialEdges());
   const [history, setHistory] = useState<WorkflowSnapshot[]>([]);
   const [future, setFuture] = useState<WorkflowSnapshot[]>([]);
+  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [runRecords, setRunRecords] = useState<Record<string, NodeRunRecord>>({});
   const [publishAttempted, setPublishAttempted] = useState(false);
   const selectedNode = nodes.find((node) => node.id === selectedNodeId) ?? nodes[0];
   const checks = useMemo(() => buildPublishChecks(nodes, edges), [nodes, edges]);
   const readyChecks = checks.filter((check) => check.status === "ready").length;
   const publishReady = readyChecks === checks.length;
+  const hoveredEdgeIds = useMemo(() => {
+    if (!hoveredNodeId) {
+      return null;
+    }
 
-  const decoratedEdges = useMemo(
+    return new Set(
+      edges
+        .filter((edge) => edge.source === hoveredNodeId || edge.target === hoveredNodeId)
+        .map((edge) => edge.id),
+    );
+  }, [edges, hoveredNodeId]);
+
+  const decoratedEdges = useMemo<MarketingWorkflowRenderEdge[]>(
     () =>
       edges.map((edge) => ({
         ...edge,
         data: {
           ...edge.data,
+          highlightState: getEdgeHighlightState(edge.id, hoveredEdgeIds),
           onInsertBetween: insertNodeBetween,
         },
       })),
-    [edges, nodes],
+    [edges, hoveredEdgeIds, nodes],
   );
 
-  const decoratedNodes = useMemo(
+  const decoratedNodes = useMemo<MarketingWorkflowRenderNode[]>(
     () =>
       nodes.map((node) => ({
         ...node,
         data: {
           ...node.data,
-          insertMenuOpen: node.id === quickInsertNodeId,
+          insertMenuOpen: node.id === quickInsertTarget?.nodeId,
+          insertMenuSourceHandle: node.id === quickInsertTarget?.nodeId
+            ? quickInsertTarget.sourceHandle
+            : undefined,
           onInsertAfter: insertNodeAfter,
           onSelect: selectWorkflowNode,
-          onToggleInsertMenu: (nodeId: string) => {
-            setQuickInsertNodeId((currentNodeId) => (currentNodeId === nodeId ? null : nodeId));
+          onToggleInsertMenu: (nodeId: string, sourceHandle?: string) => {
+            setQuickInsertTarget((currentTarget) =>
+              currentTarget?.nodeId === nodeId && currentTarget.sourceHandle === sourceHandle
+                ? null
+                : { nodeId, sourceHandle },
+            );
           },
           selected: node.id === selectedNodeId,
         },
       })),
-    [edges, nodes, quickInsertNodeId, selectedNodeId],
+    [edges, nodes, quickInsertTarget, selectedNodeId],
   );
 
   function selectWorkflowNode(nodeId: string) {
     setSelectedNodeId(nodeId);
-    setQuickInsertNodeId(null);
+    setIsInspectorOpen(true);
+    setQuickInsertTarget(null);
   }
 
-  const onNodesChange: OnNodesChange<MarketingWorkflowNode> = useCallback(
-    (changes: NodeChange<MarketingWorkflowNode>[]) => {
-      setNodes((currentNodes) => applyNodeChanges(changes, currentNodes));
+  const onNodesChange: OnNodesChange<MarketingWorkflowRenderNode> = useCallback(
+    (changes: NodeChange<MarketingWorkflowRenderNode>[]) => {
+      setNodes((currentNodes) =>
+        applyNodeChanges(changes as NodeChange<MarketingWorkflowNode>[], currentNodes),
+      );
     },
     [],
   );
 
-  const onEdgesChange: OnEdgesChange<MarketingWorkflowEdge> = useCallback(
-    (changes: EdgeChange<MarketingWorkflowEdge>[]) => {
-      setEdges((currentEdges) => applyEdgeChanges(changes, currentEdges));
+  const onEdgesChange: OnEdgesChange<MarketingWorkflowRenderEdge> = useCallback(
+    (changes: EdgeChange<MarketingWorkflowRenderEdge>[]) => {
+      setEdges((currentEdges) =>
+        applyEdgeChanges(changes as EdgeChange<MarketingWorkflowEdge>[], currentEdges),
+      );
     },
     [],
   );
@@ -552,7 +440,7 @@ function WorkflowWorkspaceContent({
     setNodes(previousSnapshot.nodes);
     setEdges(previousSnapshot.edges);
     setSelectedNodeId(previousSnapshot.selectedNodeId);
-    setQuickInsertNodeId(null);
+    setQuickInsertTarget(null);
     setHistory((currentHistory) => currentHistory.slice(0, -1));
   }
 
@@ -575,7 +463,7 @@ function WorkflowWorkspaceContent({
     setNodes(nextSnapshot.nodes);
     setEdges(nextSnapshot.edges);
     setSelectedNodeId(nextSnapshot.selectedNodeId);
-    setQuickInsertNodeId(null);
+    setQuickInsertTarget(null);
     setFuture((currentFuture) => currentFuture.slice(1));
   }
 
@@ -591,33 +479,48 @@ function WorkflowWorkspaceContent({
   function insertNodeAfter(
     previousNodeId: string,
     kind: InsertableMarketingNodeKind,
+    sourceHandle?: string,
   ) {
     recordHistory("添加节点");
     const nodeId = `${kind}-${Date.now()}`;
     const previousNode = nodes.find((node) => node.id === previousNodeId);
-    const replacedEdge = edges.find((edge) => edge.source === previousNodeId);
+    const replacedEdge = edges.find((edge) =>
+      edge.source === previousNodeId
+      && (sourceHandle ? edge.sourceHandle === sourceHandle : !edge.sourceHandle),
+    );
     const nextNodeId = replacedEdge?.target ?? "goal";
+    const nextNode = nodes.find((node) => node.id === nextNodeId);
+    const nodesToShift = replacedEdge
+      ? getAfterNodesInSameBranch(nodes, edges, nextNodeId)
+      : [];
+    const shiftedNodeIds = getNodeIdSet(nodesToShift);
     const node = {
       ...createNodeFromKind(kind, nodeId, nodes.length),
       position: {
-        x: (previousNode?.position.x ?? 0) + 320,
+        x: nextNode?.position.x ?? (previousNode?.position.x ?? 0) + WORKFLOW_LAYOUT_X_GAP,
         y:
-          previousNode?.data.kind === "branch"
-            ? (previousNode?.position.y ?? 0) + 96
-            : previousNode?.position.y ?? 0,
+          nextNode?.position.y
+          ?? (previousNode?.data.kind === "branch"
+            ? getBranchInsertY(previousNode.position.y, sourceHandle)
+            : previousNode?.position.y ?? 0),
       },
     };
 
-    setNodes((currentNodes) => [...currentNodes, node]);
+    setNodes((currentNodes) => [...shiftNodesRight(currentNodes, shiftedNodeIds), node]);
     setEdges((currentEdges) => [
       ...currentEdges.filter(
         (edge) => edge.id !== replacedEdge?.id,
       ),
-      createEdge(previousNodeId, nodeId),
-      createEdge(nodeId, nextNodeId, replacedEdge?.data?.label),
+      createEdge(previousNodeId, nodeId, replacedEdge?.data?.label ?? getBranchHandleLabel(sourceHandle), {
+        sourceHandle: replacedEdge?.sourceHandle ?? sourceHandle,
+      }),
+      createEdge(nodeId, nextNodeId, undefined, {
+        targetHandle: replacedEdge?.targetHandle,
+      }),
     ]);
     setSelectedNodeId(nodeId);
-    setQuickInsertNodeId(null);
+    setIsInspectorOpen(true);
+    setQuickInsertTarget(null);
     setPaletteOpen(false);
     setActiveView("canvas");
   }
@@ -633,60 +536,62 @@ function WorkflowWorkspaceContent({
     const sourceNode = nodes.find((node) => node.id === sourceNodeId);
     const targetNode = nodes.find((node) => node.id === targetNodeId);
     const replacedEdge = edges.find((edge) => edge.id === edgeId);
+    const nodesToShift = getAfterNodesInSameBranch(nodes, edges, targetNodeId);
+    const shiftedNodeIds = getNodeIdSet(nodesToShift);
     const node = {
       ...createNodeFromKind(kind, nodeId, nodes.length),
       position: {
-        x:
-          sourceNode && targetNode
-            ? (sourceNode.position.x + targetNode.position.x) / 2
-            : (sourceNode?.position.x ?? 0) + 320,
-        y:
-          sourceNode && targetNode
-            ? (sourceNode.position.y + targetNode.position.y) / 2 + 92
-            : sourceNode?.position.y ?? 0,
+        x: targetNode?.position.x ?? (sourceNode?.position.x ?? 0) + WORKFLOW_LAYOUT_X_GAP,
+        y: targetNode?.position.y ?? sourceNode?.position.y ?? 0,
       },
     };
 
-    setNodes((currentNodes) => [...currentNodes, node]);
+    setNodes((currentNodes) => [...shiftNodesRight(currentNodes, shiftedNodeIds), node]);
     setEdges((currentEdges) => [
       ...currentEdges.filter((edge) => edge.id !== edgeId),
-      createEdge(sourceNodeId, nodeId, replacedEdge?.data?.label),
+      createEdge(sourceNodeId, nodeId, replacedEdge?.data?.label, {
+        sourceHandle: replacedEdge?.sourceHandle,
+        targetHandle: replacedEdge?.targetHandle,
+      }),
       createEdge(nodeId, targetNodeId),
     ]);
     setSelectedNodeId(nodeId);
-    setQuickInsertNodeId(null);
+    setIsInspectorOpen(true);
+    setQuickInsertTarget(null);
     setPaletteOpen(false);
     setActiveView("canvas");
   }
 
   function connectNodes(connection: Connection) {
-    const { source, target } = connection;
+    const { source, sourceHandle, target, targetHandle } = connection;
 
     if (!source || !target || source === target) {
       return;
     }
 
-    if (edges.some((edge) => edge.source === source && edge.target === target)) {
+    if (
+      edges.some((edge) =>
+        edge.source === source
+        && edge.sourceHandle === (sourceHandle ?? undefined)
+        && edge.target === target
+        && edge.targetHandle === (targetHandle ?? undefined),
+      )
+    ) {
       return;
     }
 
     recordHistory("连接节点");
-    setEdges((currentEdges) => [...currentEdges, createEdge(source, target)]);
-    setQuickInsertNodeId(null);
+    setEdges((currentEdges) => [
+      ...currentEdges,
+      createEdge(source, target, undefined, { sourceHandle, targetHandle }),
+    ]);
+    setQuickInsertTarget(null);
     setActiveView("canvas");
   }
 
   function arrangeNodes() {
     recordHistory("自动整理");
-    setNodes((currentNodes) =>
-      currentNodes.map((node, index) => ({
-        ...node,
-        position: {
-          x: index * 310,
-          y: node.data.kind === "action" ? -92 : node.data.kind === "ai" ? 96 : 0,
-        },
-      })),
-    );
+    setNodes((currentNodes) => arrangeWorkflowNodes(currentNodes, edges));
   }
 
   function runSelectedNode() {
@@ -698,6 +603,7 @@ function WorkflowWorkspaceContent({
       ...currentRecords,
       [selectedNode.id]: createNodeRunRecord(selectedNode),
     }));
+    setIsInspectorOpen(true);
     setInspectorTab("run");
   }
 
@@ -733,10 +639,17 @@ function WorkflowWorkspaceContent({
               onConnect={connectNodes}
               onEdgesChange={onEdgesChange}
               onNodesChange={onNodesChange}
-              onOpenVariables={() => setInspectorTab("variables")}
+              onOpenVariables={() => {
+                setIsInspectorOpen(true);
+                setInspectorTab("variables");
+              }}
               onPaletteOpenChange={setPaletteOpen}
-              onPaneClick={() => setQuickInsertNodeId(null)}
+              onPaneClick={() => setQuickInsertTarget(null)}
               onRedo={redoWorkflowChange}
+              onNodeHoverEnd={() => setHoveredNodeId(null)}
+              onNodeHoverStart={(nodeId) => {
+                setHoveredNodeId((currentNodeId) => (currentNodeId === nodeId ? currentNodeId : nodeId));
+              }}
               onSelectNode={selectWorkflowNode}
               onSearchChange={setPaletteQuery}
               onUndo={undoWorkflowChange}
@@ -754,14 +667,17 @@ function WorkflowWorkspaceContent({
           ) : null}
         </section>
 
-        <NodeConfigPanel
-          activeTab={inspectorTab}
-          lastRun={selectedNode ? runRecords[selectedNode.id] : undefined}
-          node={selectedNode}
-          onNodeChange={updateSelectedNode}
-          onRunNode={runSelectedNode}
-          onTabChange={setInspectorTab}
-        />
+        {isInspectorOpen ? (
+          <NodeConfigPanel
+            activeTab={inspectorTab}
+            lastRun={selectedNode ? runRecords[selectedNode.id] : undefined}
+            node={selectedNode}
+            onClose={() => setIsInspectorOpen(false)}
+            onNodeChange={updateSelectedNode}
+            onRunNode={runSelectedNode}
+            onTabChange={setInspectorTab}
+          />
+        ) : null}
       </div>
     </>
   );
@@ -807,27 +723,24 @@ function WorkflowTopBar({
       </div>
 
       <div className="flex shrink-0 items-center gap-3 max-lg:w-full max-lg:overflow-x-auto max-lg:pb-1">
-        <SegmentedControl
+        <Tabs
           aria-label="选择 Workflow 工作区"
           className="shrink-0"
-          onValueChange={(value) => {
-            if (value) {
-              onViewChange(value as WorkflowView);
-            }
-          }}
-          type="single"
+          onValueChange={(value) => onViewChange(value as WorkflowView)}
           value={activeView}
         >
-          <SegmentedControlItem className="h-7 min-w-12 shrink-0 whitespace-nowrap px-3 text-xs" value="canvas">
-            编排
-          </SegmentedControlItem>
-          <SegmentedControlItem className="h-7 min-w-12 shrink-0 whitespace-nowrap px-3 text-xs" value="preview">
-            预览
-          </SegmentedControlItem>
-          <SegmentedControlItem className="h-7 min-w-12 shrink-0 whitespace-nowrap px-3 text-xs" value="checks">
-            检查
-          </SegmentedControlItem>
-        </SegmentedControl>
+          <TabsList className="h-8 rounded-[10px] p-0.5">
+            <TabsTrigger className="h-7 min-w-12 shrink-0 whitespace-nowrap rounded-[8px] px-3 text-xs" value="canvas">
+              编排
+            </TabsTrigger>
+            <TabsTrigger className="h-7 min-w-12 shrink-0 whitespace-nowrap rounded-[8px] px-3 text-xs" value="preview">
+              预览
+            </TabsTrigger>
+            <TabsTrigger className="h-7 min-w-12 shrink-0 whitespace-nowrap rounded-[8px] px-3 text-xs" value="checks">
+              检查
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
 
         <Button
           className="h-8 shrink-0 gap-1.5 rounded-lg px-2.5 text-xs"
@@ -1010,6 +923,8 @@ function WorkflowCanvas({
   onPaletteOpenChange,
   onPaneClick,
   onRedo,
+  onNodeHoverEnd,
+  onNodeHoverStart,
   onSelectNode,
   onSearchChange,
   onUndo,
@@ -1018,17 +933,19 @@ function WorkflowCanvas({
 }: {
   canRedo: boolean;
   canUndo: boolean;
-  edges: MarketingWorkflowEdge[];
-  nodes: MarketingWorkflowNode[];
+  edges: MarketingWorkflowRenderEdge[];
+  nodes: MarketingWorkflowRenderNode[];
   onAddNode: (kind: MarketingNodeKind) => void;
   onArrange: () => void;
   onConnect: (connection: Connection) => void;
-  onEdgesChange: OnEdgesChange<MarketingWorkflowEdge>;
-  onNodesChange: OnNodesChange<MarketingWorkflowNode>;
+  onEdgesChange: OnEdgesChange<MarketingWorkflowRenderEdge>;
+  onNodesChange: OnNodesChange<MarketingWorkflowRenderNode>;
   onOpenVariables: () => void;
   onPaletteOpenChange: (open: boolean) => void;
   onPaneClick: () => void;
   onRedo: () => void;
+  onNodeHoverEnd: () => void;
+  onNodeHoverStart: (nodeId: string) => void;
   onSelectNode: (nodeId: string) => void;
   onSearchChange: (value: string) => void;
   onUndo: () => void;
@@ -1037,8 +954,8 @@ function WorkflowCanvas({
 }) {
   const initialViewport = useMemo(() => getInitialWorkflowViewport(), []);
   const { fitView, zoomIn, zoomOut, zoomTo } = useReactFlow<
-    MarketingWorkflowNode,
-    MarketingWorkflowEdge
+    MarketingWorkflowRenderNode,
+    MarketingWorkflowRenderEdge
   >();
   const { zoom } = useViewport();
   const [showMiniMap, setShowMiniMap] = useState(true);
@@ -1063,6 +980,8 @@ function WorkflowCanvas({
         onConnect={onConnect}
         onEdgesChange={onEdgesChange}
         onNodeClick={(_, node) => onSelectNode(node.id)}
+        onNodeMouseEnter={(_, node) => onNodeHoverStart(node.id)}
+        onNodeMouseLeave={onNodeHoverEnd}
         onNodesChange={onNodesChange}
         onPaneClick={onPaneClick}
         panOnScroll
@@ -1156,10 +1075,10 @@ function WorkflowCanvas({
   );
 }
 
-function WorkflowCandidateMenuOverlay({ node }: { node: MarketingWorkflowNode }) {
-  const menuLeft = node.position.x + WORKFLOW_NODE_WIDTH + 24;
-  const menuTop =
-    node.position.y - WORKFLOW_NODE_ESTIMATED_HEIGHT / 2 + WORKFLOW_NODE_HANDLE_TOP - 8;
+function WorkflowCandidateMenuOverlay({ node }: { node: MarketingWorkflowRenderNode }) {
+  const sourceHandle = node.data.insertMenuSourceHandle;
+  const menuLeft = node.position.x + getWorkflowNodeWidth(node) + 24;
+  const menuTop = getInsertMenuTop(node, sourceHandle);
 
   return (
     <ViewportPortal>
@@ -1178,7 +1097,7 @@ function WorkflowCandidateMenuOverlay({ node }: { node: MarketingWorkflowNode })
             key={item.id}
             onClick={(event) => {
               event.stopPropagation();
-              node.data.onInsertAfter?.(node.id, item.id);
+              node.data.onInsertAfter?.(node.id, item.id, sourceHandle);
             }}
             role="menuitem"
             type="button"
@@ -1337,94 +1256,6 @@ function WorkflowControlDock({
   );
 }
 
-function MarketingBezierEdge({
-  data,
-  id,
-  selected,
-  source,
-  sourceX,
-  sourceY,
-  target,
-  targetX,
-  targetY,
-}: EdgeProps<MarketingWorkflowEdge>) {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [isHovered, setIsHovered] = useState(false);
-  const [edgePath, labelX, labelY] = getBezierPath({
-    curvature: 0.16,
-    sourcePosition: Position.Right,
-    sourceX: sourceX - 8,
-    sourceY,
-    targetPosition: Position.Left,
-    targetX: targetX + 8,
-    targetY,
-  });
-  const isActionVisible = selected || isHovered || menuOpen;
-  const stroke = selected ? "var(--workflow-blue)" : "var(--workflow-edge)";
-
-  return (
-    <>
-      <BaseEdge
-        id={id}
-        interactionWidth={24}
-        path={edgePath}
-        style={{
-          opacity: selected ? 1 : 0.72,
-          stroke,
-          strokeWidth: 2,
-        }}
-      />
-      <EdgeLabelRenderer>
-        <div
-          className={cn("workflow-edge-action nodrag nopan", isActionVisible && "workflow-edge-action-visible")}
-          onMouseEnter={() => setIsHovered(true)}
-          onMouseLeave={() => setIsHovered(false)}
-          style={{
-            transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
-          }}
-        >
-          {data?.label ? <span className="workflow-edge-label">{data.label}</span> : null}
-          <button
-            aria-expanded={menuOpen}
-            aria-label={data?.label ? `在${data.label}连线上添加节点` : "在连线上添加节点"}
-            className="workflow-edge-add"
-            onClick={() => setMenuOpen((isOpen) => !isOpen)}
-            type="button"
-          >
-            <HugeiconsIcon icon={Add01Icon} size={12} strokeWidth={1.8} />
-          </button>
-          {menuOpen ? (
-            <div aria-label="从连线添加节点" className="workflow-edge-menu" role="menu">
-              {paletteItems.map((item) => (
-                <button
-                  className="workflow-edge-menu-item"
-                  key={item.id}
-                  onClick={() => {
-                    data?.onInsertBetween?.(id, source, target, item.id);
-                    setMenuOpen(false);
-                  }}
-                  role="menuitem"
-                  type="button"
-                >
-                  <span className="flex size-6 items-center justify-center rounded-md bg-[var(--workflow-soft)] text-muted-foreground">
-                    <HugeiconsIcon icon={item.icon} size={14} strokeWidth={1.8} />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-xs font-medium text-foreground">{item.label}</span>
-                    <span className="block truncate text-[11px] text-muted-foreground">
-                      {item.description}
-                    </span>
-                  </span>
-                </button>
-              ))}
-            </div>
-          ) : null}
-        </div>
-      </EdgeLabelRenderer>
-    </>
-  );
-}
-
 function getInitialWorkflowViewport() {
   if (typeof window !== "undefined" && window.innerWidth < 1024) {
     return { x: 28, y: 260, zoom: 0.82 };
@@ -1433,755 +1264,15 @@ function getInitialWorkflowViewport() {
   return { x: 36, y: 420, zoom: 0.82 };
 }
 
-function MarketingNodeCard({ data, id }: NodeProps<MarketingWorkflowNode>) {
-  const visual = nodeVisuals[data.kind];
-  const isSelected = Boolean(data.selected);
-  const isWarning = data.status === "warning";
-  const isRunning = data.status === "running";
-  const [actionMenuOpen, setActionMenuOpen] = useState(false);
-
-  return (
-    <div
-      className={cn(
-        "workflow-node-shell",
-        isSelected && "workflow-node-shell-selected",
-      )}
-    >
-      <div
-        className={cn(
-          "workflow-node-card group",
-          isWarning && "workflow-node-card-warning",
-        )}
-      >
-        {data.kind !== "trigger" ? (
-          <Handle
-            className="workflow-node-handle workflow-node-handle-target"
-            position={Position.Left}
-            type="target"
-          />
-        ) : null}
-        <div
-          className={cn(
-            "workflow-node-actionbar nodrag nopan",
-            (isSelected || actionMenuOpen) && "workflow-node-actionbar-visible",
-          )}
-        >
-          <button
-            aria-expanded={actionMenuOpen}
-            aria-label={`更多操作：${data.title}`}
-            className="workflow-node-actionbar-button"
-            onClick={(event) => {
-              event.stopPropagation();
-              setActionMenuOpen((isOpen) => !isOpen);
-            }}
-            type="button"
-          >
-            <HugeiconsIcon icon={MoreHorizontalIcon} size={14} strokeWidth={1.8} />
-          </button>
-          {actionMenuOpen ? (
-            <div aria-label="节点操作" className="workflow-node-action-menu" role="menu">
-              <button
-                className="workflow-node-action-menu-item"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  data.onSelect?.(id);
-                  setActionMenuOpen(false);
-                }}
-                role="menuitem"
-                type="button"
-              >
-                打开配置
-              </button>
-              {data.kind !== "goal" ? (
-                <button
-                  className="workflow-node-action-menu-item"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    data.onToggleInsertMenu?.(id);
-                    setActionMenuOpen(false);
-                  }}
-                  role="menuitem"
-                  type="button"
-                >
-                  添加后续节点
-                </button>
-              ) : null}
-            </div>
-          ) : null}
-        </div>
-        <button
-          aria-label={`${data.title} ${data.summary}`}
-          className="workflow-node-select"
-          onClick={() => data.onSelect?.(id)}
-          type="button"
-        >
-          <span className="flex items-center rounded-t-2xl px-3 pb-2 pt-3">
-            <span
-              className={cn(
-                "mr-2 flex size-7 shrink-0 items-center justify-center rounded-lg ring-1",
-                visual.accentClassName,
-              )}
-            >
-              <HugeiconsIcon icon={visual.icon} size={15} strokeWidth={1.8} />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="flex min-w-0 items-center gap-2">
-                <span className="truncate text-[13px] font-semibold text-foreground">{data.title}</span>
-                <span className="ml-auto flex size-5 shrink-0 items-center justify-center rounded-md text-muted-foreground">
-                  <HugeiconsIcon icon={Settings02Icon} size={13} strokeWidth={1.8} />
-                </span>
-              </span>
-            </span>
-          </span>
-
-          <span className="workflow-node-section">
-            <span className="workflow-node-section-title">{visual.label}</span>
-            <span className="workflow-node-param">
-              <span>状态</span>
-              <span
-                className={cn(
-                  "workflow-node-param-value",
-                  isRunning && "text-emerald-700",
-                  isWarning && "text-amber-700",
-                )}
-              >
-                {isRunning ? "Running" : isWarning ? "Missing config" : "Ready"}
-              </span>
-            </span>
-            <span className="workflow-node-param">
-              <span>配置</span>
-              <span className="workflow-node-param-value">{data.summary}</span>
-            </span>
-            <span className="workflow-node-param">
-              <span>输出</span>
-              <span className="workflow-node-param-value">{data.metric}</span>
-            </span>
-          </span>
-        </button>
-        {data.kind !== "goal" ? (
-          <Handle
-            className="workflow-node-handle workflow-node-handle-source"
-            position={Position.Right}
-            type="source"
-          >
-            <div className="workflow-node-handle-tip">
-              <div className="workflow-node-handle-tip-body">
-                <div className="whitespace-nowrap">
-                  <span className="workflow-node-handle-tip-title">点击</span>
-                  添加节点
-                </div>
-                <div className="whitespace-nowrap">
-                  <span className="workflow-node-handle-tip-title">拖拽</span>
-                  连接节点
-                </div>
-              </div>
-            </div>
-            <button
-              aria-label={`在${data.title}后添加节点`}
-              className={cn(
-                "workflow-node-insert nodrag nopan",
-                data.insertMenuOpen && "workflow-node-insert-visible",
-              )}
-              onClick={(event) => {
-                event.stopPropagation();
-                data.onToggleInsertMenu?.(id);
-              }}
-              type="button"
-            >
-              <HugeiconsIcon icon={Add01Icon} size={10} strokeWidth={2.4} />
-            </button>
-          </Handle>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-function NodeConfigPanel({
-  activeTab,
-  lastRun,
-  node,
-  onNodeChange,
-  onRunNode,
-  onTabChange,
-}: {
-  activeTab: InspectorTab;
-  lastRun?: NodeRunRecord;
-  node?: MarketingWorkflowNode;
-  onNodeChange: (patch: Partial<MarketingNodeData>) => void;
-  onRunNode: () => void;
-  onTabChange: (tab: InspectorTab) => void;
-}) {
-  if (!node) {
-    return (
-      <aside aria-label="节点配置" className="bg-background p-5" role="complementary">
-        <p className="text-sm text-muted-foreground">请选择一个节点</p>
-      </aside>
-    );
+function getEdgeHighlightState(
+  edgeId: string,
+  highlightedEdgeIds: Set<string> | null,
+): MarketingEdgeHighlightState | undefined {
+  if (!highlightedEdgeIds) {
+    return undefined;
   }
 
-  const visual = nodeVisuals[node.data.kind];
-
-  return (
-    <aside
-      aria-label="节点配置"
-      className="workflow-config-panel absolute bottom-1 right-1 top-2 z-20 flex w-[26.25rem] min-h-0 flex-col rounded-l-2xl border border-[var(--workflow-border)] bg-[var(--workflow-panel-bg)] shadow-xl max-xl:w-[23.5rem] max-lg:relative max-lg:inset-auto max-lg:w-full max-lg:rounded-none max-lg:border-x-0"
-      role="complementary"
-    >
-      <div className="border-b border-[var(--workflow-border)] p-4">
-        <div className="flex items-start gap-3">
-          <span
-            className={cn(
-              "flex size-9 shrink-0 items-center justify-center rounded-xl ring-1",
-              visual.accentClassName,
-            )}
-          >
-            <HugeiconsIcon icon={visual.icon} size={17} strokeWidth={1.8} />
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <h2 className="truncate text-sm font-semibold">{node.data.title}</h2>
-              <Badge className="h-5 rounded-md px-1.5 text-[11px]" variant="secondary">
-                {visual.label}
-              </Badge>
-            </div>
-            <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{node.data.summary}</p>
-          </div>
-          <div className="flex shrink-0 items-center gap-1">
-            <Button
-              aria-label="运行当前节点"
-              className="size-8 rounded-lg p-0"
-              onClick={onRunNode}
-              type="button"
-              variant="outline"
-            >
-              <HugeiconsIcon icon={PlayIcon} size={15} strokeWidth={1.8} />
-            </Button>
-            <Button aria-label="更多节点操作" className="size-8 rounded-lg p-0" type="button" variant="ghost">
-              <HugeiconsIcon icon={MoreHorizontalIcon} size={15} strokeWidth={1.8} />
-            </Button>
-          </div>
-        </div>
-        <div className="mt-4 flex h-8 rounded-lg bg-[var(--workflow-soft)] p-0.5 text-xs">
-          <button
-            aria-pressed={activeTab === "settings"}
-            className={cn(
-              "flex-1 rounded-md text-muted-foreground transition-colors",
-              activeTab === "settings" && "bg-background font-medium text-foreground shadow-xs",
-            )}
-            onClick={() => onTabChange("settings")}
-            type="button"
-          >
-            设置
-          </button>
-          <button
-            aria-pressed={activeTab === "run"}
-            className={cn(
-              "flex-1 rounded-md text-muted-foreground transition-colors",
-              activeTab === "run" && "bg-background font-medium text-foreground shadow-xs",
-            )}
-            onClick={() => onTabChange("run")}
-            type="button"
-          >
-            上次运行
-          </button>
-          <button
-            aria-pressed={activeTab === "variables"}
-            className={cn(
-              "flex-1 rounded-md text-muted-foreground transition-colors",
-              activeTab === "variables" && "bg-background font-medium text-foreground shadow-xs",
-            )}
-            onClick={() => onTabChange("variables")}
-            type="button"
-          >
-            变量
-          </button>
-        </div>
-      </div>
-
-      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
-        {activeTab === "settings" ? (
-          <NodeSettingsForm node={node} onNodeChange={onNodeChange} />
-        ) : null}
-        {activeTab === "run" ? (
-          <LastRunPanel lastRun={lastRun} node={node} onRunNode={onRunNode} />
-        ) : null}
-        {activeTab === "variables" ? <NodeVariablesPanel node={node} /> : null}
-      </div>
-    </aside>
-  );
-}
-
-function NodeSettingsForm({
-  node,
-  onNodeChange,
-}: {
-  node: MarketingWorkflowNode;
-  onNodeChange: (patch: Partial<MarketingNodeData>) => void;
-}) {
-  return (
-    <>
-      <FieldGroup title="基础信息">
-        <div className="space-y-2">
-          <Label htmlFor="workflow-node-title">节点名称</Label>
-          <Input
-            id="workflow-node-title"
-            onChange={(event) =>
-              onNodeChange({
-                title: event.target.value,
-              })
-            }
-            value={node.data.title}
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="workflow-node-summary">节点说明</Label>
-          <Textarea
-            className="min-h-20 resize-none"
-            id="workflow-node-summary"
-            onChange={(event) =>
-              onNodeChange({
-                summary: event.target.value,
-              })
-            }
-            value={node.data.summary}
-          />
-        </div>
-      </FieldGroup>
-
-      {node.data.kind === "trigger" ? (
-        <TriggerConfig node={node} onNodeChange={onNodeChange} />
-      ) : null}
-      {node.data.kind === "wait" ? (
-        <WaitConfig node={node} onNodeChange={onNodeChange} />
-      ) : null}
-      {node.data.kind === "branch" ? (
-        <BranchConfig node={node} onNodeChange={onNodeChange} />
-      ) : null}
-      {node.data.kind === "action" ? (
-        <ActionConfig node={node} onNodeChange={onNodeChange} />
-      ) : null}
-      {node.data.kind === "ai" ? (
-        <AiReceptionConfig node={node} onNodeChange={onNodeChange} />
-      ) : null}
-      {node.data.kind === "goal" ? (
-        <GoalConfig node={node} onNodeChange={onNodeChange} />
-      ) : null}
-    </>
-  );
-}
-
-function LastRunPanel({
-  lastRun,
-  node,
-  onRunNode,
-}: {
-  lastRun?: NodeRunRecord;
-  node: MarketingWorkflowNode;
-  onRunNode: () => void;
-}) {
-  if (!lastRun) {
-    return (
-      <section className="workflow-field-group rounded-xl border border-[var(--workflow-border)] bg-[var(--workflow-panel-section)] p-4">
-        <div className="flex items-start gap-3">
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-[var(--workflow-soft)] text-muted-foreground">
-            <HugeiconsIcon icon={PlayIcon} size={17} strokeWidth={1.8} />
-          </span>
-          <div className="min-w-0 flex-1">
-            <h3 className="text-sm font-semibold">尚未运行</h3>
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">
-              运行当前节点后，这里会显示输入、输出、耗时和执行日志
-            </p>
-          </div>
-        </div>
-        <Button className="mt-4 h-8 w-full gap-1.5 text-xs" onClick={onRunNode} type="button">
-          <HugeiconsIcon icon={PlayIcon} size={15} strokeWidth={1.8} />
-          运行 {node.data.title}
-        </Button>
-      </section>
-    );
-  }
-
-  return (
-    <>
-      <section className="workflow-field-group rounded-xl border border-emerald-200 bg-emerald-50/60 p-3">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <span className="flex size-8 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
-              <HugeiconsIcon icon={CheckmarkCircle02Icon} size={17} strokeWidth={1.8} />
-            </span>
-            <div>
-              <h3 className="text-sm font-semibold text-emerald-900">运行成功</h3>
-              <p className="text-xs text-emerald-700">{lastRun.finishedAt}</p>
-            </div>
-          </div>
-          <Badge className="rounded-md bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
-            {lastRun.durationMs}ms
-          </Badge>
-        </div>
-      </section>
-
-      <FieldGroup title="输入">
-        <RuntimeBlock>{lastRun.input}</RuntimeBlock>
-      </FieldGroup>
-
-      <FieldGroup title="输出">
-        <RuntimeBlock>{lastRun.output}</RuntimeBlock>
-      </FieldGroup>
-
-      <FieldGroup title="日志">
-        <div className="space-y-2">
-          {lastRun.logs.map((log) => (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground" key={log}>
-              <span className="size-1.5 rounded-full bg-emerald-500" />
-              <span>{log}</span>
-            </div>
-          ))}
-        </div>
-      </FieldGroup>
-    </>
-  );
-}
-
-function RuntimeBlock({ children }: { children: string }) {
-  return (
-    <pre className="max-h-36 overflow-auto rounded-lg bg-background p-3 text-xs leading-5 text-foreground shadow-xs">
-      {children}
-    </pre>
-  );
-}
-
-function NodeVariablesPanel({ node }: { node: MarketingWorkflowNode }) {
-  const variables = getNodeVariables(node);
-
-  return (
-    <>
-      <FieldGroup title="输入变量">
-        <VariableList variables={variables.inputs} />
-      </FieldGroup>
-      <FieldGroup title="输出变量">
-        <VariableList variables={variables.outputs} />
-      </FieldGroup>
-    </>
-  );
-}
-
-function VariableList({
-  variables,
-}: {
-  variables: Array<{ name: string; type: string; value: string }>;
-}) {
-  return (
-    <div className="space-y-2">
-      {variables.map((variable) => (
-        <div
-          className="rounded-lg border border-[var(--workflow-border)] bg-background px-3 py-2 shadow-xs"
-          key={variable.name}
-        >
-          <div className="flex items-center justify-between gap-3">
-            <span className="truncate text-xs font-medium text-foreground">{variable.name}</span>
-            <span className="shrink-0 rounded-md bg-[var(--workflow-soft)] px-1.5 py-0.5 text-[11px] text-muted-foreground">
-              {variable.type}
-            </span>
-          </div>
-          <p className="mt-1 truncate text-xs text-muted-foreground">{variable.value}</p>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function FieldGroup({
-  children,
-  title,
-}: {
-  children: React.ReactNode;
-  title: string;
-}) {
-  return (
-    <section className="workflow-field-group space-y-3 rounded-xl border border-[var(--workflow-border)] bg-[var(--workflow-panel-section)] p-3">
-      <h3 className="text-xs font-semibold uppercase text-muted-foreground">{title}</h3>
-      {children}
-    </section>
-  );
-}
-
-function TriggerConfig({
-  node,
-  onNodeChange,
-}: {
-  node: MarketingWorkflowNode;
-  onNodeChange: (patch: Partial<MarketingNodeData>) => void;
-}) {
-  return (
-    <FieldGroup title="进入规则">
-      <div className="space-y-2">
-        <Label htmlFor="workflow-audience">触发人群</Label>
-        <Input
-          id="workflow-audience"
-          onChange={(event) =>
-            onNodeChange({
-              audience: event.target.value,
-              metric: event.target.value ? "预计进入 124.8万人" : "未配置人群",
-              status: event.target.value ? "running" : "warning",
-            })
-          }
-          value={node.data.audience ?? ""}
-        />
-      </div>
-      <div className="flex items-center justify-between rounded-[10px] border bg-card p-3">
-        <div>
-          <div className="text-sm font-medium">允许重复进入</div>
-          <p className="mt-1 text-xs text-muted-foreground">同一客户 7 天内最多进入一次</p>
-        </div>
-        <Switch aria-label="允许重复进入" defaultChecked />
-      </div>
-    </FieldGroup>
-  );
-}
-
-function WaitConfig({
-  node,
-  onNodeChange,
-}: {
-  node: MarketingWorkflowNode;
-  onNodeChange: (patch: Partial<MarketingNodeData>) => void;
-}) {
-  const delayDays = node.data.delayDays ?? 2;
-
-  return (
-    <FieldGroup title="等待时间">
-      <div className="grid grid-cols-[1fr_auto] items-center gap-3">
-        <Input
-          aria-label="等待天数"
-          min={0}
-          onChange={(event) => {
-            const nextDelay = Math.max(Number(event.target.value), 0);
-            onNodeChange({
-              delayDays: nextDelay,
-              metric: `${nextDelay} 天后唤醒`,
-              summary: `等待 ${nextDelay} 天后继续触达`,
-            });
-          }}
-          type="number"
-          value={delayDays}
-        />
-        <span className="text-sm text-muted-foreground">天</span>
-      </div>
-      <div className="rounded-[10px] border bg-card p-3 text-xs leading-5 text-muted-foreground">
-        真实执行层会把等待写入持久化 job；本 DEMO 仅展示前端配置体验
-      </div>
-    </FieldGroup>
-  );
-}
-
-function BranchConfig({
-  node,
-  onNodeChange,
-}: {
-  node: MarketingWorkflowNode;
-  onNodeChange: (patch: Partial<MarketingNodeData>) => void;
-}) {
-  return (
-    <FieldGroup title="分支条件">
-      <div className="space-y-2">
-        <Label htmlFor="workflow-branch-rule">条件表达式</Label>
-        <Textarea
-          className="min-h-24 resize-none"
-          id="workflow-branch-rule"
-          onChange={(event) =>
-            onNodeChange({
-              branchRule: event.target.value,
-              metric: event.target.value ? "2 条分支" : "未配置分支",
-              status: event.target.value ? "ready" : "warning",
-            })
-          }
-          value={node.data.branchRule ?? ""}
-        />
-      </div>
-      <div className="grid gap-2">
-        {["高意向客户", "普通客户", "默认路径"].map((branch) => (
-          <div
-            className="flex items-center justify-between rounded-[8px] border bg-card px-3 py-2 text-sm"
-            key={branch}
-          >
-            <span>{branch}</span>
-            <Badge className="rounded-[6px]" variant="outline">
-              已连接
-            </Badge>
-          </div>
-        ))}
-      </div>
-    </FieldGroup>
-  );
-}
-
-function ActionConfig({
-  node,
-  onNodeChange,
-}: {
-  node: MarketingWorkflowNode;
-  onNodeChange: (patch: Partial<MarketingNodeData>) => void;
-}) {
-  const actionOptions = [
-    {
-      icon: Message01Icon,
-      label: "发送消息",
-      summary: "发送欢迎语和活动卡片",
-      type: "message",
-    },
-    {
-      icon: Coupon01Icon,
-      label: "发优惠券",
-      summary: "新人券 · 满 199 减 30",
-      type: "coupon",
-    },
-    {
-      icon: TagsIcon,
-      label: "打标签",
-      summary: "打上高意向会员标签",
-      type: "tag",
-    },
-    {
-      icon: UserSwitchIcon,
-      label: "分配客服",
-      summary: "转给会员运营组",
-      type: "handoff",
-    },
-  ] as const;
-
-  return (
-    <FieldGroup title="动作类型">
-      <div className="grid grid-cols-2 gap-2">
-        {actionOptions.map((option) => {
-          const isActive = node.data.actionType === option.type;
-
-          return (
-            <button
-              className={cn(
-                "flex min-h-[78px] flex-col items-start rounded-[10px] border bg-card p-3 text-left transition-colors hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/20",
-                isActive && "border-primary bg-primary/5",
-              )}
-              key={option.type}
-              onClick={() =>
-                onNodeChange({
-                  actionType: option.type,
-                  label: option.label,
-                  metric: option.summary,
-                  status: "ready",
-                  summary: option.summary,
-                  title: option.label,
-                })
-              }
-              type="button"
-            >
-              <HugeiconsIcon icon={option.icon} size={17} strokeWidth={1.8} />
-              <span className="mt-2 text-sm font-medium">{option.label}</span>
-              <span className="mt-1 text-xs leading-4 text-muted-foreground">{option.summary}</span>
-            </button>
-          );
-        })}
-      </div>
-    </FieldGroup>
-  );
-}
-
-function AiReceptionConfig({
-  node,
-  onNodeChange,
-}: {
-  node: MarketingWorkflowNode;
-  onNodeChange: (patch: Partial<MarketingNodeData>) => void;
-}) {
-  return (
-    <FieldGroup title="AI 接待策略">
-      <div className="space-y-2">
-        {agentOptions.map((agent) => {
-          const isActive = node.data.agentName === agent.name;
-
-          return (
-            <button
-              aria-label={`选择${agent.name}`}
-              className={cn(
-                "w-full rounded-[10px] border bg-card p-3 text-left transition-colors hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/20",
-                isActive && "border-primary bg-primary/5",
-              )}
-              key={agent.name}
-              onClick={() =>
-                onNodeChange({
-                  actionType: "ai",
-                  agentName: agent.name,
-                  label: "AI 接待",
-                  metric: agent.knowledge,
-                  status: "ready",
-                  summary: agent.name,
-                })
-              }
-              type="button"
-            >
-              <span className="flex items-start justify-between gap-3">
-                <span>
-                  <span className="block text-sm font-semibold">{agent.name}</span>
-                  <span className="mt-1 block text-xs leading-5 text-muted-foreground">
-                    {agent.description}
-                  </span>
-                </span>
-                {isActive ? (
-                  <HugeiconsIcon
-                    className="text-primary"
-                    icon={CheckmarkCircle02Icon}
-                    size={18}
-                    strokeWidth={1.8}
-                  />
-                ) : null}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-      <Separator />
-      <div className="space-y-2">
-        <Label htmlFor="workflow-handoff-rule">转人工条件</Label>
-        <Textarea
-          className="min-h-20 resize-none"
-          id="workflow-handoff-rule"
-          placeholder="例如：客户投诉、要求人工、连续两轮未解决"
-          defaultValue="客户要求人工、投诉升级、识别到价格异议"
-        />
-      </div>
-    </FieldGroup>
-  );
-}
-
-function GoalConfig({
-  node,
-  onNodeChange,
-}: {
-  node: MarketingWorkflowNode;
-  onNodeChange: (patch: Partial<MarketingNodeData>) => void;
-}) {
-  const conversion = node.data.conversion ?? 18.4;
-
-  return (
-    <FieldGroup title="目标设置">
-      <div className="space-y-2">
-        <Label htmlFor="workflow-conversion">目标转化率</Label>
-        <Input
-          id="workflow-conversion"
-          onChange={(event) => {
-            const nextConversion = Math.max(Number(event.target.value), 0);
-            onNodeChange({
-              conversion: nextConversion,
-              metric: `目标 ${nextConversion}%`,
-            });
-          }}
-          type="number"
-          value={conversion}
-        />
-      </div>
-      <Progress aria-label="目标达成进度" className="h-2" value={conversion * 4} />
-    </FieldGroup>
-  );
+  return highlightedEdgeIds.has(edgeId) ? "connected" : "dimmed";
 }
 
 function WorkflowPreview() {
@@ -2345,267 +1436,4 @@ function createNodeRunRecord(node: MarketingWorkflowNode): NodeRunRecord {
     output,
     status: "succeeded",
   };
-}
-
-function getNodeVariables(node: MarketingWorkflowNode) {
-  return {
-    inputs: [
-      {
-        name: "customer.profile",
-        type: "object",
-        value: node.data.audience ?? "上游客户画像",
-      },
-      {
-        name: "journey.currentNode",
-        type: "string",
-        value: node.data.title,
-      },
-    ],
-    outputs: [
-      {
-        name: `${node.data.kind}.result`,
-        type: "object",
-        value: node.data.metric,
-      },
-      {
-        name: "journey.next",
-        type: "string",
-        value: node.data.kind === "goal" ? "退出旅程" : "进入下一节点",
-      },
-    ],
-  };
-}
-
-function createInitialNodes(): MarketingWorkflowNode[] {
-  return [
-    {
-      data: {
-        audience: "近 30 天新入会且未首购客户",
-        kind: "trigger",
-        label: "触发",
-        metric: "预计进入 124.8万人",
-        status: "running",
-        summary: "客户入会后立即进入新人转化旅程",
-        title: "新人入会触发",
-      },
-      id: "trigger",
-      position: { x: 0, y: 0 },
-      type: "marketing",
-    },
-    {
-      data: {
-        delayDays: 2,
-        kind: "wait",
-        label: "等待",
-        metric: "2 天后唤醒",
-        status: "ready",
-        summary: "等待 2 天后继续触达",
-        title: "观察期",
-      },
-      id: "wait-2d",
-      position: { x: 310, y: 0 },
-      type: "marketing",
-    },
-    {
-      data: {
-        branchRule: "最近 7 天浏览活动页 >= 2 次，或咨询过商品功效",
-        kind: "branch",
-        label: "条件",
-        metric: "2 条分支",
-        status: "ready",
-        summary: "按活动兴趣和咨询意图拆分路径",
-        title: "意向判断",
-      },
-      id: "branch-intent",
-      position: { x: 620, y: 0 },
-      type: "marketing",
-    },
-    {
-      data: {
-        actionType: "message",
-        kind: "action",
-        label: "发送消息",
-        metric: "欢迎语 + 活动卡片",
-        status: "ready",
-        summary: "发送欢迎语和活动权益卡片",
-        title: "发送欢迎消息",
-      },
-      id: "action-message",
-      position: { x: 930, y: -94 },
-      type: "marketing",
-    },
-    {
-      data: {
-        conversion: 18.4,
-        kind: "goal",
-        label: "目标",
-        metric: "目标 18.4%",
-        status: "ready",
-        summary: "完成首单或领取新人券后退出",
-        title: "首单转化",
-      },
-      id: "goal",
-      position: { x: 1240, y: 0 },
-      type: "marketing",
-    },
-  ];
-}
-
-function createInitialEdges(): MarketingWorkflowEdge[] {
-  return [
-    createEdge("trigger", "wait-2d"),
-    createEdge("wait-2d", "branch-intent"),
-    createEdge("branch-intent", "action-message", "高意向"),
-    createEdge("action-message", "goal"),
-  ];
-}
-
-function createNodeFromKind(
-  kind: Exclude<MarketingNodeKind, "trigger" | "goal">,
-  id: string,
-  index: number,
-): MarketingWorkflowNode {
-  const commonPosition = {
-    x: 300 + index * 310,
-    y: index % 2 === 0 ? -94 : 94,
-  };
-
-  if (kind === "ai") {
-    return {
-      data: {
-        actionType: "ai",
-        agentName: "护肤小助理",
-        kind: "ai",
-        label: "AI 接待",
-        metric: "护肤知识库、活动政策",
-        status: "ready",
-        summary: "护肤小助理",
-        title: "AI 接待",
-      },
-      id,
-      position: commonPosition,
-      type: "marketing",
-    };
-  }
-
-  if (kind === "wait") {
-    return {
-      data: {
-        delayDays: 1,
-        kind: "wait",
-        label: "等待",
-        metric: "1 天后唤醒",
-        status: "ready",
-        summary: "等待 1 天后继续触达",
-        title: "等待",
-      },
-      id,
-      position: commonPosition,
-      type: "marketing",
-    };
-  }
-
-  if (kind === "branch") {
-    return {
-      data: {
-        branchRule: "",
-        kind: "branch",
-        label: "条件",
-        metric: "未配置分支",
-        status: "warning",
-        summary: "按客户标签、行为或会话意图拆分路径",
-        title: "条件分支",
-      },
-      id,
-      position: commonPosition,
-      type: "marketing",
-    };
-  }
-
-  return {
-    data: {
-      actionType: "coupon",
-      kind: "action",
-      label: "营销动作",
-      metric: "新人券 · 满 199 减 30",
-      status: "ready",
-      summary: "发放新人专属优惠券",
-      title: "发优惠券",
-    },
-    id,
-    position: commonPosition,
-    type: "marketing",
-  };
-}
-
-function createEdge(source: string, target: string, label?: string): MarketingWorkflowEdge {
-  return {
-    data: label ? { label } : undefined,
-    id: `edge-${source}-${target}`,
-    source,
-    target,
-    type: "marketing",
-  };
-}
-
-function findLastActionNodeId(nodes: MarketingWorkflowNode[], edges: MarketingWorkflowEdge[]) {
-  const edgeToGoal = edges.find((edge) => edge.target === "goal");
-
-  if (edgeToGoal) {
-    return edgeToGoal.source;
-  }
-
-  const nonGoalNodes = nodes.filter((node) => node.id !== "goal");
-  return nonGoalNodes[nonGoalNodes.length - 1]?.id ?? "trigger";
-}
-
-function buildPublishChecks(nodes: MarketingWorkflowNode[], edges: MarketingWorkflowEdge[]) {
-  const trigger = nodes.find((node) => node.data.kind === "trigger");
-  const goal = nodes.find((node) => node.data.kind === "goal");
-  const warningNodes = nodes.filter((node) => node.data.status === "warning");
-  const hasDisconnectedNode = nodes.some(
-    (node) =>
-      node.data.kind !== "trigger" &&
-      !edges.some((edge) => edge.target === node.id),
-  );
-  const hasAiAction = nodes.some((node) => node.data.kind === "ai" && node.data.agentName);
-
-  return [
-    {
-      description: trigger?.data.audience
-        ? `当前人群：${trigger.data.audience}`
-        : "触发节点需要选择进入人群",
-      id: "trigger",
-      status: trigger?.data.audience ? "ready" : "warning",
-      title: "触发人群",
-    },
-    {
-      description: hasDisconnectedNode ? "存在未连接到主链路的节点" : "所有节点均接入主链路",
-      id: "connectivity",
-      status: hasDisconnectedNode ? "warning" : "ready",
-      title: "链路连通性",
-    },
-    {
-      description: warningNodes.length
-        ? `${warningNodes.length} 个节点仍需补全配置`
-        : "所有节点已完成关键配置",
-      id: "config",
-      status: warningNodes.length ? "warning" : "ready",
-      title: "节点配置",
-    },
-    {
-      description: hasAiAction
-        ? "AI 接待动作已绑定 Agent 和知识库策略"
-        : "当前流程没有启用 AI 接待动作",
-      id: "ai",
-      status: hasAiAction ? "ready" : "warning",
-      title: "AI 接待策略",
-    },
-    {
-      description: goal ? "已配置退出目标和转化指标" : "缺少目标节点",
-      id: "goal",
-      status: goal ? "ready" : "warning",
-      title: "目标退出",
-    },
-  ] as const;
 }

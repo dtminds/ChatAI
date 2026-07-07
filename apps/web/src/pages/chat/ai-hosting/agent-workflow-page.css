@@ -66,7 +66,8 @@
 }
 
 .workflow-config-panel {
-  box-shadow: none;
+  border-width: 0.5px;
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.14);
 }
 
 .workflow-floating-palette {
@@ -128,6 +129,11 @@
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
 }
 
+.workflow-node-card-branch {
+  width: 278px;
+  padding-bottom: 10px;
+}
+
 .workflow-node-select {
   display: block;
   width: 100%;
@@ -144,18 +150,49 @@
   box-shadow: inset 0 0 0 2px hsl(var(--ring) / 0.28);
 }
 
-.workflow-node-card-warning {
-  border-color: rgba(245, 158, 11, 0.45);
+.workflow-branch-overview {
+  margin-bottom: 4px;
+}
+
+.workflow-branch-paths {
+  display: grid;
+  gap: 6px;
+  padding: 0 12px 2px;
+}
+
+.workflow-branch-path {
+  display: grid;
+  gap: 4px;
+}
+
+.workflow-branch-path-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--workflow-text-tertiary);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 16px;
+}
+
+.workflow-branch-path-rule {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  border-radius: 8px;
+  background: var(--workflow-param-bg);
+  padding: 0 10px;
+  color: hsl(var(--foreground));
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .workflow-node-actionbar {
   position: absolute;
-  top: -28px;
-  right: 0;
+  top: 10px;
+  right: 10px;
   z-index: 16;
   display: flex;
-  height: 28px;
-  padding-bottom: 4px;
   visibility: hidden;
   opacity: 0;
   transition:
@@ -169,22 +206,18 @@
   height: 24px;
   align-items: center;
   justify-content: center;
-  border: 0.5px solid var(--workflow-border);
+  border: 0;
   border-radius: 8px;
-  background: var(--workflow-panel-bg-blur);
-  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
+  background: transparent;
   color: #667085;
-  backdrop-filter: blur(8px);
   transition:
     background 150ms ease,
-    color 150ms ease,
-    border-color 150ms ease;
+    color 150ms ease;
 }
 
 .workflow-node-actionbar-button:hover,
 .workflow-node-actionbar-button[aria-expanded="true"] {
-  border-color: rgba(82, 139, 255, 0.24);
-  background: #fff;
+  background: rgba(15, 23, 42, 0.06);
   color: var(--workflow-blue);
 }
 
@@ -192,36 +225,6 @@
 .workflow-node-actionbar-visible {
   visibility: visible;
   opacity: 1;
-}
-
-.workflow-node-action-menu {
-  position: absolute;
-  top: 28px;
-  right: 0;
-  width: 132px;
-  padding: 6px;
-  border: 0.5px solid var(--workflow-border);
-  border-radius: 12px;
-  background: var(--workflow-panel-bg-blur);
-  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.14);
-  backdrop-filter: blur(10px);
-}
-
-.workflow-node-action-menu-item {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  padding: 7px 8px;
-  color: hsl(var(--foreground));
-  font-size: 12px;
-  text-align: left;
-}
-
-.workflow-node-action-menu-item:hover {
-  background: rgba(15, 23, 42, 0.06);
 }
 
 .workflow-node-handle {
@@ -257,7 +260,6 @@
 
 .workflow-node-handle-source {
   right: -9px !important;
-  top: 16px !important;
   transform: none !important;
 }
 
@@ -267,6 +269,11 @@
 
 .workflow-node-handle-source::after {
   right: 6px;
+}
+
+.workflow-branch-path-handle {
+  right: -9px !important;
+  transform: none !important;
 }
 
 .workflow-node-handle-tip {
@@ -325,8 +332,6 @@
 }
 
 .react-flow__node:hover .workflow-node-insert,
-.react-flow__node.selected .workflow-node-insert,
-.workflow-node-shell-selected .workflow-node-insert,
 .workflow-node-insert-visible {
   opacity: 1;
   pointer-events: auto;
@@ -375,7 +380,6 @@
   z-index: 35;
   display: flex;
   align-items: center;
-  gap: 5px;
   padding: 10px;
   opacity: 0;
   pointer-events: auto;
@@ -386,22 +390,6 @@
 
 .workflow-edge-action-visible {
   opacity: 1;
-}
-
-.workflow-edge-label {
-  display: inline-flex;
-  height: 22px;
-  max-width: 96px;
-  align-items: center;
-  border: 0.5px solid var(--workflow-border);
-  border-radius: 999px;
-  background: var(--workflow-panel-bg-blur);
-  padding: 0 8px;
-  color: hsl(var(--muted-foreground));
-  font-size: 11px;
-  font-weight: 500;
-  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.1);
-  backdrop-filter: blur(8px);
 }
 
 .workflow-edge-add {

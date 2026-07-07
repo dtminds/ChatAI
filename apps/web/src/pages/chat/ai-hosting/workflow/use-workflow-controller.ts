@@ -10,20 +10,21 @@ import {
   applyEdgeChanges,
   applyNodeChanges,
 } from "@xyflow/react";
-import { WORKFLOW_LAYOUT_X_GAP } from "./constants";
 import {
-  arrangeWorkflowNodes,
-  createEdge,
-  createNodeFromKind,
-  duplicateWorkflowNode,
-  findLastActionNodeId,
-  getAfterNodesInSameBranch,
-  getBranchHandleLabel,
-  getBranchInsertY,
-  getNodeIdSet,
-  shiftNodesRight,
-} from "./graph";
-import { canDeleteNodeKind, canDuplicateNodeKind, canInsertNodeKind } from "./node-definitions";
+  addNodeOperation,
+  arrangeNodesOperation,
+  connectNodesOperation,
+  deleteEdgeOperation,
+  deleteNodeOperation,
+  duplicateNodeOperation,
+  insertNodeAfterOperation,
+  insertNodeBetweenOperation,
+  updateNodeDataOperation,
+} from "./graph-operations";
+import type {
+  WorkflowActionResult,
+  WorkflowGraphOperation,
+} from "./graph-operations";
 import { useWorkflowHistory } from "./history";
 import type {
   InsertableMarketingNodeKind,
@@ -81,14 +82,9 @@ function isNodePositionChange(
     && Boolean(change.position);
 }
 
-export type WorkflowActionResult = {
-  edgeId?: string;
-  nodeId?: string;
-};
-
 export function useWorkflowController(initialDraft: WorkflowDraft) {
   const history = useWorkflowHistory(() => initialDraft);
-  const { commitDraft, commitFromDrafts, currentDraft, replaceDraft, resetDraft } = history;
+  const { commitFromDrafts, currentDraft, replaceDraft, resetDraft } = history;
   const { edges, nodes } = currentDraft;
   const pendingConfigHistoryRef = useRef<PendingConfigHistory | null>(null);
   const configHistoryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -196,40 +192,37 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
     nodeId: string,
     patch: Partial<MarketingNodeData>,
   ): WorkflowActionResult | undefined => {
-    const node = nodes.find((currentNode) => currentNode.id === nodeId);
+    const operation = updateNodeDataOperation(currentDraft, nodeId, patch);
 
-    if (!node) {
+    if (!operation) {
       return undefined;
     }
 
-    const nextDraft = {
-      ...currentDraft,
-      nodes: currentDraft.nodes.map((currentNode) =>
-        currentNode.id === nodeId
-          ? {
-              ...currentNode,
-              data: {
-                ...currentNode.data,
-                ...patch,
-              },
-            }
-          : currentNode,
-      ),
-    };
-
     pendingConfigHistoryRef.current = {
-      meta: {
-        nodeId,
-        nodeTitle: node.data.title,
-      },
-      nextDraft,
+      meta: operation.meta,
+      nextDraft: operation.draft,
       previousDraft: pendingConfigHistoryRef.current?.previousDraft ?? currentDraft,
     };
-    replaceDraft(() => nextDraft);
+    replaceDraft(() => operation.draft);
     scheduleConfigHistoryCommit();
 
-    return { nodeId };
-  }, [currentDraft, nodes, replaceDraft, scheduleConfigHistoryCommit]);
+    return operation.result;
+  }, [currentDraft, replaceDraft, scheduleConfigHistoryCommit]);
+
+  const commitGraphOperation = useCallback((operation: WorkflowGraphOperation | undefined) => {
+    if (!operation) {
+      return undefined;
+    }
+
+    commitFromDrafts(
+      operation.event,
+      currentDraft,
+      operation.draft,
+      operation.meta,
+    );
+
+    return operation.result;
+  }, [commitFromDrafts, currentDraft]);
 
   const insertNodeAfter = useCallback((
     previousNodeId: string,
@@ -238,53 +231,9 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
   ): WorkflowActionResult => {
     flushConfigHistory();
     const nodeId = `${kind}-${Date.now()}`;
-    const previousNode = nodes.find((node) => node.id === previousNodeId);
-    const replacedEdge = edges.find((edge) =>
-      edge.source === previousNodeId
-      && (sourceHandle ? edge.sourceHandle === sourceHandle : !edge.sourceHandle),
-    );
-    const nextNodeId = replacedEdge?.target ?? "goal";
-    const nextNode = nodes.find((node) => node.id === nextNodeId);
-    const nodesToShift = replacedEdge
-      ? getAfterNodesInSameBranch(nodes, edges, nextNodeId)
-      : [];
-    const shiftedNodeIds = getNodeIdSet(nodesToShift);
-    const node = {
-      ...createNodeFromKind(kind, nodeId, nodes.length),
-      position: {
-        x: nextNode?.position.x ?? (previousNode?.position.x ?? 0) + WORKFLOW_LAYOUT_X_GAP,
-        y:
-          nextNode?.position.y
-          ?? (previousNode?.data.kind === "branch"
-            ? getBranchInsertY(previousNode.position.y, sourceHandle)
-            : previousNode?.position.y ?? 0),
-      },
-    };
-
-    commitDraft(
-      replacedEdge ? "node:insert" : "node:add",
-      (draft) => ({
-        edges: [
-          ...draft.edges.filter(
-            (edge) => edge.id !== replacedEdge?.id,
-          ),
-          createEdge(previousNodeId, nodeId, replacedEdge?.data?.label ?? getBranchHandleLabel(sourceHandle), {
-            sourceHandle: replacedEdge?.sourceHandle ?? sourceHandle,
-          }),
-          createEdge(nodeId, nextNodeId, undefined, {
-            targetHandle: replacedEdge?.targetHandle,
-          }),
-        ],
-        nodes: [...shiftNodesRight(draft.nodes, shiftedNodeIds), node],
-      }),
-      {
-        nodeId,
-        nodeTitle: node.data.title,
-      },
-    );
-
-    return { edgeId: replacedEdge?.id, nodeId };
-  }, [commitDraft, edges, flushConfigHistory, nodes]);
+    return commitGraphOperation(insertNodeAfterOperation(currentDraft, previousNodeId, kind, nodeId, sourceHandle))
+      ?? { nodeId };
+  }, [commitGraphOperation, currentDraft, flushConfigHistory]);
 
   const insertNodeBetween = useCallback((
     edgeId: string,
@@ -294,169 +243,47 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
   ): WorkflowActionResult => {
     flushConfigHistory();
     const nodeId = `${kind}-${Date.now()}`;
-    const sourceNode = nodes.find((node) => node.id === sourceNodeId);
-    const targetNode = nodes.find((node) => node.id === targetNodeId);
-    const replacedEdge = edges.find((edge) => edge.id === edgeId);
-    const nodesToShift = getAfterNodesInSameBranch(nodes, edges, targetNodeId);
-    const shiftedNodeIds = getNodeIdSet(nodesToShift);
-    const node = {
-      ...createNodeFromKind(kind, nodeId, nodes.length),
-      position: {
-        x: targetNode?.position.x ?? (sourceNode?.position.x ?? 0) + WORKFLOW_LAYOUT_X_GAP,
-        y: targetNode?.position.y ?? sourceNode?.position.y ?? 0,
-      },
-    };
-
-    commitDraft(
-      "node:insert",
-      (draft) => ({
-        edges: [
-          ...draft.edges.filter((edge) => edge.id !== edgeId),
-          createEdge(sourceNodeId, nodeId, replacedEdge?.data?.label, {
-            sourceHandle: replacedEdge?.sourceHandle,
-            targetHandle: replacedEdge?.targetHandle,
-          }),
-          createEdge(nodeId, targetNodeId),
-        ],
-        nodes: [...shiftNodesRight(draft.nodes, shiftedNodeIds), node],
-      }),
-      {
-        edgeId,
-        nodeId,
-        nodeTitle: node.data.title,
-      },
-    );
-
-    return { edgeId, nodeId };
-  }, [commitDraft, edges, flushConfigHistory, nodes]);
+    return commitGraphOperation(insertNodeBetweenOperation(
+      currentDraft,
+      edgeId,
+      sourceNodeId,
+      targetNodeId,
+      kind,
+      nodeId,
+    )) ?? { edgeId, nodeId };
+  }, [commitGraphOperation, currentDraft, flushConfigHistory]);
 
   const addNode = useCallback((kind: MarketingNodeKind): WorkflowActionResult | undefined => {
-    if (!canInsertNodeKind(kind)) {
-      return undefined;
-    }
-
-    return insertNodeAfter(findLastActionNodeId(nodes, edges), kind);
-  }, [edges, insertNodeAfter, nodes]);
+    flushConfigHistory();
+    return commitGraphOperation(addNodeOperation(currentDraft, kind, `${kind}-${Date.now()}`));
+  }, [commitGraphOperation, currentDraft, flushConfigHistory]);
 
   const connectNodes = useCallback((connection: Connection): WorkflowActionResult | undefined => {
     flushConfigHistory();
-    const { source, sourceHandle, target, targetHandle } = connection;
-
-    if (!source || !target || source === target) {
-      return undefined;
-    }
-
-    if (
-      edges.some((edge) =>
-        edge.source === source
-        && edge.sourceHandle === (sourceHandle ?? undefined)
-        && edge.target === target
-        && edge.targetHandle === (targetHandle ?? undefined),
-      )
-    ) {
-      return undefined;
-    }
-
-    const edge = createEdge(source, target, undefined, { sourceHandle, targetHandle });
-
-    commitDraft(
-      "edge:connect",
-      (draft) => ({
-        ...draft,
-        edges: [
-          ...draft.edges,
-          edge,
-        ],
-      }),
-      {
-        nodeId: source,
-      },
-    );
-
-    return { edgeId: edge.id, nodeId: source };
-  }, [commitDraft, edges, flushConfigHistory]);
+    return commitGraphOperation(connectNodesOperation(currentDraft, connection));
+  }, [commitGraphOperation, currentDraft, flushConfigHistory]);
 
   const deleteNode = useCallback((nodeId: string): WorkflowActionResult | undefined => {
     flushConfigHistory();
-    const node = nodes.find((currentNode) => currentNode.id === nodeId);
-
-    if (!node || !canDeleteNodeKind(node.data.kind)) {
-      return undefined;
-    }
-
-    commitDraft(
-      "node:delete",
-      (draft) => ({
-        edges: draft.edges.filter((edge) => edge.source !== nodeId && edge.target !== nodeId),
-        nodes: draft.nodes.filter((currentNode) => currentNode.id !== nodeId),
-      }),
-      {
-        nodeId,
-        nodeTitle: node.data.title,
-      },
-    );
-
-    return { nodeId };
-  }, [commitDraft, flushConfigHistory, nodes]);
+    return commitGraphOperation(deleteNodeOperation(currentDraft, nodeId));
+  }, [commitGraphOperation, currentDraft, flushConfigHistory]);
 
   const duplicateNode = useCallback((nodeId: string): WorkflowActionResult | undefined => {
     flushConfigHistory();
     const node = nodes.find((currentNode) => currentNode.id === nodeId);
-
-    if (!node || !canDuplicateNodeKind(node.data.kind)) {
-      return undefined;
-    }
-
-    const duplicatedNodeId = `${node.data.kind}-${Date.now()}`;
-    const reservedTitles = new Set(nodes.map((currentNode) => currentNode.data.title));
-    const duplicatedNode = duplicateWorkflowNode(node, duplicatedNodeId, reservedTitles);
-
-    commitDraft(
-      "node:duplicate",
-      (draft) => ({
-        ...draft,
-        nodes: [...draft.nodes, duplicatedNode],
-      }),
-      {
-        nodeId: duplicatedNodeId,
-        nodeTitle: duplicatedNode.data.title,
-      },
-    );
-
-    return { nodeId: duplicatedNodeId };
-  }, [commitDraft, flushConfigHistory, nodes]);
+    const duplicatedNodeId = `${node?.data.kind ?? "node"}-${Date.now()}`;
+    return commitGraphOperation(duplicateNodeOperation(currentDraft, nodeId, duplicatedNodeId));
+  }, [commitGraphOperation, currentDraft, flushConfigHistory, nodes]);
 
   const deleteEdge = useCallback((edgeId: string): WorkflowActionResult | undefined => {
     flushConfigHistory();
-
-    const edge = edges.find((currentEdge) => currentEdge.id === edgeId);
-
-    if (!edge) {
-      return undefined;
-    }
-
-    commitDraft(
-      "edge:delete",
-      (draft) => ({
-        ...draft,
-        edges: draft.edges.filter((currentEdge) => currentEdge.id !== edgeId),
-      }),
-      {
-        edgeId,
-        nodeId: edge.source,
-      },
-    );
-
-    return { edgeId, nodeId: edge.source };
-  }, [commitDraft, edges, flushConfigHistory]);
+    return commitGraphOperation(deleteEdgeOperation(currentDraft, edgeId));
+  }, [commitGraphOperation, currentDraft, flushConfigHistory]);
 
   const arrangeNodes = useCallback(() => {
     flushConfigHistory();
-    commitDraft("layout:organize", (draft) => ({
-      ...draft,
-      nodes: arrangeWorkflowNodes(draft.nodes, draft.edges),
-    }));
-  }, [commitDraft, flushConfigHistory]);
+    commitGraphOperation(arrangeNodesOperation(currentDraft));
+  }, [commitGraphOperation, currentDraft, flushConfigHistory]);
 
   const undo = useCallback(() => {
     flushConfigHistory();

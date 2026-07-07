@@ -1,59 +1,24 @@
 import { useEffect, useMemo, useState } from "react";
-import type {
-  Connection,
-  OnEdgesChange,
-  OnNodesChange,
-} from "@xyflow/react";
-import {
-  Background,
-  MiniMap,
-  ReactFlow,
-  ReactFlowProvider,
-  useReactFlow,
-  useViewport,
-} from "@xyflow/react";
+import type { Connection } from "@xyflow/react";
+import { ReactFlowProvider } from "@xyflow/react";
 import {
   Add01Icon,
-  AlertCircleIcon,
-  ArrangeIcon,
-  Cancel01Icon,
-  CheckmarkCircle02Icon,
-  FlowConnectionIcon,
-  PlayIcon,
-  Redo03Icon,
   Search01Icon,
-  Settings02Icon,
-  SquareArrowExpand01Icon,
-  Tick02Icon,
-  Undo03Icon,
   WorkflowSquare01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Link, useParams } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { AiHostingLayout } from "./ai-hosting-layout";
-import {
-  WORKFLOW_MAX_ZOOM,
-  WORKFLOW_MIN_ZOOM,
-  workflowZoomOptions,
-} from "./workflow/constants";
-import { MarketingBezierEdge } from "./workflow/canvas/marketing-edge";
-import { paletteItems } from "./workflow/node-definitions";
+import { WorkflowCanvas } from "./workflow/canvas/workflow-canvas";
+import { WorkflowChecks } from "./workflow/canvas/workflow-checks";
+import { WorkflowTopBar } from "./workflow/canvas/workflow-topbar";
 import {
   buildPublishChecks,
 } from "./workflow/graph";
-import { getInsertMenuTop, getWorkflowNodeWidth } from "./workflow/layout";
-import { MarketingNodeCard } from "./workflow/nodes";
 import { NodeConfigPanel } from "./workflow/panels";
 import { useWorkflowShortcuts } from "./workflow/shortcuts";
 import type {
@@ -71,14 +36,6 @@ import type {
 import { useWorkflowController } from "./workflow/use-workflow-controller";
 import "@xyflow/react/dist/style.css";
 import "./agent-workflow-page.css";
-
-const nodeTypes = {
-  marketing: MarketingNodeCard,
-};
-
-const edgeTypes = {
-  marketing: MarketingBezierEdge,
-};
 
 const workflowListItems = [
   {
@@ -216,12 +173,12 @@ export function AgentWorkflowEditorPage() {
 
   return (
     <ReactFlowProvider>
-      <WorkflowDemoWorkspace fullscreen workflowName={workflowName} />
+      <WorkflowWorkspace fullscreen workflowName={workflowName} />
     </ReactFlowProvider>
   );
 }
 
-function WorkflowDemoWorkspace({
+function WorkflowWorkspace({
   fullscreen = false,
   workflowName = "新人转化旅程",
 }: {
@@ -240,6 +197,15 @@ function WorkflowDemoWorkspace({
   );
 }
 
+function MetricPill({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg bg-[var(--workflow-soft)] px-2 py-1.5 text-xs">
+      <div className="font-semibold text-foreground">{value}</div>
+      <div className="mt-0.5 text-muted-foreground">{label}</div>
+    </div>
+  );
+}
+
 function WorkflowWorkspaceContent({
   workflowName,
 }: {
@@ -247,8 +213,10 @@ function WorkflowWorkspaceContent({
 }) {
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("settings");
   const [selectedNodeId, setSelectedNodeId] = useState("action-message");
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [isInspectorOpen, setIsInspectorOpen] = useState(true);
   const [isChecksOpen, setIsChecksOpen] = useState(false);
+  const [activeEdgeInsertMenuId, setActiveEdgeInsertMenuId] = useState<string | null>(null);
   const [quickInsertTarget, setQuickInsertTarget] = useState<QuickInsertTarget | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState("");
@@ -258,6 +226,7 @@ function WorkflowWorkspaceContent({
     canRedo,
     canUndo,
     connectNodes: connectWorkflowNodes,
+    deleteEdge,
     deleteNode,
     edges,
     insertNodeAfter,
@@ -300,13 +269,20 @@ function WorkflowWorkspaceContent({
     () =>
       edges.map((edge) => ({
         ...edge,
+        selected: edge.id === selectedEdgeId,
         data: {
           ...edge.data,
           highlightState: getEdgeHighlightState(edge.id, hoveredEdgeIds),
+          insertMenuOpen: edge.id === activeEdgeInsertMenuId,
+          onDelete: handleDeleteEdge,
           onInsertBetween: handleInsertNodeBetween,
+          onToggleInsertMenu: (edgeId: string) => {
+            setQuickInsertTarget(null);
+            setActiveEdgeInsertMenuId((currentEdgeId) => (currentEdgeId === edgeId ? null : edgeId));
+          },
         },
       })),
-    [edges, hoveredEdgeIds],
+    [activeEdgeInsertMenuId, edges, hoveredEdgeIds, selectedEdgeId],
   );
 
   const decoratedNodes = useMemo<MarketingWorkflowRenderNode[]>(
@@ -328,6 +304,7 @@ function WorkflowWorkspaceContent({
             onInsertAfter: handleInsertNodeAfter,
             onSelect: selectWorkflowNode,
             onToggleInsertMenu: (nodeId: string, sourceHandle?: string) => {
+              setActiveEdgeInsertMenuId(null);
               setQuickInsertTarget((currentTarget) =>
                 currentTarget?.nodeId === nodeId && currentTarget.sourceHandle === sourceHandle
                   ? null
@@ -351,9 +328,16 @@ function WorkflowWorkspaceContent({
 
   function selectWorkflowNode(nodeId: string) {
     setSelectedNodeId(nodeId);
+    setSelectedEdgeId(null);
     setIsInspectorOpen(true);
     setIsChecksOpen(false);
-    setQuickInsertTarget(null);
+    closeCanvasMenus();
+  }
+
+  function selectWorkflowEdge(edgeId: string) {
+    setSelectedEdgeId(edgeId);
+    setIsChecksOpen(false);
+    closeCanvasMenus();
   }
 
   function updateSelectedNode(patch: Partial<MarketingNodeData>) {
@@ -362,12 +346,12 @@ function WorkflowWorkspaceContent({
 
   function undoWorkflowChange() {
     undo();
-    setQuickInsertTarget(null);
+    closeCanvasMenus();
   }
 
   function redoWorkflowChange() {
     redo();
-    setQuickInsertTarget(null);
+    closeCanvasMenus();
   }
 
   function addNode(kind: MarketingNodeKind) {
@@ -398,7 +382,7 @@ function WorkflowWorkspaceContent({
     const result = connectWorkflowNodes(connection);
 
     if (result) {
-      setQuickInsertTarget(null);
+      closeCanvasMenus();
       setIsChecksOpen(false);
     }
   }
@@ -410,23 +394,51 @@ function WorkflowWorkspaceContent({
       return;
     }
 
-    setQuickInsertTarget(null);
+    closeCanvasMenus();
+    setIsChecksOpen(false);
+  }
+
+  function handleDeleteEdge(edgeId: string) {
+    const result = deleteEdge(edgeId);
+
+    if (!result) {
+      return;
+    }
+
+    setSelectedEdgeId(null);
+    closeCanvasMenus();
     setIsChecksOpen(false);
   }
 
   function deleteSelectedNode() {
+    if (selectedEdgeId) {
+      handleDeleteEdge(selectedEdgeId);
+      return;
+    }
+
     handleDeleteNode(selectedNodeId);
   }
 
   function handleWorkflowEditResult(result?: { nodeId?: string }) {
     if (result?.nodeId) {
       setSelectedNodeId(result.nodeId);
+      setSelectedEdgeId(null);
       setIsInspectorOpen(true);
     }
 
-    setQuickInsertTarget(null);
+    closeCanvasMenus();
     setPaletteOpen(false);
     setIsChecksOpen(false);
+  }
+
+  function closeCanvasMenus() {
+    setActiveEdgeInsertMenuId(null);
+    setQuickInsertTarget(null);
+  }
+
+  function clearCanvasSelection() {
+    setSelectedEdgeId(null);
+    closeCanvasMenus();
   }
 
   function runSelectedNode() {
@@ -445,6 +457,7 @@ function WorkflowWorkspaceContent({
   function handlePublishCheck() {
     setPublishAttempted(true);
     setIsChecksOpen(true);
+    closeCanvasMenus();
   }
 
   return (
@@ -476,10 +489,14 @@ function WorkflowWorkspaceContent({
               setIsInspectorOpen(true);
               setInspectorTab("variables");
               setIsChecksOpen(false);
+              clearCanvasSelection();
             }}
-            onPaletteOpenChange={setPaletteOpen}
+            onPaletteOpenChange={(open) => {
+              setPaletteOpen(open);
+              clearCanvasSelection();
+            }}
             onPaneClick={() => {
-              setQuickInsertTarget(null);
+              clearCanvasSelection();
               setIsChecksOpen(false);
             }}
             onRedo={redoWorkflowChange}
@@ -487,6 +504,7 @@ function WorkflowWorkspaceContent({
             onNodeHoverStart={(nodeId) => {
               setHoveredNodeId((currentNodeId) => (currentNodeId === nodeId ? currentNodeId : nodeId));
             }}
+            onSelectEdge={selectWorkflowEdge}
             onSelectNode={selectWorkflowNode}
             onSearchChange={setPaletteQuery}
             onUndo={undoWorkflowChange}
@@ -519,551 +537,6 @@ function WorkflowWorkspaceContent({
   );
 }
 
-function WorkflowTopBar({
-  onPublishCheck,
-  publishReady,
-  readyChecks,
-  totalChecks,
-  workflowName,
-}: {
-  onPublishCheck: () => void;
-  publishReady: boolean;
-  readyChecks: number;
-  totalChecks: number;
-  workflowName: string;
-}) {
-  return (
-    <header className="workflow-canvas-topbar">
-      <div className="workflow-canvas-status">
-        <span>自动保存</span>
-        <span className="workflow-canvas-status-separator" />
-        <span className="truncate">{workflowName}</span>
-      </div>
-
-      <div />
-
-      <div className="workflow-canvas-actions" aria-label="Workflow 操作">
-        <Button
-          className="workflow-topbar-button workflow-topbar-publish"
-          onClick={onPublishCheck}
-          type="button"
-          variant={publishReady ? "default" : "secondary"}
-        >
-          <HugeiconsIcon
-            icon={publishReady ? CheckmarkCircle02Icon : AlertCircleIcon}
-            size={16}
-            strokeWidth={1.8}
-          />
-          <span>
-            发布检查 {readyChecks}/{totalChecks}
-          </span>
-        </Button>
-      </div>
-    </header>
-  );
-}
-
-function WorkflowPalette({
-  onClose,
-  onAddNode,
-  onSearchChange,
-  searchValue,
-}: {
-  onClose?: () => void;
-  onAddNode: (kind: MarketingNodeKind) => void;
-  onSearchChange: (value: string) => void;
-  searchValue: string;
-}) {
-  const normalizedQuery = searchValue.trim().toLowerCase();
-  const visiblePaletteItems = paletteItems.filter((item) => {
-    if (!normalizedQuery) {
-      return true;
-    }
-
-    return `${item.label} ${item.description}`.toLowerCase().includes(normalizedQuery);
-  });
-
-  return (
-    <aside
-      aria-label="节点库"
-      className="workflow-sidebar workflow-floating-palette flex min-h-0 flex-col bg-background"
-      role="region"
-    >
-      <div className="flex items-center justify-between gap-2 border-b border-[var(--workflow-border)] px-3 py-2.5">
-        <div className="min-w-0">
-          <h2 className="text-xs font-semibold">Blocks</h2>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">选择节点加入当前流程</p>
-        </div>
-        {onClose ? (
-          <button
-            aria-label="关闭节点库"
-            className="workflow-floating-palette-close"
-            onClick={onClose}
-            type="button"
-          >
-            <HugeiconsIcon icon={Cancel01Icon} size={14} strokeWidth={1.8} />
-          </button>
-        ) : null}
-      </div>
-      <div className="border-b border-[var(--workflow-border)] px-3 py-3">
-        <div className="relative">
-          <HugeiconsIcon
-            className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
-            icon={Search01Icon}
-            size={15}
-            strokeWidth={1.8}
-          />
-          <Input
-            aria-label="搜索节点"
-            className="h-8 rounded-lg border-[var(--workflow-border)] bg-[var(--workflow-soft)] pl-8 text-xs shadow-none"
-            onChange={(event) => onSearchChange(event.target.value)}
-            placeholder="搜索节点"
-            value={searchValue}
-          />
-        </div>
-      </div>
-
-      <section className="min-h-0 flex-1 overflow-y-auto px-2 py-3">
-        <div className="mb-2 flex items-center justify-between px-1">
-          <h3 className="text-xs font-semibold text-muted-foreground">节点</h3>
-          <Badge className="h-5 rounded-md px-1.5 text-[11px]" variant="secondary">
-            {visiblePaletteItems.length}
-          </Badge>
-        </div>
-
-        <div className="mb-3 rounded-xl border border-[var(--workflow-border)] bg-[var(--workflow-soft)] p-2">
-          <div className="flex items-center gap-2 px-1 py-0.5">
-            <span className="flex size-6 items-center justify-center rounded-lg bg-background text-primary shadow-xs">
-              <HugeiconsIcon icon={FlowConnectionIcon} size={14} strokeWidth={1.8} />
-            </span>
-            <div className="min-w-0">
-              <div className="truncate text-xs font-medium">新人转化</div>
-              <div className="truncate text-[11px] text-muted-foreground">124.8 万进入 · 18.4% 目标</div>
-            </div>
-          </div>
-        </div>
-
-        <div className="space-y-1">
-          {visiblePaletteItems.map((item) => (
-            <button
-              aria-label={`添加 ${item.label}节点`}
-              className="group flex h-10 w-full items-center gap-2 rounded-lg px-2 text-left transition-colors hover:bg-muted/80 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/20"
-              key={item.id}
-              onClick={() => {
-                onAddNode(item.id);
-                onClose?.();
-              }}
-              type="button"
-            >
-              <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-[var(--workflow-soft)] text-muted-foreground transition-colors group-hover:bg-primary/10 group-hover:text-primary">
-                <HugeiconsIcon icon={item.icon} size={15} strokeWidth={1.8} />
-              </span>
-              <span className="min-w-0">
-                <span className="block truncate text-sm font-medium text-foreground">{item.label}</span>
-                <span className="block truncate text-[11px] text-muted-foreground">
-                  {item.description}
-                </span>
-              </span>
-            </button>
-          ))}
-          {visiblePaletteItems.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-[var(--workflow-border)] bg-card px-3 py-6 text-center text-xs text-muted-foreground">
-              未找到匹配节点
-            </div>
-          ) : null}
-        </div>
-      </section>
-
-      <section className="workflow-palette-preview border-t border-[var(--workflow-border)] p-2">
-        <div className="rounded-xl border border-[var(--workflow-border)] bg-[var(--workflow-panel-section)] p-2 shadow-xs">
-          <div className="flex items-center gap-2 px-0.5 text-xs font-medium">
-            <HugeiconsIcon icon={PlayIcon} size={15} strokeWidth={1.8} />
-            <span>Run preview</span>
-          </div>
-          <div className="mt-2 grid grid-cols-3 gap-1.5 text-center text-[11px]">
-            <MetricPill label="进入" value="124.8万" />
-            <MetricPill label="触达" value="83.6%" />
-            <MetricPill label="转化" value="18.4%" />
-          </div>
-        </div>
-      </section>
-    </aside>
-  );
-}
-
-function MetricPill({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg bg-[var(--workflow-soft)] px-1.5 py-1.5">
-      <div className="font-semibold text-foreground">{value}</div>
-      <div className="mt-0.5 text-muted-foreground">{label}</div>
-    </div>
-  );
-}
-
-function WorkflowCanvas({
-  canRedo,
-  canUndo,
-  edges,
-  nodes,
-  onAddNode,
-  onArrange,
-  onConnect,
-  onEdgesChange,
-  onNodesChange,
-  onOpenVariables,
-  onPaletteOpenChange,
-  onPaneClick,
-  onRedo,
-  onNodeHoverEnd,
-  onNodeHoverStart,
-  onSelectNode,
-  onSearchChange,
-  onUndo,
-  paletteOpen,
-  searchValue,
-}: {
-  canRedo: boolean;
-  canUndo: boolean;
-  edges: MarketingWorkflowRenderEdge[];
-  nodes: MarketingWorkflowRenderNode[];
-  onAddNode: (kind: MarketingNodeKind) => void;
-  onArrange: () => void;
-  onConnect: (connection: Connection) => void;
-  onEdgesChange: OnEdgesChange<MarketingWorkflowRenderEdge>;
-  onNodesChange: OnNodesChange<MarketingWorkflowRenderNode>;
-  onOpenVariables: () => void;
-  onPaletteOpenChange: (open: boolean) => void;
-  onPaneClick: () => void;
-  onRedo: () => void;
-  onNodeHoverEnd: () => void;
-  onNodeHoverStart: (nodeId: string) => void;
-  onSelectNode: (nodeId: string) => void;
-  onSearchChange: (value: string) => void;
-  onUndo: () => void;
-  paletteOpen: boolean;
-  searchValue: string;
-}) {
-  const initialViewport = useMemo(() => getInitialWorkflowViewport(), []);
-  const { fitView, zoomIn, zoomOut, zoomTo } = useReactFlow<
-    MarketingWorkflowRenderNode,
-    MarketingWorkflowRenderEdge
-  >();
-  const { zoom } = useViewport();
-  const [showMiniMap, setShowMiniMap] = useState(true);
-  const activeInsertNode = nodes.find((node) => node.data.insertMenuOpen);
-
-  return (
-    <section
-      aria-label="营销 Workflow 画布"
-      className="agent-workflow-canvas absolute inset-0"
-      role="application"
-    >
-      <ReactFlow
-        defaultViewport={initialViewport}
-        edges={edges}
-        edgeTypes={edgeTypes}
-        maxZoom={WORKFLOW_MAX_ZOOM}
-        minZoom={WORKFLOW_MIN_ZOOM}
-        nodeOrigin={[0, 0.5]}
-        nodeTypes={nodeTypes}
-        nodes={nodes}
-        nodesConnectable
-        onConnect={onConnect}
-        onEdgesChange={onEdgesChange}
-        onNodeClick={(_, node) => onSelectNode(node.id)}
-        onNodeMouseEnter={(_, node) => onNodeHoverStart(node.id)}
-        onNodeMouseLeave={onNodeHoverEnd}
-        onNodesChange={onNodesChange}
-        onPaneClick={onPaneClick}
-        panOnScroll
-        selectionOnDrag={false}
-      >
-        <Background color="var(--workflow-grid)" gap={20} size={1.2} />
-        <WorkflowControlDock
-          onPaletteOpenChange={onPaletteOpenChange}
-          onArrange={onArrange}
-          onOpenVariables={onOpenVariables}
-          paletteOpen={paletteOpen}
-        />
-        {paletteOpen ? (
-          <WorkflowPalette
-            onAddNode={onAddNode}
-            onClose={() => onPaletteOpenChange(false)}
-            onSearchChange={onSearchChange}
-            searchValue={searchValue}
-          />
-        ) : null}
-        {activeInsertNode ? <WorkflowCandidateMenuOverlay node={activeInsertNode} /> : null}
-        <div className="workflow-bottom-operator" aria-label="画布操作">
-          <div className="workflow-operator-group">
-            <button
-              aria-label="撤销"
-              className="workflow-operator-button"
-              disabled={!canUndo}
-              onClick={onUndo}
-              type="button"
-            >
-              <HugeiconsIcon icon={Undo03Icon} size={15} strokeWidth={1.8} />
-            </button>
-            <button
-              aria-label="重做"
-              className="workflow-operator-button"
-              disabled={!canRedo}
-              onClick={onRedo}
-              type="button"
-            >
-              <HugeiconsIcon icon={Redo03Icon} size={15} strokeWidth={1.8} />
-            </button>
-          </div>
-          <button
-            className="workflow-operator-chip workflow-operator-chip-strong"
-            onClick={onOpenVariables}
-            type="button"
-          >
-            Variables
-          </button>
-          <div className="workflow-operator-map-wrap">
-            {showMiniMap ? (
-              <MiniMap
-                className="workflow-minimap"
-                maskColor="var(--workflow-minimap-mask)"
-                nodeColor={(node) => {
-                  const data = node.data as MarketingNodeData;
-                  if (data.kind === "trigger") {
-                    return "var(--workflow-minimap-trigger)";
-                  }
-                  if (data.kind === "ai") {
-                    return "var(--workflow-minimap-ai)";
-                  }
-                  if (data.kind === "goal") {
-                    return "var(--workflow-minimap-goal)";
-                  }
-                  return "var(--workflow-minimap-node)";
-                }}
-                nodeStrokeWidth={3}
-                pannable
-                position="bottom-right"
-                style={{
-                  height: 73,
-                  width: 103,
-                }}
-                zoomable
-              />
-            ) : null}
-            <WorkflowZoomControls
-              fitView={() => fitView({ duration: 160, padding: 0.2 })}
-              onToggleMiniMap={() => setShowMiniMap((isVisible) => !isVisible)}
-              showMiniMap={showMiniMap}
-              zoom={zoom}
-              zoomIn={zoomIn}
-              zoomOut={zoomOut}
-              zoomTo={zoomTo}
-            />
-          </div>
-        </div>
-      </ReactFlow>
-    </section>
-  );
-}
-
-function WorkflowCandidateMenuOverlay({ node }: { node: MarketingWorkflowRenderNode }) {
-  const sourceHandle = node.data.insertMenuSourceHandle;
-  const { x, y, zoom } = useViewport();
-  const menuLeft = (node.position.x + getWorkflowNodeWidth(node) + 24) * zoom + x;
-  const menuTop = getInsertMenuTop(node, sourceHandle) * zoom + y;
-
-  return (
-    <div
-      aria-label="选择要添加的节点"
-      className="workflow-candidate-menu nodrag nopan"
-      role="menu"
-      style={{
-        left: menuLeft,
-        top: menuTop,
-      }}
-    >
-      {paletteItems.map((item) => (
-        <button
-          className="workflow-candidate-item"
-          key={item.id}
-          onClick={(event) => {
-            event.stopPropagation();
-            node.data.onInsertAfter?.(node.id, item.id, sourceHandle);
-          }}
-          role="menuitem"
-          type="button"
-        >
-          <span className="flex size-6 items-center justify-center rounded-md bg-[var(--workflow-soft)] text-muted-foreground">
-            <HugeiconsIcon icon={item.icon} size={14} strokeWidth={1.8} />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-xs font-medium text-foreground">
-              {item.label}
-            </span>
-            <span className="block truncate text-[11px] text-muted-foreground">
-              {item.description}
-            </span>
-          </span>
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function WorkflowZoomControls({
-  fitView,
-  onToggleMiniMap,
-  showMiniMap,
-  zoom,
-  zoomIn,
-  zoomOut,
-  zoomTo,
-}: {
-  fitView: () => void;
-  onToggleMiniMap: () => void;
-  showMiniMap: boolean;
-  zoom: number;
-  zoomIn: () => void;
-  zoomOut: () => void;
-  zoomTo: (zoom: number) => void;
-}) {
-  const zoomLabel = `${Math.round(zoom * 100)}%`;
-  const canZoomOut = zoom > WORKFLOW_MIN_ZOOM;
-  const canZoomIn = zoom < WORKFLOW_MAX_ZOOM;
-
-  return (
-    <div className="workflow-operator-group workflow-zoom-control" aria-label="缩放比例">
-      <button
-        aria-label="缩小"
-        className="workflow-operator-button"
-        disabled={!canZoomOut}
-        onClick={() => {
-          if (canZoomOut) {
-            zoomOut();
-          }
-        }}
-        type="button"
-      >
-        -
-      </button>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button
-            aria-label={`当前缩放 ${zoomLabel}，打开缩放菜单`}
-            className="workflow-operator-button workflow-operator-zoom-label"
-            type="button"
-          >
-            {zoomLabel}
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="center" className="min-w-[132px]" side="top">
-          {workflowZoomOptions.map((option) => (
-            <DropdownMenuItem
-              className="workflow-zoom-menu-item"
-              key={option.label}
-              onSelect={() => zoomTo(option.value)}
-            >
-              <span className="workflow-zoom-menu-icon" />
-              {option.label}
-            </DropdownMenuItem>
-          ))}
-          <DropdownMenuItem className="workflow-zoom-menu-item" onSelect={fitView}>
-            <span className="workflow-zoom-menu-icon">
-              <HugeiconsIcon icon={SquareArrowExpand01Icon} size={16} strokeWidth={1.8} />
-            </span>
-            适配画布
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            className="workflow-zoom-menu-item"
-            onSelect={() => {
-              onToggleMiniMap();
-            }}
-          >
-            <span className="workflow-zoom-menu-icon">
-              {showMiniMap ? <HugeiconsIcon icon={Tick02Icon} size={16} strokeWidth={1.8} /> : null}
-            </span>
-            显示小地图
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-      <button
-        aria-label="放大"
-        className="workflow-operator-button"
-        disabled={!canZoomIn}
-        onClick={() => {
-          if (canZoomIn) {
-            zoomIn();
-          }
-        }}
-        type="button"
-      >
-        +
-      </button>
-    </div>
-  );
-}
-
-function WorkflowControlDock({
-  onArrange,
-  onOpenVariables,
-  onPaletteOpenChange,
-  paletteOpen,
-}: {
-  onArrange: () => void;
-  onOpenVariables: () => void;
-  onPaletteOpenChange: (open: boolean) => void;
-  paletteOpen: boolean;
-}) {
-  return (
-    <div aria-label="画布工具" className="workflow-left-dock">
-      <button
-        aria-expanded={paletteOpen}
-        aria-label={paletteOpen ? "关闭节点库" : "打开节点库"}
-        className="workflow-left-dock-button"
-        data-active={paletteOpen ? "true" : undefined}
-        onClick={() => onPaletteOpenChange(!paletteOpen)}
-        type="button"
-      >
-        <HugeiconsIcon icon={Add01Icon} size={16} strokeWidth={1.8} />
-      </button>
-      <button
-        aria-label="选择模式"
-        className="workflow-left-dock-button"
-        data-active="true"
-        type="button"
-      >
-        <HugeiconsIcon icon={FlowConnectionIcon} size={16} strokeWidth={1.8} />
-      </button>
-      <button
-        aria-label="自动整理画布"
-        className="workflow-left-dock-button"
-        onClick={onArrange}
-        type="button"
-      >
-        <HugeiconsIcon icon={ArrangeIcon} size={16} strokeWidth={1.8} />
-      </button>
-      <span className="workflow-left-dock-divider" />
-      <button
-        aria-label="打开变量面板"
-        className="workflow-left-dock-button"
-        onClick={onOpenVariables}
-        type="button"
-      >
-        <HugeiconsIcon icon={Settings02Icon} size={16} strokeWidth={1.8} />
-      </button>
-    </div>
-  );
-}
-
-function getInitialWorkflowViewport() {
-  if (typeof window !== "undefined" && window.innerWidth < 1024) {
-    return { x: 28, y: 260, zoom: 0.82 };
-  }
-
-  return { x: 36, y: 420, zoom: 0.82 };
-}
-
 function getEdgeHighlightState(
   edgeId: string,
   highlightedEdgeIds: Set<string> | null,
@@ -1073,94 +546,6 @@ function getEdgeHighlightState(
   }
 
   return highlightedEdgeIds.has(edgeId) ? "connected" : "dimmed";
-}
-
-function WorkflowChecks({
-  checks,
-  onClose,
-  publishAttempted,
-  publishReady,
-}: {
-  checks: ReturnType<typeof buildPublishChecks>;
-  onClose: () => void;
-  publishAttempted: boolean;
-  publishReady: boolean;
-}) {
-  return (
-    <section aria-label="发布检查" className="workflow-checks-panel">
-      <div className="space-y-4">
-        <div
-          className={cn(
-            "rounded-[12px] border bg-background p-4 shadow-xs",
-            publishAttempted && (publishReady ? "border-emerald-200" : "border-amber-200"),
-          )}
-          role={publishAttempted ? "alert" : undefined}
-        >
-          <div className="flex items-start gap-3">
-            <span
-              className={cn(
-                "mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-[10px]",
-                publishReady ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700",
-              )}
-            >
-              <HugeiconsIcon
-                icon={publishReady ? CheckmarkCircle02Icon : AlertCircleIcon}
-                size={20}
-                strokeWidth={1.8}
-              />
-            </span>
-            <div className="min-w-0 flex-1">
-              <h2 className="text-lg font-semibold">
-                {publishReady ? "可以发布" : "发布前需处理配置问题"}
-              </h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                检查触发、连线、节点配置、分支兜底和动作幂等配置
-              </p>
-            </div>
-            <Button
-              aria-label="关闭发布检查"
-              className="size-8 shrink-0 rounded-lg"
-              onClick={onClose}
-              size="icon"
-              type="button"
-              variant="ghost"
-            >
-              <HugeiconsIcon icon={Cancel01Icon} size={16} strokeWidth={1.8} />
-            </Button>
-          </div>
-        </div>
-
-        <div className="grid gap-3">
-          {checks.map((check) => {
-            const isReady = check.status === "ready";
-
-            return (
-              <article className="rounded-[12px] border bg-background p-4 shadow-xs" key={check.id}>
-                <div className="flex items-start gap-3">
-                  <span
-                    className={cn(
-                      "mt-0.5 flex size-8 items-center justify-center rounded-[8px]",
-                      isReady ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700",
-                    )}
-                  >
-                    <HugeiconsIcon
-                      icon={isReady ? CheckmarkCircle02Icon : AlertCircleIcon}
-                      size={17}
-                      strokeWidth={1.8}
-                    />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <h3 className="text-sm font-semibold">{check.title}</h3>
-                    <p className="mt-1 text-sm text-muted-foreground">{check.description}</p>
-                  </div>
-                </div>
-              </article>
-            );
-          })}
-        </div>
-      </div>
-    </section>
-  );
 }
 
 function createNodeRunRecord(node: MarketingWorkflowNode): NodeRunRecord {

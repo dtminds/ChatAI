@@ -8,7 +8,7 @@ import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { actionOptions, agentOptions } from "../node-definitions";
+import { actionOptions, agentOptions } from "../node-options";
 import { FieldGroup } from "./field-group";
 import type { NodeSettingsProps } from "./types";
 
@@ -63,7 +63,7 @@ export function WaitConfig({ node, onNodeChange }: NodeSettingsProps) {
         <span className="text-sm text-muted-foreground">天</span>
       </div>
       <div className="rounded-[10px] border bg-card p-3 text-xs leading-5 text-muted-foreground">
-        真实执行层会把等待写入持久化 job；本 DEMO 仅展示前端配置体验
+        真实执行层会把等待写入持久化 job；当前前端先使用 mock 数据验证配置体验
       </div>
     </FieldGroup>
   );

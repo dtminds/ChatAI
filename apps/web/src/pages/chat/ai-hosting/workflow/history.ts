@@ -11,8 +11,10 @@ export type WorkflowHistoryEvent =
   | "node:add"
   | "node:config-change"
   | "edge:connect"
+  | "edge:delete"
   | "node:insert"
   | "node:delete"
+  | "node:move"
   | "layout:organize";
 
 export type WorkflowHistoryEventMeta = {
@@ -40,6 +42,13 @@ type WorkflowHistoryReducerAction =
     meta?: WorkflowHistoryEventMeta;
     type: "commit";
     updateDraft: (draft: WorkflowDraft) => WorkflowDraft;
+  }
+  | {
+    event: WorkflowHistoryEvent;
+    meta?: WorkflowHistoryEventMeta;
+    nextDraft: WorkflowDraft;
+    previousDraft: WorkflowDraft;
+    type: "commit-from-drafts";
   }
   | {
     type: "replace";
@@ -89,7 +98,14 @@ function sanitizeEdgeData(data: MarketingEdgeData | undefined): MarketingEdgeDat
     return data;
   }
 
-  const { highlightState: _highlightState, onInsertBetween: _onInsertBetween, ...persistableData } = data;
+  const {
+    highlightState: _highlightState,
+    insertMenuOpen: _insertMenuOpen,
+    onDelete: _onDelete,
+    onInsertBetween: _onInsertBetween,
+    onToggleInsertMenu: _onToggleInsertMenu,
+    ...persistableData
+  } = data;
 
   return persistableData;
 }
@@ -140,6 +156,24 @@ function workflowHistoryReducer(
       pastStates: [
         ...state.pastStates.slice(-(WORKFLOW_HISTORY_LIMIT - 1)),
         previousHistoryState,
+      ],
+    };
+  }
+
+  if (action.type === "commit-from-drafts") {
+    const previousDraft = sanitizeDraft(action.previousDraft);
+    const nextDraft = sanitizeDraft(action.nextDraft);
+
+    if (isWorkflowDraftEqual(previousDraft, nextDraft)) {
+      return state;
+    }
+
+    return {
+      currentDraft: nextDraft,
+      futureStates: [],
+      pastStates: [
+        ...state.pastStates.slice(-(WORKFLOW_HISTORY_LIMIT - 1)),
+        createHistoryState(previousDraft, action.event, action.meta),
       ],
     };
   }
@@ -217,6 +251,21 @@ export function useWorkflowHistory(initialDraft: () => WorkflowDraft) {
     dispatch({ type: "replace", updateDraft });
   }, []);
 
+  const commitFromDrafts = useCallback((
+    event: WorkflowHistoryEvent,
+    previousDraft: WorkflowDraft,
+    nextDraft: WorkflowDraft,
+    meta?: WorkflowHistoryEventMeta,
+  ) => {
+    dispatch({
+      event,
+      meta,
+      nextDraft,
+      previousDraft,
+      type: "commit-from-drafts",
+    });
+  }, []);
+
   const undo = useCallback(() => {
     dispatch({ type: "undo" });
   }, []);
@@ -228,6 +277,7 @@ export function useWorkflowHistory(initialDraft: () => WorkflowDraft) {
   return {
     canRedo: futureStates.length > 0,
     canUndo: pastStates.length > 0,
+    commitFromDrafts,
     commitDraft,
     currentDraft,
     futureStates,

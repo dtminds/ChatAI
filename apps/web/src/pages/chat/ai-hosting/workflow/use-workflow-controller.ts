@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type {
   Connection,
   EdgeChange,
@@ -24,6 +24,7 @@ import {
   getNodeIdSet,
   shiftNodesRight,
 } from "./graph";
+import { canDeleteNodeKind, canInsertNodeKind } from "./node-definitions";
 import { useWorkflowHistory } from "./history";
 import type {
   InsertableMarketingNodeKind,
@@ -35,6 +36,43 @@ import type {
   MarketingWorkflowRenderNode,
 } from "./types";
 
+const WORKFLOW_CONFIG_HISTORY_DEBOUNCE_MS = 500;
+
+type PendingConfigHistory = {
+  meta: {
+    nodeId: string;
+    nodeTitle?: string;
+  };
+  nextDraft: {
+    edges: MarketingWorkflowEdge[];
+    nodes: MarketingWorkflowNode[];
+  };
+  previousDraft: {
+    edges: MarketingWorkflowEdge[];
+    nodes: MarketingWorkflowNode[];
+  };
+};
+
+type WorkflowNodePositionChange = NodeChange<MarketingWorkflowRenderNode> & {
+  dragging?: boolean;
+  id: string;
+  position?: {
+    x: number;
+    y: number;
+  };
+  type: "position";
+};
+
+function isFinalNodePositionChange(
+  change: NodeChange<MarketingWorkflowRenderNode>,
+): change is WorkflowNodePositionChange {
+  return change.type === "position"
+    && "position" in change
+    && Boolean(change.position)
+    && "dragging" in change
+    && change.dragging === false;
+}
+
 export type WorkflowActionResult = {
   edgeId?: string;
   nodeId?: string;
@@ -45,27 +83,88 @@ export function useWorkflowController() {
     edges: createInitialEdges(),
     nodes: createInitialNodes(),
   }));
-  const { commitDraft, currentDraft, replaceDraft } = history;
+  const { commitDraft, commitFromDrafts, currentDraft, replaceDraft } = history;
   const { edges, nodes } = currentDraft;
+  const pendingConfigHistoryRef = useRef<PendingConfigHistory | null>(null);
+  const configHistoryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearConfigHistoryTimer = useCallback(() => {
+    if (!configHistoryTimerRef.current) {
+      return;
+    }
+
+    clearTimeout(configHistoryTimerRef.current);
+    configHistoryTimerRef.current = null;
+  }, []);
+
+  const flushConfigHistory = useCallback(() => {
+    const pendingHistory = pendingConfigHistoryRef.current;
+
+    clearConfigHistoryTimer();
+
+    if (!pendingHistory) {
+      return;
+    }
+
+    pendingConfigHistoryRef.current = null;
+    commitFromDrafts(
+      "node:config-change",
+      pendingHistory.previousDraft,
+      pendingHistory.nextDraft,
+      pendingHistory.meta,
+    );
+  }, [clearConfigHistoryTimer, commitFromDrafts]);
+
+  const scheduleConfigHistoryCommit = useCallback(() => {
+    clearConfigHistoryTimer();
+    configHistoryTimerRef.current = setTimeout(() => {
+      flushConfigHistory();
+    }, WORKFLOW_CONFIG_HISTORY_DEBOUNCE_MS);
+  }, [clearConfigHistoryTimer, flushConfigHistory]);
+
+  useEffect(() => () => {
+    clearConfigHistoryTimer();
+  }, [clearConfigHistoryTimer]);
 
   const onNodesChange: OnNodesChange<MarketingWorkflowRenderNode> = useCallback(
     (changes: NodeChange<MarketingWorkflowRenderNode>[]) => {
-      replaceDraft((draft) => ({
-        ...draft,
-        nodes: applyNodeChanges(changes as NodeChange<MarketingWorkflowNode>[], draft.nodes),
-      }));
+      flushConfigHistory();
+      const hasFinalPositionChange = changes.some(isFinalNodePositionChange);
+
+      if (!hasFinalPositionChange) {
+        replaceDraft((draft) => ({
+          ...draft,
+          nodes: applyNodeChanges(changes as NodeChange<MarketingWorkflowNode>[], draft.nodes),
+        }));
+        return;
+      }
+
+      const previousDraft = currentDraft;
+      const nextDraft = {
+        ...previousDraft,
+        nodes: applyNodeChanges(changes as NodeChange<MarketingWorkflowNode>[], previousDraft.nodes),
+      };
+      const movedNodeId = changes.find(isFinalNodePositionChange)?.id;
+
+      commitFromDrafts(
+        "node:move",
+        previousDraft,
+        nextDraft,
+        movedNodeId ? { nodeId: movedNodeId } : undefined,
+      );
     },
-    [replaceDraft],
+    [commitFromDrafts, currentDraft, flushConfigHistory, replaceDraft],
   );
 
   const onEdgesChange: OnEdgesChange<MarketingWorkflowRenderEdge> = useCallback(
     (changes: EdgeChange<MarketingWorkflowRenderEdge>[]) => {
+      flushConfigHistory();
       replaceDraft((draft) => ({
         ...draft,
         edges: applyEdgeChanges(changes as EdgeChange<MarketingWorkflowEdge>[], draft.edges),
       }));
     },
-    [replaceDraft],
+    [flushConfigHistory, replaceDraft],
   );
 
   const updateNodeData = useCallback((
@@ -78,36 +177,41 @@ export function useWorkflowController() {
       return undefined;
     }
 
-    commitDraft(
-      "node:config-change",
-      (draft) => ({
-        ...draft,
-        nodes: draft.nodes.map((currentNode) =>
-          currentNode.id === nodeId
-            ? {
-                ...currentNode,
-                data: {
-                  ...currentNode.data,
-                  ...patch,
-                },
-              }
-            : currentNode,
-        ),
-      }),
-      {
+    const nextDraft = {
+      ...currentDraft,
+      nodes: currentDraft.nodes.map((currentNode) =>
+        currentNode.id === nodeId
+          ? {
+              ...currentNode,
+              data: {
+                ...currentNode.data,
+                ...patch,
+              },
+            }
+          : currentNode,
+      ),
+    };
+
+    pendingConfigHistoryRef.current = {
+      meta: {
         nodeId,
         nodeTitle: node.data.title,
       },
-    );
+      nextDraft,
+      previousDraft: pendingConfigHistoryRef.current?.previousDraft ?? currentDraft,
+    };
+    replaceDraft(() => nextDraft);
+    scheduleConfigHistoryCommit();
 
     return { nodeId };
-  }, [commitDraft, nodes]);
+  }, [currentDraft, nodes, replaceDraft, scheduleConfigHistoryCommit]);
 
   const insertNodeAfter = useCallback((
     previousNodeId: string,
     kind: InsertableMarketingNodeKind,
     sourceHandle?: string,
   ): WorkflowActionResult => {
+    flushConfigHistory();
     const nodeId = `${kind}-${Date.now()}`;
     const previousNode = nodes.find((node) => node.id === previousNodeId);
     const replacedEdge = edges.find((edge) =>
@@ -155,7 +259,7 @@ export function useWorkflowController() {
     );
 
     return { edgeId: replacedEdge?.id, nodeId };
-  }, [commitDraft, edges, nodes]);
+  }, [commitDraft, edges, flushConfigHistory, nodes]);
 
   const insertNodeBetween = useCallback((
     edgeId: string,
@@ -163,6 +267,7 @@ export function useWorkflowController() {
     targetNodeId: string,
     kind: InsertableMarketingNodeKind,
   ): WorkflowActionResult => {
+    flushConfigHistory();
     const nodeId = `${kind}-${Date.now()}`;
     const sourceNode = nodes.find((node) => node.id === sourceNodeId);
     const targetNode = nodes.find((node) => node.id === targetNodeId);
@@ -198,10 +303,10 @@ export function useWorkflowController() {
     );
 
     return { edgeId, nodeId };
-  }, [commitDraft, edges, nodes]);
+  }, [commitDraft, edges, flushConfigHistory, nodes]);
 
   const addNode = useCallback((kind: MarketingNodeKind): WorkflowActionResult | undefined => {
-    if (kind === "trigger" || kind === "goal") {
+    if (!canInsertNodeKind(kind)) {
       return undefined;
     }
 
@@ -209,6 +314,7 @@ export function useWorkflowController() {
   }, [edges, insertNodeAfter, nodes]);
 
   const connectNodes = useCallback((connection: Connection): WorkflowActionResult | undefined => {
+    flushConfigHistory();
     const { source, sourceHandle, target, targetHandle } = connection;
 
     if (!source || !target || source === target) {
@@ -243,12 +349,13 @@ export function useWorkflowController() {
     );
 
     return { edgeId: edge.id, nodeId: source };
-  }, [commitDraft, edges]);
+  }, [commitDraft, edges, flushConfigHistory]);
 
   const deleteNode = useCallback((nodeId: string): WorkflowActionResult | undefined => {
+    flushConfigHistory();
     const node = nodes.find((currentNode) => currentNode.id === nodeId);
 
-    if (!node || node.data.kind === "trigger" || node.data.kind === "goal") {
+    if (!node || !canDeleteNodeKind(node.data.kind)) {
       return undefined;
     }
 
@@ -265,20 +372,56 @@ export function useWorkflowController() {
     );
 
     return { nodeId };
-  }, [commitDraft, nodes]);
+  }, [commitDraft, flushConfigHistory, nodes]);
+
+  const deleteEdge = useCallback((edgeId: string): WorkflowActionResult | undefined => {
+    flushConfigHistory();
+
+    const edge = edges.find((currentEdge) => currentEdge.id === edgeId);
+
+    if (!edge) {
+      return undefined;
+    }
+
+    commitDraft(
+      "edge:delete",
+      (draft) => ({
+        ...draft,
+        edges: draft.edges.filter((currentEdge) => currentEdge.id !== edgeId),
+      }),
+      {
+        edgeId,
+        nodeId: edge.source,
+      },
+    );
+
+    return { edgeId, nodeId: edge.source };
+  }, [commitDraft, edges, flushConfigHistory]);
 
   const arrangeNodes = useCallback(() => {
+    flushConfigHistory();
     commitDraft("layout:organize", (draft) => ({
       ...draft,
       nodes: arrangeWorkflowNodes(draft.nodes, draft.edges),
     }));
-  }, [commitDraft]);
+  }, [commitDraft, flushConfigHistory]);
+
+  const undo = useCallback(() => {
+    flushConfigHistory();
+    history.undo();
+  }, [flushConfigHistory, history]);
+
+  const redo = useCallback(() => {
+    flushConfigHistory();
+    history.redo();
+  }, [flushConfigHistory, history]);
 
   return {
     ...history,
     addNode,
     arrangeNodes,
     connectNodes,
+    deleteEdge,
     deleteNode,
     edges,
     insertNodeAfter,
@@ -286,6 +429,8 @@ export function useWorkflowController() {
     nodes,
     onEdgesChange,
     onNodesChange,
+    redo,
+    undo,
     updateNodeData,
   };
 }

@@ -43,12 +43,15 @@ export type MarketingEdgeData = Record<string, unknown> & {
 };
 export type MarketingEdgeRuntimeData = {
   highlightState?: MarketingEdgeHighlightState;
+  insertMenuOpen?: boolean;
   onInsertBetween?: (
     edgeId: string,
     sourceNodeId: string,
     targetNodeId: string,
     kind: InsertableMarketingNodeKind,
   ) => void;
+  onDelete?: (edgeId: string) => void;
+  onToggleInsertMenu?: (edgeId: string) => void;
 };
 export type MarketingEdgeRenderData = MarketingEdgeData & MarketingEdgeRuntimeData;
 export type MarketingWorkflowEdge = Edge<MarketingEdgeData, "marketing">;

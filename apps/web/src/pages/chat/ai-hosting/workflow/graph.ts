@@ -1,4 +1,5 @@
 import { branchHandleOptions, WORKFLOW_LAYOUT_X_GAP, WORKFLOW_LAYOUT_Y_GAP } from "./constants";
+import { createDefaultNodeData } from "./node-definitions";
 import type {
   InsertableMarketingNodeKind,
   MarketingWorkflowEdge,
@@ -10,9 +11,8 @@ export function createInitialNodes(): MarketingWorkflowNode[] {
   return [
     {
       data: {
+        ...createDefaultNodeData("trigger"),
         audience: "近 30 天新入会且未首购客户",
-        kind: "trigger",
-        label: "触发",
         metric: "预计进入 124.8万人",
         status: "running",
         summary: "客户入会后立即进入新人转化旅程",
@@ -24,9 +24,8 @@ export function createInitialNodes(): MarketingWorkflowNode[] {
     },
     {
       data: {
+        ...createDefaultNodeData("wait"),
         delayDays: 2,
-        kind: "wait",
-        label: "等待",
         metric: "2 天后唤醒",
         status: "ready",
         summary: "等待 2 天后继续触达",
@@ -38,9 +37,8 @@ export function createInitialNodes(): MarketingWorkflowNode[] {
     },
     {
       data: {
+        ...createDefaultNodeData("branch"),
         branchRule: "最近 7 天浏览活动页 >= 2 次，或咨询过商品功效",
-        kind: "branch",
-        label: "条件",
         metric: "2 条分支",
         status: "ready",
         summary: "按活动兴趣和咨询意图拆分路径",
@@ -52,8 +50,8 @@ export function createInitialNodes(): MarketingWorkflowNode[] {
     },
     {
       data: {
+        ...createDefaultNodeData("action"),
         actionType: "message",
-        kind: "action",
         label: "发送消息",
         metric: "欢迎语 + 活动卡片",
         status: "ready",
@@ -66,9 +64,8 @@ export function createInitialNodes(): MarketingWorkflowNode[] {
     },
     {
       data: {
+        ...createDefaultNodeData("goal"),
         conversion: 18.4,
-        kind: "goal",
-        label: "目标",
         metric: "目标 18.4%",
         status: "ready",
         summary: "完成首单或领取新人券后退出",
@@ -102,68 +99,8 @@ export function createNodeFromKind(
     y: index % 2 === 0 ? -94 : 94,
   };
 
-  if (kind === "ai") {
-    return {
-      data: {
-        actionType: "ai",
-        agentName: "护肤小助理",
-        kind: "ai",
-        label: "AI 接待",
-        metric: "护肤知识库、活动政策",
-        status: "ready",
-        summary: "护肤小助理",
-        title: "AI 接待",
-      },
-      id,
-      position: commonPosition,
-      type: "marketing",
-    };
-  }
-
-  if (kind === "wait") {
-    return {
-      data: {
-        delayDays: 1,
-        kind: "wait",
-        label: "等待",
-        metric: "1 天后唤醒",
-        status: "ready",
-        summary: "等待 1 天后继续触达",
-        title: "等待",
-      },
-      id,
-      position: commonPosition,
-      type: "marketing",
-    };
-  }
-
-  if (kind === "branch") {
-    return {
-      data: {
-        branchRule: "",
-        kind: "branch",
-        label: "条件",
-        metric: "未配置分支",
-        status: "warning",
-        summary: "按客户标签、行为或会话意图拆分路径",
-        title: "条件分支",
-      },
-      id,
-      position: commonPosition,
-      type: "marketing",
-    };
-  }
-
   return {
-    data: {
-      actionType: "coupon",
-      kind: "action",
-      label: "营销动作",
-      metric: "新人券 · 满 199 减 30",
-      status: "ready",
-      summary: "发放新人专属优惠券",
-      title: "发优惠券",
-    },
+    data: createDefaultNodeData(kind),
     id,
     position: commonPosition,
     type: "marketing",

@@ -10,8 +10,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { branchHandleOptions } from "../constants";
-import { nodeVisuals } from "../node-definitions";
-import type { MarketingNodeRenderData, MarketingNodeKind } from "../types";
+import {
+  canDeleteNodeKind,
+  canInsertAfterNodeKind,
+  nodeVisuals,
+} from "../node-definitions";
+import type { NodeVisual } from "../node-definitions";
+import type { MarketingNodeRenderData } from "../types";
 import { WorkflowTargetHandle } from "./node-handles";
 
 export function WorkflowBaseNode({
@@ -69,7 +74,7 @@ function NodeHeader({
   visual,
 }: {
   data: MarketingNodeRenderData;
-  visual: typeof nodeVisuals[MarketingNodeKind];
+  visual: NodeVisual;
 }) {
   return (
     <span className="flex items-center rounded-t-2xl px-3 pb-2 pr-10 pt-3">
@@ -129,7 +134,7 @@ function NodeActionMenu({
           >
             打开配置
           </DropdownMenuItem>
-          {data.kind !== "goal" ? (
+          {canInsertAfterNodeKind(data.kind) ? (
             <DropdownMenuItem
               onClick={(event) => {
                 event.stopPropagation();
@@ -143,7 +148,7 @@ function NodeActionMenu({
               添加后续节点
             </DropdownMenuItem>
           ) : null}
-          {data.kind !== "trigger" && data.kind !== "goal" ? (
+          {canDeleteNodeKind(data.kind) ? (
             <DropdownMenuItem
               onClick={(event) => {
                 event.stopPropagation();

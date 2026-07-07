@@ -6,8 +6,14 @@ import {
   Position,
   getBezierPath,
 } from "@xyflow/react";
-import { Add01Icon } from "@hugeicons/core-free-icons";
+import { Add01Icon, Delete02Icon, MoreHorizontalIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { paletteItems } from "../node-definitions";
 import type { MarketingWorkflowRenderEdge } from "../types";
@@ -23,8 +29,8 @@ export function MarketingBezierEdge({
   targetX,
   targetY,
 }: EdgeProps<MarketingWorkflowRenderEdge>) {
-  const [menuOpen, setMenuOpen] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
+  const menuOpen = Boolean(data?.insertMenuOpen);
   const [edgePath, labelX, labelY] = getBezierPath({
     curvature: 0.16,
     sourcePosition: Position.Right,
@@ -64,11 +70,38 @@ export function MarketingBezierEdge({
             aria-expanded={menuOpen}
             aria-label={data?.label ? `在${data.label}连线上添加节点` : "在连线上添加节点"}
             className="workflow-edge-add"
-            onClick={() => setMenuOpen((isOpen) => !isOpen)}
+            onClick={(event) => {
+              event.stopPropagation();
+              data?.onToggleInsertMenu?.(id);
+            }}
             type="button"
           >
             <HugeiconsIcon icon={Add01Icon} size={12} strokeWidth={1.8} />
           </button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                aria-label={data?.label ? `更多操作：${data.label}连线` : "更多操作：连线"}
+                className="workflow-edge-add"
+                onClick={(event) => event.stopPropagation()}
+                type="button"
+              >
+                <HugeiconsIcon icon={MoreHorizontalIcon} size={12} strokeWidth={1.8} />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="center" className="min-w-[124px]" side="bottom">
+              <DropdownMenuItem
+                className="text-destructive focus:text-destructive"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  data?.onDelete?.(id);
+                }}
+              >
+                <HugeiconsIcon icon={Delete02Icon} size={14} strokeWidth={1.8} />
+                删除连线
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           {menuOpen ? (
             <div aria-label="从连线添加节点" className="workflow-edge-menu" role="menu">
               {paletteItems.map((item) => (
@@ -77,7 +110,6 @@ export function MarketingBezierEdge({
                   key={item.id}
                   onClick={() => {
                     data?.onInsertBetween?.(id, source, target, item.id);
-                    setMenuOpen(false);
                   }}
                   role="menuitem"
                   type="button"

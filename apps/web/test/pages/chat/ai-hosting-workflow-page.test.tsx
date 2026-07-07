@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent, { PointerEventsCheckLevel } from "@testing-library/user-event";
 import type React from "react";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
@@ -7,6 +7,18 @@ import {
   AgentWorkflowEditorPage,
   AgentWorkflowPage,
 } from "@/pages/chat/ai-hosting/agent-workflow-page";
+import {
+  canDeleteNodeKind,
+  canInsertAfterNodeKind,
+  createDefaultNodeData,
+  insertableNodeKinds,
+  nodeDefinitions,
+  orderedNodeDefinitions,
+  paletteItems,
+} from "@/pages/chat/ai-hosting/workflow/node-definitions";
+import { NodeComponentMap } from "@/pages/chat/ai-hosting/workflow/nodes/registry";
+import { PanelComponentMap } from "@/pages/chat/ai-hosting/workflow/panels/registry";
+import type { MarketingNodeKind } from "@/pages/chat/ai-hosting/workflow/types";
 import { useAuthStore } from "@/store/auth-store";
 
 const agentServiceMock = vi.hoisted(() => ({
@@ -71,9 +83,11 @@ vi.mock("@xyflow/react", async () => {
       nodes,
       nodesConnectable,
       onConnect,
+      onEdgeClick,
       onNodeClick,
       onNodeMouseEnter,
       onNodeMouseLeave,
+      onNodesChange,
       onPaneClick,
     }: {
       children?: React.ReactNode;
@@ -82,6 +96,7 @@ vi.mock("@xyflow/react", async () => {
         id: string;
         source: string;
         target: string;
+        selected?: boolean;
         type?: string;
       }>;
       edgeTypes?: Record<string, (props: any) => React.ReactNode>;
@@ -98,9 +113,16 @@ vi.mock("@xyflow/react", async () => {
       }>;
       nodesConnectable?: boolean;
       onConnect?: (connection: { source: string; target: string }) => void;
+      onEdgeClick?: (_event: unknown, edge: { id: string }) => void;
       onNodeClick?: (_event: unknown, node: { id: string }) => void;
       onNodeMouseEnter?: (_event: unknown, node: { id: string }) => void;
       onNodeMouseLeave?: (_event: unknown, node: { id: string }) => void;
+      onNodesChange?: (changes: Array<{
+        dragging?: boolean;
+        id: string;
+        position?: { x: number; y: number };
+        type: string;
+      }>) => void;
       onPaneClick?: () => void;
     }) => (
       <div
@@ -121,16 +143,36 @@ vi.mock("@xyflow/react", async () => {
         >
           连接观察期到首单转化
         </button>
+        <button
+          onClick={() =>
+            onNodesChange?.([
+              {
+                dragging: false,
+                id: "wait-2d",
+                position: { x: 420, y: 120 },
+                type: "position",
+              },
+            ])
+          }
+          type="button"
+        >
+          移动观察期
+        </button>
         {edges.map((edge, index) => {
           const EdgeComponent = edgeTypes?.[edge.type ?? ""];
 
           return (
-            <div data-testid={`workflow-edge-${edge.id}`} key={edge.id}>
+            <div
+              data-selected={edge.selected ? "true" : undefined}
+              data-testid={`workflow-edge-${edge.id}`}
+              key={edge.id}
+              onClick={() => onEdgeClick?.({}, edge)}
+            >
               {EdgeComponent ? (
                 <EdgeComponent
                   data={edge.data}
                   id={edge.id}
-                  selected={index === 0}
+                  selected={Boolean(edge.selected)}
                   source={edge.source}
                   sourceX={100 + index * 40}
                   sourceY={80 + index * 20}
@@ -169,7 +211,29 @@ vi.mock("@xyflow/react", async () => {
     ReactFlowProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
     ViewportPortal: ({ children }: { children: React.ReactNode }) => <>{children}</>,
     applyEdgeChanges: (_changes: unknown, edges: unknown) => edges,
-    applyNodeChanges: (_changes: unknown, nodes: unknown) => nodes,
+    applyNodeChanges: (
+      changes: Array<{
+        id: string;
+        position?: { x: number; y: number };
+        type: string;
+      }>,
+      nodes: Array<{
+        id: string;
+        position?: { x: number; y: number };
+      }>,
+    ) =>
+      nodes.map((node) => {
+        const positionChange = changes.find(
+          (change) => change.type === "position" && change.id === node.id && change.position,
+        );
+
+        return positionChange
+          ? {
+              ...node,
+              position: positionChange.position,
+            }
+          : node;
+      }),
     getBezierPath: () => ["M 0 0 C 40 0 80 40 120 40", 120, 80],
     useReactFlow: () => reactFlowControlMock,
     useViewport: () => ({
@@ -240,8 +304,9 @@ function setupCanvasUser() {
   });
 }
 
-describe("Agent workflow demo page", () => {
+describe("Agent workflow page", () => {
   beforeEach(() => {
+    vi.useRealTimers();
     reactFlowControlMock.fitView.mockClear();
     reactFlowControlMock.zoomIn.mockClear();
     reactFlowControlMock.zoomOut.mockClear();
@@ -261,6 +326,40 @@ describe("Agent workflow demo page", () => {
         used: 4,
       },
     });
+  });
+
+  it("keeps node metadata, default data, renderers, settings panels and palette in sync", () => {
+    const nodeKinds = Object.keys(nodeDefinitions) as MarketingNodeKind[];
+    const paletteNodeIds = paletteItems.map((item) => item.id);
+
+    expect(nodeKinds).toEqual(["action", "ai", "branch", "goal", "trigger", "wait"]);
+
+    for (const kind of nodeKinds) {
+      const definition = nodeDefinitions[kind];
+      const defaultData = createDefaultNodeData(kind);
+
+      expect(defaultData.kind).toBe(kind);
+      expect(defaultData.title).toBeTruthy();
+      expect(defaultData.label).toBeTruthy();
+      expect(defaultData.summary).toBeTruthy();
+      expect(defaultData.metric).toBeTruthy();
+      expect(defaultData.status).toBeTruthy();
+      expect(NodeComponentMap[kind]).toBe(definition.body);
+      expect(PanelComponentMap[kind]).toBe(definition.settings);
+      expect(canDeleteNodeKind(kind)).toBe(definition.canDelete);
+      expect(canInsertAfterNodeKind(kind)).toBe(definition.canInsertAfter);
+    }
+
+    expect(insertableNodeKinds).toEqual(["wait", "branch", "action", "ai"]);
+    expect(paletteNodeIds).toEqual(insertableNodeKinds);
+    expect(orderedNodeDefinitions.map((definition) => definition.kind)).toEqual([
+      "trigger",
+      "wait",
+      "branch",
+      "action",
+      "ai",
+      "goal",
+    ]);
   });
 
   it("opens the Workflow menu on the list page instead of the canvas editor", async () => {
@@ -444,6 +543,37 @@ describe("Agent workflow demo page", () => {
     );
   });
 
+  it("closes edge insertion menus from canvas-level interactions", async () => {
+    const user = userEvent.setup();
+
+    renderWorkflowPage();
+
+    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    await user.click(within(canvas).getByRole("button", { name: "在高意向连线上添加节点" }));
+    expect(within(canvas).getByRole("menu", { name: "从连线添加节点" })).toBeInTheDocument();
+
+    await user.click(within(canvas).getByRole("button", { name: "点击画布空白处" }));
+    expect(within(canvas).queryByRole("menu", { name: "从连线添加节点" })).not.toBeInTheDocument();
+
+    await user.click(within(canvas).getByRole("button", { name: "在高意向连线上添加节点" }));
+    await user.click(within(canvas).getByRole("button", { name: "打开节点库" }));
+    expect(within(canvas).queryByRole("menu", { name: "从连线添加节点" })).not.toBeInTheDocument();
+  });
+
+  it("keeps only one edge insertion menu open at a time", async () => {
+    const user = userEvent.setup();
+
+    renderWorkflowPage();
+
+    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    await user.click(within(canvas).getByRole("button", { name: "在高意向连线上添加节点" }));
+    expect(within(canvas).getAllByRole("menu", { name: "从连线添加节点" })).toHaveLength(1);
+
+    const edgeInsertButtons = within(canvas).getAllByRole("button", { name: /连线上添加节点/ });
+    await user.click(edgeInsertButtons[1]!);
+    expect(within(canvas).getAllByRole("menu", { name: "从连线添加节点" })).toHaveLength(1);
+  });
+
   it("renders a source handle for each branch path on branch nodes", async () => {
     renderWorkflowPage();
 
@@ -614,6 +744,40 @@ describe("Agent workflow demo page", () => {
     expect(screen.getByTestId("workflow-node-wait-2d")).toHaveAttribute("data-selected", "true");
   });
 
+  it("merges rapid node config edits into a single undo step", async () => {
+    renderWorkflowPage();
+
+    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    fireEvent.click(within(canvas).getByRole("button", { name: /^发送欢迎消息 / }));
+
+    const configPanel = screen.getByRole("complementary", { name: "节点配置" });
+    const titleInput = within(configPanel).getByLabelText("节点名称");
+
+    vi.useFakeTimers();
+
+    try {
+      fireEvent.change(titleInput, { target: { value: "第一次改名" } });
+      fireEvent.change(titleInput, { target: { value: "第二次改名" } });
+
+      expect(within(canvas).getByRole("button", { name: /^第二次改名 / })).toBeInTheDocument();
+      expect(within(canvas).getByRole("button", { name: "撤销" })).toBeDisabled();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
+      });
+
+      expect(within(canvas).getByRole("button", { name: "撤销" })).toBeEnabled();
+      fireEvent.click(within(canvas).getByRole("button", { name: "撤销" }));
+
+      expect(within(canvas).getByRole("button", { name: /^发送欢迎消息 / })).toBeInTheDocument();
+      expect(within(canvas).queryByRole("button", { name: /^第一次改名 / })).not.toBeInTheDocument();
+      expect(within(canvas).queryByRole("button", { name: /^第二次改名 / })).not.toBeInTheDocument();
+    }
+    finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("clears redo history after a new workflow edit", async () => {
     const user = setupCanvasUser();
 
@@ -632,6 +796,27 @@ describe("Agent workflow demo page", () => {
 
     expect(within(canvas).getByRole("button", { name: "重做" })).toBeDisabled();
     expect(within(canvas).queryByRole("button", { name: /^AI 接待 / })).not.toBeInTheDocument();
+  });
+
+  it("records final node position changes in workflow history", async () => {
+    const user = userEvent.setup();
+
+    renderWorkflowPage();
+
+    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    const originalX = workflowNodeX("wait-2d");
+    const originalY = Number(screen.getByTestId("workflow-node-wait-2d").dataset.positionY);
+
+    await user.click(within(canvas).getByRole("button", { name: "移动观察期" }));
+
+    expect(workflowNodeX("wait-2d")).toBe(420);
+    expect(Number(screen.getByTestId("workflow-node-wait-2d").dataset.positionY)).toBe(120);
+    expect(within(canvas).getByRole("button", { name: "撤销" })).toBeEnabled();
+
+    await user.click(within(canvas).getByRole("button", { name: "撤销" }));
+
+    expect(workflowNodeX("wait-2d")).toBe(originalX);
+    expect(Number(screen.getByTestId("workflow-node-wait-2d").dataset.positionY)).toBe(originalY);
   });
 
   it("keeps the canvas operator controls interactive", async () => {
@@ -859,5 +1044,42 @@ describe("Agent workflow demo page", () => {
 
     expect(screen.getByTestId("workflow-edge-edge-wait-2d-goal")).toBeInTheDocument();
     expect(within(canvas).getByRole("button", { name: "撤销" })).toBeEnabled();
+  });
+
+  it("deletes workflow edges from the edge actions menu and records the change in history", async () => {
+    const user = userEvent.setup();
+
+    renderWorkflowPage();
+
+    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    await user.click(within(canvas).getByRole("button", { name: "更多操作：高意向连线" }));
+    await user.click(await screen.findByRole("menuitem", { name: "删除连线" }));
+
+    expect(screen.queryByTestId("workflow-edge-edge-branch-intent-branch-high-action-message")).not.toBeInTheDocument();
+    expect(within(canvas).getByRole("button", { name: "撤销" })).toBeEnabled();
+
+    await user.click(within(canvas).getByRole("button", { name: "撤销" }));
+
+    expect(screen.getByTestId("workflow-edge-edge-branch-intent-branch-high-action-message")).toBeInTheDocument();
+  });
+
+  it("deletes the selected edge with keyboard shortcuts and records the change in history", async () => {
+    renderWorkflowPage();
+
+    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    fireEvent.click(screen.getByTestId("workflow-edge-edge-branch-intent-branch-high-action-message"));
+
+    expect(screen.getByTestId("workflow-edge-edge-branch-intent-branch-high-action-message")).toHaveAttribute(
+      "data-selected",
+      "true",
+    );
+
+    fireEvent.keyDown(window, { key: "Delete" });
+
+    expect(screen.queryByTestId("workflow-edge-edge-branch-intent-branch-high-action-message")).not.toBeInTheDocument();
+
+    fireEvent.click(within(canvas).getByRole("button", { name: "撤销" }));
+
+    expect(screen.getByTestId("workflow-edge-edge-branch-intent-branch-high-action-message")).toBeInTheDocument();
   });
 });

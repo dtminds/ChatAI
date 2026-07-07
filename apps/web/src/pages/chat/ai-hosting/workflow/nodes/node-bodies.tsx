@@ -1,12 +1,12 @@
 import type { ComponentType } from "react";
 import { cn } from "@/lib/utils";
 import { branchHandleOptions } from "../constants";
-import { nodeVisuals } from "../node-definitions";
+import type { NodeVisual } from "../node-definitions";
 import type { MarketingNodeKind, MarketingNodeRenderData } from "../types";
 
 export type NodeBodyProps = {
   data: MarketingNodeRenderData;
-  visual: typeof nodeVisuals[MarketingNodeKind];
+  visual: NodeVisual;
 };
 
 export const nodeBodyComponentMap: Record<MarketingNodeKind, ComponentType<NodeBodyProps>> = {
@@ -18,7 +18,7 @@ export const nodeBodyComponentMap: Record<MarketingNodeKind, ComponentType<NodeB
   wait: StandardNodeBody,
 };
 
-function StandardNodeBody({ data, visual }: NodeBodyProps) {
+export function StandardNodeBody({ data, visual }: NodeBodyProps) {
   return (
     <span className="workflow-node-section">
       <span className="workflow-node-section-title">{visual.label}</span>
@@ -35,7 +35,7 @@ function StandardNodeBody({ data, visual }: NodeBodyProps) {
   );
 }
 
-function BranchNodeBody({ data, visual }: NodeBodyProps) {
+export function BranchNodeBody({ data, visual }: NodeBodyProps) {
   return (
     <>
       <span className="workflow-node-section workflow-branch-overview">

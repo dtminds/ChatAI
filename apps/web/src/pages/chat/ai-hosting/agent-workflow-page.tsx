@@ -198,6 +198,7 @@ function WorkflowWorkspaceContent({
             onNodeHoverStart={canvas.onNodeHoverStart}
             onSelectEdge={canvas.onSelectEdge}
             onSelectNode={canvas.onSelectNode}
+            onSelectionChange={canvas.onSelectionChange}
             onSearchChange={canvas.onSearchChange}
             onUndo={canvas.onUndo}
             paletteOpen={canvas.paletteOpen}

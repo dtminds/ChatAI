@@ -148,6 +148,72 @@ describe("useWorkflowWorkspace", () => {
     }
   });
 
+  it("copies and pastes selected nodes with their internal edges", () => {
+    const dateNowSpy = vi.spyOn(Date, "now").mockReturnValue(23456);
+    const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+
+    try {
+      act(() => {
+        result.current.canvas.onSelectionChange({
+          edges: [],
+          nodes: result.current.canvas.nodes.filter((node) =>
+            node.id === "wait-2d" || node.id === "branch-intent",
+          ),
+        });
+      });
+
+      expect(result.current.inspector.node).toBeUndefined();
+
+      act(() => {
+        window.dispatchEvent(new KeyboardEvent("keydown", { ctrlKey: true, key: "c" }));
+      });
+
+      act(() => {
+        window.dispatchEvent(new KeyboardEvent("keydown", { ctrlKey: true, key: "v" }));
+      });
+
+      expect(result.current.canvas.nodes.some((node) => node.id === "wait-23456")).toBe(true);
+      expect(result.current.canvas.nodes.some((node) => node.id === "branch-23456-1")).toBe(true);
+      expect(result.current.canvas.edges).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          source: "wait-23456",
+          target: "branch-23456-1",
+        }),
+      ]));
+    }
+    finally {
+      dateNowSpy.mockRestore();
+    }
+  });
+
+  it("deletes selected nodes as one undoable workflow change", () => {
+    const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+
+    act(() => {
+      result.current.canvas.onSelectionChange({
+        edges: [],
+        nodes: result.current.canvas.nodes.filter((node) =>
+          node.id === "wait-2d" || node.id === "action-message",
+        ),
+      });
+    });
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Backspace" }));
+    });
+
+    expect(result.current.canvas.nodes.some((node) => node.id === "wait-2d")).toBe(false);
+    expect(result.current.canvas.nodes.some((node) => node.id === "action-message")).toBe(false);
+    expect(result.current.canvas.canUndo).toBe(true);
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { ctrlKey: true, key: "z" }));
+    });
+
+    expect(result.current.canvas.nodes.some((node) => node.id === "wait-2d")).toBe(true);
+    expect(result.current.canvas.nodes.some((node) => node.id === "action-message")).toBe(true);
+  });
+
   it("pastes workflow data from the system clipboard before using local clipboard fallback", async () => {
     const dateNowSpy = vi.spyOn(Date, "now").mockReturnValue(67890);
     const systemClipboardData = createWorkflowClipboardData(

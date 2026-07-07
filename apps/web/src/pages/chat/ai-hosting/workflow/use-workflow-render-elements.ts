@@ -34,7 +34,7 @@ type WorkflowRenderElementState = {
   hoveredEdgeIds: Set<string> | null;
   quickInsertTarget: QuickInsertTarget | null;
   selectedEdgeId: string | null;
-  selectedNodeId: string | null;
+  selectedNodeIdSet: Set<string>;
 };
 
 export type CreateWorkflowRenderElementsOptions = WorkflowRenderElementHandlers
@@ -59,7 +59,7 @@ export function useWorkflowRenderElements(options: CreateWorkflowRenderElementsO
     options.onToggleNodeInsertMenu,
     options.quickInsertTarget,
     options.selectedEdgeId,
-    options.selectedNodeId,
+    options.selectedNodeIdSet,
   ]);
 }
 
@@ -77,7 +77,7 @@ export function createWorkflowRenderElements({
   onToggleNodeInsertMenu,
   quickInsertTarget,
   selectedEdgeId,
-  selectedNodeId,
+  selectedNodeIdSet,
 }: CreateWorkflowRenderElementsOptions): {
   edges: MarketingWorkflowRenderEdge[];
   nodes: MarketingWorkflowRenderNode[];
@@ -105,7 +105,7 @@ export function createWorkflowRenderElements({
       };
     }),
     nodes: nodes.map((node) => {
-      const isSelected = node.id === selectedNodeId;
+      const isSelected = selectedNodeIdSet.has(node.id);
       const insertMenuOpen = node.id === quickInsertTarget?.nodeId;
 
       return {

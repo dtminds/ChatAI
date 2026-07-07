@@ -9,6 +9,7 @@ import {
   Background,
   MiniMap,
   ReactFlow,
+  SelectionMode,
   useReactFlow,
   useViewport,
 } from "@xyflow/react";
@@ -77,6 +78,7 @@ export function WorkflowCanvas({
   onNodeHoverStart,
   onSelectEdge,
   onSelectNode,
+  onSelectionChange,
   onSearchChange,
   onUndo,
   paletteOpen,
@@ -100,6 +102,10 @@ export function WorkflowCanvas({
   onNodeHoverStart: (nodeId: string) => void;
   onSelectEdge: (edgeId: string) => void;
   onSelectNode: (nodeId: string) => void;
+  onSelectionChange: (selection: {
+    edges: MarketingWorkflowRenderEdge[];
+    nodes: MarketingWorkflowRenderNode[];
+  }) => void;
   onSearchChange: (value: string) => void;
   onUndo: () => void;
   paletteOpen: boolean;
@@ -140,9 +146,12 @@ export function WorkflowCanvas({
         onNodeMouseLeave={onNodeHoverEnd}
         onNodesChange={onNodesChange}
         onPaneClick={onPaneClick}
+        onSelectionChange={onSelectionChange}
+        panOnDrag={[1]}
         panOnScroll
         isValidConnection={onIsValidConnection}
-        selectionOnDrag={false}
+        selectionMode={SelectionMode.Partial}
+        selectionOnDrag
       >
         <Background color="var(--workflow-grid)" gap={20} size={1.2} />
         <WorkflowControlDock

@@ -35,7 +35,7 @@ describe("createWorkflowRenderElements", () => {
         sourceHandle: "branch-low",
       },
       selectedEdgeId: "edge-wait-2d-goal",
-      selectedNodeId: "branch-intent",
+      selectedNodeIdSet: new Set(["branch-intent"]),
     });
 
     const selectedNode = rendered.nodes.find((node) => node.id === "branch-intent");

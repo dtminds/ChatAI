@@ -17,6 +17,7 @@ import {
   connectNodesOperation,
   deleteEdgeOperation,
   deleteNodeOperation,
+  deleteNodesOperation,
   duplicateNodeOperation,
   insertNodeAfterOperation,
   insertNodeBetweenOperation,
@@ -307,6 +308,11 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
     return commitGraphOperation(deleteNodeOperation(currentDraft, nodeId));
   }, [commitGraphOperation, currentDraft, flushConfigHistory]);
 
+  const deleteNodes = useCallback((nodeIds: string[]): WorkflowControllerActionResult | undefined => {
+    flushConfigHistory();
+    return commitGraphOperation(deleteNodesOperation(currentDraft, nodeIds));
+  }, [commitGraphOperation, currentDraft, flushConfigHistory]);
+
   const duplicateNode = useCallback((nodeId: string): WorkflowControllerActionResult | undefined => {
     flushConfigHistory();
     const node = nodes.find((currentNode) => currentNode.id === nodeId);
@@ -317,6 +323,11 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
   const copyNode = useCallback((nodeId: string): WorkflowClipboardData | undefined => {
     flushConfigHistory();
     return createWorkflowClipboardData(currentDraft, [nodeId]);
+  }, [currentDraft, flushConfigHistory]);
+
+  const copyNodes = useCallback((nodeIds: string[]): WorkflowClipboardData | undefined => {
+    flushConfigHistory();
+    return createWorkflowClipboardData(currentDraft, nodeIds);
   }, [currentDraft, flushConfigHistory]);
 
   const pasteClipboardData = useCallback((
@@ -376,8 +387,10 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
     arrangeNodes,
     connectNodes,
     copyNode,
+    copyNodes,
     deleteEdge,
     deleteNode,
+    deleteNodes,
     duplicateNode,
     edges,
     insertNodeAfter,

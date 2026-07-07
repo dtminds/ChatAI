@@ -15,19 +15,39 @@ export function useWorkflowSelectionState({
 }) {
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(defaultNodeId);
+  const [selectedNodeIds, setSelectedNodeIdsState] = useState<string[]>(defaultNodeId ? [defaultNodeId] : []);
 
   useEffect(() => {
-    if (selectedEdgeId || !selectedNodeId || !nodes.length || nodes.some((node) => node.id === selectedNodeId)) {
+    if (selectedEdgeId || selectedNodeIds.length === 0 || !nodes.length) {
       return;
     }
 
-    setSelectedNodeId(nodes[0].id);
-  }, [nodes, selectedEdgeId, selectedNodeId]);
+    const existingSelectedNodeIds = selectedNodeIds.filter((nodeId) =>
+      nodes.some((node) => node.id === nodeId),
+    );
+
+    if (existingSelectedNodeIds.length === selectedNodeIds.length) {
+      return;
+    }
+
+    setSelectedNodeIdsState(existingSelectedNodeIds.length > 0 ? existingSelectedNodeIds : [nodes[0].id]);
+  }, [nodes, selectedEdgeId, selectedNodeIds]);
+
+  const selectedNodeId = selectedNodeIds.length === 1 ? selectedNodeIds[0] : null;
 
   const selectedNode = useMemo(
     () => nodes.find((node) => node.id === selectedNodeId),
     [nodes, selectedNodeId],
+  );
+
+  const selectedNodes = useMemo(
+    () => nodes.filter((node) => selectedNodeIds.includes(node.id)),
+    [nodes, selectedNodeIds],
+  );
+
+  const selectedNodeIdSet = useMemo(
+    () => new Set(selectedNodeIds),
+    [selectedNodeIds],
   );
 
   const hoveredEdgeIds = useMemo(() => {
@@ -46,6 +66,10 @@ export function useWorkflowSelectionState({
     setSelectedEdgeId(null);
   }, []);
 
+  const clearNodeSelection = useCallback(() => {
+    setSelectedNodeIdsState([]);
+  }, []);
+
   const handleNodeHoverEnd = useCallback(() => {
     setHoveredNodeId(null);
   }, []);
@@ -56,16 +80,30 @@ export function useWorkflowSelectionState({
 
   const selectEdge = useCallback((edgeId: string) => {
     setSelectedEdgeId(edgeId);
-    setSelectedNodeId(null);
+    setSelectedNodeIdsState([]);
   }, []);
 
   const selectNode = useCallback((nodeId: string) => {
-    setSelectedNodeId(nodeId);
+    setSelectedNodeIdsState([nodeId]);
     setSelectedEdgeId(null);
+  }, []);
+
+  const selectNodes = useCallback((nodeIds: string[]) => {
+    const uniqueNodeIds = Array.from(new Set(nodeIds));
+
+    setSelectedNodeIdsState(uniqueNodeIds);
+    if (uniqueNodeIds.length > 0) {
+      setSelectedEdgeId(null);
+    }
+  }, []);
+
+  const setSelectedNodeId = useCallback((nodeId: string | null) => {
+    setSelectedNodeIdsState(nodeId ? [nodeId] : []);
   }, []);
 
   return {
     clearEdgeSelection,
+    clearNodeSelection,
     handleNodeHoverEnd,
     handleNodeHoverStart,
     hoveredEdgeIds,
@@ -73,8 +111,13 @@ export function useWorkflowSelectionState({
     selectedEdgeId,
     selectedNode,
     selectedNodeId,
+    selectedNodeIds,
+    selectedNodeIdSet,
+    selectedNodes,
     selectNode,
+    selectNodes,
     setSelectedEdgeId,
     setSelectedNodeId,
+    setSelectedNodeIds: setSelectedNodeIdsState,
   };
 }

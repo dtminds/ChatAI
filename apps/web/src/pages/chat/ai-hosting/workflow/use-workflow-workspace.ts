@@ -60,6 +60,7 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
   } = transient;
   const {
     clearEdgeSelection,
+    clearNodeSelection,
     handleNodeHoverEnd,
     handleNodeHoverStart,
     hoveredEdgeIds,
@@ -67,7 +68,10 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
     selectedEdgeId,
     selectedNode,
     selectedNodeId,
+    selectedNodeIds,
+    selectedNodeIdSet,
     selectNode,
+    selectNodes,
     setSelectedEdgeId,
     setSelectedNodeId,
   } = selection;
@@ -89,7 +93,7 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
     onToggleNodeInsertMenu: toggleNodeInsertMenu,
     quickInsertTarget,
     selectedEdgeId,
-    selectedNodeId,
+    selectedNodeIdSet,
   });
 
   useWorkflowShortcuts({
@@ -190,6 +194,20 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
     setIsChecksOpen(false);
   }
 
+  function handleDeleteNodes(nodeIds: string[]) {
+    const result = controller.deleteNodes(nodeIds);
+
+    if (!result) {
+      return;
+    }
+
+    closeCanvasMenus();
+    result.nodeIds?.forEach((nodeId) => runner.deleteNodeRun(nodeId));
+    clearNodeSelection();
+    markDirty(result.draft);
+    setIsChecksOpen(false);
+  }
+
   function handleDuplicateNode(nodeId: string) {
     const result = controller.duplicateNode(nodeId);
     handleWorkflowEditResult(result);
@@ -214,15 +232,15 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
       return;
     }
 
-    if (!selectedNodeId) {
+    if (!selectedNodeIds.length) {
       return;
     }
 
-    handleDeleteNode(selectedNodeId);
+    handleDeleteNodes(selectedNodeIds);
   }
 
   function duplicateSelectedNode() {
-    if (selectedEdgeId || !selectedNodeId) {
+    if (selectedEdgeId || selectedNodeIds.length !== 1 || !selectedNodeId) {
       return;
     }
 
@@ -230,11 +248,11 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
   }
 
   function copySelectedNode() {
-    if (selectedEdgeId || !selectedNodeId) {
+    if (selectedEdgeId || !selectedNodeIds.length) {
       return false;
     }
 
-    const nextClipboardData = controller.copyNode(selectedNodeId);
+    const nextClipboardData = controller.copyNodes(selectedNodeIds);
 
     if (!nextClipboardData) {
       return false;
@@ -296,6 +314,19 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
 
   function clearCanvasSelection() {
     clearEdgeSelection();
+    closeCanvasMenus();
+  }
+
+  function handleSelectionChange(selectionChange: {
+    edges: MarketingWorkflowRenderEdge[];
+    nodes: MarketingWorkflowRenderNode[];
+  }) {
+    if (!selectionChange.nodes.length) {
+      return;
+    }
+
+    selectNodes(selectionChange.nodes.map((node) => node.id));
+    setIsChecksOpen(false);
     closeCanvasMenus();
   }
 
@@ -376,6 +407,7 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
       onSearchChange: setPaletteQuery,
       onSelectEdge: selectWorkflowEdge,
       onSelectNode: selectWorkflowNode,
+      onSelectionChange: handleSelectionChange,
       onUndo: undoWorkflowChange,
       paletteOpen,
       searchValue: paletteQuery,

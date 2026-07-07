@@ -63,4 +63,24 @@ describe("useWorkflowSelectionState", () => {
     expect(result.current.selectedNodeId).toBe("trigger");
     expect(result.current.selectedEdgeId).toBeNull();
   });
+
+  it("tracks multiple selected nodes without exposing a single inspector node", () => {
+    const { result } = renderHook(() =>
+      useWorkflowSelectionState({
+        defaultNodeId: "action-message",
+        edges: [],
+        nodes: createInitialNodes(),
+      }),
+    );
+
+    act(() => {
+      result.current.selectNodes(["wait-2d", "branch-intent"]);
+    });
+
+    expect(result.current.selectedNodeIds).toEqual(["wait-2d", "branch-intent"]);
+    expect(result.current.selectedNodeId).toBeNull();
+    expect(result.current.selectedNode).toBeUndefined();
+    expect(result.current.selectedNodes.map((node) => node.id)).toEqual(["wait-2d", "branch-intent"]);
+    expect(result.current.selectedNodeIdSet.has("wait-2d")).toBe(true);
+  });
 });

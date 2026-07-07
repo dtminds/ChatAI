@@ -28,6 +28,7 @@ import type {
 export type WorkflowActionResult = {
   edgeId?: string;
   nodeId?: string;
+  nodeIds?: string[];
 };
 
 export type WorkflowGraphOperation = {
@@ -206,6 +207,40 @@ export function deleteNodeOperation(
       nodeTitle: node.data.title,
     },
     result: { nodeId },
+  };
+}
+
+export function deleteNodesOperation(
+  draft: WorkflowDraft,
+  nodeIds: string[],
+): WorkflowGraphOperation | undefined {
+  const deletedNodeIdSet = new Set(nodeIds);
+  const deletedNodes = draft.nodes.filter((node) =>
+    deletedNodeIdSet.has(node.id) && canDeleteNodeKind(node.data.kind),
+  );
+
+  if (!deletedNodes.length) {
+    return undefined;
+  }
+
+  const deletableNodeIdSet = new Set(deletedNodes.map((node) => node.id));
+
+  return {
+    draft: {
+      edges: draft.edges.filter((edge) =>
+        !deletableNodeIdSet.has(edge.source) && !deletableNodeIdSet.has(edge.target),
+      ),
+      nodes: draft.nodes.filter((node) => !deletableNodeIdSet.has(node.id)),
+    },
+    event: "node:delete",
+    meta: {
+      nodeId: deletedNodes[0].id,
+      nodeTitle: deletedNodes.length === 1 ? deletedNodes[0].data.title : `${deletedNodes.length} 个节点`,
+    },
+    result: {
+      nodeId: deletedNodes[0].id,
+      nodeIds: deletedNodes.map((node) => node.id),
+    },
   };
 }
 

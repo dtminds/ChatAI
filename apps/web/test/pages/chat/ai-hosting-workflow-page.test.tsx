@@ -17,6 +17,7 @@ const reactFlowControlMock = vi.hoisted(() => ({
   fitView: vi.fn(),
   zoomIn: vi.fn(),
   zoomOut: vi.fn(),
+  zoomTo: vi.fn(),
 }));
 
 vi.mock("@/pages/chat/ai-hosting/agent-service", () => agentServiceMock);
@@ -28,8 +29,8 @@ vi.mock("@xyflow/react", async () => {
       <svg aria-hidden="true" data-testid={`workflow-base-edge-${id}`} />
     ),
     EdgeLabelRenderer: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-    Handle: () => null,
-    MiniMap: () => null,
+    Handle: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
+    MiniMap: () => <div data-testid="workflow-minimap" />,
     Position: {
       Bottom: "bottom",
       Left: "left",
@@ -40,11 +41,14 @@ vi.mock("@xyflow/react", async () => {
       children,
       edgeTypes,
       edges = [],
+      maxZoom,
+      minZoom,
       nodeTypes,
       nodes,
       nodesConnectable,
       onConnect,
       onNodeClick,
+      onPaneClick,
     }: {
       children?: React.ReactNode;
       edges?: Array<{
@@ -55,13 +59,26 @@ vi.mock("@xyflow/react", async () => {
         type?: string;
       }>;
       edgeTypes?: Record<string, (props: any) => React.ReactNode>;
+      maxZoom?: number;
+      minZoom?: number;
       nodeTypes?: Record<string, (props: any) => React.ReactNode>;
       nodes: Array<{ data: Record<string, unknown>; id: string; type?: string }>;
       nodesConnectable?: boolean;
       onConnect?: (connection: { source: string; target: string }) => void;
       onNodeClick?: (_event: unknown, node: { id: string }) => void;
+      onPaneClick?: () => void;
     }) => (
-      <div data-testid="workflow-react-flow">
+      <div
+        data-max-zoom={maxZoom}
+        data-min-zoom={minZoom}
+        data-testid="workflow-react-flow"
+      >
+        <button
+          onClick={() => onPaneClick?.()}
+          type="button"
+        >
+          点击画布空白处
+        </button>
         <button
           disabled={!nodesConnectable}
           onClick={() => onConnect?.({ source: "wait-2d", target: "goal" })}
@@ -109,6 +126,7 @@ vi.mock("@xyflow/react", async () => {
       </div>
     ),
     ReactFlowProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+    ViewportPortal: ({ children }: { children: React.ReactNode }) => <>{children}</>,
     applyEdgeChanges: (_changes: unknown, edges: unknown) => edges,
     applyNodeChanges: (_changes: unknown, nodes: unknown) => nodes,
     getBezierPath: () => ["M 0 0 C 40 0 80 40 120 40", 120, 80],
@@ -163,6 +181,7 @@ describe("Agent workflow demo page", () => {
     reactFlowControlMock.fitView.mockClear();
     reactFlowControlMock.zoomIn.mockClear();
     reactFlowControlMock.zoomOut.mockClear();
+    reactFlowControlMock.zoomTo.mockClear();
     mockSession();
     agentServiceMock.getAiHostingQuota.mockResolvedValue({
       agents: {
@@ -259,6 +278,15 @@ describe("Agent workflow demo page", () => {
     renderWorkflowPage();
 
     const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    expect(within(canvas).getAllByText("添加节点").length).toBeGreaterThan(0);
+    expect(within(canvas).getAllByText("连接节点").length).toBeGreaterThan(0);
+
+    await user.click(within(canvas).getByRole("button", { name: "在发送欢迎消息后添加节点" }));
+    expect(within(canvas).getByRole("menu", { name: "选择要添加的节点" })).toBeInTheDocument();
+
+    await user.click(within(canvas).getByRole("button", { name: "点击画布空白处" }));
+    expect(within(canvas).queryByRole("menu", { name: "选择要添加的节点" })).not.toBeInTheDocument();
+
     await user.click(within(canvas).getByRole("button", { name: "在发送欢迎消息后添加节点" }));
     await user.click(within(canvas).getByRole("menuitem", { name: /AI 接待/ }));
 
@@ -364,11 +392,51 @@ describe("Agent workflow demo page", () => {
 
     await user.click(within(canvas).getByRole("button", { name: "缩小" }));
     await user.click(within(canvas).getByRole("button", { name: "放大" }));
-    await user.click(within(canvas).getByRole("button", { name: "当前缩放 100%，点击适配画布" }));
+    expect(screen.getByTestId("workflow-react-flow")).toHaveAttribute("data-min-zoom", "0.25");
+    expect(screen.getByTestId("workflow-react-flow")).toHaveAttribute("data-max-zoom", "2");
+
+    const zoomMenuTrigger = within(canvas).getByRole("button", {
+      name: "当前缩放 100%，打开缩放菜单",
+    });
+
+    await user.click(zoomMenuTrigger);
+    await user.click(await screen.findByRole("menuitem", { name: "200%" }));
+
+    await user.click(zoomMenuTrigger);
+    await user.click(await screen.findByRole("menuitem", { name: "25%" }));
+
+    await user.click(zoomMenuTrigger);
+    await user.click(await screen.findByRole("menuitem", { name: "适配画布" }));
+
+    expect(screen.getByTestId("workflow-minimap")).toBeInTheDocument();
+    await user.click(zoomMenuTrigger);
+    await user.click(await screen.findByRole("menuitemcheckbox", { name: "显示小地图" }));
+    expect(screen.queryByTestId("workflow-minimap")).not.toBeInTheDocument();
+
+    await user.click(zoomMenuTrigger);
+    await user.click(await screen.findByRole("menuitemcheckbox", { name: "显示小地图" }));
+    expect(screen.getByTestId("workflow-minimap")).toBeInTheDocument();
 
     expect(reactFlowControlMock.zoomOut).toHaveBeenCalledTimes(1);
     expect(reactFlowControlMock.zoomIn).toHaveBeenCalledTimes(1);
+    expect(reactFlowControlMock.zoomTo).toHaveBeenNthCalledWith(1, 2);
+    expect(reactFlowControlMock.zoomTo).toHaveBeenNthCalledWith(2, 0.25);
     expect(reactFlowControlMock.fitView).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens node actions from the floating more button", async () => {
+    const user = userEvent.setup();
+
+    renderWorkflowPage();
+
+    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    await user.click(within(canvas).getByRole("button", { name: "更多操作：发送欢迎消息" }));
+
+    const actionMenu = within(canvas).getByRole("menu", { name: "节点操作" });
+    expect(actionMenu).toBeInTheDocument();
+
+    await user.click(within(actionMenu).getByRole("menuitem", { name: "添加后续节点" }));
+    expect(within(canvas).getByRole("menu", { name: "选择要添加的节点" })).toBeInTheDocument();
   });
 
   it("lets users create a manual connection between nodes", async () => {

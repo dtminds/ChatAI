@@ -19,6 +19,7 @@ import {
   Position,
   ReactFlow,
   ReactFlowProvider,
+  ViewportPortal,
   applyEdgeChanges,
   applyNodeChanges,
   getBezierPath,
@@ -54,6 +55,14 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { Link, useParams } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
@@ -117,6 +126,19 @@ type NodeRunRecord = {
   output: string;
   status: "succeeded" | "waiting";
 };
+
+const WORKFLOW_MIN_ZOOM = 0.25;
+const WORKFLOW_MAX_ZOOM = 2;
+const WORKFLOW_NODE_WIDTH = 240;
+const WORKFLOW_NODE_ESTIMATED_HEIGHT = 176;
+const WORKFLOW_NODE_HANDLE_TOP = 16;
+const workflowZoomOptions = [
+  { label: "200%", value: 2 },
+  { label: "100%", value: 1 },
+  { label: "75%", value: 0.75 },
+  { label: "50%", value: 0.5 },
+  { label: "25%", value: 0.25 },
+] as const;
 
 const nodeVisuals: Record<
   MarketingNodeKind,
@@ -452,7 +474,7 @@ function WorkflowWorkspaceContent({
           ...node.data,
           insertMenuOpen: node.id === quickInsertNodeId,
           onInsertAfter: insertNodeAfter,
-          onSelect: setSelectedNodeId,
+          onSelect: selectWorkflowNode,
           onToggleInsertMenu: (nodeId: string) => {
             setQuickInsertNodeId((currentNodeId) => (currentNodeId === nodeId ? null : nodeId));
           },
@@ -461,6 +483,11 @@ function WorkflowWorkspaceContent({
       })),
     [edges, nodes, quickInsertNodeId, selectedNodeId],
   );
+
+  function selectWorkflowNode(nodeId: string) {
+    setSelectedNodeId(nodeId);
+    setQuickInsertNodeId(null);
+  }
 
   const onNodesChange: OnNodesChange<MarketingWorkflowNode> = useCallback(
     (changes: NodeChange<MarketingWorkflowNode>[]) => {
@@ -708,8 +735,9 @@ function WorkflowWorkspaceContent({
               onNodesChange={onNodesChange}
               onOpenVariables={() => setInspectorTab("variables")}
               onPaletteOpenChange={setPaletteOpen}
+              onPaneClick={() => setQuickInsertNodeId(null)}
               onRedo={redoWorkflowChange}
-              onSelectNode={setSelectedNodeId}
+              onSelectNode={selectWorkflowNode}
               onSearchChange={setPaletteQuery}
               onUndo={undoWorkflowChange}
               paletteOpen={paletteOpen}
@@ -980,6 +1008,7 @@ function WorkflowCanvas({
   onNodesChange,
   onOpenVariables,
   onPaletteOpenChange,
+  onPaneClick,
   onRedo,
   onSelectNode,
   onSearchChange,
@@ -998,6 +1027,7 @@ function WorkflowCanvas({
   onNodesChange: OnNodesChange<MarketingWorkflowNode>;
   onOpenVariables: () => void;
   onPaletteOpenChange: (open: boolean) => void;
+  onPaneClick: () => void;
   onRedo: () => void;
   onSelectNode: (nodeId: string) => void;
   onSearchChange: (value: string) => void;
@@ -1006,9 +1036,13 @@ function WorkflowCanvas({
   searchValue: string;
 }) {
   const initialViewport = useMemo(() => getInitialWorkflowViewport(), []);
-  const { fitView, zoomIn, zoomOut } = useReactFlow<MarketingWorkflowNode, MarketingWorkflowEdge>();
+  const { fitView, zoomIn, zoomOut, zoomTo } = useReactFlow<
+    MarketingWorkflowNode,
+    MarketingWorkflowEdge
+  >();
   const { zoom } = useViewport();
-  const zoomLabel = `${Math.round(zoom * 100)}%`;
+  const [showMiniMap, setShowMiniMap] = useState(true);
+  const activeInsertNode = nodes.find((node) => node.data.insertMenuOpen);
 
   return (
     <section
@@ -1020,8 +1054,8 @@ function WorkflowCanvas({
         defaultViewport={initialViewport}
         edges={edges}
         edgeTypes={edgeTypes}
-        maxZoom={1.35}
-        minZoom={0.35}
+        maxZoom={WORKFLOW_MAX_ZOOM}
+        minZoom={WORKFLOW_MIN_ZOOM}
         nodeOrigin={[0, 0.5]}
         nodeTypes={nodeTypes}
         nodes={nodes}
@@ -1030,32 +1064,11 @@ function WorkflowCanvas({
         onEdgesChange={onEdgesChange}
         onNodeClick={(_, node) => onSelectNode(node.id)}
         onNodesChange={onNodesChange}
+        onPaneClick={onPaneClick}
         panOnScroll
         selectionOnDrag={false}
       >
         <Background color="var(--workflow-grid)" gap={20} size={1.2} />
-        <MiniMap
-          nodeColor={(node) => {
-            const data = node.data as MarketingNodeData;
-            if (data.kind === "trigger") {
-              return "#fb7185";
-            }
-            if (data.kind === "ai") {
-              return "#8b5cf6";
-            }
-            if (data.kind === "goal") {
-              return "#10b981";
-            }
-            return "#64748b";
-          }}
-          pannable
-          position="bottom-right"
-          style={{
-            height: 74,
-            width: 104,
-          }}
-          zoomable
-        />
         <WorkflowControlDock
           onPaletteOpenChange={onPaletteOpenChange}
           onArrange={onArrange}
@@ -1070,6 +1083,7 @@ function WorkflowCanvas({
             searchValue={searchValue}
           />
         ) : null}
+        {activeInsertNode ? <WorkflowCandidateMenuOverlay node={activeInsertNode} /> : null}
         <div className="workflow-bottom-operator" aria-label="画布操作">
           <div className="workflow-operator-group">
             <button
@@ -1098,35 +1112,176 @@ function WorkflowCanvas({
           >
             Variables
           </button>
-          <div className="workflow-operator-group" aria-label="缩放比例">
-            <button
-              aria-label="缩小"
-              className="workflow-operator-button"
-              onClick={() => zoomOut()}
-              type="button"
-            >
-              -
-            </button>
-            <button
-              aria-label={`当前缩放 ${zoomLabel}，点击适配画布`}
-              className="workflow-operator-button workflow-operator-zoom-label"
-              onClick={() => fitView({ duration: 160, padding: 0.2 })}
-              type="button"
-            >
-              {zoomLabel}
-            </button>
-            <button
-              aria-label="放大"
-              className="workflow-operator-button"
-              onClick={() => zoomIn()}
-              type="button"
-            >
-              +
-            </button>
+          <div className="workflow-operator-map-wrap">
+            {showMiniMap ? (
+              <MiniMap
+                className="workflow-minimap"
+                maskColor="rgba(248, 250, 252, 0.72)"
+                nodeColor={(node) => {
+                  const data = node.data as MarketingNodeData;
+                  if (data.kind === "trigger") {
+                    return "#fb7185";
+                  }
+                  if (data.kind === "ai") {
+                    return "#8b5cf6";
+                  }
+                  if (data.kind === "goal") {
+                    return "#10b981";
+                  }
+                  return "#64748b";
+                }}
+                nodeStrokeWidth={3}
+                pannable
+                position="bottom-right"
+                style={{
+                  height: 73,
+                  width: 103,
+                }}
+                zoomable
+              />
+            ) : null}
+            <WorkflowZoomControls
+              fitView={() => fitView({ duration: 160, padding: 0.2 })}
+              onToggleMiniMap={() => setShowMiniMap((isVisible) => !isVisible)}
+              showMiniMap={showMiniMap}
+              zoom={zoom}
+              zoomIn={zoomIn}
+              zoomOut={zoomOut}
+              zoomTo={zoomTo}
+            />
           </div>
         </div>
       </ReactFlow>
     </section>
+  );
+}
+
+function WorkflowCandidateMenuOverlay({ node }: { node: MarketingWorkflowNode }) {
+  const menuLeft = node.position.x + WORKFLOW_NODE_WIDTH + 24;
+  const menuTop =
+    node.position.y - WORKFLOW_NODE_ESTIMATED_HEIGHT / 2 + WORKFLOW_NODE_HANDLE_TOP - 8;
+
+  return (
+    <ViewportPortal>
+      <div
+        aria-label="选择要添加的节点"
+        className="workflow-candidate-menu nodrag nopan"
+        role="menu"
+        style={{
+          left: menuLeft,
+          top: menuTop,
+        }}
+      >
+        {paletteItems.map((item) => (
+          <button
+            className="workflow-candidate-item"
+            key={item.id}
+            onClick={(event) => {
+              event.stopPropagation();
+              node.data.onInsertAfter?.(node.id, item.id);
+            }}
+            role="menuitem"
+            type="button"
+          >
+            <span className="flex size-6 items-center justify-center rounded-md bg-[var(--workflow-soft)] text-muted-foreground">
+              <HugeiconsIcon icon={item.icon} size={14} strokeWidth={1.8} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-xs font-medium text-foreground">
+                {item.label}
+              </span>
+              <span className="block truncate text-[11px] text-muted-foreground">
+                {item.description}
+              </span>
+            </span>
+          </button>
+        ))}
+      </div>
+    </ViewportPortal>
+  );
+}
+
+function WorkflowZoomControls({
+  fitView,
+  onToggleMiniMap,
+  showMiniMap,
+  zoom,
+  zoomIn,
+  zoomOut,
+  zoomTo,
+}: {
+  fitView: () => void;
+  onToggleMiniMap: () => void;
+  showMiniMap: boolean;
+  zoom: number;
+  zoomIn: () => void;
+  zoomOut: () => void;
+  zoomTo: (zoom: number) => void;
+}) {
+  const zoomLabel = `${Math.round(zoom * 100)}%`;
+  const canZoomOut = zoom > WORKFLOW_MIN_ZOOM;
+  const canZoomIn = zoom < WORKFLOW_MAX_ZOOM;
+
+  return (
+    <div className="workflow-operator-group workflow-zoom-control" aria-label="缩放比例">
+      <button
+        aria-label="缩小"
+        className="workflow-operator-button"
+        disabled={!canZoomOut}
+        onClick={() => {
+          if (canZoomOut) {
+            zoomOut();
+          }
+        }}
+        type="button"
+      >
+        -
+      </button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            aria-label={`当前缩放 ${zoomLabel}，打开缩放菜单`}
+            className="workflow-operator-button workflow-operator-zoom-label"
+            type="button"
+          >
+            {zoomLabel}
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="center" className="min-w-[132px]" side="top">
+          {workflowZoomOptions.map((option) => (
+            <DropdownMenuItem
+              key={option.label}
+              onSelect={() => zoomTo(option.value)}
+            >
+              {option.label}
+            </DropdownMenuItem>
+          ))}
+          <DropdownMenuItem onSelect={fitView}>
+            适配画布
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuCheckboxItem
+            checked={showMiniMap}
+            onCheckedChange={onToggleMiniMap}
+          >
+            显示小地图
+          </DropdownMenuCheckboxItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <button
+        aria-label="放大"
+        className="workflow-operator-button"
+        disabled={!canZoomIn}
+        onClick={() => {
+          if (canZoomIn) {
+            zoomIn();
+          }
+        }}
+        type="button"
+      >
+        +
+      </button>
+    </div>
   );
 }
 
@@ -1283,136 +1438,162 @@ function MarketingNodeCard({ data, id }: NodeProps<MarketingWorkflowNode>) {
   const isSelected = Boolean(data.selected);
   const isWarning = data.status === "warning";
   const isRunning = data.status === "running";
+  const [actionMenuOpen, setActionMenuOpen] = useState(false);
 
   return (
-    <>
-      {data.kind !== "trigger" ? (
-        <Handle
-          className="workflow-node-handle workflow-node-handle-target"
-          position={Position.Left}
-          type="target"
-        />
-      ) : null}
-      <button
-        aria-label={`${data.title} ${data.summary}`}
+    <div
+      className={cn(
+        "workflow-node-shell",
+        isSelected && "workflow-node-shell-selected",
+      )}
+    >
+      <div
         className={cn(
-          "workflow-node-card group relative w-[240px] rounded-2xl border border-transparent bg-card pb-1 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-lg focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/20",
-          isSelected && "workflow-node-card-selected",
+          "workflow-node-card group",
           isWarning && "workflow-node-card-warning",
         )}
-        onClick={() => data.onSelect?.(id)}
-        type="button"
       >
-        <span
+        {data.kind !== "trigger" ? (
+          <Handle
+            className="workflow-node-handle workflow-node-handle-target"
+            position={Position.Left}
+            type="target"
+          />
+        ) : null}
+        <div
           className={cn(
-            "workflow-node-actionbar absolute -top-8 right-0 flex h-7 items-center gap-0.5 rounded-lg border bg-background/90 px-0.5 shadow-md backdrop-blur",
-            isSelected && "visible opacity-100",
+            "workflow-node-actionbar nodrag nopan",
+            (isSelected || actionMenuOpen) && "workflow-node-actionbar-visible",
           )}
         >
-          <span className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
-            <HugeiconsIcon icon={PlayIcon} size={13} strokeWidth={1.8} />
-          </span>
-          <span className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
-            <HugeiconsIcon icon={MoreHorizontalIcon} size={14} strokeWidth={1.8} />
-          </span>
-        </span>
-
-        <span className="flex items-center rounded-t-2xl px-3 pb-2 pt-3">
-          <span
-            className={cn(
-              "mr-2 flex size-7 shrink-0 items-center justify-center rounded-lg ring-1",
-              visual.accentClassName,
-            )}
-          >
-            <HugeiconsIcon icon={visual.icon} size={15} strokeWidth={1.8} />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="flex min-w-0 items-center gap-2">
-              <span className="truncate text-[13px] font-semibold text-foreground">{data.title}</span>
-              <span className="ml-auto flex size-5 shrink-0 items-center justify-center rounded-md text-muted-foreground">
-                <HugeiconsIcon icon={Settings02Icon} size={13} strokeWidth={1.8} />
-              </span>
-            </span>
-          </span>
-        </span>
-
-        <span className="workflow-node-section">
-          <span className="workflow-node-section-title">{visual.label}</span>
-          <span className="workflow-node-param">
-            <span>状态</span>
-            <span
-              className={cn(
-                "workflow-node-param-value",
-                isRunning && "text-emerald-700",
-                isWarning && "text-amber-700",
-              )}
-            >
-              {isRunning ? "Running" : isWarning ? "Missing config" : "Ready"}
-            </span>
-          </span>
-          <span className="workflow-node-param">
-            <span>配置</span>
-            <span className="workflow-node-param-value">{data.summary}</span>
-          </span>
-          <span className="workflow-node-param">
-            <span>输出</span>
-            <span className="workflow-node-param-value">{data.metric}</span>
-          </span>
-        </span>
-      </button>
-      {data.kind !== "goal" ? (
-        <>
-          <Handle
-            className="workflow-node-handle workflow-node-handle-source"
-            position={Position.Right}
-            type="source"
-          />
           <button
-            aria-label={`在${data.title}后添加节点`}
-            className="workflow-node-insert nodrag nopan"
+            aria-expanded={actionMenuOpen}
+            aria-label={`更多操作：${data.title}`}
+            className="workflow-node-actionbar-button"
             onClick={(event) => {
               event.stopPropagation();
-              data.onToggleInsertMenu?.(id);
+              setActionMenuOpen((isOpen) => !isOpen);
             }}
             type="button"
           >
-            <HugeiconsIcon icon={Add01Icon} size={14} strokeWidth={1.8} />
+            <HugeiconsIcon icon={MoreHorizontalIcon} size={14} strokeWidth={1.8} />
           </button>
-          {data.insertMenuOpen ? (
-            <div
-              aria-label="选择要添加的节点"
-              className="workflow-candidate-menu nodrag nopan"
-              role="menu"
-            >
-              {paletteItems.map((item) => (
+          {actionMenuOpen ? (
+            <div aria-label="节点操作" className="workflow-node-action-menu" role="menu">
+              <button
+                className="workflow-node-action-menu-item"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  data.onSelect?.(id);
+                  setActionMenuOpen(false);
+                }}
+                role="menuitem"
+                type="button"
+              >
+                打开配置
+              </button>
+              {data.kind !== "goal" ? (
                 <button
-                  className="workflow-candidate-item"
-                  key={item.id}
+                  className="workflow-node-action-menu-item"
                   onClick={(event) => {
                     event.stopPropagation();
-                    data.onInsertAfter?.(id, item.id);
+                    data.onToggleInsertMenu?.(id);
+                    setActionMenuOpen(false);
                   }}
                   role="menuitem"
                   type="button"
                 >
-                  <span className="flex size-6 items-center justify-center rounded-md bg-[var(--workflow-soft)] text-muted-foreground">
-                    <HugeiconsIcon icon={item.icon} size={14} strokeWidth={1.8} />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-xs font-medium text-foreground">
-                      {item.label}
-                    </span>
-                    <span className="block truncate text-[11px] text-muted-foreground">
-                      {item.description}
-                    </span>
-                  </span>
+                  添加后续节点
                 </button>
-              ))}
+              ) : null}
             </div>
           ) : null}
-        </>
-      ) : null}
-    </>
+        </div>
+        <button
+          aria-label={`${data.title} ${data.summary}`}
+          className="workflow-node-select"
+          onClick={() => data.onSelect?.(id)}
+          type="button"
+        >
+          <span className="flex items-center rounded-t-2xl px-3 pb-2 pt-3">
+            <span
+              className={cn(
+                "mr-2 flex size-7 shrink-0 items-center justify-center rounded-lg ring-1",
+                visual.accentClassName,
+              )}
+            >
+              <HugeiconsIcon icon={visual.icon} size={15} strokeWidth={1.8} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="flex min-w-0 items-center gap-2">
+                <span className="truncate text-[13px] font-semibold text-foreground">{data.title}</span>
+                <span className="ml-auto flex size-5 shrink-0 items-center justify-center rounded-md text-muted-foreground">
+                  <HugeiconsIcon icon={Settings02Icon} size={13} strokeWidth={1.8} />
+                </span>
+              </span>
+            </span>
+          </span>
+
+          <span className="workflow-node-section">
+            <span className="workflow-node-section-title">{visual.label}</span>
+            <span className="workflow-node-param">
+              <span>状态</span>
+              <span
+                className={cn(
+                  "workflow-node-param-value",
+                  isRunning && "text-emerald-700",
+                  isWarning && "text-amber-700",
+                )}
+              >
+                {isRunning ? "Running" : isWarning ? "Missing config" : "Ready"}
+              </span>
+            </span>
+            <span className="workflow-node-param">
+              <span>配置</span>
+              <span className="workflow-node-param-value">{data.summary}</span>
+            </span>
+            <span className="workflow-node-param">
+              <span>输出</span>
+              <span className="workflow-node-param-value">{data.metric}</span>
+            </span>
+          </span>
+        </button>
+        {data.kind !== "goal" ? (
+          <Handle
+            className="workflow-node-handle workflow-node-handle-source"
+            position={Position.Right}
+            type="source"
+          >
+            <div className="workflow-node-handle-tip">
+              <div className="workflow-node-handle-tip-body">
+                <div className="whitespace-nowrap">
+                  <span className="workflow-node-handle-tip-title">点击</span>
+                  添加节点
+                </div>
+                <div className="whitespace-nowrap">
+                  <span className="workflow-node-handle-tip-title">拖拽</span>
+                  连接节点
+                </div>
+              </div>
+            </div>
+            <button
+              aria-label={`在${data.title}后添加节点`}
+              className={cn(
+                "workflow-node-insert nodrag nopan",
+                data.insertMenuOpen && "workflow-node-insert-visible",
+              )}
+              onClick={(event) => {
+                event.stopPropagation();
+                data.onToggleInsertMenu?.(id);
+              }}
+              type="button"
+            >
+              <HugeiconsIcon icon={Add01Icon} size={10} strokeWidth={2.4} />
+            </button>
+          </Handle>
+        ) : null}
+      </div>
+    </div>
   );
 }
 

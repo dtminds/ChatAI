@@ -94,6 +94,66 @@ describe("useWorkflowController", () => {
     expect(result.current.nodes.find((node) => node.id === "wait-2d")?.position).toEqual(originalPosition);
   });
 
+  it("undoes a multi-node move as one history step", () => {
+    const initialDraft = createDraft();
+    const { rerender, result } = renderHook(
+      ({ draft }) => useWorkflowController(draft),
+      { initialProps: { draft: initialDraft } },
+    );
+    const originalWaitPosition = result.current.nodes.find((node) => node.id === "wait-2d")?.position;
+    const originalBranchPosition = result.current.nodes.find((node) => node.id === "branch-intent")?.position;
+
+    act(() => {
+      result.current.onNodesChange([
+        {
+          dragging: true,
+          id: "wait-2d",
+          position: { x: 400, y: 80 },
+          type: "position",
+        },
+        {
+          dragging: true,
+          id: "branch-intent",
+          position: { x: 700, y: 80 },
+          type: "position",
+        },
+      ]);
+    });
+    rerender({ draft: initialDraft });
+
+    expect(result.current.canUndo).toBe(false);
+    expect(result.current.nodes.find((node) => node.id === "wait-2d")?.position).toEqual({ x: 400, y: 80 });
+    expect(result.current.nodes.find((node) => node.id === "branch-intent")?.position).toEqual({ x: 700, y: 80 });
+
+    act(() => {
+      result.current.onNodesChange([
+        {
+          dragging: false,
+          id: "wait-2d",
+          position: { x: 430, y: 120 },
+          type: "position",
+        },
+        {
+          dragging: false,
+          id: "branch-intent",
+          position: { x: 730, y: 120 },
+          type: "position",
+        },
+      ]);
+    });
+    rerender({ draft: initialDraft });
+
+    expect(result.current.canUndo).toBe(true);
+
+    act(() => {
+      result.current.undo();
+    });
+
+    expect(result.current.nodes.find((node) => node.id === "wait-2d")?.position).toEqual(originalWaitPosition);
+    expect(result.current.nodes.find((node) => node.id === "branch-intent")?.position).toEqual(originalBranchPosition);
+    expect(result.current.canUndo).toBe(false);
+  });
+
   it("resets workflow state when a different draft is loaded", () => {
     const nextDraft = createDraft();
     nextDraft.nodes = nextDraft.nodes.map((node) =>

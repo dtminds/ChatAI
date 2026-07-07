@@ -222,6 +222,7 @@ function WorkflowWorkspaceContent({
             onNodeChange={inspector.onNodeChange}
             onRunNode={inspector.onRunNode}
             onTabChange={inspector.onTabChange}
+            variables={inspector.variables}
           />
         ) : null}
       </div>

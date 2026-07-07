@@ -5,8 +5,11 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { getNodeVariables } from "../node-definitions";
-import type { MarketingWorkflowNode, NodeRunRecord } from "../types";
+import type {
+  MarketingWorkflowNode,
+  NodeRunRecord,
+  WorkflowVariables,
+} from "../types";
 import { FieldGroup } from "./field-group";
 
 export function LastRunPanel({
@@ -81,9 +84,11 @@ export function LastRunPanel({
   );
 }
 
-export function NodeVariablesPanel({ node }: { node: MarketingWorkflowNode }) {
-  const variables = getNodeVariables(node);
-
+export function NodeVariablesPanel({
+  variables,
+}: {
+  variables: WorkflowVariables;
+}) {
   return (
     <>
       <FieldGroup title="输入变量">

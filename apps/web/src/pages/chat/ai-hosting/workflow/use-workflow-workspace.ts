@@ -16,6 +16,7 @@ import { useWorkflowController } from "./use-workflow-controller";
 import { useWorkflowRenderElements } from "./use-workflow-render-elements";
 import { useWorkflowSelectionState } from "./use-workflow-selection-state";
 import { useWorkflowTransientState } from "./use-workflow-transient-state";
+import { getNodeVariables } from "./workflow-variables";
 import { useWorkflowDocument } from "./workflow-draft-service";
 
 export function useWorkflowWorkspace(workflowId: string | undefined) {
@@ -338,6 +339,9 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
       onNodeChange: updateSelectedNode,
       onRunNode: runSelectedNode,
       onTabChange: setInspectorTab,
+      variables: selectedNode
+        ? getNodeVariables(selectedNode, controller.nodes, controller.edges)
+        : undefined,
     },
     topBar: {
       onPublishCheck: handlePublishCheck,

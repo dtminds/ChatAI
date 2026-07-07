@@ -6,6 +6,7 @@ import type {
   MarketingNodeData,
   MarketingWorkflowNode,
   NodeRunRecord,
+  WorkflowVariables,
 } from "../types";
 import { BasePanel } from "./base-panel";
 import {
@@ -24,6 +25,7 @@ export function NodeConfigPanel({
   onNodeChange,
   onRunNode,
   onTabChange,
+  variables,
 }: {
   activeTab: InspectorTab;
   lastRun?: NodeRunRecord;
@@ -32,6 +34,7 @@ export function NodeConfigPanel({
   onNodeChange: (patch: Partial<MarketingNodeData>) => void;
   onRunNode: () => void;
   onTabChange: (tab: InspectorTab) => void;
+  variables?: WorkflowVariables;
 }) {
   if (!node) {
     return (
@@ -55,7 +58,7 @@ export function NodeConfigPanel({
       {activeTab === "run" ? (
         <LastRunPanel lastRun={lastRun} node={node} onRunNode={onRunNode} />
       ) : null}
-      {activeTab === "variables" ? <NodeVariablesPanel node={node} /> : null}
+      {activeTab === "variables" && variables ? <NodeVariablesPanel variables={variables} /> : null}
     </BasePanel>
   );
 }

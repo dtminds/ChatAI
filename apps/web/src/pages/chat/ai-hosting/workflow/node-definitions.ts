@@ -7,8 +7,6 @@ import {
 import type {
   InsertableMarketingNodeKind,
   MarketingNodeKind,
-  MarketingWorkflowNode,
-  WorkflowVariables,
 } from "./types";
 import type { NodeBodyProps } from "./nodes/node-bodies";
 import {
@@ -95,33 +93,4 @@ export function canInsertNodeKind(kind: MarketingNodeKind): kind is InsertableMa
 
 export function createDefaultNodeData(kind: MarketingNodeKind) {
   return getWorkflowNodeCatalogEntry(kind).createDefaultData();
-}
-
-export function getNodeVariables(node: MarketingWorkflowNode): WorkflowVariables {
-  return {
-    inputs: [
-      {
-        name: "customer.profile",
-        type: "object",
-        value: node.data.audience ?? "上游客户画像",
-      },
-      {
-        name: "journey.currentNode",
-        type: "string",
-        value: node.data.title,
-      },
-    ],
-    outputs: [
-      {
-        name: `${node.data.kind}.result`,
-        type: "object",
-        value: node.data.metric,
-      },
-      {
-        name: "journey.next",
-        type: "string",
-        value: node.data.kind === "goal" ? "退出旅程" : "进入下一节点",
-      },
-    ],
-  };
 }

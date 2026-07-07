@@ -161,5 +161,8 @@ describe("useWorkflowWorkspace", () => {
 
     expect(result.current.inspector.activeTab).toBe("variables");
     expect(result.current.inspector.isOpen).toBe(true);
+    expect(result.current.inspector.variables?.inputs.map((variable) => variable.name)).toContain(
+      "trigger.trigger.result",
+    );
   });
 });

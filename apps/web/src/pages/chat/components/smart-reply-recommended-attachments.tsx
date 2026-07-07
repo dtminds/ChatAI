@@ -21,6 +21,7 @@ export type SmartReplyRecommendedAttachment = {
   slocalPath?: string;
   content?: string;
   coverUrl?: string;
+  jumpUrl?: string;
   transMsgInfoId?: string;
 };
 

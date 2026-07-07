@@ -817,6 +817,38 @@ function readSmartReplyRecommendedAttachmentTransMsgInfoId(
   return match?.[1];
 }
 
+function readSmartReplyGenAnswerSegmentLinkHref(
+  segment: Record<string, unknown>,
+): string | undefined {
+  for (const key of ["href", "jumpUrl", "url"]) {
+    const value = readString(segment[key]);
+
+    if (value && isSmartReplyAbsoluteWebUrl(value)) {
+      return value;
+    }
+  }
+
+  return undefined;
+}
+
+function isSmartReplyAbsoluteWebUrl(value: string) {
+  return /^https?:\/\//i.test(value.trim());
+}
+
+function resolveSmartReplyAttachmentLinkHref(
+  attachment: SmartReplyRecommendedAttachment,
+) {
+  for (const candidate of [attachment.jumpUrl, attachment.content]) {
+    const trimmed = candidate?.trim();
+
+    if (trimmed && isSmartReplyAbsoluteWebUrl(trimmed)) {
+      return trimmed;
+    }
+  }
+
+  return undefined;
+}
+
 function readSmartReplyGenAnswerSegmentPreviewPath(
   segment: Record<string, unknown>,
 ): string | undefined {
@@ -976,6 +1008,7 @@ export function extractSmartReplyGenAnswerInlineAttachments(
         fileName: getSmartReplyGenAnswerSegmentFileName(segment, msgtype),
         fileType: readSmartReplyGenAnswerSegmentFileType(msgtype),
         id: buildSmartReplyForwardAttachmentId(msgtype, transMsgInfoId),
+        jumpUrl: readSmartReplyGenAnswerSegmentLinkHref(segment),
         localPath: readString(segment.localPath) ?? readString(segment.fileUrl),
         slocalPath: readString(segment.slocalPath),
         transMsgInfoId,
@@ -999,6 +1032,7 @@ export function extractSmartReplyGenAnswerInlineAttachments(
       fileName: getSmartReplyGenAnswerSegmentFileName(segment, msgtype),
       fileType: readSmartReplyGenAnswerSegmentFileType(msgtype),
       id: attachmentId,
+      jumpUrl: readSmartReplyGenAnswerSegmentLinkHref(segment),
       localPath: readString(segment.localPath) ?? readString(segment.fileUrl),
       slocalPath: readString(segment.slocalPath),
       ...(transMsgInfoId ? { transMsgInfoId } : {}),
@@ -1021,6 +1055,7 @@ function enrichSmartReplyRecommendedAttachment(
     localPath: primary.localPath ?? fallback.localPath,
     slocalPath: primary.slocalPath ?? fallback.slocalPath,
     transMsgInfoId: primary.transMsgInfoId ?? fallback.transMsgInfoId,
+    jumpUrl: primary.jumpUrl ?? fallback.jumpUrl,
   };
 }
 
@@ -1095,6 +1130,7 @@ function mapChatMessageToRecommendedAttachmentFields(
         coverUrl: message.content.previewImageUrl,
         fileName: message.content.title?.trim() || "链接",
         fileType: "4",
+        jumpUrl: message.content.url,
       };
     case "sphfeed":
       return {
@@ -1436,9 +1472,7 @@ function mapSmartReplyAttachmentToComposerSegment(
   }
 
   if (fileType === 4) {
-    const href =
-      attachment.content?.trim() ||
-      resolveSmartReplyAttachmentSendUrl(attachment);
+    const href = resolveSmartReplyAttachmentLinkHref(attachment);
 
     if (!href) {
       return null;
@@ -1576,6 +1610,7 @@ function mapSmartReplyAttachment(
     fileName,
     fileType,
     id,
+    jumpUrl: attachment.jumpUrl?.trim(),
     localPath: attachment.localPath?.trim(),
     slocalPath: attachment.slocalPath?.trim(),
   };

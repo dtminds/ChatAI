@@ -74,9 +74,48 @@ export function useWorkflowDocument(workflowId: string | undefined) {
   const [saveState, setSaveState] = useState<"saved" | "saving">("saved");
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveRequestRef = useRef(0);
+  const pendingSaveRef = useRef<{
+    draft: WorkflowDraft;
+    requestId: number;
+    workflowId: string;
+  } | null>(null);
   const workflowIdRef = useRef(document.id);
+  const flushPendingSave = useCallback((options: { updateState?: boolean } = {}) => {
+    const { updateState = true } = options;
+    const pendingSave = pendingSaveRef.current;
+
+    if (!pendingSave) {
+      return undefined;
+    }
+
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+
+    pendingSaveRef.current = null;
+    const savedDocument = saveWorkflowDraft(pendingSave.workflowId, pendingSave.draft);
+
+    if (!updateState || saveRequestRef.current !== pendingSave.requestId) {
+      return savedDocument;
+    }
+
+    setSaveState("saved");
+    setDocument((currentDocument) => ({
+      ...currentDocument,
+      conversion: savedDocument.conversion,
+      nodes: savedDocument.nodes,
+      savedAt: savedDocument.savedAt,
+      trigger: savedDocument.trigger,
+      updatedAt: savedDocument.updatedAt,
+    }));
+
+    return savedDocument;
+  }, []);
 
   useEffect(() => {
+    flushPendingSave();
+
     const nextDocument = getWorkflowDocument(workflowId);
     workflowIdRef.current = nextDocument.id;
     setDocument(nextDocument);
@@ -86,12 +125,17 @@ export function useWorkflowDocument(workflowId: string | undefined) {
       clearTimeout(saveTimerRef.current);
       saveTimerRef.current = null;
     }
-  }, [workflowId]);
+  }, [flushPendingSave, workflowId]);
 
   const markDirty = useCallback((draft: WorkflowDraft) => {
     const draftToSave = cloneWorkflowDraft(draft);
     const saveRequestId = saveRequestRef.current + 1;
     saveRequestRef.current = saveRequestId;
+    pendingSaveRef.current = {
+      draft: draftToSave,
+      requestId: saveRequestId,
+      workflowId: workflowIdRef.current,
+    };
     setSaveState("saving");
 
     if (saveTimerRef.current) {
@@ -99,29 +143,13 @@ export function useWorkflowDocument(workflowId: string | undefined) {
     }
 
     saveTimerRef.current = setTimeout(() => {
-      const savedDocument = saveWorkflowDraft(workflowIdRef.current, draftToSave);
-      if (saveRequestRef.current !== saveRequestId) {
-        return;
-      }
-
-      setSaveState("saved");
-      setDocument((currentDocument) => ({
-        ...currentDocument,
-        conversion: savedDocument.conversion,
-        nodes: savedDocument.nodes,
-        savedAt: savedDocument.savedAt,
-        trigger: savedDocument.trigger,
-        updatedAt: savedDocument.updatedAt,
-      }));
-      saveTimerRef.current = null;
+      flushPendingSave();
     }, WORKFLOW_SAVE_DEBOUNCE_MS);
-  }, []);
+  }, [flushPendingSave]);
 
   useEffect(() => () => {
-    if (saveTimerRef.current) {
-      clearTimeout(saveTimerRef.current);
-    }
-  }, []);
+    flushPendingSave({ updateState: false });
+  }, [flushPendingSave]);
 
   return useMemo(() => ({
     document,

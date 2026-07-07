@@ -72,6 +72,78 @@ describe("workflow draft service", () => {
     }
   });
 
+  it("flushes pending draft saves when the hook unmounts", () => {
+    vi.useFakeTimers();
+
+    try {
+      const { result, unmount } = renderHook(() => useWorkflowDocument("newcomer-conversion"));
+      const nextDraft = {
+        edges: createInitialEdges(),
+        nodes: createInitialNodes().map((node) =>
+          node.id === "trigger"
+            ? {
+                ...node,
+                data: {
+                  ...node.data,
+                  audience: "卸载前保存的人群",
+                },
+              }
+            : node,
+        ),
+      };
+
+      act(() => {
+        result.current.markDirty(nextDraft);
+      });
+
+      unmount();
+
+      expect(getWorkflowDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "trigger")?.data.audience)
+        .toBe("卸载前保存的人群");
+    }
+    finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("flushes the previous workflow draft before switching documents", () => {
+    vi.useFakeTimers();
+
+    try {
+      const { rerender, result } = renderHook(
+        ({ workflowId }) => useWorkflowDocument(workflowId),
+        { initialProps: { workflowId: "newcomer-conversion" } },
+      );
+      const nextDraft = {
+        edges: createInitialEdges(),
+        nodes: createInitialNodes().map((node) =>
+          node.id === "trigger"
+            ? {
+                ...node,
+                data: {
+                  ...node.data,
+                  audience: "切换前保存的人群",
+                },
+              }
+            : node,
+        ),
+      };
+
+      act(() => {
+        result.current.markDirty(nextDraft);
+      });
+
+      rerender({ workflowId: "vip-reactivation" });
+
+      expect(result.current.document.id).toBe("vip-reactivation");
+      expect(getWorkflowDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "trigger")?.data.audience)
+        .toBe("切换前保存的人群");
+    }
+    finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("saves sanitized draft snapshots through the mock repository", () => {
     const draft = {
       edges: createInitialEdges(),

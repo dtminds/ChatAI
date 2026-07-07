@@ -1,4 +1,8 @@
 import type { Connection } from "@xyflow/react";
+import {
+  getAvailableNextNodeKinds,
+  getAvailablePrevNodeKinds,
+} from "./node-catalog";
 import type {
   MarketingWorkflowEdge,
   MarketingWorkflowNode,
@@ -46,15 +50,8 @@ function isNodeKindConnectionAllowed(
   sourceNode: MarketingWorkflowNode,
   targetNode: MarketingWorkflowNode,
 ) {
-  if (sourceNode.data.kind === "goal") {
-    return false;
-  }
-
-  if (targetNode.data.kind === "trigger") {
-    return false;
-  }
-
-  return true;
+  return getAvailableNextNodeKinds(sourceNode.data.kind).includes(targetNode.data.kind)
+    && getAvailablePrevNodeKinds(targetNode.data.kind).includes(sourceNode.data.kind);
 }
 
 function hasDuplicateConnection(

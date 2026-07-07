@@ -45,6 +45,7 @@ export type MarketingEdgeData = Record<string, unknown> & {
 export type MarketingEdgeRuntimeData = {
   highlightState?: MarketingEdgeHighlightState;
   insertMenuOpen?: boolean;
+  insertableNodeKinds?: InsertableMarketingNodeKind[];
   onInsertBetween?: (
     edgeId: string,
     sourceNodeId: string,

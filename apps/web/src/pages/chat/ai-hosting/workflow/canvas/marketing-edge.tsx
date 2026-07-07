@@ -9,7 +9,7 @@ import {
 import { Add01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { cn } from "@/lib/utils";
-import { paletteItems } from "../node-definitions";
+import { getPaletteItemsByKinds, paletteItems } from "../node-definitions";
 import type { MarketingWorkflowRenderEdge } from "../types";
 
 export function MarketingBezierEdge({
@@ -38,6 +38,9 @@ export function MarketingBezierEdge({
   const isConnectedHighlight = data?.highlightState === "connected";
   const isDimmed = data?.highlightState === "dimmed";
   const stroke = selected || isConnectedHighlight ? "var(--workflow-blue)" : "var(--workflow-edge)";
+  const candidatePaletteItems = data?.insertableNodeKinds
+    ? getPaletteItemsByKinds(data.insertableNodeKinds)
+    : paletteItems;
 
   return (
     <>
@@ -79,7 +82,7 @@ export function MarketingBezierEdge({
               onClick={(event) => event.stopPropagation()}
               role="menu"
             >
-              {paletteItems.map((item) => (
+              {candidatePaletteItems.map((item) => (
                 <button
                   className="workflow-edge-menu-item"
                   key={item.id}

@@ -8,6 +8,7 @@ import type {
   MarketingWorkflowRenderNode,
   QuickInsertTarget,
 } from "./types";
+import { getInsertableNodeKindsBetween } from "./node-catalog";
 
 type WorkflowRenderElementHandlers = {
   onDeleteNode: (nodeId: string) => void;
@@ -81,18 +82,28 @@ export function createWorkflowRenderElements({
   edges: MarketingWorkflowRenderEdge[];
   nodes: MarketingWorkflowRenderNode[];
 } {
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+
   return {
-    edges: edges.map((edge) => ({
-      ...edge,
-      selected: edge.id === selectedEdgeId,
-      data: {
-        ...edge.data,
-        highlightState: getEdgeHighlightState(edge.id, hoveredEdgeIds),
-        insertMenuOpen: edge.id === activeEdgeInsertMenuId,
-        onInsertBetween: onInsertNodeBetween,
-        onToggleInsertMenu: onToggleEdgeInsertMenu,
-      },
-    })),
+    edges: edges.map((edge) => {
+      const sourceNode = nodeById.get(edge.source);
+      const targetNode = nodeById.get(edge.target);
+
+      return {
+        ...edge,
+        selected: edge.id === selectedEdgeId,
+        data: {
+          ...edge.data,
+          highlightState: getEdgeHighlightState(edge.id, hoveredEdgeIds),
+          insertableNodeKinds: sourceNode && targetNode
+            ? getInsertableNodeKindsBetween(sourceNode.data.kind, targetNode.data.kind)
+            : [],
+          insertMenuOpen: edge.id === activeEdgeInsertMenuId,
+          onInsertBetween: onInsertNodeBetween,
+          onToggleInsertMenu: onToggleEdgeInsertMenu,
+        },
+      };
+    }),
     nodes: nodes.map((node) => {
       const isSelected = node.id === selectedNodeId;
       const insertMenuOpen = node.id === quickInsertTarget?.nodeId;

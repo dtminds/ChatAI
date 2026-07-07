@@ -26,6 +26,9 @@ import {
 import type { NodeSettingsProps } from "./panels/types";
 
 export {
+  getInsertableNodeKindsBetween,
+  getInsertableNodeKindsForSource,
+  getPaletteItemsByKinds,
   insertableNodeKinds,
   nodeVisuals,
   paletteItems,

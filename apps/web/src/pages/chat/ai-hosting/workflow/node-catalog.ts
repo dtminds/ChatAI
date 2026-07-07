@@ -42,6 +42,8 @@ type NodeDataInput = {
 };
 
 export type WorkflowNodeCatalogEntry = {
+  availableNextKinds: MarketingNodeKind[];
+  availablePrevKinds: MarketingNodeKind[];
   canDelete: boolean;
   canDuplicate: boolean;
   canInsertAfter: boolean;
@@ -58,6 +60,9 @@ export type WorkflowNodeCatalogEntry = {
   ) => WorkflowNodeValidationIssue[];
   visual: NodeVisual;
 };
+
+const sourceNodeKinds: MarketingNodeKind[] = ["trigger", "wait", "branch", "action", "ai"];
+const targetNodeKinds: MarketingNodeKind[] = ["wait", "branch", "action", "ai", "goal"];
 
 export const nodeVisuals: Record<MarketingNodeKind, NodeVisual> = {
   action: {
@@ -94,6 +99,8 @@ export const nodeVisuals: Record<MarketingNodeKind, NodeVisual> = {
 
 export const workflowNodeCatalog: Record<MarketingNodeKind, WorkflowNodeCatalogEntry> = {
   action: {
+    availableNextKinds: targetNodeKinds,
+    availablePrevKinds: sourceNodeKinds,
     canDelete: true,
     canDuplicate: true,
     canInsertAfter: true,
@@ -119,6 +126,8 @@ export const workflowNodeCatalog: Record<MarketingNodeKind, WorkflowNodeCatalogE
     visual: nodeVisuals.action,
   },
   ai: {
+    availableNextKinds: targetNodeKinds,
+    availablePrevKinds: sourceNodeKinds,
     canDelete: true,
     canDuplicate: true,
     canInsertAfter: true,
@@ -145,6 +154,8 @@ export const workflowNodeCatalog: Record<MarketingNodeKind, WorkflowNodeCatalogE
     visual: nodeVisuals.ai,
   },
   branch: {
+    availableNextKinds: targetNodeKinds,
+    availablePrevKinds: sourceNodeKinds,
     canDelete: true,
     canDuplicate: true,
     canInsertAfter: true,
@@ -190,6 +201,8 @@ export const workflowNodeCatalog: Record<MarketingNodeKind, WorkflowNodeCatalogE
     visual: nodeVisuals.branch,
   },
   goal: {
+    availableNextKinds: [],
+    availablePrevKinds: sourceNodeKinds,
     canDelete: false,
     canDuplicate: false,
     canInsertAfter: false,
@@ -232,6 +245,8 @@ export const workflowNodeCatalog: Record<MarketingNodeKind, WorkflowNodeCatalogE
     visual: nodeVisuals.goal,
   },
   trigger: {
+    availableNextKinds: targetNodeKinds,
+    availablePrevKinds: [],
     canDelete: false,
     canDuplicate: false,
     canInsertAfter: true,
@@ -274,6 +289,8 @@ export const workflowNodeCatalog: Record<MarketingNodeKind, WorkflowNodeCatalogE
     visual: nodeVisuals.trigger,
   },
   wait: {
+    availableNextKinds: targetNodeKinds,
+    availablePrevKinds: sourceNodeKinds,
     canDelete: true,
     canDuplicate: true,
     canInsertAfter: true,
@@ -347,6 +364,38 @@ export const paletteItems = insertableNodeKinds
   id: InsertableMarketingNodeKind;
   label: string;
 }>;
+
+export function getAvailableNextNodeKinds(kind: MarketingNodeKind) {
+  return getWorkflowNodeCatalogEntry(kind).availableNextKinds;
+}
+
+export function getAvailablePrevNodeKinds(kind: MarketingNodeKind) {
+  return getWorkflowNodeCatalogEntry(kind).availablePrevKinds;
+}
+
+export function getInsertableNodeKindsForSource(
+  sourceKind: MarketingNodeKind,
+): InsertableMarketingNodeKind[] {
+  const availableNextKinds = new Set(getAvailableNextNodeKinds(sourceKind));
+
+  return insertableNodeKinds.filter((kind) => availableNextKinds.has(kind));
+}
+
+export function getInsertableNodeKindsBetween(
+  sourceKind: MarketingNodeKind,
+  targetKind: MarketingNodeKind,
+): InsertableMarketingNodeKind[] {
+  return getInsertableNodeKindsForSource(sourceKind).filter((kind) =>
+    getAvailableNextNodeKinds(kind).includes(targetKind)
+    && getAvailablePrevNodeKinds(targetKind).includes(kind),
+  );
+}
+
+export function getPaletteItemsByKinds(kinds: InsertableMarketingNodeKind[]) {
+  const kindSet = new Set(kinds);
+
+  return paletteItems.filter((item) => kindSet.has(item.id));
+}
 
 export function getWorkflowNodeCatalogEntry(kind: MarketingNodeKind) {
   return workflowNodeCatalog[kind];

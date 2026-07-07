@@ -36,7 +36,10 @@ import {
   workflowZoomOptions,
 } from "../constants";
 import { getInsertMenuTop, getWorkflowNodeWidth } from "../layout";
-import { paletteItems } from "../node-definitions";
+import {
+  getInsertableNodeKindsForSource,
+  getPaletteItemsByKinds,
+} from "../node-definitions";
 import { MarketingNodeCard } from "../nodes";
 import type {
   MarketingNodeData,
@@ -247,6 +250,9 @@ function WorkflowCandidateMenuOverlay({ node }: { node: MarketingWorkflowRenderN
   const { x, y, zoom } = useViewport();
   const menuLeft = (node.position.x + getWorkflowNodeWidth(node) + 24) * zoom + x;
   const menuTop = getInsertMenuTop(node, sourceHandle) * zoom + y;
+  const candidatePaletteItems = getPaletteItemsByKinds(
+    getInsertableNodeKindsForSource(node.data.kind),
+  );
 
   return (
     <div
@@ -258,7 +264,7 @@ function WorkflowCandidateMenuOverlay({ node }: { node: MarketingWorkflowRenderN
         top: menuTop,
       }}
     >
-      {paletteItems.map((item) => (
+      {candidatePaletteItems.map((item) => (
         <button
           className="workflow-candidate-item"
           key={item.id}

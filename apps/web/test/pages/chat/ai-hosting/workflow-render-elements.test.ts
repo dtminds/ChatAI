@@ -55,6 +55,7 @@ describe("createWorkflowRenderElements", () => {
     expect(rendered.edges[0].data?.highlightState).toBe("connected");
     expect(rendered.edges[1].selected).toBe(true);
     expect(rendered.edges[1].data?.insertMenuOpen).toBe(true);
+    expect(rendered.edges[1].data?.insertableNodeKinds).toEqual(["wait", "branch", "action", "ai"]);
     expect(rendered.edges[1].data?.onInsertBetween).toBe(handlers.onInsertNodeBetween);
     expect(rendered.edges[2].data?.highlightState).toBe("dimmed");
   });

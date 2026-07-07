@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  getAvailableNextNodeKinds,
+  getAvailablePrevNodeKinds,
+  getInsertableNodeKindsBetween,
+  getInsertableNodeKindsForSource,
   getWorkflowNodeCatalogEntry,
   insertableNodeKinds,
   orderedWorkflowNodeCatalog,
@@ -50,5 +54,17 @@ describe("workflow node catalog", () => {
     expect(orderedNodeDefinitions.map((definition) => definition.kind)).toEqual(
       orderedWorkflowNodeCatalog.map((definition) => definition.kind),
     );
+  });
+
+  it("derives connection candidates from catalog capabilities", () => {
+    expect(getAvailablePrevNodeKinds("trigger")).toEqual([]);
+    expect(getAvailableNextNodeKinds("goal")).toEqual([]);
+    expect(getAvailableNextNodeKinds("trigger")).toContain("goal");
+    expect(getAvailablePrevNodeKinds("goal")).toContain("wait");
+
+    expect(getInsertableNodeKindsForSource("goal")).toEqual([]);
+    expect(getInsertableNodeKindsForSource("trigger")).toEqual(insertableNodeKinds);
+    expect(getInsertableNodeKindsBetween("wait", "goal")).toEqual(insertableNodeKinds);
+    expect(getInsertableNodeKindsBetween("goal", "wait")).toEqual([]);
   });
 });

@@ -9,6 +9,7 @@ import {
   createInitialEdges,
   createInitialNodes,
 } from "@/pages/chat/ai-hosting/workflow/graph";
+import { validateWorkflowDraft } from "@/pages/chat/ai-hosting/workflow/validation/workflow-validation";
 
 describe("buildPublishChecks", () => {
   it("reports ready checks for the seeded workflow", () => {
@@ -55,6 +56,39 @@ describe("buildPublishChecks", () => {
         }),
       ]),
     );
+  });
+
+  it("keeps validation issues structured for publish checklist routing", () => {
+    const nodes = createInitialNodes().map((node) =>
+      node.id === "branch-intent"
+        ? {
+            ...node,
+            data: {
+              ...node.data,
+              branchRule: "",
+            },
+          }
+        : node,
+    );
+    const edges = createInitialEdges().filter((edge) => edge.target !== "action-message");
+    const validation = validateWorkflowDraft(nodes, edges);
+
+    expect(validation.nodeIssues.find((item) => item.node.id === "branch-intent")?.issues).toEqual([
+      {
+        code: "branch-rule-required",
+        message: "条件分支需要配置条件表达式",
+        severity: "warning",
+        source: "catalog",
+      },
+    ]);
+    expect(validation.nodeIssues.find((item) => item.node.id === "action-message")?.issues).toEqual([
+      {
+        code: "node-disconnected",
+        message: "节点未接入从触发节点开始的主链路",
+        severity: "warning",
+        source: "runtime",
+      },
+    ]);
   });
 
   it("uses catalog validation rules instead of only node status", () => {

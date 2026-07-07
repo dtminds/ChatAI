@@ -33,23 +33,34 @@ export function buildPublishChecks(
   const triggerIssue = validation.nodeIssues.find(
     (item) => item.node.id === validation.triggerNode?.id,
   );
-  const configIssues = validation.nodeIssues.filter(
-    (item) => item.node.id !== validation.triggerNode?.id,
+  const disconnectedIssues = validation.nodeIssues
+    .map(({ issues, node }) => ({
+      issues: issues.filter((issue) => issue.code === "node-disconnected"),
+      node,
+    }))
+    .filter((item) => item.issues.length > 0);
+  const nodeConfigIssues = validation.nodeIssues
+    .filter((item) => item.node.id !== validation.triggerNode?.id)
+    .map(({ issues, node }) => ({
+      issues: issues.filter((issue) => issue.code !== "node-disconnected"),
+      node,
+    }))
+    .filter((item) => item.issues.length > 0);
+  const triggerConfigIssues = triggerIssue?.issues.filter(
+    (issue) => issue.code !== "node-disconnected",
   );
   const hasDisconnectedNode = validation.disconnectedNodes.length > 0;
   const hasAiAction = validation.configuredAiNodes.length > 0;
   const nodeIssueChecks = [
-    ...validation.disconnectedNodes
-      .filter((node) => node.id !== validation.triggerNode?.id)
-      .map((node) => ({
-        description: "节点未接入从触发节点开始的主链路",
-        id: `node-connectivity-${node.id}`,
-        messages: ["节点未接入从触发节点开始的主链路"],
-        nodeId: node.id,
-        status: "warning" as const,
-        title: node.data.title,
-      })),
-    ...configIssues.map(({ issues, node }) => ({
+    ...disconnectedIssues.map(({ issues, node }) => ({
+      description: issues[0]?.message ?? "节点仍需补全配置",
+      id: `node-connectivity-${node.id}`,
+      messages: issues.map((issue) => issue.message),
+      nodeId: node.id,
+      status: "warning" as const,
+      title: node.data.title,
+    })),
+    ...nodeConfigIssues.map(({ issues, node }) => ({
       description: issues[0]?.message ?? "节点仍需补全配置",
       id: `node-config-${node.id}`,
       messages: issues.map((issue) => issue.message),
@@ -63,7 +74,7 @@ export function buildPublishChecks(
     {
       description: validation.triggerNode && !triggerIssue
         ? `当前人群：${validation.triggerNode.data.audience}`
-        : triggerIssue?.issues[0]?.message ?? "缺少触发节点",
+        : triggerConfigIssues?.[0]?.message ?? "缺少触发节点",
       id: "trigger",
       status: validation.triggerNode && !triggerIssue ? "ready" : "warning",
       title: "触发人群",
@@ -75,11 +86,11 @@ export function buildPublishChecks(
       title: "链路连通性",
     },
     {
-      description: configIssues.length
-        ? `${configIssues.length} 个节点仍需补全配置`
+      description: nodeConfigIssues.length
+        ? `${nodeConfigIssues.length} 个节点仍需补全配置`
         : "所有节点已完成关键配置",
       id: "config",
-      status: configIssues.length ? "warning" : "ready",
+      status: nodeConfigIssues.length ? "warning" : "ready",
       title: "节点配置",
     },
     {

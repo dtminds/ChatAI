@@ -121,7 +121,7 @@ export const workflowNodeCatalog: Record<MarketingNodeKind, WorkflowNodeCatalogE
     validate: (node) => (
       hasText(node.data.actionType)
         ? []
-        : [{ message: "营销动作需要选择动作类型" }]
+        : [createCatalogIssue("action-type-required", "营销动作需要选择动作类型")]
     ),
     visual: nodeVisuals.action,
   },
@@ -149,7 +149,7 @@ export const workflowNodeCatalog: Record<MarketingNodeKind, WorkflowNodeCatalogE
     validate: (node) => (
       hasText(node.data.agentName)
         ? []
-        : [{ message: "AI 接待需要绑定 Agent" }]
+        : [createCatalogIssue("ai-agent-required", "AI 接待需要绑定 Agent")]
     ),
     visual: nodeVisuals.ai,
   },
@@ -196,7 +196,7 @@ export const workflowNodeCatalog: Record<MarketingNodeKind, WorkflowNodeCatalogE
     validate: (node) => (
       hasText(node.data.branchRule)
         ? []
-        : [{ message: "条件分支需要配置条件表达式" }]
+        : [createCatalogIssue("branch-rule-required", "条件分支需要配置条件表达式")]
     ),
     visual: nodeVisuals.branch,
   },
@@ -240,7 +240,7 @@ export const workflowNodeCatalog: Record<MarketingNodeKind, WorkflowNodeCatalogE
     validate: (node) => (
       typeof node.data.conversion === "number"
         ? []
-        : [{ message: "目标节点需要配置转化指标" }]
+        : [createCatalogIssue("goal-conversion-required", "目标节点需要配置转化指标")]
     ),
     visual: nodeVisuals.goal,
   },
@@ -284,7 +284,7 @@ export const workflowNodeCatalog: Record<MarketingNodeKind, WorkflowNodeCatalogE
     validate: (node) => (
       hasText(node.data.audience)
         ? []
-        : [{ message: "触发节点需要选择进入人群" }]
+        : [createCatalogIssue("trigger-audience-required", "触发节点需要选择进入人群")]
     ),
     visual: nodeVisuals.trigger,
   },
@@ -331,7 +331,7 @@ export const workflowNodeCatalog: Record<MarketingNodeKind, WorkflowNodeCatalogE
     validate: (node) => (
       typeof node.data.delayDays === "number" && node.data.delayDays >= 0
         ? []
-        : [{ message: "等待节点需要配置等待天数" }]
+        : [createCatalogIssue("wait-delay-required", "等待节点需要配置等待天数")]
     ),
     visual: nodeVisuals.wait,
   },
@@ -423,4 +423,16 @@ function isInsertableWorkflowNodeCatalogEntry(
 
 function hasText(value: unknown) {
   return typeof value === "string" && value.trim().length > 0;
+}
+
+function createCatalogIssue(
+  code: string,
+  message: string,
+): WorkflowNodeValidationIssue {
+  return {
+    code,
+    message,
+    severity: "warning",
+    source: "catalog",
+  };
 }

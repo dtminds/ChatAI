@@ -31,7 +31,10 @@ export function validateWorkflowDraft(
     : nodes.filter((node) => node.data.kind !== "trigger");
   const nodeIssues = nodes
     .map((node) => ({
-      issues: validateWorkflowNode(node, nodes, edges),
+      issues: [
+        ...validateWorkflowNode(node, nodes, edges),
+        ...validateWorkflowNodeConnectivity(node, disconnectedNodes, triggerNode?.id),
+      ],
       node,
     }))
     .filter((item) => item.issues.length > 0);
@@ -53,19 +56,41 @@ function validateWorkflowNode(
   node: MarketingWorkflowNode,
   nodes: MarketingWorkflowNode[],
   edges: MarketingWorkflowEdge[],
-) {
+): WorkflowNodeValidationIssue[] {
   const entry = getWorkflowNodeCatalogEntry(node.data.kind);
   const issues = entry.validate?.(node, { edges, nodes }) ?? [];
 
   if (issues.length === 0 && node.data.status === "warning") {
     return [
       {
+        code: "node-runtime-warning",
         message: "节点仍需补全配置",
+        severity: "warning",
+        source: "runtime",
       },
     ];
   }
 
   return issues;
+}
+
+function validateWorkflowNodeConnectivity(
+  node: MarketingWorkflowNode,
+  disconnectedNodes: MarketingWorkflowNode[],
+  triggerNodeId: string | undefined,
+): WorkflowNodeValidationIssue[] {
+  if (node.id === triggerNodeId || !disconnectedNodes.some((item) => item.id === node.id)) {
+    return [];
+  }
+
+  return [
+    {
+      code: "node-disconnected",
+      message: "节点未接入从触发节点开始的主链路",
+      severity: "warning",
+      source: "runtime",
+    },
+  ];
 }
 
 function getReachableNodeIds(

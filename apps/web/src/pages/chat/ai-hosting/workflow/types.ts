@@ -98,7 +98,10 @@ export type WorkflowPublishCheck = {
 };
 
 export type WorkflowNodeValidationIssue = {
+  code: string;
   message: string;
+  severity: "warning";
+  source: "catalog" | "runtime";
 };
 
 export type WorkflowNodeValidationContext = {

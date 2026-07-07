@@ -127,13 +127,6 @@ export class KbWriteService {
       );
     }
 
-    if (await this.hasKbDocuments(uid, kbNumericId)) {
-      throw new BadRequestError(
-        "KB_DELETE_HAS_DOCUMENTS",
-        "请先删除所有文档后，再删除知识库",
-      );
-    }
-
     await this.agentKbJavaClient.deleteKb({
       kbId: kbNumericId,
       uid,

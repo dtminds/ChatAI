@@ -67,9 +67,13 @@ type KnowledgeBaseDialogMode = "create" | "edit";
 const PAGE_SIZE = 10;
 const KNOWLEDGE_BASE_NAME_MAX_LENGTH = 30;
 const KNOWLEDGE_BASE_DESCRIPTION_MAX_LENGTH = 1000;
-const KB_DELETE_BLOCKED_MESSAGE = "请先删除所有文档后，再删除知识库";
-const KB_DELETE_DIALOG_CLASSNAME =
+const KB_DELETE_WITH_CONTENT_MESSAGE =
+  "检测到知识库中存在内容，是否确认要删除。删除后，知识内容和附件也将一并删除";
+const KB_DELETE_EMPTY_MESSAGE = "是否确认删除？";
+const KB_DELETE_BLOCKED_DIALOG_CLASSNAME =
   "box-border flex h-[128px] w-[400px] max-w-[400px] flex-col justify-between gap-0 p-6";
+const KB_DELETE_CONFIRM_DIALOG_CLASSNAME =
+  "box-border flex w-[400px] max-w-[400px] flex-col gap-4 p-6";
 const KB_DELETE_DIALOG_MESSAGE_CLASSNAME =
   "text-left text-sm font-normal text-foreground";
 
@@ -132,8 +136,10 @@ export function KbListPage() {
   const [deleting, setDeleting] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<KbListViewItem | null>(null);
   const [blockedDeleteOpen, setBlockedDeleteOpen] = useState(false);
-  const [blockedDeleteMessage, setBlockedDeleteMessage] = useState(KB_DELETE_BLOCKED_MESSAGE);
+  const [blockedDeleteMessage, setBlockedDeleteMessage] = useState("");
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [confirmDeleteHasDocuments, setConfirmDeleteHasDocuments] = useState(false);
+  const [deleteConfirmName, setDeleteConfirmName] = useState("");
   const [listReloadKey, setListReloadKey] = useState(0);
   const isMountedRef = useRef(false);
 
@@ -283,8 +289,10 @@ export function KbListPage() {
   function resetDeleteDialogState() {
     setDeleteTarget(null);
     setBlockedDeleteOpen(false);
-    setBlockedDeleteMessage(KB_DELETE_BLOCKED_MESSAGE);
+    setBlockedDeleteMessage("");
     setConfirmDeleteOpen(false);
+    setConfirmDeleteHasDocuments(false);
+    setDeleteConfirmName("");
   }
 
   async function handleDeleteClick(item: KbListViewItem) {
@@ -310,12 +318,8 @@ export function KbListPage() {
         return;
       }
 
-      if (result.hasDocuments) {
-        setBlockedDeleteMessage(KB_DELETE_BLOCKED_MESSAGE);
-        setBlockedDeleteOpen(true);
-        return;
-      }
-
+      setConfirmDeleteHasDocuments(result.hasDocuments);
+      setDeleteConfirmName("");
       setConfirmDeleteOpen(true);
     } catch {
       if (isMountedRef.current) {
@@ -562,7 +566,7 @@ export function KbListPage() {
         }}
         open={blockedDeleteOpen}
       >
-        <AlertDialogContent className={KB_DELETE_DIALOG_CLASSNAME}>
+        <AlertDialogContent className={KB_DELETE_BLOCKED_DIALOG_CLASSNAME}>
           <AlertDialogHeader className="space-y-0 text-left">
             <AlertDialogDescription className={KB_DELETE_DIALOG_MESSAGE_CLASSNAME}>
               {blockedDeleteMessage}
@@ -582,24 +586,42 @@ export function KbListPage() {
           if (!open && !deleting) {
             setConfirmDeleteOpen(false);
             setDeleteTarget(null);
+            setConfirmDeleteHasDocuments(false);
+            setDeleteConfirmName("");
           }
         }}
         open={confirmDeleteOpen}
       >
-        <AlertDialogContent className={KB_DELETE_DIALOG_CLASSNAME}>
-          <AlertDialogHeader className="space-y-0 text-left">
+        <AlertDialogContent className={KB_DELETE_CONFIRM_DIALOG_CLASSNAME}>
+          <AlertDialogHeader className="space-y-2 text-left">
             <AlertDialogDescription className={KB_DELETE_DIALOG_MESSAGE_CLASSNAME}>
-              是否确认删除？
+              {confirmDeleteHasDocuments
+                ? KB_DELETE_WITH_CONTENT_MESSAGE
+                : KB_DELETE_EMPTY_MESSAGE}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="kb-delete-confirm-name">知识库名称</Label>
+            <Input
+              aria-label="输入知识库名称确认删除"
+              id="kb-delete-confirm-name"
+              maxLength={KNOWLEDGE_BASE_NAME_MAX_LENGTH}
+              onChange={(event) => setDeleteConfirmName(event.target.value)}
+              placeholder="请输入知识库名称"
+              value={deleteConfirmName}
+            />
+          </div>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={deleting}>取消</AlertDialogCancel>
             <AlertDialogAction
-              disabled={deleting}
+              disabled={
+                deleting ||
+                deleteConfirmName.trim() !== deleteTarget?.name
+              }
               onClick={() => void handleConfirmDelete()}
               variant="destructive"
             >
-              确定
+              删除
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

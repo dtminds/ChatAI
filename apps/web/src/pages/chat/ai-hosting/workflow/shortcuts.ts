@@ -11,6 +11,12 @@ function isEditableShortcutTarget(target: EventTarget | null) {
     || target.isContentEditable;
 }
 
+function hasActiveDocumentTextSelection() {
+  const selection = document.getSelection();
+
+  return Boolean(selection && !selection.isCollapsed && selection.rangeCount > 0);
+}
+
 function isUndoShortcut(event: KeyboardEvent) {
   return (event.metaKey || event.ctrlKey)
     && !event.shiftKey
@@ -95,6 +101,10 @@ export function useWorkflowShortcuts({
       }
 
       if (isCopyShortcut(event)) {
+        if (hasActiveDocumentTextSelection()) {
+          return;
+        }
+
         if (onCopySelection()) {
           event.preventDefault();
           event.stopPropagation();

@@ -18,6 +18,7 @@ import {
 import { getNodeConfigSections } from "@/pages/chat/ai-hosting/workflow/node-config-schema";
 import { NodeComponentMap } from "@/pages/chat/ai-hosting/workflow/nodes/registry";
 import { PanelComponentMap } from "@/pages/chat/ai-hosting/workflow/panels/registry";
+import { workflowNodeUiBindings } from "@/pages/chat/ai-hosting/workflow/node-ui-bindings";
 import type { MarketingNodeKind } from "@/pages/chat/ai-hosting/workflow/types";
 
 describe("workflow node catalog", () => {
@@ -34,8 +35,10 @@ describe("workflow node catalog", () => {
       expect(definition.kind).toBe(catalogEntry.kind);
       expect(definition.visual).toBe(catalogEntry.visual);
       expect(definition.createDefaultData).toBe(catalogEntry.createDefaultData);
-      expect(NodeComponentMap[kind]).toBe(definition.body);
-      expect(PanelComponentMap[kind]).toBe(definition.settings);
+      expect(definition.body).toBe(workflowNodeUiBindings[kind].body);
+      expect(definition.settings).toBe(workflowNodeUiBindings[kind].settings);
+      expect(NodeComponentMap[kind]).toBe(workflowNodeUiBindings[kind].body);
+      expect(PanelComponentMap[kind]).toBe(workflowNodeUiBindings[kind].settings);
       expect(getNodeConfigSections(kind)).toBe(catalogEntry.configSections);
       expect(defaultData.kind).toBe(kind);
       expect(defaultData.title).toBeTruthy();

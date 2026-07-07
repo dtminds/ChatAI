@@ -9,18 +9,7 @@ import type {
   MarketingNodeKind,
 } from "./types";
 import type { NodeBodyProps } from "./nodes/node-bodies";
-import {
-  BranchNodeBody,
-  StandardNodeBody,
-} from "./nodes/node-bodies";
-import {
-  ActionConfig,
-  AiReceptionConfig,
-  BranchConfig,
-  GoalConfig,
-  TriggerConfig,
-  WaitConfig,
-} from "./panels/node-settings";
+import { workflowNodeUiBindings } from "./node-ui-bindings";
 import type { NodeSettingsProps } from "./panels/types";
 
 export {
@@ -38,31 +27,12 @@ type NodeDefinition = (typeof workflowNodeCatalog)[MarketingNodeKind] & {
   settings: ComponentType<NodeSettingsProps>;
 };
 
-const NodeBodyComponentMap: Record<MarketingNodeKind, ComponentType<NodeBodyProps>> = {
-  action: StandardNodeBody,
-  ai: StandardNodeBody,
-  branch: BranchNodeBody,
-  goal: StandardNodeBody,
-  trigger: StandardNodeBody,
-  wait: StandardNodeBody,
-};
-
-const NodeSettingsComponentMap: Record<MarketingNodeKind, ComponentType<NodeSettingsProps>> = {
-  action: ActionConfig,
-  ai: AiReceptionConfig,
-  branch: BranchConfig,
-  goal: GoalConfig,
-  trigger: TriggerConfig,
-  wait: WaitConfig,
-};
-
 export const nodeDefinitions = Object.fromEntries(
   Object.entries(workflowNodeCatalog).map(([kind, catalogEntry]) => [
     kind,
     {
       ...catalogEntry,
-      body: NodeBodyComponentMap[kind as MarketingNodeKind],
-      settings: NodeSettingsComponentMap[kind as MarketingNodeKind],
+      ...workflowNodeUiBindings[kind as MarketingNodeKind],
     },
   ]),
 ) as Record<MarketingNodeKind, NodeDefinition>;

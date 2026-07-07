@@ -1,7 +1,7 @@
 import type { ComponentType } from "react";
 import { cn } from "@/lib/utils";
 import { branchHandleOptions } from "../constants";
-import type { NodeVisual } from "../node-definitions";
+import type { NodeVisual } from "../node-catalog";
 import type { MarketingNodeKind, MarketingNodeRenderData } from "../types";
 
 export type NodeBodyProps = {

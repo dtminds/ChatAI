@@ -23,7 +23,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Progress } from "@/components/ui/progress";
 import { Spinner } from "@/components/ui/spinner";
 import {
   resolveTablePagination,
@@ -64,9 +63,6 @@ const kbAttachmentEmptyIllustrationUrl =
 const kbAttachmentInitLoadingIllustrationUrl =
   "https://b5.bokr.com.cn/dist/ui/attachment_bg_4.gif";
 
-const ATTACHMENT_INIT_PROGRESS_MIN = 15;
-const ATTACHMENT_INIT_PROGRESS_MAX = 85;
-const ATTACHMENT_INIT_PROGRESS_STEP_MS = 400;
 const ATTACHMENT_SYNC_POLL_MS = 5000;
 const ATTACHMENT_DOC_VISIBILITY_TIMEOUT_MS = 3 * 60 * 1000;
 
@@ -110,31 +106,6 @@ function useDebouncedValue<T>(value: T, delayMs: number) {
   }, [delayMs, value]);
 
   return debouncedValue;
-}
-
-function useAttachmentInitProgress(active: boolean) {
-  const [progress, setProgress] = useState(ATTACHMENT_INIT_PROGRESS_MIN);
-
-  useEffect(() => {
-    if (!active) {
-      setProgress(ATTACHMENT_INIT_PROGRESS_MIN);
-      return;
-    }
-
-    const timer = window.setInterval(() => {
-      setProgress((current) => {
-        if (current >= ATTACHMENT_INIT_PROGRESS_MAX) {
-          return ATTACHMENT_INIT_PROGRESS_MIN;
-        }
-
-        return current + 5;
-      });
-    }, ATTACHMENT_INIT_PROGRESS_STEP_MS);
-
-    return () => window.clearInterval(timer);
-  }, [active]);
-
-  return progress;
 }
 
 type KbAttachmentsTabProps = {
@@ -905,8 +876,6 @@ function KbAttachmentsInitState({
 }
 
 function KbAttachmentsInitLoadingState() {
-  const progress = useAttachmentInitProgress(true);
-
   return (
     <div
       className="flex min-h-[420px] flex-col items-center justify-center px-6 py-10 text-center"
@@ -918,14 +887,8 @@ function KbAttachmentsInitLoadingState() {
         className="mb-8 h-40 w-40 object-contain"
         src={kbAttachmentInitLoadingIllustrationUrl}
       />
-      <div className="w-full max-w-[280px]">
-        <Progress
-          aria-label="附件库初始化进度"
-          className="h-2 bg-muted"
-          value={progress}
-        />
-      </div>
-      <p className="mt-4 text-sm text-muted-foreground">请耐心等待哦～</p>
+      <Spinner aria-hidden="true" className="text-primary" size={24} />
+      <p className="mt-4 text-sm text-muted-foreground">正在初始化附件库，预计需要1-2分钟</p>
     </div>
   );
 }

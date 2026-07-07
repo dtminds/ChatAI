@@ -292,9 +292,7 @@ describe("KbAttachmentsTab", () => {
 
     await user.click(await screen.findByRole("button", { name: "立即启用" }));
 
-    expect(
-      screen.getByRole("progressbar", { name: "附件库初始化进度" }),
-    ).toBeInTheDocument();
+    expect(screen.getByText("正在初始化附件库，预计需要1-2分钟")).toBeInTheDocument();
     expect(initKbAttachments).toHaveBeenCalledWith("kb-1");
     expect(listKbAttachments).not.toHaveBeenCalled();
   });
@@ -330,9 +328,7 @@ describe("KbAttachmentsTab", () => {
         await Promise.resolve();
       });
 
-      expect(
-        screen.getByRole("progressbar", { name: "附件库初始化进度" }),
-      ).toBeInTheDocument();
+      expect(screen.getByText("正在初始化附件库，预计需要1-2分钟")).toBeInTheDocument();
       expect(listKbAttachments).not.toHaveBeenCalled();
 
       await act(async () => {

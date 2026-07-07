@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import type {
   Connection,
+  IsValidConnection,
   OnEdgesChange,
   OnNodesChange,
 } from "@xyflow/react";
@@ -63,6 +64,7 @@ export function WorkflowCanvas({
   onArrange,
   onConnect,
   onEdgesChange,
+  onIsValidConnection,
   onNodesChange,
   onOpenVariables,
   onPaletteOpenChange,
@@ -85,6 +87,7 @@ export function WorkflowCanvas({
   onArrange: () => void;
   onConnect: (connection: Connection) => void;
   onEdgesChange: OnEdgesChange<MarketingWorkflowRenderEdge>;
+  onIsValidConnection: IsValidConnection<MarketingWorkflowRenderEdge>;
   onNodesChange: OnNodesChange<MarketingWorkflowRenderNode>;
   onOpenVariables: () => void;
   onPaletteOpenChange: (open: boolean) => void;
@@ -135,6 +138,7 @@ export function WorkflowCanvas({
         onNodesChange={onNodesChange}
         onPaneClick={onPaneClick}
         panOnScroll
+        isValidConnection={onIsValidConnection}
         selectionOnDrag={false}
       >
         <Background color="var(--workflow-grid)" gap={20} size={1.2} />

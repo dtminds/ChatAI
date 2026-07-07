@@ -9,6 +9,7 @@ import {
   applyEdgeChanges,
   applyNodeChanges,
 } from "@xyflow/react";
+import { isWorkflowConnectionAllowed } from "./connection-policy";
 import { sanitizeDraft } from "./history-engine";
 import {
   addNodeOperation,
@@ -292,6 +293,10 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
     return commitGraphOperation(connectNodesOperation(currentDraft, connection));
   }, [commitGraphOperation, currentDraft, flushConfigHistory]);
 
+  const isValidConnection = useCallback((connection: Connection) => (
+    isWorkflowConnectionAllowed(currentDraft, connection)
+  ), [currentDraft]);
+
   const deleteNode = useCallback((nodeId: string): WorkflowControllerActionResult | undefined => {
     flushConfigHistory();
     return commitGraphOperation(deleteNodeOperation(currentDraft, nodeId));
@@ -357,6 +362,7 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
     edges,
     insertNodeAfter,
     insertNodeBetween,
+    isValidConnection,
     nodes,
     onEdgesChange,
     onNodesChange,

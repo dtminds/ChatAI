@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Connection, NodeChange } from "@xyflow/react";
+import type { Connection, IsValidConnection, NodeChange } from "@xyflow/react";
 import { useWorkflowPublishChecks } from "./checks/publish-checks";
 import { useWorkflowRun } from "./run/use-workflow-run";
 import { useWorkflowShortcuts } from "./shortcuts";
@@ -8,6 +8,7 @@ import type {
   InspectorTab,
   MarketingNodeData,
   MarketingNodeKind,
+  MarketingWorkflowRenderEdge,
   MarketingWorkflowRenderNode,
   WorkflowDraft,
 } from "./types";
@@ -287,6 +288,14 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
     }
   }
 
+  const isValidCanvasConnection: IsValidConnection<MarketingWorkflowRenderEdge> = (connection) =>
+    controller.isValidConnection({
+      source: connection.source,
+      sourceHandle: connection.sourceHandle ?? null,
+      target: connection.target,
+      targetHandle: connection.targetHandle ?? null,
+    });
+
   return {
     canvas: {
       canRedo: controller.canRedo,
@@ -297,6 +306,7 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
       onArrange: arrangeNodes,
       onConnect: connectNodes,
       onEdgesChange: controller.onEdgesChange,
+      onIsValidConnection: isValidCanvasConnection,
       onNodeHoverEnd: handleNodeHoverEnd,
       onNodeHoverStart: handleNodeHoverStart,
       onNodesChange: handleNodesChange,

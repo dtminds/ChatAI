@@ -1,4 +1,5 @@
 import type { Connection } from "@xyflow/react";
+import { isWorkflowConnectionAllowed } from "./connection-policy";
 import { WORKFLOW_LAYOUT_X_GAP } from "./constants";
 import {
   arrangeWorkflowNodes,
@@ -162,18 +163,7 @@ export function connectNodesOperation(
 ): WorkflowGraphOperation | undefined {
   const { source, sourceHandle, target, targetHandle } = connection;
 
-  if (!source || !target || source === target) {
-    return undefined;
-  }
-
-  if (
-    draft.edges.some((edge) =>
-      edge.source === source
-      && edge.sourceHandle === (sourceHandle ?? undefined)
-      && edge.target === target
-      && edge.targetHandle === (targetHandle ?? undefined),
-    )
-  ) {
+  if (!isWorkflowConnectionAllowed(draft, connection)) {
     return undefined;
   }
 

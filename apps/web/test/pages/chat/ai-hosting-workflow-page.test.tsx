@@ -93,6 +93,7 @@ vi.mock("@xyflow/react", async () => {
       onNodeMouseLeave,
       onNodesChange,
       onPaneClick,
+      isValidConnection,
     }: {
       children?: React.ReactNode;
       edges?: Array<{
@@ -130,6 +131,7 @@ vi.mock("@xyflow/react", async () => {
         type: string;
       }>) => void;
       onPaneClick?: () => void;
+      isValidConnection?: (connection: { source: string; target: string }) => boolean;
     }) => (
       <div
         data-delete-key-code={deleteKeyCode === null ? "disabled" : String(deleteKeyCode)}
@@ -146,7 +148,12 @@ vi.mock("@xyflow/react", async () => {
         </button>
         <button
           disabled={!nodesConnectable}
-          onClick={() => onConnect?.({ source: "wait-2d", target: "goal" })}
+          onClick={() => {
+            const connection = { source: "wait-2d", target: "goal" };
+            if (isValidConnection?.(connection) ?? true) {
+              onConnect?.(connection);
+            }
+          }}
           type="button"
         >
           连接观察期到首单转化

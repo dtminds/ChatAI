@@ -128,6 +128,27 @@ describe("workflow graph operations", () => {
       target: "wait-2d",
       targetHandle: null,
     })).toBeUndefined();
+    expect(connectNodesOperation(draft, {
+      source: "goal",
+      sourceHandle: null,
+      target: "wait-2d",
+      targetHandle: null,
+    })).toBeUndefined();
+    expect(connectNodesOperation(draft, {
+      source: "wait-2d",
+      sourceHandle: null,
+      target: "trigger",
+      targetHandle: null,
+    })).toBeUndefined();
+  });
+
+  it("rejects connections that would create cycles", () => {
+    expect(connectNodesOperation(createDraft(), {
+      source: "action-message",
+      sourceHandle: null,
+      target: "wait-2d",
+      targetHandle: null,
+    })).toBeUndefined();
   });
 
   it("deletes editable nodes with connected edges and keeps terminal nodes protected", () => {
@@ -183,7 +204,7 @@ describe("workflow graph operations", () => {
       ...draft,
       edges: [
         ...draft.edges,
-        createEdge("branch-intent", "goal", "低意向", {
+        createEdge("branch-intent", "action-message", "低意向", {
           sourceHandle: "branch-low",
         }),
       ],

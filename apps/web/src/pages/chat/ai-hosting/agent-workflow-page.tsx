@@ -188,6 +188,7 @@ function WorkflowWorkspaceContent({
             onArrange={canvas.onArrange}
             onConnect={canvas.onConnect}
             onEdgesChange={canvas.onEdgesChange}
+            onIsValidConnection={canvas.onIsValidConnection}
             onNodesChange={canvas.onNodesChange}
             onOpenVariables={canvas.onOpenVariables}
             onPaletteOpenChange={canvas.onPaletteOpenChange}

@@ -42,6 +42,8 @@ vi.mock("@xyflow/react", async () => {
       edges = [],
       nodeTypes,
       nodes,
+      nodesConnectable,
+      onConnect,
       onNodeClick,
     }: {
       children?: React.ReactNode;
@@ -55,9 +57,18 @@ vi.mock("@xyflow/react", async () => {
       edgeTypes?: Record<string, (props: any) => React.ReactNode>;
       nodeTypes?: Record<string, (props: any) => React.ReactNode>;
       nodes: Array<{ data: Record<string, unknown>; id: string; type?: string }>;
+      nodesConnectable?: boolean;
+      onConnect?: (connection: { source: string; target: string }) => void;
       onNodeClick?: (_event: unknown, node: { id: string }) => void;
     }) => (
       <div data-testid="workflow-react-flow">
+        <button
+          disabled={!nodesConnectable}
+          onClick={() => onConnect?.({ source: "wait-2d", target: "goal" })}
+          type="button"
+        >
+          连接观察期到首单转化
+        </button>
         {edges.map((edge, index) => {
           const EdgeComponent = edgeTypes?.[edge.type ?? ""];
 
@@ -196,7 +207,8 @@ describe("Agent workflow demo page", () => {
 
     expect(router.state.location.pathname).toBe("/chat/ai-hosting/workflows/new");
     expect(await screen.findByRole("application", { name: "营销 Workflow 画布" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "节点库" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "节点库" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "打开节点库" })).toBeInTheDocument();
     expect(screen.getByRole("complementary", { name: "节点配置" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "返回列表" })).toHaveAttribute(
       "href",
@@ -222,10 +234,11 @@ describe("Agent workflow demo page", () => {
 
     renderWorkflowPage();
 
+    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    await user.click(within(canvas).getByRole("button", { name: "打开节点库" }));
     const palette = await screen.findByRole("region", { name: "节点库" });
     await user.click(within(palette).getByRole("button", { name: "添加 AI 接待节点" }));
 
-    const canvas = screen.getByRole("application", { name: "营销 Workflow 画布" });
     const aiNode = within(canvas).getByRole("button", { name: /^AI 接待 / });
     expect(aiNode).toHaveTextContent("护肤小助理");
 
@@ -283,6 +296,8 @@ describe("Agent workflow demo page", () => {
 
     renderWorkflowPage();
 
+    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    await user.click(within(canvas).getByRole("button", { name: "打开节点库" }));
     const palette = await screen.findByRole("region", { name: "节点库" });
     await user.type(within(palette).getByRole("textbox", { name: "搜索节点" }), "AI");
 
@@ -318,8 +333,9 @@ describe("Agent workflow demo page", () => {
 
     renderWorkflowPage();
 
+    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    await user.click(within(canvas).getByRole("button", { name: "打开节点库" }));
     const palette = await screen.findByRole("region", { name: "节点库" });
-    const canvas = screen.getByRole("application", { name: "营销 Workflow 画布" });
 
     await user.click(within(palette).getByRole("button", { name: "添加 AI 接待节点" }));
     expect(within(canvas).getByRole("button", { name: /^AI 接待 / })).toBeInTheDocument();
@@ -338,9 +354,9 @@ describe("Agent workflow demo page", () => {
 
     const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
 
-    await user.click(within(canvas).getByRole("button", { name: "添加节点" }));
-    const dockMenu = within(canvas).getByRole("menu", { name: "从画布工具添加节点" });
-    await user.click(within(dockMenu).getByRole("menuitem", { name: /AI 接待/ }));
+    await user.click(within(canvas).getByRole("button", { name: "打开节点库" }));
+    const palette = within(canvas).getByRole("region", { name: "节点库" });
+    await user.click(within(palette).getByRole("button", { name: "添加 AI 接待节点" }));
     expect(within(canvas).getByRole("button", { name: /^AI 接待 / })).toBeInTheDocument();
 
     await user.click(within(canvas).getByRole("button", { name: "自动整理画布" }));
@@ -353,5 +369,17 @@ describe("Agent workflow demo page", () => {
     expect(reactFlowControlMock.zoomOut).toHaveBeenCalledTimes(1);
     expect(reactFlowControlMock.zoomIn).toHaveBeenCalledTimes(1);
     expect(reactFlowControlMock.fitView).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets users create a manual connection between nodes", async () => {
+    const user = userEvent.setup();
+
+    renderWorkflowPage();
+
+    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    await user.click(within(canvas).getByRole("button", { name: "连接观察期到首单转化" }));
+
+    expect(screen.getByTestId("workflow-edge-edge-wait-2d-goal")).toBeInTheDocument();
+    expect(within(canvas).getByRole("button", { name: "撤销" })).toBeEnabled();
   });
 });

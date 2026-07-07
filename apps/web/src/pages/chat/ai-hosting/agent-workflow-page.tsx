@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import type {
+  Connection,
   Edge,
   EdgeChange,
   EdgeProps,
@@ -30,6 +31,7 @@ import {
   AlertCircleIcon,
   ArrowLeft02Icon,
   ArrangeIcon,
+  Cancel01Icon,
   CheckmarkCircle02Icon,
   Clock01Icon,
   Coupon01Icon,
@@ -417,6 +419,7 @@ function WorkflowWorkspaceContent({
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("settings");
   const [selectedNodeId, setSelectedNodeId] = useState("action-message");
   const [quickInsertNodeId, setQuickInsertNodeId] = useState<string | null>(null);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState("");
   const [nodes, setNodes] = useState<MarketingWorkflowNode[]>(() => createInitialNodes());
   const [edges, setEdges] = useState<MarketingWorkflowEdge[]>(() => createInitialEdges());
@@ -555,6 +558,7 @@ function WorkflowWorkspaceContent({
     }
 
     insertNodeAfter(findLastActionNodeId(nodes, edges), kind);
+    setPaletteOpen(false);
   }
 
   function insertNodeAfter(
@@ -587,6 +591,7 @@ function WorkflowWorkspaceContent({
     ]);
     setSelectedNodeId(nodeId);
     setQuickInsertNodeId(null);
+    setPaletteOpen(false);
     setActiveView("canvas");
   }
 
@@ -622,6 +627,24 @@ function WorkflowWorkspaceContent({
       createEdge(nodeId, targetNodeId),
     ]);
     setSelectedNodeId(nodeId);
+    setQuickInsertNodeId(null);
+    setPaletteOpen(false);
+    setActiveView("canvas");
+  }
+
+  function connectNodes(connection: Connection) {
+    const { source, target } = connection;
+
+    if (!source || !target || source === target) {
+      return;
+    }
+
+    if (edges.some((edge) => edge.source === source && edge.target === target)) {
+      return;
+    }
+
+    recordHistory("连接节点");
+    setEdges((currentEdges) => [...currentEdges, createEdge(source, target)]);
     setQuickInsertNodeId(null);
     setActiveView("canvas");
   }
@@ -670,14 +693,8 @@ function WorkflowWorkspaceContent({
         workflowName={workflowName}
       />
 
-      <div className="relative grid min-h-0 flex-1 grid-cols-[15rem_minmax(0,1fr)] border-t border-[var(--workflow-border)] max-xl:grid-cols-[14rem_minmax(0,1fr)] max-lg:grid-cols-1">
-        <WorkflowPalette
-          onAddNode={addNode}
-          onSearchChange={setPaletteQuery}
-          searchValue={paletteQuery}
-        />
-
-        <section className="relative min-h-0 overflow-hidden border-l border-[var(--workflow-border)] bg-[var(--workflow-canvas-bg)] max-lg:min-h-[580px] max-lg:border-x-0">
+      <div className="workflow-editor-body relative min-h-0 flex-1 border-t border-[var(--workflow-border)] bg-[var(--workflow-canvas-bg)]">
+        <section className="relative h-full min-h-0 overflow-hidden bg-[var(--workflow-canvas-bg)] max-lg:min-h-[580px]">
           {activeView === "canvas" ? (
             <WorkflowCanvas
               canRedo={future.length > 0}
@@ -686,12 +703,17 @@ function WorkflowWorkspaceContent({
               nodes={decoratedNodes}
               onAddNode={addNode}
               onArrange={arrangeNodes}
+              onConnect={connectNodes}
               onEdgesChange={onEdgesChange}
               onNodesChange={onNodesChange}
               onOpenVariables={() => setInspectorTab("variables")}
+              onPaletteOpenChange={setPaletteOpen}
               onRedo={redoWorkflowChange}
               onSelectNode={setSelectedNodeId}
+              onSearchChange={setPaletteQuery}
               onUndo={undoWorkflowChange}
+              paletteOpen={paletteOpen}
+              searchValue={paletteQuery}
             />
           ) : null}
           {activeView === "preview" ? <WorkflowPreview /> : null}
@@ -810,10 +832,12 @@ function WorkflowTopBar({
 }
 
 function WorkflowPalette({
+  onClose,
   onAddNode,
   onSearchChange,
   searchValue,
 }: {
+  onClose?: () => void;
   onAddNode: (kind: MarketingNodeKind) => void;
   onSearchChange: (value: string) => void;
   searchValue: string;
@@ -830,9 +854,25 @@ function WorkflowPalette({
   return (
     <aside
       aria-label="节点库"
-      className="workflow-sidebar flex min-h-0 flex-col bg-background"
+      className="workflow-sidebar workflow-floating-palette flex min-h-0 flex-col bg-background"
       role="region"
     >
+      <div className="flex items-center justify-between gap-2 border-b border-[var(--workflow-border)] px-3 py-2.5">
+        <div className="min-w-0">
+          <h2 className="text-xs font-semibold">Blocks</h2>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">选择节点加入当前流程</p>
+        </div>
+        {onClose ? (
+          <button
+            aria-label="关闭节点库"
+            className="workflow-floating-palette-close"
+            onClick={onClose}
+            type="button"
+          >
+            <HugeiconsIcon icon={Cancel01Icon} size={14} strokeWidth={1.8} />
+          </button>
+        ) : null}
+      </div>
       <div className="border-b border-[var(--workflow-border)] px-3 py-3">
         <div className="relative">
           <HugeiconsIcon
@@ -853,7 +893,7 @@ function WorkflowPalette({
 
       <section className="min-h-0 flex-1 overflow-y-auto px-2 py-3">
         <div className="mb-2 flex items-center justify-between px-1">
-          <h2 className="text-xs font-semibold text-muted-foreground">Blocks</h2>
+          <h3 className="text-xs font-semibold text-muted-foreground">节点</h3>
           <Badge className="h-5 rounded-md px-1.5 text-[11px]" variant="secondary">
             {visiblePaletteItems.length}
           </Badge>
@@ -877,7 +917,10 @@ function WorkflowPalette({
               aria-label={`添加 ${item.label}节点`}
               className="group flex h-10 w-full items-center gap-2 rounded-lg px-2 text-left transition-colors hover:bg-muted/80 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/20"
               key={item.id}
-              onClick={() => onAddNode(item.id)}
+              onClick={() => {
+                onAddNode(item.id);
+                onClose?.();
+              }}
               type="button"
             >
               <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-[var(--workflow-soft)] text-muted-foreground transition-colors group-hover:bg-primary/10 group-hover:text-primary">
@@ -932,12 +975,17 @@ function WorkflowCanvas({
   nodes,
   onAddNode,
   onArrange,
+  onConnect,
   onEdgesChange,
   onNodesChange,
   onOpenVariables,
+  onPaletteOpenChange,
   onRedo,
   onSelectNode,
+  onSearchChange,
   onUndo,
+  paletteOpen,
+  searchValue,
 }: {
   canRedo: boolean;
   canUndo: boolean;
@@ -945,12 +993,17 @@ function WorkflowCanvas({
   nodes: MarketingWorkflowNode[];
   onAddNode: (kind: MarketingNodeKind) => void;
   onArrange: () => void;
+  onConnect: (connection: Connection) => void;
   onEdgesChange: OnEdgesChange<MarketingWorkflowEdge>;
   onNodesChange: OnNodesChange<MarketingWorkflowNode>;
   onOpenVariables: () => void;
+  onPaletteOpenChange: (open: boolean) => void;
   onRedo: () => void;
   onSelectNode: (nodeId: string) => void;
+  onSearchChange: (value: string) => void;
   onUndo: () => void;
+  paletteOpen: boolean;
+  searchValue: string;
 }) {
   const initialViewport = useMemo(() => getInitialWorkflowViewport(), []);
   const { fitView, zoomIn, zoomOut } = useReactFlow<MarketingWorkflowNode, MarketingWorkflowEdge>();
@@ -972,7 +1025,8 @@ function WorkflowCanvas({
         nodeOrigin={[0, 0.5]}
         nodeTypes={nodeTypes}
         nodes={nodes}
-        nodesConnectable={false}
+        nodesConnectable
+        onConnect={onConnect}
         onEdgesChange={onEdgesChange}
         onNodeClick={(_, node) => onSelectNode(node.id)}
         onNodesChange={onNodesChange}
@@ -1003,10 +1057,19 @@ function WorkflowCanvas({
           zoomable
         />
         <WorkflowControlDock
-          onAddNode={onAddNode}
+          onPaletteOpenChange={onPaletteOpenChange}
           onArrange={onArrange}
           onOpenVariables={onOpenVariables}
+          paletteOpen={paletteOpen}
         />
+        {paletteOpen ? (
+          <WorkflowPalette
+            onAddNode={onAddNode}
+            onClose={() => onPaletteOpenChange(false)}
+            onSearchChange={onSearchChange}
+            searchValue={searchValue}
+          />
+        ) : null}
         <div className="workflow-bottom-operator" aria-label="画布操作">
           <div className="workflow-operator-group">
             <button
@@ -1068,53 +1131,28 @@ function WorkflowCanvas({
 }
 
 function WorkflowControlDock({
-  onAddNode,
   onArrange,
   onOpenVariables,
+  onPaletteOpenChange,
+  paletteOpen,
 }: {
-  onAddNode: (kind: MarketingNodeKind) => void;
   onArrange: () => void;
   onOpenVariables: () => void;
+  onPaletteOpenChange: (open: boolean) => void;
+  paletteOpen: boolean;
 }) {
-  const [addMenuOpen, setAddMenuOpen] = useState(false);
-
   return (
     <div aria-label="画布工具" className="workflow-left-dock">
       <button
-        aria-expanded={addMenuOpen}
-        aria-label="添加节点"
+        aria-expanded={paletteOpen}
+        aria-label={paletteOpen ? "关闭节点库" : "打开节点库"}
         className="workflow-left-dock-button"
-        onClick={() => setAddMenuOpen((isOpen) => !isOpen)}
+        data-active={paletteOpen ? "true" : undefined}
+        onClick={() => onPaletteOpenChange(!paletteOpen)}
         type="button"
       >
         <HugeiconsIcon icon={Add01Icon} size={16} strokeWidth={1.8} />
       </button>
-      {addMenuOpen ? (
-        <div aria-label="从画布工具添加节点" className="workflow-dock-menu" role="menu">
-          {paletteItems.map((item) => (
-            <button
-              className="workflow-dock-menu-item"
-              key={item.id}
-              onClick={() => {
-                onAddNode(item.id);
-                setAddMenuOpen(false);
-              }}
-              role="menuitem"
-              type="button"
-            >
-              <span className="flex size-6 items-center justify-center rounded-md bg-[var(--workflow-soft)] text-muted-foreground">
-                <HugeiconsIcon icon={item.icon} size={14} strokeWidth={1.8} />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-xs font-medium text-foreground">{item.label}</span>
-                <span className="block truncate text-[11px] text-muted-foreground">
-                  {item.description}
-                </span>
-              </span>
-            </button>
-          ))}
-        </div>
-      ) : null}
       <button
         aria-label="选择模式"
         className="workflow-left-dock-button"

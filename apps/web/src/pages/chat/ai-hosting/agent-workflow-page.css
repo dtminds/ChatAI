@@ -60,9 +60,48 @@
   display: none;
 }
 
-.workflow-sidebar,
+.workflow-editor-body {
+  overflow: hidden;
+}
+
 .workflow-config-panel {
   box-shadow: none;
+}
+
+.workflow-floating-palette {
+  position: absolute;
+  top: 16px;
+  left: 60px;
+  z-index: 18;
+  width: 264px;
+  max-height: calc(100% - 32px);
+  overflow: hidden;
+  border: 0.5px solid var(--workflow-border);
+  border-radius: 12px;
+  background: var(--workflow-panel-bg-blur);
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.16);
+  backdrop-filter: blur(10px);
+}
+
+.workflow-floating-palette-close {
+  display: flex;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  transition:
+    background 150ms ease,
+    color 150ms ease;
+}
+
+.workflow-floating-palette-close:hover {
+  background: rgba(15, 23, 42, 0.06);
+  color: hsl(var(--foreground));
 }
 
 .workflow-node-card {
@@ -95,6 +134,7 @@
 }
 
 .workflow-node-handle {
+  z-index: 12 !important;
   width: 16px !important;
   height: 16px !important;
   border: none !important;
@@ -475,45 +515,22 @@
   background: var(--workflow-border);
 }
 
-.workflow-dock-menu {
-  position: absolute;
-  top: 0;
-  left: 44px;
-  width: 248px;
-  padding: 6px;
-  border: 0.5px solid var(--workflow-border);
-  border-radius: 12px;
-  background: var(--workflow-panel-bg-blur);
-  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.18);
-  backdrop-filter: blur(10px);
-}
-
-.workflow-dock-menu-item {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  gap: 8px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  padding: 7px 8px;
-  text-align: left;
-  transition: background 150ms ease;
-}
-
-.workflow-dock-menu-item:hover {
-  background: rgba(15, 23, 42, 0.05);
-}
-
 .workflow-operator-chip:hover {
   background: hsl(var(--background));
   color: hsl(var(--foreground));
 }
 
 @media (max-width: 1023px) {
-  .workflow-sidebar,
   .workflow-config-panel {
     min-height: 280px;
+  }
+
+  .workflow-floating-palette {
+    top: 56px;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    max-height: min(420px, calc(100% - 120px));
   }
 
   .workflow-bottom-operator {
@@ -522,10 +539,6 @@
   }
 
   .agent-workflow-canvas .react-flow__minimap {
-    display: none;
-  }
-
-  .workflow-left-dock {
     display: none;
   }
 

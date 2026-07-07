@@ -113,77 +113,73 @@ describe("useWorkflowWorkspace", () => {
   });
 
   it("copies and pastes the selected node through shortcuts with undo and redo support", () => {
-    const dateNowSpy = vi.spyOn(Date, "now").mockReturnValue(12345);
     const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
 
-    try {
-      act(() => {
-        result.current.canvas.onSelectNode("action-message");
-        window.dispatchEvent(new KeyboardEvent("keydown", { ctrlKey: true, key: "c" }));
-      });
+    act(() => {
+      result.current.canvas.onSelectNode("action-message");
+      window.dispatchEvent(new KeyboardEvent("keydown", { ctrlKey: true, key: "c" }));
+    });
 
-      act(() => {
-        window.dispatchEvent(new KeyboardEvent("keydown", { ctrlKey: true, key: "v" }));
-      });
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { ctrlKey: true, key: "v" }));
+    });
 
-      expect(result.current.canvas.nodes.some((node) => node.id === "action-12345")).toBe(true);
-      expect(result.current.inspector.node?.id).toBe("action-12345");
-      expect(result.current.canvas.canUndo).toBe(true);
+    const pastedNodeId = result.current.inspector.node?.id;
+    expect(pastedNodeId).toMatch(/^action-/);
+    expect(result.current.canvas.nodes.some((node) => node.id === pastedNodeId)).toBe(true);
+    expect(result.current.canvas.canUndo).toBe(true);
 
-      act(() => {
-        window.dispatchEvent(new KeyboardEvent("keydown", { ctrlKey: true, key: "z" }));
-      });
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { ctrlKey: true, key: "z" }));
+    });
 
-      expect(result.current.canvas.nodes.some((node) => node.id === "action-12345")).toBe(false);
-      expect(result.current.canvas.canRedo).toBe(true);
+    expect(result.current.canvas.nodes.some((node) => node.id === pastedNodeId)).toBe(false);
+    expect(result.current.canvas.canRedo).toBe(true);
 
-      act(() => {
-        window.dispatchEvent(new KeyboardEvent("keydown", { ctrlKey: true, key: "y" }));
-      });
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { ctrlKey: true, key: "y" }));
+    });
 
-      expect(result.current.canvas.nodes.some((node) => node.id === "action-12345")).toBe(true);
-    }
-    finally {
-      dateNowSpy.mockRestore();
-    }
+    expect(result.current.canvas.nodes.some((node) => node.id === pastedNodeId)).toBe(true);
   });
 
   it("copies and pastes selected nodes with their internal edges", () => {
-    const dateNowSpy = vi.spyOn(Date, "now").mockReturnValue(23456);
     const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
 
-    try {
-      act(() => {
-        result.current.canvas.onSelectionChange({
-          edges: [],
-          nodes: result.current.canvas.nodes.filter((node) =>
-            node.id === "wait-2d" || node.id === "branch-intent",
-          ),
-        });
+    act(() => {
+      result.current.canvas.onSelectionChange({
+        edges: [],
+        nodes: result.current.canvas.nodes.filter((node) =>
+          node.id === "wait-2d" || node.id === "branch-intent",
+        ),
       });
+    });
 
-      expect(result.current.inspector.node).toBeUndefined();
+    expect(result.current.inspector.node).toBeUndefined();
 
-      act(() => {
-        window.dispatchEvent(new KeyboardEvent("keydown", { ctrlKey: true, key: "c" }));
-      });
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { ctrlKey: true, key: "c" }));
+    });
 
-      act(() => {
-        window.dispatchEvent(new KeyboardEvent("keydown", { ctrlKey: true, key: "v" }));
-      });
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { ctrlKey: true, key: "v" }));
+    });
 
-      expect(result.current.canvas.nodes.some((node) => node.id === "wait-23456")).toBe(true);
-      expect(result.current.canvas.nodes.some((node) => node.id === "branch-23456-1")).toBe(true);
-      expect(result.current.canvas.edges).toEqual(expect.arrayContaining([
-        expect.objectContaining({
-          source: "wait-23456",
-          target: "branch-23456-1",
-        }),
-      ]));
-    }
-    finally {
-      dateNowSpy.mockRestore();
-    }
+    const pastedWaitNode = result.current.canvas.nodes.find((node) =>
+      node.id !== "wait-2d" && node.data.kind === "wait" && node.data.title === "观察期 (1)",
+    );
+    const pastedBranchNode = result.current.canvas.nodes.find((node) =>
+      node.id !== "branch-intent" && node.data.kind === "branch" && node.data.title === "意向判断 (1)",
+    );
+
+    expect(pastedWaitNode?.id).toMatch(/^wait-/);
+    expect(pastedBranchNode?.id).toMatch(/^branch-/);
+    expect(result.current.canvas.edges).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        source: pastedWaitNode?.id,
+        target: pastedBranchNode?.id,
+      }),
+    ]));
   });
 
   it("deletes selected nodes as one undoable workflow change", () => {
@@ -215,7 +211,6 @@ describe("useWorkflowWorkspace", () => {
   });
 
   it("pastes workflow data from the system clipboard before using local clipboard fallback", async () => {
-    const dateNowSpy = vi.spyOn(Date, "now").mockReturnValue(67890);
     const systemClipboardData = createWorkflowClipboardData(
       getWorkflowDocument("newcomer-conversion").draft,
       ["wait-2d"],
@@ -232,12 +227,11 @@ describe("useWorkflowWorkspace", () => {
       });
 
       await waitFor(() => {
-        expect(result.current.canvas.nodes.some((node) => node.id === "wait-67890")).toBe(true);
+        expect(result.current.inspector.node?.id).toMatch(/^wait-/);
       });
-      expect(result.current.inspector.node?.id).toBe("wait-67890");
+      expect(result.current.inspector.node?.data.title).toBe("观察期 (1)");
     }
     finally {
-      dateNowSpy.mockRestore();
       restoreClipboard();
     }
   });

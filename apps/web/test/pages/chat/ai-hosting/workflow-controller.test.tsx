@@ -154,6 +154,36 @@ describe("useWorkflowController", () => {
     expect(result.current.canUndo).toBe(false);
   });
 
+  it("creates unique node ids for repeated node additions", () => {
+    const initialDraft = createDraft();
+    const { rerender, result } = renderHook(
+      ({ draft }) => useWorkflowController(draft),
+      { initialProps: { draft: initialDraft } },
+    );
+
+    act(() => {
+      result.current.addNode("ai");
+    });
+    rerender({ draft: initialDraft });
+
+    const firstNodeId = result.current.nodes.find((node) =>
+      node.data.kind === "ai" && node.id !== "ai",
+    )?.id;
+
+    act(() => {
+      result.current.addNode("ai");
+    });
+    rerender({ draft: initialDraft });
+
+    const aiNodeIds = result.current.nodes
+      .filter((node) => node.data.kind === "ai")
+      .map((node) => node.id);
+
+    expect(firstNodeId).toMatch(/^ai-/);
+    expect(new Set(aiNodeIds).size).toBe(aiNodeIds.length);
+    expect(aiNodeIds).toHaveLength(2);
+  });
+
   it("resets workflow state when a different draft is loaded", () => {
     const nextDraft = createDraft();
     nextDraft.nodes = nextDraft.nodes.map((node) =>

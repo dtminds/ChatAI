@@ -43,6 +43,7 @@ import {
   pasteWorkflowClipboardData,
 } from "./workflow-clipboard";
 import type { WorkflowClipboardData } from "./workflow-clipboard";
+import { createUniqueWorkflowNodeIdFactory } from "./workflow-id";
 
 const WORKFLOW_CONFIG_HISTORY_DEBOUNCE_MS = 500;
 
@@ -266,7 +267,8 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
     sourceHandle?: string,
   ): WorkflowControllerActionResult => {
     flushConfigHistory();
-    const nodeId = `${kind}-${Date.now()}`;
+    const createNodeId = createUniqueWorkflowNodeIdFactory(currentDraft);
+    const nodeId = createNodeId(kind);
     return commitGraphOperation(insertNodeAfterOperation(currentDraft, previousNodeId, kind, nodeId, sourceHandle))
       ?? { draft: currentDraft, nodeId };
   }, [commitGraphOperation, currentDraft, flushConfigHistory]);
@@ -278,7 +280,8 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
     kind: InsertableMarketingNodeKind,
   ): WorkflowControllerActionResult => {
     flushConfigHistory();
-    const nodeId = `${kind}-${Date.now()}`;
+    const createNodeId = createUniqueWorkflowNodeIdFactory(currentDraft);
+    const nodeId = createNodeId(kind);
     return commitGraphOperation(insertNodeBetweenOperation(
       currentDraft,
       edgeId,
@@ -291,7 +294,8 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
 
   const addNode = useCallback((kind: MarketingNodeKind): WorkflowControllerActionResult | undefined => {
     flushConfigHistory();
-    return commitGraphOperation(addNodeOperation(currentDraft, kind, `${kind}-${Date.now()}`));
+    const createNodeId = createUniqueWorkflowNodeIdFactory(currentDraft);
+    return commitGraphOperation(addNodeOperation(currentDraft, kind, createNodeId(kind)));
   }, [commitGraphOperation, currentDraft, flushConfigHistory]);
 
   const connectNodes = useCallback((connection: Connection): WorkflowControllerActionResult | undefined => {
@@ -316,7 +320,8 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
   const duplicateNode = useCallback((nodeId: string): WorkflowControllerActionResult | undefined => {
     flushConfigHistory();
     const node = nodes.find((currentNode) => currentNode.id === nodeId);
-    const duplicatedNodeId = `${node?.data.kind ?? "node"}-${Date.now()}`;
+    const createNodeId = createUniqueWorkflowNodeIdFactory(currentDraft);
+    const duplicatedNodeId = createNodeId(node?.data.kind ?? "action");
     return commitGraphOperation(duplicateNodeOperation(currentDraft, nodeId, duplicatedNodeId));
   }, [commitGraphOperation, currentDraft, flushConfigHistory, nodes]);
 
@@ -334,8 +339,9 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
     clipboardData: WorkflowClipboardData,
   ): WorkflowControllerActionResult | undefined => {
     flushConfigHistory();
+    const createNodeId = createUniqueWorkflowNodeIdFactory(currentDraft);
     return commitGraphOperation(pasteWorkflowClipboardData(currentDraft, clipboardData, {
-      nodeIdFactory: (kind, index) => `${kind}-${Date.now()}${index > 0 ? `-${index}` : ""}`,
+      nodeIdFactory: (kind) => createNodeId(kind),
     }));
   }, [commitGraphOperation, currentDraft, flushConfigHistory]);
 

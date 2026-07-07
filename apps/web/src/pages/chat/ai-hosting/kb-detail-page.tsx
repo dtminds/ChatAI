@@ -5,17 +5,11 @@ import {
   AiMagicIcon,
   ArrowLeft01Icon,
   CheckmarkCircle02Icon,
-  ClipboardListIcon,
   Clock04Icon,
-  CustomerService01Icon,
-  DeliveryReturn02Icon,
   Knowledge02Icon,
   Loading03Icon,
   MessagePreview01Icon,
-  MessageSearch02Icon,
   Search01Icon,
-  ShippingTruck01Icon,
-  ShoppingBag01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { KB_SEARCH_QUERY_MAX_LENGTH } from "@chatai/contracts";
@@ -84,6 +78,7 @@ import { ImportDocumentDialog } from "./kb-components/import-document-dialog";
 // import { ImportImageDialog } from "./kb-components/import-image-dialog";
 import { ImportQaDialog } from "./kb-components/import-qa-dialog";
 import { KbAttachmentsTab } from "./kb-components/kb-attachments-tab";
+import { KbEmptyStatePanel } from "./kb-components/kb-empty-state-panel";
 import {
   KB_ATTACHMENT_TYPE,
   type KbAttachmentType,
@@ -110,19 +105,10 @@ const PAGE_SIZE = 10;
 const kbKnowledgeEmptyIllustrationUrl =
   "https://b5.bokr.com.cn/dist/ui/attachment_bg_2.png";
 
-const kbKnowledgeExampleTagRows = [
-  [
-    { icon: "product" as const, label: "商品知识" },
-    { icon: "rules" as const, label: "活动规则说明" },
-    { icon: "qa" as const, label: "订单售后问答" },
-  ],
-  [
-    { icon: "faq" as const, label: "常见问题FAQ" },
-    { icon: "return" as const, label: "退换货政策" },
-    { icon: "delivery" as const, label: "物流发货政策" },
-    { icon: "more" as const, label: "..." },
-  ],
-] as const;
+const KB_KNOWLEDGE_EMPTY_DESCRIPTION =
+  "你可以添加各类知识，用于在Agent做话术推荐和自动回复的时候做召回用，Agent会参考召回的知识内容组织回复话术";
+const KB_KNOWLEDGE_EMPTY_SUGGESTION =
+  "建议添加的知识：商品知识、活动规则说明、订单售后问答、常见问题FAQ、退换货政策、物流发货政策等";
 
 function useDebouncedValue<T>(value: T, delayMs: number) {
   const [debouncedValue, setDebouncedValue] = useState(value);
@@ -717,77 +703,12 @@ function renderAddKnowledgeOption(
 
 function KbKnowledgeEmptyState() {
   return (
-    <div className="flex min-h-[420px] flex-col items-center justify-center px-6 py-10 text-center">
-      <img
-        alt=""
-        aria-hidden="true"
-        className="mb-6 h-40 w-40 object-contain"
-        src={kbKnowledgeEmptyIllustrationUrl}
-      />
-
-      <div
-        aria-hidden="true"
-        className="flex max-w-3xl flex-col items-center gap-3"
-      >
-        {kbKnowledgeExampleTagRows.map((row, rowIndex) => (
-          <div
-            className="flex flex-wrap items-center justify-center gap-2"
-            key={rowIndex}
-          >
-            {row.map((tag) => (
-              <span
-                className="inline-flex h-9 items-center gap-2 rounded-[8px] bg-muted/70 px-3 text-sm text-muted-foreground"
-                key={tag.label}
-              >
-                {tag.icon === "more" ? (
-                  "..."
-                ) : (
-                  <>
-                    <KbKnowledgeExampleOutlineIcon type={tag.icon} />
-                    {tag.label}
-                  </>
-                )}
-              </span>
-            ))}
-          </div>
-        ))}
-      </div>
-
-      <p className="mt-6 max-w-xl text-sm leading-6 text-muted-foreground">
-        你可以添加各类知识，用于在 Agent 做话术推荐和自动回复的时候做召回用，Agent 会参考召回的知识内容组织回复话术
-      </p>
-    </div>
-  );
-}
-
-function KbKnowledgeExampleOutlineIcon({
-  type,
-}: {
-  type: "delivery" | "faq" | "product" | "qa" | "return" | "rules";
-}) {
-  const icon =
-    type === "product"
-      ? ShoppingBag01Icon
-      : type === "rules"
-        ? ClipboardListIcon
-        : type === "qa"
-          ? CustomerService01Icon
-          : type === "faq"
-            ? MessageSearch02Icon
-            : type === "return"
-              ? DeliveryReturn02Icon
-              : ShippingTruck01Icon;
-
-  return (
-    <span className="inline-flex size-5 items-center justify-center text-muted-foreground/80">
-      <HugeiconsIcon
-        aria-hidden="true"
-        color="currentColor"
-        icon={icon}
-        size={15}
-        strokeWidth={1.8}
-      />
-    </span>
+    <KbEmptyStatePanel
+      description={KB_KNOWLEDGE_EMPTY_DESCRIPTION}
+      illustrationUrl={kbKnowledgeEmptyIllustrationUrl}
+      suggestionContent={KB_KNOWLEDGE_EMPTY_SUGGESTION}
+      suggestionLabel="建议添加知识"
+    />
   );
 }
 

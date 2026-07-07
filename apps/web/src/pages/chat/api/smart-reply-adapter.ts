@@ -735,16 +735,10 @@ function normalizeSmartReplyAttachmentId(value: unknown): string | undefined {
   return undefined;
 }
 
-function readSmartReplyGenAnswerSegmentAttachmentId(
+function readSmartReplyGenAnswerSegmentTransMsgInfoId(
   segment: Record<string, unknown>,
 ): string | undefined {
-  for (const key of [
-    "id",
-    "attachId",
-    "refAttachId",
-    "transMsgInfoId",
-    "msgInfoId",
-  ]) {
+  for (const key of ["transMsgInfoId", "msgInfoId"]) {
     const normalized = normalizeSmartReplyAttachmentId(segment[key]);
 
     if (normalized) {
@@ -753,6 +747,74 @@ function readSmartReplyGenAnswerSegmentAttachmentId(
   }
 
   return undefined;
+}
+
+function readSmartReplyGenAnswerSegmentLibraryAttachmentId(
+  segment: Record<string, unknown>,
+): string | undefined {
+  for (const key of ["id", "attachId", "refAttachId"]) {
+    const normalized = normalizeSmartReplyAttachmentId(segment[key]);
+
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  return undefined;
+}
+
+function readSmartReplyGenAnswerSegmentAttachmentId(
+  segment: Record<string, unknown>,
+): string | undefined {
+  return (
+    readSmartReplyGenAnswerSegmentLibraryAttachmentId(segment) ??
+    readSmartReplyGenAnswerSegmentTransMsgInfoId(segment)
+  );
+}
+
+function isSmartReplyForwardOnlyGenAnswerSegment(
+  msgtype: string | undefined,
+  segment: Record<string, unknown>,
+): boolean {
+  const transMsgInfoId = readSmartReplyGenAnswerSegmentTransMsgInfoId(segment);
+
+  if (!transMsgInfoId) {
+    return false;
+  }
+
+  if (msgtype === "weapp" || msgtype === "sphfeed") {
+    return readSmartReplyGenAnswerSegmentLibraryAttachmentId(segment) == null;
+  }
+
+  if (msgtype === "video") {
+    return (
+      readSmartReplyGenAnswerSegmentLibraryAttachmentId(segment) == null &&
+      !readSmartReplyGenAnswerSegmentPreviewPath(segment)
+    );
+  }
+
+  return false;
+}
+
+function buildSmartReplyForwardAttachmentId(
+  msgtype: string,
+  transMsgInfoId: string,
+) {
+  return `transmsg:${msgtype}:${transMsgInfoId}`;
+}
+
+function readSmartReplyRecommendedAttachmentTransMsgInfoId(
+  attachment: SmartReplyRecommendedAttachment,
+) {
+  const explicit = attachment.transMsgInfoId?.trim();
+
+  if (explicit) {
+    return explicit;
+  }
+
+  const match = /^transmsg:(?:weapp|sphfeed|video):(\d+)$/.exec(attachment.id);
+
+  return match?.[1];
 }
 
 function readSmartReplyGenAnswerSegmentPreviewPath(
@@ -779,15 +841,43 @@ function readSmartReplyGenAnswerSegmentPreviewPath(
 function readSmartReplyGenAnswerSegmentFileType(
   msgtype: string | undefined,
 ): string {
-  if (msgtype === "file") {
-    return "5";
+  switch (msgtype) {
+    case "file":
+      return "5";
+    case "video":
+    case "sphfeed":
+      return "3";
+    case "link":
+      return "4";
+    case "weapp":
+      return "7";
+    case "image":
+      return "1";
+    default:
+      return "1";
   }
+}
 
-  if (msgtype === "video") {
-    return "3";
-  }
-
-  return "1";
+function getSmartReplyGenAnswerSegmentFileName(
+  segment: Record<string, unknown>,
+  msgtype: string | undefined,
+) {
+  return (
+    readString(segment.fileName) ??
+    readString(segment.title) ??
+    readString(segment.alt) ??
+    (msgtype === "image"
+      ? "图片"
+      : msgtype === "file"
+        ? "文件"
+        : msgtype === "link"
+          ? "链接"
+          : msgtype === "weapp"
+            ? "小程序"
+            : msgtype === "sphfeed"
+              ? "视频号"
+              : "附件")
+  );
 }
 
 export function extractSmartReplyGenAnswerAttachmentIds(
@@ -822,7 +912,9 @@ export function extractSmartReplyGenAnswerAttachmentIds(
       continue;
     }
 
-    const attachmentId = readSmartReplyGenAnswerSegmentAttachmentId(segment);
+    const attachmentId = isSmartReplyForwardOnlyGenAnswerSegment(msgtype, segment)
+      ? undefined
+      : readSmartReplyGenAnswerSegmentAttachmentId(segment);
 
     if (attachmentId && !seen.has(attachmentId)) {
       seen.add(attachmentId);
@@ -863,12 +955,40 @@ export function extractSmartReplyGenAnswerInlineAttachments(
       return;
     }
 
+    const previewPath = readSmartReplyGenAnswerSegmentPreviewPath(segment);
+    const transMsgInfoId = readSmartReplyGenAnswerSegmentTransMsgInfoId(segment);
+    const libraryAttachmentId =
+      readSmartReplyGenAnswerSegmentLibraryAttachmentId(segment);
+    const isForwardOnly = isSmartReplyForwardOnlyGenAnswerSegment(
+      msgtype,
+      segment,
+    );
+
+    if (isForwardOnly) {
+      if (!transMsgInfoId) {
+        return;
+      }
+
+      attachments.push({
+        content: readString(segment.content),
+        coverUrl: readString(segment.coverUrl) ?? previewPath,
+        defaultSelected: attachments.length === 0,
+        fileName: getSmartReplyGenAnswerSegmentFileName(segment, msgtype),
+        fileType: readSmartReplyGenAnswerSegmentFileType(msgtype),
+        id: buildSmartReplyForwardAttachmentId(msgtype, transMsgInfoId),
+        localPath: readString(segment.localPath) ?? readString(segment.fileUrl),
+        slocalPath: readString(segment.slocalPath),
+        transMsgInfoId,
+      });
+      return;
+    }
+
     const attachmentId =
+      libraryAttachmentId ??
       readSmartReplyGenAnswerSegmentAttachmentId(segment) ??
       `genanswer-${msgtype}-${index}`;
-    const previewPath = readSmartReplyGenAnswerSegmentPreviewPath(segment);
 
-    if (!previewPath && readSmartReplyGenAnswerSegmentAttachmentId(segment) == null) {
+    if (!previewPath && libraryAttachmentId == null && transMsgInfoId == null) {
       return;
     }
 
@@ -876,15 +996,12 @@ export function extractSmartReplyGenAnswerInlineAttachments(
       content: readString(segment.content),
       coverUrl: readString(segment.coverUrl) ?? previewPath,
       defaultSelected: attachments.length === 0,
-      fileName:
-        readString(segment.fileName) ??
-        readString(segment.title) ??
-        readString(segment.alt) ??
-        (msgtype === "image" ? "图片" : msgtype === "file" ? "文件" : "附件"),
+      fileName: getSmartReplyGenAnswerSegmentFileName(segment, msgtype),
       fileType: readSmartReplyGenAnswerSegmentFileType(msgtype),
       id: attachmentId,
       localPath: readString(segment.localPath) ?? readString(segment.fileUrl),
       slocalPath: readString(segment.slocalPath),
+      ...(transMsgInfoId ? { transMsgInfoId } : {}),
     });
   });
 
@@ -900,8 +1017,10 @@ function enrichSmartReplyRecommendedAttachment(
     content: primary.content ?? fallback.content,
     coverUrl: primary.coverUrl ?? fallback.coverUrl,
     fileName: primary.fileName || fallback.fileName,
+    fileType: primary.fileType || fallback.fileType,
     localPath: primary.localPath ?? fallback.localPath,
     slocalPath: primary.slocalPath ?? fallback.slocalPath,
+    transMsgInfoId: primary.transMsgInfoId ?? fallback.transMsgInfoId,
   };
 }
 
@@ -948,6 +1067,90 @@ function normalizeSmartReplyRecommendedAttachments(
     ...attachment,
     defaultSelected: index === 0,
   }));
+}
+
+function findChatMessageBySeq(messages: Message[], seq: number) {
+  const message = messages.find(
+    (item) => item.role !== "system" && item.seq === seq,
+  );
+
+  return message?.role !== "system" ? message : undefined;
+}
+
+function mapChatMessageToRecommendedAttachmentFields(
+  message: ChatMessage,
+): Partial<SmartReplyRecommendedAttachment> | null {
+  switch (message.content.type) {
+    case "mini-program":
+      return {
+        coverUrl: message.content.coverImageUrl,
+        fileName:
+          message.content.title?.trim() ||
+          message.content.appName?.trim() ||
+          "小程序",
+        fileType: "7",
+      };
+    case "h5":
+      return {
+        coverUrl: message.content.previewImageUrl,
+        fileName: message.content.title?.trim() || "链接",
+        fileType: "4",
+      };
+    case "sphfeed":
+      return {
+        coverUrl: message.content.imageUrl,
+        fileName: message.content.title?.trim() || "视频号",
+        fileType: "3",
+      };
+    case "video":
+      return {
+        coverUrl: message.content.coverImageUrl,
+        fileName: message.content.alt?.trim() || "视频",
+        fileType: "3",
+      };
+    default:
+      return null;
+  }
+}
+
+export function enrichSmartReplyRecommendedAttachmentsFromMessages(
+  attachments: SmartReplyRecommendedAttachment[],
+  messages: Message[],
+): SmartReplyRecommendedAttachment[] {
+  return attachments.map((attachment) => {
+    const transMsgInfoId =
+      readSmartReplyRecommendedAttachmentTransMsgInfoId(attachment);
+
+    if (!transMsgInfoId) {
+      return attachment;
+    }
+
+    const seq = Number.parseInt(transMsgInfoId, 10);
+
+    if (!Number.isFinite(seq)) {
+      return attachment;
+    }
+
+    const message = findChatMessageBySeq(messages, seq);
+
+    if (!message) {
+      return attachment;
+    }
+
+    const mapped = mapChatMessageToRecommendedAttachmentFields(message);
+
+    if (!mapped) {
+      return attachment;
+    }
+
+    return {
+      ...attachment,
+      ...mapped,
+      fileName: mapped.fileName || attachment.fileName,
+      fileType: mapped.fileType || attachment.fileType,
+      transMsgInfoId,
+    };
+  });
 }
 
 export function resolveSmartReplyAttachmentIds(
@@ -1232,6 +1435,44 @@ function mapSmartReplyAttachmentToComposerSegment(
     };
   }
 
+  if (fileType === 4) {
+    const href =
+      attachment.content?.trim() ||
+      resolveSmartReplyAttachmentSendUrl(attachment);
+
+    if (!href) {
+      return null;
+    }
+
+    return {
+      coverUrl: attachment.coverUrl,
+      href,
+      title: attachment.fileName,
+      type: "h5",
+      ...(attachment.transMsgInfoId
+        ? { msgInfoId: attachment.transMsgInfoId }
+        : {}),
+    };
+  }
+
+  if (fileType === 7) {
+    const msgInfoId = readSmartReplyRecommendedAttachmentTransMsgInfoId(
+      attachment,
+    );
+
+    if (!msgInfoId) {
+      return null;
+    }
+
+    return {
+      appName: attachment.fileName,
+      coverImageUrl: attachment.coverUrl,
+      msgInfoId,
+      title: attachment.fileName,
+      type: "weapp",
+    };
+  }
+
   if (fileType !== 5 && fileType !== 3) {
     return null;
   }
@@ -1326,16 +1567,39 @@ function mapSmartReplyAttachment(
     attachment.content?.trim() ||
     attachment.appInfo?.nickName?.trim() ||
     `素材 ${id}`;
+  const fileType = resolveSmartReplyAttachmentFileType(attachment);
 
   return {
     content: attachment.content?.trim(),
     coverUrl: attachment.coverUrl?.trim(),
     defaultSelected,
     fileName,
-    fileType:
-      attachment.fileType != null ? String(attachment.fileType) : "",
+    fileType,
     id,
     localPath: attachment.localPath?.trim(),
     slocalPath: attachment.slocalPath?.trim(),
   };
+}
+
+function resolveSmartReplyAttachmentFileType(
+  attachment: WorkbenchAttachmentDto,
+): string {
+  const rawFileType =
+    attachment.fileType != null ? String(attachment.fileType) : "";
+
+  if (
+    attachment.jumpUrl?.trim() &&
+    (rawFileType === "" || rawFileType === "1")
+  ) {
+    return "4";
+  }
+
+  if (
+    attachment.appInfo?.nickName?.trim() &&
+    (rawFileType === "" || rawFileType === "1")
+  ) {
+    return "7";
+  }
+
+  return rawFileType;
 }

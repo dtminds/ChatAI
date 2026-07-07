@@ -21,6 +21,7 @@ export type SmartReplyRecommendedAttachment = {
   slocalPath?: string;
   content?: string;
   coverUrl?: string;
+  transMsgInfoId?: string;
 };
 
 type RecommendedAttachmentUiType = "image" | "video" | "link" | "file";
@@ -29,7 +30,7 @@ const ATTACHMENT_FILE_TYPE_LABELS: Record<number, string> = {
   1: "图片",
   2: "音频",
   3: "视频",
-  4: "图文",
+  4: "链接",
   5: "文件",
   6: "文本",
   7: "小程序",
@@ -200,8 +201,9 @@ function resolveAttachmentMediaUrl(path?: string) {
 
 function getAttachmentPreviewUrl(attachment: SmartReplyRecommendedAttachment) {
   const uiType = getAttachmentUiType(attachment.fileType);
+  const numericType = parseAttachmentFileType(attachment.fileType);
 
-  if (uiType !== "file") {
+  if (uiType === "image" || uiType === "video" || numericType === 4) {
     return (
       resolveAttachmentMediaUrl(attachment.coverUrl) ??
       resolveAttachmentMediaUrl(attachment.localPath) ??

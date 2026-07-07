@@ -1136,19 +1136,19 @@ describe("smart-reply-adapter", () => {
         extension: "pdf",
         fileName: "说明.pdf",
         type: "file",
-        url: "https://b1.dtminds.com/files/guide.pdf",
+        url: "https://b5.bokr.com.cn/files/guide.pdf",
       },
       {
         extension: "pdf",
         fileName: "规格.pdf",
         type: "file",
-        url: "https://b1.dtminds.com/files/spec.pdf",
+        url: "https://b5.bokr.com.cn/files/spec.pdf",
       },
       {
         extension: "mp4",
         fileName: "演示视频.mp4",
         type: "file",
-        url: "https://b1.dtminds.com/videos/demo.mp4",
+        url: "https://b5.bokr.com.cn/videos/demo.mp4",
       },
     ]);
   });

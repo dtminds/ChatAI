@@ -1019,7 +1019,7 @@ describe("SmartReplyCard", () => {
 
     expect(document.querySelector('img[src*="s5/msg/cover.png"]')).toHaveAttribute(
       "src",
-      "https://b1.dtminds.com/s5/msg/cover.png",
+      "https://b5.bokr.com.cn/s5/msg/cover.png",
     );
   });
 

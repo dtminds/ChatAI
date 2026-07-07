@@ -6,11 +6,13 @@ import type { WorkflowPublishCheck } from "../types";
 
 export function WorkflowChecks({
   checks,
+  onNavigateToNode,
   onClose,
   publishAttempted,
   publishReady,
 }: {
   checks: WorkflowPublishCheck[];
+  onNavigateToNode?: (nodeId: string) => void;
   onClose: () => void;
   publishAttempted: boolean;
   publishReady: boolean;
@@ -62,27 +64,48 @@ export function WorkflowChecks({
         <div className="grid gap-3">
           {checks.map((check) => {
             const isReady = check.status === "ready";
+            const canNavigate = !isReady && Boolean(check.nodeId && onNavigateToNode);
+            const content = (
+              <div className="flex items-start gap-3">
+                <span
+                  className={cn(
+                    "mt-0.5 flex size-8 items-center justify-center rounded-[8px]",
+                    isReady ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700",
+                  )}
+                >
+                  <HugeiconsIcon
+                    icon={isReady ? CheckmarkCircle02Icon : AlertCircleIcon}
+                    size={17}
+                    strokeWidth={1.8}
+                  />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-sm font-semibold">{check.title}</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">{check.description}</p>
+                  {check.messages && check.messages.length > 1 ? (
+                    <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
+                      {check.messages.map((message) => (
+                        <li key={message}>{message}</li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
+              </div>
+            );
 
             return (
               <article className="rounded-[12px] border bg-background p-4 shadow-xs" key={check.id}>
-                <div className="flex items-start gap-3">
-                  <span
-                    className={cn(
-                      "mt-0.5 flex size-8 items-center justify-center rounded-[8px]",
-                      isReady ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700",
-                    )}
+                {canNavigate ? (
+                  <button
+                    className="block w-full text-left"
+                    onClick={() => {
+                      onNavigateToNode?.(check.nodeId!);
+                    }}
+                    type="button"
                   >
-                    <HugeiconsIcon
-                      icon={isReady ? CheckmarkCircle02Icon : AlertCircleIcon}
-                      size={17}
-                      strokeWidth={1.8}
-                    />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <h3 className="text-sm font-semibold">{check.title}</h3>
-                    <p className="mt-1 text-sm text-muted-foreground">{check.description}</p>
-                  </div>
-                </div>
+                    {content}
+                  </button>
+                ) : content}
               </article>
             );
           })}

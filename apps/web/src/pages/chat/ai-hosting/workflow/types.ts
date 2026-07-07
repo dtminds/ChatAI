@@ -91,6 +91,8 @@ export type WorkflowVariables = {
 export type WorkflowPublishCheck = {
   description: string;
   id: string;
+  messages?: string[];
+  nodeId?: string;
   status: "ready" | "warning";
   title: string;
 };

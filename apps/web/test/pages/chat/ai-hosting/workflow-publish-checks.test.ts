@@ -40,6 +40,21 @@ describe("buildPublishChecks", () => {
 
     expect(checks.find((check) => check.id === "connectivity")?.status).toBe("warning");
     expect(checks.find((check) => check.id === "config")?.description).toBe("1 个节点仍需补全配置");
+    expect(checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "node-connectivity-action-message",
+          nodeId: "action-message",
+          status: "warning",
+        }),
+        expect.objectContaining({
+          id: "node-config-action-message",
+          messages: ["节点仍需补全配置"],
+          nodeId: "action-message",
+          status: "warning",
+        }),
+      ]),
+    );
   });
 
   it("uses catalog validation rules instead of only node status", () => {

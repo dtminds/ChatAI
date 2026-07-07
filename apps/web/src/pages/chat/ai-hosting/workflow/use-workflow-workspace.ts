@@ -327,6 +327,7 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
       ...publishChecks,
       isOpen: isChecksOpen,
       onClose: () => setIsChecksOpen(false),
+      onNavigateToNode: selectWorkflowNode,
       publishAttempted,
     },
     document,

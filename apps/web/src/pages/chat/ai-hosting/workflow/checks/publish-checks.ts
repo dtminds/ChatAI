@@ -38,6 +38,26 @@ export function buildPublishChecks(
   );
   const hasDisconnectedNode = validation.disconnectedNodes.length > 0;
   const hasAiAction = validation.configuredAiNodes.length > 0;
+  const nodeIssueChecks = [
+    ...validation.disconnectedNodes
+      .filter((node) => node.id !== validation.triggerNode?.id)
+      .map((node) => ({
+        description: "节点未接入从触发节点开始的主链路",
+        id: `node-connectivity-${node.id}`,
+        messages: ["节点未接入从触发节点开始的主链路"],
+        nodeId: node.id,
+        status: "warning" as const,
+        title: node.data.title,
+      })),
+    ...configIssues.map(({ issues, node }) => ({
+      description: issues[0]?.message ?? "节点仍需补全配置",
+      id: `node-config-${node.id}`,
+      messages: issues.map((issue) => issue.message),
+      nodeId: node.id,
+      status: "warning" as const,
+      title: node.data.title,
+    })),
+  ];
 
   return [
     {
@@ -76,5 +96,6 @@ export function buildPublishChecks(
       status: validation.goalNode ? "ready" : "warning",
       title: "目标退出",
     },
+    ...nodeIssueChecks,
   ];
 }

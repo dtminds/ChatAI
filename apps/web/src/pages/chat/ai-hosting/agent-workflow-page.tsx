@@ -207,6 +207,7 @@ function WorkflowWorkspaceContent({
             <WorkflowChecks
               checks={checks.checks}
               onClose={checks.onClose}
+              onNavigateToNode={checks.onNavigateToNode}
               publishAttempted={checks.publishAttempted}
               publishReady={checks.publishReady}
             />

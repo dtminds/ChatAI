@@ -60,6 +60,19 @@ describe("useWorkflowWorkspace", () => {
     expect(result.current.inspector.node?.id).toBe("wait-2d");
   });
 
+  it("navigates from publish check items to the affected node", () => {
+    const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+
+    act(() => {
+      result.current.topBar.onPublishCheck();
+      result.current.checks.onNavigateToNode("branch-intent");
+    });
+
+    expect(result.current.checks.isOpen).toBe(false);
+    expect(result.current.inspector.isOpen).toBe(true);
+    expect(result.current.inspector.node?.id).toBe("branch-intent");
+  });
+
   it("deletes only the selected edge from shortcut orchestration", () => {
     const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
 

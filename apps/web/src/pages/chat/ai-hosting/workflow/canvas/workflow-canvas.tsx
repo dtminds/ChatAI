@@ -116,10 +116,12 @@ export function WorkflowCanvas({
     >
       <ReactFlow
         defaultViewport={initialViewport}
+        deleteKeyCode={null}
         edges={edges}
         edgeTypes={edgeTypes}
         maxZoom={WORKFLOW_MAX_ZOOM}
         minZoom={WORKFLOW_MIN_ZOOM}
+        multiSelectionKeyCode={null}
         nodeOrigin={[0, 0.5]}
         nodeTypes={nodeTypes}
         nodes={nodes}
@@ -151,13 +153,20 @@ export function WorkflowCanvas({
           />
         ) : null}
         {activeInsertNode ? <WorkflowCandidateMenuOverlay node={activeInsertNode} /> : null}
-        <div className="workflow-bottom-operator" aria-label="画布操作">
+        <div
+          className="workflow-bottom-operator nodrag nopan"
+          aria-label="画布操作"
+          onClick={(event) => event.stopPropagation()}
+        >
           <div className="workflow-operator-group">
             <button
               aria-label="撤销"
               className="workflow-operator-button"
               disabled={!canUndo}
-              onClick={onUndo}
+              onClick={(event) => {
+                event.stopPropagation();
+                onUndo();
+              }}
               type="button"
             >
               <HugeiconsIcon icon={Undo03Icon} size={15} strokeWidth={1.8} />
@@ -166,7 +175,10 @@ export function WorkflowCanvas({
               aria-label="重做"
               className="workflow-operator-button"
               disabled={!canRedo}
-              onClick={onRedo}
+              onClick={(event) => {
+                event.stopPropagation();
+                onRedo();
+              }}
               type="button"
             >
               <HugeiconsIcon icon={Redo03Icon} size={15} strokeWidth={1.8} />
@@ -174,7 +186,10 @@ export function WorkflowCanvas({
           </div>
           <button
             className="workflow-operator-chip workflow-operator-chip-strong"
-            onClick={onOpenVariables}
+            onClick={(event) => {
+              event.stopPropagation();
+              onOpenVariables();
+            }}
             type="button"
           >
             Variables
@@ -373,13 +388,20 @@ function WorkflowControlDock({
   paletteOpen: boolean;
 }) {
   return (
-    <div aria-label="画布工具" className="workflow-left-dock">
+    <div
+      aria-label="画布工具"
+      className="workflow-left-dock nodrag nopan"
+      onClick={(event) => event.stopPropagation()}
+    >
       <button
         aria-expanded={paletteOpen}
         aria-label={paletteOpen ? "关闭节点库" : "打开节点库"}
         className="workflow-left-dock-button"
         data-active={paletteOpen ? "true" : undefined}
-        onClick={() => onPaletteOpenChange(!paletteOpen)}
+        onClick={(event) => {
+          event.stopPropagation();
+          onPaletteOpenChange(!paletteOpen);
+        }}
         type="button"
       >
         <HugeiconsIcon icon={Add01Icon} size={16} strokeWidth={1.8} />
@@ -395,7 +417,10 @@ function WorkflowControlDock({
       <button
         aria-label="自动整理画布"
         className="workflow-left-dock-button"
-        onClick={onArrange}
+        onClick={(event) => {
+          event.stopPropagation();
+          onArrange();
+        }}
         type="button"
       >
         <HugeiconsIcon icon={ArrangeIcon} size={16} strokeWidth={1.8} />
@@ -404,7 +429,10 @@ function WorkflowControlDock({
       <button
         aria-label="打开变量面板"
         className="workflow-left-dock-button"
-        onClick={onOpenVariables}
+        onClick={(event) => {
+          event.stopPropagation();
+          onOpenVariables();
+        }}
         type="button"
       >
         <HugeiconsIcon icon={Settings02Icon} size={16} strokeWidth={1.8} />

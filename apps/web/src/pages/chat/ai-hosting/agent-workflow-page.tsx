@@ -240,7 +240,6 @@ function WorkflowWorkspaceContent({
     edges,
     hoveredEdgeIds,
     nodes,
-    onDeleteEdge: handleDeleteEdge,
     onDeleteNode: handleDeleteNode,
     onDuplicateNode: handleDuplicateNode,
     onInsertNodeAfter: handleInsertNodeAfter,
@@ -276,6 +275,10 @@ function WorkflowWorkspaceContent({
   }
 
   function updateSelectedNode(patch: Partial<MarketingNodeData>) {
+    if (!selectedNodeId) {
+      return;
+    }
+
     updateNodeData(selectedNodeId, patch);
   }
 
@@ -356,11 +359,15 @@ function WorkflowWorkspaceContent({
       return;
     }
 
+    if (!selectedNodeId) {
+      return;
+    }
+
     handleDeleteNode(selectedNodeId);
   }
 
   function duplicateSelectedNode() {
-    if (selectedEdgeId) {
+    if (selectedEdgeId || !selectedNodeId) {
       return;
     }
 

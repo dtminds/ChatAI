@@ -15,18 +15,18 @@ export function useWorkflowSelectionState({
 }) {
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
-  const [selectedNodeId, setSelectedNodeId] = useState(defaultNodeId);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(defaultNodeId);
 
   useEffect(() => {
-    if (!nodes.length || nodes.some((node) => node.id === selectedNodeId)) {
+    if (selectedEdgeId || !selectedNodeId || !nodes.length || nodes.some((node) => node.id === selectedNodeId)) {
       return;
     }
 
     setSelectedNodeId(nodes[0].id);
-  }, [nodes, selectedNodeId]);
+  }, [nodes, selectedEdgeId, selectedNodeId]);
 
   const selectedNode = useMemo(
-    () => nodes.find((node) => node.id === selectedNodeId) ?? nodes[0],
+    () => nodes.find((node) => node.id === selectedNodeId),
     [nodes, selectedNodeId],
   );
 
@@ -56,6 +56,7 @@ export function useWorkflowSelectionState({
 
   const selectEdge = useCallback((edgeId: string) => {
     setSelectedEdgeId(edgeId);
+    setSelectedNodeId(null);
   }, []);
 
   const selectNode = useCallback((nodeId: string) => {

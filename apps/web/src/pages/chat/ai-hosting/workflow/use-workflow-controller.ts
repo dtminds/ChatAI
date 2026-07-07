@@ -74,6 +74,14 @@ function isFinalNodePositionChange(
     && change.dragging === false;
 }
 
+function isNodePositionChange(
+  change: NodeChange<MarketingWorkflowRenderNode>,
+): change is WorkflowNodePositionChange {
+  return change.type === "position"
+    && "position" in change
+    && Boolean(change.position);
+}
+
 export type WorkflowActionResult = {
   edgeId?: string;
   nodeId?: string;
@@ -88,6 +96,10 @@ export function useWorkflowController() {
   const { edges, nodes } = currentDraft;
   const pendingConfigHistoryRef = useRef<PendingConfigHistory | null>(null);
   const configHistoryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const moveStartDraftRef = useRef<{
+    edges: MarketingWorkflowEdge[];
+    nodes: MarketingWorkflowNode[];
+  } | null>(null);
 
   const clearConfigHistoryTimer = useCallback(() => {
     if (!configHistoryTimerRef.current) {
@@ -133,6 +145,10 @@ export function useWorkflowController() {
       const hasFinalPositionChange = changes.some(isFinalNodePositionChange);
 
       if (!hasFinalPositionChange) {
+        if (changes.some(isNodePositionChange) && !moveStartDraftRef.current) {
+          moveStartDraftRef.current = currentDraft;
+        }
+
         replaceDraft((draft) => ({
           ...draft,
           nodes: applyNodeChanges(changes as NodeChange<MarketingWorkflowNode>[], draft.nodes),
@@ -140,12 +156,13 @@ export function useWorkflowController() {
         return;
       }
 
-      const previousDraft = currentDraft;
+      const previousDraft = moveStartDraftRef.current ?? currentDraft;
       const nextDraft = {
-        ...previousDraft,
-        nodes: applyNodeChanges(changes as NodeChange<MarketingWorkflowNode>[], previousDraft.nodes),
+        ...currentDraft,
+        nodes: applyNodeChanges(changes as NodeChange<MarketingWorkflowNode>[], currentDraft.nodes),
       };
       const movedNodeId = changes.find(isFinalNodePositionChange)?.id;
+      moveStartDraftRef.current = null;
 
       commitFromDrafts(
         "node:move",

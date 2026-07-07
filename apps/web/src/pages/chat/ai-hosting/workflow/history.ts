@@ -103,7 +103,6 @@ function sanitizeEdgeData(data: MarketingEdgeData | undefined): MarketingEdgeDat
   const {
     highlightState: _highlightState,
     insertMenuOpen: _insertMenuOpen,
-    onDelete: _onDelete,
     onInsertBetween: _onInsertBetween,
     onToggleInsertMenu: _onToggleInsertMenu,
     ...persistableData

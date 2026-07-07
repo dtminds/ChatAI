@@ -51,7 +51,6 @@ export type MarketingEdgeRuntimeData = {
     targetNodeId: string,
     kind: InsertableMarketingNodeKind,
   ) => void;
-  onDelete?: (edgeId: string) => void;
   onToggleInsertMenu?: (edgeId: string) => void;
 };
 export type MarketingEdgeRenderData = MarketingEdgeData & MarketingEdgeRuntimeData;

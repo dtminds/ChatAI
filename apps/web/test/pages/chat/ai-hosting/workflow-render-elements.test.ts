@@ -8,7 +8,6 @@ import { createWorkflowRenderElements } from "@/pages/chat/ai-hosting/workflow/u
 describe("createWorkflowRenderElements", () => {
   it("projects canvas interaction state into node and edge render data", () => {
     const handlers = {
-      onDeleteEdge: vi.fn(),
       onDeleteNode: vi.fn(),
       onDuplicateNode: vi.fn(),
       onInsertNodeAfter: vi.fn(),

@@ -10,7 +10,6 @@ import type {
 } from "./types";
 
 type WorkflowRenderElementHandlers = {
-  onDeleteEdge: (edgeId: string) => void;
   onDeleteNode: (nodeId: string) => void;
   onDuplicateNode: (nodeId: string) => void;
   onInsertNodeAfter: (
@@ -34,7 +33,7 @@ type WorkflowRenderElementState = {
   hoveredEdgeIds: Set<string> | null;
   quickInsertTarget: QuickInsertTarget | null;
   selectedEdgeId: string | null;
-  selectedNodeId: string;
+  selectedNodeId: string | null;
 };
 
 export type CreateWorkflowRenderElementsOptions = WorkflowRenderElementHandlers
@@ -50,7 +49,6 @@ export function useWorkflowRenderElements(options: CreateWorkflowRenderElementsO
     options.edges,
     options.hoveredEdgeIds,
     options.nodes,
-    options.onDeleteEdge,
     options.onDeleteNode,
     options.onDuplicateNode,
     options.onInsertNodeAfter,
@@ -69,7 +67,6 @@ export function createWorkflowRenderElements({
   edges,
   hoveredEdgeIds,
   nodes,
-  onDeleteEdge,
   onDeleteNode,
   onDuplicateNode,
   onInsertNodeAfter,
@@ -92,7 +89,6 @@ export function createWorkflowRenderElements({
         ...edge.data,
         highlightState: getEdgeHighlightState(edge.id, hoveredEdgeIds),
         insertMenuOpen: edge.id === activeEdgeInsertMenuId,
-        onDelete: onDeleteEdge,
         onInsertBetween: onInsertNodeBetween,
         onToggleInsertMenu: onToggleEdgeInsertMenu,
       },

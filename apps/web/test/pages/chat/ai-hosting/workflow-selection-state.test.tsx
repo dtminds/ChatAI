@@ -49,6 +49,8 @@ describe("useWorkflowSelectionState", () => {
     });
 
     expect(result.current.selectedEdgeId).toBe("edge-wait-2d-goal");
+    expect(result.current.selectedNodeId).toBeNull();
+    expect(result.current.selectedNode).toBeUndefined();
     expect(Array.from(result.current.hoveredEdgeIds ?? [])).toEqual([
       "edge-trigger-wait-2d",
       "edge-wait-2d-goal",

@@ -49,7 +49,7 @@ export const kbAttachmentTypeFilters: Array<{
   value: KbAttachmentType;
 }> = [
   { label: "图片", value: KB_ATTACHMENT_TYPE.IMAGE },
-  { label: "视频", value: KB_ATTACHMENT_TYPE.VIDEO },
+  // { label: "视频", value: KB_ATTACHMENT_TYPE.VIDEO },
   { label: "文件", value: KB_ATTACHMENT_TYPE.FILE },
   { label: "链接", value: KB_ATTACHMENT_TYPE.LINK },
   { label: "小程序", value: KB_ATTACHMENT_TYPE.MINI_PROGRAM },

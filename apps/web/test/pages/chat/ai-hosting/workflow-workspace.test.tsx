@@ -91,6 +91,23 @@ describe("useWorkflowWorkspace", () => {
     expect(result.current.inspector.lastRun?.status).toBe("succeeded");
   });
 
+  it("clears deleted node run records from workspace state", () => {
+    const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+
+    act(() => {
+      result.current.canvas.onSelectNode("action-message");
+      result.current.inspector.onRunNode();
+    });
+    expect(result.current.inspector.lastRun?.status).toBe("succeeded");
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Backspace" }));
+    });
+
+    expect(result.current.canvas.nodes.some((node) => node.id === "action-message")).toBe(false);
+    expect(result.current.inspector.lastRun).toBeUndefined();
+  });
+
   it("does not mark dirty drafts as saved when opening publish checks", () => {
     const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
 

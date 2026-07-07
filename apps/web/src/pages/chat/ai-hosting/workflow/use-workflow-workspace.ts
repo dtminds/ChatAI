@@ -30,7 +30,7 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
   const [publishAttempted, setPublishAttempted] = useState(false);
   const controller = useWorkflowController(document.draft);
   const transient = useWorkflowTransientState();
-  const runner = useWorkflowRun();
+  const runner = useWorkflowRun(document.id);
   const selection = useWorkflowSelectionState({
     defaultNodeId: "action-message",
     edges: controller.edges,
@@ -174,6 +174,7 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
     }
 
     closeCanvasMenus();
+    runner.deleteNodeRun(nodeId);
     markDirty(result.draft);
     setIsChecksOpen(false);
   }

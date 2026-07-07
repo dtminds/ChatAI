@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type {
   MarketingWorkflowNode,
   NodeRunRecord,
@@ -6,8 +6,12 @@ import type {
 
 type WorkflowRunRecords = Record<string, NodeRunRecord>;
 
-export function useWorkflowRun() {
+export function useWorkflowRun(scopeKey?: string) {
   const [runRecords, setRunRecords] = useState<WorkflowRunRecords>({});
+
+  useEffect(() => {
+    setRunRecords({});
+  }, [scopeKey]);
 
   const runNode = useCallback((node: MarketingWorkflowNode) => {
     setRunRecords((currentRecords) => ({
@@ -21,7 +25,22 @@ export function useWorkflowRun() {
     [runRecords],
   );
 
+  const deleteNodeRun = useCallback((nodeId: string) => {
+    setRunRecords((currentRecords) => {
+      if (!currentRecords[nodeId]) {
+        return currentRecords;
+      }
+
+      const {
+        [nodeId]: _deletedRun,
+        ...nextRecords
+      } = currentRecords;
+      return nextRecords;
+    });
+  }, []);
+
   return {
+    deleteNodeRun,
     getNodeRun,
     runNode,
     runRecords,

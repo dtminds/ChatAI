@@ -41,4 +41,32 @@ describe("useWorkflowRun", () => {
     expect(runRecord?.output).toContain("\"title\": \"AI 接待\"");
     expect(runRecord?.logs).toContain("匹配 Agent 与知识库策略");
   });
+
+  it("clears node run records by node id and workflow scope", () => {
+    const node = createWorkflowNode();
+    const { result, rerender } = renderHook(
+      ({ scopeKey }: { scopeKey: string }) => useWorkflowRun(scopeKey),
+      {
+        initialProps: { scopeKey: "workflow-a" },
+      },
+    );
+
+    act(() => {
+      result.current.runNode(node);
+    });
+    expect(result.current.getNodeRun(node.id)).toBeDefined();
+
+    act(() => {
+      result.current.deleteNodeRun(node.id);
+    });
+    expect(result.current.getNodeRun(node.id)).toBeUndefined();
+
+    act(() => {
+      result.current.runNode(node);
+    });
+    expect(result.current.getNodeRun(node.id)).toBeDefined();
+
+    rerender({ scopeKey: "workflow-b" });
+    expect(result.current.getNodeRun(node.id)).toBeUndefined();
+  });
 });

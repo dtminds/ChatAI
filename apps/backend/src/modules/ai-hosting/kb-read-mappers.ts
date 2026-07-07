@@ -16,10 +16,13 @@ import type {
 } from "../../db/schema.js";
 import { normalizeMediaAssetUrl, parseJsonRecord } from "../chat/workbench-content-utils.js";
 import { parseKbChunkContent, type ParsedKbChunkContent } from "./kb-chunk-content-parser.js";
+import { KB_DOC_TYPE_ATTACHMENT } from "./kb-attachment.constants.js";
 
 const KB_DOC_TYPE_FAQ = 1;
 const KB_DOC_TYPE_DOCUMENT = 2;
 const KB_DOC_TYPE_IMAGE = 3;
+
+export { KB_DOC_TYPE_ATTACHMENT };
 
 const KB_CHUNK_SOURCE_MANUAL = 1;
 const KB_CHUNK_SOURCE_SYSTEM = 2;
@@ -220,6 +223,10 @@ export function mapDocType(docType: number): KbDocType {
     return "image";
   }
 
+  if (docType === KB_DOC_TYPE_ATTACHMENT) {
+    return "attachment";
+  }
+
   return "document";
 }
 
@@ -230,6 +237,10 @@ export function mapDocTypeToDb(docType: KbDocType): number {
 
   if (docType === "image") {
     return KB_DOC_TYPE_IMAGE;
+  }
+
+  if (docType === "attachment") {
+    return KB_DOC_TYPE_ATTACHMENT;
   }
 
   return KB_DOC_TYPE_DOCUMENT;

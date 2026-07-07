@@ -13,6 +13,7 @@ import type { RequestAwareLogger } from "../../shared/logger.js";
 import type { AgentKbJavaClient } from "./agent-kb-java-client.js";
 import { createAgentKbJavaClient } from "./agent-kb-java-client.js";
 import { mapJavaChunkPageItem } from "./kb-chunk-java-mappers.js";
+import { KB_DOC_TYPE_ATTACHMENT } from "./kb-attachment.constants.js";
 import {
   mapDocTypeToDb,
   mapKbDocDetail,
@@ -143,6 +144,8 @@ export class KbReadService {
 
     if (options.docType) {
       query = query.where("doc_type", "=", mapDocTypeToDb(options.docType));
+    } else {
+      query = query.where("doc_type", "!=", KB_DOC_TYPE_ATTACHMENT);
     }
 
     if (normalizedQuery) {
@@ -267,6 +270,8 @@ export class KbReadService {
 
     if (docType) {
       countQuery = countQuery.where("doc_type", "=", mapDocTypeToDb(docType));
+    } else {
+      countQuery = countQuery.where("doc_type", "!=", KB_DOC_TYPE_ATTACHMENT);
     }
 
     if (query) {

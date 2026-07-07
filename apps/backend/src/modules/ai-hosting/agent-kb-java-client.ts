@@ -58,7 +58,7 @@ export type AgentKbJavaCreateDocInput = {
   description?: string;
   docSuffix: string;
   docSize: number;
-  docType: 1 | 2 | 3;
+  docType: 1 | 2 | 3 | 4;
   docUrl: string;
   kbId: number;
   name: string;
@@ -80,6 +80,8 @@ export type AgentKbJavaRetryDocInput = {
 };
 
 export type AgentKbJavaAddChunkInput = {
+  attachmentIds?: number[];
+  attachmentTypes?: number[];
   chunkType: "text" | "faq";
   content: string;
   docId: number;
@@ -89,6 +91,8 @@ export type AgentKbJavaAddChunkInput = {
 };
 
 export type AgentKbJavaUpdateChunkInput = {
+  attachmentIds?: number[];
+  attachmentTypes?: number[];
   chunkId: number;
   content: string;
   operatorId: string;
@@ -102,7 +106,19 @@ export type AgentKbJavaDeleteChunkInput = {
   uid: number;
 };
 
+export type AgentKbJavaBatchDeleteChunksInput = {
+  chunkIds: number[];
+  operatorId: string;
+  uid: number;
+};
+
+export type AgentKbJavaBatchDeleteChunksResponse = {
+  failCount: number;
+  successCount: number;
+};
+
 export type AgentKbJavaListChunksInput = {
+  attachmentType?: number;
   content?: string;
   docId: number;
   page: number;
@@ -124,6 +140,9 @@ export type AgentKbJavaClient = {
   createKbDoc(input: AgentKbJavaCreateDocInput): Promise<string>;
   deleteKb(input: AgentKbJavaDeleteKbInput): Promise<void>;
   deleteKbChunk(input: AgentKbJavaDeleteChunkInput): Promise<void>;
+  batchDeleteKbChunks(
+    input: AgentKbJavaBatchDeleteChunksInput,
+  ): Promise<AgentKbJavaBatchDeleteChunksResponse>;
   deleteKbDoc(input: AgentKbJavaDeleteDocInput): Promise<void>;
   retryKbDoc(input: AgentKbJavaRetryDocInput): Promise<void>;
   listKbChunks(input: AgentKbJavaListChunksInput): Promise<AgentKbJavaListChunksResponse>;
@@ -139,7 +158,7 @@ export function createAgentKbJavaClient(
 
   return {
     async addKbChunk(input) {
-      const body: Record<string, string | number> = {
+      const body: Record<string, unknown> = {
         chunkType: input.chunkType,
         content: input.content,
         docId: input.docId,
@@ -151,7 +170,15 @@ export function createAgentKbJavaClient(
         body.title = input.title.trim();
       }
 
-      const chunkId = await postJavaJsonEnvelope<number | string>(
+      if (input.attachmentTypes?.length) {
+        body.attachmentTypes = input.attachmentTypes;
+      }
+
+      if (input.attachmentIds?.length) {
+        body.attachmentIds = input.attachmentIds;
+      }
+
+      const chunkId = await postJavaJsonEnvelopeObject<number | string>(
         baseUrl,
         token,
         "/third-internal/wap-embed-agent-kb-chunk/add",
@@ -276,6 +303,23 @@ export function createAgentKbJavaClient(
         input,
       );
     },
+    async batchDeleteKbChunks(input) {
+      const result = await postJavaJsonEnvelopeObject<AgentKbJavaBatchDeleteChunksResponse>(
+        baseUrl,
+        token,
+        "/third-internal/wap-embed-agent-kb-chunk/delBatch",
+        {
+          ids: input.chunkIds,
+          operatorId: input.operatorId,
+          uid: input.uid,
+        },
+        logger,
+        "agent-kb-chunk-batch-delete",
+        input,
+      );
+
+      return normalizeJavaBatchDeleteChunksResponse(result);
+    },
     async listKbChunks(input) {
       const body: Record<string, number | string> = {
         docId: input.docId,
@@ -293,6 +337,10 @@ export function createAgentKbJavaClient(
 
       if (normalizedTitle) {
         body.title = normalizedTitle;
+      }
+
+      if (input.attachmentType != null) {
+        body.attachmentType = input.attachmentType;
       }
 
       const response = await postJavaJson<JavaChunkPageResponse>(
@@ -339,7 +387,7 @@ export function createAgentKbJavaClient(
       );
     },
     async updateKbChunk(input) {
-      const body: Record<string, string | number> = {
+      const body: Record<string, unknown> = {
         content: input.content,
         id: input.chunkId,
         operatorId: input.operatorId,
@@ -350,7 +398,15 @@ export function createAgentKbJavaClient(
         body.title = input.title.trim();
       }
 
-      await postJavaJsonEnvelope<boolean>(
+      if (input.attachmentTypes?.length) {
+        body.attachmentTypes = input.attachmentTypes;
+      }
+
+      if (input.attachmentIds?.length) {
+        body.attachmentIds = input.attachmentIds;
+      }
+
+      await postJavaJsonEnvelopeObject<boolean>(
         baseUrl,
         token,
         "/third-internal/wap-embed-agent-kb-chunk/update",
@@ -389,6 +445,32 @@ async function postJavaFormEnvelope<T>(
   return response.data as T;
 }
 
+async function postJavaJsonEnvelopeObject<T>(
+  baseUrl: string | undefined,
+  token: string | undefined,
+  path: string,
+  body: Record<string, unknown>,
+  logger: AppLogger,
+  operation: string,
+  logContext: Record<string, unknown>,
+): Promise<T> {
+  const response = await postJavaJsonObject<JavaApiResponse<T>>(
+    baseUrl,
+    token,
+    path,
+    body,
+    logger,
+    operation,
+    logContext,
+  );
+
+  if (!isJavaEnvelopeSuccessful(response)) {
+    throw mapAgentKbJavaBusinessError(response, operation);
+  }
+
+  return response.data as T;
+}
+
 async function postJavaJsonEnvelope<T>(
   baseUrl: string | undefined,
   token: string | undefined,
@@ -413,6 +495,27 @@ async function postJavaJsonEnvelope<T>(
   }
 
   return response.data as T;
+}
+
+async function postJavaJsonObject<T>(
+  baseUrl: string | undefined,
+  token: string | undefined,
+  path: string,
+  body: Record<string, unknown>,
+  logger: AppLogger,
+  operation: string,
+  logContext: Record<string, unknown>,
+): Promise<T> {
+  return postJavaRequest<T>({
+    baseUrl,
+    body: JSON.stringify(body),
+    contentType: "application/json",
+    logContext,
+    logger,
+    operation,
+    path,
+    token,
+  });
 }
 
 async function postJavaJson<T>(
@@ -696,6 +799,27 @@ function isJavaEnvelopeSuccessful(response: JavaApiResponse<unknown>) {
   }
 
   return response.error === 0;
+}
+
+function normalizeJavaBatchDeleteChunksResponse(
+  value: AgentKbJavaBatchDeleteChunksResponse,
+): AgentKbJavaBatchDeleteChunksResponse {
+  return {
+    failCount: normalizeNonNegativeInteger(value.failCount),
+    successCount: normalizeNonNegativeInteger(value.successCount),
+  };
+}
+
+function normalizeNonNegativeInteger(value: unknown) {
+  if (typeof value === "number" && Number.isInteger(value) && value >= 0) {
+    return value;
+  }
+
+  if (typeof value === "string" && /^\d+$/.test(value.trim())) {
+    return Number(value.trim());
+  }
+
+  return 0;
 }
 
 function normalizeJavaChunkId(value: number | string) {

@@ -15,6 +15,7 @@ import {
   setWorkbenchService,
 } from "@/pages/chat/api/workbench-service";
 import { QuickReplyFormDialog } from "@/pages/chat/components/quick-reply/quick-reply-form-dialog";
+import { QuickReplyMaterialPickerDialog } from "@/pages/chat/components/quick-reply/quick-reply-material-picker-dialog";
 import { QuickReplyPanel } from "@/pages/chat/components/quick-reply/quick-reply-panel";
 import { QUICK_REPLY_IMPORT_HEADERS } from "@/pages/chat/components/quick-reply/quick-reply-import";
 
@@ -1727,6 +1728,87 @@ describe("QuickReplyPanel", () => {
         contentText: "您好",
       }),
     );
+  });
+
+  it("uses the shared image material grid in the material picker", async () => {
+    const user = userEvent.setup();
+    const handleOpenChange = vi.fn();
+    const handleSelect = vi.fn();
+    const baseService = createMockWorkbenchService();
+    const imageItem = {
+      bizType: MATERIAL_COLLECTION_BIZ_TYPE.IMAGE,
+      content: {
+        alt: "商品图",
+        fileUrl: "https://cdn.example.com/product.png",
+      },
+      contentType: "image" as const,
+      groupId: "material-image-group-1",
+      id: "material-image-1",
+      msgInfoId: "9002",
+      sort: 100,
+      title: "商品图",
+    };
+
+    setWorkbenchService({
+      ...baseService,
+      async listMaterialGroups(request) {
+        if (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.IMAGE) {
+          return baseService.listMaterialGroups(request);
+        }
+
+        return {
+          groups: [
+            {
+              bizType: MATERIAL_COLLECTION_BIZ_TYPE.IMAGE,
+              id: "material-image-group-1",
+              sort: 100,
+              title: "常用图片",
+            },
+          ],
+        };
+      },
+      async listMaterialCollections(request) {
+        if (request.bizType !== MATERIAL_COLLECTION_BIZ_TYPE.IMAGE) {
+          return baseService.listMaterialCollections(request);
+        }
+
+        return {
+          items: [imageItem],
+          pagination: {
+            hasMore: false,
+            page: 1,
+            pageSize: 100,
+            total: 1,
+          },
+        };
+      },
+    });
+
+    render(
+      <QuickReplyMaterialPickerDialog
+        bizType={MATERIAL_COLLECTION_BIZ_TYPE.IMAGE}
+        onOpenChange={handleOpenChange}
+        onSelect={handleSelect}
+        open
+      />,
+    );
+
+    expect(await screen.findByRole("dialog", { name: "收录的图片" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "收录图片列表区域" })).toBeInTheDocument();
+    const imageButton = await screen.findByRole("button", {
+      name: "选择图片 商品图",
+    });
+
+    expect(screen.getByRole("button", { name: "查看大图 商品图" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "确定" })).toBeDisabled();
+
+    await user.click(imageButton);
+
+    expect(imageButton).toHaveAttribute("aria-pressed", "true");
+    await user.click(screen.getByRole("button", { name: "确定" }));
+
+    expect(handleSelect).toHaveBeenCalledWith(imageItem);
+    expect(handleOpenChange).toHaveBeenCalledWith(false);
   });
 
   it("hides the video channel attachment entry from the quick reply form by default", async () => {

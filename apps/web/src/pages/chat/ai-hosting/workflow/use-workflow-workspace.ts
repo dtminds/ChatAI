@@ -18,6 +18,7 @@ import { useWorkflowSelectionState } from "./use-workflow-selection-state";
 import { useWorkflowTransientState } from "./use-workflow-transient-state";
 import { getNodeVariables } from "./workflow-variables";
 import { useWorkflowDocument } from "./workflow-draft-service";
+import type { WorkflowClipboardData } from "./workflow-clipboard";
 
 export function useWorkflowWorkspace(workflowId: string | undefined) {
   const {
@@ -29,6 +30,7 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
   const [isInspectorOpen, setIsInspectorOpen] = useState(true);
   const [isChecksOpen, setIsChecksOpen] = useState(false);
   const [publishAttempted, setPublishAttempted] = useState(false);
+  const [clipboardData, setClipboardData] = useState<WorkflowClipboardData | null>(null);
   const controller = useWorkflowController(document.draft);
   const transient = useWorkflowTransientState();
   const runner = useWorkflowRun(document.id);
@@ -87,8 +89,10 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
   useWorkflowShortcuts({
     canRedo: controller.canRedo,
     canUndo: controller.canUndo,
+    onCopySelection: copySelectedNode,
     onDeleteSelection: deleteSelectedNode,
     onDuplicateSelection: duplicateSelectedNode,
+    onPasteClipboard: pasteClipboard,
     onRedo: redoWorkflowChange,
     onUndo: undoWorkflowChange,
   });
@@ -217,6 +221,37 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
     }
 
     handleDuplicateNode(selectedNodeId);
+  }
+
+  function copySelectedNode() {
+    if (selectedEdgeId || !selectedNodeId) {
+      return false;
+    }
+
+    const nextClipboardData = controller.copyNode(selectedNodeId);
+
+    if (!nextClipboardData) {
+      return false;
+    }
+
+    setClipboardData(nextClipboardData);
+    closeCanvasMenus();
+    return true;
+  }
+
+  function pasteClipboard() {
+    if (!clipboardData) {
+      return false;
+    }
+
+    const result = controller.pasteClipboardData(clipboardData);
+
+    if (!result) {
+      return false;
+    }
+
+    handleWorkflowEditResult(result);
+    return true;
   }
 
   function handleWorkflowEditResult(result?: { draft: WorkflowDraft; nodeId?: string }) {

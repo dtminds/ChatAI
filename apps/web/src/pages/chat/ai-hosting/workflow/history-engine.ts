@@ -15,6 +15,7 @@ export type WorkflowHistoryEvent =
   | "node:insert"
   | "node:delete"
   | "node:move"
+  | "node:paste"
   | "layout:organize";
 
 export type WorkflowHistoryEventMeta = {

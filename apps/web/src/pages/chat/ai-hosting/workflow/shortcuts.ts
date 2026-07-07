@@ -41,18 +41,36 @@ function isDuplicateShortcut(event: KeyboardEvent) {
     && event.key.toLowerCase() === "d";
 }
 
+function isCopyShortcut(event: KeyboardEvent) {
+  return (event.metaKey || event.ctrlKey)
+    && !event.altKey
+    && !event.shiftKey
+    && event.key.toLowerCase() === "c";
+}
+
+function isPasteShortcut(event: KeyboardEvent) {
+  return (event.metaKey || event.ctrlKey)
+    && !event.altKey
+    && !event.shiftKey
+    && event.key.toLowerCase() === "v";
+}
+
 export function useWorkflowShortcuts({
   canRedo,
   canUndo,
+  onCopySelection,
   onDeleteSelection,
   onDuplicateSelection,
+  onPasteClipboard,
   onRedo,
   onUndo,
 }: {
   canRedo: boolean;
   canUndo: boolean;
+  onCopySelection: () => boolean;
   onDeleteSelection: () => void;
   onDuplicateSelection: () => void;
+  onPasteClipboard: () => boolean;
   onRedo: () => void;
   onUndo: () => void;
 }) {
@@ -73,6 +91,24 @@ export function useWorkflowShortcuts({
         event.preventDefault();
         event.stopPropagation();
         onDuplicateSelection();
+        return;
+      }
+
+      if (isCopyShortcut(event)) {
+        if (onCopySelection()) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+
+        return;
+      }
+
+      if (isPasteShortcut(event)) {
+        if (onPasteClipboard()) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+
         return;
       }
 
@@ -102,5 +138,14 @@ export function useWorkflowShortcuts({
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [canRedo, canUndo, onDeleteSelection, onDuplicateSelection, onRedo, onUndo]);
+  }, [
+    canRedo,
+    canUndo,
+    onCopySelection,
+    onDeleteSelection,
+    onDuplicateSelection,
+    onPasteClipboard,
+    onRedo,
+    onUndo,
+  ]);
 }

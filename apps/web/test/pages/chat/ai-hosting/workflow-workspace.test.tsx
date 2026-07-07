@@ -92,6 +92,42 @@ describe("useWorkflowWorkspace", () => {
     expect(result.current.canvas.nodes.some((node) => node.id === "action-message")).toBe(true);
   });
 
+  it("copies and pastes the selected node through shortcuts with undo and redo support", () => {
+    const dateNowSpy = vi.spyOn(Date, "now").mockReturnValue(12345);
+    const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+
+    try {
+      act(() => {
+        result.current.canvas.onSelectNode("action-message");
+        window.dispatchEvent(new KeyboardEvent("keydown", { ctrlKey: true, key: "c" }));
+      });
+
+      act(() => {
+        window.dispatchEvent(new KeyboardEvent("keydown", { ctrlKey: true, key: "v" }));
+      });
+
+      expect(result.current.canvas.nodes.some((node) => node.id === "action-12345")).toBe(true);
+      expect(result.current.inspector.node?.id).toBe("action-12345");
+      expect(result.current.canvas.canUndo).toBe(true);
+
+      act(() => {
+        window.dispatchEvent(new KeyboardEvent("keydown", { ctrlKey: true, key: "z" }));
+      });
+
+      expect(result.current.canvas.nodes.some((node) => node.id === "action-12345")).toBe(false);
+      expect(result.current.canvas.canRedo).toBe(true);
+
+      act(() => {
+        window.dispatchEvent(new KeyboardEvent("keydown", { ctrlKey: true, key: "y" }));
+      });
+
+      expect(result.current.canvas.nodes.some((node) => node.id === "action-12345")).toBe(true);
+    }
+    finally {
+      dateNowSpy.mockRestore();
+    }
+  });
+
   it("routes node run results into the run inspector tab", () => {
     const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
 

@@ -37,6 +37,11 @@ import type {
   MarketingWorkflowRenderNode,
   WorkflowDraft,
 } from "./types";
+import {
+  createWorkflowClipboardData,
+  pasteWorkflowClipboardData,
+} from "./workflow-clipboard";
+import type { WorkflowClipboardData } from "./workflow-clipboard";
 
 const WORKFLOW_CONFIG_HISTORY_DEBOUNCE_MS = 500;
 
@@ -309,6 +314,20 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
     return commitGraphOperation(duplicateNodeOperation(currentDraft, nodeId, duplicatedNodeId));
   }, [commitGraphOperation, currentDraft, flushConfigHistory, nodes]);
 
+  const copyNode = useCallback((nodeId: string): WorkflowClipboardData | undefined => {
+    flushConfigHistory();
+    return createWorkflowClipboardData(currentDraft, [nodeId]);
+  }, [currentDraft, flushConfigHistory]);
+
+  const pasteClipboardData = useCallback((
+    clipboardData: WorkflowClipboardData,
+  ): WorkflowControllerActionResult | undefined => {
+    flushConfigHistory();
+    return commitGraphOperation(pasteWorkflowClipboardData(currentDraft, clipboardData, {
+      nodeIdFactory: (kind, index) => `${kind}-${Date.now()}${index > 0 ? `-${index}` : ""}`,
+    }));
+  }, [commitGraphOperation, currentDraft, flushConfigHistory]);
+
   const deleteEdge = useCallback((edgeId: string): WorkflowControllerActionResult | undefined => {
     flushConfigHistory();
     return commitGraphOperation(deleteEdgeOperation(currentDraft, edgeId));
@@ -356,6 +375,7 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
     addNode,
     arrangeNodes,
     connectNodes,
+    copyNode,
     deleteEdge,
     deleteNode,
     duplicateNode,
@@ -367,6 +387,7 @@ export function useWorkflowController(initialDraft: WorkflowDraft) {
     onEdgesChange,
     onNodesChange,
     markDraftDirty,
+    pasteClipboardData,
     redo,
     undo,
     updateNodeData,

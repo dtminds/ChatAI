@@ -28,6 +28,7 @@ import type { WorkflowClipboardData } from "./workflow-clipboard";
 export function useWorkflowWorkspace(workflowId: string | undefined) {
   const {
     document,
+    lastSavedAt,
     markDirty,
     saveState,
   } = useWorkflowDocument(workflowId);
@@ -436,6 +437,7 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
         : undefined,
     },
     topBar: {
+      lastSavedAt,
       onPublishCheck: handlePublishCheck,
       publishReady: publishChecks.publishReady,
       readyChecks: publishChecks.readyChecks,

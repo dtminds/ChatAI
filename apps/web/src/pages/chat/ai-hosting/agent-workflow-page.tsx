@@ -166,6 +166,7 @@ function WorkflowWorkspaceContent({
   return (
     <>
       <WorkflowTopBar
+        lastSavedAt={topBar.lastSavedAt}
         onPublishCheck={topBar.onPublishCheck}
         publishReady={topBar.publishReady}
         readyChecks={topBar.readyChecks}

@@ -1,8 +1,10 @@
 import { AlertCircleIcon, CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@/components/ui/button";
+import type { WorkflowDraftSaveStatus } from "../workflow-draft-service";
 
 export function WorkflowTopBar({
+  lastSavedAt,
   onPublishCheck,
   publishReady,
   readyChecks,
@@ -10,17 +12,22 @@ export function WorkflowTopBar({
   totalChecks,
   workflowName,
 }: {
+  lastSavedAt: string;
   onPublishCheck: () => void;
   publishReady: boolean;
   readyChecks: number;
-  saveState: "saved" | "saving";
+  saveState: WorkflowDraftSaveStatus;
   totalChecks: number;
   workflowName: string;
 }) {
+  const saveStateLabel = getSaveStateLabel(saveState);
+
   return (
     <header className="workflow-canvas-topbar">
       <div className="workflow-canvas-status">
-        <span>{saveState === "saving" ? "正在保存" : "已保存"}</span>
+        <span title={saveState === "saved" ? `上次保存：${lastSavedAt}` : undefined}>
+          {saveStateLabel}
+        </span>
         <span className="workflow-canvas-status-separator" />
         <span className="truncate">{workflowName}</span>
       </div>
@@ -46,4 +53,16 @@ export function WorkflowTopBar({
       </div>
     </header>
   );
+}
+
+function getSaveStateLabel(saveState: WorkflowDraftSaveStatus) {
+  if (saveState === "error") {
+    return "保存失败";
+  }
+
+  if (saveState === "dirty" || saveState === "saving") {
+    return "正在保存";
+  }
+
+  return "已保存";
 }

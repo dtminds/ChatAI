@@ -25,6 +25,8 @@ export type WorkflowDocument = WorkflowListItem & {
   savedAt: string;
 };
 
+export type WorkflowDraftSaveStatus = "dirty" | "error" | "saved" | "saving";
+
 const WORKFLOW_SAVE_DEBOUNCE_MS = 500;
 
 let workflowDocuments: WorkflowDocument[] = createWorkflowDocuments();
@@ -71,7 +73,8 @@ export function resetWorkflowDocumentsForTest() {
 
 export function useWorkflowDocument(workflowId: string | undefined) {
   const [document, setDocument] = useState(() => getWorkflowDocument(workflowId));
-  const [saveState, setSaveState] = useState<"saved" | "saving">("saved");
+  const [saveState, setSaveState] = useState<WorkflowDraftSaveStatus>("saved");
+  const [lastSavedAt, setLastSavedAt] = useState(() => document.savedAt);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveRequestRef = useRef(0);
   const pendingSaveRef = useRef<{
@@ -101,6 +104,7 @@ export function useWorkflowDocument(workflowId: string | undefined) {
     }
 
     setSaveState("saved");
+    setLastSavedAt(savedDocument.savedAt);
     setDocument((currentDocument) => ({
       ...currentDocument,
       conversion: savedDocument.conversion,
@@ -120,6 +124,7 @@ export function useWorkflowDocument(workflowId: string | undefined) {
     workflowIdRef.current = nextDocument.id;
     setDocument(nextDocument);
     setSaveState("saved");
+    setLastSavedAt(nextDocument.savedAt);
 
     if (saveTimerRef.current) {
       clearTimeout(saveTimerRef.current);
@@ -136,7 +141,7 @@ export function useWorkflowDocument(workflowId: string | undefined) {
       requestId: saveRequestId,
       workflowId: workflowIdRef.current,
     };
-    setSaveState("saving");
+    setSaveState(saveTimerRef.current ? "dirty" : "saving");
 
     if (saveTimerRef.current) {
       clearTimeout(saveTimerRef.current);
@@ -153,9 +158,10 @@ export function useWorkflowDocument(workflowId: string | undefined) {
 
   return useMemo(() => ({
     document,
+    lastSavedAt,
     markDirty,
     saveState,
-  }), [document, markDirty, saveState]);
+  }), [document, lastSavedAt, markDirty, saveState]);
 }
 
 function cloneWorkflowDocument(document: WorkflowDocument): WorkflowDocument {

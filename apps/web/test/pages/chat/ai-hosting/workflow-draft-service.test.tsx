@@ -58,14 +58,33 @@ describe("workflow draft service", () => {
       });
       expect(result.current.saveState).toBe("saving");
 
+      act(() => {
+        result.current.markDirty({
+          ...nextDraft,
+          nodes: nextDraft.nodes.map((node) =>
+            node.id === "trigger"
+              ? {
+                  ...node,
+                  data: {
+                    ...node.data,
+                    audience: "再次修改的人群",
+                  },
+                }
+              : node,
+          ),
+        });
+      });
+      expect(result.current.saveState).toBe("dirty");
+
       await act(async () => {
         await vi.advanceTimersByTimeAsync(500);
       });
 
       expect(result.current.saveState).toBe("saved");
+      expect(result.current.lastSavedAt).toBe("刚刚");
       expect(result.current.document.updatedAt).toBe("刚刚");
       expect(getWorkflowDocument("newcomer-conversion").draft.nodes.find((node) => node.id === "trigger")?.data.audience)
-        .toBe("已保存的人群");
+        .toBe("再次修改的人群");
     }
     finally {
       vi.useRealTimers();

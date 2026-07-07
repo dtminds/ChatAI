@@ -33,7 +33,7 @@ export function BasePanel({
   return (
     <aside
       aria-label="节点配置"
-      className="workflow-config-panel absolute bottom-1 right-1 top-2 z-20 flex w-[26.25rem] min-h-0 flex-col rounded-2xl border border-[var(--workflow-border)] bg-[var(--workflow-panel-bg-blur)] shadow-xl backdrop-blur-[10px] max-xl:w-[23.5rem] max-lg:relative max-lg:inset-auto max-lg:w-full max-lg:rounded-none max-lg:border-x-0"
+      className="workflow-config-panel absolute bottom-1 right-1 top-[5.75rem] z-20 flex w-[26.25rem] min-h-0 flex-col rounded-2xl border border-[var(--workflow-border)] bg-[var(--workflow-panel-bg-blur)] shadow-xl backdrop-blur-[10px] max-xl:w-[23.5rem] max-lg:relative max-lg:inset-auto max-lg:w-full max-lg:rounded-none max-lg:border-x-0"
       role="complementary"
     >
       <PanelHeader

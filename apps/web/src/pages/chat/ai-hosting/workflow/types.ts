@@ -1,6 +1,5 @@
 import type { Edge, Node } from "@xyflow/react";
 
-export type WorkflowView = "canvas" | "preview" | "checks";
 export type InspectorTab = "settings" | "run" | "variables";
 export type MarketingNodeKind = "trigger" | "wait" | "branch" | "action" | "ai" | "goal";
 export type MarketingNodeStatus = "ready" | "running" | "warning";

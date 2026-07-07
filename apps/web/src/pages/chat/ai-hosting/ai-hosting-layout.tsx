@@ -9,6 +9,7 @@ import {
   RoboticIcon,
   TokenCircleIcon,
   UserAiIcon,
+  WorkflowSquare01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@/components/ui/button";
@@ -28,6 +29,11 @@ const aiHostingNavItems = [
     icon: RoboticIcon,
     label: "Agent 管理",
     to: "/chat/ai-hosting/agents",
+  },
+  {
+    icon: WorkflowSquare01Icon,
+    label: "Workflow",
+    to: "/chat/ai-hosting/workflows",
   },
   {
     icon: AiBookIcon,

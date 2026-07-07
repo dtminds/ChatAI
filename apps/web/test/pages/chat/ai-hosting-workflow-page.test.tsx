@@ -1,0 +1,357 @@
+import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import type React from "react";
+import { createMemoryRouter, RouterProvider } from "react-router-dom";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  AgentWorkflowEditorPage,
+  AgentWorkflowPage,
+} from "@/pages/chat/ai-hosting/agent-workflow-page";
+import { useAuthStore } from "@/store/auth-store";
+
+const agentServiceMock = vi.hoisted(() => ({
+  getAiHostingQuota: vi.fn(),
+}));
+
+const reactFlowControlMock = vi.hoisted(() => ({
+  fitView: vi.fn(),
+  zoomIn: vi.fn(),
+  zoomOut: vi.fn(),
+}));
+
+vi.mock("@/pages/chat/ai-hosting/agent-service", () => agentServiceMock);
+
+vi.mock("@xyflow/react", async () => {
+  return {
+    Background: () => null,
+    BaseEdge: ({ id }: { id: string }) => (
+      <svg aria-hidden="true" data-testid={`workflow-base-edge-${id}`} />
+    ),
+    EdgeLabelRenderer: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+    Handle: () => null,
+    MiniMap: () => null,
+    Position: {
+      Bottom: "bottom",
+      Left: "left",
+      Right: "right",
+      Top: "top",
+    },
+    ReactFlow: ({
+      children,
+      edgeTypes,
+      edges = [],
+      nodeTypes,
+      nodes,
+      onNodeClick,
+    }: {
+      children?: React.ReactNode;
+      edges?: Array<{
+        data?: Record<string, unknown>;
+        id: string;
+        source: string;
+        target: string;
+        type?: string;
+      }>;
+      edgeTypes?: Record<string, (props: any) => React.ReactNode>;
+      nodeTypes?: Record<string, (props: any) => React.ReactNode>;
+      nodes: Array<{ data: Record<string, unknown>; id: string; type?: string }>;
+      onNodeClick?: (_event: unknown, node: { id: string }) => void;
+    }) => (
+      <div data-testid="workflow-react-flow">
+        {edges.map((edge, index) => {
+          const EdgeComponent = edgeTypes?.[edge.type ?? ""];
+
+          return (
+            <div data-testid={`workflow-edge-${edge.id}`} key={edge.id}>
+              {EdgeComponent ? (
+                <EdgeComponent
+                  data={edge.data}
+                  id={edge.id}
+                  selected={index === 0}
+                  source={edge.source}
+                  sourceX={100 + index * 40}
+                  sourceY={80 + index * 20}
+                  target={edge.target}
+                  targetX={260 + index * 40}
+                  targetY={80 + index * 20}
+                />
+              ) : null}
+            </div>
+          );
+        })}
+        {nodes.map((node) => {
+          const NodeComponent = nodeTypes?.[node.type ?? ""];
+
+          return (
+            <div
+              data-testid={`workflow-node-${node.id}`}
+              key={node.id}
+              onClick={() => onNodeClick?.({}, node)}
+            >
+              {NodeComponent ? (
+                <NodeComponent data={node.data} id={node.id} />
+              ) : null}
+            </div>
+          );
+        })}
+        {children}
+      </div>
+    ),
+    ReactFlowProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+    applyEdgeChanges: (_changes: unknown, edges: unknown) => edges,
+    applyNodeChanges: (_changes: unknown, nodes: unknown) => nodes,
+    getBezierPath: () => ["M 0 0 C 40 0 80 40 120 40", 120, 80],
+    useReactFlow: () => reactFlowControlMock,
+    useViewport: () => ({
+      x: 0,
+      y: 0,
+      zoom: 1,
+    }),
+  };
+});
+
+function mockSession() {
+  useAuthStore.setState(useAuthStore.getInitialState(), true);
+  useAuthStore.getState().setSession({
+    accountType: "sub",
+    displayName: "运营主管",
+    permissions: ["chat.access", "chat.send", "chat.takeover"],
+    role: "admin",
+    subUserId: "101",
+    uid: 1,
+  });
+}
+
+function renderWorkflowPage(initialEntry = "/chat/ai-hosting/workflows/new") {
+  const router = createMemoryRouter(
+    [
+      {
+        path: "/chat/ai-hosting/workflows",
+        element: <AgentWorkflowPage />,
+      },
+      {
+        path: "/chat/ai-hosting/workflows/new",
+        element: <AgentWorkflowEditorPage />,
+      },
+      {
+        path: "/chat/ai-hosting/workflows/:workflowId",
+        element: <AgentWorkflowEditorPage />,
+      },
+    ],
+    { initialEntries: [initialEntry] },
+  );
+
+  return {
+    router,
+    ...render(<RouterProvider router={router} />),
+  };
+}
+
+describe("Agent workflow demo page", () => {
+  beforeEach(() => {
+    reactFlowControlMock.fitView.mockClear();
+    reactFlowControlMock.zoomIn.mockClear();
+    reactFlowControlMock.zoomOut.mockClear();
+    mockSession();
+    agentServiceMock.getAiHostingQuota.mockResolvedValue({
+      agents: {
+        limit: 20,
+        used: 3,
+      },
+      kbDocs: {
+        limit: 1024 * 1024 * 1024,
+        used: 20 * 1024 * 1024,
+      },
+      kbs: {
+        limit: 20,
+        used: 4,
+      },
+    });
+  });
+
+  it("opens the Workflow menu on the list page instead of the canvas editor", async () => {
+    renderWorkflowPage("/chat/ai-hosting/workflows");
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Workflow" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Workflow" })).toHaveAttribute(
+      "href",
+      "/chat/ai-hosting/workflows",
+    );
+    expect(screen.getByRole("textbox", { name: "搜索 Workflow" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "新建 Workflow" })).toHaveAttribute(
+      "href",
+      "/chat/ai-hosting/workflows/new",
+    );
+    expect(screen.getByText("新人转化旅程")).toBeInTheDocument();
+    expect(screen.queryByRole("application", { name: "营销 Workflow 画布" })).not.toBeInTheDocument();
+  });
+
+  it("opens a fullscreen canvas editor from the create action", async () => {
+    const user = userEvent.setup();
+    const { router } = renderWorkflowPage("/chat/ai-hosting/workflows");
+
+    await user.click(await screen.findByRole("link", { name: "新建 Workflow" }));
+
+    expect(router.state.location.pathname).toBe("/chat/ai-hosting/workflows/new");
+    expect(await screen.findByRole("application", { name: "营销 Workflow 画布" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "节点库" })).toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "节点配置" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "返回列表" })).toHaveAttribute(
+      "href",
+      "/chat/ai-hosting/workflows",
+    );
+    expect(screen.queryByRole("navigation", { name: "智能体导航" })).not.toBeInTheDocument();
+  });
+
+  it("opens a fullscreen canvas editor from a workflow row edit action", async () => {
+    const user = userEvent.setup();
+    const { router } = renderWorkflowPage("/chat/ai-hosting/workflows");
+
+    await user.click((await screen.findAllByRole("link", { name: "编辑" }))[0]);
+
+    expect(router.state.location.pathname).toBe("/chat/ai-hosting/workflows/newcomer-conversion");
+    expect(await screen.findByRole("application", { name: "营销 Workflow 画布" })).toBeInTheDocument();
+    expect(screen.getByText(/新人转化旅程 · 自动保存于前端 DEMO/)).toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "智能体导航" })).not.toBeInTheDocument();
+  });
+
+  it("lets users insert an AI reception action and configure it from the panel", async () => {
+    const user = userEvent.setup();
+
+    renderWorkflowPage();
+
+    const palette = await screen.findByRole("region", { name: "节点库" });
+    await user.click(within(palette).getByRole("button", { name: "添加 AI 接待节点" }));
+
+    const canvas = screen.getByRole("application", { name: "营销 Workflow 画布" });
+    const aiNode = within(canvas).getByRole("button", { name: /^AI 接待 / });
+    expect(aiNode).toHaveTextContent("护肤小助理");
+
+    const panel = screen.getByRole("complementary", { name: "节点配置" });
+    expect(panel).toHaveTextContent("AI 接待");
+
+    await user.click(within(panel).getByRole("button", { name: "选择售后小助理" }));
+
+    expect(within(canvas).getByRole("button", { name: /^AI 接待 / })).toHaveTextContent(
+      "售后小助理",
+    );
+    expect(panel).toHaveTextContent("售后小助理");
+  });
+
+  it("lets users insert the next node from the canvas candidate menu", async () => {
+    const user = userEvent.setup();
+
+    renderWorkflowPage();
+
+    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    await user.click(within(canvas).getByRole("button", { name: "在发送欢迎消息后添加节点" }));
+    await user.click(within(canvas).getByRole("menuitem", { name: /AI 接待/ }));
+
+    expect(within(canvas).getByRole("button", { name: /^AI 接待 / })).toHaveTextContent(
+      "护肤小助理",
+    );
+    expect(screen.getByRole("complementary", { name: "节点配置" })).toHaveTextContent(
+      "AI 接待",
+    );
+  });
+
+  it("lets users insert a node from the edge insertion menu", async () => {
+    const user = userEvent.setup();
+
+    renderWorkflowPage();
+
+    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    await user.click(within(canvas).getByRole("button", { name: "在高意向连线上添加节点" }));
+    await user.click(
+      within(canvas).getByRole("menuitem", {
+        name: /AI 接待/,
+      }),
+    );
+
+    expect(within(canvas).getByRole("button", { name: /^AI 接待 / })).toHaveTextContent(
+      "护肤小助理",
+    );
+    expect(screen.getByRole("complementary", { name: "节点配置" })).toHaveTextContent(
+      "AI 接待",
+    );
+  });
+
+  it("filters the node palette from the search input", async () => {
+    const user = userEvent.setup();
+
+    renderWorkflowPage();
+
+    const palette = await screen.findByRole("region", { name: "节点库" });
+    await user.type(within(palette).getByRole("textbox", { name: "搜索节点" }), "AI");
+
+    expect(within(palette).getByRole("button", { name: "添加 AI 接待节点" })).toBeInTheDocument();
+    expect(within(palette).queryByRole("button", { name: "添加 营销动作节点" })).not.toBeInTheDocument();
+
+    await user.clear(within(palette).getByRole("textbox", { name: "搜索节点" }));
+    await user.type(within(palette).getByRole("textbox", { name: "搜索节点" }), "不存在");
+
+    expect(within(palette).getByText("未找到匹配节点")).toBeInTheDocument();
+  });
+
+  it("runs the selected node and opens the variable inspector from the canvas operator", async () => {
+    const user = userEvent.setup();
+
+    renderWorkflowPage();
+
+    const panel = await screen.findByRole("complementary", { name: "节点配置" });
+    await user.click(within(panel).getByRole("button", { name: "运行当前节点" }));
+
+    expect(panel).toHaveTextContent("运行成功");
+    expect(panel).toHaveTextContent("读取上游客户上下文");
+
+    const canvas = screen.getByRole("application", { name: "营销 Workflow 画布" });
+    await user.click(within(canvas).getByRole("button", { name: "Variables" }));
+
+    expect(panel).toHaveTextContent("输入变量");
+    expect(panel).toHaveTextContent("customer.profile");
+  });
+
+  it("supports undo and redo for inserted canvas nodes", async () => {
+    const user = userEvent.setup();
+
+    renderWorkflowPage();
+
+    const palette = await screen.findByRole("region", { name: "节点库" });
+    const canvas = screen.getByRole("application", { name: "营销 Workflow 画布" });
+
+    await user.click(within(palette).getByRole("button", { name: "添加 AI 接待节点" }));
+    expect(within(canvas).getByRole("button", { name: /^AI 接待 / })).toBeInTheDocument();
+
+    await user.click(within(canvas).getByRole("button", { name: "撤销" }));
+    expect(within(canvas).queryByRole("button", { name: /^AI 接待 / })).not.toBeInTheDocument();
+
+    await user.click(within(canvas).getByRole("button", { name: "重做" }));
+    expect(within(canvas).getByRole("button", { name: /^AI 接待 / })).toBeInTheDocument();
+  });
+
+  it("keeps the canvas operator controls interactive", async () => {
+    const user = userEvent.setup();
+
+    renderWorkflowPage();
+
+    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+
+    await user.click(within(canvas).getByRole("button", { name: "添加节点" }));
+    const dockMenu = within(canvas).getByRole("menu", { name: "从画布工具添加节点" });
+    await user.click(within(dockMenu).getByRole("menuitem", { name: /AI 接待/ }));
+    expect(within(canvas).getByRole("button", { name: /^AI 接待 / })).toBeInTheDocument();
+
+    await user.click(within(canvas).getByRole("button", { name: "自动整理画布" }));
+    expect(within(canvas).getByRole("button", { name: "撤销" })).toBeEnabled();
+
+    await user.click(within(canvas).getByRole("button", { name: "缩小" }));
+    await user.click(within(canvas).getByRole("button", { name: "放大" }));
+    await user.click(within(canvas).getByRole("button", { name: "当前缩放 100%，点击适配画布" }));
+
+    expect(reactFlowControlMock.zoomOut).toHaveBeenCalledTimes(1);
+    expect(reactFlowControlMock.zoomIn).toHaveBeenCalledTimes(1);
+    expect(reactFlowControlMock.fitView).toHaveBeenCalledTimes(1);
+  });
+});

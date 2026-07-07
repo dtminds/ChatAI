@@ -176,23 +176,25 @@ describe("material collection H5 content helpers", () => {
     ).toEqual({ errorMsg: "视频缺少封面，无法收录" });
   });
 
-  it("requires mini-program title and stores it in content", () => {
+  it("requires mini-program material title without changing raw content title", () => {
     const rawContent = JSON.stringify({
-      appName: "商城",
-      title: "旧标题",
+      description: "【王知之周一答题】",
+      fileUrl: "s5/msg/20260611/272/4cbef024e3e0431bb4278ce82113504c.png",
+      title: "王知之自习室",
     });
     const resolved = resolveMaterialMiniProgramCollectFields(rawContent, {
-      title: " 新标题 ",
+      title: " 搜索标题 ",
     });
 
-    expect(resolved).toEqual({ title: "新标题" });
+    expect(resolved).toEqual({ title: "搜索标题" });
     expect(
       JSON.parse(
-        patchMaterialMiniProgramContentJson(rawContent, " 新标题 ").content,
+        patchMaterialMiniProgramContentJson(rawContent, " 搜索标题 ").content,
       ),
     ).toMatchObject({
-      appName: "商城",
-      title: "新标题",
+      description: "【王知之周一答题】",
+      fileUrl: "s5/msg/20260611/272/4cbef024e3e0431bb4278ce82113504c.png",
+      title: "王知之自习室",
     });
     expect(
       resolveMaterialMiniProgramCollectFields(rawContent, { title: " " }),

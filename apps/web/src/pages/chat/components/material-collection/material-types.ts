@@ -55,7 +55,7 @@ export function getMaterialContentFormValues(
       description: "",
       fileExtension: "",
       fileName: "",
-      title: readString(item.content.title) || item.title,
+      title: item.title,
     };
   }
 

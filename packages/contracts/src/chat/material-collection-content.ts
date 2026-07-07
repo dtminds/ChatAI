@@ -342,14 +342,9 @@ export function buildMaterialImageContentJson(
 
 export function buildMaterialMiniProgramContentJson(
   rawContent: string | null | undefined,
-  fields: MaterialMiniProgramCollectFields,
+  _fields: MaterialMiniProgramCollectFields,
 ) {
-  const content = {
-    ...parseMaterialRawContent(rawContent),
-    title: fields.title,
-  };
-
-  return JSON.stringify(content);
+  return JSON.stringify(parseMaterialRawContent(rawContent));
 }
 
 export function buildMaterialVideoContentJson(

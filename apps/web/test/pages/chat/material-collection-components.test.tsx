@@ -10,6 +10,7 @@ import {
   MaterialLibraryDialog,
 } from "@/pages/chat/components/material-collection";
 import { MaterialItemFormDialog } from "@/pages/chat/components/material-collection/material-item-form-dialog";
+import { getMaterialContentFormValues } from "@/pages/chat/components/material-collection/material-types";
 import type {
   WorkbenchMaterialCollectionGroupDto,
   WorkbenchMaterialCollectionItemDto,
@@ -109,6 +110,24 @@ describe("material collection components", () => {
       fileExtension: "",
       fileName: "",
       title: "",
+    });
+  });
+
+  it("prefills mini-program edit form from material table title", () => {
+    expect(
+      getMaterialContentFormValues(
+        createItem({
+          bizType: MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM,
+          content: {
+            description: "【王知之周一答题】",
+            title: "王知之自习室",
+          },
+          contentType: "mini-program",
+          title: "搜索标题",
+        }),
+      ),
+    ).toMatchObject({
+      title: "搜索标题",
     });
   });
 

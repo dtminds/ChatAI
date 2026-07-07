@@ -1073,6 +1073,7 @@ describe("smart-reply-adapter", () => {
         fileName: "中共中央政治局召开会议",
         fileType: "4",
         id: "201",
+        jumpUrl: "https://example.com/article",
         localPath: undefined,
         slocalPath: undefined,
       },
@@ -1098,8 +1099,34 @@ describe("smart-reply-adapter", () => {
         fileName: "中共中央政治局召开会议",
         fileType: "4",
         id: "201",
+        jumpUrl: "https://example.com/article",
         localPath: undefined,
         slocalPath: undefined,
+      },
+    ]);
+  });
+
+  it("uses link href instead of cover image when building send segments", () => {
+    expect(
+      buildSmartReplySendSegments({
+        content: "",
+        recommendedAttachments: [
+          {
+            coverUrl: "https://example.com/article.png",
+            fileName: "图文素材",
+            fileType: "4",
+            id: "105",
+            jumpUrl: "https://example.com/article",
+          },
+        ],
+        selectedAttachmentIds: ["105"],
+      }),
+    ).toEqual([
+      {
+        coverUrl: "https://example.com/article.png",
+        href: "https://example.com/article",
+        title: "图文素材",
+        type: "h5",
       },
     ]);
   });
@@ -1217,6 +1244,7 @@ describe("smart-reply-adapter", () => {
             fileName: "图文素材",
             fileType: "4",
             id: "105",
+            jumpUrl: "https://example.com/article",
           },
           {
             coverUrl: "https://example.com/mini.png",
@@ -1257,7 +1285,7 @@ describe("smart-reply-adapter", () => {
       },
       {
         coverUrl: "https://example.com/article.png",
-        href: "https://example.com/article.png",
+        href: "https://example.com/article",
         title: "图文素材",
         type: "h5",
       },

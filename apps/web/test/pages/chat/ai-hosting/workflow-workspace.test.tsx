@@ -83,6 +83,22 @@ describe("useWorkflowWorkspace", () => {
     expect(result.current.inspector.lastRun?.status).toBe("succeeded");
   });
 
+  it("does not mark dirty drafts as saved when opening publish checks", () => {
+    const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+
+    act(() => {
+      result.current.inspector.onNodeChange({ title: "更新后的动作节点" });
+    });
+    expect(result.current.topBar.saveState).toBe("saving");
+
+    act(() => {
+      result.current.topBar.onPublishCheck();
+    });
+
+    expect(result.current.checks.isOpen).toBe(true);
+    expect(result.current.topBar.saveState).toBe("saving");
+  });
+
   it("opens variables through canvas controls and clears canvas menus", () => {
     const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
 

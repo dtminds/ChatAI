@@ -20,7 +20,6 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
   const {
     document,
     markDirty,
-    markSaved,
     saveState,
   } = useWorkflowDocument(workflowId);
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("settings");
@@ -258,7 +257,6 @@ export function useWorkflowWorkspace(workflowId: string | undefined) {
 
   function handlePublishCheck() {
     setPublishAttempted(true);
-    markSaved();
     setIsChecksOpen(true);
     closeCanvasMenus();
   }

@@ -1,0 +1,101 @@
+import { act, renderHook } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { useWorkflowWorkspace } from "@/pages/chat/ai-hosting/workflow/use-workflow-workspace";
+
+vi.mock("@xyflow/react", async () => {
+  const actual = await vi.importActual<typeof import("@xyflow/react")>("@xyflow/react");
+
+  return {
+    ...actual,
+    applyEdgeChanges: (_changes: unknown, edges: unknown) => edges,
+    applyNodeChanges: (
+      changes: Array<{
+        id: string;
+        position?: { x: number; y: number };
+        type: string;
+      }>,
+      nodes: Array<{
+        id: string;
+        position?: { x: number; y: number };
+      }>,
+    ) =>
+      nodes.map((node) => {
+        const positionChange = changes.find(
+          (change) => change.type === "position" && change.id === node.id && change.position,
+        );
+
+        return positionChange
+          ? {
+              ...node,
+              position: positionChange.position,
+            }
+          : node;
+      }),
+  };
+});
+
+describe("useWorkflowWorkspace", () => {
+  it("selects nodes and opens the inspector while closing checks", () => {
+    const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+
+    act(() => {
+      result.current.topBar.onPublishCheck();
+    });
+    expect(result.current.checks.isOpen).toBe(true);
+
+    act(() => {
+      result.current.canvas.onSelectNode("wait-2d");
+    });
+
+    expect(result.current.checks.isOpen).toBe(false);
+    expect(result.current.inspector.isOpen).toBe(true);
+    expect(result.current.inspector.node?.id).toBe("wait-2d");
+  });
+
+  it("deletes only the selected edge from shortcut orchestration", () => {
+    const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+
+    act(() => {
+      result.current.canvas.onSelectNode("action-message");
+      result.current.canvas.onSelectEdge("edge-action-message-goal");
+    });
+    expect(result.current.inspector.node).toBeUndefined();
+    expect(result.current.canvas.edges.some((edge) => edge.id === "edge-action-message-goal")).toBe(true);
+    expect(result.current.canvas.nodes.some((node) => node.id === "action-message")).toBe(true);
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Backspace" }));
+    });
+
+    expect(result.current.canvas.edges.some((edge) => edge.id === "edge-action-message-goal")).toBe(false);
+    expect(result.current.canvas.nodes.some((node) => node.id === "action-message")).toBe(true);
+  });
+
+  it("routes node run results into the run inspector tab", () => {
+    const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+
+    act(() => {
+      result.current.canvas.onSelectNode("action-message");
+      result.current.inspector.onRunNode();
+    });
+
+    expect(result.current.inspector.activeTab).toBe("run");
+    expect(result.current.inspector.lastRun?.status).toBe("succeeded");
+  });
+
+  it("opens variables through canvas controls and clears canvas menus", () => {
+    const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+
+    act(() => {
+      result.current.canvas.onPaletteOpenChange(true);
+    });
+    expect(result.current.canvas.paletteOpen).toBe(true);
+
+    act(() => {
+      result.current.canvas.onOpenVariables();
+    });
+
+    expect(result.current.inspector.activeTab).toBe("variables");
+    expect(result.current.inspector.isOpen).toBe(true);
+  });
+});

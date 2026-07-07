@@ -1,5 +1,3 @@
-import { useState } from "react";
-import type { Connection } from "@xyflow/react";
 import { ReactFlowProvider } from "@xyflow/react";
 import {
   Add01Icon,
@@ -16,21 +14,8 @@ import { AiHostingLayout } from "./ai-hosting-layout";
 import { WorkflowCanvas } from "./workflow/canvas/workflow-canvas";
 import { WorkflowChecks } from "./workflow/canvas/workflow-checks";
 import { WorkflowTopBar } from "./workflow/canvas/workflow-topbar";
-import { useWorkflowPublishChecks } from "./workflow/checks/publish-checks";
 import { NodeConfigPanel } from "./workflow/panels";
-import { useWorkflowRun } from "./workflow/run/use-workflow-run";
-import { useWorkflowShortcuts } from "./workflow/shortcuts";
-import type {
-  InsertableMarketingNodeKind,
-  InspectorTab,
-  MarketingNodeData,
-  MarketingNodeKind,
-} from "./workflow/types";
-import { useWorkflowController } from "./workflow/use-workflow-controller";
-import { useWorkflowRenderElements } from "./workflow/use-workflow-render-elements";
-import { useWorkflowSelectionState } from "./workflow/use-workflow-selection-state";
-import { useWorkflowTransientState } from "./workflow/use-workflow-transient-state";
-import { useWorkflowDocument } from "./workflow/workflow-draft-service";
+import { useWorkflowWorkspace } from "./workflow/use-workflow-workspace";
 import {
   getWorkflowName,
   workflowListItems,
@@ -175,329 +160,67 @@ function WorkflowWorkspaceContent({
   workflowName: string;
 }) {
   const { workflowId } = useParams();
-  const {
-    document,
-    markDirty,
-    markSaved,
-    saveState,
-  } = useWorkflowDocument(workflowId);
-  const [inspectorTab, setInspectorTab] = useState<InspectorTab>("settings");
-  const [isInspectorOpen, setIsInspectorOpen] = useState(true);
-  const [isChecksOpen, setIsChecksOpen] = useState(false);
-  const {
-    addNode: addWorkflowNode,
-    arrangeNodes,
-    canRedo,
-    canUndo,
-    connectNodes: connectWorkflowNodes,
-    deleteEdge,
-    deleteNode,
-    duplicateNode,
-    edges,
-    insertNodeAfter,
-    insertNodeBetween,
-    nodes,
-    markDraftDirty,
-    onEdgesChange,
-    onNodesChange,
-    redo,
-    undo,
-    updateNodeData,
-  } = useWorkflowController(document.draft);
-  const {
-    activeEdgeInsertMenuId,
-    closeCanvasMenus,
-    paletteOpen,
-    paletteQuery,
-    quickInsertTarget,
-    setPaletteOpen,
-    setPaletteQuery,
-    toggleEdgeInsertMenu,
-    toggleNodeInsertMenu,
-  } = useWorkflowTransientState();
-  const { getNodeRun, runNode } = useWorkflowRun();
-  const [publishAttempted, setPublishAttempted] = useState(false);
-  const {
-    clearEdgeSelection,
-    handleNodeHoverEnd,
-    handleNodeHoverStart,
-    hoveredEdgeIds,
-    selectEdge,
-    selectedEdgeId,
-    selectedNode,
-    selectedNodeId,
-    selectNode,
-    setSelectedEdgeId,
-    setSelectedNodeId,
-  } = useWorkflowSelectionState({
-    defaultNodeId: "action-message",
-    edges,
-    nodes,
-  });
-  const {
-    checks,
-    publishReady,
-    readyChecks,
-    totalChecks,
-  } = useWorkflowPublishChecks(nodes, edges);
-
-  const {
-    edges: renderedEdges,
-    nodes: renderedNodes,
-  } = useWorkflowRenderElements({
-    activeEdgeInsertMenuId,
-    edges,
-    hoveredEdgeIds,
-    nodes,
-    onDeleteNode: handleDeleteNode,
-    onDuplicateNode: handleDuplicateNode,
-    onInsertNodeAfter: handleInsertNodeAfter,
-    onInsertNodeBetween: handleInsertNodeBetween,
-    onSelectNode: selectWorkflowNode,
-    onToggleEdgeInsertMenu: toggleEdgeInsertMenu,
-    onToggleNodeInsertMenu: toggleNodeInsertMenu,
-    quickInsertTarget,
-    selectedEdgeId,
-    selectedNodeId,
-  });
-
-  useWorkflowShortcuts({
-    canRedo,
-    canUndo,
-    onDeleteSelection: deleteSelectedNode,
-    onDuplicateSelection: duplicateSelectedNode,
-    onRedo: redoWorkflowChange,
-    onUndo: undoWorkflowChange,
-  });
-
-  function selectWorkflowNode(nodeId: string) {
-    selectNode(nodeId);
-    setIsInspectorOpen(true);
-    setIsChecksOpen(false);
-    closeCanvasMenus();
-  }
-
-  function selectWorkflowEdge(edgeId: string) {
-    selectEdge(edgeId);
-    setIsChecksOpen(false);
-    closeCanvasMenus();
-  }
-
-  function updateSelectedNode(patch: Partial<MarketingNodeData>) {
-    if (!selectedNodeId) {
-      return;
-    }
-
-    updateNodeData(selectedNodeId, patch);
-    markDirty();
-  }
-
-  function undoWorkflowChange() {
-    undo();
-    markDirty();
-    closeCanvasMenus();
-  }
-
-  function redoWorkflowChange() {
-    redo();
-    markDirty();
-    closeCanvasMenus();
-  }
-
-  function addNode(kind: MarketingNodeKind) {
-    const result = addWorkflowNode(kind);
-    handleWorkflowEditResult(result);
-  }
-
-  function handleInsertNodeAfter(
-    previousNodeId: string,
-    kind: InsertableMarketingNodeKind,
-    sourceHandle?: string,
-  ) {
-    const result = insertNodeAfter(previousNodeId, kind, sourceHandle);
-    handleWorkflowEditResult(result);
-  }
-
-  function handleInsertNodeBetween(
-    edgeId: string,
-    sourceNodeId: string,
-    targetNodeId: string,
-    kind: InsertableMarketingNodeKind,
-  ) {
-    const result = insertNodeBetween(edgeId, sourceNodeId, targetNodeId, kind);
-    handleWorkflowEditResult(result);
-  }
-
-  function connectNodes(connection: Connection) {
-    const result = connectWorkflowNodes(connection);
-
-    if (result) {
-      markDirty();
-      closeCanvasMenus();
-      setIsChecksOpen(false);
-    }
-  }
-
-  function handleDeleteNode(nodeId: string) {
-    const result = deleteNode(nodeId);
-
-    if (!result) {
-      return;
-    }
-
-    closeCanvasMenus();
-    markDirty();
-    setIsChecksOpen(false);
-  }
-
-  function handleDuplicateNode(nodeId: string) {
-    const result = duplicateNode(nodeId);
-    handleWorkflowEditResult(result);
-  }
-
-  function handleDeleteEdge(edgeId: string) {
-    const result = deleteEdge(edgeId);
-
-    if (!result) {
-      return;
-    }
-
-    setSelectedEdgeId(null);
-    markDirty();
-    closeCanvasMenus();
-    setIsChecksOpen(false);
-  }
-
-  function deleteSelectedNode() {
-    if (selectedEdgeId) {
-      handleDeleteEdge(selectedEdgeId);
-      return;
-    }
-
-    if (!selectedNodeId) {
-      return;
-    }
-
-    handleDeleteNode(selectedNodeId);
-  }
-
-  function duplicateSelectedNode() {
-    if (selectedEdgeId || !selectedNodeId) {
-      return;
-    }
-
-    handleDuplicateNode(selectedNodeId);
-  }
-
-  function handleWorkflowEditResult(result?: { nodeId?: string }) {
-    markDirty();
-
-    if (result?.nodeId) {
-      setSelectedNodeId(result.nodeId);
-      setSelectedEdgeId(null);
-      setIsInspectorOpen(true);
-    }
-
-    closeCanvasMenus();
-    setPaletteOpen(false);
-    setIsChecksOpen(false);
-  }
-
-  function clearCanvasSelection() {
-    clearEdgeSelection();
-    closeCanvasMenus();
-  }
-
-  function runSelectedNode() {
-    if (!selectedNode) {
-      return;
-    }
-
-    runNode(selectedNode);
-    setIsInspectorOpen(true);
-    setInspectorTab("run");
-  }
-
-  function handlePublishCheck() {
-    setPublishAttempted(true);
-    markSaved();
-    setIsChecksOpen(true);
-    closeCanvasMenus();
-  }
+  const workspace = useWorkflowWorkspace(workflowId);
+  const { canvas, checks, document, inspector, topBar } = workspace;
 
   return (
     <>
       <WorkflowTopBar
-        onPublishCheck={handlePublishCheck}
-        publishReady={publishReady}
-        readyChecks={readyChecks}
-        saveState={saveState}
-        totalChecks={totalChecks}
+        onPublishCheck={topBar.onPublishCheck}
+        publishReady={topBar.publishReady}
+        readyChecks={topBar.readyChecks}
+        saveState={topBar.saveState}
+        totalChecks={topBar.totalChecks}
         workflowName={document.name || workflowName}
       />
 
       <div
         className="workflow-editor-body relative min-h-0 flex-1 bg-[var(--workflow-canvas-bg)]"
-        data-inspector-open={isInspectorOpen ? "true" : undefined}
+        data-inspector-open={inspector.isOpen ? "true" : undefined}
       >
         <section className="relative h-full min-h-0 overflow-hidden bg-[var(--workflow-canvas-bg)] max-lg:min-h-[580px]">
           <WorkflowCanvas
-            canRedo={canRedo}
-            canUndo={canUndo}
-            edges={renderedEdges}
-            nodes={renderedNodes}
-            onAddNode={addNode}
-            onArrange={arrangeNodes}
-            onConnect={connectNodes}
-            onEdgesChange={onEdgesChange}
-            onNodesChange={(changes) => {
-              onNodesChange(changes);
-              markDraftDirty();
-              markDirty();
-            }}
-            onOpenVariables={() => {
-              setIsInspectorOpen(true);
-              setInspectorTab("variables");
-              setIsChecksOpen(false);
-              clearCanvasSelection();
-            }}
-            onPaletteOpenChange={(open) => {
-              setPaletteOpen(open);
-              clearCanvasSelection();
-            }}
-            onPaneClick={() => {
-              clearCanvasSelection();
-              setIsChecksOpen(false);
-            }}
-            onRedo={redoWorkflowChange}
-            onNodeHoverEnd={handleNodeHoverEnd}
-            onNodeHoverStart={handleNodeHoverStart}
-            onSelectEdge={selectWorkflowEdge}
-            onSelectNode={selectWorkflowNode}
-            onSearchChange={setPaletteQuery}
-            onUndo={undoWorkflowChange}
-            paletteOpen={paletteOpen}
-            searchValue={paletteQuery}
+            canRedo={canvas.canRedo}
+            canUndo={canvas.canUndo}
+            edges={canvas.edges}
+            nodes={canvas.nodes}
+            onAddNode={canvas.onAddNode}
+            onArrange={canvas.onArrange}
+            onConnect={canvas.onConnect}
+            onEdgesChange={canvas.onEdgesChange}
+            onNodesChange={canvas.onNodesChange}
+            onOpenVariables={canvas.onOpenVariables}
+            onPaletteOpenChange={canvas.onPaletteOpenChange}
+            onPaneClick={canvas.onPaneClick}
+            onRedo={canvas.onRedo}
+            onNodeHoverEnd={canvas.onNodeHoverEnd}
+            onNodeHoverStart={canvas.onNodeHoverStart}
+            onSelectEdge={canvas.onSelectEdge}
+            onSelectNode={canvas.onSelectNode}
+            onSearchChange={canvas.onSearchChange}
+            onUndo={canvas.onUndo}
+            paletteOpen={canvas.paletteOpen}
+            searchValue={canvas.searchValue}
           />
-          {isChecksOpen ? (
+          {checks.isOpen ? (
             <WorkflowChecks
-              checks={checks}
-              onClose={() => setIsChecksOpen(false)}
-              publishAttempted={publishAttempted}
-              publishReady={publishReady}
+              checks={checks.checks}
+              onClose={checks.onClose}
+              publishAttempted={checks.publishAttempted}
+              publishReady={checks.publishReady}
             />
           ) : null}
         </section>
 
-        {isInspectorOpen ? (
+        {inspector.isOpen ? (
           <NodeConfigPanel
-            activeTab={inspectorTab}
-            lastRun={getNodeRun(selectedNode?.id)}
-            node={selectedNode}
-            onClose={() => setIsInspectorOpen(false)}
-            onNodeChange={updateSelectedNode}
-            onRunNode={runSelectedNode}
-            onTabChange={setInspectorTab}
+            activeTab={inspector.activeTab}
+            lastRun={inspector.lastRun}
+            node={inspector.node}
+            onClose={inspector.onClose}
+            onNodeChange={inspector.onNodeChange}
+            onRunNode={inspector.onRunNode}
+            onTabChange={inspector.onTabChange}
           />
         ) : null}
       </div>

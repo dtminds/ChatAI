@@ -1,0 +1,326 @@
+import { useState } from "react";
+import type { Connection, NodeChange } from "@xyflow/react";
+import { useWorkflowPublishChecks } from "./checks/publish-checks";
+import { useWorkflowRun } from "./run/use-workflow-run";
+import { useWorkflowShortcuts } from "./shortcuts";
+import type {
+  InsertableMarketingNodeKind,
+  InspectorTab,
+  MarketingNodeData,
+  MarketingNodeKind,
+  MarketingWorkflowRenderNode,
+} from "./types";
+import { useWorkflowController } from "./use-workflow-controller";
+import { useWorkflowRenderElements } from "./use-workflow-render-elements";
+import { useWorkflowSelectionState } from "./use-workflow-selection-state";
+import { useWorkflowTransientState } from "./use-workflow-transient-state";
+import { useWorkflowDocument } from "./workflow-draft-service";
+
+export function useWorkflowWorkspace(workflowId: string | undefined) {
+  const {
+    document,
+    markDirty,
+    markSaved,
+    saveState,
+  } = useWorkflowDocument(workflowId);
+  const [inspectorTab, setInspectorTab] = useState<InspectorTab>("settings");
+  const [isInspectorOpen, setIsInspectorOpen] = useState(true);
+  const [isChecksOpen, setIsChecksOpen] = useState(false);
+  const [publishAttempted, setPublishAttempted] = useState(false);
+  const controller = useWorkflowController(document.draft);
+  const transient = useWorkflowTransientState();
+  const runner = useWorkflowRun();
+  const selection = useWorkflowSelectionState({
+    defaultNodeId: "action-message",
+    edges: controller.edges,
+    nodes: controller.nodes,
+  });
+  const publishChecks = useWorkflowPublishChecks(controller.nodes, controller.edges);
+
+  const {
+    activeEdgeInsertMenuId,
+    closeCanvasMenus,
+    paletteOpen,
+    paletteQuery,
+    quickInsertTarget,
+    setPaletteOpen,
+    setPaletteQuery,
+    toggleEdgeInsertMenu,
+    toggleNodeInsertMenu,
+  } = transient;
+  const {
+    clearEdgeSelection,
+    handleNodeHoverEnd,
+    handleNodeHoverStart,
+    hoveredEdgeIds,
+    selectEdge,
+    selectedEdgeId,
+    selectedNode,
+    selectedNodeId,
+    selectNode,
+    setSelectedEdgeId,
+    setSelectedNodeId,
+  } = selection;
+
+  const {
+    edges: renderedEdges,
+    nodes: renderedNodes,
+  } = useWorkflowRenderElements({
+    activeEdgeInsertMenuId,
+    edges: controller.edges,
+    hoveredEdgeIds,
+    nodes: controller.nodes,
+    onDeleteNode: handleDeleteNode,
+    onDuplicateNode: handleDuplicateNode,
+    onInsertNodeAfter: handleInsertNodeAfter,
+    onInsertNodeBetween: handleInsertNodeBetween,
+    onSelectNode: selectWorkflowNode,
+    onToggleEdgeInsertMenu: toggleEdgeInsertMenu,
+    onToggleNodeInsertMenu: toggleNodeInsertMenu,
+    quickInsertTarget,
+    selectedEdgeId,
+    selectedNodeId,
+  });
+
+  useWorkflowShortcuts({
+    canRedo: controller.canRedo,
+    canUndo: controller.canUndo,
+    onDeleteSelection: deleteSelectedNode,
+    onDuplicateSelection: duplicateSelectedNode,
+    onRedo: redoWorkflowChange,
+    onUndo: undoWorkflowChange,
+  });
+
+  function selectWorkflowNode(nodeId: string) {
+    selectNode(nodeId);
+    setIsInspectorOpen(true);
+    setIsChecksOpen(false);
+    closeCanvasMenus();
+  }
+
+  function selectWorkflowEdge(edgeId: string) {
+    selectEdge(edgeId);
+    setIsChecksOpen(false);
+    closeCanvasMenus();
+  }
+
+  function updateSelectedNode(patch: Partial<MarketingNodeData>) {
+    if (!selectedNodeId) {
+      return;
+    }
+
+    controller.updateNodeData(selectedNodeId, patch);
+    markDirty();
+  }
+
+  function undoWorkflowChange() {
+    controller.undo();
+    markDirty();
+    closeCanvasMenus();
+  }
+
+  function redoWorkflowChange() {
+    controller.redo();
+    markDirty();
+    closeCanvasMenus();
+  }
+
+  function addNode(kind: MarketingNodeKind) {
+    const result = controller.addNode(kind);
+    handleWorkflowEditResult(result);
+  }
+
+  function handleInsertNodeAfter(
+    previousNodeId: string,
+    kind: InsertableMarketingNodeKind,
+    sourceHandle?: string,
+  ) {
+    const result = controller.insertNodeAfter(previousNodeId, kind, sourceHandle);
+    handleWorkflowEditResult(result);
+  }
+
+  function handleInsertNodeBetween(
+    edgeId: string,
+    sourceNodeId: string,
+    targetNodeId: string,
+    kind: InsertableMarketingNodeKind,
+  ) {
+    const result = controller.insertNodeBetween(edgeId, sourceNodeId, targetNodeId, kind);
+    handleWorkflowEditResult(result);
+  }
+
+  function connectNodes(connection: Connection) {
+    const result = controller.connectNodes(connection);
+
+    if (result) {
+      markDirty();
+      closeCanvasMenus();
+      setIsChecksOpen(false);
+    }
+  }
+
+  function handleDeleteNode(nodeId: string) {
+    const result = controller.deleteNode(nodeId);
+
+    if (!result) {
+      return;
+    }
+
+    closeCanvasMenus();
+    markDirty();
+    setIsChecksOpen(false);
+  }
+
+  function handleDuplicateNode(nodeId: string) {
+    const result = controller.duplicateNode(nodeId);
+    handleWorkflowEditResult(result);
+  }
+
+  function handleDeleteEdge(edgeId: string) {
+    const result = controller.deleteEdge(edgeId);
+
+    if (!result) {
+      return;
+    }
+
+    setSelectedEdgeId(null);
+    markDirty();
+    closeCanvasMenus();
+    setIsChecksOpen(false);
+  }
+
+  function deleteSelectedNode() {
+    if (selectedEdgeId) {
+      handleDeleteEdge(selectedEdgeId);
+      return;
+    }
+
+    if (!selectedNodeId) {
+      return;
+    }
+
+    handleDeleteNode(selectedNodeId);
+  }
+
+  function duplicateSelectedNode() {
+    if (selectedEdgeId || !selectedNodeId) {
+      return;
+    }
+
+    handleDuplicateNode(selectedNodeId);
+  }
+
+  function handleWorkflowEditResult(result?: { nodeId?: string }) {
+    markDirty();
+
+    if (result?.nodeId) {
+      setSelectedNodeId(result.nodeId);
+      setSelectedEdgeId(null);
+      setIsInspectorOpen(true);
+    }
+
+    closeCanvasMenus();
+    setPaletteOpen(false);
+    setIsChecksOpen(false);
+  }
+
+  function clearCanvasSelection() {
+    clearEdgeSelection();
+    closeCanvasMenus();
+  }
+
+  function openVariablesPanel() {
+    setIsInspectorOpen(true);
+    setInspectorTab("variables");
+    setIsChecksOpen(false);
+    clearCanvasSelection();
+  }
+
+  function handlePaletteOpenChange(open: boolean) {
+    setPaletteOpen(open);
+    clearCanvasSelection();
+  }
+
+  function handlePaneClick() {
+    clearCanvasSelection();
+    setIsChecksOpen(false);
+  }
+
+  function runSelectedNode() {
+    if (!selectedNode) {
+      return;
+    }
+
+    runner.runNode(selectedNode);
+    setIsInspectorOpen(true);
+    setInspectorTab("run");
+  }
+
+  function handlePublishCheck() {
+    setPublishAttempted(true);
+    markSaved();
+    setIsChecksOpen(true);
+    closeCanvasMenus();
+  }
+
+  function handleNodesChange(changes: NodeChange<MarketingWorkflowRenderNode>[]) {
+    controller.onNodesChange(changes);
+    controller.markDraftDirty();
+    markDirty();
+  }
+
+  function arrangeNodes() {
+    controller.arrangeNodes();
+    markDirty();
+  }
+
+  return {
+    canvas: {
+      canRedo: controller.canRedo,
+      canUndo: controller.canUndo,
+      edges: renderedEdges,
+      nodes: renderedNodes,
+      onAddNode: addNode,
+      onArrange: arrangeNodes,
+      onConnect: connectNodes,
+      onEdgesChange: controller.onEdgesChange,
+      onNodeHoverEnd: handleNodeHoverEnd,
+      onNodeHoverStart: handleNodeHoverStart,
+      onNodesChange: handleNodesChange,
+      onOpenVariables: openVariablesPanel,
+      onPaletteOpenChange: handlePaletteOpenChange,
+      onPaneClick: handlePaneClick,
+      onRedo: redoWorkflowChange,
+      onSearchChange: setPaletteQuery,
+      onSelectEdge: selectWorkflowEdge,
+      onSelectNode: selectWorkflowNode,
+      onUndo: undoWorkflowChange,
+      paletteOpen,
+      searchValue: paletteQuery,
+    },
+    checks: {
+      ...publishChecks,
+      isOpen: isChecksOpen,
+      onClose: () => setIsChecksOpen(false),
+      publishAttempted,
+    },
+    document,
+    inspector: {
+      activeTab: inspectorTab,
+      isOpen: isInspectorOpen,
+      lastRun: runner.getNodeRun(selectedNode?.id),
+      node: selectedNode,
+      onClose: () => setIsInspectorOpen(false),
+      onNodeChange: updateSelectedNode,
+      onRunNode: runSelectedNode,
+      onTabChange: setInspectorTab,
+    },
+    topBar: {
+      onPublishCheck: handlePublishCheck,
+      publishReady: publishChecks.publishReady,
+      readyChecks: publishChecks.readyChecks,
+      saveState,
+      totalChecks: publishChecks.totalChecks,
+    },
+  };
+}

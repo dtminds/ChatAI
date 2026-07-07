@@ -23,6 +23,7 @@ export type MarketingNodeData = Record<string, unknown> & {
 export type MarketingNodeRuntimeData = {
   insertMenuOpen?: boolean;
   insertMenuSourceHandle?: string;
+  onDuplicate?: (nodeId: string) => void;
   onInsertAfter?: (
     nodeId: string,
     kind: InsertableMarketingNodeKind,

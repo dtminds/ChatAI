@@ -9,6 +9,7 @@ import {
 } from "@/pages/chat/ai-hosting/agent-workflow-page";
 import {
   canDeleteNodeKind,
+  canDuplicateNodeKind,
   canInsertAfterNodeKind,
   createDefaultNodeData,
   insertableNodeKinds,
@@ -347,6 +348,7 @@ describe("Agent workflow page", () => {
       expect(NodeComponentMap[kind]).toBe(definition.body);
       expect(PanelComponentMap[kind]).toBe(definition.settings);
       expect(canDeleteNodeKind(kind)).toBe(definition.canDelete);
+      expect(canDuplicateNodeKind(kind)).toBe(definition.canDuplicate);
       expect(canInsertAfterNodeKind(kind)).toBe(definition.canInsertAfter);
     }
 
@@ -974,6 +976,68 @@ describe("Agent workflow page", () => {
     expect(within(canvas).getByRole("button", { name: /^发送欢迎消息 / })).toBeInTheDocument();
     expect(screen.getByTestId("workflow-edge-edge-branch-intent-branch-high-action-message")).toBeInTheDocument();
     expect(screen.getByTestId("workflow-edge-edge-action-message-goal")).toBeInTheDocument();
+  });
+
+  it("duplicates editable nodes from the action menu and records the change in history", async () => {
+    const user = userEvent.setup();
+
+    renderWorkflowPage();
+
+    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    await user.click(within(canvas).getByRole("button", { name: "更多操作：发送欢迎消息" }));
+    const actionMenu = await screen.findByRole("menu");
+    await user.click(within(actionMenu).getByRole("menuitem", { name: "复制节点" }));
+
+    const duplicatedNode = within(canvas).getByRole("button", { name: /^发送欢迎消息 \(1\) / });
+    const duplicatedNodeWrapper = duplicatedNode.closest("[data-testid^='workflow-node-']");
+
+    expect(duplicatedNode).toBeInTheDocument();
+    expect(duplicatedNodeWrapper).toHaveAttribute("data-selected", "true");
+    expect(closestWorkflowNodeX(duplicatedNode)).toBeGreaterThan(workflowNodeX("action-message"));
+    expect(screen.getByRole("complementary", { name: "节点配置" })).toHaveTextContent("发送欢迎消息 (1)");
+    expect(screen.queryByTestId("workflow-edge-edge-action-message-action")).not.toBeInTheDocument();
+
+    await user.click(within(canvas).getByRole("button", { name: "撤销" }));
+
+    expect(within(canvas).queryByRole("button", { name: /^发送欢迎消息 \(1\) / })).not.toBeInTheDocument();
+
+    await user.click(within(canvas).getByRole("button", { name: "重做" }));
+
+    expect(within(canvas).getByRole("button", { name: /^发送欢迎消息 \(1\) / })).toBeInTheDocument();
+  });
+
+  it("keeps duplicated workflow node titles unique", async () => {
+    const user = userEvent.setup();
+
+    renderWorkflowPage();
+
+    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    await user.click(within(canvas).getByRole("button", { name: "更多操作：发送欢迎消息" }));
+    await user.click(within(await screen.findByRole("menu")).getByRole("menuitem", { name: "复制节点" }));
+
+    await user.click(within(canvas).getByRole("button", { name: /^发送欢迎消息 发送欢迎语/ }));
+    await user.click(within(canvas).getByRole("button", { name: "更多操作：发送欢迎消息" }));
+    await user.click(within(await screen.findByRole("menu")).getByRole("menuitem", { name: "复制节点" }));
+
+    expect(within(canvas).getByRole("button", { name: /^发送欢迎消息 \(1\) / })).toBeInTheDocument();
+    expect(within(canvas).getByRole("button", { name: /^发送欢迎消息 \(2\) / })).toBeInTheDocument();
+  });
+
+  it("duplicates the selected node with keyboard shortcuts outside editable fields", async () => {
+    const user = userEvent.setup();
+
+    renderWorkflowPage();
+
+    const canvas = await screen.findByRole("application", { name: "营销 Workflow 画布" });
+    await user.click(within(canvas).getByRole("button", { name: /^发送欢迎消息 / }));
+    fireEvent.keyDown(window, { key: "d", metaKey: true });
+
+    expect(within(canvas).getByRole("button", { name: /^发送欢迎消息 \(1\) / })).toBeInTheDocument();
+
+    const panel = screen.getByRole("complementary", { name: "节点配置" });
+    fireEvent.keyDown(within(panel).getByLabelText("节点名称"), { key: "d", metaKey: true });
+
+    expect(within(canvas).queryByRole("button", { name: /^发送欢迎消息 \(2\) / })).not.toBeInTheDocument();
   });
 
   it("deletes the selected node with keyboard shortcuts and records the change in history", async () => {

@@ -34,16 +34,25 @@ function isDeleteShortcut(event: KeyboardEvent) {
     && (event.key === "Delete" || event.key === "Backspace");
 }
 
+function isDuplicateShortcut(event: KeyboardEvent) {
+  return (event.metaKey || event.ctrlKey)
+    && !event.altKey
+    && !event.shiftKey
+    && event.key.toLowerCase() === "d";
+}
+
 export function useWorkflowShortcuts({
   canRedo,
   canUndo,
   onDeleteSelection,
+  onDuplicateSelection,
   onRedo,
   onUndo,
 }: {
   canRedo: boolean;
   canUndo: boolean;
   onDeleteSelection: () => void;
+  onDuplicateSelection: () => void;
   onRedo: () => void;
   onUndo: () => void;
 }) {
@@ -57,6 +66,13 @@ export function useWorkflowShortcuts({
         event.preventDefault();
         event.stopPropagation();
         onDeleteSelection();
+        return;
+      }
+
+      if (isDuplicateShortcut(event)) {
+        event.preventDefault();
+        event.stopPropagation();
+        onDuplicateSelection();
         return;
       }
 
@@ -86,5 +102,5 @@ export function useWorkflowShortcuts({
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [canRedo, canUndo, onDeleteSelection, onRedo, onUndo]);
+  }, [canRedo, canUndo, onDeleteSelection, onDuplicateSelection, onRedo, onUndo]);
 }

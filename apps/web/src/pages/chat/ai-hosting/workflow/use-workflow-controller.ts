@@ -17,6 +17,7 @@ import {
   createInitialEdges,
   createInitialNodes,
   createNodeFromKind,
+  duplicateWorkflowNode,
   findLastActionNodeId,
   getAfterNodesInSameBranch,
   getBranchHandleLabel,
@@ -24,7 +25,7 @@ import {
   getNodeIdSet,
   shiftNodesRight,
 } from "./graph";
-import { canDeleteNodeKind, canInsertNodeKind } from "./node-definitions";
+import { canDeleteNodeKind, canDuplicateNodeKind, canInsertNodeKind } from "./node-definitions";
 import { useWorkflowHistory } from "./history";
 import type {
   InsertableMarketingNodeKind,
@@ -374,6 +375,33 @@ export function useWorkflowController() {
     return { nodeId };
   }, [commitDraft, flushConfigHistory, nodes]);
 
+  const duplicateNode = useCallback((nodeId: string): WorkflowActionResult | undefined => {
+    flushConfigHistory();
+    const node = nodes.find((currentNode) => currentNode.id === nodeId);
+
+    if (!node || !canDuplicateNodeKind(node.data.kind)) {
+      return undefined;
+    }
+
+    const duplicatedNodeId = `${node.data.kind}-${Date.now()}`;
+    const reservedTitles = new Set(nodes.map((currentNode) => currentNode.data.title));
+    const duplicatedNode = duplicateWorkflowNode(node, duplicatedNodeId, reservedTitles);
+
+    commitDraft(
+      "node:duplicate",
+      (draft) => ({
+        ...draft,
+        nodes: [...draft.nodes, duplicatedNode],
+      }),
+      {
+        nodeId: duplicatedNodeId,
+        nodeTitle: duplicatedNode.data.title,
+      },
+    );
+
+    return { nodeId: duplicatedNodeId };
+  }, [commitDraft, flushConfigHistory, nodes]);
+
   const deleteEdge = useCallback((edgeId: string): WorkflowActionResult | undefined => {
     flushConfigHistory();
 
@@ -423,6 +451,7 @@ export function useWorkflowController() {
     connectNodes,
     deleteEdge,
     deleteNode,
+    duplicateNode,
     edges,
     insertNodeAfter,
     insertNodeBetween,

@@ -43,6 +43,7 @@ export type NodeVisual = {
 type NodeDefinition = {
   body: ComponentType<NodeBodyProps>;
   canDelete: boolean;
+  canDuplicate: boolean;
   canInsertAfter: boolean;
   createDefaultData: () => MarketingNodeData;
   description?: string;
@@ -116,6 +117,7 @@ export const nodeDefinitions = {
   action: {
     body: StandardNodeBody,
     canDelete: true,
+    canDuplicate: true,
     canInsertAfter: true,
     createDefaultData: () =>
       createNodeData("action", {
@@ -136,6 +138,7 @@ export const nodeDefinitions = {
   ai: {
     body: StandardNodeBody,
     canDelete: true,
+    canDuplicate: true,
     canInsertAfter: true,
     createDefaultData: () =>
       createNodeData("ai", {
@@ -157,6 +160,7 @@ export const nodeDefinitions = {
   branch: {
     body: BranchNodeBody,
     canDelete: true,
+    canDuplicate: true,
     canInsertAfter: true,
     createDefaultData: () =>
       createNodeData("branch", {
@@ -178,6 +182,7 @@ export const nodeDefinitions = {
   goal: {
     body: StandardNodeBody,
     canDelete: false,
+    canDuplicate: false,
     canInsertAfter: false,
     createDefaultData: () =>
       createNodeData("goal", {
@@ -196,6 +201,7 @@ export const nodeDefinitions = {
   trigger: {
     body: StandardNodeBody,
     canDelete: false,
+    canDuplicate: false,
     canInsertAfter: true,
     createDefaultData: () =>
       createNodeData("trigger", {
@@ -215,6 +221,7 @@ export const nodeDefinitions = {
   wait: {
     body: StandardNodeBody,
     canDelete: true,
+    canDuplicate: true,
     canInsertAfter: true,
     createDefaultData: () =>
       createNodeData("wait", {
@@ -244,6 +251,10 @@ export function getNodeDefinition(kind: MarketingNodeKind) {
 
 export function canDeleteNodeKind(kind: MarketingNodeKind) {
   return getNodeDefinition(kind).canDelete;
+}
+
+export function canDuplicateNodeKind(kind: MarketingNodeKind) {
+  return getNodeDefinition(kind).canDuplicate;
 }
 
 export function canInsertAfterNodeKind(kind: MarketingNodeKind) {

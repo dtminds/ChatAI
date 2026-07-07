@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { Delete02Icon, MoreHorizontalIcon } from "@hugeicons/core-free-icons";
+import { Copy01Icon, Delete02Icon, MoreHorizontalIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   DropdownMenu,
@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { branchHandleOptions } from "../constants";
 import {
   canDeleteNodeKind,
+  canDuplicateNodeKind,
   canInsertAfterNodeKind,
   nodeVisuals,
 } from "../node-definitions";
@@ -146,6 +147,18 @@ function NodeActionMenu({
               }}
             >
               添加后续节点
+            </DropdownMenuItem>
+          ) : null}
+          {canDuplicateNodeKind(data.kind) ? (
+            <DropdownMenuItem
+              onClick={(event) => {
+                event.stopPropagation();
+                data.onDuplicate?.(id);
+                setActionMenuOpen(false);
+              }}
+            >
+              <HugeiconsIcon icon={Copy01Icon} size={14} strokeWidth={1.8} />
+              复制节点
             </DropdownMenuItem>
           ) : null}
           {canDeleteNodeKind(data.kind) ? (

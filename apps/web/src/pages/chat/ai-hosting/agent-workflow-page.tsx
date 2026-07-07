@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { Connection } from "@xyflow/react";
 import { ReactFlowProvider } from "@xyflow/react";
 import {
@@ -16,10 +16,9 @@ import { AiHostingLayout } from "./ai-hosting-layout";
 import { WorkflowCanvas } from "./workflow/canvas/workflow-canvas";
 import { WorkflowChecks } from "./workflow/canvas/workflow-checks";
 import { WorkflowTopBar } from "./workflow/canvas/workflow-topbar";
-import {
-  buildPublishChecks,
-} from "./workflow/graph";
+import { useWorkflowPublishChecks } from "./workflow/checks/publish-checks";
 import { NodeConfigPanel } from "./workflow/panels";
+import { useWorkflowRun } from "./workflow/run/use-workflow-run";
 import { useWorkflowShortcuts } from "./workflow/shortcuts";
 import type {
   InsertableMarketingNodeKind,
@@ -27,51 +26,18 @@ import type {
   MarketingEdgeHighlightState,
   MarketingNodeData,
   MarketingNodeKind,
-  MarketingWorkflowNode,
   MarketingWorkflowRenderEdge,
   MarketingWorkflowRenderNode,
-  NodeRunRecord,
-  QuickInsertTarget,
 } from "./workflow/types";
 import { useWorkflowController } from "./workflow/use-workflow-controller";
+import { useWorkflowSelectionState } from "./workflow/use-workflow-selection-state";
+import { useWorkflowTransientState } from "./workflow/use-workflow-transient-state";
+import {
+  getWorkflowName,
+  workflowListItems,
+} from "./workflow/workflow-list-data";
 import "@xyflow/react/dist/style.css";
 import "./agent-workflow-page.css";
-
-const workflowListItems = [
-  {
-    conversion: "18.4%",
-    entered: "124.8万",
-    id: "newcomer-conversion",
-    name: "新人转化旅程",
-    nodes: 8,
-    owner: "运营主管",
-    status: "Draft",
-    trigger: "近 30 天新入会且未首购客户",
-    updatedAt: "今天 18:20",
-  },
-  {
-    conversion: "23.1%",
-    entered: "86.3万",
-    id: "vip-reactivation",
-    name: "会员复购唤醒",
-    nodes: 12,
-    owner: "增长运营",
-    status: "Published",
-    trigger: "90 天未复购会员",
-    updatedAt: "昨天 21:04",
-  },
-  {
-    conversion: "9.7%",
-    entered: "42.6万",
-    id: "live-follow-up",
-    name: "直播后跟进",
-    nodes: 6,
-    owner: "直播运营",
-    status: "Paused",
-    trigger: "直播间互动但未下单客户",
-    updatedAt: "7月4日 16:12",
-  },
-] as const;
 
 export function AgentWorkflowPage() {
   return <AgentWorkflowListPage />;
@@ -167,9 +133,7 @@ export function AgentWorkflowListPage() {
 
 export function AgentWorkflowEditorPage() {
   const { workflowId } = useParams();
-  const workflowName =
-    workflowListItems.find((workflow) => workflow.id === workflowId)?.name ??
-    "新人转化旅程";
+  const workflowName = getWorkflowName(workflowId);
 
   return (
     <ReactFlowProvider>
@@ -212,14 +176,8 @@ function WorkflowWorkspaceContent({
   workflowName: string;
 }) {
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("settings");
-  const [selectedNodeId, setSelectedNodeId] = useState("action-message");
-  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [isInspectorOpen, setIsInspectorOpen] = useState(true);
   const [isChecksOpen, setIsChecksOpen] = useState(false);
-  const [activeEdgeInsertMenuId, setActiveEdgeInsertMenuId] = useState<string | null>(null);
-  const [quickInsertTarget, setQuickInsertTarget] = useState<QuickInsertTarget | null>(null);
-  const [paletteOpen, setPaletteOpen] = useState(false);
-  const [paletteQuery, setPaletteQuery] = useState("");
   const {
     addNode: addWorkflowNode,
     arrangeNodes,
@@ -228,6 +186,7 @@ function WorkflowWorkspaceContent({
     connectNodes: connectWorkflowNodes,
     deleteEdge,
     deleteNode,
+    duplicateNode,
     edges,
     insertNodeAfter,
     insertNodeBetween,
@@ -238,32 +197,42 @@ function WorkflowWorkspaceContent({
     undo,
     updateNodeData,
   } = useWorkflowController();
-  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
-  const [runRecords, setRunRecords] = useState<Record<string, NodeRunRecord>>({});
+  const {
+    activeEdgeInsertMenuId,
+    closeCanvasMenus,
+    paletteOpen,
+    paletteQuery,
+    quickInsertTarget,
+    setPaletteOpen,
+    setPaletteQuery,
+    toggleEdgeInsertMenu,
+    toggleNodeInsertMenu,
+  } = useWorkflowTransientState();
+  const { getNodeRun, runNode } = useWorkflowRun();
   const [publishAttempted, setPublishAttempted] = useState(false);
-  const selectedNode = nodes.find((node) => node.id === selectedNodeId) ?? nodes[0];
-  const checks = useMemo(() => buildPublishChecks(nodes, edges), [nodes, edges]);
-  const readyChecks = checks.filter((check) => check.status === "ready").length;
-  const publishReady = readyChecks === checks.length;
-
-  useEffect(() => {
-    if (!nodes.length || nodes.some((node) => node.id === selectedNodeId)) {
-      return;
-    }
-
-    setSelectedNodeId(nodes[0].id);
-  }, [nodes, selectedNodeId]);
-  const hoveredEdgeIds = useMemo(() => {
-    if (!hoveredNodeId) {
-      return null;
-    }
-
-    return new Set(
-      edges
-        .filter((edge) => edge.source === hoveredNodeId || edge.target === hoveredNodeId)
-        .map((edge) => edge.id),
-    );
-  }, [edges, hoveredNodeId]);
+  const {
+    clearEdgeSelection,
+    handleNodeHoverEnd,
+    handleNodeHoverStart,
+    hoveredEdgeIds,
+    selectEdge,
+    selectedEdgeId,
+    selectedNode,
+    selectedNodeId,
+    selectNode,
+    setSelectedEdgeId,
+    setSelectedNodeId,
+  } = useWorkflowSelectionState({
+    defaultNodeId: "action-message",
+    edges,
+    nodes,
+  });
+  const {
+    checks,
+    publishReady,
+    readyChecks,
+    totalChecks,
+  } = useWorkflowPublishChecks(nodes, edges);
 
   const decoratedEdges = useMemo<MarketingWorkflowRenderEdge[]>(
     () =>
@@ -276,13 +245,10 @@ function WorkflowWorkspaceContent({
           insertMenuOpen: edge.id === activeEdgeInsertMenuId,
           onDelete: handleDeleteEdge,
           onInsertBetween: handleInsertNodeBetween,
-          onToggleInsertMenu: (edgeId: string) => {
-            setQuickInsertTarget(null);
-            setActiveEdgeInsertMenuId((currentEdgeId) => (currentEdgeId === edgeId ? null : edgeId));
-          },
+          onToggleInsertMenu: toggleEdgeInsertMenu,
         },
       })),
-    [activeEdgeInsertMenuId, edges, hoveredEdgeIds, selectedEdgeId],
+    [activeEdgeInsertMenuId, edges, hoveredEdgeIds, selectedEdgeId, toggleEdgeInsertMenu],
   );
 
   const decoratedNodes = useMemo<MarketingWorkflowRenderNode[]>(
@@ -301,41 +267,35 @@ function WorkflowWorkspaceContent({
               ? quickInsertTarget.sourceHandle
               : undefined,
             onDelete: handleDeleteNode,
+            onDuplicate: handleDuplicateNode,
             onInsertAfter: handleInsertNodeAfter,
             onSelect: selectWorkflowNode,
-            onToggleInsertMenu: (nodeId: string, sourceHandle?: string) => {
-              setActiveEdgeInsertMenuId(null);
-              setQuickInsertTarget((currentTarget) =>
-                currentTarget?.nodeId === nodeId && currentTarget.sourceHandle === sourceHandle
-                  ? null
-                  : { nodeId, sourceHandle },
-              );
-            },
+            onToggleInsertMenu: toggleNodeInsertMenu,
             selected: isSelected,
           },
         };
       }),
-    [nodes, quickInsertTarget, selectedNodeId],
+    [nodes, quickInsertTarget, selectedNodeId, toggleNodeInsertMenu],
   );
 
   useWorkflowShortcuts({
     canRedo,
     canUndo,
     onDeleteSelection: deleteSelectedNode,
+    onDuplicateSelection: duplicateSelectedNode,
     onRedo: redoWorkflowChange,
     onUndo: undoWorkflowChange,
   });
 
   function selectWorkflowNode(nodeId: string) {
-    setSelectedNodeId(nodeId);
-    setSelectedEdgeId(null);
+    selectNode(nodeId);
     setIsInspectorOpen(true);
     setIsChecksOpen(false);
     closeCanvasMenus();
   }
 
   function selectWorkflowEdge(edgeId: string) {
-    setSelectedEdgeId(edgeId);
+    selectEdge(edgeId);
     setIsChecksOpen(false);
     closeCanvasMenus();
   }
@@ -398,6 +358,11 @@ function WorkflowWorkspaceContent({
     setIsChecksOpen(false);
   }
 
+  function handleDuplicateNode(nodeId: string) {
+    const result = duplicateNode(nodeId);
+    handleWorkflowEditResult(result);
+  }
+
   function handleDeleteEdge(edgeId: string) {
     const result = deleteEdge(edgeId);
 
@@ -419,6 +384,14 @@ function WorkflowWorkspaceContent({
     handleDeleteNode(selectedNodeId);
   }
 
+  function duplicateSelectedNode() {
+    if (selectedEdgeId) {
+      return;
+    }
+
+    handleDuplicateNode(selectedNodeId);
+  }
+
   function handleWorkflowEditResult(result?: { nodeId?: string }) {
     if (result?.nodeId) {
       setSelectedNodeId(result.nodeId);
@@ -431,13 +404,8 @@ function WorkflowWorkspaceContent({
     setIsChecksOpen(false);
   }
 
-  function closeCanvasMenus() {
-    setActiveEdgeInsertMenuId(null);
-    setQuickInsertTarget(null);
-  }
-
   function clearCanvasSelection() {
-    setSelectedEdgeId(null);
+    clearEdgeSelection();
     closeCanvasMenus();
   }
 
@@ -446,10 +414,7 @@ function WorkflowWorkspaceContent({
       return;
     }
 
-    setRunRecords((currentRecords) => ({
-      ...currentRecords,
-      [selectedNode.id]: createNodeRunRecord(selectedNode),
-    }));
+    runNode(selectedNode);
     setIsInspectorOpen(true);
     setInspectorTab("run");
   }
@@ -466,7 +431,7 @@ function WorkflowWorkspaceContent({
         onPublishCheck={handlePublishCheck}
         publishReady={publishReady}
         readyChecks={readyChecks}
-        totalChecks={checks.length}
+        totalChecks={totalChecks}
         workflowName={workflowName}
       />
 
@@ -500,10 +465,8 @@ function WorkflowWorkspaceContent({
               setIsChecksOpen(false);
             }}
             onRedo={redoWorkflowChange}
-            onNodeHoverEnd={() => setHoveredNodeId(null)}
-            onNodeHoverStart={(nodeId) => {
-              setHoveredNodeId((currentNodeId) => (currentNodeId === nodeId ? currentNodeId : nodeId));
-            }}
+            onNodeHoverEnd={handleNodeHoverEnd}
+            onNodeHoverStart={handleNodeHoverStart}
             onSelectEdge={selectWorkflowEdge}
             onSelectNode={selectWorkflowNode}
             onSearchChange={setPaletteQuery}
@@ -524,7 +487,7 @@ function WorkflowWorkspaceContent({
         {isInspectorOpen ? (
           <NodeConfigPanel
             activeTab={inspectorTab}
-            lastRun={selectedNode ? runRecords[selectedNode.id] : undefined}
+            lastRun={getNodeRun(selectedNode?.id)}
             node={selectedNode}
             onClose={() => setIsInspectorOpen(false)}
             onNodeChange={updateSelectedNode}
@@ -546,43 +509,4 @@ function getEdgeHighlightState(
   }
 
   return highlightedEdgeIds.has(edgeId) ? "connected" : "dimmed";
-}
-
-function createNodeRunRecord(node: MarketingWorkflowNode): NodeRunRecord {
-  const input = JSON.stringify(
-    {
-      audience: node.data.audience ?? "当前节点继承上游客户",
-      event: node.data.kind,
-      nodeId: node.id,
-      summary: node.data.summary,
-    },
-    null,
-    2,
-  );
-  const output = JSON.stringify(
-    {
-      metric: node.data.metric,
-      next: node.data.kind === "goal" ? "journey_exit" : "continue",
-      title: node.data.title,
-    },
-    null,
-    2,
-  );
-
-  return {
-    durationMs: 84 + node.id.length * 7,
-    finishedAt: new Intl.DateTimeFormat("zh-CN", {
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    }).format(new Date()),
-    input,
-    logs: [
-      "读取上游客户上下文",
-      "校验节点配置",
-      node.data.kind === "ai" ? "匹配 Agent 与知识库策略" : "生成下一步执行结果",
-    ],
-    output,
-    status: "succeeded",
-  };
 }

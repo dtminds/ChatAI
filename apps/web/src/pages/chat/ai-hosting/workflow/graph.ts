@@ -4,7 +4,6 @@ import type {
   InsertableMarketingNodeKind,
   MarketingWorkflowEdge,
   MarketingWorkflowNode,
-  WorkflowPublishCheck,
 } from "./types";
 
 export function createInitialNodes(): MarketingWorkflowNode[] {
@@ -105,6 +104,48 @@ export function createNodeFromKind(
     position: commonPosition,
     type: "marketing",
   };
+}
+
+export function duplicateWorkflowNode(
+  node: MarketingWorkflowNode,
+  nodeId: string,
+  reservedTitles: Set<string>,
+): MarketingWorkflowNode {
+  return {
+    ...node,
+    data: {
+      ...node.data,
+      title: getUniqueDuplicatedNodeTitle(node.data.title, reservedTitles),
+    },
+    id: nodeId,
+    position: {
+      x: node.position.x + 48,
+      y: node.position.y + 48,
+    },
+    selected: false,
+    zIndex: undefined,
+  };
+}
+
+export function getNewNodeTitleFromOld(title: string) {
+  const match = /^(.+?)\s*\((\d+)\)\s*$/.exec(title);
+
+  if (!match) {
+    return `${title} (1)`;
+  }
+
+  return `${match[1]} (${Number.parseInt(match[2], 10) + 1})`;
+}
+
+export function getUniqueDuplicatedNodeTitle(title: string, reservedTitles: Set<string>) {
+  let titleCandidate = getNewNodeTitleFromOld(title);
+
+  while (reservedTitles.has(titleCandidate)) {
+    titleCandidate = getNewNodeTitleFromOld(titleCandidate);
+  }
+
+  reservedTitles.add(titleCandidate);
+  return titleCandidate;
 }
 
 export function createEdge(
@@ -341,58 +382,4 @@ function compareNodesForLayout(
       || first.position.x - second.position.x
       || (originalIndexById.get(first.id) ?? 0) - (originalIndexById.get(second.id) ?? 0);
   };
-}
-
-export function buildPublishChecks(
-  nodes: MarketingWorkflowNode[],
-  edges: MarketingWorkflowEdge[],
-): WorkflowPublishCheck[] {
-  const trigger = nodes.find((node) => node.data.kind === "trigger");
-  const goal = nodes.find((node) => node.data.kind === "goal");
-  const warningNodes = nodes.filter((node) => node.data.status === "warning");
-  const hasDisconnectedNode = nodes.some(
-    (node) =>
-      node.data.kind !== "trigger" &&
-      !edges.some((edge) => edge.target === node.id),
-  );
-  const hasAiAction = nodes.some((node) => node.data.kind === "ai" && node.data.agentName);
-
-  return [
-    {
-      description: trigger?.data.audience
-        ? `当前人群：${trigger.data.audience}`
-        : "触发节点需要选择进入人群",
-      id: "trigger",
-      status: trigger?.data.audience ? "ready" : "warning",
-      title: "触发人群",
-    },
-    {
-      description: hasDisconnectedNode ? "存在未连接到主链路的节点" : "所有节点均接入主链路",
-      id: "connectivity",
-      status: hasDisconnectedNode ? "warning" : "ready",
-      title: "链路连通性",
-    },
-    {
-      description: warningNodes.length
-        ? `${warningNodes.length} 个节点仍需补全配置`
-        : "所有节点已完成关键配置",
-      id: "config",
-      status: warningNodes.length ? "warning" : "ready",
-      title: "节点配置",
-    },
-    {
-      description: hasAiAction
-        ? "AI 接待动作已绑定 Agent 和知识库策略"
-        : "当前流程没有启用 AI 接待动作",
-      id: "ai",
-      status: hasAiAction ? "ready" : "warning",
-      title: "AI 接待策略",
-    },
-    {
-      description: goal ? "已配置退出目标和转化指标" : "缺少目标节点",
-      id: "goal",
-      status: goal ? "ready" : "warning",
-      title: "目标退出",
-    },
-  ];
 }

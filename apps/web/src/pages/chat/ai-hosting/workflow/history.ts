@@ -12,6 +12,7 @@ export type WorkflowHistoryEvent =
   | "node:config-change"
   | "edge:connect"
   | "edge:delete"
+  | "node:duplicate"
   | "node:insert"
   | "node:delete"
   | "node:move"
@@ -66,6 +67,7 @@ function sanitizeNodeData(data: MarketingNodeData): MarketingNodeData {
     insertMenuOpen: _insertMenuOpen,
     insertMenuSourceHandle: _insertMenuSourceHandle,
     onDelete: _onDelete,
+    onDuplicate: _onDuplicate,
     onInsertAfter: _onInsertAfter,
     onSelect: _onSelect,
     onToggleInsertMenu: _onToggleInsertMenu,

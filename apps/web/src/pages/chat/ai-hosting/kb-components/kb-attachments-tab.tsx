@@ -68,6 +68,7 @@ const ATTACHMENT_INIT_PROGRESS_MIN = 15;
 const ATTACHMENT_INIT_PROGRESS_MAX = 85;
 const ATTACHMENT_INIT_PROGRESS_STEP_MS = 400;
 const ATTACHMENT_SYNC_POLL_MS = 5000;
+const ATTACHMENT_DOC_VISIBILITY_TIMEOUT_MS = 3 * 60 * 1000;
 
 const kbAttachmentExampleTagRows = [
   [
@@ -290,6 +291,7 @@ export function KbAttachmentsTab({
     options?: { immediate?: boolean; knownDocId?: string },
   ) => {
     clearPollTimer();
+    const pollStartedAt = Date.now();
 
     const scheduleNextPoll = () => {
       pollTimerRef.current = setTimeout(() => {
@@ -307,6 +309,12 @@ export function KbAttachmentsTab({
 
         if (!result.initialized || !result.docId) {
           if (options?.knownDocId) {
+            if (Date.now() - pollStartedAt >= ATTACHMENT_DOC_VISIBILITY_TIMEOUT_MS) {
+              setPhase(pollError.failurePhase);
+              toast.error(pollError.errorMessage);
+              return;
+            }
+
             scheduleNextPoll();
             return;
           }

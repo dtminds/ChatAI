@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getKbAttachmentStatus,
@@ -43,6 +44,19 @@ vi.mock("@/pages/chat/ai-hosting/api/kb-service", () => ({
 vi.mock("@/pages/chat/lib/image-ocr", () => ({
   recognizeImageText: vi.fn(),
 }));
+
+vi.mock("sonner", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("sonner")>();
+
+  return {
+    ...actual,
+    toast: {
+      ...actual.toast,
+      error: vi.fn(),
+      success: vi.fn(),
+    },
+  };
+});
 
 describe("kb attachment mappers", () => {
   it("maps list item to view item and back to attachment content", () => {
@@ -395,6 +409,43 @@ describe("KbAttachmentsTab", () => {
       expect(initKbAttachments).toHaveBeenCalledTimes(1);
       expect(getKbAttachmentStatus).toHaveBeenCalledTimes(3);
       expect(getKbAttachmentStatus).toHaveBeenLastCalledWith("kb-1");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("fails initialization when attachment doc remains invisible after timeout", async () => {
+    vi.mocked(getKbAttachmentStatus).mockResolvedValue({ initialized: false });
+    vi.mocked(initKbAttachments).mockResolvedValue({
+      docId: "doc-attachment-1",
+      initialized: true,
+      status: "parsing",
+    });
+
+    render(
+      <KbAttachmentsTab
+        activeType={KB_ATTACHMENT_TYPE.IMAGE}
+        kbId="kb-1"
+        onActiveTypeChange={vi.fn()}
+      />,
+    );
+
+    const initializeButton = await screen.findByRole("button", { name: "立即启用" });
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-07T00:00:00.000Z"));
+
+    try {
+      await act(async () => {
+        fireEvent.click(initializeButton);
+      });
+
+      vi.setSystemTime(new Date("2026-07-07T00:03:00.000Z"));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5000);
+      });
+
+      expect(toast.error).toHaveBeenCalledWith("初始化失败，请稍后重试");
+      expect(screen.getByRole("button", { name: "立即启用" })).toBeInTheDocument();
     } finally {
       vi.useRealTimers();
     }

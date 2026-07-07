@@ -53,6 +53,10 @@ export type WorkflowHistoryReducerAction =
     updateDraft: (draft: WorkflowDraft) => WorkflowDraft;
   }
   | {
+    draft: WorkflowDraft;
+    type: "reset";
+  }
+  | {
     type: "undo";
   }
   | {
@@ -116,6 +120,10 @@ export function workflowHistoryReducer(
       ...state,
       currentDraft: sanitizeDraft(action.updateDraft(state.currentDraft)),
     };
+  }
+
+  if (action.type === "reset") {
+    return createWorkflowHistoryInitialState(action.draft);
   }
 
   if (action.type === "undo") {

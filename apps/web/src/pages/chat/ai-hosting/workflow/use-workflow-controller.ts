@@ -14,8 +14,6 @@ import { WORKFLOW_LAYOUT_X_GAP } from "./constants";
 import {
   arrangeWorkflowNodes,
   createEdge,
-  createInitialEdges,
-  createInitialNodes,
   createNodeFromKind,
   duplicateWorkflowNode,
   findLastActionNodeId,
@@ -35,6 +33,7 @@ import type {
   MarketingWorkflowNode,
   MarketingWorkflowRenderEdge,
   MarketingWorkflowRenderNode,
+  WorkflowDraft,
 } from "./types";
 
 const WORKFLOW_CONFIG_HISTORY_DEBOUNCE_MS = 500;
@@ -87,12 +86,9 @@ export type WorkflowActionResult = {
   nodeId?: string;
 };
 
-export function useWorkflowController() {
-  const history = useWorkflowHistory(() => ({
-    edges: createInitialEdges(),
-    nodes: createInitialNodes(),
-  }));
-  const { commitDraft, commitFromDrafts, currentDraft, replaceDraft } = history;
+export function useWorkflowController(initialDraft: WorkflowDraft) {
+  const history = useWorkflowHistory(() => initialDraft);
+  const { commitDraft, commitFromDrafts, currentDraft, replaceDraft, resetDraft } = history;
   const { edges, nodes } = currentDraft;
   const pendingConfigHistoryRef = useRef<PendingConfigHistory | null>(null);
   const configHistoryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -139,6 +135,13 @@ export function useWorkflowController() {
     clearConfigHistoryTimer();
   }, [clearConfigHistoryTimer]);
 
+  useEffect(() => {
+    pendingConfigHistoryRef.current = null;
+    moveStartDraftRef.current = null;
+    clearConfigHistoryTimer();
+    resetDraft(initialDraft);
+  }, [clearConfigHistoryTimer, initialDraft, resetDraft]);
+
   const onNodesChange: OnNodesChange<MarketingWorkflowRenderNode> = useCallback(
     (changes: NodeChange<MarketingWorkflowRenderNode>[]) => {
       flushConfigHistory();
@@ -173,6 +176,10 @@ export function useWorkflowController() {
     },
     [commitFromDrafts, currentDraft, flushConfigHistory, replaceDraft],
   );
+
+  const markDraftDirty = useCallback(() => {
+    flushConfigHistory();
+  }, [flushConfigHistory]);
 
   const onEdgesChange: OnEdgesChange<MarketingWorkflowRenderEdge> = useCallback(
     (changes: EdgeChange<MarketingWorkflowRenderEdge>[]) => {
@@ -475,6 +482,7 @@ export function useWorkflowController() {
     nodes,
     onEdgesChange,
     onNodesChange,
+    markDraftDirty,
     redo,
     undo,
     updateNodeData,

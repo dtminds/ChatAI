@@ -1,6 +1,11 @@
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import {
+  createInitialEdges,
+  createInitialNodes,
+} from "@/pages/chat/ai-hosting/workflow/graph";
 import { useWorkflowController } from "@/pages/chat/ai-hosting/workflow/use-workflow-controller";
+import type { WorkflowDraft } from "@/pages/chat/ai-hosting/workflow/types";
 
 vi.mock("@xyflow/react", async () => {
   const actual = await vi.importActual<typeof import("@xyflow/react")>("@xyflow/react");
@@ -35,8 +40,19 @@ vi.mock("@xyflow/react", async () => {
 });
 
 describe("useWorkflowController", () => {
+  function createDraft(): WorkflowDraft {
+    return {
+      edges: createInitialEdges(),
+      nodes: createInitialNodes(),
+    };
+  }
+
   it("undoes a node move back to the drag start draft", () => {
-    const { rerender, result } = renderHook(() => useWorkflowController());
+    const initialDraft = createDraft();
+    const { rerender, result } = renderHook(
+      ({ draft }) => useWorkflowController(draft),
+      { initialProps: { draft: initialDraft } },
+    );
     const originalPosition = result.current.nodes.find((node) => node.id === "wait-2d")?.position;
 
     act(() => {
@@ -49,7 +65,7 @@ describe("useWorkflowController", () => {
         },
       ]);
     });
-    rerender();
+    rerender({ draft: initialDraft });
 
     expect(result.current.nodes.find((node) => node.id === "wait-2d")?.position).toEqual({
       x: 420,
@@ -67,7 +83,7 @@ describe("useWorkflowController", () => {
         },
       ]);
     });
-    rerender();
+    rerender({ draft: initialDraft });
 
     expect(result.current.canUndo).toBe(true);
 
@@ -76,5 +92,34 @@ describe("useWorkflowController", () => {
     });
 
     expect(result.current.nodes.find((node) => node.id === "wait-2d")?.position).toEqual(originalPosition);
+  });
+
+  it("resets workflow state when a different draft is loaded", () => {
+    const nextDraft = createDraft();
+    nextDraft.nodes = nextDraft.nodes.map((node) =>
+      node.id === "trigger"
+        ? {
+            ...node,
+            data: {
+              ...node.data,
+              title: "复购唤醒触发",
+            },
+          }
+        : node,
+    );
+    const { rerender, result } = renderHook(
+      ({ draft }) => useWorkflowController(draft),
+      { initialProps: { draft: createDraft() } },
+    );
+
+    act(() => {
+      result.current.addNode("ai");
+    });
+    expect(result.current.canUndo).toBe(true);
+
+    rerender({ draft: nextDraft });
+
+    expect(result.current.nodes.find((node) => node.id === "trigger")?.data.title).toBe("复购唤醒触发");
+    expect(result.current.canUndo).toBe(false);
   });
 });

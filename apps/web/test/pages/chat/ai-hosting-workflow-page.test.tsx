@@ -423,7 +423,7 @@ describe("Agent workflow page", () => {
     renderWorkflowPage("/chat/ai-hosting/workflows/newcomer-conversion");
 
     expect(await screen.findByRole("application", { name: "营销 Workflow 画布" })).toBeInTheDocument();
-    expect(screen.getByText("自动保存")).toBeInTheDocument();
+    expect(screen.getByText("已保存")).toBeInTheDocument();
     expect(screen.getByText("新人转化旅程")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "返回列表" })).not.toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "智能体导航" })).not.toBeInTheDocument();

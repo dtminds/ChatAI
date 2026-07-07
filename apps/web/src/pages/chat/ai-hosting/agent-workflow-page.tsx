@@ -30,6 +30,7 @@ import { useWorkflowController } from "./workflow/use-workflow-controller";
 import { useWorkflowRenderElements } from "./workflow/use-workflow-render-elements";
 import { useWorkflowSelectionState } from "./workflow/use-workflow-selection-state";
 import { useWorkflowTransientState } from "./workflow/use-workflow-transient-state";
+import { useWorkflowDocument } from "./workflow/workflow-draft-service";
 import {
   getWorkflowName,
   workflowListItems,
@@ -173,6 +174,13 @@ function WorkflowWorkspaceContent({
 }: {
   workflowName: string;
 }) {
+  const { workflowId } = useParams();
+  const {
+    document,
+    markDirty,
+    markSaved,
+    saveState,
+  } = useWorkflowDocument(workflowId);
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("settings");
   const [isInspectorOpen, setIsInspectorOpen] = useState(true);
   const [isChecksOpen, setIsChecksOpen] = useState(false);
@@ -189,12 +197,13 @@ function WorkflowWorkspaceContent({
     insertNodeAfter,
     insertNodeBetween,
     nodes,
+    markDraftDirty,
     onEdgesChange,
     onNodesChange,
     redo,
     undo,
     updateNodeData,
-  } = useWorkflowController();
+  } = useWorkflowController(document.draft);
   const {
     activeEdgeInsertMenuId,
     closeCanvasMenus,
@@ -280,15 +289,18 @@ function WorkflowWorkspaceContent({
     }
 
     updateNodeData(selectedNodeId, patch);
+    markDirty();
   }
 
   function undoWorkflowChange() {
     undo();
+    markDirty();
     closeCanvasMenus();
   }
 
   function redoWorkflowChange() {
     redo();
+    markDirty();
     closeCanvasMenus();
   }
 
@@ -320,6 +332,7 @@ function WorkflowWorkspaceContent({
     const result = connectWorkflowNodes(connection);
 
     if (result) {
+      markDirty();
       closeCanvasMenus();
       setIsChecksOpen(false);
     }
@@ -333,6 +346,7 @@ function WorkflowWorkspaceContent({
     }
 
     closeCanvasMenus();
+    markDirty();
     setIsChecksOpen(false);
   }
 
@@ -349,6 +363,7 @@ function WorkflowWorkspaceContent({
     }
 
     setSelectedEdgeId(null);
+    markDirty();
     closeCanvasMenus();
     setIsChecksOpen(false);
   }
@@ -375,6 +390,8 @@ function WorkflowWorkspaceContent({
   }
 
   function handleWorkflowEditResult(result?: { nodeId?: string }) {
+    markDirty();
+
     if (result?.nodeId) {
       setSelectedNodeId(result.nodeId);
       setSelectedEdgeId(null);
@@ -403,6 +420,7 @@ function WorkflowWorkspaceContent({
 
   function handlePublishCheck() {
     setPublishAttempted(true);
+    markSaved();
     setIsChecksOpen(true);
     closeCanvasMenus();
   }
@@ -413,8 +431,9 @@ function WorkflowWorkspaceContent({
         onPublishCheck={handlePublishCheck}
         publishReady={publishReady}
         readyChecks={readyChecks}
+        saveState={saveState}
         totalChecks={totalChecks}
-        workflowName={workflowName}
+        workflowName={document.name || workflowName}
       />
 
       <div
@@ -431,7 +450,11 @@ function WorkflowWorkspaceContent({
             onArrange={arrangeNodes}
             onConnect={connectNodes}
             onEdgesChange={onEdgesChange}
-            onNodesChange={onNodesChange}
+            onNodesChange={(changes) => {
+              onNodesChange(changes);
+              markDraftDirty();
+              markDirty();
+            }}
             onOpenVariables={() => {
               setIsInspectorOpen(true);
               setInspectorTab("variables");

@@ -36,6 +36,10 @@ export function useWorkflowHistory(initialDraft: () => WorkflowDraft) {
     dispatch({ type: "replace", updateDraft });
   }, []);
 
+  const resetDraft = useCallback((draft: WorkflowDraft) => {
+    dispatch({ draft, type: "reset" });
+  }, []);
+
   const commitFromDrafts = useCallback((
     event: WorkflowHistoryEvent,
     previousDraft: WorkflowDraft,
@@ -69,6 +73,7 @@ export function useWorkflowHistory(initialDraft: () => WorkflowDraft) {
     pastStates,
     redo,
     replaceDraft,
+    resetDraft,
     undo,
   };
 }

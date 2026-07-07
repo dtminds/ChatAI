@@ -6,19 +6,21 @@ export function WorkflowTopBar({
   onPublishCheck,
   publishReady,
   readyChecks,
+  saveState,
   totalChecks,
   workflowName,
 }: {
   onPublishCheck: () => void;
   publishReady: boolean;
   readyChecks: number;
+  saveState: "saved" | "saving";
   totalChecks: number;
   workflowName: string;
 }) {
   return (
     <header className="workflow-canvas-topbar">
       <div className="workflow-canvas-status">
-        <span>自动保存</span>
+        <span>{saveState === "saving" ? "正在保存" : "已保存"}</span>
         <span className="workflow-canvas-status-separator" />
         <span className="truncate">{workflowName}</span>
       </div>

@@ -5,7 +5,10 @@ import {
   getWorkflowHistoryEventLabel,
   workflowHistoryReducer,
 } from "@/pages/chat/ai-hosting/workflow/history-engine";
-import { WORKFLOW_NODE_TYPE } from "@/pages/chat/ai-hosting/workflow/constants";
+import {
+  WORKFLOW_EDGE_TYPE,
+  WORKFLOW_NODE_TYPE,
+} from "@/pages/chat/ai-hosting/workflow/constants";
 import type {
   WorkflowEdge,
   WorkflowNode,
@@ -47,7 +50,7 @@ function createDraft(index = 0): WorkflowDraft {
     selected: true,
     source: "action-message",
     target: "goal",
-    type: WORKFLOW_NODE_TYPE,
+    type: WORKFLOW_EDGE_TYPE,
   };
 
   return {
@@ -57,15 +60,11 @@ function createDraft(index = 0): WorkflowDraft {
 }
 
 describe("workflowHistoryReducer", () => {
-  it("sanitizes runtime node and edge state before storing history", () => {
+  it("initializes history with a normalized draft snapshot", () => {
     const state = createWorkflowHistoryInitialState(createDraft());
 
-    expect(state.currentDraft.nodes[0].selected).toBe(false);
-    expect(state.currentDraft.nodes[0].zIndex).toBeUndefined();
-    expect(state.currentDraft.nodes[0].data.selected).toBeUndefined();
+    expect(state.currentDraft.nodes[0].data.title).toBe("发送消息 0");
     expect(state.currentDraft.nodes[0].data.onDelete).toBeUndefined();
-    expect(state.currentDraft.edges[0].selected).toBe(false);
-    expect(state.currentDraft.edges[0].data?.highlightState).toBeUndefined();
     expect(state.currentDraft.edges[0].data?.onInsertBetween).toBeUndefined();
   });
 

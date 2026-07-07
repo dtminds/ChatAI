@@ -1,10 +1,8 @@
-import type {
-  WorkflowEdgeData,
-  WorkflowNodeData,
-  WorkflowEdge,
-  WorkflowNode,
-  WorkflowDraft,
-} from "./types";
+import {
+  isWorkflowDraftEqual,
+  sanitizeDraft,
+} from "./workflow-draft-normalizer";
+import type { WorkflowDraft } from "./types";
 
 export type WorkflowHistoryEvent =
   | "node:add"
@@ -210,68 +208,4 @@ export function getWorkflowHistoryEventLabel(event: WorkflowHistoryEvent) {
     default:
       return "编辑画布";
   }
-}
-
-export function sanitizeDraft(draft: WorkflowDraft): WorkflowDraft {
-  return {
-    edges: draft.edges.map(sanitizeEdgeForHistory),
-    nodes: draft.nodes.map(sanitizeNodeForHistory),
-  };
-}
-
-export function isWorkflowDraftEqual(firstDraft: WorkflowDraft, secondDraft: WorkflowDraft) {
-  if (firstDraft.nodes.length !== secondDraft.nodes.length || firstDraft.edges.length !== secondDraft.edges.length) {
-    return false;
-  }
-
-  return JSON.stringify(firstDraft) === JSON.stringify(secondDraft);
-}
-
-function sanitizeNodeData(data: WorkflowNodeData): WorkflowNodeData {
-  const {
-    insertMenuOpen: _insertMenuOpen,
-    insertMenuSourceHandle: _insertMenuSourceHandle,
-    onDelete: _onDelete,
-    onDuplicate: _onDuplicate,
-    onInsertAfter: _onInsertAfter,
-    onSelect: _onSelect,
-    onToggleInsertMenu: _onToggleInsertMenu,
-    selected: _selected,
-    ...persistableData
-  } = data;
-
-  return persistableData;
-}
-
-function sanitizeNodeForHistory(node: WorkflowNode): WorkflowNode {
-  return {
-    ...node,
-    selected: false,
-    zIndex: undefined,
-    data: sanitizeNodeData(node.data),
-  };
-}
-
-function sanitizeEdgeData(data: WorkflowEdgeData | undefined): WorkflowEdgeData | undefined {
-  if (!data) {
-    return data;
-  }
-
-  const {
-    highlightState: _highlightState,
-    insertMenuOpen: _insertMenuOpen,
-    onInsertBetween: _onInsertBetween,
-    onToggleInsertMenu: _onToggleInsertMenu,
-    ...persistableData
-  } = data;
-
-  return persistableData;
-}
-
-function sanitizeEdgeForHistory(edge: WorkflowEdge): WorkflowEdge {
-  return {
-    ...edge,
-    selected: false,
-    data: sanitizeEdgeData(edge.data),
-  };
 }

@@ -9,7 +9,7 @@ import {
   applyNodeChanges,
 } from "@xyflow/react";
 import { isWorkflowConnectionAllowed } from "./connection-policy";
-import { sanitizeDraft } from "./history-engine";
+import { sanitizeDraft } from "./workflow-draft-normalizer";
 import {
   addNodeOperation,
   arrangeNodesOperation,

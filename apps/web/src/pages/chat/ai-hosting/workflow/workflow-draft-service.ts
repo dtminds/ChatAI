@@ -3,7 +3,7 @@ import {
   createInitialEdges,
   createInitialNodes,
 } from "./graph";
-import { sanitizeDraft } from "./history-engine";
+import { sanitizeDraft } from "./workflow-draft-normalizer";
 import type { WorkflowDraft } from "./types";
 
 export type WorkflowDocumentStatus = "Draft" | "Published" | "Paused";

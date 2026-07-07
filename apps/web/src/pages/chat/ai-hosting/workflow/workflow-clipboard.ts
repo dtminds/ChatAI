@@ -1,4 +1,4 @@
-import { sanitizeDraft } from "./history-engine";
+import { sanitizeDraft } from "./workflow-draft-normalizer";
 import {
   WORKFLOW_EDGE_TYPE,
   WORKFLOW_NODE_TYPE,

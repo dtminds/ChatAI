@@ -35,6 +35,7 @@ describe("kb-read-mappers", () => {
     expect(mapDocType(1)).toBe("qa");
     expect(mapDocType(2)).toBe("document");
     expect(mapDocType(3)).toBe("image");
+    expect(mapDocType(4)).toBe("attachment");
     expect(mapSyncStatus(0)).toBe("completed");
     expect(mapSyncStatus(1)).toBe("failed");
     expect(mapSyncStatus(3)).toBe("parsing");

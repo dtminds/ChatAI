@@ -290,6 +290,15 @@ describe("KbReadService", () => {
     });
   });
 
+  it("excludes attachment docs from unfiltered kb doc lists", async () => {
+    const { service } = createService(vi.fn(), { includeAttachmentDoc: true });
+
+    const response = await service.listKbDocs(tenant, "1");
+
+    expect(response.docs.some((doc) => doc.docType === "attachment")).toBe(false);
+    expect(response.pagination.total).toBe(3);
+  });
+
   it("rejects kb doc list search queries longer than 32 characters", async () => {
     const { service } = createService();
 

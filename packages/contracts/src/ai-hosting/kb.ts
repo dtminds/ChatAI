@@ -6,6 +6,7 @@ export const KbDocTypeSchema = Type.Union([
   Type.Literal("qa"),
   Type.Literal("document"),
   Type.Literal("image"),
+  Type.Literal("attachment"),
 ]);
 
 export const KbDocStatusSchema = Type.Union([
